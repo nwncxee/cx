@@ -162,7 +162,6 @@
 20 managed/Alloy/Pass/LightmapBake.Hold.cs
 31 managed/Alloy/Pass/LightmapBake.Lights.cs
 8 managed/Alloy/Pass/LightmapBake.Pack.cs
-3 managed/Alloy/Pass/LightmapBake.Pages.cs
 23 managed/Alloy/Pass/LightmapBake.Stamps.cs
 2 managed/Alloy/Pass/LightmapBake.Step.cs
 7 managed/Alloy/Pass/MotionVectors.cs

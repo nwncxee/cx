@@ -94,6 +94,15 @@ internal static unsafe partial class LightmapBake
         check.Expect(PhName.Length == (int)Ph.Count, "the phase names drifted from the Ph enum, so the worst-frame clause names the wrong phase");
         check.Expect(Dominant([1L, 5L, 3L]) == 1 && Dominant([5L, 1L, 3L]) == 0 && Dominant([0L, 0L, 0L]) == 0,
           "the worst frame's phase is not its largest slice");
+        // oracle: hand-placed slices -- 10 ms of steps under the hold, then 6 ms of adopt in play
+        bool holdWas = Hold;
+        PhaseReset();
+        Hold = true; _phFrame[(int)Ph.Steps] = Stopwatch.Frequency / 100; PhaseFrameEnd();
+        Hold = false; _phFrame[(int)Ph.Adopt] = Stopwatch.Frequency * 6 / 1000; PhaseFrameEnd();
+        check.Expect(_worstHeld.Ph == (int)Ph.Steps && Math.Abs(_worstHeld.Ms - 10.0) < 0.01 && _worstHeld.Frames == 1
+                     && _worstSeen.Ph == (int)Ph.Adopt && Math.Abs(_worstSeen.Ms - 6.0) < 0.01 && _worstSeen.Frames == 1,
+          "a frame under the hold is booked as a visible hitch, or the other way round");
+        Hold = holdWas; PhaseReset();
         check.Expect(Halves(100, 12, 107, 0) == 1 && Halves(0, 112, 107, 0) == 1 && Halves(0, 50, 107, 0) == 0 && Halves(0, 1L << 40, 107, 2) == 2,
                      "a 5% overflow halves the area once, not to the floor");
         // oracle: hand-worked -- 960 / 96 = 10; a 2 GiB card caps at 512 MiB = 5 pages; 1504 MiB free less the

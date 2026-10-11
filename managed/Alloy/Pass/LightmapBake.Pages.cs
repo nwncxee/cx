@@ -105,11 +105,12 @@ internal static unsafe partial class LightmapBake
     private enum Ph { Area, Rekey, Sweep, Refine, Adopt, Upload, Pack, Pool, Collect, Snap, Steps, Records, Count }
     private static readonly string[] PhName = { "area", "rekey", "sweep", "refine", "adopt", "upload", "pack", "pool", "collect", "snap", "steps", "records" };
     private static readonly long[] _phFrame = new long[(int)Ph.Count];
-    /// <summary>The worst single frame of the period and the phase that dominated it, plus how many frames
-    /// went past <see cref="WorstFloorMs"/>. The bake owns a frame slot inside the colour bracket, so this is
-    /// the number that says whether it is ever the frame.</summary>
-    private static double _worstMs;
-    private static int _worstPh = -1, _worstFrames;
+    /// <summary>The worst single frame of a period and the phase that dominated it, plus how many frames went
+    /// past <see cref="WorstFloorMs"/>. The bake owns a frame slot inside the colour bracket, so this is the
+    /// number that says whether it is ever the frame.</summary>
+    private sealed class WorstFrameState { public double Ms; public int Ph = -1, Frames; }
+    /// <summary>Kept apart: a frame under the loading hold is behind the backdrop, one in play is a visible hitch.</summary>
+    private static WorstFrameState _worstSeen = new(), _worstHeld = new();
     /// <summary>The budget a Lightmap frame is counted against: over this a frame is a hitch, not a slice.</summary>
     private const double WorstFloorMs = 4.0;
 
@@ -135,23 +136,29 @@ internal static unsafe partial class LightmapBake
         long tot = 0;
         for (int i = 0; i < (int)Ph.Count; i++) tot += _phFrame[i];
         double ms = tot * 1000.0 / Stopwatch.Frequency;
-        if (ms > WorstFloorMs) _worstFrames++;
-        if (ms > _worstMs) { _worstMs = ms; _worstPh = Dominant(_phFrame); }
+        WorstFrameState w = Hold ? _worstHeld : _worstSeen;
+        if (ms > WorstFloorMs) w.Frames++;
+        if (ms > w.Ms) { w.Ms = ms; w.Ph = Dominant(_phFrame); }
         Array.Clear(_phFrame);
     }
 
-    /// <summary>The period line's clause: the worst frame the bake cost and what it was.</summary>
+    /// <summary>The period line's clause: the worst frame the bake cost in play and what it was, then the same
+    /// under the hold when the period had one.</summary>
     private static string PhaseStats()
     {
-        string s = $", worst frame {_worstMs:F1} ms in {(_worstPh < 0 ? "nothing" : PhName[_worstPh])} ({_worstFrames} frame(s) over {WorstFloorMs:F0} ms)";
+        string s = $", worst frame in play {Worst(_worstSeen)}"
+                 + (_worstHeld.Ph >= 0 ? $", under the hold {Worst(_worstHeld)}" : "");
         PhaseReset();
         return s;
     }
+
+    private static string Worst(WorstFrameState w)
+        => $"{w.Ms:F1} ms in {(w.Ph < 0 ? "nothing" : PhName[w.Ph])} ({w.Frames} frame(s) over {WorstFloorMs:F0} ms)";
 
     /// <summary>The period's counters, whether or not the clause went out: a period that prints nothing must
     /// not hand its worst frame to the next one.</summary>
     private static void PhaseReset()
     {
-        _worstMs = 0; _worstPh = -1; _worstFrames = 0;
+        _worstSeen = new(); _worstHeld = new();
     }
 }
