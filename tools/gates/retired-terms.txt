@@ -12,6 +12,8 @@
 clustered forward\+	CX-188
 alloy\.scenedb	CX-198
 vanilla=1	CX-198
+# Alloy's own loaders are the renderer, not an option: the knobs that could switch them off are gone.
+alloy\.(mdlcache|modelload|nwsyncread|texload|texstream)\b	core-loaders-always-on	cx\.alloy\.
 # A bare "mode 0" is the retired engine-scene renderer path. A line about one of the ENGINE's own numbered
 # modes has to say which mode it means -- that is what the exception asks for.
 \bmode[ -]0\b	CX-198	text-bubble|bubble mode|chat mode|camera mode|hit-?test|interpolat

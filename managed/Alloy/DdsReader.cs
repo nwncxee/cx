@@ -115,21 +115,12 @@ internal static unsafe partial class DdsReader
         return ours;
     }
 
-    /// <summary>The prefetch worker's hand-back, and the check mode's oracle beside it.</summary>
+    /// <summary>The prefetch worker's hand-back.</summary>
     private static byte* FromCache(IntPtr name, int* container, int* w, int* h, int* ch, int* size, float* alpha)
     {
         byte* ours = TexLoad.Take(name, out Info i);
         if (ours == null) return null;
-        byte* served = Serve(ours, i, container, w, h, ch, size, alpha);
-        if (served == null || !TexLoad.Checking || !i.EngineReads) return served;
-        int c2, w2, h2, ch2, sz2; float a2 = 0;
-        byte* engine = _engGet(name, &c2, &w2, &h2, &ch2, &sz2, &a2);
-        bool agreed = TexLoad.Check(name, i, served, engine, c2, w2, h2, ch2, sz2, a2);
-        if (engine != null) _engRelease(engine, w2, h2, ch2, sz2, c2);
-        if (agreed) return served;
-        _answers.Remove((nint)served);
-        FreePrepared(served);
-        return null;
+        return Serve(ours, i, container, w, h, ch, size, alpha);
     }
 
     /// <summary>The slot's two halves timed apart -- the engine's getter is the resource READ (a DDS demand is
