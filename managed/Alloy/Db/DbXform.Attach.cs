@@ -226,7 +226,7 @@ public static unsafe partial class DbAnim
             if (!SceneDb.Objects.Valid(up)) { s += "  [chain ends: parent not live]"; break; }
             at = up.Index;
         }
-        _log?.Always(s);
+        _log?.Info(s);
     }
 
     private static readonly System.Collections.Generic.HashSet<int> _saidDeep = new();

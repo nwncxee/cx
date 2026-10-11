@@ -289,7 +289,7 @@ internal static class SeamDraw
         if (sig == st.Sig || st.Left <= 0) return;
         st.Sig = sig;
         st.Left--;
-        if (!odd) { _log?.Always($"SeamDraw: [worldviews] frame {f.Index}: back to one world view through the world camera"); return; }
+        if (!odd) { _log?.Info($"SeamDraw: [worldviews] frame {f.Index}: back to one world view through the world camera"); return; }
         var sb = new System.Text.StringBuilder();
         for (int k = 0; k < f.ViewCount; k++)
         {
@@ -305,7 +305,7 @@ internal static class SeamDraw
               .Append(cam ? $" camRect={SceneDb.CamViewX[c]:F0},{SceneDb.CamViewY[c]:F0} {SceneDb.CamViewW[c]:F0}x{SceneDb.CamViewH[c]:F0}" : "")
               .Append($" drawRect={v.X},{v.Y} {v.W}x{v.H} camPos=({v.CamPos.X:F1},{v.CamPos.Y:F1},{v.CamPos.Z:F1}) persp={v.Perspective}");
         }
-        _log?.Always($"SeamDraw: [worldviews] frame {f.Index}: {n} world view(s) of {f.ViewCount}{sb}");
+        _log?.Info($"SeamDraw: [worldviews] frame {f.Index}: {n} world view(s) of {f.ViewCount}{sb}");
     }
 
     private const int OrderBudget = 80;
@@ -330,7 +330,7 @@ internal static class SeamDraw
               .Append(_issued[k]).Append(' ').Append(v.X).Append(',').Append(v.Y).Append(' ').Append(v.W)
               .Append('x').Append(v.H).Append(']');
         }
-        _log?.Always($"[dbviews] frame {f.Index}: {sb}");
+        _log?.Info($"[dbviews] frame {f.Index}: {sb}");
     }
 
     private static void Refuse()

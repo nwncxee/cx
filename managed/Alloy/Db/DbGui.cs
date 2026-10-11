@@ -207,7 +207,7 @@ internal static unsafe class DbGui
             {
                 _dumpObjN++;
                 Matrix4x4 w = SceneDb.ObjWorld[o];
-                _log?.Always($"DbGui: [obj {_dumpObjN}] scene={s} o={o} kind={SceneDb.ObjKindOf[o]} "
+                _log?.Info($"DbGui: [obj {_dumpObjN}] scene={s} o={o} kind={SceneDb.ObjKindOf[o]} "
                     + $"model={SceneDb.ObjModel[o]?.Name ?? "-"} parts={SceneDb.ObjPartCount[o]} "
                     + $"attach={SceneDb.ObjAttachTo[o].Index}/{SceneDb.ObjAttachPart[o]} "
                     + $"beh=0x{DbAnim.Behavior(SceneDb.Objects.IdAt(o)):x}/0x{ShellBeh(o):x} "
@@ -306,7 +306,7 @@ internal static unsafe class DbGui
         {
             _sceneDumped[s] = true;
             _dumped++;
-            _log?.Always($"DbGui: [layer {_dumped}] scene={s} \"{SceneDb.SceneName[s]}\" "
+            _log?.Info($"DbGui: [layer {_dumped}] scene={s} \"{SceneDb.SceneName[s]}\" "
                 + $"rect={v.X},{v.Y} {v.W}x{v.H} camrect={SceneDb.CamViewX[v.Camera.Index]:F0},"
                 + $"{SceneDb.CamViewY[v.Camera.Index]:F0} {SceneDb.CamViewW[v.Camera.Index]:F0}x"
                 + $"{SceneDb.CamViewH[v.Camera.Index]:F0} depth={near:F3}..{far:F3} clear={clear} lit={lit} "
@@ -424,7 +424,7 @@ internal static unsafe class DbGui
             {
                 _dumpPartN++;
                 Matrix4x4 pw = SceneDb.PartWorld[p];
-                _log?.Always($"DbGui: [part {_dumpPartN}] o={o} p={p} kind={kind} cls={cls} "
+                _log?.Info($"DbGui: [part {_dumpPartN}] o={o} p={p} kind={kind} cls={cls} "
                     + $"tex=\"{DrawRecipe.TexName(recipe, 0)}\"={tex} idx={idx} alpha={alpha:F2} "
                     + $"additive={additive} pos=({pw.M41:F3},{pw.M42:F3},{pw.M43:F3}) "
                     + $"m11={pw.M11:F3} m22={pw.M22:F3} {UvProbe(p)}");
@@ -504,7 +504,7 @@ internal static unsafe class DbGui
             nint shell = CX.Alloy.Seam.Facade.ObjectShell(SceneDb.Objects.IdAt(o));
             float shellAlpha = shell == 0 ? -1f
                 : *(float*)(shell + CX.Alloy.Seam.SeamLayout.GobColourAlpha);
-            _log?.Always($"DbGui: [probe {_probeX[k]},{_probeY[k]}] scene={SceneDb.ObjScene[o].Index} "
+            _log?.Info($"DbGui: [probe {_probeX[k]},{_probeY[k]}] scene={SceneDb.ObjScene[o].Index} "
                 + $"\"{SceneDb.SceneName[SceneDb.ObjScene[o].Index]}\" o={o} model="
                 + $"{SceneDb.ObjModel[o]?.Name ?? "-"} p={p} node=\"{NodeName(p)}\" cls={d.Blend} "
                 + $"tex=\"{DrawRecipe.TexName(recipe, 0)}\"={d.Tex} alpha={d.Colour.W:F3} "

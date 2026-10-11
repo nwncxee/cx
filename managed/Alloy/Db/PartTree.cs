@@ -236,7 +236,7 @@ public static class PartTree
         string head = m.Normals.Length > 0
             ? $"n[0]=({m.Normals[0].X:F2},{m.Normals[0].Y:F2},{m.Normals[0].Z:F2})" : "NO NORMALS";
         MeshArena.Bounds(range, out Vector3 lo, out Vector3 hi, out _, out float rad);
-        _log.Always($"PartTree: [merged] '{model.Name}' node={node} range={range} verts={m.Positions.Length} "
+        _log.Info($"PartTree: [merged] '{model.Name}' node={node} range={range} verts={m.Positions.Length} "
                   + $"nrm={m.Normals.Length} uv0={m.Uv[0].Length} tan={m.Tangents.Length} col={m.Colors.Length} "
                   + $"| {head} avg=({avg.X:F2},{avg.Y:F2},{avg.Z:F2}) notUnit={bad} up={up} "
                   + $"| bounds lo=({lo.X:F1},{lo.Y:F1},{lo.Z:F1}) hi=({hi.X:F1},{hi.Y:F1},{hi.Z:F1}) r={rad:F1} "

@@ -37,7 +37,7 @@ public sealed class HitTestService : IExtenderService
         string trig = DbTriggers.Stats();
         if (trig.Length > 0) _log?.Info(trig);
         string seam = CX.Alloy.Seam.SeamHit.Stats();
-        if (seam.Length > 0) _log?.Always(seam);
+        if (seam.Length > 0) _log?.Info(seam);
         // The producer and index census: whether anything produced the hit columns at all, what the fold
         // refreshed, and every refusal the cast counted (a full entry pool, a degraded tree, a traversal that
         // hit its stack cap, a fill that could not report its object). None of these is allowed to be quiet.

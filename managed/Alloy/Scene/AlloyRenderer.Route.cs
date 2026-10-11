@@ -382,7 +382,7 @@ public sealed unsafe partial class AlloyRenderer
                       + $"box ({b[0]:F1},{b[1]:F1},{b[2]:F1})-({b[3]:F1},{b[4]:F1},{b[5]:F1}) "
                       + $"sphere ({sp[0]:F1},{sp[1]:F1},{sp[2]:F1} r{sp[3]:F1})";
             }
-        _log?.Always($"AlloyRenderer: [vischeck] {(collapse ? "COLLAPSE (whole table)" : $"miss (slice {from}..{to} of {_orderCount})")} frame {_frameSeq}: routed {routed} vs mean "
+        _log?.Info($"AlloyRenderer: [vischeck] {(collapse ? "COLLAPSE (whole table)" : $"miss (slice {from}..{to} of {_orderCount})")} frame {_frameSeq}: routed {routed} vs mean "
                    + $"{_routedAvg}, visible set {total} ({(_visWhy == 0 ? "reused" : _visWhy == 1 ? "rebuilt from the index" : "rebuilt full")}, "
                    + $"built at {_visBuiltAt}, enrol gen {_visEnrollGen}/{_enrollGen}, epoch {_visEpoch}/{_recEpoch}), {_dynN} gob slots, "
                    + $"{AreaGrid.Filed} filed in {AreaGrid.Occupied} cells, {AreaGrid.Unboxed} unboxed, {missed} live slot(s) the set misses;"

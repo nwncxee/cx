@@ -53,7 +53,7 @@ public sealed unsafe partial class ObjectSlots
         BehaviorSeam.Message(beh, message);
         if (!say) return;
         _saidMessage++;
-        Facade.Log?.Always($"[dbbeh] Message \"{Str(message)}\" before: {before} | after: {Said(self, shell, beh)}");
+        Facade.Log?.Info($"[dbbeh] Message \"{Str(message)}\" before: {before} | after: {Said(self, shell, beh)}");
     }
 
     /// <summary><c>alloy.hitcheck=1</c>: cross-scene behaviour messages said ("Dislodge"/"Reattach"), budgeted.</summary>

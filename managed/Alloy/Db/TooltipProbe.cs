@@ -42,7 +42,7 @@ internal static unsafe class TooltipProbe
         if (before <= 0 || before - dt >= 1 || _fired >= Budget) return;
         _fired++;
         nint hit = man.TooltipObject;
-        _log?.Always($"[tooltip] delay fired (dt={dt}) at mouse ({man.MouseX},"
+        _log?.Info($"[tooltip] delay fired (dt={dt}) at mouse ({man.MouseX},"
             + $"{man.MouseY}): hit {(hit == 0 ? "NOTHING" : Obj(new CGuiObject(hit).Model))}"
             + $", timer now {man.TooltipTimer}");
     }
@@ -61,7 +61,7 @@ internal static unsafe class TooltipProbe
         nint str = bubble == 0 ? 0 : new CGuiTextBubble(bubble).AurString.Ptr;
         DbId sid = str == 0 ? default : Facade.StringId(str);
         TextDoc? d = sid.IsNull ? null : TextObjects.Of(sid);
-        _log?.Always($"[tooltip] show \"{(chars == 0 ? "" : Marshal.PtrToStringUTF8(chars))}\" instant={instant} "
+        _log?.Info($"[tooltip] show \"{(chars == 0 ? "" : Marshal.PtrToStringUTF8(chars))}\" instant={instant} "
             + $"bubble={bubble:x} model {Obj(model)} | text {Obj(str)} lines={d?.LineCount ?? -1} "
             + $"box={d?.MaxWidth ?? -1:F2}x{d?.MaxHeight ?? -1:F2} font={(d?.Font != null ? "yes" : "NONE")}");
     }
