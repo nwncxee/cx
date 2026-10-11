@@ -1,4 +1,4 @@
-NWNCX:EE (CX) @VERSION@, a free add-on for the Neverwinter Nights: Enhanced Edition client. See [what you get](https://github.com/nwncxee/cx#what-you-get).
+NWNCX:EE (CX) @VERSION@, a free add-on for the Neverwinter Nights: Enhanced Edition client. See [the features](https://github.com/nwncxee/cx#features).
 
 **Windows** (`cx-windows-x64-@VERSION@.zip`): unpack into `bin\win32\` beside nwmain.exe and start the game.
 
@@ -8,4 +8,4 @@ NWNCX:EE (CX) @VERSION@, a free add-on for the Neverwinter Nights: Enhanced Edit
 
 **Uninstall**: Windows, delete `version.dll`, `cx_openal.dll` and `phonon.dll`. Linux, clear the launch option.
 
-**Verify**: `SHA256SUMS.sig` signs `SHA256SUMS` with the key in the repository's `packaging/allowed_signers`, and a build attestation proves GitHub built each zip from this tag. Steps in the README.
+**Verify**: `SHA256SUMS.sig` signs `SHA256SUMS` with the key in the repository's `packaging/allowed_signers`, and a build attestation proves GitHub built each zip from this tag. Steps in the README, under [Checking a download is genuine](https://github.com/nwncxee/cx#checking-a-download-is-genuine).
