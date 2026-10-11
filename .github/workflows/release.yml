@@ -1,17 +1,8 @@
-# GitHub side of releases (map #1, #524). A v* tag mirrored from Gitea builds the
-# Linux extender on ubuntu-24.04 and the Windows one on windows-2025-vs2026, then
-# uploads both zips + SHA256SUMS to the GITEA release for the tag over its REST
-# API. GitHub is only the worker (it has the Windows runner); players download from
-# https://git.westgate.pw/NWNEE_CX/nwncxee/releases, which
-# only works while that repo stays publicly readable. Tag-gated, never on PR.
-#
-# Windows is a NATIVE build on windows-2025-vs2026 (#504, build-win-native.sh); the Linux cross-build
-# (build-win.sh) is a dev tool and never ships. Both zips are published together by the publish job.
-# The release body comes from packaging/RELEASE-BODY.md.
-#
-# Gitea Actions reads .github/workflows/ too, so this file is fenced to GitHub:
-# Gitea has no ubuntu-24.04 runner and a waiting job must not block its own
-# release workflow (distinct concurrency group + the server_url guard).
+# Releases. A v* tag builds the Linux extender on ubuntu-24.04 and the Windows one natively on
+# windows-2025-vs2026 (build-win-native.sh; the Linux cross-build, build-win.sh, is a dev tool and never
+# ships), then publishes both zips + SHA256SUMS to the GitHub release for the tag. The release body comes
+# from packaging/RELEASE-BODY.md. tools/release/sign.sh adds SHA256SUMS.sig from the maintainer's machine.
+# Tag-gated, never on a pull request.
 name: release
 
 on:
@@ -27,16 +18,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: github-release
+  group: release
   cancel-in-progress: false
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
-  GITEA_API: https://git.westgate.pw/api/v1/repos/NWNEE_CX/nwncxee
 
 jobs:
   linux:
-    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -80,7 +69,6 @@ jobs:
         with: { name: linux, path: dist/*.zip, if-no-files-found: error }
 
   windows:
-    if: github.server_url == 'https://github.com'
     runs-on: windows-2025-vs2026
     timeout-minutes: 40
     steps:
@@ -112,10 +100,11 @@ jobs:
         with: { name: windows, path: dist/*.zip, if-no-files-found: error }
 
   publish:
-    if: github.server_url == 'https://github.com'
     needs: [linux, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: write # the only job that writes: it creates the release and uploads its assets
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: { ref: "${{ env.TAG }}" }
@@ -123,29 +112,19 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { path: dist, merge-multiple: true }
 
-      # Idempotent: GET-first because POST on a tag that already has a release is 409,
-      # and same-name assets are deleted before re-upload so workflow_dispatch re-runs
-      # replace instead of failing. Also re-PATCHes prerelease (old runs left rc tags false).
-      - name: Publish to the Gitea release
+      # Idempotent: a workflow_dispatch re-run edits the existing release and replaces same-name assets.
+      - name: Publish to the GitHub release
         env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ( cd dist && sha256sum *.zip > SHA256SUMS )
           sed "s/@VERSION@/${TAG}/g" packaging/RELEASE-BODY.md > body.md
           pre=false; [[ "$TAG" == *-rc* ]] && pre=true
-          api() { curl -sSf -H "Authorization: token $GITEA_TOKEN" "$@"; }
-          payload=$(jq -n --arg tag "$TAG" --argjson pre "$pre" --rawfile body body.md \
-            '{tag_name:$tag, name:$tag, body:$body, prerelease:$pre, draft:false}')
-          if id=$(api "$GITEA_API/releases/tags/$TAG" 2>/dev/null | jq -r .id); then
-            api -X PATCH -H "Content-Type: application/json" -d "$payload" "$GITEA_API/releases/$id" > /dev/null
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file body.md --draft=false --prerelease="$pre"
           else
-            id=$(api -X POST -H "Content-Type: application/json" -d "$payload" "$GITEA_API/releases" | jq -r .id)
+            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file body.md --prerelease="$pre"
           fi
-          for f in dist/*; do
-            name=$(basename "$f")
-            api "$GITEA_API/releases/$id/assets" | jq -r --arg n "$name" '.[] | select(.name==$n) | .id' \
-              | while read -r aid; do api -X DELETE "$GITEA_API/releases/$id/assets/$aid"; done
-            api -X POST -F "attachment=@$f" "$GITEA_API/releases/$id/assets?name=$name" > /dev/null
-          done
-          echo "published $TAG (release $id) with: $(ls dist | tr '\n' ' ')"
+          gh release upload "$TAG" dist/* --clobber
+          echo "published $TAG with: $(ls dist | tr '\n' ' ')"

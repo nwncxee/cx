@@ -1,8 +1,7 @@
 # CONTEXT
 
 Glossary for the client extender. Domain vocabulary only — no implementation
-detail, no decisions (those live in the Gitea tracker: wayfinder map #13 and its
-tickets). Terms crystallised while charting the native chatbox reimplementation.
+detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms crystallised while charting the native chatbox reimplementation.
 
 ## Product
 

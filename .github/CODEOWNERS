@@ -1,0 +1,3 @@
+# Only an owner approves a change to a workflow or to this file.
+/.github/workflows/ @vickydotbat @xtul9
+/.github/CODEOWNERS @vickydotbat @xtul9

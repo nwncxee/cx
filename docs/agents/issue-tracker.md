@@ -2,7 +2,8 @@
 
 Live work for this repository lives on the SoW Plane at `https://plane.westgate.pw`,
 workspace `shadows-over-westgate`, in project **`CX`** (Client Extender) -- a work item
-is named `CX-12`. Gitea keeps code, pull requests and releases.
+is named `CX-12`. GitHub (`nwncxee/cx`) keeps code, pull requests, releases and player bug
+reports.
 
 The workspace is shared with `sow-codebase` (`GAME`), NodeBB (`WEB`) and the platform
 (`PLAT`); a reference like `GAME-12` is unique across the whole workspace. File against
@@ -13,8 +14,8 @@ for live once in `sow-platform/docs/agents/plane-tracker.md`.
 ## The client
 
 `plane` is `bin/plane`, a copy of sow-platform's `infra/nixos/scripts/plane.py`. Fix a
-bug at the source, never here: a change to the source opens a pull request on the branch
-`chore/plane-client-sync` that replaces this copy (sow-platform ADR-0062).
+bug at the source, never here, then copy the fixed file over this one by hand. The sync
+workflow reaches Gitea repositories only.
 
 It needs Python 3 and your own `PLANE_API_KEY`, nothing else. Create the key in Plane
 (sign in with Gitea, then profile -> API tokens) and put it in the environment or in
