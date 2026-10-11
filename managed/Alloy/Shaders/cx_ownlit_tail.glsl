@@ -157,5 +157,8 @@
 #ifdef CX_A2C_MASK
     gl_SampleMask[0] = CxA2cMask(coverage * d.rot.w);
 #endif
+#ifndef CX_DEFERRED
+    if (uViz == 52) lit = cxLightFrom * 0.5;   // through the blend/OIT tail, so a decal shows at its own coverage
+#endif
     frag = CxOitOut(vec4(CxDisplayOverlays(CxFogReveal(lit * kh, vWorld, vDepth, d.ext2.w)), coverage * d.rot.w));
 }

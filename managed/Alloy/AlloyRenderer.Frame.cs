@@ -430,8 +430,8 @@ public sealed unsafe partial class AlloyRenderer
                     // the CX_DEFERRED twin draws in. A stale G0 is a lit pixel, so the clear is unconditional
                     // for the frames the twin may draw in; the lanes are indexed by gl_FragCoord, which an
                     // offset viewport would shear against the compute pass's own texel grid (Ssr's refusal).
-                    GBuffer.Written = false;
-                    if (lightingOn && perspective && !_capturing && Lighting.Deferred.V && _lightViz == 0
+                    GBuffer.Written = false; GBuffer.LightLive = false;   // a frame without the deferred pass reads no record
+                    if (lightingOn && perspective && !_capturing && Lighting.Deferred.V && (_lightViz == 0 || _lightViz == VizLightFrom)
                         && viewport[0] == 0 && viewport[1] == 0 && GBuffer.Ensure(viewport[2], viewport[3]))
                     {
                         GBuffer.BeginFrame();

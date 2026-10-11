@@ -94,8 +94,8 @@ internal static unsafe class DeferredLights
     /// <summary>The colour pass may draw opaque and cutout batches with the <c>CX_DEFERRED</c> twin this frame:
     /// <c>light.deferred</c> on, this pass's program linked, the G-buffer allocated, a main-view perspective
     /// pass, and <see cref="DeferredShadows"/> armed -- without its record every point-light shadow would be a
-    /// single hardware tap. Every <c>/alloy viz</c> mode draws forward (ADR 0029), so a viz frame never is.</summary>
-    internal static bool Active => Lighting.Deferred.V && AlloyRenderer._lightViz == 0
+    /// single hardware tap. Every <c>/alloy viz</c> mode draws forward (ADR 0029) but the forward class's light-source view, which reads this pass.</summary>
+    internal static bool Active => Lighting.Deferred.V && (AlloyRenderer._lightViz == 0 || AlloyRenderer._lightViz == AlloyRenderer.VizLightFrom)
                                    && GBuffer.Ready && !GBuffer.Failed && Programs._progLitDef != 0
                                    && Ready() && DeferredShadows.Ready();
 

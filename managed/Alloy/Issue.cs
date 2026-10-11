@@ -324,9 +324,9 @@ internal static unsafe class Issue
             bool lists = lit && !water && !hosted && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
             // view -- the only draws whose pixels the deferred compute pass reads. Everything else keeps the
-            // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz (so every debug
-            // view stays truthful), a hosted body, and the blended range through the OIT twin.
-            bool deferred = lit && !water && !hosted && !lists && viz == 0 && !_capturing
+            // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz but the
+            // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
+            bool deferred = lit && !water && !hosted && !lists && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
                             && g < _gOpaqueEnd && DeferredLights.Active && !_forwardOnly;
             // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own samples
             int wantProg = water ? 2 : hosted ? 3 : lists ? 4 : deferred ? 5
