@@ -1,4 +1,4 @@
-NWNCX:EE (CX) @VERSION@, a free add-on for the Neverwinter Nights: Enhanced Edition client. It adds real-time shadows, weather that wets the ground, a new chatbox, sharper nameplates and Steam Audio sound. See [what you get](https://github.com/nwncxee/cx#what-you-get).
+NWNCX:EE (CX) @VERSION@, a free add-on for the Neverwinter Nights: Enhanced Edition client. See [what you get](https://github.com/nwncxee/cx#what-you-get).
 
 **Windows** (`cx-windows-x64-@VERSION@.zip`): unpack into `bin\win32\` beside nwmain.exe and start the game.
 
