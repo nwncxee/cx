@@ -38,8 +38,9 @@
     <EmbeddedResource Include="Alloy/Pass/SmaaArea.bin" LogicalName="SmaaArea" />
     <EmbeddedResource Include="Alloy/Pass/SmaaSearch.bin" LogicalName="SmaaSearch" />
     <EmbeddedResource Include="../third_party/dejavu/DejaVuSans.ttf" LogicalName="DejaVuSans" />
-    <!-- #673: the charter self-check's real curved placeable (plc_x0_jar's jar_base trimesh), 4 KiB gzipped. -->
-    <EmbeddedResource Include="Alloy/ChartFixture.bin.gz" LogicalName="ChartFixture" />
+    <!-- The charter self-check's real curved placeable (plc_x0_jar's jar_base trimesh), 4 KiB gzipped. WithCulture:
+         MSBuild on Windows reads the ".bin" in the name as the culture "bin" and ships it in a satellite. -->
+    <EmbeddedResource Include="Alloy/ChartFixture.bin.gz" LogicalName="ChartFixture" WithCulture="false" />
   </ItemGroup>
 
   <!-- The client builds CX is measured against (ClientBuilds): a new client build is a new file here,
