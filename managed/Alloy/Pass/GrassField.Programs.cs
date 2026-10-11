@@ -96,6 +96,7 @@ internal static unsafe partial class GrassField
         _gl.FaceBuf = b[1]; _gl.PatchBuf = b[2]; _gl.MatBuf = b[3]; _gl.OutBuf = b[4]; _gl.CmdBuf = b[5]; _gl.StatBuf = b[6];
         Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * FaceFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
         Gl.NamedBufferData(_gl.CmdBuf, (IntPtr)(Cmds * 4 * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
+        Gl.ZeroBuffer(_gl.CmdBuf, Cmds * 4 * sizeof(uint));   // the shadow and motion draws read last frame's commands
         const uint flags = Gl.MAP_READ_BIT | Gl.MAP_PERSISTENT_BIT | Gl.MAP_COHERENT_BIT;
         Gl.NamedBufferStorage(_gl.StatBuf, (IntPtr)(Cmds * 4 * sizeof(uint)), null, flags);
         _gl.Stat = (uint*)Gl.MapNamedBufferRange(_gl.StatBuf, IntPtr.Zero, (IntPtr)(Cmds * 4 * sizeof(uint)), flags);

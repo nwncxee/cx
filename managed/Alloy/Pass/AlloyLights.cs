@@ -879,6 +879,9 @@ internal static unsafe class AlloyLights
         Gl.NamedBufferData(_gl.BufCounts, (IntPtr)(ClusterCount * ClusterHeadWords * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
         Gl.CreateBuffers(1, &b); _gl.BufIndices = b;
         Gl.NamedBufferData(_gl.BufIndices, (IntPtr)((long)ClusterCount * ClusterCap * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
+        // a reader can run before the first cluster build (the bake): stale memory there is a light count in the millions
+        Gl.ZeroBuffer(_gl.BufCounts, (long)ClusterCount * ClusterHeadWords * sizeof(uint));
+        Gl.ZeroBuffer(_gl.BufIndices, (long)ClusterCount * ClusterCap * sizeof(uint));
         Gl.CreateBuffers(1, &b); _gl.BufMovers = b;
         Gl.NamedBufferData(_gl.BufMovers, (IntPtr)(CasterPass.CubeDynSphere.Length * sizeof(float)), null, Gl.DYNAMIC_DRAW);
         _gl.MoversGen = -1;
