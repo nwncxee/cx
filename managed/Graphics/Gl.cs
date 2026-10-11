@@ -230,6 +230,7 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, int*, void> GetIntegerv;
     public static delegate* unmanaged<uint, byte> IsEnabled;   // GLboolean glIsEnabled(GLenum)
     public static delegate* unmanaged<uint> GetError;          // GLenum glGetError(void)
+    public static delegate* unmanaged<void> Finish;            // void glFinish(void)
     /// <summary>Empty the error queue without trusting it to end. A context the driver has given up on
     /// answers an error forever, and an unbounded drain there is a hang rather than a diagnostic. Returns
     /// how many codes it drained; safe before <see cref="Init"/> (no entry point, nothing drained).</summary>
@@ -592,6 +593,7 @@ public static unsafe class Gl
         GetTexImage = (delegate* unmanaged<uint, int, uint, uint, void*, void>)P("glGetTexImage");
         IsEnabled = (delegate* unmanaged<uint, byte>)P("glIsEnabled");
         GetError = (delegate* unmanaged<uint>)P("glGetError");
+        Finish = (delegate* unmanaged<void>)P("glFinish");
         Enable = (delegate* unmanaged<uint, void>)P("glEnable");
         Disable = (delegate* unmanaged<uint, void>)P("glDisable");
         CullFace = (delegate* unmanaged<uint, void>)P("glCullFace");

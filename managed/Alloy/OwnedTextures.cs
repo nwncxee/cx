@@ -568,7 +568,7 @@ internal static unsafe partial class OwnedTextures
         // ledger has to go with the names it was a ledger about -- keeping it would refuse the whole world
         // its single retry. The queue holds pointers into a world that may not survive either.
         _rebuildTried.Clear(); Array.Clear(_rebuildQ); _rebuildN = 0; _dripFrame = 0;
-        _white = 0;   // its name went with the context too; the next null-texture draw re-mints it
+        _standIn = new();   // their names went with the context too; the next draw that needs one re-mints it
         _censusRaw = _censusBcn = _censusTrans = 0;
         _censusRawBytes = _censusBcnBytes = _censusSaved = 0;
         _censusLastUpload = 0; _censusReported = false;

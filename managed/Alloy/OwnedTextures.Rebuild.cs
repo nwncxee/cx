@@ -64,7 +64,7 @@ internal static unsafe partial class OwnedTextures
     /// Minted lazily inside the 4.6 bracket and registered OWNED; 0 out means the caller keeps its skip.</summary>
     internal static int WhiteTid()
     {
-        if (_white != 0) return (int)_white;
+        if (_standIn.White != 0) return (int)_standIn.White;
         if (!GlContextService.Available) return 0;
         uint t;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
@@ -75,15 +75,35 @@ internal static unsafe partial class OwnedTextures
         Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
         Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
         _owned.Add(t);
-        _white = t;
+        _standIn.White = t;
         _log?.Info($"OwnedTextures: minted the white null-texture stand-in (tid {t}) -- a diffuse with no GL id now draws as vanilla draws it");
+        return (int)t;
+    }
+    /// <summary>The one transparent-black texel every empty map slot's bindless handle points at: what NVIDIA
+    /// and Mesa return for a null handle, which AMD's driver faults on instead. Minted lazily inside the 4.6
+    /// bracket and registered OWNED; 0 out means the caller uploads the zero handle as before.</summary>
+    internal static int NullTid()
+    {
+        if (_standIn.Black != 0) return (int)_standIn.Black;
+        if (!GlContextService.Available) return 0;
+        uint t;
+        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
+        if (t == 0) return 0;
+        uint zero = 0;
+        Gl.TextureStorage2D(t, 1, Gl.RGBA8, 1, 1);
+        Gl.TextureSubImage2D(t, 0, 0, 0, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &zero);
+        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
+        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+        _owned.Add(t);
+        _standIn.Black = t;
         return (int)t;
     }
     /// <summary>The <see cref="WhiteTid"/> name, 0 until minted. Dropped (never deleted) on
     /// <see cref="ContextLost"/> with every other name, and re-minted on the next draw that needs it.</summary>
-    private static uint _white;
+    private sealed class StandInState { public uint White, Black; }
+    private static StandInState _standIn = new();
     /// <summary>The white stand-in's name, 0 until minted; a read, never a mint (stage workers call it).</summary>
-    internal static int WhiteName => (int)_white;
+    internal static int WhiteName => (int)_standIn.White;
 
     /// <summary>Spend at most <see cref="RebuildBudget"/> engine texture builds, once a frame before the Alloy
     /// bracket with the ENGINE's context current. That is not incidental: <c>BuildAndStore</c> re-runs the
