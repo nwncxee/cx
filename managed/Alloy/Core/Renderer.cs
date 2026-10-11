@@ -176,9 +176,9 @@ internal static class Renderer
         // beside it, 2 = Alloy's decode is what the engine gets (live-clean 2026-09-26: 684 TGA + 830 PLT, 0 errors).
         RasterRead = G.Slider("rasterread", "rasterread", 0, 2, 1, 2, tier: Tier.ChatOnly, effect: Effect.Restart);
         // CX-54 step 3: Alloy reads the NWSync store itself (its own read-only SQLite connections + zstd), so a
-        // worker can fetch a manifest resource without the main-thread resource manager. Off until a live session
-        // reads zero errors on the nwsyncread: note.
-        NwSyncRead = G.Toggle("nwsyncread", "nwsyncread", false, Tier.ChatOnly, Effect.Restart);
+        // worker can fetch a manifest resource without the main-thread resource manager. On: the scene database
+        // loads every model and texture itself, so off leaves all NWSync content white or missing.
+        NwSyncRead = G.Toggle("nwsyncread", "nwsyncread", true, Tier.ChatOnly, Effect.Restart);
         TexDelete = G.Slider("texdelete", "texdelete", -1, 1, 1, -1, tier: Tier.ChatOnly, effect: Effect.Restart);
         HandleDrop = G.Toggle("handledrop", "handledrop", true, Tier.ChatOnly, Effect.Restart);
         OwnedGeom = G.Toggle("ownedgeom", "ownedgeom", true, Tier.ChatOnly, Effect.Restart);

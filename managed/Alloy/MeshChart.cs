@@ -195,7 +195,7 @@ internal static unsafe partial class MeshChart
         _ = Lightmap.G;
         if (_jobs.Running) return;
         _jobs.Start("cx-chart", Work, Workers);
-        log.Info($"MeshChart: {Workers} worker(s) up -- static meshes are charted as they enrol when lightmap.enabled=1 (default off)");
+        log.Info($"MeshChart: {Workers} worker(s) up -- static meshes are charted as they enrol while lightmap.enabled is on");
     }
 
     internal static long KeyOf(int slot, int item) => SlotJobTable<Job, Entry>.KeyOf(slot, item);
