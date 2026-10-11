@@ -38,9 +38,13 @@ const float CX_WX_SHORE = 0.6;
 /// The noise micro-relief's swing about its mean, as a share of the puddle-depth knob: wider than the
 /// depth, so a full basin on level ground pools in pockets instead of one sheet.
 const float CX_WX_MICRO_AMP = 2.0;
-/// ...and its mean: what distant ground, where the noise mips to its mean, stands above the water. Under
-/// 1, a distant full basin still shows a sheen; near, a full one films where the noise falls under it.
+/// ...and its mean at the puddles knob's midpoint (the knob scales it 2..0): what distant ground, where the
+/// noise mips to its mean, stands above the water; near, a full basin films where the noise falls under it.
 const float CX_WX_MICRO_MEAN = 0.8;
+/// A film seen from afar is a mirror at grazing angles and the trace behind it is coarse, so it loses the
+/// illusion: its alpha rises to this over the view depths (m) below, and the puddle reads as water with a bed.
+const float CX_WX_FILM_FAR_A = 0.12;
+const vec2 CX_WX_FILM_FAR_M = vec2(12.0, 40.0);
 /// The share of its roughness a soaked POROUS surface keeps (a sealed one keeps 0.6): water in the pores
 /// smooths dirt a little, a sealed stone a lot.
 const float CX_WX_PORO_ROUGH = 0.85;

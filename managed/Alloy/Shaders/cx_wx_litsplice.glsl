@@ -113,7 +113,7 @@
                         // centimetre scale, so a noise micro-relief stands in for what it cannot see -- a
                         // flat plaza breaks into pools instead of sheeting over as one mirror. Porous
                         // ground drinks its shallow pockets, so the relief counts double there.
-                        float wxMicro = uWxMapP.x * (CX_WX_MICRO_MEAN + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5)) * (1.0 + wxPoro);
+                        float wxMicro = uWxMapP.x * (CX_WX_MICRO_MEAN * 2.0 * (1.0 - uWxMapP.w) + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5)) * (1.0 + wxPoro);
                         float wxD = CxWetDepth(wxM) - wxMicro;
                         wxFilm = wxWetExp * wxFlat * smoothstep(0.0, uWxMapP.y, wxD);
                         // R5: the SHORELINE. Ground the water has just left, or has not quite reached, is
@@ -174,6 +174,7 @@
                     // flattened toward the water's own plane beneath it. The base keeps its roughness, and
                     // with it the cheap lighting path.
                     wxFilmRough = max(uWeatherLook.w, CX_ALPHA_MIN);
+                    wxFilmRough = mix(wxFilmRough, max(wxFilmRough, CX_WX_FILM_FAR_A), smoothstep(CX_WX_FILM_FAR_M.x, CX_WX_FILM_FAR_M.y, vDepth));
                     // toward the GEOMETRIC normal, not toward the world's up. Water drowns a bed's
                     // normal-map detail but not its macro shape -- a sloped street under a film is still
                     // sloped -- and the old blend between the mapped normal and a world plane swept the

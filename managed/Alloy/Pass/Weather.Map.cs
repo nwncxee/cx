@@ -86,7 +86,7 @@ internal static unsafe partial class Weather
             Gl.ActiveTexture(Gl.TEXTURE0);
         }
         if (locXf >= 0) Gl.Uniform4f(locXf, 0f, 0f, on ? _mapTpm : 0f, WetStrength.V);
-        if (locP >= 0) Gl.Uniform4f(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, 0f);
+        if (locP >= 0) Gl.Uniform4f(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, Puddles.V);
     }
 
     /// <summary>The area edge: the map belongs to the area it was latched in.</summary>
@@ -259,7 +259,8 @@ internal static unsafe partial class Weather
           && lit.Contains("rough * mix(0.6, CX_WX_PORO_ROUGH, wxPoro)")
           && !lit.Contains("0.25 * wxWet") && !lit.Contains("spec = max(spec,"),
           "damp ground keeps a dielectric F0 and porous ground keeps its roughness");
-        check.Expect(lit.Contains("const float CX_WX_MICRO_AMP = 2.0;") && lit.Contains("(CX_WX_MICRO_MEAN + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5))")
+        check.Expect(lit.Contains("const float CX_WX_MICRO_AMP = 2.0;") && lit.Contains("(CX_WX_MICRO_MEAN * 2.0 * (1.0 - uWxMapP.w) + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5))")
+          && lit.Contains("smoothstep(CX_WX_FILM_FAR_M.x, CX_WX_FILM_FAR_M.y, vDepth)")
           && lit.IndexOf("wxPoro = (1.0 - metal)", StringComparison.Ordinal) < lit.IndexOf("float wxMicro", StringComparison.Ordinal),
           "the micro-relief outruns a full basin, and porosity is known before the film forms");
         check.Expect(lit.IndexOf("wxFilmRough = max(uWeatherLook.w, CX_ALPHA_MIN);", StringComparison.Ordinal)

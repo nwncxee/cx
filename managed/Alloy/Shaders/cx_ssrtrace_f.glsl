@@ -48,6 +48,9 @@ const float CX_SSR_FLOOR = 0.25;
 /// A record this smooth (alpha) is a water film or a coat: it never reads the colour pyramid under level 1, so a
 /// 16x torch mirrored on a 0.16-rough puddle is a glow and not a lightsaber.
 const float CX_SSR_COAT_A = 0.05;
+/// ...and the brightest a film mirrors, in place of CX_SSR_MAX: a lamp's emissive geometry is drawn at its
+/// midnight value whatever the hour, and a puddle that mirrors it literally outshines the noon it sits in.
+const float CX_SSR_COAT_MAX = 3.0;
 /// The mirrored draw's mip at roughness 1 (on the sqrt(rough) ladder the probe uses).
 /// ponytail: blur by roughness alone, not by the reflected point's height off the plane (no contact hardening).
 const float CX_PLANE_LOD = 4.0;
@@ -146,8 +149,9 @@ void main()
              * (1.0 - smoothstep(CX_PLANE_TOL.x, CX_PLANE_TOL.y, abs(P.z - uPlane.x)));
     vec4 hit = pa < 1.0 ? Trace(o, r, rough, size) : vec4(0.0);
     if (any(isnan(hit)) || any(isinf(hit))) hit = vec4(0.0);
-    hit = clamp(hit, vec4(0.0), vec4(vec3(CX_SSR_MAX), 1.0));
-    pl.rgb = min(pl.rgb, vec3(CX_SSR_MAX));
+    float bright = rough < CX_SSR_COAT_A ? CX_SSR_COAT_MAX : CX_SSR_MAX;
+    hit = clamp(hit, vec4(0.0), vec4(vec3(bright), 1.0));
+    pl.rgb = min(pl.rgb, vec3(bright));
     float gate = CxSsrGate(wmax, rough, uSsr.x);
     float trust = pa + (1.0 - pa) * hit.a;
     if (uViz == 41) { frag = vec4(trust * gate, wmax, 1.0, 1.0); return; }
