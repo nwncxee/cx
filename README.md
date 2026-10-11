@@ -4,11 +4,6 @@
 
 This is the _Neverwinter Nights: Enhanced Edition Client Extender_, a free and open-source add-on for the NWN:EE client that gives the game a modern renderer, a proper chatbox, shinier nameplates, and true 3D sound. It only changes your client, so it works on any server you already play on.
 
-<picture>
-  <source srcset="media/rain-town-square.avif" type="image/avif">
-  <img src="media/rain-town-square.webp" alt="Rain falling on a town square at night, leaving puddles on the cobblestones">
-</picture>
-
 There's more to see in the [gallery](media/README.md).
 
 **[Download the latest release](https://github.com/nwncxee/cx/releases/latest)** for Windows or Linux.
