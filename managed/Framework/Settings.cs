@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace CX.Framework;
 
@@ -28,7 +29,8 @@ public static class Settings
     public static bool Loaded { get; private set; }
 
     /// <summary>Read the file. Once, from the host, before any service is constructed. Missing or unreadable
-    /// file means "every default stands"; a malformed line is skipped, per <see cref="ConfigFile.ForEachPair"/>.</summary>
+    /// file means "every default stands", and a missing one is created by the next <see cref="KnobFile"/> write;
+    /// a malformed line is skipped, per <see cref="ConfigFile.ForEachPair"/>.</summary>
     public static void Load(ExtenderLog? log)
     {
         if (Loaded) return;
@@ -37,6 +39,8 @@ public static class Settings
         // see their own settings.
         ConfigFile.ForEachPair(ConfigFile.ReadTextNow(FileName, log, out _path), (k, v) => _values[k] = v);
         if (_values.Count > 0) log?.Info($"settings: {_values.Count} key(s) from {_path}");
+        // On-device only: off-device the path is the real user's, and the demo never writes it.
+        if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.Arm();
         // Off-device (run-demo: no engine symbols resolve) the log stays open -- it is the self-check gate.
         // general.logs is General.Logs's key, read here before any knob exists (spec §2): the launch lines.
         bool logs = Raw("general.logs") is string raw && KnobCodec<bool>.Parse!(raw) is (true, true)
