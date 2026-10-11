@@ -53,7 +53,7 @@ internal static unsafe partial class Weather
                          help: "How far out the map looks for the low point a puddle fills toward. Small = many shallow pools, large = fewer broader ones.");
         PuddleDepth = G.Slider("puddledepth", "Puddle depth", 0.005f, 0.12f, 0.005f, 0.03f, "m", Tier.ChatOnly,
                                help: "How deep standing water gets in a full basin. Deeper water floods further up its banks.");
-        FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.16f, tier: Tier.ChatOnly,
+        FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.22f, tier: Tier.ChatOnly,
                              help: "Roughness of the water film over wet ground: low is a mirror, high a matte sheen. Perceptual, so the low end is still a real lobe and not a needle.");
         FilmLights = G.Slider("filmlights", "Film highlights", 0, 4, 1, 2, tier: Tier.ChatOnly,
                               help: "Baked static lights a water film may mirror per cluster: the brightest few, evaluated on the film's own lobe. 0 = the film takes moving lights only.")
