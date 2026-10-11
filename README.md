@@ -2,16 +2,37 @@
 
 # NWNCX:EE (CX)
 
-CX is an optional add-on for the Neverwinter Nights: Enhanced Edition client. It adds features to the
-game client (a modern renderer, a new chatbox, hotkeys, nameplates, combat text, positional audio and
-more). It is a client mod: it changes nothing on the server and needs nothing from it.
+This is the _Neverwinter Nights: Enhanced Edition Client Extender_, a free and open-source add-on for the NWN:EE client that gives the game a modern renderer, a proper chatbox, shinier nameplates, and true 3D sound. It only changes your client, so it works on any server you already play on.
 
-See it in the game in the [gallery](media/README.md).
+![Rain falling on a town square at night, leaving puddles on the cobblestones](media/rain-town-square.webp)
 
-Run the stock client and you play vanilla. Uninstalling is deleting a few files.
+There's more to see in the [gallery](media/README.md).
 
-CX is not affiliated with or endorsed by Beamdog. It loads into the game process, so only install a
-build you got from the releases page or built yourself.
+**[Download the latest release](https://github.com/nwncxee/cx/releases/latest)** for Windows or Linux.
+
+## Features
+
+**Graphics.** NWNCX:EE draws the 3D world with an updated OpenGL 4.6 renderer, which we call Alloy. There are many modern improvements that increase visual fidelity while also helping performance too. Real-time shadows, adaptive fog colouring, HDR with exposure, tone mapping, and bloom. Denser grass and precipitation that actually covers surfaces, improved wind physics, and GPU texture streaming.
+
+**Animation.** Animation transitions are much less stiff but the animations themselves remain mostly unchanged. Each movement eases into the next and uses simulated inertia; stride length changes with creature speed, so sliding is a thing of the past. Feet actually adjust to the floor so you _walk_ up and down stairs instead of floating over them.
+
+**Chat.** We've also replaced the stock chat window with something more suited to modern games, all fully customizable. You can split it into multiple windows with tabs, portraits, timestamps, and adjustable colours. Click-and-drag, copy-and-paste, highlightable text, and many more usability improvements you'd expect from a modern GUI.
+
+**Interface.** Crisper floating names, speech bubbles, damage numbers, and combat banners. You can choose between a nested dropdown menu or the radial menu. Our own windows can be resized, scrolled, and moved anywhere on the screen, and many NUI improvements have been added like faster refreshes and scrollbars that don't break with long lists. An all new replacement for the quickbar is adjustable and accepts real keybinds.
+
+**Sound.** Real 3D positional sound with Steam Audio using HRTF. Reverb is traced from an area's own geometry; a cave will actually echo like a real cave, and walls muffle sound that comes from behind them. Loud soundscapes are much less annoying and grating, and music and ambience crossfade.
+
+**Camera.** Improved camera smoothing, field of view and auto-recenter. You can set up the chase or driving camera to play like true 3rd person. There's also a new Action Camera inspired by several popular MMO franchises, and a Free Camera mode.
+
+There's a lot of other stuff you can also turn on: better inventory with search, MMO-style tab-targeting, and more to come. Everything is accessible in the settings panel by typing `/settings` in chat, or by clicking the gear in the lower-left corner of the main menu.
+
+## Safe to try
+
+You don't have to use the Client Extender if you don't want to. Uninstallation is as easy as deleting the files.
+
+GitHub builds every release from its tagged source. We sign the checksums, so you can check for authenticity. See [Checking a download is genuine](#checking-a-download-is-genuine). Only install a build from our releases page or one you built yourself.
+
+NWNCX:EE is not affiliated with or endorsed by Beamdog.
 
 ## Install
 
@@ -27,15 +48,14 @@ Download the zip for your system from the
 
 To uninstall, delete `version.dll`, `cx_openal.dll` and `phonon.dll` from `bin\win32\`.
 
-Windows Defender sometimes quarantines `version.dll`. That is a false positive. Add it to Defender's
-exclusions.
+Windows Defender sometimes quarantines `version.dll`. That's a false positive, so add it to Defender's exclusions.
 
 ### Linux
 
-1. Find the game folder (Steam: right-click *Neverwinter Nights* -> Manage -> Browse local files)
+1. Find the game folder (Steam: right-click _Neverwinter Nights_ -> Manage -> Browse local files)
    and open `bin/linux-x86/`, the folder that holds `nwmain-linux`.
 2. Unpack `cx-linux-x64-<version>.zip` there.
-3. Steam: right-click *Neverwinter Nights* -> Properties -> General -> Launch Options, and paste
+3. Steam: right-click _Neverwinter Nights_ -> Properties -> General -> Launch Options, and paste
    exactly:
 
    ```
@@ -52,13 +72,13 @@ Not supported yet.
 
 ### Did it work?
 
-The main menu shows an attribution line in the top-left corner.
+A line of credits appears in the top-left corner of the main menu.
 
 ### Checking a download is genuine
 
-Only download CX from the releases page above. Each release carries `SHA256SUMS` and
+Only download CX from the releases page above. Each release has `SHA256SUMS` and
 `SHA256SUMS.sig`, a signature made with the maintainer's key. A copy of CX from anywhere else can
-match its own checksums, but it cannot carry that signature. The public key is
+match its own checksums, but it can't have that signature. The public key is
 [`packaging/allowed_signers`](packaging/allowed_signers). Fetch it from this repository, not from
 the site you downloaded the zip from.
 
@@ -73,7 +93,7 @@ The first line must print `Good "file" signature for cx-releases`, and the secon
 your zip. On Windows, run the first line in PowerShell (OpenSSH ships with Windows 10 and 11), then
 compare the output of `Get-FileHash cx-windows-x64-<version>.zip` with the zip's line in `SHA256SUMS`.
 
-Releases after v0.9.1 also carry a build attestation, which proves this repository's release workflow
+Releases after v0.9.1 also have a build attestation, which proves this repository's release workflow
 built the zip on GitHub from the tag. With the [GitHub CLI](https://cli.github.com/) installed:
 
 ```sh
@@ -82,6 +102,16 @@ gh attestation verify cx-linux-x64-<version>.zip -R nwncxee/cx \
 ```
 
 It must print `Verification succeeded!`.
+
+## Reporting a problem
+
+CX writes no log by default. To get one, create `cx.cfg` next to `nwn.ini` (Windows: `Documents\Neverwinter Nights\`, Linux: `~/.local/share/Neverwinter Nights/`) with this line:
+
+```
+general.logs=1
+```
+
+Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` (next to `cx.cfg` on Windows, `~/cx.log` on Linux) and what you were doing right before things went wrong.
 
 ## Build from source
 
@@ -105,19 +135,6 @@ architecture and how to add a feature.
 
 Fork the repository and open a pull request against `main`. CI doesn't run on a pull request from a
 fork until a maintainer approves it.
-
-## Reporting a problem
-
-CX is silent by default. To get a log, create `cx.cfg` next to `nwn.ini` (Windows:
-`Documents\Neverwinter Nights\`, Linux: `~/.local/share/Neverwinter Nights/`) with the line
-
-```
-general.logs=1
-```
-
-Play again, then open an [issue](https://github.com/nwncxee/cx/issues)
-with `cx.log` (next to `cx.cfg` on Windows, `~/cx.log` on Linux) and what you did just before
-things went wrong.
 
 ## Contact
 
