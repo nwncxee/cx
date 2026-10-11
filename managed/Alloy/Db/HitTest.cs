@@ -239,7 +239,7 @@ public static class HitTest
         if (q.Scene != _floorScene) { _floorScene = q.Scene; _floorSaid = 0; }
         if (_floorSaid >= 8) return;
         _floorSaid++;
-        Log?.Always($"[dbfloor] kind={(int)r.Kind} from=({q.From.X:F2},{q.From.Y:F2},{q.From.Z:F2}) "
+        Log?.Info($"[dbfloor] kind={(int)r.Kind} from=({q.From.X:F2},{q.From.Y:F2},{q.From.Z:F2}) "
                   + $"to=({q.To.X:F2},{q.To.Y:F2},{q.To.Z:F2}) hit=({r.Point.X:F3},{r.Point.Y:F3},{r.Point.Z:F3}) "
                   + $"face={r.Face} surface={r.Surface} part={r.Part} walk={q.WalkMesh} "
                   + $"statics={q.StaticPlaceables} scene={q.Scene.Value}");
@@ -318,7 +318,7 @@ public static class HitTest
             // Once per SCENE, not once per session: every area after the first is a fresh set of records, and
             // the question this sweep answers -- does the database hold a floor the index will not hand back --
             // has to be asked of the area that is actually missing one.
-            if (_dbScene == q.Scene) { Log?.Always($"HitTest: floor miss at ({q.From.X:F2},{q.From.Y:F2}) with {walk} walkmesh part(s) near it:{sb}"); return; }
+            if (_dbScene == q.Scene) { Log?.Info($"HitTest: floor miss at ({q.From.X:F2},{q.From.Y:F2}) with {walk} walkmesh part(s) near it:{sb}"); return; }
             _dbScene = q.Scene;
             int cx = HitGrid.CellOf(q.From.X), cy = HitGrid.CellOf(q.From.Y);
             var ix = new System.Text.StringBuilder();
@@ -347,7 +347,7 @@ public static class HitTest
                             + $" scene={SceneDb.ObjScene[o2].Value} dirty={SceneDb.Objects.DirtyAt(o2)}"
                             + $" {HitGrid.Describe(o2, cx, cy)})");
             }
-            Log?.Always($"HitTest: floor miss at ({q.From.X:F2},{q.From.Y:F2}) z {q.From.Z:F2}->{q.To.Z:F2} "
+            Log?.Info($"HitTest: floor miss at ({q.From.X:F2},{q.From.Y:F2}) z {q.From.Z:F2}->{q.To.Z:F2} "
                       + $"in cell ({cx},{cy}) of scene {q.Scene.Value} with {walk} walkmesh part(s) near it; "
                       + $"the DATABASE holds {inDb} static(s) over that point, {inDbWalk} with a walkmesh:{ix}"
                       + $" || candidates:{sb}");

@@ -88,7 +88,7 @@ public sealed unsafe partial class ObjectSlots
         if (_noted >= MaxNoted) return;
         _noted++;
         DbId owner = SceneDb.PartObj[at];
-        Facade.Log?.Always($"seam: graft {_noted}/{MaxNoted}: \"{model}\" onto \"{anchor}\" of "
+        Facade.Log?.Info($"seam: graft {_noted}/{MaxNoted}: \"{model}\" onto \"{anchor}\" of "
                          + $"\"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" (o={id.Index}) -- part {at}, owned by "
                          + (owner.Value == id.Value ? "the base model" : $"o={owner.Index} "
                            + $"(\"{(SceneDb.Objects.Valid(owner) ? SceneDb.ObjModel[owner.Index]?.Name : null) ?? "-"}\")"));
@@ -154,7 +154,7 @@ public sealed unsafe partial class ObjectSlots
             if (_noted < MaxNoted)
             {
                 _noted++;
-                Facade.Log?.Always($"seam: cut {_noted}/{MaxNoted}: \"{name}\" off "
+                Facade.Log?.Info($"seam: cut {_noted}/{MaxNoted}: \"{name}\" off "
                                  + $"\"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" (o={id.Index}) -- takes o={take.Index} "
                                  + $"(\"{SceneDb.ObjModel[take.Index]?.Name ?? "-"}\")"
                                  + (byContainment ? ", matched by CONTAINMENT" : ""));
@@ -189,7 +189,7 @@ public sealed unsafe partial class ObjectSlots
             // -- new armour over the old chest. Naming it is the only way to tell which name went unmatched.
             _amputateRefusals++;
             if (_saidAmputateRefusal.Add(name!))
-                Facade.Log?.Always($"seam: Gob::Amputate(\"{name}\") matched NOTHING -- neither a grafted "
+                Facade.Log?.Info($"seam: Gob::Amputate(\"{name}\") matched NOTHING -- neither a grafted "
                                  + "piece's root, nor a part of one, nor a part of the object's own model. The "
                                  + "piece it names is still in the composition. Counted on /alloy.");
             return 0;
@@ -198,7 +198,7 @@ public sealed unsafe partial class ObjectSlots
         SceneDb.Touch(id, Dirty.Tree | Dirty.Visible);
         _baseAmputations++;
         if ((_baseAmputations & (_baseAmputations - 1)) == 0)
-            Facade.Log?.Always($"seam: Gob::Amputate(\"{name}\") names a part of the object's OWN model, not an "
+            Facade.Log?.Info($"seam: Gob::Amputate(\"{name}\") names a part of the object's OWN model, not an "
                              + $"appended one -- the subtree is disabled rather than deleted ({_baseAmputations} so far)");
         return 1;
     }
@@ -317,7 +317,7 @@ public sealed unsafe partial class ObjectSlots
         if (finite && d.X > 0f && d.Y > 0f) return true;
         DegenerateBounds++;
         if (SeamShell.FirstReport(shell, 64))
-            Facade.Log?.Always($"seam: \"{Facade.NameOf(shell)}\" measured a degenerate bounding box "
+            Facade.Log?.Info($"seam: \"{Facade.NameOf(shell)}\" measured a degenerate bounding box "
                              + $"({min} .. {max}) over {SceneDb.ObjPartCount[id.Index]} part(s) -- answering the "
                              + "engine's unmeasured box instead, because the game DIVIDES by this extent");
         return false;

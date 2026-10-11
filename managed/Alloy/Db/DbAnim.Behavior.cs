@@ -176,7 +176,7 @@ public static unsafe partial class DbAnim
             string pw = "-";
             if (part != 0 && Seam.PartShell.Resolve(part, out DbId po, out int pi))
                 pw = $"o={po.Index}/p={pi} \"{SceneDb.ObjModel[po.Index]?.Name ?? "-"}\" world={SceneDb.PartWorld[pi].Translation}";
-            _log?.Always($"[dbbeh] Control o={obj.Index} \"{SceneDb.ObjModel[obj.Index]?.Name ?? "-"}\" "
+            _log?.Info($"[dbbeh] Control o={obj.Index} \"{SceneDb.ObjModel[obj.Index]?.Name ?? "-"}\" "
                        + $"vtbl=0x{vtbl:x} column={SceneDb.ObjPos[obj.Index]} "
                        + (w == null ? "shell=-" : $"shell=<{w[0]}, {w[1]}, {w[2]}>")
                        + $" own={(sh == 0 ? 0 : *(nint*)(sh + Seam.SeamLayout.GobBehavior)) == beh} "

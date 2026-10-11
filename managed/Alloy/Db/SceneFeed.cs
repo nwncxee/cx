@@ -243,7 +243,7 @@ public static class SceneFeed
         string area = !h.HaveArea ? "no area"
             : $"area night={h.Night} fog=({h.FogColour.X:F3},{h.FogColour.Y:F3},{h.FogColour.Z:F3}) "
             + $"scene={(h.HaveAreaScene ? "set" : "null")} range={h.AreaFogStart:F1}/{h.AreaFogEnd:F1}";
-        _log?.Always($"SceneFeed: fog scene={i} path={_fogPath} on={on} col=({col.X:F3},{col.Y:F3},{col.Z:F3}) "
+        _log?.Info($"SceneFeed: fog scene={i} path={_fogPath} on={on} col=({col.X:F3},{col.Y:F3},{col.Z:F3}) "
                    + $"start={FrameInputs.FogStart:F1} end={end:F1} | {area} | clear=({clr[0]:F3},{clr[1]:F3},{clr[2]:F3})"
                    + (haveSky ? $" | sky term ({sky.X:F3},{sky.Y:F3},{sky.Z:F3}) mix={SceneFog.SkyMix:F2}" : " | sky term OFF"));
     }

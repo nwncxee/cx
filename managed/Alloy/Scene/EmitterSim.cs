@@ -389,7 +389,7 @@ internal static unsafe partial class EmitterSim
                 return false;
         _cenModel[_cenN] = m; _cenNode[_cenN] = n; _cenVerdict[_cenN] = verdict; _cenN++;
         string node = m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Name : "?";
-        _log?.Always($"EmitterSim: [db census] {m?.Name ?? "?"}/{node} part={part} obj={SceneDb.PartObj[part].Value} -> {verdict}");
+        _log?.Info($"EmitterSim: [db census] {m?.Name ?? "?"}/{node} part={part} obj={SceneDb.PartObj[part].Value} -> {verdict}");
         return true;
     }
 
@@ -406,7 +406,7 @@ internal static unsafe partial class EmitterSim
     /// worth a line.</summary>
     private static void CensusParams(in Emitter e)
     {
-        _log?.Always($"EmitterSim: [db census] ...rate={e.BirthRate:F2} life={e.Life:F2} mode={e.Mode} "
+        _log?.Info($"EmitterSim: [db census] ...rate={e.BirthRate:F2} life={e.Life:F2} mode={e.Mode} "
                    + $"type={e.Type} size={e.SizeStartX:F2} vel={e.Velocity:F2} faded={e.Faded} "
                    + $"loop={e.Loop} chunk={e.Chunk}");
     }
@@ -432,7 +432,7 @@ internal static unsafe partial class EmitterSim
             if (up.IsNull || up.Value == at.Value) break;
             at = up;
         }
-        _log?.Always($"EmitterSim: [db skip] {m?.Name ?? "?"} part={part} walkscene={scene.Value}{chain}");
+        _log?.Info($"EmitterSim: [db skip] {m?.Name ?? "?"} part={part} walkscene={scene.Value}{chain}");
     }
 
     private static readonly uint[] _dbSkipSeen = new uint[DbDumpMax];
@@ -446,7 +446,7 @@ internal static unsafe partial class EmitterSim
         int n = SceneDb.PartNode[e.Part];
         string node = m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Name : "?";
         string tex = m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Emitter?.Texture ?? "" : "";
-        _log?.Always($"EmitterSim: [db] {m?.Name ?? "?"}/{node} part={e.Part} obj={e.Obj.Value} "
+        _log?.Info($"EmitterSim: [db] {m?.Name ?? "?"}/{node} part={e.Part} obj={e.Obj.Value} "
                    + $"mode={e.Mode} type={e.Type} blend={e.Blend} rate={e.BirthRate:F2} life={e.Life:F2} "
                    + $"vel={e.Velocity:F2} size={e.SizeStartX:F2} tex=\"{tex}\" r={e.ViewRadius:F2} "
                    + $"at=({e.WorldPos.X:F1},{e.WorldPos.Y:F1},{e.WorldPos.Z:F1}) "
@@ -458,7 +458,7 @@ internal static unsafe partial class EmitterSim
     {
         if (_saidHeld) return;
         _saidHeld = true;
-        _log?.Always($"EmitterSim: scene {scene.Value} says it is NOT animating -- SceneDb.SceneAnimating["
+        _log?.Info($"EmitterSim: scene {scene.Value} says it is NOT animating -- SceneDb.SceneAnimating["
                    + $"{scene.Index}] is false (nothing in the client writes it yet) and SceneAnimOn is "
                    + $"{SceneDb.SceneAnimOn[scene.Index]} (valid={SceneDb.Scenes.Valid(scene)}). The engine's "
                    + "rule would HOLD every particle in this scene, which would freeze the world's flames for "

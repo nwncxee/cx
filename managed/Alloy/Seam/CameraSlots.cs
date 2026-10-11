@@ -19,7 +19,7 @@ internal static unsafe class CameraSlots
     private static void Trace(string slot)
     {
         if (!Renderer.On || _traced.Count > 64 || !_traced.Add(slot)) return;
-        KnobGroup.Log?.Always($"CameraSlots: [db] first call -> {slot}");
+        KnobGroup.Log?.Info($"CameraSlots: [db] first call -> {slot}");
     }
 
     /// <summary>Slots in the <c>CAurCamera</c> interface, and in <c>Camera</c>'s primary table on Linux.</summary>
@@ -355,7 +355,7 @@ internal static unsafe class CameraSlots
         {
             _rectsSaid++;
             DbId sc = SceneDb.CamScene[cam.Index];
-            _log?.Always($"[dbrect] cam={cam.Index} \"{(SceneDb.Scenes.Valid(sc) ? SceneDb.SceneName[sc.Index] : "-")}\" "
+            _log?.Info($"[dbrect] cam={cam.Index} \"{(SceneDb.Scenes.Valid(sc) ? SceneDb.SceneName[sc.Index] : "-")}\" "
                        + $"({SceneDb.CamViewX[cam.Index]},{SceneDb.CamViewY[cam.Index]},{SceneDb.CamViewW[cam.Index]},{SceneDb.CamViewH[cam.Index]})"
                        + $" -> ({x},{y},{w},{h})");
         }
@@ -510,7 +510,7 @@ internal static unsafe class CameraSlots
                 who += $" o{up.Index}\"{SceneDb.ObjModel[up.Index]?.Name ?? "-"}\"@s{SceneDb.ObjScene[up.Index].Index}";
             who += $" beh={(DbAnim.Behavior(hit) != 0 ? "y" : "n")} attachTo=o{SceneDb.ObjAttachTo[o].Index}";
         }
-        _log?.Always($"[dbpick] {(world ? "world" : "gui")} px=({px},{py}) scene={scene.Index} "
+        _log?.Info($"[dbpick] {(world ? "world" : "gui")} px=({px},{py}) scene={scene.Index} "
                    + $"\"{SceneDb.SceneName[scene.Index]}\" rect=({rx},{ry},{rw},{rh}) "
                    + $"from=({from.X:F2},{from.Y:F2},{from.Z:F2}) to=({to.X:F2},{to.Y:F2},{to.Z:F2}) "
                    + $"kind={(int)kind} hit={(at != null ? $"({at->X:F2},{at->Y:F2},{at->Z:F2})" : "-")} {who}");

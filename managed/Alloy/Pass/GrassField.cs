@@ -365,7 +365,7 @@ internal static unsafe partial class GrassField
                 float* v = verts + f * 9;
                 Vector3 a0 = new(v[0], v[1], v[2]), b0 = new(v[3], v[4], v[5]), c0 = new(v[6], v[7], v[8]);
                 _dumped++;
-                _log?.Always($"GrassField: [face] mat={mat} density={info.Density:F3} height={height:F2} "
+                _log?.Info($"GrassField: [face] mat={mat} density={info.Density:F3} height={height:F2} "
                            + $"area={Vector3.Cross(b0 - a0, c0 - a0).Length() * 0.5f:F3} blades={blades[f]} "
                            + $"per={Grass.Density.V * BladeMul:F3} src=db");
             }

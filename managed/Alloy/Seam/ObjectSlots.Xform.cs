@@ -65,7 +65,7 @@ public sealed unsafe partial class ObjectSlots
         if (Renderer.HitCheck.Boot && DbAnim.Behavior(id) != 0 && _behMovesSaid < BehMovesMax)
         {
             _behMovesSaid++;
-            Facade.Log?.Always($"[dbbeh] SetPosition o={id.Index} \"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" "
+            Facade.Log?.Info($"[dbbeh] SetPosition o={id.Index} \"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" "
                              + $"{SceneDb.ObjPos[id.Index]} -> {v.V}");
         }
         Facade.SetXform(id, shell, v.V, SceneDb.ObjRot[id.Index]);
