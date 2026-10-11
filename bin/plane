@@ -16,11 +16,10 @@ Configuration comes from the environment:
 
 The base URL and the workspace have working defaults, so a new developer sets
 only PLANE_API_KEY. When the environment is bare the values are read from a
-personal config file instead, so nobody needs access to the host's encrypted
-files to use the tracker.
+personal config file instead.
 
 Only the standard library is used, and the shebang is plain python3: this runs
-from a checkout, on the host, and out of any repository, and none of those
+from a checkout, on a server, and out of any repository, and none of those
 places wants a dependency set or a development shell to keep in step.
 
 The source is sow-platform's `infra/nixos/scripts/plane.py`. Every other
@@ -81,9 +80,8 @@ RATE_LIMIT_BACKOFF = 5
 RATE_LIMIT_CEILING = 60
 
 # Where a developer's own credentials live when the environment does not carry
-# them. Every member mints a personal API key from their profile after signing
-# in with Gitea, so nothing in the day-to-day path needs a decryption key: the
-# encrypted file is the unattended host's copy, not everyone's.
+# them. Every member mints a personal API key from their tracker profile, so
+# day-to-day use needs no shared credential.
 # What a checkout knows without being told. Only the key is personal, so this is
 # the difference between "mint a token" and "mint a token and find two strings".
 # Override either one from the environment to point at another instance.
@@ -116,11 +114,10 @@ def config_file_values(path=None):
     return values
 
 
-# Cloudflare sits in front of the instance and answers `Python-urllib/3.13`
-# with 403 error 1010 -- a banned browser signature -- before the request ever
-# reaches Plane. Any named agent passes; the default does not. So every call
-# says who it is, which is worth doing anyway when 754 work items arrive at
-# once and somebody is reading the access log wondering what did that.
+# The default `Python-urllib/3.13` agent is refused with a 403 before the
+# request reaches Plane; any named agent passes. So every call says who it is,
+# which is worth doing anyway when 754 work items arrive at once and somebody
+# is reading the access log wondering what did that.
 USER_AGENT = "sow-plane-client"
 
 # A state belongs to one of Plane's five groups. These two are the closed ones;
@@ -763,6 +760,34 @@ def append_decision(map_html, line_html, item_url):
     return body[:after_heading] + f"<ul>{line_html}</ul>" + body[after_heading:]
 
 
+def thread(comments):
+    """Comments oldest first, the order `show` numbers them in.
+
+    The API answers newest first; a thread reads oldest first. The API
+    writes every date in one zone, so the strings sort as the times do.
+    """
+    return sorted(comments, key=lambda c: c.get("created_at") or "")
+
+
+def pick_comment(reference, comments, number, expect):
+    """The comment `show` printed as `#number`, if it is still the one read.
+
+    A number alone can point at another comment once one is posted or deleted
+    in between, so the caller passes the token `show` printed beside it too.
+    """
+    ordered = thread(comments)
+    if not 1 <= number <= len(ordered):
+        raise SystemExit(f"refused: {reference} has no comment #{number}; it has {len(ordered)}")
+    comment = ordered[number - 1]
+    current = body_token(comment.get("comment_html"))
+    if current != expect:
+        raise SystemExit(
+            f"refused: {reference} comment #{number} is {current}, not {expect}; "
+            f"it changed since it was read, so show it again"
+        )
+    return comment
+
+
 def show_text(reference, item, comments, relations, states_by_id, labels_by_id, members_by_id,
               related_by_id, base_url, workspace):
     """What `show` prints: a header of names, the body, then every comment.
@@ -794,12 +819,12 @@ def show_text(reference, item, comments, relations, states_by_id, labels_by_id, 
     body = html_to_markdown(item.get("description_html"), base_url, workspace)
     if body:
         sections.append(body)
-    # The API answers newest first; a thread reads oldest first. The API
-    # writes every date in one zone, so the strings sort as the times do.
-    for comment in sorted(comments, key=lambda c: c.get("created_at") or ""):
+    # The number and token are what `edit-comment` and `delete-comment` want.
+    for number, comment in enumerate(thread(comments), 1):
         author = members_by_id.get(str(comment.get("actor")), str(comment.get("actor")))
         when = (comment.get("created_at") or "")[:16].replace("T", " ")
-        sections.append(f"--- {author}, {when}")
+        token = body_token(comment.get("comment_html"))
+        sections.append(f"--- #{number} {author}, {when}, body {token}")
         text = html_to_markdown(comment.get("comment_html"), base_url, workspace)
         if text:
             sections.append(text)
@@ -845,7 +870,7 @@ class Plane:
             raise PlaneError(
                 "set PLANE_API_KEY in the environment, or put it in "
                 f"{CONFIG_FILE}. Mint a key from your tracker profile's API "
-                "tokens after signing in with Gitea."
+                "tokens."
             )
         self._projects = None
         self._legacy_index = {}
@@ -971,12 +996,11 @@ class Plane:
         return list(self.paged("members/"))
 
     def members_by_login(self):
-        """Workspace members, keyed by every handle a Gitea login might match.
+        """Workspace members, keyed by every handle an old tracker login might match.
 
-        Gitea and Plane share no identifier: the OAuth adapter matches an
-        existing user by email address, and a display name is whatever the user
-        set. So every handle a member carries is indexed, and an assignee that
-        matches none of them is reported rather than guessed at.
+        The old tracker and Plane share no identifier, so every handle a member
+        carries is indexed, and an assignee that matches none of them is
+        reported rather than guessed at.
         """
         index = {}
         for entry in self.members():
@@ -1162,6 +1186,11 @@ class Plane:
             "PATCH",
             f"projects/{project_id}/work-items/{item_id}/comments/{comment_id}/",
             {"comment_html": html},
+        )
+
+    def delete_comment(self, project_id, item_id, comment_id):
+        return self.request(
+            "DELETE", f"projects/{project_id}/work-items/{item_id}/comments/{comment_id}/"
         )
 
     def comment(self, project_id, item_id, html, external_id=None):
@@ -1396,6 +1425,29 @@ def main(argv=None):
     body.add_argument("--body-file", help="a file holding the new body, as Markdown")
     p.add_argument("--expect", required=True, help="the `body:` token `show` printed")
 
+    p = sub.add_parser(
+        "edit-comment", help="replace a comment whole, if it is still the one you read",
+        parents=[raw],
+    )
+    p.add_argument("reference")
+    p.add_argument("number", type=int, help="the comment's `#n` in `show`")
+    body = p.add_mutually_exclusive_group(required=True)
+    body.add_argument("--body", help="the new comment, as Markdown")
+    body.add_argument("--body-file", help="a file holding the new comment, as Markdown")
+    p.add_argument("--expect", required=True, help="the `body` token `show` printed beside it")
+
+    p = sub.add_parser(
+        "delete-comment", help="delete a comment, if it is still the one you read",
+        parents=[raw],
+    )
+    p.add_argument("reference")
+    p.add_argument("number", type=int, help="the comment's `#n` in `show`")
+    p.add_argument("--expect", required=True, help="the `body` token `show` printed beside it")
+
+    p = sub.add_parser("rename", help="replace a work item's title", parents=[raw])
+    p.add_argument("reference")
+    p.add_argument("title")
+
     p = sub.add_parser("close", help="move a work item to a completed state", parents=[raw])
     p.add_argument("reference")
 
@@ -1507,6 +1559,28 @@ def main(argv=None):
             )
         edited = client.update_work_item(project_id, item["id"], {"description_html": new_body})
         _report(args, edited, summary("edited", reference, stored))
+        return 0
+
+    if args.command in ("edit-comment", "delete-comment"):
+        project_id, item, reference = _resolve(client, args.reference)
+        # Read right before the write, as `edit` does.
+        comment = pick_comment(
+            reference, client.comments(project_id, item["id"]), args.number, args.expect
+        )
+        if args.command == "edit-comment":
+            done = client.update_comment(project_id, item["id"], comment["id"], _body_html(client, args))
+            verb = f"edited comment #{args.number} on"
+        else:
+            done = client.delete_comment(project_id, item["id"], comment["id"])
+            verb = f"deleted comment #{args.number} on"
+        _report(args, done, summary(verb, reference, item))
+        return 0
+
+    if args.command == "rename":
+        project_id, item, reference = _resolve(client, args.reference)
+        renamed = client.update_work_item(project_id, item["id"], {"name": args.title})
+        was = f"(was {item.get('name')})" if item.get("name") != args.title else ""
+        _report(args, renamed, summary("renamed", reference, renamed, was))
         return 0
 
     if args.command == "close":
