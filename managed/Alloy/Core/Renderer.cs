@@ -29,8 +29,8 @@ internal static class Renderer
     internal static readonly Knob<bool> TexPreview;
     internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, PltCpu, TexSingle, DdsRead, HandleDrop, OwnedGeom,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
-                                        NwSyncRead, Gui, Movie;
-    internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexPrefetch, TexDelete, MaxElements, RasterRead, TexStream, TexLoad, ModelLoad, MdlCache,
+                                        Gui, Movie;
+    internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexPrefetch, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SwapProbe, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, AoTest, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
@@ -152,33 +152,11 @@ internal static class Renderer
         BcnDrip = G.Slider("bcndrip", "bcndrip", 1, 64, 1, 1, tier: Tier.ChatOnly, effect: Effect.Restart);
         TexPrefetch = G.Slider("texprefetch", "texprefetch", 0, 64, 1, 2, tier: Tier.ChatOnly, effect: Effect.Restart);
         TexSingle = G.Toggle("texsingle", "texsingle", true, Tier.ChatOnly, Effect.Restart);
-        // CX-52 step 5: ms of engine texture builds per frame once the player is placed; 0 = the engine drains its whole
-        // queue every frame. Off until a live session reads the [load] line both ways.
-        TexStream = G.Slider("texstream", "texstream", 0, 50, 1, 0, tier: Tier.ChatOnly, effect: Effect.Live);
         // CX-52 step 1: off until a live session reads zero MISMATCHED on the dds: note (the ticket's acceptance).
         DdsRead = G.Toggle("ddsread", "ddsread", true, Tier.ChatOnly, Effect.Restart);
-        // CX-54 step 1: 0 = the engine reads every texture file on the main thread, 1 = Alloy prefetches each
-        // world DDS on the cx-load worker during LoadArea's texture suspend, 2 = the same with every hand-back
-        // checked against the engine's own read. Off until a live session reads zero MISMATCHED at 2.
-        TexLoad = G.Slider("texload", "texload", 0, 2, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
-        // CX-55 step 1: 0 = the engine reads every model file on the main thread, 1 = Alloy reads a tileset's
-        // models on the cx-mdl worker during LoadArea and hands them back at CAuroraInterface::GetResource,
-        // 2 = the same with every hand-back checked byte for byte against the engine's own read. Off until a
-        // live session reads zero MISMATCHED at 2.
-        ModelLoad = G.Slider("modelload", "modelload", 0, 2, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
-        // CX-55 step 3: 0 = every ASCII .mdl is parsed line by line on the main thread, 1 = the engine's own
-        // compiler writes each one to <userdir>/cx-models once and every later load of the same bytes is served
-        // the compiled binary. Independent of modelload. Off until a live session has eyeballed a compiled area
-        // against an uncompiled one: the cache's fidelity is the engine's reader/writer pair, which this cannot
-        // prove offline (CX-55 §3).
-        MdlCache = G.Slider("mdlcache", "mdlcache", 0, 1, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
         // CX-52 step 2: 0 = the engine decodes TGA/PLT, 1 = the engine's decode stands and Alloy's is checked
         // beside it, 2 = Alloy's decode is what the engine gets (live-clean 2026-09-26: 684 TGA + 830 PLT, 0 errors).
         RasterRead = G.Slider("rasterread", "rasterread", 0, 2, 1, 2, tier: Tier.ChatOnly, effect: Effect.Restart);
-        // CX-54 step 3: Alloy reads the NWSync store itself (its own read-only SQLite connections + zstd), so a
-        // worker can fetch a manifest resource without the main-thread resource manager. Off until a live session
-        // reads zero errors on the nwsyncread: note.
-        NwSyncRead = G.Toggle("nwsyncread", "nwsyncread", false, Tier.ChatOnly, Effect.Restart);
         TexDelete = G.Slider("texdelete", "texdelete", -1, 1, 1, -1, tier: Tier.ChatOnly, effect: Effect.Restart);
         HandleDrop = G.Toggle("handledrop", "handledrop", true, Tier.ChatOnly, Effect.Restart);
         OwnedGeom = G.Toggle("ownedgeom", "ownedgeom", true, Tier.ChatOnly, Effect.Restart);

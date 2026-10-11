@@ -60,14 +60,7 @@ internal static unsafe partial class TexLoad
         }
         *(short*)(px + r.Bytes + RasterTagAt) = RasterTag;
         *w = r.W; *h = r.H; *bpp = r.Px;
-        if (!Checking) return px;
-        int w2, h2, b2;
-        byte* engine = _engRaster(name, &w2, &h2, &b2);
-        bool agreed = CheckTga(name, r, px, engine, w2, h2, b2);
-        if (engine != null) ((delegate* unmanaged<byte*, int, int, int, int, int, void>)*_releaseSlot)(engine, w2, h2, b2, 0, 0);
-        if (agreed) return px;
-        NativeMemory.Free(px);
-        return _engRaster(name, w, h, bpp);
+        return px;
     }
 
     /// <summary>From the release slot: true when the buffer is a TGA of ours, and it is freed.</summary>
@@ -76,19 +69,5 @@ internal static unsafe partial class TexLoad
         if (data == null || bpp == 2 || w <= 0 || h <= 0 || *(short*)(data + (long)w * h * bpp + RasterTagAt) != RasterTag) return false;
         NativeMemory.Free(data);
         return true;
-    }
-
-    /// <summary>The check-mode oracle for a TGA: the engine's own getter must report the same raster, byte for byte.</summary>
-    private static bool CheckTga(IntPtr name, in RasterReader.Raster ours, byte* oursData, byte* engine, int w, int h, int bpp)
-    {
-        _checked++;
-        string? bad = engine == null ? "the engine read nothing"
-            : w != ours.W || h != ours.H || bpp != ours.Px ? $"engine {w}x{h}x{bpp} vs ours {ours.W}x{ours.H}x{ours.Px}"
-            : !new ReadOnlySpan<byte>(engine, ours.Bytes).SequenceEqual(new ReadOnlySpan<byte>(oursData, ours.Bytes)) ? "pixels differ"
-            : null;
-        if (bad == null) return true;
-        if (++_mismatched <= LogCap)
-            _log?.Always($"TexLoad: TGA CHECK FAILED for {Marshal.PtrToStringAnsi(name)}: {bad} -- the engine's own read is served instead; set alloy.texload=0 if this repeats");
-        return false;
     }
 }

@@ -29,6 +29,8 @@ internal static unsafe class TexStream
     /// <summary>Budget per drain from the end of <c>LoadArea</c> until the player is placed. ponytail: a const; a knob
     /// if a rig wants its load frames faster or its textures sooner.</summary>
     private const int LoadingMs = 12;
+    /// <summary>Budget per drain once the player is placed: textures still queued trickle in without a hitch.</summary>
+    private const int PlacedMs = 4;
     /// <summary>Outside <see cref="LightmapBake"/>'s link (0): sees the engine's own send, held or not.</summary>
     private const int SentPriority = 100;
     /// <summary>Inside it: sees only the send that actually leaves, the one that places the player.</summary>
@@ -39,8 +41,8 @@ internal static unsafe class TexStream
 
     /// <summary>Every hook took: the queue is ours to spread and the transitions ours to time.</summary>
     private static bool _armed;
-    /// <summary>Streaming is on this frame.</summary>
-    internal static bool On => _armed && Renderer.TexStream.V > 0;
+    /// <summary>Streaming is on: every hook took.</summary>
+    internal static bool On => _armed;
 
     internal static void Install(ExtenderLog log, HookService hooks)
     {
@@ -60,7 +62,7 @@ internal static unsafe class TexStream
             return;
         }
         _armed = true;
-        log.Info($"TexStream: watching the texture queue -- {(Renderer.TexStream.V > 0 ? $"{Renderer.TexStream.V} ms of builds a frame once placed" : "streaming off (alloy.texstream 0), timing only")}; a [load] line per area transition");
+        log.Info($"TexStream: watching the texture queue -- {PlacedMs} ms of builds a frame once placed; a [load] line per area transition");
     }
 
     // ---- the drain ----
@@ -98,9 +100,9 @@ internal static unsafe class TexStream
     /// <summary>What a drain may spend building world textures. Zero inside <c>LoadArea</c> (the engine suspends
     /// its own builds there anyway) and zero under the lightmap hold, which is itself a per-frame drain clock: a
     /// millisecond spent building there stretches the hold, so the work is paid at a worse rate, not saved.
-    /// <see cref="LoadingMs"/> covers the segment to the AreaLoaded send, the knob a placed player.</summary>
+    /// <see cref="LoadingMs"/> covers the segment to the AreaLoaded send, <see cref="PlacedMs"/> a placed player.</summary>
     private static int BudgetMs => _inLoadArea || LightmapBake.Held ? 0
-                                 : _t.Active && _t.Placed == 0 ? LoadingMs : Renderer.TexStream.V;
+                                 : _t.Active && _t.Placed == 0 ? LoadingMs : PlacedMs;
 
     private static long Now() => Stopwatch.GetTimestamp();
     private static void BuildOne(IntPtr basic) { _world.Remove(basic); EngineFn.AurTextureBuildAndStoreTexture(basic); }
@@ -312,7 +314,7 @@ internal static unsafe class TexStream
             line += t.Placed == 0 ? " | never placed"
                   : $" | placed {(t.Placed - t.LoadStart) / f:F2} s after LoadArea began, {t.QueuedAtPlace} textures still queued, drained {Seg(3, "", t.Placed, end).TrimStart()} later";
         }
-        line += $" | streaming {(On ? $"on, {Renderer.TexStream.V} ms/frame (to the send {LoadingMs}, under the hold 0)" : "off")}{(cut != null ? $" -- cut short: {cut}" : "")}";
+        line += $" | streaming {(On ? $"on, {PlacedMs} ms/frame (to the send {LoadingMs}, under the hold 0)" : "off")}{(cut != null ? $" -- cut short: {cut}" : "")}";
         string src = ResSources.Line();
         if (src.Length > 0) line += $" | {src}";
         string after = CX.Services.Perf.ModelZonesService.AfterClause();
@@ -351,7 +353,7 @@ internal static unsafe class TexStream
     }
 
     internal static string Note()
-        => !_armed ? "" : $", texstream {(On ? $"{Renderer.TexStream.V} ms" : "off")}: {_queue.Count} queued, {_reenrolled} parts re-enrolled on arrival ({_landedDropped} past the cap)";
+        => !_armed ? "" : $", texstream {(On ? $"{PlacedMs} ms" : "off")}: {_queue.Count} queued, {_reenrolled} parts re-enrolled on arrival ({_landedDropped} past the cap)";
 
     // ---- self-check ----
 

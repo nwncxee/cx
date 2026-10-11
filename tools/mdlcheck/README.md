@@ -31,7 +31,7 @@ caps the count, `-v` adds per-item lines and `-v -v` prints every mismatch examp
 
 The oracle needs a `cx-models` cache produced against the SAME content tree the `--ascii` corpus holds --
 the engine's payload is keyed on the source bytes, so a cache from a different hak set pairs with nothing.
-A fresh cache comes from playing (or from `tools/live/run-live.sh --cfg alloy.mdlcache=1`, which writes into
+A fresh cache comes from playing (or from `tools/live/run-live.sh`, which writes into
 the harness's throwaway user directory; point `--cx` at it).
 
 The corpora are not in the repo and never should be: the BIFs are Beamdog's, `cx-models` is the engine's own

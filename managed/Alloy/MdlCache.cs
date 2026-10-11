@@ -96,12 +96,11 @@ internal static unsafe class MdlCache
 
     // ---- lifecycle ----
 
-    /// <summary>Read the knob and chain the serve. Independent of <see cref="ModelLoad"/>: with
-    /// <c>alloy.modelload=0</c> every model still reaches this link on the main thread.</summary>
+    /// <summary>Chain the serve. Independent of <see cref="ModelLoad"/>: a model that worker did not read
+    /// still reaches this link on the main thread.</summary>
     internal static void Install(ExtenderLog log, HookService hooks)
     {
         _log = log;
-        if (Renderer.MdlCache.Boot == 0) { log.Info("MdlCache: off (alloy.mdlcache=0) -- every ASCII model is parsed line by line on the main thread"); return; }
         _exoBaseSym = Native.Sym(SymbolMap.ExoBase);
         if (EngineFn.CompileModels == null || EngineFn.AliasGetAliasPath == null || _exoBaseSym == IntPtr.Zero)
         {
