@@ -543,8 +543,6 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, int, int, int, int, int, uint, int, void*, void> CompressedTextureSubImage2D;
     /// <summary>glCompressedTextureSubImage3D: texture, level, x, y, z, w, h, depth, format, imageSize, data.</summary>
     public static delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, int, void*, void> CompressedTextureSubImage3D;
-    /// <summary>glGetCompressedTextureSubImage: texture, level, x, y, z, w, h, depth, bufSize, data.</summary>
-    public static delegate* unmanaged<uint, int, int, int, int, int, int, int, int, void*, void> GetCompressedTextureSubImage;
     public static delegate* unmanaged<uint, uint, int, void> TextureParameteri;
     public static delegate* unmanaged<uint, uint, int*, void> GetTextureParameteriv;
     public static delegate* unmanaged<uint, int, uint, int*, void> GetTextureLevelParameteriv;
@@ -779,7 +777,6 @@ public static unsafe class Gl
         TextureSubImage3D = (delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, uint, void*, void>)P("glTextureSubImage3D");
         CompressedTextureSubImage2D = (delegate* unmanaged<uint, int, int, int, int, int, uint, int, void*, void>)P("glCompressedTextureSubImage2D");
         CompressedTextureSubImage3D = (delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, int, void*, void>)P("glCompressedTextureSubImage3D");
-        GetCompressedTextureSubImage = (delegate* unmanaged<uint, int, int, int, int, int, int, int, int, void*, void>)P("glGetCompressedTextureSubImage");
         TextureParameteri = (delegate* unmanaged<uint, uint, int, void>)P("glTextureParameteri");
         GetTextureParameteriv = (delegate* unmanaged<uint, uint, int*, void>)P("glGetTextureParameteriv");
         GetTextureLevelParameteriv = (delegate* unmanaged<uint, int, uint, int*, void>)P("glGetTextureLevelParameteriv");

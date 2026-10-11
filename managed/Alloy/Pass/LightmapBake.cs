@@ -70,8 +70,9 @@ internal static unsafe partial class LightmapBake
         /// <summary>The <c>lightmap.vram</c> value the pool was sized for: another one reallocates it.</summary>
         public int PoolMib;
         public uint TexA, TexB, TexC, ScrA, ScrB, ScrC, ScrZ, Fbo, Cube, Pbo;
-        /// <summary>The encoder's output, one RGBA32UI texel per block of a page: what a cell copies from.</summary>
-        public uint BlkA, BlkB;
+        /// <summary>The encoder's output, one RGBA32UI texel per block of a page: what a cell copies from. BlkRead is
+        /// the readback's own alias of a page's blocks, apart so a readback never lands in an encode in flight.</summary>
+        public uint BlkA, BlkB, BlkRead;
         public uint ProgBake, ProgEnc;
         public bool Built;
         public IntPtr Fence;
@@ -367,13 +368,23 @@ internal static unsafe partial class LightmapBake
         if (_gl.Pbo == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.Pbo = b; if (b == 0) return; }
         if (bytes > _gl.PboBytes) { Gl.NamedBufferData(_gl.Pbo, (IntPtr)bytes, null, Gl.STREAM_READ); _gl.PboBytes = bytes; }
         Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, _gl.Pbo);
-        Gl.GetCompressedTextureSubImage(_gl.TexA, 0, x0, y0, page, w, h, 1, plane, null);
-        Gl.GetCompressedTextureSubImage(_gl.TexB, 0, x0, y0, page, w, h, 1, plane, (void*)(long)plane);
+        // the blocks leave through an uncompressed alias: NVIDIA's compressed read of a page that has taken a
+        // CopyImageSubData stalls the thread ~94 ms whatever the region. A one-texel-per-block copy is the same bits.
+        ReadBlocks(_gl.TexA, page, x0, y0, w, h, 0);
+        ReadBlocks(_gl.TexB, page, x0, y0, w, h, plane);
         Gl.GetTextureSubImage(_gl.TexC, 0, x0, y0, page, w, h, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, plane * 4, (void*)(2L * plane));
         Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, 0);
         _ux0 = x0; _uy0 = y0; _uw = w; _uh = h; _uPage = page;
         _pendingRead.Clear(); _pendingRead.AddRange(rects);
         _gl.Fence = Gl.FenceSync(Gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    }
+
+    /// <summary>One plane's blocks of a page region into the bound pack buffer at <paramref name="at"/>, through
+    /// <see cref="BakeGlState.BlkRead"/>: GL orders the second plane's copy after the first one's read.</summary>
+    private static void ReadBlocks(uint tex, int page, int x0, int y0, int w, int h, int at)
+    {
+        Gl.CopyImageSubData(tex, Gl.TEXTURE_2D_ARRAY, 0, x0, y0, page, _gl.BlkRead, Gl.TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
+        Gl.GetTextureSubImage(_gl.BlkRead, 0, 0, 0, 0, w / Block, h / Block, 1, Gl.RGBA_INTEGER, Gl.UNSIGNED_INT, w * h, (void*)(long)at);
     }
 
     /// <summary>Bytes copied out of the mapped PBO per frame. A host read out of the mapped PBO is
@@ -636,7 +647,7 @@ internal static unsafe partial class LightmapBake
         if (Gl.DrawElementsBaseVertex == null || Gl.DrawBuffers == null || Gl.CopyImageSubData == null
             || Gl.ClearBufferfv == null || Gl.FramebufferTextureLayer == null || Gl.GenFramebuffers == null
             || Gl.DispatchCompute == null || Gl.BindImageTexture == null || Gl.MemoryBarrier == null || Gl.Uniform4iv == null
-            || Gl.CompressedTextureSubImage3D == null || Gl.GetCompressedTextureSubImage == null || Gl.GetTextureSubImage == null
+            || Gl.CompressedTextureSubImage3D == null || Gl.GetTextureSubImage == null
             || Gl.ClearNamedBufferSubData == null || Gl.NamedBufferStorage == null)
             return _down.Fail(_log, "a GL entry point the bake needs is missing", "every surface keeps the real-time loop");
         int units = 0; Gl.GetIntegerv(Gl.MAX_TEXTURE_IMAGE_UNITS, &units);
@@ -658,10 +669,10 @@ internal static unsafe partial class LightmapBake
         Gl.UseProgram((uint)prevProg);
         uint f; Gl.GenFramebuffers(1, &f); _gl.Fbo = f;
         _gl.ScrA = Scratch(); _gl.ScrB = Scratch(); _gl.ScrC = Scratch(); _gl.ScrZ = ScratchDepth();
-        _gl.BlkA = Blocks(); _gl.BlkB = Blocks();
+        _gl.BlkA = Blocks(); _gl.BlkB = Blocks(); _gl.BlkRead = Blocks();
         _cubeSize = Math.Max(CasterPass.CubeFaceSize, 64);
         _gl.Cube = ScratchCube(_cubeSize);
-        if (_gl.Fbo == 0 || _gl.ScrA == 0 || _gl.ScrB == 0 || _gl.ScrC == 0 || _gl.ScrZ == 0 || _gl.BlkA == 0 || _gl.BlkB == 0 || _gl.Cube == 0)
+        if (_gl.Fbo == 0 || _gl.ScrA == 0 || _gl.ScrB == 0 || _gl.ScrC == 0 || _gl.ScrZ == 0 || _gl.BlkA == 0 || _gl.BlkB == 0 || _gl.BlkRead == 0 || _gl.Cube == 0)
             return _down.Fail(_log, "the scratch pages or cube could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
         _log?.Info($"LightmapBake: armed -- page pool up to lightmap.vram {Lightmap.Vram.V} MiB, scratch cube {_cubeSize}, {(Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame)} light steps per frame");
         return true;
