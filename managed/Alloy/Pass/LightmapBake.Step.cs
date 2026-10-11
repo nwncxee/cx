@@ -20,9 +20,7 @@ internal static unsafe partial class LightmapBake
     /// with the shadow bracket's gather staged; the caller restores its target after.</summary>
     internal static void Run(bool capturing, int frame)
     {
-        // a parked migration holds two page arrays; the master going off (or a stand-down) must not keep them.
-        // A capture frame only pauses it: the probe's frame is one frame, and the window is already paused work.
-        if (!Enabled) { if (Migrating) GrowAbort(gl: true); AbortReadback(gl: true); return; }
+        if (!Enabled) { AbortReadback(gl: true); return; }
         if (capturing) return;
         long a0 = GC.GetAllocatedBytesForCurrentThread();
         try { RunInner(frame); }
@@ -33,8 +31,9 @@ internal static unsafe partial class LightmapBake
     {
         if (!Ensure()) return;
         _frame = frame;
-        _cap = PageCap();
         long t = Stopwatch.GetTimestamp();
+        if (!Pool()) return;
+        t = Phase(Ph.Pool, t);
         InstallAreaCache();   // CX-56: before the sweep -- the plan's set is what arms Enrol at all
         t = Phase(Ph.Area, t);
         if (_rekeyPending) Rekey();
@@ -47,10 +46,6 @@ internal static unsafe partial class LightmapBake
         t = Phase(Ph.Adopt, t);
         AreaUpload();
         t = Phase(Ph.Upload, t);
-        // CX-102: a page array growing is a 96-MiB-a-layer migration. It runs in slices BEFORE the pack that
-        // asked for it, so the frame that needs a new page is not the frame that pays for every old one.
-        GrowStep();
-        t = Phase(Ph.Grow, t);
         Pack();
         t = Phase(Ph.Pack, t);
         CollectReadback();
@@ -58,10 +53,7 @@ internal static unsafe partial class LightmapBake
         t = Phase(Ph.Collect, t);
         AreaSnap();
         t = Phase(Ph.Snap, t);
-        // CX-102: FinishPage converts the scratch into a RESIDENT layer, and a layer the migration has
-        // already copied would take those texels into the retiring array. The page in flight keeps its scratch
-        // and its light cursor across the window exactly as it does across the pacing.
-        int steps = HeldByMigration() ? 0 : Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
+        int steps = Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
         for (int k = 0; k < steps; k++) if (!Step()) break;
         t = Phase(Ph.Steps, t);
         UploadRecords();
@@ -157,7 +149,7 @@ internal static unsafe partial class LightmapBake
                 if (Touches(l, r.C, r.R)) { _bakeLights.Add(l); break; }
             }
         _bakePage = page; _bakeLight = 0;
-        _pageT0 = Stopwatch.GetTimestamp(); _pageSkew = 0;
+        _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
         BindScratch();
         float* zero = stackalloc float[4] { 0f, 0f, 0f, 0f };
@@ -360,8 +352,7 @@ internal static unsafe partial class LightmapBake
         // queued the moment the PBO is free. A landed rect keeps its page and place until a Repack.
         else StashReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);
         for (int k = 0; k < _bakeRects.Count; k++) { Land(_bakeRects[k], false); _pending--; }
-        double ms = (Stopwatch.GetTimestamp() - _pageT0 - _pageSkew) * 1000.0 / Stopwatch.Frequency;
-        _pageSkew = 0;
+        double ms = (Stopwatch.GetTimestamp() - _pageT0) * 1000.0 / Stopwatch.Frequency;
         _pageMs += ms; _pageMsN++;
         if (_logLeft-- > 0) _log?.Info($"LightmapBake: page {page} landed -- {_bakeRects.Count} rects over {_bakeLights.Count} lights in {ms:F0} ms wall" + (_gl.QBake.Measured ? $", {_gl.QBake.Avg / 1e6:F2} ms GPU per light step" : ""));
         AbortBake();

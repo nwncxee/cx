@@ -304,6 +304,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         GlContextService.InBracket = static () =>
         {
             OwnedTextures.Drain(); SampleVram();
+            LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the
             // per-record PLT rows -- all of them belong in this context and nowhere else, and all of them run
             // in BOTH modes. The registry is not DB mode's alone (CX-119's bitmap font atlases acquire from it

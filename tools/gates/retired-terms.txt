@@ -22,3 +22,6 @@ alloy\.(mdlcache|modelload|nwsyncread|texload|texstream)\b	core-loaders-always-o
 sow-topdata	the-monorepo-move
 # The fragment finish, replaced by the block encoder that writes the compressed pages.
 cx_bakefinish_f	CX-215
+# The growing page array, replaced by a fixed pool sized by lightmap.vram.
+\blightmap\.(pages|growslice)\b	CX-216
+\bgrowslice\b	CX-216

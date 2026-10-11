@@ -158,11 +158,11 @@
 17 managed/Alloy/Pass/HighlightGlow.cs
 2 managed/Alloy/Pass/IdTarget.cs
 30 managed/Alloy/Pass/LightmapBake.Area.cs
-69 managed/Alloy/Pass/LightmapBake.cs
+66 managed/Alloy/Pass/LightmapBake.cs
 20 managed/Alloy/Pass/LightmapBake.Hold.cs
 31 managed/Alloy/Pass/LightmapBake.Lights.cs
 8 managed/Alloy/Pass/LightmapBake.Pack.cs
-16 managed/Alloy/Pass/LightmapBake.Pages.cs
+3 managed/Alloy/Pass/LightmapBake.Pages.cs
 23 managed/Alloy/Pass/LightmapBake.Stamps.cs
 2 managed/Alloy/Pass/LightmapBake.Step.cs
 7 managed/Alloy/Pass/MotionVectors.cs

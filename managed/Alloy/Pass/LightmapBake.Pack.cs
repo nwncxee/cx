@@ -201,7 +201,8 @@ internal static unsafe partial class LightmapBake
         _log?.Info($"LightmapBake: re-keyed (static set {SetHash:x16}) -- {changed} instances re-bake");
     }
 
-    /// <summary>Forget every rect and the packing; the resident pages stay and are overwritten as rects land.</summary>
+    /// <summary>Forget every rect and the packing; the pool stays, cleared, so no gap a later readback files
+    /// still holds a texel of the packing before.</summary>
     private static void Repack()
     {
         Array.Fill(_slotRect, -1);
@@ -209,8 +210,8 @@ internal static unsafe partial class LightmapBake
         _rectN = 0; _byKey.Clear(); _toPack.Clear(); _free.Clear(); _pending = 0; _placedArea = 0;
         Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX); Array.Clear(_pageClass); _packPage = 0; _finePage = 0; _refineCursor = 0;
         AbortBake();
-        AreaSnapAbandon();   // the pages go here: a plan waiting on one more readback is written as it stands
-        if (Gl.DeleteTextures != null) DropPages();
+        AreaSnapAbandon();   // the packing goes here: a plan waiting on one more readback is written as it stands
+        if (_gl.Layers > 0 && Gl.DeleteTextures != null) ClearPages();
         AbortReadback(gl: true);
         if (_gl.Fence != IntPtr.Zero) { _uncached += _pendingRead.Count; if (Gl.DeleteSync != null) Gl.DeleteSync(_gl.Fence); _gl.Fence = IntPtr.Zero; }
         _pendingRead.Clear();
@@ -222,45 +223,11 @@ internal static unsafe partial class LightmapBake
     /// <summary>Texel area a rect takes on a page: its cell.</summary>
     private static long Area(in Rect r) => (long)Cell(r.W) * Cell(r.H);
 
-    /// <summary>The page cap: <c>lightmap.pages</c>, or 0 = a quarter of the card's memory in
-    /// <see cref="PageMiB"/> pages, 1..<see cref="MaxPages"/>; 2 when the device answers no memory query.
-    /// Pages are allocated as rects need them, so the cap costs nothing an area does not use.</summary>
-    private static int PageCap()
-    {
-        int k = Lightmap.Pages.V;
-        if (k > 0) return Math.Min(k, MaxPages);
-        long mib = AlloyRenderer.VramTotalMib > 0 ? AlloyRenderer.VramTotalMib : AlloyRenderer.VramFreeMib;
-        if (mib <= 0) return 2;
-        return (int)Math.Clamp(mib / 4 / PageMiB, 1, MaxPages);
-    }
-
-    /// <summary>Free VRAM, MiB, a growth must leave for what streams in after it: a high-asset server's textures
-    /// arrive with each creature, long after the bake. The larger of this and an eighth of the card.</summary>
-    private const int VramReserveMiB = 1024;
-
-    /// <summary>Pages a growth may ask for against the card's FREE memory: the new arrays are allocated whole
-    /// beside the old ones. Past it the pack takes the cap's path (halved density, the fine tier dropped) instead
-    /// of overcommitting the card -- a 7 -> 9 growth on an 8 GiB card under TDN's textures took the frame to
-    /// single digits. <paramref name="freeMib"/> 0 = no memory query: the cap alone.</summary>
-    internal static int VramFit(int cap, int layers, long freeMib, long totalMib)
-    {
-        if (freeMib <= 0) return cap;
-        long fit = (freeMib - Math.Max(VramReserveMiB, totalMib / 8)) / PageMiB;
-        return (int)Math.Min(cap, Math.Max(layers, fit));
-    }
-
-    /// <summary>The page count every growth path answers to: <see cref="VramFit"/> against the card now. The
-    /// pack's density, its one-page-at-a-time overflow and an adopted plan all stop here, not at the cap.</summary>
-    private static int PageFit => VramFit(_cap, _gl.Layers, AlloyRenderer.VramFreeMib, AlloyRenderer.VramTotalMib);
-
     /// <summary>Shelf-pack the new rects, tallest first (so the cap drops the smallest last), once no
     /// newcomer has arrived for the settle window: an enrolment drains over many frames, and a shelf opened
     /// per frame's trickle packed an area's 3.7 pages of rects into 8.</summary>
     private static void Pack()
     {
-        // CX-102: a page array is migrating, so the layer a rect would land on is not resident yet. The
-        // newcomers keep their places in _toPack and are packed the frame the migration finishes.
-        if (Migrating) return;
         // CX-102: a union uploads as ONE rectangle -- the bbox of the plan's rects on that page -- and Place
         // continues the plan's own shelves, so a newcomer can land inside a bbox that has not gone up yet and
         // be blanked by it (and, with a stash, read back blank under its key). A plan can hold 1152 MiB of
@@ -268,12 +235,7 @@ internal static unsafe partial class LightmapBake
         // until every union is in; adopting needs _rectN == 0, so no OTHER rect can be inside one.
         if (!AreaUploadsIn) return;
         if (_toPack.Count == 0 || _frame - _newAt < (Hold ? HoldSettleFrames : SettleFrames)) return;
-        if (!FitDensity(out long demand)) return;
-        // one allocation for the pages this pack needs, not one per page: growing a layer at a time copied
-        // 1+2+..+12 layers of pages (10 GB of GPU copy, a transient double of the pages on the card)
-        int need = (int)Math.Min(PageFit,
-                                 (_placedArea + demand + PagePackTexels - 1) / PagePackTexels);
-        if (need > _gl.Layers && Grow(need) != Grew.Resident) return;
+        if (!FitDensity()) return;
         _toPack.Sort((a, b) => _rects[b].H.CompareTo(_rects[a].H));
         int placedN = 0;
         for (int k = 0; k < _toPack.Count; k++)
@@ -282,9 +244,6 @@ internal static unsafe partial class LightmapBake
             ref Rect r = ref _rects[ri];
             if (!Place(ref r))
             {
-                // CX-102: the rect asked for a layer the migration has yet to publish -- early, not past the
-                // cap. The ones already placed leave _toPack; this one and the rest wait for the pages.
-                if (_growBusy) { StampPack(placedN); _toPack.RemoveRange(0, k); return; }
                 if (EvictFine(r.Tier < Baseline ? 1f : 0f) >= 0 && Place(ref r)) goto placed;
                 if (r.Tier < Baseline) { Drop(ri, queued: false); _refineAt = _frame + RefuseBackoffFrames; continue; }
                 // the pages are full of re-key orphans (a shelf cannot free): repack everything from nothing
@@ -315,16 +274,16 @@ internal static unsafe partial class LightmapBake
     /// <summary>The newcomers' texel demand against the pages left: over it, the area's density halves until
     /// it fits (to <see cref="MaxAreaHalve"/>), counting the baseline's demand alone. Nothing placed yet = the
     /// newcomers shrink in place; else everything repacks at the new size. False = this Pack is over.</summary>
-    private static bool FitDensity(out long demand)
+    private static bool FitDensity()
     {
-        demand = 0; long baseDemand = 0;
+        long demand = 0, baseDemand = 0;
         for (int k = 0; k < _toPack.Count; k++)
         {
             ref Rect r = ref _rects[_toPack[k]];
             demand += Area(r);
             if (r.Tier >= Baseline) baseDemand += Area(r);
         }
-        int fit = PageFit;
+        int fit = _gl.Layers;
         long cap = (long)(fit * (long)PageSize * PageSize * PackShare);
         if (_placedArea + baseDemand <= cap) return true;   // only the baseline's overflow halves the area: a fine rect evicts or drops
         demand = baseDemand;
@@ -338,9 +297,6 @@ internal static unsafe partial class LightmapBake
                     orphan += Area(_rects[ri]);
             if (orphan > 0) { _repacked = true; _placedArea = 0; Repack(); return false; }
         }
-        // the card's free memory, not the cap, is what is short: the placed rects keep their texels and the
-        // newcomers halve one by one in Pack (or wait past the cap) -- a repack would rebake the whole area
-        if (_placedArea > 0 && fit < _cap) return true;
         int halve = Halves(_placedArea, demand, cap, _areaHalve);
         if (halve == 0) return true;
         _areaHalve += halve;
@@ -374,13 +330,12 @@ internal static unsafe partial class LightmapBake
         int cw = Cell(r.W), ch = Cell(r.H);
         while (true)
         {
-            if (cursor >= _cap) return false;
-            if (cursor >= _gl.Layers && (cursor >= PageFit || !AddLayer())) return false;
+            if (cursor >= _gl.Layers) return false;
             int p = cursor;
             if (_pageClass[p] != 0 && _pageClass[p] != cls) { cursor++; continue; }
-            _pageClass[p] = cls;
             if (_shelfX[p] + cw <= PageSize && ch <= _shelfH[p])
             {
+                _pageClass[p] = cls;   // only once a rect is on it: PagesUsed is what the area plan says it needs
                 r.Page = p; r.X = _shelfX[p] + Gutter; r.Y = _shelfY[p] + Gutter;
                 _shelfX[p] += cw;
                 return true;

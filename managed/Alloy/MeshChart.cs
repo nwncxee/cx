@@ -13,7 +13,7 @@ namespace CX.Alloy;
 internal static class Lightmap
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<int> Density, Disk, Pages, Near, Tiers, HoldSeconds, GrowSlice,
+    internal static readonly Knob<int> Density, Disk, Vram, Near, Tiers, HoldSeconds,
                                        MoverLights, PairSize, PairCount;
     internal static readonly Knob<bool> Movers, MoverTaps;
 
@@ -27,11 +27,9 @@ internal static class Lightmap
         Density = G.Slider("density", "Lightmap density", 2, 32, 1, 8, "px/m", tier: Tier.Advanced,
                            help: "Lightmap texels per metre of world. Each instance's rectangle is capped at a quarter page; a change re-bakes the area.",
                            changed: LightmapBake.RekeyAll);
-        Pages = G.Slider("pages", "Lightmap pages", 0, LightmapBake.MaxPages, 1, 0, tier: Tier.ChatOnly,
-                         help: "4096x4096 pages the area may hold (96 MiB each), allocated as the area needs them. 0 sizes it from the card's memory: a quarter of it in pages, at most 32. An area that would overflow the cap bakes at a lower density instead.");
-        // the pages live in ONE immutable array, so one more page means allocate-copy-delete of them all
-        GrowSlice = G.Slider("growslice", "Page growth slice", 0, 8, 1, 1, "pages", tier: Tier.ChatOnly,
-                             help: "Lightmap pages the client may move into a larger page array in one frame when an area needs another page. Each page is 96 MiB, so moving them all at once costs a visible freeze; 0 does exactly that, for comparison.");
+        // one page is 96 MiB, so the range is whole pages: 2 to MaxPages
+        Vram = G.Slider("vram", "Lightmap memory", 192, 3072, 96, 960, "MiB", tier: Tier.ChatOnly,
+                        help: "Video memory the baked lighting holds, whatever the area's size: 4096x4096 pages of 96 MiB, allocated once. At most a quarter of the card is used. An area that would overflow it bakes at a lower density instead.");
         Near = G.Slider("near", "Full-density radius", 10, 200, 5, 40, "m", tier: Tier.ChatOnly,
                         help: "Metres from the player baked at the full density; each tier out doubles the radius and halves the density. The last tier covers the whole area and bakes first.");
         Tiers = G.Slider("tiers", "Density tiers", 1, LightmapBake.MaxTiers, 1, 3, tier: Tier.ChatOnly,

@@ -308,20 +308,13 @@ internal static unsafe partial class LightmapBake
         string? no = (SetHash != 0 || _closed) && !confirmed ? $"the live walk closed on another static set first ({SetHash:x16}, the plan has {plan.SetHash:x16}: {SetDiff(plan.SetPosR, plan.SetCol, plan.SetPosR.Length)})"
                    : _rectN != 0 ? $"{_rectN} rects were already minted"
                    : plan.Settings != AreaSettingsHash() ? "the bake settings moved between the load and the edge"
-                   : plan.Layers > PageFit ? $"{plan.Layers} pages, past the {PageFit} of {_cap} the card's free memory allows"
+                   : plan.Layers > _gl.Layers ? $"{plan.Layers} pages, past the {_gl.Layers}-page pool lightmap.vram allows"
                    : null;
-        // CX-102: the pages are asked for only once nothing else refuses the plan, and while the answer is
-        // still ARMED -- a migration in flight means "ask again next frame", and consuming the answer for that
-        // would lose the plan outright (the bug: Pending read as a refusal killed this path entirely).
-        Grew pages = no != null ? Grew.Resident : Grow(Math.Max(plan.Layers, 1));
-        if (pages == Grew.Pending) return;
-        if (pages == Grew.Refused) no = $"{plan.Layers} pages the card would not give";
         _answerIn = false; _answerPlan = null; _areaWant = false; _areaAsked = false;
         if (no != null)
         {
             _areaLate++;
             _log?.Always($"LightmapBake: the area bake cache for {key:x16} is REFUSED at the edge -- {no}; the area packs and probes its rects as on a first visit");
-            if (pages == Grew.Refused && !_closed) { SetHash = 0; _setN = 0; }
             return;
         }
         AdoptPlan(plan);
@@ -370,9 +363,6 @@ internal static unsafe partial class LightmapBake
         LightmapAreaPlan? plan = _areaPlan;
         AreaUploadState up = _areaUp;
         if (plan == null || up.Done) return;
-        // the unions land on the resident pages, which a migration is retiring; the cursor holds across the
-        // window, so the plan uploads unchanged the frame the pages are published
-        if (HeldByMigration()) return;
         long t0 = Stopwatch.GetTimestamp(), wall = (long)((Hold ? HoldAreaUploadMs : AreaUploadMs) * Stopwatch.Frequency / 1000);
         while (up.Next < plan.Unions.Length && Stopwatch.GetTimestamp() - t0 < wall)
         {
@@ -639,7 +629,7 @@ internal static unsafe partial class LightmapBake
         {
             Key = _areaKey, Settings = AreaSettingsHash(), SetHash = SetHash,
             SetPosR = new Vector4[_setN], SetCol = new Vector3[_setN],
-            Layers = _gl.Layers, AreaHalve = _areaHalve, PackPage = _packPage, FinePage = _finePage, PlacedArea = _placedArea,
+            Layers = PagesUsed, AreaHalve = _areaHalve, PackPage = _packPage, FinePage = _finePage, PlacedArea = _placedArea,
             PageClass = (byte[])_pageClass.Clone(), ShelfX = (int[])_shelfX.Clone(), ShelfY = (int[])_shelfY.Clone(), ShelfH = (int[])_shelfH.Clone(),
             Unions = _areaUnions.ToArray(),
         };
@@ -681,7 +671,7 @@ internal static unsafe partial class LightmapBake
             AreaPlanOut(0);
             return;
         }
-        _log?.Info($"LightmapBake: area bake cache {_areaKey:x16} holds {n} rects on {_gl.Layers} pages; {want} page(s) ({snap >> 20} MiB) are read back whole "
+        _log?.Info($"LightmapBake: area bake cache {_areaKey:x16} holds {n} rects on {PagesUsed} pages; {want} page(s) ({snap >> 20} MiB) are read back whole "
                  + "before it goes out -- their rects landed from another packing's blobs, which cannot be uploaded whole");
     }
 

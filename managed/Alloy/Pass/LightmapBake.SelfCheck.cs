@@ -30,9 +30,9 @@ internal static unsafe partial class LightmapBake
         check.Expect(KeySampleBeats(true, 9ul, 8ul) && !KeySampleBeats(true, 8ul, 9ul) && !KeySampleBeats(true, 8ul, 8ul),
           "the key sample is not the lowest key of the area, so two runs can sample different rects");
         // the packer, on a scratch page state
-        int cap = _cap, layers = _gl.Layers, page = _packPage;
+        int layers = _gl.Layers, page = _packPage;
         var sy = (int[])_shelfY.Clone(); var sh = (int[])_shelfH.Clone(); var sx = (int[])_shelfX.Clone();
-        _cap = 1; _gl.Layers = 1; _packPage = 0; Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
+        _gl.Layers = 1; _packPage = 0; Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
         var a = new Rect { W = 100, H = 50 }; var b = new Rect { W = 100, H = 40 }; var c = new Rect { W = 4000, H = 60 };
         // oracle: hand-worked cells -- a side plus two gutters of 2, up to a multiple of 4
         check.Expect(Cell(1) == 8 && Cell(4) == 8 && Cell(5) == 12 && Cell(100) == 104 && Cell(50) == 56, "a cell is the rect and its gutters in whole blocks");
@@ -45,7 +45,7 @@ internal static unsafe partial class LightmapBake
         check.Expect(DesiredTier(0f) == 0 && DesiredTier(near * 100f) == Baseline && (Baseline < 1 || DesiredTier(near * 1.5f) == 1), "the tier doubles out from lightmap.near to the baseline");
         if (Baseline > 0 && _rectN == 0)
         {
-            _cap = 2; _gl.Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass);
+            _gl.Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass);
             int rb = NewRect(), rf = NewRect();
             _rects[rb] = new Rect { Key = 1, W = 100, H = 50, Tier = Baseline, Page = -1 }; _rects[rf] = new Rect { Key = 2, W = 100, H = 50, Tier = 0, Page = -1, C = new Vector3(near * 1.5f, 0f, 0f) };
             _byKey[1] = rb; _byKey[2] = rf;
@@ -61,7 +61,7 @@ internal static unsafe partial class LightmapBake
             check.Expect(Halve(Halve(7, 0), 2) == Halve(7, 2) && Halve(7, 2) != Halve(7, 3) && Halve(7, 0) == 7, "a re-halved key is the key a fresh enrol computes");
             _rectN = 0; _byKey.Clear(); _free.Clear(); Array.Clear(_pageClass); _finePage = 0;
         }
-        _cap = cap; _gl.Layers = layers; _packPage = page; Array.Copy(sy, _shelfY, sy.Length); Array.Copy(sh, _shelfH, sh.Length); Array.Copy(sx, _shelfX, sx.Length);
+        _gl.Layers = layers; _packPage = page; Array.Copy(sy, _shelfY, sy.Length); Array.Copy(sh, _shelfH, sh.Length); Array.Copy(sx, _shelfX, sx.Length);
         // the key
         int setN = _setN;
         if (_setPosR.Length < 1) { _setPosR = new Vector4[1]; _setCol = new Vector3[1]; }
@@ -96,21 +96,12 @@ internal static unsafe partial class LightmapBake
           "the worst frame's phase is not its largest slice");
         check.Expect(Halves(100, 12, 107, 0) == 1 && Halves(0, 112, 107, 0) == 1 && Halves(0, 50, 107, 0) == 0 && Halves(0, 1L << 40, 107, 2) == 2,
                      "a 5% overflow halves the area once, not to the floor");
-        check.Expect(VramFit(10, 7, 0, 0) == 10 && VramFit(10, 7, 1024 + 9 * PageMiB, 8192) == 9
-                     && VramFit(10, 7, 900, 8192) == 7 && VramFit(10, 2, 1024 + 30 * PageMiB, 8192) == 10,
-          "a page growth is not bounded by the card's free memory (or a short card shrinks resident pages)");
-        check.Expect(Lightmap.GrowSlice.Default == 1,
-          "lightmap.growslice no longer defaults to a sliced migration -- a page more would freeze the frame again");
-        // CX-102: Pending is NOT Refused (reading it as one killed the area-plan adopt), and a migration holds
-        // every writer of the resident pages -- a write to a layer already copied is lost at the publish.
-        int gLayers = _gl.Layers, gTo = _growTo, gAt = _growHeldAt; bool gBusy = _growBusy;
-        _gl.Layers = 4; _growTo = 0;
-        check.Expect(Grow(3) == Grew.Resident && Grow(4) == Grew.Resident, "a growth to pages already resident is a no-op, not a refusal");
-        _growTo = 7; _growHeldAt = -1;
-        check.Expect(Grow(9) == Grew.Pending, "a migration in flight answers Pending, which no caller may read as a refusal");
-        check.Expect(Migrating && HeldByMigration() && HeldByMigration() && _growHeld == 1, "a migration holds the page writers, counted once a frame");
-        _gl.Layers = gLayers; _growTo = gTo; _growBusy = gBusy; _growHeldAt = gAt; PhaseReset();
-        check.Expect(!Migrating && !HeldByMigration(), "with no migration in flight nothing is held");
+        // oracle: hand-worked -- 960 / 96 = 10; a 2 GiB card caps at 512 MiB = 5 pages; 1504 MiB free less the
+        // 1024 reserve is 480 = 5 pages; 1500 free on an unknown card is 476 = 4; 100 MiB still holds one page
+        check.Expect(PoolPages(960, 8192, 0) == 10 && PoolPages(960, 2048, 0) == 5 && PoolPages(960, 0, 0) == 10
+                     && PoolPages(960, 8192, 1504) == 5 && PoolPages(960, 0, 1500) == 4
+                     && PoolPages(3072, 0, 0) == 32 && PoolPages(9999, 0, 0) == 32 && PoolPages(100, 0, 0) == 1,
+          "the page pool is not lightmap.vram in 96 MiB pages under a quarter of the card and its free memory");
         // CX-102: the whole-page readback copies out of the open map in slices and stops at the total
         check.Expect(SliceEnd(0, 100, 30) == 30 && SliceEnd(90, 100, 30) == 100 && SliceEnd(100, 100, 30) == 100 && SliceEnd(0, 10, 30) == 10,
           "a readback slice runs past the bytes it has");
