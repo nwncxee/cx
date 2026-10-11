@@ -367,11 +367,15 @@ public static unsafe class Gl
     public static void ZeroBuffer(uint buf, long bytes)
         => ClearNamedBufferSubData(buf, R32UI, IntPtr.Zero, (IntPtr)bytes, RED_INTEGER, UNSIGNED_INT, null);
     /// <summary>Mint <paramref name="buf"/> on first use and (re)allocate it as DYNAMIC_DRAW storage when
-    /// <paramref name="grow"/> asks; a fresh name always allocates. Touches no binding.</summary>
+    /// <paramref name="grow"/> asks; a fresh name always allocates. New storage is zeroed: some drivers hand
+    /// back stale memory, and a count or indirect command read from it can hang the GPU. Touches no binding.</summary>
     public static void EnsureStorage(ref uint buf, long bytes, bool grow)
     {
         if (buf == 0) { uint b; CreateBuffers(1, &b); buf = b; grow = true; }
-        if (grow) NamedBufferData(buf, (IntPtr)Math.Max(bytes, 4), null, DYNAMIC_DRAW);
+        if (!grow) return;
+        long n = Math.Max(bytes, 4);
+        NamedBufferData(buf, (IntPtr)n, null, DYNAMIC_DRAW);
+        ZeroBuffer(buf, n & ~3L);
     }
     public static delegate* unmanaged<uint, uint, uint, void> BindBufferBase;
     public static delegate* unmanaged<uint, uint, uint, IntPtr, IntPtr, void> BindBufferRange;

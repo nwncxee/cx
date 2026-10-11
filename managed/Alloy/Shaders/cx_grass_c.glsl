@@ -46,6 +46,7 @@ void main()
     }
     uvec4 p = uPatch[gl_WorkGroupID.x * 2u], q = uPatch[gl_WorkGroupID.x * 2u + 1u];
     uint first = p.x, faces = p.y, total = p.z, mat = q.x;
+    if (faces == 0u) return;   // the face search below would never end: faces - 1 wraps
     float keepMax = uintBitsToFloat(p.w) * 1.2;   // keep at the patch's nearest point: no blade keeps more
     vec4 prob = CxGrassMat(mat, 0), info = CxGrassMat(mat, 1);
     float height = info.x;
