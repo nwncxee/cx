@@ -67,6 +67,8 @@ public sealed class Window
     /// (its own GL draw, gate-branching, cold->hot frame hand-off). Null for an inert window. Hot: a cached
     /// delegate invoke, zero-alloc.</summary>
     public Action? DrawContent;
+    /// <summary>Drawn after every window's content, over all of them: a tooltip that must not hide under a neighbour.</summary>
+    public Action? DrawOver;
 
     public Window(float x, float y, float w, float h)
     {

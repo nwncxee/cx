@@ -195,9 +195,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 
 - `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), fails. No baseline.
 - `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by
-  responsibility the way `AlloyRenderer`'s partials are. `*.g.cs` is exempt and `file-size.baseline` holds
-  what is still over. `SymbolMap.cs` and `EngineLayout.cs` stay baselined: four tools read them by that exact
-  file name, so a partial would halve what each of them sees.
+  responsibility the way `AlloyRenderer`'s partials are. `*.g.cs` and `SymbolMap.cs` (a flat symbol table
+  that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout.cs`
+  stays baselined: four tools read it by that exact file name, so a partial would halve what each of them sees.
 - `bench-scope.sh`: the `/alloy bench` ablation ladder's state outside its own two files, or the ladder named
   outside the call sites the script lists, fails.
 - `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`

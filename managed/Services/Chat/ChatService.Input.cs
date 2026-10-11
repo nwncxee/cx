@@ -29,14 +29,16 @@ public sealed unsafe partial class ChatService
 
     /// <summary>Collects the screen rects of the other live extender windows for window-to-window snapping.
     /// Called once at drag-start on the input thread; only one window drags at a time (one mouse), so a single
-    /// snapshot is sufficient. <paramref name="excludeChat"/> drops the dragged chat window by identity.</summary>
-    public static (float X, float Y, float W, float H)[] GatherSnapRects(ChatWindow? excludeChat, bool includeDialog)
+    /// snapshot is sufficient. <paramref name="excludeChat"/> drops the dragged chat window by identity; the dragged
+    /// dialog or quickbar passes false for its own flag.</summary>
+    public static (float X, float Y, float W, float H)[] GatherSnapRects(ChatWindow? excludeChat, bool includeDialog, bool includeQuickbar = true)
     {
         var list = new System.Collections.Generic.List<(float, float, float, float)>(6);
         ChatWindow[] wins = _layout?.Windows ?? System.Array.Empty<ChatWindow>();
         foreach (ChatWindow w in wins)
             if (!ReferenceEquals(w, excludeChat)) list.Add((w.X, w.Y, w.W, w.H));
-        if (Quickbar.QuickbarService.SnapRectOut(out var q)) list.Add(q);
+        if (includeQuickbar && Quickbar.QuickbarService.SnapRectOut(out var q)) list.Add(q);
+        if (Inventory.InventoryService.SnapRectOut(out var inv)) list.Add(inv);
         if (includeDialog && Dialog.DialogService.SnapRectOut(out var d)) list.Add(d);
         return list.ToArray();
     }

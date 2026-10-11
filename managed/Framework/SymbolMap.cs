@@ -145,10 +145,6 @@ internal static unsafe class SymbolMap
     public const string GetLoadBarState = "_ZN13CClientExoApp15GetLoadBarStateEv";
     // chat-render probe -- Linux-only throwaway; no Windows anchors (skip + log there).
     public const string AppendToMsgBuffer   = "_ZN10CGuiInGame17AppendToMsgBufferE10CExoStringjji7CResRef"; // inbound tap
-    public const string SetPriMsgFilter     = "_ZN10CGuiInGame25SetPrimaryMsgWindowFilterEj";               // force backlog replay
-    public const string ViewportSetViewport = "_ZN12CGuiViewport11SetViewportEiiii";                        // arbitrary-width test
-    public const string ChatDoFullScreen    = "_ZN20CGuiInGameChatWindow12DoFullScreenEi";                  // 720 preset width
-    public const string ChatDoSplitScreen   = "_ZN20CGuiInGameChatWindow13DoSplitScreenEi";                 // 360 preset width
     // chat-render suppression: SkipOriginal these so vanilla draws nothing. AppendToChatBuffer stops
     // new lines reaching the docked windows' text model; SetFilter stops any filter/split re-rendering the
     // backlog (and both births of CReplyButton). The by-value CExoString param is freed by the CALLER
@@ -397,11 +393,6 @@ internal static unsafe class SymbolMap
     // Linux-only (no _win entry -> skip on Windows).
     [Fn("CNWCModule(CClientExoApp this)")]
     public const string GetModule         = "_ZN13CClientExoApp9GetModuleEv";
-    /// <summary>CClientExoApp::GetPlayerCreature() @0x637780 -- the controlled creature; call with a live
-    /// CClientExoApp* (ClientApi.LiveExoApp). The shadow map anchors on the PLAYER, not the camera, so camera
-    /// yaw/pitch and line of sight don't move the shadows. Re-fetch every frame: the object is freed on area
-    /// transitions. Its world position is the Vector at <c>+0xa4</c>.</summary>
-    public const string GetPlayerCreature = "_ZN13CClientExoApp17GetPlayerCreatureEv";
 
     // ---- overhead nameplate / chat bubble. Client-side classes: RVA on Windows. ----
     /// <summary>CGuiInGamePopUpBubble::SetChatBubbleMode(int) @0x6a0be0 -- STATIC (mode in edi, no `this`).
@@ -467,9 +458,6 @@ internal static unsafe class SymbolMap
     // data globals
     public const string AppManager = "g_pAppManager";
     public const string GuiMan     = "g_pGuiMan";
-    /// <summary><c>CGuiMan::ReleaseKeyboard(CGuiObject*)</c>: clears the keyboard-capture slot (CGuiMan+0x50, same on
-    /// both builds) and runs the object's lose-focus virtual (an edit's -> KeyboardModeOff).</summary>
-    public const string GuiManReleaseKeyboard = "_ZN7CGuiMan15ReleaseKeyboardEP10CGuiObject";
     /// <summary><c>CGuiObject* CGuiMan::GuiObjectHitCheck(int x, int y, int fresh, int mask)</c>: the engine's own
     /// "which GUI object is under this point" test. fresh=0 returns the object cached at CGuiMan+0x78 when one
     /// is (x, y and mask then ignored); the mask only filters the secondary layer list, not the primary scene hit.
@@ -589,7 +577,6 @@ internal static unsafe class SymbolMap
     public const string RiEnable       = "_ZN15RenderInterface6EnableEN6Aurora17AuroraEnableEnumsE";
     [Fn("void(int cap)")]
     public const string RiDisable      = "_ZN15RenderInterface7DisableEN6Aurora17AuroraEnableEnumsE";
-    public const string RiSetBlendFunc = "_ZN15RenderInterface12SetBlendFuncEN6Aurora16AuroraBlendModesES1_";
     /// <summary>RenderInterface::IsEnabled(AuroraEnableEnums) @0x45cf30 -- read an Aurora render cap's cached enable
     /// bit; cull is saved and restored around the two-sided shadow depth pass. Cap 3 = GL_CULL_FACE, cap 5 = LIGHTING,
     /// which is the lit predicate: <c>PartTriMesh::MatStatic</c> @0x450560 sends flat white instead of the material
@@ -2356,6 +2343,63 @@ internal static unsafe class SymbolMap
     /// <c>SendButtonUpdateToServer</c> itself.</summary>
     [Fn("void(IntPtr button, uint item, int prop, int force)")]
     public const string QuickButtonSetItem = "_ZN15CGuiQuickButton13SetButtonItemEjii";
+    /// <summary><c>CGuiQuickButton::SetIcon(CGuiIcon* icon, CGuiIcon* overlay)</c> @0x6a8cc0 (Windows rva 0x86baa0): every
+    /// setter hands the button its icon here; the button keeps only the model built from it. Overlay may be null.</summary>
+    [Fn("void(IntPtr button, IntPtr icon, IntPtr overlay)")]
+    public const string QuickButtonSetIcon = "_ZN15CGuiQuickButton7SetIconEP8CGuiIconS1_";
+    /// <summary><c>CGuiQuickButton::SetCountText(CExoString)</c> @0x6a8b00 (Windows rva 0x86b710): the uses, stack and
+    /// command-label text, by value (a pointer to the caller's copy; the Win64 callee destroys it). Empty clears it.</summary>
+    [Fn("void(IntPtr button, IntPtr text)")]
+    public const string QuickButtonSetCountText = "_ZN15CGuiQuickButton12SetCountTextE10CExoString";
+    /// <summary><c>CPanelQuickBar::ClickButton(uchar slot)</c> @0x6aeab0 (Windows rva 0x85c3b0): the quickbar keybinds'
+    /// one funnel from <c>HandleInputEvent</c>, a left click on the active set's button <c>slot</c> (0..11).</summary>
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarClickButton = "_ZN14CPanelQuickBar11ClickButtonEh";
+    /// <summary>The quickbar's per-type setters, as the server's own <c>HandleServerToPlayerGuiQuickbar_SetButton</c> calls them
+    /// (its jump table: Windows rva 0x79ec04), and the one send they end in; every <c>SetButton_*</c> clears the slot first and
+    /// sends unless <see cref="EngineLayout.QuickbarSendGate"/> is 0. A CX slot swap sets both with the gate shut, then sends each.</summary>
+    [Fn("void(IntPtr panel, IntPtr button)")]
+    public const string QuickbarSendButton = "_ZN14CPanelQuickBar24SendButtonUpdateToServerEP15CGuiQuickButton";
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarSetEmpty = "_ZN14CPanelQuickBar15SetButton_EmptyEh";
+    [Fn("void(IntPtr panel, byte slot, uint item, int prop, uint item2)")]
+    public const string QuickbarSetItem = "_ZN14CPanelQuickBar14SetButton_ItemEhjij";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetSkill = "_ZN14CPanelQuickBar15SetButton_SkillEhi";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetFeat = "_ZN14CPanelQuickBar14SetButton_FeatEhi";
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarSetDialog = "_ZN14CPanelQuickBar16SetButton_DialogEh";
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarSetAttack = "_ZN14CPanelQuickBar16SetButton_AttackEh";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetEmote = "_ZN14CPanelQuickBar15SetButton_EmoteEhi";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetModeToggle = "_ZN14CPanelQuickBar20SetButton_ModeToggleEhi";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetQuickChat = "_ZN14CPanelQuickBar19SetButton_QuickChatEhi";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetCancelPoly = "_ZN14CPanelQuickBar25SetButton_CancelPolymorphEhi";
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarSetFamiliar = "_ZN14CPanelQuickBar25SetButton_PossessFamiliarEh";
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarSetExamine = "_ZN14CPanelQuickBar17SetButton_ExamineEh";
+    [Fn("void(IntPtr panel, byte slot)")]
+    public const string QuickbarSetBarter = "_ZN14CPanelQuickBar16SetButton_BarterEh";
+    [Fn("void(IntPtr panel, byte slot, int v)")]
+    public const string QuickbarSetRollDie = "_ZN14CPanelQuickBar16SetButtonRollDieEhi";
+    [Fn("void(IntPtr panel, byte slot, int cmd, ushort sub, uint target)")]
+    public const string QuickbarSetAssociate = "_ZN14CPanelQuickBar26SetButton_AssociateCommandEhitj";
+    [Fn("void(IntPtr button, long spell)")]
+    public const string QuickButtonSetSpell = "_ZN15CGuiQuickButton20SetButtonSpellMenuIDEl";
+    [Fn("void(IntPtr button, long spell)")]
+    public const string QuickButtonSetSla = "_ZN15CGuiQuickButton25SetButtonSpellLikeAbilityEl";
+    /// <summary><c>CGuiQuickButton::HandleLeftButton()</c> @0x6ae7b0 (Windows rva 0x85c8f0, <c>ClickButton</c>'s one call): the button's action.</summary>
+    [Fn("void(IntPtr button)")]
+    public const string QuickButtonHandleLeftButton = "_ZN15CGuiQuickButton16HandleLeftButtonEv";
+    /// <summary><c>CGuiDragSource::HandleMouseMoveCaptured(int,int)</c> @0x596040 (Windows rva 0x1eea60): compared, not called --
+    /// every drag source's vtable carries it unchanged, so it tells a captured drag source from any other captor.</summary>
+    public const string DragSourceMoveCaptured = "_ZN14CGuiDragSource23HandleMouseMoveCapturedEii";
     /// <summary><c>CNWCItem::PlayDropSound()</c> @0x7cd960 (Windows rva 0x83ea00) -- the quick-button drop's second step.</summary>
     [Fn("void(CNWCItem this)")]
     public const string ItemPlayDropSound = "_ZN8CNWCItem13PlayDropSoundEv";
@@ -2809,7 +2853,6 @@ internal static unsafe class SymbolMap
         // typed letters drive WASD and a stuck-on mode eats the Enter that reopens the box.
         [KeyboardModeOn]  = Nm("?KeyboardModeOn@CExoInput@@QEAAXXZ"),
         [KeyboardModeOff] = Nm("?KeyboardModeOff@CExoInput@@QEAAXXZ"),
-        [GuiManReleaseKeyboard] = Nm("?ReleaseKeyboard@CGuiMan@@QEAAXPEAVCGuiObject@@@Z"),
         [GuiObjectHitCheck] = Nm("?GuiObjectHitCheck@CGuiMan@@QEAAPEAVCGuiObject@@HHHH@Z"),
         [GuiManHandleGuiTimer] = Nm("?HandleGuiTimer@CGuiMan@@QEAAXH@Z"),
         [GuiManShowTooltipText] = Nm("?ShowTooltipText@CGuiMan@@QEAAXAEBVCExoString@@H@Z"),
@@ -2974,8 +3017,6 @@ internal static unsafe class SymbolMap
         [StaticShadowBucket] = Nm("?staticshadowbucket@@3V?$List@PEAVPartShadow@@@@A"),
         [BspTraverse] = Nm("?BSPTraverse@@YAXPEAVBSPNode@@P6AX0PEAX@Z1@Z"),
         [CResCtor] = Nm("??0CRes@@QEAA@XZ"),
-        [ChatDoFullScreen] = LinuxOnly("#14 chat-render probe, no caller"),
-        [ChatDoSplitScreen] = LinuxOnly("#14 chat-render probe, no caller"),
         [ClientAiUpdateState] = Hole("CClientAIMaster is not exported (only CServerAIMaster is)"),
         [CountPart] = Nm("?countpart@@3HA"),
         [CurrentCamera] = Nm("?CurrentCamera@@3PEAVCamera@@EA"),
@@ -3033,7 +3074,6 @@ internal static unsafe class SymbolMap
         [GetLightAdjustedRadius] = Nm("?GetLightAdjustedRadius@@YAMPEBVPartLight@@@Z"),
         [GetIsLightInViewVolume] = Nm("?GetIsLightInViewVolume@@YAEPEBVPartLight@@@Z"),
         [GetLightFadeSpeed] = Nm("?GetLightFadeSpeed@@YAMPEBVPartLight@@@Z"),
-        [GetPlayerCreature] = LinuxOnly("#14 chat-render probe, no caller"),
         [GetServerNetworkAddress] = Nm("?GetServerNetworkAddress@CNetLayer@@QEAA?AVCExoString@@XZ"),
         [GlActiveTextureStage] = Nm("?m_activeTextureStage@GLRender@@0IA"),
         [GlArrayBufferBound] = Nm("?m_nArrayBufferBound@GLRender@@0IA"),
@@ -3211,7 +3251,6 @@ internal static unsafe class SymbolMap
         [RiGetGlobalShaderParamf] = Nm("?GetGlobalShaderParamf@RenderInterface@@SAMW4AurGlobalShaderParamf_t@Aurora@@@Z"),
         [RiGetGlobalShaderParami] = Nm("?GetGlobalShaderParami@RenderInterface@@SAHW4AurGlobalShaderParami_t@Aurora@@@Z"),
         [RiIsEnabled] = Nm("?IsEnabled@RenderInterface@@SAEW4AuroraEnableEnums@Aurora@@@Z"),
-        [RiSetBlendFunc] = Nm("?SetBlendFunc@RenderInterface@@SAXW4AuroraBlendModes@Aurora@@0@Z"),
         [RiSetModelMatrix] = Nm("?SetModelMatrix@RenderInterface@@SAXAEBVMatrix4x4@@@Z"),
         [SceneBspGetTileData] = Nm("?SceneBSPGetTileData@@YAPEAVTileData@@PEAVScene@@AEBVVector@@@Z"),
         [SceneDeleteTile] = Nm("?DeleteTile@Scene@@UEAAXAEBVVector@@@Z"),
@@ -3227,7 +3266,6 @@ internal static unsafe class SymbolMap
         [SetMouseCursor] = Hole("CCachedMouseCursorManager is not exported"),
         [SetOrthoTransform] = Nm("?SetOrthoTransform@RenderInterface@@SAXNNNNNN@Z"),
         [SetPositionScreen] = Nm("?SetPositionScreen@CGuiPanel@@QEAAXHH@Z"),
-        [SetPriMsgFilter] = LinuxOnly("#14 chat-render probe, no caller"),
         [ShowCompass] = At(),
         [SsaoIntensity] = Nm("?ssao_intensity@@3MA"),
         [ToonColorEdge] = Nm("?toon_color_edge_threshold@@3MA"),
@@ -3239,7 +3277,6 @@ internal static unsafe class SymbolMap
         [VdoGetItemDynamicData] = Nm("?GetItemDynamicData@VertexDataObject@@QEAAPEAEI@Z"),
         [VdoRepack] = Nm("?Repack@VertexDataObject@@QEAAXXZ"),
         [VertexPrimGenVelocity] = Nm("?GenerateVelocityArray@VertexPrimitiveDangly@@QEAAXXZ"),
-        [ViewportSetViewport] = Nm("?SetViewport@CGuiViewport@@QEAAXHHHH@Z"),
 
         // --- the radial seam. CRadialMenu is name-exported; the root vftables are the MSVC `vftable`
         //     labels (the object's vptr points AT the label, no +0x10 as on Itanium). FindSym.java, build 0x68e408bc.
@@ -3341,6 +3378,29 @@ internal static unsafe class SymbolMap
         [SendInputUseItem]       = At(),   // 6 / 9; the Vector by pointer
         [SendGoldTransfer]       = At(),   // 8 / 1, minor 0x0a / 0x16; the Vector by pointer
         [QuickButtonSetItem]     = At(),   // body read: CGuiQuickButton drop handler (vtbl +0xe8) calls it with 0xff00ff, 0
+        [QuickButtonSetIcon]     = At(),   // SetButtonItem's icon call; body frees +0x130 and attaches both icon models
+        [QuickButtonSetCountText] = At(),  // UpdateButtonCountText's "*" call with &local copy
+        [QuickbarClickButton]    = At(),   // strings "ClickButton" + "nButton < CPANELQUICKBAR_SLOTS_NUM_VISIBLE"
+        [QuickbarSendButton] = At(),   // cmp [rcx+0x6518],0 gate, slot*0x2c8 scan; the server handler's jump table gives the setters
+        [QuickbarSetEmpty] = At(),
+        [QuickbarSetItem] = At(),
+        [QuickbarSetSkill] = At(),
+        [QuickbarSetFeat] = At(),
+        [QuickbarSetDialog] = At(),
+        [QuickbarSetAttack] = At(),
+        [QuickbarSetEmote] = At(),
+        [QuickbarSetModeToggle] = At(),
+        [QuickbarSetQuickChat] = At(),
+        [QuickbarSetCancelPoly] = At(),
+        [QuickbarSetFamiliar] = At(),
+        [QuickbarSetExamine] = At(),
+        [QuickbarSetBarter] = At(),
+        [QuickbarSetRollDie] = At(),
+        [QuickbarSetAssociate] = At(),
+        [QuickButtonSetSpell] = At(),
+        [QuickButtonSetSla] = At(),
+        [QuickButtonHandleLeftButton] = At(),   // ClickButton's callee on the active set's slot
+        [DragSourceMoveCaptured] = At(),   // the CGuiDragSource vftable's slot 0x88
         [ItemPlayDropSound]      = At(),   // the same handler's next call
         [InvboxAddItem]          = At(),   // page +0x1d0, rows +0x194 on the Windows CGuiMultiInvbox
         [InvSetContainerGuiVisible] = At(), // body read: mode +0x2f64, grid +0x24b0, isItem +0x2690, oid +0x268c, Status 0x7bdeb0

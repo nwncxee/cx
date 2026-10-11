@@ -341,7 +341,7 @@ public static partial class UiHost
     }
 
     /// <summary>The per-frame draw roll-call: invoke every registered window's <see cref="Window.DrawContent"/> in
-    /// ascending z-order, so the focused/topmost window paints last. Zero-alloc -- an O(n^2) min-scan over the unique
+    /// ascending z-order, so the focused/topmost window paints last, then every <see cref="Window.DrawOver"/>. Zero-alloc -- an O(n^2) min-scan over the unique
     /// z values, no sort buffer, no LINQ, no closures -- because it runs on the render thread inside SwapBuffers.
     /// ponytail: O(n^2) is free at a handful of windows; a kept-sorted list is the upgrade if the count grows.</summary>
     public static void DrawFrame()
@@ -359,6 +359,7 @@ public static partial class UiHost
             lastZ = next.Z;
             next.DrawContent?.Invoke();
         }
+        for (int i = 0; i < _windows.Count; i++) _windows[i].DrawOver?.Invoke();
     }
 
     public static void AddChordConsumer(IChordConsumer c) { if (!_chords.Contains(c)) _chords.Add(c); }

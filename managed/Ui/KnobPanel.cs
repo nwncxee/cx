@@ -286,9 +286,9 @@ public sealed partial class KnobPanel
     /// baked at <paramref name="em"/>. Keeps the last category / submenu selection.</summary>
     public void OpenAt(float vpW, float vpH, float em, GlyphAtlas? body, GlyphAtlas? small)
     {
-        Open = true; _pressed = Modal; _grab = null; _moving = false; _editRow = null; _editText = "";
+        Open = true; _pressed = Modal; _grab = null; _moving = false; _editRow = null; _editText = ""; Collapsed = false;
         _confirm = null; _copied = null;
-        Drop.Close(); Tip.Leave();
+        Drop.Close(); Tip.Cut();
         Measure(vpW, vpH, em, body, small);
         X = MathF.Round((vpW - W) / 2f); Y = MathF.Round((vpH - H) / 2f);
         Place();
@@ -314,7 +314,7 @@ public sealed partial class KnobPanel
     {
         Open = false; _pressed = false; _grab = null; _moving = false; _editRow = null; _editText = "";
         _confirm = null; _copied = null; _hoverRow = null;
-        Drop.Close(); Tip.Leave(); Cats.MouseUp(); SubCol.MouseUp(); List.MouseUp();
+        Drop.Close(); Tip.Cut(); Cats.MouseUp(); SubCol.MouseUp(); List.MouseUp();
     }
 
     /// <summary>Seat the columns under the header for the current X/Y.</summary>
@@ -328,7 +328,7 @@ public sealed partial class KnobPanel
     }
 
     public bool Contains(float mx, float my)
-        => Open && ((mx >= X && mx < X + W && my >= Y && my < Y + H) || Drop.Contains(mx, my));
+        => Open && ((mx >= X && mx < X + W && my >= Y && my < Y + ShownH) || Drop.Contains(mx, my));
 
     // ---- layout (cold) ----
 
@@ -506,7 +506,7 @@ public sealed partial class KnobPanel
         List.Clamp();
         _rows = rows;
         _grab = null; _editRow = null; _hoverRow = null; _confirm = null;
-        Tip.Leave();
+        Tip.Cut();
     }
 
     /// <summary>A control row's height: its label and help lines with padding, at least the plain or the
@@ -829,24 +829,6 @@ public sealed partial class KnobPanel
 
     private bool In(float mx, float my, float x0, float x1, float y0, float y1) => mx >= x0 && mx < x1 && my >= y0 && my < y1;
 
-    private bool OverClose(float mx, float my)
-        => mx >= X + W - Pad - CloseW && mx < X + W - Pad + 0.2f * Em && my >= Y && my < Y + HeaderH;
-
-    /// <summary>The header button's box (right of the title, left of the ×).</summary>
-    public void HeaderButtonRect(out float x0, out float x1, out float y0, out float y1)
-    {
-        x1 = X + W - Pad - CloseW - 0.6f * Em; x0 = x1 - HeaderBtnW;
-        float mid = Y + HeaderH * 0.5f;
-        y0 = mid - HeaderBtnH * 0.5f; y1 = mid + HeaderBtnH * 0.5f;
-    }
-
-    private bool OverHeaderButton(float mx, float my)
-    {
-        if (HeaderAction.Length == 0) return false;
-        HeaderButtonRect(out float x0, out float x1, out float y0, out float y1);
-        return In(mx, my, x0, x1, y0, y1);
-    }
-
     /// <summary>The Reset to defaults box, top-right of the knob column head.</summary>
     private void ResetRect(out float x0, out float x1, out float y0, out float y1)
     {
@@ -885,9 +867,10 @@ public sealed partial class KnobPanel
         }
         _pressed = true; _grab = null; _moving = false;
         Row? armed = _confirm; _confirm = null;
-        Tip.Leave();
+        Tip.Cut();
         bool moved = _editRow != null && Commit();
         if (OverClose(mx, my)) { Close(); return true; }
+        if (OverCollapse(mx, my)) { ToggleCollapse(); return true; }
         if (OverHeaderButton(mx, my)) { HeaderActionPressed?.Invoke(); return true; }
         if (my < Y + HeaderH) { _moving = true; _mgx = mx - X; _mgy = my - Y; return true; }
         if (Cats.MouseDown(mx, my) || SubCol.MouseDown(mx, my) || List.MouseDown(mx, my)) return true;
@@ -1024,11 +1007,11 @@ public sealed partial class KnobPanel
         if (!Open) return false;
         if (_moving)
         {
-            X = Window.ClampAxis(mx - _mgx, W, VpW); Y = Window.ClampAxis(my - _mgy, H, VpH);
+            X = Window.ClampAxis(mx - _mgx, W, VpW); Y = Window.ClampAxis(my - _mgy, ShownH, VpH);
             Place();
             return true;
         }
-        if (Drop.Open) return Drop.MouseMove(mx, my);
+        if (Collapsed || Drop.Open) return !Collapsed && Drop.MouseMove(mx, my);
         if (Cats.MouseMove(mx, my) || SubCol.MouseMove(mx, my) || List.MouseMove(mx, my)) return true;
         if (_grab != null) { SetSliderFromX(_grab, mx); return true; }
         int hc = NavAt(Cats, Categories.Length, mx, my), hs = NavAt(SubCol, _subs.Length, mx, my);
@@ -1048,12 +1031,12 @@ public sealed partial class KnobPanel
     /// <summary>Wheel: the open list, else whichever column is under the last pointer position.</summary>
     public bool MouseWheel(int dy)
     {
-        if (!Open) return false;
+        if (!Open || Collapsed) return false;
         if (Drop.Open) return Drop.MouseWheel(dy);
         float step = WheelEm * Em;
         if (Cats.Contains(_lastMx, _lastMy)) { Cats.MouseWheel(dy, step); return true; }
         if (SubCol.Contains(_lastMx, _lastMy)) { SubCol.MouseWheel(dy, step); return true; }
-        if (List.Contains(_lastMx, _lastMy) || Contains(_lastMx, _lastMy)) { List.MouseWheel(dy, step); Tip.Leave(); return true; }
+        if (List.Contains(_lastMx, _lastMy) || Contains(_lastMx, _lastMy)) { List.MouseWheel(dy, step); Tip.Cut(); return true; }
         return false;
     }
 
@@ -1270,7 +1253,7 @@ public sealed partial class KnobPanel
     {
         if (!Open || Body == null || Small == null) return;
         GlyphAtlas body = Body, small = Small;
-        float x = X, y = Y, w = W, h = H, em = Em;
+        float x = X, y = Y, w = W, h = ShownH, em = Em;
 
         Fill(b, x, y, x + w, y + h, PanelBg, 0.96f);
         Outline(b, x, y, x + w, y + h, Border);
@@ -1280,7 +1263,8 @@ public sealed partial class KnobPanel
         float hbase = y + (HeaderH - body.LineHeight) * 0.5f + body.Ascent;
         float closeX1 = x + w - Pad + 0.2f * em, closeX0 = closeX1 - CloseW;
         UiText.Draw(b, body, "×", closeX0 + (CloseW - UiText.Measure(body, "×")) * 0.5f, hbase, Grip, closeX1);
-        float titleClip1 = closeX0 - 0.6f * em;
+        DrawCollapse(b, body, closeX0, hbase);
+        float titleClip1 = closeX0 - CollapseSpan - 0.6f * em;
         if (HeaderAction.Length > 0)
         {
             HeaderButtonRect(out float hx0, out float hx1, out float hy0, out float hy1);
@@ -1290,6 +1274,7 @@ public sealed partial class KnobPanel
             titleClip1 = hx0 - 0.6f * em;
         }
         UiText.Draw(b, body, Title, x + Pad, hbase, Tx, titleClip1);
+        if (Collapsed) return;
 
         // categories
         Fill(b, Cats.X, Cats.Y, Cats.X + Cats.W, Cats.Y + Cats.H, CatBg);

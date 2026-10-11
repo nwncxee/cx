@@ -94,6 +94,7 @@ Window-wide properties:
 | `inventory.backpack.pages=N` | only pages 1..N are shown, scrolled to, or accept drops (1-6) |
 | `inventory.readonly=1` | no drag, no quick-move, no take from a container; the item radial (examine included) still works |
 | `inventory.skin.<part>=<resref>` | re-point one piece of the game-art skin: `frame header cell slot button buttonhot buttonon close edit trough thumb gold goldhot goldcursor lootcell sil.<slot id>` |
+| `quickbar.skin.<part>=<resref>` | the same for the CX quickbar's skin: `frame slot grip` |
 
 Actions for `.route`: `inventory.equip`, `inventory.unequip`, `inventory.move`, `inventory.merge`,
 `inventory.split` (shift-click a stack: half), `inventory.drop`, `inventory.use`, `inventory.radial` (`x;y` are the

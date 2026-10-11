@@ -87,13 +87,14 @@ public sealed unsafe partial class InventoryService
         InventoryNative.SendGold(target, amount, w);
     }
 
-    /// <summary>An item dragged out of the window, released at the action's screen point: over another CX window nothing;
-    /// over a quickbar button it is assigned there (route <c>inventory.quickbar</c>, the slot 0-35 in the amount field; not
+    /// <summary>An item dragged out of the window, released at the action's screen point: over another CX window, or the CX
+    /// bar away from its buttons, nothing; over a quickbar button it is assigned there (route <c>inventory.quickbar</c>, the slot 0-35 in the amount field; not
     /// from a container, whose items the stock quickbar refuses); in the world the stock drop rules
     /// (<see cref="InventoryNative.DropVerb"/>) pick drop / use / barter.</summary>
     private static void DropInWorld(InvAction a)
     {
-        if (UiHost.HitTest(a.X, a.Y) != null) return;
+        Window? over = UiHost.HitTest(a.X, a.Y);
+        if (over != null && !Quickbar.QuickbarService.IsBar(over)) return;
         int slot = -1;
         IntPtr button = a.Other == 0 ? InventoryNative.QuickButtonAt(a.X, a.Y, out slot) : IntPtr.Zero;
         if (button != IntPtr.Zero)
@@ -101,6 +102,7 @@ public sealed unsafe partial class InventoryService
             if (Routed("inventory.quickbar", a.Oid, a.Mask, slot, default)) InventoryNative.AssignQuickButton(button, a.Oid);
             return;
         }
+        if (over != null) return;   // the CX bar but no button under the point (its grip): not a drop on the world
         if (!InventoryKnobs.DragDrop.V) return;
         WorldHit w = InventoryNative.PickWorld(a.X, a.Y);
         string? verb = InventoryNative.DropVerb(a.Oid, a.Mask != 0 || a.Other != 0, w);

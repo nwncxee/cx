@@ -24,6 +24,8 @@ public sealed partial class KnobPanel
         long now = 0;
         Func<long> realClock = Clock, realTipClock = Tooltip.Clock;
         Func<string, bool> realCopy = CopyText;
+        var realTiming = Tooltip.Timing;
+        Tooltip.Timing = () => (Tooltip.DelaySec, Tooltip.FadeInSec, Tooltip.FadeOutSec);
         string copied = "";
         Clock = () => now; Tooltip.Clock = () => now;
         CopyText = s => { copied = s; return true; };
@@ -359,6 +361,15 @@ public sealed partial class KnobPanel
             vb.Clear(); p.Emit(vb);
             check.Expect(R(dens).Value == "3", "a value moved outside the panel re-formats its text on the next draw");
             g.Master.Set(true); pg.Master.Set(true);
+            // Collapse: at Em 30 on 1344 px the box is 1212..1263 px in (the right pad 36 less 6, the × 51, then its own 51).
+            Press(p.X + 1237f, p.Y + 40f);
+            check.Expect(p.Collapsed && p.ShownH == 81f && !p.Contains(p.X + 600f, p.Y + 400f) && p.Contains(p.X + 600f, p.Y + 40f),
+                         $"the box left of the × folds the panel to its 81 px title bar ({p.ShownH})");
+            vb.Clear(); p.Emit(vb);
+            int folded = vb.VertexCount;
+            check.Expect(folded > 0 && folded < 200 && !p.MouseWheel(1), $"collapsed: only the title bar draws ({folded} vertices), the wheel passes");
+            Press(p.X + 1237f, p.Y + 40f);
+            check.Expect(!p.Collapsed && p.Contains(p.X + 600f, p.Y + 400f), "a second press unfolds it");
             p.Close();
 
             // List: an item row per entry and a trailing add box; the add box appends (Enter keeps adding), an item box
@@ -412,7 +423,7 @@ public sealed partial class KnobPanel
             check.Expect(ld == 0, $"100 draws of a list with an item being typed allocate nothing ({ld} bytes)");
             p.CancelEdit(); p.Close();
         }
-        finally { Clock = realClock; Tooltip.Clock = realTipClock; CopyText = realCopy; }
+        finally { Clock = realClock; Tooltip.Clock = realTipClock; Tooltip.Timing = realTiming; CopyText = realCopy; }
 
         // Consumer mode: two columns, a modal panel with a header button, rows from a Source; every
         // edit reaches the consumer through its callbacks and never touches the registry.

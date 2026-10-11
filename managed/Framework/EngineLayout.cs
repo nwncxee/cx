@@ -35,7 +35,6 @@ public static unsafe class EngineLayout
     /// (<c>PerformDefaultActionOnCreature</c>'s Attack / Dialog / UseObject sends, <c>HandleLMouseDown</c>'s
     /// stack-slot <c>+8</c> read).</summary>
     public static readonly int ObjId = Field<uint>("CNWCObject", "id");
-
     /// <summary>CNWCCreature: "the feedback plate is currently shown for me", set at the top of
     /// ShowFeedbackBubbleText (Linux disasm @0x71a81e, Windows @0x80b240).</summary>
     public static readonly int CreaturePlated = Field<int>("CNWCCreature", "plated", Expect.Byte01);
@@ -48,10 +47,8 @@ public static unsafe class EngineLayout
     public static readonly int StatsFirstNameLen = Field<uint>("CNWCCreatureStats", "firstNameLen");
     public static readonly int StatsLastName = Field<IntPtr>("CNWCCreatureStats", "lastName");
     public static readonly int StatsLastNameLen = Field<uint>("CNWCCreatureStats", "lastNameLen");
-
     /// <summary>CNWCPlaceable, same flag (Linux disasm @0x7ea8b8, Windows @0x871b60).</summary>
     public static readonly int PlaceablePlated = Field<int>("CNWCPlaceable", "plated", Expect.Byte01);
-
     /// <summary>Virtual slot of <c>GetPortrait(unsigned char)</c> on CNWCObject -- MSVC orders the table
     /// differently, so this is a vtable index, not a field.</summary>
     public static readonly int GetPortraitSlot = Field("CNWCObject", "vtbl.GetPortrait", Expect.VtblSlot, sig: "sret(byte size)");
@@ -66,22 +63,16 @@ public static unsafe class EngineLayout
     /// <summary><c>Part::AsPartSkin()</c> -- <c>WritePartHighlightVertices</c> @0x45fe40 glows a mesh
     /// part only when this is null, so a skinned body takes no glow quads.</summary>
     public static readonly int PartAsSkinSlot = Field("Part", "vtbl.AsPartSkin", Expect.VtblSlot, sig: "IntPtr()");
-
     /// <summary>Part::AsPartBeam() -- same filter for the beam overlays.</summary>
     public static readonly int PartAsPartBeamSlot = Field("Part", "vtbl.AsPartBeam", Expect.VtblSlot, sig: "PartBeam()");
-
     /// <summary>Part::PostProcess(Part*).</summary>
     public static readonly int PartPostProcessSlot = Field("Part", "vtbl.PostProcess", Expect.VtblSlot, sig: "void(Part part)");
-
     /// <summary>CAurTexture::AsCAurTextureBasic().</summary>
     public static readonly int TexAsBasicSlot = Field("CAurTexture", "vtbl.AsCAurTextureBasic", Expect.VtblSlot, sig: "CAurTextureBasic()");
-
     /// <summary>CAurTexture::GetReferencedTexture() -- the indirection every tid read goes through first.</summary>
     public static readonly int TexReferencedSlot = Field("CAurTexture", "vtbl.GetReferencedTexture", Expect.VtblSlot, sig: "CAurTexture()");
-
     /// <summary>VertexPrimitive::SetupArrays() -- virtual on purpose: Skinned/Anim/Dangly each override it.</summary>
     public static readonly int VpSetupArraysSlot = Field("VertexPrimitive", "vtbl.SetupArrays", Expect.VtblSlot, sig: "void()");
-
     /// <summary>CAurBehavior::AsBehaviorCameraFollow() -- the camera-follow type filter.</summary>
     public static readonly int BehaviorAsFollowSlot = Field("CAurBehavior", "vtbl.AsBehaviorCameraFollow", Expect.VtblSlot, sig: "CAurBehaviorCameraFollow()");
 
@@ -96,7 +87,6 @@ public static unsafe class EngineLayout
     // Every value here is decompiler evidence -- a CANDIDATE until a runtime probe says otherwise.
 
     // ---- Scene (identical 0x0..0x1e0: 32 offsets paired over 38 functions, no conflict) ----
-
     /// <summary>Scene -&gt; <c>CExoArrayList&lt;Gob*&gt;</c>, EVERY gob in the scene: items at +0x130, count at
     /// +0x138. <c>Scene::ChildAdd</c> @0x461d50 appends here and <c>ManageSceneBSP</c> @0x47fa80 iterates
     /// <c>0..*(Scene+0x138)</c> over it three separate times. This is the authoritative membership list --
@@ -104,7 +94,6 @@ public static unsafe class EngineLayout
     public static readonly int SceneGobs = Field<IntPtr>("Scene", "gobs");
     /// <inheritdoc cref="SceneGobs"/>
     public static readonly int SceneGobCount = Field<int>("Scene", "gobCount");
-
     /// <summary>Scene -&gt; BSPNode* root (the static-geometry BSP). Linux-verified in ManageSceneBSP.</summary>
     public static readonly int SceneBspRoot = Field<IntPtr>("Scene", "bspRoot");
 
@@ -139,7 +128,6 @@ public static unsafe class EngineLayout
     public static readonly int SceneIsAnimatingSlot = Field("Scene", "vtbl.IsAnimating", Expect.VtblSlot, sig: "byte()");
 
     // ---- Gob (identical 0x0..0x4b8: 28 offsets paired over 50 functions, no conflict) ----
-
     /// <summary><c>gob+0x18</c> is the SKYBOX flag, not a highlight: its only writers are
     /// <c>Gob::Gob</c> (0) and <c>Scene::SetSkyBox</c> @0x45e260, which sets it on all four skybox gobs, and
     /// <c>PartTriMesh::Mat</c> @0x450960 reads it to keep a skybox part out of the lit branch. The row keeps
@@ -199,7 +187,6 @@ public static unsafe class EngineLayout
     public static readonly int GobEnvOverride = Field<IntPtr>("Gob", "envOverride");
 
     // ---- MdlNode and its subclasses ----
-
     /// <summary>The <c>Model</c> byte whose bit 3 arms a second alpha multiply by
     /// <see cref="GobFadeAlpha"/>. <c>Model::Model</c> (@0x43a850 / rva 0x87bc0) writes it just below the
     /// reference count, and <c>PartTriMesh::Mat</c> (@0x450960 / rva 0xa2f50) reads it off the gob's fade
@@ -350,7 +337,6 @@ public static unsafe class EngineLayout
     public static readonly int MdlPeriod = Field<float>("MdlNodeDanglyMesh", "period");
 
     // ---- Part (identical 0x0..0x58) ----
-
     /// <summary>The part's own LOCAL transform, which the engine's animation step writes and every
     /// bone solve composes: <c>Vector</c> position at +0x10, <c>Quaternion</c> orientation at +0x1c stored
     /// (w,x,y,z). <c>Part::GetWorld</c> and <c>Part::GetLocal</c> touch the same eight offsets on both
@@ -410,7 +396,6 @@ public static unsafe class EngineLayout
     public static readonly int PartPrevRot = Field<CX.Engine.Quat>("PartDanglyMesh", "prevRot");
 
     // ---- PartLight (own block from 0x64 runs +0x4; 0x64/0x68/0x6c paired, the rest is that segment) ----
-
     /// <summary>PartLight RGB. The direction is <see cref="LightDir"/> and NOT this -- reading the other
     /// pair extrudes the static projections the wrong way.</summary>
     public static readonly int LightColour = Field<System.Numerics.Vector3>("PartLight", "colour");
@@ -439,7 +424,6 @@ public static unsafe class EngineLayout
     public static readonly int LightDir = Field<System.Numerics.Vector3>("PartLight", "pos");
 
     // ---- LightManager (identical 0x0..0xc0) ----
-
     /// <summary>The MASTER <c>CExoArrayList&lt;PartLight*&gt;</c> -- every registered light in the loaded
     /// area, creation order (stable). Ghidra AddLight / GetShadowLights /
     /// SetupLightsForThisPositionAndRadius.</summary>
@@ -460,7 +444,6 @@ public static unsafe class EngineLayout
     public static readonly int LmAreaAmbient = Field<CX.Engine.PartLight>("LightManager", "areaAmbient");
 
     // ---- Camera (Gob base region delta 0; own block 0x4c4..0x4e4 +0x4, then +0x8) ----
-
     /// <summary>Camera position and orientation, measured on Camera's own accessors: Linux carries two
     /// overloads of each and Windows folds each pair into one function that reads the same offsets. NOT Gob's
     /// position and orientation, which sit 8 bytes lower.</summary>
@@ -488,7 +471,6 @@ public static unsafe class EngineLayout
     public static readonly int CamKeyholeState = Field<byte>("Camera", "keyholeState");
 
     // ---- Material / SharedMaterial ----
-
     /// <summary>The material's blend pair -- source factor at +0x90, destination at +0x94, both
     /// <c>Aurora::AuroraBlendModes</c> (Ghidra <c>Material::SetBlendingMode</c> @0x4c5c50). <c>dst == 2</c>
     /// is <c>GL_ONE</c>, the engine's own additive test.</summary>
@@ -538,7 +520,6 @@ public static unsafe class EngineLayout
     public static readonly int TexBasicName = Field<byte>("CAurTextureBasic", "name");
 
     // ---- VertexDataObject (0x8 delta 0; 0x14..0x44 +0x4; 0x48 and up back to delta 0) ----
-
     /// <summary>The byte <c>VertexDataObjectBase</c>'s ctor zeroes and <c>VertexDataObject::Build</c>
     /// @0x45bac0 sets to 1 for modes 1 and 2. <c>GetElementArrayBuffer</c> @0x45b320 returns 0 while it is
     /// clear, which sends <c>GLRender::BindBuffer</c> @0x4d04a0 down its unbind branch mid-build.</summary>
@@ -957,6 +938,14 @@ public static unsafe class EngineLayout
     /// <summary>CGuiMan's last hit GUI object (null when the point hit none): <c>GuiObjectHitCheck</c> stores its result
     /// to +0x78 at the end on both builds (nm 0x57da40 / rva 0x1f4e30) and returns it from there when not asked afresh.</summary>
     public static readonly int GuiManHitObject = Field<IntPtr>("CGuiMan", "hitObject");
+    /// <summary>CGuiMan's mouse captor (<c>CaptureMouse</c>/<c>ReleaseMouse</c> write +0x58 on both); a live drag's source.</summary>
+    public static readonly int GuiManCapture = Field<IntPtr>("CGuiMan", "mouseCapture");
+    /// <summary>CGuiDragSource: the <c>HandleMouseMoveCaptured</c> slot, its drag flag past the slop, and the dragged <c>CGuiIcon*</c>.</summary>
+    public static readonly int DragMoveSlot = Field("CGuiDragSource", "vtbl.HandleMouseMoveCaptured", Expect.VtblSlot);
+    public static readonly int DragSourceLive = Field<int>("CGuiDragSource", "dragging");
+    public static readonly int DragSourceIcon = Field<IntPtr>("CGuiDragSource", "icon");
+    /// <summary><c>CGuiQuickButton::HandleTriggerTooltip</c>: builds the button's text and hands it to <c>ShowTooltipText</c> (<c>TriggerToolTip</c> calls the slot).</summary>
+    public static readonly int QuickButtonTipSlot = Field("CGuiQuickButton", "vtbl.HandleTriggerTooltip", Expect.VtblSlot, sig: "void()");
 
     /// <summary>What to add to a vtable SYMBOL to reach slot 0. Itanium puts offset-to-top and the typeinfo
     /// pointer in front of the function pointers, so <c>_ZTV&lt;class&gt;</c> is two words short of the
@@ -2757,6 +2746,9 @@ public static unsafe class EngineLayout
     /// @0x58d130, Windows rva 0x1e4720) tests, feeds and stores it at +0x40 on both; <c>CreateCountLabel</c> @0x58ce80
     /// makes it with <c>NewCAurString(1)</c>, so it is the same StringGob sub-object the bubble label is.</summary>
     public static readonly int GuiIconCountLabel = Field<CX.Engine.CAurString>("CGuiIcon", "countLabel");
+    /// <summary>CGuiIcon: its size in 32 px inventory cells, <c>Initialize</c>'s +0x20/+0x24 stores on both.</summary>
+    public static readonly int GuiIconCols = Field<int>("CGuiIcon", "cols");
+    public static readonly int GuiIconRows = Field<int>("CGuiIcon", "rows");
     /// <summary>CGuiCreatureMenu / CGuiPlaceableMenu / CGuiDoorMenu / CGuiItemMenu / CClientTrapMenu: the target
     /// object id (uint), the first field after the CRadialMenu base on both builds. Read off each subclass
     /// constructor pair as the id argument's store, or the INVALID sentinel where the ctor takes none (item,
@@ -2941,30 +2933,25 @@ public static unsafe class EngineLayout
     /// the option off. The option's setter is one store on both builds
     /// (<c>*(uint*)(*(g_pAppManager) + 8) + 0x180) = *arg</c>: Linux nm @0x8ca7f0, Windows rva 0x6bdb20).</summary>
     public static readonly int InternalFeedbackWord = Field<int>("CClientExoAppInternal", "feedbackWord");
-
     /// <summary>Gob: the engine's in-view-volume flag, refreshed by <c>ManageSceneBSP</c>. The whole body of
     /// <c>Gob::IsInViewVolume</c> is <c>return *(this + 0x1b)</c> on both builds (Linux nm @0x444780, Windows
     /// rva 0x49110, name-exported <c>?IsInViewVolume@Gob@@UEAA_NXZ</c>). No <c>Byte01</c>: the dword at this
     /// offset spans <see cref="GobPropagateHilite"/>, so the predicate would judge two fields.</summary>
     public static readonly int GobInView = Field<byte>("Gob", "inView");
-
     /// <summary>Gob -&gt; the <c>LookAtAnimation</c> the engine is currently aiming this gob's head with, or null.
     /// <c>Gob::EndLookAtAnimate</c> reads it and calls a virtual on it at the same offset on both builds (Linux
     /// nm @0x4979e0, Windows rva 0x50eb0, name-exported <c>?EndLookAtAnimate@Gob@@UEAAXXZ</c>).</summary>
     public static readonly int GobLookAt = Field<CX.Engine.LookAtAnimation>("Gob", "lookAt");
-
     /// <summary><c>sizeof(CPanelOkCancel)</c>: the <c>operator new</c> argument in the engine's own spawn path
     /// -- Linux <c>COptionsPanel::HandleQuitClick</c> nm @0x6b9800 allocates 0x3a0, the Windows ExitButton twins
     /// (rva 0x7103a0, 0x84f480) allocate 0x360. The wrong size and the ctor/dtor touch out-of-bounds
     /// bytes.</summary>
     public static readonly int OkCancelSize = Field("CPanelOkCancel", "sizeof");
-
     /// <summary>CGuiPanel: the embedded <c>CGuiCallbackv1&lt;void,int&gt;</c> the panel invokes on close --
     /// the record CX fills in to be told the player's answer. The constructor (Linux nm @0x586fb0, Windows rva
     /// 0x1fbb80) seeds it with the unset sentinel <see cref="CX.Engine.CGuiCallback.IsSet"/> tests, and
     /// <c>Deactivate(int)</c> invokes it through the adjust word on Itanium and flat under MSVC.</summary>
     public static readonly int GuiPanelCloseCallback = Field<CX.Engine.CGuiCallback>("CGuiPanel", "closeCallback", embedded: true);
-
     // ================= the CX inventory screen (CX-146 §10) =================
     // Every row below was PAIRED: the same function decompiled on both programs of $GHIDRA_PROJECT/nwn-linux.rep,
     // Linux addresses as nm (Ghidra = nm + 0x100000), Windows as RVAs off base 0x140000000. The uniform
@@ -2996,13 +2983,30 @@ public static unsafe class EngineLayout
     public static readonly int QuickbarButtonStride = Field("CPanelQuickBar", "buttonStride");
     /// <inheritdoc cref="QuickbarButtons"/>
     public const int QuickbarButtonCount = 36;
+    /// <summary>CGuiQuickButton: what it holds, the <c>HandleLeftButton</c> switch (0 empty, 1 item, 2 spell, ...), and an item
+    /// button's item object id. <c>SetButtonItem</c> writes both: Linux nm @0x6b1270 <c>+0x160</c> / <c>+0x10c</c>, Windows rva 0x867760 <c>+0x140</c> / <c>+0xec</c>.</summary>
+    public static readonly int QuickButtonType = Field<byte>("CGuiQuickButton", "type");
+    /// <inheritdoc cref="QuickButtonType"/>
+    public static readonly int QuickButtonItem = Field<uint>("CGuiQuickButton", "itemOid");
+    /// <summary>The rest of a button's content, as <c>SendButtonUpdateToServer</c> (Linux nm 0x6aa2e0, Windows rva 0x8602a0) reads it
+    /// for the server, Windows 0x20 lower: a pair's second item, the int argument, the packed spell, an associate's target.</summary>
+    public static readonly int QuickButtonItem2 = Field<uint>("CGuiQuickButton", "itemOid2");
+    public static readonly int QuickButtonParam = Field<int>("CGuiQuickButton", "param");
+    public static readonly int QuickButtonSpell = Field<long>("CGuiQuickButton", "spell");
+    public static readonly int QuickButtonTarget = Field<uint>("CGuiQuickButton", "target");
+    /// <summary>CPanelQuickBar's send gate: <c>SendButtonUpdateToServer</c> returns at 0 (the server's own set zeroes it around its writes).</summary>
+    public static readonly int QuickbarSendGate = Field<int>("CPanelQuickBar", "sendGate");
+    /// <summary>CGuiObject flags; bit 0 = disabled, which <c>CGuiButton::HandleLMouseDown</c> refuses on (<c>+8</c>, both builds).</summary>
+    public static readonly int GuiObjectFlags = Field<uint>("CGuiObject", "flags");
+    /// <summary>CGuiButton -&gt; its normal-state animation name (<c>char*</c>); quick buttons outline with <c>"qbEquip"</c> /
+    /// <c>"qbMode"</c>. <c>SetButtonNormalAnimation</c> stores it at Linux <c>+0xe0</c>, Windows rva 0x1e5a00 <c>+0xc0</c>.</summary>
+    public static readonly int ButtonNormalAnim = Field<IntPtr>("CGuiButton", "normalAnim");
     /// <summary>CNWCCreature: carried weight in <b>tenths of a pound</b> -- the label is
     /// <c>floor(weight / 10 + 0.5)</c>. Same two bodies (<c>+0x2ac</c> / <c>+0x28c</c>), and the same field the
     /// <c>'U'</c> case of <c>HandleServerToPlayerUpdate_GuiInventory</c> writes (Linux nm @0x79dd90, Windows rva
     /// 0x7b3f30). The max comes from <c>encumbrance.2da</c> column "Normal" at row = STR, not from the creature.
     /// </summary>
     public static readonly int CreatureCarriedWeight = Field<int>("CNWCCreature", "carriedWeight");
-
     /// <summary>CNWCItem: the base item id -- the index into <see cref="SymbolMap.GetBaseItem"/>'s array,
     /// and the same field on BOTH builds, because it sits below the class's divergence. Read by
     /// <c>CNWCItem::GetName</c> (Linux nm @0x7ce810, Windows rva 0x83d8a0) among others. Gold is base item 76;
@@ -3049,7 +3053,6 @@ public static unsafe class EngineLayout
     public static readonly int ItemCustomName = Field<IntPtr>("CNWCItem", "customName");
     /// <inheritdoc cref="ItemCustomName"/>
     public static readonly int ItemCustomNameLen = Field<uint>("CNWCItem", "customNameLen");
-
     /// <summary>CNWBaseItem (a 200-byte record of <c>baseitems.2da</c>, reached through
     /// <see cref="SymbolMap.GetBaseItem"/>): the <b>equippable-slot bitmask</b>. The whole client-side equip
     /// rule is <c>(base-&gt;equipSlots &amp; invbox-&gt;slotMask) != 0</c>. Identical on both builds, paired
@@ -3071,12 +3074,10 @@ public static unsafe class EngineLayout
     /// Identical on both builds -- <c>CGuiMultiInvbox::HandleDoubleClick</c> branches on
     /// <c>*(int*)(base + 0x80)</c> on each (Linux nm @0x690300, Windows rva 0x8801b0).</summary>
     public static readonly int BaseItemUsable = Field<int>("CNWBaseItem", "usable");
-
     /// <summary>CNWRules -&gt; its <c>CNWBaseItemArray*</c>. Every client body that needs a base item does the same
     /// two-step, <c>GetBaseItem(*(g_pRules + 0x20), item-&gt;baseItem)</c>, at the same offset on both builds
     /// (<c>CNWCItem::GetName</c> Linux nm @0x7ce810 / Windows rva 0x83d8a0, and three others).</summary>
     public static readonly int RulesBaseItems = Field<IntPtr>("CNWRules", "baseItems");
-
     /// <summary>CPanelInventory: non-zero =&gt; this panel is showing a CONTAINER rather than the plain
     /// backpack. <c>SetContainerGUIVisible</c> (Linux nm @0x68e5d0) is its only writer and
     /// <c>SetInventoryVisible</c>'s hide branch its reader. On a container OPEN it is still clear when
@@ -3155,7 +3156,6 @@ public static unsafe class EngineLayout
     /// @0x591fd0 fills it with <c>NewCAurString</c>, so it is non-null before the panel is ever shown, and
     /// every setter goes through the CAurString vtable (<see cref="AurStringSetTextSlot"/>).</summary>
     public static readonly int LabelString = Field<CX.Engine.CAurString>("CGuiLabel", "string");
-
     /// <summary>Nui::Layout::Layoutable: nonzero = the parent's child loop does NOT <c>nk_layout_space_push</c> this child,
     /// so <c>panel-&gt;row.item</c> still holds the previous child's rect when it renders (Linux nm @0x84c9f8
     /// <c>cmpb $0,0x50(%r15)</c> -&gt; the push at 0x84dab5; Windows rva 0x951260 @0x1409515d6, the push at 0x1409515fa).</summary>
