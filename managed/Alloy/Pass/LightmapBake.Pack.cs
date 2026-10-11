@@ -7,8 +7,8 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The atlas packing: one rect per charted instance, placed by a shelf packer that keeps the gutter and
-/// never mixes the two page classes, at the texel density its tier asks for and halved down until it
+/// <summary>The atlas packing: one rect per charted instance in a block-aligned cell, placed by a shelf packer
+/// that never mixes the two page classes, at the texel density its tier asks for and halved down until it
 /// fits.</summary>
 internal static unsafe partial class LightmapBake
 {
@@ -219,8 +219,8 @@ internal static unsafe partial class LightmapBake
 
     /// <summary>A different size is a different file: the halvings mixed into the key, none at zero.</summary>
     private static ulong Halve(ulong key0, int halved) => halved > 0 ? Mix(key0, halved) : key0;
-    /// <summary>Texel area a rect takes on a page, gutters in.</summary>
-    private static long Area(in Rect r) => (long)(r.W + Gutter) * (r.H + Gutter);
+    /// <summary>Texel area a rect takes on a page: its cell.</summary>
+    private static long Area(in Rect r) => (long)Cell(r.W) * Cell(r.H);
 
     /// <summary>The page cap: <c>lightmap.pages</c>, or 0 = a quarter of the card's memory in
     /// <see cref="PageMiB"/> pages, 1..<see cref="MaxPages"/>; 2 when the device answers no memory query.
@@ -371,6 +371,7 @@ internal static unsafe partial class LightmapBake
     {
         byte cls = r.Tier < Baseline ? ClassFine : ClassBase;
         ref int cursor = ref (cls == ClassFine ? ref _finePage : ref _packPage);
+        int cw = Cell(r.W), ch = Cell(r.H);
         while (true)
         {
             if (cursor >= _cap) return false;
@@ -378,19 +379,29 @@ internal static unsafe partial class LightmapBake
             int p = cursor;
             if (_pageClass[p] != 0 && _pageClass[p] != cls) { cursor++; continue; }
             _pageClass[p] = cls;
-            if (_shelfX[p] + r.W + Gutter <= PageSize && r.H <= _shelfH[p])
+            if (_shelfX[p] + cw <= PageSize && ch <= _shelfH[p])
             {
                 r.Page = p; r.X = _shelfX[p] + Gutter; r.Y = _shelfY[p] + Gutter;
-                _shelfX[p] += r.W + Gutter;
+                _shelfX[p] += cw;
                 return true;
             }
-            int ny = _shelfY[p] + _shelfH[p] + (_shelfH[p] > 0 ? Gutter : 0);
-            if (ny + r.H + Gutter * 2 <= PageSize && r.W + Gutter * 2 <= PageSize)
+            int ny = _shelfY[p] + _shelfH[p];
+            if (ny + ch <= PageSize && cw <= PageSize)
             {
-                _shelfY[p] = ny; _shelfH[p] = r.H + Gutter; _shelfX[p] = 0;
+                _shelfY[p] = ny; _shelfH[p] = ch; _shelfX[p] = 0;
                 continue;
             }
             cursor++;
         }
+    }
+
+    /// <summary>Pure: the side of a rect's cell -- the rect and a gutter each side, rounded up to whole
+    /// blocks, so no compressed block of a page ever holds two rects.</summary>
+    internal static int Cell(int n) => (n + 2 * Gutter + Block - 1) & ~(Block - 1);
+
+    /// <summary>A rect's cell on its page: block-aligned, the rect <see cref="Gutter"/> texels in.</summary>
+    private static void CellOf(in Rect r, out int x, out int y, out int w, out int h)
+    {
+        x = r.X - Gutter; y = r.Y - Gutter; w = Cell(r.W); h = Cell(r.H);
     }
 }

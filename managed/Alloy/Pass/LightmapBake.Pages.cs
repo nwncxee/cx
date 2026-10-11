@@ -52,7 +52,7 @@ internal static unsafe partial class LightmapBake
         // billed to Grow by the next Phase call: the array allocation is the one part of a migration no slice
         // can split, so whether IT or the copies dominate is what the worst-frame clause has to say
         long t0 = Stopwatch.GetTimestamp();
-        uint a = PageArray(Gl.R11F_G11F_B10F, n), b = PageArray(Gl.RGBA8, n), c = PageArray(Gl.RGBA8, n);
+        uint a = PageArray(FormatA, n), b = PageArray(FormatB, n), c = PageArray(Gl.RGBA8, n);
         _growAlloc += Stopwatch.GetTimestamp() - t0;
         if (a == 0 || b == 0 || c == 0)
         {
@@ -83,19 +83,19 @@ internal static unsafe partial class LightmapBake
     }
 
     /// <summary>One frame's slice of a migration: up to <see cref="GrowSlice"/> layers copied into the new
-    /// arrays (or, past the old layer count, cleared to "no light"), and on the last one the new arrays become
+    /// arrays (or, past the old layer count, C cleared to "no mover share"), and on the last one the new arrays become
     /// the resident ones and the old names go. Finishes in one call when there is nothing to copy, or when
     /// <see cref="GrowSlice"/> is 0.</summary>
     private static void GrowStep()
     {
         if (!Migrating) return;
         int per = GrowSlice > 0 && _gl.Layers > 0 ? GrowSlice : int.MaxValue;
-        // a fresh layer is black + straight-up + no mover share: an unbaked texel that somehow gets sampled reads as no light
+        // a fresh layer is all-zero blocks in A and B (black, and what the readback of a gap files) and no mover
+        // share in C. A and B are compressed, so no framebuffer clears them: they upload from a zeroed buffer
         float* none = stackalloc float[4] { 0f, 0f, 0f, 0f };
-        float* black = stackalloc float[4] { 0f, 0f, 0f, 1f };
-        float* up = stackalloc float[4] { 0.5f, 0.5f, 1f, 1f };
-        uint* bufs = stackalloc uint[3] { Gl.COLOR_ATTACHMENT0, Gl.COLOR_ATTACHMENT1, Gl.COLOR_ATTACHMENT2 };
+        uint* bufs = stackalloc uint[1] { Gl.COLOR_ATTACHMENT0 };
         bool bound = false;
+        uint zero = 0;
         for (int k = 0; k < per && _growAt < _growTo; k++, _growAt++, _growSlices++)
         {
             int l = _growAt;
@@ -104,12 +104,27 @@ internal static unsafe partial class LightmapBake
                 CopyLayer(_gl.TexA, _gA, l); CopyLayer(_gl.TexB, _gB, l); CopyLayer(_gl.TexC, _gC, l);
                 continue;
             }
-            if (!bound) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo); Gl.DrawBuffers(3, bufs); bound = true; }
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, _gA, 0, l);
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, _gB, 0, l);
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, _gC, 0, l);
-            Gl.ClearBufferfv(Gl.COLOR, 0, black); Gl.ClearBufferfv(Gl.COLOR, 1, up); Gl.ClearBufferfv(Gl.COLOR, 2, none);
+            if (!bound)
+            {
+                Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
+                Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, Gl.TEXTURE_2D, 0, 0);
+                Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, Gl.TEXTURE_2D, 0, 0);
+                Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, 0, 0);
+                Gl.DrawBuffers(1, bufs); bound = true;
+            }
+            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, _gC, 0, l);
+            Gl.ClearBufferfv(Gl.COLOR, 0, none);
+            if (zero == 0)
+            {
+                Gl.CreateBuffers(1, &zero);
+                Gl.NamedBufferStorage(zero, (IntPtr)LayerBlockBytes, null, 0);
+                Gl.ZeroBuffer(zero, LayerBlockBytes);
+                Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, zero);
+            }
+            Gl.CompressedTextureSubImage3D(_gA, 0, 0, 0, l, PageSize, PageSize, 1, FormatA, LayerBlockBytes, null);
+            Gl.CompressedTextureSubImage3D(_gB, 0, 0, 0, l, PageSize, PageSize, 1, FormatB, LayerBlockBytes, null);
         }
+        if (zero != 0) { Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0); Gl.DeleteBuffers(1, &zero); }
         if (bound) Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         if (_growAt < _growTo) return;
         // the page bake stood still for this window: hand its wall clock back, or "ms wall per page" reports the

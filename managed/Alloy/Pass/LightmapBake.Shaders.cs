@@ -3,7 +3,7 @@ namespace CX.Alloy;
 /// <summary>The bake's two programs. The bake stage draws a charted mesh with its chart UV as the position
 /// (UV2 -> rect offset/scale -> page NDC) and its world position and vertex normal interpolated, then runs
 /// the colour pass's own per-light body against the scratch cube in slot 0, so a baked texel is the lit
-/// stage's own arithmetic. The finish stage folds a page's scratch pair into the resident pair.</summary>
+/// stage's own arithmetic. The encoder folds a page's scratch planes into the resident, compressed ones.</summary>
 internal static partial class LightmapBake
 {
     internal static string BakeVs => ShaderSource.Get("cx_bake_v.glsl");
@@ -16,8 +16,8 @@ internal static partial class LightmapBake
 
     internal static string BakeFs => ShaderSource.Get("cx_bake_f.glsl");
 
-    /// <summary>Per page texel: a covered texel (alpha > 0) converts as is; an uncovered one within two of a
-    /// covered one takes its nearest covered neighbour (the dilation that keeps bilinear reads off the
-    /// gutter); anything else discards, so cache-hit rects already resident on the page stay untouched.</summary>
-    internal static string FinishFs => ShaderSource.Get("cx_bakefinish_f.glsl");
+    /// <summary>Per 4x4 block: a covered texel (alpha > 0) converts as is, an uncovered one within two of a
+    /// covered one takes its nearest covered neighbour (the dilation that keeps bilinear reads off the gutter),
+    /// and the block goes out as BC6H (A) and BC7 (B); C is written raw where the finish has a texel.</summary>
+    internal static string EncCs => ShaderSource.Get("cx_bakeenc_c.glsl");
 }

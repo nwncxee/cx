@@ -34,9 +34,11 @@ internal static unsafe partial class LightmapBake
         var sy = (int[])_shelfY.Clone(); var sh = (int[])_shelfH.Clone(); var sx = (int[])_shelfX.Clone();
         _cap = 1; _gl.Layers = 1; _packPage = 0; Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
         var a = new Rect { W = 100, H = 50 }; var b = new Rect { W = 100, H = 40 }; var c = new Rect { W = 4000, H = 60 };
+        // oracle: hand-worked cells -- a side plus two gutters of 2, up to a multiple of 4
+        check.Expect(Cell(1) == 8 && Cell(4) == 8 && Cell(5) == 12 && Cell(100) == 104 && Cell(50) == 56, "a cell is the rect and its gutters in whole blocks");
         check.Expect(Place(ref a) && Place(ref b), "two rects fit an empty page");
-        check.Expect(a.Page == 0 && b.Page == 0 && b.X >= a.X + a.W + Gutter && a.Y == Gutter, "the second rect sits past the first by the gutter, on the first shelf");
-        check.Expect(Place(ref c) && c.Y >= a.Y + a.H + Gutter, "a rect too wide for the shelf opens a new shelf below it");
+        check.Expect(a.Page == 0 && b.Page == 0 && a.X == 2 && a.Y == 2 && b.X == 106 && b.Y == 2, $"the second rect sits one cell past the first, on the first shelf (a {a.X},{a.Y} b {b.X},{b.Y})");
+        check.Expect(Place(ref c) && c.X == 2 && c.Y == 58, $"a rect too wide for the shelf opens a new shelf one cell below (c {c.X},{c.Y})");
         var big = new Rect { W = 4000, H = 4000 };
         check.Expect(!Place(ref big), "a rect past the last page under the cap is refused, not placed");
         float near = Lightmap.Near.V;
@@ -159,12 +161,13 @@ internal static unsafe partial class LightmapBake
         _areaUp.Done = true;
         check.Expect(AreaUploadsIn, "...and goes on once the upload is in");
         _areaPlan = planWas; _areaUp = upWas;
-        // oracle: hand-worked -- 4 MiB / (4096 texels * 12 B) = 85 rows, so a full page is 48 bands of 85 and one of 16
-        check.Expect(BandRows(4096, 4096, 0) == 85 && BandRows(4096, 4096, 4080) == 16 && BandRows(16, 16, 0) == 16,
-                     "a union band is 4 MiB of whole rows, clipped to the union");
+        // oracle: hand-worked -- 4 MiB / (4096 texels * 6 B) = 170 rows, down to whole blocks = 168, so a full
+        // page is 24 bands of 168 and one of 64
+        check.Expect(BandRows(4096, 4096, 0) == 168 && BandRows(4096, 4096, 4080) == 16 && BandRows(16, 16, 0) == 16,
+                     "a union band is 4 MiB of whole block rows, clipped to the union");
         int bands = 0;
         for (int row = 0; row < 4096; row += BandRows(4096, 4096, row)) bands++;
-        check.Expect(bands == 49, $"a full page went up in {bands} bands, not 49");
+        check.Expect(bands == 25, $"a full page went up in {bands} bands, not 25");
         log.Info(check.Ok ? "LightmapBake.SelfCheck: passed" : "LightmapBake.SelfCheck: FAILED -- see above");
         return check.Ok;
     }

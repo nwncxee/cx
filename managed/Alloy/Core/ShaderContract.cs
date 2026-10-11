@@ -481,7 +481,8 @@ internal static class ShaderContract
                   && AlloyLights.FragmentLib.Contains("const int CX_LIGHT_SET = 512;") && AlloyLights.LightSetStride == 512f
                   && LightmapBake.Channels == 4 && LightmapBake.ChartBufDecl.Contains("struct CxChart { vec4 rec; vec4 pick; };")
                   && LightmapBake.BakeFs.Contains("oC = uBakeChan < 4 ? vec4(equal(ivec4(uBakeChan), ivec4(0, 1, 2, 3)))")
-                  && LightmapBake.FinishFs.Contains("oC = clamp(c / max(dot(a.rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-6), 0.0, 1.0);")
+                  && LightmapBake.EncCs.Contains("c = clamp(sc / max(dot(sa.rgb, CX_LUM), 1e-6), 0.0, 1.0);")
+                  && LightmapBake.EncCs.Contains("const vec3 CX_LUM = vec3(0.2126, 0.7152, 0.0722);")
                   && LightmapBake.ChartBufDecl.Contains($"layout(binding = {LightmapBake.UnitC}) uniform sampler2DArray uLmC;")
                   && AlloyLights.FragmentLib.Contains("bool inPages = isStatic && baked > 0.5;")
                   && AlloyLights.FragmentLib.Contains("if (inPages && !hot && !mirror) continue;")

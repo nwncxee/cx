@@ -3,8 +3,8 @@
 // none) whose mover shares page C's four bytes hold. Written on landing/enrol/vacate edges, never per frame.
 struct CxChart { vec4 rec; vec4 pick; };
 layout(std430, binding = 13) readonly buffer CxChartBuf { CxChart uChart[]; };
-layout(binding = 20) uniform sampler2DArray uLmA;   // irradiance, RG11B10F
-layout(binding = 21) uniform sampler2DArray uLmB;   // dominant direction, RGBA8 as xyz * 0.5 + 0.5
+layout(binding = 20) uniform sampler2DArray uLmA;   // irradiance, BC6H
+layout(binding = 21) uniform sampler2DArray uLmB;   // dominant direction, BC7 as xyz * 0.5 + 0.5
 layout(binding = 22) uniform sampler2DArray uLmC;   // CX-56: per mover channel, the share of the texel a mover takes back
 uniform int uLmPages;                                // resident layers; 0 = no lightmap this frame
 const float CX_LM_PAGE = 4096.0;

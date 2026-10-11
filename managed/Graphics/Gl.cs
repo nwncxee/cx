@@ -171,6 +171,8 @@ public static unsafe class Gl
     /// <summary>The lightmap's irradiance page format and its packed pixel type, and a PBO readback's
     /// usage hint.</summary>
     public const uint R11F_G11F_B10F = 0x8C3A, UNSIGNED_INT_10F_11F_11F_REV = 0x8C3B, STREAM_READ = 0x88E1;
+    /// <summary>BPTC (GL 4.2 core): BC7 for 8-bit colour, BC6H unsigned for HDR -- 16 bytes per 4x4 block.</summary>
+    public const uint COMPRESSED_RGBA_BPTC_UNORM = 0x8E8C, COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT = 0x8E8F;
     /// <summary>The sized formats an unsized engine upload has to be promoted to before
     /// <see cref="TexStorage2D"/> will take it, and the unsized enums the engine actually uses
     /// (<c>glTexImage2D</c> @0x4cad3d passes GL_RGB/GL_RGBA/GL_RED verbatim).</summary>
@@ -195,6 +197,7 @@ public static unsafe class Gl
     public const uint VERTEX_ATTRIB_ARRAY_BARRIER_BIT = 0x0001;
     /// <summary>An image store read back by the next level's dispatch (image) and by the lit stage (fetch).</summary>
     public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
+    public const uint ALL_BARRIER_BITS = 0xFFFFFFFF;   // not-an-offset: GL_ALL_BARRIER_BITS
     /// <summary>A compute write to a buffer the lit stage then reads as a uniform block (the probe's SH9).</summary>
     public const uint UNIFORM_BARRIER_BIT = 0x0004;
     /// <summary>An image store into a texture a LATER PASS renders to as an attachment -- the deferred
@@ -538,6 +541,10 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, uint, void*, void> TextureSubImage3D;
     /// <summary>glCompressedTextureSubImage2D: texture, level, x, y, w, h, format, imageSize, data.</summary>
     public static delegate* unmanaged<uint, int, int, int, int, int, uint, int, void*, void> CompressedTextureSubImage2D;
+    /// <summary>glCompressedTextureSubImage3D: texture, level, x, y, z, w, h, depth, format, imageSize, data.</summary>
+    public static delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, int, void*, void> CompressedTextureSubImage3D;
+    /// <summary>glGetCompressedTextureSubImage: texture, level, x, y, z, w, h, depth, bufSize, data.</summary>
+    public static delegate* unmanaged<uint, int, int, int, int, int, int, int, int, void*, void> GetCompressedTextureSubImage;
     public static delegate* unmanaged<uint, uint, int, void> TextureParameteri;
     public static delegate* unmanaged<uint, uint, int*, void> GetTextureParameteriv;
     public static delegate* unmanaged<uint, int, uint, int*, void> GetTextureLevelParameteriv;
@@ -771,6 +778,8 @@ public static unsafe class Gl
         TextureSubImage2D = (delegate* unmanaged<uint, int, int, int, int, int, uint, uint, void*, void>)P("glTextureSubImage2D");
         TextureSubImage3D = (delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, uint, void*, void>)P("glTextureSubImage3D");
         CompressedTextureSubImage2D = (delegate* unmanaged<uint, int, int, int, int, int, uint, int, void*, void>)P("glCompressedTextureSubImage2D");
+        CompressedTextureSubImage3D = (delegate* unmanaged<uint, int, int, int, int, int, int, int, uint, int, void*, void>)P("glCompressedTextureSubImage3D");
+        GetCompressedTextureSubImage = (delegate* unmanaged<uint, int, int, int, int, int, int, int, int, void*, void>)P("glGetCompressedTextureSubImage");
         TextureParameteri = (delegate* unmanaged<uint, uint, int, void>)P("glTextureParameteri");
         GetTextureParameteriv = (delegate* unmanaged<uint, uint, int*, void>)P("glGetTextureParameteriv");
         GetTextureLevelParameteriv = (delegate* unmanaged<uint, int, uint, int*, void>)P("glGetTextureLevelParameteriv");

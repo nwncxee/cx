@@ -572,7 +572,7 @@ def programs(g):
         "light beams": (g["cx_beam_v"], g["cx_beam_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
         "lightmap bake": (g["cx_bake_v"], g["cx_bake_f"]),
-        "lightmap finish": (g["cx_fullscreen_v"], g["cx_bakefinish_f"]),
+        "lightmap encoder": (g["cx_bakeenc_c"],),
         "weather map scatter": (g["cx_wx_scat_c"],),
         "weather map integrate": (g["cx_wx_int_c"],),
         "weather shelter cache": (g["cx_wx_shel_c"],),
@@ -619,20 +619,25 @@ DRIVER_TOKENS = dict(TOKENS, **{"$DYNSPH$": "16", "$GROUP$": "64"})
 NV_EGL = "/usr/share/glvnd/egl_vendor.d/10_nvidia.json"
 
 
-def check_driver_link(progs, g):
-    """Link every program on the NVIDIA driver through a headless EGL device context, where one exists.
-    glslang compiled the lit stage clean while the driver refused it at LINK ("array index out of bounds" on
-    a path the inliner proved constant) and the whole world drew black -- this is the gate that sees that."""
+_NV = {}
+
+
+def nv_context():
+    """A current GL 4.6 context on the NVIDIA driver through a headless EGL device, made once; returns its
+    proc lookup `fn(name, restype, *argtypes)`, or None after printing why there is none."""
+    if "fn" in _NV:
+        return _NV["fn"]
+    _NV["fn"] = None
     if not os.path.exists(NV_EGL):
-        print("driver link: skipped (no NVIDIA EGL vendor)")
-        return 0
+        print("driver: skipped (no NVIDIA EGL vendor)")
+        return None
     os.environ["__EGL_VENDOR_LIBRARY_FILENAMES"] = NV_EGL
     import ctypes as C
     try:
         egl = C.CDLL("libEGL.so.1")
     except OSError:
-        print("driver link: skipped (no libEGL)")
-        return 0
+        print("driver: skipped (no libEGL)")
+        return None
     egl.eglGetProcAddress.restype = C.c_void_p
     egl.eglGetProcAddress.argtypes = [C.c_char_p]
     def fn(name, res, *args):
@@ -642,22 +647,34 @@ def check_driver_link(progs, g):
     gpd = fn("eglGetPlatformDisplayEXT", C.c_void_p, C.c_uint, C.c_void_p, C.c_void_p)
     devs = (C.c_void_p * 8)(); n = C.c_int(0)
     if not qd or not gpd or not qd(8, devs, C.byref(n)) or n.value == 0:
-        print("driver link: skipped (no EGL device)")
-        return 0
+        print("driver: skipped (no EGL device)")
+        return None
     egl.eglInitialize.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p]
     egl.eglCreateContext.restype = C.c_void_p
     egl.eglCreateContext.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p, C.POINTER(C.c_int)]
     egl.eglMakeCurrent.argtypes = [C.c_void_p] * 4
     dpy = gpd(0x313F, devs[0], None)   # not-an-offset: EGL_PLATFORM_DEVICE_EXT
     if not dpy or not egl.eglInitialize(dpy, None, None):
-        print("driver link: skipped (EGL device did not initialise)")
-        return 0
+        print("driver: skipped (EGL device did not initialise)")
+        return None
     egl.eglBindAPI(0x30A2)   # not-an-offset: EGL_OPENGL_API
     attrs = (C.c_int * 5)(0x3098, 4, 0x30FB, 6, 0x3038)   # not-an-offset: MAJOR 4, MINOR 6, EGL_NONE
     ctx = egl.eglCreateContext(dpy, None, None, attrs)
     if not ctx or not egl.eglMakeCurrent(dpy, None, None, ctx):
-        print("driver link: skipped (no 4.6 context on the EGL device)")
+        print("driver: skipped (no 4.6 context on the EGL device)")
+        return None
+    _NV["fn"] = fn
+    return fn
+
+
+def check_driver_link(progs, g):
+    """Link every program on the NVIDIA driver through a headless EGL device context, where one exists.
+    glslang compiled the lit stage clean while the driver refused it at LINK ("array index out of bounds" on
+    a path the inliner proved constant) and the whole world drew black -- this is the gate that sees that."""
+    fn = nv_context()
+    if fn is None:
         return 0
+    import ctypes as C
     u, i, p_ = C.c_uint, C.c_int, C.c_char_p
     create = fn("glCreateShader", u, u)
     source = fn("glShaderSource", None, u, i, C.POINTER(p_), C.c_void_p)
@@ -689,6 +706,155 @@ def check_driver_link(progs, g):
             bad = 1
     print(f"driver link: {'ok' if not bad else 'FAILED'} ({len(progs)} programs on the NVIDIA driver)")
     return bad
+
+
+LM_N = 64   # the encoder fixture's side, texels
+
+
+def lm_fixture():
+    """A small bake's scratch planes and what the finish makes of each texel, written out here from the
+    finish's rule (covered = as baked, else the nearest covered texel within two, else none) -- the encoder
+    is never asked. Two lights over a hard shadow edge, with a hole whose middle the dilation cannot reach."""
+    import struct
+    half = lambda x: struct.unpack("e", struct.pack("e", x))[0]
+    cov = lambda x, y: 6 <= x < 58 and 6 <= y < 58 and not (27 <= x < 39 and 20 <= y < 44)
+    scr = {}
+    for y in range(LM_N):
+        for x in range(LM_N):
+            d1 = ((x - 16) ** 2 + (y - 16) ** 2) / 600.0   # half strength 24 texels out: 3 m at the default 8 px/m
+            d2 = ((x - 48) ** 2 + (y - 40) ** 2) / 600.0
+            shade = 0.15 if x + y < 40 else 1.0
+            irr = [shade * (3.0 * a / (1 + d1) + 2.0 * b / (1 + d2)) for a, b in zip((1.0, 0.6, 0.3), (0.2, 0.4, 1.0))]
+            lum = 0.2126 * irr[0] + 0.7152 * irr[1] + 0.0722 * irr[2]
+            v = ((x - 32) / 40.0, (y - 32) / 50.0, 1.0)
+            share = (x / 63.0, y / 63.0, 0.5, 1.0 - x / 63.0)
+            on = cov(x, y)
+            scr[x, y] = ([half(c) for c in irr] + [2.0 if on else 0.0],
+                         [half(c * lum * 0.7) for c in v] + [0.0],
+                         [half(c * lum) for c in share])
+    want = {}
+    for (x, y), (a, b, c) in scr.items():
+        if a[3] <= 0.0:
+            best = 1e9
+            for dy in range(-2, 3):
+                for dx in range(-2, 3):
+                    q = (x + dx, y + dy)
+                    if (dx, dy) == (0, 0) or q not in scr or scr[q][0][3] <= 0.0 or dx * dx + dy * dy >= best:
+                        continue
+                    best = dx * dx + dy * dy
+                    a, b, c = scr[q]
+            if best > 1e8:
+                continue
+        l = sum(k * k for k in b[:3]) ** 0.5
+        d = [k / l for k in b[:3]] if l > 1e-6 else [0.0, 0.0, 1.0]
+        lum = max(0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2], 1e-6)
+        want[x, y] = ([max(k, 0.0) for k in a[:3]], [k * 0.5 + 0.5 for k in d], [min(max(k / lum, 0.0), 1.0) for k in c])
+    return scr, want
+
+
+def check_lmenc(g):
+    """The lightmap encoder against the driver's own BC6H/BC7 decoder: the fixture is encoded, the blocks are
+    copied into real BPTC textures and read back decoded. The bounds are the format's, measured: one or two
+    lines a block cannot follow two coloured lights crossing (RG11B10F's rounding was 0.64% mean, 1.5% max)
+    nor a 6x shadow step past mode 1's delta range; directions and mover shares hold to a few 8-bit steps."""
+    fn = nv_context()
+    if fn is None:
+        return 0
+    import ctypes as C
+    u, i, vp = C.c_uint, C.c_int, C.c_void_p
+    gl = lambda name, *a: fn(name, None, *a)
+    create_tex = gl("glCreateTextures", u, i, C.POINTER(u))
+    storage2 = gl("glTextureStorage2D", u, i, u, i, i)
+    storage3 = gl("glTextureStorage3D", u, i, u, i, i, i)
+    sub2 = gl("glTextureSubImage2D", u, i, i, i, i, i, u, u, vp)
+    clear = gl("glClearTexImage", u, i, u, u, vp)
+    unit = gl("glBindTextureUnit", u, u)
+    image = gl("glBindImageTexture", u, u, i, C.c_ubyte, i, u, u)
+    copy = gl("glCopyImageSubData", u, u, i, i, i, i, u, u, i, i, i, i, i, i, i)
+    getsub = gl("glGetTextureSubImage", u, i, i, i, i, i, i, i, u, u, i, vp)
+    errors = fn("glGetError", u)
+    use = gl("glUseProgram", u)
+    loc = fn("glGetUniformLocation", i, u, C.c_char_p)
+    uni4 = gl("glProgramUniform4i", u, i, i, i, i, i)
+    dispatch = gl("glDispatchCompute", u, u, u)
+    barrier = gl("glMemoryBarrier", u)
+    finish = gl("glFinish")
+    shader, src_, comp, prog_, attach, link = (fn("glCreateShader", u, u), gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp),
+                                               gl("glCompileShader", u), fn("glCreateProgram", u), gl("glAttachShader", u, u), gl("glLinkProgram", u))
+    status = gl("glGetProgramiv", u, u, C.POINTER(i))
+    TEX2D, TEX2DA, RGBA, FLOAT, UBYTE, UINT = 0x0DE1, 0x8C1A, 0x1908, 0x1406, 0x1401, 0x1405   # not-an-offset: GL enums
+    RGBA16F, RGBA32UI, RGBA8, RGBA_INT, BC6, BC7 = 0x881A, 0x8D70, 0x8058, 0x8D99, 0x8E8F, 0x8E8C   # not-an-offset: GL enums
+    N, B = LM_N, LM_N // 4
+
+    def tex(target):
+        t = u(0); create_tex(target, 1, C.byref(t)); return t.value
+    scr, want = lm_fixture()
+    planes = []
+    for k in range(3):
+        t = tex(TEX2D); storage2(t, 1, RGBA16F, N, N)
+        buf = (C.c_float * (N * N * 4))(*[v for y in range(N) for x in range(N) for v in scr[x, y][k]])
+        sub2(t, 0, 0, 0, N, N, RGBA, FLOAT, buf)
+        unit(k, t); planes.append(t)
+    blk = []
+    for k in range(2):
+        t = tex(TEX2D); storage2(t, 1, RGBA32UI, B, B)
+        clear(t, 0, RGBA_INT, UINT, (C.c_uint * 4)()); blk.append(t)
+    page_c = tex(TEX2DA); storage3(page_c, 1, RGBA8, N, N, 2)
+    clear(page_c, 0, RGBA, UBYTE, (C.c_ubyte * 4)(85, 85, 85, 85))
+    s = shader(0x91B9); buf = C.c_char_p(g["cx_bakeenc_c"].encode())   # not-an-offset: GL_COMPUTE_SHADER
+    src_(s, 1, C.byref(buf), None); comp(s)
+    prog = prog_(); attach(prog, s); link(prog)
+    ok = i(0); status(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
+    if not ok.value:
+        print("lightmap encoder: FAILED (did not link on the driver)")
+        return 1
+    use(prog)
+    uni4(prog, loc(prog, b"uRegion"), 1, 1, B - 2, B - 2)
+    image(0, blk[0], 0, 0, 0, 0x88B9, RGBA32UI)   # not-an-offset: GL_WRITE_ONLY
+    image(1, blk[1], 0, 0, 0, 0x88B9, RGBA32UI)   # not-an-offset: GL_WRITE_ONLY
+    image(2, page_c, 0, 0, 1, 0x88B9, RGBA8)   # not-an-offset: GL_WRITE_ONLY; layer 1
+    dispatch((B - 2 + 7) // 8, (B - 2 + 7) // 8, 1)
+    barrier(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
+    got = []
+    for k, fmt in ((0, BC6), (1, BC7)):
+        t = tex(TEX2DA); storage3(t, 1, fmt, N, N, 2)
+        copy(blk[k], TEX2D, 0, 0, 0, 0, t, TEX2DA, 0, 0, 0, 1, B, B, 1)
+        out = (C.c_float * (N * N * 4))()
+        getsub(t, 0, 0, 0, 1, N, N, 1, RGBA, FLOAT, C.sizeof(out), out); got.append(out)
+    out_c = (C.c_ubyte * (N * N * 4))()
+    getsub(page_c, 0, 0, 0, 1, N, N, 1, RGBA, UBYTE, C.sizeof(out_c), out_c)
+    finish()
+    if errors():
+        print("lightmap encoder: FAILED (a GL error in the fixture)")
+        return 1
+    px = lambda arr, x, y: arr[(y * N + x) * 4:(y * N + x) * 4 + 4]
+    region = lambda x, y: 4 <= x < N - 4 and 4 <= y < N - 4
+    edge = lambda x, y: (x & ~3) + (y & ~3) < 40 <= (x | 3) + (y | 3)
+    a_smooth = a_all = a_sum = b_err = c_err = 0.0
+    a_n = 0
+    c_stray = zero_bad = 0
+    for y in range(N):
+        for x in range(N):
+            w = want.get((x, y)) if region(x, y) else None
+            blk_valid = region(x, y) and any((bx, by) in want for bx in range(x & ~3, (x & ~3) + 4) for by in range(y & ~3, (y & ~3) + 4))
+            if w is None:
+                if px(out_c, x, y) != [85, 85, 85, 85]:
+                    c_stray += 1
+                if not blk_valid and any(px(got[0], x, y)[:3]):
+                    zero_bad += 1
+                continue
+            rel = max(abs(d - e) / max(e, 1e-3) for d, e in zip(px(got[0], x, y)[:3], w[0]))
+            a_all = max(a_all, rel); a_sum += rel; a_n += 1
+            if not edge(x, y):
+                a_smooth = max(a_smooth, rel)
+            b_err = max(b_err, max(abs(d - e) * 255 for d, e in zip(px(got[1], x, y)[:3], w[1])))
+            c_err = max(c_err, max(abs(d / 255.0 - e) * 255 for d, e in zip(px(out_c, x, y), w[2])))
+    a_mean = a_sum / max(a_n, 1)
+    bad = a_mean > 0.015 or a_smooth > 0.04 or a_all > 0.10 or b_err > 6.0 or c_err > 1.01 or c_stray or zero_bad
+    print(f"lightmap encoder: {'FAILED' if bad else 'ok'} (irradiance {a_mean * 100:.2f}% mean, {a_smooth * 100:.2f}% max off the shadow edge, {a_all * 100:.2f}% on it,"
+          f" direction {b_err:.1f} and shares {c_err:.2f} 8-bit steps, {c_stray} share texels written past the finish,"
+          f" {zero_bad} texels of empty blocks not black)")
+    return int(bad)
 
 
 SSBO_BUDGET = int(re.search(r"const uint Budget = (\d+);", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/Core/SsboSlots.cs")).read()).group(1))
@@ -740,6 +906,7 @@ def main():
     print(f"{len(progs)} programs from {len(g)} embedded .glsl")
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
+    bad |= check_lmenc(g)
     bad |= check_early_z(progs)
     bad |= check_material(g)
     bad |= audit(g)

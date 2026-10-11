@@ -28,10 +28,10 @@ internal static class Lightmap
                            help: "Lightmap texels per metre of world. Each instance's rectangle is capped at a quarter page; a change re-bakes the area.",
                            changed: LightmapBake.RekeyAll);
         Pages = G.Slider("pages", "Lightmap pages", 0, LightmapBake.MaxPages, 1, 0, tier: Tier.ChatOnly,
-                         help: "4096x4096 pages the area may hold (128 MiB each), allocated as the area needs them. 0 sizes it from the card's memory: a quarter of it in pages, at most 32. An area that would overflow the cap bakes at a lower density instead.");
+                         help: "4096x4096 pages the area may hold (96 MiB each), allocated as the area needs them. 0 sizes it from the card's memory: a quarter of it in pages, at most 32. An area that would overflow the cap bakes at a lower density instead.");
         // the pages live in ONE immutable array, so one more page means allocate-copy-delete of them all
         GrowSlice = G.Slider("growslice", "Page growth slice", 0, 8, 1, 1, "pages", tier: Tier.ChatOnly,
-                             help: "Lightmap pages the client may move into a larger page array in one frame when an area needs another page. Each page is 192 MiB, so moving them all at once costs a visible freeze; 0 does exactly that, for comparison.");
+                             help: "Lightmap pages the client may move into a larger page array in one frame when an area needs another page. Each page is 96 MiB, so moving them all at once costs a visible freeze; 0 does exactly that, for comparison.");
         Near = G.Slider("near", "Full-density radius", 10, 200, 5, 40, "m", tier: Tier.ChatOnly,
                         help: "Metres from the player baked at the full density; each tier out doubles the radius and halves the density. The last tier covers the whole area and bakes first.");
         Tiers = G.Slider("tiers", "Density tiers", 1, LightmapBake.MaxTiers, 1, 3, tier: Tier.ChatOnly,

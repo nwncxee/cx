@@ -18,9 +18,10 @@ internal sealed class LightmapAreaPlan
 {
     /// <summary>"CXLA" little-endian.</summary>
     private const uint Magic = 0x414c5843;   // not-an-offset: the file's first four bytes
-    /// <summary>Bumped with the layout below or with anything the plan's fields mean.</summary>
-    internal const int Version = 3;
-    /// <summary>Unions one plan may ask the install to hold at once. A page's union is at most 192 MiB (three planes), and an
+    /// <summary>Bumped with the layout below or with anything the plan's fields mean (4: shelves and placed
+    /// area in block-aligned cells).</summary>
+    internal const int Version = 4;
+    /// <summary>Unions one plan may ask the install to hold at once. A page's union is at most 96 MiB (three planes), and an
     /// area that wants more than this is refused rather than allowed to bloat the heap while it waits for the
     /// edge. ponytail: upload straight out of the inflate if an area ever legitimately needs more.</summary>
     internal const long MaxUnionBytes = 1152L << 20;
@@ -185,9 +186,9 @@ internal static unsafe partial class LightmapBake
     private const long AreaBandBytes = 4L << 20;
 
     /// <summary>Pure: rows of a <paramref name="w"/>-wide union the band starting at <paramref name="row"/>
-    /// uploads -- at least one, never past <paramref name="h"/>.</summary>
+    /// uploads -- whole block rows, at least one, never past <paramref name="h"/>.</summary>
     internal static int BandRows(int w, int h, int row)
-        => (int)Math.Min(h - row, Math.Max(1L, AreaBandBytes / ((long)w * TexelBytes)));
+        => (int)Math.Min(h - row, Math.Max(Block, AreaBandBytes / ((long)w * TexelBytes) & ~(long)(Block - 1)));
 
     /// <summary>The read-aheads have folded this area at <c>LoadArea</c>'s return: post the plan read to
     /// <c>cx-lmcache</c> now, so the inflate runs in the seconds before the AreaLoaded send rather than
@@ -384,8 +385,8 @@ internal static unsafe partial class LightmapBake
                 int y = up.Row, rows = BandRows(un.W, un.H, y);
                 fixed (byte* p = bytes)
                 {
-                    Gl.TextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGB, Gl.UNSIGNED_INT_10F_11F_11F_REV, p + UnionOffset(0, 0, y, un.W, un.H));
-                    Gl.TextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(1, 0, y, un.W, un.H));
+                    Gl.CompressedTextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatA, un.W * rows, p + UnionOffset(0, 0, y, un.W, un.H));
+                    Gl.CompressedTextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatB, un.W * rows, p + UnionOffset(1, 0, y, un.W, un.H));
                     Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(2, 0, y, un.W, un.H));
                 }
                 up.Row = y + rows;
@@ -528,9 +529,8 @@ internal static unsafe partial class LightmapBake
         AreaPlanOut(0);
     }
 
-    /// <summary>The page region a snapshot reads back: the bounding box of the page's landed rects with the
-    /// bake's dilation margin, the same rectangle <see cref="FinishPage"/> reads after a bake -- a rect's edge
-    /// texels are sampled bilinearly, so the gutter is part of what the next visit must upload. False = the
+    /// <summary>The page region a snapshot reads back: the bounding box of the page's landed rects' cells,
+    /// the same rectangle <see cref="FinishPage"/> reads after a bake -- whole blocks, gutters in. False = the
     /// page holds no landed rect any more.</summary>
     private static bool AreaSnapRegion(int page, out int x0, out int y0, out int w, out int h)
     {
@@ -539,8 +539,9 @@ internal static unsafe partial class LightmapBake
         {
             ref Rect r = ref _rects[ri];
             if (r.Page != page || r.State != RState.Landed) continue;
-            ax0 = Math.Min(ax0, r.X - Gutter); ay0 = Math.Min(ay0, r.Y - Gutter);
-            ax1 = Math.Max(ax1, r.X + r.W + Gutter); ay1 = Math.Max(ay1, r.Y + r.H + Gutter);
+            CellOf(r, out int cx, out int cy, out int cw, out int ch);
+            ax0 = Math.Min(ax0, cx); ay0 = Math.Min(ay0, cy);
+            ax1 = Math.Max(ax1, cx + cw); ay1 = Math.Max(ay1, cy + ch);
         }
         x0 = Math.Max(ax0, 0); y0 = Math.Max(ay0, 0);
         w = Math.Min(ax1, PageSize) - x0; h = Math.Min(ay1, PageSize) - y0;
@@ -560,10 +561,8 @@ internal static unsafe partial class LightmapBake
         _areaSnapRects.Clear();
         for (int ri = 0; ri < _rectN; ri++) if (_rects[ri].Page == page && _rects[ri].State == RState.Landed) _areaSnapRects.Add(ri);
         if (!AreaSnapRegion(page, out int x0, out int y0, out int w, out int h) || _areaSnapRects.Count == 0) { empty = true; return false; }
-        AttachPair(page);
         _uSnap = true;
         QueueReadback(page, x0, y0, w, h, _areaSnapRects);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         if (_gl.Fence != IntPtr.Zero) { _areaSnapped++; return true; }
         _uSnap = false;
         return false;
