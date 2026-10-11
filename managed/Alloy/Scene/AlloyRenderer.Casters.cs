@@ -22,6 +22,9 @@ public sealed unsafe partial class AlloyRenderer
     /// centred on the part's own vertex box (<c>_oB*</c>), never <see cref="NeverCull"/>. A re-bake predicate
     /// needs bounds that name the views they dirty, which "somewhere" cannot.</summary>
     private static readonly float[] _dCastSph = new float[MaxRecords * 4];
+    /// <summary>The pose slack <c>_dCastSph</c>'s radius carries for a skinned part (0 otherwise): what a cull
+    /// needs and a shadow FRAMING must not take, or a body's tile frames a 6 m ball round a 2 m creature.</summary>
+    private static readonly float[] _dCastSlack = new float[MaxRecords];
     /// <summary>A <c>PartDanglyMesh</c>: its vertices move while its node matrix does not, so no record
     /// compare can infer motion for it. Captured at enrollment, as the caster pass captured it before.</summary>
     private static readonly bool[] _oDangly = new bool[MaxOwned];
@@ -391,6 +394,13 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The last sphere written for a slot, live or revoked. A caster that VANISHED leaves no live
     /// entry to name the views it was standing in, so its last known sphere is what invalidates them.</summary>
+    /// <summary>The caster sphere's radius without its pose slack: the bound a shadow view frames on.</summary>
+    internal static float CasterFrameRadius(int slot)
+    {
+        CasterSphere(slot, out _, out _, out _, out float r);
+        return r - _dCastSlack[slot];
+    }
+
     internal static void CasterSphere(int slot, out float cx, out float cy, out float cz, out float r)
     {
         fixed (float* sp = _dCastSph)

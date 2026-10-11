@@ -8,8 +8,8 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>The bake cache: one blob per page bake under <c>cx-charts/</c> -- the bake's union readback
-/// deflated behind a table of the rects it holds -- with an in-memory index over every blob's table, so
-/// adoption is one row-strided <c>glTexSubImage3D</c> per page and no allocation. Per-rect files were the
+/// deflated behind a table of the rects it holds (A and B as their compressed blocks, C raw) -- with an
+/// in-memory index over every blob's table, so adoption uploads straight out of the union, no allocation. Per-rect files were the
 /// load: thousands of opens behind an 18k-file sweep took ten seconds on a cold box.</summary>
 internal sealed class BakeCache
 {
@@ -18,8 +18,8 @@ internal sealed class BakeCache
     /// <summary>Bumped with every change to what a baked texel holds or how the file is laid out: a file from
     /// an older bake is stale, whatever its key. 9 = the header carries the union's page and origin, so an
     /// area cache uploads a union whole instead of per rect; 10 = a third plane, C, the mover shares;
-    /// 11 = C by each rect's pick, not an area channel.</summary>
-    internal const int Version = 11;
+    /// 11 = C by each rect's pick, not an area channel; 12 = A and B as BC6H/BC7 blocks, unions whole blocks.</summary>
+    internal const int Version = 12;
     /// <summary>Blobs written between prunes (a blob is a page: 32 is a budget's worth).</summary>
     private const int PruneEvery = 32;
     internal const string Ext = ".lmp";
@@ -79,8 +79,8 @@ internal sealed class BakeCache
         lock (_gate) { _in.Enqueue(new Job { Rect = rect, Key = key, W = w, H = h }); Monitor.Pulse(_gate); }
     }
 
-    /// <summary>Queue a page bake's union readback (A texels then B texels, <paramref name="uw"/> x
-    /// <paramref name="uh"/> each) for the disk as one blob, with the rects it holds and where the union sits
+    /// <summary>Queue a page bake's union readback (A blocks, B blocks, C texels over <paramref name="uw"/> x
+    /// <paramref name="uh"/>) for the disk as one blob, with the rects it holds and where the union sits
     /// on its page. Returns the blob's file name, minted here so the area plan can name it before the
     /// write lands.</summary>
     internal string Save(byte[] union, int buf, int page, int x0, int y0, int uw, int uh, Entry[] table)
@@ -282,6 +282,7 @@ internal sealed class BakeCache
             u.Page = r.ReadInt32(); u.X0 = r.ReadInt32(); u.Y0 = r.ReadInt32(); u.W = r.ReadInt32(); u.H = r.ReadInt32();
             int n = r.ReadInt32();
             if (n <= 0 || n > 1 << 20 || u.W <= 0 || u.H <= 0 || u.W > LightmapBake.PageSize || u.H > LightmapBake.PageSize
+                || u.W % LightmapBake.Block != 0 || u.H % LightmapBake.Block != 0 || u.X0 % LightmapBake.Block != 0 || u.Y0 % LightmapBake.Block != 0
                 || (uint)u.Page >= LightmapBake.MaxPages || (uint)u.X0 > LightmapBake.PageSize || (uint)u.Y0 > LightmapBake.PageSize) { why = "truncation"; return null; }
             table = new Entry[n];
             for (int i = 0; i < n; i++) table[i] = new Entry { Key = r.ReadUInt64(), X = r.ReadInt32(), Y = r.ReadInt32(), W = r.ReadInt32(), H = r.ReadInt32() };
@@ -416,9 +417,16 @@ internal sealed class BakeCache
         check.Expect(Deserialize(new MemoryStream(blob, 0, blob.Length / 2), out _, out _, out why) == null && why == "truncation", "a cut blob is refused as truncation");
         blob[4] ^= 1;
         check.Expect(Deserialize(new MemoryStream(blob), out _, out _, out why) == null && why == "version", "another version is refused as version");
-        // the row-strided upload's address of a rect's texel: plane, row, column inside the union
-        check.Expect(LightmapBake.UnionOffset(0, 8, 4, uw, uh) == (4 * uw + 8) * 4 && LightmapBake.UnionOffset(1, 8, 4, uw, uh) == uw * uh * 4 + (4 * uw + 8) * 4
-                     && LightmapBake.UnionOffset(2, 8, 4, uw, uh) == uw * uh * 8 + (4 * uw + 8) * 4, "a rect's first texel is addressed by plane, row and column of the union");
+        // the address of the block (A, B: 16 bytes a 4x4 block) or texel (C: 4 bytes) at (8, 4) of a 32x16
+        // union, worked by hand: block row 1 of 8 blocks + block 2 = block 10; C row 4 of 32 + 8 = texel 136
+        check.Expect(LightmapBake.UnionOffset(0, 8, 4, uw, uh) == 160 && LightmapBake.UnionOffset(1, 8, 4, uw, uh) == 512 + 160
+                     && LightmapBake.UnionOffset(2, 8, 4, uw, uh) == 1024 + 544, "a rect's first block or texel is addressed by plane, row and column of the union");
+        var odd = new MemoryStream();
+        SerializeTo(odd, 0, 0, 0, 30, 16, table, union);
+        check.Expect(Deserialize(new MemoryStream(odd.ToArray()), out _, out _, out why) == null && why == "truncation", "a union that is not whole blocks is refused");
+        var shifted = new MemoryStream();
+        SerializeTo(shifted, 0, 514, 256, uw, uh, table, union);
+        check.Expect(Deserialize(new MemoryStream(shifted.ToArray()), out _, out _, out why) == null && why == "truncation", "a union whose origin is off the block grid is refused");
         log.Info(check.Ok ? "BakeCache.SelfCheck: passed" : "BakeCache.SelfCheck: FAILED -- see above");
         return check.Ok;
     }
@@ -428,6 +436,8 @@ internal static partial class LightmapBake
 {
     private static readonly BakeCache _cache = new();
 
-    /// <summary>Byte offset of a rect's first texel in a union readback (plane 0 = A, 1 = B, 2 = C; 4 bytes a texel).</summary>
-    internal static long UnionOffset(int plane, int x, int y, int uw, int uh) => (long)plane * uw * uh * 4 + ((long)y * uw + x) * 4;
+    /// <summary>Byte offset of block-aligned (x, y) in a union readback: plane 0 = A and 1 = B, 16-byte blocks
+    /// row-major; 2 = C, 4-byte texels row-major after both.</summary>
+    internal static long UnionOffset(int plane, int x, int y, int uw, int uh)
+        => plane < 2 ? (long)plane * uw * uh + (long)y * uw + 4L * x : 2L * uw * uh + ((long)y * uw + x) * 4;
 }

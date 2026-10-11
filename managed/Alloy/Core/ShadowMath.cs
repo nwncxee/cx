@@ -96,23 +96,23 @@ public static partial class ShadowMath
     /// exactly to the tile edge has nothing there to read.</summary>
     public const float ConeSlack = 1.15f;
     /// <summary>The widest half-angle a pair view takes (sin; ~58 degrees): past it the projection's corners run
-    /// away. Wide enough for a whole body (a ~1.1 m sphere) to be framed down to ~1.5 m from its lamp; a mover
-    /// closer than that takes no shadow from the lamp.</summary>
+    /// away. A mover too close to its lamp to fit is framed at this cone round its centre: the shadow it casts
+    /// lies along the same directions, so the clamp trims the shadow's rim, never the whole shadow.</summary>
     public const float ConeMaxSin = 0.85f;
 
     /// <summary>One (static light, mover) PAIR view -- a perspective from <paramref name="lightPos"/> framed
-    /// on the sphere (<paramref name="at"/>, <paramref name="radius"/>) and fitted out to the light's own
-    /// reach, same convention as <see cref="PointLightFaceViewProj"/>. False = the sphere subtends more than
-    /// <see cref="ConeMaxSin"/> or engulfs the light, so the caller leaves it its dynamic cube page.</summary>
+    /// on the sphere (<paramref name="at"/>, <paramref name="radius"/>), clamped to <see cref="ConeMaxSin"/>,
+    /// and fitted out to the light's own reach. A light inside the sphere looks straight down, where a body
+    /// standing under it throws its shadow. False only for a degenerate sphere or depth range.</summary>
     public static bool PairViewProj(Vector3 lightPos, Vector3 at, float radius, float near, float far,
                                     out Matrix4x4 vp, out float halfSin)
     {
         vp = Matrix4x4.Identity; halfSin = 0f;
+        if (!(far > near) || !(radius > 0f)) return false;
         Vector3 d = at - lightPos;
         float dist = d.Length();
-        if (!(dist > radius) || !(far > near) || !(radius > 0f)) return false;
-        halfSin = MathF.Min(radius / dist * ConeSlack, 1f);
-        if (halfSin > ConeMaxSin) return false;
+        if (!(dist > radius)) { d = -Vector3.UnitZ; dist = 1f; at = lightPos + d; }
+        halfSin = MathF.Min(radius / dist * ConeSlack, ConeMaxSin);
         Vector3 up = PerpendicularUp(d / dist);
         Matrix4x4 view = Matrix4x4.CreateLookAt(lightPos, at, up);
         Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(2f * MathF.Asin(halfSin), 1f, near, far);

@@ -108,6 +108,11 @@ internal static unsafe class PairShadows
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
+    /// <summary>Diagnostic: <c>/shadow movers</c> also logs the next frame's pair plan.</summary>
+    internal sealed class PlanDumpState { public bool Next; }
+    internal static readonly PlanDumpState Dump = new();
+    internal static void Note(string s) => _log?.Always("PairPlan:" + s);
+
     internal static void Forget()
     {
         Tex = 0; _buf = 0; _atlasFailed = false; _upGen = -1; Count = 0; _nLights = 0;
@@ -131,7 +136,7 @@ internal static unsafe class PairShadows
              : $"pair tiles {p / n:F1}/frame over {s / n:F1} lights at {_tile}px "
              + $"({p * 100f / MathF.Max(f, 1) / _cap:F0}% of {_cap}, {hl / n:F1} HELD (the layer already held "
              + $"that pair), {mr / n:F1} movers ranked, {lt / n:F1} ranked nothing (every light full), "
-             + $"{o / n:F2} lights past the atlas, {rf / n:F2} movers too close to frame, {cr / n:F2} movers past a light's {MaxPerLight} (no shadow from it))";
+             + $"{o / n:F2} lights past the atlas, {rf / n:F2} movers with a degenerate frame, {cr / n:F2} movers past a light's {MaxPerLight} (no shadow from it))";
     }
 
     // --- the planner, inside CasterPass's cube scan
@@ -254,6 +259,12 @@ internal static unsafe class PairShadows
             sc[j] = s; pick[j] = i;
         }
         float cut = have > K ? sc[K] : 0f;
+        if (Dump.Next && moverId < 0)
+        {
+            var sb = new System.Text.StringBuilder($"  body {moverId} at ({cx:F1},{cy:F1},{cz:F1}) r {r:F2} ranks:");
+            for (int j = 0; j < have; j++) sb.Append($" light {pick[j]} (slot {_lSlot[pick[j]]}) score {sc[j]:F3} w {BudgetWeight(sc[j], cut):F2}{(_lN[pick[j]] >= MaxPerLight ? " FULL" : "")};");
+            Note(sb.ToString());
+        }
         for (int j = 0; j < have && j < K; j++)
         {
             float w = BudgetWeight(sc[j], cut);
@@ -324,6 +335,21 @@ internal static unsafe class PairShadows
             _gen++; _pairs += kept; _slots++;
         }
         if (Count > 0) { _rec[0] = BitConverter.Int32BitsToSingle(Count); _gen++; }
+        if (Dump.Next)
+        {
+            Dump.Next = false;
+            for (int i = 0; i < _nLights; i++)
+            {
+                Note($" light {i} slot {_lSlot[i]} pos {_lPr[i]} luma {_lLuma[i]:F2} movers {_lN[i]} paired at {Pairs(_lSlot[i])}");
+                for (int q = 0; q < _lN[i]; q++)
+                {
+                    Vector4 m = _lMover[i * MaxPerLight + q];
+                    float dist = (new Vector3(m.X, m.Y, m.Z) - new Vector3(_lPr[i].X, _lPr[i].Y, _lPr[i].Z)).Length();
+                    Note($"   mover {_lMoverId[i * MaxPerLight + q]} at {m} dist {dist:F2} w {_lW[i * MaxPerLight + q]:F2} sin {m.W / dist * ShadowMath.ConeSlack:F2}{(m.W / dist * ShadowMath.ConeSlack > ShadowMath.ConeMaxSin ? " TOO CLOSE" : "")}");
+                }
+            }
+            Note($" committed {Count} pairs");
+        }
     }
 
     /// <summary>This slot's first pair, or -1 when it has none and keeps its dynamic page. Read by
@@ -458,10 +484,17 @@ internal static unsafe class PairShadows
         check.Expect(rimR > 0.5f && rimR < 1f, $"the sphere's rim is inside the tile with room for the disc ({rimR:F3})");
         Vector3 past = ShadowMath.WorldToLightNdc(vp, Vector3.Normalize(at) * (far + 1f));
         check.Expect(past.Z > 1f, $"a point past the light's reach is past the far plane ({past.Z:F3})");
-        check.Expect(!ShadowMath.PairViewProj(light, new Vector3(0.5f, 0f, 0f), 1f, 0.05f, far, out _, out _),
-                     "a mover round its light has no pair view");
-        check.Expect(!ShadowMath.PairViewProj(light, at, 8f, near, far, out _, out _),
-                     "a mover subtending more than the cone ceiling has none either");
+        // hand-worked: 8 m at 10 m is sin 0.92 past the 0.85 ceiling, so the view clamps there instead of refusing
+        check.Expect(ShadowMath.PairViewProj(light, at, 8f, near, far, out Matrix4x4 wide, out float hsWide) && hsWide == 0.85f,
+                     $"a mover too close to fit frames at the cone ceiling (sin {hsWide:F3})");
+        Vector3 mid = ShadowMath.WorldToLightNdc(wide, at);
+        check.Expect(MathF.Abs(mid.X) < 1e-3f && MathF.Abs(mid.Y) < 1e-3f, "...still aimed at the mover's centre");
+        // a lamp inside the body's sphere looks straight down: a point 3 m below it is mid-tile
+        check.Expect(ShadowMath.PairViewProj(light, new Vector3(0.5f, 0f, 0f), 1f, 0.05f, far, out Matrix4x4 down, out _),
+                     "a mover round its light still frames");
+        Vector3 below = ShadowMath.WorldToLightNdc(down, new Vector3(0f, 0f, -3f));
+        check.Expect(MathF.Abs(below.X) < 1e-3f && MathF.Abs(below.Y) < 1e-3f && below.Z > -1f && below.Z < 1f,
+                     $"...looking straight down ({below.X:F3},{below.Y:F3},{below.Z:F3})");
         check.Expect(hs > r / (at - light).Length(), "the framed half-angle carries the disc's slack");
 
         check.Expect(MaxPairs <= 1024 - 64 * 6, "the atlas fits inside CasterPass's bake-view queue beside the cube faces");

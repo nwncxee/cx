@@ -179,11 +179,13 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal static float ModuleTimeIntoTransition => _runtime == null ? 0f : Rt.ModuleTimeIntoTransition;
     /// <summary>The presented-frame counter, what a hosted content chain gets as <c>sceneCurrentFrame</c>.</summary>
     internal static int FrameSeq => _frameSeq;
+    /// <summary>The forward class's light-source view: the one viz mode the deferred pass keeps running for.</summary>
+    internal const int VizLightFrom = 52;
     /// <summary>Highest mode <c>/alloy viz N</c> accepts; each mode is documented where it branches, in
     /// <see cref="OwnedLitFsMain"/> and the water stage. Raise it when a stage adds one, or the new mode is
     /// silently clamped at the parse and the screenshot is of the old view.
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
-    internal const int LightVizMax = 51;   // 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 41/42/45/46 = SSR trust, the reflection, the probe behind it and the mirrored draw (CX-51); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
+    internal const int LightVizMax = 52;   // 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 41/42/45/46 = SSR trust, the reflection, the probe behind it and the mirrored draw (CX-51); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
     /// <summary><c>/alloy aotest 1</c>: bind every lit part's own DIFFUSE texture on the AO slot and set the
     /// bit, so the whole AO path -- mask, unit, sampler, ambient multiply -- runs end to end on stock content.
@@ -304,6 +306,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         GlContextService.InBracket = static () =>
         {
             OwnedTextures.Drain(); SampleVram();
+            LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the
             // per-record PLT rows -- all of them belong in this context and nowhere else, and all of them run
             // in BOTH modes. The registry is not DB mode's alone (CX-119's bitmap font atlases acquire from it

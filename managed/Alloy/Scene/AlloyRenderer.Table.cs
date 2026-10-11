@@ -212,6 +212,9 @@ public sealed unsafe partial class AlloyRenderer
     /// A second array rather than a second walk: the guarded element-pool read that both keys need is the
     /// expensive half, and doing it once is what keeps this on the enrollment cadence.</summary>
     private static readonly long[] _msShape = new long[MaxOwned];
+    /// <summary>The slot draws a part of a tile, not a placeable.</summary>
+    internal static bool TileSlot(int i) => (uint)i < (uint)MaxOwned && _oTileGob[i];
+
     /// <summary>What the lightmap bake keys an instance on -- the slot's VDO slot and item (the chart
     /// lookup) and its record's model matrix (the placement; identity for a world-space tile part). The
     /// bounds come from the chart, not from here: the engine's part bbox is unpopulated on tile parts.

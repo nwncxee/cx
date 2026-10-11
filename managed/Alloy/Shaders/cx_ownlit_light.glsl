@@ -80,13 +80,16 @@
 #else
     // CX-188: a fragment lying on a surface the deferred walk already lit (a floor decal) takes that walk's answer
     bool fromRec = false;
+    float owe = 0.0;
     if (uLightRecOn != 0 && uCapture == 0)
     {
-        float owe;
         fromRec = CxLightRecRead(texelFetch(uLightRec, ivec2(gl_FragCoord.xy), 0), vDepth, baked, point, pointSpec, owe);
         if (fromRec) lmSub = vec3(0.0, owe, 0.0);
         else { point = vec3(0.0); pointSpec = vec3(0.0); }
     }
+    // 52 = where a forward fragment's light came from: green the deferred record (darker by the movers' debt it
+    // carries), yellow baked and walked, red unbaked and walked
+    vec3 cxLightFrom = fromRec ? vec3(0.0, 1.0 - 0.8 * owe, 0.0) : baked ? vec3(1.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
     if (!fromRec && uCapture != 2)
         point = CxClusteredLightLm(vWorld, N, V, vDepth, onMover, rough, spec, baked ? 1.0 : 0.0, CxLmTexelWorld(chart.rec),
                                    baked ? CxLightmapMover(chart.rec, vChart) : vec4(0.0), chart.pick, pointSpec, lmSub);
@@ -121,7 +124,8 @@
     // 43 = the lightmap term alone: the baked light on a baked surface, MAGENTA on an unbaked one.
     // 44 = the pages' texel grid over baked surfaces (chart seams and density), magenta unbaked.
     if (uViz == 51) { frag = vec4(cxHotViz.x * 0.25, cxHotViz.y * 0.25, 0.0, 1.0); return; }
-    if (uViz == 43) { frag = vec4(baked ? lm : vec3(1.0, 0.0, 1.0), 1.0); return; }
+    vec3 cxLm = baked ? lm : vec3(1.0, 0.0, 1.0);
+    if (uViz == 43 && uOit == 0) { frag = vec4(cxLm, 1.0); return; }   // a blended part shows it through the tail
     if (uViz == 44)
     {
         vec4 rec = chart.rec;

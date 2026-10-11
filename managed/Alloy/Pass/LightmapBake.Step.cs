@@ -20,9 +20,7 @@ internal static unsafe partial class LightmapBake
     /// with the shadow bracket's gather staged; the caller restores its target after.</summary>
     internal static void Run(bool capturing, int frame)
     {
-        // a parked migration holds two page arrays; the master going off (or a stand-down) must not keep them.
-        // A capture frame only pauses it: the probe's frame is one frame, and the window is already paused work.
-        if (!Enabled) { if (Migrating) GrowAbort(gl: true); AbortReadback(gl: true); return; }
+        if (!Enabled) { AbortReadback(gl: true); return; }
         if (capturing) return;
         long a0 = GC.GetAllocatedBytesForCurrentThread();
         try { RunInner(frame); }
@@ -33,8 +31,10 @@ internal static unsafe partial class LightmapBake
     {
         if (!Ensure()) return;
         _frame = frame;
-        _cap = PageCap();
+        TrackWindow();
         long t = Stopwatch.GetTimestamp();
+        if (!Pool()) return;
+        t = Phase(Ph.Pool, t);
         InstallAreaCache();   // CX-56: before the sweep -- the plan's set is what arms Enrol at all
         t = Phase(Ph.Area, t);
         if (_rekeyPending) Rekey();
@@ -47,10 +47,6 @@ internal static unsafe partial class LightmapBake
         t = Phase(Ph.Adopt, t);
         AreaUpload();
         t = Phase(Ph.Upload, t);
-        // CX-102: a page array growing is a 192-MiB-a-layer migration. It runs in slices BEFORE the pack that
-        // asked for it, so the frame that needs a new page is not the frame that pays for every old one.
-        GrowStep();
-        t = Phase(Ph.Grow, t);
         Pack();
         t = Phase(Ph.Pack, t);
         CollectReadback();
@@ -58,10 +54,7 @@ internal static unsafe partial class LightmapBake
         t = Phase(Ph.Collect, t);
         AreaSnap();
         t = Phase(Ph.Snap, t);
-        // CX-102: FinishPage converts the scratch into a RESIDENT layer, and a layer the migration has
-        // already copied would take those texels into the retiring array. The page in flight keeps its scratch
-        // and its light cursor across the window exactly as it does across the pacing.
-        int steps = HeldByMigration() ? 0 : Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
+        int steps = Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
         for (int k = 0; k < steps; k++) if (!Step()) break;
         t = Phase(Ph.Steps, t);
         UploadRecords();
@@ -98,11 +91,19 @@ internal static unsafe partial class LightmapBake
     /// page's rects stay queued and start over against the new set (or re-key away from it).</summary>
     private static void AbortBake()
     {
-        _bakePage = -1; _bakeRects.Clear(); _bakeLights.Clear(); _bakePicks.Clear();
+        _bakePage = -1; _bakeRects.Clear(); _bakeLights.Clear(); _bakePicks.Clear(); _enc.Row = 0;
     }
 
-    /// <summary>One (page, light) step of the bake, or the page's finish when its lights are done. False =
-    /// nothing to do this frame (no queued rect, or the scratch cube could not be rendered).</summary>
+    /// <summary>The page finish in flight: texel rows of its union encoded so far.</summary>
+    private sealed class EncodeState { public int Row; }
+    private static readonly EncodeState _enc = new();
+    /// <summary>Texel rows of a union one encode dispatch covers: about 3 ms of a full-width union on a
+    /// mid-range card. The background takes one band a frame, the hold as many as its steps allow.</summary>
+    private const int EncodeRows = 128;
+
+    /// <summary>One (page, light) step of the bake, or a band of the page's finish when its lights are done.
+    /// False = nothing more this frame (no queued rect, the scratch cube could not be rendered, or the
+    /// background's one encode band went out).</summary>
     private static bool Step()
     {
         if (_bakePage < 0 && !BeginPage()) return false;
@@ -118,8 +119,7 @@ internal static unsafe partial class LightmapBake
             _bakeLight++; _bakeSteps++;
             return true;
         }
-        FinishPage();
-        return true;
+        return FinishPage();
     }
 
     /// <summary>Open the lowest page holding queued rects: its rect list, the static lights reaching any of
@@ -150,7 +150,7 @@ internal static unsafe partial class LightmapBake
                 if (Touches(l, r.C, r.R)) { _bakeLights.Add(l); break; }
             }
         _bakePage = page; _bakeLight = 0;
-        _pageT0 = Stopwatch.GetTimestamp(); _pageSkew = 0;
+        _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
         BindScratch();
         float* zero = stackalloc float[4] { 0f, 0f, 0f, 0f };
@@ -219,28 +219,18 @@ internal static unsafe partial class LightmapBake
 
     private static void BindScratch()
     {
-        AttachPair(-1);
+        AttachScratch();
         new PassState(depth: false, depthWrite: false, blend: true, cull: false, srgb: false, blendSrc: Gl.ONE, blendDst: Gl.ONE).Apply();
     }
 
-    /// <summary>The FBO over the three planes as its colour outputs: the scratch set (-1) or one resident layer.</summary>
-    private static void AttachPair(int layer)
+    /// <summary>The FBO over the three scratch planes and the scratch depth as its outputs.</summary>
+    private static void AttachScratch()
     {
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
-        if (layer < 0)
-        {
-            Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, _gl.ScrA, 0);
-            Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, Gl.TEXTURE_2D, _gl.ScrB, 0);
-            Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, Gl.TEXTURE_2D, _gl.ScrC, 0);
-            Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, _gl.ScrZ, 0);
-        }
-        else
-        {
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, _gl.TexA, 0, layer);
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, _gl.TexB, 0, layer);
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, _gl.TexC, 0, layer);
-            Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, 0, 0);
-        }
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, _gl.ScrA, 0);
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, Gl.TEXTURE_2D, _gl.ScrB, 0);
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, Gl.TEXTURE_2D, _gl.ScrC, 0);
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, _gl.ScrZ, 0);
         uint* bufs = stackalloc uint[3] { Gl.COLOR_ATTACHMENT0, Gl.COLOR_ATTACHMENT1, Gl.COLOR_ATTACHMENT2 };
         Gl.DrawBuffers(3, bufs);
         Gl.Viewport(0, 0, PageSize, PageSize);
@@ -310,54 +300,63 @@ internal static unsafe partial class LightmapBake
         if (q) _gl.QBake.End(Gl.TIME_ELAPSED);
     }
 
-    /// <summary>The page's final pass: normalise B, dilate two texels through the coverage alpha, convert
-    /// into the resident layer -- only where the scratch says a bake happened, so cache-hit rects already on
-    /// the page (scratch alpha 0) are left alone. Then the readback of what landed, and the records.</summary>
-    private static void FinishPage()
+    /// <summary>The page's final pass, a band of <see cref="EncodeRows"/> a call: the scratch planes encode to
+    /// BC6H/BC7 blocks for A and B, C goes straight into the layer; after the last band each baked rect's cell
+    /// is copied in (cells only: cache-hit rects on the page stay untouched), then the readback and the
+    /// records. Returns <see cref="Step"/>'s answer.</summary>
+    private static bool FinishPage()
     {
         int page = _bakePage;
-        AttachPair(page);
-        // the finish and the readback cover the union of what landed (+ the dilation margin), never the page
+        // the encode and the readback cover the union of what landed (its cells: whole blocks), never the page
         int x0 = PageSize, y0 = PageSize, x1 = 0, y1 = 0;
         for (int k = 0; k < _bakeRects.Count; k++)
         {
-            ref Rect r = ref _rects[_bakeRects[k]];
-            x0 = Math.Min(x0, r.X - Gutter); y0 = Math.Min(y0, r.Y - Gutter);
-            x1 = Math.Max(x1, r.X + r.W + Gutter); y1 = Math.Max(y1, r.Y + r.H + Gutter);
+            CellOf(_rects[_bakeRects[k]], out int cx, out int cy, out int cw, out int ch);
+            x0 = Math.Min(x0, cx); y0 = Math.Min(y0, cy);
+            x1 = Math.Max(x1, cx + cw); y1 = Math.Max(y1, cy + ch);
         }
-        x0 = Math.Max(x0, 0); y0 = Math.Max(y0, 0); x1 = Math.Min(x1, PageSize); y1 = Math.Min(y1, PageSize);
-        new PassState(depth: false, depthWrite: false, cull: false, scissor: true, srgb: false).Apply();
-        Gl.Scissor(x0, y0, x1 - x0, y1 - y0);
-        Gl.UseProgram(_gl.ProgFinish);
+        Gl.UseProgram(_gl.ProgEnc);
         Gl.ActiveTexture(Gl.TEXTURE0); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrA);
         Gl.ActiveTexture(Gl.TEXTURE0 + 1); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrB);
         Gl.ActiveTexture(Gl.TEXTURE0 + 2); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrC);
         Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Uniform1i(_fA, 0); Gl.Uniform1i(_fB, 1); Gl.Uniform1i(_fC, 2);
-        Gl.BindVertexArray(PostChain.FullscreenVao);
-        Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
-        Gl.Disable(Gl.SCISSOR_TEST);
-        Gl.BindVertexArray(0);
+        Gl.BindImageTexture(0, _gl.BlkA, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
+        Gl.BindImageTexture(1, _gl.BlkB, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
+        Gl.BindImageTexture(2, _gl.TexC, 0, 0, page, Gl.WRITE_ONLY, Gl.RGBA8);
+        int y = y0 + _enc.Row, bw = (x1 - x0) / Block, bh = Math.Min(EncodeRows, y1 - y) / Block;
+        // a rect of the page in flight was evicted or dropped between bands and the union shrank under the
+        // rows already encoded: the page starts over rather than dispatch a negative region
+        if (bw <= 0 || bh <= 0) { AbortBake(); return true; }
+        int* region = stackalloc int[4] { x0 / Block, y / Block, bw, bh };
+        Gl.Uniform4iv(_eRegion, 1, region);
+        Gl.DispatchCompute((uint)(bw + EncGroup - 1) / EncGroup, (uint)(bh + EncGroup - 1) / EncGroup, 1);
+        for (uint u = 0; u < 3; u++) Gl.BindImageTexture(u, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA8);
         Gl.ActiveTexture(Gl.TEXTURE0 + 2); Gl.BindTexture(Gl.TEXTURE_2D, 0);
         Gl.ActiveTexture(Gl.TEXTURE0 + 1); Gl.BindTexture(Gl.TEXTURE_2D, 0);
         Gl.ActiveTexture(Gl.TEXTURE0); Gl.BindTexture(Gl.TEXTURE_2D, 0);
+        _enc.Row += bh * Block;
+        if (y0 + _enc.Row < y1) return Hold;
+        Gl.MemoryBarrier(Gl.ALL_BARRIER_BITS);
+        for (int k = 0; k < _bakeRects.Count; k++)
+        {
+            CellOf(_rects[_bakeRects[k]], out int cx, out int cy, out int cw, out int ch);
+            Gl.CopyImageSubData(_gl.BlkA, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexA, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
+            Gl.CopyImageSubData(_gl.BlkB, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexB, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
+        }
         // the readback: the union's raw bits into one PBO, fenced; CollectReadback writes the files. A previous
         // page's fence still open is polled, never waited on: the render thread does not stall for a cache
         // file, and a page landing that close behind another goes uncached (a miss next session, nothing else).
         if (!ReadbackIdle) { CollectReadback(); IssueStashed(); }
         if (Gl.FenceSync == null || Gl.MapNamedBufferRange == null) _uncached += _bakeRects.Count;
-        // AttachPair again: IssueStashed above attached ITS page and unbound, and a stash it could not queue
-        // leaves ReadbackIdle true -- reading with no FBO bound would file the backbuffer under these rect keys
-        else if (ReadbackIdle) { AttachPair(page); QueueReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects); }
+        else if (ReadbackIdle) QueueReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);
         // CX-102: a copy still draining must not turn this landing into a cache miss -- its region waits and is
         // queued the moment the PBO is free. A landed rect keeps its page and place until a Repack.
         else StashReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         for (int k = 0; k < _bakeRects.Count; k++) { Land(_bakeRects[k], false); _pending--; }
-        double ms = (Stopwatch.GetTimestamp() - _pageT0 - _pageSkew) * 1000.0 / Stopwatch.Frequency;
-        _pageSkew = 0;
+        double ms = (Stopwatch.GetTimestamp() - _pageT0) * 1000.0 / Stopwatch.Frequency;
         _pageMs += ms; _pageMsN++;
         if (_logLeft-- > 0) _log?.Info($"LightmapBake: page {page} landed -- {_bakeRects.Count} rects over {_bakeLights.Count} lights in {ms:F0} ms wall" + (_gl.QBake.Measured ? $", {_gl.QBake.Avg / 1e6:F2} ms GPU per light step" : ""));
         AbortBake();
+        return true;
     }
 }
