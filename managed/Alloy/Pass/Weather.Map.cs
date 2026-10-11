@@ -256,8 +256,11 @@ internal static unsafe partial class Weather
           "the lit splice reads the area wetness map through the library composed above it");
         check.Expect(lit.Contains("albedo = CxWetSoak(albedo, uWeatherLook.x * wxPoro * wxWet);")
           && !lit.Contains("rough = mix(rough, 0.03, wxPuddle)")
-          && lit.Contains("rough = max(mix(rough, rough * 0.6, wxWet), min(rough, uLightOcc.y));"),
-          "the damp base darkens by a BOUNDED power and its roughness never drops under the glossy ceiling");
+          && lit.Contains("rough = max(mix(rough, rough * mix(0.6, 0.85, wxPoro), wxWet), min(rough, uLightOcc.y));")
+          && lit.Contains("spec = max(spec, CX_DIELECTRIC_F0 * wxWet);") && !lit.Contains("0.25 * wxWet")
+          && lit.Contains("float wxMicro = uWxMapP.x * 2.0 * (0.35 * n1 + 0.65 * n2) * (1.0 + wxPoro);")
+          && lit.IndexOf("wxPoro = (1.0 - metal)", StringComparison.Ordinal) < lit.IndexOf("float wxMicro", StringComparison.Ordinal),
+          "damp ground keeps a dielectric F0, porous ground keeps its roughness, and the micro-relief outruns a full basin");
         check.Expect(lit.IndexOf("wxFilmRough = max(uWeatherLook.w, CX_ALPHA_MIN);", StringComparison.Ordinal)
             < lit.IndexOf("if (wxFilm >= cxCoat) cxCoatRough = wxFilmRough;", StringComparison.Ordinal)
           && lit.Contains("cxCoat = max(cxCoat, wxFilm);"),

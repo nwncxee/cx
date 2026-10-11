@@ -42,6 +42,9 @@ const vec2 CX_PLANE_TOL = vec2(0.1, 0.4);
 const vec2 CX_PLANE_FLAT = vec2(0.9, 0.97);
 /// How far (uv per unit of normal tilt) a rippled or bumpy surface shifts its read of the mirrored draw.
 const float CX_PLANE_WARP = 0.04;
+/// The share of the probe a screen hit may at most take away: the mirrored draw and the frame are lit without
+/// the dynamic lights the probe saw, so a dark hit subtracted whole punched a black void into a lit street.
+const float CX_SSR_FLOOR = 0.25;
 /// The mirrored draw's mip at roughness 1 (on the sqrt(rough) ladder the probe uses).
 /// ponytail: blur by roughness alone, not by the reflected point's height off the plane (no contact hardening).
 const float CX_PLANE_LOD = 4.0;
@@ -148,7 +151,7 @@ void main()
     vec3 env = uSsr.z > 0.0 ? CxProbeFetch(uProbe, P, mat3(uInvView) * r, sqrt(rough) * (uSsr.z - 1.0)) : vec3(0.0);
     if (uViz == 45) { frag = uSsr.z > 0.0 ? vec4(env, 1.0) : vec4(1.0, 0.0, 1.0, 1.0); return; }   // magenta = no probe bound
     // plane over screen over probe
-    vec3 refl = mix(mix(env, hit.rgb, hit.a), pl.rgb, pa);
+    vec3 refl = max(mix(mix(env, hit.rgb, hit.a), pl.rgb, pa), env * CX_SSR_FLOOR);
     if (uViz == 42) { frag = vec4(refl * trust, 1.0); return; }
     frag = vec4(refl - env, texelFetch(uHiZ, px, 0).r);
     // a record some other program wrote garbage into can pass the depth test by chance: one NaN here is the

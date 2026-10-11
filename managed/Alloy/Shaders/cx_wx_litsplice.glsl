@@ -3,7 +3,7 @@
             // level and its relief) and from the cover map plus the CPU integrators everywhere else. Snow
             // keeps the older reads whole. Every surface takes it, a hosted weather body (td_ground_fs)
             // included.
-            float wxWet = 0.0, wxSnow = 0.0, wxFilm = 0.0, wxPile = 0.0, wxFilmRough = 0.0, wxShore = 0.0;
+            float wxWet = 0.0, wxSnow = 0.0, wxFilm = 0.0, wxPile = 0.0, wxFilmRough = 0.0, wxShore = 0.0, wxPoro = 0.0;
             vec2 wxDriftDir = vec2(0.0), wxP = vWorld.xy;
             vec3 wxTrack = vec3(0.0);
             if (uWeather.w > 3.5)
@@ -101,6 +101,12 @@
                     wxTrack = CxTrack(wxP);
                     wxSnow *= 1.0 - CX_WX_TRACK_BARE * wxTrack.x;
                 }
+                // R3, Lagarde ("Water drop 2 - Rendering wet surfaces"): how much of the water SOAKS IN.
+                // ponytail: porosity is a heuristic off the stock parameters (rough, non-metal, low
+                // specularity = porous). The upgrade is a .mtr porosity channel through ADR 0026's
+                // material layers, read the way CxRoughness is.
+                wxPoro = (1.0 - metal) * smoothstep(0.25, 0.7, rough)
+                       * (1.0 - clamp((spec - CX_DIELECTRIC_F0) / 0.2, 0.0, 1.0));
                 if (up > 0.5)
                 {
                     float wxFlat = smoothstep(0.9, 0.98, up);
@@ -110,8 +116,11 @@
                         // has a real shoreline and drains from its edge inward as the level falls. The map
                         // cannot resolve relief finer than its own texel and no real ground is flat at the
                         // centimetre scale, so a noise micro-relief stands in for what it cannot see -- a
-                        // flat plaza breaks into pools instead of sheeting over as one mirror.
-                        float wxMicro = uWxMapP.x * 0.6 * (0.35 * n1 + 0.65 * n2);
+                        // flat plaza breaks into pools instead of sheeting over as one mirror -- so its
+                        // amplitude must EXCEED a full basin's depth, or a full basin is one lake: at twice
+                        // the depth no more than half of level ground is ever under film. Porous ground
+                        // (dirt, grass) drinks its shallow pockets, so the relief counts double there.
+                        float wxMicro = uWxMapP.x * 2.0 * (0.35 * n1 + 0.65 * n2) * (1.0 + wxPoro);
                         float wxD = CxWetDepth(wxM) - wxMicro;
                         wxFilm = wxWetExp * wxFlat * smoothstep(0.0, uWxMapP.y, wxD);
                         // R5: the SHORELINE. Ground the water has just left, or has not quite reached, is
@@ -154,22 +163,19 @@
                 }
                 if (wxWet > 0.0)
                 {
-                    // R3, Lagarde ("Water drop 2 - Rendering wet surfaces"): water soaks INTO a porous
-                    // surface, and a soaked one darkens and SATURATES -- albedo raised to a power, where a
-                    // linear scale only greys it. Stone and dirt deepen; polished stone and metal barely move.
-                    // ponytail: porosity is a heuristic off the stock parameters (rough, non-metal, low
-                    // specularity = porous). The upgrade is a .mtr porosity channel through ADR 0026's
-                    // material layers, read the way CxRoughness is.
-                    float wxPoro = (1.0 - metal) * smoothstep(0.25, 0.7, rough)
-                                 * (1.0 - clamp((spec - CX_DIELECTRIC_F0) / 0.2, 0.0, 1.0));
+                    // a soaked surface darkens and SATURATES -- albedo raised to a power, where a linear
+                    // scale only greys it. Stone and dirt deepen; polished stone and metal barely move.
                     // through CxWetSoak, which caps the exponent per fragment: a bare pow ran a dark
                     // albedo to black at the higher end of the darkening knob (cx_wx_soak)
                     albedo = CxWetSoak(albedo, uWeatherLook.x * wxPoro * wxWet);
                     // ...and the BASE roughness drops only moderately, and never under the ceiling a dry
                     // fragment was above: below uLightOcc.y every wet pixel joins the mirror path, which
                     // walks every static light in the cluster -- which was the frame, on a rainy plaza
-                    rough = max(mix(rough, rough * 0.6, wxWet), min(rough, uLightOcc.y));
-                    spec = max(spec, 0.25 * wxWet);
+                    // ...and a porous one keeps most of it: water in the pores smooths dirt a little, a
+                    // sealed stone a lot. F0 stays a dielectric's either way -- damp ground is not latex;
+                    // only a FILM (the coat below) is a mirror.
+                    rough = max(mix(rough, rough * mix(0.6, 0.85, wxPoro), wxWet), min(rough, uLightOcc.y));
+                    spec = max(spec, CX_DIELECTRIC_F0 * wxWet);
                 }
                 if (wxFilm > 0.0)
                 {

@@ -94,14 +94,15 @@ internal static class Lighting
                .Ladder(Quality.Reflections, false, true, true, true);
         SsrRough = G.Slider("ssrrough", "Screen-space reflection roughness", 0.05f, 1f, 0.05f, 0.5f, tier: Tier.ChatOnly,
                             help: "Surfaces rougher than this keep the capture alone. Lower is cheaper.");
-        SsrDetail = G.Dropdown("ssrdetail", "Screen-space reflection detail", new[] { 0, 1, 2 }, 2, new[] { "full", "half", "quarter" },
+        SsrDetail = G.Dropdown("ssrdetail", "Screen-space reflection detail", new[] { 0, 1, 2 }, 1, new[] { "full", "half", "quarter" },
                                tier: Tier.Advanced,
                                help: "The resolution a reflection finds what it hits at. Lower is cheaper and blockier.")
-                     .Ladder(Quality.Reflections, 2, 2, 2, 1);
-        SsrPlanar = G.Toggle("ssrplanar", "Mirror reflections on flat ground", true,
+                     .Ladder(Quality.Reflections, 2, 2, 1, 1);
+        SsrPlanar = G.Toggle("ssrplanar", "Mirror reflections on flat ground", false,
                              help: "Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind "
-                                 + "figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set.")
-                     .Ladder(Quality.Reflections, false, false, true, true);
+                                 + "figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set, "
+                                 + "drawn without moving lights, so a street lit by them mirrors darker than it is.")
+                     .Ladder(Quality.Reflections, false, false, false, false);
         SsrPlanarRes = G.Dropdown("ssrplanarres", "Mirror reflection detail", new[] { 2, 3, 4, 6, 8 }, 8,
                                   new[] { "half", "third", "quarter", "sixth", "eighth" },
                                   tier: Tier.ChatOnly,
