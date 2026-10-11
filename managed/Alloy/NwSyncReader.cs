@@ -110,11 +110,11 @@ internal static unsafe class NwSyncReader
     /// is a silent fallback.</summary>
     private static void Bump(ref int counter) => Interlocked.Increment(ref counter);
 
-    /// <summary>Read the boot knob (<c>alloy.nwsyncread</c>, on by default). Once, from the pass roll-call.</summary>
+    /// <summary>Arm the reader. Once, from the pass roll-call.</summary>
     internal static void Attach(ExtenderLog log)
     {
         _log = log;
-        _armed = Renderer.NwSyncRead.V;
+        _armed = true;
     }
 
     /// <summary>Hook the two manifest edges, so <see cref="Open"/>/<see cref="Close"/> track the engine's own

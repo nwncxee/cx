@@ -19,9 +19,6 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe partial class TexLoad
 {
-    /// <summary>Off; prefetching; prefetching with every hit checked against the engine's own read.</summary>
-    internal const int ModeOff = 0, ModeOn = 1, ModeCheck = 2;
-
     /// <summary>The four restypes <c>CAuroraInterface::GetHighestPriorityTextureFormat</c> @0x1125480 probes,
     /// in its own order. Alloy prepares <see cref="DdsResType"/> and <see cref="TgaResType"/>.</summary>
     private const ushort KtxResType = 0x819, DdsResType = 0x7f1, Pc4ResType = 0x80b, TgaResType = 3;   // not-an-offset: restype ids
@@ -47,7 +44,6 @@ internal static unsafe partial class TexLoad
     private const int LogCap = 8;
 
     private static ExtenderLog? _log;
-    private static int _mode;
     private static bool _armed;
     private static readonly SlotJobTable<LoadJob, LoadEntry> _jobs = new(MaxEntries, MaxPending);
     private static readonly Handles _handles = new();
@@ -60,7 +56,7 @@ internal static unsafe partial class TexLoad
     private const int DiagCap = 40;
     private static readonly HashSet<long> _neitherKeys = new();
     private static int _diagNeither, _diagEngineTga;
-    private static long _offered, _ready, _hits, _tgaHits, _misses, _refused, _resident, _neither, _nwsync, _swept, _bytes, _workTicks, _checked, _mismatched, _full, _late;
+    private static long _offered, _ready, _hits, _tgaHits, _misses, _refused, _resident, _neither, _nwsync, _swept, _bytes, _workTicks, _full, _late;
 
     /// <summary>What a worker carries: the location in, the prepared buffer out. Nothing in it points into
     /// engine memory, so nothing it holds can be freed under the worker.</summary>
@@ -97,12 +93,10 @@ internal static unsafe partial class TexLoad
 
     // ---- lifecycle ----
 
-    /// <summary>Read the knob, resolve the two globals, start nothing: the worker starts with the first offer.</summary>
+    /// <summary>Resolve the two globals, start nothing: the worker starts with the first offer.</summary>
     internal static void Attach(ExtenderLog log)
     {
         _log = log;
-        _mode = Renderer.TexLoad.Boot;
-        if (_mode == ModeOff) { log.Info("TexLoad: off (alloy.texload=0) -- the engine reads every texture file on the main thread"); return; }
         if (!ResLocate.Attach(out string? why))
         {
             log.Always($"TexLoad: REFUSED -- {why}; the engine reads every texture file on the main thread");
@@ -115,13 +109,12 @@ internal static unsafe partial class TexLoad
         }
         _armed = true;
         AttachRaster(log);
-        log.Info($"TexLoad: armed -- every world DDS and TGA a material asks for (during an area load, inside LoadArea's texture suspend) is read and decoded on the cx-load worker{(_mode == ModeCheck ? ", and every hand-back is checked against the engine's own read (alloy.texload=1 drops the check)" : "")}");
+        log.Info($"TexLoad: armed -- every world DDS and TGA a material asks for (during an area load, inside LoadArea's texture suspend) is read and decoded on the cx-load worker");
     }
 
     internal static string Note()
         => !_armed ? "" : $"; texload: {_hits} served ({_tgaHits} TGA), {_misses} missed, {_ready} ready, {_bytes >> 20} MiB read, {_workTicks / (Stopwatch.Frequency / 1000)} ms on cx-load"
-                          + $" (offered {_offered}, {_neither} neither DDS nor TGA, {_resident} resident, {_nwsync} from NWSync, {_refused} REFUSED, {_full} past the queue/hold cap, {_late} still reading at the hand-back, {_swept} swept"
-                          + (_mode == ModeCheck ? $", {_checked} checked, {_mismatched} MISMATCHED" : "") + ")";
+                          + $" (offered {_offered}, {_neither} neither DDS nor TGA, {_resident} resident, {_nwsync} from NWSync, {_refused} REFUSED, {_full} past the queue/hold cap, {_late} still reading at the hand-back, {_swept} swept)";
 
     // ---- the offer, main thread ----
 
@@ -403,29 +396,4 @@ internal static unsafe partial class TexLoad
     /// <summary>The engine's own lookup, again: same table, same entry, same location.</summary>
     private static bool StillAt(byte* name, in LoadEntry e)
         => ResLocate.StillAt(name, e.ResType, e.R0, e.R1, e.R2, e.R3);
-
-    /// <summary>Whether the hand-back is also checked against the engine's own read of the same resource.</summary>
-    internal static bool Checking => _armed && _mode == ModeCheck;
-
-    /// <summary>The oracle: the engine's own getter answer for a texture Alloy just served, compared attribute by
-    /// attribute and over level 0. A mismatch means the location resolution picked a different resource than the
-    /// engine's race would; it is said loudly and the caller serves (and releases) the engine's own read instead.
-    /// True when the two agree.</summary>
-    internal static bool Check(IntPtr name, in DdsReader.Info ours, byte* oursData, byte* engineData,
-                               int engineContainer, int engineW, int engineH, int engineCh, int engineSize, float engineAlpha)
-    {
-        _checked++;
-        string? bad =
-            engineData == null ? "the engine read nothing"
-            : engineContainer != ours.Container || engineW != ours.W || engineH != ours.H || engineCh != ours.Channels
-              || engineSize != ours.Level0 || engineAlpha != ours.AlphaMean
-                ? $"engine c{engineContainer} {engineW}x{engineH} ch{engineCh} l0 {engineSize} a{engineAlpha} vs ours c{ours.Container} {ours.W}x{ours.H} ch{ours.Channels} l0 {ours.Level0} a{ours.AlphaMean}"
-            : !new ReadOnlySpan<byte>(engineData, ours.Level0).SequenceEqual(new ReadOnlySpan<byte>(oursData, ours.Level0))
-                ? $"level 0 differs over {ours.Level0} bytes"
-            : null;
-        if (bad == null) return true;
-        if (++_mismatched <= LogCap)
-            _log?.Always($"TexLoad: CHECK FAILED for {Marshal.PtrToStringAnsi(name)}: {bad} -- the engine's own read is served instead; set alloy.texload=0 if this repeats");
-        return false;
-    }
 }

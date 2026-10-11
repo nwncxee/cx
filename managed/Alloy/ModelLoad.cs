@@ -15,9 +15,6 @@ namespace CX.Alloy;
 /// through <c>ReleaseResource</c>. Speculative -- no suspend window, so a not-ready entry is a miss.</summary>
 internal static unsafe partial class ModelLoad
 {
-    /// <summary>Off; serving; serving with every hand-back checked against the engine's own read.</summary>
-    internal const int ModeOff = 0, ModeOn = 1, ModeCheck = 2;
-
     /// <summary>The model restype, as <c>CResHelper&lt;CResMDL, 2002&gt;</c> declares it.</summary>
     private const ushort MdlResType = 2002;
 
@@ -56,7 +53,6 @@ internal static unsafe partial class ModelLoad
     private const int LogCap = 8;
 
     private static ExtenderLog? _log;
-    private static int _mode;
     private static bool _armed;
     private static AuroraGetResourceFn* _getSlot;
     private static AuroraReleaseResourceFn* _relSlot;
@@ -74,7 +70,7 @@ internal static unsafe partial class ModelLoad
     /// <c>[load]</c> line samples across <c>LoadArea</c>.</summary>
     internal static long OfferTicks, BusyTicks;
     private static long _offered, _ready, _served, _misses, _late, _cached, _absent, _refused, _resident,
-                        _nwsync, _nwsyncOff, _full, _supers, _swept, _bytes, _workTicks, _checked, _mismatched,
+                        _nwsync, _nwsyncOff, _full, _supers, _swept, _bytes, _workTicks,
                         _tilesPeeked;
 
     /// <summary>What a worker carries: the location in, the prepared buffer out. Nothing in it points into
@@ -115,13 +111,10 @@ internal static unsafe partial class ModelLoad
 
     // ---- lifecycle ----
 
-    /// <summary>Read the knob, chain the two halves of the seam, start nothing: the worker starts with the
-    /// first offer.</summary>
+    /// <summary>Chain the two halves of the seam, start nothing: the worker starts with the first offer.</summary>
     internal static void Install(ExtenderLog log, HookService hooks)
     {
         _log = log;
-        _mode = Renderer.ModelLoad.Boot;
-        if (_mode == ModeOff) { log.Info("ModelLoad: off (alloy.modelload=0) -- the engine reads every model file on the main thread"); return; }
         if (!ResLocate.Attach(out string? why))
         {
             log.Always($"ModelLoad: REFUSED -- {why}; the engine reads every model file on the main thread");
@@ -143,8 +136,7 @@ internal static unsafe partial class ModelLoad
             return;
         }
         _armed = true;
-        log.Info($"ModelLoad: armed -- an area's own models are read on the cx-mdl worker during LoadArea and handed back at GetResource"
-                 + (_mode == ModeCheck ? ", and every hand-back is checked against the engine's own read (alloy.modelload=1 drops the check)" : ""));
+        log.Info("ModelLoad: armed -- an area's own models are read on the cx-mdl worker during LoadArea and handed back at GetResource");
     }
 
     /// <summary>Outside anything else that may want the same two statics; nothing else chains them today.</summary>
@@ -154,8 +146,7 @@ internal static unsafe partial class ModelLoad
         => !_armed ? "" : $"; modelload: {_served} served of {_ready} ready ({_offered} offered in {OfferTicks / (Stopwatch.Frequency / 1000)} ms,"
                           + $" {_supers} supermodels, {_tilesPeeked} tiles peeked, {_bytes >> 20} MiB read ({_nwsync} from NWSync),"
                           + $" {_workTicks / (Stopwatch.Frequency / 1000)} ms on {MdlWorkers} cx-mdl, {_misses} missed, refused: {_cached} cached, {_absent} no key entry,"
-                          + $" {_resident} resident, {_nwsyncOff} NWSync unreadable, {_refused} unreadable, {_full} past the cap, {_late} still reading, {_swept} swept"
-                          + (_mode == ModeCheck ? $", {_checked} checked, {_mismatched} MISMATCHED" : "") + ")";
+                          + $" {_resident} resident, {_nwsyncOff} NWSync unreadable, {_refused} unreadable, {_full} past the cap, {_late} still reading, {_swept} swept)";
 
     // ---- the offers, main thread ----
 
@@ -268,11 +259,11 @@ internal static unsafe partial class ModelLoad
     /// <summary>Copy the read into a buffer laid out as the engine's own: <see cref="PrefixBytes"/> of zeroed
     /// headroom, then the file. Records the supermodel a binary file names, for the main thread to offer. An ASCII
     /// source with a compiled model in <see cref="MdlCache"/> is swapped for the compiled bytes HERE, on the
-    /// worker -- never in check mode, whose comparison is against the engine's own read of the ASCII.</summary>
+    /// worker.</summary>
     private static void Keep(LoadJob j, ReadOnlySpan<byte> raw)
     {
         if (raw.Length == 0) { j.Why = "no bytes"; return; }
-        if (_mode != ModeCheck) raw = MdlCache.Worker(j.Name, raw);
+        raw = MdlCache.Worker(j.Name, raw);
         byte* block = (byte*)NativeMemory.AllocZeroed((nuint)(PrefixBytes + raw.Length));
         byte* data = block + PrefixBytes;
         raw.CopyTo(new Span<byte>(data, raw.Length));
@@ -381,11 +372,6 @@ internal static unsafe partial class ModelLoad
         if (!_armed || size == null || name == null || *name == 0 || !IsMdl(ext)) return (*_getSlot)(name, ext, size);
         byte* ours = Take(name, out int n);
         if (ours == null) return (*_getSlot)(name, ext, size);
-        if (_mode == ModeCheck && !Check(name, ext, ours, n))
-        {
-            Drop(name, (IntPtr)ours);
-            return (*_getSlot)(name, ext, size);
-        }
         *size = n;
         _served++;
         return ours;
@@ -441,40 +427,5 @@ internal static unsafe partial class ModelLoad
         e.Out = false;
         e.Drip = _drip;
         _jobs.Entries[key] = e;
-    }
-
-    /// <summary>Our entry was wrong: it goes for good, and the caller lets the engine read the model as it
-    /// always did.</summary>
-    private static void Drop(byte* name, IntPtr data)
-    {
-        _out.Remove(data);
-        long key = (long)ResLocate.Key(name);
-        if (_jobs.Entries.TryGetValue(key, out LoadEntry e) && e.Data == data)
-        {
-            _held -= e.Size;
-            _jobs.Entries.Remove(key);
-        }
-        NativeMemory.Free((byte*)data - PrefixBytes);
-    }
-
-    /// <summary>Check mode: the engine's own read of the same model, compared byte for byte with ours and then
-    /// released either way. A mismatch means the location resolution picked a different resource than the
-    /// engine's own lookup would; it is said loudly and the caller serves the engine's read instead.
-    /// True when the two agree.</summary>
-    private static bool Check(byte* name, byte* ext, byte* ours, int n)
-    {
-        _checked++;
-        int theirs = 0;
-        IntPtr got = (IntPtr)(*_getSlot)(name, ext, &theirs);
-        string? bad =
-            got == IntPtr.Zero ? "the engine read nothing"
-            : theirs != n ? $"engine {theirs} bytes vs ours {n}"
-            : !new ReadOnlySpan<byte>((void*)got, n).SequenceEqual(new ReadOnlySpan<byte>(ours, n)) ? $"the {n} bytes differ"
-            : null;
-        if (got != IntPtr.Zero) (*_relSlot)(got);
-        if (bad == null) return true;
-        if (++_mismatched <= LogCap)
-            _log?.Always($"ModelLoad: CHECK FAILED for {Marshal.PtrToStringAnsi((IntPtr)name)}: {bad} -- the engine's own read is served instead; set alloy.modelload=0 if this repeats");
-        return false;
     }
 }
