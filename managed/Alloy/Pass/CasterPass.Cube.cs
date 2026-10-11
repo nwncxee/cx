@@ -331,9 +331,14 @@ public sealed unsafe partial class CasterPass
                 int slot0 = slotOf[rank];
                 if (slot0 < 0 || culled[rank] || rank >= _dynRanks) continue;
                 int li0 = order[rank];
-                PairShadows.AddLight(slot0, FrameInputs.LocalLightId[li0], FrameInputs.LocalLightPos[li0],
+                bool okL = PairShadows.AddLight(slot0, FrameInputs.LocalLightId[li0], FrameInputs.LocalLightPos[li0],
                                      FrameInputs.LocalLightRange[li0]);
+                if (PairShadows.Dump.Next) PairShadows.Note($"  rank {rank} slot {slot0} pos {FrameInputs.LocalLightPos[li0]} far {FrameInputs.LocalLightRange[li0]:F1} -> {(okL ? "candidate" : "REFUSED by AddLight")}");
             }
+            if (PairShadows.Dump.Next)
+                for (int rank = 0; rank < have; rank++)
+                    if (slotOf[rank] < 0 || culled[rank] || rank >= _dynRanks)
+                        PairShadows.Note($"  rank {rank} slot {slotOf[rank]} pos {FrameInputs.LocalLightPos[order[rank]]} NOT OFFERED ({(slotOf[rank] < 0 ? "no slot" : culled[rank] ? "culled" : $"rank past dynRanks {_dynRanks}")})");
             // the same mover population the page claim walks, filtered the same way: a NaN sphere is no
             // mover's, and a still lantern under dyn.min is not worth a tile any more than a page. A creature's
             // parts (a player character is ~19 rigid meshes) fold into ONE mover, the box round them all: one tile
@@ -343,27 +348,31 @@ public sealed unsafe partial class CasterPass
             for (int q = 0; q < _dMoverCount; q++)
             {
                 int m = _dMoverIdx[q];
-                if (!float.IsFinite(_liveCx[m] + _liveCy[m] + _liveCz[m] + _liveR[m])) continue;
-                if (!_liveCreature[m] && _liveR[m] < Shadows.DynMin.V) continue;
                 int o = _liveObj[m];
-                var lo = new Vector3(_liveCx[m] - _liveR[m], _liveCy[m] - _liveR[m], _liveCz[m] - _liveR[m]);
-                var hi = new Vector3(_liveCx[m] + _liveR[m], _liveCy[m] + _liveR[m], _liveCz[m] + _liveR[m]);
-                if (o >= 0)
-                {
-                    if (_aggSeq[o] != _frameSeq) { _aggSeq[o] = _frameSeq; _aggLo[o] = lo; _aggHi[o] = hi; if (_aggN < _aggObj.Length) _aggObj[_aggN++] = o; }
-                    else { _aggLo[o] = Vector3.Min(_aggLo[o], lo); _aggHi[o] = Vector3.Max(_aggHi[o], hi); }
-                    continue;
-                }
-                // ...with the caster's SLOT as its identity: stable while it is enrolled, which is what lets
-                // a light's run keep its order and a tile's layer key still match on the next frame.
-                PairShadows.AddMover(_liveCx[m], _liveCy[m], _liveCz[m], _liveR[m], _liveSlot[m]);
+                if (o < 0 || !float.IsFinite(_liveCx[m] + _liveCy[m] + _liveCz[m] + _liveR[m])) continue;
+                // the FRAMING radius, not the cull's: a skinned part's pose slack (+2 m, at least 3) boxed over a
+                // body framed a 5.6 m ball, which every lamp within 7 m refused as too close to frame
+                float fr = MathF.Min(AlloyRenderer.CasterFrameRadius(_liveSlot[m]), _liveR[m]);
+                var lo = new Vector3(_liveCx[m] - fr, _liveCy[m] - fr, _liveCz[m] - fr);
+                var hi = new Vector3(_liveCx[m] + fr, _liveCy[m] + fr, _liveCz[m] + fr);
+                if (_aggSeq[o] != _frameSeq) { _aggSeq[o] = _frameSeq; _aggLo[o] = lo; _aggHi[o] = hi; if (_aggN < _aggObj.Length) _aggObj[_aggN++] = o; }
+                else { _aggLo[o] = Vector3.Min(_aggLo[o], lo); _aggHi[o] = Vector3.Max(_aggHi[o], hi); }
             }
-            // a body's identity is its object, complemented so it can never equal a caster slot
+            // ORDER: bodies before loose parts -- a light's mover list is first-come, and a plaza's swaying foliage
+            // fills every lamp's sixteen. A body's identity is its object, complemented so it never equals a slot.
             for (int k = 0; k < _aggN; k++)
             {
                 int o = _aggObj[k];
                 Vector3 c = (_aggLo[o] + _aggHi[o]) * 0.5f;
                 PairShadows.AddMover(c.X, c.Y, c.Z, (_aggHi[o] - _aggLo[o]).Length() * 0.5f, ~o);
+            }
+            // ...then the loose dynamic parts, with the caster's SLOT as identity: stable while it is enrolled,
+            // which is what lets a light's run keep its order and a tile's layer key still match next frame
+            for (int q = 0; q < _dMoverCount; q++)
+            {
+                int m = _dMoverIdx[q];
+                if (_liveObj[m] >= 0 || !float.IsFinite(_liveCx[m] + _liveCy[m] + _liveCz[m] + _liveR[m]) || _liveR[m] < Shadows.DynMin.V) continue;
+                PairShadows.AddMover(_liveCx[m], _liveCy[m], _liveCz[m], _liveR[m], _liveSlot[m]);
             }
             PairShadows.Commit();
         }

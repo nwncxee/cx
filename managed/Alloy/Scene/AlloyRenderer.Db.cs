@@ -545,8 +545,10 @@ public sealed unsafe partial class AlloyRenderer
         // pose slack: a bind-pose box does not reach where an extended arm or a swinging cloak does.
         Vector3 gc = Vector3.Transform(new Vector3(_oBx[i], _oBy[i], _oBz[i]), f.Model);
         float gr = _oBr[i] * DbScaleOf(in f.Model);
+        float bare = gr;
         if ((rf & RecipeFlag.Skinned) != 0) gr = MathF.Max(gr + 2f, 3f);
         if (!(gr > 0f)) gr = DegenerateCasterRadius;
+        _dCastSlack[i] = bare > 0f ? gr - bare : 0f;
         fixed (float* sp = _dCastSph)
         {
             float* s = sp + (long)i * 4;

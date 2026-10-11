@@ -124,7 +124,8 @@
     // 43 = the lightmap term alone: the baked light on a baked surface, MAGENTA on an unbaked one.
     // 44 = the pages' texel grid over baked surfaces (chart seams and density), magenta unbaked.
     if (uViz == 51) { frag = vec4(cxHotViz.x * 0.25, cxHotViz.y * 0.25, 0.0, 1.0); return; }
-    if (uViz == 43) { frag = vec4(baked ? lm : vec3(1.0, 0.0, 1.0), 1.0); return; }
+    vec3 cxLm = baked ? lm : vec3(1.0, 0.0, 1.0);
+    if (uViz == 43 && uOit == 0) { frag = vec4(cxLm, 1.0); return; }   // a blended part shows it through the tail
     if (uViz == 44)
     {
         vec4 rec = chart.rec;

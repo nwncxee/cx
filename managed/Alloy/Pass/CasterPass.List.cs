@@ -234,7 +234,7 @@ public sealed unsafe partial class CasterPass
     private static long _submitMasked;
 
     /// <summary>The <c>shadow.movers</c> button: dump one frame's movers on the next bake.</summary>
-    internal static void DumpMoversNext() => _dumpMovers = true;
+    internal static void DumpMoversNext() { _dumpMovers = true; PairShadows.Dump.Next = true; }
 
     /// <summary>A mask dial moved: the caster list's per-record mask routing is stale.</summary>
     internal static void ListChanged() => _listVer++;

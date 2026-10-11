@@ -46,6 +46,9 @@ uniform ivec4 uRect;   // the render viewport: xy = origin in window pixels, zw 
 uniform mat4 uInvVp;   // inverse of the JITTERED view-projection the prepass rasterised with
 uniform mat4 uProj;    // ...and that projection: the depth row linearises, the diagonal sizes a tile
 uniform mat4 uView;    // world -> view, for the tile box; rigid, so its inverse is its transpose
+/// /alloy viz 52: a pixel of a tile holding a pair shows how far its pairs' lookup got instead of the scene --
+/// grey no volume, blue outside the tile, cyan an empty tile, yellow lit, red shadowed (magenta: no channel).
+uniform int uDiag;
 
 /// Pairs one tile may hold. A tile is 16x16 pixels of ONE surface slab, and a pair is one creature's shadow
 /// from one lamp: four is already a crowd under four lamps. Overflow is counted, never silent.
@@ -198,6 +201,7 @@ void main()
 
     vec2 lmSub = vec2(0.0);
     int curSlot = -1, curPi = -1;
+    float minVis = 1.0; int diagPi = -1;
     float curVis = 1.0, curNdl = 0.0;
     for (uint k = 0u; k <= sN; k++)
     {
@@ -215,17 +219,52 @@ void main()
             }
         }
         if (pi >= 0 && CxPairReach(pi, worldPos, 0.0))
+        {
             curVis = min(curVis, CxPairTapAt(pi, worldPos, g.N, curNdl, true));
+            if (curVis < minVis) { minVis = curVis; diagPi = pi; }
+        }
     }
     // a baked shadow keeps uLocalFloor of its light (cx_bake_f), so a mover's takes back only the rest; the
     // channel shares in y were baked without the floor already (cx_lightfrag's own tail)
     lmSub.x *= 1.0 - uLocalFloor;
     float owe = min(lmSub.x / max(g.lmLum, 1e-5) + lmSub.y, 1.0);
+    if (owe > 0.0)
+    {
+        uvec4 lr = imageLoad(uLightRec, p);
+        vec2 dw = unpackHalf2x16(lr.w);
+        if (dw.x != 0.0) imageStore(uLightRec, p, uvec4(lr.xyz, packHalf2x16(vec2(dw.x, min(dw.y + owe, 1.0)))));
+    }
+    if (uDiag != 0)
+    {
+        // the furthest stage any of the tile's pairs got to at this pixel
+        int stage = 0; float wMin = 1.0;
+        for (uint k = 0u; k < sN; k++)
+        {
+            int pi = int(sPair[k]);
+            if (!CxPairReach(pi, worldPos, 0.0)) continue;
+            stage = max(stage, 1);
+            CxPair q = uPair[pi];
+            vec4 c = q.vp * vec4(worldPos, 1.0);
+            if (c.w <= 0.0) continue;
+            vec3 n = c.xyz / c.w;
+            if (any(greaterThanEqual(abs(n), vec3(1.0)))) continue;
+            stage = max(stage, 2);
+            wMin = min(wMin, q.fx.x);
+            float r = n.z * 0.5 + 0.5;
+            if (texture(uPairMap, vec4(n.xy * 0.5 + 0.5, q.ix.x, 1.0)) < 0.5) stage = max(stage, 3);   // any depth < 1 here
+            if (texture(uPairMap, vec4(n.xy * 0.5 + 0.5, q.ix.x, r)) < 0.5) stage = 4;
+        }
+        int ch = diagPi >= 0 ? CxPickChan(int(uPair[diagPi].ix.w), g.lmPick) : 4;
+        // grey: no pair's volume holds this point; blue: in a volume, outside its tile; cyan: in the tile, the
+        // tile empty there; yellow: something drawn there but the point lit; red: shadowed (magenta: no channel)
+        vec3 col = stage == 0 ? vec3(0.2) : stage == 1 ? vec3(0.0, 0.0, 1.0) : stage == 2 ? vec3(0.0, 1.0, 1.0)
+                 : stage == 3 ? vec3(1.0, 1.0, 0.0) : ch < 4 ? vec3(1.0, 0.0, 0.0) : vec3(1.0, 0.0, 1.0);
+        if (stage >= 2 && wMin < 0.5) col *= 0.3;   // the budget weight thinned it
+        imageStore(uHdr, p, vec4(col, imageLoad(uHdr, p).a));
+        return;
+    }
     if (!(owe > 0.0)) return;
     vec4 hdr = imageLoad(uHdr, p);
     // alpha is the probe capture's 1 / distance, which this pass never runs for: hand it back untouched
     imageStore(uHdr, p, vec4(hdr.rgb - g.lmShare * owe, hdr.a));
-    uvec4 lr = imageLoad(uLightRec, p);
-    vec2 dw = unpackHalf2x16(lr.w);
-    if (dw.x != 0.0) imageStore(uLightRec, p, uvec4(lr.xyz, packHalf2x16(vec2(dw.x, min(dw.y + owe, 1.0)))));
 }

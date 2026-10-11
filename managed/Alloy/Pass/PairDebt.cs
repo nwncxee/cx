@@ -34,7 +34,7 @@ internal static unsafe class PairDebt
     private sealed class PairDebtState
     {
         public uint Prog, BufStats;
-        public int LocRect, LocInvVp, LocProj, LocView, LocCubes, LocLmMovers, LocLightOcc;
+        public int LocRect, LocInvVp, LocProj, LocView, LocCubes, LocLmMovers, LocLightOcc, LocDiag;
         /// <summary>The last harvest's absolute counters; the period line reports the delta.</summary>
         public uint LastTiles, LastPairs, LastCov;
         public GpuReadback StatsRead;
@@ -75,6 +75,7 @@ internal static unsafe class PairDebt
         // state and the same viewport the colour pass bound: CxLocalBakedVis reads the static cube through it.
         AlloyRenderer.BindPass(_gl.LocCubes, viewport, near, far);
         Gl.Uniform1i(_gl.LocLmMovers, LightmapBake.MoverMode);
+        Gl.Uniform1i(_gl.LocDiag, AlloyRenderer._lightViz == AlloyRenderer.VizLightFrom ? 1 : 0);
         // unreached here (no glossy mirror walk in this stage), bound so the program is never left reading an
         // unset uniform that a later edit might make reachable
         Gl.Uniform2f(_gl.LocLightOcc, Lighting.HiddenLights.V ? 1f : 0f, AlloyRenderer.GlossyRough);
@@ -177,6 +178,7 @@ internal static unsafe class PairDebt
         _gl.LocView = GlProgram.Loc(prog, "uView");
         _gl.LocCubes = GlProgram.Loc(prog, "uLocalCubes");
         _gl.LocLmMovers = GlProgram.Loc(prog, "uLmMovers");
+        _gl.LocDiag = GlProgram.Loc(prog, "uDiag");
         _gl.LocLightOcc = GlProgram.Loc(prog, "uLightOcc");
         // the two cube arrays carry no layout(binding) -- the lib is shared with programs that bind them on
         // other units -- so they take theirs here, as every lit program does at its own link

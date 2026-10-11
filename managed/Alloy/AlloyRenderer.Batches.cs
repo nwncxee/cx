@@ -387,6 +387,7 @@ public sealed unsafe partial class AlloyRenderer
             // and an animated pose (an extended arm, a swinging cloak) reaches past it. The slack keeps the
             // reach culls and the staleness volumes honest about where the pose can actually be; keyed on
             // the VDO's bone streams because that is enrollment-stable where the per-frame bone slot is not.
+            float bare = r;
             if (_vSkin[_oVao[i]]) r = MathF.Max(r + 2f, 3f);
             // A part with an unpopulated engine bbox (min == max -- measured live on tile parts, the same
             // defect WaterBodies stands in for with TileHalf) must NOT store radius 0: a zero sphere makes
@@ -395,6 +396,7 @@ public sealed unsafe partial class AlloyRenderer
             // honest bound for the population this actually is.
             if (!(r > 0f)) r = DegenerateCasterRadius;
             s[0] = cx; s[1] = cy; s[2] = cz; s[3] = r;
+            _dCastSlack[i] = bare > 0f ? r - bare : 0f;
         }
     }
 
@@ -492,6 +494,7 @@ public sealed unsafe partial class AlloyRenderer
         int vao = _oVao[i];
         Span<float> was = stackalloc float[4];
         for (int k = 0; k < 4; k++) was[k] = _dCastSph[k];
+        float wasSlack = _dCastSlack[i];
         var lo = new Vector3(-0.5f, -2.5f, 3.2f); var hi = new Vector3(0.5f, -1.7f, 12.3f);   // the harbour ship's mast
         Vector3 c = 0.5f * (lo + hi);
         _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = 0.5f * Vector3.Distance(lo, hi);
@@ -510,10 +513,19 @@ public sealed unsafe partial class AlloyRenderer
             inside &= Vector3.Distance(Vector3.Transform(p, f.Model), new Vector3(sx, sy, sz)) <= sr * 1.0001f;
         }
         bool tight = sr < 12.21f * 1.5f * 0.5f;
+        // hand-worked: a skinned part takes the origin bound, 12.21 x 1.5 = 18.315, culled at +2 and framed at it
+        _vSkin[0] = true;
+        WriteCasterSphere(i, in f);
+        CasterSphere(i, out _, out _, out _, out float skinR);
+        bool framed = MathF.Abs(skinR - 20.315f) < 1e-3f && MathF.Abs(CasterFrameRadius(i) - 18.315f) < 1e-3f;
         _vSkin[0] = skin; _oDangly[i] = dangly;
         _oDbPart[i] = wasDb;
         _oBx[i] = bx; _oBy[i] = by; _oBz[i] = bz; _oBr[i] = br; _oCx[i] = ccx; _oCy[i] = ccy; _oCz[i] = ccz; _oR[i] = cr; _oVao[i] = vao;
         for (int k = 0; k < 4; k++) _dCastSph[k] = was[k];
+        _dCastSlack[i] = wasSlack;
+        if (!framed) log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- a skinned part culls at {skinR:F3} (want 20.315) "
+                            + $"and frames at {CasterFrameRadius(i):F3} (want 18.315): the pose slack leaks into the framing");
+        if (!framed) return false;
         if (!(inside && tight)) log.Info("AlloyRenderer.CasterBoundSelfCheck: FAILED -- the caster sphere does not hold its own vertex box "
                                        + "through the model, or still sits about the node origin");
         return inside && tight;
