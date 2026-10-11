@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Signs and publishes the draft release that release.yml built for a tag. It downloads the zips and the
-# SHA256SUMS CI wrote, checks each zip's provenance and checksum, signs SHA256SUMS with the release key,
-# uploads SHA256SUMS.sig and publishes the draft. Run it on the maintainer's machine, never in CI, so a
-# compromised CI can't sign. The key is RELEASE_SIGN_KEY (tools/paths.py). Its public half is
-# packaging/allowed_signers, which players verify against.
+# SHA256SUMS CI wrote, checks each zip's provenance and checksum, signs SHA256SUMS with your release key,
+# uploads SHA256SUMS.sig and publishes the draft. Run it on your own machine, never in CI, so a
+# compromised CI can't sign. Each signer has their own key, RELEASE_SIGN_KEY (tools/paths.py), and its
+# public half is one line in packaging/allowed_signers, which players verify against.
 #
 # A published release is immutable. Check the draft's notes before you run this.
 #
 # Usage: tools/release/sign.sh vX.Y.Z   (gh logged in as an account with write access to nwncxee/cx)
 # First time: ssh-keygen -t ed25519 -f ~/.ssh/cx-release -C cx-releases
-#             echo "cx-releases $(cat ~/.ssh/cx-release.pub)" > packaging/allowed_signers   (and commit it)
+#             echo "cx-releases $(cat ~/.ssh/cx-release.pub)" >> packaging/allowed_signers
+#             Merge that line through a pull request before you sign anything.
 set -euo pipefail
 tag="${1:?usage: tools/release/sign.sh vX.Y.Z}"
 repo=nwncxee/cx

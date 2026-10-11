@@ -55,8 +55,8 @@ The main menu shows an attribution line in the top-left corner.
 ### Checking a download is genuine
 
 Only download CX from the releases page above. Each release carries `SHA256SUMS` and
-`SHA256SUMS.sig`, a signature made with the maintainer's key. A copy of CX from anywhere else can
-match its own checksums, but it cannot carry that signature. The public key is
+`SHA256SUMS.sig`, a signature made with a release signer's key. A copy of CX from anywhere else can
+match its own checksums, but it cannot carry that signature. The public keys are in
 [`packaging/allowed_signers`](packaging/allowed_signers). Fetch it from this repository, not from
 the site you downloaded the zip from.
 

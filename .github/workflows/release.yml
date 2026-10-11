@@ -1,7 +1,7 @@
 # Releases. A v* tag builds the Linux extender on ubuntu-24.04 and the Windows one natively on
 # windows-2025-vs2026 (build-win-native.sh; the Linux cross-build, build-win.sh, is a dev tool and never
 # ships), attests where both zips came from, and uploads them with SHA256SUMS to a draft release. Nothing
-# is public yet: tools/release/sign.sh checks the draft on the maintainer's machine, adds SHA256SUMS.sig
+# is public yet: tools/release/sign.sh checks the draft on a release signer's machine, adds SHA256SUMS.sig
 # and publishes it. Releases are immutable, so a published one can't gain, lose or swap an asset.
 # Every shipped byte is built in this run from the tagged source; no cache feeds a release.
 name: release
