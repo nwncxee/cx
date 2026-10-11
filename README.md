@@ -71,6 +71,15 @@ The first line must print `Good "file" signature for cx-releases`, and the secon
 your zip. On Windows, run the first line in PowerShell (OpenSSH ships with Windows 10 and 11), then
 compare the output of `Get-FileHash cx-windows-x64-<version>.zip` with the zip's line in `SHA256SUMS`.
 
+Releases after v0.9.1 also carry a build attestation, which proves GitHub built the zip from this
+repository's tagged source. With the [GitHub CLI](https://cli.github.com/) installed:
+
+```sh
+gh attestation verify cx-linux-x64-<version>.zip -R nwncxee/cx
+```
+
+It must print `Verification succeeded!`.
+
 ## Build from source
 
 On Linux, `nix develop` gives you the pinned toolchain from `flake.nix`, the same one CI uses:

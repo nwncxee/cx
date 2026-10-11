@@ -1,10 +1,13 @@
-# Keeps the SHA-pinned actions in .github/workflows/ current, one grouped pull request a month.
+# Keeps the SHA-pinned actions in .github/workflows/ current, one grouped pull request a month. A new
+# version waits a week first, so a hijacked release is usually caught and pulled before we take it.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']

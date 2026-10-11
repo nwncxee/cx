@@ -41,6 +41,7 @@
         pkgs.git
         pkgs.actionlint
         pkgs.shellcheck
+        pkgs.zizmor
       ];
 
       # build.sh and run-demo.sh. The libraries go in buildInputs so pkg-config and CMake find
@@ -53,9 +54,10 @@
         pkgs.gnumake
         pkgs.pkg-config
         pkgs.git
-        # build.sh runs tools/gates/run.sh, and its workflows gate needs both.
+        # build.sh runs tools/gates/run.sh, and its workflows gate needs all three.
         pkgs.actionlint
         pkgs.shellcheck
+        pkgs.zizmor
       ];
       ciLibraries = [
         pkgs.zlib

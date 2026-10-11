@@ -1,3 +1,14 @@
-# Only an owner approves a change to a workflow or to this file.
-/.github/workflows/ @vickydotbat @xtul9
-/.github/CODEOWNERS @vickydotbat @xtul9
+# Only an owner approves a change to what builds, signs or verifies a release, or to this file.
+/.github/ @vickydotbat @xtul9
+/SECURITY.md @vickydotbat @xtul9
+/build.sh @vickydotbat @xtul9
+/build-win-native.sh @vickydotbat @xtul9
+/flake.nix @vickydotbat @xtul9
+/flake.lock @vickydotbat @xtul9
+/.gitmodules @vickydotbat @xtul9
+/third_party/ @vickydotbat @xtul9
+/tools/deps.json @vickydotbat @xtul9
+/tools/deps.py @vickydotbat @xtul9
+/tools/build-openal.sh @vickydotbat @xtul9
+/tools/release/ @vickydotbat @xtul9
+/packaging/ @vickydotbat @xtul9
