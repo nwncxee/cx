@@ -208,7 +208,7 @@ internal static unsafe partial class GrassField
             _dbNamed++;
             CX.Alloy.Mdl.ModelDef? md = SceneDb.PartModel[part];
             CX.Alloy.Mdl.NodeDef? nd = PartTree.NodeOf(part);
-            _log?.Always($"GrassField: [db part] model='{md?.Name}' node='{nd?.Name}' faces={faces} "
+            _log?.Info($"GrassField: [db part] model='{md?.Name}' node='{nd?.Name}' faces={faces} "
                        + $"mats={matN} first={mats[0]} patches={_dbCount[k]}");
         }
     }

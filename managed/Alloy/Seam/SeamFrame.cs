@@ -62,7 +62,7 @@ internal static unsafe class SeamFrame
             float was = _scale;
             _scale = _guiScale();
             if (_scale != was)
-                _log?.Always($"SeamFrame: game GUI scale {was:0.###} -> {_scale:0.###} at screen {ScreenW}x{ScreenH}, "
+                _log?.Info($"SeamFrame: game GUI scale {was:0.###} -> {_scale:0.###} at screen {ScreenW}x{ScreenH}, "
                            + $"draw rect {_vw}x{_vh}");
         }
         TextFontBake.FollowScale();

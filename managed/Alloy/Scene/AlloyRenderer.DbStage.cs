@@ -107,7 +107,7 @@ public sealed unsafe partial class AlloyRenderer
             _dbDumped++;
             Matrix4x4 w0 = SceneDb.PartWorld[part];
             MeshArena.Bounds(DrawRecipe.Range(recipe), out Vector3 bmin, out Vector3 bmax, out _, out float brad);
-            _log?.Always($"AlloyRenderer: [db] draw {_dbDumped} part={part} recipe={recipe} "
+            _log?.Info($"AlloyRenderer: [db] draw {_dbDumped} part={part} recipe={recipe} "
                        + $"range={DrawRecipe.Range(recipe)} vao={vao} count={idxCount} off={(long)off} base={baseVertex} "
                        + $"lvl={level} cls={_oCls[i]} lit={_oLit[i]} "
                        + $"pos=({w0.M41:F2},{w0.M42:F2},{w0.M43:F2}) "
@@ -352,7 +352,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 _dbDumpedTile = isTile;
                 _dbRecDump++;
-                _log?.Always($"AlloyRenderer: [db] {(isTile ? "TILE" : "OBJ ")} part={part} lit={lit} "
+                _log?.Info($"AlloyRenderer: [db] {(isTile ? "TILE" : "OBJ ")} part={part} lit={lit} "
                            + $"amb=({r[20]:F3},{r[21]:F3},{r[22]:F3},{r[23]:F3}) "
                            + $"dif=({r[24]:F3},{r[25]:F3},{r[26]:F3},{r[27]:F3}) "
                            + $"emi=({r[28]:F3},{r[29]:F3},{r[30]:F3},w={r[31]:F1}) "
@@ -414,7 +414,7 @@ public sealed unsafe partial class AlloyRenderer
             _saidTileMax = true;
             CX.Alloy.Mdl.MeshDef? bm = DrawRecipe.Mesh(_tileMaxRecipe);
             DbId bo = SceneDb.PartObj[_tileMaxPart];
-            _log?.Always($"AlloyRenderer: [db tilemax] the widest DRAWN surface: part={_tileMaxPart} "
+            _log?.Info($"AlloyRenderer: [db tilemax] the widest DRAWN surface: part={_tileMaxPart} "
                        + $"model='{SceneDb.PartModel[_tileMaxPart]?.Name}' node={SceneDb.PartNode[_tileMaxPart]} "
                        + $"flags={(SceneDb.Objects.Valid(SceneDb.PartObj[_tileMaxPart]) ? SceneDb.ObjFlags[SceneDb.PartObj[_tileMaxPart].Index] : ObjFlag.None)} "
                        + $"kind={SceneDb.PartKindOf[_tileMaxPart]} cls={_oCls[SceneDb.PartSlot[_tileMaxPart] >= 0 ? SceneDb.PartSlot[_tileMaxPart] : 0]} "
@@ -429,7 +429,7 @@ public sealed unsafe partial class AlloyRenderer
         _tileTexProbed++;
         TexId id = DbTexOf(part, recipe, 0);
         CX.Alloy.Mdl.MeshDef? m = DrawRecipe.Mesh(recipe);
-        _log?.Always($"AlloyRenderer: [db tiletex] part={part} recipe={recipe} tileStages={_tileStages} "
+        _log?.Info($"AlloyRenderer: [db tiletex] part={part} recipe={recipe} tileStages={_tileStages} "
                    + $"| recipeTex0={DrawRecipe.Tex(recipe, 0).Value} override={SceneDb.PartTexId[part * 4]} "
                    + $"used={id.Value} state={TexRegistry.StateOf(id)} handle={(TexRegistry.Handle(id) != 0 ? "yes" : "NO")} "
                    + $"h0={(h0 != 0 ? "yes" : "NO")} resident={TexRegistry.TryResident(id, out uint nm, out _)} glname={nm} "

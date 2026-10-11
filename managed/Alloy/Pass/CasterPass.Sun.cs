@@ -306,7 +306,7 @@ public sealed unsafe partial class CasterPass
             && (c0 - _traceC0).LengthSquared() < 1e-10f && _traceMovers == _moverCount + _dMoverCount)
         { _traceStill++; return; }
         _traceLines++;
-        _log?.Always($"CasterPass: [fit] f={_frameSeq} still={_traceStill} focus=({focus.X:F3},{focus.Y:F3},{focus.Z:F3}) "
+        _log?.Info($"CasterPass: [fit] f={_frameSeq} still={_traceStill} focus=({focus.X:F3},{focus.Y:F3},{focus.Z:F3}) "
                    + $"dir=({dir.X:F4},{dir.Y:F4},{dir.Z:F4}) c0=({c0.X:F3},{c0.Y:F3},{c0.Z:F3}) latched={latched} "
                    + $"cam=({FrameInputs.CameraPos.X:F2},{FrameInputs.CameraPos.Y:F2},{FrameInputs.CameraPos.Z:F2}) "
                    + $"fwd=({FrameInputs.SceneCamFwd.X:F3},{FrameInputs.SceneCamFwd.Y:F3},{FrameInputs.SceneCamFwd.Z:F3}) "

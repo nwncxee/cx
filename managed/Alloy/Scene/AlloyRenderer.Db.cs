@@ -273,7 +273,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!noTex && !blackTerms) return;
         _blackProbed++;
         CX.Alloy.Mdl.MeshDef? m = DrawRecipe.Mesh(recipe);
-        _log?.Always($"AlloyRenderer: [db black] part={part} obj={po.Value} model='{SceneDb.ObjSeamModelName[po.Index]}' "
+        _log?.Info($"AlloyRenderer: [db black] part={part} obj={po.Value} model='{SceneDb.ObjSeamModelName[po.Index]}' "
                    + $"node='{PartTree.NameOf(part)}' flags={of} kind={SceneDb.PartKindOf[part]} "
                    + $"| tex0='{(m != null ? m.Textures[0] : "?")}' id={id.Value} resref='{TexRegistry.ResrefOf(id)}' "
                    + $"state={TexRegistry.StateOf(id)} h0={(h0 != 0 ? "yes" : "NO")} cov={TexRegistry.Coverage(id)} "
@@ -360,7 +360,7 @@ public sealed unsafe partial class AlloyRenderer
             if (_cIdx[slot] > 0) drawn++;
             else if (firstBad.Length == 0) firstBad = $"part {k} '{PartTree.NameOf(p)}' slot {slot} has ZERO index count";
         }
-        _log?.Always($"AlloyRenderer: [db pc] {new string(' ', depth * 2)}{why} obj={obj.Value} "
+        _log?.Info($"AlloyRenderer: [db pc] {new string(' ', depth * 2)}{why} obj={obj.Value} "
                    + $"model='{SceneDb.ObjSeamModelName[o]}' flags={SceneDb.ObjFlags[o]} visible={SceneDb.ObjVisible[o]} "
                    + $"scene={SceneDb.ObjScene[o].Value} attachTo={SceneDb.ObjAttachTo[o].Value} "
                    + $"pos=({SceneDb.ObjPos[o].X:F1},{SceneDb.ObjPos[o].Y:F1},{SceneDb.ObjPos[o].Z:F1}) "

@@ -146,7 +146,7 @@ internal static unsafe class HitProbe
             nint t = gt(area, VectorArg.Of(&at));
             tile = t == 0 ? "GetTile MISSED (tile array null, or the position is off the grid)" : $"tile=0x{t:x}";
         }
-        _log?.Always($"[computez]{(sentinel ? " SENTINEL" : "")} area=0x{area:x} scene=0x{scene:x} [{known}] "
+        _log?.Info($"[computez]{(sentinel ? " SENTINEL" : "")} area=0x{area:x} scene=0x{scene:x} [{known}] "
                    + $"in=({before.X:F2},{before.Y:F2},{before.Z:F2}) -> z={after.Z:F3} | {tile}");
     }
 
@@ -181,7 +181,7 @@ internal static unsafe class HitProbe
             // hit belongs to, which is how "a tile gob" is told from a placeable or a creature.
             try { obj = $"type={new Gob(gob).ExternalType}"; } catch { obj = "type=?"; }
         }
-        _log?.Always($"[floorcast] kind={kind} r={r} from=({a.X:F2},{a.Y:F2},{a.Z:F2}) to=({b.X:F2},{b.Y:F2},{b.Z:F2}) "
+        _log?.Info($"[floorcast] kind={kind} r={r} from=({a.X:F2},{a.Y:F2},{a.Z:F2}) to=({b.X:F2},{b.Y:F2},{b.Z:F2}) "
                    + $"hit=({pt.X:F3},{pt.Y:F3},{pt.Z:F3}) nrm=({nr.X:F2},{nr.Y:F2},{nr.Z:F2}) "
                    + $"face={h.Face} surface=0x{h.Surface:x} "
                    + $"gob=0x{gob:x} {obj} part={(name != 0 ? Marshal.PtrToStringAnsi(name) : "-")} "

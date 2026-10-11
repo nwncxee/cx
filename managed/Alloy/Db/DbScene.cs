@@ -177,7 +177,7 @@ public static unsafe class DbScene
         _strand.Moved++;
         if (_strand.Said >= 16) return;
         _strand.Said++;
-        _log?.Always($"DbScene: o={obj.Index} \"{SceneDb.ObjModel[obj.Index]?.Name ?? "-"}\" joined scene "
+        _log?.Info($"DbScene: o={obj.Index} \"{SceneDb.ObjModel[obj.Index]?.Name ?? "-"}\" joined scene "
             + $"\"{SceneDb.SceneName[scene.Index]}\" while still listed in \"{SceneDb.SceneName[was.Index]}\" -- "
             + "taken out of the old one (it would have kept drawing there)");
     }

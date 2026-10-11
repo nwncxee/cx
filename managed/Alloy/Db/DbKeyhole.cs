@@ -162,7 +162,7 @@ internal static unsafe class DbKeyhole
     {
         if (_said || ++_calls < SayAt) return;
         _said = true;
-        AlloyRenderer._log?.Always($"AlloyRenderer: [db] keyhole state -- param8={p8} param9={p9} scene=0x{sc:x} "
+        AlloyRenderer._log?.Info($"AlloyRenderer: [db] keyhole state -- param8={p8} param9={p9} scene=0x{sc:x} "
                                 + $"target=({target.X:F2},{target.Y:F2},{target.Z:F2}) dist={dist:F2} near={near:F2} "
                                 + $"viewVolume=0x{vv:x}");
     }

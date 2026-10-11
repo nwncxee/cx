@@ -270,7 +270,7 @@ public sealed unsafe class SceneInputs : IExtenderService
             // CX-120 bring-up: a focus that JUMPS vertically, in either scene mode, named with its source.
             if (MathF.Abs(_focus.Z - _lastFocusZ) > 1f)
             {
-                _log?.Always($"SceneInputs: [focusjump] {FocusName(src)} z {_lastFocusZ:F3} -> {_focus.Z:F3} "
+                _log?.Info($"SceneInputs: [focusjump] {FocusName(src)} z {_lastFocusZ:F3} -> {_focus.Z:F3} "
                            + $"at ({_focus.X:F3},{_focus.Y:F3}) frame {_focusFrames}");
                 _lastFocusZ = _focus.Z;
             }

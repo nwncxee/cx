@@ -48,7 +48,7 @@ public sealed unsafe partial class AlloyRenderer
             _saidCam = true;
             int ci = camera.Index;
             DbId cobj = SceneDb.Cameras.Valid(camera) ? SceneDb.CamObj[ci] : default;
-            _log?.Always($"AlloyRenderer: [db] camera cam={camera.Value} valid={SceneDb.Cameras.Valid(camera)} "
+            _log?.Info($"AlloyRenderer: [db] camera cam={camera.Value} valid={SceneDb.Cameras.Valid(camera)} "
                        + $"camScene={(SceneDb.Cameras.Valid(camera) ? SceneDb.CamScene[ci].Value : 0)} scene={scene.Value} "
                        + $"animOn={(SceneDb.Scenes.Valid(scene) && SceneDb.SceneAnimOn[scene.Index])} "
                        + $"camObj={cobj.Value} objValid={SceneDb.Objects.Valid(cobj)} "
@@ -153,15 +153,15 @@ public sealed unsafe partial class AlloyRenderer
                 if (MathF.Abs(clip.X) <= clip.W && MathF.Abs(clip.Y) <= clip.W
                     && clip.Z >= -clip.W && clip.Z <= clip.W) inBox++;
             }
-            _log?.Always($"AlloyRenderer: [db] clip test over {tested} world parts: inBox={inBox} behind={behind} "
+            _log?.Info($"AlloyRenderer: [db] clip test over {tested} world parts: inBox={inBox} behind={behind} "
                        + $"| view.M41..43=({wv.View.M41:F1},{wv.View.M42:F1},{wv.View.M43:F1}) "
                        + $"proj.M11={wv.Proj.M11:F3} proj.M34={wv.Proj.M34:F2} valid={wv.Valid}");
-            _log?.Always($"AlloyRenderer: [db] order {_orderCount}: inScene={inScene} otherScene={otherScene} "
+            _log?.Info($"AlloyRenderer: [db] order {_orderCount}: inScene={inScene} otherScene={otherScene} "
                        + $"noRange={noRange} | world extent lo=({wlo.X:F1},{wlo.Y:F1},{wlo.Z:F1}) "
                        + $"hi=({whi.X:F1},{whi.Y:F1},{whi.Z:F1})");
             DbId pl = SceneDb.CamFollow[camera.Index];
             Vector3 target = SceneDb.Objects.Valid(pl) ? SceneDb.ObjPos[pl.Index] : new Vector3(float.NaN);
-            _log?.Always($"AlloyRenderer: [db] extent of {withMesh} ordered parts "
+            _log?.Info($"AlloyRenderer: [db] extent of {withMesh} ordered parts "
                        + $"lo=({lo.X:F1},{lo.Y:F1},{lo.Z:F1}) hi=({hi.X:F1},{hi.Y:F1},{hi.Z:F1}) "
                        + $"| eye=({_eyePos.X:F1},{_eyePos.Y:F1},{_eyePos.Z:F1}) "
                        + $"followTarget=({target.X:F1},{target.Y:F1},{target.Z:F1}) "
@@ -196,7 +196,7 @@ public sealed unsafe partial class AlloyRenderer
                 if (MeshArena.VertexProbe(rRange, 0, out _, out _, out Vector2 au, out Vector2 ac)
                     && MeshArena.VertexProbe(rRange, 1, out _, out _, out Vector2 bu, out _))
                     arena = $"uv[0]=({au.X:F3},{au.Y:F3}) uv[1]=({bu.X:F3},{bu.Y:F3}) chart0=({ac.X:F3},{ac.Y:F3})";
-                _log?.Always($"AlloyRenderer: [db tile] part={part} model='{mdl?.Name}' node={SceneDb.PartNode[part]} "
+                _log?.Info($"AlloyRenderer: [db tile] part={part} model='{mdl?.Name}' node={SceneDb.PartNode[part]} "
                            + $"kind={SceneDb.PartKindOf[part]} merged={SceneDb.PartMerged[part]} "
                            + $"| partMesh={(pm == null ? "NULL" : pm.Positions.Length + "v")} recipeMesh={(rm == null ? "NULL" : rm.Positions.Length + "v")} "
                            + $"same={ReferenceEquals(pm, rm)} partRange={pRange} recipeRange={rRange} "

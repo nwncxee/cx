@@ -52,15 +52,20 @@ public sealed class ExtenderLog
     private static void Drain()
     {
         Affinity.ClearThis();
+        StreamWriter? file = null;
         while (true)
         {
             _wake.WaitOne();
+            try { file ??= new StreamWriter(new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { NewLine = "\n" }; }
+            catch { /* log is best-effort */ }
             while (_queue.TryDequeue(out var l))
             {
                 Console.Error.WriteLine(l);
-                try { File.AppendAllText(LogPath, l + "\n"); }
-                catch { /* log is best-effort */ }
+                try { file?.WriteLine(l); }
+                catch { file = null; }
             }
+            try { file?.Flush(); }
+            catch { file = null; }
         }
     }
 
