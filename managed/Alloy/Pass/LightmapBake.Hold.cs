@@ -171,6 +171,8 @@ internal static unsafe partial class LightmapBake
                  + stages + AreaStats());
         // CX-54 step 0: the key sample is chosen over the whole area, so it is emitted here, not on the first rect.
         FlushKeySample();
+        // the world the send places the player into is not the one any capture under the hold saw
+        EnvProbe.Revoke();
         Forward(msg);
         AreaWrite(complete);
     }
