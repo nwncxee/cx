@@ -60,6 +60,7 @@ internal static unsafe partial class LightmapBake
     {
         OnAreaLoaded();
         StampsReset();
+        TakeAreaKey();
         if (!Enabled || Lightmap.HoldSeconds.V <= 0 || _surface == null)
         {
             _log?.Info(Enabled ? "LightmapBake: AreaLoaded send passed through -- hold disabled (lightmap.hold 0)" : "LightmapBake: AreaLoaded send passed through -- no bake");
@@ -188,7 +189,12 @@ internal static unsafe partial class LightmapBake
     /// the new area's inputs rather than falling back to the long walk-counted close.</summary>
     private static bool _areaEdge;
     internal static void BeginAreaEdge() => _areaEdge = true;
-    internal static void EndAreaEdge() { _areaEdge = false; _edgePresent = GlContextService.Presents; OnAreaLoaded(); StampEdge(); TakeAreaKey(); }
+    internal static void EndAreaEdge()
+    {
+        _areaEdge = false; _edgePresent = GlContextService.Presents; OnAreaLoaded(); StampEdge();
+        // the world scene dies BEFORE the next LoadArea: outside a hold the pending key is the area being left
+        if (Held) TakeAreaKey();
+    }
 
     /// <summary>The window is the input side only (Escape, the clicks it eats); the draw is <see cref="LoadScreen"/>'s,
     /// at the present, after the GL bracket hands the engine's context back -- the window roll-call sits under the

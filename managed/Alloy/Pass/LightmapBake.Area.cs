@@ -217,8 +217,6 @@ internal static unsafe partial class LightmapBake
         return h;
     }
 
-    /// <summary>The area edge consumed the key the load folded. The install itself waits for the frame: it
-    /// needs GL, and the plan may still be inflating.</summary>
     /// <summary>Frames the hold's sweep waits for the plan's answer before it mints rects of its own: a rect minted
     /// first refuses the whole plan, and the read began at LoadArea's return, so it is normally in by the edge.</summary>
     private const int AreaWaitFrames = 30;
@@ -226,9 +224,9 @@ internal static unsafe partial class LightmapBake
     /// <summary>The sweep stands still while the plan's answer is outstanding, hold or not, up to <see cref="AreaWaitFrames"/>.</summary>
     private static bool AreaAwaited => _areaWant && _frame - _areaWantFrame < AreaWaitFrames;
 
-    /// <summary>Not consumed: one transition raises several area edges (the AreaLoaded send's, then "scene changed"),
-    /// and each Revoke wipes what the last adopted -- the 2026-09-27 log's second edge found the key gone. The key
-    /// stands until the next <c>LoadArea</c>; an edge after the answer was taken asks <c>cx-lmcache</c> again.</summary>
+    /// <summary>Taken at the AreaLoaded send, the one moment always after this area's <c>LoadArea</c>, and again
+    /// by an edge under the hold. Not consumed: each Revoke wipes what the last adopted, so the key stands until
+    /// the next <c>LoadArea</c>, and an edge after the answer was taken asks <c>cx-lmcache</c> again.</summary>
     private static void TakeAreaKey()
     {
         _areaKey = (ulong)Interlocked.Read(ref _areaKeyPending);
