@@ -42,9 +42,9 @@ Per-machine paths -- the game, the decomp dump, the Ghidra project, content corp
 resolve through `tools/paths.py`: the environment, then `local.env` (gitignored; copy `local.env.example`),
 then a stock default (your Steam library). `$NWN_DECOMP` and `$GHIDRA_PROJECT` below name those keys. No tracked file names one machine's path; `local-paths.sh` refuses it.
 
-CI builds only when a pull request touches a path in the `paths` list of `.gitea/workflows/ci.yml`; every
-other path skips the build by design (an allowlist, not "unknown paths build"). When `build.sh` or a script
-it calls reads a new file, add that file to the list in the same change.
+CI builds only when a pull request touches a path in the `inputs` list of `.github/workflows/ci.yml`'s
+`changes` job; every other path skips the build by design (an allowlist, not "unknown paths build"). When
+`build.sh` or a script it calls reads a new file, add that file to the list in the same change.
 
 `build.sh` stages a runtime folder `cx-linux-x64/` (launcher + 2 `.so` + the audio runtime) and a flat zip
 of its contents -- the install is "unpack into bin/linux-x86".
@@ -223,8 +223,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `server-neutral.sh`: `managed/` naming a specific server or its content (SoW, Westgate, Arelith) fails;
   describe it generically. `Framework/Product.cs` (the hosting URLs) is exempt.
 - `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP or WebM.
-- `workflows.sh`: a workflow under `.gitea/workflows/` or `.github/workflows/` that actionlint refuses fails --
-  bad YAML or expressions, a runner label missing from `.github/actionlint.yaml`, a shellcheck warning in a `run:`.
+- `workflows.sh`: a workflow under `.github/workflows/` that actionlint refuses fails -- bad YAML or
+  expressions, an unknown runner label, a shellcheck warning in a `run:`.
 - `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, Intel's Windows
   GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that

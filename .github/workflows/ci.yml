@@ -1,0 +1,109 @@
+# Pull-request validation. `ci` builds the extender and proves it loads C# into a foreign process
+# (run-demo.sh, no game needed); there is no unit-test project yet, so the build + load smoke is the gate.
+# `no-decompiled` runs the decompiled-code check and the rule gates on every pull request: a listing can
+# hide in any file, Markdown included. Releases are built by release.yml on a v* tag.
+name: ci
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+# One run per ref: a new push obsoletes the run on the old head, so cancel it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # GitHub never reports a workflow that on.pull_request.paths skipped, so a required check would wait
+  # forever on a docs-only pull request. This job decides instead, and `ci` reports as skipped.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      build: ${{ steps.match.outputs.build }}
+    steps:
+      - id: match
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        # Only a build input builds: the sources, the build scripts, the toolchain pin and the tools build.sh
+        # runs. When build.sh, or a script it calls, reads a file outside this list, add the file here.
+        # LICENSE and third_party/ are here because packaging/licenses.sh copies their notices into LICENSES.txt.
+        run: |
+          set -euo pipefail
+          inputs=(
+            'managed/*'
+            'native/*'
+            'third_party/*'
+            build.sh
+            run-demo.sh
+            flake.nix
+            flake.lock
+            .gitmodules
+            .github/workflows/ci.yml
+            'tools/engine/*'
+            tools/build-openal.sh
+            tools/deps.json
+            tools/deps.py
+            packaging/cx-launch
+            packaging/licenses.sh
+            packaging/README.txt
+            LICENSE
+          )
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          build=false
+          while read -r f; do
+            for p in "${inputs[@]}"; do
+              # shellcheck disable=SC2053 # $p is a glob pattern on purpose
+              if [[ $f == $p ]]; then echo "build input: $f"; build=true; break 2; fi
+            done
+          done <<< "$files"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    # The timeout is a crash guard with room for a binary cache miss, which builds OpenAL Soft from source.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: recursive # funchook pulls diStorm3 as a nested submodule
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      # Read-only: CI never pushes to the binary cache. docs/binary-cache.md says when a maintainer refills it.
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: westgate
+          skipPush: true
+
+      # run-demo.sh runs what build.sh just staged instead of building it a second time.
+      - name: Build + load smoke
+        run: |
+          nix develop .#ci --command bash -c '
+            set -euo pipefail
+            ./build.sh
+            CX_NO_BUILD=1 ./run-demo.sh
+          '
+
+  no-decompiled:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      # flake.nix's gates shell: the pinned Python, git and the workflow linters, nothing that needs a compiler.
+      - name: No decompiled code in the tree
+        run: nix develop .#gates --command bash -c 'bash tools/no-decompiled-contract.sh && bash tools/no-decompiled.sh'
+
+      # The rule gates (tools/gates/), here too so a pull request that skips the local build still fails.
+      - name: Rule gates
+        run: nix develop .#gates --command bash tools/gates/run.sh

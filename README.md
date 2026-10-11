@@ -14,7 +14,7 @@ build you got from the releases page or built yourself.
 ## Install
 
 Download the zip for your system from the
-[releases page](https://git.westgate.pw/NWNEE_CX/nwncxee/releases).
+[releases page](https://github.com/nwncxee/cx/releases).
 
 ### Windows
 
@@ -76,8 +76,8 @@ compare the output of `Get-FileHash cx-windows-x64-<version>.zip` with the zip's
 On Linux, `nix develop` gives you the pinned toolchain from `flake.nix`, the same one CI uses:
 
 ```sh
-git clone --recursive https://git.westgate.pw/NWNEE_CX/nwncxee.git
-cd nwncxee
+git clone --recursive https://github.com/nwncxee/cx.git
+cd cx
 nix develop
 ./build.sh       # -> cx-linux-x64/ and its zip
 ./run-demo.sh    # boots the framework without the game
@@ -92,8 +92,7 @@ architecture and how to add a feature.
 ## Contributing
 
 Fork the repository and open a pull request against `main`. CI doesn't run on a pull request from a
-fork until a maintainer approves it. Once you've had a pull request merged here, your CI runs start
-on their own.
+fork until a maintainer approves it.
 
 ## Reporting a problem
 
@@ -104,7 +103,7 @@ CX is silent by default. To get a log, create `cx.cfg` next to `nwn.ini` (Window
 general.logs=1
 ```
 
-Play again, then open an [issue](https://git.westgate.pw/NWNEE_CX/nwncxee/issues)
+Play again, then open an [issue](https://github.com/nwncxee/cx/issues)
 with `cx.log` (next to `cx.cfg` on Windows, `~/cx.log` on Linux) and what you did just before
 things went wrong.
 

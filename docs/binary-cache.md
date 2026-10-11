@@ -1,8 +1,8 @@
 # Refilling the binary cache
 
 Every CI job starts with an empty Nix store. The `ci` dev shell needs the OpenAL Soft that `flake.nix`
-builds (`.#openal`), and CI pulls it from the binary cache named under `extra-substituters` in
-`.gitea/workflows/ci.yml`. When the cache doesn't have it, the job compiles OpenAL Soft from source,
+builds (`.#openal`), and CI pulls it from the binary cache named in the `cachix-action` step of
+`.github/workflows/ci.yml`. When the cache doesn't have it, the job compiles OpenAL Soft from source,
 which roughly doubles the job's time.
 
 CI never pushes to the cache. A maintainer with write access to it pushes by hand, from their own
@@ -28,7 +28,7 @@ hash=$(basename "$path" | cut -d- -f1)
 curl -s -o /dev/null -w '%{http_code}\n' "<cache URL>/$hash.narinfo"
 ```
 
-`<cache URL>` is the `extra-substituters` value in `.gitea/workflows/ci.yml`. 200 means the cache has
+`<cache URL>` is `https://<cache>.cachix.org`, where `<cache>` is the `name` in that step. 200 means the cache has
 the path. 404 means you need to push it.
 
 ## Push and pin

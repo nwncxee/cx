@@ -1,4 +1,0 @@
-# Runner labels that are not GitHub-hosted: the organisation's own runner for .gitea/workflows/.
-self-hosted-runner:
-  labels:
-    - nix-cx
