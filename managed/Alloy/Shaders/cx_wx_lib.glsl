@@ -35,6 +35,22 @@ const float CX_WX_FOOT_M = 0.35;
 /// The shoreline rim's width, as a share of the puddle-depth knob: ground this far under the water's own
 /// level, in depth terms, is soaked through without being covered.
 const float CX_WX_SHORE = 0.6;
+/// The noise micro-relief's swing about its mean, as a share of the puddle-depth knob: wider than the
+/// depth, so a full basin on level ground pools in pockets instead of one sheet.
+const float CX_WX_MICRO_AMP = 2.0;
+/// ...and its mean: what distant ground, where the noise mips to its mean, stands above the water. Under
+/// 1, a distant full basin still shows a sheen; near, a full one films where the noise falls under it.
+const float CX_WX_MICRO_MEAN = 0.8;
+/// The share of its roughness a soaked POROUS surface keeps (a sealed one keeps 0.6): water in the pores
+/// smooths dirt a little, a sealed stone a lot.
+const float CX_WX_PORO_ROUGH = 0.85;
+
+/// How much of the rain soaks in, 0..1 (Lagarde, "Water drop 2"): a heuristic off the stock parameters --
+/// rough, non-metal and low specularity read as porous. ponytail: the upgrade is a .mtr porosity channel.
+float CxWxPoro(float rough, float spec, float metal)
+{
+    return (1.0 - metal) * smoothstep(0.25, 0.7, rough) * (1.0 - clamp((spec - CX_DIELECTRIC_F0) / 0.2, 0.0, 1.0));
+}
 
 float CxWeatherExposure(vec3 worldPos, vec3 N)
 {

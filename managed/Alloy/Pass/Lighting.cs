@@ -101,8 +101,7 @@ internal static class Lighting
         SsrPlanar = G.Toggle("ssrplanar", "Mirror reflections on flat ground", false,
                              help: "Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind "
                                  + "figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set, "
-                                 + "drawn without moving lights, so a street lit by them mirrors darker than it is.")
-                     .Ladder(Quality.Reflections, false, false, false, false);
+                                 + "drawn without moving lights, so a street lit by them mirrors darker than it is.");
         SsrPlanarRes = G.Dropdown("ssrplanarres", "Mirror reflection detail", new[] { 2, 3, 4, 6, 8 }, 8,
                                   new[] { "half", "third", "quarter", "sixth", "eighth" },
                                   tier: Tier.ChatOnly,

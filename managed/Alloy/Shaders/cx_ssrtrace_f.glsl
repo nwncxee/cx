@@ -42,9 +42,12 @@ const vec2 CX_PLANE_TOL = vec2(0.1, 0.4);
 const vec2 CX_PLANE_FLAT = vec2(0.9, 0.97);
 /// How far (uv per unit of normal tilt) a rippled or bumpy surface shifts its read of the mirrored draw.
 const float CX_PLANE_WARP = 0.04;
-/// The share of the probe a screen hit may at most take away: the mirrored draw and the frame are lit without
-/// the dynamic lights the probe saw, so a dark hit subtracted whole punched a black void into a lit street.
+/// The share of the probe a screen hit keeps at least: the frame and the mirrored draw are lit without the
+/// moving lights the probe saw, so a dark hit stands for a darker reflection, never for none.
 const float CX_SSR_FLOOR = 0.25;
+/// A record this smooth (alpha) is a water film or a coat: it never reads the colour pyramid under level 1, so a
+/// 16x torch mirrored on a 0.16-rough puddle is a glow and not a lightsaber.
+const float CX_SSR_COAT_A = 0.05;
 /// The mirrored draw's mip at roughness 1 (on the sqrt(rough) ladder the probe uses).
 /// ponytail: blur by roughness alone, not by the reflected point's height off the plane (no contact hardening).
 const float CX_PLANE_LOD = 4.0;
@@ -108,7 +111,8 @@ vec4 Trace(vec3 o, vec3 r, float rough, vec2 size)
     float w = smoothstep(0.0, CX_SSR_EDGE, min(e.x, e.y)) * (1.0 - smoothstep(0.8, 1.0, t));
     // the lobe's footprint widens with the distance travelled and picks the mip. rough^2, not alpha: a box mip of
     // a thin dark object blends in the bright sky around it, so a glossy mirror must stay near level 0
-    vec3 hit = textureLod(uColor, uv, max(log2(max(distance(ph, p0) * rough * rough, 1.0)), float(fine)) - float(uColShift)).rgb;
+    float mipFloor = max(float(fine), rough < CX_SSR_COAT_A ? 1.0 : 0.0);
+    vec3 hit = textureLod(uColor, uv, max(log2(max(distance(ph, p0) * rough * rough, 1.0)), mipFloor) - float(uColShift)).rgb;
     return vec4(hit, w);
 }
 
