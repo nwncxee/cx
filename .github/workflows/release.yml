@@ -1,18 +1,14 @@
 # Releases. A v* tag builds the Linux extender on ubuntu-24.04 and the Windows one natively on
 # windows-2025-vs2026 (build-win-native.sh; the Linux cross-build, build-win.sh, is a dev tool and never
-# ships), then publishes both zips + SHA256SUMS to the GitHub release for the tag. The release body comes
-# from packaging/RELEASE-BODY.md. tools/release/sign.sh adds SHA256SUMS.sig from the maintainer's machine.
-# Tag-gated, never on a pull request.
+# ships), attests where both zips came from, and uploads them with SHA256SUMS to a draft release. Nothing
+# is public yet: tools/release/sign.sh checks the draft on the maintainer's machine, adds SHA256SUMS.sig
+# and publishes it. Releases are immutable, so a published one can't gain, lose or swap an asset.
+# Every shipped byte is built in this run from the tagged source; no cache feeds a release.
 name: release
 
 on:
   push:
     tags: ['v*']
-  # Re-run / backfill an existing tag from main's workflow file (the file at an old
-  # tag is the old publish): gh workflow run release --ref main -f tag=vX.Y.Z
-  workflow_dispatch:
-    inputs:
-      tag: { description: existing v* tag to (re)publish, required: true }
 
 permissions:
   contents: read
@@ -22,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TAG: ${{ inputs.tag || github.ref_name }}
+  TAG: ${{ github.ref_name }}
 
 jobs:
   linux:
@@ -36,9 +32,15 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.TAG }}
           fetch-depth: 0 # build.sh stamps the version from `git describe --tags`
           submodules: recursive # funchook pulls diStorm3 as a nested submodule
+          persist-credentials: false
+
+      # Only reviewed code ships: the tag must point at a commit that reached main through a pull request.
+      - name: Tag is on main
+        run: |
+          git merge-base --is-ancestor HEAD origin/main \
+            || { printf "%s is not on main; tag a commit from main\n" "$TAG" >&2; exit 1; }
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -48,13 +50,7 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q clang lld zlib1g-dev cmake pkg-config \
-            libpipewire-0.3-dev libpulse-dev libasound2-dev   # CX-57: OpenAL Soft's backends
-
-      # The built libopenal.so.1: build.sh skips the OpenAL Soft compile when it is present. Keyed on the pin and
-      # on the script that holds the cmake flags. openal-cache.yml keeps this entry alive on main, where a tag
-      # run can restore it.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with: { path: build/openal, key: "openal-${{ runner.os }}-${{ hashFiles('tools/deps.json', 'tools/build-openal.sh') }}" }
+            libpipewire-0.3-dev libpulse-dev libasound2-dev   # OpenAL Soft's backends
 
       - name: Build + package
         run: |
@@ -77,9 +73,9 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.TAG }}
           fetch-depth: 0
           submodules: recursive
+          persist-credentials: false
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -103,28 +99,40 @@ jobs:
     needs: [linux, windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # The environment admits v* tags only, and only admins can push one.
+    environment: release
     permissions:
-      contents: write # the only job that writes: it creates the release and uploads its assets
+      contents: write # creates the draft release and uploads its assets
+      id-token: write # the Sigstore certificate that signs the provenance
+      attestations: write # stores the provenance on the repository
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { ref: "${{ env.TAG }}" }
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { path: dist, merge-multiple: true }
 
-      # Idempotent: a workflow_dispatch re-run edits the existing release and replaces same-name assets.
-      - name: Publish to the GitHub release
+      - run: cd dist && sha256sum *.zip > SHA256SUMS
+
+      # sign.sh and the README's verify steps check it, pinned to this workflow and the tag.
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      # A re-run of a failed run refills its draft. A published release is final.
+      - name: Upload to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ( cd dist && sha256sum *.zip > SHA256SUMS )
           sed "s/@VERSION@/${TAG}/g" packaging/RELEASE-BODY.md > body.md
           pre=false; [[ "$TAG" == *-rc* ]] && pre=true
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release edit "$TAG" --title "$TAG" --notes-file body.md --draft=false --prerelease="$pre"
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null); then
+            [[ "$draft" == true ]] || { printf "%s is already published\n" "$TAG" >&2; exit 1; }
+            gh release edit "$TAG" --title "$TAG" --notes-file body.md --prerelease="$pre"
           else
-            gh release create "$TAG" --verify-tag --title "$TAG" --notes-file body.md --prerelease="$pre"
+            gh release create "$TAG" --draft --verify-tag --title "$TAG" --notes-file body.md --prerelease="$pre"
           fi
           gh release upload "$TAG" dist/* --clobber
-          echo "published $TAG with: $(ls dist | tr '\n' ' ')"
+          echo "draft $TAG holds: $(ls dist | tr '\n' ' '). Next: tools/release/sign.sh $TAG"

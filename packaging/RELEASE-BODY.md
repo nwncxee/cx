@@ -8,4 +8,4 @@ NWNCX:EE (CX) @VERSION@. Optional add-on for Neverwinter Nights: Enhanced Editio
 
 It worked if you see an attribution text in top left corner in the main menu.
 
-**Verify**: `SHA256SUMS.sig` signs `SHA256SUMS` with the key in the repository's `packaging/allowed_signers`. Steps in the README.
+**Verify**: `SHA256SUMS.sig` signs `SHA256SUMS` with the key in the repository's `packaging/allowed_signers`, and a build attestation proves GitHub built each zip from this tag. Steps in the README.

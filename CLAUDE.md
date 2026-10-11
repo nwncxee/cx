@@ -223,8 +223,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `server-neutral.sh`: `managed/` naming a specific server or its content (SoW, Westgate, Arelith) fails;
   describe it generically. `Framework/Product.cs` (the hosting URLs) is exempt.
 - `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP or WebM.
-- `workflows.sh`: a workflow under `.github/workflows/` that actionlint refuses fails -- bad YAML or
-  expressions, an unknown runner label, a shellcheck warning in a `run:`.
+- `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses fails --
+  bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
+  release, a checkout that keeps its token.
 - `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, Intel's Windows
   GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
