@@ -82,6 +82,19 @@ internal static unsafe class EnvProbe
     }
 
     private static EnvProbeState _gl = new();
+    /// <summary>The light-settle test's memory: the area's point-light count and how many frames it has stood.</summary>
+    private sealed class SettleState { public int Lights = -1, Frames; }
+    private static SettleState _settle = new();
+    /// <summary>Frames the point-light count must stand before a capture: a server streams the area's lights
+    /// after it places the player, and a cube captured before they land mirrors a lamp-less world.</summary>
+    private const int LightSettleFrames = 60;
+    /// <summary>Have the area's point lights stopped arriving? <paramref name="count"/> is this frame's
+    /// upload; a change restarts the count.</summary>
+    internal static bool LightsSettled(int count)
+    {
+        if (count != _settle.Lights) { _settle.Lights = count; _settle.Frames = 0; return false; }
+        return ++_settle.Frames >= LightSettleFrames;
+    }
     /// <summary><c>light.probe</c>: gates <see cref="Wanted"/>, which is re-asked every frame, so the probe
     /// idles rather than un-arming and a re-enable captures at the next edge.</summary>
     private static bool _on => Lighting.Probe.V;
@@ -140,6 +153,13 @@ internal static unsafe class EnvProbe
             check.Expect(!Ready, "the world edge drops the cube's freshness, so a new area recaptures");
             check.Expect(Tex == 9, "...and keeps the GL objects: they belong to the context, not to the world");
             Tex = 0;
+            _settle = new();
+            bool early = LightsSettled(5);
+            for (int i = 0; i < 58; i++) LightsSettled(5);
+            check.Expect(!early && !LightsSettled(6) && !LightsSettled(6), "a light count that just changed is not settled");
+            for (int i = 0; i < 57; i++) LightsSettled(6);
+            check.Expect(LightsSettled(6), "...and one that stood sixty frames is");
+            _settle = new();
 
             check.Expect(Finite(stackalloc float[] { 0f, 0.5f, 16f }) && !Finite(stackalloc float[] { 0.2f, float.NaN })
                          && !Finite(stackalloc float[] { float.PositiveInfinity }), "a NaN or Inf capture is not published");
@@ -157,7 +177,7 @@ internal static unsafe class EnvProbe
     /// has walked <see cref="MoveDist"/> out of the last one. The frame floor sits in front of both.</summary>
     internal static bool Wanted(Vector3 eye, int frame)
     {
-        if (!_on || _down.Failed || Gl.ClearColor == null) return false;
+        if (!_on || _down.Failed || Gl.ClearColor == null || LightmapBake.Held) return false;
         if (frame - _lastFrame < MinFrames) return false;
         return !Ready || Vector3.DistanceSquared(eye, Origin) > MoveDist * MoveDist;
     }

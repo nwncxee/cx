@@ -42,6 +42,15 @@ const vec2 CX_PLANE_TOL = vec2(0.1, 0.4);
 const vec2 CX_PLANE_FLAT = vec2(0.9, 0.97);
 /// How far (uv per unit of normal tilt) a rippled or bumpy surface shifts its read of the mirrored draw.
 const float CX_PLANE_WARP = 0.04;
+/// The share of the probe a screen hit keeps at least: the frame and the mirrored draw are lit without the
+/// moving lights the probe saw, so a dark hit stands for a darker reflection, never for none.
+const float CX_SSR_FLOOR = 0.25;
+/// A record this smooth (alpha) is a water film or a coat: it never reads the colour pyramid under level 1, so a
+/// 16x torch mirrored on a 0.16-rough puddle is a glow and not a lightsaber.
+const float CX_SSR_COAT_A = 0.05;
+/// ...and the brightest a film mirrors, in place of CX_SSR_MAX: a lamp's emissive geometry is drawn at its
+/// midnight value whatever the hour, and a puddle that mirrors it literally outshines the noon it sits in.
+const float CX_SSR_COAT_MAX = 3.0;
 /// The mirrored draw's mip at roughness 1 (on the sqrt(rough) ladder the probe uses).
 /// ponytail: blur by roughness alone, not by the reflected point's height off the plane (no contact hardening).
 const float CX_PLANE_LOD = 4.0;
@@ -105,7 +114,8 @@ vec4 Trace(vec3 o, vec3 r, float rough, vec2 size)
     float w = smoothstep(0.0, CX_SSR_EDGE, min(e.x, e.y)) * (1.0 - smoothstep(0.8, 1.0, t));
     // the lobe's footprint widens with the distance travelled and picks the mip. rough^2, not alpha: a box mip of
     // a thin dark object blends in the bright sky around it, so a glossy mirror must stay near level 0
-    vec3 hit = textureLod(uColor, uv, max(log2(max(distance(ph, p0) * rough * rough, 1.0)), float(fine)) - float(uColShift)).rgb;
+    float mipFloor = max(float(fine), rough < CX_SSR_COAT_A ? 1.0 : 0.0);
+    vec3 hit = textureLod(uColor, uv, max(log2(max(distance(ph, p0) * rough * rough, 1.0)), mipFloor) - float(uColShift)).rgb;
     return vec4(hit, w);
 }
 
@@ -139,8 +149,9 @@ void main()
              * (1.0 - smoothstep(CX_PLANE_TOL.x, CX_PLANE_TOL.y, abs(P.z - uPlane.x)));
     vec4 hit = pa < 1.0 ? Trace(o, r, rough, size) : vec4(0.0);
     if (any(isnan(hit)) || any(isinf(hit))) hit = vec4(0.0);
-    hit = clamp(hit, vec4(0.0), vec4(vec3(CX_SSR_MAX), 1.0));
-    pl.rgb = min(pl.rgb, vec3(CX_SSR_MAX));
+    float bright = rough < CX_SSR_COAT_A ? CX_SSR_COAT_MAX : CX_SSR_MAX;
+    hit = clamp(hit, vec4(0.0), vec4(vec3(bright), 1.0));
+    pl.rgb = min(pl.rgb, vec3(bright));
     float gate = CxSsrGate(wmax, rough, uSsr.x);
     float trust = pa + (1.0 - pa) * hit.a;
     if (uViz == 41) { frag = vec4(trust * gate, wmax, 1.0, 1.0); return; }
@@ -148,7 +159,7 @@ void main()
     vec3 env = uSsr.z > 0.0 ? CxProbeFetch(uProbe, P, mat3(uInvView) * r, sqrt(rough) * (uSsr.z - 1.0)) : vec3(0.0);
     if (uViz == 45) { frag = uSsr.z > 0.0 ? vec4(env, 1.0) : vec4(1.0, 0.0, 1.0, 1.0); return; }   // magenta = no probe bound
     // plane over screen over probe
-    vec3 refl = mix(mix(env, hit.rgb, hit.a), pl.rgb, pa);
+    vec3 refl = max(mix(mix(env, hit.rgb, hit.a), pl.rgb, pa), env * CX_SSR_FLOOR);
     if (uViz == 42) { frag = vec4(refl * trust, 1.0); return; }
     frag = vec4(refl - env, texelFetch(uHiZ, px, 0).r);
     // a record some other program wrote garbage into can pass the depth test by chance: one NaN here is the

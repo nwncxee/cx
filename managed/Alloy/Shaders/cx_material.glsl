@@ -173,13 +173,18 @@ vec3 cxSheen; float cxSheenRough;   // sheen colour (linear) and alpha; 0 alpha 
 /// sphere-light widening (<c>CxSrcSpread</c>), in the denominator alone so the numerator carries Karis'
 /// energy factor -- a water film's alpha is near the CX_ALPHA_MIN floor, and this coat is where an
 /// unbounded peak showed up as a flare.
+/// The most a coat's highlight may exceed the light's own irradiance, as a soft (Reinhard) ceiling: a near-mirror
+/// lobe peaks at 1 / alpha^2, so a lamp that barely lights the street mirrored in a puddle as a white road.
+/// The ceiling keeps the lobe's shape and ties the reflection to how much the light shows on the ground.
+const float CX_COAT_LOBE_MAX = 2.0;
 float CxCoatLobe(vec3 N, vec3 V, vec3 L, float a, float spread)
 {
     vec3 H = normalize(V + L);
     float NoH = clamp(dot(N, H), 0.0, 1.0), LoH = clamp(dot(L, H), 0.0, 1.0);
     float ap = min(a + spread, 1.0);
     float a2 = a * a, den = 1.0 - NoH * NoH * (1.0 - ap * ap);
-    return a2 / max(den * den, 1e-8) * (0.25 / max(LoH * LoH, 1e-4)) * mix(CX_DIELECTRIC_F0, 1.0, CxFresnel(LoH));
+    float lobe = a2 / max(den * den, 1e-8) * (0.25 / max(LoH * LoH, 1e-4)) * mix(CX_DIELECTRIC_F0, 1.0, CxFresnel(LoH));
+    return lobe / (1.0 + lobe / CX_COAT_LOBE_MAX);
 }
 float CxCoatLobe(vec3 N, vec3 V, vec3 L, float a) { return CxCoatLobe(N, V, L, a, 0.0); }
 

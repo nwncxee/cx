@@ -276,6 +276,7 @@ internal static unsafe class AlloyLights
         check.Expect(AlloyRenderer.MaterialLib.Contains("float ap = min(a + spread, 1.0);")
           && AlloyRenderer.MaterialLib.Contains("cxCoat * CxCoatLobe(N, V, L, cxCoatRough, spread)")
           && AlloyRenderer.MaterialLib.Contains("spc = min(spc, vec3(CX_FILM_LIGHT_MAX));")
+          && AlloyRenderer.MaterialLib.Contains("return lobe / (1.0 + lobe / CX_COAT_LOBE_MAX);")
           && AlloyRenderer.OwnedLitFsMain.Contains("cxCoatRough = sqrt(min(cxCoatRough * cxCoatRough + aaKernel, 1.0));"),
           "the coat's lobe widens with it, its film highlights are firefly-clamped, and it takes the specular-AA kernel");
 

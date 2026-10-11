@@ -53,7 +53,7 @@ internal static unsafe partial class Weather
                          help: "How far out the map looks for the low point a puddle fills toward. Small = many shallow pools, large = fewer broader ones.");
         PuddleDepth = G.Slider("puddledepth", "Puddle depth", 0.005f, 0.12f, 0.005f, 0.03f, "m", Tier.ChatOnly,
                                help: "How deep standing water gets in a full basin. Deeper water floods further up its banks.");
-        FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.16f, tier: Tier.ChatOnly,
+        FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.22f, tier: Tier.ChatOnly,
                              help: "Roughness of the water film over wet ground: low is a mirror, high a matte sheen. Perceptual, so the low end is still a real lobe and not a needle.");
         FilmLights = G.Slider("filmlights", "Film highlights", 0, 4, 1, 2, tier: Tier.ChatOnly,
                               help: "Baked static lights a water film may mirror per cluster: the brightest few, evaluated on the film's own lobe. 0 = the film takes moving lights only.")
@@ -86,7 +86,7 @@ internal static unsafe partial class Weather
             Gl.ActiveTexture(Gl.TEXTURE0);
         }
         if (locXf >= 0) Gl.Uniform4f(locXf, 0f, 0f, on ? _mapTpm : 0f, WetStrength.V);
-        if (locP >= 0) Gl.Uniform4f(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, 0f);
+        if (locP >= 0) Gl.Uniform4f(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, Puddles.V);
     }
 
     /// <summary>The area edge: the map belongs to the area it was latched in.</summary>
@@ -256,8 +256,13 @@ internal static unsafe partial class Weather
           "the lit splice reads the area wetness map through the library composed above it");
         check.Expect(lit.Contains("albedo = CxWetSoak(albedo, uWeatherLook.x * wxPoro * wxWet);")
           && !lit.Contains("rough = mix(rough, 0.03, wxPuddle)")
-          && lit.Contains("rough = max(mix(rough, rough * 0.6, wxWet), min(rough, uLightOcc.y));"),
-          "the damp base darkens by a BOUNDED power and its roughness never drops under the glossy ceiling");
+          && lit.Contains("rough * mix(0.6, CX_WX_PORO_ROUGH, wxPoro)")
+          && !lit.Contains("0.25 * wxWet") && !lit.Contains("spec = max(spec,"),
+          "damp ground keeps a dielectric F0 and porous ground keeps its roughness");
+        check.Expect(lit.Contains("const float CX_WX_MICRO_AMP = 2.0;") && lit.Contains("(CX_WX_MICRO_MEAN * 2.0 * (1.0 - uWxMapP.w) + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5))")
+          && lit.Contains("smoothstep(CX_WX_FILM_FAR_M.x, CX_WX_FILM_FAR_M.y, vDepth)")
+          && lit.IndexOf("wxPoro = (1.0 - metal)", StringComparison.Ordinal) < lit.IndexOf("float wxMicro", StringComparison.Ordinal),
+          "the micro-relief outruns a full basin, and porosity is known before the film forms");
         check.Expect(lit.IndexOf("wxFilmRough = max(uWeatherLook.w, CX_ALPHA_MIN);", StringComparison.Ordinal)
             < lit.IndexOf("if (wxFilm >= cxCoat) cxCoatRough = wxFilmRough;", StringComparison.Ordinal)
           && lit.Contains("cxCoat = max(cxCoat, wxFilm);"),

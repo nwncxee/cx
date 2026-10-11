@@ -639,12 +639,12 @@ option turns this on and off."
 | light.sun | Sun and moon | S | 0–4 step 0.05 · 1.00 | U | L | Lights | Scales the area's directional light. 1 is the area author's value. |
 | light.probe | Reflections from the scene | T | on | U | L | Reflections | Materials with an environment map reflect a capture of the surroundings instead of the stock sphere map. Ladders on `quality.reflections`. |
 | light.ssr | Screen-space reflections | T | on | U | L | Reflections | Glossy and rain-wet surfaces also reflect what is on screen -- grass, creatures, anything drawn -- and keep the capture where a reflection leaves the screen. Ladders on `quality.reflections`. |
-| light.ssrplanar | Mirror reflections on flat ground | T | on | U | L | Reflections | Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set. Ladders on `quality.reflections`. |
+| light.ssrplanar | Mirror reflections on flat ground | T | off | U | L | Reflections | Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set, drawn without moving lights, so a street lit by them mirrors darker than it is. |
 | light.overbright | Carried-light boost | S | 0–1 step 0.05 · 0 | A | L | Lights | How much of a torch's extra intensity shows at its centre instead of only as reach. 0 is the stock game; 0.5 makes carried lights stand out. |
 | light.daylight | Daylight outshines lamps | S | 1–10 step 0.25 · 3 | A | L | Lights | How much brighter full daylight is than a lamp. Lamps and their glow fade as the day brightens and come back at dusk. 1 is the stock game. |
 | light.sss | Soft skin lighting | S | 0–1 step 0.05 · 0.25 | A | L | Lights | Light wrapping past the shadow line on characters. 0 is flat; the stock game uses 0.38 at shader quality above medium. |
 | light.probesize | Reflection capture size | D | 64 / 128 / 256 / 512 px · 64 | A | R | Reflections | Resolution the surroundings are captured at. Ladders on `quality.reflections`. |
-| light.ssrdetail | Screen-space reflection detail | D | full / half / quarter · quarter | A | L | Reflections | The resolution a reflection finds what it hits at. Lower is cheaper and blockier. Ladders on `quality.reflections`. |
+| light.ssrdetail | Screen-space reflection detail | D | full / half / quarter · half | A | L | Reflections | The resolution a reflection finds what it hits at. Lower is cheaper and blockier. Ladders on `quality.reflections`. |
 | light.ambientdir | Directional ambient | S | 0–1 step 0.05 · 0.5 | A | L | Materials | Ambient light takes its direction from the surroundings (sky above, ground below) at the area's own brightness. 0 is the stock sun-facing shading. |
 | light.daylow / dayhigh / wrap / wrapndl / hot / hotsize / radius / falloff / fadeout / deferred / deferredtiles / lightrec / probegain / ssrrough / ssrplanarres / ssrplanarcull / hidden / brdf / specaa / binreach / bincap / relevance / floor / fullmodel / reachfade | — | T, S, D | as declared | C | L | — | the lit stage's tuning: the day curve, the sphere-light shape, the deferred path, reflection cost, the modern BRDF (ADR 0026) and the cluster/relevance budgets |
 | shadow.enabled | Enable Alloy shadows | T | on | **C** | R | — | cfg-only: real-time sun cascades and point-light shadow cubes. Off, no surface takes a shadow from CX at all. |
@@ -711,6 +711,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | weather.accum | Soak / settle time | S | 5–600 s step 5 · 60 | A | L | Surfaces | Seconds of full-density weather to fully wet or snow the ground. |
 | weather.dry | Dry-out time | S | 10–1800 s step 10 · 180 | A | L | Surfaces | Seconds for wet ground to dry after the rain stops. |
 | weather.melt | Melt time | S | 30–7200 s step 30 · 900 | A | L | Surfaces | Seconds for snow cover to melt after the snowfall ends. |
+| weather.puddles | Puddles | S | 0–1 step 0.05 · 0.5 | A | L | Surfaces | How much of level ground pools in the rain: low is a few small pools in the dips, high is broad sheets. A server may set it for its own areas. |
 | weather.impacts | Splash impacts | S | 0–1 step 0.05 · 0.6 | A | L | Impacts | Water leaps where each drop lands -- on the ground, on roofs, on ledges, wherever the rain reaches. 0 = off. Ladders on `quality.weather`. |
 | weather.streak / flake / bright / opacity / range / rainspeed / snowspeed / windlean / snowangle / backscatter / soft / count / viz / waterroof / coversoft / coverrange / shelcache / arrive / splash / edgebreak / edgetaps / runoff / shorerim / snowalbedo / snowslope / snowpile / snowpilewidth / snowvary / snowdepth / snowsteps / snowbump / snowsparkle / snowwrap / snowsky / puddle / puddleedge / impactrange / map / mapres / mapcadence / basin / puddledepth / filmrough / filmlights / wetdark / rainrows / snowrows / snowskip | — | T, S, X | as declared | C | L | — | the fall's look and speed, the cover map, the shelter edge, the snow relief, the wetness map and its puddles, and the `weathertypes.2da` row lists (`range`, `count`, `splash`, `edgetaps`, `snowsteps`, `mapres`, `mapcadence`, `filmlights` ladder on `quality.weather`) |
 | fog.enabled | Fog | T | on | U | L | — | Fog that takes the sky's colour, glows toward the sun and thins with height. Off, every dial below reads 0 and the area author's own flat fog colour draws, as the stock game shows it. |
@@ -888,8 +889,8 @@ the preset. Rungs, low / medium / high / ultra:
 0.0003 / 0.0003.
 
 **quality.reflections** → `light.probe` off / on / on / on · `light.probesize` 64 / 64 / 64 /
-256 · `light.ssr` off / on / on / on · `light.ssrdetail` quarter / quarter / quarter / half ·
-`light.ssrplanar` off / off / on / on · `light.ssrplanarres` eighth / eighth / eighth /
+256 · `light.ssr` off / on / on / on · `light.ssrdetail` quarter / quarter / half / half ·
+`light.ssrplanarres` eighth / eighth / eighth /
 quarter.
 
 **quality.ao** → `ao.radius` 0.5 / 0.6 / 0.6 / 0.8 m · `ao.dirs` 1 / 1 / 1 / 2 · `ao.steps`

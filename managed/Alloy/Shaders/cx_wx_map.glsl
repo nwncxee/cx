@@ -15,7 +15,7 @@ layout(binding = 18) uniform sampler2D uWxMap;
 uniform vec4 uWxMapXf;
 // x puddle depth at a full basin (m), y shoreline feather (m), z the height a point may stand under the
 // latched surface and still count as open (m), w unused
-uniform vec4 uWxMapP;
+uniform vec4 uWxMapP;   // x puddle depth (m), y shoreline edge (m), z shelter metres, w the puddles knob 0..1
 
 const float CX_WX_UNVISITED = -1000.0;
 

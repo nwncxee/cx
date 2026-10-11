@@ -15,6 +15,7 @@ internal static unsafe partial class Weather
 
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled;
+    internal static readonly Knob<float> Puddles;
     internal static readonly Knob<string> RainRows, SnowRows, SnowSkip;
     /// <summary>Chained, not installed: the model prefetch is the other consumer of this symbol. The
     /// priority only fixes the order the two read it in; both forward.</summary>
@@ -57,6 +58,10 @@ internal static unsafe partial class Weather
         DeclareCoverKnobs();
         DeclareShelterKnobs();
         DeclareSurfaceKnobs();
+        G.Section("Surfaces");
+        Puddles = G.Slider("puddles", "Puddles", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
+                           help: "How much of level ground pools in the rain: low is a few small pools in the dips, high is broad sheets. "
+                               + "A server may set it for its own areas.");
         DeclareSplashKnobs();
         DeclareTrackKnobs();
         DeclareWetStepKnob();

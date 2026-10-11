@@ -1182,7 +1182,7 @@ public sealed unsafe partial class AlloyRenderer
         // the dome stages after the area light: a probe captured before it has only the clear for a sky
         bool domeArrived = EnvProbe.Ready && !_probeDome && _skyN > 0;
         if (!domeArrived && !EnvProbe.Wanted(_eyePos, _frameSeq)) return;
-        if (!ProbeLightSettled()) return;
+        if (!ProbeLightSettled() || !EnvProbe.LightsSettled(AlloyLights.LastLightCount)) return;
         if (!EnvProbe.Begin(_eyePos, _frameSeq, far, ProbeClear())) return;
 
         long draws = Counters._draws, batches = Counters._batches;
