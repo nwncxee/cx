@@ -17,6 +17,8 @@ internal static class UiKnobs
     /// <summary><see cref="HoverFocus"/> is read by <see cref="UiHost"/>; the two snapping toggles and
     /// <see cref="GridPx"/> are applied to <c>ChatWindow</c>'s snap statics by the quickbar tick.</summary>
     internal static readonly Knob<bool> HoverFocus, Snap, EdgeSnap, TextEdit, Streaming;
+    /// <summary>Every CX tooltip's dwell and fade times, read live by <see cref="Tooltip"/>.</summary>
+    internal static readonly Knob<float> TipDelay, TipFadeIn, TipFadeOut;
 
     static UiKnobs()
     {
@@ -43,6 +45,11 @@ internal static class UiKnobs
                             help: "The game's own text boxes get selection (mouse drag, double-click, Shift+arrows, Ctrl+A), Ctrl+C/X/V, and Ctrl+arrow/Backspace/Delete by word. Needs the Alloy renderer.");
         Streaming = G.Toggle("streaming", "Show streaming progress", true,
                              help: "A thin bar at the top of the screen while the area is still arriving after the load screen: textures, geometry and light charts. You can play meanwhile; it hides once everything has landed. Needs the Alloy renderer.");
+        G.Section("Tooltips");
+        TipDelay = G.Slider("tipdelay", "Tooltip delay", 0f, 2f, 0.05f, Tooltip.DelaySec, "s",
+                            help: "How long the pointer rests on something before its tooltip shows, in every CX window and on the CX quickbar. Moving to a neighbour while one shows skips the wait.");
+        TipFadeIn = G.Slider("tipfadein", "Tooltip fade in", 0f, 1f, 0.01f, Tooltip.FadeInSec, "s", Tier.Advanced, help: "How long a tooltip takes to fade in. 0 shows it at once.");
+        TipFadeOut = G.Slider("tipfadeout", "Tooltip fade out", 0f, 1f, 0.01f, Tooltip.FadeOutSec, "s", Tier.Advanced, help: "How long a tooltip takes to fade out after the pointer leaves. 0 hides it at once.");
     }
 }
 

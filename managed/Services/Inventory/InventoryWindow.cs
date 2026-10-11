@@ -122,7 +122,7 @@ internal sealed partial class InventoryWindow
     /// <summary>Hide it and drop any gesture in progress.</summary>
     public void Hide()
     {
-        Open = false; _press = _drag = _moving = _scrolling = _lootScrolling = false; SearchFocused = false; _tip.Leave();
+        Open = false; _press = _drag = _moving = _scrolling = _lootScrolling = false; SearchFocused = false; _tip.Cut();
     }
 
     /// <summary>Recompute every rect: <paramref name="scale"/> = UI scale × the size knob, shrunk so the window fits
@@ -291,7 +291,7 @@ internal sealed partial class InventoryWindow
         _mx = px; _my = py;
         if (!down) return Release(button, px, py);
         if (!Contains(px, py)) { if (SearchFocused) SearchFocused = false; return false; }
-        _tip.Leave();
+        _tip.Cut();
         InvHit h = HitTest(px, py);
         if (h.Kind != InvHitKind.Search) SearchFocused = false;
         uint oid = ItemUnder(h);

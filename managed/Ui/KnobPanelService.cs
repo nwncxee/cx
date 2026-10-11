@@ -57,7 +57,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
     }
 
     /// <summary>Open the panel: bake its faces, centre it in the last presented viewport, take the keyboard. Cold,
-    /// input thread; a second call while open only re-takes the keyboard.</summary>
+    /// input thread; a second call while open unfolds a collapsed panel and re-takes the keyboard.</summary>
     public static void Open()
     {
         if (_window == null) { _log?.Info("KnobPanelService: /settings -- no window (framework stood down)"); return; }
@@ -70,8 +70,8 @@ public sealed unsafe class KnobPanelService : IExtenderService
             SyncRect();
             _log?.Info($"KnobPanelService: opened {_panel.W}x{_panel.H} at ({_panel.X},{_panel.Y}) in {vw}x{vh}, face {_facePx}px");
         }
-        _window.SuppressChords = true;
-        if (!_window.WantsKeyboard) UiHost.RequestKeyboard(_window, true);
+        if (_panel.Collapsed) { _panel.ToggleCollapse(); SyncRect(); }
+        SyncKeyboard();
     }
 
     /// <summary>Close and release the keyboard (the panel may already have closed itself on Escape or its ×).</summary>
@@ -102,7 +102,16 @@ public sealed unsafe class KnobPanelService : IExtenderService
     private static void SyncRect()
     {
         if (_window == null) return;
-        _window.X = _panel.X; _window.Y = _panel.Y; _window.W = _panel.W; _window.H = _panel.H;
+        _window.X = _panel.X; _window.Y = _panel.Y; _window.W = _panel.W; _window.H = _panel.ShownH;
+    }
+
+    /// <summary>Open, the panel is modal and owns the keyboard; collapsed it lets both go, so the game plays behind it.</summary>
+    private static void SyncKeyboard()
+    {
+        if (_window == null || !_panel.Open) return;
+        bool own = !_panel.Collapsed;
+        _window.SuppressChords = own;
+        if (_window.WantsKeyboard != own) UiHost.RequestKeyboard(_window, own);
     }
 
     /// <summary>A GUI-scale or viewport change while open: re-request the faces and re-lay out. Cold, on the
@@ -128,7 +137,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
         Refit();
         bool wasEditing = _panel.Editing;
         if (!_panel.MouseDown(x, y)) return false;
-        if (_window != null && _panel.Open && !_window.WantsKeyboard) UiHost.RequestKeyboard(_window, true);
+        SyncKeyboard();
         if (_panel.Editing && !wasEditing && EngineFn.SdlStartTextInput != null) EngineFn.SdlStartTextInput();
         if (!_panel.Open) Close();
         SyncRect();

@@ -134,6 +134,16 @@ internal static unsafe class RadialIcons
         for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0, clip, cx, cy, cw, ch);
     }
 
+    /// <summary>As the cell-cropped <c>Draw</c>, from an engine <c>CGuiIcon*</c> rather than an item: a dragged icon.</summary>
+    public static void DrawGuiIcon(IntPtr icon, float x, float y, float w, float h, float alpha, int cellsW, int cellsH)
+    {
+        if (!_ready || icon == IntPtr.Zero || !AurTex.Ready) return;
+        Span<int> tids = stackalloc int[MaxLayers];
+        int n = Layers(icon, tids);
+        float u1 = ContentFrac(cellsW), v0 = 1f - ContentFrac(cellsH);
+        for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0, false, 0, 0, 0, 0);
+    }
+
     /// <summary>Texels of one inventory cell on a stock icon sheet.</summary>
     private const int IconCellPx = 32;
 

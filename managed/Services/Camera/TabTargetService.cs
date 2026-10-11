@@ -21,7 +21,8 @@ public sealed unsafe class TabTargetService : IExtenderService
     private static bool _ready;
     private static WinMessageHandlerFn* _next;
     private static PerformDefaultActionOnObjectFn _defaultActionOrig;
-    private static GuiObjectHitCheckFn _guiHitOrig;
+    /// <summary>Chain slot on the GUI hit-test, above the CX quickbar's proxy: a fire at the lock sees no GUI at all.</summary>
+    private static GuiObjectHitCheckFn* _guiHit;
     private static IntPtr _colEnemy, _colFriend, _colNeutral, _colPlaceable, _colDoor;
 
     /// <summary>Between the mouse-look layer (100) and the framework input layer (0).</summary>
@@ -90,9 +91,9 @@ public sealed unsafe class TabTargetService : IExtenderService
         _colNeutral = Native.Sym(SymbolMap.HiliteNeutral); _colPlaceable = Native.Sym(SymbolMap.HilitePlaceable);
         _colDoor = Native.Sym(SymbolMap.HiliteDoor);
         _defaultActionOrig = hooks.InstallPerformDefaultActionOnObject(&OnDefaultAction);
-        _guiHitOrig = hooks.InstallGuiObjectHitCheck(&OnGuiHitCheck);
+        _guiHit = hooks.ChainGuiObjectHitCheck(&OnGuiHitCheck, ChainPriority);
         _next = hooks.ChainWinMessageHandler(&OnWinMessage, ChainPriority);
-        if (_defaultActionOrig == null || _guiHitOrig == null || _next == null)
+        if (_defaultActionOrig == null || _guiHit == null || _next == null)
         { log.Info("TabTarget: standing down (a hook install was refused)"); return; }
         KeysChanged();
         FrameRegistry.Global.Register(FramePhase.PostPresent, 61, Tick, "TabTarget", log);
@@ -426,7 +427,7 @@ public sealed unsafe class TabTargetService : IExtenderService
 
     [UnmanagedCallersOnly]
     private static IntPtr OnGuiHitCheck(IntPtr self, int x, int y, int fresh, int mask)
-        => _fireAt != IntPtr.Zero ? IntPtr.Zero : _guiHitOrig(self, x, y, fresh, mask);
+        => _fireAt != IntPtr.Zero ? IntPtr.Zero : (*_guiHit)(self, x, y, fresh, mask);
 
     // ---- knobs ----
 

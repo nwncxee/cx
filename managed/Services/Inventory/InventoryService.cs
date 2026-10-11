@@ -81,6 +81,13 @@ public sealed unsafe partial class InventoryService : IExtenderService
     /// <summary>Knob hooks: a size / pages / search change re-lays out on the next frame.</summary>
     internal static void Relayout() => _layoutDirty = true;
 
+    /// <summary>The open window's rect, for the other CX windows to snap to.</summary>
+    internal static bool SnapRectOut(out (float X, float Y, float W, float H) r)
+    {
+        r = (_inv.X, _inv.Y, _inv.W, _inv.H);
+        return _inv.Open;
+    }
+
     /// <summary>The master flipped: an open CX window closes (and tells the server) on its next frame, so the stock panel
     /// owns the next open. Deferred: a server policy flips knobs from inside the inbound message handler, where a send
     /// would re-enter the live <c>CNWCMessage</c>.</summary>

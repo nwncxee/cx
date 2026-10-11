@@ -250,6 +250,11 @@ offset	CGuiMan	keyboardFocus	0x50	0x50	# GuiManKeyboard
 offset	CGuiMan	doubleClick	0xb0	0xb0	# GuiManDoubleClick
 offset	CGuiMan	hitPoint	0x108	0x108	# GuiManHitPoint
 offset	CGuiMan	hitObject	0x78	0x78	# GuiManHitObject
+offset	CGuiMan	mouseCapture	0x58	0x58	# GuiManCapture
+offset	CGuiDragSource	vtbl.HandleMouseMoveCaptured	0x90	0x88	# DragMoveSlot
+offset	CGuiQuickButton	vtbl.HandleTriggerTooltip	0xd8	0xd0	# QuickButtonTipSlot
+offset	CGuiDragSource	dragging	0x120	0x118	# DragSourceLive
+offset	CGuiDragSource	icon	0x130	0x128	# DragSourceIcon
 offset	(abi)	vtblSymbolHeader	0x10	0x0	# VtblSymbolHeader
 offset	Part	node	0x8	0x8	# PartNodeLink
 offset	Part	scale	0x2c	0x2c	# PartScale
@@ -692,6 +697,8 @@ offset	CRadialMenu	autoDelete	0x871	0x7f1	# RadialAutoDelete
 offset	CRadialMenu	refCount	0x874	0x7f4	# RadialRefCount
 offset	CGuiIcon	resref	0x8	0x8	# GuiIconResRef
 offset	CGuiIcon	countLabel	0x40	0x40	# GuiIconCountLabel
+offset	CGuiIcon	cols	0x20	0x20	# GuiIconCols
+offset	CGuiIcon	rows	0x24	0x24	# GuiIconRows
 offset	CRadialMenu	targetId	0x878	0x7f8	# RadialTargetId
 offset	CClientSpellMenu	targetId	0x90c	0x88c	# SpellMenuTargetId
 offset	CGuiCreatureMenu	sizeof	0x8c0	0x840	# CreatureMenuSize
@@ -771,6 +778,15 @@ offset	CNWCCreature	isAssociate	0x294	0x274	# CreatureIsAssociate
 offset	CNWCCreature	masterId	0x290	0x270	# CreatureMasterId
 offset	CPanelQuickBar	buttons	0xf8	0xf0	# QuickbarButtons
 offset	CPanelQuickBar	buttonStride	0x328	0x2c8	# QuickbarButtonStride
+offset	CGuiQuickButton	type	0x160	0x140	# QuickButtonType
+offset	CGuiQuickButton	itemOid	0x10c	0xec	# QuickButtonItem
+offset	CGuiQuickButton	itemOid2	0x110	0xf0	# QuickButtonItem2
+offset	CGuiQuickButton	param	0x138	0x118	# QuickButtonParam
+offset	CGuiQuickButton	spell	0x130	0x110	# QuickButtonSpell
+offset	CGuiQuickButton	target	0x108	0xe8	# QuickButtonTarget
+offset	CPanelQuickBar	sendGate	0x72a0	0x6518	# QuickbarSendGate
+offset	CGuiObject	flags	0x8	0x8	# GuiObjectFlags
+offset	CGuiButton	normalAnim	0xe0	0xc0	# ButtonNormalAnim
 offset	CNWCCreature	carriedWeight	0x2ac	0x28c	# CreatureCarriedWeight
 offset	CNWCItem	baseItem	0x40	0x40	# ItemBaseItem
 offset	CNWCItem	identified	0x1e0	0x1c0	# ItemIdentified
@@ -1105,6 +1121,29 @@ rva	_ZN11CNWCMessage35SendPlayerToServerBarterStartBarterEjj	0x7ba3f0	# SendBart
 rva	_ZN11CNWCMessage31SendPlayerToServerInput_UseItemEjhhj6Vector	0x7c0610	# SendInputUseItem
 rva	_ZN11CNWCMessage35SendPlayerToServerGold_TransferGoldEj6Vectoriihh	0x7bdc70	# SendGoldTransfer
 rva	_ZN15CGuiQuickButton13SetButtonItemEjii	0x867760	# QuickButtonSetItem
+rva	_ZN15CGuiQuickButton7SetIconEP8CGuiIconS1_	0x86baa0	# QuickButtonSetIcon
+rva	_ZN15CGuiQuickButton12SetCountTextE10CExoString	0x86b710	# QuickButtonSetCountText
+rva	_ZN14CPanelQuickBar11ClickButtonEh	0x85c3b0	# QuickbarClickButton
+rva	_ZN14CPanelQuickBar24SendButtonUpdateToServerEP15CGuiQuickButton	0x8602a0	# QuickbarSendButton
+rva	_ZN14CPanelQuickBar15SetButton_EmptyEh	0x86b180	# QuickbarSetEmpty
+rva	_ZN14CPanelQuickBar14SetButton_ItemEhjij	0x86b3d0	# QuickbarSetItem
+rva	_ZN14CPanelQuickBar15SetButton_SkillEhi	0x86b660	# QuickbarSetSkill
+rva	_ZN14CPanelQuickBar14SetButton_FeatEhi	0x86b3b0	# QuickbarSetFeat
+rva	_ZN14CPanelQuickBar16SetButton_DialogEh	0x86af80	# QuickbarSetDialog
+rva	_ZN14CPanelQuickBar16SetButton_AttackEh	0x8693f0	# QuickbarSetAttack
+rva	_ZN14CPanelQuickBar15SetButton_EmoteEhi	0x86b160	# QuickbarSetEmote
+rva	_ZN14CPanelQuickBar20SetButton_ModeToggleEhi	0x86b440	# QuickbarSetModeToggle
+rva	_ZN14CPanelQuickBar19SetButton_QuickChatEhi	0x86b640	# QuickbarSetQuickChat
+rva	_ZN14CPanelQuickBar25SetButton_CancelPolymorphEhi	0x8695f0	# QuickbarSetCancelPoly
+rva	_ZN14CPanelQuickBar25SetButton_PossessFamiliarEh	0x86b460	# QuickbarSetFamiliar
+rva	_ZN14CPanelQuickBar17SetButton_ExamineEh	0x86b1d0	# QuickbarSetExamine
+rva	_ZN14CPanelQuickBar16SetButton_BarterEh	0x869410	# QuickbarSetBarter
+rva	_ZN14CPanelQuickBar16SetButtonRollDieEhi	0x868730	# QuickbarSetRollDie
+rva	_ZN14CPanelQuickBar26SetButton_AssociateCommandEhitj	0x8693b0	# QuickbarSetAssociate
+rva	_ZN15CGuiQuickButton20SetButtonSpellMenuIDEl	0x868e70	# QuickButtonSetSpell
+rva	_ZN15CGuiQuickButton25SetButtonSpellLikeAbilityEl	0x868bd0	# QuickButtonSetSla
+rva	_ZN15CGuiQuickButton16HandleLeftButtonEv	0x85c8f0	# QuickButtonHandleLeftButton
+rva	_ZN14CGuiDragSource23HandleMouseMoveCapturedEii	0x1eea60	# DragSourceMoveCaptured
 rva	_ZN8CNWCItem13PlayDropSoundEv	0x83ea00	# ItemPlayDropSound
 rva	_ZN13CClientExoApp17GetInventoryPanelEv	0x6abbe0	# GetInventoryPanel
 rva	_ZN24CGuiMultiPageMultiInvbox7AddItemEjiii	0x87f970	# InvboxAddItem

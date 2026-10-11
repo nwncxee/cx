@@ -361,6 +361,28 @@ global using unsafe SendBarterStartFn = delegate* unmanaged<nint, uint, uint, vo
 global using unsafe SendInputUseItemFn = delegate* unmanaged<nint, uint, byte, byte, uint, CX.Engine.VectorArg, void>;
 global using unsafe SendGoldTransferFn = delegate* unmanaged<nint, uint, CX.Engine.VectorArg, int, int, byte, byte, void>;
 global using unsafe QuickButtonSetItemFn = delegate* unmanaged<nint, uint, int, int, void>;
+global using unsafe QuickButtonSetIconFn = delegate* unmanaged<nint, nint, nint, void>;
+global using unsafe QuickButtonSetCountTextFn = delegate* unmanaged<nint, nint, void>;
+global using unsafe QuickbarClickButtonFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSendButtonFn = delegate* unmanaged<nint, nint, void>;
+global using unsafe QuickbarSetEmptyFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSetItemFn = delegate* unmanaged<nint, byte, uint, int, uint, void>;
+global using unsafe QuickbarSetSkillFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetFeatFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetDialogFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSetAttackFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSetEmoteFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetModeToggleFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetQuickChatFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetCancelPolyFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetFamiliarFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSetExamineFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSetBarterFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe QuickbarSetRollDieFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe QuickbarSetAssociateFn = delegate* unmanaged<nint, byte, int, ushort, uint, void>;
+global using unsafe QuickButtonSetSpellFn = delegate* unmanaged<nint, long, void>;
+global using unsafe QuickButtonSetSlaFn = delegate* unmanaged<nint, long, void>;
+global using unsafe QuickButtonHandleLeftButtonFn = delegate* unmanaged<nint, void>;
 global using unsafe ItemPlayDropSoundFn = delegate* unmanaged<nint, void>;
 global using unsafe GetInventoryPanelFn = delegate* unmanaged<nint, nint>;
 global using unsafe InvboxAddItemFn = delegate* unmanaged<nint, uint, int, int, int, void>;
@@ -1278,6 +1300,17 @@ public readonly unsafe partial struct CGuiAreaLoadscreen(IntPtr ptr)
     public CGuiStatusBar StatusBar => new(Ptr + EngineLayout.LoadscreenStatusBar);
 }
 
+/// <summary>Typed view of an engine <c>CGuiButton*</c>.</summary>
+public readonly unsafe partial struct CGuiButton(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ButtonNormalAnim"/>
+    public ref IntPtr NormalAnim => ref *(IntPtr*)(Ptr + EngineLayout.ButtonNormalAnim);
+}
+
 /// <summary>Typed view of an engine <c>CGuiCallback*</c>.</summary>
 public readonly unsafe partial struct CGuiCallback(IntPtr ptr)
 {
@@ -1310,6 +1343,21 @@ public readonly unsafe partial struct CGuiContainer(IntPtr ptr)
     public ref int Rows => ref *(int*)(Ptr + EngineLayout.ContainerRows);
 }
 
+/// <summary>Typed view of an engine <c>CGuiDragSource*</c>.</summary>
+public readonly unsafe partial struct CGuiDragSource(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.DragSourceLive"/>
+    public ref int Dragging => ref *(int*)(Ptr + EngineLayout.DragSourceLive);
+    /// <inheritdoc cref="EngineLayout.DragMoveSlot"/>
+    public IntPtr HandleMouseMoveCapturedFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.DragMoveSlot);
+    /// <inheritdoc cref="EngineLayout.DragSourceIcon"/>
+    public ref IntPtr Icon => ref *(IntPtr*)(Ptr + EngineLayout.DragSourceIcon);
+}
+
 /// <summary>Typed view of an engine <c>CGuiEdit*</c>.</summary>
 public readonly unsafe partial struct CGuiEdit(IntPtr ptr)
 {
@@ -1332,10 +1380,14 @@ public readonly unsafe partial struct CGuiIcon(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.GuiIconCols"/>
+    public ref int Cols => ref *(int*)(Ptr + EngineLayout.GuiIconCols);
     /// <inheritdoc cref="EngineLayout.GuiIconCountLabel"/>
     public ref CAurString CountLabel => ref *(CAurString*)(Ptr + EngineLayout.GuiIconCountLabel);
     /// <inheritdoc cref="EngineLayout.GuiIconResRef"/>
     public Span<byte> Resref { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.GuiIconResRef), 16); }
+    /// <inheritdoc cref="EngineLayout.GuiIconRows"/>
+    public ref int Rows => ref *(int*)(Ptr + EngineLayout.GuiIconRows);
 }
 
 /// <summary>Typed view of an engine <c>CGuiInGame*</c>.</summary>
@@ -1453,6 +1505,8 @@ public readonly unsafe partial struct CGuiMan(IntPtr ptr)
     public ref IntPtr KeyboardFocus => ref *(IntPtr*)(Ptr + EngineLayout.GuiManKeyboard);
     /// <inheritdoc cref="EngineLayout.GuiManModalCount"/>
     public ref int ModalCount => ref *(int*)(Ptr + EngineLayout.GuiManModalCount);
+    /// <inheritdoc cref="EngineLayout.GuiManCapture"/>
+    public ref IntPtr MouseCapture => ref *(IntPtr*)(Ptr + EngineLayout.GuiManCapture);
     /// <inheritdoc cref="EngineLayout.GuiManMouseX"/>
     public ref int MouseX => ref *(int*)(Ptr + EngineLayout.GuiManMouseX);
     /// <inheritdoc cref="EngineLayout.GuiManMouseY"/>
@@ -1476,6 +1530,8 @@ public readonly unsafe partial struct CGuiObject(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.GuiObjectFlags"/>
+    public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.GuiObjectFlags);
     /// <inheritdoc cref="EngineLayout.GuiObjectModel"/>
     public ref IntPtr Model => ref *(IntPtr*)(Ptr + EngineLayout.GuiObjectModel);
 }
@@ -1497,6 +1553,31 @@ public readonly unsafe partial struct CGuiPanel(IntPtr ptr)
     public void SetPositionScreen(int x, int y) => EngineFn.SetPositionScreen(Ptr, x, y);
     /// <inheritdoc cref="EngineLayout.GuiPanelState"/>
     public ref uint State => ref *(uint*)(Ptr + EngineLayout.GuiPanelState);
+}
+
+/// <summary>Typed view of an engine <c>CGuiQuickButton*</c>.</summary>
+public readonly unsafe partial struct CGuiQuickButton(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.QuickButtonTipSlot"/>
+    public void HandleTriggerTooltip() => ((delegate* unmanaged<IntPtr, void>)HandleTriggerTooltipFn)(Ptr);
+    /// <inheritdoc cref="EngineLayout.QuickButtonTipSlot"/>
+    public IntPtr HandleTriggerTooltipFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.QuickButtonTipSlot);
+    /// <inheritdoc cref="EngineLayout.QuickButtonItem"/>
+    public ref uint ItemOid => ref *(uint*)(Ptr + EngineLayout.QuickButtonItem);
+    /// <inheritdoc cref="EngineLayout.QuickButtonItem2"/>
+    public ref uint ItemOid2 => ref *(uint*)(Ptr + EngineLayout.QuickButtonItem2);
+    /// <inheritdoc cref="EngineLayout.QuickButtonParam"/>
+    public ref int Param => ref *(int*)(Ptr + EngineLayout.QuickButtonParam);
+    /// <inheritdoc cref="EngineLayout.QuickButtonSpell"/>
+    public ref long Spell => ref *(long*)(Ptr + EngineLayout.QuickButtonSpell);
+    /// <inheritdoc cref="EngineLayout.QuickButtonTarget"/>
+    public ref uint Target => ref *(uint*)(Ptr + EngineLayout.QuickButtonTarget);
+    /// <inheritdoc cref="EngineLayout.QuickButtonType"/>
+    public ref byte Type => ref *(byte*)(Ptr + EngineLayout.QuickButtonType);
 }
 
 /// <summary>Typed view of an engine <c>CGuiStatusBar*</c>.</summary>
@@ -2192,6 +2273,17 @@ public readonly unsafe partial struct CPanelInventory(IntPtr ptr)
     public ref uint ShownOid => ref *(uint*)(Ptr + EngineLayout.InvShownOid);
     /// <inheritdoc cref="EngineLayout.InvWeightLabel"/>
     public CGuiLabel WeightLabel => new(Ptr + EngineLayout.InvWeightLabel);
+}
+
+/// <summary>Typed view of an engine <c>CPanelQuickBar*</c>.</summary>
+public readonly unsafe partial struct CPanelQuickBar(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.QuickbarSendGate"/>
+    public ref int SendGate => ref *(int*)(Ptr + EngineLayout.QuickbarSendGate);
 }
 
 /// <summary>Typed view of an engine <c>CPathfindInformation*</c>.</summary>
@@ -5531,6 +5623,94 @@ public static unsafe class EngineFn
     private static bool _QuickButtonSetItemDone;
     /// <inheritdoc cref="SymbolMap.QuickButtonSetItem"/>
     public static QuickButtonSetItemFn QuickButtonSetItem => (QuickButtonSetItemFn)(_QuickButtonSetItemDone ? _QuickButtonSetItem : Resolve(ref _QuickButtonSetItem, ref _QuickButtonSetItemDone, SymbolMap.QuickButtonSetItem));
+    private static IntPtr _QuickButtonSetIcon;
+    private static bool _QuickButtonSetIconDone;
+    /// <inheritdoc cref="SymbolMap.QuickButtonSetIcon"/>
+    public static QuickButtonSetIconFn QuickButtonSetIcon => (QuickButtonSetIconFn)(_QuickButtonSetIconDone ? _QuickButtonSetIcon : Resolve(ref _QuickButtonSetIcon, ref _QuickButtonSetIconDone, SymbolMap.QuickButtonSetIcon));
+    private static IntPtr _QuickButtonSetCountText;
+    private static bool _QuickButtonSetCountTextDone;
+    /// <inheritdoc cref="SymbolMap.QuickButtonSetCountText"/>
+    public static QuickButtonSetCountTextFn QuickButtonSetCountText => (QuickButtonSetCountTextFn)(_QuickButtonSetCountTextDone ? _QuickButtonSetCountText : Resolve(ref _QuickButtonSetCountText, ref _QuickButtonSetCountTextDone, SymbolMap.QuickButtonSetCountText));
+    private static IntPtr _QuickbarClickButton;
+    private static bool _QuickbarClickButtonDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarClickButton"/>
+    public static QuickbarClickButtonFn QuickbarClickButton => (QuickbarClickButtonFn)(_QuickbarClickButtonDone ? _QuickbarClickButton : Resolve(ref _QuickbarClickButton, ref _QuickbarClickButtonDone, SymbolMap.QuickbarClickButton));
+    private static IntPtr _QuickbarSendButton;
+    private static bool _QuickbarSendButtonDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSendButton"/>
+    public static QuickbarSendButtonFn QuickbarSendButton => (QuickbarSendButtonFn)(_QuickbarSendButtonDone ? _QuickbarSendButton : Resolve(ref _QuickbarSendButton, ref _QuickbarSendButtonDone, SymbolMap.QuickbarSendButton));
+    private static IntPtr _QuickbarSetEmpty;
+    private static bool _QuickbarSetEmptyDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetEmpty"/>
+    public static QuickbarSetEmptyFn QuickbarSetEmpty => (QuickbarSetEmptyFn)(_QuickbarSetEmptyDone ? _QuickbarSetEmpty : Resolve(ref _QuickbarSetEmpty, ref _QuickbarSetEmptyDone, SymbolMap.QuickbarSetEmpty));
+    private static IntPtr _QuickbarSetItem;
+    private static bool _QuickbarSetItemDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetItem"/>
+    public static QuickbarSetItemFn QuickbarSetItem => (QuickbarSetItemFn)(_QuickbarSetItemDone ? _QuickbarSetItem : Resolve(ref _QuickbarSetItem, ref _QuickbarSetItemDone, SymbolMap.QuickbarSetItem));
+    private static IntPtr _QuickbarSetSkill;
+    private static bool _QuickbarSetSkillDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetSkill"/>
+    public static QuickbarSetSkillFn QuickbarSetSkill => (QuickbarSetSkillFn)(_QuickbarSetSkillDone ? _QuickbarSetSkill : Resolve(ref _QuickbarSetSkill, ref _QuickbarSetSkillDone, SymbolMap.QuickbarSetSkill));
+    private static IntPtr _QuickbarSetFeat;
+    private static bool _QuickbarSetFeatDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetFeat"/>
+    public static QuickbarSetFeatFn QuickbarSetFeat => (QuickbarSetFeatFn)(_QuickbarSetFeatDone ? _QuickbarSetFeat : Resolve(ref _QuickbarSetFeat, ref _QuickbarSetFeatDone, SymbolMap.QuickbarSetFeat));
+    private static IntPtr _QuickbarSetDialog;
+    private static bool _QuickbarSetDialogDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetDialog"/>
+    public static QuickbarSetDialogFn QuickbarSetDialog => (QuickbarSetDialogFn)(_QuickbarSetDialogDone ? _QuickbarSetDialog : Resolve(ref _QuickbarSetDialog, ref _QuickbarSetDialogDone, SymbolMap.QuickbarSetDialog));
+    private static IntPtr _QuickbarSetAttack;
+    private static bool _QuickbarSetAttackDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetAttack"/>
+    public static QuickbarSetAttackFn QuickbarSetAttack => (QuickbarSetAttackFn)(_QuickbarSetAttackDone ? _QuickbarSetAttack : Resolve(ref _QuickbarSetAttack, ref _QuickbarSetAttackDone, SymbolMap.QuickbarSetAttack));
+    private static IntPtr _QuickbarSetEmote;
+    private static bool _QuickbarSetEmoteDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetEmote"/>
+    public static QuickbarSetEmoteFn QuickbarSetEmote => (QuickbarSetEmoteFn)(_QuickbarSetEmoteDone ? _QuickbarSetEmote : Resolve(ref _QuickbarSetEmote, ref _QuickbarSetEmoteDone, SymbolMap.QuickbarSetEmote));
+    private static IntPtr _QuickbarSetModeToggle;
+    private static bool _QuickbarSetModeToggleDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetModeToggle"/>
+    public static QuickbarSetModeToggleFn QuickbarSetModeToggle => (QuickbarSetModeToggleFn)(_QuickbarSetModeToggleDone ? _QuickbarSetModeToggle : Resolve(ref _QuickbarSetModeToggle, ref _QuickbarSetModeToggleDone, SymbolMap.QuickbarSetModeToggle));
+    private static IntPtr _QuickbarSetQuickChat;
+    private static bool _QuickbarSetQuickChatDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetQuickChat"/>
+    public static QuickbarSetQuickChatFn QuickbarSetQuickChat => (QuickbarSetQuickChatFn)(_QuickbarSetQuickChatDone ? _QuickbarSetQuickChat : Resolve(ref _QuickbarSetQuickChat, ref _QuickbarSetQuickChatDone, SymbolMap.QuickbarSetQuickChat));
+    private static IntPtr _QuickbarSetCancelPoly;
+    private static bool _QuickbarSetCancelPolyDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetCancelPoly"/>
+    public static QuickbarSetCancelPolyFn QuickbarSetCancelPoly => (QuickbarSetCancelPolyFn)(_QuickbarSetCancelPolyDone ? _QuickbarSetCancelPoly : Resolve(ref _QuickbarSetCancelPoly, ref _QuickbarSetCancelPolyDone, SymbolMap.QuickbarSetCancelPoly));
+    private static IntPtr _QuickbarSetFamiliar;
+    private static bool _QuickbarSetFamiliarDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetFamiliar"/>
+    public static QuickbarSetFamiliarFn QuickbarSetFamiliar => (QuickbarSetFamiliarFn)(_QuickbarSetFamiliarDone ? _QuickbarSetFamiliar : Resolve(ref _QuickbarSetFamiliar, ref _QuickbarSetFamiliarDone, SymbolMap.QuickbarSetFamiliar));
+    private static IntPtr _QuickbarSetExamine;
+    private static bool _QuickbarSetExamineDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetExamine"/>
+    public static QuickbarSetExamineFn QuickbarSetExamine => (QuickbarSetExamineFn)(_QuickbarSetExamineDone ? _QuickbarSetExamine : Resolve(ref _QuickbarSetExamine, ref _QuickbarSetExamineDone, SymbolMap.QuickbarSetExamine));
+    private static IntPtr _QuickbarSetBarter;
+    private static bool _QuickbarSetBarterDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetBarter"/>
+    public static QuickbarSetBarterFn QuickbarSetBarter => (QuickbarSetBarterFn)(_QuickbarSetBarterDone ? _QuickbarSetBarter : Resolve(ref _QuickbarSetBarter, ref _QuickbarSetBarterDone, SymbolMap.QuickbarSetBarter));
+    private static IntPtr _QuickbarSetRollDie;
+    private static bool _QuickbarSetRollDieDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetRollDie"/>
+    public static QuickbarSetRollDieFn QuickbarSetRollDie => (QuickbarSetRollDieFn)(_QuickbarSetRollDieDone ? _QuickbarSetRollDie : Resolve(ref _QuickbarSetRollDie, ref _QuickbarSetRollDieDone, SymbolMap.QuickbarSetRollDie));
+    private static IntPtr _QuickbarSetAssociate;
+    private static bool _QuickbarSetAssociateDone;
+    /// <inheritdoc cref="SymbolMap.QuickbarSetAssociate"/>
+    public static QuickbarSetAssociateFn QuickbarSetAssociate => (QuickbarSetAssociateFn)(_QuickbarSetAssociateDone ? _QuickbarSetAssociate : Resolve(ref _QuickbarSetAssociate, ref _QuickbarSetAssociateDone, SymbolMap.QuickbarSetAssociate));
+    private static IntPtr _QuickButtonSetSpell;
+    private static bool _QuickButtonSetSpellDone;
+    /// <inheritdoc cref="SymbolMap.QuickButtonSetSpell"/>
+    public static QuickButtonSetSpellFn QuickButtonSetSpell => (QuickButtonSetSpellFn)(_QuickButtonSetSpellDone ? _QuickButtonSetSpell : Resolve(ref _QuickButtonSetSpell, ref _QuickButtonSetSpellDone, SymbolMap.QuickButtonSetSpell));
+    private static IntPtr _QuickButtonSetSla;
+    private static bool _QuickButtonSetSlaDone;
+    /// <inheritdoc cref="SymbolMap.QuickButtonSetSla"/>
+    public static QuickButtonSetSlaFn QuickButtonSetSla => (QuickButtonSetSlaFn)(_QuickButtonSetSlaDone ? _QuickButtonSetSla : Resolve(ref _QuickButtonSetSla, ref _QuickButtonSetSlaDone, SymbolMap.QuickButtonSetSla));
+    private static IntPtr _QuickButtonHandleLeftButton;
+    private static bool _QuickButtonHandleLeftButtonDone;
+    /// <inheritdoc cref="SymbolMap.QuickButtonHandleLeftButton"/>
+    public static QuickButtonHandleLeftButtonFn QuickButtonHandleLeftButton => (QuickButtonHandleLeftButtonFn)(_QuickButtonHandleLeftButtonDone ? _QuickButtonHandleLeftButton : Resolve(ref _QuickButtonHandleLeftButton, ref _QuickButtonHandleLeftButtonDone, SymbolMap.QuickButtonHandleLeftButton));
     private static IntPtr _ItemPlayDropSound;
     private static bool _ItemPlayDropSoundDone;
     /// <inheritdoc cref="SymbolMap.ItemPlayDropSound"/>
@@ -7914,6 +8094,138 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetItem"/>; returns the slot holding the next layer, or null.</summary>
     public static QuickButtonSetItemFn* ChainQuickButtonSetItem(this HookService h, QuickButtonSetItemFn handler, int priority) =>
         (QuickButtonSetItemFn*)h.Chain(SymbolMap.QuickButtonSetItem, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickButtonSetIcon"/>; returns the original, or null.</summary>
+    public static QuickButtonSetIconFn InstallQuickButtonSetIcon(this HookService h, QuickButtonSetIconFn handler) =>
+        (QuickButtonSetIconFn)h.Install(SymbolMap.QuickButtonSetIcon, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetIcon"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickButtonSetIconFn* ChainQuickButtonSetIcon(this HookService h, QuickButtonSetIconFn handler, int priority) =>
+        (QuickButtonSetIconFn*)h.Chain(SymbolMap.QuickButtonSetIcon, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickButtonSetCountText"/>; returns the original, or null.</summary>
+    public static QuickButtonSetCountTextFn InstallQuickButtonSetCountText(this HookService h, QuickButtonSetCountTextFn handler) =>
+        (QuickButtonSetCountTextFn)h.Install(SymbolMap.QuickButtonSetCountText, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetCountText"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickButtonSetCountTextFn* ChainQuickButtonSetCountText(this HookService h, QuickButtonSetCountTextFn handler, int priority) =>
+        (QuickButtonSetCountTextFn*)h.Chain(SymbolMap.QuickButtonSetCountText, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarClickButton"/>; returns the original, or null.</summary>
+    public static QuickbarClickButtonFn InstallQuickbarClickButton(this HookService h, QuickbarClickButtonFn handler) =>
+        (QuickbarClickButtonFn)h.Install(SymbolMap.QuickbarClickButton, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarClickButton"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarClickButtonFn* ChainQuickbarClickButton(this HookService h, QuickbarClickButtonFn handler, int priority) =>
+        (QuickbarClickButtonFn*)h.Chain(SymbolMap.QuickbarClickButton, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSendButton"/>; returns the original, or null.</summary>
+    public static QuickbarSendButtonFn InstallQuickbarSendButton(this HookService h, QuickbarSendButtonFn handler) =>
+        (QuickbarSendButtonFn)h.Install(SymbolMap.QuickbarSendButton, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSendButton"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSendButtonFn* ChainQuickbarSendButton(this HookService h, QuickbarSendButtonFn handler, int priority) =>
+        (QuickbarSendButtonFn*)h.Chain(SymbolMap.QuickbarSendButton, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetEmpty"/>; returns the original, or null.</summary>
+    public static QuickbarSetEmptyFn InstallQuickbarSetEmpty(this HookService h, QuickbarSetEmptyFn handler) =>
+        (QuickbarSetEmptyFn)h.Install(SymbolMap.QuickbarSetEmpty, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetEmpty"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetEmptyFn* ChainQuickbarSetEmpty(this HookService h, QuickbarSetEmptyFn handler, int priority) =>
+        (QuickbarSetEmptyFn*)h.Chain(SymbolMap.QuickbarSetEmpty, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetItem"/>; returns the original, or null.</summary>
+    public static QuickbarSetItemFn InstallQuickbarSetItem(this HookService h, QuickbarSetItemFn handler) =>
+        (QuickbarSetItemFn)h.Install(SymbolMap.QuickbarSetItem, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetItem"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetItemFn* ChainQuickbarSetItem(this HookService h, QuickbarSetItemFn handler, int priority) =>
+        (QuickbarSetItemFn*)h.Chain(SymbolMap.QuickbarSetItem, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetSkill"/>; returns the original, or null.</summary>
+    public static QuickbarSetSkillFn InstallQuickbarSetSkill(this HookService h, QuickbarSetSkillFn handler) =>
+        (QuickbarSetSkillFn)h.Install(SymbolMap.QuickbarSetSkill, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetSkill"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetSkillFn* ChainQuickbarSetSkill(this HookService h, QuickbarSetSkillFn handler, int priority) =>
+        (QuickbarSetSkillFn*)h.Chain(SymbolMap.QuickbarSetSkill, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetFeat"/>; returns the original, or null.</summary>
+    public static QuickbarSetFeatFn InstallQuickbarSetFeat(this HookService h, QuickbarSetFeatFn handler) =>
+        (QuickbarSetFeatFn)h.Install(SymbolMap.QuickbarSetFeat, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetFeat"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetFeatFn* ChainQuickbarSetFeat(this HookService h, QuickbarSetFeatFn handler, int priority) =>
+        (QuickbarSetFeatFn*)h.Chain(SymbolMap.QuickbarSetFeat, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetDialog"/>; returns the original, or null.</summary>
+    public static QuickbarSetDialogFn InstallQuickbarSetDialog(this HookService h, QuickbarSetDialogFn handler) =>
+        (QuickbarSetDialogFn)h.Install(SymbolMap.QuickbarSetDialog, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetDialog"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetDialogFn* ChainQuickbarSetDialog(this HookService h, QuickbarSetDialogFn handler, int priority) =>
+        (QuickbarSetDialogFn*)h.Chain(SymbolMap.QuickbarSetDialog, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetAttack"/>; returns the original, or null.</summary>
+    public static QuickbarSetAttackFn InstallQuickbarSetAttack(this HookService h, QuickbarSetAttackFn handler) =>
+        (QuickbarSetAttackFn)h.Install(SymbolMap.QuickbarSetAttack, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetAttack"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetAttackFn* ChainQuickbarSetAttack(this HookService h, QuickbarSetAttackFn handler, int priority) =>
+        (QuickbarSetAttackFn*)h.Chain(SymbolMap.QuickbarSetAttack, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetEmote"/>; returns the original, or null.</summary>
+    public static QuickbarSetEmoteFn InstallQuickbarSetEmote(this HookService h, QuickbarSetEmoteFn handler) =>
+        (QuickbarSetEmoteFn)h.Install(SymbolMap.QuickbarSetEmote, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetEmote"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetEmoteFn* ChainQuickbarSetEmote(this HookService h, QuickbarSetEmoteFn handler, int priority) =>
+        (QuickbarSetEmoteFn*)h.Chain(SymbolMap.QuickbarSetEmote, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetModeToggle"/>; returns the original, or null.</summary>
+    public static QuickbarSetModeToggleFn InstallQuickbarSetModeToggle(this HookService h, QuickbarSetModeToggleFn handler) =>
+        (QuickbarSetModeToggleFn)h.Install(SymbolMap.QuickbarSetModeToggle, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetModeToggle"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetModeToggleFn* ChainQuickbarSetModeToggle(this HookService h, QuickbarSetModeToggleFn handler, int priority) =>
+        (QuickbarSetModeToggleFn*)h.Chain(SymbolMap.QuickbarSetModeToggle, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetQuickChat"/>; returns the original, or null.</summary>
+    public static QuickbarSetQuickChatFn InstallQuickbarSetQuickChat(this HookService h, QuickbarSetQuickChatFn handler) =>
+        (QuickbarSetQuickChatFn)h.Install(SymbolMap.QuickbarSetQuickChat, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetQuickChat"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetQuickChatFn* ChainQuickbarSetQuickChat(this HookService h, QuickbarSetQuickChatFn handler, int priority) =>
+        (QuickbarSetQuickChatFn*)h.Chain(SymbolMap.QuickbarSetQuickChat, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetCancelPoly"/>; returns the original, or null.</summary>
+    public static QuickbarSetCancelPolyFn InstallQuickbarSetCancelPoly(this HookService h, QuickbarSetCancelPolyFn handler) =>
+        (QuickbarSetCancelPolyFn)h.Install(SymbolMap.QuickbarSetCancelPoly, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetCancelPoly"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetCancelPolyFn* ChainQuickbarSetCancelPoly(this HookService h, QuickbarSetCancelPolyFn handler, int priority) =>
+        (QuickbarSetCancelPolyFn*)h.Chain(SymbolMap.QuickbarSetCancelPoly, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetFamiliar"/>; returns the original, or null.</summary>
+    public static QuickbarSetFamiliarFn InstallQuickbarSetFamiliar(this HookService h, QuickbarSetFamiliarFn handler) =>
+        (QuickbarSetFamiliarFn)h.Install(SymbolMap.QuickbarSetFamiliar, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetFamiliar"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetFamiliarFn* ChainQuickbarSetFamiliar(this HookService h, QuickbarSetFamiliarFn handler, int priority) =>
+        (QuickbarSetFamiliarFn*)h.Chain(SymbolMap.QuickbarSetFamiliar, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetExamine"/>; returns the original, or null.</summary>
+    public static QuickbarSetExamineFn InstallQuickbarSetExamine(this HookService h, QuickbarSetExamineFn handler) =>
+        (QuickbarSetExamineFn)h.Install(SymbolMap.QuickbarSetExamine, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetExamine"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetExamineFn* ChainQuickbarSetExamine(this HookService h, QuickbarSetExamineFn handler, int priority) =>
+        (QuickbarSetExamineFn*)h.Chain(SymbolMap.QuickbarSetExamine, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetBarter"/>; returns the original, or null.</summary>
+    public static QuickbarSetBarterFn InstallQuickbarSetBarter(this HookService h, QuickbarSetBarterFn handler) =>
+        (QuickbarSetBarterFn)h.Install(SymbolMap.QuickbarSetBarter, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetBarter"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetBarterFn* ChainQuickbarSetBarter(this HookService h, QuickbarSetBarterFn handler, int priority) =>
+        (QuickbarSetBarterFn*)h.Chain(SymbolMap.QuickbarSetBarter, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetRollDie"/>; returns the original, or null.</summary>
+    public static QuickbarSetRollDieFn InstallQuickbarSetRollDie(this HookService h, QuickbarSetRollDieFn handler) =>
+        (QuickbarSetRollDieFn)h.Install(SymbolMap.QuickbarSetRollDie, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetRollDie"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetRollDieFn* ChainQuickbarSetRollDie(this HookService h, QuickbarSetRollDieFn handler, int priority) =>
+        (QuickbarSetRollDieFn*)h.Chain(SymbolMap.QuickbarSetRollDie, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickbarSetAssociate"/>; returns the original, or null.</summary>
+    public static QuickbarSetAssociateFn InstallQuickbarSetAssociate(this HookService h, QuickbarSetAssociateFn handler) =>
+        (QuickbarSetAssociateFn)h.Install(SymbolMap.QuickbarSetAssociate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickbarSetAssociate"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickbarSetAssociateFn* ChainQuickbarSetAssociate(this HookService h, QuickbarSetAssociateFn handler, int priority) =>
+        (QuickbarSetAssociateFn*)h.Chain(SymbolMap.QuickbarSetAssociate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickButtonSetSpell"/>; returns the original, or null.</summary>
+    public static QuickButtonSetSpellFn InstallQuickButtonSetSpell(this HookService h, QuickButtonSetSpellFn handler) =>
+        (QuickButtonSetSpellFn)h.Install(SymbolMap.QuickButtonSetSpell, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetSpell"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickButtonSetSpellFn* ChainQuickButtonSetSpell(this HookService h, QuickButtonSetSpellFn handler, int priority) =>
+        (QuickButtonSetSpellFn*)h.Chain(SymbolMap.QuickButtonSetSpell, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickButtonSetSla"/>; returns the original, or null.</summary>
+    public static QuickButtonSetSlaFn InstallQuickButtonSetSla(this HookService h, QuickButtonSetSlaFn handler) =>
+        (QuickButtonSetSlaFn)h.Install(SymbolMap.QuickButtonSetSla, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetSla"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickButtonSetSlaFn* ChainQuickButtonSetSla(this HookService h, QuickButtonSetSlaFn handler, int priority) =>
+        (QuickButtonSetSlaFn*)h.Chain(SymbolMap.QuickButtonSetSla, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.QuickButtonHandleLeftButton"/>; returns the original, or null.</summary>
+    public static QuickButtonHandleLeftButtonFn InstallQuickButtonHandleLeftButton(this HookService h, QuickButtonHandleLeftButtonFn handler) =>
+        (QuickButtonHandleLeftButtonFn)h.Install(SymbolMap.QuickButtonHandleLeftButton, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.QuickButtonHandleLeftButton"/>; returns the slot holding the next layer, or null.</summary>
+    public static QuickButtonHandleLeftButtonFn* ChainQuickButtonHandleLeftButton(this HookService h, QuickButtonHandleLeftButtonFn handler, int priority) =>
+        (QuickButtonHandleLeftButtonFn*)h.Chain(SymbolMap.QuickButtonHandleLeftButton, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ItemPlayDropSound"/>; returns the original, or null.</summary>
     public static ItemPlayDropSoundFn InstallItemPlayDropSound(this HookService h, ItemPlayDropSoundFn handler) =>
         (ItemPlayDropSoundFn)h.Install(SymbolMap.ItemPlayDropSound, (IntPtr)handler);

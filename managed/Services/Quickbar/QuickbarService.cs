@@ -13,7 +13,7 @@ namespace CX.Services.Quickbar;
 /// <see cref="ChatService"/> draws alongside chat -- no second SwapBuffers hook. The replacement stands even with
 /// <c>quickbar.enabled</c> off: the engine body attaches <c>GUI_QBAR_ENDS</c> past 800 px and never clears the flag.
 /// </summary>
-public sealed unsafe class QuickbarService : IExtenderService
+public sealed unsafe partial class QuickbarService : IExtenderService
 {
     private static ExtenderLog? _log;
 
@@ -47,6 +47,7 @@ public sealed unsafe class QuickbarService : IExtenderService
     {
         _log = log;
         UiCategory.Declare();   // the UI groups declare in panel order whether or not the hook arms
+        QuickbarLayout.SelfCheck(log);
         // Stand down as a UNIT: every knob here ends in one of these three symbols, so a build
         // that resolves none of them would offer rows whose every control silently does nothing.
         // Not OS-gated -- gated on the symbols, so the Windows anchors landing is all it takes to switch on.
@@ -63,6 +64,7 @@ public sealed unsafe class QuickbarService : IExtenderService
             return;
         }
         log.Info("QuickbarService: Reposition hook installed");
+        InitCx(log, hooks);
 
         // A framework Window so the frame host runs the per-frame tick whether or not the chatbox is up. The
         // chrome itself still draws through ChatService's frame list; the tick is the viewport/scale edges, the
@@ -94,11 +96,11 @@ public sealed unsafe class QuickbarService : IExtenderService
         _dirty = true;
     }
 
-    /// <summary>The one position rule: the stock centre when the master is off, off-screen when hidden, else
-    /// the aligned x at the bottom edge.</summary>
+    /// <summary>The one position rule: the stock centre when the master is off, off-screen when hidden or the CX bar
+    /// stands in for it, else the aligned x at the bottom edge.</summary>
     private static void Place(IntPtr qbar, int vpW)
     {
-        if (QuickbarKnobs.Enabled.V && QuickbarKnobs.Hidden.V) { _setPosScreen(qbar, -9999, -9999); return; }
+        if (QuickbarKnobs.Enabled.V && (QuickbarKnobs.Hidden.V || CxActive)) { _setPosScreen(qbar, -9999, -9999); return; }
         _setPosScreen(qbar, AlignedX(vpW), 0);
     }
 
@@ -161,10 +163,11 @@ public sealed unsafe class QuickbarService : IExtenderService
         Chat.Core.ChatWindow.EdgeThresh = 0;
     }
 
-    /// <summary>The quickbar button-bar rect (bottom-centered/aligned 800x36), for window snapping. False when
-    /// hidden or the viewport isn't known yet. The quickbar itself never drags -- it is only ever an obstacle.</summary>
+    /// <summary>The quickbar rect for window snapping: the CX bar's, or the stock button bar (bottom-aligned 800x36).
+    /// False when hidden or the viewport isn't known yet.</summary>
     public static bool SnapRectOut(out (float X, float Y, float W, float H) r)
     {
+        if (CxActive) return CxRect(out r);
         int vpW = _vpW, vpH = _vpH;
         if ((QuickbarKnobs.Enabled.V && QuickbarKnobs.Hidden.V) || vpW <= 0 || vpH <= 0) { r = default; return false; }
         r = (AlignedX(vpW), vpH - QuickbarBaseH, QuickbarModelW, QuickbarBaseH);
@@ -199,7 +202,7 @@ public sealed unsafe class QuickbarService : IExtenderService
         VertexBatch b = _bandBatch ??= new VertexBatch(0, 0);
         b.Reset(atlas.SolidU, atlas.SolidV);
 
-        if (QuickbarKnobs.Enabled.V && QuickbarKnobs.Bars.V && !QuickbarKnobs.Hidden.V)
+        if (QuickbarKnobs.Enabled.V && QuickbarKnobs.Bars.V && !QuickbarKnobs.Hidden.V && !CxActive)
         {
             float qW = QuickbarModelW;
             float qH = QuickbarBaseH;
