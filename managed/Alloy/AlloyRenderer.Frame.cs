@@ -211,6 +211,7 @@ public sealed unsafe partial class AlloyRenderer
         long tEnter = FrameZones.Now;
         if (!GlContextService.Enter()) { NoFrameBehindUs("the 4.6 context could not be made current"); DbNoDraw("the 4.6 context could not be made current"); return false; }
         FrameZones.Add(FrameZones.Zone.Enter, tEnter);
+        GpuCheckpoint("the previous frame's GPU work is complete at this bracket's entry");
         long tOwn = FrameZones.Now;
         // #211's queued texture deletes, CX-117's registry uploads/mints, the master PLT palette and the
         // per-record colour rows: the frame's context-bound deferred work, declared once in Arm and run here
@@ -711,7 +712,17 @@ public sealed unsafe partial class AlloyRenderer
                        + FrameZones.Ticks(FrameZones.Zone.Probe) - probe0
                        + FrameZones.Ticks(FrameZones.Zone.Lightmap) - lm0);
         Gl.BindVertexArray(0);
+        GpuCheckpoint("the world pass is complete on the GPU");
         GlContextService.Leave();
+    }
+
+    /// <summary>Under <c>alloy.gldebug=1</c> only: wait for the GPU here and say so, so a driver timeout's log
+    /// ends at the last stage the GPU finished rather than at the last line the CPU queued.</summary>
+    private static void GpuCheckpoint(string what)
+    {
+        if (!GlContextService.Debug || Gl.Finish == null) return;
+        Gl.Finish();
+        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what}");
     }
 
     /// <summary>Ticks the zones <see cref="FrameZones.Zone.Passes"/> subtracts have taken this frame, so a pass

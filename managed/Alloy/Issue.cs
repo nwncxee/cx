@@ -125,6 +125,10 @@ internal static unsafe class Issue
 
     /// <summary>The handle table alone. Its capacity is tracked apart from the draw records' so the bake can
     /// bring it up to date on a frame the colour bracket has not reached (or refused).</summary>
+    /// <summary>The handle table as the GPU sees it: <see cref="AlloyRenderer._dTexH"/> with every zero
+    /// replaced by a stand-in's handle. ponytail: rewritten whole per upload, run-wise if it ever shows up.</summary>
+    private static readonly ulong[] _gpuTexH = new ulong[MaxRecords * 8];
+
     internal static void UploadHandles(int cap, bool whole)
     {
         if (_texHBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _texHBuf = b; }
@@ -133,10 +137,21 @@ internal static unsafe class Issue
             Gl.NamedBufferData(_texHBuf, (IntPtr)((long)cap * 8 * sizeof(ulong)), null, Gl.DYNAMIC_DRAW);
             _texHCapGpu = cap; whole = true;
         }
-        fixed (ulong* p = _dTexH)
+        // The GPU copy carries no zero handle: a null handle samples zeros on NVIDIA and Mesa but is a GPU fault
+        // on AMD's driver. Slot 0 (the diffuse) goes to the white stand-in the record means by it, every map
+        // slot to the transparent-black texel; the CPU table keeps its zeros, which ZeroHandle and the stale
+        // audit read.
+        ulong whiteH = HandleFor(OwnedTextures.WhiteTid()), nullH = HandleFor(OwnedTextures.NullTid());
+        long n = (long)cap * 8;
+        for (long k = 0; k < n; k++)
+        {
+            ulong v = _dTexH[k];
+            _gpuTexH[k] = v != 0 ? v : (k & 7) == 0 ? whiteH : nullH;
+        }
+        fixed (ulong* p = _gpuTexH)
         {
             if (whole)
-                Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)((long)cap * 8 * sizeof(ulong)), p);
+                Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)(n * sizeof(ulong)), p);
             else
                 UploadRuns(_texHBuf, p, 8 * sizeof(ulong));
         }

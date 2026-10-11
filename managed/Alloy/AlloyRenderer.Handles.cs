@@ -20,7 +20,7 @@ public sealed unsafe partial class AlloyRenderer
     /// (handles belong to the share group) and, while ownedtex is armed, only for an Alloy-OWNED name. A
     /// handled texture is IMMUTABLE from this moment: a change means a new name, never an in-place
     /// <c>TexSubImage</c> from the engine context -- residency is per context and nothing propagates.</summary>
-    private static ulong HandleFor(int tid)
+    internal static ulong HandleFor(int tid)
     {
         if (tid == 0) return 0;
         // a name that is not ours may already be dead or RECYCLED (Mesa hands the lowest free name straight
