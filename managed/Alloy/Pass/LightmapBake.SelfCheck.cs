@@ -151,14 +151,20 @@ internal static unsafe partial class LightmapBake
         _defW = dw; _defH = dh; _defX0 = dx; _defY0 = dy; _defPage = dp; _defRects.Clear(); _defRects.AddRange(defWas); _uncached = un;
         // Both arms of the pack's gate: off-device no plan is ever adopted, so the first one alone always
         // holds however the gate is spelled.
-        var planWas = _areaPlan; bool upWas = _areaUpDone;
+        var planWas = _areaPlan; var upWas = _areaUp;
         _areaPlan = null;
         check.Expect(AreaUploadsIn, "with no area plan adopted the pack must not be gated on one");
-        _areaPlan = new LightmapAreaPlan(); _areaUpDone = false;
+        _areaPlan = new LightmapAreaPlan(); _areaUp = new();
         check.Expect(!AreaUploadsIn, "...but with one adopted the pack waits for its upload");
-        _areaUpDone = true;
+        _areaUp.Done = true;
         check.Expect(AreaUploadsIn, "...and goes on once the upload is in");
-        _areaPlan = planWas; _areaUpDone = upWas;
+        _areaPlan = planWas; _areaUp = upWas;
+        // oracle: hand-worked -- 4 MiB / (4096 texels * 12 B) = 85 rows, so a full page is 48 bands of 85 and one of 16
+        check.Expect(BandRows(4096, 4096, 0) == 85 && BandRows(4096, 4096, 4080) == 16 && BandRows(16, 16, 0) == 16,
+                     "a union band is 4 MiB of whole rows, clipped to the union");
+        int bands = 0;
+        for (int row = 0; row < 4096; row += BandRows(4096, 4096, row)) bands++;
+        check.Expect(bands == 49, $"a full page went up in {bands} bands, not 49");
         log.Info(check.Ok ? "LightmapBake.SelfCheck: passed" : "LightmapBake.SelfCheck: FAILED -- see above");
         return check.Ok;
     }

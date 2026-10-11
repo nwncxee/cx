@@ -157,7 +157,7 @@
 14 managed/Alloy/Pass/Halos.cs
 17 managed/Alloy/Pass/HighlightGlow.cs
 2 managed/Alloy/Pass/IdTarget.cs
-32 managed/Alloy/Pass/LightmapBake.Area.cs
+30 managed/Alloy/Pass/LightmapBake.Area.cs
 69 managed/Alloy/Pass/LightmapBake.cs
 20 managed/Alloy/Pass/LightmapBake.Hold.cs
 31 managed/Alloy/Pass/LightmapBake.Lights.cs

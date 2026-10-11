@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Numerics;
@@ -162,20 +163,31 @@ internal static unsafe partial class LightmapBake
     private static ulong _areaKey;
     private static LightmapAreaPlan? _areaPlan;
     private static bool _areaWant, _areaAdopted, _areaSetOk, _areaWritten;
-    /// <summary>The cursor over the plan's unions and the flag for "every one of them is on its page", which
-    /// is the release's "pages uploaded" arm. A plan may legitimately name no union at all (every rect of the
-    /// last visit was a hit in another area's blob), so the flag is what says done, not the cursor.</summary>
-    private static int _areaUpNext;
-    private static bool _areaUpDone;
+    /// <summary>The cursor over the plan's unions (the union, the next row of it) and the flag for "every one
+    /// of them is on its page", the release's "pages uploaded" arm. A plan may name no union at all, so the
+    /// flag says done, not the cursor.</summary>
+    private sealed class AreaUploadState
+    {
+        public int Next, Row;
+        public bool Done;
+    }
+    private static AreaUploadState _areaUp = new();
     /// <summary>The page blobs this area's rects live in: what the plan named plus every union this visit
     /// baked. Written to the plan at the release.</summary>
     private static readonly List<BakeCache.Union> _areaUnions = new();
     /// <summary>Area-cache census for the release line: rects taken off the plan, rects that had to be probed
     /// per rect after all, newcomers the plan never named, adopted rects nobody enrolled, and the refusals.</summary>
     private static int _areaAdoptedRects, _areaProbed, _areaNew, _areaKeyless, _areaLate, _areaDrift, _areaMisplaced;
-    /// <summary>Bytes of unions uploaded per frame at the install. A union is two calls whatever its size, so
-    /// this is a stutter ceiling, not a pacing budget: a heavy area is one or two frames under the backdrop.</summary>
-    private const long AreaUploadBytesPerFrame = 256L << 20;
+    /// <summary>Wall clock the union upload may spend a frame, in play and under the hold's backdrop (which
+    /// waits for the upload anyway). A union goes up in bands of <see cref="AreaBandBytes"/>, so one page-sized
+    /// blob is many frames, not one long one.</summary>
+    private const double AreaUploadMs = 1.0, HoldAreaUploadMs = 30.0;
+    private const long AreaBandBytes = 4L << 20;
+
+    /// <summary>Pure: rows of a <paramref name="w"/>-wide union the band starting at <paramref name="row"/>
+    /// uploads -- at least one, never past <paramref name="h"/>.</summary>
+    internal static int BandRows(int w, int h, int row)
+        => (int)Math.Min(h - row, Math.Max(1L, AreaBandBytes / ((long)w * TexelBytes)));
 
     /// <summary>The read-aheads have folded this area at <c>LoadArea</c>'s return: post the plan read to
     /// <c>cx-lmcache</c> now, so the inflate runs in the seconds before the AreaLoaded send rather than
@@ -230,13 +242,13 @@ internal static unsafe partial class LightmapBake
     {
         AreaSnapAbandon();   // before the unions go: a plan still waiting on a readback is written as it stands
         _areaKey = 0; _areaPlan = null; _areaWant = false; _areaAdopted = false; _areaSetOk = false; _areaWritten = false;
-        _areaUpNext = 0; _areaUpDone = false; _areaUnions.Clear();
+        _areaUp = new(); _areaUnions.Clear();
         _areaAdoptedRects = _areaProbed = _areaNew = _areaDrift = _areaMisplaced = _areaBase = _areaClaimed = 0;
     }
 
     /// <summary>Every union of the plan is on its page. The release's "pages uploaded" arm; true when no plan
     /// was adopted at all.</summary>
-    private static bool AreaUploadsIn => _areaPlan == null || _areaUpDone;
+    private static bool AreaUploadsIn => _areaPlan == null || _areaUp.Done;
 
     /// <summary>The latest plan answer off <c>cx-lmcache</c>, kept until an edge wants it: frames that run
     /// between <c>LoadArea</c>'s return and the send would otherwise drain it with nobody asking, and the edge
@@ -342,39 +354,46 @@ internal static unsafe partial class LightmapBake
         }
         _areaBase = 0; _areaClaimed = 0;
         foreach (var p in plan.Rects) if (p.Tier == Baseline) _areaBase++;
-        _areaPlan = plan; _areaUpNext = 0; _areaUpDone = false; _areaAdopted = true; _areaAdoptedRects = plan.Rects.Length;
+        _areaPlan = plan; _areaUp = new(); _areaAdopted = true; _areaAdoptedRects = plan.Rects.Length;
         _areaUnions.Clear(); _areaUnions.AddRange(plan.Unions);
         Arrived(WhyAdopt);
         _log?.Info($"LightmapBake: area bake cache {_areaKey:x16} adopted -- {plan.Rects.Length} rects on {plan.Layers} pages, "
                  + $"{plan.Unions.Length} page blob(s) to upload, static set {plan.SetHash:x16} ({_setN} lights); the walk still closes its own set and is compared against it");
     }
 
-    /// <summary>Upload the adopted unions, whole: two <c>TextureSubImage3D</c> per page blob, then every rect
-    /// its own table names lands. A rect no union covers is probed per rect from here -- the cache may hold it
-    /// in another area's blob, and if it does not it bakes.</summary>
+    /// <summary>Upload the adopted unions in row bands under a wall-clock cap (<see cref="AreaUploadMs"/>);
+    /// once a union's last band is up, every rect its own table names lands. A rect no union covers is probed
+    /// per rect from here -- the cache may hold it in another area's blob, and if it does not it bakes.</summary>
     private static void AreaUpload()
     {
         LightmapAreaPlan? plan = _areaPlan;
-        if (plan == null || _areaUpDone) return;
-        // CX-102: the unions land on the resident pages, which a migration is retiring; _areaUpNext holds the
-        // cursor across the window, so the plan uploads unchanged the frame the pages are published
+        AreaUploadState up = _areaUp;
+        if (plan == null || up.Done) return;
+        // the unions land on the resident pages, which a migration is retiring; the cursor holds across the
+        // window, so the plan uploads unchanged the frame the pages are published
         if (HeldByMigration()) return;
-        long uploaded = 0;
-        while (_areaUpNext < plan.Unions.Length && uploaded < AreaUploadBytesPerFrame)
+        long t0 = Stopwatch.GetTimestamp(), wall = (long)((Hold ? HoldAreaUploadMs : AreaUploadMs) * Stopwatch.Frequency / 1000);
+        while (up.Next < plan.Unions.Length && Stopwatch.GetTimestamp() - t0 < wall)
         {
-            int u = _areaUpNext++;
+            int u = up.Next;
             ref BakeCache.Union un = ref plan.Unions[u];
             byte[]? bytes = plan.UnionBytes[u];
             BakeCache.Entry[]? table = plan.UnionTables[u];
-            plan.UnionBytes[u] = null;   // the inflate is the heap's biggest tenant: let it go as it uploads
-            if (bytes == null || table == null) continue;
-            uploaded += (long)un.W * un.H * TexelBytes;
-            fixed (byte* p = bytes)
+            if (bytes != null && table != null)
             {
-                Gl.TextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0, un.Page, un.W, un.H, 1, Gl.RGB, Gl.UNSIGNED_INT_10F_11F_11F_REV, p + UnionOffset(0, 0, 0, un.W, un.H));
-                Gl.TextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0, un.Page, un.W, un.H, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(1, 0, 0, un.W, un.H));
-                Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0, un.Page, un.W, un.H, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(2, 0, 0, un.W, un.H));
+                int y = up.Row, rows = BandRows(un.W, un.H, y);
+                fixed (byte* p = bytes)
+                {
+                    Gl.TextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGB, Gl.UNSIGNED_INT_10F_11F_11F_REV, p + UnionOffset(0, 0, y, un.W, un.H));
+                    Gl.TextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(1, 0, y, un.W, un.H));
+                    Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(2, 0, y, un.W, un.H));
+                }
+                up.Row = y + rows;
+                if (up.Row < un.H) continue;
             }
+            up.Next++; up.Row = 0;
+            plan.UnionBytes[u] = null;   // the inflate is the heap's biggest tenant: let it go once it is up
+            if (bytes == null || table == null) continue;
             for (int k = 0; k < table.Length; k++)
             {
                 if (!_byKey.TryGetValue(table[k].Key, out int ri) || _rects[ri].State != RState.Probing) continue;
@@ -387,8 +406,8 @@ internal static unsafe partial class LightmapBake
                 Land(ri, true); _pending--;
             }
         }
-        if (_areaUpNext < plan.Unions.Length) return;
-        _areaUpDone = true;
+        if (up.Next < plan.Unions.Length) return;
+        up.Done = true;
         int probed = 0;
         for (int ri = 0; ri < _rectN; ri++)
         {
