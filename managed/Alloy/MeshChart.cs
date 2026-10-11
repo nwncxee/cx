@@ -13,7 +13,7 @@ namespace CX.Alloy;
 internal static class Lightmap
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<int> Density, Disk, Vram, Near, Tiers, HoldSeconds,
+    internal static readonly Knob<int> Density, Disk, Vram, Window, Near, Tiers, HoldSeconds,
                                        MoverLights, PairSize, PairCount;
     internal static readonly Knob<bool> Movers, MoverTaps;
 
@@ -29,7 +29,9 @@ internal static class Lightmap
                            changed: LightmapBake.RekeyAll);
         // one page is 96 MiB, so the range is whole pages: 2 to MaxPages
         Vram = G.Slider("vram", "Lightmap memory", 192, 3072, 96, 960, "MiB", tier: Tier.ChatOnly,
-                        help: "Video memory the baked lighting holds, whatever the area's size: 4096x4096 pages of 96 MiB, allocated once. At most a quarter of the card is used. An area that would overflow it bakes at a lower density instead.");
+                        help: "Video memory the baked lighting holds, whatever the area's size: 4096x4096 pages of 96 MiB, allocated once. At most a quarter of the card is used. Pages farthest from the player make room first; only a window that still overflows bakes at a lower density.");
+        Window = G.Slider("window", "Baked radius", 40, 640, 10, 160, "m", tier: Tier.ChatOnly,
+                          help: "Metres around the player whose surfaces are baked and kept. Past it a surface uses the live light loop until the player nears, so the memory stays the same however large the area.");
         Near = G.Slider("near", "Full-density radius", 10, 200, 5, 40, "m", tier: Tier.ChatOnly,
                         help: "Metres from the player baked at the full density; each tier out doubles the radius and halves the density. The last tier covers the whole area and bakes first.");
         Tiers = G.Slider("tiers", "Density tiers", 1, LightmapBake.MaxTiers, 1, 3, tier: Tier.ChatOnly,

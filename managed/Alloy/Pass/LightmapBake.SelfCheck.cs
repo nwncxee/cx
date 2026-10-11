@@ -31,6 +31,9 @@ internal static unsafe partial class LightmapBake
           "the key sample is not the lowest key of the area, so two runs can sample different rects");
         // the packer, on a scratch page state
         int layers = _gl.Layers, page = _packPage;
+        long placedWas = _placedArea;
+        WindowState winWas = _win;
+        _win = new WindowState();
         var sy = (int[])_shelfY.Clone(); var sh = (int[])_shelfH.Clone(); var sx = (int[])_shelfX.Clone();
         _gl.Layers = 1; _packPage = 0; Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
         var a = new Rect { W = 100, H = 50 }; var b = new Rect { W = 100, H = 40 }; var c = new Rect { W = 4000, H = 60 };
@@ -54,26 +57,52 @@ internal static unsafe partial class LightmapBake
             var fill = new Rect { W = 4000, H = 4080, Tier = 0 };
             check.Expect(!Place(ref fill), "a fine rect past the cap is refused before eviction");
             int fp = _rects[rf].Page;
-            check.Expect(EvictFine(1f) < 0, "a page inside the next tier's radius is never evicted (the hysteresis)");
+            check.Expect(EvictPage(1f) < 0, "a page inside the next tier's radius is never evicted (the hysteresis)");
             _rects[rf].C = new Vector3(near * 8f, 0f, 0f);
-            check.Expect(EvictFine(1f) == fp && Place(ref fill) && fill.Page == fp, "the fine page past its tier is evicted and re-opened for the next fine rect");
+            check.Expect(EvictPage(1f) == fp && Place(ref fill) && fill.Page == fp, "the fine page past its tier is evicted and re-opened for the next fine rect");
             check.Expect(_rects[rf].State == RState.PastCap && !_byKey.ContainsKey(2) && _free.Count == 1, "the evicted rect is dead, unkeyed and its entry free for reuse");
             check.Expect(Halve(Halve(7, 0), 2) == Halve(7, 2) && Halve(7, 2) != Halve(7, 3) && Halve(7, 0) == 7, "a re-halved key is the key a fresh enrol computes");
             _rectN = 0; _byKey.Clear(); _free.Clear(); Array.Clear(_pageClass); _finePage = 0;
         }
+        // the camera window. Oracle: hand-worked distances
+        check.Expect(InWindow(new Vector3(100f, 0f, 0f), 0f, Vector3.Zero, 100f) && !InWindow(new Vector3(100.5f, 0f, 0f), 0f, Vector3.Zero, 100f)
+                     && InWindow(new Vector3(0f, 105f, 0f), 5f, Vector3.Zero, 100f), "a rect is in the window when its sphere reaches the radius");
+        check.Expect(RectDensity(8, false, true) == 4 && RectDensity(2, false, true) == 2 && RectDensity(8, true, true) == 8 && RectDensity(8, false, false) == 8,
+                     "exterior ground bakes at 4 texels a metre at most; interiors and placeables at the knob");
+        if (_rectN == 0)
+        {
+            float w = Lightmap.Window.V;
+            var unionsWas = _areaUnions.ToArray();
+            _gl.Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass); Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
+            int rb = NewRect();
+            (_owners[rb] ??= new List<int>(2)).Clear();
+            _rects[rb] = new Rect { Key = 3, W = 100, H = 50, Tier = Baseline, Page = -1, State = RState.Landed, C = new Vector3(w * 1.3f, 0f, 0f), R = w * 0.1f };
+            _byKey[3] = rb;
+            check.Expect(Place(ref _rects[rb]) && _rects[rb].Page == 0, "a baseline rect opens the first page");
+            check.Expect(EvictPage(0f) < 0, "with no window a baseline page is never evicted");
+            _win = new WindowState { On = true, C = Vector3.Zero };
+            check.Expect(EvictPage(0f) < 0, "a baseline page whose rect's sphere is inside the window's 1.25 margin is never evicted, even for a baseline newcomer");
+            _rects[rb].R = 0f;
+            check.Expect(EvictPage(0f) == 0 && _rects[rb].State == RState.PastCap && _pageClass[0] == 0 && _packPage == 0,
+                         "a baseline page past the window's margin is evicted and re-opened");
+            _rectN = 0; _byKey.Clear(); _free.Clear(); Array.Clear(_pageClass); _finePage = 0;
+            _areaUnions.Clear(); _areaUnions.AddRange(unionsWas);
+        }
+        _win = winWas; _placedArea = placedWas;
         _gl.Layers = layers; _packPage = page; Array.Copy(sy, _shelfY, sy.Length); Array.Copy(sh, _shelfH, sh.Length); Array.Copy(sx, _shelfX, sx.Length);
         // the key
         int setN = _setN;
         if (_setPosR.Length < 1) { _setPosR = new Vector4[1]; _setCol = new Vector3[1]; }
         _setPosR[0] = new Vector4(0f, 0f, 0f, 10f); _setCol[0] = Vector3.One; _setN = 1;
-        ulong k0 = BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f);
-        check.Expect(k0 == BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f), "the key is deterministic");
-        check.Expect(k0 != BakeKey(2, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f), "a different chart is a different key");
-        check.Expect(k0 != BakeKey(1, Matrix4x4.CreateTranslation(0.5f, 0f, 0f), new Vector3(5f, 0f, 0f), 1f), "a moved placement is a different key");
-        check.Expect(k0 == BakeKey(1, Matrix4x4.CreateTranslation(0.001f, 0f, 0f), new Vector3(5f, 0f, 0f), 1f), "a millimetre of placement is the same key (1 cm quantum)");
-        check.Expect(k0 != BakeKey(1, Matrix4x4.Identity, new Vector3(50f, 0f, 0f), 1f), "out of the light's reach is a different key");
+        ulong k0 = BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f, 8);
+        check.Expect(k0 == BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f, 8), "the key is deterministic");
+        check.Expect(k0 != BakeKey(2, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f, 8), "a different chart is a different key");
+        check.Expect(k0 != BakeKey(1, Matrix4x4.CreateTranslation(0.5f, 0f, 0f), new Vector3(5f, 0f, 0f), 1f, 8), "a moved placement is a different key");
+        check.Expect(k0 == BakeKey(1, Matrix4x4.CreateTranslation(0.001f, 0f, 0f), new Vector3(5f, 0f, 0f), 1f, 8), "a millimetre of placement is the same key (1 cm quantum)");
+        check.Expect(k0 != BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f, 4), "the rect's own density is in the key");
+        check.Expect(k0 != BakeKey(1, Matrix4x4.Identity, new Vector3(50f, 0f, 0f), 1f, 8), "out of the light's reach is a different key");
         _setCol[0] = new Vector3(0.5f, 1f, 1f);
-        check.Expect(k0 != BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f), "a touching light's colour is in the key");
+        check.Expect(k0 != BakeKey(1, Matrix4x4.Identity, new Vector3(5f, 0f, 0f), 1f, 8), "a touching light's colour is in the key");
         _setN = setN;
         // CX-56: a surface's pick -- the strongest four touching lights, strongest first, ties on position and
         // never on the order the set lists them in
@@ -132,7 +161,7 @@ internal static unsafe partial class LightmapBake
         AbortReadback(gl: false);
         check.Expect(ReadbackIdle && _uncached == un + 4, "abandoning a readback drops the stash and counts its rects");
         // CX-102: and the pack may reuse a stashed rect's entry or its page space between the stash and the
-        // issue (EvictFine Kills landed rects and re-opens the page), which would put the new tenant's key over
+        // issue (EvictPage Kills landed rects and re-opens the page), which would put the new tenant's key over
         // the old tenant's pixels in the blob the NEXT session adopts
         if (_rectN == 0)
         {

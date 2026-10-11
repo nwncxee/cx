@@ -212,6 +212,7 @@ internal static unsafe partial class LightmapBake
         h = Mix(h, Lightmap.Density.V);
         h = Mix(h, Lightmap.Tiers.V);
         h = Mix(h, Lightmap.Near.V);
+        h = Mix(h, Lightmap.Window.V);
         h = Mix(h, PageSize);
         return h;
     }

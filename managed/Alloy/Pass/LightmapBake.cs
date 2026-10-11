@@ -199,12 +199,14 @@ internal static unsafe partial class LightmapBake
         float sx = new Vector3(model.M11, model.M12, model.M13).Length();
         Vector3 c = Vector3.Transform((bmin + bmax) * 0.5f, model);
         float r = (bmax - bmin).Length() * 0.5f * MathF.Max(sx, 1e-3f);
+        if (_win.On && !InWindow(c, r, _win.C, Lightmap.Window.V)) return;
         int halved = tier + _areaHalve;
-        float s = Lightmap.Density.V / MeshChart.AtlasTexelsPerUnit * MathF.Max(sx, 1e-3f) / (1 << halved);
+        int density = RectDensity(Lightmap.Density.V, FrameInputs.Interior, AlloyRenderer.TileSlot(i));
+        float s = density / MeshChart.AtlasTexelsPerUnit * MathF.Max(sx, 1e-3f) / (1 << halved);
         int rw = (int)MathF.Ceiling(w * s), rh = (int)MathF.Ceiling(h * s);
         if (rw > MaxRect || rh > MaxRect) { s *= (float)MaxRect / Math.Max(rw, rh); rw = (int)MathF.Ceiling(w * s); rh = (int)MathF.Ceiling(h * s); }
         if (rw <= 0 || rh <= 0) { _slotRect[i] = -2; return; }
-        ulong key0 = BakeKey(content, model, c, r), key = Halve(key0, halved);
+        ulong key0 = BakeKey(content, model, c, r, density), key = Halve(key0, halved);
         LogKeySample(content, model, c, r, key);
         if (_byKey.TryGetValue(key, out int ri))
         {
@@ -271,10 +273,10 @@ internal static unsafe partial class LightmapBake
     /// and the shadow look. The placement is the record's matrix AND the world centre: a tile part's vertices
     /// sit in world space under an identity matrix, so without the centre every placement of one tile model
     /// would share a bake as well as a chart.</summary>
-    private static ulong BakeKey(ulong content, in Matrix4x4 m, Vector3 c, float r)
+    private static ulong BakeKey(ulong content, in Matrix4x4 m, Vector3 c, float r, int density)
     {
         ulong h = Mix(FnvOffset, (long)content);
-        h = Mix(h, Lightmap.Density.V);
+        h = Mix(h, density);
         h = Mix(h, Q(c.X, 0.01f)); h = Mix(h, Q(c.Y, 0.01f)); h = Mix(h, Q(c.Z, 0.01f));
         h = Mix(h, Q(m.M41, 0.01f)); h = Mix(h, Q(m.M42, 0.01f)); h = Mix(h, Q(m.M43, 0.01f));
         h = Mix(h, Q(m.M11, 1e-3f)); h = Mix(h, Q(m.M12, 1e-3f)); h = Mix(h, Q(m.M13, 1e-3f));
@@ -417,7 +419,7 @@ internal static unsafe partial class LightmapBake
     /// <summary>Drop the stashed rects that no longer describe the pixels the stash would read -- one the pack
     /// has killed, re-landed or moved to another page -- and count them uncached; returns what is left.
     /// Without this a blob carries the NEW tenant's key over the OLD tenant's pixels, which the next session
-    /// adopts as a bake: a permanently wrong-lit surface. <see cref="EvictFine"/> is the live path.</summary>
+    /// adopts as a bake: a permanently wrong-lit surface. <see cref="EvictPage"/> is the live path.</summary>
     private static int StashValid()
     {
         for (int k = _defRects.Count - 1; k >= 0; k--)

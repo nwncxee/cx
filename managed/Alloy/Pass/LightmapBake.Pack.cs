@@ -85,6 +85,39 @@ internal static unsafe partial class LightmapBake
         return t;
     }
 
+    /// <summary>The camera window: the player's position this frame, and whether there is one. With none, every
+    /// slot may enrol, as with no window at all.</summary>
+    private sealed class WindowState { public Vector3 C; public bool On; }
+    private static WindowState _win = new();
+    /// <summary>A baseline page is evicted only once every rect on it is this far past <c>lightmap.window</c>:
+    /// the hysteresis that keeps a page at the window's edge from baking and evicting as the player paces.</summary>
+    private const float WindowMargin = 1.25f;
+    /// <summary>Exterior ground's density ceiling, texels per metre: it is most of an outdoor area's texels
+    /// and the farthest-seen surface. Interiors and placeables keep the knob's density.</summary>
+    internal const int OutdoorGround = 4;
+
+    /// <summary>The window follows the player creature. Its position is the server's spawn point from the
+    /// moment <c>LoadArea</c> returns, so the hold's bake is already the window round where the player lands.</summary>
+    private static void TrackWindow()
+    {
+        IntPtr me = CX.Services.Camera.CameraService.PlayerCreature();
+        _win.On = me != IntPtr.Zero;
+        if (_win.On) _win.C = new CX.Engine.CNWCObject(me).Position;
+    }
+
+    /// <summary>Pure: does a rect's sphere reach into the window of <paramref name="radius"/> round <paramref name="centre"/>?</summary>
+    internal static bool InWindow(Vector3 c, float r, Vector3 centre, float radius) => (c - centre).Length() - r <= radius;
+
+    /// <summary>Pure: the texels per metre a rect bakes at -- the knob, capped at <see cref="OutdoorGround"/>
+    /// for an exterior tile.</summary>
+    internal static int RectDensity(int knob, bool interior, bool tile) => !interior && tile ? Math.Min(knob, OutdoorGround) : knob;
+
+    /// <summary>How far past its reach a rect is, 1 = at the edge: a fine rect against the next tier's radius,
+    /// a baseline one against the window and its margin (0 with no window: never past it).</summary>
+    private static float PastReach(in Rect r, Vector3 p)
+        => r.Tier < Baseline ? (r.C - p).Length() / Radius(r.Tier + 1)
+         : _win.On ? MathF.Max((r.C - p).Length() - r.R, 0f) / (Lightmap.Window.V * WindowMargin) : 0f;
+
     /// <summary>A rect entry: the last freed one, unless a readback still names it -- the cache file would take
     /// the newcomer's key over the old bits -- then the table grows and the entry waits its turn. BOTH lists:
     /// <c>_pendingRead</c> is the region queued or draining, <c>_defRects</c> a landing stashed behind it.</summary>
@@ -125,24 +158,25 @@ internal static unsafe partial class LightmapBake
         }
     }
 
-    /// <summary>Drop the fine page farthest past its tier -- every rect on it whose distance is beyond
-    /// <paramref name="margin"/> x the next tier's radius (the hysteresis: a page in reach of a refine is never
-    /// the one dropped) -- and re-open it. Its readers take their baseline rect at once (landed, keyed, its
-    /// page space kept), or re-enrol. -1 = nothing to drop.</summary>
-    private static int EvictFine(float margin)
+    /// <summary>Drop the page farthest past its reach (<see cref="PastReach"/> of its nearest rect) -- a fine page
+    /// past <paramref name="margin"/>, a baseline page past the window's margin whatever is asked -- and re-open
+    /// it. A fine page's readers take their baseline rect at once (landed, keyed, its page space kept), or
+    /// re-enrol; a baseline page's are outside the window and read the live loop. -1 = nothing to drop.</summary>
+    private static int EvictPage(float margin)
     {
-        Vector3 p = AlloyRenderer.PlayerPos;
+        Vector3 p = _win.On ? _win.C : AlloyRenderer.PlayerPos;
         float* score = stackalloc float[MaxPages];
-        for (int i = 0; i < MaxPages; i++) score[i] = _pageClass[i] == ClassFine && i != _bakePage ? float.MaxValue : -1f;
+        for (int i = 0; i < MaxPages; i++) score[i] = _pageClass[i] != 0 && i != _bakePage ? float.MaxValue : -1f;
         for (int ri = 0; ri < _rectN; ri++)
         {
             ref Rect r = ref _rects[ri];
             if (r.Page < 0 || r.State == RState.PastCap || score[r.Page] < 0f) continue;
-            float rel = (r.C - p).Length() / Radius(r.Tier + 1);
+            float rel = PastReach(r, p);
             if (rel < score[r.Page]) score[r.Page] = rel;
         }
         int best = -1, n = 0; float bs = 0f;
-        for (int i = 0; i < MaxPages; i++) if (score[i] >= margin && (best < 0 || score[i] > bs)) { bs = score[i]; best = i; }
+        for (int i = 0; i < MaxPages; i++)
+            if (score[i] >= (_pageClass[i] == ClassBase ? MathF.Max(margin, 1f) : margin) && (best < 0 || score[i] > bs)) { bs = score[i]; best = i; }
         if (best < 0) return -1;
         for (int ri = 0; ri < _rectN; ri++)
         {
@@ -167,9 +201,12 @@ internal static unsafe partial class LightmapBake
         // CX-102: the page's shelves re-open, so its texels are the next rect's -- a landing stashed off this
         // page would read someone else's pixels into its own keys' blob
         if (_defW > 0 && _defPage == best) { _uncached += _defRects.Count; _defW = 0; _defRects.Clear(); }
+        // and the plan's unions on it describe texels the next tenants overwrite
+        for (int u = _areaUnions.Count - 1; u >= 0; u--) if (_areaUnions[u].Page == best) _areaUnions.RemoveAt(u);
+        for (int u = _areaSnapUnions.Count - 1; u >= 0; u--) if (_areaSnapUnions[u].Page == best) _areaSnapUnions.RemoveAt(u);
         _shelfY[best] = _shelfH[best] = _shelfX[best] = 0; _pageClass[best] = 0;
-        _finePage = best; _packPage = Math.Min(_packPage, best);   // either cursor must reach the re-opened page
-        if (_logLeft > 0) _log?.Info($"LightmapBake: page {best} evicted -- {n} rects, {bs:F1}x past their tier");
+        _finePage = Math.Min(_finePage, best); _packPage = Math.Min(_packPage, best);   // either cursor must reach the re-opened page
+        if (_logLeft > 0) _log?.Info($"LightmapBake: page {best} evicted -- {n} rects, {bs:F1}x past their reach");
         return best;
     }
 
@@ -193,8 +230,10 @@ internal static unsafe partial class LightmapBake
             Disown(ri, i);
             if (!AlloyRenderer.SlotPlacement(i, out int vao, out int item, out _)) continue;
             Enrol(i, vao, item, Math.Min(_rects[ri].Tier, Baseline));   // at its tier: a static light toggled is no reason to drop to the baseline
+            // outside the window: no rect will land to replace the old record, and nothing now evicts it for this slot
+            if (_slotRect[i] == -1) { SetRecord(i, -1f, 0f, 0f, 0f, Pick.None); continue; }
             // an unchanged key keeps its page and its record; a changed one keeps the OLD record until the
-            // new rect lands (a rect's page space is never reused before Repack) -- clearing it flashed every
+            // new rect lands (the old rect sits where the new one does, inside the window, so no window eviction takes its page) -- clearing it flashed every
             // touched surface through the live loop, the "rebuild" of run 21 as the camera zoomed out
             if (_slotRect[i] != ri) changed++;
         }
@@ -244,7 +283,7 @@ internal static unsafe partial class LightmapBake
             ref Rect r = ref _rects[ri];
             if (!Place(ref r))
             {
-                if (EvictFine(r.Tier < Baseline ? 1f : 0f) >= 0 && Place(ref r)) goto placed;
+                if (EvictPage(r.Tier < Baseline ? 1f : 0f) >= 0 && Place(ref r)) goto placed;
                 if (r.Tier < Baseline) { Drop(ri, queued: false); _refineAt = _frame + RefuseBackoffFrames; continue; }
                 // the pages are full of re-key orphans (a shelf cannot free): repack everything from nothing
                 // once, and only then refuse. The slots re-enrol next frame and adopt their files from the cache.
@@ -276,17 +315,14 @@ internal static unsafe partial class LightmapBake
     /// newcomers shrink in place; else everything repacks at the new size. False = this Pack is over.</summary>
     private static bool FitDensity()
     {
-        long demand = 0, baseDemand = 0;
-        for (int k = 0; k < _toPack.Count; k++)
-        {
-            ref Rect r = ref _rects[_toPack[k]];
-            demand += Area(r);
-            if (r.Tier >= Baseline) baseDemand += Area(r);
-        }
         int fit = _gl.Layers;
         long cap = (long)(fit * (long)PageSize * PageSize * PackShare);
-        if (_placedArea + baseDemand <= cap) return true;   // only the baseline's overflow halves the area: a fine rect evicts or drops
-        demand = baseDemand;
+        long demand = BaseDemand();
+        if (_placedArea + demand <= cap) return true;   // only the baseline's overflow halves the area: a fine rect evicts or drops
+        // the pages the player has walked away from make room before anyone's density drops; an evicted fine
+        // page's readers may mint baseline rects, so the demand is summed again after each
+        while (_placedArea + demand > cap && EvictPage(1f) >= 0) demand = BaseDemand();
+        if (_placedArea + demand <= cap) return true;
         // the pages hold the last area's orphans (an in-module area change is no world edge, so nothing
         // rewound them): repack the live rects once before shrinking anyone's texels
         if (!_repacked)
@@ -311,6 +347,14 @@ internal static unsafe partial class LightmapBake
             _byKey[r.Key] = _toPack[k];
         }
         return true;
+    }
+
+    /// <summary>Texel area the baseline newcomers ask for.</summary>
+    private static long BaseDemand()
+    {
+        long d = 0;
+        for (int k = 0; k < _toPack.Count; k++) if (_rects[_toPack[k]].Tier >= Baseline) d += Area(_rects[_toPack[k]]);
+        return d;
     }
 
     /// <summary>Halvings that fit the area under <paramref name="cap"/> texels. With rects placed, ALL of them

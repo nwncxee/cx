@@ -31,6 +31,7 @@ internal static unsafe partial class LightmapBake
     {
         if (!Ensure()) return;
         _frame = frame;
+        TrackWindow();
         long t = Stopwatch.GetTimestamp();
         if (!Pool()) return;
         t = Phase(Ph.Pool, t);
