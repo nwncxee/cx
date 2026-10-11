@@ -523,10 +523,9 @@ internal static unsafe partial class TexRegistry
         ZeroDyingHandles();
     }
 
-    /// <summary>The sampler changes <see cref="RequestSampler"/> recorded. A bindless handle freezes
-    /// its sampler state at the mint, so the state is set and the handle re-minted -- which is why this is
-    /// the bracket's and not the setter's. A slot that is not resident yet keeps its wish: the upload reads
-    /// the same columns, so it lands with the state already right.</summary>
+    /// <summary>The sampler changes <see cref="RequestSampler"/> recorded. A handled texture is frozen, so the
+    /// slot moves to a copy with the new state and a new handle; the old name retires through the graveyard.
+    /// A slot that is not resident yet keeps its wish: the upload reads the same columns.</summary>
     private static void ApplySamplerWishes()
     {
         while (true)
@@ -544,17 +543,27 @@ internal static unsafe partial class TexRegistry
             bool clamp, nearest, mip;
             lock (_lock) { name = _name[i]; clamp = _clamp[i]; nearest = _nearest[i]; mip = _mipmap[i]; }
             if (name == 0) continue;
+            uint target = Gl.GetTextureHandleARB != null ? CloneLevels(name) : name;
+            if (target == 0)
+            {
+                if (LoudOnce("clone")) _log?.Always($"TexRegistry: the sampler change on \"{_resref[i]}\" could not copy the texture -- it keeps the state it was minted with");
+                continue;
+            }
             int wrap = clamp ? Gl.CLAMP_TO_EDGE : Gl.REPEAT;
-            Gl.TextureParameteri(name, Gl.TEXTURE_WRAP_S, wrap);
-            Gl.TextureParameteri(name, Gl.TEXTURE_WRAP_T, wrap);
-            Gl.TextureParameteri(name, Gl.TEXTURE_MAG_FILTER, nearest ? Gl.NEAREST : Gl.LINEAR);
-            Gl.TextureParameteri(name, Gl.TEXTURE_MIN_FILTER,
+            Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_S, wrap);
+            Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_T, wrap);
+            Gl.TextureParameteri(target, Gl.TEXTURE_MAG_FILTER, nearest ? Gl.NEAREST : Gl.LINEAR);
+            Gl.TextureParameteri(target, Gl.TEXTURE_MIN_FILTER,
                 !mip ? (nearest ? Gl.NEAREST : Gl.LINEAR)
                      : nearest ? Gl.NEAREST_MIPMAP_NEAREST : Gl.LINEAR_MIPMAP_LINEAR);
-            Gl.TextureParameteri(name, Gl.TEXTURE_MAX_ANISOTROPY, mip && !nearest ? Aniso() : 1);
+            Gl.TextureParameteri(target, Gl.TEXTURE_MAX_ANISOTROPY, mip && !nearest ? Aniso() : 1);
             ulong fresh;
-            lock (_lock) { DropHandle(i); }
-            fresh = MintHandle(name, _resref[i] ?? "");
+            lock (_lock)
+            {
+                DropHandle(i);
+                if (target != name) { _graveyard.Enqueue(name); _name[i] = target; }
+            }
+            fresh = MintHandle(target, _resref[i] ?? "");
             lock (_lock) { _handle[i] = fresh; _samplerDone++; TableSerial++; if (fresh != 0) _mints++; }
             lock (_gate) _reminted.Enqueue(i);
         }
@@ -801,6 +810,41 @@ internal static unsafe partial class TexRegistry
         if (LoudOnce($"tex:{name}"))
             _log?.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "
                 + "Every part that names it draws the WHITE STAND-IN for the rest of the session");
+    }
+
+    /// <summary>A new immutable texture holding every level of <paramref name="src"/>, its swizzle and MAX_LEVEL
+    /// carried, sampler state not: a texture a bindless handle was minted for refuses every later TexParameter,
+    /// so a sampler change is a fresh name. 0 when the driver refused the copy (the error is drained).</summary>
+    private static uint CloneLevels(uint src)
+    {
+        const int MaxLevels = 16;
+        if (Gl.CopyImageSubData == null || Gl.GetTextureLevelParameteriv == null) return 0;
+        int* lw = stackalloc int[MaxLevels], lh = stackalloc int[MaxLevels];
+        int levels = 0, fmt = 0;
+        for (; levels < MaxLevels; levels++)
+        {
+            int w = 0, h = 0;
+            Gl.GetTextureLevelParameteriv(src, levels, Gl.TEXTURE_WIDTH, &w);
+            Gl.GetTextureLevelParameteriv(src, levels, Gl.TEXTURE_HEIGHT, &h);
+            if (w <= 0 || h <= 0) break;
+            lw[levels] = w; lh[levels] = h;
+        }
+        Gl.GetTextureLevelParameteriv(src, 0, Gl.TEXTURE_INTERNAL_FORMAT, &fmt);
+        if (levels == 0 || fmt == 0) return 0;
+        Gl.DrainErrors(8);
+        uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
+        if (dst == 0) return 0;
+        Gl.TextureStorage2D(dst, levels, (uint)fmt, lw[0], lh[0]);
+        foreach (uint p in (ReadOnlySpan<uint>)[Gl.TEXTURE_SWIZZLE_R, Gl.TEXTURE_SWIZZLE_G, Gl.TEXTURE_SWIZZLE_B, Gl.TEXTURE_SWIZZLE_A, Gl.TEXTURE_MAX_LEVEL])
+        {
+            int v; Gl.GetTextureParameteriv(src, p, &v);
+            Gl.TextureParameteri(dst, p, v);
+        }
+        for (int l = 0; l < levels; l++)
+            Gl.CopyImageSubData(src, Gl.TEXTURE_2D, l, 0, 0, 0, dst, Gl.TEXTURE_2D, l, 0, 0, 0, lw[l], lh[l], 1);
+        if (Gl.GetError() == 0) return dst;
+        Gl.DeleteTextures(1, &dst);
+        return 0;
     }
 
     // ---- handles ----
