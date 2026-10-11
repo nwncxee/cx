@@ -21,6 +21,10 @@ signers="$root/packaging/allowed_signers"
 
 draft=$(gh release view "$tag" -R "$repo" --json isDraft --jq .isDraft)
 [[ "$draft" == true ]] || { echo "$tag is already published, and a published release can't change" >&2; exit 1; }
+# Publishing freezes every asset, so an extra one would ship unchecked.
+assets=$(gh release view "$tag" -R "$repo" --json assets --jq '[.assets[].name] | sort | join(" ")')
+expected="SHA256SUMS cx-linux-x64-$tag.zip cx-windows-x64-$tag.zip"
+[[ "$assets" == "$expected" ]] || { echo "$tag holds [$assets], expected [$expected]" >&2; exit 1; }
 
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 gh release download "$tag" -R "$repo" -D "$work" -p '*.zip' -p SHA256SUMS

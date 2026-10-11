@@ -115,7 +115,7 @@ jobs:
 
       - run: cd dist && sha256sum *.zip > SHA256SUMS
 
-      # Players and sign.sh check it with: gh attestation verify <zip> -R nwncxee/cx
+      # sign.sh and the README's verify steps check it, pinned to this workflow and the tag.
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/SHA256SUMS
