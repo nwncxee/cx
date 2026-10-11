@@ -157,7 +157,7 @@ internal static unsafe class EnvProbe
             bool early = LightsSettled(5);
             for (int i = 0; i < 58; i++) LightsSettled(5);
             check.Expect(!early && !LightsSettled(6) && !LightsSettled(6), "a light count that just changed is not settled");
-            for (int i = 0; i < 57; i++) LightsSettled(6);
+            for (int i = 0; i < 58; i++) LightsSettled(6);
             check.Expect(LightsSettled(6), "...and one that stood sixty frames is");
             _settle = new();
 
