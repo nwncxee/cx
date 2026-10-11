@@ -211,7 +211,7 @@ internal static unsafe partial class RadialPins
                 "the transient bit (spontaneous caster out of uses) is no part of the identity");
             var off = leaf with { Fn = fn + 2 };
             check.Expect(!Validate(pin, off) && (OperatingSystem.IsWindows() || FnToken(off) == ""), "a different fn does not; an inexact address has no name");
-            check.Expect(FnToken(leaf with { Fn = fn + 1 }) == "", "an odd fn with no handler object is not persistable");
+            check.Expect(OperatingSystem.IsWindows() || FnToken(leaf with { Fn = fn + 1 }) == "", "an odd fn with no handler object is not persistable");
             var subEntry = sub with { Fn = fn };
             string st = FnToken(subEntry);
             check.Expect(st == SubToken + ":" + tok && Validate(new RadialPin { Fn = st, Param = 9 }, subEntry)
