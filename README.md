@@ -1,3 +1,5 @@
+![NWNCX:EE: Neverwinter Nights: Enhanced Edition Client Extender](media/banner.webp)
+
 # NWNCX:EE (CX)
 
 CX is an optional add-on for the Neverwinter Nights: Enhanced Edition client. It adds features to the
