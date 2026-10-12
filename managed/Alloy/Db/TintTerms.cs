@@ -54,6 +54,10 @@ internal static unsafe class TintTerms
     }
 
     private static TintState _st = new();
+    /// <summary>One lock over the row words. A row is written where its RECIPE is interned (the scene feed)
+    /// and read where the block is uploaded (the Alloy bracket), which are not the same thread; the writes
+    /// are per material and the read walks at most <see cref="MaxRows"/> rows a frame, so neither is hot.</summary>
+    private static readonly object _lock = new();
 
     internal static void Attach(ExtenderLog log) => _st.Log = log;
 
@@ -63,6 +67,11 @@ internal static unsafe class TintTerms
     /// <summary>A row for recipe <paramref name="recipe"/>, or -1 when the table is full. The index IS what
     /// the record carries, so it is stable for the recipe's life.</summary>
     internal static int Alloc(int recipe)
+    {
+        lock (_lock) return AllocLocked(recipe);
+    }
+
+    private static int AllocLocked(int recipe)
     {
         TintState s = _st;
         for (int r = 0; r < MaxRows; r++)
@@ -89,6 +98,11 @@ internal static unsafe class TintTerms
     /// holds is left alone, because the retire paths may ask twice.</summary>
     internal static void Free(int row, int recipe)
     {
+        lock (_lock) FreeLocked(row, recipe);
+    }
+
+    private static void FreeLocked(int row, int recipe)
+    {
         TintState s = _st;
         if ((uint)row >= MaxRows || s.Owner[row] != recipe) return;
         s.Owner[row] = -1;
@@ -107,13 +121,16 @@ internal static unsafe class TintTerms
             { glowR, glowG, glowB, alphaMip, aniso, specIntensity, swaySpeed, swayStrength };
         int b = row * WordsPerRow + LaneGlow;
         bool moved = false;
-        for (int k = 0; k < f.Length; k++)
+        lock (_lock)
         {
-            uint w = BitConverter.SingleToUInt32Bits(f[k]);
-            if (_st.Words[b + k] == w) continue;
-            _st.Words[b + k] = w; moved = true;
+            for (int k = 0; k < f.Length; k++)
+            {
+                uint w = BitConverter.SingleToUInt32Bits(f[k]);
+                if (_st.Words[b + k] == w) continue;
+                _st.Words[b + k] = w; moved = true;
+            }
+            if (moved) Touch(row);
         }
-        if (moved) Touch(row);
     }
 
     /// <summary>One palette map's handle into row <paramref name="row"/>, slot <paramref name="k"/> of
@@ -141,8 +158,13 @@ internal static unsafe class TintTerms
     /// than a subscription. Bound on EVERY frame -- an unbound binding is an undefined read.</summary>
     internal static void Upload()
     {
-        TintState s = _st;
         if (Gl.CreateBuffers == null || Gl.NamedBufferData == null) return;
+        lock (_lock) UploadLocked();
+    }
+
+    private static void UploadLocked()
+    {
+        TintState s = _st;
         if (s.Rows > 0)
         {
             bool handles = AlloyRenderer.Bindless;
