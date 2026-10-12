@@ -254,7 +254,8 @@ public static unsafe class SeamShell
     /// ones, since nothing says a GUI pointer does not still reach them.</summary>
     public static long Unmarked => _held.Unmarked;
 
-    /// <summary>Distinct destroying frames <see cref="NoteUnmarked"/> names per session; the count keeps going.</summary>
+    /// <summary>Distinct destroying game functions <see cref="NoteUnmarked"/> names per session; the count keeps going.
+    /// Linux only: on Windows the destroyer is unnamed, so one line is written per session.</summary>
     private const int UnmarkedLines = 64;
 
     /// <summary>The seam's own frame counter, advanced once per published frame by <see cref="Frame"/>.</summary>
@@ -361,9 +362,8 @@ public static unsafe class SeamShell
         h->Reported = 0;
         h->RetiredBy = SeamCallers.Here();
         Live--;
-        bool scene = h->Kind == (byte)FacadeKind.Scene;
-        if (!scene && h->Scenes == 0) NoteUnmarked(shell, h);
-        if ((h->Scenes & InGui) != 0 || (scene && (h->Scenes & InWorld) == 0) || h->Scenes == 0)
+        if (h->Kind != (byte)FacadeKind.Scene && h->Scenes == 0) NoteUnmarked(shell, h);
+        if (h->Scenes != InWorld)
         {
             _held.Blocks.Add(shell);
             return;
@@ -403,7 +403,7 @@ public static unsafe class SeamShell
         Quarantined++;
     }
 
-    /// <summary>Count a retire before any scene join and name its destroying frame, once per frame.</summary>
+    /// <summary>Count a retire before any scene join and name the game function that destroyed it, once each.</summary>
     private static void NoteUnmarked(nint shell, SeamHeader* h)
     {
         HeldState st = _held;

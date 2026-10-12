@@ -393,7 +393,7 @@ internal static unsafe class FacadeSelfCheck
         *(int*)(shell + SeamLayout.GobSafeCount) = n;
         *(int*)(shell + SeamLayout.GobSafeCap) = n;
 
-        SeamShell.NoteScene(shell, world: true);
+        SeamShell.NoteScene(shell, world: true);   // a never-joined shell is held, and the quarantine checks below need the ring
         Facade.Retire(shell);
         bool nulled = true, unindexed = true;
         for (int k = 0; k < n; k++)
@@ -486,15 +486,17 @@ internal static unsafe class FacadeSelfCheck
             "a shell that was only ever in a world scene goes to the reuse ring");
 
         SeamShell.Retire(probe);
-        nint unmarked = SeamShell.Alloc(FacadeKind.Object, default), unmarkedText = SeamShell.Alloc(FacadeKind.String, default);
+        nint unmarked = SeamShell.Alloc(FacadeKind.Object, default), unmarkedText = SeamShell.Alloc(FacadeKind.String, default),
+             unmarkedCam = SeamShell.Alloc(FacadeKind.Camera, default);
         long unmarkedBefore = SeamShell.Unmarked;
         held = SeamShell.Held;
         quarantined = SeamShell.Quarantined;
         SeamShell.Retire(unmarked);
         SeamShell.Retire(unmarkedText);
-        check.Expect(SeamShell.Held == held + 2 && SeamShell.Quarantined == quarantined,
-            "an object or text shell retired before it joined any scene must be held, not queued for reuse");
-        check.Expect(SeamShell.Unmarked == unmarkedBefore + 2, "both retires before any scene join must be counted");
+        SeamShell.Retire(unmarkedCam);
+        check.Expect(SeamShell.Held == held + 3 && SeamShell.Quarantined == quarantined,
+            "an object, text or camera shell retired before it joined any scene must be held, not queued for reuse");
+        check.Expect(SeamShell.Unmarked == unmarkedBefore + 3, "every retire before any scene join must be counted");
         // Age what the ring already holds first, so filling it evicts those rather than overflowing.
         for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         for (int k = 0; k < SeamShell.RingSize; k++)
