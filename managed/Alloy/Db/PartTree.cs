@@ -12,7 +12,7 @@ namespace CX.Alloy.Db;
 /// @0x473d30. An OBJECT spawns a reference node as its own object (<see cref="OnReference"/>); a TILE
 /// instances it in place, collapses, merges. Parts are a contiguous RANGE of ABSOLUTE indices.
 /// </summary>
-public static class PartTree
+public static partial class PartTree
 {
     /// <summary>A reference node the OBJECT path found: the engine spawns <c>model</c> as its own object and
     /// attaches it to part <c>part</c> of <c>obj</c>. Set by the seam, the only layer that may create an
@@ -434,38 +434,9 @@ public static class PartTree
         };
         for (int t = 0; t < 4; t++) SceneDb.PartTexId[p * 4 + t] = 0;
         SceneDb.PartPltOwn[p] = false;
-    }
-
-    /// <summary>A <c>.mtr</c> the resource layer read after a part was built: <see cref="InitMaterial"/> took
-    /// the part's material pointer and its render hint from a file that was not there, and nothing else
-    /// re-asks -- so the part kept the mesh's own hint and its texture slots, and a replace aimed at the
-    /// file's diffuse missed. Re-seeds those two and marks the part, which is what re-resolves its slots.</summary>
-    internal static int ReseedMaterials()
-    {
-        if (!DrawRecipe.TakePartMaterialEdge()) return 0;
-        int n = 0, high = SceneDb.Parts.High;
-        for (int p = 0; p < high; p++)
-        {
-            // A part that already folded a material in has nothing to re-ask: a .mtr's bytes never change
-            // under us, and a model edge frees the part before its next read.
-            if (SceneDb.PartMtr[p] != null || !SceneDb.Parts.LiveAt(p)) continue;
-            MeshDef? mesh = SceneDb.PartMeshDef[p];
-            MtrDef? mtr = mesh != null ? MtrDef.Of(mesh) : null;
-            if (mtr == null) continue;
-            SceneDb.PartMtr[p] = mtr;
-            if (mtr.RenderHint != 0)
-            {
-                PartMaterial m = SceneDb.PartMtl[p];
-                m.RenderHint = mtr.RenderHint;
-                SceneDb.PartMtl[p] = m;
-            }
-            // Dirty.Material is what rewrites the record AND marks the slot's texture memo, so the slots
-            // resolve against the file's names rather than the mesh bitmap's.
-            SceneDb.TouchPart(p, Dirty.Material);
-            n++;
-        }
-        if (n > 0) _log?.Info($"PartTree: {n} part(s) folded in a .mtr that was read after they were built");
-        return n;
+        // The two columns above that come from the FILE are provisional while the layer has not answered for
+        // this material: an answer can still arrive, and nothing else re-asks (PartTree.Material.cs).
+        if (mtr == null && MtrDef.Pending(mesh)) WaitForMaterial(p);
     }
 
     // ---------------------------------------------------------------- ComputePartBBox
@@ -898,7 +869,8 @@ public static class PartTree
                + (_dangly > 0 ? $", {_dangly} dangly parts NOT SOLVED (rest frame from the arena)" : "")
                + (_refused > 0 ? $", {_refused} trees REFUSED ({_refusedParts} parts past the {SceneDb.MaxParts} slots)" : "")
                + (_deepTrees > 0 ? $", {_deepTrees} chains past {MaxHops} hops" : "")
-               + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "");
+               + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "")
+               + (MaterialNote() is { Length: > 0 } mtr ? ", " + mtr : "");
     }
 
     internal static string Describe()
@@ -909,6 +881,7 @@ public static class PartTree
     internal static void ResetForCheck()
     {
         _built = _merged = _collapsed = _refused = _refusedParts = _animMesh = _dangly = _deepTrees = 0;
+        _mtrWait = new MtrWaitState();
         PartGate.ResetForCheck();
     }
 }

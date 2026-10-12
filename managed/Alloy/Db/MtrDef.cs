@@ -35,10 +35,34 @@ public sealed class MtrDef
 
     private MtrDef() { for (int i = 0; i < MaxTextures; i++) Textures[i] = ""; }
 
+    /// <summary>What the resource layer answers about a material: its bytes, and whether it has been asked
+    /// for at all yet. One owner for the pair, because a null from the first means two different things and
+    /// only the second can tell them apart.</summary>
+    private sealed class ProviderState
+    {
+        public Func<string, byte[]?>? Bytes;
+        public Func<string, bool>? Answered;
+    }
+
+    private static ProviderState _provider = new();
+
     /// <summary>Where a <c>.mtr</c>'s bytes come from. Null (the default) means none can be read, and then a
     /// mesh's own texture names stand -- which is vanilla for a model with no <c>.mtr</c>. The resource layer
     /// sets this; nothing under <c>Alloy/Db/</c> reaches a resource manager itself.</summary>
-    public static Func<string, byte[]?>? Bytes;
+    public static Func<string, byte[]?>? Bytes
+    {
+        get => _provider.Bytes;
+        set => _provider.Bytes = value;
+    }
+
+    /// <summary>Has the layer ANSWERED for this material -- read it, or established that there is no such
+    /// file? Set beside <see cref="Bytes"/> by the same layer; null means it cannot say, and then nothing is
+    /// treated as pending.</summary>
+    public static Func<string, bool>? Answered
+    {
+        get => _provider.Answered;
+        set => _provider.Answered = value;
+    }
 
     private static readonly Dictionary<string, MtrDef?> _cache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -61,8 +85,19 @@ public sealed class MtrDef
     /// <summary>The material a mesh draws with: <c>MdlNodeTriMesh::GetMaterialName</c> @0x53c4a0 answers
     /// <c>materialname</c>, or the <c>bitmap</c> when that is empty -- so a bitmap naming a <c>.mtr</c>
     /// (a content dynamic sky) IS that material.</summary>
-    public static MtrDef? Of(MeshDef mesh)
-        => Resolve(mesh.MaterialName.Length > 0 ? mesh.MaterialName : mesh.Textures[0]);
+    public static MtrDef? Of(MeshDef mesh) => Resolve(NameOf(mesh));
+
+    /// <inheritdoc cref="Of"/>
+    private static string NameOf(MeshDef mesh) => mesh.MaterialName.Length > 0 ? mesh.MaterialName : mesh.Textures[0];
+
+    /// <summary>Could <paramref name="mesh"/> still gain a material a resolve has not seen? True only while
+    /// the layer has not answered for its name -- an answered "no such file" is final, so a part built against
+    /// one has nothing to wait for.</summary>
+    public static bool Pending(MeshDef mesh)
+    {
+        string name = NameOf(mesh);
+        return name.Length > 0 && _provider.Answered is { } ask && !ask(name);
+    }
 
     /// <summary>Forget every parsed material (the self-check, and a content reload).</summary>
     public static void Forget() { lock (_cache) _cache.Clear(); }

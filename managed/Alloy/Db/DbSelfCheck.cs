@@ -30,6 +30,7 @@ internal static class DbSelfCheck
         Func<string, ModelDef?> savedResolve = PartTree.ResolveModel;
         Action<DbId, int, string>? savedRef = PartTree.OnReference;
         Func<string, byte[]?>? savedBytes = MtrDef.Bytes;
+        Func<string, bool>? savedAnswered = MtrDef.Answered;
         ExtenderLog? savedArenaLog = MeshArena.Log, savedTreeLog = PartTree.Log;
         MeshArena.Log = null;
         PartTree.Log = null;
@@ -58,6 +59,8 @@ internal static class DbSelfCheck
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
             check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
+            check.Expect(AbsentMaterialNeverWaits(), "a material the layer answered ABSENT is final, so the part is never put on the late-.mtr wait list and the landing edge has nothing to do for it");
+            check.Expect(RecycledWaiterDropped(), "a waiting part whose slot was recycled before the read landed is dropped, never folded into the slot's new tenant");
             check.Expect(LateMaterialColumns(), "a .mtr that lands after a PART was built folds into its material columns, and a PLT replace on it then matches the file's diffuse rather than the mesh bitmap");
         }
         finally
@@ -65,6 +68,7 @@ internal static class DbSelfCheck
             PartTree.ResolveModel = savedResolve;
             PartTree.OnReference = savedRef;
             MtrDef.Bytes = savedBytes;
+            MtrDef.Answered = savedAnswered;
             MeshArena.Log = savedArenaLog;
             PartTree.Log = savedTreeLog;
             Drain();
@@ -923,7 +927,9 @@ internal static class DbSelfCheck
     {
         Reset();
         MtrDef.Forget();
-        MtrDef.Bytes = _ => null;   // the part is built while the feed has not read the file
+        // the part is built while the feed has only QUEUED the read: not answered, so an answer may come
+        MtrDef.Bytes = _ => null;
+        MtrDef.Answered = _ => false;
         MeshDef mesh = Quad("cx_chest001");
         mesh.MaterialName = "cx_late_mat";
         var model = Model("cx_chest003", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
@@ -933,13 +939,16 @@ internal static class DbSelfCheck
         int p = SceneDb.ObjPartFirst[obj.Index] + 1;
         bool ok = SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_chest001"
                   && SceneDb.PartMtl[p].RenderHint == 0
-                  && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0;
+                  && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0
+                  // ...and it is on the wait list, which is the only thing the edge revisits
+                  && PartTree.MaterialWaiting == 1;
 
         // ...and the read lands. The edge is the one re-ask: nothing else revisits a built part's material.
         MtrDef.Bytes = n => n == "cx_late_mat"
             ? Encoding.ASCII.GetBytes("texture0 cx_chest003\nrenderhint NormalAndSpecMapped\n") : null;
+        MtrDef.Answered = _ => true;
         DrawRecipe.MaterialLanded();
-        ok &= PartTree.ReseedMaterials() > 0;
+        ok &= PartTree.ReseedMaterials() == 1 && PartTree.MaterialWaiting == 0;
         ok &= SceneDb.PartMtr[p] != null && SceneDb.PartTexName(p, 0) == "cx_chest003"
               && SceneDb.PartMtl[p].RenderHint == 2;
         // ...and the part is MARKED, which is what rewrites its record and re-resolves its texture slots
@@ -953,5 +962,59 @@ internal static class DbSelfCheck
         ok &= Seam.ObjectTex.Replace(obj, "cx_chest003", "cx_chest042", rows: rows) == 1;
         ok &= Shows(p) == "cx_chest042" && SceneDb.PartPltOwn[p];
         return ok;
+    }
+
+    /// <summary>A material the layer has ANSWERED for and that does not exist: final, so the part has nothing
+    /// to wait for and must not be enqueued -- otherwise every part of a vanilla area (whose bitmap names no
+    /// <c>.mtr</c>) would sit on the wait list for the session. Oracle: the waiting count, hand-written.</summary>
+    private static bool AbsentMaterialNeverWaits()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;
+        MtrDef.Answered = _ => true;   // asked and answered: there is no such file
+        MeshDef mesh = Quad("cx_absent_tex");
+        var model = Model("cx_absent", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        DbId obj = NewObject();
+        if (!PartTree.Build(obj, model)) return false;
+        int p = SceneDb.ObjPartFirst[obj.Index] + 1;
+        if (PartTree.MaterialWaiting != 0) return false;
+        // ...and a landing edge therefore has nothing to do for it
+        DrawRecipe.MaterialLanded();
+        return PartTree.ReseedMaterials() == 0 && SceneDb.PartMtr[p] == null
+               && SceneDb.PartTexName(p, 0) == "cx_absent_tex";
+    }
+
+    /// <summary>A waiting part whose slot was freed and handed to another tree before the read landed: the
+    /// entry names a tenant that is gone, so it is dropped rather than folding one model's material into
+    /// another model's part. Oracle: the second tree's own columns, which must stay its mesh's.</summary>
+    private static bool RecycledWaiterDropped()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;
+        MtrDef.Answered = _ => false;   // queued, not answered: this part waits
+        MeshDef waits = Quad("cx_recyc001");
+        waits.MaterialName = "cx_recyc_mat";
+        var first = Model("cx_recyc_a", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, waits });
+        DbId a = NewObject();
+        if (!PartTree.Build(a, first)) return false;
+        int p = SceneDb.ObjPartFirst[a.Index] + 1;
+        if (PartTree.MaterialWaiting != 1) return false;
+        PartTree.Free(a);
+
+        // ...and the slot comes back to a tree whose mesh names no material at all
+        var second = Model("cx_recyc_b", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                           new MeshDef?[] { null, Quad("cx_recyc002") });
+        DbId b = NewObject();
+        if (!PartTree.Build(b, second)) return false;
+        if (SceneDb.ObjPartFirst[b.Index] + 1 != p) return false;   // the same slot, or this proves nothing
+        MtrDef.Bytes = n => n == "cx_recyc_mat" ? Encoding.ASCII.GetBytes("texture0 cx_recyc_mtr\n") : null;
+        MtrDef.Answered = _ => true;
+        DrawRecipe.MaterialLanded();
+        return PartTree.ReseedMaterials() == 0 && PartTree.MaterialWaiting == 0
+               && SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_recyc002";
     }
 }
