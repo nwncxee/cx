@@ -80,7 +80,6 @@ internal static unsafe class NuiFlush
         NuiWindows.Init(log);
         Capabilities.Register("nuirender", 1, static () => _armed && !_stoodDown && Renderer.Gui.V && CX.Services.Nui.NuiKnobs.Enabled.V);
         Renderer.Gui.Changed += Capabilities.Refresh;
-        CX.Services.Nui.NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         _armed = true;
         log.Info("NuiFlush: armed -- on a captured frame nuklear converts into CX buffers and Alloy draws NUI "
                + "(the engine's flush is not called)");
@@ -94,8 +93,9 @@ internal static unsafe class NuiFlush
         if (!_armed || _stoodDown || ctx == IntPtr.Zero || !GuiPass.Capturing) { (*_nkSlot)(dt); return; }
         new NkContext(ctx).DeltaTime = dt;
         _refresh();
-        NuiWindows.Apply(ctx);
+        NuiWindows.Apply(ctx, _texNull == IntPtr.Zero ? 0 : (int)(long)((NkDrawNullTexture*)_texNull)->Texture);
         Convert(ctx);
+        NuiWindows.Finish(ctx);
         _clear(ctx);
         BufferClear(_cmds);
         HandBackEngineState();

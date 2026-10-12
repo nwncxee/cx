@@ -1816,6 +1816,7 @@ public static unsafe class EngineLayout
     /// <summary>The window's command buffer: <c>begin</c> and <c>end</c> bound its commands in the queue (offsets), <c>last</c> is its last in the main chain.</summary>
     public static readonly int NkWinBufBegin = Field<ulong>("NkWindow", "bufBegin");
     public static readonly int NkWinBufEnd = Field<ulong>("NkWindow", "bufEnd");
+    public static readonly int NkWinBufLast = Field<ulong>("NkWindow", "bufLast");
     public static readonly int NkWinNext = Field<IntPtr>("NkWindow", "next");
 
     // ---- CNWCAnimBase: the highlight CHANNELS (#336) ----

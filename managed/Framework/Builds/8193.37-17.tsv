@@ -495,6 +495,7 @@ offset	NkWindow	flags	0x48	0x48	# NkWinFlags
 offset	NkWindow	bounds	0x4c	0x4c	# NkWinBounds
 offset	NkWindow	bufBegin	0x90	0x90	# NkWinBufBegin
 offset	NkWindow	bufEnd	0x98	0x98	# NkWinBufEnd
+offset	NkWindow	bufLast	0xa0	0xa0	# NkWinBufLast
 offset	NkWindow	next	0x1c0	0x1c0	# NkWinNext
 offset	Gob	propagateHilite	0x1c	0x1c	# GobPropagateHilite
 offset	CNWCAnimBase	hiliteActive	0x9c	0x9c	# AnimHiliteActive

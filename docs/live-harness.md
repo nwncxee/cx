@@ -101,6 +101,7 @@ constants at the top of `tools/live/ladder/cxladder.nss` -- change them there, n
 | 16 s | the talker is destroyed (which drops the dialogue UI), three hostile `nw_goblina` spawn, `ActionAttack` | `CXLADDER: combat`, then `combat-result N/3 down` |
 | 30 s | `JumpToLocation` to the second area's stock respawn waypoint -- a real transition with a loading screen | `CXLADDER: area2 <area>` |
 | 43 s | a plain NUI window opens at (400, 260), 300x200, for the window-layer shots | `CXLADDER: nui` |
+| `--nui-close N` | that window is closed N s in, so `07n-nui*.png` catch a fade out; without the flag it stays open | `CXLADDER: nui-close` |
 | 45 s | `JumpToLocation` back to where the PC joined -- the second transition | `CXLADDER: area1` |
 | 48 s | the ladder is finished | `CXLADDER: done in <area>` |
 
@@ -159,6 +160,13 @@ would grade rungs the run never reached.
 `--cfg 'ui.layerprobe=1'` with `--ladder` draws a red rectangle on the below-NUI layer and a cyan one on the above-NUI
 layer, placed over the rung's NUI window. `07n-nui*.png` shows the order: the red one hides under the NUI window and the
 cyan one sits over it. Run it with and without `--cfg 'alloy.enabled=0'`; both must look the same.
+
+## NUI render keys
+
+`--cfg 'nui.policyprobe=nui.cxladder_nui.opacity=0.5;nui.cxladder_nui.background=0'` sets the server's `nui.<id>.*` keys without
+a server (`docs/ui-policy-contract.md`); the ladder's window id is `cxladder_nui`. `07n-nui*.png` show the result. For a fade in,
+set `fadein` to 30000 and the three shots land inside it. For a fade out, add `fadeout=5000` and run with `--nui-close 45`.
+With `--cfg alloy.enabled=0` the window draws as stock.
 
 ## Limits
 

@@ -3210,6 +3210,8 @@ public readonly unsafe partial struct NkWindow(IntPtr ptr)
     public ref ulong BufBegin => ref *(ulong*)(Ptr + EngineLayout.NkWinBufBegin);
     /// <inheritdoc cref="EngineLayout.NkWinBufEnd"/>
     public ref ulong BufEnd => ref *(ulong*)(Ptr + EngineLayout.NkWinBufEnd);
+    /// <inheritdoc cref="EngineLayout.NkWinBufLast"/>
+    public ref ulong BufLast => ref *(ulong*)(Ptr + EngineLayout.NkWinBufLast);
     /// <inheritdoc cref="EngineLayout.NkWinFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.NkWinFlags);
     /// <inheritdoc cref="EngineLayout.NkWinName"/>
