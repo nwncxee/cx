@@ -80,6 +80,16 @@ internal static unsafe class TexCoverageOf
     /// <summary>The engine's own channel count for a format, which is what <see cref="LevelSize"/> wants.</summary>
     private static int Channels(Fmt f) => f is Fmt.Bc1 ? 3 : f is Fmt.Bc4 or Fmt.Bc4S ? 1 : 4;
 
+    /// <summary>The <c>texcov:</c> note's text: which decode answered, and -- for the two verdicts that take a
+    /// texture OUT of the 0.2 cutout -- what that costs the draw. <paramref name="route"/> names the container
+    /// and format, which is what makes a texture that draws solid findable in <c>cx.log</c>.</summary>
+    internal static string Why(string route, TexCoverage cov) => cov switch
+    {
+        TexCoverage.Opaque => $"{route} -> Opaque: the cutout test is off for it, so nothing is discarded",
+        TexCoverage.Unknown => $"{route} -> Unknown: the decode could not answer, so it keeps the 0.2 cutout",
+        _ => $"{route} -> {cov}",
+    };
+
     /// <summary>Off-device: the two tolerances, each format's verdict and the three raster shapes.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
@@ -143,6 +153,19 @@ internal static unsafe class TexCoverageOf
             "a BC3 block of 255/0 endpoints read at index 1 is not Cutout");
         Expect(OfBcn(new byte[4], 4, 4, Fmt.Bc3, ref scratch) == TexCoverage.Unknown, "a short BC3 block was not refused");
         Expect(OfBcn(new byte[16], 4, 4, Fmt.None, ref scratch) == TexCoverage.Unknown, "an unknown format answered");
+
+        // The texcov: note. Oracle: the two verdicts the 0.2 cutout cannot reach are written out here by
+        // hand, so a route that stops naming the format -- the only thing that makes a solid-drawing texture
+        // findable in cx.log -- fails rather than printing a bare enum name.
+        const string route = "DDS Bc1, 3 channel(s)";
+        Expect(Why(route, TexCoverage.Opaque).StartsWith(route, StringComparison.Ordinal)
+               && Why(route, TexCoverage.Opaque).Contains("the cutout test is off", StringComparison.Ordinal),
+            "the Opaque note does not name its route and say the test is off");
+        Expect(Why(route, TexCoverage.Unknown).Contains("keeps the 0.2 cutout", StringComparison.Ordinal),
+            "the Unknown note does not say the part keeps the cutout");
+        Expect(Why(route, TexCoverage.Cutout).Contains("Cutout", StringComparison.Ordinal)
+               && !Why(route, TexCoverage.Cutout).Contains("cutout test is off", StringComparison.Ordinal),
+            "a Cutout verdict must not claim the test is off -- its alpha IS tested");
         log.Info(ok ? "TexCoverage.SelfCheck: passed" : "TexCoverage.SelfCheck: FAILED");
         return ok;
     }
