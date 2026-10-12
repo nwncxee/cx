@@ -22,6 +22,8 @@ uniform int uViz;        // 0 = the frame; 1 = bloom only; 2 = HDR only; 3 = blo
 vec3 CxShoulder(vec3 c, float k)
 {
     if (k <= 0.0) return c;
+    // k = 1 makes m zero and m*t/(m+t) a 0/0 NaN below the knee -- black on NVIDIA. Its limit is a clip.
+    if (k >= 1.0) return min(c, vec3(1.0));
     vec3 t = max(c - vec3(k), vec3(0.0));
     // The curve is C1 at the knee and asymptotic to 1, so anything the target could already show is
     // untouched and only the range that used to clip moves. k is a LINEAR value here; the encode
