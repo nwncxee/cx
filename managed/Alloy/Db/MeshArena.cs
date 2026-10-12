@@ -33,7 +33,7 @@ public static unsafe partial class MeshArena
     /// <summary>Bytes one vertex of <paramref name="f"/> occupies -- the stride every attribute is bound at.</summary>
     internal static int StrideBytes(Fmt f) => StrideOf[(int)f] * 4;
 
-    /// <summary>Vertices one format's section may hold (8M x 40 B = 320 MiB static, grown on demand; the
+    /// <summary>Vertices one format's section may hold (8M x 48 B = 384 MiB static, grown on demand; the
     /// skinned section is far smaller). Measured: 2M in a 27x24 city of 1654 placeables, 4M hopping INTO a
     /// ~3M-vertex area, because a load lands on the previous area's dead ranges and only the pump compacts.
     /// ponytail: past the ceiling it refuses and counts -- no spill to a second VBO, no mid-load compaction.</summary>
