@@ -4,10 +4,10 @@ using CX.Alloy.Mdl;
 
 namespace CX.Alloy.Seam;
 
-/// <summary>The per-object texture overrides behind <c>Gob::ReplaceTexture</c> / <c>RestoreTexture</c> /
-/// <c>SetEnvironmentMap</c>. The override lives in <see cref="SceneDb.PartTexId"/>, which is per PART rather than
-/// on a material every instance of the model shares; the feed's stage uses it when non-zero and the recipe's
-/// texture otherwise, so an override is one column write plus <see cref="Dirty.Texture"/>.</summary>
+/// <summary>The per-object texture overrides behind <c>Gob::ReplaceTexture</c> / <c>RestoreTexture</c>, and the
+/// instance environment map behind <c>SetEnvironmentMap</c>. An override lives in <see cref="SceneDb.PartTexId"/>,
+/// which is per PART rather than on a material every instance of the model shares; the feed's stage uses it when
+/// non-zero and the recipe's texture otherwise, so it is one column write plus <see cref="Dirty.Texture"/>.</summary>
 internal static class ObjectTex
 {
     /// <summary>Point every part of <paramref name="obj"/> whose current texture in slot <paramref name="slot"/> is
@@ -107,6 +107,48 @@ internal static class ObjectTex
 
     /// <summary>Release the overrides a dying record holds; nothing else owns those texture references.</summary>
     internal static void Free(DbId obj) => Restore(obj);
+
+    // ---- the instance environment map ----
+
+    /// <summary><c>Gob::SetEnvironmentMap</c> @0x53f530: the map the whole GOB reflects. The engine kept ONE
+    /// texture pointer for it (<c>gob+0x480</c>) and never a material texture slot, so it goes in
+    /// <see cref="SceneDb.ObjEnvMap"/> and slot 3 stays the material's roughness map. A null, empty or
+    /// <c>"NULL"</c> name clears it, as the engine's own compare does; 1 is the engine's answer, always.</summary>
+    internal static int SetEnvMap(DbId obj, string? name)
+    {
+        bool clear = string.IsNullOrEmpty(name)
+                  || string.Equals(name, "NULL", StringComparison.OrdinalIgnoreCase);
+        SetEnvMapIn(obj, clear ? null : name, 0);
+        return 1;
+    }
+
+    /// <summary>Give a freshly grafted piece the env map of the object it was grafted onto: one pointer per
+    /// gob covered every part in vanilla, the body pieces appended after the call included.</summary>
+    internal static void InheritEnvMap(DbId child, DbId from)
+    {
+        if ((uint)from.Index < SceneDb.MaxObjects) SetEnvMapIn(child, SceneDb.ObjEnvMap[from.Index], 0);
+    }
+
+    /// <summary>The object, then every piece <c>Gob::Append</c> grafted onto it: one gob's env map covered a
+    /// creature's torso, arms and cloak, each of which is a child object here.</summary>
+    private static void SetEnvMapIn(DbId obj, string? name, int depth)
+    {
+        if (depth > MaxGraft || !SceneDb.Objects.Valid(obj)) return;
+        int i = obj.Index;
+        if (!string.Equals(SceneDb.ObjEnvMap[i], name, StringComparison.Ordinal))
+        {
+            SceneDb.ObjEnvMap[i] = name;
+            // The stage memoises the env bit per record, so the records that read it have to be told.
+            SceneDb.Touch(obj, Dirty.Texture);
+            Facade.Log?.Info($"seam: env map {(name == null ? "cleared" : $"\"{name}\"")} on o={i} -- kept in "
+                             + "its own column; material slot 3 stays the roughness map");
+        }
+        for (DbId c = SceneDb.ObjSeamAppendHead[i]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        {
+            if (!SceneDb.Objects.Valid(c)) break;
+            SetEnvMapIn(c, name, depth + 1);
+        }
+    }
 
     /// <summary>Point every part of <paramref name="obj"/> whose RESOLVED texture name in slot
     /// <paramref name="slot"/> is <paramref name="from"/> at <paramref name="to"/>, or -- <paramref name="to"/> null
