@@ -874,7 +874,7 @@ public sealed unsafe partial class AlloyRenderer
                 }
             }
             if (FrameDump.Capturing)
-                FrameDump.Row_(cls, lit, v, _oMat[i], mode, feat, dis, blend, noCull, slots, merge,
+                FrameDump.Row_(cls, lit, v, _oMat[i], _oDbRecipe[i], mode, feat, dis, blend, noCull, slots, merge,
                                idxCount, _dOff[n], _dBase[n], r);
             _gLen[groups - 1]++;
             n++;
