@@ -510,6 +510,9 @@ public static unsafe partial class DbAnim
         for (int k = 0; k < n; k++) Unskin(first + k);
         DanglyForget(obj);
         StitchForget(obj);
+        // A grafted piece is going, and its neighbour's boundary ring is unified with vertices that will not
+        // exist: the composition it leaves behind is owed a new stitch.
+        StitchDue(SceneDb.ObjAttachTo[i]);
         LodForget(i);
         // The engine's own order: ~CAurBehaviorAttach calls Gob::RemoveAttachment @0x43f8f0, so a dying object
         // is off its parent's carry list before the slot can be re-tenanted.
@@ -537,6 +540,9 @@ public static unsafe partial class DbAnim
         // The look-at holds PART indices on both ends; the engine drops its whole LookAtAnimation when the
         // tree goes, and so must this.
         LookAtClear(i);
+        // Every bone table resolved against this range holds PART indices into it, and those are about to
+        // name other nodes -- a grafted piece's table included, which this edge does not reach.
+        TreeBumped(obj);
         // The per-(model, animation) bindings are the model cache's and are keyed on the model, so a tree
         // built from the same model re-uses them and one from another model gets its own.
         ScanTree(i);

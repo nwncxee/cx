@@ -72,7 +72,7 @@ public static unsafe partial class DbAnim
     /// bone table solved for the tree it was seated in -- which a re-tenanted part index no longer has.</summary>
     private static void Unskin(int p)
     {
-        _namedBind[p] = null;
+        _named.Bind[p] = null;
         int slot = SceneDb.PartBoneBase[p];
         if (slot < 0) return;
         AlloyRenderer.DbFreeBone(slot);

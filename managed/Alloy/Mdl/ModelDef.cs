@@ -252,6 +252,10 @@ public sealed class SkinDef
     /// <summary>Per slot, the inverse bind pose (node space -> bone space).</summary>
     public Quaternion[] BindRotation = Array.Empty<Quaternion>();
     public Vector3[] BindTranslation = Array.Empty<Vector3>();
+    /// <summary>Per SLOT, the inverse bind pose already flattened out of whichever form stated it, for a
+    /// consumer that rebuilt the bone table (the part-boundary stitch). A null entry, and any slot past the
+    /// array, is derived from the assembled rest pose instead; an empty array is every slot derived.</summary>
+    public Matrix4x4?[] SlotBind = Array.Empty<Matrix4x4?>();
 
     /// <summary>A field-for-field copy, for a consumer that owns per-INSTANCE skin data (the part-boundary
     /// stitch): the arrays are shared until the caller replaces the ones it rewrites.</summary>
