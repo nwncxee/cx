@@ -161,12 +161,43 @@ public static class TileBuildCheck
         ReplaceTexCheck(check);
         LifoCheck(check, def);
         BorderCheck(check, def);
+        SceneMoveCheck(check, def);
 
         TileBuild.ResetAll();
         TileBuild.Forget(def);
         log.Info(check.Ok ? "TileBuild.SelfCheck: passed"
                           : "TileBuild.SelfCheck: FAILED -- the DB tile build would not match the engine's");
         return check.Ok;
+    }
+
+    /// <summary>A placed tile never changes scene through the seam: a stale game pointer on a recycled tile shell
+    /// used to carry it into a GUI scene, leaving a hole with no floor. Oracle: the hand-written verdict for
+    /// each case, and a non-tile record carrying a leaked Tile flag that must not be guarded.</summary>
+    private static void SceneMoveCheck(Checker check, ModelDef def)
+    {
+        TileBuild.ResetAll();
+        TileBuild.InitGrid(default, 8, 8, 0, 10f);
+        DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc();
+        int t = TileBuild.Place(world, def, TileBuild.CellPos(1, 1, 0), 0, 0);
+        check.Expect(t >= 0, "a tile places into a live scene");
+        DbId obj = t >= 0 ? SceneDb.TileObj[t] : default;
+        check.Expect(TileBuild.OwnScene(obj).Value == world.Value, "a placed tile's object belongs to its world scene");
+        check.Expect(TileBuild.RefuseMove(obj, gui, "[self-check, on purpose] Scene::ChildAdd"),
+            "a join into another scene is refused");
+        check.Expect(TileBuild.RefuseMove(obj, default, "[self-check, on purpose] Scene::ChildRemove"),
+            "a removal from its own scene is refused");
+        check.Expect(!TileBuild.RefuseMove(obj, world, "[self-check, on purpose] Scene::ChildAdd"),
+            "a join into its own scene is allowed");
+        DbId text = SceneDb.Objects.Alloc();
+        DbFeed.InitObject(text.Index);
+        SceneDb.ObjFlags[text.Index] = ObjFlag.Tile;
+        check.Expect(!TileBuild.RefuseMove(text, gui, "[self-check, on purpose] Scene::ChildAdd"),
+            "a record that only carries a leaked Tile flag is no tile, and moves freely");
+        SceneDb.Objects.Free(text);
+        TileBuild.ResetAll();
+        SceneDb.Scenes.Free(world);
+        SceneDb.Scenes.Free(gui);
+        TileBuild.ResetAudit();
     }
 
     /// <summary>The two per-tile ramps have to stay APART: the camera fade is an alpha

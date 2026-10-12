@@ -135,8 +135,6 @@ public static unsafe class DbScene
         // One scene per object: the scene/ChildAdd slots join without updating the shell's +0x88 word, so the
         // engine's Gob::SetScene can ChildRemove from a stale word and leave the object drawing in its old panel.
         DbId was = SceneDb.ObjScene[obj.Index];
-        if (!fresh && !was.IsNull && was.Value != scene.Value && (SceneDb.ObjFlags[obj.Index] & ObjFlag.Tile) != 0)
-            TileBuild.NoteMoved(obj, was, scene, 0, CX.Alloy.Seam.SeamCallers.Chain(4));
         if (!fresh && was.Value != scene.Value && Leave(was, obj)) Stranded(was, scene, obj);
         m.Add(obj);
         SceneDb.ObjScene[obj.Index] = scene;

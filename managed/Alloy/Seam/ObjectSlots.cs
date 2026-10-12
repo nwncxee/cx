@@ -348,9 +348,12 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// scene destroy all read that list, so writing <c>ObjScene</c> alone leaves a scene that holds nothing.</summary>
     internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell)
     {
+        if (TileBuild.RefuseMove(id, sc, "JoinScene"))
+        {
+            if (shell != 0) Facade.SetSceneWord(shell, SceneDb.SceneFacade[SceneDb.ObjScene[id.Index].Index]);
+            return;
+        }
         DbId was = SceneDb.ObjScene[id.Index];
-        if ((SceneDb.ObjFlags[id.Index] & ObjFlag.Tile) != 0 && was.Value != sc.Value)
-            TileBuild.NoteMoved(id, was, sc, shell, SeamCallers.Chain(4));
         if (!was.IsNull && was.Value != sc.Value) DbScene.Leave(was, id);
         if (!sc.IsNull) { DbScene.Join(sc, id); Flag(id, SeamFlag.EverAttached, true); }
         else SceneDb.ObjScene[id.Index] = default;

@@ -12,13 +12,16 @@ public static partial class TileBuild
     internal sealed class TileAuditState
     {
         internal readonly HashSet<(int Tile, uint Obj)> Named = new();
-        internal int OutOfScene, NotJoined, Moved, LinesLeft = AuditLines;
+        internal int OutOfScene, NotJoined, Refused, LinesLeft = AuditLines;
     }
 
     /// <summary>Lines the audit writes per session; the counts go on past it.</summary>
     private const int AuditLines = 64;
 
     private static TileAuditState _audit = new();
+
+    /// <summary>A fresh audit: the self-check's own refusals are not the session's.</summary>
+    internal static void ResetAudit() => _audit = new();
 
     /// <summary>Every live tile whose object is missing, stamped with another scene, or absent from its scene's
     /// member list. Returns how many are out right now.</summary>
@@ -60,17 +63,31 @@ public static partial class TileBuild
                      + $"its column says {SceneDb.ObjScene[obj.Index].Value} ({st.NotJoined} so far)");
     }
 
-    /// <summary>A placed tile's object moved scenes through the seam -- the engine attached its gob somewhere.
-    /// Vanilla never moves a tile, so every one is named with the game frames that asked.</summary>
-    internal static void NoteMoved(DbId obj, DbId was, DbId to, nint shell, string chain)
+    /// <summary>The scene a placed tile's object belongs to, or null when <paramref name="obj"/> is no live
+    /// tile's object. The flag only filters: a recycled slot can carry it, the tile table is the answer.</summary>
+    internal static DbId OwnScene(DbId obj)
     {
+        if (!SceneDb.Objects.Valid(obj) || (SceneDb.ObjFlags[obj.Index] & ObjFlag.Tile) == 0) return default;
+        for (int t = 1; t < SceneDb.Tiles.High; t++)
+            if (SceneDb.Tiles.LiveAt(t) && SceneDb.TileObj[t].Value == obj.Value) return SceneDb.TileScene[t];
+        return default;
+    }
+
+    /// <summary>True when a seam call would take a placed tile's object out of its own scene. Vanilla never
+    /// moves a tile (its scene's death drops it, in <see cref="SceneRevoke"/>); the call that tries is a game
+    /// pointer that outlived its object and now lands on a recycled tile shell, so it is refused and named.</summary>
+    internal static bool RefuseMove(DbId obj, DbId to, string via)
+    {
+        DbId own = OwnScene(obj);
+        if (own.IsNull || to.Value == own.Value) return false;
         TileAuditState st = _audit;
-        st.Moved++;
-        if (st.LinesLeft <= 0) return;
+        st.Refused++;
+        if (st.LinesLeft <= 0) return true;
         st.LinesLeft--;
-        _log?.Always($"TileBuild: [audit move] '{SceneDb.ObjModel[obj.Index]?.Name}' object {obj.Value} (shell 0x{shell:x}) "
-                     + $"moved from scene {was.Value} to {to.Value} (valid={SceneDb.Scenes.Valid(to)}) by {chain} "
-                     + $"({st.Moved} so far)");
+        _log?.Always($"TileBuild: REFUSED -- {via} would move tile object {obj.Value} '{SceneDb.ObjModel[obj.Index]?.Name}' "
+                     + $"from its scene {own.Value} to {to.Value}: a stale game pointer on a recycled tile shell, by "
+                     + $"{CX.Alloy.Seam.SeamCallers.Chain(4)} ({st.Refused} so far)");
+        return true;
     }
 
     /// <summary>The period line's clause: empty while every tile is where it belongs.</summary>
@@ -79,6 +96,6 @@ public static partial class TileBuild
         int bad = AuditScenes("period");
         return (bad > 0 ? $", {bad} TILE OBJECTS OUT OF THEIR SCENE" : "")
              + (_audit.NotJoined > 0 ? $", {_audit.NotJoined} TILE OBJECTS NEVER JOINED" : "")
-             + (_audit.Moved > 0 ? $", {_audit.Moved} TILE OBJECTS MOVED SCENES" : "");
+             + (_audit.Refused > 0 ? $", {_audit.Refused} tile moves refused" : "");
     }
 }
