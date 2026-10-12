@@ -57,6 +57,7 @@ internal static class DbSelfCheck
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
+            check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
         }
         finally
         {
@@ -882,5 +883,34 @@ internal static class DbSelfCheck
         int f = SceneDb.ObjPartFirst[o.Index];
         return SceneDb.PartMtr[f] != null && SceneDb.PartTexName(f, 0) == "stone_d"
                && SceneDb.PartTexName(f, 1) == "stone_n" && SceneDb.PartMtl[f].RenderHint == 2;
+    }
+
+    /// <summary>A recipe interned while its mesh's <c>.mtr</c> was unreadable: the coverage mode cannot be
+    /// known yet, and only the material's own landing edge can supply it -- no texture serial moves for it.
+    /// Oracle: the mode is a hand-written <c>.mtr</c> text and the expected flag is written out, not read
+    /// back off the recipe.</summary>
+    private static bool LateCoverage()
+    {
+        const string text = "bitmap cov_d\nparameter int NWN_ALPHA_MODE 2\n";
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;   // the parse asked and the feed had not read it yet
+        MeshDef mesh = Quad("cov_tex");
+        mesh.MaterialName = "cx_selfcheck_cov";
+        var model = Model("cx_selfcheck_cov", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        int r = DrawRecipe.Intern(model, 1, plan: false);
+        bool ok = r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.Coverage) == 0;
+        // ...and the read lands. Reclassify is the one re-ask, and it must report the move so the records
+        // of every part on this recipe are rewritten.
+        MtrDef.Bytes = n => n == "cx_selfcheck_cov" ? Encoding.ASCII.GetBytes(text) : null;
+        DrawRecipe.MaterialLanded();
+        ok &= DrawRecipe.Reclassify() > 0;
+        ok &= r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.Coverage) != 0
+                     && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        DrawRecipe.Forget(model);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
+        return ok;
     }
 }

@@ -172,6 +172,9 @@ internal static unsafe class MtrFeed
             _hint[name] = hint;
             _bytes[name] = data;
         }
+        // A recipe interned before this read took its coverage mode and its declared-water term from a
+        // material that was not there yet; this is the edge that lets the next reclassify re-ask them.
+        if (data != null) DrawRecipe.MaterialLanded();
     }
 
     /// <summary>The world edge: a new area's materials may come from other containers.</summary>
