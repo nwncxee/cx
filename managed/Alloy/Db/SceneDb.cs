@@ -684,7 +684,7 @@ public static class SceneDb
     internal static TexId PartTex(int part, int slot) => PartTex(part, PartRecipe[part], slot);
 
     /// <summary>Did the game name an environment map for the object this part belongs to
-    /// (<c>Gob::SetEnvironmentMap</c> @0x53f530, which kept ONE texture per gob at <c>gob+0x480</c>)? The
+    /// (<c>Gob::SetEnvironmentMap</c> @0x43f530, which kept ONE texture per gob at <c>gob+0x480</c>)? The
     /// instance half of the draw's env-map bit; the other half is the diffuse's own <c>.txi</c>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool PartEnvMapped(int part)

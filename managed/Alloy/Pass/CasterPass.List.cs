@@ -202,16 +202,17 @@ public sealed unsafe partial class CasterPass
     /// so it is never cached -- and the per-frame fetch is what keeps an animated diffuse cutting the right
     /// silhouette.</summary>
     private static readonly int[] _liveTex = new int[MaxCasters];
-    /// <summary>...and the discard threshold that goes with it, staged into the per-caster record.</summary>
-    private static readonly float[] _liveCut = new float[MaxCasters];
+    /// <summary>...and which threshold goes with it, as the KIND the staging key groups on rather than the
+    /// number the stage tests at (<see cref="Threshold"/>).</summary>
+    private static readonly CasterCut[] _liveCut = new CasterCut[MaxCasters];
     /// <summary>A blended-class caster; routed to the masked stage so its record alpha dithers.</summary>
     private static readonly bool[] _liveBlend = new bool[MaxCasters];
     /// <summary>Coverage casters in the standing list, counted on the period line rather than tallied per
-    /// frame: the cut the collect staged is already the flag, so no second column exists to go stale.</summary>
+    /// frame: the kind the collect staged is already the flag, so no second column exists to go stale.</summary>
     private static int CoverCasters()
     {
         int n = 0;
-        for (int i = 0; i < _liveCount; i++) if (_liveCut[i] == CoverageLayer.Cut) n++;
+        for (int i = 0; i < _liveCount; i++) if (_liveCut[i] == CasterCut.Coverage) n++;
         return n;
     }
     /// <summary>Creature casters occupy the head of the live list (they stage first); the static world

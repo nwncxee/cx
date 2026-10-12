@@ -127,23 +127,28 @@ public sealed unsafe partial class CasterPass
                   && CastMaskVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
                   && CastLayerMaskVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
                   && CastVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
-                  // ...and the three thresholds, each named by hand: the layer's own cut for a declared
-                  // coverage material (so the shadow drops the texels the draw drops), the env-alpha floor
-                  // where the diffuse alpha is reflectivity, and the engine's 0.2 for everything else.
-                  && CutFor(coverage: true, envAlpha: false) == 0.01f
-                  && CutFor(coverage: true, envAlpha: true) == 0.01f
-                  && CutFor(coverage: false, envAlpha: true) == 0.02f
-                  && CutFor(coverage: false, envAlpha: false) == 0.2f
-                  && CutFor(coverage: true, envAlpha: false) == CoverageLayer.Cut
+                  // ...and the three threshold kinds pick the three numbers, each written out by hand: the
+                  // layer's own cut for a declared coverage material (so the shadow drops the texels the
+                  // draw drops), the env-alpha floor where the diffuse alpha is reflectivity, 0.2 otherwise.
+                  && CutFor(coverage: true, envAlpha: false) == CasterCut.Coverage
+                  && CutFor(coverage: true, envAlpha: true) == CasterCut.Coverage
+                  && CutFor(coverage: false, envAlpha: true) == CasterCut.EnvAlpha
+                  && CutFor(coverage: false, envAlpha: false) == CasterCut.Cutout
+                  && Threshold(CasterCut.Coverage) == 0.01f
+                  && Threshold(CasterCut.EnvAlpha) == 0.02f
+                  && Threshold(CasterCut.Cutout) == 0.2f
+                  && Threshold(CasterCut.Coverage) == CoverageLayer.Cut
+                  // the kind is a 2-bit key field at 60, so the three must fit under it and leave 62 alone
+                  && (int)CasterCut.Coverage <= 3
                   // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
-                  && DitherFor(CoverageLayer.Cut) >= 1
+                  && DitherFor(CasterCut.Coverage) >= 1
                   // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except
                   // under a hosted fragment stage, which is admitted only where it names a source both can read
-                  && CoverageLayer.FromDiffuse((int)ShaderFeature.None)
-                  && CoverageLayer.FromDiffuse((int)ShaderFeature.Skin)
-                  && !CoverageLayer.FromDiffuse((int)ShaderFeature.GroundWeather)
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.None)
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.Skin)
+                  && !CoverageLayer.HasCoverageSource((int)ShaderFeature.GroundWeather)
                   // CX-223: ...and the one hosted feature that names its own source IS admitted
-                  && CoverageLayer.FromDiffuse((int)ShaderFeature.PaletteTint)
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.PaletteTint)
                   && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()
@@ -286,7 +291,7 @@ public sealed unsafe partial class CasterPass
             for (int i = 0; i < 2; i++)
             {
                 _liveIdxCount[i] = 30 + i; _liveFirst[i] = (uint)(100 + i); _liveBaseVert[i] = (uint)(7 + i);
-                _liveCut[i] = 0.2f; _liveSlot[i] = 4100 + i;
+                _liveCut[i] = CasterCut.Cutout; _liveSlot[i] = 4100 + i;
                 _liveDyn[i] = i == 1;   // #305: the set flag, one of each, so a swap fails
             }
             uint* src = stackalloc uint[2 * CasterGather.SrcUints];
