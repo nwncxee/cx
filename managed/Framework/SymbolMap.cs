@@ -384,6 +384,24 @@ internal static unsafe class SymbolMap
     /// <c>panel-&gt;row.item</c>. Containers, <c>movieplayer</c> and <c>SelectList</c> have their own Render.</summary>
     [Fn("void(IntPtr self, IntPtr ctx)")]
     public const string NuiWidgetRender = "_ZN3Nui6Layout6Widget6RenderEP10nk_context";
+    /// <summary><c>Nui::JSON::JsonWindow::Render()</c> @0x86e3c0 (Windows rva 0x74b810, the one of three vftable slots whose body is a
+    /// profiler zone around a single call into <c>Window::Render</c>) -- a server window's per-frame draw. Every
+    /// <see cref="NuiWidgetRender"/> of that window runs inside it, so its <c>this</c> is the window a widget belongs to.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string NuiJsonWindowRender = "_ZN3Nui4JSON10JsonWindow6RenderEv";
+    /// <summary><c>Nui::Window::GetImageWithCache(string const&amp; key, std::function loader)</c> @0x8487c0 -- an image widget's per-frame look-up of
+    /// the window's image cache; <c>key</c> is the image's resref and type. Returns a <c>shared_ptr</c> by value: Itanium <c>(sret, this, key, loader)</c>.
+    /// It is how a hit learns which <c>@item:</c> or <c>@look:</c> image a widget drew.</summary>
+    public const string NuiGetImageWithCache = "_ZN3Nui6Window17GetImageWithCacheERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt8functionIFSt10shared_ptrI7NkImageEvEE";
+    /// <summary>The int <c>DynamicBinding::SetArrayIndex</c> writes and <c>GetArrayIndex</c> reads (Linux lva 0x18ab050, Windows rva
+    /// 0x129728c; both accessors are inlined on Windows). A list's draw sets it to the visible row before each row's cells
+    /// render and to -1 after the last, and it starts as -1. The constant is a key, never looked up as an export.</summary>
+    public const string NuiArrayIndex = "Nui::JSON::DynamicBinding::s_array_index";
+    /// <summary>nuklear's <c>nk_layout_widget_space</c> (static: Linux lva 0xdd8340, Windows rva 0xa6c0b0), the row-type switch behind
+    /// <c>nk_panel_alloc_space</c>: where the next widget of the current panel will land, for every row type. Called with
+    /// <c>modify</c> 0 it writes nothing. Linux's copy dropped its window parameter: <c>(bounds, ctx, modify)</c>; Windows keeps it:
+    /// <c>(bounds, ctx, window, modify)</c>. No <c>[Fn]</c> row: the caller declares each order.</summary>
+    public const string NkLayoutWidgetSpace = "nk_layout_widget_space";
     /// <summary><c>Nui::Layout::StatefulWidget</c>'s vtable. Not a hook -- an identity: <c>textedit</c> is built on it
     /// and owns keyboard focus, so it is never culled. The object's vptr is the symbol + <see cref="EngineLayout.VtblSymbolHeader"/>.</summary>
     public const string NuiStatefulWidgetVtbl = "_ZTVN3Nui6Layout14StatefulWidgetE";
@@ -1820,7 +1838,7 @@ internal static unsafe class SymbolMap
     /// build's <c>lva</c> line (<see cref="ClientBuilds.Lva"/>), as an <c>At()</c> symbol is from its <c>rva</c>
     /// line on Windows. The constant is the function's source name, a key, never looked up as an export.</summary>
     internal static readonly HashSet<string> LinuxAnchored = new() { NkScrollbarBehavior, NkDrawScrollbar, NkDoScrollbarV, NkDoScrollbarH,
-                                                                     NkCmds, NkTexNull };
+                                                                     NkCmds, NkTexNull, NuiArrayIndex, NkLayoutWidgetSpace };
     /// <summary>nuklear's <c>nk_scrollbar_behavior</c> (static: Linux lva 0xdf5ba0, Windows rva 0xa6f320) -- the one
     /// function that turns input into a scrollbar's new offset: the thumb drag (and the one <c>nk_input</c> write,
     /// <c>clicked_pos</c>), the page clicks, the wheel, the scroll keys. Called only by <c>nk_do_scrollbarv/h</c>,
@@ -3172,6 +3190,10 @@ internal static unsafe class SymbolMap
         [NkConvert] = At(),               // its rcx/rdx are the ctx and the cmds buffer
         [NkClear] = At(),                 // the call right after the draw-command walk
         [NkCmds] = At(),                  // DATA: the `lea rdx` of the nk_convert call
+        [NuiJsonWindowRender] = At(),     // the vftable slot whose body is the "m_id" profiler zone around one Window::Render call (docs/windows-symbols.md)
+        [NuiGetImageWithCache] = LinuxOnly("no standalone function on Windows: the one timer call in the image-cache code is in JsonWindow::Update, so the look-up is inlined into the image widget"),
+        [NkLayoutWidgetSpace] = At(),     // the one function with the row-type switch (cases 0..8) and the +0x41e4/+0x41e8 spacing reads; takes the window as a third argument
+        [NuiArrayIndex] = At(),           // DATA: the global the inlined Set/GetArrayIndex touch; the list draw at rva 0x73e9d0 writes first+i, then -1
         [NkTexNull] = At(),               // DATA: the `movaps xmm0,[rip]` into the convert config at +0x18
         [NkWindowIsAnyHovered] = Hole("nuklear is not exported by nwmain.exe"),
         [NuiStatefulWidgetVtbl] = At(),   // RTTI type descriptor -> COL -> vftable

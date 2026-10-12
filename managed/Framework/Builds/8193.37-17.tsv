@@ -857,6 +857,7 @@ offset	kiwi::Term	stride	0x10	0x10	# KiwiTermStride
 offset	Nui::Layout::Layoutable	children	0x8	0x8	# NuiChildren
 offset	Nui::Layout::Layoutable	childrenEnd	0x10	0x10	# NuiChildrenEnd
 offset	Nui::Layout::Layoutable	vars	0x2c8	0x3d8	# NuiVars
+offset	Nui::Layout::Layoutable	tooltip	0x220	0x330	# NuiTooltip
 offset	Nui::Layout::Span	direction	0x5a8	0x6c0	# NuiSpanDirection
 offset	Nui::Layout::LayoutGroup	solver	0x5a8	0x6c0	# NuiGroupSolver
 offset	Nui::Layout::LayoutGroup	editWidth	0x638	0x770	# NuiGroupEditWidth
@@ -1163,6 +1164,9 @@ rva	_ZN11CNWCMessage33SendPlayerToServerInput_UseObjectEjii	0x7c07c0	# SendInput
 rva	_ZN11CNWCMessage33SendPlayerToServerInput_SplitItemEji	0x7c0050	# SendInputSplitItem (6/23)
 rva	_ZN11CNWCMessage33SendPlayerToServerInput_MergeItemEjj	0x7bfd90	# SendInputMergeItem (6/22)
 rva	_ZN3Nui6Layout6Widget6RenderEP10nk_context	0x9528e0	# NuiWidgetRender
+rva	_ZN3Nui4JSON10JsonWindow6RenderEv	0x74b810	# NuiJsonWindowRender
+rva	Nui::JSON::DynamicBinding::s_array_index	0x129728c	# NuiArrayIndex (DATA)
+rva	nk_layout_widget_space	0xa6c0b0	# NkLayoutWidgetSpace
 rva	_ZTVN3Nui6Layout14StatefulWidgetE	0xe6dff0	# NuiStatefulWidgetVtbl
 rva	_ZN3Nui4JSON10JsonWindow11HandleErrorEPKcS3_	0x746650	# NuiHandleError
 rva	_ZTVN3Nui6Layout11LayoutGroupE	0xe6ce10	# NuiLayoutGroupVtbl
@@ -1189,6 +1193,8 @@ lva	nk_do_scrollbarv	0xdf6100	# NkDoScrollbarV
 lva	nk_do_scrollbarh	0xdf65c0	# NkDoScrollbarH
 lva	nk_sdl.ogl.cmds	0x1a12a28	# NkCmds (DATA)
 lva	nk_sdl.ogl.tex_null	0x1a12aa0	# NkTexNull (DATA)
+lva	Nui::JSON::DynamicBinding::s_array_index	0x18ab050	# NuiArrayIndex (DATA)
+lva	nk_layout_widget_space	0xdd8340	# NkLayoutWidgetSpace
 
 # ---- CX-109/110 ----
 offset	Camera	scene	0x90	0x90	# CameraScene

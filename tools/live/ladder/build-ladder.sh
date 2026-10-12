@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build cxladder.mod -- the live harness's scripted verification ladder (CX-120 rungs 3 and 4).
 #
-#   tools/live/ladder/build-ladder.sh <dest-modules-dir>
+#   tools/live/ladder/build-ladder.sh <dest-modules-dir> [cxladder|cxnui]
 #
 # The module is DERIVED from the installed stock "The Dark Ranger's Treasure.mod": that .mod is
 # unpacked, this directory's cxladder.nss/.dlg.json are compiled/converted into it, module.ifo gets
@@ -18,7 +18,7 @@ NWN_DIR="${NWN_DIR:-$(python3 "$HERE/../../../tools/paths.py" NWN_DIR)}"
 STOCK_MOD="The Dark Ranger's Treasure.mod"
 BASE_MOD="${LADDER_BASE_MOD:-}"
 [ -n "$BASE_MOD" ] || BASE_MOD="$NWN_DIR/data/mod/$STOCK_MOD"
-NAME="cxladder"
+NAME="${2:-cxladder}"
 
 DEST="${1:-}"
 [ -n "$DEST" ] || { echo "build-ladder: usage: build-ladder.sh <dest-modules-dir>" >&2; exit 2; }
@@ -38,7 +38,7 @@ trap 'rm -rf "$WORK"' EXIT
 # 2. our two resources. The compiler needs the game's resman for nwscript.nss.
 cp -f "$HERE/$NAME.nss" "$WORK/$NAME.nss"
 nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$NAME.ncs" "$WORK/$NAME.nss"
-nwn_gff -i "$HERE/$NAME.dlg.json" -l json -o "$WORK/$NAME.dlg" -k gff
+[ ! -f "$HERE/$NAME.dlg.json" ] || nwn_gff -i "$HERE/$NAME.dlg.json" -l json -o "$WORK/$NAME.dlg" -k gff
 
 # 3. module.ifo: our OnClientEnter, and a name that says what this is.
 nwn_gff -i "$WORK/module.ifo" -k json -o "$WORK/module.ifo.json"

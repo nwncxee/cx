@@ -304,8 +304,9 @@ internal static unsafe class NuiLayoutErrors
     {
         var ids = new Dictionary<IntPtr, string>();
         IntPtr head = new Nui__JSON__JsonWindow(window).IdsHead;
-        IntPtr node = OperatingSystem.IsWindows() ? (head == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)head) : head;
-        for (int i = 0; node != IntPtr.Zero && node != head && i < MaxElements; i++, node = *(IntPtr*)node)
+        bool win = OperatingSystem.IsWindows();
+        IntPtr node = win ? (head == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)head) : head, end = win ? head : IntPtr.Zero;
+        for (int i = 0; node != IntPtr.Zero && node != end && i < MaxElements; i++, node = *(IntPtr*)node)
         {
             var (buf, len, _) = Native.StdString((byte*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref new Nui__JSON__IdNode(node).Key));
             ids.TryAdd(new Nui__JSON__IdNode(node).Element, Encoding.UTF8.GetString((byte*)buf, (int)len));
