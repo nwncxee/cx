@@ -95,7 +95,7 @@
         lit = any(isnan(lit)) || any(isinf(lit)) ? vec3(0.0) : min(lit, vec3(CX_SSR_MAX));
         // CX-51: the mirrored draw keeps everything, creatures included; alpha 1 = something is mirrored here
         if (uCapture == 2) { frag = vec4(lit, 1.0); return; }
-        if (int(d.feat.x) == CX_FEAT_SKIN || d.feat.w < 0.0) discard;
+        if (CxSkinned(d.feat) || d.feat.w < 0.0) discard;
         frag = vec4(lit, 1.0 / max(distance(vWorld, uEyePos), 1e-3));
         return;
     }
