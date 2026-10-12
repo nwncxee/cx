@@ -210,14 +210,17 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The instance environment map, which is what <c>PartTriMesh::Draw</c> routes on
-    /// (<c>gob+0x480</c>): the appearance's ENVMAP column reaches <c>Gob::SetEnvironmentMap</c>, and the seam
-    /// keeps it as the object's name plus texture slot 3 on every part. A creature with no shine is this line
-    /// reading <c>-</c>; one line per record, outside the <c>cre=</c> format, so the body lines still diff clean.</summary>
+    /// (<c>gob+0x480</c>): the appearance's ENVMAP column reaches <c>Gob::SetEnvironmentMap</c> and the seam
+    /// keeps it in its own column, so <c>slot3</c> beside it is the material's ROUGHNESS map, never the env
+    /// map. One line per record, outside the <c>cre=</c> format, so the body lines still diff clean.</summary>
     private static void ParityDbEnv(List<string> outp, string key, int i, int first, int count)
     {
-        int slotted = 0;
-        for (int p = first; p < first + count; p++) if (SceneDb.PartTexId[p * 4 + 3] != 0) slotted++;
-        outp.Add($"env cre={key} obj={i} envmap={SceneDb.ObjEnvMap[i] ?? "-"} slot3={slotted}/{count}");
+        int env = 0;
+        for (int p = first; p < first + count; p++)
+            if (AlloyRenderer.DbEnvMapped(p, SceneDb.PartTex(p, 0))) env++;
+        string rough = count > 0 ? TexRegistry.ResrefOf(SceneDb.PartTex(first, 3)) : "";
+        outp.Add($"env cre={key} obj={i} envmap={SceneDb.ObjEnvMap[i] ?? "-"} envbit={env}/{count} "
+               + $"slot3={(string.IsNullOrEmpty(rough) ? "-" : rough)}");
     }
 
     /// <summary>Does this part answer <c>Part::AsPartTriMesh</c>? That slot is inherited by <c>PartSkin</c>,

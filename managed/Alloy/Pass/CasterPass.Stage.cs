@@ -273,14 +273,18 @@ public sealed unsafe partial class CasterPass
             // instead and skips the mode-2 hole gate, which would hand it straight back to the solid stage.
             bool glass = drawTex != 0 && _maskDither > 0
                          && (_liveBlend[i] || (db ? dbGraded : TexGraded(drawTex)) >= _maskGraded);
+            // CX-227: a declared coverage part is admitted on the DECLARATION, not on what its diffuse
+            // measures -- the author already said the alpha is coverage, so no hole or graded fraction has
+            // to vouch for it. Carried on the cut, which the collect set from the facts.
+            bool cover = drawTex != 0 && _liveCut[i] == CoverageLayer.Cut;
             int masked = drawTex != 0 && _gl.ProgMask != 0 && _maskMode != 0
-                         && (glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
+                         && (cover || glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
             if (masked == 0 && _liveTex[i] != 0 && _gl.ProgMask == 0) _maskNoProg++;
             // The mask MODE is decided here, in the key, not at the draw: a masked texture the mode draws
             // solid merges into its (VAO, prim) batch instead of costing one indirect call per view per
             // texture. The knobs bump _listVer so a change re-stages.
             if (masked != 0 && (_maskMode == 0
-                                || (_maskMode == 2 && !glass && (db ? dbHoles : TexHoles(masked)) < _maskHoles))) masked = 0;
+                                || (_maskMode == 2 && !cover && !glass && (db ? dbHoles : TexHoles(masked)) < _maskHoles))) masked = 0;
             if (masked != 0 && _maskMode < 0) continue;
             // a blended caster the mask stage cannot take (no diffuse, no UVs, mask off) casts nothing, as before #363
             if (_liveBlend[i] && masked == 0) continue;
@@ -291,10 +295,14 @@ public sealed unsafe partial class CasterPass
             bool hmask = masked != 0 && HandleMaskReady && AlloyRenderer.RecordHandle0(_liveSlot[i]) != 0;
             _gLive[n] = i;
             // #302: the cutout threshold is a per-BATCH uniform now, exactly as the colour path spells it
-            // (uAlphaCut), so it joins the key rather than riding in a per-draw record. Two values exist.
+            // (uAlphaCut), so it joins the key rather than riding in a per-draw record. THREE values exist
+            // since CX-227, and the batch takes the cut of its first entry -- so every one of them needs a
+            // key bit or a coverage caster would cast at a neighbour's threshold. Bit 32 is the spare
+            // between the texture name (0..31) and the primitive (36..43).
             _gKey[n] = ((masked != 0 ? 1L : 0L) << 62) | ((_liveCut[i] == EnvAlphaDiscard ? 1L : 0L) << 61)
                        | ((hmask ? 1L : 0L) << 60)
-                       | ((long)_liveVao[i] << 44) | ((long)_livePrim[i] << 36) | (hmask ? 0u : (uint)masked);
+                       | ((long)_liveVao[i] << 44) | ((long)_livePrim[i] << 36)
+                       | (cover ? 1L << 32 : 0L) | (hmask ? 0u : (uint)masked);
             n++;
             if (i < _liveCreatures) creatures++;
         }
@@ -368,7 +376,7 @@ public sealed unsafe partial class CasterPass
             {
                 boundCut = _gCut[g]; Gl.Uniform1f(mode == 1 ? _gl.LocMaskCut : _gl.LocMaskHCut, boundCut);
                 Gl.Uniform1f(mode == 1 ? _gl.LocMaskMip : _gl.LocMaskHMip, Renderer.CutMip.V);
-                Gl.Uniform1i(mode == 1 ? _gl.LocMaskDither : _gl.LocMaskHDither, _maskDither);
+                Gl.Uniform1i(mode == 1 ? _gl.LocMaskDither : _gl.LocMaskHDither, DitherFor(boundCut));
                 Gl.Uniform1i(mode == 1 ? _gl.LocMaskEnv : _gl.LocMaskHEnv, boundCut == EnvAlphaDiscard ? 1 : 0);
             }
             if (mode == 1 && cut0 != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)cut0); boundTex = cut0; }

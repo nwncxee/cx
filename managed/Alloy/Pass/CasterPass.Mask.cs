@@ -59,11 +59,24 @@ public sealed unsafe partial class CasterPass
         }
     }
 
-    /// <summary>The two discard thresholds. Alpha means COVERAGE on everything the engine ships, so the
+    /// <summary>The two engine thresholds. Alpha means COVERAGE on everything the engine ships, so the
     /// default is the engine's own 0.2 -- the value its colour pass uses, which is what makes a leaf cast a
     /// leaf. The exception is an env-mapped material, where the diffuse alpha is REFLECTIVITY
     /// (<c>fEnvMapLevel = 1 - alpha</c>): a polished floor at alpha 0.3 is solid and must keep its shadow.</summary>
     private const float CutoutDiscard = 0.2f, EnvAlphaDiscard = 0.02f;
+
+    /// <summary>One caster's discard threshold. A declared coverage material takes the coverage layer's own
+    /// cut, so the shadow drops exactly the texels the draw does instead of the engine's 0.2 -- which on a
+    /// hair card cut a shadow out of geometry that draws nearly solid, and left a solid shadow under fringe
+    /// the draw dissolves. Three values exist; the staging key carries which.</summary>
+    internal static float CutFor(bool coverage, bool envAlpha)
+        => coverage ? CoverageLayer.Cut : envAlpha ? EnvAlphaDiscard : CutoutDiscard;
+
+    /// <summary>The ordered-dither block for a batch at threshold <paramref name="cut"/>. A coverage batch
+    /// always dithers: the dither IS how the shadow map carries fractional coverage, so at 0 its 0.01 cut
+    /// would stamp a near-solid silhouette -- strictly worse than the 0.2 one this replaced.</summary>
+    internal static int DitherFor(float cut)
+        => cut == CoverageLayer.Cut ? Math.Max(_maskDither, 1) : _maskDither;
 
     /// <summary>Does this texture carry coverage? Answered once by a level-0 readback, because
     /// <c>Material::GetIsOpaque</c> @0x4c6190 short-circuits on an env map, the gob alpha and its own memo,

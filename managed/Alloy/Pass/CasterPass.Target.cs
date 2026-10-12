@@ -368,7 +368,7 @@ public sealed unsafe partial class CasterPass
             {
                 boundCut = _gCut[g]; Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskCut : _gl.LocLayerMaskHCut, boundCut);
                 Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskMip : _gl.LocLayerMaskHMip, Renderer.CutMip.V);
-                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskDither : _gl.LocLayerMaskHDither, _maskDither);
+                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskDither : _gl.LocLayerMaskHDither, DitherFor(boundCut));
                 Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskEnv : _gl.LocLayerMaskHEnv, boundCut == EnvAlphaDiscard ? 1 : 0);
             }
             if (mode == 1 && cut0 != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)cut0); boundTex = cut0; }

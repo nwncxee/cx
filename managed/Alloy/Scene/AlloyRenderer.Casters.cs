@@ -231,6 +231,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>A blended part -- it casts at its record alpha (<c>rot.w</c>), so it takes the masked
         /// stage whatever its diffuse says.</summary>
         public bool Blended;
+        /// <summary>A declared coverage part whose coverage the mask stage can READ (the diffuse alpha): it
+        /// casts at the layer's own cut, dithered, so the shadow follows the coverage the draw uses.</summary>
+        public bool Coverage;
         /// <summary>The record changed on its last build -- the matrix, the fade, a material colour.</summary>
         public bool RecMoved;
         /// <summary>A <c>PartDanglyMesh</c> the solve displaced this frame or last -- a mover no record compare
@@ -273,6 +276,11 @@ public sealed unsafe partial class AlloyRenderer
         f.Item = _oItem[slot]; f.Prim = _oPrim[slot]; f.Vao = CasterVaoId(slot);
         f.EnvAlpha = (_oSlots[slot] & EnvSlot) != 0;
         f.Skinned = _oBone[slot] >= 0;
+        // CX-227: the same coverage source the draw uses, which for now means the diffuse alpha -- a hosted
+        // program's own channel is not readable from a depth stage yet (CoverageLayer.FromDiffuse), and such
+        // a part keeps the engine cut rather than casting a 0.01 silhouette off a texture it does not read.
+        f.Coverage = _oA2c[slot]
+                  && CoverageLayer.FromDiffuse(f.Skinned ? (int)ShaderFeature.Skin : (int)_oFeat[slot * 4]);
         // Read as a LEVEL, never as an edge: the gate row's RecFrame is stamped on every build and _recMovedAt only on a
         // build that changed something, so the two agreeing is "the last build moved it" and asking twice
         // gives the same answer. ADR 0017's hazard was a signal the first pass to ask consumed.

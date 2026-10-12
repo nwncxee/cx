@@ -917,11 +917,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static int SetEnvironmentMap(nint self, nint tex)
     {
         if (!Live(self, 18, out DbId id, out _)) return 0;
-        // The environment map is the fourth texture slot of every part, which is where the engine's
-        // material kept it.
-        string? name = Str(tex);
-        SceneDb.ObjEnvMap[id.Index] = string.IsNullOrEmpty(name) ? null : name;
-        return ObjectTex.Replace(id, null, name, slot: 3);
+        return ObjectTex.SetEnvMap(id, Str(tex));
     }
 
     [UnmanagedCallersOnly]
