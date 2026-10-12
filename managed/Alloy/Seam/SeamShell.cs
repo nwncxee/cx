@@ -237,13 +237,25 @@ public static unsafe class SeamShell
     public static long Overflowed { get; private set; }
     private static System.Collections.Generic.List<nint>? _overflow;
     /// <summary>The blocks <see cref="Held"/> counts, owned until <see cref="DropAll"/>.</summary>
-    internal sealed class HeldState { internal readonly System.Collections.Generic.List<nint> Blocks = new(); }
+    internal sealed class HeldState
+    {
+        internal readonly System.Collections.Generic.List<nint> Blocks = new();
+        internal long Unmarked;
+        internal readonly System.Collections.Generic.HashSet<int> Destroyers = new();
+    }
     private static HeldState _held = new();
 
-    /// <summary>Retired shells whose object was ever in a GUI scene, and scene shells never stamped a world
-    /// scene. GUI code calls through pointers to things it already destroyed, so such a block is never reused
+    /// <summary>Retired shells whose object was ever in a GUI scene or never in any, and scene shells never
+    /// stamped a world scene. GUI code calls through pointers to things it already destroyed, so such a block is never reused
     /// or freed: nothing later, world or GUI, can sit at its address. ponytail: held for the session; a GUI-only pool needs the minter's origin.</summary>
     public static int Held => _held.Blocks.Count;
+
+    /// <summary>Object, text and camera shells retired before their object joined any scene; held with the GUI
+    /// ones, since nothing says a GUI pointer does not still reach them.</summary>
+    public static long Unmarked => _held.Unmarked;
+
+    /// <summary>Distinct destroying frames <see cref="NoteUnmarked"/> names per session; the count keeps going.</summary>
+    private const int UnmarkedLines = 64;
 
     /// <summary>The seam's own frame counter, advanced once per published frame by <see cref="Frame"/>.</summary>
     public static uint FrameNo { get; private set; }
@@ -337,7 +349,7 @@ public static unsafe class SeamShell
     }
 
     /// <summary>Mark <paramref name="shell"/> retired and queue it for reuse after the quarantine, or hold it for
-    /// good when its object was ever in a GUI scene or it is a non-world scene (<see cref="Held"/>). The caller
+    /// good when its object was ever in a GUI scene or none, or it is a non-world scene (<see cref="Held"/>). The caller
     /// has already nulled the SafePointer back-references (<see cref="Facade.Retire"/>); this only changes the
     /// block's state, so every later call through its vtable takes the poison path.</summary>
     public static void Retire(nint shell)
@@ -349,8 +361,13 @@ public static unsafe class SeamShell
         h->Reported = 0;
         h->RetiredBy = SeamCallers.Here();
         Live--;
-        bool nonWorldScene = h->Kind == (byte)FacadeKind.Scene && (h->Scenes & InWorld) == 0;
-        if ((h->Scenes & InGui) != 0 || nonWorldScene) { _held.Blocks.Add(shell); return; }
+        bool scene = h->Kind == (byte)FacadeKind.Scene;
+        if (!scene && h->Scenes == 0) NoteUnmarked(shell, h);
+        if ((h->Scenes & InGui) != 0 || (scene && (h->Scenes & InWorld) == 0) || h->Scenes == 0)
+        {
+            _held.Blocks.Add(shell);
+            return;
+        }
         int k = h->Kind & 3;
         if (_ringLive[k] == RingSize)
         {
@@ -384,6 +401,18 @@ public static unsafe class SeamShell
         _ringHead[k] = (_ringHead[k] + 1) % RingSize;
         _ringLive[k]++;
         Quarantined++;
+    }
+
+    /// <summary>Count a retire before any scene join and name its destroying frame, once per frame.</summary>
+    private static void NoteUnmarked(nint shell, SeamHeader* h)
+    {
+        HeldState st = _held;
+        st.Unmarked++;
+        if (Facade.InSelfCheck || st.Destroyers.Count >= UnmarkedLines || !st.Destroyers.Add(h->RetiredBy)) return;
+        var kind = (FacadeKind)h->Kind;
+        string name = kind == FacadeKind.Camera ? "" : $" \"{Facade.NameOf(shell)}\"";
+        Facade.Log?.Always($"seam: [unmarked] {kind}{name} destroyed by {SeamCallers.Name(h->RetiredBy)} before it "
+                         + $"joined any scene -- held like a GUI shell, never reused ({st.Unmarked} so far)");
     }
 
     /// <summary>Is <paramref name="shell"/> one of ours, and live? <paramref name="state"/> tells a retired

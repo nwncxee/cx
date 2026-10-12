@@ -294,6 +294,7 @@ internal static unsafe class FacadeSelfCheck
             check.Expect(Facade.Poison(t) != 0 && Facade.Poison(t) != Facade.Table(t),
                 $"{t} has no poison twin, or it is the live table");
 
+        Facade.InSelfCheck = true;
         Factory(check);
         Riders(check);
 
@@ -392,6 +393,7 @@ internal static unsafe class FacadeSelfCheck
         *(int*)(shell + SeamLayout.GobSafeCount) = n;
         *(int*)(shell + SeamLayout.GobSafeCap) = n;
 
+        SeamShell.NoteScene(shell, world: true);
         Facade.Retire(shell);
         bool nulled = true, unindexed = true;
         for (int k = 0; k < n; k++)
@@ -407,7 +409,6 @@ internal static unsafe class FacadeSelfCheck
 
         // The poison path: a retired shell answers no handle, counts the call and names the slot once. The
         // two USE AFTER FREE lines and the one alien line below are this check FIRING the refusal on purpose.
-        Facade.InSelfCheck = true;
         long before = Facade.PoisonCalls;
         check.Expect(Facade.Object(shell, SeamVtables.Logical(SeamTable.Gob, 25)).IsNull,
             "a retired facade must not resolve to a record");
@@ -450,9 +451,9 @@ internal static unsafe class FacadeSelfCheck
         SeamShell.DropAll();
     }
 
-    /// <summary>A shell whose object was ever in a GUI scene is never handed out again, even once the ring is
-    /// full and past its quarantine. Oracle: hand-written expectations -- the stamp each join leaves, the GUI
-    /// shell's address never coming back, and the same churn reusing a world shell.</summary>
+    /// <summary>A shell whose object was ever in a GUI scene, or never joined one, is never handed out again,
+    /// even once the ring is full and past its quarantine. Oracle: hand-written expectations -- the stamp each
+    /// join leaves, the held and unmarked counts, neither address coming back, and the churn reusing world shells.</summary>
     private static void GuiHold(Checker check)
     {
         nint probe = SeamShell.Alloc(FacadeKind.Object, default);
@@ -485,9 +486,23 @@ internal static unsafe class FacadeSelfCheck
             "a shell that was only ever in a world scene goes to the reuse ring");
 
         SeamShell.Retire(probe);
+        nint unmarked = SeamShell.Alloc(FacadeKind.Object, default), unmarkedText = SeamShell.Alloc(FacadeKind.String, default);
+        long unmarkedBefore = SeamShell.Unmarked;
+        held = SeamShell.Held;
+        quarantined = SeamShell.Quarantined;
+        SeamShell.Retire(unmarked);
+        SeamShell.Retire(unmarkedText);
+        check.Expect(SeamShell.Held == held + 2 && SeamShell.Quarantined == quarantined,
+            "an object or text shell retired before it joined any scene must be held, not queued for reuse");
+        check.Expect(SeamShell.Unmarked == unmarkedBefore + 2, "both retires before any scene join must be counted");
         // Age what the ring already holds first, so filling it evicts those rather than overflowing.
         for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
-        for (int k = 0; k < SeamShell.RingSize; k++) SeamShell.Retire(SeamShell.Alloc(FacadeKind.Object, default));
+        for (int k = 0; k < SeamShell.RingSize; k++)
+        {
+            nint s = SeamShell.Alloc(FacadeKind.Object, default);
+            SeamShell.NoteScene(s, world: true);
+            SeamShell.Retire(s);
+        }
         for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         long reused = SeamShell.Reused;
         bool gotGui = false;
@@ -495,10 +510,10 @@ internal static unsafe class FacadeSelfCheck
         for (int k = 0; k < minted.Length; k++)
         {
             minted[k] = SeamShell.Alloc(FacadeKind.Object, default);
-            gotGui |= minted[k] == gshell || minted[k] == probe;
+            gotGui |= minted[k] == gshell || minted[k] == probe || minted[k] == unmarked;
         }
         check.Expect(SeamShell.Reused > reused, "a full ring past its quarantine must hand a block back, or this check proves nothing");
-        check.Expect(!gotGui, "a retired GUI shell was handed out again");
+        check.Expect(!gotGui, "a retired GUI or never-joined shell was handed out again");
         foreach (nint s in minted) SeamShell.Retire(s);
 
         SceneDb.Objects.Free(wobj);

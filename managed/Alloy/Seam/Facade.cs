@@ -452,7 +452,7 @@ public static unsafe partial class Facade
 
     /// <summary>The seam's period line: shells, quarantine, and every refusal counted.</summary>
     public static string Stats()
-        => $"shells live={SeamShell.Live} quarantined={SeamShell.Quarantined} gui-held={SeamShell.Held} alloc={SeamShell.Allocated} reuse={SeamShell.Reused}"
+        => $"shells live={SeamShell.Live} quarantined={SeamShell.Quarantined} gui-held={SeamShell.Held} unmarked={SeamShell.Unmarked} alloc={SeamShell.Allocated} reuse={SeamShell.Reused}"
          + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} orphaning-attaches={_sceneProbe.OrphaningAttaches} world-into-gui={_sceneProbe.WorldIntoGui} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
 }
 
