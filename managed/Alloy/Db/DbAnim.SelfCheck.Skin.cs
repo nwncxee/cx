@@ -7,8 +7,8 @@ using CX.Framework;
 namespace CX.Alloy.Db;
 
 /// <summary>The skin half of <see cref="DbAnim"/>'s suite: the bone palettes, the two forms of the bone
-/// table, and what a GRAFTED piece's bones resolve against. Split out of <c>DbAnim.SelfCheck.cs</c> by
-/// responsibility; the entry point is still that file's <c>SelfCheck</c>.</summary>
+/// table, what a GRAFTED piece's bones resolve against, and the part-boundary stitch. Reached from
+/// <c>DbAnim.SelfCheck.cs</c>'s <c>SelfCheck</c>, which is the suite's one entry point.</summary>
 public static unsafe partial class DbAnim
 {
     // ================= 6: skin palettes =================
@@ -81,7 +81,69 @@ public static unsafe partial class DbAnim
         BoneTableForm(check);
         BoneMapOfRoot(check);
         GraftedBoneNames(check);
+        HostRetree(check);
         BoundaryStitch(check);
+    }
+
+    /// <summary>A graft's bone table holds PART indices into the SKELETON's range, so a host re-tree -- which
+    /// re-tenants exactly those indices and never touches the graft's own parts -- must not leave the table
+    /// standing. Oracle: the world columns recorded at rest after the re-tree, against the part the name
+    /// resolves to NOW and against the one it used to.</summary>
+    private static void HostRetree(Checker check)
+    {
+        ModelDef? pm = MdlParser.Parse(System.Text.Encoding.ASCII.GetBytes(GraftSkinModel),
+                                       "cx_selfcheck_skinned", out _);
+        if (pm == null || pm.Nodes.Length != 3) { check.Expect(false, "the ASCII skin fixture parses"); return; }
+        DbId scene = SceneDb.Scenes.Alloc();
+        ModelDef bm = Chain();
+        DbId body = Subject(bm, scene, out int bodyFirst);
+        DbId piece = Subject(pm, scene, out int first);
+        int pi = piece.Index, mesh = first + 2;
+        SceneDb.PartParent[mesh] = first;
+        ScanTree(pi);
+        SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
+        SceneDb.ObjSeamAppendHead[body.Index] = piece;
+        SceneDb.ObjSeamAppendNext[pi] = default;
+        SceneDb.SetAttachTo(pi, body);
+        SceneDb.SetAttachPart(pi, bodyFirst);
+        Moved(body.Index); ComposeObject(body);
+        Moved(pi); ComposeObject(piece);
+
+        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        try
+        {
+            check.Expect(SkinPalette(mesh, dst), "the graft solves a palette against the first tree");
+            // The re-tree: the same part range, each part now instancing the OTHER node, which is what a
+            // rebuild of the host's tree does to the indices the graft's table holds.
+            SceneDb.PartNode[bodyFirst + 1] = 2;
+            SceneDb.PartNode[bodyFirst + 2] = 1;
+            SceneDb.PartPos[bodyFirst + 1] = bm.Nodes[2].Position;
+            SceneDb.PartPos[bodyFirst + 2] = bm.Nodes[1].Position;
+            TreeChanged(body);
+            ComposeObject(body);
+            Moved(pi); ComposeObject(piece);
+            int now = bodyFirst + 2, before = bodyFirst + 1;
+            Matrix4x4 meshRest = SceneDb.PartWorld[mesh];
+            Matrix4x4 nowRest = SceneDb.PartWorld[now], beforeRest = SceneDb.PartWorld[before];
+            SceneDb.PartPos[now] = new Vector3(1f, 2f, 1f);
+            Moved(body.Index); ComposeObject(body);
+            Moved(pi); ComposeObject(piece);
+            check.Expect(SkinPalette(mesh, dst), "...and again after the host re-trees");
+            check.Expect(NearV(SlotPos(dst, 0), WantSlot(meshRest, nowRest, mesh, now)),
+                         $"a host re-tree re-resolves the graft's bone table: slot 0 is the part \"mid\" "
+                         + $"names NOW ({SlotPos(dst, 0)}, want {WantSlot(meshRest, nowRest, mesh, now)})");
+            check.Expect(!NearV(SlotPos(dst, 0), WantSlot(meshRest, beforeRest, mesh, before)),
+                         "...and not the part index the table was solved against");
+        }
+        finally { NativeMemory.Free(dst); }
+
+        Unskin(mesh);
+        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
+        SceneDb.SetAttachTo(pi, default);
+        Drop(piece);
+        Drop(body);
+        SceneDb.Scenes.Free(scene);
     }
 
     /// <summary>An ASCII piece whose <c>weights</c> block names one bone of the SKELETON it is grafted onto
@@ -373,7 +435,6 @@ public static unsafe partial class DbAnim
                 Moved(obj.Index);
                 ComposeObject(obj);
                 check.Expect(SkinPalette(first + 2, dst), $"...and again once the bone moves ({what})");
-                Matrix4x4.Invert(meshRest, out Matrix4x4 meshRestInv);
                 Matrix4x4.Invert(boneRest, out Matrix4x4 boneRestInv);
                 Matrix4x4.Invert(SceneDb.PartWorld[first + 2], out Matrix4x4 meshInv);
                 Matrix4x4 want = meshRest * boneRestInv * SceneDb.PartWorld[first + 1] * meshInv;
@@ -382,7 +443,6 @@ public static unsafe partial class DbAnim
                              $"...slot 0 is MID carried into the mesh's space, not the identity ({what})");
                 check.Expect(Math.Abs(dst[12]) + Math.Abs(dst[13]) + Math.Abs(dst[14]) > 1e-3f,
                              $"...which is not the identity a lost bone would leave ({what})");
-                _ = meshRestInv;
             }
             finally { NativeMemory.Free(dst); }
             Drop(obj);
@@ -393,7 +453,7 @@ public static unsafe partial class DbAnim
     /// <summary>A body whose skinmesh "askin" shares a ring with a grafted piece but is weighted to the
     /// skeleton's "root", while the bone "mid" (its sibling, so the mesh does not ride it) is what moves.
     /// Normals +Z, against the piece's +Y.</summary>
-    private static ModelDef StitchBody()
+    private static ModelDef StitchBody(bool compiled)
     {
         var m = new ModelDef { Name = "cx_selfcheck_stitch_body", AnimScale = 1f, BMin = new Vector3(-1f), BMax = new Vector3(1f) };
         m.Nodes = new[]
@@ -403,7 +463,7 @@ public static unsafe partial class DbAnim
                           Position = new Vector3(0f, 0f, 1f) },
             new NodeDef { Name = "askin", Index = 2, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
                           Mesh = Ring(new Vector3(0f, 1f, 0f), Vector3.UnitZ, Vector3.UnitX, 1f),
-                          Skin = OneBone("root") },
+                          Skin = compiled ? MapBone() : OneBone("root") },
         };
         for (int i = 0; i < m.Nodes.Length; i++) m.NodeByName[m.Nodes[i].Name] = i;
         return m;
@@ -446,6 +506,20 @@ public static unsafe partial class DbAnim
         return mesh;
     }
 
+    /// <summary>The same three-vertex skin as a COMPILED file states it: a bone map (one entry per node,
+    /// node 0 taking slot 0) with the per-node bind arrays, whose stated bind is half a metre off the rest
+    /// pose -- so a derived bind and the authored one cannot be confused.</summary>
+    private static SkinDef MapBone()
+    {
+        SkinDef s = OneBone("root");
+        s.BoneNames = Array.Empty<string>();
+        s.BoneNodes = new[] { 0, -1, -1 };
+        s.BoneNodesAreMap = true;
+        s.BindRotation = new[] { Quaternion.Identity, Quaternion.Identity, Quaternion.Identity };
+        s.BindTranslation = new[] { new Vector3(0f, 0f, 0.5f), Vector3.Zero, Vector3.Zero };
+        return s;
+    }
+
     /// <summary>A three-vertex skin, every vertex fully weighted to one named bone.</summary>
     private static SkinDef OneBone(string bone) => new()
     {
@@ -463,16 +537,18 @@ public static unsafe partial class DbAnim
     /// hand-written fixture, CPU skinning off the palette columns, and the arena's own vertex bytes.</summary>
     private static void BoundaryStitch(Checker check)
     {
-        // pass 0 gives both rings the SAME tangent handedness, pass 1 opposite ones -- which the packing
-        // reads as a sign and never interpolates, so those frames must be left alone.
-        for (int pass = 0; pass < 2; pass++) BoundaryStitch(check, pass == 0 ? 1f : -1f);
+        // pass 1 opposes the two rings' tangent handedness, which the packing reads as a sign and never
+        // interpolates; pass 2 gives the body a COMPILED bone map whose stated bind is not its rest pose.
+        BoundaryStitch(check, 1f, false);
+        BoundaryStitch(check, -1f, false);
+        BoundaryStitch(check, 1f, true);
     }
 
     /// <inheritdoc cref="BoundaryStitch(Checker)"/>
-    private static void BoundaryStitch(Checker check, float hand)
+    private static void BoundaryStitch(Checker check, float hand, bool compiled)
     {
         DbId scene = SceneDb.Scenes.Alloc();
-        DbId body = Subject(StitchBody(), scene, out int bodyFirst);
+        DbId body = Subject(StitchBody(compiled), scene, out int bodyFirst);
         ModelDef pm = StitchPiece(hand);
         DbId piece = Subject(pm, scene, out int pieceFirst);
         int pi = piece.Index, skinA = bodyFirst + 2, skinB = pieceFirst + 2, lone = pieceFirst + 1;
@@ -499,10 +575,18 @@ public static unsafe partial class DbAnim
                          $"as authored, the shared ring comes APART when posed -- that is the seam "
                          + $"({a0} against {b0})");
 
+            // The corners NOBODY shares, posed before the stitch: a compiled part's own bind must still be
+            // the one its file stated afterwards, to the bit.
+            Vector3 keepA = PosedVertex(skinA, 2, dst), keepL = PosedVertex(lone, 2, dst);
+
             TreeChanged(body);
             SceneDb.PartPos[bodyFirst + 1] = new Vector3(0f, 2f, 1f);
             Moved(body.Index);
             Finish(body);
+            check.Expect(PosedVertex(skinA, 2, dst) == keepA && PosedVertex(lone, 2, dst) == keepL,
+                         $"a vertex no boundary touches poses IDENTICALLY after the stitch "
+                         + $"({(compiled ? "compiled bind" : "derived bind")}: {PosedVertex(skinA, 2, dst)} "
+                         + $"was {keepA})");
             check.Expect(StitchSkin(skinA) != null && StitchSkin(skinB) != null,
                          "a tree change owes the composition a stitch, and the step's tail runs it");
             check.Expect(StitchSkin(lone) == null,
@@ -547,8 +631,12 @@ public static unsafe partial class DbAnim
 
         SceneDb.ObjSeamAppendHead[body.Index] = default;
         SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
-        SceneDb.SetAttachTo(pi, default);
+        // The piece retires while it is still attached, which is the edge a re-equip takes: the neighbour it
+        // leaves behind has a ring unified with vertices that no longer exist.
+        _stitch.Due[body.Index] = false;
         Drop(piece);
+        check.Expect(_stitch.Due[body.Index],
+                     "retiring a grafted piece owes its composition a new stitch");
         Drop(body);
         SceneDb.Scenes.Free(scene);
     }
