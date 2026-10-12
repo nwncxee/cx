@@ -232,6 +232,10 @@ public sealed class SkinDef
     /// node); true is the compiled binary's BONE MAP (one entry per model NODE, holding that node's slot, or
     /// -1). Length cannot tell them apart once the bind arrays are absent, as they are on stock cloaks.</summary>
     public bool BoneNodesAreMap;
+    /// <summary>Slot -> the bone NAME the file stated, in the ASCII <c>weights</c> block's spelling; empty for
+    /// a compiled binary, which carries no names. The name outlives <see cref="BoneNodes"/> because a grafted
+    /// piece's bones live in the skeleton it is grafted onto, which its own file knows nothing about.</summary>
+    public string[] BoneNames = Array.Empty<string>();
     /// <summary>The faithful per-vertex bone slots, four per vertex: a slot can exceed 255, which
     /// <see cref="Bones"/>'s byte packing cannot carry.</summary>
     public ushort[] BoneIndices = Array.Empty<ushort>();

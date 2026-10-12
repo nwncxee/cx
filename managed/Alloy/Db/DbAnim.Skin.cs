@@ -65,9 +65,11 @@ public static unsafe partial class DbAnim
         }
     }
 
-    /// <summary>Release a part's bone slot (disabled, merged away, or its object retiring).</summary>
+    /// <summary>Release a part's bone slot (disabled, merged away, or its object retiring), and with it the
+    /// bone table solved for the tree it was seated in -- which a re-tenanted part index no longer has.</summary>
     private static void Unskin(int p)
     {
+        _namedBind[p] = null;
         int slot = SceneDb.PartBoneBase[p];
         if (slot < 0) return;
         AlloyRenderer.DbFreeBone(slot);
@@ -99,6 +101,10 @@ public static unsafe partial class DbAnim
         // length test below then called the list a map, and MapNode handed every bone the wrong node -- a
         // cloak deforming by another bone's matrix, which is the stretching.
         if (bones.Length == 0 || slots == 0) return false;
+        // An ASCII file states bone NAMES, and a name is the only thing that survives a graft: the piece's own
+        // Find answered -1 for every bone that lives in the skeleton it hangs off, and those slots took the
+        // identity -- the piece stayed in its bind pose while the client posed it.
+        if (!isMap && skin.BoneNames.Length > 0) return NamedPalette(part, skin, slots, dst);
         if (!derived && skin.BindTranslation.Length < skin.BindRotation.Length) return false;
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj)) return false;
@@ -274,6 +280,7 @@ public static unsafe partial class DbAnim
     /// <summary>The skin layer's period numbers.</summary>
     internal static string SkinPeriod()
         => $"{_skinned} palette(s)"
+         + SkinNamePeriod()
          + (_skinNoBind == 0 ? "" : $", {_skinNoBind} REFUSED (no bind pose)")
          + (_skinNoSlot == 0 ? "" : $", {_skinNoSlot} skin-noslot");
 }
