@@ -96,25 +96,36 @@ void main()
     if (aoMine) occl *= mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);
     if ((slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
     {
-        // Cotangent frame from screen-space derivatives (Mikkelsen), NOT the engine's vTangent /
-        // fHandedness streams at attribute locations 4/5 (GLRender::ConnectShaderData's bind table).
-        // Those would mean two more harvested attributes on every Alloy VAO plus a per-VDO "does this
-        // mesh even carry them" branch, and the derivative frame gets mirrored UVs right for free. It
-        // also picks the tile texture rotation up automatically, because vUV arrives already rotated
-        // -- the stock stage has to undo it by hand (inc_standard.shd, transpose(mat2(m_texture))).
-        // ponytail: four derivatives on normal-mapped fragments. Harvest locations 4/5 into the owned
-        // VAO if the quality ever asks for it.
-        vec3 p2 = cross(dp2, N), p1 = cross(N, dp1);
-        vec3 T = p2 * du1.x + p1 * du2.x;
-        vec3 B = p2 * du1.y + p1 * du2.y;
-        // The Mikkelsen frame comes out as det * (dP/du, dP/dv), where det is the screen-space UV
-        // determinant -- so on a mirrored UV island BOTH axes come back negated, and normalizing by
-        // a magnitude alone keeps that 180-degree rotation. The engine never has it: its tangent is
-        // dP/du unconditionally (MdlNodeTriMesh::CalculateTangentSpaceBasis, nm 0x457710, divides the
-        // edge combination BY the determinant) and its handedness is sign(det), which SetupTSB spends
-        // on the bitangent alone. Carry the sign here and the two frames agree on every face.
-        float uvDet = du1.x * du2.y - du1.y * du2.x;
-        float inv = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-12)) * (uvDet < 0.0 ? -1.0 : 1.0);
+        // CX-221: the frame the MESH supplied, from the arena's packed tangent word, or -- for a mesh
+        // whose word is zero, which is how "no tangent pool" arrives -- a cotangent frame from
+        // screen-space derivatives (Mikkelsen). The supplied one is per VERTEX and interpolated, so a
+        // curved surface's highlight stops stepping per triangle; the derivative one needs no stream and
+        // gets mirrored UVs right for free.
+        vec3 T, B;
+        float inv;
+        if (vTan.w != 0.0)
+        {
+            // Gram-Schmidt against the shading normal, then the handedness on the BITANGENT alone --
+            // which is what SetupTSB spends it on, and it works out to +dP/dv, the same axis the
+            // derivative frame below builds.
+            T = vTan.xyz - N * dot(vTan.xyz, N);
+            B = cross(N, T) * vTan.w;
+            inv = inversesqrt(max(dot(T, T), 1e-12));
+        }
+        else
+        {
+            vec3 p2 = cross(dp2, N), p1 = cross(N, dp1);
+            T = p2 * du1.x + p1 * du2.x;
+            B = p2 * du1.y + p1 * du2.y;
+            // The Mikkelsen frame comes out as det * (dP/du, dP/dv), where det is the screen-space UV
+            // determinant -- so on a mirrored UV island BOTH axes come back negated, and normalizing by
+            // a magnitude alone keeps that 180-degree rotation. The engine never has it: its tangent is
+            // dP/du unconditionally (MdlNodeTriMesh::CalculateTangentSpaceBasis, nm 0x457710, divides the
+            // edge combination BY the determinant) and its handedness is sign(det), which SetupTSB spends
+            // on the bitangent alone. Carry the sign here and the two frames agree on every face.
+            float uvDet = du1.x * du2.y - du1.y * du2.x;
+            inv = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-12)) * (uvDet < 0.0 ? -1.0 : 1.0);
+        }
         if ((slots & CX_SLOT_HEIGHT) != 0)
         {
             // inc_material.shd's SetupOcclusion: the height against a blurrier tap of itself IS the
@@ -243,10 +254,32 @@ void main()
     // CasterPass already knew this and lowered its own env threshold for the same reason; the
     // colour path's turn.
     float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;
+    // CX-223: a palette-tint part's coverage is NOT its diffuse alpha -- the diffuse carries palette
+    // intensity, and the authored coverage is the third palette map's blue channel. The compensation below
+    // then runs at the MATERIAL's own scale over that map's extent, not the knob's over the diffuse's:
+    // compensating twice over one channel fills a distant silhouette solid.
+    cxTintRow = CxTintRow(vDraw);
+    vec4 tintCov = cxTintRow >= 0 ? CxTintCoverage(vDraw, cxTintRow, uv) : vec4(-1.0);
+    float cutMip = uAlphaMip;
+    vec2 cutSize = vec2(textureSize(uTex, 0));
+    if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }
+    // CX-218: ...and neither is a hair/cloth material's -- its customShaderFS discards on the NORMAL map's
+    // alpha (`texUnit1.a < 0.2`) and spends the diffuse alpha on the env level, which is why the env rule
+    // above is right for it and why its cutout has to read slot 1. The test below runs at the cutout class's
+    // own 0.2, which is the number those stages name (ShaderFeatures.CoverNrmCut).
+    // ...and only once slot 1's own handle is resident: a map still loading reads handle 0, whose alpha is 0,
+    // which would discard the whole part rather than draw it with the coverage it is about to get.
+#ifdef CX_BINDLESS
+    bool cxNrmReady = uTexH[(vDraw << 3) + 1] != uvec2(0u);
+#else
+    bool cxNrmReady = true;
+#endif
+    if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)
+    { coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
-    if (uAlphaCut >= 0.0 && CxAlphaMip(coverage, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;
+    if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.

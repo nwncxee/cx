@@ -1352,6 +1352,7 @@ internal static class MdlAscii
         {
             SkinDef s = node.Skin!;
             var slots = new List<int>();
+            var named = new List<string>();
             var slotOf = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             s.Weights = new Vector4[lines.Count];
             s.Bones = new uint[lines.Count];
@@ -1372,6 +1373,7 @@ internal static class MdlAscii
                         slot = slots.Count;
                         slotOf[names[k]] = slot;
                         slots.Add(Model.Find(names[k]));
+                        named.Add(names[k]);
                     }
                     b[k] = slot;
                     v[k] = ws[k];
@@ -1382,6 +1384,9 @@ internal static class MdlAscii
                 s.Influences[i] = w.N;
             }
             s.BoneNodes = slots.ToArray();
+            // The NAME is the authored fact; the node index is only this file's guess at it. A piece grafted
+            // onto a skeleton names bones no node of its own file carries, and Find answers -1 for those.
+            s.BoneNames = named.ToArray();
             s.BoneNodesAreMap = false;
         }
 

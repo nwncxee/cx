@@ -121,6 +121,9 @@ public static partial class DbFeed
         t = FrameZones.Now;
         DrawRecipe.Pump();
         if (DrawRecipe.Reclassify() > 0) AlloyRenderer.DbReclassified();
+        // ...and the part columns the same material seeds, off the same landing edge. Ahead of the dirty
+        // fold, so a part whose .mtr landed re-stages in THIS frame rather than the next.
+        PartTree.ReseedMaterials();
         FrameZones.Add(FrameZones.Zone.RecipePump, t);
     }
 

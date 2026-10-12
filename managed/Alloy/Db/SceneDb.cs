@@ -665,6 +665,34 @@ public static class SceneDb
     public static readonly Vector3[] PartCenter = new Vector3[MaxParts];
     public static readonly float[] PartRadius = new float[MaxParts];
 
+    /// <summary>Texture slot <paramref name="slot"/> of part <paramref name="part"/> as the draw resolves it:
+    /// the part's OVERRIDE when it has one, else its recipe's own. The ONE selection the stage, the sampler
+    /// path and the <c>.txi</c> path share -- an environment map is not one of these slots, it is
+    /// <see cref="ObjEnvMap"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static TexId PartTex(int part, int recipe, int slot)
+    {
+        if ((uint)slot < 4)
+        {
+            int ov = PartTexId[part * 4 + slot];
+            if (ov != 0) return new TexId((uint)ov);
+        }
+        return recipe >= 0 && slot < DrawRecipe.TexSlots ? DrawRecipe.Tex(recipe, slot) : default;
+    }
+
+    /// <inheritdoc cref="PartTex(int,int,int)"/>
+    internal static TexId PartTex(int part, int slot) => PartTex(part, PartRecipe[part], slot);
+
+    /// <summary>Did the game name an environment map for the object this part belongs to
+    /// (<c>Gob::SetEnvironmentMap</c> @0x43f530, which kept ONE texture per gob at <c>gob+0x480</c>)? The
+    /// instance half of the draw's env-map bit; the other half is the diffuse's own <c>.txi</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool PartEnvMapped(int part)
+    {
+        int o = PartObj[part].Index;
+        return (uint)o < MaxObjects && ObjEnvMap[o] != null;
+    }
+
     /// <summary>Texture slot <paramref name="slot"/> of part <paramref name="part"/>: the <c>.mtr</c>'s name
     /// when it states one, else the mesh's own. Empty for none.</summary>
     public static string PartTexName(int part, int slot)

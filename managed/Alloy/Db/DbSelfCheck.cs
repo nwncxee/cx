@@ -30,6 +30,7 @@ internal static class DbSelfCheck
         Func<string, ModelDef?> savedResolve = PartTree.ResolveModel;
         Action<DbId, int, string>? savedRef = PartTree.OnReference;
         Func<string, byte[]?>? savedBytes = MtrDef.Bytes;
+        Func<string, bool>? savedAnswered = MtrDef.Answered;
         ExtenderLog? savedArenaLog = MeshArena.Log, savedTreeLog = PartTree.Log;
         MeshArena.Log = null;
         PartTree.Log = null;
@@ -46,6 +47,8 @@ internal static class DbSelfCheck
             check.Expect(ArenaDedup(), "mesh arena: two objects over one mesh are ONE range with two references, and the last release frees it at the frame edge");
             check.Expect(CompactRestage(), "a compaction tells the draw side exactly which ranges moved, and a record staged before it no longer holds the old base vertex or index offset");
             check.Expect(ArenaCompact(), "mesh arena: a compaction slides the live ranges down and rebases their index runs");
+            check.Expect(ArenaStreams(), "mesh arena: the packed tangent and paint words round-trip, sit last in both formats, and land at the locations the lit vertex stage declares");
+            check.Expect(ArenaStreamIdentity(), "mesh arena: two meshes that differ only in their tangent frame or their paint are different content, so they get ranges of their own");
             check.Expect(Claimed(), "DbTable.Claim/Unclaim: every part of a live range is a LIVE table slot with a generation, and a freed range's handles are dead");
             check.Expect(OneAllocator(), "the part index space has ONE allocator: single-slot Alloc and range AllocRange never hand out the same index, in boot order (fixtures first, trees after)");
             check.Expect(Recycled(), "a recycled chunk inherits nothing: the feed's columns are re-seeded and a stale MeshDef shortcut cannot name a foreign range");
@@ -54,12 +57,19 @@ internal static class DbSelfCheck
             check.Expect(BlendIndices(), "the recipe's blend pair is an INDEX into the engine's blendTranslationTable, not a GL factor");
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
+            check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
+            check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
+            check.Expect(NormalAlphaCoverage(), "CX-218: a material whose customShaderFS takes its coverage from map slot 1's alpha is a CUTOUT with the slot-1 bit on the record, even when its diffuse measures fully opaque");
+            check.Expect(AbsentMaterialNeverWaits(), "a material the layer answered ABSENT is final, so the part is never put on the late-.mtr wait list and the landing edge has nothing to do for it");
+            check.Expect(RecycledWaiterDropped(), "a waiting part whose slot was recycled before the read landed is dropped, never folded into the slot's new tenant");
+            check.Expect(LateMaterialColumns(), "a .mtr that lands after a PART was built folds into its material columns, and a PLT replace on it then matches the file's diffuse rather than the mesh bitmap");
         }
         finally
         {
             PartTree.ResolveModel = savedResolve;
             PartTree.OnReference = savedRef;
             MtrDef.Bytes = savedBytes;
+            MtrDef.Answered = savedAnswered;
             MeshArena.Log = savedArenaLog;
             PartTree.Log = savedTreeLog;
             Drain();
@@ -216,6 +226,71 @@ internal static class DbSelfCheck
             return true;
         }
         finally { Seam.ObjectTex.Restore(o); }
+    }
+
+    /// <summary>A replace is matched against the slot's EFFECTIVE texture name. Oracle: hand-written from
+    /// <c>Material::ReplaceTexturePLT</c> @0x4c7a10 and <c>Material::BindAllStandardTextures</c> @0x4c6e30 --
+    /// the shared material's texture is bound over the material's own, so where the <c>.mtr</c> names slot 0
+    /// that is what draws and a replace aimed at the mesh bitmap cannot be seen.</summary>
+    private static bool PltMtrDiffuse()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = n => n switch
+        {
+            "cx_plt_mat" => Encoding.ASCII.GetBytes("texture0 cx_chest003\n"),
+            "cx_norm_mat" => Encoding.ASCII.GetBytes("texture1 cx_chest001_n\n"),
+            "cx_arm_mat" => Encoding.ASCII.GetBytes("texture0 cx_armour_d\nrenderhint NormalAndSpecMapped\n"),
+            _ => null,
+        };
+        Span<int> rows = stackalloc int[SceneDb.PltLayers];
+        for (int l = 0; l < SceneDb.PltLayers; l++) rows[l] = l + 1;
+
+        // the .mtr names the PLT itself: that name is the one the replace has to carry, not the mesh bitmap
+        int p = Dressed("cx_plt_mat", out DbId plt);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(plt, "cx_chest001", "cx_chest042", rows: rows) != 0) return false;
+        if (Shows(p) != "" || SceneDb.PartPltOwn[p]) return false;
+        if (Seam.ObjectTex.Replace(plt, "cx_chest003", "cx_chest042", rows: rows) != 1) return false;
+        if (Shows(p) != "cx_chest042" || !SceneDb.PartPltOwn[p]) return false;
+
+        // a .mtr that supplies no diffuse leaves the mesh's own bitmap -- and the graft model's name -- standing
+        p = Dressed("cx_norm_mat", out DbId norm);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(norm, "cx_chest001", "cx_chest042", rows: rows) != 1) return false;
+        if (Shows(p) != "cx_chest042") return false;
+        if (Seam.ObjectTex.Restore(norm) != 1) return false;
+        if (Seam.ObjectTex.Replace(norm, "cx_chest003", "cx_chest042", rows: rows) != 1) return false;
+
+        // no .mtr at all: the ordinary replace, on the bitmap
+        p = Dressed(null, out DbId bare);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(bare, "cx_chest001", "cx_chest042") != 1 || Shows(p) != "cx_chest042") return false;
+
+        // the .mtr names its own non-PLT diffuse: the creature's replace must leave it alone
+        long stood = Seam.ObjectTex.MtrDiffuseKept;
+        p = Dressed("cx_arm_mat", out DbId arm);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(arm, "cx_chest003", "cx_chest042", rows: rows) != 0) return false;
+        if (Seam.ObjectTex.Replace(arm, "cx_chest001", "cx_chest042", rows: rows) != 0) return false;
+        if (Shows(p) != "" || SceneDb.PartPltOwn[p]) return false;
+        if (SceneDb.PartTexName(p, 0) != "cx_armour_d") return false;
+        return Seam.ObjectTex.MtrDiffuseKept == stood + 2;
+    }
+
+    /// <summary>One armour part as <c>CreateBodyParts</c> @0x734440 grafts it: the model named for the part
+    /// (<c>cx_chest003</c>), a mesh whose bitmap is another (<c>cx_chest001</c>), and the material file
+    /// <paramref name="material"/> if any. Returns the mesh part's index, or -1.</summary>
+    private static int Dressed(string? material, out DbId obj)
+    {
+        MeshDef mesh = Quad("cx_chest001");
+        if (material != null) mesh.MaterialName = material;
+        var model = Model("cx_chest003", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        obj = NewObject();
+        if (!PartTree.Build(obj, model)) return -1;
+        int p = SceneDb.ObjPartFirst[obj.Index] + 1;
+        return (SceneDb.PartMtr[p] == null) == (material == null) ? p : -1;
     }
 
     /// <summary>The resref part <paramref name="p"/>'s slot 0 currently shows, empty for the model's own.</summary>
@@ -443,6 +518,85 @@ internal static class DbSelfCheck
         if (MeshArena.RefsOf(ra) != 0) return false;   // released, and dead to every reader at once
         MeshArena.FrameEdgeForCheck();
         return MeshArena.MeshCount == 0 && !MeshArena.Runs(ra, 0, out _, out _, out _, out _);
+    }
+
+    /// <summary>The arena's two packed streams. Three independent oracles: <c>GL_INT_2_10_10_10_REV</c> words
+    /// written out BY HAND from the field order in the GL spec, hand-written byte offsets and strides, and
+    /// the embedded lit vertex stage's own text for the attribute locations the VAO binds.</summary>
+    private static bool ArenaStreams()
+    {
+        // the packing. 0x400001FF is (+x, handedness +1): x lane 511, y and z 0, w lane 1 in bits 30..31.
+        if (MeshArena.PackTangent(new Vector4(1f, 0f, 0f, 1f)) != 0x400001FFu) return false;
+        // ...and 0xE0100000 is (-z, handedness -1): z lane -511 as 0x201 at bit 20, w lane -1 as 3.
+        if (MeshArena.PackTangent(new Vector4(0f, 0f, -1f, -1f)) != 0xE0100000u) return false;
+        if (MeshArena.PackTangent(Vector4.Zero) != 0u) return false;   // "no frame": the derivative fallback
+        Vector4 a = MeshArena.UnpackTangent(0x400001FFu);
+        if (MathF.Abs(a.X - 1f) > 1e-3f || MathF.Abs(a.Y) > 1e-3f || MathF.Abs(a.Z) > 1e-3f || a.W != 1f) return false;
+        Vector4 b = MeshArena.UnpackTangent(0xE0100000u);
+        if (MathF.Abs(b.Z + 1f) > 1e-3f || MathF.Abs(b.X) > 1e-3f || b.W != -1f) return false;
+        if (MeshArena.UnpackTangent(0u) != Vector4.Zero) return false;
+
+        // the layout: both words LAST, so the bone slots and weights keep offsets 40 and 44
+        if (MeshArena.StrideBytes(MeshArena.Fmt.Static) != 48) return false;
+        if (MeshArena.StrideBytes(MeshArena.Fmt.Skinned) != 68) return false;
+        if (MeshArena.TanWord(MeshArena.Fmt.Static) * 4 != 40 || MeshArena.PaintWord(MeshArena.Fmt.Static) * 4 != 44) return false;
+        if (MeshArena.TanWord(MeshArena.Fmt.Skinned) * 4 != 60 || MeshArena.PaintWord(MeshArena.Fmt.Skinned) * 4 != 64) return false;
+
+        // ...and the locations the lit vertex stage declares, read off the embedded GLSL
+        string vs = AlloyRenderer.OwnedLitVs;
+        if (!vs.Contains($"layout(location = {AlloyRenderer.LocTangent}) in vec4 aTangent;")) return false;
+        if (!vs.Contains($"layout(location = {AlloyRenderer.LocPaint}) in vec4 aPaint;")) return false;
+
+        // ...and what actually reached the mirror, for a mesh that carries both and one that carries neither
+        Reset();
+        MeshDef painted = Quad("tan");
+        painted.Tangents = new[] { new Vector4(1f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 1f),
+                                   new Vector4(0f, 0f, -1f, -1f), new Vector4(0f, 0f, -1f, -1f) };
+        painted.Colors = new[] { 0xFF4080C0u, 0xFF4080C0u, 0xFF4080C0u, 0xFF4080C0u };
+        int r = MeshArena.Acquire(painted);
+        int bare = MeshArena.Acquire(Quad("bare", 3f));
+        bool ok = r >= 0 && bare >= 0
+               && MeshArena.StreamProbe(r, 0, out uint t0, out uint p0) && t0 == 0x400001FFu && p0 == 0xFF4080C0u
+               && MeshArena.StreamProbe(r, 2, out uint t2, out _) && t2 == 0xE0100000u
+               && MeshArena.StreamProbe(bare, 0, out uint tb, out uint pb) && tb == 0u && pb == 0xFFFFFFFFu;
+        if (r >= 0) MeshArena.Release(r);
+        if (bare >= 0) MeshArena.Release(bare);
+        MeshArena.FrameEdgeForCheck();
+        return ok;
+    }
+
+    /// <summary>The packed words are part of the arena's CONTENT identity, so a mesh that differs only in
+    /// them cannot be collapsed onto another's range. Oracle: the hand-counted range tally.</summary>
+    private static bool ArenaStreamIdentity()
+    {
+        Reset();
+        MeshDef plain = Quad("id");
+        MeshDef tangents = Quad("id");
+        tangents.Tangents = new[] { new Vector4(1f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 1f),
+                                    new Vector4(1f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 1f) };
+        MeshDef painted = Quad("id");
+        painted.Colors = new[] { 0xFF102030u, 0xFF102030u, 0xFF102030u, 0xFF102030u };
+        // ...and two that differ only in the VALUES, not in whether the stream is there at all: the presence
+        // bit alone would collapse these onto the pair above.
+        MeshDef turned = Quad("id");
+        turned.Tangents = new[] { new Vector4(0f, 1f, 0f, 1f), new Vector4(0f, 1f, 0f, 1f),
+                                  new Vector4(0f, 1f, 0f, 1f), new Vector4(0f, 1f, 0f, 1f) };
+        MeshDef repainted = Quad("id");
+        repainted.Colors = new[] { 0xFF405060u, 0xFF405060u, 0xFF405060u, 0xFF405060u };
+        int[] r =
+        {
+            MeshArena.Acquire(plain), MeshArena.Acquire(tangents), MeshArena.Acquire(painted),
+            MeshArena.Acquire(turned), MeshArena.Acquire(repainted),
+        };
+        bool ok = MeshArena.MeshCount == r.Length;
+        for (int i = 0; i < r.Length; i++)
+        {
+            ok &= r[i] >= 0;
+            for (int j = i + 1; j < r.Length; j++) ok &= r[i] != r[j];
+        }
+        foreach (int id in r) if (id >= 0) MeshArena.Release(id);
+        MeshArena.FrameEdgeForCheck();
+        return ok;
     }
 
     /// <summary>The compaction: the live ranges slide down and their index runs come with them.</summary>
@@ -735,5 +889,201 @@ internal static class DbSelfCheck
         int f = SceneDb.ObjPartFirst[o.Index];
         return SceneDb.PartMtr[f] != null && SceneDb.PartTexName(f, 0) == "stone_d"
                && SceneDb.PartTexName(f, 1) == "stone_n" && SceneDb.PartMtl[f].RenderHint == 2;
+    }
+
+    /// <summary>A material whose <c>customShaderFS</c> is one of <see cref="ShaderFeatures.CoverNrmFs"/> draws
+    /// as a CUTOUT off map slot 1's alpha whatever its diffuse measures; one naming another stage over the same
+    /// textures does not. Oracles, both hand-written: the two <c>.mtr</c> texts (one word apart) and the
+    /// expected class and record bit, spelled out rather than read back off the recipe.</summary>
+    private static bool NormalAlphaCoverage()
+    {
+        const string hair = "bitmap nrmcov_d\ntexture1 nrmcov_n\ncustomShaderVS vslit_sm_nm\n"
+                          + "customShaderFS fs_plt_hair\nTransparency 1\n";
+        const string plain = "bitmap nrmcov_d\ntexture1 nrmcov_n\ncustomShaderVS vslit_sm_nm\n"
+                           + "customShaderFS fslit_sm_nm\nTransparency 1\n";
+        static int Recipe(string text, string mat, string name, out ModelDef model, int hint = 0)
+        {
+            MtrDef.Forget();
+            MtrDef.Bytes = n => n == mat ? Encoding.ASCII.GetBytes(text) : null;
+            MeshDef mesh = Quad("nrmcov_tex");
+            mesh.MaterialName = mat;
+            mesh.TransparencyHint = hint;
+            model = Model(name, new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+            return DrawRecipe.Intern(model, 1, plan: false);
+        }
+        Reset();
+        int r = Recipe(hair, "cx_sc_nrmcov", "cx_sc_nrmcov_mdl", out ModelDef hairMdl);
+        bool ok = r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.CoverNrm) != 0
+                         && (DrawRecipe.Slots(r) & AlloyRenderer.CoverNrmBit) != 0
+                         && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        int plainR = Recipe(plain, "cx_sc_nrmplain", "cx_sc_nrmplain_mdl", out ModelDef plainMdl);
+        ok &= plainR >= 0 && (DrawRecipe.Flags(plainR) & RecipeFlag.CoverNrm) == 0
+                          && (DrawRecipe.Slots(plainR) & AlloyRenderer.CoverNrmBit) == 0;
+        // The diffuse lands with no alpha anywhere -- the eyelashes case. The hair material stays a cutout
+        // with its bit; the one naming another stage becomes the opaque part its diffuse says it is.
+        TexId d = TexRegistry.Acquire("nrmcov_d");
+        TexRegistry.Land(d, 0x5C18, 256, 0, TexCoverage.Opaque);
+        DrawRecipe.Reclassify();
+        ok &= r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.CoverNrm) != 0
+                     && (DrawRecipe.Slots(r) & AlloyRenderer.CoverNrmBit) != 0
+                     && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        ok &= plainR >= 0 && DrawRecipe.Cls(plainR) == (int)AlloyClass.Opaque;
+        // ...and the fence case: a GRADED diffuse (its alpha is the env reflectivity) under a model that
+        // declares transparency. Vanilla draws this content in the opaque bucket -- its gob env map is what
+        // GetIsOpaque answers with -- so the only hole in it is its own stage's discard, and the class must
+        // stay the hard cutout. The same pair over any other stage is the blend it has always been.
+        int hintR = Recipe(hair.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
+                           "cx_sc_nrmhint", "cx_sc_nrmhint_mdl", out ModelDef hintMdl, hint: 1);
+        int blendR = Recipe(plain.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
+                            "cx_sc_nrmblend", "cx_sc_nrmblend_mdl", out ModelDef blendMdl, hint: 1);
+        TexRegistry.Land(TexRegistry.Acquire("nrmcov_env"), 0x5C19, 256, 0, TexCoverage.Blended);
+        DrawRecipe.Reclassify();
+        ok &= hintR >= 0 && DrawRecipe.Cls(hintR) == (int)AlloyClass.Cutout
+                         && (DrawRecipe.Slots(hintR) & AlloyRenderer.CoverNrmBit) != 0;
+        ok &= blendR >= 0 && DrawRecipe.Cls(blendR) == (int)AlloyClass.Blended
+                          && (DrawRecipe.Slots(blendR) & AlloyRenderer.CoverNrmBit) == 0;
+        DrawRecipe.Forget(hintMdl);
+        DrawRecipe.Forget(blendMdl);
+        // ...and the names are the content's own, matched whole and case-insensitively.
+        ok &= ShaderFeatures.CoversFromNormalAlpha("fs_plt_hair")
+              && ShaderFeatures.CoversFromNormalAlpha("FS_PLT_HAIR2")
+              && !ShaderFeatures.CoversFromNormalAlpha("fs_plt_hair_x")
+              && !ShaderFeatures.CoversFromNormalAlpha("fs_plt_fur")
+              && !ShaderFeatures.CoversFromNormalAlpha("fslit_hair_nm")
+              && !ShaderFeatures.CoversFromNormalAlpha("");
+        DrawRecipe.Forget(hairMdl);
+        DrawRecipe.Forget(plainMdl);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
+        return ok;
+    }
+
+    /// <summary>A recipe interned while its mesh's <c>.mtr</c> was unreadable: the coverage mode cannot be
+    /// known yet, and only the material's own landing edge can supply it -- no texture serial moves for it.
+    /// Oracle: the mode is a hand-written <c>.mtr</c> text and the expected flag is written out, not read
+    /// back off the recipe.</summary>
+    private static bool LateCoverage()
+    {
+        const string text = "bitmap cov_d\nparameter int NWN_ALPHA_MODE 2\n";
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;   // the parse asked and the feed had not read it yet
+        MeshDef mesh = Quad("cov_tex");
+        mesh.MaterialName = "cx_selfcheck_cov";
+        var model = Model("cx_selfcheck_cov", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        int r = DrawRecipe.Intern(model, 1, plan: false);
+        bool ok = r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.Coverage) == 0;
+        // ...and the read lands. Reclassify is the one re-ask, and it must report the move so the records
+        // of every part on this recipe are rewritten.
+        MtrDef.Bytes = n => n == "cx_selfcheck_cov" ? Encoding.ASCII.GetBytes(text) : null;
+        DrawRecipe.MaterialLanded();
+        ok &= DrawRecipe.Reclassify() > 0;
+        ok &= r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.Coverage) != 0
+                     && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        DrawRecipe.Forget(model);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
+        return ok;
+    }
+
+    /// <summary>A part built while its mesh's <c>.mtr</c> was unreadable: its material columns are the mesh's
+    /// alone, and only the read's own landing edge can fold the file in -- after which a PLT replace aims at
+    /// the file's diffuse and no longer at the mesh bitmap. Oracles: a hand-written <c>.mtr</c> text and the
+    /// resrefs the replace must take and must refuse.</summary>
+    private static bool LateMaterialColumns()
+    {
+        Reset();
+        MtrDef.Forget();
+        // the part is built while the feed has only QUEUED the read: not answered, so an answer may come
+        MtrDef.Bytes = _ => null;
+        MtrDef.Answered = _ => false;
+        MeshDef mesh = Quad("cx_chest001");
+        mesh.MaterialName = "cx_late_mat";
+        var model = Model("cx_chest003", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        DbId obj = NewObject();
+        if (!PartTree.Build(obj, model)) return false;
+        int p = SceneDb.ObjPartFirst[obj.Index] + 1;
+        bool ok = SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_chest001"
+                  && SceneDb.PartMtl[p].RenderHint == 0
+                  && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0
+                  // ...and it is on the wait list, which is the only thing the edge revisits
+                  && PartTree.MaterialWaiting == 1;
+
+        // ...and the read lands. The edge is the one re-ask: nothing else revisits a built part's material.
+        MtrDef.Bytes = n => n == "cx_late_mat"
+            ? Encoding.ASCII.GetBytes("texture0 cx_chest003\nrenderhint NormalAndSpecMapped\n") : null;
+        MtrDef.Answered = _ => true;
+        DrawRecipe.MaterialLanded();
+        ok &= PartTree.ReseedMaterials() == 1 && PartTree.MaterialWaiting == 0;
+        ok &= SceneDb.PartMtr[p] != null && SceneDb.PartTexName(p, 0) == "cx_chest003"
+              && SceneDb.PartMtl[p].RenderHint == 2;
+        // ...and the part is MARKED, which is what rewrites its record and re-resolves its texture slots
+        ok &= (SceneDb.Parts.DirtyAt(p) & Dirty.Material) != 0;
+
+        // CX-226's rule over the freshly folded file: the mesh bitmap no longer names slot 0, the file does.
+        Span<int> rows = stackalloc int[SceneDb.PltLayers];
+        for (int l = 0; l < SceneDb.PltLayers; l++) rows[l] = l + 1;
+        ok &= Seam.ObjectTex.Replace(obj, "cx_chest001", "cx_chest042", rows: rows) == 0;
+        ok &= Shows(p) == "" && !SceneDb.PartPltOwn[p];
+        ok &= Seam.ObjectTex.Replace(obj, "cx_chest003", "cx_chest042", rows: rows) == 1;
+        ok &= Shows(p) == "cx_chest042" && SceneDb.PartPltOwn[p];
+        return ok;
+    }
+
+    /// <summary>A material the layer has ANSWERED for and that does not exist: final, so the part has nothing
+    /// to wait for and must not be enqueued -- otherwise every part of a vanilla area (whose bitmap names no
+    /// <c>.mtr</c>) would sit on the wait list for the session. Oracle: the waiting count, hand-written.</summary>
+    private static bool AbsentMaterialNeverWaits()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;
+        MtrDef.Answered = _ => true;   // asked and answered: there is no such file
+        MeshDef mesh = Quad("cx_absent_tex");
+        var model = Model("cx_absent", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        DbId obj = NewObject();
+        if (!PartTree.Build(obj, model)) return false;
+        int p = SceneDb.ObjPartFirst[obj.Index] + 1;
+        if (PartTree.MaterialWaiting != 0) return false;
+        // ...and a landing edge therefore has nothing to do for it
+        DrawRecipe.MaterialLanded();
+        return PartTree.ReseedMaterials() == 0 && SceneDb.PartMtr[p] == null
+               && SceneDb.PartTexName(p, 0) == "cx_absent_tex";
+    }
+
+    /// <summary>A waiting part whose slot was freed and handed to another tree before the read landed: the
+    /// entry names a tenant that is gone, so it is dropped rather than folding one model's material into
+    /// another model's part. Oracle: the second tree's own columns, which must stay its mesh's.</summary>
+    private static bool RecycledWaiterDropped()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;
+        MtrDef.Answered = _ => false;   // queued, not answered: this part waits
+        MeshDef waits = Quad("cx_recyc001");
+        waits.MaterialName = "cx_recyc_mat";
+        var first = Model("cx_recyc_a", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, waits });
+        DbId a = NewObject();
+        if (!PartTree.Build(a, first)) return false;
+        int p = SceneDb.ObjPartFirst[a.Index] + 1;
+        if (PartTree.MaterialWaiting != 1) return false;
+        PartTree.Free(a);
+
+        // ...and the slot comes back to a tree whose mesh names no material at all
+        var second = Model("cx_recyc_b", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                           new MeshDef?[] { null, Quad("cx_recyc002") });
+        DbId b = NewObject();
+        if (!PartTree.Build(b, second)) return false;
+        if (SceneDb.ObjPartFirst[b.Index] + 1 != p) return false;   // the same slot, or this proves nothing
+        MtrDef.Bytes = n => n == "cx_recyc_mat" ? Encoding.ASCII.GetBytes("texture0 cx_recyc_mtr\n") : null;
+        MtrDef.Answered = _ => true;
+        DrawRecipe.MaterialLanded();
+        return PartTree.ReseedMaterials() == 0 && PartTree.MaterialWaiting == 0
+               && SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_recyc002";
     }
 }

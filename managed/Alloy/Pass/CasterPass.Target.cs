@@ -352,7 +352,7 @@ public sealed unsafe partial class CasterPass
     {
         Gl.ActiveTexture(Gl.TEXTURE0);
         int boundVao = -1, boundMode = -1, boundTex = -1;
-        float boundCut = -1f;
+        int boundCut = -1;
         for (int g = 0; g < _gGroups; g++)
         {
             if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
@@ -362,14 +362,15 @@ public sealed unsafe partial class CasterPass
                 boundMode = mode;
                 Gl.UseProgram(mode == 0 ? _gl.ProgLayer : mode == 1 ? _gl.ProgLayerMask : _gl.ProgLayerMaskH);
                 if (mode == 1) Gl.Uniform1i(_gl.LocLayerMaskTex, 0);
-                boundCut = -1f;
+                boundCut = -1;
             }
-            if (mode != 0 && _gCut[g] != boundCut)
+            if (mode != 0 && (int)_gCut[g] != boundCut)
             {
-                boundCut = _gCut[g]; Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskCut : _gl.LocLayerMaskHCut, boundCut);
+                CasterCut kind = _gCut[g]; boundCut = (int)kind;
+                Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskCut : _gl.LocLayerMaskHCut, Threshold(kind));
                 Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskMip : _gl.LocLayerMaskHMip, Renderer.CutMip.V);
-                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskDither : _gl.LocLayerMaskHDither, _maskDither);
-                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskEnv : _gl.LocLayerMaskHEnv, boundCut == EnvAlphaDiscard ? 1 : 0);
+                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskDither : _gl.LocLayerMaskHDither, DitherFor(kind));
+                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskEnv : _gl.LocLayerMaskHEnv, kind == CasterCut.EnvAlpha ? 1 : 0);
             }
             if (mode == 1 && cut0 != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)cut0); boundTex = cut0; }
             if (_gVao[g] != boundVao) { Gl.BindVertexArray(AlloyRenderer.CasterVao(_gVao[g])); boundVao = _gVao[g]; }

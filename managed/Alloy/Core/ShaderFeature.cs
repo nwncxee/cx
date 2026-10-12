@@ -31,8 +31,8 @@ internal enum ShaderFeature
     Flowmap = 7,
     /// <summary>Not a content shader at all -- the TRUE skinmesh (a cloak, a robe, a tail), posed by the
     /// engine's 64-matrix bone array rather than the node matrix alone. It rides in this field because the
-    /// per-draw record already carries it to both vertex stages, and <c>feat.y</c> carries the bone base.
-    /// ponytail: a skinmesh naming a fork too loses the fork, not the pose; the fix is a bit in <c>feat.z</c>.</summary>
+    /// record already carries it to both vertex stages, and <c>feat.y</c> carries the bone base. A feature
+    /// that may be posed keeps its own id instead (<see cref="ShaderFeatures.PosedToo"/>).</summary>
     Skin = 8,
     /// <summary><c>fs_noirwet</c> -- a still liquid. Normal-only animated ripples anchored in world
     /// space, a low roughness and a white sheen. The pool stays dead flat: nothing here displaces, so unlike
@@ -47,6 +47,11 @@ internal enum ShaderFeature
     /// take a Fresnel of the sky, and rain ripples over both. Around eighty materials name it, which is most
     /// of the outdoor tileset; drawn with the plain stage, none of it happened.</summary>
     GroundWeather = 11,
+    /// <summary><c>vs_plt_wind</c>/<c>fs_plt_tinter</c> -- a part-based character's palette tint: the wearer's
+    /// ten PLT palette rows against the material's own palette maps (<c>texture7</c>..<c>texture10</c>), a
+    /// glow, an anisotropic lobe, and a sway weighted by the mesh's vertex paint. Its per-material terms ride
+    /// <see cref="TintTerms"/>' side table, reached by the row index in <c>feat.z</c>.</summary>
+    PaletteTint = 12,
 }
 
 internal static class ShaderFeatures
@@ -59,7 +64,7 @@ internal static class ShaderFeatures
     {
         "", "shd_windgrass_vs", "shd_windleaf_vs", "shd_windplant_vs",
         "shd_roofkn_vs", "shd_roofknm_vs", "shd_nokeyhole_vs", "shd_flowmap_vs",
-        "", "vs_noirwet", "vs_noirgloss", "td_ground_vs",
+        "", "vs_noirwet", "vs_noirgloss", "td_ground_vs", "vs_plt_wind",
     };
 
     /// <summary>The <c>customShaderFS</c> resrefs Alloy HOSTS, indexed like <see cref="VsNames"/>. An entry
@@ -70,7 +75,7 @@ internal static class ShaderFeatures
     {
         "", "", "", "",
         "", "", "", "",
-        "", "fs_noirwet", "fs_noirgloss", "td_ground_fs",
+        "", "fs_noirwet", "fs_noirgloss", "td_ground_fs", "fs_plt_tinter",
     };
 
     /// <summary>Does this feature's fragment side come from a HOSTED content stage? Such a batch draws through
@@ -79,12 +84,55 @@ internal static class ShaderFeatures
     /// opaque 15,1 -> 5,4 ms with the regions stubbed).</summary>
     internal static bool Hosted(int feat) => (uint)feat < (uint)FsNames.Length && FsNames[feat].Length > 0;
 
+    /// <summary>Content fragment stages whose COVERAGE is map slot 1's alpha: they discard on
+    /// <c>texUnit1.a</c> below <see cref="CoverNrmCut"/> and leave the diffuse alpha to the env-map level.
+    /// Reproduced rather than hosted -- the discard is all Alloy lacks. A stage reading another channel, or
+    /// cutting at another threshold, does NOT belong here: its number would be a silent divergence.</summary>
+    internal static readonly string[] CoverNrmFs = { "fs_plt_hair", "fs_plt_hair2" };
+
+    /// <summary>The threshold those stages discard at, which is also <c>AlloyClasses.Discard</c>'s cutout
+    /// value -- so such a part needs no per-draw threshold, only the right channel.</summary>
+    internal const float CoverNrmCut = 0.2f;
+
+    /// <summary>Does this <c>customShaderFS</c> resref take its coverage from map slot 1's alpha? Whole-name
+    /// and case-insensitive, as <c>MtrParams.Feature</c> matches the vertex names.</summary>
+    internal static bool CoversFromNormalAlpha(string fs)
+    {
+        foreach (string n in CoverNrmFs)
+            if (fs.Equals(n, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     /// <summary>Does this feature read material texture slot 6? Two do, for different things -- the flow
     /// map's RG direction field and the weather ground's snow overlay -- because the SLOT is the contract and
     /// the name beside it is only what one shader calls it. Everything else leaves the bit clear, which is
     /// vanilla's own <c>texture6Bound</c> test: a material that binds nothing there gets nothing sampled.</summary>
     internal static bool ReadsAuxSlot(int feat)
         => feat == (int)ShaderFeature.Flowmap || feat == (int)ShaderFeature.GroundWeather;
+
+    /// <summary>Does this feature read the four PALETTE slots, <c>texture7</c>..<c>texture10</c>? Only the
+    /// palette tint does, and the same reading as <see cref="ReadsAuxSlot"/>'s applies: a material that binds
+    /// nothing there gets nothing sampled, and a material that binds something there under any other feature
+    /// leaves the bits clear rather than handing an unrelated stage four maps it never asked for.</summary>
+    internal static bool ReadsPaletteSlots(int feat) => feat == (int)ShaderFeature.PaletteTint;
+
+    /// <summary>Does this feature take its COVERAGE from somewhere other than the diffuse alpha? The palette
+    /// tint does -- its coverage is the third palette map's blue channel, the <c>.mtr</c>'s own mip rescale
+    /// over it -- because its diffuse carries the palette intensity, not an opacity.</summary>
+    internal static bool HostedCoverage(int feat) => feat == (int)ShaderFeature.PaletteTint;
+
+    /// <summary>May a record carry this content feature AND a bone base at once? The palette tint must: it
+    /// is a CHARACTER shader, and a character's body parts are posed. Every other feature is tileset or
+    /// placeable work that never meets a bone, so the skinmesh class takes <c>feat.x</c> from it and the
+    /// vertex stage finds the bone base by that id.</summary>
+    internal static bool PosedToo(int feat) => feat == (int)ShaderFeature.PaletteTint;
+
+    /// <summary>The feature a record carries in <c>feat.x</c>: the content one, unless a POSE displaces it.
+    /// The one expression behind every site that writes or keys on it -- the record, the sort digit, the batch
+    /// audit and the caster's coverage source -- so a feature that coexists with a pose cannot coexist in some
+    /// of them and not others. <c>feat.y</c> is the bone base either way (-1 unposed).</summary>
+    internal static int WithPose(int feat, bool posed)
+        => posed && !PosedToo(feat) ? (int)ShaderFeature.Skin : feat;
 
     /// <summary>Does this feature move vertices? Such a part must stay out of the depth prepass: the prepass
     /// stage does not displace, so its depth is the part's UNDISPLACED silhouette and the colour pass's LEQUAL

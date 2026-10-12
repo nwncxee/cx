@@ -90,6 +90,20 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The record takes no shadow (<c>CX_SLOT_NOSHADOW</c>): an untextured blended sheet such as a door's
     /// <c>sam</c> transition sheen. Binds nothing.</summary>
     internal const int NoShadowBit = 1 << 8;
+    /// <summary>The four PALETTE slots: <c>.mtr</c> <see cref="PalTexture0"/>..<c>texture10</c>, the engine's
+    /// own last four material stages (it pins <c>texUnit7</c>..<c>texUnit10</c> to units 7..10 at link). Alloy
+    /// has no unit left for them -- the lit stage spends 0..30 -- so they reach their one reader, the palette
+    /// tint's hosted stage, as bindless handles in <see cref="Db.TintTerms"/>' row.</summary>
+    internal const int PalSlots = 4, PalTexture0 = 7;
+    /// <summary>The first palette slot's MASK bit; the other three follow it. Above
+    /// <see cref="NoShadowBit"/>, and nowhere near <see cref="EnvSlot"/>'s frozen 64.</summary>
+    internal const int PalBit0 = 1 << 9;
+    /// <summary>Mask bit of palette slot <paramref name="k"/> (<c>texture7</c> is 0).</summary>
+    internal static int PalSlotBit(int k) => PalBit0 << k;
+    /// <summary>This material's COVERAGE is map slot 1's alpha, never the diffuse's -- what the content
+    /// fragment stages <see cref="ShaderFeatures.CoverNrmFs"/> names discard on. Binds nothing: the bit only
+    /// says which channel the cutout test reads, and slot 1 is bound already for its normal.</summary>
+    internal const int CoverNrmBit = 1 << 13;
     /// <summary>Texture unit slot 1 binds on; the rest follow it. Units 0/1/2 are diffuse, sun cascades and
     /// the local cube array, and <see cref="EnvProbe.ProbeUnit"/> sits above all of them -- SelfCheck holds
     /// that ordering, because a samplerCube sharing a unit with a sampler2D kills every lit draw in silence.</summary>
@@ -113,6 +127,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>Our own program's attribute locations. VAOs are ours, so the engine's locations only tell us
     /// which buffer/offset holds each stream -- we re-bind them wherever the program wants them.</summary>
     internal const uint LocPos = 0, LocUv = 1, LocNrm = 2;
+    /// <summary>The mesh arena's two packed words: a tangent frame (<c>INT_2_10_10_10_REV</c>, xyz plus the
+    /// handedness in the 2-bit lane) and vertex paint (normalized RGBA8). Location 3 is the lightmap chart
+    /// (<see cref="MeshChart.LocChartUv"/>), so these take the next two free slots.</summary>
+    internal const uint LocTangent = 4, LocPaint = 5;
 
     internal static ExtenderLog? _log;
     private static bool _armed;
@@ -316,6 +334,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
             // has loaded a slot. Each is two queue tests when there is nothing to do.
             Db.TexRegistry.Drain();
             Db.PltColors.Upload();
+            Db.TintTerms.Upload();
             Db.PltPalettes.Create();
             // CX-117's GPU check: idle unless alloy.pltverify armed it, and it runs in BOTH modes -- what it
             // measures is the shipped GLSL, which does not care which scene layer produced the record.

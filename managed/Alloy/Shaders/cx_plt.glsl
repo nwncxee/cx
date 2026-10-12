@@ -18,6 +18,9 @@ layout(std430, binding = 7) readonly buffer CxPltBuf { uint uPltRow[]; };
 #define CX_PLT_LAYERS   10
 #define CX_PLT_FLAG     1u  // this draw's diffuse is a PLT
 #define CX_PLT_CLAMP    2u  // ...and its sampler clamps rather than repeats
+// CX-223: the rows are staged for a reader that is NOT the diffuse resolve -- a palette-tint material whose
+// diffuse is an ordinary texture still wears the ten rows, and reads them as the engine's PLTscheme feed.
+#define CX_PLT_ROWS     4u
 // Past this LOD the second mip level is never blended in: those levels are a few texels wide, their colours
 // are within a rounding of each other, and a creature that far away is a handful of pixels. Four taps instead
 // of eight, and no dither and no temporal term, so it holds with TAA off.
@@ -42,11 +45,32 @@ bool CxPltClamps(int draw)
     return (uPltRow[draw * CX_PLT_WORDS + CX_PLT_ROWWORDS] & CX_PLT_CLAMP) != 0u;
 }
 
+// Are this draw's ROWS staged at all -- either because its diffuse resolves as a PLT, or because something
+// else on the record reads the wearer's scheme? One scalar load, uniform across the primitive.
+bool CxPltRowsOn(int draw)
+{
+    int i = draw * CX_PLT_WORDS + CX_PLT_ROWWORDS;
+    return i < uPltRow.length() && (uPltRow[i] & (CX_PLT_FLAG | CX_PLT_ROWS)) != 0u;
+}
+
 // This draw's master-palette row for one layer.
 int CxPltRow(int draw, int layer)
 {
     uint v = uPltRow[draw * CX_PLT_WORDS + (layer >> 1)];
     return int((layer & 1) == 0 ? (v & 0xffffu) : (v >> 16));
+}
+
+// The engine's own PLT feed to a CUSTOM shader: `uniform float PLTscheme[15]`, which it sets per material
+// bind as row / 1792 -- a normalised V coordinate into the master palette, one per layer. The engine has a
+// uniform to set because it draws one material at a time; Alloy draws a multidraw batch, so the same number
+// comes out of this record's rows instead and the bridge rewrites every `PLTscheme[n]` into this call.
+// The literal 1792 and the absence of a half-texel offset are Material::ReplaceTexturePLT's, not the GPU
+// compositor's (which adds 0.5 and divides by the live palette height).
+#define CX_PLT_HEIGHT 1792.0
+float CxPltScheme(int draw, int layer)
+{
+    return CxPltRowsOn(draw) && layer >= 0 && layer < CX_PLT_LAYERS
+         ? float(CxPltRow(draw, layer)) / CX_PLT_HEIGHT : 0.0;
 }
 
 // One pair texel resolved to a colour, at an explicit level, under the texture's own wrap mode.

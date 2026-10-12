@@ -328,8 +328,11 @@ internal static unsafe class Issue
             // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
             bool deferred = lit && !water && !hosted && !lists && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
                             && g < _gOpaqueEnd && DeferredLights.Active && !_forwardOnly;
-            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own samples
-            int wantProg = water ? 2 : hosted ? 3 : lists ? 4 : deferred ? 5
+            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
+            // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
+            // whose coverage comes off its own map still gets a per-primitive sample pattern.
+            bool hostMask = hosted && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
+            int wantProg = water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)
             {
@@ -364,9 +367,11 @@ internal static unsafe class Issue
                 else if (lit)
                 {
                     ref LitLoc L = ref LitLocOf(wantProg);
-                    Gl.UseProgram(hosted ? Programs._progLitHost : lists ? Programs._progLitList
+                    Gl.UseProgram(wantProg == 7 ? Programs.ProgLitHostMask : hosted ? Programs._progLitHost
+                                  : lists ? Programs._progLitList
                                   : deferred ? Programs._progLitDef : wantProg == 6 ? Programs._progLitMask : Programs._progLit46);
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
+                    if (wantProg == 7) Gl.Uniform1i(Programs.HostMaskSamples, CoverageLayer.Samples);
                     Gl.Uniform1i(L.Tex, 0);
                     Gl.UniformMatrix4fv(L.Vp, 1, 0, vpRaw);
                     AlloyLights.BindForDraw();
@@ -392,6 +397,9 @@ internal static unsafe class Issue
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, _capturing);
                     // The master PLT palette on its own unit; a no-op until a master palette exists.
                     Db.PltPalettes.Bind();
+                    // CX-223: ...and the palette tint's side table, whose binding point is a shared one --
+                    // a reader that trusted an earlier bind would read the particle index block.
+                    Db.TintTerms.Bind();
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
@@ -512,14 +520,15 @@ internal static unsafe class Issue
         if (boundOffset) Gl.Disable(Gl.POLYGON_OFFSET_FILL);
     }
 
-    /// <summary>The uniform locations of one of the five lit programs, keyed by the issue loop's
-    /// <c>wantProg</c>: 1 plain, 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant.
-    /// One place, because two sites in the loop pick from the same five.</summary>
+    /// <summary>The uniform locations of one of the six lit programs, keyed by the issue loop's
+    /// <c>wantProg</c>: 1 plain, 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant,
+    /// 7 the hosted one's. One place, because two sites in the loop pick from the same six.</summary>
     private static ref LitLoc LitLocOf(int which)
         => ref (which == 3 ? ref Programs._litH
               : ref (which == 4 ? ref Programs._litL
                    : ref (which == 5 ? ref Programs._litD
-                        : ref (which == 6 ? ref Programs._litM : ref Programs._lit))));
+                        : ref (which == 6 ? ref Programs._litM
+                             : ref (which == 7 ? ref Programs.HostMaskLoc : ref Programs._lit)))));
 
     /// <summary>The batches being issued are <see cref="CoverageLayer"/>'s, cut at the layer's threshold rather
     /// than the class's (and through the mask variant when it is on). Set around the layer's one issue call.</summary>

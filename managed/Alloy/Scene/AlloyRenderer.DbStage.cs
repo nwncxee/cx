@@ -129,16 +129,7 @@ public sealed unsafe partial class AlloyRenderer
         int tid = _recTid[i];
         if (_recTexStamp[i] != _stageTexSerial)
         {
-            // #128's own routing condition, which the engine answers as
-            // `Engine.HasEnvMap(material) || GobHasEnvMap(gob)`: the part is environment-mapped when the
-            // INSTANCE overrides the env map -- Gob::SetEnvironmentMap @0x43f530, which the seam stores in
-            // texture slot 3, and which is how a creature gets the appearance's ENVMAP column and an area its
-            // own -- or when the DIFFUSE declares one in its .txi (`envmaptexture`, Material::ParseField
-            // @0x5c5850). No texture is bound for it: the bit is the engine's "this is shiny 2002 content", and
-            // it is what makes the lit stage read the diffuse alpha as REFLECTIVITY (fEnvMapLevel = 1 - alpha)
-            // instead of as coverage. Without it every DB part was matte: creature armour lost the sheen the
-            // palette's alpha ramp is there to give it, and a metal weapon lost its reflection.
-            bool env = SceneDb.PartTexId[part * 4 + 3] != 0 || TexRegistry.EnvMapped(diffuse);
+            bool env = DbEnvMapped(part, diffuse);
             if (env != ((slots & EnvSlot) != 0))
             {
                 // #328: the bit rides _oSlots, which the caster pass reads as EnvAlpha -- so a record whose
@@ -248,6 +239,11 @@ public sealed unsafe partial class AlloyRenderer
         // and the ten palette rows that colour it live on the part (a per-part scheme) or its object's record. Staged per draw slot here;
         // cleared when this slot's diffuse is not a PLT, so a slot that stops being one stops resolving.
         if (TexRegistry.KindOf(diffuse) == TexKind.Plt) PltColors.Stage(i, SceneDb.PartObj[part], part);
+        // CX-223: ...and for a palette-tint material the rows go up off an ORDINARY diffuse too -- its hosted
+        // stage reads the wearer's scheme (the engine's PLTscheme feed) while its diffuse carries palette
+        // intensity rather than a composite. The flag says "rows, not a resolve", so nothing starts resolving.
+        else if (ShaderFeatures.ReadsPaletteSlots((int)_oFeat[i * 4]))
+            PltColors.Stage(i, SceneDb.PartObj[part], part, rowsOnly: true);
         else PltColors.Clear(i);
         if (StaleAuditArmed(i)) _saPltAt[i] = _frameSeq;
 
@@ -275,7 +271,7 @@ public sealed unsafe partial class AlloyRenderer
             f.Slots = cls == (int)AlloyClass.Blended && DbUntextured(i) ? slots | NoShadowBit : slots;
         }
         int feat = (int)_oFeat[i * 4];
-        f.FeatX = _oBone[i] >= 0 ? (float)ShaderFeature.Skin : _oFeat[i * 4];
+        f.FeatX = ShaderFeatures.WithPose(feat, _oBone[i] >= 0);
         f.FeatY = _oBone[i] >= 0 ? _oBone[i] * (float)BoneCount : _oFeat[i * 4 + 1];
 
         // CX-120 (integration 4): the tile's fog-of-war REVEAL, in the record's one spare lane. Vanilla fogs
@@ -447,18 +443,16 @@ public sealed unsafe partial class AlloyRenderer
         return DbTexOf(part, SceneDb.PartRecipe[part], 0).IsNull;
     }
 
-    /// <summary>The texture this part draws in <paramref name="slot"/>: the part's OVERRIDE when it has one
-    /// (<c>Gob::ReplaceTexture</c> and the PLT swaps write <see cref="SceneDb.PartTexId"/>), else the model's
-    /// own. The override is per INSTANCE, which is why it cannot live on the shared recipe.</summary>
-    private static TexId DbTexOf(int part, int recipe, int slot)
-    {
-        if (slot < 4)
-        {
-            int ov = SceneDb.PartTexId[part * 4 + slot];
-            if (ov != 0) return new TexId((uint)ov);
-        }
-        return slot < DrawRecipe.TexSlots ? DrawRecipe.Tex(recipe, slot) : default;
-    }
+    /// <summary>The texture this part draws in <paramref name="slot"/> -- <see cref="SceneDb.PartTex"/>, the
+    /// one selection the sampler and <c>.txi</c> paths resolve too.</summary>
+    private static TexId DbTexOf(int part, int recipe, int slot) => SceneDb.PartTex(part, recipe, slot);
+
+    /// <summary>Is this part environment-mapped? The engine's own routing condition,
+    /// <c>Engine.HasEnvMap(material) || GobHasEnvMap(gob)</c>: the INSTANCE was given one
+    /// (<see cref="SceneDb.PartEnvMapped"/>) or the DIFFUSE declares one in its <c>.txi</c>
+    /// (<c>envmaptexture</c>, <c>Material::ParseField</c> @0x5c5850).</summary>
+    internal static bool DbEnvMapped(int part, TexId diffuse)
+        => SceneDb.PartEnvMapped(part) || TexRegistry.EnvMapped(diffuse);
 
     /// <summary>Does any slot of this recipe resolve through the PLT shader? The staging decision a worker
     /// cannot make, because <c>PltColors.Stage</c> writes a shared upload buffer.</summary>

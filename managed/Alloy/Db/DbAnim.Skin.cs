@@ -33,7 +33,10 @@ public static unsafe partial class DbAnim
             if (m == null) continue;
             int node = SceneDb.PartNode[p];
             if ((uint)node >= (uint)m.Nodes.Length) continue;
-            SkinDef? skin = m.Nodes[node].Skin;
+            // The STITCHED table when the boundary heal gave this part one: its bone names are the
+            // composition's and its weights were unified with its neighbour's, so a palette solved against
+            // the model's own table would address the wrong slots.
+            SkinDef? skin = StitchSkin(p) ?? m.Nodes[node].Skin;
             if (skin == null) continue;
             if (!SceneDb.PartEnabled[p] || SceneDb.PartMerged[p]) { Unskin(p); continue; }
             int slot = SceneDb.PartBoneBase[p];
@@ -65,9 +68,11 @@ public static unsafe partial class DbAnim
         }
     }
 
-    /// <summary>Release a part's bone slot (disabled, merged away, or its object retiring).</summary>
+    /// <summary>Release a part's bone slot (disabled, merged away, or its object retiring), and with it the
+    /// bone table solved for the tree it was seated in -- which a re-tenanted part index no longer has.</summary>
     private static void Unskin(int p)
     {
+        _named.Bind[p] = null;
         int slot = SceneDb.PartBoneBase[p];
         if (slot < 0) return;
         AlloyRenderer.DbFreeBone(slot);
@@ -99,6 +104,10 @@ public static unsafe partial class DbAnim
         // length test below then called the list a map, and MapNode handed every bone the wrong node -- a
         // cloak deforming by another bone's matrix, which is the stretching.
         if (bones.Length == 0 || slots == 0) return false;
+        // An ASCII file states bone NAMES, and a name is the only thing that survives a graft: the piece's own
+        // Find answered -1 for every bone that lives in the skeleton it hangs off, and those slots took the
+        // identity -- the piece stayed in its bind pose while the client posed it.
+        if (!isMap && skin.BoneNames.Length > 0) return NamedPalette(part, skin, slots, dst);
         if (!derived && skin.BindTranslation.Length < skin.BindRotation.Length) return false;
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj)) return false;
@@ -267,13 +276,15 @@ public static unsafe partial class DbAnim
         if (m == null) return false;
         int node = SceneDb.PartNode[part];
         if ((uint)node >= (uint)m.Nodes.Length) return false;
-        SkinDef? skin = m.Nodes[node].Skin;
+        SkinDef? skin = StitchSkin(part) ?? m.Nodes[node].Skin;
         return skin != null && Palette(part, skin, dst);
     }
 
     /// <summary>The skin layer's period numbers.</summary>
     internal static string SkinPeriod()
         => $"{_skinned} palette(s)"
+         + SkinNamePeriod()
+         + StitchPeriod()
          + (_skinNoBind == 0 ? "" : $", {_skinNoBind} REFUSED (no bind pose)")
          + (_skinNoSlot == 0 ? "" : $", {_skinNoSlot} skin-noslot");
 }

@@ -18,7 +18,7 @@ public sealed unsafe partial class CasterPass
         // ...and the cutout stage really discards, at the engine's own threshold. A masked batch drawn by a
         // stage that lost the test writes the whole quad into the shadow map, which is the artefact the
         // masked path exists to remove and looks exactly like the pass working.
-        bool ok = CastMaskFs.Contains("vec2(textureSize(uTex, 0)), 0.0) <= uAlphaCut) discard;")
+        bool ok = CastMaskFs.Contains("CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;")
                   && CastMaskFs.Contains("uniform float uAlphaCut;")
                   && CastMaskFs.Contains("uniform int uDither;") && CastMaskHFs.Contains("uniform int uDither;")
                   // #363: the stochastic discard, on the SAME sampled alpha, in both mask stages
@@ -27,7 +27,13 @@ public sealed unsafe partial class CasterPass
                   // The handle-masked stages: the same discard, the mask off the record's handle block at
                   // slot 0, the record index from gl_BaseInstance in both packings.
                   && CastMaskHFs != CastMaskHFsSrc
-                  && CastMaskHFs.Contains("vec2(textureSize(uTex, 0)), 0.0) <= uAlphaCut) discard;")
+                  && CastMaskHFs.Contains("CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;")
+                  // CX-223: ...and the handle stage alone asks the palette tint for its own coverage source,
+                  // so a palette caster casts what it draws; the plain one has no record index to ask with.
+                  && CastMaskHFs.Contains("if (ctint.x >= 0.0) { t = ctint.x; tmip = ctint.y; tsize = ctint.zw; }")
+                  && CastMaskHFs.Contains("#define CX_CAST_HANDLE 1")
+                  && !CastMaskFs.Contains("#define CX_CAST_HANDLE")
+                  && CastMaskFs.Contains("float t = texture(uTex, vUV).a;")
                   // ...and both dither on the colour pass's blend weight, the record alpha included
                   && CastMaskFs.Contains("float a = (uEnvAlpha != 0 ? 1.0 : t) * vAlpha;")
                   && CastMaskHFs.Contains("float a = (uEnvAlpha != 0 ? 1.0 : t) * vAlpha;")
@@ -112,6 +118,49 @@ public sealed unsafe partial class CasterPass
                   && CastLayerVs.Contains($"binding = {CasterGather.BindView})")
                   && CastLayerMaskVs.Contains($"binding = {CasterGather.BindView})")
                   && CastLayerVs.Contains("int bb = CxBoneBase(d);")
+                  // CX-227: the MASKED stages carry the solid one's skinning arm too -- a posed coverage
+                  // part is alpha-tested, so a lost branch would punch its holes out of a bind pose and
+                  // its shadow would stand where the creature was exported, not where it walks. Spelled
+                  // character for character as the solid stages spell it, so the two cannot drift.
+                  && CastMaskVs.Contains("int bb = CxBoneBase(d);")
+                  && CastLayerMaskVs.Contains("int bb = CxBoneBase(d);")
+                  && CastMaskVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
+                  && CastLayerMaskVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
+                  && CastVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
+                  // ...and the three threshold kinds pick the three numbers, each written out by hand: the
+                  // layer's own cut for a declared coverage material (so the shadow drops the texels the
+                  // draw drops), the env-alpha floor where the diffuse alpha is reflectivity, 0.2 otherwise.
+                  && CutFor(coverage: true, envAlpha: false) == CasterCut.Coverage
+                  && CutFor(coverage: true, envAlpha: true) == CasterCut.Coverage
+                  && CutFor(coverage: false, envAlpha: true) == CasterCut.EnvAlpha
+                  && CutFor(coverage: false, envAlpha: false) == CasterCut.Cutout
+                  && Threshold(CasterCut.Coverage) == 0.01f
+                  && Threshold(CasterCut.EnvAlpha) == 0.02f
+                  && Threshold(CasterCut.Cutout) == 0.2f
+                  && Threshold(CasterCut.Coverage) == CoverageLayer.Cut
+                  // CX-218: ...and the fourth, whose source is map slot 1's alpha. It beats the env kind on a
+                  // material that is BOTH -- which every one of these is -- and tests at the content stages'
+                  // own 0.2, the number the bodies ShaderFeatures.CoverNrmFs names discard at.
+                  && CutFor(coverage: false, envAlpha: true, coverNrm: true) == CasterCut.CoverNrm
+                  && CutFor(coverage: true, envAlpha: true, coverNrm: true) == CasterCut.Coverage
+                  && CutFor(coverage: false, envAlpha: true, coverNrm: false) == CasterCut.EnvAlpha
+                  && Threshold(CasterCut.CoverNrm) == 0.2f
+                  && Threshold(CasterCut.CoverNrm) == ShaderFeatures.CoverNrmCut
+                  // ...and only the HANDLE stage can read that source: slot 1 never reaches the bound-texture
+                  // stage, which would test the diffuse alpha -- the env level on these materials.
+                  && CastMaskHFs.Contains("& CX_SLOT_COVERNRM) != 0 && uTexH[(vDraw << 3) + 1] != uvec2(0u))")
+                  && CastMaskHFs.Contains("{ t = texture(uNrmTex, vUV).a; tsize = vec2(textureSize(uNrmTex, 0)); }")
+                  // the kind is a 2-bit key field at 60, so the four must fit under it and leave 62 alone
+                  && (int)CasterCut.Coverage <= 3 && (int)CasterCut.CoverNrm <= 3
+                  // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
+                  && DitherFor(CasterCut.Coverage) >= 1
+                  // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except
+                  // under a hosted fragment stage, which is admitted only where it names a source both can read
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.None)
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.Skin)
+                  && !CoverageLayer.HasCoverageSource((int)ShaderFeature.GroundWeather)
+                  // CX-223: ...and the one hosted feature that names its own source IS admitted
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.PaletteTint)
                   && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()
@@ -254,7 +303,7 @@ public sealed unsafe partial class CasterPass
             for (int i = 0; i < 2; i++)
             {
                 _liveIdxCount[i] = 30 + i; _liveFirst[i] = (uint)(100 + i); _liveBaseVert[i] = (uint)(7 + i);
-                _liveCut[i] = 0.2f; _liveSlot[i] = 4100 + i;
+                _liveCut[i] = CasterCut.Cutout; _liveSlot[i] = 4100 + i;
                 _liveDyn[i] = i == 1;   // #305: the set flag, one of each, so a swap fails
             }
             uint* src = stackalloc uint[2 * CasterGather.SrcUints];

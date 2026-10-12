@@ -61,6 +61,33 @@ internal static class ShaderContract
         "#define LIGHTING 1\n#define FOO 2\nuniform sampler2D texUnit6;\nvoid main ()\n{\n    gl_FragColor = FragmentColor;\n}\n",
         "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
 
+    /// <summary><c>feat.y</c> as a palette-tint recipe seeds it: the UNPOSED sentinel <c>CxSkinned</c> reads,
+    /// which a 0 (the lane's own default) would turn into "posed off bone slot 0" on every static part.</summary>
+    private static float TintUnposedSentinel
+    {
+        get
+        {
+            Span<float> param = stackalloc float[AlloyRenderer.ParamFloats], feat = stackalloc float[4];
+            param.Clear(); feat.Clear();
+            feat[0] = (int)ShaderFeature.PaletteTint;
+            Db.MtrParams.Fold(null, param, feat);
+            return feat[1];
+        }
+    }
+
+    /// <summary>The same rewrite over the engine's PLT scheme feed: the declaration goes and every index
+    /// becomes the per-record call, because a multidraw batch has no per-draw uniform to set.</summary>
+    private static string HostSamplePlt => VanillaShader.HostText(
+        "uniform float PLTscheme[15];\nvoid main ()\n{\n    FragmentColor.a = PLTscheme[int(FragmentColor.g * 255.0 + 0.5)];\n}\n",
+        "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
+
+    /// <summary>The same rewrite over declarations that carry INITIALISERS -- what a stage written for both
+    /// clients states so its stock half has a default. The environment-supplied name must still go, and a
+    /// declaration whose initialiser merely mentions a supplied macro must stay.</summary>
+    private static string HostSampleInit => VanillaShader.HostText(
+        "uniform int SHADER_TYPE = 2;\nuniform float fKeep = PI * 2.0;\nvoid main ()\n{\n    FragmentColor.a = float(SHADER_TYPE) * fKeep;\n}\n",
+        "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
+
     /// <summary>Does this VERTEX stage carry the skinning branch? Same trap as <see cref="CutoutSafe"/>: an
     /// override without it links perfectly (the bone base rides in <c>feat.y</c>, the missing bone attributes
     /// are simply disabled) and renders every skinned robe in its BIND POSE, silently. On a server the HAK
@@ -272,6 +299,7 @@ internal static class ShaderContract
                   && FeatDecl.Contains($"CX_FEAT_NOIRWET   {(int)ShaderFeature.NoirWet}")
                   && FeatDecl.Contains($"CX_FEAT_NOIRGLOSS {(int)ShaderFeature.NoirGloss}")
                   && FeatDecl.Contains($"CX_FEAT_GROUNDWEATHER {(int)ShaderFeature.GroundWeather}")
+                  && FeatDecl.Contains($"CX_FEAT_PALETTETINT {(int)ShaderFeature.PaletteTint}")
                   // #137: the skinning half. The binding point and the two attribute locations live twice
                   // (C# consts, literal GLSL) and neither disagreement is visible -- a wrong binding reads an
                   // empty block and collapses the mesh to the origin, a wrong location reads whatever stream
@@ -281,7 +309,7 @@ internal static class ShaderContract
                   && BoneVs.Contains($"layout(location = {LocBoneIdx}) in vec4 aBoneIdx;")
                   && BoneVs.Contains($"layout(location = {LocBoneW}) in vec4 aBoneWeight;")
                   && BoneVs.Contains("aBoneWeight.w > 0.0")
-                  && BoneVs.Contains("int(d.feat.x) == CX_FEAT_SKIN ? int(d.feat.y) : -1")
+                  && BoneVs.Contains("CxSkinned(d.feat) ? int(d.feat.y) : -1")
                   && BoneFloats * sizeof(float) == 4096
                   // ...and both stages take the skinned arm BEFORE the displaced test, which is what keeps
                   // the literal clip expression below reachable for every part that is still in the prepass.
@@ -308,7 +336,35 @@ internal static class ShaderContract
                   && ShaderFeatures.OutOfPrepass((int)ShaderFeature.WindGrass)
                   && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Flowmap)
                   // ...and the CPU-side exclusions that go with them: no name here, no switch there.
-                  && ShaderFeatures.VsNames.Length == 12
+                  && ShaderFeatures.VsNames.Length == 13
+                  // CX-223: the palette tint -- its own pair, the four palette slots it alone reads, the one
+                  // hosted coverage source there is, and nothing the wind forks' special cases apply to.
+                  && ShaderFeatures.VsNames[(int)ShaderFeature.PaletteTint] == "vs_plt_wind"
+                  && ShaderFeatures.FsNames[(int)ShaderFeature.PaletteTint] == "fs_plt_tinter"
+                  && ShaderFeatures.ReadsPaletteSlots((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.ReadsPaletteSlots((int)ShaderFeature.GroundWeather)
+                  && !ShaderFeatures.ReadsAuxSlot((int)ShaderFeature.PaletteTint)
+                  && ShaderFeatures.HostedCoverage((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.HostedCoverage((int)ShaderFeature.GroundWeather)
+                  && !ShaderFeatures.Displaces((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.NoKeyholing((int)ShaderFeature.PaletteTint)
+                  // ...and the whole chain a SKINNED palette part walks, which is the main case for a
+                  // CHARACTER shader. The pose must not take feat.x from it: the record's own feature is what
+                  // routes the batch to the hosted program, resolves its side-table row and admits its
+                  // coverage to the layer and the caster -- and the vertex stage still finds the bone base,
+                  // because CxSkinned names both ids and reads the -1 in feat.y as unposed.
+                  && ShaderFeatures.PosedToo((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.PosedToo((int)ShaderFeature.GroundWeather)
+                  && ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true) == (int)ShaderFeature.PaletteTint
+                  && ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: false) == (int)ShaderFeature.PaletteTint
+                  && ShaderFeatures.WithPose((int)ShaderFeature.None, posed: true) == (int)ShaderFeature.Skin
+                  && ShaderFeatures.WithPose((int)ShaderFeature.GroundWeather, posed: true) == (int)ShaderFeature.Skin
+                  && ShaderFeatures.WithPose((int)ShaderFeature.GroundWeather, posed: false) == (int)ShaderFeature.GroundWeather
+                  && ShaderFeatures.Hosted(ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true))
+                  && CoverageLayer.HasCoverageSource(ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true))
+                  && FeatDecl.Contains("return (fx == CX_FEAT_SKIN || fx == CX_FEAT_PALETTETINT) && feat.y >= 0.0;")
+                  // ...and the unposed sentinel the test above reads, off a hand-written palette .mtr
+                  && TintUnposedSentinel == -1f
                   // #348: the two look features, and the properties that keep them out of the wind forks'
                   // special cases -- neither displaces, so neither leaves the depth prepass.
                   && ShaderFeatures.VsNames[(int)ShaderFeature.NoirWet] == "vs_noirwet"
@@ -428,7 +484,7 @@ internal static class ShaderContract
                   // and stores display-space values a mip filter then darkens. Both are silent.
                   && OwnedLitFsMain.Contains("CxProbeFetch(uProbe, vWorld, R, sqrt(rough)")
                   && OwnedLitFsMain.Contains("uCapture != 1 && uProbeMips > 0.0")
-                  && OwnedLitFsMain.Contains("if (int(d.feat.x) == CX_FEAT_SKIN || d.feat.w < 0.0) discard;")
+                  && OwnedLitFsMain.Contains("if (CxSkinned(d.feat) || d.feat.w < 0.0) discard;")
                   && OwnedLitFsMain.Contains("frag = vec4(lit, 1.0 / max(distance(vWorld, uEyePos), 1e-3));")
                   // ...and CX-51's record: the weight the probe term took is the one Ssr swaps the screen in
                   // under -- R4 widened it to the stronger of the base weight and the water film's, at the
@@ -494,6 +550,15 @@ internal static class ShaderContract
                   // the daylight ratio: a loop or baked term that lost it keeps every lamp at night strength at noon
                   && AlloyLights.FragmentLib.Contains("return acc * uDayDim;")
                   && OwnedLitFsHead.Contains(LightmapBake.ChartBufDecl) && OwnedLitVs.Contains("vChart = aChart;")
+                  // CX-221: the arena's two packed streams. Their LOCATIONS live twice -- MeshArena's VAO
+                  // binds them, this stage declares them -- and a disagreement pulls whatever the other
+                  // stream left at that slot, with nothing in the log. The zero-word arm is pinned too:
+                  // lose it and a mesh with no tangent pool reads a zero frame and its normal map inverts.
+                  && OwnedLitVs.Contains($"layout(location = {LocTangent}) in vec4 aTangent;")
+                  && OwnedLitVs.Contains($"layout(location = {LocPaint}) in vec4 aPaint;")
+                  && OwnedLitVs.Contains("out vec4 vTan;") && OwnedLitFsHead.Contains("in vec4 vTan;")
+                  && OwnedLitFsMain.Contains("if (vTan.w != 0.0)")
+                  && OwnedLitFsMain.Contains("B = cross(N, T) * vTan.w;")
                   && LightmapBake.ChartBufDecl.Contains($"binding = {LightmapBake.BindChart})")
                   // the live receiver widens a mover's static half to the lightmap texel the bake did: one density
                   && MeshChart.AtlasTexelsPerUnit == 8f && LightmapBake.ChartBufDecl.Contains("1.0 / (8.0 * rec.w)")
@@ -537,7 +602,16 @@ internal static class ShaderContract
                   // CX-191: through the mip-level compensation, the same call in the feature prepass so its
                   // depth and the GL_EQUAL colour draw keep the same holes
                   && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
-                  && OwnedLitFsMain.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(coverage, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
+                  && OwnedLitFsMain.Contains("if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;")
+                  // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
+                  && OwnedLitFsMain.Contains("cxTintRow = CxTintRow(vDraw);")
+                  && OwnedLitFsMain.Contains("if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }")
+                  // CX-218: ...and so does the other one, whose coverage is map slot 1's alpha. The bit is a
+                  // hand-written copy of CoverNrmBit, in the library every stage that makes the cutout test
+                  // includes; drifted, it reads as another slot's bit and these parts draw solid again.
+                  && OwnedLitFsHead.Contains($"#define CX_SLOT_COVERNRM {CoverNrmBit}")
+                  && OwnedLitFsMain.Contains("if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)")
+                  && OwnedLitFsMain.Contains("{ coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }")
                   && DepthFeatFs.Contains("if (CxAlphaMip(texture(uTex, vUV, uLodBias).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
@@ -545,6 +619,11 @@ internal static class ShaderContract
                   // that loses this line spends it twice and every reflective surface draws as a ghost --
                   // which is invisible in a screenshot of anything that is not shiny, hence the guard.
                   && OwnedLitFsMain.Contains("float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;")
+                  // ...the other half of that one spend, and the reason the coverage arm above is 1.0: the
+                  // channel becomes the reflectivity level, inc_standard.shd:235's own expression. The two
+                  // lines are a pair -- a stage that kept one and lost the other either cuts a reflective
+                  // texel away or draws it flat.
+                  && OwnedLitFsMain.Contains("float envLevel = (slots & CX_SLOT_ENV) != 0 ? 1.0 - texel.a : 0.0;")
                   // ...and the per-draw alpha reaching the framebuffer, which is the whole of the blended
                   // class: a stage writing a constant 1.0 there renders every transparent surface solid.
                   && OwnedFs.Contains("t.a * vAlpha") && OwnedVs.Contains("vAlpha = d.rot.w;")
@@ -693,6 +772,15 @@ internal static class ShaderContract
                   && HostSample.Contains("#undef LIGHTING\n#undef FOO\n")
                   && HostSample.Split("#undef FOO").Length == 3
                   && !HostSample.Contains("uniform sampler2D")
+                  // CX-223: ...and the same strip over a declaration with an initialiser. The supplied name
+                  // goes (its macro would redeclare it); one that only MENTIONS a supplied macro in its
+                  // initialiser stays, or a stage would lose a declaration it is the only definition of.
+                  && !HostSampleInit.Contains("uniform int SHADER_TYPE")
+                  && HostSampleInit.Contains("uniform float fKeep = PI * 2.0;")
+                  // ...and the PLT scheme feed, which the engine sets per material bind and Alloy cannot.
+                  && !HostSamplePlt.Contains("uniform float PLTscheme")
+                  && HostSamplePlt.Contains("CxPltScheme(vDraw, int(FragmentColor.g * 255.0 + 0.5))")
+                  && ShaderSource.Get("cx_plt.glsl").Contains("float CxPltScheme(int draw, int layer)")
                   && HostSample.Contains("void CxHost_x()")
                   && HostSample.Contains("fRoughness = MATERIAL_ROUGHNESS_VALUE;")
                   && HostSample.EndsWith(VanillaEnvDefs)

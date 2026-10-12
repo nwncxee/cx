@@ -14,6 +14,28 @@ internal static class MtrParams
     /// target's 65504 once an 8-bit illumination texel of 1.0 is multiplied through.</summary>
     internal const float MaxEmissiveStrength = 100f;
 
+    /// <summary>Custom fragment stages <see cref="NoteCustomFs"/> has already reported: the line is per NAME,
+    /// not per material -- one content stage is named by hundreds of them.</summary>
+    private static readonly System.Collections.Generic.HashSet<string> _fsSeen = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Say what Alloy does with a material's <c>customShaderFS</c>, once per name. A content stage
+    /// Alloy neither hosts nor reproduces does not run, and one whose own body held the coverage discard then
+    /// draws SOLID with nothing anywhere saying why. Grep <c>mtr shader:</c> for the list.</summary>
+    internal static void NoteCustomFs(string fs, int feat, bool coverNrm, ExtenderLog? log)
+    {
+        if (fs.Length == 0 || log == null) return;
+        lock (_fsSeen)
+            if (!_fsSeen.Add(fs)) return;
+        string what = ShaderFeatures.Hosted(feat) ? "HOSTED -- its own body runs inside the Alloy lit stage"
+            : coverNrm ? "coverage reproduced -- the cutout tests map slot 1's alpha at "
+                         + $"{ShaderFeatures.CoverNrmCut}, and the rest of its body is shading Alloy does itself"
+            : feat != 0 ? "reproduced as an Alloy shader feature"
+            : "NOT RUN -- Alloy neither hosts nor reproduces it. A stock permutation (fslit*, fst*) loses "
+              + "nothing, the Alloy stage IS that shading; a CUSTOM stage's own work -- a coverage discard, "
+              + "its own colour -- simply does not happen, and such a part draws as a plain lit one";
+        log.Info($"mtr shader: \"{fs}\" {what}");
+    }
+
     /// <summary>The <see cref="ShaderFeature"/> a <c>customShaderVS</c> resref names, 0 for none or one Alloy does
     /// not reproduce. Whole-name and case-insensitive, so <c>shd_roofkn_vs</c> cannot match <c>shd_roofknm_vs</c>.</summary>
     internal static int Feature(string vs)
@@ -66,7 +88,45 @@ internal static class MtrParams
             }
         // fSwaySpeed divides, and 1.0 is what every wind .mtr states: an undeclared one is the authored case.
         if (f >= (int)ShaderFeature.WindGrass && f <= (int)ShaderFeature.WindPlant && feat[1] == 0f) feat[1] = 1f;
+        // The palette tint keeps its own id in feat.x while posed, so feat.y is the BONE BASE and -1 is the
+        // unposed sentinel CxSkinned tests -- a 0 there would pose every unposed palette part off bone slot 0.
+        if (f == (int)ShaderFeature.PaletteTint) feat[1] = -1f;
     }
+
+    /// <summary>Terms a palette-tint material states, in <see cref="TintTerms"/>' row order: illumination
+    /// colour (three), the coverage map's mip scale, anisotropy, specular intensity, sway speed, sway
+    /// strength. The defaults are the feature OFF. PLACEHOLDER SPELLINGS: the pair is the author's content
+    /// and not in this repo, so they follow the wind forks' convention and are also in the vanilla env.</summary>
+    internal static void FoldTint(MtrDef? mtr, Span<float> t, ExtenderLog? log = null)
+    {
+        t.Clear();
+        t[5] = 1f;
+        if (mtr == null) return;
+        int read = 0;
+        foreach ((string name, float[] v, bool isInt) in mtr.Parameters)
+        {
+            if (isInt || v.Length == 0) continue;
+            if (Is(name, "fIllumColor") && v.Length >= 3) { t[0] = v[0]; t[1] = v[1]; t[2] = v[2]; }
+            else if (Is(name, "fAlphaMipScale")) t[3] = v[0];
+            else if (Is(name, "fAnisotropy")) t[4] = Math.Clamp(v[0], 0f, 1f);
+            else if (Is(name, "fSpecularIntensity")) t[5] = v[0];
+            else if (Is(name, "fSwaySpeed")) t[6] = v[0];
+            else if (Is(name, "fSwayStrength")) t[7] = v[0];
+            else continue;
+            read++;
+        }
+        // Not one term recognised, on a material that names the pair: the spellings below are PROVISIONAL
+        // (see the summary), so the likely reading is that this material calls them something else and the
+        // tint is drawing on defaults. Said once per material, because that is what a wrong guess looks like.
+        if (read == 0)
+            log?.Always($"MtrParams: '{mtr.Name}' names the palette-tint pair and states none of "
+                      + "fIllumColor/fAlphaMipScale/fAnisotropy/fSpecularIntensity/fSwaySpeed/fSwayStrength "
+                      + "-- its tint draws on defaults (no glow, the plain cut, an isotropic lobe). Those "
+                      + "spellings are CX's guess at the shader's own uniforms; send the .mtr to have them fixed");
+    }
+
+    /// <summary>How many floats <see cref="FoldTint"/> fills.</summary>
+    internal const int TintTermCount = 8;
 
     /// <summary>The parameters the community content shaders declare, by feature.</summary>
     private static bool FeatureParam(int f, string name, float v, Span<float> feat)
@@ -113,9 +173,10 @@ internal static class MtrParams
 
     private static bool Is(string a, string b) => a.Equals(b, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A hand-written <c>.mtr</c> through <see cref="MtrDef.Parse"/>, <see cref="Fold"/> and the recipe's
-    /// slot mapping. Oracle: the literals in the text, and the slot contract in <c>docs/spec/materials.md</c>
-    /// (<c>texture11</c> is the AO/ORM map on its own mask bit, never <c>texture7</c>).</summary>
+    /// <summary>A hand-written <c>.mtr</c> through <see cref="MtrDef.Parse"/>, <see cref="Fold"/>,
+    /// <see cref="FoldTint"/> and the recipe's slot mapping. Oracle: the literals in the text, and the slot
+    /// contract in <c>docs/spec/materials.md</c> -- <c>texture11</c> is the AO/ORM map on its own mask bit,
+    /// and <c>texture7</c>..<c>texture10</c> are the palette tint's four, on theirs.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MtrParams.SelfCheck");
@@ -151,6 +212,35 @@ internal static class MtrParams
                      "AO is not on mask bit 128 (64 is the env bit), or texture1 is not bit 1");
         check.Expect(DrawRecipe.MaskBitOf(6, 0) == 0 && DrawRecipe.MaskBitOf(6, 7) == 32,
                      "texture6 is bound for a feature that does not read it, or not for the flow map (7)");
+        // CX-223: the four palette slots, against hand-written numbers -- recipe slots 8..11 read .mtr
+        // texture7..texture10, and their mask bits are 512, 1024, 2048, 4096, set for the palette tint (12)
+        // and for nothing else. A slot that read the wrong texture would tint off a normal map.
+        for (int k = 0; k < 4; k++)
+        {
+            check.Expect(DrawRecipe.MtrTextureOf(8 + k) == 7 + k,
+                         $"recipe slot {8 + k} does not read .mtr texture{7 + k}");
+            check.Expect(DrawRecipe.MaskBitOf(8 + k, 12) == 512 << k,
+                         $"palette slot {k}'s mask bit is not {512 << k} under the palette tint");
+            check.Expect(DrawRecipe.MaskBitOf(8 + k, 0) == 0 && DrawRecipe.MaskBitOf(8 + k, 11) == 0,
+                         $"palette slot {k} is bound for a feature that does not read it");
+        }
+        check.Expect(DrawRecipe.TexSlots == 12, "a recipe does not name 12 texture slots (diffuse, 7 maps, 4 palette)");
+        // ...and the terms a palette .mtr states, through FoldTint, against the literals in the text below.
+        const string tintText = "customShaderVS VS_PLT_WIND\ncustomShaderFS fs_plt_tinter\n"
+            + "parameter float fIllumColor 0.1 0.2 0.3\nparameter float fAlphaMipScale 0.5\n"
+            + "parameter float fAnisotropy 7\nparameter float fSwayStrength 0.75\n"
+            + "texture7 pal_a\ntexture10 pal_d\n";
+        MtrDef tm = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes(tintText), "tintcheck");
+        Span<float> terms = stackalloc float[TintTermCount];
+        FoldTint(tm, terms);
+        check.Expect(Feature(tm.ShaderVs) == 12, "customShaderVS vs_plt_wind is not the palette-tint feature (12)");
+        check.Expect(terms[0] == 0.1f && terms[1] == 0.2f && terms[2] == 0.3f, "fIllumColor's three components");
+        check.Expect(terms[3] == 0.5f, "fAlphaMipScale did not land in the mip-scale lane");
+        check.Expect(terms[4] == 1f, "fAnisotropy 7 was not clamped to 1");
+        check.Expect(terms[5] == 1f, "an undeclared fSpecularIntensity is not full intensity");
+        check.Expect(terms[6] == 0f && terms[7] == 0.75f, "the sway's speed or strength did not land");
+        check.Expect(tm.Textures[7] == "pal_a" && tm.Textures[10] == "pal_d" && tm.Textures[8] == "",
+                     "texture7/texture10 did not parse, or an unstated texture8 is not empty");
         log.Info(check.Ok ? "MtrParams.SelfCheck: passed" : "MtrParams.SelfCheck: FAILED");
         return check.Ok;
     }

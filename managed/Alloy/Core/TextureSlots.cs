@@ -298,6 +298,13 @@ internal static class TextureSlots
           $"{PltPalette} uPltPal (PLT master palette)");
         check.Expect(ShaderSource.Get("cx_plt.glsl").Contains($"layout(std430, binding = {PltColors.Binding}) readonly buffer CxPltBuf"),
           $"SSBO {PltColors.Binding} CxPltBuf (PLT rows per record)");
+        // CX-223: the scheme feed's divisor is Material::ReplaceTexturePLT's literal 1792, which is the master
+        // palette's height -- the one number the engine hands a custom shader instead of a row index.
+        check.Expect(ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_HEIGHT {PltPalettes.Height}.0")
+          && ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_ROWS     {PltColors.FlagRows}u"),
+          $"cx_plt.glsl's scheme divisor is not the master palette's {PltPalettes.Height} rows, or its rows-only flag is not {PltColors.FlagRows}");
+        check.Expect(ShaderSource.Get("cx_tintbuf.glsl").Contains($"#define CX_SLOT_PAL0 {AlloyRenderer.PalBit0}"),
+          $"cx_tintbuf.glsl's first palette mask bit is not {AlloyRenderer.PalBit0}");
         check.Expect(ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_WORDS    {PltColors.WordsPerRecord}")
           && ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_ROWWORDS {PltColors.RowWords}")
           && ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_LAYERS   {SceneDb.PltLayers}"),

@@ -49,6 +49,9 @@ internal static unsafe partial class TexRegistry
         public uint GlFmt, PixFmt, PixType;
         public bool Compressed, GenMips, Clamp, Nearest, Mip;
         public TexCoverage Cov;
+        /// <summary>Which decode answered <see cref="Cov"/>, in the words the <c>texcov:</c> line prints -- the
+        /// route by which a texture that draws solid can be named out of <c>cx.log</c>. Null until a decode sets it.</summary>
+        public string? CovWhy;
         /// <summary>The image's mean colour (its own encoding), for the sky-matched fog; valid when MeanOk.</summary>
         public System.Numerics.Vector3 Mean;
         public bool MeanOk;
@@ -128,7 +131,8 @@ internal static unsafe partial class TexRegistry
     /// <summary>What the bracket publishes back to the game thread: the slot it uploaded for, the generation
     /// it uploaded against, and either a name and handle or the reason there is none.</summary>
     private readonly record struct Landed(int Slot, uint Gen, uint Name, ulong Handle, long Bytes,
-                                         TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why, bool Preview = false);
+                                         TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
+                                         bool Preview = false, string? CovWhy = null);
 
     private static readonly Queue<Job> _in = new(), _out = new();
     /// <summary>The fast queue: every new load's first pass, ahead of every full one (<see cref="Job.Fast"/>).
@@ -346,20 +350,21 @@ internal static unsafe partial class TexRegistry
             j.GlFmt = Gl.RG8; j.PixFmt = Gl.RG; j.PixType = Gl.UNSIGNED_BYTE;
             j.Compressed = false; j.GenMips = false;
             j.Bytes = PltImage.ChainBytes(w, h, levels);
-            // A PLT carries no alpha of its own: the composite's alpha is the PALETTE texel's, and that
-            // channel is NOT coverage -- it is the engine's REFLECTIVITY mask (#121: fEnvMapLevel =
-            // 1 - alpha). The shipped palettes say so outright: along pal_armor01's row 44 the alpha ramps
-            // DOWN from 219 to 40 as the intensity rises -- the brighter the texel the shinier, which read
-            // as opacity makes every highlight a hole. Measured on the stock male body with its own scheme,
-            // 33% of pmh0_chest004's texels and 62% of pmh0_legr015's resolve at or under the 0.2 discard,
-            // so Cutout punched a third of the armour away and left the dark, green-tinted low-intensity
-            // texels: the "wrong shades of black", and a guard green all over rather than green-SHEENED.
-            // The engine never tests it either -- Material::GetIsOpaque @0x4c6190 answers with the
-            // material's HasEnvMap flag and never looks at the texture, and a creature part is env-mapped
-            // (the appearance's ENVMAP column, CreateBodyParts @0x734440), so vanilla draws it in bucket 0
-            // with the discard OFF. Opaque is that verdict. (The sheen itself still waits on an env map --
-            // DrawRecipe's ponytail marker.)
+            // A PLT carries no alpha of its own: the composite's alpha is the PALETTE texel's (ImageDecode
+            // @0x4b6580 and fs_pltgen.shd copy the palette RGBA whole), and that channel is NOT coverage --
+            // it is the engine's REFLECTIVITY mask (#121: fEnvMapLevel = 1 - alpha). The shipped palettes say
+            // so outright: along pal_armor01's row 44 the alpha ramps DOWN from 219 to 40 as the intensity
+            // rises, and measured on the stock male body 33% of pmh0_chest004's texels and 62% of
+            // pmh0_legr015's resolve at or under the 0.2 discard -- Cutout punched a third of the armour away.
+            // Vanilla does not test it: every PLT-wearing appearance (MODELTYPE P, all 23 rows) names an
+            // ENVMAP, which gives its gob an env map, which makes Material::GetIsOpaque @0x4c6190 answer
+            // opaque without asking the texture -- so the part draws in the dynamic OPAQUE bucket, where
+            // Scene::RenderDynamicGeometry @0x46df80 leaves state 1 off and fAlphaDiscardValue is -1
+            // (GLRender::SetUniforms @0x4ccbf0). Turn creature env mapping off and the engine bakes the same
+            // reading in: ImageFillAlpha @0x4b8c30 writes rgb = mix(envGrey, rgb, a) and then a = 255.
+            // Opaque is that verdict. (The sheen itself still waits on an env map -- DrawRecipe's ponytail marker.)
             j.Cov = TexCoverage.Opaque;
+            j.CovWhy = TexCoverageOf.Why("PLT, palette alpha = reflectivity", j.Cov);
             return;
         }
         if (j.Loc.ResType == TgaResType)
@@ -377,6 +382,7 @@ internal static unsafe partial class TexRegistry
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
             j.Cov = TexCoverageOf.OfRaster(new ReadOnlySpan<byte>(px, r.Bytes), r.W, r.H, r.Px);
+            j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
             return;
@@ -392,6 +398,7 @@ internal static unsafe partial class TexRegistry
         byte[] sc = _covScratch ?? Array.Empty<byte>();
         j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(chain, DdsReader.LevelSize(info.W, info.H, info.Channels)),
                                     info.W, info.H, info.Format, ref sc);
+        j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
         _covScratch = sc;
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
@@ -417,6 +424,7 @@ internal static unsafe partial class TexRegistry
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false; j.Bytes = bytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
         j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(data, DdsReader.LevelSize(w0, h0, info.Channels)), w0, h0, info.Format, ref sc);
+        j.CovWhy = TexCoverageOf.Why($"DDS {info.Format} preview mip {w0}x{h0}", j.Cov);
         _covScratch = sc;
         return true;
     }
@@ -596,7 +604,7 @@ internal static unsafe partial class TexRegistry
         if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
-        Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail));
+        Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }
@@ -633,7 +641,7 @@ internal static unsafe partial class TexRegistry
             _pend[l.Slot] = PendNone;
             if (l.Why != null) Fail(l.Slot, l.Why);
             else if (l.Preview) { LandPreview(TexId.Make(l.Slot, l.Gen), l.Name, l.Handle, l.Cov); Enqueue(l.Slot); }
-            else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap);
+            else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
         }
         while (true)
         {
@@ -721,13 +729,27 @@ internal static unsafe partial class TexRegistry
         return 0;
     }
 
+    /// <summary>The <c>texcov:</c> note, once per load, for every texture the cutout test will NOT reach: an
+    /// <see cref="TexCoverage.Opaque"/> or <see cref="TexCoverage.Unknown"/> verdict, or an env-mapped one
+    /// whose alpha is reflectivity rather than coverage (as in vanilla, whose only <c>AlphaDiscard</c> under
+    /// <c>ENVIRONMENT_MAP</c> runs before the diffuse is sampled). Grep it to name a texture drawing solid.</summary>
+    private static void TexNote(TexId id, TexCoverage cov, bool envMap, string? covWhy)
+    {
+        if (cov is not (TexCoverage.Opaque or TexCoverage.Unknown) && !envMap) return;
+        int i = id.Index;
+        if ((uint)i >= MaxSlots) return;
+        string env = envMap ? " -- env-mapped (.txi envmaptexture): its alpha is REFLECTIVITY, never coverage" : "";
+        _log?.Info($"texcov: \"{_resref[i] ?? ""}\" {covWhy ?? $"no route recorded -> {cov}"}{env}");
+    }
+
     /// <summary>A texture arrived: the slot takes its name and the handle the bracket minted for it, and every
     /// dependent part record is marked <see cref="Dirty.Texture"/>. Game thread, GL-free -- so the off-device
     /// check drives it with a synthetic name.</summary>
     internal static void Land(TexId id, uint name, long bytes, ulong handle = 0,
                               TexCoverage cov = TexCoverage.Unknown, bool bumpyShiny = false,
-                              bool envMap = false)
+                              bool envMap = false, string? covWhy = null)
     {
+        TexNote(id, cov, envMap, covWhy);
         lock (_lock)
         {
             if (!Valid(id)) return;

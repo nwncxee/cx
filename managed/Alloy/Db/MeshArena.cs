@@ -20,12 +20,20 @@ public static unsafe partial class MeshArena
 
     private const int Formats = 2;
     /// <summary>Floats per vertex, per format: pos3 nrm3 uv2 chart2, plus a packed bone-index word and four
-    /// weights for <see cref="Fmt.Skinned"/>. There is no tangent stream, since no Alloy stage reads one (the
-    /// bitangent comes off derivatives). ponytail: when a stage does read tangents, add location 4 to both
-    /// formats and fill it from <see cref="MeshDef.Tangents"/>, which the post-process already computes.</summary>
-    private static readonly int[] StrideOf = { 10, 15 };
+    /// weights for <see cref="Fmt.Skinned"/>, and LAST in both a packed tangent word and a packed
+    /// vertex-paint word -- two words rather than five floats, because every mesh pays for the stride.</summary>
+    private static readonly int[] StrideOf = { 12, 17 };
 
-    /// <summary>Vertices one format's section may hold (8M x 40 B = 320 MiB static, grown on demand; the
+    /// <summary>Float index of the packed tangent word, which is the second-to-last of either format: the
+    /// two packed words sit after the format's own streams, so <see cref="Fmt.Skinned"/>'s bone slots and
+    /// weights keep the offsets they have always had.</summary>
+    internal static int TanWord(Fmt f) => StrideOf[(int)f] - 2;
+    /// <inheritdoc cref="TanWord"/>
+    internal static int PaintWord(Fmt f) => StrideOf[(int)f] - 1;
+    /// <summary>Bytes one vertex of <paramref name="f"/> occupies -- the stride every attribute is bound at.</summary>
+    internal static int StrideBytes(Fmt f) => StrideOf[(int)f] * 4;
+
+    /// <summary>Vertices one format's section may hold (8M x 48 B = 384 MiB static, grown on demand; the
     /// skinned section is far smaller). Measured: 2M in a 27x24 city of 1654 placeables, 4M hopping INTO a
     /// ~3M-vertex area, because a load lands on the previous area's dead ranges and only the pump compacts.
     /// ponytail: past the ceiling it refuses and counts -- no spill to a second VBO, no mid-load compaction.</summary>
@@ -372,9 +380,10 @@ public static unsafe partial class MeshArena
         return -1;
     }
 
-    /// <summary>FNV-1a over the mesh's GPU content: counts, positions, normals, the diffuse UV set, the
-    /// indices and, for a skinned mesh, its bone slots and weights. <paramref name="second"/> is an
-    /// independent FNV over the same bytes in the other direction, so a hit is verified rather than assumed.</summary>
+    /// <summary>FNV-1a over the mesh's GPU content: counts, positions, normals, the diffuse UV set, the two
+    /// packed words, the indices and, for a skinned mesh, its bone slots and weights. <paramref name="second"/>
+    /// is an independent FNV over the same bytes in the other direction, so a hit is verified rather than
+    /// assumed.</summary>
     internal static ulong ContentKey(MeshDef m, SkinDef? skin, out ulong second)
     {
         ulong h = 14695981039346656037UL, g = 1469598103934665603UL;
@@ -390,11 +399,16 @@ public static unsafe partial class MeshArena
         void MixF(float v) => MixU(BitConverter.SingleToUInt32Bits(v));
         MixU((uint)m.Positions.Length);
         MixU((uint)m.Indices.Length);
-        MixU((uint)(m.Normals.Length != 0 ? 1 : 0) | (uint)(m.Uv[0].Length != 0 ? 2 : 0) | (skin != null ? 4u : 0u));
+        MixU((uint)(m.Normals.Length != 0 ? 1 : 0) | (uint)(m.Uv[0].Length != 0 ? 2 : 0) | (skin != null ? 4u : 0u)
+           | (uint)(m.Tangents.Length != 0 ? 8 : 0) | (uint)(m.Colors.Length != 0 ? 16 : 0));
         for (int i = 0; i < m.Positions.Length; i++) { MixF(m.Positions[i].X); MixF(m.Positions[i].Y); MixF(m.Positions[i].Z); }
         for (int i = 0; i < m.Normals.Length; i++) { MixF(m.Normals[i].X); MixF(m.Normals[i].Y); MixF(m.Normals[i].Z); }
         Vector2[] uv = m.Uv[0];
         for (int i = 0; i < uv.Length; i++) { MixF(uv[i].X); MixF(uv[i].Y); }
+        // The two packed words AS UPLOADED: two meshes that differ only in their tangent frame or their paint
+        // are different GPU content, so they must not share a range.
+        for (int i = 0; i < m.Tangents.Length; i++) MixU(PackTangent(m.Tangents[i]));
+        for (int i = 0; i < m.Colors.Length; i++) MixU(m.Colors[i]);
         for (int i = 0; i < m.Indices.Length; i++) MixU(m.Indices[i]);
         if (skin != null)
         {
@@ -431,6 +445,7 @@ public static unsafe partial class MeshArena
         if (id < 0) return Refuse(Refusal.Table);
 
         GrowMirror(s, (s.Used + nv) * stride, stride);
+        int tanWord = TanWord(fmt), paintWord = PaintWord(fmt);
         Vector2[] uv = mesh.Uv[0];
         var bmin = new Vector3(float.MaxValue);
         var bmax = new Vector3(float.MinValue);
@@ -454,6 +469,12 @@ public static unsafe partial class MeshArena
             if (i < uv.Length) { s.Mirror[o + 6] = uv[i].X; s.Mirror[o + 7] = uv[i].Y; }
             else { s.Mirror[o + 6] = s.Mirror[o + 7] = 0f; }
             s.Mirror[o + 8] = s.Mirror[o + 9] = 0f;
+            // The two packed words. A mesh with no tangent pool uploads the zero word, which is what tells
+            // the lit stage to build its frame off derivatives instead.
+            s.Mirror[o + tanWord] = BitConverter.UInt32BitsToSingle(
+                i < mesh.Tangents.Length ? PackTangent(mesh.Tangents[i]) : 0u);
+            s.Mirror[o + paintWord] = BitConverter.UInt32BitsToSingle(
+                i < mesh.Colors.Length ? mesh.Colors[i] : PaintWhite);
             if (skin == null) continue;
             // four bone SLOTS packed one per byte, pulled as a vec4 of 0..255 at location 8 (UNSIGNED_BYTE,
             // not normalized), and four weights at location 9
@@ -490,7 +511,9 @@ public static unsafe partial class MeshArena
         _unsharedBytes += (long)nv * stride * 4;
         if (_logLeft-- > 0)
             _log?.Info($"MeshArena: mesh {i0.Length / 3} tris {nv} verts -> range {id} {(fmt == Fmt.Skinned ? "(skinned) " : "")}"
-                       + $"(lod {rr.Cnt1 / 3}/{rr.Cnt2 / 3}), arena {Size()}");
+                       + $"(lod {rr.Cnt1 / 3}/{rr.Cnt2 / 3})"
+                       + (mesh.Tangents.Length != 0 ? " +tangents" : " NO tangents")
+                       + (mesh.Colors.Length != 0 ? " +paint" : "") + $", arena {Size()}");
         PublishOne(id);
         return id;
     }
@@ -973,11 +996,17 @@ public static unsafe partial class MeshArena
     {
         uint vao; Gl.CreateVertexArrays(1, &vao);
         if (vao == 0) return;
-        int bytes = StrideOf[(int)f] * 4;
+        int bytes = StrideBytes(f);
         VertexArrays.Bind(vao, AlloyRenderer.LocPos, new VertexStream { Buf = s.Vbo, Size = 3, Type = Gl.FLOAT, Stride = bytes, Off = 0 });
         VertexArrays.Bind(vao, AlloyRenderer.LocNrm, new VertexStream { Buf = s.Vbo, Size = 3, Type = Gl.FLOAT, Stride = bytes, Off = 12 });
         VertexArrays.Bind(vao, AlloyRenderer.LocUv, new VertexStream { Buf = s.Vbo, Size = 2, Type = Gl.FLOAT, Stride = bytes, Off = 24 });
         VertexArrays.Bind(vao, MeshChart.LocChartUv, new VertexStream { Buf = s.Vbo, Size = 2, Type = Gl.FLOAT, Stride = bytes, Off = 32 });
+        // The two packed words, both NORMALIZED: the tangent's lanes arrive as a vec4 in -1..1 with the
+        // handedness in w, the paint's four bytes as a vec4 in 0..1 in r,g,b,a order.
+        VertexArrays.Bind(vao, AlloyRenderer.LocTangent, new VertexStream
+        { Buf = s.Vbo, Size = 4, Type = Gl.INT_2_10_10_10_REV, Stride = bytes, Off = TanWord(f) * 4, Norm = 1 });
+        VertexArrays.Bind(vao, AlloyRenderer.LocPaint, new VertexStream
+        { Buf = s.Vbo, Size = 4, Type = Gl.UNSIGNED_BYTE, Stride = bytes, Off = PaintWord(f) * 4, Norm = 1 });
         if (f == Fmt.Skinned)
         {
             // location 8 is a vec4 in the shader: UNSIGNED_BYTE with normalize OFF converts 0..255 to 0.0..255.0
@@ -1034,7 +1063,7 @@ public static unsafe partial class MeshArena
             Gl.GetVertexArrayiv(s.Vao, Gl.ELEMENT_ARRAY_BUFFER_BINDING, &elem);
             Gl.BindVertexArray(s.Vao);
             string rows = "";
-            foreach (uint loc in new uint[] { 0, 1, 2, 3, 8, 9 })
+            foreach (uint loc in new uint[] { 0, 1, 2, 3, 4, 5, 8, 9 })
             {
                 int en = 0, sz = 0, ty = 0, st = 0, bf = 0;
                 Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_ENABLED, &en);
@@ -1133,7 +1162,7 @@ public static unsafe partial class MeshArena
             if ((uint)v >= (uint)r.NV) return false;
             Section s = _sect[(int)r.Format];
             int o = (r.Base + v) * StrideOf[(int)r.Format];
-            if (o + 10 > s.Mirror.Length) return false;
+            if (o + StrideOf[(int)r.Format] > s.Mirror.Length) return false;
             pos = new Vector3(s.Mirror[o], s.Mirror[o + 1], s.Mirror[o + 2]);
             nrm = new Vector3(s.Mirror[o + 3], s.Mirror[o + 4], s.Mirror[o + 5]);
             uv = new Vector2(s.Mirror[o + 6], s.Mirror[o + 7]);

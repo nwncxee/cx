@@ -57,7 +57,6 @@
 36 managed/Alloy/Db/MeshArena.cs
 4 managed/Alloy/Db/MeshArena.Dyn.cs
 3 managed/Alloy/Db/MeshBvh.cs
-1 managed/Alloy/Db/MtrDef.cs
 7 managed/Alloy/Db/ObjectBridge.cs
 3 managed/Alloy/Db/PartGate.cs
 13 managed/Alloy/Db/PartTree.cs

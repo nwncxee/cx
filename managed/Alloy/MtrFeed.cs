@@ -53,7 +53,15 @@ internal static unsafe class MtrFeed
         _armed = true;
         MdlParser.MaterialHint = Hint;
         MtrDef.Bytes = Cached;
+        MtrDef.Answered = Answered;
         TileBuild.WarmMaterials = Warm;
+    }
+
+    /// <summary>Has this material been ANSWERED -- read, or established absent? A name only
+    /// <see cref="Hint"/> has queued has not, and a part built against it may still gain a material.</summary>
+    private static bool Answered(string name)
+    {
+        lock (Gate) return _bytes.ContainsKey(name);
     }
 
     /// <summary>Parse worker: the hint, or 0 and a queued read.</summary>
@@ -110,12 +118,41 @@ internal static unsafe class MtrFeed
         foreach (NodeDef n in model.Nodes)
         {
             if (n.Mesh == null) continue;
-            string name = n.Mesh.MaterialName.Length > 0 ? n.Mesh.MaterialName : n.Mesh.Textures[0];
+            string name = MaterialOf(n.Mesh);
             if (name.Length == 0) continue;
             bool known;
             lock (Gate) known = _bytes.ContainsKey(name);
             if (!known) Read(name);
         }
+        LateTangents(model);
+    }
+
+    /// <summary><c>GetMaterialName</c>: <c>materialname</c>, or <c>texture0</c> when it is empty.</summary>
+    private static string MaterialOf(MeshDef m) => m.MaterialName.Length > 0 ? m.MaterialName : m.Textures[0];
+
+    /// <summary>The parse worker asked for a hint the cache could not answer, so <see cref="MdlPost.Tangents"/>
+    /// skipped the mesh; the read above has the answer now. Re-runs that one step -- never the whole
+    /// post-process, which would re-weld an already welded model -- BEFORE the part tree takes the mesh's
+    /// arena range, which is the order both callers of <see cref="Warm"/> hold.</summary>
+    private static void LateTangents(ModelDef model)
+    {
+        int late = 0;
+        foreach (NodeDef n in model.Nodes)
+        {
+            MeshDef? m = n.Mesh;
+            if (m == null || m.Tangents.Length != 0 || m.Positions.Length == 0) continue;
+            string name = MaterialOf(m);
+            if (name.Length == 0) continue;
+            int hint;
+            lock (Gate) if (!_hint.TryGetValue(name, out hint)) continue;
+            if (hint is not (2 or 3)) continue;
+            // A handedness split DUPLICATES vertices, and the skin, dangly and animmesh per-vertex arrays
+            // follow it inside Tangents -- the same extra-vertex path the parse takes.
+            MdlPost.Tangents(m, n);
+            if (m.Tangents.Length != 0) late++;
+        }
+        if (late > 0)
+            _log?.Info($"MtrFeed: '{model.Name}' -- {late} mesh(es) got their tangent frame from a late .mtr read");
     }
 
     private static void Read(string name)
@@ -143,6 +180,9 @@ internal static unsafe class MtrFeed
             _hint[name] = hint;
             _bytes[name] = data;
         }
+        // A recipe interned before this read took its coverage mode and its declared-water term from a
+        // material that was not there yet; this is the edge that lets the next reclassify re-ask them.
+        if (data != null) DrawRecipe.MaterialLanded();
     }
 
     /// <summary>The world edge: a new area's materials may come from other containers.</summary>

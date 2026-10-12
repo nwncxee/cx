@@ -153,21 +153,36 @@ internal static unsafe class VanillaShader
     private static readonly Regex MainFn = new(@"\bvoid\s+main\s*\(\s*(?:void)?\s*\)", RegexOptions.Compiled);
     private static readonly Regex OwnDefine = new(@"(?m)^[ \t]*#[ \t]*define[ \t]+(\w+)", RegexOptions.Compiled);
 
+    /// <summary>The engine's PLT scheme feed, which it hands a custom shader as <c>uniform float
+    /// PLTscheme[15]</c> -- one normalised master-palette row per layer, set per MATERIAL BIND. Alloy draws a
+    /// multidraw batch, so there is no per-draw uniform to set: the same numbers come out of the per-record
+    /// row block as a function, so the declaration goes and every index becomes that call.</summary>
+    private static readonly Regex PltSchemeDecl =
+        new(@"(?m)^[ \t]*uniform\b[^;\n]*\bPLTscheme\b[^;\n]*;[^\n]*\n?", RegexOptions.Compiled);
+    /// <summary>One <c>PLTscheme[...]</c> read. The index may be any expression without a bracket of its own,
+    /// which is what every stock use is (<c>int(ColorPLT.g * 255.0 + 0.5)</c>).</summary>
+    private static readonly Regex PltSchemeUse =
+        new(@"\bPLTscheme\s*\[([^\]\[]*)\]", RegexOptions.Compiled);
+
     /// <summary>The names <see cref="AlloyRenderer.VanillaEnvDefs"/> supplies as macros. A hosted stage's own
     /// declaration of one (<c>td_ground_fs</c> declares <c>uniform sampler2D texUnit6;</c> because
     /// <c>inc_common</c> stops at 5) would redeclare what the macro maps it to, so those lines are dropped.</summary>
     private static readonly Regex EnvDecl = DeclStrip(AlloyRenderer.VanillaEnvDefs);
 
     /// <summary>The declaration strip for one environment: every <c>uniform</c> line naming a macro
-    /// <paramref name="defs"/> supplies. Built per environment because a whole-stage region sits in a stage
-    /// of its own, whose macros are not the lit stage's. Cold: one build per program, both results cached.</summary>
+    /// <paramref name="defs"/> supplies, initialiser and all (legal GLSL, and what a stage written for both
+    /// clients states so its stock half has a default). Built per environment, because a whole-stage region
+    /// sits in a stage of its own whose macros are not the lit stage's.</summary>
     private static Regex DeclStrip(string defs)
     {
         string names = string.Join("|", OwnDefine.Matches(defs).Select(m => m.Groups[1].Value).Distinct());
         // An empty alternation matches the empty string, i.e. every line -- so a defs block with no macros
         // strips nothing rather than everything.
+        // The declared NAME is the identifier before the `=`, which is why the part ahead of it may not
+        // cross one: a macro named in an INITIALISER would otherwise strip some other declaration.
         return names.Length == 0 ? new Regex(@"(?!)", RegexOptions.Compiled)
-             : new Regex(@"(?m)^[ \t]*uniform\b[^;\n]*\b(?:" + names + @")[ \t]*;[^\n]*\n?", RegexOptions.Compiled);
+             : new Regex(@"(?m)^[ \t]*uniform\b[^;=\n]*\b(?:" + names + @")[ \t]*(?:=[^;\n]*)?;[^\n]*\n?",
+                         RegexOptions.Compiled);
     }
 
     private static readonly Dictionary<string, Regex> _strips = new();
@@ -194,6 +209,8 @@ internal static unsafe class VanillaShader
         }
         text = MainFn.Replace(text, "void CxHostMain_" + resref + "()", 1);
         text = Regex.Replace(text, @"\bgl_FragColor\b", "FragmentColor");
+        text = PltSchemeDecl.Replace(text, "");
+        text = PltSchemeUse.Replace(text, "CxPltScheme(vDraw, $1)");
         text = EnvDecl.Replace(text, "");
         var own = OwnDefine.Matches(stock).Select(m => m.Groups[1].Value).Distinct().ToList();
         var sb = new StringBuilder(text.Length + 512);

@@ -35,6 +35,10 @@ internal static class SsboSlots
     /// <summary>The probe's SH output, which its dispatch unbinds after: the particle index point, whose every
     /// reader rebinds it, so the unbind cannot strand a lighting program.</summary>
     internal const uint ProbeSh = 15;
+    /// <summary>The palette tint's side table (<see cref="Db.TintTerms"/>), on the same point: nothing else in
+    /// the LIT bracket claims it, and the lit program rebinds it at every program bind rather than trusting an
+    /// earlier one -- which is the rule for every tenant of this point.</summary>
+    internal const uint Tint = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
     internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
 
@@ -55,6 +59,7 @@ internal static class SsboSlots
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd,
         ["CxHaloBuf"] = Halos, ["CxHaloVis"] = HaloVis, ["CxHiliteGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
+        ["CxTintBuf"] = Tint,
     };
 
     private static readonly Regex Decl = new(@"layout\(std430,\s*binding\s*=\s*(\d+)\)\s*(?:\w+\s+)*?buffer\s+(\w+)");
