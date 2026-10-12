@@ -53,7 +53,15 @@ internal static unsafe class MtrFeed
         _armed = true;
         MdlParser.MaterialHint = Hint;
         MtrDef.Bytes = Cached;
+        MtrDef.Answered = Answered;
         TileBuild.WarmMaterials = Warm;
+    }
+
+    /// <summary>Has this material been ANSWERED -- read, or established absent? A name only
+    /// <see cref="Hint"/> has queued has not, and a part built against it may still gain a material.</summary>
+    private static bool Answered(string name)
+    {
+        lock (Gate) return _bytes.ContainsKey(name);
     }
 
     /// <summary>Parse worker: the hint, or 0 and a queued read.</summary>

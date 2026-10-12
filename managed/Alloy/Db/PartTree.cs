@@ -12,7 +12,7 @@ namespace CX.Alloy.Db;
 /// @0x473d30. An OBJECT spawns a reference node as its own object (<see cref="OnReference"/>); a TILE
 /// instances it in place, collapses, merges. Parts are a contiguous RANGE of ABSOLUTE indices.
 /// </summary>
-public static class PartTree
+public static partial class PartTree
 {
     /// <summary>A reference node the OBJECT path found: the engine spawns <c>model</c> as its own object and
     /// attaches it to part <c>part</c> of <c>obj</c>. Set by the seam, the only layer that may create an
@@ -434,6 +434,9 @@ public static class PartTree
         };
         for (int t = 0; t < 4; t++) SceneDb.PartTexId[p * 4 + t] = 0;
         SceneDb.PartPltOwn[p] = false;
+        // The two columns above that come from the FILE are provisional while the layer has not answered for
+        // this material: an answer can still arrive, and nothing else re-asks (PartTree.Material.cs).
+        if (mtr == null && MtrDef.Pending(mesh)) WaitForMaterial(p);
     }
 
     // ---------------------------------------------------------------- ComputePartBBox
@@ -866,7 +869,8 @@ public static class PartTree
                + (_dangly > 0 ? $", {_dangly} dangly parts NOT SOLVED (rest frame from the arena)" : "")
                + (_refused > 0 ? $", {_refused} trees REFUSED ({_refusedParts} parts past the {SceneDb.MaxParts} slots)" : "")
                + (_deepTrees > 0 ? $", {_deepTrees} chains past {MaxHops} hops" : "")
-               + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "");
+               + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "")
+               + (MaterialNote() is { Length: > 0 } mtr ? ", " + mtr : "");
     }
 
     internal static string Describe()
@@ -877,6 +881,7 @@ public static class PartTree
     internal static void ResetForCheck()
     {
         _built = _merged = _collapsed = _refused = _refusedParts = _animMesh = _dangly = _deepTrees = 0;
+        _mtrWait = new MtrWaitState();
         PartGate.ResetForCheck();
     }
 }

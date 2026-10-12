@@ -78,9 +78,10 @@ internal static partial class DrawRecipe
 
         public SlotState() { System.Array.Fill(TintRow, -1); }
         public int RetiredInUse, DoubleRetire;
-        /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> had seen.
-        /// The material's terms are not a texture's, so no other serial moves for them.</summary>
-        public int MtrSerial, MtrSeen;
+        /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> saw and what
+        /// the last part-column re-seed saw. No other serial moves for a material, and the two consumers are
+        /// asked at different points of the fold, so each keeps its own watermark.</summary>
+        public int MtrSerial, MtrSeen, MtrSeenParts;
         public CX.Framework.ExtenderLog? Log;
     }
     private static SlotState _own = new();
@@ -446,6 +447,15 @@ internal static partial class DrawRecipe
     /// <summary>The resource layer read a <c>.mtr</c> that was not cached before, so the next
     /// <see cref="Reclassify"/> re-asks the material's own terms. Called from the feed that read it.</summary>
     internal static void MaterialLanded() => _own.MtrSerial++;
+
+    /// <summary>The same edge for the PART columns, consumed: true once however many materials landed, so
+    /// <see cref="PartTree.ReseedMaterials"/> walks at most once a frame and not at all on a quiet one.</summary>
+    internal static bool TakePartMaterialEdge()
+    {
+        if (_own.MtrSeenParts == _own.MtrSerial) return false;
+        _own.MtrSeenParts = _own.MtrSerial;
+        return true;
+    }
 
     /// <summary>Recipes whose class moved once their diffuse's coverage was known.</summary>
     internal static int Reclassified { get; private set; }
