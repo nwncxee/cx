@@ -176,6 +176,14 @@ row 2 (`cell#2`). Feed it in with `nui.cardfile`, and point at it with the point
 pointer. The second run uses the real pointer: row 2 of the list shows its own card, and any other row shows the shared one.
 `nui.cardfile` is read again after the login, which clears a server's policy.
 
+For the late-data rules, `tools/live/ladder/cards-standin.policy` is a stand-in for the `cell` family and
+`tools/live/ladder/cards-late.policy` holds the real `cell#2`. `--cfg 'nui.cardlate=<seconds>:<path to cards-late.policy>'` applies the second
+file that many seconds after the first, as a slow server would. Point at row 2 before and after it lands and shoot both.
+
+`--ui-scale 1.5` sets the client's UI scale (and lifts its resolution cap) for any run, so a NUI rectangle can be read at another scale.
+The fixed window's list scrolls in whole rows: after the wheel the pointer's row glides for a moment, and a hit logged during the
+glide carries the row under the still pointer, not a rectangle that has moved.
+
 ## NUI render keys
 
 `--cfg 'nui.policyprobe=nui.cxladder_nui.opacity=0.5;nui.cxladder_nui.background=0'` sets the server's `nui.<id>.*` keys without

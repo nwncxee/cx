@@ -195,6 +195,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     // NUI (or a vanilla GUI object: radial menu, tooltip, panel) draws over us -> it gets the
                     // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
                     // otherwise have released our windows' focus.
+                    if (NuiHovered() && btn == SdlButtonLeft) CX.Services.Nui.HeldImageService.OnPress();
                     if (NuiHovered() || (gui != IntPtr.Zero && !ours)) { UiHost.Blur(); break; }
                     if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);   // click-to-focus (default)
                     if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
@@ -276,6 +277,7 @@ public sealed unsafe class UiInputService : IExtenderService
     }
 
     /// <summary>Interactivity masks <c>CGuiMan::HandleLMouseDown</c> / <c>HandleMouseWheel</c> pass to the hit check.</summary>
+    private const byte SdlButtonLeft = 1;  // not-an-offset: SDL_BUTTON_LEFT
     private const int GuiPressMask = 1, GuiWheelMask = 8;
 
     /// <summary>Would the ENGINE's GUI take a press right now -- a NUI window under the pointer or a vanilla GUI

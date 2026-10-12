@@ -25,6 +25,8 @@ public sealed class CardService : IExtenderService
         public NuiHit Forced;
         public string ForcedKey = "";
         public int FileGen = -1;
+        public long LoadedAt;
+        public bool LateDone;
         public ExtenderLog? Log;
     }
 
@@ -38,7 +40,7 @@ public sealed class CardService : IExtenderService
         CardRegistry.Init(log);
         CardSelfCheck.Run(log);
         s.Presenter.SubjectOf = Subject;
-        Capabilities.Register("card", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
+        Capabilities.Register("card", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Cards.Changed += Capabilities.Refresh;
         TextRig.FontChanged += CardFaces.WantAll;
@@ -59,6 +61,20 @@ public sealed class CardService : IExtenderService
         }
         catch (IOException e) { s.Log?.Always("Cards: nui.cardfile could not be read: " + e.Message); }
         s.FileGen = CardRegistry.Gen;
+        s.LoadedAt = Environment.TickCount64;
+        s.LateDone = false;
+    }
+
+    /// <summary><c>nui.cardlate</c> (<c>seconds:file</c>): the lines of that file, applied once the seconds have passed since the card file was read.</summary>
+    private static void ApplyLate(CardServiceState s)
+    {
+        string spec = NuiKnobs.CardLate.V;
+        int colon = spec.IndexOf(':');
+        if (s.LateDone || s.LoadedAt == 0 || colon <= 0 || !float.TryParse(spec.AsSpan(0, colon), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec)) return;
+        if (Environment.TickCount64 - s.LoadedAt < (long)(sec * 1000f)) return;
+        s.LateDone = true;
+        try { s.Log?.Always($"Cards: nui.cardlate applied {ServerPolicy.Apply(File.ReadAllText(spec[(colon + 1)..]))} line(s)"); }
+        catch (IOException e) { s.Log?.Always("Cards: nui.cardlate could not be read: " + e.Message); }
     }
 
     /// <summary>The name and stack size the client knows for an item, by the server's object id.</summary>
@@ -81,6 +97,7 @@ public sealed class CardService : IExtenderService
             return;
         }
         LoadTestFile(s);
+        ApplyLate(s);
         bool has;
         NuiHit hit;
         string force = NuiKnobs.CardForce.V;
@@ -103,6 +120,7 @@ public sealed class CardService : IExtenderService
             else TextRig.DrawIcon(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);
+        if (v.Pulse != null) TextRig.DrawBatch(v.Pulse.AsSpan(), v.Pulse.VertexCount, a * CardPulse.Alpha(Environment.TickCount64), x, y);
     }
 
     /// <summary>The pointer-free hit <c>nui.cardforce</c> stands in: an element with that id at a fixed place.</summary>

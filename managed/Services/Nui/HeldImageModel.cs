@@ -20,8 +20,8 @@ internal enum HeldKind
 
 /// <summary>
 /// The show, hide and clear rules for the held image, with no engine in them. A value shows its image, an empty one
-/// hides it, and a hold clears itself once NUI has drawn no widget for <see cref="GraceMs"/>. The policy epoch drives
-/// every read, so a login or a release clears it.
+/// hides it, and a hold clears itself once NUI has drawn no widget for <see cref="GraceMs"/>. A <see cref="Pick"/> shows
+/// pending until a <c>held.image</c> line answers or <c>held.confirm</c> ms pass.
 /// </summary>
 internal sealed class HeldImageModel
 {
@@ -35,10 +35,12 @@ internal sealed class HeldImageModel
     /// <summary>The item id for <see cref="HeldKind.Item"/>, as the server's <c>ObjectToString</c> reads.</summary>
     public uint Oid { get; private set; }
     public bool Active => Kind != HeldKind.None;
+    /// <summary>True while the shown image is a pick the server has not answered.</summary>
+    public bool Pending { get; private set; }
 
-    private int _epoch = -1;
+    private int _epoch = -1, _pickStamp;
     private bool _enabled = true;
-    private long _drawn, _drawnAt;
+    private long _drawn, _drawnAt, _pickAt, _confirmMs;
 
     /// <summary>True when the policy epoch or the knob moved since the last <see cref="Update"/> that read the value.</summary>
     public bool Stale(int epoch, bool enabled) => epoch != _epoch || enabled != _enabled;
@@ -48,22 +50,38 @@ internal sealed class HeldImageModel
     /// <paramref name="drawn"/> is the NUI widget-draw counter and <paramref name="counting"/> says it is wired.
     /// True when what is held changed.
     /// </summary>
-    public bool Update(int epoch, bool enabled, string? value, long drawn, bool counting, long nowMs)
+    public bool Update(int epoch, bool enabled, string? value, long drawn, bool counting, long nowMs, int stamp = 0)
     {
         if (value != null)
         {
             _epoch = epoch;
+            if (Pending && enabled && _enabled && stamp == _pickStamp) return false;
             _enabled = enabled;
+            Pending = false;
             bool changed = Set(enabled ? value : "");
             _drawn = drawn;
             _drawnAt = nowMs;
             return changed;
         }
+        if (Pending && nowMs - _pickAt >= _confirmMs) { Pending = false; Set(""); return true; }
         if (!Active || !counting) return false;
         if (drawn != _drawn) { _drawn = drawn; _drawnAt = nowMs; return false; }
         if (nowMs - _drawnAt < GraceMs) return false;
         Set("");
         return true;
+    }
+
+    /// <summary>
+    /// The player pressed an element that declared <c>held.pick</c>: show <paramref name="image"/> now, pending. <paramref name="stamp"/> is
+    /// <see cref="ServerPolicy.Stamp"/> of <c>held.image</c> at the press, so only a line for that key answers it. True when what is held changed.
+    /// </summary>
+    public bool Pick(string image, long nowMs, int confirmMs, int stamp, long drawn)
+    {
+        bool changed = Set(image);
+        Pending = Active;
+        _pickAt = nowMs; _confirmMs = confirmMs; _pickStamp = stamp;
+        _drawn = drawn; _drawnAt = nowMs;
+        return changed;
     }
 
     private bool Set(string value)

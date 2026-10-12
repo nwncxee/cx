@@ -31,6 +31,7 @@ public static class ServerPolicy
     private static readonly List<string> _holdable = new();
     private static readonly object _lock = new();
     private static int _epoch;
+    private static readonly Dictionary<string, int> _stamp = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<(string Prefix, Func<string, string, bool> Set, Action<string> Release, Func<string> Report)> _handlers = new();
 
     /// <summary>Bumps on every change; a window re-reads its properties when it moves (a field compare per frame).</summary>
@@ -103,7 +104,7 @@ public static class ServerPolicy
         lock (_lock)
         {
             if (value.Length == 0) _props.Remove(key); else _props[key] = value;
-            _epoch++;
+            _stamp[key] = ++_epoch;
         }
         return true;
     }
@@ -117,7 +118,7 @@ public static class ServerPolicy
                 if (_held[i].Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { _held[i].Release(); _held.RemoveAt(i); }
             var drop = new List<string>();
             foreach (string k in _props.Keys) if (k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) drop.Add(k);
-            foreach (string k in drop) _props.Remove(k);
+            foreach (string k in drop) { _props.Remove(k); _stamp[k] = _epoch + 1; }
             _epoch++;
         }
     }
@@ -142,6 +143,17 @@ public static class ServerPolicy
     {
         lock (_lock) return _props.TryGetValue(key, out value!);
     }
+
+    /// <summary>The <see cref="Epoch"/> at which a line last set or released the property <paramref name="key"/>, or 0 when none ever has.
+    /// A reader that waits on one key compares it, so another key's change does not look like an answer.</summary>
+    public static int Stamp(string key)
+    {
+        lock (_lock) return _stamp.TryGetValue(key, out int e) ? e : 0;
+    }
+
+    /// <summary>The whole number at <paramref name="key"/>, or <paramref name="def"/> when it is absent or not one.</summary>
+    public static int Int(string key, int def)
+        => TryGet(key, out string v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i) ? i : def;
 
     public static string Str(string key, string def) => TryGet(key, out string v) ? v : def;
 

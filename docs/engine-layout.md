@@ -5,7 +5,7 @@
 question: the Linux client is built by GCC on the Itanium C++ ABI, the Windows
 client by MSVC, and the two disagree about where a field sits inside a class.
 
-`managed/Framework/EngineLayout.cs` declares every offset the extender reads, and the
+`EngineLayout` (`managed/Framework/EngineLayout*.cs`, one partial class) declares every offset the extender reads, and the
 running build's file in `managed/Framework/Builds/` gives its value (`ClientBuilds`).
 The code says *what* is read, `Field("CNWCCreature", "plated", Expect.Byte01)`, and the
 use site reads it as a plain field. The data says *where*, one line per row per build:

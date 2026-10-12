@@ -32,9 +32,10 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `1`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) |
+| `cx_cap_card` | `2`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
+| `cx_cap_heldpick` | `1`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well) |
 
 A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
 `nui.itemicons`, `nui.cards`) is on. **Absent or `0` means the client does not draw it**; send the vanilla version (a plain
@@ -75,6 +76,27 @@ when no NUI widget has drawn for half a second, so a lost empty line cannot leav
 is closed. While any other NUI window stays open CX cannot tell that the one that held the image closed: send the empty
 value when your window closes. A client with `cx_cap_heldimage` absent or `0` ignores the key, so keep the plain NUI
 drag for it. The cursor swap is Linux-only for now.
+
+#### Optimistic pick
+
+A server a long way off answers a pick late. Declare what a pick shows and CX shows it on the press, before the answer:
+
+| line | meaning |
+|---|---|
+| `held.pick.<id>=<image>` | pressing the element whose JSON `id` is `<id>` shows `<image>` at once |
+| `held.pick.<prefix>*=<image>` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
+| `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
+
+Declare them when the window opens, like cards. `<image>` has the forms `held.image` takes. `held.pick.*=` releases every pick, and
+an empty value releases one. Only a left press counts, and only on an element with an `id`.
+
+The pick shows as a pending hold: dimmer than a confirmed one, with the same cursor swap. It ends in one of three ways:
+
+- `held.image=<image>` confirms it and replaces the pending image, which may be a different one.
+- `held.image=` clears it. Send that when the server refuses the pick.
+- No `held.image` line within `held.confirm` ms drops it. Only a line for `held.image` itself answers; a change to any other key does not.
+
+A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending `held.image` as before.
 
 ### Value forms
 
@@ -117,6 +139,7 @@ A card is found by the element the pointer is over. CX tries these keys in order
 | `card.<id>` | the element whose JSON `id` is `<id>`, in any row |
 | `card.@item:<hex>` | an element that draws that item's `@item:` image |
 | `card.@look:<hex>` | an element that draws that `@look:` image |
+| `card.<prefix>*` | an element whose JSON `id` starts with `<prefix>`: the longest declared prefix wins. Tried last |
 
 - The element's `id` is the token. A stock client ignores it. Give each element that has a card its own `id`: the
   last element to declare a duplicate wins.
@@ -128,6 +151,9 @@ A card is found by the element the pointer is over. CX tries these keys in order
   key every card by `id`.
 - Keys compare without regard to case, so ids that differ only by case share a card. A key is at most 96 bytes, and
   a client holds at most 256.
+
+`card.<key>=[]` (an array of no cards) declares that the key has no card. It is a held key like any other, and it ends the
+search: a matching `card.<prefix>*` does not show for that element. An empty value is not that. It releases the key.
 
 A new `card.<key>` line replaces the cards of that key. An empty value, `card.*=` and a new login clear them. A
 declaration CX refuses is logged, and its key keeps no card.
@@ -166,12 +192,25 @@ type reads are listed here.
 | `divider` | a thin rule across the full card | `color` |
 | `icons` | a row of icons, wrapping, each in a frame | `icons` (up to 16 names), `px` (default 28), `frame` (default true) |
 | `section` | blocks on a tinted band across the full card | `blocks`, `tint` |
+| `loading` | text that pulses between 35% and full opacity every 1.2 s | `text`, `color`, `size` |
 | `footer` | a band at the foot: `left` text and `right` text on one line | `left`, `right`, `tint`, `size` (default 0.85) |
 
 - `size` is a multiple of the player's text size, snapped to 0.7, 0.85, 1, 1.15, 1.3, 1.6 or 2.
 - `dim` lowers the colour's opacity to 60%. `subtitle` and `flavour` are dim by default, and `flavour` italic.
 - A `section` holds blocks, and sections nest two deep.
-- A block with an unknown `type` draws as `text`. With no `text` it draws nothing.
+- A block with an unknown `type` draws as `text`, so a client without `loading` still shows its text. With no `text` it draws nothing.
+
+### Data that arrives late
+
+A server a long way off sends its card lines after the window is open, so the pointer can rest on an element before the
+element's card exists. Send one small stand-in per id family when the window opens, and the real cards when they are ready:
+
+- `card.<prefix>*` shows for every element of the family until a better key matches. Give empty cells and slots `card.<id>=[]`, so
+  the stand-in does not show for them.
+- The card on screen is swapped in place when its key gains a better match, or the key's own line changes. CX redraws it with no hide, no
+  new wait and no fade, and places it again if its size changed.
+- `{item.name}` and `{item.stack}` fill a stand-in with real data and need no round trip, because the client already knows the item.
+- A `loading` block marks what is still on its way.
 
 ### Text markup
 

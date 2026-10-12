@@ -326,6 +326,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (!Live(self, 19, out DbId id, out nint shell)) return 0;
         DbId sc = scene == 0 ? default : Facade.Scene(scene, 19);
+        if (scene != 0 && sc.IsNull) Facade.NoteOrphaningAttach(id, SceneDb.ObjScene[id.Index], scene);
         // Through the engine's own Gob::SetScene @0x53e020 first: it tells the object's behaviour, and a
         // CAurBehaviorCrossSceneAttach REMEMBERS the scene (+0x70, @0x68c250) -- how CGuiViewport::TakeModel
         // keeps the server list in its viewport when the panel later activates. Its scene slots and the
@@ -347,6 +348,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// scene destroy all read that list, so writing <c>ObjScene</c> alone leaves a scene that holds nothing.</summary>
     internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell)
     {
+        if (TileBuild.RefuseMove(id, sc, "JoinScene"))
+        {
+            if (shell != 0) Facade.SetSceneWord(shell, SceneDb.SceneFacade[SceneDb.ObjScene[id.Index].Index]);
+            return;
+        }
         DbId was = SceneDb.ObjScene[id.Index];
         if (!was.IsNull && was.Value != sc.Value) DbScene.Leave(was, id);
         if (!sc.IsNull) { DbScene.Join(sc, id); Flag(id, SeamFlag.EverAttached, true); }

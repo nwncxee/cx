@@ -102,7 +102,7 @@ internal static class CardSelfCheck
         check.Expect(CardParser.TryParse("{\"blocks\":[],\"future\":{\"a\":1}}", out cards, out _) && cards.Length == 1, "an unknown field is ignored");
         string[] bad =
         [
-            "not json", "[]", "5", "{\"width\":\"wide\"}", "{\"border\":\"red\"}", "{\"blocks\":{}}", "{\"blocks\":[{\"type\":\"icons\"}]}",
+            "not json", "5", "{\"width\":\"wide\"}", "{\"border\":\"red\"}", "{\"blocks\":{}}", "{\"blocks\":[{\"type\":\"icons\"}]}",
             "[{},{},{},{},{}]", "{\"images\":[{\"w\":4}]}",
             "{\"blocks\":[{\"type\":\"section\",\"blocks\":[{\"type\":\"section\",\"blocks\":[{\"type\":\"section\"}]}]}]}",
             "{\"blocks\":[{\"text\":\"" + new string('x', 401) + "\"}]}",
@@ -217,6 +217,78 @@ internal static class CardSelfCheck
         ServerPolicy.Clear();
     }
 
+    /// <summary>
+    /// The latency stand-ins. Oracle: keys and widths typed into the checks; the lookup order from the contract (row, id, image, longest
+    /// prefix); the pulse values worked by hand from its sine (0 ms: 0.35 + 0.65 * 0.5 = 0.675, 300 ms: the crest 1, 900 ms: the trough 0.35);
+    /// and Tooltip's 0.5 s dwell and 0.2 s fade on the fake clock. A 200 px card beside an element at x 50, w 30 sits at 88; a 320 px one
+    /// does not fit right of it in 400 px, goes left, and is clamped to 0.
+    /// </summary>
+    private static void StandIns(Checker check, GlyphAtlas atlas, Func<long> clock, Action<long> setClock, long f)
+    {
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        const string standIn = "{\"width\":200,\"blocks\":[{\"type\":\"loading\",\"text\":\"abab\"}]}";
+        ServerPolicy.Apply("card.cell*=" + standIn + "\ncard.ce*=" + standIn.Replace("200", "180") + "\ncard.@item:1f=" + standIn.Replace("200", "170"));
+        CardSet? Pick(NuiHit h) => CardPresenter.Lookup(in h);
+        check.Expect(Pick(Hit("cellar")) is { Key: "cell*" } && Pick(Hit("cell", 2)) is { Key: "cell*" }, "the longest declared prefix of the id answers, an id equal to the prefix included");
+        check.Expect(Pick(Hit("cexx")) is { Key: "ce*" } && Pick(Hit("zzz")) == null && Pick(Hit("")) == null, "a shorter prefix answers when it is the only one, and no prefix means no card");
+        check.Expect(Pick(Hit("cellx", -1, "@item:1f")) is { Key: "@item:1f" }, "an image key beats a prefix");
+        ServerPolicy.Apply("card.cellx=" + standIn.Replace("200", "190"));
+        check.Expect(Pick(Hit("cellx")) is { Key: "cellx" }, "an id key beats a prefix");
+        ServerPolicy.Apply("card.cellx#4=" + standIn.Replace("200", "191"));
+        check.Expect(Pick(Hit("cellx", 4)) is { Key: "cellx#4" } && Pick(Hit("cellx", 5)) is { Key: "cellx" }, "a row key beats the id key");
+        ServerPolicy.Apply("card.cell*=");
+        check.Expect(Pick(Hit("cellar")) is { Key: "ce*" }, "releasing a prefix falls back to the next shorter one");
+        ServerPolicy.Apply("card.cell*=" + standIn + "\ncard.cellx#4=[]\ncard.celly=[]");
+        check.Expect(Pick(Hit("cellx", 4)) is { Cards.Length: 0 } && Pick(Hit("cellx", 5)) is { Key: "cellx" }, "[] is a held key with no cards, and it stops the fallback to the id key");
+        check.Expect(Pick(Hit("celly")) is { Cards.Length: 0 } && Pick(Hit("celly", 1, "@item:1f")) is { Cards.Length: 0 }, "[] on an id also stops the prefix and the image key");
+        var none = new CardPresenter { Face = m => (atlas, m) };
+        NuiHit nh = Hit("celly");
+        none.Update(true, in nh);
+        check.Expect(!none.Hovering && none.Set == null, "an element declared with no card shows none, not the stand-in");
+        check.Expect(CardParser.TryParse("[]", out CardDecl[] zero, out _) && zero.Length == 0 && !CardParser.TryParse("{}x", out _, out _), "[] parses to zero cards");
+        ServerPolicy.Apply("card.cellx#4=\ncard.celly=");
+        check.Expect(Pick(Hit("celly")) is { Key: "cell*" }, "an empty value still releases the key, so the stand-in answers again");
+
+        check.Expect(Near(CardPulse.Alpha(0), 0.675f) && Near(CardPulse.Alpha(300), 1f) && Near(CardPulse.Alpha(900), 0.35f) && Near(CardPulse.Alpha(1200), 0.675f), "the pulse fades between 0.35 and 1 once every 1200 ms");
+        CardView v = Lay(atlas, standIn);
+        check.Expect(v.Pulse != null && v.Pulse.VertexCount > 0 && v.Text.VertexCount == 0 && Near(v.H, 42f), "a loading block's text is the pulsing batch, laid out like a text block");
+        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"abab\"}]}");
+        check.Expect(v.Pulse == null && v.Text.VertexCount > 0, "a text block does not pulse");
+
+        var p = new CardPresenter { Face = m => (atlas, m) };
+        long t0 = clock() + 100 * f;
+        setClock(t0);
+        NuiHit h = Hit("cell", 2);
+        p.Update(true, in h);
+        setClock(t0 + f / 2 + f / 5);
+        check.Expect(p.Prepare(400, 600) && p.Alpha == 1f && Near(p.Views![0].W, 200f) && Near(p.X(0), 88f), "a stand-in shows for the element until its own card arrives");
+        CardSet? shown = p.Set;
+        ServerPolicy.Apply("card.cell#2={\"width\":320,\"blocks\":[{\"text\":\"abab\"}]}");
+        p.Update(true, in h);
+        check.Expect(p.Set != shown && p.Hovering && p.Alpha == 1f, "the real card replaces the stand-in with no fade out and in");
+        check.Expect(p.Prepare(400, 600) && Near(p.Views![0].W, 320f) && Near(p.X(0), 0f), "and is laid out and placed again at its own size");
+
+        var q = new CardPresenter { Face = m => (atlas, m) };
+        ServerPolicy.Apply("card.cell#2=");
+        long t1 = t0 + 10 * f;
+        setClock(t1);
+        q.Update(true, in h);
+        setClock(t1 + 3 * f / 10);
+        check.Expect(q.Alpha == 0f, "inside the dwell the stand-in is not yet drawn");
+        ServerPolicy.Apply("card.cell#2={\"width\":320,\"blocks\":[{\"text\":\"abab\"}]}");
+        q.Update(true, in h);
+        setClock(t1 + 7 * f / 10);
+        check.Expect(q.Alpha == 1f && q.Prepare(400, 600) && Near(q.Views![0].W, 320f), "a swap inside the dwell keeps the dwell running: the card is in at 0.7 s, not 1.0 s");
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        NuiHit a = Hit("cellar"), b = Hit("cexx");
+        for (int i = 0; i < 200; i++) { q.Update(true, in a); q.Update(true, in b); }
+        check.Expect(GC.GetAllocatedBytesForCurrentThread() - before == 0, "a prefix lookup allocates nothing");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+    }
+
     private static void Presenting(Checker check, GlyphAtlas atlas, ExtenderLog log)
     {
         CardRegistry.Reset();
@@ -299,6 +371,7 @@ internal static class CardSelfCheck
             before1 = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 200; i++) { p.Update(true, in a); p.Update(true, in b); p.Update(true, in c); }
             check.Expect(GC.GetAllocatedBytesForCurrentThread() - before1 == 0, "moving between elements allocates nothing: every lookup is on spans");
+            StandIns(check, atlas, () => now, t => now = t, f);
         }
         finally
         {

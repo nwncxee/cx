@@ -21,6 +21,8 @@ internal sealed class CardView
 {
     public float W, H, TabH;
     public readonly VertexBatch Back, Text;
+    /// <summary>The glyphs of every <c>loading</c> block, drawn pulsing; null when the card has none.</summary>
+    public VertexBatch? Pulse;
     public readonly List<IconDraw> Icons = [];
 
     public CardView(GlyphAtlas atlas)
@@ -62,6 +64,7 @@ internal sealed class CardLayout
     private readonly List<Atom> _line = [];
     private CardView _v = null!;
     private CardDecl _c = null!;
+    private bool _pulse;
 
     private CardLayout(Func<float, (GlyphAtlas, float)> face, float scale, CardSubject subject)
     {
@@ -139,6 +142,11 @@ internal sealed class CardLayout
                 return Footer(b, x, y, w, fullW, emit);
             case BlockKind.Status:
                 return Status(b, x, y, w, emit) + gap;
+            case BlockKind.Loading:
+                _pulse = true;
+                float lh = Flow(b.Runs, x, y, w, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, emit);
+                _pulse = false;
+                return y + lh + gap * 0.5f;
             default:
                 return y + Flow(b.Runs, x, y, w, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, emit) + (b.Kind == BlockKind.Header ? 0f : gap * 0.5f);
         }
@@ -275,12 +283,14 @@ internal sealed class CardLayout
         if (to < 0) to = s.Length;
         float r = (rgba >> 24) / 255f, g = ((rgba >> 16) & 0xFF) / 255f, b = ((rgba >> 8) & 0xFF) / 255f, al = (rgba & 0xFF) / 255f;
         float pen = x;
+        VertexBatch into = _v.Text;
+        if (_pulse) into = _v.Pulse ??= new VertexBatch(a.SolidU, a.SolidV);
         foreach (Rune ru in s.AsSpan(from, to - from).EnumerateRunes())
         {
             if (a.TryGet(ru.Value, out Glyph gl))
             {
-                if (italic) _v.Text.GlyphItalic(gl, pen, baseline, r, g, b, al, 0.2f, k);
-                else _v.Text.Glyph(gl, pen, baseline, r, g, b, al, k);
+                if (italic) into.GlyphItalic(gl, pen, baseline, r, g, b, al, 0.2f, k);
+                else into.Glyph(gl, pen, baseline, r, g, b, al, k);
                 pen += gl.Advance * k;
             }
             else pen += a.AdvanceOf(ru) * k;
