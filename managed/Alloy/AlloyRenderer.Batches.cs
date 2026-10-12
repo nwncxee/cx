@@ -995,7 +995,7 @@ public sealed unsafe partial class AlloyRenderer
             // red is a check nobody reads. It needs a DB-mode rebuild of its own before it means anything.
             if (_oDbPart[i] >= 0) continue;
             _bAudited++;
-            int feat = _oBone[i] >= 0 ? (int)ShaderFeature.Skin : (int)_oFeat[i * 4];
+            int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
             int blend = AlloyClasses.Blends(_passCls[k]) ? (_oWash[i] << 16) | (_oSrc[i] << 8) | _oDst[i] : 0;
             IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);

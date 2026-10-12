@@ -142,7 +142,10 @@ master-palette row per layer — whether or not the diffuse is a `.plt`.
 Two things differ from a stock client and are worth knowing:
 
 - **The vertex half is not reproduced.** Alloy hosts fragment stages only, so the pair's wind does not
-  sway under Alloy yet; everything else in the pair works.
+  sway under Alloy yet; everything else in the pair works. `fSwaySpeed`/`fSwayStrength` are read and carried
+  to the shader, so the day the sway lands it needs no material change. Alloy's own foliage sway was not
+  reused for it: that one is anchored on a grass blade's height above its root and phased on the node's
+  world position, with constants tuned for grass, and it reads no vertex paint.
 - **The parameter names below are provisional.** Alloy draws a whole batch in one call and so cannot
   set a per-material uniform the way the engine does; it stages these terms itself, which means it has
   to know their spelling. If your shader calls them something else, say so and they will be corrected.

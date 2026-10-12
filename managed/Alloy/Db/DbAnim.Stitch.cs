@@ -14,9 +14,13 @@ public static unsafe partial class DbAnim
     /// <summary>How far apart two vertices may sit in the rest pose and still be the same vertex: a tenth of
     /// a millimetre, which authored-to-meet rings are well inside and a deliberate fold is well outside.</summary>
     private const float StitchEps = 1e-4f;
+    /// <summary>The grid cell the weave hashes rest positions into: twice the tolerance, so eight cells cover
+    /// every point within one tolerance of a vertex.</summary>
+    private const float StitchCell = StitchEps * 2f;
     /// <summary>Skinned vertices of one creature the stitch will look at, and parts it will collect. Past
     /// either, the creature is left unstitched and counted -- never a partial stitch, which would heal one
-    /// end of a ring and not the other.</summary>
+    /// end of a ring and not the other. The part cap is also what the weave's per-part bit mask and its
+    /// part-pair key can address, so every collected part is counted before any of them is read.</summary>
     private const int MaxStitchVerts = 1 << 16, MaxStitchParts = 32;
 
     /// <summary>The stitch's own state: which creatures owe one, what each stitched part was given, and the
@@ -116,7 +120,7 @@ public static unsafe partial class DbAnim
         if (depth > 3 || !SceneDb.Objects.Valid(obj)) return;
         int i = obj.Index;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
-        for (int k = 0; k < n && into.Count <= MaxStitchParts; k++)
+        for (int k = 0; k < n; k++)
         {
             int p = first + k;
             if (!SceneDb.Parts.LiveAt(p) || !SceneDb.PartEnabled[p] || SceneDb.PartMerged[p]) continue;
@@ -144,13 +148,16 @@ public static unsafe partial class DbAnim
         return m != null && (uint)node < (uint)m.Nodes.Length ? m.Nodes[node].Mesh : null;
     }
 
-    /// <summary>Slot -> (bone part, bone NAME) for either form of a bone table, so the stitch can speak of one
-    /// part's influences in another part's table. The name is the resolved part's node name and is checked to
-    /// resolve back to that same part, since a name is what the stitched table carries.</summary>
-    private static bool SlotBones(int part, SkinDef skin, out int[] bone, out string[] names)
+    /// <summary>Slot -> (bone part, bone NAME, the bind the FILE stated for it) for either form of a bone
+    /// table, so the stitch can speak of one part's influences in another part's table and leave the binds its
+    /// own file authored alone. The name is the resolved part's node name, checked to resolve back to that same
+    /// part, since a name is what the stitched table carries.</summary>
+    private static bool SlotBones(int part, SkinDef skin, out int[] bone, out string[] names,
+                                  out Matrix4x4?[] stated)
     {
         bone = Array.Empty<int>();
         names = Array.Empty<string>();
+        stated = Array.Empty<Matrix4x4?>();
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj)) return false;
         bool isMap = skin.BoneNodesAreMap;
@@ -158,6 +165,7 @@ public static unsafe partial class DbAnim
         if (slots <= 0 || slots > BoneCount) return false;
         bone = new int[slots];
         names = new string[slots];
+        stated = new Matrix4x4?[slots];
         DbId root = TreeRoot(obj);
         if (!isMap && skin.BoneNames.Length > 0)
         {
@@ -167,9 +175,11 @@ public static unsafe partial class DbAnim
             {
                 bone[b] = st.Bone[b];
                 names[b] = b < skin.BoneNames.Length ? skin.BoneNames[b] : string.Empty;
+                stated[b] = b < skin.SlotBind.Length ? skin.SlotBind[b] : null;
             }
             return true;
         }
+        bool haveBind = skin.BindRotation.Length > 0 && skin.BindTranslation.Length >= skin.BindRotation.Length;
         DbId boneRoot = isMap ? root : obj;
         int first = SceneDb.ObjPartFirst[boneRoot.Index], n = SceneDb.ObjPartCount[boneRoot.Index];
         ModelDef? boneModel = isMap ? (n > 0 ? SceneDb.PartModel[first] : null) : SceneDb.PartModel[part];
@@ -178,6 +188,14 @@ public static unsafe partial class DbAnim
         {
             int node = isMap ? MapNode(skin.BoneNodes, b) : skin.BoneNodes[b];
             int bp = node < 0 ? -1 : FindPart(first, n, boneModel, node);
+            // A file that states binds states them per NODE, and a slot whose node the arrays do not reach
+            // is one the palette leaves at the identity -- a dead slot, not a derived one.
+            if (haveBind && bp >= 0)
+            {
+                if ((uint)node >= (uint)skin.BindRotation.Length) bp = -1;
+                else stated[b] = Matrix4x4.CreateFromQuaternion(skin.BindRotation[node])
+                               * Matrix4x4.CreateTranslation(skin.BindTranslation[node]);
+            }
             string nm = bp >= 0 ? PartTree.NameOf(bp) : string.Empty;
             // The stitched table addresses bones by NAME, so a live slot whose part cannot be named back --
             // two nodes of one rig sharing a name -- must not be stitched at all: a named table with that

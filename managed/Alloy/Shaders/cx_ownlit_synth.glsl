@@ -258,7 +258,8 @@ void main()
     // intensity, and the authored coverage is the third palette map's blue channel. The compensation below
     // then runs at the MATERIAL's own scale over that map's extent, not the knob's over the diffuse's:
     // compensating twice over one channel fills a distant silhouette solid.
-    vec4 tintCov = feat == CX_FEAT_PALETTETINT ? CxTintCoverage(vDraw, uv) : vec4(-1.0);
+    cxTintRow = CxTintRow(vDraw);
+    vec4 tintCov = cxTintRow >= 0 ? CxTintCoverage(vDraw, cxTintRow, uv) : vec4(-1.0);
     float cutMip = uAlphaMip;
     vec2 cutSize = vec2(textureSize(uTex, 0));
     if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }

@@ -11,27 +11,40 @@ namespace CX.Alloy.Db;
 public static unsafe partial class DbAnim
 {
     /// <summary>One part's bone table as the composition it sits in resolves it: slot -> part, slot -> inverse
-    /// bind pose, and the three things that invalidate both -- the skin it was solved for, the anchor its
-    /// object rides (the bind is composed along that chain) and the tree root it was resolved against.</summary>
+    /// bind pose, and the four things that invalidate both -- the skin it was solved for, the anchor its object
+    /// rides (the bind is composed along that chain), the tree root it resolved against, and that root's TREE
+    /// generation, because a re-tree re-tenants the very part indices these slots hold.</summary>
     private sealed class SkinBindState
     {
         public SkinDef? Def;
-        public int Anchor = -2, Root = -1;
+        public int Anchor = -2, Root = -1, RootGen = -1;
         public int[] Bone = Array.Empty<int>();
         public Matrix4x4[] Bind = Array.Empty<Matrix4x4>();
     }
 
-    /// <summary>Per part, its resolved named bone table. Released by <see cref="Unskin"/>, which every retire
-    /// and tree change already runs, so a re-tenanted part index never reads the dead tenant's.</summary>
-    private static readonly SkinBindState?[] _namedBind = new SkinBindState?[SceneDb.MaxParts];
-
-    /// <summary>The named-bone layer's own counters.</summary>
-    private sealed class NamedBoneState { public long Palettes, Lost; public int Said; }
+    /// <summary>The named-bone layer's state: per part the resolved bone table (released by
+    /// <see cref="Unskin"/>), per object how many times its part tree has been rebuilt, and the counters.</summary>
+    private sealed class NamedBoneState
+    {
+        public readonly SkinBindState?[] Bind = new SkinBindState?[SceneDb.MaxParts];
+        public readonly int[] TreeGen = new int[SceneDb.MaxObjects];
+        public long Palettes, Lost;
+        public int Said;
+    }
 
     private static readonly NamedBoneState _named = new();
 
+    /// <summary>This object's part range has been rebuilt, so every bone table resolved against it -- its own
+    /// and every grafted piece's, which hold PART indices into it -- is stale. One counter, compared on the
+    /// next solve: a piece is not walked here, because a piece may be seated after this edge.</summary>
+    private static void TreeBumped(DbId obj)
+    {
+        if (SceneDb.Objects.Valid(obj)) _named.TreeGen[obj.Index]++;
+    }
+
     /// <summary>The palette of a skin whose bone table is names: each slot's part comes from
-    /// <see cref="ResolveBone"/> and its inverse bind from the assembled rest pose. Row-vector throughout --
+    /// <see cref="ResolveBone"/> and its inverse bind from <see cref="SkinDef.SlotBind"/> where the file
+    /// stated one and from the assembled rest pose where it did not. Row-vector throughout --
     /// <c>bind = meshRest * inverse(boneRest)</c>, and the slot is <c>bind * boneWorld * inverse(meshWorld)</c>.</summary>
     private static bool NamedPalette(int part, SkinDef skin, int slots, float* dst)
     {
@@ -60,15 +73,17 @@ public static unsafe partial class DbAnim
         if (!SceneDb.Objects.Valid(obj) || slots <= 0) return null;
         DbId root = TreeRoot(obj);
         int anchor = SceneDb.ObjAttachPart[obj.Index];
-        SkinBindState? st = _namedBind[part];
+        int gen = _named.TreeGen[root.Index];
+        SkinBindState? st = _named.Bind[part];
         if (st != null && ReferenceEquals(st.Def, skin) && st.Bone.Length == slots
-            && st.Anchor == anchor && st.Root == root.Index) return st;
+            && st.Anchor == anchor && st.Root == root.Index && st.RootGen == gen) return st;
         if (!RestWorldOfPart(part, out Matrix4x4 meshRest)) return null;
         st ??= new SkinBindState();
         if (st.Bone.Length != slots) { st.Bone = new int[slots]; st.Bind = new Matrix4x4[slots]; }
         st.Def = skin;
         st.Anchor = anchor;
         st.Root = root.Index;
+        st.RootGen = gen;
         for (int b = 0; b < slots; b++)
         {
             string name = b < skin.BoneNames.Length ? skin.BoneNames[b] : string.Empty;
@@ -76,15 +91,18 @@ public static unsafe partial class DbAnim
             Matrix4x4 bind = Matrix4x4.Identity;
             if (bp >= 0)
             {
-                if (RestWorldOfPart(bp, out Matrix4x4 boneRest)
-                    && Matrix4x4.Invert(boneRest, out Matrix4x4 inv)) bind = meshRest * inv;
+                // A slot the FILE stated a bind for keeps it; only a slot with none is derived from the rest
+                // pose, which is the engine's own division in PartSkin::PostProcess.
+                if ((b < skin.SlotBind.Length ? skin.SlotBind[b] : null) is { } stated) bind = stated;
+                else if (RestWorldOfPart(bp, out Matrix4x4 boneRest)
+                         && Matrix4x4.Invert(boneRest, out Matrix4x4 inv)) bind = meshRest * inv;
                 else bp = -1;
             }
             st.Bone[b] = bp;
             st.Bind[b] = bind;
             if (bp < 0 && name.Length != 0) NamedLost(part, name);
         }
-        _namedBind[part] = st;
+        _named.Bind[part] = st;
         return st;
     }
 

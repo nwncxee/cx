@@ -71,6 +71,12 @@ internal static partial class DrawRecipe
         public readonly bool[] Orphan = new bool[Max];
         /// <summary>Bumped at each hand-out, so a holder of (slot, gen) can tell its recipe from a later tenant's.</summary>
         public readonly uint[] Gen = new uint[Max];
+        /// <summary>Each recipe's row in <see cref="TintTerms"/>' side table, or -1 -- the value a palette-tint
+        /// record carries in <c>feat.z</c>. Seeded -1, because a zero-filled column would hand the untinted
+        /// majority row 0 and retire it out from under whoever owns it.</summary>
+        public readonly int[] TintRow = new int[Max];
+
+        public SlotState() { System.Array.Fill(TintRow, -1); }
         public int RetiredInUse, DoubleRetire;
         /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> saw and what
         /// the last part-column re-seed saw. No other serial moves for a material, and the two consumers are
@@ -101,10 +107,6 @@ internal static partial class DrawRecipe
     private static readonly byte[] _src = new byte[Max], _dst = new byte[Max], _prim = new byte[Max];
     private static readonly int[] _feat = new int[Max];
     private static readonly float[] _featF = new float[Max * 4];
-    /// <summary>This recipe's row in <see cref="TintTerms"/>' side table, or -1. Allocated with the recipe
-    /// when its material names the palette tint and handed back when the recipe retires, so the index the
-    /// record carries cannot outlive the terms behind it.</summary>
-    private static readonly int[] _tintRow = new int[Max];
     private static readonly float[] _param = new float[Max * ParamFloats];
     private static readonly int[] _slots = new int[Max];
     private static readonly string[] _tex = new string[Max * TexSlots];
@@ -168,7 +170,7 @@ internal static partial class DrawRecipe
         _own.Held[r] = false; _own.Orphan[r] = false;
         if (_range[r] >= 0) MeshArena.Release(_range[r]);
         _range[r] = -1;
-        if (_tintRow[r] >= 0) { TintTerms.Free(_tintRow[r], r); _tintRow[r] = -1; }
+        if (_own.TintRow[r] >= 0) { TintTerms.Free(_own.TintRow[r], r); _own.TintRow[r] = -1; }
         for (int s = 0; s < TexSlots; s++)
         {
             int o = r * TexSlots + s;
@@ -540,17 +542,17 @@ internal static partial class DrawRecipe
         // the feature's own feat.z lane, so the tint's terms cost the other hundred thousand records nothing.
         // A table with no row left is the feature OFF for this material -- the plain lit path, which is what
         // the record says too, since an index nothing backs would read another material's glow.
-        _tintRow[r] = -1;
+        _own.TintRow[r] = -1;
         if (feat == (int)ShaderFeature.PaletteTint)
         {
-            _tintRow[r] = TintTerms.Alloc(r);
-            if (_tintRow[r] < 0) { feat = 0; _feat[r] = 0; featF[0] = 0f; }
+            _own.TintRow[r] = TintTerms.Alloc(r);
+            if (_own.TintRow[r] < 0) { feat = 0; _feat[r] = 0; featF[0] = 0f; }
             else
             {
                 Span<float> tint = stackalloc float[MtrParams.TintTermCount];
-                MtrParams.FoldTint(mtr, tint);
-                TintTerms.SetTerms(_tintRow[r], tint[0], tint[1], tint[2], tint[3], tint[4], tint[5], tint[6], tint[7]);
-                featF[2] = _tintRow[r];
+                MtrParams.FoldTint(mtr, tint, Log);
+                TintTerms.SetTerms(_own.TintRow[r], tint);
+                featF[2] = _own.TintRow[r];
             }
         }
         int mask = 0;

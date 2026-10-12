@@ -277,9 +277,10 @@ public sealed unsafe partial class AlloyRenderer
         f.EnvAlpha = (_oSlots[slot] & EnvSlot) != 0;
         f.Skinned = _oBone[slot] >= 0;
         // CX-227: a part whose coverage source the depth stage can also sample; one whose cannot keeps the
-        // engine cut rather than casting a 0.01 silhouette off a texture it does not read.
+        // engine cut rather than casting a 0.01 silhouette off a texture it does not read. Under the POSE
+        // override, so a skinned palette part is judged as the palette part it is.
         f.Coverage = _oA2c[slot]
-                  && CoverageLayer.HasCoverageSource(f.Skinned ? (int)ShaderFeature.Skin : (int)_oFeat[slot * 4]);
+                  && CoverageLayer.HasCoverageSource(ShaderFeatures.WithPose((int)_oFeat[slot * 4], f.Skinned));
         // Read as a LEVEL, never as an edge: the gate row's RecFrame is stamped on every build and _recMovedAt only on a
         // build that changed something, so the two agreeing is "the last build moved it" and asking twice
         // gives the same answer. ADR 0017's hazard was a signal the first pass to ask consumed.
