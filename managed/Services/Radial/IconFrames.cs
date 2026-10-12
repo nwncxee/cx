@@ -107,6 +107,7 @@ internal static unsafe class IconFrames
         {
             if (!DdsReader.Parse(dds, out DdsReader.Info info, out why)) return default;
             if (!BcnDecode.Decodes(info.Format) || info.W > MaxSide || info.H > MaxSide) { why = $"a {info.Format} DDS"; return default; }
+            if (info.Present < 1 || info.Faces != 1 || (long)dds.Length < (long)info.DataOffset + info.Level0) { why = "a DDS shorter than its first level"; return default; }
             int bpp = BcnDecode.PixelBytes(info.Format);
             byte[] px = new byte[info.W * info.H * bpp];
             BcnDecode.Unpack(dds.AsSpan(info.DataOffset), info.W, info.H, info.Format, px);
