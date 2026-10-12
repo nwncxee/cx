@@ -15,10 +15,10 @@ public static class MdlParser
     /// reads it; null means none. Engine score: <c>none</c> 1, <c>normalandspecmapped</c> 2, <c>normaltangents</c> 3, else 0.</summary>
     public static Func<string, int>? MaterialHint;
 
-    /// <summary>Meshes that asked for a material's render hint and got no answer, because no host wired
-    /// <see cref="MaterialHint"/>. Such a mesh gets no tangent frame from the parse and, since the engine's
-    /// tangent pass is what splits a vertex on a handedness conflict, no split either -- so this is counted
-    /// and reported rather than passed over (ADR: a refusal of our own mechanism is never a quiet hole).</summary>
+    /// <summary>Meshes that asked for a material's render hint and got no answer: no host wired
+    /// <see cref="MaterialHint"/>, or the <c>.mtr</c> was not cached yet. Such a mesh leaves the parse with no
+    /// tangent frame and no handedness split; the material feed revisits the second case once its read lands,
+    /// and both are counted -- a refusal of our own mechanism is never a quiet hole.</summary>
     public static int MaterialHintMisses;
 
     /// <summary>Parse <paramref name="data"/> as the model <paramref name="name"/>; null with

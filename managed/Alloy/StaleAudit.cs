@@ -154,7 +154,7 @@ public sealed unsafe partial class AlloyRenderer
             if (_oCls[i] != (byte)DrawRecipe.Cls(recipe))
                 return $"class {(AlloyClass)_oCls[i]} is seated, the recipe says {(AlloyClass)DrawRecipe.Cls(recipe)}";
             // The env bit is the one slot flag StageDbPart re-decides per frame; the rest ride the seat.
-            bool env = SceneDb.PartTexId[part * 4 + 3] != 0 || TexRegistry.EnvMapped(DbTexOf(part, recipe, 0));
+            bool env = DbEnvMapped(part, DbTexOf(part, recipe, 0));
             if (env != ((_oSlots[i] & EnvSlot) != 0))
                 return $"env-map bit is {((_oSlots[i] & EnvSlot) != 0 ? 1 : 0)}, the database says {(env ? 1 : 0)}";
             // What the PLT resolve is keyed on: the flag the record carries against the diffuse it draws.

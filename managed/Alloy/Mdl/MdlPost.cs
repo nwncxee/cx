@@ -458,9 +458,9 @@ internal static class MdlPost
 
     /// <summary><c>CalculateTangentSpaceBasis</c> (+ @0x556190): a per-triangle tangent from the UV gradient,
     /// accumulated per vertex, DUPLICATING a vertex whose triangles disagree on handedness, then Gram-Schmidt
-    /// against the normal. Only the model's own <c>renderhint</c> gates it -- the engine also reads the
-    /// <c>.mtr</c>'s hint, which this engine-free parser cannot: a documented difference.</summary>
-    private static void Tangents(MeshDef md, NodeDef n)
+    /// against the normal. Gated by the model's <c>renderhint</c> or the <c>.mtr</c>'s and idempotent, so the
+    /// material feed re-runs it on a mesh whose hint only arrived with a late <c>.mtr</c> read.</summary>
+    internal static void Tangents(MeshDef md, NodeDef n)
     {
         if (md.Tangents.Length != 0) return;                 // the file supplied them
         int hint = md.RenderHintId;

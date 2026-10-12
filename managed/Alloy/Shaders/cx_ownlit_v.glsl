@@ -5,6 +5,11 @@ layout(location = 2) in vec3 aNrm;
 // #674: the lightmap chart UV, in the mesh atlas's texel units (MeshChart.LocChartUv). Only a charted
 // VAO enables the array; every other reads the constant attribute, and its record says unbaked anyway.
 layout(location = 3) in vec2 aChart;
+// CX-221: the mesh arena's two packed words. aTangent is INT_2_10_10_10_REV -- xyz the model-space tangent,
+// w the handedness -- and a ZERO w is "this mesh carries no frame", which is what sends the fragment stage
+// back to its derivative frame. aPaint is the mesh's normalized RGBA8 vertex paint, white where it has none.
+layout(location = 4) in vec4 aTangent;
+layout(location = 5) in vec4 aPaint;
 #include "cx_drawbuf.glsl"
 #include "cx_featdecl.glsl"
 uniform mat4 uVP;
@@ -13,6 +18,7 @@ invariant gl_Position;
 out vec2 vUV;
 out vec3 vWorld;
 out vec3 vNrm;
+out vec4 vTan;                 // CX-221: world tangent xyz, handedness w (0 = the mesh supplied no frame)
 out float vDepth;
 out float vAnchorZ;            // #123: undisplaced world height, for the roof anchor discard
 out vec2 vChart;               // #674
@@ -48,6 +54,13 @@ void main()
     // shaded at the DISPLACED position, which is where the vanilla shaders light a swaying plant too
     vWorld = world.xyz;
     vNrm = mat3(d.model) * (bb >= 0 ? mat3(skin) * aNrm : aNrm);
+    // The tangent rides the same matrices as the normal -- a posed cloak's frame has to follow its pose --
+    // and the handedness is a scalar no transform touches. d.rot rotates the UVs below, and the supplied
+    // frame was derived in the UNROTATED ones, so it turns with them: T' = cos*T - sin*B over the frame's
+    // own bitangent. A zero word stays zero through all of it, which is the "no frame" signal.
+    vec3 aT = bb >= 0 ? mat3(skin) * aTangent.xyz : aTangent.xyz;
+    vec3 aB = cross(bb >= 0 ? mat3(skin) * aNrm : aNrm, aT) * aTangent.w;
+    vTan = vec4(mat3(d.model) * (d.rot.x * aT - d.rot.y * aB), aTangent.w);
     vUV = vec2(d.rot.x * aUV.x - d.rot.y * aUV.y, d.rot.y * aUV.x + d.rot.x * aUV.y);
     vChart = aChart;
     vDraw = id;

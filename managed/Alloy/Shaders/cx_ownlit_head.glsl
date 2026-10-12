@@ -5,6 +5,7 @@
 in vec2 vUV;
 in vec3 vWorld;
 in vec3 vNrm;
+in vec4 vTan;                  // CX-221: the supplied world tangent, handedness in w (0 = none supplied)
 in float vDepth;
 in float vAnchorZ;             // #123: undisplaced world height, for the roof anchor discard
 in vec2 vChart;                // #674: chart UV in atlas texels

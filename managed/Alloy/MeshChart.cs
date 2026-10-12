@@ -71,11 +71,11 @@ internal static unsafe partial class MeshChart
     internal const float AtlasTexelsPerUnit = 8f;
     /// <summary>Texels xatlas leaves between charts inside the mesh atlas: a two-texel gutter.</summary>
     internal const uint Padding = 2;
-    /// <summary>Floats per arena vertex in <see cref="CX.Alloy.Db.MeshArena.Fmt.Static"/>: pos3 nrm3 uv2 chart2.
-    /// The charted interleave below writes exactly this layout, which is why a charted mesh needs no format of
-    /// its own.</summary>
-    internal const int Stride = 10;
-    /// <summary>Alloy attribute location of the chart UV stream (3..7 are free; 0/1/2 pos/uv/nrm, 8/9 bones).</summary>
+    /// <summary>Floats per arena vertex in <see cref="CX.Alloy.Db.MeshArena.Fmt.Static"/>. Taken from the
+    /// arena rather than restated, because the charted interleave below writes exactly that layout -- which is
+    /// why a charted mesh needs no format of its own.</summary>
+    internal static int Stride => CX.Alloy.Db.MeshArena.StrideBytes(CX.Alloy.Db.MeshArena.Fmt.Static) / 4;
+    /// <summary>Alloy attribute location of the chart UV stream (0/1/2 pos/uv/nrm, 4/5 tangent/paint, 8/9 bones).</summary>
     internal const uint LocChartUv = 3;
 
     private const int MaxPending = 256;
@@ -143,8 +143,12 @@ internal static unsafe partial class MeshChart
         internal ulong Content;
         internal int IdxCount, VertCount;
         internal bool HasNrm, HasUv;
+        /// <summary>The source range carried the arena's two packed words (<see cref="Tan"/>,
+        /// <see cref="Paint"/>), so the charted copy re-emits them instead of zeroing them.</summary>
+        internal bool HasPacked;
         internal ushort[] Idx = Array.Empty<ushort>();
         internal float[] Pos = Array.Empty<float>(), Nrm = Array.Empty<float>(), Uv = Array.Empty<float>();
+        internal uint[] Tan = Array.Empty<uint>(), Paint = Array.Empty<uint>();
         // the charted result
         internal int OutVerts, Out0N, Out1N, Out2N, Charts, Loose;
         internal ushort W, H;
@@ -238,14 +242,16 @@ internal static unsafe partial class MeshChart
         if (!Wanted(DbSlot, range, ni, sig, out _)) return false;
         Job j = _jobs.Rent();
         j.Key = KeyOf(DbSlot, range); j.Sig = sig;
-        j.IdxCount = ni; j.HasNrm = true; j.HasUv = true;
+        j.IdxCount = ni; j.HasNrm = true; j.HasUv = true; j.HasPacked = true;
         j.Refused = Refusal.None; j.Hit = false; j.Stale = false;
         j.Out0N = j.Out1N = j.Out2N = 0; j.OutVerts = 0; j.Charts = 0; j.Loose = 0;
         Grow(ref j.Idx, ni);
         if (j.Pos.Length < nv * 3) j.Pos = new float[nv * 3];
         if (j.Nrm.Length < nv * 3) j.Nrm = new float[nv * 3];
         if (j.Uv.Length < nv * 2) j.Uv = new float[nv * 2];
-        if (!CX.Alloy.Db.MeshArena.HostMeshCopy(range, j.Pos, j.Nrm, j.Uv, j.Idx))
+        if (j.Tan.Length < nv) j.Tan = new uint[nv];
+        if (j.Paint.Length < nv) j.Paint = new uint[nv];
+        if (!CX.Alloy.Db.MeshArena.HostMeshCopy(range, j.Pos, j.Nrm, j.Uv, j.Tan, j.Paint, j.Idx))
         { _jobs.Recycle(j); Skip(Refusal.Input); return false; }
         j.VertCount = nv;
         _offered++;
@@ -300,7 +306,7 @@ internal static unsafe partial class MeshChart
 
         Job j = _jobs.Rent();
         j.Key = KeyOf(slot, item); j.Sig = sig;
-        j.IdxCount = count; j.HasNrm = hasNrm; j.HasUv = hasUv;
+        j.IdxCount = count; j.HasNrm = hasNrm; j.HasUv = hasUv; j.HasPacked = false;
         j.Refused = Refusal.None; j.Hit = false; j.Stale = false; j.Out0N = j.Out1N = j.Out2N = 0; j.OutVerts = 0; j.Charts = 0; j.Loose = 0;
         Grow(ref j.Idx, count);
         if (j.Pos.Length < (maxI + 1) * 3) j.Pos = new float[(maxI + 1) * 3];
@@ -532,6 +538,7 @@ internal static unsafe partial class MeshChart
         int n = j.OutVerts;
         if (n <= 0 || j.Out0N < 3) return -1;
         if (_stage.Length < n * Stride) _stage = new float[Math.Max(n * Stride, (1 << 12) * Stride)];
+        int tanWord = CX.Alloy.Db.MeshArena.TanWord(CX.Alloy.Db.MeshArena.Fmt.Static);
         for (int i = 0; i < n; i++)
         {
             int o = i * Stride, src = j.Xref[i];
@@ -541,6 +548,12 @@ internal static unsafe partial class MeshChart
             if (j.HasUv) { _stage[o + 6] = j.Uv[src * 2]; _stage[o + 7] = j.Uv[src * 2 + 1]; }
             else _stage[o + 6] = _stage[o + 7] = 0f;
             _stage[o + 8] = j.ChartUv[i * 2]; _stage[o + 9] = j.ChartUv[i * 2 + 1];
+            // ...and the arena's two packed words, straight off the source vertex the chart split this one
+            // from. A job that never carried them (no packed source) writes the zero tangent -- the lit
+            // stage's derivative fallback -- and neutral white paint.
+            _stage[o + tanWord] = BitConverter.UInt32BitsToSingle(j.HasPacked ? j.Tan[src] : 0u);
+            _stage[o + tanWord + 1] = BitConverter.UInt32BitsToSingle(
+                j.HasPacked ? j.Paint[src] : CX.Alloy.Db.MeshArena.PaintWhite);
         }
         return CX.Alloy.Db.MeshArena.AcquireRaw(PlacedKey(j.Content, j.Bmin), CX.Alloy.Db.MeshArena.Fmt.Static, n,
                                                 _stage.AsSpan(0, n * Stride),

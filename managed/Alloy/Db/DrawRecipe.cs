@@ -53,6 +53,9 @@ internal static partial class DrawRecipe
         /// <summary>Bumped at each hand-out, so a holder of (slot, gen) can tell its recipe from a later tenant's.</summary>
         public readonly uint[] Gen = new uint[Max];
         public int RetiredInUse, DoubleRetire;
+        /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> had seen.
+        /// The material's terms are not a texture's, so no other serial moves for them.</summary>
+        public int MtrSerial, MtrSeen;
         public CX.Framework.ExtenderLog? Log;
     }
     private static SlotState _own = new();
@@ -340,8 +343,9 @@ internal static partial class DrawRecipe
         // ashlw_031: a tenth of them at 164), and vanilla answers OPAQUE for an env-mapped material outright
         // -- GetIsOpaque returns the HasEnvMap flag itself and never looks at the texture.
         // CX-189: NWN_ALPHA_MODE 2 is the author saying "coverage, not blending" -- a declared transparency
-        // on the same material is the vanilla fallback for clients without it, so it does not make this blended.
-        return AlloyClasses.Of(water, additive, opaque, declared && !_coverage[r], false);
+        // on the same material is the vanilla fallback for clients without it, so it does not make this
+        // blended. CX-224: nor does the measured diffuse make it opaque -- the classifier's own coverage term.
+        return AlloyClasses.Of(water, additive, opaque, declared, false, _coverage[r]);
     }
 
     /// <summary>Is this material DECLARED water, i.e. water by a term the MODEL carries? The <c>.mtr</c>'s
@@ -361,16 +365,26 @@ internal static partial class DrawRecipe
     /// rewritten, which is what the texture's own arrival edge already marks them for.</summary>
     internal static int Reclassify()
     {
-        // Every input is a landed texture's answer or the bumpy-water global; a frame where neither moved has
-        // nothing to re-ask (this walked all recipes with string compares, twice a frame).
+        // Every input is a landed texture's answer, a landed .mtr or the bumpy-water global; a frame where
+        // none moved has nothing to re-ask (this walked all recipes with string compares, twice a frame).
         int serial = System.Threading.Volatile.Read(ref TexRegistry.CoverageSerial);
-        if (serial == _classSerial && PartTable.BumpyWaterOn == _classWater) return 0;
+        bool material = _own.MtrSerial != _own.MtrSeen;
+        if (serial == _classSerial && PartTable.BumpyWaterOn == _classWater && !material) return 0;
         _classSerial = serial; _classWater = PartTable.BumpyWaterOn;
+        _own.MtrSeen = _own.MtrSerial;
         int moved = 0;
         for (int r = 0; r < _n; r++)
         {
             MeshDef? mesh = _mesh[r];
             if (mesh == null) continue;
+            // A .mtr the resource layer read only after this recipe was interned carries the two terms
+            // Fill took from the material and nothing else re-asks -- so a mode-2 material discovered late
+            // would never reach the coverage layer, and a late sample_framebuffer never the water pass.
+            if (material)
+            {
+                _coverage[r] = MtrDef.Of(mesh) is { AlphaMode: 2 };
+                _declWater[r] = DeclaredWater(mesh);
+            }
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
             byte wasCls = _cls[r], wasDst = _dst[r];
             RecipeFlag wasFlags = _flags[r];
@@ -395,12 +409,16 @@ internal static partial class DrawRecipe
         if (hintAdditive || TexRegistry.TxiDecal(d)) _flags[r] &= ~RecipeFlag.Lit;
         else _flags[r] |= RecipeFlag.Lit;
         _cls[r] = (byte)ClassOf(r, additive, declared);
-        if (_coverage[r] && _cls[r] == (byte)AlloyClass.Cutout) _flags[r] |= RecipeFlag.Coverage;
+        if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
     }
 
     private static int _classSerial = -1;
     private static bool _classWater;
+
+    /// <summary>The resource layer read a <c>.mtr</c> that was not cached before, so the next
+    /// <see cref="Reclassify"/> re-asks the material's own terms. Called from the feed that read it.</summary>
+    internal static void MaterialLanded() => _own.MtrSerial++;
 
     /// <summary>Recipes whose class moved once their diffuse's coverage was known.</summary>
     internal static int Reclassified { get; private set; }

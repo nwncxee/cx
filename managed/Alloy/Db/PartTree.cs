@@ -217,7 +217,7 @@ public static class PartTree
     /// <summary>A few merged tile meshes, once: are the normals the lit stage will read unit-length and
     /// pointing where the source geometry pointed? A tile that renders BLACK under correct ambient is almost
     /// always a normal problem, and the merge is the only step that rotates them. It also states the vertex
-    /// streams -- the arena's Static format is pos3 nrm3 uv2 chart2, with NO colour lane.</summary>
+    /// streams -- the arena's Static format is pos3 nrm3 uv2 chart2 plus a packed tangent and paint word.</summary>
     private static void ProbeMerged(ModelDef model, int node, MeshDef m, int range)
     {
         // the off-device fixtures merge too, and they would otherwise spend the whole budget at boot
