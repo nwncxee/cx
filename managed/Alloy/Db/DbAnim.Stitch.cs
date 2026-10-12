@@ -179,10 +179,10 @@ public static unsafe partial class DbAnim
             int node = isMap ? MapNode(skin.BoneNodes, b) : skin.BoneNodes[b];
             int bp = node < 0 ? -1 : FindPart(first, n, boneModel, node);
             string nm = bp >= 0 ? PartTree.NameOf(bp) : string.Empty;
-            // The stitched table addresses bones by name, so a name that resolves to some OTHER part (two
-            // nodes of one rig sharing a name) would re-point the deformation. Leave that slot unnamed; the
-            // vertices on it are then not stitched rather than stitched wrongly.
-            if (bp >= 0 && (nm.Length == 0 || ResolveBone(root, obj, nm) != bp)) { bp = -1; nm = string.Empty; }
+            // The stitched table addresses bones by NAME, so a live slot whose part cannot be named back --
+            // two nodes of one rig sharing a name -- must not be stitched at all: a named table with that
+            // slot dead would leave the vertices on it in their bind pose, which is worse than the seam.
+            if (bp >= 0 && (nm.Length == 0 || ResolveBone(root, obj, nm) != bp)) return false;
             bone[b] = bp;
             names[b] = nm;
         }
