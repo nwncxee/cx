@@ -53,6 +53,7 @@ internal sealed class CardPresenter
     private int _row = -2, _imgLen, _imgHash, _gen = -1;
     private float _ex, _ey, _ew;
     private uint _subject;
+    private bool _rebuild;
     private readonly float[] _xs = new float[CardLimits.MaxCards], _ys = new float[CardLimits.MaxCards];
 
     public CardView[]? Views => _set?.Views;
@@ -74,7 +75,8 @@ internal sealed class CardPresenter
             {
                 found = Lookup(in hit);
                 _el = hit.Element; _row = hit.Row; _imgHash = h; _imgLen = hit.Image().Length; _gen = CardRegistry.Gen; _found = found;
-                _subject = found == null ? 0u : SubjectId(in hit, found);
+                _subject = ItemKey(hit.Image(), out uint drawn) ? drawn : 0u;
+                _rebuild = found != null;
             }
         }
         else { _el = IntPtr.Zero; _row = -2; _found = null; _gen = -1; }
@@ -97,11 +99,16 @@ internal sealed class CardPresenter
         if (set == null || _tip.Alpha <= 0f) return false;
         float scale = Metrics.Scale;
         int epoch = TextRig.AtlasEpoch;
-        if (_tip.Tick() || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale)
+        if (_tip.Tick() || _rebuild || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale)
         {
-            CardSubject subject = _subject == 0 ? default : SubjectOf(_subject);
             var views = new CardView[set.Cards.Length];
-            for (int i = 0; i < views.Length; i++) views[i] = CardLayout.Build(set.Cards[i], scale, Face, subject);
+            for (int i = 0; i < views.Length; i++)
+            {
+                string own = set.Cards[i].Item;
+                uint oid = own.Length > 0 && uint.TryParse(own, System.Globalization.NumberStyles.AllowHexSpecifier, null, out uint d) ? d : _subject;
+                views[i] = CardLayout.Build(set.Cards[i], scale, Face, oid == 0 ? default : SubjectOf(oid));
+            }
+            _rebuild = false;
             set.Views = views;
             set.ViewEpoch = epoch;
             set.ViewScale = scale;
@@ -115,14 +122,6 @@ internal sealed class CardPresenter
         int h = 17;
         foreach (byte b in s) h = h * 31 + b;
         return h;
-    }
-
-    /// <summary>The item a card is about: the hit's own <c>@item:</c> image, else the card's declared <c>item</c>.</summary>
-    private static uint SubjectId(in NuiHit hit, CardSet set)
-    {
-        if (ItemKey(hit.Image(), out uint oid)) return oid;
-        string declared = set.Cards[0].Item;
-        return declared.Length > 0 && uint.TryParse(declared, System.Globalization.NumberStyles.AllowHexSpecifier, null, out uint d) ? d : 0u;
     }
 
     /// <summary>Matches in order: <c>token#row</c>, <c>token</c>, then the image the element drew (<c>@item:hex</c>, <c>@look:...</c>).</summary>

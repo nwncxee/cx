@@ -160,6 +160,21 @@ would grade rungs the run never reached.
 layer, placed over the rung's NUI window. `07n-nui*.png` shows the order: the red one hides under the NUI window and the
 cyan one sits over it. Run it with and without `--cfg 'alloy.enabled=0'`; both must look the same.
 
+## Cards
+
+`--nui` opens the fixed NUI window with ids on its elements. `tools/live/ladder/cards.policy` is a file of `card.<key>=`
+policy lines for it: two cards for `img` that use every block, a card for every row of the list (`cell`) and one for
+row 2 (`cell#2`). Feed it in with `nui.cardfile`, and point at it with the pointer or with `nui.cardforce`:
+
+    tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.cardforce=img' \
+        --keys 'sleep:6000;shot:<dir>/cards.png'
+    tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.hitdebug=1' \
+        --keys 'sleep:8000;move:100,100;sleep:300;move:190,249;sleep:1500;shot:<dir>/row2.png'
+
+`nui.cardforce=img` shows the `img` cards as if the pointer rested on an element with that id, so the shot needs no
+pointer. The second run uses the real pointer: row 2 of the list shows its own card, and any other row shows the shared one.
+`nui.cardfile` is read again after the login, which clears a server's policy.
+
 ## Limits
 
 - **One client at a time.** The harness refuses to start if `nwmain-linux` is already running. Two

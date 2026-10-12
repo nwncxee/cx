@@ -261,6 +261,20 @@ internal static class CardSelfCheck
             check.Expect(!p.Hovering, "an element no key matches shows no card");
 
             now += 10 * f;
+            ServerPolicy.Apply("card.pair=[{\"item\":\"2a\",\"blocks\":[]},{\"blocks\":[]}]");
+            var asked = new System.Collections.Generic.List<uint>();
+            p.SubjectOf = id => { asked.Add(id); return default; };
+            h = Hit("pair", -1, "@item:1f");
+            p.Update(true, in h);
+            now += f;
+            p.Prepare(800, 600);
+            check.Expect(asked.Count == 2 && asked[0] == 0x2A && asked[1] == 0x1F, "each card is about its own item, else the item the element draws");
+            h = Hit("pair", -1, "@item:20");
+            p.Update(true, in h);
+            asked.Clear();
+            p.Prepare(800, 600);
+            check.Expect(asked.Count == 2 && asked[0] == 0x2A && asked[1] == 0x20, "moving to another row's item on the same key lays the card out again for that item");
+            p.SubjectOf = static _ => default;
             h = Hit("img");
             p.Update(true, in h);
             now += f;

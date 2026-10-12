@@ -24,6 +24,8 @@ public sealed class CardService : IExtenderService
         public bool Ready;
         public NuiHit Forced;
         public string ForcedKey = "";
+        public int FileGen = -1;
+        public ExtenderLog? Log;
     }
 
     private static CardServiceState _s = new();
@@ -32,6 +34,7 @@ public sealed class CardService : IExtenderService
     {
         UiCategory.Declare();
         var s = _s;
+        s.Log = log;
         CardRegistry.Init(log);
         CardSelfCheck.Run(log);
         s.Presenter.SubjectOf = Subject;
@@ -41,20 +44,21 @@ public sealed class CardService : IExtenderService
         TextRig.FontChanged += CardFaces.WantAll;
         new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.AboveNui, DrawContent = Draw };
         s.Ready = true;
-        LoadTestFile(log);
     }
 
-    /// <summary><c>nui.cardfile</c>: policy lines read as if a server had sent them, for building and testing cards.</summary>
-    private static void LoadTestFile(ExtenderLog log)
+    /// <summary><c>nui.cardfile</c>: policy lines read as if a server had sent them, for building and testing cards. Read again
+    /// whenever the registry is empty and has changed since, because a login clears it.</summary>
+    private static void LoadTestFile(CardServiceState s)
     {
         string path = NuiKnobs.CardFile.V;
-        if (path.Length == 0) return;
+        if (path.Length == 0 || CardRegistry.Count > 0 || CardRegistry.Gen == s.FileGen) return;
         try
         {
             int n = ServerPolicy.Apply(File.ReadAllText(path));
-            log.Always($"Cards: nui.cardfile applied {n} line(s)");
+            s.Log?.Always($"Cards: nui.cardfile applied {n} line(s)");
         }
-        catch (IOException e) { log.Always("Cards: nui.cardfile could not be read: " + e.Message); }
+        catch (IOException e) { s.Log?.Always("Cards: nui.cardfile could not be read: " + e.Message); }
+        s.FileGen = CardRegistry.Gen;
     }
 
     /// <summary>The name and stack size the client knows for an item, by the server's object id.</summary>
@@ -76,6 +80,7 @@ public sealed class CardService : IExtenderService
             if (s.Presenter.Alpha > 0f) s.Presenter.Cut();
             return;
         }
+        LoadTestFile(s);
         bool has;
         NuiHit hit;
         string force = NuiKnobs.CardForce.V;
