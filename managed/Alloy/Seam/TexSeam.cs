@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Numerics;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
 using CX.Framework;
@@ -124,15 +125,10 @@ internal static class TexSeam
         if ((uint)obj.Index < SceneDb.MaxObjects) SceneDb.ObjEnvMap[obj.Index] = null;
     }
 
-    /// <summary>The texture part <paramref name="p"/> draws in <paramref name="slot"/>: its override when it
-    /// has one, else the model's. The same question <c>AlloyRenderer.DbStage</c>'s <c>DbTexOf</c> asks.</summary>
-    private static TexId TexOf(int p, int slot)
-    {
-        int ov = SceneDb.PartTexId[p * 4 + slot];
-        if (ov != 0) return new TexId((uint)ov);
-        int r = SceneDb.PartRecipe[p];
-        return r >= 0 && slot < DrawRecipe.TexSlots ? DrawRecipe.Tex(r, slot) : default;
-    }
+    /// <summary>The texture part <paramref name="p"/> draws in <paramref name="slot"/>: the STAGE's own
+    /// selection (<see cref="SceneDb.PartTex"/>), so the sampler state a <c>.txi</c> sets lands on the
+    /// texture that is drawn.</summary>
+    private static TexId TexOf(int p, int slot) => SceneDb.PartTex(p, slot);
 
     /// <summary>A <c>.txi</c> fragment, for the three keys that are sampler state. False with
     /// <paramref name="unknown"/> set when it names something else -- which is reported, not ignored.</summary>
@@ -270,7 +266,99 @@ internal static class TexSeam
         SceneDb.Objects.TakeDirty();
         SceneDb.Parts.TakeDirty();
         ok &= MaterialParams.SelfCheck(log);
+        ok &= EnvMapCheck(log);
         log.Info(ok ? "TexSeam.SelfCheck: passed" : "TexSeam.SelfCheck: FAILED");
+        return ok;
+    }
+
+    /// <summary>Off-device: an env map named on the object does NOT take the material's slot-3 roughness map
+    /// with it, and the env bit still reaches the stage. The oracle is the two hand-written resrefs below --
+    /// the roughness one from the <c>MeshDef</c> this check builds, the env map's from the call -- read back
+    /// through the selection the draw resolves and the stage's own env-bit test.</summary>
+    private static bool EnvMapCheck(ExtenderLog log)
+    {
+        bool ok = true;
+        void Expect(bool cond, string what)
+        {
+            if (cond) return;
+            ok = false;
+            log.Always($"TexSeam.SelfCheck: {what}");
+        }
+
+        var model = new ModelDef { Name = "cx_sc_env", ContentHash = 0xE0E0E0E0UL };
+        model.Nodes = new[]
+        {
+            new NodeDef { Name = "root", Index = 0, Kind = NodeKind.Dummy },
+            new NodeDef
+            {
+                Name = "body", Index = 1, Parent = 0, Kind = NodeKind.TriMesh,
+                Mesh = new MeshDef
+                {
+                    Positions = new[] { Vector3.Zero, Vector3.UnitX, Vector3.UnitY },
+                    Indices = new uint[] { 0, 1, 2 },
+                    BMin = -Vector3.One, BMax = Vector3.One,
+                    Textures = new[] { "cx_sc_skin", "", "", "cx_sc_rough" },
+                },
+            },
+        };
+        model.NodeByName["root"] = 0;
+        model.NodeByName["body"] = 1;
+
+        DbId obj = SceneDb.Objects.Alloc();
+        Expect(!obj.IsNull, "the object table would not allocate");
+        if (obj.IsNull) return ok;
+        DbId part = SceneDb.Parts.Alloc();
+        Expect(!part.IsNull, "the part table would not allocate");
+        if (part.IsNull) { SceneDb.Objects.Free(obj); return ok; }
+        int p = part.Index;
+        int svFirst = SceneDb.ObjPartFirst[obj.Index], svCount = SceneDb.ObjPartCount[obj.Index];
+        SceneDb.ObjPartFirst[obj.Index] = p;
+        SceneDb.ObjPartCount[obj.Index] = 1;
+        SceneDb.PartObj[p] = obj;
+        SceneDb.PartModel[p] = model;
+        SceneDb.PartNode[p] = 1;
+        SceneDb.PartMtr[p] = null;
+        SceneDb.PartMeshDef[p] = model.Nodes[1].Mesh;
+        for (int t = 0; t < 4; t++) SceneDb.PartTexId[p * 4 + t] = 0;
+        int recipe = DrawRecipe.Intern(model, 1);
+        Expect(recipe >= 0, "the recipe table would not intern the check's mesh");
+        DrawRecipe.Assign(p, recipe);
+        SceneDb.Objects.TakeDirty();
+        SceneDb.Parts.TakeDirty();
+
+        TexId rough = SceneDb.PartTex(p, 3);
+        Expect(string.Equals(TexRegistry.ResrefOf(rough), "cx_sc_rough", StringComparison.OrdinalIgnoreCase),
+            "slot 3 does not start on the material's own roughness map");
+        Expect(!SceneDb.PartEnvMapped(p), "the part is env-mapped before anything named an env map");
+
+        Expect(ObjectTex.SetEnvMap(obj, "cx_sc_chrome") == 1, "SetEnvironmentMap did not answer the engine's 1");
+        Expect(string.Equals(SceneDb.ObjEnvMap[obj.Index], "cx_sc_chrome", StringComparison.Ordinal),
+            "the env map is not kept in the object's own column");
+        Expect(SceneDb.PartTex(p, 3).Value == rough.Value,
+            "the env map REPLACED the material's roughness map in slot 3");
+        Expect(string.Equals(TexRegistry.ResrefOf(SceneDb.PartTex(p, 3)), "cx_sc_rough",
+                             StringComparison.OrdinalIgnoreCase),
+            "the texture slot 3 resolves to is no longer the roughness map");
+        Expect(TexOf(p, 3).Value == rough.Value, "the sampler path and the stage disagree about slot 3");
+        Expect(AlloyRenderer.DbEnvMapped(p, SceneDb.PartTex(p, 0)),
+            "the env map named on the object does not reach the stage's env bit");
+        Expect((DrawRecipe.Slots(recipe) & AlloyRenderer.EnvSlot) == 0,
+            "the recipe declared the env bit itself, so the instance half proves nothing");
+        Expect((SceneDb.Objects.DirtyAt(obj.Index) & Dirty.Texture) != 0,
+            "the env map did not mark the object, so no record would re-derive the bit");
+
+        Expect(ObjectTex.SetEnvMap(obj, "NULL") == 1, "clearing the env map did not answer the engine's 1");
+        Expect(SceneDb.ObjEnvMap[obj.Index] == null && !SceneDb.PartEnvMapped(p),
+            "\"NULL\" did not clear the env map");
+        Expect(SceneDb.PartTex(p, 3).Value == rough.Value, "clearing the env map disturbed slot 3");
+
+        DrawRecipe.Assign(p, -1);
+        SceneDb.ObjPartFirst[obj.Index] = svFirst;
+        SceneDb.ObjPartCount[obj.Index] = svCount;
+        SceneDb.Parts.Free(part);
+        SceneDb.Objects.Free(obj);
+        SceneDb.Objects.TakeDirty();
+        SceneDb.Parts.TakeDirty();
         return ok;
     }
 }
