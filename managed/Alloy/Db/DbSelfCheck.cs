@@ -54,6 +54,7 @@ internal static class DbSelfCheck
             check.Expect(BlendIndices(), "the recipe's blend pair is an INDEX into the engine's blendTranslationTable, not a GL factor");
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
+            check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
         }
         finally
         {
@@ -216,6 +217,71 @@ internal static class DbSelfCheck
             return true;
         }
         finally { Seam.ObjectTex.Restore(o); }
+    }
+
+    /// <summary>A replace is matched against the slot's EFFECTIVE texture name. Oracle: hand-written from
+    /// <c>Material::ReplaceTexturePLT</c> @0x4c7a10 and <c>Material::BindAllStandardTextures</c> @0x4c6e30 --
+    /// the shared material's texture is bound over the material's own, so where the <c>.mtr</c> names slot 0
+    /// that is what draws and a replace aimed at the mesh bitmap cannot be seen.</summary>
+    private static bool PltMtrDiffuse()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = n => n switch
+        {
+            "cx_plt_mat" => Encoding.ASCII.GetBytes("texture0 cx_chest003\n"),
+            "cx_norm_mat" => Encoding.ASCII.GetBytes("texture1 cx_chest001_n\n"),
+            "cx_arm_mat" => Encoding.ASCII.GetBytes("texture0 cx_armour_d\nrenderhint NormalAndSpecMapped\n"),
+            _ => null,
+        };
+        Span<int> rows = stackalloc int[SceneDb.PltLayers];
+        for (int l = 0; l < SceneDb.PltLayers; l++) rows[l] = l + 1;
+
+        // the .mtr names the PLT itself: that name is the one the replace has to carry, not the mesh bitmap
+        int p = Dressed("cx_plt_mat", out DbId plt);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(plt, "cx_chest001", "cx_chest042", rows: rows) != 0) return false;
+        if (Shows(p) != "" || SceneDb.PartPltOwn[p]) return false;
+        if (Seam.ObjectTex.Replace(plt, "cx_chest003", "cx_chest042", rows: rows) != 1) return false;
+        if (Shows(p) != "cx_chest042" || !SceneDb.PartPltOwn[p]) return false;
+
+        // a .mtr that supplies no diffuse leaves the mesh's own bitmap -- and the graft model's name -- standing
+        p = Dressed("cx_norm_mat", out DbId norm);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(norm, "cx_chest001", "cx_chest042", rows: rows) != 1) return false;
+        if (Shows(p) != "cx_chest042") return false;
+        if (Seam.ObjectTex.Restore(norm) != 1) return false;
+        if (Seam.ObjectTex.Replace(norm, "cx_chest003", "cx_chest042", rows: rows) != 1) return false;
+
+        // no .mtr at all: the ordinary replace, on the bitmap
+        p = Dressed(null, out DbId bare);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(bare, "cx_chest001", "cx_chest042") != 1 || Shows(p) != "cx_chest042") return false;
+
+        // the .mtr names its own non-PLT diffuse: the creature's replace must leave it alone
+        long stood = Seam.ObjectTex.MtrDiffuseKept;
+        p = Dressed("cx_arm_mat", out DbId arm);
+        if (p < 0) return false;
+        if (Seam.ObjectTex.Replace(arm, "cx_chest003", "cx_chest042", rows: rows) != 0) return false;
+        if (Seam.ObjectTex.Replace(arm, "cx_chest001", "cx_chest042", rows: rows) != 0) return false;
+        if (Shows(p) != "" || SceneDb.PartPltOwn[p]) return false;
+        if (SceneDb.PartTexName(p, 0) != "cx_armour_d") return false;
+        return Seam.ObjectTex.MtrDiffuseKept == stood + 2;
+    }
+
+    /// <summary>One armour part as <c>CreateBodyParts</c> @0x734440 grafts it: the model named for the part
+    /// (<c>cx_chest003</c>), a mesh whose bitmap is another (<c>cx_chest001</c>), and the material file
+    /// <paramref name="material"/> if any. Returns the mesh part's index, or -1.</summary>
+    private static int Dressed(string? material, out DbId obj)
+    {
+        MeshDef mesh = Quad("cx_chest001");
+        if (material != null) mesh.MaterialName = material;
+        var model = Model("cx_chest003", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        obj = NewObject();
+        if (!PartTree.Build(obj, model)) return -1;
+        int p = SceneDb.ObjPartFirst[obj.Index] + 1;
+        return (SceneDb.PartMtr[p] == null) == (material == null) ? p : -1;
     }
 
     /// <summary>The resref part <paramref name="p"/>'s slot 0 currently shows, empty for the model's own.</summary>

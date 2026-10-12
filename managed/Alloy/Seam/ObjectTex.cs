@@ -38,7 +38,7 @@ internal static class ObjectTex
             // the object's root, and the only caller that passes it is the whole-object case, so the flag
             // changes nothing here; it is accepted rather than ignored silently.
             if (ShowsOverride(p, slot, to!)) Refresh(p, slot);
-            if (!Matches(p, slot, from) && !GraftNamed(p, slot, from)) continue;
+            if (!Matches(p, slot, from)) { MtrKept(p, slot, from); continue; }
             int at = p * 4 + slot;
             var old = new TexId((uint)SceneDb.PartTexId[at]);
             SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, to!).Value;
@@ -178,7 +178,7 @@ internal static class ObjectTex
     }
 
     /// <summary>Is part <paramref name="p"/> a mesh of the graft MODEL named <paramref name="from"/>?
-    /// <c>CreateBodyParts</c> @0x834440 issues <c>ReplaceTexture(from = the part's model resref, to = its PLT)</c>,
+    /// <c>CreateBodyParts</c> @0x734440 issues <c>ReplaceTexture(from = the part's model resref, to = its PLT)</c>,
     /// and many body models declare a different bitmap (<c>pfh0_chest003</c>'s mesh says <c>pfh0_chest001</c>), so
     /// the model name has to match too or those torsos and pelvises stay on the default body.</summary>
     private static bool GraftNamed(int p, int slot, string? from)
@@ -190,13 +190,49 @@ internal static class ObjectTex
         return string.Equals(m.Name, from, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Is part <paramref name="p"/>'s slot <paramref name="slot"/> the model's texture named
-    /// <paramref name="from"/>? Matched on the MODEL's name whatever override is in place, as the engine's
-    /// <c>AurTextureReplaceSingleReference</c> @0x48d960 does: <c>CGuiInvbox::SetObjectHilite</c> @0x691d50
-    /// un-highlights with ("gui_boxes_ingame", "gui_boxes_ingame") over a part showing "gui_inv_hilite".</summary>
+    /// <summary>Is part <paramref name="p"/>'s slot <paramref name="slot"/> the texture named
+    /// <paramref name="from"/>? Against the slot's EFFECTIVE name -- the <c>.mtr</c>'s when the file supplies
+    /// that slot, else the mesh's own bitmap or the graft model's name -- and never against an override in
+    /// place, which is how <c>AurTextureReplaceSingleReference</c> @0x48d960 matches.</summary>
     private static bool Matches(int p, int slot, string? from)
     {
         if (string.IsNullOrEmpty(from)) return true;
+        if (MtrTex(p, slot) is string mtr) return string.Equals(mtr, from, StringComparison.OrdinalIgnoreCase);
+        return MeshNamed(p, slot, from) || GraftNamed(p, slot, from);
+    }
+
+    /// <summary>Slot <paramref name="slot"/>'s name from the part's <c>.mtr</c>, null when the file names none.
+    /// <c>Material::BindAllStandardTextures</c> @0x4c6e30 binds a material's own slot only where the shared
+    /// material leaves it empty and then lets the file's textures over the top, so a slot the <c>.mtr</c>
+    /// names is the one the part draws -- and the one a replace has to be aimed at.</summary>
+    private static string? MtrTex(int p, int slot)
+    {
+        MtrDef? m = SceneDb.PartMtr[p];
+        return m != null && (uint)slot < (uint)m.Textures.Length && m.Textures[slot].Length > 0
+             ? m.Textures[slot] : null;
+    }
+
+    /// <summary>Count and name a replace the part's <c>.mtr</c> stood down: <paramref name="from"/> is the
+    /// mesh bitmap or the graft model, but the file supplies that slot, so the authored texture stays -- as it
+    /// does in vanilla, where the shared material's texture is bound over the material's own. One line per
+    /// power of two: re-dressing a crowd must not fill the log.</summary>
+    private static void MtrKept(int p, int slot, string? from)
+    {
+        if (MtrTex(p, slot) == null || (!MeshNamed(p, slot, from) && !GraftNamed(p, slot, from))) return;
+        MtrDiffuseKept++;
+        if ((MtrDiffuseKept & (MtrDiffuseKept - 1)) != 0) return;
+        Facade.Log?.Info($"ObjectTex: ReplaceTexture(\"{from}\") kept part {p}'s material texture {slot} "
+                       + $"\"{MtrTex(p, slot)}\" from {SceneDb.PartMtr[p]?.Name}.mtr ({MtrDiffuseKept} so far)");
+    }
+
+    /// <summary>How many replaces a part's own <c>.mtr</c> has stood down.</summary>
+    internal static long MtrDiffuseKept { get; private set; }
+
+    /// <summary>Does the part's MESH declare <paramref name="from"/> in slot <paramref name="slot"/>? The
+    /// bitmap lane of <see cref="Matches"/>: <c>CGuiInvbox::SetObjectHilite</c> @0x691d50 un-highlights with
+    /// ("gui_boxes_ingame", "gui_boxes_ingame") over a part showing "gui_inv_hilite".</summary>
+    private static bool MeshNamed(int p, int slot, string? from)
+    {
         ModelDef? m = SceneDb.PartModel[p];
         int n = SceneDb.PartNode[p];
         if (m == null || (uint)n >= (uint)m.Nodes.Length) return false;
