@@ -211,7 +211,8 @@ public sealed unsafe class UiInputService : IExtenderService
                     break;
                 }
                 case SdlMouseWheel:
-                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true, PointerX(), PointerY())) return 0;
+                    Pointer(out float x, out float y);
+                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true, x, y)) return 0;
                     if (NuiHovered() || (VanillaGuiAt(GuiWheelMask) != IntPtr.Zero && !MenuWindowUnderPointer())) break;   // ...and the scroll
                     if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
                     break;
@@ -227,9 +228,6 @@ public sealed unsafe class UiInputService : IExtenderService
 
     // ---- cursor fold (was CursorService) --------------------------------------------------------
     private static bool _forceDefault, _prevOverUi, _cursorFoldActive;
-    /// <summary>Set each frame by the held image: the pointer shows <see cref="HeldCursorId"/> wherever it is. Needs the
-    /// cursor fold, which is Linux-only until the two cursor symbols have Windows anchors.</summary>
-    internal static volatile bool HeldCursor;
     private const int HeldCursorId = CX.Services.Nui.HeldImageService.HeldCursorId;
 
     [UnmanagedCallersOnly]
@@ -259,7 +257,7 @@ public sealed unsafe class UiInputService : IExtenderService
     private static void OnSetMouseCursor(IntPtr @this, int cursorId, int hotspot, int p3, int p4, int p5)
     {
         if (_origSetCursor == null) return;
-        if (HeldCursor) _origSetCursor(@this, HeldCursorId, 0, 1, 0, p5);
+        if (CX.Services.Nui.HeldImageService.HoldsCursor) _origSetCursor(@this, HeldCursorId, 0, 1, 0, p5);
         else if (_forceDefault) _origSetCursor(@this, UiCursorId, 0, 1, 0, p5);
         else _origSetCursor(@this, cursorId, hotspot, p3, p4, p5);
     }
@@ -294,9 +292,12 @@ public sealed unsafe class UiInputService : IExtenderService
     private static bool GearSurface => GameGate.AtMainMenu || GameGate.OptionsOpen;
 
     /// <summary>SDL's pointer, for the wheel event that has none.</summary>
-    private static float PointerX() { int x = 0, y = 0; if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&x, &y); return x; }
-    /// <inheritdoc cref="PointerX"/>
-    private static float PointerY() { int x = 0, y = 0; if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&x, &y); return y; }
+    private static void Pointer(out float x, out float y)
+    {
+        int ix = 0, iy = 0;
+        if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&ix, &iy);
+        x = ix; y = iy;
+    }
 
     /// <summary>The wheel event carries no position: the same exemption at SDL's pointer.</summary>
     private static bool MenuWindowUnderPointer()

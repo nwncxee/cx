@@ -32,7 +32,9 @@ internal static unsafe class NuiModelView
         public float Angle = 30f, Dist = 4f, Height = 0.9f, Yaw;
         public bool Anim = true, Built, WasRendered;
         public string Wear = "", StandinRect = "";
-        public byte[] Info = new byte[0];
+        public byte[] Info = Array.Empty<byte>();
+        public bool OnPlayer;
+        public uint TargetId;
     }
 
     private sealed class ViewState
@@ -149,7 +151,7 @@ internal static unsafe class NuiModelView
         if (tex == 0) return;
         int epoch = ServerPolicy.Epoch;
         if (epoch != v.Epoch) { v.Epoch = epoch; Read(s, v); }
-        IntPtr who = Resolve(v.Key);
+        IntPtr who = Resolve(v);
         if (who == IntPtr.Zero)
         {
             if (v.Built) { Teardown(s, v, tex); }
@@ -180,18 +182,19 @@ internal static unsafe class NuiModelView
         if (NuiModelDoll.Rendered) v.WasRendered = true;
     }
 
-    /// <summary>The creature the server named, or zero while it names none or the client does not know it yet.</summary>
-    private static IntPtr Resolve(string key)
+    /// <summary>The creature the server named, or zero while it names none or the client does not know it yet. The name was parsed
+    /// when the policy last moved, so a frame composes no key.</summary>
+    private static IntPtr Resolve(ViewData v)
     {
-        string t = Policy(key, "target", "");
-        if (t.Length == 0) return IntPtr.Zero;
-        if (t == "player") return NuiModelDoll.Player();
-        return uint.TryParse(t, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)
-            ? NuiModelDoll.Creature(id | NuiItemIcons.ServerIdBit) : IntPtr.Zero;
+        if (v.OnPlayer) return NuiModelDoll.Player();
+        return v.TargetId == 0 ? IntPtr.Zero : NuiModelDoll.Creature(v.TargetId | NuiItemIcons.ServerIdBit);
     }
 
     private static void Read(ViewState s, ViewData v)
     {
+        string target = Policy(v.Key, "target", "");
+        v.OnPlayer = target == "player";
+        v.TargetId = !v.OnPlayer && uint.TryParse(target, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id) ? id : 0;
         v.Angle = PolicyF(v.Key, "angle", 30f);
         v.Dist = PolicyF(v.Key, "dist", 4f);
         v.Height = PolicyF(v.Key, "height", 0.9f);

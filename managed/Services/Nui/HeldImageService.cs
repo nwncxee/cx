@@ -30,6 +30,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         /// <summary>The throwaway item behind a held <c>@look:</c>; ours until the hold ends.</summary>
         public IntPtr Minted;
         public bool Ready, ProbeDone;
+        /// <summary>Set each frame to whether a hold is up; the input thread reads it.</summary>
+        public volatile bool Cursor;
         public long SeenDrawn;
         public readonly long Born = Environment.TickCount64;
         public int Notices;
@@ -39,6 +41,9 @@ public sealed unsafe class HeldImageService : IExtenderService
     }
 
     private static HeldState _s = new();
+
+    /// <summary>Is a hold up, so the pointer shows <see cref="HeldCursorId"/> wherever it is? Needs the cursor fold.</summary>
+    internal static bool HoldsCursor => _s.Cursor;
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
@@ -78,7 +83,7 @@ public sealed unsafe class HeldImageService : IExtenderService
             int confirm = Math.Clamp(ServerPolicy.Int(ConfirmKey, ConfirmDefaultMs), ConfirmMinMs, ConfirmMaxMs);
             if (on && s.Model.Pick(pick, now, confirm, ServerPolicy.Stamp(Key), activity.Drawn)) Changed(s);
         }
-        UiInputService.HeldCursor = s.Model.Active;
+        s.Cursor = s.Model.Active;
         if (!s.Model.Active) return;
 
         int mx = 0, my = 0;
