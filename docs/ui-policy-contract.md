@@ -33,6 +33,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `1`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) |
+| `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
 
 A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
@@ -224,6 +225,24 @@ the window closes, or the list scrolls the element out of view.
 `nui.cards` turns cards off. The capability is withdrawn with it. For people building cards, `nui.cardfile` reads a
 file of policy lines when the game starts, as if a server had sent them, and `nui.cardforce` shows one key's cards
 without a pointer.
+
+## NUI window render keys
+
+A server sets render properties per NUI window, keyed by the window id it gave `NuiCreate`. Send them only to a client that
+advertised `cx_cap_nuirender`. A stock client has no such keys and draws the window unchanged, and so does a CX client with
+Alloy off.
+
+| key | meaning |
+|---|---|
+| `nui.<id>.opacity=0.6` | the whole window, 0-1 |
+| `nui.<id>.background=0` | the title bar, frame and body fill, 0-1. At 0 only the widgets draw |
+| `nui.<id>.fadein=150` | ms from invisible to the window's opacity, from the frame it opens |
+| `nui.<id>.fadeout=150` | ms the window takes to fade away after it closes |
+
+The keys are session state like every other `PolicySet` line. `nui.<id>.*=` releases a window's keys.
+
+A fade out draws the window's last frame again, without the images in it: their textures are freed with the window. A
+window's own popups (an open combo list) are not in that frame.
 
 ## The inventory window's keys
 

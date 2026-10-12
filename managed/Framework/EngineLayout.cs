@@ -26,8 +26,7 @@ public static unsafe class EngineLayout
     private static readonly IntPtr Base = NativeLibrary.GetMainProgramHandle();
 
     // ================= the table =================
-    // Each row names the engine class it belongs to: that is the key #431's Ghidra extractor pairs on,
-    // and the unit #430 measures (a class diverges in 2-3 contiguous segments, anchored on a function pair).
+    // Each row names the engine class it belongs to: the key the Ghidra extractor pairs rows on.
 
     /// <summary>CNWCObject + 0x0c: object type byte -- 5 creature, 6 item, 9 placeable, 0xa door.</summary>
     public static readonly int ObjType = Field<byte>("CNWCObject", "type");
@@ -954,10 +953,6 @@ public static unsafe class EngineLayout
     public static readonly int VtblSymbolHeader = Field("(abi)", "vtblSymbolHeader");
 
     // ================= Alloy: the passes (#441, batch 2 of #429 section 2) =================
-    // Measured 2026-09-12, same tooling as #436 (tools/ghidra/FieldDump.java over both programs, .scratch/441)
-    // but read per function pair rather than through field-diff.py's strict filter, which rejects a pair the
-    // moment the two decompilers split one 8-byte store differently. Reading the pairs by hand is what
-    // resolved PartEmitter, the class #430 named as the worst case.
     // Every value here is decompiler evidence -- a CANDIDATE until a runtime probe says otherwise.
 
     // ---- Part: the base fields the pass walkers read (identical 0x0..0x58, #436) ----
@@ -1581,11 +1576,7 @@ public static unsafe class EngineLayout
     public static readonly int ListItemCount = Field("(abi)", "list.count");
 
     // ================= Alloy: the renderer, textures, buffers and shim (#443, batch 3 of #429 section 2) ==
-    // The last of section 2. Measured 2026-09-12: one FieldDump.java cycle over CNWCAnimBase/CRes/
-    // CAurTexture/Material (.scratch/443), the earlier #436/#441 dumps re-read for the classes they already
-    // covered, tools/ghidra/DecompOne.java for the three functions no class sweep reaches
-    // (SharedMaterial::BindShaderParameters, GLRender::SetUniforms, GLRender::UnlockPool), and
-    // tools/abi/vtable-slots.py for every vtbl row. Decompiler evidence: a CANDIDATE until probed.
+    // Decompiler evidence: a CANDIDATE until probed.
 
     // ---- CAurTextureBasic (identical 0x28..0xec; #436 read the class by hand, this batch pairs the rest) ----
 
@@ -1802,6 +1793,22 @@ public static unsafe class EngineLayout
     public static readonly int NkCtxDrawCmdCount = Field<int>("NkContext", "drawCmdCount");
     /// <inheritdoc cref="NkCtxDeltaTime"/>
     public static readonly int NkCtxDrawCmdOffset = Field<long>("NkContext", "drawCmdOffset");
+
+    /// <summary>More of <c>nk_context</c>, identical on both builds: the queue's base pointer and end offset, the window list head and the frame seq.</summary>
+    public static readonly int NkCtxMemPtr = Field<IntPtr>("NkContext", "memPtr");
+    public static readonly int NkCtxMemAllocated = Field<ulong>("NkContext", "memAllocated");
+    public static readonly int NkCtxWindowBegin = Field<IntPtr>("NkContext", "windowBegin");
+    public static readonly int NkCtxSeq = Field<uint>("NkContext", "seq");
+    /// <summary><c>nk_window</c>, read on Linux and shared by the Windows link pass (the name and bounds follow from the struct order): a window equals the context's <c>seq</c> when begun this frame; its name is the id a NUI server gave it; bit 0x4000 of flags is HIDDEN.</summary>
+    public static readonly int NkWinSeq = Field<uint>("NkWindow", "seq");
+    public static readonly int NkWinName = Field<byte>("NkWindow", "name", count: 64);
+    public static readonly int NkWinFlags = Field<uint>("NkWindow", "flags");
+    public static readonly int NkWinBounds = Field<float>("NkWindow", "bounds", count: 4);
+    /// <summary>The window's command buffer: <c>begin</c> and <c>end</c> bound its commands in the queue (offsets), <c>last</c> is its last in the main chain.</summary>
+    public static readonly int NkWinBufBegin = Field<ulong>("NkWindow", "bufBegin");
+    public static readonly int NkWinBufEnd = Field<ulong>("NkWindow", "bufEnd");
+    public static readonly int NkWinBufLast = Field<ulong>("NkWindow", "bufLast");
+    public static readonly int NkWinNext = Field<IntPtr>("NkWindow", "next");
 
     // ---- CNWCAnimBase: the highlight CHANNELS (#336) ----
     // No CNWC* class is name-exported on Windows, so the class sweep dumps it EMPTY. #446 took #420's RVA
@@ -2685,11 +2692,6 @@ public static unsafe class EngineLayout
     /// Gob+0x10c</c>.</summary>
     public static readonly int HitInfoDoorAlpha = Field<byte>("CHitInfo", "doorAlpha");
 
-    // Section 2 is closed: batch 1 took the Scene walk (#436), batch 2 the passes (#441), batch 3 the
-    // renderer, textures, buffers and shim (#443), and build.sh now refuses a bare hex offset under
-    // managed/Alloy/. A second tested client build gets its own pinned key plus its own values below;
-    // today there is exactly one per OS.
-
     // ================= CX-689: CRadialMenu (CX-162 §1) =================
     // Linux from the ctor @0x583460 / SetEntryx @0x5837f0 / SetSubMenuCreatorx @0x583f50 / CreateSubMenu @0x584790 /
     // HandleMenuAction @0x585530; Windows from the same exported CRadialMenu bodies in nwmain.exe (ctor rva 0x1f7950,
@@ -3401,8 +3403,6 @@ public static unsafe class EngineLayout
     public static readonly int GobSetOrientationSlot = Field("Gob", "vtbl.SetOrientation", Expect.VtblSlot);
 
     // ================= engine constants that are not offsets =================
-    // They rode into this table with #436 because the file they lived in was the offset file. They are
-    // magic VALUES the engine compares against, not places -- no row, nothing to resolve per platform.
 
     /// <summary>The engine's "no such pool" token, tested at every one of the three VDO token fields
     /// (<c>cmp $0xffffffff,%eax</c> @0x4d003a) -- an absent token is skipped, not an error.</summary>

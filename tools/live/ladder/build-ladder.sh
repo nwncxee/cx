@@ -37,6 +37,8 @@ trap 'rm -rf "$WORK"' EXIT
 
 # 2. our two resources. The compiler needs the game's resman for nwscript.nss.
 cp -f "$HERE/$NAME.nss" "$WORK/$NAME.nss"
+# LADDER_NUI_CLOSE=<seconds> closes the ladder's NUI window then; unset, it stays open.
+[ -z "${LADDER_NUI_CLOSE:-}" ] || sed -i "s/^const float T_NUI_CLOSE = .*;/const float T_NUI_CLOSE = ${LADDER_NUI_CLOSE}.0;/" "$WORK/$NAME.nss"
 nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$NAME.ncs" "$WORK/$NAME.nss"
 [ ! -f "$HERE/$NAME.dlg.json" ] || nwn_gff -i "$HERE/$NAME.dlg.json" -l json -o "$WORK/$NAME.dlg" -k gff
 

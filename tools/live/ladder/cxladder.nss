@@ -43,6 +43,8 @@ const float T_REWEAR = 34.0;
 const float T_AREA2  = 40.0;
 // A NUI window over the second area, so the window-layer shots have something to sit above and below.
 const float T_NUI    = 43.0;
+/// The NUI window stays open unless the harness builds the module with --nui-close.
+const float T_NUI_CLOSE = 999.0;
 const float T_BACK   = 55.0;
 const float T_DONE   = 58.0;
 
@@ -336,7 +338,16 @@ void LadderNui(object oPC)
         + "\"resizable\":false,\"collapsed\":false,\"closable\":false,\"transparent\":false,\"border\":true,"
         + "\"root\":{\"type\":\"col\",\"children\":[{\"type\":\"label\",\"value\":\"NUI window\"}]}}";
     json jWin = JsonParse(sWin);
-    Mark("nui " + IntToString(NuiCreate(oPC, jWin, "cxladder_nui")));
+    int nToken = NuiCreate(oPC, jWin, "cxladder_nui");
+    SetLocalInt(oPC, "cxladder_nui_token", nToken);
+    Mark("nui " + IntToString(nToken));
+}
+
+/// Closes that window again, for the fade-out shots.
+void LadderNuiClose(object oPC)
+{
+    NuiDestroy(oPC, GetLocalInt(oPC, "cxladder_nui_token"));
+    Mark("nui-close");
 }
 
 void LadderArea2(object oPC)
@@ -414,6 +425,7 @@ void LadderArm(object oPC, int nTry)
     DelayCommand(T_REWEAR + 2.0, LadderCloakAudit(oPC, "reworn"));
     DelayCommand(T_AREA2,  LadderArea2(oPC));
     DelayCommand(T_NUI,    LadderNui(oPC));
+    DelayCommand(T_NUI_CLOSE, LadderNuiClose(oPC));
     // Back to the location the PC joined at: a second transition, and a known-good spot.
     DelayCommand(T_BACK,   LadderJump("area1", oPC, lStart));
     DelayCommand(T_DONE,   LadderDone(oPC));

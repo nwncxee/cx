@@ -128,6 +128,16 @@ public static class ServerPolicy
     /// <summary>Keys held right now (knobs and properties).</summary>
     public static int Count { get { lock (_lock) return _held.Count + _props.Count; } }
 
+    /// <summary>Does any component property start with <paramref name="prefix"/>? Cold: a scan of the held properties.</summary>
+    public static bool HasPrefix(string prefix)
+    {
+        lock (_lock)
+        {
+            foreach (string k in _props.Keys) if (k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+    }
+
     public static bool TryGet(string key, out string value)
     {
         lock (_lock) return _props.TryGetValue(key, out value!);

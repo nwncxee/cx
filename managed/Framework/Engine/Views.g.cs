@@ -3187,6 +3187,39 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public ref int DrawCmdCount => ref *(int*)(Ptr + EngineLayout.NkCtxDrawCmdCount);
     /// <inheritdoc cref="EngineLayout.NkCtxDrawCmdOffset"/>
     public ref long DrawCmdOffset => ref *(long*)(Ptr + EngineLayout.NkCtxDrawCmdOffset);
+    /// <inheritdoc cref="EngineLayout.NkCtxMemAllocated"/>
+    public ref ulong MemAllocated => ref *(ulong*)(Ptr + EngineLayout.NkCtxMemAllocated);
+    /// <inheritdoc cref="EngineLayout.NkCtxMemPtr"/>
+    public ref IntPtr MemPtr => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxMemPtr);
+    /// <inheritdoc cref="EngineLayout.NkCtxSeq"/>
+    public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkCtxSeq);
+    /// <inheritdoc cref="EngineLayout.NkCtxWindowBegin"/>
+    public ref IntPtr WindowBegin => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxWindowBegin);
+}
+
+/// <summary>Typed view of an engine <c>NkWindow*</c>.</summary>
+public readonly unsafe partial struct NkWindow(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkWinBounds"/>
+    public Span<float> Bounds { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkWinBounds), 4); }
+    /// <inheritdoc cref="EngineLayout.NkWinBufBegin"/>
+    public ref ulong BufBegin => ref *(ulong*)(Ptr + EngineLayout.NkWinBufBegin);
+    /// <inheritdoc cref="EngineLayout.NkWinBufEnd"/>
+    public ref ulong BufEnd => ref *(ulong*)(Ptr + EngineLayout.NkWinBufEnd);
+    /// <inheritdoc cref="EngineLayout.NkWinBufLast"/>
+    public ref ulong BufLast => ref *(ulong*)(Ptr + EngineLayout.NkWinBufLast);
+    /// <inheritdoc cref="EngineLayout.NkWinFlags"/>
+    public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.NkWinFlags);
+    /// <inheritdoc cref="EngineLayout.NkWinName"/>
+    public Span<byte> Name { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkWinName), 64); }
+    /// <inheritdoc cref="EngineLayout.NkWinNext"/>
+    public ref IntPtr Next => ref *(IntPtr*)(Ptr + EngineLayout.NkWinNext);
+    /// <inheritdoc cref="EngineLayout.NkWinSeq"/>
+    public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkWinSeq);
 }
 
 /// <summary>Typed view of an engine <c>Nui__JSON__IdNode*</c>.</summary>

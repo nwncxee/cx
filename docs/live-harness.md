@@ -101,6 +101,7 @@ constants at the top of `tools/live/ladder/cxladder.nss` -- change them there, n
 | 16 s | the talker is destroyed (which drops the dialogue UI), three hostile `nw_goblina` spawn, `ActionAttack` | `CXLADDER: combat`, then `combat-result N/3 down` |
 | 30 s | `JumpToLocation` to the second area's stock respawn waypoint -- a real transition with a loading screen | `CXLADDER: area2 <area>` |
 | 43 s | a plain NUI window opens at (400, 260), 300x200, for the window-layer shots | `CXLADDER: nui` |
+| `--nui-close N` | that window is closed N s in, so `07n-nui*.png` catch a fade out; without the flag it stays open | `CXLADDER: nui-close` |
 | 45 s | `JumpToLocation` back to where the PC joined -- the second transition | `CXLADDER: area1` |
 | 48 s | the ladder is finished | `CXLADDER: done in <area>` |
 
@@ -174,6 +175,13 @@ row 2 (`cell#2`). Feed it in with `nui.cardfile`, and point at it with the point
 `nui.cardforce=img` shows the `img` cards as if the pointer rested on an element with that id, so the shot needs no
 pointer. The second run uses the real pointer: row 2 of the list shows its own card, and any other row shows the shared one.
 `nui.cardfile` is read again after the login, which clears a server's policy.
+
+## NUI render keys
+
+`--cfg 'nui.policyprobe=nui.cxladder_nui.opacity=0.5;nui.cxladder_nui.background=0'` sets the server's `nui.<id>.*` keys without
+a server (`docs/ui-policy-contract.md`); the ladder's window id is `cxladder_nui`. `07n-nui*.png` show the result. For a fade in,
+set `fadein` to 30000 and the three shots land inside it. For a fade out, add `fadeout=5000` and run with `--nui-close 45`.
+With `--cfg alloy.enabled=0` the window draws as stock.
 
 ## Limits
 
