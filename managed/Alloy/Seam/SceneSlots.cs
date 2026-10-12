@@ -252,6 +252,7 @@ internal static unsafe class SceneSlots
         }
         if (s.IsNull) return;
         SceneDb.SceneIsWorld[s.Index] = true;
+        SeamShell.NoteScene(SceneDb.SceneFacade[s.Index], world: true);
         TileBuild.InitGrid(s, w, h, border, heightTransition);
         SceneDb.TouchScene(s, Dirty.Tree);
     }

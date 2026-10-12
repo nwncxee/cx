@@ -334,6 +334,8 @@ public static class SceneDb
     /// <summary>The last scene the object joined: what <c>CAurBehaviorCrossSceneAttach::SetScene(old,new)</c>
     /// @0x68c250 keeps at +0x70, so a control the game moved into a viewport scene goes back there.</summary>
     public static readonly DbId[] ObjCrossScene = new DbId[MaxObjects];
+    /// <summary>The object has joined a GUI scene at some point in its life, so its part shells are held at death.</summary>
+    public static readonly bool[] ObjEverInGui = new bool[MaxObjects];
     /// <summary>The object's part range in <see cref="Parts"/>: first part index and count (pre-order, [0] the root).</summary>
     public static readonly int[] ObjPartFirst = new int[MaxObjects], ObjPartCount = new int[MaxObjects];
     /// <summary>Attachment: the object this one rides on and the part (index into <see cref="Parts"/>) it hangs from.</summary>

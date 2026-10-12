@@ -166,7 +166,7 @@ public sealed unsafe class SeamService : IExtenderService
         _periodFrames = 0;
         _log?.Info($"[seam] objects={SceneDb.Objects.Live} parts={SceneDb.Parts.Live} scenes={SceneDb.Scenes.Live} "
                  + $"cameras={SceneDb.Cameras.Live} | {Facade.Stats()} | parts-shells={PartShell.Alive} "
-                 + $"(quarantined {PartShell.Quarantined}) | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}");
+                 + $"(quarantined {PartShell.Quarantined}, gui-held {PartShell.Held}) | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}");
     }
 
     /// <summary>Advance the shell quarantine's clock. Registered on the frame walk, so it ticks on every

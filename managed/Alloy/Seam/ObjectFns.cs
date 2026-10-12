@@ -110,8 +110,6 @@ public sealed unsafe class ObjectFns : ISeamProvider
         SceneDb.ObjKindOf[i] = ObjKind.Model;
         SceneDb.ObjModel[i] = model;
         SceneDb.ObjSeamModelName[i] = resref;
-        SceneDb.ObjScene[i] = default;
-        SceneDb.ObjCrossScene[i] = default;
         SceneDb.SetAttachTo(i, default);
         SceneDb.SetAttachPart(i, -1);
         SceneDb.ObjPos[i] = Vector3.Zero;

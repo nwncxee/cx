@@ -98,25 +98,28 @@ public static unsafe class PartShell
         return SceneDb.Objects.Valid(obj);
     }
 
-    /// <summary>Retire every Part shell of <paramref name="obj"/>. They are QUARANTINED, not freed: the game
-    /// keeps a <c>CAurPart*</c> for the life of a behaviour (<c>CAurBehaviorSubwindow</c> +0x30/+0x38,
-    /// <c>CAurBehaviorAttach</c> +0x30) and calls <c>Part::GetWorld</c> through it every frame, so a freed
-    /// shell is a wild vptr; a retired one keeps vptr and header and answers the identity transform.</summary>
+    /// <summary>Retire every Part shell of <paramref name="obj"/>: QUARANTINED, or <see cref="Held"/> for a GUI
+    /// object, never freed at once. The game keeps a <c>CAurPart*</c> for a behaviour's life (<c>CAurBehaviorSubwindow</c>
+    /// +0x30/+0x38, <c>CAurBehaviorAttach</c> +0x30) and calls <c>Part::GetWorld</c> through it every frame, so a
+    /// freed shell is a wild vptr; a retired one keeps vptr and header and answers the identity transform.</summary>
     public static void FreeAll(DbId obj)
     {
         if (!SceneDb.Objects.Valid(obj)) return;
         nint p = SceneDb.ObjSeamPartShells[obj.Index];
         SceneDb.ObjSeamPartShells[obj.Index] = 0;
+        bool hold = SceneDb.ObjEverInGui[obj.Index];
         while (p != 0)
         {
             Head* h = (Head*)(p - HeadSize);
             nint next = h->Next;
             h->ObjId = 0;                      // retired: Resolve fails, GetWorld takes the poison path
             h->RetiredAt = SeamShell.FrameNo;
+            _alive--;
+            // Held blocks stay readable for GetWorld forever, so the link must not name a block that gets freed.
+            if (hold) { h->Next = 0; _held.Count++; p = next; continue; }
             h->Next = _quarantine;
             _quarantine = p;
             _quarantined++;
-            _alive--;
             p = next;
         }
         Drain();
@@ -149,6 +152,15 @@ public static unsafe class PartShell
 
     /// <summary>Part shells held past their object's death, waiting out the quarantine.</summary>
     public static long Quarantined => _quarantined;
+
+    /// <summary>The GUI part shells <see cref="Held"/> counts.</summary>
+    internal sealed class HeldState { internal long Count; }
+    private static readonly HeldState _held = new();
+
+    /// <summary>Retired part shells whose object was ever in a GUI scene. A GUI behaviour keeps its
+    /// <c>Part*</c> past the object's death, so such a block is never freed: no later part can sit at its
+    /// address. ponytail: held for the session; a GUI-only part pool would let them be reused safely.</summary>
+    public static long Held => _held.Count;
 
     /// <summary><c>Part::GetWorld(Vector&amp;, Quaternion&amp;)</c>: both out-params are references, so they
     /// are pointers on both ABIs and the slot needs no per-OS form. The engine initialises them to
