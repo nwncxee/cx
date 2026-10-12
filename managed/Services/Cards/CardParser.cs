@@ -96,26 +96,26 @@ internal static class CardParser
         return l.ToArray();
     }
 
+    /// <summary>The opacity <c>dim</c> gives a colour: 60%.</summary>
+    private const uint DimAlpha = 0x99;   // not-an-offset: an alpha byte
+
     private static Block Block(JsonElement e, int depth, ref int count)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new Refusal("a block is a JSON object");
         string type = Str(e, "type", "text");
         var b = new Block { Kind = type switch
         {
-            "header" => BlockKind.Header, "subtitle" => BlockKind.Subtitle, "status" => BlockKind.Status, "headline" => BlockKind.Headline,
-            "flavour" => BlockKind.Flavour, "divider" => BlockKind.Divider, "icons" => BlockKind.Icons, "section" => BlockKind.Section,
-            "footer" => BlockKind.Footer, "loading" => BlockKind.Loading, _ => BlockKind.Text,
+            "status" => BlockKind.Status, "divider" => BlockKind.Divider, "icons" => BlockKind.Icons, "section" => BlockKind.Section,
+            "footer" => BlockKind.Footer, _ => BlockKind.Text,
         } };
-        bool dimmed = b.Kind is BlockKind.Subtitle or BlockKind.Flavour;
-        float size = b.Kind switch { BlockKind.Header => 1.3f, BlockKind.Headline => 1.6f, BlockKind.Subtitle or BlockKind.Flavour or BlockKind.Footer => 0.85f, _ => 1f };
-        b.Size = CardLimits.Snap(Num(e, "size", size));
+        b.Size = CardLimits.Snap(Num(e, "size", 1f));
         b.Color = Col(e, "color", 0);
-        if (Bool(e, "dim", dimmed)) b.Color = (b.Color != 0 ? b.Color & 0xFFFFFF00 : 0xFFFFFF00) | 0x99;
-        bool italic = Bool(e, "italic", b.Kind == BlockKind.Flavour);
-        b.Runs = Runs(e, "text", italic);
+        if (Bool(e, "dim", false)) b.Color = (b.Color != 0 ? b.Color & 0xFFFFFF00 : 0xFFFFFF00) | DimAlpha;
+        b.Runs = Runs(e, "text", Bool(e, "italic", false));
         b.Icon = Str(e, "icon", "");
         if (b.Icon.Length > CardLimits.MaxIconName) throw new Refusal("an icon name is too long");
-        b.Frame = Bool(e, "frame", b.Kind == BlockKind.Icons);
+        b.Frame = Bool(e, "frame", false);
+        b.Pulse = Bool(e, "pulse", type == "loading");
         b.Tint = Col(e, "tint", 0);
         switch (b.Kind)
         {

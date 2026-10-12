@@ -18,14 +18,14 @@ internal static class CardSelfCheck
         [{"width":240,"bg":{"from":"#102030","to":"#304050","dir":"v"},"border":"#aabbcc","tab":"Equipped","tabcolor":"#112233","item":"1f",
           "images":[{"src":"gui_x","w":40,"h":40,"at":"tr","dx":20,"dy":-20}],
           "blocks":[
-            {"type":"header","text":"Sword","color":"#3399ff"},
-            {"type":"subtitle","text":"Rare"},
+            {"type":"text","text":"Sword","color":"#3399ff","size":1.3},
+            {"type":"text","text":"Rare","size":0.85,"dim":true},
             {"type":"status","icon":"gui_s","text":"Equipped"},
-            {"type":"headline","text":"2~12 Damage"},
+            {"type":"header","text":"2~12 Damage"},
             {"type":"divider"},
             {"type":"section","tint":"#ffffff10","blocks":[{"type":"text","text":"in <c=#ff0000>red</c>"}]},
-            {"type":"icons","icons":["a","b","c"]},
-            {"type":"flavour","text":"old <i>words</i>"},
+            {"type":"icons","icons":["a","b","c"],"frame":true},
+            {"type":"text","text":"old <i>words</i>","italic":true},
             {"type":"footer","left":"tags","right":"2.7 <icon=w> 211"},
             {"type":"nonsense","text":"degrades"},
             {"type":"nonsense2"}
@@ -87,15 +87,17 @@ internal static class CardSelfCheck
         check.Expect(CardParser.TryParse(Everything, out CardDecl[] cards, out string why) && cards.Length == 1, "a card using every block parses: " + why);
         if (cards.Length != 1) return;
         CardDecl c = cards[0];
-        BlockKind[] kinds = [BlockKind.Header, BlockKind.Subtitle, BlockKind.Status, BlockKind.Headline, BlockKind.Divider, BlockKind.Section,
-            BlockKind.Icons, BlockKind.Flavour, BlockKind.Footer, BlockKind.Text, BlockKind.Text];
+        BlockKind[] kinds = [BlockKind.Text, BlockKind.Text, BlockKind.Status, BlockKind.Text, BlockKind.Divider, BlockKind.Section,
+            BlockKind.Icons, BlockKind.Text, BlockKind.Footer, BlockKind.Text, BlockKind.Text];
         bool order = c.Blocks.Length == kinds.Length;
         for (int i = 0; order && i < kinds.Length; i++) order = c.Blocks[i].Kind == kinds[i];
         check.Expect(order, "the blocks come back in order, an unknown type as text");
         check.Expect(c.BgFrom == 0x102030FF && c.BgTo == 0x304050FF && !c.Horizontal && c.Border == 0xAABBCCFF && c.Tab == "Equipped" && c.Width == 240f && c.Item == "1f",
             "card fields: gradient, border, tab, width, item");
-        check.Expect(c.Blocks[0].Color == 0x3399FFFF && c.Blocks[0].Size == 1.3f && c.Blocks[1].Size == 0.85f && c.Blocks[1].Color == 0xFFFFFF99, "header colour and size, subtitle dim");
-        check.Expect(c.Blocks[7].Runs[0].Italic && c.Blocks[7].Runs[1].Italic, "flavour is italic");
+        check.Expect(c.Blocks[0].Color == 0x3399FFFF && c.Blocks[0].Size == 1.3f && c.Blocks[1].Size == 0.85f && c.Blocks[1].Color == 0xFFFFFF99, "a declared colour and size, a dim line");
+        check.Expect(c.Blocks[7].Runs[0].Italic && c.Blocks[7].Runs[1].Italic, "italic on the block makes every run italic");
+        check.Expect(c.Blocks[3].Size == 1f && c.Blocks[3].Color == 0 && !c.Blocks[3].Runs[0].Italic && !c.Blocks[3].Pulse && !c.Blocks[2].Frame && c.Blocks[8].Size == 1f,
+            "an old preset name and every undeclared field draw plain: size 1, the default colour, upright, no frame, no pulse");
         check.Expect(c.Blocks[5].Kids.Length == 1 && c.Blocks[5].Tint == 0xFFFFFF10 && c.Blocks[6].Icons.Length == 3 && c.Blocks[6].Frame, "section tint and kids, a framed icon row");
         check.Expect(c.Blocks[8].Runs.Length == 1 && c.Blocks[8].Right.Length == 3 && c.Blocks[8].Right[1].Icon == "w", "footer left and right, an inline icon on the right");
         check.Expect(c.Images.Length == 1 && c.Images[0].At == Anchor.TopRight && c.Images[0].Dx == 20f && c.Images[0].Dy == -20f, "an image anchored top right, pushed out");
@@ -122,18 +124,18 @@ internal static class CardSelfCheck
         check.Expect(Near(v.H, 62f), $"140 px of text holds three words (128) and wraps the fourth: two lines, 10 + 40 + 2 + 10 = 62 ({v.H})");
         v = Lay(atlas, "{\"width\":160,\"blocks\":[{\"text\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}]}");
         check.Expect(Near(v.H, 42f), "one word wider than the card stays on one line and runs past the edge");
-        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"headline\",\"text\":\"ab\"}]}");
-        check.Expect(Near(v.H, 10f + 32f + 2f + 10f), $"a headline at 1.6 is 20 * 1.6 = 32 px tall ({v.H})");
+        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"ab\",\"size\":1.6}]}");
+        check.Expect(Near(v.H, 10f + 32f + 2f + 10f), $"a line at size 1.6 is 20 * 1.6 = 32 px tall ({v.H})");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"header\",\"text\":\"ab\"}]}");
-        check.Expect(Near(v.H, 10f + 26f + 10f), $"a header at 1.3 is 26 px tall with no gap below ({v.H})");
+        check.Expect(Near(v.H, 10f + 20f + 2f + 10f), $"an old preset name lays out as plain text, 20 px and its gap ({v.H})");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"ab<br>cd\"}]}");
         check.Expect(Near(v.H, 10f + 40f + 2f + 10f), "<br> starts a second line");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"status\",\"icon\":\"gui_s\",\"text\":\"ab\"}]}");
         check.Expect(Near(v.H, 10f + 22f + 4f + 10f) && v.Icons.Count == 1 && v.Icons[0].Src == "gui_s" && Near(v.Icons[0].X, 10f) && Near(v.Icons[0].W, 22f),
             "a status row is as tall as its 22 px icon, the icon sits at the left padding");
-        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"icons\":[\"a\",\"b\",\"c\"]}]}");
+        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"frame\":true,\"icons\":[\"a\",\"b\",\"c\"]}]}");
         check.Expect(Near(v.H, 10f + 28f + 4f + 10f) && v.Icons.Count == 3 && Near(v.Icons[1].X, 10f + 2f + 32f), "three framed 28 px icons share a row, 32 px apart");
-        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"icons\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\"]}]}");
+        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"frame\":true,\"icons\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\"]}]}");
         check.Expect(Near(v.H, 10f + 60f + 4f + 10f) && Near(v.Icons[5].Y, 10f + 32f + 2f), "seven icons wrap after the fifth: 180 px holds 5 of 32");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"divider\"}]}");
         check.Expect(Near(v.H, 27f), "a divider is 7 px");
@@ -255,9 +257,11 @@ internal static class CardSelfCheck
 
         check.Expect(Near(CardPulse.Alpha(0), 0.675f) && Near(CardPulse.Alpha(300), 1f) && Near(CardPulse.Alpha(900), 0.35f) && Near(CardPulse.Alpha(1200), 0.675f), "the pulse fades between 0.35 and 1 once every 1200 ms");
         CardView v = Lay(atlas, standIn);
-        check.Expect(v.Pulse != null && v.Pulse.VertexCount > 0 && v.Text.VertexCount == 0 && Near(v.H, 42f), "a loading block's text is the pulsing batch, laid out like a text block");
+        check.Expect(v.Pulse != null && v.Pulse.VertexCount > 0 && v.Text.VertexCount == 0 && Near(v.H, 42f), "a loading block is a text block that pulses");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"abab\"}]}");
         check.Expect(v.Pulse == null && v.Text.VertexCount > 0, "a text block does not pulse");
+        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"abab\",\"pulse\":true}]}");
+        check.Expect(v.Pulse != null && v.Pulse.VertexCount > 0 && v.Text.VertexCount == 0, "pulse on a text block makes it pulse");
 
         var p = new CardPresenter { Face = m => (atlas, m) };
         long t0 = clock() + 100 * f;

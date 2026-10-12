@@ -1,7 +1,7 @@
 # UI policy: what a CX-aware server may set, and how
 
 **Status:** built on the client (`managed/Framework/ServerPolicy.cs`), and the reference server implements the server end.
-The first consumer is the inventory window (`managed/Services/Inventory/`).
+The inventory window (`managed/Services/Inventory/`) reads it too.
 
 The player configures CX with knobs (ADR 0025). A server may lay a **policy** over that configuration for the
 length of a session, the way a directory policy sits over a workstation's own settings: it can **hold** any knob
@@ -32,7 +32,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `2`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
+| `cx_cap_card` | `3`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_modelview` | `1`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview` |
 | `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
@@ -129,8 +129,8 @@ A card is a panel CX draws beside a NUI element while the pointer rests on it: a
 text and icons the server wants shown. The server declares it once, in a `card.<key>` line of `PolicySet`, when it
 opens the window. Never send one on hover. CX lays out what the line says and adds no design of its own.
 
-Send a card only to a client that advertises `cx_cap_card`, and send the plain NUI tooltip only to a client that does
-not. CX does not hide a NUI tooltip when it draws a card, so a server that sends both gets both.
+A client that does not advertise `cx_cap_card` draws no cards. CX does not hide a NUI tooltip when it draws a card, so a
+server that sends both gets both.
 
 ### Keys
 
@@ -182,27 +182,23 @@ A colour is `"#RRGGBB"` or `"#RRGGBBAA"`.
 | `blocks` | the blocks, drawn top to bottom |
 | `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-256, default 64), `at` (`tl`, `tr`, `bl`, `br`, default `tr`; any other value is refused), `dx`, `dy` (px right and down from the corner, clamped to -256..256; a push out of the card makes the image overflow it) |
 
-Every block has a `type`. Text blocks read `text` (markup, below), `size`, `color`, `dim` and `italic`; the fields a
-type reads are listed here.
+Every block has a `type`. Text blocks read `text` (markup, below), `size` (default 1), `color`, `dim`, `italic` and `pulse`,
+all off unless declared; the fields a type reads are listed here.
 
 | type | draws | fields |
 |---|---|---|
-| `header` | a title line, size 1.3 | `text`, `color` |
-| `subtitle` | a dim small line, size 0.85 | `text` |
-| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, clamped to 12-64, default 22), `frame` (a frame round the icon) |
-| `headline` | a large line, size 1.6 | `text` |
 | `text` | wrapped text | `text` |
-| `flavour` | dim italic wrapped text, size 0.85 | `text` |
+| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, clamped to 12-64, default 22), `frame` (a frame round the icon) |
 | `divider` | a thin rule across the full card | `color` |
-| `icons` | a row of icons, wrapping, each in a frame | `icons` (up to 16 names, more is refused), `px` (clamped to 12-64, default 28), `frame` (default true) |
+| `icons` | a row of icons, wrapping | `icons` (up to 16 names, more is refused), `px` (clamped to 12-64, default 28), `frame` (a frame round each icon) |
 | `section` | blocks on a tinted band across the full card | `blocks`, `tint` |
-| `loading` | text that pulses between 35% and full opacity every 1.2 s | `text`, `color`, `size` |
-| `footer` | a band at the foot: `left` text and `right` text on one line | `left`, `right`, `tint`, `size` (default 0.85) |
+| `footer` | a band at the foot: `left` text and `right` text on one line | `left`, `right`, `tint`, `size` |
 
 - `size` is a multiple of the player's text size, snapped to 0.7, 0.85, 1, 1.15, 1.3, 1.6 or 2.
-- `dim` lowers the colour's opacity to 60%. `subtitle` and `flavour` are dim by default, and `flavour` italic.
+- `dim` lowers the colour's opacity to 60%.
+- `pulse` fades the block's text between 35% and full opacity every 1.2 s. `loading` is a `text` block with `pulse` on.
 - A `section` holds blocks, and sections nest two deep.
-- A block with an unknown `type` draws as `text`, so a client without `loading` still shows its text. With no `text` it draws nothing.
+- A block with an unknown `type` draws as `text`. With no `text` it draws nothing.
 
 ### Data that arrives late
 
@@ -214,7 +210,7 @@ element's card exists. Send one small stand-in per id family when the window ope
 - The card on screen is swapped in place when its key gains a better match, or the key's own line changes. CX redraws it with no hide, no
   new wait and no fade, and places it again if its size changed.
 - `{item.name}` and `{item.stack}` fill a stand-in with real data and need no round trip, because the client already knows the item.
-- A `loading` block marks what is still on its way.
+- A `pulse` block can mark what is still on its way.
 
 ### Text markup
 

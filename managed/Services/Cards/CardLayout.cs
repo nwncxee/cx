@@ -23,7 +23,7 @@ internal sealed class CardView
 {
     public float W, H, TabH;
     public readonly VertexBatch Back, Text;
-    /// <summary>The glyphs of every <c>loading</c> block, drawn pulsing; null when the card has none.</summary>
+    /// <summary>The glyphs of every <c>pulse</c> block, drawn pulsing; null when the card has none.</summary>
     public VertexBatch? Pulse;
     public readonly List<IconDraw> Icons = [];
 
@@ -144,13 +144,11 @@ internal sealed class CardLayout
                 return Footer(b, x, y, w, fullW, emit);
             case BlockKind.Status:
                 return Status(b, x, y, w, emit) + gap;
-            case BlockKind.Loading:
-                _pulse = true;
+            default:
+                _pulse = b.Pulse;
                 float lh = Flow(b.Runs, x, y, w, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, emit);
                 _pulse = false;
                 return y + lh + gap * 0.5f;
-            default:
-                return y + Flow(b.Runs, x, y, w, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, emit) + (b.Kind == BlockKind.Header ? 0f : gap * 0.5f);
         }
     }
 

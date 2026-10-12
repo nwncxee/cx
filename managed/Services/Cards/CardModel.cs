@@ -3,7 +3,7 @@ using System;
 namespace CX.Services.Cards;
 
 /// <summary>The kinds of block a card is stacked from. An unknown <c>type</c> in a declaration parses as <see cref="Text"/>.</summary>
-internal enum BlockKind { Header, Subtitle, Status, Headline, Text, Flavour, Divider, Icons, Section, Footer, Loading }
+internal enum BlockKind { Status, Text, Divider, Icons, Section, Footer }
 
 /// <summary>Which corner of a card an image is anchored to.</summary>
 internal enum Anchor { TopLeft, TopRight, BottomLeft, BottomRight }
@@ -31,7 +31,7 @@ internal sealed class Block
     public BlockKind Kind;
     public Run[] Runs = [], Right = [];
     public string Icon = "";
-    public bool Frame;
+    public bool Frame, Pulse;
     public uint Color, Tint;
     public float Size;
     public string[] Icons = [];

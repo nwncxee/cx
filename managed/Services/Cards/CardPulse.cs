@@ -2,7 +2,7 @@ using System;
 
 namespace CX.Services.Cards;
 
-/// <summary>The animation of a <c>loading</c> block: its text fades between <see cref="Min"/> and full opacity on a smooth wave.</summary>
+/// <summary>The animation of a <c>pulse</c> text block: its text fades between <see cref="Min"/> and full opacity on a smooth wave.</summary>
 internal static class CardPulse
 {
     /// <summary>The faintest the text gets, as a share of its own opacity.</summary>
