@@ -25,3 +25,6 @@ cx_bakefinish_f	CX-215
 # The growing page array, replaced by a fixed pool sized by lightmap.vram.
 \blightmap\.(pages|growslice)\b	CX-216
 \bgrowslice\b	CX-216
+# The coverage-source predicate, renamed: it answers "has a source BOTH stages can sample", which stopped
+# meaning "from the diffuse" when the palette pair brought its own map.
+\bFromDiffuse\b	CX-227

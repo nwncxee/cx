@@ -1,7 +1,7 @@
 // The cutout, then #363's dither: the body every masked depth stage runs.
     // CX-223: a palette-tint caster's coverage is its own map, not the diffuse alpha -- the same source the
-    // colour draw reads (CoverageLayer.FromDiffuse), so the shadow drops the texels the draw drops. Only the
-    // HANDLE stage can ask: the plain one carries no record index, and the maps are handles either way.
+    // colour draw reads (CoverageLayer.HasCoverageSource), so the shadow drops the texels the draw drops.
+    // Only the HANDLE stage can ask: the plain one carries no record index, and the maps are handles anyway.
     float t = texture(uTex, vUV).a;
     float tmip = uAlphaMip;
     vec2 tsize = vec2(textureSize(uTex, 0));
