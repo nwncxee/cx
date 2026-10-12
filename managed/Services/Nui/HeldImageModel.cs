@@ -20,8 +20,8 @@ internal enum HeldKind
 
 /// <summary>
 /// The show, hide and clear rules for the held image, with no engine in them. A value shows its image, an empty one
-/// hides it, and a hold clears itself once NUI has drawn no widget for <see cref="GraceMs"/>. A <see cref="Pick"/> shows
-/// pending until a <c>held.image</c> line answers or <c>held.confirm</c> ms pass.
+/// hides it, and a hold clears itself once NUI has drawn no widget for <see cref="GraceMs"/> or the window it began over is
+/// gone (<see cref="Release"/>). A <see cref="Pick"/> shows pending until a <c>held.image</c> line answers or <c>held.confirm</c> ms pass.
 /// </summary>
 internal sealed class HeldImageModel
 {
@@ -82,6 +82,15 @@ internal sealed class HeldImageModel
         _pickAt = nowMs; _confirmMs = confirmMs; _pickStamp = stamp;
         _drawn = drawn; _drawnAt = nowMs;
         return changed;
+    }
+
+    /// <summary>The window the hold came from is gone: drop it now. True when something was held.</summary>
+    public bool Release()
+    {
+        bool was = Active;
+        Pending = false;
+        Set("");
+        return was;
     }
 
     private bool Set(string value)
@@ -155,6 +164,10 @@ internal sealed class HeldImageModel
         check.Expect(!m.Active, "the knob off hides what the server sent");
         m.Update(11, true, "iit_belt", 11, false, 3020);
         check.Expect(!m.Update(11, true, null, 11, false, 99999) && m.Active, "with no NUI counter wired the hold never times out");
+        m.Update(12, true, "iit_belt", 11, true, 4000);
+        check.Expect(m.Release() && !m.Active && !m.Release(), "a release drops the hold once");
+        m.Pick("iit_belt", 4100, 1000, 0, 11);
+        check.Expect(m.Release() && !m.Pending && !m.Active, "a release also drops a pending pick");
         log.Info(check.Ok ? "HeldImageModel.SelfCheck: passed" : "HeldImageModel.SelfCheck: FAILED");
     }
 }

@@ -57,7 +57,7 @@ internal static unsafe class NuiHitTest
 {
     /// <summary>The flags that take a window out of hit tests (hidden, closed).</summary>
     private const uint WinOutOfPlay = 0x4400;  // not-an-offset: NK_WINDOW_HIDDEN | NK_WINDOW_CLOSED
-    private const int MaxNodes = 100_000, MaxWindows = 256;
+    private const int MaxNodes = 100_000, MaxWindows = 256, NkWindowNameBytes = 64;
 
     private sealed class NuiHitState
     {
@@ -72,6 +72,13 @@ internal static unsafe class NuiHitTest
         public int CapLen, Depth, PendingDepth;
         public NuiImageBuf Cap;
         public NkSdlRenderFn* NkSlot;
+        /// <summary>The engine's <c>nk_context*</c> global, and the one window <see cref="WatchTopWindow"/> follows: its nuklear name,
+        /// whether it is followed, whether a pick is waiting, and whether it was last seen gone.</summary>
+        public IntPtr* CtxSlot;
+        public readonly byte[] WatchName = new byte[NkWindowNameBytes];
+        public volatile bool Watching, WatchWant, WatchGone;
+        /// <summary>Read nuklear's pointer even when SDL's is there: a self-check lays the pointer out in fake nuklear memory.</summary>
+        public bool UseNkPointer;
         public ExtenderLog? Log;
         public Knob<bool>? Debug;
         public long Hits, TooLong;
@@ -95,10 +102,13 @@ internal static unsafe class NuiHitTest
         }
         s.ArrayIndex = (int*)Native.Sym(SymbolMap.NuiArrayIndex);
         s.Space = Native.Sym(SymbolMap.NkLayoutWidgetSpace);
+        s.CtxSlot = (IntPtr*)Native.Sym(SymbolMap.Nuklear);
         s.WindowOrig = hooks.InstallNuiJsonWindowRender(&OnWindowRender);
         s.NkSlot = hooks.ChainNkSdlRender(&OnFlush, FlushPriority);
+        // Linux-only: the image name of the hit. Windows has no standalone cache look-up to hook (SymbolMap.NuiGetImageWithCache), so a hit there carries no image.
         if (!OperatingSystem.IsWindows())
             s.ImageOrig = hooks.Install(SymbolMap.NuiGetImageWithCache, (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)&OnGetImage);
+        else log.Always("NuiHitTest: Linux-only image name -- on Windows a hit has its element and row but no image, so cards keyed on an item image stay off");
         s.Armed = s.ArrayIndex != null && s.Space != IntPtr.Zero && s.WindowOrig != null && s.NkSlot != null;
         if (!s.Armed) log.Always("NuiHitTest: JsonWindow::Render, nk_sdl_render or the row global did not resolve -- the pointer's NUI element is unknown");
     }
@@ -151,7 +161,82 @@ internal static unsafe class NuiHitTest
     private static void OnFlush(float aa)
     {
         Publish(_s);
+        TrackWindow(_s);
         (*_s.NkSlot)(aa);
+    }
+
+    /// <summary>Follow the topmost NUI window under the pointer as of the next frame: <see cref="TakeWindowGone"/> turns true once
+    /// nuklear no longer builds a window of that name. Nothing is followed when the pointer is over none.</summary>
+    internal static void WatchTopWindow()
+    {
+        var s = _s;
+        s.Watching = false;
+        s.WatchGone = false;
+        s.WatchWant = s.CtxSlot != null;
+    }
+
+    /// <summary>Stop following the window.</summary>
+    internal static void StopWatching()
+    {
+        var s = _s;
+        s.WatchWant = s.Watching = s.WatchGone = false;
+    }
+
+    /// <summary>True once, when the followed window stopped being built.</summary>
+    internal static bool TakeWindowGone()
+    {
+        var s = _s;
+        if (!s.WatchGone) return false;
+        s.WatchGone = false;
+        return true;
+    }
+
+    /// <summary>The pointer where the held image is drawn, which is SDL's. Nuklear's own position when SDL's is not there.</summary>
+    private static bool HeldPointer(IntPtr ctx, out float x, out float y)
+    {
+        if (EngineFn.SdlGetMouseState == null || _s.UseNkPointer) return Pointer(ctx, out x, out y);
+        int ix = 0, iy = 0;
+        EngineFn.SdlGetMouseState(&ix, &iy);
+        x = ix; y = iy;
+        return true;
+    }
+
+    /// <summary>Once per frame at the flush, when every window begun this frame carries the context's <c>seq</c>: pick the window to
+    /// follow if one was asked for, and say when the followed one is no longer among them.</summary>
+    private static void TrackWindow(NuiHitState s)
+    {
+        if (!s.WatchWant && !s.Watching) return;
+        IntPtr ctx = *s.CtxSlot;
+        if (ctx == IntPtr.Zero) return;
+        var c = new NkContext(ctx);
+        uint seq = c.Seq;
+        if (s.WatchWant)
+        {
+            s.WatchWant = false;
+            if (!HeldPointer(ctx, out float mx, out float my)) return;
+            IntPtr top = IntPtr.Zero;
+            int n = 0;
+            for (IntPtr w = c.WindowBegin; w != IntPtr.Zero && n < MaxWindows; w = new NkWindow(w).Next, n++)
+            {
+                var win = new NkWindow(w);
+                Span<float> r = win.Bounds;
+                if (win.Seq == seq && (win.Flags & WinOutOfPlay) == 0 && Contains(r[0], r[1], r[2], r[3], mx, my)) top = w;
+            }
+            if (top == IntPtr.Zero) { s.Log?.Info($"NuiHitTest: the pointer ({mx},{my}) is over no NUI window -- none followed"); return; }
+            new NkWindow(top).Name.CopyTo(s.WatchName);
+            s.Watching = true;
+            s.Log?.Info($"NuiHitTest: following {System.Text.Encoding.UTF8.GetString(s.WatchName.AsSpan(0, Array.IndexOf(s.WatchName, (byte)0) is var z and >= 0 ? z : NkWindowNameBytes))}");
+            return;
+        }
+        int seen = 0;
+        for (IntPtr w = c.WindowBegin; w != IntPtr.Zero && seen < MaxWindows; w = new NkWindow(w).Next, seen++)
+        {
+            var win = new NkWindow(w);
+            if (win.Seq == seq && (win.Flags & WinOutOfPlay) == 0 && win.Name.SequenceEqual(s.WatchName)) return;
+        }
+        s.Watching = false;
+        s.WatchGone = true;
+        s.Log?.Info("NuiHitTest: the followed window is gone");
     }
 
     /// <summary>The latest published frame's hit. False when nothing was under the pointer. Safe from any thread; a
@@ -398,7 +483,7 @@ internal static unsafe class NuiHitTest
                 "an image-cache key loses its type suffix and a bare resref keeps all of it");
 
             int row = 7;
-            var s = new NuiHitState { Window = map, ArrayIndex = &row };
+            var s = new NuiHitState { Window = map, ArrayIndex = &row, UseNkPointer = true };
             _s = s;
             Begin();
             Record(widget, in box);
@@ -425,6 +510,31 @@ internal static unsafe class NuiHitTest
             Record((IntPtr)0x2222, in cell);
             Publish(s);
             check.Expect(TryGet(out h) && h.Element == 0x2222, "of two siblings at one depth the later one wins");
+
+            IntPtr ctxCell = ctx;
+            s.CtxSlot = &ctxCell;
+            new NkContext(ctx).WindowBegin = win;
+            new NkContext(ctx).Seq = 5;
+            new NkWindow(win).Seq = 5; new NkWindow(above).Seq = 5;
+            "JsonWindow::a"u8.CopyTo(new NkWindow(win).Name);
+            "JsonWindow::b"u8.CopyTo(new NkWindow(above).Name);
+            Mouse(50, 30);
+            WatchTopWindow();
+            TrackWindow(s);
+            check.Expect(s.Watching && s.WatchName.AsSpan(0, 13).SequenceEqual("JsonWindow::b"u8), "the window stacked on top at the pointer is the one followed");
+            TrackWindow(s);
+            check.Expect(!TakeWindowGone(), "a window begun this frame is not gone");
+            new NkWindow(win).Seq = 4;
+            TrackWindow(s);
+            check.Expect(!TakeWindowGone(), "another window dropping out does not end the follow");
+            new NkWindow(above).Seq = 4;
+            TrackWindow(s);
+            check.Expect(TakeWindowGone() && !s.Watching && !TakeWindowGone(), "a window not begun this frame is gone, once");
+            new NkWindow(win).Seq = 5;
+            Mouse(300, 300);
+            WatchTopWindow();
+            TrackWindow(s);
+            check.Expect(!s.Watching, "a pointer over no window follows none");
         }
         finally
         {

@@ -1,5 +1,5 @@
 //::///////////////////////////////////////////////
-//:: cxnui -- a fixed NUI window for the live harness
+//:: cxnui -- a fixed NUI window for the live harness, and a second small one beside it
 //:: Module OnClientEnter. Once the PC stands in an area it is given a torch and,
 //:: three seconds later, opens one NUI window at a known place whose elements carry JSON ids: a label,
 //:: an @item: image with a tooltip, and a list whose row template has one id'd
@@ -51,6 +51,24 @@ void Strip(object oPC, string sTag)
     Mark("strip " + sTag);
 }
 
+void CloseWindow(object oPC, int nToken, string sId)
+{
+    NuiDestroy(oPC, nToken);
+    Mark("close " + sId);
+}
+
+// A second, small window that outlives the first: the held image follows the window the pointer was over, so closing the first
+// one must end the hold while this one stays open.
+void OpenSecond(object oPC)
+{
+    json jLabel = NuiLabel(JsonString("second window"), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE));
+    json jWin = NuiWindow(NuiCol(JsonArrayInsert(JsonArray(), jLabel)), JsonString("CX second"), NuiRect(400.0, 20.0, 220.0, 100.0),
+                          JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
+    int nToken = NuiCreate(oPC, jWin, WINDOW_ID + "2");
+    Mark("open second token " + IntToString(nToken));
+    DelayCommand(WINDOW_LIFE * 2.0, CloseWindow(oPC, nToken, WINDOW_ID + "2"));
+}
+
 void OpenWindow(object oPC)
 {
     object oTorch = GetItemPossessedBy(oPC, TORCH_TAG);
@@ -88,7 +106,8 @@ void OpenWindow(object oPC)
     DelayCommand(10.0, Strip(oPC, "CXNUI_SHIELD"));
     DelayCommand(13.0, Strip(oPC, "CXNUI_SWORD"));
     DelayCommand(16.0, Change(oPC));
-    DelayCommand(WINDOW_LIFE, NuiDestroy(oPC, nToken));
+    OpenSecond(oPC);
+    DelayCommand(WINDOW_LIFE, CloseWindow(oPC, nToken, WINDOW_ID));
 }
 
 void Arm(object oPC, int nTry)

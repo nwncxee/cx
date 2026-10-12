@@ -76,6 +76,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         var activity = NuiService.Activity;
         int stamp = s.Model.Pending ? ServerPolicy.Stamp(Key) : 0;
         if (s.Model.Update(epoch, on, value, activity.Drawn, activity.Counting, now, stamp)) Changed(s);
+        if (s.Model.Active && NuiHitTest.TakeWindowGone() && s.Model.Release()) Changed(s);
         string? pick = s.PickReq;
         if (pick != null)
         {
@@ -124,6 +125,7 @@ public sealed unsafe class HeldImageService : IExtenderService
     {
         if (s.Minted != IntPtr.Zero) { NuiItemIcons.Destroy(s.Minted); s.Minted = IntPtr.Zero; }
         HeldImageModel m = s.Model;
+        if (m.Active) NuiHitTest.WatchTopWindow(); else NuiHitTest.StopWatching();
         s.Log?.Info($"HeldImage: {(m.Active ? "holding " + m.Kind + " " + m.Name : "released")}");
         if (m.Kind == HeldKind.Look)
         {

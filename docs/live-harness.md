@@ -222,7 +222,32 @@ With `--cfg alloy.enabled=0` the window draws as stock.
 
 `--cfg 'nui.heldprobe=iit_belt'` with `--ladder` sends the client a `held.image` line at the first NUI draw 50 s after
 boot, which is the rung's NUI window. The ladder moves the pointer over that window first, so `07n-nui*.png` shows the
-image under it. The hold ends when the window closes. Run it with and without `--cfg 'alloy.enabled=0'`.
+image under it. Run it with and without `--cfg 'alloy.enabled=0'`.
+
+The hold follows the NUI window the pointer was over as it began, and ends when that window closes. `--nui` opens a second,
+smaller window (`cxnui2`) that outlives the first, which closes 60 s after it opens (`CXNUI: close cxnui`). Park the pointer over
+the first window and probe the hold:
+
+    tools/live/run-live.sh --nui --seconds 110 --cfg 'nui.heldprobe=iit_belt' \
+        --keys 'move:100,100;sleep:60000;shot:<dir>/held.png'
+
+`cx.log` then has `HeldImage: holding Resref iit_belt` at the probe and `HeldImage: released` within a frame of `CXNUI: close
+cxnui`, while the second window is still drawing.
+
+## NUI debug knobs
+
+These knobs are `ChatOnly` and exist for building and testing. None is advertised, and none changes what a server sees.
+
+| knob | what it does |
+|---|---|
+| `nui.cardfile` | a file of `card.<key>=` policy lines read as if a server had sent them; read again after a login |
+| `nui.cardlate` | `<seconds>:<file>`, a second file applied that long after the card file |
+| `nui.cardforce` | shows one key's cards as if the pointer rested on an element with that id |
+| `nui.heldprobe` | holds this image at the first NUI draw 50 s after boot, as `held.image` would |
+| `nui.policyprobe` | `key=value;key=value` window render properties, read under whatever a server sends |
+
+`tools/live/ladder/cards-look.policy` is a card for `img` whose image and icon row are an `@look:`; run it with
+`nui.cardfile=<path to cards-look.policy>` and `nui.cardforce=img`.
 
 ## Model view
 

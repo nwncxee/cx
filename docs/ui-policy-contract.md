@@ -1,7 +1,7 @@
 # UI policy: what a CX-aware server may set, and how
 
-**Status:** client side built (`managed/Framework/ServerPolicy.cs`); no server sends it yet. The first consumer is
-the inventory window (`managed/Services/Inventory/`).
+**Status:** built on the client (`managed/Framework/ServerPolicy.cs`), and the reference server implements the server end.
+The first consumer is the inventory window (`managed/Services/Inventory/`).
 
 The player configures CX with knobs (ADR 0025). A server may lay a **policy** over that configuration for the
 length of a session, the way a directory policy sits over a workstation's own settings: it can **hold** any knob
@@ -14,10 +14,10 @@ button, route an action to the server). The player's own values are never overwr
 One message family, the existing CX device major (CLAUDE.md: reuse an opcode; a stock client discards an unknown
 minor with one trace line, the research on CX-152 §6.6).
 
-| direction | major | minor | payload (ASCII, at offset 3) |
+| direction | major | minor | payload (at offset 3) |
 |---|---|---|---|
-| server → client | `0x36` | `0x47` `PolicySet` | lines of `key=value`, `\n`-separated |
-| client → server | `0x36` | `0x48` `UiEvent` | `action;arg;arg…` |
+| server → client | `0x36` | `0x47` `PolicySet` | UTF-8 lines of `key=value`, `\n`-separated |
+| client → server | `0x36` | `0x48` `UiEvent` | ASCII `action;arg;arg…` |
 
 Send `PolicySet` only to a client that advertised `cx_enabled = 1` (`docs/hotkeys-server-contract.md`). Messages
 accumulate; send as many as you like.
@@ -72,11 +72,13 @@ NUI window underneath.
 `<image>` is a texture resref, `@item:<hex>` or `@look:<hex>`, spelled as in a NUI image. Any other name (a model
 view, a malformed resref) holds the cursor and draws nothing. The image is 32 px a cell at the GUI scale.
 
-The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself
-when no NUI widget has drawn for half a second, so a lost empty line cannot leave a ghost once the last NUI window
-is closed. While any other NUI window stays open CX cannot tell that the one that held the image closed: send the empty
-value when your window closes. A client with `cx_cap_heldimage` absent or `0` ignores the key, so keep the plain NUI
-drag for it. The cursor swap is Linux-only for now.
+The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself, so a
+lost empty line cannot leave a ghost:
+
+- when the NUI window the pointer was over as the hold began is closed, even while other NUI windows stay open;
+- when no NUI widget has drawn for half a second, which covers a hold that began with the pointer over no NUI window.
+
+A client with `cx_cap_heldimage` absent or `0` ignores the key, so keep the plain NUI drag for it.
 
 #### Optimistic pick
 
@@ -148,8 +150,8 @@ A card is found by the element the pointer is over. CX tries these keys in order
   for the rest.
 - `<hex>` of an `@item:` key is the item's `ObjectToString`, lowercase, with no leading zeros.
 - A `@look:` key matches on its first 96 bytes, which is as much of the image name as CX keeps.
-- Image keys work on Linux only, because only the Linux client reads the image name an element draws. On Windows
-  key every card by `id`.
+- Image keys work on Linux only, because only the Linux client reads the image name an element draws. The Windows client
+  logs this once at start. On Windows key every card by `id`.
 - Keys compare without regard to case, so ids that differ only by case share a card. A key is at most 96 bytes, and
   a client holds at most 256.
 
@@ -164,20 +166,21 @@ declaration CX refuses is logged, and its key keeps no card.
 The value is JSON, on one line (a line break inside a text is the JSON escape `\n`), in UTF-8, at most 12,000 bytes.
 It is one card object or an array of one to four. Several cards draw side by side, left to right, in the order
 declared. A field CX does not know is ignored. A field it knows with the wrong type, a colour that does not parse or
-a value over a limit refuses the whole line.
+a count or length over a limit (see [Limits](#limits)) is **refused**, and the whole line with it. A size that has a range is
+**clamped** into it instead.
 
 A colour is `"#RRGGBB"` or `"#RRGGBBAA"`.
 
 | card field | meaning |
 |---|---|
-| `width` | design px, 160-480, default 300 |
+| `width` | design px, clamped to 160-480, default 300 |
 | `bg` | a colour, or `{"from": colour, "to": colour, "dir": "v" or "h"}` for a gradient (`v`: top to bottom, the default) |
 | `border` | the 1 px frame, a colour |
 | `tab` | a label on a tab above the card's top left corner |
 | `tabcolor` | the tab's background colour |
 | `item` | the item's hex id, for `{item.name}` and `{item.stack}` in this card; without it they use the item the element draws as an `@item:` image |
 | `blocks` | the blocks, drawn top to bottom |
-| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, up to 256), `at` (`tl`, `tr`, `bl`, `br`, default `tr`), `dx`, `dy` (px right and down from the corner; a push out of the card makes the image overflow it) |
+| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-256, default 64), `at` (`tl`, `tr`, `bl`, `br`, default `tr`; any other value is refused), `dx`, `dy` (px right and down from the corner, clamped to -256..256; a push out of the card makes the image overflow it) |
 
 Every block has a `type`. Text blocks read `text` (markup, below), `size`, `color`, `dim` and `italic`; the fields a
 type reads are listed here.
@@ -186,12 +189,12 @@ type reads are listed here.
 |---|---|---|
 | `header` | a title line, size 1.3 | `text`, `color` |
 | `subtitle` | a dim small line, size 0.85 | `text` |
-| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, default 22), `frame` (a frame round the icon) |
+| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, clamped to 12-64, default 22), `frame` (a frame round the icon) |
 | `headline` | a large line, size 1.6 | `text` |
 | `text` | wrapped text | `text` |
 | `flavour` | dim italic wrapped text, size 0.85 | `text` |
 | `divider` | a thin rule across the full card | `color` |
-| `icons` | a row of icons, wrapping, each in a frame | `icons` (up to 16 names), `px` (default 28), `frame` (default true) |
+| `icons` | a row of icons, wrapping, each in a frame | `icons` (up to 16 names, more is refused), `px` (clamped to 12-64, default 28), `frame` (default true) |
 | `section` | blocks on a tinted band across the full card | `blocks`, `tint` |
 | `loading` | text that pulses between 35% and full opacity every 1.2 s | `text`, `color`, `size` |
 | `footer` | a band at the foot: `left` text and `right` text on one line | `left`, `right`, `tint`, `size` (default 0.85) |
@@ -233,16 +236,22 @@ when the client does not know the item.
 
 ### Images and icons
 
-An icon or image `src` is a texture resref (up to 16 characters) or `@item:<hex>`, which draws that item's inventory
-icon in its own colours. A name that does not resolve draws nothing, never an error sprite. `@look:` is reserved and
-draws nothing yet. `@model:` draws nothing in a card; it draws in a NUI image (see [Model views](#model-views)).
+An icon or image `src` is a texture resref (up to 16 characters), `@item:<hex>` or `@look:<hex>`. `@item:` draws that item's
+inventory icon in its own colours. `@look:` draws the icon of an item described by its appearance, in the form a NUI
+`@look:` image takes. CX makes one throwaway item for each distinct look the declared cards name, when the declaration
+arrives, and ends it when no declared card names the look any more or the card is released. A name that does not resolve
+draws nothing, never an error sprite. `@model:` draws nothing in a card; it draws in a NUI image (see
+[Model views](#model-views)).
 
 ### Limits
+
+These refuse the line (or, for keys held, the new key):
 
 | limit | value |
 |---|---|
 | cards per key | 4 |
 | keys held | 256 |
+| bytes per key | 96 |
 | bytes per line | 12,000 |
 | blocks per card (sections' blocks included) | 48 |
 | section depth | 2 |
@@ -251,6 +260,16 @@ draws nothing yet. `@model:` draws nothing in a card; it draws in a NUI image (s
 | icons per `icons` block | 16 |
 | images per card | 4 |
 | icon name or `src` | 120 characters |
+
+These are clamped into their range and the card still draws:
+
+| field | range |
+|---|---|
+| card `width` | 160-480 |
+| `px` of a `status` or `icons` block | 12-64 |
+| image `w`, `h` | 1-256 |
+| image `dx`, `dy` | -256 to 256 |
+| `size` of a text | snapped to the nearest of 0.7, 0.85, 1, 1.15, 1.3, 1.6, 2 |
 
 ### Where and when it shows
 
@@ -262,9 +281,8 @@ A card shows once the pointer has rested on the element for `ui.tipdelay`, and f
 tooltips. Moving to another element that has a card skips the wait. It hides when the pointer leaves the element,
 the window closes, or the list scrolls the element out of view.
 
-`nui.cards` turns cards off. The capability is withdrawn with it. For people building cards, `nui.cardfile` reads a
-file of policy lines when the game starts, as if a server had sent them, and `nui.cardforce` shows one key's cards
-without a pointer.
+`nui.cards` turns cards off. The capability is withdrawn with it. The debug knobs for people building cards and windows
+are in `docs/live-harness.md`.
 
 ## NUI window render keys
 
@@ -290,7 +308,8 @@ window's own popups (an open combo list) are not in that frame.
 background, redrawn every frame into the image's own texture. NUI draws it like any other image. Send it only to a client
 that advertises `cx_cap_modelview`, and send the plain image (a portrait) to every other one.
 
-The key is any text up to 48 characters. Its settings are policy lines, `model.<key>.<setting>`, and a client reads them when
+The key is any text. CX keeps its first 48 characters, so a longer key never matches its `model.<key>.<setting>` lines:
+keep keys short. Its settings are policy lines, `model.<key>.<setting>`, and a client reads them when
 the image loads and again whenever the policy changes. A window can open before its lines arrive, so the view shows its
 stand-in until they do.
 
@@ -404,9 +423,6 @@ Hides the gold view, limits the backpack to four pages, hands every ground-drop 
 `inventory.drop;<oid>;0;0;0;7f000000`, renames the window and holds it in tabbed mode (the player's own mode returns at the next
 login).
 
-## Server side (sketch, not built)
+## Server side
 
-The server end is one more `case` beside the server's hotkeys handler (in the reference server, its
-`HotkeyService`): write `['P'][0x36][0x47]` + the ASCII lines with
-`CreateWriteMessage` / `WriteCHAR`s / `SendServerToPlayerMessage`, as `LoginLoadBarService` builds its vanilla
-packet, and read `0x36/0x48` in the existing `PlayerToServerMessage` subscriber.
+The reference server implements the server end: it writes `PolicySet` and reads `UiEvent` beside its hotkeys handler.
