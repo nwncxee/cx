@@ -323,7 +323,8 @@ stand-in until they do.
 | `angle` | the camera's view angle in degrees | `30` |
 | `dist` | camera distance from the creature, in metres | `4` |
 | `height` | camera height above the creature's feet, in metres | `0.9` |
-| `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front. A left drag on the image turns it further, on Linux | `0` |
+| `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
+| `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
 

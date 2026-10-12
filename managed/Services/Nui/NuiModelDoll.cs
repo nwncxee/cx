@@ -215,18 +215,22 @@ internal static unsafe class NuiModelDoll
         ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
     }
 
-    /// <summary>Aim the view's camera at the creature, which stands at the origin facing +X: <paramref name="dist"/> away,
-    /// <paramref name="height"/> up, <paramref name="yawDeg"/> degrees clockwise from its right side (90 its back, 270 its front).
-    /// The camera moves, not the model: identity looks down -Z with Y up, laid back 90 degrees on X it looks along +Y.</summary>
+    /// <summary>The turn from behind a model to its right side: a model faces +Y in its own frame, so its right is +X.</summary>
+    private const float RightSideDeg = 90f;
+
+    /// <summary>Aim the view's camera at the doll's model, in the model's own frame: <paramref name="dist"/> away, <paramref name="height"/>
+    /// up, <paramref name="yawDeg"/> degrees clockwise from its right side (90 its back, 270 its front), wherever its AI stood and turned it.
+    /// Identity looks down -Z with Y up; laid back 90 degrees on X it looks along +Y.</summary>
     internal static void Orbit(float dist, float height, float yawDeg)
     {
-        IntPtr c = _o.Doll.Camera;
-        if (c == IntPtr.Zero) return;
+        IntPtr c = _o.Doll.Camera, m = _o.Doll.Model;
+        if (c == IntPtr.Zero || m == IntPtr.Zero) return;
         var cam = new CAurCamera(c);
-        Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -yawDeg * MathF.PI / 180f);
-        Vector3 p = Vector3.Transform(new Vector3(0, -dist, height), yaw);
+        var model = new Gob(m);
+        Quaternion turn = Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (RightSideDeg - yawDeg) * MathF.PI / 180f), model.Rot);
+        Vector3 p = model.Position + Vector3.Transform(new Vector3(0, -dist, height), turn);
         var v = new EVec { X = p.X, Y = p.Y, Z = p.Z };
-        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2), yaw));
+        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2), turn));
         EVec rv;
         EQuat rq;
         if (OperatingSystem.IsWindows())
@@ -239,6 +243,15 @@ internal static unsafe class NuiModelDoll
             ((delegate* unmanaged<IntPtr, EVec, EVec>)cam.SetPositionFn)(c, v);
             ((delegate* unmanaged<IntPtr, EQuat, EQuat>)cam.SetOrientationFn)(c, q);
         }
+    }
+
+    /// <summary>The doll model's place and turn, for the log.</summary>
+    internal static string Pose()
+    {
+        if (_o.Doll.Model == IntPtr.Zero) return "no model";
+        var g = new Gob(_o.Doll.Model);
+        Quat r = g.Rot;
+        return $"at {g.Position} turned (w {r.W:0.###}, z {r.Z:0.###})";
     }
 
     /// <summary>The appearance record <paramref name="source"/> holds now, as a span over the engine's own bytes.</summary>

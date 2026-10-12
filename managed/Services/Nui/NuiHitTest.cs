@@ -103,6 +103,7 @@ internal static unsafe class NuiHitTest
         s.ArrayIndex = (int*)Native.Sym(SymbolMap.NuiArrayIndex);
         s.Space = Native.Sym(SymbolMap.NkLayoutWidgetSpace);
         s.CtxSlot = (IntPtr*)Native.Sym(SymbolMap.Nuklear);
+        NuiImageSpot.Init();
         s.WindowOrig = hooks.InstallNuiJsonWindowRender(&OnWindowRender);
         s.NkSlot = hooks.ChainNkSdlRender(&OnFlush, FlushPriority);
         // Linux-only: the image name of the hit. Windows has no standalone cache look-up to hook (SymbolMap.NuiGetImageWithCache), so a hit there carries no image.
@@ -162,6 +163,7 @@ internal static unsafe class NuiHitTest
     {
         Publish(_s);
         TrackWindow(_s);
+        NuiImageSpot.Track();
         (*_s.NkSlot)(aa);
     }
 
