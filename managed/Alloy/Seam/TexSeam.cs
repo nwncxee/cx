@@ -68,7 +68,7 @@ internal static class TexSeam
         for (int p = first; p < first + count; p++)
             for (int slot = 0; slot < 4; slot++)
             {
-                TexId id = TexOf(p, slot);
+                TexId id = SceneDb.PartTex(p, slot);
                 if (id.IsNull) continue;
                 if (!string.IsNullOrEmpty(texName)
                     && !string.Equals(TexRegistry.ResrefOf(id), texName, StringComparison.OrdinalIgnoreCase)) continue;
@@ -108,7 +108,7 @@ internal static class TexSeam
         for (int p = first; p < first + count; p++)
             for (int slot = 0; slot < 4; slot++)
             {
-                TexId id = TexOf(p, slot);
+                TexId id = SceneDb.PartTex(p, slot);
                 if (id.IsNull || !TexRegistry.RequestSampler(id, null, on, null)) continue;
                 SceneDb.TouchPart(p, Dirty.Texture);
             }
@@ -124,11 +124,6 @@ internal static class TexSeam
         MaterialParams.Forget(obj);
         if ((uint)obj.Index < SceneDb.MaxObjects) SceneDb.ObjEnvMap[obj.Index] = null;
     }
-
-    /// <summary>The texture part <paramref name="p"/> draws in <paramref name="slot"/>: the STAGE's own
-    /// selection (<see cref="SceneDb.PartTex"/>), so the sampler state a <c>.txi</c> sets lands on the
-    /// texture that is drawn.</summary>
-    private static TexId TexOf(int p, int slot) => SceneDb.PartTex(p, slot);
 
     /// <summary>A <c>.txi</c> fragment, for the three keys that are sampler state. False with
     /// <paramref name="unknown"/> set when it names something else -- which is reported, not ignored.</summary>
@@ -339,7 +334,7 @@ internal static class TexSeam
         Expect(string.Equals(TexRegistry.ResrefOf(SceneDb.PartTex(p, 3)), "cx_sc_rough",
                              StringComparison.OrdinalIgnoreCase),
             "the texture slot 3 resolves to is no longer the roughness map");
-        Expect(TexOf(p, 3).Value == rough.Value, "the sampler path and the stage disagree about slot 3");
+        Expect(SceneDb.PartTex(p, 3).Value == rough.Value, "the sampler path and the stage disagree about slot 3");
         Expect(AlloyRenderer.DbEnvMapped(p, SceneDb.PartTex(p, 0)),
             "the env map named on the object does not reach the stage's env bit");
         Expect((DrawRecipe.Slots(recipe) & AlloyRenderer.EnvSlot) == 0,
