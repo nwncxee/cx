@@ -132,6 +132,10 @@ internal static partial class DrawRecipe
     /// <summary>The material's <c>NWN_ALPHA_MODE 2</c> -- draw this part through alpha-to-coverage
     /// (<see cref="RecipeFlag.Coverage"/>) instead of blending it. Kept per recipe for <see cref="Reclassify"/>.</summary>
     private static readonly bool[] _coverage = new bool[Max];
+    /// <summary>The material's <c>customShaderFS</c> is one of <see cref="ShaderFeatures.CoverNrmFs"/>, so its
+    /// coverage is map slot 1's alpha. Kept per recipe for the same reason as <see cref="_coverage"/>:
+    /// <see cref="Reclassify"/> re-asks the class, and the <c>.mtr</c> may land after the intern.</summary>
+    private static readonly bool[] _coverNrm = new bool[Max];
 
     /// <summary>Recipes in use: the slots ever handed out, less the retired ones waiting or free.</summary>
     internal static int Count => _n - _own.Free.Count - _own.Retiring.Count - _own.Cooling.Count;
@@ -357,7 +361,10 @@ internal static partial class DrawRecipe
     {
         var diffuse = new TexId(_texId[r * TexSlots]);
         TexCoverage cov = TexRegistry.Coverage(diffuse);
-        bool opaque = cov == TexCoverage.Opaque;
+        // CX-218: ...and a measurement of the DIFFUSE says nothing about a material whose coverage is slot 1's
+        // alpha. Such a diffuse measures Opaque (a DXT1 skin) or graded (an env reflectivity mask), and either
+        // reading would take the part out of the cutout class the content's own discard needs.
+        bool opaque = cov == TexCoverage.Opaque && !_coverNrm[r];
         bool water = _declWater[r] || (PartTable.BumpyWaterOn && TexRegistry.BumpyShiny(diffuse));
         // MEASURED alpha decides opaque-or-not and NOTHING else. Blending is a DECLARED thing: the engine's
         // Material::GetIsOpaque @0x4c6190 reads the material's own `transparency`, an env map and a
@@ -372,7 +379,13 @@ internal static partial class DrawRecipe
         // CX-189: NWN_ALPHA_MODE 2 is the author saying "coverage, not blending" -- a declared transparency
         // on the same material is the vanilla fallback for clients without it, so it does not make this
         // blended. CX-224: nor does the measured diffuse make it opaque -- the classifier's own coverage term.
-        return AlloyClasses.Of(water: water, additive: additive, opaque: opaque, declaredTransparent: declared,
+        // CX-218: a slot-1 coverage material is a hard CUTOUT, so neither opacity term may move it out of the
+        // class -- not the measured diffuse above, and not a transparency the model declares. That is vanilla's
+        // own answer for this content: every gob carrying it is env-mapped, Material::GetIsOpaque @0x4c6190
+        // returns the env-map flag itself, and Scene::RenderSinglePass @0x46e5f0 draws that bucket with
+        // blending OFF -- so the only hole in such a part is the discard its own fragment stage makes.
+        return AlloyClasses.Of(water: water, additive: additive, opaque: opaque,
+                               declaredTransparent: declared && !_coverNrm[r],
                                alphaBelowOne: false, coverage: _coverage[r]);
     }
 
@@ -410,7 +423,9 @@ internal static partial class DrawRecipe
             // would never reach the coverage layer, and a late sample_framebuffer never the water pass.
             if (material)
             {
-                _coverage[r] = MtrDef.Of(mesh) is { AlphaMode: 2 };
+                MtrDef? late = MtrDef.Of(mesh);
+                _coverage[r] = late is { AlphaMode: 2 };
+                _coverNrm[r] = late != null && ShaderFeatures.CoversFromNormalAlpha(late.ShaderFs);
                 _declWater[r] = DeclaredWater(mesh);
             }
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
@@ -439,6 +454,13 @@ internal static partial class DrawRecipe
         _cls[r] = (byte)ClassOf(r, additive, declared);
         if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
+        // CX-218: and the slot-1 coverage, which only means anything on a part that HAS a slot-1 map and is
+        // alpha-tested at all -- the bit tells the three stages which channel to test, not whether to test.
+        // Set here rather than in Fill alone because a .mtr can land after the intern (Reclassify's edge).
+        bool covNrm = _coverNrm[r] && (_slots[r] & AlloyRenderer.SlotBit(0)) != 0
+                      && _cls[r] == (byte)AlloyClass.Cutout;
+        if (covNrm) { _flags[r] |= RecipeFlag.CoverNrm; _slots[r] |= AlloyRenderer.CoverNrmBit; }
+        else { _flags[r] &= ~RecipeFlag.CoverNrm; _slots[r] &= ~AlloyRenderer.CoverNrmBit; }
     }
 
     private static int _classSerial = -1;
@@ -490,6 +512,7 @@ internal static partial class DrawRecipe
         // Material::GetTexture @0x5c5810: the .mtr's texture wins wherever it states one.
         MtrDef? mtr = MtrDef.Of(mesh);
         _coverage[r] = mtr is { AlphaMode: 2 };
+        _coverNrm[r] = mtr != null && ShaderFeatures.CoversFromNormalAlpha(mtr.ShaderFs);
         // TransparencyHint > 0 is the model's own "this is see-through" (the engine's child-order sort key);
         // a mesh with no alpha anywhere and no hint is genuinely opaque.
         bool declared = mesh.TransparencyHint > 0;
@@ -529,6 +552,7 @@ internal static partial class DrawRecipe
         _prim[r] = 0;
         int feat = MtrParams.Feature(mtr?.ShaderVs ?? "");
         _feat[r] = feat;
+        MtrParams.NoteCustomFs(mtr?.ShaderFs ?? "", feat, _coverNrm[r], Log);
         Span<float> featF = _featF.AsSpan(r * 4, 4);
         featF.Clear();
         featF[0] = feat;
@@ -688,4 +712,7 @@ internal enum RecipeFlag : ushort
     RotateTexture = 1 << 10,
     /// <summary>A cutout whose material asks for alpha-to-coverage (<c>NWN_ALPHA_MODE 2</c>).</summary>
     Coverage = 1 << 11,
+    /// <summary>A cutout whose coverage is map slot 1's alpha, because its <c>customShaderFS</c> is one of
+    /// <see cref="ShaderFeatures.CoverNrmFs"/> (<see cref="AlloyRenderer.CoverNrmBit"/> on the record).</summary>
+    CoverNrm = 1 << 12,
 }

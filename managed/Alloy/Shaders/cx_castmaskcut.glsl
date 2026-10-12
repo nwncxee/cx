@@ -9,6 +9,14 @@
     cxTintRow = CxTintRow(vDraw);
     vec4 ctint = cxTintRow >= 0 ? CxTintCoverage(vDraw, cxTintRow, vUV) : vec4(-1.0);
     if (ctint.x >= 0.0) { t = ctint.x; tmip = ctint.y; tsize = ctint.zw; }
+    // CX-218: and the same for a slot-1 coverage caster, at the threshold the batch was staged with
+    // (CasterCut.CoverNrm, the content stages' own 0.2) -- the colour draw's source, so the shadow keeps the
+    // fence's gaps. Such a batch is staged ONLY on this stage, for the reason above: slot 1 is a handle, and
+    // one still loading reads 0, whose alpha would discard the whole caster.
+#ifdef CX_BINDLESS
+    if ((int(uDraw[vDraw].pbr.w) & CX_SLOT_COVERNRM) != 0 && uTexH[(vDraw << 3) + 1] != uvec2(0u))
+    { t = texture(uNrmTex, vUV).a; tsize = vec2(textureSize(uNrmTex, 0)); }
+#endif
 #endif
     // CX-191: the colour pass's compensated test, so a distant canopy and its shadow keep the same holes
     if (CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;
