@@ -9,7 +9,8 @@ namespace CX.Services.Nui;
 internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug;
+    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, HeldImage;
+    internal static readonly Knob<string> HeldProbe;
     internal static readonly Knob<float> Thumb;
     internal static readonly Knob<string> PolicyProbe;
 
@@ -41,5 +42,9 @@ internal static class NuiKnobs
             help: "Debug: window render properties as key=value;key=value (a window's id, then the property), read under whatever a server sends. For trying the keys without a server.");
         ItemIcons = G.Toggle("itemicons", "Item icons in NUI windows", true,
             help: "A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite.");
+        HeldImage = G.Toggle("heldimage", "Show what the server says you are holding", true,
+            help: "When a server's NUI window says you picked something up, its image follows the pointer until you place it. Off, nothing follows the pointer.");
+        HeldProbe = G.Text("heldprobe", "heldprobe", "", Tier.ChatOnly, Effect.Restart,
+            help: "Debug: hold this image as if the server had sent it, at the first NUI draw 50 s after boot.");
     }
 }

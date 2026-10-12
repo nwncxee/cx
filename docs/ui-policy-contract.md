@@ -33,6 +33,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
+| `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
 
 A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
 `nui.itemicons`) is on. **Absent or `0` means the client does not draw it**; send the vanilla version (a plain
@@ -57,6 +58,22 @@ wants a policy for the whole session sends it on every login.
 
 The player sees held knobs greyed in `/settings`; `/policy` lists every key the server holds, with the player's own
 value beside each held knob; `/knobs` marks them `[server; yours …]`.
+
+### `held.image`: an image under the pointer
+
+`held.image=<image>` shows that image centred on the pointer, above every NUI window, and swaps the engine cursor
+to the `Use` hand (`cursors.2da`, `CursorID` 25) while it is up. Send it when the player picks something up in a NUI
+window, and `held.image=` when they place it. The image never takes a click: the press that places it reaches the
+NUI window underneath.
+
+`<image>` is a texture resref, `@item:<hex>` or `@look:<hex>`, spelled as in a NUI image. Any other name (a model
+view, a malformed resref) holds the cursor and draws nothing. The image is 32 px a cell at the GUI scale.
+
+The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself
+when no NUI widget has drawn for half a second, so a lost empty line cannot leave a ghost once the last NUI window
+is closed. While any other NUI window stays open CX cannot tell that the one that held the image closed: send the empty
+value when your window closes. A client with `cx_cap_heldimage` absent or `0` ignores the key, so keep the plain NUI
+drag for it. The cursor swap is Linux-only for now.
 
 ### Value forms
 
