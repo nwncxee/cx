@@ -6,7 +6,7 @@ namespace CX.Framework;
 /// the inventory screen, lights and behaviours.</summary>
 public static unsafe partial class EngineLayout
 {
-    // ================= CX-689: CRadialMenu (CX-162 §1) =================
+    // ================= CRadialMenu =================
     // Linux from the ctor @0x583460 / SetEntryx @0x5837f0 / SetSubMenuCreatorx @0x583f50 / CreateSubMenu @0x584790 /
     // HandleMenuAction @0x585530; Windows from the same exported CRadialMenu bodies in nwmain.exe (ctor rva 0x1f7950,
     // SetEntryx 0x1fa250, SetSubMenuCreatorx 0x1fa9e0, SetSubMenu 0x1fa490, CreateSubMenu 0x1f8960, DisableEntry
@@ -86,7 +86,7 @@ public static unsafe partial class EngineLayout
     /// vtable.</summary>
     public static readonly int TextBubbleString = Field<CX.Engine.CAurString>("CGuiTextBubble", "aurString");
 
-    // ================= CX-693: item icons (CX-162 §5) =================
+    // ================= item icons =================
     // CGuiIcon's three subclasses, each read off its ctor on BOTH builds (Linux @0x58dcb0 / @0x58d9d0 / @0x58d5c0,
     // Windows rva 0x1e3000 / 0x1e2e40 / 0x1e2ca0): every subclass field lands at the same offset on each, because
     // the base is 0x48 on both (a single vptr, no Itanium-only padding). The model builders confirm the reads:
@@ -136,7 +136,7 @@ public static unsafe partial class EngineLayout
     /// test: Linux <c>vtbl+0x70</c>, Windows <c>vtbl+0x68</c> (the usual one-destructor-slot shift).</summary>
     public static readonly int GameObjAsNWCItemSlot = Field("CGameObject", "vtbl.AsNWCItem", Expect.VtblSlot, sig: "IntPtr()");
 
-    // ================= CX-40: the last private offset constants (nameplate, consent, pose) =================
+    // ================= the last private offset constants (nameplate, consent, pose) =================
     // Three files kept their own `private const int` / `Win ? a : b` offsets. Every one is a row here now,
     // re-measured 2026-09-24 by decompiling the SAME function on both programs of $GHIDRA_PROJECT/nwn-linux.rep
     // (tools/ghidra/DecompOne.java); the anchor and its address per build is on each row and in
@@ -268,7 +268,7 @@ public static unsafe partial class EngineLayout
     /// 0x1fbb80) seeds it with the unset sentinel <see cref="CX.Engine.CGuiCallback.IsSet"/> tests, and
     /// <c>Deactivate(int)</c> invokes it through the adjust word on Itanium and flat under MSVC.</summary>
     public static readonly int GuiPanelCloseCallback = Field<CX.Engine.CGuiCallback>("CGuiPanel", "closeCallback", embedded: true);
-    // ================= the CX inventory screen (CX-146 §10) =================
+    // ================= the CX inventory screen =================
     // Every row below was PAIRED: the same function decompiled on both programs of $GHIDRA_PROJECT/nwn-linux.rep,
     // Linux addresses as nm (Ghidra = nm + 0x100000), Windows as RVAs off base 0x140000000. The uniform
     // CNWCItem / CNWCCreature Windows -0x20 held everywhere it was measured here, but no row rests on it:
@@ -578,7 +578,7 @@ public static unsafe partial class EngineLayout
     /// <inheritdoc cref="NuiIdNodeKey"/>
     public static readonly int NuiIdNodeElement = Field<IntPtr>("Nui::JSON::IdNode", "element");
 
-    // ---- CX-108 lights ----
+    // ---- lights ----
     // The light priority terms. MEASURED on both binaries with objdump: LightManager is name-exported on
     // Windows, so `PrioritizeLights` (rva 0x7ff60) reads there exactly as it does here.
 
@@ -601,7 +601,7 @@ public static unsafe partial class EngineLayout
     /// <inheritdoc cref="BspDataLight"/>
     public static readonly int BspDataLightCount = Field("BSPNode", "lightCount");
 
-    // ================= CX-107 behaviours (CX-107 §1, §6.1) =================
+    // ================= behaviours =================
     // The behaviour solvers Alloy ports write engine fields through the same virtuals the engine does, so
     // every slot below was measured on BOTH images: the Windows Gob and Part vtables were located by
     // searching .rdata for the 64-bit VA of a known exported method and walking the table (Gob's is the
