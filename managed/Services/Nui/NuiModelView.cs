@@ -32,6 +32,7 @@ internal static unsafe class NuiModelView
         public uint Target;
         public float Angle = 30f, Dist = 4f, Height = 0.9f, Yaw;
         public bool Anim = true, Built, WasRendered;
+        public byte[] Info = new byte[0];
     }
 
     private sealed class ViewState
@@ -161,11 +162,21 @@ internal static unsafe class NuiModelView
         {
             if (!NuiModelDoll.Build(who, 0, 0, v.W, v.H, v.Anim)) return;
             v.Built = true;
+            v.Info = NuiModelDoll.InfoOf(who).ToArray();
             NuiModelDoll.SetTarget(tex, v.W, v.H);
             ApplyCamera(v);
             s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
         }
         else if (v.Target != tex) NuiModelDoll.SetTarget(tex, v.W, v.H);
+        else
+        {
+            ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
+            if (!now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
+            {
+                if (NuiModelDoll.Refresh(who)) s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
+                v.Info = now.ToArray();
+            }
+        }
         v.Target = tex;
         if (NuiModelDoll.Rendered) v.WasRendered = true;
     }

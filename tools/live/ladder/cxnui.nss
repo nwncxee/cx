@@ -20,6 +20,13 @@ void Mark(string sStep)
     WriteTimestampedLogEntry("CXNUI: " + sStep);
 }
 
+void Change(object oPC)
+{
+    SetColor(oPC, COLOR_CHANNEL_HAIR, 120);
+    SetCreatureBodyPart(CREATURE_PART_HEAD, 7, oPC);
+    Mark("changed hair colour and head");
+}
+
 void OpenWindow(object oPC)
 {
     object oTorch = GetItemPossessedBy(oPC, TORCH_TAG);
@@ -52,6 +59,7 @@ void OpenWindow(object oPC)
     for (i = 0; i < LIST_ROWS; i++) jRows = JsonArrayInsert(jRows, JsonString("row " + IntToString(i)));
     NuiSetBind(oPC, nToken, "rows", jRows);
     Mark("open token " + IntToString(nToken) + " torch " + ObjectToString(oTorch));
+    DelayCommand(14.0, Change(oPC));
 }
 
 void Arm(object oPC, int nTry)

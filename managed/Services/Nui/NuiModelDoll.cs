@@ -232,6 +232,31 @@ internal static unsafe class NuiModelDoll
 
     /// <summary>The creature's fade bytes and the model's colour-shift alpha, for working out why it is hidden.</summary>
     private const int FA = 0xa8, FB = 0xa9, FC = 0xb0, FD = 0xf4, FE = 0x104, FF = 0x108, FG = 0xf6;   // not-an-offset: throwaway probe of the creature fade bytes
+    /// <summary>The appearance record <paramref name="source"/> holds now, as a span over the engine's own bytes.</summary>
+    internal static ReadOnlySpan<byte> InfoOf(IntPtr source)
+    {
+        IntPtr a = source == IntPtr.Zero ? IntPtr.Zero : new CNWCCreature(source).Pathfind.Ptr;
+        return a == IntPtr.Zero ? default : new ReadOnlySpan<byte>((void*)a, InfoBytes);
+    }
+
+    /// <summary>The doll takes <paramref name="source"/>'s appearance again, as character creation's panel does after each change:
+    /// rebuild the body, fetch the model it made, and take that into the view.</summary>
+    internal static bool Refresh(IntPtr source)
+    {
+        DollState d = _o.Doll;
+        ReadOnlySpan<byte> now = InfoOf(source);
+        if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
+        byte* info = stackalloc byte[InfoBytes];
+        now.CopyTo(new Span<byte>(info, InfoBytes));
+        if (EngineFn.NwcCreatureSetAppearance(d.Creature, (IntPtr)info, BuildFlags) == 0) return false;
+        IntPtr model = new CNWCCreature(d.Creature).GetModel(0xff, 1);
+        if (model == IntPtr.Zero) return false;
+        d.Model = model;
+        EngineFn.GuiViewportTakeModel(d.Viewport, model);
+        Opaque(model);
+        return true;
+    }
+
     /// <summary>Per frame: the creature's own AI fades it out again (it is in no area), so the colour shift is put back to
     /// opaque white whenever the model's alpha has dropped.</summary>
     internal static void KeepShown()
