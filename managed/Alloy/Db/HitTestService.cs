@@ -32,6 +32,7 @@ public sealed class HitTestService : IExtenderService
         if (++_frames < LogEvery) return;
         _frames = 0;
         if (_log != null) HitTestCheck.Pump(_log);
+        if (!ExtenderLog.Enabled) { HitProbe.ResetPeriod(); return; }
         string s = HitProbe.Period();
         if (s.Length > 0) _log?.Info(s);
         string trig = DbTriggers.Stats();

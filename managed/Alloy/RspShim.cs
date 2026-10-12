@@ -226,7 +226,8 @@ internal static unsafe class RspShim
     {
         if (_frames < AlloyRenderer.LogEvery) return;
         double ms = _ticks * 1000.0 / Stopwatch.Frequency / _frames;
-        _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
+        if (ExtenderLog.Enabled)
+            _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
                  + $"PASSED {_passed} (must be 0), {ms:F2}ms/frame in the shim ({StepLine()}), "
                  + $"borrowed {OwnedBuffers.Borrowed - _lastRefBuf} buffers / "
                  + $"{OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0/0)"

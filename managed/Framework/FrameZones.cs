@@ -623,10 +623,7 @@ public static class FrameZones
         }
         // From the frames under the stall cap: one 1,7s transition frame in a period would otherwise lift the
         // next period's threshold past every hitch in it -- and transitions are where the stutter is looked for.
-        if (_framesNoStall > 0) _hitchMs = MathF.Max(2f, (float)(_dtNoStall * 1000.0 / Stopwatch.Frequency / _framesNoStall) * HitchFactor);
-        _dtNoStall = 0; _framesNoStall = 0;
         if (_gpuN > 0) sb.Append($" || gpu-span all|hitch: {_gpuSum / _gpuN:F1}|{(_gpuHitchN > 0 ? _gpuHitch / _gpuHitchN : 0):F1}ms ({_gpuHitchN} paired)");
-        _gpuSum = 0; _gpuHitch = 0; _gpuN = 0; _gpuHitchN = 0;
         if (_hitchN > 0)
         {
             sb.Append(" || blame:");
@@ -642,14 +639,9 @@ public static class FrameZones
               .Append($" vol {(double)_scAll[3] / frames:F2}|{(_hitchN > 0 ? (double)_scHitch[3] / _hitchN : 0):F2}")
               .Append($" minflt {(double)_scAll[1] / frames:F1}|{(_hitchN > 0 ? (double)_scHitch[1] / _hitchN : 0):F1}")
               .Append($" majflt {_scAll[2]}|{_scHitch[2]}");
-        Array.Clear(_scAll, 0, (int)Sc.Count); Array.Clear(_scHitch, 0, (int)Sc.Count); _wallAll = _wallHitch = 0;
-        Array.Clear(_blame, 0, _blame.Length);
-        for (int i = 0; i < N; i++) _mean[i] = _sum[i] / frames;
         sb.Append(" || events/frame all|hitch:");
         for (int e = 0; e < NE; e++)
             sb.Append($" {(Ev)e} {(double)_evSum[e] / frames:F1}|{(_hitchN > 0 ? (double)_evHitch[e] / _hitchN : 0):F1}");
-        Array.Clear(_hitch, 0, Rows * N); Array.Clear(_evSum, 0, NE); Array.Clear(_evHitch, 0, NE);
-        _dtHitch = 0; _hitchN = 0;
         return sb.ToString();
     }
 
@@ -667,7 +659,6 @@ public static class FrameZones
     private static string EnrollP99()
     {
         int n = _enrollN;
-        _enrollN = 0;
         if (n == 0) return " || Enroll: no walk this period";
         var s = new long[n];
         Array.Copy(_enrollTicks, s, n);
@@ -689,11 +680,28 @@ public static class FrameZones
         if (_dtWorstDrew != _dtWorst)
             line += " || worst that RENDERED " + Row(_worstDrew, _dtWorstDrew, 1) + RenderClause(_worstDrew, 1);
         line += EnrollP99();
-        line += HitchLine();   // before the frame reset: the event columns average over this period's frames
+        line += HitchLine();
         line += $" || over {_frames} presents";
+        ResetPeriod();
+        return line;
+    }
+
+    /// <summary>Close the period without building its line: the adaptive hitch threshold and the blame baseline
+    /// roll forward from it, every period accumulator clears. <see cref="Period"/> is this plus the line.</summary>
+    public static void ResetPeriod()
+    {
+        int frames = Math.Max(_frames, 1);
+        if (_framesNoStall > 0) _hitchMs = MathF.Max(2f, (float)(_dtNoStall * 1000.0 / Stopwatch.Frequency / _framesNoStall) * HitchFactor);
+        _dtNoStall = 0; _framesNoStall = 0;
+        _gpuSum = 0; _gpuHitch = 0; _gpuN = 0; _gpuHitchN = 0;
+        Array.Clear(_scAll, 0, (int)Sc.Count); Array.Clear(_scHitch, 0, (int)Sc.Count); _wallAll = _wallHitch = 0;
+        Array.Clear(_blame, 0, _blame.Length);
+        for (int i = 0; i < N; i++) _mean[i] = _sum[i] / frames;
+        Array.Clear(_hitch, 0, Rows * N); Array.Clear(_evSum, 0, NE); Array.Clear(_evHitch, 0, NE);
+        _dtHitch = 0; _hitchN = 0;
+        _enrollN = 0;
         Array.Clear(_sum, 0, Rows * N); Array.Clear(_worst, 0, Rows * N); Array.Clear(_worstDrew, 0, Rows * N);
         _dtSum = 0; _dtWorst = 0; _dtWorstDrew = 0; _frames = 0;
-        return line;
     }
 
     /// <summary>The render thread's row, or nothing at all when it never ran -- an empty clause is how the
