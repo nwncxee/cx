@@ -47,6 +47,7 @@ public sealed unsafe class NuiService : IExtenderService
         NuiLayoutErrors.SelfCheck(log);
         NuiHitTest.SelfCheck(log);
         NuiItemIcons.Init(log, hooks);
+        NuiModelView.Init(log, hooks);
         NuiScrollbars.Init(log, hooks);
         NuiScrollbarHide.Init(log, hooks);
         NuiSolver.Init(log, hooks);

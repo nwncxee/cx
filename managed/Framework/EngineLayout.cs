@@ -2379,6 +2379,20 @@ public static unsafe class EngineLayout
     /// value (SysV xmm0/xmm1, Win64 a pointer to a copy), which is <see cref="CX.Engine.VectorArg"/>.</summary>
     public static readonly int CreatureSetPositionSlot = Field("CNWCCreature", "vtbl.SetPosition", Expect.VtblSlot,
                                                                sig: "void(VectorArg pos)");
+    /// <summary>The model view's creature and viewport: <c>operator new</c> sizes, the deleting destructor slot, and the
+    /// viewport's scene-view record (<c>CAurScene*</c> at +0, <c>CAurCamera*</c> at +8, enabled byte at +0x10).</summary>
+    public static readonly int SizeOfCreature = Field("CNWCCreature", "sizeof");
+    public static readonly int SizeOfGuiViewport = Field("CGuiViewport", "sizeof");
+    public static readonly int GuiViewportRecord = Field("CGuiViewport", "record");
+    public static readonly int CreatureDeleteSlot = Field("CNWCCreature", "vtbl.Delete", Expect.VtblSlot);
+    /// <summary>The <c>CAurCamera</c> interface slots a free view's camera is set up through (<c>CameraSlots</c>' numbering;
+    /// Windows is one lower from slot 2). The by-value ones are called per OS by <c>NuiModelDoll</c>.</summary>
+    public static readonly int CameraSetPositionSlot = Field("CAurCamera", "vtbl.SetPosition", Expect.VtblSlot);
+    public static readonly int CameraSetOrientationSlot = Field("CAurCamera", "vtbl.SetOrientation", Expect.VtblSlot);
+    public static readonly int CameraGetPositionSlot = Field("CAurCamera", "vtbl.GetPosition", Expect.VtblSlot);
+    public static readonly int CameraGetOrientationSlot = Field("CAurCamera", "vtbl.GetOrientation", Expect.VtblSlot);
+    public static readonly int CameraSetViewAngleSlot = Field("CAurCamera", "vtbl.SetViewAngle", Expect.VtblSlot, sig: "void(float angle)");
+    public static readonly int CameraGetViewAngleSlot = Field("CAurCamera", "vtbl.GetViewAngle", Expect.VtblSlot, sig: "float()");
     /// <summary>CNWCModule -&gt; "chase suppressed" (int 0/1): <c>UpdateCameraModeChaseCam/EQ</c> set it the frame the
     /// user moved the camera (+0x134) and skip the chase while it holds; cleared on the creature's next
     /// idle-to-locomotion edge, which <see cref="ModuleChaseWasIdle"/> records. Same on Windows (rva 0x7d0d00 /

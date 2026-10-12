@@ -1251,3 +1251,24 @@ offset	LerpFloat	seamSizeof	0x40	0x40	# one animated float of a CAurObjectVisual
 offset	CAurBehavior	vtbl.dtorDeleting	0x08	0x00	# Itanium slot 1; MSVC's single scalar-deleting destructor is slot 0
 offset	CAurBehavior	vtbl.Message	0x28	0x20	# CAurBehavior::Message(char const*)
 offset	CAurBehavior	vtbl.GetType	0x30	0x28	# CAurBehavior::GetType() -> int
+
+# ---- the model view: a throwaway creature in a free-standing GUI viewport ----
+# Windows values read in the Windows image's CCharacterGenerationPanel::CreateCharacterObject (the function that cites
+# "GUI_PO_NWNLOGO_" beside AddInternalObject) and CCharacterAppearancePanel's constructor (the one citing "guiModelView").
+rva	_ZN12CNWCCreatureC1Ev	0x7fb140	# NwcCreatureCtor
+rva	_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh	0x809a00	# NwcCreatureSetAppearance
+rva	_ZN13CClientExoApp18GetGameObjectArrayEv	0x6abb70	# GetGameObjectArray
+rva	_ZN13CClientExoApp17GetClientAIMasterEv	0x6ab940	# GetClientAIMaster
+rva	_ZN15CClientAIMaster9AddObjectEP10CNWCObject	0x7675d0	# AiMasterAddObject
+offset	CNWCCreature	sizeof	0x4a0	0x480	# SizeOfCreature
+offset	CNWCCreature	vtbl.Delete	0x8	0x0	# CreatureDeleteSlot
+offset	CGuiViewport	sizeof	0x88	0x88	# SizeOfGuiViewport
+offset	CGuiViewport	record	0x80	0x80	# GuiViewportRecord
+# The CAurCamera interface: slot k is Linux +k*8 and Windows +(k-1)*8 for k >= 2 (one destructor slot). CGuiViewport::SetViewport
+# jumps through slot 14 (Linux +0x70, Windows +0x68, read in the exported body).
+offset	CAurCamera	vtbl.SetPosition	0x38	0x30	# CameraSetPositionSlot
+offset	CAurCamera	vtbl.SetOrientation	0x40	0x38	# CameraSetOrientationSlot
+offset	CAurCamera	vtbl.GetPosition	0x48	0x40	# CameraGetPositionSlot
+offset	CAurCamera	vtbl.GetOrientation	0x50	0x48	# CameraGetOrientationSlot
+offset	CAurCamera	vtbl.SetViewAngle	0x90	0x88	# CameraSetViewAngleSlot
+offset	CAurCamera	vtbl.GetViewAngle	0x98	0x90	# CameraGetViewAngleSlot

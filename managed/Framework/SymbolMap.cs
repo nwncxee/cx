@@ -1890,6 +1890,59 @@ internal static unsafe class SymbolMap
     /// <summary>DATA: <c>ObjectVisualTransformData::s_IdentityVisualTransformData</c>, the constructed identity transform
     /// (its std::map is a live empty tree), for <see cref="NwcCreateItem"/>'s last argument.</summary>
     public const string IdentityVisualTransform = "_ZN25ObjectVisualTransformData29s_IdentityVisualTransformDataE";
+    // ---- the model view: a throwaway creature in a free-standing GUI viewport ----
+
+    /// <summary><c>CNWCCreature::CNWCCreature()</c> @0x71b190 (Windows rva 0x7fb140) -- constructs a creature in storage
+    /// the caller got from <see cref="OperatorNew"/> (<see cref="EngineLayout.SizeOfCreature"/> bytes). The Windows
+    /// constructor returns <c>this</c>; on Itanium nothing is read from the return.</summary>
+    [Fn("IntPtr(IntPtr self)")]
+    public const string NwcCreatureCtor = "_ZN12CNWCCreatureC1Ev";
+    /// <summary><c>CNWCCreature::SetAppearance(CCAppearanceInfo*, uchar flags)</c> @0x72dc50 (Windows rva 0x809a00) --
+    /// builds the creature's model from an appearance record: 0x6e as character creation passes it (base body, body,
+    /// head, tail, wing). Returns 0 when the body failed to build.</summary>
+    [Fn("int(IntPtr self, IntPtr info, byte flags)")]
+    public const string NwcCreatureSetAppearance = "_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh";
+    /// <summary><c>CClientExoApp::GetGameObjectArray()</c> @0x6377c0 (Windows rva 0x6abb70).</summary>
+    [Fn("IntPtr(IntPtr app)")]
+    public const string GetGameObjectArray = "_ZN13CClientExoApp18GetGameObjectArrayEv";
+    /// <summary><c>CClientExoApp::GetClientAIMaster()</c> @0x637d20 (Windows rva 0x6ab940).</summary>
+    [Fn("IntPtr(IntPtr app)")]
+    public const string GetClientAIMaster = "_ZN13CClientExoApp17GetClientAIMasterEv";
+    /// <summary><c>CClientAIMaster::AddObject(CNWCObject*)</c> @0x991c10 (Windows rva 0x7675d0) -- puts an object on the
+    /// per-frame AI list, which is what plays a creature's animation.</summary>
+    [Fn("void(IntPtr master, IntPtr obj)")]
+    public const string AiMasterAddObject = "_ZN15CClientAIMaster9AddObjectEP10CNWCObject";
+    /// <summary><c>CGameObjectArray::AddInternalObject(uint&amp; id, CGameObject*, int character)</c> @0x11a4ed0, a name
+    /// export on Windows. <paramref name="id"/> goes in as the invalid id and comes back as the new one; 0 = added.</summary>
+    [Fn("byte(IntPtr array, uint* id, IntPtr obj, int character)")]
+    public const string GameObjectArrayAdd = "_ZN16CGameObjectArray17AddInternalObjectERjP11CGameObjecti";
+    /// <summary><c>CGameObjectArray::Delete(uint id, CGameObject** out)</c> @0x11a4610, a name export on Windows: removes
+    /// the id and hands back the object, which the caller destroys. 0 = removed.</summary>
+    [Fn("byte(IntPtr array, uint id, IntPtr* obj)")]
+    public const string GameObjectArrayDelete = "_ZN16CGameObjectArray6DeleteEjPP11CGameObject";
+    /// <summary><c>CGuiViewport::CGuiViewport(char const* name)</c> @0x597280, a name export on Windows: makes the scene
+    /// <c>sceneGUI_&lt;name&gt;</c> and the camera <c>cameraGUI_&lt;name&gt;</c> (storage: <see cref="EngineLayout.SizeOfGuiViewport"/>).</summary>
+    [Fn("IntPtr(IntPtr self, byte* name)")]
+    public const string GuiViewportCtor = "_ZN12CGuiViewportC1EPKc";
+    /// <summary><c>CGuiViewport::~CGuiViewport()</c> @0x597830 (the complete, non-deleting destructor): unlists the view,
+    /// deletes its scene and camera. The caller frees the storage.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string GuiViewportDtor = "_ZN12CGuiViewportD1Ev";
+    /// <summary><c>CGuiViewport::Enable()</c> @0x597590 -- lists the view, so the GUI draws it every frame.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string GuiViewportEnable = "_ZN12CGuiViewport6EnableEv";
+    /// <summary><c>CGuiViewport::Disable()</c> @0x597910.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string GuiViewportDisable = "_ZN12CGuiViewport7DisableEv";
+    /// <summary><c>CGuiViewport::SetViewport(int x, int y, int w, int h)</c> @0x597510 -- the camera's screen rectangle.</summary>
+    [Fn("void(IntPtr self, int x, int y, int w, int h)")]
+    public const string GuiViewportSetViewport = "_ZN12CGuiViewport11SetViewportEiiii";
+    /// <summary><c>CGuiViewport::TakeModel(CAurObject*)</c> @0x597550 -- moves a model into the view's scene.</summary>
+    [Fn("void(IntPtr self, IntPtr model)")]
+    public const string GuiViewportTakeModel = "_ZN12CGuiViewport9TakeModelEP10CAurObject";
+    /// <summary><c>CGuiViewport::GetCamera()</c> @0x597670 -- the view's <c>CAurCamera*</c>.</summary>
+    [Fn("IntPtr(IntPtr self)")]
+    public const string GuiViewportGetCamera = "_ZN12CGuiViewport9GetCameraEv";
     /// <summary><c>kiwi::impl::SolverImpl::substitute(Symbol const&amp;, Row const&amp;)</c> @0x85b890 (Windows rva 0x3458e0): replaces
     /// a symbol by a row in every tableau row, the objective and the artificial row -- the full row walk that makes a
     /// NUI layout solve quadratic. Never throws; its callers are addConstraint, addWithArtificialVariable, optimize
@@ -3258,6 +3311,20 @@ internal static unsafe class SymbolMap
         [DataBlockFromBase64] = Nm("?FromBase64@DataBlock@@SA?AV?$shared_ptr@VDataBlock@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z"),
         [NwcCreateItem] = At(),   // its own .pdata entry; the only function citing "gifp" and "gi_armor01" (docs/windows-symbols.md)
         [IdentityVisualTransform] = Nm("?s_IdentityVisualTransformData@ObjectVisualTransformData@@0U1@B"),
+        [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
+        [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
+        [GetGameObjectArray] = At(),   // the first call CreateCharacterObject makes, its result is AddInternalObject's `this`
+        [GetClientAIMaster] = At(),    // the second: its result is AddObject's `this`
+        [AiMasterAddObject] = At(),    // the call after AddInternalObject succeeds, with the new creature
+        [GameObjectArrayAdd] = Nm("?AddInternalObject@CGameObjectArray@@QEAAEAEAIPEAVCGameObject@@H@Z"),
+        [GameObjectArrayDelete] = Nm("?Delete@CGameObjectArray@@QEAAEIPEAPEAVCGameObject@@@Z"),
+        [GuiViewportCtor] = Nm("??0CGuiViewport@@QEAA@PEBD@Z"),
+        [GuiViewportDtor] = Nm("??1CGuiViewport@@UEAA@XZ"),
+        [GuiViewportEnable] = Nm("?Enable@CGuiViewport@@QEAAXXZ"),
+        [GuiViewportDisable] = Nm("?Disable@CGuiViewport@@QEAAXXZ"),
+        [GuiViewportSetViewport] = Nm("?SetViewport@CGuiViewport@@QEAAXHHHH@Z"),
+        [GuiViewportTakeModel] = Nm("?TakeModel@CGuiViewport@@QEAAXPEAVCAurObject@@@Z"),
+        [GuiViewportGetCamera] = Nm("?GetCamera@CGuiViewport@@QEAAPEAVCAurCamera@@XZ"),
         [KiwiSubstitute] = Nm("?substitute@SolverImpl@impl@kiwi@@AEAAXAEBVSymbol@23@AEBVRow@23@@Z"),
         [KiwiOptimize] = Nm("?optimize@SolverImpl@impl@kiwi@@AEAAXAEBVRow@23@@Z"),
         [ReportCrashToUser] = Nm("?ReportCrashToUser@CrashReporter_Windows@@UEAAXPEBD0@Z"),
