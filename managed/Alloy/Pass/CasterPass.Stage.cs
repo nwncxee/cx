@@ -276,7 +276,9 @@ public sealed unsafe partial class CasterPass
             // CX-227: a declared coverage part is admitted on the DECLARATION, not on what its diffuse
             // measures -- the author already said the alpha is coverage, so no hole or graded fraction has
             // to vouch for it. Carried on the cut kind, which the collect set from the facts.
-            bool cover = drawTex != 0 && _liveCut[i] == CasterCut.Coverage;
+            // CX-218: and so is a slot-1 coverage part -- its diffuse measures nothing relevant (a DXT1 skin
+            // with no alpha at all, or an env reflectivity mask), so a hole fraction could never vouch for it.
+            bool cover = drawTex != 0 && (_liveCut[i] == CasterCut.Coverage || _liveCut[i] == CasterCut.CoverNrm);
             int masked = drawTex != 0 && _gl.ProgMask != 0 && _maskMode != 0
                          && (cover || glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
             if (masked == 0 && _liveTex[i] != 0 && _gl.ProgMask == 0) _maskNoProg++;
@@ -293,6 +295,10 @@ public sealed unsafe partial class CasterPass
             // leaves the key. Handle 0 is a BLACK texture (every fragment discards), hence the guard: such a
             // record keeps the bound-texture batch.
             bool hmask = masked != 0 && HandleMaskReady && AlloyRenderer.RecordHandle0(_liveSlot[i]) != 0;
+            // CX-218: slot 1 reaches a stage only as a HANDLE, so without the handle stage this caster has no
+            // readable coverage source -- and the bound-texture stage would test its DIFFUSE alpha, which on
+            // these materials is the env level. It casts solid instead of casting a reflectivity mask.
+            if (masked != 0 && !hmask && _liveCut[i] == CasterCut.CoverNrm) { masked = 0; maskedN--; }
             _gLive[n] = i;
             // #302: the cutout threshold is a per-BATCH uniform now, exactly as the colour path spells it
             // (uAlphaCut), so it joins the key rather than riding in a per-draw record. The batch takes the

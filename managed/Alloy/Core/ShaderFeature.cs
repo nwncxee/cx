@@ -84,6 +84,25 @@ internal static class ShaderFeatures
     /// opaque 15,1 -> 5,4 ms with the regions stubbed).</summary>
     internal static bool Hosted(int feat) => (uint)feat < (uint)FsNames.Length && FsNames[feat].Length > 0;
 
+    /// <summary>Content fragment stages whose COVERAGE is map slot 1's alpha: they discard on
+    /// <c>texUnit1.a</c> below <see cref="CoverNrmCut"/> and leave the diffuse alpha to the env-map level.
+    /// Reproduced rather than hosted -- the discard is all Alloy lacks. A stage reading another channel, or
+    /// cutting at another threshold, does NOT belong here: its number would be a silent divergence.</summary>
+    internal static readonly string[] CoverNrmFs = { "fs_plt_hair", "fs_plt_hair2" };
+
+    /// <summary>The threshold those stages discard at, which is also <c>AlloyClasses.Discard</c>'s cutout
+    /// value -- so such a part needs no per-draw threshold, only the right channel.</summary>
+    internal const float CoverNrmCut = 0.2f;
+
+    /// <summary>Does this <c>customShaderFS</c> resref take its coverage from map slot 1's alpha? Whole-name
+    /// and case-insensitive, as <c>MtrParams.Feature</c> matches the vertex names.</summary>
+    internal static bool CoversFromNormalAlpha(string fs)
+    {
+        foreach (string n in CoverNrmFs)
+            if (fs.Equals(n, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     /// <summary>Does this feature read material texture slot 6? Two do, for different things -- the flow
     /// map's RG direction field and the weather ground's snow overlay -- because the SLOT is the contract and
     /// the name beside it is only what one shader calls it. Everything else leaves the bit clear, which is

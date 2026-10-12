@@ -263,6 +263,19 @@ void main()
     float cutMip = uAlphaMip;
     vec2 cutSize = vec2(textureSize(uTex, 0));
     if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }
+    // CX-218: ...and neither is a hair/cloth material's -- its customShaderFS discards on the NORMAL map's
+    // alpha (`texUnit1.a < 0.2`) and spends the diffuse alpha on the env level, which is why the env rule
+    // above is right for it and why its cutout has to read slot 1. The test below runs at the cutout class's
+    // own 0.2, which is the number those stages name (ShaderFeatures.CoverNrmCut).
+    // ...and only once slot 1's own handle is resident: a map still loading reads handle 0, whose alpha is 0,
+    // which would discard the whole part rather than draw it with the coverage it is about to get.
+#ifdef CX_BINDLESS
+    bool cxNrmReady = uTexH[(vDraw << 3) + 1] != uvec2(0u);
+#else
+    bool cxNrmReady = true;
+#endif
+    if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)
+    { coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.

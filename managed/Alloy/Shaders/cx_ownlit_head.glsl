@@ -109,6 +109,8 @@ const float CX_MID_GREY = 0.2176;
 // mat+0x40). NO texture is bound for it: the probe replaces what it held. What survives is the
 // engine's own "this is shiny" flag on 2002 content, which drives the synthesis below.
 const int CX_SLOT_ENV = 64;
+// CX-218's CX_SLOT_COVERNRM (bit 13, the coverage source) is declared in cx_alphamip.glsl, beside the
+// cutout test it steers and where every stage that makes that test can see it.
 // #123: bit 5, texture slot 6 -- the flow map, and the only slot outside the stock five. Enrolled
 // only on a flowmap part, so on everything else this bit is clear and uFlowTex is never sampled.
 const int CX_SLOT_FLOW = 32;

@@ -14,6 +14,28 @@ internal static class MtrParams
     /// target's 65504 once an 8-bit illumination texel of 1.0 is multiplied through.</summary>
     internal const float MaxEmissiveStrength = 100f;
 
+    /// <summary>Custom fragment stages <see cref="NoteCustomFs"/> has already reported: the line is per NAME,
+    /// not per material -- one content stage is named by hundreds of them.</summary>
+    private static readonly System.Collections.Generic.HashSet<string> _fsSeen = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Say what Alloy does with a material's <c>customShaderFS</c>, once per name. A content stage
+    /// Alloy neither hosts nor reproduces does not run, and one whose own body held the coverage discard then
+    /// draws SOLID with nothing anywhere saying why. Grep <c>mtr shader:</c> for the list.</summary>
+    internal static void NoteCustomFs(string fs, int feat, bool coverNrm, ExtenderLog? log)
+    {
+        if (fs.Length == 0 || log == null) return;
+        lock (_fsSeen)
+            if (!_fsSeen.Add(fs)) return;
+        string what = ShaderFeatures.Hosted(feat) ? "HOSTED -- its own body runs inside the Alloy lit stage"
+            : coverNrm ? "coverage reproduced -- the cutout tests map slot 1's alpha at "
+                         + $"{ShaderFeatures.CoverNrmCut}, and the rest of its body is shading Alloy does itself"
+            : feat != 0 ? "reproduced as an Alloy shader feature"
+            : "NOT RUN -- Alloy neither hosts nor reproduces it. A stock permutation (fslit*, fst*) loses "
+              + "nothing, the Alloy stage IS that shading; a CUSTOM stage's own work -- a coverage discard, "
+              + "its own colour -- simply does not happen, and such a part draws as a plain lit one";
+        log.Info($"mtr shader: \"{fs}\" {what}");
+    }
+
     /// <summary>The <see cref="ShaderFeature"/> a <c>customShaderVS</c> resref names, 0 for none or one Alloy does
     /// not reproduce. Whole-name and case-insensitive, so <c>shd_roofkn_vs</c> cannot match <c>shd_roofknm_vs</c>.</summary>
     internal static int Feature(string vs)

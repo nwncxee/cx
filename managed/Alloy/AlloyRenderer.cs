@@ -100,6 +100,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal const int PalBit0 = 1 << 9;
     /// <summary>Mask bit of palette slot <paramref name="k"/> (<c>texture7</c> is 0).</summary>
     internal static int PalSlotBit(int k) => PalBit0 << k;
+    /// <summary>This material's COVERAGE is map slot 1's alpha, never the diffuse's -- what the content
+    /// fragment stages <see cref="ShaderFeatures.CoverNrmFs"/> names discard on. Binds nothing: the bit only
+    /// says which channel the cutout test reads, and slot 1 is bound already for its normal.</summary>
+    internal const int CoverNrmBit = 1 << 13;
     /// <summary>Texture unit slot 1 binds on; the rest follow it. Units 0/1/2 are diffuse, sun cascades and
     /// the local cube array, and <see cref="EnvProbe.ProbeUnit"/> sits above all of them -- SelfCheck holds
     /// that ordering, because a samplerCube sharing a unit with a sampler2D kills every lit draw in silence.</summary>

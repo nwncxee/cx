@@ -59,6 +59,7 @@ internal static class DbSelfCheck
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
             check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
+            check.Expect(NormalAlphaCoverage(), "CX-218: a material whose customShaderFS takes its coverage from map slot 1's alpha is a CUTOUT with the slot-1 bit on the record, even when its diffuse measures fully opaque");
             check.Expect(AbsentMaterialNeverWaits(), "a material the layer answered ABSENT is final, so the part is never put on the late-.mtr wait list and the landing edge has nothing to do for it");
             check.Expect(RecycledWaiterDropped(), "a waiting part whose slot was recycled before the read landed is dropped, never folded into the slot's new tenant");
             check.Expect(LateMaterialColumns(), "a .mtr that lands after a PART was built folds into its material columns, and a PLT replace on it then matches the file's diffuse rather than the mesh bitmap");
@@ -888,6 +889,74 @@ internal static class DbSelfCheck
         int f = SceneDb.ObjPartFirst[o.Index];
         return SceneDb.PartMtr[f] != null && SceneDb.PartTexName(f, 0) == "stone_d"
                && SceneDb.PartTexName(f, 1) == "stone_n" && SceneDb.PartMtl[f].RenderHint == 2;
+    }
+
+    /// <summary>A material whose <c>customShaderFS</c> is one of <see cref="ShaderFeatures.CoverNrmFs"/> draws
+    /// as a CUTOUT off map slot 1's alpha whatever its diffuse measures; one naming another stage over the same
+    /// textures does not. Oracles, both hand-written: the two <c>.mtr</c> texts (one word apart) and the
+    /// expected class and record bit, spelled out rather than read back off the recipe.</summary>
+    private static bool NormalAlphaCoverage()
+    {
+        const string hair = "bitmap nrmcov_d\ntexture1 nrmcov_n\ncustomShaderVS vslit_sm_nm\n"
+                          + "customShaderFS fs_plt_hair\nTransparency 1\n";
+        const string plain = "bitmap nrmcov_d\ntexture1 nrmcov_n\ncustomShaderVS vslit_sm_nm\n"
+                           + "customShaderFS fslit_sm_nm\nTransparency 1\n";
+        static int Recipe(string text, string mat, string name, out ModelDef model, int hint = 0)
+        {
+            MtrDef.Forget();
+            MtrDef.Bytes = n => n == mat ? Encoding.ASCII.GetBytes(text) : null;
+            MeshDef mesh = Quad("nrmcov_tex");
+            mesh.MaterialName = mat;
+            mesh.TransparencyHint = hint;
+            model = Model(name, new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+            return DrawRecipe.Intern(model, 1, plan: false);
+        }
+        Reset();
+        int r = Recipe(hair, "cx_sc_nrmcov", "cx_sc_nrmcov_mdl", out ModelDef hairMdl);
+        bool ok = r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.CoverNrm) != 0
+                         && (DrawRecipe.Slots(r) & AlloyRenderer.CoverNrmBit) != 0
+                         && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        int plainR = Recipe(plain, "cx_sc_nrmplain", "cx_sc_nrmplain_mdl", out ModelDef plainMdl);
+        ok &= plainR >= 0 && (DrawRecipe.Flags(plainR) & RecipeFlag.CoverNrm) == 0
+                          && (DrawRecipe.Slots(plainR) & AlloyRenderer.CoverNrmBit) == 0;
+        // The diffuse lands with no alpha anywhere -- the eyelashes case. The hair material stays a cutout
+        // with its bit; the one naming another stage becomes the opaque part its diffuse says it is.
+        TexId d = TexRegistry.Acquire("nrmcov_d");
+        TexRegistry.Land(d, 0x5C18, 256, 0, TexCoverage.Opaque);
+        DrawRecipe.Reclassify();
+        ok &= r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.CoverNrm) != 0
+                     && (DrawRecipe.Slots(r) & AlloyRenderer.CoverNrmBit) != 0
+                     && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        ok &= plainR >= 0 && DrawRecipe.Cls(plainR) == (int)AlloyClass.Opaque;
+        // ...and the fence case: a GRADED diffuse (its alpha is the env reflectivity) under a model that
+        // declares transparency. Vanilla draws this content in the opaque bucket -- its gob env map is what
+        // GetIsOpaque answers with -- so the only hole in it is its own stage's discard, and the class must
+        // stay the hard cutout. The same pair over any other stage is the blend it has always been.
+        int hintR = Recipe(hair.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
+                           "cx_sc_nrmhint", "cx_sc_nrmhint_mdl", out ModelDef hintMdl, hint: 1);
+        int blendR = Recipe(plain.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
+                            "cx_sc_nrmblend", "cx_sc_nrmblend_mdl", out ModelDef blendMdl, hint: 1);
+        TexRegistry.Land(TexRegistry.Acquire("nrmcov_env"), 0x5C19, 256, 0, TexCoverage.Blended);
+        DrawRecipe.Reclassify();
+        ok &= hintR >= 0 && DrawRecipe.Cls(hintR) == (int)AlloyClass.Cutout
+                         && (DrawRecipe.Slots(hintR) & AlloyRenderer.CoverNrmBit) != 0;
+        ok &= blendR >= 0 && DrawRecipe.Cls(blendR) == (int)AlloyClass.Blended
+                          && (DrawRecipe.Slots(blendR) & AlloyRenderer.CoverNrmBit) == 0;
+        DrawRecipe.Forget(hintMdl);
+        DrawRecipe.Forget(blendMdl);
+        // ...and the names are the content's own, matched whole and case-insensitively.
+        ok &= ShaderFeatures.CoversFromNormalAlpha("fs_plt_hair")
+              && ShaderFeatures.CoversFromNormalAlpha("FS_PLT_HAIR2")
+              && !ShaderFeatures.CoversFromNormalAlpha("fs_plt_hair_x")
+              && !ShaderFeatures.CoversFromNormalAlpha("fs_plt_fur")
+              && !ShaderFeatures.CoversFromNormalAlpha("fslit_hair_nm")
+              && !ShaderFeatures.CoversFromNormalAlpha("");
+        DrawRecipe.Forget(hairMdl);
+        DrawRecipe.Forget(plainMdl);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
+        return ok;
     }
 
     /// <summary>A recipe interned while its mesh's <c>.mtr</c> was unreadable: the coverage mode cannot be

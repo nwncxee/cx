@@ -606,6 +606,12 @@ internal static class ShaderContract
                   // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
                   && OwnedLitFsMain.Contains("cxTintRow = CxTintRow(vDraw);")
                   && OwnedLitFsMain.Contains("if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }")
+                  // CX-218: ...and so does the other one, whose coverage is map slot 1's alpha. The bit is a
+                  // hand-written copy of CoverNrmBit, in the library every stage that makes the cutout test
+                  // includes; drifted, it reads as another slot's bit and these parts draw solid again.
+                  && OwnedLitFsHead.Contains($"#define CX_SLOT_COVERNRM {CoverNrmBit}")
+                  && OwnedLitFsMain.Contains("if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)")
+                  && OwnedLitFsMain.Contains("{ coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }")
                   && DepthFeatFs.Contains("if (CxAlphaMip(texture(uTex, vUV, uLodBias).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the

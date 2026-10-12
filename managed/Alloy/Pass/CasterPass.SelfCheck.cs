@@ -138,8 +138,20 @@ public sealed unsafe partial class CasterPass
                   && Threshold(CasterCut.EnvAlpha) == 0.02f
                   && Threshold(CasterCut.Cutout) == 0.2f
                   && Threshold(CasterCut.Coverage) == CoverageLayer.Cut
-                  // the kind is a 2-bit key field at 60, so the three must fit under it and leave 62 alone
-                  && (int)CasterCut.Coverage <= 3
+                  // CX-218: ...and the fourth, whose source is map slot 1's alpha. It beats the env kind on a
+                  // material that is BOTH -- which every one of these is -- and tests at the content stages'
+                  // own 0.2, the number the bodies ShaderFeatures.CoverNrmFs names discard at.
+                  && CutFor(coverage: false, envAlpha: true, coverNrm: true) == CasterCut.CoverNrm
+                  && CutFor(coverage: true, envAlpha: true, coverNrm: true) == CasterCut.Coverage
+                  && CutFor(coverage: false, envAlpha: true, coverNrm: false) == CasterCut.EnvAlpha
+                  && Threshold(CasterCut.CoverNrm) == 0.2f
+                  && Threshold(CasterCut.CoverNrm) == ShaderFeatures.CoverNrmCut
+                  // ...and only the HANDLE stage can read that source: slot 1 never reaches the bound-texture
+                  // stage, which would test the diffuse alpha -- the env level on these materials.
+                  && CastMaskHFs.Contains("& CX_SLOT_COVERNRM) != 0 && uTexH[(vDraw << 3) + 1] != uvec2(0u))")
+                  && CastMaskHFs.Contains("{ t = texture(uNrmTex, vUV).a; tsize = vec2(textureSize(uNrmTex, 0)); }")
+                  // the kind is a 2-bit key field at 60, so the four must fit under it and leave 62 alone
+                  && (int)CasterCut.Coverage <= 3 && (int)CasterCut.CoverNrm <= 3
                   // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
                   && DitherFor(CasterCut.Coverage) >= 1
                   // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except

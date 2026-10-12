@@ -224,8 +224,14 @@ public sealed unsafe partial class AlloyRenderer
             // ...and the .txi's blend pair and fullbright flag, which an offer that waited reads late.
             bool lit = (DrawRecipe.Flags(recipe) & RecipeFlag.Lit) != 0 && _lighting;
             bool a2c = (DrawRecipe.Flags(recipe) & RecipeFlag.Coverage) != 0;
+            // ...and the slot-1 coverage bit, which the same late .mtr can turn on. It rides _oSlots, which
+            // nothing re-derives per frame (the env bit is the one exception), so a recipe that gained it
+            // after its slots were seated would keep drawing solid.
+            int slots = (_oSlots[i] & ~CoverNrmBit) | (DrawRecipe.Slots(recipe) & CoverNrmBit);
             if (_oCls[i] == cls && _oCos[i] == wasCos && _oSin[i] == wasSin
-                && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c) continue;
+                && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
+                && slots == _oSlots[i]) continue;
+            if (slots != _oSlots[i]) { _oSlots[i] = slots; CasterGen++; }
             _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c;
             _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
             // The slot moves between passes, so its staged record and batch row are both stale.

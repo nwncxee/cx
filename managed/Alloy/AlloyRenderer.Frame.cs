@@ -1046,6 +1046,10 @@ public sealed unsafe partial class AlloyRenderer
         if (AlloyClasses.Blends(_gCls[g])) return false;
         // CX-189: nor a coverage cutout -- a 0.2-cut depth laid first would hide the background its fringe blends over
         if (_gA2c[g]) return false;
+        // CX-218: nor a slot-1 coverage batch -- this stage tests the DIFFUSE alpha, which on those materials
+        // is the env level, so it would lay solid depth under the holes the colour pass punches and those
+        // holes would show the clear colour. Slower, never wrong; _gCovN names the upgrade path.
+        if (_gCovN[g]) return false;
         return _gCls[g] == (byte)AlloyClass.Cutout || ShaderFeatures.OutOfPrepass(f);
     }
 
