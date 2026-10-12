@@ -225,14 +225,17 @@ boot, which is the rung's NUI window. The ladder moves the pointer over that win
 image under it. Run it with and without `--cfg 'alloy.enabled=0'`.
 
 The hold follows the NUI window the pointer was over as it began, and ends when that window closes. `--nui` opens a second,
-smaller window (`cxnui2`) that outlives the first, which closes 60 s after it opens (`CXNUI: close cxnui`). Park the pointer over
+smaller window (`cxnui2`) that outlives the first, which closes 60 s after it opens (`CXNUI: close cxnui`). Move the pointer over
 the first window and probe the hold:
 
-    tools/live/run-live.sh --nui --seconds 110 --cfg 'nui.heldprobe=iit_belt' \
-        --keys 'move:100,100;sleep:60000;shot:<dir>/held.png'
+    tools/live/run-live.sh --nui --seconds 60 --cfg 'nui.heldprobe=iit_belt' \
+        --keys 'sleep:3000;move:100,100;sleep:300;move:110,110;sleep:20000;shot:<dir>/held.png;sleep:25000;shot:<dir>/closed.png'
 
-`cx.log` then has `HeldImage: holding Resref iit_belt` at the probe and `HeldImage: released` within a frame of `CXNUI: close
-cxnui`, while the second window is still drawing.
+The probe fires about 16 s into the soak and the first window closes at about 33 s, so move the pointer in the first seconds.
+
+`cx.log` then has `HeldImage: holding Resref iit_belt` and `NuiHitTest: following JsonWindow::cxnui` at the probe, and
+`NuiHitTest: the followed window is gone` and `HeldImage: released` as the first window closes. `closed.png` shows the second window
+and no icon.
 
 ## NUI debug knobs
 
