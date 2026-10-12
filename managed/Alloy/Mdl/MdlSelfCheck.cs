@@ -20,6 +20,7 @@ public static class MdlSelfCheck
         Ascii(Expect);
         Wok(Expect);
         Binary(Expect);
+        LateTangents(Expect);
         Tokens(Expect);
         Fuzz(Expect);
         if (bad == 0) report(true, $"MdlParser.SelfCheck: passed ({FuzzCases} hostile-input cases)");
@@ -391,6 +392,93 @@ public static class MdlSelfCheck
                "Normalize did not turn the zero vector into (1,0,0)");
     }
 
+    /// <summary>A mesh whose tangent frame only becomes derivable once its <c>.mtr</c> is read: no hint means
+    /// no frame, and the hint arriving later must build one -- splitting the two vertices whose triangles
+    /// disagree on handedness and taking the skin and dangly arrays with them. Oracles: the frame and the
+    /// split are worked out by hand off the fixture's UV gradient, and the per-vertex arrays are literals.</summary>
+    private static void LateTangents(Action<bool, string> expect)
+    {
+        Func<string, int>? saved = MdlParser.MaterialHint;
+        try
+        {
+            MeshDef md = Wedge();
+            var skin = new SkinDef
+            {
+                Weights = new[] { new Vector4(1f, 0f, 0f, 0f), new Vector4(0.5f, 0.5f, 0f, 0f),
+                                  new Vector4(0.25f, 0.75f, 0f, 0f), new Vector4(0f, 1f, 0f, 0f) },
+                Bones = new[] { 10u, 11u, 12u, 13u },
+                BoneIndices = new ushort[16],
+            };
+            for (int i = 0; i < 16; i++) skin.BoneIndices[i] = (ushort)(i / 4 * 10 + i % 4);
+            var dangly = new DanglyDef { Constraints = new[] { 0.1f, 0.2f, 0.3f, 0.4f } };
+            var node = new NodeDef { Kind = NodeKind.Skin, Mesh = md, Skin = skin, Dangly = dangly };
+
+            // the parse worker's state: the .mtr is not cached, so the hint is 0 and the pass must decline
+            MdlParser.MaterialHint = null;
+            MdlPost.Tangents(md, node);
+            expect(md.Tangents.Length == 0, $"a mesh with no material hint got {md.Tangents.Length} tangents");
+            expect(md.Positions.Length == 4, "the declining pass changed the vertex count");
+
+            // ...and the read lands: normalandspecmapped
+            MdlParser.MaterialHint = _ => 2;
+            MdlPost.Tangents(md, node);
+            expect(md.Tangents.Length == 6 && md.Positions.Length == 6,
+                   $"the late pass produced {md.Positions.Length} vertices / {md.Tangents.Length} tangents, expected 6");
+            if (md.Tangents.Length != 6) return;
+            expect(Near(md.Tangents[0], new Vector4(1f, 0f, 0f, 1f)), $"tangent 0 is {md.Tangents[0]}, expected +x handed +1");
+            expect(Near(md.Tangents[3], new Vector4(0f, 1f, 0f, -1f)), $"tangent 3 is {md.Tangents[3]}, expected +y handed -1");
+            expect(Near(md.Tangents[4], new Vector4(0f, 1f, 0f, -1f)), $"the split copy of vertex 0 is {md.Tangents[4]}");
+            expect(Near(md.Tangents[5], new Vector4(0f, 1f, 0f, -1f)), $"the split copy of vertex 2 is {md.Tangents[5]}");
+            // the split corners are re-indexed, and the untouched ones are not
+            expect(md.Indices.Length == 6 && md.Indices[0] == 0 && md.Indices[1] == 1 && md.Indices[2] == 2
+                   && md.Indices[3] == 4 && md.Indices[4] == 5 && md.Indices[5] == 3,
+                   "the second triangle was not re-indexed onto the split vertices");
+            bool flat = md.Normals.Length == 6;
+            foreach (Vector3 nn in md.Normals) flat &= Near(nn, new Vector3(0f, 0f, 1f));
+            expect(flat, "the normals did not survive the split as six +Z");
+            expect(Near(md.Uv[0][4], Vector2.Zero) && Near(md.Uv[0][5], new Vector2(1f, 1f)),
+                   "the split vertices did not inherit their source UVs");
+
+            expect(skin.Weights.Length == 6 && Near(skin.Weights[0], new Vector4(1f, 0f, 0f, 0f))
+                   && Near(skin.Weights[2], new Vector4(0.25f, 0.75f, 0f, 0f)),
+                   "the skin weights of the unsplit vertices changed");
+            expect(skin.Weights.Length == 6 && Near(skin.Weights[4], new Vector4(1f, 0f, 0f, 0f))
+                   && Near(skin.Weights[5], new Vector4(0.25f, 0.75f, 0f, 0f)),
+                   "the split vertices did not inherit their source weights");
+            expect(skin.Bones.Length == 6 && skin.Bones[4] == 10u && skin.Bones[5] == 12u,
+                   "the split vertices did not inherit their source bone slots");
+            expect(skin.BoneIndices.Length == 24 && skin.BoneIndices[16] == 0 && skin.BoneIndices[19] == 3
+                   && skin.BoneIndices[20] == 20 && skin.BoneIndices[23] == 23,
+                   "the four-wide bone indices did not follow the split");
+            expect(dangly.Constraints.Length == 6 && Near(dangly.Constraints[4], 0.1f) && Near(dangly.Constraints[5], 0.3f),
+                   "the dangly constraints did not follow the split");
+
+            // An ANIMMESH never splits: its accumulator overwrites rather than accumulating, so its
+            // per-frame arrays stay indexed by the vertices the weld produced.
+            MeshDef am = Wedge();
+            var amNode = new NodeDef { Kind = NodeKind.AnimMesh, Mesh = am, AnimMesh = new AnimMeshDef() };
+            MdlPost.Tangents(am, amNode);
+            expect(am.Positions.Length == 4 && am.Tangents.Length == 4,
+                   $"an animmesh split into {am.Positions.Length} vertices -- its per-frame arrays would be stale");
+        }
+        finally { MdlParser.MaterialHint = saved; }
+    }
+
+    /// <summary>The welded fixture the late pass runs on: a quad as two triangles whose UV gradients have
+    /// OPPOSITE determinant, so the two vertices they share must be split on handedness.</summary>
+    private static MeshDef Wedge()
+    {
+        var m = new MeshDef
+        {
+            Positions = new[] { Vector3.Zero, new Vector3(1f, 0f, 0f), new Vector3(1f, 1f, 0f), new Vector3(0f, 1f, 0f) },
+            Normals = new[] { Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ, Vector3.UnitZ },
+            Indices = new uint[] { 0, 1, 2, 0, 2, 3 },
+            MaterialName = "cx_mat",
+        };
+        m.Uv[0] = new[] { Vector2.Zero, Vector2.UnitX, Vector2.One, new Vector2(2f, 0f) };
+        return m;
+    }
+
     /// <summary>Hostile input. Models arrive from a server's haks and NWSync, so a malformed one must come
     /// back as a refusal and nothing else: never a throw, never a hang, never an allocation past a bound.
     /// <para>Every case here was a reproduced crash or a 23 GiB allocation before it was fixed.</para></summary>
@@ -536,4 +624,5 @@ public static class MdlSelfCheck
     private static bool Near(float a, float b) => MathF.Abs(a - b) < 1e-5f;
     private static bool Near(Vector3 a, Vector3 b) => Near(a.X, b.X) && Near(a.Y, b.Y) && Near(a.Z, b.Z);
     private static bool Near(Vector2 a, Vector2 b) => Near(a.X, b.X) && Near(a.Y, b.Y);
+    private static bool Near(Vector4 a, Vector4 b) => Near(a.X, b.X) && Near(a.Y, b.Y) && Near(a.Z, b.Z) && Near(a.W, b.W);
 }

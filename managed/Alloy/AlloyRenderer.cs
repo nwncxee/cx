@@ -113,6 +113,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>Our own program's attribute locations. VAOs are ours, so the engine's locations only tell us
     /// which buffer/offset holds each stream -- we re-bind them wherever the program wants them.</summary>
     internal const uint LocPos = 0, LocUv = 1, LocNrm = 2;
+    /// <summary>The mesh arena's two packed words: a tangent frame (<c>INT_2_10_10_10_REV</c>, xyz plus the
+    /// handedness in the 2-bit lane) and vertex paint (normalized RGBA8). Location 3 is the lightmap chart
+    /// (<see cref="MeshChart.LocChartUv"/>), so these take the next two free slots.</summary>
+    internal const uint LocTangent = 4, LocPaint = 5;
 
     internal static ExtenderLog? _log;
     private static bool _armed;

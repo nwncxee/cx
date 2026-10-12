@@ -494,6 +494,15 @@ internal static class ShaderContract
                   // the daylight ratio: a loop or baked term that lost it keeps every lamp at night strength at noon
                   && AlloyLights.FragmentLib.Contains("return acc * uDayDim;")
                   && OwnedLitFsHead.Contains(LightmapBake.ChartBufDecl) && OwnedLitVs.Contains("vChart = aChart;")
+                  // CX-221: the arena's two packed streams. Their LOCATIONS live twice -- MeshArena's VAO
+                  // binds them, this stage declares them -- and a disagreement pulls whatever the other
+                  // stream left at that slot, with nothing in the log. The zero-word arm is pinned too:
+                  // lose it and a mesh with no tangent pool reads a zero frame and its normal map inverts.
+                  && OwnedLitVs.Contains($"layout(location = {LocTangent}) in vec4 aTangent;")
+                  && OwnedLitVs.Contains($"layout(location = {LocPaint}) in vec4 aPaint;")
+                  && OwnedLitVs.Contains("out vec4 vTan;") && OwnedLitFsHead.Contains("in vec4 vTan;")
+                  && OwnedLitFsMain.Contains("if (vTan.w != 0.0)")
+                  && OwnedLitFsMain.Contains("B = cross(N, T) * vTan.w;")
                   && LightmapBake.ChartBufDecl.Contains($"binding = {LightmapBake.BindChart})")
                   // the live receiver widens a mover's static half to the lightmap texel the bake did: one density
                   && MeshChart.AtlasTexelsPerUnit == 8f && LightmapBake.ChartBufDecl.Contains("1.0 / (8.0 * rec.w)")
