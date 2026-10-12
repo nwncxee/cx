@@ -336,6 +336,7 @@ public static class TextObjects
         DbId id = SceneDb.Objects.Alloc();
         if (id.IsNull) return id;
         int i = id.Index;
+        DbFeed.InitObject(i);
         SceneDb.ObjKindOf[i] = ObjKind.Text;
         SceneDb.ObjVisible[i] = true;
         SceneDb.ObjScale[i] = 1f;

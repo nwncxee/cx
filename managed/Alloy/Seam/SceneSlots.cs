@@ -358,7 +358,9 @@ internal static unsafe class SceneSlots
     private static void FinishSceneGeometry(nint self)
     {
         DbId s = Id(self);
-        if (!s.IsNull) SceneDb.TouchScene(s, Dirty.Tree);
+        if (s.IsNull) return;
+        SceneDb.TouchScene(s, Dirty.Tree);
+        TileBuild.AuditScenes("finish");
     }
 
     [UnmanagedCallersOnly]

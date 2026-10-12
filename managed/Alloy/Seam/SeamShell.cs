@@ -191,7 +191,10 @@ internal struct SeamHeader
     public uint Id;
     public byte Kind;
     public byte State;
-    public ushort Pad;
+    /// <summary><see cref="SeamShell.InGui"/> / <see cref="SeamShell.InWorld"/>: the kinds of scene this
+    /// shell's object has joined, sticky for the shell's life.</summary>
+    public byte Scenes;
+    public byte Pad;
     /// <summary>The frame <see cref="SeamShell.Retire"/> ran, for the quarantine.</summary>
     public uint RetiredAt;
     /// <summary>Bit per logical slot group already named in a use-after-free line, so the poison path logs
@@ -214,6 +217,7 @@ public static unsafe class SeamShell
 {
     private const ulong Magic = 0x4544414341465843;   // not-an-offset: "CXFACADE" little-endian
     internal const byte StateLive = 1, StateRetired = 2;
+    internal const byte InGui = 1, InWorld = 2;
     /// <summary>Published frames a retired block is kept poisoned before it may be reused. Measured: the game
     /// re-attaches a pointer to a destroyed object about 900 frames later (a panel closed, then reopened), so
     /// the floor sits above that -- recycle sooner and the call lands on a live unrelated record, i.e. silent
@@ -221,7 +225,7 @@ public static unsafe class SeamShell
     public const int QuarantineFrames = 1800;
     /// <summary>Retired blocks kept per kind before the oldest is reused. 1024 shells of the largest kind is
     /// ~4 MB held at worst, which buys a detection window of a whole area's worth of destroys.</summary>
-    private const int RingSize = 1024;
+    internal const int RingSize = 1024;
 
     internal static readonly int HeaderSize = (sizeof(SeamHeader) + 15) & ~15;
 
@@ -232,6 +236,14 @@ public static unsafe class SeamShell
     /// never dropped: the alternative is freeing a block the game may still call through.</summary>
     public static long Overflowed { get; private set; }
     private static System.Collections.Generic.List<nint>? _overflow;
+    /// <summary>The blocks <see cref="Held"/> counts, owned until <see cref="DropAll"/>.</summary>
+    internal sealed class HeldState { internal readonly System.Collections.Generic.List<nint> Blocks = new(); }
+    private static HeldState _held = new();
+
+    /// <summary>Retired shells whose object was ever in a GUI scene. GUI code calls through pointers to
+    /// objects it already destroyed, so such a block is never reused or freed: no later object, world or GUI,
+    /// can sit at its address. ponytail: held for the session; a GUI-only pool needs the minter's origin.</summary>
+    public static int Held => _held.Blocks.Count;
 
     /// <summary>The seam's own frame counter, advanced once per published frame by <see cref="Frame"/>.</summary>
     public static uint FrameNo { get; private set; }
@@ -311,9 +323,22 @@ public static unsafe class SeamShell
         return shell;
     }
 
-    /// <summary>Mark <paramref name="shell"/> retired and queue it for reuse after the quarantine. The caller
-    /// has already nulled the SafePointer back-references (<see cref="Facade.Retire"/>); this only changes the
-    /// block's state, so every later call through its vtable takes the poison path.</summary>
+    /// <summary>Record that <paramref name="shell"/>'s object joined a world or a GUI scene. True when a shell
+    /// that was in a world scene joins a GUI one for the first time; false for a block that is not ours.</summary>
+    internal static bool NoteScene(nint shell, bool world)
+    {
+        if (shell == 0) return false;
+        SeamHeader* h = Head(shell);
+        if (h->Magic != Magic) return false;
+        byte was = h->Scenes;
+        h->Scenes |= world ? InWorld : InGui;
+        return !world && (was & (InWorld | InGui)) == InWorld;
+    }
+
+    /// <summary>Mark <paramref name="shell"/> retired and queue it for reuse after the quarantine, or hold it for
+    /// good when its object was ever in a GUI scene (<see cref="Held"/>). The caller has already nulled the
+    /// SafePointer back-references (<see cref="Facade.Retire"/>); this only changes the block's state, so every
+    /// later call through its vtable takes the poison path.</summary>
     public static void Retire(nint shell)
     {
         SeamHeader* h = Head(shell);
@@ -323,6 +348,7 @@ public static unsafe class SeamShell
         h->Reported = 0;
         h->RetiredBy = SeamCallers.Here();
         Live--;
+        if ((h->Scenes & InGui) != 0) { _held.Blocks.Add(shell); return; }
         int k = h->Kind & 3;
         if (_ringLive[k] == RingSize)
         {
@@ -401,6 +427,8 @@ public static unsafe class SeamShell
             }
             _ringHead[k] = 0;
         }
+        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree((void*)(b - HeaderSize));
+        _held = new HeldState();
         Quarantined = 0;
     }
 }
