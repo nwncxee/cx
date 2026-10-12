@@ -64,6 +64,7 @@ public static unsafe partial class DbAnim
     {
         if (obj.IsNull || !SceneDb.Objects.Valid(obj)) return;
         int i = obj.Index;
+        _stitch.Due[i] = false;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++) StitchDrop(first + k);
     }
