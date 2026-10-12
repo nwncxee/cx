@@ -226,6 +226,10 @@ public sealed unsafe class UiInputService : IExtenderService
 
     // ---- cursor fold (was CursorService) --------------------------------------------------------
     private static bool _forceDefault, _prevOverUi, _cursorFoldActive;
+    /// <summary>Set each frame by the held image: the pointer shows <see cref="HeldCursorId"/> wherever it is. Needs the
+    /// cursor fold, which is Linux-only until the two cursor symbols have Windows anchors.</summary>
+    internal static volatile bool HeldCursor;
+    private const int HeldCursorId = CX.Services.Nui.HeldImageService.HeldCursorId;
 
     [UnmanagedCallersOnly]
     private static void OnUpdateCursor(IntPtr @this, int param1)
@@ -254,7 +258,8 @@ public sealed unsafe class UiInputService : IExtenderService
     private static void OnSetMouseCursor(IntPtr @this, int cursorId, int hotspot, int p3, int p4, int p5)
     {
         if (_origSetCursor == null) return;
-        if (_forceDefault) _origSetCursor(@this, UiCursorId, 0, 1, 0, p5);
+        if (HeldCursor) _origSetCursor(@this, HeldCursorId, 0, 1, 0, p5);
+        else if (_forceDefault) _origSetCursor(@this, UiCursorId, 0, 1, 0, p5);
         else _origSetCursor(@this, cursorId, hotspot, p3, p4, p5);
     }
 

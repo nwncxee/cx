@@ -201,3 +201,9 @@ pointer. The second run uses the real pointer: row 2 of the list shows its own c
   a second or two after the PC's login that the module's own clock starts from, so a capture lands
   inside its rung's window rather than on a known frame. The markers are the evidence; the pictures
   are the sanity check.
+
+## Held image
+
+`--cfg 'nui.heldprobe=iit_belt'` with `--ladder` sends the client a `held.image` line at the first NUI draw 50 s after
+boot, which is the rung's NUI window. The ladder moves the pointer over that window first, so `07n-nui*.png` shows the
+image under it. The hold ends when the window closes. Run it with and without `--cfg 'alloy.enabled=0'`.
