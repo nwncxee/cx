@@ -402,15 +402,17 @@ public static unsafe partial class DbAnim
             new NodeDef { Name = "mid", Index = 1, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Dummy,
                           Position = new Vector3(0f, 0f, 1f) },
             new NodeDef { Name = "askin", Index = 2, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
-                          Mesh = Ring(new Vector3(0f, 1f, 0f), Vector3.UnitZ), Skin = OneBone("root") },
+                          Mesh = Ring(new Vector3(0f, 1f, 0f), Vector3.UnitZ, Vector3.UnitX, 1f),
+                          Skin = OneBone("root") },
         };
         for (int i = 0; i < m.Nodes.Length; i++) m.NodeByName[m.Nodes[i].Name] = i;
         return m;
     }
 
     /// <summary>The grafted piece: "gskin" shares the body's ring but is weighted to "mid", so the ring comes
-    /// apart when "mid" moves, and "glone" is a skinned part ten metres away with no partner at all.</summary>
-    private static ModelDef StitchPiece()
+    /// apart when "mid" moves, and "glone" is a skinned part ten metres away with no partner at all. Its
+    /// tangents point along +Y with handedness <paramref name="hand"/>, the body's along +X with +1.</summary>
+    private static ModelDef StitchPiece(float hand)
     {
         var m = new ModelDef { Name = "cx_selfcheck_stitch_piece", AnimScale = 1f, BMin = new Vector3(-1f), BMax = new Vector3(1f) };
         m.Nodes = new[]
@@ -418,9 +420,11 @@ public static unsafe partial class DbAnim
             new NodeDef { Name = "groot", Index = 0, Parent = -1, Children = new[] { 1, 2 }, Kind = NodeKind.Dummy },
             new NodeDef { Name = "glone", Index = 1, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
                           Position = new Vector3(10f, 0f, 0f),
-                          Mesh = Ring(new Vector3(0f, -1f, 0f), Vector3.UnitY), Skin = OneBone("mid") },
+                          Mesh = Ring(new Vector3(0f, -1f, 0f), Vector3.UnitY, Vector3.UnitY, hand),
+                          Skin = OneBone("mid") },
             new NodeDef { Name = "gskin", Index = 2, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
-                          Mesh = Ring(new Vector3(0f, -1f, 0f), Vector3.UnitY), Skin = OneBone("mid") },
+                          Mesh = Ring(new Vector3(0f, -1f, 0f), Vector3.UnitY, Vector3.UnitY, hand),
+                          Skin = OneBone("mid") },
         };
         for (int i = 0; i < m.Nodes.Length; i++) m.NodeByName[m.Nodes[i].Name] = i;
         return m;
@@ -428,12 +432,14 @@ public static unsafe partial class DbAnim
 
     /// <summary>One triangle whose first two corners are the SHARED ring -- the origin and (1,0,0) -- with
     /// <paramref name="third"/> its own corner and <paramref name="normal"/> on all three.</summary>
-    private static MeshDef Ring(Vector3 third, Vector3 normal)
+    private static MeshDef Ring(Vector3 third, Vector3 normal, Vector3 tangent, float hand)
     {
+        var t = new Vector4(tangent, hand);
         var mesh = new MeshDef
         {
             Positions = new[] { Vector3.Zero, Vector3.UnitX, third },
             Normals = new[] { normal, normal, normal },
+            Tangents = new[] { t, t, t },
             Indices = new uint[] { 0, 1, 2 },
         };
         mesh.Uv[0] = new[] { Vector2.Zero, Vector2.UnitX, Vector2.UnitY };
@@ -457,9 +463,17 @@ public static unsafe partial class DbAnim
     /// hand-written fixture, CPU skinning off the palette columns, and the arena's own vertex bytes.</summary>
     private static void BoundaryStitch(Checker check)
     {
+        // pass 0 gives both rings the SAME tangent handedness, pass 1 opposite ones -- which the packing
+        // reads as a sign and never interpolates, so those frames must be left alone.
+        for (int pass = 0; pass < 2; pass++) BoundaryStitch(check, pass == 0 ? 1f : -1f);
+    }
+
+    /// <inheritdoc cref="BoundaryStitch(Checker)"/>
+    private static void BoundaryStitch(Checker check, float hand)
+    {
         DbId scene = SceneDb.Scenes.Alloc();
         DbId body = Subject(StitchBody(), scene, out int bodyFirst);
-        ModelDef pm = StitchPiece();
+        ModelDef pm = StitchPiece(hand);
         DbId piece = Subject(pm, scene, out int pieceFirst);
         int pi = piece.Index, skinA = bodyFirst + 2, skinB = pieceFirst + 2, lone = pieceFirst + 1;
         // Subject chains its three parts; these two trees are a root with two children.
@@ -509,6 +523,25 @@ public static unsafe partial class DbAnim
                          $"the shared ring's normals are averaged to one in the arena ({na} against {nb})");
             check.Expect(NearV(ArenaNormal(skinB, 2), Vector3.UnitY),
                          "...and an unpartnered vertex keeps the normal it was authored with");
+
+            // The tangent frames: +X against +Y, so the average is the diagonal -- but only where the two
+            // agree on handedness. The expected values are hand-written, read back from the arena's own
+            // packed word.
+            Vector4 ta = ArenaTangent(skinA, 0), tb = ArenaTangent(skinB, 0);
+            var diagonal = new Vector3(0.70710678f, 0.70710678f, 0f);
+            if (hand > 0f)
+            {
+                check.Expect(NearT(ta, diagonal) && NearT(tb, diagonal),
+                             $"two frames of one handedness average to the diagonal ({ta} against {tb})");
+                check.Expect(ta.W == 1f && tb.W == 1f, $"...with the handedness lane still exactly +1 ({ta.W}, {tb.W})");
+            }
+            else
+            {
+                check.Expect(NearT(ta, Vector3.UnitX) && ta.W == 1f,
+                             $"frames of OPPOSITE handedness are not averaged: the body keeps +X ({ta})");
+                check.Expect(NearT(tb, Vector3.UnitY) && tb.W == -1f,
+                             $"...and the piece keeps +Y with its own -1 ({tb})");
+            }
         }
         finally { NativeMemory.Free(dst); }
 
@@ -556,4 +589,18 @@ public static unsafe partial class DbAnim
         if (range < 0 || !MeshArena.VertexProbe(range, vi, out _, out Vector3 n, out _, out _)) return Vector3.Zero;
         return Vector3.Normalize(Vector3.TransformNormal(n, SceneDb.PartWorld[part]));
     }
+
+    /// <summary>The tangent frame the ARENA holds for one of a part's vertices, unpacked from the one word it
+    /// uploaded -- so the assertion is on GPU bytes, not on a CPU copy.</summary>
+    private static Vector4 ArenaTangent(int part, int vi)
+    {
+        int rec = SceneDb.PartRecipe[part];
+        int range = rec >= 0 ? DrawRecipe.Range(rec) : SceneDb.PartMesh[part];
+        if (range < 0 || !MeshArena.StreamProbe(range, vi, out uint packed, out _)) return default;
+        return MeshArena.UnpackTangent(packed);
+    }
+
+    /// <summary>A packed tangent's direction against an expected one, inside the 10-bit lane's own step.</summary>
+    private static bool NearT(Vector4 t, Vector3 want)
+        => (new Vector3(t.X, t.Y, t.Z) - want).Length() < 0.01f;
 }

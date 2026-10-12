@@ -211,7 +211,8 @@ public static unsafe partial class DbAnim
         _log?.Info($"SkinStitch: \"{SceneDb.ObjModel[root.Index]?.Name ?? "-"}\" (o={root.Index}): {w.Healed} "
                  + $"boundary vertices paired across {w.Pairs} part pair(s) -- {w.Gaps} had DIFFERENT skin "
                  + $"weights (a GAP when posed), {w.Lines} differed in normal by up to {w.MaxAngle:F1} deg (a "
-                 + "SHADING LINE). Healed in the rest pose.");
+                 + $"SHADING LINE), {w.Handed} disagreed on tangent handedness and kept their own frame. "
+                 + "Healed in the rest pose.");
     }
 
     /// <summary>The stitch's clause on the skin period line.</summary>

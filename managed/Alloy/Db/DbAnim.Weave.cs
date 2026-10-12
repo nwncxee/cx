@@ -31,7 +31,7 @@ public static unsafe partial class DbAnim
         private Vector4[] _vTan = new Vector4[64];
 
         internal int Count;
-        internal int Healed, Pairs, Gaps, Lines;
+        internal int Healed, Pairs, Gaps, Lines, Handed;
         internal float MaxAngle;
 
         internal Weave(int parts)
@@ -70,6 +70,10 @@ public static unsafe partial class DbAnim
             _bone[k] = bone;
             _names[k] = new List<string>(names);
             Grow(Count + nv);
+            // MtrFeed.Warm runs MdlPost.Tangents for a late .mtr at OBJECT CREATION, before a part tree
+            // exists, so the arrays read here are the final ones -- and the weave re-reads them on every
+            // re-stitch. ponytail: a frame that somehow arrived after a creature was stitched would not
+            // reach its copy; the upgrade is to mark the composition due again from that fill.
             bool haveN = mesh.Normals.Length >= nv, haveT = mesh.Tangents.Length >= nv;
             for (int i = 0; i < nv; i++)
             {
@@ -191,10 +195,24 @@ public static unsafe partial class DbAnim
             int inf = Influences(rep, nm, wt);
             if (inf <= 0) return;
 
+            // The tangent frame is averaged only where the partners AGREE on handedness: w is read as a
+            // sign, never interpolated, and two frames of opposite handedness have no meaningful average --
+            // those vertices keep the frame their own file states.
             Vector3 nSum = Vector3.Zero, tSum = Vector3.Zero;
-            for (int v = first; v >= 0; v = link[v]) { nSum += _vNrm[v]; tSum += AsV3(_vTan[v]); }
-            Vector3 nAvg = Norm(nSum), tAvg = tSum.LengthSquared() > 0f ? Norm(tSum) : Vector3.Zero;
-            float repW = _vTan[rep].W;
+            int hand = 0;
+            bool mixed = false;
+            for (int v = first; v >= 0; v = link[v])
+            {
+                nSum += _vNrm[v];
+                float w = _vTan[v].W;
+                if (w == 0f) continue;
+                int sign = w < 0f ? -1 : 1;
+                if (hand == 0) hand = sign; else if (hand != sign) mixed = true;
+                tSum += AsV3(_vTan[v]);
+            }
+            if (mixed) Handed++;
+            Vector3 nAvg = Norm(nSum), tAvg = mixed || hand == 0 ? Vector3.Zero : Norm(tSum);
+            float repW = hand < 0 ? -1f : 1f;
 
             for (int v = first; v >= 0; v = link[v])
             {
@@ -297,8 +315,14 @@ public static unsafe partial class DbAnim
             }
             if (mesh.Tangents.Length >= nv && tAvg != Vector3.Zero)
             {
-                _newTan[k] ??= (Vector4[])mesh.Tangents.Clone();
-                _newTan[k]![i] = new Vector4(Norm(Vector3.TransformNormal(tAvg, _restInv[k])), tanW);
+                // A degenerate xyz is "no frame" to the packing, so a cancelled average is not written at
+                // all; the handedness lane stays exactly +1 or -1.
+                Vector3 t = Norm(Vector3.TransformNormal(tAvg, _restInv[k]));
+                if (t != Vector3.Zero)
+                {
+                    _newTan[k] ??= (Vector4[])mesh.Tangents.Clone();
+                    _newTan[k]![i] = new Vector4(t, tanW < 0f ? -1f : 1f);
+                }
             }
             _changed[k] = true;
             return true;
