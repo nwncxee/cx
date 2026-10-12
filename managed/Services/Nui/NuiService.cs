@@ -30,6 +30,17 @@ public sealed unsafe class NuiService : IExtenderService
     private static Knob<bool>? _enabled, _cull;
     private static long _seen, _skipped;
 
+    /// <summary>What NUI is doing, for readers outside this folder.</summary>
+    internal sealed class ActivityState
+    {
+        /// <summary>Widget draws since boot; it stops rising when no NUI window is open.</summary>
+        public long Drawn;
+        /// <summary>True once the widget hook is in, so <see cref="Drawn"/> means something.</summary>
+        public bool Counting;
+    }
+
+    internal static readonly ActivityState Activity = new();
+
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -62,6 +73,7 @@ public sealed unsafe class NuiService : IExtenderService
         }
         _renderOrig = hooks.InstallNuiWidgetRender(&OnWidgetRender);
         if (_renderOrig == null) Fail("Widget::Render did not hook");
+        else Activity.Counting = true;
     }
 
     private static void Fail(string why)
@@ -74,6 +86,7 @@ public sealed unsafe class NuiService : IExtenderService
     private static void OnWidgetRender(IntPtr self, IntPtr ctx)
     {
         _seen++;
+        Activity.Drawn++;
         if (_enabled!.V && _cull!.V && Offscreen(self, ctx)) { _skipped++; return; }
         _renderOrig(self, ctx);
     }

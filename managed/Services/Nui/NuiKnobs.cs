@@ -9,7 +9,8 @@ namespace CX.Services.Nui;
 internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain;
+    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HeldImage;
+    internal static readonly Knob<string> HeldProbe;
     internal static readonly Knob<float> Thumb;
 
     static NuiKnobs()
@@ -36,5 +37,9 @@ internal static class NuiKnobs
             help: "A long list's scrollbar handle never gets shorter than this, so it cannot shrink out of sight. 0 = stock.");
         ItemIcons = G.Toggle("itemicons", "Item icons in NUI windows", true,
             help: "A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite.");
+        HeldImage = G.Toggle("heldimage", "Show what the server says you are holding", true,
+            help: "When a server's NUI window says you picked something up, its image follows the pointer until you place it. Off, nothing follows the pointer.");
+        HeldProbe = G.Text("heldprobe", "heldprobe", "", Tier.ChatOnly, Effect.Restart,
+            help: "Debug: the first time a NUI window draws, hold this image as if the server had sent it.");
     }
 }

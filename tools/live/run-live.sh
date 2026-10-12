@@ -387,7 +387,7 @@ LADDER_KEYS="$LADDER_KEYS;sleep:4000;shot:$SHOTS/06g-stripped.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:4000;shot:$SHOTS/06h-reequipped.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:500;shot:$SHOTS/06i-reequipped2.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:6000;shot:$SHOTS/07-area2.png"
-LADDER_KEYS="$LADDER_KEYS;sleep:3000;shot:$SHOTS/07n-nui.png;sleep:1000;shot:$SHOTS/07n-nui-b.png;sleep:1000;shot:$SHOTS/07n-nui-c.png"
+LADDER_KEYS="$LADDER_KEYS;sleep:3000;move:550,360;sleep:400;shot:$SHOTS/07n-nui.png;sleep:1000;shot:$SHOTS/07n-nui-b.png;sleep:1000;shot:$SHOTS/07n-nui-c.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:11000;shot:$SHOTS/08-area1.png"
 # The ladder owns the key channel, so a --keys of your own runs after it rather than being dropped.
 [ -n "$KEYS" ] && LADDER_KEYS="$LADDER_KEYS;$KEYS"
