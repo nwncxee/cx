@@ -242,9 +242,7 @@ internal static unsafe class DbGui
                 }
                 if (!glyphs) return issued;
                 Matrix4x4 mvp = SceneDb.ObjWorld[o] * viewProj;
-                // Depth-tested AND depth-writing, as the engine draws it: nothing in RenderOnlyGobs, StringGob::Render
-                // or CAurFont::TextOut touches the mask, so Material::SetBlendingMode @0x5c5c50 left it on, and a
-                // control drawn later behind the text (a load screen's frame re-added after its tip) stays under it.
+                // Depth-written as the engine draws text, so a control drawn later behind it stays under it.
                 int runs = TextQuads.Issue(d, in mvp, d.Font.Atlas, TextObjects.CaretAlpha(nowMs),
                                            depthTest: true, depthWrite: true);
                 _textRuns += runs;

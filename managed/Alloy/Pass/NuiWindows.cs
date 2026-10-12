@@ -404,8 +404,7 @@ internal static unsafe class NuiWindows
             name[0] = (byte)'a'; name[1] = (byte)'b';
             check.Expect(Hash(name) == 0x089c4407b545986a, "FNV-1a 64 of 'ab'");
 
-            // A window of three commands in a 0x100-byte queue: a filled rect covering the window, a stroked rect
-            // around it, a text with fg and bg. Header = type int @0, next u64 @8.
+            // Three commands in a 0x100-byte queue: a window-sized fill, its stroked bounds, a text; type @0, next @8.
             byte* mem = stackalloc byte[0x100];
             for (int i = 0; i < 0x100; i++) mem[i] = 0;
             byte* a = mem + 0x10, b = mem + 0x50, t = mem + 0x90;

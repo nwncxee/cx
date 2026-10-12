@@ -69,9 +69,6 @@ public static class Capabilities
         foreach (var (n, v) in Build(Product.Version, true)) _s.Send(n, v);
     }
 
-    /// <summary>Forgets the registry and the login. For the self-check only.</summary>
-    internal static void Reset() => _s = new();
-
     /// <summary>Oracle: hand-written literals for version packing and the expected property lists.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {

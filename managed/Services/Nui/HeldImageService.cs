@@ -104,10 +104,10 @@ public sealed unsafe class HeldImageService : IExtenderService
                 TextRig.DrawIcon(s.Model.Name, mx - px / 2, my - px / 2, px, px, alpha);
                 break;
             case HeldKind.Item:
-                DrawItem(RadialIcons.Item((IntPtr)(s.Model.Oid | NuiItemIcons.ServerIdBit)), s.Model.Oid | NuiItemIcons.ServerIdBit, mx, my, px, alpha);
+                DrawItem(RadialIcons.Item((IntPtr)(s.Model.Oid | NuiItemIcons.ServerIdBit)), mx, my, px, alpha);
                 break;
             case HeldKind.Look:
-                DrawItem(s.Minted, 0, mx, my, px, alpha);
+                DrawItem(s.Minted, mx, my, px, alpha);
                 break;
         }
     }
@@ -159,19 +159,15 @@ public sealed unsafe class HeldImageService : IExtenderService
 
     /// <summary>The item's icon centred on the pointer, as many cells as its art's own frame fills, or its base item's cells
     /// when the frame is unknown.</summary>
-    private static void DrawItem(IntPtr item, uint handle, int mx, int my, float px, float alpha)
+    private static void DrawItem(IntPtr item, int mx, int my, float px, float alpha)
     {
         if (item == IntPtr.Zero) return;
+        IntPtr icon = new CNWCItem(item).GuiIcon;
+        if (icon == IntPtr.Zero) return;
         NuiItemIcons.Cells(item, out int cw, out int ch);
-        IconFrames.Frame f = IconFrames.Of(new CNWCItem(item).GuiIcon);
+        IconFrames.Frame f = IconFrames.Of(icon);
         float w = f.Known ? px * f.Cw / IconFrames.CellPx : px * cw, h = f.Known ? px * f.Ch / IconFrames.CellPx : px * ch;
-        float x = mx - w / 2, y = my - h / 2;
-        if (handle != 0) RadialIcons.Draw((IntPtr)handle, x, y, w, h, alpha, cw, ch);
-        else
-        {
-            IntPtr icon = new CNWCItem(item).GuiIcon;
-            if (icon != IntPtr.Zero) RadialIcons.DrawGuiIcon(icon, x, y, w, h, alpha, cw, ch);
-        }
+        RadialIcons.DrawGuiIcon(icon, mx - w / 2, my - h / 2, w, h, alpha, cw, ch);
     }
 
     /// <summary>The live harness has no server: <c>nui.heldprobe</c> sends this client the line, once, at the first NUI draw 50 s after boot.</summary>

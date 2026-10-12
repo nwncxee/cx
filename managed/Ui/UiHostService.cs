@@ -36,9 +36,7 @@ public sealed unsafe class UiHostService : IExtenderService
             ? "UiHostService: frame present owned (SwapBuffers) -- driving the window registry"
             : "UiHostService: frame present not installed (Install returned Zero: symbol unresolved or already hooked)");
 
-        // The roll-call's draw site with Alloy off. nk_sdl_render is nuklear's GL flush: the below-NUI layer runs
-        // just before it, over the vanilla GUI panels and under every NUI window, and the above-NUI layer right
-        // after it. Chained, not Installed: the symbol is shared plumbing, and higher priority = outer.
+        // With Alloy off, the below-NUI layer runs just before nuklear's GL flush and the above-NUI layer after it.
         _nkSlot = hooks.ChainNkSdlRender(&OnNkRender, 20);
         log.Info(_nkSlot != null
             ? "UiHostService: window roll-call straddles NUI (chained on nk_sdl_render)"

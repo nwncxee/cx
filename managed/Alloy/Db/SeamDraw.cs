@@ -110,8 +110,7 @@ internal static class SeamDraw
             // in framebuffer 0 while the next world frame was being resolved into it.
             // The world it sits on is frame N-1's, not N's -- that IS the pipeline, and it is the same one
             // frame of latency the snapshot protocol is built around. The alternative is no second thread.
-            // Both layers here: NUI was flushed by the render thread already, so this arm cannot put the
-            // below-NUI layer under it. Moot until the render thread can start (GuiBuffersOwned).
+            // Both UI layers here: the render thread already flushed NUI, so this arm cannot split them around it.
             CX.Ui.UiHostService.DrawWindowsForDbFrame();
         }
         // The GUI depth latch is per RUN of GUI views, not per view, exactly as the engine's own
@@ -130,10 +129,7 @@ internal static class SeamDraw
         try { nui = DrawViews(f); }
         finally
         {
-            // CX's own 2D UI (chat, the settings panel, nameplates, combat text) goes after every view the game
-            // asked for, split around NUI's flush so each window keeps its layer. The whole frame runs here at
-            // PrePresent, so drawing it where the engine's GUI render sits -- before the world -- put it UNDER
-            // the world and it disappeared the moment the world started drawing.
+            // CX's 2D UI goes after every view, split around NUI's flush; before the world it would draw under it.
             // The same rule, the other side of the publish -- see the `live` arm above. The ONE
             // invariant both arms keep is "the 2D UI is drawn after the world frame it composites over"; what
             // the knob changes is which frame that is, because a pipelined draw is not finished yet.

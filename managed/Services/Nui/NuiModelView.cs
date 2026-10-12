@@ -114,10 +114,7 @@ internal static unsafe class NuiModelView
         string key = KeyOf(resref);
         var (w, h, sized) = SizeOf(key);
         string standin = Policy(key, "standin", "");
-        Span<byte> name = stackalloc byte[17];
-        name.Clear();
-        for (int i = 0; i < standin.Length && i < 16; i++) name[i] = (byte)standin[i];
-        NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(Policy(key, "standinrect", "")), out uint[] px, out int pw, out int ph);
+        StandinImage(standin, w, h, sized, Policy(key, "standinrect", ""), out uint[] px, out int pw, out int ph);
         _s.PendingKey = key; _s.PendingPixels = px; _s.PendingW = pw; _s.PendingH = ph; _s.PendingStandin = standin;
         return true;
     }
@@ -137,8 +134,8 @@ internal static unsafe class NuiModelView
         _s.View = v;
     }
 
-    /// <summary>The image is alive while its shared_ptr control block counts an owner ; the block
-    /// outlives the image, because nk_loadimg's name map keeps a weak reference to it.</summary>
+    /// <summary>The image is alive while its shared_ptr control block counts an owner. The block outlives the image,
+    /// because nk_loadimg's name map keeps a weak reference to it.</summary>
     private static bool Alive(ViewData v) => v.Ctrl != IntPtr.Zero && new SharedPtrBlock(v.Ctrl).UseCount > 0;
 
     private static void Frame()
@@ -274,16 +271,24 @@ internal static unsafe class NuiModelView
         UploadStandin(s, v);
     }
 
+    /// <summary>The TGA pixels for the stand-in resref <paramref name="standin"/> cut to <paramref name="rect"/>, or a transparent one.</summary>
+    private static void StandinImage(string standin, int w, int h, bool sized, string rect, out uint[] px, out int pw, out int ph)
+    {
+        Span<byte> name = stackalloc byte[RadialResRef + 1];
+        name.Clear();
+        for (int i = 0; i < standin.Length && i < RadialResRef; i++) name[i] = (byte)standin[i];
+        NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(rect), out px, out pw, out ph);
+    }
+
+    private const int RadialResRef = CX.Services.Radial.RadialIcons.ResRefLen;
+
     /// <summary>The stand-in's pixels into the view's texture, in the engine's context with its texture binding put back as it was.</summary>
     private static void UploadStandin(ViewState s, ViewData v)
     {
         uint[]? px = v.Standin;
         if (v.StandinName.Length > 0)
         {
-            Span<byte> name = stackalloc byte[17];
-            name.Clear();
-            for (int i = 0; i < v.StandinName.Length && i < 16; i++) name[i] = (byte)v.StandinName[i];
-            NuiItemIcons.ModelImage(name, v.W, v.H, true, StandinRect.Parse(v.StandinRect), out uint[] fresh, out int fw, out int fh);
+            StandinImage(v.StandinName, v.W, v.H, true, v.StandinRect, out uint[] fresh, out int fw, out int fh);
             if (fw != v.W || fh != v.H) { s.Log?.Always($"NuiModelView: stand-in '{v.StandinName}' is {fw}x{fh}, the view {v.W}x{v.H} -- not applied"); return; }
             px = v.Standin = fresh;
         }
