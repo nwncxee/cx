@@ -94,7 +94,7 @@ internal static unsafe class NuiFlush
         new NkContext(ctx).DeltaTime = dt;
         _refresh();
         NuiWindows.Apply(ctx, _texNull == IntPtr.Zero ? 0 : (int)(long)((NkDrawNullTexture*)_texNull)->Texture);
-        Convert(ctx);
+        if (!CX.Ui.LoadScreen.PanelUp) Convert(ctx);   // the loadscreen covers the screen: NUI's queue is dropped
         NuiWindows.Finish(ctx);
         _clear(ctx);
         BufferClear(_cmds);

@@ -433,10 +433,13 @@ public static unsafe partial class Facade
     }
 
     /// <summary>Object <paramref name="obj"/> joined <paramref name="scene"/>: stamp its shell with the kind of
-    /// scene, and name a world object moving into a GUI scene -- a GUI pointer that reached a world shell.</summary>
+    /// scene and, for a GUI one, the record (<see cref="SceneDb.ObjEverInGui"/>); name a world object moving into
+    /// a GUI scene -- a GUI pointer that reached a world shell.</summary>
     internal static void NoteJoin(DbId scene, DbId obj)
     {
-        if (!SeamShell.NoteScene(Shell(SceneDb.ObjFacade[obj.Index]), SceneDb.SceneIsWorld[scene.Index]) || InSelfCheck) return;
+        bool world = SceneDb.SceneIsWorld[scene.Index];
+        if (!world) SceneDb.ObjEverInGui[obj.Index] = true;
+        if (!SeamShell.NoteScene(Shell(SceneDb.ObjFacade[obj.Index]), world) || InSelfCheck) return;
         SceneProbeState st = _sceneProbe;
         st.WorldIntoGui++;
         if (st.WorldIntoGuiLeft <= 0) return;

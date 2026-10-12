@@ -245,7 +245,7 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>Refresh the session gate, the UI scale and the viewport, run the z-order roll-call of one layer (null =
     /// both), then hand the GL state back: our raw GL desyncs GLRender's shadow cache and what renders next is NUI.
-    /// Only the roll-call stands aside while a movie is on screen; the session gate still runs.</summary>
+    /// Only the roll-call stands aside while a movie or the engine's loadscreen is on screen; the session gate still runs.</summary>
     private static void DrawWindows(UiLayer? layer = null)
     {
         // The roll-call's head and tail are their own zone. Zone.Ui is the DRAW only, so the gate, the scale sync,
@@ -256,7 +256,7 @@ public sealed unsafe class UiHostService : IExtenderService
         TextRig.SampleViewport();     // the frame's one GL_VIEWPORT query; every draw below reads the pair
         long tUi = FrameZones.Now;
         // A movie frame never reaches the chain: CGuiMan::UpdateAndRender skips nk_sdl_render outright while one plays.
-        if (!CX.Alloy.MovieService.OnScreen)
+        if (!CX.Alloy.MovieService.OnScreen && !LoadScreen.PanelUp)
         {
             if (layer is { } one) UiHost.DrawFrame(one);   // one layer's windows in z-order (content-owned)
             else UiHost.DrawFrame();

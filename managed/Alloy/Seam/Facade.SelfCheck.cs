@@ -440,6 +440,8 @@ internal static unsafe class FacadeSelfCheck
         NativeMemory.Free((void*)notOurs);
 
         GuiHold(check);
+        PartHold(check);
+        SceneHold(check);
 
         Facade.InSelfCheck = false;
         SceneDb.Objects.Free(id);
@@ -502,6 +504,111 @@ internal static unsafe class FacadeSelfCheck
         SceneDb.Objects.Free(wobj);
         SceneDb.Objects.Free(gobj);
         SceneDb.SceneIsWorld[world.Index] = false;
+        SceneDb.Scenes.Free(world);
+        SceneDb.Scenes.Free(gui);
+    }
+
+    /// <summary>A part shell whose object was ever in a GUI scene is held at the object's death, never freed,
+    /// so the part allocator cannot hand its address out again. Oracle: hand-written expectations -- the
+    /// held and quarantined counts, and the GUI part's address never coming back from a churn that does reuse
+    /// the world part's. Its two GUI parts stay held for the session.</summary>
+    private static void PartHold(Checker check)
+    {
+        PartShell.Build();
+        DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc(), wobj = SceneDb.Objects.Alloc(),
+             gobj = SceneDb.Objects.Alloc(), churn = SceneDb.Objects.Alloc();
+        if (world.IsNull || gui.IsNull || wobj.IsNull || gobj.IsNull || churn.IsNull)
+        {
+            check.Expect(false, "no records for the GUI part hold check");
+            return;
+        }
+        SceneDb.SceneIsWorld[world.Index] = true;
+        SceneDb.SceneIsWorld[gui.Index] = false;
+        DbFeed.InitObject(wobj.Index);
+        DbFeed.InitObject(gobj.Index);
+        DbFeed.InitObject(churn.Index);
+        nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj);
+        nint wpart = PartShell.For(wobj, 0), before = PartShell.For(gobj, 0);
+        if (wpart == 0 || before == 0)
+        {
+            check.Skip("no Part vtable in this host, so no part shell can be minted");
+        }
+        else
+        {
+            DbScene.Join(world, wobj);
+            DbScene.Join(gui, gobj);
+            nint after = PartShell.For(gobj, 1);
+            DbScene.Leave(gui, gobj);
+            DbScene.Leave(world, wobj);
+            long held = PartShell.Held, quarantined = PartShell.Quarantined;
+            PartShell.FreeAll(gobj);
+            check.Expect(PartShell.Held == held + 2 && PartShell.Quarantined == quarantined,
+                "both parts of an object that was in a GUI scene, minted before and after the join, must be held");
+            PartShell.FreeAll(wobj);
+            check.Expect(PartShell.Held == held + 2 && PartShell.Quarantined == quarantined + 1,
+                "a part of an object only ever in a world scene goes to the quarantine");
+            check.Expect(!PartShell.Resolve(before, out _, out _) && !PartShell.Resolve(after, out _, out _),
+                "a held GUI part shell must not resolve to a record");
+
+            for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
+            check.Expect(PartShell.Quarantined == quarantined, "the world part must be freed past its quarantine");
+            bool gotGui = false, gotWorld = false;
+            for (int k = 0; k < 256; k++)
+            {
+                nint p = PartShell.For(churn, k);
+                gotGui |= p == before || p == after;
+                gotWorld |= p == wpart;
+            }
+            check.Expect(gotWorld, "the freed world part's address must come back, or this check proves nothing");
+            check.Expect(!gotGui, "a held GUI part shell was handed out again");
+            PartShell.FreeAll(churn);
+            for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
+        }
+
+        Facade.Retire(gshell);
+        Facade.Retire(wshell);
+        SceneDb.Objects.Free(wobj);
+        SceneDb.Objects.Free(gobj);
+        SceneDb.Objects.Free(churn);
+        SceneDb.SceneIsWorld[world.Index] = false;
+        SceneDb.Scenes.Free(world);
+        SceneDb.Scenes.Free(gui);
+    }
+
+    /// <summary>A scene shell that never became a world scene is held at retire, so no later scene -- the world
+    /// one included -- can be minted at its address. Oracle: hand-written expectations -- the held and
+    /// quarantined counts, and the GUI scene's address never coming back from a churn that does reuse blocks.</summary>
+    private static void SceneHold(Checker check)
+    {
+        DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc();
+        if (world.IsNull || gui.IsNull)
+        {
+            check.Expect(false, "no records for the scene hold check");
+            return;
+        }
+        nint wshell = Facade.Mint(FacadeKind.Scene, world), gshell = Facade.Mint(FacadeKind.Scene, gui);
+        SeamShell.NoteScene(wshell, world: true);
+        int held = SeamShell.Held, quarantined = SeamShell.Quarantined;
+        Facade.Retire(gshell);
+        check.Expect(SeamShell.Held == held + 1 && SeamShell.Quarantined == quarantined,
+            "a scene shell that was never a world scene must be held, not queued for reuse");
+        Facade.Retire(wshell);
+        check.Expect(SeamShell.Held == held + 1 && SeamShell.Quarantined == quarantined + 1,
+            "a world scene's shell goes to the reuse ring");
+
+        for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
+        long reused = SeamShell.Reused;
+        bool gotGui = false;
+        for (int k = 0; k < SeamShell.RingSize; k++)
+        {
+            nint s = SeamShell.Alloc(FacadeKind.Scene, default);
+            gotGui |= s == gshell;
+            SeamShell.NoteScene(s, world: true);
+            SeamShell.Retire(s);
+        }
+        check.Expect(SeamShell.Reused > reused, "a full scene ring past its quarantine must hand a block back, or this check proves nothing");
+        check.Expect(!gotGui, "a retired GUI scene shell was handed out again");
+
         SceneDb.Scenes.Free(world);
         SceneDb.Scenes.Free(gui);
     }

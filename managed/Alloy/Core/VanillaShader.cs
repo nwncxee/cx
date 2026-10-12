@@ -313,8 +313,18 @@ internal static unsafe class VanillaShader
     /// the caller's: a stage run whole owes its own texel multiply and colour revert, a hosted body does not.</summary>
     private const string Substituted = "inc_standard";
 
+    /// <summary>A content stage's whole text with every include it names resolved from the resource chain --
+    /// nothing supplied, nothing substituted -- for a program built the way the engine builds it. Null when the
+    /// bridge is off or the chain has no such file.</summary>
+    internal static string? ContentStage(string resref, ExtenderLog? log, string what)
+    {
+        if (!_armed) return null;
+        string? text = EngineText(resref, log);
+        return text == null ? null : Includes(text, log, what, new List<string>(), 0, null);
+    }
+
     private static string Includes(string text, ExtenderLog? log, string what, List<string> seen, int depth,
-                                  string standard)
+                                  string? standard)
     {
         if (depth >= MaxDepth || !text.Contains("#include", StringComparison.Ordinal)) return text;
         var sb = new StringBuilder(text.Length);
@@ -326,9 +336,9 @@ internal static unsafe class VanillaShader
             string? name = a >= 0 && b > a ? t[(a + 1)..b] : null;
             if (name == null || seen.Contains(name)) continue;
             if (seen.Count >= MaxIncludes) { log?.Info($"{what}: include cap {MaxIncludes} reached -- {name} dropped"); continue; }
-            if (Array.IndexOf(Supplied, name) >= 0) continue;
+            if (standard != null && Array.IndexOf(Supplied, name) >= 0) continue;
             seen.Add(name);
-            string? body = name == Substituted ? standard
+            string? body = standard != null && name == Substituted ? standard
                          : name.Length <= ShaderResource.ResRefBytes ? EngineText(name, null) : null;
             if (body == null) continue;                       // the environment supplies it, or nothing does
             sb.Append(Includes(body, log, what, seen, depth + 1, standard)).Append('\n');

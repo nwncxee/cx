@@ -181,7 +181,20 @@ internal static unsafe class GlProgram
     /// pass drew. Written at link (cold); names recycle after a context loss, which only misnames a debug line.</summary>
     internal static readonly System.Collections.Generic.Dictionary<uint, string> Labels = new();
 
-    private static uint Link(ExtenderLog? log, string what, uint a, uint b = 0, uint c = 0, uint d = 0)
+    /// <summary>Link a content vertex+fragment pair from finished texts, binding each named attribute to its
+    /// location before the link -- the engine's own <c>ConnectShaderData</c> order. No token expansion, no splice,
+    /// no binary cache. Returns 0 on failure (already logged).</summary>
+    internal static uint Content(string vs, string fs, (string Name, uint Loc)[] attribs, ExtenderLog? log, string what)
+    {
+        uint v = CompileText(Gl.VERTEX_SHADER, vs, log, what), f = CompileText(Gl.FRAGMENT_SHADER, fs, log, what);
+        if (v != 0 && f != 0) return Link(log, what, v, f, attribs: attribs);
+        if (v != 0) Gl.DeleteShader(v);
+        if (f != 0) Gl.DeleteShader(f);
+        return 0;
+    }
+
+    private static uint Link(ExtenderLog? log, string what, uint a, uint b = 0, uint c = 0, uint d = 0,
+                             (string Name, uint Loc)[]? attribs = null)
     {
         uint prog = Gl.CreateProgram();
         if (Gl.ProgramParameteri != null) Gl.ProgramParameteri(prog, Gl.PROGRAM_BINARY_RETRIEVABLE_HINT, 1);
@@ -189,6 +202,14 @@ internal static unsafe class GlProgram
         if (b != 0) Gl.AttachShader(prog, b);
         if (c != 0) Gl.AttachShader(prog, c);
         if (d != 0) Gl.AttachShader(prog, d);
+        if (attribs != null)
+            foreach (var (name, loc) in attribs)
+            {
+                Span<byte> n = stackalloc byte[name.Length + 1];
+                for (int i = 0; i < name.Length; i++) n[i] = (byte)name[i];
+                n[name.Length] = 0;
+                fixed (byte* np = n) Gl.BindAttribLocation(prog, loc, np);
+            }
         Gl.LinkProgram(prog);
         int ok; Gl.GetProgramiv(prog, Gl.LINK_STATUS, &ok);
         Gl.DeleteShader(a);

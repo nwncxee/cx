@@ -204,6 +204,8 @@ public static unsafe partial class DbFeed
             SceneDb.PartReveal[p1] = 0f;
             SceneDb.PartFade[p1] = 0.25f;
             SceneDb.PartAlpha[p1] = 0.5f;
+            SceneDb.ObjCrossScene[oi] = SceneDb.ObjScene[oi];
+            SceneDb.ObjEverInGui[oi] = true;
 
             // Round 2: free it and re-allocate the SAME slots in one frame, which is what the table does
             // when a destroy and a create land between two folds.
@@ -213,6 +215,10 @@ public static unsafe partial class DbFeed
             DbId h2 = SceneDb.Parts.Alloc();
             check.Expect(o2.Index == oi && h2.Index == p1,
                          "the test really does recycle the same table slots");
+            InitObject(o2.Index);
+            check.Expect(SceneDb.ObjScene[oi].IsNull && SceneDb.ObjCrossScene[oi].IsNull,
+                         "a recycled object starts in no scene -- not in the last tenant's");
+            check.Expect(!SceneDb.ObjEverInGui[oi], "a recycled object has never been in a GUI scene");
             SetUp(o2, h2, m, 2);
             check.Expect(SceneDb.PartReveal[p1] == 1f && SceneDb.PartFade[p1] == 1f
                          && SceneDb.PartAlpha[p1] == 1f,

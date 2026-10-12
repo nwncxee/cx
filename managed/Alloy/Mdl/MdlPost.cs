@@ -36,6 +36,14 @@ internal static class MdlPost
         if (emitter && m.FromAscii && m.Radius < 40f) m.Radius = 40f;
     }
 
+    /// <summary>An ASCII animation's animmesh node: it restates the node's <c>verts</c>/<c>tverts</c>/<c>faces</c>,
+    /// and its flat <c>animverts</c> are split into frames and re-indexed onto the weld of THAT geometry -- the
+    /// same post-process a geometry node gets, so frame vertex <c>i</c> is the part's welded vertex <c>i</c>.</summary>
+    internal static void AnimFrames(NodeDef n)
+    {
+        if (n.AnimMesh != null && n.Mesh is { Raw: not null } && n.Mesh.Positions.Length == 0) Mesh(n);
+    }
+
     // ---- the engine's float primitives ----
 
     /// <summary><c>Vector::Normalize</c> @0x5b3700, quirks included: a length already within 1e-5 of one is

@@ -425,6 +425,16 @@ internal static unsafe partial class TexRegistry
                && tskip == DdsReader.LevelSize(256, 128, 4) + DdsReader.LevelSize(128, 64, 4),
             $"a 256x128 chain's preview starts at level {tl} ({tw}x{th}, {tskip} bytes in)");
         Expect(!TailLevel(64, 64, 4, out _, out _, out _, out _), "a texture already within PreviewSide asked for a preview");
+        // A single-mip DDS (an 8x4 DXT1, the DDS spec's header laid out by hand) uploads one level, not the padded chain.
+        byte[] one = new byte[128 + 16];
+        "DDS "u8.CopyTo(one);
+        BinaryPrimitives.WriteUInt32LittleEndian(one.AsSpan(12), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(one.AsSpan(16), 8);
+        "DXT1"u8.CopyTo(one.AsSpan(84));
+        var dj = new Job { Kind = TexKind.Plain };
+        Decode(dj, one);
+        Expect(dj.Compressed && dj.Levels == 1, $"a one-level DDS was given {dj.Levels} level(s) -- the padding is sampled");
+        DdsReader.FreePrepared(dj.Data);
 
         // a handle to an evicted slot resolves to nothing: the whole reason no holder needs a death notice
         Retire(a.Index);
