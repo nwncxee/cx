@@ -326,6 +326,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (!Live(self, 19, out DbId id, out nint shell)) return 0;
         DbId sc = scene == 0 ? default : Facade.Scene(scene, 19);
+        if (scene != 0 && sc.IsNull) Facade.NoteOrphaningAttach(id, SceneDb.ObjScene[id.Index], scene);
         // Through the engine's own Gob::SetScene @0x53e020 first: it tells the object's behaviour, and a
         // CAurBehaviorCrossSceneAttach REMEMBERS the scene (+0x70, @0x68c250) -- how CGuiViewport::TakeModel
         // keeps the server list in its viewport when the panel later activates. Its scene slots and the

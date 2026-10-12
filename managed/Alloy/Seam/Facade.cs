@@ -56,36 +56,36 @@ public static unsafe partial class Facade
     /// <summary>Resolve <paramref name="self"/> to its record for logical slot <paramref name="logical"/>, or
     /// a null <see cref="DbId"/> on a retired or alien pointer -- the POISON path, which names the slot once
     /// and counts the call. A slot that gets a null handle returns zero and touches nothing.</summary>
-    public static DbId Resolve(nint self, int logical)
+    public static DbId Resolve(nint self, int logical, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
     {
         // A NULL CAurObject*/CAurScene* is a legal argument everywhere in this API -- "no object" -- and the
         // engine's own slots test for it rather than refusing, so it is not counted as a foreign pointer.
         if (self == 0) return default;
         nint shell = Shell(self);
-        if (shell == 0) { Alien(self, logical); return default; }
-        if (!SeamShell.Known(shell, out byte state, out DbId id)) { Alien(self, logical); return default; }
-        if (state != SeamShell.StateLive) { Poison(shell, logical); return default; }
+        if (shell == 0) { Alien(self, logical, member, file); return default; }
+        if (!SeamShell.Known(shell, out byte state, out DbId id)) { Alien(self, logical, member, file); return default; }
+        if (state != SeamShell.StateLive) { Poison(shell, logical, member, file); return default; }
         return id;
     }
 
     /// <summary>The record behind a <c>CAurObject*</c> (a <c>Gob</c>-shaped shell, or a camera's +8 sub-object),
     /// validated against the objects table.</summary>
-    public static DbId Object(nint self, int logical)
-        => GobOf(self, logical, out DbId id, out _) ? id : default;
+    public static DbId Object(nint self, int logical, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+        => GobOf(self, logical, out DbId id, out _, member, file) ? id : default;
 
     /// <summary>The record AND the <c>Gob</c>-shaped block behind a <c>CAurObject*</c>: a <c>Camera</c> is the
     /// one shell where neither is what <see cref="Shell"/> normalises to -- its <c>CAurObject</c> is the
     /// <c>+8</c> sub-object, its record <see cref="SceneDb.CamObj"/>, its <c>Gob</c> words
     /// <see cref="SeamLayout.CameraGobSub"/> on, while the one header handle is the CAMERA row's.</summary>
-    public static bool GobOf(nint self, int logical, out DbId id, out nint gob)
+    public static bool GobOf(nint self, int logical, out DbId id, out nint gob, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
     {
         id = default;
         gob = 0;
         if (self == 0) return false;
         nint shell = Shell(self);
-        if (shell == 0) { Alien(self, logical); return false; }
-        if (!SeamShell.Known(shell, out byte state, out DbId raw)) { Alien(self, logical); return false; }
-        if (state != SeamShell.StateLive) { Poison(shell, logical); return false; }
+        if (shell == 0) { Alien(self, logical, member, file); return false; }
+        if (!SeamShell.Known(shell, out byte state, out DbId raw)) { Alien(self, logical, member, file); return false; }
+        if (state != SeamShell.StateLive) { Poison(shell, logical, member, file); return false; }
         if ((FacadeKind)SeamShell.Head(shell)->Kind == FacadeKind.Camera)
         {
             gob = shell + SeamLayout.CameraGobSub;
@@ -96,7 +96,7 @@ public static unsafe partial class Facade
             gob = shell;
             id = raw;
         }
-        if (!SceneDb.Objects.Valid(id)) { Stale(self, logical); return false; }
+        if (!SceneDb.Objects.Valid(id)) { Stale(self, logical, member, file); return false; }
         return true;
     }
 
@@ -113,35 +113,40 @@ public static unsafe partial class Facade
     }
 
     /// <summary>The record behind a <c>CAurScene*</c>.</summary>
-    public static DbId Scene(nint self, int logical)
+    public static DbId Scene(nint self, int logical, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
     {
-        DbId id = Resolve(self, logical);
+        DbId id = Resolve(self, logical, member, file);
         if (id.IsNull) return default;
-        if (!SceneDb.Scenes.Valid(id)) { Stale(self, logical); return default; }
+        if (!SceneDb.Scenes.Valid(id)) { Stale(self, logical, member, file); return default; }
         return id;
     }
 
     /// <summary>The record behind a <c>CAurCamera*</c>.</summary>
-    public static DbId Camera(nint self, int logical)
+    public static DbId Camera(nint self, int logical, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
     {
-        DbId id = Resolve(self, logical);
+        DbId id = Resolve(self, logical, member, file);
         if (id.IsNull) return default;
-        if (!SceneDb.Cameras.Valid(id)) { Stale(self, logical); return default; }
+        if (!SceneDb.Cameras.Valid(id)) { Stale(self, logical, member, file); return default; }
         return id;
     }
 
     /// <summary>The record behind a <c>CAurString*</c> (a text shell's +0x4c0 sub-object). Text objects are
     /// object records of <see cref="ObjKind.Text"/>, so this is the objects table too.</summary>
-    public static DbId StringRecord(nint self, int logical) => Object(self, logical);
+    public static DbId StringRecord(nint self, int logical, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+        => Object(self, logical, member, file);
 
     /// <inheritdoc cref="Object(nint, int)"/>
-    public static DbId ObjectId(nint self) => Object(self, SeamSlot.Unnamed);
+    public static DbId ObjectId(nint self, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+        => Object(self, SeamSlot.Unnamed, member, file);
     /// <inheritdoc cref="Scene(nint, int)"/>
-    public static DbId SceneId(nint self) => Scene(self, SeamSlot.Unnamed);
+    public static DbId SceneId(nint self, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+        => Scene(self, SeamSlot.Unnamed, member, file);
     /// <inheritdoc cref="Camera(nint, int)"/>
-    public static DbId CameraId(nint self) => Camera(self, SeamSlot.Unnamed);
+    public static DbId CameraId(nint self, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+        => Camera(self, SeamSlot.Unnamed, member, file);
     /// <inheritdoc cref="StringRecord(nint, int)"/>
-    public static DbId StringId(nint self) => StringRecord(self, SeamSlot.Unnamed);
+    public static DbId StringId(nint self, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
+        => StringRecord(self, SeamSlot.Unnamed, member, file);
 
     /// <summary>The shell the game holds for record <paramref name="id"/>, or 0.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -153,6 +158,7 @@ public static unsafe partial class Facade
         if (!_built) { Log?.Always("seam: Mint before the vtables were built -- refused"); return 0; }
         nint shell = SeamShell.Alloc(kind, id);
         if (shell == 0) { Log?.Always($"seam: out of memory minting a {kind} facade -- refused"); return 0; }
+        if (kind == FacadeKind.Scene) _sceneProbe.MintedScenes.Add(shell);
         switch (kind)
         {
             case FacadeKind.Object:
@@ -172,11 +178,11 @@ public static unsafe partial class Facade
     /// <summary>The game destroyed the object: null its SafePointers, mark the shell retired and quarantine
     /// it. The record itself is freed by the caller (the destructor slot or <c>RemoveAuroraObject</c>), because
     /// what dies with it differs per kind.</summary>
-    public static void Retire(nint self)
+    public static void Retire(nint self, [CallerMemberName] string member = "", [CallerFilePath] string file = "")
     {
         nint shell = Shell(self);
-        if (shell == 0) { Alien(self, SeamSlot.Unnamed); return; }
-        if (!SeamShell.Known(shell, out byte state, out DbId id)) { Alien(self, SeamSlot.Unnamed); return; }
+        if (shell == 0) { Alien(self, SeamSlot.Unnamed, member, file); return; }
+        if (!SeamShell.Known(shell, out byte state, out DbId id)) { Alien(self, SeamSlot.Unnamed, member, file); return; }
         // A second retire is NOT a use-after-free. A C++ destructor chain runs the derived destructor and
         // then the base one, and CX models those as separate vtable slots on the same block -- a StringGob
         // reaches both StringSlots' and the Gob table's, a Camera both CameraSlots' and the Gob table's. So
@@ -331,13 +337,13 @@ public static unsafe partial class Facade
 
     // ---- the refusal paths ----
 
-    private static void Poison(nint shell, int logical)
+    private static void Poison(nint shell, int logical, string member = "", string file = "")
     {
         PoisonCalls++;
         if (InSelfCheck)
         {
             if (SeamShell.FirstReport(shell, logical))
-                Log?.Always($"seam: [self-check, on purpose] {SeamVtables.Name(logical)} on a retired facade returned zero");
+                Log?.Always($"seam: [self-check, on purpose] {SlotName(logical, member, file)} on a retired facade returned zero");
             return;
         }
         // ATTRIBUTION, not theory: who destroyed this shell, and who is touching it now. Both ends come off
@@ -351,7 +357,7 @@ public static unsafe partial class Facade
         }
         string deleter = SeamCallers.Name(by), toucher = SeamCallers.Name(now);
         Log?.Always($"seam: game-side dangling call (vanilla bug, caught) -- {deleter} destroyed \"{NameOf(shell)}\", "
-                  + $"then {toucher} called {SeamVtables.Name(logical)} on it; returned zero. The shell is held "
+                  + $"then {toucher} called {SlotName(logical, member, file)} on it; returned zero. The shell is held "
                   + $"poisoned for {SeamShell.QuarantineFrames} frames, so the call reads zero instead of another "
                   + "object's memory. Further calls of this pair are counted, not logged.");
     }
@@ -364,31 +370,69 @@ public static unsafe partial class Facade
     /// <summary>A shell whose RECORD is gone -- a seam bug rather than a game-side one, so it is named -- but
     /// named like <see cref="Alien"/>: on the powers of two, with the running count, because one line per CALL
     /// is a log flood and an interpolated string in a slot body.</summary>
-    private static void Stale(nint self, int logical)
+    private static void Stale(nint self, int logical, string member = "", string file = "")
     {
         PoisonCalls++;
         StaleCalls++;
         if ((StaleCalls & (StaleCalls - 1)) == 0)
-            Log?.Always($"seam: {SeamVtables.Name(logical)} on facade 0x{self:x} whose record is gone; "
+            Log?.Always($"seam: {SlotName(logical, member, file)} on facade 0x{self:x} whose record is gone; "
                       + $"returned zero ({StaleCalls} so far)");
     }
 
     /// <summary>Slot calls that reached a live shell whose record had already been freed.</summary>
     public static long StaleCalls { get; private set; }
 
-    private static void Alien(nint self, int logical)
+    private static void Alien(nint self, int logical, string member = "", string file = "")
     {
         AlienCalls++;
         if ((AlienCalls & (AlienCalls - 1)) == 0)
             Log?.Always(InSelfCheck
                 ? "seam: [self-check, on purpose] a foreign pointer did not resolve to a facade"
-                : $"seam: {SeamVtables.Name(logical)} called on 0x{self:x}, which is not a CX facade; returned zero ({AlienCalls} so far)");
+                : $"seam: {SlotName(logical, member, file)} called on 0x{self:x}, which is not a CX facade; returned zero ({AlienCalls} so far)");
+    }
+
+    /// <summary>A slot's name, or for a resolution outside any slot the C# caller that asked.</summary>
+    private static string SlotName(int logical, string member, string file)
+        => logical != SeamSlot.Unnamed || member.Length == 0 ? SeamVtables.Name(logical)
+         : $"{System.IO.Path.GetFileNameWithoutExtension(file)}.{member}";
+
+    /// <summary>Every scene shell address ever minted, and the attaches that left an object in no scene.</summary>
+    internal sealed class SceneProbeState
+    {
+        internal readonly System.Collections.Generic.HashSet<nint> MintedScenes = new();
+        internal long OrphaningAttaches;
+        internal int LinesLeft = OrphanLines;
+    }
+
+    /// <summary>Lines <see cref="NoteOrphaningAttach"/> writes per session; the count keeps going past it.</summary>
+    private const int OrphanLines = 256;
+
+    private static SceneProbeState _sceneProbe = new();
+
+    /// <summary>The game attached object <paramref name="id"/> to a scene pointer that resolves to no live
+    /// scene, so it now belongs to none and draws nowhere. Names the object, the scene it left and what the
+    /// pointer is: a foreign block, a scene shell CX once minted, or a retired shell.</summary>
+    internal static void NoteOrphaningAttach(DbId id, DbId was, nint scene)
+    {
+        SceneProbeState st = _sceneProbe;
+        st.OrphaningAttaches++;
+        if (InSelfCheck || st.LinesLeft <= 0) return;
+        st.LinesLeft--;
+        nint shell = Shell(scene);
+        string what = shell == 0
+            ? (st.MintedScenes.Contains(scene) ? "a CX scene shell once, now FOREIGN (block reused)" : "never a CX scene shell")
+            : !SeamShell.Known(shell, out byte state, out _) ? "a CX vtable on an unknown block"
+            : state != SeamShell.StateLive ? "a RETIRED CX scene" : "a live shell whose scene record is gone";
+        int o = id.Index;
+        Log?.Always($"seam: [orphan] o={id.Value} model='{SceneDb.ObjSeamModelName[o]}' kind={SceneDb.ObjKindOf[o]} "
+                    + $"flags={SceneDb.ObjFlags[o]} attached to scene 0x{scene:x} ({what}) -- it left scene {was.Value} "
+                    + $"and is now in NO scene, so it does not draw ({st.OrphaningAttaches} so far)");
     }
 
     /// <summary>The seam's period line: shells, quarantine, and every refusal counted.</summary>
     public static string Stats()
         => $"shells live={SeamShell.Live} quarantined={SeamShell.Quarantined} alloc={SeamShell.Allocated} reuse={SeamShell.Reused}"
-         + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
+         + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} orphaning-attaches={_sceneProbe.OrphaningAttaches} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
 }
 
 /// <summary>Logical slot ids a hand-written caller needs by name. Everything else is
