@@ -20,6 +20,7 @@ internal static class CardRegistry
     private sealed class RegistryState
     {
         public volatile Dictionary<string, CardSet> Map = new(StringComparer.OrdinalIgnoreCase);
+        public volatile PrefixTable<CardSet> Prefixes = PrefixTable<CardSet>.Empty;
         public int Gen;
         public ExtenderLog? Log;
     }
@@ -69,6 +70,12 @@ internal static class CardRegistry
         var next = new Dictionary<string, CardSet>(_s.Map, StringComparer.OrdinalIgnoreCase);
         foreach (string k in new List<string>(next.Keys))
             if ((Prefix + k).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) next.Remove(k);
+        Publish(next);
+    }
+
+    private static void Publish(Dictionary<string, CardSet> next)
+    {
+        _s.Prefixes = PrefixTable<CardSet>.Build(next);
         _s.Map = next;
         Interlocked.Increment(ref _s.Gen);
     }
@@ -77,13 +84,15 @@ internal static class CardRegistry
     {
         var next = new Dictionary<string, CardSet>(_s.Map, StringComparer.OrdinalIgnoreCase);
         if (set == null) next.Remove(key); else next[key] = set;
-        _s.Map = next;
-        Interlocked.Increment(ref _s.Gen);
+        Publish(next);
     }
 
     /// <summary>The cards held under <paramref name="key"/>, or null. Allocation-free.</summary>
     public static CardSet? Find(ReadOnlySpan<char> key)
         => _s.Map.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(key, out CardSet? set) ? set : null;
+
+    /// <summary>The cards of the longest declared <c>prefix*</c> key that starts <paramref name="id"/>, or null. Allocation-free.</summary>
+    public static CardSet? FindPrefix(ReadOnlySpan<char> id) => _s.Prefixes.Find(id);
 
     /// <summary>Forgets everything and the log. For the self-check only.</summary>
     internal static void Reset() => _s = new();

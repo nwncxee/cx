@@ -16,7 +16,7 @@ internal static class CardParser
 {
     private sealed class Refusal(string why) : Exception(why);
 
-    /// <summary>The cards in <paramref name="json"/>, or false with the reason the declaration was refused.</summary>
+    /// <summary>The cards in <paramref name="json"/> (none for an empty array, which declares that the key has no card), or false with the reason the declaration was refused.</summary>
     public static bool TryParse(string json, out CardDecl[] cards, out string error)
     {
         cards = [];
@@ -30,7 +30,7 @@ internal static class CardParser
             if (root.ValueKind == JsonValueKind.Array)
                 foreach (JsonElement e in root.EnumerateArray()) list.Add(Card(e));
             else list.Add(Card(root));
-            if (list.Count is 0 or > CardLimits.MaxCards) throw new Refusal($"{list.Count} cards (1-{CardLimits.MaxCards} allowed)");
+            if (list.Count > CardLimits.MaxCards || (list.Count == 0 && root.ValueKind != JsonValueKind.Array)) throw new Refusal($"{list.Count} cards (1-{CardLimits.MaxCards} allowed)");
             cards = list.ToArray();
             return true;
         }
@@ -104,7 +104,7 @@ internal static class CardParser
         {
             "header" => BlockKind.Header, "subtitle" => BlockKind.Subtitle, "status" => BlockKind.Status, "headline" => BlockKind.Headline,
             "flavour" => BlockKind.Flavour, "divider" => BlockKind.Divider, "icons" => BlockKind.Icons, "section" => BlockKind.Section,
-            "footer" => BlockKind.Footer, _ => BlockKind.Text,
+            "footer" => BlockKind.Footer, "loading" => BlockKind.Loading, _ => BlockKind.Text,
         } };
         bool dimmed = b.Kind is BlockKind.Subtitle or BlockKind.Flavour;
         float size = b.Kind switch { BlockKind.Header => 1.3f, BlockKind.Headline => 1.6f, BlockKind.Subtitle or BlockKind.Flavour or BlockKind.Footer => 0.85f, _ => 1f };

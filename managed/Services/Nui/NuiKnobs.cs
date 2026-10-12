@@ -10,7 +10,7 @@ internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, Cards, HeldImage;
-    internal static readonly Knob<string> CardFile, CardForce, HeldProbe;
+    internal static readonly Knob<string> CardFile, CardLate, CardForce, HeldProbe;
     internal static readonly Knob<float> Thumb;
     internal static readonly Knob<string> PolicyProbe;
 
@@ -34,6 +34,8 @@ internal static class NuiKnobs
             help: "A server can declare a card for a NUI element, such as an item's details, and it shows beside the element while the pointer rests on it. Off, the server's plain tooltip is all you get.");
         CardFile = G.Text("cardfile", "Card test file", "", Tier.ChatOnly,
             help: "For people building cards: a file of policy lines (card.<key>=...) read when the game starts, as if a server had sent them.");
+        CardLate = G.Text("cardlate", "Card test file, late", "", Tier.ChatOnly,
+            help: "For people building cards: <seconds>:<file>. A second file of policy lines, applied that many seconds after the card file, as a slow server's later lines would arrive.");
         CardForce = G.Text("cardforce", "Card test key", "", Tier.ChatOnly,
             help: "For people building cards: shows this key's cards as if the pointer rested on an element with that id, with no pointer needed.");
         Smooth = G.Toggle("smooth", "Smooth scrolling", true,

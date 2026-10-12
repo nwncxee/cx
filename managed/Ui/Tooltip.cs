@@ -73,6 +73,13 @@ public sealed class Tooltip
         return true;
     }
 
+    /// <summary>What the pointer rests on is now <paramref name="key"/>, for an owner that swaps its content under a pointer that has not moved:
+    /// the dwell and the fade carry on as they were. Does nothing unless something is hovered.</summary>
+    public void Retarget(object key)
+    {
+        if (_key != null) _key = key;
+    }
+
     /// <summary>The pointer left the anchor: a shown box fades out (<see cref="Cut"/> drops it at once). Returns true
     /// when something was being hovered.</summary>
     public bool Leave()

@@ -74,6 +74,10 @@ internal sealed class CardPresenter
             else
             {
                 found = Lookup(in hit);
+                bool declaredEmpty = found is { Cards.Length: 0 };
+                if (declaredEmpty) found = null;
+                bool sameTarget = hit.Element == _el && hit.Row == _row && h == _imgHash && hit.Image().Length == _imgLen;
+                if (sameTarget && found != null && found != _set) _tip.Retarget(found);
                 _el = hit.Element; _row = hit.Row; _imgHash = h; _imgLen = hit.Image().Length; _gen = CardRegistry.Gen; _found = found;
                 _subject = ItemKey(hit.Image(), out uint drawn) ? drawn : 0u;
                 _rebuild = found != null;
@@ -124,7 +128,7 @@ internal sealed class CardPresenter
         return h;
     }
 
-    /// <summary>Matches in order: <c>token#row</c>, <c>token</c>, then the image the element drew (<c>@item:hex</c>, <c>@look:...</c>).</summary>
+    /// <summary>Matches in order: <c>token#row</c>, <c>token</c>, the image the element drew (<c>@item:hex</c>, <c>@look:...</c>), then the longest declared <c>prefix*</c> of the token. A key declared with no cards ends the search and is returned as it is.</summary>
     internal static CardSet? Lookup(in NuiHit hit)
     {
         Span<char> buf = stackalloc char[CardLimits.MaxKeyBytes + 16];
@@ -143,18 +147,21 @@ internal sealed class CardPresenter
         ReadOnlySpan<byte> img = hit.Image();
         if (img.Length > 0)
         {
+            CardSet? byImage = null;
             if (ItemKey(img, out uint oid))
             {
                 "@item:".AsSpan().CopyTo(buf);
                 oid.TryFormat(buf[6..], out int w, "x");
-                return CardRegistry.Find(buf[..(6 + w)]);
+                byImage = CardRegistry.Find(buf[..(6 + w)]);
             }
-            if (img.StartsWith("@look:"u8))
+            else if (img.StartsWith("@look:"u8))
             {
                 int n = Encoding.UTF8.GetChars(img, buf);
-                return CardRegistry.Find(buf[..n]);
+                byImage = CardRegistry.Find(buf[..n]);
             }
+            if (byImage != null) return byImage;
         }
+        if (token.Length > 0) return CardRegistry.FindPrefix(buf[..Encoding.UTF8.GetChars(token, buf)]);
         return null;
     }
 
