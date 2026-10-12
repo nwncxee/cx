@@ -38,27 +38,23 @@ internal static unsafe class TriggerHighlight
     internal static void Attach(ExtenderLog log) => _log = log;
 
     /// <summary>Once per world frame, in ENGINE context and BEFORE the frame anchor: snapshot the highlighted
-    /// triggers. The population is the AREA's triggers (<see cref="Db.DbTriggers.Live"/>) with no in-view test
-    /// of its own -- a prism covering no visible pixel contributes nothing -- and the filter is the ALPHA,
-    /// which <c>AurPartTriggerSetHighlight</c> writes as 0.0 for every trigger nobody points at.</summary>
+    /// triggers from <see cref="Db.DbTriggers"/>' copies, never the engine objects. No in-view test: an unseen prism
+    /// adds nothing. The filter is the ALPHA, 0.0 for every trigger nobody points at.</summary>
     internal static void Enroll()
     {
         _count = 0; _points = 0;
         if (_failed) return;
-        // No scene BSP and no bucket: the live triggers are DbTriggers' own list.
-        ReadOnlySpan<IntPtr> triggers = Db.DbTriggers.Live;
-        int n = triggers.Length;
+        int n = Db.DbTriggers.Count;
         fixed (float* s = _stage)
             for (int i = 0; i < n && _count < MaxTriggers; i++)
             {
-                var t = new PartTrigger(triggers[i]);
-                if (t.IsNull || t.Highlighted == 0 || t.Half == 0) continue;
-                float alpha = t.HighlightColour[3];
+                Db.DbTriggers.Entry t = Db.DbTriggers.At(i);
+                if (!t.Highlighted || !t.Half) continue;
+                float alpha = t.Colour.W;
                 if (!(alpha > 0f)) continue;
-                int np = t.PointCount;
+                Vector3[] pts = t.Outline;
+                int np = pts.Length;
                 if (np < 3 || _points + np > MaxPoints) continue;
-                Vector3* pts = (Vector3*)t.Points;
-                if (pts == null) continue;
                 float zmin = float.MaxValue, zmax = float.MinValue;
                 for (int p = 0; p < np; p++)
                 {
@@ -67,12 +63,11 @@ internal static unsafe class TriggerHighlight
                     s[(PointBase + _points + p) * 4 + 1] = w.Y;
                     zmin = MathF.Min(zmin, w.Z); zmax = MathF.Max(zmax, w.Z);
                 }
-                float h = MathF.Abs(t.Height);
+                float h = t.Height;
                 float* hdr = s + _count * 4;
                 hdr[0] = _points; hdr[1] = np; hdr[2] = zmin - h; hdr[3] = zmax + h;
                 float* col = s + (MaxTriggers + _count) * 4;
-                col[0] = t.HighlightColour[0]; col[1] = t.HighlightColour[1];
-                col[2] = t.HighlightColour[2]; col[3] = alpha;
+                col[0] = t.Colour.X; col[1] = t.Colour.Y; col[2] = t.Colour.Z; col[3] = alpha;
                 _points += np;
                 _count++;
             }

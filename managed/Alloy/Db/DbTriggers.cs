@@ -16,44 +16,63 @@ public sealed class DbTriggersService : IExtenderService
 
 /// <summary>The area transitions' prisms. The engine files each <c>AurPartTriggerCreate</c> @0x4da840 prism
 /// into the scene BSP that both the hit test and <c>DoHighlightTriggers</c> read; the scene database has no
-/// BSP, so this keeps the live ones per scene, a copy of their triangles for the pick (<see cref="Cast"/>,
-/// <c>PartTrigger::HitCheckGeom</c>'s rule), and hands the pointers to <see cref="TriggerHighlight"/>. Cold.</summary>
+/// BSP, so this keeps the live ones per scene as COPIES the pick (<see cref="Cast"/>) and <see cref="TriggerHighlight"/>
+/// read: past creation nothing reads the engine object, so a free no hook saw leaves a stale entry. Cold.</summary>
 internal static unsafe class DbTriggers
 {
-    private sealed class Entry
+    /// <summary>One prism: its triangles and outline as created, and the highlight state the two setter hooks mirror.</summary>
+    internal sealed class Entry
     {
         public nint Ptr;
         public DbId Scene;
         public Vector3[] Tris = [];
         public Vector3 Min, Max;
         public long Payload;
+        public Vector3[] Outline = [];
+        public bool Highlighted, Half;
+        public float Height;
+        public Vector4 Colour;
     }
 
     private static readonly List<Entry> _live = new();
-    private static nint[] _ptrs = new nint[16];
-    private static AurPartTriggerCreateFn* _create;
-    private static AurPartTriggerDeleteFn* _delete;
-    private static AurPartTriggerReleaseMemoryFn* _release;
+    /// <summary>The five chained hooks' next-subscriber slots, filled at commit.</summary>
+    private sealed class HookState
+    {
+        public AurPartTriggerCreateFn* Create;
+        public AurPartTriggerDeleteFn* Delete;
+        public AurPartTriggerReleaseMemoryFn* Release;
+        public AurPartTriggerSetHighlightFn* SetHighlight;
+        public AurPartTriggerSetHighlightParamsFn* SetParams;
+    }
+
+    private static readonly HookState _hooks = new();
 
     internal static void Install(ExtenderLog log, HookService hooks)
     {
         if (!Renderer.On) return;
         _log = log;
-        _create = hooks.ChainAurPartTriggerCreate(&OnCreate, 0);
-        _delete = hooks.ChainAurPartTriggerDelete(&OnDelete, 0);
-        _release = hooks.ChainAurPartTriggerReleaseMemory(&OnRelease, 0);
-        log.Info(_create != null && _delete != null && _release != null
-            ? "DbTriggers: area transitions are pickable and highlight on hover"
-            : "DbTriggers: a trigger hook did not chain -- area transitions can NOT be hovered in DB mode");
+        _hooks.Create = hooks.ChainAurPartTriggerCreate(&OnCreate, 0);
+        _hooks.Delete = hooks.ChainAurPartTriggerDelete(&OnDelete, 0);
+        _hooks.Release = hooks.ChainAurPartTriggerReleaseMemory(&OnRelease, 0);
+        _hooks.SetHighlight = hooks.ChainAurPartTriggerSetHighlight(&OnSetHighlight, 0);
+        _hooks.SetParams = hooks.ChainAurPartTriggerSetHighlightParams(&OnSetParams, 0);
+        if (_hooks.Create == null || _hooks.Delete == null || _hooks.Release == null)
+            log.Always("DbTriggers: a trigger hook did not chain -- area transitions can NOT be hovered in DB mode");
+        else if (_hooks.SetHighlight == null || _hooks.SetParams == null)
+            log.Always("DbTriggers: a trigger highlight setter did not chain -- area transitions are pickable but NEVER highlight in DB mode");
+        else
+            log.Info("DbTriggers: area transitions are pickable and highlight on hover");
     }
 
-    /// <summary>The live triggers' engine objects, for the highlight pass. Game thread.</summary>
-    internal static ReadOnlySpan<nint> Live => _ptrs.AsSpan(0, _live.Count);
+    /// <summary>How many prisms are listed, and the one at <paramref name="i"/>, for the highlight pass. Game thread.</summary>
+    internal static int Count => _live.Count;
+    /// <inheritdoc cref="Count"/>
+    internal static Entry At(int i) => _live[i];
 
     [UnmanagedCallersOnly]
     private static nint OnCreate(nint scene, nint points, int count, int snap, nint colour, nint data)
     {
-        nint t = _create != null && *_create != null ? (*_create)(scene, points, count, snap, colour, data) : 0;
+        nint t = _hooks.Create != null && *_hooks.Create != null ? (*_hooks.Create)(scene, points, count, snap, colour, data) : 0;
         if (t != 0) Add(t, Facade.SceneId(scene));
         return t;
     }
@@ -62,14 +81,38 @@ internal static unsafe class DbTriggers
     private static void OnDelete(nint scene, nint t)
     {
         Remove(t);
-        if (_delete != null && *_delete != null) (*_delete)(scene, t);
+        if (_hooks.Delete != null && *_hooks.Delete != null) (*_hooks.Delete)(scene, t);
     }
 
     [UnmanagedCallersOnly]
     private static void OnRelease(nint t)
     {
         Remove(t);
-        if (_release != null && *_release != null) (*_release)(t);
+        if (_hooks.Release != null && *_hooks.Release != null) (*_hooks.Release)(t);
+    }
+
+    [UnmanagedCallersOnly]
+    private static void OnSetHighlight(nint t, byte on, float height, byte half)
+    {
+        if (_hooks.SetHighlight != null && *_hooks.SetHighlight != null) (*_hooks.SetHighlight)(t, on, height, half);
+        if (Find(t) is not Entry e) return;
+        e.Highlighted = on != 0;
+        e.Half = half != 0;
+        e.Height = MathF.Abs(height);
+    }
+
+    [UnmanagedCallersOnly]
+    private static void OnSetParams(nint t, Vector3* rgb, float alpha, byte flag, float value)
+    {
+        if (_hooks.SetParams != null && *_hooks.SetParams != null) (*_hooks.SetParams)(t, rgb, alpha, flag, value);
+        if (Find(t) is Entry e && rgb != null) e.Colour = new Vector4(*rgb, alpha);
+    }
+
+    private static Entry? Find(nint t)
+    {
+        for (int i = 0; i < _live.Count; i++)
+            if (_live[i].Ptr == t) return _live[i];
+        return null;
     }
 
     private static void Add(nint t, DbId scene)
@@ -87,8 +130,15 @@ internal static unsafe class DbTriggers
             e.Min = Vector3.Min(e.Min, src[i]);
             e.Max = Vector3.Max(e.Max, src[i]);
         }
+        var pts = (Vector3*)trig.Points;
+        int np = pts == null ? 0 : Math.Max(trig.PointCount, 0);
+        e.Outline = new Vector3[np];
+        for (int i = 0; i < np; i++) e.Outline[i] = pts[i];
+        e.Highlighted = trig.Highlighted != 0;
+        e.Half = trig.Half != 0;
+        e.Height = MathF.Abs(trig.Height);
+        e.Colour = new Vector4(trig.HighlightColour[0], trig.HighlightColour[1], trig.HighlightColour[2], trig.HighlightColour[3]);
         _live.Add(e);
-        Sync();
         _created++;
         if (_saidCreate++ < 4)
             _log?.Info($"DbTriggers: prism {t:x} in scene {scene.Value:x} (world={SceneDb.Scenes.Valid(scene) && SceneDb.SceneIsWorld[scene.Index]}), "
@@ -107,13 +157,7 @@ internal static unsafe class DbTriggers
     private static void Remove(nint t)
     {
         for (int i = 0; i < _live.Count; i++)
-            if (_live[i].Ptr == t) { _live.RemoveAt(i); Sync(); return; }
-    }
-
-    private static void Sync()
-    {
-        if (_ptrs.Length < _live.Count) _ptrs = new nint[_live.Count * 2];
-        for (int i = 0; i < _live.Count; i++) _ptrs[i] = _live[i].Ptr;
+            if (_live[i].Ptr == t) { _live.RemoveAt(i); return; }
     }
 
     /// <summary>Off-device: register a prism directly, for the self-check.</summary>
@@ -124,19 +168,17 @@ internal static unsafe class DbTriggers
         e.Max = new Vector3(float.MinValue);
         foreach (Vector3 v in tris) { e.Min = Vector3.Min(e.Min, v); e.Max = Vector3.Max(e.Max, v); }
         _live.Add(e);
-        Sync();
     }
 
-    internal static void ClearForCheck() { _live.Clear(); Sync(); }
+    internal static void ClearForCheck() => _live.Clear();
 
-    /// <summary>A destroyed scene's prisms leave with it: a release the hooks never saw would otherwise leave a
-    /// freed pointer for <see cref="TriggerHighlight.Enroll"/> to read at the next frame.</summary>
+    /// <summary>A destroyed scene's prisms leave with it, so a release the hooks never saw does not leave a stale
+    /// entry pickable or lit for the rest of the session.</summary>
     internal static void SceneRevoke(DbId scene)
     {
         int before = _live.Count;
         _live.RemoveAll(e => e.Scene == scene);
         if (_live.Count == before) return;
-        Sync();
         _log?.Info($"DbTriggers: {before - _live.Count} prism(s) still listed when scene {scene.Value:x} was destroyed -- dropped with it, their release was never seen");
     }
 

@@ -859,6 +859,14 @@ internal static unsafe class SymbolMap
     /// <summary><c>AurPartTriggerReleaseMemory(trigger)</c> @0x4d9fd0: the virtual delete.</summary>
     [Fn("void(IntPtr trigger)")]
     public const string AurPartTriggerReleaseMemory = "_Z27AurPartTriggerReleaseMemoryP11PartTrigger";
+    /// <summary><c>AurPartTriggerSetHighlight(trigger, on, height, half)</c> @0x4da2a0: the only writer of the
+    /// highlighted/half bytes and the extrusion height (<c>PartTrigger::SetHighlighted</c>).</summary>
+    [Fn("void(IntPtr trigger, byte on, float height, byte half)")]
+    public const string AurPartTriggerSetHighlight = "_Z26AurPartTriggerSetHighlightP11PartTriggerbfb";
+    /// <summary><c>AurPartTriggerSetHighlightParams(trigger, rgb, alpha, flag, value)</c> @0x4da030: the only
+    /// writer of the highlight colour and its alpha (<c>PartTrigger::SetHighlightColor</c>).</summary>
+    [Fn("void(IntPtr trigger, System.Numerics.Vector3* rgb, float alpha, byte flag, float value)")]
+    public const string AurPartTriggerSetHighlightParams = "_Z32AurPartTriggerSetHighlightParamsP11PartTriggerRK6Vectorfbf";
     /// <summary><c>gobbucket</c> @0x19abbf0 -- the engine's per-frame VISIBLE gob list, a
     /// <c>CExoArrayList&lt;Gob*&gt;</c> (items at +0, count at +8). <c>ManageSceneBSP</c> @0x47fa80 refills it through
     /// <c>Gob::IsInViewVolume</c>, and <c>AddPartsTreeToDrawBuckets</c> @0x460880 -- the only writer of an instanced
@@ -2859,6 +2867,8 @@ internal static unsafe class SymbolMap
         [AurPartTriggerCreate] = Nm("?AurPartTriggerCreate@@YAPEAVPartTrigger@@PEAVCAurScene@@PEAVVector@@HHPEAMPEAX@Z"),
         [AurPartTriggerDelete] = Nm("?AurPartTriggerDelete@@YAXPEAVCAurScene@@PEAVPartTrigger@@@Z"),
         [AurPartTriggerReleaseMemory] = Nm("?AurPartTriggerReleaseMemory@@YAXPEAVPartTrigger@@@Z"),
+        [AurPartTriggerSetHighlight] = Nm("?AurPartTriggerSetHighlight@@YAXPEAVPartTrigger@@_NM1@Z"),
+        [AurPartTriggerSetHighlightParams] = Nm("?AurPartTriggerSetHighlightParams@@YAXPEAVPartTrigger@@AEBVVector@@M_NM@Z"),
         [GuiManHandleKeyPress] = Nm("?HandleKeyPress@CGuiMan@@QEAAHH@Z"),
         [GuiManHandleMouseMove] = Nm("?HandleMouseMove@CGuiMan@@QEAAXHH@Z"),
         [GuiEditHandleLMouseDown] = Nm("?HandleLMouseDown@CGuiEdit@@MEAAXXZ"),
