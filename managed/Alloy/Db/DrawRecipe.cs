@@ -136,6 +136,9 @@ internal static partial class DrawRecipe
     /// coverage is map slot 1's alpha. Kept per recipe for the same reason as <see cref="_coverage"/>:
     /// <see cref="Reclassify"/> re-asks the class, and the <c>.mtr</c> may land after the intern.</summary>
     private static readonly bool[] _coverNrm = new bool[Max];
+    /// <summary>The material's content-program key (<see cref="GuiContent.Key"/>; 0 = none), which a GUI part draws
+    /// through. Re-read with the other late material terms.</summary>
+    private static readonly int[] _content = new int[Max];
 
     /// <summary>Recipes in use: the slots ever handed out, less the retired ones waiting or free.</summary>
     internal static int Count => _n - _own.Free.Count - _own.Retiring.Count - _own.Cooling.Count;
@@ -262,6 +265,7 @@ internal static partial class DrawRecipe
     internal static int Dst(int r) => _dst[r];
     internal static int Prim(int r) => _prim[r];
     internal static int Feat(int r) => _feat[r];
+    internal static int Content(int r) => _content[r];
     internal static int Slots(int r) => _slots[r];
     internal static Vector4 Ambient(int r) => _amb[r];
     internal static Vector4 Diffuse(int r) => _dif[r];
@@ -426,6 +430,7 @@ internal static partial class DrawRecipe
                 MtrDef? late = MtrDef.Of(mesh);
                 _coverage[r] = late is { AlphaMode: 2 };
                 _coverNrm[r] = late != null && ShaderFeatures.CoversFromNormalAlpha(late.ShaderFs);
+                _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
             }
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
@@ -513,6 +518,7 @@ internal static partial class DrawRecipe
         MtrDef? mtr = MtrDef.Of(mesh);
         _coverage[r] = mtr is { AlphaMode: 2 };
         _coverNrm[r] = mtr != null && ShaderFeatures.CoversFromNormalAlpha(mtr.ShaderFs);
+        _content[r] = GuiContent.Key(mtr);
         // TransparencyHint > 0 is the model's own "this is see-through" (the engine's child-order sort key);
         // a mesh with no alpha anywhere and no hint is genuinely opaque.
         bool declared = mesh.TransparencyHint > 0;

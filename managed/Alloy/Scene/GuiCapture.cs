@@ -34,6 +34,8 @@ internal static unsafe class GuiCapture
         /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes its
         /// VAO from <see cref="Slot"/> or <see cref="Format"/>.</summary>
         public uint RawVao;
+        /// <summary>The content program this draw runs (<see cref="GuiContent.Key"/>); 0 = Alloy's GUI program.</summary>
+        public int Content;
     }
 
     /// <summary>Floats per draw record, which is <see cref="GuiPass"/>'s SSBO stride (16 vec4): mvp, mv, the texture
@@ -240,6 +242,7 @@ internal static unsafe class GuiCapture
             if (IdxN + count > IdxMax) { Overflow("indices"); return false; }
         }
         d.RawVao = 0;   // Draws[] is reused across frames: a stale arena VAO here would rebind the wrong buffers
+        d.Content = 0;
         int at = (VtxN + stride - 1) / stride * stride;
         long bytes = (long)n * stride;
         if (at + bytes > VtxBytes) { Overflow("vertex bytes"); return false; }
@@ -294,6 +297,8 @@ internal static unsafe class GuiCapture
         public int Count, BaseVertex, Tex;
         /// <summary>The DB bone slot whose 64-matrix palette poses this draw; -1 = rigid.</summary>
         public int Bones;
+        /// <summary>The material's content-program key; 0 = Alloy's GUI program.</summary>
+        public int Content;
         public long Offset;
         public Matrix4x4 Mvp, Mv;
         /// <summary>The record's <c>globalColor</c> lane: the object's tint, with the part's alpha folded in.</summary>
@@ -314,7 +319,7 @@ internal static unsafe class GuiCapture
         if (p.Count <= 0 || p.Vao == 0 || LayerN == 0 || !Room()) return;
         ref Draw d = ref Draws[DrawN];
         d.Stream = false; d.Indexed = true; d.Slot = 0; d.Stride = 0; d.Format = 0;
-        d.RawVao = p.Vao; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
+        d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex;
         fixed (float* r = &Records[DrawN * RecFloats])

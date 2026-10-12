@@ -31,6 +31,8 @@ internal static unsafe class GuiPass
         public long BufCap, VtxCap, IdxCap;
         public int LocBoneStart, LocGamma, DepthW, DepthH;
         public readonly Dictionary<uint, uint> StreamVao = new(16);
+        /// <summary>Content programs by key, built on first draw; null = refused, said once by the build.</summary>
+        public readonly Dictionary<int, GuiContent.Prog?> Content = new();
         /// <summary>Windows: the default framebuffer's depth format, probed once in the engine context; the GUI
         /// depth is allocated in it so the two can be blitted into each other.</summary>
         public uint DepthFmt, FboEngDepth;
@@ -192,6 +194,8 @@ internal static unsafe class GuiPass
         int blend = -1, depth = -1, write = -1, cull = -1;
         uint src = 0, dst = 0, vao = uint.MaxValue;
         int tex = -1;
+        uint prog = _gl.Prog;
+        bool gamma = !PostChain.GammaOff();
         for (int li = 0; li < GuiCapture.LayerN; li++)
         {
             ref GuiCapture.Layer l = ref GuiCapture.Layers[li];
@@ -223,6 +227,10 @@ internal static unsafe class GuiPass
                 if ((d.DepthWrite ? 1 : 0) != write) { write = d.DepthWrite ? 1 : 0; Gl.DepthMask((byte)write); }
                 Toggle(Gl.CULL_FACE, d.Cull, ref cull);
                 if (d.Tex != tex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)d.Tex); tex = d.Tex; }
+                GuiContent.Prog? cp = d.Content == 0 ? null : ContentProgram(d.Content);
+                uint want = cp?.Id ?? _gl.Prog;
+                if (want != prog) { Gl.UseProgram(want); prog = want; }
+                if (cp != null) GuiContent.Feed(cp, di, l.W, l.H, gamma);
                 if (d.Indexed)
                     Gl.DrawElementsInstancedBaseVertexBaseInstance(d.Prim, d.Count, Gl.UNSIGNED_SHORT, (void*)d.Offset, 1,
                                                                    d.BaseVertex, (uint)di);
@@ -244,6 +252,15 @@ internal static unsafe class GuiPass
         _flushes++;
         if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush, none reached the engine's GL"); }
         return true;
+    }
+
+    /// <summary>Key <paramref name="key"/>'s content program, built on its first draw (in the 4.6 bracket).</summary>
+    private static GuiContent.Prog? ContentProgram(int key)
+    {
+        if (_gl.Content.TryGetValue(key, out GuiContent.Prog? cp)) return cp;
+        cp = GuiContent.Build(key, _log);
+        _gl.Content[key] = cp;
+        return cp;
     }
 
     private static void Toggle(uint cap, bool on, ref int cur)

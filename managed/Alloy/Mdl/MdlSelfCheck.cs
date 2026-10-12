@@ -18,6 +18,7 @@ public static class MdlSelfCheck
         int bad = 0;
         void Expect(bool ok, string what) { if (!ok) { bad++; report(false, what); } }
         Ascii(Expect);
+        AnimBlock(Expect);
         Wok(Expect);
         Binary(Expect);
         LateTangents(Expect);
@@ -123,6 +124,95 @@ public static class MdlSelfCheck
         endnode
         endwalkmeshgeom
         """;
+
+    /// <summary>An animmesh whose frames sit in an ANIMATION block that restates its geometry -- how a GUI bar
+    /// is driven by its <c>percentage</c> animation. Oracle: the fixture's own frames, rest pose then doubled.</summary>
+    private const string AnimFixture = """
+newmodel cx_bar
+beginmodelgeom cx_bar
+node dummy cx_bar
+  parent null
+endnode
+node animmesh bar
+  parent cx_bar
+  bitmap cx_bar_t
+  verts 4
+    0 0 0
+    1 0 0
+    0 1 0
+    1 1 0
+  tverts 4
+    0 0 0
+    1 0 0
+    0 1 0
+    1 1 0
+  faces 2
+    0 1 2 1 0 1 2 0
+    3 2 1 1 3 2 1 0
+endnode
+endmodelgeom cx_bar
+newanim grow cx_bar
+  length 1.0
+  transtime 0.0
+  animroot cx_bar
+  node dummy cx_bar
+    parent null
+  endnode
+  node animmesh bar
+    parent cx_bar
+    verts 4
+      0 0 0
+      1 0 0
+      0 1 0
+      1 1 0
+    tverts 4
+      0 0 0
+      1 0 0
+      0 1 0
+      1 1 0
+    faces 2
+      0 1 2 1 0 1 2 0
+      3 2 1 1 3 2 1 0
+    sampleperiod 1.0
+    animverts 8
+      0 0 0
+      1 0 0
+      0 1 0
+      1 1 0
+      0 0 0
+      2 0 0
+      0 2 0
+      2 2 0
+    endlist
+  endnode
+doneanim grow cx_bar
+donemodel cx_bar
+""";
+
+    private static void AnimBlock(Action<bool, string> expect)
+    {
+        ModelDef? m = MdlParser.Parse(Encoding.ASCII.GetBytes(AnimFixture.Replace("\r\n", "\n")), "cx_bar", out string? err);
+        expect(m != null, $"the animation-block animmesh fixture did not parse ({err})");
+        if (m == null) return;
+        MeshDef? rest = Array.Find(m.Nodes, n => n.Name == "bar")?.Mesh;
+        AnimMeshDef? am = m.Anims.Length == 1 && m.Anims[0].Nodes.Length == 2 ? m.Anims[0].Nodes[1].AnimMesh : null;
+        expect(rest != null && am != null, "the fixture lost its bar node or its animation's bar track");
+        if (rest == null || am == null) return;
+        expect(am.Positions.Length == 2, $"8 animverts over 4 authored vertices read as {am.Positions.Length} frame(s), expected 2");
+        if (am.Positions.Length != 2) return;
+        int n = rest.Positions.Length;
+        expect(am.Positions[0].Length == n && am.Positions[1].Length == n,
+               $"frames of {am.Positions[0].Length}/{am.Positions[1].Length} vertices against a {n}-vertex weld -- the morph would write the wrong vertices");
+        if (am.Positions[0].Length != n || am.Positions[1].Length != n) return;
+        bool same = true, doubled = true;
+        for (int i = 0; i < n; i++)
+        {
+            same &= Near(am.Positions[0][i], rest.Positions[i]);
+            doubled &= Near(am.Positions[1][i], rest.Positions[i] * 2f);
+        }
+        expect(same, "frame 0 is not the rest pose vertex for vertex: the frame is not indexed by the part's weld");
+        expect(doubled, "frame 1 is not the fixture's doubled quad vertex for vertex");
+    }
 
     /// <summary>The walkmesh parses, and parses as something the hit test can use -- an
     /// <c>aabb</c> node with a tree and per-face surface ids. Without this the tile floor is silently absent

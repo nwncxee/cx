@@ -90,7 +90,7 @@ internal static unsafe class NuiFlush
         if (!_armed || _stoodDown || ctx == IntPtr.Zero || !GuiPass.Capturing) { (*_nkSlot)(dt); return; }
         new NkContext(ctx).DeltaTime = dt;
         _refresh();
-        Convert(ctx);
+        if (!CX.Ui.LoadScreen.PanelUp) Convert(ctx);   // the loadscreen covers the screen: NUI's queue is dropped
         _clear(ctx);
         BufferClear(_cmds);
         HandBackEngineState();
