@@ -61,6 +61,19 @@ internal static class ShaderContract
         "#define LIGHTING 1\n#define FOO 2\nuniform sampler2D texUnit6;\nvoid main ()\n{\n    gl_FragColor = FragmentColor;\n}\n",
         "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
 
+    /// <summary>The same rewrite over the engine's PLT scheme feed: the declaration goes and every index
+    /// becomes the per-record call, because a multidraw batch has no per-draw uniform to set.</summary>
+    private static string HostSamplePlt => VanillaShader.HostText(
+        "uniform float PLTscheme[15];\nvoid main ()\n{\n    FragmentColor.a = PLTscheme[int(FragmentColor.g * 255.0 + 0.5)];\n}\n",
+        "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
+
+    /// <summary>The same rewrite over declarations that carry INITIALISERS -- what a stage written for both
+    /// clients states so its stock half has a default. The environment-supplied name must still go, and a
+    /// declaration whose initialiser merely mentions a supplied macro must stay.</summary>
+    private static string HostSampleInit => VanillaShader.HostText(
+        "uniform int SHADER_TYPE = 2;\nuniform float fKeep = PI * 2.0;\nvoid main ()\n{\n    FragmentColor.a = float(SHADER_TYPE) * fKeep;\n}\n",
+        "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
+
     /// <summary>Does this VERTEX stage carry the skinning branch? Same trap as <see cref="CutoutSafe"/>: an
     /// override without it links perfectly (the bone base rides in <c>feat.y</c>, the missing bone attributes
     /// are simply disabled) and renders every skinned robe in its BIND POSE, silently. On a server the HAK
@@ -272,6 +285,7 @@ internal static class ShaderContract
                   && FeatDecl.Contains($"CX_FEAT_NOIRWET   {(int)ShaderFeature.NoirWet}")
                   && FeatDecl.Contains($"CX_FEAT_NOIRGLOSS {(int)ShaderFeature.NoirGloss}")
                   && FeatDecl.Contains($"CX_FEAT_GROUNDWEATHER {(int)ShaderFeature.GroundWeather}")
+                  && FeatDecl.Contains($"CX_FEAT_PALETTETINT {(int)ShaderFeature.PaletteTint}")
                   // #137: the skinning half. The binding point and the two attribute locations live twice
                   // (C# consts, literal GLSL) and neither disagreement is visible -- a wrong binding reads an
                   // empty block and collapses the mesh to the origin, a wrong location reads whatever stream
@@ -308,7 +322,18 @@ internal static class ShaderContract
                   && ShaderFeatures.OutOfPrepass((int)ShaderFeature.WindGrass)
                   && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Flowmap)
                   // ...and the CPU-side exclusions that go with them: no name here, no switch there.
-                  && ShaderFeatures.VsNames.Length == 12
+                  && ShaderFeatures.VsNames.Length == 13
+                  // CX-223: the palette tint -- its own pair, the four palette slots it alone reads, the one
+                  // hosted coverage source there is, and nothing the wind forks' special cases apply to.
+                  && ShaderFeatures.VsNames[(int)ShaderFeature.PaletteTint] == "vs_plt_wind"
+                  && ShaderFeatures.FsNames[(int)ShaderFeature.PaletteTint] == "fs_plt_tinter"
+                  && ShaderFeatures.ReadsPaletteSlots((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.ReadsPaletteSlots((int)ShaderFeature.GroundWeather)
+                  && !ShaderFeatures.ReadsAuxSlot((int)ShaderFeature.PaletteTint)
+                  && ShaderFeatures.HostedCoverage((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.HostedCoverage((int)ShaderFeature.GroundWeather)
+                  && !ShaderFeatures.Displaces((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.NoKeyholing((int)ShaderFeature.PaletteTint)
                   // #348: the two look features, and the properties that keep them out of the wind forks'
                   // special cases -- neither displaces, so neither leaves the depth prepass.
                   && ShaderFeatures.VsNames[(int)ShaderFeature.NoirWet] == "vs_noirwet"
@@ -546,7 +571,9 @@ internal static class ShaderContract
                   // CX-191: through the mip-level compensation, the same call in the feature prepass so its
                   // depth and the GL_EQUAL colour draw keep the same holes
                   && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
-                  && OwnedLitFsMain.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(coverage, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
+                  && OwnedLitFsMain.Contains("if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;")
+                  // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
+                  && OwnedLitFsMain.Contains("if (tint) coverage = CxTintCover(vDraw, uv);")
                   && DepthFeatFs.Contains("if (CxAlphaMip(texture(uTex, vUV, uLodBias).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
@@ -702,6 +729,15 @@ internal static class ShaderContract
                   && HostSample.Contains("#undef LIGHTING\n#undef FOO\n")
                   && HostSample.Split("#undef FOO").Length == 3
                   && !HostSample.Contains("uniform sampler2D")
+                  // CX-223: ...and the same strip over a declaration with an initialiser. The supplied name
+                  // goes (its macro would redeclare it); one that only MENTIONS a supplied macro in its
+                  // initialiser stays, or a stage would lose a declaration it is the only definition of.
+                  && !HostSampleInit.Contains("uniform int SHADER_TYPE")
+                  && HostSampleInit.Contains("uniform float fKeep = PI * 2.0;")
+                  // ...and the PLT scheme feed, which the engine sets per material bind and Alloy cannot.
+                  && !HostSamplePlt.Contains("uniform float PLTscheme")
+                  && HostSamplePlt.Contains("CxPltScheme(vDraw, int(FragmentColor.g * 255.0 + 0.5))")
+                  && ShaderSource.Get("cx_plt.glsl").Contains("float CxPltScheme(int draw, int layer)")
                   && HostSample.Contains("void CxHost_x()")
                   && HostSample.Contains("fRoughness = MATERIAL_ROUGHNESS_VALUE;")
                   && HostSample.EndsWith(VanillaEnvDefs)

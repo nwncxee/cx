@@ -254,10 +254,18 @@ void main()
     // CasterPass already knew this and lowered its own env threshold for the same reason; the
     // colour path's turn.
     float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;
+    // CX-223: a palette-tint part's coverage is NOT its diffuse alpha -- the diffuse carries palette
+    // intensity, and the authored coverage is the third palette map's blue channel. The compensation below
+    // then runs at the MATERIAL's own scale over that map's extent, not the knob's over the diffuse's:
+    // compensating twice over one channel fills a distant silhouette solid.
+    bool tint = feat == CX_FEAT_PALETTETINT;
+    if (tint) coverage = CxTintCover(vDraw, uv);
+    float cutMip = tint ? CxTintMip(vDraw) : uAlphaMip;
+    vec2 cutSize = tint ? CxTintCoverSize(vDraw) : vec2(textureSize(uTex, 0));
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
-    if (uAlphaCut >= 0.0 && CxAlphaMip(coverage, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;
+    if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.

@@ -8,6 +8,7 @@
 #define CX_FEAT_NOIRWET   9
 #define CX_FEAT_NOIRGLOSS 10
 #define CX_FEAT_GROUNDWEATHER 11
+#define CX_FEAT_PALETTETINT 12
 uniform int uTimeOfDay;        // worldtimerTimeOfDay, the engine's own int
 // The animation clock, wrapped to the hour in int. float(uTimeOfDay) steps 8 at the end of the day, which is
 // half a frame's sway; the wrap keeps it at 0.25 at the cost of one phase jump an hour.

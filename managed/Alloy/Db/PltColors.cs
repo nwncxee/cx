@@ -28,8 +28,10 @@ internal static unsafe class PltColors
     /// non-creature record leaves it as.</summary>
     internal const int WordsPerRecord = 6, RowWords = 5;
     /// <summary>The flag word's bits: the draw is PLT-resolved, and its sampler clamps rather than repeats
-    /// (<c>cx_plt.glsl</c> does its own addressing and cannot see a sampler's wrap mode).</summary>
-    internal const uint FlagPlt = 1, FlagClamp = 2;
+    /// (<c>cx_plt.glsl</c> does its own addressing and cannot see a sampler's wrap mode). The third says the
+    /// rows are staged for a reader that is NOT the diffuse resolve -- the palette tint, whose diffuse is an
+    /// ordinary texture and whose hosted stage still reads the wearer's scheme.</summary>
+    internal const uint FlagPlt = 1, FlagClamp = 2, FlagRows = 4;
 
     private static uint[] _words = Array.Empty<uint>();
     private static uint _ssbo;
@@ -147,10 +149,10 @@ internal static unsafe class PltColors
     // ---- the draw record's side ----
 
     /// <summary>Stage record <paramref name="slot"/>'s row word from part <paramref name="part"/>'s own rows,
-    /// else object <paramref name="obj"/>'s. Called by
-    /// the staging walk for a part whose diffuse is a PLT; every other record is cleared by
-    /// <see cref="Clear"/>. Allocation-free and branch-light: the staging walk is hot.</summary>
-    internal static void Stage(int slot, DbId obj, int part = -1, bool clamp = false)
+    /// else object <paramref name="obj"/>'s -- for a part whose diffuse is a PLT, and with
+    /// <paramref name="rowsOnly"/> for one whose SHADER reads the wearer's scheme off an ordinary diffuse.
+    /// Every other record is cleared by <see cref="Clear"/>; allocation-free, as the staging walk is hot.</summary>
+    internal static void Stage(int slot, DbId obj, int part = -1, bool clamp = false, bool rowsOnly = false)
     {
         if ((uint)slot >= (uint)Records || _words.Length == 0) return;
         if (!SceneDb.Objects.Valid(obj))
@@ -171,7 +173,7 @@ internal static unsafe class PltColors
             if (_words[b + k] == w) continue;
             _words[b + k] = w; changed = true;
         }
-        uint flags = FlagPlt | (clamp ? FlagClamp : 0u);
+        uint flags = rowsOnly ? FlagRows : FlagPlt | (clamp ? FlagClamp : 0u);
         if (_words[b + RowWords] != flags) { _words[b + RowWords] = flags; changed = true; }
         if (changed) { _everPlt = true; Touch(slot); }
     }

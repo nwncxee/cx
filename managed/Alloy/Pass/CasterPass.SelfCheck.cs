@@ -132,10 +132,12 @@ public sealed unsafe partial class CasterPass
                   // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
                   && DitherFor(CoverageLayer.Cut) >= 1
                   // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except
-                  // under a hosted fragment stage, whose own channel no depth stage can read yet
+                  // under a hosted fragment stage, which is admitted only where it names a source both can read
                   && CoverageLayer.FromDiffuse((int)ShaderFeature.None)
                   && CoverageLayer.FromDiffuse((int)ShaderFeature.Skin)
                   && !CoverageLayer.FromDiffuse((int)ShaderFeature.GroundWeather)
+                  // CX-223: ...and the one hosted feature that names its own source IS admitted
+                  && CoverageLayer.FromDiffuse((int)ShaderFeature.PaletteTint)
                   && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()
