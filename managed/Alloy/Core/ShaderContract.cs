@@ -613,6 +613,11 @@ internal static class ShaderContract
                   // that loses this line spends it twice and every reflective surface draws as a ghost --
                   // which is invisible in a screenshot of anything that is not shiny, hence the guard.
                   && OwnedLitFsMain.Contains("float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;")
+                  // ...the other half of that one spend, and the reason the coverage arm above is 1.0: the
+                  // channel becomes the reflectivity level, inc_standard.shd:235's own expression. The two
+                  // lines are a pair -- a stage that kept one and lost the other either cuts a reflective
+                  // texel away or draws it flat.
+                  && OwnedLitFsMain.Contains("float envLevel = (slots & CX_SLOT_ENV) != 0 ? 1.0 - texel.a : 0.0;")
                   // ...and the per-draw alpha reaching the framebuffer, which is the whole of the blended
                   // class: a stage writing a constant 1.0 there renders every transparent surface solid.
                   && OwnedFs.Contains("t.a * vAlpha") && OwnedVs.Contains("vAlpha = d.rot.w;")
