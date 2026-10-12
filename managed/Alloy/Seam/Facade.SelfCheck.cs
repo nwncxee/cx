@@ -441,6 +441,7 @@ internal static unsafe class FacadeSelfCheck
 
         GuiHold(check);
         PartHold(check);
+        SceneHold(check);
 
         Facade.InSelfCheck = false;
         SceneDb.Objects.Free(id);
@@ -570,6 +571,44 @@ internal static unsafe class FacadeSelfCheck
         SceneDb.Objects.Free(gobj);
         SceneDb.Objects.Free(churn);
         SceneDb.SceneIsWorld[world.Index] = false;
+        SceneDb.Scenes.Free(world);
+        SceneDb.Scenes.Free(gui);
+    }
+
+    /// <summary>A scene shell that never became a world scene is held at retire, so no later scene -- the world
+    /// one included -- can be minted at its address. Oracle: hand-written expectations -- the held and
+    /// quarantined counts, and the GUI scene's address never coming back from a churn that does reuse blocks.</summary>
+    private static void SceneHold(Checker check)
+    {
+        DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc();
+        if (world.IsNull || gui.IsNull)
+        {
+            check.Expect(false, "no records for the scene hold check");
+            return;
+        }
+        nint wshell = Facade.Mint(FacadeKind.Scene, world), gshell = Facade.Mint(FacadeKind.Scene, gui);
+        SeamShell.NoteScene(wshell, world: true);
+        int held = SeamShell.Held, quarantined = SeamShell.Quarantined;
+        Facade.Retire(gshell);
+        check.Expect(SeamShell.Held == held + 1 && SeamShell.Quarantined == quarantined,
+            "a scene shell that was never a world scene must be held, not queued for reuse");
+        Facade.Retire(wshell);
+        check.Expect(SeamShell.Held == held + 1 && SeamShell.Quarantined == quarantined + 1,
+            "a world scene's shell goes to the reuse ring");
+
+        for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
+        long reused = SeamShell.Reused;
+        bool gotGui = false;
+        for (int k = 0; k < SeamShell.RingSize; k++)
+        {
+            nint s = SeamShell.Alloc(FacadeKind.Scene, default);
+            gotGui |= s == gshell;
+            SeamShell.NoteScene(s, world: true);
+            SeamShell.Retire(s);
+        }
+        check.Expect(SeamShell.Reused > reused, "a full scene ring past its quarantine must hand a block back, or this check proves nothing");
+        check.Expect(!gotGui, "a retired GUI scene shell was handed out again");
+
         SceneDb.Scenes.Free(world);
         SceneDb.Scenes.Free(gui);
     }

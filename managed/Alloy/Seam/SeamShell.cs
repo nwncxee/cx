@@ -240,9 +240,9 @@ public static unsafe class SeamShell
     internal sealed class HeldState { internal readonly System.Collections.Generic.List<nint> Blocks = new(); }
     private static HeldState _held = new();
 
-    /// <summary>Retired shells whose object was ever in a GUI scene. GUI code calls through pointers to
-    /// objects it already destroyed, so such a block is never reused or freed: no later object, world or GUI,
-    /// can sit at its address. ponytail: held for the session; a GUI-only pool needs the minter's origin.</summary>
+    /// <summary>Retired shells whose object was ever in a GUI scene, and scene shells never stamped a world
+    /// scene. GUI code calls through pointers to things it already destroyed, so such a block is never reused
+    /// or freed: nothing later, world or GUI, can sit at its address. ponytail: held for the session; a GUI-only pool needs the minter's origin.</summary>
     public static int Held => _held.Blocks.Count;
 
     /// <summary>The seam's own frame counter, advanced once per published frame by <see cref="Frame"/>.</summary>
@@ -323,7 +323,8 @@ public static unsafe class SeamShell
         return shell;
     }
 
-    /// <summary>Record that <paramref name="shell"/>'s object joined a world or a GUI scene. True when a shell
+    /// <summary>Record that <paramref name="shell"/>'s object joined a world or a GUI scene, or that a scene
+    /// shell became the world scene. True when a shell
     /// that was in a world scene joins a GUI one for the first time; false for a block that is not ours.</summary>
     internal static bool NoteScene(nint shell, bool world)
     {
@@ -336,9 +337,9 @@ public static unsafe class SeamShell
     }
 
     /// <summary>Mark <paramref name="shell"/> retired and queue it for reuse after the quarantine, or hold it for
-    /// good when its object was ever in a GUI scene (<see cref="Held"/>). The caller has already nulled the
-    /// SafePointer back-references (<see cref="Facade.Retire"/>); this only changes the block's state, so every
-    /// later call through its vtable takes the poison path.</summary>
+    /// good when its object was ever in a GUI scene or it is a non-world scene (<see cref="Held"/>). The caller
+    /// has already nulled the SafePointer back-references (<see cref="Facade.Retire"/>); this only changes the
+    /// block's state, so every later call through its vtable takes the poison path.</summary>
     public static void Retire(nint shell)
     {
         SeamHeader* h = Head(shell);
@@ -348,7 +349,8 @@ public static unsafe class SeamShell
         h->Reported = 0;
         h->RetiredBy = SeamCallers.Here();
         Live--;
-        if ((h->Scenes & InGui) != 0) { _held.Blocks.Add(shell); return; }
+        bool nonWorldScene = h->Kind == (byte)FacadeKind.Scene && (h->Scenes & InWorld) == 0;
+        if ((h->Scenes & InGui) != 0 || nonWorldScene) { _held.Blocks.Add(shell); return; }
         int k = h->Kind & 3;
         if (_ringLive[k] == RingSize)
         {
