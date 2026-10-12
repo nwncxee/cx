@@ -119,10 +119,21 @@ public sealed class CardService : IExtenderService
             IconDraw ic = v.Icons[i];
             if (ic.Look != null) CardLooks.Draw(ic.Look, x + ic.X, y + ic.Y, ic.W, ic.H, a);
             else if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a);
-            else TextRig.DrawIcon(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a);
+            else DrawResref(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);
         if (v.Pulse != null) TextRig.DrawBatch(v.Pulse.AsSpan(), v.Pulse.VertexCount, a * CardPulse.Alpha(Environment.TickCount64), x, y);
+    }
+
+    /// <summary>A resref icon at its art's own proportions, centred in the box.</summary>
+    private static void DrawResref(string resref, float x, float y, float w, float h, float a)
+    {
+        if (string.IsNullOrEmpty(resref) || !AurTex.Ready) return;
+        Span<byte> name = stackalloc byte[RadialIcons.ResRefLen];
+        name.Clear();
+        for (int i = 0; i < resref.Length && i < name.Length; i++) name[i] = (byte)resref[i];
+        IconFrames.Fit(IconFrames.Read(name, false), ref x, ref y, ref w, ref h, out float u1, out float v0);
+        TextRig.DrawIconTid(TextRig.ResolveTid(resref), x, y, w, h, a, u1, v0);
     }
 
     /// <summary>The pointer-free hit <c>nui.cardforce</c> stands in: an element with that id at a fixed place.</summary>

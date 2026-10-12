@@ -140,12 +140,15 @@ public sealed unsafe class HeldImageService : IExtenderService
         if (s.Notices++ < 5) s.Log?.Always("HeldImage: " + text);
     }
 
-    /// <summary>The item's icon centred on the pointer, cropped to its base item's cells as the inventory's dragged icon is.</summary>
+    /// <summary>The item's icon centred on the pointer, as many cells as its art's own frame fills, or its base item's cells
+    /// when the frame is unknown.</summary>
     private static void DrawItem(IntPtr item, uint handle, int mx, int my, float px, float alpha)
     {
         if (item == IntPtr.Zero) return;
         NuiItemIcons.Cells(item, out int cw, out int ch);
-        float w = px * cw, h = px * ch, x = mx - w / 2, y = my - h / 2;
+        IconFrames.Frame f = IconFrames.Of(new CNWCItem(item).GuiIcon);
+        float w = f.Known ? px * f.Cw / IconFrames.CellPx : px * cw, h = f.Known ? px * f.Ch / IconFrames.CellPx : px * ch;
+        float x = mx - w / 2, y = my - h / 2;
         if (handle != 0) RadialIcons.Draw((IntPtr)handle, x, y, w, h, alpha, cw, ch);
         else
         {

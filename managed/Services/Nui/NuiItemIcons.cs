@@ -188,13 +188,15 @@ internal static unsafe class NuiItemIcons
         }
     }
 
-    /// <summary>The composite of <paramref name="icon"/> (the icon of <paramref name="item"/>, whose base item gives the
-    /// cell size), or a plain unpadded icon's own resref.</summary>
+    /// <summary>The composite of <paramref name="icon"/> cut to its art's own frame (the icon of <paramref name="item"/>, whose
+    /// base item gives the cells when the frame is unknown), or a plain icon's own resref when its art fills the sheet.</summary>
     private static bool FromIcon(IntPtr item, IntPtr icon, string what, out ushort type)
     {
         type = ResTga;
         Cells(item, out int cw, out int ch);
         float fw = RadialIcons.ContentFrac(cw), fh = RadialIcons.ContentFrac(ch);
+        IconFrames.Frame f = IconFrames.Of(icon);
+        if (f.Known) { fw = f.Cw / (float)f.Tw; fh = f.Ch / (float)f.Th; }
         IconKind kind = RadialIcons.Classify(icon);
         if (kind == IconKind.Plain && fw >= 1f && fh >= 1f)
         {
