@@ -81,6 +81,7 @@ public static unsafe partial class DbAnim
         BoneTableForm(check);
         BoneMapOfRoot(check);
         GraftedBoneNames(check);
+        BoundaryStitch(check);
     }
 
     /// <summary>An ASCII piece whose <c>weights</c> block names one bone of the SKELETON it is grafted onto
@@ -387,5 +388,172 @@ public static unsafe partial class DbAnim
             Drop(obj);
             SceneDb.Scenes.Free(scene);
         }
+    }
+
+    /// <summary>A body whose skinmesh "askin" shares a ring with a grafted piece but is weighted to the
+    /// skeleton's "root", while the bone "mid" (its sibling, so the mesh does not ride it) is what moves.
+    /// Normals +Z, against the piece's +Y.</summary>
+    private static ModelDef StitchBody()
+    {
+        var m = new ModelDef { Name = "cx_selfcheck_stitch_body", AnimScale = 1f, BMin = new Vector3(-1f), BMax = new Vector3(1f) };
+        m.Nodes = new[]
+        {
+            new NodeDef { Name = "root", Index = 0, Parent = -1, Children = new[] { 1, 2 }, Kind = NodeKind.Dummy },
+            new NodeDef { Name = "mid", Index = 1, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Dummy,
+                          Position = new Vector3(0f, 0f, 1f) },
+            new NodeDef { Name = "askin", Index = 2, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
+                          Mesh = Ring(new Vector3(0f, 1f, 0f), Vector3.UnitZ), Skin = OneBone("root") },
+        };
+        for (int i = 0; i < m.Nodes.Length; i++) m.NodeByName[m.Nodes[i].Name] = i;
+        return m;
+    }
+
+    /// <summary>The grafted piece: "gskin" shares the body's ring but is weighted to "mid", so the ring comes
+    /// apart when "mid" moves, and "glone" is a skinned part ten metres away with no partner at all.</summary>
+    private static ModelDef StitchPiece()
+    {
+        var m = new ModelDef { Name = "cx_selfcheck_stitch_piece", AnimScale = 1f, BMin = new Vector3(-1f), BMax = new Vector3(1f) };
+        m.Nodes = new[]
+        {
+            new NodeDef { Name = "groot", Index = 0, Parent = -1, Children = new[] { 1, 2 }, Kind = NodeKind.Dummy },
+            new NodeDef { Name = "glone", Index = 1, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
+                          Position = new Vector3(10f, 0f, 0f),
+                          Mesh = Ring(new Vector3(0f, -1f, 0f), Vector3.UnitY), Skin = OneBone("mid") },
+            new NodeDef { Name = "gskin", Index = 2, Parent = 0, Children = Array.Empty<int>(), Kind = NodeKind.Skin,
+                          Mesh = Ring(new Vector3(0f, -1f, 0f), Vector3.UnitY), Skin = OneBone("mid") },
+        };
+        for (int i = 0; i < m.Nodes.Length; i++) m.NodeByName[m.Nodes[i].Name] = i;
+        return m;
+    }
+
+    /// <summary>One triangle whose first two corners are the SHARED ring -- the origin and (1,0,0) -- with
+    /// <paramref name="third"/> its own corner and <paramref name="normal"/> on all three.</summary>
+    private static MeshDef Ring(Vector3 third, Vector3 normal)
+    {
+        var mesh = new MeshDef
+        {
+            Positions = new[] { Vector3.Zero, Vector3.UnitX, third },
+            Normals = new[] { normal, normal, normal },
+            Indices = new uint[] { 0, 1, 2 },
+        };
+        mesh.Uv[0] = new[] { Vector2.Zero, Vector2.UnitX, Vector2.UnitY };
+        return mesh;
+    }
+
+    /// <summary>A three-vertex skin, every vertex fully weighted to one named bone.</summary>
+    private static SkinDef OneBone(string bone) => new()
+    {
+        BoneNames = new[] { bone },
+        BoneNodes = new[] { -1 },
+        Weights = new[] { new Vector4(1f, 0f, 0f, 0f), new Vector4(1f, 0f, 0f, 0f), new Vector4(1f, 0f, 0f, 0f) },
+        Bones = new uint[] { 0u, 0u, 0u },
+        BoneIndices = new ushort[12],
+        Influences = new[] { 1, 1, 1 },
+    };
+
+    /// <summary>The part-boundary heal: two skinned parts sharing a ring, weighted to different bones and
+    /// normalled differently, come apart when posed and shade apart -- and after the stitch the ring deforms
+    /// and shades as one, while a part with no partner keeps the geometry its file states. Oracles: the
+    /// hand-written fixture, CPU skinning off the palette columns, and the arena's own vertex bytes.</summary>
+    private static void BoundaryStitch(Checker check)
+    {
+        DbId scene = SceneDb.Scenes.Alloc();
+        DbId body = Subject(StitchBody(), scene, out int bodyFirst);
+        ModelDef pm = StitchPiece();
+        DbId piece = Subject(pm, scene, out int pieceFirst);
+        int pi = piece.Index, skinA = bodyFirst + 2, skinB = pieceFirst + 2, lone = pieceFirst + 1;
+        // Subject chains its three parts; these two trees are a root with two children.
+        SceneDb.PartParent[skinA] = bodyFirst;
+        SceneDb.PartParent[lone] = pieceFirst;
+        SceneDb.PartParent[skinB] = pieceFirst;
+        ScanTree(pi);
+        SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
+        SceneDb.ObjSeamAppendHead[body.Index] = piece;
+        SceneDb.ObjSeamAppendNext[pi] = default;
+        SceneDb.SetAttachTo(pi, body);
+        SceneDb.SetAttachPart(pi, bodyFirst);
+        // the bone "mid" moves, which only the piece's ring is weighted to
+        SceneDb.PartPos[bodyFirst + 1] = new Vector3(0f, 2f, 1f);
+        Moved(body.Index); ComposeObject(body);
+        Moved(pi); ComposeObject(piece);
+
+        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        try
+        {
+            Vector3 a0 = PosedVertex(skinA, 0, dst), b0 = PosedVertex(skinB, 0, dst);
+            check.Expect((a0 - b0).Length() > 1f,
+                         $"as authored, the shared ring comes APART when posed -- that is the seam "
+                         + $"({a0} against {b0})");
+
+            TreeChanged(body);
+            SceneDb.PartPos[bodyFirst + 1] = new Vector3(0f, 2f, 1f);
+            Moved(body.Index);
+            Finish(body);
+            check.Expect(StitchSkin(skinA) != null && StitchSkin(skinB) != null,
+                         "a tree change owes the composition a stitch, and the step's tail runs it");
+            check.Expect(StitchSkin(lone) == null,
+                         "...and a skinned part with no partner is left exactly as its file states");
+
+            a0 = PosedVertex(skinA, 0, dst); b0 = PosedVertex(skinB, 0, dst);
+            check.Expect((a0 - b0).Length() < 1e-3f,
+                         $"after the stitch the ring deforms as ONE ({a0} against {b0})");
+            Vector3 a1 = PosedVertex(skinA, 1, dst), b1 = PosedVertex(skinB, 1, dst);
+            check.Expect((a1 - b1).Length() < 1e-3f, $"...at both shared corners ({a1} against {b1})");
+            // ...and the corner that is nobody's partner still rides the bone its file weighted it to.
+            Vector3 own = PosedVertex(skinB, 2, dst);
+            check.Expect((own - Vector3.Transform(pm.Nodes[2].Mesh!.Positions[2], SceneDb.PartWorld[skinB])).Length() > 1f,
+                         "...while an unpartnered corner of the same mesh still follows its own bone");
+
+            Vector3 na = ArenaNormal(skinA, 0), nb = ArenaNormal(skinB, 0);
+            check.Expect(NearV(na, nb) && na != Vector3.Zero,
+                         $"the shared ring's normals are averaged to one in the arena ({na} against {nb})");
+            check.Expect(NearV(ArenaNormal(skinB, 2), Vector3.UnitY),
+                         "...and an unpartnered vertex keeps the normal it was authored with");
+        }
+        finally { NativeMemory.Free(dst); }
+
+        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
+        SceneDb.SetAttachTo(pi, default);
+        Drop(piece);
+        Drop(body);
+        SceneDb.Scenes.Free(scene);
+    }
+
+    /// <summary>One skinned vertex's posed WORLD position, skinned on the CPU as the vertex stage does: the
+    /// weighted sum of the vertex through each bone matrix the palette holds, then the part's own world
+    /// matrix. Independent of the stitch, which states weights and normals but never a position.</summary>
+    private static Vector3 PosedVertex(int part, int vi, float* dst)
+    {
+        SkinDef? s = StitchSkin(part) ?? ModelSkin(part);
+        MeshDef? mesh = ModelMesh(part);
+        if (s == null || mesh == null || !SkinPalette(part, dst)) return new Vector3(float.NaN);
+        Vector3 p = mesh.Positions[vi], acc = Vector3.Zero;
+        Vector4 w = s.Weights[vi];
+        for (int c = 0; c < 4; c++)
+        {
+            float wc = c == 0 ? w.X : c == 1 ? w.Y : c == 2 ? w.Z : w.W;
+            if (wc <= 0f) continue;
+            int b = s.BoneIndices[vi * 4 + c];
+            acc += wc * Vector3.Transform(p, PaletteSlot(dst, b));
+        }
+        return Vector3.Transform(acc, SceneDb.PartWorld[part]);
+    }
+
+    /// <summary>One palette slot as a matrix, in the order <c>Store</c> wrote it.</summary>
+    private static Matrix4x4 PaletteSlot(float* dst, int b)
+        => new(dst[b * 16], dst[b * 16 + 1], dst[b * 16 + 2], dst[b * 16 + 3],
+               dst[b * 16 + 4], dst[b * 16 + 5], dst[b * 16 + 6], dst[b * 16 + 7],
+               dst[b * 16 + 8], dst[b * 16 + 9], dst[b * 16 + 10], dst[b * 16 + 11],
+               dst[b * 16 + 12], dst[b * 16 + 13], dst[b * 16 + 14], dst[b * 16 + 15]);
+
+    /// <summary>The normal the ARENA holds for one of a part's vertices, in world terms: what the GPU will
+    /// actually shade with, read back from the arena's own mirror rather than from any CPU copy.</summary>
+    private static Vector3 ArenaNormal(int part, int vi)
+    {
+        int rec = SceneDb.PartRecipe[part];
+        int range = rec >= 0 ? DrawRecipe.Range(rec) : SceneDb.PartMesh[part];
+        if (range < 0 || !MeshArena.VertexProbe(range, vi, out _, out Vector3 n, out _, out _)) return Vector3.Zero;
+        return Vector3.Normalize(Vector3.TransformNormal(n, SceneDb.PartWorld[part]));
     }
 }

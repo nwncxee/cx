@@ -203,6 +203,11 @@ public sealed class MeshDef
     /// <summary>True when the mesh was authored as a walkmesh/AABB node, which the engine forces to
     /// <c>render = 0</c> and <c>shadow = 0</c>.</summary>
     public bool WalkMesh;
+
+    /// <summary>A field-for-field copy, for a consumer that owns per-INSTANCE geometry (the part-boundary
+    /// stitch): the arrays are shared until the caller replaces the ones it rewrites, so a copy that changes
+    /// only its normals costs one array.</summary>
+    public MeshDef Copy() => (MeshDef)MemberwiseClone();
 }
 
 /// <summary>One triangle: corner vertex indices, smoothing group, surface (material) id, the three edge-adjacent
@@ -247,6 +252,10 @@ public sealed class SkinDef
     /// <summary>Per slot, the inverse bind pose (node space -> bone space).</summary>
     public Quaternion[] BindRotation = Array.Empty<Quaternion>();
     public Vector3[] BindTranslation = Array.Empty<Vector3>();
+
+    /// <summary>A field-for-field copy, for a consumer that owns per-INSTANCE skin data (the part-boundary
+    /// stitch): the arrays are shared until the caller replaces the ones it rewrites.</summary>
+    public SkinDef Copy() => (SkinDef)MemberwiseClone();
 }
 
 /// <summary>Dangly mesh: per-vertex constraint weights and the three solver terms.</summary>

@@ -33,7 +33,10 @@ public static unsafe partial class DbAnim
             if (m == null) continue;
             int node = SceneDb.PartNode[p];
             if ((uint)node >= (uint)m.Nodes.Length) continue;
-            SkinDef? skin = m.Nodes[node].Skin;
+            // The STITCHED table when the boundary heal gave this part one: its bone names are the
+            // composition's and its weights were unified with its neighbour's, so a palette solved against
+            // the model's own table would address the wrong slots.
+            SkinDef? skin = StitchSkin(p) ?? m.Nodes[node].Skin;
             if (skin == null) continue;
             if (!SceneDb.PartEnabled[p] || SceneDb.PartMerged[p]) { Unskin(p); continue; }
             int slot = SceneDb.PartBoneBase[p];
@@ -273,7 +276,7 @@ public static unsafe partial class DbAnim
         if (m == null) return false;
         int node = SceneDb.PartNode[part];
         if ((uint)node >= (uint)m.Nodes.Length) return false;
-        SkinDef? skin = m.Nodes[node].Skin;
+        SkinDef? skin = StitchSkin(part) ?? m.Nodes[node].Skin;
         return skin != null && Palette(part, skin, dst);
     }
 
@@ -281,6 +284,7 @@ public static unsafe partial class DbAnim
     internal static string SkinPeriod()
         => $"{_skinned} palette(s)"
          + SkinNamePeriod()
+         + StitchPeriod()
          + (_skinNoBind == 0 ? "" : $", {_skinNoBind} REFUSED (no bind pose)")
          + (_skinNoSlot == 0 ? "" : $", {_skinNoSlot} skin-noslot");
 }
