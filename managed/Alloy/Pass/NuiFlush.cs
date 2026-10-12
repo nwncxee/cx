@@ -93,7 +93,8 @@ internal static unsafe class NuiFlush
         if (!_armed || _stoodDown || ctx == IntPtr.Zero || !GuiPass.Capturing) { (*_nkSlot)(dt); return; }
         new NkContext(ctx).DeltaTime = dt;
         _refresh();
-        NuiWindows.Apply(ctx, _texNull == IntPtr.Zero ? 0 : (int)(long)((NkDrawNullTexture*)_texNull)->Texture);
+        NuiWindows.Apply(ctx, _texNull == IntPtr.Zero ? 0 : (int)(long)((NkDrawNullTexture*)_texNull)->Texture,
+            CX.Services.Nui.NuiKnobs.Enabled.V, CX.Services.Nui.NuiKnobs.PolicyProbe.V);
         if (!CX.Ui.LoadScreen.PanelUp) Convert(ctx);   // the loadscreen covers the screen: NUI's queue is dropped
         NuiWindows.Finish(ctx);
         _clear(ctx);

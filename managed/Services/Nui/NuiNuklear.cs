@@ -10,8 +10,7 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiNuklear
 {
-    internal const int CurrentOff = 0x6738, WinLayoutOff = 0xa8;  // not-an-offset: nuklear context ABI, not an engine class
-    private const int OffsetXOff = 0x18, OffsetYOff = 0x20, AtXOff = 0x28, AtYOff = 0x2c;  // not-an-offset: nuklear panel ABI, not an engine class
+        private const int OffsetXOff = 0x18, OffsetYOff = 0x20, AtXOff = 0x28, AtYOff = 0x2c;  // not-an-offset: nuklear panel ABI, not an engine class
     private const int RowIndexOff = 0x74, RowHeightOff = 0x78, RowColumnsOff = 0x80, RowItemOffsetOff = 0x98;  // not-an-offset: nuklear panel ABI, not an engine class
     internal const int MaxXOff = 0x30;  // not-an-offset: nuklear panel ABI, not an engine class
     private const int ClipOff = 0x44, RowTypeOff = 0x70, RowItemOff = 0xa0;  // not-an-offset: nuklear panel ABI, not an engine class
@@ -71,9 +70,9 @@ internal static unsafe class NuiNuklear
     {
         b = default;
         if (new Nui__Layout__Layoutable(self).NoPush != 0) return false;
-        IntPtr win = *(IntPtr*)(ctx + CurrentOff);
+        IntPtr win = new NkContext(ctx).Current;
         if (win == IntPtr.Zero) return false;
-        byte* p = *(byte**)(win + WinLayoutOff);
+        byte* p = (byte*)new NkWindow(win).Layout;
         if (p == null || *(int*)(p + RowTypeOff) != StaticFree) return false;
         float* item = (float*)(p + RowItemOff);
         b.Panel = p;

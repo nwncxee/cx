@@ -32,7 +32,7 @@ internal struct NuiHit
     /// <summary>True when nothing was under the pointer.</summary>
     public readonly bool IsEmpty => Element == IntPtr.Zero;
     /// <summary>True when the pointer at (<paramref name="px"/>, <paramref name="py"/>) lies inside <see cref="X"/>..<see cref="H"/>.</summary>
-    public readonly bool Contains(float px, float py) => px >= X && px < X + W && py >= Y && py < Y + H;
+    public readonly bool Contains(float px, float py) => NuiHitTest.Contains(X, Y, W, H, px, py);
 }
 
 /// <summary>The byte views of a <see cref="NuiHit"/>, as extensions on <c>in</c> so a span can point into the value.</summary>
@@ -55,9 +55,7 @@ internal static class NuiHitSpans
 /// </summary>
 internal static unsafe class NuiHitTest
 {
-    /// <summary>nuklear 4.08 as compiled, the same on both builds: <c>nk_input.mouse.pos</c>, the window list's first window and a
-    /// window's next-above link, flags and bounds, and the flags that take a window out of hit tests (hidden, closed).</summary>
-    private const int InMouseX = 0x14c, NkBeginOff = 0x6720, WinNextOff = 0x1c0, WinFlagsOff = 0x48, WinBoundsOff = 0x4c;  // not-an-offset: nuklear ABI, not an engine class
+    /// <summary>The flags that take a window out of hit tests (hidden, closed).</summary>
     private const uint WinOutOfPlay = 0x4400;  // not-an-offset: NK_WINDOW_HIDDEN | NK_WINDOW_CLOSED
     private const int MaxNodes = 100_000, MaxWindows = 256;
 
@@ -173,20 +171,24 @@ internal static unsafe class NuiHitTest
     {
         x = y = 0;
         if (ctx == IntPtr.Zero) return false;
-        x = *(float*)(ctx + InMouseX);
-        y = *(float*)(ctx + InMouseX + 4);
+        Span<float> pos = new NkContext(ctx).MousePos;
+        x = pos[0];
+        y = pos[1];
         return true;
     }
+
+    /// <summary>The half-open rectangle test every hit check shares: left and top edges in, right and bottom edges out.</summary>
+    internal static bool Contains(float x, float y, float w, float h, float px, float py) => px >= x && px < x + w && py >= y && py < y + h;
 
     /// <summary>True when the pointer is over the current window and no window nuklear stacks above it covers the point. False for
     /// nearly every widget of a frame, which is what keeps the rest of the test off the hot path.</summary>
     internal static bool OverCurrent(IntPtr ctx)
     {
         if (!Pointer(ctx, out float mx, out float my)) return false;
-        IntPtr cur = *(IntPtr*)(ctx + NuiNuklear.CurrentOff);
+        IntPtr cur = new NkContext(ctx).Current;
         if (cur == IntPtr.Zero) return false;
-        float* r = (float*)(cur + WinBoundsOff);
-        if (!(mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3])) return false;
+        Span<float> r = new NkWindow(cur).Bounds;
+        if (!Contains(r[0], r[1], r[2], r[3], mx, my)) return false;
         return !CoveredAbove(ctx, mx, my);
     }
 
@@ -194,8 +196,7 @@ internal static unsafe class NuiHitTest
     internal static bool Inside(IntPtr ctx, in NuiNuklear.Box b)
     {
         if (!Pointer(ctx, out float mx, out float my)) return false;
-        if (!(mx >= b.X && mx < b.X + b.W && my >= b.Y && my < b.Y + b.H)) return false;
-        return mx >= b.ClipX && mx < b.ClipX + b.ClipW && my >= b.ClipY && my < b.ClipY + b.ClipH;
+        return Contains(b.X, b.Y, b.W, b.H, mx, my) && Contains(b.ClipX, b.ClipY, b.ClipW, b.ClipH, mx, my);
     }
 
     /// <summary>Where the engine's own row layout will put the widget about to render, for a row that is not a free-space one (a list's
@@ -204,9 +205,9 @@ internal static unsafe class NuiHitTest
     internal static bool Query(IntPtr self, IntPtr ctx, out NuiNuklear.Box b)
     {
         b = default;
-        IntPtr win = *(IntPtr*)(ctx + NuiNuklear.CurrentOff);
+        IntPtr win = new NkContext(ctx).Current;
         if (win == IntPtr.Zero || new Nui__Layout__Layoutable(self).NoPush != 0) return false;
-        byte* p = *(byte**)(win + NuiNuklear.WinLayoutOff);
+        byte* p = (byte*)new NkWindow(win).Layout;
         if (p == null) return false;
         float* r = stackalloc float[4];
         var row = NuiNuklear.StartRow(p);
@@ -221,14 +222,15 @@ internal static unsafe class NuiHitTest
     /// <summary>True when a visible window above <c>ctx-&gt;current</c> in nuklear's list contains the point: windows later in the list draw on top.</summary>
     internal static bool CoveredAbove(IntPtr ctx, float mx, float my)
     {
-        IntPtr cur = *(IntPtr*)(ctx + NuiNuklear.CurrentOff);
+        IntPtr cur = new NkContext(ctx).Current;
         if (cur == IntPtr.Zero) return false;
-        IntPtr w = *(IntPtr*)(cur + WinNextOff);
-        for (int i = 0; w != IntPtr.Zero && i < MaxWindows; i++, w = *(IntPtr*)(w + WinNextOff))
+        IntPtr w = new NkWindow(cur).Next;
+        for (int i = 0; w != IntPtr.Zero && i < MaxWindows; i++, w = new NkWindow(w).Next)
         {
-            if ((*(uint*)(w + WinFlagsOff) & WinOutOfPlay) != 0) continue;
-            float* r = (float*)(w + WinBoundsOff);
-            if (mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3]) return true;
+            var win = new NkWindow(w);
+            if ((win.Flags & WinOutOfPlay) != 0) continue;
+            Span<float> r = win.Bounds;
+            if (Contains(r[0], r[1], r[2], r[3], mx, my)) return true;
         }
         return false;
     }
@@ -326,9 +328,9 @@ internal static unsafe class NuiHitTest
             IntPtr widget = (IntPtr)(mem + 0x6000);
             uint* scroll = (uint*)(mem + 0x7300);
             scroll[0] = 3; scroll[1] = 4;
-            *(IntPtr*)(ctx + NuiNuklear.CurrentOff) = win;
-            *(IntPtr*)(win + NuiNuklear.WinLayoutOff) = panel;
-            *(IntPtr*)(win + WinNextOff) = above;
+            new NkContext(ctx).Current = win;
+            new NkWindow(win).Layout = panel;
+            new NkWindow(win).Next = above;
             *(IntPtr*)(panel + 0x18) = (IntPtr)(scroll);
             *(IntPtr*)(panel + 0x20) = (IntPtr)(scroll + 1);
             *(float*)(panel + 0x28) = 10; *(float*)(panel + 0x2c) = 20;
@@ -347,8 +349,8 @@ internal static unsafe class NuiHitTest
             check.Expect(!NuiNuklear.TryBox(widget, ctx, out _), "a panel outside a free-space row has no rectangle");
             *(int*)(panel + 0x70) = 6;
 
-            void Mouse(float x, float y) { *(float*)(ctx + InMouseX) = x; *(float*)(ctx + InMouseX + 4) = y; }
-            float* wb = (float*)(win + WinBoundsOff);
+            void Mouse(float x, float y) { Span<float> m = new NkContext(ctx).MousePos; m[0] = x; m[1] = y; }
+            Span<float> wb = new NkWindow(win).Bounds;
             wb[0] = 0; wb[1] = 0; wb[2] = 220; wb[3] = 320;
             Mouse(50, 30);
             check.Expect(Inside(ctx, in box), "a point inside the rectangle and the clip hits");
@@ -364,12 +366,12 @@ internal static unsafe class NuiHitTest
             check.Expect(!OverCurrent(ctx), "a point outside the current window is not over it");
 
             Mouse(50, 30);
-            float* r = (float*)(above + WinBoundsOff);
+            Span<float> r = new NkWindow(above).Bounds;
             r[0] = 40; r[1] = 20; r[2] = 30; r[3] = 30;
             check.Expect(CoveredAbove(ctx, 50, 30) && !OverCurrent(ctx), "a window stacked above that holds the point covers it");
-            *(uint*)(above + WinFlagsOff) = 0x400;
+            new NkWindow(above).Flags = 0x400;
             check.Expect(!CoveredAbove(ctx, 50, 30) && OverCurrent(ctx), "a hidden or closed window above covers nothing");
-            *(uint*)(above + WinFlagsOff) = 0;
+            new NkWindow(above).Flags = 0;
             Mouse(80, 30);
             check.Expect(!CoveredAbove(ctx, 80, 30), "a point outside the upper window is not covered");
 

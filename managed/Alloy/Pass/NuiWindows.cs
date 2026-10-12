@@ -26,8 +26,6 @@ internal static unsafe class NuiWindows
     private const int MaxSnapshot = 1 << 20;
     /// <summary>More than <c>nk_window</c>'s size, which is under 0x200 on both builds.</summary>
     private const int FakeWindowBytes = 0x400;   // not-an-offset: allocation size
-    /// <summary>Where an image command keeps its texture handle.</summary>
-    private const int ImageHandle = 0x18;   // not-an-offset: nuklear command ABI
 
     /// <summary>nuklear's command types (<c>nk_command_type</c>) that carry colours.</summary>
     private const int CmdScissor = 1, CmdLine = 2, CmdCurve = 3, CmdRect = 4, CmdRectFilled = 5, CmdRectMulti = 6, CmdCircle = 7, CmdCircleFilled = 8,
@@ -123,10 +121,10 @@ internal static unsafe class NuiWindows
 
     /// <summary>Apply every property to this frame's windows. Hot while a policy is held, allocation-free once each
     /// window name has been seen. Once per frame, before the conversion and outside its retry loop.</summary>
-    internal static void Apply(IntPtr ctx, int atlas)
+    internal static void Apply(IntPtr ctx, int atlas, bool enabled, string probe)
     {
-        if (!CX.Services.Nui.NuiKnobs.Enabled.V) return;
-        SetProbe(CX.Services.Nui.NuiKnobs.PolicyProbe.V);
+        if (!enabled) return;
+        SetProbe(probe);
         if (!AnyKeys()) return;
         var c = new NkContext(ctx);
         long now = Stopwatch.GetTimestamp();
@@ -243,7 +241,7 @@ internal static unsafe class NuiWindows
             byte* cmd = st.Work + pos;
             ulong rel = *(ulong*)(cmd + 8);
             *(ulong*)(cmd + 8) = at + rel;
-            if (*(int*)cmd == CmdImage && *(int*)(cmd + ImageHandle) != atlas) cmd[0x30 + 3] = 0;
+            if (*(int*)cmd == CmdImage && new NkCommandImage((IntPtr)cmd).Handle != atlas) cmd[0x30 + 3] = 0;
             if (rel <= (ulong)pos || rel >= (ulong)st.SnapLen) break;
             pos = (int)rel;
         }
@@ -339,10 +337,10 @@ internal static unsafe class NuiWindows
         return false;
     }
 
-    /// <summary>A rect-shaped command's x, y, w, h: the filled rect and the image keep them at +0x12, the stroked rect at +0x14.</summary>
+    /// <summary>A rect-shaped command's x, y, w, h: the filled rect keeps them at +0x12, the image at +0x10, the stroked rect at +0x14.</summary>
     private static void Rect(byte* cmd, int type, out float x, out float y, out float w, out float h)
     {
-        int at = type == CmdRect ? 0x14 : 0x12;
+        int at = type == CmdRect ? 0x14 : type == CmdImage ? 0x10 : 0x12;
         x = *(short*)(cmd + at); y = *(short*)(cmd + at + 2); w = *(ushort*)(cmd + at + 4); h = *(ushort*)(cmd + at + 6);
     }
 

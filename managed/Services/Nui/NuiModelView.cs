@@ -128,9 +128,9 @@ internal static unsafe class NuiModelView
         _s.View = v;
     }
 
-    /// <summary>The image is alive while its shared_ptr control block counts an owner (use count at +8 on both ABIs); the block
+    /// <summary>The image is alive while its shared_ptr control block counts an owner ; the block
     /// outlives the image, because nk_loadimg's name map keeps a weak reference to it.</summary>
-    private static bool Alive(ViewData v) => v.Ctrl != IntPtr.Zero && *(int*)(v.Ctrl + 8) > 0;   // not-an-offset: shared_ptr control block use count
+    private static bool Alive(ViewData v) => v.Ctrl != IntPtr.Zero && new SharedPtrBlock(v.Ctrl).UseCount > 0;
 
     private static void Frame()
     {

@@ -1284,3 +1284,10 @@ offset	CNWCCreature	leftHandItem	0x33c	0x31c	# CreatureLeftHandItem
 offset	CNWCItem	models	0x1ec	0x1cc	# ItemModels
 offset	CNWCItem	colors	0x8	0x8	# ItemColors
 offset	CNWCItem	gender	0x212	0x1f2	# ItemGender
+# nuklear 4.08 as compiled. Windows: the popup begin at rva 0xa6c8a0 compares nk_context +0x14c and +0x150 against the widget bounds, loads the current window from +0x6738 and its panel from +0xa8.
+offset	NkContext	mousePos	0x14c	0x14c	# NkCtxMousePos
+offset	NkContext	current	0x6738	0x6738	# NkCtxCurrent
+offset	NkWindow	layout	0xa8	0xa8	# NkWinLayout
+offset	NkCommandImage	handle	0x18	0x18	# NkCmdImageHandle
+# The use count of a shared_ptr's control block: libstdc++ _Sp_counted_base and MSVC _Ref_count_base both put it right after the vtable pointer.
+offset	SharedPtrBlock	useCount	0x8	0x8	# SharedBlockUseCount

@@ -3225,6 +3225,17 @@ public readonly unsafe partial struct NewController(IntPtr ptr)
     public ref ushort ValueKey => ref *(ushort*)(Ptr + EngineLayout.NewControllerValueKey);
 }
 
+/// <summary>Typed view of an engine <c>NkCommandImage*</c>.</summary>
+public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdImageHandle"/>
+    public ref int Handle => ref *(int*)(Ptr + EngineLayout.NkCmdImageHandle);
+}
+
 /// <summary>Typed view of an engine <c>NkContext*</c>.</summary>
 public readonly unsafe partial struct NkContext(IntPtr ptr)
 {
@@ -3232,6 +3243,8 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCtxCurrent"/>
+    public ref IntPtr Current => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxCurrent);
     /// <inheritdoc cref="EngineLayout.NkCtxDeltaTime"/>
     public ref float DeltaTime => ref *(float*)(Ptr + EngineLayout.NkCtxDeltaTime);
     /// <inheritdoc cref="EngineLayout.NkCtxDrawCmdCount"/>
@@ -3242,6 +3255,8 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public ref ulong MemAllocated => ref *(ulong*)(Ptr + EngineLayout.NkCtxMemAllocated);
     /// <inheritdoc cref="EngineLayout.NkCtxMemPtr"/>
     public ref IntPtr MemPtr => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxMemPtr);
+    /// <inheritdoc cref="EngineLayout.NkCtxMousePos"/>
+    public Span<float> MousePos { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkCtxMousePos), 2); }
     /// <inheritdoc cref="EngineLayout.NkCtxSeq"/>
     public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkCtxSeq);
     /// <inheritdoc cref="EngineLayout.NkCtxWindowBegin"/>
@@ -3276,6 +3291,8 @@ public readonly unsafe partial struct NkWindow(IntPtr ptr)
     public ref ulong BufLast => ref *(ulong*)(Ptr + EngineLayout.NkWinBufLast);
     /// <inheritdoc cref="EngineLayout.NkWinFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.NkWinFlags);
+    /// <inheritdoc cref="EngineLayout.NkWinLayout"/>
+    public ref IntPtr Layout => ref *(IntPtr*)(Ptr + EngineLayout.NkWinLayout);
     /// <inheritdoc cref="EngineLayout.NkWinName"/>
     public Span<byte> Name { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkWinName), 64); }
     /// <inheritdoc cref="EngineLayout.NkWinNext"/>
@@ -3921,6 +3938,17 @@ public readonly unsafe ref partial struct SharedMaterial(IntPtr ptr)
     public ref byte Volumetric => ref *(byte*)(Ptr + EngineLayout.SharedVolumetric);
     /// <inheritdoc cref="EngineLayout.SharedVsName"/>
     public ref byte VsName => ref *(byte*)(Ptr + EngineLayout.SharedVsName);
+}
+
+/// <summary>Typed view of an engine <c>SharedPtrBlock*</c>.</summary>
+public readonly unsafe partial struct SharedPtrBlock(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.SharedBlockUseCount"/>
+    public ref int UseCount => ref *(int*)(Ptr + EngineLayout.SharedBlockUseCount);
 }
 
 /// <summary>Typed view of an engine <c>StringGob*</c>.</summary>
