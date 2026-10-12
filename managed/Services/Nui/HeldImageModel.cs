@@ -25,8 +25,9 @@ internal enum HeldKind
 /// </summary>
 internal sealed class HeldImageModel
 {
-    /// <summary>How long NUI may draw nothing before the hold is dropped.</summary>
-    internal const int GraceMs = 500;
+    /// <summary>How long NUI may draw nothing before the hold is dropped; 0 never drops it. The server's <c>held.grace</c>.</summary>
+    internal int GraceMs = DefaultGraceMs;
+    internal const int DefaultGraceMs = 500;
     private const int ResrefMax = 16, HexMax = 8;
 
     public HeldKind Kind { get; private set; }
@@ -66,7 +67,7 @@ internal sealed class HeldImageModel
         if (Pending && nowMs - _pickAt >= _confirmMs) { Pending = false; Set(""); return true; }
         if (!Active || !counting) return false;
         if (drawn != _drawn) { _drawn = drawn; _drawnAt = nowMs; return false; }
-        if (nowMs - _drawnAt < GraceMs) return false;
+        if (GraceMs <= 0 || nowMs - _drawnAt < GraceMs) return false;
         Set("");
         return true;
     }
@@ -140,6 +141,10 @@ internal sealed class HeldImageModel
         check.Expect(!m.Update(1, true, null, 11, true, 1400) && m.Active, "NUI still drawing keeps the hold");
         check.Expect(!m.Update(1, true, null, 11, true, 1899) && m.Active, "a quiet NUI is forgiven inside the grace");
         check.Expect(m.Update(1, true, null, 11, true, 1900) && !m.Active, "a quiet NUI past the grace drops the hold");
+        var keep = new HeldImageModel { GraceMs = 0 };
+        keep.Update(1, true, "iit_belt", 10, true, 1000);
+        keep.Update(1, true, null, 11, true, 1400);
+        check.Expect(!keep.Update(1, true, null, 11, true, 61_400) && keep.Active, "grace 0 keeps a hold through a minute of quiet NUI");
 
         m.Update(2, true, "iit_belt", 11, true, 2000);
         check.Expect(m.Active, "the same value sent again shows again after a drop");

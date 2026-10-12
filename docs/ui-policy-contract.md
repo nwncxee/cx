@@ -65,18 +65,18 @@ value beside each held knob; `/knobs` marks them `[server; yours …]`.
 ### `held.image`: an image under the pointer
 
 `held.image=<image>` shows that image centred on the pointer, above every NUI window, and swaps the engine cursor
-to the `Use` hand (`cursors.2da`, `CursorID` 25) while it is up. Send it when the player picks something up in a NUI
+to `held.cursor` (the `Use` hand unless the server names another) while it is up. Send it when the player picks something up in a NUI
 window, and `held.image=` when they place it. The image never takes a click: the press that places it reaches the
 NUI window underneath.
 
 `<image>` is a texture resref, `@item:<hex>` or `@look:<hex>`, spelled as in a NUI image. Any other name (a model
-view, a malformed resref) holds the cursor and draws nothing. The image is 32 px a cell at the GUI scale.
+view, a malformed resref) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
 
 The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself, so a
 lost empty line cannot leave a ghost:
 
 - when the NUI window the pointer was over as the hold began is closed, even while other NUI windows stay open;
-- when no NUI widget has drawn for half a second, which covers a hold that began with the pointer over no NUI window.
+- when no NUI widget has drawn for `held.grace` ms (half a second unless set), which covers a hold that began with the pointer over no NUI window.
 
 A client with `cx_cap_heldimage` absent or `0` ignores the key, so keep the plain NUI drag for it.
 
@@ -89,6 +89,9 @@ A server a long way off answers a pick late. Declare what a pick shows and CX sh
 | `held.pick.<id>=<image>` | pressing the element whose JSON `id` is `<id>` shows `<image>` at once |
 | `held.pick.<prefix>*=<image>` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
 | `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
+| `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
+| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`) |
+| `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
 
 Declare them when the window opens, like cards. `<image>` has the forms `held.image` takes. `held.pick.*=` releases every pick, and
 an empty value releases one. Only a left press counts, and only on an element with an `id`.

@@ -8,7 +8,7 @@ namespace CX.Services.Nui;
 
 /// <summary>
 /// The held image: while the server's <see cref="Key"/> policy line names an image, it follows the pointer over every
-/// NUI window and the engine cursor swaps to <see cref="HeldCursorId"/>. The rules live in <see cref="HeldImageModel"/>;
+/// NUI window and the engine cursor swaps to <see cref="HeldCursor"/>. The rules live in <see cref="HeldImageModel"/>;
 /// this draws what it decides, on the game thread, as one non-interactive above-NUI window.
 /// </summary>
 public sealed unsafe class HeldImageService : IExtenderService
@@ -18,11 +18,15 @@ public sealed unsafe class HeldImageService : IExtenderService
     /// <summary>The policy key for how long a pick waits for the server's answer, in milliseconds.</summary>
     internal const string ConfirmKey = "held.confirm";
     internal const int ConfirmDefaultMs = 1000, ConfirmMinMs = 50, ConfirmMaxMs = 10_000;
-    /// <summary>The engine cursor shown while something is held: the <c>Use</c> row of <c>cursors.2da</c>, whose <c>CursorID</c> column is 25.</summary>
-    internal const int HeldCursorId = 25;
+    /// <summary>The engine cursor shown while something is held unless <c>held.cursor</c> names another or <c>none</c>: the <c>Use</c> row
+    /// of <c>cursors.2da</c>, whose <c>CursorID</c> column is 25.</summary>
+    internal const int DefaultCursorId = 25;
+    /// <summary>The look keys: the image's size a cell, the cursor, and how long a hold outlives a NUI that draws nothing.</summary>
+    private const string SizeKey = "held.size", CursorKey = "held.cursor", GraceKey = "held.grace";
+    private const int MinSizePx = 8, MaxSizePx = 128, MaxGraceMs = 60_000;
     /// <summary>The probe waits this long after boot, past the loading screens and menus, which draw NUI too.</summary>
     private const int ProbeAfterMs = 50_000;
-    private const float IconPx = 32f, Alpha = 0.9f, PendingAlpha = 0.55f;
+    private const float DefaultSizePx = 32f, Alpha = 0.9f, PendingAlpha = 0.55f;
 
     private sealed class HeldState
     {
@@ -34,7 +38,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         public volatile bool Cursor;
         public long SeenDrawn;
         public readonly long Born = Environment.TickCount64;
-        public int Notices;
+        public int Notices, LookEpoch = -1, CursorId = DefaultCursorId;
+        public float SizePx = DefaultSizePx;
         /// <summary>A pick the input thread saw, for the next frame to show.</summary>
         public volatile string? PickReq;
         public ExtenderLog? Log;
@@ -42,8 +47,9 @@ public sealed unsafe class HeldImageService : IExtenderService
 
     private static HeldState _s = new();
 
-    /// <summary>Is a hold up, so the pointer shows <see cref="HeldCursorId"/> wherever it is? Needs the cursor fold.</summary>
-    internal static bool HoldsCursor => _s.Cursor;
+    /// <summary>Is a hold up with a cursor of its own, so the pointer shows <see cref="HeldCursor"/> wherever it is? Needs the cursor fold.</summary>
+    internal static bool HoldsCursor => _s.Cursor && _s.CursorId >= 0;
+    internal static int HeldCursor => _s.CursorId;
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
@@ -72,6 +78,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         TryProbe(s);
         bool on = NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V;
         int epoch = ServerPolicy.Epoch;
+        if (epoch != s.LookEpoch) ReadLook(s, epoch);
         string? value = s.Model.Stale(epoch, on) ? ServerPolicy.Str(Key, "") : null;
         var activity = NuiService.Activity;
         int stamp = s.Model.Pending ? ServerPolicy.Stamp(Key) : 0;
@@ -89,7 +96,7 @@ public sealed unsafe class HeldImageService : IExtenderService
 
         int mx = 0, my = 0;
         EngineFn.SdlGetMouseState(&mx, &my);
-        float px = IconPx * Metrics.Scale;
+        float px = s.SizePx * Metrics.Scale;
         float alpha = s.Model.Pending ? PendingAlpha : Alpha;
         switch (s.Model.Kind)
         {
@@ -133,6 +140,16 @@ public sealed unsafe class HeldImageService : IExtenderService
             if (s.Minted == IntPtr.Zero) Notice(s, "an @look: image made no item -- nothing follows the pointer");
         }
         else if (m.Kind == HeldKind.Other) Notice(s, $"'{m.Name}' is not an image this client draws -- only the cursor changes");
+    }
+
+    /// <summary>The server's look for a hold, read when the policy moves: size, cursor and grace, each back to its default when released.</summary>
+    private static void ReadLook(HeldState s, int epoch)
+    {
+        s.LookEpoch = epoch;
+        s.SizePx = Math.Clamp(ServerPolicy.Int(SizeKey, (int)DefaultSizePx), MinSizePx, MaxSizePx);
+        string cursor = ServerPolicy.Str(CursorKey, "");
+        s.CursorId = cursor == "none" ? -1 : int.TryParse(cursor, out int id) && id >= 0 ? id : DefaultCursorId;
+        s.Model.GraceMs = Math.Clamp(ServerPolicy.Int(GraceKey, HeldImageModel.DefaultGraceMs), 0, MaxGraceMs);
     }
 
     private static void Notice(HeldState s, string text)
