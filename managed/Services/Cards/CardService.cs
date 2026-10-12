@@ -98,6 +98,7 @@ public sealed class CardService : IExtenderService
         }
         LoadTestFile(s);
         ApplyLate(s);
+        CardLooks.Sync(s.Log);
         bool has;
         NuiHit hit;
         string force = NuiKnobs.CardForce.V;
@@ -116,7 +117,8 @@ public sealed class CardService : IExtenderService
         for (int i = 0; i < v.Icons.Count; i++)
         {
             IconDraw ic = v.Icons[i];
-            if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a);
+            if (ic.Look != null) CardLooks.Draw(ic.Look, x + ic.X, y + ic.Y, ic.W, ic.H, a);
+            else if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a);
             else TextRig.DrawIcon(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);

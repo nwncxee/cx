@@ -94,6 +94,9 @@ internal static class CardRegistry
     /// <summary>The cards of the longest declared <c>prefix*</c> key that starts <paramref name="id"/>, or null. Allocation-free.</summary>
     public static CardSet? FindPrefix(ReadOnlySpan<char> id) => _s.Prefixes.Find(id);
 
+    /// <summary>Every card set held now. Cold: it walks the index.</summary>
+    internal static IEnumerable<CardSet> Sets() => _s.Map.Values;
+
     /// <summary>Forgets everything and the log. For the self-check only.</summary>
     internal static void Reset() => _s = new();
 

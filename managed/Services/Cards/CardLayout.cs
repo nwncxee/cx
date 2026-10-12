@@ -7,10 +7,12 @@ using CX.Ui;
 namespace CX.Services.Cards;
 
 /// <summary>An icon or image to draw over a card's background and under its text. <see cref="Item"/> is a client object id for an
-/// <c>@item:</c> source, 0 for a resref in <see cref="Src"/>.</summary>
+/// <c>@item:</c> source, <see cref="Look"/> names an <c>@look:</c> one, and 0 with no look is a resref in <see cref="Src"/>.</summary>
 internal struct IconDraw
 {
     public string Src;
+    /// <summary>The <c>@look:</c> image name, or null.</summary>
+    public string? Look;
     public uint Item;
     public float X, Y, W, H;
 }
@@ -305,6 +307,11 @@ internal sealed class CardLayout
             int n = 0;
             while (6 + n < src.Length && n < 8 && Uri.IsHexDigit(src[6 + n])) n++;
             if (n == 0 || !uint.TryParse(src.AsSpan(6, n), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out item)) return;
+        }
+        else if (CardLooks.IsLook(src))
+        {
+            _v.Icons.Add(new IconDraw { Src = "", Look = src, X = x, Y = y, W = w, H = h });
+            return;
         }
         else if (src.StartsWith('@')) return;
         _v.Icons.Add(new IconDraw { Src = item == 0 ? src : "", Item = item, X = x, Y = y, W = w, H = h });

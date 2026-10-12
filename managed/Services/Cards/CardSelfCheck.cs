@@ -165,8 +165,11 @@ internal static class CardSelfCheck
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"{item.name}\"}]}");
         check.Expect(v.Text.VertexCount == 0, "with no item it is empty");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"icons\":[\"@item:1f\",\"@item:zz\",\"@look:0001\",\"gui_x\",\"@item:2.7\"]}]}");
-        check.Expect(v.Icons.Count == 3 && v.Icons[0].Item == 0x1F && v.Icons[1].Src == "gui_x" && v.Icons[2].Item == 0x2,
-            "@item: takes its hex digits, a bad one, a @look: and a @model: draw nothing, a resref draws as itself");
+        check.Expect(v.Icons.Count == 4 && v.Icons[0].Item == 0x1F && v.Icons[1].Look == "@look:0001" && v.Icons[1].Src == "" && v.Icons[2].Src == "gui_x" && v.Icons[3].Item == 0x2,
+            "@item: takes its hex digits, a bad one draws nothing, a @look: keeps its name for the minted item, a resref draws as itself");
+        v = Lay(atlas, "{\"width\":200,\"images\":[{\"src\":\"@look:0002\",\"w\":40,\"h\":40}],\"blocks\":[]}");
+        check.Expect(v.Icons.Count == 1 && v.Icons[0].Look == "@look:0002" && Near(v.Icons[0].W, 40f), "an @look: image is placed like any other");
+        Looks(check);
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"ab\"}]}", scale: 2f);
         check.Expect(Near(v.W, 400f) && Near(v.H, 20f + 20f + 4f + 20f), "at UI scale 2 the padding and gaps double; the test face's own height does not");
     }
@@ -380,5 +383,36 @@ internal static class CardSelfCheck
             CardRegistry.Reset();
             ServerPolicy.Clear();
         }
+    }
+
+    /// <summary>Oracle: hand-written declarations and the looks counted off them by eye; the fake mint hands out 1, 2, 3 and zero for a name containing "bad".</summary>
+    private static void Looks(Checker check)
+    {
+        var wanted = new System.Collections.Generic.HashSet<string>();
+        ServerPolicy.Clear();
+        CardRegistry.Reset();
+        CardParser.TryParse("{\"width\":200,\"images\":[{\"src\":\"@look:0001\",\"w\":20,\"h\":20}],\"blocks\":[{\"type\":\"icons\",\"icons\":[\"@look:0002\",\"gui_x\",\"@look:0001\"]},{\"text\":\"a <icon=@look:0003> b\"}]}", out CardDecl[] cards, out _);
+        CardLooks.Collect(cards[0], wanted);
+        check.Expect(wanted.Count == 3 && wanted.Contains("@look:0001") && wanted.Contains("@look:0002") && wanted.Contains("@look:0003"),
+            "the images, an icon row and an inline icon each name a look; a repeat counts once");
+        var state = new CardLooks.LooksState();
+        int made = 0;
+        var ended = new System.Collections.Generic.List<IntPtr>();
+        IntPtr Mint(string look) => look.Contains("bad") ? IntPtr.Zero : (IntPtr)(++made);
+        CardLooks.Reconcile(state, wanted, Mint, ended.Add, null);
+        check.Expect(made == 3 && state.Minted.Count == 3 && ended.Count == 0, "three distinct looks mint three items");
+        CardLooks.Reconcile(state, wanted, Mint, ended.Add, null);
+        check.Expect(made == 3 && ended.Count == 0, "nothing changed, nothing minted or ended");
+        IntPtr two = state.Minted["@look:0002"];
+        wanted.Remove("@look:0002");
+        wanted.Add("@look:bad");
+        CardLooks.Reconcile(state, wanted, Mint, ended.Add, null);
+        check.Expect(ended.Count == 1 && ended[0] == two && !state.Minted.ContainsKey("@look:0002"), "a look no card names any more has its item ended");
+        check.Expect(state.Minted["@look:bad"] == IntPtr.Zero && made == 3, "a look the engine made nothing for is remembered as none");
+        CardLooks.Reconcile(state, wanted, Mint, ended.Add, null);
+        check.Expect(made == 3, "and is not tried again");
+        wanted.Clear();
+        CardLooks.Reconcile(state, wanted, Mint, ended.Add, null);
+        check.Expect(ended.Count == 3 && state.Minted.Count == 0, "with no card naming a look every item is ended, and the none needs no ending");
     }
 }
