@@ -302,8 +302,7 @@ public sealed unsafe class UiHostService : IExtenderService
             bool period = _fsN >= 900 || _fsSum >= 10 * System.Diagnostics.Stopwatch.Frequency;
             if (period && !ExtenderLog.Enabled)
             {
-                // silent: reset the period without building a line of it (Period() carries the ledger reset)
-                FrameZones.Period();
+                FrameZones.ResetPeriod();
                 _fsSum = 0; _fsN = 0; _fsMax = 0; _fsOver7 = 0; _fsOver17 = 0;
             }
             else if (period)

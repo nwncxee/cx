@@ -243,7 +243,13 @@ internal static unsafe class HitProbe
             else sb.Append($" || CX {cx:F1}us/cast over {HitTestCheck.BenchObjects} objects vs the PICK bucket -> "
                          + (cx <= us ? "PASS" : "FAIL") + " (CX-118 perf bar)");
         }
-        Array.Clear(_calls); Array.Clear(_hits); Array.Clear(_ticks); Array.Clear(_worst); Array.Clear(_nodes);
+        ResetPeriod();
         return sb.ToString();
+    }
+
+    /// <summary>Close the period without building its line.</summary>
+    internal static void ResetPeriod()
+    {
+        Array.Clear(_calls); Array.Clear(_hits); Array.Clear(_ticks); Array.Clear(_worst); Array.Clear(_nodes);
     }
 }

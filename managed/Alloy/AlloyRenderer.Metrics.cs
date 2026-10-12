@@ -139,11 +139,11 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The [alloy] period line: every number the period tallied, in one statement, in its own method
-    /// so <see cref="EndFrame"/> reads as the gate, the census and the reset it is. The interpolation is the
-    /// <see cref="ExtenderLog.Line"/> handler's -- with logging off no hole is ever formatted, so the shape of
-    /// this expression is load-bearing: move it, do not restructure it.</summary>
+    /// so <see cref="EndFrame"/> reads as the gate, the census and the reset it is. Pure reporting: a closed log
+    /// returns before any of it is built.</summary>
     private static void PeriodReport()
     {
+        if (!ExtenderLog.Enabled) return;
         // distinct textures is the BATCH FLOOR: one program + one VDO cannot batch below one call per texture,
         // so batches/frame ~= textures tells you the grouping is optimal and the ratio is scene-bound, while
         // batches >> textures says the sort is failing. Without it the ratio alone cannot distinguish the two.
