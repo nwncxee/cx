@@ -3188,9 +3188,8 @@ public static unsafe class EngineLayout
     /// @0x591fd0 fills it with <c>NewCAurString</c>, so it is non-null before the panel is ever shown, and
     /// every setter goes through the CAurString vtable (<see cref="AurStringSetTextSlot"/>).</summary>
     public static readonly int LabelString = Field<CX.Engine.CAurString>("CGuiLabel", "string");
-    /// <summary>Nui::Layout::Layoutable: nonzero = the parent's child loop does NOT <c>nk_layout_space_push</c> this child,
-    /// so <c>panel-&gt;row.item</c> still holds the previous child's rect when it renders (Linux nm @0x84c9f8
-    /// <c>cmpb $0,0x50(%r15)</c> -&gt; the push at 0x84dab5; Windows rva 0x951260 @0x1409515d6, the push at 0x1409515fa).</summary>
+    /// <summary>Nui::Layout::Layoutable: nonzero = the parent's child loop does NOT <c>nk_layout_space_push</c> this child, so
+    /// <c>panel-&gt;row.item</c> still holds the previous child's rect (Linux nm @0x84c9f8 -&gt; push at 0x84dab5; Windows rva 0x951260 @0x1409515d6 -&gt; push at 0x1409515fa).</summary>
     public static readonly int NuiLayoutableNoPush = Field<byte>("Nui::Layout::Layoutable", "noPush");
     /// <summary>Virtual slot of <c>Render(nk_context*)</c> on every Nui::Layout class: the parent's child call (Linux
     /// @0x84ce7e <c>call *0x28(%rax)</c>, Windows @0x140951cfe <c>call *0x20(%rax)</c>), and the slot the
@@ -3270,10 +3269,11 @@ public static unsafe class EngineLayout
     public static readonly int NuiChildren = Field<IntPtr>("Nui::Layout::Layoutable", "children");
     /// <inheritdoc cref="NuiChildren"/>
     public static readonly int NuiChildrenEnd = Field<IntPtr>("Nui::Layout::Layoutable", "childrenEnd");
-    /// <summary>An element's twelve kiwi variables (VariableData*): x, y, width, height, then padding left, top, right,
-    /// bottom, then margin left, top, right, bottom -- read off the ctor's three LayoutExpressions (inner =
-    /// outer minus padding, outer plus margin).</summary>
+    /// <summary>An element's twelve kiwi variables (VariableData*): x, y, width, height, padding l/t/r/b, margin l/t/r/b --
+    /// read off the ctor's three LayoutExpressions (inner = outer minus padding, outer plus margin).</summary>
     public static readonly int NuiVars = Field<IntPtr>("Nui::Layout::Layoutable", "vars", count: 12);
+    /// <summary>Layoutable -&gt; the <c>DynamicValue&lt;string&gt;*</c> the <c>tooltip</c> modifier assigns (@0x869600); Windows lambda reads +0x328 +8.</summary>
+    public static readonly int NuiTooltip = Field<IntPtr>("Nui::Layout::Layoutable", "tooltip");
     /// <summary>A Span's axis, read once by <c>Span::BuildConstraintDependants</c>: 1 = vertical.</summary>
     public static readonly int NuiSpanDirection = Field<int>("Nui::Layout::Span", "direction");
     /// <summary>The kiwi solver a LayoutGroup embeds; <c>SetChildren</c> resets it and adds the subtree's constraints.</summary>

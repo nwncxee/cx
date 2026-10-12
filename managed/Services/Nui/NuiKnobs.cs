@@ -9,7 +9,7 @@ namespace CX.Services.Nui;
 internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain;
+    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug;
     internal static readonly Knob<float> Thumb;
 
     static NuiKnobs()
@@ -26,6 +26,8 @@ internal static class NuiKnobs
             help: "Solves the stock way as well and compares the fast path's bookkeeping at every step. A mismatch turns the fast solve off and says so. Slow.");
         Explain = G.Toggle("explain", "Explain broken layouts", true, Tier.Advanced,
             help: "When a server's window cannot lay out, it lists the rules that contradict each other and the elements they belong to, instead of only \"The constraint can not be satisfied.\"");
+        HitDebug = G.Toggle("hitdebug", "Log the NUI element under the pointer", false, Tier.Advanced,
+            help: "Writes a line to cx.log each time the pointer moves onto another element of a NUI window: its id, list row and rectangle. For people building windows.");
         Smooth = G.Toggle("smooth", "Smooth scrolling", true,
             help: "The mouse wheel glides a NUI list to its new position instead of jumping there.");
         AutoHide = G.Toggle("autohide", "Hide scrollbars with nothing to scroll", true,
