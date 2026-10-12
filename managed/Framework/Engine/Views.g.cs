@@ -3244,8 +3244,6 @@ public readonly unsafe partial struct NkImage(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.NkImageFrames"/>
-    public ref int Frames => ref *(int*)(Ptr + EngineLayout.NkImageFrames);
     /// <inheritdoc cref="EngineLayout.NkImageGlTexture"/>
     public ref uint GlTexture => ref *(uint*)(Ptr + EngineLayout.NkImageGlTexture);
 }
