@@ -500,6 +500,12 @@ public static unsafe partial class HitTestCheck
             ok = Fail(log, "an area-transition prism was not hit with its payload");
         q.SurfaceMask = HitQuery.NoTriggers;
         if (HitTest.Cast(q, out r) && r.Trigger == 0x7777) ok = Fail(log, "a cast without the trigger bit hit a transition");
+        // The scene's destruction takes its prisms and only its prisms: the highlight would read a freed one.
+        DbTriggers.AddForCheck(new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 1, 0) }, default, 0x8888);
+        DbTriggers.SceneRevoke(world.Scene);
+        if (DbTriggers.Live.Length != 1) ok = Fail(log, $"a scene revoke left {DbTriggers.Live.Length} prism(s), want 1 (the other scene's)");
+        q.SurfaceMask = HitQuery.All;
+        if (HitTest.Cast(q, out r) && r.Trigger == 0x7777) ok = Fail(log, "a revoked scene's transition was still hit");
         DbTriggers.ClearForCheck();
 
         // A grafted body piece reports its creature: the game reads the hit object's external type off it.

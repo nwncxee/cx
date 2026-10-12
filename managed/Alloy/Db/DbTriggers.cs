@@ -129,6 +129,17 @@ internal static unsafe class DbTriggers
 
     internal static void ClearForCheck() { _live.Clear(); Sync(); }
 
+    /// <summary>A destroyed scene's prisms leave with it: a release the hooks never saw would otherwise leave a
+    /// freed pointer for <see cref="TriggerHighlight.Enroll"/> to read at the next frame.</summary>
+    internal static void SceneRevoke(DbId scene)
+    {
+        int before = _live.Count;
+        _live.RemoveAll(e => e.Scene == scene);
+        if (_live.Count == before) return;
+        Sync();
+        _log?.Info($"DbTriggers: {before - _live.Count} prism(s) still listed when scene {scene.Value:x} was destroyed -- dropped with it, their release was never seen");
+    }
+
     /// <summary><c>PartTrigger::HitCheckGeom</c> @0x4d9cb0 over every live prism of the cast's scene: gated on the
     /// trigger surface bit, the segment against the box and then each triangle, either face; a hit writes the
     /// point, the trigger surface and the payload, and shortens the segment like any static part.</summary>
