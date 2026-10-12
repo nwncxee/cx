@@ -112,6 +112,30 @@ public sealed unsafe partial class CasterPass
                   && CastLayerVs.Contains($"binding = {CasterGather.BindView})")
                   && CastLayerMaskVs.Contains($"binding = {CasterGather.BindView})")
                   && CastLayerVs.Contains("int bb = CxBoneBase(d);")
+                  // CX-227: the MASKED stages carry the solid one's skinning arm too -- a posed coverage
+                  // part is alpha-tested, so a lost branch would punch its holes out of a bind pose and
+                  // its shadow would stand where the creature was exported, not where it walks. Spelled
+                  // character for character as the solid stages spell it, so the two cannot drift.
+                  && CastMaskVs.Contains("int bb = CxBoneBase(d);")
+                  && CastLayerMaskVs.Contains("int bb = CxBoneBase(d);")
+                  && CastMaskVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
+                  && CastLayerMaskVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
+                  && CastVs.Contains("if (bb >= 0) gl_Position = uVP * d.model * (CxSkinMat(bb) * vec4(aPos, 1.0));")
+                  // ...and the three thresholds, each named by hand: the layer's own cut for a declared
+                  // coverage material (so the shadow drops the texels the draw drops), the env-alpha floor
+                  // where the diffuse alpha is reflectivity, and the engine's 0.2 for everything else.
+                  && CutFor(coverage: true, envAlpha: false) == 0.01f
+                  && CutFor(coverage: true, envAlpha: true) == 0.01f
+                  && CutFor(coverage: false, envAlpha: true) == 0.02f
+                  && CutFor(coverage: false, envAlpha: false) == 0.2f
+                  && CutFor(coverage: true, envAlpha: false) == CoverageLayer.Cut
+                  // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
+                  && DitherFor(CoverageLayer.Cut) >= 1
+                  // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except
+                  // under a hosted fragment stage, whose own channel no depth stage can read yet
+                  && CoverageLayer.FromDiffuse((int)ShaderFeature.None)
+                  && CoverageLayer.FromDiffuse((int)ShaderFeature.Skin)
+                  && !CoverageLayer.FromDiffuse((int)ShaderFeature.GroundWeather)
                   && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()

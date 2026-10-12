@@ -581,6 +581,9 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    // terms after it.
                    $", {_texWithAlpha}/{_texQueried} caster textures carry alpha -> " +
                    $"{_submitMasked} alpha-tested depth draws this period" +
+                   // CX-227: and the coverage set inside it -- these cast at CoverageLayer.Cut, dithered,
+                   // instead of the engine's 0.2, so a hair card's shadow follows what the card draws.
+                   $", {CoverCasters()} coverage casters at the layer's own cut" +
                    $", {AlloyRenderer.HandlesZeroed} handle entries zeroed under a dying texture " +
                    $"({Db.TexRegistry.HandlesDropped} of the handles were the DB registry's own) and " +
                    $"{AlloyRenderer.BakeHandleUploads} bakes uploaded the handle table ahead of the colour bracket (since boot)" +
