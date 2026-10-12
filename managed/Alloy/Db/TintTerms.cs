@@ -45,6 +45,8 @@ internal static unsafe class TintTerms
         public uint Ssbo;
         public int Rows, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled;
+        /// <summary>Uploads whose dirty span reached past the buffer, and so were HELD rather than dropped.</summary>
+        public long Short;
         /// <summary>Has a row ever existed? Until one has, the GPU block is ONE zero row rather than the
         /// whole table, and the stage's length test turns every read into a defined false.</summary>
         public bool AnyRow, SaidNoBindless;
@@ -111,14 +113,11 @@ internal static unsafe class TintTerms
         Touch(row);
     }
 
-    /// <summary>Write row <paramref name="row"/>'s material terms. Called once when the recipe is defined --
-    /// a <c>.mtr</c> does not animate.</summary>
-    internal static void SetTerms(int row, float glowR, float glowG, float glowB, float alphaMip,
-                                  float aniso, float specIntensity, float swaySpeed, float swayStrength)
+    /// <summary>Write row <paramref name="row"/>'s material terms, in <see cref="MtrParams.FoldTint"/>'s
+    /// order. Called once when the recipe is defined -- a <c>.mtr</c> does not animate.</summary>
+    internal static void SetTerms(int row, ReadOnlySpan<float> f)
     {
-        if ((uint)row >= MaxRows) return;
-        Span<float> f = stackalloc float[8]
-            { glowR, glowG, glowB, alphaMip, aniso, specIntensity, swaySpeed, swayStrength };
+        if ((uint)row >= MaxRows || f.Length != MtrParams.TintTermCount) return;
         int b = row * WordsPerRow + LaneGlow;
         bool moved = false;
         lock (_lock)
@@ -176,10 +175,7 @@ internal static unsafe class TintTerms
                             + "nowhere to sit. Those parts draw NOTHING, their coverage reading zero; "
                             + "`alloy.bindless 1` plus a restart is what turns the feature on");
             }
-            // #20: the GPU table carries NO null handle -- AMD's driver treats one as a descriptor and the
-            // frame faults. A palette map that has not landed points at the white texel, so a creature is
-            // fully covered while it loads rather than invisible; the other three at the transparent-black
-            // one, which is what NVIDIA and Mesa answer a null handle with.
+            // a null handle is a GPU fault on AMD's driver, so every empty slot takes a stand-in's instead
             ulong whiteH = handles ? AlloyRenderer.HandleFor(OwnedTextures.WhiteTid()) : 0ul;
             ulong nullH = handles ? AlloyRenderer.HandleFor(OwnedTextures.NullTid()) : 0ul;
             for (int r = 0; r < MaxRows; r++)
@@ -207,12 +203,20 @@ internal static unsafe class TintTerms
         else if (s.DirtyHi >= s.DirtyLo && Gl.NamedBufferSubData != null)
         {
             int off = s.DirtyLo * WordsPerRow, n = (s.DirtyHi - s.DirtyLo + 1) * WordsPerRow;
-            if (off + n <= s.Sized)
+            if (off + n > s.Sized)
             {
-                fixed (uint* p = s.Words)
-                    Gl.NamedBufferSubData(s.Ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p + off);
-                s.Uploads++;
+                // the dirty span is KEPT: a row dropped here is one the GPU never gets, and the terms behind
+                // a record's index would stay whatever the last tenant wrote -- another material's glow
+                if (s.Short++ == 0)
+                    s.Log?.Always($"TintTerms: rows {s.DirtyLo}..{s.DirtyHi} reach past the {s.Sized}-word "
+                                + "buffer -- held dirty for the next upload rather than dropped, which would "
+                                + "leave a palette material wearing another one's terms");
+                Bind();
+                return;
             }
+            fixed (uint* p = s.Words)
+                Gl.NamedBufferSubData(s.Ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p + off);
+            s.Uploads++;
             s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
         }
         Bind();
@@ -241,7 +245,8 @@ internal static unsafe class TintTerms
     internal static string Note()
         => _st.Rows == 0 && _st.Uploads == 0 ? ""
          : $"tintterms: {_st.Rows} palette materials, {_st.Uploads} uploads, {_st.HandleWrites} handle writes"
-         + (_st.Spilled == 0 ? "" : $", {_st.Spilled} SPILLED past {MaxRows}");
+         + (_st.Spilled == 0 ? "" : $", {_st.Spilled} SPILLED past {MaxRows}")
+         + (_st.Short == 0 ? "" : $", {_st.Short} upload(s) HELD past the buffer's end");
 
     /// <summary>Off-device: the row layout against the GLSL declaration text, and the allocation contract.
     /// Oracle: <c>cx_tintbuf.glsl</c>'s own <c>CxTint</c> declaration, its binding literal and its coverage
@@ -271,7 +276,8 @@ internal static unsafe class TintTerms
         int row = Alloc(recipe: int.MaxValue);
         check.Expect(row >= 0, "the table would not allocate a row");
         if (row < 0) { log.Info("TintTerms.SelfCheck: FAILED"); return false; }
-        SetTerms(row, 0.25f, 0.5f, 0.75f, 1.5f, 0.6f, 2f, 3f, 4f);
+        Span<float> terms = stackalloc float[MtrParams.TintTermCount] { 0.25f, 0.5f, 0.75f, 1.5f, 0.6f, 2f, 3f, 4f };
+        SetTerms(row, terms);
         check.Expect(BitConverter.UInt32BitsToSingle(WordAt(row, LaneGlow + 2)) == 0.75f
           && BitConverter.UInt32BitsToSingle(WordAt(row, LaneGlow + 3)) == 1.5f,
           "the illumination colour's blue or the alpha mip scale did not land in the glow lane");

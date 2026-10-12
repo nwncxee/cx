@@ -38,10 +38,10 @@
 // and sets texture7Bound..texture10Bound per draw off its own stage-enabled test. Alloy has no unit left --
 // the lit stage spends 0..30 -- so the samplers come out of the palette row's bindless handles and the flags
 // off the record's slot mask: same names, same meaning, a different place to read them from.
-#define texUnit7  CxTintPal(vDraw, 0)
-#define texUnit8  CxTintPal(vDraw, 1)
-#define texUnit9  CxTintPal(vDraw, 2)
-#define texUnit10 CxTintPal(vDraw, 3)
+#define texUnit7  CxTintPal(vDraw, cxTintRow, 0)
+#define texUnit8  CxTintPal(vDraw, cxTintRow, 1)
+#define texUnit9  CxTintPal(vDraw, cxTintRow, 2)
+#define texUnit10 CxTintPal(vDraw, cxTintRow, 3)
 #define texture7Bound  CxTintBound(vDraw, 0)
 #define texture8Bound  CxTintBound(vDraw, 1)
 #define texture9Bound  CxTintBound(vDraw, 2)
@@ -66,11 +66,11 @@
 // multidraw batch, so a per-material uniform has nowhere to come from -- the values ride the side table.
 // The four spellings below are PROVISIONAL, following the convention of the wind and flowmap forks
 // (fSwaySpeed, fSlideSpeed). Confirm them against the author's .mtr, then fix them here and in
-// MtrParams.FeatureParam, which is the one other place they are written down.
-#define fAnisotropy        CxTintLobe(vDraw).x
-#define fSpecularIntensity CxTintLobe(vDraw).y
+// MtrParams.FoldTint, which is the one other place they are written down.
+#define fAnisotropy        CxTintLobe(cxTintRow).x
+#define fSpecularIntensity CxTintLobe(cxTintRow).y
 // vec4, not vec3: a 2-to-4-component `parameter` line uploads through glUniform4fv, so the engine's own
 // declaration for a colour is a vec4 whose w reads 0 (the material record is zero-initialised).
-#define fIllumColor        vec4(CxTintGlow(vDraw), 0.0)
-#define fAlphaMipScale     CxTintMip(vDraw)
+#define fIllumColor        vec4(CxTintGlow(cxTintRow), 0.0)
+#define fAlphaMipScale     CxTintMip(cxTintRow)
 // ---- end PLACEHOLDER

@@ -139,11 +139,12 @@ public sealed unsafe partial class AlloyRenderer
     private static int SortKey(int i)
         => SortKeyOf(_oNoCull[i], _oLit[i], _oDbPart[i] >= 0 ? DbVaoKey(i) : _oVao[i]);
 
-    /// <summary>The (feature, primitive) radix digit, with the skin override BuildBatches applies to the
-    /// feature. A fresh tenant is unposed at enrollment (its bone slot lands on the first pose after), so a
-    /// skinmesh sorts under its content feature until the next enrollment -- one extra cut, briefly.</summary>
+    /// <summary>The (feature, primitive) radix digit, under the same pose override the record takes
+    /// (<see cref="ShaderFeatures.WithPose"/>). A fresh tenant is unposed at enrollment (its bone slot lands
+    /// on the first pose after), so a skinmesh sorts under its content feature until the next enrollment --
+    /// one extra cut, briefly.</summary>
     private static int FeatPrimKey(int i)
-        => FeatPrimKeyOf(_oBone[i] >= 0 ? (int)ShaderFeature.Skin : (int)_oFeat[i * 4], _oPrim[i]);
+        => FeatPrimKeyOf(ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0), _oPrim[i]);
 
     /// <summary>Mask bit of map slot <paramref name="s"/>: its index, except for the AO slot -- see
     /// <see cref="AoBit"/> for why that one is out of line.</summary>

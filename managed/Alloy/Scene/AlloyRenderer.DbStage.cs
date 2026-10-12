@@ -271,7 +271,7 @@ public sealed unsafe partial class AlloyRenderer
             f.Slots = cls == (int)AlloyClass.Blended && DbUntextured(i) ? slots | NoShadowBit : slots;
         }
         int feat = (int)_oFeat[i * 4];
-        f.FeatX = _oBone[i] >= 0 ? (float)ShaderFeature.Skin : _oFeat[i * 4];
+        f.FeatX = ShaderFeatures.WithPose(feat, _oBone[i] >= 0);
         f.FeatY = _oBone[i] >= 0 ? _oBone[i] * (float)BoneCount : _oFeat[i * 4 + 1];
 
         // CX-120 (integration 4): the tile's fog-of-war REVEAL, in the record's one spare lane. Vanilla fogs

@@ -478,7 +478,7 @@ public sealed unsafe partial class AlloyRenderer
             f.EmiR = emi.X; f.EmiG = emi.Y; f.EmiB = emi.Z;
             f.Slots = _oSlots[i];
         }
-        f.FeatX = _oBone[i] >= 0 ? (float)ShaderFeature.Skin : _oFeat[i * 4];
+        f.FeatX = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
         f.FeatY = _oBone[i] >= 0 ? _oBone[i] * (float)BoneCount : _oFeat[i * 4 + 1];
 
         if (fresh) DbWriteStable(r, i);

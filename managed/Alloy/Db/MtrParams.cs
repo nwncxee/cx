@@ -66,17 +66,21 @@ internal static class MtrParams
             }
         // fSwaySpeed divides, and 1.0 is what every wind .mtr states: an undeclared one is the authored case.
         if (f >= (int)ShaderFeature.WindGrass && f <= (int)ShaderFeature.WindPlant && feat[1] == 0f) feat[1] = 1f;
+        // The palette tint keeps its own id in feat.x while posed, so feat.y is the BONE BASE and -1 is the
+        // unposed sentinel CxSkinned tests -- a 0 there would pose every unposed palette part off bone slot 0.
+        if (f == (int)ShaderFeature.PaletteTint) feat[1] = -1f;
     }
 
     /// <summary>Terms a palette-tint material states, in <see cref="TintTerms"/>' row order: illumination
     /// colour (three), the coverage map's mip scale, anisotropy, specular intensity, sway speed, sway
     /// strength. The defaults are the feature OFF. PLACEHOLDER SPELLINGS: the pair is the author's content
     /// and not in this repo, so they follow the wind forks' convention and are also in the vanilla env.</summary>
-    internal static void FoldTint(MtrDef? mtr, Span<float> t)
+    internal static void FoldTint(MtrDef? mtr, Span<float> t, ExtenderLog? log = null)
     {
         t.Clear();
         t[5] = 1f;
         if (mtr == null) return;
+        int read = 0;
         foreach ((string name, float[] v, bool isInt) in mtr.Parameters)
         {
             if (isInt || v.Length == 0) continue;
@@ -86,7 +90,17 @@ internal static class MtrParams
             else if (Is(name, "fSpecularIntensity")) t[5] = v[0];
             else if (Is(name, "fSwaySpeed")) t[6] = v[0];
             else if (Is(name, "fSwayStrength")) t[7] = v[0];
+            else continue;
+            read++;
         }
+        // Not one term recognised, on a material that names the pair: the spellings below are PROVISIONAL
+        // (see the summary), so the likely reading is that this material calls them something else and the
+        // tint is drawing on defaults. Said once per material, because that is what a wrong guess looks like.
+        if (read == 0)
+            log?.Always($"MtrParams: '{mtr.Name}' names the palette-tint pair and states none of "
+                      + "fIllumColor/fAlphaMipScale/fAnisotropy/fSpecularIntensity/fSwaySpeed/fSwayStrength "
+                      + "-- its tint draws on defaults (no glow, the plain cut, an isotropic lobe). Those "
+                      + "spellings are CX's guess at the shader's own uniforms; send the .mtr to have them fixed");
     }
 
     /// <summary>How many floats <see cref="FoldTint"/> fills.</summary>

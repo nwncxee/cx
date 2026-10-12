@@ -57,7 +57,7 @@
     vec3 pointSpec;
     // #308 follow-up: 1 on a creature fragment (skinmesh, or the dangly marker in feat.w) -- the
     // local receiver's carrier-band gate, so a creature takes no dyn-pool self-shadow up close.
-    float onMover = (int(d.feat.x) == CX_FEAT_SKIN || d.feat.w < 0.0) ? 1.0 : 0.0;
+    float onMover = (CxSkinned(d.feat) || d.feat.w < 0.0) ? 1.0 : 0.0;
     // #674: the baked term. A surface whose bake landed reads its static light from the pages --
     // irradiance baked against the VERTEX normal, rebalanced here for the shading normal (Unity's
     // directional decode) -- and the loop skips every static light for it; a hot light's mover shadow

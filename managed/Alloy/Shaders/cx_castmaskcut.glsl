@@ -6,7 +6,8 @@
     float tmip = uAlphaMip;
     vec2 tsize = vec2(textureSize(uTex, 0));
 #ifdef CX_CAST_HANDLE
-    vec4 ctint = int(uDraw[vDraw].feat.x) == CX_FEAT_PALETTETINT ? CxTintCoverage(vDraw, vUV) : vec4(-1.0);
+    cxTintRow = CxTintRow(vDraw);
+    vec4 ctint = cxTintRow >= 0 ? CxTintCoverage(vDraw, cxTintRow, vUV) : vec4(-1.0);
     if (ctint.x >= 0.0) { t = ctint.x; tmip = ctint.y; tsize = ctint.zw; }
 #endif
     // CX-191: the colour pass's compensated test, so a distant canopy and its shadow keep the same holes

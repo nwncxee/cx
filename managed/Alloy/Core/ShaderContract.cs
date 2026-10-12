@@ -61,6 +61,20 @@ internal static class ShaderContract
         "#define LIGHTING 1\n#define FOO 2\nuniform sampler2D texUnit6;\nvoid main ()\n{\n    gl_FragColor = FragmentColor;\n}\n",
         "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
 
+    /// <summary><c>feat.y</c> as a palette-tint recipe seeds it: the UNPOSED sentinel <c>CxSkinned</c> reads,
+    /// which a 0 (the lane's own default) would turn into "posed off bone slot 0" on every static part.</summary>
+    private static float TintUnposedSentinel
+    {
+        get
+        {
+            Span<float> param = stackalloc float[AlloyRenderer.ParamFloats], feat = stackalloc float[4];
+            param.Clear(); feat.Clear();
+            feat[0] = (int)ShaderFeature.PaletteTint;
+            Db.MtrParams.Fold(null, param, feat);
+            return feat[1];
+        }
+    }
+
     /// <summary>The same rewrite over the engine's PLT scheme feed: the declaration goes and every index
     /// becomes the per-record call, because a multidraw batch has no per-draw uniform to set.</summary>
     private static string HostSamplePlt => VanillaShader.HostText(
@@ -295,7 +309,7 @@ internal static class ShaderContract
                   && BoneVs.Contains($"layout(location = {LocBoneIdx}) in vec4 aBoneIdx;")
                   && BoneVs.Contains($"layout(location = {LocBoneW}) in vec4 aBoneWeight;")
                   && BoneVs.Contains("aBoneWeight.w > 0.0")
-                  && BoneVs.Contains("int(d.feat.x) == CX_FEAT_SKIN ? int(d.feat.y) : -1")
+                  && BoneVs.Contains("CxSkinned(d.feat) ? int(d.feat.y) : -1")
                   && BoneFloats * sizeof(float) == 4096
                   // ...and both stages take the skinned arm BEFORE the displaced test, which is what keeps
                   // the literal clip expression below reachable for every part that is still in the prepass.
@@ -334,6 +348,23 @@ internal static class ShaderContract
                   && !ShaderFeatures.HostedCoverage((int)ShaderFeature.GroundWeather)
                   && !ShaderFeatures.Displaces((int)ShaderFeature.PaletteTint)
                   && !ShaderFeatures.NoKeyholing((int)ShaderFeature.PaletteTint)
+                  // ...and the whole chain a SKINNED palette part walks, which is the main case for a
+                  // CHARACTER shader. The pose must not take feat.x from it: the record's own feature is what
+                  // routes the batch to the hosted program, resolves its side-table row and admits its
+                  // coverage to the layer and the caster -- and the vertex stage still finds the bone base,
+                  // because CxSkinned names both ids and reads the -1 in feat.y as unposed.
+                  && ShaderFeatures.PosedToo((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.PosedToo((int)ShaderFeature.GroundWeather)
+                  && ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true) == (int)ShaderFeature.PaletteTint
+                  && ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: false) == (int)ShaderFeature.PaletteTint
+                  && ShaderFeatures.WithPose((int)ShaderFeature.None, posed: true) == (int)ShaderFeature.Skin
+                  && ShaderFeatures.WithPose((int)ShaderFeature.GroundWeather, posed: true) == (int)ShaderFeature.Skin
+                  && ShaderFeatures.WithPose((int)ShaderFeature.GroundWeather, posed: false) == (int)ShaderFeature.GroundWeather
+                  && ShaderFeatures.Hosted(ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true))
+                  && CoverageLayer.HasCoverageSource(ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true))
+                  && FeatDecl.Contains("return (fx == CX_FEAT_SKIN || fx == CX_FEAT_PALETTETINT) && feat.y >= 0.0;")
+                  // ...and the unposed sentinel the test above reads, off a hand-written palette .mtr
+                  && TintUnposedSentinel == -1f
                   // #348: the two look features, and the properties that keep them out of the wind forks'
                   // special cases -- neither displaces, so neither leaves the depth prepass.
                   && ShaderFeatures.VsNames[(int)ShaderFeature.NoirWet] == "vs_noirwet"
@@ -453,7 +484,7 @@ internal static class ShaderContract
                   // and stores display-space values a mip filter then darkens. Both are silent.
                   && OwnedLitFsMain.Contains("CxProbeFetch(uProbe, vWorld, R, sqrt(rough)")
                   && OwnedLitFsMain.Contains("uCapture != 1 && uProbeMips > 0.0")
-                  && OwnedLitFsMain.Contains("if (int(d.feat.x) == CX_FEAT_SKIN || d.feat.w < 0.0) discard;")
+                  && OwnedLitFsMain.Contains("if (CxSkinned(d.feat) || d.feat.w < 0.0) discard;")
                   && OwnedLitFsMain.Contains("frag = vec4(lit, 1.0 / max(distance(vWorld, uEyePos), 1e-3));")
                   // ...and CX-51's record: the weight the probe term took is the one Ssr swaps the screen in
                   // under -- R4 widened it to the stronger of the base weight and the water film's, at the
@@ -573,6 +604,7 @@ internal static class ShaderContract
                   && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
                   && OwnedLitFsMain.Contains("if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;")
                   // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
+                  && OwnedLitFsMain.Contains("cxTintRow = CxTintRow(vDraw);")
                   && OwnedLitFsMain.Contains("if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }")
                   && DepthFeatFs.Contains("if (CxAlphaMip(texture(uTex, vUV, uLodBias).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.

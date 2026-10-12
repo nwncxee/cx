@@ -31,8 +31,8 @@ internal enum ShaderFeature
     Flowmap = 7,
     /// <summary>Not a content shader at all -- the TRUE skinmesh (a cloak, a robe, a tail), posed by the
     /// engine's 64-matrix bone array rather than the node matrix alone. It rides in this field because the
-    /// per-draw record already carries it to both vertex stages, and <c>feat.y</c> carries the bone base.
-    /// ponytail: a skinmesh naming a fork too loses the fork, not the pose; the fix is a bit in <c>feat.z</c>.</summary>
+    /// record already carries it to both vertex stages, and <c>feat.y</c> carries the bone base. A feature
+    /// that may be posed keeps its own id instead (<see cref="ShaderFeatures.PosedToo"/>).</summary>
     Skin = 8,
     /// <summary><c>fs_noirwet</c> -- a still liquid. Normal-only animated ripples anchored in world
     /// space, a low roughness and a white sheen. The pool stays dead flat: nothing here displaces, so unlike
@@ -101,6 +101,19 @@ internal static class ShaderFeatures
     /// tint does -- its coverage is the third palette map's blue channel, the <c>.mtr</c>'s own mip rescale
     /// over it -- because its diffuse carries the palette intensity, not an opacity.</summary>
     internal static bool HostedCoverage(int feat) => feat == (int)ShaderFeature.PaletteTint;
+
+    /// <summary>May a record carry this content feature AND a bone base at once? The palette tint must: it
+    /// is a CHARACTER shader, and a character's body parts are posed. Every other feature is tileset or
+    /// placeable work that never meets a bone, so the skinmesh class takes <c>feat.x</c> from it and the
+    /// vertex stage finds the bone base by that id.</summary>
+    internal static bool PosedToo(int feat) => feat == (int)ShaderFeature.PaletteTint;
+
+    /// <summary>The feature a record carries in <c>feat.x</c>: the content one, unless a POSE displaces it.
+    /// The one expression behind every site that writes or keys on it -- the record, the sort digit, the batch
+    /// audit and the caster's coverage source -- so a feature that coexists with a pose cannot coexist in some
+    /// of them and not others. <c>feat.y</c> is the bone base either way (-1 unposed).</summary>
+    internal static int WithPose(int feat, bool posed)
+        => posed && !PosedToo(feat) ? (int)ShaderFeature.Skin : feat;
 
     /// <summary>Does this feature move vertices? Such a part must stay out of the depth prepass: the prepass
     /// stage does not displace, so its depth is the part's UNDISPLACED silhouette and the colour pass's LEQUAL

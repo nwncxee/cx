@@ -31,27 +31,30 @@ int CxTintRow(int draw)
     return row >= 0 && row < uTint.length() ? row : -1;
 }
 
+// This fragment's row, resolved ONCE by the stage's main and passed to every accessor below. It is a global
+// as well as an argument because the engine-named macros a hosted body reads (texUnit7, fIllumColor) expand
+// inside that body, which has no local of the stage's to reach.
+int cxTintRow;
+
 // One of the four palette maps' handle. They live in the row rather than in the per-record handle block:
 // four more lanes there would cost every record in the world 32 bytes for a handful of materials.
 // A macro, not a function returning a sampler: an opaque return type is the one relaxation of the bindless
 // extension not every driver takes, and a macro needs none of it.
 #ifdef CX_BINDLESS
-uvec2 CxTintPalH(int draw, int k)
+uvec2 CxTintPalH(int draw, int row, int k)
 {
-    int row = CxTintRow(draw);
-    // #20: NEVER a null handle -- AMD's driver treats one as a descriptor and the frame faults. A record with
-    // no row of its own falls back to its own diffuse's, which that table guarantees is non-null, and the
-    // coverage read below asks the SLOT MASK rather than the handle, so it cannot mistake one for a map.
+    // a null handle is a GPU fault on AMD's driver, so a record with no row of its own falls back to its
+    // DIFFUSE's handle, which that table guarantees is non-null; the coverage read asks the slot mask
     if (row < 0) return uTexH[draw << 3];
     uvec4 h = k < 2 ? uTint[row].pal01 : uTint[row].pal23;
     return (k & 1) == 0 ? h.xy : h.zw;
 }
-#define CxTintPal(draw, k) sampler2D(CxTintPalH(draw, k))
+#define CxTintPal(draw, row, k) sampler2D(CxTintPalH(draw, row, k))
 #else
 // No handle table, and the lit stage has spent units 0..30 -- the palette maps are out of reach. This keeps
 // the hosted stage COMPILING; the coverage below reads zero, so such a part draws nothing rather than
 // something shaded off whatever texture happened to be on a unit. TintTerms says so in the log.
-#define CxTintPal(draw, k) uTex
+#define CxTintPal(draw, row, k) uTex
 #endif
 
 // The engine's per-stage `texture<N>Bound` flag for the four palette slots, off the record's slot mask --
@@ -61,24 +64,11 @@ int CxTintBound(int draw, int k)
     return (int(uDraw[draw].pbr.w) & (CX_SLOT_PAL0 << k)) != 0 ? 1 : 0;
 }
 
-// The material's own mip compensation for its coverage map, 0 = the plain test.
-float CxTintMip(int draw)
-{
-    int row = CxTintRow(draw);
-    return row < 0 ? 0.0 : uTint[row].glow.w;
-}
-
-// The illumination colour the tint adds, and the (anisotropy, specular intensity) its lobe takes.
-vec3 CxTintGlow(int draw)
-{
-    int row = CxTintRow(draw);
-    return row < 0 ? vec3(0.0) : uTint[row].glow.rgb;
-}
-vec2 CxTintLobe(int draw)
-{
-    int row = CxTintRow(draw);
-    return row < 0 ? vec2(0.0) : uTint[row].terms.xy;
-}
+// The material's own mip compensation for its coverage map (0 = the plain test), the illumination colour the
+// tint adds, and the (anisotropy, specular intensity) its lobe takes.
+float CxTintMip(int row)  { return row < 0 ? 0.0 : uTint[row].glow.w; }
+vec3 CxTintGlow(int row)  { return row < 0 ? vec3(0.0) : uTint[row].glow.rgb; }
+vec2 CxTintLobe(int row)  { return row < 0 ? vec2(0.0) : uTint[row].terms.xy; }
 
 // The coverage this part draws, and what the mip compensation needs to measure it: .x the coverage, .y the
 // material's own scale, .zw the map's extent. A NEGATIVE .x means this material named no coverage map and
@@ -87,13 +77,13 @@ vec2 CxTintLobe(int draw)
 // so the coverage reads ZERO and the part draws nothing -- the stand-down TintTerms says in the log, rather
 // than a character shaded off whatever texture happened to be on a unit.
 #ifdef CX_BINDLESS
-vec4 CxTintCoverage(int draw, vec2 uv)
+vec4 CxTintCoverage(int draw, int row, vec2 uv)
 {
     if (CxTintBound(draw, CX_TINT_COVER_PAL) == 0) return vec4(-1.0);
-    vec2 sz = vec2(textureSize(CxTintPal(draw, CX_TINT_COVER_PAL), 0));
-    return vec4(texture(CxTintPal(draw, CX_TINT_COVER_PAL), uv).b, CxTintMip(draw), sz);
+    vec2 sz = vec2(textureSize(CxTintPal(draw, row, CX_TINT_COVER_PAL), 0));
+    return vec4(texture(CxTintPal(draw, row, CX_TINT_COVER_PAL), uv).b, CxTintMip(row), sz);
 }
 #else
-vec4 CxTintCoverage(int draw, vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
+vec4 CxTintCoverage(int draw, int row, vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
 #endif
 
