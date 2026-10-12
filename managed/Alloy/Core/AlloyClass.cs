@@ -35,16 +35,28 @@ internal static class AlloyClasses
 {
     internal const int Count = 5;
 
-    /// <summary>Classify a part from the same terms the engine's own predicates read: the material's
-    /// destination blend factor, <c>PartTriMesh::GetIsOpaque</c>, the <c>transparency</c> keyword and a sub-1
-    /// alpha; what is left is non-opaque because the DIFFUSE carries alpha. <paramref name="water"/> is tested
-    /// first, the engine's own precedence -- water declares a blend pair, so later would file a sea as blended.</summary>
-    internal static AlloyClass Of(bool water, bool additive, bool opaque, bool declaredTransparent, bool alphaBelowOne)
+    /// <summary>Classify a part from the terms the engine's own predicates read -- the destination blend
+    /// factor, <c>PartTriMesh::GetIsOpaque</c>, the <c>transparency</c> keyword and a sub-1 alpha -- plus a
+    /// declared <c>NWN_ALPHA_MODE 2</c>; what is left is non-opaque because the DIFFUSE carries alpha. Water
+    /// is tested first, the engine's own precedence: later would file a sea as blended.</summary>
+    internal static AlloyClass Of(bool water, bool additive, bool opaque, bool declaredTransparent,
+                                  bool alphaBelowOne, bool coverage)
         => water ? AlloyClass.Water
          : additive ? AlloyClass.Additive
+         // CX-224: a declared coverage material is in the cutout class whatever its diffuse MEASURES. Its
+         // shader may read coverage from a map other than texture0, so an opaque texture0 is no evidence at
+         // all -- and reading it as evidence filed such a part opaque, out of the layer's batch range and
+         // into the diffuse-only depth prepass, where its solid silhouette would fill the holes the coverage
+         // leaves open. Only a DECLARED mode 2 gets here: an unknown material is classified as before.
+         : coverage ? AlloyClass.Cutout
          : opaque ? AlloyClass.Opaque
          : declaredTransparent || alphaBelowOne ? AlloyClass.Blended
          : AlloyClass.Cutout;
+
+    /// <summary>Does this part draw through <see cref="CoverageLayer"/>? A declared coverage material, and
+    /// only in the cutout class: water and additive keep their own passes, where the alpha is not coverage
+    /// at all. The one answer the layer's batch range, the prepass exclusion and the caster all read.</summary>
+    internal static bool Covers(int cls, bool coverage) => coverage && cls == (int)AlloyClass.Cutout;
 
     /// <summary>Does this class draw with <c>GL_BLEND</c> on, using the material's own blend pair? The three
     /// sorted classes, and NOT cutout: a cutout keeps its depth write, and a graded texel that both blends and
@@ -67,13 +79,31 @@ internal static class AlloyClasses
     {
         var check = new Checker(log, "AlloyClasses.SelfCheck");
 
-        check.Expect(Of(true, true, true, true, true) == AlloyClass.Water, "water beats every other term");
-        check.Expect(Of(false, true, true, false, false) == AlloyClass.Additive, "additive beats opaque");
-        check.Expect(Of(false, true, false, true, true) == AlloyClass.Additive, "additive beats the transparency terms");
-        check.Expect(Of(false, false, true, true, true) == AlloyClass.Opaque, "an opaque part is opaque whatever it declares");
-        check.Expect(Of(false, false, false, true, false) == AlloyClass.Blended, "declared transparency blends");
-        check.Expect(Of(false, false, false, false, true) == AlloyClass.Blended, "a sub-1 part alpha blends");
-        check.Expect(Of(false, false, false, false, false) == AlloyClass.Cutout, "texture alpha alone is a cutout");
+        check.Expect(Of(true, true, true, true, true, true) == AlloyClass.Water, "water beats every other term");
+        check.Expect(Of(false, true, true, false, false, true) == AlloyClass.Additive, "additive beats opaque and coverage");
+        check.Expect(Of(false, true, false, true, true, false) == AlloyClass.Additive, "additive beats the transparency terms");
+        check.Expect(Of(false, false, true, true, true, false) == AlloyClass.Opaque, "an opaque part is opaque whatever it declares");
+        check.Expect(Of(false, false, false, true, false, false) == AlloyClass.Blended, "declared transparency blends");
+        check.Expect(Of(false, false, false, false, true, false) == AlloyClass.Blended, "a sub-1 part alpha blends");
+        check.Expect(Of(false, false, false, false, false, false) == AlloyClass.Cutout, "texture alpha alone is a cutout");
+
+        // CX-224's table, expected classes written out by hand: a declared NWN_ALPHA_MODE 2 reaches the
+        // coverage layer off ANY diffuse, nothing else does, and a material that declares nothing is
+        // classified exactly as it was before the term existed.
+        AlloyClass modeTwoOpaque = Of(false, false, true, false, false, true);
+        check.Expect(modeTwoOpaque == AlloyClass.Cutout && Covers((int)modeTwoOpaque, true),
+          "mode 2 over an OPAQUE diffuse must reach the coverage layer, not the opaque pass");
+        check.Expect(Of(false, false, true, false, false, false) == AlloyClass.Opaque
+          && !Covers((int)AlloyClass.Opaque, false),
+          "an opaque diffuse with no mode 2 is a plain opaque part");
+        check.Expect(Of(false, false, false, false, false, false) == AlloyClass.Cutout
+          && !Covers((int)AlloyClass.Cutout, false),
+          "a graded diffuse with no mode 2 stays the plain 0.2 cutout -- an unknown material never becomes coverage");
+        check.Expect(Of(false, false, false, true, false, true) == AlloyClass.Cutout,
+          "mode 2 beats a declared transparency: the keyword is the vanilla fallback for clients without the layer");
+        check.Expect(!Covers((int)AlloyClass.Water, true) && !Covers((int)AlloyClass.Additive, true)
+          && !Covers((int)AlloyClass.Blended, true),
+          "only the cutout class draws through the layer");
 
         check.Expect(!Blends((int)AlloyClass.Opaque), "plain opaque does not blend");
         check.Expect(!Blends((int)AlloyClass.Cutout), "#357: nor does a cutout -- it writes depth, so it must be opaque");

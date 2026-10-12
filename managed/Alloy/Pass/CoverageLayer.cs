@@ -14,6 +14,12 @@ internal static unsafe class CoverageLayer
     /// <summary>The alpha below which a fragment is discarded outright: a coverage of nothing at any sample count.</summary>
     internal const float Cut = 0.01f;
 
+    /// <summary>Does a coverage part with this shader feature take its coverage from the DIFFUSE alpha? The
+    /// one place a hosted program's own source plugs in, asked by the colour draw and by the shadow caster so
+    /// the two cannot answer differently. ponytail: no hosted source is read yet; the upgrade is a hosted
+    /// sample-mask variant naming its own channel, and the answer here turning true for it.</summary>
+    internal static bool FromDiffuse(int feat) => !ShaderFeatures.Hosted(feat);
+
     private static readonly StandDown _down = new("CoverageLayer");
     private static ExtenderLog? _log;
     /// <summary>Everything the GL context owns, in one object: context loss replaces it, so no name from the

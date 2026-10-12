@@ -328,7 +328,9 @@ internal static unsafe class Issue
             // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
             bool deferred = lit && !water && !hosted && !lists && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
                             && g < _gOpaqueEnd && DeferredLights.Active && !_forwardOnly;
-            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own samples
+            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
+            // samples. A hosted batch keeps its own program (3) and so has no mask variant -- the same
+            // CoverageLayer.FromDiffuse seam the caster reads, and where CX-223 plugs the hosted source in.
             int wantProg = water ? 2 : hosted ? 3 : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)

@@ -340,8 +340,9 @@ internal static partial class DrawRecipe
         // ashlw_031: a tenth of them at 164), and vanilla answers OPAQUE for an env-mapped material outright
         // -- GetIsOpaque returns the HasEnvMap flag itself and never looks at the texture.
         // CX-189: NWN_ALPHA_MODE 2 is the author saying "coverage, not blending" -- a declared transparency
-        // on the same material is the vanilla fallback for clients without it, so it does not make this blended.
-        return AlloyClasses.Of(water, additive, opaque, declared && !_coverage[r], false);
+        // on the same material is the vanilla fallback for clients without it, so it does not make this
+        // blended. CX-224: nor does the measured diffuse make it opaque -- the classifier's own coverage term.
+        return AlloyClasses.Of(water, additive, opaque, declared, false, _coverage[r]);
     }
 
     /// <summary>Is this material DECLARED water, i.e. water by a term the MODEL carries? The <c>.mtr</c>'s
@@ -395,7 +396,7 @@ internal static partial class DrawRecipe
         if (hintAdditive || TexRegistry.TxiDecal(d)) _flags[r] &= ~RecipeFlag.Lit;
         else _flags[r] |= RecipeFlag.Lit;
         _cls[r] = (byte)ClassOf(r, additive, declared);
-        if (_coverage[r] && _cls[r] == (byte)AlloyClass.Cutout) _flags[r] |= RecipeFlag.Coverage;
+        if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
     }
 
