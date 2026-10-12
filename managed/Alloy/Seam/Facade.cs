@@ -402,9 +402,12 @@ public static unsafe partial class Facade
         internal readonly System.Collections.Generic.HashSet<nint> MintedScenes = new();
         internal long OrphaningAttaches;
         internal int LinesLeft = OrphanLines;
+        internal long WorldIntoGui;
+        internal int WorldIntoGuiLeft = OrphanLines;
     }
 
-    /// <summary>Lines <see cref="NoteOrphaningAttach"/> writes per session; the count keeps going past it.</summary>
+    /// <summary>Lines <see cref="NoteOrphaningAttach"/> and <see cref="NoteJoin"/> each write per session; the
+    /// counts keep going past it.</summary>
     private const int OrphanLines = 256;
 
     private static SceneProbeState _sceneProbe = new();
@@ -429,10 +432,25 @@ public static unsafe partial class Facade
                     + $"and is now in NO scene, so it does not draw ({st.OrphaningAttaches} so far)");
     }
 
+    /// <summary>Object <paramref name="obj"/> joined <paramref name="scene"/>: stamp its shell with the kind of
+    /// scene, and name a world object moving into a GUI scene -- a GUI pointer that reached a world shell.</summary>
+    internal static void NoteJoin(DbId scene, DbId obj)
+    {
+        if (!SeamShell.NoteScene(Shell(SceneDb.ObjFacade[obj.Index]), SceneDb.SceneIsWorld[scene.Index]) || InSelfCheck) return;
+        SceneProbeState st = _sceneProbe;
+        st.WorldIntoGui++;
+        if (st.WorldIntoGuiLeft <= 0) return;
+        st.WorldIntoGuiLeft--;
+        int o = obj.Index;
+        Log?.Always($"seam: [world->gui] o={obj.Value} model='{SceneDb.ObjSeamModelName[o]}' kind={SceneDb.ObjKindOf[o]} "
+                    + $"flags={SceneDb.ObjFlags[o]} was in a world scene and joined GUI scene {scene.Value}, by "
+                    + $"{SeamCallers.Chain(4)} ({st.WorldIntoGui} so far)");
+    }
+
     /// <summary>The seam's period line: shells, quarantine, and every refusal counted.</summary>
     public static string Stats()
-        => $"shells live={SeamShell.Live} quarantined={SeamShell.Quarantined} alloc={SeamShell.Allocated} reuse={SeamShell.Reused}"
-         + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} orphaning-attaches={_sceneProbe.OrphaningAttaches} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
+        => $"shells live={SeamShell.Live} quarantined={SeamShell.Quarantined} gui-held={SeamShell.Held} alloc={SeamShell.Allocated} reuse={SeamShell.Reused}"
+         + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} orphaning-attaches={_sceneProbe.OrphaningAttaches} world-into-gui={_sceneProbe.WorldIntoGui} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
 }
 
 /// <summary>Logical slot ids a hand-written caller needs by name. Everything else is
