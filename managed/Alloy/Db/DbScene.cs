@@ -74,6 +74,7 @@ public static unsafe class DbScene
         // LoadBorder -- and a global tile teardown there wiped exactly the walkmesh-carrying real tiles,
         // which is the floor every HitCheck then failed to find (CX-185).
         TileBuild.SceneRevoke(scene);
+        DbTriggers.SceneRevoke(scene);
         if (SceneDb.SceneIsWorld[i]) AlloyRenderer.AreaEdge("DB mode: the world scene was destroyed");
 
         DbList? members = SceneDb.SceneObjects[i];
