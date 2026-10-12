@@ -101,6 +101,14 @@ internal static unsafe class NuiItemIcons
     [UnmanagedCallersOnly]
     private static IntPtr OnLoadImg(IntPtr ret, byte* resref, ushort type)
     {
+        if (_ready && resref != null && resref[0] == (byte)'@' && NuiModelView.IsModelName(resref))
+        {
+            if (!NuiModelView.Prepare(resref)) return _loadOrig(ret, resref, type);
+            IntPtr m = _loadOrig(ret, _ref, ResTga);
+            _b64Len = 0;
+            NuiModelView.Loaded(resref, ret);
+            return m;
+        }
         if (!_ready || resref == null || resref[0] != (byte)'@' || !_enabled!.V || !_on!.V || !Prepare(resref, out ushort t))
             return _loadOrig(ret, resref, type);
         IntPtr r = _loadOrig(ret, _ref, t);
@@ -202,6 +210,21 @@ internal static unsafe class NuiItemIcons
         Emit(Math.Max(1, (int)MathF.Round(_w * fw)), Math.Max(1, (int)MathF.Round(_h * fh)));
         SetRef($"cx{Hash():x8}");
         return true;
+    }
+
+    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none) at its own
+    /// size, else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
+    /// and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
+    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, out uint[] pixels, out int pw, out int ph)
+    {
+        _w = _h = 0;
+        if (standin.Length > 0 && standin[0] != 0) AddPlain(standin);
+        if (_w == 0) { _w = w; _h = h; Grow(w * h); Array.Clear(_canvas!, 0, w * h); }
+        Emit(_w, _h);
+        SetRef($"cx{Hash():x8}");
+        pw = _w; ph = _h;
+        pixels = new uint[pw * ph];
+        Array.Copy(_canvas!, pixels, pixels.Length);
     }
 
     /// <summary>An item's appearance, as an engine store sends it and <see cref="SymbolMap.NwcCreateItem"/> takes it.</summary>

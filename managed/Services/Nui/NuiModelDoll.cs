@@ -40,6 +40,11 @@ internal static unsafe class NuiModelDoll
         public IntPtr AppMgr;
         public int FadeMode = 1;
         public long NextReport;
+        /// <summary>The GL texture the view's layer is drawn into (0 = the screen), its background colour, and whether a
+        /// frame has landed in it since the doll was built.</summary>
+        public uint TargetTex;
+        public readonly float[] Bg = new float[4];
+        public bool Rendered;
         public DollState Doll = new();
     }
 
@@ -47,6 +52,14 @@ internal static unsafe class NuiModelDoll
 
     internal static DollState Doll => _o.Doll;
     internal static void SetFadeMode(int m) => _o.FadeMode = m;
+    /// <summary>The texture the view's layer draws into, or 0 to draw to the screen (the probe).</summary>
+    internal static uint Redirect => _o.TargetTex;
+    internal static void SetTarget(uint tex) => _o.TargetTex = tex;
+    /// <summary>The layer was drawn into the target: the doll's first frame has landed.</summary>
+    internal static void MarkRendered() => _o.Rendered = true;
+    internal static bool Rendered => _o.Rendered;
+    internal static void SetBackground(float r, float g, float b, float a) { _o.Bg[0] = r; _o.Bg[1] = g; _o.Bg[2] = b; _o.Bg[3] = a; }
+    internal static void Background(float* c) { for (int i = 0; i < 4; i++) c[i] = _o.Bg[i]; }
 
     internal static bool Init(ExtenderLog log)
     {
@@ -163,6 +176,8 @@ internal static unsafe class NuiModelDoll
     {
         DollState d = _o.Doll;
         _o.Doll = new DollState();
+        _o.TargetTex = 0;
+        _o.Rendered = false;
         IntPtr app = App();
         if (d.Viewport != IntPtr.Zero && d.Enabled) EngineFn.GuiViewportDisable(d.Viewport);
         if (d.Creature != IntPtr.Zero)

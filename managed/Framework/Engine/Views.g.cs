@@ -3246,6 +3246,19 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public ref IntPtr WindowBegin => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxWindowBegin);
 }
 
+/// <summary>Typed view of an engine <c>NkImage*</c>.</summary>
+public readonly unsafe partial struct NkImage(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkImageFrames"/>
+    public ref int Frames => ref *(int*)(Ptr + EngineLayout.NkImageFrames);
+    /// <inheritdoc cref="EngineLayout.NkImageGlTexture"/>
+    public ref uint GlTexture => ref *(uint*)(Ptr + EngineLayout.NkImageGlTexture);
+}
+
 /// <summary>Typed view of an engine <c>NkWindow*</c>.</summary>
 public readonly unsafe partial struct NkWindow(IntPtr ptr)
 {

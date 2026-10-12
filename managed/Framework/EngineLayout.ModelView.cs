@@ -22,4 +22,7 @@ public static unsafe partial class EngineLayout
     public static readonly int CameraSetClipDistSlot = Field("CAurCamera", "vtbl.SetClipDist", Expect.VtblSlot, sig: "void(float near, float far)");
     public static readonly int CameraSetViewAngleSlot = Field("CAurCamera", "vtbl.SetViewAngle", Expect.VtblSlot, sig: "void(float angle)");
     public static readonly int CameraGetViewAngleSlot = Field("CAurCamera", "vtbl.GetViewAngle", Expect.VtblSlot, sig: "float()");
+    /// <summary>NkImage -> the GL texture name <c>GetImage</c> hands nuklear, and the frame count that gates it.</summary>
+    public static readonly int NkImageGlTexture = Field<uint>("NkImage", "glTexture");
+    public static readonly int NkImageFrames = Field<int>("NkImage", "frames");
 }

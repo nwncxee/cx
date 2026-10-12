@@ -33,14 +33,18 @@ void OpenWindow(object oPC)
         NuiImage(JsonString("@item:" + ObjectToString(oTorch)), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
         64.0), 64.0), 3.0), JsonString("a torch")), "img");
 
+    json jModel = NuiId(NuiMargin(NuiHeight(NuiWidth(
+        NuiImage(JsonString("@model:me"), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
+        200.0), 300.0), 3.0), "mdl");
+
     json jCell = NuiId(NuiPadding(NuiMargin(
         NuiLabel(NuiBind("rows"), JsonInt(NUI_HALIGN_LEFT), JsonInt(NUI_VALIGN_MIDDLE)), 2.0), 2.0), "cell");
     json jCells = JsonArray();
     jCells = JsonArrayInsert(jCells, NuiListTemplateCell(jCell, 0.0, TRUE));
-    json jList = NuiHeight(NuiList(jCells, JsonInt(LIST_ROWS), 24.0), 200.0);
+    json jList = NuiHeight(NuiList(jCells, JsonInt(LIST_ROWS), 24.0), 120.0);
 
-    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jImage), jList));
-    json jWin = NuiWindow(jRoot, JsonString("CX hit test"), NuiRect(20.0, 20.0, 340.0, 400.0),
+    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jImage), jModel), jList));
+    json jWin = NuiWindow(jRoot, JsonString("CX hit test"), NuiRect(20.0, 20.0, 340.0, 560.0),
                           JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     int nToken = NuiCreate(oPC, jWin, WINDOW_ID);
     json jRows = JsonArray();
