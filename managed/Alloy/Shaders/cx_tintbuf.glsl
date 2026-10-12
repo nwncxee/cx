@@ -9,7 +9,11 @@
 //
 // Lane map, which TintTerms writes and its self-check holds against this text:
 //   glow  = illumination colour rgb, alpha mip scale in w
-//   terms = anisotropy, specular intensity, sway speed, sway strength
+//   terms = anisotropy, specular intensity, sway speed, sway strength -- the sway pair is STAGED and not
+//           applied: Alloy's own displacement (cx_feat_v) phases on the part's world Y and anchors on
+//           aPos.z clamped to a blade's root height, with grass-tuned divisors, speeds and anchor
+//           multipliers, and reads no vertex paint. None of that is a character's sway, and the pair's own
+//           vertex stage is the author's content, so there is nothing here to transcribe it from.
 //   pal01 = texture7 and texture8 as bindless handles; pal23 = texture9 and texture10
 struct CxTint { vec4 glow; vec4 terms; uvec4 pal01; uvec4 pal23; };
 layout(std430, binding = 15) readonly buffer CxTintBuf { CxTint uTint[]; };
