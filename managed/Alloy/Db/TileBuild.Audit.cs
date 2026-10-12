@@ -12,7 +12,7 @@ public static partial class TileBuild
     internal sealed class TileAuditState
     {
         internal readonly HashSet<(int Tile, uint Obj)> Named = new();
-        internal int OutOfScene, NotJoined, LinesLeft = AuditLines;
+        internal int OutOfScene, NotJoined, Moved, LinesLeft = AuditLines;
     }
 
     /// <summary>Lines the audit writes per session; the counts go on past it.</summary>
@@ -60,11 +60,25 @@ public static partial class TileBuild
                      + $"its column says {SceneDb.ObjScene[obj.Index].Value} ({st.NotJoined} so far)");
     }
 
+    /// <summary>A placed tile's object moved scenes through the seam -- the engine attached its gob somewhere.
+    /// Vanilla never moves a tile, so every one is named with the game frames that asked.</summary>
+    internal static void NoteMoved(DbId obj, DbId was, DbId to, nint shell, string chain)
+    {
+        TileAuditState st = _audit;
+        st.Moved++;
+        if (st.LinesLeft <= 0) return;
+        st.LinesLeft--;
+        _log?.Always($"TileBuild: [audit move] '{SceneDb.ObjModel[obj.Index]?.Name}' object {obj.Value} (shell 0x{shell:x}) "
+                     + $"moved from scene {was.Value} to {to.Value} (valid={SceneDb.Scenes.Valid(to)}) by {chain} "
+                     + $"({st.Moved} so far)");
+    }
+
     /// <summary>The period line's clause: empty while every tile is where it belongs.</summary>
     private static string AuditStats()
     {
         int bad = AuditScenes("period");
         return (bad > 0 ? $", {bad} TILE OBJECTS OUT OF THEIR SCENE" : "")
-             + (_audit.NotJoined > 0 ? $", {_audit.NotJoined} TILE OBJECTS NEVER JOINED" : "");
+             + (_audit.NotJoined > 0 ? $", {_audit.NotJoined} TILE OBJECTS NEVER JOINED" : "")
+             + (_audit.Moved > 0 ? $", {_audit.Moved} TILE OBJECTS MOVED SCENES" : "");
     }
 }
