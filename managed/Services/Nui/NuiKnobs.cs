@@ -39,7 +39,7 @@ internal static class NuiKnobs
             help: "The mouse wheel glides a NUI list to its new position instead of jumping there.");
         AutoHide = G.Toggle("autohide", "Hide scrollbars with nothing to scroll", true,
             help: "A NUI list whose content fits shows no scrollbar, instead of a full-length one that does nothing.");
-        HoverBars = G.Toggle("hoverbars", "Show scrollbars only under the mouse", false,
+        HoverBars = G.Toggle("hoverbars", "Show scrollbars only under the mouse", false, Tier.Advanced,
             help: "A NUI list's scrollbar fades out while the pointer is elsewhere and back in when it is over the list. Text boxes keep theirs.");
         Thumb = G.Slider("thumb", "Shortest scrollbar handle", 0f, 4f, 0.5f, 2f, "\u00d7 its width", Tier.Advanced,
             help: "A long list's scrollbar handle never gets shorter than this, so it cannot shrink out of sight. 0 = stock.");

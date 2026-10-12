@@ -331,7 +331,7 @@ copy.
 | nui.enabled | Enable CX NUI fixes | T | on | U | L | — | Speed and usability fixes for the windows servers build with NUI. Off, they behave exactly as in the stock client. |
 | nui.smooth | Smooth scrolling | T | on | U | L | — | The mouse wheel glides a NUI list to its new position instead of jumping there. |
 | nui.autohide | Hide scrollbars with nothing to scroll | T | on | U | L | — | A NUI list whose content fits shows no scrollbar, instead of a full-length one that does nothing. |
-| nui.hoverbars | Show scrollbars only under the mouse | T | off | U | L | — | A NUI list's scrollbar fades out while the pointer is elsewhere and back in when it is over the list. Text boxes keep theirs. |
+| nui.hoverbars | Show scrollbars only under the mouse | T | off | A | L | — | A NUI list's scrollbar fades out while the pointer is elsewhere and back in when it is over the list. Text boxes keep theirs. |
 | nui.itemicons | Item icons in NUI windows | T | on | U | L | — | A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite. |
 | nui.explain | Explain broken layouts | T | on | A | L | — | Lists the rules that contradict each other and the elements they belong to, instead of only "The constraint can not be satisfied." |
 | nui.thumb | Shortest scrollbar handle | S | 0 … 4 × its width, step 0.5 · 2 | A | L | — | A long list's scrollbar handle never gets shorter than this. 0 = stock. |
