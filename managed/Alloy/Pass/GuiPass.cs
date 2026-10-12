@@ -35,6 +35,8 @@ internal static unsafe class GuiPass
         /// depth is allocated in it so the two can be blitted into each other.</summary>
         public uint DepthFmt, FboEngDepth;
         public bool DepthProbed;
+        /// <summary>Layers of the current bank already issued by <see cref="FlushLayers"/>; the closing flush starts here.</summary>
+        public int Issued;
     }
 
     private static GuiGlState _gl = new();
@@ -142,21 +144,37 @@ internal static unsafe class GuiPass
     /// <summary>Flush now -- a caller whose draws must land before the next foreign draw (nuklear's own site).</summary>
     internal static void FlushNow() => Flush();
 
-    /// <summary>Issue every layer captured since the last flush, then forget them. A flush that cannot run drops what
-    /// it holds -- the engine did not draw those scenes either -- and says so once.</summary>
+    /// <summary>Issue the first <paramref name="n"/> captured layers and keep the bank, so something else can draw over
+    /// them before <see cref="FlushNow"/> issues the rest. The closing flush uploads nothing again.</summary>
+    internal static void FlushLayers(int n)
+    {
+        n = Math.Min(n, GuiCapture.LayerN);
+        if (n <= 0 || _gl.Issued != 0) return;
+        if (_gl.Prog == 0 || _failed || !Draw(0, n)) Dropped();
+        else _gl.Issued = n;
+    }
+
+    /// <summary>Issue every layer captured since the last flush that is still owed, then forget them. A flush that
+    /// cannot run drops what it holds -- the engine did not draw those scenes either -- and says so once.</summary>
     private static void Flush()
     {
         if (GuiCapture.LayerN == 0) return;
-        if (_gl.Prog == 0 || _failed || !Draw())
-        {
-            if (!_dropSaid) { _dropSaid = true; _log?.Always("GuiPass: a GUI flush could not enter the 4.6 context -- that frame's GUI is NOT DRAWN"); }
-        }
+        if (_gl.Issued >= GuiCapture.LayerN) { _gl.Issued = 0; GuiCapture.Reset(); return; }
+        if (_gl.Prog == 0 || _failed || !Draw(_gl.Issued, GuiCapture.LayerN)) Dropped();
+        _gl.Issued = 0;
         GuiCapture.Reset();
+    }
+
+    private static void Dropped()
+    {
+        if (_dropSaid) return;
+        _dropSaid = true;
+        _log?.Always("GuiPass: a GUI flush could not enter the 4.6 context -- that frame's GUI is NOT DRAWN");
     }
 
     /// <summary>ponytail: one GL draw per captured record, state changes elided by comparison. A menu is a few hundred
     /// draws; if the GUI ever shows in the frame zones, sort each layer by (VAO, texture, blend) and multi-draw the runs.</summary>
-    private static bool Draw()
+    private static bool Draw(int from, int to)
     {
         int w = *_screenW, h = *_screenH;
         bool win = PresentTarget.Needed;
@@ -171,7 +189,7 @@ internal static unsafe class GuiPass
         // and the texture registry's uploads never ran (every part that did draw came out white). Both are
         // queue tests when there is nothing to do.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
-        Upload();
+        if (from == 0) Upload();
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, win ? Target() : 0u);
         Gl.Disable(Gl.FRAMEBUFFER_SRGB);
         Gl.Disable(Gl.MULTISAMPLE);
@@ -192,7 +210,7 @@ internal static unsafe class GuiPass
         int blend = -1, depth = -1, write = -1, cull = -1;
         uint src = 0, dst = 0, vao = uint.MaxValue;
         int tex = -1;
-        for (int li = 0; li < GuiCapture.LayerN; li++)
+        for (int li = from; li < to; li++)
         {
             ref GuiCapture.Layer l = ref GuiCapture.Layers[li];
             // The run's depth clear rides on its FIRST view, drawn or not: skipped with an empty layer, it left last

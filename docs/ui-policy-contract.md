@@ -22,6 +22,23 @@ minor with one trace line, the research on CX-152 §6.6).
 Send `PolicySet` only to a client that advertised `cx_enabled = 1` (`docs/hotkeys-server-contract.md`). Messages
 accumulate; send as many as you like.
 
+### Capabilities: what this client can draw
+
+At login, beside `cx_enabled`, the client advertises its release and the NUI capabilities it can draw at that moment,
+as device properties (`GetPlayerDeviceProperty`, names lowercase):
+
+| property | value |
+|---|---|
+| `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
+| `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
+| `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
+
+A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
+`nui.itemicons`) is on. **Absent or `0` means the client does not draw it**; send the vanilla version (a plain
+image, or none). A new capability adds a `cx_cap_<name>` row here when it ships, and its value rises when its
+wire form changes. A knob toggled mid-session advertises the whole set again, a withdrawn capability as `0`; whether the
+server keeps the latest value for a repeated name is unconfirmed, so re-read the property when it matters.
+
 ### `PolicySet` lines
 
 | line | meaning |
@@ -117,7 +134,7 @@ quickbar's own drop does. An item dragged out of a container drops or is used li
 as the stock drag).
 
 A skin part the client does not have refuses the **whole** skin (logged with every missing name, a notice on
-screen, the window draws its flat look): alias only art you ship (`native-gui-skinning.md` §6.8).
+screen, the window draws its flat look): alias only art you ship (research: CX-152).
 
 ## Example
 

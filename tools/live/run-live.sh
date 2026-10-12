@@ -13,7 +13,8 @@
 #                                              # binary "GUI picking works" signal that needs no screenshot
 #
 # Nothing appears on the desktop: the client runs inside `gamescope --backend headless`, which gives
-# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing of the user's
+# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing plays on the
+# speakers: OpenAL Soft mixes into its null backend (ALSOFT_DRIVERS=null). Nothing of the user's
 # is touched either -- a throwaway HOME + user directory is built under the out dir, and the client is
 # pointed at it with `-userdirectory`, so cx.cfg, cx.log, settings.tml, nwn.ini, the localvault and the
 # crashreport folder are all the harness's own copies.
@@ -234,6 +235,7 @@ START_EPOCH=$(date +%s.%N)
     export XDG_DATA_HOME="$FAKE_HOME/.local/share"
     export XDG_CACHE_HOME="$FAKE_HOME/.cache"
     export XDG_CONFIG_HOME="$FAKE_HOME/.config"
+    export ALSOFT_DRIVERS=null
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
@@ -322,6 +324,8 @@ echo "run-live: client pid $CLIENT_PID"
 # holds it -- the area edge itself.
 AREA_MARK='LightmapBake: hold released|LightmapBake: AreaLoaded send passed through'
 AREA_MARK_NOHOLD='\[areaedge\] AreaLoaded send|PartTable: AreaLoaded send'
+# Alloy off runs no shadow bake and no part table, so neither mark exists: the session gate seeing a module is the edge left.
+AREA_MARK_ENGINE='\[uigate\] win=0x[1-9a-f][0-9a-f]* .*inModule=True'
 FRAME_MARK='first frame presented -- hook is LIVE'
 reached=0
 area_epoch=""
@@ -341,6 +345,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
         break
     fi
     if [ "$MENU" = 0 ] && { grep -qE "$AREA_MARK" "$CX_LOG" 2>/dev/null \
+       || { grep -q '\[alloygate\] alloy.enabled=0 -- the engine renders' "$CX_LOG" 2>/dev/null && grep -qE "$AREA_MARK_ENGINE" "$CX_LOG" 2>/dev/null; } \
        || { grep -q 'the AreaLoaded send did not resolve' "$CX_LOG" 2>/dev/null && grep -qE "$AREA_MARK_NOHOLD" "$CX_LOG" 2>/dev/null; }; }; then
         reached=1
         area_epoch=$(date +%s.%N)
@@ -389,7 +394,8 @@ LADDER_KEYS="$LADDER_KEYS;sleep:4000;shot:$SHOTS/06g-stripped.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:4000;shot:$SHOTS/06h-reequipped.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:500;shot:$SHOTS/06i-reequipped2.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:6000;shot:$SHOTS/07-area2.png"
-LADDER_KEYS="$LADDER_KEYS;sleep:16000;shot:$SHOTS/08-area1.png"
+LADDER_KEYS="$LADDER_KEYS;sleep:3000;shot:$SHOTS/07n-nui.png;sleep:1000;shot:$SHOTS/07n-nui-b.png;sleep:1000;shot:$SHOTS/07n-nui-c.png"
+LADDER_KEYS="$LADDER_KEYS;sleep:11000;shot:$SHOTS/08-area1.png"
 # The ladder owns the key channel, so a --keys of your own runs after it rather than being dropped.
 [ -n "$KEYS" ] && LADDER_KEYS="$LADDER_KEYS;$KEYS"
 

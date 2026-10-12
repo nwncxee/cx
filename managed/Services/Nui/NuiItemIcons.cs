@@ -55,6 +55,10 @@ internal static unsafe class NuiItemIcons
         _log = log;
         _enabled = NuiKnobs.Enabled;
         _on = NuiKnobs.ItemIcons;
+        Capabilities.Register("itemicon", 1, static () => _ready && _enabled!.V && _on!.V);
+        Capabilities.Register("lookicon", 1, static () => _ready && _createItem != null && _enabled!.V && _on!.V);
+        _enabled.Changed += Capabilities.Refresh;
+        _on.Changed += Capabilities.Refresh;
         if (!RadialIcons.Init(log)
             || !SymbolMap.Require(log, "NuiItemIcons", SymbolMap.NkLoadImg, SymbolMap.ExoResManGet, SymbolMap.DataBlockFromBase64,
                                   SymbolMap.AurGetLayeredRasterWrapper, SymbolMap.AurReleaseLayeredRaster, SymbolMap.PaletteImage,

@@ -110,6 +110,8 @@ internal static class SeamDraw
             // in framebuffer 0 while the next world frame was being resolved into it.
             // The world it sits on is frame N-1's, not N's -- that IS the pipeline, and it is the same one
             // frame of latency the snapshot protocol is built around. The alternative is no second thread.
+            // Both layers here: NUI was flushed by the render thread already, so this arm cannot put the
+            // below-NUI layer under it. Moot until the render thread can start (GuiBuffersOwned).
             CX.Ui.UiHostService.DrawWindowsForDbFrame();
         }
         // The GUI depth latch is per RUN of GUI views, not per view, exactly as the engine's own
@@ -124,18 +126,19 @@ internal static class SeamDraw
         // try/finally, not optimism: Publish waits while a frame is still held, so a throw that skipped the
         // Release would block the GAME thread forever on the next present -- a frozen client, which leaves no
         // core and is the hardest failure in this codebase to diagnose (nativeaot-hang-forensics).
-        try { DrawSnapshot(f); }
+        int nui = 0;
+        try { nui = DrawViews(f); }
         finally
         {
-            // CX's own 2D UI (chat, the settings panel, nameplates, combat text) goes LAST, after every view
-            // the game asked for. The whole frame runs here at PrePresent, so drawing it where the engine's
-            // GUI render sits -- before the world -- put it UNDER the world and it disappeared the moment the
-            // world started drawing.
-            // CX-188: the same rule, the other side of the publish -- see the `live` arm above. The ONE
+            // CX's own 2D UI (chat, the settings panel, nameplates, combat text) goes after every view the game
+            // asked for, split around NUI's flush so each window keeps its layer. The whole frame runs here at
+            // PrePresent, so drawing it where the engine's GUI render sits -- before the world -- put it UNDER
+            // the world and it disappeared the moment the world started drawing.
+            // The same rule, the other side of the publish -- see the `live` arm above. The ONE
             // invariant both arms keep is "the 2D UI is drawn after the world frame it composites over"; what
             // the knob changes is which frame that is, because a pipelined draw is not finished yet.
-            CX.Ui.UiHostService.DrawWindowsForDbFrame();
-            RenderSnapshot.Release();
+            try { DrawGuiLayers(nui); }
+            finally { RenderSnapshot.Release(); }
         }
     }
 
@@ -143,6 +146,14 @@ internal static class SeamDraw
     /// matrices the snapshot recorded at the time of the request. Render thread (or the game thread on a
     /// stand-down).</summary>
     private static void DrawSnapshot(RenderSnapshot.Frame f)
+    {
+        int nui = DrawViews(f);
+        if (Renderer.On) FlushGui(nui);
+    }
+
+    /// <summary>The views of a frame, no GUI flush. Returns how many layers NUI had already recorded: they sit ahead
+    /// of the panels the views just captured, and <see cref="GuiCapture.Lead"/> needs the count.</summary>
+    private static int DrawViews(RenderSnapshot.Frame f)
     {
         // Once: whether the world view leads the list or trails it decides nothing here any more (the GUI
         // flush is at the end either way), but it is the fact every "my panel is behind the world" question
@@ -169,18 +180,35 @@ internal static class SeamDraw
         }
         if (say && sig != _orderSig) { _orderSig = sig; SayOrder(f); }
         SayWorldViews(f);
-        // CX-120 (gui): issue the frame's captured GUI layers HERE, after every view. GuiPass's own two flush
-        // sites are the engine's draw order -- nk_sdl_render inside CGuiMan::UpdateAndRender, and PrePresent
-        // priority 5 -- and both run BEFORE this boundary, so a panel captured here was issued at the NEXT
-        // frame's nk flush, i.e. before that frame's world pass composited the whole display over it. The
-        // panels were drawn every frame and overwritten every frame. Flushing at the end of the view list is
-        // also order-proof: whether the world view comes first or last, the GUI lands on top of it.
-        if (Renderer.On)
-        {
-            long tFlush = FrameZones.Now;
-            GuiCapture.Lead(nui); GuiPass.FlushNow();
-            FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
-        }
+        return nui;
+    }
+
+    /// <summary>Issue the frame's captured GUI layers, panels then NUI, after the view list. GuiPass's own flush sites
+    /// run before this boundary, so a panel captured here would be issued a frame late, under the next world pass.</summary>
+    private static void FlushGui(int nui)
+    {
+        long tFlush = FrameZones.Now;
+        GuiCapture.Lead(nui); GuiPass.FlushNow();
+        FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
+    }
+
+    /// <summary>The 2D layers on the game thread, in the engine's order with Alloy on as off: the panels, the
+    /// below-NUI windows, NUI, then the above-NUI windows. NUI and the panels are one captured bank, so the panel
+    /// layers are issued first and kept, the windows draw over them on the framebuffer, and NUI's layers close the
+    /// flush. Hot; allocates nothing.</summary>
+    private static void DrawGuiLayers(int nui)
+    {
+        long tFlush = FrameZones.Now;
+        int panels = GuiCapture.LayerN - nui;
+        GuiCapture.Lead(nui);
+        GuiPass.FlushLayers(panels);
+        PresentTarget.HandBackIfOwed();
+        FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
+        CX.Ui.UiHostService.DrawWindowsForDbFrame(CX.Ui.UiLayer.BelowNui);
+        tFlush = FrameZones.Now;
+        GuiPass.FlushNow();
+        FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
+        CX.Ui.UiHostService.DrawWindowsForDbFrame(CX.Ui.UiLayer.AboveNui);
     }
 
     /// <summary>One view, as <see cref="DbFeed.Draw"/>. Reached on the single-threaded path, where the

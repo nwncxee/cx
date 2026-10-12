@@ -41,6 +41,8 @@ const float T_EQUIP  = 26.0;   // CX-120: the armour swap, which rebuilds the PC
 const float T_STRIP  = 30.0;
 const float T_REWEAR = 34.0;
 const float T_AREA2  = 40.0;
+// A NUI window over the second area, so the window-layer shots have something to sit above and below.
+const float T_NUI    = 43.0;
 const float T_BACK   = 55.0;
 const float T_DONE   = 58.0;
 
@@ -326,6 +328,17 @@ void LadderJump(string sStep, object oPC, location lTo)
     AssignCommand(oPC, JumpToLocation(lTo));
 }
 
+/// A plain NUI window at a fixed spot (400, 260, 300x200), the one tools/live's layer shots are placed around.
+void LadderNui(object oPC)
+{
+    string sWin = "{\"type\":\"window\",\"version\":1,\"title\":\"cxladder nui\","
+        + "\"geometry\":{\"x\":400.0,\"y\":260.0,\"w\":300.0,\"h\":200.0},"
+        + "\"resizable\":false,\"collapsed\":false,\"closable\":false,\"transparent\":false,\"border\":true,"
+        + "\"root\":{\"type\":\"col\",\"children\":[{\"type\":\"label\",\"value\":\"NUI window\"}]}}";
+    json jWin = JsonParse(sWin);
+    Mark("nui " + IntToString(NuiCreate(oPC, jWin, "cxladder_nui")));
+}
+
 void LadderArea2(object oPC)
 {
     object oWp = GetWaypointByTag(WP_AREA2);
@@ -400,6 +413,7 @@ void LadderArm(object oPC, int nTry)
     DelayCommand(T_REWEAR, LadderTorso(oPC, 4));
     DelayCommand(T_REWEAR + 2.0, LadderCloakAudit(oPC, "reworn"));
     DelayCommand(T_AREA2,  LadderArea2(oPC));
+    DelayCommand(T_NUI,    LadderNui(oPC));
     // Back to the location the PC joined at: a second transition, and a known-good spot.
     DelayCommand(T_BACK,   LadderJump("area1", oPC, lStart));
     DelayCommand(T_DONE,   LadderDone(oPC));

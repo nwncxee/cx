@@ -210,7 +210,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     break;
                 }
                 case SdlMouseWheel:
-                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true)) return 0;
+                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true, PointerX(), PointerY())) return 0;
                     if (NuiHovered() || (VanillaGuiAt(GuiWheelMask) != IntPtr.Zero && !MenuWindowUnderPointer())) break;   // ...and the scroll
                     if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
                     break;
@@ -259,7 +259,7 @@ public sealed unsafe class UiInputService : IExtenderService
     }
 
     // ---- environmental probes -------------------------------------------------------------------
-    /// <summary>True while the pointer is over a NUI window. Those draw ON TOP of our windows, so they take the press
+    /// <summary>True while the pointer is over a NUI window. Those draw ON TOP of our below-NUI windows, so they take the press
     /// and the wheel; without this a NUI window dragged over the chatbox would look on top and still lose every click
     /// to it. Only the acquisition edges consult it -- motion and button-up stay unconditional, so a drag started on
     /// our window still finishes across a NUI one. State is nuklear's from the frame just drawn: one frame of lag.</summary>
@@ -286,6 +286,11 @@ public sealed unsafe class UiInputService : IExtenderService
     /// <summary>The two surfaces the gear and the settings panel stand on: the main menu and the in-game Options panel.</summary>
     private static bool GearSurface => GameGate.AtMainMenu || GameGate.OptionsOpen;
 
+    /// <summary>SDL's pointer, for the wheel event that has none.</summary>
+    private static float PointerX() { int x = 0, y = 0; if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&x, &y); return x; }
+    /// <inheritdoc cref="PointerX"/>
+    private static float PointerY() { int x = 0, y = 0; if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&x, &y); return y; }
+
     /// <summary>The wheel event carries no position: the same exemption at SDL's pointer.</summary>
     private static bool MenuWindowUnderPointer()
     {
@@ -310,8 +315,8 @@ public sealed unsafe class UiInputService : IExtenderService
     /// <summary>True while the app has window focus (the engine's focus-gain/lost edges).</summary>
     internal static bool AppFocused => _focused;
 
-    /// <summary>True when a shown NUI window covers the point (SDL window pixels) -- it draws over our windows there.
-    /// Linux only: nwmain.exe exports no nuklear, so on Windows this is always false.</summary>
+    /// <summary>True when a shown NUI window covers the point (SDL window pixels) -- it draws over our below-NUI
+    /// windows there. The context is anchored on both OSes; the window-list offsets are read off the Linux build.</summary>
     internal static bool NuiCovers(float x, float y)
     {
         if (_nuklearGlobal == IntPtr.Zero) return false;

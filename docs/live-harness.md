@@ -22,7 +22,8 @@ running). It works from any worktree: it runs the `cx-linux-x64/` staged next to
 its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one:
 `glxinfo` inside it reports `OpenGL core profile version string: 4.6.0 NVIDIA`, which is what Alloy
 needs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
-log (`Starting Xwayland on :N`) -- there is no flag to pin it.
+log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either: the harness
+sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it.
 
 **Nothing of the user's is touched.** `$OUT/home` is a throwaway HOME and
 `$OUT/home/.local/share/Neverwinter Nights` a throwaway user directory, passed to the client as
@@ -99,6 +100,7 @@ constants at the top of `tools/live/ladder/cxladder.nss` -- change them there, n
 | 9 s | a `nw_innkeeper` is created in front of the PC and opens the module's own 2-node `.dlg` | `CXLADDER: talk` |
 | 16 s | the talker is destroyed (which drops the dialogue UI), three hostile `nw_goblina` spawn, `ActionAttack` | `CXLADDER: combat`, then `combat-result N/3 down` |
 | 30 s | `JumpToLocation` to the second area's stock respawn waypoint -- a real transition with a loading screen | `CXLADDER: area2 <area>` |
+| 43 s | a plain NUI window opens at (400, 260), 300x200, for the window-layer shots | `CXLADDER: nui` |
 | 45 s | `JumpToLocation` back to where the PC joined -- the second transition | `CXLADDER: area1` |
 | 48 s | the ladder is finished | `CXLADDER: done in <area>` |
 
@@ -151,6 +153,12 @@ for the transition) and the walkable ground the coordinates are taken from; the 
 
 `--seconds` below 60 is raised to 60, because the ladder's last rung is at t+48 and a shorter soak
 would grade rungs the run never reached.
+
+## Window layers
+
+`--cfg 'ui.layerprobe=1'` with `--ladder` draws a red rectangle on the below-NUI layer and a cyan one on the above-NUI
+layer, placed over the rung's NUI window. `07n-nui*.png` shows the order: the red one hides under the NUI window and the
+cyan one sits over it. Run it with and without `--cfg 'alloy.enabled=0'`; both must look the same.
 
 ## Limits
 

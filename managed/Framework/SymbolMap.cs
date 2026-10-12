@@ -362,15 +362,15 @@ internal static unsafe class SymbolMap
     [Fn("void(CExoMoviePlayerInternal this, int frameW, int frameH, int texW, int texH)")]
     public const string MovieShowFrame = "_ZN23CExoMoviePlayerInternal9ShowFrameEiiii";
     // The SDL glue of the client's nuklear is C++-linkage on this build (mangled), so nk_sdl_render
-    // must use its mangled name or the hook never installs. Nothing nuklear is anchored on Windows.
+    // must use its mangled name or the hook never installs. Windows anchors it by RVA (Framework/Builds).
     /// <summary>Nuklear's GL flush, called from <c>CGuiMan::UpdateAndRender</c> @0x5809fa straight after
-    /// <c>Nui__Render()</c> (which only fills the command queue and touches no GL). Everything drawn before
-    /// it lands UNDER every NUI window and over the vanilla GUI panels -- which is where the framework's own
-    /// windows draw (<c>UiHostService</c>), not just where nuklear windows get built.</summary>
+    /// <c>Nui__Render()</c> (which only fills the command queue and touches no GL). With Alloy off, what is
+    /// drawn before it lands under every NUI window and over the vanilla GUI panels, and what is drawn after
+    /// it lands over NUI: the two window layers of <c>UiHostService</c>.</summary>
     [Fn("void(float aa)")]
     public const string NkSdlRender        = "_Z13nk_sdl_renderf";
     /// <summary><c>int nk_window_is_any_hovered(nk_context*)</c> -- pointer precedence for the layering
-    /// above. NUI draws on top of our windows, so it must get the click too.</summary>
+    /// above. NUI draws over our below-NUI windows, so it must get the click too.</summary>
     [Fn("int(IntPtr ctx)")]
     public const string NkWindowIsAnyHovered = "nk_window_is_any_hovered";
     /// <summary><c>void nk_sdl_copy_event(SDL_Event*)</c> -- nuklear's own event feed, normally reached via
@@ -513,7 +513,7 @@ internal static unsafe class SymbolMap
     /// converts and clears through it.</summary>
     public const string Nuklear    = "g_pNuklear";
     // ---- nuklear's flush, drawn by Alloy. All three take pointers and ints only, so ONE declaration
-    //      fits both ABIs -- none of native-gui-skinning.md §5.3's by-value nk_rect hazard is on this path.
+    //      fits both ABIs -- a by-value nk_rect would need one per ABI, and none is on this path.
     //      docs/windows-symbols.md records where every address was read.
     /// <summary><c>nk_sdl_refresh_config()</c> @0xe066a0 (Windows rva 0xa70d90) -- the skin/font reload edge.
     /// Early-outs on a clear dirty byte at <c>g_pNuklearConfig</c>, so calling it every frame is free.</summary>
