@@ -293,7 +293,6 @@ global using unsafe DataBlockFromBase64Fn = delegate* unmanaged<nint, nint, nint
 global using unsafe NwcCreateItemFn = delegate* unmanaged<nint, uint, ushort*, byte*, byte*, sbyte, byte, nint, nint>;
 global using unsafe NwcCreatureCtorFn = delegate* unmanaged<nint, nint>;
 global using unsafe NwcCreatureSetAppearanceFn = delegate* unmanaged<nint, nint, byte, int>;
-global using unsafe ObjSetAlphaFn = delegate* unmanaged<nint, float, byte, void>;
 global using unsafe ObjSetFadeStateFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe GetGameObjectArrayFn = delegate* unmanaged<nint, nint>;
 global using unsafe GetClientAIMasterFn = delegate* unmanaged<nint, nint>;
@@ -5433,10 +5432,6 @@ public static unsafe class EngineFn
     private static bool _NwcCreatureSetAppearanceDone;
     /// <inheritdoc cref="SymbolMap.NwcCreatureSetAppearance"/>
     public static NwcCreatureSetAppearanceFn NwcCreatureSetAppearance => (NwcCreatureSetAppearanceFn)(_NwcCreatureSetAppearanceDone ? _NwcCreatureSetAppearance : Resolve(ref _NwcCreatureSetAppearance, ref _NwcCreatureSetAppearanceDone, SymbolMap.NwcCreatureSetAppearance));
-    private static IntPtr _ObjSetAlpha;
-    private static bool _ObjSetAlphaDone;
-    /// <inheritdoc cref="SymbolMap.ObjSetAlpha"/>
-    public static ObjSetAlphaFn ObjSetAlpha => (ObjSetAlphaFn)(_ObjSetAlphaDone ? _ObjSetAlpha : Resolve(ref _ObjSetAlpha, ref _ObjSetAlphaDone, SymbolMap.ObjSetAlpha));
     private static IntPtr _ObjSetFadeState;
     private static bool _ObjSetFadeStateDone;
     /// <inheritdoc cref="SymbolMap.ObjSetFadeState"/>
@@ -7862,12 +7857,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NwcCreatureSetAppearance"/>; returns the slot holding the next layer, or null.</summary>
     public static NwcCreatureSetAppearanceFn* ChainNwcCreatureSetAppearance(this HookService h, NwcCreatureSetAppearanceFn handler, int priority) =>
         (NwcCreatureSetAppearanceFn*)h.Chain(SymbolMap.NwcCreatureSetAppearance, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.ObjSetAlpha"/>; returns the original, or null.</summary>
-    public static ObjSetAlphaFn InstallObjSetAlpha(this HookService h, ObjSetAlphaFn handler) =>
-        (ObjSetAlphaFn)h.Install(SymbolMap.ObjSetAlpha, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.ObjSetAlpha"/>; returns the slot holding the next layer, or null.</summary>
-    public static ObjSetAlphaFn* ChainObjSetAlpha(this HookService h, ObjSetAlphaFn handler, int priority) =>
-        (ObjSetAlphaFn*)h.Chain(SymbolMap.ObjSetAlpha, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ObjSetFadeState"/>; returns the original, or null.</summary>
     public static ObjSetFadeStateFn InstallObjSetFadeState(this HookService h, ObjSetFadeStateFn handler) =>
         (ObjSetFadeStateFn)h.Install(SymbolMap.ObjSetFadeState, (IntPtr)handler);

@@ -58,6 +58,7 @@ internal static unsafe class NuiModelView
         Capabilities.Register("modelview", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
+        NuiModelEngine.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PrePresent, 1, Frame, "NuiModelView.frame", log);
     }
 
@@ -160,11 +161,11 @@ internal static unsafe class NuiModelView
         {
             if (!NuiModelDoll.Build(who, 0, 0, v.W, v.H, v.Anim)) return;
             v.Built = true;
-            NuiModelDoll.SetTarget(tex);
+            NuiModelDoll.SetTarget(tex, v.W, v.H);
             ApplyCamera(v);
             s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
         }
-        else if (v.Target != tex) NuiModelDoll.SetTarget(tex);
+        else if (v.Target != tex) NuiModelDoll.SetTarget(tex, v.W, v.H);
         v.Target = tex;
         if (NuiModelDoll.Rendered) v.WasRendered = true;
     }
@@ -243,14 +244,13 @@ internal static unsafe class NuiModelView
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)prev);
     }
 
-    /// <summary><c>nui.modelprobe=x,y,w,h[,angle,dist,height,yaw,ai,fade]</c>: a doll of you straight on the screen, for trying
+    /// <summary><c>nui.modelprobe=x,y,w,h[,angle,dist,height,yaw,ai]</c>: a doll of you straight on the screen, for trying
     /// placements with no window. Debug only.</summary>
     private static void Probe(ViewState s, string spec)
     {
         s.Applied = spec;
         string[] t = spec.Split(',');
         float F(int i, float d) => i < t.Length && float.TryParse(t[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : d;
-        NuiModelDoll.SetFadeMode((int)F(9, 1));
         IntPtr me = NuiModelDoll.Player();
         if (me == IntPtr.Zero) { s.Log?.Always("NuiModelView: probe -- no player creature"); return; }
         if (NuiModelDoll.Doll.Creature == IntPtr.Zero

@@ -1277,3 +1277,4 @@ offset	CAurCamera	vtbl.SetClipDist	0x88	0x80	# CameraSetClipDistSlot
 # NkImage: Load puts a movie player's texture at +0x50 and sets +0x3c to 1, and GetImage returns the nk_image while both hold (Linux Ghidra 0xf1c800; Windows rva 0xa93db0, same layout).
 offset	NkImage	glTexture	0x50	0x50	# NkImageGlTexture
 offset	NkImage	frames	0x3c	0x3c	# NkImageFrames
+rva	_ZN10CNWCObject12SetFadeStateEh	0x765c80	# ObjSetFadeState

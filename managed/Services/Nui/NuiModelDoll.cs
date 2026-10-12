@@ -38,11 +38,11 @@ internal static unsafe class NuiModelDoll
     {
         public ExtenderLog? Log;
         public IntPtr AppMgr;
-        public int FadeMode = 1;
         public long NextReport;
         /// <summary>The GL texture the view's layer is drawn into (0 = the screen), its background colour, and whether a
         /// frame has landed in it since the doll was built.</summary>
         public uint TargetTex;
+        public int TargetW, TargetH;
         public readonly float[] Bg = new float[4];
         public bool Rendered;
         public DollState Doll = new();
@@ -51,10 +51,10 @@ internal static unsafe class NuiModelDoll
     private static readonly DollOwnerState _o = new();
 
     internal static DollState Doll => _o.Doll;
-    internal static void SetFadeMode(int m) => _o.FadeMode = m;
     /// <summary>The texture the view's layer draws into, or 0 to draw to the screen (the probe).</summary>
     internal static uint Redirect => _o.TargetTex;
-    internal static void SetTarget(uint tex) => _o.TargetTex = tex;
+    internal static void SetTarget(uint tex, int w, int h) { _o.TargetTex = tex; _o.TargetW = w; _o.TargetH = h; }
+    internal static bool TargetSize(out int w, out int h) { w = _o.TargetW; h = _o.TargetH; return w > 0 && h > 0; }
     /// <summary>The layer was drawn into the target: the doll's first frame has landed.</summary>
     internal static void MarkRendered() => _o.Rendered = true;
     internal static bool Rendered => _o.Rendered;
@@ -142,8 +142,6 @@ internal static unsafe class NuiModelDoll
             return false;
         }
         d.Model = new CNWCCreature(mem).GetModel(0xff, 1);
-        if (_o.FadeMode != 0) EngineFn.ObjSetFadeState(mem, 1);
-        if (_o.FadeMode != 0) EngineFn.ObjSetAlpha(mem, 1f, 1);
         if (d.Model != IntPtr.Zero) Opaque(d.Model);
         byte* name = stackalloc byte[ViewName.Length + 1];
         for (int i = 0; i < ViewName.Length; i++) name[i] = (byte)ViewName[i];
@@ -234,14 +232,14 @@ internal static unsafe class NuiModelDoll
 
     /// <summary>The creature's fade bytes and the model's colour-shift alpha, for working out why it is hidden.</summary>
     private const int FA = 0xa8, FB = 0xa9, FC = 0xb0, FD = 0xf4, FE = 0x104, FF = 0x108, FG = 0xf6;   // not-an-offset: throwaway probe of the creature fade bytes
-    /// <summary>Per frame: the creature's own AI turns its fade off again (it is in no area), so the doll is shown again
-    /// whenever the model's alpha has dropped.</summary>
+    /// <summary>Per frame: the creature's own AI fades it out again (it is in no area), so the colour shift is put back to
+    /// opaque white whenever the model's alpha has dropped.</summary>
     internal static void KeepShown()
     {
         DollState d = _o.Doll;
-        if (d.Creature == IntPtr.Zero || d.Model == IntPtr.Zero || *(float*)(d.Model + FF) >= 1f) return;
-        if (_o.FadeMode != 0) EngineFn.ObjSetFadeState(d.Creature, 1);
-        Opaque(d.Model);
+        if (d.Creature == IntPtr.Zero || d.Model == IntPtr.Zero) return;
+        if (new CNWCObject(d.Creature).Visible != 1) EngineFn.ObjSetFadeState(d.Creature, 1);
+        if (*(float*)(d.Model + FF) < 1f) Opaque(d.Model);
     }
 
     internal static void Report(string line)
