@@ -46,6 +46,8 @@ internal static class DbSelfCheck
             check.Expect(ArenaDedup(), "mesh arena: two objects over one mesh are ONE range with two references, and the last release frees it at the frame edge");
             check.Expect(CompactRestage(), "a compaction tells the draw side exactly which ranges moved, and a record staged before it no longer holds the old base vertex or index offset");
             check.Expect(ArenaCompact(), "mesh arena: a compaction slides the live ranges down and rebases their index runs");
+            check.Expect(ArenaStreams(), "mesh arena: the packed tangent and paint words round-trip, sit last in both formats, and land at the locations the lit vertex stage declares");
+            check.Expect(ArenaStreamIdentity(), "mesh arena: two meshes that differ only in their tangent frame or their paint are different content, so they get ranges of their own");
             check.Expect(Claimed(), "DbTable.Claim/Unclaim: every part of a live range is a LIVE table slot with a generation, and a freed range's handles are dead");
             check.Expect(OneAllocator(), "the part index space has ONE allocator: single-slot Alloc and range AllocRange never hand out the same index, in boot order (fixtures first, trees after)");
             check.Expect(Recycled(), "a recycled chunk inherits nothing: the feed's columns are re-seeded and a stale MeshDef shortcut cannot name a foreign range");
@@ -55,6 +57,7 @@ internal static class DbSelfCheck
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
+            check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
         }
         finally
         {
@@ -511,6 +514,85 @@ internal static class DbSelfCheck
         return MeshArena.MeshCount == 0 && !MeshArena.Runs(ra, 0, out _, out _, out _, out _);
     }
 
+    /// <summary>The arena's two packed streams. Three independent oracles: <c>GL_INT_2_10_10_10_REV</c> words
+    /// written out BY HAND from the field order in the GL spec, hand-written byte offsets and strides, and
+    /// the embedded lit vertex stage's own text for the attribute locations the VAO binds.</summary>
+    private static bool ArenaStreams()
+    {
+        // the packing. 0x400001FF is (+x, handedness +1): x lane 511, y and z 0, w lane 1 in bits 30..31.
+        if (MeshArena.PackTangent(new Vector4(1f, 0f, 0f, 1f)) != 0x400001FFu) return false;
+        // ...and 0xE0100000 is (-z, handedness -1): z lane -511 as 0x201 at bit 20, w lane -1 as 3.
+        if (MeshArena.PackTangent(new Vector4(0f, 0f, -1f, -1f)) != 0xE0100000u) return false;
+        if (MeshArena.PackTangent(Vector4.Zero) != 0u) return false;   // "no frame": the derivative fallback
+        Vector4 a = MeshArena.UnpackTangent(0x400001FFu);
+        if (MathF.Abs(a.X - 1f) > 1e-3f || MathF.Abs(a.Y) > 1e-3f || MathF.Abs(a.Z) > 1e-3f || a.W != 1f) return false;
+        Vector4 b = MeshArena.UnpackTangent(0xE0100000u);
+        if (MathF.Abs(b.Z + 1f) > 1e-3f || MathF.Abs(b.X) > 1e-3f || b.W != -1f) return false;
+        if (MeshArena.UnpackTangent(0u) != Vector4.Zero) return false;
+
+        // the layout: both words LAST, so the bone slots and weights keep offsets 40 and 44
+        if (MeshArena.StrideBytes(MeshArena.Fmt.Static) != 48) return false;
+        if (MeshArena.StrideBytes(MeshArena.Fmt.Skinned) != 68) return false;
+        if (MeshArena.TanWord(MeshArena.Fmt.Static) * 4 != 40 || MeshArena.PaintWord(MeshArena.Fmt.Static) * 4 != 44) return false;
+        if (MeshArena.TanWord(MeshArena.Fmt.Skinned) * 4 != 60 || MeshArena.PaintWord(MeshArena.Fmt.Skinned) * 4 != 64) return false;
+
+        // ...and the locations the lit vertex stage declares, read off the embedded GLSL
+        string vs = AlloyRenderer.OwnedLitVs;
+        if (!vs.Contains($"layout(location = {AlloyRenderer.LocTangent}) in vec4 aTangent;")) return false;
+        if (!vs.Contains($"layout(location = {AlloyRenderer.LocPaint}) in vec4 aPaint;")) return false;
+
+        // ...and what actually reached the mirror, for a mesh that carries both and one that carries neither
+        Reset();
+        MeshDef painted = Quad("tan");
+        painted.Tangents = new[] { new Vector4(1f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 1f),
+                                   new Vector4(0f, 0f, -1f, -1f), new Vector4(0f, 0f, -1f, -1f) };
+        painted.Colors = new[] { 0xFF4080C0u, 0xFF4080C0u, 0xFF4080C0u, 0xFF4080C0u };
+        int r = MeshArena.Acquire(painted);
+        int bare = MeshArena.Acquire(Quad("bare", 3f));
+        bool ok = r >= 0 && bare >= 0
+               && MeshArena.StreamProbe(r, 0, out uint t0, out uint p0) && t0 == 0x400001FFu && p0 == 0xFF4080C0u
+               && MeshArena.StreamProbe(r, 2, out uint t2, out _) && t2 == 0xE0100000u
+               && MeshArena.StreamProbe(bare, 0, out uint tb, out uint pb) && tb == 0u && pb == 0xFFFFFFFFu;
+        if (r >= 0) MeshArena.Release(r);
+        if (bare >= 0) MeshArena.Release(bare);
+        MeshArena.FrameEdgeForCheck();
+        return ok;
+    }
+
+    /// <summary>The packed words are part of the arena's CONTENT identity, so a mesh that differs only in
+    /// them cannot be collapsed onto another's range. Oracle: the hand-counted range tally.</summary>
+    private static bool ArenaStreamIdentity()
+    {
+        Reset();
+        MeshDef plain = Quad("id");
+        MeshDef tangents = Quad("id");
+        tangents.Tangents = new[] { new Vector4(1f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 1f),
+                                    new Vector4(1f, 0f, 0f, 1f), new Vector4(1f, 0f, 0f, 1f) };
+        MeshDef painted = Quad("id");
+        painted.Colors = new[] { 0xFF102030u, 0xFF102030u, 0xFF102030u, 0xFF102030u };
+        // ...and two that differ only in the VALUES, not in whether the stream is there at all: the presence
+        // bit alone would collapse these onto the pair above.
+        MeshDef turned = Quad("id");
+        turned.Tangents = new[] { new Vector4(0f, 1f, 0f, 1f), new Vector4(0f, 1f, 0f, 1f),
+                                  new Vector4(0f, 1f, 0f, 1f), new Vector4(0f, 1f, 0f, 1f) };
+        MeshDef repainted = Quad("id");
+        repainted.Colors = new[] { 0xFF405060u, 0xFF405060u, 0xFF405060u, 0xFF405060u };
+        int[] r =
+        {
+            MeshArena.Acquire(plain), MeshArena.Acquire(tangents), MeshArena.Acquire(painted),
+            MeshArena.Acquire(turned), MeshArena.Acquire(repainted),
+        };
+        bool ok = MeshArena.MeshCount == r.Length;
+        for (int i = 0; i < r.Length; i++)
+        {
+            ok &= r[i] >= 0;
+            for (int j = i + 1; j < r.Length; j++) ok &= r[i] != r[j];
+        }
+        foreach (int id in r) if (id >= 0) MeshArena.Release(id);
+        MeshArena.FrameEdgeForCheck();
+        return ok;
+    }
+
     /// <summary>The compaction: the live ranges slide down and their index runs come with them.</summary>
     private static bool ArenaCompact()
     {
@@ -801,5 +883,34 @@ internal static class DbSelfCheck
         int f = SceneDb.ObjPartFirst[o.Index];
         return SceneDb.PartMtr[f] != null && SceneDb.PartTexName(f, 0) == "stone_d"
                && SceneDb.PartTexName(f, 1) == "stone_n" && SceneDb.PartMtl[f].RenderHint == 2;
+    }
+
+    /// <summary>A recipe interned while its mesh's <c>.mtr</c> was unreadable: the coverage mode cannot be
+    /// known yet, and only the material's own landing edge can supply it -- no texture serial moves for it.
+    /// Oracle: the mode is a hand-written <c>.mtr</c> text and the expected flag is written out, not read
+    /// back off the recipe.</summary>
+    private static bool LateCoverage()
+    {
+        const string text = "bitmap cov_d\nparameter int NWN_ALPHA_MODE 2\n";
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;   // the parse asked and the feed had not read it yet
+        MeshDef mesh = Quad("cov_tex");
+        mesh.MaterialName = "cx_selfcheck_cov";
+        var model = Model("cx_selfcheck_cov", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        int r = DrawRecipe.Intern(model, 1, plan: false);
+        bool ok = r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.Coverage) == 0;
+        // ...and the read lands. Reclassify is the one re-ask, and it must report the move so the records
+        // of every part on this recipe are rewritten.
+        MtrDef.Bytes = n => n == "cx_selfcheck_cov" ? Encoding.ASCII.GetBytes(text) : null;
+        DrawRecipe.MaterialLanded();
+        ok &= DrawRecipe.Reclassify() > 0;
+        ok &= r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.Coverage) != 0
+                     && DrawRecipe.Cls(r) == (int)AlloyClass.Cutout;
+        DrawRecipe.Forget(model);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
+        return ok;
     }
 }

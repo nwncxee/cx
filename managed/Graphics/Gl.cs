@@ -43,6 +43,9 @@ public static unsafe class Gl
     public const uint TRIANGLE_STRIP = 0x0005;
     public const uint TRIANGLES = 0x0004, FLOAT = 0x1406, UNSIGNED_BYTE = 0x1401, FALSE = 0;
     public const uint BYTE = 0x1400, SHORT = 0x1402;
+    /// <summary>The packed signed 10/10/10/2 vertex type: one 32-bit word, x in the low ten bits and the
+    /// 2-bit lane in the top two. Normalized, a lane reads back as <c>c / (2^(bits-1) - 1)</c>.</summary>
+    public const uint INT_2_10_10_10_REV = 0x8D9F;
     public const uint ARRAY_BUFFER = 0x8892, STATIC_DRAW = 0x88E4, DYNAMIC_DRAW = 0x88E8;
     /// <summary>The two scratch targets glCopyBufferSubData copies between, and the size query that
     /// says how much. Copy targets exist so a buffer can be read and written without disturbing whatever the

@@ -62,7 +62,8 @@ public static unsafe partial class MeshArena
     /// indices come back as they are and the caller needs no remap. Spans must be at least the sizes
     /// <see cref="HostMeshSize"/> gave, for the same range, nothing freed in between -- both calls take the lock,
     /// and a range that died between them answers false. Cold: once per mesh per session.</summary>
-    internal static bool HostMeshCopy(int range, Span<float> pos, Span<float> nrm, Span<float> uv, Span<ushort> idx)
+    internal static bool HostMeshCopy(int range, Span<float> pos, Span<float> nrm, Span<float> uv,
+                                      Span<uint> tangent, Span<uint> paint, Span<ushort> idx)
     {
         lock (_gate)
         {
@@ -71,15 +72,21 @@ public static unsafe partial class MeshArena
             if (r.Charted || r.Format != Fmt.Static || r.Cnt0 < 3 || r.NV <= 0) return false;
             Section s = _sect[(int)Fmt.Static];
             int stride = StrideOf[(int)Fmt.Static];
+            int tanWord = TanWord(Fmt.Static), paintWord = PaintWord(Fmt.Static);
             long at = (long)r.Off0 / 2;
             if ((long)(r.Base + r.NV) * stride > s.Mirror.Length || at + r.Cnt0 > _iUsed) return false;
             if (pos.Length < r.NV * 3 || nrm.Length < r.NV * 3 || uv.Length < r.NV * 2 || idx.Length < r.Cnt0) return false;
+            if (tangent.Length < r.NV || paint.Length < r.NV) return false;
             for (int v = 0; v < r.NV; v++)
             {
                 int o = (r.Base + v) * stride;
                 pos[v * 3] = s.Mirror[o]; pos[v * 3 + 1] = s.Mirror[o + 1]; pos[v * 3 + 2] = s.Mirror[o + 2];
                 nrm[v * 3] = s.Mirror[o + 3]; nrm[v * 3 + 1] = s.Mirror[o + 4]; nrm[v * 3 + 2] = s.Mirror[o + 5];
                 uv[v * 2] = s.Mirror[o + 6]; uv[v * 2 + 1] = s.Mirror[o + 7];
+                // The packed words ride through the chart untouched: a chart SPLITS vertices and adds a UV
+                // set, so a charted vertex's tangent and paint are its source vertex's.
+                tangent[v] = BitConverter.SingleToUInt32Bits(s.Mirror[o + tanWord]);
+                paint[v] = BitConverter.SingleToUInt32Bits(s.Mirror[o + paintWord]);
             }
             for (long k = 0; k < r.Cnt0; k++)
             {
