@@ -41,6 +41,7 @@ BOOT_TIMEOUT=180
 MIN_LIT=5
 WIDTH=1280
 HEIGHT=720
+UI_SCALE=""
 OUT=""
 KEYS=""
 KEEP=0
@@ -63,6 +64,8 @@ while [ $# -gt 0 ]; do
         # Close the ladder's NUI window N seconds into the session (it stays open otherwise), so 07n-nui*.png catch a fade out.
         --nui-close)     NUI_CLOSE="$2"; shift 2 ;;
         --nui)           MODULE="cxnui"; NUI_MODULE=1; shift ;;
+        # The client's UI scale (settings.tml ui.scale, 1.0 to 8.0), for a run that checks a layout at another scale.
+        --ui-scale)      UI_SCALE="$2"; shift 2 ;;
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
         --menu)          MENU=1; shift ;;
@@ -162,13 +165,14 @@ if [ -n "$SAVES_DIR" ]; then
     echo "run-live: saves      $(find "$USER_DIR/saves" -mindepth 1 -maxdepth 1 -type d | wc -l) from $SAVES_DIR"
 fi
 
-python3 - "$USER_DIR/settings.tml" "$WIDTH" "$HEIGHT" "${SECOND_STORY:-}" <<'PY'
+python3 - "$USER_DIR/settings.tml" "$WIDTH" "$HEIGHT" "${SECOND_STORY:-}" "${UI_SCALE:-}" <<'PY'
 # Windowed at the harness size, no intro movies, no vsync (we want frames as fast as the GPU gives
 # them, and a headless gamescope has no refresh to sync to). Written as a whole-table rewrite so the
 # shape of the user's file does not matter.
 import re, sys
 path, w, h = sys.argv[1], sys.argv[2], sys.argv[3]
 ss = sys.argv[4] if len(sys.argv) > 4 else ""
+ui_scale = sys.argv[5] if len(sys.argv) > 5 else ""
 try:
     t = open(path).read()
 except FileNotFoundError:
@@ -199,7 +203,7 @@ for table, key, value in [
     ("\t\t[graphics.movies.intro]", "enabled", "false"),
     ("\t\t[graphics.intro.splash]", "enabled", "false"),
     ("\t[masterserver]", "enabled", "false"),
-] + ([("\t[graphics.second-story-tiles]", "mode", ss)] if ss else []):
+] + ([("\t[graphics.second-story-tiles]", "mode", ss)] if ss else []) + ([("[ui]", "scale", ui_scale), ("[ui]", "unconstrain-scale", "true")] if ui_scale else []):
     t = put(table, key, value, t)
 open(path, "w").write(t)
 PY
