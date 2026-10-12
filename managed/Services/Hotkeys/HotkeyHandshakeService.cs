@@ -7,8 +7,8 @@ namespace CX.Services.Hotkeys;
 /// <summary>
 /// Announces the extender to the server on login via NWN:EE's own capability channel
 /// (SendPlayerToServerDeviceAdvertiseProperty), then sends the abuse-report contact as an ASCII device
-/// message. A vanilla client never advertises, so the server treats it as un-extended. Advertises ONLY
-/// CX_ENABLED=1, never the armed key list (consent is per-server); the master gates actions, not this.
+/// message. A vanilla client never advertises, so the server treats it as un-extended. Advertises
+/// CX_ENABLED=1, the version and the live capabilities (<see cref="Capabilities"/>), never the armed key list (consent is per-server); the master gates actions, not this.
 /// </summary>
 public sealed unsafe class HotkeyHandshakeService : IExtenderService
 {
@@ -18,6 +18,7 @@ public sealed unsafe class HotkeyHandshakeService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
+        Capabilities.SelfCheck(log);
         if (!SymbolMap.Require(log, "HotkeyHandshakeService", HotkeyProtocol.RequiredSymbols)) return;
         _loginOrig = hooks.InstallHandleServerToPlayerLogin(&OnLogin);
     }
@@ -43,12 +44,14 @@ public sealed unsafe class HotkeyHandshakeService : IExtenderService
     {
         if (EngineFn.SendDeviceAdvertiseProperty == null) return;
         Adv(msg, "CX_ENABLED", 1);
+        Capabilities.Advertise((n, v) => Adv(ClientApi.LiveMessage, n, v));
         ClientApi.SendAscii(HotkeyProtocol.AbuseContactMajor, HotkeyProtocol.AbuseContactMinor, HotkeyProtocol.AbuseContact);
         _log?.Info("Handshake: advertised extender + abuse contact (no key list -- consent is per-server via token)");
     }
 
     private static void Adv(IntPtr msg, string name, int value)
     {
+        if (msg == IntPtr.Zero || EngineFn.SendDeviceAdvertiseProperty == null) return;
         IntPtr s = Native.NewExoString(name);
         EngineFn.SendDeviceAdvertiseProperty(msg, s, value);
         Native.FreeExoString(s);

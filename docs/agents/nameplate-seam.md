@@ -1067,7 +1067,7 @@ The log is `$HOME/cx.log`. Strings to grep:
 | grep | means |
 |---|---|
 | `first frame presented -- hook is LIVE` | `UiHostService` owns the present |
-| `window roll-call runs below NUI` | your `DrawContent` is being called under NUI |
+| `window roll-call straddles NUI` | your `DrawContent` is called by `Layer`: below NUI before nuklear's flush, above NUI after it (Alloy on: around NUI's captured layers) |
 | `TextRig: atlas ready` / `atlas uploaded as GL tex` | fonts are up |
 | `[uigate] win=... -> inGame=True inModule=True` | you're in a module and the gate is open |
 | `SelfCheck: passed` / `FAILED` | your logic checks |

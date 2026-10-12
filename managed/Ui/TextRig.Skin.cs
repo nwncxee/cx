@@ -4,8 +4,8 @@ namespace CX.Ui;
 
 public static unsafe partial class TextRig
 {
-    /// <summary>Skin program (native-gui-skinning §4.2a): the icon program keeps texture alpha but drops the vertex
-    /// colour, so it cannot tint; this one multiplies both, and the batch alpha.</summary>
+    /// <summary>Skin program: the icon program keeps texture alpha but drops the vertex colour, so it cannot tint;
+    /// this one multiplies both, and the batch alpha.</summary>
     private static uint _progSkin;
     private static int _uProjSkin, _uTexSkin, _uAlphaSkin;
     private static bool _progSkinUp;

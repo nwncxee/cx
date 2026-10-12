@@ -88,6 +88,7 @@ global using unsafe NkSdlRenderFn = delegate* unmanaged<float, void>;
 global using unsafe NkWindowIsAnyHoveredFn = delegate* unmanaged<nint, int>;
 global using unsafe NkSdlCopyEventFn = delegate* unmanaged<nint, void>;
 global using unsafe NuiWidgetRenderFn = delegate* unmanaged<nint, nint, void>;
+global using unsafe NuiJsonWindowRenderFn = delegate* unmanaged<nint, void>;
 global using unsafe GetModuleFn = delegate* unmanaged<nint, nint>;
 global using unsafe SetChatBubbleModeFn = delegate* unmanaged<int, void>;
 global using unsafe CreatureShowFeedbackBubbleTextFn = delegate* unmanaged<nint, void>;
@@ -3186,6 +3187,39 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public ref int DrawCmdCount => ref *(int*)(Ptr + EngineLayout.NkCtxDrawCmdCount);
     /// <inheritdoc cref="EngineLayout.NkCtxDrawCmdOffset"/>
     public ref long DrawCmdOffset => ref *(long*)(Ptr + EngineLayout.NkCtxDrawCmdOffset);
+    /// <inheritdoc cref="EngineLayout.NkCtxMemAllocated"/>
+    public ref ulong MemAllocated => ref *(ulong*)(Ptr + EngineLayout.NkCtxMemAllocated);
+    /// <inheritdoc cref="EngineLayout.NkCtxMemPtr"/>
+    public ref IntPtr MemPtr => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxMemPtr);
+    /// <inheritdoc cref="EngineLayout.NkCtxSeq"/>
+    public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkCtxSeq);
+    /// <inheritdoc cref="EngineLayout.NkCtxWindowBegin"/>
+    public ref IntPtr WindowBegin => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxWindowBegin);
+}
+
+/// <summary>Typed view of an engine <c>NkWindow*</c>.</summary>
+public readonly unsafe partial struct NkWindow(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkWinBounds"/>
+    public Span<float> Bounds { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkWinBounds), 4); }
+    /// <inheritdoc cref="EngineLayout.NkWinBufBegin"/>
+    public ref ulong BufBegin => ref *(ulong*)(Ptr + EngineLayout.NkWinBufBegin);
+    /// <inheritdoc cref="EngineLayout.NkWinBufEnd"/>
+    public ref ulong BufEnd => ref *(ulong*)(Ptr + EngineLayout.NkWinBufEnd);
+    /// <inheritdoc cref="EngineLayout.NkWinBufLast"/>
+    public ref ulong BufLast => ref *(ulong*)(Ptr + EngineLayout.NkWinBufLast);
+    /// <inheritdoc cref="EngineLayout.NkWinFlags"/>
+    public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.NkWinFlags);
+    /// <inheritdoc cref="EngineLayout.NkWinName"/>
+    public Span<byte> Name { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkWinName), 64); }
+    /// <inheritdoc cref="EngineLayout.NkWinNext"/>
+    public ref IntPtr Next => ref *(IntPtr*)(Ptr + EngineLayout.NkWinNext);
+    /// <inheritdoc cref="EngineLayout.NkWinSeq"/>
+    public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkWinSeq);
 }
 
 /// <summary>Typed view of an engine <c>Nui__JSON__IdNode*</c>.</summary>
@@ -3246,6 +3280,8 @@ public readonly unsafe partial struct Nui__Layout__Layoutable(IntPtr ptr)
     public void Render(IntPtr ctx) => ((delegate* unmanaged<IntPtr, IntPtr, void>)RenderFn)(Ptr, ctx);
     /// <inheritdoc cref="EngineLayout.NuiRenderSlot"/>
     public IntPtr RenderFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.NuiRenderSlot);
+    /// <inheritdoc cref="EngineLayout.NuiTooltip"/>
+    public ref IntPtr Tooltip => ref *(IntPtr*)(Ptr + EngineLayout.NuiTooltip);
     /// <inheritdoc cref="EngineLayout.NuiVars"/>
     public Span<IntPtr> Vars { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NuiVars), 12); }
 }
@@ -4506,6 +4542,10 @@ public static unsafe class EngineFn
     private static bool _NuiWidgetRenderDone;
     /// <inheritdoc cref="SymbolMap.NuiWidgetRender"/>
     public static NuiWidgetRenderFn NuiWidgetRender => (NuiWidgetRenderFn)(_NuiWidgetRenderDone ? _NuiWidgetRender : Resolve(ref _NuiWidgetRender, ref _NuiWidgetRenderDone, SymbolMap.NuiWidgetRender));
+    private static IntPtr _NuiJsonWindowRender;
+    private static bool _NuiJsonWindowRenderDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowRender"/>
+    public static NuiJsonWindowRenderFn NuiJsonWindowRender => (NuiJsonWindowRenderFn)(_NuiJsonWindowRenderDone ? _NuiJsonWindowRender : Resolve(ref _NuiJsonWindowRender, ref _NuiJsonWindowRenderDone, SymbolMap.NuiJsonWindowRender));
     private static IntPtr _GetModule;
     private static bool _GetModuleDone;
     /// <inheritdoc cref="SymbolMap.GetModule"/>
@@ -6466,6 +6506,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NuiWidgetRender"/>; returns the slot holding the next layer, or null.</summary>
     public static NuiWidgetRenderFn* ChainNuiWidgetRender(this HookService h, NuiWidgetRenderFn handler, int priority) =>
         (NuiWidgetRenderFn*)h.Chain(SymbolMap.NuiWidgetRender, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiJsonWindowRender"/>; returns the original, or null.</summary>
+    public static NuiJsonWindowRenderFn InstallNuiJsonWindowRender(this HookService h, NuiJsonWindowRenderFn handler) =>
+        (NuiJsonWindowRenderFn)h.Install(SymbolMap.NuiJsonWindowRender, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiJsonWindowRender"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiJsonWindowRenderFn* ChainNuiJsonWindowRender(this HookService h, NuiJsonWindowRenderFn handler, int priority) =>
+        (NuiJsonWindowRenderFn*)h.Chain(SymbolMap.NuiJsonWindowRender, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GetModule"/>; returns the original, or null.</summary>
     public static GetModuleFn InstallGetModule(this HookService h, GetModuleFn handler) =>
         (GetModuleFn)h.Install(SymbolMap.GetModule, (IntPtr)handler);

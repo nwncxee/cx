@@ -21,7 +21,7 @@ internal static unsafe class NuiItemIcons
     /// <summary><c>CGameObjectArray::LISTTYPE_MASK</c> (rodata 0x13edefc): <c>CNWSMessage::WriteOBJECTIDServer</c> @0xb50fc0 ORs it
     /// into every valid id it sends, and the client keeps ids as read, so the server's <c>ObjectToString</c> value
     /// <c>e04</c> is client object <c>0x80000e04</c>. The wire format, so the same on every build.</summary>
-    private const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
+    internal const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
     /// <summary>A master-palette row is 256 RGBA entries: <c>ImageDecode</c> addresses row r at <c>r &lt;&lt; 10</c>.</summary>
     private const int PaletteRowShift = 10;
     /// <summary>std::string {data, size, capacity} as <c>DataBlock::FromBase64</c> reads it: libstdc++ size at +8;
@@ -55,6 +55,10 @@ internal static unsafe class NuiItemIcons
         _log = log;
         _enabled = NuiKnobs.Enabled;
         _on = NuiKnobs.ItemIcons;
+        Capabilities.Register("itemicon", 1, static () => _ready && _enabled!.V && _on!.V);
+        Capabilities.Register("lookicon", 1, static () => _ready && _createItem != null && _enabled!.V && _on!.V);
+        _enabled.Changed += Capabilities.Refresh;
+        _on.Changed += Capabilities.Refresh;
         if (!RadialIcons.Init(log)
             || !SymbolMap.Require(log, "NuiItemIcons", SymbolMap.NkLoadImg, SymbolMap.ExoResManGet, SymbolMap.DataBlockFromBase64,
                                   SymbolMap.AurGetLayeredRasterWrapper, SymbolMap.AurReleaseLayeredRaster, SymbolMap.PaletteImage,
@@ -260,6 +264,18 @@ internal static unsafe class NuiItemIcons
         return true;
     }
 
+    /// <summary>A throwaway item for an <c>@look:</c> string, or zero when it does not parse or the engine makes none.
+    /// The caller owns it and ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintLook(string text)
+    {
+        byte* b = stackalloc byte[512];
+        if (text.Length >= 511) return IntPtr.Zero;
+        for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
+        b[text.Length] = 0;
+        Look look;
+        return ParseLook(b, &look) ? Mint(&look) : IntPtr.Zero;
+    }
+
     /// <summary>A throwaway client item with that appearance, icon built: the engine's own store path, minus the game-object
     /// array. <see cref="Destroy"/> frees it.</summary>
     private static IntPtr Mint(Look* look)
@@ -271,7 +287,7 @@ internal static unsafe class NuiItemIcons
 
     /// <summary>The engine's deleting destructor through the item's own vtable: Itanium's D0 takes only <c>this</c>, MSVC's
     /// scalar deleting destructor also the delete flag.</summary>
-    private static void Destroy(IntPtr item)
+    internal static void Destroy(IntPtr item)
     {
         IntPtr dtor = new CNWCItem(item).DeleteFn;
         if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, uint, IntPtr>)dtor)(item, 1);
@@ -294,7 +310,7 @@ internal static unsafe class NuiItemIcons
         return n > 0;
     }
 
-    private static void Cells(IntPtr item, out int cw, out int ch)
+    internal static void Cells(IntPtr item, out int cw, out int ch)
     {
         cw = ch = 1;
         IntPtr rules = *(IntPtr*)_rules;

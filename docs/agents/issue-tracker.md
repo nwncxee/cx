@@ -45,11 +45,12 @@ environment only, not from `plane.env`.
 
 ## Closing a work item from a pull request
 
-A merged pull request closes the work items its **body** names, one per line:
-`Closes CX-12`, `Fixes CX-12`, `Resolves: CX-12`. An org-wide webhook does this for every
-repository, this one included. The title and commit messages close nothing, and a bare
-`Part of CX-12` closes nothing. Do not also `bin/plane close` an item the pull request
-closes.
+The pull request body still names each work item it settles, one per line: `Closes CX-12`,
+`Fixes CX-12`, `Resolves: CX-12`. A bare `Part of CX-12` settles nothing.
+
+Nothing closes them for you: a merge on GitHub does not reach Plane. After the merge, close each
+named item by hand with
+`bin/plane close CX-12` and a `bin/plane comment` that names the pull request.
 
 ## Old `CX-<n>` and `#<n>` references
 

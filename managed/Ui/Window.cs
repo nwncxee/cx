@@ -3,6 +3,15 @@ using System.Collections.Generic;
 
 namespace CX.Ui;
 
+/// <summary>Which side of NUI a window draws on, with Alloy on and off alike.</summary>
+public enum UiLayer
+{
+    /// <summary>Over the vanilla GUI panels and under every NUI window. The default.</summary>
+    BelowNui,
+    /// <summary>Over every NUI window: a hover card, or an image that follows the pointer.</summary>
+    AboveNui,
+}
+
 /// <summary>A first-class UI window: rect, z-order, focus/keyboard state, capability flags, and the cursor regions
 /// under it. Constructing one registers it with <see cref="UiHost"/> -- there is no discovery interface. The
 /// framework owns the chrome (hit-test, cursor, focus) and routes captured input to the content delegates; the
@@ -16,8 +25,20 @@ public sealed class Window
 
     public float X, Y, W, H;
 
-    /// <summary>Higher is nearer the top; assigned on register and bumped by <see cref="UiHost.Focus"/>.</summary>
+    /// <summary>Higher is nearer the top; assigned on register and bumped by <see cref="UiHost.Focus"/>.
+    /// Compared within a layer only: <see cref="Order"/> is the whole-screen order.</summary>
     public int Z { get; internal set; }
+
+    /// <summary>Which side of NUI this window draws on. Set before the first frame; the window then keeps its
+    /// <see cref="Z"/> order inside that layer, and an above-NUI window is above every below-NUI one for draw,
+    /// hit-test and input alike.</summary>
+    public UiLayer Layer = UiLayer.BelowNui;
+
+    /// <summary>Added to <see cref="Z"/> for an above-NUI window. Far past any z the counter reaches.</summary>
+    private const int AboveBias = 1 << 28;
+
+    /// <summary>The order across layers: draw ascending, hit-test and input descending.</summary>
+    internal int Order => Layer == UiLayer.AboveNui ? Z + AboveBias : Z;
 
     /// <summary>Capability flags. A non-focusable window is skipped by focus hit-testing but still drives the
     /// cursor; draggable/resizable expose the move/resize cursor zones.
