@@ -1902,6 +1902,11 @@ internal static unsafe class SymbolMap
     /// head, tail, wing). Returns 0 when the body failed to build.</summary>
     [Fn("int(IntPtr self, IntPtr info, byte flags)")]
     public const string NwcCreatureSetAppearance = "_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh";
+    /// <summary><c>CNWCCreature::EquipToInventorySlot(uint slotMask, CNWCItem*)</c> @0x729d40 (Windows rva 0x7fff10) -- the
+    /// appearance update's own equip: records the item's id for the slot, wields a hand item and re-reads the weapon class.
+    /// A null item empties the slot. The item must be a registered game object, because the wield looks it up by id.</summary>
+    [Fn("void(IntPtr self, uint slot, IntPtr item)")]
+    public const string NwcCreatureEquip = "_ZN12CNWCCreature20EquipToInventorySlotEjP8CNWCItem";
     /// <summary><c>CNWCObject::SetFadeState(uchar)</c> @0x7e7ba0 (Windows rva 0x765c80) -- 1 shows the object (its model's parts enabled, alpha from its fade), 0 hides it.</summary>
     [Fn("void(IntPtr self, byte state)")]
     public const string ObjSetFadeState = "_ZN10CNWCObject12SetFadeStateEh";
@@ -3317,6 +3322,7 @@ internal static unsafe class SymbolMap
         [ObjSetFadeState] = At(),   // the function that tests +0x104 == 1, writes the state byte at +0xa8, and runs the show/hide virtuals; the Windows twin of 0x7e7ba0
         [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
         [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
+        [NwcCreatureEquip] = At(),   // the callee the appearance update handler calls with (creature, 2, item) beside CreateItem; it stores the slot's item id at creature+0x318 (right hand) and +0x31c (left)
         [GetGameObjectArray] = At(),   // the first call CreateCharacterObject makes, its result is AddInternalObject's `this`
         [GetClientAIMaster] = At(),    // the second: its result is AddObject's `this`
         [AiMasterAddObject] = At(),    // the call after AddInternalObject succeeds, with the new creature

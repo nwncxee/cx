@@ -310,6 +310,30 @@ internal static unsafe class NuiItemIcons
         return ParseLook(b, &look) ? Mint(&look) : IntPtr.Zero;
     }
 
+    /// <summary>A throwaway item that looks like <paramref name="item"/>: its base item, model parts, colours and gender read,
+    /// every per-part colour left at the base. Zero when the engine makes none. The caller ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintCopy(IntPtr item)
+    {
+        if (item == IntPtr.Zero) return IntPtr.Zero;
+        var v = new CNWCItem(item);
+        Look look = default;
+        look.BaseItem = (uint)v.BaseItem;
+        look.Gender = v.Gender;
+        v.Models.CopyTo(new Span<ushort>(look.Models, LookModels));
+        v.Colors.CopyTo(new Span<byte>(look.Colors, LookColors));
+        for (int i = 0; i < LookPartColors; i++) look.PartColors[i] = 0xff;
+        return Mint(&look);
+    }
+
+    /// <summary>The <c>INVENTORY_SLOT_*</c> bits the item's base item can sit in, or zero.</summary>
+    internal static uint EquipMask(IntPtr item)
+    {
+        IntPtr rules = *(IntPtr*)_rules;
+        if (rules == IntPtr.Zero || item == IntPtr.Zero) return 0;
+        var b = new CNWBaseItem(EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, new CNWCItem(item).BaseItem));
+        return b.IsNull ? 0 : b.EquipSlots;
+    }
+
     /// <summary>A throwaway client item with that appearance, icon built: the engine's own store path, minus the game-object
     /// array. <see cref="Destroy"/> frees it.</summary>
     private static IntPtr Mint(Look* look)

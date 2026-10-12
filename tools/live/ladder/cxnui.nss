@@ -14,6 +14,7 @@ const string TORCH = "nw_it_torch001";
 const string TORCH_TAG = "CXNUI_TORCH";
 const string WINDOW_ID = "cxnui";
 const int LIST_ROWS = 30;
+const float WINDOW_LIFE = 60.0;
 
 void Mark(string sStep)
 {
@@ -25,6 +26,29 @@ void Change(object oPC)
     SetColor(oPC, COLOR_CHANNEL_HAIR, 120);
     SetCreatureBodyPart(CREATURE_PART_HEAD, 7, oPC);
     Mark("changed hair colour and head");
+}
+
+// The model view's gear: a sword, a shield, a helmet and a cloak go on, then the shield and the sword come off,
+// so a shot before and after each shows the doll following the equip and the unequip.
+void Wear(object oPC)
+{
+    object oSword = CreateItemOnObject("nw_wswls001", oPC, 1, "CXNUI_SWORD");
+    object oShield = CreateItemOnObject("nw_ashlw001", oPC, 1, "CXNUI_SHIELD");
+    object oHelm = CreateItemOnObject("nw_arhe001", oPC, 1, "CXNUI_HELM");
+    object oCloak = CreateItemOnObject("nw_cloth001", oPC, 1, "CXNUI_CLOAK");
+    Mark("gear " + ObjectToString(oSword) + " " + ObjectToString(oShield) + " " + ObjectToString(oHelm) + " " + ObjectToString(oCloak));
+    AssignCommand(oPC, ActionEquipItem(oSword, INVENTORY_SLOT_RIGHTHAND));
+    AssignCommand(oPC, ActionEquipItem(oShield, INVENTORY_SLOT_LEFTHAND));
+    AssignCommand(oPC, ActionEquipItem(oHelm, INVENTORY_SLOT_HEAD));
+    AssignCommand(oPC, ActionEquipItem(oCloak, INVENTORY_SLOT_CLOAK));
+    Mark("wear");
+}
+
+void Strip(object oPC, string sTag)
+{
+    object oItem = GetItemPossessedBy(oPC, sTag);
+    AssignCommand(oPC, ActionUnequipItem(oItem));
+    Mark("strip " + sTag);
 }
 
 void OpenWindow(object oPC)
@@ -59,8 +83,11 @@ void OpenWindow(object oPC)
     for (i = 0; i < LIST_ROWS; i++) jRows = JsonArrayInsert(jRows, JsonString("row " + IntToString(i)));
     NuiSetBind(oPC, nToken, "rows", jRows);
     Mark("open token " + IntToString(nToken) + " torch " + ObjectToString(oTorch));
-    DelayCommand(14.0, Change(oPC));
-    DelayCommand(24.0, NuiDestroy(oPC, nToken));
+    DelayCommand(1.0, Wear(oPC));
+    DelayCommand(10.0, Strip(oPC, "CXNUI_SHIELD"));
+    DelayCommand(13.0, Strip(oPC, "CXNUI_SWORD"));
+    DelayCommand(16.0, Change(oPC));
+    DelayCommand(WINDOW_LIFE, NuiDestroy(oPC, nToken));
 }
 
 void Arm(object oPC, int nTry)

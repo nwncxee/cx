@@ -74,10 +74,20 @@ internal static unsafe class NuiModelDoll
         return _o.AppMgr != IntPtr.Zero;
     }
 
-    private static IntPtr App()
+    internal static IntPtr App()
     {
         IntPtr mgr = *(IntPtr*)_o.AppMgr;
         return mgr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)mgr;
+    }
+
+    /// <summary>Does the game-object array still hold <paramref name="obj"/> under <paramref name="id"/>? The array frees every
+    /// registered object when the module unloads, so a doll that outlives the module finds its creature already gone.</summary>
+    internal static bool Holds(uint id, IntPtr obj)
+    {
+        IntPtr app = App();
+        if (app == IntPtr.Zero || obj == IntPtr.Zero) return false;
+        CGameObject go = new CClientExoApp(app).GetGameObject(id);
+        return !go.IsNull && go.Ptr == obj;
     }
 
     /// <summary>The creature behind a client object id, or zero.</summary>
@@ -171,12 +181,15 @@ internal static unsafe class NuiModelDoll
     internal static void Destroy()
     {
         DollState d = _o.Doll;
+        bool taken = d.Registered && !Holds(d.Id, d.Creature);
+        NuiModelGear.Release(d.Creature, taken);
         _o.Doll = new DollState();
         _o.TargetTex = 0;
         _o.Rendered = false;
         IntPtr app = App();
         if (d.Viewport != IntPtr.Zero && d.Enabled) EngineFn.GuiViewportDisable(d.Viewport);
-        if (d.Creature != IntPtr.Zero)
+        if (taken) _o.Log?.Always("NuiModelDoll: the engine already freed the throwaway creature (module teardown) -- left alone");
+        else if (d.Creature != IntPtr.Zero)
         {
             if (d.Registered && app != IntPtr.Zero)
             {

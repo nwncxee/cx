@@ -22,4 +22,14 @@ public static unsafe partial class EngineLayout
     public static readonly int CameraSetViewAngleSlot = Field("CAurCamera", "vtbl.SetViewAngle", Expect.VtblSlot, sig: "void(float angle)");
     /// <summary>NkImage -> the GL texture name <c>GetImage</c> hands nuklear, and the frame count that gates it.</summary>
     public static readonly int NkImageGlTexture = Field<uint>("NkImage", "glTexture");
+
+    /// <summary>The creature's hand-slot item ids (right 0x10, left 0x20 of the <c>INVENTORY_SLOT_*</c> masks), as
+    /// <c>EquipToInventorySlot</c> stores them.</summary>
+    public static readonly int CreatureRightHandItem = Field<uint>("CNWCCreature", "rightHandItem");
+    public static readonly int CreatureLeftHandItem = Field<uint>("CNWCCreature", "leftHandItem");
+    /// <summary>CNWCItem: the 19 model parts (a simple item's at [0], a composite weapon's three at [0..2]), the six colours and
+    /// the gender byte, as <c>CreateItem</c> stores what the appearance update sent.</summary>
+    public static readonly int ItemModels = Field<ushort>("CNWCItem", "models", count: 19);
+    public static readonly int ItemColors = Field<byte>("CNWCItem", "colors", count: 6);
+    public static readonly int ItemGender = Field<byte>("CNWCItem", "gender");
 }

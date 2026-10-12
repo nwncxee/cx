@@ -31,6 +31,7 @@ internal static unsafe class NuiModelView
         public uint Target;
         public float Angle = 30f, Dist = 4f, Height = 0.9f, Yaw;
         public bool Anim = true, Built, WasRendered;
+        public string Wear = "";
         public byte[] Info = new byte[0];
     }
 
@@ -51,6 +52,7 @@ internal static unsafe class NuiModelView
     {
         _s.Log = log;
         _s.Ready = NuiModelDoll.Init(log);
+        NuiModelGear.Init(log);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
         Capabilities.Register("modelview", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
@@ -158,6 +160,7 @@ internal static unsafe class NuiModelView
             if (!NuiModelDoll.Build(who, 0, 0, v.W, v.H, v.Anim)) return;
             v.Built = true;
             v.Info = NuiModelDoll.InfoOf(who).ToArray();
+            NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
             NuiModelDoll.SetTarget(tex, v.W, v.H);
             ApplyCamera(v);
             s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
@@ -165,6 +168,7 @@ internal static unsafe class NuiModelView
         else if (v.Target != tex) NuiModelDoll.SetTarget(tex, v.W, v.H);
         else
         {
+            NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
             ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
             if (!now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
             {
@@ -193,6 +197,7 @@ internal static unsafe class NuiModelView
         v.Height = PolicyF(v.Key, "height", 0.9f);
         v.Yaw = PolicyF(v.Key, "yaw", 0f);
         v.Anim = PolicyF(v.Key, "anim", 1f) != 0f;
+        v.Wear = Policy(v.Key, "wear", "");
         string[] bg = Policy(v.Key, "bg", "").Split(',');
         float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
         NuiModelDoll.SetBackground(C(0), C(1), C(2), C(3));

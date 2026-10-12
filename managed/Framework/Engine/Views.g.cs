@@ -293,6 +293,7 @@ global using unsafe DataBlockFromBase64Fn = delegate* unmanaged<nint, nint, nint
 global using unsafe NwcCreateItemFn = delegate* unmanaged<nint, uint, ushort*, byte*, byte*, sbyte, byte, nint, nint>;
 global using unsafe NwcCreatureCtorFn = delegate* unmanaged<nint, nint>;
 global using unsafe NwcCreatureSetAppearanceFn = delegate* unmanaged<nint, nint, byte, int>;
+global using unsafe NwcCreatureEquipFn = delegate* unmanaged<nint, uint, nint, void>;
 global using unsafe ObjSetFadeStateFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe GetGameObjectArrayFn = delegate* unmanaged<nint, nint>;
 global using unsafe GetClientAIMasterFn = delegate* unmanaged<nint, nint>;
@@ -1900,6 +1901,8 @@ public readonly unsafe partial struct CNWCCreature(IntPtr ptr)
     public ref uint HoveredOid => ref *(uint*)(Ptr + EngineLayout.CreatureHoveredOid);
     /// <inheritdoc cref="EngineLayout.CreatureIsAssociate"/>
     public ref int IsAssociate => ref *(int*)(Ptr + EngineLayout.CreatureIsAssociate);
+    /// <inheritdoc cref="EngineLayout.CreatureLeftHandItem"/>
+    public ref uint LeftHandItem => ref *(uint*)(Ptr + EngineLayout.CreatureLeftHandItem);
     /// <inheritdoc cref="EngineLayout.CreatureLockTarget"/>
     public ref uint LockTarget => ref *(uint*)(Ptr + EngineLayout.CreatureLockTarget);
     /// <inheritdoc cref="EngineLayout.CreatureMasterId"/>
@@ -1912,6 +1915,8 @@ public readonly unsafe partial struct CNWCCreature(IntPtr ptr)
     public ref int Plated => ref *(int*)(Ptr + EngineLayout.CreaturePlated);
     /// <inheritdoc cref="SymbolMap.PlayFootstep"/>
     public void PlayFootstep() => EngineFn.PlayFootstep(Ptr);
+    /// <inheritdoc cref="EngineLayout.CreatureRightHandItem"/>
+    public ref uint RightHandItem => ref *(uint*)(Ptr + EngineLayout.CreatureRightHandItem);
     /// <inheritdoc cref="EngineLayout.CreatureRunRate"/>
     public ref float RunRate => ref *(float*)(Ptr + EngineLayout.CreatureRunRate);
     /// <inheritdoc cref="EngineLayout.CreatureSetPositionSlot"/>
@@ -1980,6 +1985,8 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.ItemBaseItem"/>
     public ref int BaseItem => ref *(int*)(Ptr + EngineLayout.ItemBaseItem);
+    /// <inheritdoc cref="EngineLayout.ItemColors"/>
+    public Span<byte> Colors { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.ItemColors), 6); }
     /// <inheritdoc cref="EngineLayout.ItemCustomName"/>
     public ref IntPtr CustomName => ref *(IntPtr*)(Ptr + EngineLayout.ItemCustomName);
     /// <inheritdoc cref="EngineLayout.ItemCustomNameLen"/>
@@ -1988,6 +1995,8 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public IntPtr DeleteFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.ItemDeleteSlot);
     /// <inheritdoc cref="EngineLayout.ItemEquipSlot"/>
     public ref int EquipSlot => ref *(int*)(Ptr + EngineLayout.ItemEquipSlot);
+    /// <inheritdoc cref="EngineLayout.ItemGender"/>
+    public ref byte Gender => ref *(byte*)(Ptr + EngineLayout.ItemGender);
     /// <inheritdoc cref="EngineLayout.ItemGhost"/>
     public ref int Ghost => ref *(int*)(Ptr + EngineLayout.ItemGhost);
     /// <inheritdoc cref="EngineLayout.ItemGuiIcon"/>
@@ -2004,6 +2013,8 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public void ItemPlayDropSound() => EngineFn.ItemPlayDropSound(Ptr);
     /// <inheritdoc cref="SymbolMap.ItemShowFeedbackBubbleText"/>
     public void ItemShowFeedbackBubbleText() => EngineFn.ItemShowFeedbackBubbleText(Ptr);
+    /// <inheritdoc cref="EngineLayout.ItemModels"/>
+    public Span<ushort> Models { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.ItemModels), 19); }
     /// <inheritdoc cref="EngineLayout.ItemPossessor"/>
     public ref uint Possessor => ref *(uint*)(Ptr + EngineLayout.ItemPossessor);
     /// <inheritdoc cref="EngineLayout.ItemRepoX"/>
@@ -5422,6 +5433,10 @@ public static unsafe class EngineFn
     private static bool _NwcCreatureSetAppearanceDone;
     /// <inheritdoc cref="SymbolMap.NwcCreatureSetAppearance"/>
     public static NwcCreatureSetAppearanceFn NwcCreatureSetAppearance => (NwcCreatureSetAppearanceFn)(_NwcCreatureSetAppearanceDone ? _NwcCreatureSetAppearance : Resolve(ref _NwcCreatureSetAppearance, ref _NwcCreatureSetAppearanceDone, SymbolMap.NwcCreatureSetAppearance));
+    private static IntPtr _NwcCreatureEquip;
+    private static bool _NwcCreatureEquipDone;
+    /// <inheritdoc cref="SymbolMap.NwcCreatureEquip"/>
+    public static NwcCreatureEquipFn NwcCreatureEquip => (NwcCreatureEquipFn)(_NwcCreatureEquipDone ? _NwcCreatureEquip : Resolve(ref _NwcCreatureEquip, ref _NwcCreatureEquipDone, SymbolMap.NwcCreatureEquip));
     private static IntPtr _ObjSetFadeState;
     private static bool _ObjSetFadeStateDone;
     /// <inheritdoc cref="SymbolMap.ObjSetFadeState"/>
@@ -7847,6 +7862,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NwcCreatureSetAppearance"/>; returns the slot holding the next layer, or null.</summary>
     public static NwcCreatureSetAppearanceFn* ChainNwcCreatureSetAppearance(this HookService h, NwcCreatureSetAppearanceFn handler, int priority) =>
         (NwcCreatureSetAppearanceFn*)h.Chain(SymbolMap.NwcCreatureSetAppearance, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NwcCreatureEquip"/>; returns the original, or null.</summary>
+    public static NwcCreatureEquipFn InstallNwcCreatureEquip(this HookService h, NwcCreatureEquipFn handler) =>
+        (NwcCreatureEquipFn)h.Install(SymbolMap.NwcCreatureEquip, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NwcCreatureEquip"/>; returns the slot holding the next layer, or null.</summary>
+    public static NwcCreatureEquipFn* ChainNwcCreatureEquip(this HookService h, NwcCreatureEquipFn handler, int priority) =>
+        (NwcCreatureEquipFn*)h.Chain(SymbolMap.NwcCreatureEquip, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ObjSetFadeState"/>; returns the original, or null.</summary>
     public static ObjSetFadeStateFn InstallObjSetFadeState(this HookService h, ObjSetFadeStateFn handler) =>
         (ObjSetFadeStateFn)h.Install(SymbolMap.ObjSetFadeState, (IntPtr)handler);

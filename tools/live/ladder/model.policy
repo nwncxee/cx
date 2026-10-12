@@ -3,4 +3,4 @@ model.me.size=256x384
 model.me.angle=30
 model.me.dist=4
 model.me.height=0.9
-model.me.yaw=90
+model.me.yaw=270

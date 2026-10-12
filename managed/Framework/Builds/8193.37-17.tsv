@@ -1257,6 +1257,7 @@ offset	CAurBehavior	vtbl.GetType	0x30	0x28	# CAurBehavior::GetType() -> int
 # "GUI_PO_NWNLOGO_" beside AddInternalObject) and CCharacterAppearancePanel's constructor (the one citing "guiModelView").
 rva	_ZN12CNWCCreatureC1Ev	0x7fb140	# NwcCreatureCtor
 rva	_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh	0x809a00	# NwcCreatureSetAppearance
+rva	_ZN12CNWCCreature20EquipToInventorySlotEjP8CNWCItem	0x7fff10	# NwcCreatureEquip
 rva	_ZN13CClientExoApp18GetGameObjectArrayEv	0x6abb70	# GetGameObjectArray
 rva	_ZN13CClientExoApp17GetClientAIMasterEv	0x6ab940	# GetClientAIMaster
 rva	_ZN15CClientAIMaster9AddObjectEP10CNWCObject	0x7675d0	# AiMasterAddObject
@@ -1276,3 +1277,10 @@ offset	NkImage	glTexture	0x50	0x50	# NkImageGlTexture
 rva	_ZN10CNWCObject12SetFadeStateEh	0x765c80	# ObjSetFadeState
 # The appearance record the update handler copies out of the creature's appearance object: 0x1f quad words and a word on Linux, and 0x1f quad words and a dword on Windows (the handler's copy, both read).
 offset	CCAppearanceInfo	sizeof	0xfa	0xfc	# SizeOfAppearanceInfo
+# Equipment on the model view's doll. Windows values read in the Windows image's appearance update handler and CreateItem:
+# the creature's right and left hand item ids, the item's three model parts and gender, the base item's equip-slot mask.
+offset	CNWCCreature	rightHandItem	0x338	0x318	# CreatureRightHandItem
+offset	CNWCCreature	leftHandItem	0x33c	0x31c	# CreatureLeftHandItem
+offset	CNWCItem	models	0x1ec	0x1cc	# ItemModels
+offset	CNWCItem	colors	0x8	0x8	# ItemColors
+offset	CNWCItem	gender	0x212	0x1f2	# ItemGender
