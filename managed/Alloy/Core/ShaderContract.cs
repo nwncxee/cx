@@ -573,7 +573,7 @@ internal static class ShaderContract
                   && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
                   && OwnedLitFsMain.Contains("if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;")
                   // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
-                  && OwnedLitFsMain.Contains("if (tint) coverage = CxTintCover(vDraw, uv);")
+                  && OwnedLitFsMain.Contains("if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }")
                   && DepthFeatFs.Contains("if (CxAlphaMip(texture(uTex, vUV, uLodBias).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the

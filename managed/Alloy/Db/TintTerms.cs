@@ -176,12 +176,22 @@ internal static unsafe class TintTerms
                             + "nowhere to sit. Those parts draw NOTHING, their coverage reading zero; "
                             + "`alloy.bindless 1` plus a restart is what turns the feature on");
             }
+            // #20: the GPU table carries NO null handle -- AMD's driver treats one as a descriptor and the
+            // frame faults. A palette map that has not landed points at the white texel, so a creature is
+            // fully covered while it loads rather than invisible; the other three at the transparent-black
+            // one, which is what NVIDIA and Mesa answer a null handle with.
+            ulong whiteH = handles ? AlloyRenderer.HandleFor(OwnedTextures.WhiteTid()) : 0ul;
+            ulong nullH = handles ? AlloyRenderer.HandleFor(OwnedTextures.NullTid()) : 0ul;
             for (int r = 0; r < MaxRows; r++)
             {
                 if (s.Owner[r] < 0) continue;
                 bool moved = false;
                 for (int k = 0; k < PalSlots; k++)
-                    moved |= SetHandle(r, k, handles ? DrawRecipe.PalHandle(s.Owner[r], k) : 0ul);
+                {
+                    ulong h = handles ? DrawRecipe.PalHandle(s.Owner[r], k) : 0ul;
+                    if (h == 0) h = k == CoverPal ? whiteH : nullH;
+                    moved |= SetHandle(r, k, h);
+                }
                 if (moved) Touch(r);
             }
         }

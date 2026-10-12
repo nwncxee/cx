@@ -258,10 +258,10 @@ void main()
     // intensity, and the authored coverage is the third palette map's blue channel. The compensation below
     // then runs at the MATERIAL's own scale over that map's extent, not the knob's over the diffuse's:
     // compensating twice over one channel fills a distant silhouette solid.
-    bool tint = feat == CX_FEAT_PALETTETINT;
-    if (tint) coverage = CxTintCover(vDraw, uv);
-    float cutMip = tint ? CxTintMip(vDraw) : uAlphaMip;
-    vec2 cutSize = tint ? CxTintCoverSize(vDraw) : vec2(textureSize(uTex, 0));
+    vec4 tintCov = feat == CX_FEAT_PALETTETINT ? CxTintCoverage(vDraw, uv) : vec4(-1.0);
+    float cutMip = uAlphaMip;
+    vec2 cutSize = vec2(textureSize(uTex, 0));
+    if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.

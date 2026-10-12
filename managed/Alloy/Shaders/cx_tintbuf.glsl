@@ -33,15 +33,19 @@ int CxTintRow(int draw)
 
 // One of the four palette maps' handle. They live in the row rather than in the per-record handle block:
 // four more lanes there would cost every record in the world 32 bytes for a handful of materials.
-uvec2 CxTintPalH(int draw, int k)
-{
-    int row = CxTintRow(draw);
-    uvec4 h = k < 2 ? uTint[max(row, 0)].pal01 : uTint[max(row, 0)].pal23;
-    return row < 0 ? uvec2(0u) : ((k & 1) == 0 ? h.xy : h.zw);
-}
 // A macro, not a function returning a sampler: an opaque return type is the one relaxation of the bindless
 // extension not every driver takes, and a macro needs none of it.
 #ifdef CX_BINDLESS
+uvec2 CxTintPalH(int draw, int k)
+{
+    int row = CxTintRow(draw);
+    // #20: NEVER a null handle -- AMD's driver treats one as a descriptor and the frame faults. A record with
+    // no row of its own falls back to its own diffuse's, which that table guarantees is non-null, and the
+    // coverage read below asks the SLOT MASK rather than the handle, so it cannot mistake one for a map.
+    if (row < 0) return uTexH[draw << 3];
+    uvec4 h = k < 2 ? uTint[row].pal01 : uTint[row].pal23;
+    return (k & 1) == 0 ? h.xy : h.zw;
+}
 #define CxTintPal(draw, k) sampler2D(CxTintPalH(draw, k))
 #else
 // No handle table, and the lit stage has spent units 0..30 -- the palette maps are out of reach. This keeps
@@ -76,15 +80,20 @@ vec2 CxTintLobe(int draw)
     return row < 0 ? vec2(0.0) : uTint[row].terms.xy;
 }
 
-// The coverage this part draws, raw, and the extent the compensation above is measured against.
+// The coverage this part draws, and what the mip compensation needs to measure it: .x the coverage, .y the
+// material's own scale, .zw the map's extent. A NEGATIVE .x means this material named no coverage map and
+// its diffuse alpha stands, which is also what every non-palette record gets.
 // Without the handle table there is no texture unit left for the palette maps (the lit stage spends 0..30),
 // so the coverage reads ZERO and the part draws nothing -- the stand-down TintTerms says in the log, rather
 // than a character shaded off whatever texture happened to be on a unit.
 #ifdef CX_BINDLESS
-float CxTintCover(int draw, vec2 uv) { return texture(CxTintPal(draw, CX_TINT_COVER_PAL), uv).b; }
-vec2 CxTintCoverSize(int draw) { return vec2(textureSize(CxTintPal(draw, CX_TINT_COVER_PAL), 0)); }
+vec4 CxTintCoverage(int draw, vec2 uv)
+{
+    if (CxTintBound(draw, CX_TINT_COVER_PAL) == 0) return vec4(-1.0);
+    vec2 sz = vec2(textureSize(CxTintPal(draw, CX_TINT_COVER_PAL), 0));
+    return vec4(texture(CxTintPal(draw, CX_TINT_COVER_PAL), uv).b, CxTintMip(draw), sz);
+}
 #else
-float CxTintCover(int draw, vec2 uv) { return 0.0; }
-vec2 CxTintCoverSize(int draw) { return vec2(1.0); }
+vec4 CxTintCoverage(int draw, vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
 #endif
 

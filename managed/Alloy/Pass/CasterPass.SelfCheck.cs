@@ -30,8 +30,7 @@ public sealed unsafe partial class CasterPass
                   && CastMaskHFs.Contains("CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;")
                   // CX-223: ...and the handle stage alone asks the palette tint for its own coverage source,
                   // so a palette caster casts what it draws; the plain one has no record index to ask with.
-                  && CastMaskHFs.Contains("bool ctint = int(uDraw[vDraw].feat.x) == CX_FEAT_PALETTETINT;")
-                  && CastMaskHFs.Contains("float t = ctint ? CxTintCover(vDraw, vUV) : texture(uTex, vUV).a;")
+                  && CastMaskHFs.Contains("if (ctint.x >= 0.0) { t = ctint.x; tmip = ctint.y; tsize = ctint.zw; }")
                   && CastMaskHFs.Contains("#define CX_CAST_HANDLE 1")
                   && !CastMaskFs.Contains("#define CX_CAST_HANDLE")
                   && CastMaskFs.Contains("float t = texture(uTex, vUV).a;")
