@@ -93,6 +93,11 @@ internal static unsafe class PresentTarget
     /// <inheritdoc cref="Tex"/>
     internal static int Height => _h;
 
+    /// <summary>Blit a world frame that has composited into the texture but not yet been handed back, so raw
+    /// engine-context drawing before the next GUI flush lands over it on the real framebuffer instead of being
+    /// blitted over. Engine context, outside the bracket. A no-op on a frame with nothing owed.</summary>
+    internal static void HandBackIfOwed() { if (Needed && _compose.Composed) HandBack(); }
+
     /// <summary>The reverse of <see cref="HandBack"/>, in the ENGINE context: copy the real default framebuffer
     /// INTO the present texture, so a GUI flush on a frame with no world draws over what is on screen now. A frame
     /// the world composited skips it: the screen is last frame's, and copying it would erase the world.</summary>

@@ -5,7 +5,7 @@ using CX.Framework;
 namespace CX.Ui;
 
 /// <summary>One piece of skin art: a texture resref and its nine-slice border in TEXELS (left, top, right, bottom;
-/// all zero = stretched whole). The engine's NUI insets are code, not data (native-gui-skinning §3.2), so ours are
+/// all zero = stretched whole). The engine's NUI insets are code, not data, so ours are
 /// too. A non-zero <see cref="SrcW"/> draws only that window of the sheet (texels from the image's top-left, the way a
 /// GUI model's UVs cut one button face out of a shared atlas), stretched whole.</summary>
 public readonly record struct SkinPart(string Name, string Resref, int L = 0, int T = 0, int R = 0, int B = 0,

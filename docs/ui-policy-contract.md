@@ -117,7 +117,7 @@ quickbar's own drop does. An item dragged out of a container drops or is used li
 as the stock drag).
 
 A skin part the client does not have refuses the **whole** skin (logged with every missing name, a notice on
-screen, the window draws its flat look): alias only art you ship (`native-gui-skinning.md` §6.8).
+screen, the window draws its flat look): alias only art you ship (research: CX-152).
 
 ## Example
 
