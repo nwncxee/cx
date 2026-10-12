@@ -12,7 +12,8 @@
 #                                              # binary "GUI picking works" signal that needs no screenshot
 #
 # Nothing appears on the desktop: the client runs inside `gamescope --backend headless`, which gives
-# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing of the user's
+# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing plays on the
+# speakers: OpenAL Soft mixes into its null backend (ALSOFT_DRIVERS=null). Nothing of the user's
 # is touched either -- a throwaway HOME + user directory is built under the out dir, and the client is
 # pointed at it with `-userdirectory`, so cx.cfg, cx.log, settings.tml, nwn.ini, the localvault and the
 # crashreport folder are all the harness's own copies.
@@ -229,6 +230,7 @@ START_EPOCH=$(date +%s.%N)
     export XDG_DATA_HOME="$FAKE_HOME/.local/share"
     export XDG_CACHE_HOME="$FAKE_HOME/.cache"
     export XDG_CONFIG_HOME="$FAKE_HOME/.config"
+    export ALSOFT_DRIVERS=null
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
