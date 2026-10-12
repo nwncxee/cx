@@ -9,7 +9,8 @@ namespace CX.Services.Nui;
 internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug;
+    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, Cards;
+    internal static readonly Knob<string> CardFile, CardForce;
     internal static readonly Knob<float> Thumb;
 
     static NuiKnobs()
@@ -28,6 +29,12 @@ internal static class NuiKnobs
             help: "When a server's window cannot lay out, it lists the rules that contradict each other and the elements they belong to, instead of only \"The constraint can not be satisfied.\"");
         HitDebug = G.Toggle("hitdebug", "Log the NUI element under the pointer", false, Tier.Advanced,
             help: "Writes a line to cx.log each time the pointer moves onto another element of a NUI window: its id, list row and rectangle. For people building windows.");
+        Cards = G.Toggle("cards", "Rich cards on NUI elements", true,
+            help: "A server can declare a card for a NUI element, such as an item's details, and it shows beside the element while the pointer rests on it. Off, the server's plain tooltip is all you get.");
+        CardFile = G.Text("cardfile", "Card test file", "", Tier.ChatOnly,
+            help: "For people building cards: a file of policy lines (card.<key>=...) read when the game starts, as if a server had sent them.");
+        CardForce = G.Text("cardforce", "Card test key", "", Tier.ChatOnly,
+            help: "For people building cards: shows this key's cards as if the pointer rested on an element with that id, with no pointer needed.");
         Smooth = G.Toggle("smooth", "Smooth scrolling", true,
             help: "The mouse wheel glides a NUI list to its new position instead of jumping there.");
         AutoHide = G.Toggle("autohide", "Hide scrollbars with nothing to scroll", true,

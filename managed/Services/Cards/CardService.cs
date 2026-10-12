@@ -1,0 +1,114 @@
+using System;
+using System.IO;
+using CX.Engine;
+using CX.Framework;
+using CX.Services.Nui;
+using CX.Services.Radial;
+using CX.Ui;
+
+namespace CX.Services.Cards;
+
+/// <summary>
+/// Draws the cards a server declares for a NUI element (<c>docs/ui-policy-contract.md</c>). One window on the above-NUI
+/// layer takes no input; each frame it asks the NUI hit test what the pointer rests on, and a <see cref="CardPresenter"/> decides
+/// what shows. The <c>card</c> capability is advertised only while the hit test is armed and <c>nui.cards</c> is on.
+/// </summary>
+public sealed class CardService : IExtenderService
+{
+    /// <summary><c>CGameObjectArray::LISTTYPE_MASK</c>: the server's object id with this ORed in is the client's.</summary>
+    private const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
+
+    private sealed class CardServiceState
+    {
+        public readonly CardPresenter Presenter = new();
+        public bool Ready;
+        public NuiHit Forced;
+        public string ForcedKey = "";
+    }
+
+    private static CardServiceState _s = new();
+
+    public void Initialize(ExtenderLog log, HookService hooks)
+    {
+        UiCategory.Declare();
+        var s = _s;
+        CardRegistry.Init(log);
+        CardSelfCheck.Run(log);
+        s.Presenter.SubjectOf = Subject;
+        Capabilities.Register("card", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
+        NuiKnobs.Enabled.Changed += Capabilities.Refresh;
+        NuiKnobs.Cards.Changed += Capabilities.Refresh;
+        TextRig.FontChanged += CardFaces.WantAll;
+        new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.AboveNui, DrawContent = Draw };
+        s.Ready = true;
+        LoadTestFile(log);
+    }
+
+    /// <summary><c>nui.cardfile</c>: policy lines read as if a server had sent them, for building and testing cards.</summary>
+    private static void LoadTestFile(ExtenderLog log)
+    {
+        string path = NuiKnobs.CardFile.V;
+        if (path.Length == 0) return;
+        try
+        {
+            int n = ServerPolicy.Apply(File.ReadAllText(path));
+            log.Always($"Cards: nui.cardfile applied {n} line(s)");
+        }
+        catch (IOException e) { log.Always("Cards: nui.cardfile could not be read: " + e.Message); }
+    }
+
+    /// <summary>The name and stack size the client knows for an item, by the server's object id.</summary>
+    private static CardSubject Subject(uint serverId)
+    {
+        uint id = serverId | ServerIdBit;
+        IntPtr item = RadialIcons.Item((IntPtr)id);
+        if (item == IntPtr.Zero) return default;
+        int stack = new CNWCItem(item).StackSize;
+        return new CardSubject(RadialIcons.ObjectName(id), stack.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>The per-frame draw: read the hit, update the card, draw each card's background, icons, then text.</summary>
+    private static void Draw()
+    {
+        var s = _s;
+        if (!NuiKnobs.Enabled.V || !NuiKnobs.Cards.V)
+        {
+            if (s.Presenter.Alpha > 0f) s.Presenter.Cut();
+            return;
+        }
+        bool has;
+        NuiHit hit;
+        string force = NuiKnobs.CardForce.V;
+        if (force.Length > 0) { has = true; hit = Forced(s, force); }
+        else has = NuiHitTest.TryGet(out hit);
+        s.Presenter.Update(has, in hit);
+        if (!s.Presenter.Prepare(TextRig.ViewportW, TextRig.ViewportH)) return;
+        float a = s.Presenter.Alpha;
+        CardView[] views = s.Presenter.Views!;
+        for (int i = 0; i < views.Length; i++) DrawView(views[i], s.Presenter.X(i), s.Presenter.Y(i), a);
+    }
+
+    private static void DrawView(CardView v, float x, float y, float a)
+    {
+        TextRig.DrawBatch(v.Back.AsSpan(), v.Back.VertexCount, a, x, y);
+        for (int i = 0; i < v.Icons.Count; i++)
+        {
+            IconDraw ic = v.Icons[i];
+            if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a);
+            else TextRig.DrawIcon(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a);
+        }
+        TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);
+    }
+
+    /// <summary>The pointer-free hit <c>nui.cardforce</c> stands in: an element with that id at a fixed place.</summary>
+    private static NuiHit Forced(CardServiceState s, string key)
+    {
+        if (s.ForcedKey != key)
+        {
+            s.ForcedKey = key;
+            s.Forced = new NuiHit { Element = (IntPtr)1, Row = -1, X = 160f, Y = 200f, W = 64f, H = 64f };
+            s.Forced.TokenLen = System.Text.Encoding.UTF8.GetBytes(key, s.Forced.TokenBuffer());
+        }
+        return s.Forced;
+    }
+}
