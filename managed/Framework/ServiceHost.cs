@@ -79,6 +79,7 @@ public static class ServiceHost
         CX.Ui.AtlasSheet.SelfCheck(log);   // pack-and-grow, ceiling refusal, face lookup -- no GL, no stbtt
         CX.Ui.TextStyle.SelfCheck(log);   // per-element text rows + the batch's halos-under-bodies run
         CX.Ui.LoadScreen.SelfCheck(log);   // the two load sources as one monotonic bar
+        CX.Alloy.GuiContent.SelfCheck(log);   // the engine's content-stage prologue, m_texture, the pair key
         foreach (IExtenderService service in all)
         {
             try { service.Initialize(log, hooks); }

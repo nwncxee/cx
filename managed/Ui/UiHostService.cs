@@ -243,8 +243,8 @@ public sealed unsafe class UiHostService : IExtenderService
 
     /// <summary>Refresh the session gate, the UI scale and the viewport, run the z-order roll-call, then hand the GL
     /// state back -- one call earlier than the present, because our raw GL desyncs GLRender's shadow cache and what
-    /// renders next is NUI. The roll-call alone stands aside while a movie is on screen; everything above it still
-    /// runs, since the session gate is where the module-unload edge is read and a movie can play inside a module.</summary>
+    /// renders next is NUI. The roll-call alone stands aside while a movie or the engine's loadscreen is on screen;
+    /// everything above it still runs, since the session gate is where the module-unload edge is read.</summary>
     private static void DrawWindows()
     {
         // The roll-call's head and tail are their own zone. Zone.Ui is the DRAW only, so the gate, the scale sync,
@@ -256,7 +256,7 @@ public sealed unsafe class UiHostService : IExtenderService
         long tUi = FrameZones.Now;
         // Only the fallback path ever reaches a movie frame: CGuiMan::UpdateAndRender skips nk_sdl_render outright
         // while a movie plays, and on Windows nk_sdl_render is not exported, so the fallback is the only path there.
-        if (!CX.Alloy.MovieService.OnScreen)
+        if (!CX.Alloy.MovieService.OnScreen && !LoadScreen.PanelUp)
             UiHost.DrawFrame();                   // draw every registered window in z-order (content-owned)
         FrameZones.Add(FrameZones.Zone.Ui, tUi);
         HandBack();

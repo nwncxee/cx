@@ -392,7 +392,8 @@ internal static unsafe partial class TexRegistry
         if (info.Faces != 1) { DdsReader.FreePrepared(chain); j.Why = $"{info.Faces} faces -- a cube map is not a registry texture"; return; }
         uint fmt = DdsReader.GlFormat(info.Format);
         if (fmt == 0) { DdsReader.FreePrepared(chain); j.Why = $"{info.Format} has no GL internal format"; return; }
-        j.Data = chain; j.Dds = info; j.W = info.W; j.H = info.H; j.Levels = info.Levels;
+        // Present, not Levels: CopyChain pads missing mips with one corner block, which a minified quad samples.
+        j.Data = chain; j.Dds = info; j.W = info.W; j.H = info.H; j.Levels = info.Present;
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false;
         j.Bytes = info.ChainBytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();

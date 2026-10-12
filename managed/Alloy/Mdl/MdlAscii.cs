@@ -1119,7 +1119,7 @@ internal static class MdlAscii
         // ---- closing the file ----
 
         /// <summary>An animation's nodes are the ones parsed between <c>newanim</c> and <c>doneanim</c>: they
-        /// move out of the node list into the animation, keeping only their name and tracks.</summary>
+        /// move out of the node list into the animation, keeping only their name, tracks and morph frames.</summary>
         private void CloseAnim(int firstNode)
         {
             AnimDef a = _anim!;
@@ -1131,6 +1131,7 @@ internal static class MdlAscii
             for (int i = 0; i < an.Length; i++)
             {
                 NodeDef nd = _file[firstNode + i];
+                if (nd.Kind == NodeKind.AnimMesh) MdlPost.AnimFrames(nd);
                 an[i] = new AnimNode { Name = nd.Name, Controllers = nd.Controllers, AnimMesh = nd.AnimMesh };
                 byName.TryAdd(nd.Name, i);
             }

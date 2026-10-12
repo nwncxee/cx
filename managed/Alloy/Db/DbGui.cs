@@ -170,7 +170,11 @@ internal static unsafe class DbGui
         // Keyed on the scene's HANDLE: a recycled index is a new panel (the server list reuses the options'),
         // and a per-index latch never dumped it.
         if (_sceneSeenId[s] != scene.Value) { _sceneSeenId[s] = scene.Value; _sceneSeen[s] = 0; _sceneDumped[s] = false; }
-        bool dump = _dumped < DumpLayers && !_sceneDumped[s] && ++_sceneSeen[s] >= DumpAt;
+        // While the load screen is up every layer is dumped once, whatever the budget the HUD already spent.
+        bool load = CX.Ui.LoadScreen.PanelUp;
+        if (!load && _loadDump.Any) _loadDump = new();
+        bool dump = load ? (_loadDump.Any = true) && ++_loadDump.Seen[s] == LoadDumpAt
+                         : _dumped < DumpLayers && !_sceneDumped[s] && ++_sceneSeen[s] >= DumpAt;
         _dumpLayer = dump;
         _dumpObjN = 0; _dumpPartN = 0;
         _lKind = _lOff = _lNoRecipe = _lNoGeom = _lNoPalette = _lNoTex = 0;
@@ -233,11 +237,11 @@ internal static unsafe class DbGui
                 }
                 if (!glyphs) return issued;
                 Matrix4x4 mvp = SceneDb.ObjWorld[o] * viewProj;
-                // A GUI text run is 2D over whatever the panel already drew: depth-tested against the layer's
-                // own range so a control in front of it still wins, never depth-WRITING, which is the engine's
-                // own treatment of a StringGob (it draws with the mask off inside RenderOnlyGobs).
+                // Depth-tested AND depth-writing, as the engine draws it: nothing in RenderOnlyGobs, StringGob::Render
+                // or CAurFont::TextOut touches the mask, so Material::SetBlendingMode @0x5c5c50 left it on, and a
+                // control drawn later behind the text (a load screen's frame re-added after its tip) stays under it.
                 int runs = TextQuads.Issue(d, in mvp, d.Font.Atlas, TextObjects.CaretAlpha(nowMs),
-                                           depthTest: true, depthWrite: false);
+                                           depthTest: true, depthWrite: true);
                 _textRuns += runs;
                 return issued + runs;
             }
@@ -326,6 +330,17 @@ internal static unsafe class DbGui
     /// <summary>Sightings of a scene before its dump: long enough for its textures to land, short enough that
     /// a panel the player opens and closes is still caught.</summary>
     private const int DumpAt = 60;
+    /// <summary>The same for a load screen, which presents a few frames per load step rather than sixty a second.</summary>
+    private const int LoadDumpAt = 4;
+
+    /// <summary>Per load screen: how many times each scene index has drawn while it was up.</summary>
+    private sealed class LoadDumpState
+    {
+        public readonly int[] Seen = new int[SceneDb.MaxScenes];
+        public bool Any;
+    }
+
+    private static LoadDumpState _loadDump = new();
     private static int _dumped, _dumpObjN, _dumpPartN;
     private static bool _dumpLayer;
     private static readonly bool[] _sceneDumped = new bool[SceneDb.MaxScenes];
@@ -345,6 +360,7 @@ internal static unsafe class DbGui
         if (count <= 0) return 0;
         if (first < 0 || (long)first + count > SceneDb.MaxParts) { _badRange++; return 0; }
         Vector4 tint = SceneDb.ObjTint[o];
+        bool loadPanel = SceneDb.ObjModel[o]?.Name.Equals(LoadPanelModel, StringComparison.OrdinalIgnoreCase) == true;
         int issued = 0;
         for (int p = first; p < first + count; p++)
         {
@@ -397,10 +413,10 @@ internal static unsafe class DbGui
                 PltRows = !plt ? null : SceneDb.PartPltOwn[p] ? SceneDb.PartPltRow : SceneDb.ObjPltRow,
                 PltAt = plt && SceneDb.PartPltOwn[p] ? p * SceneDb.PltLayers : o * SceneDb.PltLayers,
                 Vao = vao, Prim = Gl.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
-                Tex = (int)tex, Bones = bones,
+                Tex = (int)tex, Bones = bones, Content = DrawRecipe.Content(recipe),
                 Mvp = world * viewProj,
                 Mv = world * v.View,
-                Colour = new Vector4(tint.X, tint.Y, tint.Z, alpha),
+                Colour = loadPanel && Surround(recipe) ? new Vector4(0f, 0f, 0f, alpha) : new Vector4(tint.X, tint.Y, tint.Z, alpha),
                 // The recipe's own blend pair through the ONE translation (Issue.BlendGl, which is the engine's
                 // blendTranslationTable @0x12f5040). This read the GL enums directly while DrawRecipe's
                 // Aurora indices were wrong; they are right now, so there is no reason for a second mapping.
@@ -436,6 +452,15 @@ internal static unsafe class DbGui
         }
         return issued;
     }
+
+    /// <summary>The load screen panel's model, stock and every override of it that keeps the name.</summary>
+    private const string LoadPanelModel = "pnl_loadscreen";
+
+    /// <summary>The load screen's SURROUND: a huge quad stretching a two-texel sliver of <c>gui_boxes_ingame</c>
+    /// (u 0.1289..0.1367) behind the art. The sliver's right end is the box's white border texel, which is the
+    /// stock white stripe down the right of every load screen; the surround is meant to be black, and draws so.</summary>
+    private static bool Surround(int recipe)
+        => DrawRecipe.TexName(recipe, 0).Equals("gui_boxes_ingame", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The texture rectangle this part's own UVs cover, for the dump line. It is the one datum that
     /// separates "the material is wrong" from "the geometry asks for the wrong part of the atlas" -- a GUI box
