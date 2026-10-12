@@ -22,7 +22,8 @@ running). It works from any worktree: it runs the `cx-linux-x64/` staged next to
 its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one:
 `glxinfo` inside it reports `OpenGL core profile version string: 4.6.0 NVIDIA`, which is what Alloy
 needs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
-log (`Starting Xwayland on :N`) -- there is no flag to pin it.
+log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either: the harness
+sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it.
 
 **Nothing of the user's is touched.** `$OUT/home` is a throwaway HOME and
 `$OUT/home/.local/share/Neverwinter Nights` a throwaway user directory, passed to the client as

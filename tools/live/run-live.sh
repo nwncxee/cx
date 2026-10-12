@@ -5,6 +5,7 @@
 #   tools/live/run-live.sh [--module NAME] [--seconds N] [--cfg 'key=value'] [--out DIR]
 #                          [--keys 'script'] [--width W] [--height H] [--boot-timeout N] [--keep]
 #   tools/live/run-live.sh --ladder            # the scripted verification ladder (== --module cxladder)
+#   tools/live/run-live.sh --nui --cfg 'nui.hitdebug=1' --keys 'sleep:...;move:x,y'   # a NUI window to point at
 #   tools/live/run-live.sh --menu              # boot to the MAIN MENU and stop there (no module at all)
 #   tools/live/run-live.sh --menu --saves DIR  # ...with saved games copied in, so Load has something
 #   tools/live/run-live.sh --menu --expect-exit 25 --keys 'sleep:6000;click:640,524'
@@ -12,7 +13,8 @@
 #                                              # binary "GUI picking works" signal that needs no screenshot
 #
 # Nothing appears on the desktop: the client runs inside `gamescope --backend headless`, which gives
-# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing of the user's
+# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing plays on the
+# speakers: OpenAL Soft mixes into its null backend (ALSOFT_DRIVERS=null). Nothing of the user's
 # is touched either -- a throwaway HOME + user directory is built under the out dir, and the client is
 # pointed at it with `-userdirectory`, so cx.cfg, cx.log, settings.tml, nwn.ini, the localvault and the
 # crashreport folder are all the harness's own copies.
@@ -45,6 +47,7 @@ CFG_LINES=()
 CHAR="${LIVE_CHAR:-fighter}"
 LADDER_MODULE="cxladder"
 LADDER=0
+NUI_MODULE=0
 MENU=0
 EXPECT_EXIT=0
 clicked_exit=0
@@ -53,6 +56,9 @@ SECONDS_SET=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --ladder)        MODULE="$LADDER_MODULE"; shift ;;
+        # A stock-area module whose script opens one fixed NUI window with id'd elements (tools/live/ladder/cxnui.nss),
+        # for driving the pointer over it with --keys.
+        --nui)           MODULE="cxnui"; NUI_MODULE=1; shift ;;
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
         --menu)          MENU=1; shift ;;
@@ -207,9 +213,9 @@ mkdir -p "$CRASH_DIR"
 # ---- the ladder module ---------------------------------------------------------------------------
 # Built into the THROWAWAY user directory, never the user's own: nothing of the installed game ends up
 # in the repo and nothing the repo builds ends up in the user's modules folder.
-if [ "$LADDER" = 1 ]; then
+if [ "$LADDER" = 1 ] || [ "$NUI_MODULE" = 1 ]; then
     mkdir -p "$USER_DIR/modules"
-    NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$USER_DIR/modules" \
+    NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$USER_DIR/modules" "$MODULE" \
         || { echo "run-live: the ladder module did not build" >&2; exit 2; }
 fi
 
@@ -229,6 +235,7 @@ START_EPOCH=$(date +%s.%N)
     export XDG_DATA_HOME="$FAKE_HOME/.local/share"
     export XDG_CACHE_HOME="$FAKE_HOME/.cache"
     export XDG_CONFIG_HOME="$FAKE_HOME/.config"
+    export ALSOFT_DRIVERS=null
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
