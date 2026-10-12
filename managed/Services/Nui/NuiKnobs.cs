@@ -40,6 +40,6 @@ internal static class NuiKnobs
         HeldImage = G.Toggle("heldimage", "Show what the server says you are holding", true,
             help: "When a server's NUI window says you picked something up, its image follows the pointer until you place it. Off, nothing follows the pointer.");
         HeldProbe = G.Text("heldprobe", "heldprobe", "", Tier.ChatOnly, Effect.Restart,
-            help: "Debug: the first time a NUI window draws, hold this image as if the server had sent it.");
+            help: "Debug: hold this image as if the server had sent it, at the first NUI draw 50 s after boot.");
     }
 }

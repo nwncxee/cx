@@ -17,6 +17,8 @@ public sealed unsafe class HeldImageService : IExtenderService
     internal const string Key = "held.image";
     /// <summary>The engine cursor shown while something is held: the <c>Use</c> row of <c>cursors.2da</c>, whose <c>CursorID</c> column is 25.</summary>
     internal const int HeldCursorId = 25;
+    /// <summary>The probe waits this long after boot, past the loading screens and menus, which draw NUI too.</summary>
+    private const int ProbeAfterMs = 50_000;
     private const float IconPx = 32f, Alpha = 0.9f;
 
     private sealed class HeldState
@@ -25,6 +27,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         /// <summary>The throwaway item behind a held <c>@look:</c>; ours until the hold ends.</summary>
         public IntPtr Minted;
         public bool Ready, ProbeDone;
+        public long SeenDrawn;
+        public readonly long Born = Environment.TickCount64;
         public int Notices;
         public ExtenderLog? Log;
     }
@@ -111,10 +115,13 @@ public sealed unsafe class HeldImageService : IExtenderService
         }
     }
 
-    /// <summary>The live harness has no server: <c>nui.heldprobe</c> sends this client the line, once, when NUI first draws.</summary>
+    /// <summary>The live harness has no server: <c>nui.heldprobe</c> sends this client the line, once, at the first NUI draw 50 s after boot.</summary>
     private static void TryProbe(HeldState s)
     {
-        if (s.ProbeDone || NuiService.Activity.Drawn == 0) return;
+        long drawn = NuiService.Activity.Drawn;
+        bool drawing = drawn != s.SeenDrawn;
+        s.SeenDrawn = drawn;
+        if (s.ProbeDone || !drawing || Environment.TickCount64 - s.Born < ProbeAfterMs) return;
         s.ProbeDone = true;
         string probe = NuiKnobs.HeldProbe.V;
         if (probe.Length > 0) ServerPolicy.Set(Key, probe);
