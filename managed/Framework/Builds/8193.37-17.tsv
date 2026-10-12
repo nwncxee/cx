@@ -1272,3 +1272,5 @@ offset	CAurCamera	vtbl.GetPosition	0x48	0x40	# CameraGetPositionSlot
 offset	CAurCamera	vtbl.GetOrientation	0x50	0x48	# CameraGetOrientationSlot
 offset	CAurCamera	vtbl.SetViewAngle	0x90	0x88	# CameraSetViewAngleSlot
 offset	CAurCamera	vtbl.GetViewAngle	0x98	0x90	# CameraGetViewAngleSlot
+offset	Gob	vtbl.SetColorShifting	0x180	0x178	# GobSetColorShiftingSlot
+offset	CAurCamera	vtbl.SetClipDist	0x88	0x80	# CameraSetClipDistSlot

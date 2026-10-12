@@ -19,8 +19,8 @@ internal static unsafe class NuiModelDoll
     internal const string ViewName = "guiModelView";
     /// <summary>The engine's invalid object id, the value an id slot holds before <c>AddInternalObject</c> fills it.</summary>
     private const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
-    /// <summary>Character creation's flags for <c>SetAppearance</c>: base body, body, head, tail and wing.</summary>
-    private const byte BuildFlags = 0x6e;   // not-an-offset: SetAppearance flag bits
+    /// <summary>Character creation first-build flags for <c>SetAppearance</c>: body (with its parts), head, tail, wing and cloak; 0x40 would build the base body only.</summary>
+    private const byte BuildFlags = 0x2f;   // not-an-offset: SetAppearance flag bits
     /// <summary>The leading <c>CCAppearanceInfo</c> of a creature's appearance object, as the appearance update handler
     /// copies it (0x1f quad words and a word). ponytail: Linux-measured; the Windows copy count is unread.</summary>
     private const int InfoBytes = 250;   // not-an-offset: sizeof CCAppearanceInfo
@@ -38,12 +38,14 @@ internal static unsafe class NuiModelDoll
     {
         public ExtenderLog? Log;
         public IntPtr AppMgr;
+        public int FadeMode = 1;
         public DollState Doll = new();
     }
 
     private static readonly DollOwnerState _o = new();
 
     internal static DollState Doll => _o.Doll;
+    internal static void SetFadeMode(int m) => _o.FadeMode = m;
 
     internal static bool Init(ExtenderLog log)
     {
@@ -88,7 +90,7 @@ internal static unsafe class NuiModelDoll
 
     /// <summary>Build the doll as a copy of <paramref name="source"/>, in a viewport covering the screen rectangle.
     /// False = a step failed and the half-built doll was taken down again.</summary>
-    internal static bool Build(IntPtr source, int x, int y, int w, int h)
+    internal static bool Build(IntPtr source, int x, int y, int w, int h, bool ai = true)
     {
         if (_o.Doll.Creature != IntPtr.Zero) Destroy();
         IntPtr app = App();
@@ -117,7 +119,7 @@ internal static unsafe class NuiModelDoll
         d.Registered = true;
         new CNWCObject(mem).Id = id;
         IntPtr master = EngineFn.GetClientAIMaster(app);
-        if (master != IntPtr.Zero) EngineFn.AiMasterAddObject(master, mem);
+        if (ai && master != IntPtr.Zero) EngineFn.AiMasterAddObject(master, mem);
         if (EngineFn.NwcCreatureSetAppearance(mem, (IntPtr)info, BuildFlags) == 0)
         {
             _o.Log?.Always("NuiModelDoll: SetAppearance failed on the throwaway creature");
@@ -126,7 +128,9 @@ internal static unsafe class NuiModelDoll
             return false;
         }
         d.Model = new CNWCCreature(mem).GetModel(0xff, 1);
-        if (d.Model != IntPtr.Zero) EngineFn.SetAlphaObject(d.Model, 1f);
+        if (_o.FadeMode != 0) EngineFn.ObjSetFadeState(mem, 1);
+        if (_o.FadeMode != 0) EngineFn.ObjSetAlpha(mem, 1f, 1);
+        if (d.Model != IntPtr.Zero) Opaque(d.Model);
         byte* name = stackalloc byte[ViewName.Length + 1];
         for (int i = 0; i < ViewName.Length; i++) name[i] = (byte)ViewName[i];
         name[ViewName.Length] = 0;
@@ -179,6 +183,13 @@ internal static unsafe class NuiModelDoll
         _o.Log?.Always("NuiModelDoll: taken down");
     }
 
+    /// <summary>The colour shift the fade machinery leaves a new creature at: alpha 1, colour white, to the attached parts too.</summary>
+    internal static void Opaque(IntPtr model)
+    {
+        IntPtr fn = new Gob(model).Ptr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)(*(IntPtr*)model + EngineLayout.GobSetColorShiftingSlot);
+        ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
+    }
+
     /// <summary>Stand the model up at <paramref name="pos"/> facing <paramref name="yawDeg"/> degrees round the screen's vertical:
     /// the creature's up axis is Z, so it is first laid back 90 degrees to stand on the view's Y.</summary>
     internal static void Place(Vector3 pos, float yawDeg)
@@ -201,6 +212,26 @@ internal static unsafe class NuiModelDoll
             ((delegate* unmanaged<IntPtr, EVec, EVec>)g.SetPositionFn)(m, v);
             ((delegate* unmanaged<IntPtr, EQuat, EQuat>)g.SetOrientationFn)(m, q);
         }
+    }
+
+    /// <summary>The creature's fade bytes and the model's colour-shift alpha, for working out why it is hidden.</summary>
+    private const int FA = 0xa8, FB = 0xa9, FC = 0xb0, FD = 0xf4, FE = 0x104, FF = 0x108, FG = 0xf6;   // not-an-offset: throwaway probe of the creature fade bytes
+    /// <summary>Per frame: the creature's own AI turns its fade off again (it is in no area), so the doll is shown again
+    /// whenever the model's alpha has dropped.</summary>
+    internal static void KeepShown()
+    {
+        DollState d = _o.Doll;
+        if (d.Creature == IntPtr.Zero || d.Model == IntPtr.Zero || *(float*)(d.Model + FF) >= 1f) return;
+        if (_o.FadeMode != 0) EngineFn.ObjSetFadeState(d.Creature, 1);
+        Opaque(d.Model);
+    }
+
+    internal static string FadeLine()
+    {
+        IntPtr c = _o.Doll.Creature, m = _o.Doll.Model;
+        if (c == IntPtr.Zero) return "no creature";
+        return $"fade state {*(byte*)(c + FA)} desired {*(byte*)(c + FB)} final {*(float*)(c + FC)} f4 {*(int*)(c + FD)} 104 {*(int*)(c + FE)} 108 {*(int*)(c + FF)}"
+             + (m == IntPtr.Zero ? "" : $" | model alpha {*(float*)(m + FF)} enable {*(short*)(m + FG)}");
     }
 
     /// <summary>The camera's state as one log line, for working out where to put the model.</summary>

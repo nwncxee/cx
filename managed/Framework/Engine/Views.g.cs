@@ -293,6 +293,8 @@ global using unsafe DataBlockFromBase64Fn = delegate* unmanaged<nint, nint, nint
 global using unsafe NwcCreateItemFn = delegate* unmanaged<nint, uint, ushort*, byte*, byte*, sbyte, byte, nint, nint>;
 global using unsafe NwcCreatureCtorFn = delegate* unmanaged<nint, nint>;
 global using unsafe NwcCreatureSetAppearanceFn = delegate* unmanaged<nint, nint, byte, int>;
+global using unsafe ObjSetAlphaFn = delegate* unmanaged<nint, float, byte, void>;
+global using unsafe ObjSetFadeStateFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe GetGameObjectArrayFn = delegate* unmanaged<nint, nint>;
 global using unsafe GetClientAIMasterFn = delegate* unmanaged<nint, nint>;
 global using unsafe AiMasterAddObjectFn = delegate* unmanaged<nint, nint, void>;
@@ -764,6 +766,10 @@ public readonly unsafe partial struct CAurCamera(IntPtr ptr)
     public float GetViewAngle() => ((delegate* unmanaged<IntPtr, float>)GetViewAngleFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.CameraGetViewAngleSlot"/>
     public IntPtr GetViewAngleFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CameraGetViewAngleSlot);
+    /// <inheritdoc cref="EngineLayout.CameraSetClipDistSlot"/>
+    public void SetClipDist(float near, float far) => ((delegate* unmanaged<IntPtr, float, float, void>)SetClipDistFn)(Ptr, near, far);
+    /// <inheritdoc cref="EngineLayout.CameraSetClipDistSlot"/>
+    public IntPtr SetClipDistFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CameraSetClipDistSlot);
     /// <inheritdoc cref="EngineLayout.CameraSetOrientationSlot"/>
     public IntPtr SetOrientationFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CameraSetOrientationSlot);
     /// <inheritdoc cref="EngineLayout.CameraSetPositionSlot"/>
@@ -2811,6 +2817,8 @@ public readonly unsafe ref partial struct Gob(IntPtr ptr)
     public void SetBehavior(IntPtr behavior) => ((delegate* unmanaged<IntPtr, IntPtr, void>)SetBehaviorFn)(Ptr, behavior);
     /// <inheritdoc cref="EngineLayout.GobSetBehaviorSlot"/>
     public IntPtr SetBehaviorFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GobSetBehaviorSlot);
+    /// <inheritdoc cref="EngineLayout.GobSetColorShiftingSlot"/>
+    public IntPtr SetColorShiftingFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GobSetColorShiftingSlot);
     /// <inheritdoc cref="EngineLayout.GobSetOrientationSlot"/>
     public IntPtr SetOrientationFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GobSetOrientationSlot);
     /// <inheritdoc cref="EngineLayout.GobSetPositionSlot"/>
@@ -5412,6 +5420,14 @@ public static unsafe class EngineFn
     private static bool _NwcCreatureSetAppearanceDone;
     /// <inheritdoc cref="SymbolMap.NwcCreatureSetAppearance"/>
     public static NwcCreatureSetAppearanceFn NwcCreatureSetAppearance => (NwcCreatureSetAppearanceFn)(_NwcCreatureSetAppearanceDone ? _NwcCreatureSetAppearance : Resolve(ref _NwcCreatureSetAppearance, ref _NwcCreatureSetAppearanceDone, SymbolMap.NwcCreatureSetAppearance));
+    private static IntPtr _ObjSetAlpha;
+    private static bool _ObjSetAlphaDone;
+    /// <inheritdoc cref="SymbolMap.ObjSetAlpha"/>
+    public static ObjSetAlphaFn ObjSetAlpha => (ObjSetAlphaFn)(_ObjSetAlphaDone ? _ObjSetAlpha : Resolve(ref _ObjSetAlpha, ref _ObjSetAlphaDone, SymbolMap.ObjSetAlpha));
+    private static IntPtr _ObjSetFadeState;
+    private static bool _ObjSetFadeStateDone;
+    /// <inheritdoc cref="SymbolMap.ObjSetFadeState"/>
+    public static ObjSetFadeStateFn ObjSetFadeState => (ObjSetFadeStateFn)(_ObjSetFadeStateDone ? _ObjSetFadeState : Resolve(ref _ObjSetFadeState, ref _ObjSetFadeStateDone, SymbolMap.ObjSetFadeState));
     private static IntPtr _GetGameObjectArray;
     private static bool _GetGameObjectArrayDone;
     /// <inheritdoc cref="SymbolMap.GetGameObjectArray"/>
@@ -7833,6 +7849,18 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NwcCreatureSetAppearance"/>; returns the slot holding the next layer, or null.</summary>
     public static NwcCreatureSetAppearanceFn* ChainNwcCreatureSetAppearance(this HookService h, NwcCreatureSetAppearanceFn handler, int priority) =>
         (NwcCreatureSetAppearanceFn*)h.Chain(SymbolMap.NwcCreatureSetAppearance, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ObjSetAlpha"/>; returns the original, or null.</summary>
+    public static ObjSetAlphaFn InstallObjSetAlpha(this HookService h, ObjSetAlphaFn handler) =>
+        (ObjSetAlphaFn)h.Install(SymbolMap.ObjSetAlpha, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ObjSetAlpha"/>; returns the slot holding the next layer, or null.</summary>
+    public static ObjSetAlphaFn* ChainObjSetAlpha(this HookService h, ObjSetAlphaFn handler, int priority) =>
+        (ObjSetAlphaFn*)h.Chain(SymbolMap.ObjSetAlpha, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ObjSetFadeState"/>; returns the original, or null.</summary>
+    public static ObjSetFadeStateFn InstallObjSetFadeState(this HookService h, ObjSetFadeStateFn handler) =>
+        (ObjSetFadeStateFn)h.Install(SymbolMap.ObjSetFadeState, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ObjSetFadeState"/>; returns the slot holding the next layer, or null.</summary>
+    public static ObjSetFadeStateFn* ChainObjSetFadeState(this HookService h, ObjSetFadeStateFn handler, int priority) =>
+        (ObjSetFadeStateFn*)h.Chain(SymbolMap.ObjSetFadeState, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GetGameObjectArray"/>; returns the original, or null.</summary>
     public static GetGameObjectArrayFn InstallGetGameObjectArray(this HookService h, GetGameObjectArrayFn handler) =>
         (GetGameObjectArrayFn)h.Install(SymbolMap.GetGameObjectArray, (IntPtr)handler);

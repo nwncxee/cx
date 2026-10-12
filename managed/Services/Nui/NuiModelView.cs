@@ -30,7 +30,7 @@ internal static unsafe class NuiModelView
         _s.Log = log;
         _s.Ready = NuiModelDoll.Init(log);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        FrameRegistry.Global.Register(FramePhase.PrePresent, 30, Frame, "NuiModelView.frame", log);
+        FrameRegistry.Global.Register(FramePhase.PrePresent, 1, Frame, "NuiModelView.frame", log);
     }
 
     private static void Frame()
@@ -39,10 +39,11 @@ internal static unsafe class NuiModelView
         s.Frames++;
         string probe = NuiKnobs.ModelProbe.V;
         if (probe.Length > 0 && probe != s.Applied && GameGate.InGame && Environment.TickCount64 - s.Born > ProbeAfterMs) Probe(s, probe);
+        NuiModelDoll.KeepShown();
         if (NuiModelDoll.Doll.Enabled && Environment.TickCount64 > s.NextLog)
         {
             s.NextLog = Environment.TickCount64 + 5000;
-            _s.Log?.Always("NuiModelView: " + NuiModelDoll.CameraLine());
+            _s.Log?.Always("NuiModelView: " + NuiModelDoll.CameraLine() + " | " + NuiModelDoll.FadeLine());
         }
     }
 
@@ -53,14 +54,15 @@ internal static unsafe class NuiModelView
         s.Applied = spec;
         string[] t = spec.Split(',');
         float F(int i, float d) => i < t.Length && float.TryParse(t[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : d;
+        NuiModelDoll.SetFadeMode((int)F(10, 1));
         IntPtr me = NuiModelDoll.Player();
         if (me == IntPtr.Zero) { _s.Log?.Always("NuiModelView: probe -- no player creature"); return; }
         if (NuiModelDoll.Doll.Creature == IntPtr.Zero)
         {
-            if (!NuiModelDoll.Build(me, (int)F(0, 700), (int)F(1, 100), (int)F(2, 300), (int)F(3, 400))) return;
+            if (!NuiModelDoll.Build(me, (int)F(0, 700), (int)F(1, 100), (int)F(2, 300), (int)F(3, 400), F(9, 1) != 0)) return;
             _s.Log?.Always("NuiModelView: probe built; camera as the engine made it: " + NuiModelDoll.CameraLine());
         }
-        if (t.Length > 4) new CAurCamera(NuiModelDoll.Doll.Camera).SetViewAngle(F(4, 30f));
+        if (t.Length > 4) { var cam = new CAurCamera(NuiModelDoll.Doll.Camera); cam.SetViewAngle(F(4, 30f)); cam.SetClipDist(0.1f, 2000f); }
         if (t.Length > 5) NuiModelDoll.Place(new Vector3(F(5, 0), F(6, 0), F(7, 0)), F(8, 0));
         _s.Log?.Always("NuiModelView: probe placed; camera now: " + NuiModelDoll.CameraLine());
     }

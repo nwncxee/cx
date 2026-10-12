@@ -2384,6 +2384,7 @@ public static unsafe class EngineLayout
     public static readonly int SizeOfCreature = Field("CNWCCreature", "sizeof");
     public static readonly int SizeOfGuiViewport = Field("CGuiViewport", "sizeof");
     public static readonly int GuiViewportRecord = Field("CGuiViewport", "record");
+    public static readonly int GobSetColorShiftingSlot = Field("Gob", "vtbl.SetColorShifting", Expect.VtblSlot);
     public static readonly int CreatureDeleteSlot = Field("CNWCCreature", "vtbl.Delete", Expect.VtblSlot);
     /// <summary>The <c>CAurCamera</c> interface slots a free view's camera is set up through (<c>CameraSlots</c>' numbering;
     /// Windows is one lower from slot 2). The by-value ones are called per OS by <c>NuiModelDoll</c>.</summary>
@@ -2391,6 +2392,7 @@ public static unsafe class EngineLayout
     public static readonly int CameraSetOrientationSlot = Field("CAurCamera", "vtbl.SetOrientation", Expect.VtblSlot);
     public static readonly int CameraGetPositionSlot = Field("CAurCamera", "vtbl.GetPosition", Expect.VtblSlot);
     public static readonly int CameraGetOrientationSlot = Field("CAurCamera", "vtbl.GetOrientation", Expect.VtblSlot);
+    public static readonly int CameraSetClipDistSlot = Field("CAurCamera", "vtbl.SetClipDist", Expect.VtblSlot, sig: "void(float near, float far)");
     public static readonly int CameraSetViewAngleSlot = Field("CAurCamera", "vtbl.SetViewAngle", Expect.VtblSlot, sig: "void(float angle)");
     public static readonly int CameraGetViewAngleSlot = Field("CAurCamera", "vtbl.GetViewAngle", Expect.VtblSlot, sig: "float()");
     /// <summary>CNWCModule -&gt; "chase suppressed" (int 0/1): <c>UpdateCameraModeChaseCam/EQ</c> set it the frame the

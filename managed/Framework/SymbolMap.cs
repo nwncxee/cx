@@ -1898,10 +1898,16 @@ internal static unsafe class SymbolMap
     [Fn("IntPtr(IntPtr self)")]
     public const string NwcCreatureCtor = "_ZN12CNWCCreatureC1Ev";
     /// <summary><c>CNWCCreature::SetAppearance(CCAppearanceInfo*, uchar flags)</c> @0x72dc50 (Windows rva 0x809a00) --
-    /// builds the creature's model from an appearance record: 0x6e as character creation passes it (base body, body,
+    /// builds the creature's model from an appearance record: 0x2f as character creation first builds (body, parts,
     /// head, tail, wing). Returns 0 when the body failed to build.</summary>
     [Fn("int(IntPtr self, IntPtr info, byte flags)")]
     public const string NwcCreatureSetAppearance = "_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh";
+    /// <summary><c>CNWCObject::SetAlpha(float, uchar)</c> @0x7e6fc0 -- forwards to the model's alpha slot; chargen calls it with 1.0 on its new creature.</summary>
+    [Fn("void(IntPtr self, float alpha, byte flag)")]
+    public const string ObjSetAlpha = "_ZN10CNWCObject8SetAlphaEfh";
+    /// <summary><c>CNWCObject::SetFadeState(uchar)</c> @0x7e7ba0 -- 1 shows the object (model visible, alpha from its fade), 0 hides it.</summary>
+    [Fn("void(IntPtr self, byte state)")]
+    public const string ObjSetFadeState = "_ZN10CNWCObject12SetFadeStateEh";
     /// <summary><c>CClientExoApp::GetGameObjectArray()</c> @0x6377c0 (Windows rva 0x6abb70).</summary>
     [Fn("IntPtr(IntPtr app)")]
     public const string GetGameObjectArray = "_ZN13CClientExoApp18GetGameObjectArrayEv";
@@ -3311,6 +3317,8 @@ internal static unsafe class SymbolMap
         [DataBlockFromBase64] = Nm("?FromBase64@DataBlock@@SA?AV?$shared_ptr@VDataBlock@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z"),
         [NwcCreateItem] = At(),   // its own .pdata entry; the only function citing "gifp" and "gi_armor01" (docs/windows-symbols.md)
         [IdentityVisualTransform] = Nm("?s_IdentityVisualTransformData@ObjectVisualTransformData@@0U1@B"),
+        [ObjSetAlpha] = At(),   // Windows rva unread
+        [ObjSetFadeState] = At(),   // Windows rva unread
         [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
         [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
         [GetGameObjectArray] = At(),   // the first call CreateCharacterObject makes, its result is AddInternalObject's `this`
