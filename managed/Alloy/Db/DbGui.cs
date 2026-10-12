@@ -190,11 +190,7 @@ internal static unsafe class DbGui
                 if (SceneDb.Objects.LiveAt(o))
                     issued += DrawOne(o, s, in v, in viewProj, lit, nowMs, dump, ref walked, ref hidden, ref texts);
         GuiCapture.EndDbLayer();
-        if (model)
-        {
-            if (redirect != 0 && issued > 0) CX.Services.Nui.NuiModelDoll.MarkRendered();
-            CX.Services.Nui.NuiModelDoll.Report($"issued {issued} walked {walked} hidden {hidden} off {_lOff} kind {_lKind} notex {_lNoTex} nogeom {_lNoGeom} target {redirect}");
-        }
+        if (redirect != 0 && issued > 0) CX.Services.Nui.NuiModelDoll.MarkRendered();
         LastWhy = clear ? 'C' : 'd'; LastIssued = issued;
         return Close(s, in v, dump, walked, hidden, texts, issued, near, far, clear, lit);
     }
@@ -210,11 +206,7 @@ internal static unsafe class DbGui
             // Gob::Render @0x53d790's own first two gates, which DB mode otherwise drops: the game's
             // enable, and the COLOUR-SHIFT ALPHA at Gob+0x108 -- `0.0 < *(float *)(this + 0x108)`. Setting
             // that to 0 is how the game hides a gob without detaching it, and nothing else in CX reads it.
-            if (!SceneDb.ObjVisible[o] || ShellAlpha(o) <= 0f)
-            {
-                if (dump) _log?.Info($"DbGui: [hidden] o={o} model={SceneDb.ObjModel[o]?.Name ?? "-"} visible={SceneDb.ObjVisible[o]} alpha={ShellAlpha(o)}");
-                hidden++; return 0;
-            }
+            if (!SceneDb.ObjVisible[o] || ShellAlpha(o) <= 0f) { hidden++; return 0; }
             if (dump && SceneDb.ObjAttachPart[o] < 0 && !SceneDb.ObjAttachTo[o].IsNull) NoAnchor(o);
             if (dump && _dumpObjN < DumpObjects)
             {

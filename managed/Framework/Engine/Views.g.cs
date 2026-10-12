@@ -757,14 +757,6 @@ public readonly unsafe partial struct CAurCamera(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.CameraGetOrientationSlot"/>
-    public IntPtr GetOrientationFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CameraGetOrientationSlot);
-    /// <inheritdoc cref="EngineLayout.CameraGetPositionSlot"/>
-    public IntPtr GetPositionFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CameraGetPositionSlot);
-    /// <inheritdoc cref="EngineLayout.CameraGetViewAngleSlot"/>
-    public float GetViewAngle() => ((delegate* unmanaged<IntPtr, float>)GetViewAngleFn)(Ptr);
-    /// <inheritdoc cref="EngineLayout.CameraGetViewAngleSlot"/>
-    public IntPtr GetViewAngleFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CameraGetViewAngleSlot);
     /// <inheritdoc cref="EngineLayout.CameraSetClipDistSlot"/>
     public void SetClipDist(float near, float far) => ((delegate* unmanaged<IntPtr, float, float, void>)SetClipDistFn)(Ptr, near, far);
     /// <inheritdoc cref="EngineLayout.CameraSetClipDistSlot"/>

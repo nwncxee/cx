@@ -213,13 +213,24 @@ internal static unsafe class NuiItemIcons
     }
 
     /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none) at its own
-    /// size, else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
+    /// size, or stretched to <paramref name="w"/> x <paramref name="h"/> when the server declared that size (<paramref name="sized"/>),
+    /// else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
     /// and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
-    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, out uint[] pixels, out int pw, out int ph)
+    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, out uint[] pixels, out int pw, out int ph)
     {
         _w = _h = 0;
         if (standin.Length > 0 && standin[0] != 0) AddPlain(standin);
         if (_w == 0) { _w = w; _h = h; Grow(w * h); Array.Clear(_canvas!, 0, w * h); }
+        else if (sized && (_w != w || _h != h))
+        {
+            uint[] src = new uint[_w * _h];
+            Array.Copy(_canvas!, src, src.Length);
+            int sw = _w, sh = _h;
+            _w = w; _h = h;
+            Grow(w * h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) _canvas![y * w + x] = src[(y * sh / h) * sw + x * sw / w];
+        }
         Emit(_w, _h);
         SetRef($"cx{Hash():x8}");
         pw = _w; ph = _h;

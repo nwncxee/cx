@@ -18,7 +18,6 @@ internal static unsafe class NuiModelView
     private const string Prefix = "@model:";
     private const string KeyRoot = "model.";
     private const int DefaultSize = 256, MaxSize = 1024, MaxKey = 48;
-    private const long ProbeAfterMs = 20_000;
 
     /// <summary>The one view the doll serves: the image's pointers (read, never owned) and what the server last declared.</summary>
     private sealed class ViewData
@@ -37,10 +36,7 @@ internal static unsafe class NuiModelView
 
     private sealed class ViewState
     {
-        public readonly long Born = Environment.TickCount64;
         public bool Ready;
-        public string Applied = "";
-        public long NextLog;
         public ExtenderLog? Log;
         public ViewData? View;
         public string PendingKey = "";
@@ -82,27 +78,33 @@ internal static unsafe class NuiModelView
     private static float PolicyF(string key, string what, float def)
         => float.TryParse(Policy(key, what, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : def;
 
-    private static (int, int) SizeOf(string key)
+    private static (int, int, bool) SizeOf(string key)
     {
         string v = Policy(key, "size", "");
         int x = v.IndexOf('x');
         if (x > 0 && int.TryParse(v.AsSpan(0, x), out int w) && int.TryParse(v.AsSpan(x + 1), out int h)
-            && w is > 0 and <= MaxSize && h is > 0 and <= MaxSize) return (w, h);
-        return (DefaultSize, DefaultSize);
+            && w is > 0 and <= MaxSize && h is > 0 and <= MaxSize) return (w, h, true);
+        return (DefaultSize, DefaultSize, false);
     }
 
     /// <summary>nk_loadimg asks for the image: make the TGA it will load, the stand-in at its own size or a transparent
     /// one. A declaration that lands later is applied to the live texture by <see cref="Frame"/>.</summary>
     internal static bool Prepare(byte* resref)
     {
-        if (!_s.Ready || !NuiKnobs.Enabled.V || !NuiKnobs.ModelView.V) return false;
+        if (!_s.Ready) return false;
+        if (!NuiKnobs.Enabled.V || !NuiKnobs.ModelView.V)
+        {
+            _s.PendingKey = "";
+            NuiItemIcons.ModelImage(default, 1, 1, false, out _, out _, out _);
+            return true;
+        }
         string key = KeyOf(resref);
-        var (w, h) = SizeOf(key);
+        var (w, h, sized) = SizeOf(key);
         string standin = Policy(key, "standin", "");
         Span<byte> name = stackalloc byte[17];
         name.Clear();
         for (int i = 0; i < standin.Length && i < 16; i++) name[i] = (byte)standin[i];
-        NuiItemIcons.ModelImage(name, w, h, out uint[] px, out int pw, out int ph);
+        NuiItemIcons.ModelImage(name, w, h, sized, out uint[] px, out int pw, out int ph);
         _s.PendingKey = key; _s.PendingPixels = px; _s.PendingW = pw; _s.PendingH = ph; _s.PendingStandin = standin;
         return true;
     }
@@ -129,15 +131,8 @@ internal static unsafe class NuiModelView
     private static void Frame()
     {
         ViewState s = _s;
-        string probe = NuiKnobs.ModelProbe.V;
-        if (probe.Length > 0 && probe != s.Applied && GameGate.InGame && Environment.TickCount64 - s.Born > ProbeAfterMs) Probe(s, probe);
         if (s.View != null) Serve(s, s.View);
         NuiModelDoll.KeepShown();
-        if (NuiModelDoll.Doll.Enabled && Environment.TickCount64 > s.NextLog)
-        {
-            s.NextLog = Environment.TickCount64 + 5000;
-            s.Log?.Always("NuiModelView: " + NuiModelDoll.CameraLine() + " | " + NuiModelDoll.FadeLine());
-        }
     }
 
     private static void Serve(ViewState s, ViewData v)
@@ -239,7 +234,7 @@ internal static unsafe class NuiModelView
             Span<byte> name = stackalloc byte[17];
             name.Clear();
             for (int i = 0; i < v.StandinName.Length && i < 16; i++) name[i] = (byte)v.StandinName[i];
-            NuiItemIcons.ModelImage(name, v.W, v.H, out uint[] fresh, out int fw, out int fh);
+            NuiItemIcons.ModelImage(name, v.W, v.H, true, out uint[] fresh, out int fw, out int fh);
             if (fw != v.W || fh != v.H) { s.Log?.Always($"NuiModelView: stand-in '{v.StandinName}' is {fw}x{fh}, the view {v.W}x{v.H} -- not applied"); return; }
             px = v.Standin = fresh;
         }
@@ -248,25 +243,37 @@ internal static unsafe class NuiModelView
             px = v.Standin = new uint[v.W * v.H];
         }
         if (px == null || v.Target == 0 || Gl.TexSubImage2D == null) return;
-        int prev;
+        int prev, pbo, align, rowLen;
         Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &prev);
+        Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &pbo);
+        Gl.GetIntegerv(Gl.UNPACK_ALIGNMENT, &align);
+        Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &rowLen);
+        Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
+        Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 4);
+        Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, 0);
         Gl.BindTexture(Gl.TEXTURE_2D, v.Target);
         fixed (uint* p = px) Gl.TexSubImage2D(Gl.TEXTURE_2D, 0, 0, 0, v.W, v.H, Gl.RGBA, Gl.UNSIGNED_BYTE, p);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)prev);
+        Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, rowLen);
+        Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, align);
+        Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)pbo);
     }
 
-    /// <summary><c>nui.modelprobe=x,y,w,h[,angle,dist,height,yaw,ai]</c>: a doll of you straight on the screen, for trying
-    /// placements with no window. Debug only.</summary>
-    private static void Probe(ViewState s, string spec)
+    /// <summary>Oracle: hand-written names. Which strings are model views' and what key each carries.</summary>
+    internal static void SelfCheck(ExtenderLog log)
     {
-        s.Applied = spec;
-        string[] t = spec.Split(',');
-        float F(int i, float d) => i < t.Length && float.TryParse(t[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : d;
-        IntPtr me = NuiModelDoll.Player();
-        if (me == IntPtr.Zero) { s.Log?.Always("NuiModelView: probe -- no player creature"); return; }
-        if (NuiModelDoll.Doll.Creature == IntPtr.Zero
-            && !NuiModelDoll.Build(me, (int)F(0, 700), (int)F(1, 100), (int)F(2, 300), (int)F(3, 400), F(8, 1) != 0)) return;
-        if (t.Length > 4) { var cam = new CAurCamera(NuiModelDoll.Doll.Camera); cam.SetViewAngle(F(4, 30f)); cam.SetClipDist(0.1f, 2000f); }
-        if (t.Length > 5) NuiModelDoll.Orbit(F(5, 4f), F(6, 0.9f), F(7, 0));
+        var check = new Checker(log);
+        byte* b = stackalloc byte[64];
+        bool Is(string v)
+        {
+            for (int i = 0; i < v.Length; i++) b[i] = (byte)v[i];
+            b[v.Length] = 0;
+            return IsModelName(b);
+        }
+        check.Expect(Is("@model:me") && Is("@model:player.1"), "an @model: name with a key is a model view's");
+        check.Expect(!Is("@model:") && !Is("@models:me") && !Is("@item:1a") && !Is("model:me") && !Is("@look:0001"), "a bare prefix or another family is not");
+        for (int i = 0; i < 9; i++) b[i] = (byte)"@model:me"[i];
+        b[9] = 0;
+        check.Expect(KeyOf(b) == "me", "the key is what follows the prefix");
     }
 }

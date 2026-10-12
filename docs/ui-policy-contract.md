@@ -34,6 +34,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `2`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
+| `cx_cap_modelview` | `1`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview` |
 | `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
 | `cx_cap_heldpick` | `1`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well) |
 
@@ -233,8 +234,8 @@ when the client does not know the item.
 ### Images and icons
 
 An icon or image `src` is a texture resref (up to 16 characters) or `@item:<hex>`, which draws that item's inventory
-icon in its own colours. A name that does not resolve draws nothing, never an error sprite. `@look:` and `@model:`
-sources are reserved and draw nothing yet.
+icon in its own colours. A name that does not resolve draws nothing, never an error sprite. `@look:` is reserved and
+draws nothing yet. `@model:` draws nothing in a card; it draws in a NUI image (see [Model views](#model-views)).
 
 ### Limits
 
@@ -282,6 +283,38 @@ The keys are session state like every other `PolicySet` line. `nui.<id>.*=` rele
 
 A fade out draws the window's last frame again, without the images in it: their textures are freed with the window. A
 window's own popups (an open combo list) are not in that frame.
+
+## Model views
+
+`@model:<key>` as the name of a NUI image shows a copy of a creature as a live, animated, lit model on a transparent
+background, redrawn every frame into the image's own texture. NUI draws it like any other image. Send it only to a client
+that advertises `cx_cap_modelview`, and send the plain image (a portrait) to every other one.
+
+The key is any text up to 48 characters. Its settings are policy lines, `model.<key>.<setting>`, and a client reads them when
+the image loads and again whenever the policy changes. A window can open before its lines arrive, so the view shows its
+stand-in until they do.
+
+| setting | value | default |
+|---|---|---|
+| `target` | `player`, or the hex object id of a creature (NWScript `ObjectToString`). Empty releases it | no one: the view shows the stand-in |
+| `standin` | a texture resref (an uncompressed TGA) | nothing: the image is transparent |
+| `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
+| `angle` | the camera's view angle in degrees | `30` |
+| `dist` | camera distance from the creature, in metres | `4` |
+| `height` | camera height above the creature's feet, in metres | `0.9` |
+| `yaw` | degrees round the creature. `0` sees its right side, `90` its front | `0` |
+| `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
+| `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
+
+**Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
+taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
+name that fails to load never draws the engine's error sprite. CX adds no stand-in of its own.
+
+**What follows.** The doll follows the target's body, head, colours and armour as the server sends them. Weapons, shields,
+helmets and cloaks do not show yet. Closing the window takes the doll down, and its cost with it.
+
+**Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
+must be a creature the client knows. A `@model:` name never shows an item.
 
 ## The inventory window's keys
 

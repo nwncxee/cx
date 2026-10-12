@@ -60,6 +60,7 @@ void OpenWindow(object oPC)
     NuiSetBind(oPC, nToken, "rows", jRows);
     Mark("open token " + IntToString(nToken) + " torch " + ObjectToString(oTorch));
     DelayCommand(14.0, Change(oPC));
+    DelayCommand(24.0, NuiDestroy(oPC, nToken));
 }
 
 void Arm(object oPC, int nTry)

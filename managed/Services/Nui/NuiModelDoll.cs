@@ -21,9 +21,8 @@ internal static unsafe class NuiModelDoll
     private const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
     /// <summary>Character creation first-build flags for <c>SetAppearance</c>: body (with its parts), head, tail, wing and cloak; 0x40 would build the base body only.</summary>
     private const byte BuildFlags = 0x2f;   // not-an-offset: SetAppearance flag bits
-    /// <summary>The leading <c>CCAppearanceInfo</c> of a creature's appearance object, as the appearance update handler
-    /// copies it (0x1f quad words and a word). ponytail: Linux-measured; the Windows copy count is unread.</summary>
-    private const int InfoBytes = 250;   // not-an-offset: sizeof CCAppearanceInfo
+    private const int InfoMax = 256;   // not-an-offset: room for either OS's CCAppearanceInfo
+    private static int InfoBytes => EngineLayout.SizeOfAppearanceInfo;
 
     /// <summary>Everything one doll owns. Replaced whole by <see cref="Destroy"/>.</summary>
     internal sealed class DollState
@@ -38,7 +37,6 @@ internal static unsafe class NuiModelDoll
     {
         public ExtenderLog? Log;
         public IntPtr AppMgr;
-        public long NextReport;
         /// <summary>The GL texture the view's layer is drawn into (0 = the screen), its background colour, and whether a
         /// frame has landed in it since the doll was built.</summary>
         public uint TargetTex;
@@ -70,7 +68,7 @@ internal static unsafe class NuiModelDoll
                                SymbolMap.GameObjectArrayAdd, SymbolMap.GameObjectArrayDelete, SymbolMap.GuiViewportCtor,
                                SymbolMap.GuiViewportDtor, SymbolMap.GuiViewportEnable, SymbolMap.GuiViewportDisable,
                                SymbolMap.GuiViewportSetViewport, SymbolMap.GuiViewportTakeModel, SymbolMap.GuiViewportGetCamera)
-            || !EngineLayout.Require(log, "NuiModelDoll", "CNWCCreature", "CGuiViewport", "CAurCamera", "Gob", "CGameObject"))
+            || !EngineLayout.Require(log, "NuiModelDoll", "CNWCCreature", "CGuiViewport", "CCAppearanceInfo", "CAurCamera", "Gob", "CGameObject"))
             return false;
         _o.AppMgr = SymbolMap.Resolve(SymbolMap.AppManager, log);
         return _o.AppMgr != IntPtr.Zero;
@@ -111,7 +109,7 @@ internal static unsafe class NuiModelDoll
         if (app == IntPtr.Zero || source == IntPtr.Zero) return false;
         IntPtr appearance = new CNWCCreature(source).Pathfind.Ptr;
         if (appearance == IntPtr.Zero) return false;
-        byte* info = stackalloc byte[InfoBytes];
+        byte* info = stackalloc byte[InfoMax];
         Buffer.MemoryCopy((void*)appearance, info, InfoBytes, InfoBytes);
 
         var d = new DollState();
@@ -230,8 +228,6 @@ internal static unsafe class NuiModelDoll
         }
     }
 
-    /// <summary>The creature's fade bytes and the model's colour-shift alpha, for working out why it is hidden.</summary>
-    private const int FA = 0xa8, FB = 0xa9, FC = 0xb0, FD = 0xf4, FE = 0x104, FF = 0x108, FG = 0xf6;   // not-an-offset: throwaway probe of the creature fade bytes
     /// <summary>The appearance record <paramref name="source"/> holds now, as a span over the engine's own bytes.</summary>
     internal static ReadOnlySpan<byte> InfoOf(IntPtr source)
     {
@@ -246,7 +242,7 @@ internal static unsafe class NuiModelDoll
         DollState d = _o.Doll;
         ReadOnlySpan<byte> now = InfoOf(source);
         if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
-        byte* info = stackalloc byte[InfoBytes];
+        byte* info = stackalloc byte[InfoMax];
         now.CopyTo(new Span<byte>(info, InfoBytes));
         if (EngineFn.NwcCreatureSetAppearance(d.Creature, (IntPtr)info, BuildFlags) == 0) return false;
         IntPtr model = new CNWCCreature(d.Creature).GetModel(0xff, 1);
@@ -264,35 +260,6 @@ internal static unsafe class NuiModelDoll
         DollState d = _o.Doll;
         if (d.Creature == IntPtr.Zero || d.Model == IntPtr.Zero) return;
         if (new CNWCObject(d.Creature).Visible != 1) EngineFn.ObjSetFadeState(d.Creature, 1);
-        if (*(float*)(d.Model + FF) < 1f) Opaque(d.Model);
-    }
-
-    internal static void Report(string line)
-    {
-        long now = Environment.TickCount64;
-        if (now < _o.NextReport) return;
-        _o.NextReport = now + 2000;
-        _o.Log?.Always("NuiModelDoll: draw " + line);
-    }
-
-    internal static string FadeLine()
-    {
-        IntPtr c = _o.Doll.Creature, m = _o.Doll.Model;
-        if (c == IntPtr.Zero) return "no creature";
-        return $"fade state {*(byte*)(c + FA)} desired {*(byte*)(c + FB)} final {*(float*)(c + FC)} f4 {*(int*)(c + FD)} 104 {*(int*)(c + FE)} 108 {*(int*)(c + FF)}"
-             + (m == IntPtr.Zero ? "" : $" | model alpha {*(float*)(m + FF)} enable {*(short*)(m + FG)}");
-    }
-
-    /// <summary>The camera's state as one log line, for working out where to put the model.</summary>
-    internal static string CameraLine()
-    {
-        IntPtr c = _o.Doll.Camera;
-        if (c == IntPtr.Zero) return "no camera";
-        var cam = new CAurCamera(c);
-        string s = $"angle {cam.GetViewAngle()}";
-        if (OperatingSystem.IsWindows()) return s + " (position and orientation unread on Windows)";
-        EVec p = ((delegate* unmanaged<IntPtr, EVec>)cam.GetPositionFn)(c);
-        EQuat q = ((delegate* unmanaged<IntPtr, EQuat>)cam.GetOrientationFn)(c);
-        return s + $" pos ({p.X:F2},{p.Y:F2},{p.Z:F2}) rot (w{q.W:F3},{q.X:F3},{q.Y:F3},{q.Z:F3})";
+        if (new Gob(d.Model).Alpha < 1f) Opaque(d.Model);
     }
 }

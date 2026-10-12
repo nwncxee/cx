@@ -41,6 +41,7 @@ public sealed unsafe class NuiService : IExtenderService
         _cull = NuiKnobs.Cull;
         NuiKnobs.G.Status = Status;
         NuiItemIcons.SelfCheck(log);
+        NuiModelView.SelfCheck(log);
         NuiScrollbars.SelfCheck(log);
         NuiSolver.SelfCheck(log);
         NuiScrollbarHide.SelfCheck(log);
