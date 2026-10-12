@@ -439,10 +439,68 @@ internal static unsafe class FacadeSelfCheck
         check.Expect(Facade.AlienCalls > aliens, "a foreign pointer must be counted");
         NativeMemory.Free((void*)notOurs);
 
+        GuiHold(check);
+
         Facade.InSelfCheck = false;
         SceneDb.Objects.Free(id);
         SceneDb.Objects.TakeDirty();
         if (fresh) Facade.DropTables();
         SeamShell.DropAll();
+    }
+
+    /// <summary>A shell whose object was ever in a GUI scene is never handed out again, even once the ring is
+    /// full and past its quarantine. Oracle: hand-written expectations -- the stamp each join leaves, the GUI
+    /// shell's address never coming back, and the same churn reusing a world shell.</summary>
+    private static void GuiHold(Checker check)
+    {
+        nint probe = SeamShell.Alloc(FacadeKind.Object, default);
+        check.Expect(!SeamShell.NoteScene(probe, world: true), "a first world join is not a world-to-GUI move");
+        check.Expect(SeamShell.NoteScene(probe, world: false), "a world object joining a GUI scene must be named");
+        check.Expect(!SeamShell.NoteScene(probe, world: false), "the world-to-GUI move is named once per shell");
+        check.Expect(!SeamShell.NoteScene(0, world: false), "a null shell carries no stamp");
+
+        DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc(), wobj = SceneDb.Objects.Alloc(), gobj = SceneDb.Objects.Alloc();
+        if (world.IsNull || gui.IsNull || wobj.IsNull || gobj.IsNull)
+        {
+            check.Expect(false, "no records for the GUI hold check");
+            return;
+        }
+        SceneDb.SceneIsWorld[world.Index] = true;
+        SceneDb.SceneIsWorld[gui.Index] = false;
+        DbFeed.InitObject(wobj.Index);
+        DbFeed.InitObject(gobj.Index);
+        nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj);
+        DbScene.Join(world, wobj);
+        DbScene.Join(gui, gobj);
+        DbScene.Leave(gui, gobj);
+        DbScene.Leave(world, wobj);
+        int held = SeamShell.Held, quarantined = SeamShell.Quarantined;
+        Facade.Retire(gshell);
+        check.Expect(SeamShell.Held == held + 1 && SeamShell.Quarantined == quarantined,
+            "a shell that was in a GUI scene must be held, not queued for reuse");
+        Facade.Retire(wshell);
+        check.Expect(SeamShell.Held == held + 1 && SeamShell.Quarantined == quarantined + 1,
+            "a shell that was only ever in a world scene goes to the reuse ring");
+
+        SeamShell.Retire(probe);
+        for (int k = 0; k < SeamShell.RingSize; k++) SeamShell.Retire(SeamShell.Alloc(FacadeKind.Object, default));
+        for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
+        long reused = SeamShell.Reused;
+        bool gotGui = false;
+        var minted = new nint[SeamShell.RingSize];
+        for (int k = 0; k < minted.Length; k++)
+        {
+            minted[k] = SeamShell.Alloc(FacadeKind.Object, default);
+            gotGui |= minted[k] == gshell || minted[k] == probe;
+        }
+        check.Expect(SeamShell.Reused > reused, "a full ring past its quarantine must hand a block back, or this check proves nothing");
+        check.Expect(!gotGui, "a retired GUI shell was handed out again");
+        foreach (nint s in minted) SeamShell.Retire(s);
+
+        SceneDb.Objects.Free(wobj);
+        SceneDb.Objects.Free(gobj);
+        SceneDb.Scenes.Free(world);
+        SceneDb.Scenes.Free(gui);
+        SceneDb.SceneIsWorld[world.Index] = false;
     }
 }
