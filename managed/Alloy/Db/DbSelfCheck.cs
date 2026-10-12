@@ -58,6 +58,7 @@ internal static class DbSelfCheck
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
             check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
+            check.Expect(LateMaterialColumns(), "a .mtr that lands after a PART was built folds into its material columns, and a PLT replace on it then matches the file's diffuse rather than the mesh bitmap");
         }
         finally
         {
@@ -911,6 +912,46 @@ internal static class DbSelfCheck
         DrawRecipe.Forget(model);
         DrawRecipe.Pump();
         DrawRecipe.Pump();
+        return ok;
+    }
+
+    /// <summary>A part built while its mesh's <c>.mtr</c> was unreadable: its material columns are the mesh's
+    /// alone, and only the read's own landing edge can fold the file in -- after which a PLT replace aims at
+    /// the file's diffuse and no longer at the mesh bitmap. Oracles: a hand-written <c>.mtr</c> text and the
+    /// resrefs the replace must take and must refuse.</summary>
+    private static bool LateMaterialColumns()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;   // the part is built while the feed has not read the file
+        MeshDef mesh = Quad("cx_chest001");
+        mesh.MaterialName = "cx_late_mat";
+        var model = Model("cx_chest003", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        DbId obj = NewObject();
+        if (!PartTree.Build(obj, model)) return false;
+        int p = SceneDb.ObjPartFirst[obj.Index] + 1;
+        bool ok = SceneDb.PartMtr[p] == null && SceneDb.PartTexName(p, 0) == "cx_chest001"
+                  && SceneDb.PartMtl[p].RenderHint == 0
+                  && (SceneDb.Parts.DirtyAt(p) & Dirty.Material) == 0;
+
+        // ...and the read lands. The edge is the one re-ask: nothing else revisits a built part's material.
+        MtrDef.Bytes = n => n == "cx_late_mat"
+            ? Encoding.ASCII.GetBytes("texture0 cx_chest003\nrenderhint NormalAndSpecMapped\n") : null;
+        DrawRecipe.MaterialLanded();
+        ok &= PartTree.ReseedMaterials() > 0;
+        ok &= SceneDb.PartMtr[p] != null && SceneDb.PartTexName(p, 0) == "cx_chest003"
+              && SceneDb.PartMtl[p].RenderHint == 2;
+        // ...and the part is MARKED, which is what rewrites its record and re-resolves its texture slots
+        ok &= (SceneDb.Parts.DirtyAt(p) & Dirty.Material) != 0;
+
+        // CX-226's rule over the freshly folded file: the mesh bitmap no longer names slot 0, the file does.
+        Span<int> rows = stackalloc int[SceneDb.PltLayers];
+        for (int l = 0; l < SceneDb.PltLayers; l++) rows[l] = l + 1;
+        ok &= Seam.ObjectTex.Replace(obj, "cx_chest001", "cx_chest042", rows: rows) == 0;
+        ok &= Shows(p) == "" && !SceneDb.PartPltOwn[p];
+        ok &= Seam.ObjectTex.Replace(obj, "cx_chest003", "cx_chest042", rows: rows) == 1;
+        ok &= Shows(p) == "cx_chest042" && SceneDb.PartPltOwn[p];
         return ok;
     }
 }

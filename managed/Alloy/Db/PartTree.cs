@@ -436,6 +436,38 @@ public static class PartTree
         SceneDb.PartPltOwn[p] = false;
     }
 
+    /// <summary>A <c>.mtr</c> the resource layer read after a part was built: <see cref="InitMaterial"/> took
+    /// the part's material pointer and its render hint from a file that was not there, and nothing else
+    /// re-asks -- so the part kept the mesh's own hint and its texture slots, and a replace aimed at the
+    /// file's diffuse missed. Re-seeds those two and marks the part, which is what re-resolves its slots.</summary>
+    internal static int ReseedMaterials()
+    {
+        if (!DrawRecipe.TakePartMaterialEdge()) return 0;
+        int n = 0, high = SceneDb.Parts.High;
+        for (int p = 0; p < high; p++)
+        {
+            // A part that already folded a material in has nothing to re-ask: a .mtr's bytes never change
+            // under us, and a model edge frees the part before its next read.
+            if (SceneDb.PartMtr[p] != null || !SceneDb.Parts.LiveAt(p)) continue;
+            MeshDef? mesh = SceneDb.PartMeshDef[p];
+            MtrDef? mtr = mesh != null ? MtrDef.Of(mesh) : null;
+            if (mtr == null) continue;
+            SceneDb.PartMtr[p] = mtr;
+            if (mtr.RenderHint != 0)
+            {
+                PartMaterial m = SceneDb.PartMtl[p];
+                m.RenderHint = mtr.RenderHint;
+                SceneDb.PartMtl[p] = m;
+            }
+            // Dirty.Material is what rewrites the record AND marks the slot's texture memo, so the slots
+            // resolve against the file's names rather than the mesh bitmap's.
+            SceneDb.TouchPart(p, Dirty.Material);
+            n++;
+        }
+        if (n > 0) _log?.Info($"PartTree: {n} part(s) folded in a .mtr that was read after they were built");
+        return n;
+    }
+
     // ---------------------------------------------------------------- ComputePartBBox
 
     /// <summary>The quantum <c>ComputePartBBox</c> rounds its corners to.</summary>
