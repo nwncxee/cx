@@ -236,12 +236,14 @@ public static unsafe class SeamShell
     /// never dropped: the alternative is freeing a block the game may still call through.</summary>
     public static long Overflowed { get; private set; }
     private static System.Collections.Generic.List<nint>? _overflow;
-    private static readonly System.Collections.Generic.List<nint> _held = new();
+    /// <summary>The blocks <see cref="Held"/> counts, owned until <see cref="DropAll"/>.</summary>
+    internal sealed class HeldState { internal readonly System.Collections.Generic.List<nint> Blocks = new(); }
+    private static HeldState _held = new();
 
     /// <summary>Retired shells whose object was ever in a GUI scene. GUI code calls through pointers to
     /// objects it already destroyed, so such a block is never reused or freed: no later object, world or GUI,
     /// can sit at its address. ponytail: held for the session; a GUI-only pool needs the minter's origin.</summary>
-    public static int Held => _held.Count;
+    public static int Held => _held.Blocks.Count;
 
     /// <summary>The seam's own frame counter, advanced once per published frame by <see cref="Frame"/>.</summary>
     public static uint FrameNo { get; private set; }
@@ -346,7 +348,7 @@ public static unsafe class SeamShell
         h->Reported = 0;
         h->RetiredBy = SeamCallers.Here();
         Live--;
-        if ((h->Scenes & InGui) != 0) { _held.Add(shell); return; }
+        if ((h->Scenes & InGui) != 0) { _held.Blocks.Add(shell); return; }
         int k = h->Kind & 3;
         if (_ringLive[k] == RingSize)
         {
@@ -425,8 +427,8 @@ public static unsafe class SeamShell
             }
             _ringHead[k] = 0;
         }
-        foreach (nint b in _held) NativeMemory.AlignedFree((void*)(b - HeaderSize));
-        _held.Clear();
+        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree((void*)(b - HeaderSize));
+        _held = new HeldState();
         Quarantined = 0;
     }
 }

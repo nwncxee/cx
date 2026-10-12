@@ -483,6 +483,8 @@ internal static unsafe class FacadeSelfCheck
             "a shell that was only ever in a world scene goes to the reuse ring");
 
         SeamShell.Retire(probe);
+        // Age what the ring already holds first, so filling it evicts those rather than overflowing.
+        for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         for (int k = 0; k < SeamShell.RingSize; k++) SeamShell.Retire(SeamShell.Alloc(FacadeKind.Object, default));
         for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         long reused = SeamShell.Reused;
@@ -499,8 +501,8 @@ internal static unsafe class FacadeSelfCheck
 
         SceneDb.Objects.Free(wobj);
         SceneDb.Objects.Free(gobj);
+        SceneDb.SceneIsWorld[world.Index] = false;
         SceneDb.Scenes.Free(world);
         SceneDb.Scenes.Free(gui);
-        SceneDb.SceneIsWorld[world.Index] = false;
     }
 }

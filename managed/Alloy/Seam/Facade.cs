@@ -406,7 +406,8 @@ public static unsafe partial class Facade
         internal int WorldIntoGuiLeft = OrphanLines;
     }
 
-    /// <summary>Lines <see cref="NoteOrphaningAttach"/> writes per session; the count keeps going past it.</summary>
+    /// <summary>Lines <see cref="NoteOrphaningAttach"/> and <see cref="NoteJoin"/> each write per session; the
+    /// counts keep going past it.</summary>
     private const int OrphanLines = 256;
 
     private static SceneProbeState _sceneProbe = new();
@@ -435,7 +436,7 @@ public static unsafe partial class Facade
     /// scene, and name a world object moving into a GUI scene -- a GUI pointer that reached a world shell.</summary>
     internal static void NoteJoin(DbId scene, DbId obj)
     {
-        if (!SeamShell.NoteScene(SceneDb.ObjFacade[obj.Index], SceneDb.SceneIsWorld[scene.Index]) || InSelfCheck) return;
+        if (!SeamShell.NoteScene(Shell(SceneDb.ObjFacade[obj.Index]), SceneDb.SceneIsWorld[scene.Index]) || InSelfCheck) return;
         SceneProbeState st = _sceneProbe;
         st.WorldIntoGui++;
         if (st.WorldIntoGuiLeft <= 0) return;
