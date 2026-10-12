@@ -428,6 +428,9 @@ public static unsafe partial class DbAnim
         if ((f & ObjAnim.Moved) != 0) ComposeObject(obj);
         else _skinOnly++;
         _flags[i] &= ~ObjAnim.SkinDue;
+        // Before the palettes, because a stitch replaces the skin a palette is solved against. Rest-pose
+        // work, so it is owed once per tree change and never per frame.
+        StitchIfDue(obj);
         // Last, because a palette is composed world matrices read back: the pose, then the compose, then the
         // skin. The engine reached the same order by accident -- it solved inside the draw.
         SkinObject(obj);
@@ -506,6 +509,7 @@ public static unsafe partial class DbAnim
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++) Unskin(first + k);
         DanglyForget(obj);
+        StitchForget(obj);
         LodForget(i);
         // The engine's own order: ~CAurBehaviorAttach calls Gob::RemoveAttachment @0x43f8f0, so a dying object
         // is off its parent's carry list before the slot can be re-tenanted.
@@ -526,6 +530,10 @@ public static unsafe partial class DbAnim
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++) Unskin(first + k);
         DanglyForget(obj);
+        // ...and the part boundaries this composition had healed are a composition that no longer exists:
+        // the stitched geometry goes back and the whole creature is owed a new one.
+        StitchForget(obj);
+        StitchDue(obj);
         // The look-at holds PART indices on both ends; the engine drops its whole LookAtAnimation when the
         // tree goes, and so must this.
         LookAtClear(i);
