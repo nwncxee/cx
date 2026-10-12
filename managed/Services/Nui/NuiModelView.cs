@@ -47,23 +47,23 @@ internal static unsafe class NuiModelView
         }
     }
 
-    /// <summary><c>x,y,w,h[,angle,px,py,pz,yaw]</c>: the rectangle, then (when given) the camera's view angle and where the
-    /// model stands in front of it, so a live run can try placements without a rebuild.</summary>
+    /// <summary><c>x,y,w,h[,angle,dist,height,yaw]</c>: the rectangle, then (when given) the camera's view angle and where
+    /// it stands round the creature, so a live run can try placements without a rebuild.</summary>
     private static void Probe(ViewState s, string spec)
     {
         s.Applied = spec;
         string[] t = spec.Split(',');
         float F(int i, float d) => i < t.Length && float.TryParse(t[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : d;
-        NuiModelDoll.SetFadeMode((int)F(10, 1));
+        NuiModelDoll.SetFadeMode((int)F(9, 1));
         IntPtr me = NuiModelDoll.Player();
         if (me == IntPtr.Zero) { _s.Log?.Always("NuiModelView: probe -- no player creature"); return; }
         if (NuiModelDoll.Doll.Creature == IntPtr.Zero)
         {
-            if (!NuiModelDoll.Build(me, (int)F(0, 700), (int)F(1, 100), (int)F(2, 300), (int)F(3, 400), F(9, 1) != 0)) return;
+            if (!NuiModelDoll.Build(me, (int)F(0, 700), (int)F(1, 100), (int)F(2, 300), (int)F(3, 400), F(8, 1) != 0)) return;
             _s.Log?.Always("NuiModelView: probe built; camera as the engine made it: " + NuiModelDoll.CameraLine());
         }
         if (t.Length > 4) { var cam = new CAurCamera(NuiModelDoll.Doll.Camera); cam.SetViewAngle(F(4, 30f)); cam.SetClipDist(0.1f, 2000f); }
-        if (t.Length > 5) NuiModelDoll.Place(new Vector3(F(5, 0), F(6, 0), F(7, 0)), F(8, 0));
+        if (t.Length > 5) NuiModelDoll.Orbit(F(5, 4f), F(6, 0.9f), F(7, 0));
         _s.Log?.Always("NuiModelView: probe placed; camera now: " + NuiModelDoll.CameraLine());
     }
 }

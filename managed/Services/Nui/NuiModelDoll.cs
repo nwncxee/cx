@@ -39,6 +39,7 @@ internal static unsafe class NuiModelDoll
         public ExtenderLog? Log;
         public IntPtr AppMgr;
         public int FadeMode = 1;
+        public long NextReport;
         public DollState Doll = new();
     }
 
@@ -190,27 +191,29 @@ internal static unsafe class NuiModelDoll
         ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
     }
 
-    /// <summary>Stand the model up at <paramref name="pos"/> facing <paramref name="yawDeg"/> degrees round the screen's vertical:
-    /// the creature's up axis is Z, so it is first laid back 90 degrees to stand on the view's Y.</summary>
-    internal static void Place(Vector3 pos, float yawDeg)
+    /// <summary>Aim the view's camera at the creature standing at the origin: <paramref name="dist"/> away, <paramref name="height"/>
+    /// up, turned <paramref name="yawDeg"/> degrees round the vertical. The creature's own AI owns its model's place, so the
+    /// camera moves, not the model: identity looks down -Z with Y up, and laying that back 90 degrees on X looks along +Y with Z up.</summary>
+    internal static void Orbit(float dist, float height, float yawDeg)
     {
-        IntPtr m = _o.Doll.Model;
-        if (m == IntPtr.Zero) return;
-        var g = new Gob(m);
-        var v = new EVec { X = pos.X, Y = pos.Y, Z = pos.Z };
-        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, -MathF.PI / 2),
-                                                  Quaternion.CreateFromAxisAngle(Vector3.UnitY, yawDeg * MathF.PI / 180f)));
+        IntPtr c = _o.Doll.Camera;
+        if (c == IntPtr.Zero) return;
+        var cam = new CAurCamera(c);
+        Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, yawDeg * MathF.PI / 180f);
+        Vector3 p = Vector3.Transform(new Vector3(0, -dist, height), yaw);
+        var v = new EVec { X = p.X, Y = p.Y, Z = p.Z };
+        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2), yaw));
         EVec rv;
         EQuat rq;
         if (OperatingSystem.IsWindows())
         {
-            ((delegate* unmanaged<IntPtr, EVec*, EVec, IntPtr>)g.SetPositionFn)(m, &rv, v);
-            ((delegate* unmanaged<IntPtr, EQuat*, EQuat, IntPtr>)g.SetOrientationFn)(m, &rq, q);
+            ((delegate* unmanaged<IntPtr, EVec*, EVec, IntPtr>)cam.SetPositionFn)(c, &rv, v);
+            ((delegate* unmanaged<IntPtr, EQuat*, EQuat, IntPtr>)cam.SetOrientationFn)(c, &rq, q);
         }
         else
         {
-            ((delegate* unmanaged<IntPtr, EVec, EVec>)g.SetPositionFn)(m, v);
-            ((delegate* unmanaged<IntPtr, EQuat, EQuat>)g.SetOrientationFn)(m, q);
+            ((delegate* unmanaged<IntPtr, EVec, EVec>)cam.SetPositionFn)(c, v);
+            ((delegate* unmanaged<IntPtr, EQuat, EQuat>)cam.SetOrientationFn)(c, q);
         }
     }
 
@@ -224,6 +227,14 @@ internal static unsafe class NuiModelDoll
         if (d.Creature == IntPtr.Zero || d.Model == IntPtr.Zero || *(float*)(d.Model + FF) >= 1f) return;
         if (_o.FadeMode != 0) EngineFn.ObjSetFadeState(d.Creature, 1);
         Opaque(d.Model);
+    }
+
+    internal static void Report(string line)
+    {
+        long now = Environment.TickCount64;
+        if (now < _o.NextReport) return;
+        _o.NextReport = now + 2000;
+        _o.Log?.Always("NuiModelDoll: draw " + line);
     }
 
     internal static string FadeLine()

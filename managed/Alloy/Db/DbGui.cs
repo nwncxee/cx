@@ -186,6 +186,7 @@ internal static unsafe class DbGui
                 if (SceneDb.Objects.LiveAt(o))
                     issued += DrawOne(o, s, in v, in viewProj, lit, nowMs, dump, ref walked, ref hidden, ref texts);
         GuiCapture.EndDbLayer();
+        if (lit && v.X == 700) CX.Services.Nui.NuiModelDoll.Report($"issued {issued} walked {walked} hidden {hidden} off {_lOff} kind {_lKind} notex {_lNoTex} nogeom {_lNoGeom}");
         LastWhy = clear ? 'C' : 'd'; LastIssued = issued;
         return Close(s, in v, dump, walked, hidden, texts, issued, near, far, clear, lit);
     }
