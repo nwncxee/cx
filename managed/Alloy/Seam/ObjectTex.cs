@@ -38,7 +38,8 @@ internal static class ObjectTex
             // the object's root, and the only caller that passes it is the whole-object case, so the flag
             // changes nothing here; it is accepted rather than ignored silently.
             if (ShowsOverride(p, slot, to!)) Refresh(p, slot);
-            if (!Matches(p, slot, from)) { MtrKept(p, slot, from); continue; }
+            Match m = Matches(p, slot, from);
+            if (m != Match.Takes) { if (m == Match.MtrKept) NoteMtrKept(p, slot, from); continue; }
             int at = p * 4 + slot;
             var old = new TexId((uint)SceneDb.PartTexId[at]);
             SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, to!).Value;
@@ -110,7 +111,7 @@ internal static class ObjectTex
 
     // ---- the instance environment map ----
 
-    /// <summary><c>Gob::SetEnvironmentMap</c> @0x53f530: the map the whole GOB reflects. The engine kept ONE
+    /// <summary><c>Gob::SetEnvironmentMap</c> @0x43f530: the map the whole GOB reflects. The engine kept ONE
     /// texture pointer for it (<c>gob+0x480</c>) and never a material texture slot, so it goes in
     /// <see cref="SceneDb.ObjEnvMap"/> and slot 3 stays the material's roughness map. A null, empty or
     /// <c>"NULL"</c> name clears it, as the engine's own compare does; 1 is the engine's answer, always.</summary>
@@ -194,12 +195,23 @@ internal static class ObjectTex
     /// <paramref name="from"/>? Against the slot's EFFECTIVE name -- the <c>.mtr</c>'s when the file supplies
     /// that slot, else the mesh's own bitmap or the graft model's name -- and never against an override in
     /// place, which is how <c>AurTextureReplaceSingleReference</c> @0x48d960 matches.</summary>
-    private static bool Matches(int p, int slot, string? from)
+    private static Match Matches(int p, int slot, string? from)
     {
-        if (string.IsNullOrEmpty(from)) return true;
-        if (MtrTex(p, slot) is string mtr) return string.Equals(mtr, from, StringComparison.OrdinalIgnoreCase);
-        return MeshNamed(p, slot, from) || GraftNamed(p, slot, from);
+        if (string.IsNullOrEmpty(from)) return Match.Takes;
+        if (MtrTex(p, slot) is string mtr)
+            return string.Equals(mtr, from, StringComparison.OrdinalIgnoreCase) ? Match.Takes
+                 : Named(p, slot, from) ? Match.MtrKept : Match.No;
+        return Named(p, slot, from) ? Match.Takes : Match.No;
     }
+
+    /// <summary>What <see cref="Matches"/> decided, so the caller need not re-ask the same three predicates.
+    /// <see cref="MtrKept"/> is the one worth a line: the part WOULD have taken the replace on its bitmap or
+    /// graft model, and the <c>.mtr</c>'s own texture stood it down.</summary>
+    private enum Match { No, Takes, MtrKept }
+
+    /// <summary>The bitmap lane: the mesh's own name for the slot, or -- slot 0 -- the graft model's.</summary>
+    private static bool Named(int p, int slot, string? from)
+        => MeshNamed(p, slot, from) || GraftNamed(p, slot, from);
 
     /// <summary>Slot <paramref name="slot"/>'s name from the part's <c>.mtr</c>, null when the file names none.
     /// <c>Material::BindAllStandardTextures</c> @0x4c6e30 binds a material's own slot only where the shared
@@ -212,13 +224,11 @@ internal static class ObjectTex
              ? m.Textures[slot] : null;
     }
 
-    /// <summary>Count and name a replace the part's <c>.mtr</c> stood down: <paramref name="from"/> is the
-    /// mesh bitmap or the graft model, but the file supplies that slot, so the authored texture stays -- as it
-    /// does in vanilla, where the shared material's texture is bound over the material's own. One line per
-    /// power of two: re-dressing a crowd must not fill the log.</summary>
-    private static void MtrKept(int p, int slot, string? from)
+    /// <summary>Count and name a replace the part's <c>.mtr</c> stood down (<see cref="Match.MtrKept"/>): the
+    /// authored texture stays, as it does in vanilla, where the shared material's texture is bound over the
+    /// material's own. One line per power of two: re-dressing a crowd must not fill the log.</summary>
+    private static void NoteMtrKept(int p, int slot, string? from)
     {
-        if (MtrTex(p, slot) == null || (!MeshNamed(p, slot, from) && !GraftNamed(p, slot, from))) return;
         MtrDiffuseKept++;
         if ((MtrDiffuseKept & (MtrDiffuseKept - 1)) != 0) return;
         Facade.Log?.Info($"ObjectTex: ReplaceTexture(\"{from}\") kept part {p}'s material texture {slot} "
