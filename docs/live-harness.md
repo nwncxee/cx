@@ -223,3 +223,17 @@ With `--cfg alloy.enabled=0` the window draws as stock.
 `--cfg 'nui.heldprobe=iit_belt'` with `--ladder` sends the client a `held.image` line at the first NUI draw 50 s after
 boot, which is the rung's NUI window. The ladder moves the pointer over that window first, so `07n-nui*.png` shows the
 image under it. The hold ends when the window closes. Run it with and without `--cfg 'alloy.enabled=0'`.
+
+## Model view
+
+`--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
+on the player a second after the window opens. The shield comes off at 10 s, the sword at 13 s and the hair changes at 16 s
+(`CXNUI:` markers). The window closes after 60 s. The doll's settings are policy lines in a file, fed in like the cards:
+
+    tools/live/run-live.sh --nui --seconds 5 --cfg 'nui.cardfile=<path to model.policy>' \
+        --keys 'sleep:4000;shot:<dir>/armed.png;sleep:12000;shot:<dir>/stripped.png'
+
+`model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlate=<seconds>:<path>`),
+`model-standin.policy` and `model-standin-crop.policy` a stand-in with no target, with and without `standinrect`. `NuiModelGear:`
+lines in `cx.log` say each hand being filled and emptied.
+

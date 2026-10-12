@@ -64,9 +64,10 @@ void OpenWindow(object oPC)
         NuiImage(JsonString("@item:" + ObjectToString(oTorch)), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
         64.0), 64.0), 3.0), JsonString("a torch")), "img");
 
-    json jModel = NuiId(NuiMargin(NuiHeight(NuiWidth(
-        NuiImage(JsonString("@model:me"), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
-        200.0), 300.0), 3.0), "mdl");
+    // The doll the way a consumer draws it: a draw-list image stretched over a spacer, not a NuiImage.
+    json jItems = JsonArrayInsert(JsonArray(), NuiDrawListImage(JsonBool(TRUE), JsonString("@model:me"),
+        NuiRect(0.0, 0.0, 200.0, 300.0), JsonInt(NUI_ASPECT_STRETCH), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)));
+    json jModel = NuiId(NuiMargin(NuiDrawList(NuiHeight(NuiWidth(NuiSpacer(), 200.0), 300.0), JsonBool(FALSE), jItems), 3.0), "mdl");
 
     json jCell = NuiId(NuiPadding(NuiMargin(
         NuiLabel(NuiBind("rows"), JsonInt(NUI_HALIGN_LEFT), JsonInt(NUI_VALIGN_MIDDLE)), 2.0), 2.0), "cell");

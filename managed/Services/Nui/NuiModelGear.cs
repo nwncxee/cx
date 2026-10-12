@@ -163,4 +163,18 @@ internal static unsafe class NuiModelGear
         foreach (Worn w in _g.Hands) if (w.Item != IntPtr.Zero) n++;
         return n;
     }
+
+    /// <summary>Oracle: hand-written <c>INVENTORY_SLOT_*</c> bits (right hand 0x10, left hand 0x20, cloak 0x40) and strings no item
+    /// can come from. Nothing here reaches the engine.</summary>
+    internal static void SelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        check.Expect(HandOf(0x10) == 0x10 && HandOf(0x20) == 0x20, "the right and the left hand bits name their own hand");
+        check.Expect(HandOf(0x30) == 0x10, "a base item that fits either hand goes in the right");
+        check.Expect(HandOf(0x40) == 0 && HandOf(0x01) == 0 && HandOf(0) == 0, "a cloak, a helmet and nothing are no hand item");
+        IntPtr none = WearItem("not an item", out bool minted);
+        check.Expect(none == IntPtr.Zero && !minted, "text that is neither an @look: string nor hex names no item");
+        none = WearItem("@look:12", out minted);
+        check.Expect(none == IntPtr.Zero && minted, "a malformed @look: string mints nothing, and says it tried to");
+    }
 }

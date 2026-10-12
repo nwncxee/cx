@@ -31,7 +31,7 @@ internal static unsafe class NuiModelView
         public uint Target;
         public float Angle = 30f, Dist = 4f, Height = 0.9f, Yaw;
         public bool Anim = true, Built, WasRendered;
-        public string Wear = "";
+        public string Wear = "", StandinRect = "";
         public byte[] Info = new byte[0];
     }
 
@@ -97,7 +97,7 @@ internal static unsafe class NuiModelView
         if (!NuiKnobs.Enabled.V || !NuiKnobs.ModelView.V)
         {
             _s.PendingKey = "";
-            NuiItemIcons.ModelImage(default, 1, 1, false, out _, out _, out _);
+            NuiItemIcons.ModelImage(default, 1, 1, false, default, out _, out _, out _);
             return true;
         }
         string key = KeyOf(resref);
@@ -106,7 +106,7 @@ internal static unsafe class NuiModelView
         Span<byte> name = stackalloc byte[17];
         name.Clear();
         for (int i = 0; i < standin.Length && i < 16; i++) name[i] = (byte)standin[i];
-        NuiItemIcons.ModelImage(name, w, h, sized, out uint[] px, out int pw, out int ph);
+        NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(Policy(key, "standinrect", "")), out uint[] px, out int pw, out int ph);
         _s.PendingKey = key; _s.PendingPixels = px; _s.PendingW = pw; _s.PendingH = ph; _s.PendingStandin = standin;
         return true;
     }
@@ -203,9 +203,11 @@ internal static unsafe class NuiModelView
         NuiModelDoll.SetBackground(C(0), C(1), C(2), C(3));
         if (v.Built) ApplyCamera(v);
         string standin = Policy(v.Key, "standin", "");
-        if (standin != v.StandinName)
+        string rect = Policy(v.Key, "standinrect", "");
+        if (standin != v.StandinName || rect != v.StandinRect)
         {
             v.StandinName = standin;
+            v.StandinRect = rect;
             if (!NuiModelDoll.Rendered && v.Target != 0) UploadStandin(s, v);
         }
     }
@@ -239,7 +241,7 @@ internal static unsafe class NuiModelView
             Span<byte> name = stackalloc byte[17];
             name.Clear();
             for (int i = 0; i < v.StandinName.Length && i < 16; i++) name[i] = (byte)v.StandinName[i];
-            NuiItemIcons.ModelImage(name, v.W, v.H, true, out uint[] fresh, out int fw, out int fh);
+            NuiItemIcons.ModelImage(name, v.W, v.H, true, StandinRect.Parse(v.StandinRect), out uint[] fresh, out int fw, out int fh);
             if (fw != v.W || fh != v.H) { s.Log?.Always($"NuiModelView: stand-in '{v.StandinName}' is {fw}x{fh}, the view {v.W}x{v.H} -- not applied"); return; }
             px = v.Standin = fresh;
         }

@@ -297,24 +297,41 @@ stand-in until they do.
 | setting | value | default |
 |---|---|---|
 | `target` | `player`, or the hex object id of a creature (NWScript `ObjectToString`). Empty releases it | no one: the view shows the stand-in |
-| `standin` | a texture resref (an uncompressed TGA) | nothing: the image is transparent |
+| `standin` | a texture resref (a TGA, plain or RLE) | nothing: the image is transparent |
+| `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
+| `wear` | an `@look:` string, or the hex object id of an item the client knows. The doll wears it in the hand slot its base item fits, in place of what the target holds there. Empty releases it | nothing |
 | `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
 | `angle` | the camera's view angle in degrees | `30` |
 | `dist` | camera distance from the creature, in metres | `4` |
 | `height` | camera height above the creature's feet, in metres | `0.9` |
-| `yaw` | degrees round the creature. `0` sees its right side, `90` its front | `0` |
+| `yaw` | degrees round the creature. `0` sees its right side, `180` its left | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
 
 **Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
 taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
-name that fails to load never draws the engine's error sprite. CX adds no stand-in of its own.
+name that fails to load never draws the engine's error sprite. CX adds no stand-in of its own. Portraits (`po_*_h`) work: some
+are RLE-compressed TGAs, and the engine's reader decodes them. Use `standinrect` to leave out a blank strip, for example
+`0,0,256,400` for a 256x512 portrait whose art fills the top 400 rows.
 
-**What follows.** The doll follows the target's body, head, colours and armour as the server sends them. Weapons, shields,
-helmets and cloaks do not show yet. Closing the window takes the doll down, and its cost with it.
+**Where the image goes.** The name works in any NUI image, a `NuiImage` or a `NuiDrawListImage` (use `NUI_ASPECT_STRETCH`
+and a rectangle of the view's shape, so the doll is not distorted).
+
+**What follows.** The doll follows the target's body, head, colours and armour as the server sends them, and what the
+target holds in either hand: an equip or an unequip shows within a frame. Weapons and shields are copies. CX builds a
+throwaway item from the real one's base item, model parts and colours, so the target's own items are never moved,
+equipped or freed. Closing the window takes the doll down with every copy and its cost with it.
+
+**Previewing an item.** `model.<key>.wear` puts an item the target does not hold into the doll's hand. It replaces what the
+target holds in that slot, and releasing the key brings the held item back. Send an item's look as the `@look:` string the
+server already builds for `@look:` icons. A client preview costs one extra throwaway item. It covers weapons and shields,
+the hand slots. A helmet, a cloak and armour are part of the body, so previewing them needs the server to equip a copy on
+a creature the client can see.
 
 **Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
-must be a creature the client knows. A `@model:` name never shows an item.
+must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a
+hand. A helmet and a cloak are part of the appearance record the doll copies, not hand items. The engine draws a cloak only
+while the client's cloak option is on, so a doll shows none with it off.
 
 ## The inventory window's keys
 
