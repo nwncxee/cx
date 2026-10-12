@@ -65,18 +65,38 @@ public sealed unsafe partial class CasterPass
     /// (<c>fEnvMapLevel = 1 - alpha</c>): a polished floor at alpha 0.3 is solid and must keep its shadow.</summary>
     private const float CutoutDiscard = 0.2f, EnvAlphaDiscard = 0.02f;
 
-    /// <summary>One caster's discard threshold. A declared coverage material takes the coverage layer's own
-    /// cut, so the shadow drops exactly the texels the draw does instead of the engine's 0.2 -- which on a
-    /// hair card cut a shadow out of geometry that draws nearly solid, and left a solid shadow under fringe
-    /// the draw dissolves. Three values exist; the staging key carries which.</summary>
-    internal static float CutFor(bool coverage, bool envAlpha)
-        => coverage ? CoverageLayer.Cut : envAlpha ? EnvAlphaDiscard : CutoutDiscard;
+    /// <summary>Which threshold a masked caster tests its mask at, as a KIND rather than the number. The
+    /// staging key, the dither and the <c>uEnvAlpha</c> flag each need to know WHICH, and recovering that
+    /// from a float equality goes wrong silently the day one of the three values moves or becomes a knob.</summary>
+    internal enum CasterCut : byte
+    {
+        /// <summary>The engine's own <c>fAlphaDiscardValue</c> -- what makes a leaf cast a leaf.</summary>
+        Cutout = 0,
+        /// <summary>Env-mapped: the diffuse alpha is reflectivity, so only empty texels may punch through.</summary>
+        EnvAlpha = 1,
+        /// <summary>A declared coverage material: the layer's own cut, so the shadow drops exactly the texels
+        /// the draw does rather than cutting a hard 0.2 hole out of geometry that draws nearly solid.</summary>
+        Coverage = 2,
+    }
 
-    /// <summary>The ordered-dither block for a batch at threshold <paramref name="cut"/>. A coverage batch
-    /// always dithers: the dither IS how the shadow map carries fractional coverage, so at 0 its 0.01 cut
-    /// would stamp a near-solid silhouette -- strictly worse than the 0.2 one this replaced.</summary>
-    internal static int DitherFor(float cut)
-        => cut == CoverageLayer.Cut ? Math.Max(_maskDither, 1) : _maskDither;
+    /// <summary>The threshold each kind tests at -- the one place a kind becomes a number.</summary>
+    internal static float Threshold(CasterCut kind) => kind switch
+    {
+        CasterCut.Coverage => CoverageLayer.Cut,
+        CasterCut.EnvAlpha => EnvAlphaDiscard,
+        _ => CutoutDiscard,
+    };
+
+    /// <summary>One caster's threshold kind: a declared coverage material first (the author already said its
+    /// alpha is coverage), then the env-alpha exception, then the engine's own.</summary>
+    internal static CasterCut CutFor(bool coverage, bool envAlpha)
+        => coverage ? CasterCut.Coverage : envAlpha ? CasterCut.EnvAlpha : CasterCut.Cutout;
+
+    /// <summary>The ordered-dither block for a batch of this kind. A coverage batch always dithers: the
+    /// dither IS how the shadow map carries fractional coverage, so at 0 its cut would stamp a near-solid
+    /// silhouette -- strictly worse than the 0.2 one it replaced.</summary>
+    internal static int DitherFor(CasterCut kind)
+        => kind == CasterCut.Coverage ? Math.Max(_maskDither, 1) : _maskDither;
 
     /// <summary>Does this texture carry coverage? Answered once by a level-0 readback, because
     /// <c>Material::GetIsOpaque</c> @0x4c6190 short-circuits on an env map, the gob alpha and its own memo,

@@ -369,7 +369,8 @@ internal static partial class DrawRecipe
         // CX-189: NWN_ALPHA_MODE 2 is the author saying "coverage, not blending" -- a declared transparency
         // on the same material is the vanilla fallback for clients without it, so it does not make this
         // blended. CX-224: nor does the measured diffuse make it opaque -- the classifier's own coverage term.
-        return AlloyClasses.Of(water, additive, opaque, declared, false, _coverage[r]);
+        return AlloyClasses.Of(water: water, additive: additive, opaque: opaque, declaredTransparent: declared,
+                               alphaBelowOne: false, coverage: _coverage[r]);
     }
 
     /// <summary>Is this material DECLARED water, i.e. water by a term the MODEL carries? The <c>.mtr</c>'s
