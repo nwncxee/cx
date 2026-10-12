@@ -81,6 +81,10 @@ internal static unsafe class CoverageLayer
         int fw = viewport[0] + viewport[2], fh = viewport[1] + viewport[3];
         if (!EnsureTargets(fw, fh, samples) || !EnsurePrograms()) return false;
         Masked = Renderer.A2cMask.V && Programs.EnsureMaskProgram();
+        // CX-223: and the HOSTED twin, at the same edge rather than inside the issue loop -- a program build
+        // between two draws is a stall. Optional: without it a hosted coverage batch draws through the plain
+        // hosted program and takes hardware alpha-to-coverage.
+        if (Masked) Programs.EnsureHostMaskProgram();
 
         _gl.Rx = x; _gl.Ry = y; _gl.Rw = w; _gl.Rh = h; _gl.Idling = 0;
         _gl.MsWas = Gl.IsEnabled(Gl.MULTISAMPLE) != 0; _gl.CullWas = Gl.IsEnabled(Gl.CULL_FACE) != 0;

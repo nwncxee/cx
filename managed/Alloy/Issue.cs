@@ -331,7 +331,7 @@ internal static unsafe class Issue
             // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
             // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
             // whose coverage comes off its own map still gets a per-primitive sample pattern.
-            bool hostMask = hosted && _coverPass && CoverageLayer.Masked && Programs.EnsureHostMaskProgram();
+            bool hostMask = hosted && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
             int wantProg = water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)
