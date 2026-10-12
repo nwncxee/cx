@@ -195,7 +195,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     // NUI (or a vanilla GUI object: radial menu, tooltip, panel) draws over us -> it gets the
                     // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
                     // otherwise have released our windows' focus.
-                    if (NuiHovered() && btn == SdlButtonLeft) CX.Services.Nui.HeldImageService.OnPress();
+                    if (NuiHovered() && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.Nui.NuiModelView.OnPress(); }
                     if (NuiHovered() || (gui != IntPtr.Zero && !ours)) { UiHost.Blur(); break; }
                     if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);   // click-to-focus (default)
                     if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;

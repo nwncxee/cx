@@ -215,15 +215,15 @@ internal static unsafe class NuiModelDoll
         ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
     }
 
-    /// <summary>Aim the view's camera at the creature standing at the origin: <paramref name="dist"/> away, <paramref name="height"/>
-    /// up, turned <paramref name="yawDeg"/> degrees round the vertical. The creature's own AI owns its model's place, so the
-    /// camera moves, not the model: identity looks down -Z with Y up, and laying that back 90 degrees on X looks along +Y with Z up.</summary>
+    /// <summary>Aim the view's camera at the creature, which stands at the origin facing +X: <paramref name="dist"/> away,
+    /// <paramref name="height"/> up, <paramref name="yawDeg"/> degrees clockwise from its right side (90 its back, 270 its front).
+    /// The camera moves, not the model: identity looks down -Z with Y up, laid back 90 degrees on X it looks along +Y.</summary>
     internal static void Orbit(float dist, float height, float yawDeg)
     {
         IntPtr c = _o.Doll.Camera;
         if (c == IntPtr.Zero) return;
         var cam = new CAurCamera(c);
-        Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, yawDeg * MathF.PI / 180f);
+        Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, -yawDeg * MathF.PI / 180f);
         Vector3 p = Vector3.Transform(new Vector3(0, -dist, height), yaw);
         var v = new EVec { X = p.X, Y = p.Y, Z = p.Z };
         var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2), yaw));

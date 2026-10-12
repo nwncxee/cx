@@ -18,6 +18,10 @@ internal static unsafe class NuiModelView
     private const string Prefix = "@model:";
     private const string KeyRoot = "model.";
     private const int DefaultSize = 256, MaxSize = 1024, MaxKey = 48;
+    /// <summary>Degrees the doll turns for each pixel the pointer travels sideways while the press is held.</summary>
+    private const float DegPerPx = 0.5f;
+    /// <summary><c>SDL_BUTTON_LMASK</c> in <c>SDL_GetMouseState</c>'s answer.</summary>
+    private const uint SdlLeftMask = 1;
 
     /// <summary>The one view the doll serves: the image's pointers (read, never owned) and what the server last declared.</summary>
     private sealed class ViewData
@@ -35,6 +39,10 @@ internal static unsafe class NuiModelView
         public byte[] Info = Array.Empty<byte>();
         public bool OnPlayer;
         public uint TargetId;
+        /// <summary>The player's own turn on top of the server's <see cref="Yaw"/>, and the press that is turning it.</summary>
+        public float DragYaw;
+        public bool Dragging;
+        public int LastX;
     }
 
     private sealed class ViewState
@@ -60,6 +68,7 @@ internal static unsafe class NuiModelView
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
+        if (OperatingSystem.IsWindows()) log.Always("NuiModelView: Linux-only drag to turn -- a NUI hit on Windows carries no image name, so a press cannot find the doll");
         FrameRegistry.Global.Register(FramePhase.PrePresent, 1, Frame, "NuiModelView.frame", log);
     }
 
@@ -178,8 +187,33 @@ internal static unsafe class NuiModelView
                 v.Info = now.ToArray();
             }
         }
+        if (v.Dragging) Turn(v);
         v.Target = tex;
         if (NuiModelDoll.Rendered) v.WasRendered = true;
+    }
+
+    /// <summary>A left press landed on NUI (from the input hook): one on a model view's image starts turning its doll.</summary>
+    internal static void OnPress()
+    {
+        ViewData? v = _s.View;
+        if (v == null || !v.Built || EngineFn.SdlGetMouseState == null || !NuiHitTest.TryGet(out NuiHit hit)) return;
+        if (!hit.Image().StartsWith("@model:"u8)) return;
+        int mx = 0, my = 0;
+        EngineFn.SdlGetMouseState(&mx, &my);
+        v.Dragging = true;
+        v.LastX = mx;
+    }
+
+    /// <summary>While the press that began on the image is held, the doll turns with the pointer's sideways travel.</summary>
+    private static void Turn(ViewData v)
+    {
+        int mx = 0, my = 0;
+        uint buttons = EngineFn.SdlGetMouseState(&mx, &my);
+        if ((buttons & SdlLeftMask) == 0) { v.Dragging = false; return; }
+        if (mx == v.LastX) return;
+        v.DragYaw = (v.DragYaw + (mx - v.LastX) * DegPerPx) % 360f;
+        v.LastX = mx;
+        NuiModelDoll.Orbit(v.Dist, v.Height, v.Yaw + v.DragYaw);
     }
 
     /// <summary>The creature the server named, or zero while it names none or the client does not know it yet. The name was parsed
@@ -222,7 +256,7 @@ internal static unsafe class NuiModelView
         var cam = new CAurCamera(c);
         cam.SetViewAngle(v.Angle);
         cam.SetClipDist(0.1f, 2000f);
-        NuiModelDoll.Orbit(v.Dist, v.Height, v.Yaw);
+        NuiModelDoll.Orbit(v.Dist, v.Height, v.Yaw + v.DragYaw);
     }
 
     /// <summary>The doll is gone (the server named no one, or the creature left): put the stand-in back in the texture.</summary>
