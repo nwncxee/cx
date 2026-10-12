@@ -252,7 +252,7 @@ internal static unsafe class SymbolMap
     [Fn("IntPtr(CClientExoApp this, IntPtr name)")]
     public const string GetPlayerByCreatureName = "_ZN13CClientExoApp23GetPlayerByCreatureNameE10CExoString";
 
-    // cursor override: client-internal, no Windows anchor yet -> skip + log there.
+    // cursor override: client-internal, anchored by RVA on Windows.
     [Fn("void(CClientExoAppInternal this, int param1)")]
     public const string UpdateMouseCursorAppearance = "_ZN21CClientExoAppInternal27UpdateMouseCursorAppearanceEi";
     [Fn("void(CCachedMouseCursorManager this, int cursorId, int hotspot, int p3, int p4, int p5)")]
@@ -3372,7 +3372,7 @@ internal static unsafe class SymbolMap
         [SceneSpawnTile] = Nm("?SpawnTile@Scene@@UEAAPEAVCAurObject@@PEBDAEBVVector@@HHPEAVQuaternion@@@Z"),
         [SetMatrixMode] = Nm("?SetMatrixMode@RenderInterface@@SAXW4AuroraTransStates@Aurora@@@Z"),
         [SetModelMatrix] = Nm("?SetModelMatrix@GLRender@@CAXAEBVMatrix4x4@@@Z"),
-        [SetMouseCursor] = Hole("CCachedMouseCursorManager is not exported"),
+        [SetMouseCursor] = At(),
         [SetOrthoTransform] = Nm("?SetOrthoTransform@RenderInterface@@SAXNNNNNN@Z"),
         [SetPositionScreen] = Nm("?SetPositionScreen@CGuiPanel@@QEAAXHH@Z"),
         [ShowCompass] = At(),
@@ -3381,7 +3381,7 @@ internal static unsafe class SymbolMap
         [ToonDepthEdge] = Nm("?toon_depth_edge_threshold@@3MA"),
         [ToonEdgeHardness] = Nm("?toon_edge_hardness@@3MA"),
         [TriggerBucket] = Nm("?triggerbucket@@3V?$List@PEAVPartTrigger@@@@A"),
-        [UpdateMouseCursorAppearance] = Hole("CClientExoAppInternal is not exported"),
+        [UpdateMouseCursorAppearance] = At(),
         [VdoCommitItemDynamicData] = Nm("?CommitItemDynamicData@VertexDataObject@@QEAAXII@Z"),
         [VdoGetItemDynamicData] = Nm("?GetItemDynamicData@VertexDataObject@@QEAAPEAEI@Z"),
         [VdoRepack] = Nm("?Repack@VertexDataObject@@QEAAXXZ"),
