@@ -37,7 +37,8 @@ internal static unsafe class SceneOnlySlots
     private static void AddObject(nint self, nint obj)
     {
         _addObjects++;
-        DbScene.Join(Facade.SceneId(self), Facade.ObjectId(obj));
+        DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
+        if (!TileBuild.RefuseMove(o, s, "Scene::AddObject")) DbScene.Join(s, o);
     }
 
     /// <summary>Slot 65. <c>GobRenderLast</c> calls <see cref="ChildRemove"/> then this, so an add on an
@@ -47,14 +48,17 @@ internal static unsafe class SceneOnlySlots
     private static void ChildAdd(nint self, nint obj)
     {
         _childAdds++;
-        DbScene.Join(Facade.SceneId(self), Facade.ObjectId(obj));
+        DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
+        if (!TileBuild.RefuseMove(o, s, "Scene::ChildAdd")) DbScene.Join(s, o);
     }
 
     [UnmanagedCallersOnly]
     private static void ChildRemove(nint self, nint obj)
     {
         _childRemoves++;
-        DbScene.Leave(Facade.SceneId(self), Facade.ObjectId(obj));
+        DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
+        if (TileBuild.OwnScene(o).Value == s.Value && TileBuild.RefuseMove(o, default, "Scene::ChildRemove")) return;
+        DbScene.Leave(s, o);
     }
 
     [UnmanagedCallersOnly]

@@ -316,6 +316,7 @@ public static partial class TileBuild
         DbAnim.ObjectCreated(obj);
         HitFeed.NoteObject(obj, isStatic: true);
         DbScene.JoinNew(scene, obj);
+        if (!scene.IsNull && SceneDb.ObjScene[o].Value != scene.Value) NoteNotJoined(scene, obj, def);
         SceneDb.Objects.Mark(o, Dirty.Created | Dirty.Xform | Dirty.Tree);
         return obj;
     }
@@ -596,6 +597,7 @@ public static partial class TileBuild
            + (_flames > 0 ? $", {_flames} flames placed" : "")
            + (_replayed > 0 ? $", {_replayed} ring replays" : "")
            + (_mergedNodes > 0 ? $", {_mergedNodes} nodes merged away" : "")
+           + AuditStats()
            + (_mirroredMembers > 0 ? $", {_mirroredMembers} mirrored members rewound" : "")
            + (_swaps > 0 ? $", {_swaps} texture swaps re-pointing {_swapParts} part(s)"
                          + (_swapParts == 0 ? " -- NO PART CARRIES THE PLACEHOLDER, so every swap drew nothing" : "") : "")
