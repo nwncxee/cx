@@ -331,9 +331,11 @@ void LadderJump(string sStep, object oPC, location lTo)
 /// A plain NUI window at a fixed spot (400, 260, 300x200), the one tools/live's layer shots are placed around.
 void LadderNui(object oPC)
 {
-    json jRoot = NuiCol(JsonArrayInsert(JsonArray(), NuiLabel(JsonString("NUI window"), JsonInt(0), JsonInt(0))));
-    json jWin = NuiWindow(jRoot, JsonString("cxladder nui"), NuiRect(400.0, 260.0, 300.0, 200.0),
-                          JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
+    string sWin = "{\"type\":\"window\",\"version\":1,\"title\":\"cxladder nui\","
+        + "\"geometry\":{\"x\":400.0,\"y\":260.0,\"w\":300.0,\"h\":200.0},"
+        + "\"resizable\":false,\"collapsed\":false,\"closable\":false,\"transparent\":false,\"border\":true,"
+        + "\"root\":{\"type\":\"col\",\"children\":[{\"type\":\"label\",\"value\":\"NUI window\"}]}}";
+    json jWin = JsonParse(sWin);
     Mark("nui " + IntToString(NuiCreate(oPC, jWin, "cxladder_nui")));
 }
 
