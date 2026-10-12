@@ -70,6 +70,10 @@ internal static unsafe class TintTerms
             if (s.Owner[r] >= 0) continue;
             s.Owner[r] = recipe;
             s.Rows++;
+            if (!s.AnyRow)
+                s.Log?.Always("TintTerms: a palette-tint material is in sight -- its hosted fragment stage "
+                            + "runs (palette rows, glow, lobe and coverage), and its VERTEX half does NOT: "
+                            + "Alloy hosts fragment stages only, so a palette-tint part does not sway");
             s.AnyRow = true;
             Array.Clear(s.Words, r * WordsPerRow, WordsPerRow);
             Touch(r);

@@ -294,6 +294,16 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   additive, fade, water) are all-owned-or-none, because a half-owned class has no coherent
   order. The one-owner rule holds at whichever granularity a class uses: drawn every frame by
   exactly one owner, never both, never neither.
+- **Vertex paint** — a per-vertex RGBA colour an artist paints onto a mesh in the modelling tool and
+  which travels with the model, read by a shader as a mask rather than as a colour: which parts of a
+  tree sway, where moss grows, how much a strand of hair moves. Distinct from the mesh's *diffuse
+  colour*, which tints what is drawn. Alloy carries it into every vertex stage (one packed word per
+  vertex, white where a mesh has none), so a material's own shader can weight an effect by it. The
+  engine's own name for the second colour stream is `vCustomColor`.
+- **Palette rows** — the ten numbers that colour a creature: one master-palette row per PLT layer
+  (skin, hair, metal, cloth, leather, tattoo), chosen by the player or the server. They are a property
+  of the *wearer*, not of the model or the material, which is why two characters in one armour model
+  look different. A shader reads them as the engine's `PLTscheme` feed.
 - **Material synthesis** — deriving material parameters for content that declares none, rather
   than requiring every model to be re-authored. Content that *does* declare parameters is
   always honoured over synthesised ones.

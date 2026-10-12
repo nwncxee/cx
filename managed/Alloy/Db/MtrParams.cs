@@ -137,9 +137,10 @@ internal static class MtrParams
 
     private static bool Is(string a, string b) => a.Equals(b, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A hand-written <c>.mtr</c> through <see cref="MtrDef.Parse"/>, <see cref="Fold"/> and the recipe's
-    /// slot mapping. Oracle: the literals in the text, and the slot contract in <c>docs/spec/materials.md</c>
-    /// (<c>texture11</c> is the AO/ORM map on its own mask bit, never <c>texture7</c>).</summary>
+    /// <summary>A hand-written <c>.mtr</c> through <see cref="MtrDef.Parse"/>, <see cref="Fold"/>,
+    /// <see cref="FoldTint"/> and the recipe's slot mapping. Oracle: the literals in the text, and the slot
+    /// contract in <c>docs/spec/materials.md</c> -- <c>texture11</c> is the AO/ORM map on its own mask bit,
+    /// and <c>texture7</c>..<c>texture10</c> are the palette tint's four, on theirs.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MtrParams.SelfCheck");

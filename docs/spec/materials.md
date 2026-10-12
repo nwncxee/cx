@@ -113,6 +113,52 @@ not a player setting.
 It suits hair, fur, lace, chains and other small, detailed cut-outs. Each pixel it covers is lit outside the
 deferred path, so whole canopies in the mode will cost frame time.
 
+## The palette-tint character pair (`vs_plt_wind` / `fs_plt_tinter`)
+
+Alloy reproduces a handful of community custom shaders by name, and this pair is one of them: name it
+on a material and Alloy runs the content's own fragment stage inside its lit program instead of
+drawing the plain lit path.
+
+```
+customShaderVS vs_plt_wind
+customShaderFS fs_plt_tinter
+texture0 pc_body_d
+texture7 pal_overlay
+texture8 pal_detail
+texture9 pal_coverage
+texture10 pal_extra
+parameter int NWN_ALPHA_MODE 2
+```
+
+`texture7`..`texture10` are the engine's own last four material stages, and the shader reaches them
+under the engine's own names — `texUnit7`..`texUnit10`, with `texture7Bound`..`texture10Bound` saying
+which of them the material actually stated. **`texture9`'s blue channel is the coverage**: on this
+material the diffuse's alpha is palette intensity, not opacity, so the cut-out test and the shadow both
+read that channel instead. `texture11` is still the AO/ORM map and is not one of the four.
+
+The wearer's ten palette rows arrive as the engine's `uniform float PLTscheme[15]` — one normalised
+master-palette row per layer — whether or not the diffuse is a `.plt`.
+
+Two things differ from a stock client and are worth knowing:
+
+- **The vertex half is not reproduced.** Alloy hosts fragment stages only, so the pair's wind does not
+  sway under Alloy yet; everything else in the pair works.
+- **The parameter names below are provisional.** Alloy draws a whole batch in one call and so cannot
+  set a per-material uniform the way the engine does; it stages these terms itself, which means it has
+  to know their spelling. If your shader calls them something else, say so and they will be corrected.
+
+| line | what it feeds |
+|---|---|
+| `parameter float fIllumColor r g b` | the glow colour the tint adds |
+| `parameter float fAlphaMipScale 0.5` | how far the coverage map's alpha is scaled back up with distance |
+| `parameter float fAnisotropy 0.5` | the anisotropic highlight's strength (0–1) |
+| `parameter float fSpecularIntensity 1.0` | the specular lobe's intensity |
+| `parameter float fSwaySpeed` / `fSwayStrength` | the sway terms, staged and not yet applied |
+
+The four palette maps reach the shader as bindless texture handles, because the lit stage has already
+spent every ordinary texture unit. On a driver without `ARB_bindless_texture` (or with
+`alloy.bindless 0`) the feature stands down: such parts draw nothing and `cx.log` says why.
+
 ## Player settings
 
 `light.brdf` (Modern materials) turns all of this on and off. Off is the stock shading exactly, the
