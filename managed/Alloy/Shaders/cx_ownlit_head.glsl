@@ -16,6 +16,7 @@ flat in int vDraw;             // this fragment's CxDraw record: the material co
 #include "cx_chartbuf.glsl"
 #include "cx_plt.glsl"
 #include "cx_alphamip.glsl"
+#include "cx_tintbuf.glsl"
 uniform sampler2D uTex;
 #define CX_ARRIVE_SECONDS 0.6   // CX-52: a streamed diffuse's fade-in, see the diffuse sample
 #define CX_ARRIVE_MIPS 6.0      // ...starting this many mips blurred
@@ -81,6 +82,10 @@ const int CX_SLOT_NORMAL = 1, CX_SLOT_SPEC = 2, CX_SLOT_ROUGH = 4,
 const int CX_SLOT_AO = 128;
 // bit 8: no shadow lands on this record (an untextured blended sheet: a door's transition sheen)
 const int CX_SLOT_NOSHADOW = 256;
+// CX-223: bits 9..12, .mtr texture7..texture10 -- the palette tint's own maps. Set only on a material that
+// names the palette tint, which is the same reading the flow slot's bit takes. CX_SLOT_PAL0 is the first,
+// declared in cx_tintbuf.glsl because that library is included ahead of this block.
+const int CX_SLOT_PAL_LAST = CX_SLOT_PAL0 << 3;
 /// the depth encode's own rounding, nothing more: #119 makes a prepassed fragment's depth EQUAL
 const float CX_AO_DEPTH_EPS = 1e-5;
 /// The half-res upsample's depth tolerance, in fragment depth SLOPES: a neighbour more than this

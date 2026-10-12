@@ -293,6 +293,7 @@ public sealed unsafe partial class AlloyRenderer
         StageSky();
         bool drawsUp = Issue.UploadDraws();
         Db.PltColors.Upload();   // the frame-start push ran before this frame's PLT rows were staged
+        Db.TintTerms.Upload();
         // CX-120: with the frame's records staged AND pushed, a record that still differs from the mirror is
         // one the dirty list never named -- the change-driven build's own bug class.
         StaleAuditTick();

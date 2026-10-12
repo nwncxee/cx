@@ -47,6 +47,11 @@ internal enum ShaderFeature
     /// take a Fresnel of the sky, and rain ripples over both. Around eighty materials name it, which is most
     /// of the outdoor tileset; drawn with the plain stage, none of it happened.</summary>
     GroundWeather = 11,
+    /// <summary><c>vs_plt_wind</c>/<c>fs_plt_tinter</c> -- a part-based character's palette tint: the wearer's
+    /// ten PLT palette rows against the material's own palette maps (<c>texture7</c>..<c>texture10</c>), a
+    /// glow, an anisotropic lobe, and a sway weighted by the mesh's vertex paint. Its per-material terms ride
+    /// <see cref="TintTerms"/>' side table, reached by the row index in <c>feat.z</c>.</summary>
+    PaletteTint = 12,
 }
 
 internal static class ShaderFeatures
@@ -59,7 +64,7 @@ internal static class ShaderFeatures
     {
         "", "shd_windgrass_vs", "shd_windleaf_vs", "shd_windplant_vs",
         "shd_roofkn_vs", "shd_roofknm_vs", "shd_nokeyhole_vs", "shd_flowmap_vs",
-        "", "vs_noirwet", "vs_noirgloss", "td_ground_vs",
+        "", "vs_noirwet", "vs_noirgloss", "td_ground_vs", "vs_plt_wind",
     };
 
     /// <summary>The <c>customShaderFS</c> resrefs Alloy HOSTS, indexed like <see cref="VsNames"/>. An entry
@@ -70,7 +75,7 @@ internal static class ShaderFeatures
     {
         "", "", "", "",
         "", "", "", "",
-        "", "fs_noirwet", "fs_noirgloss", "td_ground_fs",
+        "", "fs_noirwet", "fs_noirgloss", "td_ground_fs", "fs_plt_tinter",
     };
 
     /// <summary>Does this feature's fragment side come from a HOSTED content stage? Such a batch draws through
@@ -85,6 +90,17 @@ internal static class ShaderFeatures
     /// vanilla's own <c>texture6Bound</c> test: a material that binds nothing there gets nothing sampled.</summary>
     internal static bool ReadsAuxSlot(int feat)
         => feat == (int)ShaderFeature.Flowmap || feat == (int)ShaderFeature.GroundWeather;
+
+    /// <summary>Does this feature read the four PALETTE slots, <c>texture7</c>..<c>texture10</c>? Only the
+    /// palette tint does, and the same reading as <see cref="ReadsAuxSlot"/>'s applies: a material that binds
+    /// nothing there gets nothing sampled, and a material that binds something there under any other feature
+    /// leaves the bits clear rather than handing an unrelated stage four maps it never asked for.</summary>
+    internal static bool ReadsPaletteSlots(int feat) => feat == (int)ShaderFeature.PaletteTint;
+
+    /// <summary>Does this feature take its COVERAGE from somewhere other than the diffuse alpha? The palette
+    /// tint does -- its coverage is the third palette map's blue channel, the <c>.mtr</c>'s own mip rescale
+    /// over it -- because its diffuse carries the palette intensity, not an opacity.</summary>
+    internal static bool HostedCoverage(int feat) => feat == (int)ShaderFeature.PaletteTint;
 
     /// <summary>Does this feature move vertices? Such a part must stay out of the depth prepass: the prepass
     /// stage does not displace, so its depth is the part's UNDISPLACED silhouette and the colour pass's LEQUAL

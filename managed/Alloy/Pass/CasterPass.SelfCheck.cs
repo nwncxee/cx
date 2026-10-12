@@ -18,7 +18,7 @@ public sealed unsafe partial class CasterPass
         // ...and the cutout stage really discards, at the engine's own threshold. A masked batch drawn by a
         // stage that lost the test writes the whole quad into the shadow map, which is the artefact the
         // masked path exists to remove and looks exactly like the pass working.
-        bool ok = CastMaskFs.Contains("vec2(textureSize(uTex, 0)), 0.0) <= uAlphaCut) discard;")
+        bool ok = CastMaskFs.Contains("CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;")
                   && CastMaskFs.Contains("uniform float uAlphaCut;")
                   && CastMaskFs.Contains("uniform int uDither;") && CastMaskHFs.Contains("uniform int uDither;")
                   // #363: the stochastic discard, on the SAME sampled alpha, in both mask stages
@@ -27,7 +27,13 @@ public sealed unsafe partial class CasterPass
                   // The handle-masked stages: the same discard, the mask off the record's handle block at
                   // slot 0, the record index from gl_BaseInstance in both packings.
                   && CastMaskHFs != CastMaskHFsSrc
-                  && CastMaskHFs.Contains("vec2(textureSize(uTex, 0)), 0.0) <= uAlphaCut) discard;")
+                  && CastMaskHFs.Contains("CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;")
+                  // CX-223: ...and the handle stage alone asks the palette tint for its own coverage source,
+                  // so a palette caster casts what it draws; the plain one has no record index to ask with.
+                  && CastMaskHFs.Contains("if (ctint.x >= 0.0) { t = ctint.x; tmip = ctint.y; tsize = ctint.zw; }")
+                  && CastMaskHFs.Contains("#define CX_CAST_HANDLE 1")
+                  && !CastMaskFs.Contains("#define CX_CAST_HANDLE")
+                  && CastMaskFs.Contains("float t = texture(uTex, vUV).a;")
                   // ...and both dither on the colour pass's blend weight, the record alpha included
                   && CastMaskFs.Contains("float a = (uEnvAlpha != 0 ? 1.0 : t) * vAlpha;")
                   && CastMaskHFs.Contains("float a = (uEnvAlpha != 0 ? 1.0 : t) * vAlpha;")
@@ -132,10 +138,12 @@ public sealed unsafe partial class CasterPass
                   // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
                   && DitherFor(CoverageLayer.Cut) >= 1
                   // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except
-                  // under a hosted fragment stage, whose own channel no depth stage can read yet
+                  // under a hosted fragment stage, which is admitted only where it names a source both can read
                   && CoverageLayer.FromDiffuse((int)ShaderFeature.None)
                   && CoverageLayer.FromDiffuse((int)ShaderFeature.Skin)
                   && !CoverageLayer.FromDiffuse((int)ShaderFeature.GroundWeather)
+                  // CX-223: ...and the one hosted feature that names its own source IS admitted
+                  && CoverageLayer.FromDiffuse((int)ShaderFeature.PaletteTint)
                   && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()

@@ -69,6 +69,27 @@ internal static unsafe class Programs
     internal static LitLoc _litM;
     internal static int _litMaskSamples = -1;
     private static bool _maskFailed;
+
+    /// <summary>The HOSTED lit program's own A2C mask variant, in one owner: its program, its locations, its
+    /// sample-count uniform, the text it is spliced from and the latched refusal. A hosted body whose coverage
+    /// comes off its own map still gets the layer's per-primitive sample pattern through it.</summary>
+    private sealed class HostMaskState
+    {
+        public uint Prog;
+        public LitLoc Loc;
+        public int Samples = -1;
+        public bool Failed;
+        /// <summary>The hosted program's final fragment text -- what the variant is spliced from.</summary>
+        public string? Fs;
+    }
+    private static HostMaskState _hostMask = new();
+
+    /// <summary>The hosted A2C mask program, or 0.</summary>
+    internal static uint ProgLitHostMask => _hostMask.Prog;
+    /// <summary>Its <c>uA2cSamples</c> location.</summary>
+    internal static int HostMaskSamples => _hostMask.Samples;
+    /// <summary>Its uniform locations, for the issue loop's program table.</summary>
+    internal static ref LitLoc HostMaskLoc => ref _hostMask.Loc;
     /// <summary>The lit program WITH the hosted content bodies, or 0 (hosting off, no hosted feature, or
     /// its build failed -- hosted materials then draw the plain lit path through <see cref="_progLit46"/>).</summary>
     internal static uint _progLitHost;
@@ -181,6 +202,8 @@ internal static unsafe class Programs
         if (_progLitList != 0) Gl.DeleteProgram(_progLitList);
         if (_progLitDef != 0) Gl.DeleteProgram(_progLitDef);
         if (_progLitMask != 0) Gl.DeleteProgram(_progLitMask);
+        if (_hostMask.Prog != 0) Gl.DeleteProgram(_hostMask.Prog);
+        _hostMask = new HostMaskState();
         _progLitMask = 0; _maskFailed = false;
         if (_progWater != 0) Gl.DeleteProgram(_progWater);
         _progLit46 = 0; _progLitHost = 0; _progLitList = 0; _progLitDef = 0; _progWater = 0; OitPass.ListsArmed = false;
@@ -460,10 +483,32 @@ internal static unsafe class Programs
                 _log?.Info("AlloyRenderer: hosted lit program failed its contracts -- hosted materials draw the plain lit path");
             }
             if (ph == 0) _log?.Info("AlloyRenderer: hosted lit program unavailable -- hosted materials draw the plain lit path");
-            else { _progLitHost = ph; _litH = LitLocs(ph); }
+            else { _progLitHost = ph; _litH = LitLocs(ph); _hostMask.Fs = hfs; }
         }
         _log?.Info("AlloyRenderer: lit program ready (4.6 context) -- forward except the point lights, which the "
                  + "deferred twin and DeferredLights add");
+    }
+
+    /// <summary>Build the hosted A2C mask program from the HOSTED program's own final text. False = no
+    /// hosted program, or the variant refused (latched, logged once): a hosted coverage batch then draws
+    /// through the plain hosted program and takes hardware alpha-to-coverage.</summary>
+    internal static bool EnsureHostMaskProgram()
+    {
+        HostMaskState h = _hostMask;
+        if (h.Prog != 0) return true;
+        if (h.Failed || h.Fs == null || _litVsSrc == null) return false;
+        h.Prog = GlProgram.Graphics(_litVsSrc, ShaderStages.WithDefine(h.Fs, "CX_A2C_MASK 1"),
+                                    _log, "AlloyRenderer hosted lit program (A2C mask)", host: false);
+        if (h.Prog == 0)
+        {
+            h.Failed = true;
+            _log?.Info("AlloyRenderer: the hosted A2C mask variant did not build -- a hosted coverage batch "
+                     + "draws through the plain hosted program and takes hardware coverage");
+            return false;
+        }
+        h.Loc = LitLocs(h.Prog);
+        h.Samples = GlProgram.Loc(h.Prog, "uA2cSamples");
+        return true;
     }
 
     /// <summary>Build <see cref="_progLitMask"/> from the lit program's own final text. False = no lit

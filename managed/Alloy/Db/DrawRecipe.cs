@@ -19,20 +19,39 @@ internal static partial class DrawRecipe
     /// <summary>The PBR floats a recipe stages verbatim into its record, matching
     /// <c>AlloyRenderer.ParamFloats</c>: the two stock vec4s then ADR 0026's three extension vec4s.</summary>
     internal const int ParamFloats = 20;
-    /// <summary>Texture slots a recipe names: diffuse, then the seven map slots (five maps, flow, AO).</summary>
-    internal const int TexSlots = 1 + AlloyRenderer.MapSlots;
+    /// <summary>Texture slots a recipe names: diffuse, the seven map slots (five maps, flow, AO), then the
+    /// four PALETTE slots. The palette four are held but never BOUND -- the lit stage spends texture units
+    /// 0..30, so they reach their one reader as handles in <see cref="TintTerms"/>' row.</summary>
+    internal const int TexSlots = 1 + AlloyRenderer.MapSlots + AlloyRenderer.PalSlots;
     /// <summary>The map slot of <c>texture6</c>, the flow map / weather-ground overlay.</summary>
     private const int FlowSlot = 5;
     /// <summary>The recipe slot of the AO map, which reads <c>.mtr</c> <c>texture11</c>, not <c>texture7</c>.</summary>
     private const int AoRecipeSlot = 1 + AlloyRenderer.AoSlot;
+    /// <summary>The first PALETTE recipe slot, which reads <c>.mtr</c> <see cref="AlloyRenderer.PalTexture0"/>
+    /// (<c>texture7</c>); the other three follow it in <c>.mtr</c> order.</summary>
+    private const int PalRecipeSlot0 = 1 + AlloyRenderer.MapSlots;
 
-    /// <summary>The <c>.mtr</c> <c>textureN</c> a recipe slot reads: its own index, except the AO slot.</summary>
-    internal static int MtrTextureOf(int s) => s == AoRecipeSlot ? AlloyRenderer.AoTexture : s;
+    /// <summary>The <c>.mtr</c> <c>textureN</c> a recipe slot reads: its own index, except the AO slot and the
+    /// four palette slots, which sit past the map block and read <c>texture7</c>..<c>texture10</c>.</summary>
+    internal static int MtrTextureOf(int s)
+        => s == AoRecipeSlot ? AlloyRenderer.AoTexture
+         : s >= PalRecipeSlot0 ? AlloyRenderer.PalTexture0 + (s - PalRecipeSlot0) : s;
 
-    /// <summary>The slot-mask bit a bound recipe slot sets: none for the diffuse, the flow slot only for the
-    /// features that read it (vanilla's own <c>texture6Bound</c> test), and AO on its own out-of-line bit.</summary>
+    /// <summary>The slot-mask bit a bound recipe slot sets: none for the diffuse, the flow slot and the four
+    /// palette slots only for the features that read them (vanilla's own <c>texture6Bound</c> test), and AO on
+    /// its own out-of-line bit.</summary>
     internal static int MaskBitOf(int s, int feat)
-        => s == 0 || (s - 1 == FlowSlot && !ShaderFeatures.ReadsAuxSlot(feat)) ? 0 : AlloyRenderer.SlotBit(s - 1);
+        => s == 0 ? 0
+         : s >= PalRecipeSlot0
+             ? (ShaderFeatures.ReadsPaletteSlots(feat) ? AlloyRenderer.PalSlotBit(s - PalRecipeSlot0) : 0)
+         : s - 1 == FlowSlot && !ShaderFeatures.ReadsAuxSlot(feat) ? 0
+         : AlloyRenderer.SlotBit(s - 1);
+
+    /// <summary>Palette slot <paramref name="k"/>'s bindless handle on recipe <paramref name="r"/>, for the
+    /// one reader that takes them that way (<see cref="TintTerms.Upload"/>). 0 until the texture is resident.</summary>
+    internal static ulong PalHandle(int r, int k)
+        => (uint)r < Max && (uint)k < AlloyRenderer.PalSlots ? TexHandle(r, PalRecipeSlot0 + k) : 0ul;
+
 
     private static readonly Dictionary<(ModelDef, int), int> _byNode = new();
     private static int _n;
@@ -81,6 +100,10 @@ internal static partial class DrawRecipe
     private static readonly byte[] _src = new byte[Max], _dst = new byte[Max], _prim = new byte[Max];
     private static readonly int[] _feat = new int[Max];
     private static readonly float[] _featF = new float[Max * 4];
+    /// <summary>This recipe's row in <see cref="TintTerms"/>' side table, or -1. Allocated with the recipe
+    /// when its material names the palette tint and handed back when the recipe retires, so the index the
+    /// record carries cannot outlive the terms behind it.</summary>
+    private static readonly int[] _tintRow = new int[Max];
     private static readonly float[] _param = new float[Max * ParamFloats];
     private static readonly int[] _slots = new int[Max];
     private static readonly string[] _tex = new string[Max * TexSlots];
@@ -144,6 +167,7 @@ internal static partial class DrawRecipe
         _own.Held[r] = false; _own.Orphan[r] = false;
         if (_range[r] >= 0) MeshArena.Release(_range[r]);
         _range[r] = -1;
+        if (_tintRow[r] >= 0) { TintTerms.Free(_tintRow[r], r); _tintRow[r] = -1; }
         for (int s = 0; s < TexSlots; s++)
         {
             int o = r * TexSlots + s;
@@ -501,6 +525,23 @@ internal static partial class DrawRecipe
         param.Clear();
         MtrParams.ResetExt(param[AlloyRenderer.ParamExt..]);
         MtrParams.Fold(mtr, param, featF);
+        // CX-223: a palette-tint material takes a row in the side table and the record carries its INDEX in
+        // the feature's own feat.z lane, so the tint's terms cost the other hundred thousand records nothing.
+        // A table with no row left is the feature OFF for this material -- the plain lit path, which is what
+        // the record says too, since an index nothing backs would read another material's glow.
+        _tintRow[r] = -1;
+        if (feat == (int)ShaderFeature.PaletteTint)
+        {
+            _tintRow[r] = TintTerms.Alloc(r);
+            if (_tintRow[r] < 0) { feat = 0; _feat[r] = 0; featF[0] = 0f; }
+            else
+            {
+                Span<float> tint = stackalloc float[MtrParams.TintTermCount];
+                MtrParams.FoldTint(mtr, tint);
+                TintTerms.SetTerms(_tintRow[r], tint[0], tint[1], tint[2], tint[3], tint[4], tint[5], tint[6], tint[7]);
+                featF[2] = _tintRow[r];
+            }
+        }
         int mask = 0;
         for (int s = 0; s < TexSlots; s++)
         {

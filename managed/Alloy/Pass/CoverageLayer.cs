@@ -14,11 +14,12 @@ internal static unsafe class CoverageLayer
     /// <summary>The alpha below which a fragment is discarded outright: a coverage of nothing at any sample count.</summary>
     internal const float Cut = 0.01f;
 
-    /// <summary>Does a coverage part with this shader feature take its coverage from the DIFFUSE alpha? The
-    /// one place a hosted program's own source plugs in, asked by the colour draw and by the shadow caster so
-    /// the two cannot answer differently. ponytail: no hosted source is read yet; the upgrade is a hosted
-    /// sample-mask variant naming its own channel, and the answer here turning true for it.</summary>
-    internal static bool FromDiffuse(int feat) => !ShaderFeatures.Hosted(feat);
+    /// <summary>Does a coverage part with this shader feature have a coverage source the colour draw and the
+    /// shadow caster can BOTH sample? The diffuse alpha wherever Alloy's own stage shades, and the palette
+    /// tint's own map past that -- which is why a hosted feature is no longer a flat no. A hosted body whose
+    /// coverage lives somewhere neither can read answers false and keeps the engine's cut.</summary>
+    internal static bool FromDiffuse(int feat)
+        => !ShaderFeatures.Hosted(feat) || ShaderFeatures.HostedCoverage(feat);
 
     private static readonly StandDown _down = new("CoverageLayer");
     private static ExtenderLog? _log;
@@ -80,6 +81,10 @@ internal static unsafe class CoverageLayer
         int fw = viewport[0] + viewport[2], fh = viewport[1] + viewport[3];
         if (!EnsureTargets(fw, fh, samples) || !EnsurePrograms()) return false;
         Masked = Renderer.A2cMask.V && Programs.EnsureMaskProgram();
+        // CX-223: and the HOSTED twin, at the same edge rather than inside the issue loop -- a program build
+        // between two draws is a stall. Optional: without it a hosted coverage batch draws through the plain
+        // hosted program and takes hardware alpha-to-coverage.
+        if (Masked) Programs.EnsureHostMaskProgram();
 
         _gl.Rx = x; _gl.Ry = y; _gl.Rw = w; _gl.Rh = h; _gl.Idling = 0;
         _gl.MsWas = Gl.IsEnabled(Gl.MULTISAMPLE) != 0; _gl.CullWas = Gl.IsEnabled(Gl.CULL_FACE) != 0;
