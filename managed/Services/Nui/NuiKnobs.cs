@@ -11,6 +11,7 @@ internal static class NuiKnobs
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Cull, ItemIcons, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug;
     internal static readonly Knob<float> Thumb;
+    internal static readonly Knob<string> PolicyProbe;
 
     static NuiKnobs()
     {
@@ -36,6 +37,8 @@ internal static class NuiKnobs
             help: "A NUI list's scrollbar fades out while the pointer is elsewhere and back in when it is over the list. Text boxes keep theirs.");
         Thumb = G.Slider("thumb", "Shortest scrollbar handle", 0f, 4f, 0.5f, 2f, "\u00d7 its width", Tier.Advanced,
             help: "A long list's scrollbar handle never gets shorter than this, so it cannot shrink out of sight. 0 = stock.");
+        PolicyProbe = G.Text("policyprobe", "policyprobe", "", Tier.ChatOnly,
+            help: "Debug: window render properties as key=value;key=value (a window's id, then the property), read under whatever a server sends. For trying the keys without a server.");
         ItemIcons = G.Toggle("itemicons", "Item icons in NUI windows", true,
             help: "A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite.");
     }

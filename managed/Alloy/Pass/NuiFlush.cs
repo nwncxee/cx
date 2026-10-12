@@ -77,6 +77,10 @@ internal static unsafe class NuiFlush
         _layout[3] = new NkLayoutElem { Attribute = 3, Format = 19, Offset = 0 };    // NK_VERTEX_LAYOUT_END
         _nkSlot = hooks.ChainNkSdlRender(&OnNk, NkPriority);
         if (_nkSlot == null) { log.Always("NuiFlush: nk_sdl_render did not chain -- NUI stays the ENGINE's draw"); return; }
+        NuiWindows.Init(log);
+        Capabilities.Register("nuirender", 1, static () => _armed && !_stoodDown && Renderer.Gui.V && CX.Services.Nui.NuiKnobs.Enabled.V);
+        Renderer.Gui.Changed += Capabilities.Refresh;
+        CX.Services.Nui.NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         _armed = true;
         log.Info("NuiFlush: armed -- on a captured frame nuklear converts into CX buffers and Alloy draws NUI "
                + "(the engine's flush is not called)");
@@ -90,6 +94,7 @@ internal static unsafe class NuiFlush
         if (!_armed || _stoodDown || ctx == IntPtr.Zero || !GuiPass.Capturing) { (*_nkSlot)(dt); return; }
         new NkContext(ctx).DeltaTime = dt;
         _refresh();
+        NuiWindows.Apply(ctx);
         Convert(ctx);
         _clear(ctx);
         BufferClear(_cmds);
@@ -148,6 +153,7 @@ internal static unsafe class NuiFlush
     private static void StandDown(byte res)
     {
         _stoodDown = true;
+        Capabilities.Refresh();
         _log?.Always($"NuiFlush: nk_convert refused (flags 0x{res:x}) at {_vtx.Length / VtxStride} vertices / "
                    + $"{_idx.Length} indices -- NUI goes back to the ENGINE's flush for the rest of the session");
         Notice.Show(_log, "Alloy could not convert the interface's geometry; the game's renderer draws NUI instead.");
@@ -359,6 +365,7 @@ internal static unsafe class NuiFlush
           "nuklear's origin is the top-left corner of clip space");
         check.Expect(MathF.Abs(bottomRight.X - 1f) < 1e-5f && MathF.Abs(bottomRight.Y + 1f) < 1e-5f,
           "...and (w, h) is the bottom-right");
+        NuiWindows.SelfCheck(log);
         log.Info(check.Ok ? "NuiFlush.SelfCheck: passed" : "NuiFlush.SelfCheck: FAILED");
     }
 }

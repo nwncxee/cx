@@ -1803,36 +1803,19 @@ public static unsafe class EngineLayout
     /// <inheritdoc cref="NkCtxDeltaTime"/>
     public static readonly int NkCtxDrawCmdOffset = Field<long>("NkContext", "drawCmdOffset");
 
-    /// <summary>The rest of <c>nk_context</c> that NUI's per-window render controls read, identical on both builds:
-    /// <c>memory.memory.ptr</c> (the base every command offset is added to), <c>memory.allocated</c> (the end of
-    /// the queue: <c>nk__next</c> stops at an offset at or past it), the head of the window list and the frame
-    /// <c>seq</c> that marks a window as drawn this frame.</summary>
+    /// <summary>More of <c>nk_context</c>, identical on both builds: the queue's base pointer and end offset, the window list head and the frame seq.</summary>
     public static readonly int NkCtxMemPtr = Field<IntPtr>("NkContext", "memPtr");
-    /// <inheritdoc cref="NkCtxMemPtr"/>
     public static readonly int NkCtxMemAllocated = Field<ulong>("NkContext", "memAllocated");
-    /// <inheritdoc cref="NkCtxMemPtr"/>
     public static readonly int NkCtxWindowBegin = Field<IntPtr>("NkContext", "windowBegin");
-    /// <inheritdoc cref="NkCtxMemPtr"/>
     public static readonly int NkCtxSeq = Field<uint>("NkContext", "seq");
-
-    /// <summary><c>nk_window</c>: <c>seq</c> (equal to the context's while the window was begun this frame).</summary>
+    /// <summary><c>nk_window</c>, read on Linux and shared by the Windows link pass (the name and bounds follow from the struct order): a window equals the context's <c>seq</c> when begun this frame; its name is the id a NUI server gave it; bit 0x4000 of flags is HIDDEN.</summary>
     public static readonly int NkWinSeq = Field<uint>("NkWindow", "seq");
-    /// <summary>The window's name, 64 bytes NUL-terminated: for a NUI window, the id the server gave it.</summary>
     public static readonly int NkWinName = Field<byte>("NkWindow", "name", count: 64);
-    /// <summary><c>nk_window.flags</c>; bit 0x4000 is HIDDEN, which <c>nk__begin</c> skips.</summary>
     public static readonly int NkWinFlags = Field<uint>("NkWindow", "flags");
-    /// <summary><c>nk_window.bounds</c>: x, y, w, h in screen px.</summary>
     public static readonly int NkWinBounds = Field<float>("NkWindow", "bounds", count: 4);
-    /// <summary>The window's command buffer: <c>begin</c> and <c>end</c> bound its commands in the context queue
-    /// (offsets), <c>last</c> is its last command in the main chain.</summary>
+    /// <summary>The window's command buffer: <c>begin</c> and <c>end</c> bound its commands in the queue (offsets), <c>last</c> is its last in the main chain.</summary>
     public static readonly int NkWinBufBegin = Field<ulong>("NkWindow", "bufBegin");
-    /// <inheritdoc cref="NkWinBufBegin"/>
     public static readonly int NkWinBufEnd = Field<ulong>("NkWindow", "bufEnd");
-    /// <inheritdoc cref="NkWinBufBegin"/>
-    public static readonly int NkWinBufLast = Field<ulong>("NkWindow", "bufLast");
-    /// <summary><c>nk_window.popup.buf.active</c>: the window has popup commands the link pass appends.</summary>
-    public static readonly int NkWinPopupActive = Field<int>("NkWindow", "popupActive");
-    /// <summary><c>nk_window.next</c>: the window list runs bottom to top.</summary>
     public static readonly int NkWinNext = Field<IntPtr>("NkWindow", "next");
 
     // ---- CNWCAnimBase: the highlight CHANNELS (#336) ----
