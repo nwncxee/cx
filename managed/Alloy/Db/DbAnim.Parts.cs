@@ -18,6 +18,8 @@ public static unsafe partial class DbAnim
         if (!_hasDangly[i] || !Dangly.Enabled.V) return;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         if (n <= 0 || _danglyDt <= 0f) return;
+        DbId sc = SceneDb.ObjScene[i];
+        bool windy = SceneDb.Scenes.Valid(sc) && SceneDb.SceneIsWorld[sc.Index];
         for (int k = 0; k < n; k++)
         {
             int p = first + k;
@@ -27,7 +29,7 @@ public static unsafe partial class DbAnim
             int node = SceneDb.PartNode[p];
             if ((uint)node >= (uint)m.Nodes.Length) continue;
             if (m.Nodes[node].Kind != NodeKind.Dangly) continue;
-            DanglySolve(p, _danglyDt);
+            DanglySolve(p, _danglyDt, windy);
         }
     }
 

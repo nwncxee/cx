@@ -53,6 +53,7 @@ public static unsafe class DbCamera
         SceneDb.CamFadeA[i] = default; SceneDb.CamFadeB[i] = default;
         SceneDb.CamObj[i] = obj;
         SceneDb.CamFacade[i] = 0;
+        SceneDb.CamName[i] = null;
         _created++;
         return id;
     }
@@ -82,6 +83,7 @@ public static unsafe class DbCamera
         }
         SceneDb.CamObj[cam.Index] = default;
         SceneDb.CamFacade[cam.Index] = 0;
+        SceneDb.CamName[cam.Index] = null;
         SceneDb.CamScene[cam.Index] = default;
         SceneDb.CamBehavior[cam.Index] = 0;
         SceneDb.Cameras.Free(cam);
@@ -89,11 +91,15 @@ public static unsafe class DbCamera
     }
 
     /// <summary>Attach the camera to a scene (<c>Camera::AttachToScene</c>, which the engine routes through
-    /// <c>Gob::SetScene</c>). Zero detaches.</summary>
+    /// <c>Gob::SetScene</c>). Zero detaches. The shell's scene word follows: <c>Camera::UpscaleViewport</c>
+    /// reads the scene's name through it.</summary>
     public static void AttachToScene(DbId cam, DbId scene)
     {
         if (!SceneDb.Cameras.Valid(cam)) return;
         SceneDb.CamScene[cam.Index] = scene;
+        nint shell = SceneDb.CamFacade[cam.Index];
+        if (shell != 0)
+            new CX.Engine.Camera(shell).Scene = new CX.Engine.Scene(SceneDb.Scenes.Valid(scene) ? SceneDb.SceneFacade[scene.Index] : 0);
         SceneDb.TouchCam(cam, Dirty.Tree);
     }
 

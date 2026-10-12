@@ -482,6 +482,8 @@ public static class SceneDb
     // ---- cameras ----
     public static readonly DbId[] CamScene = new DbId[MaxCameras];
     public static readonly nint[] CamFacade = new nint[MaxCameras];
+    /// <summary>The camera's name after <see cref="DbScene.UniqueName"/>, the one its shell's Gob half carries.</summary>
+    public static readonly string?[] CamName = new string?[MaxCameras];
 
 
     // ---- CX-120 seam-obj: the columns the CAurObject slots drive. Append-only; names prefixed ObjSeam* so

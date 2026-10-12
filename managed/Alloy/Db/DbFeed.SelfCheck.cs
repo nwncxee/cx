@@ -404,8 +404,8 @@ public static unsafe partial class DbFeed
     }
 
     /// <summary>A retired recipe slot is held out for one <see cref="DrawRecipe.Pump"/> and handed out after the
-    /// second; one a live part still names is not handed out at all; and a late dynamic drop leaves the slot's next
-    /// tenant alone. Oracle: the slot indices the first interns returned.</summary>
+    /// second; one a live part still names is not handed out at all; a late dynamic drop leaves the slot's next
+    /// tenant alone; a per-instance range is never handed to another mesh. Oracle: the indices the first calls returned.</summary>
     private static void RecipeReuse(Checker check)
     {
         ModelDef a = OneMeshModel("cx_selfcheck_ra"), b = OneMeshModel("cx_selfcheck_rb"), c = OneMeshModel("cx_selfcheck_rc");
@@ -453,6 +453,15 @@ public static unsafe partial class DbFeed
         DrawRecipe.RetireDynamic(rg, gen);   // ...and then its part's drop arrives late
         check.Expect(DrawRecipe.Range(rk) >= 0, "a late dynamic drop leaves the slot's new tenant alone");
         DrawRecipe.Forget(k);
+
+        // A part index re-tenanted by another model asks for the same per-instance key with a different mesh.
+        MeshDef mp = OneMeshModel("cx_selfcheck_rp").Nodes[1].Mesh!, mq = OneMeshModel("cx_selfcheck_rq").Nodes[1].Mesh!;
+        const ulong key = 0x5E1F_C4EC_0000_0002UL;   // not-an-offset: a fixture key, distinct from the one above
+        int rp = MeshArena.AcquireDynamic(mp, key), rq = MeshArena.AcquireDynamic(mq, key);
+        check.Expect(rp >= 0 && rq >= 0 && rq != rp, $"a per-instance key asked for by another mesh gets a range of its own (got {rq}, held {rp})");
+        int rq2 = MeshArena.AcquireDynamic(mq, key);
+        check.Expect(rq2 == rq, $"...and the same mesh on that key keeps it (got {rq2}, held {rq})");
+        MeshArena.Release(rp); MeshArena.Release(rq); MeshArena.Release(rq2);
     }
 
     private static ModelDef OneMeshModel(string name)
