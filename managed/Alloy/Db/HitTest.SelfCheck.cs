@@ -503,10 +503,22 @@ public static unsafe partial class HitTestCheck
         // The scene's destruction takes its prisms and only its prisms: the highlight would read a freed one.
         DbTriggers.AddForCheck(new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 1, 0) }, default, 0x8888);
         DbTriggers.SceneRevoke(world.Scene);
-        if (DbTriggers.Live.Length != 1) ok = Fail(log, $"a scene revoke left {DbTriggers.Live.Length} prism(s), want 1 (the other scene's)");
+        if (DbTriggers.Count != 1) ok = Fail(log, $"a scene revoke left {DbTriggers.Count} prism(s), want 1 (the other scene's)");
         q.SurfaceMask = HitQuery.All;
         if (HitTest.Cast(q, out r) && r.Trigger == 0x7777) ok = Fail(log, "a revoked scene's transition was still hit");
+        // The highlight reads the prism's copies only: the self-check entry's engine pointer is garbage, so an
+        // enrolment that dereferenced it would fault here instead of counting.
+        DbTriggers.Entry lit = DbTriggers.At(0);
+        lit.Outline = new[] { new Vector3(0, 0, 0), new Vector3(2, 0, 0), new Vector3(2, 2, 0) };
+        lit.Highlighted = true; lit.Half = true; lit.Height = 1f; lit.Colour = new Vector4(1f, 1f, 1f, 0.5f);
+        long enrolled = TriggerHighlight.Enrolled;
+        TriggerHighlight.Enroll();
+        if (TriggerHighlight.Enrolled != enrolled + 1) ok = Fail(log, "a lit prism was not enrolled from its copied state");
+        lit.Colour.W = 0f;
+        TriggerHighlight.Enroll();
+        if (TriggerHighlight.Enrolled != enrolled + 1) ok = Fail(log, "a prism with alpha 0 was enrolled");
         DbTriggers.ClearForCheck();
+        TriggerHighlight.Enroll();
 
         // A grafted body piece reports its creature: the game reads the hit object's external type off it.
         DbId nearUp = SceneDb.ObjAttachTo[world.Near.Index];

@@ -167,6 +167,8 @@ global using unsafe GobCollectLightsFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe AurPartTriggerCreateFn = delegate* unmanaged<nint, nint, int, int, nint, nint, nint>;
 global using unsafe AurPartTriggerDeleteFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe AurPartTriggerReleaseMemoryFn = delegate* unmanaged<nint, void>;
+global using unsafe AurPartTriggerSetHighlightFn = delegate* unmanaged<nint, byte, float, byte, void>;
+global using unsafe AurPartTriggerSetHighlightParamsFn = delegate* unmanaged<nint, System.Numerics.Vector3*, float, byte, float, void>;
 global using unsafe RefreshHiliteFn = delegate* unmanaged<nint, void>;
 global using unsafe RenderSkyBoxesFn = delegate* unmanaged<nint, void>;
 global using unsafe PartGetWorldFn = delegate* unmanaged<nint, System.Numerics.Vector3*, float*, void>;
@@ -4820,6 +4822,14 @@ public static unsafe class EngineFn
     private static bool _AurPartTriggerReleaseMemoryDone;
     /// <inheritdoc cref="SymbolMap.AurPartTriggerReleaseMemory"/>
     public static AurPartTriggerReleaseMemoryFn AurPartTriggerReleaseMemory => (AurPartTriggerReleaseMemoryFn)(_AurPartTriggerReleaseMemoryDone ? _AurPartTriggerReleaseMemory : Resolve(ref _AurPartTriggerReleaseMemory, ref _AurPartTriggerReleaseMemoryDone, SymbolMap.AurPartTriggerReleaseMemory));
+    private static IntPtr _AurPartTriggerSetHighlight;
+    private static bool _AurPartTriggerSetHighlightDone;
+    /// <inheritdoc cref="SymbolMap.AurPartTriggerSetHighlight"/>
+    public static AurPartTriggerSetHighlightFn AurPartTriggerSetHighlight => (AurPartTriggerSetHighlightFn)(_AurPartTriggerSetHighlightDone ? _AurPartTriggerSetHighlight : Resolve(ref _AurPartTriggerSetHighlight, ref _AurPartTriggerSetHighlightDone, SymbolMap.AurPartTriggerSetHighlight));
+    private static IntPtr _AurPartTriggerSetHighlightParams;
+    private static bool _AurPartTriggerSetHighlightParamsDone;
+    /// <inheritdoc cref="SymbolMap.AurPartTriggerSetHighlightParams"/>
+    public static AurPartTriggerSetHighlightParamsFn AurPartTriggerSetHighlightParams => (AurPartTriggerSetHighlightParamsFn)(_AurPartTriggerSetHighlightParamsDone ? _AurPartTriggerSetHighlightParams : Resolve(ref _AurPartTriggerSetHighlightParams, ref _AurPartTriggerSetHighlightParamsDone, SymbolMap.AurPartTriggerSetHighlightParams));
     private static IntPtr _RefreshHilite;
     private static bool _RefreshHiliteDone;
     /// <inheritdoc cref="SymbolMap.RefreshHilite"/>
@@ -6930,6 +6940,18 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.AurPartTriggerReleaseMemory"/>; returns the slot holding the next layer, or null.</summary>
     public static AurPartTriggerReleaseMemoryFn* ChainAurPartTriggerReleaseMemory(this HookService h, AurPartTriggerReleaseMemoryFn handler, int priority) =>
         (AurPartTriggerReleaseMemoryFn*)h.Chain(SymbolMap.AurPartTriggerReleaseMemory, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AurPartTriggerSetHighlight"/>; returns the original, or null.</summary>
+    public static AurPartTriggerSetHighlightFn InstallAurPartTriggerSetHighlight(this HookService h, AurPartTriggerSetHighlightFn handler) =>
+        (AurPartTriggerSetHighlightFn)h.Install(SymbolMap.AurPartTriggerSetHighlight, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AurPartTriggerSetHighlight"/>; returns the slot holding the next layer, or null.</summary>
+    public static AurPartTriggerSetHighlightFn* ChainAurPartTriggerSetHighlight(this HookService h, AurPartTriggerSetHighlightFn handler, int priority) =>
+        (AurPartTriggerSetHighlightFn*)h.Chain(SymbolMap.AurPartTriggerSetHighlight, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AurPartTriggerSetHighlightParams"/>; returns the original, or null.</summary>
+    public static AurPartTriggerSetHighlightParamsFn InstallAurPartTriggerSetHighlightParams(this HookService h, AurPartTriggerSetHighlightParamsFn handler) =>
+        (AurPartTriggerSetHighlightParamsFn)h.Install(SymbolMap.AurPartTriggerSetHighlightParams, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AurPartTriggerSetHighlightParams"/>; returns the slot holding the next layer, or null.</summary>
+    public static AurPartTriggerSetHighlightParamsFn* ChainAurPartTriggerSetHighlightParams(this HookService h, AurPartTriggerSetHighlightParamsFn handler, int priority) =>
+        (AurPartTriggerSetHighlightParamsFn*)h.Chain(SymbolMap.AurPartTriggerSetHighlightParams, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RefreshHilite"/>; returns the original, or null.</summary>
     public static RefreshHiliteFn InstallRefreshHilite(this HookService h, RefreshHiliteFn handler) =>
         (RefreshHiliteFn)h.Install(SymbolMap.RefreshHilite, (IntPtr)handler);
