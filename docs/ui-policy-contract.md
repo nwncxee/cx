@@ -401,8 +401,8 @@ stand-in until they do.
 | `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
-| `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it. Linux only | none |
-| `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound). Linux only | `0` |
+| `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it | none |
+| `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound) | `0` |
 | `pitch` | degrees the camera tips down in place, -89 to 89. Negative looks up. The camera does not move | `0` |
 | `clip` | `near,far`: the camera's clip distances in metres, `near` 0.001 or more, `far` 100000 or less, `near` below `far`. Anything else is the default | `0.1,2000` |
 | `zoom` | `min,max`: a scroll over the image moves the camera between these distances in metres (0.01-1000, `min` no greater than `max`). Scroll up comes nearer. The first scroll starts from `dist`. The view takes the scroll, so the window under it does not. No `zoom` means no scroll | none |
@@ -444,9 +444,10 @@ a creature the client can see.
 **Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
 CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
 and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
-a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
-opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
-`vfx` is ignored, and the client logs that once.
+a fire ring, writes its square into the image's alpha as well as its light. Alloy draws a doll that has such a draw twice,
+over black and over white, and reads each pixel's coverage from the difference, so on a transparent or translucent `bg` the
+fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll in one pass: give a
+doll with effects an opaque `bg` there. The doll's effects play their sounds where the doll stands, which is not where the player is.
 
 **Lighting.** A server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface normal dotted with
 `lightdir`), plus what the model glows on its own. Only the Alloy renderer draws it; with Alloy off the engine draws the doll

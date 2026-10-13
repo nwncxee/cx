@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Build cxladder.mod -- the live harness's scripted verification ladder (CX-120 rungs 3 and 4).
 #
-#   tools/live/ladder/build-ladder.sh <dest-modules-dir> [cxladder|cxnui]
+#   tools/live/ladder/build-ladder.sh <dest-modules-dir> [cxladder|cxnui] [script.nss]
+#
+# A third argument builds that script as the module's OnClientEnter, named by the second (the harness's
+# --showcase passes tools/live/showcase/<name>.nss as cxshow); the inc_*.nss beside it are compiled in.
 #
 # The module is DERIVED from the installed stock "The Dark Ranger's Treasure.mod": that .mod is
 # unpacked, this directory's cxladder.nss/.dlg.json are compiled/converted into it, module.ifo gets
@@ -19,6 +22,8 @@ STOCK_MOD="The Dark Ranger's Treasure.mod"
 BASE_MOD="${LADDER_BASE_MOD:-}"
 [ -n "$BASE_MOD" ] || BASE_MOD="$NWN_DIR/data/mod/$STOCK_MOD"
 NAME="${2:-cxladder}"
+SRC="${3:-$HERE/$NAME.nss}"
+[ -f "$SRC" ] || { echo "build-ladder: script not found: $SRC" >&2; exit 2; }
 
 DEST="${1:-}"
 [ -n "$DEST" ] || { echo "build-ladder: usage: build-ladder.sh <dest-modules-dir>" >&2; exit 2; }
@@ -36,7 +41,8 @@ trap 'rm -rf "$WORK"' EXIT
 ( cd "$WORK" && nwn_erf -x -f "$BASE_MOD" >/dev/null )
 
 # 2. our two resources. The compiler needs the game's resman for nwscript.nss.
-cp -f "$HERE/$NAME.nss" "$WORK/$NAME.nss"
+cp -f "$SRC" "$WORK/$NAME.nss"
+cp -f "$(dirname "$SRC")"/inc_*.nss "$WORK/" 2>/dev/null || true
 # LADDER_NUI_CLOSE=<seconds> closes the ladder's NUI window then; unset, it stays open.
 [ -z "${LADDER_NUI_CLOSE:-}" ] || sed -i "s/^const float T_NUI_CLOSE = .*;/const float T_NUI_CLOSE = ${LADDER_NUI_CLOSE}.0;/" "$WORK/$NAME.nss"
 nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$NAME.ncs" "$WORK/$NAME.nss"
@@ -53,7 +59,7 @@ d["Mod_Name"] = {"type": "cexolocstring", "value": {"0": "CX live-harness ladder
 json.dump(d, open(path, "w"))
 PY
 nwn_gff -i "$WORK/module.ifo.json" -l json -o "$WORK/module.ifo" -k gff
-rm -f "$WORK/module.ifo.json" "$WORK/$NAME.nss"
+rm -f "$WORK/module.ifo.json" "$WORK/$NAME.nss" "$WORK"/inc_*.nss
 
 # 4. repack. The .mod extension is what nwn_erf reads the ERF type off.
 rm -f "$DEST/$NAME.mod"

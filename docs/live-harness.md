@@ -252,6 +252,28 @@ These knobs are `ChatOnly` and exist for building and testing. None is advertise
 `tools/live/ladder/cards-look.policy` is a card for `img` whose image and icon row are an `@look:`; run it with
 `nui.cardfile=<path to cards-look.policy>` and `nui.cardforce=img`.
 
+## Showcases (`--showcase <name>`)
+
+A showcase is a module script plus the server policy it needs, for pictures and snippets rather than grading. Each is three
+files in `tools/live/showcase/`: `<name>.nss` (defines `Show(object oPC)`; its `OnClientEnter` comes from the include),
+`<name>.policy` (policy lines, fed in like `nui.cardfile`) and an optional `<name>.keys` (the default `--keys`; `@SHOTS@` is
+the run's shots folder). `inc_show.nss` is the shared half: arming on the PC's first area, `ShowRegister`/`ShowOpen` (one window
+at a time, so the model view's one-doll limit holds), `ShowSpawn` (a passive stock creature, its id logged) and `ShowMorph` (the
+PC takes a creature's appearance). A themed window is a new `<name>.nss` that builds its own window JSON and calls
+`ShowRegister`, plus its `.policy`; the window function is the part a wiki page quotes. The build is `build-ladder.sh` with a
+script path as its third argument, so there is no second builder.
+
+    tools/live/run-live.sh --showcase creatures --out <dir>
+
+The run takes about three minutes and writes the shots to `<dir>/shots`. A `@key@` in a `.policy` is the id of the creature
+`ShowSpawn` logged for that key (`CXSHOW: id key hex`); a poller fills it in and `nui.cardlate` applies it `--showcase-late N`
+seconds after login (default 40, so open that window later than that). The run fails when the script logs a `-FAILED` step or
+a key's creature never appears. `--min-lit` defaults to 0 here, since a window covers the scene.
+
+`creatures` shows six creatures as dolls. Known gap: a doll built for any creature but the player logs
+`NuiModelDoll: the throwaway creature has no model` and draws nothing, whether it is targeted by id or the player is morphed
+into a monster, so those shots show an empty window.
+
 ## Model view
 
 `--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
