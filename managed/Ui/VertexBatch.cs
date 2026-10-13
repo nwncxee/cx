@@ -70,11 +70,12 @@ public sealed class VertexBatch
         V(x0,y0, _su,_sv, tl.r,tl.g,tl.b,tl.a); V(x1,y1, _su,_sv, br.r,br.g,br.b,br.a); V(x0,y1, _su,_sv, bl.r,bl.g,bl.b,bl.a);
     }
 
-    /// <summary>One baked glyph at pen <paramref name="penX"/>/<paramref name="baseline"/> (empty glyphs skipped).</summary>
-    public void Glyph(in Glyph gl, float penX, float baseline, float r, float g, float b, float a)
+    /// <summary>One baked glyph at pen <paramref name="penX"/>/<paramref name="baseline"/> (empty glyphs skipped), its box
+    /// stretched by <paramref name="k"/> when a face of the wanted size is not baked.</summary>
+    public void Glyph(in Glyph gl, float penX, float baseline, float r, float g, float b, float a, float k = 1f)
     {
         if (gl.W <= 0) return;
-        float x0 = penX + gl.XOff, y0 = baseline + gl.YOff, x1 = x0 + gl.W, y1 = y0 + gl.H;
+        float x0 = penX + gl.XOff * k, y0 = baseline + gl.YOff * k, x1 = x0 + gl.W * k, y1 = y0 + gl.H * k;
         if (Outline <= 0f) { Flush(); Quad(_v, x0, y0, x1, y1, gl.U0, gl.V0, gl.U1, gl.V1, r, g, b, a); return; }
         Span<float> o = TextStyle.HaloOffsets(Outline, stackalloc float[TextStyle.MaxHaloFloats]);
         for (int i = 0; i < o.Length; i += 2)
@@ -84,11 +85,11 @@ public sealed class VertexBatch
 
     /// <summary>Synthetic italic: shear the top edge of the glyph quad rightward.</summary>
     public void GlyphItalic(in Glyph gl, float penX, float baseline, float r, float g, float b, float a,
-                            float shear = 0.2f)
+                            float shear = 0.2f, float k = 1f)
     {
         if (gl.W <= 0) return;
-        float x0 = penX + gl.XOff, y0 = baseline + gl.YOff, x1 = x0 + gl.W, y1 = y0 + gl.H;
-        float dx = gl.H * shear;
+        float x0 = penX + gl.XOff * k, y0 = baseline + gl.YOff * k, x1 = x0 + gl.W * k, y1 = y0 + gl.H * k;
+        float dx = gl.H * k * shear;
         if (Outline <= 0f) { Flush(); Sheared(_v, gl, x0, y0, x1, y1, dx, r, g, b, a); return; }
         Span<float> o = TextStyle.HaloOffsets(Outline, stackalloc float[TextStyle.MaxHaloFloats]);
         for (int i = 0; i < o.Length; i += 2)

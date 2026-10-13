@@ -55,6 +55,7 @@ internal static unsafe class RadialIcons
         if (_initTried) return _ready;
         _initTried = true;
         _log = log;
+        IconFrames.Init(log);
         RadialIconsPlt.Install(log);
         if (!SymbolMap.Require(log, "RadialIcons", SymbolMap.AurTextureFind, SymbolMap.AurTextureGet, SymbolMap.GetGameObject,
                                SymbolMap.AppManager, SymbolMap.VtCLayeredIcon, SymbolMap.VtCCompositeIcon, SymbolMap.VtCArmorIcon,
@@ -119,30 +120,31 @@ internal static unsafe class RadialIcons
     public static void Draw(IntPtr handle, float x, float y, float size, float alpha) => Draw(handle, x, y, size, size, alpha);
 
     /// <summary><see cref="Draw(IntPtr, float, float, float, float)"/> of a <paramref name="cellsW"/>×<paramref name="cellsH"/>
-    /// inventory item into a <paramref name="w"/>×<paramref name="h"/> rect, cropped as the engine's <c>GUI_ICON_%dX%dL</c> model
-    /// crops it: the sheet is the cell size (32 px a cell) padded to powers of two, content top-left, so u runs to
-    /// <c>W*32/pow2(W*32)</c> and v from <c>1 - H*32/pow2(H*32)</c>. Cell-derived, so a 2x override keeps its proportions.</summary>
+    /// inventory item into a <paramref name="w"/>×<paramref name="h"/> rect: the art's own frame (<see cref="IconFrames"/>) at
+    /// its proportions, centred. A sheet whose frame is unknown is cropped to the cells as the engine's <c>GUI_ICON_%dX%dL</c>
+    /// model crops it: u to <c>W*32/pow2(W*32)</c>, v from <c>1 - H*32/pow2(H*32)</c>.</summary>
     public static void Draw(IntPtr handle, float x, float y, float w, float h, float alpha, int cellsW, int cellsH,
                             bool clip = false, int cx = 0, int cy = 0, int cw = 0, int ch = 0)
     {
         if (!_ready || handle == IntPtr.Zero || !AurTex.Ready) return;
-        IntPtr icon = ItemIcon(handle);
-        if (icon == IntPtr.Zero) return;
-        Span<int> tids = stackalloc int[MaxLayers];
-        int n = Layers(icon, tids);
-        float u1 = ContentFrac(cellsW), v0 = 1f - ContentFrac(cellsH);
-        for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0, clip, cx, cy, cw, ch);
+        DrawGuiIcon(ItemIcon(handle), x, y, w, h, alpha, cellsW, cellsH, clip, cx, cy, cw, ch);
     }
 
     /// <summary>As the cell-cropped <c>Draw</c>, from an engine <c>CGuiIcon*</c> rather than an item: a dragged icon.</summary>
-    public static void DrawGuiIcon(IntPtr icon, float x, float y, float w, float h, float alpha, int cellsW, int cellsH)
+    public static void DrawGuiIcon(IntPtr icon, float x, float y, float w, float h, float alpha, int cellsW, int cellsH,
+                                   bool clip = false, int cx = 0, int cy = 0, int cw = 0, int ch = 0)
     {
         if (!_ready || icon == IntPtr.Zero || !AurTex.Ready) return;
         Span<int> tids = stackalloc int[MaxLayers];
         int n = Layers(icon, tids);
+        IconFrames.Frame f = IconFrames.Of(icon);
         float u1 = ContentFrac(cellsW), v0 = 1f - ContentFrac(cellsH);
-        for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0, false, 0, 0, 0, 0);
+        if (f.Known) IconFrames.Fit(f, ref x, ref y, ref w, ref h, out u1, out v0);
+        for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0, clip, cx, cy, cw, ch);
     }
+
+    /// <summary>The art's own frame for an item's icon, or unknown when the item or its icon is gone.</summary>
+    internal static IconFrames.Frame FrameOf(IntPtr handle) => _ready && handle != IntPtr.Zero ? IconFrames.Of(ItemIcon(handle)) : default;
 
     /// <summary>Texels of one inventory cell on a stock icon sheet.</summary>
     private const int IconCellPx = 32;
@@ -154,7 +156,8 @@ internal static unsafe class RadialIcons
         return px / (float)System.Numerics.BitOperations.RoundUpToPowerOf2((uint)px);
     }
 
-    /// <summary><see cref="Draw(IntPtr, float, float, float, float)"/> into a <paramref name="w"/>×<paramref name="h"/> rect.</summary>
+    /// <summary><see cref="Draw(IntPtr, float, float, float, float)"/> into a <paramref name="w"/>×<paramref name="h"/> rect: the
+    /// art's own frame at its proportions, centred, or the whole sheet when the frame is unknown.</summary>
     public static void Draw(IntPtr handle, float x, float y, float w, float h, float alpha)
     {
         if (!_ready || handle == IntPtr.Zero || !AurTex.Ready) return;
@@ -162,7 +165,8 @@ internal static unsafe class RadialIcons
         if (icon == IntPtr.Zero) return;
         Span<int> tids = stackalloc int[MaxLayers];
         int n = Layers(icon, tids);
-        for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha);
+        IconFrames.Fit(IconFrames.Of(icon), ref x, ref y, ref w, ref h, out float u1, out float v0);
+        for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0);
         if (!_firstDrawLogged && n > 0 && tids[0] != 0 && ExtenderLog.Enabled)
         {
             _firstDrawLogged = true;
@@ -359,6 +363,7 @@ internal static unsafe class RadialIcons
     /// skipped and a find miss NOT advancing the scheme index. Skipped when <see cref="AurTex"/> is already armed.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
+        IconFrames.SelfCheck(log);
         if (AurTex.Ready) { log.Info("RadialIcons.SelfCheck: skipped (AurTex armed -- the fake walk would count refusals)"); return; }
         var check = new Checker(log);
 

@@ -446,7 +446,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _armed = true;
         // CX-95: after the shim, whose two funnel hooks are where a GUI scene's draws are captured.
         if (_armed && RspShim.Armed) GuiPass.Install(log, hooks);
-        // CX-101: after GuiPass, so the nk_sdl_render chain reads panels (40), CX windows (20), NUI (1).
+        // After GuiPass, so the nk_sdl_render chain runs panels (40), CX windows (20), NUI (1) with Alloy off.
         if (_armed && RspShim.Armed) NuiFlush.Install(log, hooks);
         if (_armed) log.Info(_skinning
             ? "AlloyRenderer: #262 skinmeshes owned -- posed per frame from engine animation state, no draw re-entry (alloy.ownskin=0 in cx.cfg disables)"

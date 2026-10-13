@@ -37,6 +37,13 @@ internal static unsafe class GuiPass
         /// depth is allocated in it so the two can be blitted into each other.</summary>
         public uint DepthFmt, FboEngDepth;
         public bool DepthProbed;
+        /// <summary>Layers of the current bank already issued by <see cref="FlushLayers"/>; the closing flush starts here.</summary>
+        public int Issued;
+        /// <summary>The model view's target: one framebuffer over whatever texture a layer names, with a depth of its own,
+        /// both made in this context (framebuffers are not shared with the engine's).</summary>
+        public uint ModelFbo, ModelDepth;
+        public int ModelW, ModelH;
+        public bool ModelChecked;
     }
 
     private static GuiGlState _gl = new();
@@ -144,21 +151,37 @@ internal static unsafe class GuiPass
     /// <summary>Flush now -- a caller whose draws must land before the next foreign draw (nuklear's own site).</summary>
     internal static void FlushNow() => Flush();
 
-    /// <summary>Issue every layer captured since the last flush, then forget them. A flush that cannot run drops what
-    /// it holds -- the engine did not draw those scenes either -- and says so once.</summary>
+    /// <summary>Issue the first <paramref name="n"/> captured layers and keep the bank, so something else can draw over
+    /// them before <see cref="FlushNow"/> issues the rest. The closing flush uploads nothing again.</summary>
+    internal static void FlushLayers(int n)
+    {
+        n = Math.Min(n, GuiCapture.LayerN);
+        if (n <= 0 || _gl.Issued != 0) return;
+        if (_gl.Prog == 0 || _failed || !Draw(0, n)) Dropped();
+        else _gl.Issued = n;
+    }
+
+    /// <summary>Issue every layer captured since the last flush that is still owed, then forget them. A flush that
+    /// cannot run drops what it holds -- the engine did not draw those scenes either -- and says so once.</summary>
     private static void Flush()
     {
         if (GuiCapture.LayerN == 0) return;
-        if (_gl.Prog == 0 || _failed || !Draw())
-        {
-            if (!_dropSaid) { _dropSaid = true; _log?.Always("GuiPass: a GUI flush could not enter the 4.6 context -- that frame's GUI is NOT DRAWN"); }
-        }
+        if (_gl.Issued >= GuiCapture.LayerN) { _gl.Issued = 0; GuiCapture.Reset(); return; }
+        if (_gl.Prog == 0 || _failed || !Draw(_gl.Issued, GuiCapture.LayerN)) Dropped();
+        _gl.Issued = 0;
         GuiCapture.Reset();
+    }
+
+    private static void Dropped()
+    {
+        if (_dropSaid) return;
+        _dropSaid = true;
+        _log?.Always("GuiPass: a GUI flush could not enter the 4.6 context -- that frame's GUI is NOT DRAWN");
     }
 
     /// <summary>ponytail: one GL draw per captured record, state changes elided by comparison. A menu is a few hundred
     /// draws; if the GUI ever shows in the frame zones, sort each layer by (VAO, texture, blend) and multi-draw the runs.</summary>
-    private static bool Draw()
+    private static bool Draw(int from, int to)
     {
         int w = *_screenW, h = *_screenH;
         bool win = PresentTarget.Needed;
@@ -173,8 +196,10 @@ internal static unsafe class GuiPass
         // and the texture registry's uploads never ran (every part that did draw came out white). Both are
         // queue tests when there is nothing to do.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
-        Upload();
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, win ? Target() : 0u);
+        if (from == 0) Upload();
+        uint baseFbo = win ? Target() : 0u;
+        uint curTarget = 0;
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo);
         Gl.Disable(Gl.FRAMEBUFFER_SRGB);
         Gl.Disable(Gl.MULTISAMPLE);
         Gl.Disable(Gl.STENCIL_TEST);
@@ -196,9 +221,17 @@ internal static unsafe class GuiPass
         int tex = -1;
         uint prog = _gl.Prog;
         bool gamma = !PostChain.GammaOff();
-        for (int li = 0; li < GuiCapture.LayerN; li++)
+        for (int li = from; li < to; li++)
         {
             ref GuiCapture.Layer l = ref GuiCapture.Layers[li];
+            if (l.Target != curTarget)
+            {
+                curTarget = l.Target;
+                Gl.BindFramebuffer(Gl.FRAMEBUFFER, curTarget != 0 ? ModelTarget(curTarget, l.W, l.H) : baseFbo);
+                if (curTarget != 0) ClearModelTarget();
+                Gl.FrontFace(curTarget != 0 ? Gl.CW : Gl.CCW);
+                write = 1;
+            }
             // The run's depth clear rides on its FIRST view, drawn or not: skipped with an empty layer, it left last
             // frame's text quads (0.001 nearer) in the buffer, and everything behind them failed there (live, holes).
             if (l.Clear)
@@ -239,6 +272,7 @@ internal static unsafe class GuiPass
                 _drawn++;
             }
         }
+        if (curTarget != 0) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo); Gl.FrontFace(Gl.CCW); }
         Gl.BindVertexArray(0);
         Gl.DepthRange(0.0, 1.0);
         Gl.Disable(Gl.SCISSOR_TEST);
@@ -252,6 +286,41 @@ internal static unsafe class GuiPass
         _flushes++;
         if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush, none reached the engine's GL"); }
         return true;
+    }
+
+    /// <summary>The framebuffer a model view's layer draws into: <paramref name="tex"/> as colour, a depth the size of the
+    /// layer. Re-attached every flush, since GL reuses freed names.</summary>
+    private static uint ModelTarget(uint tex, int w, int h)
+    {
+        if (_gl.ModelFbo == 0) { uint f; Gl.GenFramebuffers(1, &f); _gl.ModelFbo = f; }
+        if (_gl.ModelDepth == 0 || _gl.ModelW != w || _gl.ModelH != h)
+        {
+            RenderTarget.AllocDepth(ref _gl.ModelDepth, Gl.DEPTH24_STENCIL8, w, h);
+            _gl.ModelW = w; _gl.ModelH = h;
+        }
+        Gl.TextureParameteri(tex, Gl.TEXTURE_MIN_FILTER, (int)Gl.LINEAR);
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.ModelFbo);
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_STENCIL_ATTACHMENT, Gl.TEXTURE_2D, _gl.ModelDepth, 0);
+        if (!_gl.ModelChecked)
+        {
+            _gl.ModelChecked = true;
+            uint st = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
+            _log?.Always($"GuiPass: model view target {w}x{h} on texture {tex}: framebuffer status 0x{st:x}" + (st == Gl.FRAMEBUFFER_COMPLETE ? "" : " -- INCOMPLETE, the view draws nothing"));
+        }
+        return _gl.ModelFbo;
+    }
+
+    /// <summary>The model view's background, then a fresh depth.</summary>
+    private static void ClearModelTarget()
+    {
+        Gl.Disable(Gl.SCISSOR_TEST);
+        float* c = stackalloc float[4];
+        CX.Services.Nui.NuiModelDoll.Background(c);
+        Gl.ClearBufferfv(Gl.COLOR, 0, c);
+        Gl.DepthMask(1);
+        Gl.Clear(Gl.DEPTH_BUFFER_BIT | Gl.STENCIL_BUFFER_BIT);
+        Gl.Enable(Gl.SCISSOR_TEST);
     }
 
     /// <summary>Key <paramref name="key"/>'s content program, built on its first draw (in the 4.6 bracket).</summary>

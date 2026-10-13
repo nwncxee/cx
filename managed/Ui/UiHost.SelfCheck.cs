@@ -17,6 +17,41 @@ public static partial class UiHost
         public void FireMouse(int button, int sdlMods) => FiredMouse = button;
     }
 
+    /// <summary>Layer order against hand-written literals: the draw roll-call per layer (a string of the letters
+    /// each fixture window appends), and the order input and the hit-test visit overlapping windows, which must
+    /// put an above-NUI window first even when a below-NUI one was focused last.</summary>
+    private static void LayerCheck(Checker check, List<Window> created)
+    {
+        bool upConsumes = false;
+        var drawn = new System.Text.StringBuilder();
+        var asked = new System.Text.StringBuilder();
+        var a = new Window(0, 0, 100, 100) { DrawContent = () => drawn.Append('a'), OnMouseButton = (_, _, _, _) => { asked.Append('a'); return false; } };
+        var up = new Window(0, 0, 50, 50) { Layer = UiLayer.AboveNui, DrawContent = () => drawn.Append('U'), OnMouseButton = (_, _, _, _) => { asked.Append('U'); return upConsumes; } };
+        var c = new Window(0, 0, 100, 100) { DrawContent = () => drawn.Append('c'), DrawOver = () => drawn.Append('o') };
+        created.Add(a); created.Add(up); created.Add(c);
+
+        DrawFrame(UiLayer.BelowNui);
+        check.Expect(drawn.ToString() == "aco", "the below layer draws its windows by z, then its overlays");
+        drawn.Clear(); DrawFrame(UiLayer.AboveNui);
+        check.Expect(drawn.ToString() == "U", "the above layer draws only its own windows");
+        drawn.Clear(); DrawFrame();
+        check.Expect(drawn.ToString() == "acoU", "a full roll-call is below, then above");
+
+        Focus(a);
+        drawn.Clear(); DrawFrame(UiLayer.BelowNui);
+        check.Expect(drawn.ToString() == "cao", "focus reorders a layer");
+        check.Expect(HitTest(10, 10) == up, "an above window wins the overlap over a freshly focused below one");
+        check.Expect(HitTest(80, 80) == a, "outside the above window the focused below one wins");
+
+        DispatchMouseButton(true, 1, 10, 10);
+        check.Expect(asked.ToString() == "Ua", "input visits the above window first");
+        asked.Clear(); upConsumes = true;
+        check.Expect(DispatchMouseButton(true, 1, 10, 10, captureOnly: true), "an above window under the pointer takes the press ahead of the NUI yield");
+        check.Expect(asked.ToString() == "U", "...and no other window is asked");
+        check.Expect(!DispatchMouseButton(true, 1, 80, 80, captureOnly: true), "an above window not under the pointer leaves the press to NUI");
+        foreach (Window w in new[] { a, up, c }) { Unregister(w); created.Remove(w); }
+    }
+
     /// <summary>Off-device proof of the arbiter: layout/z-order, focus, hit-test/cursor pick, and
     /// precedence, at two scales, leaving the static registry empty. No GL, no device.</summary>
     public static void SelfCheck(ExtenderLog log)
@@ -222,6 +257,8 @@ public static partial class UiHost
                 Unregister(upper); created.Remove(upper);
                 SetFocused(null);
             }
+
+            LayerCheck(check, created);
 
             // hygiene: every fake the test created is gone (checked against the cleared baseline, pre-restore)
             check.Expect(Windows.Count == 0, "all self-check windows unregistered");

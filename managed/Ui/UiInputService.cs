@@ -195,6 +195,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     // NUI (or a vanilla GUI object: radial menu, tooltip, panel) draws over us -> it gets the
                     // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
                     // otherwise have released our windows' focus.
+                    if (NuiHovered() && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.Nui.NuiModelView.OnPress(); }
                     if (NuiHovered() || (gui != IntPtr.Zero && !ours)) { UiHost.Blur(); break; }
                     if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);   // click-to-focus (default)
                     if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
@@ -210,7 +211,8 @@ public sealed unsafe class UiInputService : IExtenderService
                     break;
                 }
                 case SdlMouseWheel:
-                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true)) return 0;
+                    Pointer(out float x, out float y);
+                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true, x, y)) return 0;
                     if (NuiHovered() || (VanillaGuiAt(GuiWheelMask) != IntPtr.Zero && !MenuWindowUnderPointer())) break;   // ...and the scroll
                     if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
                     break;
@@ -254,12 +256,13 @@ public sealed unsafe class UiInputService : IExtenderService
     private static void OnSetMouseCursor(IntPtr @this, int cursorId, int hotspot, int p3, int p4, int p5)
     {
         if (_origSetCursor == null) return;
-        if (_forceDefault) _origSetCursor(@this, UiCursorId, 0, 1, 0, p5);
+        if (CX.Services.Nui.HeldImageService.HoldsCursor) _origSetCursor(@this, CX.Services.Nui.HeldImageService.HeldCursor, 0, 1, 0, p5);
+        else if (_forceDefault) _origSetCursor(@this, UiCursorId, 0, 1, 0, p5);
         else _origSetCursor(@this, cursorId, hotspot, p3, p4, p5);
     }
 
     // ---- environmental probes -------------------------------------------------------------------
-    /// <summary>True while the pointer is over a NUI window. Those draw ON TOP of our windows, so they take the press
+    /// <summary>True while the pointer is over a NUI window. Those draw ON TOP of our below-NUI windows, so they take the press
     /// and the wheel; without this a NUI window dragged over the chatbox would look on top and still lose every click
     /// to it. Only the acquisition edges consult it -- motion and button-up stay unconditional, so a drag started on
     /// our window still finishes across a NUI one. State is nuklear's from the frame just drawn: one frame of lag.</summary>
@@ -271,6 +274,7 @@ public sealed unsafe class UiInputService : IExtenderService
     }
 
     /// <summary>Interactivity masks <c>CGuiMan::HandleLMouseDown</c> / <c>HandleMouseWheel</c> pass to the hit check.</summary>
+    private const byte SdlButtonLeft = 1;  // not-an-offset: SDL_BUTTON_LEFT
     private const int GuiPressMask = 1, GuiWheelMask = 8;
 
     /// <summary>Would the ENGINE's GUI take a press right now -- a NUI window under the pointer or a vanilla GUI
@@ -285,6 +289,14 @@ public sealed unsafe class UiInputService : IExtenderService
 
     /// <summary>The two surfaces the gear and the settings panel stand on: the main menu and the in-game Options panel.</summary>
     private static bool GearSurface => GameGate.AtMainMenu || GameGate.OptionsOpen;
+
+    /// <summary>SDL's pointer, for the wheel event that has none.</summary>
+    private static void Pointer(out float x, out float y)
+    {
+        int ix = 0, iy = 0;
+        if (EngineFn.SdlGetMouseState != null) EngineFn.SdlGetMouseState(&ix, &iy);
+        x = ix; y = iy;
+    }
 
     /// <summary>The wheel event carries no position: the same exemption at SDL's pointer.</summary>
     private static bool MenuWindowUnderPointer()
@@ -310,8 +322,8 @@ public sealed unsafe class UiInputService : IExtenderService
     /// <summary>True while the app has window focus (the engine's focus-gain/lost edges).</summary>
     internal static bool AppFocused => _focused;
 
-    /// <summary>True when a shown NUI window covers the point (SDL window pixels) -- it draws over our windows there.
-    /// Linux only: nwmain.exe exports no nuklear, so on Windows this is always false.</summary>
+    /// <summary>True when a shown NUI window covers the point (SDL window pixels) -- it draws over our below-NUI
+    /// windows there. The context is anchored on both OSes; the window-list offsets are read off the Linux build.</summary>
     internal static bool NuiCovers(float x, float y)
     {
         if (_nuklearGlobal == IntPtr.Zero) return false;

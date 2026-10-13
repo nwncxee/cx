@@ -30,7 +30,7 @@ fi
 # hex-valued integer const -- anything matching that has to say on its own line why it is NOT a place in
 # memory (a GL enum, a shader-param index, a bit mask, a sentinel value).
 if grep -rnE '(const|readonly)[[:space:]]+(int|uint|long|ulong|byte|ushort|short|nint)\b[^;]*0x' \
-     --include='*.cs' --exclude-dir=Graphics --exclude=EngineLayout.cs --exclude=Views.g.cs managed/ \
+     --include='*.cs' --exclude-dir=Graphics --exclude='EngineLayout*.cs' --exclude=Views.g.cs managed/ \
      | grep -v 'not-an-offset:'; then
   echo "!! bare hex constant under managed/ (see the lines above; #443, CX-36). An engine offset belongs in" >&2
   echo "!! managed/Framework/EngineLayout.cs with a class and a form; anything else says why on the same" >&2

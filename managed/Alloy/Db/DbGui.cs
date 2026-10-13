@@ -141,12 +141,13 @@ internal static unsafe class DbGui
         int n = SceneDb.SceneNameBytes(scene, name);
         name[n] = 0;
         float near, far;
-        bool clear, lit, bubble;
+        bool clear, lit, bubble, model;
         fixed (byte* np = name)
         {
             GuiCapture.DepthOf(np, ref _latch, out near, out far, out clear, v.Fovy);
             lit = GuiCapture.IsLitScene(np);
             bubble = Prefix(np, "sceneGUI_PNL_BUBBLE"u8);
+            model = Prefix(np, "sceneGUI_guiModelView"u8);
         }
         // CX's own nameplate feature holds the engine at text-bubble mode 0 so that "nothing of vanilla's
         // ever draws" (NameplateService) and draws its own bubbles on the 2D UI. The engine honours that
@@ -160,8 +161,11 @@ internal static unsafe class DbGui
         if (bubble && CX.Services.Nameplate.NameplateService.Suppressing && scene.Value != TooltipProbe.Scene)
         { _bubblesRefused++; LastWhy = 'b'; return 0; }
         if (!GuiCapture.BeginDbLayer(v.X, v.Y, v.W, v.H, near, far, clear)) { _refusedNoLayer++; LastWhy = 'l'; return 0; }
+        uint redirect = model ? CX.Services.Nui.NuiModelDoll.Redirect : 0u;
+        if (redirect != 0) GuiCapture.Layers[GuiCapture.LayerN - 1].Target = redirect;
 
         Matrix4x4 viewProj = v.View * v.Proj;
+        if (redirect != 0) viewProj *= Matrix4x4.CreateScale(1f, -1f, 1f);
         int issued = 0, walked = 0, hidden = 0, texts = 0;
         // The DumpAt'th time each scene draws. Per scene, because a panel that opens mid-session
         // -- the inventory, the character sheet -- is one nobody has seen before and a flat budget is spent on
@@ -190,6 +194,7 @@ internal static unsafe class DbGui
                 if (SceneDb.Objects.LiveAt(o))
                     issued += DrawOne(o, s, in v, in viewProj, lit, nowMs, dump, ref walked, ref hidden, ref texts);
         GuiCapture.EndDbLayer();
+        if (redirect != 0 && issued > 0) CX.Services.Nui.NuiModelDoll.MarkRendered();
         LastWhy = clear ? 'C' : 'd'; LastIssued = issued;
         return Close(s, in v, dump, walked, hidden, texts, issued, near, far, clear, lit);
     }
@@ -237,9 +242,7 @@ internal static unsafe class DbGui
                 }
                 if (!glyphs) return issued;
                 Matrix4x4 mvp = SceneDb.ObjWorld[o] * viewProj;
-                // Depth-tested AND depth-writing, as the engine draws it: nothing in RenderOnlyGobs, StringGob::Render
-                // or CAurFont::TextOut touches the mask, so Material::SetBlendingMode @0x5c5c50 left it on, and a
-                // control drawn later behind the text (a load screen's frame re-added after its tip) stays under it.
+                // Depth-written as the engine draws text, so a control drawn later behind it stays under it.
                 int runs = TextQuads.Issue(d, in mvp, d.Font.Atlas, TextObjects.CaretAlpha(nowMs),
                                            depthTest: true, depthWrite: true);
                 _textRuns += runs;
