@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using CX.Engine;
 using CX.Framework;
 
@@ -29,25 +30,16 @@ internal static unsafe class NuiModelVfx
     internal static void Init(ExtenderLog log)
     {
         _v.Log = log;
-        _v.Ready = SymbolMap.Resolve(SymbolMap.ObjAddVisualEffect, log) != IntPtr.Zero
+        _v.Identity = SymbolMap.Resolve(SymbolMap.IdentityVisualTransform, log);
+        _v.Ready = _v.Identity != IntPtr.Zero && SymbolMap.Resolve(SymbolMap.ObjAddVisualEffect, log) != IntPtr.Zero
                    && SymbolMap.Resolve(SymbolMap.ObjKillAllVisualEffects, log) != IntPtr.Zero;
-        _v.Identity = _v.Ready ? SymbolMap.Resolve(SymbolMap.IdentityVisualTransform, log) : IntPtr.Zero;
-        _v.Ready &= _v.Identity != IntPtr.Zero;
         if (!_v.Ready) log.Always("NuiModelVfx: the engine's effect calls did not resolve -- dolls wear no effects");
     }
 
     /// <summary>A <c>vfx</c> value, <c>row,row,...</c>, as its rows. Text that is not a row is skipped, and so is anything past <see cref="MaxRows"/>.</summary>
-    internal static ushort[] Parse(string value)
-    {
-        if (value.Length == 0) return Array.Empty<ushort>();
-        var rows = new System.Collections.Generic.List<ushort>();
-        foreach (string part in value.Split(','))
-        {
-            if (rows.Count == MaxRows) break;
-            if (ushort.TryParse(part.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out ushort row) && !rows.Contains(row)) rows.Add(row);
-        }
-        return rows.ToArray();
-    }
+    internal static ushort[] Parse(string value) =>
+        value.Split(',').Select(part => ushort.TryParse(part.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out ushort row) ? (int)row : -1)
+            .Where(row => row >= 0).Distinct().Take(MaxRows).Select(row => (ushort)row).ToArray();
 
     /// <summary>The doll wears exactly <paramref name="rows"/>: every effect it had is ended first.</summary>
     internal static void Wear(IntPtr doll, ushort[] rows)

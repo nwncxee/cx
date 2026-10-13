@@ -213,6 +213,9 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 - **Panel face** — the one fixed text size the settings panel draws itself in (scaled by GUI
   scale, never by the user's text-size knob), so the panel supports one size, not every size a
   user can pick.
+- **Panel (styled)** — a box CX draws from a server's declaration: blocks, markup, colours,
+  gradients, tabs and icons (`managed/Services/Panels`). Not the settings panel. A **card** is a
+  styled panel shown beside a NUI element on hover; cards are its first use.
 - **Per-window state** — what a chat window keeps for itself (rect, tabs, colours, animation,
   timestamps, lock): edited on the window's own gear, never a panel row. Hidden-tier settings.
 - **Camera mode group** — one knob group per engine camera mode (chase, top-down, stiff chase),

@@ -11,11 +11,9 @@ namespace CX.Services.Nui;
 internal static unsafe class NuiImageSpot
 {
     private const int CmdImage = 17;   // not-an-offset: nk_command_type NK_COMMAND_IMAGE
-    /// <summary><c>nk_command_image</c> after its 16-byte header: <c>short x, y</c> then <c>ushort w, h</c>.</summary>
-    private const int CmdX = 0x10, CmdY = 0x12, CmdW = 0x14, CmdH = 0x16, CmdNext = 0x08;   // not-an-offset: nk_command ABI
     /// <summary>The flags that take a window out of play (hidden, closed).</summary>
     private const uint WinOutOfPlay = 0x4400;   // not-an-offset: NK_WINDOW_HIDDEN | NK_WINDOW_CLOSED
-    private const int MaxCommands = 1 << 20, MaxWindows = 256;
+    private const int MaxWindows = 256;
 
     /// <summary>The texture watched, and the rectangle it was last drawn at.</summary>
     private sealed class SpotState
@@ -64,16 +62,17 @@ internal static unsafe class NuiImageSpot
             var win = new NkWindow(w);
             if (win.Seq != seq || (win.Flags & WinOutOfPlay) != 0) continue;
             ulong off = win.BufBegin, end = Math.Min(win.BufEnd, allocated);
-            for (int k = 0; off < end && k < MaxCommands; k++)
+            while (off < end)
             {
-                byte* cmd = mem + off;
-                if (*(int*)cmd == CmdImage && (uint)new NkCommandImage((IntPtr)cmd).Handle == s.Tex)
+                var cmd = new NkCommand((IntPtr)(mem + off));
+                var img = new NkCommandImage(cmd.Ptr);
+                if (cmd.Type == CmdImage && (uint)img.Handle == s.Tex)
                 {
                     found = true;
-                    s.X = *(short*)(cmd + CmdX); s.Y = *(short*)(cmd + CmdY);
-                    s.W = *(ushort*)(cmd + CmdW); s.H = *(ushort*)(cmd + CmdH);
+                    s.X = img.X; s.Y = img.Y;
+                    s.W = img.W; s.H = img.H;
                 }
-                ulong next = *(ulong*)(cmd + CmdNext);
+                ulong next = cmd.Next;
                 if (next <= off) break;
                 off = next;
             }

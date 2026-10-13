@@ -1910,7 +1910,7 @@ internal static unsafe class SymbolMap
     /// <summary><c>CNWCObject::AddVisualEffect(ushort, int, uint, uchar, uchar, Vector, ObjectVisualTransformData)</c> @0x7e9e30 --
     /// the call the visual-effect update makes for an added looping effect: the row, 0, the beam target (0x7f000000 for
     /// none), the body part, 0, a zero vector, and the transform, which crosses by hidden reference and stays the caller's.</summary>
-    [Fn("int(IntPtr self, ushort row, int zero, uint target, byte part, byte zero2, VectorArg at, IntPtr transform)")]
+    [Fn("int(IntPtr self, ushort row, int unknown, uint beamTarget, byte bodyPart, byte unknown2, VectorArg at, IntPtr transform)")]
     public const string ObjAddVisualEffect = "_ZN10CNWCObject15AddVisualEffectEtijhh6Vector25ObjectVisualTransformData";
     /// <summary><c>CNWCObject::KillAllVisualEffects()</c> @0x7e2f20 -- kills, destroys and frees every effect on the object.</summary>
     [Fn("void(IntPtr self)")]

@@ -45,7 +45,7 @@ internal static class CardPlacer
 internal sealed class CardPresenter
 {
     /// <summary>Atlas, stretch and subject come through these so a self-check can supply its own.</summary>
-    internal Func<float, (GlyphAtlas A, float K)> Face = PanelFaces.Resolve;
+    internal Func<float, (GlyphAtlas A, float K)> Face = PanelFonts.Resolve;
     internal Func<uint, PanelSubject> SubjectOf = static _ => default;
 
     private readonly Tooltip _tip = new();
@@ -55,7 +55,7 @@ internal sealed class CardPresenter
     private float _ex, _ey, _ew;
     private uint _subject;
     private bool _rebuild;
-    private readonly float[] _xs = new float[PanelLimits.MaxCards], _ys = new float[PanelLimits.MaxCards];
+    private readonly float[] _xs = new float[PanelLimits.MaxPanels], _ys = new float[PanelLimits.MaxPanels];
 
     public PanelView[]? Views => _set?.Views;
     public float X(int i) => _xs[i];

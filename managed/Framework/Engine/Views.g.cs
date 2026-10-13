@@ -3227,6 +3227,19 @@ public readonly unsafe partial struct NewController(IntPtr ptr)
     public ref ushort ValueKey => ref *(ushort*)(Ptr + EngineLayout.NewControllerValueKey);
 }
 
+/// <summary>Typed view of an engine <c>NkCommand*</c>.</summary>
+public readonly unsafe partial struct NkCommand(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdNext"/>
+    public ref ulong Next => ref *(ulong*)(Ptr + EngineLayout.NkCmdNext);
+    /// <inheritdoc cref="EngineLayout.NkCmdType"/>
+    public ref int Type => ref *(int*)(Ptr + EngineLayout.NkCmdType);
+}
+
 /// <summary>Typed view of an engine <c>NkCommandImage*</c>.</summary>
 public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
 {
@@ -3234,8 +3247,16 @@ public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdImageH"/>
+    public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdImageH);
     /// <inheritdoc cref="EngineLayout.NkCmdImageHandle"/>
     public ref int Handle => ref *(int*)(Ptr + EngineLayout.NkCmdImageHandle);
+    /// <inheritdoc cref="EngineLayout.NkCmdImageW"/>
+    public ref ushort W => ref *(ushort*)(Ptr + EngineLayout.NkCmdImageW);
+    /// <inheritdoc cref="EngineLayout.NkCmdImageX"/>
+    public ref short X => ref *(short*)(Ptr + EngineLayout.NkCmdImageX);
+    /// <inheritdoc cref="EngineLayout.NkCmdImageY"/>
+    public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdImageY);
 }
 
 /// <summary>Typed view of an engine <c>NkContext*</c>.</summary>

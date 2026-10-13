@@ -28,9 +28,9 @@ internal static class PanelParser
             JsonElement root = doc.RootElement;
             var list = new List<PanelDecl>();
             if (root.ValueKind == JsonValueKind.Array)
-                foreach (JsonElement e in root.EnumerateArray()) list.Add(Card(e));
-            else list.Add(Card(root));
-            if (list.Count > PanelLimits.MaxCards || (list.Count == 0 && root.ValueKind != JsonValueKind.Array)) throw new Refusal($"{list.Count} cards (1-{PanelLimits.MaxCards} allowed)");
+                foreach (JsonElement e in root.EnumerateArray()) list.Add(Panel(e));
+            else list.Add(Panel(root));
+            if (list.Count > PanelLimits.MaxPanels || (list.Count == 0 && root.ValueKind != JsonValueKind.Array)) throw new Refusal($"{list.Count} cards (1-{PanelLimits.MaxPanels} allowed)");
             cards = list.ToArray();
             return true;
         }
@@ -39,7 +39,7 @@ internal static class PanelParser
         return false;
     }
 
-    private static PanelDecl Card(JsonElement e)
+    private static PanelDecl Panel(JsonElement e)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new Refusal("a card is a JSON object");
         var c = new PanelDecl();

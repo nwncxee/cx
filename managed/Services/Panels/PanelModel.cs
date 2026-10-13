@@ -47,7 +47,7 @@ internal struct PanelImage
     public Anchor At;
 }
 
-/// <summary>One declared panel: a card when it shows beside a NUI element.</summary>
+/// <summary>One declared panel.</summary>
 internal sealed class PanelDecl
 {
     public float Width = 300f;
@@ -63,7 +63,7 @@ internal sealed class PanelDecl
 /// <summary>The limits on a declaration. A declaration over any of them is refused whole.</summary>
 internal static class PanelLimits
 {
-    public const int MaxJsonBytes = 12_000, MaxCards = 4, MaxBlocks = 48, MaxDepth = 2, MaxRuns = 48;
+    public const int MaxJsonBytes = 12_000, MaxPanels = 4, MaxBlocks = 48, MaxDepth = 2, MaxRuns = 48;
     public const int MaxText = 400, MaxIcons = 16, MaxImages = 4, MaxIconName = 120;
     public const float MinWidth = 160f, MaxWidth = 480f, MinIconPx = 12f, MaxIconPx = 64f, MaxImagePx = 256f;
     /// <summary>The only text sizes: a multiple of the player's text size. Each one is a baked face, so the set is fixed.</summary>

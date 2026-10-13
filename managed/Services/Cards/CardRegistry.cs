@@ -81,7 +81,7 @@ internal static class CardRegistry
             _s.Log?.Info($"Cards: refused '{key}': {CardLimits.MaxKeys} keys held already");
             return false;
         }
-        foreach (float m in SizesUsed(cards)) PanelFaces.Want(m);
+        foreach (float m in SizesUsed(cards)) PanelFonts.Want(m);
         Swap(key, new CardSet(key, cards));
         return true;
     }

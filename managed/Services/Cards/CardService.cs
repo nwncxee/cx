@@ -44,7 +44,7 @@ public sealed class CardService : IExtenderService
         Capabilities.Register("card", 3, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Cards.Changed += Capabilities.Refresh;
-        TextRig.FontChanged += PanelFaces.WantAll;
+        TextRig.FontChanged += PanelFonts.WantAll;
         new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.AboveNui, DrawContent = Draw };
         s.Ready = true;
     }

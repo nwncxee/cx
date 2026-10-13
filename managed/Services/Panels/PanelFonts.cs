@@ -9,7 +9,7 @@ namespace CX.Services.Panels;
 /// its face is baked when a declaration that uses it arrives (baking rebuilds the glyph sheet, so never while drawing). A face
 /// that is not baked yet draws as the player's face stretched, which is blurrier and never wrong.
 /// </summary>
-internal static class PanelFaces
+internal static class PanelFonts
 {
     private sealed class FacesState
     {

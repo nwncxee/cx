@@ -4,6 +4,7 @@ using System.Text;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Services.Radial;
 
 namespace CX.Services.Nui;
 
@@ -67,7 +68,7 @@ internal static unsafe class NuiModelView
         NuiModelGear.Init(log);
         NuiModelVfx.Init(log);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -288,13 +289,11 @@ internal static unsafe class NuiModelView
     /// <summary>The TGA pixels for the stand-in resref <paramref name="standin"/> cut to <paramref name="rect"/>, or a transparent one.</summary>
     private static void StandinImage(string standin, int w, int h, bool sized, string rect, out uint[] px, out int pw, out int ph)
     {
-        Span<byte> name = stackalloc byte[RadialResRef + 1];
+        Span<byte> name = stackalloc byte[RadialIcons.ResRefLen + 1];
         name.Clear();
-        for (int i = 0; i < standin.Length && i < RadialResRef; i++) name[i] = (byte)standin[i];
+        for (int i = 0; i < standin.Length && i < RadialIcons.ResRefLen; i++) name[i] = (byte)standin[i];
         NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(rect), out px, out pw, out ph);
     }
-
-    private const int RadialResRef = CX.Services.Radial.RadialIcons.ResRefLen;
 
     /// <summary>The stand-in's pixels into the view's texture, in the engine's context with its texture binding put back as it was.</summary>
     private static void UploadStandin(ViewState s, ViewData v)
