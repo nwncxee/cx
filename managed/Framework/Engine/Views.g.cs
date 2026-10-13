@@ -294,6 +294,8 @@ global using unsafe NwcCreateItemFn = delegate* unmanaged<nint, uint, ushort*, b
 global using unsafe NwcCreatureCtorFn = delegate* unmanaged<nint, nint>;
 global using unsafe NwcCreatureSetAppearanceFn = delegate* unmanaged<nint, nint, byte, int>;
 global using unsafe NwcCreatureEquipFn = delegate* unmanaged<nint, uint, nint, void>;
+global using unsafe ObjAddVisualEffectFn = delegate* unmanaged<nint, ushort, int, uint, byte, byte, CX.Engine.VectorArg, nint, int>;
+global using unsafe ObjKillAllVisualEffectsFn = delegate* unmanaged<nint, void>;
 global using unsafe ObjSetFadeStateFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe GetGameObjectArrayFn = delegate* unmanaged<nint, nint>;
 global using unsafe GetClientAIMasterFn = delegate* unmanaged<nint, nint>;
@@ -5465,6 +5467,14 @@ public static unsafe class EngineFn
     private static bool _NwcCreatureEquipDone;
     /// <inheritdoc cref="SymbolMap.NwcCreatureEquip"/>
     public static NwcCreatureEquipFn NwcCreatureEquip => (NwcCreatureEquipFn)(_NwcCreatureEquipDone ? _NwcCreatureEquip : Resolve(ref _NwcCreatureEquip, ref _NwcCreatureEquipDone, SymbolMap.NwcCreatureEquip));
+    private static IntPtr _ObjAddVisualEffect;
+    private static bool _ObjAddVisualEffectDone;
+    /// <inheritdoc cref="SymbolMap.ObjAddVisualEffect"/>
+    public static ObjAddVisualEffectFn ObjAddVisualEffect => (ObjAddVisualEffectFn)(_ObjAddVisualEffectDone ? _ObjAddVisualEffect : Resolve(ref _ObjAddVisualEffect, ref _ObjAddVisualEffectDone, SymbolMap.ObjAddVisualEffect));
+    private static IntPtr _ObjKillAllVisualEffects;
+    private static bool _ObjKillAllVisualEffectsDone;
+    /// <inheritdoc cref="SymbolMap.ObjKillAllVisualEffects"/>
+    public static ObjKillAllVisualEffectsFn ObjKillAllVisualEffects => (ObjKillAllVisualEffectsFn)(_ObjKillAllVisualEffectsDone ? _ObjKillAllVisualEffects : Resolve(ref _ObjKillAllVisualEffects, ref _ObjKillAllVisualEffectsDone, SymbolMap.ObjKillAllVisualEffects));
     private static IntPtr _ObjSetFadeState;
     private static bool _ObjSetFadeStateDone;
     /// <inheritdoc cref="SymbolMap.ObjSetFadeState"/>
@@ -7896,6 +7906,18 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NwcCreatureEquip"/>; returns the slot holding the next layer, or null.</summary>
     public static NwcCreatureEquipFn* ChainNwcCreatureEquip(this HookService h, NwcCreatureEquipFn handler, int priority) =>
         (NwcCreatureEquipFn*)h.Chain(SymbolMap.NwcCreatureEquip, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ObjAddVisualEffect"/>; returns the original, or null.</summary>
+    public static ObjAddVisualEffectFn InstallObjAddVisualEffect(this HookService h, ObjAddVisualEffectFn handler) =>
+        (ObjAddVisualEffectFn)h.Install(SymbolMap.ObjAddVisualEffect, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ObjAddVisualEffect"/>; returns the slot holding the next layer, or null.</summary>
+    public static ObjAddVisualEffectFn* ChainObjAddVisualEffect(this HookService h, ObjAddVisualEffectFn handler, int priority) =>
+        (ObjAddVisualEffectFn*)h.Chain(SymbolMap.ObjAddVisualEffect, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ObjKillAllVisualEffects"/>; returns the original, or null.</summary>
+    public static ObjKillAllVisualEffectsFn InstallObjKillAllVisualEffects(this HookService h, ObjKillAllVisualEffectsFn handler) =>
+        (ObjKillAllVisualEffectsFn)h.Install(SymbolMap.ObjKillAllVisualEffects, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ObjKillAllVisualEffects"/>; returns the slot holding the next layer, or null.</summary>
+    public static ObjKillAllVisualEffectsFn* ChainObjKillAllVisualEffects(this HookService h, ObjKillAllVisualEffectsFn handler, int priority) =>
+        (ObjKillAllVisualEffectsFn*)h.Chain(SymbolMap.ObjKillAllVisualEffects, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ObjSetFadeState"/>; returns the original, or null.</summary>
     public static ObjSetFadeStateFn InstallObjSetFadeState(this HookService h, ObjSetFadeStateFn handler) =>
         (ObjSetFadeStateFn)h.Install(SymbolMap.ObjSetFadeState, (IntPtr)handler);
