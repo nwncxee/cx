@@ -294,6 +294,7 @@ public sealed unsafe class UiHostService : IExtenderService
         {
             long dt = now - _fsLast;
             FrameZones.EndFrame(dt);   // fold this frame's zone split in, against the same dt
+            CX.Services.Perf.FrameProbe.Frame(dt);
             _fsSum += dt; _fsN++;
             if (dt > _fsMax) _fsMax = dt;
             float ms = dt * 1000f / System.Diagnostics.Stopwatch.Frequency;

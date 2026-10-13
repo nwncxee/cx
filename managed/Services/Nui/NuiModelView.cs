@@ -228,8 +228,11 @@ internal static unsafe class NuiModelView
     private static void Frame()
     {
         ViewState s = _s;
+        long span = 0;
+        CX.Services.Perf.FrameProbe.Lap(ref span, true);
         for (int i = s.Views.Count - 1; i >= 0; i--) Serve(s, s.Views[i]);
         foreach (NuiModelDoll.ModelSlot slot in NuiModelDoll.Slots) NuiModelDoll.KeepShown(slot);
+        CX.Services.Perf.FrameProbe.Lap(ref span, false);
     }
 
     /// <summary>A view is done: its doll is taken down, its watch and (a card's or the held image's) texture dropped, its slot given back.</summary>

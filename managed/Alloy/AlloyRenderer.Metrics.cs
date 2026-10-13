@@ -47,6 +47,9 @@ public sealed unsafe partial class AlloyRenderer
     private static double GpuTermsTotal()
     { double s = 0; for (int t = 0; t < (int)GpuTerm.Count; t++) s += GpuMs((GpuTerm)t); return s; }
 
+    /// <summary>Is a timed term's query open? TIME_ELAPSED cannot nest, so a second timer waits.</summary>
+    internal static bool GpuTermOpen => _qOpen >= 0;
+
     internal static void GpuBegin(GpuTerm t)
     { if (_qOpen < 0 && _qTerm[(int)t].Begin(Gl.TIME_ELAPSED)) _qOpen = (int)t; }
 

@@ -62,8 +62,10 @@ internal static unsafe class NuiModelEngine
         NuiModelDoll.ModelSlot? slot = NuiModelDoll.OfScene(scene);
         if (slot == null) { _e.Orig(scene); return; }
         NuiModelDoll.KeepShown(slot);
+        long span = 0;
+        CX.Services.Perf.FrameProbe.Lap(ref span, true);
         uint tex = slot.TargetTex;
-        if (tex == 0 || !NuiModelDoll.TargetSize(slot, out int w, out int h) || !Gl.Init(_e.Log!)) { Lit(scene); return; }
+        if (tex == 0 || !NuiModelDoll.TargetSize(slot, out int w, out int h) || !Gl.Init(_e.Log!)) { Lit(scene); CX.Services.Perf.FrameProbe.Lap(ref span, false); return; }
         EngineGlState e = _e;
         Scratch sc = e.Per[slot.Index];
         int fbo, bound, scissor, mask, rd, dr;
@@ -96,6 +98,7 @@ internal static unsafe class NuiModelEngine
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)fbo);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)bound);
         NuiModelDoll.MarkRendered(slot);
+        CX.Services.Perf.FrameProbe.Lap(ref span, false);
         if (!e.Said) { e.Said = true; e.Log?.Always($"NuiModelEngine: first frame drawn into texture {tex} ({w}x{h}), slot {slot.Index}"); }
     }
 

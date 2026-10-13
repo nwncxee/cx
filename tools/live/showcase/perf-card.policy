@@ -1,0 +1,4 @@
+model.cardm.target=player
+model.cardm.size=256x384
+model.cardm.yaw=270
+card.perf=[{"width":260,"bg":"#101418f2","images":[{"src":"@model:cardm","w":160,"h":240,"at":"tr","dx":10,"dy":10}],"blocks":[{"type":"text","size":1.3,"text":"A card with a doll","color":"#ffd24a"},{"type":"text","text":"The doll is drawn by the card."}]}]

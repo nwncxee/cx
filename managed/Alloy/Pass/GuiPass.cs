@@ -198,6 +198,8 @@ internal static unsafe class GuiPass
         // queue tests when there is nothing to do.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
         if (from == 0) Upload();
+        bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
+        long modelSpan = 0;
         uint baseFbo = win ? Target() : 0u;
         uint curTarget = 0;
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo);
@@ -240,6 +242,7 @@ internal static unsafe class GuiPass
                     solve = 0;
                     Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(curTarget, last.W, last.H, SlotOf(curTarget)));
                     GuiModelSolve.Resolve(last.W, last.H, CX.Services.Nui.NuiModelDoll.OfTexture(curTarget), _log);
+                    CX.Services.Perf.FrameProbe.Lap(ref modelSpan, false);
                     Gl.UseProgram(_gl.Prog);
                     blend = depth = write = cull = tex = -1; src = dst = 0; vao = uint.MaxValue; prog = _gl.Prog;
                     Gl.Enable(Gl.SCISSOR_TEST);
@@ -251,6 +254,7 @@ internal static unsafe class GuiPass
             if (l.Target != curTarget)
             {
                 curTarget = l.Target;
+                CX.Services.Perf.FrameProbe.Lap(ref modelSpan, curTarget != 0);
                 if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, CX.Services.Nui.NuiModelDoll.OfTexture(curTarget), out runEnd))
                 {
                     solve = 1; runStart = li - 1;
@@ -312,6 +316,7 @@ internal static unsafe class GuiPass
                 _drawn++;
             }
         }
+        CX.Services.Perf.FrameProbe.Lap(ref modelSpan, false);
         if (curTarget != 0) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo); Gl.FrontFace(Gl.CCW); }
         Gl.BindVertexArray(0);
         Gl.DepthRange(0.0, 1.0);
@@ -321,6 +326,7 @@ internal static unsafe class GuiPass
         Gl.Enable(Gl.DEPTH_TEST);
         Gl.DepthMask(1);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        if (gpuTimed) CX.Services.Perf.FrameProbe.GpuEnd();
         GlContextService.Leave();
         if (win) { PresentTarget.HandBack(); Depth(fromScreen: false); }
         _flushes++;
