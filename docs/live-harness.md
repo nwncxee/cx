@@ -275,9 +275,9 @@ Every showcase opens a full-screen dark backdrop window first (`ShowBackdrop` in
 `chrome` (a stock titled window with its own draw list under `nui.<id>.background=0`), `diablo`, `solasta`, `pathfinder`, `swtor`, `cyberpunk`, `masseffect`, `dragonage` and `bg3` are eight looks built from the same keys:
 a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each `.keys` takes `window.png` and `card.png`.
 
-`creatures` shows six creatures as dolls. Known gap: a doll built for any creature but the player logs
-`NuiModelDoll: the throwaway creature has no model` and draws nothing, whether it is targeted by id or the player is morphed
-into a monster, so those shots show an empty window.
+`creatures` shows eight dolls, one window at a time: a hell hound, an ogre, a beholder, a troll and a red dragon by appearance row
+(`app:`), a spawned elf mercenary by object id, a model by name and an item. The hound, the ogre and the troll play named animations. `helm` shows
+the player's doll while a helmet is equipped, dropped and equipped again, with a shot between each step.
 
 ## Model view
 

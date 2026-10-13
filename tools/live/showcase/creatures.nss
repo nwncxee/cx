@@ -1,35 +1,34 @@
 //::///////////////////////////////////////////////
-//:: creatures -- six stock creatures as NUI dolls, one window at a time
-//:: The PC takes each creature's appearance in turn and a window shows the player's doll, ten seconds apart.
-//:: creatures.policy holds the doll's look; creatures.keys takes a shot of each.
+//:: creatures -- dolls of things that are not the player, side by side
+//:: A doll's target is declared in creatures.policy: an appearance row (app:<row>), a creature the client
+//:: knows (its id), a model by name (model:<resref>) or an item (item:<look>). Some play a named animation.
+//:: Eight windows are open at once, which is the most model views there are. creatures.keys takes one shot.
 //:: OpenDoll is the part a wiki page quotes: the whole window, the image, nothing else.
 //:://////////////////////////////////////////////
 #include "inc_show"
 
-// One window: a title bar and the doll for model.<sKey>.* in the policy.
-void OpenDoll(object oPC, string sKey, string sTitle)
+// One window at (fX, fY): the doll for model.<sKey>.* in the policy, and nothing else.
+void OpenDoll(object oPC, string sKey, string sTitle, float fX, float fY)
 {
-    json jDoll = NuiDrawList(NuiHeight(NuiWidth(NuiSpacer(), 340.0), 460.0), JsonBool(FALSE),
+    json jDoll = NuiDrawList(NuiHeight(NuiWidth(NuiSpacer(), 280.0), 300.0), JsonBool(FALSE),
         JsonArrayInsert(JsonArray(), NuiDrawListImage(JsonBool(TRUE), JsonString("@model:" + sKey),
-            NuiRect(0.0, 0.0, 340.0, 460.0), JsonInt(NUI_ASPECT_STRETCH),
+            NuiRect(0.0, 0.0, 280.0, 300.0), JsonInt(NUI_ASPECT_STRETCH),
             JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE))));
     json jWin = NuiWindow(NuiCol(JsonArrayInsert(JsonArray(), jDoll)), JsonString(sTitle),
-        NuiRect(20.0, 20.0, 380.0, 520.0), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
-    ShowRegister(oPC, jWin, "show_" + sKey);
-}
-
-void Doll(object oPC, string sKey, string sTitle, int nAppearance)
-{
-    ShowMorph(oPC, nAppearance);
-    DelayCommand(1.0, OpenDoll(oPC, sKey, sTitle));
+        NuiRect(fX, fY, 305.0, 345.0), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
+    int nToken = NuiCreate(oPC, jWin, "show_" + sKey);
+    ShowMark("open show_" + sKey + " token " + IntToString(nToken));
 }
 
 void Show(object oPC)
 {
-    DelayCommand(8.0, Doll(oPC, "hound", "Hell hound", APPEARANCE_TYPE_DOG_HELL_HOUND));
-    DelayCommand(18.0, Doll(oPC, "ogre", "Ogre", APPEARANCE_TYPE_OGRE));
-    DelayCommand(28.0, Doll(oPC, "beholder", "Beholder", APPEARANCE_TYPE_BEHOLDER));
-    DelayCommand(38.0, Doll(oPC, "skeleton", "Skeleton warrior", APPEARANCE_TYPE_SKELETON_WARRIOR));
-    DelayCommand(48.0, Doll(oPC, "golem", "Stone golem", APPEARANCE_TYPE_GOLEM_STONE));
-    DelayCommand(58.0, Doll(oPC, "dragon", "Red dragon", APPEARANCE_TYPE_DRAGON_RED));
+    ShowSpawn(oPC, "merc", "nw_elfmerc001", 0.0, 3.0);
+    DelayCommand(8.0, OpenDoll(oPC, "hound", "Hell hound, taunting", 8.0, 8.0));
+    DelayCommand(8.5, OpenDoll(oPC, "ogre", "Ogre, ready", 323.0, 8.0));
+    DelayCommand(9.0, OpenDoll(oPC, "beholder", "Beholder", 638.0, 8.0));
+    DelayCommand(9.5, OpenDoll(oPC, "troll", "Troll, casting", 953.0, 8.0));
+    DelayCommand(10.0, OpenDoll(oPC, "dragon", "Red dragon", 8.0, 358.0));
+    DelayCommand(10.5, OpenDoll(oPC, "merc", "Elf mercenary", 323.0, 358.0));
+    DelayCommand(11.0, OpenDoll(oPC, "wolf", "A model by name", 638.0, 358.0));
+    DelayCommand(11.5, OpenDoll(oPC, "sword", "An item", 953.0, 358.0));
 }
