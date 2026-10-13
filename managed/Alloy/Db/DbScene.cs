@@ -139,7 +139,7 @@ public static unsafe class DbScene
         m.Add(obj);
         SceneDb.ObjScene[obj.Index] = scene;
         SceneDb.ObjCrossScene[obj.Index] = scene;
-        Seam.Facade.NoteJoin(scene, obj);
+        Seam.Facade.NoteJoin(scene, obj, was);
         SceneDb.TouchScene(scene, Dirty.Tree);
         SceneDb.Touch(obj, Dirty.Tree);
         SceneShell.CountChanged(scene);

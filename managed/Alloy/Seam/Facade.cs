@@ -396,19 +396,20 @@ public static unsafe partial class Facade
         => logical != SeamSlot.Unnamed || member.Length == 0 ? SeamVtables.Name(logical)
          : $"{System.IO.Path.GetFileNameWithoutExtension(file)}.{member}";
 
-    /// <summary>Every scene shell address ever minted, and the attaches that left an object in no scene.</summary>
+    /// <summary>Every scene shell address ever minted, the attaches that left an object in no scene, and the
+    /// joins that crossed the world/GUI boundary.</summary>
     internal sealed class SceneProbeState
     {
         internal readonly System.Collections.Generic.HashSet<nint> MintedScenes = new();
         internal long OrphaningAttaches;
-        internal int LinesLeft = OrphanLines;
-        internal long WorldIntoGui;
-        internal int WorldIntoGuiLeft = OrphanLines;
+        internal int LinesLeft = ProbeLines;
+        internal long WorldIntoGui, GuiIntoWorld;
+        internal int CrossLinesLeft = ProbeLines;
     }
 
-    /// <summary>Lines <see cref="NoteOrphaningAttach"/> and <see cref="NoteJoin"/> each write per session; the
-    /// counts keep going past it.</summary>
-    private const int OrphanLines = 256;
+    /// <summary>Lines <see cref="NoteOrphaningAttach"/> and <see cref="NoteCrossing"/> each write per session;
+    /// the counts keep going past it.</summary>
+    private const int ProbeLines = 256;
 
     private static SceneProbeState _sceneProbe = new();
 
@@ -432,28 +433,56 @@ public static unsafe partial class Facade
                     + $"and is now in NO scene, so it does not draw ({st.OrphaningAttaches} so far)");
     }
 
-    /// <summary>Object <paramref name="obj"/> joined <paramref name="scene"/>: stamp its shell with the kind of
-    /// scene, and the record (<see cref="SceneDb.ObjSceneKinds"/>); name a world object moving into
-    /// a GUI scene -- a GUI pointer that reached a world shell.</summary>
-    internal static void NoteJoin(DbId scene, DbId obj)
+    /// <summary>Object <paramref name="obj"/> joined <paramref name="scene"/> from <paramref name="was"/>: name it
+    /// when the join crosses the world/GUI boundary (<see cref="Crosses"/>), then stamp its shell and its record
+    /// (<see cref="SceneDb.ObjSceneKinds"/>), keeping who first put it in a world scene.</summary>
+    internal static void NoteJoin(DbId scene, DbId obj, DbId was)
     {
         bool world = SceneDb.SceneIsWorld[scene.Index];
-        SceneDb.ObjSceneKinds[obj.Index] |= world ? SeamShell.InWorld : SeamShell.InGui;
-        if (!SeamShell.NoteScene(Shell(SceneDb.ObjFacade[obj.Index]), world) || InSelfCheck) return;
-        SceneProbeState st = _sceneProbe;
-        st.WorldIntoGui++;
-        if (st.WorldIntoGuiLeft <= 0) return;
-        st.WorldIntoGuiLeft--;
         int o = obj.Index;
-        Log?.Always($"seam: [world->gui] o={obj.Value} model='{SceneDb.ObjSeamModelName[o]}' kind={SceneDb.ObjKindOf[o]} "
-                    + $"flags={SceneDb.ObjFlags[o]} was in a world scene and joined GUI scene {scene.Value}, by "
-                    + $"{SeamCallers.Chain(4)} ({st.WorldIntoGui} so far)");
+        if (Crosses(obj, scene)) NoteCrossing(scene, obj, was, world);
+        // ponytail: one Chain string per first world join of a non-tile object -- an area load's placeables and
+        // creatures, never per frame; intern the frames if it ever shows on a load profile.
+        if (world && (SceneDb.ObjSceneKinds[o] & SeamShell.InWorld) == 0 && (SceneDb.ObjFlags[o] & ObjFlag.Tile) == 0 && !InSelfCheck)
+            SceneDb.ObjWorldJoinBy[o] = SeamCallers.Chain(4);
+        SceneDb.ObjSceneKinds[o] |= world ? SeamShell.InWorld : SeamShell.InGui;
+        SeamShell.NoteScene(Shell(SceneDb.ObjFacade[o]), world);
     }
+
+    /// <summary>True when joining <paramref name="scene"/> carries <paramref name="obj"/> across the world/GUI
+    /// boundary: the object has been in the other kind of scene. Keyed on scene history, never on object kind
+    /// or creator; a fresh object has none.</summary>
+    internal static bool Crosses(DbId obj, DbId scene)
+        => SceneDb.Objects.Valid(obj) && SceneDb.Scenes.Valid(scene)
+           && (SceneDb.ObjSceneKinds[obj.Index] & (SceneDb.SceneIsWorld[scene.Index] ? SeamShell.InGui : SeamShell.InWorld)) != 0;
+
+    /// <summary>Count and name a join across the world/GUI boundary: the object, the object it rides, and who
+    /// first put it in a world scene. Logged, not refused, until every crossing is accounted for.</summary>
+    private static void NoteCrossing(DbId scene, DbId obj, DbId was, bool intoWorld)
+    {
+        if (InSelfCheck) return;
+        SceneProbeState st = _sceneProbe;
+        long n = intoWorld ? ++st.GuiIntoWorld : ++st.WorldIntoGui;
+        if (st.CrossLinesLeft <= 0) return;
+        st.CrossLinesLeft--;
+        int o = obj.Index;
+        DbId p = SceneDb.ObjAttachTo[o];
+        string parent = !SceneDb.Objects.Valid(p) ? "none"
+            : $"o={p.Value} model='{SceneDb.ObjSeamModelName[p.Index]}' kind={SceneDb.ObjKindOf[p.Index]} "
+              + $"history={SceneDb.ObjSceneKinds[p.Index]} in '{SceneName(SceneDb.ObjScene[p.Index])}'";
+        Log?.Always($"seam: [{(intoWorld ? "gui->world" : "world->gui")}] o={obj.Value} model='{SceneDb.ObjSeamModelName[o]}' "
+                    + $"kind={SceneDb.ObjKindOf[o]} flags={SceneDb.ObjFlags[o]} from '{SceneName(was)}' into "
+                    + $"'{SceneName(scene)}'; rides {parent}; first world join by {SceneDb.ObjWorldJoinBy[o] ?? "?"}; "
+                    + $"now by {SeamCallers.Chain(4)} ({n} so far)");
+    }
+
+    private static string SceneName(DbId s)
+        => s.IsNull ? "none" : SceneDb.Scenes.Valid(s) ? SceneDb.SceneName[s.Index] ?? $"#{s.Value}" : $"dead #{s.Value}";
 
     /// <summary>The seam's period line: shells, quarantine, and every refusal counted.</summary>
     public static string Stats()
         => $"shells live={SeamShell.Live} quarantined={SeamShell.Quarantined} held={SeamShell.Held} unmarked={SeamShell.Unmarked} alloc={SeamShell.Allocated} reuse={SeamShell.Reused}"
-         + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} orphaning-attaches={_sceneProbe.OrphaningAttaches} world-into-gui={_sceneProbe.WorldIntoGui} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
+         + $" poison={PoisonCalls} stale={StaleCalls} alien={AlienCalls} orphaning-attaches={_sceneProbe.OrphaningAttaches} world-into-gui={_sceneProbe.WorldIntoGui} gui-into-world={_sceneProbe.GuiIntoWorld} redundant-retire={Redundant} base-dtor={BaseDestructors} dangling-pairs={DanglingPairs} foreign-arrays={SeamShell.ForeignArraysLeaked}";
 }
 
 /// <summary>Logical slot ids a hand-written caller needs by name. Everything else is

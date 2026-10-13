@@ -103,8 +103,13 @@ internal static unsafe class FacadeSelfCheck
                 "an object minted for an unreadable model must hold no model and no parts");
             check.Expect(ObjectFns.UnreadableModels == unreadable + 1 && ObjectFns.Stats().Contains("unreadable-model="),
                 "the unreadable-model refusal must be counted on the period line");
+            DbId child = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            check.Expect(!child.IsNull, "the owned child was not minted");
+            SceneDb.ObjSeamAppendNext[child.Index] = default;
+            SceneDb.ObjSeamAppendHead[id.Index] = child;
             ObjectSlots.DestroyRecord(id);
-            check.Expect(SceneDb.Objects.Live == objects, "the minted record was not released again");
+            check.Expect(SceneDb.Objects.Live == objects && !SceneDb.Objects.Valid(child),
+                "the minted record and the child it owns were not both released");
         }
         // The counter goes back: a session's line must start at zero, or this check is the first thing the
         // next crash report sees on it.
@@ -452,16 +457,14 @@ internal static unsafe class FacadeSelfCheck
     }
 
     /// <summary>A shell whose object was ever in a GUI scene, or never joined one, is never handed out again,
-    /// even once the ring is full and past its quarantine. Oracle: hand-written expectations -- the stamp each
-    /// join leaves, the held and unmarked counts, neither address coming back, the churn reusing world shells,
-    /// and the held-set warning's literal thresholds.</summary>
+    /// even once the ring is full and past its quarantine. Oracle: hand-written
+    /// expectations -- the held and unmarked counts, neither address coming back, the churn reusing world shells,
+    /// the held-set warning's literal thresholds, and which joins cross the world/GUI boundary.</summary>
     private static void GuiHold(Checker check)
     {
         nint probe = SeamShell.Alloc(FacadeKind.Object, default);
-        check.Expect(!SeamShell.NoteScene(probe, world: true), "a first world join is not a world-to-GUI move");
-        check.Expect(SeamShell.NoteScene(probe, world: false), "a world object joining a GUI scene must be named");
-        check.Expect(!SeamShell.NoteScene(probe, world: false), "the world-to-GUI move is named once per shell");
-        check.Expect(!SeamShell.NoteScene(0, world: false), "a null shell carries no stamp");
+        SeamShell.NoteScene(probe, world: true);
+        SeamShell.NoteScene(probe, world: false);
 
         DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc(), wobj = SceneDb.Objects.Alloc(), gobj = SceneDb.Objects.Alloc();
         if (world.IsNull || gui.IsNull || wobj.IsNull || gobj.IsNull)
@@ -474,8 +477,13 @@ internal static unsafe class FacadeSelfCheck
         DbFeed.InitObject(wobj.Index);
         DbFeed.InitObject(gobj.Index);
         nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj);
+        check.Expect(!Facade.Crosses(wobj, gui), "an object with no scene history crosses nothing");
         DbScene.Join(world, wobj);
         DbScene.Join(gui, gobj);
+        check.Expect(Facade.Crosses(wobj, gui), "a world object joining a GUI scene crosses the boundary");
+        check.Expect(Facade.Crosses(gobj, world), "a GUI object joining a world scene crosses the boundary");
+        check.Expect(!Facade.Crosses(wobj, world) && !Facade.Crosses(gobj, gui),
+            "a join within the object's own kind of scene crosses nothing");
         DbScene.Leave(gui, gobj);
         DbScene.Leave(world, wobj);
         int held = SeamShell.Held, quarantined = SeamShell.Quarantined;

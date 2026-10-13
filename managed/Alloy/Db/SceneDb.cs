@@ -337,6 +337,8 @@ public static class SceneDb
     /// <summary>The kinds of scene the object has joined in its life (<c>SeamShell.InGui</c> | <c>InWorld</c>); its
     /// part shells are reused at death only when this is world alone.</summary>
     public static readonly byte[] ObjSceneKinds = new byte[MaxObjects];
+    /// <summary>The game call chain that first put the object in a world scene (null: never, or a tile).</summary>
+    public static readonly string?[] ObjWorldJoinBy = new string?[MaxObjects];
     /// <summary>The object's part range in <see cref="Parts"/>: first part index and count (pre-order, [0] the root).</summary>
     public static readonly int[] ObjPartFirst = new int[MaxObjects], ObjPartCount = new int[MaxObjects];
     /// <summary>Attachment: the object this one rides on and the part (index into <see cref="Parts"/>) it hangs from.</summary>
