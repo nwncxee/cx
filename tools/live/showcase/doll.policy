@@ -1,0 +1,13 @@
+model.big.target=player
+model.big.size=300x420
+model.big.yaw=270
+model.big.drag=1
+model.big.dragrange=-60,60
+model.big.zoom=1.5,6
+model.small.target=player
+model.small.size=120x160
+model.small.yaw=270
+model.small.fitzone=0.75,1
+model.still.target=player
+model.still.size=200x280
+model.still.yaw=270
