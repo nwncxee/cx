@@ -45,6 +45,9 @@ internal static unsafe class GuiPass
         public readonly uint[] ModelDepth = new uint[CX.Services.Nui.NuiModelDoll.MaxViews];
         public readonly int[] ModelW = new int[CX.Services.Nui.NuiModelDoll.MaxViews], ModelH = new int[CX.Services.Nui.NuiModelDoll.MaxViews];
         public bool ModelChecked;
+        /// <summary>Flushes that found a texture unit other than 0 active, and the first one's unit.</summary>
+        public long StrayUnit;
+        public int StrayUnitFirst;
     }
 
     private static GuiGlState _gl = new();
@@ -211,6 +214,7 @@ internal static unsafe class GuiPass
         Gl.DepthFunc(Gl.LEQUAL);
         Gl.FrontFace(Gl.CCW);
         Gl.CullFace(Gl.BACK);
+        TextureUnitZero();
         Gl.UseProgram(_gl.Prog);
         Gl.Uniform1i(_gl.LocBoneStart, GuiCapture.DrawN * Vec4PerRec);
         Gl.Uniform1i(_gl.LocGamma, PostChain.GammaOff() ? 0 : 1);
@@ -379,6 +383,22 @@ internal static unsafe class GuiPass
         Gl.Enable(Gl.SCISSOR_TEST);
     }
 
+    /// <summary>Select texture unit 0, which every per-draw bind and every GUI sampler assumes. Whatever ran before the
+    /// flush may leave another active (a module edge has no world frame ahead of it); that is counted and said once.</summary>
+    private static void TextureUnitZero()
+    {
+        int active;
+        Gl.GetIntegerv(Gl.ACTIVE_TEXTURE, &active);
+        if (active == (int)Gl.TEXTURE0) return;
+        if (_gl.StrayUnit++ == 0)
+        {
+            _gl.StrayUnitFirst = active - (int)Gl.TEXTURE0;
+            _log?.Always($"GuiPass: the flush found texture unit {_gl.StrayUnitFirst} active, not 0 -- every GUI part "
+                       + "would have bound its texture there and sampled whatever sat on unit 0; unit 0 selected");
+        }
+        Gl.ActiveTexture(Gl.TEXTURE0);
+    }
+
     /// <summary>Key <paramref name="key"/>'s content program, built on its first draw (in the 4.6 bracket).</summary>
     private static GuiContent.Prog? ContentProgram(int key)
     {
@@ -522,5 +542,6 @@ internal static unsafe class GuiPass
     internal static string Stats() => !_armed ? "gui: engine (not armed)" : _failed ? "gui: engine (FAILED)"
         : !Renderer.Gui.V ? "gui: engine (/alloy gui 0)" : _gl.Prog == 0 ? "gui: waiting for the 4.6 context"
         : $"gui: Alloy -- {_flushes} flushes, {_drawn} draws" + (_noVao == 0 ? "" : $", {_noVao} with no VAO (NOT DRAWN)")
+          + (_gl.StrayUnit == 0 ? "" : $", {_gl.StrayUnit} flush(es) found texture unit {_gl.StrayUnitFirst} active")
           + "; " + GuiCapture.Stats() + "; " + ScreenOwner.Stats();
 }
