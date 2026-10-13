@@ -86,6 +86,18 @@ void ShowMorph(object oPC, int nAppearance)
     ShowMark("morph " + IntToString(nAppearance));
 }
 
+// A full-screen dark window opened before anything else, so the themed windows sit on a plain ground instead of the chat and the world.
+void ShowBackdrop(object oPC, int nR = 14, int nG = 14, int nB = 18)
+{
+    json jFill = NuiDrawListRect(JsonBool(TRUE), NuiColor(nR, nG, nB, 255), JsonBool(TRUE), JsonFloat(1.0), NuiRect(0.0, 0.0, 1500.0, 900.0),
+        NUI_DRAW_LIST_ITEM_ORDER_BEFORE);
+    json jRoot = NuiDrawList(NuiHeight(NuiWidth(NuiSpacer(), 1500.0), 900.0), JsonBool(FALSE), JsonArrayInsert(JsonArray(), jFill));
+    json jWin = NuiWindow(jRoot, JsonBool(FALSE), NuiRect(0.0, 0.0, 1500.0, 900.0), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE),
+                          JsonBool(TRUE), JsonBool(FALSE), JsonBool(FALSE));
+    NuiCreate(oPC, jWin, "show_backdrop");
+    ShowMark("backdrop");
+}
+
 void ShowArm(object oPC, int nTry)
 {
     if (!GetIsObjectValid(oPC)) return;
@@ -97,6 +109,7 @@ void ShowArm(object oPC, int nTry)
     }
     SetImmortal(oPC, TRUE);
     ShowMark("enter " + GetName(oPC) + " in " + GetName(GetArea(oPC)));
+    ShowBackdrop(oPC);
     Show(oPC);
 }
 
