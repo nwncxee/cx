@@ -126,7 +126,7 @@ internal static unsafe class Issue
     /// <summary>The handle table alone. Its capacity is tracked apart from the draw records' so the bake can
     /// bring it up to date on a frame the colour bracket has not reached (or refused).</summary>
     /// <summary>The handle table as the GPU sees it: <see cref="AlloyRenderer._dTexH"/> with every zero
-    /// replaced by a stand-in's handle. ponytail: rewritten whole per upload, run-wise if it ever shows up.</summary>
+    /// replaced by a stand-in's handle; a partial upload rewrites only the dirty records it sends.</summary>
     private static readonly ulong[] _gpuTexH = new ulong[MaxRecords * 8];
 
     internal static void UploadHandles(int cap, bool whole)
@@ -143,11 +143,14 @@ internal static unsafe class Issue
         // audit read.
         ulong whiteH = HandleFor(OwnedTextures.WhiteTid()), nullH = HandleFor(OwnedTextures.NullTid());
         long n = (long)cap * 8;
-        for (long k = 0; k < n; k++)
-        {
-            ulong v = _dTexH[k];
-            _gpuTexH[k] = v != 0 ? v : (k & 7) == 0 ? whiteH : nullH;
-        }
+        if (whole)
+            for (long k = 0; k < n; k++) _gpuTexH[k] = GpuHandle(k, whiteH, nullH);
+        else
+            for (int d = 0; d < _recDirtyN; d++)
+            {
+                long r = (long)_recDirty[d] * 8;
+                if (r + 8 <= n) for (long k = r; k < r + 8; k++) _gpuTexH[k] = GpuHandle(k, whiteH, nullH);
+            }
         fixed (ulong* p = _gpuTexH)
         {
             if (whole)
@@ -160,6 +163,13 @@ internal static unsafe class Issue
         _texHDirty = false;
     }
     private static int _texHCapGpu;
+
+    /// <summary>Entry <paramref name="k"/> of the handle table as the GPU must see it: no zero handle.</summary>
+    private static ulong GpuHandle(long k, ulong whiteH, ulong nullH)
+    {
+        ulong v = _dTexH[k];
+        return v != 0 ? v : (k & 7) == 0 ? whiteH : nullH;
+    }
 
     /// <summary>Called by the caster bake, inside its bracket, before its first view: the standing staging
     /// samples the GPU handle table by record slot, so a handle dropped since the last colour upload must
