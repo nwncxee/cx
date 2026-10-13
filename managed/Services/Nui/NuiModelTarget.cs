@@ -28,6 +28,8 @@ internal static unsafe class NuiModelTarget
     private const string AppPrefix = "app:", ModelPrefix = "model:", ItemPrefix = "item:";
     /// <summary>The highest <c>appearance.2da</c> row the record's 16-bit appearance field holds.</summary>
     internal const int MaxRow = 65535;
+    /// <summary>The bytes of an engine <c>CExoString</c> (a pointer and two counts), the caller-owned value a 2DA cell is written into.</summary>
+    private const int ExoSize = 16;   // not-an-offset: sizeof(CExoString)
     private const int ResRefLen = 16;   // not-an-offset: a resref's longest name
     /// <summary>The model slot an item's one model sits in, the one the engine fetches a worn item's model from.</summary>
     internal const byte ModelSlot = 1;   // not-an-offset: CNWCItem model slot
@@ -93,14 +95,24 @@ internal static unsafe class NuiModelTarget
         }
     }
 
-    /// <summary>How many rows <c>appearance.2da</c> has, or -1 when the engine's tables are not reachable yet.</summary>
-    internal static int AppearanceRows()
+    /// <summary>The engine's table of 2DAs, or null before a module has loaded them.</summary>
+    private static CTwoDimArrays? Tables()
     {
         IntPtr rules = _t.Rules == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_t.Rules;
         IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
-        IntPtr table = tables == IntPtr.Zero ? IntPtr.Zero : new CTwoDimArrays(tables).Appearance;
-        return table == IntPtr.Zero ? -1 : new C2DA(table).Rows;
+        return tables == IntPtr.Zero ? null : new CTwoDimArrays(tables);
     }
+
+    /// <summary>How many rows a 2DA has, or -1 when its table is not reachable yet.</summary>
+    private static int RowsOf(IntPtr table) => table == IntPtr.Zero ? -1 : new C2DA(table).Rows;
+
+    /// <summary>How many rows <c>appearance.2da</c> has, or -1 when the engine's tables are not reachable yet.</summary>
+    internal static int AppearanceRows() => Tables() is { } t ? RowsOf(t.Appearance) : -1;
+
+    /// <summary>The rows of <c>visualeffects.2da</c>, <c>cloakmodel.2da</c> and the item visual effects table; -1 when not reachable yet.</summary>
+    internal static int VisualEffectRows() => Tables() is { } t ? RowsOf(t.VisualEffects) : -1;
+    internal static int CloakModelRows() => Tables() is { } t ? RowsOf(t.CloakModel) : -1;
+    internal static int ItemVisualEffectRows() => Tables() is { } t ? RowsOf(t.ItemVisualEffects) : -1;
 
     /// <summary>Does <paramref name="row"/> name an <c>appearance.2da</c> row the client has? Logs once when it does not.</summary>
     internal static bool AppearanceKnown(int row)
@@ -109,6 +121,28 @@ internal static unsafe class NuiModelTarget
         if (NuiModelGuard.RowInTable(row, rows)) return true;
         _t.Log?.Always($"NuiModelTarget: appearance row {row} is past the {rows} the client's appearance.2da has");
         return false;
+    }
+
+    /// <summary>A cell of <c>appearance.2da</c> as text, or null when the row, the column or the tables are not there.</summary>
+    internal static string? AppearanceCell(int row, string column)
+    {
+        IntPtr rules = _t.Rules == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_t.Rules;
+        IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
+        IntPtr table = tables == IntPtr.Zero ? IntPtr.Zero : new CTwoDimArrays(tables).Appearance;
+        if (table == IntPtr.Zero || EngineFn.ExoStringInit == null || EngineFn.C2DAGetCExoStringEntry == null) return null;
+        byte* col = stackalloc byte[ExoSize];
+        byte* cell = stackalloc byte[ExoSize];
+        new Span<byte>(col, ExoSize).Clear();
+        new Span<byte>(cell, ExoSize).Clear();
+        Span<byte> name = stackalloc byte[column.Length + 1];
+        AsciiZ(column, name);
+        fixed (byte* n = name) EngineFn.ExoStringInit((IntPtr)col, n, uint.MaxValue);
+        string? text = null;
+        if (EngineFn.C2DAGetCExoStringEntry(table, row, (IntPtr)col, (IntPtr)cell) != 0 && *(byte**)cell != null)
+            text = Marshal.PtrToStringAnsi((IntPtr)(*(byte**)cell));
+        EngineFn.ExoStringDtor((IntPtr)cell);
+        EngineFn.ExoStringDtor((IntPtr)col);
+        return text;
     }
 
     /// <summary>The model <paramref name="resref"/> as an object of its own, or zero when the client has no model by that name.</summary>

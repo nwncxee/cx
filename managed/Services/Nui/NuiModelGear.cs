@@ -98,7 +98,7 @@ internal static unsafe class NuiModelGear
         if (wear.StartsWith("@look:", StringComparison.Ordinal))
         {
             minted = true;
-            return NuiItemIcons.MintLook(wear);
+            return NuiItemIcons.MintLookForModel(wear);
         }
         return uint.TryParse(wear, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)
             ? Known(id | NuiItemIcons.ServerIdBit) : IntPtr.Zero;

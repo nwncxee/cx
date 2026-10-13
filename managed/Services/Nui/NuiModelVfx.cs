@@ -89,9 +89,17 @@ internal static unsafe class NuiModelVfx
         if (mute && _v.SoundReady) _v.MuteThread = Environment.CurrentManagedThreadId;
         try
         {
+            int table = NuiModelTarget.VisualEffectRows();
             foreach (VfxRow e in rows)
+            {
+                if (!NuiModelGuard.RowInTable(e.Row, table))
+                {
+                    if (NuiModelGuard.Once($"vfx {e.Row}")) _v.Log?.Always($"NuiModelVfx: effect row {e.Row} is past the {table} the client's visualeffects.2da has -- not worn");
+                    continue;
+                }
                 if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NuiModelDoll.InvalidId, e.Part, 0, VectorArg.Of(&zero), TransformFor(scratch)) == 0)
                     _v.Log?.Always($"NuiModelVfx: the engine would not load effect row {e.Row}");
+            }
         }
         finally { _v.MuteThread = 0; }
         if (rows.Length > 0) _v.Log?.Always($"NuiModelVfx: the doll wears effect rows {string.Join(',', rows.Select(e => $"{e.Row}:{e.Part}"))}{(mute ? ", sounds muted" : "")}");
@@ -120,6 +128,10 @@ internal static unsafe class NuiModelVfx
         VfxRow[] rows = Parse("147, 408,147");
         check.Expect(rows.Length == 2 && rows[0] == new VfxRow(147, 0) && rows[1] == new VfxRow(408, 0), "rows keep their order, sit on the hand and a repeat is dropped");
         check.Expect(Parse("x,-1,70000,13").Length == 1 && Parse("x,-1,70000,13")[0].Row == 13, "text, a negative and a row past 65535 are skipped");
+        VfxRow[] hostile = Parse("65000,65535,612,611");
+        check.Expect(hostile.Length == 4 && !NuiModelGuard.RowInTable(hostile[0].Row, 612) && !NuiModelGuard.RowInTable(hostile[1].Row, 612)
+                     && !NuiModelGuard.RowInTable(hostile[2].Row, 612) && NuiModelGuard.RowInTable(hostile[3].Row, 612),
+                     "rows the parse accepts but a 612-row table has none of are refused by the guard, its last row is not");
         check.Expect(Parse("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17").Length == 16, "seventeen rows keep the first sixteen");
         VfxRow[] parts = Parse("147:1, 147:5,147:1, 9:300, 9:x, 12:2:3, 7:255");
         check.Expect(parts.Length == 3 && parts[0] == new VfxRow(147, 1) && parts[1] == new VfxRow(147, 5) && parts[2] == new VfxRow(7, 255),
