@@ -13,12 +13,20 @@ public sealed unsafe class StringSlots : ISeamProvider
 {
     private const SeamTable T = SeamTable.CAurString;
 
-    /// <summary>One native line buffer per call site that needs a <c>char const*</c> to outlive the call.
-    /// <c>GetTextLine</c> is the only such slot; the engine returned a pointer into the line's own storage,
-    /// and CX's lines are managed, so the bytes are copied into this and handed back. The engine's callers
-    /// read it before the next call, which is why one buffer is enough -- and why it is documented.</summary>
-    private static nint _lineBuf;
-    private static int _lineCap;
+    /// <summary>The native copies <c>GetTextLine</c> hands out. Callers hold several at once -- the chargen lists
+    /// <c>strcasecmp</c> two labels' lines to sort -- so each call takes the next buffer of a ring.</summary>
+    private static readonly LineRingState _lines = new();
+
+    /// <summary>A ring of NUL-terminated native buffers, grown per slot as needed.
+    /// ponytail: a pointer stays valid for <see cref="Size"/> calls, not until its text changes; a per-shell
+    /// copy is the upgrade if a caller ever holds more.</summary>
+    private sealed class LineRingState
+    {
+        public const int Size = 16;
+        public readonly nint[] Buf = new nint[Size];
+        public readonly int[] Cap = new int[Size];
+        public int Next;
+    }
 
     public void Register(SeamRegistry r)
     {
@@ -413,25 +421,28 @@ public sealed unsafe class StringSlots : ISeamProvider
     }
 
     /// <summary>Slot 29 returns a <c>char const*</c> the caller may hold past the call, so the line's bytes are
-    /// copied into a native buffer that grows as needed and is NUL-terminated -- the engine's pointer was into
-    /// the line's own storage, and CX's lines are managed memory a native caller must not see.</summary>
+    /// copied into the next <see cref="LineRingState"/> buffer -- the engine's pointer was into the line's own
+    /// storage, and CX's lines are managed memory a native caller must not see.</summary>
     [UnmanagedCallersOnly]
     private static nint GetTextLine(nint self, int line)
     {
         DbId id = Id(self, 29);
         if (id.IsNull) return 0;
         ReadOnlySpan<byte> src = TextSlots.GetTextLine(id, line);
-        if (src.Length + 1 > _lineCap)
+        LineRingState r = _lines;
+        int i = r.Next;
+        r.Next = (i + 1) % LineRingState.Size;
+        if (src.Length + 1 > r.Cap[i])
         {
             int want = Math.Max(256, src.Length + 1);
-            void* b = NativeMemory.Realloc((void*)_lineBuf, (nuint)want);
+            void* b = NativeMemory.Realloc((void*)r.Buf[i], (nuint)want);
             if (b == null) return 0;
-            _lineBuf = (nint)b;
-            _lineCap = want;
+            r.Buf[i] = (nint)b;
+            r.Cap[i] = want;
         }
-        src.CopyTo(new Span<byte>((void*)_lineBuf, _lineCap));
-        ((byte*)_lineBuf)[src.Length] = 0;
-        return _lineBuf;
+        src.CopyTo(new Span<byte>((void*)r.Buf[i], r.Cap[i]));
+        ((byte*)r.Buf[i])[src.Length] = 0;
+        return r.Buf[i];
     }
 
     [UnmanagedCallersOnly]
