@@ -62,6 +62,23 @@ wants a policy for the whole session sends it on every login.
 The player sees held knobs greyed in `/settings`; `/policy` lists every key the server holds, with the player's own
 value beside each held knob; `/knobs` marks them `[server; yours …]`.
 
+### Refused lines: `/policy` says which and why
+
+A line the client does not take is not silent. `/policy` ends with a `refused:` block, one row per key:
+`[kind] key=value -- reason`. The kinds are `line` (no `=`, or a message over 512 lines), `knob` (not a knob a server may
+hold, or a value it does not take), `card`, `style` (`cardstyle`), `held`, `window` (`nui.<id>.*`), `model`
+(`model.<key>.<setting>`) and `property` (any other key a window reads and cannot use). A setting that is out of range is
+clamped, not refused; a refusal is a value the client could not read at all, so the default stands.
+
+- One row per key, with the latest reason. A key sent again with a good value, or released, loses its row; `*=` and a
+  new login clear them all.
+- Bounded: 64 rows and 8192 bytes of text. Key, value and reason are cut at 96, 64 and 160 characters. When a ceiling is
+  hit the oldest row goes and the block says how many were dropped.
+- Properties are checked when a window reads them, so a bad `model.<key>.zoom` shows up once the image loads, not when
+  the line arrives.
+- Each row has an event form, `refused;<kind>;<key>;<reason>`, for a later change that sends it to the server as a
+  `UiEvent`. Nothing sends it yet.
+
 ### `held.image`: an image under the pointer
 
 `held.image=<image>` shows that image centred on the pointer, above every NUI window, and swaps the engine cursor

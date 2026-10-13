@@ -70,17 +70,18 @@ internal static class CardRegistry
     /// <summary>The <c>cardstyle</c> line: the style every card starts from. An empty value restores the defaults. Cards already held are laid out again against it. False when refused (the defaults then apply).</summary>
     public static bool SetStyle(string rest, string value)
     {
-        if (rest.Length != 0) return false;
+        if (rest.Length != 0) { PolicyRefusals.Add(RefusalKind.Style, StyleKey + rest, value, "the style line takes no key after it"); return false; }
         PanelStyle style = new();
-        bool ok = value.Length == 0 || PanelParser.TryParseStyle(value, out style, out string why) || Refused(why);
+        bool ok = value.Length == 0 || PanelParser.TryParseStyle(value, out style, out string why) || Refused(value, why);
         _s.Style = ok ? style : new PanelStyle();
         _s.StyleRaw = ok ? value : "";
         Restyle();
         return ok;
     }
 
-    private static bool Refused(string why)
+    private static bool Refused(string value, string why)
     {
+        PolicyRefusals.Add(RefusalKind.Style, StyleKey, value, why);
         _s.Log?.Info($"Cards: refused the card style: {why}; the defaults apply");
         return false;
     }
@@ -109,6 +110,7 @@ internal static class CardRegistry
         key = key.Trim();
         if (key.Length == 0 || Encoding.UTF8.GetByteCount(key) > CardLimits.MaxKeyBytes)
         {
+            PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, $"the key must be 1-{CardLimits.MaxKeyBytes} bytes");
             _s.Log?.Info($"Cards: refusing a key of {key.Length} characters (1-{CardLimits.MaxKeyBytes} bytes allowed)");
             return false;
         }
@@ -116,11 +118,13 @@ internal static class CardRegistry
         if (!PanelParser.TryParse(value, out PanelDecl[] cards, out string why, _s.Style))
         {
             Swap(key, null);
+            PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, why);
             _s.Log?.Info($"Cards: refused '{key}': {why}; it keeps no card");
             return false;
         }
         if (_s.Map.Count >= CardLimits.MaxKeys && !_s.Map.ContainsKey(key))
         {
+            PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, $"{CardLimits.MaxKeys} card keys are held already");
             _s.Log?.Info($"Cards: refused '{key}': {CardLimits.MaxKeys} keys held already");
             return false;
         }
