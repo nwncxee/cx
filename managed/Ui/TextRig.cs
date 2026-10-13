@@ -844,11 +844,11 @@ public static unsafe partial class TextRig
     }
 
     /// <summary>The <see cref="DrawIcon"/> body for a live GL texture id the caller already holds; 0 draws nothing.
-    /// <paramref name="u1"/> / <paramref name="v0"/> crop a padded sheet to its top-left content (the <c>GUI_ICON_*</c>
-    /// models' UVs); <paramref name="clip"/> scissors to (<paramref name="cx"/>, <paramref name="cy"/>, <paramref name="cw"/>,
-    /// <paramref name="ch"/>), y-down px. Sets its own full GL preamble, taking no state snapshot.</summary>
+    /// <paramref name="u1"/> / <paramref name="v0"/> crop a padded sheet to its top-left content; <paramref name="clip"/> scissors
+    /// to (<paramref name="cx"/>, <paramref name="cy"/>, <paramref name="cw"/>, <paramref name="ch"/>), y-down px.
+    /// <paramref name="flipV"/>: the texture's first row is its top (a model view's). Sets its own GL preamble, taking no state snapshot.</summary>
     public static void DrawIconTid(int tid, float x, float y, float w, float h, float alpha = 1f, float u1 = 1f, float v0 = 0f,
-                                   bool clip = false, int cx = 0, int cy = 0, int cw = 0, int ch = 0)
+                                   bool clip = false, int cx = 0, int cy = 0, int cw = 0, int ch = 0, bool flipV = false)
     {
         if (tid == 0 || _sheet == null || _log == null || alpha <= 0f) return;
         if (!Gl.Init(_log)) return;
@@ -865,9 +865,10 @@ public static unsafe partial class TextRig
         Ortho(m, ViewportW, ViewportH);
 
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
+        float vt = flipV ? 0f : 1f, vb = flipV ? 1f : v0;
         float* v = stackalloc float[Floats * 6];
-        Vtx(v, 0, x, y, 0, 1, a); Vtx(v, 1, x1, y, u1, 1, a); Vtx(v, 2, x1, y1, u1, v0, a);
-        Vtx(v, 3, x, y, 0, 1, a); Vtx(v, 4, x1, y1, u1, v0, a); Vtx(v, 5, x, y1, 0, v0, a);
+        Vtx(v, 0, x, y, 0, vt, a); Vtx(v, 1, x1, y, u1, vt, a); Vtx(v, 2, x1, y1, u1, vb, a);
+        Vtx(v, 3, x, y, 0, vt, a); Vtx(v, 4, x1, y1, u1, vb, a); Vtx(v, 5, x, y1, 0, vb, a);
 
         Gl.UseProgram(_progIcon);
         Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, m);

@@ -17,7 +17,7 @@ internal static unsafe class NuiModelGear
     private const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
 
     /// <summary>One hand of the doll: what it was built from (a source item id, or the preview text) and the throwaway item.</summary>
-    private sealed class Worn
+    internal sealed class Worn
     {
         public readonly uint Slot;
         public ulong From;
@@ -26,15 +26,17 @@ internal static unsafe class NuiModelGear
         public Worn(uint slot) => Slot = slot;
     }
 
-    private sealed class GearState
+    /// <summary>The hands one doll holds and the preview it was last told: each view has its own.</summary>
+    internal sealed class GearState
     {
-        public ExtenderLog? Log;
         public readonly Worn[] Hands = { new(RightHand), new(LeftHand) };
         public string PreviewText = "";
         public uint PreviewSlot;
     }
 
-    private static readonly GearState _g = new();
+    private sealed class GearLog { public ExtenderLog? Log; }
+
+    private static readonly GearLog _g = new();
 
     internal static void Init(ExtenderLog log) => _g.Log = log;
 
@@ -63,24 +65,24 @@ internal static unsafe class NuiModelGear
 
     /// <summary>Bring the doll's hands to what the target holds, with the preview in its slot. Cheap when nothing changed:
     /// two id reads and a string compare each; an <c>@look:</c> preview is minted once per value, not per frame.</summary>
-    internal static void Sync(IntPtr doll, IntPtr target, string wear)
+    internal static void Sync(GearState g, IntPtr doll, IntPtr target, string wear)
     {
-        if (wear != _g.PreviewText)
+        if (wear != g.PreviewText)
         {
-            _g.PreviewText = wear;
-            _g.PreviewSlot = 0;
+            g.PreviewText = wear;
+            g.PreviewSlot = 0;
             if (wear.Length > 0)
             {
                 IntPtr it = WearItem(wear, out bool minted);
-                _g.PreviewSlot = HandOf(NuiItemIcons.EquipMask(it));
+                g.PreviewSlot = HandOf(NuiItemIcons.EquipMask(it));
                 if (minted && it != IntPtr.Zero) NuiItemIcons.Destroy(it);
-                if (_g.PreviewSlot == 0) _g.Log?.Always($"NuiModelGear: '{wear}' names no item that sits in a hand -- nothing is previewed");
+                if (g.PreviewSlot == 0) _g.Log?.Always($"NuiModelGear: '{wear}' names no item that sits in a hand -- nothing is previewed");
             }
         }
-        foreach (Worn w in _g.Hands)
+        foreach (Worn w in g.Hands)
         {
             ulong from;
-            if (w.Slot == _g.PreviewSlot) from = FromPreview;
+            if (w.Slot == g.PreviewSlot) from = FromPreview;
             else
             {
                 uint id = Held(target, w.Slot);
@@ -147,9 +149,9 @@ internal static unsafe class NuiModelGear
 
     /// <summary>The doll is going: empty both hands, then end every throwaway item, before the creature is deleted. When the
     /// engine already freed the registered objects (<paramref name="taken"/>), only the bookkeeping is dropped.</summary>
-    internal static void Release(IntPtr doll, bool taken)
+    internal static void Release(GearState g, IntPtr doll, bool taken)
     {
-        foreach (Worn w in _g.Hands)
+        foreach (Worn w in g.Hands)
         {
             Remove(doll, w, taken);
             w.From = 0;
@@ -157,10 +159,10 @@ internal static unsafe class NuiModelGear
     }
 
     /// <summary>How many throwaway items the doll holds now.</summary>
-    internal static int Count()
+    internal static int Count(GearState g)
     {
         int n = 0;
-        foreach (Worn w in _g.Hands) if (w.Item != IntPtr.Zero) n++;
+        foreach (Worn w in g.Hands) if (w.Item != IntPtr.Zero) n++;
         return n;
     }
 

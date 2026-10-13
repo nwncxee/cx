@@ -39,10 +39,11 @@ internal static unsafe class GuiPass
         public bool DepthProbed;
         /// <summary>Layers of the current bank already issued by <see cref="FlushLayers"/>; the closing flush starts here.</summary>
         public int Issued;
-        /// <summary>The model view's target: one framebuffer over whatever texture a layer names, with a depth of its own,
-        /// both made in this context (framebuffers are not shared with the engine's).</summary>
-        public uint ModelFbo, ModelDepth;
-        public int ModelW, ModelH;
+        /// <summary>The model views' target: one framebuffer over whatever texture a layer names, and a depth for each slot (a view
+        /// keeps its own so two sizes do not remake it every flush), both made in this context (framebuffers are not shared with the engine's).</summary>
+        public uint ModelFbo;
+        public readonly uint[] ModelDepth = new uint[CX.Services.Nui.NuiModelDoll.MaxViews];
+        public readonly int[] ModelW = new int[CX.Services.Nui.NuiModelDoll.MaxViews], ModelH = new int[CX.Services.Nui.NuiModelDoll.MaxViews];
         public bool ModelChecked;
     }
 
@@ -230,15 +231,15 @@ internal static unsafe class GuiPass
                 if (solve == 1)
                 {
                     solve = 2; li = runStart;
-                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(1, last.W, last.H), last.W, last.H));
-                    ClearModelTarget(1f);
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(1, last.W, last.H), last.W, last.H, SlotOf(curTarget)));
+                    ClearModelTarget(null, 1f);
                     write = 1;
                 }
                 else
                 {
                     solve = 0;
-                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(curTarget, last.W, last.H));
-                    GuiModelSolve.Resolve(last.W, last.H, _log);
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(curTarget, last.W, last.H, SlotOf(curTarget)));
+                    GuiModelSolve.Resolve(last.W, last.H, CX.Services.Nui.NuiModelDoll.OfTexture(curTarget), _log);
                     Gl.UseProgram(_gl.Prog);
                     blend = depth = write = cull = tex = -1; src = dst = 0; vao = uint.MaxValue; prog = _gl.Prog;
                     Gl.Enable(Gl.SCISSOR_TEST);
@@ -250,16 +251,16 @@ internal static unsafe class GuiPass
             if (l.Target != curTarget)
             {
                 curTarget = l.Target;
-                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, out runEnd))
+                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, CX.Services.Nui.NuiModelDoll.OfTexture(curTarget), out runEnd))
                 {
                     solve = 1; runStart = li - 1;
-                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(0, l.W, l.H), l.W, l.H));
-                    ClearModelTarget(0f);
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(0, l.W, l.H), l.W, l.H, SlotOf(curTarget)));
+                    ClearModelTarget(null, 0f);
                 }
                 else
                 {
-                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, curTarget != 0 ? ModelTarget(curTarget, l.W, l.H) : baseFbo);
-                    if (curTarget != 0) ClearModelTarget();
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, curTarget != 0 ? ModelTarget(curTarget, l.W, l.H, SlotOf(curTarget)) : baseFbo);
+                    if (curTarget != 0) ClearModelTarget(CX.Services.Nui.NuiModelDoll.OfTexture(curTarget));
                 }
                 Gl.FrontFace(curTarget != 0 ? Gl.CW : Gl.CCW);
                 write = 1;
@@ -329,18 +330,20 @@ internal static unsafe class GuiPass
 
     /// <summary>The framebuffer a model view's layer draws into: <paramref name="tex"/> as colour, a depth the size of the
     /// layer. Re-attached every flush, since GL reuses freed names.</summary>
-    private static uint ModelTarget(uint tex, int w, int h)
+    private static int SlotOf(uint tex) => CX.Services.Nui.NuiModelDoll.OfTexture(tex)?.Index ?? 0;
+
+    private static uint ModelTarget(uint tex, int w, int h, int k)
     {
         if (_gl.ModelFbo == 0) { uint f; Gl.GenFramebuffers(1, &f); _gl.ModelFbo = f; }
-        if (_gl.ModelDepth == 0 || _gl.ModelW != w || _gl.ModelH != h)
+        if (_gl.ModelDepth[k] == 0 || _gl.ModelW[k] != w || _gl.ModelH[k] != h)
         {
-            RenderTarget.AllocDepth(ref _gl.ModelDepth, Gl.DEPTH24_STENCIL8, w, h);
-            _gl.ModelW = w; _gl.ModelH = h;
+            RenderTarget.AllocDepth(ref _gl.ModelDepth[k], Gl.DEPTH24_STENCIL8, w, h);
+            _gl.ModelW[k] = w; _gl.ModelH[k] = h;
         }
         Gl.TextureParameteri(tex, Gl.TEXTURE_MIN_FILTER, (int)Gl.LINEAR);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.ModelFbo);
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_STENCIL_ATTACHMENT, Gl.TEXTURE_2D, _gl.ModelDepth, 0);
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_STENCIL_ATTACHMENT, Gl.TEXTURE_2D, _gl.ModelDepth[k], 0);
         if (!_gl.ModelChecked)
         {
             _gl.ModelChecked = true;
@@ -350,12 +353,12 @@ internal static unsafe class GuiPass
         return _gl.ModelFbo;
     }
 
-    /// <summary>The model view's background, or with <paramref name="solid"/> from 0 to 1 that grey, opaque, then a fresh depth.</summary>
-    private static void ClearModelTarget(float solid = -1f)
+    /// <summary>The slot's background, or with <paramref name="solid"/> from 0 to 1 that grey, opaque, then a fresh depth.</summary>
+    private static void ClearModelTarget(CX.Services.Nui.NuiModelDoll.ModelSlot? slot, float solid = -1f)
     {
         Gl.Disable(Gl.SCISSOR_TEST);
         float* c = stackalloc float[4];
-        CX.Services.Nui.NuiModelDoll.Background(c);
+        if (slot != null) CX.Services.Nui.NuiModelDoll.Background(slot, c);
         if (solid >= 0f) { c[0] = c[1] = c[2] = solid; c[3] = 1f; }
         Gl.ClearBufferfv(Gl.COLOR, 0, c);
         Gl.DepthMask(1);

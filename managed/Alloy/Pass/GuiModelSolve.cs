@@ -23,7 +23,7 @@ internal static unsafe class GuiModelSolve
 
     /// <summary>Does the run of layers drawing into one model texture, starting at <paramref name="first"/>, need the two-pass solve?
     /// <paramref name="end"/> is the layer after the run (or <paramref name="to"/>).</summary>
-    internal static bool Wanted(int first, int to, out int end)
+    internal static bool Wanted(int first, int to, CX.Services.Nui.NuiModelDoll.ModelSlot? slot, out int end)
     {
         uint target = GuiCapture.Layers[first].Target;
         end = first;
@@ -36,7 +36,8 @@ internal static unsafe class GuiModelSolve
             end++;
         }
         float* c = stackalloc float[4];
-        CX.Services.Nui.NuiModelDoll.Background(c);
+        if (slot == null) return false;
+        CX.Services.Nui.NuiModelDoll.Background(slot, c);
         return additive && c[3] < 1f && Ready();
     }
 
@@ -76,12 +77,12 @@ internal static unsafe class GuiModelSolve
 
     /// <summary>Writes the solved image, over the server's background, into the framebuffer bound now. GL state the layer loop
     /// caches is the caller's to put back.</summary>
-    internal static void Resolve(int w, int h, ExtenderLog? log)
+    internal static void Resolve(int w, int h, CX.Services.Nui.NuiModelDoll.ModelSlot? slot, ExtenderLog? log)
     {
         SolveState s = _s;
         if (!s.Said) { s.Said = true; log?.Always($"GuiModelSolve: a model view with additive draws is solved over black and white ({w}x{h})"); }
         float* c = stackalloc float[4];
-        CX.Services.Nui.NuiModelDoll.Background(c);
+        if (slot != null) CX.Services.Nui.NuiModelDoll.Background(slot, c);
         Gl.Disable(Gl.SCISSOR_TEST);
         Gl.Disable(Gl.DEPTH_TEST);
         Gl.Disable(Gl.BLEND);

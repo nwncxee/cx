@@ -161,9 +161,22 @@ internal static unsafe class GuiCapture
     }
 
     /// <summary><c>RenderOnlyGobs</c>' two strcasecmp's: the character-preview model view and the compass are the only
-    /// GUI scenes it lights.</summary>
+    /// GUI scenes it lights. A model view's scene past the first carries the digits the engine's unique-name rule appends
+    /// (<c>sceneGUI_guiModelView1</c>). The engine lights the exact name only, and CX shows its own views to it as that,
+    /// so here the digits are accepted after the model view's name and after no other.</summary>
     internal static bool IsLitScene(byte* name)
-        => NameIs(name, "sceneGUI_guiModelView"u8) || NameIs(name, "sceneGUI_Viewport_Compass"u8);
+        => NameIs(name, "sceneGUI_guiModelView"u8) || NameIs(name, "sceneGUI_Viewport_Compass"u8) || ModelViewNumbered(name);
+
+    private static bool ModelViewNumbered(byte* s)
+    {
+        ReadOnlySpan<byte> want = "sceneGUI_guiModelView"u8;
+        for (int i = 0; i < want.Length; i++)
+            if ((s[i] | 0x20) != (want[i] | 0x20)) return false;
+        int n = want.Length;
+        if (s[n] == 0) return false;
+        for (; s[n] != 0; n++) if (s[n] < (byte)'0' || s[n] > (byte)'9') return false;
+        return true;
+    }
 
     private static bool NameIs(byte* s, ReadOnlySpan<byte> want)
     {
@@ -572,6 +585,10 @@ internal static unsafe class GuiCapture
         Put("sceneGUI_guiModelView"); check.Expect(IsLitScene(a), "the model view is lit");
         Put("SCENEGUI_VIEWPORT_COMPASS"); check.Expect(IsLitScene(a), "the compass is lit, compared case-insensitively");
         Put("sceneGUI_guiModelViewX"); check.Expect(!IsLitScene(a), "a longer name is not the model view");
+        Put("sceneGUI_guiModelView1"); check.Expect(IsLitScene(a), "the second model view's scene, numbered by the unique-name rule, is lit");
+        Put("sceneGUI_guiModelView12"); check.Expect(IsLitScene(a), "...and so is the twelfth");
+        Put("sceneGUI_guiModelView1x"); check.Expect(!IsLitScene(a), "digits then anything else is not a model view");
+        Put("sceneGUI_Viewport_Compass1"); check.Expect(!IsLitScene(a), "the compass takes no number");
         Put("sceneGUI_minimap"); check.Expect(!IsLitScene(a), "any other panel is unlit");
         bool latch = false;
         DepthOf(a, ref latch, out float n0, out float f0, out bool c0);
