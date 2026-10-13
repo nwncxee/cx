@@ -453,7 +453,8 @@ internal static unsafe class FacadeSelfCheck
 
     /// <summary>A shell whose object was ever in a GUI scene, or never joined one, is never handed out again,
     /// even once the ring is full and past its quarantine. Oracle: hand-written expectations -- the stamp each
-    /// join leaves, the held and unmarked counts, neither address coming back, and the churn reusing world shells.</summary>
+    /// join leaves, the held and unmarked counts, neither address coming back, the churn reusing world shells,
+    /// and the held-set warning's literal thresholds.</summary>
     private static void GuiHold(Checker check)
     {
         nint probe = SeamShell.Alloc(FacadeKind.Object, default);
@@ -497,6 +498,9 @@ internal static unsafe class FacadeSelfCheck
         check.Expect(SeamShell.Held == held + 3 && SeamShell.Quarantined == quarantined,
             "an object, text or camera shell retired before it joined any scene must be held, not queued for reuse");
         check.Expect(SeamShell.Unmarked == unmarkedBefore + 3, "every retire before any scene join must be counted");
+        check.Expect(!SeamShell.HeldRunaway(2048) && !SeamShell.HeldRunaway(4095) && SeamShell.HeldRunaway(4096)
+                   && !SeamShell.HeldRunaway(6000) && SeamShell.HeldRunaway(8192) && SeamShell.HeldRunaway(1L << 20),
+            "the held-set warning fires at 4096 and every doubling after it, and nowhere else");
         // Age what the ring already holds first, so filling it evicts those rather than overflowing.
         for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         for (int k = 0; k < SeamShell.RingSize; k++)
@@ -525,16 +529,17 @@ internal static unsafe class FacadeSelfCheck
         SceneDb.Scenes.Free(gui);
     }
 
-    /// <summary>A part shell whose object was ever in a GUI scene is held at the object's death, never freed,
-    /// so the part allocator cannot hand its address out again. Oracle: hand-written expectations -- the
-    /// held and quarantined counts, and the GUI part's address never coming back from a churn that does reuse
-    /// the world part's. Its two GUI parts stay held for the session.</summary>
+    /// <summary>A part shell whose object was ever in a GUI scene, or never in any, is held at the object's death,
+    /// so the part allocator cannot hand its address out again. Oracle: hand-written expectations -- the held and
+    /// quarantined counts, and no held address coming back from a churn that does reuse the world parts'.
+    /// A world camera's row names its shell's interior, so its part is quarantined too.</summary>
     private static void PartHold(Checker check)
     {
         PartShell.Build();
         DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc(), wobj = SceneDb.Objects.Alloc(),
-             gobj = SceneDb.Objects.Alloc(), churn = SceneDb.Objects.Alloc();
-        if (world.IsNull || gui.IsNull || wobj.IsNull || gobj.IsNull || churn.IsNull)
+             gobj = SceneDb.Objects.Alloc(), uobj = SceneDb.Objects.Alloc(), cobj = SceneDb.Objects.Alloc(),
+             churn = SceneDb.Objects.Alloc();
+        if (world.IsNull || gui.IsNull || wobj.IsNull || gobj.IsNull || uobj.IsNull || cobj.IsNull || churn.IsNull)
         {
             check.Expect(false, "no records for the GUI part hold check");
             return;
@@ -543,49 +548,73 @@ internal static unsafe class FacadeSelfCheck
         SceneDb.SceneIsWorld[gui.Index] = false;
         DbFeed.InitObject(wobj.Index);
         DbFeed.InitObject(gobj.Index);
+        DbFeed.InitObject(uobj.Index);
+        DbFeed.InitObject(cobj.Index);
         DbFeed.InitObject(churn.Index);
-        nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj);
-        nint wpart = PartShell.For(wobj, 0), before = PartShell.For(gobj, 0);
-        if (wpart == 0 || before == 0)
+        nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj),
+             ushell = Facade.Mint(FacadeKind.Object, uobj), cshell = Facade.Mint(FacadeKind.Camera, default);
+        SceneDb.ObjFacade[cobj.Index] = cshell + SeamLayout.CameraGobSub;
+        nint wpart = PartShell.For(wobj, 0), before = PartShell.For(gobj, 0), unjoined = PartShell.For(uobj, 0),
+             cpart = PartShell.For(cobj, 0);
+        nint remint = 0;
+        if (wpart == 0 || before == 0 || unjoined == 0 || cpart == 0)
         {
             check.Skip("no Part vtable in this host, so no part shell can be minted");
         }
         else
         {
             DbScene.Join(world, wobj);
+            DbScene.Join(world, cobj);
             DbScene.Join(gui, gobj);
             nint after = PartShell.For(gobj, 1);
             DbScene.Leave(gui, gobj);
+            remint = Facade.Mint(FacadeKind.Object, gobj);
+            DbScene.Join(world, gobj);
+            DbScene.Leave(world, gobj);
             DbScene.Leave(world, wobj);
+            DbScene.Leave(world, cobj);
             long held = PartShell.Held, quarantined = PartShell.Quarantined;
             PartShell.FreeAll(gobj);
             check.Expect(PartShell.Held == held + 2 && PartShell.Quarantined == quarantined,
-                "both parts of an object that was in a GUI scene, minted before and after the join, must be held");
+                "both parts of an object that was in a GUI scene, then re-minted into a world one, must be held");
+            PartShell.FreeAll(uobj);
+            check.Expect(PartShell.Held == held + 3 && PartShell.Quarantined == quarantined,
+                "a part of an object that never joined any scene must be held: a GUI layout takes it before the join");
             PartShell.FreeAll(wobj);
-            check.Expect(PartShell.Held == held + 2 && PartShell.Quarantined == quarantined + 1,
+            check.Expect(PartShell.Held == held + 3 && PartShell.Quarantined == quarantined + 1,
                 "a part of an object only ever in a world scene goes to the quarantine");
-            check.Expect(!PartShell.Resolve(before, out _, out _) && !PartShell.Resolve(after, out _, out _),
-                "a held GUI part shell must not resolve to a record");
+            PartShell.FreeAll(cobj);
+            check.Expect(PartShell.Held == held + 3 && PartShell.Quarantined == quarantined + 2,
+                "a part of a camera only ever in a world scene goes to the quarantine, through its interior pointer");
+            check.Expect(!PartShell.Resolve(before, out _, out _) && !PartShell.Resolve(after, out _, out _)
+                       && !PartShell.Resolve(unjoined, out _, out _),
+                "a held part shell must not resolve to a record");
 
             for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
             check.Expect(PartShell.Quarantined == quarantined, "the world part must be freed past its quarantine");
-            bool gotGui = false, gotWorld = false;
+            bool gotHeld = false, gotWorld = false;
             for (int k = 0; k < 256; k++)
             {
                 nint p = PartShell.For(churn, k);
-                gotGui |= p == before || p == after;
-                gotWorld |= p == wpart;
+                gotHeld |= p == before || p == after || p == unjoined;
+                gotWorld |= p == wpart || p == cpart;
             }
             check.Expect(gotWorld, "the freed world part's address must come back, or this check proves nothing");
-            check.Expect(!gotGui, "a held GUI part shell was handed out again");
+            check.Expect(!gotHeld, "a held GUI or never-joined part shell was handed out again");
             PartShell.FreeAll(churn);
             for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         }
 
         Facade.Retire(gshell);
         Facade.Retire(wshell);
+        Facade.Retire(ushell);
+        if (remint != 0) Facade.Retire(remint);
+        Facade.Retire(cshell);
+        SceneDb.ObjFacade[cobj.Index] = 0;
+        SceneDb.Objects.Free(cobj);
         SceneDb.Objects.Free(wobj);
         SceneDb.Objects.Free(gobj);
+        SceneDb.Objects.Free(uobj);
         SceneDb.Objects.Free(churn);
         SceneDb.SceneIsWorld[world.Index] = false;
         SceneDb.Scenes.Free(world);

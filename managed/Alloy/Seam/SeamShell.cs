@@ -254,6 +254,21 @@ public static unsafe class SeamShell
     /// ones, since nothing says a GUI pointer does not still reach them.</summary>
     public static long Unmarked => _held.Unmarked;
 
+    /// <summary>Held shells at which a held set is named loudly, and again at every doubling: about five times
+    /// what one short session reached. Only a log line; a held shell is never freed.</summary>
+    private const long HeldWarnFloor = 4096;
+
+    /// <summary>True when a held set that just reached <paramref name="count"/> should be named.</summary>
+    internal static bool HeldRunaway(long count) => count >= HeldWarnFloor && (count & (count - 1)) == 0;
+
+    /// <summary>Name a held set that keeps growing, once per doubling past <see cref="HeldWarnFloor"/>.</summary>
+    internal static void NoteHeld(string what, long count)
+    {
+        if (HeldRunaway(count) && !Facade.InSelfCheck)
+            Facade.Log?.Always($"seam: {count} {what} held for the session and never freed or reused -- if this "
+                             + "keeps doubling, the held set is growing without levelling off");
+    }
+
     /// <summary>Distinct destroying game functions <see cref="NoteUnmarked"/> names per session; the count keeps going.
     /// Linux only: on Windows the destroyer is unnamed, so one line is written per session.</summary>
     private const int UnmarkedLines = 64;
@@ -366,6 +381,7 @@ public static unsafe class SeamShell
         if (h->Scenes != InWorld)
         {
             _held.Blocks.Add(shell);
+            NoteHeld("facade shells", _held.Blocks.Count);
             return;
         }
         int k = h->Kind & 3;

@@ -415,7 +415,7 @@ public static unsafe partial class DbFeed
         // ...and the scene: a record whose join is skipped otherwise points at the last tenant's scene.
         SceneDb.ObjScene[o] = default;
         SceneDb.ObjCrossScene[o] = default;
-        SceneDb.ObjEverInGui[o] = false;
+        SceneDb.ObjSceneKinds[o] = 0;
         // ...and the texture rotation, for the same reason: a recycled slot that kept a quarter turn would
         // turn the next tenant's tile textures through an angle its own placement never asked for.
         SceneDb.ObjTexRotate[o] = 0;
