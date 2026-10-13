@@ -2,8 +2,7 @@
 //   string <- tracy srcloc struct (data ref) <- code ref, printing the functions. This is how #446
 //   anchored CNWCArea/CNWCAnimBase on Windows: nwmain.exe keeps its __FUNCSIG__ and ExoLog strings
 //   even for classes it does not export, so a class the sweep dumps empty is still anchorable.
-//   Run: analyzeHeadless "$GHIDRA_PROJECT" nwn-linux -process nwmain.exe -noanalysis -readOnly \
-//        -scriptPath tools/ghidra -postScript TracySub.java out.txt "CNWCArea::LoadBorder"
+//   Run: tools/ghidra/headless.sh nwmain.exe TracySub.java out.txt "CNWCArea::LoadBorder"
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.*;
 import ghidra.program.model.listing.*;
