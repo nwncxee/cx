@@ -1,0 +1,13 @@
+model.me.target=player
+model.me.size=250x260
+model.me.dist=5.2
+model.me.height=0.95
+model.me.yaw=270
+model.me.drag=1.2
+model.me.light=server
+model.me.lightcolor=0.5,1.0,1.7
+model.me.lightdir=0.2,0.6,0.8
+model.me.lightambient=0.1,0.2,0.3
+cardstyle={"bg":{"from":"#0a3a5ae6","to":"#04182ae6","dir":"v"},"border":"#5ec8ff","borderw":1,"sides":"tb","corners":"#f08a1c","cornerlen":12,"cornerw":2,"pad":12,"color":"#cfeaff","dimcolor":"#6aa6c8","tabcolor":"#f08a1c","tabtext":"#04182a","divider":"#5ec8ff66","footerband":"#f08a1c22","side":"above","offset":8}
+card.rel0=[{"width":300,"tab":"CODEX","blocks":[{"type":"text","size":1.3,"text":"First Contact War","color":"#f08a1c"},{"type":"text","dim":true,"text":"History, 2157"},{"type":"divider"},{"type":"text","text":"A three-month conflict that began with a misread signal at a mass relay."},{"type":"footer","left":"Unlocked on Arcturus","right":"2 / 9"}]}]
+card.rel*=[{"width":260,"tab":"CODEX","blocks":[{"type":"text","size":1.3,"text":"Related entry","color":"#f08a1c"},{"type":"text","dim":true,"text":"Read it in the codex."}]}]

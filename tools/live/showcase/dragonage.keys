@@ -1,0 +1,1 @@
+sleep:13000;shot:@SHOTS@/window.png;move:100,100;sleep:300;move:600,457;sleep:2500;shot:@SHOTS@/card.png
