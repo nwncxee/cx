@@ -21,6 +21,9 @@ internal static unsafe class NuiModelDoll
     private const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
     /// <summary>Character creation first-build flags for <c>SetAppearance</c>: body (with its parts), head, tail, wing and cloak; 0x40 would build the base body only.</summary>
     private const byte BuildFlags = 0x2f;   // not-an-offset: SetAppearance flag bits
+    /// <summary>The flags for a model that is not built from body parts (a hell hound, an ogre, a beholder): bit 0x40 takes the engine's
+    /// base-body path, the only one that builds such a model, and the low bits still add its head, tail and wings.</summary>
+    private const byte BuildFlagsSimple = 0x4e;   // not-an-offset: SetAppearance flag bits
     private const int InfoMax = 256;   // not-an-offset: room for either OS's CCAppearanceInfo
     private static int InfoBytes => EngineLayout.SizeOfAppearanceInfo;
 
@@ -147,15 +150,7 @@ internal static unsafe class NuiModelDoll
         new CNWCObject(mem).Id = id;
         IntPtr master = EngineFn.GetClientAIMaster(app);
         if (ai && master != IntPtr.Zero) EngineFn.AiMasterAddObject(master, mem);
-        if (EngineFn.NwcCreatureSetAppearance(mem, (IntPtr)info, BuildFlags) == 0)
-        {
-            _o.Log?.Always("NuiModelDoll: SetAppearance failed on the throwaway creature");
-            _o.Doll = d;
-            Destroy();
-            return false;
-        }
-        d.Model = new CNWCCreature(mem).GetModel(0xff, 1);
-        if (d.Model != IntPtr.Zero) Opaque(d.Model);
+        d.Model = Dress(mem, (IntPtr)info);
         byte* name = stackalloc byte[ViewName.Length + 1];
         for (int i = 0; i < ViewName.Length; i++) name[i] = (byte)ViewName[i];
         name[ViewName.Length] = 0;
@@ -169,7 +164,6 @@ internal static unsafe class NuiModelDoll
         _o.Doll = d;
         if (d.Model == IntPtr.Zero)
         {
-            _o.Log?.Always("NuiModelDoll: the throwaway creature has no model");
             Destroy();
             return false;
         }
@@ -179,6 +173,18 @@ internal static unsafe class NuiModelDoll
         d.Enabled = true;
         _o.Log?.Always($"NuiModelDoll: built -- creature 0x{mem:x} id 0x{id:x} model 0x{d.Model:x} viewport 0x{vp:x} scene 0x{d.Scene:x} camera 0x{d.Camera:x}");
         return true;
+    }
+
+    /// <summary>Give <paramref name="creature"/> the appearance in <paramref name="info"/> and fetch the model it made, opaque. A model
+    /// built from body parts comes from the full path; any other kind (the engine's simple and fixed models) only from the base
+    /// one, so a creature that has none after the first is built again through it. Zero = the record names no model.</summary>
+    private static IntPtr Dress(IntPtr creature, IntPtr info)
+    {
+        IntPtr model = EngineFn.NwcCreatureSetAppearance(creature, info, BuildFlags) == 0 ? IntPtr.Zero : new CNWCCreature(creature).GetModel(0xff, 1);
+        if (model == IntPtr.Zero && EngineFn.NwcCreatureSetAppearance(creature, info, BuildFlagsSimple) != 0)
+            model = new CNWCCreature(creature).GetModel(0xff, 1);
+        if (model != IntPtr.Zero) Opaque(model);
+        return model;
     }
 
     /// <summary>Take the doll down the way the engine's own creature preview does: leave the view, drop the id, delete the
@@ -277,12 +283,10 @@ internal static unsafe class NuiModelDoll
         if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
         byte* info = stackalloc byte[InfoMax];
         now.CopyTo(new Span<byte>(info, InfoBytes));
-        if (EngineFn.NwcCreatureSetAppearance(d.Creature, (IntPtr)info, BuildFlags) == 0) return false;
-        IntPtr model = new CNWCCreature(d.Creature).GetModel(0xff, 1);
+        IntPtr model = Dress(d.Creature, (IntPtr)info);
         if (model == IntPtr.Zero) return false;
         d.Model = model;
         EngineFn.GuiViewportTakeModel(d.Viewport, model);
-        Opaque(model);
         return true;
     }
 

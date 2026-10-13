@@ -46,7 +46,7 @@ internal static unsafe class NuiModelView
         /// <summary>The range the player's drag turn stays in (both 0 with <see cref="HasTurnRange"/> false = free).</summary>
         public float TurnMin, TurnMax;
         public bool HasTurnRange, MuteVfx, WornMuted;
-        public bool Anim = true, Built, WasRendered;
+        public bool Anim = true, Built, WasRendered, BuildFailed;
         public string Wear = "", StandinRect = "", Vfx = "";
         public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
         public byte[] Info = Array.Empty<byte>();
@@ -180,7 +180,13 @@ internal static unsafe class NuiModelView
         }
         if (!v.Built)
         {
-            if (!NuiModelDoll.Build(who, 0, 0, v.W, v.H, v.Anim)) return;
+            if (v.BuildFailed) return;
+            if (!NuiModelDoll.Build(who, 0, 0, v.W, v.H, v.Anim))
+            {
+                v.BuildFailed = true;
+                s.Log?.Always($"NuiModelView: '{v.Key}' -- no doll could be built for the target; not tried again until the policy changes");
+                return;
+            }
             v.Built = true;
             v.Info = NuiModelDoll.InfoOf(who).ToArray();
             NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
@@ -258,6 +264,7 @@ internal static unsafe class NuiModelView
 
     private static void Read(ViewState s, ViewData v)
     {
+        v.BuildFailed = false;
         string target = Policy(v.Key, "target", "");
         v.OnPlayer = target == "player";
         v.TargetId = !v.OnPlayer && uint.TryParse(target, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id) ? id : 0;
