@@ -3,6 +3,7 @@ using System.Text;
 using CX.Framework;
 using CX.Services.Nui;
 using CX.Ui;
+using CX.Services.Panels;
 
 namespace CX.Services.Cards;
 
@@ -42,10 +43,10 @@ internal static class CardSelfCheck
 
     private static bool Near(float v, float want) => Math.Abs(v - want) < 0.01f;
 
-    private static CardView Lay(GlyphAtlas atlas, string cardJson, CardSubject subject = default, float scale = 1f)
+    private static PanelView Lay(GlyphAtlas atlas, string cardJson, PanelSubject subject = default, float scale = 1f)
     {
-        CardParser.TryParse(cardJson, out CardDecl[] cards, out _);
-        return CardLayout.Build(cards[0], scale, m => (atlas, m), subject);
+        PanelParser.TryParse(cardJson, out PanelDecl[] cards, out _);
+        return PanelLayout.Build(cards[0], scale, m => (atlas, m), subject);
     }
 
     private static NuiHit Hit(string token, int row = -1, string image = "", float x = 50f, float y = 40f, float w = 30f, float h = 30f)
@@ -71,22 +72,22 @@ internal static class CardSelfCheck
 
     private static void Markup(Checker check)
     {
-        check.Expect(CardMarkup.TryParse("a<c=#ff0000>b</c> <i>c</i><br>d <<e <z>", out Run[] r, out _) && r.Length == 6
+        check.Expect(PanelMarkup.TryParse("a<c=#ff0000>b</c> <i>c</i><br>d <<e <z>", out Run[] r, out _) && r.Length == 6
             && r[0].Text == "a" && r[0].Rgba == 0 && r[1].Text == "b" && r[1].Rgba == 0xFF0000FF && r[2].Text == " " && r[2].Rgba == 0
             && r[3].Text == "c" && r[3].Italic && r[4].Break && r[5].Text == "d <e <z>",
             "colour and italic open and close, <br> breaks, << is a literal <, an unknown tag stays as typed");
-        check.Expect(CardMarkup.TryParse("<s=1.5>x</s><s=9>y</s>", out r, out _) && r[0].Size == 1.6f && r[1].Size == 2f, "a size snaps to the nearest ladder step");
-        check.Expect(CardMarkup.TryParse("<c=red>x", out r, out _) && r.Length == 1 && r[0].Text == "<c=red>x", "a bad colour value stays as typed");
-        check.Expect(CardMarkup.TryParse("a\nb<icon=gui_x>", out r, out _) && r.Length == 4 && r[1].Break && r[3].Icon == "gui_x", "a newline breaks the line and <icon=> is an inline icon");
-        check.Expect(!CardMarkup.TryParse(new string('a', 401), out _, out _), "401 characters is over the text limit");
-        check.Expect(!CardMarkup.TryParse(string.Concat(System.Linq.Enumerable.Repeat("a<i>", 49)), out _, out _), "49 runs is over the run limit");
+        check.Expect(PanelMarkup.TryParse("<s=1.5>x</s><s=9>y</s>", out r, out _) && r[0].Size == 1.6f && r[1].Size == 2f, "a size snaps to the nearest ladder step");
+        check.Expect(PanelMarkup.TryParse("<c=red>x", out r, out _) && r.Length == 1 && r[0].Text == "<c=red>x", "a bad colour value stays as typed");
+        check.Expect(PanelMarkup.TryParse("a\nb<icon=gui_x>", out r, out _) && r.Length == 4 && r[1].Break && r[3].Icon == "gui_x", "a newline breaks the line and <icon=> is an inline icon");
+        check.Expect(!PanelMarkup.TryParse(new string('a', 401), out _, out _), "401 characters is over the text limit");
+        check.Expect(!PanelMarkup.TryParse(string.Concat(System.Linq.Enumerable.Repeat("a<i>", 49)), out _, out _), "49 runs is over the run limit");
     }
 
     private static void Parse(Checker check)
     {
-        check.Expect(CardParser.TryParse(Everything, out CardDecl[] cards, out string why) && cards.Length == 1, "a card using every block parses: " + why);
+        check.Expect(PanelParser.TryParse(Everything, out PanelDecl[] cards, out string why) && cards.Length == 1, "a card using every block parses: " + why);
         if (cards.Length != 1) return;
-        CardDecl c = cards[0];
+        PanelDecl c = cards[0];
         BlockKind[] kinds = [BlockKind.Text, BlockKind.Text, BlockKind.Status, BlockKind.Text, BlockKind.Divider, BlockKind.Section,
             BlockKind.Icons, BlockKind.Text, BlockKind.Footer, BlockKind.Text, BlockKind.Text];
         bool order = c.Blocks.Length == kinds.Length;
@@ -101,7 +102,7 @@ internal static class CardSelfCheck
         check.Expect(c.Blocks[5].Kids.Length == 1 && c.Blocks[5].Tint == 0xFFFFFF10 && c.Blocks[6].Icons.Length == 3 && c.Blocks[6].Frame, "section tint and kids, a framed icon row");
         check.Expect(c.Blocks[8].Runs.Length == 1 && c.Blocks[8].Right.Length == 3 && c.Blocks[8].Right[1].Icon == "w", "footer left and right, an inline icon on the right");
         check.Expect(c.Images.Length == 1 && c.Images[0].At == Anchor.TopRight && c.Images[0].Dx == 20f && c.Images[0].Dy == -20f, "an image anchored top right, pushed out");
-        check.Expect(CardParser.TryParse("{\"blocks\":[],\"future\":{\"a\":1}}", out cards, out _) && cards.Length == 1, "an unknown field is ignored");
+        check.Expect(PanelParser.TryParse("{\"blocks\":[],\"future\":{\"a\":1}}", out cards, out _) && cards.Length == 1, "an unknown field is ignored");
         string[] bad =
         [
             "not json", "5", "{\"width\":\"wide\"}", "{\"border\":\"red\"}", "{\"blocks\":{}}", "{\"blocks\":[{\"type\":\"icons\"}]}",
@@ -112,13 +113,13 @@ internal static class CardSelfCheck
             "{\"tab\":\"" + new string('x', 13_000) + "\"}",
         ];
         bool allRefused = true;
-        foreach (string b in bad) if (CardParser.TryParse(b, out _, out string e) || e.Length == 0) { allRefused = false; check.Expect(false, "refused: " + b[..Math.Min(b.Length, 40)]); }
+        foreach (string b in bad) if (PanelParser.TryParse(b, out _, out string e) || e.Length == 0) { allRefused = false; check.Expect(false, "refused: " + b[..Math.Min(b.Length, 40)]); }
         check.Expect(allRefused, "each malformed declaration is refused with a reason");
     }
 
     private static void Layout(Checker check, GlyphAtlas atlas)
     {
-        CardView v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"aaaa bbbb cccc\"}]}");
+        PanelView v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"aaaa bbbb cccc\"}]}");
         check.Expect(Near(v.W, 200f) && Near(v.H, 42f), $"one 20 px line: 10 pad + 20 + 2 gap + 10 pad = 42 ({v.H})");
         v = Lay(atlas, "{\"width\":160,\"blocks\":[{\"text\":\"aaaa bbbb cccc dddd\"}]}");
         check.Expect(Near(v.H, 62f), $"140 px of text holds three words (128) and wraps the fourth: two lines, 10 + 40 + 2 + 10 = 62 ({v.H})");
@@ -162,7 +163,7 @@ internal static class CardSelfCheck
         check.Expect(Near(v.Icons[0].X, 0f) && Near(v.Icons[0].Y, v.H - 40f), "bottom left sits flush in the corner");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"a <icon=gui_w> b\"}]}");
         check.Expect(v.Icons.Count == 1 && Near(v.Icons[0].W, 20f) && Near(v.Icons[0].H, 20f), "an inline icon is as tall as its line");
-        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"{item.name}\"}]}", new CardSubject("torch", "3"));
+        v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"{item.name}\"}]}", new PanelSubject("torch", "3"));
         check.Expect(v.Text.VertexCount == 30, "{item.name} is the item's name: five letters, five quads");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"{item.name}\"}]}");
         check.Expect(v.Text.VertexCount == 0, "with no item it is empty");
@@ -179,8 +180,8 @@ internal static class CardSelfCheck
     private static void Placement(Checker check)
     {
         var a = TestAtlas();
-        CardView one = Lay(a, "{\"width\":160,\"blocks\":[{\"text\":\"ab\"}]}"), two = Lay(a, "{\"width\":160,\"tab\":\"t\",\"blocks\":[{\"text\":\"ab<br>cd<br>ef\"}]}");
-        CardView[] views = [one, two];
+        PanelView one = Lay(a, "{\"width\":160,\"blocks\":[{\"text\":\"ab\"}]}"), two = Lay(a, "{\"width\":160,\"tab\":\"t\",\"blocks\":[{\"text\":\"ab<br>cd<br>ef\"}]}");
+        PanelView[] views = [one, two];
         float[] xs = new float[2], ys = new float[2];
         CardPlacer.Place(views, 50, 40, 30, 800, 600, 1f, xs, ys);
         check.Expect(Near(xs[0], 88f) && Near(xs[1], 88f + 160f + 8f) && Near(ys[0], 40f) && Near(ys[1], 40f), "cards sit right of the element, 8 px off it and from each other, tops level");
@@ -251,12 +252,12 @@ internal static class CardSelfCheck
         NuiHit nh = Hit("celly");
         none.Update(true, in nh);
         check.Expect(!none.Hovering && none.Set == null, "an element declared with no card shows none, not the stand-in");
-        check.Expect(CardParser.TryParse("[]", out CardDecl[] zero, out _) && zero.Length == 0 && !CardParser.TryParse("{}x", out _, out _), "[] parses to zero cards");
+        check.Expect(PanelParser.TryParse("[]", out PanelDecl[] zero, out _) && zero.Length == 0 && !PanelParser.TryParse("{}x", out _, out _), "[] parses to zero cards");
         ServerPolicy.Apply("card.cellx#4=\ncard.celly=");
         check.Expect(Pick(Hit("celly")) is { Key: "cell*" }, "an empty value still releases the key, so the stand-in answers again");
 
-        check.Expect(Near(CardPulse.Alpha(0), 0.675f) && Near(CardPulse.Alpha(300), 1f) && Near(CardPulse.Alpha(900), 0.35f) && Near(CardPulse.Alpha(1200), 0.675f), "the pulse fades between 0.35 and 1 once every 1200 ms");
-        CardView v = Lay(atlas, standIn);
+        check.Expect(Near(PanelPulse.Alpha(0), 0.675f) && Near(PanelPulse.Alpha(300), 1f) && Near(PanelPulse.Alpha(900), 0.35f) && Near(PanelPulse.Alpha(1200), 0.675f), "the pulse fades between 0.35 and 1 once every 1200 ms");
+        PanelView v = Lay(atlas, standIn);
         check.Expect(v.Pulse != null && v.Pulse.VertexCount > 0 && v.Text.VertexCount == 0 && Near(v.H, 42f), "a loading block is a text block that pulses");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"abab\"}]}");
         check.Expect(v.Pulse == null && v.Text.VertexCount > 0, "a text block does not pulse");
@@ -395,7 +396,7 @@ internal static class CardSelfCheck
         var wanted = new System.Collections.Generic.HashSet<string>();
         ServerPolicy.Clear();
         CardRegistry.Reset();
-        CardParser.TryParse("{\"width\":200,\"images\":[{\"src\":\"@look:0001\",\"w\":20,\"h\":20}],\"blocks\":[{\"type\":\"icons\",\"icons\":[\"@look:0002\",\"gui_x\",\"@look:0001\"]},{\"text\":\"a <icon=@look:0003> b\"}]}", out CardDecl[] cards, out _);
+        PanelParser.TryParse("{\"width\":200,\"images\":[{\"src\":\"@look:0001\",\"w\":20,\"h\":20}],\"blocks\":[{\"type\":\"icons\",\"icons\":[\"@look:0002\",\"gui_x\",\"@look:0001\"]},{\"text\":\"a <icon=@look:0003> b\"}]}", out PanelDecl[] cards, out _);
         CardLooks.Collect(cards[0], wanted);
         check.Expect(wanted.Count == 3 && wanted.Contains("@look:0001") && wanted.Contains("@look:0002") && wanted.Contains("@look:0003"),
             "the images, an icon row and an inline icon each name a look; a repeat counts once");

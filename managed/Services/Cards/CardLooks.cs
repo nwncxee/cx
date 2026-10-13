@@ -4,6 +4,7 @@ using CX.Engine;
 using CX.Framework;
 using CX.Services.Nui;
 using CX.Services.Radial;
+using CX.Services.Panels;
 
 namespace CX.Services.Cards;
 
@@ -24,11 +25,6 @@ internal static class CardLooks
 
     private static LooksState _s = new();
 
-    /// <summary>The prefix of an image name that describes an item by its appearance.</summary>
-    public const string Prefix = "@look:";
-
-    /// <summary>Is <paramref name="src"/> an <c>@look:</c> image name?</summary>
-    public static bool IsLook(string src) => src.StartsWith(Prefix, StringComparison.Ordinal);
 
     /// <summary>The minted item for <paramref name="look"/>, or zero when none was made. Allocation-free.</summary>
     public static IntPtr Item(string look) => _s.Minted.TryGetValue(look, out IntPtr item) ? item : IntPtr.Zero;
@@ -45,7 +41,7 @@ internal static class CardLooks
         s.Gen = gen;
         var wanted = new HashSet<string>();
         foreach (CardSet set in CardRegistry.Sets())
-            foreach (CardDecl c in set.Cards) Collect(c, wanted);
+            foreach (PanelDecl c in set.Cards) Collect(c, wanted);
         Reconcile(s, wanted, NuiItemIcons.MintLook, NuiItemIcons.Destroy, log);
     }
 
@@ -69,9 +65,9 @@ internal static class CardLooks
     }
 
     /// <summary>Every <c>@look:</c> image name the card names, in its images, icon rows, inline icons and sections.</summary>
-    internal static void Collect(CardDecl card, HashSet<string> into)
+    internal static void Collect(PanelDecl card, HashSet<string> into)
     {
-        foreach (CardImage i in card.Images) Add(i.Src, into);
+        foreach (PanelImage i in card.Images) Add(i.Src, into);
         foreach (Block b in card.Blocks) Collect(b, into);
     }
 
@@ -86,7 +82,7 @@ internal static class CardLooks
 
     private static void Add(string src, HashSet<string> into)
     {
-        if (IsLook(src)) into.Add(src);
+        if (PanelLayout.IsLook(src)) into.Add(src);
     }
 
     /// <summary>The item's icon into the rectangle, cropped to its base item's cells as the held image's is. Nothing when the look made none.</summary>

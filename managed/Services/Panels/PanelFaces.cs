@@ -2,14 +2,14 @@ using System;
 using System.Collections.Generic;
 using CX.Ui;
 
-namespace CX.Services.Cards;
+namespace CX.Services.Panels;
 
 /// <summary>
-/// The text faces a card draws with. A size other than the player's own is a multiple from <see cref="CardLimits.SizeLadder"/>;
+/// The text faces a panel draws with. A size other than the player's own is a multiple from <see cref="PanelLimits.SizeLadder"/>;
 /// its face is baked when a declaration that uses it arrives (baking rebuilds the glyph sheet, so never while drawing). A face
 /// that is not baked yet draws as the player's face stretched, which is blurrier and never wrong.
 /// </summary>
-internal static class CardFaces
+internal static class PanelFaces
 {
     private sealed class FacesState
     {

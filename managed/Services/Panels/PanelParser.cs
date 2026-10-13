@@ -4,33 +4,33 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
-namespace CX.Services.Cards;
+namespace CX.Services.Panels;
 
 /// <summary>
-/// Reads one policy value, a JSON card or array of cards (<c>docs/ui-policy-contract.md</c>), into <see cref="CardDecl"/>s.
+/// Reads one policy value, a JSON card or array of cards (<c>docs/ui-policy-contract.md</c>), into <see cref="PanelDecl"/>s.
 /// A field it does not know is ignored, so a newer server can send more than an older client reads; a field it does know
-/// with the wrong type, a bad colour or a value over a <see cref="CardLimits"/> entry refuses the whole declaration.
+/// with the wrong type, a bad colour or a value over a <see cref="PanelLimits"/> entry refuses the whole declaration.
 /// Cold: it allocates.
 /// </summary>
-internal static class CardParser
+internal static class PanelParser
 {
     private sealed class Refusal(string why) : Exception(why);
 
     /// <summary>The cards in <paramref name="json"/> (none for an empty array, which declares that the key has no card), or false with the reason the declaration was refused.</summary>
-    public static bool TryParse(string json, out CardDecl[] cards, out string error)
+    public static bool TryParse(string json, out PanelDecl[] cards, out string error)
     {
         cards = [];
         error = "";
-        if (Encoding.UTF8.GetByteCount(json) > CardLimits.MaxJsonBytes) { error = $"over {CardLimits.MaxJsonBytes} bytes"; return false; }
+        if (Encoding.UTF8.GetByteCount(json) > PanelLimits.MaxJsonBytes) { error = $"over {PanelLimits.MaxJsonBytes} bytes"; return false; }
         try
         {
             using JsonDocument doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 24 });
             JsonElement root = doc.RootElement;
-            var list = new List<CardDecl>();
+            var list = new List<PanelDecl>();
             if (root.ValueKind == JsonValueKind.Array)
                 foreach (JsonElement e in root.EnumerateArray()) list.Add(Card(e));
             else list.Add(Card(root));
-            if (list.Count > CardLimits.MaxCards || (list.Count == 0 && root.ValueKind != JsonValueKind.Array)) throw new Refusal($"{list.Count} cards (1-{CardLimits.MaxCards} allowed)");
+            if (list.Count > PanelLimits.MaxCards || (list.Count == 0 && root.ValueKind != JsonValueKind.Array)) throw new Refusal($"{list.Count} cards (1-{PanelLimits.MaxCards} allowed)");
             cards = list.ToArray();
             return true;
         }
@@ -39,11 +39,11 @@ internal static class CardParser
         return false;
     }
 
-    private static CardDecl Card(JsonElement e)
+    private static PanelDecl Card(JsonElement e)
     {
         if (e.ValueKind != JsonValueKind.Object) throw new Refusal("a card is a JSON object");
-        var c = new CardDecl();
-        c.Width = Math.Clamp(Num(e, "width", c.Width), CardLimits.MinWidth, CardLimits.MaxWidth);
+        var c = new PanelDecl();
+        c.Width = Math.Clamp(Num(e, "width", c.Width), PanelLimits.MinWidth, PanelLimits.MaxWidth);
         c.Border = Col(e, "border", 0);
         c.Tab = Str(e, "tab", "");
         c.TabRgba = Col(e, "tabcolor", 0x000000B0);
@@ -63,18 +63,18 @@ internal static class CardParser
         c.Blocks = Blocks(e, "blocks", 0, ref count);
         if (e.TryGetProperty("images", out JsonElement imgs))
         {
-            if (imgs.ValueKind != JsonValueKind.Array || imgs.GetArrayLength() > CardLimits.MaxImages) throw new Refusal($"images is an array of at most {CardLimits.MaxImages}");
-            var l = new List<CardImage>();
+            if (imgs.ValueKind != JsonValueKind.Array || imgs.GetArrayLength() > PanelLimits.MaxImages) throw new Refusal($"images is an array of at most {PanelLimits.MaxImages}");
+            var l = new List<PanelImage>();
             foreach (JsonElement i in imgs.EnumerateArray())
             {
                 string src = Str(i, "src", "");
-                if (src.Length is 0 or > CardLimits.MaxIconName) throw new Refusal("an image needs a src");
-                l.Add(new CardImage
+                if (src.Length is 0 or > PanelLimits.MaxIconName) throw new Refusal("an image needs a src");
+                l.Add(new PanelImage
                 {
                     Src = src,
-                    W = Math.Clamp(Num(i, "w", 64f), 1f, CardLimits.MaxImagePx), H = Math.Clamp(Num(i, "h", 64f), 1f, CardLimits.MaxImagePx),
-                    Dx = Math.Clamp(Num(i, "dx", 0f), -CardLimits.MaxImagePx, CardLimits.MaxImagePx),
-                    Dy = Math.Clamp(Num(i, "dy", 0f), -CardLimits.MaxImagePx, CardLimits.MaxImagePx),
+                    W = Math.Clamp(Num(i, "w", 64f), 1f, PanelLimits.MaxImagePx), H = Math.Clamp(Num(i, "h", 64f), 1f, PanelLimits.MaxImagePx),
+                    Dx = Math.Clamp(Num(i, "dx", 0f), -PanelLimits.MaxImagePx, PanelLimits.MaxImagePx),
+                    Dy = Math.Clamp(Num(i, "dy", 0f), -PanelLimits.MaxImagePx, PanelLimits.MaxImagePx),
                     At = Str(i, "at", "tr") switch { "tl" => Anchor.TopLeft, "bl" => Anchor.BottomLeft, "br" => Anchor.BottomRight, "tr" => Anchor.TopRight, var a => throw new Refusal($"image anchor '{a}' is tl, tr, bl or br") },
                 });
             }
@@ -90,7 +90,7 @@ internal static class CardParser
         var l = new List<Block>();
         foreach (JsonElement b in arr.EnumerateArray())
         {
-            if (++count > CardLimits.MaxBlocks) throw new Refusal($"more than {CardLimits.MaxBlocks} blocks");
+            if (++count > PanelLimits.MaxBlocks) throw new Refusal($"more than {PanelLimits.MaxBlocks} blocks");
             l.Add(Block(b, depth, ref count));
         }
         return l.ToArray();
@@ -108,32 +108,32 @@ internal static class CardParser
             "status" => BlockKind.Status, "divider" => BlockKind.Divider, "icons" => BlockKind.Icons, "section" => BlockKind.Section,
             "footer" => BlockKind.Footer, _ => BlockKind.Text,
         } };
-        b.Size = CardLimits.Snap(Num(e, "size", 1f));
+        b.Size = PanelLimits.Snap(Num(e, "size", 1f));
         b.Color = Col(e, "color", 0);
         if (Bool(e, "dim", false)) b.Color = (b.Color != 0 ? b.Color & 0xFFFFFF00 : 0xFFFFFF00) | DimAlpha;
         b.Runs = Runs(e, "text", Bool(e, "italic", false));
         b.Icon = Str(e, "icon", "");
-        if (b.Icon.Length > CardLimits.MaxIconName) throw new Refusal("an icon name is too long");
+        if (b.Icon.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
         b.Frame = Bool(e, "frame", false);
         b.Pulse = Bool(e, "pulse", type == "loading");
         b.Tint = Col(e, "tint", 0);
         switch (b.Kind)
         {
             case BlockKind.Icons:
-                if (!e.TryGetProperty("icons", out JsonElement ics) || ics.ValueKind != JsonValueKind.Array || ics.GetArrayLength() > CardLimits.MaxIcons)
-                    throw new Refusal($"icons is an array of at most {CardLimits.MaxIcons} names");
+                if (!e.TryGetProperty("icons", out JsonElement ics) || ics.ValueKind != JsonValueKind.Array || ics.GetArrayLength() > PanelLimits.MaxIcons)
+                    throw new Refusal($"icons is an array of at most {PanelLimits.MaxIcons} names");
                 var names = new List<string>();
                 foreach (JsonElement n in ics.EnumerateArray())
                 {
                     string s = n.ValueKind == JsonValueKind.String ? n.GetString()! : throw new Refusal("an icon name is a string");
-                    if (s.Length > CardLimits.MaxIconName) throw new Refusal("an icon name is too long");
+                    if (s.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
                     names.Add(s);
                 }
                 b.Icons = names.ToArray();
-                b.IconPx = Math.Clamp(Num(e, "px", 28f), CardLimits.MinIconPx, CardLimits.MaxIconPx);
+                b.IconPx = Math.Clamp(Num(e, "px", 28f), PanelLimits.MinIconPx, PanelLimits.MaxIconPx);
                 break;
             case BlockKind.Section:
-                if (depth >= CardLimits.MaxDepth) throw new Refusal($"sections nest at most {CardLimits.MaxDepth} deep");
+                if (depth >= PanelLimits.MaxDepth) throw new Refusal($"sections nest at most {PanelLimits.MaxDepth} deep");
                 b.Kids = Blocks(e, "blocks", depth + 1, ref count);
                 break;
             case BlockKind.Footer:
@@ -141,7 +141,7 @@ internal static class CardParser
                 b.Runs = Runs(e, "left", false);
                 break;
             case BlockKind.Status:
-                b.IconPx = Math.Clamp(Num(e, "px", 22f), CardLimits.MinIconPx, CardLimits.MaxIconPx);
+                b.IconPx = Math.Clamp(Num(e, "px", 22f), PanelLimits.MinIconPx, PanelLimits.MaxIconPx);
                 break;
         }
         return b;
@@ -150,7 +150,7 @@ internal static class CardParser
     private static Run[] Runs(JsonElement e, string name, bool italic)
     {
         string s = Str(e, name, "");
-        if (!CardMarkup.TryParse(s, out Run[] runs, out string why)) throw new Refusal($"{name}: {why}");
+        if (!PanelMarkup.TryParse(s, out Run[] runs, out string why)) throw new Refusal($"{name}: {why}");
         if (italic) for (int i = 0; i < runs.Length; i++) runs[i] = new Run(runs[i].Text, runs[i].Icon, runs[i].Rgba, runs[i].Size, true, runs[i].Break);
         return runs;
     }

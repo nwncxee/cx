@@ -1,9 +1,9 @@
 using System;
 
-namespace CX.Services.Cards;
+namespace CX.Services.Panels;
 
 /// <summary>The animation of a <c>pulse</c> text block: its text fades between <see cref="Min"/> and full opacity on a smooth wave.</summary>
-internal static class CardPulse
+internal static class PanelPulse
 {
     /// <summary>The faintest the text gets, as a share of its own opacity.</summary>
     public const float Min = 0.35f;

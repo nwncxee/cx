@@ -4,8 +4,30 @@ using System.Text;
 using System.Threading;
 using CX.Framework;
 using CX.Ui;
+using CX.Services.Panels;
 
 namespace CX.Services.Cards;
+
+/// <summary>
+/// The cards one key holds, in the order they draw. <see cref="Views"/> is the render thread's cache of their layout: it
+/// is rebuilt when the card is shown, and when the font atlas or the UI scale changes under it.
+/// </summary>
+internal sealed class CardSet
+{
+    public readonly string Key;
+    public readonly PanelDecl[] Cards;
+    public PanelView[]? Views;
+    public int ViewEpoch;
+    public float ViewScale;
+
+    public CardSet(string key, PanelDecl[] cards) { Key = key; Cards = cards; }
+}
+
+/// <summary>The limits on the keys a client holds.</summary>
+internal static class CardLimits
+{
+    public const int MaxKeyBytes = 96, MaxKeys = 256;
+}
 
 /// <summary>
 /// The cards the server has declared this session, by key (<c>card.&lt;key&gt;</c> policy lines). A declaration parses when its
@@ -48,7 +70,7 @@ internal static class CardRegistry
             return false;
         }
         if (value.Length == 0) { Swap(key, null); return true; }
-        if (!CardParser.TryParse(value, out CardDecl[] cards, out string why))
+        if (!PanelParser.TryParse(value, out PanelDecl[] cards, out string why))
         {
             Swap(key, null);
             _s.Log?.Info($"Cards: refused '{key}': {why}; it keeps no card");
@@ -59,7 +81,7 @@ internal static class CardRegistry
             _s.Log?.Info($"Cards: refused '{key}': {CardLimits.MaxKeys} keys held already");
             return false;
         }
-        foreach (float m in SizesUsed(cards)) CardFaces.Want(m);
+        foreach (float m in SizesUsed(cards)) PanelFaces.Want(m);
         Swap(key, new CardSet(key, cards));
         return true;
     }
@@ -101,7 +123,7 @@ internal static class CardRegistry
     internal static void Reset() => _s = new();
 
     /// <summary>Every distinct non-1 text size the cards use, so their faces are baked when the declaration arrives and never while one is drawn.</summary>
-    internal static IEnumerable<float> SizesUsed(CardDecl[] cards)
+    internal static IEnumerable<float> SizesUsed(PanelDecl[] cards)
     {
         var seen = new HashSet<float>();
         void Walk(Block[] blocks)
@@ -114,7 +136,7 @@ internal static class CardRegistry
                 Walk(b.Kids);
             }
         }
-        foreach (CardDecl c in cards) Walk(c.Blocks);
+        foreach (PanelDecl c in cards) Walk(c.Blocks);
         seen.Remove(1f);
         return seen;
     }

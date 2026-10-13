@@ -105,6 +105,9 @@ Navigation:
                                  Chain(symbol, handler, priority) for shared symbols (#88)
         ExtenderLog.cs           inject this for logging
       Services/                business logic -- this is where you work
+        Panels/                  the styled-panel renderer (blocks, markup, faces, layout): general NUI styling,
+                                 no tooltip knowledge
+        Cards/                   rich tooltips: panels shown beside a NUI element, keyed by card.* policy lines
       Alloy/                   the renderer (#198). Core/ Scene/ Pass/ under namespace CX.Alloy
         Shaders/                 the pipeline's GLSL, one .glsl per stage or library (embedded
                                  resources; a stage names its libraries with #include). Every

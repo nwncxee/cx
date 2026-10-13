@@ -4,9 +4,9 @@ using System.Globalization;
 using System.Text;
 using CX.Ui;
 
-namespace CX.Services.Cards;
+namespace CX.Services.Panels;
 
-/// <summary>An icon or image to draw over a card's background and under its text. <see cref="Item"/> is a client object id for an
+/// <summary>An icon or image to draw over a panel's background and under its text. <see cref="Item"/> is a client object id for an
 /// <c>@item:</c> source, <see cref="Look"/> names an <c>@look:</c> one, and 0 with no look is a resref in <see cref="Src"/>.</summary>
 internal struct IconDraw
 {
@@ -17,36 +17,42 @@ internal struct IconDraw
     public float X, Y, W, H;
 }
 
-/// <summary>One laid-out card in card-local px: the card is (0,0)..(<see cref="W"/>, <see cref="H"/>) and its tab sits
+/// <summary>One laid-out panel in panel-local px: the panel is (0,0)..(<see cref="W"/>, <see cref="H"/>) and its tab sits
 /// <see cref="TabH"/> above it. <see cref="Back"/> is every rectangle, <see cref="Text"/> every glyph, drawn with the icons between them.</summary>
-internal sealed class CardView
+internal sealed class PanelView
 {
     public float W, H, TabH;
     public readonly VertexBatch Back, Text;
-    /// <summary>The glyphs of every <c>pulse</c> block, drawn pulsing; null when the card has none.</summary>
+    /// <summary>The glyphs of every <c>pulse</c> block, drawn pulsing; null when the panel has none.</summary>
     public VertexBatch? Pulse;
     public readonly List<IconDraw> Icons = [];
 
-    public CardView(GlyphAtlas atlas)
+    public PanelView(GlyphAtlas atlas)
     {
         Back = new VertexBatch(atlas.SolidU, atlas.SolidV);
         Text = new VertexBatch(atlas.SolidU, atlas.SolidV);
     }
 }
 
-/// <summary>What the client knows of the item a card is about, for <c>{item.name}</c> and <c>{item.stack}</c> in its text.</summary>
-internal readonly struct CardSubject(string name, string stack)
+/// <summary>What the client knows of the item a panel is about, for <c>{item.name}</c> and <c>{item.stack}</c> in its text.</summary>
+internal readonly struct PanelSubject(string name, string stack)
 {
     public readonly string Name = name, Stack = stack;
 }
 
 /// <summary>
-/// Lays one <see cref="CardDecl"/> out exactly as declared, top to bottom: text wraps to the card's width, a block's
+/// Lays one <see cref="PanelDecl"/> out exactly as declared, top to bottom: text wraps to the panel's width, a block's
 /// size and colour come from the declaration, and CX adds no design of its own. A face of each wanted size comes from
 /// <c>face</c>, as the atlas and the stretch it still needs (1 when that size is baked). Cold: it allocates.
 /// </summary>
-internal sealed class CardLayout
+internal sealed class PanelLayout
 {
+    /// <summary>The prefix of an image name that describes an item by its appearance.</summary>
+    public const string LookPrefix = "@look:";
+
+    /// <summary>Is <paramref name="src"/> an <c>@look:</c> image name?</summary>
+    public static bool IsLook(string src) => src.StartsWith(LookPrefix, StringComparison.Ordinal);
+
     private const uint DefaultText = 0xE6E6E6FF, DefaultBg = 0x12161CF2, DefaultBorder = 0x6E6E6EFF, FrameFill = 0x00000066, FrameLine = 0xB8B8B8C0;  // not-an-offset: RRGGBBAA colours
     private const uint DividerLine = 0xFFFFFF30, FooterBand = 0x00000066;  // not-an-offset: RRGGBBAA colours
 
@@ -62,26 +68,26 @@ internal sealed class CardLayout
 
     private readonly Func<float, (GlyphAtlas A, float K)> _face;
     private readonly float _s;
-    private readonly CardSubject _subject;
+    private readonly PanelSubject _subject;
     private readonly List<Atom> _line = [];
-    private CardView _v = null!;
-    private CardDecl _c = null!;
+    private PanelView _v = null!;
+    private PanelDecl _c = null!;
     private bool _pulse;
 
-    private CardLayout(Func<float, (GlyphAtlas, float)> face, float scale, CardSubject subject)
+    private PanelLayout(Func<float, (GlyphAtlas, float)> face, float scale, PanelSubject subject)
     {
         _face = face; _s = scale; _subject = subject;
     }
 
-    /// <summary>The card laid out at UI scale <paramref name="scale"/>.</summary>
-    public static CardView Build(CardDecl card, float scale, Func<float, (GlyphAtlas A, float K)> face, CardSubject subject)
-        => new CardLayout(face, scale, subject).Run(card);
+    /// <summary>The panel laid out at UI scale <paramref name="scale"/>.</summary>
+    public static PanelView Build(PanelDecl card, float scale, Func<float, (GlyphAtlas A, float K)> face, PanelSubject subject)
+        => new PanelLayout(face, scale, subject).Run(card);
 
-    private CardView Run(CardDecl c)
+    private PanelView Run(PanelDecl c)
     {
         _c = c;
         GlyphAtlas baseAtlas = _face(1f).A;
-        _v = new CardView(baseAtlas);
+        _v = new PanelView(baseAtlas);
         float w = c.Width * _s, pad = 10f * _s;
         float h = Stack(c.Blocks, pad, pad, w - 2f * pad, w, false) + pad;
         _v.W = w; _v.H = Math.Max(h, 2f * pad);
@@ -91,7 +97,7 @@ internal sealed class CardLayout
         else Gradient(0, 0, w, _v.H, from, from, to, to);
         Frame(0, 0, w, _v.H, c.Border != 0 ? c.Border : DefaultBorder);
         if (_v.TabH > 0f) Tab(baseAtlas);
-        foreach (CardImage i in c.Images) Image(i);
+        foreach (PanelImage i in c.Images) Image(i);
         Stack(c.Blocks, pad, pad, w - 2f * pad, w, true);
         return _v;
     }
@@ -106,7 +112,7 @@ internal sealed class CardLayout
         Words(text, x + pad, -_v.TabH + 2f * _s + a.Ascent, a, 1f, DefaultText, false);
     }
 
-    private void Image(CardImage i)
+    private void Image(PanelImage i)
     {
         float w = i.W * _s, h = i.H * _s;
         float x = i.At is Anchor.TopRight or Anchor.BottomRight ? _v.W - w : 0f;
@@ -306,7 +312,7 @@ internal sealed class CardLayout
             while (6 + n < src.Length && n < 8 && Uri.IsHexDigit(src[6 + n])) n++;
             if (n == 0 || !uint.TryParse(src.AsSpan(6, n), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out item)) return;
         }
-        else if (CardLooks.IsLook(src))
+        else if (PanelLayout.IsLook(src))
         {
             _v.Icons.Add(new IconDraw { Src = "", Look = src, X = x, Y = y, W = w, H = h });
             return;

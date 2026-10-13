@@ -2,6 +2,7 @@ using System;
 using System.Text;
 using CX.Services.Nui;
 using CX.Ui;
+using CX.Services.Panels;
 
 namespace CX.Services.Cards;
 
@@ -14,7 +15,7 @@ internal static class CardPlacer
     /// and is clamped inside the <paramref name="vw"/> by <paramref name="vh"/> screen either way. A card's tab and overflow image
     /// are not part of the clamp except for the tab's height above the top.
     /// </summary>
-    public static void Place(CardView[] views, float ex, float ey, float ew, float vw, float vh, float scale, Span<float> xs, Span<float> ys)
+    public static void Place(PanelView[] views, float ex, float ey, float ew, float vw, float vh, float scale, Span<float> xs, Span<float> ys)
     {
         float gap = 8f * scale, total = 0f, maxH = 0f, tab = 0f;
         for (int i = 0; i < views.Length; i++)
@@ -44,8 +45,8 @@ internal static class CardPlacer
 internal sealed class CardPresenter
 {
     /// <summary>Atlas, stretch and subject come through these so a self-check can supply its own.</summary>
-    internal Func<float, (GlyphAtlas A, float K)> Face = CardFaces.Resolve;
-    internal Func<uint, CardSubject> SubjectOf = static _ => default;
+    internal Func<float, (GlyphAtlas A, float K)> Face = PanelFaces.Resolve;
+    internal Func<uint, PanelSubject> SubjectOf = static _ => default;
 
     private readonly Tooltip _tip = new();
     private CardSet? _set, _found;
@@ -54,9 +55,9 @@ internal sealed class CardPresenter
     private float _ex, _ey, _ew;
     private uint _subject;
     private bool _rebuild;
-    private readonly float[] _xs = new float[CardLimits.MaxCards], _ys = new float[CardLimits.MaxCards];
+    private readonly float[] _xs = new float[PanelLimits.MaxCards], _ys = new float[PanelLimits.MaxCards];
 
-    public CardView[]? Views => _set?.Views;
+    public PanelView[]? Views => _set?.Views;
     public float X(int i) => _xs[i];
     public float Y(int i) => _ys[i];
     public float Alpha => _set == null ? 0f : _tip.Alpha;
@@ -105,12 +106,12 @@ internal sealed class CardPresenter
         int epoch = TextRig.AtlasEpoch;
         if (_tip.Tick() || _rebuild || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale)
         {
-            var views = new CardView[set.Cards.Length];
+            var views = new PanelView[set.Cards.Length];
             for (int i = 0; i < views.Length; i++)
             {
                 string own = set.Cards[i].Item;
                 uint oid = own.Length > 0 && uint.TryParse(own, System.Globalization.NumberStyles.AllowHexSpecifier, null, out uint d) ? d : _subject;
-                views[i] = CardLayout.Build(set.Cards[i], scale, Face, oid == 0 ? default : SubjectOf(oid));
+                views[i] = PanelLayout.Build(set.Cards[i], scale, Face, oid == 0 ? default : SubjectOf(oid));
             }
             _rebuild = false;
             set.Views = views;
