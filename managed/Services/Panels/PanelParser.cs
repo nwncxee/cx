@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using CX.Framework;
 using System.Text;
 using System.Text.Json;
 
@@ -266,12 +267,5 @@ internal static class PanelParser
     }
 
     /// <summary><c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c> as 0xRRGGBBAA.</summary>
-    public static bool TryColor(string s, out uint rgba)
-    {
-        rgba = 0;
-        if (s.Length is not (7 or 9) || s[0] != '#') return false;
-        if (!uint.TryParse(s.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint v)) return false;
-        rgba = s.Length == 7 ? v << 8 | 0xFF : v;
-        return true;
-    }
+    public static bool TryColor(string s, out uint rgba) => HexColour.TryParse(s, out rgba);
 }

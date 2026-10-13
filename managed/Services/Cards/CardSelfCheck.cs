@@ -117,6 +117,10 @@ internal static class CardSelfCheck
         check.Expect(c.Blocks[8].Runs.Length == 1 && c.Blocks[8].Right.Length == 3 && c.Blocks[8].Right[1].Icon == "w", "footer left and right, an inline icon on the right");
         check.Expect(c.Images.Length == 1 && c.Images[0].At == Anchor.TopRight && c.Images[0].Dx == 20f && c.Images[0].Dy == -20f, "an image anchored top right, pushed out");
         check.Expect(PanelParser.TryParse("{\"blocks\":[],\"future\":{\"a\":1}}", out cards, out _) && cards.Length == 1, "an unknown field is ignored");
+        check.Expect(PanelParser.TryParse("{\"border\":\"#aabbccdd\",\"blocks\":[]}", out _, out _) && PanelParser.TryParse("{\"border\":\"#aabbcc\",\"blocks\":[]}", out _, out _), "a card colour is #RRGGBB or #RRGGBBAA");
+        foreach (string wrong in new[] { "#12345", "#GGGGGG", "", "#1234567890", "123456" })
+            check.Expect(!PanelParser.TryParse("{\"border\":\"" + wrong + "\",\"blocks\":[]}", out _, out _), $"a card colour of '{wrong}' refuses the card");
+        check.Expect(!PanelParser.TryParseStyle("{\"glow\":\"#12345\"}", out _, out _) && PanelParser.TryParseStyle("{\"glow\":\"#12345678\"}", out _, out _), "a style colour is checked the same way");
         string[] bad =
         [
             "not json", "5", "{\"width\":\"wide\"}", "{\"border\":\"red\"}", "{\"blocks\":{}}", "{\"blocks\":[{\"type\":\"icons\"}]}",
