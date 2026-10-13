@@ -61,6 +61,9 @@ internal static unsafe class NwSyncReader
     /// <summary>The knob is on and the engine's sqlite3/zstd resolved: <see cref="TryRead"/> may answer.</summary>
     internal static bool Armed => _armed;
 
+    /// <summary>Moves with each new session and each manifest made a search source: a cache of what a resref's file holds starts over then.</summary>
+    internal static long ContentEdge => ((long)ServerPolicy.Session << 32) | (uint)_opens;
+
     /// <summary>One manifest made a search source, as the main thread published it. Immutable, so the worker
     /// reads the whole thing with one reference load and can tell "still the same store" by identity.</summary>
     private sealed record Source(string Dir, string Manifest);

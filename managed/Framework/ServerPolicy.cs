@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Threading;
 
 namespace CX.Framework;
 
@@ -32,12 +33,14 @@ public static class ServerPolicy
     private static readonly List<Knob> _held = new();
     private static readonly List<string> _holdable = new();
     private static readonly object _lock = new();
-    private static int _epoch;
+    private static int _epoch, _session;
     private static readonly Dictionary<string, int> _stamp = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<(string Prefix, Func<string, string, bool> Set, Action<string> Release, Func<string> Report)> _handlers = new();
 
     /// <summary>Bumps on every change; a window re-reads its properties when it moves (a field compare per frame).</summary>
     public static int Epoch => _epoch;
+    /// <summary>Bumps at every <see cref="Clear"/>, a new session: a cache of one server's content starts over when it moves.</summary>
+    public static int Session => _session;
     /// <summary>Refusals and applications go here.</summary>
     public static ExtenderLog? Log;
     /// <summary>The outbound half, set by the service owning the wire: <c>(minor, ascii)</c>. Null off-session.</summary>
@@ -157,7 +160,11 @@ public static class ServerPolicy
     }
 
     /// <summary>A new session: every hold released, every property gone.</summary>
-    public static void Clear() => ReleasePrefix("");
+    public static void Clear()
+    {
+        ReleasePrefix("");
+        Interlocked.Increment(ref _session);
+    }
 
     /// <summary>Keys held right now (knobs and properties).</summary>
     public static int Count { get { lock (_lock) return _held.Count + _props.Count; } }

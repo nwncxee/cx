@@ -16,7 +16,7 @@ internal static class NuiModelBounds
     /// <summary>The most models whose box is kept, so a server naming many models cannot grow the cache.</summary>
     private const int MaxCached = 64;
     private static readonly Dictionary<string, Box?> _cache = new();
-    private sealed class BoundsState { public ExtenderLog? Log; }
+    private sealed class BoundsState { public ExtenderLog? Log; public long Edge; }
     private static readonly BoundsState _state = new();
 
     internal static void Init(ExtenderLog log) => _state.Log = log;
@@ -65,6 +65,8 @@ internal static class NuiModelBounds
     internal static bool Of(string resref, out Vector3 min, out Vector3 max)
     {
         min = max = default;
+        long edge = CX.Alloy.NwSyncReader.ContentEdge;
+        if (edge != _state.Edge) { _cache.Clear(); _state.Edge = edge; }
         if (_cache.TryGetValue(resref, out Box? hit))
         {
             if (hit is not { } b) return false;
@@ -76,7 +78,8 @@ internal static class NuiModelBounds
         ModelDef? def = token == null ? null : CX.Alloy.ModelFeed.ParseToken(token, out _);
         if (def != null && MeshBox(def, out Vector3 lo, out Vector3 hi)) box = new Box(lo, hi);
         if (def != null) _state.Log?.Info($"NuiModelBounds: '{resref}' {def.Nodes.Length} nodes, box {(box is { } bb ? $"{bb.Min} {bb.Max}" : "none")}");
-        if (_cache.Count < MaxCached) _cache[resref] = box;
+        if (_cache.Count >= MaxCached) _cache.Clear();
+        _cache[resref] = box;
         if (box is not { } r) return false;
         min = r.Min; max = r.Max;
         return true;

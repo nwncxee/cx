@@ -128,7 +128,11 @@ internal static class CardRegistry
     }
 
     /// <summary>Drops every key whose full policy key (<c>card.&lt;key&gt;</c>) starts with <paramref name="prefix"/>; an empty prefix drops all.</summary>
-    public static void Release(string prefix) => Index.Release(Prefix, prefix);
+    public static void Release(string prefix)
+    {
+        Index.Release(Prefix, prefix);
+        if (Index.Count == 0) PanelFonts.Forget();
+    }
 
     /// <summary>The cards held under <paramref name="key"/>, or null. Allocation-free.</summary>
     public static CardSet? Find(ReadOnlySpan<char> key)
