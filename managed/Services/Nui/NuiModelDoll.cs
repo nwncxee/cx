@@ -197,6 +197,7 @@ internal static unsafe class NuiModelDoll
         if (appearance == IntPtr.Zero) return false;
         byte* info = stackalloc byte[InfoMax];
         Buffer.MemoryCopy((void*)appearance, info, InfoBytes, InfoBytes);
+        NuiModelGear.Dress(slot.Gear, info);
 
         var d = new DollState();
         IntPtr mem = EngineFn.OperatorNew((nuint)EngineLayout.SizeOfCreature);
@@ -347,6 +348,7 @@ internal static unsafe class NuiModelDoll
         if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
         byte* info = stackalloc byte[InfoMax];
         now.CopyTo(new Span<byte>(info, InfoBytes));
+        NuiModelGear.Dress(slot.Gear, info);
         if (EngineFn.NwcCreatureSetAppearance(d.Creature, (IntPtr)info, BuildFlags) == 0) return false;
         IntPtr model = new CNWCCreature(d.Creature).GetModel(0xff, 1);
         if (model == IntPtr.Zero) return false;

@@ -1003,6 +1003,31 @@ public readonly unsafe partial struct CAuroraCompressedTextureDDS(IntPtr ptr)
     public ref IntPtr Res => ref *(IntPtr*)(Ptr + EngineLayout.DdsHelperRes);
 }
 
+/// <summary>Typed view of an engine <c>CCAppearanceInfo*</c>.</summary>
+public readonly unsafe partial struct CCAppearanceInfo(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.AppearArmorParts"/>
+    public Span<ushort> ArmorParts { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AppearArmorParts), 19); }
+    /// <inheritdoc cref="EngineLayout.AppearArmorWorn"/>
+    public ref int ArmorWorn => ref *(int*)(Ptr + EngineLayout.AppearArmorWorn);
+    /// <inheritdoc cref="EngineLayout.AppearBodyParts"/>
+    public Span<ushort> BodyParts { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AppearBodyParts), 19); }
+    /// <inheritdoc cref="EngineLayout.AppearCloakColors"/>
+    public Span<ushort> CloakColors { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AppearCloakColors), 6); }
+    /// <inheritdoc cref="EngineLayout.AppearCloakModel"/>
+    public ref ushort CloakModel => ref *(ushort*)(Ptr + EngineLayout.AppearCloakModel);
+    /// <inheritdoc cref="EngineLayout.AppearColors"/>
+    public Span<byte> Colors { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AppearColors), 6); }
+    /// <inheritdoc cref="EngineLayout.AppearHelmetItem"/>
+    public ref uint HelmetItem => ref *(uint*)(Ptr + EngineLayout.AppearHelmetItem);
+    /// <inheritdoc cref="EngineLayout.AppearPartColors"/>
+    public Span<byte> PartColors { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AppearPartColors), 114); }
+}
+
 /// <summary>Typed view of an engine <c>CCachedMouseCursorManager*</c>.</summary>
 public readonly unsafe partial struct CCachedMouseCursorManager(IntPtr ptr)
 {

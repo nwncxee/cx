@@ -263,12 +263,14 @@ internal static unsafe class NuiModelView
             if (v.Built) { Teardown(s, v, tex); }
             return;
         }
+        NuiModelGear.Plan(slot.Gear, v.Wear);
         if (!v.Built)
         {
             if (!NuiModelDoll.Build(slot, who, 0, 0, v.W, v.H, v.Anim)) return;
             v.Built = true;
+            NuiModelGear.TakeDirty(slot.Gear);
             v.Info = NuiModelDoll.InfoOf(who).ToArray();
-            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who, v.Wear);
+            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who);
             NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
             NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
             ApplyCamera(v);
@@ -277,16 +279,19 @@ internal static unsafe class NuiModelView
         else if (v.Target != tex) NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
         else
         {
-            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who, v.Wear);
+            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who);
             ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
-            if (!now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
+            bool dressed = NuiModelGear.TakeDirty(slot.Gear);
+            bool moved = !now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info);
+            if (dressed || moved)
             {
                 if (NuiModelDoll.Refresh(slot, who))
                 {
                     NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
-                    s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
+                    s.Log?.Always($"NuiModelView: '{v.Key}' -- the {(dressed ? "previewed gear" : "creature's appearance")} changed, the doll follows");
                 }
-                v.Info = now.ToArray();
+                if (moved) v.Info = now.ToArray();
+                NuiModelGear.Settled(slot.Gear);
             }
         }
         if (v.Dragging) Turn(v);
