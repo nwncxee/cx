@@ -61,12 +61,12 @@ runbook `docs/update-day.md`. Snapshot each shipped build
 
 Windows leg (#48), cross-built on Linux -- no Windows box involved (dev loop only):
 
-    ./build-win.sh      # version.dll (the AOT image IS the proxy) + the audio runtime -> cx-windows-x64/
+    nix develop .#win -c ./build-win.sh  # version.dll (the AOT image IS the proxy) + the audio runtime -> cx-windows-x64/
     ./build-win-native.sh  # same, natively under MSVC + Git Bash: what the release workflow ships (#504)
     ./run-proton.sh     # drops them beside bin/win32/nwmain.exe, runs it under Proton (throwaway prefix)
 
-Needs clang-cl/lld-link/llvm-lib (all in `nix develop`) and a Windows 10 SDK + MSVC lib tree (default: the mounted
-Windows partition; `SDK`/`MSVC` override). Alloy renders on Windows too (#456); its Windows
+`.#win` is the default shell plus a pinned Windows 10 SDK + MSVC lib tree (`.#winsdk`, fetched by xwin); about a
+minute, so a PR that adds a hook or an offset runs it rather than reporting Windows unbuilt. `SDK`/`MSVC` override. Alloy renders on Windows too (#456); its Windows
 refusal, if any, is `EngineLayout.Require` -- an unresolved offset row anywhere stands it down.
 
 ## Tuning knobs (ADR 0025, amending 0013)

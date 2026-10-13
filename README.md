@@ -126,7 +126,8 @@ nix develop
 Without Nix, install the .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config and the
 PipeWire, PulseAudio and ALSA headers yourself. `flake.nix` has the full list.
 
-The Windows build is cross-compiled on Linux with `./build-win.sh`. `CLAUDE.md` covers the
+The Windows build is cross-compiled on Linux with `nix develop .#win -c ./build-win.sh`. That shell
+downloads the Windows SDK and MSVC libraries from Microsoft, and building it accepts Microsoft's licence. `CLAUDE.md` covers the
 architecture and how to add a feature.
 
 ## Contributing

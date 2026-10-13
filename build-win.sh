@@ -2,10 +2,14 @@
 # Cross-build the Windows leg on Linux (#48 M1): version.dll, the NativeAOT image itself, with
 # funchook, the UI font and the export-forwarding proxy all linked in, and CX-57's audio runtime beside it.
 # Needs clang-cl, lld-link, llvm-lib, cmake, the .NET SDK, and a Windows 10 SDK + MSVC lib/include
-# tree (SDK / MSVC: the environment or local.env, see local.env.example). Nothing here is supported by Microsoft; it works
+# tree (`nix develop .#win` fetches both; SDK / MSVC in the environment or local.env name your own). Nothing here is
+# supported by Microsoft; it works
 # because ILC emits COFF on any host and lld-link links it.
 set -e
 cd "$(dirname "$0")"
+# llvm-rc preprocesses with the clang on PATH. Under nix develop that is the cc-wrapper, whose hardening adds
+# -fPIC, and clang refuses -fPIC for a Windows target.
+export NIX_HARDENING_ENABLE=
 mkdir -p build
 
 SDK="${SDK:-$(python3 tools/paths.py SDK)}"
