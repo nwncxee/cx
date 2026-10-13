@@ -15,8 +15,8 @@ json Pips(json jBack, float fX, float fY, int nFull, int nAll)
 void PartyBar(object oPC)
 {
     json jFace = NuiCol(ThAdd(ThAdd(JsonArray(),
-        NuiRow(ThAdd(ThAdd(JsonArray(), ThDoll("p1", "pt1", 70.0, 84.0, "#b08a4a")), ThDoll("p2", "pt2", 71.0, 84.0, "#b08a4a")))),
-        NuiRow(ThAdd(ThAdd(JsonArray(), ThDoll("p3", "pt3", 72.0, 84.0, "#b08a4a")), ThDoll("p4", "pt4", 73.0, 84.0, "#b08a4a")))));
+        NuiRow(ThAdd(ThAdd(JsonArray(), ThDoll("p1", "pt1", 70.0, 84.0, "#b08a4a")), ThDoll("p2", "pt2", 70.0, 84.0, "#b08a4a")))),
+        NuiRow(ThAdd(ThAdd(JsonArray(), ThDoll("p3", "pt3", 70.0, 84.0, "#b08a4a")), ThDoll("p4", "pt4", 70.0, 84.0, "#b08a4a")))));
     json jBar = ThGrid("sp", 12, 2, 44.0, 44.0, "#15161a", "#6d5a3a", 0, TRUE);
     json jBack = ThAdd(JsonArray(), ThCut(0.0, 0.0, 780.0, 230.0, "#0d0e11ee", 10.0));
     jBack = ThAdd(jBack, ThCut(1.0, 1.0, 778.0, 228.0, "#b08a4a", 10.0, FALSE, 2.0));
