@@ -13,6 +13,7 @@ uniform int uBoneStart;   // vec4 index of the first palette, after the records
 out vec2 vUv;
 out vec4 vColor;
 out vec3 vNrm;
+out vec3 vPos;
 flat out int vRec;
 
 mat4 GuiBone(int at) { return mat4(uGui[at], uGui[at + 1], uGui[at + 2], uGui[at + 3]); }
@@ -40,6 +41,7 @@ void main()
     vUv = vec2(dot(tm.xy, aUv), dot(tm.zw, aUv));   // inc_common: mat2(m_texture) * vTcIn
     vColor = aColor;
     vNrm = mat3(mv) * n;
+    vPos = (mv * p).xyz;
     vRec = gl_BaseInstance;
     gl_Position = mvp * p;
 }
