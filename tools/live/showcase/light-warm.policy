@@ -1,0 +1,8 @@
+model.recipe.target=player
+model.recipe.size=300x420
+model.recipe.yaw=270
+model.recipe.bg=#14161C
+model.recipe.light=server
+model.recipe.lightcolor=#FFD9A0
+model.recipe.lightdir=0.5,0.4,0.8
+model.recipe.lightambient=#2A2E3A
