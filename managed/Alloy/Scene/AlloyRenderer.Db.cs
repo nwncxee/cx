@@ -76,7 +76,7 @@ public sealed unsafe partial class AlloyRenderer
         DbWriteColumns(i, part, recipe);
         SceneDb.PartSlot[part] = i;
         _dbSeated++;
-        DbSetChanged();
+        DbSetChanged(_churn.Seat(i, part));
         return i;
     }
 
@@ -91,7 +91,7 @@ public sealed unsafe partial class AlloyRenderer
         _oDbPart[i] = -1; _oDbRecipe[i] = -1;
         FreeSlot(i);
         _dbReleased++;
-        DbSetChanged();
+        DbSetChanged(_churn.Release(i, part));
     }
 
     /// <summary>Everything about a draw that does not change while this part holds this slot.</summary>
@@ -604,13 +604,13 @@ public sealed unsafe partial class AlloyRenderer
     internal static int DbSetGen = 1;
 
     /// <summary>The slot set changed: a DB part was seated, released, or its arena range moved.
-    /// <para>This also has to reach the SHADOW side. The sun's staleness predicate is
-    /// <c>invalidate || keyChanged || hadMover || hasMover</c>, and a static DB world trips none of them --
-    /// an arena arrival is the "world changed under the published layers" edge <c>ShadowInvalidate</c> names.</para></summary>
-    private static void DbSetChanged()
+    /// <para>A STATIC part also has to reach the shadow side: the sun's staleness predicate is
+    /// <c>invalidate || keyChanged || hadMover || hasMover</c>, and a static DB world trips none of them. A
+    /// mover's arrival and departure are the predicate's own appeared and ghost terms, scoped to its views.</para></summary>
+    private static void DbSetChanged(bool world = true)
     {
         DbSetGen++;
-        CasterPass.ShadowInvalidate();
+        if (world) CasterPass.ShadowInvalidate();
     }
     private static int _dbOrderGen;
 
@@ -622,7 +622,9 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_dbOrderGen == DbSetGen) return _orderCount;
         _dbOrderGen = DbSetGen;
+        long t0 = FrameZones.Now;
         RebuildOrder();
+        _churn.Rebuilds++; _churn.Ticks += FrameZones.Now - t0;
         return _orderCount;
     }
 
@@ -679,5 +681,73 @@ public sealed unsafe partial class AlloyRenderer
 
     internal static string DbTableNote()
         => $"db: seated {_dbSeated} released {_dbReleased} no-geometry {_dbNoRange} live {_ownLive}"
-         + (_capacitySpill > 0 ? $" SPILLED {_capacitySpill}" : "");
+         + (_capacitySpill > 0 ? $" SPILLED {_capacitySpill}" : "") + _churn.Note();
+
+    private static readonly OrderChurnState _churn = new();
+
+    /// <summary>What moved the slot set this period: order rebuilds and their cost, and the seats and releases
+    /// behind them split static/mover, with the objects that churned most.</summary>
+    private sealed class OrderChurnState
+    {
+        internal int Rebuilds, Static, Mover;
+        internal long Ticks, IndexTicks;
+        private readonly int[] _byObj = new int[SceneDb.MaxObjects];
+
+        /// <summary>Was the slot's tenant a static object when it was seated? Read back at the release, when
+        /// the object row may already be dead or recycled.</summary>
+        private readonly bool[] _static = new bool[MaxOwned];
+
+        /// <summary>Count one seat; true when the part belongs to a static object, or to none that can be named,
+        /// which is treated as the world.</summary>
+        internal bool Seat(int slot, int part)
+        {
+            DbId o = SceneDb.PartObj[part];
+            bool world = !SceneDb.Objects.Valid(o) || (SceneDb.ObjFlags[o.Index] & ObjFlag.Static) != 0;
+            if (SceneDb.Objects.Valid(o)) _byObj[o.Index]++;
+            _static[slot] = world;
+            return Count(world);
+        }
+
+        /// <summary>Count one release, by the static-ness its seat recorded.</summary>
+        internal bool Release(int slot, int part)
+        {
+            DbId o = SceneDb.PartObj[part];
+            if (SceneDb.Objects.Valid(o)) _byObj[o.Index]++;
+            return Count(_static[slot]);
+        }
+
+        private bool Count(bool world)
+        {
+            if (world) Static++; else Mover++;
+            return world;
+        }
+
+        internal string Note()
+        {
+            Span<int> top = stackalloc int[3];
+            top.Fill(-1);
+            for (int o = 0; o < _byObj.Length; o++)
+            {
+                int c = _byObj[o];
+                if (c == 0) continue;
+                for (int t = 0; t < top.Length; t++)
+                {
+                    if (top[t] >= 0 && _byObj[top[t]] >= c) continue;
+                    for (int u = top.Length - 1; u > t; u--) top[u] = top[u - 1];
+                    top[t] = o;
+                    break;
+                }
+            }
+            var sb = new System.Text.StringBuilder(
+                $"; order rebuilt {Rebuilds}x ({Ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F1} ms, index "
+                + $"{IndexTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F1}) "
+                + $"off {Static} static / {Mover} mover seat+release(s), most:");
+            foreach (int o in top)
+                if (o >= 0)
+                    sb.Append($" '{SceneDb.ObjSeamModelName[o]}' x{_byObj[o]} flags={SceneDb.ObjFlags[o]}");
+            Rebuilds = Static = Mover = 0; Ticks = IndexTicks = 0;
+            Array.Clear(_byObj);
+            return sb.ToString();
+        }
+    }
 }

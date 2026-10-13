@@ -3,6 +3,7 @@
 # the Load panel, soaks, and prints the steady-state frame, GPU and zone averages from the CX log.
 #
 #   tools/live/perf-save.sh --saves DIR [--soak N] [--label NAME] [--cfg 'key=value' ...]
+#   --override DIR copies its files into the throwaway override/ (e.g. a cx_*.shd shader variant).
 #   --keys SCRIPT runs (xtool grammar) once the area has settled, e.g. "key:Return;type:/alloy bench;key:Return"
 #
 # DIR holds ONE save folder (it is preselected on the Load panel). The user's real cx.cfg is passed through so
@@ -10,7 +11,7 @@
 # copied settings.tml's UI scale. Steady state = every reporting period after the first two in the area.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SAVES=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""
+SAVES=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --saves) SAVES="$2"; shift 2 ;;
@@ -18,6 +19,7 @@ while [ $# -gt 0 ]; do
         --label) LABEL="$2"; shift 2 ;;
         --cfg)   OVERRIDES+=("$2"); shift 2 ;;
         --keys)  EXTRA="$2;"; shift 2 ;;
+        --override) OVR="$2"; shift 2 ;;
         *) echo "perf-save: unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -39,6 +41,9 @@ for o in ${OVERRIDES+"${OVERRIDES[@]}"}; do args+=(--cfg "$o"); done
 
 OUT="${TMPDIR:-/tmp}/cx-perf-$LABEL-$(date +%H%M%S)"
 half=$(( SOAK * 500 ))
+if [ -n "$OVR" ]; then
+    mkdir -p "$OUT/home/.local/share/Neverwinter Nights/override" && cp "$OVR"/* "$OUT/home/.local/share/Neverwinter Nights/override/" || exit 2
+fi
 "$ROOT/tools/live/run-live.sh" --menu --saves "$SAVES" --width 2544 --height 1378 --seconds 6 --out "$OUT" --keep \
     ${args+"${args[@]}"} \
     --keys "click:1269,705;sleep:3000;click:1410,914;sleep:20000;${EXTRA}sleep:$half;shot:$OUT/shot.png;sleep:$half" \
