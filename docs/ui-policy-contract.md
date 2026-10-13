@@ -1,7 +1,7 @@
 # UI policy: what a CX-aware server may set, and how
 
-**Status:** client side built (`managed/Framework/ServerPolicy.cs`); no server sends it yet. The first consumer is
-the inventory window (`managed/Services/Inventory/`).
+**Status:** built on the client (`managed/Framework/ServerPolicy.cs`), and the reference server implements the server end.
+The inventory window (`managed/Services/Inventory/`) reads it too.
 
 The player configures CX with knobs (ADR 0025). A server may lay a **policy** over that configuration for the
 length of a session, the way a directory policy sits over a workstation's own settings: it can **hold** any knob
@@ -14,13 +14,35 @@ button, route an action to the server). The player's own values are never overwr
 One message family, the existing CX device major (CLAUDE.md: reuse an opcode; a stock client discards an unknown
 minor with one trace line, the research on CX-152 §6.6).
 
-| direction | major | minor | payload (ASCII, at offset 3) |
+| direction | major | minor | payload (at offset 3) |
 |---|---|---|---|
-| server → client | `0x36` | `0x47` `PolicySet` | lines of `key=value`, `\n`-separated |
-| client → server | `0x36` | `0x48` `UiEvent` | `action;arg;arg…` |
+| server → client | `0x36` | `0x47` `PolicySet` | UTF-8 lines of `key=value`, `\n`-separated |
+| client → server | `0x36` | `0x48` `UiEvent` | ASCII `action;arg;arg…` |
 
 Send `PolicySet` only to a client that advertised `cx_enabled = 1` (`docs/hotkeys-server-contract.md`). Messages
 accumulate; send as many as you like.
+
+### Capabilities: what this client can draw
+
+At login, beside `cx_enabled`, the client advertises its release and the NUI capabilities it can draw at that moment,
+as device properties (`GetPlayerDeviceProperty`, names lowercase):
+
+| property | value |
+|---|---|
+| `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
+| `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
+| `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
+| `cx_cap_card` | `3`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
+| `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
+| `cx_cap_modelview` | `2`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `1` had no `drag` and no `vfx` |
+| `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
+| `cx_cap_heldpick` | `1`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well) |
+
+A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
+`nui.itemicons`, `nui.cards`) is on. **Absent or `0` means the client does not draw it**; send the vanilla version (a plain
+image, or none). A new capability adds a `cx_cap_<name>` row here when it ships, and its value rises when its
+wire form changes. A knob toggled mid-session advertises the whole set again, a withdrawn capability as `0`; whether the
+server keeps the latest value for a repeated name is unconfirmed, so re-read the property when it matters.
 
 ### `PolicySet` lines
 
@@ -39,6 +61,48 @@ wants a policy for the whole session sends it on every login.
 
 The player sees held knobs greyed in `/settings`; `/policy` lists every key the server holds, with the player's own
 value beside each held knob; `/knobs` marks them `[server; yours …]`.
+
+### `held.image`: an image under the pointer
+
+`held.image=<image>` shows that image centred on the pointer, above every NUI window, and swaps the engine cursor
+to `held.cursor` (the `Use` hand unless the server names another) while it is up. Send it when the player picks something up in a NUI
+window, and `held.image=` when they place it. The image never takes a click: the press that places it reaches the
+NUI window underneath.
+
+`<image>` is a texture resref, `@item:<hex>` or `@look:<hex>`, spelled as in a NUI image. Any other name (a model
+view, a malformed resref) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
+
+The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself, so a
+lost empty line cannot leave a ghost:
+
+- when the NUI window the pointer was over as the hold began is closed, even while other NUI windows stay open;
+- when no NUI widget has drawn for `held.grace` ms (half a second unless set), which covers a hold that began with the pointer over no NUI window.
+
+A client with `cx_cap_heldimage` absent or `0` ignores the key, so keep the plain NUI drag for it.
+
+#### Optimistic pick
+
+A server a long way off answers a pick late. Declare what a pick shows and CX shows it on the press, before the answer:
+
+| line | meaning |
+|---|---|
+| `held.pick.<id>=<image>` | pressing the element whose JSON `id` is `<id>` shows `<image>` at once |
+| `held.pick.<prefix>*=<image>` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
+| `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
+| `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
+| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`) |
+| `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
+
+Declare them when the window opens, like cards. `<image>` has the forms `held.image` takes. `held.pick.*=` releases every pick, and
+an empty value releases one. Only a left press counts, and only on an element with an `id`.
+
+The pick shows as a pending hold: dimmer than a confirmed one, with the same cursor swap. It ends in one of three ways:
+
+- `held.image=<image>` confirms it and replaces the pending image, which may be a different one.
+- `held.image=` clears it. Send that when the server refuses the pick.
+- No `held.image` line within `held.confirm` ms drops it. Only a line for `held.image` itself answers; a change to any other key does not.
+
+A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending `held.image` as before.
 
 ### Value forms
 
@@ -61,6 +125,240 @@ own reader, `ReadOBJECTIDServer`, masks it back off with `& 0x7fffffff`). A serv
 
 `server` is the hook point: the server sees exactly what the player tried and can run its own logic (confirm a
 drop, move an item by script, refuse with its own message).
+
+## Cards
+
+A card is a panel CX draws beside a NUI element while the pointer rests on it: an item's details, a comparison, any
+text and icons the server wants shown. The server declares it once, in a `card.<key>` line of `PolicySet`, when it
+opens the window. Never send one on hover. CX lays out what the line says and adds no design of its own.
+
+A client that does not advertise `cx_cap_card` draws no cards. CX does not hide a NUI tooltip when it draws a card, so a
+server that sends both gets both.
+
+### Keys
+
+A card is found by the element the pointer is over. CX tries these keys in order and draws the first card it finds:
+
+| line | matches |
+|---|---|
+| `card.<id>#<row>` | the element whose JSON `id` is `<id>`, in row `<row>` (counted from 0) of the list that holds it |
+| `card.<id>` | the element whose JSON `id` is `<id>`, in any row |
+| `card.@item:<hex>` | an element that draws that item's `@item:` image |
+| `card.@look:<hex>` | an element that draws that `@look:` image |
+| `card.<prefix>*` | an element whose JSON `id` starts with `<prefix>`: the longest declared prefix wins. Tried last |
+
+- The element's `id` is the token. A stock client ignores it. Give each element that has a card its own `id`: the
+  last element to declare a duplicate wins.
+- A list builds its row template once, so every row shares one `id`. Use `<id>#<row>` for a card per row and `<id>`
+  for the rest.
+- `<hex>` of an `@item:` key is the item's `ObjectToString`, lowercase, with no leading zeros.
+- A `@look:` key matches on its first 96 bytes, which is as much of the image name as CX keeps.
+- Image keys work on Linux only, because only the Linux client reads the image name an element draws. The Windows client
+  logs this once at start. On Windows key every card by `id`.
+- Keys compare without regard to case, so ids that differ only by case share a card. A key is at most 96 bytes, and
+  a client holds at most 256.
+
+`card.<key>=[]` (an array of no cards) declares that the key has no card. It is a held key like any other, and it ends the
+search: a matching `card.<prefix>*` does not show for that element. An empty value is not that. It releases the key.
+
+A new `card.<key>` line replaces the cards of that key. An empty value, `card.*=` and a new login clear them. A
+declaration CX refuses is logged, and its key keeps no card.
+
+### The value
+
+The value is JSON, on one line (a line break inside a text is the JSON escape `\n`), in UTF-8, at most 12,000 bytes.
+It is one card object or an array of one to four. Several cards draw side by side, left to right, in the order
+declared. A field CX does not know is ignored. A field it knows with the wrong type, a colour that does not parse or
+a count or length over a limit (see [Limits](#limits)) is **refused**, and the whole line with it. A size that has a range is
+**clamped** into it instead.
+
+A colour is `"#RRGGBB"` or `"#RRGGBBAA"`.
+
+| card field | meaning |
+|---|---|
+| `width` | design px, clamped to 160-480, default 300 |
+| `bg` | a colour, or `{"from": colour, "to": colour, "dir": "v" or "h"}` for a gradient (`v`: top to bottom, the default) |
+| `border` | the 1 px frame, a colour |
+| `tab` | a label on a tab above the card's top left corner |
+| `tabcolor` | the tab's background colour |
+| `item` | the item's hex id, for `{item.name}` and `{item.stack}` in this card; without it they use the item the element draws as an `@item:` image |
+| `blocks` | the blocks, drawn top to bottom |
+| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-256, default 64), `at` (`tl`, `tr`, `bl`, `br`, default `tr`; any other value is refused), `dx`, `dy` (px right and down from the corner, clamped to -256..256; a push out of the card makes the image overflow it) |
+
+Every block has a `type`. Text blocks read `text` (markup, below), `size` (default 1), `color`, `dim`, `italic` and `pulse`,
+all off unless declared; the fields a type reads are listed here.
+
+| type | draws | fields |
+|---|---|---|
+| `text` | wrapped text | `text` |
+| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, clamped to 12-64, default 22), `frame` (a frame round the icon) |
+| `divider` | a thin rule across the full card | `color` |
+| `icons` | a row of icons, wrapping | `icons` (up to 16 names, more is refused), `px` (clamped to 12-64, default 28), `frame` (a frame round each icon) |
+| `section` | blocks on a tinted band across the full card | `blocks`, `tint` |
+| `footer` | a band at the foot: `left` text and `right` text on one line | `left`, `right`, `tint`, `size` |
+
+- `size` is a multiple of the player's text size, snapped to 0.7, 0.85, 1, 1.15, 1.3, 1.6 or 2.
+- `dim` lowers the colour's opacity to 60%.
+- `pulse` fades the block's text between 35% and full opacity every 1.2 s. `loading` is a `text` block with `pulse` on.
+- A `section` holds blocks, and sections nest two deep.
+- A block with an unknown `type` draws as `text`. With no `text` it draws nothing.
+
+### Data that arrives late
+
+A server a long way off sends its card lines after the window is open, so the pointer can rest on an element before the
+element's card exists. Send one small stand-in per id family when the window opens, and the real cards when they are ready:
+
+- `card.<prefix>*` shows for every element of the family until a better key matches. Give empty cells and slots `card.<id>=[]`, so
+  the stand-in does not show for them.
+- The card on screen is swapped in place when its key gains a better match, or the key's own line changes. CX redraws it with no hide, no
+  new wait and no fade, and places it again if its size changed.
+- `{item.name}` and `{item.stack}` fill a stand-in with real data and need no round trip, because the client already knows the item.
+- A `pulse` block can mark what is still on its way.
+
+### Text markup
+
+| markup | effect |
+|---|---|
+| `<c=#RRGGBB>...</c>` | colour (`#RRGGBBAA` for opacity) |
+| `<s=1.6>...</s>` | size, snapped to the sizes above |
+| `<i>...</i>` | italic |
+| `<icon=NAME>` | an inline icon, as tall as its line |
+| `<br>` or a newline | a line break |
+| `<<` | a literal `<` |
+
+A tag CX does not know, or one with a value that does not parse, stays in the text as typed. Text wraps at the card's
+width. A single word wider than the card runs past its edge.
+
+`{item.name}` and `{item.stack}` in any text, icon name or image `src` become the name and stack size the client
+knows for the card's item: its own `item`, or else the one the element draws as an `@item:` image. Both are empty
+when the client does not know the item.
+
+### Images and icons
+
+An icon or image `src` is a texture resref (up to 16 characters), `@item:<hex>` or `@look:<hex>`. `@item:` draws that item's
+inventory icon in its own colours. `@look:` draws the icon of an item described by its appearance, in the form a NUI
+`@look:` image takes. CX makes one throwaway item for each distinct look the declared cards name, when the declaration
+arrives, and ends it when no declared card names the look any more or the card is released. A name that does not resolve
+draws nothing, never an error sprite. `@model:` draws nothing in a card; it draws in a NUI image (see
+[Model views](#model-views)).
+
+### Limits
+
+These refuse the line (or, for keys held, the new key):
+
+| limit | value |
+|---|---|
+| cards per key | 4 |
+| keys held | 256 |
+| bytes per key | 96 |
+| bytes per line | 12,000 |
+| blocks per card (sections' blocks included) | 48 |
+| section depth | 2 |
+| characters per text | 400 |
+| runs (styled pieces) per text | 48 |
+| icons per `icons` block | 16 |
+| images per card | 4 |
+| icon name or `src` | 120 characters |
+
+These are clamped into their range and the card still draws:
+
+| field | range |
+|---|---|
+| card `width` | 160-480 |
+| `px` of a `status` or `icons` block | 12-64 |
+| image `w`, `h` | 1-256 |
+| image `dx`, `dy` | -256 to 256 |
+| `size` of a text | snapped to the nearest of 0.7, 0.85, 1, 1.15, 1.3, 1.6, 2 |
+
+### Where and when it shows
+
+CX puts the cards to the right of the element, 8 px off it, with their tops level. When they do not fit there it puts
+them to the left, and it moves them as far as it takes to stay on screen. A card is drawn above NUI and takes no
+input: the pointer and keys go to the window underneath.
+
+A card shows once the pointer has rested on the element for `ui.tipdelay`, and fades in and out with the other CX
+tooltips. Moving to another element that has a card skips the wait. It hides when the pointer leaves the element,
+the window closes, or the list scrolls the element out of view.
+
+`nui.cards` turns cards off. The capability is withdrawn with it. The debug knobs for people building cards and windows
+are in `docs/live-harness.md`.
+
+## NUI window render keys
+
+A server sets render properties per NUI window, keyed by the window id it gave `NuiCreate`. Send them only to a client that
+advertised `cx_cap_nuirender`. A stock client has no such keys and draws the window unchanged, and so does a CX client with
+Alloy off.
+
+| key | meaning |
+|---|---|
+| `nui.<id>.opacity=0.6` | the whole window, 0-1 |
+| `nui.<id>.background=0` | the title bar, frame and body fill, 0-1. At 0 only the widgets draw |
+| `nui.<id>.fadein=150` | ms from invisible to the window's opacity, from the frame it opens |
+| `nui.<id>.fadeout=150` | ms the window takes to fade away after it closes |
+
+The keys are session state like every other `PolicySet` line. `nui.<id>.*=` releases a window's keys.
+
+A fade out draws the window's last frame again, without the images in it: their textures are freed with the window. A
+window's own popups (an open combo list) are not in that frame.
+
+## Model views
+
+`@model:<key>` as the name of a NUI image shows a copy of a creature as a live, animated, lit model on a transparent
+background, redrawn every frame into the image's own texture. NUI draws it like any other image. Send it only to a client
+that advertises `cx_cap_modelview`, and send the plain image (a portrait) to every other one.
+
+The key is any text. CX keeps its first 48 characters, so a longer key never matches its `model.<key>.<setting>` lines:
+keep keys short. Its settings are policy lines, `model.<key>.<setting>`, and a client reads them when
+the image loads and again whenever the policy changes. A window can open before its lines arrive, so the view shows its
+stand-in until they do.
+
+| setting | value | default |
+|---|---|---|
+| `target` | `player`, or the hex object id of a creature (NWScript `ObjectToString`). Empty releases it | no one: the view shows the stand-in |
+| `standin` | a texture resref (a TGA, plain or RLE) | nothing: the image is transparent |
+| `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
+| `wear` | an `@look:` string, or the hex object id of an item the client knows. The doll wears it in the hand slot its base item fits, in place of what the target holds there. Empty releases it | nothing |
+| `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
+| `angle` | the camera's view angle in degrees | `30` |
+| `dist` | camera distance from the creature, in metres | `4` |
+| `height` | camera height above the creature's feet, in metres | `0.9` |
+| `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
+| `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
+| `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
+| `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
+| `vfx` | `row,row,...`: the `visualeffects.2da` rows the doll wears, up to 16. A new value replaces the old set. Empty releases it. Linux only | none |
+
+**Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
+taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
+name that fails to load never draws the engine's error sprite. CX adds no stand-in of its own. Portraits (`po_*_h`) work: some
+are RLE-compressed TGAs, and the engine's reader decodes them. Use `standinrect` to leave out a blank strip, for example
+`0,0,256,400` for a 256x512 portrait whose art fills the top 400 rows.
+
+**Where the image goes.** The name works in any NUI image, a `NuiImage` or a `NuiDrawListImage` (use `NUI_ASPECT_STRETCH`
+and a rectangle of the view's shape, so the doll is not distorted).
+
+**What follows.** The doll follows the target's body, head, colours and armour as the server sends them, and what the
+target holds in either hand: an equip or an unequip shows within a frame. Weapons and shields are copies. CX builds a
+throwaway item from the real one's base item, model parts and colours, so the target's own items are never moved,
+equipped or freed. Closing the window takes the doll down with every copy and its cost with it.
+
+**Previewing an item.** `model.<key>.wear` puts an item the target does not hold into the doll's hand. It replaces what the
+target holds in that slot, and releasing the key brings the held item back. Send an item's look as the `@look:` string the
+server already builds for `@look:` icons. A client preview costs one extra throwaway item. It covers weapons and shields,
+the hand slots. A helmet, a cloak and armour are part of the body, so previewing them needs the server to equip a copy on
+a creature the client can see.
+
+**Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
+CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
+and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
+a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
+opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
+`vfx` is ignored, and the client logs that once.
+
+**Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
+must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a
+hand. A helmet and a cloak are part of the appearance record the doll copies, not hand items. The engine draws a cloak only
+while the client's cloak option is on, so a doll shows none with it off.
 
 ## The inventory window's keys
 
@@ -117,7 +415,7 @@ quickbar's own drop does. An item dragged out of a container drops or is used li
 as the stock drag).
 
 A skin part the client does not have refuses the **whole** skin (logged with every missing name, a notice on
-screen, the window draws its flat look): alias only art you ship (`native-gui-skinning.md` §6.8).
+screen, the window draws its flat look): alias only art you ship (research: CX-152).
 
 ## Example
 
@@ -133,9 +431,6 @@ Hides the gold view, limits the backpack to four pages, hands every ground-drop 
 `inventory.drop;<oid>;0;0;0;7f000000`, renames the window and holds it in tabbed mode (the player's own mode returns at the next
 login).
 
-## Server side (sketch, not built)
+## Server side
 
-The server end is one more `case` beside the server's hotkeys handler (in the reference server, its
-`HotkeyService`): write `['P'][0x36][0x47]` + the ASCII lines with
-`CreateWriteMessage` / `WriteCHAR`s / `SendServerToPlayerMessage`, as `LoginLoadBarService` builds its vanilla
-packet, and read `0x36/0x48` in the existing `PlayerToServerMessage` subscriber.
+The reference server implements the server end: it writes `PolicySet` and reads `UiEvent` beside its hotkeys handler.

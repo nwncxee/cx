@@ -57,7 +57,12 @@ stores it as `player.propertyMap[lowercased name] = int` (on `CNWSPlayer`, offse
 
 - `cx_enabled = 1`      -- the extender is present; only now offer the feature.
 
-The client advertises **only** presence -- never the armed key list (that was the old
+- `cx_version = <n>`     -- the release as `major * 1000000 + minor * 1000 + patch` (`0.7.0` is `7000`; `0` when the build
+  carries no version).
+- `cx_cap_<name> = <v>`  -- one property per capability the client can draw right now, valued by that capability's
+  version (`>= 1`). The vocabulary is in `docs/ui-policy-contract.md`.
+
+Presence, the version and the capabilities are all the client advertises -- never the armed key list (that was the old
 global-consent leak). The server owns the bindings and re-pushes them via ArmSet.
 
 ### 2. OpenUi (client -> server) -- "player clicked Hotkeys"

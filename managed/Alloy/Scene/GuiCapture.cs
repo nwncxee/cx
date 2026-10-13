@@ -20,7 +20,7 @@ internal static unsafe class GuiCapture
     /// its run of draws, and the depth treatment <c>Camera::RenderScene</c> @0x4a7920 gives the view: every GUI view
     /// shares ONE depth buffer, cleared (<c>Clear(2)</c>, depth+stencil, unscissored) only at the first GUI view after a
     /// non-GUI one, and split by depth RANGE -- the five overlay scenes in [0, 0.02], every other panel in [0.021, 0.1].</summary>
-    internal struct Layer { public int X, Y, W, H, SX, SY, SW, SH, First, Count; public float Near, Far; public bool Clear; }
+    internal struct Layer { public int X, Y, W, H, SX, SY, SW, SH, First, Count; public float Near, Far; public bool Clear; public uint Target; }
 
     /// <summary>One captured draw. <see cref="Slot"/> is a VAO-cache slot (<see cref="Stream"/> false) or the
     /// stream format the flush builds a VAO for; <see cref="Offset"/> is an element BYTE offset when
@@ -266,7 +266,7 @@ internal static unsafe class GuiCapture
         if (LayerN >= MaxLayers) { Overflow("layers"); return false; }
         ref Layer l = ref Layers[LayerN++];
         l.X = x; l.Y = y; l.W = w; l.H = h; l.SX = sx; l.SY = sy; l.SW = sw; l.SH = sh;
-        l.First = DrawN; l.Count = 0; l.Near = 0f; l.Far = 1f; l.Clear = false;
+        l.First = DrawN; l.Count = 0; l.Near = 0f; l.Far = 1f; l.Clear = false; l.Target = 0;
         return true;
     }
 
@@ -283,7 +283,7 @@ internal static unsafe class GuiCapture
         if (LayerN >= MaxLayers) { Overflow("layers"); return false; }
         ref Layer l = ref Layers[LayerN++];
         l.X = l.SX = x; l.Y = l.SY = y; l.W = l.SW = w; l.H = l.SH = h;
-        l.First = DrawN; l.Count = 0; l.Near = near; l.Far = far; l.Clear = clear;
+        l.First = DrawN; l.Count = 0; l.Near = near; l.Far = far; l.Clear = clear; l.Target = 0;
         return true;
     }
 

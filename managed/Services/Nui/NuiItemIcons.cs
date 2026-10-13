@@ -21,7 +21,7 @@ internal static unsafe class NuiItemIcons
     /// <summary><c>CGameObjectArray::LISTTYPE_MASK</c> (rodata 0x13edefc): <c>CNWSMessage::WriteOBJECTIDServer</c> @0xb50fc0 ORs it
     /// into every valid id it sends, and the client keeps ids as read, so the server's <c>ObjectToString</c> value
     /// <c>e04</c> is client object <c>0x80000e04</c>. The wire format, so the same on every build.</summary>
-    private const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
+    internal const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
     /// <summary>A master-palette row is 256 RGBA entries: <c>ImageDecode</c> addresses row r at <c>r &lt;&lt; 10</c>.</summary>
     private const int PaletteRowShift = 10;
     /// <summary>std::string {data, size, capacity} as <c>DataBlock::FromBase64</c> reads it: libstdc++ size at +8;
@@ -55,6 +55,10 @@ internal static unsafe class NuiItemIcons
         _log = log;
         _enabled = NuiKnobs.Enabled;
         _on = NuiKnobs.ItemIcons;
+        Capabilities.Register("itemicon", 1, static () => _ready && _enabled!.V && _on!.V);
+        Capabilities.Register("lookicon", 1, static () => _ready && _createItem != null && _enabled!.V && _on!.V);
+        _enabled.Changed += Capabilities.Refresh;
+        _on.Changed += Capabilities.Refresh;
         if (!RadialIcons.Init(log)
             || !SymbolMap.Require(log, "NuiItemIcons", SymbolMap.NkLoadImg, SymbolMap.ExoResManGet, SymbolMap.DataBlockFromBase64,
                                   SymbolMap.AurGetLayeredRasterWrapper, SymbolMap.AurReleaseLayeredRaster, SymbolMap.PaletteImage,
@@ -97,6 +101,14 @@ internal static unsafe class NuiItemIcons
     [UnmanagedCallersOnly]
     private static IntPtr OnLoadImg(IntPtr ret, byte* resref, ushort type)
     {
+        if (_ready && resref != null && resref[0] == (byte)'@' && NuiModelView.IsModelName(resref))
+        {
+            if (!NuiModelView.Prepare(resref)) return _loadOrig(ret, resref, type);
+            IntPtr m = _loadOrig(ret, _ref, ResTga);
+            _b64Len = 0;
+            NuiModelView.Loaded(resref, ret);
+            return m;
+        }
         if (!_ready || resref == null || resref[0] != (byte)'@' || !_enabled!.V || !_on!.V || !Prepare(resref, out ushort t))
             return _loadOrig(ret, resref, type);
         IntPtr r = _loadOrig(ret, _ref, t);
@@ -176,13 +188,15 @@ internal static unsafe class NuiItemIcons
         }
     }
 
-    /// <summary>The composite of <paramref name="icon"/> (the icon of <paramref name="item"/>, whose base item gives the
-    /// cell size), or a plain unpadded icon's own resref.</summary>
+    /// <summary>The composite of <paramref name="icon"/> cut to its art's own frame (the icon of <paramref name="item"/>, whose
+    /// base item gives the cells when the frame is unknown), or a plain icon's own resref when its art fills the sheet.</summary>
     private static bool FromIcon(IntPtr item, IntPtr icon, string what, out ushort type)
     {
         type = ResTga;
         Cells(item, out int cw, out int ch);
         float fw = RadialIcons.ContentFrac(cw), fh = RadialIcons.ContentFrac(ch);
+        IconFrames.Frame f = IconFrames.Of(icon);
+        if (f.Known) { fw = f.Cw / (float)f.Tw; fh = f.Ch / (float)f.Th; }
         IconKind kind = RadialIcons.Classify(icon);
         if (kind == IconKind.Plain && fw >= 1f && fh >= 1f)
         {
@@ -198,6 +212,39 @@ internal static unsafe class NuiItemIcons
         Emit(Math.Max(1, (int)MathF.Round(_w * fw)), Math.Max(1, (int)MathF.Round(_h * fh)));
         SetRef($"cx{Hash():x8}");
         return true;
+    }
+
+    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none), cut to
+    /// <paramref name="crop"/> when that fits it, at its own size, or stretched to <paramref name="w"/> x <paramref name="h"/> when the server declared that size (<paramref name="sized"/>),
+    /// else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
+    /// and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
+    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, StandinRect crop, out uint[] pixels, out int pw, out int ph)
+    {
+        _w = _h = 0;
+        if (standin.Length > 0 && standin[0] != 0) AddPlain(standin);
+        if (_w > 0 && crop.Fits(_w, _h))
+        {
+            uint[] cut = crop.Cut(_canvas!, _w, _h);
+            _w = crop.W; _h = crop.H;
+            Grow(_w * _h);
+            Array.Copy(cut, _canvas!, cut.Length);
+        }
+        if (_w == 0) { _w = w; _h = h; Grow(w * h); Array.Clear(_canvas!, 0, w * h); }
+        else if (sized && (_w != w || _h != h))
+        {
+            uint[] src = new uint[_w * _h];
+            Array.Copy(_canvas!, src, src.Length);
+            int sw = _w, sh = _h;
+            _w = w; _h = h;
+            Grow(w * h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) _canvas![y * w + x] = src[(y * sh / h) * sw + x * sw / w];
+        }
+        Emit(_w, _h);
+        SetRef($"cx{Hash():x8}");
+        pw = _w; ph = _h;
+        pixels = new uint[pw * ph];
+        Array.Copy(_canvas!, pixels, pixels.Length);
     }
 
     /// <summary>An item's appearance, as an engine store sends it and <see cref="SymbolMap.NwcCreateItem"/> takes it.</summary>
@@ -260,6 +307,42 @@ internal static unsafe class NuiItemIcons
         return true;
     }
 
+    /// <summary>A throwaway item for an <c>@look:</c> string, or zero when it does not parse or the engine makes none.
+    /// The caller owns it and ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintLook(string text)
+    {
+        byte* b = stackalloc byte[512];
+        if (text.Length >= 511) return IntPtr.Zero;
+        for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
+        b[text.Length] = 0;
+        Look look;
+        return ParseLook(b, &look) ? Mint(&look) : IntPtr.Zero;
+    }
+
+    /// <summary>A throwaway item that looks like <paramref name="item"/>: its base item, model parts, colours and gender read,
+    /// every per-part colour left at the base. Zero when the engine makes none. The caller ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintCopy(IntPtr item)
+    {
+        if (item == IntPtr.Zero) return IntPtr.Zero;
+        var v = new CNWCItem(item);
+        Look look = default;
+        look.BaseItem = (uint)v.BaseItem;
+        look.Gender = v.Gender;
+        v.Models.CopyTo(new Span<ushort>(look.Models, LookModels));
+        v.Colors.CopyTo(new Span<byte>(look.Colors, LookColors));
+        for (int i = 0; i < LookPartColors; i++) look.PartColors[i] = 0xff;
+        return Mint(&look);
+    }
+
+    /// <summary>The <c>INVENTORY_SLOT_*</c> bits the item's base item can sit in, or zero.</summary>
+    internal static uint EquipMask(IntPtr item)
+    {
+        IntPtr rules = *(IntPtr*)_rules;
+        if (rules == IntPtr.Zero || item == IntPtr.Zero) return 0;
+        var b = new CNWBaseItem(EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, new CNWCItem(item).BaseItem));
+        return b.IsNull ? 0 : b.EquipSlots;
+    }
+
     /// <summary>A throwaway client item with that appearance, icon built: the engine's own store path, minus the game-object
     /// array. <see cref="Destroy"/> frees it.</summary>
     private static IntPtr Mint(Look* look)
@@ -271,7 +354,7 @@ internal static unsafe class NuiItemIcons
 
     /// <summary>The engine's deleting destructor through the item's own vtable: Itanium's D0 takes only <c>this</c>, MSVC's
     /// scalar deleting destructor also the delete flag.</summary>
-    private static void Destroy(IntPtr item)
+    internal static void Destroy(IntPtr item)
     {
         IntPtr dtor = new CNWCItem(item).DeleteFn;
         if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, uint, IntPtr>)dtor)(item, 1);
@@ -294,7 +377,7 @@ internal static unsafe class NuiItemIcons
         return n > 0;
     }
 
-    private static void Cells(IntPtr item, out int cw, out int ch)
+    internal static void Cells(IntPtr item, out int cw, out int ch)
     {
         cw = ch = 1;
         IntPtr rules = *(IntPtr*)_rules;

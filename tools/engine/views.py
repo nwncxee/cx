@@ -25,7 +25,7 @@ A parameter type that is neither a view nor a C# keyword (`VectorArg`, `Vec3*`) 
 import pathlib, re, sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-LAYOUT = ROOT / 'managed/Framework/EngineLayout.cs'
+LAYOUT = sorted((ROOT / 'managed/Framework').glob('EngineLayout*.cs'))
 SYMBOLS = ROOT / 'managed/Framework/SymbolMap.cs'
 OUT = ROOT / 'managed/Framework/Engine/Views.g.cs'
 DECL = re.compile(r'public static readonly int (\w+) =\s*Field(?:<([^>]+)>)?\(\s*"([^"]+)",\s*"([^"]+)"([^;]*)\);')
@@ -90,7 +90,7 @@ def main():
             sys.exit(f'!! {cls}: view member {name} collides; rename it at its declaration')
         members[name] = f'    /// <inheritdoc cref="{doc}"/>\n    {text}'
 
-    rows = DECL.findall(LAYOUT.read_text())
+    rows = DECL.findall(''.join(f.read_text() for f in LAYOUT))
     slots = []
     for row, typ, cls, field, rest in rows:
         if cls.startswith('('):                 # (abi): a layout of the C++ runtime, not an engine class

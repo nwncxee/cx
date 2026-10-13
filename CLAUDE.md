@@ -105,6 +105,9 @@ Navigation:
                                  Chain(symbol, handler, priority) for shared symbols (#88)
         ExtenderLog.cs           inject this for logging
       Services/                business logic -- this is where you work
+        Panels/                  the styled-panel renderer (blocks, markup, faces, layout): general NUI styling,
+                                 no tooltip knowledge
+        Cards/                   rich tooltips: panels shown beside a NUI element, keyed by card.* policy lines
       Alloy/                   the renderer (#198). Core/ Scene/ Pass/ under namespace CX.Alloy
         Shaders/                 the pipeline's GLSL, one .glsl per stage or library (embedded
                                  resources; a stage names its libraries with #include). Every
@@ -152,7 +155,7 @@ owner field itself are free; one more loose `static` is refused by `tools/gates/
 
 Read engine fields through the typed views in `CX.Engine`
 (`new CNWCCreature(obj).Stats.FirstName`), not `*(T*)(ptr + EngineLayout.X)`.
-A view member exists once its row is typed: `Field<T>` in `EngineLayout.cs`, where `T` is
+A view member exists once its row is typed: `Field<T>` in `EngineLayout*.cs`, where `T` is
 the primitive, the target's view for a pointer to a class, or a value type (`Quat`);
 `count: n` makes it an embedded array (`Span<T>`), `embedded: true` an inline record (its address), and a
 `stride` row gives the class `this[i]` over records laid end to end. A class the engine frees under us is
@@ -196,8 +199,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), fails. No baseline.
 - `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by
   responsibility the way `AlloyRenderer`'s partials are. `*.g.cs` and `SymbolMap.cs` (a flat symbol table
-  that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout.cs`
-  stays baselined: four tools read it by that exact file name, so a partial would halve what each of them sees.
+  that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout` is
+  one partial class over `EngineLayout*.cs`, and every tool that reads its rows reads all of them: a new block
+  of rows goes in a part of its own once `EngineLayout.cs` would grow past its baseline.
 - `bench-scope.sh`: the `/alloy bench` ablation ladder's state outside its own two files, or the ladder named
   outside the call sites the script lists, fails.
 - `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`

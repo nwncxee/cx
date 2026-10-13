@@ -22,7 +22,8 @@ running). It works from any worktree: it runs the `cx-linux-x64/` staged next to
 its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one:
 `glxinfo` inside it reports `OpenGL core profile version string: 4.6.0 NVIDIA`, which is what Alloy
 needs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
-log (`Starting Xwayland on :N`) -- there is no flag to pin it.
+log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either: the harness
+sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it.
 
 **Nothing of the user's is touched.** `$OUT/home` is a throwaway HOME and
 `$OUT/home/.local/share/Neverwinter Nights` a throwaway user directory, passed to the client as
@@ -99,6 +100,8 @@ constants at the top of `tools/live/ladder/cxladder.nss` -- change them there, n
 | 9 s | a `nw_innkeeper` is created in front of the PC and opens the module's own 2-node `.dlg` | `CXLADDER: talk` |
 | 16 s | the talker is destroyed (which drops the dialogue UI), three hostile `nw_goblina` spawn, `ActionAttack` | `CXLADDER: combat`, then `combat-result N/3 down` |
 | 30 s | `JumpToLocation` to the second area's stock respawn waypoint -- a real transition with a loading screen | `CXLADDER: area2 <area>` |
+| 43 s | a plain NUI window opens at (400, 260), 300x200, for the window-layer shots | `CXLADDER: nui` |
+| `--nui-close N` | that window is closed N s in, so `07n-nui*.png` catch a fade out; without the flag it stays open | `CXLADDER: nui-close` |
 | 45 s | `JumpToLocation` back to where the PC joined -- the second transition | `CXLADDER: area1` |
 | 48 s | the ladder is finished | `CXLADDER: done in <area>` |
 
@@ -152,6 +155,42 @@ for the transition) and the walkable ground the coordinates are taken from; the 
 `--seconds` below 60 is raised to 60, because the ladder's last rung is at t+48 and a shorter soak
 would grade rungs the run never reached.
 
+## Window layers
+
+`--cfg 'ui.layerprobe=1'` with `--ladder` draws a red rectangle on the below-NUI layer and a cyan one on the above-NUI
+layer, placed over the rung's NUI window. `07n-nui*.png` shows the order: the red one hides under the NUI window and the
+cyan one sits over it. Run it with and without `--cfg 'alloy.enabled=0'`; both must look the same.
+
+## Cards
+
+`--nui` opens the fixed NUI window with ids on its elements. `tools/live/ladder/cards.policy` is a file of `card.<key>=`
+policy lines for it: two cards for `img` that use every block, a card for every row of the list (`cell`) and one for
+row 2 (`cell#2`). Feed it in with `nui.cardfile`, and point at it with the pointer or with `nui.cardforce`:
+
+    tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.cardforce=img' \
+        --keys 'sleep:6000;shot:<dir>/cards.png'
+    tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.hitdebug=1' \
+        --keys 'sleep:8000;move:100,100;sleep:300;move:190,249;sleep:1500;shot:<dir>/row2.png'
+
+`nui.cardforce=img` shows the `img` cards as if the pointer rested on an element with that id, so the shot needs no
+pointer. The second run uses the real pointer: row 2 of the list shows its own card, and any other row shows the shared one.
+`nui.cardfile` is read again after the login, which clears a server's policy.
+
+For the late-data rules, `tools/live/ladder/cards-standin.policy` is a stand-in for the `cell` family and
+`tools/live/ladder/cards-late.policy` holds the real `cell#2`. `--cfg 'nui.cardlate=<seconds>:<path to cards-late.policy>'` applies the second
+file that many seconds after the first, as a slow server would. Point at row 2 before and after it lands and shoot both.
+
+`--ui-scale 1.5` sets the client's UI scale (and lifts its resolution cap) for any run, so a NUI rectangle can be read at another scale.
+The fixed window's list scrolls in whole rows: after the wheel the pointer's row glides for a moment, and a hit logged during the
+glide carries the row under the still pointer, not a rectangle that has moved.
+
+## NUI render keys
+
+`--cfg 'nui.policyprobe=nui.cxladder_nui.opacity=0.5;nui.cxladder_nui.background=0'` sets the server's `nui.<id>.*` keys without
+a server (`docs/ui-policy-contract.md`); the ladder's window id is `cxladder_nui`. `07n-nui*.png` show the result. For a fade in,
+set `fadein` to 30000 and the three shots land inside it. For a fade out, add `fadeout=5000` and run with `--nui-close 45`.
+With `--cfg alloy.enabled=0` the window draws as stock.
+
 ## Limits
 
 - **One client at a time.** The harness refuses to start if `nwmain-linux` is already running. Two
@@ -178,3 +217,52 @@ would grade rungs the run never reached.
   a second or two after the PC's login that the module's own clock starts from, so a capture lands
   inside its rung's window rather than on a known frame. The markers are the evidence; the pictures
   are the sanity check.
+
+## Held image
+
+`--cfg 'nui.heldprobe=iit_belt'` with `--ladder` sends the client a `held.image` line at the first NUI draw 50 s after
+boot, which is the rung's NUI window. The ladder moves the pointer over that window first, so `07n-nui*.png` shows the
+image under it. Run it with and without `--cfg 'alloy.enabled=0'`.
+
+The hold follows the NUI window the pointer was over as it began, and ends when that window closes. `--nui` opens a second,
+smaller window (`cxnui2`) that outlives the first, which closes 60 s after it opens (`CXNUI: close cxnui`). Move the pointer over
+the first window and probe the hold:
+
+    tools/live/run-live.sh --nui --seconds 60 --cfg 'nui.heldprobe=iit_belt' \
+        --keys 'sleep:3000;move:100,100;sleep:300;move:110,110;sleep:20000;shot:<dir>/held.png;sleep:25000;shot:<dir>/closed.png'
+
+The probe fires about 16 s into the soak and the first window closes at about 33 s, so move the pointer in the first seconds.
+
+`cx.log` then has `HeldImage: holding Resref iit_belt` and `NuiHitTest: following JsonWindow::cxnui` at the probe, and
+`NuiHitTest: the followed window is gone` and `HeldImage: released` as the first window closes. `closed.png` shows the second window
+and no icon.
+
+## NUI debug knobs
+
+These knobs are `ChatOnly` and exist for building and testing. None is advertised, and none changes what a server sees.
+
+| knob | what it does |
+|---|---|
+| `nui.cardfile` | a file of `card.<key>=` policy lines read as if a server had sent them; read again after a login |
+| `nui.cardlate` | `<seconds>:<file>`, a second file applied that long after the card file |
+| `nui.cardforce` | shows one key's cards as if the pointer rested on an element with that id |
+| `nui.heldprobe` | holds this image at the first NUI draw 50 s after boot, as `held.image` would |
+| `nui.policyprobe` | `key=value;key=value` window render properties, read under whatever a server sends |
+
+`tools/live/ladder/cards-look.policy` is a card for `img` whose image and icon row are an `@look:`; run it with
+`nui.cardfile=<path to cards-look.policy>` and `nui.cardforce=img`.
+
+## Model view
+
+`--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
+on the player a second after the window opens. The shield comes off at 10 s, the sword at 13 s and the hair changes at 16 s, and two permanent visual effects and a temporary one go on at 20 s
+(`CXNUI:` markers). The window closes after 60 s. The doll's settings are policy lines in a file, fed in like the cards:
+
+    tools/live/run-live.sh --nui --seconds 5 --cfg 'nui.cardfile=<path to model.policy>' \
+        --keys 'sleep:4000;shot:<dir>/armed.png;sleep:12000;shot:<dir>/stripped.png'
+
+`model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlate=<seconds>:<path>`),
+`model-vfx.policy` the two permanent effects the window puts on the player at 20 s (the temporary one stays off the doll),
+`model-standin.policy` and `model-standin-crop.policy` a stand-in with no target, with and without `standinrect`. `NuiModelGear:`
+lines in `cx.log` say each hand being filled and emptied.
+

@@ -55,7 +55,7 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
                     HandleArmSet(data, size);
                     return 1;
                 case ServerPolicy.PolicyMinor:
-                    ServerPolicy.Apply(System.Text.Encoding.ASCII.GetString(data + 3, (int)size - 3));
+                    ServerPolicy.Apply(System.Text.Encoding.UTF8.GetString(data + 3, (int)size - 3));
                     return 1;
             }
         }

@@ -106,7 +106,7 @@ public static partial class UiHost
     }
 
     /// <summary>Release focus, as a click on empty space does. For a click that lands somewhere the host
-    /// cannot hit-test -- over a NUI window, which draws on top of us and takes the press itself.</summary>
+    /// cannot hit-test -- over a NUI window, which draws on top of a below-NUI window and takes the press itself.</summary>
     public static void Blur() => SetFocused(null);
 
     /// <summary>Topmost window (any) whose live UI covers the point, or null. Drives the cursor -- overlays
@@ -118,7 +118,7 @@ public static partial class UiHost
         for (int i = 0; i < _windows.Count; i++)
         {
             var w = _windows[i];
-            if (w.Hit(px, py) && (best == null || w.Z > best.Z)) best = w;
+            if (w.Hit(px, py) && (best == null || w.Order > best.Order)) best = w;
         }
         return best;
     }
@@ -131,7 +131,7 @@ public static partial class UiHost
         for (int i = 0; i < _windows.Count; i++)
         {
             var w = _windows[i];
-            if (w.Focusable && w.Hit(px, py) && (best == null || w.Z > best.Z)) best = w;
+            if (w.Focusable && w.Hit(px, py) && (best == null || w.Order > best.Order)) best = w;
         }
         return best;
     }
@@ -218,18 +218,31 @@ public static partial class UiHost
     /// <paramref name="captureOnly"/> visits only <see cref="Window.CapturesPointer"/> windows: the pump's extra pass BEFORE the engine-GUI yield.</summary>
     public static bool DispatchMouseButton(bool down, int button, int x, int y, bool captureOnly = false)
     {
+        if (captureOnly)
+        {
+            foreach (Window next in TopmostFirst())
+            {
+                if (!TakesBeforeNui(next, x, y)) continue;
+                if (next.OnMouseButton != null && next.OnMouseButton(down, button, x, y)) return true;
+            }
+            return false;
+        }
         for (int pass = 0; pass < 2; pass++)
         {
             bool modal = pass == 0;
-            if (captureOnly && !modal) break;
             foreach (Window next in TopmostFirst())
             {
-                if (next.SuppressChords != modal || (captureOnly && !next.CapturesPointer)) continue;
+                if (next.SuppressChords != modal) continue;
                 if (next.OnMouseButton != null && next.OnMouseButton(down, button, x, y)) return true;
             }
         }
         return false;
     }
+
+    /// <summary>Whether a window is asked ahead of the engine-GUI yield: a modal pointer-capturing window always,
+    /// and an above-NUI window while the pointer is over it -- it is drawn over NUI, so it gets the press first.</summary>
+    private static bool TakesBeforeNui(Window w, float x, float y)
+        => (w.CapturesPointer && w.SuppressChords) || (w.Layer == UiLayer.AboveNui && w.Hit(x, y));
 
     /// <summary>Route pointer motion to window content, topmost-first; true at the first consumer (a drag owns
     /// motion until release, so handlers self-gate on their own grab state).</summary>
@@ -242,17 +255,26 @@ public static partial class UiHost
         return false;
     }
 
-    /// <summary>Route a wheel notch to window content, topmost-first, modal windows first (the same two passes and
-    /// the same <paramref name="captureOnly"/> as <see cref="DispatchMouseButton"/>); true at the first consumer.</summary>
-    public static bool DispatchMouseWheel(int dy, bool captureOnly = false)
+    /// <summary>Route a wheel notch to window content, topmost-first, modal windows first (the same two passes);
+    /// true at the first consumer. <paramref name="captureOnly"/> is the pre-yield pass, as in
+    /// <see cref="DispatchMouseButton"/>; the wheel event has no position, so the caller supplies the pointer's.</summary>
+    public static bool DispatchMouseWheel(int dy, bool captureOnly = false, float px = float.NaN, float py = float.NaN)
     {
+        if (captureOnly)
+        {
+            foreach (Window next in TopmostFirst())
+            {
+                if (!TakesBeforeNui(next, px, py)) continue;
+                if (next.OnMouseWheel != null && next.OnMouseWheel(dy)) return true;
+            }
+            return false;
+        }
         for (int pass = 0; pass < 2; pass++)
         {
             bool modal = pass == 0;
-            if (captureOnly && !modal) break;
             foreach (Window next in TopmostFirst())
             {
-                if (next.SuppressChords != modal || (captureOnly && !next.CapturesPointer)) continue;
+                if (next.SuppressChords != modal) continue;
                 if (next.OnMouseWheel != null && next.OnMouseWheel(dy)) return true;
             }
         }
@@ -277,7 +299,7 @@ public static partial class UiHost
             var next = NextBelow(_lastZ);
             if (next == null) return false;
             Current = next;
-            _lastZ = next.Z;
+            _lastZ = next.Order;
             return true;
         }
     }
@@ -289,7 +311,7 @@ public static partial class UiHost
         for (int i = 0; i < _windows.Count; i++)
         {
             var w = _windows[i];
-            if (w.Z < belowZ && (next == null || w.Z > next.Z)) next = w;
+            if (w.Order < belowZ && (next == null || w.Order > next.Order)) next = w;
         }
         return next;
     }
@@ -340,11 +362,20 @@ public static partial class UiHost
         for (int i = 0; i < _chords.Count; i++) _chords[i].FireMouse(button, sdlMods);
     }
 
-    /// <summary>The per-frame draw roll-call: invoke every registered window's <see cref="Window.DrawContent"/> in
-    /// ascending z-order, so the focused/topmost window paints last, then every <see cref="Window.DrawOver"/>. Zero-alloc -- an O(n^2) min-scan over the unique
-    /// z values, no sort buffer, no LINQ, no closures -- because it runs on the render thread inside SwapBuffers.
-    /// ponytail: O(n^2) is free at a handful of windows; a kept-sorted list is the upgrade if the count grows.</summary>
+    /// <summary>The per-frame draw roll-call over both layers, below NUI then above. The two sites that run it
+    /// in one go are the present-time fallback and the render-thread frame; the NUI-aware sites call
+    /// <see cref="DrawFrame(UiLayer)"/> on either side of NUI's flush.</summary>
     public static void DrawFrame()
+    {
+        DrawFrame(UiLayer.BelowNui);
+        DrawFrame(UiLayer.AboveNui);
+    }
+
+    /// <summary>One layer's roll-call: every window's <see cref="Window.DrawContent"/> on that layer in ascending z, so the
+    /// focused window paints last, then that layer's <see cref="Window.DrawOver"/>. Zero-alloc: it runs on the render
+    /// thread inside SwapBuffers.
+    /// ponytail: O(n^2) is free at a handful of windows; a kept-sorted list is the upgrade if the count grows.</summary>
+    public static void DrawFrame(UiLayer layer)
     {
         int lastZ = int.MinValue;
         for (int drawn = 0; drawn < _windows.Count; drawn++)
@@ -353,13 +384,13 @@ public static partial class UiHost
             for (int i = 0; i < _windows.Count; i++)
             {
                 var w = _windows[i];
-                if (w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
+                if (w.Layer == layer && w.Z > lastZ && (next == null || w.Z < next.Z)) next = w;
             }
-            if (next == null) break;   // no window with a higher z -> done
+            if (next == null) break;   // no window on this layer with a higher z -> done
             lastZ = next.Z;
             next.DrawContent?.Invoke();
         }
-        for (int i = 0; i < _windows.Count; i++) _windows[i].DrawOver?.Invoke();
+        for (int i = 0; i < _windows.Count; i++) if (_windows[i].Layer == layer) _windows[i].DrawOver?.Invoke();
     }
 
     public static void AddChordConsumer(IChordConsumer c) { if (!_chords.Contains(c)) _chords.Add(c); }

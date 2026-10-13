@@ -485,6 +485,18 @@ offset	GlMaterial	emissive	0x30	0x30	# GlMatEmissive
 offset	NkContext	deltaTime	0x5088	0x5088	# NkCtxDeltaTime
 offset	NkContext	drawCmdCount	0x5160	0x5160	# NkCtxDrawCmdCount
 offset	NkContext	drawCmdOffset	0x5168	0x5168	# NkCtxDrawCmdOffset
+offset	NkContext	memPtr	0x4278	0x4278	# NkCtxMemPtr
+offset	NkContext	memAllocated	0x4290	0x4290	# NkCtxMemAllocated
+offset	NkContext	windowBegin	0x6720	0x6720	# NkCtxWindowBegin
+offset	NkContext	seq	0x674c	0x674c	# NkCtxSeq
+offset	NkWindow	seq	0x0	0x0	# NkWinSeq
+offset	NkWindow	name	0x8	0x8	# NkWinName
+offset	NkWindow	flags	0x48	0x48	# NkWinFlags
+offset	NkWindow	bounds	0x4c	0x4c	# NkWinBounds
+offset	NkWindow	bufBegin	0x90	0x90	# NkWinBufBegin
+offset	NkWindow	bufEnd	0x98	0x98	# NkWinBufEnd
+offset	NkWindow	bufLast	0xa0	0xa0	# NkWinBufLast
+offset	NkWindow	next	0x1c0	0x1c0	# NkWinNext
 offset	Gob	propagateHilite	0x1c	0x1c	# GobPropagateHilite
 offset	CNWCAnimBase	hiliteActive	0x9c	0x9c	# AnimHiliteActive
 offset	CNWCAnimBase	hiliteGlow	0xb0	0xb0	# AnimHiliteGlow
@@ -857,6 +869,7 @@ offset	kiwi::Term	stride	0x10	0x10	# KiwiTermStride
 offset	Nui::Layout::Layoutable	children	0x8	0x8	# NuiChildren
 offset	Nui::Layout::Layoutable	childrenEnd	0x10	0x10	# NuiChildrenEnd
 offset	Nui::Layout::Layoutable	vars	0x2c8	0x3d8	# NuiVars
+offset	Nui::Layout::Layoutable	tooltip	0x220	0x330	# NuiTooltip
 offset	Nui::Layout::Span	direction	0x5a8	0x6c0	# NuiSpanDirection
 offset	Nui::Layout::LayoutGroup	solver	0x5a8	0x6c0	# NuiGroupSolver
 offset	Nui::Layout::LayoutGroup	editWidth	0x638	0x770	# NuiGroupEditWidth
@@ -1163,6 +1176,9 @@ rva	_ZN11CNWCMessage33SendPlayerToServerInput_UseObjectEjii	0x7c07c0	# SendInput
 rva	_ZN11CNWCMessage33SendPlayerToServerInput_SplitItemEji	0x7c0050	# SendInputSplitItem (6/23)
 rva	_ZN11CNWCMessage33SendPlayerToServerInput_MergeItemEjj	0x7bfd90	# SendInputMergeItem (6/22)
 rva	_ZN3Nui6Layout6Widget6RenderEP10nk_context	0x9528e0	# NuiWidgetRender
+rva	_ZN3Nui4JSON10JsonWindow6RenderEv	0x74b810	# NuiJsonWindowRender
+rva	Nui::JSON::DynamicBinding::s_array_index	0x129728c	# NuiArrayIndex (DATA)
+rva	nk_layout_widget_space	0xa6c0b0	# NkLayoutWidgetSpace
 rva	_ZTVN3Nui6Layout14StatefulWidgetE	0xe6dff0	# NuiStatefulWidgetVtbl
 rva	_ZN3Nui4JSON10JsonWindow11HandleErrorEPKcS3_	0x746650	# NuiHandleError
 rva	_ZTVN3Nui6Layout11LayoutGroupE	0xe6ce10	# NuiLayoutGroupVtbl
@@ -1189,6 +1205,8 @@ lva	nk_do_scrollbarv	0xdf6100	# NkDoScrollbarV
 lva	nk_do_scrollbarh	0xdf65c0	# NkDoScrollbarH
 lva	nk_sdl.ogl.cmds	0x1a12a28	# NkCmds (DATA)
 lva	nk_sdl.ogl.tex_null	0x1a12aa0	# NkTexNull (DATA)
+lva	Nui::JSON::DynamicBinding::s_array_index	0x18ab050	# NuiArrayIndex (DATA)
+lva	nk_layout_widget_space	0xdd8340	# NkLayoutWidgetSpace
 
 # ---- CX-109/110 ----
 offset	Camera	scene	0x90	0x90	# CameraScene
@@ -1233,3 +1251,51 @@ offset	LerpFloat	seamSizeof	0x40	0x40	# one animated float of a CAurObjectVisual
 offset	CAurBehavior	vtbl.dtorDeleting	0x08	0x00	# Itanium slot 1; MSVC's single scalar-deleting destructor is slot 0
 offset	CAurBehavior	vtbl.Message	0x28	0x20	# CAurBehavior::Message(char const*)
 offset	CAurBehavior	vtbl.GetType	0x30	0x28	# CAurBehavior::GetType() -> int
+
+# ---- the model view: a throwaway creature in a free-standing GUI viewport ----
+# Windows values read in the Windows image's CCharacterGenerationPanel::CreateCharacterObject (the function that cites
+# "GUI_PO_NWNLOGO_" beside AddInternalObject) and CCharacterAppearancePanel's constructor (the one citing "guiModelView").
+rva	_ZN12CNWCCreatureC1Ev	0x7fb140	# NwcCreatureCtor
+rva	_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh	0x809a00	# NwcCreatureSetAppearance
+rva	_ZN12CNWCCreature20EquipToInventorySlotEjP8CNWCItem	0x7fff10	# NwcCreatureEquip
+rva	_ZN13CClientExoApp18GetGameObjectArrayEv	0x6abb70	# GetGameObjectArray
+rva	_ZN13CClientExoApp17GetClientAIMasterEv	0x6ab940	# GetClientAIMaster
+rva	_ZN15CClientAIMaster9AddObjectEP10CNWCObject	0x7675d0	# AiMasterAddObject
+offset	CNWCCreature	sizeof	0x4a0	0x480	# SizeOfCreature
+offset	CNWCCreature	vtbl.Delete	0x8	0x0	# CreatureDeleteSlot
+offset	CGuiViewport	sizeof	0x88	0x88	# SizeOfGuiViewport
+offset	CGuiViewport	record	0x80	0x80	# GuiViewportRecord
+# The CAurCamera interface: slot k is Linux +k*8 and Windows +(k-1)*8 for k >= 2 (one destructor slot). CGuiViewport::SetViewport
+# jumps through slot 14 (Linux +0x70, Windows +0x68, read in the exported body).
+offset	CAurCamera	vtbl.SetPosition	0x38	0x30	# CameraSetPositionSlot
+offset	CAurCamera	vtbl.SetOrientation	0x40	0x38	# CameraSetOrientationSlot
+offset	CAurCamera	vtbl.SetViewAngle	0x90	0x88	# CameraSetViewAngleSlot
+offset	Gob	vtbl.SetColorShifting	0x180	0x178	# GobSetColorShiftingSlot
+offset	CAurCamera	vtbl.SetClipDist	0x88	0x80	# CameraSetClipDistSlot
+# NkImage: Load puts a movie player's texture at +0x50 and sets +0x3c to 1, and GetImage returns the nk_image while both hold (Linux Ghidra 0xf1c800; Windows rva 0xa93db0, same layout).
+offset	NkImage	glTexture	0x50	0x50	# NkImageGlTexture
+rva	_ZN10CNWCObject12SetFadeStateEh	0x765c80	# ObjSetFadeState
+rva	_ZN21CClientExoAppInternal27UpdateMouseCursorAppearanceEi	0x6f2830	# UpdateMouseCursorAppearance
+rva	_ZN25CCachedMouseCursorManager14SetMouseCursorEiiiii	0x83b3e0	# SetMouseCursor
+# The appearance record the update handler copies out of the creature's appearance object: 0x1f quad words and a word on Linux, and 0x1f quad words and a dword on Windows (the handler's copy, both read).
+offset	CCAppearanceInfo	sizeof	0xfa	0xfc	# SizeOfAppearanceInfo
+# Equipment on the model view's doll. Windows values read in the Windows image's appearance update handler and CreateItem:
+# the creature's right and left hand item ids, the item's three model parts and gender, the base item's equip-slot mask.
+offset	CNWCCreature	rightHandItem	0x338	0x318	# CreatureRightHandItem
+offset	CNWCCreature	leftHandItem	0x33c	0x31c	# CreatureLeftHandItem
+offset	CNWCItem	models	0x1ec	0x1cc	# ItemModels
+offset	CNWCItem	colors	0x8	0x8	# ItemColors
+offset	CNWCItem	gender	0x212	0x1f2	# ItemGender
+# nuklear 4.08 as compiled. Windows: the popup begin at rva 0xa6c8a0 compares nk_context +0x14c and +0x150 against the widget bounds, loads the current window from +0x6738 and its panel from +0xa8.
+offset	NkContext	mousePos	0x14c	0x14c	# NkCtxMousePos
+offset	NkContext	current	0x6738	0x6738	# NkCtxCurrent
+offset	NkWindow	layout	0xa8	0xa8	# NkWinLayout
+offset	NkCommandImage	handle	0x18	0x18	# NkCmdImageHandle
+offset	NkCommand	type	0x0	0x0	# NkCmdType
+offset	NkCommand	next	0x8	0x8	# NkCmdNext
+offset	NkCommandImage	x	0x10	0x10	# NkCmdImageX
+offset	NkCommandImage	y	0x12	0x12	# NkCmdImageY
+offset	NkCommandImage	w	0x14	0x14	# NkCmdImageW
+offset	NkCommandImage	h	0x16	0x16	# NkCmdImageH
+# The use count of a shared_ptr's control block: libstdc++ _Sp_counted_base and MSVC _Ref_count_base both put it right after the vtable pointer.
+offset	SharedPtrBlock	useCount	0x8	0x8	# SharedBlockUseCount

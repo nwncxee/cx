@@ -1,0 +1,35 @@
+using System;
+
+namespace CX.Framework;
+
+/// <summary>The rows of <see cref="EngineLayout"/> the model view reads: a throwaway creature, the viewport it sits in and
+/// that viewport's camera.</summary>
+public static unsafe partial class EngineLayout
+{
+    /// <summary>The model view's creature and viewport: <c>operator new</c> sizes, the deleting destructor slot, and the
+    /// viewport's scene-view record (<c>CAurScene*</c> at +0, <c>CAurCamera*</c> at +8, enabled byte at +0x10).</summary>
+    public static readonly int SizeOfCreature = Field("CNWCCreature", "sizeof");
+    public static readonly int SizeOfGuiViewport = Field("CGuiViewport", "sizeof");
+    public static readonly int GuiViewportRecord = Field("CGuiViewport", "record");
+    public static readonly int GobSetColorShiftingSlot = Field("Gob", "vtbl.SetColorShifting", Expect.VtblSlot);
+    public static readonly int SizeOfAppearanceInfo = Field("CCAppearanceInfo", "sizeof");
+    public static readonly int CreatureDeleteSlot = Field("CNWCCreature", "vtbl.Delete", Expect.VtblSlot);
+    /// <summary>The <c>CAurCamera</c> interface slots a free view's camera is set up through (<c>CameraSlots</c>' numbering;
+    /// Windows is one lower from slot 2). The by-value ones are called per OS by <c>NuiModelDoll</c>.</summary>
+    public static readonly int CameraSetPositionSlot = Field("CAurCamera", "vtbl.SetPosition", Expect.VtblSlot);
+    public static readonly int CameraSetOrientationSlot = Field("CAurCamera", "vtbl.SetOrientation", Expect.VtblSlot);
+    public static readonly int CameraSetClipDistSlot = Field("CAurCamera", "vtbl.SetClipDist", Expect.VtblSlot, sig: "void(float near, float far)");
+    public static readonly int CameraSetViewAngleSlot = Field("CAurCamera", "vtbl.SetViewAngle", Expect.VtblSlot, sig: "void(float angle)");
+    /// <summary>NkImage -> the GL texture name <c>GetImage</c> hands nuklear, and the frame count that gates it.</summary>
+    public static readonly int NkImageGlTexture = Field<uint>("NkImage", "glTexture");
+
+    /// <summary>The creature's hand-slot item ids (right 0x10, left 0x20 of the <c>INVENTORY_SLOT_*</c> masks), as
+    /// <c>EquipToInventorySlot</c> stores them.</summary>
+    public static readonly int CreatureRightHandItem = Field<uint>("CNWCCreature", "rightHandItem");
+    public static readonly int CreatureLeftHandItem = Field<uint>("CNWCCreature", "leftHandItem");
+    /// <summary>CNWCItem: the 19 model parts (a simple item's at [0], a composite weapon's three at [0..2]), the six colours and
+    /// the gender byte, as <c>CreateItem</c> stores what the appearance update sent.</summary>
+    public static readonly int ItemModels = Field<ushort>("CNWCItem", "models", count: 19);
+    public static readonly int ItemColors = Field<byte>("CNWCItem", "colors", count: 6);
+    public static readonly int ItemGender = Field<byte>("CNWCItem", "gender");
+}

@@ -36,13 +36,11 @@ public sealed unsafe class UiHostService : IExtenderService
             ? "UiHostService: frame present owned (SwapBuffers) -- driving the window registry"
             : "UiHostService: frame present not installed (Install returned Zero: symbol unresolved or already hooked)");
 
-        // The roll-call's draw site. nk_sdl_render is nuklear's GL flush: run the windows just before it and
-        // they land under every NUI window and over the vanilla GUI panels. Chained, not Installed:
-        // the symbol is shared plumbing, and higher priority = outer keeps our raw GL and its resync first.
+        // With Alloy off, the below-NUI layer runs just before nuklear's GL flush and the above-NUI layer after it.
         _nkSlot = hooks.ChainNkSdlRender(&OnNkRender, 20);
         log.Info(_nkSlot != null
-            ? "UiHostService: window roll-call runs below NUI (chained on nk_sdl_render)"
-            : "UiHostService: nk_sdl_render unavailable -- window roll-call stays at the present (above NUI)");
+            ? "UiHostService: window roll-call straddles NUI (chained on nk_sdl_render)"
+            : "UiHostService: nk_sdl_render unavailable -- both window layers stay at the present (above NUI)");
 
         // the gear's window. Its rect is the sprite's; it hits only while the main menu or the in-game Options
         // panel is up, so in play and on the loading screen it is inert for the cursor pick, the click routing and
@@ -181,8 +179,8 @@ public sealed unsafe class UiHostService : IExtenderService
     }
 
     /// <summary>The frame present: announce once, run the frame phases, then present. The window roll-call
-    /// itself happens earlier, at <see cref="OnNkRender"/>, so the windows land below NUI; it falls back to
-    /// here only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
+    /// itself happens earlier, at <see cref="OnNkRender"/>, either side of NUI; it falls back to here, both
+    /// layers over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
     [UnmanagedCallersOnly]
     private static void OnSwap(IntPtr window)
     {
@@ -200,7 +198,7 @@ public sealed unsafe class UiHostService : IExtenderService
         // When Alloy renders, the 2D UI is drawn BY its frame, after the view list: that frame runs at PrePresent --
         // after this point -- and would otherwise overwrite everything drawn here, which is what made CX's chat
         // vanish the moment the world started drawing.
-        if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();
+        if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();   // both layers, above NUI
         FrameRegistry.Global.Run(FramePhase.PrePresent);
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
         // participant (GlContextService's 4.6 bracket switches back to this context in there).
@@ -228,24 +226,25 @@ public sealed unsafe class UiHostService : IExtenderService
         FrameRegistry.Global.Run(FramePhase.PostPresent);
     }
 
-    /// <summary>The window roll-call's draw site (below NUI): draw, resync, then let the rest of the chain --
-    /// and finally nuklear's own flush -- run. Hot, and on the same thread as the present.</summary>
+    /// <summary>The window roll-call's draw site with Alloy off: the below-NUI layer, resync, the rest of the chain
+    /// and nuklear's own flush, then the above-NUI layer. Hot, and on the same thread as the present.</summary>
     [UnmanagedCallersOnly]
     private static void OnNkRender(float aa)
     {
-        if (!CX.Alloy.Renderer.On) DrawWindows();   // when Alloy renders, its own frame draws them instead
+        if (CX.Alloy.Renderer.On) { (*_nkSlot)(aa); return; }   // Alloy's frame draws both layers around its own NUI flush
+        DrawWindows(UiLayer.BelowNui);
         (*_nkSlot)(aa);
+        DrawWindows(UiLayer.AboveNui);
     }
 
-    /// <summary>CX's own 2D windows, drawn by the world frame after its view list; the two sites above draw
-    /// them when no such frame runs.</summary>
-    internal static void DrawWindowsForDbFrame() => DrawWindows();
+    /// <summary>CX's own 2D windows for the world frame Alloy draws: one layer, or both when null. The frame
+    /// calls it once per side of NUI's flush.</summary>
+    internal static void DrawWindowsForDbFrame(UiLayer? layer = null) => DrawWindows(layer);
 
-    /// <summary>Refresh the session gate, the UI scale and the viewport, run the z-order roll-call, then hand the GL
-    /// state back -- one call earlier than the present, because our raw GL desyncs GLRender's shadow cache and what
-    /// renders next is NUI. The roll-call alone stands aside while a movie or the engine's loadscreen is on screen;
-    /// everything above it still runs, since the session gate is where the module-unload edge is read.</summary>
-    private static void DrawWindows()
+    /// <summary>Refresh the session gate, the UI scale and the viewport, run the z-order roll-call of one layer (null =
+    /// both), then hand the GL state back: our raw GL desyncs GLRender's shadow cache and what renders next is NUI.
+    /// Only the roll-call stands aside while a movie or the engine's loadscreen is on screen; the session gate still runs.</summary>
+    private static void DrawWindows(UiLayer? layer = null)
     {
         // The roll-call's head and tail are their own zone. Zone.Ui is the DRAW only, so the gate, the scale sync,
         // the font re-bake, the viewport query and the engine hand-back would otherwise sit in the Seam residual.
@@ -254,10 +253,12 @@ public sealed unsafe class UiHostService : IExtenderService
         SyncUiScale(); ApplyFont();   // every frame, not only in game -- the menu gear and panel honour the UI scale
         TextRig.SampleViewport();     // the frame's one GL_VIEWPORT query; every draw below reads the pair
         long tUi = FrameZones.Now;
-        // Only the fallback path ever reaches a movie frame: CGuiMan::UpdateAndRender skips nk_sdl_render outright
-        // while a movie plays, and on Windows nk_sdl_render is not exported, so the fallback is the only path there.
+        // A movie frame never reaches the chain: CGuiMan::UpdateAndRender skips nk_sdl_render outright while one plays.
         if (!CX.Alloy.MovieService.OnScreen && !LoadScreen.PanelUp)
-            UiHost.DrawFrame();                   // draw every registered window in z-order (content-owned)
+        {
+            if (layer is { } one) UiHost.DrawFrame(one);   // one layer's windows in z-order (content-owned)
+            else UiHost.DrawFrame();
+        }
         FrameZones.Add(FrameZones.Zone.Ui, tUi);
         HandBack();
         FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
