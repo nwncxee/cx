@@ -221,14 +221,46 @@ internal static unsafe class GuiPass
         int tex = -1;
         uint prog = _gl.Prog;
         bool gamma = !PostChain.GammaOff();
-        for (int li = from; li < to; li++)
+        int li = from, solve = 0, runStart = 0, runEnd = 0;
+        while (li < to || solve != 0)
         {
-            ref GuiCapture.Layer l = ref GuiCapture.Layers[li];
+            if (solve != 0 && li == runEnd)
+            {
+                ref GuiCapture.Layer last = ref GuiCapture.Layers[runStart];
+                if (solve == 1)
+                {
+                    solve = 2; li = runStart;
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(1, last.W, last.H), last.W, last.H));
+                    ClearModelTarget(1f);
+                    write = 1;
+                }
+                else
+                {
+                    solve = 0;
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(curTarget, last.W, last.H));
+                    GuiModelSolve.Resolve(last.W, last.H, _log);
+                    Gl.UseProgram(_gl.Prog);
+                    blend = depth = write = cull = tex = -1; src = dst = 0; vao = uint.MaxValue; prog = _gl.Prog;
+                    Gl.Enable(Gl.SCISSOR_TEST);
+                    curTarget = uint.MaxValue;
+                    if (li >= to) break;
+                }
+            }
+            ref GuiCapture.Layer l = ref GuiCapture.Layers[li++];
             if (l.Target != curTarget)
             {
                 curTarget = l.Target;
-                Gl.BindFramebuffer(Gl.FRAMEBUFFER, curTarget != 0 ? ModelTarget(curTarget, l.W, l.H) : baseFbo);
-                if (curTarget != 0) ClearModelTarget();
+                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, out runEnd))
+                {
+                    solve = 1; runStart = li - 1;
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(0, l.W, l.H), l.W, l.H));
+                    ClearModelTarget(0f);
+                }
+                else
+                {
+                    Gl.BindFramebuffer(Gl.FRAMEBUFFER, curTarget != 0 ? ModelTarget(curTarget, l.W, l.H) : baseFbo);
+                    if (curTarget != 0) ClearModelTarget();
+                }
                 Gl.FrontFace(curTarget != 0 ? Gl.CW : Gl.CCW);
                 write = 1;
             }
@@ -311,12 +343,13 @@ internal static unsafe class GuiPass
         return _gl.ModelFbo;
     }
 
-    /// <summary>The model view's background, then a fresh depth.</summary>
-    private static void ClearModelTarget()
+    /// <summary>The model view's background, or with <paramref name="solid"/> from 0 to 1 that grey, opaque, then a fresh depth.</summary>
+    private static void ClearModelTarget(float solid = -1f)
     {
         Gl.Disable(Gl.SCISSOR_TEST);
         float* c = stackalloc float[4];
         CX.Services.Nui.NuiModelDoll.Background(c);
+        if (solid >= 0f) { c[0] = c[1] = c[2] = solid; c[3] = 1f; }
         Gl.ClearBufferfv(Gl.COLOR, 0, c);
         Gl.DepthMask(1);
         Gl.Clear(Gl.DEPTH_BUFFER_BIT | Gl.STENCIL_BUFFER_BIT);
@@ -459,6 +492,7 @@ internal static unsafe class GuiPass
     internal static void ContextLost()
     {
         TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
+        GuiModelSolve.ContextLost();
         _gl = new GuiGlState();
     }
 
