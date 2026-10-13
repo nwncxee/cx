@@ -61,13 +61,7 @@ internal static unsafe class Highlight
             if (active[c] != 0) win = c;
         // Claimed only when the winner is ours AND the engine would publish a gob for it at all.
         bool claim = win >= 0 && (HlChannels & (1 << win)) != 0 && glow[win] != 0;
-        int at = -1;
-        for (int i = 0; i < _ownedHlN; i++) if (_ownedHl[i] == gob) { at = i; break; }
-        if (claim)
-        {
-            if (at < 0 && _ownedHlN < _ownedHl.Length) _ownedHl[_ownedHlN++] = gob;
-        }
-        else if (at >= 0) _ownedHl[at] = _ownedHl[--_ownedHlN];
+        SetClaim(gob, claim);
         if (HlDiag)
             _log?.Info($"[hldiag] gob={gob:x} channel={win} glow={(win >= 0 ? glow[win] : 0)}"
                        + $" -> {(claim ? "OWNED outline" : "engine glow")}");
@@ -75,23 +69,28 @@ internal static unsafe class Highlight
 
     internal static RefreshHiliteFn _origRefreshHilite;
 
-    /// <summary>Did the source hook claim this gob? A gob the hook never saw is not ours: the engine can put
-    /// a gob in the highlight list by a path that never reaches <c>RefreshHilite</c>, and the safe verdict
-    /// for an unrecognised source is the glow, not an outline.</summary>
-    private static bool OwnedHighlight(IntPtr gob)
+    /// <summary>Add <paramref name="gob"/> to the claim list, or drop it. The facade's retire drops it too, so an
+    /// object the game destroys while highlighted leaves before its block can be handed to a new one.</summary>
+    internal static void SetClaim(IntPtr gob, bool claim)
     {
-        for (int i = 0; i < _ownedHlN; i++) if (_ownedHl[i] == gob) return true;
-        return false;
+        int at = Array.IndexOf(_ownedHl, gob, 0, _ownedHlN);
+        if (claim)
+        {
+            if (at < 0 && _ownedHlN < _ownedHl.Length) _ownedHl[_ownedHlN++] = gob;
+        }
+        else if (at >= 0) _ownedHl[at] = _ownedHl[--_ownedHlN];
     }
 
-    /// <inheritdoc cref="OwnedHighlight"/>
-    /// <remarks>DB mode: the pointers the source hook collected are the facade SHELLS the game holds
-    /// (<c>CNWCAnimBase+0xc8</c> is the shell there, not an engine <c>Gob</c>), so the claim is tested by
-    /// resolving each back to its record rather than by comparing pointers to a handle.</remarks>
-    private static bool OwnedHighlightDb(DbId obj)
+    /// <summary>Is <paramref name="gob"/> in the claim list?</summary>
+    internal static bool Claimed(IntPtr gob) => Array.IndexOf(_ownedHl, gob, 0, _ownedHlN) >= 0;
+
+    /// <summary>Did the source hook claim this record? A gob it never saw takes the glow. The claims are the
+    /// facade shells the game holds (<c>CNWCAnimBase+0xc8</c>), so the record's own shell is compared by
+    /// pointer: resolving a claim would land on a retired shell once the game destroyed the object.</summary>
+    internal static bool OwnedHighlightDb(DbId obj)
     {
-        for (int i = 0; i < _ownedHlN; i++) if (Facade.ObjectId(_ownedHl[i]) == obj) return true;
-        return false;
+        nint shell = Facade.ObjectShell(obj);
+        return shell != 0 && Claimed(shell);
     }
 
     /// <summary>The highlighted root's attached children, in the shape <c>Gob::GetAttachedGobs</c> hands

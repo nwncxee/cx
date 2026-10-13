@@ -322,7 +322,8 @@ internal static unsafe class DbSceneSelfCheck
         y = v.Y + (c.Y / c.W * 0.5f + 0.5f) * v.H;
     }
 
-    /// <summary>The scene's member list and the four <c>RenderGob*</c> reorderings.</summary>
+    /// <summary>The scene's member list, the four <c>RenderGob*</c> reorderings and the highlight list's
+    /// leave and death edges. Oracle: the handles and order written in by hand.</summary>
     private static void Order(Checker check)
     {
         DbId scene = DbScene.Create("orderTest");
@@ -356,6 +357,11 @@ internal static unsafe class DbSceneSelfCheck
         check.Expect(hobj == a && Near1(hcol.Y, 1f), "the highlight carries the LAST colour set");
         DbScene.Leave(scene, a);
         check.Expect(SceneFeed.HighlightCount(scene) == 0, "leaving the scene drops the object's highlight too");
+        // Highlighted by a scene it is not a member of: the leave of its own scene never reaches this list.
+        DbScene.AddHighlight(scene, b, Vector3.One);
+        DbScene.ObjectDied(b);
+        check.Expect(SceneFeed.HighlightCount(scene) == 0,
+                     "an object that dies leaves every scene's highlight list, not only its own scene's");
 
         // The camera is TWO records; destroying it must free both. This is the shape of leak that only shows
         // up as "the object table is full" an hour into a session, so it is asserted rather than trusted.

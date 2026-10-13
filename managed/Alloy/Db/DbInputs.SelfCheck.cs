@@ -7,8 +7,7 @@ namespace CX.Alloy.Db;
 
 /// <summary>The non-mesh consumers' inputs, asserted over a synthetic database. Each property here fails
 /// SILENTLY in a live session if it is wrong -- a light filed under the wrong kind is an unlit area, a
-/// lightmap key that moves with a rebuilt matrix is a bake that never hits, a highlight set that keeps a
-/// destroyed object is a glow around nothing.</summary>
+/// lightmap key that moves with a rebuilt matrix is a bake that never hits.</summary>
 internal static partial class DbInputs
 {
     internal static bool SelfCheck(ExtenderLog log)
@@ -19,7 +18,7 @@ internal static partial class DbInputs
         {
             KindsAndLifetime(check);
             LightmapKeys(check);
-            SkyAndHighlight(check);
+            SkyOrder(check);
             FlickerChecks(check);
         }
         finally { Reset(); }
@@ -127,9 +126,8 @@ internal static partial class DbInputs
     }
 
     /// <summary>The scene's three sky slots keep their ORDER (the engine draws current, fading-in, cross-fade,
-    /// and a swap paints the wrong sky over the right one), and the highlight set is a set: no duplicates, a
-    /// remove removes, and a full one refuses rather than overwriting.</summary>
-    private static void SkyAndHighlight(Checker check)
+    /// and a swap paints the wrong sky over the right one). Oracle: the handles written in.</summary>
+    private static void SkyOrder(Checker check)
     {
         DbId scene = SceneDb.Scenes.Alloc();
         int s = scene.Index;
@@ -145,17 +143,6 @@ internal static partial class DbInputs
         check.Expect(SceneDb.SceneSky(scene, 2).Value == c.Value && SceneDb.SceneSky(scene, 4).IsNull,
                      "...and the reader answers that same column, with no slot past the fourth");
 
-        check.Expect(SceneDb.Highlight(scene, a), "an object joins the highlight set");
-        check.Expect(!SceneDb.Highlight(scene, a), "...and does not join it twice");
-        check.Expect(SceneDb.SceneHighlightN[s] == 1, "the set holds one entry");
-        check.Expect(SceneDb.Highlight(scene, b) && SceneDb.SceneHighlightN[s] == 2, "a second object joins");
-        SceneDb.Unhighlight(scene, a);
-        check.Expect(SceneDb.SceneHighlightN[s] == 1 && SceneDb.SceneHighlight[s * SceneDb.MaxHighlight].Value == b.Value,
-                     "a remove removes the right one and keeps the other");
-        for (int k = 0; k < SceneDb.MaxHighlight + 4; k++) SceneDb.Highlight(scene, DbId.Make(200 + k, 1));
-        check.Expect(SceneDb.SceneHighlightN[s] == SceneDb.MaxHighlight,
-                     "a full highlight set refuses the surplus rather than overwriting");
-        SceneDb.SceneHighlightN[s] = 0;
         SceneDb.Scenes.Free(scene);
         SceneDb.Scenes.TakeDirty();
     }
