@@ -97,13 +97,15 @@ internal static class TexSeam
     private const ushort TxiResType = 2022;   // not-an-offset: restype id (TXI)
     private static readonly Dictionary<string, string?> _txiCache = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary><c>Gob::SetOverrideTextureFilter</c>: nearest rather than linear on every texture of the
-    /// object. Vanilla set it on each part's MATERIAL, shared by every instance of the model, so this sets it
-    /// on the registry slot -- the one place sampler state lives. <see cref="ObjectSlots"/> has already
-    /// recorded the object's flag and marked it; this is the effect.</summary>
+    /// <summary><c>Gob::SetOverrideTextureFilter</c>: nearest rather than linear on every texture of the object.
+    /// Vanilla scoped it to the part's material; this sets the shared registry slot, so every user of the texture
+    /// in either pass follows, and the first call is named with its caller chain.</summary>
     private static void FilterOverride(DbId obj, bool on)
     {
         if (!SceneDb.Objects.Valid(obj)) return;
+        if (_unhandledOnce.Add("SetOverrideTextureFilter"))
+            _log?.Always($"TexSeam: SetOverrideTextureFilter({on}) reached on o={obj.Value} model='{SceneDb.ObjSeamModelName[obj.Index]}' "
+                       + $"by {SeamCallers.Chain(4)} -- applied to the SHARED texture, so every GUI and world user of it changes");
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
         for (int p = first; p < first + count; p++)
             for (int slot = 0; slot < 4; slot++)

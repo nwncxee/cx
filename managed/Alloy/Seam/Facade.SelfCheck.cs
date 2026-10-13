@@ -452,16 +452,14 @@ internal static unsafe class FacadeSelfCheck
     }
 
     /// <summary>A shell whose object was ever in a GUI scene, or never joined one, is never handed out again,
-    /// even once the ring is full and past its quarantine. Oracle: hand-written expectations -- the stamp each
-    /// join leaves, the held and unmarked counts, neither address coming back, the churn reusing world shells,
-    /// and the held-set warning's literal thresholds.</summary>
+    /// even once the ring is full and past its quarantine. Oracle: hand-written
+    /// expectations -- the held and unmarked counts, neither address coming back, the churn reusing world shells,
+    /// the held-set warning's literal thresholds, and which joins cross the world/GUI boundary.</summary>
     private static void GuiHold(Checker check)
     {
         nint probe = SeamShell.Alloc(FacadeKind.Object, default);
-        check.Expect(!SeamShell.NoteScene(probe, world: true), "a first world join is not a world-to-GUI move");
-        check.Expect(SeamShell.NoteScene(probe, world: false), "a world object joining a GUI scene must be named");
-        check.Expect(!SeamShell.NoteScene(probe, world: false), "the world-to-GUI move is named once per shell");
-        check.Expect(!SeamShell.NoteScene(0, world: false), "a null shell carries no stamp");
+        SeamShell.NoteScene(probe, world: true);
+        SeamShell.NoteScene(probe, world: false);
 
         DbId world = SceneDb.Scenes.Alloc(), gui = SceneDb.Scenes.Alloc(), wobj = SceneDb.Objects.Alloc(), gobj = SceneDb.Objects.Alloc();
         if (world.IsNull || gui.IsNull || wobj.IsNull || gobj.IsNull)
@@ -474,8 +472,13 @@ internal static unsafe class FacadeSelfCheck
         DbFeed.InitObject(wobj.Index);
         DbFeed.InitObject(gobj.Index);
         nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj);
+        check.Expect(!Facade.RefuseCrossJoin(wobj, gui, "self-check"), "an object with no scene history joins any scene");
         DbScene.Join(world, wobj);
         DbScene.Join(gui, gobj);
+        check.Expect(Facade.RefuseCrossJoin(wobj, gui, "self-check"), "a world object joining a GUI scene must be refused");
+        check.Expect(Facade.RefuseCrossJoin(gobj, world, "self-check"), "a GUI object joining a world scene must be refused");
+        check.Expect(!Facade.RefuseCrossJoin(wobj, world, "self-check") && !Facade.RefuseCrossJoin(gobj, gui, "self-check"),
+            "a join within the object's own kind of scene is not refused");
         DbScene.Leave(gui, gobj);
         DbScene.Leave(world, wobj);
         int held = SeamShell.Held, quarantined = SeamShell.Quarantined;

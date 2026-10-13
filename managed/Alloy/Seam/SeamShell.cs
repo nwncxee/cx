@@ -352,16 +352,13 @@ public static unsafe class SeamShell
     }
 
     /// <summary>Record that <paramref name="shell"/>'s object joined a world or a GUI scene, or that a scene
-    /// shell became the world scene. True when a shell
-    /// that was in a world scene joins a GUI one for the first time; false for a block that is not ours.</summary>
-    internal static bool NoteScene(nint shell, bool world)
+    /// shell became the world scene. A block that is not ours is left alone.</summary>
+    internal static void NoteScene(nint shell, bool world)
     {
-        if (shell == 0) return false;
+        if (shell == 0) return;
         SeamHeader* h = Head(shell);
-        if (h->Magic != Magic) return false;
-        byte was = h->Scenes;
+        if (h->Magic != Magic) return;
         h->Scenes |= world ? InWorld : InGui;
-        return !world && (was & (InWorld | InGui)) == InWorld;
     }
 
     /// <summary>Mark <paramref name="shell"/> retired and queue it for reuse after the quarantine, or hold it for

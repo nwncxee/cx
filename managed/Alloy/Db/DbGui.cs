@@ -141,13 +141,7 @@ internal static unsafe class DbGui
         int n = SceneDb.SceneNameBytes(scene, name);
         name[n] = 0;
         float near, far;
-        bool clear, lit, bubble;
-        fixed (byte* np = name)
-        {
-            GuiCapture.DepthOf(np, ref _latch, out near, out far, out clear, v.Fovy);
-            lit = GuiCapture.IsLitScene(np);
-            bubble = Prefix(np, "sceneGUI_PNL_BUBBLE"u8);
-        }
+        bool clear, lit;
         // CX's own nameplate feature holds the engine at text-bubble mode 0 so that "nothing of vanilla's
         // ever draws" (NameplateService) and draws its own bubbles on the 2D UI. The engine honours that
         // text-bubble mode by never rendering a bubble panel's scene at all -- a whole ladder run captures
@@ -157,8 +151,15 @@ internal static unsafe class DbGui
         // sceneGUI_PNL_BUBBLE32_300 / pnl_bubble32_300 / node "Bubble09".
         // ...but the TOOLTIP is CGuiMan's own CGuiTextBubble on the same PNL_BUBBLE models, which the text-bubble
         // mode never touches (only CGuiInGamePopUpBubble reads it), so its scene is exempt by handle.
-        if (bubble && CX.Services.Nameplate.NameplateService.Suppressing && scene.Value != TooltipProbe.Scene)
-        { _bubblesRefused++; LastWhy = 'b'; return 0; }
+        // Before the depth latch, as the streaming hold is, so a refused bubble does not consume the run's clear.
+        fixed (byte* np = name)
+        {
+            if (Prefix(np, "sceneGUI_PNL_BUBBLE"u8) && CX.Services.Nameplate.NameplateService.Suppressing
+                && scene.Value != TooltipProbe.Scene)
+            { _bubblesRefused++; LastWhy = 'b'; return 0; }
+            GuiCapture.DepthOf(np, ref _latch, out near, out far, out clear, v.Fovy);
+            lit = GuiCapture.IsLitScene(np);
+        }
         if (!GuiCapture.BeginDbLayer(v.X, v.Y, v.W, v.H, near, far, clear)) { _refusedNoLayer++; LastWhy = 'l'; return 0; }
 
         Matrix4x4 viewProj = v.View * v.Proj;

@@ -348,9 +348,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// scene destroy all read that list, so writing <c>ObjScene</c> alone leaves a scene that holds nothing.</summary>
     internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell)
     {
-        if (TileBuild.RefuseMove(id, sc, "JoinScene"))
+        if (TileBuild.RefuseMove(id, sc, "JoinScene") || Facade.RefuseCrossJoin(id, sc, "JoinScene"))
         {
-            if (shell != 0) Facade.SetSceneWord(shell, SceneDb.SceneFacade[SceneDb.ObjScene[id.Index].Index]);
+            DbId now = SceneDb.ObjScene[id.Index];
+            // A null record's Index 0 is a live scene's slot; the engine only needs a non-zero word here.
+            if (shell != 0) Facade.SetSceneWord(shell, now.IsNull ? sceneShell : SceneDb.SceneFacade[now.Index]);
             return;
         }
         DbId was = SceneDb.ObjScene[id.Index];
@@ -403,7 +405,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             {
                 if (!SceneDb.Objects.Valid(a)) break;
                 DbId next = SceneDb.ObjSeamAppendNext[a.Index];
-                if (SceneDb.ObjScene[a.Index].Value != psc.Value)
+                if (SceneDb.ObjScene[a.Index].Value != psc.Value && !Facade.RefuseCrossJoin(a, psc, "PropagateScene (append)"))
                 {
                     DbId was = SceneDb.ObjScene[a.Index];
                     if (!was.IsNull) DbScene.Leave(was, a);
@@ -452,7 +454,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             if (SceneDb.Scenes.Valid(kept)) { target = kept; targetShell = SceneDb.SceneFacade[kept.Index]; }
         }
         DbId was = SceneDb.ObjScene[c.Index];
-        if (was.Value == target.Value) return;
+        if (was.Value == target.Value || Facade.RefuseCrossJoin(c, target, "PropagateScene")) return;
         if (!was.IsNull) DbScene.Leave(was, c);
         if (!target.IsNull) { DbScene.Join(target, c); Flag(c, SeamFlag.EverAttached, true); }
         else SceneDb.ObjScene[c.Index] = default;
