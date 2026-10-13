@@ -1,0 +1,1 @@
+sleep:15000;shot:@SHOTS@/hound.png;sleep:10000;shot:@SHOTS@/ogre.png;sleep:10000;shot:@SHOTS@/beholder.png;sleep:10000;shot:@SHOTS@/skeleton.png;sleep:10000;shot:@SHOTS@/golem.png;sleep:10000;shot:@SHOTS@/dragon.png
