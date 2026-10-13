@@ -159,14 +159,6 @@ internal static unsafe class NuiModelView
         return ok;
     }
 
-    private static bool BgReadable(string raw)
-    {
-        if (raw[0] == '#') return HexColour.TryParse(raw, out _);
-        foreach (string part in raw.Split(','))
-            if (!float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return false;
-        return true;
-    }
-
     private static void CheckColour(string key, string what)
     {
         string raw = Policy(key, what, "");
@@ -337,6 +329,7 @@ internal static unsafe class NuiModelView
             return;
         }
         NuiModelGear.Plan(slot.Gear, v.Wear);
+        if (NuiModelGear.TakeRefusal(slot.Gear, out string wearItem, out string wearWhy)) Refuse(v.Key, "wear", wearItem, wearWhy, 0);
         if (!v.Built)
         {
             if (v.BuildFailed) return;
@@ -396,7 +389,17 @@ internal static unsafe class NuiModelView
     private static void WearVfx(ViewData v, IntPtr who)
     {
         if (v.VfxAll) NuiModelVfx.Follow(v.Slot.Doll.Creature, who, v.Mirror, true, v.MuteVfx);
-        else NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
+        else
+        {
+            RefuseVfx(v);
+            NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
+        }
+    }
+
+    /// <summary>Record the part of the view's <c>vfx</c> the client will not wear. Run when the line is read and again when the doll is dressed, since the effects table can be unread at the first.</summary>
+    private static void RefuseVfx(ViewData v)
+    {
+        if (v.Vfx.Length > 0 && NuiModelVfx.Problem(v.Vfx, NuiModelTarget.VisualEffectRows(), out string part, out string why)) Refuse(v.Key, "vfx", v.Vfx, $"{part}: {why}", 0);
     }
 
     /// <summary>The built NUI view the pointer is over, among those <paramref name="wants"/> accepts, or null.</summary>
@@ -649,6 +652,8 @@ internal static unsafe class NuiModelView
         v.PoseSpeed = Math.Clamp(PolicyF(v.Key, "animspeed", 1f), NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
         v.PoseLoop = PolicyF(v.Key, "animloop", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
+        NuiModelGear.GearState gear = v.Slot.Gear;
+        if (gear.RefusedWhy.Length > 0 && gear.PreviewText == v.Wear) Refuse(v.Key, "wear", gear.RefusedItem, gear.RefusedWhy, 0);
         string vfx = Policy(v.Key, "vfx", "");
         if (vfx != v.Vfx || v.MuteVfx != v.WornMuted)
         {
@@ -658,10 +663,10 @@ internal static unsafe class NuiModelView
             v.WornMuted = v.MuteVfx;
             if (v.Built) WearVfx(v, Resolve(v));
         }
+        RefuseVfx(v);
         string bgRaw = Policy(v.Key, "bg", "");
-        if (bgRaw.Length > 0 && !BgReadable(bgRaw)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'", 0);
         Span<float> bg = stackalloc float[4];
-        NuiModelLook.Background(bgRaw, bg);
+        if (!NuiModelLook.Background(bgRaw, bg)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'", 0);
         NuiModelDoll.SetBackground(v.Slot, bg[0], bg[1], bg[2], bg[3]);
         if (v.Built) ApplyCamera(v);
         string standin = Policy(v.Key, "standin", "");
@@ -752,6 +757,26 @@ internal static unsafe class NuiModelView
         for (int i = 0; i < 9; i++) b[i] = (byte)"@model:me"[i];
         b[9] = 0;
         check.Expect(KeyOf(b) == "me", "the key is what follows the prefix");
+        ServerPolicy.Clear();
+        ServerPolicy.Set("model.t.fitzone", "0.9,0.1");
+        ServerPolicy.Set("model.t.dragrange", "x");
+        check.Expect(!PairOf("t", "fitzone", 0f, 1f, out _, out _) && !PairOf("t", "dragrange", -360f, 360f, out _, out _), "a fitzone with min above max and a dragrange of text are not read");
+        PolicyRefusal[] got = PolicyRefusals.All();
+        check.Expect(got.Length == 2 && got[0].Kind == RefusalKind.Model && got[0].Key == "model.t.fitzone" && got[0].Value == "0.9,0.1"
+                     && got[1].Key == "model.t.dragrange" && got[1].Value == "x", "both are recorded under their model keys");
+        ServerPolicy.Set("model.t.fitzone", "0.1,0.9");
+        check.Expect(PolicyRefusals.All().Length == 1, "a good re-send of one clears its refusal");
+        ServerPolicy.Set("model.t.size", "wide");
+        SizeOf("t");
+        ServerPolicy.Set("model.t.vfx", "147,abc");
+        var data = new ViewData { Key = "t", Vfx = "147,abc" };
+        RefuseVfx(data);
+        got = PolicyRefusals.All();
+        check.Expect(got.Length == 3 && got[1].Key == "model.t.size" && got[2].Key == "model.t.vfx" && got[2].Value == "147,abc" && got[2].Reason.StartsWith("abc: "),
+                     "a size and a vfx part that are not readable are recorded");
+        ServerPolicy.Apply("model.t.*=");
+        check.Expect(PolicyRefusals.All().Length == 0, "releasing the view's keys clears its refusals");
+        ServerPolicy.Clear();
         check.Expect(Lapsed(10000, 8000) && !Lapsed(10000, 9000) && !Lapsed(10000, 10000), "a card's view lapses after a second and a half unasked, not before");
     }
 }

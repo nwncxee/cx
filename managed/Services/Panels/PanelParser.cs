@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using CX.Framework;
 using System.Text;
 using System.Text.Json;
+using CX.Framework;
 
 namespace CX.Services.Panels;
 
@@ -262,10 +262,7 @@ internal static class PanelParser
 
     private static uint ColorOf(JsonElement v, string name)
     {
-        if (v.ValueKind != JsonValueKind.String || !TryColor(v.GetString()!, out uint c)) throw new Refusal($"{name} is a colour like #RRGGBB or #RRGGBBAA");
+        if (v.ValueKind != JsonValueKind.String || !HexColour.TryParse(v.GetString(), out uint c)) throw new Refusal($"{name} is a colour like #RRGGBB or #RRGGBBAA");
         return c;
     }
-
-    /// <summary><c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c> as 0xRRGGBBAA.</summary>
-    public static bool TryColor(string s, out uint rgba) => HexColour.TryParse(s, out rgba);
 }

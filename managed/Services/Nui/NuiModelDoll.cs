@@ -96,6 +96,8 @@ internal static unsafe class NuiModelDoll
         for (int i = 0; i < 4; i++) s.Bg[i] = 0f;
         s.Light = NuiModelLook.EngineLight;
         s.Claimed = false;
+        foreach (ModelSlot o in _o.Slots) if (o.Claimed) return;
+        NuiModelGuard.Forget();
     }
 
     internal static ReadOnlySpan<ModelSlot> Slots => _o.Slots;

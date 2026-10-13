@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -64,6 +65,25 @@ internal static unsafe class NuiModelVfx
     /// <see cref="MaxRows"/> is skipped, and a row named twice on one part is worn once.</summary>
     internal static VfxRow[] Parse(string value) =>
         value.Split(',').Select(One).Where(e => e.Row >= 0).Distinct().Take(MaxRows).Select(e => new VfxRow((ushort)e.Row, (byte)e.Part)).ToArray();
+
+    /// <summary>The first part of a <c>vfx</c> value the client will not wear, with why: text that is not <c>row[:part]</c>, a row past the
+    /// <paramref name="table"/> rows of <c>visualeffects.2da</c> (a table below zero is unread and refuses nothing), or the effect past <see cref="MaxRows"/>.
+    /// False when every part is worn. <c>all</c> and an empty value have none.</summary>
+    internal static bool Problem(string value, int table, out string part, out string why)
+    {
+        part = why = "";
+        if (IsAll(value)) return false;
+        var seen = new HashSet<(int, int)>();
+        foreach (string text in value.Split(','))
+        {
+            if (text.Trim().Length == 0) continue;
+            (int row, int on) = One(text);
+            if (row < 0) { part = text.Trim(); why = "not an effect row: a row 0-65535, then ':' and a part 0-255 if wanted"; return true; }
+            if (!NuiModelGuard.RowInTable(row, table)) { part = text.Trim(); why = $"past the {table} rows of the client's visualeffects.2da"; return true; }
+            if (seen.Add((row, on)) && seen.Count > MaxRows) { part = text.Trim(); why = $"more than {MaxRows} effects; the rest are not worn"; return true; }
+        }
+        return false;
+    }
 
     private static (int Row, int Part) One(string text)
     {
@@ -229,6 +249,12 @@ internal static unsafe class NuiModelVfx
                      "a changed order, a removed row or a replaced one starts over");
         check.Expect(Plan([a, b, c], 1, [a, c], 2) == Step.Append, "rows past the worn count are not compared");
         VfxRow[] parts = Parse("147:1, 147:5,147:1, 9:300, 9:x, 12:2:3, 7:255");
+        check.Expect(Problem("147,abc", -1, out string bad, out string why) && bad == "abc" && why.Length > 0, "a part that is not a row is the problem");
+        check.Expect(Problem("147, 700", 612, out bad, out _) && bad == "700" && !Problem("147,611", 612, out _, out _) && !Problem("65000", -1, out _, out _),
+                     "a row past a 612-row table is the problem, the last row is not, and an unread table refuses no row");
+        check.Expect(!Problem("", 612, out _, out _) && !Problem("all", 612, out _, out _) && !Problem("147, ,408:2", 612, out _, out _), "an empty value, all and a gap name no problem");
+        check.Expect(Problem("9:300", -1, out bad, out _) && bad == "9:300" && Problem("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17", 612, out bad, out _) && bad == "17",
+                     "a part past 255 is the problem, and so is the seventeenth effect");
         check.Expect(parts.Length == 3 && parts[0] == new VfxRow(147, 1) && parts[1] == new VfxRow(147, 5) && parts[2] == new VfxRow(7, 255),
                      "a row names its part, the same row on two parts is worn twice, and a bad part skips the entry");
     }

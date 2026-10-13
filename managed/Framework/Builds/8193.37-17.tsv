@@ -1318,6 +1318,7 @@ offset	NkCommandImage	w	0x14	0x14	# NkCmdImageW
 offset	NkCommandImage	h	0x16	0x16	# NkCmdImageH
 # The use count of a shared_ptr's control block: libstdc++ _Sp_counted_base and MSVC _Ref_count_base both put it right after the vtable pointer.
 offset	SharedPtrBlock	useCount	0x8	0x8	# SharedBlockUseCount
+# The effect list rows below (effects through EffectNode): both columns were read from each OS's decompile, and they came out equal.
 offset	CNWCObject	effects	0x80	0x80	# ObjEffects
 offset	CExoLinkedListInternal	head	0x0	0x0	# ListHead
 offset	CExoLinkedListNode	next	0x8	0x8	# NodeNext
