@@ -70,17 +70,22 @@ internal static unsafe class NuiWindows
     /// <summary>The policy keys of one window. Cold: allocates, runs when a window is first seen and when the policy moves.</summary>
     internal static void Read(Style st, Func<string, string?> get)
     {
-        st.Opacity = Clamp01(Num(get(Key(st.Id, "opacity")), 1f));
-        st.Background = Clamp01(Num(get(Key(st.Id, "background")), 1f));
-        st.FadeInMs = Math.Max(0f, Num(get(Key(st.Id, "fadein")), 0f));
-        st.FadeOutMs = Math.Max(0f, Num(get(Key(st.Id, "fadeout")), 0f));
+        st.Opacity = Clamp01(Num(get, st.Id, "opacity", 1f));
+        st.Background = Clamp01(Num(get, st.Id, "background", 1f));
+        st.FadeInMs = Math.Max(0f, Num(get, st.Id, "fadein", 0f));
+        st.FadeOutMs = Math.Max(0f, Num(get, st.Id, "fadeout", 0f));
     }
 
     internal static string Key(string id, string prop) => "nui." + id + "." + prop;
 
-    private static float Num(string? s, float def)
-        => s != null && float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float f)
-           && float.IsFinite(f) ? f : def;
+    private static float Num(Func<string, string?> get, string id, string prop, float def)
+    {
+        string? s = get(Key(id, prop));
+        if (s == null) return def;
+        if (float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float f) && float.IsFinite(f)) return f;
+        PolicyRefusals.Add(RefusalKind.Window, Key(id, prop), s, "not a number");
+        return def;
+    }
 
     private static float Clamp01(float f) => f < 0f ? 0f : f > 1f ? 1f : f;
 

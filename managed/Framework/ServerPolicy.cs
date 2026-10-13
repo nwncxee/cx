@@ -67,12 +67,12 @@ public static class ServerPolicy
     public static int Apply(string payload)
     {
         string[] lines = payload.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (lines.Length > MaxLines) { Log?.Info($"ServerPolicy: refusing {lines.Length} lines (> {MaxLines})"); return 0; }
+        if (lines.Length > MaxLines) { Log?.Info($"ServerPolicy: refusing {lines.Length} lines (> {MaxLines})"); PolicyRefusals.Add(RefusalKind.Line, "(whole message)", $"{lines.Length} lines", $"more than {MaxLines} lines"); return 0; }
         int n = 0;
         foreach (string line in lines)
         {
             int eq = line.IndexOf('=');
-            if (eq <= 0) { Log?.Info($"ServerPolicy: ignoring malformed line '{line}'"); continue; }
+            if (eq <= 0) { Log?.Info($"ServerPolicy: ignoring malformed line '{line}'"); PolicyRefusals.Add(RefusalKind.Line, line, "", "no '=' in the line"); continue; }
             if (Set(line[..eq].Trim(), line[(eq + 1)..].Trim())) n++;
         }
         Log?.Info($"ServerPolicy: applied {n}/{lines.Length} line(s); {Count} key(s) held");
@@ -88,17 +88,23 @@ public static class ServerPolicy
             return true;
         }
         foreach (var h in _handlers)
-            if (key.StartsWith(h.Prefix, StringComparison.OrdinalIgnoreCase)) return h.Set(key[h.Prefix.Length..], value);
+            if (key.StartsWith(h.Prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                bool ok = h.Set(key[h.Prefix.Length..], value);
+                if (ok) PolicyRefusals.Forget(key);
+                return ok;
+            }
         if (KnobGroup.Find(key) is { } k)
         {
-            if (!Holdable(key)) { Log?.Info($"ServerPolicy: {key} is not a server-holdable knob -- refused"); return false; }
+            if (!Holdable(key)) { Log?.Info($"ServerPolicy: {key} is not a server-holdable knob -- refused"); PolicyRefusals.Add(RefusalKind.Knob, key, value, "not a knob a server may hold"); return false; }
             lock (_lock)
             {
                 if (value.Length == 0) { k.Release(); _held.Remove(k); }
-                else if (!k.Enforce(value)) { Log?.Info($"ServerPolicy: {key} refused value '{value}'"); return false; }
+                else if (!k.Enforce(value)) { Log?.Info($"ServerPolicy: {key} refused value '{value}'"); PolicyRefusals.Add(RefusalKind.Knob, key, value, "the knob does not take that value"); return false; }
                 else if (!_held.Contains(k)) _held.Add(k);
                 _epoch++;
             }
+            PolicyRefusals.Forget(key);
             return true;
         }
         lock (_lock)
@@ -106,12 +112,14 @@ public static class ServerPolicy
             if (value.Length == 0) _props.Remove(key); else _props[key] = value;
             _stamp[key] = ++_epoch;
         }
+        PolicyRefusals.Forget(key);
         return true;
     }
 
     private static void ReleasePrefix(string prefix)
     {
         foreach (var h in _handlers) h.Release(prefix);
+        PolicyRefusals.ForgetPrefix(prefix);
         lock (_lock)
         {
             for (int i = _held.Count - 1; i >= 0; i--)
@@ -153,18 +161,25 @@ public static class ServerPolicy
 
     /// <summary>The whole number at <paramref name="key"/>, or <paramref name="def"/> when it is absent or not one.</summary>
     public static int Int(string key, int def)
-        => TryGet(key, out string v) && int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i) ? i : def;
+        => TryGet(key, out string v) ? int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i) ? i : Bad(key, v, "not a whole number", def) : def;
 
     public static string Str(string key, string def) => TryGet(key, out string v) ? v : def;
 
     public static bool Bool(string key, bool def)
     {
         if (!TryGet(key, out string v)) return def;
-        return v.ToLowerInvariant() switch { "1" or "true" or "on" or "yes" => true, "0" or "false" or "off" or "no" => false, _ => def };
+        return v.ToLowerInvariant() switch { "1" or "true" or "on" or "yes" => true, "0" or "false" or "off" or "no" => false, _ => Bad(key, v, "not 1/0, true/false, on/off or yes/no", def) };
     }
 
     public static float Float(string key, float def)
-        => TryGet(key, out string v) && float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) && float.IsFinite(f) ? f : def;
+        => TryGet(key, out string v) ? float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) && float.IsFinite(f) ? f : Bad(key, v, "not a number", def) : def;
+
+    /// <summary>A held property a reader could not use: record why, and give the reader its default.</summary>
+    private static T Bad<T>(string key, string value, string reason, T def)
+    {
+        PolicyRefusals.Add(PolicyRefusals.KindOf(key), key, value, reason);
+        return def;
+    }
 
     /// <summary>The route for <paramref name="action"/> (<c>&lt;action&gt;.route</c> = engine | deny | server).</summary>
     public static PolicyRoute Route(string action)
@@ -190,6 +205,7 @@ public static class ServerPolicy
             foreach (Knob k in _held) sb.Append('\n').Append("  ").Append(k.Key).Append('=').Append(k.Format()).Append(" (yours ").Append(k.FormatStored()).Append(')');
             foreach (var kv in _props) sb.Append('\n').Append("  ").Append(kv.Key).Append('=').Append(kv.Value);
             foreach (var h in _handlers) sb.Append('\n').Append("  ").Append(h.Report());
+            PolicyRefusals.Report(sb);
         }
         return sb.ToString();
     }
@@ -198,6 +214,7 @@ public static class ServerPolicy
     /// release work, and the player's value survives a hold without the file ever seeing the server's.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
+        PolicyRefusals.SelfCheck(log);
         var check = new Checker(log);
         var g = new KnobGroup("cx-policy-selfcheck", "Test", "Test", null, null, true, Effect.Live, null, null, "", register: false);
         var t = g.Toggle("gold", "gold", true, help: "x");

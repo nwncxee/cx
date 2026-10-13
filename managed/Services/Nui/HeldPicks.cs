@@ -32,10 +32,18 @@ internal static class HeldPicks
     public static bool Set(string key, string value)
     {
         key = key.Trim();
-        if (key.Length == 0 || Encoding.UTF8.GetByteCount(key) > MaxKeyBytes) return false;
+        if (key.Length == 0 || Encoding.UTF8.GetByteCount(key) > MaxKeyBytes)
+        {
+            PolicyRefusals.Add(RefusalKind.Held, Prefix + key, value, $"the key must be 1-{MaxKeyBytes} bytes");
+            return false;
+        }
         var next = new Dictionary<string, string>(_s.Map, StringComparer.OrdinalIgnoreCase);
         if (value.Length == 0) next.Remove(key);
-        else if (next.Count >= MaxKeys && !next.ContainsKey(key)) return false;
+        else if (next.Count >= MaxKeys && !next.ContainsKey(key))
+        {
+            PolicyRefusals.Add(RefusalKind.Held, Prefix + key, value, $"{MaxKeys} pick keys are held already");
+            return false;
+        }
         else next[key] = value;
         Publish(next);
         return true;

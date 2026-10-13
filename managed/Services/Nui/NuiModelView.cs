@@ -135,7 +135,32 @@ internal static unsafe class NuiModelView
     private static string Policy(string key, string what, string def) => ServerPolicy.Str($"{KeyRoot}{key}.{what}", def);
 
     private static float PolicyF(string key, string what, float def)
-        => float.TryParse(Policy(key, what, ""), NumberStyles.Float, CultureInfo.InvariantCulture, out float v) ? v : def;
+    {
+        string raw = Policy(key, what, "");
+        if (float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out float v)) return v;
+        return Refuse(key, what, raw, "not a number", def);
+    }
+
+    /// <summary>A model setting the view could not use: recorded for <c>/policy</c> when it holds text, and the default stands.</summary>
+    private static T Refuse<T>(string key, string what, string raw, string reason, T def)
+    {
+        if (raw.Length > 0) PolicyRefusals.Add(RefusalKind.Model, $"{KeyRoot}{key}.{what}", raw, reason);
+        return def;
+    }
+
+    private static bool PairOf(string key, string what, float lo, float hi, out float a, out float b)
+    {
+        string raw = Policy(key, what, "");
+        bool ok = NuiModelLook.Pair(raw, lo, hi, out a, out b);
+        if (!ok) Refuse(key, what, raw, $"needs 'min,max' inside {lo}..{hi}, min not above max", 0);
+        return ok;
+    }
+
+    private static void CheckTriple(string key, string what, float lo, float hi)
+    {
+        string raw = Policy(key, what, "");
+        if (raw.Length > 0 && !NuiModelLook.Triple(raw, lo, hi, out _)) Refuse(key, what, raw, "needs three numbers 'x,y,z'", 0);
+    }
 
     private static (int, int, bool) SizeOf(string key)
     {
@@ -143,6 +168,7 @@ internal static unsafe class NuiModelView
         int x = v.IndexOf('x');
         if (x > 0 && int.TryParse(v.AsSpan(0, x), out int w) && int.TryParse(v.AsSpan(x + 1), out int h)
             && w is > 0 and <= MaxSize && h is > 0 and <= MaxSize) return (w, h, true);
+        Refuse(key, "size", v, $"needs '<w>x<h>', each 1-{MaxSize}", 0);
         return (DefaultSize, DefaultSize, false);
     }
 
@@ -555,35 +581,46 @@ internal static unsafe class NuiModelView
         string target = Policy(v.Key, "target", "");
         v.BuildFailed = false;
         v.Tgt = NuiModelTarget.Parse(target);
+        if (v.Tgt.Kind == TargetKind.None) Refuse(v.Key, "target", target, "names no one: player, an object id, app:<row>, model:<resref> or item:<look>", 0);
         float fit = PolicyF(v.Key, "fit", 1f);
         v.Fit = fit != 0f;
-        NuiModelLook.Pair(Policy(v.Key, "fitzone", ""), 0f, 1f, out v.ZoneLo, out v.ZoneHi);
+        PairOf(v.Key, "fitzone", 0f, 1f, out v.ZoneLo, out v.ZoneHi);
         v.FitPad = fit > 0f ? Math.Clamp(fit, 0.1f, 10f) : 1f;
         v.HasBox = false;
         v.FitDist = DefaultDist;
         v.FitCentre = new System.Numerics.Vector3(0f, 0f, DefaultHeight);
+        CheckTriple(v.Key, "rot", -NuiModelLook.MaxRot, NuiModelLook.MaxRot);
         v.Rot = NuiModelLook.Rotation(Policy(v.Key, "rot", ""));
         v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
         v.Dist = Policy(v.Key, "dist", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist) : null;
         v.Height = Policy(v.Key, "height", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight) : null;
         v.Yaw = PolicyF(v.Key, "yaw", 0f);
         v.Pitch = Math.Clamp(PolicyF(v.Key, "pitch", 0f), -NuiModelLook.MaxPitch, NuiModelLook.MaxPitch);
-        bool clip = NuiModelLook.Pair(Policy(v.Key, "clip", ""), 0.001f, NuiModelLook.MaxFar, out float near, out float far) && near < far;
+        bool clip = PairOf(v.Key, "clip", 0.001f, NuiModelLook.MaxFar, out float near, out float far) && near < far;
         v.ClipNear = clip ? near : NuiModelLook.DefaultNear;
         v.ClipFar = clip ? far : NuiModelLook.DefaultFar;
-        bool zoom = NuiModelLook.Pair(Policy(v.Key, "zoom", ""), 0.01f, MaxDist, out float zmin, out float zmax);
+        bool zoom = PairOf(v.Key, "zoom", 0.01f, MaxDist, out float zmin, out float zmax);
         v.ZoomMin = zoom ? zmin : 0f;
         v.ZoomMax = zoom ? zmax : 0f;
         v.ZoomStep = Math.Clamp(PolicyF(v.Key, "zoomstep", NuiModelLook.DefaultZoomStep), NuiModelLook.MinZoomStep, NuiModelLook.MaxZoomStep);
         v.ZoomAt = NuiModelLook.ZoomAfterPolicy(v.ZoomAt, zoom, v.ZoomMin, v.ZoomMax);
-        v.HasTurnRange = NuiModelLook.Pair(Policy(v.Key, "dragrange", ""), -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn, out float tmin, out float tmax);
+        v.HasTurnRange = PairOf(v.Key, "dragrange", -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn, out float tmin, out float tmax);
         v.TurnMin = v.HasTurnRange ? tmin : 0f;
         v.TurnMax = v.HasTurnRange ? tmax : 0f;
         v.DragYaw = NuiModelLook.TurnAfterPolicy(v.DragYaw, v.HasTurnRange, v.TurnMin, v.TurnMax);
         v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
+        if (Policy(v.Key, "light", "").Trim() == "server")
+        {
+            CheckTriple(v.Key, "lightcolor", 0f, NuiModelLook.MaxLight);
+            CheckTriple(v.Key, "lightdir", -1000f, 1000f);
+            CheckTriple(v.Key, "lightambient", 0f, NuiModelLook.MaxLight);
+        }
         NuiModelDoll.SetLight(v.Slot, NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
-        v.Pose = NuiModelPose.Parse(Policy(v.Key, "anim", ""), out v.PoseName);
+        string anim = Policy(v.Key, "anim", "");
+        v.Pose = NuiModelPose.Parse(anim, out v.PoseName);
+        if (v.Pose == PoseMode.Idle && !float.TryParse(anim.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            Refuse(v.Key, "anim", anim, "not a number or an animation name (letters, digits, underscore)", 0);
         v.PoseSpeed = Math.Clamp(PolicyF(v.Key, "animspeed", 1f), NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
         v.PoseLoop = PolicyF(v.Key, "animloop", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
@@ -595,7 +632,10 @@ internal static unsafe class NuiModelView
             v.WornMuted = v.MuteVfx;
             if (v.Built) NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
         }
-        string[] bg = Policy(v.Key, "bg", "").Split(',');
+        string bgRaw = Policy(v.Key, "bg", "");
+        string[] bg = bgRaw.Split(',');
+        foreach (string part in bg)
+            if (bgRaw.Length > 0 && !float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) { Refuse(v.Key, "bg", bgRaw, "needs numbers 'r,g,b,a'", 0); break; }
         float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
         NuiModelDoll.SetBackground(v.Slot, C(0), C(1), C(2), C(3));
         if (v.Built) ApplyCamera(v);
