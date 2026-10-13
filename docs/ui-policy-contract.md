@@ -454,7 +454,8 @@ normal dotted with `lightdir`) + what the model glows on its own, in linear ligh
 character-preview light shades the doll, whatever `light` says, because the engine cannot take another.
 
 A shiny part (a helm, a blade) takes its reflectivity from the texture's alpha and reflects the environment map its creature names. A
-creature that names none, or one that does not load, reflects black, so the part draws darker than a plain one.
+creature that names none, or one that does not load, gets the grey the engine bakes in with environment maps off, so the part reads as
+plain grey metal.
 
 **Zoom and drag.** `zoom` and `drag` act only on the image's own rectangle, while the doll is built. `dist` is the starting distance; the
 player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.

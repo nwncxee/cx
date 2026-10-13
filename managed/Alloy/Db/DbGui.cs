@@ -565,7 +565,7 @@ internal static unsafe class DbGui
 
     /// <summary>The GL texture an env-mapped part of object <paramref name="o"/> reflects: the map the game named for the
     /// object (<c>Gob::SetEnvironmentMap</c> @0x53f530). <c>DEFAULT</c>, a name that does not load and no name at all are the
-    /// engine's null texture, which has no GL name, so the part reflects nothing. 0 also while the named map is still loading.</summary>
+    /// engine's null texture, which has no GL name, so the part takes the grey bake. 0 also while the named map is still loading.</summary>
     private static int EnvTexOf(int o)
     {
         string? name = SceneDb.ObjEnvMap[o];

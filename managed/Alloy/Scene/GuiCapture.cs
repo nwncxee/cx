@@ -57,8 +57,7 @@ internal static unsafe class GuiCapture
     /// <summary>A lit draw is env-mapped: the fragment stage reflects the scene's environment map, as the engine's
     /// specular light does for a material that names one.</summary>
     internal const int FlagEnvMap = 256;
-    /// <summary>With <see cref="FlagEnvMap"/>: a texture is bound for the part to reflect. Without it the part reflects nothing,
-    /// which is what the engine's null texture gives a part whose object names no map.</summary>
+    /// <summary>With <see cref="FlagEnvMap"/>: a texture is bound for the part to reflect. Without it the part takes the grey bake.</summary>
     internal const int FlagEnvTex = 512;
     /// <summary>ponytail: fixed staging. A busy screen is a few hundred draws; past any ceiling the rest is NOT
     /// DRAWN and said once, loudly. Grow on the log line, never silently.</summary>

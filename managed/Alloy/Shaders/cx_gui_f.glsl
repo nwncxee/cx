@@ -58,8 +58,8 @@ vec2 GuiEnvCoords(vec3 n, vec3 pos)
 }
 
 // An env-mapped part's texture alpha is its reflectivity (inc_standard.shd, the vertex-lit path a GUI scene takes): the
-// colour is mix(texture, environment texel, 1 - alpha) before the light. A part whose object names no map reflects the
-// engine's null texture, which samples black.
+// colour is mix(texture, environment texel, 1 - alpha) before the light. A part whose object names no map (or one that does
+// not load) takes the grey bake instead.
 vec3 GuiEnvTexel(vec3 n)
 {
     return GuiLin(texture(uEnvMap, GuiEnvCoords(n, vPos)).rgb);
@@ -71,10 +71,10 @@ void main()
     int flags = int(uGui[r + 13].x);
     vec4 t = (flags & 32) != 0 ? GuiPlt(r, vUv)
            : (flags & 1) != 0  ? texture(uTex, vUv) : vec4(1.0);
-    // FlagSolidTexel: the alpha is never opacity. An env-mapped lit part spends it as reflectivity below; any other
+    // FlagSolidTexel: the alpha is never opacity. An env-mapped part with a map to reflect spends it as reflectivity below; any other
     // takes the engine's env-off bake (rgb = mix(env grey, rgb, a), then a = 1; cx_ownlit_head.glsl's CX_ENV_GREY).
     float envLevel = 1.0 - t.a;
-    if ((flags & 64) != 0 && (flags & 256) == 0) { t.rgb = mix(vec3(0.666667), t.rgb, t.a); t.a = 1.0; }
+    if ((flags & 64) != 0 && (flags & 768) != 768) { t.rgb = mix(vec3(0.666667), t.rgb, t.a); t.a = 1.0; }
     else if ((flags & 64) != 0) t.a = 1.0;
     vec4 c;
     if ((flags & 4) != 0)
@@ -94,7 +94,7 @@ void main()
             lit = GuiLin(uGui[r + 10].rgb) * 0.3 + GuiLin(uGui[r + 11].rgb) * (0.25 + 0.75 * k);
         }
         vec3 albedo = GuiLin(t.rgb);
-        if ((flags & 256) != 0) albedo = mix(albedo, (flags & 512) != 0 ? GuiEnvTexel(un) : vec3(0.0), envLevel);
+        if ((flags & 768) == 768) albedo = mix(albedo, GuiEnvTexel(un), envLevel);
         vec3 shaded = (flags & 128) != 0 ? albedo * lit + emi : albedo * (lit + emi);
         c = vec4(GuiEnc(shaded), t.a * uGui[r + 11].a);
     }
