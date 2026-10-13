@@ -111,7 +111,7 @@ internal static unsafe class NuiModelView
         NuiModelBounds.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 7, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 8, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -154,6 +154,20 @@ internal static unsafe class NuiModelView
         bool ok = NuiModelLook.Pair(raw, lo, hi, out a, out b);
         if (!ok) Refuse(key, what, raw, $"needs 'min,max' inside {lo}..{hi}, min not above max", 0);
         return ok;
+    }
+
+    private static bool BgReadable(string raw)
+    {
+        if (raw[0] == '#') return HexColour.TryParse(raw, out _);
+        foreach (string part in raw.Split(','))
+            if (!float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) return false;
+        return true;
+    }
+
+    private static void CheckColour(string key, string what)
+    {
+        string raw = Policy(key, what, "");
+        if (raw.Length > 0 && !NuiModelLook.Colour(raw, out _)) Refuse(key, what, raw, "needs '#RRGGBB', '#RRGGBBAA' or 'r,g,b'", 0);
     }
 
     private static void CheckTriple(string key, string what, float lo, float hi)
@@ -611,9 +625,9 @@ internal static unsafe class NuiModelView
         v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
         if (Policy(v.Key, "light", "").Trim() == "server")
         {
-            CheckTriple(v.Key, "lightcolor", 0f, NuiModelLook.MaxLight);
+            CheckColour(v.Key, "lightcolor");
             CheckTriple(v.Key, "lightdir", -1000f, 1000f);
-            CheckTriple(v.Key, "lightambient", 0f, NuiModelLook.MaxLight);
+            CheckColour(v.Key, "lightambient");
         }
         NuiModelDoll.SetLight(v.Slot, NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
@@ -633,11 +647,10 @@ internal static unsafe class NuiModelView
             if (v.Built) NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
         }
         string bgRaw = Policy(v.Key, "bg", "");
-        string[] bg = bgRaw.Split(',');
-        foreach (string part in bg)
-            if (bgRaw.Length > 0 && !float.TryParse(part, NumberStyles.Float, CultureInfo.InvariantCulture, out _)) { Refuse(v.Key, "bg", bgRaw, "needs numbers 'r,g,b,a'", 0); break; }
-        float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
-        NuiModelDoll.SetBackground(v.Slot, C(0), C(1), C(2), C(3));
+        if (bgRaw.Length > 0 && !BgReadable(bgRaw)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'", 0);
+        Span<float> bg = stackalloc float[4];
+        NuiModelLook.Background(bgRaw, bg);
+        NuiModelDoll.SetBackground(v.Slot, bg[0], bg[1], bg[2], bg[3]);
         if (v.Built) ApplyCamera(v);
         string standin = Policy(v.Key, "standin", "");
         string rect = Policy(v.Key, "standinrect", "");

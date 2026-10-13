@@ -103,13 +103,43 @@ internal static class NuiModelLook
     /// <summary>The player's turn after the policy changed: pulled inside a range that is set, else as it was.</summary>
     internal static float TurnAfterPolicy(float yaw, bool ranged, float min, float max) => ranged ? Math.Clamp(yaw, min, max) : yaw;
 
+    /// <summary>A light colour: <c>#RRGGBB</c> or <c>#RRGGBBAA</c> (the alpha is ignored), or <c>r,g,b</c> each clamped to 0..<see cref="MaxLight"/>. False for anything else.</summary>
+    internal static bool Colour(string v, out Vector3 r)
+    {
+        r = default;
+        if (v.Length > 0 && v[0] == '#')
+        {
+            if (!HexColour.TryParse(v, out uint rgba)) return false;
+            Span<float> ch = stackalloc float[4];
+            HexColour.Channels(rgba, ch);
+            r = new Vector3(ch[0], ch[1], ch[2]);
+            return true;
+        }
+        return Triple(v, 0f, MaxLight, out r);
+    }
+
+    /// <summary>The backdrop <c>bg</c> names into <paramref name="into"/> (four floats, <c>r,g,b,a</c>): <c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c>, or up to four numbers
+    /// in 0-1, where a missing or unreadable one is 0. A malformed hex value is all zero, like an empty one.</summary>
+    internal static void Background(string v, Span<float> into)
+    {
+        into.Clear();
+        if (v.Length > 0 && v[0] == '#')
+        {
+            if (HexColour.TryParse(v, out uint rgba)) HexColour.Channels(rgba, into);
+            return;
+        }
+        string[] p = v.Split(',');
+        for (int i = 0; i < 4 && i < p.Length; i++)
+            if (float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f)) into[i] = f;
+    }
+
     /// <summary>The light the four <c>light</c> settings describe. Anything but <c>server</c> in <paramref name="mode"/> is the engine's.</summary>
     internal static ModelLight Light(string mode, string color, string dir, string ambient)
     {
         if (mode.Trim() != "server") return EngineLight;
-        Vector3 c = Triple(color, 0f, MaxLight, out Vector3 cv) ? cv : Vector3.One;
+        Vector3 c = Colour(color, out Vector3 cv) ? cv : Vector3.One;
         Vector3 d = Triple(dir, -1000f, 1000f, out Vector3 dv) && dv.LengthSquared() > 1e-8f ? Vector3.Normalize(dv) : KeyDir;
-        Vector3 a = Triple(ambient, 0f, MaxLight, out Vector3 av) ? av : new Vector3(DefaultAmbient);
+        Vector3 a = Colour(ambient, out Vector3 av) ? av : new Vector3(DefaultAmbient);
         return new ModelLight(true, c, d, a);
     }
 
@@ -133,6 +163,27 @@ internal static class NuiModelLook
         ModelLight m = Light("server", "1,0.5,0", "0,0,2", "0.1,0.1,0.2");
         check.Expect(m.Color == new Vector3(1f, 0.5f, 0f) && m.Dir == new Vector3(0, 0, 1f) && m.Ambient == new Vector3(0.1f, 0.1f, 0.2f),
                      "a server light normalises its direction and keeps its colours");
+        check.Expect(Colour("#FF8000", out Vector3 hx) && hx.X == 1f && Math.Abs(hx.Y - 0.5019608f) < 1e-6f && hx.Z == 0f, "a hex light colour reads 0-1 per channel");
+        check.Expect(Colour("#FF800040", out hx) && hx.X == 1f && hx.Z == 0f, "the alpha of a hex light colour is ignored");
+        check.Expect(Colour("2,0.5,9", out hx) && hx == new Vector3(2f, 0.5f, 4f), "the number form still clamps to 4");
+        check.Expect(!Colour("#12345", out _) && !Colour("#GGGGGG", out _) && !Colour("", out _) && !Colour("#1234567890", out _), "a malformed light colour is refused");
+        ModelLight hl = Light("server", "#FF0000", "", "#000033");
+        check.Expect(hl.Color == new Vector3(1f, 0f, 0f) && hl.Ambient.X == 0f && Math.Abs(hl.Ambient.Z - 0.2f) < 1e-6f, "Light takes hex for lightcolor and lightambient");
+        ModelLight bl = Light("server", "#GGGGGG", "", "#12345");
+        check.Expect(bl.Color == Vector3.One && bl.Ambient == new Vector3(0.25f), "a malformed hex falls back to the default, as a bad number does");
+        Span<float> bg = stackalloc float[4];
+        Background("#FF000080", bg);
+        check.Expect(bg[0] == 1f && bg[1] == 0f && bg[2] == 0f && Math.Abs(bg[3] - 0.5019608f) < 1e-6f, "bg takes #RRGGBBAA");
+        Background("#000000", bg);
+        check.Expect(bg[0] == 0f && bg[3] == 1f, "bg #RRGGBB is opaque");
+        Background("0.1,0.2,0.3,0.4", bg);
+        check.Expect(bg[0] == 0.1f && bg[1] == 0.2f && bg[2] == 0.3f && bg[3] == 0.4f, "bg numbers still read");
+        Background("0.5,x", bg);
+        check.Expect(bg[0] == 0.5f && bg[1] == 0f && bg[3] == 0f, "bg numbers: a missing or bad one is 0");
+        Background("#12345", bg);
+        check.Expect(bg[0] == 0f && bg[1] == 0f && bg[2] == 0f && bg[3] == 0f, "a malformed hex bg is clear");
+        Background("", bg);
+        check.Expect(bg[3] == 0f, "an empty bg is clear");
         check.Expect(ZoomTo(4f, 2, 0.25f, 1f, 10f) == 3.5f && ZoomTo(4f, -100, 0.25f, 1f, 10f) == 10f && ZoomTo(1.2f, 5, 0.25f, 1f, 10f) == 1f,
                      "a scroll up comes nearer a step a notch and stops at the range's ends");
         check.Expect(ZoomAfterPolicy(8f, true, 1f, 5f) == 5f && float.IsNaN(ZoomAfterPolicy(float.NaN, true, 1f, 5f))

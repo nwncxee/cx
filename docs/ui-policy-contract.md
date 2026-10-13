@@ -34,7 +34,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `6`: the `glowalpha` style field sets how strong the nearest ring of a `glow` is. `5` always drew it at half the colour's opacity. The client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `4` took no `@model:<key>` image `src`. `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `7`: `model.<key>.rot` turns the model itself, an item doll stands the item up, and a doll is framed on the geometry it draws, so `fit` and `fitzone` work on a player race and every doll is centred. `6` had no `rot`, drew an item in the pose its file was authored in (a sword end-on), framed a body built from parts on bounds the engine does not keep (`fit` and `fitzone` did nothing with Alloy on and framed a metre-high box with it off) and framed everything else on the engine's bounds, which also cover dummies and emitters; `6` took: `model.<key>.wear` takes armour, a helmet and a cloak as well as hand items, and several items at once. `5` took only a hand item in `wear`, one at a time, and drew: `@model:<key>` NUI images draw a live model, up to 8 at once, a card or the held image can show one, and the target is a creature, an appearance row, a model name or an item (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `4` drew only a creature (the player or an object id) in any other pose than its idle, drew a creature whose model is not made of body parts (a hell hound, an ogre) as nothing, had no `fit`, and its camera stood at fixed defaults, so a large model overflowed its image. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
+| `cx_cap_modelview` | `8`: `model.<key>.bg`, `lightcolor` and `lightambient` also take a `#RRGGBB` or `#RRGGBBAA` colour. `7` took them as numbers only; `7`: `model.<key>.rot` turns the model itself, an item doll stands the item up, and a doll is framed on the geometry it draws, so `fit` and `fitzone` work on a player race and every doll is centred. `6` had no `rot`, drew an item in the pose its file was authored in (a sword end-on), framed a body built from parts on bounds the engine does not keep (`fit` and `fitzone` did nothing with Alloy on and framed a metre-high box with it off) and framed everything else on the engine's bounds, which also cover dummies and emitters; `6` took: `model.<key>.wear` takes armour, a helmet and a cloak as well as hand items, and several items at once. `5` took only a hand item in `wear`, one at a time, and drew: `@model:<key>` NUI images draw a live model, up to 8 at once, a card or the held image can show one, and the target is a creature, an appearance row, a model name or an item (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `4` drew only a creature (the player or an object id) in any other pose than its idle, drew a creature whose model is not made of body parts (a hell hound, an ogre) as nothing, had no `fit`, and its camera stood at fixed defaults, so a large model overflowed its image. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
@@ -194,7 +194,9 @@ declared. A field CX does not know is ignored. A field it knows with the wrong t
 a count or length over a limit (see [Limits](#limits)) is **refused**, and the whole line with it. A size that has a range is
 **clamped** into it instead.
 
-A colour is `"#RRGGBB"` or `"#RRGGBBAA"`.
+A colour is `"#RRGGBB"` or `"#RRGGBBAA"`. Anything else is not a colour: not `#RGB`, not `0x` and not a number. Every colour a server sends reads the
+same way, in a card, a style, a `<c=>` markup tag and a model view's `bg`, `lightcolor` and `lightambient`; the model view settings also keep their
+number forms.
 
 | card field | meaning |
 |---|---|
@@ -382,7 +384,7 @@ Alloy off.
 | key | meaning |
 |---|---|
 | `nui.<id>.opacity=0.6` | the whole window, 0-1 |
-| `nui.<id>.background=0` | the engine's own title bar, frame and body fill, 0-1. At 0 only the widgets and the server's draw list draw. A window with no engine chrome (a transparent one) has nothing to fade, and a server rect the size of the window stays |
+| `nui.<id>.background=0` | the engine's own title bar, frame and body fill, 0-1. At 0 only the widgets and the server's draw list draw, and the window still drags by its hidden title bar. A `transparent` window keeps its title bar and frame, so they fade too. A window with no title, close or collapse button, `border=false` and `transparent` has nothing to fade, and a server rect the size of the window stays |
 | `nui.<id>.fadein=150` | ms from invisible to the window's opacity, from the frame it opens |
 | `nui.<id>.fadeout=150` | ms the window takes to fade away after it closes |
 
@@ -419,7 +421,7 @@ stand-in until they do.
 | `rot` | `x,y,z`: the model's own turn in degrees, each -360 to 360, about the x axis, then the y, then the z of the view (x right, y toward the viewer, z up). It turns the model, not the camera: `yaw` and `pitch` still move the camera round the turned model, and the doll is framed as it is shown. An item is stood up first (see below); `rot` turns it from there. Anything that is not three numbers is no turn | `0,0,0` |
 | `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
 | `drag` | degrees the doll turns for each pixel a left drag that began on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
-| `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
+| `bg` | `r,g,b,a`, each 0-1, or a colour: `#RRGGBB` (opaque) or `#RRGGBBAA`. A malformed colour is the default | `0,0,0,0` |
 | `anim` | `0` leaves the doll still. An animation name (a letter, then letters, digits and underscores, up to 32) plays that animation, any the model has, for example `creadyr` (a combat stance), `ctaunt` or `cconjure1`; a name the model lacks leaves the doll in its rest pose and the client logs it once. Anything else is the creature's own idle. A creature's idle is part of the creature, so changing between the idle and another value rebuilds the doll | `1` |
 | `animspeed` | the rate a named animation plays at, 0.05-8 times its own | `1` |
 | `animloop` | `0` plays a named animation once and leaves the doll in its rest pose. Any other number loops it | `1` |
@@ -431,9 +433,9 @@ stand-in until they do.
 | `zoomstep` | metres one scroll notch moves the camera, 0.01-10 | `0.25` |
 | `dragrange` | `min,max` degrees (-360 to 360) the drag turn stays inside, counted from `yaw`: `-45,45` turns a quarter either way and stops. `drag` still sets the speed and `0` still turns the drag off. No `dragrange` turns freely | none |
 | `light` | `engine` shows the doll in the engine's character-preview light. `server` shows it in the light the three settings below describe | `engine` |
-| `lightcolor` | `r,g,b` of a server light, each 0-4 | `1,1,1` |
+| `lightcolor` | `r,g,b` of a server light, each 0-4, or a colour: `#RRGGBB` or `#RRGGBBAA`, each channel 0-1 as written and the alpha ignored. A malformed colour is the default | `1,1,1` |
 | `lightdir` | `x,y,z`: the direction the light comes from, in the view's own frame (x right, y up, z toward the viewer). It is made unit length; all zero is the default | `0.35,0.5,0.8` |
-| `lightambient` | `r,g,b` added whatever the surface faces, each 0-4 | `0.25,0.25,0.25` |
+| `lightambient` | `r,g,b` added whatever the surface faces, each 0-4, or a colour in the same hex form as `lightcolor` | `0.25,0.25,0.25` |
 
 **Framing.** Unless `fit` is `0`, the camera stands where the whole model is in view: the model's bounding box is covered by a
 sphere, and the camera is as far from it as that sphere needs at the view `angle`, in the narrower of the image's two directions,
