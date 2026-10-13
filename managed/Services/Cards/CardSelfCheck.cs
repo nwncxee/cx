@@ -49,6 +49,18 @@ internal static class CardSelfCheck
         return PanelLayout.Build(cards[0], scale, m => (atlas, m), subject);
     }
 
+    private static PanelStyle StyleOf(string json)
+    {
+        PanelParser.TryParseStyle(json, out PanelStyle st, out _);
+        return st;
+    }
+
+    private static PanelView LayS(GlyphAtlas atlas, string styleJson, string cardJson)
+    {
+        PanelParser.TryParse(cardJson, out PanelDecl[] cards, out _, StyleOf(styleJson));
+        return PanelLayout.Build(cards[0], 1f, m => (atlas, m), default);
+    }
+
     private static NuiHit Hit(string token, int row = -1, string image = "", float x = 50f, float y = 40f, float w = 30f, float h = 30f)
     {
         var hit = new NuiHit { Element = (IntPtr)1, Row = row, X = x, Y = y, W = w, H = h };
@@ -65,6 +77,8 @@ internal static class CardSelfCheck
         GlyphAtlas atlas = TestAtlas();
         Layout(check, atlas);
         Placement(check);
+        Styled(check, atlas);
+        StyleRegistry(check, log);
         Registry(check, log);
         Presenting(check, atlas, log);
         log.Info(check.Ok ? "CardSelfCheck: passed" : "CardSelfCheck: FAILED");
@@ -93,7 +107,7 @@ internal static class CardSelfCheck
         bool order = c.Blocks.Length == kinds.Length;
         for (int i = 0; order && i < kinds.Length; i++) order = c.Blocks[i].Kind == kinds[i];
         check.Expect(order, "the blocks come back in order, an unknown type as text");
-        check.Expect(c.BgFrom == 0x102030FF && c.BgTo == 0x304050FF && !c.Horizontal && c.Border == 0xAABBCCFF && c.Tab == "Equipped" && c.Width == 240f && c.Item == "1f",
+        check.Expect(c.St.BgFrom == 0x102030FF && c.St.BgTo == 0x304050FF && c.St.Dir == BgDir.Vertical && c.St.Border == 0xAABBCCFF && c.Tab == "Equipped" && c.St.Width == 240f && c.Item == "1f",
             "card fields: gradient, border, tab, width, item");
         check.Expect(c.Blocks[0].Color == 0x3399FFFF && c.Blocks[0].Size == 1.3f && c.Blocks[1].Size == 0.85f && c.Blocks[1].Color == 0xFFFFFF99, "a declared colour and size, a dim line");
         check.Expect(c.Blocks[7].Runs[0].Italic && c.Blocks[7].Runs[1].Italic, "italic on the block makes every run italic");
@@ -177,6 +191,115 @@ internal static class CardSelfCheck
         check.Expect(Near(v.W, 400f) && Near(v.H, 20f + 20f + 4f + 20f), "at UI scale 2 the padding and gaps double; the test face's own height does not");
     }
 
+    /// <summary>
+    /// Oracle: the pre-change numbers written as literals (pad 10, gap 4, text gap 2, divider 7, footer 62/38 and 5, tab 8/6/4/2, width 300 in 160-480),
+    /// and heights, positions and vertex counts counted by hand on the test face (20 px line, 10 px letter, 4 px space).
+    /// </summary>
+    private static void Styled(Checker check, GlyphAtlas atlas)
+    {
+        PanelStyle d = StyleOf("{}");
+        check.Expect(d.Pad == 10f && d.Gap == 4f && d.TextGap == 2f && d.StatusGap == 6f && d.IconGap == 4f && d.FrameInset == 2f && d.DividerMargin == 3f && d.SectionPad == 6f
+            && d.FooterPad == 5f && d.FooterSplit == 0.62f && d.TabX == 8f && d.TabPad == 6f && d.TabExtra == 4f && d.TabDrop == 2f && d.StatusPx == 22f && d.IconsPx == 28f && d.ImageSize == 64f,
+            "an empty style is every spacing the cards had before");
+        check.Expect(d.Text == 0xE6E6E6FF && d.BgFrom == 0x12161CF2 && d.Border == 0x6E6E6EFF && d.Divider == 0xFFFFFF30 && d.FooterBand == 0x00000066 && d.FrameFill == 0x00000066
+            && d.FrameLine == 0xB8B8B8C0 && d.TabBg == 0x000000B0 && d.DimAlpha == 0x99 && d.PulseMin == 0.35f && d.PulsePeriodMs == 1200f && d.Width == 300f && d.MinWidth == 160f && d.MaxWidth == 480f,
+            "and every colour, the pulse and the width range");
+        check.Expect(d.Side == Side.Right && d.Flip && d.Offset == 8f && d.CardGap == 8f && d.Delay < 0f && d.FadeIn < 0f && d.Sizes.Length == 7 && d.Sizes[0] == 0.7f && d.Sizes[6] == 2f, "the placement, the player's own delay and the seven sizes");
+
+        check.Expect(Near(LayS(atlas, "{\"pad\":4,\"textgap\":6}", "{\"width\":200,\"blocks\":[{\"text\":\"ab\"}]}").H, 4f + 20f + 6f + 4f), "pad 4 and text gap 6: 4 + 20 + 6 + 4 = 34");
+        check.Expect(Near(LayS(atlas, "{}", "{\"pad\":3,\"blocks\":[{\"text\":\"ab\",\"after\":9}]}").H, 3f + 20f + 9f + 3f), "a card's own pad and a block's own gap beat the style");
+        check.Expect(Near(LayS(atlas, "{\"pad\":4}", "{\"pad\":6,\"blocks\":[{\"text\":\"ab\"}]}").H, 6f + 20f + 2f + 6f) && Near(LayS(atlas, "{\"pad\":4}", "{\"blocks\":[{\"text\":\"ab\"}]}").H, 4f + 20f + 2f + 4f),
+            "a card field beats the style, and a card without it takes the style's");
+        check.Expect(Near(LayS(atlas, "{}", "{\"blocks\":[{\"type\":\"divider\",\"margin\":5,\"thick\":3}]}").H, 10f + 5f + 3f + 5f + 10f), "a divider's margin and thickness: 10 + 13 + 10 = 33");
+        check.Expect(Near(LayS(atlas, "{}", "{\"width\":200,\"blocks\":[{\"type\":\"section\",\"pad\":2,\"blocks\":[{\"text\":\"ab\"}]}]}").H, 10f + 2f + 22f + 2f + 10f), "a section's own pad: 10 + 26 + 10 = 46");
+        const string foot = "{\"width\":200,\"blocks\":[{\"type\":\"footer\",\"left\":\"a\",\"right\":\"aaaa bbbb\"}]}";
+        check.Expect(Near(LayS(atlas, "{}", foot).H, 10f + 40f + 10f + 10f) && Near(LayS(atlas, "{\"footersplit\":0.3}", foot).H, 10f + 20f + 10f + 10f),
+            "the footer's right text wraps in 38% of 180 px (two lines) and fits in 70% (one); each pads 5 px above and below");
+        check.Expect(Near(LayS(atlas, "{\"leading\":1.5}", "{\"width\":200,\"blocks\":[{\"text\":\"ab\"}]}").H, 10f + 30f + 2f + 10f), "a line spacing of 1.5 makes the 20 px line 30");
+        check.Expect(Near(LayS(atlas, "{\"tabextra\":10}", "{\"tab\":\"t\",\"blocks\":[]}").TabH, 30f), "the tab's extra height: 20 + 10");
+
+        PanelView v = LayS(atlas, "{}", "{\"width\":200,\"blocks\":[]}");
+        check.Expect(v.Back.VertexCount == 6 + 24, "the default frame is four rectangles");
+        v = LayS(atlas, "{\"borderw\":3}", "{\"width\":200,\"blocks\":[]}");
+        float[] b = v.Back.ToArray();
+        float topEdge = 0f;
+        for (int i = 6; i < 12; i++) topEdge = Math.Max(topEdge, b[i * VertexBatch.Floats + 1]);
+        check.Expect(Near(topEdge, 3f), $"a 3 px border: the top edge is 3 px deep ({topEdge})");
+        check.Expect(LayS(atlas, "{\"sides\":\"l\"}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 6, "sides l draws one edge");
+        check.Expect(LayS(atlas, "{\"border2\":\"#ffffff\"}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 + 24, "an inner border adds four rectangles");
+        check.Expect(LayS(atlas, "{\"corners\":\"#ffffff\"}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 + 48, "corner brackets add eight");
+        check.Expect(LayS(atlas, "{\"glow\":\"#00ffff80\",\"glowspread\":2}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 + 48, "a glow two steps wide adds two frames of four rectangles");
+
+        v = LayS(atlas, "{\"bg\":{\"from\":\"#102030\",\"to\":\"#304050\",\"dir\":\"d\"}}", "{\"width\":200,\"blocks\":[]}");
+        b = v.Back.ToArray();
+        check.Expect(Near(b[4], 0x10 / 255f) && Near(b[1 * VertexBatch.Floats + 4], 0x20 / 255f) && Near(b[2 * VertexBatch.Floats + 4], 0x30 / 255f) && Near(b[5 * VertexBatch.Floats + 4], 0x20 / 255f),
+            "a diagonal gradient runs from the top left to the bottom right, the other corners half way");
+        v = LayS(atlas, "{\"bg\":\"#ff0000\"}", "{\"width\":200,\"bg\":{\"from\":\"#00ff00\",\"to\":\"#00000000\"},\"blocks\":[]}");
+        b = v.Back.ToArray();
+        check.Expect(Near(b[5], 1f) && Near(b[2 * VertexBatch.Floats + 7], 0f), "a gradient may fade to a clear colour");
+
+        v = LayS(atlas, "{\"color\":\"#ff0000\",\"shadow\":\"#000000\"}", "{\"width\":200,\"blocks\":[{\"text\":\"ab\"}]}");
+        check.Expect(v.Text.VertexCount == 24, "a shadow draws every glyph twice");
+        float[] t = v.Text.ToArray();
+        check.Expect(Near(t[4], 0f) && Near(t[12 * VertexBatch.Floats + 4], 1f) && Near(t[12 * VertexBatch.Floats + 5], 0f), "the shadow first, then the text in the style's colour");
+        v = LayS(atlas, "{}", "{\"width\":200,\"blocks\":[{\"text\":\"ab\",\"align\":\"center\"}]}");
+        check.Expect(Near(v.Text.ToArray()[0], 10f + (180f - 20f) / 2f + 1f), "centred text starts half the spare width in");
+
+        check.Expect(LayS(atlas, "{\"pulsemin\":0.5,\"pulseperiod\":400}", "{\"blocks\":[]}") is { PulseMin: 0.5f, PulsePeriodMs: 400f }, "the pulse's floor and period reach the view");
+        check.Expect(Near(PanelPulse.Alpha(0, 0.5f, 400f), 0.75f) && Near(PanelPulse.Alpha(100, 0.5f, 400f), 1f) && Near(PanelPulse.Alpha(300, 0.5f, 400f), 0.5f) && Near(PanelPulse.Alpha(400, 0.5f, 400f), 0.75f),
+            "a 0.5 floor on a 400 ms period: half way up at 0, full at a quarter, the floor at three quarters");
+        check.Expect(StyleOf("{\"pulsemin\":3,\"pulseperiod\":5}") is { PulseMin: 1f, PulsePeriodMs: 100f }, "the floor clamps to 0-1 and the period to 100-60000 ms");
+
+        check.Expect(StyleOf("{\"minwidth\":100,\"maxwidth\":900,\"width\":700}").Width == 700f && StyleOf("{\"width\":9999}").Width == 480f && StyleOf("{\"minwidth\":1}").MinWidth == 32f,
+            "the width range is the style's, inside 32-2000");
+        PanelParser.TryParse("{\"width\":2000}", out PanelDecl[] wide, out _, StyleOf("{\"maxwidth\":900}"));
+        PanelParser.TryParse("{\"width\":50}", out PanelDecl[] narrow, out _);
+        check.Expect(wide[0].St.Width == 900f && narrow[0].St.Width == 160f, "a card's width clamps to its style's range");
+        PanelStyle ladder = StyleOf("{\"sizes\":[2.5,1,0.5]}");
+        check.Expect(ladder.Sizes.Length == 3 && ladder.Sizes[0] == 0.5f && ladder.Sizes[2] == 2.5f, "a size ladder is sorted");
+        PanelParser.TryParse("{\"blocks\":[{\"text\":\"a<s=0.6>b</s>\",\"size\":2}]}", out wide, out _, ladder);
+        check.Expect(wide[0].Blocks[0].Size == 2.5f && wide[0].Blocks[0].Runs[1].Size == 0.5f, "block sizes and <s=> snap to the style's ladder");
+        check.Expect(!PanelParser.TryParseStyle("{\"sizes\":[]}", out _, out _) && !PanelParser.TryParseStyle("{\"sizes\":[1,1,1,1,1,1,1,1,1,1,1,1,1]}", out _, out _) && !PanelParser.TryParseStyle("[1]", out _, out _)
+            && !PanelParser.TryParseStyle("{\"pad\":\"big\"}", out _, out _) && !PanelParser.TryParseStyle("{\"side\":\"up\"}", out _, out _) && !PanelParser.TryParseStyle("{\"sides\":\"x\"}", out _, out _),
+            "an empty or long ladder, a non-object, a wrong type and a bad word each refuse the style");
+
+        PanelParser.TryParse("{\"blocks\":[{\"text\":\"a\",\"dim\":true}]}", out wide, out _, StyleOf("{\"dimcolor\":\"#112233\",\"dimalpha\":0.2}"));
+        check.Expect(wide[0].Blocks[0].Color == 0x11223333, "a dim line takes the style's colour and opacity");
+        v = LayS(atlas, "{\"imagesize\":48}", "{\"width\":200,\"images\":[{\"src\":\"gui_x\"},{\"src\":\"gui_y\",\"at\":\"c\",\"w\":40,\"h\":20,\"alpha\":0.5}],\"blocks\":[]}");
+        check.Expect(Near(v.Icons[0].W, 48f) && v.Icons[0].Alpha == 1f && Near(v.Icons[1].X, 80f) && Near(v.Icons[1].Y, 0f) && v.Icons[1].Alpha == 0.5f, "an image takes the style's size, a centre anchor and its own opacity");
+        v = LayS(atlas, "{}", "{\"width\":200,\"images\":[{\"src\":\"gui_x\",\"at\":\"t\",\"w\":40,\"h\":10},{\"src\":\"gui_y\",\"at\":\"r\",\"w\":10,\"h\":4},{\"src\":\"gui_z\",\"at\":\"l\",\"w\":10,\"h\":4}],\"blocks\":[]}");
+        check.Expect(Near(v.Icons[0].X, 80f) && Near(v.Icons[0].Y, 0f) && Near(v.Icons[1].X, 190f) && Near(v.Icons[1].Y, 8f) && Near(v.Icons[2].X, 0f) && Near(v.Icons[2].Y, 8f), "edge anchors centre along the other axis");
+        check.Expect(!PanelParser.TryParse("{\"images\":[{\"src\":\"a\",\"at\":\"x\"}]}", out _, out _), "an unknown anchor is refused");
+    }
+
+    /// <summary>Oracle: lines typed into the checks; a card sent before the style, a style sent first, and a bad style, with the paddings read back.</summary>
+    private static void StyleRegistry(Checker check, ExtenderLog log)
+    {
+        CardRegistry.Reset();
+        CardRegistry.Init(log);
+        ServerPolicy.Apply("card.x={\"blocks\":[]}");
+        check.Expect(CardRegistry.Find("x")!.Cards[0].St.Pad == 10f, "a card sent with no style has the defaults");
+        ServerPolicy.Apply("cardstyle={\"pad\":0,\"sizes\":[1,3]}");
+        check.Expect(CardRegistry.Find("x")!.Cards[0].St.Pad == 0f, "a style sent after the card lays it out again");
+        ServerPolicy.Apply("card.y={\"blocks\":[]}");
+        check.Expect(CardRegistry.Find("y")!.Cards[0].St.Pad == 0f && CardRegistry.Find("y")!.Cards[0].St.Sizes.Length == 2, "a card sent after the style starts from it");
+        ServerPolicy.Apply("cardstyle={\"pad\":\"big\"}");
+        check.Expect(CardRegistry.Find("x")!.Cards[0].St.Pad == 10f, "a style CX refuses leaves the defaults");
+        ServerPolicy.Apply("cardstyle={\"pad\":2}\ncard.*=");
+        check.Expect(CardRegistry.Count == 0, "card.*= drops the cards");
+        ServerPolicy.Apply("card.z={\"blocks\":[]}");
+        check.Expect(CardRegistry.Find("z")!.Cards[0].St.Pad == 2f, "and keeps the style");
+        ServerPolicy.Apply("cardstyle=");
+        check.Expect(CardRegistry.Find("z")!.Cards[0].St.Pad == 10f, "an empty cardstyle restores the defaults");
+        ServerPolicy.Apply("cardstyle={\"pad\":2}");
+        ServerPolicy.Apply("*=");
+        ServerPolicy.Apply("card.z={\"blocks\":[]}");
+        check.Expect(CardRegistry.Find("z")!.Cards[0].St.Pad == 10f, "*= releases the style too");
+        check.Expect(ServerPolicy.Report().Contains("card style: default"), "/policy reports the style");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+    }
+
     private static void Placement(Checker check)
     {
         var a = TestAtlas();
@@ -193,6 +316,28 @@ internal static class CardSelfCheck
         check.Expect(Near(ys[0], 24f), "a card with a tab is kept 24 px from the top so the tab shows");
         CardPlacer.Place(views, 10, 40, 700, 800, 600, 1f, xs, ys);
         check.Expect(Near(xs[0], 0f), "no room on either side: pinned to the left edge");
+        PanelView[] solo = [Lay(a, "{\"width\":160,\"blocks\":[{\"text\":\"ab\"}]}")];
+        void At(string style, float ex, float ey, string what, float wantX, float wantY)
+        {
+            CardPlacer.Place(solo, ex, ey, 50, 40, 800, 600, 1f, StyleOf(style), xs, ys);
+            check.Expect(Near(xs[0], wantX) && Near(ys[0], wantY), $"{what}: ({wantX}, {wantY}) got ({xs[0]}, {ys[0]})");
+        }
+        At("{}", 100, 100, "the default is right of the element, tops level", 158f, 100f);
+        At("{\"offset\":20,\"dx\":5,\"dy\":-3}", 100, 100, "offset 20 and a nudge of 5 right and 3 up", 175f, 97f);
+        At("{\"side\":\"left\"}", 300, 100, "left of the element", 132f, 100f);
+        At("{\"side\":\"left\"}", 100, 100, "left with no room flips right", 158f, 100f);
+        At("{\"side\":\"left\",\"flip\":false}", 100, 100, "left with no room and no flip pins to the edge", 0f, 100f);
+        At("{\"side\":\"right\",\"flip\":false}", 760, 100, "right with no flip is clamped, never flipped", 640f, 100f);
+        At("{\"align\":\"center\"}", 100, 100, "centred on the element's side: 100 + 20 - 21", 158f, 99f);
+        At("{\"align\":\"end\"}", 100, 100, "bottoms with the element's: 140 - 42", 158f, 98f);
+        At("{\"side\":\"above\"}", 100, 100, "above, lefts level: 100 - 8 - 42", 100f, 50f);
+        At("{\"side\":\"above\",\"align\":\"center\"}", 100, 100, "above and centred: 100 + 25 - 80", 45f, 50f);
+        At("{\"side\":\"above\",\"align\":\"end\"}", 100, 100, "above with the right edges level is pinned at the screen's edge", 0f, 50f);
+        At("{\"side\":\"below\"}", 100, 100, "below: 100 + 40 + 8", 100f, 148f);
+        At("{\"side\":\"above\"}", 100, 10, "above with no room flips below: 10 + 40 + 8", 100f, 58f);
+        PanelView[] pair = [solo[0], solo[0]];
+        CardPlacer.Place(pair, 100, 100, 50, 40, 800, 600, 1f, StyleOf("{\"cardgap\":20}"), xs, ys);
+        check.Expect(Near(xs[1] - xs[0], 180f), "cardgap 20: the second card starts 160 + 20 on");
     }
 
     private static void Registry(Checker check, ExtenderLog log)
@@ -221,6 +366,29 @@ internal static class CardSelfCheck
         check.Expect(!CardRegistry.Set("onemore", one) && CardRegistry.Set("k0", two) && CardRegistry.Count == CardLimits.MaxKeys, "256 keys is the ceiling; an existing one can still be replaced");
         CardRegistry.Reset();
         ServerPolicy.Clear();
+    }
+
+    /// <summary>Oracle: Tooltip's timing fixed at a 0.5 s dwell and 0.2 s fade-in on a fake clock, and the delays typed into the checks.</summary>
+    private static void StyleTiming(Checker check, GlyphAtlas atlas, Func<long> clock, Action<long> setClock, long f)
+    {
+        NuiHit h = Hit("timed");
+        ServerPolicy.Apply("card.timed={\"blocks\":[]}");
+        bool Shows(string style, double seconds)
+        {
+            ServerPolicy.Apply("cardstyle=" + style);
+            var p = new CardPresenter { Face = m => (atlas, m) };
+            setClock(clock() + 100 * f);
+            NuiHit none = default;
+            p.Update(false, in none);
+            p.Update(true, in h);
+            setClock(clock() + (long)(seconds * f));
+            return p.Prepare(800, 600) && p.Alpha > 0f;
+        }
+        check.Expect(!Shows("", 0.4) && Shows("", 0.55), "no delay in the style: the player's 0.5 s dwell");
+        check.Expect(Shows("{\"delay\":0,\"fadein\":0}", 0.0), "a delay of 0 shows at once");
+        check.Expect(!Shows("{\"delay\":1.5}", 1.4) && Shows("{\"delay\":1.5,\"fadein\":0}", 1.6), "a delay longer than the player's replaces it");
+        ServerPolicy.Apply("cardstyle=");
+        ServerPolicy.Apply("card.timed=");
     }
 
     /// <summary>
@@ -256,7 +424,7 @@ internal static class CardSelfCheck
         ServerPolicy.Apply("card.cellx#4=\ncard.celly=");
         check.Expect(Pick(Hit("celly")) is { Key: "cell*" }, "an empty value still releases the key, so the stand-in answers again");
 
-        check.Expect(Near(PanelPulse.Alpha(0), 0.675f) && Near(PanelPulse.Alpha(300), 1f) && Near(PanelPulse.Alpha(900), 0.35f) && Near(PanelPulse.Alpha(1200), 0.675f), "the pulse fades between 0.35 and 1 once every 1200 ms");
+        check.Expect(Near(PanelPulse.Alpha(0, 0.35f, 1200f), 0.675f) && Near(PanelPulse.Alpha(300, 0.35f, 1200f), 1f) && Near(PanelPulse.Alpha(900, 0.35f, 1200f), 0.35f) && Near(PanelPulse.Alpha(1200, 0.35f, 1200f), 0.675f), "the pulse fades between 0.35 and 1 once every 1200 ms");
         PanelView v = Lay(atlas, standIn);
         check.Expect(v.Pulse != null && v.Pulse.VertexCount > 0 && v.Text.VertexCount == 0 && Near(v.H, 42f), "a loading block is a text block that pulses");
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"abab\"}]}");
@@ -380,6 +548,7 @@ internal static class CardSelfCheck
             for (int i = 0; i < 200; i++) { p.Update(true, in a); p.Update(true, in b); p.Update(true, in c); }
             check.Expect(GC.GetAllocatedBytesForCurrentThread() - before1 == 0, "moving between elements allocates nothing: every lookup is on spans");
             StandIns(check, atlas, () => now, t => now = t, f);
+            StyleTiming(check, atlas, () => now, t => now = t, f);
         }
         finally
         {

@@ -14,8 +14,9 @@ namespace CX.Services.Panels;
 internal static class PanelMarkup
 {
     /// <summary>The runs of <paramref name="s"/>, or false with the reason when it is over the text or run limit.</summary>
-    public static bool TryParse(string s, out Run[] runs, out string error)
+    public static bool TryParse(string s, out Run[] runs, out string error, PanelStyle? style = null)
     {
+        style ??= new PanelStyle();
         runs = [];
         error = "";
         if (s.Length > PanelLimits.MaxText) { error = $"text over {PanelLimits.MaxText} characters"; return false; }
@@ -43,7 +44,7 @@ internal static class PanelMarkup
             {
                 case "c": colors.Add(PanelParser.TryColor(arg, out uint c) ? c : 0); break;
                 case "/c": if (colors.Count > 0) colors.RemoveAt(colors.Count - 1); break;
-                case "s": sizes.Add(PanelLimits.Snap(float.Parse(arg, CultureInfo.InvariantCulture))); break;
+                case "s": sizes.Add(style.Snap(float.Parse(arg, CultureInfo.InvariantCulture))); break;
                 case "/s": if (sizes.Count > 0) sizes.RemoveAt(sizes.Count - 1); break;
                 case "i": italic++; break;
                 case "/i": if (italic > 0) italic--; break;
