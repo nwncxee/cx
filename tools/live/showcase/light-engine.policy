@@ -1,0 +1,4 @@
+model.recipe.target=player
+model.recipe.size=300x420
+model.recipe.yaw=270
+model.recipe.bg=#14161C
