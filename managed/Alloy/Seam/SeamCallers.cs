@@ -87,6 +87,19 @@ internal static unsafe class SeamCallers
     /// image, which the walk steps over to reach the caller that matters.</summary>
     private static string? Resolve(nint pc, out bool managed)
     {
+        lock (_resolved)
+            if (_resolved.TryGetValue(pc, out var hit)) { managed = hit.Managed; return hit.Name; }
+        string? name = ResolveUncached(pc, out managed);
+        lock (_resolved) _resolved[pc] = (name, managed);
+        return name;
+    }
+
+    /// <summary>Every program counter <see cref="Resolve"/> has answered: <c>dladdr</c> scans a whole symbol
+    /// table per call, and the same few call sites repeat.</summary>
+    private static readonly Dictionary<nint, (string? Name, bool Managed)> _resolved = new();
+
+    private static string? ResolveUncached(nint pc, out bool managed)
+    {
         managed = false;
         if (Dladdr(pc, out DlInfo info) == 0) return null;
         string? file = info.FName == 0 ? null : Marshal.PtrToStringAnsi(info.FName);
