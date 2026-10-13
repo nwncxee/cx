@@ -67,7 +67,7 @@ internal static class PanelLimits
 {
     public const int MaxJsonBytes = 12_000, MaxPanels = 4, MaxBlocks = 48, MaxDepth = 2, MaxRuns = 48;
     public const int MaxText = 400, MaxIcons = 16, MaxImages = 4, MaxIconName = 120;
-    /// <summary>Outer bounds on lengths a style sets; the style's own ranges sit inside them.</summary>
+    /// <summary>The ranges a style's lengths are clamped to: widths, icon and image sizes, and offsets (up to <see cref="MaxLen"/> either way).</summary>
     public const float AbsMinWidth = 32f, AbsMaxWidth = 2000f, MinIconPx = 4f, MaxIconPx = 256f, MaxImagePx = 1024f, MaxLen = 256f;
     public const int MaxSizes = 12;
     public const float MinSize = 0.25f, MaxSize = 6f;

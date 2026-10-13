@@ -14,10 +14,14 @@ internal static unsafe class GuiModelSolve
 {
     private sealed class SolveState
     {
-        public uint Prog, Vao, Black, White;
-        public int Bg, W, H;
+        public uint Prog, Vao;
+        public int Bg, Clock;
         public bool Tried, Said;
+        public readonly Pair[] Pairs = new Pair[CX.Services.Nui.NuiModelDoll.MaxViews];
     }
+
+    /// <summary>The two scratch textures for one view size, and when they were last asked for.</summary>
+    private struct Pair { public uint Black, White; public int W, H, Used; }
 
     private static SolveState _s = new();
 
@@ -35,8 +39,8 @@ internal static unsafe class GuiModelSolve
                 additive = IsAdditive(in GuiCapture.Draws[di]);
             end++;
         }
-        float* c = stackalloc float[4];
         if (slot == null) return false;
+        float* c = stackalloc float[4];
         CX.Services.Nui.NuiModelDoll.Background(slot, c);
         return additive && c[3] < 1f && Ready();
     }
@@ -57,22 +61,33 @@ internal static unsafe class GuiModelSolve
         return true;
     }
 
-    /// <summary>The scratch texture for pass 0 (over black) or 1 (over white), remade when the view's size changes.</summary>
+    /// <summary>The scratch texture for pass 0 (over black) or 1 (over white) at this size. Each size keeps its own pair, so views of
+    /// different sizes do not remake each other's every frame; with every pair taken, the one asked for longest ago is remade.</summary>
     internal static uint Scratch(int pass, int w, int h)
     {
         SolveState s = _s;
-        if (s.W != w || s.H != h || s.Black == 0)
+        ref Pair p = ref Pick(s, w, h);
+        return pass == 0 ? p.Black : p.White;
+    }
+
+    private static ref Pair Pick(SolveState s, int w, int h)
+    {
+        int old = 0;
+        for (int i = 0; i < s.Pairs.Length; i++)
         {
-            uint[] old = { s.Black, s.White };
-            if (s.Black != 0) fixed (uint* o = old) Gl.DeleteTextures(2, o);
-            uint t;
-            Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t); s.Black = t;
-            Gl.TextureStorage2D(t, 1, Gl.RGBA8, w, h);
-            Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t); s.White = t;
-            Gl.TextureStorage2D(t, 1, Gl.RGBA8, w, h);
-            s.W = w; s.H = h;
+            ref Pair c = ref s.Pairs[i];
+            if (c.Black != 0 && c.W == w && c.H == h) { c.Used = ++s.Clock; return ref c; }
+            if (c.Used < s.Pairs[old].Used) old = i;
         }
-        return pass == 0 ? s.Black : s.White;
+        ref Pair p = ref s.Pairs[old];
+        uint t;
+        if (p.Black != 0) { t = p.Black; Gl.DeleteTextures(1, &t); t = p.White; Gl.DeleteTextures(1, &t); }
+        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t); p.Black = t;
+        Gl.TextureStorage2D(t, 1, Gl.RGBA8, w, h);
+        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t); p.White = t;
+        Gl.TextureStorage2D(t, 1, Gl.RGBA8, w, h);
+        p.W = w; p.H = h; p.Used = ++s.Clock;
+        return ref p;
     }
 
     /// <summary>Writes the solved image, over the server's background, into the framebuffer bound now. GL state the layer loop
@@ -89,8 +104,9 @@ internal static unsafe class GuiModelSolve
         Gl.Disable(Gl.CULL_FACE);
         Gl.Viewport(0, 0, w, h);
         Gl.UseProgram(s.Prog);
-        Gl.BindTextureUnit(0, s.Black);
-        Gl.BindTextureUnit(1, s.White);
+        ref Pair pair = ref Pick(s, w, h);
+        Gl.BindTextureUnit(0, pair.Black);
+        Gl.BindTextureUnit(1, pair.White);
         Gl.Uniform4f(s.Bg, c[0], c[1], c[2], c[3]);
         Gl.BindVertexArray(s.Vao);
         Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
