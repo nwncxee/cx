@@ -111,7 +111,7 @@ internal static unsafe class NuiModelView
         NuiModelBounds.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 7, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 8, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -595,9 +595,9 @@ internal static unsafe class NuiModelView
             v.WornMuted = v.MuteVfx;
             if (v.Built) NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
         }
-        string[] bg = Policy(v.Key, "bg", "").Split(',');
-        float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
-        NuiModelDoll.SetBackground(v.Slot, C(0), C(1), C(2), C(3));
+        Span<float> bg = stackalloc float[4];
+        NuiModelLook.Background(Policy(v.Key, "bg", ""), bg);
+        NuiModelDoll.SetBackground(v.Slot, bg[0], bg[1], bg[2], bg[3]);
         if (v.Built) ApplyCamera(v);
         string standin = Policy(v.Key, "standin", "");
         string rect = Policy(v.Key, "standinrect", "");
