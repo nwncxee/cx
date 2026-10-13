@@ -52,6 +52,22 @@ public static unsafe partial class EngineLayout
     public static readonly int AppearCloakColors = Field<ushort>("CCAppearanceInfo", "cloakColors", count: 6);
     public static readonly int AppearCloakModel = Field<ushort>("CCAppearanceInfo", "cloakModel");
 
+    /// <summary>The 2DA table's <c>visualeffects.2da</c> (+0x280), <c>cloakmodel.2da</c> (+0x1d8) and item visual effects table (+0x260),
+    /// the same two hops off <c>g_pRules</c> on both builds: <c>CNWCVisualEffectOnObject::LoadVisualEffect</c> (Linux nm @0x8186b0, Windows
+    /// rva 0x96cf10), <c>CNWCMessage::CreateItem</c> and <c>CNWCItem::LoadVisualEffect</c> (Windows rva 0x83e040).</summary>
+    public static readonly int TwoDimVisualEffects = Field<IntPtr>("CTwoDimArrays", "visualEffects");
+    /// <inheritdoc cref="TwoDimVisualEffects"/>
+    public static readonly int TwoDimCloakModel = Field<IntPtr>("CTwoDimArrays", "cloakModel");
+    /// <inheritdoc cref="TwoDimVisualEffects"/>
+    public static readonly int TwoDimItemVisualEffects = Field<IntPtr>("CTwoDimArrays", "itemVisualEffects");
+
+    /// <summary>A <c>CNWBaseItem</c>'s model type (0 simple, 1 layered, 2 composite, 3 armour) and its <c>ItemClass</c> resref prefix (16
+    /// bytes, zero-ended): the two things <c>CNWBaseItem::GetModelResRef</c> builds a model name from, at the same offsets on both builds
+    /// (Linux nm @0x11a92a0, Windows rva 0x29dd90).</summary>
+    public static readonly int BaseItemModelType = Field<byte>("CNWBaseItem", "modelType");
+    /// <inheritdoc cref="BaseItemModelType"/>
+    public static readonly int BaseItemClass = Field<byte>("CNWBaseItem", "itemClass", count: 16);
+
     /// <summary>A <c>C2DA</c>'s row count (+0x50 on both builds), the bound <c>GetINTEntry</c> and <c>GetCExoStringEntry</c> check a row against.</summary>
     public static readonly int TwoDaRows = Field<int>("C2DA", "rows");
 }

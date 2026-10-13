@@ -47,6 +47,7 @@ public sealed unsafe class NuiService : IExtenderService
         NuiModelGear.SelfCheck(log);
         NuiModelTarget.SelfCheck(log);
         NuiModelGuard.SelfCheck(log);
+        NuiModelBounds.SelfCheck(log);
         NuiModelPose.SelfCheck(log);
         NuiModelFrame.SelfCheck(log);
         NuiModelVfx.SelfCheck(log);

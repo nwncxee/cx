@@ -1777,6 +1777,10 @@ public readonly unsafe partial struct CNWBaseItem(IntPtr ptr)
     public ref byte InvSlotHeight => ref *(byte*)(Ptr + EngineLayout.BaseItemInvSlotHeight);
     /// <inheritdoc cref="EngineLayout.BaseItemInvSlotWidth"/>
     public ref byte InvSlotWidth => ref *(byte*)(Ptr + EngineLayout.BaseItemInvSlotWidth);
+    /// <inheritdoc cref="EngineLayout.BaseItemClass"/>
+    public Span<byte> ItemClass { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.BaseItemClass), 16); }
+    /// <inheritdoc cref="EngineLayout.BaseItemModelType"/>
+    public ref byte ModelType => ref *(byte*)(Ptr + EngineLayout.BaseItemModelType);
     /// <inheritdoc cref="EngineLayout.BaseItemStacking"/>
     public ref short Stacking => ref *(short*)(Ptr + EngineLayout.BaseItemStacking);
     /// <inheritdoc cref="EngineLayout.BaseItemUsable"/>
@@ -2488,12 +2492,18 @@ public readonly unsafe partial struct CTwoDimArrays(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.TwoDimAppearance"/>
     public ref IntPtr Appearance => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimAppearance);
+    /// <inheritdoc cref="EngineLayout.TwoDimCloakModel"/>
+    public ref IntPtr CloakModel => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimCloakModel);
     /// <inheritdoc cref="EngineLayout.TwoDimFootstepSounds"/>
     public ref IntPtr FootstepSounds => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimFootstepSounds);
+    /// <inheritdoc cref="EngineLayout.TwoDimItemVisualEffects"/>
+    public ref IntPtr ItemVisualEffects => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimItemVisualEffects);
     /// <inheritdoc cref="EngineLayout.TwoDimPlaceables"/>
     public ref IntPtr Placeables => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimPlaceables);
     /// <inheritdoc cref="EngineLayout.TwoDimSurfaceMat"/>
     public ref IntPtr Surfacemat => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimSurfaceMat);
+    /// <inheritdoc cref="EngineLayout.TwoDimVisualEffects"/>
+    public ref IntPtr VisualEffects => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimVisualEffects);
 }
 
 /// <summary>Typed view of an engine <c>CallBack*</c>.</summary>

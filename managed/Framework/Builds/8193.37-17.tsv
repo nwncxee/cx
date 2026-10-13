@@ -601,6 +601,9 @@ offset	CTwoDimArrays	placeables	0x140	0x140	# TwoDimPlaceables
 offset	CTwoDimArrays	appearance	0x100	0x100	# TwoDimAppearance
 offset	CTwoDimArrays	surfacemat	0x110	0x110	# TwoDimSurfaceMat
 offset	CTwoDimArrays	footstepSounds	0x200	0x200	# TwoDimFootstepSounds
+offset	CTwoDimArrays	visualEffects	0x280	0x280	# TwoDimVisualEffects
+offset	CTwoDimArrays	cloakModel	0x1d8	0x1d8	# TwoDimCloakModel
+offset	CTwoDimArrays	itemVisualEffects	0x260	0x260	# TwoDimItemVisualEffects
 offset	C2DA	rows	0x50	0x50	# TwoDaRows
 offset	CNWCObject	areaPtr	0x30	0x30	# ObjAreaPtr
 offset	CNWCObject	footstepSkip	0x108	0x108	# ObjFootstepSkip
@@ -817,6 +820,8 @@ offset	CNWBaseItem	invSlotWidth	0x14	0x14	# BaseItemInvSlotWidth
 offset	CNWBaseItem	invSlotHeight	0x15	0x15	# BaseItemInvSlotHeight
 offset	CNWBaseItem	stacking	0x24	0x24	# BaseItemStacking
 offset	CNWBaseItem	usable	0x80	0x80	# BaseItemUsable
+offset	CNWBaseItem	modelType	0x16	0x16	# BaseItemModelType
+offset	CNWBaseItem	itemClass	0x40	0x40	# BaseItemClass
 offset	CNWRules	baseItems	0x20	0x20	# RulesBaseItems
 offset	CPanelInventory	containerMode	0x319c	0x2f64	# InvContainerMode
 offset	CPanelInventory	shownOid	0x31a0	0x2f68	# InvShownOid

@@ -69,6 +69,20 @@ internal static class NuiModelLook
     private static bool Num(string s, out float f) =>
         float.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out f) && float.IsFinite(f);
 
+    /// <summary>The widest a <c>rot</c> turn may be about each axis, in degrees.</summary>
+    internal const float MaxRot = 360f;
+
+    /// <summary>The turn <c>rot</c> names, <c>x,y,z</c> degrees, each clamped to -360..360: about the model's x axis, then its y, then its z. Anything that
+    /// is not three numbers, and the empty value, is no turn.</summary>
+    internal static Quaternion Rotation(string v)
+    {
+        if (!Triple(v, -MaxRot, MaxRot, out Vector3 d)) return Quaternion.Identity;
+        const float Rad = MathF.PI / 180f;
+        return Quaternion.Concatenate(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, d.X * Rad),
+                                                             Quaternion.CreateFromAxisAngle(Vector3.UnitY, d.Y * Rad)),
+                                      Quaternion.CreateFromAxisAngle(Vector3.UnitZ, d.Z * Rad));
+    }
+
     /// <summary>Where a scroll of <paramref name="notches"/> (up is positive, nearer) moves a camera standing at <paramref name="from"/>,
     /// <paramref name="step"/> metres a notch, kept inside <paramref name="min"/>..<paramref name="max"/>.</summary>
     internal static float ZoomTo(float from, int notches, float step, float min, float max) => Math.Clamp(from - notches * step, min, max);
@@ -129,5 +143,15 @@ internal static class NuiModelLook
                      "a free drag wraps at a full turn");
         check.Expect(TurnAfterPolicy(90f, true, -45f, 45f) == 45f && TurnAfterPolicy(90f, false, 0f, 0f) == 90f, "a dragrange that changes pulls the turn inside it");
         check.Expect(MathF.Abs(Light("server", "", "0,0,0", "").Dir.Z - 0.795f) < 1e-3f, "a zero direction falls back to the key direction");
+        Vector3 up = Vector3.Transform(Vector3.UnitY, Rotation("90,0,0"));
+        check.Expect(MathF.Abs(up.X) < 1e-5f && MathF.Abs(up.Y) < 1e-5f && MathF.Abs(up.Z - 1f) < 1e-5f, "a quarter turn about x stands the model's y axis up");
+        Vector3 side = Vector3.Transform(Vector3.UnitX, Rotation("0,0,90"));
+        check.Expect(MathF.Abs(side.X) < 1e-5f && MathF.Abs(side.Y - 1f) < 1e-5f, "a quarter turn about z carries x to y");
+        Vector3 order = Vector3.Transform(Vector3.UnitY, Rotation("90,90,0"));
+        check.Expect(MathF.Abs(order.X - 1f) < 1e-5f && MathF.Abs(order.Y) < 1e-5f && MathF.Abs(order.Z) < 1e-5f, "x turns first, then y: y goes up, then up goes to x");
+        Vector3 clamped = Vector3.Transform(Vector3.UnitY, Rotation("450,0,0"));
+        check.Expect(MathF.Abs(clamped.Y - 1f) < 1e-5f && MathF.Abs(clamped.Z) < 1e-5f, "a turn past 360 is clamped to a full turn, which is none");
+        check.Expect(Rotation("") == Quaternion.Identity && Rotation("1,2") == Quaternion.Identity && Rotation("a,b,c") == Quaternion.Identity && Rotation("NaN,0,0") == Quaternion.Identity,
+                     "an empty value, two numbers, text or a non-finite number is no turn");
     }
 }
