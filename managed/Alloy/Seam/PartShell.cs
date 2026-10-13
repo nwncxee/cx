@@ -98,8 +98,8 @@ public static unsafe class PartShell
         return SceneDb.Objects.Valid(obj);
     }
 
-    /// <summary>Retire every Part shell of <paramref name="obj"/>: QUARANTINED, or <see cref="Held"/> for a GUI
-    /// object, never freed at once. The game keeps a <c>CAurPart*</c> for a behaviour's life (<c>CAurBehaviorSubwindow</c>
+    /// <summary>Retire every Part shell of <paramref name="obj"/>: QUARANTINED when the object was only ever in
+    /// world scenes, else <see cref="Held"/>; never freed at once. The game keeps a <c>CAurPart*</c> for a behaviour's life (<c>CAurBehaviorSubwindow</c>
     /// +0x30/+0x38, <c>CAurBehaviorAttach</c> +0x30) and calls <c>Part::GetWorld</c> through it every frame, so a
     /// freed shell is a wild vptr; a retired one keeps vptr and header and answers the identity transform.</summary>
     public static void FreeAll(DbId obj)
@@ -107,7 +107,7 @@ public static unsafe class PartShell
         if (!SceneDb.Objects.Valid(obj)) return;
         nint p = SceneDb.ObjSeamPartShells[obj.Index];
         SceneDb.ObjSeamPartShells[obj.Index] = 0;
-        bool hold = SceneDb.ObjEverInGui[obj.Index];
+        bool hold = SceneDb.ObjSceneKinds[obj.Index] != SeamShell.InWorld;
         while (p != 0)
         {
             Head* h = (Head*)(p - HeadSize);
@@ -157,9 +157,9 @@ public static unsafe class PartShell
     internal sealed class HeldState { internal long Count; }
     private static readonly HeldState _held = new();
 
-    /// <summary>Retired part shells whose object was ever in a GUI scene. A GUI behaviour keeps its
-    /// <c>Part*</c> past the object's death, so such a block is never freed: no later part can sit at its
-    /// address. ponytail: held for the session; a GUI-only part pool would let them be reused safely.</summary>
+    /// <summary>Retired part shells whose object was ever in a GUI scene or never in any: a GUI layout takes its
+    /// <c>Part*</c> before the join and keeps it past the death, so no later part may sit at its address.
+    /// ponytail: held for the session; a GUI-only part pool would let them be reused safely.</summary>
     public static long Held => _held.Count;
 
     /// <summary><c>Part::GetWorld(Vector&amp;, Quaternion&amp;)</c>: both out-params are references, so they
