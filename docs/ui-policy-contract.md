@@ -34,7 +34,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `3`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `2`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `1` had no `drag` and no `vfx` |
+| `cx_cap_modelview` | `3`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
 | `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
 | `cx_cap_heldpick` | `1`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well) |
 
@@ -319,14 +319,24 @@ stand-in until they do.
 | `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
 | `wear` | an `@look:` string, or the hex object id of an item the client knows. The doll wears it in the hand slot its base item fits, in place of what the target holds there. Empty releases it | nothing |
 | `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
-| `angle` | the camera's view angle in degrees | `30` |
-| `dist` | camera distance from the creature, in metres | `4` |
-| `height` | camera height above the creature's feet, in metres | `0.9` |
+| `angle` | the camera's view angle in degrees, 1-170 | `30` |
+| `dist` | camera distance from the creature, in metres, 0-1000. The starting distance when `zoom` is set | `4` |
+| `height` | camera height above the creature's feet, in metres, -1000 to 1000 | `0.9` |
 | `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
 | `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
-| `vfx` | `row,row,...`: the `visualeffects.2da` rows the doll wears, up to 16. A new value replaces the old set. Empty releases it. Linux only | none |
+| `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it. Linux only | none |
+| `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound). Linux only | `0` |
+| `pitch` | degrees the camera tips down in place, -89 to 89. Negative looks up. The camera does not move | `0` |
+| `clip` | `near,far`: the camera's clip distances in metres, `near` 0.001 or more, `far` 100000 or less, `near` below `far`. Anything else is the default | `0.1,2000` |
+| `zoom` | `min,max`: a scroll over the image moves the camera between these distances in metres (0.01-1000, `min` no greater than `max`). Scroll up comes nearer. The first scroll starts from `dist`. The view takes the scroll, so the window under it does not. No `zoom` means no scroll | none |
+| `zoomstep` | metres one scroll notch moves the camera, 0.01-10 | `0.25` |
+| `dragrange` | `min,max` degrees (-360 to 360) the drag turn stays inside, counted from `yaw`: `-45,45` turns a quarter either way and stops. `drag` still sets the speed and `0` still turns the drag off. No `dragrange` turns freely | none |
+| `light` | `engine` shows the doll in the engine's character-preview light. `server` shows it in the light the three settings below describe | `engine` |
+| `lightcolor` | `r,g,b` of a server light, each 0-4 | `1,1,1` |
+| `lightdir` | `x,y,z`: the direction the light comes from, in the view's own frame (x right, y up, z toward the viewer). It is made unit length; all zero is the default | `0.35,0.5,0.8` |
+| `lightambient` | `r,g,b` added whatever the surface faces, each 0-4 | `0.25,0.25,0.25` |
 
 **Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
 taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
@@ -354,6 +364,13 @@ and lists the ones that belong to the character's look, usually the permanent on
 a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
 opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
 `vfx` is ignored, and the client logs that once.
+
+**Lighting.** A server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface normal dotted with
+`lightdir`), plus what the model glows on its own. Only the Alloy renderer draws it; with Alloy off the engine draws the doll
+in its own light whatever `light` says.
+
+**Zoom and drag.** `zoom` and `drag` act only on the image's own rectangle, while the doll is built. `dist` is the starting distance; the
+player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.
 
 **Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
 must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a
