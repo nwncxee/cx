@@ -88,6 +88,7 @@ internal static unsafe partial class GrassField
         // a list that repeats cannot produce different texels -- which is the whole gate: a standing player
         // looking at a field nothing is walking through pays the walk and neither the 256KB clear nor the
         // 256KB upload. With `push` at 0 the list is empty, and an empty list that repeats is the same skip.
+        EnsureMask();
         bool over = WalkPushers(collect: true);
         if (!over && _gl.PushSynced && _pushNowN == _gl.PushWasN && SamePushers(_pushNowN))
         { _pushSkips++; return; }
@@ -147,8 +148,9 @@ internal static unsafe partial class GrassField
             }
             Pusher p = new() { X = (c.X - _pushOriginX) * _pushPerUnit, Y = (c.Y - _pushOriginY) * _pushPerUnit,
                                R = rTex, Hx = hx * _pushPerUnit, Hy = hy * _pushPerUnit };
-            if (!SplatBounds(p.X, p.Y, p.R, out _, out _, out _, out _)
-                && !CullBounds(p.X, p.Y, p.Hx, p.Hy, out _, out _, out _, out _))
+            bool splat = SplatBounds(p.X, p.Y, p.R, out int sx0, out int sy0, out int sx1, out int sy1);
+            bool cull = CullBounds(p.X, p.Y, p.Hx, p.Hy, out int cx0, out int cy0, out int cx1, out int cy1);
+            if (!(splat && OnGrass(sx0, sy0, sx1, sy1)) && !(cull && OnGrass(cx0, cy0, cx1, cy1)))
             { if (collect) _pushOut++; continue; }
             if (!collect) { WritePusher(in p); continue; }
             _pushers++;
@@ -185,6 +187,51 @@ internal static unsafe partial class GrassField
             CullRect(_push!, p.X, p.Y, p.Hx, p.Hy);
             GrowPushRect(x0, y0, x1, y1);
         }
+    }
+
+    /// <summary>Where resident grass lies in the push window, one flag per <see cref="MaskCell"/> texels square: a
+    /// pusher whose rects touch no grass bends no blade, so it never enters the list -- in a town that is nearly
+    /// every placeable, whose footprint was re-stamped whenever anything else in the window moved.</summary>
+    private sealed class PushMaskState
+    {
+        public readonly bool[] Cell = new bool[MaskRes * MaskRes];
+        public float OriginX = float.NaN, OriginY, PerUnit;
+        public int Patches = -1, Faces = -1;
+    }
+    private const int MaskCell = 4, MaskRes = PushRes / MaskCell;
+    private static readonly PushMaskState _mask = new();
+
+    /// <summary>Re-mark the grass cells when the window has moved or a patch has baked since the last mark.</summary>
+    private static void EnsureMask()
+    {
+        PushMaskState m = _mask;
+        if (m.OriginX == _pushOriginX && m.OriginY == _pushOriginY && m.PerUnit == _pushPerUnit
+            && m.Patches == _patchCount && m.Faces == _faceCount) return;
+        m.OriginX = _pushOriginX; m.OriginY = _pushOriginY; m.PerUnit = _pushPerUnit;
+        m.Patches = _patchCount; m.Faces = _faceCount;
+        Array.Clear(m.Cell);
+        float k = _pushPerUnit / MaskCell;
+        for (int p = 0; p < _patchCount; p++)
+        {
+            ref Patch q = ref _patches[p];
+            if (q.Count <= 0) continue;
+            int x0 = (int)MathF.Floor((q.Min.X - _pushOriginX) * k), x1 = (int)MathF.Floor((q.Max.X - _pushOriginX) * k);
+            int y0 = (int)MathF.Floor((q.Min.Y - _pushOriginY) * k), y1 = (int)MathF.Floor((q.Max.Y - _pushOriginY) * k);
+            if (x1 < 0 || y1 < 0 || x0 >= MaskRes || y0 >= MaskRes) continue;
+            x0 = Math.Max(x0, 0); y0 = Math.Max(y0, 0); x1 = Math.Min(x1, MaskRes - 1); y1 = Math.Min(y1, MaskRes - 1);
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++) m.Cell[y * MaskRes + x] = true;
+        }
+    }
+
+    /// <summary>Does the texel rect (inclusive, already clamped to the window) touch a grass cell?</summary>
+    private static bool OnGrass(int x0, int y0, int x1, int y1)
+    {
+        bool[] c = _mask.Cell;
+        for (int y = y0 / MaskCell; y <= y1 / MaskCell; y++)
+            for (int x = x0 / MaskCell; x <= x1 / MaskCell; x++)
+                if (c[y * MaskRes + x]) return true;
+        return false;
     }
 
     private static bool SamePushers(int n)

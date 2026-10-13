@@ -962,7 +962,7 @@ internal static unsafe partial class GrassField
                // The last walk, broken down so it ADDS UP: a census with a hole in it cannot say which reject
                // is doing the work. "touching no texel" is the outer shell the box-sized window test admits
                // and nothing writes into -- a creature's box widens the reach though a creature never culls.
-               $"; last frame {_pushWalkedNow} = {_pushOut} outside the window + {_pushNoGeom} without geometry" +
+               $"; last frame {_pushWalkedNow} = {_pushOut} outside the window or off the grass + {_pushNoGeom} without geometry" +
                $" + {_pushIdle} touching no texel + {_reticles} non-solid + {_pushers} displacing)" +
                // The field's own bus traffic. A high skip share with a low texel count is the gate working:
                // an unchanged list is neither cleared nor uploaded, and a changed one carries its rectangle.

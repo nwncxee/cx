@@ -443,8 +443,8 @@ public static unsafe partial class Facade
         bool world = SceneDb.SceneIsWorld[scene.Index];
         int o = obj.Index;
         if (Crosses(obj, scene)) NoteCrossing(scene, obj, was, world);
-        // ponytail: one Chain string per first world join of a non-tile object -- an area load's placeables and
-        // creatures, never per frame; intern the frames if it ever shows on a load profile.
+        // ponytail: one Chain string per first world join of a non-tile object; a VFX light the engine restarts
+        // joins tens of times a second, so this leans on Resolve's per-pc cache -- store pcs if Chain shows again.
         if (world && (SceneDb.ObjSceneKinds[o] & SeamShell.InWorld) == 0 && (SceneDb.ObjFlags[o] & ObjFlag.Tile) == 0 && !InSelfCheck)
             SceneDb.ObjWorldJoinBy[o] = SeamCallers.Chain(4);
         SceneDb.ObjSceneKinds[o] |= world ? SeamShell.InWorld : SeamShell.InGui;

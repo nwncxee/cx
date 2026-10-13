@@ -174,6 +174,17 @@ public sealed unsafe partial class AlloyRenderer
         bool ok = idx[0] == 11 && idx[1] == 13 && idx[2] == 12 && idx[3] == 10   // stable within the 9f tie
                   && key[0] == 9f && key[1] == 9f && key[2] == 5f && key[3] == 1f
                   && alpha[0] == 0.2f && alpha[1] == 0.4f && alpha[2] == 0.3f && alpha[3] == 0.1f;
+        // ...and past InsertionMax, the keyed path: 40 entries keyed a % 5, so the expected order is key 4's
+        // entries 4, 9, .. 39, then key 3's 3, 8, .. 38, and so on -- each tie in its original order.
+        const int N = 40;
+        int[] bi = new int[N]; float[] bk = new float[N], ba = new float[N];
+        for (int a = 0; a < N; a++) { bi[a] = 100 + a; bk[a] = a % 5; ba[a] = a * 0.01f; }
+        SortBlended(bi, bk, ba, N);
+        for (int r = 0; r < N; r++)
+        {
+            int want = (4 - r / 8) + 5 * (r % 8);
+            ok &= bi[r] == 100 + want && bk[r] == want % 5 && ba[r] == want * 0.01f;
+        }
         if (!ok) log.Info("AlloyRenderer.SortSelfCheck: FAILED -- the blended order is not back-to-front");
         return ok;
     }
@@ -227,15 +238,41 @@ public sealed unsafe partial class AlloyRenderer
     /// enrollment order rather than shuffling them from pass to pass.</summary>
     private static void SortBlended(int[] idx, float[] key, float[] alpha, int n)
     {
-        for (int a = 1; a < n; a++)
+        if (n <= InsertionMax)
         {
-            int i = idx[a]; float k = key[a], al = alpha[a];
-            int b = a - 1;
-            for (; b >= 0 && key[b] < k; b--)
-            { idx[b + 1] = idx[b]; key[b + 1] = key[b]; alpha[b + 1] = alpha[b]; }
-            idx[b + 1] = i; key[b + 1] = k; alpha[b + 1] = al;
+            for (int a = 1; a < n; a++)
+            {
+                int i = idx[a]; float k = key[a], al = alpha[a];
+                int b = a - 1;
+                for (; b >= 0 && key[b] < k; b--)
+                { idx[b + 1] = idx[b]; key[b + 1] = key[b]; alpha[b + 1] = alpha[b]; }
+                idx[b + 1] = i; key[b + 1] = k; alpha[b + 1] = al;
+            }
+            return;
+        }
+        // One ulong per entry: the key's bits flipped so an ascending sort runs far to near, over the entry's
+        // position, which makes an unstable sort stable.
+        for (int a = 0; a < n; a++)
+        {
+            uint u = BitConverter.SingleToUInt32Bits(key[a]);
+            u = (u & 0x80000000u) != 0 ? u : ~u & 0x7FFFFFFFu;   // not-an-offset: float sign bit
+            _sortComp[a] = ((ulong)u << 32) | (uint)a;
+        }
+        _sortComp.AsSpan(0, n).Sort();
+        Array.Copy(idx, _sortIdx, n); Array.Copy(key, _sortKey, n); Array.Copy(alpha, _sortAlpha, n);
+        for (int a = 0; a < n; a++)
+        {
+            int from = (int)(uint)_sortComp[a];
+            idx[a] = _sortIdx[from]; key[a] = _sortKey[from]; alpha[a] = _sortAlpha[from];
         }
     }
+
+    /// <summary>Up to this many blended entries the insertion sort is cheaper than the keyed one; past it the
+    /// insertion sort's quadratic walk over an unsorted route order cost milliseconds a frame.</summary>
+    private const int InsertionMax = 32;
+    private static readonly ulong[] _sortComp = new ulong[MaxOwned];
+    private static readonly int[] _sortIdx = new int[MaxOwned];
+    private static readonly float[] _sortKey = new float[MaxOwned], _sortAlpha = new float[MaxOwned];
 
     /// <summary>The part's own alpha multiplier (part+0xa0), live: it is animated state, not enrollment
     /// state.</summary>
