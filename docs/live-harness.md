@@ -272,7 +272,7 @@ a key's creature never appears. `--min-lit` defaults to 0 here, since a window c
 
 Every showcase opens a full-screen dark backdrop window first (`ShowBackdrop` in `inc_show.nss`), so run them with `--cfg chat.enabled=0`.
 `inc_theme.nss` holds the drawing helpers the themed ones share (a draw list behind the widgets, slots with ids, dolls, labels).
-`diablo`, `solasta`, `pathfinder`, `swtor`, `cyberpunk`, `masseffect`, `dragonage` and `bg3` are eight looks built from the same keys:
+`chrome` (a stock titled window with its own draw list under `nui.<id>.background=0`), `diablo`, `solasta`, `pathfinder`, `swtor`, `cyberpunk`, `masseffect`, `dragonage` and `bg3` are eight looks built from the same keys:
 a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each `.keys` takes `window.png` and `card.png`.
 
 `creatures` shows six creatures as dolls. Known gap: a doll built for any creature but the player logs

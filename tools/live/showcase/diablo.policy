@@ -9,3 +9,4 @@ model.me.lightdir=-0.5,0.4,0.8
 model.me.lightambient=0.12,0.1,0.1
 card.eqw=[{"width":280,"tab":"UNIQUE","bg":"#0b0807f4","border":"#a08040","blocks":[{"type":"text","size":1.3,"text":"Doomcleaver","color":"#c8a860","align":"center"},{"type":"text","dim":true,"text":"Two-handed sword","align":"center"},{"type":"text","size":1.6,"text":"<c=#ffffff>412</c> damage per second","align":"center"},{"type":"divider","color":"#a0804060"},{"type":"text","color":"#6c78ff","text":"+14% attack speed"},{"type":"text","color":"#6c78ff","text":"+38 to Strength"},{"type":"text","color":"#6c78ff","text":"Hits deal an additional 90-140 fire damage"},{"type":"footer","left":"Requires level 52","right":"<c=#c8a860>9,800</c>","tint":"#00000080"}]}]
 cardstyle={"border2":"#4a3b2c","border2inset":3,"corners":"#c8a860","cornerlen":10,"cornerw":2,"glow":"#a0804030","glowspread":10}
+nui.dia.background=0

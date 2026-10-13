@@ -16,7 +16,17 @@ internal static class HeldPickSelfCheck
         Picks(check);
         Pending(check);
         Look(check);
+        ModelRefs(check);
         log.Info(check.Ok ? "HeldPickSelfCheck: passed" : "HeldPickSelfCheck: FAILED");
+    }
+
+    /// <summary>Oracle: hand-typed keys and hash; the names must differ per key, hold per key, and fit a resref.</summary>
+    private static void ModelRefs(Checker check)
+    {
+        string a = NuiItemIcons.ModelRef(0x1234abcdu, "p1"), b = NuiItemIcons.ModelRef(0x1234abcdu, "p2");
+        check.Expect(a != b, "two model views with one picture and size get different image names");
+        check.Expect(a == NuiItemIcons.ModelRef(0x1234abcdu, "p1"), "one view keeps its image name");
+        check.Expect(a.Length == 10 && a.StartsWith("cx"), "the name is cx and eight hex digits, a resref");
     }
 
     private static void Picks(Checker check)
