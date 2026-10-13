@@ -148,7 +148,7 @@ public sealed unsafe partial class AlloyRenderer
         int part = _oDbPart[i];
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj) || SceneDb.ObjScene[obj.Index].Value != _dbPassScene.Value)
-        { Counters._skipForeignScene++; return false; }
+        { Counters._skipForeignScene++; SetCastOk(i, false); return false; }
         // CX-120: ...and the part's LOD ALTERNATE, 0 meaning "in every alternate".
         byte tree = SceneDb.PartLodTree[part];
         if (SceneDb.LodHidden(tree, SceneDb.ObjLodShown[obj.Index]))
