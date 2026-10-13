@@ -181,6 +181,9 @@ internal static unsafe class NuiModelGear
         if (helm.Length > 0) SetHelm(g, helm);
     }
 
+    /// <summary>The server sent the <c>wear</c> line again: the next <see cref="Plan"/> reads it afresh, even when the text is the same.</summary>
+    internal static void Resend(GearState g) => g.PreviewText = "";
+
     /// <summary>Has <see cref="GearState.Unknown"/> stayed unknown for <see cref="GiveUpMs"/>? Then it is recorded and no longer waited for.</summary>
     internal static bool GiveUp(GearState g, long now)
     {
@@ -371,7 +374,13 @@ internal static unsafe class NuiModelGear
         }
         _g.Log?.Always($"NuiModelGear: slot 0x{w.Slot:x} emptied, item id 0x{w.ItemId:x} freed");
         EngineFn.NwcCreatureEquip(doll, w.Slot, IntPtr.Zero);
-        Unregister(w.Item, w.ItemId);
+        IntPtr app = NuiModelDoll.App();
+        if (app != IntPtr.Zero)
+        {
+            IntPtr gone;
+            EngineFn.GameObjectArrayDelete(EngineFn.GetGameObjectArray(app), w.ItemId, &gone);
+        }
+        NuiItemIcons.Destroy(w.Item);
         w.Item = IntPtr.Zero;
         w.ItemId = NuiModelDoll.InvalidId;
     }
@@ -420,6 +429,11 @@ internal static unsafe class NuiModelGear
         Plan(plain, "zz", 1000);
         check.Expect(TakeRefusal(plain, out refItem, out refWhy) && refItem == "zz" && refWhy == "neither an @look: string nor a hex object id" && !plain.Waiting,
                      "a wear item that is not hex is recorded at once and not waited for");
+        Plan(plain, "zz", 2000);
+        check.Expect(!TakeRefusal(plain, out _, out _), "the same text again is not read again");
+        Resend(plain);
+        Plan(plain, "zz", 3000);
+        check.Expect(TakeRefusal(plain, out refItem, out _) && refItem == "zz", "a re-sent line is read again, and its refusal recorded again");
         var waits = new GearState { Waiting = true, Unknown = "7f" };
         bool gaveUp = false;
         for (long t = 0; t < 20_000 && !gaveUp; t += 500) gaveUp = GiveUp(waits, t);

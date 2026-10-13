@@ -81,6 +81,8 @@ internal static unsafe class NuiModelView
         public System.Numerics.Vector3 FitCentre = new(0f, 0f, DefaultHeight);
         public System.Numerics.Quaternion Rot = System.Numerics.Quaternion.Identity, Stand = System.Numerics.Quaternion.Identity;
         public string Wear = "", StandinRect = "", Vfx = "";
+        /// <summary>The <see cref="ServerPolicy.Stamp"/> of the <c>wear</c> line when it was last read, so a re-sent line is read again.</summary>
+        public int WearStamp;
         public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
         /// <summary><c>vfx</c> is <c>all</c>: the doll wears what the target shows, tracked in <see cref="Mirror"/>.</summary>
         public bool VfxAll;
@@ -701,8 +703,8 @@ internal static unsafe class NuiModelView
         v.PoseSpeed = Number(v.Key, "animspeed", 1f, NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
         v.PoseLoop = F(v.Key, "animloop", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
-        NuiModelGear.GearState gear = v.Slot.Gear;
-        if (gear.RefusedWhy.Length > 0 && gear.PreviewText == v.Wear) Refuse(v.Key, "wear", gear.RefusedItem, gear.RefusedWhy);
+        int wearStamp = ServerPolicy.Stamp($"{KeyRoot}{v.Key}.wear");
+        if (wearStamp != v.WearStamp) { v.WearStamp = wearStamp; NuiModelGear.Resend(v.Slot.Gear); }
         string vfx = Policy(v.Key, "vfx", "");
         if (vfx != v.Vfx || v.MuteVfx != v.WornMuted)
         {
