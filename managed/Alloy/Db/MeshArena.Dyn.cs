@@ -18,6 +18,10 @@ public static unsafe partial class MeshArena
     private const int DynDirtyCap = 4096;
     private static long _dynUploads, _dynBytes;
     private static int _dynOverflow;
+    /// <summary>Per-period counts of the dynamic half's refusals. <c>Stale</c>: cached per-instance ranges
+    /// that held another mesh -- a part index re-tenanted by a different model must not draw the old run.</summary>
+    private sealed class DynLedgerState { internal long Stale; }
+    private static DynLedgerState _dynLedger = new();
 
     /// <summary>A PRIVATE range holding <paramref name="mesh"/>'s rest vertices, keyed on
     /// <paramref name="unique"/> so no other instance can share it. -1 on a refusal (counted by the arena's own
@@ -29,8 +33,12 @@ public static unsafe partial class MeshArena
         {
             if (_byContent.TryGetValue(unique, out int have) && Alive(have))
             {
-                _ranges[have].Refs++;
-                return have;
+                if (_ranges[have].Keys is { Count: > 0 } keys && ReferenceEquals(keys[0], mesh))
+                {
+                    _ranges[have].Refs++;
+                    return have;
+                }
+                _dynLedger.Stale++;
             }
             if (mesh.Indices.Length < 3 || mesh.Positions.Length == 0) return Refuse(Refusal.Empty);
             if (mesh.Positions.Length > MaxMeshVerts) return Refuse(Refusal.TooManyVerts);
@@ -119,10 +127,11 @@ public static unsafe partial class MeshArena
     /// <summary>One clause for the arena's period line: how much the moving vertices cost.</summary>
     internal static string DynStats()
     {
-        if (_dynUploads == 0 && _dynOverflow == 0) return "";
+        if (_dynUploads == 0 && _dynOverflow == 0 && _dynLedger.Stale == 0) return "";
         string s = $", dynamic: {_dynUploads} upload(s) / {_dynBytes >> 10} KiB"
-                 + (_dynOverflow == 0 ? "" : $", {_dynOverflow} DROPPED past the dirty cap (a frozen cloak)");
-        _dynUploads = 0; _dynBytes = 0; _dynOverflow = 0;
+                 + (_dynOverflow == 0 ? "" : $", {_dynOverflow} DROPPED past the dirty cap (a frozen cloak)")
+                 + (_dynLedger.Stale == 0 ? "" : $", {_dynLedger.Stale} cached range(s) held another mesh and were rebuilt");
+        _dynUploads = 0; _dynBytes = 0; _dynOverflow = 0; _dynLedger = new();
         return s;
     }
 }

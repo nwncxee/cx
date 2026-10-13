@@ -45,6 +45,7 @@ public sealed unsafe class NuiService : IExtenderService
         StandinRect.SelfCheck(log);
         NuiModelGear.SelfCheck(log);
         NuiModelVfx.SelfCheck(log);
+        NuiModelLook.SelfCheck(log);
         NuiScrollbars.SelfCheck(log);
         NuiSolver.SelfCheck(log);
         NuiScrollbarHide.SelfCheck(log);

@@ -32,8 +32,9 @@ public static unsafe partial class DbAnim
     private static int _danglyParts, _danglyVerts;
 
     /// <summary>One dangly part's solve, driven from the part walk. Everything it reads is a column or an
-    /// immutable <see cref="DanglyDef"/>, so there is no engine state and no liveness question.</summary>
-    private static void DanglySolve(int part, float dt)
+    /// immutable <see cref="DanglyDef"/>, so there is no engine state and no liveness question. Wind and breeze
+    /// apply only when <paramref name="windy"/>: the engine's GUI scenes (chargen, portraits) have none.</summary>
+    private static void DanglySolve(int part, float dt, bool windy)
     {
         NodeDef? node = SceneDb.PartModel[part]?.Nodes[SceneDb.PartNode[part]];
         DanglyDef? dn = node?.Dangly;
@@ -92,9 +93,13 @@ public static unsafe partial class DbAnim
         Quaternion d = Qmul(inv, prot);
         Vector3 tLocal = Qrot(new Quaternion(prot.X, prot.Y, prot.Z, -prot.W), ppos - wpos);
 
-        Vector3 windW = AlloyWind.Owned ? AlloyWind.Wind(wpos, Math.Clamp(dt, MinDt, MaxDt)) : Vector3.Zero;
-        if (!float.IsFinite(windW.X) || !float.IsFinite(windW.Y) || !float.IsFinite(windW.Z)) windW = Vector3.Zero;
-        windW += new Vector3(MathF.Cos(t * BreezeTurn), MathF.Sin(t * BreezeTurn), 0f) * Dangly.Breeze.V;
+        Vector3 windW = Vector3.Zero;
+        if (windy)
+        {
+            windW = AlloyWind.Owned ? AlloyWind.Wind(wpos, Math.Clamp(dt, MinDt, MaxDt)) : Vector3.Zero;
+            if (!float.IsFinite(windW.X) || !float.IsFinite(windW.Y) || !float.IsFinite(windW.Z)) windW = Vector3.Zero;
+            windW += new Vector3(MathF.Cos(t * BreezeTurn), MathF.Sin(t * BreezeTurn), 0f) * Dangly.Breeze.V;
+        }
         Vector3 windL = Qrot(inv, windW) * Dangly.Wind.V;
         Vector3 gravL = Qrot(inv, new Vector3(0f, 0f, -Dangly.Gravity.V));
         Vector3 gust = Vector3.Cross(windL, Qrot(inv, Vector3.UnitZ));

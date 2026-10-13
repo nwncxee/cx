@@ -21,6 +21,7 @@ internal static unsafe class DbSceneSelfCheck
         int liveScenes = SceneDb.Scenes.Live, liveCams = SceneDb.Cameras.Live;
         ObjectBridge.MuteForSelfCheck();
         Camera(check);
+        Names(check);
         Order(check);
         PingPong(check, log);
         // The suite must give every slot back. Asserted rather than assumed: a leaked fixture record shows up
@@ -39,6 +40,35 @@ internal static unsafe class DbSceneSelfCheck
                           : "DbScene.SelfCheck: FAILED -- the CX scene database's camera math, draw order or "
                             + "snapshot handshake is wrong; in DB mode that is every view placed or sequenced wrong");
         return check.Ok;
+    }
+
+    /// <summary>The engine's naming rule and the camera member lookup. Oracle: hand-written names -- the
+    /// suffixes <c>Scene::Scene</c>'s loop gives a second and third holder, and the camera a by-name find returns.</summary>
+    private static void Names(Checker check)
+    {
+        DbId a = DbScene.Create("sceneGUI_cx_selfcheck"), b = DbScene.Create("SCENEGUI_CX_SELFCHECK"), c = DbScene.Create("sceneGUI_cx_selfcheck");
+        check.Expect(!a.IsNull && !b.IsNull && !c.IsNull, "three scene records allocate");
+        if (a.IsNull || b.IsNull || c.IsNull) return;
+        check.Expect(SceneDb.SceneName[a.Index] == "sceneGUI_cx_selfcheck", "the first holder keeps the name");
+        check.Expect(SceneDb.SceneName[b.Index] == "SCENEGUI_CX_SELFCHECK1", "a case-blind second holder gets 1");
+        check.Expect(SceneDb.SceneName[c.Index] == "sceneGUI_cx_selfcheck2", "a third holder gets 2");
+        check.Expect(DbScene.UniqueName(new string('n', 70)).Length == 63, "a name is clipped to the engine's 63 bytes");
+
+        DbId camObj = SceneDb.Objects.Alloc();
+        DbId cam = DbCamera.Create(camObj);
+        check.Expect(!cam.IsNull, "a camera record allocates");
+        if (!cam.IsNull)
+        {
+            SceneDb.CamName[cam.Index] = "cameraGUI_cx_selfcheck1";
+            DbCamera.AttachToScene(cam, b);
+            check.Expect(DbScene.Find(b, "cameraGUI_cx_selfcheck1").Value == camObj.Value,
+                "a camera attached to a scene is found there by name, as its object half");
+            check.Expect(DbScene.Find(a, "cameraGUI_cx_selfcheck1").IsNull, "...and only in its own scene");
+            check.Expect(DbScene.UniqueName("cameraGUI_cx_selfcheck1") == "cameraGUI_cx_selfcheck11",
+                "a live camera's name is taken for the next holder");
+            DbCamera.Destroy(cam);
+        }
+        DbScene.Destroy(a); DbScene.Destroy(b); DbScene.Destroy(c);
     }
 
     /// <summary>The camera block: view/projection against the engine's own formulae recomputed by hand,

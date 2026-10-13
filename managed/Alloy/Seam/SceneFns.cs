@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Engine;
@@ -42,6 +43,9 @@ internal static unsafe class SceneFns
         return false;
     }
 
+    /// <summary>The engine's scene-name array at <c>Scene+0xf0</c>: 0x40 bytes, up to the member list at +0x130.</summary>
+    private const int SceneNameRoom = 0x40;   // not-an-offset: a length, the bytes from Scene+0xf0 to Scene+0x130
+
     /// <summary><c>NewCAurScene(char const*)</c>: a CX scene record and its facade. The original is NEVER
     /// called -- that is the whole point of the switch, and it is why a failed hook is a stand-down rather
     /// than a fallback.</summary>
@@ -54,6 +58,8 @@ internal static unsafe class SceneFns
         nint shell = Facade.Mint(FacadeKind.Scene, id);
         if (shell == 0) { DbScene.Destroy(id); return 0; }
         SceneDb.SceneFacade[id.Index] = shell;
+        byte* dst = (byte*)Unsafe.AsPointer(ref new Scene(shell).Name);
+        dst[SceneDb.SceneNameBytes(id, new Span<byte>(dst, SceneNameRoom))] = 0;
         SeedFog(shell);
         SeedWind(shell);
         SceneShell.Refresh(id);
@@ -146,6 +152,9 @@ internal static unsafe class SceneFns
         nint shell = Facade.Mint(FacadeKind.Camera, id);
         if (shell == 0) { DbCamera.Destroy(id); return 0; }
         SceneDb.CamFacade[id.Index] = shell;
+        string unique = DbScene.UniqueName(n);
+        SceneDb.CamName[id.Index] = unique;
+        Facade.SetName(shell + SeamLayout.CameraGobSub, unique);
         // The object row's shell is the camera block's +8 INTERIOR -- the literal pointer the engine passes
         // as the camera's CAurObject* (GuiAttachViewport @0x68bda0 writes (CAurObject*)(camera + 8)), and the
         // address Facade.GobOf already maps back to this row. Without the forward half, every reader of

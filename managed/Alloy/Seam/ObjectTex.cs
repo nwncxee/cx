@@ -12,13 +12,13 @@ internal static class ObjectTex
 {
     /// <summary>Point every part of <paramref name="obj"/> whose current texture in slot <paramref name="slot"/> is
     /// named <paramref name="from"/> at <paramref name="to"/>; a null or empty <paramref name="from"/> matches every
-    /// part. Returns how many parts changed -- the engine's non-zero "it worked". <paramref name="rows"/> are PLT
-    /// layer rows and go on the MATCHED parts, per <c>CNWCAnimBaseParts::ReplaceTexture</c> @0xad8b10.</summary>
+    /// part. Returns how many parts changed. <paramref name="rows"/> are PLT layer rows for the MATCHED parts
+    /// (<c>CNWCAnimBaseParts::ReplaceTexture</c> @0xad8b10); <paramref name="kind"/> narrows what <paramref name="to"/> is.</summary>
     internal static int Replace(DbId obj, string? from, string? to, int slot = 0, bool subtree = false,
-                                ReadOnlySpan<int> rows = default)
+                                ReadOnlySpan<int> rows = default, TexKind kind = TexKind.Auto)
     {
         if (string.IsNullOrEmpty(to) || (uint)slot >= 4) return 0;
-        return ReplaceIn(obj, from, to, slot, 0, rows);
+        return ReplaceIn(obj, from, to, slot, 0, rows, kind);
     }
 
     /// <summary>How deep a composition may be grafted before the walk gives up. A creature is one hop; the
@@ -27,7 +27,7 @@ internal static class ObjectTex
 
     /// <summary>The object's own parts, then every piece <c>Gob::Append</c> grafted onto it. A creature's torso,
     /// arms and cloak are each a child object, so the base range alone is not the whole wardrobe.</summary>
-    private static int ReplaceIn(DbId obj, string? from, string? to, int slot, int depth, ReadOnlySpan<int> rows)
+    private static int ReplaceIn(DbId obj, string? from, string? to, int slot, int depth, ReadOnlySpan<int> rows, TexKind kind)
     {
         if (depth > MaxGraft || !SceneDb.Objects.Valid(obj)) return 0;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
@@ -42,7 +42,7 @@ internal static class ObjectTex
             if (m != Match.Takes) { if (m == Match.MtrKept) NoteMtrKept(p, slot, from); continue; }
             int at = p * 4 + slot;
             var old = new TexId((uint)SceneDb.PartTexId[at]);
-            SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, to!).Value;
+            SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, to!, kind).Value;
             if (!rows.IsEmpty) PltColors.SetPartRows(p, rows);
             hits++;
         }
@@ -50,7 +50,7 @@ internal static class ObjectTex
         for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
         {
             if (!SceneDb.Objects.Valid(c)) break;
-            hits += ReplaceIn(c, from, to, slot, depth + 1, rows);
+            hits += ReplaceIn(c, from, to, slot, depth + 1, rows, kind);
         }
         return hits;
     }

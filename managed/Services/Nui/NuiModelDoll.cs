@@ -43,6 +43,7 @@ internal static unsafe class NuiModelDoll
         public int TargetW, TargetH;
         public readonly float[] Bg = new float[4];
         public bool Rendered;
+        public ModelLight Light = NuiModelLook.EngineLight;
         public DollState Doll = new();
     }
 
@@ -56,6 +57,10 @@ internal static unsafe class NuiModelDoll
     /// <summary>The layer was drawn into the target: the doll's first frame has landed.</summary>
     internal static void MarkRendered() => _o.Rendered = true;
     internal static bool Rendered => _o.Rendered;
+    /// <summary>The light the doll is shown in. The engine draws its own character-preview light; a renderer that shades the doll itself
+    /// reads this and, when <see cref="ModelLight.Server"/>, uses the server's.</summary>
+    internal static ModelLight Light => _o.Light;
+    internal static void SetLight(ModelLight l) => _o.Light = l;
     internal static void SetBackground(float r, float g, float b, float a) { _o.Bg[0] = r; _o.Bg[1] = g; _o.Bg[2] = b; _o.Bg[3] = a; }
     internal static void Background(float* c) { for (int i = 0; i < 4; i++) c[i] = _o.Bg[i]; }
 
@@ -220,9 +225,10 @@ internal static unsafe class NuiModelDoll
     private const float RightSideDeg = 90f;
 
     /// <summary>Aim the view's camera at the doll's model, in the model's own frame: <paramref name="dist"/> away, <paramref name="height"/>
-    /// up, <paramref name="yawDeg"/> degrees clockwise from its right side (90 its back, 270 its front), wherever its AI stood and turned it.
+    /// up, <paramref name="yawDeg"/> degrees clockwise from its right side (90 its back, 270 its front), wherever its AI stood and turned it,
+    /// tipped <paramref name="pitchDeg"/> degrees down in place (negative looks up).
     /// Identity looks down -Z with Y up; laid back 90 degrees on X it looks along +Y.</summary>
-    internal static void Orbit(float dist, float height, float yawDeg)
+    internal static void Orbit(float dist, float height, float yawDeg, float pitchDeg = 0f)
     {
         IntPtr c = _o.Doll.Camera, m = _o.Doll.Model;
         if (c == IntPtr.Zero || m == IntPtr.Zero) return;
@@ -231,7 +237,7 @@ internal static unsafe class NuiModelDoll
         Quaternion turn = Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (RightSideDeg - yawDeg) * MathF.PI / 180f), model.Rot);
         Vector3 p = model.Position + Vector3.Transform(new Vector3(0, -dist, height), turn);
         var v = new EVec { X = p.X, Y = p.Y, Z = p.Z };
-        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2), turn));
+        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2 - pitchDeg * MathF.PI / 180f), turn));
         EVec rv;
         EQuat rq;
         if (OperatingSystem.IsWindows())
