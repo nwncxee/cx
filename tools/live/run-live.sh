@@ -5,6 +5,9 @@
 #   tools/live/run-live.sh [--module NAME] [--seconds N] [--cfg 'key=value'] [--out DIR]
 #                          [--keys 'script'] [--width W] [--height H] [--boot-timeout N] [--keep]
 #   tools/live/run-live.sh --ladder            # the scripted verification ladder (== --module cxladder)
+#   tools/live/run-live.sh --ladder --nui-close 48   # ...and close its NUI window at 48 s
+#   tools/live/run-live.sh --nui --cfg 'nui.hitdebug=1' --keys 'sleep:...;move:x,y'   # a NUI window to point at
+#   tools/live/run-live.sh --showcase creatures   # tools/live/showcase/creatures.{nss,policy,keys}: wiki shots
 #   tools/live/run-live.sh --menu              # boot to the MAIN MENU and stop there (no module at all)
 #   tools/live/run-live.sh --menu --saves DIR  # ...with saved games copied in, so Load has something
 #   tools/live/run-live.sh --menu --expect-exit 25 --keys 'sleep:6000;click:640,524'
@@ -12,7 +15,8 @@
 #                                              # binary "GUI picking works" signal that needs no screenshot
 #
 # Nothing appears on the desktop: the client runs inside `gamescope --backend headless`, which gives
-# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing of the user's
+# it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing plays on the
+# speakers: OpenAL Soft mixes into its null backend (ALSOFT_DRIVERS=null). Nothing of the user's
 # is touched either -- a throwaway HOME + user directory is built under the out dir, and the client is
 # pointed at it with `-userdirectory`, so cx.cfg, cx.log, settings.tml, nwn.ini, the localvault and the
 # crashreport folder are all the harness's own copies.
@@ -38,6 +42,7 @@ BOOT_TIMEOUT=180
 MIN_LIT=5
 WIDTH=1280
 HEIGHT=720
+UI_SCALE=""
 OUT=""
 KEYS=""
 KEEP=0
@@ -45,6 +50,11 @@ CFG_LINES=()
 CHAR="${LIVE_CHAR:-fighter}"
 LADDER_MODULE="cxladder"
 LADDER=0
+NUI_MODULE=0
+NUI_CLOSE=
+SHOWCASE=""
+SHOWCASE_DIR="$ROOT/tools/live/showcase"
+SHOWCASE_LATE=40
 MENU=0
 EXPECT_EXIT=0
 clicked_exit=0
@@ -53,6 +63,18 @@ SECONDS_SET=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --ladder)        MODULE="$LADDER_MODULE"; shift ;;
+        # A stock-area module whose script opens one fixed NUI window with id'd elements (tools/live/ladder/cxnui.nss),
+        # for driving the pointer over it with --keys.
+        # Close the ladder's NUI window N seconds into the session (it stays open otherwise), so 07n-nui*.png catch a fade out.
+        --nui-close)     NUI_CLOSE="$2"; shift 2 ;;
+        --nui)           MODULE="cxnui"; NUI_MODULE=1; shift ;;
+        # tools/live/showcase/<NAME>.nss as the module's script, <NAME>.policy fed in as the server's policy lines
+        # (a @key@ in it is the id of the creature the script logged as "CXSHOW: id key hex"), <NAME>.keys as the
+        # default --keys (@SHOTS@ is this run's shots folder). --showcase-late N: seconds after login the ids are applied.
+        --showcase)      SHOWCASE="$2"; MODULE="cxshow"; NUI_MODULE=1; shift 2 ;;
+        --showcase-late) SHOWCASE_LATE="$2"; shift 2 ;;
+        # The client's UI scale (settings.tml ui.scale, 1.0 to 8.0), for a run that checks a layout at another scale.
+        --ui-scale)      UI_SCALE="$2"; shift 2 ;;
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
         --menu)          MENU=1; shift ;;
@@ -152,13 +174,14 @@ if [ -n "$SAVES_DIR" ]; then
     echo "run-live: saves      $(find "$USER_DIR/saves" -mindepth 1 -maxdepth 1 -type d | wc -l) from $SAVES_DIR"
 fi
 
-python3 - "$USER_DIR/settings.tml" "$WIDTH" "$HEIGHT" "${SECOND_STORY:-}" <<'PY'
+python3 - "$USER_DIR/settings.tml" "$WIDTH" "$HEIGHT" "${SECOND_STORY:-}" "${UI_SCALE:-}" <<'PY'
 # Windowed at the harness size, no intro movies, no vsync (we want frames as fast as the GPU gives
 # them, and a headless gamescope has no refresh to sync to). Written as a whole-table rewrite so the
 # shape of the user's file does not matter.
 import re, sys
 path, w, h = sys.argv[1], sys.argv[2], sys.argv[3]
 ss = sys.argv[4] if len(sys.argv) > 4 else ""
+ui_scale = sys.argv[5] if len(sys.argv) > 5 else ""
 try:
     t = open(path).read()
 except FileNotFoundError:
@@ -189,10 +212,28 @@ for table, key, value in [
     ("\t\t[graphics.movies.intro]", "enabled", "false"),
     ("\t\t[graphics.intro.splash]", "enabled", "false"),
     ("\t[masterserver]", "enabled", "false"),
-] + ([("\t[graphics.second-story-tiles]", "mode", ss)] if ss else []):
+] + ([("\t[graphics.second-story-tiles]", "mode", ss)] if ss else []) + ([("[ui]", "scale", ui_scale), ("[ui]", "unconstrain-scale", "true")] if ui_scale else []):
     t = put(table, key, value, t)
 open(path, "w").write(t)
 PY
+
+# ---- the showcase ---------------------------------------------------------------------------------
+# The policy is read at login, before the script has made the creatures it names, so the lines with a @key@ in
+# them wait in a second file the poller below fills in once every id is in the log; nui.cardlate applies it.
+if [ -n "$SHOWCASE" ]; then
+    SHOW_SRC="$SHOWCASE_DIR/$SHOWCASE.nss"
+    SHOW_POLICY="$SHOWCASE_DIR/$SHOWCASE.policy"
+    [ -f "$SHOW_SRC" ] && [ -f "$SHOW_POLICY" ] || { echo "run-live: no showcase '$SHOWCASE' (needs $SHOW_SRC and $SHOW_POLICY)" >&2; exit 2; }
+    SHOW_LATE="$OUT/showcase-late.policy"
+    grep -v '@[A-Za-z0-9_]*@' "$SHOW_POLICY" > "$SHOW_LATE"
+    CFG_LINES+=("nui.cardfile=$SHOW_POLICY" "nui.cardlate=$SHOWCASE_LATE:$SHOW_LATE")
+    if [ -z "$KEYS" ] && [ -f "$SHOWCASE_DIR/$SHOWCASE.keys" ]; then
+        KEYS=$(sed "s|@SHOTS@|$SHOTS|g" "$SHOWCASE_DIR/$SHOWCASE.keys" | tr -d '\n')
+        [ "$SECONDS_SET" = 1 ] || SECONDS_IN=2
+    fi
+    # A window over the scene is the point of the shot, so the world need not be lit under it.
+    [ "$MIN_LIT" != 5 ] || MIN_LIT=0
+fi
 
 # ---- cx.cfg -------------------------------------------------------------------------------------
 # general.logs=1 is not a nicety: every marker this harness grades on is a CX log line.
@@ -207,14 +248,31 @@ mkdir -p "$CRASH_DIR"
 # ---- the ladder module ---------------------------------------------------------------------------
 # Built into the THROWAWAY user directory, never the user's own: nothing of the installed game ends up
 # in the repo and nothing the repo builds ends up in the user's modules folder.
-if [ "$LADDER" = 1 ]; then
+if [ "$LADDER" = 1 ] || [ "$NUI_MODULE" = 1 ]; then
     mkdir -p "$USER_DIR/modules"
-    NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$USER_DIR/modules" \
+    NWN_DIR="$NWN_DIR" LADDER_NUI_CLOSE="$NUI_CLOSE" "$ROOT/tools/live/ladder/build-ladder.sh" "$USER_DIR/modules" "$MODULE" ${SHOWCASE:+"$SHOW_SRC"} \
         || { echo "run-live: the ladder module did not build" >&2; exit 2; }
 fi
 
+if [ -n "$SHOWCASE" ]; then
+    (
+        for _ in $(seq 1 $(( BOOT_TIMEOUT + 120 ))); do
+            resolved=$(cat "$SHOW_POLICY")
+            for k in $(grep -o '@[A-Za-z0-9_]*@' "$SHOW_POLICY" | sort -u | tr -d @); do
+                id=$(grep -h "CXSHOW: id $k " "$USER_DIR"/logs/*.txt "$ENGINE_OUT" 2>/dev/null | head -1 | awk '{print $NF}')
+                [ -z "$id" ] || resolved=${resolved//@$k@/$id}
+            done
+            # What is resolved lands at once; a key whose creature never came stays out, and the poller keeps waiting for it.
+            grep -v '@[A-Za-z0-9_]*@' <<<"$resolved" > "$SHOW_LATE.tmp" && mv "$SHOW_LATE.tmp" "$SHOW_LATE"
+            grep -q '@[A-Za-z0-9_]*@' <<<"$resolved" || exit 0
+            sleep 0.5
+        done
+    ) &
+    SHOW_PID=$!
+fi
+
 echo "run-live: out        $OUT"
-echo "run-live: module     $MODULE"
+echo "run-live: module    $MODULE"
 echo "run-live: character  $CHAR"
 echo "run-live: user dir   $USER_DIR"
 
@@ -229,6 +287,7 @@ START_EPOCH=$(date +%s.%N)
     export XDG_DATA_HOME="$FAKE_HOME/.local/share"
     export XDG_CACHE_HOME="$FAKE_HOME/.cache"
     export XDG_CONFIG_HOME="$FAKE_HOME/.config"
+    export ALSOFT_DRIVERS=null
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
@@ -274,7 +333,7 @@ cleanup() {
     # Only this run's own processes: the gamescope we started, its tree, and the client we identified
     # (a client whose gamescope already died is reparented to init and has left that tree).
     local pid
-    for pid in $(tree_pids "${GS_PID:-}") ${CLIENT_PID:-} ${GS_PID:-}; do
+    for pid in $(tree_pids "${GS_PID:-}") ${CLIENT_PID:-} ${GS_PID:-} ${SHOW_PID:-}; do
         kill -KILL "$pid" 2>/dev/null
     done
     return 0
@@ -317,6 +376,8 @@ echo "run-live: client pid $CLIENT_PID"
 # holds it -- the area edge itself.
 AREA_MARK='LightmapBake: hold released|LightmapBake: AreaLoaded send passed through'
 AREA_MARK_NOHOLD='\[areaedge\] AreaLoaded send|PartTable: AreaLoaded send'
+# Alloy off runs no shadow bake and no part table, so neither mark exists: the session gate seeing a module is the edge left.
+AREA_MARK_ENGINE='\[uigate\] win=0x[1-9a-f][0-9a-f]* .*inModule=True'
 FRAME_MARK='first frame presented -- hook is LIVE'
 reached=0
 area_epoch=""
@@ -336,6 +397,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
         break
     fi
     if [ "$MENU" = 0 ] && { grep -qE "$AREA_MARK" "$CX_LOG" 2>/dev/null \
+       || { grep -q '\[alloygate\] alloy.enabled=0 -- the engine renders' "$CX_LOG" 2>/dev/null && grep -qE "$AREA_MARK_ENGINE" "$CX_LOG" 2>/dev/null; } \
        || { grep -q 'the AreaLoaded send did not resolve' "$CX_LOG" 2>/dev/null && grep -qE "$AREA_MARK_NOHOLD" "$CX_LOG" 2>/dev/null; }; }; then
         reached=1
         area_epoch=$(date +%s.%N)
@@ -384,7 +446,8 @@ LADDER_KEYS="$LADDER_KEYS;sleep:4000;shot:$SHOTS/06g-stripped.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:4000;shot:$SHOTS/06h-reequipped.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:500;shot:$SHOTS/06i-reequipped2.png"
 LADDER_KEYS="$LADDER_KEYS;sleep:6000;shot:$SHOTS/07-area2.png"
-LADDER_KEYS="$LADDER_KEYS;sleep:16000;shot:$SHOTS/08-area1.png"
+LADDER_KEYS="$LADDER_KEYS;sleep:3000;move:550,360;sleep:400;shot:$SHOTS/07n-nui.png;sleep:1000;shot:$SHOTS/07n-nui-b.png;sleep:1000;shot:$SHOTS/07n-nui-c.png"
+LADDER_KEYS="$LADDER_KEYS;sleep:11000;shot:$SHOTS/08-area1.png"
 # The ladder owns the key channel, so a --keys of your own runs after it rather than being dropped.
 [ -n "$KEYS" ] && LADDER_KEYS="$LADDER_KEYS;$KEYS"
 
@@ -548,6 +611,16 @@ fi
 [ "${selfcheck_fail:-0}" = 0 ] || fails+=("$selfcheck_fail failing SelfCheck/init line(s) in cx.log")
 if [ "$clicked_exit" != 1 ]; then
     [ "$alive_before_shutdown" = 1 ] || fails+=("the client exited on its own before the soak was over")
+fi
+
+# ---- the showcase's own failures ------------------------------------------------------------------
+if [ -n "$SHOWCASE" ]; then
+    grep -h 'CXSHOW:' "$USER_DIR"/logs/*.txt "$ENGINE_OUT" 2>/dev/null | sed 's/.*CXSHOW:/CXSHOW:/' | sort -u > "$OUT/showcase-markers.txt"
+    grep -q '^CXSHOW: enter ' "$OUT/showcase-markers.txt" || fails+=("SHOWCASE: the script never logged 'CXSHOW: enter' -- did OnClientEnter run?")
+    grep -q -- '-FAILED' "$OUT/showcase-markers.txt" && fails+=("SHOWCASE: $(grep -m1 -- '-FAILED' "$OUT/showcase-markers.txt")")
+    for k in $(grep -o '@[A-Za-z0-9_]*@' "$SHOW_POLICY" | sort -u | tr -d @); do
+        grep -q "^CXSHOW: id $k " "$OUT/showcase-markers.txt" || fails+=("SHOWCASE: no creature id logged for @$k@")
+    done
 fi
 
 # ---- the ladder's rungs -------------------------------------------------------------------------

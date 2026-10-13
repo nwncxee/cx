@@ -16,12 +16,8 @@ namespace CX.Services.Nui;
 internal static unsafe class NuiItemIcons
 {
     private const ushort ResTga = 3, ResAny = ushort.MaxValue;
-    private const int RefLen = RadialIcons.ResRefLen, HexDigits = 8, LogCap = 20;
+    private const int RefLen = RadialIcons.ResRefLen, LogCap = 20;
     private const int TgaHeader = 18;
-    /// <summary><c>CGameObjectArray::LISTTYPE_MASK</c> (rodata 0x13edefc): <c>CNWSMessage::WriteOBJECTIDServer</c> @0xb50fc0 ORs it
-    /// into every valid id it sends, and the client keeps ids as read, so the server's <c>ObjectToString</c> value
-    /// <c>e04</c> is client object <c>0x80000e04</c>. The wire format, so the same on every build.</summary>
-    private const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
     /// <summary>A master-palette row is 256 RGBA entries: <c>ImageDecode</c> addresses row r at <c>r &lt;&lt; 10</c>.</summary>
     private const int PaletteRowShift = 10;
     /// <summary>std::string {data, size, capacity} as <c>DataBlock::FromBase64</c> reads it: libstdc++ size at +8;
@@ -55,6 +51,10 @@ internal static unsafe class NuiItemIcons
         _log = log;
         _enabled = NuiKnobs.Enabled;
         _on = NuiKnobs.ItemIcons;
+        Capabilities.Register("itemicon", 1, static () => _ready && _enabled!.V && _on!.V);
+        Capabilities.Register("lookicon", 1, static () => _ready && _createItem != null && _enabled!.V && _on!.V);
+        _enabled.Changed += Capabilities.Refresh;
+        _on.Changed += Capabilities.Refresh;
         if (!RadialIcons.Init(log)
             || !SymbolMap.Require(log, "NuiItemIcons", SymbolMap.NkLoadImg, SymbolMap.ExoResManGet, SymbolMap.DataBlockFromBase64,
                                   SymbolMap.AurGetLayeredRasterWrapper, SymbolMap.AurReleaseLayeredRaster, SymbolMap.PaletteImage,
@@ -97,6 +97,14 @@ internal static unsafe class NuiItemIcons
     [UnmanagedCallersOnly]
     private static IntPtr OnLoadImg(IntPtr ret, byte* resref, ushort type)
     {
+        if (_ready && resref != null && resref[0] == (byte)'@' && NuiModelView.IsModelName(resref))
+        {
+            if (!NuiModelView.Prepare(resref)) return _loadOrig(ret, resref, type);
+            IntPtr m = _loadOrig(ret, _ref, ResTga);
+            _b64Len = 0;
+            NuiModelView.Loaded(resref, ret);
+            return m;
+        }
         if (!_ready || resref == null || resref[0] != (byte)'@' || !_enabled!.V || !_on!.V || !Prepare(resref, out ushort t))
             return _loadOrig(ret, resref, type);
         IntPtr r = _loadOrig(ret, _ref, t);
@@ -142,9 +150,9 @@ internal static unsafe class NuiItemIcons
     private static bool Prepare(byte* s, out ushort type)
     {
         type = ResTga;
-        if (Parse(s, out uint oid))
+        if (ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out uint oid))
         {
-            IntPtr item = RadialIcons.Item((IntPtr)(oid | ServerIdBit));
+            IntPtr item = RadialIcons.Item((IntPtr)(oid | ImageNames.ServerIdBit));
             IntPtr icon = item == IntPtr.Zero ? IntPtr.Zero : new CNWCItem(item).GuiIcon;
             if (icon != IntPtr.Zero) return FromIcon(item, icon, $"item {oid:x}", out type);
             Log(item == IntPtr.Zero
@@ -159,6 +167,11 @@ internal static unsafe class NuiItemIcons
         }
         Look look;
         if (!ParseLook(s, &look)) return false;
+        if (!LookRowsKnown(&look, out string why))
+        {
+            Log($"@look: {why} -- the NUI image shows the engine's error sprite");
+            return false;
+        }
         IntPtr minted = Mint(&look);
         if (minted == IntPtr.Zero)
         {
@@ -176,13 +189,15 @@ internal static unsafe class NuiItemIcons
         }
     }
 
-    /// <summary>The composite of <paramref name="icon"/> (the icon of <paramref name="item"/>, whose base item gives the
-    /// cell size), or a plain unpadded icon's own resref.</summary>
+    /// <summary>The composite of <paramref name="icon"/> cut to its art's own frame (the icon of <paramref name="item"/>, whose
+    /// base item gives the cells when the frame is unknown), or a plain icon's own resref when its art fills the sheet.</summary>
     private static bool FromIcon(IntPtr item, IntPtr icon, string what, out ushort type)
     {
         type = ResTga;
         Cells(item, out int cw, out int ch);
         float fw = RadialIcons.ContentFrac(cw), fh = RadialIcons.ContentFrac(ch);
+        IconFrames.Frame f = IconFrames.Of(icon);
+        if (f.Known) { fw = f.Cw / (float)f.Tw; fh = f.Ch / (float)f.Th; }
         IconKind kind = RadialIcons.Classify(icon);
         if (kind == IconKind.Plain && fw >= 1f && fh >= 1f)
         {
@@ -198,6 +213,39 @@ internal static unsafe class NuiItemIcons
         Emit(Math.Max(1, (int)MathF.Round(_w * fw)), Math.Max(1, (int)MathF.Round(_h * fh)));
         SetRef($"cx{Hash():x8}");
         return true;
+    }
+
+    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none), cut to
+    /// <paramref name="crop"/> when that fits it, at its own size, or stretched to <paramref name="w"/> x <paramref name="h"/> when the server declared that size (<paramref name="sized"/>),
+    /// else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
+    /// and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
+    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, StandinRect crop, string key, out uint[] pixels, out int pw, out int ph)
+    {
+        _w = _h = 0;
+        if (standin.Length > 0 && standin[0] != 0) AddPlain(standin);
+        if (_w > 0 && crop.Fits(_w, _h))
+        {
+            uint[] cut = crop.Cut(_canvas!, _w, _h);
+            _w = crop.W; _h = crop.H;
+            Grow(_w * _h);
+            Array.Copy(cut, _canvas!, cut.Length);
+        }
+        if (_w == 0) { _w = w; _h = h; Grow(w * h); Array.Clear(_canvas!, 0, w * h); }
+        else if (sized && (_w != w || _h != h))
+        {
+            uint[] src = new uint[_w * _h];
+            Array.Copy(_canvas!, src, src.Length);
+            int sw = _w, sh = _h;
+            _w = w; _h = h;
+            Grow(w * h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) _canvas![y * w + x] = src[(y * sh / h) * sw + x * sw / w];
+        }
+        Emit(_w, _h);
+        SetRef(ModelRef(Hash(), key));
+        pw = _w; ph = _h;
+        pixels = new uint[pw * ph];
+        Array.Copy(_canvas!, pixels, pixels.Length);
     }
 
     /// <summary>An item's appearance, as an engine store sends it and <see cref="SymbolMap.NwcCreateItem"/> takes it.</summary>
@@ -260,6 +308,131 @@ internal static unsafe class NuiItemIcons
         return true;
     }
 
+    /// <summary>The longest <c>@look:</c> string read: the prefix, 12 fixed fields and 114 part colours, with room to spare.</summary>
+    private const int LookTextMax = 510;
+
+    /// <summary><see cref="ParseLook"/> over a managed string. False when it is longer than <see cref="LookTextMax"/> or does not parse.</summary>
+    private static bool ParseLookText(string text, Look* look)
+    {
+        if (text.Length > LookTextMax) return false;
+        byte* b = stackalloc byte[LookTextMax + 1];
+        for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
+        b[text.Length] = 0;
+        return ParseLook(b, look);
+    }
+
+    /// <summary>A throwaway item for an <c>@look:</c> string, or zero when it does not parse, names a row the client lacks
+    /// (<see cref="LookRowsKnown"/>), or the engine makes none. The caller owns it and ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintLook(string text)
+    {
+        Look look;
+        if (!ParseLookText(text, &look)) return IntPtr.Zero;
+        if (LookRowsKnown(&look, out string why)) return Mint(&look);
+        if (NuiModelGuard.Once(text)) Log($"@look: {why} -- no item is made");
+        return IntPtr.Zero;
+    }
+
+    /// <summary>A throwaway item for a doll's <c>@look:</c> string, made as <see cref="MintLook"/> makes one but only when the client also has
+    /// the files the engine would load for its models (<see cref="LookModelsExist"/>). Zero, with the reason logged once, when the text does
+    /// not parse or a check fails; <paramref name="why"/> says which (empty when the engine made none).</summary>
+    internal static IntPtr MintLookForModel(string text, out string why)
+    {
+        why = "";
+        if (text.Length > LookTextMax) { why = $"longer than {LookTextMax} characters"; return IntPtr.Zero; }
+        Look look;
+        if (!ParseLookText(text, &look)) { why = "not an @look: string of hex fields"; return IntPtr.Zero; }
+        if (LookRowsKnown(&look, out why) && LookModelsExist(&look, out why)) return Mint(&look);
+        if (NuiModelGuard.Once(text)) Log($"@look: {why} -- the item is left out");
+        return IntPtr.Zero;
+    }
+
+    /// <summary>The client's base item <paramref name="row"/>, null when it has none or its rules are not loaded yet.</summary>
+    private static CNWBaseItem BaseItemOf(int row)
+    {
+        IntPtr rules = *(IntPtr*)_rules;
+        return new CNWBaseItem(rules == IntPtr.Zero ? IntPtr.Zero : EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, row));
+    }
+
+    /// <summary>Does the client have <paramref name="look"/>'s base item, the item visual effect it names, and for a cloak its row of
+    /// <c>cloakmodel.2da</c>? The engine reads that table past its end for a cloak number with no row. The reason when not. Passes
+    /// everything until the rules are loaded.</summary>
+    private static bool LookRowsKnown(Look* look, out string why)
+    {
+        why = "";
+        if (*(IntPtr*)_rules == IntPtr.Zero) return true;
+        if (BaseItemOf((int)look->BaseItem).IsNull) { why = $"base item {look->BaseItem} is not in the client's baseitems.2da"; return false; }
+        if (look->VisualEffect != 0 && !NuiModelGuard.RowInTable(look->VisualEffect - 1, NuiModelTarget.ItemVisualEffectRows()))
+        { why = $"item visual effect {look->VisualEffect} is past the rows the client's item visual effects table has"; return false; }
+        if (look->BaseItem != NuiModelGuard.CloakBaseItem || NuiModelGuard.RowInTable(look->Models[0], NuiModelTarget.CloakModelRows())) return true;
+        why = $"cloak model {look->Models[0]} is past the rows the client's cloakmodel.2da has";
+        return false;
+    }
+
+    /// <summary>Does the client have a model file for each part <paramref name="look"/>'s base item loads? The engine meets a missing one with
+    /// the base item's default model (a leather bag for a sword). A cloak's number is a table row, which <see cref="LookRowsKnown"/> checks.</summary>
+    private static bool LookModelsExist(Look* look, out string why)
+    {
+        why = "";
+        CNWBaseItem b = BaseItemOf((int)look->BaseItem);
+        if (b.IsNull || look->BaseItem == NuiModelGuard.CloakBaseItem) return true;
+        var names = new string[3];
+        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), new ReadOnlySpan<ushort>(look->Models, LookModels), names);
+        for (int i = 0; i < n; i++)
+            if (!CX.Alloy.ModelFeed.Present(names[i])) { why = $"the client has no model '{names[i]}' for base item {look->BaseItem}"; return false; }
+        return true;
+    }
+
+    /// <summary>The <c>ItemClass</c> prefix of a base item's model names, up to its end mark.</summary>
+    private static string ClassOf(CNWBaseItem b)
+    {
+        Span<byte> raw = b.ItemClass;
+        int len = raw.IndexOf((byte)0);
+        return System.Text.Encoding.ASCII.GetString(raw[..(len < 0 ? raw.Length : len)]);
+    }
+
+    /// <summary>The model files <paramref name="item"/> was built from, as <see cref="NuiModelGuard.ItemModels"/> names them, up to <c>into.Length</c> (three) of them.
+    /// None for armour, or when the client has no base item for it.</summary>
+    internal static int ModelNamesOf(IntPtr item, string[] into)
+    {
+        if (item == IntPtr.Zero) return 0;
+        var v = new CNWCItem(item);
+        CNWBaseItem b = BaseItemOf(v.BaseItem);
+        return b.IsNull ? 0 : NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), v.Models, into);
+    }
+
+    /// <summary>The 114 per-part colours an <c>@look:</c> string carries into <paramref name="dst"/> (0xff = the base colour).
+    /// False when the text does not parse or <paramref name="dst"/> is shorter than that.</summary>
+    internal static bool ReadLookPartColors(string text, Span<byte> dst)
+    {
+        Look look;
+        if (dst.Length < LookPartColors || !ParseLookText(text, &look)) return false;
+        new Span<byte>(look.PartColors, LookPartColors).CopyTo(dst);
+        return true;
+    }
+
+    /// <summary>A throwaway item that looks like <paramref name="item"/>: its base item, model parts, colours and gender read,
+    /// every per-part colour left at the base. Zero when the engine makes none. The caller ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintCopy(IntPtr item)
+    {
+        if (item == IntPtr.Zero) return IntPtr.Zero;
+        var v = new CNWCItem(item);
+        Look look = default;
+        look.BaseItem = (uint)v.BaseItem;
+        look.Gender = v.Gender;
+        v.Models.CopyTo(new Span<ushort>(look.Models, LookModels));
+        v.Colors.CopyTo(new Span<byte>(look.Colors, LookColors));
+        for (int i = 0; i < LookPartColors; i++) look.PartColors[i] = 0xff;
+        return Mint(&look);
+    }
+
+    /// <summary>The <c>INVENTORY_SLOT_*</c> bits the item's base item can sit in, or zero.</summary>
+    internal static uint EquipMask(IntPtr item)
+    {
+        if (item == IntPtr.Zero) return 0;
+        CNWBaseItem b = BaseItemOf(new CNWCItem(item).BaseItem);
+        return b.IsNull ? 0 : b.EquipSlots;
+    }
+
     /// <summary>A throwaway client item with that appearance, icon built: the engine's own store path, minus the game-object
     /// array. <see cref="Destroy"/> frees it.</summary>
     private static IntPtr Mint(Look* look)
@@ -271,30 +444,14 @@ internal static unsafe class NuiItemIcons
 
     /// <summary>The engine's deleting destructor through the item's own vtable: Itanium's D0 takes only <c>this</c>, MSVC's
     /// scalar deleting destructor also the delete flag.</summary>
-    private static void Destroy(IntPtr item)
+    internal static void Destroy(IntPtr item)
     {
         IntPtr dtor = new CNWCItem(item).DeleteFn;
         if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, uint, IntPtr>)dtor)(item, 1);
         else ((delegate* unmanaged<IntPtr, void>)dtor)(item);
     }
 
-    /// <summary><c>"@item:"</c> then 1-8 hex digits; whatever follows is ignored.</summary>
-    internal static bool Parse(byte* s, out uint oid)
-    {
-        oid = 0;
-        ReadOnlySpan<byte> prefix = "@item:"u8;
-        for (int i = 0; i < prefix.Length; i++) if (s[i] != prefix[i]) return false;
-        int n = 0;
-        for (byte* p = s + prefix.Length; n < HexDigits; p++, n++)
-        {
-            int d = *p is >= (byte)'0' and <= (byte)'9' ? *p - '0' : (*p | 0x20) is >= 'a' and <= 'f' ? (*p | 0x20) - 'a' + 10 : -1;
-            if (d < 0) break;
-            oid = oid << 4 | (uint)d;
-        }
-        return n > 0;
-    }
-
-    private static void Cells(IntPtr item, out int cw, out int ch)
+    internal static void Cells(IntPtr item, out int cw, out int ch)
     {
         cw = ch = 1;
         IntPtr rules = *(IntPtr*)_rules;
@@ -459,6 +616,15 @@ internal static unsafe class NuiItemIcons
         return h;
     }
 
+    /// <summary>A model view's synthetic resref: its TGA hash mixed with its key, so two views of one size and stand-in do not share
+    /// nk_loadimg's cached image (and so one texture).</summary>
+    internal static string ModelRef(uint tgaHash, string key)
+    {
+        uint h = tgaHash;
+        foreach (char c in key) h = (h ^ c) * 16777619;
+        return $"cx{h:x8}";
+    }
+
     private static void SetRef(string name)
     {
         NativeMemory.Clear(_ref, RefLen + 1);
@@ -485,10 +651,10 @@ internal static unsafe class NuiItemIcons
         byte* s = stackalloc byte[32];
         uint oid;
         void Put(string v) { for (int i = 0; i < v.Length; i++) s[i] = (byte)v[i]; s[v.Length] = 0; }
-        Put("@item:7f0012A3?2"); check.Expect(Parse(s, out oid) && oid == 0x7f0012a3, "hex id parsed, case-blind, suffix ignored");
-        Put("@item:2a"); check.Expect(Parse(s, out oid) && oid == 42, "short id");
-        Put("@item:"); check.Expect(!Parse(s, out _), "no digits is not ours");
-        Put("@items:1"); check.Expect(!Parse(s, out _), "another prefix is not ours");
+        Put("@item:7f0012A3?2"); check.Expect(ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out oid) && oid == 0x7f0012a3, "hex id parsed, case-blind, suffix ignored");
+        Put("@item:2a"); check.Expect(ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out oid) && oid == 42, "short id");
+        Put("@item:"); check.Expect(!ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out _), "no digits is not ours");
+        Put("@items:1"); check.Expect(!ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out _), "another prefix is not ours");
 
         byte* l = stackalloc byte[400];
         void PutLook(string v) { for (int i = 0; i < v.Length; i++) l[i] = (byte)v[i]; l[v.Length] = 0; }

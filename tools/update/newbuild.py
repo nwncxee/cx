@@ -17,7 +17,7 @@ What it does, and nothing it cannot back with evidence:
                ClientBuilds.SelfCheck refuses until a human confirms or corrects it
   * symbols -- every Linux mangled name and Windows export CX resolves by name, checked present
 """
-import argparse, os, sys
+import argparse, glob, os, sys
 from binfmt import Image
 from rvamatch import Matcher, same
 from tables import ROOT, FW, fmt, read_builds, symbols
@@ -101,7 +101,7 @@ def main():
             todo.append(f'lva {sname}: {how} {score:.2f}, candidate {cand}')
 
     # ---- offsets ----
-    src = open(os.path.join(FW, 'EngineLayout.cs')).read()
+    src = ''.join(open(f).read() for f in sorted(glob.glob(os.path.join(FW, 'EngineLayout*.cs'))))
     off_lines, verdicts = [], layout.check(src, old['offsets'], ol, nl, ow, nw)
     for (rname, cls, field, doc), verdict, notes in verdicts:
         lin, win_v = old['offsets'].get((cls, field), (None, None))

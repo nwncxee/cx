@@ -291,7 +291,7 @@ its own, and *no CX* is an uninstall."
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
-| general.logs | Write cx.log for bug reports | T | off | A | L | — | Writes what CX is doing to cx.log, beside cx.cfg, from now on; restart to capture the launch lines too. Attach the file to a bug report. |
+| general.logs | Write cx.log for bug reports | T | off | A | L | — | Writes what CX is doing to cx.log (beside cx.cfg on Windows, in your home folder on Linux) from now on; restart to capture the launch lines too. Attach the file to a bug report. |
 | general.hookdebug / presentprobe / pin / resizeat | — | T, S | as declared | C | R | — | funchook trace, the present-time pixel probe, main-thread affinity, the timed window resize |
 
 `general.logs` is live because `ExtenderLog.Enabled` is one static bool. No ↻ badge.
@@ -331,7 +331,7 @@ copy.
 | nui.enabled | Enable CX NUI fixes | T | on | U | L | — | Speed and usability fixes for the windows servers build with NUI. Off, they behave exactly as in the stock client. |
 | nui.smooth | Smooth scrolling | T | on | U | L | — | The mouse wheel glides a NUI list to its new position instead of jumping there. |
 | nui.autohide | Hide scrollbars with nothing to scroll | T | on | U | L | — | A NUI list whose content fits shows no scrollbar, instead of a full-length one that does nothing. |
-| nui.hoverbars | Show scrollbars only under the mouse | T | off | U | L | — | A NUI list's scrollbar fades out while the pointer is elsewhere and back in when it is over the list. Text boxes keep theirs. |
+| nui.hoverbars | Show scrollbars only under the mouse | T | off | A | L | — | A NUI list's scrollbar fades out while the pointer is elsewhere and back in when it is over the list. Text boxes keep theirs. |
 | nui.itemicons | Item icons in NUI windows | T | on | U | L | — | A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite. |
 | nui.explain | Explain broken layouts | T | on | A | L | — | Lists the rules that contradict each other and the elements they belong to, instead of only "The constraint can not be satisfied." |
 | nui.thumb | Shortest scrollbar handle | S | 0 … 4 × its width, step 0.5 · 2 | A | L | — | A long list's scrollbar handle never gets shorter than this. 0 = stock. |

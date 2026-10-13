@@ -28,3 +28,5 @@ cx_bakefinish_f	CX-215
 # The coverage-source predicate, renamed: it answers "has a source BOTH stages can sample", which stopped
 # meaning "from the diffuse" when the palette pair brought its own map.
 \bFromDiffuse\b	CX-227
+# The window-layer debug service and its ui.layerprobe knob, deleted: it drew two fixed rectangles.
+\blayerprobe\b	CX-263

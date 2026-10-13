@@ -12,6 +12,7 @@ Xwayland server gamescope nests for the client:
                                        down:<x>,<y> | up:<x>,<y> (a HELD press, for a pressed state)
                                        scroll:<x>,<y>,<n> (the wheel: +n zooms the camera in)
                                        shot:<path> (a screenshot mid-script, for a timed capture)
+                                       size:<w>,<h> (resize the client window, so the pointer can leave it)
     xtool.py close :N                WM_DELETE_WINDOW to the client window -- SDL turns it into SDL_QUIT
 
 `shot` prefers the client's own window: under gamescope the root window is composited by gamescope
@@ -169,6 +170,10 @@ def cmd_keys(dpy, script):
             # whatever is under it, which is the "hovered a creature" half of a pick.
             x, y = (int(v) for v in arg.split(","))
             xtest.fake_input(dpy, X.MotionNotify, x=x, y=y)
+        elif kind == "size":
+            w, h = (int(v) for v in arg.split(","))
+            if win is not None:
+                win.configure(width=w, height=h)
         elif kind == "shot":
             # A capture from inside the script, so a screenshot can be timed against a step
             # rather than only taken at the soak's halves.

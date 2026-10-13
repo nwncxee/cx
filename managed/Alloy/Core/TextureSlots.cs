@@ -49,6 +49,9 @@ internal static class TextureSlots
     /// Alloy's own reflection with stock's, so the two are never live in one program. A sampler2D here and
     /// a samplerCube there, which is why it may not move onto a unit the lit program also binds.</summary>
     internal const uint WaterEnv = Probe;
+    /// <summary>The GUI program's reflection of the same map, for a doll's env-mapped parts: the same unit, and the
+    /// GUI program binds nothing else there.</summary>
+    internal const uint GuiEnv = WaterEnv;
     /// <summary>The frame snapshot the water stage refracts through: colour then depth.</summary>
     internal const uint SnapshotColor = 13, SnapshotDepth = 14;
     /// <summary>The OIT resolve's accumulation pair. The snapshot's units: the resolve runs before the water
@@ -255,6 +258,7 @@ internal static class TextureSlots
         check.Expect(AlloyRenderer.OwnedLitFsHead.Contains("uniform samplerCube uProbe;"), $"{Probe} uProbe");
         check.Expect(FrameSnapshot.FsHead.Contains("uniform sampler2D uNoise;"), $"{WaterNoise} uNoise (water program)");
         check.Expect(FrameSnapshot.FsHead.Contains("uniform sampler2D uEnvMap;"), $"{WaterEnv} uEnvMap (water program)");
+        check.Expect(ShaderSource.Get("cx_gui_f.glsl").Contains($"layout(binding = {GuiEnv}) uniform sampler2D uEnvMap;"), $"{GuiEnv} uEnvMap (GUI program)");
         check.Expect(FrameSnapshot.FsHead.Contains("uniform sampler2D uFbColor;"), $"{SnapshotColor} uFbColor");
         check.Expect(FrameSnapshot.FsHead.Contains("uniform sampler2D uFbDepth;"), $"{SnapshotDepth} uFbDepth");
         check.Expect(AlloyRenderer.OitOutFs.Contains("uniform sampler2D uOitDepth;"), $"{OitDepth} uOitDepth (blended output)");

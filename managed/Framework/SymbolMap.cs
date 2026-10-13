@@ -252,7 +252,7 @@ internal static unsafe class SymbolMap
     [Fn("IntPtr(CClientExoApp this, IntPtr name)")]
     public const string GetPlayerByCreatureName = "_ZN13CClientExoApp23GetPlayerByCreatureNameE10CExoString";
 
-    // cursor override: client-internal, no Windows anchor yet -> skip + log there.
+    // cursor override: client-internal, anchored by RVA on Windows.
     [Fn("void(CClientExoAppInternal this, int param1)")]
     public const string UpdateMouseCursorAppearance = "_ZN21CClientExoAppInternal27UpdateMouseCursorAppearanceEi";
     [Fn("void(CCachedMouseCursorManager this, int cursorId, int hotspot, int p3, int p4, int p5)")]
@@ -317,6 +317,9 @@ internal static unsafe class SymbolMap
     public const string SdlGetModState  = "SDL_GetModState";                            // live Ctrl/Shift/Alt state at capture
     [Fn("uint(int* x, int* y)")]
     public const string SdlGetMouseState = "SDL_GetMouseState";
+    /// <summary><c>SDL_CaptureMouse(SDL_bool)</c>: while on, SDL keeps reporting the pointer and its buttons outside the window.</summary>
+    [Fn("int(int enabled)")]
+    public const string SdlCaptureMouse = "SDL_CaptureMouse";
     /// <summary><c>SDL_SetWindowSize(SDL_Window*, int, int)</c>: CX's one trigger for the engine's own resize path.
     /// SDL posts <c>SDL_WINDOWEVENT_SIZE_CHANGED</c> for a size it set itself, and <c>WinMessageHandler</c> @0x62f960
     /// (event type <c>0x200</c>, code 5) answers it with <c>CGuiMan::SetGuiSize</c> @0x77efc0 -- every panel re-laid
@@ -362,15 +365,15 @@ internal static unsafe class SymbolMap
     [Fn("void(CExoMoviePlayerInternal this, int frameW, int frameH, int texW, int texH)")]
     public const string MovieShowFrame = "_ZN23CExoMoviePlayerInternal9ShowFrameEiiii";
     // The SDL glue of the client's nuklear is C++-linkage on this build (mangled), so nk_sdl_render
-    // must use its mangled name or the hook never installs. Nothing nuklear is anchored on Windows.
+    // must use its mangled name or the hook never installs. Windows anchors it by RVA (Framework/Builds).
     /// <summary>Nuklear's GL flush, called from <c>CGuiMan::UpdateAndRender</c> @0x5809fa straight after
-    /// <c>Nui__Render()</c> (which only fills the command queue and touches no GL). Everything drawn before
-    /// it lands UNDER every NUI window and over the vanilla GUI panels -- which is where the framework's own
-    /// windows draw (<c>UiHostService</c>), not just where nuklear windows get built.</summary>
+    /// <c>Nui__Render()</c> (which only fills the command queue and touches no GL). With Alloy off, what is
+    /// drawn before it lands under every NUI window and over the vanilla GUI panels, and what is drawn after
+    /// it lands over NUI: the two window layers of <c>UiHostService</c>.</summary>
     [Fn("void(float aa)")]
     public const string NkSdlRender        = "_Z13nk_sdl_renderf";
     /// <summary><c>int nk_window_is_any_hovered(nk_context*)</c> -- pointer precedence for the layering
-    /// above. NUI draws on top of our windows, so it must get the click too.</summary>
+    /// above. NUI draws over our below-NUI windows, so it must get the click too.</summary>
     [Fn("int(IntPtr ctx)")]
     public const string NkWindowIsAnyHovered = "nk_window_is_any_hovered";
     /// <summary><c>void nk_sdl_copy_event(SDL_Event*)</c> -- nuklear's own event feed, normally reached via
@@ -384,6 +387,24 @@ internal static unsafe class SymbolMap
     /// <c>panel-&gt;row.item</c>. Containers, <c>movieplayer</c> and <c>SelectList</c> have their own Render.</summary>
     [Fn("void(IntPtr self, IntPtr ctx)")]
     public const string NuiWidgetRender = "_ZN3Nui6Layout6Widget6RenderEP10nk_context";
+    /// <summary><c>Nui::JSON::JsonWindow::Render()</c> @0x86e3c0 (Windows rva 0x74b810, the one of three vftable slots whose body is a
+    /// profiler zone around a single call into <c>Window::Render</c>) -- a server window's per-frame draw. Every
+    /// <see cref="NuiWidgetRender"/> of that window runs inside it, so its <c>this</c> is the window a widget belongs to.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string NuiJsonWindowRender = "_ZN3Nui4JSON10JsonWindow6RenderEv";
+    /// <summary><c>Nui::Window::GetImageWithCache(string const&amp; key, std::function loader)</c> @0x8487c0 -- an image widget's per-frame look-up of
+    /// the window's image cache; <c>key</c> is the image's resref and type. Returns a <c>shared_ptr</c> by value: Itanium <c>(sret, this, key, loader)</c>.
+    /// It is how a hit learns which <c>@item:</c> or <c>@look:</c> image a widget drew.</summary>
+    public const string NuiGetImageWithCache = "_ZN3Nui6Window17GetImageWithCacheERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt8functionIFSt10shared_ptrI7NkImageEvEE";
+    /// <summary>The int <c>DynamicBinding::SetArrayIndex</c> writes and <c>GetArrayIndex</c> reads (Linux lva 0x18ab050, Windows rva
+    /// 0x129728c; both accessors are inlined on Windows). A list's draw sets it to the visible row before each row's cells
+    /// render and to -1 after the last, and it starts as -1. The constant is a key, never looked up as an export.</summary>
+    public const string NuiArrayIndex = "Nui::JSON::DynamicBinding::s_array_index";
+    /// <summary>nuklear's <c>nk_layout_widget_space</c> (static: Linux lva 0xdd8340, Windows rva 0xa6c0b0), the row-type switch behind
+    /// <c>nk_panel_alloc_space</c>: where the next widget of the current panel will land, for every row type. Called with
+    /// <c>modify</c> 0 it writes nothing. Linux's copy dropped its window parameter: <c>(bounds, ctx, modify)</c>; Windows keeps it:
+    /// <c>(bounds, ctx, window, modify)</c>. No <c>[Fn]</c> row: the caller declares each order.</summary>
+    public const string NkLayoutWidgetSpace = "nk_layout_widget_space";
     /// <summary><c>Nui::Layout::StatefulWidget</c>'s vtable. Not a hook -- an identity: <c>textedit</c> is built on it
     /// and owns keyboard focus, so it is never culled. The object's vptr is the symbol + <see cref="EngineLayout.VtblSymbolHeader"/>.</summary>
     public const string NuiStatefulWidgetVtbl = "_ZTVN3Nui6Layout14StatefulWidgetE";
@@ -495,7 +516,7 @@ internal static unsafe class SymbolMap
     /// converts and clears through it.</summary>
     public const string Nuklear    = "g_pNuklear";
     // ---- nuklear's flush, drawn by Alloy. All three take pointers and ints only, so ONE declaration
-    //      fits both ABIs -- none of native-gui-skinning.md §5.3's by-value nk_rect hazard is on this path.
+    //      fits both ABIs -- a by-value nk_rect would need one per ABI, and none is on this path.
     //      docs/windows-symbols.md records where every address was read.
     /// <summary><c>nk_sdl_refresh_config()</c> @0xe066a0 (Windows rva 0xa70d90) -- the skin/font reload edge.
     /// Early-outs on a clear dirty byte at <c>g_pNuklearConfig</c>, so calling it every frame is free.</summary>
@@ -1820,7 +1841,7 @@ internal static unsafe class SymbolMap
     /// build's <c>lva</c> line (<see cref="ClientBuilds.Lva"/>), as an <c>At()</c> symbol is from its <c>rva</c>
     /// line on Windows. The constant is the function's source name, a key, never looked up as an export.</summary>
     internal static readonly HashSet<string> LinuxAnchored = new() { NkScrollbarBehavior, NkDrawScrollbar, NkDoScrollbarV, NkDoScrollbarH,
-                                                                     NkCmds, NkTexNull };
+                                                                     NkCmds, NkTexNull, NuiArrayIndex, NkLayoutWidgetSpace };
     /// <summary>nuklear's <c>nk_scrollbar_behavior</c> (static: Linux lva 0xdf5ba0, Windows rva 0xa6f320) -- the one
     /// function that turns input into a scrollbar's new offset: the thumb drag (and the one <c>nk_input</c> write,
     /// <c>clicked_pos</c>), the page clicks, the wheel, the scroll keys. Called only by <c>nk_do_scrollbarv/h</c>,
@@ -1872,6 +1893,95 @@ internal static unsafe class SymbolMap
     /// <summary>DATA: <c>ObjectVisualTransformData::s_IdentityVisualTransformData</c>, the constructed identity transform
     /// (its std::map is a live empty tree), for <see cref="NwcCreateItem"/>'s last argument.</summary>
     public const string IdentityVisualTransform = "_ZN25ObjectVisualTransformData29s_IdentityVisualTransformDataE";
+    // ---- the model view: a throwaway creature in a free-standing GUI viewport ----
+
+    /// <summary><c>CNWCCreature::CNWCCreature()</c> @0x71b190 (Windows rva 0x7fb140) -- constructs a creature in storage
+    /// the caller got from <see cref="OperatorNew"/> (<see cref="EngineLayout.SizeOfCreature"/> bytes). The Windows
+    /// constructor returns <c>this</c>; on Itanium nothing is read from the return.</summary>
+    [Fn("IntPtr(IntPtr self)")]
+    public const string NwcCreatureCtor = "_ZN12CNWCCreatureC1Ev";
+    /// <summary><c>CNWCCreature::SetAppearance(CCAppearanceInfo*, uchar flags)</c> @0x72dc50 (Windows rva 0x809a00) --
+    /// builds the creature's model from an appearance record: 0x2f as character creation first builds (body, parts,
+    /// head, tail, wing). Returns 0 when the body failed to build.</summary>
+    [Fn("int(IntPtr self, IntPtr info, byte flags)")]
+    public const string NwcCreatureSetAppearance = "_ZN12CNWCCreature13SetAppearanceEP16CCAppearanceInfoh";
+    /// <summary><c>CNWCCreature::EquipToInventorySlot(uint slotMask, CNWCItem*)</c> @0x729d40 (Windows rva 0x7fff10) -- the
+    /// appearance update's own equip: records the item's id for the slot, wields a hand item and re-reads the weapon class.
+    /// A null item empties the slot. The item must be a registered game object, because the wield looks it up by id.</summary>
+    [Fn("void(IntPtr self, uint slot, IntPtr item)")]
+    public const string NwcCreatureEquip = "_ZN12CNWCCreature20EquipToInventorySlotEjP8CNWCItem";
+    /// <summary><c>CNWCObject::AddVisualEffect(ushort, int, uint, uchar, uchar, Vector, ObjectVisualTransformData)</c> @0x7e9e30 --
+    /// the row, 0, the beam target (0x7f000000 for none), the body part, 0, a zero vector and the transform. Linux copies the transform
+    /// and leaves the caller's alone. Win64 destroys the copy it is handed, so it needs one the engine can free (<see cref="TransformCopy"/>).</summary>
+    [Fn("int(IntPtr self, ushort row, int unknown, uint beamTarget, byte bodyPart, byte unknown2, VectorArg at, IntPtr transform)")]
+    public const string ObjAddVisualEffect = "_ZN10CNWCObject15AddVisualEffectEtijhh6Vector25ObjectVisualTransformData";
+    /// <summary><c>CNWCObject::KillAllVisualEffects()</c> @0x7e2f20 -- kills, destroys and frees every effect on the object.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string ObjKillAllVisualEffects = "_ZN10CNWCObject20KillAllVisualEffectsEv";
+    /// <summary>WINDOWS ONLY: the MSVC <c>std::_Tree</c> copy constructor of <c>ObjectVisualTransformData</c>'s map (this, source, an unused
+    /// allocator). It builds a fresh tree on the engine's own heap, the copy <see cref="ObjAddVisualEffect"/> destroys. The Linux name is the
+    /// libstdc++ twin and is never resolved.</summary>
+    [Fn("IntPtr(IntPtr dst, IntPtr src, IntPtr allocator)")]
+    public const string TransformCopy = "_ZNSt8_Rb_treeIiSt4pairIKi25CAurObjectVisualTransformDataESt10_Select1stIS4_ESt4lessIiESaIS4_EEC1ERKSB_";
+    /// <summary><c>CExoSound::Play3DOneShotSound(CResRef const&amp;, Vector, float, uchar, uint, uchar)</c> @0x574e00 -- the one-shot
+    /// an effect's impact sound goes through, by <c>CNWCVisualEffectOnObject::StartVisualEffect</c>. The result is passed on untouched.</summary>
+    [Fn("IntPtr(IntPtr self, IntPtr resref, VectorArg at, float volume, byte group, uint unknown, byte unknown2)")]
+    public const string ExoSoundPlay3DOneShot = "_ZN9CExoSound18Play3DOneShotSoundERK7CResRef6Vectorfhjh";
+    /// <summary><c>CExoSoundSource::Play()</c> @0x573f80 -- starts a source; the looping sound an effect keeps starts here.</summary>
+    [Fn("IntPtr(IntPtr self)")]
+    public const string ExoSoundSourcePlay = "_ZN15CExoSoundSource4PlayEv";
+    /// <summary><c>CNWCObject::SetFadeState(uchar)</c> @0x7e7ba0 (Windows rva 0x765c80) -- 1 shows the object (its model's parts enabled, alpha from its fade), 0 hides it.</summary>
+    [Fn("void(IntPtr self, byte state)")]
+    public const string ObjSetFadeState = "_ZN10CNWCObject12SetFadeStateEh";
+    /// <summary><c>CClientExoApp::GetGameObjectArray()</c> @0x6377c0 (Windows rva 0x6abb70).</summary>
+    [Fn("IntPtr(IntPtr app)")]
+    public const string GetGameObjectArray = "_ZN13CClientExoApp18GetGameObjectArrayEv";
+    /// <summary><c>CClientExoApp::GetClientAIMaster()</c> @0x637d20 (Windows rva 0x6ab940).</summary>
+    [Fn("IntPtr(IntPtr app)")]
+    public const string GetClientAIMaster = "_ZN13CClientExoApp17GetClientAIMasterEv";
+    /// <summary><c>CClientAIMaster::AddObject(CNWCObject*)</c> @0x991c10 (Windows rva 0x7675d0) -- puts an object on the
+    /// per-frame AI list, which is what plays a creature's animation.</summary>
+    [Fn("void(IntPtr master, IntPtr obj)")]
+    public const string AiMasterAddObject = "_ZN15CClientAIMaster9AddObjectEP10CNWCObject";
+    /// <summary><c>CGameObjectArray::AddInternalObject(uint&amp; id, CGameObject*, int character)</c> @0x11a4ed0, a name
+    /// export on Windows. <paramref name="id"/> goes in as the invalid id and comes back as the new one; 0 = added.</summary>
+    [Fn("byte(IntPtr array, uint* id, IntPtr obj, int character)")]
+    public const string GameObjectArrayAdd = "_ZN16CGameObjectArray17AddInternalObjectERjP11CGameObjecti";
+    /// <summary><c>CGameObjectArray::Delete(uint id, CGameObject** out)</c> @0x11a4610, a name export on Windows: removes
+    /// the id and hands back the object, which the caller destroys. 0 = removed.</summary>
+    [Fn("byte(IntPtr array, uint id, IntPtr* obj)")]
+    public const string GameObjectArrayDelete = "_ZN16CGameObjectArray6DeleteEjPP11CGameObject";
+    /// <summary><c>CGuiViewport::CGuiViewport(char const* name)</c> @0x597280, a name export on Windows: makes the scene
+    /// <c>sceneGUI_&lt;name&gt;</c> and the camera <c>cameraGUI_&lt;name&gt;</c> (storage: <see cref="EngineLayout.SizeOfGuiViewport"/>).</summary>
+    [Fn("IntPtr(IntPtr self, byte* name)")]
+    public const string GuiViewportCtor = "_ZN12CGuiViewportC1EPKc";
+    /// <summary><c>CGuiViewport::~CGuiViewport()</c> @0x597830 (the complete, non-deleting destructor): unlists the view,
+    /// deletes its scene and camera. The caller frees the storage.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string GuiViewportDtor = "_ZN12CGuiViewportD1Ev";
+    /// <summary><c>CGuiViewport::Enable()</c> @0x597590 -- lists the view, so the GUI draws it every frame.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string GuiViewportEnable = "_ZN12CGuiViewport6EnableEv";
+    /// <summary><c>CGuiViewport::Disable()</c> @0x597910.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string GuiViewportDisable = "_ZN12CGuiViewport7DisableEv";
+    /// <summary><c>CGuiViewport::SetViewport(int x, int y, int w, int h)</c> @0x597510 -- the camera's screen rectangle.</summary>
+    [Fn("void(IntPtr self, int x, int y, int w, int h)")]
+    public const string GuiViewportSetViewport = "_ZN12CGuiViewport11SetViewportEiiii";
+    /// <summary><c>CGuiViewport::TakeModel(CAurObject*)</c> @0x597550 -- moves a model into the view's scene.</summary>
+    [Fn("void(IntPtr self, IntPtr model)")]
+    public const string GuiViewportTakeModel = "_ZN12CGuiViewport9TakeModelEP10CAurObject";
+    /// <summary><c>CGuiViewport::GetCamera()</c> @0x597670 -- the view's <c>CAurCamera*</c>.</summary>
+    [Fn("IntPtr(IntPtr self)")]
+    public const string GuiViewportGetCamera = "_ZN12CGuiViewport9GetCameraEv";
+    /// <summary><c>NewCAurObject(char const* model, char const* tag, FILE*)</c> @0x4412c0, a name export on Windows -- the engine's
+    /// model loader: a <c>CAurObject</c> for any model resref, or null when there is none. The caller deletes it through its vtable.</summary>
+    [Fn("IntPtr(byte* model, byte* tag, IntPtr file)")]
+    public const string NewAurObject = "_Z13NewCAurObjectPKcS0_P8_IO_FILE";
+    /// <summary><c>CNWCItem::LoadModel(CResRef, uchar slot, uchar)</c> @0x7cf7e0 -- builds the item's animation base and loads its model; slot 0xff
+    /// is the item on its own, not held. The <c>CResRef</c> is not read. No <c>[Fn]</c>: Itanium copies the 17-byte
+    /// <c>CResRef</c> onto the stack, Win64 passes a pointer to it, so <c>NuiModelTarget</c> calls it per OS.</summary>
+    public const string ItemLoadModel = "_ZN8CNWCItem9LoadModelE7CResRefhh";
     /// <summary><c>kiwi::impl::SolverImpl::substitute(Symbol const&amp;, Row const&amp;)</c> @0x85b890 (Windows rva 0x3458e0): replaces
     /// a symbol by a row in every tableau row, the objective and the artificial row -- the full row walk that makes a
     /// NUI layout solve quadratic. Never throws; its callers are addConstraint, addWithArtificialVariable, optimize
@@ -2894,6 +3004,7 @@ internal static unsafe class SymbolMap
         [Cx119EncodingSingleCharToUtf8] = Nm("?SingleCharToUTF8@Encoding@@YAHDW4Locale@1@@Z"),
         [SdlGlGetProcAddress]        = Nm("SDL_GL_GetProcAddress"),
         [SdlGetMouseState]           = Nm("SDL_GetMouseState"),
+        [SdlCaptureMouse]            = Nm("SDL_CaptureMouse"),
         [SdlSetWindowSize]           = Nm("SDL_SetWindowSize"),
         [SdlGetWindowSize]           = Nm("SDL_GetWindowSize"),
         [SdlStartTextInput]          = Nm("SDL_StartTextInput"),
@@ -3172,6 +3283,10 @@ internal static unsafe class SymbolMap
         [NkConvert] = At(),               // its rcx/rdx are the ctx and the cmds buffer
         [NkClear] = At(),                 // the call right after the draw-command walk
         [NkCmds] = At(),                  // DATA: the `lea rdx` of the nk_convert call
+        [NuiJsonWindowRender] = At(),     // the vftable slot whose body is the "m_id" profiler zone around one Window::Render call (docs/windows-symbols.md)
+        [NuiGetImageWithCache] = LinuxOnly("no standalone function on Windows: the one timer call in the image-cache code is in JsonWindow::Update, so the look-up is inlined into the image widget"),
+        [NkLayoutWidgetSpace] = At(),     // the one function with the row-type switch (cases 0..8) and the +0x41e4/+0x41e8 spacing reads; Windows takes the window as a third argument, Linux reads it from ctx
+        [NuiArrayIndex] = At(),           // DATA: the global the inlined Set/GetArrayIndex touch; the list draw at rva 0x73e9d0 writes first+i, then -1
         [NkTexNull] = At(),               // DATA: the `movaps xmm0,[rip]` into the convert config at +0x18
         [NkWindowIsAnyHovered] = Hole("nuklear is not exported by nwmain.exe"),
         [NuiStatefulWidgetVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
@@ -3236,6 +3351,29 @@ internal static unsafe class SymbolMap
         [DataBlockFromBase64] = Nm("?FromBase64@DataBlock@@SA?AV?$shared_ptr@VDataBlock@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z"),
         [NwcCreateItem] = At(),   // its own .pdata entry; the only function citing "gifp" and "gi_armor01" (docs/windows-symbols.md)
         [IdentityVisualTransform] = Nm("?s_IdentityVisualTransformData@ObjectVisualTransformData@@0U1@B"),
+        [ObjAddVisualEffect] = At(),   // CNWCObject vtable slot 47 (Linux 48): news a 0x138-byte effect, AddTails it on the list at this+0x80, tests 0x163 and 0x77
+        [ObjKillAllVisualEffects] = At(),   // the slot two on (Linux 50): drains the list at this+0x80 with the effect's kill, dtor and a 0x138 free
+        [TransformCopy] = Nm("??$?0V?$allocator@U?$_Tree_node@U?$pair@$$CBHUCAurObjectVisualTransformData@@@std@@PEAX@std@@@std@@@?$_Tree@V?$_Tmap_traits@HUCAurObjectVisualTransformData@@U?$less@H@std@@V?$allocator@U?$pair@$$CBHUCAurObjectVisualTransformData@@@std@@@3@$0A@@std@@@std@@QEAA@AEBV01@$$QEAV?$allocator@U?$_Tree_node@U?$pair@$$CBHUCAurObjectVisualTransformData@@@std@@PEAX@std@@@1@@Z"),
+        [ExoSoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
+        [ExoSoundSourcePlay] = Nm("?Play@CExoSoundSource@@QEAAIXZ"),
+        [ObjSetFadeState] = At(),   // the function that tests +0x104 == 1, writes the state byte at +0xa8, and runs the show/hide virtuals; the Windows twin of 0x7e7ba0
+        [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
+        [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
+        [NwcCreatureEquip] = At(),   // the callee the appearance update handler calls with (creature, 2, item) beside CreateItem; it stores the slot's item id at creature+0x318 (right hand) and +0x31c (left)
+        [GetGameObjectArray] = At(),   // the first call CreateCharacterObject makes, its result is AddInternalObject's `this`
+        [GetClientAIMaster] = At(),    // the second: its result is AddObject's `this`
+        [AiMasterAddObject] = At(),    // the call after AddInternalObject succeeds, with the new creature
+        [GameObjectArrayAdd] = Nm("?AddInternalObject@CGameObjectArray@@QEAAEAEAIPEAVCGameObject@@H@Z"),
+        [GameObjectArrayDelete] = Nm("?Delete@CGameObjectArray@@QEAAEIPEAPEAVCGameObject@@@Z"),
+        [GuiViewportCtor] = Nm("??0CGuiViewport@@QEAA@PEBD@Z"),
+        [GuiViewportDtor] = Nm("??1CGuiViewport@@UEAA@XZ"),
+        [GuiViewportEnable] = Nm("?Enable@CGuiViewport@@QEAAXXZ"),
+        [GuiViewportDisable] = Nm("?Disable@CGuiViewport@@QEAAXXZ"),
+        [GuiViewportSetViewport] = Nm("?SetViewport@CGuiViewport@@QEAAXHHHH@Z"),
+        [GuiViewportTakeModel] = Nm("?TakeModel@CGuiViewport@@QEAAXPEAVCAurObject@@@Z"),
+        [GuiViewportGetCamera] = Nm("?GetCamera@CGuiViewport@@QEAAPEAVCAurCamera@@XZ"),
+        [NewAurObject] = Nm("?NewCAurObject@@YAPEAVCAurObject@@PEBD0PEAU_iobuf@@@Z"),
+        [ItemLoadModel] = At(),   // not exported; the one function that tests the base item's model type and builds an item animation base
         [KiwiSubstitute] = Nm("?substitute@SolverImpl@impl@kiwi@@AEAAXAEBVSymbol@23@AEBVRow@23@@Z"),
         [KiwiOptimize] = Nm("?optimize@SolverImpl@impl@kiwi@@AEAAXAEBVRow@23@@Z"),
         [ReportCrashToUser] = Nm("?ReportCrashToUser@CrashReporter_Windows@@UEAAXPEBD0@Z"),
@@ -3273,7 +3411,7 @@ internal static unsafe class SymbolMap
         [SceneSpawnTile] = Nm("?SpawnTile@Scene@@UEAAPEAVCAurObject@@PEBDAEBVVector@@HHPEAVQuaternion@@@Z"),
         [SetMatrixMode] = Nm("?SetMatrixMode@RenderInterface@@SAXW4AuroraTransStates@Aurora@@@Z"),
         [SetModelMatrix] = Nm("?SetModelMatrix@GLRender@@CAXAEBVMatrix4x4@@@Z"),
-        [SetMouseCursor] = Hole("CCachedMouseCursorManager is not exported"),
+        [SetMouseCursor] = At(),
         [SetOrthoTransform] = Nm("?SetOrthoTransform@RenderInterface@@SAXNNNNNN@Z"),
         [SetPositionScreen] = Nm("?SetPositionScreen@CGuiPanel@@QEAAXHH@Z"),
         [ShowCompass] = At(),
@@ -3282,7 +3420,7 @@ internal static unsafe class SymbolMap
         [ToonDepthEdge] = Nm("?toon_depth_edge_threshold@@3MA"),
         [ToonEdgeHardness] = Nm("?toon_edge_hardness@@3MA"),
         [TriggerBucket] = Nm("?triggerbucket@@3V?$List@PEAVPartTrigger@@@@A"),
-        [UpdateMouseCursorAppearance] = Hole("CClientExoAppInternal is not exported"),
+        [UpdateMouseCursorAppearance] = At(),
         [VdoCommitItemDynamicData] = Nm("?CommitItemDynamicData@VertexDataObject@@QEAAXII@Z"),
         [VdoGetItemDynamicData] = Nm("?GetItemDynamicData@VertexDataObject@@QEAAPEAEI@Z"),
         [VdoRepack] = Nm("?Repack@VertexDataObject@@QEAAXXZ"),

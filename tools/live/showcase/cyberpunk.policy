@@ -1,0 +1,12 @@
+model.me.target=player
+model.me.size=240x320
+model.me.dist=4.6
+model.me.height=0.95
+model.me.yaw=250
+model.me.light=server
+model.me.lightcolor=0.2,1.5,1.7
+model.me.lightdir=-0.6,0.3,0.6
+model.me.lightambient=0.08,0.08,0.12
+cardstyle={"bg":"#07070af6","border":"#fcee09","borderw":2,"corners":"#00f0ff","cornerlen":16,"cornerw":3,"pad":12,"color":"#e8e8ee","dimcolor":"#8a8a96","tabcolor":"#fcee09","tabtext":"#07070a","divider":"#fcee0988","footerband":"#fcee0922","side":"right","offset":6,"delay":0,"fadein":0.05,"fadeout":0.05,"leading":1.05}
+card.row1=[{"width":320,"tab":"LEGENDARY","blocks":[{"type":"text","size":1.5,"text":"Satori Katana","color":"#fcee09"},{"type":"text","dim":true,"text":"Katana, one-handed, tech weapon"},{"type":"text","size":2,"text":"<c=#00f0ff>412</c> <s=1>damage per second</s>"},{"type":"section","tint":"#00f0ff14","blocks":[{"type":"status","icon":"ife_cleave","text":"<c=#00f0ff>+35%</c> bleed chance","px":22},{"type":"status","icon":"ife_powatak","text":"<c=#00f0ff>+12%</c> critical damage","px":22},{"type":"status","icon":"ife_cripple","text":"<c=#ff003c>-8%</c> stealth, the blade glows","px":22}]},{"type":"text","italic":true,"dim":true,"text":"Cut first. Talk after."},{"type":"footer","left":"Street cred 40","right":"<c=#fcee09>58,000</c>"}]}]
+card.row*=[{"width":260,"tab":"ITEM","blocks":[{"type":"text","size":1.3,"text":"Stash item","color":"#fcee09"},{"type":"text","dim":true,"text":"Select it to see the full spec."}]}]

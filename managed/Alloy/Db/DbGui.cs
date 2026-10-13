@@ -161,8 +161,13 @@ internal static unsafe class DbGui
             lit = GuiCapture.IsLitScene(np);
         }
         if (!GuiCapture.BeginDbLayer(v.X, v.Y, v.W, v.H, near, far, clear)) { _refusedNoLayer++; LastWhy = 'l'; return 0; }
+        CX.Services.Nui.NuiModelDoll.ModelSlot? slot = CX.Services.Nui.NuiModelDoll.OfScene(SceneDb.SceneFacade[s]);
+        uint redirect = slot?.TargetTex ?? 0u;
+        if (redirect != 0) GuiCapture.Layers[GuiCapture.LayerN - 1].Target = redirect;
+        CX.Services.Nui.ModelLight light = slot?.Light ?? CX.Services.Nui.NuiModelLook.EngineLight;
 
         Matrix4x4 viewProj = v.View * v.Proj;
+        if (redirect != 0) viewProj *= Matrix4x4.CreateScale(1f, -1f, 1f);
         int issued = 0, walked = 0, hidden = 0, texts = 0;
         // The DumpAt'th time each scene draws. Per scene, because a panel that opens mid-session
         // -- the inventory, the character sheet -- is one nobody has seen before and a flat budget is spent on
@@ -184,13 +189,14 @@ internal static unsafe class DbGui
             {
                 DbId m = members[k];
                 if (SceneDb.Objects.Valid(m))
-                    issued += DrawOne(m.Index, s, in v, in viewProj, lit, nowMs, dump, ref walked, ref hidden, ref texts);
+                    issued += DrawOne(m.Index, s, in v, in viewProj, lit, in light, nowMs, dump, ref walked, ref hidden, ref texts);
             }
         else
             for (int o = head; o >= 0; o = _objNext[o])
                 if (SceneDb.Objects.LiveAt(o))
-                    issued += DrawOne(o, s, in v, in viewProj, lit, nowMs, dump, ref walked, ref hidden, ref texts);
+                    issued += DrawOne(o, s, in v, in viewProj, lit, in light, nowMs, dump, ref walked, ref hidden, ref texts);
         GuiCapture.EndDbLayer();
+        if (redirect != 0 && issued > 0) CX.Services.Nui.NuiModelDoll.MarkRendered(slot!);
         LastWhy = clear ? 'C' : 'd'; LastIssued = issued;
         return Close(s, in v, dump, walked, hidden, texts, issued, near, far, clear, lit);
     }
@@ -198,7 +204,7 @@ internal static unsafe class DbGui
     /// <summary>One member of a GUI scene, in the order <c>RenderOnlyGobs</c> would have reached it. Returns
     /// the draws it issued.</summary>
     private static int DrawOne(int o, int s, in RenderSnapshot.ViewRec v, in Matrix4x4 viewProj, bool lit,
-                               uint nowMs, bool dump, ref int walked, ref int hidden, ref int texts)
+                               in CX.Services.Nui.ModelLight light, uint nowMs, bool dump, ref int walked, ref int hidden, ref int texts)
     {
         int issued = 0;
         {
@@ -234,20 +240,18 @@ internal static unsafe class DbGui
                     var (am, ax, ay) = d.Attached[k];
                     if (!SceneDb.Objects.Valid(am)) continue;
                     Matrix4x4 at = Matrix4x4.CreateTranslation(ax, ay, 0f) * SceneDb.ObjWorld[o];
-                    issued += Parts(am.Index, in v, in viewProj, lit, in at, true);
+                    issued += Parts(am.Index, in v, in viewProj, lit, in light, in at, true);
                 }
                 if (!glyphs) return issued;
                 Matrix4x4 mvp = SceneDb.ObjWorld[o] * viewProj;
-                // Depth-tested AND depth-writing, as the engine draws it: nothing in RenderOnlyGobs, StringGob::Render
-                // or CAurFont::TextOut touches the mask, so Material::SetBlendingMode @0x5c5c50 left it on, and a
-                // control drawn later behind the text (a load screen's frame re-added after its tip) stays under it.
+                // Depth-written as the engine draws text, so a control drawn later behind it stays under it.
                 int runs = TextQuads.Issue(d, in mvp, d.Font.Atlas, TextObjects.CaretAlpha(nowMs),
                                            depthTest: true, depthWrite: true);
                 _textRuns += runs;
                 return issued + runs;
             }
             _controls++;
-            issued += Parts(o, in v, in viewProj, lit, Matrix4x4.Identity, false);
+            issued += Parts(o, in v, in viewProj, lit, in light, Matrix4x4.Identity, false);
         }
         return issued;
     }
@@ -355,7 +359,7 @@ internal static unsafe class DbGui
     /// this frame -- each drawable part becoming one <see cref="GuiCapture.DbPart"/> record on the panel's own
     /// ortho camera. NOT the world pass, which clears the HDR target and would overwrite the world per panel.</summary>
     private static int Parts(int o, in RenderSnapshot.ViewRec v, in Matrix4x4 viewProj, bool litScene,
-                             in Matrix4x4 over, bool hasOver)
+                             in CX.Services.Nui.ModelLight light, in Matrix4x4 over, bool hasOver)
     {
         int first = SceneDb.ObjPartFirst[o], count = SceneDb.ObjPartCount[o];
         if (count <= 0) return 0;
@@ -402,6 +406,7 @@ internal static unsafe class DbGui
             // an item icon -- a texture swapped onto a model whose own texture is opaque -- painted its
             // transparent surround black, and a PLT icon its palette's first texel.
             bool plt = Plt(p, recipe);
+            bool envMapped = EnvMapped(p, recipe);
             uint tex = Texture(p, recipe);
             // Still streaming past the hold: skip it this frame rather than paint the white stand-in. A texture
             // that FAILED keeps the stand-in -- that one is loud on purpose (TexRegistry says so).
@@ -428,12 +433,21 @@ internal static unsafe class DbGui
                 Cull = (fl & RecipeFlag.TwoSided) == 0,
                 AlphaTest = false,
                 Lit = litScene && (fl & RecipeFlag.Lit) != 0,
+                SolidTexel = !TexelAlphaIsCoverage(litScene, plt, envMapped),
             };
             if (d.Lit)
             {
                 Vector4 amb = DrawRecipe.Ambient(recipe), dif = DrawRecipe.Diffuse(recipe);
                 d.Ambient = new Vector4(amb.X * tint.X, amb.Y * tint.Y, amb.Z * tint.Z, 1f);
                 d.Diffuse = new Vector4(dif.X * tint.X, dif.Y * tint.Y, dif.Z * tint.Z, alpha);
+                if (light.Server)
+                {
+                    ServerLanes(in light, tint, alpha, out d.Ambient, out d.Diffuse);
+                    d.ServerLight = true;
+                    d.LightDir = light.Dir;
+                }
+                d.EnvMap = envMapped;
+                d.EnvTex = envMapped ? EnvTexOf(o) : 0;
                 Vector3 emi = SceneDb.PartSelfIllum[p] + SceneDb.ObjEmissive[o];
                 d.Emissive = new Vector4(emi, 1f);
             }
@@ -548,6 +562,33 @@ internal static unsafe class DbGui
         return m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Name : "?";
     }
 
+    private static readonly Dictionary<string, TexId> _envMaps = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The GL texture an env-mapped part of object <paramref name="o"/> reflects: the map the game named for the
+    /// object (<c>Gob::SetEnvironmentMap</c> @0x53f530). <c>DEFAULT</c>, a name that does not load and no name at all are the
+    /// engine's null texture, which has no GL name, so the part takes the grey bake. 0 also while the named map is still loading.</summary>
+    private static int EnvTexOf(int o)
+    {
+        string? name = SceneDb.ObjEnvMap[o];
+        if (name == null || name.Equals("default", StringComparison.OrdinalIgnoreCase)) return 0;
+        if (!_envMaps.TryGetValue(name, out TexId id)) _envMaps[name] = id = TexRegistry.Acquire(name);
+        return !TexRegistry.Final(id) && TexRegistry.TryDrawable(id, out uint gl, out _) ? (int)gl : 0;
+    }
+
+    /// <summary>The ambient and colour lanes of a server-lit draw: the light's own ambient and colour, each scaled by the
+    /// object's tint, the colour lane's alpha carrying the part's opacity.</summary>
+    internal static void ServerLanes(in CX.Services.Nui.ModelLight l, Vector4 tint, float alpha, out Vector4 ambient, out Vector4 colour)
+    {
+        var t = new Vector3(tint.X, tint.Y, tint.Z);
+        ambient = new Vector4(l.Ambient * t, 1f);
+        colour = new Vector4(l.Color * t, alpha);
+    }
+
+    /// <summary>Whether a texel's alpha is coverage on a GUI part. A lit scene's (a doll's) PLT or env-mapped part
+    /// draws in the engine's opaque bucket, where that alpha is reflectivity; an unlit control keeps its alpha.</summary>
+    internal static bool TexelAlphaIsCoverage(bool litScene, bool plt, bool envMapped)
+        => !(litScene && (plt || envMapped));
+
     /// <summary>Does the texture this part actually binds resolve through the master palette? The override
     /// is asked first, exactly as <see cref="Texture"/> binds it -- an item icon arrives as a
     /// <c>Gob::ReplaceTexture</c> override, not as the model's own slot.</summary>
@@ -562,6 +603,13 @@ internal static unsafe class DbGui
 
     /// <summary>GUI parts whose texture resolved through the master palette this session -- an item icon.</summary>
     private static long _pltParts;
+
+    /// <summary>Does this part draw with an environment map: flagged so itself, or through its texture (its per-instance override, else the recipe's)?</summary>
+    private static bool EnvMapped(int p, int recipe)
+    {
+        int ov = SceneDb.PartTexId[p * 4];
+        return SceneDb.PartEnvMapped(p) || TexRegistry.EnvMapped(ov != 0 ? new TexId((uint)ov) : DrawRecipe.Tex(recipe, 0));
+    }
 
     /// <summary>This part's diffuse as a GL name: its per-instance override when it has one
     /// (<c>Gob::ReplaceTexture</c> writes <see cref="SceneDb.PartTexId"/>), else the recipe's. 0 is the
@@ -721,8 +769,17 @@ internal static unsafe class DbGui
         Left(1, scene); Left(3, scene); Left(9, scene);
         check.Expect(_listed == 0 && _sceneFirst[scene.Index] < 0, "the list empties completely");
         check.Expect(_sceneN[scene.Index] == 0, "...and the member count empties with it");
+        check.Expect(!TexelAlphaIsCoverage(true, true, false), "a doll's PLT part (a helm) takes no opacity from its palette alpha");
+        check.Expect(!TexelAlphaIsCoverage(true, false, true), "a doll's env-mapped part (a weapon) takes none from its reflectivity mask");
+        check.Expect(TexelAlphaIsCoverage(true, false, false), "a doll's plain textured part keeps its alpha");
+        check.Expect(TexelAlphaIsCoverage(false, true, false), "an icon's PLT keeps its alpha outside a lit scene");
+        check.Expect(TexelAlphaIsCoverage(false, false, true), "an unlit env-mapped control keeps its alpha");
+        // Oracle: hand-written lane values for a half-tinted object under a coloured server light.
+        ServerLanes(new CX.Services.Nui.ModelLight(true, new Vector3(1f, 0.5f, 0f), Vector3.UnitX, new Vector3(0.1f, 0.2f, 0.4f)),
+                    new Vector4(0.5f, 1f, 1f, 1f), 0.75f, out Vector4 sa, out Vector4 sc);
+        check.Expect(sa == new Vector4(0.05f, 0.2f, 0.4f, 1f) && sc == new Vector4(0.5f, 0.5f, 0f, 0.75f), "a server light's lanes are its ambient and colour times the tint, the colour lane carrying the opacity");
         log.Info(check.Ok ? "DbGui.SelfCheck: passed"
-                          : "DbGui.SelfCheck: FAILED -- a GUI panel would paint its controls out of order");
+                          : "DbGui.SelfCheck: FAILED -- a GUI panel would paint its controls out of order, or a doll its metal see-through");
         return check.Ok;
     }
 

@@ -1,0 +1,5 @@
+model.ogre.target=app:127
+model.ogre.size=280x300
+model.ogre.yaw=250
+model.ogre.drag=1
+model.ogre.anim=creadyr

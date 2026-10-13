@@ -11,12 +11,12 @@ namespace CX.Alloy;
 /// <summary>
 /// NUI's pixels, drawn by Alloy. <c>nk_sdl_render</c> @0xe07bb0 is the stock SDL/GL3 nuklear backend and the
 /// engine's only GL draw left above the world frame; this replaces its GL half -- nuklear still runs
-/// <c>nk_convert</c>, but into CX-owned buffers, recorded through <see cref="GuiCapture"/>. Chained at the
-/// LOWEST priority, so the flush order on this symbol stays the engine's: panels, CX windows, then NUI.
+/// <c>nk_convert</c>, but into CX-owned buffers, recorded through <see cref="GuiCapture"/>. The frame boundary
+/// issues them: panels, below-NUI windows, NUI, above-NUI windows.
 /// </summary>
 internal static unsafe class NuiFlush
 {
-    /// <summary>Last subscriber before the original -- NUI lands over the CX windows, as it does in vanilla.</summary>
+    /// <summary>Last subscriber before the original, so it records after every other layer of the chain.</summary>
     private const int NkPriority = 1;
 
     /// <summary>nuklear's vertex: <c>{vec2 pos, vec2 uv, u8x4 colour}</c>. The engine's own backend declares the
@@ -77,6 +77,9 @@ internal static unsafe class NuiFlush
         _layout[3] = new NkLayoutElem { Attribute = 3, Format = 19, Offset = 0 };    // NK_VERTEX_LAYOUT_END
         _nkSlot = hooks.ChainNkSdlRender(&OnNk, NkPriority);
         if (_nkSlot == null) { log.Always("NuiFlush: nk_sdl_render did not chain -- NUI stays the ENGINE's draw"); return; }
+        NuiWindows.Init(log);
+        Capabilities.Register("nuirender", 1, static () => _armed && !_stoodDown && Renderer.Gui.V && CX.Services.Nui.NuiKnobs.Enabled.V);
+        Renderer.Gui.Changed += Capabilities.Refresh;
         _armed = true;
         log.Info("NuiFlush: armed -- on a captured frame nuklear converts into CX buffers and Alloy draws NUI "
                + "(the engine's flush is not called)");
@@ -90,7 +93,10 @@ internal static unsafe class NuiFlush
         if (!_armed || _stoodDown || ctx == IntPtr.Zero || !GuiPass.Capturing) { (*_nkSlot)(dt); return; }
         new NkContext(ctx).DeltaTime = dt;
         _refresh();
+        NuiWindows.Apply(ctx, _texNull == IntPtr.Zero ? 0 : (int)(long)((NkDrawNullTexture*)_texNull)->Texture,
+            CX.Services.Nui.NuiKnobs.Enabled.V, CX.Services.Nui.NuiKnobs.PolicyProbe.V);
         if (!CX.Ui.LoadScreen.PanelUp) Convert(ctx);   // the loadscreen covers the screen: NUI's queue is dropped
+        NuiWindows.Finish(ctx);
         _clear(ctx);
         BufferClear(_cmds);
         HandBackEngineState();
@@ -148,13 +154,15 @@ internal static unsafe class NuiFlush
     private static void StandDown(byte res)
     {
         _stoodDown = true;
+        Capabilities.Refresh();
         _log?.Always($"NuiFlush: nk_convert refused (flags 0x{res:x}) at {_vtx.Length / VtxStride} vertices / "
                    + $"{_idx.Length} indices -- NUI goes back to the ENGINE's flush for the rest of the session");
         Notice.Show(_log, "Alloy could not convert the interface's geometry; the game's renderer draws NUI instead.");
     }
 
     /// <summary>Walk the draw commands and hand each run to <see cref="GuiCapture"/>, opening a new raw layer only
-    /// when the scissor changes, then flush so NUI lands over the CX windows and under the post-NUI overlay views.</summary>
+    /// when the scissor changes. The layers are flushed at the frame boundary, after the below-NUI windows and before the
+    /// above-NUI ones.</summary>
     private static void Record(IntPtr ctx, byte* vtx, ushort* idx)
     {
         var c = new NkContext(ctx);
@@ -185,7 +193,7 @@ internal static unsafe class NuiFlush
             offset += count;
             _cmdsDrawn++;
         }
-        // The panels are recorded later, at SeamDraw's boundary, which flushes them and then these.
+        // The panels are recorded later, at SeamDraw's boundary, which flushes them, the below-NUI windows, then these.
         if (!_live) { _live = true; _log?.Info($"NuiFlush: LIVE -- {n} nuklear draw command(s) drawn by Alloy; nk_sdl_render is not called"); }
     }
 
@@ -358,6 +366,7 @@ internal static unsafe class NuiFlush
           "nuklear's origin is the top-left corner of clip space");
         check.Expect(MathF.Abs(bottomRight.X - 1f) < 1e-5f && MathF.Abs(bottomRight.Y + 1f) < 1e-5f,
           "...and (w, h) is the bottom-right");
+        NuiWindows.SelfCheck(log);
         log.Info(check.Ok ? "NuiFlush.SelfCheck: passed" : "NuiFlush.SelfCheck: FAILED");
     }
 }

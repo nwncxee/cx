@@ -20,7 +20,7 @@ internal static unsafe class GuiCapture
     /// its run of draws, and the depth treatment <c>Camera::RenderScene</c> @0x4a7920 gives the view: every GUI view
     /// shares ONE depth buffer, cleared (<c>Clear(2)</c>, depth+stencil, unscissored) only at the first GUI view after a
     /// non-GUI one, and split by depth RANGE -- the five overlay scenes in [0, 0.02], every other panel in [0.021, 0.1].</summary>
-    internal struct Layer { public int X, Y, W, H, SX, SY, SW, SH, First, Count; public float Near, Far; public bool Clear; }
+    internal struct Layer { public int X, Y, W, H, SX, SY, SW, SH, First, Count; public float Near, Far; public bool Clear; public uint Target; }
 
     /// <summary>One captured draw. <see cref="Slot"/> is a VAO-cache slot (<see cref="Stream"/> false) or the
     /// stream format the flush builds a VAO for; <see cref="Offset"/> is an element BYTE offset when
@@ -29,6 +29,8 @@ internal static unsafe class GuiCapture
     {
         public bool Stream, Indexed, Blend, DepthTest, DepthWrite, Cull;
         public int Slot, Count, BaseVertex, Stride, Tex;
+        /// <summary>The GL texture a <see cref="GuiCapture.FlagEnvMap"/> draw reflects; 0 = whatever is bound.</summary>
+        public int EnvTex;
         public uint Prim, Format, Src, Dst;
         public long Offset;
         /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes its
@@ -46,6 +48,17 @@ internal static unsafe class GuiCapture
     /// <summary>This draw's texture is a PLT pair texture, so the fragment stage resolves it through the
     /// master palette with the ten rows carried in the record (floats 54, 55 and 56..63).</summary>
     internal const int FlagPlt = 32;
+    /// <summary>The texel's alpha is not coverage (a PLT palette's or an env map's reflectivity): the fragment stage
+    /// draws it as 1.</summary>
+    internal const int FlagSolidTexel = 64;
+    /// <summary>A lit draw takes a server's light: the record's globalColor lane carries its direction (view space, unit
+    /// length), the ambient lane its ambient and the diffuse lane its colour.</summary>
+    internal const int FlagServerLight = 128;
+    /// <summary>A lit draw is env-mapped: the fragment stage reflects the scene's environment map, as the engine's
+    /// specular light does for a material that names one.</summary>
+    internal const int FlagEnvMap = 256;
+    /// <summary>With <see cref="FlagEnvMap"/>: a texture is bound for the part to reflect. Without it the part takes the grey bake.</summary>
+    internal const int FlagEnvTex = 512;
     /// <summary>ponytail: fixed staging. A busy screen is a few hundred draws; past any ceiling the rest is NOT
     /// DRAWN and said once, loudly. Grow on the log line, never silently.</summary>
     internal const int MaxDraws = 16384, MaxLayers = 1024, MaxSkins = 64;
@@ -147,9 +160,22 @@ internal static unsafe class GuiCapture
     }
 
     /// <summary><c>RenderOnlyGobs</c>' two strcasecmp's: the character-preview model view and the compass are the only
-    /// GUI scenes it lights.</summary>
+    /// GUI scenes it lights. A model view's scene past the first carries the digits the engine's unique-name rule appends
+    /// (<c>sceneGUI_guiModelView1</c>). The engine lights the exact name only, and CX shows its own views to it as that,
+    /// so here the digits are accepted after the model view's name and after no other.</summary>
     internal static bool IsLitScene(byte* name)
-        => NameIs(name, "sceneGUI_guiModelView"u8) || NameIs(name, "sceneGUI_Viewport_Compass"u8);
+        => NameIs(name, "sceneGUI_guiModelView"u8) || NameIs(name, "sceneGUI_Viewport_Compass"u8) || ModelViewNumbered(name);
+
+    private static bool ModelViewNumbered(byte* s)
+    {
+        ReadOnlySpan<byte> want = "sceneGUI_guiModelView"u8;
+        for (int i = 0; i < want.Length; i++)
+            if ((s[i] | 0x20) != (want[i] | 0x20)) return false;
+        int n = want.Length;
+        if (s[n] == 0) return false;
+        for (; s[n] != 0; n++) if (s[n] < (byte)'0' || s[n] > (byte)'9') return false;
+        return true;
+    }
 
     private static bool NameIs(byte* s, ReadOnlySpan<byte> want)
     {
@@ -266,7 +292,7 @@ internal static unsafe class GuiCapture
         if (LayerN >= MaxLayers) { Overflow("layers"); return false; }
         ref Layer l = ref Layers[LayerN++];
         l.X = x; l.Y = y; l.W = w; l.H = h; l.SX = sx; l.SY = sy; l.SW = sw; l.SH = sh;
-        l.First = DrawN; l.Count = 0; l.Near = 0f; l.Far = 1f; l.Clear = false;
+        l.First = DrawN; l.Count = 0; l.Near = 0f; l.Far = 1f; l.Clear = false; l.Target = 0;
         return true;
     }
 
@@ -283,7 +309,7 @@ internal static unsafe class GuiCapture
         if (LayerN >= MaxLayers) { Overflow("layers"); return false; }
         ref Layer l = ref Layers[LayerN++];
         l.X = l.SX = x; l.Y = l.SY = y; l.W = l.SW = w; l.H = l.SH = h;
-        l.First = DrawN; l.Count = 0; l.Near = near; l.Far = far; l.Clear = clear;
+        l.First = DrawN; l.Count = 0; l.Near = near; l.Far = far; l.Clear = clear; l.Target = 0;
         return true;
     }
 
@@ -304,6 +330,15 @@ internal static unsafe class GuiCapture
         /// <summary>The record's <c>globalColor</c> lane: the object's tint, with the part's alpha folded in.</summary>
         public Vector4 Colour, Ambient, Diffuse, Emissive;
         public bool Blend, DepthTest, DepthWrite, Cull, AlphaTest, Lit;
+        /// <summary>Draw the texel's alpha as 1: it is reflectivity here, never opacity.</summary>
+        public bool SolidTexel;
+        /// <summary>The draw reflects the scene's environment map (a lit, env-mapped part with a map present).</summary>
+        public bool EnvMap;
+        /// <summary>The GL texture the part reflects: its object's own environment map; 0 = none to reflect.</summary>
+        public int EnvTex;
+        /// <summary>The draw is shaded by a server's light, whose view-space direction is <see cref="LightDir"/>.</summary>
+        public bool ServerLight;
+        public Vector3 LightDir;
         /// <summary>The object's master-palette row per PLT layer, or null when the texture is not a PLT.
         /// <c>Gob::ReplaceTexture</c> carries exactly these to <c>Material::ReplaceTexturePLT</c>.</summary>
         public ushort[]? PltRows;
@@ -321,18 +356,20 @@ internal static unsafe class GuiCapture
         d.Stream = false; d.Indexed = true; d.Slot = 0; d.Stride = 0; d.Format = 0;
         d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
-        d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex;
+        d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
         fixed (float* r = &Records[DrawN * RecFloats])
         {
             *(Matrix4x4*)r = p.Mvp;
             *(Matrix4x4*)(r + 16) = p.Mv;
             r[32] = 1f; r[33] = 0f; r[34] = 0f; r[35] = 1f;
-            *(Vector4*)(r + 36) = p.Colour;
+            *(Vector4*)(r + 36) = p.Lit && p.ServerLight ? new Vector4(p.LightDir, 0f) : p.Colour;
             *(Vector4*)(r + 40) = p.Lit ? p.Ambient : Vector4.Zero;
             *(Vector4*)(r + 44) = p.Lit ? p.Diffuse : Vector4.Zero;
             *(Vector4*)(r + 48) = p.Lit ? p.Emissive : Vector4.Zero;
         }
-        int flags = (p.Tex != 0 ? FlagTex : 0) | (p.AlphaTest ? FlagAlphaTest : 0) | (p.Lit ? FlagLit : 0);
+        int flags = (p.Tex != 0 ? FlagTex : 0) | (p.AlphaTest ? FlagAlphaTest : 0) | (p.Lit ? FlagLit : 0)
+                    | (p.SolidTexel ? FlagSolidTexel : 0) | (p.Lit && p.ServerLight ? FlagServerLight : 0)
+                    | (p.Lit && p.EnvMap ? FlagEnvMap : 0) | (p.Lit && p.EnvMap && p.EnvTex != 0 ? FlagEnvTex : 0);
         if (p.Tex != 0 && p.PltRows != null)
         {
             fixed (float* r = &Records[DrawN * RecFloats])
@@ -547,6 +584,10 @@ internal static unsafe class GuiCapture
         Put("sceneGUI_guiModelView"); check.Expect(IsLitScene(a), "the model view is lit");
         Put("SCENEGUI_VIEWPORT_COMPASS"); check.Expect(IsLitScene(a), "the compass is lit, compared case-insensitively");
         Put("sceneGUI_guiModelViewX"); check.Expect(!IsLitScene(a), "a longer name is not the model view");
+        Put("sceneGUI_guiModelView1"); check.Expect(IsLitScene(a), "the second model view's scene, numbered by the unique-name rule, is lit");
+        Put("sceneGUI_guiModelView12"); check.Expect(IsLitScene(a), "...and so is the twelfth");
+        Put("sceneGUI_guiModelView1x"); check.Expect(!IsLitScene(a), "digits then anything else is not a model view");
+        Put("sceneGUI_Viewport_Compass1"); check.Expect(!IsLitScene(a), "the compass takes no number");
         Put("sceneGUI_minimap"); check.Expect(!IsLitScene(a), "any other panel is unlit");
         bool latch = false;
         DepthOf(a, ref latch, out float n0, out float f0, out bool c0);
