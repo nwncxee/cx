@@ -497,13 +497,34 @@ internal static unsafe class NuiModelView
         }
     }
 
+    /// <summary>The engine's slot for a body-part creature's head model, a separate object attached to the body.</summary>
+    private const byte HeadPart = 0xfe;   // not-an-offset: CNWCAnimBase model slot of the head
+
+    /// <summary>A head and shoulders view looks along the head's own axis, which is not the body's: the head's middle, from its object's place and bounds,
+    /// replaces the sideways part of <paramref name="centre"/>. Nothing changes for a creature with no separate head.</summary>
+    private static void HeadAxis(ViewData v, ref System.Numerics.Vector3 centre)
+    {
+        if (v.Slot.Doll.Creature == IntPtr.Zero || v.Slot.Doll.Model == IntPtr.Zero) return;
+        IntPtr head = new CNWCCreature(v.Slot.Doll.Creature).GetModel(HeadPart, 1);
+        if (head == IntPtr.Zero) return;
+        var h = new Gob(head);
+        var body = new Gob(v.Slot.Doll.Model);
+        System.Numerics.Vector3 mid = (h.BoundsMin + h.BoundsMax) * 0.5f;
+        if (h.BoundsMin.X > h.BoundsMax.X) mid = default;
+        System.Numerics.Vector3 local = System.Numerics.Vector3.Transform(h.Position - body.Position, System.Numerics.Quaternion.Inverse(body.Rot)) + mid;
+        if (!float.IsFinite(local.X) || !float.IsFinite(local.Y)) return;
+        centre.X = local.X;
+        centre.Y = local.Y;
+    }
+
     /// <summary>Frame the doll from the size of what it draws, unless the server fixed the camera or turned fitting off. The camera looks at the middle of
     /// that box, which an item is first stood up in (its longest side vertical, its thinnest toward the viewer) and every doll is then turned by the
     /// server's <c>rot</c>; a creature built from parts is framed on its row's height, a slice of it for <c>fitzone</c>.</summary>
     private static void FitCamera(ViewState s, ViewData v)
     {
         bool creature = v.BuiltTgt.Kind is TargetKind.Player or TargetKind.Creature or TargetKind.Appearance;
-        if (!v.HasBox)
+        bool first = !v.HasBox;
+        if (first)
         {
             v.Measured = MeasuredBox(v, out v.BoxMin, out v.BoxMax);
             if (v.Measured) v.Stand = v.BuiltTgt.Kind == TargetKind.Item ? NuiModelFrame.Upright(v.BoxMax - v.BoxMin) : System.Numerics.Quaternion.Identity;
@@ -520,8 +541,10 @@ internal static unsafe class NuiModelView
         System.Numerics.Vector3 min = v.BoxMin, max = v.BoxMax;
         if (creature && !v.Measured) { max.Z -= min.Z; min.Z = 0f; }
         if (!NuiModelFrame.Frame(min, max, creature, v.ZoneLo, v.ZoneHi, ModelTurn(v), v.Angle, v.W, v.H, v.Yaw, v.Drag > 0f, v.FitPad, out System.Numerics.Vector3 centre, out float dist)) return;
+        if (creature && v.ZoneLo < v.ZoneHi) HeadAxis(v, ref centre);
         v.FitDist = dist;
         v.FitCentre = centre;
+        if (first) s.Log?.Info($"NuiModelView: '{v.Key}' framed {(v.Measured ? "from the model" : "from the engine's bounds")}: box {min}..{max}, zone {v.ZoneLo}..{v.ZoneHi}, looks at {centre} from {dist:0.##} m, image {v.W}x{v.H}");
     }
 
     private static void Read(ViewState s, ViewData v)

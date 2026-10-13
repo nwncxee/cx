@@ -35,13 +35,14 @@ internal static class NuiModelFrame
     }
 
     /// <summary>The part of a standing model between <paramref name="lo"/> and <paramref name="hi"/> (fractions of its height, 0 the floor): its box
-    /// as the camera should frame it, no wider than the slice is tall, and the height of its middle. A slice that is not 0 to 1 in order is the whole model.</summary>
-    internal static Vector3 Slice(Vector3 extent, float lo, float hi, out float middle)
+    /// as the camera should frame it, no wider than the slice is tall and no wider than the image's own shape (<paramref name="aspect"/>, width over height) leaves room for, and the height of its middle. A slice that is not 0 to 1 in order is the whole model.</summary>
+    internal static Vector3 Slice(Vector3 extent, float lo, float hi, out float middle, float aspect = 1f)
     {
         if (!(lo >= 0f && hi <= 1f && lo < hi)) { middle = extent.Z * 0.5f; return extent; }
         float tall = (hi - lo) * extent.Z;
         middle = (lo + hi) * 0.5f * extent.Z;
-        return new Vector3(MathF.Min(extent.X, tall), MathF.Min(extent.Y, tall), tall);
+        float wide = tall * Math.Clamp(aspect, 0.1f, 1f);
+        return new Vector3(MathF.Min(extent.X, wide), MathF.Min(extent.Y, wide), tall);
     }
 
     /// <summary>Axes whose extents are within this fraction of each other count as equal when an item is stood up, so a nearly cubic item keeps the pose it was authored in.</summary>
@@ -100,7 +101,7 @@ internal static class NuiModelFrame
         centre = (min + max) * 0.5f;
         if (creature)
         {
-            extent = Slice(extent, zoneLo, zoneHi, out float middle);
+            extent = Slice(extent, zoneLo, zoneHi, out float middle, width / (float)Math.Max(height, 1));
             centre.Z = min.Z + middle;
         }
         Vector3 shown = TurnedExtent(-extent * 0.5f, extent * 0.5f, turn);
@@ -190,6 +191,13 @@ internal static class NuiModelFrame
         check.Expect(Near(Vector3.Transform(eye - new Vector3(3, 5, 2), lookTurn), new Vector3(0, 10, 0)),
                      "the camera is 10 metres from the middle, and a model turned a quarter about x is seen from its front: its x turn applied to the eye's offset gives the front side (0, 10, 0)");
         check.Expect(!Frame(offMin, offMin, false, 0f, 0f, Quaternion.Identity, 30f, 100, 100, 0f, false, 1f, out _, out _), "a flat box with no size is not framed");
+        Vector3 portrait = Slice(new Vector3(0.6f, 0.6f, 2f), 0.75f, 1f, out _, 0.75f);
+        check.Expect(Near(portrait, new Vector3(0.375f, 0.375f, 0.5f)), "a head slice 0.5 tall in a 120 by 160 image is 0.375 wide, so the image is filled and not letterboxed");
+        Vector3 wideSlice = Slice(new Vector3(0.6f, 0.6f, 2f), 0.75f, 1f, out _, 1.517f);
+        check.Expect(Near(wideSlice, new Vector3(0.5f, 0.5f, 0.5f)), "in a wide image the slice is as wide as it is tall");
+        check.Expect(BodyBox("P", "2", "0.3", out Vector3 hb0, out Vector3 hb1) && Frame(hb0, hb1, true, 0.75f, 1f, Quaternion.Identity, 30f, 120, 160, 270f, false, 1f, out Vector3 hc, out float hd)
+                     && Near(hc, new Vector3(0, 0, 1.75f)) && MathF.Abs(hd - (0.1875f + 1.1f * 0.25f / 0.267949f)) < 0.01f,
+                     "the head and shoulders of a human row (2 metres, 0.6 wide) in a 120 by 160 image: the camera looks at the middle of the top quarter, 1.75 up on the body's own axis, from 0.1875 + 1.1 * 0.25 / tan 15 metres");
         check.Expect(!Fit(default, true, 30f, 10, 10, 0f, false, 1f, out _, out _), "an empty box is not framed");
         check.Expect(!Fit(new Vector3(-1, 1, 1), true, 30f, 10, 10, 0f, false, 1f, out _, out _), "a negative size is not framed");
         check.Expect(!Fit(cube, true, 0f, 10, 10, 0f, false, 1f, out _, out _) && !Fit(cube, true, 30f, 0, 10, 0f, false, 1f, out _, out _), "no angle or no image is not framed");
