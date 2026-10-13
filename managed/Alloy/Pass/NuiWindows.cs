@@ -304,7 +304,7 @@ internal static unsafe class NuiWindows
     }
 
     /// <summary>The engine draws a window's title bar, frame and body before it first clips to the content, then fills the content
-    /// rectangle once more. A window with no such commands before its first scissor (a transparent one) has no chrome, and what
+    /// rectangle once more. A window with no such commands before its first scissor (no title bar, border or fill) has no chrome, and what
     /// follows is the server's. The chrome ends at that content fill, or at the scissor when no fill follows it.</summary>
     private static bool FindChromeEnd(byte* mem, ulong off, ulong end, out ulong at)
     {

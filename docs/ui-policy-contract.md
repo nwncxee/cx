@@ -367,7 +367,7 @@ Alloy off.
 | key | meaning |
 |---|---|
 | `nui.<id>.opacity=0.6` | the whole window, 0-1 |
-| `nui.<id>.background=0` | the engine's own title bar, frame and body fill, 0-1. At 0 only the widgets and the server's draw list draw. A window with no engine chrome (a transparent one) has nothing to fade, and a server rect the size of the window stays |
+| `nui.<id>.background=0` | the engine's own title bar, frame and body fill, 0-1. At 0 only the widgets and the server's draw list draw, and the window still drags by its hidden title bar. A `transparent` window keeps its title bar and frame, so they fade too. A window with no title, close or collapse button, `border=false` and `transparent` has nothing to fade, and a server rect the size of the window stays |
 | `nui.<id>.fadein=150` | ms from invisible to the window's opacity, from the frame it opens |
 | `nui.<id>.fadeout=150` | ms the window takes to fade away after it closes |
 
