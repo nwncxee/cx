@@ -51,6 +51,16 @@ void Strip(object oPC, string sTag)
     Mark("strip " + sTag);
 }
 
+// Visual effects on the player, two permanent and one temporary, so a shot shows which ones the doll carries.
+void Glow(object oPC)
+{
+    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectVisualEffect(VFX_DUR_ELEMENTAL_SHIELD), oPC);
+    ApplyEffectToObject(DURATION_TYPE_PERMANENT, EffectVisualEffect(VFX_DUR_GLOW_LIGHT_BLUE), oPC);
+    ApplyEffectToObject(DURATION_TYPE_TEMPORARY, EffectVisualEffect(VFX_DUR_PROT_PREMONITION), oPC, WINDOW_LIFE);
+    Mark("vfx " + IntToString(VFX_DUR_ELEMENTAL_SHIELD) + " " + IntToString(VFX_DUR_GLOW_LIGHT_BLUE) + " permanent, "
+         + IntToString(VFX_DUR_PROT_PREMONITION) + " temporary");
+}
+
 void CloseWindow(object oPC, int nToken, string sId)
 {
     NuiDestroy(oPC, nToken);
@@ -106,6 +116,7 @@ void OpenWindow(object oPC)
     DelayCommand(10.0, Strip(oPC, "CXNUI_SHIELD"));
     DelayCommand(13.0, Strip(oPC, "CXNUI_SWORD"));
     DelayCommand(16.0, Change(oPC));
+    DelayCommand(20.0, Glow(oPC));
     OpenSecond(oPC);
     DelayCommand(WINDOW_LIFE, CloseWindow(oPC, nToken, WINDOW_ID));
 }

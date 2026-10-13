@@ -326,6 +326,7 @@ stand-in until they do.
 | `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
+| `vfx` | `row,row,...`: the `visualeffects.2da` rows the doll wears, up to 16. A new value replaces the old set. Empty releases it. Linux only | none |
 
 **Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
 taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
@@ -346,6 +347,13 @@ target holds in that slot, and releasing the key brings the held item back. Send
 server already builds for `@look:` icons. A client preview costs one extra throwaway item. It covers weapons and shields,
 the hand slots. A helmet, a cloak and armour are part of the body, so previewing them needs the server to equip a copy on
 a creature the client can see.
+
+**Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
+CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
+and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
+a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
+opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
+`vfx` is ignored, and the client logs that once.
 
 **Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
 must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a

@@ -255,13 +255,14 @@ These knobs are `ChatOnly` and exist for building and testing. None is advertise
 ## Model view
 
 `--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
-on the player a second after the window opens. The shield comes off at 10 s, the sword at 13 s and the hair changes at 16 s
+on the player a second after the window opens. The shield comes off at 10 s, the sword at 13 s and the hair changes at 16 s, and two permanent visual effects and a temporary one go on at 20 s
 (`CXNUI:` markers). The window closes after 60 s. The doll's settings are policy lines in a file, fed in like the cards:
 
     tools/live/run-live.sh --nui --seconds 5 --cfg 'nui.cardfile=<path to model.policy>' \
         --keys 'sleep:4000;shot:<dir>/armed.png;sleep:12000;shot:<dir>/stripped.png'
 
 `model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlate=<seconds>:<path>`),
+`model-vfx.policy` the two permanent effects the window puts on the player at 20 s (the temporary one stays off the doll),
 `model-standin.policy` and `model-standin-crop.policy` a stand-in with no target, with and without `standinrect`. `NuiModelGear:`
 lines in `cx.log` say each hand being filled and emptied.
 

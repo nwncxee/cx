@@ -35,7 +35,8 @@ internal static unsafe class NuiModelView
         public uint Target;
         public float Angle = 30f, Dist = 4f, Height = 0.9f, Yaw, Drag;
         public bool Anim = true, Built, WasRendered;
-        public string Wear = "", StandinRect = "";
+        public string Wear = "", StandinRect = "", Vfx = "";
+        public ushort[] VfxRows = Array.Empty<ushort>();
         public byte[] Info = Array.Empty<byte>();
         public bool OnPlayer;
         public uint TargetId;
@@ -64,6 +65,7 @@ internal static unsafe class NuiModelView
         _s.Log = log;
         _s.Ready = NuiModelDoll.Init(log);
         NuiModelGear.Init(log);
+        NuiModelVfx.Init(log);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
         Capabilities.Register("modelview", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
@@ -170,6 +172,7 @@ internal static unsafe class NuiModelView
             v.Built = true;
             v.Info = NuiModelDoll.InfoOf(who).ToArray();
             NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
+            NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows);
             NuiModelDoll.SetTarget(tex, v.W, v.H);
             ApplyCamera(v);
             s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
@@ -181,7 +184,11 @@ internal static unsafe class NuiModelView
             ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
             if (!now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
             {
-                if (NuiModelDoll.Refresh(who)) s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
+                if (NuiModelDoll.Refresh(who))
+                {
+                    NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows);
+                    s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
+                }
                 v.Info = now.ToArray();
             }
         }
@@ -235,6 +242,13 @@ internal static unsafe class NuiModelView
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
         v.Anim = PolicyF(v.Key, "anim", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
+        string vfx = Policy(v.Key, "vfx", "");
+        if (vfx != v.Vfx)
+        {
+            v.Vfx = vfx;
+            v.VfxRows = NuiModelVfx.Parse(vfx);
+            if (v.Built) NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows);
+        }
         string[] bg = Policy(v.Key, "bg", "").Split(',');
         float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
         NuiModelDoll.SetBackground(C(0), C(1), C(2), C(3));

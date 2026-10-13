@@ -183,6 +183,7 @@ internal static unsafe class NuiModelDoll
         DollState d = _o.Doll;
         bool taken = d.Registered && !Holds(d.Id, d.Creature);
         NuiModelGear.Release(d.Creature, taken);
+        if (!taken) NuiModelVfx.Clear(d.Creature);
         _o.Doll = new DollState();
         _o.TargetTex = 0;
         _o.Rendered = false;

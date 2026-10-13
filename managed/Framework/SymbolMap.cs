@@ -1907,6 +1907,14 @@ internal static unsafe class SymbolMap
     /// A null item empties the slot. The item must be a registered game object, because the wield looks it up by id.</summary>
     [Fn("void(IntPtr self, uint slot, IntPtr item)")]
     public const string NwcCreatureEquip = "_ZN12CNWCCreature20EquipToInventorySlotEjP8CNWCItem";
+    /// <summary><c>CNWCObject::AddVisualEffect(ushort, int, uint, uchar, uchar, Vector, ObjectVisualTransformData)</c> @0x7e9e30 --
+    /// the call the visual-effect update makes for an added looping effect: the row, 0, the beam target (0x7f000000 for
+    /// none), the body part, 0, a zero vector, and the transform, which crosses by hidden reference and stays the caller's.</summary>
+    [Fn("int(IntPtr self, ushort row, int zero, uint target, byte part, byte zero2, VectorArg at, IntPtr transform)")]
+    public const string ObjAddVisualEffect = "_ZN10CNWCObject15AddVisualEffectEtijhh6Vector25ObjectVisualTransformData";
+    /// <summary><c>CNWCObject::KillAllVisualEffects()</c> @0x7e2f20 -- kills, destroys and frees every effect on the object.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string ObjKillAllVisualEffects = "_ZN10CNWCObject20KillAllVisualEffectsEv";
     /// <summary><c>CNWCObject::SetFadeState(uchar)</c> @0x7e7ba0 (Windows rva 0x765c80) -- 1 shows the object (its model's parts enabled, alpha from its fade), 0 hides it.</summary>
     [Fn("void(IntPtr self, byte state)")]
     public const string ObjSetFadeState = "_ZN10CNWCObject12SetFadeStateEh";
@@ -3319,6 +3327,8 @@ internal static unsafe class SymbolMap
         [DataBlockFromBase64] = Nm("?FromBase64@DataBlock@@SA?AV?$shared_ptr@VDataBlock@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z"),
         [NwcCreateItem] = At(),   // its own .pdata entry; the only function citing "gifp" and "gi_armor01" (docs/windows-symbols.md)
         [IdentityVisualTransform] = Nm("?s_IdentityVisualTransformData@ObjectVisualTransformData@@0U1@B"),
+        [ObjAddVisualEffect] = LinuxOnly("MSVC passes ObjectVisualTransformData by value as a copy the callee destroys; the model view's effects stay Linux-only"),
+        [ObjKillAllVisualEffects] = LinuxOnly("pairs with ObjAddVisualEffect, which is Linux-only"),
         [ObjSetFadeState] = At(),   // the function that tests +0x104 == 1, writes the state byte at +0xa8, and runs the show/hide virtuals; the Windows twin of 0x7e7ba0
         [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
         [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
