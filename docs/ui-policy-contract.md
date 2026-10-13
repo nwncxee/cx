@@ -449,9 +449,13 @@ over black and over white, and reads each pixel's coverage from the difference, 
 fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll in one pass: give a
 doll with effects an opaque `bg` there. The doll's effects play their sounds where the doll stands, which is not where the player is.
 
-**Lighting.** A server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface normal dotted with
-`lightdir`), plus what the model glows on its own. Only the Alloy renderer draws it; with Alloy off the engine draws the doll
-in its own light whatever `light` says.
+**Lighting.** With Alloy on, a server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface
+normal dotted with `lightdir`) + what the model glows on its own, in linear light. Every view has its own light. With Alloy off the engine's
+character-preview light shades the doll, whatever `light` says, because the engine cannot take another.
+
+A shiny part (a helm, a blade) takes its reflectivity from the texture's alpha and reflects the environment map its creature names. A
+creature that names none, or one that does not load, gets the grey the engine bakes in with environment maps off, so the part reads as
+plain grey metal.
 
 **Zoom and drag.** `zoom` and `drag` act only on the image's own rectangle, while the doll is built. `dist` is the starting distance; the
 player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.
