@@ -14,7 +14,9 @@ internal enum HeldKind
     Item,
     /// <summary><c>@look:&lt;hex&gt;</c>, an item described by its appearance.</summary>
     Look,
-    /// <summary>Held, but a name this build cannot draw (a model view, a malformed name): the cursor swaps, no image shows.</summary>
+    /// <summary><c>@model:&lt;key&gt;</c>, a live model view.</summary>
+    Model,
+    /// <summary>Held, but a name this build cannot draw (a malformed name, a model view with no key): the cursor swaps, no image shows.</summary>
     Other,
 }
 
@@ -121,6 +123,7 @@ internal sealed class HeldImageModel
             return n > 0 ? HeldKind.Item : HeldKind.Other;
         }
         if (value.StartsWith("@look:", StringComparison.Ordinal)) return HeldKind.Look;
+        if (value.StartsWith("@model:", StringComparison.Ordinal)) return value.Length > "@model:".Length ? HeldKind.Model : HeldKind.Other;
         if (value.Length > ResrefMax) return HeldKind.Other;
         foreach (char c in value)
             if (!(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_')) return HeldKind.Other;
@@ -158,7 +161,9 @@ internal sealed class HeldImageModel
         m.Update(6, true, "@look:0010", 11, true, 2200);
         check.Expect(m.Kind == HeldKind.Look, "@look: is a look");
         m.Update(7, true, "@model:doll", 11, true, 2200);
-        check.Expect(m.Kind == HeldKind.Other && m.Active, "a model view name is held for the seam");
+        check.Expect(m.Kind == HeldKind.Model && m.Active, "a model view name is a model view");
+        m.Update(7, true, "@model:", 11, true, 2200);
+        check.Expect(m.Kind == HeldKind.Other && m.Active, "a model view with no key is held but not drawable");
         m.Update(8, true, "has space", 11, true, 2200);
         check.Expect(m.Kind == HeldKind.Other, "a malformed resref is not drawn");
         m.Update(9, true, "abcdefghijklmnopq", 11, true, 2200);

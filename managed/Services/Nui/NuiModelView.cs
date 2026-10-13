@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using CX.Engine;
@@ -11,8 +12,8 @@ namespace CX.Services.Nui;
 /// <summary>
 /// <c>"@model:&lt;key&gt;"</c> as any NUI image shows a live model: a throwaway copy of a creature the server names, drawn every
 /// frame into the texture the engine made for the image, so NUI draws it like any other. What the view shows is the
-/// server's, by policy keys under <c>model.&lt;key&gt;.</c> (<c>docs/ui-policy-contract.md</c>); until the doll has been built
-/// and drawn once, and again once it is gone, the image holds the server's stand-in, or nothing.
+/// server's, by policy keys under <c>model.&lt;key&gt;.</c> (<c>docs/ui-policy-contract.md</c>). Up to
+/// <see cref="NuiModelDoll.MaxViews"/> live at once, a doll each. A card or the held image shows one through <see cref="Show"/>.
 /// </summary>
 internal static unsafe class NuiModelView
 {
@@ -28,10 +29,18 @@ internal static unsafe class NuiModelView
     /// <summary><c>SDL_BUTTON_LMASK</c> in <c>SDL_GetMouseState</c>'s answer.</summary>
     private const uint SdlLeftMask = 1;
 
-    /// <summary>The one view the doll serves: the image's pointers (read, never owned) and what the server last declared.</summary>
+    /// <summary>How long a card's or the held image's view outlives the last frame that asked for it, so a pointer moving back onto an
+    /// element finds the doll still built.</summary>
+    internal const long LingerMs = 1500;
+
+    /// <summary>One view: its doll's slot, the NUI image's pointers (read, never owned) or the texture CX made for it, and what the server last declared.</summary>
     private sealed class ViewData
     {
         public string Key = "";
+        public NuiModelDoll.ModelSlot Slot = null!;
+        public bool Owned;
+        public uint OwnTex;
+        public long Seen;
         public IntPtr Nk, Ctrl;
         public int W = DefaultSize, H = DefaultSize;
         public uint[]? Standin;
@@ -70,9 +79,9 @@ internal static unsafe class NuiModelView
 
     private sealed class ViewState
     {
-        public bool Ready;
+        public bool Ready, CapSaid;
         public ExtenderLog? Log;
-        public ViewData? View;
+        public readonly List<ViewData> Views = new();
         public string PendingKey = "";
         public uint[]? PendingPixels;
         public int PendingW, PendingH;
@@ -89,7 +98,7 @@ internal static unsafe class NuiModelView
         NuiModelTarget.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 3, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 4, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -147,15 +156,56 @@ internal static unsafe class NuiModelView
     internal static void Loaded(byte* resref, IntPtr ret)
     {
         if (KeyOf(resref) != _s.PendingKey) return;
-        ViewData? old = _s.View;
-        var v = new ViewData
+        IntPtr nk = *(IntPtr*)ret, ctrl = *(IntPtr*)(ret + IntPtr.Size);
+        for (int i = _s.Views.Count - 1; i >= 0; i--)
         {
-            Key = _s.PendingKey, Nk = *(IntPtr*)ret, Ctrl = *(IntPtr*)(ret + IntPtr.Size),
+            ViewData old = _s.Views[i];
+            if (old.Owned || old.Key != _s.PendingKey) continue;
+            if (old.Nk == nk) { old.Ctrl = ctrl; return; }
+            if (!Alive(old)) Release(_s, old);
+        }
+        NuiModelDoll.ModelSlot? slot = NuiModelDoll.Claim();
+        if (slot == null) { SayCap(_s, _s.PendingKey); return; }
+        _s.Views.Add(new ViewData
+        {
+            Key = _s.PendingKey, Slot = slot, Nk = nk, Ctrl = ctrl,
             W = _s.PendingW, H = _s.PendingH, Standin = _s.PendingPixels, StandinName = _s.PendingStandin,
-        };
-        if (old != null && old.Key == v.Key && old.Nk == v.Nk) { old.Ctrl = v.Ctrl; return; }
-        if (old != null && NuiModelDoll.Doll.Model != IntPtr.Zero) NuiModelDoll.Destroy();
-        _s.View = v;
+        });
+    }
+
+    private static void SayCap(ViewState s, string key)
+    {
+        if (s.CapSaid) return;
+        s.CapSaid = true;
+        s.Log?.Always($"NuiModelView: '{key}' not shown -- {NuiModelDoll.MaxViews} model views are alive already, which is the most there is");
+    }
+
+    /// <summary>Is this expired? A card's or the held image's view whose last asking frame was <paramref name="seen"/> ms ago is done.</summary>
+    internal static bool Lapsed(long now, long seen) => now - seen > LingerMs;
+
+    /// <summary>The model <paramref name="key"/> as a texture to draw in a card or the held image: asked every frame the image is on
+    /// screen. The first ask claims a slot; the doll is built on the next frame, and the texture is returned (0 until then, and while the
+    /// view is not showing) once a frame of it has landed. <paramref name="w"/> and <paramref name="h"/> are the texture's size.
+    /// The texture is upright in GL's terms flipped: draw it with <c>flipV</c>.</summary>
+    internal static uint Show(string key, out int w, out int h)
+    {
+        w = h = 0;
+        ViewState s = _s;
+        if (!s.Ready || !NuiKnobs.Enabled.V || !NuiKnobs.ModelView.V || key.Length == 0) return 0;
+        if (key.Length > MaxKey) key = key[..MaxKey];
+        ViewData? v = null;
+        foreach (ViewData c in s.Views) if (c.Owned && c.Key == key) { v = c; break; }
+        if (v == null)
+        {
+            NuiModelDoll.ModelSlot? slot = NuiModelDoll.Claim();
+            if (slot == null) { SayCap(s, key); return 0; }
+            var (sw, sh, _) = SizeOf(key);
+            v = new ViewData { Key = key, Slot = slot, Owned = true, W = sw, H = sh };
+            s.Views.Add(v);
+        }
+        v.Seen = Environment.TickCount64;
+        w = v.W; h = v.H;
+        return v.Built && v.Slot.Rendered ? v.OwnTex : 0;
     }
 
     /// <summary>The image is alive while its shared_ptr control block counts an owner. The block outlives the image,
@@ -165,21 +215,56 @@ internal static unsafe class NuiModelView
     private static void Frame()
     {
         ViewState s = _s;
-        if (s.View != null) Serve(s, s.View);
-        NuiModelDoll.KeepShown();
+        for (int i = s.Views.Count - 1; i >= 0; i--) Serve(s, s.Views[i]);
+        foreach (NuiModelDoll.ModelSlot slot in NuiModelDoll.Slots) NuiModelDoll.KeepShown(slot);
+    }
+
+    /// <summary>A view is done: its doll is taken down, its watch and (a card's or the held image's) texture dropped, its slot given back.</summary>
+    private static void Release(ViewState s, ViewData v)
+    {
+        if (v.Built) s.Log?.Always($"NuiModelView: '{v.Key}' closed -- doll taken down");
+        NuiImageSpot.Watch(v.Slot.Index, 0);
+        NuiModelDoll.Free(v.Slot);
+        if (v.OwnTex != 0) { uint t = v.OwnTex; Gl.DeleteTextures(1, &t); v.OwnTex = 0; }
+        v.Built = false;
+        s.Views.Remove(v);
+    }
+
+    /// <summary>The texture CX makes for a card's or the held image's view: RGBA, its size, drawn into by the doll's layer.</summary>
+    private static bool MakeTexture(ViewState s, ViewData v)
+    {
+        if (!Gl.Init(s.Log!) || Gl.TexImage2D == null) return false;
+        int prev;
+        uint t;
+        Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &prev);
+        Gl.GenTextures(1, &t);
+        Gl.BindTexture(Gl.TEXTURE_2D, t);
+        Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Gl.RGBA8, v.W, v.H, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
+        Gl.BindTexture(Gl.TEXTURE_2D, (uint)prev);
+        v.OwnTex = t;
+        return true;
     }
 
     private static void Serve(ViewState s, ViewData v)
     {
-        if (!Alive(v))
+        uint tex;
+        if (v.Owned)
         {
-            if (v.Built) { NuiModelDoll.Destroy(); v.Built = false; s.Log?.Always($"NuiModelView: '{v.Key}' closed -- doll taken down"); }
-            NuiImageSpot.Watch(0);
-            s.View = null;
-            return;
+            if (Lapsed(Environment.TickCount64, v.Seen)) { Release(s, v); return; }
+            if (v.OwnTex == 0 && !MakeTexture(s, v)) return;
+            tex = v.OwnTex;
         }
-        uint tex = new NkImage(v.Nk).GlTexture;
-        if (tex == 0) return;
+        else
+        {
+            if (!Alive(v)) { Release(s, v); return; }
+            tex = new NkImage(v.Nk).GlTexture;
+            if (tex == 0) return;
+        }
+        NuiModelDoll.ModelSlot slot = v.Slot;
         int epoch = ServerPolicy.Epoch;
         if (epoch != v.Epoch) { v.Epoch = epoch; Read(s, v); }
         IntPtr who = Resolve(v);
@@ -205,25 +290,25 @@ internal static unsafe class NuiModelView
             v.Fitted = false;
             v.Played = "";
             if (v.Tgt.FollowsCreature) v.Info = NuiModelDoll.InfoOf(who).ToArray();
-            if (NuiModelDoll.Doll.Creature != IntPtr.Zero)
+            if (slot.Doll.Creature != IntPtr.Zero)
             {
-                NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
-                NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
+                NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who, v.Wear);
+                NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
             }
-            NuiModelDoll.SetTarget(tex, v.W, v.H);
+            NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
             ApplyCamera(v);
-            s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
+            s.Log?.Always($"NuiModelView: '{v.Key}' -- doll {slot.Index} drawing into texture {tex} ({v.W}x{v.H}), scene 0x{slot.Doll.Scene:x}");
         }
-        else if (v.Target != tex) NuiModelDoll.SetTarget(tex, v.W, v.H);
-        else if (NuiModelDoll.Doll.Creature != IntPtr.Zero)
+        else if (v.Target != tex) NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
+        else if (slot.Doll.Creature != IntPtr.Zero)
         {
-            NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
+            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who, v.Wear);
             ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
             if (v.Tgt.FollowsCreature && !now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
             {
-                if (NuiModelDoll.Refresh(who))
+                if (NuiModelDoll.Refresh(slot, who))
                 {
-                    NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
+                    NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
                     v.Played = "";
                     v.Fitted = false;
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
@@ -234,10 +319,18 @@ internal static unsafe class NuiModelView
         PlayPose(s, v);
         if (!v.Fitted) FitCamera(s, v);
         if (v.Dragging) Turn(v);
-        NuiModelDoll.Orbit(Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
+        NuiModelDoll.Orbit(slot, Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
-        NuiImageSpot.Watch(v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
-        if (NuiModelDoll.Rendered) v.WasRendered = true;
+        if (!v.Owned) NuiImageSpot.Watch(slot.Index, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
+        if (slot.Rendered) v.WasRendered = true;
+    }
+
+    /// <summary>The built NUI view the pointer is over, among those <paramref name="wants"/> accepts, or null.</summary>
+    private static ViewData? Under(Func<ViewData, bool> wants)
+    {
+        foreach (ViewData v in _s.Views)
+            if (!v.Owned && v.Built && wants(v) && NuiImageSpot.PointerOn(v.Slot.Index)) return v;
+        return null;
     }
 
     /// <summary>How far the camera stands now: where the player scrolled it to, else the server's <c>dist</c>.</summary>
@@ -250,8 +343,8 @@ internal static unsafe class NuiModelView
     /// <see cref="ViewData.ZoomStep"/> metres a notch, nearer for a scroll up, inside the server's range. True = the view took it.</summary>
     internal static bool OnWheel(int notches)
     {
-        ViewData? v = _s.View;
-        if (v == null || !v.Built || v.ZoomMax <= 0f || notches == 0 || !NuiImageSpot.PointerOn()) return false;
+        ViewData? v = Under(static c => c.ZoomMax > 0f);
+        if (v == null || notches == 0) return false;
         v.ZoomAt = Math.Clamp(Distance(v) - notches * v.ZoomStep, v.ZoomMin, v.ZoomMax);
         return true;
     }
@@ -259,13 +352,13 @@ internal static unsafe class NuiModelView
     /// <summary>A left press landed on NUI (from the input hook): one on a model view whose server allows a drag starts turning its doll.</summary>
     internal static void OnPress()
     {
-        ViewData? v = _s.View;
-        if (v == null || !v.Built || v.Drag <= 0f || EngineFn.SdlGetMouseState == null || !NuiImageSpot.PointerOn()) return;
+        ViewData? v = Under(static c => c.Drag > 0f);
+        if (v == null || EngineFn.SdlGetMouseState == null) return;
         int mx = 0, my = 0;
         EngineFn.SdlGetMouseState(&mx, &my);
         v.Dragging = true;
         v.LastX = mx;
-        _s.Log?.Info($"NuiModelView: '{v.Key}' turns with the pointer from x {mx}, the doll {NuiModelDoll.Pose()}");
+        _s.Log?.Info($"NuiModelView: '{v.Key}' turns with the pointer from x {mx}, the doll {NuiModelDoll.Pose(v.Slot)}");
     }
 
     /// <summary>While the press that began on the image is held, the doll turns <see cref="ViewData.Drag"/> degrees a pixel of sideways travel.</summary>
@@ -289,27 +382,28 @@ internal static unsafe class NuiModelView
         _ => IntPtr.Zero,
     };
 
-    /// <summary>Make the doll for the view's target. <paramref name="who"/> is the creature a creature target copies.</summary>
+    /// <summary>Make the view's doll for its target. <paramref name="who"/> is the creature a creature target copies.</summary>
     private static bool BuildDoll(ViewData v, IntPtr who, bool idle)
     {
+        NuiModelDoll.ModelSlot slot = v.Slot;
         switch (v.Tgt.Kind)
         {
             case TargetKind.Appearance:
                 Span<byte> record = stackalloc byte[NuiModelDoll.RecordMax];
                 NuiModelTarget.Blank(v.Tgt.Row, record);
-                return NuiModelDoll.BuildFromInfo(record, 0, 0, v.W, v.H, idle);
+                return NuiModelDoll.BuildFromInfo(slot, record, 0, 0, v.W, v.H, idle);
             case TargetKind.Model:
             {
                 IntPtr m = NuiModelTarget.NewModel(v.Tgt.Text);
-                return m != IntPtr.Zero && NuiModelDoll.BuildModel(m, IntPtr.Zero, 0, 0, v.W, v.H);
+                return m != IntPtr.Zero && NuiModelDoll.BuildModel(slot, m, IntPtr.Zero, 0, 0, v.W, v.H);
             }
             case TargetKind.Item:
             {
                 IntPtr m = NuiModelTarget.NewItemModel(v.Tgt.Text, out IntPtr item);
-                return m != IntPtr.Zero && NuiModelDoll.BuildModel(m, item, 0, 0, v.W, v.H);
+                return m != IntPtr.Zero && NuiModelDoll.BuildModel(slot, m, item, 0, 0, v.W, v.H);
             }
             default:
-                return NuiModelDoll.Build(who, 0, 0, v.W, v.H, idle);
+                return NuiModelDoll.Build(slot, who, 0, 0, v.W, v.H, idle);
         }
     }
 
@@ -320,7 +414,7 @@ internal static unsafe class NuiModelView
         string form = $"{v.PoseName}|{v.PoseSpeed}|{v.PoseLoop}";
         if (form == v.Played) return;
         v.Played = form;
-        if (!NuiModelPose.Play(NuiModelDoll.Doll.Model, v.PoseName, v.PoseSpeed, v.PoseLoop))
+        if (!NuiModelPose.Play(v.Slot.Doll.Model, v.PoseName, v.PoseSpeed, v.PoseLoop))
             s.Log?.Always($"NuiModelView: '{v.Key}' -- the model has no animation '{v.PoseName}'");
     }
 
@@ -328,7 +422,7 @@ internal static unsafe class NuiModelView
     private static void FitCamera(ViewState s, ViewData v)
     {
         if (!v.Fit || (v.HasDist && v.HasHeight)) { v.Fitted = true; return; }
-        var g = new Gob(NuiModelDoll.Doll.Model);
+        var g = new Gob(v.Slot.Doll.Model);
         if (!NuiModelFrame.Fit(g.BoundsMin, g.BoundsMax, v.Angle, v.W, v.H, out float dist, out float height)) return;
         v.FitDist = dist;
         v.FitHeight = height;
@@ -338,8 +432,8 @@ internal static unsafe class NuiModelView
 
     private static void Read(ViewState s, ViewData v)
     {
-        v.BuildFailed = false;
         string target = Policy(v.Key, "target", "");
+        v.BuildFailed = false;
         v.Tgt = NuiModelTarget.Parse(target);
         v.HasDist = Policy(v.Key, "dist", "").Length > 0;
         v.HasHeight = Policy(v.Key, "height", "").Length > 0;
@@ -364,7 +458,7 @@ internal static unsafe class NuiModelView
         v.TurnMax = v.HasTurnRange ? tmax : 0f;
         if (v.HasTurnRange) v.DragYaw = Math.Clamp(v.DragYaw, v.TurnMin, v.TurnMax);
         v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
-        NuiModelDoll.SetLight(NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
+        NuiModelDoll.SetLight(v.Slot, NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
         v.Pose = NuiModelPose.Parse(Policy(v.Key, "anim", ""), out v.PoseName);
         v.PoseSpeed = Math.Clamp(PolicyF(v.Key, "animspeed", 1f), NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
@@ -376,42 +470,42 @@ internal static unsafe class NuiModelView
             v.Vfx = vfx;
             v.VfxRows = NuiModelVfx.Parse(vfx);
             v.WornMuted = v.MuteVfx;
-            if (v.Built) NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
+            if (v.Built) NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
         }
         string[] bg = Policy(v.Key, "bg", "").Split(',');
         float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
-        NuiModelDoll.SetBackground(C(0), C(1), C(2), C(3));
+        NuiModelDoll.SetBackground(v.Slot, C(0), C(1), C(2), C(3));
         if (v.Built) ApplyCamera(v);
         string standin = Policy(v.Key, "standin", "");
         string rect = Policy(v.Key, "standinrect", "");
-        if (standin != v.StandinName || rect != v.StandinRect)
+        if (!v.Owned && (standin != v.StandinName || rect != v.StandinRect))
         {
             v.StandinName = standin;
             v.StandinRect = rect;
-            if (!NuiModelDoll.Rendered && v.Target != 0) UploadStandin(s, v);
+            if (!v.Slot.Rendered && v.Target != 0) UploadStandin(s, v);
         }
     }
 
     private static void ApplyCamera(ViewData v)
     {
-        IntPtr c = NuiModelDoll.Doll.Camera;
+        IntPtr c = v.Slot.Doll.Camera;
         if (c == IntPtr.Zero) return;
         var cam = new CAurCamera(c);
         cam.SetViewAngle(v.Angle);
         cam.SetClipDist(v.ClipNear, v.ClipFar);
-        NuiModelDoll.Orbit(Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
-        _s.Log?.Info($"NuiModelView: '{v.Key}' camera at yaw {v.Yaw}, the doll {NuiModelDoll.Pose()}");
+        NuiModelDoll.Orbit(v.Slot, Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
+        _s.Log?.Info($"NuiModelView: '{v.Key}' camera at yaw {v.Yaw}, the doll {NuiModelDoll.Pose(v.Slot)}");
     }
 
     /// <summary>The doll is gone (the server named no one, or the creature left): put the stand-in back in the texture.</summary>
     private static void Teardown(ViewState s, ViewData v, uint tex)
     {
-        NuiModelDoll.Destroy();
-        NuiImageSpot.Watch(0);
+        NuiModelDoll.Destroy(v.Slot);
+        NuiImageSpot.Watch(v.Slot.Index, 0);
         v.Built = false;
         v.Target = tex;
-        s.Log?.Always($"NuiModelView: '{v.Key}' -- doll taken down, stand-in restored");
-        UploadStandin(s, v);
+        s.Log?.Always($"NuiModelView: '{v.Key}' -- doll taken down{(v.Owned ? "" : ", stand-in restored")}");
+        if (!v.Owned) UploadStandin(s, v);
     }
 
     /// <summary>The TGA pixels for the stand-in resref <paramref name="standin"/> cut to <paramref name="rect"/>, or a transparent one.</summary>
@@ -470,5 +564,6 @@ internal static unsafe class NuiModelView
         for (int i = 0; i < 9; i++) b[i] = (byte)"@model:me"[i];
         b[9] = 0;
         check.Expect(KeyOf(b) == "me", "the key is what follows the prefix");
+        check.Expect(Lapsed(10000, 8000) && !Lapsed(10000, 9000) && !Lapsed(10000, 10000), "a card's view lapses after a second and a half unasked, not before");
     }
 }

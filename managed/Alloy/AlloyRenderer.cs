@@ -356,6 +356,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         TriggerHighlight.SelfCheck(log);
         HighlightGlow.SelfCheck(log);
         GuiCapture.SelfCheck(log);
+        GuiModelSolve.SelfCheck(log);
         Quality.SelfCheck(log);
         GuiStream.SelfCheck(log);
         NuiFlush.SelfCheck(log);

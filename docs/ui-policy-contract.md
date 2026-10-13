@@ -32,10 +32,10 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `4`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
+| `cx_cap_card` | `5`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `4` took no `@model:<key>` image `src`. `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `3`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
-| `cx_cap_heldimage` | `2`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
+| `cx_cap_modelview` | `4`: `@model:<key>` NUI images draw a live model, up to 8 at once, and a card or the held image can show one (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
+| `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
 A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
@@ -69,8 +69,10 @@ to `held.cursor` (the `Use` hand unless the server names another) while it is up
 window, and `held.image=` when they place it. The image never takes a click: the press that places it reaches the
 NUI window underneath.
 
-`<image>` is a texture resref, `@item:<hex>` or `@look:<hex>`, spelled as in a NUI image. Any other name (a model
-view, a malformed resref) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
+`<image>` is a texture resref, `@item:<hex>`, `@look:<hex>` or `@model:<key>`, spelled as in a NUI image. Any other name (a malformed
+resref, a `@model:` with no key) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
+A `@model:<key>` is the model view of that key (see [Model views](#model-views)), `held.size` px on its longer side and in the view's own proportions.
+It counts toward the 8 live views, and its doll is built when the hold starts and taken down about a second and a half after it ends.
 
 The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself, so a
 lost empty line cannot leave a ghost:
@@ -303,12 +305,14 @@ when the client does not know the item.
 
 ### Images and icons
 
-An icon or image `src` is a texture resref (up to 16 characters), `@item:<hex>` or `@look:<hex>`. `@item:` draws that item's
+An icon or image `src` is a texture resref (up to 16 characters), `@item:<hex>`, `@look:<hex>` or `@model:<key>`. `@item:` draws that item's
 inventory icon in its own colours. `@look:` draws the icon of an item described by its appearance, in the form a NUI
 `@look:` image takes. CX makes one throwaway item for each distinct look the declared cards name, when the declaration
 arrives, and ends it when no declared card names the look any more or the card is released. A name that does not resolve
-draws nothing, never an error sprite. `@model:` draws nothing in a card; it draws in a NUI image (see
-[Model views](#model-views)).
+draws nothing, never an error sprite. `@model:<key>` draws the model view of that key stretched to the image's `w` x `h` (see
+[Model views](#model-views)); a card names it in an `images` entry or an `icons` row. The doll is built while the card is on screen and
+taken down about a second and a half after it is not, so the first frame of a card shows no doll until it has been drawn once.
+A key with no stand-in shows nothing meanwhile, and `standin` is not used in a card.
 
 ### Limits
 
@@ -376,6 +380,8 @@ window's own popups (an open combo list) are not in that frame.
 background, redrawn every frame into the image's own texture. NUI draws it like any other image. Send it only to a client
 that advertises `cx_cap_modelview`, and send the plain image (a portrait) to every other one.
 
+The same name works as a card's image or icon and as the `held.image` value (see "Where it goes, and how many" below).
+
 The key is any text. CX keeps its first 48 characters, so a longer key never matches its `model.<key>.<setting>` lines:
 keep keys short. Its settings are policy lines, `model.<key>.<setting>`, and a client reads them when
 the image loads and again whenever the policy changes. A window can open before its lines arrive, so the view shows its
@@ -395,8 +401,8 @@ stand-in until they do.
 | `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
-| `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it. Linux only | none |
-| `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound). Linux only | `0` |
+| `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it | none |
+| `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound) | `0` |
 | `pitch` | degrees the camera tips down in place, -89 to 89. Negative looks up. The camera does not move | `0` |
 | `clip` | `near,far`: the camera's clip distances in metres, `near` 0.001 or more, `far` 100000 or less, `near` below `far`. Anything else is the default | `0.1,2000` |
 | `zoom` | `min,max`: a scroll over the image moves the camera between these distances in metres (0.01-1000, `min` no greater than `max`). Scroll up comes nearer. The first scroll starts from `dist`. The view takes the scroll, so the window under it does not. No `zoom` means no scroll | none |
@@ -413,8 +419,16 @@ name that fails to load never draws the engine's error sprite. CX adds no stand-
 are RLE-compressed TGAs, and the engine's reader decodes them. Use `standinrect` to leave out a blank strip, for example
 `0,0,256,400` for a 256x512 portrait whose art fills the top 400 rows.
 
-**Where the image goes.** The name works in any NUI image, a `NuiImage` or a `NuiDrawListImage` (use `NUI_ASPECT_STRETCH`
-and a rectangle of the view's shape, so the doll is not distorted).
+**Where it goes, and how many.** The name works in any NUI image, a `NuiImage` or a `NuiDrawListImage` (use `NUI_ASPECT_STRETCH`
+and a rectangle of the view's shape, so the doll is not distorted), in a card's image or icon, and as the held image. Each view is its own
+doll: two windows with `@model:` images each show their own, and a window with several shows them all. Images that name the same key share
+its settings, and each image NUI loads for it is a view with a doll. A card or the held image naming a key a window shows has a doll of its own, and may differ in size.
+
+**Eight at once.** At most 8 model views are alive at the same time across NUI images, cards and the held image. A ninth stays
+what it was: a NUI image keeps its stand-in and a card or the held image draws nothing, and the client logs the refusal once. A view
+is alive while its NUI image is, and a card's or the held image's for about a second and a half after the last frame that drew it, so a card
+that is off screen frees its doll. Each doll costs a creature, a scene and a texture of the view's `size`, so keep the views a window
+needs small.
 
 **What follows.** The doll follows the target's body, head, colours and armour as the server sends them, and what the
 target holds in either hand: an equip or an unequip shows within a frame. Weapons and shields are copies. CX builds a
@@ -430,9 +444,10 @@ a creature the client can see.
 **Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
 CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
 and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
-a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
-opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
-`vfx` is ignored, and the client logs that once.
+a fire ring, writes its square into the image's alpha as well as its light. Alloy draws a doll that has such a draw twice,
+over black and over white, and reads each pixel's coverage from the difference, so on a transparent or translucent `bg` the
+fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll in one pass: give a
+doll with effects an opaque `bg` there. The doll's effects play their sounds where the doll stands, which is not where the player is.
 
 **Lighting.** A server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface normal dotted with
 `lightdir`), plus what the model glows on its own. Only the Alloy renderer draws it; with Alloy off the engine draws the doll
@@ -441,7 +456,8 @@ in its own light whatever `light` says.
 **Zoom and drag.** `zoom` and `drag` act only on the image's own rectangle, while the doll is built. `dist` is the starting distance; the
 player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.
 
-**Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
+**Limits.** Eight views at a time. A card's or the held image's view takes its settings from the same `model.<key>.` lines, but
+not `standin`, `standinrect`, `drag` and `zoom`: those need a NUI image to stand in or take the pointer. The target
 must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a
 hand. A helmet and a cloak are part of the appearance record the doll copies, not hand items. The engine draws a cloak only
 while the client's cloak option is on, so a doll shows none with it off.

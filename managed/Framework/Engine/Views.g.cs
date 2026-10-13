@@ -296,6 +296,7 @@ global using unsafe NwcCreatureSetAppearanceFn = delegate* unmanaged<nint, nint,
 global using unsafe NwcCreatureEquipFn = delegate* unmanaged<nint, uint, nint, void>;
 global using unsafe ObjAddVisualEffectFn = delegate* unmanaged<nint, ushort, int, uint, byte, byte, CX.Engine.VectorArg, nint, int>;
 global using unsafe ObjKillAllVisualEffectsFn = delegate* unmanaged<nint, void>;
+global using unsafe TransformCopyFn = delegate* unmanaged<nint, nint, nint, nint>;
 global using unsafe ExoSoundPlay3DOneShotFn = delegate* unmanaged<nint, nint, CX.Engine.VectorArg, float, byte, uint, byte, nint>;
 global using unsafe ExoSoundSourcePlayFn = delegate* unmanaged<nint, nint>;
 global using unsafe ObjSetFadeStateFn = delegate* unmanaged<nint, byte, void>;
@@ -5503,6 +5504,10 @@ public static unsafe class EngineFn
     private static bool _ObjKillAllVisualEffectsDone;
     /// <inheritdoc cref="SymbolMap.ObjKillAllVisualEffects"/>
     public static ObjKillAllVisualEffectsFn ObjKillAllVisualEffects => (ObjKillAllVisualEffectsFn)(_ObjKillAllVisualEffectsDone ? _ObjKillAllVisualEffects : Resolve(ref _ObjKillAllVisualEffects, ref _ObjKillAllVisualEffectsDone, SymbolMap.ObjKillAllVisualEffects));
+    private static IntPtr _TransformCopy;
+    private static bool _TransformCopyDone;
+    /// <inheritdoc cref="SymbolMap.TransformCopy"/>
+    public static TransformCopyFn TransformCopy => (TransformCopyFn)(_TransformCopyDone ? _TransformCopy : Resolve(ref _TransformCopy, ref _TransformCopyDone, SymbolMap.TransformCopy));
     private static IntPtr _ExoSoundPlay3DOneShot;
     private static bool _ExoSoundPlay3DOneShotDone;
     /// <inheritdoc cref="SymbolMap.ExoSoundPlay3DOneShot"/>
@@ -7958,6 +7963,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ObjKillAllVisualEffects"/>; returns the slot holding the next layer, or null.</summary>
     public static ObjKillAllVisualEffectsFn* ChainObjKillAllVisualEffects(this HookService h, ObjKillAllVisualEffectsFn handler, int priority) =>
         (ObjKillAllVisualEffectsFn*)h.Chain(SymbolMap.ObjKillAllVisualEffects, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TransformCopy"/>; returns the original, or null.</summary>
+    public static TransformCopyFn InstallTransformCopy(this HookService h, TransformCopyFn handler) =>
+        (TransformCopyFn)h.Install(SymbolMap.TransformCopy, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TransformCopy"/>; returns the slot holding the next layer, or null.</summary>
+    public static TransformCopyFn* ChainTransformCopy(this HookService h, TransformCopyFn handler, int priority) =>
+        (TransformCopyFn*)h.Chain(SymbolMap.TransformCopy, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ExoSoundPlay3DOneShot"/>; returns the original, or null.</summary>
     public static ExoSoundPlay3DOneShotFn InstallExoSoundPlay3DOneShot(this HookService h, ExoSoundPlay3DOneShotFn handler) =>
         (ExoSoundPlay3DOneShotFn)h.Install(SymbolMap.ExoSoundPlay3DOneShot, (IntPtr)handler);

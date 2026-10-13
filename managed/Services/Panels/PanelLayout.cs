@@ -7,12 +7,14 @@ using CX.Ui;
 namespace CX.Services.Panels;
 
 /// <summary>An icon or image to draw over a panel's background and under its text. <see cref="Item"/> is a client object id for an
-/// <c>@item:</c> source, <see cref="Look"/> names an <c>@look:</c> one, and 0 with no look is a resref in <see cref="Src"/>.</summary>
+/// <c>@item:</c> source, <see cref="Look"/> names an <c>@look:</c> one, <see cref="Model"/> an <c>@model:</c> one, and 0 with neither is a resref in <see cref="Src"/>.</summary>
 internal struct IconDraw
 {
     public string Src;
     /// <summary>The <c>@look:</c> image name, or null.</summary>
     public string? Look;
+    /// <summary>The key of an <c>@model:</c> image (what follows the prefix), or null.</summary>
+    public string? Model;
     public uint Item;
     public float X, Y, W, H;
     /// <summary>The opacity as a share of the card's own.</summary>
@@ -56,6 +58,13 @@ internal sealed class PanelLayout
 
     /// <summary>Is <paramref name="src"/> an <c>@look:</c> image name?</summary>
     public static bool IsLook(string src) => src.StartsWith(LookPrefix, StringComparison.Ordinal);
+
+    /// <summary>The prefix of an image name that is a live model view.</summary>
+    public const string ModelPrefix = "@model:";
+
+    /// <summary>The key of an <c>@model:</c> image name, or null when <paramref name="src"/> is not one or has no key.</summary>
+    public static string? ModelKey(string src)
+        => src.StartsWith(ModelPrefix, StringComparison.Ordinal) && src.Length > ModelPrefix.Length ? src[ModelPrefix.Length..] : null;
 
     private struct Atom
     {
@@ -384,6 +393,11 @@ internal sealed class PanelLayout
         else if (PanelLayout.IsLook(src))
         {
             _v.Icons.Add(new IconDraw { Src = "", Look = src, X = x, Y = y, W = w, H = h, Alpha = alpha });
+            return;
+        }
+        else if (PanelLayout.ModelKey(src) is { } model)
+        {
+            _v.Icons.Add(new IconDraw { Src = "", Model = model, X = x, Y = y, W = w, H = h, Alpha = alpha });
             return;
         }
         else if (src.StartsWith('@')) return;

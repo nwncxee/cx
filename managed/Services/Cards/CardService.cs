@@ -41,7 +41,7 @@ public sealed class CardService : IExtenderService
         CardRegistry.Init(log);
         CardSelfCheck.Run(log);
         s.Presenter.SubjectOf = Subject;
-        Capabilities.Register("card", 4, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
+        Capabilities.Register("card", 5, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Cards.Changed += Capabilities.Refresh;
         TextRig.FontChanged += PanelFonts.WantAll;
@@ -119,11 +119,19 @@ public sealed class CardService : IExtenderService
         {
             IconDraw ic = v.Icons[i];
             if (ic.Look != null) CardLooks.Draw(ic.Look, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
+            else if (ic.Model != null) DrawModel(ic.Model, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else DrawResref(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);
         if (v.Pulse != null) TextRig.DrawBatch(v.Pulse.AsSpan(), v.Pulse.VertexCount, a * PanelPulse.Alpha(Environment.TickCount64, v.PulseMin, v.PulsePeriodMs), x, y);
+    }
+
+    /// <summary>A model view stretched to the box. Nothing until the doll has been built and drawn once.</summary>
+    private static void DrawModel(string key, float x, float y, float w, float h, float a)
+    {
+        uint tex = NuiModelView.Show(key, out _, out _);
+        if (tex != 0) TextRig.DrawIconTid((int)tex, x, y, w, h, a, flipV: true);
     }
 
     /// <summary>A resref icon at its art's own proportions, centred in the box.</summary>
