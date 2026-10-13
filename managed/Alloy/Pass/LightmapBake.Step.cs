@@ -143,12 +143,17 @@ internal static unsafe partial class LightmapBake
             _bakeRects.Add(ri); _bakePicks.Add(PickOf(r.C, r.R));
         }
         if (_bakeRects.Count == 0) return false;
+        float near = CasterPass.CubeNearPlane;
         for (int l = 0; l < _setN; l++)
+        {
+            // a reach inside the cube's near plane can never be baked: BakeStaticCube refuses it every frame and the page wedges
+            if (!(_setPosR[l].W > near)) continue;
             for (int k = 0; k < _bakeRects.Count; k++)
             {
                 ref Rect r = ref _rects[_bakeRects[k]];
                 if (Touches(l, r.C, r.R)) { _bakeLights.Add(l); break; }
             }
+        }
         _bakePage = page; _bakeLight = 0;
         _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
