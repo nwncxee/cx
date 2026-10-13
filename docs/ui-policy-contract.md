@@ -32,9 +32,9 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `6`: the `glowalpha` style field sets how strong the nearest ring of a `glow` is. `5` always drew it at half the colour's opacity. The client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `4` took no `@model:<key>` image `src`. `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
+| `cx_cap_card` | `6`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). Older values are listed below |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `9`: `model.<key>.vfx` takes `all`, which puts the target's own visible effects on the doll and keeps them in step. `8` had to be sent the effect rows again each time the target's effects changed. `8`: `model.<key>.bg`, `lightcolor` and `lightambient` also take a `#RRGGBB` or `#RRGGBBAA` colour. `7` took them as numbers only. `7`: `model.<key>.rot` turns the model itself, an item doll stands the item up, and a doll is framed on the geometry it draws, so `fit` and `fitzone` work on a player race and every doll is centred. `6` had no `rot`, drew an item in the pose its file was authored in (a sword end-on), framed a body built from parts on bounds the engine does not keep (`fit` and `fitzone` did nothing with Alloy on and framed a metre-high box with it off) and framed everything else on the engine's bounds, which also cover dummies and emitters. `6`: `model.<key>.wear` takes armour, a helmet and a cloak as well as hand items, and several items at once. `5` took only a hand item in `wear`, one at a time. `5`: the target can be an appearance row, a model name or an item as well as a creature, `anim` plays a named animation, a creature whose model is not made of body parts (a hell hound, an ogre) is drawn, `fit` frames the model, and the camera is framed from its bounds. `4` drew only a creature (the player or an object id), played no named animation, drew a creature whose model is not made of body parts as nothing, had no `fit`, and its camera stood at fixed defaults, so a large model overflowed its image. `4`: up to 8 views at once, and a card or the held image can show one. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `3`: `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and a body part in a `vfx` row. `2` had none of them. `2`: `drag` and `vfx`. `1` had neither. `1`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on |
+| `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
@@ -43,6 +43,33 @@ A property is sent only while the capability is live: its hooks resolved and its
 image, or none). A new capability adds a `cx_cap_<name>` row here when it ships, and its value rises when its
 wire form changes. A knob toggled mid-session advertises the whole set again, a withdrawn capability as `0`; whether the
 server keeps the latest value for a repeated name is unconfirmed, so re-read the property when it matters.
+
+#### Older values
+
+A client that sends an older value reads less. Each line says what that value lacks next to the one above it.
+
+`cx_cap_card`:
+
+- `5` always drew the nearest ring of a `glow` at half the colour's opacity: no `glowalpha`.
+- `4` took no `@model:<key>` image `src`.
+- `3` had no style fields and no `cardstyle`; its spacing, colours, pulse, width range, size ladder, placement and delay were fixed.
+- `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming, and framed `icons` by default.
+- `1` had no `card.<prefix>*` keys, no `loading` block and no `[]`.
+
+`cx_cap_modelview`:
+
+- `8` had no `vfx=all`, so it had to be sent the effect rows again each time the target's effects changed.
+- `7` took `bg`, `lightcolor` and `lightambient` as numbers only, not as `#RRGGBB` or `#RRGGBBAA`.
+- `6` had no `rot` and drew an item in the pose its file was authored in (a sword end-on). It framed a body built from parts on
+  bounds the engine does not keep, so `fit` and `fitzone` did nothing with Alloy on and framed a metre-high box with it off. It
+  framed everything else on the engine's bounds, which also cover dummies and emitters.
+- `5` took only a hand item in `wear`, one at a time.
+- `4` drew only a creature (the player or an object id) and played no named animation. It drew a creature whose model is not made
+  of body parts as nothing, had no `fit`, and stood its camera at fixed defaults, so a large model overflowed its image.
+- `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew
+  nothing for `@model:`.
+- `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute`, or body part in a `vfx` row.
+- `1` had no `drag` and no `vfx`.
 
 ### `PolicySet` lines
 

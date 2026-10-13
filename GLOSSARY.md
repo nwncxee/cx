@@ -149,7 +149,7 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 - **Capability flags** — per-Window switches (`Focusable`, `Draggable`, `Resizable`,
   default on) that let one Window type cover docked bars and read-only panels without a
   second abstraction. A non-focusable Window is skipped by focus hit-testing but still
-  drawn and still drives the cursor.
+  drawn and still drives the cursor. Not a **capability** (see Server NUI primitives).
 
 ## Settings
 
@@ -213,9 +213,6 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 - **Panel face** — the one fixed text size the settings panel draws itself in (scaled by GUI
   scale, never by the user's text-size knob), so the panel supports one size, not every size a
   user can pick.
-- **Panel (styled)** — a box CX draws from a server's declaration: blocks, markup, colours,
-  gradients, tabs and icons (`managed/Services/Panels`). Not the settings panel. A **card** is a
-  styled panel shown beside a NUI element on hover; cards are its first use.
 - **Per-window state** — what a chat window keeps for itself (rect, tabs, colours, animation,
   timestamps, lock): edited on the window's own gear, never a panel row. Hidden-tier settings.
 - **Camera mode group** — one knob group per engine camera mode (chase, top-down, stiff chase),
@@ -236,6 +233,32 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   stage where one exists (grass, keyholing, bloom, enhanced lighting); a stock **numeric** is not
   imported where a knob already covers the same thing -- the knob wins. Avoid: engine option,
   vanilla setting.
+
+## Server NUI primitives
+
+What a server can ask the client to draw in and beside its NUI windows. The contract is
+`docs/ui-policy-contract.md`.
+
+- **Server policy** — the `key=value` lines a server sends this session (`ServerPolicy`). A key
+  that names a knob the server may hold holds it; any other key is a property a feature reads. All
+  of it ends at the next login.
+- **Capability** — a `cx_cap_<name>` property the client sends at login, valued by the feature's
+  version, so a server knows which keys this client reads. Absent while the feature is off or
+  stood down. Not a window's capability flags.
+- **Refusal** — a policy line the client did not take, listed by `/policy` with its reason. A value
+  out of range is clamped, not refused.
+- **Image name** — a NUI image name CX draws itself instead of loading a texture: `@item:<id>` (an
+  item the client knows), `@look:<hex>` (an item described by its appearance) and `@model:<key>`
+  (a model view). `ImageNames` is the one reader.
+- **Panel (styled)** — a box CX draws from a server's declaration: blocks, markup, colours,
+  gradients, tabs and icons (`managed/Services/Panels`). Not the settings panel. A **card** is a
+  styled panel shown beside a NUI element on hover; cards are its first use.
+- **Model view** — a live model drawn into a NUI image, a card or the held image, set up by the
+  `model.<key>.*` keys. Its **doll** is the throwaway copy of the target the client builds and
+  draws; the target itself is only read.
+- **Stand-in** — the picture a model view shows until its doll has drawn, and when it has none.
+- **Held image** — the image that follows the pointer while `held.image` names one. A **held
+  pick** is the image a press on a NUI element shows at once, before the server answers.
 
 ## Rendering (Alloy)
 
