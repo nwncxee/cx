@@ -1,0 +1,1 @@
+sleep:14000;shot:@SHOTS@/a-body.png;click:350,155;sleep:2500;shot:@SHOTS@/b-head-next.png;click:350,191;sleep:2500;shot:@SHOTS@/c-hair-next.png;click:350,227;sleep:2500;shot:@SHOTS@/d-skin-next.png;click:350,263;sleep:2500;shot:@SHOTS@/e-race-next.png;click:242,119;sleep:2500;shot:@SHOTS@/f-head-focus.png;click:326,119;sleep:2500;shot:@SHOTS@/g-body-focus.png
