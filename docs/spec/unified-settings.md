@@ -291,7 +291,7 @@ its own, and *no CX* is an uninstall."
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
-| general.logs | Write cx.log for bug reports | T | off | A | L | — | Writes what CX is doing to cx.log, beside cx.cfg, from now on; restart to capture the launch lines too. Attach the file to a bug report. |
+| general.logs | Write cx.log for bug reports | T | off | A | L | — | Writes what CX is doing to cx.log (beside cx.cfg on Windows, in your home folder on Linux) from now on; restart to capture the launch lines too. Attach the file to a bug report. |
 | general.hookdebug / presentprobe / pin / resizeat | — | T, S | as declared | C | R | — | funchook trace, the present-time pixel probe, main-thread affinity, the timed window resize |
 
 `general.logs` is live because `ExtenderLog.Enabled` is one static bool. No ↻ badge.
