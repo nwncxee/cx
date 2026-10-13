@@ -49,6 +49,8 @@ fi
 WABS=$(cd "$W" && pwd)
 
 if [ ! -f build/funchook.lib ] || [ ! -f build/distorm.lib ]; then
+  # A fresh clone or a git worktree starts with the submodule and its nested diStorm empty.
+  [ -d third_party/funchook/distorm/src ] || git submodule update --init --recursive third_party/funchook
   # funchook's Windows page allocator only walks UP from the target; with the NativeAOT GC reservation
   # sitting right above nwmain.exe (Wine) it leaves rel32 range and the jump truncates. Applied in place,
   # idempotent; the submodule stays dirty on purpose.

@@ -7,22 +7,47 @@ CLI: `python3 tools/paths.py NWN_DIR` prints the path, or exits 1 naming the key
 """
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _local():
+def _local_env():
+    """This checkout's local.env, or in a git worktree without one, the main checkout's."""
     f = ROOT / "local.env"
-    out = {}
     if f.is_file():
+        return f
+    try:
+        common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    main = Path(common).parent / "local.env"
+    return main if main.is_file() else None
+
+
+def _local():
+    f = _local_env()
+    out = {}
+    if f:
         for line in f.read_text().splitlines():
             m = re.match(r"\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$", line)
             if m and not line.lstrip().startswith("#"):
                 v = os.path.expanduser(m[2].strip("\"'"))
-                out[m[1]] = os.path.normpath(v if os.path.isabs(v) else str(ROOT / v))
+                out[m[1]] = os.path.normpath(v if os.path.isabs(v) else str(f.parent / v))
     return out
+
+
+def _ghidra():
+    """The Ghidra install: the directory holding support/analyzeHeadless, found from the ghidra on PATH."""
+    run = shutil.which("ghidra")
+    for d in ([Path(run).resolve().parent] if run else []) + [Path("/opt/ghidra")]:
+        if (d / "support/analyzeHeadless").is_file():
+            return str(d)
+    return None
 
 
 def _steam_nwn():
@@ -48,6 +73,8 @@ def _defaults(key, get):
     if key == "NWN_WIN_EXE":
         d = get("NWN_DIR")
         return d and f"{d}/bin/win32/nwmain.exe"
+    if key == "GHIDRA":
+        return _ghidra()
     if key == "GHIDRA_PROJECT":
         return os.path.expanduser("~/ghidra")
     if key == "NWN_DECOMP":
