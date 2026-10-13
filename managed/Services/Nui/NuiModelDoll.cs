@@ -211,6 +211,7 @@ internal static unsafe class NuiModelDoll
         if (app == IntPtr.Zero || record.Length < InfoBytes) return false;
         byte* info = stackalloc byte[InfoMax];
         record.Slice(0, InfoBytes).CopyTo(new Span<byte>(info, InfoBytes));
+        NuiModelHelm.Swap(slot.Gear.Helm, info, InfoBytes);
 
         var d = new DollState();
         IntPtr mem = EngineFn.OperatorNew((nuint)EngineLayout.SizeOfCreature);
@@ -233,6 +234,7 @@ internal static unsafe class NuiModelDoll
         IntPtr master = EngineFn.GetClientAIMaster(app);
         if (ai && master != IntPtr.Zero) EngineFn.AiMasterAddObject(master, mem);
         d.Model = Dress(mem, (IntPtr)info);
+        NuiModelHelm.Settle(slot.Gear.Helm);
         return Show(slot, d, x, y, w, h, $"creature 0x{mem:x} id 0x{id:x}");
     }
 
@@ -391,7 +393,9 @@ internal static unsafe class NuiModelDoll
         if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
         byte* info = stackalloc byte[InfoMax];
         now.CopyTo(new Span<byte>(info, InfoBytes));
+        NuiModelHelm.Swap(slot.Gear.Helm, info, InfoBytes);
         IntPtr model = Dress(d.Creature, (IntPtr)info);
+        NuiModelHelm.Settle(slot.Gear.Helm);
         if (model == IntPtr.Zero) return false;
         d.Model = model;
         EngineFn.GuiViewportTakeModel(d.Viewport, model);

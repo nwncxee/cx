@@ -214,11 +214,11 @@ internal static unsafe class NuiItemIcons
         return true;
     }
 
-    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none), cut to
-    /// <paramref name="crop"/> when that fits it, at its own size, or stretched to <paramref name="w"/> x <paramref name="h"/> when the server declared that size (<paramref name="sized"/>),
-    /// else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
-    /// and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
-    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, StandinRect crop, out uint[] pixels, out int pw, out int ph)
+    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none), cut to <paramref name="crop"/>
+    /// when that fits it, at its own size or stretched to <paramref name="w"/> x <paramref name="h"/> when <paramref name="sized"/>, else transparent at that size.
+    /// The resref is a hash of the picture and the engine keeps one texture per resref, so <paramref name="salt"/> keeps two views alike in size and stand-in apart.
+    /// Leaves the resref in <see cref="_ref"/>, and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
+    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, StandinRect crop, out uint[] pixels, out int pw, out int ph, uint salt = 0)
     {
         _w = _h = 0;
         if (standin.Length > 0 && standin[0] != 0) AddPlain(standin);
@@ -241,7 +241,7 @@ internal static unsafe class NuiItemIcons
                 for (int x = 0; x < w; x++) _canvas![y * w + x] = src[(y * sh / h) * sw + x * sw / w];
         }
         Emit(_w, _h);
-        SetRef($"cx{Hash():x8}");
+        SetRef($"cx{(Hash() ^ salt) * 16777619:x8}");
         pw = _w; ph = _h;
         pixels = new uint[pw * ph];
         Array.Copy(_canvas!, pixels, pixels.Length);

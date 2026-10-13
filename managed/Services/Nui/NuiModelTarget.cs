@@ -26,21 +26,24 @@ internal static unsafe class NuiModelTarget
     private const string AppPrefix = "app:", ModelPrefix = "model:", ItemPrefix = "item:";
     /// <summary>The highest <c>appearance.2da</c> row the record's 16-bit appearance field holds.</summary>
     internal const int MaxRow = 65535;
+    /// <summary>The object id that says a creature has no helmet.</summary>
+    private const uint NoHelm = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
     private const int ResRefLen = 16;   // not-an-offset: a resref's longest name
-    /// <summary>The slot <c>CNWCItem::LoadModel</c> takes for an item shown on its own, not held: -1.</summary>
-    private const byte AloneSlot = 0xff;   // not-an-offset: CNWCItem::LoadModel's "no hand" slot
+    /// <summary>The model slot an item's one model sits in, the one the engine fetches a worn item's model from.</summary>
+    internal const byte ModelSlot = 1;   // not-an-offset: CNWCItem model slot
     private const int ItemObject = 0x48;   // not-an-offset: the CNWCObject inside a CNWCItem, as NuiModelGear registers it
 
     /// <summary>The engine's <c>CResRef</c>: 17 bytes, empty here. Itanium copies it to the stack, Win64 passes a pointer to it.</summary>
     [StructLayout(LayoutKind.Sequential, Size = 17)]
     private struct ResRefArg { public byte First; }
 
-    private sealed class TargetState { public IntPtr LoadModel; public bool Said; }
+    private sealed class TargetState { public IntPtr LoadModel; public ExtenderLog? Log; }
 
     private static readonly TargetState _t = new();
 
     internal static void Init(ExtenderLog log)
     {
+        _t.Log = log;
         _t.LoadModel = SymbolMap.Resolve(SymbolMap.ItemLoadModel, log);
         if (_t.LoadModel == IntPtr.Zero) log.Always("NuiModelTarget: the engine's item model loader did not resolve -- no item targets");
     }
@@ -80,7 +83,11 @@ internal static unsafe class NuiModelTarget
     internal static void Blank(int row, Span<byte> record)
     {
         record.Clear();
-        fixed (byte* p = record) new CPathfindInformation((IntPtr)p).Appearance = (ushort)row;
+        fixed (byte* p = record)
+        {
+            new CPathfindInformation((IntPtr)p).Appearance = (ushort)row;
+            new CCAppearanceInfo((IntPtr)p).HelmId = NoHelm;
+        }
     }
 
     /// <summary>The model <paramref name="resref"/> as an object of its own, or zero when the engine has none by that name.</summary>
@@ -93,6 +100,19 @@ internal static unsafe class NuiModelTarget
         return EngineFn.NewAurObject(name, &empty, IntPtr.Zero);
     }
 
+    /// <summary>Load <paramref name="item"/>'s model into <paramref name="slot"/> and return it: slot <see cref="ModelSlot"/> for an item's single model. Zero when the engine builds none.</summary>
+    internal static IntPtr LoadItem(IntPtr item, byte slot)
+    {
+        if (_t.LoadModel == IntPtr.Zero) return IntPtr.Zero;
+        ResRefArg none = default;
+        long done = OperatingSystem.IsWindows()
+            ? (long)((delegate* unmanaged<IntPtr, ResRefArg*, byte, byte, IntPtr>)_t.LoadModel)(item, &none, slot, 0)
+            : ((delegate* unmanaged<IntPtr, ResRefArg, byte, byte, int>)_t.LoadModel)(item, none, slot, 0);
+        IntPtr model = new CNWCCreature(item + ItemObject).GetModel(0xff, slot);
+        if (model == IntPtr.Zero) _t.Log?.Always($"NuiModelTarget: LoadModel slot 0x{slot:x} answered {done & 0xff}, and the item has no model there");
+        return model;
+    }
+
     /// <summary>The item <paramref name="text"/> names (the <c>wear</c> syntax) as a model of its own: a throwaway copy with its model
     /// loaded the way a dropped item's is. Zero when there is no such item or the engine builds no model; otherwise
     /// <paramref name="item"/> is the copy, which the caller destroys after the model is gone.</summary>
@@ -101,14 +121,16 @@ internal static unsafe class NuiModelTarget
         item = IntPtr.Zero;
         if (_t.LoadModel == IntPtr.Zero) return IntPtr.Zero;
         IntPtr src = NuiModelGear.WearItem(text, out bool minted);
-        if (src == IntPtr.Zero) return IntPtr.Zero;
+        if (src == IntPtr.Zero) { _t.Log?.Always($"NuiModelTarget: '{text}' names no item"); return IntPtr.Zero; }
         IntPtr copy = minted ? src : NuiItemIcons.MintCopy(src);
-        if (copy == IntPtr.Zero) return IntPtr.Zero;
-        ResRefArg none = default;
-        if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, ResRefArg*, byte, byte, IntPtr>)_t.LoadModel)(copy, &none, AloneSlot, 0);
-        else ((delegate* unmanaged<IntPtr, ResRefArg, byte, byte, int>)_t.LoadModel)(copy, none, AloneSlot, 0);
-        IntPtr model = new CNWCCreature(copy + ItemObject).GetModel(AloneSlot, -1);
-        if (model == IntPtr.Zero) { NuiItemIcons.Destroy(copy); return IntPtr.Zero; }
+        if (copy == IntPtr.Zero) { _t.Log?.Always("NuiModelTarget: the engine made no item to show"); return IntPtr.Zero; }
+        IntPtr model = LoadItem(copy, ModelSlot);
+        if (model == IntPtr.Zero)
+        {
+            _t.Log?.Always("NuiModelTarget: the item loaded no model");
+            NuiItemIcons.Destroy(copy);
+            return IntPtr.Zero;
+        }
         item = copy;
         return model;
     }
@@ -141,7 +163,9 @@ internal static unsafe class NuiModelTarget
         Blank(0x1234, rec);
         var view = new CPathfindInformation((IntPtr)b);
         check.Expect(view.Appearance == 0x1234, "a blank record holds the row");
+        check.Expect(new CCAppearanceInfo((IntPtr)b).HelmId == 0x7f000000, "and no helmet");
         view.Appearance = 0;
+        new CCAppearanceInfo((IntPtr)b).HelmId = 0;
         int stray = 0;
         for (int k = 0; k < rec.Length; k++) if (rec[k] != 0) stray++;
         check.Expect(stray == 0, "and nothing else");

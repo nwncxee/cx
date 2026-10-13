@@ -34,7 +34,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `5`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `4` took no `@model:<key>` image `src`. `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `4`: `@model:<key>` NUI images draw a live model, up to 8 at once, and a card or the held image can show one (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
+| `cx_cap_modelview` | `5`: `@model:<key>` NUI images draw a live model, up to 8 at once, a card or the held image can show one, and the target is a creature, an appearance row, a model name or an item (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `4` drew only a creature (the player or an object id) in any other pose than its idle, drew a creature whose model is not made of body parts (a hell hound, an ogre) as nothing, had no `fit`, and its camera stood at fixed defaults, so a large model overflowed its image. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
@@ -389,18 +389,22 @@ stand-in until they do.
 
 | setting | value | default |
 |---|---|---|
-| `target` | `player`, or the hex object id of a creature (NWScript `ObjectToString`). Empty releases it | no one: the view shows the stand-in |
+| `target` | what the doll shows: `player`; the hex object id of a creature (NWScript `ObjectToString`); `app:<row>`, a row of `appearance.2da` in decimal (0-65535), built with every part, colour and head at 0; `model:<resref>`, any model by name (1-16 letters, digits and underscores); or `item:<look>`, an item shown on its own, where `<look>` is an `@look:` string or the hex object id of an item the client knows. Empty releases it | no one: the view shows the stand-in |
 | `standin` | a texture resref (a TGA, plain or RLE) | nothing: the image is transparent |
 | `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
 | `wear` | an `@look:` string, or the hex object id of an item the client knows. The doll wears it in the hand slot its base item fits, in place of what the target holds there. Empty releases it | nothing |
 | `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
 | `angle` | the camera's view angle in degrees, 1-170 | `30` |
-| `dist` | camera distance from the creature, in metres, 0-1000. The starting distance when `zoom` is set | `4` |
-| `height` | camera height above the creature's feet, in metres, -1000 to 1000 | `0.9` |
+| `dist` | camera distance from the creature, in metres, 0-1000. The starting distance when `zoom` is set | the distance that fits the whole model (see `fit`) |
+| `height` | camera height above the creature's feet, in metres, -1000 to 1000 | the height of the middle of the model (see `fit`) |
+| `fit` | `0` stops the framing: a `dist` or `height` that is not set is `4` and `0.9`. A positive number frames the model and scales the room left round it, so `1.5` stands the camera further back than `1` | `1` |
+| `fitzone` | `lo,hi`: frame only this slice of a creature's height, as fractions with 0 the floor and 1 the top, so `0.75,1` is head and shoulders. The slice is no wider than it is tall. Needs a creature target (`player`, an id or `app:`); anything else frames the whole model | the whole model |
 | `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
 | `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
-| `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
+| `anim` | `0` leaves the doll still. An animation name (a letter, then letters, digits and underscores, up to 32) plays that animation, any the model has, for example `creadyr` (a combat stance), `ctaunt` or `cconjure1`; a name the model lacks leaves the doll in its rest pose and the client logs it once. Anything else is the creature's own idle. A creature's idle is part of the creature, so changing between the idle and another value rebuilds the doll | `1` |
+| `animspeed` | the rate a named animation plays at, 0.05-8 times its own | `1` |
+| `animloop` | `0` plays a named animation once and leaves the doll in its rest pose. Any other number loops it | `1` |
 | `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it | none |
 | `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound) | `0` |
 | `pitch` | degrees the camera tips down in place, -89 to 89. Negative looks up. The camera does not move | `0` |
@@ -412,6 +416,12 @@ stand-in until they do.
 | `lightcolor` | `r,g,b` of a server light, each 0-4 | `1,1,1` |
 | `lightdir` | `x,y,z`: the direction the light comes from, in the view's own frame (x right, y up, z toward the viewer). It is made unit length; all zero is the default | `0.35,0.5,0.8` |
 | `lightambient` | `r,g,b` added whatever the surface faces, each 0-4 | `0.25,0.25,0.25` |
+
+**Framing.** Unless `fit` is `0`, the camera stands where the whole model is in view: the model's bounding box is covered by a
+sphere, and the camera is as far from it as that sphere needs at the view `angle`, in the narrower of the image's two directions,
+with a tenth to spare. It looks level at the middle of the box, so `yaw` and `pitch` turn the same frame. A `dist` or a `height` the server
+sets replaces its half of the framing, a `zoom` replaces the distance once the player scrolls, and the box is read from the
+model as built, so a pose that reaches beyond the rest pose, such as a hell hound rearing in `ctaunt`, leaves the frame: raise `fit` for such a doll.
 
 **Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
 taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
@@ -433,7 +443,13 @@ needs small.
 **What follows.** The doll follows the target's body, head, colours and armour as the server sends them, and what the
 target holds in either hand: an equip or an unequip shows within a frame. Weapons and shields are copies. CX builds a
 throwaway item from the real one's base item, model parts and colours, so the target's own items are never moved,
-equipped or freed. Closing the window takes the doll down with every copy and its cost with it.
+equipped or freed. The helmet is a copy too, so the doll shows it and its head the moment the target puts it on or takes it off. Closing the window takes the doll down with every copy and its cost with it.
+
+**Targets that are not creatures.** `app:<row>` builds a throwaway creature from the row alone, so a creature type with a body made of
+parts (a player race) shows its default parts. `model:<resref>` shows the model itself, with the animations it carries. `item:<look>` shows the item
+as the engine draws it on the ground, a composite weapon whole. `wear` and `vfx` apply to the creature targets and `app:`; a `model:` or
+`item:` doll has no hands to wear in. A creature whose model lacks a hand node draws that hand's item at its root. Each of these costs
+what a creature doll costs.
 
 **Previewing an item.** `model.<key>.wear` puts an item the target does not hold into the doll's hand. It replaces what the
 target holds in that slot, and releasing the key brings the held item back. Send an item's look as the `@look:` string the
@@ -457,9 +473,8 @@ in its own light whatever `light` says.
 player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.
 
 **Limits.** Eight views at a time. A card's or the held image's view takes its settings from the same `model.<key>.` lines, but
-not `standin`, `standinrect`, `drag` and `zoom`: those need a NUI image to stand in or take the pointer. The target
-must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a
-hand. A helmet and a cloak are part of the appearance record the doll copies, not hand items. The engine draws a cloak only
+not `standin`, `standinrect`, `drag` and `zoom`: those need a NUI image to stand in or take the pointer. A creature target
+must be a creature the client knows. A helmet and a cloak are part of the appearance record the doll copies, not hand items. The engine draws a cloak only
 while the client's cloak option is on, so a doll shows none with it off.
 
 ## The inventory window's keys

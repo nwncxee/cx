@@ -1,0 +1,1 @@
+sleep:9000;shot:@SHOTS@/a-bare.png;sleep:6000;shot:@SHOTS@/b-worn.png;sleep:10000;shot:@SHOTS@/c-changed.png;sleep:10000;shot:@SHOTS@/d-helm-off.png;sleep:10000;shot:@SHOTS@/e-helm-on.png;sleep:10000;shot:@SHOTS@/f-helm-off.png

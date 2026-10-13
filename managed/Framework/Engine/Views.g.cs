@@ -1004,6 +1004,17 @@ public readonly unsafe partial struct CAuroraCompressedTextureDDS(IntPtr ptr)
     public ref IntPtr Res => ref *(IntPtr*)(Ptr + EngineLayout.DdsHelperRes);
 }
 
+/// <summary>Typed view of an engine <c>CCAppearanceInfo*</c>.</summary>
+public readonly unsafe partial struct CCAppearanceInfo(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.AppearanceHelmId"/>
+    public ref uint HelmId => ref *(uint*)(Ptr + EngineLayout.AppearanceHelmId);
+}
+
 /// <summary>Typed view of an engine <c>CCachedMouseCursorManager*</c>.</summary>
 public readonly unsafe partial struct CCachedMouseCursorManager(IntPtr ptr)
 {

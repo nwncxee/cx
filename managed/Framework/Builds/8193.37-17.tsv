@@ -1283,6 +1283,7 @@ rva	_ZN21CClientExoAppInternal27UpdateMouseCursorAppearanceEi	0x6f2830	# UpdateM
 rva	_ZN25CCachedMouseCursorManager14SetMouseCursorEiiiii	0x83b3e0	# SetMouseCursor
 # The appearance record the update handler copies out of the creature's appearance object: 0x1f quad words and a word on Linux, and 0x1f quad words and a dword on Windows (the handler's copy, both read).
 offset	CCAppearanceInfo	sizeof	0xfa	0xfc	# SizeOfAppearanceInfo
+offset	CCAppearanceInfo	helmId	0xc4	0xc4	# AppearanceHelmId
 # Equipment on the model view's doll. Windows values read in the Windows image's appearance update handler and CreateItem:
 # the creature's right and left hand item ids, the item's three model parts and gender, the base item's equip-slot mask.
 offset	CNWCCreature	rightHandItem	0x338	0x318	# CreatureRightHandItem

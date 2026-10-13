@@ -39,6 +39,9 @@ internal static unsafe class NuiModelView
         public string Key = "";
         public NuiModelDoll.ModelSlot Slot = null!;
         public bool Owned;
+        /// <summary>When the image was loaded (a later one has a larger number), and whether a later image has taken its texture.</summary>
+        public int Serial;
+        public bool Stale;
         public uint OwnTex;
         public long Seen;
         public IntPtr Nk, Ctrl;
@@ -65,7 +68,10 @@ internal static unsafe class NuiModelView
         public float PoseSpeed = 1f;
         public bool PoseLoop = true;
         /// <summary>Does the server fix the camera's <c>dist</c> and <c>height</c> (else the doll is framed from its bounds, unless <c>fit</c> is 0), and the framing found.</summary>
-        public bool HasDist, HasHeight, Fit = true, Fitted;
+        public bool HasDist, HasHeight, Fit = true, HasBox;
+        public float FitPad = 1f, ZoneLo, ZoneHi;
+        /// <summary>The union of the model's bounds over every frame since it was built, which an animation can only widen.</summary>
+        public System.Numerics.Vector3 BoxMin, BoxMax;
         public float FitDist = DefaultDist, FitHeight = DefaultHeight;
         public string Wear = "", StandinRect = "", Vfx = "";
         public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
@@ -80,6 +86,7 @@ internal static unsafe class NuiModelView
     private sealed class ViewState
     {
         public bool Ready, CapSaid;
+        public int Serials;
         public ExtenderLog? Log;
         public readonly List<ViewData> Views = new();
         public string PendingKey = "";
@@ -98,7 +105,7 @@ internal static unsafe class NuiModelView
         NuiModelTarget.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 4, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 5, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -147,7 +154,7 @@ internal static unsafe class NuiModelView
         string key = KeyOf(resref);
         var (w, h, sized) = SizeOf(key);
         string standin = Policy(key, "standin", "");
-        StandinImage(standin, w, h, sized, Policy(key, "standinrect", ""), out uint[] px, out int pw, out int ph);
+        StandinImage(standin, w, h, sized, Policy(key, "standinrect", ""), out uint[] px, out int pw, out int ph, KeySalt(key));
         _s.PendingKey = key; _s.PendingPixels = px; _s.PendingW = pw; _s.PendingH = ph; _s.PendingStandin = standin;
         return true;
     }
@@ -168,7 +175,7 @@ internal static unsafe class NuiModelView
         if (slot == null) { SayCap(_s, _s.PendingKey); return; }
         _s.Views.Add(new ViewData
         {
-            Key = _s.PendingKey, Slot = slot, Nk = nk, Ctrl = ctrl,
+            Key = _s.PendingKey, Slot = slot, Nk = nk, Ctrl = ctrl, Serial = ++_s.Serials,
             W = _s.PendingW, H = _s.PendingH, Standin = _s.PendingPixels, StandinName = _s.PendingStandin,
         });
     }
@@ -260,9 +267,10 @@ internal static unsafe class NuiModelView
         }
         else
         {
-            if (!Alive(v)) { Release(s, v); return; }
+            if (v.Stale || !Alive(v)) { Release(s, v); return; }
             tex = new NkImage(v.Nk).GlTexture;
             if (tex == 0) return;
+            foreach (ViewData o in s.Views) if (o != v && !o.Owned && o.Serial < v.Serial && o.Target == tex) o.Stale = true;
         }
         NuiModelDoll.ModelSlot slot = v.Slot;
         int epoch = ServerPolicy.Epoch;
@@ -287,7 +295,7 @@ internal static unsafe class NuiModelView
             v.Built = true;
             v.BuiltTgt = v.Tgt;
             v.BuiltIdle = idle;
-            v.Fitted = false;
+            v.HasBox = false;
             v.Played = "";
             if (v.Tgt.FollowsCreature) v.Info = NuiModelDoll.InfoOf(who).ToArray();
             if (slot.Doll.Creature != IntPtr.Zero)
@@ -310,14 +318,14 @@ internal static unsafe class NuiModelView
                 {
                     NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
                     v.Played = "";
-                    v.Fitted = false;
+                    v.HasBox = false;
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
                 }
                 v.Info = now.ToArray();
             }
         }
         PlayPose(s, v);
-        if (!v.Fitted) FitCamera(s, v);
+        FitCamera(s, v);
         if (v.Dragging) Turn(v);
         NuiModelDoll.Orbit(slot, Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
@@ -418,16 +426,22 @@ internal static unsafe class NuiModelView
             s.Log?.Always($"NuiModelView: '{v.Key}' -- the model has no animation '{v.PoseName}'");
     }
 
-    /// <summary>Frame the doll from its bounds once they exist, unless the server fixed the camera or turned fitting off.</summary>
+    /// <summary>Frame the doll from the size its bounds have had since it was built, unless the server fixed the camera or turned fitting off.
+    /// A creature stands on the floor, so its camera is centred on half its height; an item is centred on its bounds.</summary>
     private static void FitCamera(ViewState s, ViewData v)
     {
-        if (!v.Fit || (v.HasDist && v.HasHeight)) { v.Fitted = true; return; }
+        if (!v.Fit || (v.HasDist && v.HasHeight)) return;
         var g = new Gob(v.Slot.Doll.Model);
-        if (!NuiModelFrame.Fit(g.BoundsMin, g.BoundsMax, v.Angle, v.W, v.H, out float dist, out float height)) return;
+        System.Numerics.Vector3 lo = g.BoundsMin, hi = g.BoundsMax;
+        v.BoxMin = v.HasBox ? System.Numerics.Vector3.Min(v.BoxMin, lo) : lo;
+        v.BoxMax = v.HasBox ? System.Numerics.Vector3.Max(v.BoxMax, hi) : hi;
+        v.HasBox = true;
+        bool onFloor = v.BuiltTgt.Kind != TargetKind.Item;
+        float middle = 0f;
+        System.Numerics.Vector3 box = onFloor ? NuiModelFrame.Slice(v.BoxMax - v.BoxMin, v.ZoneLo, v.ZoneHi, out middle) : v.BoxMax - v.BoxMin;
+        if (!NuiModelFrame.Fit(box, onFloor, v.Angle, v.W, v.H, v.Yaw, v.Drag > 0f, v.FitPad, out float dist, out float height)) return;
         v.FitDist = dist;
-        v.FitHeight = height;
-        v.Fitted = true;
-        s.Log?.Info($"NuiModelView: '{v.Key}' framed from bounds {g.BoundsMin} to {g.BoundsMax}: {dist:0.##} m away, {height:0.##} m up");
+        v.FitHeight = onFloor ? middle : (v.BoxMin.Z + v.BoxMax.Z) * 0.5f;
     }
 
     private static void Read(ViewState s, ViewData v)
@@ -437,8 +451,11 @@ internal static unsafe class NuiModelView
         v.Tgt = NuiModelTarget.Parse(target);
         v.HasDist = Policy(v.Key, "dist", "").Length > 0;
         v.HasHeight = Policy(v.Key, "height", "").Length > 0;
-        v.Fit = PolicyF(v.Key, "fit", 1f) != 0f;
-        v.Fitted = false;
+        float fit = PolicyF(v.Key, "fit", 1f);
+        v.Fit = fit != 0f;
+        NuiModelLook.Pair(Policy(v.Key, "fitzone", ""), 0f, 1f, out v.ZoneLo, out v.ZoneHi);
+        v.FitPad = fit > 0f ? Math.Clamp(fit, 0.1f, 10f) : 1f;
+        v.HasBox = false;
         v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
         v.Dist = Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist);
         v.Height = Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight);
@@ -509,12 +526,19 @@ internal static unsafe class NuiModelView
     }
 
     /// <summary>The TGA pixels for the stand-in resref <paramref name="standin"/> cut to <paramref name="rect"/>, or a transparent one.</summary>
-    private static void StandinImage(string standin, int w, int h, bool sized, string rect, out uint[] px, out int pw, out int ph)
+    private static uint KeySalt(string key)
+    {
+        uint h = 2166136261;
+        foreach (char c in key) h = (h ^ c) * 16777619;
+        return h;
+    }
+
+    private static void StandinImage(string standin, int w, int h, bool sized, string rect, out uint[] px, out int pw, out int ph, uint salt = 0)
     {
         Span<byte> name = stackalloc byte[RadialIcons.ResRefLen + 1];
         name.Clear();
         for (int i = 0; i < standin.Length && i < RadialIcons.ResRefLen; i++) name[i] = (byte)standin[i];
-        NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(rect), out px, out pw, out ph);
+        NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(rect), out px, out pw, out ph, salt);
     }
 
     /// <summary>The stand-in's pixels into the view's texture, in the engine's context with its texture binding put back as it was.</summary>

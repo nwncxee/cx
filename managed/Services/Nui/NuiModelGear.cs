@@ -32,6 +32,8 @@ internal static unsafe class NuiModelGear
         public readonly Worn[] Hands = { new(RightHand), new(LeftHand) };
         public string PreviewText = "";
         public uint PreviewSlot;
+        /// <summary>The doll's own helmet, see <see cref="NuiModelHelm"/>.</summary>
+        public readonly NuiModelHelm.HelmState Helm = new();
     }
 
     private sealed class GearLog { public ExtenderLog? Log; }
@@ -61,7 +63,7 @@ internal static unsafe class NuiModelGear
             ? Known(id | NuiItemIcons.ServerIdBit) : IntPtr.Zero;
     }
 
-    private static IntPtr Known(uint id) => id == InvalidId ? IntPtr.Zero : CX.Services.Radial.RadialIcons.Item((IntPtr)id);
+    internal static IntPtr Known(uint id) => id == InvalidId ? IntPtr.Zero : CX.Services.Radial.RadialIcons.Item((IntPtr)id);
 
     /// <summary>Bring the doll's hands to what the target holds, with the preview in its slot. Cheap when nothing changed:
     /// two id reads and a string compare each; an <c>@look:</c> preview is minted once per value, not per frame.</summary>
@@ -151,6 +153,7 @@ internal static unsafe class NuiModelGear
     /// engine already freed the registered objects (<paramref name="taken"/>), only the bookkeeping is dropped.</summary>
     internal static void Release(GearState g, IntPtr doll, bool taken)
     {
+        NuiModelHelm.Release(g.Helm, doll, taken);
         foreach (Worn w in g.Hands)
         {
             Remove(doll, w, taken);
