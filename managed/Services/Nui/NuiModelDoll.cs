@@ -343,20 +343,27 @@ internal static unsafe class NuiModelDoll
     /// <summary>The turn from behind a model to its right side: a model faces +Y in its own frame, so its right is +X.</summary>
     private const float RightSideDeg = 90f;
 
-    /// <summary>Aim the slot's camera at the doll's model, in the model's own frame: <paramref name="dist"/> away, <paramref name="height"/>
-    /// up, <paramref name="yawDeg"/> degrees clockwise from its right side (90 its back, 270 its front), wherever its AI stood and turned it,
-    /// tipped <paramref name="pitchDeg"/> degrees down in place (negative looks up).
-    /// Identity looks down -Z with Y up; laid back 90 degrees on X it looks along +Y.</summary>
-    internal static void Orbit(ModelSlot slot, float dist, float height, float yawDeg, float pitchDeg = 0f)
+    /// <summary>Where <see cref="Orbit"/> puts the camera: <paramref name="dist"/> from <paramref name="centre"/> (a point in the model's own space) on the side
+    /// <paramref name="yawDeg"/> names, the model standing at <paramref name="at"/> turned by <paramref name="modelRot"/> and shown turned by <paramref name="turn"/>.
+    /// <paramref name="look"/> is the camera's turn before any pitch.</summary>
+    internal static Vector3 Eye(Vector3 centre, Quaternion turn, Quaternion modelRot, Vector3 at, float dist, float yawDeg, out Quaternion look)
+    {
+        look = Quaternion.Concatenate(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (RightSideDeg - yawDeg) * MathF.PI / 180f), Quaternion.Inverse(turn)), modelRot);
+        return at + Vector3.Transform(centre, modelRot) + Vector3.Transform(new Vector3(0, -dist, 0), look);
+    }
+
+    /// <summary>Aim the slot's camera at <paramref name="centre"/>, a point of the doll's model in its own space, from <paramref name="dist"/> away, <paramref name="yawDeg"/>
+    /// degrees clockwise from the model's right side (90 its back, 270 its front), tipped <paramref name="pitchDeg"/> down in place. <paramref name="turn"/> is the
+    /// model's own turn about <paramref name="centre"/>, shown by moving the camera round it the other way. The AI's own turn of the model is followed.</summary>
+    internal static void Orbit(ModelSlot slot, float dist, Vector3 centre, Quaternion turn, float yawDeg, float pitchDeg = 0f)
     {
         IntPtr c = slot.Doll.Camera, m = slot.Doll.Model;
         if (c == IntPtr.Zero || m == IntPtr.Zero) return;
         var cam = new CAurCamera(c);
         var model = new Gob(m);
-        Quaternion turn = Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitZ, (RightSideDeg - yawDeg) * MathF.PI / 180f), model.Rot);
-        Vector3 p = model.Position + Vector3.Transform(new Vector3(0, -dist, height), turn);
+        Vector3 p = Eye(centre, turn, model.Rot, model.Position, dist, yawDeg, out Quaternion look);
         var v = new EVec { X = p.X, Y = p.Y, Z = p.Z };
-        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2 - pitchDeg * MathF.PI / 180f), turn));
+        var q = EQuat.From(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI / 2 - pitchDeg * MathF.PI / 180f), look));
         EVec rv;
         EQuat rq;
         if (OperatingSystem.IsWindows())

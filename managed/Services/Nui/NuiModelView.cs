@@ -70,11 +70,14 @@ internal static unsafe class NuiModelView
         public float PoseSpeed = 1f;
         public bool PoseLoop = true;
         /// <summary>Is the doll framed from its bounds where the server fixes no <c>dist</c> or <c>height</c> (unless <c>fit</c> is 0), and the framing found.</summary>
-        public bool Fit = true, HasBox;
+        public bool Fit = true, HasBox, Measured;
         public float FitPad = 1f, ZoneLo, ZoneHi;
         /// <summary>The union of the model's bounds over every frame since it was built, which an animation can only widen.</summary>
         public System.Numerics.Vector3 BoxMin, BoxMax;
-        public float FitDist = DefaultDist, FitHeight = DefaultHeight;
+        public float FitDist = DefaultDist;
+        /// <summary>The point of the model, in its own space, the framing looks at; the server's <c>rot</c>, and the turn that stands an item up.</summary>
+        public System.Numerics.Vector3 FitCentre = new(0f, 0f, DefaultHeight);
+        public System.Numerics.Quaternion Rot = System.Numerics.Quaternion.Identity, Stand = System.Numerics.Quaternion.Identity;
         public string Wear = "", StandinRect = "", Vfx = "";
         public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
         public byte[] Info = Array.Empty<byte>();
@@ -105,9 +108,10 @@ internal static unsafe class NuiModelView
         _s.Ready = NuiModelDoll.Init(log);
         NuiModelGear.Init(log);
         NuiModelTarget.Init(log);
+        NuiModelBounds.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 6, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 7, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -335,7 +339,7 @@ internal static unsafe class NuiModelView
         PlayPose(s, v);
         FitCamera(s, v);
         if (v.Dragging) Turn(v);
-        NuiModelDoll.Orbit(slot, Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
+        NuiModelDoll.Orbit(slot, Distance(v), Centre(v), ModelTurn(v), v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
         if (!v.Owned) NuiImageSpot.Watch(slot.Index, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
         if (slot.Rendered) v.WasRendered = true;
@@ -352,8 +356,11 @@ internal static unsafe class NuiModelView
     /// <summary>How far the camera stands now: where the player scrolled it to, else the server's <c>dist</c>.</summary>
     private static float Distance(ViewData v) => float.IsNaN(v.ZoomAt) ? v.Dist ?? (v.Fit ? v.FitDist : DefaultDist) : v.ZoomAt;
 
-    /// <summary>The camera's height now: the server's, else the framed one.</summary>
-    private static float Height(ViewData v) => v.Height ?? (v.Fit ? v.FitHeight : DefaultHeight);
+    /// <summary>The point the camera looks at now: the framed one, its height replaced by the server's <c>height</c> when it set one.</summary>
+    private static System.Numerics.Vector3 Centre(ViewData v) => new(v.FitCentre.X, v.FitCentre.Y, v.Height ?? v.FitCentre.Z);
+
+    /// <summary>The model's own turn: an item stood up, then the server's <c>rot</c>.</summary>
+    private static System.Numerics.Quaternion ModelTurn(ViewData v) => System.Numerics.Quaternion.Concatenate(v.Stand, v.Rot);
 
     /// <summary>A scroll landed on NUI (from the input hook): one over a model view whose server allows zoom moves the camera
     /// <see cref="ViewData.ZoomStep"/> metres a notch, nearer for a scroll up, inside the server's range. True = the view took it.</summary>
@@ -449,22 +456,72 @@ internal static unsafe class NuiModelView
             s.Log?.Always($"NuiModelView: '{v.Key}' -- the model has no animation '{v.PoseName}'");
     }
 
-    /// <summary>Frame the doll from the size its bounds have had since it was built, unless the server fixed the camera or turned fitting off.
-    /// A creature stands on the floor, so its camera is centred on half its height; an item is centred on its bounds.</summary>
+    /// <summary>The box of the geometry the doll draws, in the model's own space, from the model files and <c>appearance.2da</c>, not the engine's bounds (which
+    /// also hold dummies and emitters, and are empty or a unit cube for a body built from parts): a model by name, an item's parts, a creature built from parts
+    /// from its row's height and width, any other creature from its model. False when none of them can say, and the engine's bounds are used.</summary>
+    private static bool MeasuredBox(ViewData v, out System.Numerics.Vector3 min, out System.Numerics.Vector3 max)
+    {
+        min = max = default;
+        switch (v.BuiltTgt.Kind)
+        {
+            case TargetKind.Model:
+                return NuiModelBounds.Of(v.BuiltTgt.Text, out min, out max);
+            case TargetKind.Item:
+            {
+                var names = new string[3];
+                int n = NuiItemIcons.ModelNamesOf(v.Slot.Doll.Item, names);
+                bool any = false;
+                var lo = new System.Numerics.Vector3(float.MaxValue);
+                var hi = new System.Numerics.Vector3(float.MinValue);
+                for (int i = 0; i < n; i++)
+                {
+                    if (!NuiModelBounds.Of(names[i], out System.Numerics.Vector3 a, out System.Numerics.Vector3 b)) continue;
+                    lo = System.Numerics.Vector3.Min(lo, a);
+                    hi = System.Numerics.Vector3.Max(hi, b);
+                    any = true;
+                }
+                min = lo; max = hi;
+                return any;
+            }
+            default:
+            {
+                if (v.Slot.Doll.Creature == IntPtr.Zero) return false;
+                CPathfindInformation pf = new CNWCCreature(v.Slot.Doll.Creature).Pathfind;
+                int row = pf.IsNull ? -1 : pf.Appearance;
+                if (row < 0) return false;
+                if (NuiModelFrame.BodyBox(NuiModelTarget.AppearanceCell(row, "MODELTYPE"), NuiModelTarget.AppearanceCell(row, "HEIGHT"),
+                                          NuiModelTarget.AppearanceCell(row, "PERSPACE"), out min, out max)) return true;
+                string model = (NuiModelTarget.AppearanceCell(row, "RACE") ?? "").Trim().ToLowerInvariant();
+                return NuiModelTarget.ValidResRef(model) && NuiModelBounds.Of(model, out min, out max);
+            }
+        }
+    }
+
+    /// <summary>Frame the doll from the size of what it draws, unless the server fixed the camera or turned fitting off. The camera looks at the middle of
+    /// that box, which an item is first stood up in (its longest side vertical, its thinnest toward the viewer) and every doll is then turned by the
+    /// server's <c>rot</c>; a creature built from parts is framed on its row's height, a slice of it for <c>fitzone</c>.</summary>
     private static void FitCamera(ViewState s, ViewData v)
     {
-        if (!v.Fit || (v.Dist != null && v.Height != null)) return;
-        var g = new Gob(v.Slot.Doll.Model);
-        System.Numerics.Vector3 lo = g.BoundsMin, hi = g.BoundsMax;
-        v.BoxMin = v.HasBox ? System.Numerics.Vector3.Min(v.BoxMin, lo) : lo;
-        v.BoxMax = v.HasBox ? System.Numerics.Vector3.Max(v.BoxMax, hi) : hi;
+        bool creature = v.BuiltTgt.Kind is TargetKind.Player or TargetKind.Creature or TargetKind.Appearance;
+        if (!v.HasBox)
+        {
+            v.Measured = MeasuredBox(v, out v.BoxMin, out v.BoxMax);
+            if (v.Measured) v.Stand = v.BuiltTgt.Kind == TargetKind.Item ? NuiModelFrame.Upright(v.BoxMax - v.BoxMin) : System.Numerics.Quaternion.Identity;
+        }
+        if (!v.Measured)
+        {
+            var g = new Gob(v.Slot.Doll.Model);
+            System.Numerics.Vector3 lo = g.BoundsMin, hi = g.BoundsMax;
+            v.BoxMin = v.HasBox ? System.Numerics.Vector3.Min(v.BoxMin, lo) : lo;
+            v.BoxMax = v.HasBox ? System.Numerics.Vector3.Max(v.BoxMax, hi) : hi;
+        }
         v.HasBox = true;
-        bool onFloor = v.BuiltTgt.Kind != TargetKind.Item;
-        float middle = 0f;
-        System.Numerics.Vector3 box = onFloor ? NuiModelFrame.Slice(v.BoxMax - v.BoxMin, v.ZoneLo, v.ZoneHi, out middle) : v.BoxMax - v.BoxMin;
-        if (!NuiModelFrame.Fit(box, onFloor, v.Angle, v.W, v.H, v.Yaw, v.Drag > 0f, v.FitPad, out float dist, out float height)) return;
+        if (!v.Fit || (v.Dist != null && v.Height != null)) return;
+        System.Numerics.Vector3 min = v.BoxMin, max = v.BoxMax;
+        if (creature && !v.Measured) { max.Z -= min.Z; min.Z = 0f; }
+        if (!NuiModelFrame.Frame(min, max, creature, v.ZoneLo, v.ZoneHi, ModelTurn(v), v.Angle, v.W, v.H, v.Yaw, v.Drag > 0f, v.FitPad, out System.Numerics.Vector3 centre, out float dist)) return;
         v.FitDist = dist;
-        v.FitHeight = onFloor ? middle : (v.BoxMin.Z + v.BoxMax.Z) * 0.5f;
+        v.FitCentre = centre;
     }
 
     private static void Read(ViewState s, ViewData v)
@@ -477,6 +534,9 @@ internal static unsafe class NuiModelView
         NuiModelLook.Pair(Policy(v.Key, "fitzone", ""), 0f, 1f, out v.ZoneLo, out v.ZoneHi);
         v.FitPad = fit > 0f ? Math.Clamp(fit, 0.1f, 10f) : 1f;
         v.HasBox = false;
+        v.FitDist = DefaultDist;
+        v.FitCentre = new System.Numerics.Vector3(0f, 0f, DefaultHeight);
+        v.Rot = NuiModelLook.Rotation(Policy(v.Key, "rot", ""));
         v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
         v.Dist = Policy(v.Key, "dist", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist) : null;
         v.Height = Policy(v.Key, "height", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight) : null;
@@ -530,7 +590,7 @@ internal static unsafe class NuiModelView
         var cam = new CAurCamera(c);
         cam.SetViewAngle(v.Angle);
         cam.SetClipDist(v.ClipNear, v.ClipFar);
-        NuiModelDoll.Orbit(v.Slot, Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
+        NuiModelDoll.Orbit(v.Slot, Distance(v), Centre(v), ModelTurn(v), v.Yaw + v.DragYaw, v.Pitch);
         _s.Log?.Info($"NuiModelView: '{v.Key}' camera at yaw {v.Yaw}, the doll {NuiModelDoll.Pose(v.Slot)}");
     }
 
