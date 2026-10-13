@@ -75,23 +75,28 @@ internal static unsafe class NuiModelVfx
 
     /// <summary>The doll wears exactly <paramref name="rows"/>: every effect it had is ended first. With <paramref name="mute"/> the engine's
     /// sounds for the new effects (their impact one-shot and looping source) are not started.</summary>
-    internal static void Wear(IntPtr doll, VfxRow[] rows, bool mute = false)
+    internal static void Wear(IntPtr doll, VfxRow[] rows, bool mute = false) => Wear(doll, rows, rows.Length, 0, mute);
+
+    /// <summary>The first <paramref name="count"/> of <paramref name="rows"/> on the doll. From 0 the doll's own effects are ended first; from a
+    /// later index only the rows from there on are added to what the doll wears.</summary>
+    internal static void Wear(IntPtr doll, VfxRow[] rows, int count, int from, bool mute)
     {
         if (doll == IntPtr.Zero) return;
         if (!_v.Ready)
         {
-            if (rows.Length > 0 && !_v.Said) { _v.Said = true; _v.Log?.Always("NuiModelVfx: this client puts no effects on a doll -- vfx ignored"); }
+            if (count > 0 && !_v.Said) { _v.Said = true; _v.Log?.Always("NuiModelVfx: this client puts no effects on a doll -- vfx ignored"); }
             return;
         }
-        EngineFn.ObjKillAllVisualEffects(doll);
+        if (from == 0) EngineFn.ObjKillAllVisualEffects(doll);
         Vec3 zero = default;
         byte* scratch = stackalloc byte[TransformBytes];
         if (mute && _v.SoundReady) _v.MuteThread = Environment.CurrentManagedThreadId;
         try
         {
             int table = NuiModelTarget.VisualEffectRows();
-            foreach (VfxRow e in rows)
+            for (int i = from; i < count; i++)
             {
+                VfxRow e = rows[i];
                 if (!NuiModelGuard.RowInTable(e.Row, table))
                 {
                     if (NuiModelGuard.Once($"vfx {e.Row}")) _v.Log?.Always($"NuiModelVfx: effect row {e.Row} is past the {table} the client's visualeffects.2da has -- not worn");
@@ -102,7 +107,85 @@ internal static unsafe class NuiModelVfx
             }
         }
         finally { _v.MuteThread = 0; }
-        if (rows.Length > 0) _v.Log?.Always($"NuiModelVfx: the doll wears effect rows {string.Join(',', rows.Select(e => $"{e.Row}:{e.Part}"))}{(mute ? ", sounds muted" : "")}");
+        if (count > 0) _v.Log?.Always($"NuiModelVfx: the doll wears effect rows {string.Join(',', rows.Take(count).Select(e => $"{e.Row}:{e.Part}"))}{(mute ? ", sounds muted" : "")}");
+    }
+
+    /// <summary>The <c>vfx</c> value that mirrors the target's own effects instead of listing rows.</summary>
+    internal const string AllValue = "all";
+    /// <summary>The part number a node name the parts do not name stands for: the root.</summary>
+    private const byte RootPart = 255;
+    /// <summary>The most nodes one walk of a creature's effect list visits, so a damaged list ends the walk.</summary>
+    private const int MaxWalk = 256;
+
+    /// <summary>The effects a mirroring view last read from its target, and the ones its doll wears. Both are filled in place, so a frame
+    /// allocates nothing.</summary>
+    internal sealed class Mirror
+    {
+        public readonly VfxRow[] Seen = new VfxRow[MaxRows];
+        public readonly VfxRow[] Worn = new VfxRow[MaxRows];
+        public int SeenCount, WornCount;
+    }
+
+    /// <summary>What the doll needs to match what the target shows: nothing, the new rows added after those it wears, or all of them again.</summary>
+    internal enum Step { None, Append, Rewear }
+
+    /// <summary>Does this <c>vfx</c> value ask for the target's own effects? The word <c>all</c> alone, whatever its case or spacing.</summary>
+    internal static bool IsAll(string value) => value.AsSpan().Trim().Equals(AllValue, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The body part a node name stands for: <c>handconjure</c> 0, <c>impact</c> 1, <c>monster0</c>-<c>monster9</c> 2-11, anything else the root.</summary>
+    internal static byte PartOfNode(ReadOnlySpan<byte> name)
+    {
+        if (name.SequenceEqual("handconjure"u8)) return 0;
+        if (name.SequenceEqual("impact"u8)) return 1;
+        if (name.Length == 8 && name[..7].SequenceEqual("monster"u8) && name[7] is >= (byte)'0' and <= (byte)'9') return (byte)(2 + name[7] - '0');
+        return RootPart;
+    }
+
+    /// <summary>How the doll's worn effects become the target's. The engine's list only grows at its end, so rows that start with the worn
+    /// ones are added to them; any other change puts the whole set on again.</summary>
+    internal static Step Plan(VfxRow[] worn, int wornCount, VfxRow[] seen, int seenCount)
+    {
+        if (seenCount < wornCount) return Step.Rewear;
+        for (int i = 0; i < wornCount; i++) if (worn[i] != seen[i]) return Step.Rewear;
+        return seenCount == wornCount ? Step.None : Step.Append;
+    }
+
+    /// <summary>The effects <paramref name="creature"/> shows now, in the order the engine added them, into <paramref name="into"/>: those the client has
+    /// shown, that last (a one-shot impact is gone in a moment) and that have no source object (a beam from another creature has no end on the doll).
+    /// The same row on the same part counts once, and at most <see cref="MaxRows"/> are read. Returns how many.</summary>
+    internal static int Read(IntPtr creature, VfxRow[] into)
+    {
+        int n = 0, walked = 0;
+        CExoLinkedListNode node = new CNWCObject(creature).Effects.Head;
+        while (!node.IsNull && walked++ < MaxWalk && n < MaxRows)
+        {
+            CNWCVisualEffectOnObject e = node.Data;
+            if (!e.IsNull && e.Shown != 0 && e.Lasting != 0 && e.Source == NuiModelDoll.InvalidId)
+            {
+                IntPtr name = e.Node;
+                byte part = name == IntPtr.Zero ? RootPart : PartOfNode(MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)name));
+                var row = new VfxRow(e.Row, part);
+                bool dup = false;
+                for (int i = 0; i < n && !dup; i++) dup = into[i] == row;
+                if (!dup) into[n++] = row;
+            }
+            node = node.Next;
+        }
+        return n;
+    }
+
+    /// <summary>Make the doll wear what <paramref name="who"/> shows now. With <paramref name="rebuilt"/> the doll is new, so everything goes on again;
+    /// otherwise only a change touches it, and a frame with none reads the list and compares, nothing more.</summary>
+    internal static void Follow(IntPtr doll, IntPtr who, Mirror m, bool rebuilt, bool mute)
+    {
+        if (doll == IntPtr.Zero || who == IntPtr.Zero) return;
+        m.SeenCount = Read(who, m.Seen);
+        Step step = rebuilt ? Step.Rewear : Plan(m.Worn, m.WornCount, m.Seen, m.SeenCount);
+        if (step == Step.None) return;
+        if (m.SeenCount > 0 || m.WornCount > 0) _v.Log?.Always($"NuiModelVfx: mirroring {m.SeenCount} effects from the target ({(step == Step.Append ? "added" : "all again")})");
+        Wear(doll, m.Seen, m.SeenCount, step == Step.Append ? m.WornCount : 0, mute);
+        Array.Copy(m.Seen, m.Worn, m.SeenCount);
+        m.WornCount = m.SeenCount;
     }
 
     /// <summary>The transform argument for one add call: the engine's identity as it is on Linux, and on Windows a fresh copy in <paramref name="scratch"/> that the call
@@ -133,6 +216,18 @@ internal static unsafe class NuiModelVfx
                      && !NuiModelGuard.RowInTable(hostile[2].Row, 612) && NuiModelGuard.RowInTable(hostile[3].Row, 612),
                      "rows the parse accepts but a 612-row table has none of are refused by the guard, its last row is not");
         check.Expect(Parse("1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17").Length == 16, "seventeen rows keep the first sixteen");
+        check.Expect(IsAll("all") && IsAll("  All ") && IsAll("ALL") && !IsAll("all,147") && !IsAll("") && !IsAll("al"), "only the word all asks for the target's effects");
+        check.Expect(PartOfNode("handconjure"u8) == 0 && PartOfNode("impact"u8) == 1 && PartOfNode("monster0"u8) == 2 && PartOfNode("monster9"u8) == 11,
+                     "the engine's node names give back the parts that made them");
+        check.Expect(PartOfNode("monster"u8) == 255 && PartOfNode("monster10"u8) == 255 && PartOfNode("impc_x"u8) == 255 && PartOfNode(""u8) == 255 && PartOfNode("root"u8) == 255,
+                     "any other node name is the root");
+        VfxRow a = new(147, 0), b = new(408, 1), c = new(9, 255);
+        check.Expect(Plan([a, b], 2, [a, b], 2) == Step.None && Plan([], 0, [], 0) == Step.None, "the same rows need nothing");
+        check.Expect(Plan([a], 1, [a, b, c], 3) == Step.Append && Plan([], 0, [a], 1) == Step.Append, "rows added at the end are added");
+        check.Expect(Plan([a, b], 2, [b, a], 2) == Step.Rewear && Plan([a, b], 2, [a], 1) == Step.Rewear && Plan([a, b], 2, [], 0) == Step.Rewear
+                     && Plan([a, b], 2, [a, c], 2) == Step.Rewear && Plan([a], 1, [b, a], 2) == Step.Rewear,
+                     "a changed order, a removed row or a replaced one starts over");
+        check.Expect(Plan([a, b, c], 1, [a, c], 2) == Step.Append, "rows past the worn count are not compared");
         VfxRow[] parts = Parse("147:1, 147:5,147:1, 9:300, 9:x, 12:2:3, 7:255");
         check.Expect(parts.Length == 3 && parts[0] == new VfxRow(147, 1) && parts[1] == new VfxRow(147, 5) && parts[2] == new VfxRow(7, 255),
                      "a row names its part, the same row on two parts is worn twice, and a bad part skips the entry");

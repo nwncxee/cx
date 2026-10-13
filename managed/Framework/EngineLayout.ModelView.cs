@@ -70,4 +70,29 @@ public static unsafe partial class EngineLayout
 
     /// <summary>A <c>C2DA</c>'s row count (+0x50 on both builds), the bound <c>GetINTEntry</c> and <c>GetCExoStringEntry</c> check a row against.</summary>
     public static readonly int TwoDaRows = Field<int>("C2DA", "rows");
+
+    /// <summary>CNWCObject -> its list of visual effects (<c>CExoLinkedListInternal*</c>, never null), the one
+    /// <c>CNWCObject::AddVisualEffect</c> appends to and <c>KillAllVisualEffects</c> drains. Same offset on both builds
+    /// (Linux nm @0x7e2f20, Windows rva 0x763a50).</summary>
+    public static readonly int ObjEffects = Field<CX.Engine.CExoLinkedListInternal>("CNWCObject", "effects");
+    /// <summary>The engine's list: first node at +0, node count at +0x10. A node holds previous at +0, next at +8 and its object at +0x10
+    /// (<c>AddTail</c> on both builds).</summary>
+    public static readonly int ListHead = Field<CX.Engine.CExoLinkedListNode>("CExoLinkedListInternal", "head");
+    /// <inheritdoc cref="ListHead"/>
+    public static readonly int NodeNext = Field<CX.Engine.CExoLinkedListNode>("CExoLinkedListNode", "next");
+    /// <inheritdoc cref="ListHead"/>
+    public static readonly int NodeData = Field<CX.Engine.CNWCVisualEffectOnObject>("CExoLinkedListNode", "data");
+    /// <summary>CNWCVisualEffectOnObject, read off <c>LoadVisualEffect</c>, <c>ShowVisualEffect</c> and <c>HideVisualEffect</c> (Linux nm @0x8186b0,
+    /// @0x81aaa0, @0x816f60; Windows rva 0x96cf10): the <c>visualeffects.2da</c> row (ushort), the flag <c>Show</c> sets and <c>Hide</c> clears (int),
+    /// the flag that is 1 for an effect that lasts and 0 for a one-shot (byte), and the id of the object a beam comes from (the invalid id when none).</summary>
+    public static readonly int EffectRow = Field<ushort>("CNWCVisualEffectOnObject", "row");
+    /// <inheritdoc cref="EffectRow"/>
+    public static readonly int EffectShown = Field<int>("CNWCVisualEffectOnObject", "shown");
+    /// <inheritdoc cref="EffectRow"/>
+    public static readonly int EffectLasting = Field<byte>("CNWCVisualEffectOnObject", "lasting");
+    /// <inheritdoc cref="EffectRow"/>
+    public static readonly int EffectSource = Field<uint>("CNWCVisualEffectOnObject", "source");
+    /// <summary>The effect's <c>CExoString</c> that names the node the body part chose (<c>handconjure</c>, <c>impact</c>, <c>monsterN</c> or <c>root</c>),
+    /// as the pointer to its zero-ended text. Both builds keep it at the same place; only an effect with no source writes the part's own name there.</summary>
+    public static readonly int EffectNode = Field<IntPtr>("CNWCVisualEffectOnObject", "node");
 }

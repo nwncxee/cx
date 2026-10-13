@@ -1254,6 +1254,30 @@ public readonly unsafe partial struct CExoKeyTable(IntPtr ptr)
     public ref IntPtr Name => ref *(IntPtr*)(Ptr + EngineLayout.KeyTableName);
 }
 
+/// <summary>Typed view of an engine <c>CExoLinkedListInternal*</c>.</summary>
+public readonly unsafe partial struct CExoLinkedListInternal(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ListHead"/>
+    public CExoLinkedListNode Head { get => new(*(IntPtr*)(Ptr + EngineLayout.ListHead)); set => *(IntPtr*)(Ptr + EngineLayout.ListHead) = value.Ptr; }
+}
+
+/// <summary>Typed view of an engine <c>CExoLinkedListNode*</c>.</summary>
+public readonly unsafe ref partial struct CExoLinkedListNode(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NodeData"/>
+    public CNWCVisualEffectOnObject Data { get => new(*(IntPtr*)(Ptr + EngineLayout.NodeData)); set => *(IntPtr*)(Ptr + EngineLayout.NodeData) = value.Ptr; }
+    /// <inheritdoc cref="EngineLayout.NodeNext"/>
+    public CExoLinkedListNode Next { get => new(*(IntPtr*)(Ptr + EngineLayout.NodeNext)); set => *(IntPtr*)(Ptr + EngineLayout.NodeNext) = value.Ptr; }
+}
+
 /// <summary>Typed view of an engine <c>CExoMoviePlayerInternal*</c>.</summary>
 public readonly unsafe partial struct CExoMoviePlayerInternal(IntPtr ptr)
 {
@@ -2124,6 +2148,8 @@ public readonly unsafe partial struct CNWCObject(IntPtr ptr)
     public ref IntPtr AreaPtr => ref *(IntPtr*)(Ptr + EngineLayout.ObjAreaPtr);
     /// <inheritdoc cref="EngineLayout.ObjBubble"/>
     public ref CGuiInGamePopUpBubble Bubble => ref *(CGuiInGamePopUpBubble*)(Ptr + EngineLayout.ObjBubble);
+    /// <inheritdoc cref="EngineLayout.ObjEffects"/>
+    public ref CExoLinkedListInternal Effects => ref *(CExoLinkedListInternal*)(Ptr + EngineLayout.ObjEffects);
     /// <inheritdoc cref="EngineLayout.ObjFadeAlpha"/>
     public ref float FadeAlpha => ref *(float*)(Ptr + EngineLayout.ObjFadeAlpha);
     /// <inheritdoc cref="EngineLayout.ObjFadeExpire"/>
@@ -2230,6 +2256,25 @@ public readonly unsafe partial struct CNWCPlayer(IntPtr ptr)
     public ref uint CreatureNameLen => ref *(uint*)(Ptr + EngineLayout.PlayerCreatureNameLen);
     /// <inheritdoc cref="EngineLayout.PlayerId"/>
     public ref uint PlayerId => ref *(uint*)(Ptr + EngineLayout.PlayerId);
+}
+
+/// <summary>Typed view of an engine <c>CNWCVisualEffectOnObject*</c>.</summary>
+public readonly unsafe ref partial struct CNWCVisualEffectOnObject(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.EffectLasting"/>
+    public ref byte Lasting => ref *(byte*)(Ptr + EngineLayout.EffectLasting);
+    /// <inheritdoc cref="EngineLayout.EffectNode"/>
+    public ref IntPtr Node => ref *(IntPtr*)(Ptr + EngineLayout.EffectNode);
+    /// <inheritdoc cref="EngineLayout.EffectRow"/>
+    public ref ushort Row => ref *(ushort*)(Ptr + EngineLayout.EffectRow);
+    /// <inheritdoc cref="EngineLayout.EffectShown"/>
+    public ref int Shown => ref *(int*)(Ptr + EngineLayout.EffectShown);
+    /// <inheritdoc cref="EngineLayout.EffectSource"/>
+    public ref uint Source => ref *(uint*)(Ptr + EngineLayout.EffectSource);
 }
 
 /// <summary>Typed view of an engine <c>CNWMessage*</c>.</summary>
