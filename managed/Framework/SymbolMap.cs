@@ -1971,6 +1971,14 @@ internal static unsafe class SymbolMap
     /// <summary><c>CGuiViewport::GetCamera()</c> @0x597670 -- the view's <c>CAurCamera*</c>.</summary>
     [Fn("IntPtr(IntPtr self)")]
     public const string GuiViewportGetCamera = "_ZN12CGuiViewport9GetCameraEv";
+    /// <summary><c>NewCAurObject(char const* model, char const* tag, FILE*)</c> @0x4412c0, a name export on Windows -- the engine's
+    /// model loader: a <c>CAurObject</c> for any model resref, or null when there is none. The caller deletes it through its vtable.</summary>
+    [Fn("IntPtr(byte* model, byte* tag, IntPtr file)")]
+    public const string NewAurObject = "_Z13NewCAurObjectPKcS0_P8_IO_FILE";
+    /// <summary><c>CNWCItem::LoadModel(CResRef, uchar slot, uchar)</c> @0x7cf7e0 -- builds the item's animation base and loads its model; slot 0xff
+    /// is the item on its own, not held. The <c>CResRef</c> is not read. No <c>[Fn]</c>: Itanium copies the 17-byte
+    /// <c>CResRef</c> onto the stack, Win64 passes a pointer to it, so <c>NuiModelTarget</c> calls it per OS.</summary>
+    public const string ItemLoadModel = "_ZN8CNWCItem9LoadModelE7CResRefhh";
     /// <summary><c>kiwi::impl::SolverImpl::substitute(Symbol const&amp;, Row const&amp;)</c> @0x85b890 (Windows rva 0x3458e0): replaces
     /// a symbol by a row in every tableau row, the objective and the artificial row -- the full row walk that makes a
     /// NUI layout solve quadratic. Never throws; its callers are addConstraint, addWithArtificialVariable, optimize
@@ -3360,6 +3368,8 @@ internal static unsafe class SymbolMap
         [GuiViewportSetViewport] = Nm("?SetViewport@CGuiViewport@@QEAAXHHHH@Z"),
         [GuiViewportTakeModel] = Nm("?TakeModel@CGuiViewport@@QEAAXPEAVCAurObject@@@Z"),
         [GuiViewportGetCamera] = Nm("?GetCamera@CGuiViewport@@QEAAPEAVCAurCamera@@XZ"),
+        [NewAurObject] = Nm("?NewCAurObject@@YAPEAVCAurObject@@PEBD0PEAU_iobuf@@@Z"),
+        [ItemLoadModel] = At(),   // not exported; the one function that tests the base item's model type and builds an item animation base
         [KiwiSubstitute] = Nm("?substitute@SolverImpl@impl@kiwi@@AEAAXAEBVSymbol@23@AEBVRow@23@@Z"),
         [KiwiOptimize] = Nm("?optimize@SolverImpl@impl@kiwi@@AEAAXAEBVRow@23@@Z"),
         [ReportCrashToUser] = Nm("?ReportCrashToUser@CrashReporter_Windows@@UEAAXPEBD0@Z"),

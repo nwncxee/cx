@@ -59,12 +59,14 @@ internal static unsafe class NuiModelGear
         public string BodyKey = "";
         public bool Dirty;
         public bool Waiting;
+        public uint HelmId = InvalidId;
         public long NextTry;
         public int RetryLogs;
         internal Dressing Dress = new();
-        internal Kept Helm = new() { Id = InvalidId };
+        internal Kept HelmSrc = new() { Id = InvalidId };
         internal Kept Retired = new() { Id = InvalidId };
-        public byte[] Applied = Array.Empty<byte>();
+        /// <summary>The doll's own helmet, see <see cref="NuiModelHelm"/>.</summary>
+        public readonly NuiModelHelm.HelmState Helm = new();
     }
 
     private sealed class GearLog { public ExtenderLog? Log; }
@@ -100,7 +102,7 @@ internal static unsafe class NuiModelGear
             ? Known(id | NuiItemIcons.ServerIdBit) : IntPtr.Zero;
     }
 
-    private static IntPtr Known(uint id) => id == InvalidId ? IntPtr.Zero : CX.Services.Radial.RadialIcons.Item((IntPtr)id);
+    internal static IntPtr Known(uint id) => id == InvalidId ? IntPtr.Zero : CX.Services.Radial.RadialIcons.Item((IntPtr)id);
 
     /// <summary>Read a <c>wear</c> value: sort its items into the hands, the armour, the cloak and the helmet. Cheap when the text is
     /// the one already read. Run before the doll is built, so the first build already wears it.</summary>
@@ -150,15 +152,29 @@ internal static unsafe class NuiModelGear
         g.BodyKey = key;
         g.Dirty = true;
         Retire(g);
-        if (helm.Length > 0) g.Helm = MintKept(helm);
+        if (helm.Length > 0) SetHelm(g, helm);
     }
 
     /// <summary>The previous helmet moves to the retired place, to be freed once the doll no longer names it.</summary>
     private static void Retire(GearState g)
     {
         if (g.Retired.Item != IntPtr.Zero) Unregister(g.Retired, false);
-        g.Retired = g.Helm;
-        g.Helm = new Kept { Id = InvalidId };
+        g.Retired = g.HelmSrc;
+        g.HelmSrc = new Kept { Id = InvalidId };
+        g.HelmId = InvalidId;
+    }
+
+    /// <summary>The helmet the record will name: a known item's own id, or the id of a registered source minted from an <c>@look:</c>
+    /// string. The doll's helmet path copies whichever it is.</summary>
+    private static void SetHelm(GearState g, string text)
+    {
+        if (!text.StartsWith("@look:", StringComparison.Ordinal))
+        {
+            if (uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)) g.HelmId = id | NuiItemIcons.ServerIdBit;
+            return;
+        }
+        g.HelmSrc = MintKept(text);
+        g.HelmId = g.HelmSrc.Id;
     }
 
     private static Kept MintKept(string text)
@@ -220,8 +236,7 @@ internal static unsafe class NuiModelGear
             a.CloakModel = d.CloakModel;
             d.CloakColors.CopyTo(a.CloakColors);
         }
-        if (g.Helm.Item != IntPtr.Zero) a.HelmetItem = g.Helm.Id;
-        g.Applied = g.Helm.Item != IntPtr.Zero ? new ReadOnlySpan<byte>(info, EngineLayout.SizeOfAppearanceInfo).ToArray() : Array.Empty<byte>();
+        if (g.HelmId != InvalidId) a.HelmId = g.HelmId;
     }
 
     /// <summary>Did the body preview change since the doll was last dressed? Reading it clears the flag.</summary>
@@ -307,42 +322,34 @@ internal static unsafe class NuiModelGear
         w.ItemId = InvalidId;
     }
 
-    /// <summary><c>SetAppearance</c> flag for the head alone, where the helmet is attached and detached.</summary>
-    private const byte HeadOnly = 0x02;   // not-an-offset: SetAppearance flag bit
-
     /// <summary>The doll is going: empty both hands, take the helmet off, then end every throwaway item, before the creature is
     /// deleted. When the engine already freed the registered objects (<paramref name="taken"/>), only the bookkeeping is dropped.</summary>
     internal static void Release(GearState g, IntPtr doll, bool taken)
     {
+        NuiModelHelm.Release(g.Helm, doll, taken);
         foreach (Worn w in g.Hands)
         {
             Remove(doll, w, taken);
             w.From = 0;
         }
-        if (!taken && doll != IntPtr.Zero && g.Helm.Item != IntPtr.Zero && g.Applied.Length > 0)
-        {
-            byte* info = stackalloc byte[g.Applied.Length];
-            g.Applied.CopyTo(new Span<byte>(info, g.Applied.Length));
-            new CCAppearanceInfo((IntPtr)info).HelmetItem = InvalidId;
-            EngineFn.NwcCreatureSetAppearance(doll, (IntPtr)info, HeadOnly);
-        }
-        Unregister(g.Helm, taken);
+        Unregister(g.HelmSrc, taken);
         Unregister(g.Retired, taken);
-        g.Helm = g.Retired = new Kept { Id = InvalidId };
+        g.HelmSrc = g.Retired = new Kept { Id = InvalidId };
+        g.HelmId = InvalidId;
         g.PreviewText = g.BodyKey = "";
     }
 
     /// <summary>How many throwaway items the doll holds now.</summary>
     internal static int Count(GearState g)
     {
-        int n = g.Helm.Item != IntPtr.Zero ? 1 : 0;
+        int n = g.HelmSrc.Item != IntPtr.Zero ? 1 : 0;
         foreach (Worn w in g.Hands) if (w.Item != IntPtr.Zero) n++;
         return n;
     }
 
     /// <summary>Oracle: hand-written <c>INVENTORY_SLOT_*</c> bits (right hand 0x10, left hand 0x20, helmet 0x1, armour 0x2, cloak 0x40),
     /// strings no item can come from, and the byte offsets of the appearance record read off the engine's body, head and cloak
-    /// builders (colours at 0x4c, helmet id at 0xc4, the armour flag at 0xc8, the cloak model at 0xf8). Nothing here reaches the engine.</summary>
+    /// builders (colours at 0x4c, the helmet id at 0xc4, the armour flag at 0xc8, the cloak model at 0xf8). Nothing here reaches the engine.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);

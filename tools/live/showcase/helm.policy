@@ -1,0 +1,4 @@
+model.me.target=player
+model.me.size=340x460
+model.me.yaw=270
+model.me.bg=0.08,0.08,0.10,1

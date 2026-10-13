@@ -13,6 +13,12 @@ public static unsafe partial class EngineLayout
     public static readonly int GuiViewportRecord = Field("CGuiViewport", "record");
     public static readonly int GobSetColorShiftingSlot = Field("Gob", "vtbl.SetColorShifting", Expect.VtblSlot);
     public static readonly int SizeOfAppearanceInfo = Field("CCAppearanceInfo", "sizeof");
+    /// <summary>The object id of the item whose model is the creature's helmet (<c>0x7f000000</c> = none), read by <c>CreateHead</c>: the
+    /// engine looks the item up by this id and attaches that item's own model to the head, so the id must name an item the doll owns.</summary>
+    public static readonly int AppearanceHelmId = Field<uint>("CCAppearanceInfo", "helmId");
+    /// <summary><c>CAurObject::PlayAnimation(char const* name, float speed, int flags, float fade)</c> -- plays a named animation on a model,
+    /// 1 when it has one by that name. Flag bit 4 loops it. Itanium has two destructor slots before it, MSVC one.</summary>
+    public static readonly int GobPlayAnimationSlot = Field("Gob", "vtbl.PlayAnimation", Expect.VtblSlot, sig: "int(IntPtr name, float speed, int flags, float fade)");
     public static readonly int CreatureDeleteSlot = Field("CNWCCreature", "vtbl.Delete", Expect.VtblSlot);
     /// <summary>The <c>CAurCamera</c> interface slots a free view's camera is set up through (<c>CameraSlots</c>' numbering;
     /// Windows is one lower from slot 2). The by-value ones are called per OS by <c>NuiModelDoll</c>.</summary>
@@ -42,7 +48,6 @@ public static unsafe partial class EngineLayout
     public static readonly int AppearPartColors = Field<byte>("CCAppearanceInfo", "partColors", count: 114);
     /// <summary>The helmet's game-object id (the invalid id when none), the flag that makes the body use <c>armorParts</c> (zero uses
     /// <c>bodyParts</c>), and the cloak's model and six colours (as words).</summary>
-    public static readonly int AppearHelmetItem = Field<uint>("CCAppearanceInfo", "helmetItem");
     public static readonly int AppearArmorWorn = Field<int>("CCAppearanceInfo", "armorWorn");
     public static readonly int AppearCloakColors = Field<ushort>("CCAppearanceInfo", "cloakColors", count: 6);
     public static readonly int AppearCloakModel = Field<ushort>("CCAppearanceInfo", "cloakModel");
