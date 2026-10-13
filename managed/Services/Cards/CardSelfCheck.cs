@@ -280,6 +280,9 @@ internal static class CardSelfCheck
         v = LayS(atlas, "{}", "{\"width\":200,\"images\":[{\"src\":\"gui_x\",\"at\":\"t\",\"w\":40,\"h\":10},{\"src\":\"gui_y\",\"at\":\"r\",\"w\":10,\"h\":4},{\"src\":\"gui_z\",\"at\":\"l\",\"w\":10,\"h\":4}],\"blocks\":[]}");
         check.Expect(Near(v.Icons[0].X, 80f) && Near(v.Icons[0].Y, 0f) && Near(v.Icons[1].X, 190f) && Near(v.Icons[1].Y, 8f) && Near(v.Icons[2].X, 0f) && Near(v.Icons[2].Y, 8f), "edge anchors centre along the other axis");
         check.Expect(!PanelParser.TryParse("{\"images\":[{\"src\":\"a\",\"at\":\"x\"}]}", out _, out _), "an unknown anchor is refused");
+        check.Expect(!PanelParser.TryParse("{\"images\":[1]}", out _, out string why) && why == "an image is a JSON object"
+                     && !PanelParser.TryParse("{\"images\":[null]}", out _, out _), "an image that is a number or null is refused, not thrown");
+        check.Expect(!PanelParser.TryParse("{\"blocks\":[{\"text\":\"\\ud800\"}]}", out _, out why) && why.Length > 0, "a lone surrogate in a text is refused, not thrown");
     }
 
     /// <summary>Oracle: lines typed into the checks; a card sent before the style, a style sent first, and a bad style, with the paddings read back.</summary>

@@ -171,6 +171,11 @@ internal static unsafe class NuiItemIcons
         }
         Look look;
         if (!ParseLook(s, &look)) return false;
+        if (!LookRowsKnown(&look, out string why))
+        {
+            Log($"@look: {why} -- the NUI image shows the engine's error sprite");
+            return false;
+        }
         IntPtr minted = Mint(&look);
         if (minted == IntPtr.Zero)
         {
@@ -307,59 +312,75 @@ internal static unsafe class NuiItemIcons
         return true;
     }
 
-    /// <summary>A throwaway item for an <c>@look:</c> string, or zero when it does not parse or the engine makes none.
-    /// The caller owns it and ends it with <see cref="Destroy"/>.</summary>
-    internal static IntPtr MintLook(string text)
+    /// <summary>The longest <c>@look:</c> string read: the prefix, 12 fixed fields and 114 part colours, with room to spare.</summary>
+    private const int LookTextMax = 510;
+
+    /// <summary><see cref="ParseLook"/> over a managed string. False when it is longer than <see cref="LookTextMax"/> or does not parse.</summary>
+    private static bool ParseLookText(string text, Look* look)
     {
-        byte* b = stackalloc byte[512];
-        if (text.Length >= 511) return IntPtr.Zero;
+        if (text.Length > LookTextMax) return false;
+        byte* b = stackalloc byte[LookTextMax + 1];
         for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
         b[text.Length] = 0;
-        Look look;
-        return ParseLook(b, &look) ? Mint(&look) : IntPtr.Zero;
+        return ParseLook(b, look);
     }
 
-    /// <summary>A throwaway item for a doll's <c>@look:</c> string, made as <see cref="MintLook"/> makes one but only when the client has the base
-    /// item and the files the engine would load for its models. The engine meets a missing model file with the base item's default model (a
-    /// leather bag for a sword) and a cloak number with no row in its table with a table read past the end. Zero, with the reason logged once, when
-    /// the text does not parse or a check fails; <paramref name="why"/> says which (empty when the engine made none).</summary>
+    /// <summary>A throwaway item for an <c>@look:</c> string, or zero when it does not parse, names a row the client lacks
+    /// (<see cref="LookRowsKnown"/>), or the engine makes none. The caller owns it and ends it with <see cref="Destroy"/>.</summary>
+    internal static IntPtr MintLook(string text)
+    {
+        Look look;
+        if (!ParseLookText(text, &look)) return IntPtr.Zero;
+        if (LookRowsKnown(&look, out string why)) return Mint(&look);
+        if (NuiModelGuard.Once(text)) Log($"@look: {why} -- no item is made");
+        return IntPtr.Zero;
+    }
+
+    /// <summary>A throwaway item for a doll's <c>@look:</c> string, made as <see cref="MintLook"/> makes one but only when the client also has
+    /// the files the engine would load for its models (<see cref="LookModelsExist"/>). Zero, with the reason logged once, when the text does
+    /// not parse or a check fails; <paramref name="why"/> says which (empty when the engine made none).</summary>
     internal static IntPtr MintLookForModel(string text, out string why)
     {
         why = "";
-        byte* b = stackalloc byte[512];
-        if (text.Length >= 511) { why = "longer than 510 characters"; return IntPtr.Zero; }
-        for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
-        b[text.Length] = 0;
+        if (text.Length > LookTextMax) { why = $"longer than {LookTextMax} characters"; return IntPtr.Zero; }
         Look look;
-        if (!ParseLook(b, &look)) { why = "not an @look: string of hex fields"; return IntPtr.Zero; }
-        if (!LookModelsExist(&look, out why))
-        {
-            if (NuiModelGuard.Once(text)) Log($"@look: {why} -- the item is left out");
-            return IntPtr.Zero;
-        }
-        return Mint(&look);
+        if (!ParseLookText(text, &look)) { why = "not an @look: string of hex fields"; return IntPtr.Zero; }
+        if (LookRowsKnown(&look, out why) && LookModelsExist(&look, out why)) return Mint(&look);
+        if (NuiModelGuard.Once(text)) Log($"@look: {why} -- the item is left out");
+        return IntPtr.Zero;
     }
 
-    /// <summary>Does the client have <paramref name="look"/>'s base item, a model file for each part the base item's model type loads (a cloak's
-    /// number is a row of its own table instead), and the item visual effect it names? The reason when not.</summary>
+    /// <summary>The client's base item <paramref name="row"/>, null when it has none or its rules are not loaded yet.</summary>
+    private static CNWBaseItem BaseItemOf(int row)
+    {
+        IntPtr rules = *(IntPtr*)_rules;
+        return new CNWBaseItem(rules == IntPtr.Zero ? IntPtr.Zero : EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, row));
+    }
+
+    /// <summary>Does the client have <paramref name="look"/>'s base item, the item visual effect it names, and for a cloak its row of
+    /// <c>cloakmodel.2da</c>? The engine reads that table past its end for a cloak number with no row. The reason when not. Passes
+    /// everything until the rules are loaded.</summary>
+    private static bool LookRowsKnown(Look* look, out string why)
+    {
+        why = "";
+        if (*(IntPtr*)_rules == IntPtr.Zero) return true;
+        if (BaseItemOf((int)look->BaseItem).IsNull) { why = $"base item {look->BaseItem} is not in the client's baseitems.2da"; return false; }
+        if (look->VisualEffect != 0 && !NuiModelGuard.RowInTable(look->VisualEffect - 1, NuiModelTarget.ItemVisualEffectRows()))
+        { why = $"item visual effect {look->VisualEffect} is past the rows the client's item visual effects table has"; return false; }
+        if (look->BaseItem != NuiModelGuard.CloakBaseItem || NuiModelGuard.RowInTable(look->Models[0], NuiModelTarget.CloakModelRows())) return true;
+        why = $"cloak model {look->Models[0]} is past the rows the client's cloakmodel.2da has";
+        return false;
+    }
+
+    /// <summary>Does the client have a model file for each part <paramref name="look"/>'s base item loads? The engine meets a missing one with
+    /// the base item's default model (a leather bag for a sword). A cloak's number is a table row, which <see cref="LookRowsKnown"/> checks.</summary>
     private static bool LookModelsExist(Look* look, out string why)
     {
         why = "";
-        IntPtr rules = *(IntPtr*)_rules;
-        if (rules == IntPtr.Zero) return true;
-        var b = new CNWBaseItem(EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, (int)look->BaseItem));
-        if (b.IsNull) { why = $"base item {look->BaseItem} is not in the client's baseitems.2da"; return false; }
-        ReadOnlySpan<ushort> models = new(look->Models, LookModels);
-        if (look->VisualEffect != 0 && !NuiModelGuard.RowInTable(look->VisualEffect - 1, NuiModelTarget.ItemVisualEffectRows()))
-        { why = $"item visual effect {look->VisualEffect} is past the rows the client's item visual effects table has"; return false; }
-        if (look->BaseItem == NuiModelGuard.CloakBaseItem)
-        {
-            if (NuiModelGuard.RowInTable(models[0], NuiModelTarget.CloakModelRows())) return true;
-            why = $"cloak model {models[0]} is past the rows the client's cloakmodel.2da has";
-            return false;
-        }
+        CNWBaseItem b = BaseItemOf((int)look->BaseItem);
+        if (b.IsNull || look->BaseItem == NuiModelGuard.CloakBaseItem) return true;
         var names = new string[3];
-        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), models, names);
+        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), new ReadOnlySpan<ushort>(look->Models, LookModels), names);
         for (int i = 0; i < n; i++)
             if (!CX.Alloy.ModelFeed.Present(names[i])) { why = $"the client has no model '{names[i]}' for base item {look->BaseItem}"; return false; }
         return true;
@@ -377,10 +398,9 @@ internal static unsafe class NuiItemIcons
     /// None for armour, or when the client has no base item for it.</summary>
     internal static int ModelNamesOf(IntPtr item, string[] into)
     {
-        IntPtr rules = *(IntPtr*)_rules;
-        if (rules == IntPtr.Zero || item == IntPtr.Zero) return 0;
+        if (item == IntPtr.Zero) return 0;
         var v = new CNWCItem(item);
-        var b = new CNWBaseItem(EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, v.BaseItem));
+        CNWBaseItem b = BaseItemOf(v.BaseItem);
         return b.IsNull ? 0 : NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), v.Models, into);
     }
 
@@ -388,12 +408,8 @@ internal static unsafe class NuiItemIcons
     /// False when the text does not parse or <paramref name="dst"/> is shorter than that.</summary>
     internal static bool ReadLookPartColors(string text, Span<byte> dst)
     {
-        byte* b = stackalloc byte[512];
-        if (text.Length >= 511 || dst.Length < LookPartColors) return false;
-        for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
-        b[text.Length] = 0;
         Look look;
-        if (!ParseLook(b, &look)) return false;
+        if (dst.Length < LookPartColors || !ParseLookText(text, &look)) return false;
         new Span<byte>(look.PartColors, LookPartColors).CopyTo(dst);
         return true;
     }
@@ -416,9 +432,8 @@ internal static unsafe class NuiItemIcons
     /// <summary>The <c>INVENTORY_SLOT_*</c> bits the item's base item can sit in, or zero.</summary>
     internal static uint EquipMask(IntPtr item)
     {
-        IntPtr rules = *(IntPtr*)_rules;
-        if (rules == IntPtr.Zero || item == IntPtr.Zero) return 0;
-        var b = new CNWBaseItem(EngineFn.GetBaseItem(new CNWRules(rules).BaseItems, new CNWCItem(item).BaseItem));
+        if (item == IntPtr.Zero) return 0;
+        CNWBaseItem b = BaseItemOf(new CNWCItem(item).BaseItem);
         return b.IsNull ? 0 : b.EquipSlots;
     }
 

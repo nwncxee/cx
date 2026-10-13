@@ -114,7 +114,7 @@ public sealed unsafe class HeldImageService : IExtenderService
                 DrawItem(s.Minted, mx, my, px, alpha);
                 break;
             case HeldKind.Model:
-                DrawModel(s.Model.Name["@model:".Length..], mx, my, px, alpha);
+                DrawModel(s.Model.ModelKey, mx, my, px, alpha);
                 break;
         }
     }
@@ -149,7 +149,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         else if (m.Kind == HeldKind.Other) Notice(s, $"'{m.Name}' is not an image this client draws -- only the cursor changes");
     }
 
-    /// <summary>The server's look for a hold, read when the policy moves: size, cursor and grace, each back to its default when released.</summary>
+    /// <summary>The server's look for a hold, read when the policy moves: size, cursor, opacity, pick opacity, offset and grace, each back to its default when released.</summary>
     internal static void ReadLook(HeldState s, int epoch)
     {
         s.LookEpoch = epoch;

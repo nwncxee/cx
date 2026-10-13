@@ -37,6 +37,8 @@ internal sealed class HeldImageModel
     public string Name { get; private set; } = "";
     /// <summary>The item id for <see cref="HeldKind.Item"/>, as the server's <c>ObjectToString</c> reads.</summary>
     public uint Oid { get; private set; }
+    /// <summary>The model view's key for <see cref="HeldKind.Model"/>, else empty.</summary>
+    public string ModelKey { get; private set; } = "";
     public bool Active => Kind != HeldKind.None;
     /// <summary>True while the shown image is a pick the server has not answered.</summary>
     public bool Pending { get; private set; }
@@ -103,6 +105,7 @@ internal sealed class HeldImageModel
         Kind = kind;
         Name = kind == HeldKind.None ? "" : value;
         Oid = oid;
+        ModelKey = kind == HeldKind.Model ? value[NuiModelView.Prefix.Length..] : "";
         return changed;
     }
 
@@ -123,7 +126,7 @@ internal sealed class HeldImageModel
             return n > 0 ? HeldKind.Item : HeldKind.Other;
         }
         if (value.StartsWith("@look:", StringComparison.Ordinal)) return HeldKind.Look;
-        if (value.StartsWith("@model:", StringComparison.Ordinal)) return value.Length > "@model:".Length ? HeldKind.Model : HeldKind.Other;
+        if (value.StartsWith(NuiModelView.Prefix, StringComparison.Ordinal)) return value.Length > NuiModelView.Prefix.Length ? HeldKind.Model : HeldKind.Other;
         if (value.Length > ResrefMax) return HeldKind.Other;
         foreach (char c in value)
             if (!(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_')) return HeldKind.Other;
@@ -161,9 +164,10 @@ internal sealed class HeldImageModel
         m.Update(6, true, "@look:0010", 11, true, 2200);
         check.Expect(m.Kind == HeldKind.Look, "@look: is a look");
         m.Update(7, true, "@model:doll", 11, true, 2200);
-        check.Expect(m.Kind == HeldKind.Model && m.Active, "a model view name is a model view");
+        check.Expect(m.Kind == HeldKind.Model && m.Active && m.ModelKey == "doll", "a model view name is a model view, keyed by what follows the prefix");
         m.Update(7, true, "@model:", 11, true, 2200);
         check.Expect(m.Kind == HeldKind.Other && m.Active, "a model view with no key is held but not drawable");
+        check.Expect(m.ModelKey == "", "a model view with no key has none");
         m.Update(8, true, "has space", 11, true, 2200);
         check.Expect(m.Kind == HeldKind.Other, "a malformed resref is not drawn");
         m.Update(9, true, "abcdefghijklmnopq", 11, true, 2200);

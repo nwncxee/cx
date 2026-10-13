@@ -334,10 +334,11 @@ internal static unsafe class GuiPass
         return true;
     }
 
-    /// <summary>The framebuffer a model view's layer draws into: <paramref name="tex"/> as colour, a depth the size of the
-    /// layer. Re-attached every flush, since GL reuses freed names.</summary>
+    /// <summary>The index of the model view slot that draws into <paramref name="tex"/>, or 0.</summary>
     private static int SlotOf(uint tex) => CX.Services.Nui.NuiModelDoll.OfTexture(tex)?.Index ?? 0;
 
+    /// <summary>The framebuffer a model view's layer draws into: <paramref name="tex"/> as colour, a depth the size of the
+    /// layer. Re-attached every flush, since GL reuses freed names.</summary>
     private static uint ModelTarget(uint tex, int w, int h, int k)
     {
         if (_gl.ModelFbo == 0) { uint f; Gl.GenFramebuffers(1, &f); _gl.ModelFbo = f; }

@@ -25,6 +25,8 @@ public static class ServerPolicy
     public const byte EventMinor = 0x48;    // not-an-offset: a message opcode
     /// <summary>Bounds one message's line count; a pathological payload is refused whole.</summary>
     public const int MaxLines = 512;
+    /// <summary>The most component properties held at once; a new key past it is refused.</summary>
+    public const int MaxProps = 4096;
 
     private static readonly Dictionary<string, string> _props = new(StringComparer.OrdinalIgnoreCase);
     private static readonly List<Knob> _held = new();
@@ -67,12 +69,12 @@ public static class ServerPolicy
     public static int Apply(string payload)
     {
         string[] lines = payload.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (lines.Length > MaxLines) { Log?.Info($"ServerPolicy: refusing {lines.Length} lines (> {MaxLines})"); PolicyRefusals.Add(RefusalKind.Line, "(whole message)", $"{lines.Length} lines", $"more than {MaxLines} lines"); return 0; }
+        if (lines.Length > MaxLines) { Refuse(RefusalKind.Line, "(whole message)", $"{lines.Length} lines", $"more than {MaxLines} lines"); return 0; }
         int n = 0;
         foreach (string line in lines)
         {
             int eq = line.IndexOf('=');
-            if (eq <= 0) { Log?.Info($"ServerPolicy: ignoring malformed line '{line}'"); PolicyRefusals.Add(RefusalKind.Line, line, "", "no '=' in the line"); continue; }
+            if (eq <= 0) { Refuse(RefusalKind.Line, line, "", "no '=' in the line"); continue; }
             if (Set(line[..eq].Trim(), line[(eq + 1)..].Trim())) n++;
         }
         Log?.Info($"ServerPolicy: applied {n}/{lines.Length} line(s); {Count} key(s) held");
@@ -96,11 +98,11 @@ public static class ServerPolicy
             }
         if (KnobGroup.Find(key) is { } k)
         {
-            if (!Holdable(key)) { Log?.Info($"ServerPolicy: {key} is not a server-holdable knob -- refused"); PolicyRefusals.Add(RefusalKind.Knob, key, value, "not a knob a server may hold"); return false; }
+            if (!Holdable(key)) return Refuse(RefusalKind.Knob, key, value, "not a knob a server may hold");
             lock (_lock)
             {
                 if (value.Length == 0) { k.Release(); _held.Remove(k); }
-                else if (!k.Enforce(value)) { Log?.Info($"ServerPolicy: {key} refused value '{value}'"); PolicyRefusals.Add(RefusalKind.Knob, key, value, "the knob does not take that value"); return false; }
+                else if (!k.Enforce(value)) return Refuse(RefusalKind.Knob, key, value, "the knob does not take that value");
                 else if (!_held.Contains(k)) _held.Add(k);
                 _epoch++;
             }
@@ -109,12 +111,35 @@ public static class ServerPolicy
         }
         lock (_lock)
         {
+            if (value.Length > 0 && _props.Count >= MaxProps && !_props.ContainsKey(key))
+                return Refuse(RefusalKind.Property, key, value, $"{MaxProps} properties are held already");
             if (value.Length == 0) _props.Remove(key); else _props[key] = value;
             _stamp[key] = ++_epoch;
+            if (_stamp.Count > 2 * MaxProps) ForgetStamps();
         }
         PolicyRefusals.Forget(key);
         return true;
     }
+
+    /// <summary>A line the client did not take: logged and listed by <c>/policy</c>. Always false, for the caller to return.</summary>
+    private static bool Refuse(RefusalKind kind, string key, string value, string reason)
+    {
+        Log?.Info($"ServerPolicy: refused '{key}': {reason}");
+        PolicyRefusals.Add(kind, key, value, reason);
+        return false;
+    }
+
+    /// <summary>Drops the stamps of keys no longer held, once they outnumber the properties a server may hold twice over.
+    /// A reader waiting on a released key that a server has since flooded past sees its answer as never sent.</summary>
+    private static void ForgetStamps()
+    {
+        var drop = new List<string>();
+        foreach (string k in _stamp.Keys) if (!_props.ContainsKey(k)) drop.Add(k);
+        foreach (string k in drop) _stamp.Remove(k);
+    }
+
+    /// <summary>Stamps kept now, held keys and released ones. For the self-check only.</summary>
+    internal static int Stamps { get { lock (_lock) return _stamp.Count; } }
 
     private static void ReleasePrefix(string prefix)
     {
@@ -237,6 +262,13 @@ public static class ServerPolicy
         check.Expect(!TryGet("inv.title", out _) && TryGet("other.x", out _), "prefix release");
         Set("*", "");
         check.Expect(Count == 0, "total release");
+        int took = 0;
+        for (int i = 0; i < 4097; i++) if (Set("p" + i, "1")) took++;
+        check.Expect(took == 4096 && Count == 4096 && Set("p0", "2"), "4096 properties are held, the next new one is refused, a held one still changes");
+        Set("*", "");
+        for (int i = 0; i < 10_000; i++) { Set("q" + i, "1"); Set("q" + i, ""); }
+        check.Expect(Stamps <= 8192, "the stamps of released keys stop growing at twice the property limit");
+        Clear();
         log.Info(check.Ok ? "ServerPolicy.SelfCheck: passed" : "ServerPolicy.SelfCheck: FAILED");
     }
 }

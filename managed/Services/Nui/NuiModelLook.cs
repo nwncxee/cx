@@ -16,16 +16,18 @@ internal readonly record struct ModelLight(bool Server, Vector3 Color, Vector3 D
 /// </summary>
 internal static class NuiModelLook
 {
-    /// <summary>The camera's nearest and farthest clip distance, in metres.</summary>
-    internal const float DefaultNear = 0.1f, DefaultFar = 2000f, MaxFar = 100000f;
+    /// <summary>The camera's nearest and farthest clip distance, in metres, and the range each end is clamped into.</summary>
+    internal const float DefaultNear = 0.1f, DefaultFar = 2000f, MinNear = 0.001f, MaxFar = 100000f;
+    /// <summary>The nearest a <c>zoom</c> range may bring the camera, in metres.</summary>
+    internal const float MinZoom = 0.01f;
     /// <summary>The most degrees the camera tips up or down.</summary>
     internal const float MaxPitch = 89f;
-    /// <summary>The widest a drag turn may range either side of <c>yaw</c>, in degrees.</summary>
+    /// <summary>The widest a drag turn may range either side of <c>yaw</c>, and a <c>rot</c> turn about each axis, in degrees.</summary>
     internal const float MaxTurn = 360f;
     /// <summary>The metres one scroll notch moves the camera, and its range.</summary>
     internal const float DefaultZoomStep = 0.25f, MinZoomStep = 0.01f, MaxZoomStep = 10f;
-    /// <summary>The ceiling of a light colour or ambient channel.</summary>
-    internal const float MaxLight = 4f;
+    /// <summary>The ceiling of a light colour or ambient channel, and of each part of a light direction before it is made unit length.</summary>
+    internal const float MaxLight = 4f, MaxDir = 1000f;
     /// <summary>The ambient a server light has until it names one, and the key light the engine's character preview uses.</summary>
     internal const float DefaultAmbient = 0.25f;
     internal static readonly Vector3 KeyDir = Vector3.Normalize(new Vector3(0.35f, 0.5f, 0.8f));
@@ -69,14 +71,11 @@ internal static class NuiModelLook
     private static bool Num(string s, out float f) =>
         float.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out f) && float.IsFinite(f);
 
-    /// <summary>The widest a <c>rot</c> turn may be about each axis, in degrees.</summary>
-    internal const float MaxRot = 360f;
-
     /// <summary>The turn <c>rot</c> names, <c>x,y,z</c> degrees, each clamped to -360..360: about the model's x axis, then its y, then its z. Anything that
     /// is not three numbers, and the empty value, is no turn.</summary>
     internal static Quaternion Rotation(string v)
     {
-        if (!Triple(v, -MaxRot, MaxRot, out Vector3 d)) return Quaternion.Identity;
+        if (!Triple(v, -MaxTurn, MaxTurn, out Vector3 d)) return Quaternion.Identity;
         const float Rad = MathF.PI / 180f;
         return Quaternion.Concatenate(Quaternion.Concatenate(Quaternion.CreateFromAxisAngle(Vector3.UnitX, d.X * Rad),
                                                              Quaternion.CreateFromAxisAngle(Vector3.UnitY, d.Y * Rad)),
@@ -118,9 +117,8 @@ internal static class NuiModelLook
         return Triple(v, 0f, MaxLight, out r);
     }
 
-    /// <summary>The backdrop <c>bg</c> names into <paramref name="into"/> (four floats, <c>r,g,b,a</c>): <c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c>, or up to four numbers
-    /// in 0-1, where a missing one is 0. False when the text is not one of those (a malformed hex value, a part that is not a number): the backdrop is then clear for hex
-    /// and has 0 for each bad number. An empty value is clear and true.</summary>
+    /// <summary>The backdrop <c>bg</c> names into <paramref name="into"/> (four floats, <c>r,g,b,a</c>): <c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c>, or up to four
+    /// finite numbers clamped to 0-1, where a missing one is 0. Anything else is false and a clear backdrop. An empty value is clear and true.</summary>
     internal static bool Background(string v, Span<float> into)
     {
         into.Clear();
@@ -132,14 +130,13 @@ internal static class NuiModelLook
             return true;
         }
         string[] p = v.Split(',');
-        bool ok = true;
+        if (p.Length > into.Length) return false;
         for (int i = 0; i < p.Length; i++)
         {
-            bool read = float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f);
-            ok &= read;
-            if (read && i < 4) into[i] = f;
+            if (!Num(p[i], out float f)) { into.Clear(); return false; }
+            into[i] = Math.Clamp(f, 0f, 1f);
         }
-        return ok;
+        return true;
     }
 
     /// <summary>The light the four <c>light</c> settings describe. Anything but <c>server</c> in <paramref name="mode"/> is the engine's.</summary>
@@ -147,7 +144,7 @@ internal static class NuiModelLook
     {
         if (mode.Trim() != "server") return EngineLight;
         Vector3 c = Colour(color, out Vector3 cv) ? cv : Vector3.One;
-        Vector3 d = Triple(dir, -1000f, 1000f, out Vector3 dv) && dv.LengthSquared() > 1e-8f ? Vector3.Normalize(dv) : KeyDir;
+        Vector3 d = Triple(dir, -MaxDir, MaxDir, out Vector3 dv) && dv.LengthSquared() > 1e-8f ? Vector3.Normalize(dv) : KeyDir;
         Vector3 a = Colour(ambient, out Vector3 av) ? av : new Vector3(DefaultAmbient);
         return new ModelLight(true, c, d, a);
     }
@@ -188,8 +185,10 @@ internal static class NuiModelLook
         Background("0.1,0.2,0.3,0.4", bg);
         check.Expect(bg[0] == 0.1f && bg[1] == 0.2f && bg[2] == 0.3f && bg[3] == 0.4f, "bg numbers still read");
         check.Expect(Background("0.1,0.2", bg) && bg[2] == 0f, "bg numbers: a missing one is 0 and the text is valid");
-        check.Expect(!Background("0.5,x", bg) && bg[0] == 0.5f && bg[1] == 0f && bg[3] == 0f, "bg numbers: a bad one is 0 and the text is not valid");
-        check.Expect(!Background("0.1,0.2,0.3,0.4,x", bg) && bg[3] == 0.4f, "a bad part past the fourth still makes the text invalid");
+        check.Expect(!Background("0.5,x", bg) && bg[0] == 0f && bg[1] == 0f && bg[3] == 0f, "bg numbers: a bad one makes the text invalid and the backdrop clear");
+        check.Expect(!Background("0.1,0.2,0.3,0.4,x", bg) && bg[0] == 0f && bg[3] == 0f, "five parts are invalid and clear");
+        check.Expect(Background("2,-1,0.5,9", bg) && bg[0] == 1f && bg[1] == 0f && bg[2] == 0.5f && bg[3] == 1f, "bg numbers are clamped to 0-1");
+        check.Expect(!Background("NaN,0,0,1", bg) && !Background("0,Infinity,0,1", bg) && bg[0] == 0f && bg[3] == 0f, "a non-finite bg number is invalid and clear");
         check.Expect(!Background("#12345", bg) && bg[0] == 0f && bg[1] == 0f && bg[2] == 0f && bg[3] == 0f, "a malformed hex bg is invalid and clear");
         check.Expect(Background("", bg) && bg[3] == 0f, "an empty bg is clear and valid");
         check.Expect(Background("#FF000080", bg) && Background("0.1,0.2,0.3,0.4", bg), "a good hex and good numbers are valid");

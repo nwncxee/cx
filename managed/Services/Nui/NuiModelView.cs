@@ -17,7 +17,8 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiModelView
 {
-    private const string Prefix = "@model:";
+    /// <summary>What every model view's image name starts with: <c>@model:</c> then the view's key.</summary>
+    internal const string Prefix = "@model:";
     private const string KeyRoot = "model.";
     private const int DefaultSize = 256, MaxSize = 1024, MaxKey = 48;
     /// <summary>The camera a view has until its server says otherwise: the view angle in degrees, the distance from and height above the creature in metres.</summary>
@@ -26,6 +27,8 @@ internal static unsafe class NuiModelView
     private const float MaxDist = 1000f, MaxAngle = 170f, MaxHeight = 1000f;
     /// <summary>The most degrees a pixel of drag may turn the doll.</summary>
     private const float MaxDrag = 10f;
+    /// <summary>The range of a positive <c>fit</c>, the room the framing leaves round the model.</summary>
+    private const float MinFitPad = 0.1f, MaxFitPad = 10f;
     /// <summary><c>SDL_BUTTON_LMASK</c> in <c>SDL_GetMouseState</c>'s answer.</summary>
     private const uint SdlLeftMask = 1;
 
@@ -64,11 +67,12 @@ internal static unsafe class NuiModelView
         /// <summary>What <c>target</c> names, what the built doll was made from, and whether it plays the creature's idle (<see cref="PoseMode.Idle"/>).</summary>
         public Target Tgt, BuiltTgt;
         public bool BuiltIdle;
-        /// <summary>The <c>anim</c> mode, the animation it names, its <c>animspeed</c> and <c>animloop</c>, and the form last played ("" = none yet).</summary>
+        /// <summary>The <c>anim</c> mode, the animation it names, its <c>animspeed</c> and <c>animloop</c>, and the form last played (null = none on this doll yet).</summary>
         public PoseMode Pose = PoseMode.Idle;
-        public string PoseName = "", Played = "";
+        public string PoseName = "";
         public float PoseSpeed = 1f;
         public bool PoseLoop = true;
+        public PoseForm? Played;
         /// <summary>Is the doll framed from its bounds where the server fixes no <c>dist</c> or <c>height</c> (unless <c>fit</c> is 0), and the framing found.</summary>
         public bool Fit = true, HasBox, Measured;
         public float FitPad = 1f, ZoneLo, ZoneHi;
@@ -90,6 +94,9 @@ internal static unsafe class NuiModelView
         public bool Dragging;
         public int LastX;
     }
+
+    /// <summary>A named animation as the server asked for it: what <see cref="PoseDue"/> compares, field by field.</summary>
+    private readonly record struct PoseForm(string Name, float Speed, bool Loop);
 
     private sealed class ViewState
     {
@@ -137,38 +144,81 @@ internal static unsafe class NuiModelView
 
     private static string Policy(string key, string what, string def) => ServerPolicy.Str($"{KeyRoot}{key}.{what}", def);
 
-    private static float PolicyF(string key, string what, float def)
+    private static float F(string key, string what, float def) => ServerPolicy.Float($"{KeyRoot}{key}.{what}", def);
+
+    /// <summary>A number setting clamped into <paramref name="lo"/>..<paramref name="hi"/>; one that is not a finite number is recorded and the default stands.</summary>
+    private static float Number(string key, string what, float def, float lo, float hi) => Math.Clamp(F(key, what, def), lo, hi);
+
+    /// <summary>A number setting the view may go without: null when it is unset or not a finite number (recorded), so the view
+    /// decides as if the server had not sent it; else clamped into <paramref name="lo"/>..<paramref name="hi"/>.</summary>
+    private static float? Optional(string key, string what, float lo, float hi)
     {
-        string raw = Policy(key, what, "");
-        if (float.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out float v)) return v;
-        return Refuse(key, what, raw, "not a number", def);
+        float f = F(key, what, float.NaN);
+        return float.IsNaN(f) ? null : Math.Clamp(f, lo, hi);
     }
 
+    /// <summary>The server's <c>yaw</c>, wrapped into one turn.</summary>
+    private static float Yaw(string key) => F(key, "yaw", 0f) % 360f;
+
     /// <summary>A model setting the view could not use: recorded for <c>/policy</c> when it holds text, and the default stands.</summary>
-    private static T Refuse<T>(string key, string what, string raw, string reason, T def)
+    private static void Refuse(string key, string what, string raw, string reason)
     {
         if (raw.Length > 0) PolicyRefusals.Add(RefusalKind.Model, $"{KeyRoot}{key}.{what}", raw, reason);
-        return def;
     }
 
     private static bool PairOf(string key, string what, float lo, float hi, out float a, out float b)
     {
         string raw = Policy(key, what, "");
         bool ok = NuiModelLook.Pair(raw, lo, hi, out a, out b);
-        if (!ok) Refuse(key, what, raw, $"needs 'min,max' inside {lo}..{hi}, min not above max", 0);
+        if (!ok) Refuse(key, what, raw, $"needs 'min,max' inside {lo}..{hi}, min not above max");
         return ok;
+    }
+
+    /// <summary>The camera's <c>clip</c>, each end clamped; the default, and recorded, when it is unreadable or <c>near</c> is not below <c>far</c>.</summary>
+    private static bool Clip(string key, out float near, out float far)
+    {
+        near = NuiModelLook.DefaultNear;
+        far = NuiModelLook.DefaultFar;
+        if (!PairOf(key, "clip", NuiModelLook.MinNear, NuiModelLook.MaxFar, out float n, out float f)) return false;
+        if (n >= f) { Refuse(key, "clip", Policy(key, "clip", ""), "needs near below far"); return false; }
+        near = n;
+        far = f;
+        return true;
+    }
+
+    /// <summary>The <c>fitzone</c> slice; none (both 0), and recorded, when it is unreadable or has no height.</summary>
+    private static bool Zone(string key, out float lo, out float hi)
+    {
+        if (!PairOf(key, "fitzone", 0f, 1f, out lo, out hi)) return false;
+        if (lo < hi) return true;
+        Refuse(key, "fitzone", Policy(key, "fitzone", ""), "needs lo below hi");
+        lo = hi = 0f;
+        return false;
+    }
+
+    /// <summary>Record a <c>light</c> that is neither <c>engine</c> nor <c>server</c>, and a server light's settings that do not read.</summary>
+    private static void CheckLight(string key)
+    {
+        string mode = Policy(key, "light", "").Trim();
+        if (mode == "server")
+        {
+            CheckColour(key, "lightcolor");
+            CheckTriple(key, "lightdir", -NuiModelLook.MaxDir, NuiModelLook.MaxDir);
+            CheckColour(key, "lightambient");
+        }
+        else if (mode is not ("" or "engine")) Refuse(key, "light", mode, "needs 'engine' or 'server'");
     }
 
     private static void CheckColour(string key, string what)
     {
         string raw = Policy(key, what, "");
-        if (raw.Length > 0 && !NuiModelLook.Colour(raw, out _)) Refuse(key, what, raw, "needs '#RRGGBB', '#RRGGBBAA' or 'r,g,b'", 0);
+        if (raw.Length > 0 && !NuiModelLook.Colour(raw, out _)) Refuse(key, what, raw, "needs '#RRGGBB', '#RRGGBBAA' or 'r,g,b'");
     }
 
     private static void CheckTriple(string key, string what, float lo, float hi)
     {
         string raw = Policy(key, what, "");
-        if (raw.Length > 0 && !NuiModelLook.Triple(raw, lo, hi, out _)) Refuse(key, what, raw, "needs three numbers 'x,y,z'", 0);
+        if (raw.Length > 0 && !NuiModelLook.Triple(raw, lo, hi, out _)) Refuse(key, what, raw, "needs three numbers 'x,y,z'");
     }
 
     private static (int, int, bool) SizeOf(string key)
@@ -177,7 +227,7 @@ internal static unsafe class NuiModelView
         int x = v.IndexOf('x');
         if (x > 0 && int.TryParse(v.AsSpan(0, x), out int w) && int.TryParse(v.AsSpan(x + 1), out int h)
             && w is > 0 and <= MaxSize && h is > 0 and <= MaxSize) return (w, h, true);
-        Refuse(key, "size", v, $"needs '<w>x<h>', each 1-{MaxSize}", 0);
+        Refuse(key, "size", v, $"needs '<w>x<h>', each 1-{MaxSize}");
         return (DefaultSize, DefaultSize, false);
     }
 
@@ -328,8 +378,8 @@ internal static unsafe class NuiModelView
             if (v.Built) { Teardown(s, v, tex); }
             return;
         }
-        NuiModelGear.Plan(slot.Gear, v.Wear);
-        if (NuiModelGear.TakeRefusal(slot.Gear, out string wearItem, out string wearWhy)) Refuse(v.Key, "wear", wearItem, wearWhy, 0);
+        NuiModelGear.Plan(slot.Gear, v.Wear, Environment.TickCount64);
+        if (NuiModelGear.TakeRefusal(slot.Gear, out string wearItem, out string wearWhy)) Refuse(v.Key, "wear", wearItem, wearWhy);
         if (!v.Built)
         {
             if (v.BuildFailed) return;
@@ -343,7 +393,7 @@ internal static unsafe class NuiModelView
             v.BuiltTgt = v.Tgt;
             v.BuiltIdle = idle;
             v.HasBox = false;
-            v.Played = "";
+            RePose(v);
             NuiModelGear.TakeDirty(slot.Gear);
             if (v.Tgt.FollowsCreature) v.Info = NuiModelDoll.InfoOf(who).ToArray();
             if (slot.Doll.Creature != IntPtr.Zero)
@@ -367,7 +417,7 @@ internal static unsafe class NuiModelView
                 if (NuiModelDoll.Refresh(slot, who))
                 {
                     WearVfx(v, who);
-                    v.Played = "";
+                    RePose(v);
                     v.HasBox = false;
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the {(dressed ? "previewed gear" : "creature's appearance")} changed, the doll follows");
                 }
@@ -399,7 +449,7 @@ internal static unsafe class NuiModelView
     /// <summary>Record the part of the view's <c>vfx</c> the client will not wear. Run when the line is read and again when the doll is dressed, since the effects table can be unread at the first.</summary>
     private static void RefuseVfx(ViewData v)
     {
-        if (v.Vfx.Length > 0 && NuiModelVfx.Problem(v.Vfx, NuiModelTarget.VisualEffectRows(), out string part, out string why)) Refuse(v.Key, "vfx", v.Vfx, $"{part}: {why}", 0);
+        if (v.Vfx.Length > 0 && NuiModelVfx.Problem(v.Vfx, NuiModelTarget.VisualEffectRows(), out string part, out string why)) Refuse(v.Key, "vfx", v.Vfx, $"{part}: {why}");
     }
 
     /// <summary>The built NUI view the pointer is over, among those <paramref name="wants"/> accepts, or null.</summary>
@@ -502,13 +552,23 @@ internal static unsafe class NuiModelView
         }
     }
 
+    /// <summary>Is the named animation due: a new name, speed or loop, or a doll built since it last played? Due once: it is then marked played.</summary>
+    private static bool PoseDue(ViewData v)
+    {
+        if (v.Pose != PoseMode.Named) return false;
+        var want = new PoseForm(v.PoseName, v.PoseSpeed, v.PoseLoop);
+        if (v.Played == want) return false;
+        v.Played = want;
+        return true;
+    }
+
+    /// <summary>The doll was built again: its animation is due again.</summary>
+    private static void RePose(ViewData v) => v.Played = null;
+
     /// <summary>Play the named animation the server asked for, once per change of name, speed, loop or doll.</summary>
     private static void PlayPose(ViewState s, ViewData v)
     {
-        if (v.Pose != PoseMode.Named) return;
-        string form = $"{v.PoseName}|{v.PoseSpeed}|{v.PoseLoop}";
-        if (form == v.Played) return;
-        v.Played = form;
+        if (!PoseDue(v)) return;
         if (!NuiModelPose.Play(v.Slot.Doll.Model, v.PoseName, v.PoseSpeed, v.PoseLoop))
             s.Log?.Always($"NuiModelView: '{v.Key}' -- the model has no animation '{v.PoseName}'");
     }
@@ -609,51 +669,40 @@ internal static unsafe class NuiModelView
         string target = Policy(v.Key, "target", "");
         v.BuildFailed = false;
         v.Tgt = NuiModelTarget.Parse(target);
-        if (v.Tgt.Kind == TargetKind.None) Refuse(v.Key, "target", target, "names no one: player, an object id, app:<row>, model:<resref> or item:<look>", 0);
-        float fit = PolicyF(v.Key, "fit", 1f);
+        if (v.Tgt.Kind == TargetKind.None) Refuse(v.Key, "target", target, "names no one: player, an object id, app:<row>, model:<resref> or item:<look>");
+        float fit = F(v.Key, "fit", 1f);
         v.Fit = fit != 0f;
-        PairOf(v.Key, "fitzone", 0f, 1f, out v.ZoneLo, out v.ZoneHi);
-        v.FitPad = fit > 0f ? Math.Clamp(fit, 0.1f, 10f) : 1f;
+        Zone(v.Key, out v.ZoneLo, out v.ZoneHi);
+        v.FitPad = fit > 0f ? Math.Clamp(fit, MinFitPad, MaxFitPad) : 1f;
         v.HasBox = false;
         v.FitDist = DefaultDist;
         v.FitCentre = new System.Numerics.Vector3(0f, 0f, DefaultHeight);
-        CheckTriple(v.Key, "rot", -NuiModelLook.MaxRot, NuiModelLook.MaxRot);
+        CheckTriple(v.Key, "rot", -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn);
         v.Rot = NuiModelLook.Rotation(Policy(v.Key, "rot", ""));
-        v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
-        v.Dist = Policy(v.Key, "dist", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist) : null;
-        v.Height = Policy(v.Key, "height", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight) : null;
-        v.Yaw = PolicyF(v.Key, "yaw", 0f);
-        v.Pitch = Math.Clamp(PolicyF(v.Key, "pitch", 0f), -NuiModelLook.MaxPitch, NuiModelLook.MaxPitch);
-        bool clip = PairOf(v.Key, "clip", 0.001f, NuiModelLook.MaxFar, out float near, out float far) && near < far;
-        v.ClipNear = clip ? near : NuiModelLook.DefaultNear;
-        v.ClipFar = clip ? far : NuiModelLook.DefaultFar;
-        bool zoom = PairOf(v.Key, "zoom", 0.01f, MaxDist, out float zmin, out float zmax);
-        v.ZoomMin = zoom ? zmin : 0f;
-        v.ZoomMax = zoom ? zmax : 0f;
-        v.ZoomStep = Math.Clamp(PolicyF(v.Key, "zoomstep", NuiModelLook.DefaultZoomStep), NuiModelLook.MinZoomStep, NuiModelLook.MaxZoomStep);
+        v.Angle = Number(v.Key, "angle", DefaultAngle, 1f, MaxAngle);
+        v.Dist = Optional(v.Key, "dist", 0f, MaxDist);
+        v.Height = Optional(v.Key, "height", -MaxHeight, MaxHeight);
+        v.Yaw = Yaw(v.Key);
+        v.Pitch = Number(v.Key, "pitch", 0f, -NuiModelLook.MaxPitch, NuiModelLook.MaxPitch);
+        Clip(v.Key, out v.ClipNear, out v.ClipFar);
+        bool zoom = PairOf(v.Key, "zoom", NuiModelLook.MinZoom, MaxDist, out v.ZoomMin, out v.ZoomMax);
+        v.ZoomStep = Number(v.Key, "zoomstep", NuiModelLook.DefaultZoomStep, NuiModelLook.MinZoomStep, NuiModelLook.MaxZoomStep);
         v.ZoomAt = NuiModelLook.ZoomAfterPolicy(v.ZoomAt, zoom, v.ZoomMin, v.ZoomMax);
-        v.HasTurnRange = PairOf(v.Key, "dragrange", -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn, out float tmin, out float tmax);
-        v.TurnMin = v.HasTurnRange ? tmin : 0f;
-        v.TurnMax = v.HasTurnRange ? tmax : 0f;
+        v.HasTurnRange = PairOf(v.Key, "dragrange", -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn, out v.TurnMin, out v.TurnMax);
         v.DragYaw = NuiModelLook.TurnAfterPolicy(v.DragYaw, v.HasTurnRange, v.TurnMin, v.TurnMax);
-        v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
-        if (Policy(v.Key, "light", "").Trim() == "server")
-        {
-            CheckColour(v.Key, "lightcolor");
-            CheckTriple(v.Key, "lightdir", -1000f, 1000f);
-            CheckColour(v.Key, "lightambient");
-        }
+        v.MuteVfx = F(v.Key, "vfxmute", 0f) != 0f;
+        CheckLight(v.Key);
         NuiModelDoll.SetLight(v.Slot, NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
-        v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
+        v.Drag = Number(v.Key, "drag", 0f, 0f, MaxDrag);
         string anim = Policy(v.Key, "anim", "");
         v.Pose = NuiModelPose.Parse(anim, out v.PoseName);
         if (v.Pose == PoseMode.Idle && !float.TryParse(anim.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _))
-            Refuse(v.Key, "anim", anim, "not a number or an animation name (letters, digits, underscore)", 0);
-        v.PoseSpeed = Math.Clamp(PolicyF(v.Key, "animspeed", 1f), NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
-        v.PoseLoop = PolicyF(v.Key, "animloop", 1f) != 0f;
+            Refuse(v.Key, "anim", anim, "not a number or an animation name (letters, digits, underscore)");
+        v.PoseSpeed = Number(v.Key, "animspeed", 1f, NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
+        v.PoseLoop = F(v.Key, "animloop", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
         NuiModelGear.GearState gear = v.Slot.Gear;
-        if (gear.RefusedWhy.Length > 0 && gear.PreviewText == v.Wear) Refuse(v.Key, "wear", gear.RefusedItem, gear.RefusedWhy, 0);
+        if (gear.RefusedWhy.Length > 0 && gear.PreviewText == v.Wear) Refuse(v.Key, "wear", gear.RefusedItem, gear.RefusedWhy);
         string vfx = Policy(v.Key, "vfx", "");
         if (vfx != v.Vfx || v.MuteVfx != v.WornMuted)
         {
@@ -666,7 +715,7 @@ internal static unsafe class NuiModelView
         RefuseVfx(v);
         string bgRaw = Policy(v.Key, "bg", "");
         Span<float> bg = stackalloc float[4];
-        if (!NuiModelLook.Background(bgRaw, bg)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'", 0);
+        if (!NuiModelLook.Background(bgRaw, bg)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'");
         NuiModelDoll.SetBackground(v.Slot, bg[0], bg[1], bg[2], bg[3]);
         if (v.Built) ApplyCamera(v);
         string standin = Policy(v.Key, "standin", "");
@@ -776,6 +825,36 @@ internal static unsafe class NuiModelView
                      "a size and a vfx part that are not readable are recorded");
         ServerPolicy.Apply("model.t.*=");
         check.Expect(PolicyRefusals.All().Length == 0, "releasing the view's keys clears its refusals");
+        ServerPolicy.Apply("model.t.angle=NaN\nmodel.t.pitch=-Infinity\nmodel.t.dist=NaN\nmodel.t.height=12");
+        check.Expect(Number("t", "angle", 30f, 1f, 170f) == 30f && Number("t", "pitch", 0f, -89f, 89f) == 0f, "a non-finite number is the default");
+        check.Expect(Optional("t", "dist", 0f, 1000f) == null && Optional("t", "height", -1000f, 1000f) == 12f && Optional("t", "fit", 0f, 1f) == null,
+                     "a non-finite dist is as if unset, so the framing decides; a good one is kept and an absent one is unset");
+        got = PolicyRefusals.All();
+        check.Expect(got.Length == 3 && got[0].Key == "model.t.angle" && got[0].Kind == RefusalKind.Model && got[2].Key == "model.t.dist", "each non-finite number is recorded");
+        ServerPolicy.Apply("model.t.yaw=3e38");
+        check.Expect(Yaw("t") is > -360f and < 360f, "a huge finite yaw still lands inside one turn");
+        ServerPolicy.Apply("model.t.yaw=-450");
+        check.Expect(Yaw("t") == -90f, "a yaw past a full turn wraps");
+        ServerPolicy.Apply("model.t.clip=5,5");
+        check.Expect(!Clip("t", out float near, out float far) && near == NuiModelLook.DefaultNear && far == NuiModelLook.DefaultFar
+                     && PolicyRefusals.All()[^1].Key == "model.t.clip", "a clip with near not below far is the default and recorded");
+        ServerPolicy.Apply("model.t.clip=0.0001,5");
+        check.Expect(Clip("t", out near, out far) && near == 0.001f && far == 5f, "a clip end out of range is clamped");
+        ServerPolicy.Apply("model.t.fitzone=0.5,0.5");
+        check.Expect(!Zone("t", out _, out _) && PolicyRefusals.All()[^1].Key == "model.t.fitzone", "a fitzone with no height is recorded");
+        ServerPolicy.Apply("model.t.light=sun");
+        CheckLight("t");
+        check.Expect(PolicyRefusals.All()[^1].Key == "model.t.light", "a light that is neither engine nor server is recorded");
+        ServerPolicy.Apply("model.t.*=");
+        var pose = new ViewData { Pose = PoseMode.Named, PoseName = "ctaunt", PoseSpeed = 1.5f };
+        check.Expect(PoseDue(pose) && !PoseDue(pose), "a named animation is due once");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10; i++) PoseDue(pose);
+        check.Expect(GC.GetAllocatedBytesForCurrentThread() == before, "asking again each frame allocates nothing");
+        pose.PoseSpeed = 2f;
+        check.Expect(PoseDue(pose), "a new speed is due again");
+        RePose(pose);
+        check.Expect(PoseDue(pose), "a rebuilt doll plays it again");
         ServerPolicy.Clear();
         check.Expect(Lapsed(10000, 8000) && !Lapsed(10000, 9000) && !Lapsed(10000, 10000), "a card's view lapses after a second and a half unasked, not before");
     }

@@ -20,43 +20,49 @@ internal static class PanelParser
     /// <summary>The cards in <paramref name="json"/> (none for an empty array, which declares that the key has no card), or false with the reason the declaration was refused.</summary>
     public static bool TryParse(string json, out PanelDecl[] cards, out string error, PanelStyle? style = null)
     {
-        style ??= new PanelStyle();
-        cards = [];
-        error = "";
-        if (Encoding.UTF8.GetByteCount(json) > PanelLimits.MaxJsonBytes) { error = $"over {PanelLimits.MaxJsonBytes} bytes"; return false; }
-        try
+        PanelStyle st = style ?? new PanelStyle();
+        PanelDecl[] got = [];
+        bool ok = Read(json, 24, root =>
         {
-            using JsonDocument doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 24 });
-            JsonElement root = doc.RootElement;
             var list = new List<PanelDecl>();
             if (root.ValueKind == JsonValueKind.Array)
-                foreach (JsonElement e in root.EnumerateArray()) list.Add(Panel(e, style));
-            else list.Add(Panel(root, style));
+                foreach (JsonElement e in root.EnumerateArray()) list.Add(Panel(e, st));
+            else list.Add(Panel(root, st));
             if (list.Count > PanelLimits.MaxPanels || (list.Count == 0 && root.ValueKind != JsonValueKind.Array)) throw new Refusal($"{list.Count} cards (1-{PanelLimits.MaxPanels} allowed)");
-            cards = list.ToArray();
-            return true;
-        }
-        catch (Refusal r) { error = r.Message; }
-        catch (JsonException j) { error = "not JSON: " + j.Message; }
-        return false;
+            got = list.ToArray();
+        }, out error);
+        cards = got;
+        return ok;
     }
 
     /// <summary>The style in <paramref name="json"/> (one object of the card style fields) laid over the defaults, or false with the reason it was refused.</summary>
     public static bool TryParseStyle(string json, out PanelStyle style, out string error)
     {
-        style = new PanelStyle();
+        var st = new PanelStyle();
+        bool ok = Read(json, 8, root =>
+        {
+            if (root.ValueKind != JsonValueKind.Object) throw new Refusal("the style is a JSON object");
+            ReadStyle(root, st);
+        }, out error);
+        style = ok ? st : new PanelStyle();
+        return ok;
+    }
+
+    /// <summary>Runs <paramref name="read"/> over <paramref name="json"/> parsed at most <paramref name="depth"/> deep. False with the reason when
+    /// the text is too long, is not JSON, or <paramref name="read"/> refused it or met a value it cannot read.</summary>
+    private static bool Read(string json, int depth, Action<JsonElement> read, out string error)
+    {
         error = "";
         if (Encoding.UTF8.GetByteCount(json) > PanelLimits.MaxJsonBytes) { error = $"over {PanelLimits.MaxJsonBytes} bytes"; return false; }
         try
         {
-            using JsonDocument doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 8 });
-            if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new Refusal("the style is a JSON object");
-            ReadStyle(doc.RootElement, style);
+            using JsonDocument doc = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = depth });
+            read(doc.RootElement);
             return true;
         }
         catch (Refusal r) { error = r.Message; }
         catch (JsonException j) { error = "not JSON: " + j.Message; }
-        style = new PanelStyle();
+        catch (InvalidOperationException e) { error = "not readable: " + e.Message; }
         return false;
     }
 
@@ -141,6 +147,7 @@ internal static class PanelParser
             var l = new List<PanelImage>();
             foreach (JsonElement i in imgs.EnumerateArray())
             {
+                if (i.ValueKind != JsonValueKind.Object) throw new Refusal("an image is a JSON object");
                 string src = Str(i, "src", "");
                 if (src.Length is 0 or > PanelLimits.MaxIconName) throw new Refusal("an image needs a src");
                 l.Add(new PanelImage

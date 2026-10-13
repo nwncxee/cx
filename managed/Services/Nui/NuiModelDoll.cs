@@ -23,8 +23,8 @@ internal static unsafe class NuiModelDoll
     /// <summary>The most dolls alive at once, across NUI windows, cards and the held image. A view past the cap keeps its stand-in.</summary>
     internal const int MaxViews = 8;
     /// <summary>The engine's invalid object id, the value an id slot holds before <c>AddInternalObject</c> fills it.</summary>
-    /// <summary>The id the engine gives no object, and where a <c>CNWCObject</c> sits inside a <c>CNWCItem</c> (what the game-object array registers).</summary>
     internal const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
+    /// <summary>Where a <c>CNWCObject</c> sits inside a <c>CNWCItem</c>: what the game-object array registers.</summary>
     internal const int ItemObject = 0x48;   // not-an-offset: the CNWCObject inside a CNWCItem
     /// <summary>Character creation first-build flags for <c>SetAppearance</c>: body (with its parts), head, tail, wing and cloak; 0x40 would build the base body only.</summary>
     private const byte BuildFlags = 0x2f;   // not-an-offset: SetAppearance flag bits

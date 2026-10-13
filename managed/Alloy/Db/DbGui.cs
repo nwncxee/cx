@@ -603,16 +603,17 @@ internal static unsafe class DbGui
     /// <summary>GUI parts whose texture resolved through the master palette this session -- an item icon.</summary>
     private static long _pltParts;
 
-    /// <summary>This part's diffuse as a GL name: its per-instance override when it has one
-    /// (<c>Gob::ReplaceTexture</c> writes <see cref="SceneDb.PartTexId"/>), else the recipe's. 0 is the
-    /// untextured white the GUI program falls back on, and a texture that is not resident yet registers the
-    /// part as a dependent so its arrival re-dirties it.</summary>
+    /// <summary>Does this part draw with an environment map: flagged so itself, or through its texture (its per-instance override, else the recipe's)?</summary>
     private static bool EnvMapped(int p, int recipe)
     {
         int ov = SceneDb.PartTexId[p * 4];
         return SceneDb.PartEnvMapped(p) || TexRegistry.EnvMapped(ov != 0 ? new TexId((uint)ov) : DrawRecipe.Tex(recipe, 0));
     }
 
+    /// <summary>This part's diffuse as a GL name: its per-instance override when it has one
+    /// (<c>Gob::ReplaceTexture</c> writes <see cref="SceneDb.PartTexId"/>), else the recipe's. 0 is the
+    /// untextured white the GUI program falls back on, and a texture that is not resident yet registers the
+    /// part as a dependent so its arrival re-dirties it.</summary>
     private static uint Texture(int p, int recipe)
     {
         int ov = SceneDb.PartTexId[p * 4];

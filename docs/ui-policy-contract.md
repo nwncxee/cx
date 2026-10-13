@@ -54,7 +54,7 @@ server keeps the latest value for a repeated name is unconfirmed, so re-read the
 | `inventory.*=` | releases every key under the prefix |
 | `*=` | releases everything |
 
-At most 512 lines per message; a larger one is refused whole. Knob side effects a hold triggers run on the next
+At most 512 lines per message; a larger one is refused whole. The client holds at most 4096 properties, and a new key past that is refused. Knob side effects a hold triggers run on the next
 frame, never inside the inbound handler. Every hold and property is **session state**: the
 client drops them all at the next login (`HotkeyHandshakeService`), and nothing reaches `cx.cfg`. A module that
 wants a policy for the whole session sends it on every login.
@@ -89,7 +89,7 @@ NUI window underneath.
 `<image>` is a texture resref, `@item:<hex>`, `@look:<hex>` or `@model:<key>`, spelled as in a NUI image. Any other name (a malformed
 resref, a `@model:` with no key) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
 A `@model:<key>` is the model view of that key (see [Model views](#model-views)), `held.size` px on its longer side and in the view's own proportions.
-It counts toward the 8 live views, and its doll is built when the hold starts and taken down about a second and a half after it ends.
+It counts toward the 8 live views, and its doll is built when the hold starts and taken down 1.5 s after it ends.
 
 The hold ends on an empty value, on `held.image=` released by `*=`, and at the next login. It also ends by itself, so a
 lost empty line cannot leave a ghost:
@@ -331,7 +331,7 @@ inventory icon in its own colours. `@look:` draws the icon of an item described 
 arrives, and ends it when no declared card names the look any more or the card is released. A name that does not resolve
 draws nothing, never an error sprite. `@model:<key>` draws the model view of that key stretched to the image's `w` x `h` (see
 [Model views](#model-views)); a card names it in an `images` entry or an `icons` row. The doll is built while the card is on screen and
-taken down about a second and a half after it is not, so the first frame of a card shows no doll until it has been drawn once.
+taken down 1.5 s after it is not, so the first frame of a card shows no doll until it has been drawn once.
 A key with no stand-in shows nothing meanwhile, and `standin` is not used in a card.
 
 ### Limits
@@ -412,30 +412,30 @@ stand-in until they do.
 | `target` | what the doll shows: `player`; the hex object id of a creature (NWScript `ObjectToString`); `app:<row>`, a row of `appearance.2da` in decimal (0-65535), built with every part, colour and head at 0 (a row the client's `appearance.2da` does not have shows the stand-in); `model:<resref>`, any model by name (1-16 letters, digits and underscores; a model the client does not have shows the stand-in); or `item:<look>`, an item shown on its own, where `<look>` is an `@look:` string or the hex object id of an item the client knows (a look whose base item the client lacks, or whose model files it lacks, shows the stand-in, and so does an id that is not a creature or an item). Empty releases it | no one: the view shows the stand-in |
 | `standin` | a texture resref (a TGA, plain or RLE) | nothing: the image is transparent |
 | `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
-| `wear` | an `@look:` string, or the hex object id of an item the client knows, or several of them split on spaces, commas or semicolons. Each goes where its base item fits (a hand, the body, the head, the cloak), in place of what the target wears there. A look the client cannot build, by the checks `target` names, is left out and listed by `/policy`. Empty releases them | nothing |
+| `wear` | an `@look:` string, or the hex object id of an item the client knows, or several of them split on spaces, commas or semicolons. Each goes where its base item fits (a hand, the body, the head, the cloak), in place of what the target wears there. Up to 8 items; the rest are left out. A look the client cannot build, by the checks `target` names, and text that is neither a look nor a hex id are left out and listed by `/policy`. An id the client does not know yet is looked up again every half second, and after 10 s it is listed by `/policy` and no longer looked for. Empty releases them | nothing |
 | `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
 | `angle` | the camera's view angle in degrees, 1-170 | `30` |
 | `dist` | camera distance from the creature, in metres, 0-1000. The starting distance when `zoom` is set | the distance that fits the whole model (see `fit`) |
 | `height` | camera height above the creature's feet, in metres, -1000 to 1000 | the height of the middle of the model (see `fit`) |
-| `fit` | `0` stops the framing: a `dist` or `height` that is not set is `4` and `0.9`. A positive number frames the model and scales the room left round it, so `1.5` stands the camera further back than `1` | `1` |
-| `fitzone` | `lo,hi`: frame only this slice of a creature's height, as fractions with 0 the floor and 1 the top, so `0.75,1` is head and shoulders. The slice is no wider than it is tall, and no wider than the image's shape leaves room for, so a head slice fills a portrait image. A body made of parts is looked at along its head's own axis. Needs a creature target (`player`, an id or `app:`); anything else frames the whole model | the whole model |
+| `fit` | `0` stops the framing: a `dist` or `height` that is not set is `4` and `0.9`. A positive number, 0.1-10, frames the model and scales the room left round it, so `1.5` stands the camera further back than `1` | `1` |
+| `fitzone` | `lo,hi`: frame only this slice of a creature's height, as fractions with 0 the floor and 1 the top, so `0.75,1` is head and shoulders. The slice is no wider than it is tall, and no wider than the image's shape leaves room for, so a head slice fills a portrait image. A body made of parts is looked at along its head's own axis. `lo` must be below `hi`. Needs a creature target (`player`, an id or `app:`); anything else frames the whole model | the whole model |
 | `rot` | `x,y,z`: the model's own turn in degrees, each -360 to 360, about the x axis, then the y, then the z of the view (x right, y toward the viewer, z up). It turns the model, not the camera: `yaw` and `pitch` still move the camera round the turned model, and the doll is framed as it is shown. An item is stood up first (see below); `rot` turns it from there. Anything that is not three numbers is no turn | `0,0,0` |
-| `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
+| `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front. Past a full turn it wraps | `0` |
 | `drag` | degrees the doll turns for each pixel a left drag that began on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
-| `bg` | `r,g,b,a`, each 0-1, or a colour: `#RRGGBB` (opaque) or `#RRGGBBAA`. A malformed colour is the default | `0,0,0,0` |
+| `bg` | `r,g,b,a`, each 0-1 (a missing one is 0), or a colour: `#RRGGBB` (opaque) or `#RRGGBBAA`. A malformed value is the default | `0,0,0,0` |
 | `anim` | `0` leaves the doll still. An animation name (a letter, then letters, digits and underscores, up to 32) plays that animation, any the model has, for example `creadyr` (a combat stance), `ctaunt` or `cconjure1`; a name the model lacks leaves the doll in its rest pose and the client logs it once. Anything else is the creature's own idle. A creature's idle is part of the creature, so changing between the idle and another value rebuilds the doll | `1` |
 | `animspeed` | the rate a named animation plays at, 0.05-8 times its own | `1` |
 | `animloop` | `0` plays a named animation once and leaves the doll in its rest pose. Any other number loops it | `1` |
 | `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A part that is not a row, and a row past the end of the client's `visualeffects.2da`, are skipped, logged once and listed by `/policy` (see [Refused lines](#refused-lines-policy-says-which-and-why)). A new value replaces the old set. Empty releases it. `all` on its own (any case) copies the target's effects instead of a list (see Visual effects) | none |
 | `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound) | `0` |
 | `pitch` | degrees the camera tips down in place, -89 to 89. Negative looks up. The camera does not move | `0` |
-| `clip` | `near,far`: the camera's clip distances in metres, `near` 0.001 or more, `far` 100000 or less, `near` below `far`. Anything else is the default | `0.1,2000` |
+| `clip` | `near,far`: the camera's clip distances in metres, `near` 0.001 or more, `far` 100000 or less. `near` must be below `far`, or the default stands | `0.1,2000` |
 | `zoom` | `min,max`: a scroll over the image moves the camera between these distances in metres (0.01-1000, `min` no greater than `max`). Scroll up comes nearer. The first scroll starts from `dist`. The view takes the scroll, so the window under it does not. No `zoom` means no scroll | none |
 | `zoomstep` | metres one scroll notch moves the camera, 0.01-10 | `0.25` |
 | `dragrange` | `min,max` degrees (-360 to 360) the drag turn stays inside, counted from `yaw`: `-45,45` turns a quarter either way and stops. `drag` still sets the speed and `0` still turns the drag off. No `dragrange` turns freely | none |
-| `light` | `engine` shows the doll in the engine's character-preview light. `server` shows it in the light the three settings below describe | `engine` |
+| `light` | `engine` shows the doll in the engine's character-preview light. `server` shows it in the light the three settings below describe. Anything else is the default | `engine` |
 | `lightcolor` | `r,g,b` of a server light, each 0-4, or a colour: `#RRGGBB` or `#RRGGBBAA`, each channel 0-1 as written and the alpha ignored. A malformed colour is the default | `1,1,1` |
-| `lightdir` | `x,y,z`: the direction the light comes from, in the view's own frame (x right, y up, z toward the viewer). It is made unit length; all zero is the default | `0.35,0.5,0.8` |
+| `lightdir` | `x,y,z`: the direction the light comes from, in the view's own frame (x right, y up, z toward the viewer), each -1000 to 1000. It is made unit length; all zero is the default | `0.35,0.5,0.8` |
 | `lightambient` | `r,g,b` added whatever the surface faces, each 0-4, or a colour in the same hex form as `lightcolor` | `0.25,0.25,0.25` |
 
 **Framing.** Unless `fit` is `0`, the camera stands where the whole model is in view: the model's bounding box is covered by a
@@ -464,7 +464,7 @@ its settings, and each image NUI loads for it is a view with a doll. A card or t
 
 **Eight at once.** At most 8 model views are alive at the same time across NUI images, cards and the held image. A ninth stays
 what it was: a NUI image keeps its stand-in and a card or the held image draws nothing, and the client logs the refusal once. A view
-is alive while its NUI image is, and a card's or the held image's for about a second and a half after the last frame that drew it, so a card
+is alive while its NUI image is, and a card's or the held image's for 1.5 s after the last frame that drew it, so a card
 that is off screen frees its doll. Each doll costs a creature, a scene and a texture of the view's `size`, so keep the views a window
 needs small.
 

@@ -175,7 +175,7 @@ internal static unsafe class NuiModelTarget
     {
         item = IntPtr.Zero;
         if (_t.LoadModel == IntPtr.Zero) return IntPtr.Zero;
-        IntPtr src = NuiModelGear.WearItem(text, out bool minted);
+        IntPtr src = NuiModelGear.WearItem(text, out bool minted, out _);
         IntPtr copy = src == IntPtr.Zero ? IntPtr.Zero : minted ? src : NuiItemIcons.MintCopy(src);
         IntPtr model = copy == IntPtr.Zero ? IntPtr.Zero : LoadItem(copy, ModelSlot);
         if (model == IntPtr.Zero)
