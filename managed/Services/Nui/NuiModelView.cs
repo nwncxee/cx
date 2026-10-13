@@ -105,7 +105,7 @@ internal static unsafe class NuiModelView
         NuiModelTarget.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 5, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 6, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -283,6 +283,7 @@ internal static unsafe class NuiModelView
             if (v.Built) { Teardown(s, v, tex); }
             return;
         }
+        NuiModelGear.Plan(slot.Gear, v.Wear);
         if (!v.Built)
         {
             if (v.BuildFailed) return;
@@ -297,10 +298,11 @@ internal static unsafe class NuiModelView
             v.BuiltIdle = idle;
             v.HasBox = false;
             v.Played = "";
+            NuiModelGear.TakeDirty(slot.Gear);
             if (v.Tgt.FollowsCreature) v.Info = NuiModelDoll.InfoOf(who).ToArray();
             if (slot.Doll.Creature != IntPtr.Zero)
             {
-                NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who, v.Wear);
+                NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who);
                 NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
             }
             NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
@@ -310,18 +312,21 @@ internal static unsafe class NuiModelView
         else if (v.Target != tex) NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
         else if (slot.Doll.Creature != IntPtr.Zero)
         {
-            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who, v.Wear);
+            NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who);
             ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
-            if (v.Tgt.FollowsCreature && !now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
+            bool dressed = NuiModelGear.TakeDirty(slot.Gear);
+            bool moved = v.Tgt.FollowsCreature && !now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info);
+            if (dressed || moved)
             {
                 if (NuiModelDoll.Refresh(slot, who))
                 {
                     NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
                     v.Played = "";
                     v.HasBox = false;
-                    s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
+                    s.Log?.Always($"NuiModelView: '{v.Key}' -- the {(dressed ? "previewed gear" : "creature's appearance")} changed, the doll follows");
                 }
-                v.Info = now.ToArray();
+                if (moved) v.Info = now.ToArray();
+                NuiModelGear.Settled(slot.Gear);
             }
         }
         PlayPose(s, v);

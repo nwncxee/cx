@@ -319,6 +319,20 @@ internal static unsafe class NuiItemIcons
         return ParseLook(b, &look) ? Mint(&look) : IntPtr.Zero;
     }
 
+    /// <summary>The 114 per-part colours an <c>@look:</c> string carries into <paramref name="dst"/> (0xff = the base colour).
+    /// False when the text does not parse or <paramref name="dst"/> is shorter than that.</summary>
+    internal static bool ReadLookPartColors(string text, Span<byte> dst)
+    {
+        byte* b = stackalloc byte[512];
+        if (text.Length >= 511 || dst.Length < LookPartColors) return false;
+        for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
+        b[text.Length] = 0;
+        Look look;
+        if (!ParseLook(b, &look)) return false;
+        new Span<byte>(look.PartColors, LookPartColors).CopyTo(dst);
+        return true;
+    }
+
     /// <summary>A throwaway item that looks like <paramref name="item"/>: its base item, model parts, colours and gender read,
     /// every per-part colour left at the base. Zero when the engine makes none. The caller ends it with <see cref="Destroy"/>.</summary>
     internal static IntPtr MintCopy(IntPtr item)

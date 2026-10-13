@@ -34,7 +34,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `5`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `4` took no `@model:<key>` image `src`. `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `5`: `@model:<key>` NUI images draw a live model, up to 8 at once, a card or the held image can show one, and the target is a creature, an appearance row, a model name or an item (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `4` drew only a creature (the player or an object id) in any other pose than its idle, drew a creature whose model is not made of body parts (a hell hound, an ogre) as nothing, had no `fit`, and its camera stood at fixed defaults, so a large model overflowed its image. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
+| `cx_cap_modelview` | `6`: `model.<key>.wear` takes armour, a helmet and a cloak as well as hand items, and several items at once. `5` took only a hand item in `wear`, one at a time, and drew: `@model:<key>` NUI images draw a live model, up to 8 at once, a card or the held image can show one, and the target is a creature, an appearance row, a model name or an item (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `4` drew only a creature (the player or an object id) in any other pose than its idle, drew a creature whose model is not made of body parts (a hell hound, an ogre) as nothing, had no `fit`, and its camera stood at fixed defaults, so a large model overflowed its image. `3` showed one view at a time: with two windows open only the last loaded had its doll, and a card or the held image drew nothing for `@model:`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
@@ -392,7 +392,7 @@ stand-in until they do.
 | `target` | what the doll shows: `player`; the hex object id of a creature (NWScript `ObjectToString`); `app:<row>`, a row of `appearance.2da` in decimal (0-65535), built with every part, colour and head at 0; `model:<resref>`, any model by name (1-16 letters, digits and underscores); or `item:<look>`, an item shown on its own, where `<look>` is an `@look:` string or the hex object id of an item the client knows. Empty releases it | no one: the view shows the stand-in |
 | `standin` | a texture resref (a TGA, plain or RLE) | nothing: the image is transparent |
 | `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
-| `wear` | an `@look:` string, or the hex object id of an item the client knows. The doll wears it in the hand slot its base item fits, in place of what the target holds there. Empty releases it | nothing |
+| `wear` | an `@look:` string, or the hex object id of an item the client knows, or several of them split on spaces, commas or semicolons. Each goes where its base item fits (a hand, the body, the head, the cloak), in place of what the target wears there. Empty releases them | nothing |
 | `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
 | `angle` | the camera's view angle in degrees, 1-170 | `30` |
 | `dist` | camera distance from the creature, in metres, 0-1000. The starting distance when `zoom` is set | the distance that fits the whole model (see `fit`) |
@@ -451,11 +451,13 @@ as the engine draws it on the ground, a composite weapon whole. `wear` and `vfx`
 `item:` doll has no hands to wear in. A creature whose model lacks a hand node draws that hand's item at its root. Each of these costs
 what a creature doll costs.
 
-**Previewing an item.** `model.<key>.wear` puts an item the target does not hold into the doll's hand. It replaces what the
-target holds in that slot, and releasing the key brings the held item back. Send an item's look as the `@look:` string the
-server already builds for `@look:` icons. A client preview costs one extra throwaway item. It covers weapons and shields,
-the hand slots. A helmet, a cloak and armour are part of the body, so previewing them needs the server to equip a copy on
-a creature the client can see.
+**Previewing an item.** `model.<key>.wear` puts items the target does not wear on the doll: any number, split on spaces, commas or
+semicolons, each an `@look:` string or the hex id of an item the client knows. An item goes where its base item fits: a weapon or
+shield in the hand slot, armour in place of the body, a helmet on the head, a cloak on the back. The last item for a slot wins, and
+releasing the key brings back what the target wears. Send an item's look as the `@look:` string the server already builds for
+`@look:` icons; a hex id is looked up again twice a second until the client knows the item. Armour takes the item's model parts and
+colours (its per-part colours too, from an `@look:`), a cloak its model and colours. A preview costs a throwaway item per hand and
+helmet. A model number the game has no file for draws nothing new, and a helmet number with no model leaves the doll as it was.
 
 **Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
 CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
@@ -478,7 +480,7 @@ player's scroll replaces it until the window closes, and a `zoom` that changes p
 
 **Limits.** Eight views at a time. A card's or the held image's view takes its settings from the same `model.<key>.` lines, but
 not `standin`, `standinrect`, `drag` and `zoom`: those need a NUI image to stand in or take the pointer. A creature target
-must be a creature the client knows. A helmet and a cloak are part of the appearance record the doll copies, not hand items. The engine draws a cloak only
+must be a creature the client knows. A `wear` item that fits none of a hand, the body, the head and the cloak is ignored and logged. The engine draws a cloak only
 while the client's cloak option is on, so a doll shows none with it off.
 
 ## The inventory window's keys

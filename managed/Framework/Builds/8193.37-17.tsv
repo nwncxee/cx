@@ -1283,6 +1283,14 @@ rva	_ZN21CClientExoAppInternal27UpdateMouseCursorAppearanceEi	0x6f2830	# UpdateM
 rva	_ZN25CCachedMouseCursorManager14SetMouseCursorEiiiii	0x83b3e0	# SetMouseCursor
 # The appearance record the update handler copies out of the creature's appearance object: 0x1f quad words and a word on Linux, and 0x1f quad words and a dword on Windows (the handler's copy, both read).
 offset	CCAppearanceInfo	sizeof	0xfa	0xfc	# SizeOfAppearanceInfo
+# The record's fields, read in CNWCCreatureAppearance's body-parts, head and cloak builders on both images (Ghidra @0x838fa0 on Linux; Windows image @0x140973de0, @0x140978310, @0x140976b40): every offset below is the same on both.
+offset	CCAppearanceInfo	armorParts	0x0	0x0	# AppearArmorParts
+offset	CCAppearanceInfo	bodyParts	0x26	0x26	# AppearBodyParts
+offset	CCAppearanceInfo	colors	0x4c	0x4c	# AppearColors
+offset	CCAppearanceInfo	partColors	0x52	0x52	# AppearPartColors
+offset	CCAppearanceInfo	armorWorn	0xc8	0xc8	# AppearArmorWorn
+offset	CCAppearanceInfo	cloakColors	0xec	0xec	# AppearCloakColors
+offset	CCAppearanceInfo	cloakModel	0xf8	0xf8	# AppearCloakModel
 offset	CCAppearanceInfo	helmId	0xc4	0xc4	# AppearanceHelmId
 # Equipment on the model view's doll. Windows values read in the Windows image's appearance update handler and CreateItem:
 # the creature's right and left hand item ids, the item's three model parts and gender, the base item's equip-slot mask.

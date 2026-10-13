@@ -211,6 +211,7 @@ internal static unsafe class NuiModelDoll
         if (app == IntPtr.Zero || record.Length < InfoBytes) return false;
         byte* info = stackalloc byte[InfoMax];
         record.Slice(0, InfoBytes).CopyTo(new Span<byte>(info, InfoBytes));
+        NuiModelGear.Dress(slot.Gear, info);
         NuiModelHelm.Swap(slot.Gear.Helm, info, InfoBytes);
 
         var d = new DollState();
@@ -393,6 +394,7 @@ internal static unsafe class NuiModelDoll
         if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
         byte* info = stackalloc byte[InfoMax];
         now.CopyTo(new Span<byte>(info, InfoBytes));
+        NuiModelGear.Dress(slot.Gear, info);
         NuiModelHelm.Swap(slot.Gear.Helm, info, InfoBytes);
         IntPtr model = Dress(d.Creature, (IntPtr)info);
         NuiModelHelm.Settle(slot.Gear.Helm);
