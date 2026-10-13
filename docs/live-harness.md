@@ -294,7 +294,7 @@ on the player a second after the window opens. The shield comes off at 10 s, the
         --keys 'sleep:4000;shot:<dir>/armed.png;sleep:12000;shot:<dir>/stripped.png'
 
 `model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlate=<seconds>:<path>`),
-`model-vfx.policy` the two permanent effects the window puts on the player at 20 s (the temporary one stays off the doll),
+`model-vfx.policy` the two permanent effects the window puts on the player at 20 s (the temporary one stays off the doll), `model-vfx-all.policy` the same doll with `vfx=all`, which wears all three once they land (`NuiModelVfx: mirroring` lines),
 `model-standin.policy` and `model-standin-crop.policy` a stand-in with no target, with and without `standinrect`. `NuiModelGear:`
 lines in `cx.log` say each hand being filled and emptied.
 

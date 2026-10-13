@@ -80,6 +80,9 @@ internal static unsafe class NuiModelView
         public System.Numerics.Quaternion Rot = System.Numerics.Quaternion.Identity, Stand = System.Numerics.Quaternion.Identity;
         public string Wear = "", StandinRect = "", Vfx = "";
         public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
+        /// <summary><c>vfx</c> is <c>all</c>: the doll wears what the target shows, tracked in <see cref="Mirror"/>.</summary>
+        public bool VfxAll;
+        public readonly NuiModelVfx.Mirror Mirror = new();
         public byte[] Info = Array.Empty<byte>();
         /// <summary>The player's own turn on top of the server's <see cref="Yaw"/>, and the press that is turning it. <see cref="Drag"/> is the
         /// server's degrees a pixel, 0 for no drag.</summary>
@@ -111,7 +114,7 @@ internal static unsafe class NuiModelView
         NuiModelBounds.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 7, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 8, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -313,7 +316,7 @@ internal static unsafe class NuiModelView
             if (slot.Doll.Creature != IntPtr.Zero)
             {
                 NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who);
-                NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
+                WearVfx(v, who);
             }
             NuiModelDoll.SetTarget(slot, tex, v.W, v.H);
             ApplyCamera(v);
@@ -330,7 +333,7 @@ internal static unsafe class NuiModelView
             {
                 if (NuiModelDoll.Refresh(slot, who))
                 {
-                    NuiModelVfx.Wear(slot.Doll.Creature, v.VfxRows, v.MuteVfx);
+                    WearVfx(v, who);
                     v.Played = "";
                     v.HasBox = false;
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the {(dressed ? "previewed gear" : "creature's appearance")} changed, the doll follows");
@@ -339,6 +342,7 @@ internal static unsafe class NuiModelView
                 NuiModelGear.Settled(slot.Gear);
             }
         }
+        if (v.VfxAll && v.Tgt.FollowsCreature) NuiModelVfx.Follow(slot.Doll.Creature, who, v.Mirror, false, v.MuteVfx);
         PlayPose(s, v);
         FitCamera(s, v);
         if (v.Dragging) Turn(v);
@@ -346,6 +350,13 @@ internal static unsafe class NuiModelView
         v.Target = tex;
         if (!v.Owned) NuiImageSpot.Watch(slot.Index, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
         if (slot.Rendered) v.WasRendered = true;
+    }
+
+    /// <summary>Put the view's effects on its doll: the listed rows, or with <c>vfx=all</c> what the target shows now.</summary>
+    private static void WearVfx(ViewData v, IntPtr who)
+    {
+        if (v.VfxAll) NuiModelVfx.Follow(v.Slot.Doll.Creature, who, v.Mirror, true, v.MuteVfx);
+        else NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
     }
 
     /// <summary>The built NUI view the pointer is over, among those <paramref name="wants"/> accepts, or null.</summary>
@@ -591,9 +602,10 @@ internal static unsafe class NuiModelView
         if (vfx != v.Vfx || v.MuteVfx != v.WornMuted)
         {
             v.Vfx = vfx;
-            v.VfxRows = NuiModelVfx.Parse(vfx);
+            v.VfxAll = NuiModelVfx.IsAll(vfx);
+            v.VfxRows = v.VfxAll ? Array.Empty<NuiModelVfx.VfxRow>() : NuiModelVfx.Parse(vfx);
             v.WornMuted = v.MuteVfx;
-            if (v.Built) NuiModelVfx.Wear(v.Slot.Doll.Creature, v.VfxRows, v.MuteVfx);
+            if (v.Built) WearVfx(v, Resolve(v));
         }
         string[] bg = Policy(v.Key, "bg", "").Split(',');
         float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;

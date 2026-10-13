@@ -57,6 +57,8 @@ TRANSIENT = {
     'CAurTexture',
     # Particles: PartEmitterDtor is the death notice the particle table is hooked on.
     'PartEmitter', 'Particle',
+    # KillAllVisualEffects frees an effect and its list node under a holder.
+    'CNWCVisualEffectOnObject', 'CExoLinkedListNode',
 }
 
 
