@@ -18,6 +18,8 @@ public static class General
     public static readonly Knob<bool> Logs;
     public static readonly Knob<bool> HookDebug;
     public static readonly Knob<int> PresentProbe, Pin;
+    /// <summary>Debug: log the frame-time percentiles, and what model views cost in CPU and GPU, every few seconds.</summary>
+    public static readonly Knob<bool> FrameTimes;
     /// <summary>Seconds after the first present at which this run halves the window's width; twice that is where it
     /// puts the width back, and 0 = off. A DEBUG trigger for the engine's own re-layout path
     /// (<c>SDL_SetWindowSize</c> -&gt; <c>SDL_WINDOWEVENT_SIZE_CHANGED</c> -&gt; <c>CGuiMan::SetGuiSize</c>), because
@@ -39,6 +41,8 @@ public static class General
             changed: () => ExtenderLog.Enabled = Logs!.V);
         HookDebug = G.Toggle("hookdebug", "hookdebug", false, Tier.ChatOnly, Effect.Restart);
         PresentProbe = G.Slider("presentprobe", "presentprobe", 0, 200, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
+        FrameTimes = G.Toggle("frametimes", "frametimes", false, Tier.ChatOnly,
+            help: "Debug: every few seconds, log p50, p95, p99 and max of the frame time and of the CPU model views took, and the GPU time of the GUI replay.");
         Pin = G.Slider("pin", "pin", -1, 1023, 1, -1, tier: Tier.ChatOnly, effect: Effect.Restart);
         ResizeAt = G.Slider("resizeat", "resizeat", 0, 600, 1, 0, unit: "s",
             tier: Tier.ChatOnly, effect: Effect.Restart,
