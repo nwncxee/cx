@@ -58,6 +58,9 @@ internal static unsafe class NuiModelGear
         public string BodyKey = "";
         public bool Dirty;
         public bool Waiting;
+        /// <summary>The first item of the last <c>wear</c> text the client could not use, and why; <see cref="RefusedNew"/> until the view has recorded it.</summary>
+        public string RefusedItem = "", RefusedWhy = "";
+        public bool RefusedNew;
         public uint HelmId = NuiModelDoll.InvalidId;
         public long NextTry;
         public int RetryLogs;
@@ -92,13 +95,17 @@ internal static unsafe class NuiModelGear
 
     /// <summary>The item a <c>wear</c> value names: an <c>@look:</c> string mints a fresh item (<paramref name="minted"/> = true,
     /// the caller ends it), a hex object id is an item the client knows (never ended). Zero when it names none.</summary>
-    internal static IntPtr WearItem(string wear, out bool minted)
+    internal static IntPtr WearItem(string wear, out bool minted) => WearItem(wear, out minted, out _);
+
+    /// <summary><see cref="WearItem(string, out bool)"/> with the reason an <c>@look:</c> string made no item.</summary>
+    internal static IntPtr WearItem(string wear, out bool minted, out string why)
     {
         minted = false;
+        why = "";
         if (wear.StartsWith("@look:", StringComparison.Ordinal))
         {
             minted = true;
-            return NuiItemIcons.MintLookForModel(wear);
+            return NuiItemIcons.MintLookForModel(wear, out why);
         }
         return uint.TryParse(wear, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)
             ? Known(id | NuiItemIcons.ServerIdBit) : IntPtr.Zero;
@@ -116,12 +123,14 @@ internal static unsafe class NuiModelGear
         g.PreviewText = wear;
         g.Waiting = false;
         g.HandText[0] = g.HandText[1] = "";
+        g.RefusedItem = g.RefusedWhy = "";
         var dress = new Dressing();
         string armor = "", cloak = "", helm = "";
         foreach (string tok in Items(wear))
         {
-            IntPtr it = WearItem(tok, out bool minted);
+            IntPtr it = WearItem(tok, out bool minted, out string why);
             if (it == IntPtr.Zero && !minted) g.Waiting = true;
+            if (it == IntPtr.Zero && minted) Refuse(g, tok, why);
             uint mask = it == IntPtr.Zero ? 0 : NuiItemIcons.EquipMask(it);
             if (it != IntPtr.Zero && (!again || g.RetryLogs++ < 8)) _g.Log?.Always($"NuiModelGear: a wear item is base item {new CNWCItem(it).BaseItem}, slots 0x{mask:x}");
             uint hand = HandOf(mask);
@@ -145,7 +154,11 @@ internal static unsafe class NuiModelGear
                 for (int i = 0; i < Colors; i++) dress.CloakColors[i] = v.Colors[i];
             }
             else if (body == HeadSlot) helm = tok;
-            else if (!again) _g.Log?.Always($"NuiModelGear: '{tok}' names no item that fits a hand, the body, the head or the cloak slot (item 0x{it:x}, slots 0x{mask:x}) -- nothing is previewed");
+            else
+            {
+                if (it != IntPtr.Zero) Refuse(g, tok, "names no item that fits a hand, the body, the head or the cloak slot");
+                if (!again) _g.Log?.Always($"NuiModelGear: '{tok}' names no item that fits a hand, the body, the head or the cloak slot (item 0x{it:x}, slots 0x{mask:x}) -- nothing is previewed");
+            }
             if (minted && it != IntPtr.Zero) NuiItemIcons.Destroy(it);
         }
         string key = $"A:{armor}|C:{cloak}|H:{helm}";
@@ -155,6 +168,24 @@ internal static unsafe class NuiModelGear
         g.Dirty = true;
         Retire(g);
         if (helm.Length > 0) SetHelm(g, helm);
+    }
+
+    private static void Refuse(GearState g, string item, string why)
+    {
+        if (g.RefusedWhy.Length > 0) return;
+        g.RefusedItem = item;
+        g.RefusedWhy = why.Length > 0 ? why : "the client cannot build that item";
+        g.RefusedNew = true;
+    }
+
+    /// <summary>The item <see cref="Plan"/> could not use, once, for the view to record; false when there is none to say.</summary>
+    internal static bool TakeRefusal(GearState g, out string item, out string why)
+    {
+        item = g.RefusedItem;
+        why = g.RefusedWhy;
+        bool fresh = g.RefusedNew;
+        g.RefusedNew = false;
+        return fresh;
     }
 
     /// <summary>The previous helmet moves to the retired place, to be freed once the doll no longer names it.</summary>
@@ -362,8 +393,13 @@ internal static unsafe class NuiModelGear
         check.Expect(Items("").Length == 0 && Items(" , ;").Length == 0, "an empty wear value names no item");
         IntPtr none = WearItem("not an item", out bool minted);
         check.Expect(none == IntPtr.Zero && !minted, "text that is neither an @look: string nor hex names no item");
-        none = WearItem("@look:12", out minted);
-        check.Expect(none == IntPtr.Zero && minted, "a malformed @look: string mints nothing, and says it tried to");
+        none = WearItem("@look:12", out minted, out string whyNot);
+        check.Expect(none == IntPtr.Zero && minted && whyNot == "not an @look: string of hex fields", "a malformed @look: string mints nothing, says it tried to, and says why");
+        var refused = new GearState();
+        Refuse(refused, "@look:12", whyNot);
+        Refuse(refused, "second", "later");
+        check.Expect(TakeRefusal(refused, out string refItem, out string refWhy) && refItem == "@look:12" && refWhy == whyNot && !TakeRefusal(refused, out _, out _),
+                     "the first item a wear text cannot use is handed over once");
 
         byte* rec = stackalloc byte[256];
         new Span<byte>(rec, 256).Clear();

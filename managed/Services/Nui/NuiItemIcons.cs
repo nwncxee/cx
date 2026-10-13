@@ -322,16 +322,17 @@ internal static unsafe class NuiItemIcons
     /// <summary>A throwaway item for a doll's <c>@look:</c> string, made as <see cref="MintLook"/> makes one but only when the client has the base
     /// item and the files the engine would load for its models. The engine meets a missing model file with the base item's default model (a
     /// leather bag for a sword) and a cloak number with no row in its table with a table read past the end. Zero, with the reason logged once, when
-    /// the text does not parse or a check fails.</summary>
-    internal static IntPtr MintLookForModel(string text)
+    /// the text does not parse or a check fails; <paramref name="why"/> says which (empty when the engine made none).</summary>
+    internal static IntPtr MintLookForModel(string text, out string why)
     {
+        why = "";
         byte* b = stackalloc byte[512];
-        if (text.Length >= 511) return IntPtr.Zero;
+        if (text.Length >= 511) { why = "longer than 510 characters"; return IntPtr.Zero; }
         for (int i = 0; i < text.Length; i++) b[i] = (byte)text[i];
         b[text.Length] = 0;
         Look look;
-        if (!ParseLook(b, &look)) return IntPtr.Zero;
-        if (!LookModelsExist(&look, out string why))
+        if (!ParseLook(b, &look)) { why = "not an @look: string of hex fields"; return IntPtr.Zero; }
+        if (!LookModelsExist(&look, out why))
         {
             if (NuiModelGuard.Once(text)) Log($"@look: {why} -- the item is left out");
             return IntPtr.Zero;

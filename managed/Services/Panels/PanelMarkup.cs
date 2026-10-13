@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using CX.Framework;
 
 namespace CX.Services.Panels;
 
@@ -42,7 +43,7 @@ internal static class PanelMarkup
             Flush();
             switch (name)
             {
-                case "c": colors.Add(PanelParser.TryColor(arg, out uint c) ? c : 0); break;
+                case "c": colors.Add(HexColour.TryParse(arg, out uint c) ? c : 0); break;
                 case "/c": if (colors.Count > 0) colors.RemoveAt(colors.Count - 1); break;
                 case "s": sizes.Add(style.Snap(float.Parse(arg, CultureInfo.InvariantCulture))); break;
                 case "/s": if (sizes.Count > 0) sizes.RemoveAt(sizes.Count - 1); break;
@@ -69,7 +70,7 @@ internal static class PanelMarkup
         switch (name)
         {
             case "/c": case "/s": case "i": case "/i": case "br": return eq < 0;
-            case "c": return PanelParser.TryColor(arg, out _);
+            case "c": return HexColour.TryParse(arg, out _);
             case "s": return float.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out float v) && float.IsFinite(v);
             case "icon": return arg.Length is > 0 and <= PanelLimits.MaxIconName;
             default: return false;

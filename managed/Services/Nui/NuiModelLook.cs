@@ -119,18 +119,27 @@ internal static class NuiModelLook
     }
 
     /// <summary>The backdrop <c>bg</c> names into <paramref name="into"/> (four floats, <c>r,g,b,a</c>): <c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c>, or up to four numbers
-    /// in 0-1, where a missing or unreadable one is 0. A malformed hex value is all zero, like an empty one.</summary>
-    internal static void Background(string v, Span<float> into)
+    /// in 0-1, where a missing one is 0. False when the text is not one of those (a malformed hex value, a part that is not a number): the backdrop is then clear for hex
+    /// and has 0 for each bad number. An empty value is clear and true.</summary>
+    internal static bool Background(string v, Span<float> into)
     {
         into.Clear();
-        if (v.Length > 0 && v[0] == '#')
+        if (v.Length == 0) return true;
+        if (v[0] == '#')
         {
-            if (HexColour.TryParse(v, out uint rgba)) HexColour.Channels(rgba, into);
-            return;
+            if (!HexColour.TryParse(v, out uint rgba)) return false;
+            HexColour.Channels(rgba, into);
+            return true;
         }
         string[] p = v.Split(',');
-        for (int i = 0; i < 4 && i < p.Length; i++)
-            if (float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f)) into[i] = f;
+        bool ok = true;
+        for (int i = 0; i < p.Length; i++)
+        {
+            bool read = float.TryParse(p[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f);
+            ok &= read;
+            if (read && i < 4) into[i] = f;
+        }
+        return ok;
     }
 
     /// <summary>The light the four <c>light</c> settings describe. Anything but <c>server</c> in <paramref name="mode"/> is the engine's.</summary>
@@ -178,12 +187,12 @@ internal static class NuiModelLook
         check.Expect(bg[0] == 0f && bg[3] == 1f, "bg #RRGGBB is opaque");
         Background("0.1,0.2,0.3,0.4", bg);
         check.Expect(bg[0] == 0.1f && bg[1] == 0.2f && bg[2] == 0.3f && bg[3] == 0.4f, "bg numbers still read");
-        Background("0.5,x", bg);
-        check.Expect(bg[0] == 0.5f && bg[1] == 0f && bg[3] == 0f, "bg numbers: a missing or bad one is 0");
-        Background("#12345", bg);
-        check.Expect(bg[0] == 0f && bg[1] == 0f && bg[2] == 0f && bg[3] == 0f, "a malformed hex bg is clear");
-        Background("", bg);
-        check.Expect(bg[3] == 0f, "an empty bg is clear");
+        check.Expect(Background("0.1,0.2", bg) && bg[2] == 0f, "bg numbers: a missing one is 0 and the text is valid");
+        check.Expect(!Background("0.5,x", bg) && bg[0] == 0.5f && bg[1] == 0f && bg[3] == 0f, "bg numbers: a bad one is 0 and the text is not valid");
+        check.Expect(!Background("0.1,0.2,0.3,0.4,x", bg) && bg[3] == 0.4f, "a bad part past the fourth still makes the text invalid");
+        check.Expect(!Background("#12345", bg) && bg[0] == 0f && bg[1] == 0f && bg[2] == 0f && bg[3] == 0f, "a malformed hex bg is invalid and clear");
+        check.Expect(Background("", bg) && bg[3] == 0f, "an empty bg is clear and valid");
+        check.Expect(Background("#FF000080", bg) && Background("0.1,0.2,0.3,0.4", bg), "a good hex and good numbers are valid");
         check.Expect(ZoomTo(4f, 2, 0.25f, 1f, 10f) == 3.5f && ZoomTo(4f, -100, 0.25f, 1f, 10f) == 10f && ZoomTo(1.2f, 5, 0.25f, 1f, 10f) == 1f,
                      "a scroll up comes nearer a step a notch and stops at the range's ends");
         check.Expect(ZoomAfterPolicy(8f, true, 1f, 5f) == 5f && float.IsNaN(ZoomAfterPolicy(float.NaN, true, 1f, 5f))

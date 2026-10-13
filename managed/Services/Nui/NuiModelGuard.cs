@@ -14,17 +14,31 @@ internal static class NuiModelGuard
     internal const int CloakBaseItem = 80;   // not-an-offset: BASE_ITEM_CLOAK
     /// <summary>The most distinct refusals one run writes to the log, so a server cannot grow it by naming a new bad id each time.</summary>
     private const int MaxSaid = 64;
-    private static readonly HashSet<string> _said = new();
+
+    /// <summary>The refusals already logged. Replaced whole by <see cref="Forget"/>, and read from whichever thread asks, so under its own lock.</summary>
+    private sealed class GuardState
+    {
+        public readonly HashSet<string> Said = new();
+    }
+
+    private static GuardState _g = new();
+    private static readonly object _lock = new();
 
     /// <summary>Is <paramref name="row"/> inside a table of <paramref name="rows"/> rows? A count below zero is a table the client could not read,
     /// which refuses nothing.</summary>
     internal static bool RowInTable(int row, int rows) => rows < 0 || (row >= 0 && row < rows);
 
     /// <summary>True the first time <paramref name="key"/> is asked, so a refusal is logged once. Past <see cref="MaxSaid"/> keys it is false.</summary>
-    internal static bool Once(string key) => _said.Count < MaxSaid && _said.Add(key);
+    internal static bool Once(string key)
+    {
+        lock (_lock) return _g.Said.Count < MaxSaid && _g.Said.Add(key);
+    }
 
-    /// <summary>Forget what was said, for the self-check.</summary>
-    private static void Forget() => _said.Clear();
+    /// <summary>Forget what was said: the last doll is gone, so the next one may say its refusals again.</summary>
+    internal static void Forget()
+    {
+        lock (_lock) _g = new GuardState();
+    }
 
     /// <summary>The model files the engine loads for an item, in the names <c>CNWBaseItem::GetModelResRef</c> builds: a simple or layered base item
     /// (<paramref name="modelType"/> 0 or 1) one, <c>class_nnn</c>; a composite one (2) three, <c>class_b_nnn</c>, <c>class_m_nnn</c> and
