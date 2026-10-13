@@ -453,7 +453,8 @@ internal static unsafe class FacadeSelfCheck
 
     /// <summary>A shell whose object was ever in a GUI scene, or never joined one, is never handed out again,
     /// even once the ring is full and past its quarantine. Oracle: hand-written expectations -- the stamp each
-    /// join leaves, the held and unmarked counts, neither address coming back, and the churn reusing world shells.</summary>
+    /// join leaves, the held and unmarked counts, neither address coming back, the churn reusing world shells,
+    /// and the held-set warning's literal thresholds.</summary>
     private static void GuiHold(Checker check)
     {
         nint probe = SeamShell.Alloc(FacadeKind.Object, default);
@@ -497,6 +498,9 @@ internal static unsafe class FacadeSelfCheck
         check.Expect(SeamShell.Held == held + 3 && SeamShell.Quarantined == quarantined,
             "an object, text or camera shell retired before it joined any scene must be held, not queued for reuse");
         check.Expect(SeamShell.Unmarked == unmarkedBefore + 3, "every retire before any scene join must be counted");
+        check.Expect(!SeamShell.HeldRunaway(2048) && !SeamShell.HeldRunaway(4095) && SeamShell.HeldRunaway(4096)
+                   && !SeamShell.HeldRunaway(6000) && SeamShell.HeldRunaway(8192) && SeamShell.HeldRunaway(1L << 20),
+            "the held-set warning fires at 4096 and every doubling after it, and nowhere else");
         // Age what the ring already holds first, so filling it evicts those rather than overflowing.
         for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
         for (int k = 0; k < SeamShell.RingSize; k++)

@@ -116,7 +116,7 @@ public static unsafe class PartShell
             h->RetiredAt = SeamShell.FrameNo;
             _alive--;
             // Held blocks stay readable for GetWorld forever, so the link must not name a block that gets freed.
-            if (hold) { h->Next = 0; _held.Count++; p = next; continue; }
+            if (hold) { h->Next = 0; SeamShell.NoteHeld("part shells", ++_held.Count); p = next; continue; }
             h->Next = _quarantine;
             _quarantine = p;
             _quarantined++;
