@@ -430,8 +430,10 @@ a creature the client can see.
 **Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
 CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
 and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
-a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
-opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
+a fire ring, writes its square into the image's alpha as well as its light. Alloy draws a doll that has such a draw twice,
+over black and over white, and reads each pixel's coverage from the difference, so on a transparent or translucent `bg` the
+fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll in one pass: give a
+doll with effects an opaque `bg` there. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
 `vfx` is ignored, and the client logs that once.
 
 **Lighting.** A server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface normal dotted with
