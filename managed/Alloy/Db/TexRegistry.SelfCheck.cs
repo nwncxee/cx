@@ -315,21 +315,6 @@ internal static unsafe partial class TexRegistry
             "a nameless, idle, not-in-flight slot was not re-offered -- that is the forever-white bug");
         Release(d3); Release(d2);
 
-        // CX-188: LoadSerial is the ONE edge DbGui's panel prescan latches against, so every path that puts a
-        // slot into Loading has to move it. If it stops moving, a settled panel never re-scans and a part that
-        // went back on the wire draws its white stand-in until something else disturbs the scene.
-        int load0 = LoadSerial;
-        TexId ls = Alloc("cx_selfcheck_loadserial", TexKind.Auto, 0, out _);
-        Expect(LoadSerial != load0, "a newly seated slot did not move LoadSerial -- a settled DbGui panel "
-                                  + "would never re-scan for a texture that went back on the wire");
-        load0 = LoadSerial;
-        _pend[ls.Index] = PendFlight;
-        Release(ls);                                        // idle, nameless, "in flight"
-        _pend[ls.Index] = PendNone;
-        Alloc("cx_selfcheck_loadserial", TexKind.Auto, 0, out _);
-        Expect(LoadSerial != load0, "a RE-OFFERED slot did not move LoadSerial");
-        Release(ls);
-
         // the module edge: a held slot leaves the index, so the next module's acquire of the same name reads afresh,
         // and the held one retires at its last release instead of idling with the previous module's pixels
         TexId m1 = Insert("cx_selfcheck_m", TexKind.Auto);

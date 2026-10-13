@@ -120,12 +120,6 @@ internal static unsafe partial class TexRegistry
     private static readonly byte[] _pend = new byte[MaxSlots];
     private const byte PendNone = 0, PendWaiting = 1, PendFlight = 2;
 
-    /// <summary>Bumped (under <see cref="_lock"/>) wherever a slot ENTERS <see cref="TexState.Loading"/>: a new
-    /// slot, a re-offered name-less one, an idle slot taken back with nothing uploaded, and the context reload.
-    /// The only edge that can restart streaming in a settled set of parts, so a reader may latch "nothing of mine
-    /// is waiting". Off the game thread it may lag a frame -- an <c>int</c> read is atomic, so never wrong.</summary>
-    internal static int LoadSerial = 1;
-
     /// <summary>Head of this slot's dependent-part edge list, -1 for none. Kept only while the slot is
     /// <see cref="TexState.Loading"/>: once it has arrived (or failed) there is nothing left to tell.</summary>
     private static readonly int[] _depHead = new int[MaxSlots];
@@ -274,7 +268,6 @@ internal static unsafe partial class TexRegistry
                     IdleUnlink(hit);
                     _idleBytes -= _bytes[hit]; _residentBytes += _bytes[hit];
                     _state[hit] = _name[hit] != 0 && !_preview[hit] ? TexState.Resident : TexState.Loading;
-                    if (_state[hit] == TexState.Loading) LoadSerial++;
                     // Going idle dropped the bindless handle and nothing else re-mints it: a re-equipped
                     // armour drew handle 0 -- black, untextured -- until the slot was evicted and reloaded.
                     if (_name[hit] != 0 && _handle[hit] == 0 && !_samplerWish[hit])
@@ -284,7 +277,7 @@ internal static unsafe partial class TexRegistry
                 // The Release-during-a-load fix: a slot with no name and nothing in flight is not loading,
                 // whatever its state says, so re-asking for it has to re-offer it.
                 if ((_name[hit] == 0 || _preview[hit]) && _state[hit] != TexState.Failed && _pend[hit] == PendNone)
-                { _state[hit] = TexState.Loading; offer = true; LoadSerial++; TableSerial++; }
+                { _state[hit] = TexState.Loading; offer = true; TableSerial++; }
                 // CX-188 (review): NOT on the plain cache hit. A hit changes nothing a record reads -- the
                 // name, handle, kind and env bit are all where they were -- and callers acquire every frame
                 // (EmitterSim's per-emitter texture, the text atlas, the radial's PLT), so bumping here busted
@@ -304,7 +297,6 @@ internal static unsafe partial class TexRegistry
                 return default;
             }
             _key[i] = key; _state[i] = TexState.Loading; _kind[i] = kind; _refs[i] = 1;
-            LoadSerial++;
             _name[i] = 0; _handle[i] = 0; _bytes[i] = 0; _preview[i] = false;
             _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _clamp[i] = false;
             _cov[i] = TexCoverage.Unknown; _bumpyShiny[i] = false; _envMap[i] = false; _meanOk[i] = false;
