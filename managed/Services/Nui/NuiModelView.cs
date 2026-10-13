@@ -370,6 +370,7 @@ internal static unsafe class NuiModelView
             foreach (ViewData o in s.Views) if (o != v && !o.Owned && o.Serial < v.Serial && o.Target == tex) o.Stale = true;
         }
         NuiModelDoll.ModelSlot slot = v.Slot;
+        if (v.Built && !NuiModelDoll.Alive(slot)) { Teardown(s, v, tex); return; }
         int epoch = ServerPolicy.Epoch;
         if (epoch != v.Epoch) { v.Epoch = epoch; Read(s, v); }
         IntPtr who = Resolve(v);
@@ -416,15 +417,15 @@ internal static unsafe class NuiModelView
             bool moved = v.Tgt.FollowsCreature && !now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info);
             if (dressed || moved)
             {
-                if (NuiModelDoll.Refresh(slot, who))
+                if (Redress(v, who))
                 {
                     WearVfx(v, who);
                     RePose(v);
                     v.HasBox = false;
+                    NuiModelGear.Settled(slot.Gear);
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the {(dressed ? "previewed gear" : "creature's appearance")} changed, the doll follows");
                 }
                 if (moved) v.Info = now.ToArray();
-                NuiModelGear.Settled(slot.Gear);
             }
         }
         if (v.VfxAll && v.Tgt.FollowsCreature) NuiModelVfx.Follow(slot.Doll.Creature, who, v.Mirror, false, v.MuteVfx);
@@ -527,6 +528,15 @@ internal static unsafe class NuiModelView
         TargetKind.Creature => NuiModelDoll.Creature(v.Tgt.Id | ImageNames.ServerIdBit),
         _ => IntPtr.Zero,
     };
+
+    /// <summary>Dress the doll again from its target's record: the creature's own, or an appearance row's blank one.</summary>
+    private static bool Redress(ViewData v, IntPtr who)
+    {
+        if (v.Tgt.Kind != TargetKind.Appearance) return NuiModelDoll.Refresh(v.Slot, NuiModelDoll.InfoOf(who));
+        Span<byte> record = stackalloc byte[NuiModelDoll.RecordMax];
+        NuiModelTarget.Blank(v.Tgt.Row, record);
+        return NuiModelDoll.Refresh(v.Slot, record);
+    }
 
     /// <summary>Make the view's doll for its target. <paramref name="who"/> is the creature a creature target copies.</summary>
     private static bool BuildDoll(ViewData v, IntPtr who, bool idle)

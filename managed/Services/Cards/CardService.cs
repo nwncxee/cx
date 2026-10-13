@@ -52,12 +52,7 @@ public sealed class CardService : IExtenderService
     {
         string path = NuiKnobs.CardFile.V;
         if (path.Length == 0 || CardRegistry.Count > 0 || CardRegistry.Gen == s.FileGen) return;
-        try
-        {
-            int n = ServerPolicy.Apply(File.ReadAllText(path));
-            s.Log?.Always($"Cards: nui.cardfile applied {n} line(s)");
-        }
-        catch (IOException e) { s.Log?.Always("Cards: nui.cardfile could not be read: " + e.Message); }
+        if (ReadFile(s, "nui.cardfile", path) is { } text) s.Log?.Always($"Cards: nui.cardfile applied {ServerPolicy.Apply(text)} line(s)");
         s.FileGen = CardRegistry.Gen;
         s.LoadedAt = Environment.TickCount64;
         s.LateDone = false;
@@ -71,8 +66,20 @@ public sealed class CardService : IExtenderService
         if (s.LateDone || s.LoadedAt == 0 || colon <= 0 || !float.TryParse(spec.AsSpan(0, colon), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec)) return;
         if (Environment.TickCount64 - s.LoadedAt < (long)(sec * 1000f)) return;
         s.LateDone = true;
-        try { s.Log?.Always($"Cards: nui.cardlate applied {ServerPolicy.Apply(File.ReadAllText(spec[(colon + 1)..]))} line(s)"); }
-        catch (IOException e) { s.Log?.Always("Cards: nui.cardlate could not be read: " + e.Message); }
+        string path = spec[(colon + 1)..].Trim();
+        if (path.Length == 0) { s.Log?.Always("Cards: nui.cardlate names no file after the colon"); return; }
+        if (ReadFile(s, "nui.cardlate", path) is { } text) s.Log?.Always($"Cards: nui.cardlate applied {ServerPolicy.Apply(text)} line(s)");
+    }
+
+    /// <summary>The text of the file a test knob names, or null with the reason logged. Nothing a bad path throws leaves here.</summary>
+    private static string? ReadFile(CardServiceState s, string knob, string path)
+    {
+        try { return File.ReadAllText(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            s.Log?.Always($"Cards: {knob} could not be read: {e.Message}");
+            return null;
+        }
     }
 
     /// <summary>The name and stack size the client knows for an item, by the server's object id.</summary>
@@ -149,7 +156,8 @@ public sealed class CardService : IExtenderService
         {
             s.ForcedKey = key;
             s.Forced = new NuiHit { Element = (IntPtr)1, Row = -1, X = 160f, Y = 200f, W = 64f, H = 64f };
-            s.Forced.TokenLen = System.Text.Encoding.UTF8.GetBytes(key, s.Forced.TokenBuffer());
+            if (System.Text.Encoding.UTF8.TryGetBytes(key, s.Forced.TokenBuffer(), out int n)) s.Forced.TokenLen = n;
+            else s.Log?.Always($"Cards: nui.cardforce is over {NuiHit.TokenCap} bytes, longer than any element id -- it matches nothing");
         }
         return s.Forced;
     }

@@ -178,6 +178,9 @@ internal static unsafe class NuiModelDoll
         return !go.IsNull && go.Ptr == obj;
     }
 
+    /// <summary>False once the module's teardown has freed the slot's registered creature, and its model with it.</summary>
+    internal static bool Alive(ModelSlot slot) => !slot.Doll.Registered || Holds(slot.Doll.Id, slot.Doll.Creature);
+
     /// <summary>The creature behind a client object id, or zero.</summary>
     internal static IntPtr Creature(uint id)
     {
@@ -346,7 +349,8 @@ internal static unsafe class NuiModelDoll
     /// <summary>The colour shift the fade machinery leaves a new creature at: alpha 1, colour white, to the attached parts too.</summary>
     internal static void Opaque(IntPtr model)
     {
-        IntPtr fn = new Gob(model).Ptr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)(*(IntPtr*)model + EngineLayout.GobSetColorShiftingSlot);
+        if (model == IntPtr.Zero) return;
+        IntPtr fn = *(IntPtr*)(*(IntPtr*)model + EngineLayout.GobSetColorShiftingSlot);
         ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
     }
 
@@ -404,13 +408,12 @@ internal static unsafe class NuiModelDoll
         return a == IntPtr.Zero ? default : new ReadOnlySpan<byte>((void*)a, InfoBytes);
     }
 
-    /// <summary>The slot's doll takes <paramref name="source"/>'s appearance again, as character creation's panel does after each change:
+    /// <summary>The slot's doll takes the appearance record <paramref name="now"/> again, as character creation's panel does after each change:
     /// rebuild the body, fetch the model it made, and take that into the view.</summary>
-    internal static bool Refresh(ModelSlot slot, IntPtr source)
+    internal static bool Refresh(ModelSlot slot, ReadOnlySpan<byte> now)
     {
         DollState d = slot.Doll;
-        ReadOnlySpan<byte> now = InfoOf(source);
-        if (d.Creature == IntPtr.Zero || now.IsEmpty) return false;
+        if (d.Creature == IntPtr.Zero || now.Length < InfoBytes) return false;
         byte* info = stackalloc byte[InfoMax];
         Stage(slot, now, info);
         IntPtr model = Dress(d.Creature, (IntPtr)info);
@@ -426,7 +429,7 @@ internal static unsafe class NuiModelDoll
     internal static void KeepShown(ModelSlot slot)
     {
         DollState d = slot.Doll;
-        if (d.Model == IntPtr.Zero) return;
+        if (d.Model == IntPtr.Zero || !Alive(slot)) return;
         if (d.Creature != IntPtr.Zero && new CNWCObject(d.Creature).Visible != 1) EngineFn.ObjSetFadeState(d.Creature, 1);
         if (new Gob(d.Model).Alpha < 1f) Opaque(d.Model);
     }

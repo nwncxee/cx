@@ -224,6 +224,7 @@ internal static unsafe class GuiPass
         int tex = -1;
         uint prog = _gl.Prog;
         bool gamma = !PostChain.GammaOff();
+        bool released = false;
         int li = from, solve = 0, runStart = 0, runEnd = 0;
         while (li < to || solve != 0)
         {
@@ -255,7 +256,11 @@ internal static unsafe class GuiPass
             {
                 curTarget = l.Target;
                 CX.Services.Perf.FrameProbe.Lap(ref modelSpan, curTarget != 0);
-                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, CX.Services.Nui.NuiModelDoll.OfTexture(curTarget), out runEnd))
+                CX.Services.Nui.NuiModelDoll.ModelSlot? owner = CX.Services.Nui.NuiModelDoll.OfTexture(curTarget);
+                // A released view's texture may be a reused GL name: draw nothing into it.
+                released = curTarget != 0 && owner == null;
+                if (released) continue;
+                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, owner, out runEnd))
                 {
                     solve = 1; runStart = li - 1;
                     Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(0, l.W, l.H), l.W, l.H, SlotOf(curTarget)));
@@ -264,11 +269,12 @@ internal static unsafe class GuiPass
                 else
                 {
                     Gl.BindFramebuffer(Gl.FRAMEBUFFER, curTarget != 0 ? ModelTarget(curTarget, l.W, l.H, SlotOf(curTarget)) : baseFbo);
-                    if (curTarget != 0) ClearModelTarget(CX.Services.Nui.NuiModelDoll.OfTexture(curTarget));
+                    if (curTarget != 0) ClearModelTarget(owner);
                 }
                 Gl.FrontFace(curTarget != 0 ? Gl.CW : Gl.CCW);
-                write = 1;
+                write = -1;
             }
+            else if (released) continue;
             // The run's depth clear rides on its FIRST view, drawn or not: skipped with an empty layer, it left last
             // frame's text quads (0.001 nearer) in the buffer, and everything behind them failed there (live, holes).
             if (l.Clear)

@@ -42,6 +42,7 @@ internal static unsafe class IconFrames
     {
         public readonly Dictionary<ulong, Frame> ByName = new();
         public ExtenderLog? Log;
+        public long Edge;
     }
 
     private static readonly IconFramesState _s = new();
@@ -81,9 +82,12 @@ internal static unsafe class IconFrames
         if (RadialIcons.CName(resref, name) == 0) return default;
         ulong key = ResLocate.Key(name) ^ (plt ? PltSalt : 0);
         IconFramesState s = _s;
+        long edge = NwSyncReader.ContentEdge;
+        if (edge != s.Edge) { s.ByName.Clear(); s.Edge = edge; }
         if (s.ByName.TryGetValue(key, out Frame f)) return f;
         string n = Marshal.PtrToStringAnsi((IntPtr)name) ?? "";
         f = Load(n, plt, out string? why);
+        if (!f.Known && !ResLocate.Ready) return f;
         if (s.ByName.Count >= MaxCached) s.ByName.Clear();
         s.ByName[key] = f;
         if (f.Known) s.Log?.Info($"IconFrames: {n} is {f.Tw}x{f.Th}, its art fills {f.Cw}x{f.Ch}");

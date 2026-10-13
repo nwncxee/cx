@@ -68,6 +68,11 @@ internal static class HeldPickSelfCheck
         m.Pick("iit_a", 7000, 1000, 8, draw);
         check.Expect(m.Update(6, false, "", ++draw, true, 7100, 8) && !m.Active && !m.Pending, "the knob off drops the ghost");
         check.Expect(!m.Pick("", 8000, 1000, 8, draw) && !m.Pending, "a pick of nothing holds nothing");
+
+        m.Pick("iit_a", 10000, 1000, 9, draw);
+        check.Expect(!m.Update(7, true, null, draw, true, 10600, 9) && m.Active && m.Pending, "a quiet NUI past the 500 ms grace leaves a pending pick to its window");
+        check.Expect(m.Update(7, true, null, draw, true, 11000, 9) && !m.Active, "the window ends the quiet pick");
+        check.Expect(!m.Update(7, true, null, draw, true, 11001, 9), "a pick is released once");
     }
 
     /// <summary>Oracle: the defaults and ranges written in the contract (0.9 and 0.55, 0-1, offsets of 256 px at most), as literals.</summary>

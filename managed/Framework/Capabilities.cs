@@ -19,6 +19,7 @@ public static class Capabilities
         public readonly List<(string Name, int Version, Func<bool> Live)> Entries = [];
         public Action<string, int>? Send;
         public bool LoggedIn;
+        public string Version = Product.Version;
     }
 
     private static State _s = new();
@@ -59,14 +60,14 @@ public static class Capabilities
     {
         _s.Send = send;
         _s.LoggedIn = true;
-        foreach (var (n, v) in Collect(Product.Version)) send(n, v);
+        foreach (var (n, v) in Collect(_s.Version)) send(n, v);
     }
 
     /// <summary>A knob or hook changed what is live: sends the whole set again, a stood-down capability as 0.</summary>
     public static void Refresh()
     {
         if (!_s.LoggedIn || _s.Send == null) return;
-        foreach (var (n, v) in Build(Product.Version, true)) _s.Send(n, v);
+        foreach (var (n, v) in Build(_s.Version, true)) _s.Send(n, v);
     }
 
     /// <summary>Oracle: hand-written literals for version packing and the expected property lists.</summary>
@@ -76,7 +77,7 @@ public static class Capabilities
         check.Expect(PackVersion("v0.7.0-12-gabc1234") == 7000 && PackVersion("1.12.3") == 1_012_003, "versions pack major/minor/patch");
         check.Expect(PackVersion("unknown") == 0 && PackVersion("") == 0 && PackVersion("2.1") == 2_001_000, "no version is 0, a short one pads");
         var saved = _s;
-        _s = new();
+        _s = new() { Version = "0.7.0" };
         bool hookOk = true, knobOn = true;
         Register("itemicon", 1, () => hookOk && knobOn);
         Register("other", 3, () => true);
@@ -91,11 +92,11 @@ public static class Capabilities
         Refresh();
         check.Expect(sent.Count == 0, "no refresh before a login");
         Advertise(Send);
-        check.Expect(string.Join(",", sent) == $"cx_version={PackVersion(Product.Version)},cx_cap_other=3", "login sends only what is live");
+        check.Expect(string.Join(",", sent) == "cx_version=7000,cx_cap_other=3", "login sends only what is live");
         sent.Clear(); hookOk = true; Refresh();
-        check.Expect(string.Join(",", sent) == $"cx_version={PackVersion(Product.Version)},cx_cap_itemicon=1,cx_cap_other=3", "refresh after a hook recovers");
+        check.Expect(string.Join(",", sent) == "cx_version=7000,cx_cap_itemicon=1,cx_cap_other=3", "refresh after a hook recovers");
         sent.Clear(); knobOn = false; Refresh();
-        check.Expect(string.Join(",", sent) == $"cx_version={PackVersion(Product.Version)},cx_cap_itemicon=0,cx_cap_other=3", "refresh withdraws a capability as 0");
+        check.Expect(string.Join(",", sent) == "cx_version=7000,cx_cap_itemicon=0,cx_cap_other=3", "refresh withdraws a capability as 0");
         _s = saved;
         log.Info(check.Ok ? "Capabilities.SelfCheck: passed" : "Capabilities.SelfCheck: FAILED");
     }

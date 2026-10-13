@@ -55,5 +55,6 @@ internal readonly record struct StandinRect(int X, int Y, int W, int H)
                      "a rectangle fits only inside the image and with a size");
         check.Expect(!new StandinRect(int.MaxValue, 0, 1, 1).Fits(4, 3) && !new StandinRect(0, int.MaxValue, 1, 1).Fits(4, 3) && !new StandinRect(1, 1, int.MaxValue, 1).Fits(4, 3),
                      "a corner or size near int.MaxValue does not wrap round into the image");
+        log.Info(check.Ok ? "StandinRect.SelfCheck: passed" : "StandinRect.SelfCheck: FAILED");
     }
 }

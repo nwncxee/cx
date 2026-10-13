@@ -3285,7 +3285,7 @@ internal static unsafe class SymbolMap
         [NkCmds] = At(),                  // DATA: the `lea rdx` of the nk_convert call
         [NuiJsonWindowRender] = At(),     // the vftable slot whose body is the "m_id" profiler zone around one Window::Render call (docs/windows-symbols.md)
         [NuiGetImageWithCache] = LinuxOnly("no standalone function on Windows: the one timer call in the image-cache code is in JsonWindow::Update, so the look-up is inlined into the image widget"),
-        [NkLayoutWidgetSpace] = At(),     // the one function with the row-type switch (cases 0..8) and the +0x41e4/+0x41e8 spacing reads; takes the window as a third argument
+        [NkLayoutWidgetSpace] = At(),     // the one function with the row-type switch (cases 0..8) and the +0x41e4/+0x41e8 spacing reads; Windows takes the window as a third argument, Linux reads it from ctx
         [NuiArrayIndex] = At(),           // DATA: the global the inlined Set/GetArrayIndex touch; the list draw at rva 0x73e9d0 writes first+i, then -1
         [NkTexNull] = At(),               // DATA: the `movaps xmm0,[rip]` into the convert config at +0x18
         [NkWindowIsAnyHovered] = Hole("nuklear is not exported by nwmain.exe"),

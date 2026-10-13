@@ -69,7 +69,7 @@ internal sealed class HeldImageModel
             return changed;
         }
         if (Pending && nowMs - _pickAt >= _confirmMs) { Pending = false; Set(""); return true; }
-        if (!Active || !counting) return false;
+        if (!Active || !counting || Pending) return false;
         if (drawn != _drawn) { _drawn = drawn; _drawnAt = nowMs; return false; }
         if (GraceMs <= 0 || nowMs - _drawnAt < GraceMs) return false;
         Set("");
