@@ -29,6 +29,8 @@ internal static unsafe class GuiCapture
     {
         public bool Stream, Indexed, Blend, DepthTest, DepthWrite, Cull;
         public int Slot, Count, BaseVertex, Stride, Tex;
+        /// <summary>The GL texture a <see cref="GuiCapture.FlagEnvMap"/> draw reflects; 0 = whatever is bound.</summary>
+        public int EnvTex;
         public uint Prim, Format, Src, Dst;
         public long Offset;
         /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes its
@@ -49,6 +51,15 @@ internal static unsafe class GuiCapture
     /// <summary>The texel's alpha is not coverage (a PLT palette's or an env map's reflectivity): the fragment stage
     /// draws it as 1.</summary>
     internal const int FlagSolidTexel = 64;
+    /// <summary>A lit draw takes a server's light: the record's globalColor lane carries its direction (view space, unit
+    /// length), the ambient lane its ambient and the diffuse lane its colour.</summary>
+    internal const int FlagServerLight = 128;
+    /// <summary>A lit draw is env-mapped: the fragment stage reflects the scene's environment map, as the engine's
+    /// specular light does for a material that names one.</summary>
+    internal const int FlagEnvMap = 256;
+    /// <summary>With <see cref="FlagEnvMap"/>: a texture is bound for the part to reflect. Without it the part reflects nothing,
+    /// which is what the engine's null texture gives a part whose object names no map.</summary>
+    internal const int FlagEnvTex = 512;
     /// <summary>ponytail: fixed staging. A busy screen is a few hundred draws; past any ceiling the rest is NOT
     /// DRAWN and said once, loudly. Grow on the log line, never silently.</summary>
     internal const int MaxDraws = 16384, MaxLayers = 1024, MaxSkins = 64;
@@ -309,6 +320,13 @@ internal static unsafe class GuiCapture
         public bool Blend, DepthTest, DepthWrite, Cull, AlphaTest, Lit;
         /// <summary>Draw the texel's alpha as 1: it is reflectivity here, never opacity.</summary>
         public bool SolidTexel;
+        /// <summary>The draw reflects the scene's environment map (a lit, env-mapped part with a map present).</summary>
+        public bool EnvMap;
+        /// <summary>The GL texture the part reflects: its object's own environment map; 0 = none to reflect.</summary>
+        public int EnvTex;
+        /// <summary>The draw is shaded by a server's light, whose view-space direction is <see cref="LightDir"/>.</summary>
+        public bool ServerLight;
+        public Vector3 LightDir;
         /// <summary>The object's master-palette row per PLT layer, or null when the texture is not a PLT.
         /// <c>Gob::ReplaceTexture</c> carries exactly these to <c>Material::ReplaceTexturePLT</c>.</summary>
         public ushort[]? PltRows;
@@ -326,19 +344,20 @@ internal static unsafe class GuiCapture
         d.Stream = false; d.Indexed = true; d.Slot = 0; d.Stride = 0; d.Format = 0;
         d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
-        d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex;
+        d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
         fixed (float* r = &Records[DrawN * RecFloats])
         {
             *(Matrix4x4*)r = p.Mvp;
             *(Matrix4x4*)(r + 16) = p.Mv;
             r[32] = 1f; r[33] = 0f; r[34] = 0f; r[35] = 1f;
-            *(Vector4*)(r + 36) = p.Colour;
+            *(Vector4*)(r + 36) = p.Lit && p.ServerLight ? new Vector4(p.LightDir, 0f) : p.Colour;
             *(Vector4*)(r + 40) = p.Lit ? p.Ambient : Vector4.Zero;
             *(Vector4*)(r + 44) = p.Lit ? p.Diffuse : Vector4.Zero;
             *(Vector4*)(r + 48) = p.Lit ? p.Emissive : Vector4.Zero;
         }
         int flags = (p.Tex != 0 ? FlagTex : 0) | (p.AlphaTest ? FlagAlphaTest : 0) | (p.Lit ? FlagLit : 0)
-                    | (p.SolidTexel ? FlagSolidTexel : 0);
+                    | (p.SolidTexel ? FlagSolidTexel : 0) | (p.Lit && p.ServerLight ? FlagServerLight : 0)
+                    | (p.Lit && p.EnvMap ? FlagEnvMap : 0) | (p.Lit && p.EnvMap && p.EnvTex != 0 ? FlagEnvTex : 0);
         if (p.Tex != 0 && p.PltRows != null)
         {
             fixed (float* r = &Records[DrawN * RecFloats])

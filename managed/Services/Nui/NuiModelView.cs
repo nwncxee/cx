@@ -38,6 +38,8 @@ internal static unsafe class NuiModelView
         public string StandinName = "";
         public int Epoch = -1;
         public uint Target;
+        /// <summary>The light the doll is shown in, published for the texture the view draws into.</summary>
+        public ModelLight Light = NuiModelLook.EngineLight;
         public float Angle = DefaultAngle, Dist = DefaultDist, Height = DefaultHeight, Yaw, Drag, Pitch;
         public float ClipNear = NuiModelLook.DefaultNear, ClipFar = NuiModelLook.DefaultFar;
         /// <summary>The nearest and farthest distance a scroll may move the camera to (both 0 = no zoom), the metres a notch moves it, and
@@ -164,6 +166,7 @@ internal static unsafe class NuiModelView
         if (!Alive(v))
         {
             if (v.Built) { NuiModelDoll.Destroy(); v.Built = false; s.Log?.Always($"NuiModelView: '{v.Key}' closed -- doll taken down"); }
+            NuiModelDoll.DropLight(v.Target);
             NuiImageSpot.Watch(0);
             s.View = null;
             return;
@@ -172,6 +175,7 @@ internal static unsafe class NuiModelView
         if (tex == 0) return;
         int epoch = ServerPolicy.Epoch;
         if (epoch != v.Epoch) { v.Epoch = epoch; Read(s, v); }
+        NuiModelDoll.SetLight(tex, v.Light);
         IntPtr who = Resolve(v);
         if (who == IntPtr.Zero)
         {
@@ -280,7 +284,7 @@ internal static unsafe class NuiModelView
         v.TurnMax = v.HasTurnRange ? tmax : 0f;
         if (v.HasTurnRange) v.DragYaw = Math.Clamp(v.DragYaw, v.TurnMin, v.TurnMax);
         v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
-        NuiModelDoll.SetLight(NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
+        v.Light = NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", ""));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
         v.Anim = PolicyF(v.Key, "anim", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
@@ -321,6 +325,7 @@ internal static unsafe class NuiModelView
     private static void Teardown(ViewState s, ViewData v, uint tex)
     {
         NuiModelDoll.Destroy();
+        NuiModelDoll.DropLight(tex);
         NuiImageSpot.Watch(0);
         v.Built = false;
         v.Target = tex;

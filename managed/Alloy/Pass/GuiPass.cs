@@ -215,7 +215,7 @@ internal static unsafe class GuiPass
         // CX-117's master palette, for the PLT item icons a GUI control draws. A no-op until a palette
         // exists (DB mode only), and the unit is nothing else's.
         Db.PltPalettes.Bind();
-        Gl.ActiveTexture(Gl.TEXTURE0);
+        int envTex = 0;
         int blend = -1, depth = -1, write = -1, cull = -1;
         uint src = 0, dst = 0, vao = uint.MaxValue;
         int tex = -1;
@@ -292,6 +292,13 @@ internal static unsafe class GuiPass
                 if ((d.DepthWrite ? 1 : 0) != write) { write = d.DepthWrite ? 1 : 0; Gl.DepthMask((byte)write); }
                 Toggle(Gl.CULL_FACE, d.Cull, ref cull);
                 if (d.Tex != tex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)d.Tex); tex = d.Tex; }
+                if (d.EnvTex != 0 && d.EnvTex != envTex)
+                {
+                    Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.GuiEnv);
+                    Gl.BindTexture(Gl.TEXTURE_2D, (uint)d.EnvTex);
+                    Gl.ActiveTexture(Gl.TEXTURE0);
+                    envTex = d.EnvTex;
+                }
                 GuiContent.Prog? cp = d.Content == 0 ? null : ContentProgram(d.Content);
                 uint want = cp?.Id ?? _gl.Prog;
                 if (want != prog) { Gl.UseProgram(want); prog = want; }

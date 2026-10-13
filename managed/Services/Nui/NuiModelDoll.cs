@@ -43,7 +43,8 @@ internal static unsafe class NuiModelDoll
         public int TargetW, TargetH;
         public readonly float[] Bg = new float[4];
         public bool Rendered;
-        public ModelLight Light = NuiModelLook.EngineLight;
+        /// <summary>The light each model view's doll is shown in, keyed by the texture the view draws into.</summary>
+        public readonly System.Collections.Generic.Dictionary<uint, ModelLight> Lights = new();
         public DollState Doll = new();
     }
 
@@ -57,10 +58,12 @@ internal static unsafe class NuiModelDoll
     /// <summary>The layer was drawn into the target: the doll's first frame has landed.</summary>
     internal static void MarkRendered() => _o.Rendered = true;
     internal static bool Rendered => _o.Rendered;
-    /// <summary>The light the doll is shown in. The engine draws its own character-preview light; a renderer that shades the doll itself
-    /// reads this and, when <see cref="ModelLight.Server"/>, uses the server's.</summary>
-    internal static ModelLight Light => _o.Light;
-    internal static void SetLight(ModelLight l) => _o.Light = l;
+    /// <summary>The light the doll that draws into <paramref name="target"/> is shown in. The engine draws its own character-preview
+    /// light; the Alloy renderer, which shades the doll itself, uses the server's when <see cref="ModelLight.Server"/>.</summary>
+    internal static ModelLight LightFor(uint target) => _o.Lights.TryGetValue(target, out ModelLight l) ? l : NuiModelLook.EngineLight;
+    internal static void SetLight(uint target, ModelLight l) => _o.Lights[target] = l;
+    /// <summary>The view drawing into <paramref name="target"/> is gone.</summary>
+    internal static void DropLight(uint target) => _o.Lights.Remove(target);
     internal static void SetBackground(float r, float g, float b, float a) { _o.Bg[0] = r; _o.Bg[1] = g; _o.Bg[2] = b; _o.Bg[3] = a; }
     internal static void Background(float* c) { for (int i = 0; i < 4; i++) c[i] = _o.Bg[i]; }
 
