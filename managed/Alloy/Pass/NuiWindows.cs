@@ -21,7 +21,6 @@ internal static unsafe class NuiWindows
     /// <summary>A command walk longer than this is a corrupt chain, not a window.</summary>
     private const int MaxCommands = 1 << 20;
     private const ulong FnvBasis = 14695981039346656037, FnvPrime = 1099511628211;   // not-an-offset: FNV-1a 64
-    private const float BodyTolerance = 2f;
     /// <summary>A window's commands are a few KiB; past this one is not copied for a fade out.</summary>
     private const int MaxSnapshot = 1 << 20;
     /// <summary>More than <c>nk_window</c>'s size, which is under 0x200 on both builds.</summary>
@@ -155,7 +154,7 @@ internal static unsafe class NuiWindows
             if (!st.Said && st.Background < 1f)
             {
                 st.Said = true;
-                _s.Log?.Info($"NuiWindows: '{st.Id}' background {st.Background}: {((found & 4) != 0 ? "chrome up to the content fill" : (found & 1) != 0 ? "body fill found" : "body fill NOT FOUND")}{((found & 4) == 0 ? ((found & 2) != 0 ? ", border found" : ", border NOT FOUND") : "")}");
+                _s.Log?.Info($"NuiWindows: '{st.Id}' background {st.Background}: {(found != 0 ? "chrome up to the content fill" : "no engine chrome, nothing faded")}");
             }
         }
         LinkGhosts(c, mem, now, frame, atlas);
@@ -282,55 +281,53 @@ internal static unsafe class NuiWindows
     /// <summary>NUI begins its windows as <c>JsonWindow::&lt;id&gt;</c>; the id is what the server chose.</summary>
     internal static string IdOf(string name) => name.StartsWith(JsonPrefix, StringComparison.Ordinal) ? name[JsonPrefix.Length..] : name;
 
-    /// <summary>Scale one window's commands: every colour by <paramref name="all"/>, the body fill and border by
-    /// <paramref name="background"/> too. <paramref name="mem"/> is the queue base. Returns bit 0 if the body was found, bit 1 the border, bit 2 if the skinned chrome was.</summary>
+    /// <summary>Scale one window's commands: every colour by <paramref name="all"/>, the engine's own chrome by
+    /// <paramref name="background"/> too. <paramref name="mem"/> is the queue base. Returns 1 if the window has engine chrome.</summary>
     internal static int ScaleWindow(byte* mem, ulong allocated, IntPtr window, float all, float background)
     {
         var win = new NkWindow(window);
-        float bx = win.Bounds[0], by = win.Bounds[1], bw = win.Bounds[2], bh = win.Bounds[3];
         ulong off = win.BufBegin, end = Math.Min(win.BufEnd, allocated);
         ulong chromeEnd = 0;
         bool chrome = background < 1f && FindChromeEnd(mem, off, end, out chromeEnd);
-        bool body = false, border = false;
         for (int n = 0; off < end && n < MaxCommands; n++)
         {
             byte* cmd = mem + off;
             int type = *(int*)cmd;
             float f = all;
-            if (chrome)
-            {
-                if (off <= chromeEnd) f *= background;
-            }
-            else if (background < 1f)
-            {
-                if (!body && (type == CmdRectFilled || type == CmdImage) && IsBody(cmd, type, bx, by, bw, bh)) { body = true; f *= background; }
-                else if (!border && type == CmdRect && IsBounds(cmd, bx, by, bw, bh)) { border = true; f *= background; }
-            }
+            if (chrome && off <= chromeEnd) f *= background;
             if (f < 1f) ScaleCommand(cmd, type, f);
             ulong next = *(ulong*)(cmd + 8);
             if (next <= off) break;
             off = next;
         }
-        return (body ? 1 : 0) | (border ? 2 : 0) | (chrome ? 4 : 0);
+        return chrome ? 1 : 0;
     }
 
-    /// <summary>The skinned panel draws its title bar, frame and body, then clips to the content and fills that rectangle
-    /// once more before the first widget. The command that fills the rectangle the last scissor clipped to ends the window's chrome.</summary>
+    /// <summary>The engine draws a window's title bar, frame and body before it first clips to the content, then fills the content
+    /// rectangle once more. A window with no such commands before its first scissor (a transparent one) has no chrome, and what
+    /// follows is the server's. The chrome ends at that content fill, or at the scissor when no fill follows it.</summary>
     private static bool FindChromeEnd(byte* mem, ulong off, ulong end, out ulong at)
     {
         at = 0;
-        int sx = 0, sy = 0, sw = -1, sh = 0;
+        bool drawn = false;
         for (int n = 0; off < end && n < MaxCommands; n++)
         {
             byte* cmd = mem + off;
             int type = *(int*)cmd;
-            if (type == CmdScissor) { sx = *(short*)(cmd + 0x10); sy = *(short*)(cmd + 0x12); sw = *(ushort*)(cmd + 0x14); sh = *(ushort*)(cmd + 0x16); }
-            else if (type == CmdRectFilled && sw >= 0)
-            {
-                Rect(cmd, type, out float x, out float y, out float w, out float h);
-                if (x == sx && y == sy && w == sw && h == sh) { at = off; return true; }
-            }
             ulong next = *(ulong*)(cmd + 8);
+            if (type == CmdScissor)
+            {
+                if (!drawn) return false;
+                at = off;
+                if (next > off && next < end && *(int*)(mem + next) == CmdRectFilled)
+                {
+                    Rect(mem + next, CmdRectFilled, out float x, out float y, out float w, out float h);
+                    int sx = *(short*)(cmd + 0x10), sy = *(short*)(cmd + 0x12), sw = *(ushort*)(cmd + 0x14), sh = *(ushort*)(cmd + 0x16);
+                    if (x == sx && y == sy && w == sw && h == sh) at = next;
+                }
+                return true;
+            }
+            drawn = true;
             if (next <= off) break;
             off = next;
         }
@@ -342,21 +339,6 @@ internal static unsafe class NuiWindows
     {
         int at = type == CmdRect ? 0x14 : type == CmdImage ? 0x10 : 0x12;
         x = *(short*)(cmd + at); y = *(short*)(cmd + at + 2); w = *(ushort*)(cmd + at + 4); h = *(ushort*)(cmd + at + 6);
-    }
-
-    /// <summary>The window body: full width, ending where the window ends (a title bar above it is not part of it).</summary>
-    private static bool IsBody(byte* cmd, int type, float bx, float by, float bw, float bh)
-    {
-        Rect(cmd, type, out float x, out float y, out float w, out float h);
-        return MathF.Abs(x - bx) <= BodyTolerance && MathF.Abs(w - bw) <= BodyTolerance
-            && y >= by - BodyTolerance && MathF.Abs(y + h - (by + bh)) <= BodyTolerance;
-    }
-
-    private static bool IsBounds(byte* cmd, float bx, float by, float bw, float bh)
-    {
-        Rect(cmd, CmdRect, out float x, out float y, out float w, out float h);
-        return MathF.Abs(x - bx) <= BodyTolerance && MathF.Abs(y - by) <= BodyTolerance
-            && MathF.Abs(w - bw) <= BodyTolerance && MathF.Abs(h - bh) <= BodyTolerance;
     }
 
     /// <summary>Scale the alpha byte of every colour in one command. Offsets are <c>nk_convert</c>'s own reads, per type.</summary>
@@ -419,11 +401,11 @@ internal static unsafe class NuiWindows
             check.Expect(ScaleWindow(mem, 0x100, (IntPtr)win, 0.5f, 1f) == 0, "no background asked, none reported found");
             check.Expect(a[0x1d] == 100 && b[0x1f] == 50 && t[0x1b] == 40 && t[0x1f] == 128, "opacity 0.5 halves every colour's alpha (200->100, 100->50, 80->40, 255->128)");
             a[0x1d] = 200; b[0x1f] = 100; t[0x1b] = 80; t[0x1f] = 255;
-            check.Expect(ScaleWindow(mem, 0x100, (IntPtr)win, 1f, 0f) == 3, "the body fill and the border are both found");
-            check.Expect(a[0x1d] == 0 && b[0x1f] == 0 && t[0x1b] == 80 && t[0x1f] == 255, "background 0 clears the body fill and the border, and nothing else");
+            check.Expect(ScaleWindow(mem, 0x100, (IntPtr)win, 1f, 0f) == 0, "a window with no chrome before its first clip has no engine chrome");
+            check.Expect(a[0x1d] == 200 && b[0x1f] == 100 && t[0x1b] == 80, "background 0 leaves the server's window-sized fill, its stroked bounds and its text");
             a[0x1d] = 200; b[0x1f] = 100;
             ScaleWindow(mem, 0x100, (IntPtr)win, 0.5f, 0.5f);
-            check.Expect(a[0x1d] == 50 && b[0x1f] == 25 && t[0x1f] == 128, "opacity and background compound (200*0.25, 100*0.25)");
+            check.Expect(a[0x1d] == 100 && b[0x1f] == 50 && t[0x1f] == 128, "opacity alone fades what the server drew (200*0.5, 100*0.5)");
             *(ulong*)(win + 0x98) = 0x50;
             a[0x1d] = 200; b[0x1f] = 100;
             ScaleWindow(mem, 0x100, (IntPtr)win, 0.5f, 1f);
@@ -445,10 +427,18 @@ internal static unsafe class NuiWindows
             Put(sk + 0x1a0 + 0x12, 104, 204, 292, 142); sk[0x1a0 + 0x1d] = 255;
             sk[0x240 + 0x1f] = 255;
             *(ulong*)(win + 0x90) = 0x10; *(ulong*)(win + 0x98) = 0x290;
-            check.Expect(ScaleWindow(sk, 0x400, (IntPtr)win, 1f, 0f) == 4, "the skinned chrome is found by the content fill");
+            check.Expect(ScaleWindow(sk, 0x400, (IntPtr)win, 1f, 0f) == 1, "the skinned chrome is found by the content fill");
             check.Expect(sk[0x10 + 0x33] == 0 && sk[0x60 + 0x1f] == 0 && sk[0xb0 + 0x1d] == 0 && sk[0x100 + 0x33] == 0 && sk[0x1a0 + 0x1d] == 0,
                          "background 0 clears the title bar, frame, body and content fill");
             check.Expect(sk[0x240 + 0x1f] == 255, "...and leaves the widget text");
+            // A server fill the size of the window right after the content fill's scissor is the server's.
+            for (int i = 0; i < 0x400; i++) sk[i] = 0;
+            byte* c0 = sk + 0x10, c1 = sk + 0x60, c2 = sk + 0xb0;
+            *(int*)c0 = 1; *(ulong*)(c0 + 8) = 0x60; *(short*)(c0 + 0x10) = 100; *(short*)(c0 + 0x12) = 200; *(ushort*)(c0 + 0x14) = 300; *(ushort*)(c0 + 0x16) = 150;
+            *(int*)c1 = 5; *(ulong*)(c1 + 8) = 0xb0; Put(c1 + 0x12, 100, 200, 300, 150); c1[0x1d] = 255;
+            *(int*)c2 = 1; *(ulong*)(c2 + 8) = 0x100;
+            *(ulong*)(win + 0x90) = 0x10; *(ulong*)(win + 0x98) = 0x100;
+            check.Expect(ScaleWindow(sk, 0x400, (IntPtr)win, 1f, 0f) == 0 && c1[0x1d] == 255, "a transparent window starts at a clip: its first fill is the server's, even at the window's size");
         }
         finally { _s = saved; }
         log.Info(check.Ok ? "NuiWindows.SelfCheck: passed" : "NuiWindows.SelfCheck: FAILED");

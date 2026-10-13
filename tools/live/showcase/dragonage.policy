@@ -1,0 +1,13 @@
+model.me.target=player
+model.me.size=232x300
+model.me.dist=3.2
+model.me.height=1.15
+model.me.pitch=2
+model.me.yaw=240
+model.me.light=server
+model.me.lightcolor=1.8,1.0,0.5
+model.me.lightdir=-0.7,0.3,0.6
+model.me.lightambient=0.06,0.05,0.05
+cardstyle={"bg":"#100c09f4","border":"#8a6a3a","borderw":2,"border2":"#3c2c18","border2inset":3,"corners":"#d9b45a","cornerlen":9,"cornerw":2,"pad":12,"color":"#e6d9b8","dimcolor":"#9a8a6a","tabcolor":"#3c2c18","tabtext":"#d9b45a","divider":"#8a6a3a88","footerband":"#8a6a3a22","side":"above","align":"start","offset":10,"sizes":[0.85,1,1.2,1.4]}
+card.opt0=[{"width":340,"tab":"Persuade","blocks":[{"type":"text","size":1.2,"text":"Honest, and a little brave","color":"#d9b45a"},{"type":"status","icon":"isk_persuade","text":"Persuasion <c=#ffffff>14</c> against her <c=#ffffff>12</c>","px":22},{"type":"text","text":"<c=#7fcf7f>Likely to succeed.</c> She respects a plain answer, and will tell you what the road holds."},{"type":"footer","left":"Approval <c=#7fcf7f>+3</c>","right":"Opens: the old road"}]}]
+card.opt1=[{"width":340,"tab":"Intimidate","blocks":[{"type":"text","size":1.2,"text":"A hard answer","color":"#d9b45a"},{"type":"status","icon":"isk_taunt","text":"Intimidation <c=#ffffff>9</c> against her <c=#ffffff>13</c>","px":22},{"type":"text","text":"<c=#e08a6a>Unlikely.</c> She has buried harder men than you."},{"type":"footer","left":"Approval <c=#e08a6a>-5</c>","right":"Ends the talk"}]}]

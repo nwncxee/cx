@@ -214,11 +214,11 @@ internal static unsafe class NuiItemIcons
         return true;
     }
 
-    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none), cut to <paramref name="crop"/>
-    /// when that fits it, at its own size or stretched to <paramref name="w"/> x <paramref name="h"/> when <paramref name="sized"/>, else transparent at that size.
-    /// The resref is a hash of the picture and the engine keeps one texture per resref, so <paramref name="salt"/> keeps two views alike in size and stand-in apart.
-    /// Leaves the resref in <see cref="_ref"/>, and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
-    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, StandinRect crop, out uint[] pixels, out int pw, out int ph, uint salt = 0)
+    /// <summary>The TGA a model view's image loads as: the stand-in <paramref name="standin"/> (a resref, empty for none), cut to
+    /// <paramref name="crop"/> when that fits it, at its own size, or stretched to <paramref name="w"/> x <paramref name="h"/> when the server declared that size (<paramref name="sized"/>),
+    /// else <paramref name="w"/> x <paramref name="h"/> fully transparent. Leaves the synthetic resref in <see cref="_ref"/>
+    /// and the pixels (RGBA, R low) and size in <paramref name="pixels"/>.</summary>
+    internal static void ModelImage(ReadOnlySpan<byte> standin, int w, int h, bool sized, StandinRect crop, string key, out uint[] pixels, out int pw, out int ph)
     {
         _w = _h = 0;
         if (standin.Length > 0 && standin[0] != 0) AddPlain(standin);
@@ -241,7 +241,7 @@ internal static unsafe class NuiItemIcons
                 for (int x = 0; x < w; x++) _canvas![y * w + x] = src[(y * sh / h) * sw + x * sw / w];
         }
         Emit(_w, _h);
-        SetRef($"cx{(Hash() ^ salt) * 16777619:x8}");
+        SetRef(ModelRef(Hash(), key));
         pw = _w; ph = _h;
         pixels = new uint[pw * ph];
         Array.Copy(_canvas!, pixels, pixels.Length);
@@ -540,6 +540,15 @@ internal static unsafe class NuiItemIcons
         uint h = 2166136261;
         foreach (byte b in _b64.AsSpan(0, _b64Len)) h = (h ^ b) * 16777619;
         return h;
+    }
+
+    /// <summary>A model view's synthetic resref: its TGA hash mixed with its key, so two views of one size and stand-in do not share
+    /// nk_loadimg's cached image (and so one texture).</summary>
+    internal static string ModelRef(uint tgaHash, string key)
+    {
+        uint h = tgaHash;
+        foreach (char c in key) h = (h ^ c) * 16777619;
+        return $"cx{h:x8}";
     }
 
     private static void SetRef(string name)

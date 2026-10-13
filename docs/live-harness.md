@@ -270,6 +270,11 @@ The run takes about three minutes and writes the shots to `<dir>/shots`. A `@key
 seconds after login (default 40, so open that window later than that). The run fails when the script logs a `-FAILED` step or
 a key's creature never appears. `--min-lit` defaults to 0 here, since a window covers the scene.
 
+Every showcase opens a full-screen dark backdrop window first (`ShowBackdrop` in `inc_show.nss`), so run them with `--cfg chat.enabled=0`.
+`inc_theme.nss` holds the drawing helpers the themed ones share (a draw list behind the widgets, slots with ids, dolls, labels).
+`chrome` (a stock titled window with its own draw list under `nui.<id>.background=0`), `diablo`, `solasta`, `pathfinder`, `swtor`, `cyberpunk`, `masseffect`, `dragonage` and `bg3` are eight looks built from the same keys:
+a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each `.keys` takes `window.png` and `card.png`.
+
 `creatures` shows eight dolls, one window at a time: a hell hound, an ogre, a beholder, a troll and a red dragon by appearance row
 (`app:`), a spawned elf mercenary by object id, a model by name and an item. The hound, the ogre and the troll play named animations. `helm` shows
 the player's doll while a helmet is equipped, dropped and equipped again, with a shot between each step.
