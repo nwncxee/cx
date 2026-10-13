@@ -23,12 +23,15 @@ public sealed unsafe class HeldImageService : IExtenderService
     internal const int DefaultCursorId = 25;
     /// <summary>The look keys: the image's size a cell, the cursor, and how long a hold outlives a NUI that draws nothing.</summary>
     private const string SizeKey = "held.size", CursorKey = "held.cursor", GraceKey = "held.grace";
+    /// <summary>The opacity keys: a confirmed hold, and a pick still waiting for the server (0-1); and the image's offset from the pointer in px.</summary>
+    private const string OpacityKey = "held.opacity", PickOpacityKey = "held.pickopacity", DxKey = "held.dx", DyKey = "held.dy";
+    private const float MaxOffsetPx = 256f;
     private const int MinSizePx = 8, MaxSizePx = 128, MaxGraceMs = 60_000;
     /// <summary>The probe waits this long after boot, past the loading screens and menus, which draw NUI too.</summary>
     private const int ProbeAfterMs = 50_000;
-    private const float DefaultSizePx = 32f, Alpha = 0.9f, PendingAlpha = 0.55f;
+    private const float DefaultSizePx = 32f, DefaultOpacity = 0.9f, DefaultPickOpacity = 0.55f;
 
-    private sealed class HeldState
+    internal sealed class HeldState
     {
         public readonly HeldImageModel Model = new();
         /// <summary>The throwaway item behind a held <c>@look:</c>; ours until the hold ends.</summary>
@@ -39,7 +42,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         public long SeenDrawn;
         public readonly long Born = Environment.TickCount64;
         public int Notices, LookEpoch = -1, CursorId = DefaultCursorId;
-        public float SizePx = DefaultSizePx;
+        public float SizePx = DefaultSizePx, Opacity = DefaultOpacity, PickOpacity = DefaultPickOpacity, Dx, Dy;
         /// <summary>A pick the input thread saw, for the next frame to show.</summary>
         public volatile string? PickReq;
         public ExtenderLog? Log;
@@ -64,8 +67,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         }
         new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.AboveNui, DrawContent = Frame };
         _s.Ready = true;
-        Capabilities.Register("heldpick", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V && NuiHitTest.Armed);
-        Capabilities.Register("heldimage", 1, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V);
+        Capabilities.Register("heldpick", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V && NuiHitTest.Armed);
+        Capabilities.Register("heldimage", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.HeldImage.Changed += Capabilities.Refresh;
     }
@@ -97,7 +100,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         int mx = 0, my = 0;
         EngineFn.SdlGetMouseState(&mx, &my);
         float px = s.SizePx * Metrics.Scale;
-        float alpha = s.Model.Pending ? PendingAlpha : Alpha;
+        float alpha = s.Model.Pending ? s.PickOpacity : s.Opacity;
+        mx += (int)(s.Dx * Metrics.Scale); my += (int)(s.Dy * Metrics.Scale);
         switch (s.Model.Kind)
         {
             case HeldKind.Resref:
@@ -143,12 +147,16 @@ public sealed unsafe class HeldImageService : IExtenderService
     }
 
     /// <summary>The server's look for a hold, read when the policy moves: size, cursor and grace, each back to its default when released.</summary>
-    private static void ReadLook(HeldState s, int epoch)
+    internal static void ReadLook(HeldState s, int epoch)
     {
         s.LookEpoch = epoch;
         s.SizePx = Math.Clamp(ServerPolicy.Int(SizeKey, (int)DefaultSizePx), MinSizePx, MaxSizePx);
         string cursor = ServerPolicy.Str(CursorKey, "");
         s.CursorId = cursor == "none" ? -1 : int.TryParse(cursor, out int id) && id >= 0 ? id : DefaultCursorId;
+        s.Opacity = Math.Clamp(ServerPolicy.Float(OpacityKey, DefaultOpacity), 0f, 1f);
+        s.PickOpacity = Math.Clamp(ServerPolicy.Float(PickOpacityKey, DefaultPickOpacity), 0f, 1f);
+        s.Dx = Math.Clamp(ServerPolicy.Float(DxKey, 0f), -MaxOffsetPx, MaxOffsetPx);
+        s.Dy = Math.Clamp(ServerPolicy.Float(DyKey, 0f), -MaxOffsetPx, MaxOffsetPx);
         s.Model.GraceMs = Math.Clamp(ServerPolicy.Int(GraceKey, HeldImageModel.DefaultGraceMs), 0, MaxGraceMs);
     }
 

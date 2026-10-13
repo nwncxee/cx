@@ -16,9 +16,11 @@ public sealed class Tooltip
     public const float DelaySec = 0.45f, FadeInSec = 0.12f, FadeOutSec = 0.15f;
     /// <summary>The live timings in seconds, from the <c>ui</c> group; the self-checks substitute fixed ones.</summary>
     internal static Func<(float Delay, float In, float Out)> Timing = () => (UiKnobs.TipDelay.V, UiKnobs.TipFadeIn.V, UiKnobs.TipFadeOut.V);
-    public static float Delay => Timing().Delay;
-    private static float FadeIn => Timing().In;
-    private static float FadeOut => Timing().Out;
+    /// <summary>Seconds that replace the player's dwell and fades for this tooltip alone; below 0 keeps the player's.</summary>
+    public float DelayOverride = -1f, FadeInOverride = -1f, FadeOutOverride = -1f;
+    public float Delay => DelayOverride >= 0f ? DelayOverride : Timing().Delay;
+    private float FadeIn => FadeInOverride >= 0f ? FadeInOverride : Timing().In;
+    private float FadeOut => FadeOutOverride >= 0f ? FadeOutOverride : Timing().Out;
     /// <summary>The marker text drawn beside a label.</summary>
     public const string Marker = "(?)";
     /// <summary>Marker alpha: faint, so it reads as an affordance, not a label.</summary>

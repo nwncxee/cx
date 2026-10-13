@@ -19,6 +19,10 @@ internal static unsafe class NuiModelView
     private const string Prefix = "@model:";
     private const string KeyRoot = "model.";
     private const int DefaultSize = 256, MaxSize = 1024, MaxKey = 48;
+    /// <summary>The camera a view has until its server says otherwise: the view angle in degrees, the distance from and height above the creature in metres.</summary>
+    private const float DefaultAngle = 30f, DefaultDist = 4f, DefaultHeight = 0.9f;
+    /// <summary>The farthest a camera may be from the creature, the widest view angle and the highest it may stand, in metres or degrees.</summary>
+    private const float MaxDist = 1000f, MaxAngle = 170f, MaxHeight = 1000f;
     /// <summary>The most degrees a pixel of drag may turn the doll.</summary>
     private const float MaxDrag = 10f;
     /// <summary><c>SDL_BUTTON_LMASK</c> in <c>SDL_GetMouseState</c>'s answer.</summary>
@@ -34,10 +38,17 @@ internal static unsafe class NuiModelView
         public string StandinName = "";
         public int Epoch = -1;
         public uint Target;
-        public float Angle = 30f, Dist = 4f, Height = 0.9f, Yaw, Drag;
+        public float Angle = DefaultAngle, Dist = DefaultDist, Height = DefaultHeight, Yaw, Drag, Pitch;
+        public float ClipNear = NuiModelLook.DefaultNear, ClipFar = NuiModelLook.DefaultFar;
+        /// <summary>The nearest and farthest distance a scroll may move the camera to (both 0 = no zoom), the metres a notch moves it, and
+        /// where the player has put it (NaN = still at <see cref="Dist"/>).</summary>
+        public float ZoomMin, ZoomMax, ZoomStep = NuiModelLook.DefaultZoomStep, ZoomAt = float.NaN;
+        /// <summary>The range the player's drag turn stays in (both 0 with <see cref="HasTurnRange"/> false = free).</summary>
+        public float TurnMin, TurnMax;
+        public bool HasTurnRange, MuteVfx, WornMuted;
         public bool Anim = true, Built, WasRendered;
         public string Wear = "", StandinRect = "", Vfx = "";
-        public ushort[] VfxRows = Array.Empty<ushort>();
+        public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
         public byte[] Info = Array.Empty<byte>();
         public bool OnPlayer;
         public uint TargetId;
@@ -66,9 +77,9 @@ internal static unsafe class NuiModelView
         _s.Log = log;
         _s.Ready = NuiModelDoll.Init(log);
         NuiModelGear.Init(log);
-        NuiModelVfx.Init(log);
+        NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
-        Capabilities.Register("modelview", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
+        Capabilities.Register("modelview", 3, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
         NuiModelEngine.Install(log, hooks);
@@ -173,7 +184,7 @@ internal static unsafe class NuiModelView
             v.Built = true;
             v.Info = NuiModelDoll.InfoOf(who).ToArray();
             NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
-            NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows);
+            NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
             NuiModelDoll.SetTarget(tex, v.W, v.H);
             ApplyCamera(v);
             s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
@@ -187,17 +198,30 @@ internal static unsafe class NuiModelView
             {
                 if (NuiModelDoll.Refresh(who))
                 {
-                    NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows);
+                    NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
                 }
                 v.Info = now.ToArray();
             }
         }
         if (v.Dragging) Turn(v);
-        NuiModelDoll.Orbit(v.Dist, v.Height, v.Yaw + v.DragYaw);
+        NuiModelDoll.Orbit(Distance(v), v.Height, v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
-        NuiImageSpot.Watch(v.Drag > 0f ? tex : 0);
+        NuiImageSpot.Watch(v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
         if (NuiModelDoll.Rendered) v.WasRendered = true;
+    }
+
+    /// <summary>How far the camera stands now: where the player scrolled it to, else the server's <c>dist</c>.</summary>
+    private static float Distance(ViewData v) => float.IsNaN(v.ZoomAt) ? v.Dist : v.ZoomAt;
+
+    /// <summary>A scroll landed on NUI (from the input hook): one over a model view whose server allows zoom moves the camera
+    /// <see cref="ViewData.ZoomStep"/> metres a notch, nearer for a scroll up, inside the server's range. True = the view took it.</summary>
+    internal static bool OnWheel(int notches)
+    {
+        ViewData? v = _s.View;
+        if (v == null || !v.Built || v.ZoomMax <= 0f || notches == 0 || !NuiImageSpot.PointerOn()) return false;
+        v.ZoomAt = Math.Clamp(Distance(v) - notches * v.ZoomStep, v.ZoomMin, v.ZoomMax);
+        return true;
     }
 
     /// <summary>A left press landed on NUI (from the input hook): one on a model view whose server allows a drag starts turning its doll.</summary>
@@ -219,7 +243,8 @@ internal static unsafe class NuiModelView
         uint buttons = EngineFn.SdlGetMouseState(&mx, &my);
         if ((buttons & SdlLeftMask) == 0) { v.Dragging = false; return; }
         if (mx == v.LastX) return;
-        v.DragYaw = (v.DragYaw + (mx - v.LastX) * v.Drag) % 360f;
+        float turn = v.DragYaw + (mx - v.LastX) * v.Drag;
+        v.DragYaw = v.HasTurnRange ? Math.Clamp(turn, v.TurnMin, v.TurnMax) : turn % 360f;
         v.LastX = mx;
     }
 
@@ -236,19 +261,36 @@ internal static unsafe class NuiModelView
         string target = Policy(v.Key, "target", "");
         v.OnPlayer = target == "player";
         v.TargetId = !v.OnPlayer && uint.TryParse(target, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id) ? id : 0;
-        v.Angle = PolicyF(v.Key, "angle", 30f);
-        v.Dist = PolicyF(v.Key, "dist", 4f);
-        v.Height = PolicyF(v.Key, "height", 0.9f);
+        v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
+        v.Dist = Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist);
+        v.Height = Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight);
         v.Yaw = PolicyF(v.Key, "yaw", 0f);
+        v.Pitch = Math.Clamp(PolicyF(v.Key, "pitch", 0f), -NuiModelLook.MaxPitch, NuiModelLook.MaxPitch);
+        bool clip = NuiModelLook.Pair(Policy(v.Key, "clip", ""), 0.001f, NuiModelLook.MaxFar, out float near, out float far) && near < far;
+        v.ClipNear = clip ? near : NuiModelLook.DefaultNear;
+        v.ClipFar = clip ? far : NuiModelLook.DefaultFar;
+        bool zoom = NuiModelLook.Pair(Policy(v.Key, "zoom", ""), 0.01f, MaxDist, out float zmin, out float zmax);
+        v.ZoomMin = zoom ? zmin : 0f;
+        v.ZoomMax = zoom ? zmax : 0f;
+        v.ZoomStep = Math.Clamp(PolicyF(v.Key, "zoomstep", NuiModelLook.DefaultZoomStep), NuiModelLook.MinZoomStep, NuiModelLook.MaxZoomStep);
+        if (!zoom) v.ZoomAt = float.NaN;
+        else if (!float.IsNaN(v.ZoomAt)) v.ZoomAt = Math.Clamp(v.ZoomAt, v.ZoomMin, v.ZoomMax);
+        v.HasTurnRange = NuiModelLook.Pair(Policy(v.Key, "dragrange", ""), -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn, out float tmin, out float tmax);
+        v.TurnMin = v.HasTurnRange ? tmin : 0f;
+        v.TurnMax = v.HasTurnRange ? tmax : 0f;
+        if (v.HasTurnRange) v.DragYaw = Math.Clamp(v.DragYaw, v.TurnMin, v.TurnMax);
+        v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
+        NuiModelDoll.SetLight(NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
         v.Anim = PolicyF(v.Key, "anim", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
         string vfx = Policy(v.Key, "vfx", "");
-        if (vfx != v.Vfx)
+        if (vfx != v.Vfx || v.MuteVfx != v.WornMuted)
         {
             v.Vfx = vfx;
             v.VfxRows = NuiModelVfx.Parse(vfx);
-            if (v.Built) NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows);
+            v.WornMuted = v.MuteVfx;
+            if (v.Built) NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
         }
         string[] bg = Policy(v.Key, "bg", "").Split(',');
         float C(int i) => i < bg.Length && float.TryParse(bg[i], NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : 0f;
@@ -270,8 +312,8 @@ internal static unsafe class NuiModelView
         if (c == IntPtr.Zero) return;
         var cam = new CAurCamera(c);
         cam.SetViewAngle(v.Angle);
-        cam.SetClipDist(0.1f, 2000f);
-        NuiModelDoll.Orbit(v.Dist, v.Height, v.Yaw + v.DragYaw);
+        cam.SetClipDist(v.ClipNear, v.ClipFar);
+        NuiModelDoll.Orbit(Distance(v), v.Height, v.Yaw + v.DragYaw, v.Pitch);
         _s.Log?.Info($"NuiModelView: '{v.Key}' camera at yaw {v.Yaw}, the doll {NuiModelDoll.Pose()}");
     }
 

@@ -213,6 +213,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseWheel:
                     Pointer(out float x, out float y);
                     if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true, x, y)) return 0;
+                    if (NuiHovered() && CX.Services.Nui.NuiModelView.OnWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
                     if (NuiHovered() || (VanillaGuiAt(GuiWheelMask) != IntPtr.Zero && !MenuWindowUnderPointer())) break;   // ...and the scroll
                     if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
                     break;

@@ -15,6 +15,8 @@ internal struct IconDraw
     public string? Look;
     public uint Item;
     public float X, Y, W, H;
+    /// <summary>The opacity as a share of the card's own.</summary>
+    public float Alpha;
 }
 
 /// <summary>One laid-out panel in panel-local px: the panel is (0,0)..(<see cref="W"/>, <see cref="H"/>) and its tab sits
@@ -22,6 +24,8 @@ internal struct IconDraw
 internal sealed class PanelView
 {
     public float W, H, TabH;
+    /// <summary>The pulse blocks' floor and period, from the card's style.</summary>
+    public float PulseMin, PulsePeriodMs;
     public readonly VertexBatch Back, Text;
     /// <summary>The glyphs of every <c>pulse</c> block, drawn pulsing; null when the panel has none.</summary>
     public VertexBatch? Pulse;
@@ -53,9 +57,6 @@ internal sealed class PanelLayout
     /// <summary>Is <paramref name="src"/> an <c>@look:</c> image name?</summary>
     public static bool IsLook(string src) => src.StartsWith(LookPrefix, StringComparison.Ordinal);
 
-    private const uint DefaultText = 0xE6E6E6FF, DefaultBg = 0x12161CF2, DefaultBorder = 0x6E6E6EFF, FrameFill = 0x00000066, FrameLine = 0xB8B8B8C0;  // not-an-offset: RRGGBBAA colours
-    private const uint DividerLine = 0xFFFFFF30, FooterBand = 0x00000066;  // not-an-offset: RRGGBBAA colours
-
     private struct Atom
     {
         public string Text, Icon;
@@ -73,6 +74,7 @@ internal sealed class PanelLayout
     private PanelView _v = null!;
     private PanelDecl _c = null!;
     private bool _pulse;
+    private PanelStyle St => _c.St;
 
     private PanelLayout(Func<float, (GlyphAtlas, float)> face, float scale, PanelSubject subject)
     {
@@ -86,20 +88,62 @@ internal sealed class PanelLayout
     private PanelView Run(PanelDecl c)
     {
         _c = c;
+        PanelStyle st = c.St;
         GlyphAtlas baseAtlas = _face(1f).A;
-        _v = new PanelView(baseAtlas);
-        float w = c.Width * _s, pad = 10f * _s;
+        _v = new PanelView(baseAtlas) { PulseMin = st.PulseMin, PulsePeriodMs = st.PulsePeriodMs };
+        float w = st.Width * _s, pad = st.Pad * _s;
         float h = Stack(c.Blocks, pad, pad, w - 2f * pad, w, false) + pad;
         _v.W = w; _v.H = Math.Max(h, 2f * pad);
-        _v.TabH = c.Tab.Length > 0 ? baseAtlas.LineHeight + 4f * _s : 0f;
-        uint from = c.BgFrom != 0 ? c.BgFrom : DefaultBg, to = c.BgTo != 0 ? c.BgTo : from;
-        if (c.Horizontal) Gradient(0, 0, w, _v.H, from, to, to, from);
-        else Gradient(0, 0, w, _v.H, from, from, to, to);
-        Frame(0, 0, w, _v.H, c.Border != 0 ? c.Border : DefaultBorder);
+        _v.TabH = c.Tab.Length > 0 ? baseAtlas.LineHeight + st.TabExtra * _s : 0f;
+        if (st.Glow != 0) Glow(w, _v.H);
+        uint from = st.BgFrom, to = st.BgTo ?? from;
+        switch (st.Dir)
+        {
+            case BgDir.Horizontal: Gradient(0, 0, w, _v.H, from, to, to, from); break;
+            case BgDir.Diagonal: uint mid = Mix(from, to); Gradient(0, 0, w, _v.H, from, mid, to, mid); break;
+            default: Gradient(0, 0, w, _v.H, from, from, to, to); break;
+        }
+        Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
+        if (st.Border2 != 0)
+        {
+            float i2 = st.Border2Inset * _s;
+            if (_v.W > 2f * i2 && _v.H > 2f * i2) Frame(i2, i2, w - i2, _v.H - i2, st.Border2, st.Border2W, st.Sides);
+        }
+        if (st.Corners != 0) Corners(w, _v.H);
         if (_v.TabH > 0f) Tab(baseAtlas);
         foreach (PanelImage i in c.Images) Image(i);
         Stack(c.Blocks, pad, pad, w - 2f * pad, w, true);
         return _v;
+    }
+
+    private static uint Mix(uint a, uint b)
+    {
+        uint Ch(int sh) => (uint)((((a >> sh) & 0xFF) + ((b >> sh) & 0xFF)) / 2) << sh;
+        return Ch(24) | Ch(16) | Ch(8) | Ch(0);
+    }
+
+    /// <summary>Soft light round the panel: frames spread outward, each fainter than the one inside it.</summary>
+    private void Glow(float w, float h)
+    {
+        int steps = Math.Max(1, (int)MathF.Ceiling(St.GlowSpread * _s));
+        uint rgb = St.Glow & 0xFFFFFF00, a0 = St.Glow & 0xFF;
+        for (int i = 1; i <= steps; i++)
+        {
+            uint a = (uint)(a0 * (1f - (i - 1f) / steps) * 0.5f);
+            Rect(-i, -i, w + i, -i + 1f, rgb | a); Rect(-i, h + i - 1f, w + i, h + i, rgb | a);
+            Rect(-i, -i + 1f, -i + 1f, h + i - 1f, rgb | a); Rect(w + i - 1f, -i + 1f, w + i, h + i - 1f, rgb | a);
+        }
+    }
+
+    /// <summary>Bracket marks in the four corners, drawn over the frame.</summary>
+    private void Corners(float w, float h)
+    {
+        float len = St.CornerLen * _s, t = Math.Max(1f, St.CornerW * _s);
+        uint c = St.Corners;
+        Rect(0, 0, len, t, c); Rect(0, 0, t, len, c);
+        Rect(w - len, 0, w, t, c); Rect(w - t, 0, w, len, c);
+        Rect(0, h - t, len, h, c); Rect(0, h - len, t, h, c);
+        Rect(w - len, h - t, w, h, c); Rect(w - t, h - len, w, h, c);
     }
 
     private void Tab(GlyphAtlas a)
@@ -107,17 +151,17 @@ internal sealed class PanelLayout
         string text = Expand(_c.Tab);
         float tw = 0f;
         foreach (Rune r in text.EnumerateRunes()) tw += a.AdvanceOf(r);
-        float x = 8f * _s, pad = 6f * _s;
-        Rect(x, -_v.TabH, x + tw + 2f * pad, 0f, _c.TabRgba);
-        Words(text, x + pad, -_v.TabH + 2f * _s + a.Ascent, a, 1f, DefaultText, false);
+        float x = St.TabX * _s, pad = St.TabPad * _s;
+        Rect(x, -_v.TabH, x + tw + 2f * pad, 0f, St.TabBg);
+        Words(text, x + pad, -_v.TabH + St.TabDrop * _s + a.Ascent, a, 1f, St.TabText != 0 ? St.TabText : St.Text, false);
     }
 
     private void Image(PanelImage i)
     {
         float w = i.W * _s, h = i.H * _s;
-        float x = i.At is Anchor.TopRight or Anchor.BottomRight ? _v.W - w : 0f;
-        float y = i.At is Anchor.BottomLeft or Anchor.BottomRight ? _v.H - h : 0f;
-        AddIcon(Expand(i.Src), x + i.Dx * _s, y + i.Dy * _s, w, h);
+        float x = i.At switch { Anchor.TopRight or Anchor.BottomRight or Anchor.Right => _v.W - w, Anchor.Top or Anchor.Bottom or Anchor.Center => (_v.W - w) / 2f, _ => 0f };
+        float y = i.At switch { Anchor.BottomLeft or Anchor.BottomRight or Anchor.Bottom => _v.H - h, Anchor.Left or Anchor.Right or Anchor.Center => (_v.H - h) / 2f, _ => 0f };
+        AddIcon(Expand(i.Src), x + i.Dx * _s, y + i.Dy * _s, w, h, i.Alpha);
     }
 
     /// <summary>Lays <paramref name="blocks"/> top to bottom from <paramref name="y"/>; returns the y after the last.</summary>
@@ -129,61 +173,70 @@ internal sealed class PanelLayout
 
     private float LayoutBlock(Block b, float x, float y, float w, float fullW, bool emit)
     {
-        float gap = 4f * _s;
+        float gap = (b.After ?? St.Gap) * _s;
+        uint text = b.Color != 0 ? b.Color : St.Text;
         switch (b.Kind)
         {
             case BlockKind.Divider:
-                if (emit) Rect(0, y + 3f * _s, fullW, y + 3f * _s + Math.Max(1f, _s), b.Color != 0 ? b.Color : DividerLine);
-                return y + 7f * _s;
+                float m = (b.Margin ?? St.DividerMargin) * _s, th = Math.Max(1f, (b.Thick ?? St.DividerThick) * _s);
+                if (emit) Rect(0, y + m, fullW, y + m + th, b.Color != 0 ? b.Color : St.Divider);
+                return y + 2f * m + th + (b.After is { } da ? da * _s : 0f);
             case BlockKind.Icons:
                 return Icons(b, x, y, w, emit) + gap;
             case BlockKind.Section:
-                float sp = 6f * _s;
+                float sp = (b.Pad ?? St.SectionPad) * _s;
                 float end = Stack(b.Kids, x, y + sp, w, fullW, false) + sp;
                 if (emit)
                 {
                     if (b.Tint != 0) Rect(0, y, fullW, end, b.Tint);
                     Stack(b.Kids, x, y + sp, w, fullW, true);
                 }
-                return end;
+                return end + (b.After is { } sa ? sa * _s : 0f);
             case BlockKind.Footer:
-                return Footer(b, x, y, w, fullW, emit);
+                return Footer(b, x, y, w, fullW, emit) + (b.After is { } fa ? fa * _s : 0f);
             case BlockKind.Status:
                 return Status(b, x, y, w, emit) + gap;
             default:
                 _pulse = b.Pulse;
-                float lh = Flow(b.Runs, x, y, w, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, emit);
+                float lh = Flow(b.Runs, x, y, w, b.Size, text, b.Align, emit);
                 _pulse = false;
-                return y + lh + gap * 0.5f;
+                return y + lh + (b.After ?? St.TextGap) * _s;
         }
     }
 
     private float Status(Block b, float x, float y, float w, bool emit)
     {
-        float box = b.Icon.Length > 0 ? b.IconPx * _s : 0f, gap = box > 0f ? 6f * _s : 0f;
-        float h = Flow(b.Runs, x + box + gap, y, w - box - gap, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, false);
+        float box = b.Icon.Length > 0 ? b.IconPx * _s : 0f, gap = box > 0f ? (b.Spacing ?? St.StatusGap) * _s : 0f;
+        uint text = b.Color != 0 ? b.Color : St.Text;
+        float h = Flow(b.Runs, x + box + gap, y, w - box - gap, b.Size, text, b.Align, false);
         float rowH = Math.Max(h, box);
         if (!emit) return y + rowH;
         if (box > 0f)
         {
-            float iy = y + (rowH - box) / 2f;
-            if (b.Frame) { Rect(x, iy, x + box, iy + box, FrameFill); Frame(x, iy, x + box, iy + box, FrameLine); }
-            AddIcon(Expand(b.Icon), x + (b.Frame ? 2f * _s : 0f), iy + (b.Frame ? 2f * _s : 0f), box - (b.Frame ? 4f * _s : 0f), box - (b.Frame ? 4f * _s : 0f));
+            float iy = y + (rowH - box) / 2f, inset = b.Frame ? (b.Inset ?? St.FrameInset) * _s : 0f;
+            if (b.Frame) FrameBox(b, x, iy, box);
+            AddIcon(Expand(b.Icon), x + inset, iy + inset, box - 2f * inset, box - 2f * inset);
         }
-        Flow(b.Runs, x + box + gap, y + (rowH - h) / 2f, w - box - gap, b.Size, b.Color != 0 ? b.Color : DefaultText, 0, true);
+        Flow(b.Runs, x + box + gap, y + (rowH - h) / 2f, w - box - gap, b.Size, text, b.Align, true);
         return y + rowH;
+    }
+
+    private void FrameBox(Block b, float x, float y, float box)
+    {
+        Rect(x, y, x + box, y + box, b.FrameFill != 0 ? b.FrameFill : St.FrameFill);
+        Frame(x, y, x + box, y + box, b.FrameLine != 0 ? b.FrameLine : St.FrameLine, St.FrameW, "trbl");
     }
 
     private float Icons(Block b, float x, float y, float w, bool emit)
     {
-        float box = b.IconPx * _s, gap = 4f * _s, cx = 0f, cy = 0f;
+        float box = b.IconPx * _s, gap = (b.Spacing ?? St.IconGap) * _s, cx = 0f, cy = 0f;
         foreach (string name in b.Icons)
         {
             if (cx > 0f && cx + box > w) { cx = 0f; cy += box + gap; }
             if (emit)
             {
-                if (b.Frame) { Rect(x + cx, y + cy, x + cx + box, y + cy + box, FrameFill); Frame(x + cx, y + cy, x + cx + box, y + cy + box, FrameLine); }
-                float in_ = b.Frame ? 2f * _s : 0f;
+                if (b.Frame) FrameBox(b, x + cx, y + cy, box);
+                float in_ = b.Frame ? (b.Inset ?? St.FrameInset) * _s : 0f;
                 AddIcon(Expand(name), x + cx + in_, y + cy + in_, box - 2f * in_, box - 2f * in_);
             }
             cx += box + gap;
@@ -193,13 +246,13 @@ internal sealed class PanelLayout
 
     private float Footer(Block b, float x, float y, float w, float fullW, bool emit)
     {
-        float pad = 5f * _s;
-        uint rgba = b.Color != 0 ? b.Color : DefaultText;
-        float lw = b.Right.Length == 0 ? w : w * 0.62f, rw = b.Runs.Length == 0 ? w : w * 0.38f;
+        float pad = (b.Pad ?? St.FooterPad) * _s;
+        uint rgba = b.Color != 0 ? b.Color : St.Text;
+        float lw = b.Right.Length == 0 ? w : w * St.FooterSplit, rw = b.Runs.Length == 0 ? w : w * (1f - St.FooterSplit);
         float h = Math.Max(Flow(b.Runs, x, 0, lw, b.Size, rgba, 0, false), Flow(b.Right, x, 0, rw, b.Size, rgba, 1, false));
         if (emit)
         {
-            Rect(0, y, fullW, y + h + 2f * pad, b.Tint != 0 ? b.Tint : FooterBand);
+            Rect(0, y, fullW, y + h + 2f * pad, b.Tint != 0 ? b.Tint : St.FooterBand);
             Flow(b.Runs, x, y + pad, lw, b.Size, rgba, 0, true);
             Flow(b.Right, x + w - rw, y + pad, rw, b.Size, rgba, 1, true);
         }
@@ -274,7 +327,7 @@ internal sealed class PanelLayout
             }
         }
         _line.Clear();
-        return asc + desc;
+        return (asc + desc) * St.Leading;
     }
 
     private static float Measure(string s, int from, int to, GlyphAtlas a)
@@ -291,11 +344,27 @@ internal sealed class PanelLayout
         float pen = x;
         VertexBatch into = _v.Text;
         if (_pulse) into = _v.Pulse ??= new VertexBatch(a.SolidU, a.SolidV);
+        uint sh = St.Shadow;
+        float sr = (sh >> 24) / 255f, sg = ((sh >> 16) & 0xFF) / 255f, sb = ((sh >> 8) & 0xFF) / 255f, sa = (sh & 0xFF) / 255f * al;
+        if (sh != 0)
+        {
+            float sp = x;
+            foreach (Rune ru in s.AsSpan(from, to - from).EnumerateRunes())
+            {
+                if (a.TryGet(ru.Value, out Glyph gl))
+                {
+                    if (italic) into.GlyphItalic(gl, sp + St.ShadowDx * _s, baseline + St.ShadowDy * _s, sr, sg, sb, sa, St.Slant, k);
+                    else into.Glyph(gl, sp + St.ShadowDx * _s, baseline + St.ShadowDy * _s, sr, sg, sb, sa, k);
+                    sp += gl.Advance * k;
+                }
+                else sp += a.AdvanceOf(ru) * k;
+            }
+        }
         foreach (Rune ru in s.AsSpan(from, to - from).EnumerateRunes())
         {
             if (a.TryGet(ru.Value, out Glyph gl))
             {
-                if (italic) into.GlyphItalic(gl, pen, baseline, r, g, b, al, 0.2f, k);
+                if (italic) into.GlyphItalic(gl, pen, baseline, r, g, b, al, St.Slant, k);
                 else into.Glyph(gl, pen, baseline, r, g, b, al, k);
                 pen += gl.Advance * k;
             }
@@ -303,7 +372,7 @@ internal sealed class PanelLayout
         }
     }
 
-    private void AddIcon(string src, float x, float y, float w, float h)
+    private void AddIcon(string src, float x, float y, float w, float h, float alpha = 1f)
     {
         uint item = 0;
         if (src.StartsWith("@item:", StringComparison.Ordinal))
@@ -314,21 +383,25 @@ internal sealed class PanelLayout
         }
         else if (PanelLayout.IsLook(src))
         {
-            _v.Icons.Add(new IconDraw { Src = "", Look = src, X = x, Y = y, W = w, H = h });
+            _v.Icons.Add(new IconDraw { Src = "", Look = src, X = x, Y = y, W = w, H = h, Alpha = alpha });
             return;
         }
         else if (src.StartsWith('@')) return;
-        _v.Icons.Add(new IconDraw { Src = item == 0 ? src : "", Item = item, X = x, Y = y, W = w, H = h });
+        _v.Icons.Add(new IconDraw { Src = item == 0 ? src : "", Item = item, X = x, Y = y, W = w, H = h, Alpha = alpha });
     }
 
     private void Rect(float x0, float y0, float x1, float y1, uint rgba)
         => _v.Back.Rect(x0, y0, x1, y1, (rgba >> 24) / 255f, ((rgba >> 16) & 0xFF) / 255f, ((rgba >> 8) & 0xFF) / 255f, (rgba & 0xFF) / 255f);
 
-    private void Frame(float x0, float y0, float x1, float y1, uint rgba)
+    private void Frame(float x0, float y0, float x1, float y1, uint rgba, float width, string sides)
     {
-        float t = Math.Max(1f, _s);
-        Rect(x0, y0, x1, y0 + t, rgba); Rect(x0, y1 - t, x1, y1, rgba);
-        Rect(x0, y0 + t, x0 + t, y1 - t, rgba); Rect(x1 - t, y0 + t, x1, y1 - t, rgba);
+        float t = Math.Max(1f, width * _s);
+        bool top = sides.Contains('t'), bot = sides.Contains('b'), left = sides.Contains('l'), right = sides.Contains('r');
+        if (top) Rect(x0, y0, x1, y0 + t, rgba);
+        if (bot) Rect(x0, y1 - t, x1, y1, rgba);
+        float ya = top ? y0 + t : y0, yb = bot ? y1 - t : y1;
+        if (left) Rect(x0, ya, x0 + t, yb, rgba);
+        if (right) Rect(x1 - t, ya, x1, yb, rgba);
     }
 
     private static (float, float, float, float) C(uint rgba) => ((rgba >> 24) / 255f, ((rgba >> 16) & 0xFF) / 255f, ((rgba >> 8) & 0xFF) / 255f, (rgba & 0xFF) / 255f);

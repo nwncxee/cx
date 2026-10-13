@@ -32,11 +32,11 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `3`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)). `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
+| `cx_cap_card` | `4`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). `3` had no style fields, no `cardstyle`, and its spacing, colours, pulse, width range, size ladder, placement and delay were fixed. `2` gave `header`, `subtitle`, `headline`, `flavour` and `footer` their own sizes and dimming and framed `icons` by default. `1` had no `card.<prefix>*` keys, no `loading` block and no `[]` |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `2`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `1` had no `drag` and no `vfx` |
-| `cx_cap_heldimage` | `1`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`) |
-| `cx_cap_heldpick` | `1`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well) |
+| `cx_cap_modelview` | `3`: `@model:<key>` NUI images draw a live model (see [Model views](#model-views)). `nui.enabled`, `nui.modelview`. `2` had no `zoom`, `clip`, `pitch`, `light*`, `dragrange`, `vfxmute` and no body part in a `vfx` row; `1` had no `drag` and no `vfx` |
+| `cx_cap_heldimage` | `2`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
+| `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
 A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
 `nui.itemicons`, `nui.cards`) is on. **Absent or `0` means the client does not draw it**; send the vanilla version (a plain
@@ -92,6 +92,9 @@ A server a long way off answers a pick late. Declare what a pick shows and CX sh
 | `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
 | `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`) |
 | `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
+| `held.opacity=<0-1>` | how opaque a confirmed hold is, clamped to 0-1, default 0.9 |
+| `held.pickopacity=<0-1>` | how opaque a pick still waiting for the server is, clamped to 0-1, default 0.55 |
+| `held.dx=<px>`, `held.dy=<px>` | where the image sits against the pointer: px right and down of dead centre at UI scale 1, clamped to -256..256, default 0 |
 
 Declare them when the window opens, like cards. `<image>` has the forms `held.image` takes. `held.pick.*=` releases every pick, and
 an empty value releases one. Only a left press counts, and only on an element with an `id`.
@@ -176,14 +179,14 @@ A colour is `"#RRGGBB"` or `"#RRGGBBAA"`.
 
 | card field | meaning |
 |---|---|
-| `width` | design px, clamped to 160-480, default 300 |
+| `width` | design px, clamped to the style's range (160-480 unless it says otherwise), default 300 |
 | `bg` | a colour, or `{"from": colour, "to": colour, "dir": "v" or "h"}` for a gradient (`v`: top to bottom, the default) |
-| `border` | the 1 px frame, a colour |
+| `border` | the frame, a colour (see [Style](#style) for its thickness and edges) |
 | `tab` | a label on a tab above the card's top left corner |
 | `tabcolor` | the tab's background colour |
 | `item` | the item's hex id, for `{item.name}` and `{item.stack}` in this card; without it they use the item the element draws as an `@item:` image |
 | `blocks` | the blocks, drawn top to bottom |
-| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-256, default 64), `at` (`tl`, `tr`, `bl`, `br`, default `tr`; any other value is refused), `dx`, `dy` (px right and down from the corner, clamped to -256..256; a push out of the card makes the image overflow it) |
+| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-1024, default the style's `imagesize`, 64), `at` (`tl`, `tr`, `bl`, `br`, `t`, `b`, `l`, `r`, `c`, default `tr`; any other value is refused), `alpha` (0-1, default 1), `dx`, `dy` (px right and down from the corner, clamped to -1024..1024; a push out of the card makes the image overflow it) |
 
 Every block has a `type`. Text blocks read `text` (markup, below), `size` (default 1), `color`, `dim`, `italic` and `pulse`,
 all off unless declared; the fields a type reads are listed here.
@@ -191,17 +194,82 @@ all off unless declared; the fields a type reads are listed here.
 | type | draws | fields |
 |---|---|---|
 | `text` | wrapped text | `text` |
-| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, clamped to 12-64, default 22), `frame` (a frame round the icon) |
+| `status` | an icon beside wrapped text | `icon`, `text`, `px` (icon size, clamped to 4-256, default the style's `statuspx`, 22), `frame` (a frame round the icon) |
 | `divider` | a thin rule across the full card | `color` |
-| `icons` | a row of icons, wrapping | `icons` (up to 16 names, more is refused), `px` (clamped to 12-64, default 28), `frame` (a frame round each icon) |
+| `icons` | a row of icons, wrapping | `icons` (up to 16 names, more is refused), `px` (clamped to 4-256, default the style's `iconspx`, 28), `frame` (a frame round each icon) |
 | `section` | blocks on a tinted band across the full card | `blocks`, `tint` |
 | `footer` | a band at the foot: `left` text and `right` text on one line | `left`, `right`, `tint`, `size` |
 
-- `size` is a multiple of the player's text size, snapped to 0.7, 0.85, 1, 1.15, 1.3, 1.6 or 2.
-- `dim` lowers the colour's opacity to 60%.
-- `pulse` fades the block's text between 35% and full opacity every 1.2 s. `loading` is a `text` block with `pulse` on.
+- `size` is a multiple of the player's text size, snapped to the style's `sizes` (0.7, 0.85, 1, 1.15, 1.3, 1.6 or 2 unless it says otherwise).
+- `dim` lowers the colour's opacity to the style's `dimalpha` (60%).
+- `pulse` fades the block's text between the style's `pulsemin` (35%) and full opacity every `pulseperiod` (1.2 s). `loading` is a `text` block with `pulse` on.
 - A `section` holds blocks, and sections nest two deep.
 - A block with an unknown `type` draws as `text`. With no `text` it draws nothing.
+
+### Style
+
+Every look value of a card is a field of the style, with today's look as its default. A server that sets none sees no change. The
+same fields can sit on a card (for that card), or in one `cardstyle=<JSON object>` line (for every card). A card's own field beats
+the style's, and the style's beats the default. `cardstyle` can come before or after the card lines: cards already held are laid
+out again against it. `cardstyle=` restores the defaults and so does `*=`; `card.*=` leaves the style alone. A style CX refuses is
+logged and the defaults apply. Lengths are design px (they scale with the UI), colours are `#RRGGBB` or `#RRGGBBAA`, and a length
+outside its range is clamped.
+
+| field | meaning | range | default |
+|---|---|---|---|
+| `width` | the card's width | `minwidth`-`maxwidth` | 300 |
+| `minwidth`, `maxwidth` | the range `width` clamps to | 32-2000 | 160, 480 |
+| `sizes` | the text sizes `size` and `<s=>` snap to (each a baked face), up to 12 numbers | 0.25-6 | 0.7, 0.85, 1, 1.15, 1.3, 1.6, 2 |
+| `pad` | the padding round the card | 0-256 | 10 |
+| `gap` | the space after a `status` or `icons` block | 0-256 | 4 |
+| `textgap` | the space after a `text` block | 0-256 | 2 |
+| `statusgap` | between a `status` icon and its text | 0-256 | 6 |
+| `icongap` | between the icons of an `icons` row | 0-256 | 4 |
+| `frameinset` | between a frame and its icon | 0-256 | 2 |
+| `dividermargin`, `dividerthick` | the space above and below a `divider`, and its thickness | 0-256 | 3, 1 |
+| `sectionpad` | the padding inside a `section` band | 0-256 | 6 |
+| `footerpad` | the padding above and below a `footer` | 0-256 | 5 |
+| `footersplit` | the share of the footer's width the `left` text gets | 0.05-0.95 | 0.62 |
+| `statuspx`, `iconspx` | the default icon size of a `status` and an `icons` block | 4-256 | 22, 28 |
+| `imagesize` | the default `w` and `h` of an image | 1-1024 | 64 |
+| `leading` | line height as a multiple of the text's | 0.5-4 | 1 |
+| `slant` | how far italic text leans | -1 to 1 | 0.2 |
+| `tabx`, `tabpad`, `tabextra`, `tabdrop` | the tab's left offset, its side padding, the height it adds to the line, and the text's drop from its top | 0-256 | 8, 6, 4, 2 |
+| `color` | the default text colour | colour | `#E6E6E6` |
+| `bg` | as in the card table above (`dir` also takes `d`, top left to bottom right). Without `to` the fill is flat, and `to` may be clear | colour or object | `#12161C` at 95% |
+| `border` | the frame's colour | colour | `#6E6E6E` |
+| `borderw` | the frame's thickness | 0-256, at least 1 px drawn; an empty `sides` draws no frame | 1 |
+| `sides` | which edges the frame draws: any of `t r b l` | text | `trbl` |
+| `border2`, `border2w`, `border2inset` | a second frame inside the first (a double border): colour, thickness and inset | colour, 0-256, 0-256 | none, 1, 3 |
+| `corners`, `cornerlen`, `cornerw` | bracket marks in the four corners: colour, arm length and thickness | colour, 0-256 | none, 12, 2 |
+| `glow`, `glowspread` | a soft light outside the card: its colour (the nearest ring's opacity) and how many px it spreads | colour, 0-64 | none, 8 |
+| `shadow`, `shadowdx`, `shadowdy` | a drop shadow under every glyph | colour, -16..16 | none, 1, 1 |
+| `divider` | the `divider`'s colour | colour | `#FFFFFF` at 19% |
+| `footerband` | the `footer`'s band | colour | `#000000` at 40% |
+| `framefill`, `frameline`, `framew` | the fill, line and thickness of an icon's frame | colour, colour, 0-256 | `#000000` at 40%, `#B8B8B8` at 75%, 1 |
+| `tabcolor`, `tabtext` | the tab's background, and its text (the default text colour when absent) | colour | `#000000` at 69% |
+| `dimcolor`, `dimalpha` | what a `dim` block with no colour of its own draws in, and its opacity | colour (RGB used), 0-1 | `#FFFFFF`, 0.6 |
+| `pulsemin`, `pulseperiod` | a `pulse` block's faintest opacity, and ms for one full fade out and back | 0-1, 100-60000 | 0.35, 1200 |
+
+The blocks take some of the same fields to override the card for one block: `after` (the space after it), `pad` (a `section` or
+`footer`), `margin` and `thick` (a `divider`), `spacing` (an `icons` row's gap, or a `status` icon's), `inset`, `framefill` and
+`frameline` (a framed icon), and `align` (`left`, `center`, `right`) on a text or `status`. Images take `alpha` (0-1) and more
+anchors: `t`, `b`, `l`, `r` and `c` centre along the edge.
+
+Placement and timing are read from the first card of a key, and from the style when it names none:
+
+| field | meaning | range | default |
+|---|---|---|---|
+| `side` | the element's edge the cards sit against: `right`, `left`, `above`, `below` | word | `right` |
+| `flip` | go to the opposite side when this one has no room | true or false | true |
+| `offset` | the distance from the element | -256..256 | 8 |
+| `cardgap` | the distance between cards | -256..256 | 8 |
+| `align` | along that edge: `start` (tops level with the element, or lefts), `center`, `end` | word | `start` |
+| `dx`, `dy` | a further shift right and down | -1000..1000 | 0 |
+| `delay` | seconds before a card shows; `0` shows at once, below 0 or absent follows the player's own tooltip delay | -1..30 | the player's |
+| `fadein`, `fadeout` | seconds for the fades; below 0 or absent follows the player's | -1..10 | the player's |
+
+The group is kept on screen whatever the placement says.
 
 ### Data that arrives late
 
@@ -264,20 +332,21 @@ These are clamped into their range and the card still draws:
 
 | field | range |
 |---|---|
-| card `width` | 160-480 |
-| `px` of a `status` or `icons` block | 12-64 |
-| image `w`, `h` | 1-256 |
-| image `dx`, `dy` | -256 to 256 |
-| `size` of a text | snapped to the nearest of 0.7, 0.85, 1, 1.15, 1.3, 1.6, 2 |
+| card `width` | the style's `minwidth`-`maxwidth`, 160-480 unless set |
+| `px` of a `status` or `icons` block | 4-256 |
+| image `w`, `h` | 1-1024 |
+| image `dx`, `dy` | -1024 to 1024 |
+| `size` of a text | snapped to the nearest of the style's `sizes` |
 
 ### Where and when it shows
 
 CX puts the cards to the right of the element, 8 px off it, with their tops level. When they do not fit there it puts
-them to the left, and it moves them as far as it takes to stay on screen. A card is drawn above NUI and takes no
+them to the left, and it moves them as far as it takes to stay on screen. The style's `side`, `flip`, `offset`, `align` and
+`dx`, `dy` change all of that. A card is drawn above NUI and takes no
 input: the pointer and keys go to the window underneath.
 
-A card shows once the pointer has rested on the element for `ui.tipdelay`, and fades in and out with the other CX
-tooltips. Moving to another element that has a card skips the wait. It hides when the pointer leaves the element,
+A card shows once the pointer has rested on the element for `ui.tipdelay` (or the style's `delay`), and fades in and out with the other CX
+tooltips (or the style's `fadein` and `fadeout`). Moving to another element that has a card skips the wait. It hides when the pointer leaves the element,
 the window closes, or the list scrolls the element out of view.
 
 `nui.cards` turns cards off. The capability is withdrawn with it. The debug knobs for people building cards and windows
@@ -319,14 +388,24 @@ stand-in until they do.
 | `standinrect` | `x,y,w,h` in the stand-in's own pixels, counted from its top-left corner. Only that part is shown. A rectangle that does not fit inside the stand-in is ignored | the whole stand-in |
 | `wear` | an `@look:` string, or the hex object id of an item the client knows. The doll wears it in the hand slot its base item fits, in place of what the target holds there. Empty releases it | nothing |
 | `size` | `<w>x<h>` pixels, 1-1024 each. Read when the image loads | the stand-in's size, else `256x256` |
-| `angle` | the camera's view angle in degrees | `30` |
-| `dist` | camera distance from the creature, in metres | `4` |
-| `height` | camera height above the creature's feet, in metres | `0.9` |
+| `angle` | the camera's view angle in degrees, 1-170 | `30` |
+| `dist` | camera distance from the creature, in metres, 0-1000. The starting distance when `zoom` is set | `4` |
+| `height` | camera height above the creature's feet, in metres, -1000 to 1000 | `0.9` |
 | `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
 | `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the creature unticked, so it does not animate. Read when the doll is built | `1` |
-| `vfx` | `row,row,...`: the `visualeffects.2da` rows the doll wears, up to 16. A new value replaces the old set. Empty releases it. Linux only | none |
+| `vfx` | `row[:part],row[:part],...`: the `visualeffects.2da` rows the doll wears, each on a body part (0-255, default 0), up to 16. `0` is the hand node, `1` the impact node, `2`-`11` the ground nodes `monster0`-`monster9`, any other number the root. A row on two parts is worn twice. A new value replaces the old set. Empty releases it. Linux only | none |
+| `vfxmute` | `1` starts none of the sounds the doll's effects carry (their impact one-shot and their looping sound). Linux only | `0` |
+| `pitch` | degrees the camera tips down in place, -89 to 89. Negative looks up. The camera does not move | `0` |
+| `clip` | `near,far`: the camera's clip distances in metres, `near` 0.001 or more, `far` 100000 or less, `near` below `far`. Anything else is the default | `0.1,2000` |
+| `zoom` | `min,max`: a scroll over the image moves the camera between these distances in metres (0.01-1000, `min` no greater than `max`). Scroll up comes nearer. The first scroll starts from `dist`. The view takes the scroll, so the window under it does not. No `zoom` means no scroll | none |
+| `zoomstep` | metres one scroll notch moves the camera, 0.01-10 | `0.25` |
+| `dragrange` | `min,max` degrees (-360 to 360) the drag turn stays inside, counted from `yaw`: `-45,45` turns a quarter either way and stops. `drag` still sets the speed and `0` still turns the drag off. No `dragrange` turns freely | none |
+| `light` | `engine` shows the doll in the engine's character-preview light. `server` shows it in the light the three settings below describe | `engine` |
+| `lightcolor` | `r,g,b` of a server light, each 0-4 | `1,1,1` |
+| `lightdir` | `x,y,z`: the direction the light comes from, in the view's own frame (x right, y up, z toward the viewer). It is made unit length; all zero is the default | `0.35,0.5,0.8` |
+| `lightambient` | `r,g,b` added whatever the surface faces, each 0-4 | `0.25,0.25,0.25` |
 
 **Stand-in.** The image holds the stand-in until the doll has been built and drawn once, and holds it again when the doll is
 taken down. A stand-in of another size than `size` is stretched to it. With no `standin`, the image is transparent, and a
@@ -354,6 +433,13 @@ and lists the ones that belong to the character's look, usually the permanent on
 a fire ring, also fills the image's alpha, so on a transparent `bg` its whole square shows: give a doll with effects an
 opaque `bg`. The doll's effects play their sounds where the doll stands, which is not where the player is. On Windows
 `vfx` is ignored, and the client logs that once.
+
+**Lighting.** A server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface normal dotted with
+`lightdir`), plus what the model glows on its own. Only the Alloy renderer draws it; with Alloy off the engine draws the doll
+in its own light whatever `light` says.
+
+**Zoom and drag.** `zoom` and `drag` act only on the image's own rectangle, while the doll is built. `dist` is the starting distance; the
+player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.
 
 **Limits.** One view at a time: while two windows show `@model:` images, only the one loaded last has its doll. The target
 must be a creature the client knows. A `@model:` name never shows an item on its own, and `wear` shows one only in a
