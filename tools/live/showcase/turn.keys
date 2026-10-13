@@ -1,0 +1,1 @@
+sleep:30000;shot:@SHOTS@/a-before.png;down:150,200;sleep:400;move:200,200;sleep:300;move:260,200;sleep:400;shot:@SHOTS@/b-inside.png;move:420,210;sleep:300;move:700,210;sleep:700;shot:@SHOTS@/c-outside.png;move:900,210;sleep:700;shot:@SHOTS@/d-further.png;up:900,210;sleep:300;move:1000,210;sleep:700;shot:@SHOTS@/e-after-up.png

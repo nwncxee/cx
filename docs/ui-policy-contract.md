@@ -400,7 +400,7 @@ stand-in until they do.
 | `fit` | `0` stops the framing: a `dist` or `height` that is not set is `4` and `0.9`. A positive number frames the model and scales the room left round it, so `1.5` stands the camera further back than `1` | `1` |
 | `fitzone` | `lo,hi`: frame only this slice of a creature's height, as fractions with 0 the floor and 1 the top, so `0.75,1` is head and shoulders. The slice is no wider than it is tall. Needs a creature target (`player`, an id or `app:`); anything else frames the whole model | the whole model |
 | `yaw` | degrees round the creature. `0` sees its right side, `90` its back, `180` its left, `270` its front | `0` |
-| `drag` | degrees the doll turns for each pixel a left drag on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
+| `drag` | degrees the doll turns for each pixel a left drag that began on the image travels sideways, up to `10`. `0` turns drag off. The turn adds to `yaw` and lasts until the window closes | `0` |
 | `bg` | `r,g,b,a`, each 0-1 | `0,0,0,0` |
 | `anim` | `0` leaves the doll still. An animation name (a letter, then letters, digits and underscores, up to 32) plays that animation, any the model has, for example `creadyr` (a combat stance), `ctaunt` or `cconjure1`; a name the model lacks leaves the doll in its rest pose and the client logs it once. Anything else is the creature's own idle. A creature's idle is part of the creature, so changing between the idle and another value rebuilds the doll | `1` |
 | `animspeed` | the rate a named animation plays at, 0.05-8 times its own | `1` |
@@ -475,7 +475,8 @@ A shiny part (a helm, a blade) takes its reflectivity from the texture's alpha a
 creature that names none, or one that does not load, gets the grey the engine bakes in with environment maps off, so the part reads as
 plain grey metal.
 
-**Zoom and drag.** `zoom` and `drag` act only on the image's own rectangle, while the doll is built. `dist` is the starting distance; the
+**Zoom and drag.** `zoom` and `drag` start only on the image's own rectangle, while the doll is built. A drag that began there keeps
+turning the doll until the button comes up, wherever the pointer goes, even outside the game window. `dist` is the starting distance; the
 player's scroll replaces it until the window closes, and a `zoom` that changes pulls it back inside the new range.
 
 **Limits.** Eight views at a time. A card's or the held image's view takes its settings from the same `model.<key>.` lines, but

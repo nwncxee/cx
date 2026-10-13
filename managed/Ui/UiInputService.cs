@@ -205,6 +205,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseUp:
                 {
                     CX.Alloy.Db.EditSelect.MouseUp();
+                    if (*(byte*)(ev + SdlEvButtonOff) == SdlButtonLeft) CX.Services.Nui.NuiModelView.OnRelease();
                     byte btn = *(byte*)(ev + SdlEvButtonOff);
                     int mx = *(int*)(ev + SdlEvMouseXOff), my = *(int*)(ev + SdlEvMouseYOff);
                     if (UiHost.DispatchMouseButton(false, btn, mx, my)) return 0;

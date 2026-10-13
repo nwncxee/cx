@@ -317,6 +317,9 @@ internal static unsafe class SymbolMap
     public const string SdlGetModState  = "SDL_GetModState";                            // live Ctrl/Shift/Alt state at capture
     [Fn("uint(int* x, int* y)")]
     public const string SdlGetMouseState = "SDL_GetMouseState";
+    /// <summary><c>SDL_CaptureMouse(SDL_bool)</c>: while on, SDL keeps reporting the pointer and its buttons outside the window.</summary>
+    [Fn("int(int enabled)")]
+    public const string SdlCaptureMouse = "SDL_CaptureMouse";
     /// <summary><c>SDL_SetWindowSize(SDL_Window*, int, int)</c>: CX's one trigger for the engine's own resize path.
     /// SDL posts <c>SDL_WINDOWEVENT_SIZE_CHANGED</c> for a size it set itself, and <c>WinMessageHandler</c> @0x62f960
     /// (event type <c>0x200</c>, code 5) answers it with <c>CGuiMan::SetGuiSize</c> @0x77efc0 -- every panel re-laid
@@ -3001,6 +3004,7 @@ internal static unsafe class SymbolMap
         [Cx119EncodingSingleCharToUtf8] = Nm("?SingleCharToUTF8@Encoding@@YAHDW4Locale@1@@Z"),
         [SdlGlGetProcAddress]        = Nm("SDL_GL_GetProcAddress"),
         [SdlGetMouseState]           = Nm("SDL_GetMouseState"),
+        [SdlCaptureMouse]            = Nm("SDL_CaptureMouse"),
         [SdlSetWindowSize]           = Nm("SDL_SetWindowSize"),
         [SdlGetWindowSize]           = Nm("SDL_GetWindowSize"),
         [SdlStartTextInput]          = Nm("SDL_StartTextInput"),

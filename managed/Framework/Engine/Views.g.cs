@@ -77,6 +77,7 @@ global using unsafe FeedbackHitCheckHostileFn = delegate* unmanaged<nint, nint*,
 global using unsafe FeedbackHitCheckNonHostileFn = delegate* unmanaged<nint, nint*, nint, int*, int, int>;
 global using unsafe SdlGetModStateFn = delegate* unmanaged<int>;
 global using unsafe SdlGetMouseStateFn = delegate* unmanaged<int*, int*, uint>;
+global using unsafe SdlCaptureMouseFn = delegate* unmanaged<int, int>;
 global using unsafe SdlSetWindowSizeFn = delegate* unmanaged<nint, int, int, void>;
 global using unsafe SdlGetWindowSizeFn = delegate* unmanaged<nint, int*, int*, void>;
 global using unsafe ActivateTargetModeFn = delegate* unmanaged<nint, void>;
@@ -4644,6 +4645,10 @@ public static unsafe class EngineFn
     private static bool _SdlGetMouseStateDone;
     /// <inheritdoc cref="SymbolMap.SdlGetMouseState"/>
     public static SdlGetMouseStateFn SdlGetMouseState => (SdlGetMouseStateFn)(_SdlGetMouseStateDone ? _SdlGetMouseState : Resolve(ref _SdlGetMouseState, ref _SdlGetMouseStateDone, SymbolMap.SdlGetMouseState));
+    private static IntPtr _SdlCaptureMouse;
+    private static bool _SdlCaptureMouseDone;
+    /// <inheritdoc cref="SymbolMap.SdlCaptureMouse"/>
+    public static SdlCaptureMouseFn SdlCaptureMouse => (SdlCaptureMouseFn)(_SdlCaptureMouseDone ? _SdlCaptureMouse : Resolve(ref _SdlCaptureMouse, ref _SdlCaptureMouseDone, SymbolMap.SdlCaptureMouse));
     private static IntPtr _SdlSetWindowSize;
     private static bool _SdlSetWindowSizeDone;
     /// <inheritdoc cref="SymbolMap.SdlSetWindowSize"/>
@@ -6674,6 +6679,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlGetMouseState"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlGetMouseStateFn* ChainSdlGetMouseState(this HookService h, SdlGetMouseStateFn handler, int priority) =>
         (SdlGetMouseStateFn*)h.Chain(SymbolMap.SdlGetMouseState, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlCaptureMouse"/>; returns the original, or null.</summary>
+    public static SdlCaptureMouseFn InstallSdlCaptureMouse(this HookService h, SdlCaptureMouseFn handler) =>
+        (SdlCaptureMouseFn)h.Install(SymbolMap.SdlCaptureMouse, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlCaptureMouse"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlCaptureMouseFn* ChainSdlCaptureMouse(this HookService h, SdlCaptureMouseFn handler, int priority) =>
+        (SdlCaptureMouseFn*)h.Chain(SymbolMap.SdlCaptureMouse, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SdlSetWindowSize"/>; returns the original, or null.</summary>
     public static SdlSetWindowSizeFn InstallSdlSetWindowSize(this HookService h, SdlSetWindowSizeFn handler) =>
         (SdlSetWindowSizeFn)h.Install(SymbolMap.SdlSetWindowSize, (IntPtr)handler);

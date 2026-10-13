@@ -230,6 +230,7 @@ internal static unsafe class NuiModelView
     private static void Release(ViewState s, ViewData v)
     {
         if (v.Built) s.Log?.Always($"NuiModelView: '{v.Key}' closed -- doll taken down");
+        if (v.Dragging) EndDrag(v);
         NuiImageSpot.Watch(v.Slot.Index, 0);
         NuiModelDoll.Free(v.Slot);
         if (v.OwnTex != 0) { uint t = v.OwnTex; Gl.DeleteTextures(1, &t); v.OwnTex = 0; }
@@ -358,7 +359,7 @@ internal static unsafe class NuiModelView
     {
         ViewData? v = Under(static c => c.ZoomMax > 0f);
         if (v == null || notches == 0) return false;
-        v.ZoomAt = Math.Clamp(Distance(v) - notches * v.ZoomStep, v.ZoomMin, v.ZoomMax);
+        v.ZoomAt = NuiModelLook.ZoomTo(Distance(v), notches, v.ZoomStep, v.ZoomMin, v.ZoomMax);
         return true;
     }
 
@@ -371,18 +372,32 @@ internal static unsafe class NuiModelView
         EngineFn.SdlGetMouseState(&mx, &my);
         v.Dragging = true;
         v.LastX = mx;
+        if (EngineFn.SdlCaptureMouse != null) EngineFn.SdlCaptureMouse(1);
         _s.Log?.Info($"NuiModelView: '{v.Key}' turns with the pointer from x {mx}, the doll {NuiModelDoll.Pose(v.Slot)}");
     }
 
-    /// <summary>While the press that began on the image is held, the doll turns <see cref="ViewData.Drag"/> degrees a pixel of sideways travel.</summary>
+    /// <summary>The left button came up (from the input hook), wherever the pointer is: a drag ends.</summary>
+    internal static void OnRelease()
+    {
+        foreach (ViewData v in _s.Views) if (v.Dragging) EndDrag(v);
+    }
+
+    /// <summary>The press is over: the doll stops following the pointer and SDL stops tracking it outside the window.</summary>
+    private static void EndDrag(ViewData v)
+    {
+        v.Dragging = false;
+        if (EngineFn.SdlCaptureMouse != null) EngineFn.SdlCaptureMouse(0);
+    }
+
+    /// <summary>While the press that began on the image is held, wherever the pointer has gone, the doll turns
+    /// <see cref="ViewData.Drag"/> degrees a pixel of sideways travel.</summary>
     private static void Turn(ViewData v)
     {
         int mx = 0, my = 0;
         uint buttons = EngineFn.SdlGetMouseState(&mx, &my);
-        if ((buttons & SdlLeftMask) == 0) { v.Dragging = false; return; }
+        if ((buttons & SdlLeftMask) == 0) { EndDrag(v); return; }
         if (mx == v.LastX) return;
-        float turn = v.DragYaw + (mx - v.LastX) * v.Drag;
-        v.DragYaw = v.HasTurnRange ? Math.Clamp(turn, v.TurnMin, v.TurnMax) : turn % 360f;
+        v.DragYaw = NuiModelLook.TurnBy(v.DragYaw, mx - v.LastX, v.Drag, v.HasTurnRange, v.TurnMin, v.TurnMax);
         v.LastX = mx;
     }
 
@@ -473,12 +488,11 @@ internal static unsafe class NuiModelView
         v.ZoomMin = zoom ? zmin : 0f;
         v.ZoomMax = zoom ? zmax : 0f;
         v.ZoomStep = Math.Clamp(PolicyF(v.Key, "zoomstep", NuiModelLook.DefaultZoomStep), NuiModelLook.MinZoomStep, NuiModelLook.MaxZoomStep);
-        if (!zoom) v.ZoomAt = float.NaN;
-        else if (!float.IsNaN(v.ZoomAt)) v.ZoomAt = Math.Clamp(v.ZoomAt, v.ZoomMin, v.ZoomMax);
+        v.ZoomAt = NuiModelLook.ZoomAfterPolicy(v.ZoomAt, zoom, v.ZoomMin, v.ZoomMax);
         v.HasTurnRange = NuiModelLook.Pair(Policy(v.Key, "dragrange", ""), -NuiModelLook.MaxTurn, NuiModelLook.MaxTurn, out float tmin, out float tmax);
         v.TurnMin = v.HasTurnRange ? tmin : 0f;
         v.TurnMax = v.HasTurnRange ? tmax : 0f;
-        if (v.HasTurnRange) v.DragYaw = Math.Clamp(v.DragYaw, v.TurnMin, v.TurnMax);
+        v.DragYaw = NuiModelLook.TurnAfterPolicy(v.DragYaw, v.HasTurnRange, v.TurnMin, v.TurnMax);
         v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
         NuiModelDoll.SetLight(v.Slot, NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);

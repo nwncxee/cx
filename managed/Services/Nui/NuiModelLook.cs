@@ -56,6 +56,26 @@ internal static class NuiModelLook
         return true;
     }
 
+    /// <summary>Where a scroll of <paramref name="notches"/> (up is positive, nearer) moves a camera standing at <paramref name="from"/>,
+    /// <paramref name="step"/> metres a notch, kept inside <paramref name="min"/>..<paramref name="max"/>.</summary>
+    internal static float ZoomTo(float from, int notches, float step, float min, float max) => Math.Clamp(from - notches * step, min, max);
+
+    /// <summary>The player's zoom after the policy changed: back to the server's <c>dist</c> (NaN) when <c>zoom</c> is gone or the player had
+    /// not scrolled, else pulled inside the new range.</summary>
+    internal static float ZoomAfterPolicy(float at, bool hasZoom, float min, float max)
+        => !hasZoom || float.IsNaN(at) ? float.NaN : Math.Clamp(at, min, max);
+
+    /// <summary>The player's turn after a drag of <paramref name="dx"/> pixels at <paramref name="perPixel"/> degrees a pixel: inside
+    /// <paramref name="min"/>..<paramref name="max"/> when the server gave a range, else free and wrapped to one turn.</summary>
+    internal static float TurnBy(float yaw, int dx, float perPixel, bool ranged, float min, float max)
+    {
+        float turn = yaw + dx * perPixel;
+        return ranged ? Math.Clamp(turn, min, max) : turn % 360f;
+    }
+
+    /// <summary>The player's turn after the policy changed: pulled inside a range that is set, else as it was.</summary>
+    internal static float TurnAfterPolicy(float yaw, bool ranged, float min, float max) => ranged ? Math.Clamp(yaw, min, max) : yaw;
+
     private static bool Num(string s, out float f) =>
         float.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out f) && float.IsFinite(f);
 
@@ -89,6 +109,15 @@ internal static class NuiModelLook
         ModelLight m = Light("server", "1,0.5,0", "0,0,2", "0.1,0.1,0.2");
         check.Expect(m.Color == new Vector3(1f, 0.5f, 0f) && m.Dir == new Vector3(0, 0, 1f) && m.Ambient == new Vector3(0.1f, 0.1f, 0.2f),
                      "a server light normalises its direction and keeps its colours");
+        check.Expect(ZoomTo(4f, 2, 0.25f, 1f, 10f) == 3.5f && ZoomTo(4f, -100, 0.25f, 1f, 10f) == 10f && ZoomTo(1.2f, 5, 0.25f, 1f, 10f) == 1f,
+                     "a scroll up comes nearer a step a notch and stops at the range's ends");
+        check.Expect(ZoomAfterPolicy(8f, true, 1f, 5f) == 5f && float.IsNaN(ZoomAfterPolicy(float.NaN, true, 1f, 5f))
+                     && float.IsNaN(ZoomAfterPolicy(3f, false, 1f, 5f)), "a zoom that changes pulls the scrolled distance inside, and none left is the server's");
+        check.Expect(TurnBy(40f, 10, 1f, true, -45f, 45f) == 45f && TurnBy(-40f, -10, 1f, true, -45f, 45f) == -45f && TurnBy(0f, 3, 0.5f, true, -45f, 45f) == 1.5f,
+                     "a ranged drag turns degrees a pixel and stops at the range's ends");
+        check.Expect(TurnBy(350f, 20, 1f, false, 0f, 0f) == 10f && TurnBy(0f, 720, 1f, false, 0f, 0f) == 0f && TurnBy(10f, -3, 2f, false, 0f, 0f) == 4f,
+                     "a free drag wraps at a full turn");
+        check.Expect(TurnAfterPolicy(90f, true, -45f, 45f) == 45f && TurnAfterPolicy(90f, false, 0f, 0f) == 90f, "a dragrange that changes pulls the turn inside it");
         check.Expect(MathF.Abs(Light("server", "", "0,0,0", "").Dir.Z - 0.795f) < 1e-3f, "a zero direction falls back to the key direction");
     }
 }
