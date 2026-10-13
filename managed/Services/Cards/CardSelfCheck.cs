@@ -186,6 +186,9 @@ internal static class CardSelfCheck
             "@item: takes its hex digits, a bad one draws nothing, a @look: keeps its name for the minted item, a resref draws as itself");
         v = Lay(atlas, "{\"width\":200,\"images\":[{\"src\":\"@look:0002\",\"w\":40,\"h\":40}],\"blocks\":[]}");
         check.Expect(v.Icons.Count == 1 && v.Icons[0].Look == "@look:0002" && Near(v.Icons[0].W, 40f), "an @look: image is placed like any other");
+        v = Lay(atlas, "{\"width\":200,\"images\":[{\"src\":\"@model:hound\",\"w\":64,\"h\":96},{\"src\":\"@model:\",\"w\":8,\"h\":8}],\"blocks\":[{\"type\":\"icons\",\"icons\":[\"@model:ogre\"]}]}");
+        check.Expect(v.Icons.Count == 2 && v.Icons[0].Model == "hound" && v.Icons[0].Src == "" && Near(v.Icons[0].H, 96f) && v.Icons[1].Model == "ogre",
+            "@model: names a model view by its key in an image and in an icons row, and a bare prefix draws nothing");
         Looks(check);
         v = Lay(atlas, "{\"width\":200,\"blocks\":[{\"text\":\"ab\"}]}", scale: 2f);
         check.Expect(Near(v.W, 400f) && Near(v.H, 20f + 20f + 4f + 20f), "at UI scale 2 the padding and gaps double; the test face's own height does not");
