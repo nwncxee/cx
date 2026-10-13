@@ -13,6 +13,9 @@ public static unsafe partial class EngineLayout
     public static readonly int GuiViewportRecord = Field("CGuiViewport", "record");
     public static readonly int GobSetColorShiftingSlot = Field("Gob", "vtbl.SetColorShifting", Expect.VtblSlot);
     public static readonly int SizeOfAppearanceInfo = Field("CCAppearanceInfo", "sizeof");
+    /// <summary><c>CAurObject::PlayAnimation(char const* name, float speed, int flags, float fade)</c> -- plays a named animation on a model,
+    /// 1 when it has one by that name. Flag bit 4 loops it. Itanium has two destructor slots before it, MSVC one.</summary>
+    public static readonly int GobPlayAnimationSlot = Field("Gob", "vtbl.PlayAnimation", Expect.VtblSlot, sig: "int(IntPtr name, float speed, int flags, float fade)");
     public static readonly int CreatureDeleteSlot = Field("CNWCCreature", "vtbl.Delete", Expect.VtblSlot);
     /// <summary>The <c>CAurCamera</c> interface slots a free view's camera is set up through (<c>CameraSlots</c>' numbering;
     /// Windows is one lower from slot 2). The by-value ones are called per OS by <c>NuiModelDoll</c>.</summary>

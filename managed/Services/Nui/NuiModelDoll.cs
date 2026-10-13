@@ -25,12 +25,17 @@ internal static unsafe class NuiModelDoll
     /// base-body path, the only one that builds such a model, and the low bits still add its head, tail and wings.</summary>
     private const byte BuildFlagsSimple = 0x4e;   // not-an-offset: SetAppearance flag bits
     private const int InfoMax = 256;   // not-an-offset: room for either OS's CCAppearanceInfo
+    /// <summary>Room for an appearance record on either OS.</summary>
+    internal const int RecordMax = InfoMax;
     private static int InfoBytes => EngineLayout.SizeOfAppearanceInfo;
 
     /// <summary>Everything one doll owns. Replaced whole by <see cref="Destroy"/>.</summary>
     internal sealed class DollState
     {
         public IntPtr Creature, Viewport, Camera, Scene, Model;
+        /// <summary>A model with no creature behind it: the <c>CAurObject</c> made by name (<c>Raw</c>), or the throwaway item whose
+        /// model it is (<c>Item</c>). At most one is set, and only when <c>Creature</c> is not.</summary>
+        public IntPtr Raw, Item;
         public uint Id = InvalidId;
         public bool Registered, Enabled;
     }
@@ -122,13 +127,19 @@ internal static unsafe class NuiModelDoll
     /// False = a step failed and the half-built doll was taken down again.</summary>
     internal static bool Build(IntPtr source, int x, int y, int w, int h, bool ai = true)
     {
-        if (_o.Doll.Creature != IntPtr.Zero) Destroy();
+        ReadOnlySpan<byte> now = InfoOf(source);
+        return !now.IsEmpty && BuildFromInfo(now, x, y, w, h, ai);
+    }
+
+    /// <summary>Build the doll from <paramref name="record"/>, an appearance record (<see cref="InfoBytes"/> long), in a viewport
+    /// covering the screen rectangle. False = a step failed and the half-built doll was taken down again.</summary>
+    internal static bool BuildFromInfo(ReadOnlySpan<byte> record, int x, int y, int w, int h, bool ai)
+    {
+        if (_o.Doll.Creature != IntPtr.Zero || _o.Doll.Viewport != IntPtr.Zero) Destroy();
         IntPtr app = App();
-        if (app == IntPtr.Zero || source == IntPtr.Zero) return false;
-        IntPtr appearance = new CNWCCreature(source).Pathfind.Ptr;
-        if (appearance == IntPtr.Zero) return false;
+        if (app == IntPtr.Zero || record.Length < InfoBytes) return false;
         byte* info = stackalloc byte[InfoMax];
-        Buffer.MemoryCopy((void*)appearance, info, InfoBytes, InfoBytes);
+        record.Slice(0, InfoBytes).CopyTo(new Span<byte>(info, InfoBytes));
 
         var d = new DollState();
         IntPtr mem = EngineFn.OperatorNew((nuint)EngineLayout.SizeOfCreature);
@@ -151,6 +162,23 @@ internal static unsafe class NuiModelDoll
         IntPtr master = EngineFn.GetClientAIMaster(app);
         if (ai && master != IntPtr.Zero) EngineFn.AiMasterAddObject(master, mem);
         d.Model = Dress(mem, (IntPtr)info);
+        return Show(d, x, y, w, h, $"creature 0x{mem:x} id 0x{id:x}");
+    }
+
+    /// <summary>Build the doll around a model of its own, not a creature: <paramref name="model"/> is a <c>CAurObject</c> the caller made,
+    /// <paramref name="item"/> the throwaway item it came from (0 for a model made by name). The doll frees both.
+    /// False = no model, or a step failed, and the half-built doll was taken down again.</summary>
+    internal static bool BuildModel(IntPtr model, IntPtr item, int x, int y, int w, int h)
+    {
+        if (_o.Doll.Creature != IntPtr.Zero || _o.Doll.Viewport != IntPtr.Zero) Destroy();
+        var d = new DollState { Model = model, Item = item, Raw = item == IntPtr.Zero ? model : IntPtr.Zero };
+        if (model != IntPtr.Zero) Opaque(model);
+        return Show(d, x, y, w, h, item == IntPtr.Zero ? "model" : $"item 0x{item:x}");
+    }
+
+    /// <summary>Open the viewport over <paramref name="d"/>'s model and make the doll current. A doll with no model is taken down.</summary>
+    private static bool Show(DollState d, int x, int y, int w, int h, string what)
+    {
         byte* name = stackalloc byte[ViewName.Length + 1];
         for (int i = 0; i < ViewName.Length; i++) name[i] = (byte)ViewName[i];
         name[ViewName.Length] = 0;
@@ -171,7 +199,7 @@ internal static unsafe class NuiModelDoll
         EngineFn.GuiViewportSetViewport(vp, x, y, w, h);
         EngineFn.GuiViewportEnable(vp);
         d.Enabled = true;
-        _o.Log?.Always($"NuiModelDoll: built -- creature 0x{mem:x} id 0x{id:x} model 0x{d.Model:x} viewport 0x{vp:x} scene 0x{d.Scene:x} camera 0x{d.Camera:x}");
+        _o.Log?.Always($"NuiModelDoll: built -- {what} model 0x{d.Model:x} viewport 0x{vp:x} scene 0x{d.Scene:x} camera 0x{d.Camera:x}");
         return true;
     }
 
@@ -200,6 +228,8 @@ internal static unsafe class NuiModelDoll
         _o.Rendered = false;
         IntPtr app = App();
         if (d.Viewport != IntPtr.Zero && d.Enabled) EngineFn.GuiViewportDisable(d.Viewport);
+        if (d.Raw != IntPtr.Zero) FreeRaw(d.Raw);
+        if (d.Item != IntPtr.Zero) NuiItemIcons.Destroy(d.Item);
         if (taken) _o.Log?.Always("NuiModelDoll: the engine already freed the throwaway creature (module teardown) -- left alone");
         else if (d.Creature != IntPtr.Zero)
         {
@@ -218,6 +248,14 @@ internal static unsafe class NuiModelDoll
             EngineFn.OperatorDelete(d.Viewport);
         }
         _o.Log?.Always("NuiModelDoll: taken down");
+    }
+
+    /// <summary>Delete a <c>CAurObject</c> made by name through its own deleting destructor: Itanium's takes only <c>this</c>, MSVC's also the delete flag.</summary>
+    private static void FreeRaw(IntPtr model)
+    {
+        IntPtr dtor = new Gob(model).DeleteFn;
+        if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, uint, IntPtr>)dtor)(model, 1);
+        else ((delegate* unmanaged<IntPtr, void>)dtor)(model);
     }
 
     /// <summary>The colour shift the fade machinery leaves a new creature at: alpha 1, colour white, to the attached parts too.</summary>
@@ -295,8 +333,8 @@ internal static unsafe class NuiModelDoll
     internal static void KeepShown()
     {
         DollState d = _o.Doll;
-        if (d.Creature == IntPtr.Zero || d.Model == IntPtr.Zero) return;
-        if (new CNWCObject(d.Creature).Visible != 1) EngineFn.ObjSetFadeState(d.Creature, 1);
+        if (d.Model == IntPtr.Zero) return;
+        if (d.Creature != IntPtr.Zero && new CNWCObject(d.Creature).Visible != 1) EngineFn.ObjSetFadeState(d.Creature, 1);
         if (new Gob(d.Model).Alpha < 1f) Opaque(d.Model);
     }
 }

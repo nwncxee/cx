@@ -46,12 +46,21 @@ internal static unsafe class NuiModelView
         /// <summary>The range the player's drag turn stays in (both 0 with <see cref="HasTurnRange"/> false = free).</summary>
         public float TurnMin, TurnMax;
         public bool HasTurnRange, MuteVfx, WornMuted;
-        public bool Anim = true, Built, WasRendered, BuildFailed;
+        public bool Built, WasRendered, BuildFailed;
+        /// <summary>What <c>target</c> names, what the built doll was made from, and whether it plays the creature's idle (<see cref="PoseMode.Idle"/>).</summary>
+        public Target Tgt, BuiltTgt;
+        public bool BuiltIdle;
+        /// <summary>The <c>anim</c> mode, the animation it names, its <c>animspeed</c> and <c>animloop</c>, and the form last played ("" = none yet).</summary>
+        public PoseMode Pose = PoseMode.Idle;
+        public string PoseName = "", Played = "";
+        public float PoseSpeed = 1f;
+        public bool PoseLoop = true;
+        /// <summary>Does the server fix the camera's <c>dist</c> and <c>height</c> (else the doll is framed from its bounds, unless <c>fit</c> is 0), and the framing found.</summary>
+        public bool HasDist, HasHeight, Fit = true, Fitted;
+        public float FitDist = DefaultDist, FitHeight = DefaultHeight;
         public string Wear = "", StandinRect = "", Vfx = "";
         public NuiModelVfx.VfxRow[] VfxRows = Array.Empty<NuiModelVfx.VfxRow>();
         public byte[] Info = Array.Empty<byte>();
-        public bool OnPlayer;
-        public uint TargetId;
         /// <summary>The player's own turn on top of the server's <see cref="Yaw"/>, and the press that is turning it. <see cref="Drag"/> is the
         /// server's degrees a pixel, 0 for no drag.</summary>
         public float DragYaw;
@@ -77,6 +86,7 @@ internal static unsafe class NuiModelView
         _s.Log = log;
         _s.Ready = NuiModelDoll.Init(log);
         NuiModelGear.Init(log);
+        NuiModelTarget.Init(log);
         NuiModelVfx.Init(log, hooks);
         if (!_s.Ready) { log.Always("NuiModelView: the engine pieces did not resolve -- no model views"); return; }
         Capabilities.Register("modelview", 3, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
@@ -144,7 +154,7 @@ internal static unsafe class NuiModelView
             W = _s.PendingW, H = _s.PendingH, Standin = _s.PendingPixels, StandinName = _s.PendingStandin,
         };
         if (old != null && old.Key == v.Key && old.Nk == v.Nk) { old.Ctrl = v.Ctrl; return; }
-        if (old != null && NuiModelDoll.Doll.Creature != IntPtr.Zero) NuiModelDoll.Destroy();
+        if (old != null && NuiModelDoll.Doll.Model != IntPtr.Zero) NuiModelDoll.Destroy();
         _s.View = v;
     }
 
@@ -173,7 +183,9 @@ internal static unsafe class NuiModelView
         int epoch = ServerPolicy.Epoch;
         if (epoch != v.Epoch) { v.Epoch = epoch; Read(s, v); }
         IntPtr who = Resolve(v);
-        if (who == IntPtr.Zero)
+        bool idle = v.Pose == PoseMode.Idle;
+        if (v.Built && (v.BuiltTgt != v.Tgt || v.BuiltIdle != idle)) Teardown(s, v, tex);
+        if (v.Tgt.Kind == TargetKind.None || (v.Tgt.FollowsCreature && who == IntPtr.Zero))
         {
             if (v.Built) { Teardown(s, v, tex); }
             return;
@@ -181,44 +193,58 @@ internal static unsafe class NuiModelView
         if (!v.Built)
         {
             if (v.BuildFailed) return;
-            if (!NuiModelDoll.Build(who, 0, 0, v.W, v.H, v.Anim))
+            if (!BuildDoll(v, who, idle))
             {
                 v.BuildFailed = true;
                 s.Log?.Always($"NuiModelView: '{v.Key}' -- no doll could be built for the target; not tried again until the policy changes");
                 return;
             }
             v.Built = true;
-            v.Info = NuiModelDoll.InfoOf(who).ToArray();
-            NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
-            NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
+            v.BuiltTgt = v.Tgt;
+            v.BuiltIdle = idle;
+            v.Fitted = false;
+            v.Played = "";
+            if (v.Tgt.FollowsCreature) v.Info = NuiModelDoll.InfoOf(who).ToArray();
+            if (NuiModelDoll.Doll.Creature != IntPtr.Zero)
+            {
+                NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
+                NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
+            }
             NuiModelDoll.SetTarget(tex, v.W, v.H);
             ApplyCamera(v);
             s.Log?.Always($"NuiModelView: '{v.Key}' -- doll drawing into texture {tex} ({v.W}x{v.H})");
         }
         else if (v.Target != tex) NuiModelDoll.SetTarget(tex, v.W, v.H);
-        else
+        else if (NuiModelDoll.Doll.Creature != IntPtr.Zero)
         {
             NuiModelGear.Sync(NuiModelDoll.Doll.Creature, who, v.Wear);
             ReadOnlySpan<byte> now = NuiModelDoll.InfoOf(who);
-            if (!now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
+            if (v.Tgt.FollowsCreature && !now.IsEmpty && v.Info.Length == now.Length && !now.SequenceEqual(v.Info))
             {
                 if (NuiModelDoll.Refresh(who))
                 {
                     NuiModelVfx.Wear(NuiModelDoll.Doll.Creature, v.VfxRows, v.MuteVfx);
+                    v.Played = "";
+                    v.Fitted = false;
                     s.Log?.Always($"NuiModelView: '{v.Key}' -- the creature's appearance changed, the doll follows");
                 }
                 v.Info = now.ToArray();
             }
         }
+        PlayPose(s, v);
+        if (!v.Fitted) FitCamera(s, v);
         if (v.Dragging) Turn(v);
-        NuiModelDoll.Orbit(Distance(v), v.Height, v.Yaw + v.DragYaw, v.Pitch);
+        NuiModelDoll.Orbit(Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
         NuiImageSpot.Watch(v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
         if (NuiModelDoll.Rendered) v.WasRendered = true;
     }
 
     /// <summary>How far the camera stands now: where the player scrolled it to, else the server's <c>dist</c>.</summary>
-    private static float Distance(ViewData v) => float.IsNaN(v.ZoomAt) ? v.Dist : v.ZoomAt;
+    private static float Distance(ViewData v) => float.IsNaN(v.ZoomAt) ? (v.HasDist || !v.Fit ? v.Dist : v.FitDist) : v.ZoomAt;
+
+    /// <summary>The camera's height now: the server's, else the framed one.</summary>
+    private static float Height(ViewData v) => v.HasHeight || !v.Fit ? v.Height : v.FitHeight;
 
     /// <summary>A scroll landed on NUI (from the input hook): one over a model view whose server allows zoom moves the camera
     /// <see cref="ViewData.ZoomStep"/> metres a notch, nearer for a scroll up, inside the server's range. True = the view took it.</summary>
@@ -256,18 +282,69 @@ internal static unsafe class NuiModelView
 
     /// <summary>The creature the server named, or zero while it names none or the client does not know it yet. The name was parsed
     /// when the policy last moved, so a frame composes no key.</summary>
-    private static IntPtr Resolve(ViewData v)
+    private static IntPtr Resolve(ViewData v) => v.Tgt.Kind switch
     {
-        if (v.OnPlayer) return NuiModelDoll.Player();
-        return v.TargetId == 0 ? IntPtr.Zero : NuiModelDoll.Creature(v.TargetId | NuiItemIcons.ServerIdBit);
+        TargetKind.Player => NuiModelDoll.Player(),
+        TargetKind.Creature => NuiModelDoll.Creature(v.Tgt.Id | NuiItemIcons.ServerIdBit),
+        _ => IntPtr.Zero,
+    };
+
+    /// <summary>Make the doll for the view's target. <paramref name="who"/> is the creature a creature target copies.</summary>
+    private static bool BuildDoll(ViewData v, IntPtr who, bool idle)
+    {
+        switch (v.Tgt.Kind)
+        {
+            case TargetKind.Appearance:
+                Span<byte> record = stackalloc byte[NuiModelDoll.RecordMax];
+                NuiModelTarget.Blank(v.Tgt.Row, record);
+                return NuiModelDoll.BuildFromInfo(record, 0, 0, v.W, v.H, idle);
+            case TargetKind.Model:
+            {
+                IntPtr m = NuiModelTarget.NewModel(v.Tgt.Text);
+                return m != IntPtr.Zero && NuiModelDoll.BuildModel(m, IntPtr.Zero, 0, 0, v.W, v.H);
+            }
+            case TargetKind.Item:
+            {
+                IntPtr m = NuiModelTarget.NewItemModel(v.Tgt.Text, out IntPtr item);
+                return m != IntPtr.Zero && NuiModelDoll.BuildModel(m, item, 0, 0, v.W, v.H);
+            }
+            default:
+                return NuiModelDoll.Build(who, 0, 0, v.W, v.H, idle);
+        }
+    }
+
+    /// <summary>Play the named animation the server asked for, once per change of name, speed, loop or doll.</summary>
+    private static void PlayPose(ViewState s, ViewData v)
+    {
+        if (v.Pose != PoseMode.Named) return;
+        string form = $"{v.PoseName}|{v.PoseSpeed}|{v.PoseLoop}";
+        if (form == v.Played) return;
+        v.Played = form;
+        if (!NuiModelPose.Play(NuiModelDoll.Doll.Model, v.PoseName, v.PoseSpeed, v.PoseLoop))
+            s.Log?.Always($"NuiModelView: '{v.Key}' -- the model has no animation '{v.PoseName}'");
+    }
+
+    /// <summary>Frame the doll from its bounds once they exist, unless the server fixed the camera or turned fitting off.</summary>
+    private static void FitCamera(ViewState s, ViewData v)
+    {
+        if (!v.Fit || (v.HasDist && v.HasHeight)) { v.Fitted = true; return; }
+        var g = new Gob(NuiModelDoll.Doll.Model);
+        if (!NuiModelFrame.Fit(g.BoundsMin, g.BoundsMax, v.Angle, v.W, v.H, out float dist, out float height)) return;
+        v.FitDist = dist;
+        v.FitHeight = height;
+        v.Fitted = true;
+        s.Log?.Info($"NuiModelView: '{v.Key}' framed from bounds {g.BoundsMin} to {g.BoundsMax}: {dist:0.##} m away, {height:0.##} m up");
     }
 
     private static void Read(ViewState s, ViewData v)
     {
         v.BuildFailed = false;
         string target = Policy(v.Key, "target", "");
-        v.OnPlayer = target == "player";
-        v.TargetId = !v.OnPlayer && uint.TryParse(target, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id) ? id : 0;
+        v.Tgt = NuiModelTarget.Parse(target);
+        v.HasDist = Policy(v.Key, "dist", "").Length > 0;
+        v.HasHeight = Policy(v.Key, "height", "").Length > 0;
+        v.Fit = PolicyF(v.Key, "fit", 1f) != 0f;
+        v.Fitted = false;
         v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
         v.Dist = Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist);
         v.Height = Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight);
@@ -289,7 +366,9 @@ internal static unsafe class NuiModelView
         v.MuteVfx = PolicyF(v.Key, "vfxmute", 0f) != 0f;
         NuiModelDoll.SetLight(NuiModelLook.Light(Policy(v.Key, "light", ""), Policy(v.Key, "lightcolor", ""), Policy(v.Key, "lightdir", ""), Policy(v.Key, "lightambient", "")));
         v.Drag = Math.Clamp(PolicyF(v.Key, "drag", 0f), 0f, MaxDrag);
-        v.Anim = PolicyF(v.Key, "anim", 1f) != 0f;
+        v.Pose = NuiModelPose.Parse(Policy(v.Key, "anim", ""), out v.PoseName);
+        v.PoseSpeed = Math.Clamp(PolicyF(v.Key, "animspeed", 1f), NuiModelPose.MinSpeed, NuiModelPose.MaxSpeed);
+        v.PoseLoop = PolicyF(v.Key, "animloop", 1f) != 0f;
         v.Wear = Policy(v.Key, "wear", "");
         string vfx = Policy(v.Key, "vfx", "");
         if (vfx != v.Vfx || v.MuteVfx != v.WornMuted)
@@ -320,7 +399,7 @@ internal static unsafe class NuiModelView
         var cam = new CAurCamera(c);
         cam.SetViewAngle(v.Angle);
         cam.SetClipDist(v.ClipNear, v.ClipFar);
-        NuiModelDoll.Orbit(Distance(v), v.Height, v.Yaw + v.DragYaw, v.Pitch);
+        NuiModelDoll.Orbit(Distance(v), Height(v), v.Yaw + v.DragYaw, v.Pitch);
         _s.Log?.Info($"NuiModelView: '{v.Key}' camera at yaw {v.Yaw}, the doll {NuiModelDoll.Pose()}");
     }
 

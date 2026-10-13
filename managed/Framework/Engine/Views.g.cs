@@ -311,6 +311,7 @@ global using unsafe GuiViewportDisableFn = delegate* unmanaged<nint, void>;
 global using unsafe GuiViewportSetViewportFn = delegate* unmanaged<nint, int, int, int, int, void>;
 global using unsafe GuiViewportTakeModelFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe GuiViewportGetCameraFn = delegate* unmanaged<nint, nint>;
+global using unsafe NewAurObjectFn = delegate* unmanaged<byte*, byte*, nint, nint>;
 global using unsafe KiwiSubstituteFn = delegate* unmanaged<nint, nint, nint, void>;
 global using unsafe KiwiOptimizeFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe ReportCrashToUserFn = delegate* unmanaged<nint, byte*, byte*, void>;
@@ -2763,6 +2764,10 @@ public readonly unsafe ref partial struct Gob(IntPtr ptr)
     public Model Node { get => new(*(IntPtr*)(Ptr + EngineLayout.GobNode)); set => *(IntPtr*)(Ptr + EngineLayout.GobNode) = value.Ptr; }
     /// <inheritdoc cref="EngineLayout.GobPartTree"/>
     public Part PartTree { get => new(*(IntPtr*)(Ptr + EngineLayout.GobPartTree)); set => *(IntPtr*)(Ptr + EngineLayout.GobPartTree) = value.Ptr; }
+    /// <inheritdoc cref="EngineLayout.GobPlayAnimationSlot"/>
+    public int PlayAnimation(IntPtr name, float speed, int flags, float fade) => ((delegate* unmanaged<IntPtr, IntPtr, float, int, float, int>)PlayAnimationFn)(Ptr, name, speed, flags, fade);
+    /// <inheritdoc cref="EngineLayout.GobPlayAnimationSlot"/>
+    public IntPtr PlayAnimationFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.GobPlayAnimationSlot);
     /// <inheritdoc cref="EngineLayout.GobPosition"/>
     public ref System.Numerics.Vector3 Position => ref *(System.Numerics.Vector3*)(Ptr + EngineLayout.GobPosition);
     /// <inheritdoc cref="EngineLayout.GobPrevPosition"/>
@@ -5558,6 +5563,10 @@ public static unsafe class EngineFn
     private static bool _GuiViewportGetCameraDone;
     /// <inheritdoc cref="SymbolMap.GuiViewportGetCamera"/>
     public static GuiViewportGetCameraFn GuiViewportGetCamera => (GuiViewportGetCameraFn)(_GuiViewportGetCameraDone ? _GuiViewportGetCamera : Resolve(ref _GuiViewportGetCamera, ref _GuiViewportGetCameraDone, SymbolMap.GuiViewportGetCamera));
+    private static IntPtr _NewAurObject;
+    private static bool _NewAurObjectDone;
+    /// <inheritdoc cref="SymbolMap.NewAurObject"/>
+    public static NewAurObjectFn NewAurObject => (NewAurObjectFn)(_NewAurObjectDone ? _NewAurObject : Resolve(ref _NewAurObject, ref _NewAurObjectDone, SymbolMap.NewAurObject));
     private static IntPtr _KiwiSubstitute;
     private static bool _KiwiSubstituteDone;
     /// <inheritdoc cref="SymbolMap.KiwiSubstitute"/>
@@ -8039,6 +8048,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.GuiViewportGetCamera"/>; returns the slot holding the next layer, or null.</summary>
     public static GuiViewportGetCameraFn* ChainGuiViewportGetCamera(this HookService h, GuiViewportGetCameraFn handler, int priority) =>
         (GuiViewportGetCameraFn*)h.Chain(SymbolMap.GuiViewportGetCamera, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NewAurObject"/>; returns the original, or null.</summary>
+    public static NewAurObjectFn InstallNewAurObject(this HookService h, NewAurObjectFn handler) =>
+        (NewAurObjectFn)h.Install(SymbolMap.NewAurObject, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NewAurObject"/>; returns the slot holding the next layer, or null.</summary>
+    public static NewAurObjectFn* ChainNewAurObject(this HookService h, NewAurObjectFn handler, int priority) =>
+        (NewAurObjectFn*)h.Chain(SymbolMap.NewAurObject, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.KiwiSubstitute"/>; returns the original, or null.</summary>
     public static KiwiSubstituteFn InstallKiwiSubstitute(this HookService h, KiwiSubstituteFn handler) =>
         (KiwiSubstituteFn)h.Install(SymbolMap.KiwiSubstitute, (IntPtr)handler);
