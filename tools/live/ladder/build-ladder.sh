@@ -46,6 +46,12 @@ cp -f "$(dirname "$SRC")"/inc_*.nss "$WORK/" 2>/dev/null || true
 # LADDER_NUI_CLOSE=<seconds> closes the ladder's NUI window then; unset, it stays open.
 [ -z "${LADDER_NUI_CLOSE:-}" ] || sed -i "s/^const float T_NUI_CLOSE = .*;/const float T_NUI_CLOSE = ${LADDER_NUI_CLOSE}.0;/" "$WORK/$NAME.nss"
 nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$NAME.ncs" "$WORK/$NAME.nss"
+# A showcase with a <name>_nui.nss beside it (an NUI event handler, set at runtime with SetEventScript) gets that compiled in too.
+EXTRA="${SRC%.nss}_nui"
+if [ -f "$EXTRA.nss" ]; then
+    cp -f "$EXTRA.nss" "$WORK/"
+    nwn_script_comp --root "$NWN_DIR" --quiet -o "$WORK/$(basename "$EXTRA").ncs" "$WORK/$(basename "$EXTRA").nss"
+fi
 [ ! -f "$HERE/$NAME.dlg.json" ] || nwn_gff -i "$HERE/$NAME.dlg.json" -l json -o "$WORK/$NAME.dlg" -k gff
 
 # 3. module.ifo: our OnClientEnter, and a name that says what this is.
@@ -59,7 +65,7 @@ d["Mod_Name"] = {"type": "cexolocstring", "value": {"0": "CX live-harness ladder
 json.dump(d, open(path, "w"))
 PY
 nwn_gff -i "$WORK/module.ifo.json" -l json -o "$WORK/module.ifo" -k gff
-rm -f "$WORK/module.ifo.json" "$WORK/$NAME.nss" "$WORK"/inc_*.nss
+rm -f "$WORK/module.ifo.json" "$WORK/$NAME.nss" "$WORK"/inc_*.nss "$WORK/$(basename "$EXTRA").nss"
 
 # 4. repack. The .mod extension is what nwn_erf reads the ERF type off.
 rm -f "$DEST/$NAME.mod"

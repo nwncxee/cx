@@ -276,7 +276,7 @@ Every showcase opens a full-screen dark backdrop window first (`ShowBackdrop` in
 a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each `.keys` takes `window.png` and `card.png`.
 
 `creatures` shows eight dolls, one window at a time: a hell hound, an ogre, a beholder, a troll and a red dragon by appearance row
-(`app:`), a spawned elf mercenary by object id, a model by name and an item. The hound, the ogre and the troll play named animations. `helm` shows
+(`app:`), a spawned elf mercenary by object id, a model by name and an item. The hound, the ogre and the troll play named animations. `charcreate` is a character creation screen: the doll fills the window behind a column of buttons, and `charcreate_nui.nss` beside it is the NUI event handler, compiled into the module by `build-ladder.sh` and set with `SetEventScript`. `helm` shows
 the player's doll while a helmet is equipped, dropped and equipped again, with a shot between each step.
 
 ## Model view
