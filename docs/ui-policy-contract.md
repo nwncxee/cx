@@ -75,7 +75,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 | line | meaning |
 |---|---|
-| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`) can be held -- the renderer, audio and the hotkeys consent stay the player's |
+| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look` and `ui.palette`) can be held -- the renderer, audio and the hotkeys consent stay the player's |
 | `inventory.gold.visible=0` | any other key is a component property |
 | `inventory.gold.visible=` | an empty value releases the key |
 | `inventory.*=` | releases every key under the prefix |
@@ -552,7 +552,7 @@ while the client's cloak option is on, so a doll shows none with it off.
 
 ## The inventory window's keys
 
-Knobs (all holdable): `inventory.enabled`, `inventory.look` (`native`/`cx`), `inventory.size`, `inventory.mode`, `inventory.kilograms` (a kilograms tooltip on the weight)
+Knobs (all holdable): `inventory.enabled`, `inventory.size`, `inventory.mode`, `inventory.kilograms` (a kilograms tooltip on the weight)
 (`tabbed`/`scrolled`), `inventory.search`, `inventory.dropground`.
 
 Components, each with `.visible` (bool), `.label` (string), `.dx` / `.dy` (design px, the vanilla panel's scale:

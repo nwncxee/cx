@@ -927,10 +927,8 @@ public sealed unsafe partial class RadialService : IExtenderService
         VertexBatch b = _batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
         b.Outline = RadialKnobs.Font.HaloPx;
-        uint text = RadialKnobs.Text.V;
-        _style.Bg = CascadeStyle.Rgba(RadialKnobs.Bg.V); _style.Frame = CascadeStyle.Rgba(RadialKnobs.Frame.V);
-        _style.Hover = CascadeStyle.Rgba(RadialKnobs.Hover.V);
-        _style.TextRgb = text >> 8; _style.TextAlpha = (text & 0xFF) / 255f; _style.Alpha = RadialKnobs.Opacity.V;
+        _style = CascadeStyle.Current;
+        _style.Alpha = RadialKnobs.Opacity.V;
         _style.AnimMs = RadialKnobs.Anim.V ? RadialKnobs.AnimMs.V : 0; _style.NowMs = Environment.TickCount64;
         _menu.Draw(b, atlas, atlas.Ascent, in _style);
         TextRig.DrawBatch(b.AsSpan(), b.VertexCount);

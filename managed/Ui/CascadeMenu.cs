@@ -70,10 +70,11 @@ public struct CascadeStyle
     public static (float r, float g, float b, float a) Rgba(uint c)
         => (((c >> 24) & 0xFF) / 255f, ((c >> 16) & 0xFF) / 255f, ((c >> 8) & 0xFF) / 255f, (c & 0xFF) / 255f);
 
-    /// <summary>The widget's own defaults: the settings-panel palette, no animation.</summary>
-    public static CascadeStyle Default => new()
+    /// <summary>The current <see cref="Theme"/>, no animation.</summary>
+    public static CascadeStyle Current => new()
     {
-        Bg = Rgba(0x05060afa), Frame = Rgba(0x8c8c8cff), Hover = Rgba(0x38669eff), TextRgb = 0xd8dee9, TextAlpha = 1f, Alpha = 1f,
+        Bg = Rgba(Theme.Rgba(Role.ListBg, 0xfa)), Frame = Rgba(Theme.Rgba(Role.Tx2)), Hover = Rgba(Theme.Rgba(Role.Selected)),
+        TextRgb = Theme.Rgb(Role.Tx), TextAlpha = 1f, Alpha = 1f,
     };
 }
 

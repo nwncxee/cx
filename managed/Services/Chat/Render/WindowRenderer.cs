@@ -41,7 +41,7 @@ public static partial class WindowRenderer
 
     private const uint EditRgb = 0xF0F0F0;  // not-an-offset: a colour
     /// <summary>Unread ephemeral tab: label + pulsing underline.</summary>
-    private const uint UnreadRgb = Warn;
+    private static uint UnreadRgb => Warn;
     /// <summary>Soft drop shadow outside the frame: rings of 1 px, outermost last, alpha scaled by the background's.</summary>
     private static readonly float[] ShadowAlpha = { 0.18f, 0.10f, 0.04f };
     /// <summary>Alpha of the hovered tab's Accent plate, relative to the colour's own (the active tab sits at 0.35).</summary>
@@ -82,7 +82,7 @@ public static partial class WindowRenderer
     /// <summary>The render pipeline: components run in array order; the window's toggle bitset selects which.</summary>
     private static readonly ILineComponent[] Pipeline = { new TimestampComponent(), new MessageBodyComponent() };
 
-    private const uint GripRgb = Grip;
+    private static uint GripRgb => Grip;
 
     /// <summary>Portrait width:height. The engine's own portrait pipeline (ConvertPortrait) crops every
     /// portrait to this ratio (0.64 -&gt; taller than wide), so a gutter icon drawn at it is undistorted.</summary>

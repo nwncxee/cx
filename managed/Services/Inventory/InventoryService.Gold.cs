@@ -144,7 +144,7 @@ public sealed unsafe partial class InventoryService
         _goldBatch.Reset(_text!.SolidU, _text.SolidV);
         _goldBatch.Outline = Halo;
         Skin? skin = null;
-        if (InventoryKnobs.Look.V == InventoryKnobs.LookNative && _skin.Arm(_log, ""))
+        if (Theme.IsNative && _skin.Arm(_log, ""))
         {
             _skin.Begin();
             skin = _skin;

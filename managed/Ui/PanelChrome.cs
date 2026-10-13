@@ -1,15 +1,37 @@
 namespace CX.Ui;
 
-/// <summary>The settings-panel look (<see cref="KnobPanel"/>): its palette (the chat window's chrome) and the
-/// fill / outline primitives. Brought into scope with <c>using static</c>.</summary>
+/// <summary>The current <see cref="Theme"/> colours by role, and the fill / outline primitives every flat window draws
+/// with. Brought into scope with <c>using static</c>.</summary>
 internal static class PanelChrome
 {
-    internal const uint PanelBg = 0x0d0f17, Border = 0x2a3350, HeaderBg = 0x1a1f29, CatBg = 0x0a0c14, SubBg = 0x0f121c,  // not-an-offset: a colour
-                        ColBorder = 0x1f2740, NavOn = 0x192040, Accent = 0x335785, Accent2 = 0x4a78b4, Input = 0x050508,
-                        Selected = 0x38669e, Tx = 0xd8dee9, Tx2 = 0x8a93a6, Tx3 = 0x5a6274, Grip = 0xb8c0cc, Hi = 0xeaf0f8,
-                        ToggleOff = 0x2a2f3d, Frame = 0x3a4460, Frame2 = 0x2f3850, Track = 0x1e2333, ListBg = 0x05060a,
-                        MasterBg = 0x10141f, StripBg = 0x1a160e, StripBorder = 0x3a3020, Warn = 0xd9a35a, Off = 0x6c7385,
-                        BadgeFrame = 0x3a3f4d, Ok = 0x7fb87a;
+    internal static uint PanelBg => Theme.Rgb(Role.PanelBg);
+    internal static uint Border => Theme.Rgb(Role.Border);
+    internal static uint HeaderBg => Theme.Rgb(Role.HeaderBg);
+    internal static uint CatBg => Theme.Rgb(Role.CatBg);
+    internal static uint SubBg => Theme.Rgb(Role.SubBg);
+    internal static uint ColBorder => Theme.Rgb(Role.ColBorder);
+    internal static uint NavOn => Theme.Rgb(Role.NavOn);
+    internal static uint Accent => Theme.Rgb(Role.Accent);
+    internal static uint Accent2 => Theme.Rgb(Role.Accent2);
+    internal static uint Input => Theme.Rgb(Role.Input);
+    internal static uint Selected => Theme.Rgb(Role.Selected);
+    internal static uint Tx => Theme.Rgb(Role.Tx);
+    internal static uint Tx2 => Theme.Rgb(Role.Tx2);
+    internal static uint Tx3 => Theme.Rgb(Role.Tx3);
+    internal static uint Grip => Theme.Rgb(Role.Grip);
+    internal static uint Hi => Theme.Rgb(Role.Hi);
+    internal static uint ToggleOff => Theme.Rgb(Role.ToggleOff);
+    internal static uint Frame => Theme.Rgb(Role.Frame);
+    internal static uint Frame2 => Theme.Rgb(Role.Frame2);
+    internal static uint Track => Theme.Rgb(Role.Track);
+    internal static uint ListBg => Theme.Rgb(Role.ListBg);
+    internal static uint MasterBg => Theme.Rgb(Role.MasterBg);
+    internal static uint StripBg => Theme.Rgb(Role.StripBg);
+    internal static uint StripBorder => Theme.Rgb(Role.StripBorder);
+    internal static uint Warn => Theme.Rgb(Role.Warn);
+    internal static uint Off => Theme.Rgb(Role.Off);
+    internal static uint BadgeFrame => Theme.Rgb(Role.BadgeFrame);
+    internal static uint Ok => Theme.Rgb(Role.Ok);
 
     internal static (float r, float g, float b, float a) C(uint rgb, float a = 1f)
         => (((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, a);

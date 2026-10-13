@@ -320,6 +320,8 @@ copy.
 |---|---|---|---|---|---|---|---|
 | ui.font | Text size | D | 6 … 32 pt, every point · 18 | U | L | — | Size of the text in every CX window and label. Each element may set its own in its Text rows; a chat window on its gear. |
 | ui.typeface | Typeface | D | `default` + every `font.<name>` + every installed font (full name) · default | U | L | — | The font every CX window draws with: the built-in DejaVu Sans, a `font.<name>` from cx.cfg, or one installed on this machine. Each element may pick its own in its Text rows. Type in the list to search. |
+| ui.look | Look | D | Game art / Flat colour · Game art | U | L | Look | Every CX window, chat included: Game art wears NWN's own GUI textures and colours (a server may re-skin them or hold this choice); Flat colour draws plain panels in the palette below. Server-holdable. |
+| ui.palette | Palette | D | Slate / Ember / Moss / Wine / Ash · Slate | U | L | Look | The colours of every CX window in the Flat colour look. Server-holdable. |
 | ui.edgesnap | Snap to screen edges | T | on | U | L | — | Dragged windows stick to the screen edge and to each other. |
 | ui.textedit | Modern editing in game text boxes | T | on | U | L | — | The game's own text boxes get selection (mouse drag, double-click, Shift+arrows, Ctrl+A), Ctrl+C/X/V, and Ctrl+arrow/Backspace/Delete by word. Needs the Alloy renderer. |
 | ui.streaming | Show streaming progress | T | on | U | L | — | A thin bar at the top of the screen while the area is still arriving after the load screen: textures, geometry and light charts. You can play meanwhile; it hides once everything has landed. Needs the Alloy renderer. |
@@ -421,10 +423,9 @@ closing is the window category's *Close this window* (two presses; Main has no r
 | radial.enabled | Enable the CX radial menu | T | on | U | L | — | Right-click menus as a nested dropdown drawn by CX. Off, the stock radial menu runs. |
 | radial.lock | Lock the layout | T | off | U | L | — | Rows cannot be dragged and right-clicking one opens no edit popup. Turn off to rearrange again. |
 | radial.mode | Submenus | D | Cascade beside the row / Drill down in place · cascade | U | L | — | Cascade: a submenu opens beside its row, on hover. Drill down: it replaces the list where it is, on click, with a Back row on top -- the pointer never travels. |
-| radial.opacity | Opacity | S | 0.2–1 step 0.05 · 1 | U | L | Look | The whole menu's opacity; each colour's alpha applies on top of it. |
+| radial.opacity | Opacity | S | 0.2–1 step 0.05 · 1 | U | L | Look | The whole menu's opacity. Its colours follow Interface > Look. |
 | radial.anim | Animate | T | on | U | L | Animation | Lists fade and slide in as they open. |
 | radial.dwell | Submenu delay | S | 0–600 ms step 10 · 250 | A | L | — | Cascade only: how long the pointer rests on a row before its submenu opens; 0 opens it at once. |
-| radial.bg / frame / hover / text | Background / Frame / Highlight / Text | Sw | 05060afa / 8c8c8cff / 38669eff / d8dee9ff | A | L | Look | the lists' fill, the 1 px border, the hovered row, the labels |
 | radial.animms | Animation length | S | 40–400 ms step 10 · 120 | A | L | Animation | How long a list takes to appear. |
 | radial.font / typeface / outline | — | D | as UI · default · off | C | L | Text | the menu's element text rows |
 | `radial.p<N>.*` (who, root, path, at, fn, param, hide, label, icon, folder, in) | — | pinned / reordered / hidden rows, folders (`KnobBag "p"`) | | H | | — | edited by drag-and-drop in the menu and its row actions; the group reset leaves it alone |
@@ -552,7 +553,6 @@ flow in slot order; no rows is vanilla order, *Reset layout* drops the root kind
 | dialog.font / typeface / outline | Text size / Typeface / Text outline | D | as UI · default · off | A | L | Text | the dialog window's element text rows |
 | dialog.x / y / w / placed | — | S, T | window state | H | | — | |
 | inventory.enabled | Enable the CX inventory window | T | **off** | U | L | — | The inventory in CX's own window: the vanilla layout, sharp at any resolution, tabs or one view scrolling through every page, search. Off, the stock panel runs. |
-| inventory.look | Look | D | Game art / CX flat · Game art | U | L | — | Game art draws the window with NWN's own GUI textures (a server may re-skin it); CX flat uses the settings panel's palette. |
 | inventory.size | Size | S | 0.75–3 × step 0.05 · 1 | U | L | — | Scale over the UI font scale. The window shrinks itself to fit the screen. |
 | inventory.mode | Pages | D | Tabs / Scroll · Scroll | U | L | — | Tabs is the vanilla layout (a tab per page); Scroll replaces the tabs with a scrollbar that glides through every page, dividers marking where each begins. |
 | inventory.search | Search box | T | on | U | L | — | A box in the title bar that dims every item whose name doesn't match. |

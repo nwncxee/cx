@@ -30,3 +30,7 @@ cx_bakefinish_f	CX-215
 \bFromDiffuse\b	CX-227
 # The window-layer debug service and its ui.layerprobe knob, deleted: it drew two fixed rectangles.
 \blayerprobe\b	CX-263
+# One look for every CX window (ui.look / ui.palette): the per-feature look and colour knobs are gone.
+\b(inventory|quickbar)\.look\b	unified-ui-theme
+\bquickbar\.(bg|border|slot|slotborder|hover|label|count)col\b	unified-ui-theme
+\bradial\.(bg|frame|hover|text)\b	unified-ui-theme

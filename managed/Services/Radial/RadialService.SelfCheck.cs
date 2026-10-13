@@ -42,7 +42,7 @@ public sealed unsafe partial class RadialService
         try
         {
             check.Expect(!OnMouseButton(true, 1, 5, 5) && !OnKey(0x1B, 0) && !OnMouseMotion(5, 5) && !OnMouseWheel(1), "closed: nothing consumed");
-            check.Expect(KnobGroup.Find("radial.bg") is Knob<uint> { Default: 0x05060afau } && KnobGroup.Find("radial.font") is Knob<int> { Default: 0 }
+            check.Expect(KnobGroup.Find("radial.font") is Knob<int> { Default: 0 }
               && KnobGroup.Find("radial.typeface") is Knob<string> && KnobGroup.Find("radial.anim") is Knob<bool> { Default: true }
               && KnobGroup.Find("radial.animms") is Knob<int> { Default: 120 } && RadialKnobs.Font.Size!.Default == 0
               && RadialKnobs.Font.Typeface.Default == FontRegistry.DefaultName && RadialKnobs.Font.Outline.Default == 0, "the look rows bind; the text rows default to the UI face, unoutlined");

@@ -12,7 +12,6 @@ internal static class RadialKnobs
     internal const string ModeCascade = "cascade", ModeDrill = "drill";
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Lock, Anim;
-    internal static readonly Knob<uint> Bg, Frame, Hover, Text;
     internal static readonly Knob<int> Dwell, AnimMs;
     internal static readonly Knob<float> Opacity;
     internal static readonly Knob<string> Mode;
@@ -32,11 +31,7 @@ internal static class RadialKnobs
             help: "Cascade: a submenu opens beside its row, on hover. Drill down: it replaces the list where it is, on click, with a Back row on top -- the pointer never travels.");
         Dwell = G.Slider("dwell", "Submenu delay", 0, 600, 10, (int)CascadeMenu.DefaultDwellMs, "ms", Tier.Advanced, help: "Cascade only: how long the pointer rests on a row before its submenu opens; 0 opens it at once.");
         G.Section("Look");
-        Opacity = G.Slider("opacity", "Opacity", 0.2f, 1f, 0.05f, 1f, help: "The whole menu's opacity; each colour's alpha applies on top of it.");
-        Bg = G.Swatch("bg", "Background", 0x05060afau, Tier.Advanced, help: "The lists' fill.");
-        Frame = G.Swatch("frame", "Frame", 0x8c8c8cffu, Tier.Advanced, help: "The 1 px border around each list.");
-        Hover = G.Swatch("hover", "Highlight", 0x38669effu, Tier.Advanced, help: "The hovered row and the row whose submenu is open.");
-        Text = G.Swatch("text", "Text", 0xd8dee9ffu, Tier.Advanced, help: "Labels, counts and the submenu marks.");
+        Opacity = G.Slider("opacity", "Opacity", 0.2f, 1f, 0.05f, 1f, help: "The whole menu's opacity. Its colours follow Interface > Look.");
         G.Section("Text");
         Font = new TextStyle(G, "the menu", tier: Tier.ChatOnly);
         G.Section("Animation");
