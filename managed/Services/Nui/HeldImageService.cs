@@ -68,7 +68,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.AboveNui, DrawContent = Frame };
         _s.Ready = true;
         Capabilities.Register("heldpick", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V && NuiHitTest.Armed);
-        Capabilities.Register("heldimage", 2, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V);
+        Capabilities.Register("heldimage", 3, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.HeldImage.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.HeldImage.Changed += Capabilities.Refresh;
     }
@@ -112,6 +112,9 @@ public sealed unsafe class HeldImageService : IExtenderService
                 break;
             case HeldKind.Look:
                 DrawItem(s.Minted, mx, my, px, alpha);
+                break;
+            case HeldKind.Model:
+                DrawModel(s.Model.Name["@model:".Length..], mx, my, px, alpha);
                 break;
         }
     }
@@ -163,6 +166,16 @@ public sealed unsafe class HeldImageService : IExtenderService
     private static void Notice(HeldState s, string text)
     {
         if (s.Notices++ < 5) s.Log?.Always("HeldImage: " + text);
+    }
+
+    /// <summary>The model view centred on the pointer, as large as fits a square of <paramref name="px"/> at the view's own proportions.
+    /// Nothing until the doll has been built and drawn once.</summary>
+    private static void DrawModel(string key, int mx, int my, float px, float alpha)
+    {
+        uint tex = NuiModelView.Show(key, out int tw, out int th);
+        if (tex == 0 || tw <= 0 || th <= 0) return;
+        float w = tw >= th ? px : px * tw / th, h = tw >= th ? px * th / tw : px;
+        TextRig.DrawIconTid((int)tex, mx - w / 2, my - h / 2, w, h, alpha, flipV: true);
     }
 
     /// <summary>The item's icon centred on the pointer, as many cells as its art's own frame fills, or its base item's cells

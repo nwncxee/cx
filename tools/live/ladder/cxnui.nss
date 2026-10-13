@@ -72,7 +72,10 @@ void CloseWindow(object oPC, int nToken, string sId)
 void OpenSecond(object oPC)
 {
     json jLabel = NuiLabel(JsonString("second window"), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE));
-    json jWin = NuiWindow(NuiCol(JsonArrayInsert(JsonArray(), jLabel)), JsonString("CX second"), NuiRect(400.0, 20.0, 220.0, 100.0),
+    json jItems = JsonArrayInsert(JsonArray(), NuiDrawListImage(JsonBool(TRUE), JsonString("@model:you"),
+        NuiRect(0.0, 0.0, 120.0, 160.0), JsonInt(NUI_ASPECT_STRETCH), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)));
+    json jModel = NuiMargin(NuiDrawList(NuiHeight(NuiWidth(NuiSpacer(), 120.0), 160.0), JsonBool(FALSE), jItems), 3.0);
+    json jWin = NuiWindow(NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jModel)), JsonString("CX second"), NuiRect(400.0, 20.0, 220.0, 240.0),
                           JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     int nToken = NuiCreate(oPC, jWin, WINDOW_ID + "2");
     Mark("open second token " + IntToString(nToken));

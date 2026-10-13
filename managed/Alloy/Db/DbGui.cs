@@ -141,13 +141,12 @@ internal static unsafe class DbGui
         int n = SceneDb.SceneNameBytes(scene, name);
         name[n] = 0;
         float near, far;
-        bool clear, lit, bubble, model;
+        bool clear, lit, bubble;
         fixed (byte* np = name)
         {
             GuiCapture.DepthOf(np, ref _latch, out near, out far, out clear, v.Fovy);
             lit = GuiCapture.IsLitScene(np);
             bubble = Prefix(np, "sceneGUI_PNL_BUBBLE"u8);
-            model = Prefix(np, "sceneGUI_guiModelView"u8);
         }
         // CX's own nameplate feature holds the engine at text-bubble mode 0 so that "nothing of vanilla's
         // ever draws" (NameplateService) and draws its own bubbles on the 2D UI. The engine honours that
@@ -161,7 +160,8 @@ internal static unsafe class DbGui
         if (bubble && CX.Services.Nameplate.NameplateService.Suppressing && scene.Value != TooltipProbe.Scene)
         { _bubblesRefused++; LastWhy = 'b'; return 0; }
         if (!GuiCapture.BeginDbLayer(v.X, v.Y, v.W, v.H, near, far, clear)) { _refusedNoLayer++; LastWhy = 'l'; return 0; }
-        uint redirect = model ? CX.Services.Nui.NuiModelDoll.Redirect : 0u;
+        CX.Services.Nui.NuiModelDoll.ModelSlot? slot = CX.Services.Nui.NuiModelDoll.OfScene(SceneDb.SceneFacade[s]);
+        uint redirect = slot?.TargetTex ?? 0u;
         if (redirect != 0) GuiCapture.Layers[GuiCapture.LayerN - 1].Target = redirect;
 
         Matrix4x4 viewProj = v.View * v.Proj;
@@ -194,7 +194,7 @@ internal static unsafe class DbGui
                 if (SceneDb.Objects.LiveAt(o))
                     issued += DrawOne(o, s, in v, in viewProj, lit, nowMs, dump, ref walked, ref hidden, ref texts);
         GuiCapture.EndDbLayer();
-        if (redirect != 0 && issued > 0) CX.Services.Nui.NuiModelDoll.MarkRendered();
+        if (redirect != 0 && issued > 0) CX.Services.Nui.NuiModelDoll.MarkRendered(slot!);
         LastWhy = clear ? 'C' : 'd'; LastIssued = issued;
         return Close(s, in v, dump, walked, hidden, texts, issued, near, far, clear, lit);
     }

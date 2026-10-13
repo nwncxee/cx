@@ -42,6 +42,7 @@ public sealed unsafe class NuiService : IExtenderService
         NuiKnobs.G.Status = Status;
         NuiItemIcons.SelfCheck(log);
         NuiModelView.SelfCheck(log);
+        NuiModelDoll.SelfCheck(log);
         StandinRect.SelfCheck(log);
         NuiModelGear.SelfCheck(log);
         NuiModelVfx.SelfCheck(log);
