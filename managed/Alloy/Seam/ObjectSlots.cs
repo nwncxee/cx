@@ -210,6 +210,15 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         // its shadow gob and its skybox slots can each name this object, and the count word at the scene
         // shell is read by game code without a vtable -- so the leave cannot wait for a frame boundary.
         DbScene.ObjectDied(id);
+        // What it owns dies with it, as the engine's one tree did (Gob::~Gob, PartReference::~PartReference):
+        // nothing else holds an appended piece or a reference instance, so left alone they lived for the session.
+        for (DbId c = SceneDb.ObjSeamAppendHead[i]; SceneDb.Objects.Valid(c); )
+        {
+            DbId next = SceneDb.ObjSeamAppendNext[c.Index];
+            DestroyRecord(c);
+            c = next;
+        }
+        SceneDb.ObjSeamAppendHead[i] = default;
         DbAnim.ObjectRetired(id);
         ObjectTex.Free(id);
         TexSeam.ObjectDied(id);   // CX-117: the PLT colour rows and any material-param override
@@ -348,7 +357,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// scene destroy all read that list, so writing <c>ObjScene</c> alone leaves a scene that holds nothing.</summary>
     internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell)
     {
-        if (TileBuild.RefuseMove(id, sc, "JoinScene") || Facade.RefuseCrossJoin(id, sc, "JoinScene"))
+        if (TileBuild.RefuseMove(id, sc, "JoinScene"))
         {
             DbId now = SceneDb.ObjScene[id.Index];
             // A null record's Index 0 is a live scene's slot; the engine only needs a non-zero word here.
@@ -405,7 +414,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             {
                 if (!SceneDb.Objects.Valid(a)) break;
                 DbId next = SceneDb.ObjSeamAppendNext[a.Index];
-                if (SceneDb.ObjScene[a.Index].Value != psc.Value && !Facade.RefuseCrossJoin(a, psc, "PropagateScene (append)"))
+                if (SceneDb.ObjScene[a.Index].Value != psc.Value)
                 {
                     DbId was = SceneDb.ObjScene[a.Index];
                     if (!was.IsNull) DbScene.Leave(was, a);
@@ -454,7 +463,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             if (SceneDb.Scenes.Valid(kept)) { target = kept; targetShell = SceneDb.SceneFacade[kept.Index]; }
         }
         DbId was = SceneDb.ObjScene[c.Index];
-        if (was.Value == target.Value || Facade.RefuseCrossJoin(c, target, "PropagateScene")) return;
+        if (was.Value == target.Value) return;
         if (!was.IsNull) DbScene.Leave(was, c);
         if (!target.IsNull) { DbScene.Join(target, c); Flag(c, SeamFlag.EverAttached, true); }
         else SceneDb.ObjScene[c.Index] = default;

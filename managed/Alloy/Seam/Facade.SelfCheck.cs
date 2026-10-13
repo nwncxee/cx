@@ -103,8 +103,13 @@ internal static unsafe class FacadeSelfCheck
                 "an object minted for an unreadable model must hold no model and no parts");
             check.Expect(ObjectFns.UnreadableModels == unreadable + 1 && ObjectFns.Stats().Contains("unreadable-model="),
                 "the unreadable-model refusal must be counted on the period line");
+            DbId child = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            check.Expect(!child.IsNull, "the owned child was not minted");
+            SceneDb.ObjSeamAppendNext[child.Index] = default;
+            SceneDb.ObjSeamAppendHead[id.Index] = child;
             ObjectSlots.DestroyRecord(id);
-            check.Expect(SceneDb.Objects.Live == objects, "the minted record was not released again");
+            check.Expect(SceneDb.Objects.Live == objects && !SceneDb.Objects.Valid(child),
+                "the minted record and the child it owns were not both released");
         }
         // The counter goes back: a session's line must start at zero, or this check is the first thing the
         // next crash report sees on it.
@@ -472,13 +477,13 @@ internal static unsafe class FacadeSelfCheck
         DbFeed.InitObject(wobj.Index);
         DbFeed.InitObject(gobj.Index);
         nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj);
-        check.Expect(!Facade.RefuseCrossJoin(wobj, gui, "self-check"), "an object with no scene history joins any scene");
+        check.Expect(!Facade.Crosses(wobj, gui), "an object with no scene history crosses nothing");
         DbScene.Join(world, wobj);
         DbScene.Join(gui, gobj);
-        check.Expect(Facade.RefuseCrossJoin(wobj, gui, "self-check"), "a world object joining a GUI scene must be refused");
-        check.Expect(Facade.RefuseCrossJoin(gobj, world, "self-check"), "a GUI object joining a world scene must be refused");
-        check.Expect(!Facade.RefuseCrossJoin(wobj, world, "self-check") && !Facade.RefuseCrossJoin(gobj, gui, "self-check"),
-            "a join within the object's own kind of scene is not refused");
+        check.Expect(Facade.Crosses(wobj, gui), "a world object joining a GUI scene crosses the boundary");
+        check.Expect(Facade.Crosses(gobj, world), "a GUI object joining a world scene crosses the boundary");
+        check.Expect(!Facade.Crosses(wobj, world) && !Facade.Crosses(gobj, gui),
+            "a join within the object's own kind of scene crosses nothing");
         DbScene.Leave(gui, gobj);
         DbScene.Leave(world, wobj);
         int held = SeamShell.Held, quarantined = SeamShell.Quarantined;

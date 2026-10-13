@@ -206,6 +206,8 @@ public static unsafe partial class DbFeed
             SceneDb.PartAlpha[p1] = 0.5f;
             SceneDb.ObjCrossScene[oi] = SceneDb.ObjScene[oi];
             SceneDb.ObjSceneKinds[oi] = Seam.SeamShell.InGui;
+            SceneDb.ObjSeamAppendHead[oi] = o1;
+            SceneDb.ObjSeamAppendNext[oi] = o1;
 
             // Round 2: free it and re-allocate the SAME slots in one frame, which is what the table does
             // when a destroy and a create land between two folds.
@@ -219,6 +221,8 @@ public static unsafe partial class DbFeed
             check.Expect(SceneDb.ObjScene[oi].IsNull && SceneDb.ObjCrossScene[oi].IsNull,
                          "a recycled object starts in no scene -- not in the last tenant's");
             check.Expect(SceneDb.ObjSceneKinds[oi] == 0, "a recycled object has never been in any scene");
+            check.Expect(SceneDb.ObjSeamAppendHead[oi].IsNull && SceneDb.ObjSeamAppendNext[oi].IsNull,
+                         "a recycled object owns nothing and is in no owner's list -- not the last tenant's children");
             SetUp(o2, h2, m, 2);
             check.Expect(SceneDb.PartReveal[p1] == 1f && SceneDb.PartFade[p1] == 1f
                          && SceneDb.PartAlpha[p1] == 1f,

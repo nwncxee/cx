@@ -397,7 +397,7 @@ public static unsafe partial class Facade
          : $"{System.IO.Path.GetFileNameWithoutExtension(file)}.{member}";
 
     /// <summary>Every scene shell address ever minted, the attaches that left an object in no scene, and the
-    /// joins refused for crossing the world/GUI boundary.</summary>
+    /// joins that crossed the world/GUI boundary.</summary>
     internal sealed class SceneProbeState
     {
         internal readonly System.Collections.Generic.HashSet<nint> MintedScenes = new();
@@ -407,7 +407,7 @@ public static unsafe partial class Facade
         internal int CrossLinesLeft = ProbeLines;
     }
 
-    /// <summary>Lines <see cref="NoteOrphaningAttach"/> and <see cref="RefuseCrossJoin"/> each write per session;
+    /// <summary>Lines <see cref="NoteOrphaningAttach"/> and <see cref="NoteCrossing"/> each write per session;
     /// the counts keep going past it.</summary>
     private const int ProbeLines = 256;
 
@@ -433,40 +433,51 @@ public static unsafe partial class Facade
                     + $"and is now in NO scene, so it does not draw ({st.OrphaningAttaches} so far)");
     }
 
-    /// <summary>Object <paramref name="obj"/> joined <paramref name="scene"/>: stamp its shell and its record
-    /// (<see cref="SceneDb.ObjSceneKinds"/>) with the kind of scene.</summary>
-    internal static void NoteJoin(DbId scene, DbId obj)
+    /// <summary>Object <paramref name="obj"/> joined <paramref name="scene"/> from <paramref name="was"/>: name it
+    /// when the join crosses the world/GUI boundary (<see cref="Crosses"/>), then stamp its shell and its record
+    /// (<see cref="SceneDb.ObjSceneKinds"/>), keeping who first put it in a world scene.</summary>
+    internal static void NoteJoin(DbId scene, DbId obj, DbId was)
     {
         bool world = SceneDb.SceneIsWorld[scene.Index];
-        SceneDb.ObjSceneKinds[obj.Index] |= world ? SeamShell.InWorld : SeamShell.InGui;
-        SeamShell.NoteScene(Shell(SceneDb.ObjFacade[obj.Index]), world);
+        int o = obj.Index;
+        if (Crosses(obj, scene)) NoteCrossing(scene, obj, was, world);
+        // ponytail: one Chain string per first world join of a non-tile object -- an area load's placeables and
+        // creatures, never per frame; intern the frames if it ever shows on a load profile.
+        if (world && (SceneDb.ObjSceneKinds[o] & SeamShell.InWorld) == 0 && (SceneDb.ObjFlags[o] & ObjFlag.Tile) == 0 && !InSelfCheck)
+            SceneDb.ObjWorldJoinBy[o] = SeamCallers.Chain(4);
+        SceneDb.ObjSceneKinds[o] |= world ? SeamShell.InWorld : SeamShell.InGui;
+        SeamShell.NoteScene(Shell(SceneDb.ObjFacade[o]), world);
     }
 
-    /// <summary>True when joining <paramref name="scene"/> would carry <paramref name="obj"/> across the world/GUI
+    /// <summary>True when joining <paramref name="scene"/> carries <paramref name="obj"/> across the world/GUI
     /// boundary: the object has been in the other kind of scene. Keyed on scene history, never on object kind
-    /// or creator; a fresh object has none and always joins.</summary>
+    /// or creator; a fresh object has none.</summary>
     internal static bool Crosses(DbId obj, DbId scene)
         => SceneDb.Objects.Valid(obj) && SceneDb.Scenes.Valid(scene)
            && (SceneDb.ObjSceneKinds[obj.Index] & (SceneDb.SceneIsWorld[scene.Index] ? SeamShell.InGui : SeamShell.InWorld)) != 0;
 
-    /// <summary>True, counted and named, when <paramref name="via"/> would take <paramref name="obj"/> across the
-    /// world/GUI boundary (<see cref="Crosses"/>). No object legitimately does; the caller does not join it.</summary>
-    internal static bool RefuseCrossJoin(DbId obj, DbId scene, string via)
+    /// <summary>Count and name a join across the world/GUI boundary: the object, the object it rides, and who
+    /// first put it in a world scene. Logged, not refused, until every crossing is accounted for.</summary>
+    private static void NoteCrossing(DbId scene, DbId obj, DbId was, bool intoWorld)
     {
-        if (!Crosses(obj, scene)) return false;
+        if (InSelfCheck) return;
         SceneProbeState st = _sceneProbe;
-        bool intoWorld = SceneDb.SceneIsWorld[scene.Index];
-        if (InSelfCheck) return true;
         long n = intoWorld ? ++st.GuiIntoWorld : ++st.WorldIntoGui;
-        if (st.CrossLinesLeft <= 0) return true;
+        if (st.CrossLinesLeft <= 0) return;
         st.CrossLinesLeft--;
         int o = obj.Index;
-        Log?.Always($"seam: REFUSED [{(intoWorld ? "gui->world" : "world->gui")}] {via} would move o={obj.Value} "
-                    + $"model='{SceneDb.ObjSeamModelName[o]}' kind={SceneDb.ObjKindOf[o]} flags={SceneDb.ObjFlags[o]} "
-                    + $"from scene {SceneDb.ObjScene[o].Value} into {(intoWorld ? "world" : "GUI")} scene {scene.Value}; "
-                    + $"it does not join, by {SeamCallers.Chain(4)} ({n} so far)");
-        return true;
+        DbId p = SceneDb.ObjAttachTo[o];
+        string parent = !SceneDb.Objects.Valid(p) ? "none"
+            : $"o={p.Value} model='{SceneDb.ObjSeamModelName[p.Index]}' kind={SceneDb.ObjKindOf[p.Index]} "
+              + $"history={SceneDb.ObjSceneKinds[p.Index]} in '{SceneName(SceneDb.ObjScene[p.Index])}'";
+        Log?.Always($"seam: [{(intoWorld ? "gui->world" : "world->gui")}] o={obj.Value} model='{SceneDb.ObjSeamModelName[o]}' "
+                    + $"kind={SceneDb.ObjKindOf[o]} flags={SceneDb.ObjFlags[o]} from '{SceneName(was)}' into "
+                    + $"'{SceneName(scene)}'; rides {parent}; first world join by {SceneDb.ObjWorldJoinBy[o] ?? "?"}; "
+                    + $"now by {SeamCallers.Chain(4)} ({n} so far)");
     }
+
+    private static string SceneName(DbId s)
+        => s.IsNull ? "none" : SceneDb.Scenes.Valid(s) ? SceneDb.SceneName[s.Index] ?? $"#{s.Value}" : $"dead #{s.Value}";
 
     /// <summary>The seam's period line: shells, quarantine, and every refusal counted.</summary>
     public static string Stats()

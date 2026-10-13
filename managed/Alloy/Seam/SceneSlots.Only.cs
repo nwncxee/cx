@@ -38,7 +38,7 @@ internal static unsafe class SceneOnlySlots
     {
         _addObjects++;
         DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
-        if (!TileBuild.RefuseMove(o, s, "Scene::AddObject") && !Facade.RefuseCrossJoin(o, s, "Scene::AddObject")) DbScene.Join(s, o);
+        if (!TileBuild.RefuseMove(o, s, "Scene::AddObject")) DbScene.Join(s, o);
     }
 
     /// <summary>Slot 65. <c>GobRenderLast</c> calls <see cref="ChildRemove"/> then this, so an add on an
@@ -49,7 +49,7 @@ internal static unsafe class SceneOnlySlots
     {
         _childAdds++;
         DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
-        if (!TileBuild.RefuseMove(o, s, "Scene::ChildAdd") && !Facade.RefuseCrossJoin(o, s, "Scene::ChildAdd")) DbScene.Join(s, o);
+        if (!TileBuild.RefuseMove(o, s, "Scene::ChildAdd")) DbScene.Join(s, o);
     }
 
     [UnmanagedCallersOnly]
