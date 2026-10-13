@@ -190,6 +190,8 @@ public static unsafe partial class Facade
         if (state != SeamShell.StateLive) { Redundant++; return; }
         FacadeKind kind = (FacadeKind)SeamShell.Head(shell)->Kind;
         NullSafePointers(shell, kind);
+        Highlight.SetClaim(shell, false);
+        if (kind == FacadeKind.Camera) Highlight.SetClaim(shell + SeamLayout.CameraGobSub, false);
         // The vptrs go to the poison twins BEFORE the record is released. Every slot is then a counted
         // refusal, including the ones that answer from the shell's own words and never resolve a handle --
         // a use-after-free can no longer read stale data or, worse, WRITE into a block queued for reuse.

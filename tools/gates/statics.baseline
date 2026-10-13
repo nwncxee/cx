@@ -237,7 +237,7 @@
 7 managed/Alloy/Seam/PartShell.cs
 10 managed/Alloy/Seam/SceneFns.cs
 2 managed/Alloy/Seam/SceneProvider.cs
-10 managed/Alloy/Seam/SceneSlots.cs
+9 managed/Alloy/Seam/SceneSlots.cs
 3 managed/Alloy/Seam/SceneSlots.Only.cs
 8 managed/Alloy/Seam/SeamBridge.cs
 1 managed/Alloy/Seam/SeamCallers.cs

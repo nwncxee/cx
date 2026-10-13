@@ -72,7 +72,7 @@ none of them sees an area change.
 the generation **at the free**, never at reuse, so every outstanding handle to that slot is dead the moment it
 happens; `DbTable.Valid` is the one test, and it also checks the `1u << 31` allocated bit that `Alloc` sets.
 That is the whole of ADR 0028's claim that "no table keyed on a `DbId` needs a death notice to stay correct",
-and it holds: `SceneDb.SceneHighlight`, `SceneObjects`, `TileObj`, `LitObj`, `ObjAttachTo`, `CamObj` and the
+and it holds: `SceneDb.SceneHighlights`, `SceneObjects`, `TileObj`, `LitObj`, `ObjAttachTo`, `CamObj` and the
 facade columns all store handles, and every reader resolves through `Valid` before it dereferences anything.
 
 **It stops holding wherever a table stores a bare index instead of a handle**, and there are five of those.

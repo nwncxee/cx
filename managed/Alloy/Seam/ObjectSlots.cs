@@ -164,6 +164,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             if (!SceneDb.ObjScene[id.Index].IsNull) PropagateScene(id, shell, default, 0);
             ReleaseRecord(id);
             SceneDb.ObjFacade[id.Index] = 0;
+            Highlight.SetClaim(self, false);
             SceneDb.Objects.Free(id);
             FreeShellLists(shell);
         }

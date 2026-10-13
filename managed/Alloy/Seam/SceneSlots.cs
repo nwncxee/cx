@@ -547,30 +547,15 @@ internal static unsafe class SceneSlots
 
     // ---- highlight ----------------------------------------------------------------------------------
 
-    /// <summary>Slot 36, <c>Scene::AddHighlightGob(CAurObject*, Vector&amp;)</c>. Two records, because the two
-    /// consumers want different shapes: <see cref="SceneDb.Highlight"/>'s SET is what the glow and outline
-    /// passes walk, and <see cref="DbScene.AddHighlight"/>'s list carries the per-object COLOUR. A full set is
-    /// a loud refusal, said once -- an un-highlighted selection is a player-visible hole.</summary>
+    /// <summary>Slot 36, <c>Scene::AddHighlightGob(CAurObject*, Vector&amp;)</c>: the scene's highlight list,
+    /// which the glow and outline passes walk, with the per-object colour.</summary>
     [UnmanagedCallersOnly]
     private static void AddHighlightGob(nint self, nint obj, Vec3* colour)
     {
         DbId s = Id(self);
         if (s.IsNull) return;
-        DbId o = Facade.ObjectId(obj);
-        // Ask BEFORE taking the entry: SceneDb.Highlight answers false both for "already in the set" and for
-        // "the set is full", so a refusal line placed after it fires on the harmless case too.
-        bool full = SceneDb.SceneHighlightN[s.Index] >= SceneDb.MaxHighlight;
-        DbScene.AddHighlight(s, o, colour != null ? V(colour) : Vector3.One);
-        SceneDb.Highlight(s, o);
-        if (full && !_saidHlFull)
-        {
-            _saidHlFull = true;
-            _log?.Always($"SceneSlots: scene {s.Index}'s highlight set is full ({SceneDb.MaxHighlight}) -- "
-                       + "this object will NOT glow; raise SceneDb.MaxHighlight");
-        }
+        DbScene.AddHighlight(s, Facade.ObjectId(obj), colour != null ? V(colour) : Vector3.One);
     }
-
-    private static bool _saidHlFull;
 
     [UnmanagedCallersOnly]
     private static void RemoveHighlightGob(nint self, nint obj)
@@ -579,7 +564,6 @@ internal static unsafe class SceneSlots
         if (s.IsNull) return;
         DbId o = Facade.ObjectId(obj);
         DbScene.RemoveHighlight(s, o);
-        SceneDb.Unhighlight(s, o);
     }
 
     [UnmanagedCallersOnly]

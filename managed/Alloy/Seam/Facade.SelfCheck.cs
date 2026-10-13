@@ -284,6 +284,8 @@ internal static unsafe class FacadeSelfCheck
             "a camera's SafePointer list is its Gob sub-object's, i.e. +8 further on");
     }
 
+    /// <summary>Minting, mirrored words, retire and quarantine, and the outline's claim list dropping a retired
+    /// shell. Oracle: hand-built shells, literal values and the poison counter left unchanged.</summary>
     private static void Shells(Checker check, ExtenderLog log)
     {
         // Build the tables against a registry with nothing in it: every slot is then the poison entry, which is
@@ -398,8 +400,18 @@ internal static unsafe class FacadeSelfCheck
         *(int*)(shell + SeamLayout.GobSafeCount) = n;
         *(int*)(shell + SeamLayout.GobSafeCap) = n;
 
+        CX.Alloy.Highlight.SetClaim(shell, true);
+        long poisonBefore = Facade.PoisonCalls;
+        check.Expect(CX.Alloy.Highlight.OwnedHighlightDb(id), "a claimed live shell must answer as owned");
         SeamShell.NoteScene(shell, world: true);   // a never-joined shell is held, and the quarantine checks below need the ring
         Facade.Retire(shell);
+        check.Expect(!CX.Alloy.Highlight.Claimed(shell),
+            "retiring a facade must drop it from the outline's claim list -- a stale entry is a poison call a "
+          + "frame, and a recycled block would inherit the claim");
+        CX.Alloy.Highlight.SetClaim(shell, true);
+        check.Expect(!CX.Alloy.Highlight.OwnedHighlightDb(id) && Facade.PoisonCalls == poisonBefore,
+            "the claim test must compare shells, never resolve a claimed pointer through the facade");
+        CX.Alloy.Highlight.SetClaim(shell, false);
         bool nulled = true, unindexed = true;
         for (int k = 0; k < n; k++)
         {

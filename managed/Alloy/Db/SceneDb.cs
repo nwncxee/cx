@@ -967,40 +967,6 @@ public static class SceneDb
         }
     }
 
-    /// <summary>The scene's highlight set as a per-object bit, which is what the glow and
-    /// outline passes read. A set rather than a walk: the engine asked each gob a flag, and the pass wants the
-    /// handful that answered yes.</summary>
-    public static readonly DbId[] SceneHighlight = new DbId[MaxScenes * MaxHighlight];
-    public static readonly int[] SceneHighlightN = new int[MaxScenes];
-    /// <summary>Objects one scene may highlight at once. The engine highlights a selection and a hover, so
-    /// this is generous; past it the add is refused and counted.</summary>
-    public const int MaxHighlight = 64;
-
-    /// <summary>Add <paramref name="o"/> to <paramref name="scene"/>'s highlight set; false when it is full
-    /// (refused loudly by the caller, never dropped quietly) or already in it.</summary>
-    public static bool Highlight(DbId scene, DbId o)
-    {
-        int s = scene.Index;
-        if ((uint)s >= MaxScenes) return false;
-        int n = SceneHighlightN[s];
-        for (int k = 0; k < n; k++) if (SceneHighlight[s * MaxHighlight + k].Value == o.Value) return false;
-        if (n >= MaxHighlight) return false;
-        SceneHighlight[s * MaxHighlight + n] = o;
-        SceneHighlightN[s] = n + 1;
-        return true;
-    }
-
-    /// <summary>Drop <paramref name="o"/> from <paramref name="scene"/>'s highlight set.</summary>
-    public static void Unhighlight(DbId scene, DbId o)
-    {
-        int s = scene.Index;
-        if ((uint)s >= MaxScenes) return;
-        int n = SceneHighlightN[s];
-        for (int k = 0; k < n; k++)
-            if (SceneHighlight[s * MaxHighlight + k].Value == o.Value)
-            { SceneHighlight[s * MaxHighlight + k] = SceneHighlight[s * MaxHighlight + n - 1]; SceneHighlightN[s] = n - 1; return; }
-    }
-
     /// <summary>Mark part <paramref name="p"/> (an absolute index into <see cref="Parts"/>) dirty.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void TouchPart(int p, Dirty d) { if ((uint)p < MaxParts && Parts.LiveAt(p)) Parts.Mark(p, d); }
