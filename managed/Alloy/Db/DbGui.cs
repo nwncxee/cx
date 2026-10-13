@@ -430,6 +430,7 @@ internal static unsafe class DbGui
                 Cull = (fl & RecipeFlag.TwoSided) == 0,
                 AlphaTest = false,
                 Lit = litScene && (fl & RecipeFlag.Lit) != 0,
+                SolidTexel = !TexelAlphaIsCoverage(litScene, plt, EnvMapped(p, recipe)),
             };
             if (d.Lit)
             {
@@ -550,6 +551,11 @@ internal static unsafe class DbGui
         return m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Name : "?";
     }
 
+    /// <summary>Whether a texel's alpha is coverage on a GUI part. A lit scene's (a doll's) PLT or env-mapped part
+    /// draws in the engine's opaque bucket, where that alpha is reflectivity; an unlit control keeps its alpha.</summary>
+    internal static bool TexelAlphaIsCoverage(bool litScene, bool plt, bool envMapped)
+        => !(litScene && (plt || envMapped));
+
     /// <summary>Does the texture this part actually binds resolve through the master palette? The override
     /// is asked first, exactly as <see cref="Texture"/> binds it -- an item icon arrives as a
     /// <c>Gob::ReplaceTexture</c> override, not as the model's own slot.</summary>
@@ -569,6 +575,12 @@ internal static unsafe class DbGui
     /// (<c>Gob::ReplaceTexture</c> writes <see cref="SceneDb.PartTexId"/>), else the recipe's. 0 is the
     /// untextured white the GUI program falls back on, and a texture that is not resident yet registers the
     /// part as a dependent so its arrival re-dirties it.</summary>
+    private static bool EnvMapped(int p, int recipe)
+    {
+        int ov = SceneDb.PartTexId[p * 4];
+        return SceneDb.PartEnvMapped(p) || TexRegistry.EnvMapped(ov != 0 ? new TexId((uint)ov) : DrawRecipe.Tex(recipe, 0));
+    }
+
     private static uint Texture(int p, int recipe)
     {
         int ov = SceneDb.PartTexId[p * 4];
@@ -723,8 +735,13 @@ internal static unsafe class DbGui
         Left(1, scene); Left(3, scene); Left(9, scene);
         check.Expect(_listed == 0 && _sceneFirst[scene.Index] < 0, "the list empties completely");
         check.Expect(_sceneN[scene.Index] == 0, "...and the member count empties with it");
+        check.Expect(!TexelAlphaIsCoverage(true, true, false), "a doll's PLT part (a helm) takes no opacity from its palette alpha");
+        check.Expect(!TexelAlphaIsCoverage(true, false, true), "a doll's env-mapped part (a weapon) takes none from its reflectivity mask");
+        check.Expect(TexelAlphaIsCoverage(true, false, false), "a doll's plain textured part keeps its alpha");
+        check.Expect(TexelAlphaIsCoverage(false, true, false), "an icon's PLT keeps its alpha outside a lit scene");
+        check.Expect(TexelAlphaIsCoverage(false, false, true), "an unlit env-mapped control keeps its alpha");
         log.Info(check.Ok ? "DbGui.SelfCheck: passed"
-                          : "DbGui.SelfCheck: FAILED -- a GUI panel would paint its controls out of order");
+                          : "DbGui.SelfCheck: FAILED -- a GUI panel would paint its controls out of order, or a doll its metal see-through");
         return check.Ok;
     }
 
