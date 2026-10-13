@@ -10,12 +10,16 @@ namespace CX.Services.Nui;
 /// <summary>
 /// The visual effects a model view's doll wears: only the <c>visualeffects.2da</c> rows the server lists, each on the body part it
 /// names, put on the doll through the engine's own add call. The client cannot tell a permanent effect from a temporary one, so the
-/// server chooses. Linux only: the add call takes its transform by value, which Win64 hands to the callee to destroy.
+/// server chooses. The add call takes its transform by value: Linux copies it, Win64 destroys the copy it is handed, so each call there gets a
+/// fresh copy of the identity transform built by the engine's own tree constructor.
 /// </summary>
 internal static unsafe class NuiModelVfx
 {
     /// <summary>The most effects one doll wears.</summary>
     internal const int MaxRows = 16;
+    /// <summary>The bytes a Win64 <c>ObjectVisualTransformData</c> takes (an MSVC map: head pointer and size), and the same again for the
+    /// copy constructor's unused allocator.</summary>
+    private const int TransformBytes = 32;
     /// <summary>The beam target of an effect that is no beam.</summary>
     private const uint NoTarget = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
 
@@ -41,7 +45,8 @@ internal static unsafe class NuiModelVfx
         _v.Log = log;
         _v.Identity = SymbolMap.Resolve(SymbolMap.IdentityVisualTransform, log);
         _v.Ready = _v.Identity != IntPtr.Zero && SymbolMap.Resolve(SymbolMap.ObjAddVisualEffect, log) != IntPtr.Zero
-                   && SymbolMap.Resolve(SymbolMap.ObjKillAllVisualEffects, log) != IntPtr.Zero;
+                   && SymbolMap.Resolve(SymbolMap.ObjKillAllVisualEffects, log) != IntPtr.Zero
+                   && (!OperatingSystem.IsWindows() || SymbolMap.Resolve(SymbolMap.TransformCopy, log) != IntPtr.Zero);
         if (!_v.Ready) { log.Always("NuiModelVfx: the engine's effect calls did not resolve -- dolls wear no effects"); return; }
         _v.OrigOneShot = hooks.InstallExoSoundPlay3DOneShot(&OnOneShot);
         _v.OrigPlay = hooks.InstallExoSoundSourcePlay(&OnPlay);
@@ -82,15 +87,25 @@ internal static unsafe class NuiModelVfx
         }
         EngineFn.ObjKillAllVisualEffects(doll);
         Vec3 zero = default;
+        byte* scratch = stackalloc byte[TransformBytes];
         if (mute && _v.SoundReady) _v.MuteThread = Environment.CurrentManagedThreadId;
         try
         {
             foreach (VfxRow e in rows)
-                if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NoTarget, e.Part, 0, VectorArg.Of(&zero), _v.Identity) == 0)
+                if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NoTarget, e.Part, 0, VectorArg.Of(&zero), TransformFor(scratch)) == 0)
                     _v.Log?.Always($"NuiModelVfx: the engine would not load effect row {e.Row}");
         }
         finally { _v.MuteThread = 0; }
         if (rows.Length > 0) _v.Log?.Always($"NuiModelVfx: the doll wears effect rows {string.Join(',', rows.Select(e => $"{e.Row}:{e.Part}"))}{(mute ? ", sounds muted" : "")}");
+    }
+
+    /// <summary>The transform argument for one add call: the engine's identity as it is on Linux, and on Windows a fresh copy in <paramref name="scratch"/> that the call
+    /// destroys itself.</summary>
+    private static IntPtr TransformFor(byte* scratch)
+    {
+        if (!OperatingSystem.IsWindows()) return _v.Identity;
+        EngineFn.TransformCopy((IntPtr)scratch, _v.Identity, (IntPtr)(scratch + TransformBytes / 2));
+        return (IntPtr)scratch;
     }
 
     /// <summary>The doll is going: end its effects while the creature is still whole.</summary>

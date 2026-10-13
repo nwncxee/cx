@@ -1908,13 +1908,18 @@ internal static unsafe class SymbolMap
     [Fn("void(IntPtr self, uint slot, IntPtr item)")]
     public const string NwcCreatureEquip = "_ZN12CNWCCreature20EquipToInventorySlotEjP8CNWCItem";
     /// <summary><c>CNWCObject::AddVisualEffect(ushort, int, uint, uchar, uchar, Vector, ObjectVisualTransformData)</c> @0x7e9e30 --
-    /// the call the visual-effect update makes for an added looping effect: the row, 0, the beam target (0x7f000000 for
-    /// none), the body part, 0, a zero vector, and the transform, which crosses by hidden reference and stays the caller's.</summary>
+    /// the row, 0, the beam target (0x7f000000 for none), the body part, 0, a zero vector and the transform. Linux copies the transform
+    /// and leaves the caller's alone. Win64 destroys the copy it is handed, so it needs one the engine can free (<see cref="TransformCopy"/>).</summary>
     [Fn("int(IntPtr self, ushort row, int unknown, uint beamTarget, byte bodyPart, byte unknown2, VectorArg at, IntPtr transform)")]
     public const string ObjAddVisualEffect = "_ZN10CNWCObject15AddVisualEffectEtijhh6Vector25ObjectVisualTransformData";
     /// <summary><c>CNWCObject::KillAllVisualEffects()</c> @0x7e2f20 -- kills, destroys and frees every effect on the object.</summary>
     [Fn("void(IntPtr self)")]
     public const string ObjKillAllVisualEffects = "_ZN10CNWCObject20KillAllVisualEffectsEv";
+    /// <summary>WINDOWS ONLY: the MSVC <c>std::_Tree</c> copy constructor of <c>ObjectVisualTransformData</c>'s map (this, source, an unused
+    /// allocator). It builds a fresh tree on the engine's own heap, the copy <see cref="ObjAddVisualEffect"/> destroys. The Linux name is the
+    /// libstdc++ twin and is never resolved.</summary>
+    [Fn("IntPtr(IntPtr dst, IntPtr src, IntPtr allocator)")]
+    public const string TransformCopy = "_ZNSt8_Rb_treeIiSt4pairIKi25CAurObjectVisualTransformDataESt10_Select1stIS4_ESt4lessIiESaIS4_EEC1ERKSB_";
     /// <summary><c>CExoSound::Play3DOneShotSound(CResRef const&amp;, Vector, float, uchar, uint, uchar)</c> @0x574e00 -- the one-shot
     /// an effect's impact sound goes through, by <c>CNWCVisualEffectOnObject::StartVisualEffect</c>. The result is passed on untouched.</summary>
     [Fn("IntPtr(IntPtr self, IntPtr resref, VectorArg at, float volume, byte group, uint unknown, byte unknown2)")]
@@ -3334,10 +3339,11 @@ internal static unsafe class SymbolMap
         [DataBlockFromBase64] = Nm("?FromBase64@DataBlock@@SA?AV?$shared_ptr@VDataBlock@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z"),
         [NwcCreateItem] = At(),   // its own .pdata entry; the only function citing "gifp" and "gi_armor01" (docs/windows-symbols.md)
         [IdentityVisualTransform] = Nm("?s_IdentityVisualTransformData@ObjectVisualTransformData@@0U1@B"),
-        [ObjAddVisualEffect] = LinuxOnly("MSVC passes ObjectVisualTransformData by value as a copy the callee destroys; the model view's effects stay Linux-only"),
-        [ObjKillAllVisualEffects] = LinuxOnly("pairs with ObjAddVisualEffect, which is Linux-only"),
-        [ExoSoundPlay3DOneShot] = LinuxOnly("only muted around ObjAddVisualEffect, which is Linux-only"),
-        [ExoSoundSourcePlay] = LinuxOnly("only muted around ObjAddVisualEffect, which is Linux-only"),
+        [ObjAddVisualEffect] = At(),   // CNWCObject vtable slot 47 (Linux 48): news a 0x138-byte effect, AddTails it on the list at this+0x80, tests 0x163 and 0x77
+        [ObjKillAllVisualEffects] = At(),   // the slot two on (Linux 50): drains the list at this+0x80 with the effect's kill, dtor and a 0x138 free
+        [TransformCopy] = Nm("??$?0V?$allocator@U?$_Tree_node@U?$pair@$$CBHUCAurObjectVisualTransformData@@@std@@PEAX@std@@@std@@@?$_Tree@V?$_Tmap_traits@HUCAurObjectVisualTransformData@@U?$less@H@std@@V?$allocator@U?$pair@$$CBHUCAurObjectVisualTransformData@@@std@@@3@$0A@@std@@@std@@QEAA@AEBV01@$$QEAV?$allocator@U?$_Tree_node@U?$pair@$$CBHUCAurObjectVisualTransformData@@@std@@PEAX@std@@@1@@Z"),
+        [ExoSoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
+        [ExoSoundSourcePlay] = Nm("?Play@CExoSoundSource@@QEAAIXZ"),
         [ObjSetFadeState] = At(),   // the function that tests +0x104 == 1, writes the state byte at +0xa8, and runs the show/hide virtuals; the Windows twin of 0x7e7ba0
         [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
         [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
