@@ -601,6 +601,7 @@ offset	CTwoDimArrays	placeables	0x140	0x140	# TwoDimPlaceables
 offset	CTwoDimArrays	appearance	0x100	0x100	# TwoDimAppearance
 offset	CTwoDimArrays	surfacemat	0x110	0x110	# TwoDimSurfaceMat
 offset	CTwoDimArrays	footstepSounds	0x200	0x200	# TwoDimFootstepSounds
+offset	C2DA	rows	0x50	0x50	# TwoDaRows
 offset	CNWCObject	areaPtr	0x30	0x30	# ObjAreaPtr
 offset	CNWCObject	footstepSkip	0x108	0x108	# ObjFootstepSkip
 offset	CNWCCreature	footstepType	0x3dc	0x3bc	# CreatureFootstepType

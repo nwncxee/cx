@@ -38,10 +38,9 @@ internal static unsafe class NuiModelPose
     internal static bool Play(IntPtr model, string name, float speed, bool loop)
     {
         if (model == IntPtr.Zero) return false;
-        byte* b = stackalloc byte[MaxName + 1];
-        for (int i = 0; i < name.Length; i++) b[i] = (byte)name[i];
-        b[name.Length] = 0;
-        return new Gob(model).PlayAnimation((IntPtr)b, Math.Clamp(speed, MinSpeed, MaxSpeed), loop ? LoopFlag : 0, 0f) != 0;
+        Span<byte> b = stackalloc byte[MaxName + 1];
+        NuiModelTarget.AsciiZ(name, b);
+        fixed (byte* p = b) return new Gob(model).PlayAnimation((IntPtr)p, Math.Clamp(speed, MinSpeed, MaxSpeed), loop ? LoopFlag : 0, 0f) != 0;
     }
 
     /// <summary>Oracle: hand-written <c>anim</c> values and what each asks for.</summary>

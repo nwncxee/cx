@@ -50,7 +50,9 @@ internal static unsafe class NuiModelView
         public string StandinName = "";
         public int Epoch = -1;
         public uint Target;
-        public float Angle = DefaultAngle, Dist = DefaultDist, Height = DefaultHeight, Yaw, Drag, Pitch;
+        public float Angle = DefaultAngle, Yaw, Drag, Pitch;
+        /// <summary>The camera's distance and height the server fixed, or null while the framing (or the default, with <c>fit</c> off) decides.</summary>
+        public float? Dist, Height;
         public float ClipNear = NuiModelLook.DefaultNear, ClipFar = NuiModelLook.DefaultFar;
         /// <summary>The nearest and farthest distance a scroll may move the camera to (both 0 = no zoom), the metres a notch moves it, and
         /// where the player has put it (NaN = still at <see cref="Dist"/>).</summary>
@@ -67,8 +69,8 @@ internal static unsafe class NuiModelView
         public string PoseName = "", Played = "";
         public float PoseSpeed = 1f;
         public bool PoseLoop = true;
-        /// <summary>Does the server fix the camera's <c>dist</c> and <c>height</c> (else the doll is framed from its bounds, unless <c>fit</c> is 0), and the framing found.</summary>
-        public bool HasDist, HasHeight, Fit = true, HasBox;
+        /// <summary>Is the doll framed from its bounds where the server fixes no <c>dist</c> or <c>height</c> (unless <c>fit</c> is 0), and the framing found.</summary>
+        public bool Fit = true, HasBox;
         public float FitPad = 1f, ZoneLo, ZoneHi;
         /// <summary>The union of the model's bounds over every frame since it was built, which an animation can only widen.</summary>
         public System.Numerics.Vector3 BoxMin, BoxMax;
@@ -348,10 +350,10 @@ internal static unsafe class NuiModelView
     }
 
     /// <summary>How far the camera stands now: where the player scrolled it to, else the server's <c>dist</c>.</summary>
-    private static float Distance(ViewData v) => float.IsNaN(v.ZoomAt) ? (v.HasDist || !v.Fit ? v.Dist : v.FitDist) : v.ZoomAt;
+    private static float Distance(ViewData v) => float.IsNaN(v.ZoomAt) ? v.Dist ?? (v.Fit ? v.FitDist : DefaultDist) : v.ZoomAt;
 
     /// <summary>The camera's height now: the server's, else the framed one.</summary>
-    private static float Height(ViewData v) => v.HasHeight || !v.Fit ? v.Height : v.FitHeight;
+    private static float Height(ViewData v) => v.Height ?? (v.Fit ? v.FitHeight : DefaultHeight);
 
     /// <summary>A scroll landed on NUI (from the input hook): one over a model view whose server allows zoom moves the camera
     /// <see cref="ViewData.ZoomStep"/> metres a notch, nearer for a scroll up, inside the server's range. True = the view took it.</summary>
@@ -417,6 +419,7 @@ internal static unsafe class NuiModelView
         switch (v.Tgt.Kind)
         {
             case TargetKind.Appearance:
+                if (!NuiModelTarget.AppearanceKnown(v.Tgt.Row)) return false;
                 Span<byte> record = stackalloc byte[NuiModelDoll.RecordMax];
                 NuiModelTarget.Blank(v.Tgt.Row, record);
                 return NuiModelDoll.BuildFromInfo(slot, record, 0, 0, v.W, v.H, idle);
@@ -450,7 +453,7 @@ internal static unsafe class NuiModelView
     /// A creature stands on the floor, so its camera is centred on half its height; an item is centred on its bounds.</summary>
     private static void FitCamera(ViewState s, ViewData v)
     {
-        if (!v.Fit || (v.HasDist && v.HasHeight)) return;
+        if (!v.Fit || (v.Dist != null && v.Height != null)) return;
         var g = new Gob(v.Slot.Doll.Model);
         System.Numerics.Vector3 lo = g.BoundsMin, hi = g.BoundsMax;
         v.BoxMin = v.HasBox ? System.Numerics.Vector3.Min(v.BoxMin, lo) : lo;
@@ -469,16 +472,14 @@ internal static unsafe class NuiModelView
         string target = Policy(v.Key, "target", "");
         v.BuildFailed = false;
         v.Tgt = NuiModelTarget.Parse(target);
-        v.HasDist = Policy(v.Key, "dist", "").Length > 0;
-        v.HasHeight = Policy(v.Key, "height", "").Length > 0;
         float fit = PolicyF(v.Key, "fit", 1f);
         v.Fit = fit != 0f;
         NuiModelLook.Pair(Policy(v.Key, "fitzone", ""), 0f, 1f, out v.ZoneLo, out v.ZoneHi);
         v.FitPad = fit > 0f ? Math.Clamp(fit, 0.1f, 10f) : 1f;
         v.HasBox = false;
         v.Angle = Math.Clamp(PolicyF(v.Key, "angle", DefaultAngle), 1f, MaxAngle);
-        v.Dist = Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist);
-        v.Height = Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight);
+        v.Dist = Policy(v.Key, "dist", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "dist", DefaultDist), 0f, MaxDist) : null;
+        v.Height = Policy(v.Key, "height", "").Length > 0 ? Math.Clamp(PolicyF(v.Key, "height", DefaultHeight), -MaxHeight, MaxHeight) : null;
         v.Yaw = PolicyF(v.Key, "yaw", 0f);
         v.Pitch = Math.Clamp(PolicyF(v.Key, "pitch", 0f), -NuiModelLook.MaxPitch, NuiModelLook.MaxPitch);
         bool clip = NuiModelLook.Pair(Policy(v.Key, "clip", ""), 0.001f, NuiModelLook.MaxFar, out float near, out float far) && near < far;
@@ -549,7 +550,7 @@ internal static unsafe class NuiModelView
     {
         Span<byte> name = stackalloc byte[RadialIcons.ResRefLen + 1];
         name.Clear();
-        for (int i = 0; i < standin.Length && i < RadialIcons.ResRefLen; i++) name[i] = (byte)standin[i];
+        NuiModelTarget.AsciiZ(standin.Length > RadialIcons.ResRefLen ? standin[..RadialIcons.ResRefLen] : standin, name);
         NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(rect), key, out px, out pw, out ph);
     }
 

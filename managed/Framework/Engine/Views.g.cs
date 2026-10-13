@@ -537,6 +537,17 @@ public readonly unsafe partial struct BiffVarResEntry(IntPtr ptr)
     public BiffVarResEntry this[int i] => new(Ptr + i * EngineLayout.BifEntryStride);
 }
 
+/// <summary>Typed view of an engine <c>C2DA*</c>.</summary>
+public readonly unsafe partial struct C2DA(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.TwoDaRows"/>
+    public ref int Rows => ref *(int*)(Ptr + EngineLayout.TwoDaRows);
+}
+
 /// <summary>Typed view of an engine <c>C2DVoice*</c>.</summary>
 public readonly unsafe partial struct C2DVoice(IntPtr ptr)
 {

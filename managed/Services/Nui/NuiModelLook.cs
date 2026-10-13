@@ -37,12 +37,9 @@ internal static class NuiModelLook
     internal static bool Pair(string v, float lo, float hi, out float a, out float b)
     {
         a = b = 0;
-        string[] p = v.Split(',');
-        if (p.Length != 2 || !Num(p[0], out float x) || !Num(p[1], out float y)) return false;
-        x = Math.Clamp(x, lo, hi);
-        y = Math.Clamp(y, lo, hi);
-        if (x > y) return false;
-        a = x; b = y;
+        Span<float> n = stackalloc float[2];
+        if (!Numbers(v, n, lo, hi) || n[0] > n[1]) return false;
+        a = n[0]; b = n[1];
         return true;
     }
 
@@ -50,11 +47,27 @@ internal static class NuiModelLook
     internal static bool Triple(string v, float lo, float hi, out Vector3 r)
     {
         r = default;
-        string[] p = v.Split(',');
-        if (p.Length != 3 || !Num(p[0], out float x) || !Num(p[1], out float y) || !Num(p[2], out float z)) return false;
-        r = new Vector3(Math.Clamp(x, lo, hi), Math.Clamp(y, lo, hi), Math.Clamp(z, lo, hi));
+        Span<float> n = stackalloc float[3];
+        if (!Numbers(v, n, lo, hi)) return false;
+        r = new Vector3(n[0], n[1], n[2]);
         return true;
     }
+
+    /// <summary>Exactly <paramref name="into"/>.Length comma-separated finite numbers, each clamped into <paramref name="lo"/>..<paramref name="hi"/>.</summary>
+    private static bool Numbers(string v, Span<float> into, float lo, float hi)
+    {
+        string[] p = v.Split(',');
+        if (p.Length != into.Length) return false;
+        for (int i = 0; i < p.Length; i++)
+        {
+            if (!Num(p[i], out float f)) return false;
+            into[i] = Math.Clamp(f, lo, hi);
+        }
+        return true;
+    }
+
+    private static bool Num(string s, out float f) =>
+        float.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out f) && float.IsFinite(f);
 
     /// <summary>Where a scroll of <paramref name="notches"/> (up is positive, nearer) moves a camera standing at <paramref name="from"/>,
     /// <paramref name="step"/> metres a notch, kept inside <paramref name="min"/>..<paramref name="max"/>.</summary>
@@ -75,9 +88,6 @@ internal static class NuiModelLook
 
     /// <summary>The player's turn after the policy changed: pulled inside a range that is set, else as it was.</summary>
     internal static float TurnAfterPolicy(float yaw, bool ranged, float min, float max) => ranged ? Math.Clamp(yaw, min, max) : yaw;
-
-    private static bool Num(string s, out float f) =>
-        float.TryParse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out f) && float.IsFinite(f);
 
     /// <summary>The light the four <c>light</c> settings describe. Anything but <c>server</c> in <paramref name="mode"/> is the engine's.</summary>
     internal static ModelLight Light(string mode, string color, string dir, string ambient)

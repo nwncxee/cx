@@ -20,8 +20,6 @@ internal static unsafe class NuiModelVfx
     /// <summary>The bytes a Win64 <c>ObjectVisualTransformData</c> takes (an MSVC map: head pointer and size), and the same again for the
     /// copy constructor's unused allocator.</summary>
     private const int TransformBytes = 32;
-    /// <summary>The beam target of an effect that is no beam.</summary>
-    private const uint NoTarget = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
 
     /// <summary>One effect to wear: its <c>visualeffects.2da</c> row and the body part it sits on. Part 0 is the hand node, 1 the
     /// impact node, 2-11 the creature's ground nodes <c>monster0</c>-<c>monster9</c>, and any other number the root.</summary>
@@ -92,7 +90,7 @@ internal static unsafe class NuiModelVfx
         try
         {
             foreach (VfxRow e in rows)
-                if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NoTarget, e.Part, 0, VectorArg.Of(&zero), TransformFor(scratch)) == 0)
+                if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NuiModelDoll.InvalidId, e.Part, 0, VectorArg.Of(&zero), TransformFor(scratch)) == 0)
                     _v.Log?.Always($"NuiModelVfx: the engine would not load effect row {e.Row}");
         }
         finally { _v.MuteThread = 0; }

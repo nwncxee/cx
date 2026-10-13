@@ -12,14 +12,13 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiModelHelm
 {
-    private const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
 
     /// <summary>The helmet copy a doll wears (its item and registered id), the real helmet's id it was made from, and the copy a change
     /// replaced, which is freed once the engine has detached its model. <see cref="Last"/> is the record the doll was last built from.</summary>
     internal sealed class HelmState
     {
         public IntPtr Item, Replaced;
-        public uint Id = InvalidId, ReplacedId = InvalidId, From = InvalidId;
+        public uint Id = NuiModelDoll.InvalidId, ReplacedId = NuiModelDoll.InvalidId, From = NuiModelDoll.InvalidId;
         public byte[] Last = Array.Empty<byte>();
     }
 
@@ -31,19 +30,19 @@ internal static unsafe class NuiModelHelm
         h.Last = new ReadOnlySpan<byte>(record, length).ToArray();
         var info = new CCAppearanceInfo((IntPtr)record);
         uint real = info.HelmId;
-        if (real == InvalidId) { Drop(h); info.HelmId = InvalidId; return; }
-        if (h.Item != IntPtr.Zero && h.From == real && NuiModelDoll.Holds(h.Id, h.Item + ItemObject)) { info.HelmId = h.Id; return; }
+        if (real == NuiModelDoll.InvalidId) { Drop(h); info.HelmId = NuiModelDoll.InvalidId; return; }
+        if (h.Item != IntPtr.Zero && h.From == real && NuiModelDoll.Holds(h.Id, h.Item + NuiModelDoll.ItemObject)) { info.HelmId = h.Id; return; }
         Drop(h);
-        info.HelmId = Make(h, real) ? h.Id : InvalidId;
+        info.HelmId = Make(h, real) ? h.Id : NuiModelDoll.InvalidId;
     }
 
     /// <summary>The engine has rebuilt the head: the copy it replaced has no model attached any more, so it goes.</summary>
     internal static void Settle(HelmState h)
     {
         if (h.Replaced == IntPtr.Zero) return;
-        Free(h.Replaced, h.ReplacedId);
+        NuiModelGear.Unregister(h.Replaced, h.ReplacedId);
         h.Replaced = IntPtr.Zero;
-        h.ReplacedId = InvalidId;
+        h.ReplacedId = NuiModelDoll.InvalidId;
     }
 
     /// <summary>The doll is going: its head is rebuilt bare so the engine lets go of the helmet model, then the copy is freed. When the engine
@@ -57,29 +56,28 @@ internal static unsafe class NuiModelHelm
                 byte* info = stackalloc byte[256];   // not-an-offset: room for either OS's CCAppearanceInfo
                 int n = EngineLayout.SizeOfAppearanceInfo;
                 h.Last.AsSpan(0, n).CopyTo(new Span<byte>(info, n));
-                new CCAppearanceInfo((IntPtr)info).HelmId = InvalidId;
+                new CCAppearanceInfo((IntPtr)info).HelmId = NuiModelDoll.InvalidId;
                 Drop(h);
                 EngineFn.NwcCreatureSetAppearance(doll, (IntPtr)info, FullBuild);
             }
             Settle(h);
-            if (h.Item != IntPtr.Zero) Free(h.Item, h.Id);
+            if (h.Item != IntPtr.Zero) NuiModelGear.Unregister(h.Item, h.Id);
         }
         h.Item = h.Replaced = IntPtr.Zero;
-        h.Id = h.ReplacedId = h.From = InvalidId;
+        h.Id = h.ReplacedId = h.From = NuiModelDoll.InvalidId;
     }
 
     private const byte FullBuild = 0x2f;   // not-an-offset: SetAppearance flag bits, as NuiModelDoll builds
-    private const int ItemObject = 0x48;   // not-an-offset: the CNWCObject inside a CNWCItem
 
     /// <summary>The current copy becomes the replaced one, to be freed by <see cref="Settle"/>.</summary>
     private static void Drop(HelmState h)
     {
         if (h.Item == IntPtr.Zero) return;
-        if (h.Replaced != IntPtr.Zero) Free(h.Replaced, h.ReplacedId);
+        if (h.Replaced != IntPtr.Zero) NuiModelGear.Unregister(h.Replaced, h.ReplacedId);
         h.Replaced = h.Item;
         h.ReplacedId = h.Id;
         h.Item = IntPtr.Zero;
-        h.Id = h.From = InvalidId;
+        h.Id = h.From = NuiModelDoll.InvalidId;
     }
 
     private static bool Make(HelmState h, uint real)
@@ -87,25 +85,17 @@ internal static unsafe class NuiModelHelm
         IntPtr src = NuiModelGear.Known(real);
         IntPtr copy = NuiItemIcons.MintCopy(src);
         if (copy == IntPtr.Zero) return false;
-        if (NuiModelTarget.LoadItem(copy, NuiModelTarget.ModelSlot) == IntPtr.Zero) { NuiItemIcons.Destroy(copy); return false; }
-        IntPtr array = EngineFn.GetGameObjectArray(NuiModelDoll.App());
-        uint id = InvalidId;
-        if (array == IntPtr.Zero || EngineFn.GameObjectArrayAdd(array, &id, copy + ItemObject, 0) != 0) { NuiItemIcons.Destroy(copy); return false; }
-        new CNWCObject(copy + ItemObject).Id = id;
+        if (NuiModelTarget.LoadItem(copy, NuiModelTarget.ModelSlot) == IntPtr.Zero)
+        {
+            NuiModelGear.Say("NuiModelHelm: the helmet has no model the client can load -- the doll goes without one");
+            NuiItemIcons.Destroy(copy);
+            return false;
+        }
+        uint id = NuiModelGear.Register(copy);
+        if (id == NuiModelDoll.InvalidId) return false;
         h.Item = copy;
         h.Id = id;
         h.From = real;
         return true;
-    }
-
-    private static void Free(IntPtr item, uint id)
-    {
-        IntPtr app = NuiModelDoll.App();
-        if (app != IntPtr.Zero && NuiModelDoll.Holds(id, item + ItemObject))
-        {
-            IntPtr gone;
-            EngineFn.GameObjectArrayDelete(EngineFn.GetGameObjectArray(app), id, &gone);
-        }
-        NuiItemIcons.Destroy(item);
     }
 }

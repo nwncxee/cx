@@ -51,4 +51,7 @@ public static unsafe partial class EngineLayout
     public static readonly int AppearArmorWorn = Field<int>("CCAppearanceInfo", "armorWorn");
     public static readonly int AppearCloakColors = Field<ushort>("CCAppearanceInfo", "cloakColors", count: 6);
     public static readonly int AppearCloakModel = Field<ushort>("CCAppearanceInfo", "cloakModel");
+
+    /// <summary>A <c>C2DA</c>'s row count (+0x50 on both builds), the bound <c>GetINTEntry</c> and <c>GetCExoStringEntry</c> check a row against.</summary>
+    public static readonly int TwoDaRows = Field<int>("C2DA", "rows");
 }

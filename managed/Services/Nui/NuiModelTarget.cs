@@ -1,6 +1,8 @@
 using System;
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using CX.Engine;
 using CX.Framework;
 
@@ -26,24 +28,22 @@ internal static unsafe class NuiModelTarget
     private const string AppPrefix = "app:", ModelPrefix = "model:", ItemPrefix = "item:";
     /// <summary>The highest <c>appearance.2da</c> row the record's 16-bit appearance field holds.</summary>
     internal const int MaxRow = 65535;
-    /// <summary>The object id that says a creature has no helmet.</summary>
-    private const uint NoHelm = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
     private const int ResRefLen = 16;   // not-an-offset: a resref's longest name
     /// <summary>The model slot an item's one model sits in, the one the engine fetches a worn item's model from.</summary>
     internal const byte ModelSlot = 1;   // not-an-offset: CNWCItem model slot
-    private const int ItemObject = 0x48;   // not-an-offset: the CNWCObject inside a CNWCItem, as NuiModelGear registers it
 
     /// <summary>The engine's <c>CResRef</c>: 17 bytes, empty here. Itanium copies it to the stack, Win64 passes a pointer to it.</summary>
     [StructLayout(LayoutKind.Sequential, Size = 17)]
     private struct ResRefArg { public byte First; }
 
-    private sealed class TargetState { public IntPtr LoadModel; public ExtenderLog? Log; }
+    private sealed class TargetState { public IntPtr LoadModel, Rules; public ExtenderLog? Log; }
 
     private static readonly TargetState _t = new();
 
     internal static void Init(ExtenderLog log)
     {
         _t.Log = log;
+        _t.Rules = Native.Sym(SymbolMap.Rules);
         _t.LoadModel = SymbolMap.Resolve(SymbolMap.ItemLoadModel, log);
         if (_t.LoadModel == IntPtr.Zero) log.Always("NuiModelTarget: the engine's item model loader did not resolve -- no item targets");
     }
@@ -71,11 +71,14 @@ internal static unsafe class NuiModelTarget
     }
 
     /// <summary>A resref: 1 to 16 letters, digits and underscores.</summary>
-    internal static bool ValidResRef(string s)
+    internal static bool ValidResRef(string s) => s.Length is > 0 and <= ResRefLen && !s.AsSpan().ContainsAnyExcept(ResRefChars);
+
+    private static readonly SearchValues<char> ResRefChars = SearchValues.Create("abcdefghijklmnopqrstuvwxyz0123456789_");
+
+    /// <summary><paramref name="text"/> as ASCII bytes and a zero in <paramref name="dst"/>, which must be one longer.</summary>
+    internal static void AsciiZ(string text, Span<byte> dst)
     {
-        if (s.Length is 0 or > ResRefLen) return false;
-        foreach (char c in s) if (!(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_')) return false;
-        return true;
+        dst[Encoding.ASCII.GetBytes(text, dst)] = 0;
     }
 
     /// <summary>An appearance record that holds nothing but <paramref name="row"/>: the engine builds that row's model with
@@ -86,18 +89,36 @@ internal static unsafe class NuiModelTarget
         fixed (byte* p = record)
         {
             new CPathfindInformation((IntPtr)p).Appearance = (ushort)row;
-            new CCAppearanceInfo((IntPtr)p).HelmId = NoHelm;
+            new CCAppearanceInfo((IntPtr)p).HelmId = NuiModelDoll.InvalidId;
         }
     }
 
-    /// <summary>The model <paramref name="resref"/> as an object of its own, or zero when the engine has none by that name.</summary>
+    /// <summary>How many rows <c>appearance.2da</c> has, or -1 when the engine's tables are not reachable yet.</summary>
+    internal static int AppearanceRows()
+    {
+        IntPtr rules = _t.Rules == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_t.Rules;
+        IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
+        IntPtr table = tables == IntPtr.Zero ? IntPtr.Zero : new CTwoDimArrays(tables).Appearance;
+        return table == IntPtr.Zero ? -1 : new C2DA(table).Rows;
+    }
+
+    /// <summary>Does <paramref name="row"/> name an <c>appearance.2da</c> row the client has? Logs once when it does not.</summary>
+    internal static bool AppearanceKnown(int row)
+    {
+        int rows = AppearanceRows();
+        if (NuiModelGuard.RowInTable(row, rows)) return true;
+        _t.Log?.Always($"NuiModelTarget: appearance row {row} is past the {rows} the client's appearance.2da has");
+        return false;
+    }
+
+    /// <summary>The model <paramref name="resref"/> as an object of its own, or zero when the client has no model by that name.</summary>
     internal static IntPtr NewModel(string resref)
     {
-        byte* name = stackalloc byte[ResRefLen + 1];
-        for (int i = 0; i < resref.Length; i++) name[i] = (byte)resref[i];
-        name[resref.Length] = 0;
+        if (!CX.Alloy.ModelFeed.Present(resref)) { _t.Log?.Always($"NuiModelTarget: the client has no model '{resref}'"); return IntPtr.Zero; }
+        Span<byte> name = stackalloc byte[ResRefLen + 1];
+        AsciiZ(resref, name);
         byte empty = 0;
-        return EngineFn.NewAurObject(name, &empty, IntPtr.Zero);
+        fixed (byte* n = name) return EngineFn.NewAurObject(n, &empty, IntPtr.Zero);
     }
 
     /// <summary>Load <paramref name="item"/>'s model into <paramref name="slot"/> and return it: slot <see cref="ModelSlot"/> for an item's single model. Zero when the engine builds none.</summary>
@@ -108,7 +129,7 @@ internal static unsafe class NuiModelTarget
         long done = OperatingSystem.IsWindows()
             ? (long)((delegate* unmanaged<IntPtr, ResRefArg*, byte, byte, IntPtr>)_t.LoadModel)(item, &none, slot, 0)
             : ((delegate* unmanaged<IntPtr, ResRefArg, byte, byte, int>)_t.LoadModel)(item, none, slot, 0);
-        IntPtr model = new CNWCCreature(item + ItemObject).GetModel(0xff, slot);
+        IntPtr model = new CNWCCreature(item + NuiModelDoll.ItemObject).GetModel(0xff, slot);
         if (model == IntPtr.Zero) _t.Log?.Always($"NuiModelTarget: LoadModel slot 0x{slot:x} answered {done & 0xff}, and the item has no model there");
         return model;
     }
@@ -121,14 +142,12 @@ internal static unsafe class NuiModelTarget
         item = IntPtr.Zero;
         if (_t.LoadModel == IntPtr.Zero) return IntPtr.Zero;
         IntPtr src = NuiModelGear.WearItem(text, out bool minted);
-        if (src == IntPtr.Zero) { _t.Log?.Always($"NuiModelTarget: '{text}' names no item"); return IntPtr.Zero; }
-        IntPtr copy = minted ? src : NuiItemIcons.MintCopy(src);
-        if (copy == IntPtr.Zero) { _t.Log?.Always("NuiModelTarget: the engine made no item to show"); return IntPtr.Zero; }
-        IntPtr model = LoadItem(copy, ModelSlot);
+        IntPtr copy = src == IntPtr.Zero ? IntPtr.Zero : minted ? src : NuiItemIcons.MintCopy(src);
+        IntPtr model = copy == IntPtr.Zero ? IntPtr.Zero : LoadItem(copy, ModelSlot);
         if (model == IntPtr.Zero)
         {
-            _t.Log?.Always("NuiModelTarget: the item loaded no model");
-            NuiItemIcons.Destroy(copy);
+            _t.Log?.Always($"NuiModelTarget: '{text}' gives no item model");
+            if (copy != IntPtr.Zero) NuiItemIcons.Destroy(copy);
             return IntPtr.Zero;
         }
         item = copy;

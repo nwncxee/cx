@@ -15,7 +15,6 @@ internal static unsafe class NuiModelGear
 {
     internal const uint RightHand = 0x10, LeftHand = 0x20;   // not-an-offset: INVENTORY_SLOT_RIGHTHAND / LEFTHAND
     private const uint HeadSlot = 0x1, ChestSlot = 0x2, CloakSlot = 0x40;   // not-an-offset: INVENTORY_SLOT_HEAD / CHEST / CLOAK
-    private const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
     private const int Parts = 19, Colors = 6, PartColors = Parts * Colors;
     /// <summary>How long a wear item the client does not know yet waits before it is looked up again.</summary>
     private const int RetryMs = 500;
@@ -28,7 +27,7 @@ internal static unsafe class NuiModelGear
         public ulong From;
         public string Text = "";
         public IntPtr Item;
-        public uint ItemId = InvalidId;
+        public uint ItemId = NuiModelDoll.InvalidId;
         public Worn(uint slot) => Slot = slot;
     }
 
@@ -59,12 +58,12 @@ internal static unsafe class NuiModelGear
         public string BodyKey = "";
         public bool Dirty;
         public bool Waiting;
-        public uint HelmId = InvalidId;
+        public uint HelmId = NuiModelDoll.InvalidId;
         public long NextTry;
         public int RetryLogs;
         internal Dressing Dress = new();
-        internal Kept HelmSrc = new() { Id = InvalidId };
-        internal Kept Retired = new() { Id = InvalidId };
+        internal Kept HelmSrc = new() { Id = NuiModelDoll.InvalidId };
+        internal Kept Retired = new() { Id = NuiModelDoll.InvalidId };
         /// <summary>The doll's own helmet, see <see cref="NuiModelHelm"/>.</summary>
         public readonly NuiModelHelm.HelmState Helm = new();
     }
@@ -74,6 +73,9 @@ internal static unsafe class NuiModelGear
     private static readonly GearLog _g = new();
 
     internal static void Init(ExtenderLog log) => _g.Log = log;
+
+    /// <summary>One line in the log, for the helmet path that has no log of its own.</summary>
+    internal static void Say(string line) => _g.Log?.Always(line);
 
     /// <summary>The hand slot a base item's slot mask names: the right hand first, else the left. Zero when it is neither.</summary>
     internal static uint HandOf(uint equipMask) => (equipMask & RightHand) != 0 ? RightHand : (equipMask & LeftHand) != 0 ? LeftHand : 0;
@@ -86,7 +88,7 @@ internal static unsafe class NuiModelGear
 
     /// <summary>The item id a creature holds in a hand slot, or the invalid id.</summary>
     internal static uint Held(IntPtr creature, uint slot)
-        => creature == IntPtr.Zero ? InvalidId : *(uint*)(creature + (slot == RightHand ? EngineLayout.CreatureRightHandItem : EngineLayout.CreatureLeftHandItem));
+        => creature == IntPtr.Zero ? NuiModelDoll.InvalidId : *(uint*)(creature + (slot == RightHand ? EngineLayout.CreatureRightHandItem : EngineLayout.CreatureLeftHandItem));
 
     /// <summary>The item a <c>wear</c> value names: an <c>@look:</c> string mints a fresh item (<paramref name="minted"/> = true,
     /// the caller ends it), a hex object id is an item the client knows (never ended). Zero when it names none.</summary>
@@ -102,7 +104,7 @@ internal static unsafe class NuiModelGear
             ? Known(id | NuiItemIcons.ServerIdBit) : IntPtr.Zero;
     }
 
-    internal static IntPtr Known(uint id) => id == InvalidId ? IntPtr.Zero : CX.Services.Radial.RadialIcons.Item((IntPtr)id);
+    internal static IntPtr Known(uint id) => id == NuiModelDoll.InvalidId ? IntPtr.Zero : CX.Services.Radial.RadialIcons.Item((IntPtr)id);
 
     /// <summary>Read a <c>wear</c> value: sort its items into the hands, the armour, the cloak and the helmet. Cheap when the text is
     /// the one already read. Run before the doll is built, so the first build already wears it.</summary>
@@ -160,8 +162,8 @@ internal static unsafe class NuiModelGear
     {
         if (g.Retired.Item != IntPtr.Zero) Unregister(g.Retired, false);
         g.Retired = g.HelmSrc;
-        g.HelmSrc = new Kept { Id = InvalidId };
-        g.HelmId = InvalidId;
+        g.HelmSrc = new Kept { Id = NuiModelDoll.InvalidId };
+        g.HelmId = NuiModelDoll.InvalidId;
     }
 
     /// <summary>The helmet the record will name: a known item's own id, or the id of a registered source minted from an <c>@look:</c>
@@ -182,10 +184,10 @@ internal static unsafe class NuiModelGear
         IntPtr model = WearItem(text, out bool minted);
         IntPtr copy = NuiItemIcons.MintCopy(model);
         if (minted && model != IntPtr.Zero) NuiItemIcons.Destroy(model);
-        var k = new Kept { Id = InvalidId };
+        var k = new Kept { Id = NuiModelDoll.InvalidId };
         if (copy == IntPtr.Zero) { _g.Log?.Always($"NuiModelGear: no helmet to copy for '{text}'"); return k; }
         uint id = Register(copy);
-        if (id == InvalidId) return k;
+        if (id == NuiModelDoll.InvalidId) return k;
         k.Item = copy;
         k.Id = id;
         _g.Log?.Always($"NuiModelGear: the head wears a copy of '{text}' (item id 0x{id:x})");
@@ -193,17 +195,17 @@ internal static unsafe class NuiModelGear
     }
 
     /// <summary>Put a throwaway item in the game-object array. The invalid id, with the item ended, when the engine refuses.</summary>
-    private static uint Register(IntPtr copy)
+    internal static uint Register(IntPtr copy)
     {
         IntPtr array = EngineFn.GetGameObjectArray(NuiModelDoll.App());
-        uint id = InvalidId;
-        if (array == IntPtr.Zero || EngineFn.GameObjectArrayAdd(array, &id, copy + ItemObject, 0) != 0)
+        uint id = NuiModelDoll.InvalidId;
+        if (array == IntPtr.Zero || EngineFn.GameObjectArrayAdd(array, &id, copy + NuiModelDoll.ItemObject, 0) != 0)
         {
             _g.Log?.Always("NuiModelGear: the engine would not register the doll's item");
             NuiItemIcons.Destroy(copy);
-            return InvalidId;
+            return NuiModelDoll.InvalidId;
         }
-        new CNWCObject(copy + ItemObject).Id = id;
+        new CNWCObject(copy + NuiModelDoll.ItemObject).Id = id;
         return id;
     }
 
@@ -211,10 +213,17 @@ internal static unsafe class NuiModelGear
     /// engine has freed it already.</summary>
     private static void Unregister(Kept k, bool taken)
     {
-        if (k.Item == IntPtr.Zero || taken || !NuiModelDoll.Holds(k.Id, k.Item + ItemObject)) return;
+        if (taken) return;
+        Unregister(k.Item, k.Id);
+    }
+
+    /// <summary>The same for an item and its id given apart.</summary>
+    internal static void Unregister(IntPtr item, uint id)
+    {
+        if (item == IntPtr.Zero || !NuiModelDoll.Holds(id, item + NuiModelDoll.ItemObject)) return;
         IntPtr gone;
-        EngineFn.GameObjectArrayDelete(EngineFn.GetGameObjectArray(NuiModelDoll.App()), k.Id, &gone);
-        NuiItemIcons.Destroy(k.Item);
+        EngineFn.GameObjectArrayDelete(EngineFn.GetGameObjectArray(NuiModelDoll.App()), id, &gone);
+        NuiItemIcons.Destroy(item);
     }
 
     /// <summary>Write the body preview over a copy of the appearance record the doll is built from. Armour goes in as the body's parts
@@ -236,7 +245,7 @@ internal static unsafe class NuiModelGear
             a.CloakModel = d.CloakModel;
             d.CloakColors.CopyTo(a.CloakColors);
         }
-        if (g.HelmId != InvalidId) a.HelmId = g.HelmId;
+        if (g.HelmId != NuiModelDoll.InvalidId) a.HelmId = g.HelmId;
     }
 
     /// <summary>Did the body preview change since the doll was last dressed? Reading it clears the flag.</summary>
@@ -252,7 +261,7 @@ internal static unsafe class NuiModelGear
     {
         if (g.Retired.Item == IntPtr.Zero) return;
         Unregister(g.Retired, false);
-        g.Retired = new Kept { Id = InvalidId };
+        g.Retired = new Kept { Id = NuiModelDoll.InvalidId };
     }
 
     /// <summary>Bring the doll's hands to what the target holds, with the previewed hand items in their slots. Cheap when nothing
@@ -267,7 +276,7 @@ internal static unsafe class NuiModelGear
             else
             {
                 uint id = Held(target, w.Slot);
-                from = id == InvalidId ? 0 : FromItem | id;
+                from = id == NuiModelDoll.InvalidId ? 0 : FromItem | id;
             }
             if (from == w.From && (from != FromPreview || text == w.Text)) continue;
             Remove(doll, w);
@@ -290,23 +299,21 @@ internal static unsafe class NuiModelGear
         if (minted && model != IntPtr.Zero) NuiItemIcons.Destroy(model);
         if (copy == IntPtr.Zero) { _g.Log?.Always($"NuiModelGear: no item to copy for slot 0x{w.Slot:x} (from 0x{w.From:x})"); return; }
         uint id = Register(copy);
-        if (id == InvalidId) return;
+        if (id == NuiModelDoll.InvalidId) return;
         w.Item = copy;
         w.ItemId = id;
         EngineFn.NwcCreatureEquip(doll, w.Slot, copy);
         _g.Log?.Always($"NuiModelGear: slot 0x{w.Slot:x} wears a copy of source 0x{w.From:x} (item id 0x{id:x})");
     }
 
-    /// <summary>The CNWCObject sub-object inside a CNWCItem, the part the game-object array registers.</summary>
-    private const int ItemObject = 0x48;   // not-an-offset: CNWCItem's CNWCObject base, from the engine's AddExternalObject(item + 0x48)
 
     private static void Remove(IntPtr doll, Worn w, bool taken = false)
     {
         if (w.Item == IntPtr.Zero) return;
-        if (taken || !NuiModelDoll.Holds(w.ItemId, w.Item + ItemObject))
+        if (taken || !NuiModelDoll.Holds(w.ItemId, w.Item + NuiModelDoll.ItemObject))
         {
             w.Item = IntPtr.Zero;
-            w.ItemId = InvalidId;
+            w.ItemId = NuiModelDoll.InvalidId;
             return;
         }
         _g.Log?.Always($"NuiModelGear: slot 0x{w.Slot:x} emptied, item id 0x{w.ItemId:x} freed");
@@ -319,7 +326,7 @@ internal static unsafe class NuiModelGear
         }
         NuiItemIcons.Destroy(w.Item);
         w.Item = IntPtr.Zero;
-        w.ItemId = InvalidId;
+        w.ItemId = NuiModelDoll.InvalidId;
     }
 
     /// <summary>The doll is going: empty both hands, take the helmet off, then end every throwaway item, before the creature is
@@ -334,17 +341,9 @@ internal static unsafe class NuiModelGear
         }
         Unregister(g.HelmSrc, taken);
         Unregister(g.Retired, taken);
-        g.HelmSrc = g.Retired = new Kept { Id = InvalidId };
-        g.HelmId = InvalidId;
+        g.HelmSrc = g.Retired = new Kept { Id = NuiModelDoll.InvalidId };
+        g.HelmId = NuiModelDoll.InvalidId;
         g.PreviewText = g.BodyKey = "";
-    }
-
-    /// <summary>How many throwaway items the doll holds now.</summary>
-    internal static int Count(GearState g)
-    {
-        int n = g.HelmSrc.Item != IntPtr.Zero ? 1 : 0;
-        foreach (Worn w in g.Hands) if (w.Item != IntPtr.Zero) n++;
-        return n;
     }
 
     /// <summary>Oracle: hand-written <c>INVENTORY_SLOT_*</c> bits (right hand 0x10, left hand 0x20, helmet 0x1, armour 0x2, cloak 0x40),
