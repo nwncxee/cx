@@ -15,6 +15,7 @@ internal static class HeldPickSelfCheck
         var check = new Checker(log, "HeldPickSelfCheck");
         Picks(check);
         Pending(check);
+        Look(check);
         log.Info(check.Ok ? "HeldPickSelfCheck: passed" : "HeldPickSelfCheck: FAILED");
     }
 
@@ -57,5 +58,21 @@ internal static class HeldPickSelfCheck
         m.Pick("iit_a", 7000, 1000, 8, draw);
         check.Expect(m.Update(6, false, "", ++draw, true, 7100, 8) && !m.Active && !m.Pending, "the knob off drops the ghost");
         check.Expect(!m.Pick("", 8000, 1000, 8, draw) && !m.Pending, "a pick of nothing holds nothing");
+    }
+
+    /// <summary>Oracle: the defaults and ranges written in the contract (0.9 and 0.55, 0-1, offsets of 256 px at most), as literals.</summary>
+    private static void Look(Checker check)
+    {
+        var s = new HeldImageService.HeldState();
+        ServerPolicy.Clear();
+        HeldImageService.ReadLook(s, 1);
+        check.Expect(s.Opacity == 0.9f && s.PickOpacity == 0.55f && s.Dx == 0f && s.Dy == 0f, "a server that sets nothing sees 0.9, 0.55 and a centred image");
+        ServerPolicy.Apply("held.opacity=0.4\nheld.pickopacity=0.2\nheld.dx=-12\nheld.dy=8");
+        HeldImageService.ReadLook(s, 2);
+        check.Expect(s.Opacity == 0.4f && s.PickOpacity == 0.2f && s.Dx == -12f && s.Dy == 8f, "opacity and offset are read");
+        ServerPolicy.Apply("held.opacity=7\nheld.pickopacity=-1\nheld.dx=900\nheld.dy=nope");
+        HeldImageService.ReadLook(s, 3);
+        check.Expect(s.Opacity == 1f && s.PickOpacity == 0f && s.Dx == 256f && s.Dy == 0f, "opacity clamps into 0-1, an offset into 256 px, and a word is the default");
+        ServerPolicy.Clear();
     }
 }

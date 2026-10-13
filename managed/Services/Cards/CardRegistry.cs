@@ -16,11 +16,13 @@ internal sealed class CardSet
 {
     public readonly string Key;
     public readonly PanelDecl[] Cards;
+    /// <summary>The line as sent, kept so a new <c>cardstyle</c> can lay it out again.</summary>
+    public readonly string Raw;
     public PanelView[]? Views;
     public int ViewEpoch;
     public float ViewScale;
 
-    public CardSet(string key, PanelDecl[] cards) { Key = key; Cards = cards; }
+    public CardSet(string key, PanelDecl[] cards, string raw = "") { Key = key; Cards = cards; Raw = raw; }
 }
 
 /// <summary>The limits on the keys a client holds.</summary>
@@ -38,11 +40,15 @@ internal static class CardRegistry
 {
     /// <summary>The <see cref="ServerPolicy"/> prefix every card key carries.</summary>
     public const string Prefix = "card.";
+    /// <summary>The policy key whose value is the style every card starts from.</summary>
+    public const string StyleKey = "cardstyle";
 
     private sealed class RegistryState
     {
         public volatile Dictionary<string, CardSet> Map = new(StringComparer.OrdinalIgnoreCase);
         public volatile PrefixTable<CardSet> Prefixes = PrefixTable<CardSet>.Empty;
+        public volatile PanelStyle Style = new();
+        public string StyleRaw = "";
         public int Gen;
         public ExtenderLog? Log;
     }
@@ -58,6 +64,43 @@ internal static class CardRegistry
     {
         _s.Log = log;
         ServerPolicy.Handle(Prefix, Set, Release, () => $"cards: {Count} key(s)");
+        ServerPolicy.Handle(StyleKey, SetStyle, ReleaseStyle, () => $"card style: {(_s.StyleRaw.Length == 0 ? "default" : "set")}");
+    }
+
+    /// <summary>The <c>cardstyle</c> line: the style every card starts from. An empty value restores the defaults. Cards already held are laid out again against it. False when refused (the defaults then apply).</summary>
+    public static bool SetStyle(string rest, string value)
+    {
+        if (rest.Length != 0) return false;
+        PanelStyle style = new();
+        bool ok = value.Length == 0 || PanelParser.TryParseStyle(value, out style, out string why) || Refused(why);
+        _s.Style = ok ? style : new PanelStyle();
+        _s.StyleRaw = ok ? value : "";
+        Restyle();
+        return ok;
+    }
+
+    private static bool Refused(string why)
+    {
+        _s.Log?.Info($"Cards: refused the card style: {why}; the defaults apply");
+        return false;
+    }
+
+    private static void ReleaseStyle(string prefix)
+    {
+        if (StyleKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) SetStyle("", "");
+    }
+
+    /// <summary>Parses every held card line again against the current style.</summary>
+    private static void Restyle()
+    {
+        var next = new Dictionary<string, CardSet>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in _s.Map)
+        {
+            if (!PanelParser.TryParse(kv.Value.Raw, out PanelDecl[] cards, out _, _s.Style)) continue;
+            foreach (float m in SizesUsed(cards)) PanelFonts.Want(m);
+            next[kv.Key] = new CardSet(kv.Key, cards, kv.Value.Raw);
+        }
+        Publish(next);
     }
 
     /// <summary>One <c>card.&lt;key&gt;</c> line: <paramref name="key"/> is what follows the prefix. An empty value releases it. False when refused.</summary>
@@ -70,7 +113,7 @@ internal static class CardRegistry
             return false;
         }
         if (value.Length == 0) { Swap(key, null); return true; }
-        if (!PanelParser.TryParse(value, out PanelDecl[] cards, out string why))
+        if (!PanelParser.TryParse(value, out PanelDecl[] cards, out string why, _s.Style))
         {
             Swap(key, null);
             _s.Log?.Info($"Cards: refused '{key}': {why}; it keeps no card");
@@ -82,7 +125,7 @@ internal static class CardRegistry
             return false;
         }
         foreach (float m in SizesUsed(cards)) PanelFonts.Want(m);
-        Swap(key, new CardSet(key, cards));
+        Swap(key, new CardSet(key, cards, value));
         return true;
     }
 

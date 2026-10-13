@@ -9,25 +9,41 @@ namespace CX.Services.Cards;
 /// <summary>Where cards go: beside the element, never over it, and on screen.</summary>
 internal static class CardPlacer
 {
-    /// <summary>
-    /// Puts the cards of <paramref name="views"/> side by side in declared order, with their top edges level. The group goes to the
-    /// right of the element at (<paramref name="ex"/>, <paramref name="ey"/>, <paramref name="ew"/>), to its left when it does not fit,
-    /// and is clamped inside the <paramref name="vw"/> by <paramref name="vh"/> screen either way. A card's tab and overflow image
-    /// are not part of the clamp except for the tab's height above the top.
-    /// </summary>
+    /// <summary>The default placement: right of the element, flipping left, tops level.</summary>
     public static void Place(PanelView[] views, float ex, float ey, float ew, float vw, float vh, float scale, Span<float> xs, Span<float> ys)
+        => Place(views, ex, ey, ew, 0f, vw, vh, scale, new PanelStyle(), xs, ys);
+
+    /// <summary>
+    /// Puts the cards side by side with their tops level, against the element (<paramref name="ex"/>, <paramref name="ey"/>, <paramref name="ew"/>,
+    /// <paramref name="eh"/>) on the side <paramref name="place"/> names, or the opposite side when it has no room and the style flips.
+    /// Shifts by the style's <c>dx</c>, <c>dy</c>, then clamps inside <paramref name="vw"/> by <paramref name="vh"/>; a tab counts above the top.
+    /// </summary>
+    public static void Place(PanelView[] views, float ex, float ey, float ew, float eh, float vw, float vh, float scale, PanelStyle place, Span<float> xs, Span<float> ys)
     {
-        float gap = 8f * scale, total = 0f, maxH = 0f, tab = 0f;
+        float gap = place.CardGap * scale, off = place.Offset * scale, total = 0f, maxH = 0f, tab = 0f;
         for (int i = 0; i < views.Length; i++)
         {
             total += views[i].W + (i > 0 ? gap : 0f);
             maxH = Math.Max(maxH, views[i].H);
             tab = Math.Max(tab, views[i].TabH);
         }
-        float x0 = ex + ew + gap;
-        if (x0 + total > vw) x0 = ex - gap - total;
-        x0 = Window.ClampAxis(x0, total, vw);
-        float y0 = Window.ClampAxis(ey - tab, maxH + tab, vh) + tab;
+        float x0, y0;
+        if (place.Side is Side.Right or Side.Left)
+        {
+            x0 = place.Side == Side.Right ? ex + ew + off : ex - off - total;
+            bool out_ = place.Side == Side.Right ? x0 + total > vw : x0 < 0f;
+            if (out_ && place.Flip) x0 = place.Side == Side.Right ? ex - off - total : ex + ew + off;
+            y0 = place.Align switch { Align.Center => ey + eh / 2f - maxH / 2f, Align.End => ey + eh - maxH, _ => ey };
+        }
+        else
+        {
+            y0 = place.Side == Side.Above ? ey - off - maxH : ey + eh + off;
+            bool out_ = place.Side == Side.Above ? y0 - tab < 0f : y0 + maxH > vh;
+            if (out_ && place.Flip) y0 = place.Side == Side.Above ? ey + eh + off : ey - off - maxH;
+            x0 = place.Align switch { Align.Center => ex + ew / 2f - total / 2f, Align.End => ex + ew - total, _ => ex };
+        }
+        x0 = Window.ClampAxis(x0 + place.Dx * scale, total, vw);
+        y0 = Window.ClampAxis(y0 - tab + place.Dy * scale, maxH + tab, vh) + tab;
         for (int i = 0; i < views.Length; i++)
         {
             xs[i] = x0; ys[i] = y0;
@@ -48,11 +64,12 @@ internal sealed class CardPresenter
     internal Func<float, (GlyphAtlas A, float K)> Face = PanelFonts.Resolve;
     internal Func<uint, PanelSubject> SubjectOf = static _ => default;
 
+    private static readonly PanelStyle Fallback = new();
     private readonly Tooltip _tip = new();
     private CardSet? _set, _found;
     private IntPtr _el;
     private int _row = -2, _imgLen, _imgHash, _gen = -1;
-    private float _ex, _ey, _ew;
+    private float _ex, _ey, _ew, _eh;
     private uint _subject;
     private bool _rebuild;
     private readonly float[] _xs = new float[PanelLimits.MaxPanels], _ys = new float[PanelLimits.MaxPanels];
@@ -87,7 +104,9 @@ internal sealed class CardPresenter
         else { _el = IntPtr.Zero; _row = -2; _found = null; _gen = -1; }
         if (found == null) { _tip.Leave(); return; }
         _set = found;
-        _ex = hit.X; _ey = hit.Y; _ew = hit.W;
+        _ex = hit.X; _ey = hit.Y; _ew = hit.W; _eh = hit.H;
+        PanelStyle st = found.Cards.Length > 0 ? found.Cards[0].St : Fallback;
+        _tip.DelayOverride = st.Delay; _tip.FadeInOverride = st.FadeIn; _tip.FadeOutOverride = st.FadeOut;
         _tip.Hover(found, "", hit.X, hit.Y, hit.Y + hit.H);
     }
 
@@ -118,7 +137,7 @@ internal sealed class CardPresenter
             set.ViewEpoch = epoch;
             set.ViewScale = scale;
         }
-        CardPlacer.Place(set.Views!, _ex, _ey, _ew, vw, vh, scale, _xs, _ys);
+        CardPlacer.Place(set.Views!, _ex, _ey, _ew, _eh, vw, vh, scale, set.Cards.Length > 0 ? set.Cards[0].St : Fallback, _xs, _ys);
         return true;
     }
 
