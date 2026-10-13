@@ -53,6 +53,9 @@ void main()
     int flags = int(uGui[r + 13].x);
     vec4 t = (flags & 32) != 0 ? GuiPlt(r, vUv)
            : (flags & 1) != 0  ? texture(uTex, vUv) : vec4(1.0);
+    // FlagSolidTexel: the alpha is reflectivity, folded into the colour as the engine's env-off bake does
+    // (rgb = mix(env grey, rgb, a), then a = 1; cx_ownlit_head.glsl's CX_ENV_GREY), never spent as opacity.
+    if ((flags & 64) != 0) { t.rgb = mix(vec3(0.666667), t.rgb, t.a); t.a = 1.0; }
     vec4 c;
     if ((flags & 4) != 0)
     {

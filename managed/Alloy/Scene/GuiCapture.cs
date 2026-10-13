@@ -46,6 +46,9 @@ internal static unsafe class GuiCapture
     /// <summary>This draw's texture is a PLT pair texture, so the fragment stage resolves it through the
     /// master palette with the ten rows carried in the record (floats 54, 55 and 56..63).</summary>
     internal const int FlagPlt = 32;
+    /// <summary>The texel's alpha is not coverage (a PLT palette's or an env map's reflectivity): the fragment stage
+    /// draws it as 1.</summary>
+    internal const int FlagSolidTexel = 64;
     /// <summary>ponytail: fixed staging. A busy screen is a few hundred draws; past any ceiling the rest is NOT
     /// DRAWN and said once, loudly. Grow on the log line, never silently.</summary>
     internal const int MaxDraws = 16384, MaxLayers = 1024, MaxSkins = 64;
@@ -304,6 +307,8 @@ internal static unsafe class GuiCapture
         /// <summary>The record's <c>globalColor</c> lane: the object's tint, with the part's alpha folded in.</summary>
         public Vector4 Colour, Ambient, Diffuse, Emissive;
         public bool Blend, DepthTest, DepthWrite, Cull, AlphaTest, Lit;
+        /// <summary>Draw the texel's alpha as 1: it is reflectivity here, never opacity.</summary>
+        public bool SolidTexel;
         /// <summary>The object's master-palette row per PLT layer, or null when the texture is not a PLT.
         /// <c>Gob::ReplaceTexture</c> carries exactly these to <c>Material::ReplaceTexturePLT</c>.</summary>
         public ushort[]? PltRows;
@@ -332,7 +337,8 @@ internal static unsafe class GuiCapture
             *(Vector4*)(r + 44) = p.Lit ? p.Diffuse : Vector4.Zero;
             *(Vector4*)(r + 48) = p.Lit ? p.Emissive : Vector4.Zero;
         }
-        int flags = (p.Tex != 0 ? FlagTex : 0) | (p.AlphaTest ? FlagAlphaTest : 0) | (p.Lit ? FlagLit : 0);
+        int flags = (p.Tex != 0 ? FlagTex : 0) | (p.AlphaTest ? FlagAlphaTest : 0) | (p.Lit ? FlagLit : 0)
+                    | (p.SolidTexel ? FlagSolidTexel : 0);
         if (p.Tex != 0 && p.PltRows != null)
         {
             fixed (float* r = &Records[DrawN * RecFloats])
