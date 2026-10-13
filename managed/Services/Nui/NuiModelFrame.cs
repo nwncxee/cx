@@ -9,7 +9,8 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static class NuiModelFrame
 {
-    /// <summary>How much larger than the model the view is, so it does not touch the image's edge.</summary>
+    /// <summary>The room left round the model at <c>fit</c> 1, so it does not touch the image's edge. The server's <c>fit</c> multiplies it, so
+    /// the room is already the server's to set.</summary>
     internal const float Margin = 1.1f;
     /// <summary>The smallest box side, in metres, that counts as a model with bounds.</summary>
     private const float MinExtent = 0.05f;

@@ -138,7 +138,7 @@ internal sealed class PanelLayout
         uint rgb = St.Glow & 0xFFFFFF00, a0 = St.Glow & 0xFF;
         for (int i = 1; i <= steps; i++)
         {
-            uint a = (uint)(a0 * (1f - (i - 1f) / steps) * 0.5f);
+            uint a = (uint)(a0 * (1f - (i - 1f) / steps) * St.GlowAlpha);
             Rect(-i, -i, w + i, -i + 1f, rgb | a); Rect(-i, h + i - 1f, w + i, h + i, rgb | a);
             Rect(-i, -i + 1f, -i + 1f, h + i - 1f, rgb | a); Rect(w + i - 1f, -i + 1f, w + i, h + i - 1f, rgb | a);
         }

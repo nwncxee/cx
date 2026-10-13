@@ -232,6 +232,9 @@ internal static class CardSelfCheck
         check.Expect(LayS(atlas, "{\"border2\":\"#ffffff\"}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 + 24, "an inner border adds four rectangles");
         check.Expect(LayS(atlas, "{\"corners\":\"#ffffff\"}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 + 48, "corner brackets add eight");
         check.Expect(LayS(atlas, "{\"glow\":\"#00ffff80\",\"glowspread\":2}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 + 48, "a glow two steps wide adds two frames of four rectangles");
+        float GlowEdge(string extra) => LayS(atlas, "{\"glow\":\"#00ffff80\",\"glowspread\":2" + extra + "}", "{\"width\":200,\"blocks\":[]}").Back.ToArray()[VertexBatch.Floats - 1];
+        check.Expect(Near(GlowEdge(""), 64f / 255f) && Near(GlowEdge(",\"glowalpha\":1"), 128f / 255f) && Near(GlowEdge(",\"glowalpha\":0"), 0f) && Near(GlowEdge(",\"glowalpha\":7"), 128f / 255f),
+            "the nearest glow ring is half the colour's opacity by default, all of it at glowalpha 1, none at 0, and the field is capped at 1");
 
         v = LayS(atlas, "{\"bg\":{\"from\":\"#102030\",\"to\":\"#304050\",\"dir\":\"d\"}}", "{\"width\":200,\"blocks\":[]}");
         b = v.Back.ToArray();

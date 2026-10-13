@@ -35,7 +35,7 @@ internal sealed class PanelStyle
     public uint DimColor = 0xFFFFFFFF;
     public byte DimAlpha = 0x99;  // not-an-offset: an alpha byte
     public BgDir Dir = BgDir.Vertical;
-    public float BorderW = 1f, FrameW = 1f, Border2W = 1f, Border2Inset = 3f, ShadowDx = 1f, ShadowDy = 1f, GlowSpread = 8f, CornerLen = 12f, CornerW = 2f;
+    public float BorderW = 1f, FrameW = 1f, Border2W = 1f, Border2Inset = 3f, ShadowDx = 1f, ShadowDy = 1f, GlowSpread = 8f, GlowAlpha = 0.5f, CornerLen = 12f, CornerW = 2f;
     /// <summary>Which edges the frame draws: any of <c>t r b l</c>.</summary>
     public string Sides = "trbl";
 

@@ -101,7 +101,7 @@ internal static class PanelParser
         if (e.TryGetProperty("dimalpha", out _)) { float da = 0f; Len(e, "dimalpha", ref da, 0f, 1f); st.DimAlpha = (byte)MathF.Round(da * 255f); }
         Len(e, "borderw", ref st.BorderW); Len(e, "framew", ref st.FrameW); Len(e, "border2w", ref st.Border2W); Len(e, "border2inset", ref st.Border2Inset);
         Len(e, "shadowdx", ref st.ShadowDx, -16f, 16f); Len(e, "shadowdy", ref st.ShadowDy, -16f, 16f);
-        Len(e, "glowspread", ref st.GlowSpread, 0f, 64f); Len(e, "cornerlen", ref st.CornerLen); Len(e, "cornerw", ref st.CornerW);
+        Len(e, "glowspread", ref st.GlowSpread, 0f, 64f); Len(e, "glowalpha", ref st.GlowAlpha, 0f, 1f); Len(e, "cornerlen", ref st.CornerLen); Len(e, "cornerw", ref st.CornerW);
         Len(e, "pulsemin", ref st.PulseMin, 0f, 1f); Len(e, "pulseperiod", ref st.PulsePeriodMs, 100f, 60_000f);
         string sides = Str(e, "sides", st.Sides);
         foreach (char ch in sides) if ("trbl".IndexOf(ch) < 0) throw new Refusal("sides uses only t, r, b and l");
