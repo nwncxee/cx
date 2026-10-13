@@ -963,7 +963,6 @@ internal static unsafe partial class TexRegistry
                 // _cov is NOT cleared: it is a property of the content, the reload derives the same verdict,
                 // and clearing it would make every draw re-classify as blended for the frames in between.
                 _state[i] = TexState.Loading;
-                LoadSerial++;
                 _pend[i] = PendWaiting;
                 lock (_gate) _waiting.Enqueue(i);   // lock order is always _lock -> _gate, never the reverse
                 _reloads++;
