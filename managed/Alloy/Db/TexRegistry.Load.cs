@@ -237,6 +237,15 @@ internal static unsafe partial class TexRegistry
         }
     }
 
+    /// <summary>Is there a PLT named <paramref name="resref"/>? <c>Material::ReplaceTexturePLT</c> @0x5c7a10's
+    /// <c>CExoResMan::Exists(resref, 6)</c> gate: a coloured replace with no PLT changes nothing. Game thread.</summary>
+    internal static bool PltExists(string resref)
+    {
+        Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
+        TexRegistry.ResRef(resref, name);
+        fixed (byte* p = name) return ResLocate.Find(p, PltResType, out _, out _);
+    }
+
     /// <summary>Where this resref's bytes live, for the kind asked. A PLT slot takes the PLT restype alone --
     /// a PLT and a DDS of the same name are different images and resolving one as the other is how a head
     /// ends up wearing a wall.</summary>

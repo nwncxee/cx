@@ -1915,6 +1915,13 @@ internal static unsafe class SymbolMap
     /// <summary><c>CNWCObject::KillAllVisualEffects()</c> @0x7e2f20 -- kills, destroys and frees every effect on the object.</summary>
     [Fn("void(IntPtr self)")]
     public const string ObjKillAllVisualEffects = "_ZN10CNWCObject20KillAllVisualEffectsEv";
+    /// <summary><c>CExoSound::Play3DOneShotSound(CResRef const&amp;, Vector, float, uchar, uint, uchar)</c> @0x574e00 -- the one-shot
+    /// an effect's impact sound goes through, by <c>CNWCVisualEffectOnObject::StartVisualEffect</c>. The result is passed on untouched.</summary>
+    [Fn("IntPtr(IntPtr self, IntPtr resref, VectorArg at, float volume, byte group, uint unknown, byte unknown2)")]
+    public const string ExoSoundPlay3DOneShot = "_ZN9CExoSound18Play3DOneShotSoundERK7CResRef6Vectorfhjh";
+    /// <summary><c>CExoSoundSource::Play()</c> @0x573f80 -- starts a source; the looping sound an effect keeps starts here.</summary>
+    [Fn("IntPtr(IntPtr self)")]
+    public const string ExoSoundSourcePlay = "_ZN15CExoSoundSource4PlayEv";
     /// <summary><c>CNWCObject::SetFadeState(uchar)</c> @0x7e7ba0 (Windows rva 0x765c80) -- 1 shows the object (its model's parts enabled, alpha from its fade), 0 hides it.</summary>
     [Fn("void(IntPtr self, byte state)")]
     public const string ObjSetFadeState = "_ZN10CNWCObject12SetFadeStateEh";
@@ -3329,6 +3336,8 @@ internal static unsafe class SymbolMap
         [IdentityVisualTransform] = Nm("?s_IdentityVisualTransformData@ObjectVisualTransformData@@0U1@B"),
         [ObjAddVisualEffect] = LinuxOnly("MSVC passes ObjectVisualTransformData by value as a copy the callee destroys; the model view's effects stay Linux-only"),
         [ObjKillAllVisualEffects] = LinuxOnly("pairs with ObjAddVisualEffect, which is Linux-only"),
+        [ExoSoundPlay3DOneShot] = LinuxOnly("only muted around ObjAddVisualEffect, which is Linux-only"),
+        [ExoSoundSourcePlay] = LinuxOnly("only muted around ObjAddVisualEffect, which is Linux-only"),
         [ObjSetFadeState] = At(),   // the function that tests +0x104 == 1, writes the state byte at +0xa8, and runs the show/hide virtuals; the Windows twin of 0x7e7ba0
         [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
         [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)

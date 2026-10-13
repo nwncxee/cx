@@ -834,16 +834,18 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     }
 
     /// <summary><c>Gob::ReplaceTexture(from, to, layers, unsigned short* rows, subtree)</c> @0x43eb30. The
-    /// <c>ushort*</c> is the PLT LAYER ROW TABLE -- the engine copies <paramref name="layers"/> entries into
-    /// a 258-entry local and they are the skin/hair/armour tints of a composite creature -- so dropping it
-    /// paints every player character in the palette's first row.</summary>
+    /// <c>ushort*</c> is the PLT LAYER ROW TABLE -- the skin/hair/armour tints of a composite creature. The
+    /// engine routes it through <c>Material::ReplaceTexturePLT</c>: only a PLT named <paramref name="to"/> is
+    /// taken (a same-named TGA never), and with none nothing changes and the engine's 1 comes back.</summary>
     [UnmanagedCallersOnly]
     private static int ReplaceTexture5(nint self, nint from, nint to, int layers, nint rows, int subtree)
     {
         if (!Live(self, 13, out DbId id, out _)) return 0;
+        string? name = Str(to);
+        if (string.IsNullOrEmpty(name) || !TexRegistry.PltExists(name)) return 1;
         Span<int> got = stackalloc int[SceneDb.PltLayers];
         int n = PltRows(id, layers, rows, got);
-        return ObjectTex.Replace(id, Str(from), Str(to), 0, subtree != 0, got[..n]);
+        return ObjectTex.Replace(id, Str(from), name, 0, subtree != 0, got[..n], TexKind.Plt);
     }
 
     /// <summary>Copy the engine's layer rows onto the object's PLT columns (<c>PltColors.SetRows</c>). A row is
@@ -889,9 +891,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static int ReplaceTextureSubtree(nint self, nint from, nint to, int layers, nint rows)
     {
         if (!Live(self, 14, out DbId id, out _)) return 0;
+        string? name = Str(to);
+        if (string.IsNullOrEmpty(name) || !TexRegistry.PltExists(name)) return 1;
         Span<int> got = stackalloc int[SceneDb.PltLayers];
         int n = PltRows(id, layers, rows, got);
-        return ObjectTex.Replace(id, Str(from), Str(to), 0, subtree: true, got[..n]);
+        return ObjectTex.Replace(id, Str(from), name, 0, subtree: true, got[..n], TexKind.Plt);
     }
 
     [UnmanagedCallersOnly]

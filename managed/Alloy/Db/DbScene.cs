@@ -29,7 +29,7 @@ public static unsafe class DbScene
             return default;
         }
         int i = id.Index;
-        SceneDb.SceneName[i] = name ?? "";
+        SceneDb.SceneName[i] = UniqueName(name ?? "");
         SceneDb.SceneIsWorld[i] = false;   // InitBSP is what makes a scene a world scene
         SceneDb.SceneAmbient[i] = Vector3.Zero;
         SceneDb.SceneFogNear[i] = 0f; SceneDb.SceneFogFar[i] = 0f;
@@ -245,20 +245,49 @@ public static unsafe class DbScene
         SceneDb.Unhighlight(scene, obj);
     }
 
+    /// <summary>The engine's naming rule (<c>Scene::Scene</c> @0x5724f0, <c>Gob::Gob</c> @0x540a00): the name,
+    /// else name1, name2, ... while a live scene or camera holds it, case-blind like <c>FindScene</c>; 63 bytes
+    /// at most. ponytail: objects are not consulted or renamed; a name registry if a lookup ever needs "model1".</summary>
+    public static string UniqueName(string name)
+    {
+        if (name.Length == 0) return name;
+        string n = Clip(name);
+        for (int k = 1; NameTaken(n); k++) n = Clip(name + k);
+        return n;
+    }
+
+    private static string Clip(string s) => s.Length <= MaxName ? s : s[..MaxName];
+
+    /// <summary>The engine's name room: <c>strncpy</c> of 0x3f bytes into a 0x40-byte array.</summary>
+    private const int MaxName = 63;
+
+    private static bool NameTaken(string n)
+    {
+        for (int i = 0; i < SceneDb.MaxScenes; i++)
+            if (SceneDb.Scenes.LiveAt(i) && string.Equals(SceneDb.SceneName[i], n, StringComparison.OrdinalIgnoreCase)) return true;
+        for (int i = 0; i < SceneDb.MaxCameras; i++)
+            if (SceneDb.Cameras.LiveAt(i) && string.Equals(SceneDb.CamName[i], n, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     /// <summary>Find a member by name (<c>Scene::GetObject(char const*)</c>). Cold: the GUI layer's lookup
-    /// when it has lost its own pointer. Linear, which is what the engine's own list walk is.</summary>
+    /// when it has lost its own pointer. Linear, which is what the engine's own list walk is. A camera
+    /// attached here is a member too, as <c>Camera::AttachToScene</c> makes it one: its object half answers.</summary>
     public static DbId Find(DbId scene, string name)
     {
         if (!SceneDb.Scenes.Valid(scene) || name.Length == 0) return default;
         DbList? m = SceneDb.SceneObjects[scene.Index];
-        if (m == null) return default;
-        for (int k = 0; k < m.Count; k++)
+        for (int k = 0; m != null && k < m.Count; k++)
         {
             DbId o = m[k];
             if (SceneDb.Objects.Valid(o) && ObjectBridge.ObjectName != null
              && string.Equals(ObjectBridge.ObjectName(o), name, StringComparison.OrdinalIgnoreCase))
                 return o;
         }
+        for (int c = 0; c < SceneDb.MaxCameras; c++)
+            if (SceneDb.Cameras.LiveAt(c) && SceneDb.CamScene[c].Value == scene.Value
+             && string.Equals(SceneDb.CamName[c], name, StringComparison.OrdinalIgnoreCase))
+                return SceneDb.CamObj[c];
         return default;
     }
 
