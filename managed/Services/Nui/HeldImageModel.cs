@@ -30,7 +30,7 @@ internal sealed class HeldImageModel
     /// <summary>How long NUI may draw nothing before the hold is dropped; 0 never drops it. The server's <c>held.grace</c>.</summary>
     internal int GraceMs = DefaultGraceMs;
     internal const int DefaultGraceMs = 500;
-    private const int ResrefMax = 16, HexMax = 8;
+    private const int ResrefMax = 16;
 
     public HeldKind Kind { get; private set; }
     /// <summary>The value as sent.</summary>
@@ -105,7 +105,7 @@ internal sealed class HeldImageModel
         Kind = kind;
         Name = kind == HeldKind.None ? "" : value;
         Oid = oid;
-        ModelKey = kind == HeldKind.Model ? value[NuiModelView.Prefix.Length..] : "";
+        ModelKey = kind == HeldKind.Model ? value[ImageNames.Model.Length..] : "";
         return changed;
     }
 
@@ -114,26 +114,14 @@ internal sealed class HeldImageModel
     {
         oid = 0;
         if (value.Length == 0) return HeldKind.None;
-        if (value.StartsWith("@item:", StringComparison.Ordinal))
-        {
-            int n = 0;
-            for (int i = 6; i < value.Length && n < HexMax; i++, n++)
-            {
-                int d = Hex(value[i]);
-                if (d < 0) break;
-                oid = oid << 4 | (uint)d;
-            }
-            return n > 0 ? HeldKind.Item : HeldKind.Other;
-        }
-        if (value.StartsWith("@look:", StringComparison.Ordinal)) return HeldKind.Look;
-        if (value.StartsWith(NuiModelView.Prefix, StringComparison.Ordinal)) return value.Length > NuiModelView.Prefix.Length ? HeldKind.Model : HeldKind.Other;
+        if (value.StartsWith(ImageNames.Item, StringComparison.Ordinal)) return ImageNames.TryItem(value, out oid) ? HeldKind.Item : HeldKind.Other;
+        if (value.StartsWith(ImageNames.Look, StringComparison.Ordinal)) return HeldKind.Look;
+        if (value.StartsWith(ImageNames.Model, StringComparison.Ordinal)) return value.Length > ImageNames.Model.Length ? HeldKind.Model : HeldKind.Other;
         if (value.Length > ResrefMax) return HeldKind.Other;
         foreach (char c in value)
             if (!(c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '_')) return HeldKind.Other;
         return HeldKind.Resref;
     }
-
-    private static int Hex(char c) => c is >= '0' and <= '9' ? c - '0' : (c | 0x20) is >= 'a' and <= 'f' ? (c | 0x20) - 'a' + 10 : -1;
 
     /// <summary>Oracle: hand-written names and values, and a hand-driven clock and draw counter.</summary>
     internal static void SelfCheck(ExtenderLog log)

@@ -16,12 +16,8 @@ namespace CX.Services.Nui;
 internal static unsafe class NuiItemIcons
 {
     private const ushort ResTga = 3, ResAny = ushort.MaxValue;
-    private const int RefLen = RadialIcons.ResRefLen, HexDigits = 8, LogCap = 20;
+    private const int RefLen = RadialIcons.ResRefLen, LogCap = 20;
     private const int TgaHeader = 18;
-    /// <summary><c>CGameObjectArray::LISTTYPE_MASK</c> (rodata 0x13edefc): <c>CNWSMessage::WriteOBJECTIDServer</c> @0xb50fc0 ORs it
-    /// into every valid id it sends, and the client keeps ids as read, so the server's <c>ObjectToString</c> value
-    /// <c>e04</c> is client object <c>0x80000e04</c>. The wire format, so the same on every build.</summary>
-    internal const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
     /// <summary>A master-palette row is 256 RGBA entries: <c>ImageDecode</c> addresses row r at <c>r &lt;&lt; 10</c>.</summary>
     private const int PaletteRowShift = 10;
     /// <summary>std::string {data, size, capacity} as <c>DataBlock::FromBase64</c> reads it: libstdc++ size at +8;
@@ -154,9 +150,9 @@ internal static unsafe class NuiItemIcons
     private static bool Prepare(byte* s, out ushort type)
     {
         type = ResTga;
-        if (Parse(s, out uint oid))
+        if (ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out uint oid))
         {
-            IntPtr item = RadialIcons.Item((IntPtr)(oid | ServerIdBit));
+            IntPtr item = RadialIcons.Item((IntPtr)(oid | ImageNames.ServerIdBit));
             IntPtr icon = item == IntPtr.Zero ? IntPtr.Zero : new CNWCItem(item).GuiIcon;
             if (icon != IntPtr.Zero) return FromIcon(item, icon, $"item {oid:x}", out type);
             Log(item == IntPtr.Zero
@@ -455,22 +451,6 @@ internal static unsafe class NuiItemIcons
         else ((delegate* unmanaged<IntPtr, void>)dtor)(item);
     }
 
-    /// <summary><c>"@item:"</c> then 1-8 hex digits; whatever follows is ignored.</summary>
-    internal static bool Parse(byte* s, out uint oid)
-    {
-        oid = 0;
-        ReadOnlySpan<byte> prefix = "@item:"u8;
-        for (int i = 0; i < prefix.Length; i++) if (s[i] != prefix[i]) return false;
-        int n = 0;
-        for (byte* p = s + prefix.Length; n < HexDigits; p++, n++)
-        {
-            int d = *p is >= (byte)'0' and <= (byte)'9' ? *p - '0' : (*p | 0x20) is >= 'a' and <= 'f' ? (*p | 0x20) - 'a' + 10 : -1;
-            if (d < 0) break;
-            oid = oid << 4 | (uint)d;
-        }
-        return n > 0;
-    }
-
     internal static void Cells(IntPtr item, out int cw, out int ch)
     {
         cw = ch = 1;
@@ -671,10 +651,10 @@ internal static unsafe class NuiItemIcons
         byte* s = stackalloc byte[32];
         uint oid;
         void Put(string v) { for (int i = 0; i < v.Length; i++) s[i] = (byte)v[i]; s[v.Length] = 0; }
-        Put("@item:7f0012A3?2"); check.Expect(Parse(s, out oid) && oid == 0x7f0012a3, "hex id parsed, case-blind, suffix ignored");
-        Put("@item:2a"); check.Expect(Parse(s, out oid) && oid == 42, "short id");
-        Put("@item:"); check.Expect(!Parse(s, out _), "no digits is not ours");
-        Put("@items:1"); check.Expect(!Parse(s, out _), "another prefix is not ours");
+        Put("@item:7f0012A3?2"); check.Expect(ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out oid) && oid == 0x7f0012a3, "hex id parsed, case-blind, suffix ignored");
+        Put("@item:2a"); check.Expect(ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out oid) && oid == 42, "short id");
+        Put("@item:"); check.Expect(!ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out _), "no digits is not ours");
+        Put("@items:1"); check.Expect(!ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out _), "another prefix is not ours");
 
         byte* l = stackalloc byte[400];
         void PutLook(string v) { for (int i = 0; i < v.Length; i++) l[i] = (byte)v[i]; l[v.Length] = 0; }

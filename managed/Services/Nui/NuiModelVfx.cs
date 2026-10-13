@@ -165,8 +165,7 @@ internal static unsafe class NuiModelVfx
     /// ones are added to them; any other change puts the whole set on again.</summary>
     internal static Step Plan(VfxRow[] worn, int wornCount, VfxRow[] seen, int seenCount)
     {
-        if (seenCount < wornCount) return Step.Rewear;
-        for (int i = 0; i < wornCount; i++) if (worn[i] != seen[i]) return Step.Rewear;
+        if (!seen.AsSpan(0, seenCount).StartsWith(worn.AsSpan(0, wornCount))) return Step.Rewear;
         return seenCount == wornCount ? Step.None : Step.Append;
     }
 
@@ -185,9 +184,7 @@ internal static unsafe class NuiModelVfx
                 IntPtr name = e.Node;
                 byte part = name == IntPtr.Zero ? RootPart : PartOfNode(MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)name));
                 var row = new VfxRow(e.Row, part);
-                bool dup = false;
-                for (int i = 0; i < n && !dup; i++) dup = into[i] == row;
-                if (!dup) into[n++] = row;
+                if (!into.AsSpan(0, n).Contains(row)) into[n++] = row;
             }
             node = node.Next;
         }

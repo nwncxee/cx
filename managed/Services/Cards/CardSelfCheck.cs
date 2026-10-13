@@ -319,15 +319,16 @@ internal static class CardSelfCheck
         PanelView one = Lay(a, "{\"width\":160,\"blocks\":[{\"text\":\"ab\"}]}"), two = Lay(a, "{\"width\":160,\"tab\":\"t\",\"blocks\":[{\"text\":\"ab<br>cd<br>ef\"}]}");
         PanelView[] views = [one, two];
         float[] xs = new float[2], ys = new float[2];
-        CardPlacer.Place(views, 50, 40, 30, 800, 600, 1f, xs, ys);
+        var plain = new PanelStyle();
+        CardPlacer.Place(views, 50, 40, 30, 0f, 800, 600, 1f, plain, xs, ys);
         check.Expect(Near(xs[0], 88f) && Near(xs[1], 88f + 160f + 8f) && Near(ys[0], 40f) && Near(ys[1], 40f), "cards sit right of the element, 8 px off it and from each other, tops level");
-        CardPlacer.Place(views, 600, 40, 30, 800, 600, 1f, xs, ys);
+        CardPlacer.Place(views, 600, 40, 30, 0f, 800, 600, 1f, plain, xs, ys);
         check.Expect(Near(xs[0], 600f - 8f - 328f) && Near(xs[1], xs[0] + 168f), "no room on the right: the whole group goes to its left, order kept");
-        CardPlacer.Place(views, 50, 560, 30, 800, 600, 1f, xs, ys);
+        CardPlacer.Place(views, 50, 560, 30, 0f, 800, 600, 1f, plain, xs, ys);
         check.Expect(Near(ys[0], 600f - two.H) && Near(ys[0], ys[1]), "a group past the bottom edge is lifted until its tallest card fits");
-        CardPlacer.Place(views, 50, 0, 30, 800, 600, 1f, xs, ys);
+        CardPlacer.Place(views, 50, 0, 30, 0f, 800, 600, 1f, plain, xs, ys);
         check.Expect(Near(ys[0], 24f), "a card with a tab is kept 24 px from the top so the tab shows");
-        CardPlacer.Place(views, 10, 40, 700, 800, 600, 1f, xs, ys);
+        CardPlacer.Place(views, 10, 40, 700, 0f, 800, 600, 1f, plain, xs, ys);
         check.Expect(Near(xs[0], 0f), "no room on either side: pinned to the left edge");
         PanelView[] solo = [Lay(a, "{\"width\":160,\"blocks\":[{\"text\":\"ab\"}]}")];
         void At(string style, float ex, float ey, string what, float wantX, float wantY)

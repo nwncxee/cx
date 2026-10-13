@@ -10,15 +10,6 @@ public enum RefusalKind { Line, Knob, Window, Card, Style, Model, Held, Property
 /// <summary>One refused policy line: what the server sent and why the client did not take it.</summary>
 public sealed record PolicyRefusal(int Seq, RefusalKind Kind, string Key, string Value, string Reason);
 
-/// <summary>The refusals of this session and the ceiling on them. Replaced whole by a reset.</summary>
-public sealed class PolicyRefusalState
-{
-    public readonly List<PolicyRefusal> Entries = new();
-    public int HeldBytes;
-    public int DroppedCount;
-    public int LastSeq;
-}
-
 /// <summary>
 /// Every policy line the client refused this session, kept for <c>/policy</c> (<c>docs/ui-policy-contract.md</c>). One entry per key, the
 /// latest reason. Bounded in count and bytes: the oldest entry goes first and <see cref="Dropped"/> counts them, so a hostile server cannot
@@ -32,6 +23,15 @@ public static class PolicyRefusals
     public const int MaxBytes = 8192;
     /// <summary>Longest key, value and reason kept, in characters; the rest is cut.</summary>
     public const int MaxKey = 96, MaxValue = 64, MaxReason = 160;
+
+    /// <summary>The refusals of this session and the ceiling on them. Replaced whole by a reset.</summary>
+    private sealed class PolicyRefusalState
+    {
+        public readonly List<PolicyRefusal> Entries = new();
+        public int HeldBytes;
+        public int DroppedCount;
+        public int LastSeq;
+    }
 
     private static PolicyRefusalState _s = new();
     private static readonly object _lock = new();
@@ -68,20 +68,20 @@ public static class PolicyRefusals
     }
 
     /// <summary>The key was set to something good or released: its refusal no longer stands.</summary>
-    public static void Forget(string key)
-    {
-        lock (_lock)
-            for (int i = _s.Entries.Count - 1; i >= 0; i--)
-                if (string.Equals(_s.Entries[i].Key, key, StringComparison.OrdinalIgnoreCase)) { _s.HeldBytes -= Size(_s.Entries[i]); _s.Entries.RemoveAt(i); }
-    }
+    public static void Forget(string key) => Remove(e => string.Equals(e.Key, key, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Drops every refusal whose key starts with <paramref name="prefix"/>; an empty prefix is a new session.</summary>
     public static void ForgetPrefix(string prefix)
     {
         if (prefix.Length == 0) { lock (_lock) _s = new PolicyRefusalState(); return; }
+        Remove(e => e.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void Remove(Func<PolicyRefusal, bool> drop)
+    {
         lock (_lock)
             for (int i = _s.Entries.Count - 1; i >= 0; i--)
-                if (_s.Entries[i].Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) { _s.HeldBytes -= Size(_s.Entries[i]); _s.Entries.RemoveAt(i); }
+                if (drop(_s.Entries[i])) { _s.HeldBytes -= Size(_s.Entries[i]); _s.Entries.RemoveAt(i); }
     }
 
     /// <summary>The refusals held, oldest first.</summary>
@@ -112,13 +112,6 @@ public static class PolicyRefusals
          : key.StartsWith("held.", StringComparison.OrdinalIgnoreCase) ? RefusalKind.Held
          : RefusalKind.Property;
 
-    internal static string Flat(string s, char with)
-    {
-        var sb = new StringBuilder(s.Length);
-        foreach (char c in s) sb.Append(c < ' ' || c == ';' ? with : c);
-        return sb.ToString();
-    }
-
     /// <summary>Is <paramref name="held"/> what <see cref="Cut"/> would make of <paramref name="raw"/>? Compared in place, so a refusal that repeats allocates nothing.</summary>
     private static bool Holds(string held, string raw, int max, bool ignoreCase)
     {
@@ -132,7 +125,13 @@ public static class PolicyRefusals
         return true;
     }
 
-    private static string Cut(string s, int max) => Flat(s.Length > max ? s[..max] : s, ' ');
+    private static string Cut(string s, int max)
+    {
+        if (s.Length > max) s = s[..max];
+        var sb = new StringBuilder(s.Length);
+        foreach (char c in s) sb.Append(c < ' ' || c == ';' ? ' ' : c);
+        return sb.ToString();
+    }
 
     private static int Size(PolicyRefusal e) => Encoding.UTF8.GetByteCount(e.Key) + Encoding.UTF8.GetByteCount(e.Value) + Encoding.UTF8.GetByteCount(e.Reason);
 

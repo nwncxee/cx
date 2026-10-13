@@ -68,10 +68,9 @@ internal static unsafe class NuiModelEngine
         if (tex == 0 || !NuiModelDoll.TargetSize(slot, out int w, out int h) || !Gl.Init(_e.Log!)) { Lit(scene); CX.Services.Perf.FrameProbe.Lap(ref span, false); return; }
         EngineGlState e = _e;
         Scratch sc = e.Per[slot.Index];
-        int fbo, bound, scissor, mask, rd, dr;
+        int fbo, bound, scissor, mask, rd;
         Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &fbo);
         Gl.GetIntegerv(ReadBinding, &rd);
-        dr = fbo;
         Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &bound);
         Gl.GetIntegerv(Gl.SCISSOR_TEST, &scissor);
         Gl.GetIntegerv(Gl.DEPTH_WRITEMASK, &mask);
@@ -94,7 +93,7 @@ internal static unsafe class NuiModelEngine
         Gl.BlitFramebuffer(0, 0, w, h, 0, h, w, 0, ColorBufferBit, (uint)Gl.NEAREST);
         if (scissor != 0) Gl.Enable(Gl.SCISSOR_TEST);
         Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, (uint)rd);
-        Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, (uint)dr);
+        Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, (uint)fbo);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)fbo);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)bound);
         NuiModelDoll.MarkRendered(slot);
@@ -121,7 +120,7 @@ internal static unsafe class NuiModelEngine
         if (k.Fbo == 0) { uint f; Gl.GenFramebuffers(1, &f); k.Fbo = f; }
         if (k.Color != 0 && k.W == w && k.H == h) return;
         uint t;
-        if (k.Color != 0) { uint[] old = { k.Color, k.Depth }; fixed (uint* o = old) Gl.DeleteTextures(2, o); }
+        if (k.Color != 0) { uint* old = stackalloc uint[2]; old[0] = k.Color; old[1] = k.Depth; Gl.DeleteTextures(2, old); }
         Gl.GenTextures(1, &t); k.Color = t;
         Gl.BindTexture(Gl.TEXTURE_2D, t);
         Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Rgba8, w, h, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);

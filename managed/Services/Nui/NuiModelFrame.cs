@@ -4,7 +4,7 @@ using System.Numerics;
 namespace CX.Services.Nui;
 
 /// <summary>
-/// Frames a doll so the whole model is in its image: the distance and height a camera needs, from the size of the model's bounding box,
+/// Frames a doll so the whole model is in its image: the distance a camera needs, from the size of the model's bounding box,
 /// the camera's view angle and the image's shape. A server's own <c>dist</c> and <c>height</c> replace the fitted ones.
 /// </summary>
 internal static class NuiModelFrame
@@ -15,12 +15,12 @@ internal static class NuiModelFrame
     /// <summary>The smallest box side, in metres, that counts as a model with bounds.</summary>
     private const float MinExtent = 0.05f;
 
-    /// <summary>The distance from the model's origin and the height above it at which a level camera sees a box of size <paramref name="extent"/>
-    /// whole, standing on the floor (<paramref name="onFloor"/>) or centred on the origin. <paramref name="yawDeg"/> is the camera's turn as
+    /// <summary>The distance from the model's origin at which a level camera sees a box of size <paramref name="extent"/>
+    /// whole, centred on the origin. <paramref name="yawDeg"/> is the camera's turn as
     /// <c>Orbit</c> takes it, or with <paramref name="anyYaw"/> every turn is covered; <paramref name="pad"/> multiplies the room left round the model. The angle is the vertical one; a tall image fits the horizontal.</summary>
-    internal static bool Fit(Vector3 extent, bool onFloor, float angleDeg, int width, int height, float yawDeg, bool anyYaw, float pad, out float dist, out float camHeight)
+    internal static bool Fit(Vector3 extent, float angleDeg, int width, int height, float yawDeg, bool anyYaw, float pad, out float dist)
     {
-        dist = camHeight = 0f;
+        dist = 0f;
         if (!(extent.X >= 0f && extent.Y >= 0f && extent.Z >= 0f) || extent.Length() < MinExtent || width <= 0 || height <= 0 || angleDeg <= 0f || angleDeg >= 180f) return false;
         float hx = extent.X * 0.5f, hy = extent.Y * 0.5f, hz = extent.Z * 0.5f;
         double a = (90.0 - yawDeg) * Math.PI / 180.0;
@@ -30,7 +30,6 @@ internal static class NuiModelFrame
         double tanV = Math.Tan(angleDeg * Math.PI / 360.0);
         double tanH = tanV * width / height;
         dist = (float)(halfDepth + Margin * pad * Math.Max(halfWide / tanH, hz / tanV));
-        camHeight = onFloor ? hz : 0f;
         return true;
     }
 
@@ -76,6 +75,10 @@ internal static class NuiModelFrame
 
     private static float Axis(int which, int component) => which == component ? 1f : 0f;
 
+    /// <summary>Corner <paramref name="i"/> (0 to 7) of the box <paramref name="min"/>..<paramref name="max"/>: bit 0 picks x, bit 1 y, bit 2 z, a set bit the maximum.</summary>
+    internal static Vector3 Corner(Vector3 min, Vector3 max, int i)
+        => new((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
+
     /// <summary>The axis-aligned box of the box <paramref name="min"/>..<paramref name="max"/> after it is turned by <paramref name="turn"/> about its own centre:
     /// its size, with the centre left where it was.</summary>
     internal static Vector3 TurnedExtent(Vector3 min, Vector3 max, Quaternion turn)
@@ -83,8 +86,7 @@ internal static class NuiModelFrame
         Vector3 c = (min + max) * 0.5f, lo = new(float.MaxValue), hi = new(float.MinValue);
         for (int i = 0; i < 8; i++)
         {
-            var corner = new Vector3((i & 1) == 0 ? min.X : max.X, (i & 2) == 0 ? min.Y : max.Y, (i & 4) == 0 ? min.Z : max.Z);
-            Vector3 p = Vector3.Transform(corner - c, turn);
+            Vector3 p = Vector3.Transform(Corner(min, max, i) - c, turn);
             lo = Vector3.Min(lo, p);
             hi = Vector3.Max(hi, p);
         }
@@ -105,7 +107,7 @@ internal static class NuiModelFrame
             centre.Z = min.Z + middle;
         }
         Vector3 shown = TurnedExtent(-extent * 0.5f, extent * 0.5f, turn);
-        return Fit(shown, false, angleDeg, width, height, yawDeg, anyYaw, pad, out dist, out _);
+        return Fit(shown, angleDeg, width, height, yawDeg, anyYaw, pad, out dist);
     }
 
     /// <summary>The model type <c>appearance.2da</c> gives a creature whose body is built from parts (the player races). The engine keeps no bounds for such a model
@@ -139,21 +141,19 @@ internal static class NuiModelFrame
     {
         var check = new CX.Framework.Checker(log);
         var cube = new Vector3(2, 2, 2);
-        check.Expect(Fit(cube, true, 30f, 100, 100, 270f, false, 1f, out float d, out float h) && MathF.Abs(d - 5.105f) < 0.01f && MathF.Abs(h - 1f) < 1e-5f,
-                     "a 2-metre cube on the floor, seen face on at 30 degrees in a square image, is framed from 5.105 m, 1 m up");
-        Fit(cube, false, 30f, 100, 100, 270f, false, 1f, out d, out h);
-        check.Expect(h == 0f, "a box centred on the origin is framed at the origin's height");
-        Fit(new Vector3(4, 2, 2), true, 30f, 100, 100, 0f, false, 1f, out d, out _);
+        check.Expect(Fit(cube, 30f, 100, 100, 270f, false, 1f, out float d) && MathF.Abs(d - 5.105f) < 0.01f,
+                     "a 2-metre cube seen face on at 30 degrees in a square image is framed from 5.105 m");
+        Fit(new Vector3(4, 2, 2), 30f, 100, 100, 0f, false, 1f, out d);
         check.Expect(MathF.Abs(d - 6.105f) < 0.01f, "seen along its length a box 4 long has half-depth 2 and half-width 1: 2 + 4.105 = 6.105 m");
-        Fit(new Vector3(4, 2, 2), true, 30f, 100, 100, 270f, false, 1f, out d, out _);
+        Fit(new Vector3(4, 2, 2), 30f, 100, 100, 270f, false, 1f, out d);
         check.Expect(MathF.Abs(d - (1f + 1.1f * 2f / 0.267949f)) < 0.01f, "seen across its length the half-width is 2 and the half-depth 1: 1 + 1.1 * 2 / 0.26795 = 9.21 m");
-        Fit(cube, true, 30f, 50, 100, 270f, false, 1f, out d, out _);
+        Fit(cube, 30f, 50, 100, 270f, false, 1f, out d);
         check.Expect(MathF.Abs(d - (1f + 1.1f / 0.133975f)) < 0.01f, "an image half as wide frames from the horizontal angle, tan = 0.26795 / 2: 1 + 8.21 = 9.21 m");
-        Fit(cube, true, 30f, 100, 50, 270f, false, 1f, out d, out _);
+        Fit(cube, 30f, 100, 50, 270f, false, 1f, out d);
         check.Expect(MathF.Abs(d - 5.105f) < 0.01f, "a wide image keeps the vertical angle");
-        Fit(cube, true, 30f, 100, 100, 270f, false, 2f, out d, out _);
+        Fit(cube, 30f, 100, 100, 270f, false, 2f, out d);
         check.Expect(MathF.Abs(d - (1f + 2.2f / 0.267949f)) < 0.01f, "a pad of 2 doubles the room beyond the near face: 1 + 8.21 = 9.21 m");
-        Fit(new Vector3(4, 2, 2), true, 30f, 100, 100, 0f, true, 1f, out d, out _);
+        Fit(new Vector3(4, 2, 2), 30f, 100, 100, 0f, true, 1f, out d);
         check.Expect(MathF.Abs(d - (MathF.Sqrt(5f) + 1.1f * MathF.Sqrt(5f) / 0.267949f)) < 0.02f, "a box that may turn is covered by its footprint's circle, radius sqrt(5)");
         Vector3 top = Slice(new Vector3(1, 1, 2), 0.75f, 1f, out float mid);
         check.Expect(MathF.Abs(top.Z - 0.5f) < 1e-5f && MathF.Abs(top.X - 0.5f) < 1e-5f && MathF.Abs(mid - 1.75f) < 1e-5f, "the top quarter of a 2-metre model is 0.5 tall and wide, its middle 1.75 up");
@@ -198,8 +198,8 @@ internal static class NuiModelFrame
         check.Expect(BodyBox("P", "2", "0.3", out Vector3 hb0, out Vector3 hb1) && Frame(hb0, hb1, true, 0.75f, 1f, Quaternion.Identity, 30f, 120, 160, 270f, false, 1f, out Vector3 hc, out float hd)
                      && Near(hc, new Vector3(0, 0, 1.75f)) && MathF.Abs(hd - (0.1875f + 1.1f * 0.25f / 0.267949f)) < 0.01f,
                      "the head and shoulders of a human row (2 metres, 0.6 wide) in a 120 by 160 image: the camera looks at the middle of the top quarter, 1.75 up on the body's own axis, from 0.1875 + 1.1 * 0.25 / tan 15 metres");
-        check.Expect(!Fit(default, true, 30f, 10, 10, 0f, false, 1f, out _, out _), "an empty box is not framed");
-        check.Expect(!Fit(new Vector3(-1, 1, 1), true, 30f, 10, 10, 0f, false, 1f, out _, out _), "a negative size is not framed");
-        check.Expect(!Fit(cube, true, 0f, 10, 10, 0f, false, 1f, out _, out _) && !Fit(cube, true, 30f, 0, 10, 0f, false, 1f, out _, out _), "no angle or no image is not framed");
+        check.Expect(!Fit(default, 30f, 10, 10, 0f, false, 1f, out _), "an empty box is not framed");
+        check.Expect(!Fit(new Vector3(-1, 1, 1), 30f, 10, 10, 0f, false, 1f, out _), "a negative size is not framed");
+        check.Expect(!Fit(cube, 0f, 10, 10, 0f, false, 1f, out _) && !Fit(cube, 30f, 0, 10, 0f, false, 1f, out _), "no angle or no image is not framed");
     }
 }

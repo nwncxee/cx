@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using CX.Framework;
 using CX.Services.Nui;
 using CX.Ui;
 using CX.Services.Panels;
@@ -9,10 +10,6 @@ namespace CX.Services.Cards;
 /// <summary>Where cards go: beside the element, never over it, and on screen.</summary>
 internal static class CardPlacer
 {
-    /// <summary>The default placement: right of the element, flipping left, tops level.</summary>
-    public static void Place(PanelView[] views, float ex, float ey, float ew, float vw, float vh, float scale, Span<float> xs, Span<float> ys)
-        => Place(views, ex, ey, ew, 0f, vw, vh, scale, new PanelStyle(), xs, ys);
-
     /// <summary>
     /// Puts the cards side by side with their tops level, against the element (<paramref name="ex"/>, <paramref name="ey"/>, <paramref name="ew"/>,
     /// <paramref name="eh"/>) on the side <paramref name="place"/> names, or the opposite side when it has no room and the style flips.
@@ -87,17 +84,18 @@ internal sealed class CardPresenter
         CardSet? found = null;
         if (has)
         {
-            int h = Hash(hit.Image());
-            if (hit.Element == _el && hit.Row == _row && h == _imgHash && hit.Image().Length == _imgLen && CardRegistry.Gen == _gen) found = _found;
+            ReadOnlySpan<byte> image = hit.Image();
+            int h = Hash(image);
+            bool sameTarget = hit.Element == _el && hit.Row == _row && h == _imgHash && image.Length == _imgLen;
+            if (sameTarget && CardRegistry.Gen == _gen) found = _found;
             else
             {
                 found = Lookup(in hit);
                 bool declaredEmpty = found is { Cards.Length: 0 };
                 if (declaredEmpty) found = null;
-                bool sameTarget = hit.Element == _el && hit.Row == _row && h == _imgHash && hit.Image().Length == _imgLen;
                 if (sameTarget && found != null && found != _set) _tip.Retarget(found);
-                _el = hit.Element; _row = hit.Row; _imgHash = h; _imgLen = hit.Image().Length; _gen = CardRegistry.Gen; _found = found;
-                _subject = ItemKey(hit.Image(), out uint drawn) ? drawn : 0u;
+                _el = hit.Element; _row = hit.Row; _imgHash = h; _imgLen = image.Length; _gen = CardRegistry.Gen; _found = found;
+                _subject = ImageNames.TryItem(image, out uint drawn) ? drawn : 0u;
                 _rebuild = found != null;
             }
         }
@@ -129,7 +127,7 @@ internal sealed class CardPresenter
             for (int i = 0; i < views.Length; i++)
             {
                 string own = set.Cards[i].Item;
-                uint oid = own.Length > 0 && uint.TryParse(own, System.Globalization.NumberStyles.AllowHexSpecifier, null, out uint d) ? d : _subject;
+                uint oid = own.Length > 0 && uint.TryParse(own, System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out uint d) ? d : _subject;
                 views[i] = PanelLayout.Build(set.Cards[i], scale, Face, oid == 0 ? default : SubjectOf(oid));
             }
             _rebuild = false;
@@ -168,11 +166,11 @@ internal sealed class CardPresenter
         if (img.Length > 0)
         {
             CardSet? byImage = null;
-            if (ItemKey(img, out uint oid))
+            if (ImageNames.TryItem(img, out uint oid))
             {
-                "@item:".AsSpan().CopyTo(buf);
-                oid.TryFormat(buf[6..], out int w, "x");
-                byImage = CardRegistry.Find(buf[..(6 + w)]);
+                ImageNames.Item.AsSpan().CopyTo(buf);
+                oid.TryFormat(buf[ImageNames.Item.Length..], out int w, "x");
+                byImage = CardRegistry.Find(buf[..(ImageNames.Item.Length + w)]);
             }
             else if (img.StartsWith("@look:"u8))
             {
@@ -183,21 +181,5 @@ internal sealed class CardPresenter
         }
         if (token.Length > 0) return CardRegistry.FindPrefix(buf[..Encoding.UTF8.GetChars(token, buf)]);
         return null;
-    }
-
-    /// <summary>True when <paramref name="img"/> is <c>@item:</c> and 1-8 hex digits (what follows is ignored, as the image loader ignores it).</summary>
-    internal static bool ItemKey(ReadOnlySpan<byte> img, out uint oid)
-    {
-        oid = 0;
-        if (!img.StartsWith("@item:"u8)) return false;
-        int n = 0;
-        for (int i = 6; i < img.Length && n < 8; i++, n++)
-        {
-            byte c = img[i];
-            int d = c is >= (byte)'0' and <= (byte)'9' ? c - '0' : (c | 0x20) is >= (byte)'a' and <= (byte)'f' ? (c | 0x20) - 'a' + 10 : -1;
-            if (d < 0) break;
-            oid = oid << 4 | (uint)d;
-        }
-        return n > 0;
     }
 }

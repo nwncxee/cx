@@ -6,9 +6,8 @@ namespace CX.Services.Nui;
 
 /// <summary>
 /// The doll's own helmet. A creature's appearance record names its helmet by the object id of an item, and the engine builds the head from
-/// that item: it hides the head and attaches the item's model in its place. A doll that copied the record would attach the target's own
-/// helmet model, taking it off the target and leaving the doll bare-headed whenever that model was not ready. So the doll
-/// gets a throwaway copy of the helmet with its own model, registered like any object, and its record names the copy.
+/// that item: it hides the head and attaches the item's model in its place. The doll wears a throwaway copy of the helmet, registered like
+/// any object and with a model of its own, and its record names the copy, so the engine attaches the copy's model, never the target's.
 /// </summary>
 internal static unsafe class NuiModelHelm
 {
@@ -53,12 +52,12 @@ internal static unsafe class NuiModelHelm
         {
             if (h.Item != IntPtr.Zero && doll != IntPtr.Zero && h.Last.Length >= EngineLayout.SizeOfAppearanceInfo)
             {
-                byte* info = stackalloc byte[256];   // not-an-offset: room for either OS's CCAppearanceInfo
+                byte* info = stackalloc byte[NuiModelDoll.RecordMax];
                 int n = EngineLayout.SizeOfAppearanceInfo;
                 h.Last.AsSpan(0, n).CopyTo(new Span<byte>(info, n));
                 new CCAppearanceInfo((IntPtr)info).HelmId = NuiModelDoll.InvalidId;
                 Drop(h);
-                EngineFn.NwcCreatureSetAppearance(doll, (IntPtr)info, FullBuild);
+                EngineFn.NwcCreatureSetAppearance(doll, (IntPtr)info, NuiModelDoll.BuildFlags);
             }
             Settle(h);
             if (h.Item != IntPtr.Zero) NuiModelGear.Unregister(h.Item, h.Id);
@@ -66,8 +65,6 @@ internal static unsafe class NuiModelHelm
         h.Item = h.Replaced = IntPtr.Zero;
         h.Id = h.ReplacedId = h.From = NuiModelDoll.InvalidId;
     }
-
-    private const byte FullBuild = 0x2f;   // not-an-offset: SetAppearance flag bits, as NuiModelDoll builds
 
     /// <summary>The current copy becomes the replaced one, to be freed by <see cref="Settle"/>.</summary>
     private static void Drop(HelmState h)

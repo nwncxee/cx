@@ -34,6 +34,8 @@ internal static unsafe class IconFrames
     /// <summary>Keeps a PLT and a plain texture of one name apart in the cache.</summary>
     private const ulong PltSalt = 0x9e3779b97f4a7c15UL;   // not-an-offset: hash salt
     private const int MaxSide = 1024;
+    /// <summary>Frames the cache holds; a full cache is emptied and refilled by the next asks.</summary>
+    private const int MaxCached = 4096;
 
     /// <summary>Every frame read this session, keyed by resref, misses included.</summary>
     private sealed class IconFramesState
@@ -82,6 +84,7 @@ internal static unsafe class IconFrames
         if (s.ByName.TryGetValue(key, out Frame f)) return f;
         string n = Marshal.PtrToStringAnsi((IntPtr)name) ?? "";
         f = Load(n, plt, out string? why);
+        if (s.ByName.Count >= MaxCached) s.ByName.Clear();
         s.ByName[key] = f;
         if (f.Known) s.Log?.Info($"IconFrames: {n} is {f.Tw}x{f.Th}, its art fills {f.Cw}x{f.Ch}");
         else s.Log?.Info($"IconFrames: {n} -- {why ?? "no visible texel"}; it keeps its cell crop");
@@ -168,6 +171,15 @@ internal static unsafe class IconFrames
         if (!a.Known) return b;
         if (!b.Known || a.Tw != b.Tw || a.Th != b.Th) return a;
         return new Frame(a.Tw, a.Th, Math.Max(a.Cw, b.Cw), Math.Max(a.Ch, b.Ch));
+    }
+
+    /// <summary>The size of <paramref name="icon"/> drawn at <paramref name="cellPx"/> pixels a cell: the cells its art fills, or
+    /// <paramref name="cellsW"/> x <paramref name="cellsH"/> when the frame is unknown.</summary>
+    internal static void Size(IntPtr icon, float cellPx, int cellsW, int cellsH, out float w, out float h)
+    {
+        Frame f = Of(icon);
+        w = f.Known ? cellPx * f.Cw / CellPx : cellPx * cellsW;
+        h = f.Known ? cellPx * f.Ch / CellPx : cellPx * cellsH;
     }
 
     /// <summary>The frame's art in the box at its own proportions, centred, and the UVs that crop the sheet to it

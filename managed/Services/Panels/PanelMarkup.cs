@@ -14,10 +14,13 @@ namespace CX.Services.Panels;
 /// </summary>
 internal static class PanelMarkup
 {
+    /// <summary>The style a text snaps its sizes with when the caller names none; only read.</summary>
+    private static readonly PanelStyle Default = new();
+
     /// <summary>The runs of <paramref name="s"/>, or false with the reason when it is over the text or run limit.</summary>
     public static bool TryParse(string s, out Run[] runs, out string error, PanelStyle? style = null)
     {
-        style ??= new PanelStyle();
+        style ??= Default;
         runs = [];
         error = "";
         if (s.Length > PanelLimits.MaxText) { error = $"text over {PanelLimits.MaxText} characters"; return false; }
@@ -39,13 +42,13 @@ internal static class PanelMarkup
             if (ch != '<') { buf.Append(ch); continue; }
             if (i + 1 < s.Length && s[i + 1] == '<') { buf.Append('<'); i++; continue; }
             int end = s.IndexOf('>', i + 1);
-            if (end < 0 || !Tag(s.AsSpan(i + 1, end - i - 1), out string name, out string arg)) { buf.Append('<'); continue; }
+            if (end < 0 || !Tag(s.AsSpan(i + 1, end - i - 1), out string name, out string arg, out float size)) { buf.Append('<'); continue; }
             Flush();
             switch (name)
             {
                 case "c": colors.Add(HexColour.TryParse(arg, out uint c) ? c : 0); break;
                 case "/c": if (colors.Count > 0) colors.RemoveAt(colors.Count - 1); break;
-                case "s": sizes.Add(style.Snap(float.Parse(arg, CultureInfo.InvariantCulture))); break;
+                case "s": sizes.Add(style.Snap(size)); break;
                 case "/s": if (sizes.Count > 0) sizes.RemoveAt(sizes.Count - 1); break;
                 case "i": italic++; break;
                 case "/i": if (italic > 0) italic--; break;
@@ -61,9 +64,9 @@ internal static class PanelMarkup
     }
 
     /// <summary>True when <paramref name="body"/> is a tag this markup knows, with a value that parses.</summary>
-    private static bool Tag(ReadOnlySpan<char> body, out string name, out string arg)
+    private static bool Tag(ReadOnlySpan<char> body, out string name, out string arg, out float size)
     {
-        name = arg = "";
+        size = 0f;
         int eq = body.IndexOf('=');
         name = (eq < 0 ? body : body[..eq]).ToString();
         arg = eq < 0 ? "" : body[(eq + 1)..].ToString();
@@ -71,7 +74,7 @@ internal static class PanelMarkup
         {
             case "/c": case "/s": case "i": case "/i": case "br": return eq < 0;
             case "c": return HexColour.TryParse(arg, out _);
-            case "s": return float.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out float v) && float.IsFinite(v);
+            case "s": return float.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out size) && float.IsFinite(size);
             case "icon": return arg.Length is > 0 and <= PanelLimits.MaxIconName;
             default: return false;
         }

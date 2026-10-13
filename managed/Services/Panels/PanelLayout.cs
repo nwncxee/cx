@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
+using CX.Framework;
 using CX.Ui;
 
 namespace CX.Services.Panels;
@@ -53,19 +53,6 @@ internal readonly struct PanelSubject(string name, string stack)
 /// </summary>
 internal sealed class PanelLayout
 {
-    /// <summary>The prefix of an image name that describes an item by its appearance.</summary>
-    public const string LookPrefix = "@look:";
-
-    /// <summary>Is <paramref name="src"/> an <c>@look:</c> image name?</summary>
-    public static bool IsLook(string src) => src.StartsWith(LookPrefix, StringComparison.Ordinal);
-
-    /// <summary>The prefix of an image name that is a live model view.</summary>
-    public const string ModelPrefix = "@model:";
-
-    /// <summary>The key of an <c>@model:</c> image name, or null when <paramref name="src"/> is not one or has no key.</summary>
-    public static string? ModelKey(string src)
-        => src.StartsWith(ModelPrefix, StringComparison.Ordinal) && src.Length > ModelPrefix.Length ? src[ModelPrefix.Length..] : null;
-
     private struct Atom
     {
         public string Text, Icon;
@@ -189,7 +176,7 @@ internal sealed class PanelLayout
             case BlockKind.Divider:
                 float m = (b.Margin ?? St.DividerMargin) * _s, th = Math.Max(1f, (b.Thick ?? St.DividerThick) * _s);
                 if (emit) Rect(0, y + m, fullW, y + m + th, b.Color != 0 ? b.Color : St.Divider);
-                return y + 2f * m + th + (b.After is { } da ? da * _s : 0f);
+                return y + 2f * m + th + After(b);
             case BlockKind.Icons:
                 return Icons(b, x, y, w, emit) + gap;
             case BlockKind.Section:
@@ -200,9 +187,9 @@ internal sealed class PanelLayout
                     if (b.Tint != 0) Rect(0, y, fullW, end, b.Tint);
                     Stack(b.Kids, x, y + sp, w, fullW, true);
                 }
-                return end + (b.After is { } sa ? sa * _s : 0f);
+                return end + After(b);
             case BlockKind.Footer:
-                return Footer(b, x, y, w, fullW, emit) + (b.After is { } fa ? fa * _s : 0f);
+                return Footer(b, x, y, w, fullW, emit) + After(b);
             case BlockKind.Status:
                 return Status(b, x, y, w, emit) + gap;
             default:
@@ -212,6 +199,9 @@ internal sealed class PanelLayout
                 return y + lh + (b.After ?? St.TextGap) * _s;
         }
     }
+
+    /// <summary>The block's own <c>after</c> spacing in px, 0 when it declares none.</summary>
+    private float After(Block b) => b.After is { } a ? a * _s : 0f;
 
     private float Status(Block b, float x, float y, float w, bool emit)
     {
@@ -349,32 +339,27 @@ internal sealed class PanelLayout
     private void Words(string s, float x, float baseline, GlyphAtlas a, float k, uint rgba, bool italic, int from = 0, int to = -1)
     {
         if (to < 0) to = s.Length;
-        float r = (rgba >> 24) / 255f, g = ((rgba >> 16) & 0xFF) / 255f, b = ((rgba >> 8) & 0xFF) / 255f, al = (rgba & 0xFF) / 255f;
-        float pen = x;
+        var (r, g, b, al) = C(rgba);
         VertexBatch into = _v.Text;
         if (_pulse) into = _v.Pulse ??= new VertexBatch(a.SolidU, a.SolidV);
         uint sh = St.Shadow;
-        float sr = (sh >> 24) / 255f, sg = ((sh >> 16) & 0xFF) / 255f, sb = ((sh >> 8) & 0xFF) / 255f, sa = (sh & 0xFF) / 255f * al;
         if (sh != 0)
         {
-            float sp = x;
-            foreach (Rune ru in s.AsSpan(from, to - from).EnumerateRunes())
-            {
-                if (a.TryGet(ru.Value, out Glyph gl))
-                {
-                    if (italic) into.GlyphItalic(gl, sp + St.ShadowDx * _s, baseline + St.ShadowDy * _s, sr, sg, sb, sa, St.Slant, k);
-                    else into.Glyph(gl, sp + St.ShadowDx * _s, baseline + St.ShadowDy * _s, sr, sg, sb, sa, k);
-                    sp += gl.Advance * k;
-                }
-                else sp += a.AdvanceOf(ru) * k;
-            }
+            var (sr, sg, sb, sa) = C(sh);
+            Glyphs(s, from, to, a, into, x, baseline, sr, sg, sb, sa * al, k, italic, St.ShadowDx * _s, St.ShadowDy * _s);
         }
+        Glyphs(s, from, to, a, into, x, baseline, r, g, b, al, k, italic, 0f, 0f);
+    }
+
+    private void Glyphs(string s, int from, int to, GlyphAtlas a, VertexBatch into, float x, float baseline, float r, float g, float b, float al, float k, bool italic, float dx, float dy)
+    {
+        float pen = x;
         foreach (Rune ru in s.AsSpan(from, to - from).EnumerateRunes())
         {
             if (a.TryGet(ru.Value, out Glyph gl))
             {
-                if (italic) into.GlyphItalic(gl, pen, baseline, r, g, b, al, St.Slant, k);
-                else into.Glyph(gl, pen, baseline, r, g, b, al, k);
+                if (italic) into.GlyphItalic(gl, pen + dx, baseline + dy, r, g, b, al, St.Slant, k);
+                else into.Glyph(gl, pen + dx, baseline + dy, r, g, b, al, k);
                 pen += gl.Advance * k;
             }
             else pen += a.AdvanceOf(ru) * k;
@@ -384,18 +369,16 @@ internal sealed class PanelLayout
     private void AddIcon(string src, float x, float y, float w, float h, float alpha = 1f)
     {
         uint item = 0;
-        if (src.StartsWith("@item:", StringComparison.Ordinal))
+        if (src.StartsWith(ImageNames.Item, StringComparison.Ordinal))
         {
-            int n = 0;
-            while (6 + n < src.Length && n < 8 && Uri.IsHexDigit(src[6 + n])) n++;
-            if (n == 0 || !uint.TryParse(src.AsSpan(6, n), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out item)) return;
+            if (!ImageNames.TryItem(src, out item)) return;
         }
-        else if (PanelLayout.IsLook(src))
+        else if (src.StartsWith(ImageNames.Look, StringComparison.Ordinal))
         {
             _v.Icons.Add(new IconDraw { Src = "", Look = src, X = x, Y = y, W = w, H = h, Alpha = alpha });
             return;
         }
-        else if (PanelLayout.ModelKey(src) is { } model)
+        else if (ImageNames.ModelKey(src) is { } model)
         {
             _v.Icons.Add(new IconDraw { Src = "", Model = model, X = x, Y = y, W = w, H = h, Alpha = alpha });
             return;
@@ -405,7 +388,10 @@ internal sealed class PanelLayout
     }
 
     private void Rect(float x0, float y0, float x1, float y1, uint rgba)
-        => _v.Back.Rect(x0, y0, x1, y1, (rgba >> 24) / 255f, ((rgba >> 16) & 0xFF) / 255f, ((rgba >> 8) & 0xFF) / 255f, (rgba & 0xFF) / 255f);
+    {
+        var (r, g, b, a) = C(rgba);
+        _v.Back.Rect(x0, y0, x1, y1, r, g, b, a);
+    }
 
     private void Frame(float x0, float y0, float x1, float y1, uint rgba, float width, string sides)
     {
@@ -418,7 +404,13 @@ internal sealed class PanelLayout
         if (right) Rect(x1 - t, ya, x1, yb, rgba);
     }
 
-    private static (float, float, float, float) C(uint rgba) => ((rgba >> 24) / 255f, ((rgba >> 16) & 0xFF) / 255f, ((rgba >> 8) & 0xFF) / 255f, (rgba & 0xFF) / 255f);
+    /// <summary>The channels of <paramref name="rgba"/> as 0-1 floats.</summary>
+    private static (float, float, float, float) C(uint rgba)
+    {
+        Span<float> c = stackalloc float[4];
+        HexColour.Channels(rgba, c);
+        return (c[0], c[1], c[2], c[3]);
+    }
 
     private void Gradient(float x0, float y0, float x1, float y1, uint tl, uint tr, uint br, uint bl)
         => _v.Back.GradientRect(x0, y0, x1, y1, C(tl), C(tr), C(br), C(bl));

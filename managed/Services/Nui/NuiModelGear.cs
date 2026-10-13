@@ -110,7 +110,7 @@ internal static unsafe class NuiModelGear
             minted = true;
             return NuiItemIcons.MintLookForModel(wear, out why);
         }
-        if (uint.TryParse(wear, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)) return Known(id | NuiItemIcons.ServerIdBit);
+        if (uint.TryParse(wear, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)) return Known(id | ImageNames.ServerIdBit);
         why = "neither an @look: string nor a hex object id";
         return IntPtr.Zero;
     }
@@ -225,7 +225,7 @@ internal static unsafe class NuiModelGear
     {
         if (!text.StartsWith("@look:", StringComparison.Ordinal))
         {
-            if (uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)) g.HelmId = id | NuiItemIcons.ServerIdBit;
+            if (uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint id)) g.HelmId = id | ImageNames.ServerIdBit;
             return;
         }
         g.HelmSrc = MintKept(text);
@@ -371,13 +371,7 @@ internal static unsafe class NuiModelGear
         }
         _g.Log?.Always($"NuiModelGear: slot 0x{w.Slot:x} emptied, item id 0x{w.ItemId:x} freed");
         EngineFn.NwcCreatureEquip(doll, w.Slot, IntPtr.Zero);
-        IntPtr app = NuiModelDoll.App();
-        if (app != IntPtr.Zero)
-        {
-            IntPtr gone;
-            EngineFn.GameObjectArrayDelete(EngineFn.GetGameObjectArray(app), w.ItemId, &gone);
-        }
-        NuiItemIcons.Destroy(w.Item);
+        Unregister(w.Item, w.ItemId);
         w.Item = IntPtr.Zero;
         w.ItemId = NuiModelDoll.InvalidId;
     }

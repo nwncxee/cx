@@ -67,7 +67,10 @@ internal static class PanelParser
     }
 
     private static void Len(JsonElement e, string name, ref float field, float lo = 0f, float hi = PanelLimits.MaxLen)
-        => field = Math.Clamp(Num(e, name, field), lo, hi);
+        => field = Clamped(e, name, field, lo, hi);
+
+    /// <summary>The number <paramref name="name"/> names in <paramref name="e"/>, or <paramref name="def"/>, clamped to the range.</summary>
+    private static float Clamped(JsonElement e, string name, float def, float lo, float hi) => Math.Clamp(Num(e, name, def), lo, hi);
 
     private static void Rgba(JsonElement e, string name, ref uint field)
     {
@@ -105,7 +108,7 @@ internal static class PanelParser
         Rgba(e, "color", ref st.Text); Rgba(e, "border", ref st.Border); Rgba(e, "divider", ref st.Divider); Rgba(e, "footerband", ref st.FooterBand);
         Rgba(e, "framefill", ref st.FrameFill); Rgba(e, "frameline", ref st.FrameLine); Rgba(e, "tabcolor", ref st.TabBg); Rgba(e, "tabtext", ref st.TabText);
         Rgba(e, "dimcolor", ref st.DimColor); Rgba(e, "shadow", ref st.Shadow); Rgba(e, "border2", ref st.Border2); Rgba(e, "glow", ref st.Glow); Rgba(e, "corners", ref st.Corners);
-        if (e.TryGetProperty("dimalpha", out _)) { float da = 0f; Len(e, "dimalpha", ref da, 0f, 1f); st.DimAlpha = (byte)MathF.Round(da * 255f); }
+        st.DimAlpha = (byte)MathF.Round(Clamped(e, "dimalpha", st.DimAlpha / 255f, 0f, 1f) * 255f);
         Len(e, "borderw", ref st.BorderW); Len(e, "framew", ref st.FrameW); Len(e, "border2w", ref st.Border2W); Len(e, "border2inset", ref st.Border2Inset);
         Len(e, "shadowdx", ref st.ShadowDx, -16f, 16f); Len(e, "shadowdy", ref st.ShadowDy, -16f, 16f);
         Len(e, "glowspread", ref st.GlowSpread, 0f, 64f); Len(e, "glowalpha", ref st.GlowAlpha, 0f, 1f); Len(e, "cornerlen", ref st.CornerLen); Len(e, "cornerw", ref st.CornerW);
@@ -153,10 +156,10 @@ internal static class PanelParser
                 l.Add(new PanelImage
                 {
                     Src = src,
-                    W = Math.Clamp(Num(i, "w", c.St.ImageSize), 1f, PanelLimits.MaxImagePx), H = Math.Clamp(Num(i, "h", c.St.ImageSize), 1f, PanelLimits.MaxImagePx),
-                    Dx = Math.Clamp(Num(i, "dx", 0f), -PanelLimits.MaxImagePx, PanelLimits.MaxImagePx),
-                    Dy = Math.Clamp(Num(i, "dy", 0f), -PanelLimits.MaxImagePx, PanelLimits.MaxImagePx),
-                    Alpha = Math.Clamp(Num(i, "alpha", 1f), 0f, 1f),
+                    W = Clamped(i, "w", c.St.ImageSize, 1f, PanelLimits.MaxImagePx), H = Clamped(i, "h", c.St.ImageSize, 1f, PanelLimits.MaxImagePx),
+                    Dx = Clamped(i, "dx", 0f, -PanelLimits.MaxImagePx, PanelLimits.MaxImagePx),
+                    Dy = Clamped(i, "dy", 0f, -PanelLimits.MaxImagePx, PanelLimits.MaxImagePx),
+                    Alpha = Clamped(i, "alpha", 1f, 0f, 1f),
                     At = Str(i, "at", "tr") switch
                     {
                         "tl" => Anchor.TopLeft, "bl" => Anchor.BottomLeft, "br" => Anchor.BottomRight, "tr" => Anchor.TopRight,
@@ -218,7 +221,7 @@ internal static class PanelParser
                     names.Add(s);
                 }
                 b.Icons = names.ToArray();
-                b.IconPx = Math.Clamp(Num(e, "px", st.IconsPx), PanelLimits.MinIconPx, PanelLimits.MaxIconPx);
+                b.IconPx = Clamped(e, "px", st.IconsPx, PanelLimits.MinIconPx, PanelLimits.MaxIconPx);
                 break;
             case BlockKind.Section:
                 if (depth >= PanelLimits.MaxDepth) throw new Refusal($"sections nest at most {PanelLimits.MaxDepth} deep");
@@ -229,14 +232,14 @@ internal static class PanelParser
                 b.Runs = Runs(e, "left", false, st);
                 break;
             case BlockKind.Status:
-                b.IconPx = Math.Clamp(Num(e, "px", st.StatusPx), PanelLimits.MinIconPx, PanelLimits.MaxIconPx);
+                b.IconPx = Clamped(e, "px", st.StatusPx, PanelLimits.MinIconPx, PanelLimits.MaxIconPx);
                 break;
         }
         return b;
     }
 
     private static float? Opt(JsonElement e, string name, float lo)
-        => e.TryGetProperty(name, out _) ? Math.Clamp(Num(e, name, 0f), lo, PanelLimits.MaxLen) : null;
+        => e.TryGetProperty(name, out _) ? Clamped(e, name, 0f, lo, PanelLimits.MaxLen) : null;
 
     private static Run[] Runs(JsonElement e, string name, bool italic, PanelStyle st)
     {

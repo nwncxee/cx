@@ -42,8 +42,6 @@ internal static class NuiHitSpans
     public static ReadOnlySpan<byte> Token(this in NuiHit h) => ((ReadOnlySpan<byte>)h.TokenBytes)[..h.TokenLen];
     /// <summary>The image resref the element drew this frame (<c>@item:..</c>, <c>@look:..</c> or a plain resref), without the cache's type suffix.</summary>
     public static ReadOnlySpan<byte> Image(this in NuiHit h) => ((ReadOnlySpan<byte>)h.ImageBytes)[..h.ImageLen];
-    /// <summary>True when the token is exactly <paramref name="utf8"/>.</summary>
-    public static bool TokenIs(this in NuiHit h, ReadOnlySpan<byte> utf8) => h.Token().SequenceEqual(utf8);
     internal static Span<byte> TokenBuffer(this ref NuiHit h) => h.TokenBytes;
     internal static Span<byte> ImageBuffer(this ref NuiHit h) => h.ImageBytes;
 }
@@ -491,7 +489,7 @@ internal static unsafe class NuiHitTest
             Record(widget, in box);
             check.Expect(!TryGet(out _), "a hit is not visible before the frame's flush");
             Publish(s);
-            check.Expect(TryGet(out NuiHit h) && h.Element == widget && h.Row == 7 && h.TokenIs("slot_head"u8) && h.X == 12 && h.Y == 22 && h.W == 100 && h.H == 20,
+            check.Expect(TryGet(out NuiHit h) && h.Element == widget && h.Row == 7 && h.Token().SequenceEqual("slot_head"u8) && h.X == 12 && h.Y == 22 && h.W == 100 && h.H == 20,
                 "the flush publishes the element, row, token and rectangle");
             check.Expect(h.Contains(50, 30) && !h.Contains(112, 30), "the hit's rectangle is half-open");
             Publish(s);
@@ -504,7 +502,7 @@ internal static unsafe class NuiHitTest
             Record((IntPtr)0x2222, in cell);
             Record(widget, in box);
             Publish(s);
-            check.Expect(TryGet(out h) && h.Element == 0x2222 && h.TokenIs("x"u8) && h.Row == 7 && h.X == 20,
+            check.Expect(TryGet(out h) && h.Element == 0x2222 && h.Token().SequenceEqual("x"u8) && h.Row == 7 && h.X == 20,
                 "a widget that renders others finishes after them and does not displace the innermost one");
             Begin();
             Record(widget, in box);

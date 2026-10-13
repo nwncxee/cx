@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Radial;
 
 namespace CX.Services.Nui;
 
@@ -30,7 +31,6 @@ internal static unsafe class NuiModelTarget
     internal const int MaxRow = 65535;
     /// <summary>The bytes of an engine <c>CExoString</c> (a pointer and two counts), the caller-owned value a 2DA cell is written into.</summary>
     private const int ExoSize = 16;   // not-an-offset: sizeof(CExoString)
-    private const int ResRefLen = 16;   // not-an-offset: a resref's longest name
     /// <summary>The model slot an item's one model sits in, the one the engine fetches a worn item's model from.</summary>
     internal const byte ModelSlot = 1;   // not-an-offset: CNWCItem model slot
 
@@ -73,7 +73,7 @@ internal static unsafe class NuiModelTarget
     }
 
     /// <summary>A resref: 1 to 16 letters, digits and underscores.</summary>
-    internal static bool ValidResRef(string s) => s.Length is > 0 and <= ResRefLen && !s.AsSpan().ContainsAnyExcept(ResRefChars);
+    internal static bool ValidResRef(string s) => s.Length is > 0 and <= RadialIcons.ResRefLen && !s.AsSpan().ContainsAnyExcept(ResRefChars);
 
     private static readonly SearchValues<char> ResRefChars = SearchValues.Create("abcdefghijklmnopqrstuvwxyz0123456789_");
 
@@ -126,9 +126,7 @@ internal static unsafe class NuiModelTarget
     /// <summary>A cell of <c>appearance.2da</c> as text, or null when the row, the column or the tables are not there.</summary>
     internal static string? AppearanceCell(int row, string column)
     {
-        IntPtr rules = _t.Rules == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_t.Rules;
-        IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
-        IntPtr table = tables == IntPtr.Zero ? IntPtr.Zero : new CTwoDimArrays(tables).Appearance;
+        IntPtr table = Tables() is { } t ? t.Appearance : IntPtr.Zero;
         if (table == IntPtr.Zero || EngineFn.ExoStringInit == null || EngineFn.C2DAGetCExoStringEntry == null) return null;
         byte* col = stackalloc byte[ExoSize];
         byte* cell = stackalloc byte[ExoSize];
@@ -149,7 +147,7 @@ internal static unsafe class NuiModelTarget
     internal static IntPtr NewModel(string resref)
     {
         if (!CX.Alloy.ModelFeed.Present(resref)) { _t.Log?.Always($"NuiModelTarget: the client has no model '{resref}'"); return IntPtr.Zero; }
-        Span<byte> name = stackalloc byte[ResRefLen + 1];
+        Span<byte> name = stackalloc byte[RadialIcons.ResRefLen + 1];
         AsciiZ(resref, name);
         byte empty = 0;
         fixed (byte* n = name) return EngineFn.NewAurObject(n, &empty, IntPtr.Zero);

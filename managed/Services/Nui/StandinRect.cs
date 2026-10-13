@@ -13,11 +13,16 @@ internal readonly record struct StandinRect(int X, int Y, int W, int H)
     /// <summary>The rectangle <paramref name="text"/> names, or none for empty or malformed text.</summary>
     internal static StandinRect Parse(string text)
     {
-        string[] p = text.Split(',');
-        if (p.Length != 4) return default;
+        ReadOnlySpan<char> rest = text;
         Span<int> v = stackalloc int[4];
         for (int i = 0; i < 4; i++)
-            if (!int.TryParse(p[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out v[i])) return default;
+        {
+            int comma = rest.IndexOf(',');
+            if ((comma < 0) != (i == 3)) return default;
+            ReadOnlySpan<char> field = comma < 0 ? rest : rest[..comma];
+            if (!int.TryParse(field.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out v[i])) return default;
+            if (comma >= 0) rest = rest[(comma + 1)..];
+        }
         return new StandinRect(v[0], v[1], v[2], v[3]);
     }
 

@@ -17,8 +17,6 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiModelView
 {
-    /// <summary>What every model view's image name starts with: <c>@model:</c> then the view's key.</summary>
-    internal const string Prefix = "@model:";
     private const string KeyRoot = "model.";
     private const int DefaultSize = 256, MaxSize = 1024, MaxKey = 48;
     /// <summary>The camera a view has until its server says otherwise: the view angle in degrees, the distance from and height above the creature in metres.</summary>
@@ -131,14 +129,14 @@ internal static unsafe class NuiModelView
     /// <summary>Is this nk_loadimg name a model view's?</summary>
     internal static bool IsModelName(byte* s)
     {
-        for (int i = 0; i < Prefix.Length; i++) if (s[i] != (byte)Prefix[i]) return false;
-        return s[Prefix.Length] != 0;
+        for (int i = 0; i < ImageNames.Model.Length; i++) if (s[i] != (byte)ImageNames.Model[i]) return false;
+        return s[ImageNames.Model.Length] != 0;
     }
 
     private static string KeyOf(byte* s)
     {
         var sb = new StringBuilder();
-        for (byte* p = s + Prefix.Length; *p != 0 && sb.Length < MaxKey; p++) sb.Append((char)*p);
+        for (byte* p = s + ImageNames.Model.Length; *p != 0 && sb.Length < MaxKey; p++) sb.Append((char)*p);
         return sb.ToString();
     }
 
@@ -221,14 +219,16 @@ internal static unsafe class NuiModelView
         if (raw.Length > 0 && !NuiModelLook.Triple(raw, lo, hi, out _)) Refuse(key, what, raw, "needs three numbers 'x,y,z'");
     }
 
-    private static (int, int, bool) SizeOf(string key)
+    /// <summary>The <c>size</c> policy as <paramref name="w"/> and <paramref name="h"/>. False, with the default size, when it is missing or refused.</summary>
+    private static bool TrySize(string key, out int w, out int h)
     {
         string v = Policy(key, "size", "");
         int x = v.IndexOf('x');
-        if (x > 0 && int.TryParse(v.AsSpan(0, x), out int w) && int.TryParse(v.AsSpan(x + 1), out int h)
-            && w is > 0 and <= MaxSize && h is > 0 and <= MaxSize) return (w, h, true);
+        if (x > 0 && int.TryParse(v.AsSpan(0, x), out w) && int.TryParse(v.AsSpan(x + 1), out h)
+            && w is > 0 and <= MaxSize && h is > 0 and <= MaxSize) return true;
         Refuse(key, "size", v, $"needs '<w>x<h>', each 1-{MaxSize}");
-        return (DefaultSize, DefaultSize, false);
+        w = h = DefaultSize;
+        return false;
     }
 
     /// <summary>nk_loadimg asks for the image: make the TGA it will load, the stand-in at its own size or a transparent
@@ -243,7 +243,7 @@ internal static unsafe class NuiModelView
             return true;
         }
         string key = KeyOf(resref);
-        var (w, h, sized) = SizeOf(key);
+        bool sized = TrySize(key, out int w, out int h);
         string standin = Policy(key, "standin", "");
         StandinImage(standin, w, h, sized, Policy(key, "standinrect", ""), key, out uint[] px, out int pw, out int ph);
         _s.PendingKey = key; _s.PendingPixels = px; _s.PendingW = pw; _s.PendingH = ph; _s.PendingStandin = standin;
@@ -297,7 +297,7 @@ internal static unsafe class NuiModelView
         {
             NuiModelDoll.ModelSlot? slot = NuiModelDoll.Claim();
             if (slot == null) { SayCap(s, key); return 0; }
-            var (sw, sh, _) = SizeOf(key);
+            TrySize(key, out int sw, out int sh);
             v = new ViewData { Key = key, Slot = slot, Owned = true, W = sw, H = sh };
             s.Views.Add(v);
         }
@@ -522,7 +522,7 @@ internal static unsafe class NuiModelView
     private static IntPtr Resolve(ViewData v) => v.Tgt.Kind switch
     {
         TargetKind.Player => NuiModelDoll.Player(),
-        TargetKind.Creature => NuiModelDoll.Creature(v.Tgt.Id | NuiItemIcons.ServerIdBit),
+        TargetKind.Creature => NuiModelDoll.Creature(v.Tgt.Id | ImageNames.ServerIdBit),
         _ => IntPtr.Zero,
     };
 
@@ -762,18 +762,14 @@ internal static unsafe class NuiModelView
     /// <summary>The stand-in's pixels into the view's texture, in the engine's context with its texture binding put back as it was.</summary>
     private static void UploadStandin(ViewState s, ViewData v)
     {
-        uint[]? px = v.Standin;
         if (v.StandinName.Length > 0)
         {
             StandinImage(v.StandinName, v.W, v.H, true, v.StandinRect, v.Key, out uint[] fresh, out int fw, out int fh);
             if (fw != v.W || fh != v.H) { s.Log?.Always($"NuiModelView: stand-in '{v.StandinName}' is {fw}x{fh}, the view {v.W}x{v.H} -- not applied"); return; }
-            px = v.Standin = fresh;
+            v.Standin = fresh;
         }
-        else
-        {
-            px = v.Standin = new uint[v.W * v.H];
-        }
-        if (px == null || v.Target == 0 || Gl.TexSubImage2D == null) return;
+        else v.Standin = new uint[v.W * v.H];
+        if (v.Standin is not { } px || v.Target == 0 || Gl.TexSubImage2D == null) return;
         int prev, pbo, align, rowLen;
         Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &prev);
         Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &pbo);
@@ -816,7 +812,7 @@ internal static unsafe class NuiModelView
         ServerPolicy.Set("model.t.fitzone", "0.1,0.9");
         check.Expect(PolicyRefusals.All().Length == 1, "a good re-send of one clears its refusal");
         ServerPolicy.Set("model.t.size", "wide");
-        SizeOf("t");
+        TrySize("t", out _, out _);
         ServerPolicy.Set("model.t.vfx", "147,abc");
         var data = new ViewData { Key = "t", Vfx = "147,abc" };
         RefuseVfx(data);

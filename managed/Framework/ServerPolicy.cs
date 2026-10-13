@@ -188,6 +188,9 @@ public static class ServerPolicy
     public static int Int(string key, int def)
         => TryGet(key, out string v) ? int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i) ? i : Bad(key, v, "not a whole number", def) : def;
 
+    /// <summary><see cref="Int(string, int)"/> held to <paramref name="lo"/>..<paramref name="hi"/>.</summary>
+    public static int Int(string key, int def, int lo, int hi) => Math.Clamp(Int(key, def), lo, hi);
+
     public static string Str(string key, string def) => TryGet(key, out string v) ? v : def;
 
     public static bool Bool(string key, bool def)
@@ -198,6 +201,9 @@ public static class ServerPolicy
 
     public static float Float(string key, float def)
         => TryGet(key, out string v) ? float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) && float.IsFinite(f) ? f : Bad(key, v, "not a number", def) : def;
+
+    /// <summary><see cref="Float(string, float)"/> held to <paramref name="lo"/>..<paramref name="hi"/>.</summary>
+    public static float Float(string key, float def, float lo, float hi) => Math.Clamp(Float(key, def), lo, hi);
 
     /// <summary>A held property a reader could not use: record why, and give the reader its default.</summary>
     private static T Bad<T>(string key, string value, string reason, T def)

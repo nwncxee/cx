@@ -1,6 +1,7 @@
 using System;
 using CX.Framework;
 using CX.Graphics;
+using NuiModelDoll = CX.Services.Nui.NuiModelDoll;
 
 namespace CX.Alloy;
 
@@ -17,7 +18,7 @@ internal static unsafe class GuiModelSolve
         public uint Prog, Vao;
         public int Bg, Clock;
         public bool Tried, Said;
-        public readonly Pair[] Pairs = new Pair[CX.Services.Nui.NuiModelDoll.MaxViews];
+        public readonly Pair[] Pairs = new Pair[NuiModelDoll.MaxViews];
     }
 
     /// <summary>The two scratch textures for one view size, and when they were last asked for.</summary>
@@ -27,7 +28,7 @@ internal static unsafe class GuiModelSolve
 
     /// <summary>Does the run of layers drawing into one model texture, starting at <paramref name="first"/>, need the two-pass solve?
     /// <paramref name="end"/> is the layer after the run (or <paramref name="to"/>).</summary>
-    internal static bool Wanted(int first, int to, CX.Services.Nui.NuiModelDoll.ModelSlot? slot, out int end)
+    internal static bool Wanted(int first, int to, NuiModelDoll.ModelSlot? slot, out int end)
     {
         uint target = GuiCapture.Layers[first].Target;
         end = first;
@@ -41,8 +42,14 @@ internal static unsafe class GuiModelSolve
         }
         if (slot == null) return false;
         float* c = stackalloc float[4];
-        CX.Services.Nui.NuiModelDoll.Background(slot, c);
+        BackgroundOf(slot, c);
         return additive && c[3] < 1f && Ready();
+    }
+
+    /// <summary>Writes the slot's background colour into <paramref name="c"/> (4 floats), or leaves it as it was for no slot.</summary>
+    private static void BackgroundOf(NuiModelDoll.ModelSlot? slot, float* c)
+    {
+        if (slot != null) NuiModelDoll.Background(slot, c);
     }
 
     /// <summary>Does a draw add its light to what is under it, the way an effect's fire ring does?</summary>
@@ -92,12 +99,12 @@ internal static unsafe class GuiModelSolve
 
     /// <summary>Writes the solved image, over the server's background, into the framebuffer bound now. GL state the layer loop
     /// caches is the caller's to put back.</summary>
-    internal static void Resolve(int w, int h, CX.Services.Nui.NuiModelDoll.ModelSlot? slot, ExtenderLog? log)
+    internal static void Resolve(int w, int h, NuiModelDoll.ModelSlot? slot, ExtenderLog? log)
     {
         SolveState s = _s;
         if (!s.Said) { s.Said = true; log?.Always($"GuiModelSolve: a model view with additive draws is solved over black and white ({w}x{h})"); }
         float* c = stackalloc float[4];
-        if (slot != null) CX.Services.Nui.NuiModelDoll.Background(slot, c);
+        BackgroundOf(slot, c);
         Gl.Disable(Gl.SCISSOR_TEST);
         Gl.Disable(Gl.DEPTH_TEST);
         Gl.Disable(Gl.BLEND);

@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Threading;
 using CX.Framework;
 using CX.Ui;
 using CX.Services.Panels;
@@ -28,7 +26,7 @@ internal sealed class CardSet
 /// <summary>The limits on the keys a client holds.</summary>
 internal static class CardLimits
 {
-    public const int MaxKeyBytes = 96, MaxKeys = 256;
+    public const int MaxKeyBytes = PolicyIndex<CardSet>.MaxKeyBytes, MaxKeys = PolicyIndex<CardSet>.MaxKeys;
 }
 
 /// <summary>
@@ -45,19 +43,17 @@ internal static class CardRegistry
 
     private sealed class RegistryState
     {
-        public volatile Dictionary<string, CardSet> Map = new(StringComparer.OrdinalIgnoreCase);
-        public volatile PrefixTable<CardSet> Prefixes = PrefixTable<CardSet>.Empty;
         public volatile PanelStyle Style = new();
         public string StyleRaw = "";
-        public int Gen;
         public ExtenderLog? Log;
     }
 
     private static RegistryState _s = new();
+    private static readonly PolicyIndex<CardSet> Index = new();
 
     /// <summary>Bumps whenever a key is set, replaced or released; a reader that cached a lookup compares it.</summary>
-    public static int Gen => Volatile.Read(ref _s.Gen);
-    public static int Count => _s.Map.Count;
+    public static int Gen => Index.Gen;
+    public static int Count => Index.Count;
 
     /// <summary>Hooks the registry into <see cref="ServerPolicy"/> and keeps the log for refusals.</summary>
     public static void Init(ExtenderLog log)
@@ -94,80 +90,58 @@ internal static class CardRegistry
     /// <summary>Parses every held card line again against the current style.</summary>
     private static void Restyle()
     {
-        var next = new Dictionary<string, CardSet>(StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in _s.Map)
+        Index.Rebuild(old =>
         {
-            if (!PanelParser.TryParse(kv.Value.Raw, out PanelDecl[] cards, out _, _s.Style)) continue;
+            if (!PanelParser.TryParse(old.Raw, out PanelDecl[] cards, out _, _s.Style)) return null;
             foreach (float m in SizesUsed(cards)) PanelFonts.Want(m);
-            next[kv.Key] = new CardSet(kv.Key, cards, kv.Value.Raw);
-        }
-        Publish(next);
+            return new CardSet(old.Key, cards, old.Raw);
+        });
     }
 
     /// <summary>One <c>card.&lt;key&gt;</c> line: <paramref name="key"/> is what follows the prefix. An empty value releases it. False when refused.</summary>
     public static bool Set(string key, string value)
     {
         key = key.Trim();
-        if (key.Length == 0 || Encoding.UTF8.GetByteCount(key) > CardLimits.MaxKeyBytes)
+        if (!PolicyIndex<CardSet>.KeyOk(key))
         {
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, $"the key must be 1-{CardLimits.MaxKeyBytes} bytes");
             _s.Log?.Info($"Cards: refusing a key of {key.Length} characters (1-{CardLimits.MaxKeyBytes} bytes allowed)");
             return false;
         }
-        if (value.Length == 0) { Swap(key, null); return true; }
+        if (value.Length == 0) { Index.Put(key, null); return true; }
         if (!PanelParser.TryParse(value, out PanelDecl[] cards, out string why, _s.Style))
         {
-            Swap(key, null);
+            Index.Put(key, null);
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, why);
             _s.Log?.Info($"Cards: refused '{key}': {why}; it keeps no card");
             return false;
         }
-        if (_s.Map.Count >= CardLimits.MaxKeys && !_s.Map.ContainsKey(key))
+        if (Index.IsFull(key))
         {
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, $"{CardLimits.MaxKeys} card keys are held already");
             _s.Log?.Info($"Cards: refused '{key}': {CardLimits.MaxKeys} keys held already");
             return false;
         }
         foreach (float m in SizesUsed(cards)) PanelFonts.Want(m);
-        Swap(key, new CardSet(key, cards, value));
+        Index.Put(key, new CardSet(key, cards, value));
         return true;
     }
 
     /// <summary>Drops every key whose full policy key (<c>card.&lt;key&gt;</c>) starts with <paramref name="prefix"/>; an empty prefix drops all.</summary>
-    public static void Release(string prefix)
-    {
-        var next = new Dictionary<string, CardSet>(_s.Map, StringComparer.OrdinalIgnoreCase);
-        foreach (string k in new List<string>(next.Keys))
-            if ((Prefix + k).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) next.Remove(k);
-        Publish(next);
-    }
-
-    private static void Publish(Dictionary<string, CardSet> next)
-    {
-        _s.Prefixes = PrefixTable<CardSet>.Build(next);
-        _s.Map = next;
-        Interlocked.Increment(ref _s.Gen);
-    }
-
-    private static void Swap(string key, CardSet? set)
-    {
-        var next = new Dictionary<string, CardSet>(_s.Map, StringComparer.OrdinalIgnoreCase);
-        if (set == null) next.Remove(key); else next[key] = set;
-        Publish(next);
-    }
+    public static void Release(string prefix) => Index.Release(Prefix, prefix);
 
     /// <summary>The cards held under <paramref name="key"/>, or null. Allocation-free.</summary>
     public static CardSet? Find(ReadOnlySpan<char> key)
-        => _s.Map.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(key, out CardSet? set) ? set : null;
+        => Index.Find(key);
 
     /// <summary>The cards of the longest declared <c>prefix*</c> key that starts <paramref name="id"/>, or null. Allocation-free.</summary>
-    public static CardSet? FindPrefix(ReadOnlySpan<char> id) => _s.Prefixes.Find(id);
+    public static CardSet? FindPrefix(ReadOnlySpan<char> id) => Index.FindPrefix(id);
 
     /// <summary>Every card set held now. Cold: it walks the index.</summary>
-    internal static IEnumerable<CardSet> Sets() => _s.Map.Values;
+    internal static IEnumerable<CardSet> Sets() => Index.Values;
 
     /// <summary>Forgets everything and the log. For the self-check only.</summary>
-    internal static void Reset() => _s = new();
+    internal static void Reset() { _s = new(); Index.Reset(); }
 
     /// <summary>Every distinct non-1 text size the cards use, so their faces are baked when the declaration arrives and never while one is drawn.</summary>
     internal static IEnumerable<float> SizesUsed(PanelDecl[] cards)

@@ -91,7 +91,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         if (pick != null)
         {
             s.PickReq = null;
-            int confirm = Math.Clamp(ServerPolicy.Int(ConfirmKey, ConfirmDefaultMs), ConfirmMinMs, ConfirmMaxMs);
+            int confirm = ServerPolicy.Int(ConfirmKey, ConfirmDefaultMs, ConfirmMinMs, ConfirmMaxMs);
             if (on && s.Model.Pick(pick, now, confirm, ServerPolicy.Stamp(Key), activity.Drawn)) Changed(s);
         }
         s.Cursor = s.Model.Active;
@@ -108,7 +108,7 @@ public sealed unsafe class HeldImageService : IExtenderService
                 TextRig.DrawIcon(s.Model.Name, mx - px / 2, my - px / 2, px, px, alpha);
                 break;
             case HeldKind.Item:
-                DrawItem(RadialIcons.Item((IntPtr)(s.Model.Oid | NuiItemIcons.ServerIdBit)), mx, my, px, alpha);
+                DrawItem(RadialIcons.Item((IntPtr)(s.Model.Oid | ImageNames.ServerIdBit)), mx, my, px, alpha);
                 break;
             case HeldKind.Look:
                 DrawItem(s.Minted, mx, my, px, alpha);
@@ -153,14 +153,14 @@ public sealed unsafe class HeldImageService : IExtenderService
     internal static void ReadLook(HeldState s, int epoch)
     {
         s.LookEpoch = epoch;
-        s.SizePx = Math.Clamp(ServerPolicy.Int(SizeKey, (int)DefaultSizePx), MinSizePx, MaxSizePx);
+        s.SizePx = ServerPolicy.Int(SizeKey, (int)DefaultSizePx, MinSizePx, MaxSizePx);
         string cursor = ServerPolicy.Str(CursorKey, "");
         s.CursorId = cursor == "none" ? -1 : int.TryParse(cursor, out int id) && id >= 0 ? id : DefaultCursorId;
-        s.Opacity = Math.Clamp(ServerPolicy.Float(OpacityKey, DefaultOpacity), 0f, 1f);
-        s.PickOpacity = Math.Clamp(ServerPolicy.Float(PickOpacityKey, DefaultPickOpacity), 0f, 1f);
-        s.Dx = Math.Clamp(ServerPolicy.Float(DxKey, 0f), -MaxOffsetPx, MaxOffsetPx);
-        s.Dy = Math.Clamp(ServerPolicy.Float(DyKey, 0f), -MaxOffsetPx, MaxOffsetPx);
-        s.Model.GraceMs = Math.Clamp(ServerPolicy.Int(GraceKey, HeldImageModel.DefaultGraceMs), 0, MaxGraceMs);
+        s.Opacity = ServerPolicy.Float(OpacityKey, DefaultOpacity, 0f, 1f);
+        s.PickOpacity = ServerPolicy.Float(PickOpacityKey, DefaultPickOpacity, 0f, 1f);
+        s.Dx = ServerPolicy.Float(DxKey, 0f, -MaxOffsetPx, MaxOffsetPx);
+        s.Dy = ServerPolicy.Float(DyKey, 0f, -MaxOffsetPx, MaxOffsetPx);
+        s.Model.GraceMs = ServerPolicy.Int(GraceKey, HeldImageModel.DefaultGraceMs, 0, MaxGraceMs);
     }
 
     private static void Notice(HeldState s, string text)
@@ -186,8 +186,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         IntPtr icon = new CNWCItem(item).GuiIcon;
         if (icon == IntPtr.Zero) return;
         NuiItemIcons.Cells(item, out int cw, out int ch);
-        IconFrames.Frame f = IconFrames.Of(icon);
-        float w = f.Known ? px * f.Cw / IconFrames.CellPx : px * cw, h = f.Known ? px * f.Ch / IconFrames.CellPx : px * ch;
+        IconFrames.Size(icon, px, cw, ch, out float w, out float h);
         RadialIcons.DrawGuiIcon(icon, mx - w / 2, my - h / 2, w, h, alpha, cw, ch);
     }
 

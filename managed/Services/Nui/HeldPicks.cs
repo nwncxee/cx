@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Text;
 using CX.Framework;
 
 namespace CX.Services.Nui;
@@ -13,17 +11,10 @@ internal static class HeldPicks
 {
     /// <summary>The <see cref="ServerPolicy"/> prefix every pick key carries.</summary>
     public const string Prefix = "held.pick.";
-    private const int MaxKeys = 256, MaxKeyBytes = 96;
 
-    private sealed class PickState
-    {
-        public volatile Dictionary<string, string> Map = new(StringComparer.OrdinalIgnoreCase);
-        public volatile PrefixTable<string> Prefixes = PrefixTable<string>.Empty;
-    }
+    private static readonly PolicyIndex<string> Index = new();
 
-    private static PickState _s = new();
-
-    public static int Count => _s.Map.Count;
+    public static int Count => Index.Count;
 
     /// <summary>Hooks the picks into <see cref="ServerPolicy"/>.</summary>
     public static void Init() => ServerPolicy.Handle(Prefix, Set, Release, static () => $"held picks: {Count} key(s)");
@@ -32,43 +23,27 @@ internal static class HeldPicks
     public static bool Set(string key, string value)
     {
         key = key.Trim();
-        if (key.Length == 0 || Encoding.UTF8.GetByteCount(key) > MaxKeyBytes)
+        if (!PolicyIndex<string>.KeyOk(key))
         {
-            PolicyRefusals.Add(RefusalKind.Held, Prefix + key, value, $"the key must be 1-{MaxKeyBytes} bytes");
+            PolicyRefusals.Add(RefusalKind.Held, Prefix + key, value, $"the key must be 1-{PolicyIndex<string>.MaxKeyBytes} bytes");
             return false;
         }
-        var next = new Dictionary<string, string>(_s.Map, StringComparer.OrdinalIgnoreCase);
-        if (value.Length == 0) next.Remove(key);
-        else if (next.Count >= MaxKeys && !next.ContainsKey(key))
+        if (value.Length != 0 && Index.IsFull(key))
         {
-            PolicyRefusals.Add(RefusalKind.Held, Prefix + key, value, $"{MaxKeys} pick keys are held already");
+            PolicyRefusals.Add(RefusalKind.Held, Prefix + key, value, $"{PolicyIndex<string>.MaxKeys} pick keys are held already");
             return false;
         }
-        else next[key] = value;
-        Publish(next);
+        Index.Put(key, value.Length == 0 ? null : value);
         return true;
     }
 
     /// <summary>Drops every key whose full policy key starts with <paramref name="prefix"/>.</summary>
-    public static void Release(string prefix)
-    {
-        var next = new Dictionary<string, string>(_s.Map, StringComparer.OrdinalIgnoreCase);
-        foreach (string k in new List<string>(next.Keys))
-            if ((Prefix + k).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) next.Remove(k);
-        Publish(next);
-    }
-
-    private static void Publish(Dictionary<string, string> next)
-    {
-        _s.Prefixes = PrefixTable<string>.Build(next);
-        _s.Map = next;
-    }
+    public static void Release(string prefix) => Index.Release(Prefix, prefix);
 
     /// <summary>The image a press on the element with id <paramref name="id"/> picks up: its own key, else the longest declared prefix. Allocation-free.</summary>
     public static string? Find(ReadOnlySpan<char> id)
-        => id.Length == 0 ? null
-            : _s.Map.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(id, out string? image) ? image : _s.Prefixes.Find(id);
+        => id.Length == 0 ? null : Index.Find(id) ?? Index.FindPrefix(id);
 
     /// <summary>Forgets everything. For the self-check only.</summary>
-    internal static void Reset() => _s = new();
+    internal static void Reset() => Index.Reset();
 }

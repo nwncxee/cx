@@ -155,12 +155,6 @@ for the transition) and the walkable ground the coordinates are taken from; the 
 `--seconds` below 60 is raised to 60, because the ladder's last rung is at t+48 and a shorter soak
 would grade rungs the run never reached.
 
-## Window layers
-
-`--cfg 'ui.layerprobe=1'` with `--ladder` draws a red rectangle on the below-NUI layer and a cyan one on the above-NUI
-layer, placed over the rung's NUI window. `07n-nui*.png` shows the order: the red one hides under the NUI window and the
-cyan one sits over it. Run it with and without `--cfg 'alloy.enabled=0'`; both must look the same.
-
 ## Cards
 
 `--nui` opens the fixed NUI window with ids on its elements. `tools/live/ladder/cards.policy` is a file of `card.<key>=`

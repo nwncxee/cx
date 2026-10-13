@@ -70,8 +70,8 @@ internal static unsafe class NuiWindows
     /// <summary>The policy keys of one window. Cold: allocates, runs when a window is first seen and when the policy moves.</summary>
     internal static void Read(Style st, Func<string, string?> get)
     {
-        st.Opacity = Clamp01(Num(get, st.Id, "opacity", 1f));
-        st.Background = Clamp01(Num(get, st.Id, "background", 1f));
+        st.Opacity = Math.Clamp(Num(get, st.Id, "opacity", 1f), 0f, 1f);
+        st.Background = Math.Clamp(Num(get, st.Id, "background", 1f), 0f, 1f);
         st.FadeInMs = Math.Max(0f, Num(get, st.Id, "fadein", 0f));
         st.FadeOutMs = Math.Max(0f, Num(get, st.Id, "fadeout", 0f));
     }
@@ -86,8 +86,6 @@ internal static unsafe class NuiWindows
         PolicyRefusals.Add(RefusalKind.Window, Key(id, prop), s, "not a number");
         return def;
     }
-
-    private static float Clamp01(float f) => f < 0f ? 0f : f > 1f ? 1f : f;
 
     private static string? Lookup(string key)
         => ServerPolicy.TryGet(key, out string v) ? v : _s.Probe.TryGetValue(key, out string? pv) ? pv : null;
@@ -151,7 +149,7 @@ internal static unsafe class NuiWindows
             if (st.FadeInMs > 0f)
             {
                 float t = (now - st.OpenedAt) * 1000f / Stopwatch.Frequency / st.FadeInMs;
-                f *= Clamp01(t);
+                f *= Math.Clamp(t, 0f, 1f);
             }
             if (f >= 1f && st.Background >= 1f) continue;
             int found = ScaleWindow(mem, allocated, w, f, st.Background);

@@ -25,7 +25,7 @@ internal static class NuiModelBounds
 
     /// <summary>The union of <paramref name="def"/>'s meshes that render and hold geometry, in the model's space: each mesh's own box is in its node's space, so its corners
     /// are carried up through the rest-pose position, turn and scale of the node and every node above it. False when there is none, or a box is not finite.</summary>
-    internal static bool MeshBox(ModelDef def, out Vector3 min, out Vector3 max, int[]? kinds = null)
+    internal static bool MeshBox(ModelDef def, out Vector3 min, out Vector3 max)
     {
         min = new Vector3(float.MaxValue);
         max = new Vector3(float.MinValue);
@@ -48,11 +48,9 @@ internal static class NuiModelBounds
             MeshDef? m = n.Mesh;
             if (m == null || !m.Render || m.Positions.Length == 0) continue;
             if (!Finite(m.BMin) || !Finite(m.BMax) || m.BMax.X < m.BMin.X || m.BMax.Y < m.BMin.Y || m.BMax.Z < m.BMin.Z) continue;
-            if (kinds != null && (int)n.Kind < kinds.Length) kinds[(int)n.Kind]++;
             for (int c = 0; c < 8; c++)
             {
-                var corner = new Vector3((c & 1) == 0 ? m.BMin.X : m.BMax.X, (c & 2) == 0 ? m.BMin.Y : m.BMax.Y, (c & 4) == 0 ? m.BMin.Z : m.BMax.Z);
-                Vector3 w = at[i] + Vector3.Transform(corner * scale[i], turn[i]);
+                Vector3 w = at[i] + Vector3.Transform(NuiModelFrame.Corner(m.BMin, m.BMax, c) * scale[i], turn[i]);
                 min = Vector3.Min(min, w);
                 max = Vector3.Max(max, w);
             }
@@ -76,9 +74,8 @@ internal static class NuiModelBounds
         Box? box = null;
         object? token = CX.Alloy.ModelFeed.Locate(resref, out _);
         ModelDef? def = token == null ? null : CX.Alloy.ModelFeed.ParseToken(token, out _);
-        var kinds = new int[16];
-        if (def != null && MeshBox(def, out Vector3 lo, out Vector3 hi, kinds)) box = new Box(lo, hi);
-        if (def != null) _state.Log?.Info($"NuiModelBounds: '{resref}' {def.Nodes.Length} nodes, meshes by kind trimesh {kinds[(int)NodeKind.TriMesh]} skin {kinds[(int)NodeKind.Skin]} dangly {kinds[(int)NodeKind.Dangly]} animmesh {kinds[(int)NodeKind.AnimMesh]}, box {(box is { } bb ? $"{bb.Min} {bb.Max}" : "none")}");
+        if (def != null && MeshBox(def, out Vector3 lo, out Vector3 hi)) box = new Box(lo, hi);
+        if (def != null) _state.Log?.Info($"NuiModelBounds: '{resref}' {def.Nodes.Length} nodes, box {(box is { } bb ? $"{bb.Min} {bb.Max}" : "none")}");
         if (_cache.Count < MaxCached) _cache[resref] = box;
         if (box is not { } r) return false;
         min = r.Min; max = r.Max;

@@ -68,14 +68,12 @@ internal static class SeamDraw
         finally { FrameZones.Add(FrameZones.Zone.Seam, t, FrameZones.TopLevelTicks() - top0); }
     }
 
+    /// <summary>One frame boundary. Re-asserts <c>DbFeed.Draw</c> (the feed's self-check clears it), starts the render thread once a
+    /// context exists, then in live mode draws the 2D UI over the finished world frame (frame N-1's) before the publish wakes the
+    /// renderer. Without live mode the UI draws after every view, split around NUI's flush.</summary>
     private static void Boundary()
     {
         _frames++;
-        // Re-assert the draw delegate. DbFeed's own self-check sets `Draw = null` on purpose and does not put
-        // it back (DbFeed.SelfCheck.cs:56), so whether a real session has a draw at all depends on whether
-        // that fixture happens to run before this Install or after it. Today it runs before; nothing enforces
-        // that. One reference compare a frame removes the ordering dependency, and the restore is LOUD -- a
-        // delegate that went missing is a fact about the boot order, not something to paper over quietly.
         if (!ReferenceEquals(DbFeed.Draw, _perView))
         {
             DbFeed.Draw = _perView;
@@ -87,34 +85,20 @@ internal static class SeamDraw
                            + "this frame, but the boot order is deciding whether the frame draws at all.");
             }
         }
-        // The 4.6 context does not exist until GlContextService's first frame, so the render thread cannot be
-        // started at Install: it would find Available false and stand down permanently. Started here, at the
-        // first DB frame that has a context to take.
+        // Not at Install: the 4.6 context does not exist yet, and a render thread started without one stands down for good.
         RenderThread.StartWhenReady(_log);
-        // A stand-down raised on the render thread is not finished until that thread has dropped the context.
         // Blocking here is the handshake: the game thread must not take the context back early.
         RenderThread.SettleIfStandingDown();
-        // Latched ONCE, at the top: Live decides where the 2D UI goes relative to the publish, and a value
-        // that changed mid-boundary would draw it twice or not at all.
+        // Latched once: a Live that changed mid-boundary would draw the UI twice or not at all.
         bool live = RenderThread.Live;
         if (live)
         {
-            // THE FENCE, and then the game thread's exclusive half of the frame. Past this point the render
-            // thread is parked in RenderSnapshot.Take with nothing to draw, so framebuffer 0, the engine's GL
-            // state and the engine's own context are this thread's -- which is what every PrePresent
-            // participant after this one (GlContextService 10, LightmapBake.Hold 20, FrameTap 30,
-            // DebugStringService 60), UiHostService's hand-back and ScreenOwner's present already assume.
+            // Past this fence the render thread is parked: the context and framebuffer 0 are this thread's.
             RenderSnapshot.AwaitDrained();
-            // ...and the 2D UI goes HERE, over the world frame the renderer just finished. It cannot go after
-            // the publish below, because the publish is what wakes the renderer: chat drawn there would land
-            // in framebuffer 0 while the next world frame was being resolved into it.
-            // The world it sits on is frame N-1's, not N's -- that IS the pipeline, and it is the same one
-            // frame of latency the snapshot protocol is built around. The alternative is no second thread.
-            // Both UI layers here: the render thread already flushed NUI, so this arm cannot split them around it.
+            // Before the publish: the publish wakes the renderer, which would resolve the next world frame into framebuffer 0 under the UI.
             CX.Ui.UiHostService.DrawWindowsForDbFrame();
         }
-        // The GUI depth latch is per RUN of GUI views, not per view, exactly as the engine's own
-        // DAT_019aa3a4 is -- so it resets once a frame, here, and not inside the per-view draw.
+        // Once a frame, as the engine's own latch is: it is per run of GUI views, not per view.
         DbGui.NewFrame();
         DbCamera.NewFrame();   // latch every camera's previous position, once, as the engine does
         long tPub = FrameZones.Now, fold0 = FrameZones.Ticks(FrameZones.Zone.DbFold);
@@ -122,17 +106,11 @@ internal static class SeamDraw
         FrameZones.Add(FrameZones.Zone.Publish, tPub, FrameZones.Ticks(FrameZones.Zone.DbFold) - fold0);
         DbFeed.CloseViews();
         if (live) return;                                    // the render thread draws it and releases it
-        // try/finally, not optimism: Publish waits while a frame is still held, so a throw that skipped the
-        // Release would block the GAME thread forever on the next present -- a frozen client, which leaves no
-        // core and is the hardest failure in this codebase to diagnose (nativeaot-hang-forensics).
+        // try/finally: Publish waits on a held frame, so a throw that skipped Release would freeze the game thread on the next present.
         int nui = 0;
         try { nui = DrawViews(f); }
         finally
         {
-            // CX's 2D UI goes after every view, split around NUI's flush; before the world it would draw under it.
-            // The same rule, the other side of the publish -- see the `live` arm above. The ONE
-            // invariant both arms keep is "the 2D UI is drawn after the world frame it composites over"; what
-            // the knob changes is which frame that is, because a pipelined draw is not finished yet.
             try { DrawGuiLayers(nui); }
             finally { RenderSnapshot.Release(); }
         }

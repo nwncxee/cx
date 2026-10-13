@@ -16,9 +16,6 @@ namespace CX.Services.Cards;
 /// </summary>
 public sealed class CardService : IExtenderService
 {
-    /// <summary><c>CGameObjectArray::LISTTYPE_MASK</c>: the server's object id with this ORed in is the client's.</summary>
-    private const uint ServerIdBit = 0x80000000;  // not-an-offset: object id bit
-
     private sealed class CardServiceState
     {
         public readonly CardPresenter Presenter = new();
@@ -81,7 +78,7 @@ public sealed class CardService : IExtenderService
     /// <summary>The name and stack size the client knows for an item, by the server's object id.</summary>
     private static PanelSubject Subject(uint serverId)
     {
-        uint id = serverId | ServerIdBit;
+        uint id = serverId | ImageNames.ServerIdBit;
         IntPtr item = RadialIcons.Item((IntPtr)id);
         if (item == IntPtr.Zero) return default;
         int stack = new CNWCItem(item).StackSize;
@@ -120,7 +117,7 @@ public sealed class CardService : IExtenderService
             IconDraw ic = v.Icons[i];
             if (ic.Look != null) CardLooks.Draw(ic.Look, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else if (ic.Model != null) DrawModel(ic.Model, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
-            else if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
+            else if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ImageNames.ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else DrawResref(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);

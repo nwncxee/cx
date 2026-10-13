@@ -30,7 +30,8 @@ internal static class HexColour
         for (int i = 0; i < 4; i++) into[i] = (rgba >> (24 - 8 * i) & 0xFF) / 255f;
     }
 
-    private static int Digit(char c) => c switch
+    /// <summary>The value of the hex digit <paramref name="c"/>, either case, or -1.</summary>
+    internal static int Digit(char c) => c switch
     {
         >= '0' and <= '9' => c - '0',
         >= 'a' and <= 'f' => c - 'a' + 10,

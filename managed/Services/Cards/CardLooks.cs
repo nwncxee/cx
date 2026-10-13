@@ -82,7 +82,7 @@ internal static class CardLooks
 
     private static void Add(string src, HashSet<string> into)
     {
-        if (PanelLayout.IsLook(src)) into.Add(src);
+        if (src.StartsWith(ImageNames.Look, StringComparison.Ordinal)) into.Add(src);
     }
 
     /// <summary>The item's icon into the rectangle, cropped to its base item's cells as the held image's is. Nothing when the look made none.</summary>
