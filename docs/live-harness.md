@@ -16,6 +16,20 @@ Options: `--module NAME` `--seconds N` `--cfg 'key=value'` (repeatable) `--out D
 Exit code 0 is PASS, 1 is FAIL, 2 is a setup problem (no build staged, no client, a client already
 running). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
 
+## NixOS outside the Steam runtime
+
+NixOS runs the client through nix-ld. The harness needs two things a NixOS host may not have:
+
+- `gamescope` from the host's own nixpkgs, not the flake's pin. Its Vulkan driver must match the host's
+  glibc, or gamescope stops with "vulkan: failed to find physical device".
+- `libGL.so.1` on the nix-ld library path, from libglvnd.
+
+```sh
+export PATH="$(nix build --no-link --print-out-paths nixpkgs#gamescope)/bin:$PATH"
+export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#libglvnd)/lib:/run/opengl-driver/lib:$NIX_LD_LIBRARY_PATH"
+tools/live/run-live.sh --nui
+```
+
 ## How it works
 
 **Nothing reaches the desktop.** The client runs inside `gamescope --backend headless`, which starts
