@@ -808,6 +808,7 @@ public static unsafe class Gl
         // SceneInputs null-checks GenFramebuffers/FramebufferTexture2D itself before using the FBO path.
         _ready = CreateProgram != null && GenVertexArrays != null && BufferData != null && DrawArrays != null;
         if (!_ready) { log.Info("Gl: a required GL 3.x proc was missing"); _failed = true; }
+        else BindlessLedger.Install(log);
         return _ready;
     }
 

@@ -69,6 +69,7 @@ public static class ServiceHost
         CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
         ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
+        CX.Graphics.BindlessLedger.SelfCheck(log);   // each AMD-strict bindless rule fires on its breach, not on the legal sequence
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
         EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires

@@ -597,6 +597,9 @@ else
 fi
 [ "$hang" = 0 ]        || fails+=("HANG: cx.log stopped growing for 60s with the process alive [threads: $thread_states]")
 [ "$crashes" = 0 ]     || fails+=("CRASH: $crashes crash report(s) in $CRASH_DIR")
+# a bindless breach is a crash on AMD's driver even where this GPU let it pass
+ledger=$(grep -m1 'BindlessLedger: VIOLATION' "$OUT/cx.log" 2>/dev/null)
+[ -z "$ledger" ]       || fails+=("BINDLESS: ${ledger#*BindlessLedger: }")
 [ "$shots" -ge 1 ]     || fails+=("no screenshot captured")
 # A black world still presents frames (2026-10-01: a fog-lane polarity bug blacked out every lit pixel and PASSed):
 # the settled shot's centre must be lit. --min-lit 0 turns it off for a scene that is legitimately dark.

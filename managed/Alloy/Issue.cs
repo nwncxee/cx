@@ -153,6 +153,7 @@ internal static unsafe class Issue
             }
         fixed (ulong* p = _gpuTexH)
         {
+            BindlessLedger.CheckTable(p, n, "the record handle table");
             if (whole)
                 Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)(n * sizeof(ulong)), p);
             else

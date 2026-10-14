@@ -517,8 +517,12 @@ internal static unsafe partial class TexRegistry
         // FIRST, ahead of the deletes: a record still holding a dead handle must stop before anything this
         // bracket does can be followed by a draw. The colour frame enters this bracket before it binds a
         // target, so this is the frame's earliest point at which the renderer's tables may be touched.
+        // Only names queued BEFORE the handle drain: a name's handle is queued ahead of it, so each of these
+        // has gone non-resident before its delete.
+        int graves;
+        lock (_lock) graves = _graveyard.Count;
         ZeroDyingHandles();
-        while (true)
+        for (; graves > 0; graves--)
         {
             uint dead;
             lock (_lock) { if (_graveyard.Count == 0) break; dead = _graveyard.Dequeue(); }
@@ -800,7 +804,7 @@ internal static unsafe partial class TexRegistry
     /// <summary>A preview arrived: the slot draws it -- name, handle and the preview's coverage verdict, so a cutout
     /// leaf is cut out from the first frame -- while it stays <see cref="TexState.Loading"/>, and every part that
     /// was waiting is marked. They register again while it loads, so the full chain's <see cref="Land"/> reaches
-    /// them too. Game thread, GL-free apart from the handle a released slot gives back.</summary>
+    /// them too. Game thread, GL-free.</summary>
     internal static void LandPreview(TexId id, uint name, ulong handle, TexCoverage cov)
     {
         lock (_lock)
@@ -820,12 +824,11 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    /// <summary>A minted handle no slot keeps: non-resident now, and zeroed out of the records at the next bracket.
-    /// Caller holds <see cref="_lock"/>.</summary>
+    /// <summary>A minted handle no slot keeps: queued for the bracket, which makes it non-resident and zeroes it
+    /// out of the records. Caller holds <see cref="_lock"/>.</summary>
     private static void DropValue(ulong handle)
     {
         if (handle == 0) return;
-        if (Gl.MakeTextureHandleNonResidentARB != null) Gl.MakeTextureHandleNonResidentARB(handle);
         _dyingHandles.Enqueue(handle);
     }
 
@@ -905,14 +908,12 @@ internal static unsafe partial class TexRegistry
         return v;
     }
 
-    /// <summary>Release a slot's handle. Caller holds <see cref="_lock"/>; the non-residency call is legal
-    /// from any thread that has the context, and a handle whose context is gone is simply forgotten. The
-    /// dying value is queued for <see cref="ZeroDyingHandles"/> because the renderer's DB records hold COPIES
-    /// of it, and this is the one funnel every drop goes through.</summary>
+    /// <summary>Release a slot's handle. Caller holds <see cref="_lock"/>, on any thread: no GL here, because
+    /// residency is per context and the game thread has the ENGINE's current. The value is queued for
+    /// <see cref="ZeroDyingHandles"/>, which makes it non-resident in Alloy's context and zeroes the records' copies.</summary>
     private static void DropHandle(int i)
     {
         if (_handle[i] == 0) return;
-        if (Gl.MakeTextureHandleNonResidentARB != null) Gl.MakeTextureHandleNonResidentARB(_handle[i]);
         _dyingHandles.Enqueue(_handle[i]);
         _handle[i] = 0;
         TableSerial++;
