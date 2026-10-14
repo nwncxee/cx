@@ -324,6 +324,7 @@ public sealed unsafe partial class CasterPass
         // lightmap.moverlights strongest, and Commit turns the survivors into pair tiles grouped by slot.
         // Off unless the deferred pass is live, and then a paired light publishes no pool page below.
         PairShadows.Begin(_frameSeq);
+        PairShadows.View(cull, camPos, camFwd, FrameInputs.CamFovy, FrameInputs.CamAspect, FrameInputs.CamNear, camFar);
         if (PairShadows.On && split)
         {
             for (int rank = 0; rank < have; rank++)

@@ -111,6 +111,42 @@ internal static unsafe class PairShadows
     /// <summary>Diagnostic: <c>/shadow movers</c> also logs the next frame's pair plan.</summary>
     internal sealed class PlanDumpState { public bool Next; }
     internal static readonly PlanDumpState Dump = new();
+
+    /// <summary>This frame's camera, for the shadow-in-view test; <c>Cull</c> false keeps every pair.</summary>
+    internal sealed class PairViewState
+    {
+        public bool Cull;
+        public Vector3 Pos, LookAt;
+        public float Fovy, Aspect, Near, Far;
+        public long Culled;
+    }
+    private static readonly PairViewState _view = new();
+
+    /// <summary>Once per cube scan, after <see cref="Begin"/>: the camera the pairs' shadows are tested against,
+    /// with the same inputs the cube scan's light cull takes.</summary>
+    internal static void View(bool cull, Vector3 camPos, Vector3 camFwd, float fovy, float aspect, float near, float far)
+    {
+        _view.Cull = cull;
+        _view.Pos = camPos; _view.LookAt = camPos + camFwd;
+        _view.Fovy = fovy; _view.Aspect = aspect; _view.Near = near; _view.Far = far;
+    }
+
+    /// <summary>Can any pixel in the camera frustum lie in the shadow this mover casts from this light? The shadow
+    /// is inside the cone from the light tangent to the mover sphere, between the sphere's near side and the
+    /// light's reach; the test is that cone's bounding sphere, so it never culls a visible shadow.</summary>
+    internal static bool ShadowInView(Vector3 light, float reach, Vector3 mover, float r,
+                                      Vector3 camPos, Vector3 lookAt, float fovy, float aspect, float near, float far)
+    {
+        Vector3 d = mover - light;
+        float dist = d.Length(), side2 = dist * dist - r * r;
+        if (side2 < 1e-4f) return true;
+        float a = MathF.Max(dist - r, 0f), b = MathF.Max(reach, dist + r);
+        float rb = b * r / MathF.Sqrt(side2);
+        Vector3 c = light + d * ((a + b) * 0.5f / dist);
+        float half = (b - a) * 0.5f;
+        float rad = (MathF.Sqrt(half * half + rb * rb) + PadMetres) * ShadowMath.FrustumCullSlack;
+        return ShadowMath.SphereInCameraFrustum(c, rad, camPos, lookAt, fovy, aspect, near, far);
+    }
     internal static void Note(string s) => _log?.Always("PairPlan:" + s);
 
     internal static void Forget()
@@ -127,8 +163,9 @@ internal static unsafe class PairShadows
     internal static string Stats(int frames)
     {
         long p = _pairs, s = _slots, rf = _refused, o = _overflow, f = _frames, mr = _moversRanked, cr = _crowded;
-        long hl = _held, lt = _late;
+        long hl = _held, lt = _late, oc = _view.Culled;
         _pairs = _slots = _refused = _overflow = _frames = _moversRanked = _crowded = _held = _late = 0;
+        _view.Culled = 0;
         float n = MathF.Max(frames, 1);
         return _atlasFailed ? "pair tiles STOOD DOWN (no atlas)"
              : !On ? $"pair tiles off ({(Lightmap.MoverLights.V <= 0 ? "lightmap.moverlights 0" : "light.deferred off")})"
@@ -136,6 +173,7 @@ internal static unsafe class PairShadows
              : $"pair tiles {p / n:F1}/frame over {s / n:F1} lights at {_tile}px "
              + $"({p * 100f / MathF.Max(f, 1) / _cap:F0}% of {_cap}, {hl / n:F1} HELD (the layer already held "
              + $"that pair), {mr / n:F1} movers ranked, {lt / n:F1} ranked nothing (every light full), "
+             + $"{oc / n:F1} kept pairs whose shadow misses the view (not baked), "
              + $"{o / n:F2} lights past the atlas, {rf / n:F2} movers with a degenerate frame, {cr / n:F2} movers past a light's {MaxPerLight} (no shadow from it))";
     }
 
@@ -150,7 +188,7 @@ internal static unsafe class PairShadows
         // reader takes, and a stale non-zero one would outlive the frame that earned it
         if (Count > 0) _gen++;
         _seq = frameSeq;
-        Count = 0; _nLights = 0; _planFull = 0; _nFullLights = 0;
+        Count = 0; _nLights = 0; _planFull = 0; _nFullLights = 0; _view.Cull = false;
         Array.Clear(_base);
         if (!_booted)
         {
@@ -270,6 +308,10 @@ internal static unsafe class PairShadows
             float w = BudgetWeight(sc[j], cut);
             if (!(w > 0f)) continue;
             int li = pick[j];
+            // after the ranking, so a visible shadow keeps the weight it would have had with every pair kept
+            if (_view.Cull && !ShadowInView(new Vector3(_lPr[li].X, _lPr[li].Y, _lPr[li].Z), _lPr[li].W, new Vector3(cx, cy, cz), r,
+                                            _view.Pos, _view.LookAt, _view.Fovy, _view.Aspect, _view.Near, _view.Far))
+            { _view.Culled++; continue; }
             // A full list drops the newest, counted: keeping the page instead would shadow none of them on baked
             // ground, which the deferred frame reads from the tiles alone (cx_pairdebt).
             if (_lN[li] >= MaxPerLight) { _planFull++; continue; }
@@ -464,8 +506,8 @@ internal static unsafe class PairShadows
     }
 
     /// <summary>Off-device: the pair frustum frames its mover and stops at the light's reach, the per-mover
-    /// budget keeps the strongest lights, the table's grouping holds, and the GLSL contract matches these
-    /// constants.</summary>
+    /// budget keeps the strongest lights, the table's grouping holds, the GLSL contract matches these
+    /// constants, and the shadow-in-view test agrees with hand-worked cones.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -535,6 +577,17 @@ internal static unsafe class PairShadows
         // the per-mover budget itself, on a made-up frame: three lights of falling luma round one mover, and
         // the two strongest are the ones kept. Driven through the real Add/Commit path with no GL in it.
         check.Expect(BudgetCheck(out string why), why);
+        // hand-worked: lamp at the origin, reach 10, a 1 m mover at x=5 -- its shadow runs x=4..10 along +X
+        var lamp = Vector3.Zero; var body = new Vector3(5f, 0f, 0f);
+        check.Expect(ShadowInView(lamp, 10f, body, 1f, new Vector3(5f, -10f, 0f), new Vector3(5f, -9f, 0f), 45f, 1f, 0.1f, 100f),
+                     "a camera looking at the mover sees its shadow");
+        check.Expect(!ShadowInView(lamp, 10f, body, 1f, new Vector3(5f, -10f, 0f), new Vector3(5f, -11f, 0f), 45f, 1f, 0.1f, 100f),
+                     "a camera facing away from the lamp's whole reach does not");
+        // the mover sits 4 m left of a camera at (9,-3) looking +Y (outside a 45deg cone at 3 m), its shadow's far end dead ahead
+        check.Expect(ShadowInView(lamp, 10f, body, 1f, new Vector3(9f, -3f, 0f), new Vector3(9f, -2f, 0f), 45f, 1f, 0.1f, 100f),
+                     "an off-screen mover whose shadow falls on screen is kept");
+        check.Expect(!ShadowInView(lamp, 10f, body, 1f, new Vector3(-20f, 0f, 0f), new Vector3(-21f, 0f, 0f), 45f, 1f, 0.1f, 100f),
+                     "a camera behind the lamp looking away culls it");
         KeyCheck(check);
         log.Info(check.Ok ? "PairShadows.SelfCheck: passed" : "PairShadows.SelfCheck: FAILED");
         return check.Ok;
