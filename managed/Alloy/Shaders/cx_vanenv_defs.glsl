@@ -34,13 +34,6 @@
 // Material texture slot 6. Stock names it by unit; Alloy binds it as the flow map's sampler, and
 // which of the two a material means is its own business -- the slot is the contract, not the name.
 #define texUnit6 uFlowTex
-// Material texture slot 4, the height map, and the engine's per-draw "a texture is bound there" flag --
-// read off the record's slot mask, as texture7Bound..texture10Bound below are.
-#define texUnit4 uHeightTex
-#define texture4Bound ((int(uDraw[vDraw].pbr.w) & CX_SLOT_HEIGHT) != 0 ? 1 : 0)
-// The engine's texture unit 15 sampler (GLRender::ConnectShaderData names it), which Scene::Render binds
-// to the resman texture `solid_noise` for the whole scene. Every Alloy stage that binds it calls it uNoise.
-#define texUnitNoise uNoise
 // CX-223: the engine's own last four material stages. It pins texUnit7..texUnit10 to GL units 7..10 at link
 // and sets texture7Bound..texture10Bound per draw off its own stage-enabled test. Alloy has no unit left --
 // the lit stage spends 0..30 -- so the samplers come out of the palette row's bindless handles and the flags

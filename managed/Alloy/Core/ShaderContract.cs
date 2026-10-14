@@ -88,13 +88,6 @@ internal static class ShaderContract
         "uniform int SHADER_TYPE = 2;\nuniform float fKeep = PI * 2.0;\nvoid main ()\n{\n    FragmentColor.a = float(SHADER_TYPE) * fKeep;\n}\n",
         "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
 
-    /// <summary>The same rewrite over a stage that declares the engine's noise sampler itself, behind its own
-    /// guard: the declaration goes, because the environment maps the name onto the noise the pass binds.</summary>
-    private static string HostSampleNoise => VanillaShader.HostText(
-        "#ifndef TEXUNITNOISE_DEFINED\n#define TEXUNITNOISE_DEFINED\nuniform sampler2D texUnitNoise;\n#endif\n"
-        + "void main ()\n{\n    FragmentColor = texture2D(texUnitNoise, vPosWorld.xy);\n}\n",
-        "x", null, "selfcheck", new System.Collections.Generic.List<string>()) ?? "";
-
     /// <summary>Does this VERTEX stage carry the skinning branch? Same trap as <see cref="CutoutSafe"/>: an
     /// override without it links perfectly (the bone base rides in <c>feat.y</c>, the missing bone attributes
     /// are simply disabled) and renders every skinned robe in its BIND POSE, silently. On a server the HAK
@@ -307,7 +300,6 @@ internal static class ShaderContract
                   && FeatDecl.Contains($"CX_FEAT_NOIRGLOSS {(int)ShaderFeature.NoirGloss}")
                   && FeatDecl.Contains($"CX_FEAT_GROUNDWEATHER {(int)ShaderFeature.GroundWeather}")
                   && FeatDecl.Contains($"CX_FEAT_PALETTETINT {(int)ShaderFeature.PaletteTint}")
-                  && FeatDecl.Contains($"CX_FEAT_SNOWED {(int)ShaderFeature.Snowed}")
                   // #137: the skinning half. The binding point and the two attribute locations live twice
                   // (C# consts, literal GLSL) and neither disagreement is visible -- a wrong binding reads an
                   // empty block and collapses the mesh to the origin, a wrong location reads whatever stream
@@ -344,7 +336,7 @@ internal static class ShaderContract
                   && ShaderFeatures.OutOfPrepass((int)ShaderFeature.WindGrass)
                   && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Flowmap)
                   // ...and the CPU-side exclusions that go with them: no name here, no switch there.
-                  && ShaderFeatures.VsNames.Length == 14
+                  && ShaderFeatures.VsNames.Length == 13
                   // CX-223: the palette tint -- its own pair, the four palette slots it alone reads, the one
                   // hosted coverage source there is, and nothing the wind forks' special cases apply to.
                   && ShaderFeatures.VsNames[(int)ShaderFeature.PaletteTint] == "vs_plt_wind"
@@ -386,14 +378,6 @@ internal static class ShaderContract
                   && ShaderFeatures.ReadsAuxSlot((int)ShaderFeature.Flowmap)
                   && !ShaderFeatures.ReadsAuxSlot((int)ShaderFeature.NoirWet)
                   && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.NoirGloss)
-                  // the snow stage: hosted, its snow on slot 6, and a stock lit vertex stage that moves nothing
-                  && ShaderFeatures.VsNames[(int)ShaderFeature.Snowed] == "vs_snowed01"
-                  && ShaderFeatures.FsNames[(int)ShaderFeature.Snowed] == "fs_snowed01"
-                  && ShaderFeatures.Hosted((int)ShaderFeature.Snowed)
-                  && ShaderFeatures.ReadsAuxSlot((int)ShaderFeature.Snowed)
-                  && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Snowed)
-                  && !ShaderFeatures.NoKeyholing((int)ShaderFeature.Snowed)
-                  && !ShaderFeatures.PosedToo((int)ShaderFeature.Snowed)
                   && ShaderFeatures.Displaces((int)ShaderFeature.WindGrass)
                   && ShaderFeatures.Displaces((int)ShaderFeature.RoofKnM)
                   && !ShaderFeatures.Displaces((int)ShaderFeature.Flowmap)
@@ -797,17 +781,6 @@ internal static class ShaderContract
                   // ...and the PLT scheme feed, which the engine sets per material bind and Alloy cannot.
                   && !HostSamplePlt.Contains("uniform float PLTscheme")
                   && HostSamplePlt.Contains("CxPltScheme(vDraw, int(FragmentColor.g * 255.0 + 0.5))")
-                  // ...and the engine's noise: a stage's own declaration of it goes, its guard stays scoped
-                  && !HostSampleNoise.Contains("uniform sampler2D texUnitNoise")
-                  && HostSampleNoise.Contains("#undef TEXUNITNOISE_DEFINED\n")
-                  && HostSampleNoise.Contains("texture2D(texUnitNoise, vPosWorld.xy)")
-                  // ...and the rest of what the snow stage reads off the engine: the height slot and its bound
-                  // flag, the eye-relative position, and inc_common's brightness helper
-                  && VanillaEnvDefs.Contains("#define texUnit4 uHeightTex")
-                  && VanillaEnvDefs.Contains("#define texture4Bound ")
-                  && VanillaEnvFs.Contains("vec3 vPosView;")
-                  && OwnedLitFsMain.Contains("vPosView = vWorld - uEyePos;")
-                  && VanillaEnvFs.Contains("float ColorToBrightness(vec3 Color)")
                   && ShaderSource.Get("cx_plt.glsl").Contains("float CxPltScheme(int draw, int layer)")
                   && HostSample.Contains("void CxHost_x()")
                   && HostSample.Contains("fRoughness = MATERIAL_ROUGHNESS_VALUE;")
