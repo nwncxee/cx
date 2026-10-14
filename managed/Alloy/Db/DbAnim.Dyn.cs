@@ -297,6 +297,21 @@ public static unsafe partial class DbAnim
 
     private static int _uvMorphs;
 
+    /// <summary>The engine's <c>AnimMeshHitCheck</c>: every face of <paramref name="part"/> against its MORPHED
+    /// positions (rest until a morph runs), the plane re-derived per face, <paramref name="to"/> shortened to the
+    /// nearest hit. A GUI scrollbar's thumb is a morph-stretched sliver, so its rest faces are not its shape.</summary>
+    public static bool CastMorphed(int part, MeshDef mesh, Vector3 from, ref Vector3 to)
+    {
+        float* d = (uint)part < (uint)SceneDb.MaxParts && _dynN[part] == mesh.Positions.Length ? (float*)_dyn[part] : null;
+        bool hit = false;
+        foreach (FaceDef f in mesh.Faces)
+            hit |= HitTest.PolyHit(Vert(d, mesh, f.V0), Vert(d, mesh, f.V1), Vert(d, mesh, f.V2), from, ref to);
+        return hit;
+    }
+
+    private static Vector3 Vert(float* d, MeshDef mesh, int i)
+        => d == null ? mesh.Positions[i] : new Vector3(d[i * 3], d[i * 3 + 1], d[i * 3 + 2]);
+
     /// <summary>Said once, at the end of the first period that produced dynamic vertices nobody read: the
     /// buffers are computed and the parts draw their rest geometry, which is a visible difference and not an
     /// error this code can fix on its own.</summary>

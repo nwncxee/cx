@@ -24,6 +24,7 @@ public static unsafe partial class DbAnim
             Playing(check);
             Blocks(check);
             UvMorph(check);
+            ThumbHit(check);
             Composition(check);
             PoseWrite(check);
             Amputation(check);
@@ -1039,6 +1040,40 @@ public static unsafe partial class DbAnim
 
         Drop(obj);
         check.Expect(_dynUv[part] == 0, "the UV buffer goes back with the part's dynamic state");
+        SceneDb.Scenes.Free(scene);
+    }
+
+    /// <summary>A GUI scrollbar thumb: an animmesh sliver whose morph stretches it down. Oracle: the hand-built quad
+    /// below -- a segment at y=-1 misses the rest sliver, hits the stretched one at z=0, and the hit box reaches
+    /// the last frame's y=-2.</summary>
+    private static void ThumbHit(Checker check)
+    {
+        Vector3[] rest = { new(-1f, 0.1f, 0f), new(1f, 0.1f, 0f), new(1f, 0f, 0f), new(-1f, 0f, 0f) };
+        Vector3[] tall = { new(-1f, 0.1f, 0f), new(1f, 0.1f, 0f), new(1f, -2f, 0f), new(-1f, -2f, 0f) };
+        ModelDef m = UvChain();
+        MeshDef mesh = m.Nodes[1].Mesh!;
+        mesh.Positions = rest;
+        mesh.Indices = new uint[] { 0, 1, 2, 0, 2, 3 };
+        mesh.Uv[0] = new Vector2[4];
+        mesh.Faces = new[] { new FaceDef { V0 = 0, V1 = 1, V2 = 2 }, new FaceDef { V0 = 0, V1 = 2, V2 = 3 } };
+        var anim = new AnimMeshDef { SamplePeriod = 1f, Positions = new[] { rest, tall } };
+        m.Nodes[1].AnimMesh = anim;
+        m.Anims[0].Nodes[1].AnimMesh = anim;
+        DbId scene = SceneDb.Scenes.Alloc();
+        DbId obj = Subject(m, scene, out int first);
+        int part = first + 1;
+
+        Vector3 from = new(0f, -1f, -1f), to = new(0f, -1f, 1f);
+        check.Expect(!CastMorphed(part, mesh, from, ref to), "an unmorphed thumb is hit only on its rest sliver");
+        PlayAnimation(obj, "smoke", 1f, RunFlags.NoFadeIn, 0f);
+        _rTime[Slot(obj.Index, 0)] = 5f;
+        Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
+        check.Expect(CastMorphed(part, mesh, from, ref to) && MathF.Abs(to.Z) < 1e-4f, $"the stretched thumb is hit where it is drawn ({to})");
+        Vector3 lo = new(-1f, 0f, 0f), hi = new(1f, 0.1f, 0f);
+        HitBounds.MorphBox(m, "mid", ref lo, ref hi);
+        check.Expect(lo.Y == -2f && hi.Y == 0.1f, $"the hit box covers every morph frame ({lo.Y}..{hi.Y})");
+
+        Drop(obj);
         SceneDb.Scenes.Free(scene);
     }
 
