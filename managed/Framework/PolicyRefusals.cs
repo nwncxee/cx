@@ -33,6 +33,9 @@ public static class PolicyRefusals
         public int LastSeq;
     }
 
+    /// <summary>Told of each refusal that is new, after the table lock is released, on whatever thread refused.</summary>
+    internal static Action<PolicyRefusal>? Added;
+
     private static PolicyRefusalState _s = new();
     private static readonly object _lock = new();
 
@@ -42,6 +45,7 @@ public static class PolicyRefusals
     /// <summary>Record that <paramref name="key"/> was refused. The same key, value and reason again changes nothing.</summary>
     public static void Add(RefusalKind kind, string key, string value, string reason)
     {
+        PolicyRefusal add;
         lock (_lock)
         {
             PolicyRefusalState s = _s;
@@ -55,7 +59,7 @@ public static class PolicyRefusals
                 break;
             }
             key = Cut(key, MaxKey); value = Cut(value, MaxValue); reason = Cut(reason, MaxReason);
-            var add = new PolicyRefusal(++s.LastSeq, kind, key, value, reason);
+            add = new PolicyRefusal(++s.LastSeq, kind, key, value, reason);
             s.Entries.Add(add);
             s.HeldBytes += Size(add);
             while (s.Entries.Count > MaxEntries || s.HeldBytes > MaxBytes)
@@ -65,6 +69,7 @@ public static class PolicyRefusals
                 s.DroppedCount++;
             }
         }
+        Added?.Invoke(add);
     }
 
     /// <summary>The key was set to something good or released: its refusal no longer stands.</summary>

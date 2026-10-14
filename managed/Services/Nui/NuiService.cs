@@ -59,12 +59,15 @@ public sealed unsafe class NuiService : IExtenderService
         NuiScrollbarHide.SelfCheck(log);
         NuiLayoutErrors.SelfCheck(log);
         NuiHitTest.SelfCheck(log);
+        NuiJsonRead.SelfCheck(log);
+        CxTranslate.SelfCheck(log);
         NuiItemIcons.Init(log, hooks);
         NuiModelView.Init(log, hooks);
         NuiScrollbars.Init(log, hooks);
         NuiScrollbarHide.Init(log, hooks);
         NuiSolver.Init(log, hooks);
         NuiLayoutErrors.Init(log, hooks);
+        CxWindows.Init(log, hooks);
         NuiHitTest.Init(log, hooks);
         if (!EngineLayout.Require(log, "NuiService", "Nui::Layout::Layoutable")) return;
         IntPtr render = Native.Sym(SymbolMap.NuiWidgetRender);

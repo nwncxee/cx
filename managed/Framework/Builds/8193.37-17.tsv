@@ -883,6 +883,10 @@ offset	Nui::Layout::LayoutGroup	editWidth	0x638	0x770	# NuiGroupEditWidth
 offset	Nui::Layout::LayoutGroup	editHeight	0x640	0x778	# NuiGroupEditHeight
 offset	Nui::Layout::LayoutGroup	scaleConstraints	0x668	0x7a0	# NuiGroupScaleConstraints
 offset	Nui::JSON::JsonWindow	idsHead	0x418	0x468	# NuiIdsHead
+offset	Nui::JSON::JsonWindow	windowId	0x1e0	0x230	# NuiWinId
+offset	Nui::JSON::JsonWindow	windowName	0x1e8	0x238	# NuiWinName
+offset	Nui::JSON::JsonWindow	windowJson	0x208	0x258	# NuiWinJson
+offset	Nui::JSON::JsonWindow	bindIngest	0x440	0x4a0	# NuiWinIngest
 offset	Nui::JSON::IdNode	key	0x8	0x10	# NuiIdNodeKey
 offset	Nui::JSON::IdNode	element	0x28	0x30	# NuiIdNodeElement
 # ---- CX-103/104/105: the scene pipeline's own rows. Gob 0x0..0x4b8 is the region #448 paired as identical
@@ -1190,6 +1194,9 @@ rva	Nui::JSON::DynamicBinding::s_array_index	0x129728c	# NuiArrayIndex (DATA)
 rva	nk_layout_widget_space	0xa6c0b0	# NkLayoutWidgetSpace
 rva	_ZTVN3Nui6Layout14StatefulWidgetE	0xe6dff0	# NuiStatefulWidgetVtbl
 rva	_ZN3Nui4JSON10JsonWindow11HandleErrorEPKcS3_	0x746650	# NuiHandleError
+rva	_ZN3Nui4JSON10JsonWindowC1EiNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN8nlohmann10basic_jsonISt3mapSt6vectorS7_blmdSaNS8_14adl_serializerESB_IhSaIhEEEE	0x730620	# NuiJsonWindowCtor
+rva	_ZN3Nui4JSON10JsonWindow6UpdateEv	0x74d750	# NuiJsonWindowUpdate
+rva	Nui::JSON::PushEvent	0x746130	# NuiEventPush
 rva	_ZTVN3Nui6Layout11LayoutGroupE	0xe6ce10	# NuiLayoutGroupVtbl
 rva	_ZTVN3Nui6Layout11SingleGroupE	0xe6ce58	# NuiSingleGroupVtbl
 rva	_ZTVN3Nui6Layout4SpanE	0xe39670	# NuiSpanVtbl
@@ -1216,6 +1223,7 @@ lva	nk_sdl.ogl.cmds	0x1a12a28	# NkCmds (DATA)
 lva	nk_sdl.ogl.tex_null	0x1a12aa0	# NkTexNull (DATA)
 lva	Nui::JSON::DynamicBinding::s_array_index	0x18ab050	# NuiArrayIndex (DATA)
 lva	nk_layout_widget_space	0xdd8340	# NkLayoutWidgetSpace
+lva	Nui::JSON::PushEvent	0x86f680	# NuiEventPush
 
 # ---- CX-109/110 ----
 offset	Camera	scene	0x90	0x90	# CameraScene

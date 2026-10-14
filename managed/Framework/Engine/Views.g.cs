@@ -323,6 +323,9 @@ global using unsafe KiwiOptimizeFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe ReportCrashToUserFn = delegate* unmanaged<nint, byte*, byte*, void>;
 global using unsafe CrashHandlerExposeFn = delegate* unmanaged<byte*, byte*, bool, void>;
 global using unsafe NuiHandleErrorFn = delegate* unmanaged<nint, nint, nint, void>;
+global using unsafe NuiJsonWindowCtorFn = delegate* unmanaged<nint, int, nint, nint, nint>;
+global using unsafe NuiJsonWindowUpdateFn = delegate* unmanaged<nint, void>;
+global using unsafe NuiEventPushFn = delegate* unmanaged<nint, nint, nint, int, nint, void>;
 global using unsafe ManageSceneBSPFn = delegate* unmanaged<nint, long>;
 global using unsafe AddPartsToDrawBucketsFn = delegate* unmanaged<nint, long>;
 global using unsafe LerpFloatLerpedFn = delegate* unmanaged<nint, float>;
@@ -3454,8 +3457,16 @@ public readonly unsafe partial struct Nui__JSON__JsonWindow(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NuiWinIngest"/>
+    public ref byte BindIngest => ref *(byte*)(Ptr + EngineLayout.NuiWinIngest);
     /// <inheritdoc cref="EngineLayout.NuiIdsHead"/>
     public ref IntPtr IdsHead => ref *(IntPtr*)(Ptr + EngineLayout.NuiIdsHead);
+    /// <inheritdoc cref="EngineLayout.NuiWinId"/>
+    public ref int WindowId => ref *(int*)(Ptr + EngineLayout.NuiWinId);
+    /// <inheritdoc cref="EngineLayout.NuiWinJson"/>
+    public ref byte WindowJson => ref *(byte*)(Ptr + EngineLayout.NuiWinJson);
+    /// <inheritdoc cref="EngineLayout.NuiWinName"/>
+    public ref byte WindowName => ref *(byte*)(Ptr + EngineLayout.NuiWinName);
 }
 
 /// <summary>Typed view of an engine <c>Nui__Layout__LayoutGroup*</c>.</summary>
@@ -5723,6 +5734,18 @@ public static unsafe class EngineFn
     private static bool _NuiHandleErrorDone;
     /// <inheritdoc cref="SymbolMap.NuiHandleError"/>
     public static NuiHandleErrorFn NuiHandleError => (NuiHandleErrorFn)(_NuiHandleErrorDone ? _NuiHandleError : Resolve(ref _NuiHandleError, ref _NuiHandleErrorDone, SymbolMap.NuiHandleError));
+    private static IntPtr _NuiJsonWindowCtor;
+    private static bool _NuiJsonWindowCtorDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowCtor"/>
+    public static NuiJsonWindowCtorFn NuiJsonWindowCtor => (NuiJsonWindowCtorFn)(_NuiJsonWindowCtorDone ? _NuiJsonWindowCtor : Resolve(ref _NuiJsonWindowCtor, ref _NuiJsonWindowCtorDone, SymbolMap.NuiJsonWindowCtor));
+    private static IntPtr _NuiJsonWindowUpdate;
+    private static bool _NuiJsonWindowUpdateDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowUpdate"/>
+    public static NuiJsonWindowUpdateFn NuiJsonWindowUpdate => (NuiJsonWindowUpdateFn)(_NuiJsonWindowUpdateDone ? _NuiJsonWindowUpdate : Resolve(ref _NuiJsonWindowUpdate, ref _NuiJsonWindowUpdateDone, SymbolMap.NuiJsonWindowUpdate));
+    private static IntPtr _NuiEventPush;
+    private static bool _NuiEventPushDone;
+    /// <inheritdoc cref="SymbolMap.NuiEventPush"/>
+    public static NuiEventPushFn NuiEventPush => (NuiEventPushFn)(_NuiEventPushDone ? _NuiEventPush : Resolve(ref _NuiEventPush, ref _NuiEventPushDone, SymbolMap.NuiEventPush));
     private static IntPtr _ManageSceneBSP;
     private static bool _ManageSceneBSPDone;
     /// <inheritdoc cref="SymbolMap.ManageSceneBSP"/>
@@ -8243,6 +8266,24 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NuiHandleError"/>; returns the slot holding the next layer, or null.</summary>
     public static NuiHandleErrorFn* ChainNuiHandleError(this HookService h, NuiHandleErrorFn handler, int priority) =>
         (NuiHandleErrorFn*)h.Chain(SymbolMap.NuiHandleError, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiJsonWindowCtor"/>; returns the original, or null.</summary>
+    public static NuiJsonWindowCtorFn InstallNuiJsonWindowCtor(this HookService h, NuiJsonWindowCtorFn handler) =>
+        (NuiJsonWindowCtorFn)h.Install(SymbolMap.NuiJsonWindowCtor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiJsonWindowCtor"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiJsonWindowCtorFn* ChainNuiJsonWindowCtor(this HookService h, NuiJsonWindowCtorFn handler, int priority) =>
+        (NuiJsonWindowCtorFn*)h.Chain(SymbolMap.NuiJsonWindowCtor, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiJsonWindowUpdate"/>; returns the original, or null.</summary>
+    public static NuiJsonWindowUpdateFn InstallNuiJsonWindowUpdate(this HookService h, NuiJsonWindowUpdateFn handler) =>
+        (NuiJsonWindowUpdateFn)h.Install(SymbolMap.NuiJsonWindowUpdate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiJsonWindowUpdate"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiJsonWindowUpdateFn* ChainNuiJsonWindowUpdate(this HookService h, NuiJsonWindowUpdateFn handler, int priority) =>
+        (NuiJsonWindowUpdateFn*)h.Chain(SymbolMap.NuiJsonWindowUpdate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiEventPush"/>; returns the original, or null.</summary>
+    public static NuiEventPushFn InstallNuiEventPush(this HookService h, NuiEventPushFn handler) =>
+        (NuiEventPushFn)h.Install(SymbolMap.NuiEventPush, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiEventPush"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiEventPushFn* ChainNuiEventPush(this HookService h, NuiEventPushFn handler, int priority) =>
+        (NuiEventPushFn*)h.Chain(SymbolMap.NuiEventPush, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ManageSceneBSP"/>; returns the original, or null.</summary>
     public static ManageSceneBSPFn InstallManageSceneBSP(this HookService h, ManageSceneBSPFn handler) =>
         (ManageSceneBSPFn)h.Install(SymbolMap.ManageSceneBSP, (IntPtr)handler);

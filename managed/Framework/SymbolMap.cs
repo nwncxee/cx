@@ -1854,7 +1854,7 @@ internal static unsafe class SymbolMap
     /// build's <c>lva</c> line (<see cref="ClientBuilds.Lva"/>), as an <c>At()</c> symbol is from its <c>rva</c>
     /// line on Windows. The constant is the function's source name, a key, never looked up as an export.</summary>
     internal static readonly HashSet<string> LinuxAnchored = new() { NkScrollbarBehavior, NkDrawScrollbar, NkDoScrollbarV, NkDoScrollbarH,
-                                                                     NkCmds, NkTexNull, NuiArrayIndex, NkLayoutWidgetSpace };
+                                                                     NkCmds, NkTexNull, NuiArrayIndex, NkLayoutWidgetSpace, NuiEventPush };
     /// <summary>nuklear's <c>nk_scrollbar_behavior</c> (static: Linux lva 0xdf5ba0, Windows rva 0xa6f320) -- the one
     /// function that turns input into a scrollbar's new offset: the thumb drag (and the one <c>nk_input</c> write,
     /// <c>clicked_pos</c>), the page clicks, the wheel, the scroll keys. Called only by <c>nk_do_scrollbarv/h</c>,
@@ -2030,6 +2030,20 @@ internal static unsafe class SymbolMap
     /// Update after it.</summary>
     [Fn("void(IntPtr self, IntPtr tag, IntPtr message)")]
     public const string NuiHandleError = "_ZN3Nui4JSON10JsonWindow11HandleErrorEPKcS3_";
+    /// <summary><c>Nui::JSON::JsonWindow::JsonWindow(int id, std::string name, json const&amp; window)</c> @0x8702d0 (Windows rva 0x730620):
+    /// a window object built from the server's NUI JSON. The string and the JSON arrive by pointer on both ABIs; the Windows
+    /// constructor returns <c>this</c>, which the Linux one leaves in the register as well, so one signature serves both.</summary>
+    [Fn("IntPtr(IntPtr self, int id, IntPtr name, IntPtr window)")]
+    public const string NuiJsonWindowCtor = "_ZN3Nui4JSON10JsonWindowC1EiNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN8nlohmann10basic_jsonISt3mapSt6vectorS7_blmdSaNS8_14adl_serializerESB_IhSaIhEEEE";
+    /// <summary><c>Nui::JSON::JsonWindow::Update()</c> @0x8859c0 (Windows rva 0x74d750): the window's per-frame tick. It applies the
+    /// layout updates and then drains the window's own queue of server bind updates, discarding one for a bind no element named.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string NuiJsonWindowUpdate = "_ZN3Nui4JSON10JsonWindow6UpdateEv";
+    /// <summary>The helper that queues a NUI event for the server (Linux lva 0x86f680, Windows rva 0x746130): window, event name,
+    /// element id, array index and a JSON payload it copies. Linux takes the address of the window's id, Windows the window.
+    /// Queues nothing for an empty element id.</summary>
+    [Fn("void(IntPtr window, IntPtr eventName, IntPtr elementId, int index, IntPtr payload)")]
+    public const string NuiEventPush = "Nui::JSON::PushEvent";
     /// <summary><c>Nui::Layout::LayoutGroup</c>'s and <c>SingleGroup</c>'s vtables: the only layout classes that embed a kiwi
     /// solver. Identities, not hooks; an object's vptr is the symbol + <see cref="EngineLayout.VtblSymbolHeader"/>.</summary>
     public const string NuiLayoutGroupVtbl = "_ZTVN3Nui6Layout11LayoutGroupE";
@@ -3382,6 +3396,9 @@ internal static unsafe class SymbolMap
         [CrashHandlerExpose] = Nm("?CrashHandlerExpose@@YAXPEBD0_N@Z"),
         [KiwiCreateRow] = Nm("?createRow@SolverImpl@impl@kiwi@@AEAA?AV?$unique_ptr@VRow@impl@kiwi@@U?$default_delete@VRow@impl@kiwi@@@std@@@std@@AEBVConstraint@3@AEAUTag@123@@Z"),
         [NuiHandleError] = At(),   // its own .pdata entry holding the "Error " reference; its 3 callers match Linux's
+        [NuiJsonWindowCtor] = At(),   // the one function storing the JsonWindow vtable with an id, a name and the window JSON at +0x230/+0x238/+0x258
+        [NuiJsonWindowUpdate] = At(), // "unknown-bind" and "bind update for unknown bind %s, value discarded"; the layout-update path calls LayoutableJ::Construct
+        [NuiEventPush] = At(),        // the helper Update calls for "unknown-bind"; builds the 0x60-byte event record and queues it at rva 0x1423bc8
         [NuiLayoutGroupVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
         [NuiSingleGroupVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
         [NuiSpanVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
