@@ -206,8 +206,6 @@ A card is found by the element the pointer is over. CX tries these keys in order
   for the rest.
 - `<hex>` of an `@item:` key is the item's `ObjectToString`, lowercase, with no leading zeros.
 - A `@look:` key matches on its first 96 bytes, which is as much of the image name as CX keeps.
-- Image keys work on Linux only, because only the Linux client reads the image name an element draws. The Windows client
-  logs this once at start. On Windows key every card by `id`.
 - Keys compare without regard to case, so ids that differ only by case share a card. A key is at most 96 bytes, and
   a client holds at most 256.
 

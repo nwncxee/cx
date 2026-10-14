@@ -1185,6 +1185,7 @@ rva	_ZN11CNWCMessage33SendPlayerToServerInput_SplitItemEji	0x7c0050	# SendInputS
 rva	_ZN11CNWCMessage33SendPlayerToServerInput_MergeItemEjj	0x7bfd90	# SendInputMergeItem (6/22)
 rva	_ZN3Nui6Layout6Widget6RenderEP10nk_context	0x9528e0	# NuiWidgetRender
 rva	_ZN3Nui4JSON10JsonWindow6RenderEv	0x74b810	# NuiJsonWindowRender
+rva	_ZN3Nui6Window17GetImageWithCacheERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt8functionIFSt10shared_ptrI7NkImageEvEE	0x6c24b0	# NuiGetImageWithCache
 rva	Nui::JSON::DynamicBinding::s_array_index	0x129728c	# NuiArrayIndex (DATA)
 rva	nk_layout_widget_space	0xa6c0b0	# NkLayoutWidgetSpace
 rva	_ZTVN3Nui6Layout14StatefulWidgetE	0xe6dff0	# NuiStatefulWidgetVtbl

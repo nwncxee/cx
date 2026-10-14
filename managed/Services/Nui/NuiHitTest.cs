@@ -104,10 +104,9 @@ internal static unsafe class NuiHitTest
         NuiImageSpot.Init();
         s.WindowOrig = hooks.InstallNuiJsonWindowRender(&OnWindowRender);
         s.NkSlot = hooks.ChainNkSdlRender(&OnFlush, FlushPriority);
-        // Linux-only: the image name of the hit. Windows has no standalone cache look-up to hook (SymbolMap.NuiGetImageWithCache), so a hit there carries no image.
-        if (!OperatingSystem.IsWindows())
-            s.ImageOrig = hooks.Install(SymbolMap.NuiGetImageWithCache, (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)&OnGetImage);
-        else log.Always("NuiHitTest: Linux-only image name -- on Windows a hit has its element and row but no image, so cards keyed on an item image stay off");
+        s.ImageOrig = OperatingSystem.IsWindows()
+            ? hooks.Install(SymbolMap.NuiGetImageWithCache, (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)&OnGetImageWin)
+            : hooks.Install(SymbolMap.NuiGetImageWithCache, (IntPtr)(delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)&OnGetImage);
         s.Armed = s.ArrayIndex != null && s.Space != IntPtr.Zero && s.WindowOrig != null && s.NkSlot != null;
         if (!s.Armed) log.Always("NuiHitTest: JsonWindow::Render, nk_sdl_render or the row global did not resolve -- the pointer's NUI element is unknown");
     }
@@ -129,15 +128,26 @@ internal static unsafe class NuiHitTest
     [UnmanagedCallersOnly]
     private static IntPtr OnGetImage(IntPtr ret, IntPtr window, IntPtr key, IntPtr loader)
     {
+        Keep(key);
+        return ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)_s.ImageOrig)(ret, window, key, loader);
+    }
+
+    private static void Keep(IntPtr key)
+    {
         var s = _s;
-        if (s.Capturing)
-        {
-            var (buf, len, _) = Native.StdString((byte*)key);
-            int n = (int)Math.Min(len, (uint)NuiHit.ImageCap);
-            new ReadOnlySpan<byte>((void*)buf, n).CopyTo(s.Cap);
-            s.CapLen = ResrefLength(((ReadOnlySpan<byte>)s.Cap)[..n]);
-        }
-        return ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)s.ImageOrig)(ret, window, key, loader);
+        if (!s.Capturing) return;
+        var (buf, len, _) = Native.StdString((byte*)key);
+        int n = (int)Math.Min(len, (uint)NuiHit.ImageCap);
+        new ReadOnlySpan<byte>((void*)buf, n).CopyTo(s.Cap);
+        s.CapLen = ResrefLength(((ReadOnlySpan<byte>)s.Cap)[..n]);
+    }
+
+    /// <summary>Win64 order for the same member: (this, ret, key, loader).</summary>
+    [UnmanagedCallersOnly]
+    private static IntPtr OnGetImageWin(IntPtr window, IntPtr ret, IntPtr key, IntPtr loader)
+    {
+        Keep(key);
+        return ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr>)_s.ImageOrig)(window, ret, key, loader);
     }
 
     /// <summary>The length of the resref in an image-cache key, which is the resref, a dot and the type number.</summary>

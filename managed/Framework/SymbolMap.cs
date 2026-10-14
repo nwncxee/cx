@@ -393,7 +393,7 @@ internal static unsafe class SymbolMap
     [Fn("void(IntPtr self)")]
     public const string NuiJsonWindowRender = "_ZN3Nui4JSON10JsonWindow6RenderEv";
     /// <summary><c>Nui::Window::GetImageWithCache(string const&amp; key, std::function loader)</c> @0x8487c0 -- an image widget's per-frame look-up of
-    /// the window's image cache; <c>key</c> is the image's resref and type. Returns a <c>shared_ptr</c> by value: Itanium <c>(sret, this, key, loader)</c>.
+    /// the window's image cache; <c>key</c> is the image's resref and type. Returns a <c>shared_ptr</c> by value: Itanium <c>(sret, this, key, loader)</c>, Win64 <c>(this, sret, key, loader)</c> (rva 0x6c24b0).
     /// It is how a hit learns which <c>@item:</c> or <c>@look:</c> image a widget drew.</summary>
     public const string NuiGetImageWithCache = "_ZN3Nui6Window17GetImageWithCacheERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt8functionIFSt10shared_ptrI7NkImageEvEE";
     /// <summary>The int <c>DynamicBinding::SetArrayIndex</c> writes and <c>GetArrayIndex</c> reads (Linux lva 0x18ab050, Windows rva
@@ -3286,7 +3286,7 @@ internal static unsafe class SymbolMap
         [NkClear] = At(),                 // the call right after the draw-command walk
         [NkCmds] = At(),                  // DATA: the `lea rdx` of the nk_convert call
         [NuiJsonWindowRender] = At(),     // the vftable slot whose body is the "m_id" profiler zone around one Window::Render call (docs/windows-symbols.md)
-        [NuiGetImageWithCache] = LinuxOnly("no standalone function on Windows: the one timer call in the image-cache code is in JsonWindow::Update, so the look-up is inlined into the image widget"),
+        [NuiGetImageWithCache] = At(),    // the caller of CExoTimers::GetMillisecondTimer that hashes a string key into the window's cache at +0x180; its one caller builds the "<resref>.<type>" key
         [NkLayoutWidgetSpace] = At(),     // the one function with the row-type switch (cases 0..8) and the +0x41e4/+0x41e8 spacing reads; Windows takes the window as a third argument, Linux reads it from ctx
         [NuiArrayIndex] = At(),           // DATA: the global the inlined Set/GetArrayIndex touch; the list draw at rva 0x73e9d0 writes first+i, then -1
         [NkTexNull] = At(),               // DATA: the `movaps xmm0,[rip]` into the convert config at +0x18
