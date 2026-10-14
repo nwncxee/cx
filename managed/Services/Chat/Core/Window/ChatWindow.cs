@@ -105,10 +105,6 @@ public sealed partial class ChatWindow
 
     // ---- per-window settings: each window can look different (unobtrusive combat log vs prominent chat) ----
 
-    /// <summary>Colour overrides keyed by <see cref="ChatColor"/> (RGBA8). Absent key = renderer default.
-    /// Per-window so e.g. a system log can be dim while player chat is vivid.</summary>
-    public readonly System.Collections.Generic.Dictionary<string, uint> Colors = new();
-
     /// <summary>Per-window animation master toggle. When false, lines never fade and slides snap.</summary>
     public bool AnimEnabled = true;
     /// <summary>Per-window hold/fade/ease durations.</summary>
@@ -270,8 +266,9 @@ public sealed partial class ChatWindow
     public static float GearW => TabBarH;
     public static float MinW => 200f * Metrics.Scale;
     public static float MinH => 120f * Metrics.Scale;
-    /// <summary>Scrollbar track width (px): a thin gutter at the body's right edge.</summary>
-    public static float ScrollbarW => 8f * Metrics.Scale;
+    /// <summary>Scrollbar track width (px): the engine's own bar under the native look, else a thin gutter at
+    /// the body's right edge. The text width reserves it either way, so the wider bar never overlaps a line.</summary>
+    public static float ScrollbarW => Render.ChatSkin.Native ? NativeChrome.BarWidth(Metrics.Scale) : 8f * Metrics.Scale;
     /// <summary>Smallest thumb, so it stays grabbable when the history is very long.</summary>
     public static float SbMinThumb => 24f * Metrics.Scale;
 
@@ -294,17 +291,43 @@ public sealed partial class ChatWindow
         return h < SbMinThumb ? SbMinThumb : h;
     }
 
+    /// <summary>The scrollbar's rect: the body's right gutter, stopping one <see cref="ResizeGrip"/> short of
+    /// the body bottom. The one geometry the draw, the thumb and the hit-test share.</summary>
+    public void ScrollbarRect(out float x0, out float y0, out float x1, out float y1)
+    {
+        x0 = X + W - ScrollbarW; x1 = X + W;
+        y0 = Y + TabBarH; y1 = y0 + SbTrackH;
+    }
+
     /// <summary>Thumb rect (<paramref name="top"/>, <paramref name="height"/>) in screen px, or false when
     /// nothing scrolls (content fits). Sits at the track bottom (newest, just above the resize grip) at
-    /// ScrollPx 0 and rises to the top as ScrollPx approaches <see cref="MaxScroll"/>.</summary>
+    /// ScrollPx 0 and rises to the top as ScrollPx approaches <see cref="MaxScroll"/>; under the native look
+    /// it is the engine's own thumb, between the bar's two arrows.</summary>
     public bool ThumbRect(out float top, out float height)
     {
         top = 0f; height = 0f;
         if (ContentH <= ViewH || ViewH <= 0f) return false;
+        if (Render.ChatSkin.Native)
+        {
+            ScrollbarRect(out float x0, out float y0, out float x1, out float y1);
+            if (!NativeChrome.ThumbRect(x0, y0, x1, y1, MaxScroll - Active.ScrollPx, ViewH, ContentH,
+                                        out _, out float nty0, out _, out float nty1)) return false;
+            top = nty0; height = nty1 - nty0;
+            return true;
+        }
         height = ThumbHeight();
         float frac = MaxScroll > 0f ? Active.ScrollPx / MaxScroll : 0f;   // 0 = newest/bottom, 1 = oldest/top
         top = Y + TabBarH + (1f - frac) * (SbTrackH - height);
         return true;
+    }
+
+    /// <summary>How far a thumb of <paramref name="height"/> travels between newest and oldest: the drag map's
+    /// denominator. Under the native look the arrows and the thumb padding eat into the track.</summary>
+    private float SbTravel(float height)
+    {
+        if (!Render.ChatSkin.Native) return SbTrackH - height;
+        ScrollbarRect(out float x0, out float y0, out float x1, out float y1);
+        return y1 - y0 - 2f * (x1 - x0) - 2f * NativeChrome.PadY - height;
     }
 
     /// <summary>True when the pointer is over the scrollbar thumb (the grab zone).</summary>
@@ -657,7 +680,7 @@ public sealed partial class ChatWindow
                 // toward newest -> ScrollPx down). Incremental deltas would accumulate error past the clamp.
                 if (ThumbRect(out _, out float th))
                 {
-                    float travel = SbTrackH - th;
+                    float travel = SbTravel(th);
                     if (travel > 0f)
                     {
                         float sp = _gsp - (my - _gy) * MaxScroll / travel;
@@ -699,14 +722,11 @@ public sealed partial class ChatWindow
     }
 
     /// <summary>Copy all per-window settings (look, not identity) from <paramref name="src"/>. Tabs and rect
-    /// are excluded: tabs are content (the user arranges them per window), rect is position. Deep-copies the
-    /// colours dict so editing one window's palette later doesn't alias the other's.</summary>
+    /// are excluded: tabs are content (the user arranges them per window), rect is position.</summary>
     public void CopySettingsFrom(ChatWindow src)
     {
         Toggles = src.Toggles;
         InputOnTop = src.InputOnTop;
-        Colors.Clear();
-        foreach (var kv in src.Colors) Colors[kv.Key] = kv.Value;
         AnimEnabled = src.AnimEnabled;
         HoldSec = src.HoldSec; FadeSec = src.FadeSec; TauMs = src.TauMs;
         Outline = src.Outline;

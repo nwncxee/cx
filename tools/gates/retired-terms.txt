@@ -34,3 +34,7 @@ cx_bakefinish_f	CX-215
 \b(inventory|quickbar)\.look\b	unified-ui-theme
 \bquickbar\.(bg|border|slot|slotborder|hover|label|count)col\b	unified-ui-theme
 \bradial\.(bg|frame|hover|text)\b	unified-ui-theme
+# Chat's per-window colour overrides and their key type: every chat window follows ui.look / ui.palette.
+\bw[0-9]+\.col\.	unified-ui-theme
+\bw<N>\.col\b	unified-ui-theme
+\bChatColor\b	unified-ui-theme

@@ -56,7 +56,6 @@ public sealed unsafe partial class ChatService : IExtenderService
         Snippets.SelfCheck(log);       // chat shortcut rows
         NameCompleter.SelfCheck(log);  // Tab name completion
         HistoryFile.SelfCheck(log);    // saved sent-line history escaping
-        SettingsWindow.ColorResolver = WindowRenderer.CurrentColor;
         string[] names = FontRegistry.Names;   // "default" first: the window's own entry stands in for it
         var faces = new string[names.Length];
         faces[0] = SettingsWindow.FollowUi;

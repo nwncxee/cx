@@ -6,8 +6,8 @@ using CX.Framework;
 namespace CX.Services.Chat.Core;
 
 /// <summary>
-/// The per-window chat state as key/value pairs: rect, toggles, input side, send channel, look (colours,
-/// animation, outline, timestamps) and the ordered tab list, one <see cref="WindowConfig"/> per window. Window
+/// The per-window chat state as key/value pairs: rect, toggles, input side, send channel, look (animation,
+/// outline, timestamps, background shape) and the ordered tab list, one <see cref="WindowConfig"/> per window. Window
 /// keys use <c>w&lt;N&gt;.</c> prefixes, tab keys <c>w&lt;N&gt;.t&lt;M&gt;.</c>; the pairs live in the <c>chat</c>
 /// group's Hidden bag (<see cref="ChatKnobs.Windows"/>). Pure, so <see cref="SelfCheck"/> round-trips it off-device.
 /// </summary>
@@ -16,6 +16,13 @@ public sealed class ChatConfig
     /// <summary>Per-window configs, indexed by window number. Index 0 = Main. Empty on a fresh config (the
     /// shell's hardcoded defaults apply).</summary>
     public readonly List<WindowConfig> Windows = new();
+
+    /// <summary>How many retired per-window colour keys the file carried. They are dropped on read and never
+    /// written back; the shell logs the count once, so an old <c>cx.cfg</c> is ignored rather than fatal.</summary>
+    public int RetiredColorKeys;
+
+    /// <summary>Key prefix of the retired per-window colour overrides, as an old <c>cx.cfg</c> still spells it.</summary>
+    private const string RetiredColorPrefix = "col.";
 
     // ponytail: 64 windows/tabs is well past any sane use; caps a hand-edited w999999.x=5 from OOMing.
     private const int MaxIndex = 64;
@@ -62,7 +69,6 @@ public sealed class ChatConfig
             if (w.AutoHideFrame is bool ahf) Put(p + "autohideframe", ahf ? "1" : "0");
             if (w.Locked is bool lk) Put(p + "locked", lk ? "1" : "0");
             if (w.TellsHere is bool th) Put(p + "tellshere", th ? "1" : "0");
-            foreach (var kv in w.Colors) Put(p + "col." + kv.Key, kv.Value.ToString("x8", ci));
             for (int ti = 0; ti < w.Tabs.Count; ti++)
             {
                 var (label, mask, pin, kept) = w.Tabs[ti];
@@ -119,13 +125,7 @@ public sealed class ChatConfig
             return;
         }
 
-        // Per-window colour: w<N>.col.<key>=<hex>
-        if (rest.StartsWith("col.", StringComparison.Ordinal))
-        {
-            if (uint.TryParse(val, NumberStyles.HexNumber, ci, out uint rgba))
-                w.Colors[rest.Substring(4)] = rgba;
-            return;
-        }
+        if (rest.StartsWith(RetiredColorPrefix, StringComparison.Ordinal)) { RetiredColorKeys++; return; }
 
         switch (rest)
         {
@@ -181,7 +181,6 @@ public sealed class ChatConfig
         w0.AutoHideHeader = false;
         w0.Locked = true;
         w0.TellsHere = true;
-        w0.Colors[ChatColor.Accent] = 0x1122ccffu;
         w0.Tabs.Add(("All channels", 0xffffffff, "", false));
         w0.Tabs.Add(("mask=test", 0x00000002, "Alice", true));
 
@@ -201,7 +200,6 @@ public sealed class ChatConfig
         check.Expect(bw0.AutoHideHeader == false, "per-window autohide round-trips");
         check.Expect(bw0.Locked == true, "per-window locked round-trips");
         check.Expect(bw0.TellsHere == true, "per-window tellshere round-trips");
-        check.Expect(bw0.Colors.TryGetValue(ChatColor.Accent, out uint acc) && acc == 0x1122ccffu, "per-window colour round-trips");
         check.Expect(bw0.Tabs.Count == 2, "two tabs round-trip");
         check.Expect(bw0.Tabs[0].Label == "All channels" && bw0.Tabs[0].Mask == 0xffffffff && bw0.Tabs[0].Pin == "" && !bw0.Tabs[0].Kept, "tab 0 round-trips (label with space, no pin, not kept)");
         check.Expect(bw0.Tabs[1].Label == "mask=test" && bw0.Tabs[1].Mask == 0x00000002 && bw0.Tabs[1].Pin == "Alice" && bw0.Tabs[1].Kept, "tab 1 round-trips (label with =, pin, kept)");
@@ -231,6 +229,12 @@ public sealed class ChatConfig
         check.Expect(u.Windows.Count >= 4 && u.Windows[3].X == 10, "sparse window index created");
         check.Expect(u.Windows[0].X == 50, "known key alongside unknown parses fine");
         check.Expect(u.Windows[0].Tabs.Count == 0, "unknown tab field does not create phantom tabs");
+
+        // ---- retired per-window colour keys: counted, dropped, never written back ----
+        var rc = Text($"w0.{RetiredColorPrefix}bg=112233ff\nw0.{RetiredColorPrefix}accent=ffffffff\nw0.x=12\n");
+        check.Expect(rc.RetiredColorKeys == 2, "both retired colour lines are counted");
+        check.Expect(rc.Windows.Count == 1 && rc.Windows[0].X == 12f, "a retired colour line does not stop the rest of the window parsing");
+        check.Expect(rc.Pairs().TrueForAll(kv => !kv.Key.Contains(RetiredColorPrefix)), "no colour key is written back");
 
         // ---- index cap ----
         var cap = Text("w100.x=5\n");

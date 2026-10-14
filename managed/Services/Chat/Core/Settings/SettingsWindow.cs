@@ -26,7 +26,6 @@ public sealed partial class SettingsWindow
     // gone by the time a key commits an edit).
     private ChatWindow? _win;
 
-    private string _expanded = "";// colour key whose RGBA channels are shown, or ""
     /// <summary>Tab index per category entry: -1 for <see cref="WindowCategory"/> and <see cref="AddTabCategory"/>.</summary>
     private int[] _catTab = System.Array.Empty<int>();
 
@@ -175,34 +174,20 @@ public sealed partial class SettingsWindow
             AddSlider(rows, SetAct.SliderTau, "Ease (ms)", win.TauMs, 10f, 500f);
         }
 
-        AddSection(rows, "Colours");
-        foreach (var (key, label, alpha) in ChatColor.Editable)
+        // The colours themselves are the shared look (ui.look / ui.palette under UI); this window only shapes
+        // how the background is filled with them.
+        AddSection(rows, "Background");
+        AddDropdown(rows, SetAct.CycleBgMode, "Bg style", BgModeNames, (int)win.BgMode,
+                    "Solid, or a gradient across the look's two background colours: Linear along a direction, Radial from the centre, Conic around it. The native look draws the game's own window art instead.");
+        if (win.BgMode != BgMode.Solid)
         {
-            uint rgba = ColorOf(win, key);
-            AddSwatch(rows, label, key, rgba);
-            if (_expanded == key)
-                for (int ch = 0; ch < (alpha ? 4 : 3); ch++)
-                    AddChannel(rows, key, ch, ChannelByte(rgba, ch));
-            if (key == ChatColor.Background)
-            {
-                AddDropdown(rows, SetAct.CycleBgMode, "Bg style", BgModeNames, (int)win.BgMode,
-                            "Solid, or a gradient from Background to Background 2: Linear along a direction, Radial from the centre, Conic around it.");
-                if (win.BgMode != BgMode.Solid)
-                {
-                    if (win.BgMode != BgMode.Radial)
-                        AddSlider(rows, SetAct.SliderBgAngle, "Direction (°)", win.BgAngle, 0f, 360f,
-                                  "0 runs left to right, 90 top to bottom.");
-                    AddSlider(rows, SetAct.SliderBgStart, "Start (%)", win.BgStart * 100f, 0f, 100f,
-                              "Background holds up to here.");
-                    AddSlider(rows, SetAct.SliderBgEnd, "End (%)", win.BgEnd * 100f, 0f, 100f,
-                              "Background 2 holds from here; at or before Start makes a hard edge.");
-                    uint bg2 = ColorOf(win, ChatColor.Background2);
-                    AddSwatch(rows, "Background 2", ChatColor.Background2, bg2);
-                    if (_expanded == ChatColor.Background2)
-                        for (int ch = 0; ch < 4; ch++)
-                            AddChannel(rows, ChatColor.Background2, ch, ChannelByte(bg2, ch));
-                }
-            }
+            if (win.BgMode != BgMode.Radial)
+                AddSlider(rows, SetAct.SliderBgAngle, "Direction (°)", win.BgAngle, 0f, 360f,
+                          "0 runs left to right, 90 top to bottom.");
+            AddSlider(rows, SetAct.SliderBgStart, "Start (%)", win.BgStart * 100f, 0f, 100f,
+                      "The first colour holds up to here.");
+            AddSlider(rows, SetAct.SliderBgEnd, "End (%)", win.BgEnd * 100f, 0f, 100f,
+                      "The second holds from here; at or before Start makes a hard edge.");
         }
 
         // Copy from another window (hidden when only one window exists).
@@ -240,12 +225,6 @@ public sealed partial class SettingsWindow
             rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.TabRemove, Text = "Remove tab", Key = tk });
     }
 
-    /// <summary>Resolve a per-window colour to its current RGBA8 (override or default). Set by the shell so
-    /// the pure core doesn't reach into the renderer for defaults.</summary>
-    public static System.Func<ChatWindow, string, uint> ColorResolver = (win, key) =>
-        win.Colors.TryGetValue(key, out uint v) ? v : 0xffffffffu;
-    private static uint ColorOf(ChatWindow win, string key) => ColorResolver(win, key);
-
     private static void AddSection(List<Row> rows, string label)
         => rows.Add(new Row { Kind = KnobPanel.RowKind.Section, Act = SetAct.None, Text = label.ToUpperInvariant() });
 
@@ -276,15 +255,6 @@ public sealed partial class SettingsWindow
     {
         float norm = max > min ? (value - min) / (max - min) : 0f;
         rows.Add(new Row { Ctl = KnobKind.Slider, Act = act, Text = label, Norm = Clamp01(norm), Min = min, Max = max, HelpText = help });
-    }
-
-    private static void AddSwatch(List<Row> rows, string label, string key, uint rgba)
-    { rows.Add(new Row { Ctl = KnobKind.Swatch, Act = SetAct.ColorSwatch, Text = label, Key = key, Rgba = rgba }); }
-
-    private static void AddChannel(List<Row> rows, string key, int ch, int val)
-    {
-        rows.Add(new Row { Kind = KnobPanel.RowKind.Channel, Act = SetAct.ColorChannel, Text = "RGBA"[ch].ToString(),
-                           Key = key, Channel = ch, Norm = val / 255f, Min = 0f, Max = 255f });
     }
 
     /// <summary>Open the panel centred in a <paramref name="vpW"/>×<paramref name="vpH"/> viewport on the faces the
@@ -356,7 +326,6 @@ public sealed partial class SettingsWindow
             case SetAct.CycleBgMode: win.BgMode = (BgMode)row.Selected; break;
             case SetAct.SliderFont: win.FontPx = row.Selected <= 0 ? 0 : TextRig.MinFontPx + row.Selected - 1; FontChanged = true; break;
             case SetAct.Typeface: win.Typeface = row.Selected <= 0 || row.Selected >= Typefaces.Length ? "" : Typefaces[row.Selected]; FontChanged = true; break;
-            case SetAct.ColorSwatch: _expanded = _expanded == row.Key ? "" : row.Key; break;
             case SetAct.TabRemove:
             {
                 int ti = ParseIndex(row.Key);
@@ -395,29 +364,16 @@ public sealed partial class SettingsWindow
     {
         ChatWindow? win = _win;
         if (win == null) return;
-        if (r.Act == SetAct.ColorChannel)
+        float cl = v < r.Min ? r.Min : v > r.Max ? r.Max : v;
+        r.Norm = r.Max > r.Min ? (cl - r.Min) / (r.Max - r.Min) : 0f;
+        switch (r.Act)
         {
-            int b = (int)(v + 0.5f); b = b < 0 ? 0 : b > 255 ? 255 : b;
-            uint cur = ColorOf(win, r.Key);
-            win.Colors[r.Key] = WithChannel(cur, r.Channel, b);
-            r.Rgba = win.Colors[r.Key];
-            r.Norm = b / 255f;
-            foreach (Row sw in Panel.Rows)
-                if (sw.Act == SetAct.ColorSwatch && sw.Key == r.Key) sw.Rgba = win.Colors[r.Key];
-        }
-        else
-        {
-            float cl = v < r.Min ? r.Min : v > r.Max ? r.Max : v;
-            r.Norm = r.Max > r.Min ? (cl - r.Min) / (r.Max - r.Min) : 0f;
-            switch (r.Act)
-            {
-                case SetAct.SliderHold: win.HoldSec = cl; break;
-                case SetAct.SliderFade: win.FadeSec = cl; break;
-                case SetAct.SliderTau: win.TauMs = cl; break;
-                case SetAct.SliderBgAngle: win.BgAngle = cl; break;
-                case SetAct.SliderBgStart: win.BgStart = cl / 100f; break;
-                case SetAct.SliderBgEnd: win.BgEnd = cl / 100f; break;
-            }
+            case SetAct.SliderHold: win.HoldSec = cl; break;
+            case SetAct.SliderFade: win.FadeSec = cl; break;
+            case SetAct.SliderTau: win.TauMs = cl; break;
+            case SetAct.SliderBgAngle: win.BgAngle = cl; break;
+            case SetAct.SliderBgStart: win.BgStart = cl / 100f; break;
+            case SetAct.SliderBgEnd: win.BgEnd = cl / 100f; break;
         }
     }
 
@@ -473,13 +429,7 @@ public sealed partial class SettingsWindow
     public bool Dragging => Panel.Dragging;
 
     /// <summary>Force-close at a session boundary, clearing any half-owned press, drag, or field edit.</summary>
-    public void Reset() { Panel.Close(); _expanded = ""; TellsHereChanged = false; FontChanged = false; CopyWindowRequested = false; CloseWindowRequested = false; CloseArmed = false; }
+    public void Reset() { Panel.Close(); TellsHereChanged = false; FontChanged = false; CopyWindowRequested = false; CloseWindowRequested = false; CloseArmed = false; }
 
     private static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
-    private static int ChannelByte(uint rgba, int ch) => (int)((rgba >> (24 - ch * 8)) & 0xFF);
-    private static uint WithChannel(uint rgba, int ch, int val)
-    {
-        int shift = 24 - ch * 8;
-        return (rgba & ~(0xFFu << shift)) | ((uint)(val & 0xFF) << shift);
-    }
 }

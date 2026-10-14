@@ -12,10 +12,23 @@ public static partial class WindowRenderer
 {
     /// <summary>Off-device proof of the portrait-gutter emission: an icon quad is produced for a line that
     /// carries a resref (anchored to its top visual row, in the left gutter) and none for a line without.
-    /// Uses a stub atlas (zero-advance glyphs -&gt; one wrap row); real wrapping needs the native bake.</summary>
+    /// Uses a stub atlas (zero-advance glyphs -&gt; one wrap row); real wrapping needs the native bake. Also the
+    /// chrome's role mapping, against the hand-written colours chat drew before the shared look.</summary>
     public static void SelfCheck(CX.Framework.ExtenderLog log)
     {
         var check = new Checker(log);
+
+        // Oracles: hand-written literals -- the exact RGBA8 the chatbox drew with before it followed ui.palette
+        // -- read back through the role mapping over the slate palette (Theme's own table, not this file's).
+        uint[] slate = Theme.Palettes[0].Rgb;
+        check.Expect(Theme.Palettes[0].Id == "slate", "slate is the first palette (the one these colours belong to)");
+        check.Expect(((slate[(int)Role.PanelBg] << 8) | BgA) == 0x0d0f17bdu, "slate resolves the window background to 0x0d0f17bd");
+        check.Expect(((slate[(int)Role.NavOn] << 8) | BgA) == 0x192040bdu, "...a gradient's second colour to 0x192040bd");
+        check.Expect(((slate[(int)Role.HeaderBg] << 8) | HeaderA) == 0x1a1f29d9u, "...the header band to 0x1a1f29d9");
+        check.Expect(((slate[(int)Role.Accent] << 8) | AccentA) == 0x335785f2u, "...the accent to 0x335785f2");
+        check.Expect(((slate[(int)Role.Input] << 8) | InputA) == 0x050508e6u, "...the input bar to 0x050508e6");
+        check.Expect(((slate[(int)Role.Selected] << 8) | SelA) == 0x38669eb3u, "...the selection to 0x38669eb3");
+        check.Expect((slate[(int)Role.Tx] << 8 | 0xff) == 0xd8dee9ffu, "...the label text to 0xd8dee9ff, opaque");
 
         var atlas = new GlyphAtlas { LineHeight = 20, Ascent = 15 };   // descentGap = 5
         var win = new ChatWindow(0, 0, 400, 300, new[] { new Tab("All", 0xffffffff) });
@@ -24,7 +37,9 @@ public static partial class WindowRenderer
         store.Append(new ChatLine(1u, "", 0, "", new[] { new ColorRun("plain", 1, 1, 1) }, System.DateTime.UtcNow, "plain"));
         store.Append(new ChatLine(1u, "", 0, "po_x", new[] { new ColorRun("hi", 1, 1, 1) }, System.DateTime.UtcNow, "hi"));
 
-        var portraits = Build(win, settings, store, atlas, showFooter: false, editText: "", caret: 0, showGrip: false).Portraits;
+        RenderFrame first = Build(win, settings, store, atlas, showFooter: false, editText: "", caret: 0, showGrip: false);
+        check.Expect(first.Skin.Length == 0 && first.SkinOver == 0, "off-device the native art never arms, so no game art is laid");
+        var portraits = first.Portraits;
         check.Expect(portraits.Count == 1, "exactly one portrait quad (only the resref-bearing line)");
         if (portraits.Count == 1)
         {
