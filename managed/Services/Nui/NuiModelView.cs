@@ -327,7 +327,7 @@ internal static unsafe class NuiModelView
     {
         if (v.Built) s.Log?.Always($"NuiModelView: '{v.Key}' closed -- doll taken down");
         if (v.Dragging) EndDrag(v);
-        NuiImageSpot.Watch(v.Slot.Index, 0);
+        NuiImageSpot.Watch(v.Slot, 0);
         NuiModelDoll.Free(v.Slot);
         if (v.OwnTex != 0) { uint t = v.OwnTex; Gl.DeleteTextures(1, &t); v.OwnTex = 0; }
         v.Built = false;
@@ -434,7 +434,7 @@ internal static unsafe class NuiModelView
         if (v.Dragging) Turn(v);
         NuiModelDoll.Orbit(slot, Distance(v), Centre(v), ModelTurn(v), v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
-        if (!v.Owned) NuiImageSpot.Watch(slot.Index, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
+        if (!v.Owned) NuiImageSpot.Watch(slot, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
         if (slot.Rendered) v.WasRendered = true;
     }
 
@@ -459,7 +459,7 @@ internal static unsafe class NuiModelView
     private static ViewData? Under(Func<ViewData, bool> wants)
     {
         foreach (ViewData v in _s.Views)
-            if (!v.Owned && v.Built && wants(v) && NuiImageSpot.PointerOn(v.Slot.Index)) return v;
+            if (!v.Owned && v.Built && wants(v) && NuiImageSpot.PointerOn(v.Slot)) return v;
         return null;
     }
 
@@ -755,7 +755,7 @@ internal static unsafe class NuiModelView
     private static void Teardown(ViewState s, ViewData v, uint tex)
     {
         NuiModelDoll.Destroy(v.Slot);
-        NuiImageSpot.Watch(v.Slot.Index, 0);
+        NuiImageSpot.Watch(v.Slot, 0);
         v.Built = false;
         v.Target = tex;
         s.Log?.Always($"NuiModelView: '{v.Key}' -- doll taken down{(v.Owned ? "" : ", stand-in restored")}");

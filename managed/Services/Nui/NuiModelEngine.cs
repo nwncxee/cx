@@ -17,7 +17,7 @@ internal static unsafe class NuiModelEngine
     private const uint ColorBufferBit = 0x4000, ReadBinding = 0x8CAA;   // not-an-offset: GL enums
 
     /// <summary>One slot's scratch target: the colour and depth the engine draws its scene into, and the size they were made at.</summary>
-    private sealed class Scratch
+    internal sealed class Scratch
     {
         public uint Fbo, Color, Depth;
         public int W, H;
@@ -28,15 +28,7 @@ internal static unsafe class NuiModelEngine
         public SceneRenderOnlyGobsFn Orig;
         public ExtenderLog? Log;
         public uint FboDst;
-        public readonly Scratch[] Per = MakePer();
         public bool Armed, Said;
-    }
-
-    private static Scratch[] MakePer()
-    {
-        var a = new Scratch[NuiModelDoll.MaxViews];
-        for (int i = 0; i < a.Length; i++) a[i] = new Scratch();
-        return a;
     }
 
     /// <summary>The exact scene name <c>Scene::RenderOnlyGobs</c> compares (<c>strcasecmp</c>, whole string) to light a GUI scene.</summary>
@@ -67,7 +59,7 @@ internal static unsafe class NuiModelEngine
         uint tex = slot.TargetTex;
         if (tex == 0 || !NuiModelDoll.TargetSize(slot, out int w, out int h) || !Gl.Init(_e.Log!)) { Lit(scene); CX.Services.Perf.FrameProbe.Lap(ref span, false); return; }
         EngineGlState e = _e;
-        Scratch sc = e.Per[slot.Index];
+        Scratch sc = slot.Scratch;
         int fbo, bound, scissor, mask, rd;
         Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &fbo);
         Gl.GetIntegerv(ReadBinding, &rd);

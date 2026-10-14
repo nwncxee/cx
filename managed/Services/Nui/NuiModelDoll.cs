@@ -61,6 +61,9 @@ internal static unsafe class NuiModelDoll
         public bool Rendered, Claimed;
         public ModelLight Light = NuiModelLook.EngineLight;
         public readonly NuiModelGear.GearState Gear = new();
+        /// <summary>The slot's Alloy-off scratch target and the rectangle its texture was last drawn at.</summary>
+        public readonly NuiModelEngine.Scratch Scratch = new();
+        public readonly NuiImageSpot.Spot Spot = new();
         public ModelSlot(int index) => Index = index;
     }
 
@@ -69,14 +72,8 @@ internal static unsafe class NuiModelDoll
     {
         public ExtenderLog? Log;
         public IntPtr AppMgr;
-        public readonly ModelSlot[] Slots = MakeSlots();
-    }
-
-    private static ModelSlot[] MakeSlots()
-    {
-        var a = new ModelSlot[MaxViews];
-        for (int i = 0; i < a.Length; i++) a[i] = new ModelSlot(i);
-        return a;
+        public readonly ModelSlot[] Slots = new ModelSlot[MaxViews];
+        public DollOwnerState() { for (int i = 0; i < Slots.Length; i++) Slots[i] = new ModelSlot(i); }
     }
 
     private static readonly DollOwnerState _o = new();
