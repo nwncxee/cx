@@ -30,10 +30,13 @@ export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#libg
 tools/live/run-live.sh --nui
 ```
 
-`tools/live/run-proton-live.sh` also needs the libraries Proton's wine loads through nix-ld on the same path: freetype,
-fontconfig, libX11, libxcb, libXext, libXi, libXcursor, libXrandr, libXrender, libXfixes, libXcomposite, libXinerama,
-libXxf86vm, libxkbcommon, wayland, vulkan-loader, alsa-lib, libpulseaudio, zlib and libpng. Without freetype, wine stops
-with "cannot find FreeType". The rest are untrimmed.
+`tools/live/run-proton-live.sh` also needs freetype, libX11 and libXext on the same path, because Proton's wine loads them
+through nix-ld. Without freetype, wine stops with "cannot find FreeType". Without libXext, the client never presents a frame.
+
+```sh
+export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#freetype.out nixpkgs#libx11.out nixpkgs#libxext.out | sed 's|$|/lib|' | paste -sd:):$NIX_LD_LIBRARY_PATH"
+tools/live/run-proton-live.sh --nui
+```
 
 ## How it works
 
