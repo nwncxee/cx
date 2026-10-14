@@ -407,8 +407,9 @@ internal static unsafe partial class EmitterSim
     private static void CensusParams(in Emitter e)
     {
         _log?.Info($"EmitterSim: [db census] ...rate={e.BirthRate:F2} life={e.Life:F2} mode={e.Mode} "
-                   + $"type={e.Type} size={e.SizeStartX:F2} vel={e.Velocity:F2} faded={e.Faded} "
-                   + $"loop={e.Loop} chunk={e.Chunk}");
+                   + $"type={e.Type} size={e.SizeStartX:F2} alpha={e.AlphaStart:F2}->{e.AlphaEnd:F2} "
+                   + $"vel={e.Velocity:F2} faded={e.Faded} loop={e.Loop} chunk={e.Chunk} trail={e.Trail} "
+                   + $"at=({e.WorldPos.X:F1},{e.WorldPos.Y:F1},{e.WorldPos.Z:F1})");
     }
 
     /// <summary>The first few DISTINCT objects the per-view scene filter drops, with the attachment chain
@@ -798,6 +799,9 @@ internal static unsafe partial class EmitterSim
     {
         float rate = e.BirthRate, life = e.Life;
         int want = Want(slot.Mode, rate, life, dt);
+        // A trail's population follows how far it moves, not its rate x life: room for this frame's births.
+        if (e.Trail && slot.Mode == ModeFountain)
+            want = Math.Max(want, slot.Live + 1 + (int)(rate * (e.M.Pos - e.M.PrevPos + e.M.P2pLeftover).Length()));
         // The peak is the census MaxPerEmitter has to be sized from: nothing else in the client says what an
         // emitter's own parameters ask for, so a clamp reported without it cannot be acted on. Taken before
         // the block is rounded up, so it reports the demand and not our own quantisation.

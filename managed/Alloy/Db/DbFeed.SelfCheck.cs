@@ -204,6 +204,8 @@ public static unsafe partial class DbFeed
             SceneDb.PartReveal[p1] = 0f;
             SceneDb.PartFade[p1] = 0.25f;
             SceneDb.PartAlpha[p1] = 0.5f;
+            SceneDb.PartLitAnim[p1] = 0xff;
+            SceneDb.PartLitMul[p1] = 0f;
             SceneDb.ObjCrossScene[oi] = SceneDb.ObjScene[oi];
             SceneDb.ObjSceneKinds[oi] = Seam.SeamShell.InGui;
             SceneDb.ObjSeamAppendHead[oi] = o1;
@@ -227,6 +229,8 @@ public static unsafe partial class DbFeed
             check.Expect(SceneDb.PartReveal[p1] == 1f && SceneDb.PartFade[p1] == 1f
                          && SceneDb.PartAlpha[p1] == 1f,
                          "a recycled part starts EXPLORED, unfaded and opaque -- not on the last tenant's");
+            check.Expect(DbAnim.LitMul1(p1, 1f) == 1f,
+                         "a recycled light reads its own rest multiplier -- not the last tenant's animated 0");
             int before = Recycled;
             TakeFrame();
             check.Expect(Recycled > before, "the fold noticed a record recycled inside one frame");

@@ -420,6 +420,9 @@ public static class SceneDb
     public static readonly byte[] ObjAttachMode = new byte[MaxObjects];
     /// <summary><see cref="ObjAttachMode"/>'s translate variant, the one a GUI label is attached with.</summary>
     public const byte AttachTranslate = 1;
+    /// <summary><see cref="ObjAttachMode"/>'s no-orientation variant: the position rides the part, the
+    /// orientation stays the object's own. Every effect model on a creature is attached with it.</summary>
+    public const byte AttachNoOrientation = 3;
     /// <summary><see cref="ObjAttachMode"/> for an attach the engine installed no behaviour for (its switch's
     /// default arm).</summary>
     public const byte AttachNone = 255;
