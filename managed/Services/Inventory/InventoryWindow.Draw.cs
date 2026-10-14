@@ -99,12 +99,12 @@ internal sealed partial class InventoryWindow
         float x0 = X, y0 = Y, x1 = X + W, y1 = Y + H;
         float lh = text.LineHeight, slh = small.LineHeight;
 
-        if (skin != null) skin.Draw(KFrame, x0, y0, x1, y1, s);
+        if (skin != null) skin.Draw(KFrame, x0, y0, x1, y1);
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); }
 
         if (_title.On)
         {
-            if (skin != null) skin.Draw(KHeader, Sx(_title.X0), Sy(_title.Y0), Sx(_title.X1), Sy(_title.Y1), s);
+            if (skin != null) skin.Draw(KHeader, Sx(_title.X0), Sy(_title.Y0), Sx(_title.X1), Sy(_title.Y1));
             else Fill(under, Sx(_title.X0) + 1f, Sy(_title.Y0) + 1f, Sx(_title.X1) - 1f, Sy(_title.Y1), HeaderBg);
             UiText.Draw(under, text, _title.Label, Sx(_title.X0 + Pad), Mid(_title, lh, text.Ascent), Tx, SearchOn && _search.On ? Sx(_search.X0) : Sx(_close.X0));
         }
@@ -112,7 +112,7 @@ internal sealed partial class InventoryWindow
         if (SearchOn && _search.On)
         {
             float sx0 = Sx(_search.X0), sy0 = Sy(_search.Y0), sx1 = Sx(_search.X1), sy1 = Sy(_search.Y1);
-            if (skin != null) skin.Draw(KEdit, sx0, sy0, sx1, sy1, s);
+            if (skin != null) skin.Draw(KEdit, sx0, sy0, sx1, sy1);
             else { Fill(under, sx0, sy0, sx1, sy1, Input); Outline(under, sx0, sy0, sx1, sy1, SearchFocused ? Accent2 : Frame); }
             float base_ = sy0 + (sy1 - sy0 - slh) / 2f + small.Ascent;
             float end = Search.Length > 0 ? UiText.Draw(under, small, Search, sx0 + 4f * s, base_, Tx, sx1 - 4f * s)
@@ -130,7 +130,7 @@ internal sealed partial class InventoryWindow
             if (!b.On) continue;
             float bx0 = Sx(b.X0), by0 = Sy(b.Y0), bx1 = Sx(b.X1), by1 = Sy(b.Y1);
             InvItem held = Model.Equipped[i];
-            if (skin != null) skin.Draw(KSlot, bx0, by0, bx1, by1, s);
+            if (skin != null) skin.Draw(KSlot, bx0, by0, bx1, by1);
             else { Fill(under, bx0, by0, bx1, by1, ListBg); Outline(under, bx0, by0, bx1, by1, Frame); }
             if (i == Chest && _ac.On) by1 = Math.Min(by1, Sy(_ac.Y0));
             if (held.Oid == InventoryModel.Invalid)
@@ -157,7 +157,7 @@ internal sealed partial class InventoryWindow
                 for (int cx = 0; cx < InventoryModel.Cols; cx++)
                 {
                     CellRect(cx, gy, out float cx0, out float cy0);
-                    if (skin != null) skin.Draw(KCell, cx0, cy0, cx0 + c, cy0 + c, s, read ? 0xffffffffu : BlankTint);
+                    if (skin != null) skin.Draw(KCell, cx0, cy0, cx0 + c, cy0 + c, read ? 0xffffffffu : BlankTint);
                     else Fill(gridUnder, cx0 + 1f, cy0 + 1f, cx0 + c, cy0 + c, Input, read ? 1f : 0.35f);
                 }
             }
@@ -202,7 +202,7 @@ internal sealed partial class InventoryWindow
             {
                 float tx0 = Sx(_tabs.X0), ty0 = Sy(_tabs.Y0 + t * Cell), tx1 = Sx(_tabs.X1), ty1 = Sy(_tabs.Y0 + (t + 1) * Cell) - 1f;
                 bool on = t == Page, hot = _mx >= tx0 && _mx < tx1 && _my >= ty0 && _my < ty1;
-                if (skin != null) skin.Draw(on ? KButtonOn : hot ? KButtonHot : KButton, tx0, ty0, tx1, ty1, s);
+                if (skin != null) skin.Draw(on ? KButtonOn : hot ? KButtonHot : KButton, tx0, ty0, tx1, ty1);
                 else { Fill(under, tx0, ty0, tx1, ty1, on ? NavOn : hot ? Frame2 : CatBg); Outline(under, tx0, ty0, tx1, ty1, ColBorder); }
                 string lbl = TabText[t];
                 UiText.Draw(under, small, lbl, (tx0 + tx1 - UiText.Measure(small, lbl)) / 2f, ty0 + (ty1 - ty0 - slh) / 2f + small.Ascent, on ? Hi : Tx2, float.MaxValue);
@@ -216,7 +216,7 @@ internal sealed partial class InventoryWindow
         {
             float bx0 = Sx(_goldButton.X0), by0 = Sy(_goldButton.Y0), bx1 = Sx(_goldButton.X1), by1 = Sy(_goldButton.Y1);
             bool hot = In(_goldButton, _mx, _my);
-            if (skin != null) skin.Draw(hot ? KGoldHot : KGold, bx0, by0, bx1, by1, s);
+            if (skin != null) skin.Draw(hot ? KGoldHot : KGold, bx0, by0, bx1, by1);
             else
             {
                 Fill(under, bx0, by0, bx1, by1, hot ? Frame2 : CatBg); Outline(under, bx0, by0, bx1, by1, ColBorder);
@@ -249,7 +249,7 @@ internal sealed partial class InventoryWindow
     {
         float s = S;
         bool hot = _mx >= x0 && _mx < x1 && _my >= y0 && _my < y1;
-        if (skin != null) { skin.Draw(KClose, x0 + 3f * s, y0 + 3f * s, x1 - 3f * s, y1 - 3f * s, s, hot ? 0xffffffffu : 0xc8c8c8ffu); return; }   // not-an-offset: rgba tints
+        if (skin != null) { skin.Draw(KClose, x0 + 3f * s, y0 + 3f * s, x1 - 3f * s, y1 - 3f * s, hot ? 0xffffffffu : 0xc8c8c8ffu); return; }   // not-an-offset: rgba tints
         if (hot) Fill(under, x0, y0, x1, y1, Accent);
         UiText.Draw(under, text, "x", (x0 + x1 - UiText.Measure(text, "x")) / 2f, y0 + (y1 - y0 - text.LineHeight) / 2f + text.Ascent, Hi, float.MaxValue);
     }
@@ -260,7 +260,7 @@ internal sealed partial class InventoryWindow
     {
         float ty0 = y0 + (y1 - y0) * top / total, ty1 = y0 + (y1 - y0) * Math.Min(1f, (top + view) / total);
         bool hot = held || _mx >= x0 && _mx < x1 && _my >= y0 && _my < y1;
-        if (skin != null) { skin.Draw(KTrough, x0, y0, x1, y1, S); skin.Draw(KThumb, x0, ty0, x1, ty1, S, hot ? 0xffffffffu : 0xc8c8c8ffu); }   // not-an-offset: rgba tints
+        if (skin != null) { skin.Draw(KTrough, x0, y0, x1, y1); skin.Draw(KThumb, x0, ty0, x1, ty1, hot ? 0xffffffffu : 0xc8c8c8ffu); }   // not-an-offset: rgba tints
         else { Fill(under, x0, y0, x1, y1, Track); Fill(under, x0 + 1f, ty0, x1 - 1f, ty1, hot ? Accent2 : Accent); }
     }
 
@@ -404,6 +404,6 @@ internal sealed partial class InventoryWindow
         if (a <= 0f || bw <= 0f || bh <= 0f) return;
         float w = Math.Min(bw, bh * a), h = w / a;
         float cx = (x0 + x1) / 2f, cy = (y0 + y1) / 2f;
-        skin.Draw(part, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f, s, 0xffffff99u);  // not-an-offset: rgba tint, 60 % alpha
+        skin.Draw(part, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f, 0xffffff99u);  // not-an-offset: rgba tint, 60 % alpha
     }
 }

@@ -139,7 +139,7 @@ internal sealed partial class InventoryWindow
     {
         if (!LootShown) return n;
         float s = S, x0 = LootX, y0 = Y, x1 = x0 + LootW, y1 = y0 + LootH, lh = text.LineHeight;
-        if (skin != null) { skin.Draw(KFrame, x0, y0, x1, y1, s); skin.Draw(KHeader, x0, y0, x1, Ly(TitleH), s); }
+        if (skin != null) { skin.Draw(KFrame, x0, y0, x1, y1); skin.Draw(KHeader, x0, y0, x1, Ly(TitleH)); }
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); Fill(under, x0 + 1f, y0 + 1f, x1 - 1f, Ly(TitleH), HeaderBg); }
         float bx0 = Lx(LootWDesign - Pad - CloseW);
         CloseButton(under, skin, text, bx0, Ly(2f), Lx(LootWDesign - Pad), Ly(2f + CloseW));
@@ -154,7 +154,7 @@ internal sealed partial class InventoryWindow
             for (int cx = 0; cx < LootModel.Cols; cx++)
             {
                 LootCellRect(cx, gy, out float qx, out float qy);
-                if (skin != null) skin.Draw(KLootCell, qx, qy, qx + c, qy + c, s, read ? 0xffffffffu : BlankTint);   // not-an-offset: an rgba tint
+                if (skin != null) skin.Draw(KLootCell, qx, qy, qx + c, qy + c, read ? 0xffffffffu : BlankTint);   // not-an-offset: an rgba tint
                 else Fill(lu, qx + 1f, qy + 1f, qx + c, qy + c, Input, read ? 1f : 0.35f);
             }
         }

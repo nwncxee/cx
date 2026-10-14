@@ -4,12 +4,11 @@ using CX.Framework;
 
 namespace CX.Ui;
 
-/// <summary>One piece of skin art: a texture resref and its nine-slice border in TEXELS (left, top, right, bottom;
-/// all zero = stretched whole). The engine's NUI insets are code, not data, so ours are
-/// too. A non-zero <see cref="SrcW"/> draws only that window of the sheet (texels from the image's top-left, the way a
-/// GUI model's UVs cut one button face out of a shared atlas), stretched whole.</summary>
+/// <summary>One piece of skin art: a texture resref and its nine-slice border in texels, drawn 1:1 at every UI scale as
+/// NUI draws it (all zero = stretched whole). A non-zero <see cref="SrcW"/> draws only that window of the sheet (texels
+/// from the image's top-left), stretched across and, with <see cref="TileY"/>, repeated down at its native height.</summary>
 public readonly record struct SkinPart(string Name, string Resref, int L = 0, int T = 0, int R = 0, int B = 0,
-                                       int SrcX = 0, int SrcY = 0, int SrcW = 0, int SrcH = 0);
+                                       int SrcX = 0, int SrcY = 0, int SrcW = 0, int SrcH = 0, bool TileY = false);
 
 /// <summary>
 /// A window's skin over the game's own GUI art: the declared parts, one <see cref="VertexBatch"/> per part, one
@@ -100,20 +99,32 @@ public sealed class Skin
         }
     }
 
-    /// <summary>Part <paramref name="part"/> over the rect, nine-sliced by its declared border × <paramref name="scale"/>
-    /// (a borderless part stretches whole), tinted.</summary>
-    public void Draw(int part, float x0, float y0, float x1, float y1, float scale, uint rgba = 0xffffffffu)  // not-an-offset: opaque white
+    /// <summary>Part <paramref name="part"/> over the rect snapped to whole pixels, nine-sliced by its declared border
+    /// at 1:1 (a borderless part stretches whole), tinted.</summary>
+    public void Draw(int part, float x0, float y0, float x1, float y1, uint rgba = 0xffffffffu)  // not-an-offset: opaque white
     {
         if ((uint)part >= (uint)_parts.Length || _tid[part] == 0) return;
+        x0 = MathF.Round(x0); y0 = MathF.Round(y0); x1 = MathF.Round(x1); y1 = MathF.Round(y1);
         SkinPart p = _parts[part];
         float r = ((rgba >> 24) & 0xFF) / 255f, g = ((rgba >> 16) & 0xFF) / 255f, b = ((rgba >> 8) & 0xFF) / 255f, a = (rgba & 0xFF) / 255f;
         if (p.SrcW > 0 && _w[part] > 0 && _h[part] > 0)
-        {
-            float w = _w[part], h = _h[part];
-            _b[part].Tex(x0, y0, x1, y1, p.SrcX / w, 1f - p.SrcY / h, (p.SrcX + p.SrcW) / w, 1f - (p.SrcY + p.SrcH) / h, r, g, b, a);
-        }
+            Cut(_b[part], x0, y0, x1, y1, _w[part], _h[part], p, r, g, b, a);
         else if (p.L + p.T + p.R + p.B == 0) _b[part].Tex(x0, y0, x1, y1, 0f, 1f, 1f, 0f, r, g, b, a);
-        else _b[part].NineSlice(x0, y0, x1, y1, _w[part], _h[part], p.L, p.T, p.R, p.B, scale, r, g, b, a);
+        else _b[part].NineSlice(x0, y0, x1, y1, _w[part], _h[part], p.L, p.T, p.R, p.B, 1f, r, g, b, a);
+    }
+
+    /// <summary>The sub-rect stretched across; with <see cref="SkinPart.TileY"/> repeated down every
+    /// <see cref="SkinPart.SrcH"/> px from the top, the last repeat cut short with its UV.</summary>
+    private static void Cut(VertexBatch b, float x0, float y0, float x1, float y1, float w, float h, in SkinPart p,
+                            float r, float g, float bl, float a)
+    {
+        float u0 = p.SrcX / w, u1 = (p.SrcX + p.SrcW) / w, vTop = 1f - p.SrcY / h, vSpan = p.SrcH / h;
+        if (!p.TileY) { b.Tex(x0, y0, x1, y1, u0, vTop, u1, vTop - vSpan, r, g, bl, a); return; }
+        for (float y = y0; y < y1; y += p.SrcH)
+        {
+            float ye = MathF.Min(y + p.SrcH, y1);
+            b.Tex(x0, y, x1, ye, u0, vTop, u1, vTop - vSpan * (ye - y) / p.SrcH, r, g, bl, a);
+        }
     }
 
     /// <summary>The part's texture width over height this frame, 0 when unresolved.</summary>
@@ -160,6 +171,14 @@ public sealed class Skin
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++) { b.Clear(); b.NineSlice(0f, 0f, 100f, 50f, 64, 32, 4, 4, 4, 4, 2f, 1f, 1f, 1f, 1f); }
         check.Expect(GC.GetAllocatedBytesForCurrentThread() - before == 0, "100 emits allocate nothing");
+        b.Clear();
+        Cut(b, 0f, 0f, 10f, 40f, 16f, 16f, new SkinPart("thumb", "x", SrcX: 3, SrcW: 10, SrcH: 16, TileY: true), 1f, 1f, 1f, 1f);
+        v = b.ToArray();
+        check.Expect(b.VertexCount == 3 * 6, "a 40 px thumb over a 16 px rib tiles three times");
+        check.Expect(v[VertexBatch.Floats * 2 + 3] == 0f && v[VertexBatch.Floats * 12 + 1] == 32f && v[VertexBatch.Floats * 14 + 1] == 40f,
+                     "full repeats span the rib's height; the last stops at the rect");
+        check.Expect(MathF.Abs(v[VertexBatch.Floats * 14 + 3] - 0.5f) < 1e-6f, "the 8 px tail samples half the rib");
+        check.Expect(MathF.Abs(v[2] - 3f / 16f) < 1e-6f && MathF.Abs(v[VertexBatch.Floats + 2] - 13f / 16f) < 1e-6f, "u spans columns 3..13");
         log.Info(check.Ok ? "Skin.SelfCheck: passed" : "Skin.SelfCheck: FAILED");
     }
 }

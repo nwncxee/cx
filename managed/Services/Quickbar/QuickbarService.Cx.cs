@@ -308,12 +308,12 @@ public sealed unsafe partial class QuickbarService
         under.Outline = over.Outline = TextStyle.HaloOf(QuickbarKnobs.Text.Outline.V, _cx.TextPx);
 
         float s = l.S;
-        if (skin != null) skin.Draw(KFrame, l.X, l.Y, l.X + l.W, l.Y + l.H, s);
+        if (skin != null) skin.Draw(KFrame, l.X, l.Y, l.X + l.W, l.Y + l.H);
         else { FillRgba(under, l.X, l.Y, l.X + l.W, l.Y + l.H, Theme.Rgba(Role.PanelBg, 0xe6)); OutlineRgba(under, l.X, l.Y, l.X + l.W, l.Y + l.H, Theme.Rgba(Role.Border)); }
         if (l.Grip > 0f)
         {
             float gx1 = l.X + (QuickbarLayout.PadPx + l.Grip) * s, gcx = (l.X + gx1) / 2f;
-            skin?.Draw(KGrip, l.X + 2f * s, l.Y + 2f * s, gx1 - 1f * s, l.Y + l.H - 2f * s, s);
+            skin?.Draw(KGrip, l.X + 2f * s, l.Y + 2f * s, gx1 - 1f * s, l.Y + l.H - 2f * s);
             for (float gy = l.Y + l.H / 2f - 6f * s; gy <= l.Y + l.H / 2f + 6f * s; gy += 4f * s) Fill(over, gcx - s, gy, gcx + s, gy + 2f * s, GripDots);
         }
 
@@ -328,7 +328,7 @@ public sealed unsafe partial class QuickbarService
         {
             int b = l.ButtonOf(i, _cx.Held);
             l.SlotRect(i, out float x0, out float y0, out float x1, out float y1);
-            if (skin != null) skin.Draw(KSlot, x0, y0, x1, y1, s);
+            if (skin != null) skin.Draw(KSlot, x0, y0, x1, y1);
             else { FillRgba(under, x0, y0, x1, y1, Theme.Rgba(Role.ListBg)); OutlineRgba(under, x0, y0, x1, y1, Theme.Rgba(Role.Frame)); }
             QuickSlot q = QuickbarNative.Read(panel, b);
             if (q.Type != 0)

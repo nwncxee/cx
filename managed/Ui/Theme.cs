@@ -28,13 +28,13 @@ public static class Theme
         0x05060a, 0x10141f, 0x1a160e, 0x3a3020, 0xd9a35a, 0x6c7385, 0x3a3f4d, 0x7fb87a,                      // not-an-offset: colours
     };
 
-    /// <summary>Colours beside NWN's own GUI art: its parchment-gold border and warm text over dark wood.</summary>
-    // ponytail: hand-matched to nui_* art by eye; read them off the engine's nk_style if a server reports a mismatch.
+    /// <summary>Colours beside NWN's own GUI art, from the stock <c>nui_skin.tml</c>: black interiors, the
+    /// <c>#AD8E60</c> border gold, <c>#F8F8F8</c> text, <c>#C8C8C8</c> header labels, <c>nui_header</c>'s blue.</summary>
     private static readonly uint[] NativeRgb =
     {
-        0x14110c, 0x6b5636, 0x231d14, 0x0f0c08, 0x18140e, 0x3a2f1e, 0x2c2416, 0xad8e60, 0xd2b27a, 0x080604,  // not-an-offset: colours
-        0x8a6d3e, 0xe6dcc6, 0xa89a80, 0x6e6452, 0xc8b48c, 0xfff4dc, 0x2e2618, 0x5a4a30, 0x463a26, 0x221c12,  // not-an-offset: colours
-        0x0a0806, 0x1a150d, 0x1a160e, 0x3a3020, 0xd9a35a, 0x7a6e58, 0x4a3e2a, 0x7fb87a,                      // not-an-offset: colours
+        0x000000, 0xad8e60, 0x1f4261, 0x000000, 0x0a0a0a, 0x522f13, 0x1a2333, 0xad8e60, 0xffcf64, 0x000000,  // not-an-offset: colours
+        0x1f4261, 0xf8f8f8, 0xc8c8c8, 0x8a8070, 0xb38650, 0xffffff, 0x2e2618, 0xb38650, 0x815537, 0x000000,  // not-an-offset: colours
+        0x000000, 0x0a0806, 0x1a160e, 0x3a3020, 0xd9a35a, 0x7a7060, 0x633e1e, 0x7fb87a,                      // not-an-offset: colours
     };
 
     /// <summary>The flat palettes, first = default: slate as drawn today, the rest its hue turned (ash drained).</summary>

@@ -155,7 +155,7 @@ public sealed unsafe partial class InventoryService
             int mx = 0, my = 0;
             EngineFn.SdlGetMouseState(&mx, &my);
             float s = _inv.S, size = 32f * s, ix = mx + 10f * s, iy = my + 10f * s;
-            if (skin != null) skin.Draw(InventoryWindow.KGoldCursor, ix, iy, ix + size, iy + size, s);
+            if (skin != null) skin.Draw(InventoryWindow.KGoldCursor, ix, iy, ix + size, iy + size);
             UiText.Draw(_goldBatch, _small!, _carryText, ix + size + 4f * s, iy + size - _small!.LineHeight + _small.Ascent, PanelChrome.Warn, float.MaxValue);
         }
         skin?.Flush();

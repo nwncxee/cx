@@ -112,6 +112,7 @@ internal static class UiCategory
         check.Expect(KnobGroup.Find("ui.look") is Knob<string> { Default: Theme.LookNative } && KnobGroup.Find("ui.palette") is Knob<string> { Default: "slate" },
           "ui.look and ui.palette bind with their defaults");
         Theme.SelfCheck(log);
+        NativeChrome.SelfCheck(log);
         log.Info(check.Ok ? "UiCategory.SelfCheck: passed" : "UiCategory.SelfCheck: FAILED");
     }
 }
