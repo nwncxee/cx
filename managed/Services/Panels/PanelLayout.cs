@@ -21,6 +21,14 @@ internal struct IconDraw
     public float Alpha;
 }
 
+/// <summary>One piece of skin art the panel wears instead of a flat rectangle, in panel-local px: a
+/// <see cref="NativeChrome"/> part index and the rect it is nine-sliced over.</summary>
+internal readonly struct SkinRect(int part, float x0, float y0, float x1, float y1)
+{
+    public readonly int Part = part;
+    public readonly float X0 = x0, Y0 = y0, X1 = x1, Y1 = y1;
+}
+
 /// <summary>One laid-out panel in panel-local px: the panel is (0,0)..(<see cref="W"/>, <see cref="H"/>) and its tab sits
 /// <see cref="TabH"/> above it. <see cref="Back"/> is every rectangle, <see cref="Text"/> every glyph, drawn with the icons between them.</summary>
 internal sealed class PanelView
@@ -32,6 +40,8 @@ internal sealed class PanelView
     /// <summary>The glyphs of every <c>pulse</c> block, drawn pulsing; null when the panel has none.</summary>
     public VertexBatch? Pulse;
     public readonly List<IconDraw> Icons = [];
+    /// <summary>The skin parts this panel wears, under everything else; empty unless it was laid out native.</summary>
+    public readonly List<SkinRect> Art = [];
 
     public PanelView(GlyphAtlas atlas)
     {
@@ -50,6 +60,7 @@ internal readonly struct PanelSubject(string name, string stack)
 /// Lays one <see cref="PanelDecl"/> out exactly as declared, top to bottom: text wraps to the panel's width, a block's
 /// size and colour come from the declaration, and CX adds no design of its own. A face of each wanted size comes from
 /// <c>face</c>, as the atlas and the stretch it still needs (1 when that size is baked). Cold: it allocates.
+/// Laid out native, the panel's ground, tab and icon frames are skin art instead of flat fills.
 /// </summary>
 internal sealed class PanelLayout
 {
@@ -66,20 +77,22 @@ internal sealed class PanelLayout
     private readonly Func<float, (GlyphAtlas A, float K)> _face;
     private readonly float _s;
     private readonly PanelSubject _subject;
+    private readonly bool _native;
     private readonly List<Atom> _line = [];
     private PanelView _v = null!;
     private PanelDecl _c = null!;
     private bool _pulse;
     private PanelStyle St => _c.St;
 
-    private PanelLayout(Func<float, (GlyphAtlas, float)> face, float scale, PanelSubject subject)
+    private PanelLayout(Func<float, (GlyphAtlas, float)> face, float scale, PanelSubject subject, bool native)
     {
-        _face = face; _s = scale; _subject = subject;
+        _face = face; _s = scale; _subject = subject; _native = native;
     }
 
-    /// <summary>The panel laid out at UI scale <paramref name="scale"/>.</summary>
-    public static PanelView Build(PanelDecl card, float scale, Func<float, (GlyphAtlas A, float K)> face, PanelSubject subject)
-        => new PanelLayout(face, scale, subject).Run(card);
+    /// <summary>The panel laid out at UI scale <paramref name="scale"/>, in the game's GUI art when
+    /// <paramref name="native"/> (the owner has resolved the look and armed its skin).</summary>
+    public static PanelView Build(PanelDecl card, float scale, Func<float, (GlyphAtlas A, float K)> face, PanelSubject subject, bool native = false)
+        => new PanelLayout(face, scale, subject, native).Run(card);
 
     private PanelView Run(PanelDecl c)
     {
@@ -91,21 +104,25 @@ internal sealed class PanelLayout
         float h = Stack(c.Blocks, pad, pad, w - 2f * pad, w, false) + pad;
         _v.W = w; _v.H = Math.Max(h, 2f * pad);
         _v.TabH = c.Tab.Length > 0 ? baseAtlas.LineHeight + st.TabExtra * _s : 0f;
-        if (st.Glow.Set) Glow(w, _v.H);
-        uint from = st.BgFrom, to = st.BgTo is { } far ? far : from;
-        switch (st.Dir)
+        if (_native) _v.Art.Add(new SkinRect(NativeChrome.Frame, 0, 0, w, _v.H));
+        else
         {
-            case BgDir.Horizontal: Gradient(0, 0, w, _v.H, from, to, to, from); break;
-            case BgDir.Diagonal: uint mid = Mix(from, to); Gradient(0, 0, w, _v.H, from, mid, to, mid); break;
-            default: Gradient(0, 0, w, _v.H, from, from, to, to); break;
+            if (st.Glow.Set) Glow(w, _v.H);
+            uint from = st.BgFrom, to = st.BgTo is { } far ? far : from;
+            switch (st.Dir)
+            {
+                case BgDir.Horizontal: Gradient(0, 0, w, _v.H, from, to, to, from); break;
+                case BgDir.Diagonal: uint mid = Mix(from, to); Gradient(0, 0, w, _v.H, from, mid, to, mid); break;
+                default: Gradient(0, 0, w, _v.H, from, from, to, to); break;
+            }
+            Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
+            if (st.Border2.Set)
+            {
+                float i2 = st.Border2Inset * _s;
+                if (_v.W > 2f * i2 && _v.H > 2f * i2) Frame(i2, i2, w - i2, _v.H - i2, st.Border2, st.Border2W, st.Sides);
+            }
+            if (st.Corners.Set) Corners(w, _v.H);
         }
-        Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
-        if (st.Border2.Set)
-        {
-            float i2 = st.Border2Inset * _s;
-            if (_v.W > 2f * i2 && _v.H > 2f * i2) Frame(i2, i2, w - i2, _v.H - i2, st.Border2, st.Border2W, st.Sides);
-        }
-        if (st.Corners.Set) Corners(w, _v.H);
         if (_v.TabH > 0f) Tab(baseAtlas);
         foreach (PanelImage i in c.Images) Image(i);
         Stack(c.Blocks, pad, pad, w - 2f * pad, w, true);
@@ -149,7 +166,8 @@ internal sealed class PanelLayout
         float tw = 0f;
         foreach (Rune r in text.EnumerateRunes()) tw += a.AdvanceOf(r);
         float x = St.TabX * _s, pad = St.TabPad * _s;
-        Rect(x, -_v.TabH, x + tw + 2f * pad, 0f, St.TabBg);
+        if (_native) _v.Art.Add(new SkinRect(NativeChrome.Tab, x, -_v.TabH, x + tw + 2f * pad, 0f));
+        else Rect(x, -_v.TabH, x + tw + 2f * pad, 0f, St.TabBg);
         Words(text, x + pad, -_v.TabH + St.TabDrop * _s + a.Ascent, a, 1f, St.TabText.Set ? St.TabText : St.Text, false);
     }
 
@@ -223,6 +241,7 @@ internal sealed class PanelLayout
 
     private void FrameBox(Block b, float x, float y, float box)
     {
+        if (_native) { _v.Art.Add(new SkinRect(NativeChrome.Frame, x, y, x + box, y + box)); return; }
         Rect(x, y, x + box, y + box, b.FrameFill.Set ? b.FrameFill : St.FrameFill);
         Frame(x, y, x + box, y + box, b.FrameLine.Set ? b.FrameLine : St.FrameLine, St.FrameW, "trbl");
     }

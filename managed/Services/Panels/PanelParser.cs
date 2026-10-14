@@ -118,6 +118,7 @@ internal static class PanelParser
         st.Sides = sides;
         st.Side = Str(e, "side", "") switch { "" => st.Side, "right" => Side.Right, "left" => Side.Left, "above" => Side.Above, "below" => Side.Below, var x => throw new Refusal($"side '{x}' is right, left, above or below") };
         st.Align = Str(e, "align", "") switch { "" => st.Align, "start" => Align.Start, "center" => Align.Center, "end" => Align.End, var x => throw new Refusal($"align '{x}' is start, center or end") };
+        st.Look = Str(e, "look", "") switch { "" => st.Look, "auto" => CardLook.Auto, "native" => CardLook.Native, "flat" => CardLook.Flat, var x => throw new Refusal($"look '{x}' is auto, native or flat") };
         st.Flip = Bool(e, "flip", st.Flip);
         Len(e, "offset", ref st.Offset, -PanelLimits.MaxLen, PanelLimits.MaxLen); Len(e, "cardgap", ref st.CardGap, -PanelLimits.MaxLen, PanelLimits.MaxLen);
         Len(e, "dx", ref st.Dx, -1000f, 1000f); Len(e, "dy", ref st.Dy, -1000f, 1000f);
