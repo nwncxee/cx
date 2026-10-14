@@ -152,9 +152,12 @@ public sealed class Knob<T> : Knob
     /// <summary>Slider range; the panel snaps to <see cref="Step"/>, chat accepts any in-range value.</summary>
     public readonly T Min, Max, Step;
     public readonly string Unit;
-    /// <summary>Dropdown: labels shown / values stored, index-aligned.</summary>
-    public readonly string[] Choices;
-    public readonly T[] Values;
+    /// <summary>Dropdown: labels shown / values stored, index-aligned; an <see cref="Open"/> one may be re-offered.</summary>
+    public string[] Choices { get; private set; }
+    public T[] Values { get; private set; }
+    /// <summary>A Dropdown whose values are found at runtime: any text its parser accepts is a value, listed or not
+    /// (the file may name one before it is found), and <see cref="Offer"/> replaces the list.</summary>
+    public bool Open { get; }
 
     private T _bound;
     private T[]? _rungs;
@@ -165,9 +168,10 @@ public sealed class Knob<T> : Knob
 
     internal Knob(KnobGroup group, string name, string label, KnobKind kind, Tier tier, Effect effect,
                   string section, string help, bool layout, T def, T min, T max, T step, string unit,
-                  string[]? choices, T[]? values, Func<T, string>? fmt, Func<string, (bool, T)>? parse)
+                  string[]? choices, T[]? values, Func<T, string>? fmt, Func<string, (bool, T)>? parse, bool open = false)
         : base(group, name, label, kind, tier, effect, section, help, layout)
     {
+        Open = open;
         Default = def; Min = min; Max = max; Step = step; Unit = unit;
         Values = values ?? Array.Empty<T>();
         _fmt = fmt ?? KnobCodec<T>.Format ?? throw new ArgumentException($"{Key}: no Format for {typeof(T).Name}");
@@ -231,6 +235,7 @@ public sealed class Knob<T> : Knob
             for (int i = 0; i < Choices.Length; i++)
                 if (string.Equals(Choices[i], s, StringComparison.OrdinalIgnoreCase)) { v = Values[i]; return true; }
             if (NumericSteps && _parse(s) is (true, T raw) && InSpan(raw)) { v = raw; return true; }
+            if (Open && _parse(s) is (true, T any)) { v = any; return true; }
             if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int ix)
                 && ix >= 0 && ix < Values.Length) { v = Values[ix]; return true; }
             v = Default;
@@ -271,6 +276,13 @@ public sealed class Knob<T> : Knob
     internal override bool BootIntact => EqualityComparer<T>.Default.Equals(Boot, _bound);
     public override void Reset() => Set(Default);
     public override int ChoiceIndex => Array.IndexOf(Values, V);
+
+    /// <summary>An <see cref="Open"/> dropdown's new list, index-aligned; the live value is left alone. Cold.</summary>
+    public void Offer(T[] values, string[] choices)
+    {
+        if (!Open || values.Length != choices.Length) { Group.Refuse($"{Key}: Offer needs an open dropdown and aligned lists"); return; }
+        Values = values; Choices = choices;
+    }
     public override int ChoiceCount => Values.Length;
 
     /// <summary>Make the default a rung of <paramref name="driver"/>'s ladder: <c>rungs[driver.ChoiceIndex]</c>.

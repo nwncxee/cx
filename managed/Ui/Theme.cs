@@ -20,6 +20,10 @@ public sealed record Palette(string Id, string Label, uint[] Rgb);
 public static class Theme
 {
     public const string LookNative = "native", LookFlat = "flat";
+    /// <summary>The palette the player edits in <c>ui.custom_&lt;role&gt;</c>.</summary>
+    public const string Custom = "custom";
+    /// <summary>A content palette's resref prefix; the rest of the resref is its id.</summary>
+    public const string FilePrefix = "cxpal_";
 
     private static readonly uint[] SlateRgb =
     {
@@ -50,8 +54,62 @@ public static class Theme
     /// <summary>The colours worn with the native look.</summary>
     public static readonly Palette Native = new("native", "Game art", NativeRgb);
 
-    private sealed class ThemeState { public uint[] Rgb = SlateRgb; public bool Native; public int Epoch; }
+    private sealed class ThemeState
+    {
+        public uint[] Rgb = SlateRgb;
+        public bool Native;
+        public int Epoch;
+        /// <summary>Palettes the resource chain supplies (override, a hak, NWSync), by id.</summary>
+        public Palette[] Found = Array.Empty<Palette>();
+        /// <summary>The last non-custom palette chosen: what "start from the previous palette" copies.</summary>
+        public string Previous = "slate";
+    }
     private static ThemeState _s = new();
+
+    /// <summary>The colour of every role in a set, built-in, custom or found; null for an unknown id.</summary>
+    public static uint[]? RgbOf(string id)
+    {
+        if (id == Custom) return CustomRgb();
+        foreach (Palette p in Palettes) if (p.Id == id) return p.Rgb;
+        foreach (Palette p in _s.Found) if (p.Id == id) return p.Rgb;
+        return null;
+    }
+
+    /// <summary>The player's custom palette as the swatch rows hold it.</summary>
+    public static uint[] CustomRgb()
+    {
+        var k = UiKnobs.CustomRgb;
+        var o = new uint[k.Length];
+        for (int i = 0; i < o.Length; i++) o[i] = k[i].V >> 8;
+        return o;
+    }
+
+    /// <summary>The last non-custom palette chosen.</summary>
+    public static string Previous => _s.Previous;
+
+    /// <summary>The palettes found in content, as the scan left them.</summary>
+    public static Palette[] Found => _s.Found;
+
+    /// <summary>Publish a new scan: re-offer <c>ui.palette</c> (built-ins, custom, then found) and re-resolve. Main thread, cold.</summary>
+    internal static void SetFound(Palette[] found)
+    {
+        _s = new ThemeState { Native = _s.Native, Rgb = _s.Rgb, Epoch = _s.Epoch, Found = found, Previous = _s.Previous };
+        int n = Palettes.Length + 1 + found.Length;
+        string[] ids = new string[n], labels = new string[n];
+        for (int i = 0; i < Palettes.Length; i++) { ids[i] = Palettes[i].Id; labels[i] = Palettes[i].Label; }
+        ids[Palettes.Length] = Custom; labels[Palettes.Length] = "Custom";
+        for (int i = 0; i < found.Length; i++) { ids[Palettes.Length + 1 + i] = found[i].Id; labels[Palettes.Length + 1 + i] = found[i].Label; }
+        UiKnobs.Palette.Offer(ids, labels);
+        Apply();
+    }
+
+    /// <summary>A palette id as a file or a server names it: 1-10 of a-z, 0-9 and _ (the resref is <c>cxpal_</c> + id).</summary>
+    public static bool ValidId(string id)
+    {
+        if (id.Length is 0 or > 10) return false;
+        foreach (char c in id) if (c is not ((>= 'a' and <= 'z') or (>= '0' and <= '9') or '_')) return false;
+        return true;
+    }
 
     /// <summary>True while the native look is chosen; an owner whose art fails to arm still draws flat.</summary>
     public static bool IsNative => _s.Native;
@@ -67,13 +125,11 @@ public static class Theme
     internal static void Apply()
     {
         bool native = UiKnobs.Look.V == LookNative;
-        _s = new ThemeState { Native = native, Rgb = native ? NativeRgb : Find(UiKnobs.Palette.V).Rgb, Epoch = _s.Epoch + 1 };
-    }
-
-    private static Palette Find(string id)
-    {
-        foreach (Palette p in Palettes) if (p.Id == id) return p;
-        return Palettes[0];
+        uint[] flat = RgbOf(UiKnobs.Palette.V) ?? SlateRgb;
+        foreach (var k in UiKnobs.CustomRgb) k.Disabled = UiKnobs.Palette.V != Custom;
+        string id = UiKnobs.Palette.V;
+        _s = new ThemeState { Native = native, Rgb = native ? NativeRgb : flat, Epoch = _s.Epoch + 1, Found = _s.Found,
+                              Previous = id != Custom && RgbOf(id) != null ? id : _s.Previous };
     }
 
     /// <summary>Resolve a role identifier (<c>@accent</c>, case-insensitive) to <c>rrggbbaa</c>, opaque.</summary>
@@ -122,12 +178,14 @@ public static class Theme
         var check = new Checker(log);
         check.Expect(Palettes[0].Rgb[(int)Role.Accent] == 0x335785 && Palettes[0].Rgb[(int)Role.Tx] == 0xd8dee9, "slate is today's chrome");
         check.Expect(SlateRgb.Length == Enum.GetValues<Role>().Length && NativeRgb.Length == SlateRgb.Length, "every palette covers every role");
-        uint ash = Find("ash").Rgb[(int)Role.Accent];
+        uint ash = RgbOf("ash")![(int)Role.Accent];
         check.Expect(((ash >> 16) & 0xFF) == (ash & 0xFF) && ((ash >> 8) & 0xFF) == (ash & 0xFF), "ash is grey");
         foreach (Palette p in Palettes) check.Expect(p.Rgb[(int)Role.Warn] == 0xd9a35a, $"{p.Id} keeps the warning colour");
-        uint ember = Find("ember").Rgb[(int)Role.Accent];
+        uint ember = RgbOf("ember")![(int)Role.Accent];
         check.Expect(((ember >> 16) & 0xFF) > (ember & 0xFF), "ember's accent is warm");
         check.Expect(TryRole("@ACCENT", out _) && TryRole("@tx2", out _), "role identifiers resolve case-insensitively");
+        check.Expect(ValidId("my_pal2") && !ValidId("") && !ValidId("Caps") && !ValidId("elevenchars") && !ValidId("a-b"), "palette ids are 1-10 of a-z0-9_");
+        check.Expect(RgbOf("nope") == null && RgbOf(Custom)!.Length == SlateRgb.Length, "an unknown id has no colours; custom covers every role");
         check.Expect(!TryRole("@nope", out _) && !TryRole("accent", out _) && !TryRole("@7", out _), "a bad identifier is refused");
         log.Info(check.Ok ? "Theme.SelfCheck: passed" : "Theme.SelfCheck: FAILED");
     }

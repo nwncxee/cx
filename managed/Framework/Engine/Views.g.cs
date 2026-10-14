@@ -283,6 +283,10 @@ global using unsafe ResManGetResObjectFn = delegate* unmanaged<nint, byte*, usho
 global using unsafe ResManSetResObjectFn = delegate* unmanaged<nint, byte*, ushort, nint, void>;
 global using unsafe ResManDemandFn = delegate* unmanaged<nint, nint, long>;
 global using unsafe ResManGetKeyEntryFn = delegate* unmanaged<nint, byte*, ushort, nint*, nint*, byte, int>;
+global using unsafe ResManGetResOfTypeFn = delegate* unmanaged<nint, ushort, int, nint>;
+global using unsafe ExoStringListCountFn = delegate* unmanaged<nint, int>;
+global using unsafe ExoStringListGetFn = delegate* unmanaged<nint, int, nint>;
+global using unsafe ExoStringListDtorFn = delegate* unmanaged<nint, void>;
 global using unsafe AurGetImageWrapperFn = delegate* unmanaged<nint, int*, int*, int*, int*, int*, int*, float*, int, nint>;
 global using unsafe TgaServicedFn = delegate* unmanaged<nint, int>;
 global using unsafe ImageDecodeFn = delegate* unmanaged<byte*, int, int, byte*, int, int*, int, nint>;
@@ -5535,6 +5539,22 @@ public static unsafe class EngineFn
     private static bool _ResManGetKeyEntryDone;
     /// <inheritdoc cref="SymbolMap.ResManGetKeyEntry"/>
     public static ResManGetKeyEntryFn ResManGetKeyEntry => (ResManGetKeyEntryFn)(_ResManGetKeyEntryDone ? _ResManGetKeyEntry : Resolve(ref _ResManGetKeyEntry, ref _ResManGetKeyEntryDone, SymbolMap.ResManGetKeyEntry));
+    private static IntPtr _ResManGetResOfType;
+    private static bool _ResManGetResOfTypeDone;
+    /// <inheritdoc cref="SymbolMap.ResManGetResOfType"/>
+    public static ResManGetResOfTypeFn ResManGetResOfType => (ResManGetResOfTypeFn)(_ResManGetResOfTypeDone ? _ResManGetResOfType : Resolve(ref _ResManGetResOfType, ref _ResManGetResOfTypeDone, SymbolMap.ResManGetResOfType));
+    private static IntPtr _ExoStringListCount;
+    private static bool _ExoStringListCountDone;
+    /// <inheritdoc cref="SymbolMap.ExoStringListCount"/>
+    public static ExoStringListCountFn ExoStringListCount => (ExoStringListCountFn)(_ExoStringListCountDone ? _ExoStringListCount : Resolve(ref _ExoStringListCount, ref _ExoStringListCountDone, SymbolMap.ExoStringListCount));
+    private static IntPtr _ExoStringListGet;
+    private static bool _ExoStringListGetDone;
+    /// <inheritdoc cref="SymbolMap.ExoStringListGet"/>
+    public static ExoStringListGetFn ExoStringListGet => (ExoStringListGetFn)(_ExoStringListGetDone ? _ExoStringListGet : Resolve(ref _ExoStringListGet, ref _ExoStringListGetDone, SymbolMap.ExoStringListGet));
+    private static IntPtr _ExoStringListDtor;
+    private static bool _ExoStringListDtorDone;
+    /// <inheritdoc cref="SymbolMap.ExoStringListDtor"/>
+    public static ExoStringListDtorFn ExoStringListDtor => (ExoStringListDtorFn)(_ExoStringListDtorDone ? _ExoStringListDtor : Resolve(ref _ExoStringListDtor, ref _ExoStringListDtorDone, SymbolMap.ExoStringListDtor));
     private static IntPtr _AliasResolveFileName;
     private static bool _AliasResolveFileNameDone;
     /// <inheritdoc cref="SymbolMap.AliasResolveFileName"/>
@@ -7981,6 +8001,30 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ResManGetKeyEntry"/>; returns the slot holding the next layer, or null.</summary>
     public static ResManGetKeyEntryFn* ChainResManGetKeyEntry(this HookService h, ResManGetKeyEntryFn handler, int priority) =>
         (ResManGetKeyEntryFn*)h.Chain(SymbolMap.ResManGetKeyEntry, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ResManGetResOfType"/>; returns the original, or null.</summary>
+    public static ResManGetResOfTypeFn InstallResManGetResOfType(this HookService h, ResManGetResOfTypeFn handler) =>
+        (ResManGetResOfTypeFn)h.Install(SymbolMap.ResManGetResOfType, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ResManGetResOfType"/>; returns the slot holding the next layer, or null.</summary>
+    public static ResManGetResOfTypeFn* ChainResManGetResOfType(this HookService h, ResManGetResOfTypeFn handler, int priority) =>
+        (ResManGetResOfTypeFn*)h.Chain(SymbolMap.ResManGetResOfType, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ExoStringListCount"/>; returns the original, or null.</summary>
+    public static ExoStringListCountFn InstallExoStringListCount(this HookService h, ExoStringListCountFn handler) =>
+        (ExoStringListCountFn)h.Install(SymbolMap.ExoStringListCount, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ExoStringListCount"/>; returns the slot holding the next layer, or null.</summary>
+    public static ExoStringListCountFn* ChainExoStringListCount(this HookService h, ExoStringListCountFn handler, int priority) =>
+        (ExoStringListCountFn*)h.Chain(SymbolMap.ExoStringListCount, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ExoStringListGet"/>; returns the original, or null.</summary>
+    public static ExoStringListGetFn InstallExoStringListGet(this HookService h, ExoStringListGetFn handler) =>
+        (ExoStringListGetFn)h.Install(SymbolMap.ExoStringListGet, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ExoStringListGet"/>; returns the slot holding the next layer, or null.</summary>
+    public static ExoStringListGetFn* ChainExoStringListGet(this HookService h, ExoStringListGetFn handler, int priority) =>
+        (ExoStringListGetFn*)h.Chain(SymbolMap.ExoStringListGet, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ExoStringListDtor"/>; returns the original, or null.</summary>
+    public static ExoStringListDtorFn InstallExoStringListDtor(this HookService h, ExoStringListDtorFn handler) =>
+        (ExoStringListDtorFn)h.Install(SymbolMap.ExoStringListDtor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ExoStringListDtor"/>; returns the slot holding the next layer, or null.</summary>
+    public static ExoStringListDtorFn* ChainExoStringListDtor(this HookService h, ExoStringListDtorFn handler, int priority) =>
+        (ExoStringListDtorFn*)h.Chain(SymbolMap.ExoStringListDtor, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.AurGetImageWrapper"/>; returns the original, or null.</summary>
     public static AurGetImageWrapperFn InstallAurGetImageWrapper(this HookService h, AurGetImageWrapperFn handler) =>
         (AurGetImageWrapperFn)h.Install(SymbolMap.AurGetImageWrapper, (IntPtr)handler);

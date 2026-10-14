@@ -109,9 +109,9 @@ public sealed partial class KnobGroup
     /// <paramref name="values"/>; null shows each value's own text.</summary>
     public Knob<T> Dropdown<T>(string key, string label, T[] values, T def, string[]? choices = null, bool layout = false,
                                Tier tier = Tier.User, Effect effect = Effect.Live, string? help = null, Action? changed = null,
-                               Func<T, string>? format = null, Func<string, (bool, T)>? parse = null)
+                               Func<T, string>? format = null, Func<string, (bool, T)>? parse = null, bool open = false)
         => Add(new Knob<T>(this, key, label, KnobKind.Dropdown, tier, effect, _section, help ?? "", layout,
-                           def, def, def, def, "", choices, values, format, parse), changed);
+                           def, def, def, def, "", choices, values, format, parse, open), changed);
 
     public Knob<uint> Swatch(string key, string label, uint def, Tier tier = Tier.User, Effect effect = Effect.Live,
                              string? help = null, Action? changed = null)

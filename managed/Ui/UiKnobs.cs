@@ -21,6 +21,10 @@ internal static class UiKnobs
     internal static readonly Knob<float> TipDelay, TipFadeIn, TipFadeOut;
     /// <summary>The one look every CX window follows (<see cref="Theme"/>); a server may hold both.</summary>
     internal static readonly Knob<string> Look, Palette;
+    /// <summary>The custom palette's colour per <see cref="Role"/>, index-aligned; editable while <see cref="Palette"/> is custom.</summary>
+    internal static readonly Knob<uint>[] CustomRgb;
+    /// <summary>The id the custom palette saves under (<c>cxpal_&lt;id&gt;</c>).</summary>
+    internal static readonly Knob<string> CustomName;
 
     static UiKnobs()
     {
@@ -53,11 +57,28 @@ internal static class UiKnobs
                           changed: Theme.Apply);
         string[] ids = new string[Theme.Palettes.Length], labels = new string[ids.Length];
         for (int i = 0; i < ids.Length; i++) { ids[i] = Theme.Palettes[i].Id; labels[i] = Theme.Palettes[i].Label; }
-        Palette = G.Dropdown("palette", "Palette", ids, ids[0], labels,
-                             help: "The colours of every CX window in the Flat colour look. A server may hold this choice.", changed: Theme.Apply);
+        Palette = G.Dropdown("palette", "Palette", ids, ids[0], labels, open: true,
+                             parse: v => (Theme.ValidId(v), v),
+                             help: "The colours of every CX window in the Flat colour look: a built-in set, Custom (edit it below), or one a palette file supplies -- yours in override/, or the server's. A server may hold this choice.",
+                             changed: Theme.Apply);
+        G.Section("Custom palette");
+        CustomRgb = new Knob<uint>[PaletteText.Labels.Length];
+        for (int i = 0; i < CustomRgb.Length; i++)
+            CustomRgb[i] = G.Swatch("custom_" + ((Role)i).ToString().ToLowerInvariant(), PaletteText.Labels[i], (Theme.Palettes[0].Rgb[i] << 8) | 0xff,
+                                    Tier.Advanced, help: "A colour of the Custom palette; pick Custom under Palette to edit it.", changed: Theme.Apply);
+        G.Button("customfrom", "Start from the previous palette", PaletteShare.StartFromPrevious, Tier.Advanced,
+                 help: "Copy the palette you used before Custom into the custom colours, to edit from there.");
+        CustomName = G.Text("customname", "Palette file name", "mine", Tier.Advanced,
+                            help: "The id the custom palette saves under: 1-10 of a-z, 0-9 and _. Saved as cxpal_<id>.txt.");
+        G.Button("customsave", "Save to override folder", PaletteShare.Save, Tier.Advanced,
+                 help: "Write the custom palette to override/cxpal_<id>.txt. It joins the Palette list; send the file to share it.");
+        G.Button("customcopy", "Copy palette to clipboard", PaletteShare.Copy, Tier.Advanced,
+                 help: "The current palette as palette-file text, ready to paste to someone.");
+        G.Button("custompaste", "Paste palette from clipboard", PaletteShare.Paste, Tier.Advanced,
+                 help: "Read palette-file text from the clipboard into the custom colours and switch to Custom.");
         ServerPolicy.AllowKnobs("ui.look");
         ServerPolicy.AllowKnobs("ui.palette");
-        Theme.Apply();
+        Theme.SetFound(System.Array.Empty<Palette>());
         G.Section("Tooltips");
         TipDelay = G.Slider("tipdelay", "Tooltip delay", 0f, 2f, 0.05f, Tooltip.DelaySec, "s", Tier.Advanced,
                             help: "How long the pointer rests on something before its tooltip shows, in every CX window and on the CX quickbar. Moving to a neighbour while one shows skips the wait.");
@@ -112,6 +133,7 @@ internal static class UiCategory
         check.Expect(KnobGroup.Find("ui.look") is Knob<string> { Default: Theme.LookNative } && KnobGroup.Find("ui.palette") is Knob<string> { Default: "slate" },
           "ui.look and ui.palette bind with their defaults");
         Theme.SelfCheck(log);
+        PaletteText.SelfCheck(log);
         NativeChrome.SelfCheck(log);
         log.Info(check.Ok ? "UiCategory.SelfCheck: passed" : "UiCategory.SelfCheck: FAILED");
     }

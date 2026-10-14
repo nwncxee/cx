@@ -1808,6 +1808,19 @@ internal static unsafe class SymbolMap
     /// it side-effect free. Out-params, so no <c>sret</c> -- unlike <c>GetResID</c>, which must not be called directly.</summary>
     [Fn("int(IntPtr resman, byte* resref, ushort type, IntPtr* table, IntPtr* entry, byte logMissing)")]
     public const string ResManGetKeyEntry  = "_ZN10CExoResMan11GetKeyEntryERK7CResReftPP12CExoKeyTablePP14CKeyTableEntryb";
+    /// <summary>Every resref of one restype across every key table, highest priority first, as a heap
+    /// <c>CExoStringList*</c> the caller frees (<see cref="ExoStringListDtor"/> then <see cref="OperatorDelete"/>). No I/O,
+    /// no <c>CRes</c>; dedup is case-sensitive. Main thread only, outside any resman hook: the tables take no lock.</summary>
+    [Fn("IntPtr(IntPtr resman, ushort type, int encapsulatedOnly)")]
+    public const string ResManGetResOfType = "_ZN10CExoResMan12GetResOfTypeEti";
+    [Fn("int(IntPtr list)")]
+    public const string ExoStringListCount = "_ZN14CExoStringList8GetCountEv";
+    /// <summary>The <c>CExoString*</c> at <paramref name="i"/>, borrowed from the list.</summary>
+    [Fn("IntPtr(IntPtr list, int i)")]
+    public const string ExoStringListGet = "_ZN14CExoStringList9GetStringEi";
+    /// <summary>Frees every string and the array; the list's own 0x18-byte shell is left for <see cref="OperatorDelete"/>.</summary>
+    [Fn("void(IntPtr list)")]
+    public const string ExoStringListDtor = "_ZN14CExoStringListD2Ev";
     /// <summary>Alias name plus restype to an absolute filename -- what <c>CExoFileInternal</c> itself calls (Linux
     /// @0x516dc0, Windows RVA 0x166D20): the <c>':'</c> prefix through the alias list, the remainder, then
     /// <c>'.' + GetResourceExtension(restype)</c>. Returns a <c>CExoString</c> BY VALUE, so <b>sret</b>, and the
@@ -3385,6 +3398,10 @@ internal static unsafe class SymbolMap
         [NuiSpanVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
         [ResManExists] = Nm("?Exists@CExoResMan@@QEAAHAEBVCResRef@@GPEAI@Z"),
         [ResManGetKeyEntry] = Nm("?GetKeyEntry@CExoResMan@@QEAAHAEBVCResRef@@GPEAPEAVCExoKeyTable@@PEAPEAVCKeyTableEntry@@_N@Z"),
+        [ResManGetResOfType] = Nm("?GetResOfType@CExoResMan@@QEAAPEAVCExoStringList@@GH@Z"),
+        [ExoStringListCount] = Nm("?GetCount@CExoStringList@@QEAAHXZ"),
+        [ExoStringListGet] = Nm("?GetString@CExoStringList@@QEAAPEAVCExoString@@H@Z"),
+        [ExoStringListDtor] = Nm("??1CExoStringList@@QEAA@XZ"),
         [AliasResolveFileName] = Nm("?ResolveFileName@CExoAliasList@@QEBA?AVCExoString@@AEBV2@G@Z"),
         [ResManGetResObject] = Nm("?GetResObject@CExoResMan@@QEAAPEAVCRes@@AEBVCResRef@@G@Z"),
         [ResManRelease] = Nm("?Release@CExoResMan@@QEAAHPEAVCRes@@@Z"),

@@ -33,6 +33,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `8`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour and `look` for the game's own GUI art. Older values are listed below |
+| `cx_cap_palette` | `1`: the client reads `cxpal_<id>.txt` palette files from your content and offers them as `ui.palette` choices (see [Palettes](#palettes)) |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
@@ -639,9 +640,9 @@ The native look dresses every CX window from one set of parts, so one key re-poi
 The common chrome, NUI's own art with the insets the engine draws it at (the button hover face insets 7 px, the rest
 3 px; the scrollbar thumb is a sub-rect of `nui_scrollv` tiled down the bar):
 
-`frame header tab button buttonhot buttonon buttononhot close edit trough thumb up down`
+`frame header tab button buttonhot buttonon buttononhot close edit trough thumb up down slider`
 
-Then the parts a window brings of its own -- the inventory's `cell slot gold goldhot goldcursor lootcell slider
+Then the parts a window brings of its own -- the inventory's `cell slot gold goldhot goldcursor lootcell
 sil.<slot id>`, the quickbar's `slot grip`:
 
 ```
@@ -651,6 +652,33 @@ ui.skin.sil.head=my_helm_ghost
 
 A skin part the client does not have refuses the **whole** skin (logged with every missing name, a notice on
 screen, the window draws its flat look): alias only art you ship (research: CX-152).
+
+## Palettes
+
+The flat look's colours are a palette: a built-in one, the player's Custom one, or one your content ships. A palette
+is a text file named `cxpal_<id>.txt` -- `<id>` 1-10 of `a-z`, `0-9` and `_`, so the resref fits the engine's 16 --
+in a hak, the module or NWSync (plain `.txt` is restype 10, which `nwn_erf` and `nwn_nwsync_write` both carry). The
+client lists every one it can see when a module loads or an NWSync manifest changes, and offers each under
+Interface > Look > Palette by its `name`.
+
+```
+# lines are key=value; # starts a comment
+name=Westmarch
+base=ember            # optional: a built-in palette the roles you leave out come from (slate when absent)
+accent=#8a5a2b
+panelbg=#140e0a
+tx=#efe2c8
+```
+
+Every other key is a role, the same lowercase names a card colour takes after `@` ([Style](#style)), each with a
+`#RRGGBB` colour. A file with one bad line is refused whole and logged; the player keeps their palette. To make it
+the session's palette, hold the knob: `PolicySet` line `ui.palette=westmarch`. A client that has not found the file
+yet draws Slate until it does. Your content wins over a player's own `override/cxpal_<id>.txt` of the same id, as
+it does for every resource.
+
+Players make palettes too: Custom under Look edits every role, *Save to override folder* writes
+`override/cxpal_<id>.txt`, and *Copy palette to clipboard* gives the same text to share; a file dropped into
+`override/` is listed on the next module load.
 
 ## Example
 

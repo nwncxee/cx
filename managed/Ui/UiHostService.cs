@@ -18,6 +18,8 @@ public sealed unsafe class UiHostService : IExtenderService
     {
         _log = log;
         UiCategory.SelfCheck(log);   // declares the UI groups in panel order, then checks their rows
+        FrameRegistry.Global.Register(FramePhase.PostPresent, 70, PaletteShare.Tick, "Palettes.scan", log);
+        Capabilities.Register("palette", 1, static () => true);
         UiHost.SelfCheck(log);   // arbiter + draw roll-call proof (off-device)
         FrameZones.SelfCheck(log);   // frame-split instrument (off-device)
         ScrollColumn.SelfCheck(log);    // scroll column: offset, thumb, wheel, zero-alloc draw (off-device)
