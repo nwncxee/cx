@@ -85,14 +85,15 @@ layout(r32f, binding = 7) readonly uniform image2D uDecalSurf;
 const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
 /// Does a decal fragment at linear view depth <paramref name="d"/> lie on the prepassed surface whose window depth
 /// is <paramref name="z"/>? Measured as HEIGHT off that surface, not as depth along the ray, which a grazing view
-/// stretches without bound. The layer's writer and the blended pass ask this of the same inputs, so every decal
-/// fragment is taken by exactly one of them.
+/// stretches without bound, and one-sided: a surface standing over the decal (a foot on it) never takes it. The
+/// layer's writer and the blended pass ask this of the same inputs, so each decal fragment is taken by one of them.
 bool CxDecalOn(float z, float d)
 {
     if (!(z > 0.0 && z < 1.0)) return false;
     float s = uDecalZ.y / ((z * 2.0 - 1.0) + uDecalZ.x);
-    float h = abs(d - s) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
-    return h < CX_DECAL_TOL_M + CX_DECAL_TOL * s;
+    float h = (s - d) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
+    float eps = CX_DECAL_TOL * s;
+    return h > -eps && h < CX_DECAL_TOL_M + eps;
 }
 #include "cx_oitout.glsl"
 // Slot mask bits, matching AlloyRenderer's 1 << (slot - 1).

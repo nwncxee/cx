@@ -39,7 +39,8 @@ A ground decal is not lit at all. `AlloyRenderer.DbDecal` marks a lit, plainly a
 `OneMinusSrcAlpha`), up-facing sheet on a static object with no self-illumination, env map or hosted body; the
 blended run puts those first, and before the opaque pass `DecalLayer` draws them with the lit stage built as
 `CX_DECAL_WRITE`, which stops at the albedo. A fragment lying on the prepassed surface (`CxDecalOn`: at most
-0.1 m above it, plus 0.1% of view depth, measured as height off the surface so a grazing view does not stretch it) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share
+0.1 m above it, plus 0.1% of view depth, measured as height off the surface so a grazing view does not stretch it;
+one-sided, so a surface standing over the decal -- a foot on it -- is never taken for its ground) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share
 of the surface left showing, and stamps the prepass depth into an R32F target; every other fragment is
 discarded there. In the opaque pass, a fragment whose depth IS that stamp folds the layer into its albedo
 (`albedo * a + rgb`) before anything is lit, so the decal takes the ground's normal, material, sun and local
@@ -49,7 +50,7 @@ so a sheet that only partly lies on the ground keeps the rest as before.
 
 The deviations: the decal has no specular, roughness or normal of its own (the ground's stand); no 0.2 alpha
 discard (the layer takes the whole graded edge); a decal over an unlit or non-prepassed surface is lost at
-those pixels; a prepassed surface within that height of the decal (a foot standing on it) takes its albedo.
+those pixels.
 `/alloy viz 53` shows what each surface folded. The layer is not drawn into the probe capture or the mirror.
 
 ### Sheets that are not decals draw as washes
