@@ -109,6 +109,11 @@ internal static class TextureSlots
     // ponytail: the upgrade, when the lit stage next needs a unit, is the bindless handle the diffuse
     // already takes, or one cascade array holding the static and dynamic layers end to end.
     internal const uint SunShadowRaw = 29, SunShadowDynRaw = 30;
+    /// <summary>The engine's <c>solid_noise</c> for a hosted content stage (<c>texUnitNoise</c>), the last of the
+    /// 32 units every driver Alloy has met reports. Only the hosted lit programs sample it and bind it.</summary>
+    // ponytail: no stand-down below 32 units, only the limits line's warning; gate the declaration behind a
+    // define the way CX_SUN_SOFT is (check-shaders.py defining it too) if such a driver ever turns up.
+    internal const uint HostNoise = 31;
     /// <summary>R2: the area wetness map (<see cref="Weather"/>), read by the lit stage and the grass blade.
     /// Past the 0..15 budget for <see cref="LocalShadowRaw"/>'s reason -- every unit below is spent in the lit
     /// bracket -- and declared by <c>layout(binding)</c>, so no bind-time <c>glUniform1i</c> can miss it.</summary>
@@ -220,8 +225,12 @@ internal static class TextureSlots
         // the plain program's need or one of the soft sun's two on top -- except uPairMap, which only the
         // deferred shadow pass's CX_PAIR_RECV compiles in, so it is named here rather than counted.
         check.Expect(!litDecls.Contains("#define CX_PAIR_RECV"), $"{PairMap} uPairMap is exempt only while the lit stage never defines CX_PAIR_RECV");
+        check.Expect(litDecls.Contains($"layout(binding = {HostNoise}) uniform sampler2D uNoise;")
+          && AlloyRenderer.VanillaEnvDefs.Contains("#define texUnitNoise uNoise"),
+          $"{HostNoise} uNoise (hosted lit program) is the noise texUnitNoise names");
         foreach (uint u in Claimed(litDecls))
-            check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap,
+            check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap
+                         || u == HostNoise,
               $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} but sits above Programs.LitUnitsNeed ({Programs.LitUnitsNeed})");
         check.Expect(SunShadowDynRaw + 1 == Programs.SunSoftUnitsNeed,
           $"the soft sun's need is {Programs.SunSoftUnitsNeed} fragment units, its highest view is {SunShadowDynRaw}");
