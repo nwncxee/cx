@@ -1314,8 +1314,7 @@ public sealed partial class KnobPanel
         if (Collapsed) return;
 
         // categories
-        Fill(b, Cats.X, Cats.Y, Cats.X + Cats.W, Cats.Y + Cats.H, CatBg);
-        Fill(b, Cats.X + Cats.W - 1f, Cats.Y, Cats.X + Cats.W, Cats.Y + Cats.H, ColBorder);
+        ColumnBg(b, skin, Cats, CatBg);
         b.ClipY(Cats.Y, Cats.Y + Cats.H);
         for (int i = 0; i < Categories.Length; i++) Nav(b, body, Cats, i, Categories[i], i == Category, i == _hoverCat, false);
         b.ClearClip();
@@ -1324,8 +1323,7 @@ public sealed partial class KnobPanel
         // submenus, each with its dot when a row is off-default
         if (SubFrac > 0f)
         {
-            Fill(b, SubCol.X, SubCol.Y, SubCol.X + SubCol.W, SubCol.Y + SubCol.H, SubBg);
-            Fill(b, SubCol.X + SubCol.W - 1f, SubCol.Y, SubCol.X + SubCol.W, SubCol.Y + SubCol.H, ColBorder);
+            ColumnBg(b, skin, SubCol, SubBg);
             b.ClipY(SubCol.Y, SubCol.Y + SubCol.H);
             var subs = _subs;
             for (int i = 0; i < subs.Length; i++) Nav(b, body, SubCol, i, subs[i].Name, i == Sub, i == _hoverSub, SubDirty(subs[i]));
@@ -1412,7 +1410,7 @@ public sealed partial class KnobPanel
             float left = RowLeft(r);
             ControlAnchor(r, top, out float right, out float cy);
             float rowTop = top + (r.Master ? MasterTop : 0f);
-            if (r.Master)
+            if (r.Master && !Art(rowArt, NativeChrome.Frame, kx + Pad, top + MasterTop, colRight, top + r.H - MasterBottom, alpha))
             {
                 Fill(b, kx + Pad, top + MasterTop, colRight, top + r.H - MasterBottom, MasterBg);
                 Outline(b, kx + Pad, top + MasterTop, colRight, top + r.H - MasterBottom, ColBorder);

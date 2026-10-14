@@ -1,6 +1,8 @@
 using System;
 using CX.Framework;
 
+using static CX.Ui.PanelChrome;
+
 namespace CX.Ui;
 
 /// <summary>The panel's half of the native look: its own <see cref="Skin"/> over the stock NUI art, armed per
@@ -44,6 +46,15 @@ public sealed partial class KnobPanel
         if (skin == null) return false;
         skin.Draw(part, x0, y0, x1, y1, NativeChrome.White(alpha));
         return true;
+    }
+
+    /// <summary>A nav column's ground and its right-hand divider. Under the art the ground is the frame's own black
+    /// interior: a fill here would land over the column's scrollbar art, which flushes first. The divider sits where
+    /// that bar is, so it is left out while one shows.</summary>
+    private static void ColumnBg(VertexBatch b, Skin? skin, ScrollColumn col, uint rgb)
+    {
+        if (skin == null) Fill(b, col.X, col.Y, col.X + col.W, col.Y + col.H, rgb);
+        if (skin == null || !col.Overflows) Fill(b, col.X + col.W - 1f, col.Y, col.X + col.W, col.Y + col.H, ColBorder);
     }
 
     /// <summary>Hand the three columns the look their gutters are drawn and hit-tested at. Called from the layout
