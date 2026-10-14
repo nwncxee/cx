@@ -13,6 +13,8 @@ Xwayland server gamescope nests for the client:
                                        scroll:<x>,<y>,<n> (the wheel: +n zooms the camera in)
                                        shot:<path> (a screenshot mid-script, for a timed capture)
                                        size:<w>,<h> (resize the client window, so the pointer can leave it)
+                                       cursor:<tag> (log which pointer shape the X server shows: its size, hotspot and a
+                                                     hash of its pixels, so a held cursor and the arrow tell apart)
     xtool.py close :N                WM_DELETE_WINDOW to the client window -- SDL turns it into SDL_QUIT
 
 `shot` prefers the client's own window: under gamescope the root window is composited by gamescope
@@ -178,6 +180,8 @@ def cmd_keys(dpy, script):
             # A capture from inside the script, so a screenshot can be timed against a step
             # rather than only taken at the soak's halves.
             cmd_shot(dpy, arg)
+        elif kind == "cursor":
+            print(cursor_line(dpy, arg), flush=True)
         elif kind == "type":
             for ch in arg:
                 tap(dpy, char_keysym(ch), shift=ch.isupper())
@@ -185,6 +189,17 @@ def cmd_keys(dpy, script):
         else:
             raise SystemExit(f"xtool keys: unknown step {step!r}")
         dpy.sync()
+
+
+def cursor_line(dpy, tag):
+    """One line about the pointer shape the X server shows now. The hash is of the ARGB pixels, so two shapes differ."""
+    from Xlib.ext import xfixes
+    dpy.xfixes_query_version()
+    c = dpy.xfixes_get_cursor_image(dpy.screen().root)
+    px = c.cursor_image
+    opaque = sum(1 for p in px if (p >> 24) & 0xFF)
+    digest = zlib.crc32(struct.pack(f"<{len(px)}I", *px)) if px else 0
+    return f"cursor {tag}: {c.width}x{c.height} hot={c.xhot},{c.yhot} opaque={opaque} crc={digest:08x}"
 
 
 SHIFTED = {"/": "slash", "?": ("slash", True), " ": "space", ".": "period", ",": "comma",
