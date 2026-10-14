@@ -464,7 +464,7 @@ These refuse the line (or, for keys held, the new key):
 | images per card | 4 |
 | icon name or `src` | 120 characters; a texture resref (no `@` prefix) 16 |
 | distinct `@look:` images across the cards held | 64 (the new key is refused) |
-| distinct text sizes asked for in one client run, across every style | 24 (a card that would bake a new size past it is refused, and a restyle that does drops the card) |
+| distinct text sizes across the cards held | 24 (a card that would take the cards held past it is refused, and a restyle that does drops the card; a size no held card uses is released) |
 
 These are clamped into their range and the card still draws:
 

@@ -63,6 +63,9 @@ public static unsafe partial class TextRig
     /// object is epoch-scoped: re-fetch when <see cref="AtlasEpoch"/> changes. Null when headless or refused.</summary>
     public static GlyphAtlas? Face(float px) => _defaultName == null ? null : Face(_defaultName, px);
 
+    /// <summary>As <see cref="Face(float)"/>, held by <paramref name="owner"/> until it calls <see cref="ReleaseFace(float, string)"/>.</summary>
+    public static GlyphAtlas? Face(float px, string owner) => _defaultName == null ? null : Face(_defaultName, px, owner);
+
     /// <summary>Hot, alloc-free lookup of an already-baked default-typeface face; null on a miss (never bakes).</summary>
     public static GlyphAtlas? BakedFace(float px)
         => _sheet != null && _defaultName != null && _sheet.TryFace(_defaultName, px, out GlyphAtlas f) ? f : null;
@@ -73,10 +76,28 @@ public static unsafe partial class TextRig
 
     /// <summary>A face of the <see cref="FontRegistry"/> name <paramref name="typeface"/> at <paramref name="px"/>;
     /// see <see cref="Face(float)"/>. An unknown or refused name is the default typeface.</summary>
-    public static GlyphAtlas? Face(string typeface, float px)
+    public static GlyphAtlas? Face(string typeface, float px) => Face(typeface, px, SessionOwner);
+
+    /// <summary>As <see cref="Face(string, float)"/>, held by <paramref name="owner"/> until it calls
+    /// <see cref="ReleaseFace(string, float, string)"/>.</summary>
+    public static GlyphAtlas? Face(string typeface, float px, string owner)
     {
-        lock (_bakeLock) return FaceLocked(typeface, px);
+        lock (_bakeLock)
+        {
+            GlyphAtlas? f = FaceLocked(typeface, px);
+            if (f == null) return null;
+            var key = (FontRegistry.Effective(typeface), px);
+            if (!_holders.TryGetValue(key, out HashSet<string>? who)) _holders[key] = who = new HashSet<string>(StringComparer.Ordinal);
+            who.Add(owner);
+            return f;
+        }
     }
+
+    /// <summary>The holder of a face asked for with no owner: it is held for the session.</summary>
+    private const string SessionOwner = "";
+
+    /// <summary>The owners holding each extra face. A face whose last owner lets go leaves the sheet at the next bake.</summary>
+    private static readonly Dictionary<(string Typeface, float Px), HashSet<string>> _holders = new();
 
     /// <summary>Serialises the cold mutators of <see cref="_requests"/> (<see cref="Face(string, float)"/>,
     /// <see cref="ReleaseFace"/>, <see cref="SetFont"/>): the input thread and a pool-thread peak-face re-request
@@ -117,14 +138,29 @@ public static unsafe partial class TextRig
     public static GlyphAtlas? BakedIconFace(float px)
         => _sheet != null && _sheet.TryFace(Icons.Name, px, out GlyphAtlas f) ? f : null;
 
-    /// <summary>Drop a face request of the registry name <paramref name="typeface"/> a caller no longer needs (a
-    /// superseded peak face), so the sheet stops carrying it from the next re-bake on. Cold; no bake of its own --
-    /// the face stays usable until then. The default face (index 0) is never dropped.</summary>
-    public static void ReleaseFace(string typeface, float px)
+    /// <summary><paramref name="owner"/> no longer needs its face of <paramref name="typeface"/> at <paramref name="px"/>. When no
+    /// owner holds it, the sheet stops carrying it from the next re-bake on. Cold; no bake of its own -- the face stays usable
+    /// until then. The default face (index 0) is never dropped.</summary>
+    public static void ReleaseFace(string typeface, float px, string owner)
     {
         typeface = FontRegistry.Effective(typeface);
-        lock (_bakeLock) for (int i = _requests.Count - 1; i >= 1; i--)
-            if (_requests[i].Typeface == typeface && _requests[i].Px == px) _requests.RemoveAt(i);
+        lock (_bakeLock)
+        {
+            if (_holders.TryGetValue((typeface, px), out HashSet<string>? who))
+            {
+                who.Remove(owner);
+                if (who.Count > 0) return;
+                _holders.Remove((typeface, px));
+            }
+            for (int i = _requests.Count - 1; i >= 1; i--)
+                if (_requests[i].Typeface == typeface && _requests[i].Px == px) _requests.RemoveAt(i);
+        }
+    }
+
+    /// <summary>As <see cref="ReleaseFace(string, float, string)"/> for the default typeface.</summary>
+    public static void ReleaseFace(float px, string owner)
+    {
+        if (_defaultName != null) ReleaseFace(_defaultName, px, owner);
     }
 
     /// <summary>Raised COLD after <see cref="SetFont"/> swaps in a re-baked sheet, so a face derived from the UI size

@@ -704,13 +704,26 @@ internal static class CardSelfCheck
         ServerPolicy.Clear();
         PolicyRefusals.ForgetPrefix("");
 
-        var sizes = new System.Collections.Generic.List<float>();
-        for (int i = 0; i < PanelFonts.MaxFaces; i++) sizes.Add(0.5f + i * 0.05f);
-        check.Expect(PanelFonts.MaxFaces == 24 && PanelFonts.TryWant(sizes) && PanelFonts.TryWant(sizes) && !PanelFonts.TryWant([3f]) && PanelFonts.TryWant([sizes[0], sizes[5]]),
-            "24 distinct sizes are the ceiling: asking for the same ones again is free, a 25th is refused");
+        var sizes = new System.Collections.Generic.HashSet<float>();
+        for (int i = 0; i < 24; i++) sizes.Add(0.5f + i * 0.05f);
+        var over = new System.Collections.Generic.HashSet<float>(sizes) { 3f };
+        check.Expect(PanelFonts.MaxFaces == 24 && PanelFonts.TryHold(sizes) && PanelFonts.TryHold(sizes) && PanelFonts.Count == 24 && !PanelFonts.TryHold(over) && PanelFonts.Count == 24,
+            "24 distinct sizes are the ceiling: holding the same ones again is free, a 25th is refused and changes nothing");
+        check.Expect(PanelFonts.TryHold(new System.Collections.Generic.HashSet<float> { 0.5f, 0.75f }) && PanelFonts.Count == 2, "a size no longer listed is released");
+        var fresh = new System.Collections.Generic.HashSet<float> { 0.5f, 0.75f };
+        for (int i = 0; i < 22; i++) fresh.Add(3f + i * 0.1f);
+        check.Expect(PanelFonts.TryHold(fresh) && PanelFonts.Count == 24, "released sizes make room for new ones");
         PanelFonts.Reset();
-        check.Expect(PanelFonts.TryWant([3f]), "a new run counts from none");
-        PanelFonts.Reset();
+        check.Expect(PanelFonts.Count == 0, "a reset holds none");
+        check.Expect(CardRegistry.Set("a", "{\"blocks\":[{\"text\":\"x\",\"size\":2}]}") && CardRegistry.Set("b", "{\"blocks\":[{\"text\":\"a<s=0.7>b</s>\",\"size\":2}]}")
+                     && PanelFonts.Count == 2, "two cards hold the sizes they use, a shared one once");
+        CardRegistry.Set("b", "");
+        check.Expect(PanelFonts.Count == 1, "a card's release lets go of the sizes only it used: " + PanelFonts.Count);
+        CardRegistry.Release("");
+        check.Expect(PanelFonts.Count == 0, "with no cards held the panels hold no faces");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
     }
 
     /// <summary>Oracle: hand-written declarations and the looks counted off them by eye; the fake mint hands out 1, 2, 3 and zero for a name containing "bad".</summary>

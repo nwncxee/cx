@@ -96,16 +96,20 @@ internal static class CardRegistry
     /// <summary>Parses every held card line again against the current style.</summary>
     private static void Restyle()
     {
+        var sizes = new HashSet<float>();
         Index.Rebuild(old =>
         {
             if (!PanelParser.TryParse(old.Raw, out PanelDecl[] cards, out _, _s.Style)) return null;
-            if (!PanelFonts.TryWant(SizesUsed(cards)))
+            HashSet<float> used = SizesUsed(cards);
+            if (sizes.Union(used).Count() > PanelFonts.MaxFaces)
             {
                 PolicyRefusals.Add(RefusalKind.Card, Prefix + old.Key, old.Raw, FacesWhy);
                 return null;
             }
+            sizes.UnionWith(used);
             return new CardSet(old.Key, cards, old.Raw);
         });
+        PanelFonts.TryHold(sizes);
     }
 
     /// <summary>One <c>card.&lt;key&gt;</c> line: <paramref name="key"/> is what follows the prefix. An empty value releases it. False when refused.</summary>
@@ -118,10 +122,10 @@ internal static class CardRegistry
             _s.Log?.Info($"Cards: refusing a key of {key.Length} characters (1-{CardLimits.MaxKeyBytes} bytes allowed)");
             return false;
         }
-        if (value.Length == 0) { Index.Put(key, null); return true; }
+        if (value.Length == 0) { Drop(key); return true; }
         if (!PanelParser.TryParse(value, out PanelDecl[] cards, out string why, _s.Style))
         {
-            Index.Put(key, null);
+            Drop(key);
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, why);
             _s.Log?.Info($"Cards: refused '{key}': {why}; it keeps no card");
             return false;
@@ -138,7 +142,7 @@ internal static class CardRegistry
             _s.Log?.Info($"Cards: refused '{key}': more than {CardLimits.MaxLooks} distinct @look: images");
             return false;
         }
-        if (!PanelFonts.TryWant(SizesUsed(cards)))
+        if (!PanelFonts.TryHold(SizesHeld(key, cards)))
         {
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, FacesWhy);
             _s.Log?.Info($"Cards: refused '{key}': {FacesWhy}");
@@ -148,7 +152,23 @@ internal static class CardRegistry
         return true;
     }
 
-    private static readonly string FacesWhy = $"more than {PanelFonts.MaxFaces} distinct text sizes asked for this run";
+    private static readonly string FacesWhy = $"more than {PanelFonts.MaxFaces} distinct text sizes across the cards held";
+
+    /// <summary>Stops holding <paramref name="key"/>, and the faces only its cards used.</summary>
+    private static void Drop(string key)
+    {
+        Index.Put(key, null);
+        PanelFonts.TryHold(SizesHeld(key, []));
+    }
+
+    /// <summary>Every distinct text size of the cards held, with <paramref name="cards"/> standing in for those under <paramref name="key"/>.</summary>
+    private static HashSet<float> SizesHeld(string key, PanelDecl[] cards)
+    {
+        HashSet<float> sizes = SizesUsed(cards);
+        foreach (CardSet set in Index.Values)
+            if (!string.Equals(set.Key, key, StringComparison.OrdinalIgnoreCase)) sizes.UnionWith(SizesUsed(set.Cards));
+        return sizes;
+    }
 
     /// <summary>True when <paramref name="cards"/>, held under <paramref name="key"/>, would take the distinct <c>@look:</c> images past <see cref="CardLimits.MaxLooks"/>.</summary>
     private static bool LooksPast(string key, PanelDecl[] cards)
@@ -165,7 +185,7 @@ internal static class CardRegistry
     public static void Release(string prefix)
     {
         Index.Release(Prefix, prefix);
-        if (Index.Count == 0) PanelFonts.Forget();
+        PanelFonts.TryHold(SizesHeld("", []));
     }
 
     /// <summary>The cards held under <paramref name="key"/>, or null. Allocation-free.</summary>
@@ -182,7 +202,7 @@ internal static class CardRegistry
     internal static void Reset() { _s = new(); Index.Reset(); PanelFonts.Reset(); }
 
     /// <summary>Every distinct non-1 text size the cards use, so their faces are baked when the declaration arrives and never while one is drawn.</summary>
-    internal static IEnumerable<float> SizesUsed(PanelDecl[] cards)
+    internal static HashSet<float> SizesUsed(PanelDecl[] cards)
     {
         var seen = new HashSet<float>();
         void Walk(Block[] blocks)
