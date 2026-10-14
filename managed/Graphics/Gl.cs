@@ -34,6 +34,7 @@ public static unsafe class Gl
     /// fragments rather than letting them clip into a hole at the horizon.</summary>
     public const uint DEPTH_CLAMP = 0x864F;
     public const uint SRC_ALPHA = 0x0302, ONE_MINUS_SRC_ALPHA = 0x0303, ONE_MINUS_SRC_COLOR = 0x0301;
+    public const uint FUNC_ADD = 0x8006, MIN = 0x8007;
     public const uint COLOR_ATTACHMENT1 = 0x8CE1;
     public const uint COLOR_ATTACHMENT2 = 0x8CE2, COLOR_ATTACHMENT3 = 0x8CE3;
     /// <summary>The four the deferred G-buffer attaches on (<c>GBuffer.FirstAttachment</c>).</summary>
@@ -199,7 +200,7 @@ public static unsafe class Gl
     /// <summary>A compute write consumed as a divisor-1 vertex attribute (the grass scatter's stream).</summary>
     public const uint VERTEX_ATTRIB_ARRAY_BARRIER_BIT = 0x0001;
     /// <summary>An image store read back by the next level's dispatch (image) and by the lit stage (fetch).</summary>
-    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
+    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, READ_ONLY = 0x88B8, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
     public const uint ALL_BARRIER_BITS = 0xFFFFFFFF;   // not-an-offset: GL_ALL_BARRIER_BITS
     /// <summary>A compute write to a buffer the lit stage then reads as a uniform block (the probe's SH9).</summary>
     public const uint UNIFORM_BARRIER_BIT = 0x0004;
@@ -251,6 +252,12 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, uint, void> BindTexture, BindBuffer, BlendFunc;
     /// <summary>glBlendFunci (GL 4.0): a blend pair per draw buffer -- the OIT accumulation pair needs two.</summary>
     public static delegate* unmanaged<uint, uint, uint, void> BlendFunci;
+    /// <summary>glBlendFuncSeparatei (GL 4.0): separate colour and alpha pairs for one draw buffer -- the decal
+    /// layer over-blends its colour and multiplies its alpha down.</summary>
+    public static delegate* unmanaged<uint, uint, uint, uint, uint, void> BlendFuncSeparatei;
+    /// <summary>glBlendEquationi (GL 4.0): one draw buffer's blend equation -- the decal layer keeps its nearest
+    /// decal's depth under MIN.</summary>
+    public static delegate* unmanaged<uint, uint, void> BlendEquationi;
     /// <summary>glDrawBuffers: which colour attachments the bound FBO writes.</summary>
     public static delegate* unmanaged<int, uint*, void> DrawBuffers;
     public static delegate* unmanaged<int, uint*, void> GenTextures, GenVertexArrays, GenBuffers, DeleteBuffers;
@@ -607,6 +614,8 @@ public static unsafe class Gl
         CullFace = (delegate* unmanaged<uint, void>)P("glCullFace");
         BlendFunc = (delegate* unmanaged<uint, uint, void>)P("glBlendFunc");
         BlendFunci = (delegate* unmanaged<uint, uint, uint, void>)P("glBlendFunci");
+        BlendFuncSeparatei = (delegate* unmanaged<uint, uint, uint, uint, uint, void>)P("glBlendFuncSeparatei");
+        BlendEquationi = (delegate* unmanaged<uint, uint, void>)P("glBlendEquationi");
         DrawBuffers = (delegate* unmanaged<int, uint*, void>)P("glDrawBuffers");
         ActiveTexture = (delegate* unmanaged<uint, void>)P("glActiveTexture");
         UseProgram = (delegate* unmanaged<uint, void>)P("glUseProgram");

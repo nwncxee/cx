@@ -1,4 +1,10 @@
+#ifdef CX_DECAL_WRITE
+// the decal layer's writer: location 1 is its surface pair (prepass depth, decal view depth), never revealage
+layout(location = 1) out vec2 oDecalSurf;
+float oReveal;
+#else
 layout(location = 1) out float oReveal;
+#endif
 uniform int uOit;
 uniform sampler2D uOitDepth;
 // The lists block is compiled in ONLY for the OIT bracket's twin program (OitPass.WithLists): an SSBO

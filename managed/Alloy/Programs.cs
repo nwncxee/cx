@@ -63,6 +63,25 @@ internal static unsafe class Programs
     /// written instead. 0 = no twin, which is what stands the deferred pass down. Bound for the opaque and
     /// cutout lit batches of the main view; every other lit draw keeps the forward loop.</summary>
     internal static uint _progLitDef;
+    /// <summary>The decal layer's writer (<see cref="DecalLayer"/>) and its locations: the same final text with
+    /// <c>CX_DECAL_WRITE</c>, which stops at the albedo and writes it into the layer.</summary>
+    private sealed class DecalProgState
+    {
+        public uint Prog;
+        public LitLoc Loc;
+    }
+    private static DecalProgState _decal = new();
+    /// <summary>The decal writer, or 0 -- no writer, and decals stay in the blended pass.</summary>
+    internal static uint ProgDecal => _decal.Prog;
+    /// <summary>Its uniform locations, for the issue loop's program table.</summary>
+    internal static ref LitLoc DecalLoc => ref _decal.Loc;
+    /// <summary>Drop the writer's name: deleted when <paramref name="delete"/> (a module change), forgotten when
+    /// the context took it.</summary>
+    internal static void ForgetDecal(bool delete)
+    {
+        if (delete && _decal.Prog != 0) Gl.DeleteProgram(_decal.Prog);
+        _decal = new DecalProgState();
+    }
     /// <summary>The lit program with <c>CX_A2C_MASK</c> -- the coverage layer's own sample mask
     /// (<c>alloy.a2cmask</c>). Built on the layer's first ask; 0 until then or after a refusal.</summary>
     internal static uint _progLitMask;
@@ -201,6 +220,7 @@ internal static unsafe class Programs
         if (_progLitHost != 0) Gl.DeleteProgram(_progLitHost);
         if (_progLitList != 0) Gl.DeleteProgram(_progLitList);
         if (_progLitDef != 0) Gl.DeleteProgram(_progLitDef);
+        ForgetDecal(delete: true);
         if (_progLitMask != 0) Gl.DeleteProgram(_progLitMask);
         if (_hostMask.Prog != 0) Gl.DeleteProgram(_hostMask.Prog);
         _hostMask = new HostMaskState();
@@ -468,6 +488,12 @@ internal static unsafe class Programs
             if (pd != 0) _litD = LitLocs(pd);
             else _log?.Info("AlloyRenderer: lit deferred twin did not build -- deferred point lights are off for the session");
         }
+        // CX-273: the decal layer's writer, from the same final text. Optional: without it decals blend as before.
+        ForgetDecal(delete: true);
+        _decal.Prog = GlProgram.Graphics(vsSrc, ShaderStages.WithDefine(finalFs, "CX_DECAL_WRITE 1"), _log,
+                                         "AlloyRenderer lit program (decal layer)", host: false);
+        if (_decal.Prog != 0) _decal.Loc = LitLocs(_decal.Prog);
+        else _log?.Info("AlloyRenderer: the decal layer's writer did not build -- ground decals stay in the blended pass");
         // #350: the SECOND lit program, the one with the content bodies in. Same text, hosted regions spliced
         // instead of stubbed; same contracts, because it draws the same records. Optional twice over: alloy.hostfs=0,
         // no hosted feature, or a failed build all leave it 0 and hosted materials on the plain path.
@@ -549,6 +575,7 @@ internal static unsafe class Programs
         L.Tex = GlProgram.Loc(prog, "uTex");
         L.Cut = GlProgram.Loc(prog, "uAlphaCut"); L.AlphaMip = GlProgram.Loc(prog, "uAlphaMip");
         L.Viz = GlProgram.Loc(prog, "uViz"); L.Oit = GlProgram.Loc(prog, "uOit"); L.OitDim = GlProgram.Loc(prog, "uOitDim"); L.OitGob = GlProgram.Loc(prog, "uOitGob"); L.LightRecOn = GlProgram.Loc(prog, "uLightRecOn");
+        L.Decal = GlProgram.Loc(prog, "uDecal"); L.DecalZ = GlProgram.Loc(prog, "uDecalZ"); L.Solid = GlProgram.Loc(prog, "uSolid");
         L.SunTex = GlProgram.Loc(prog, "uSunShadow"); L.SunDynTex = GlProgram.Loc(prog, "uSunDynShadow");
         L.CubeTex = GlProgram.Loc(prog, "uLocalShadow"); L.CubeDynTex = GlProgram.Loc(prog, "uLocalDynShadow");
         L.CubeCount = GlProgram.Loc(prog, "uLocalCubes");

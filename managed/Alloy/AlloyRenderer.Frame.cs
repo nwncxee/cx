@@ -322,6 +322,8 @@ public sealed unsafe partial class AlloyRenderer
         // #303: the spheres go up whatever the cull mode -- the shadow gather reads the same buffer.
         fixed (float* sph = _dSph)
             CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
+        fixed (float* cs = _dCastSph)
+            CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
         fixed (uint* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull
@@ -425,6 +427,13 @@ public sealed unsafe partial class AlloyRenderer
                     CullPass.Dispatch(CullPass.PhaseColour, &vp, hiZ: DepthResource.Filled(PassGen), PassGen);
                     GpuEnd(GpuTerm.Cull);
                     FrameZones.Add(FrameZones.Zone.Cull, tCull2);
+                    // CX-273: the ground decals into their layer, off the colour list the cull just compacted and
+                    // against the prepass depth, before the first surface that folds them in is drawn
+                    GpuBegin(GpuTerm.Decals);
+                    DecalLayer.Run(_gOpaqueEnd, DecalEnd(), &vp, in proj, viewport, near, far,
+                                   lightingOn && perspective && !_capturing && DepthResource.Filled(PassGen)
+                                   && viewport[0] == 0 && viewport[1] == 0);
+                    GpuEnd(GpuTerm.Decals);
                     // CX-51: the reflection records ride the colour pass from here to Reflections
                     if (perspective && !_capturing) Ssr.Begin(viewport);
                     // CX-188: ...and the G-buffer rides the opaque and cutout passes, which are the only two
@@ -438,7 +447,9 @@ public sealed unsafe partial class AlloyRenderer
                         GBuffer.BeginFrame();
                         GBuffer.AttachColourPass();
                     }
+                    DecalLayer.Use(DecalLayer.ModeFold);
                     OpaqueOwnedPass(_gOpaqueEnd, &vp, viewport, near, far);
+                    DecalLayer.Use(DecalLayer.ModeNone);
                     // The GPU-side cluster stats belong to the SCREEN's build. Harvested here rather
                     // than after the bracket because the probe capture rebuilds the clusters once per
                     // face, and reading afterwards would report cube face 6's overflow as the frame's.
@@ -466,7 +477,12 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case PassId.CutoutOwned:
                     // CX-188: the cutout class is the last G-buffer writer; close the attachment after it
+                    // CX-273: ...and its surfaces fold the decal layer too: a cutout or wash interior drawn over the
+                    // prepassed ground would otherwise cover a decal the ground took
+                    DecalLayer.Use(DecalLayer.ModeFold);
                     CutoutOwnedPass(_gOpaqueEnd, &vp, viewport, near, far);
+                    WashInteriors(&vp, viewport, near, far);
+                    DecalLayer.Use(DecalLayer.ModeNone);
                     GBuffer.Detach();
                     break;
                 case PassId.CoverageOwned:
@@ -505,6 +521,7 @@ public sealed unsafe partial class AlloyRenderer
                 case PassId.BlendedOwned:
                     BlendProfile.Poll(_log);   // in the 4.6 bracket: the queries are that context's names
                     Issue.LightRecBegin();
+                    DecalLayer.Use(DecalLayer.ModeSkip);
                     GpuBegin(GpuTerm.Blended);
                     // OIT (OitPass): the whole class in one unsorted, non-depth-writing pass into the
                     // accumulation pair, composited once -- the per-creature run loop #490 replaced. With
@@ -560,6 +577,8 @@ public sealed unsafe partial class AlloyRenderer
                         GpuEnd(GpuTerm.Blended);
                     }
                     Issue.LightRecEnd();
+                    Issue.WashesDone();
+                    DecalLayer.End();
                     break;
                 case PassId.FbCopy:
                     // Only when there is water to read it. The copy is a full-screen blit of colour
@@ -1086,6 +1105,19 @@ public sealed unsafe partial class AlloyRenderer
         GpuBegin(GpuTerm.Coverage);
         Issue.IssueColour(_gA2cStart, opaqueEnd, vp, viewport, near, far);
         GpuEnd(GpuTerm.Coverage);
+    }
+
+    /// <summary>The split washes' fully covered interiors, solid and lit like the cutouts beside them: a covered
+    /// texel needs no blending, and in the blended pass each one cost a forward-lit fragment. That pass then draws
+    /// only each wash's graded edge.</summary>
+    private static void WashInteriors(Matrix4x4* vp, int* viewport, float near, float far)
+    {
+        if (_capturing || _gOpaqueEnd >= _gBlendEnd) return;
+        GpuBegin(GpuTerm.Washes);
+        Gl.DepthMask(1);
+        Gl.DepthFunc(Gl.LEQUAL);
+        Issue.WashInteriors(_gOpaqueEnd, _gBlendEnd, vp, viewport, near, far);
+        GpuEnd(GpuTerm.Washes);
     }
 
     /// <summary><see cref="CutoutOwnedPass"/> left the <c>NWN_ALPHA_MODE 2</c> tail for the coverage layer.</summary>

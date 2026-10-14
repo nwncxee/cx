@@ -85,8 +85,12 @@ public sealed unsafe partial class AlloyRenderer
         }
         }
         SortBlended(_blend, _blendKey, _blendAlpha, nb);
-        for (int a = 0; a < nb; a++)
-        { _pass[n] = _blend[a]; _passCls[n] = (byte)AlloyClass.Blended; _passAlpha[n] = _blendAlpha[a]; n++; }
+        // CX-273: the ground decals open the run, back to front among themselves, so the layer's writer draws one
+        // contiguous range and the rest keep their order behind it
+        for (int pick = 1; pick >= 0; pick--)
+            for (int a = 0; a < nb; a++)
+                if (_oDecal[_blend[a]] == pick)
+                { _pass[n] = _blend[a]; _passCls[n] = (byte)AlloyClass.Blended; _passAlpha[n] = _blendAlpha[a]; n++; }
         // #129: water, unsorted. ponytail: a per-part back-to-front sort is skipped because water planes are
         // per-tile, coplanar and depth-writing -- they cannot overlap each other in a way a sort would fix.
         // Add one if a map ever stacks a waterfall sheet in front of a pool.
@@ -710,7 +714,7 @@ public sealed unsafe partial class AlloyRenderer
         int groups = 0, n = 0;
         int keyVao = -1, keyTex = -1, keyFeat = -1, keyCls = -1, keyBlend = -1;
         uint keyMode = 0;
-        bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyCovN = false;
+        bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyCovN = false, keyDecal = false;
         IntPtr keyGob = IntPtr.Zero;
         // #322 step 1: attribute the Build monolith before drawing any phase boundary -- Scan is the
         // routing walk, Restage everything after it. No behaviour change; the [zones] line gains the split.
@@ -833,6 +837,8 @@ public sealed unsafe partial class AlloyRenderer
             bool a2c = cls == (int)AlloyClass.Cutout && _oA2c[i];
             // CX-218: ...and a slot-1 coverage batch is droppable whole, so it is a key term (see _gCovN)
             bool covN = (slots & CoverNrmBit) != 0;
+            // CX-273: ...and a ground decal draws in the layer's own pass, so it is a key term too
+            bool decal = row.Decal;
             // #153: under bindless a LIT batch no longer splits on its textures -- the handles ride the
             // record, so one multidraw spans every texture in the class. Feat/dis stay in the key only for
             // the depth prepass's whole-batch drop; unlit parts keep the bind path and the full key.
@@ -852,7 +858,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             if (!sameSlots || lit != keyLit || vKey != keyVao || tidKey != keyTex || mode != keyMode
                 || feat != keyFeat || dis != keyDis || cls != keyCls || blend != keyBlend
-                || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || covN != keyCovN)
+                || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || covN != keyCovN || decal != keyDecal)
             {
                 // #292 (AC6): what the cull term cost. Counted as the batches it OPENED on its own -- every
                 // other key term agreed and only the culling state differed -- so the line reports the split
@@ -878,10 +884,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gFeat[groups] = feat; _gDis[groups] = dis;
                 _gCls[groups] = (byte)cls; _gSrc[groups] = row.Src; _gDst[groups] = row.Dst; _gWash[groups] = row.Wash;
                 _gNoCull[groups] = noCull; _gGob[groups] = gobKey; _gA2c[groups] = a2c; _gCovN[groups] = covN;
+                _gDecal[groups] = decal;
                 if (!merge) for (int s = 0; s < MapSlots; s++) _gTexN[groups * MapSlots + s] = slotTid[s];
                 groups++;
                 keyLit = lit; keyVao = vKey; keyTex = tidKey; keyMode = mode; keyFeat = feat; keyDis = dis;
                 keyCls = cls; keyBlend = blend; keyNoCull = noCull; keyGob = gobKey; keyA2c = a2c; keyCovN = covN;
+                keyDecal = decal;
             }
             
             _dCount[n] = idxCount;
@@ -954,7 +962,7 @@ public sealed unsafe partial class AlloyRenderer
         public uint Mode;
         public IntPtr GobKey;
         public byte Cls, Src, Dst, Wash;
-        public bool Lit, Dis, NoCull, HasGob, Moved, Posed, Dangly;
+        public bool Lit, Dis, NoCull, HasGob, Moved, Posed, Dangly, Decal;
     }
     /// <summary>One row per ROUTED rank, so the ownership table's size is the bound (a pass with no visible set
     /// walks the whole order). ~80 bytes x <see cref="MaxOwned"/> = 13 MB, which is a quarter of what the record
@@ -981,11 +989,13 @@ public sealed unsafe partial class AlloyRenderer
         row.Mode = db ? Gl.TRIANGLES : _primTable[_oPrim[i]];
         row.NoCull = _oNoCull[i];
         row.Src = (byte)_oSrc[i]; row.Dst = (byte)_oDst[i]; row.Wash = (byte)_oWash[i];
-        // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside.
-        row.Blend = AlloyClasses.Blends(cls) ? (_oWash[i] << 16) | (_oSrc[i] << 8) | _oDst[i] : 0;
+        // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a
+        // wash's polygon offset, in any class
+        row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
         // A blended batch never straddles two creatures: the frame prepasses and colours each run of one gob's
         // batches as a unit, so the gob is a key term and a tag on the batch.
         row.GobKey = cls == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
+        row.Decal = cls == (int)AlloyClass.Blended && _oDecal[i] != 0;
         // "has an instance behind it", which in DB mode is "is not tileset geometry".
         row.HasGob = db ? (SceneDb.ObjFlags[SceneDb.PartObj[_oDbPart[i]].Index] & ObjFlag.Tile) == 0
                         : _oGob[i] != IntPtr.Zero;
@@ -1035,7 +1045,7 @@ public sealed unsafe partial class AlloyRenderer
             if (_oDbPart[i] >= 0) continue;
             _bAudited++;
             int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
-            int blend = AlloyClasses.Blends(_passCls[k]) ? (_oWash[i] << 16) | (_oSrc[i] << 8) | _oDst[i] : 0;
+            int blend = (_oWash[i] << 16) | (AlloyClasses.Blends(_passCls[k]) ? (_oSrc[i] << 8) | _oDst[i] : 0);
             IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
             bool recMoved = _recMovedAt[i] == _frameSeq;

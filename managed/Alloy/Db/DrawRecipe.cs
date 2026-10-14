@@ -260,6 +260,10 @@ internal static partial class DrawRecipe
     internal static ModelDef? Model(int r) => _model[r];
     internal static int Node(int r) => _node[r];
     internal static int Cls(int r) => _cls[r];
+    /// <summary>The diffuse measured GRADED alpha (<see cref="TexCoverage.Blended"/>): a soft edge, not a punch-through.</summary>
+    internal static bool Graded(int r) => TexRegistry.Coverage(new TexId(_texId[r * TexSlots])) == TexCoverage.Blended;
+    /// <summary>The diffuse's coverage is measured, so <see cref="Cls"/> is no longer the conservative guess.</summary>
+    internal static bool Measured(int r) => TexRegistry.Coverage(new TexId(_texId[r * TexSlots])) != TexCoverage.Unknown;
     internal static RecipeFlag Flags(int r) => _flags[r];
     internal static int Src(int r) => _src[r];
     internal static int Dst(int r) => _dst[r];
@@ -554,6 +558,8 @@ internal static partial class DrawRecipe
         if (!mesh.Shadow) f |= RecipeFlag.NoShadow;
         if (mesh.Beaming) f |= RecipeFlag.Beaming;
         if (mesh.TileFade != 0) f |= RecipeFlag.Fades;
+        if (FacesUp(mesh)) f |= RecipeFlag.FacesUp;
+        if (LiesFlat(mesh)) f |= RecipeFlag.Wash;
         _flags[r] = f;
         _prim[r] = 0;
         int feat = MtrParams.Feature(mtr?.ShaderVs ?? "");
@@ -668,6 +674,38 @@ internal static partial class DrawRecipe
 
     private static bool _attached;
 
+    /// <summary>How far from +Z a <see cref="RecipeFlag.FacesUp"/> mesh's normals may lean: cos 45 degrees.</summary>
+    private const float UpCos = 0.7f;
+
+    /// <summary>Every normal of the mesh within <see cref="UpCos"/> of +Z: a sheet laid over the ground.</summary>
+    internal static bool FacesUp(MeshDef mesh)
+    {
+        if (mesh.Normals.Length == 0) return false;
+        foreach (Vector3 n in mesh.Normals)
+            if (!(n.Z >= UpCos * n.Length())) return false;
+        return true;
+    }
+
+    /// <summary>Every triangle within <see cref="UpCos"/> of horizontal, either side up, judged off the triangles
+    /// themselves: a sheet laid over another surface, whatever its authored normals say.
+    /// ponytail: in the node's own space -- a node orientation that stands the sheet up is not followed.</summary>
+    internal static bool LiesFlat(MeshDef mesh)
+    {
+        uint[] ix = mesh.Indices;
+        Vector3[] p = mesh.Positions;
+        bool any = false;
+        for (int t = 0; t + 2 < ix.Length; t += 3)
+        {
+            if (ix[t] >= p.Length || ix[t + 1] >= p.Length || ix[t + 2] >= p.Length) return false;
+            Vector3 n = Vector3.Cross(p[ix[t + 1]] - p[ix[t]], p[ix[t + 2]] - p[ix[t]]);
+            float len = n.Length();
+            if (len < 1e-8f) continue;
+            if (MathF.Abs(n.Z) < UpCos * len) return false;
+            any = true;
+        }
+        return any;
+    }
+
     /// <summary>The recipe's local box, six floats (min then max), into <paramref name="dst"/>.</summary>
     internal static void Box(int r, Span<float> dst)
     {
@@ -699,8 +737,8 @@ internal enum RecipeFlag : ushort
     Env = 1 << 1,
     /// <summary>The material's <c>twosided</c>: draws with face culling off.</summary>
     TwoSided = 1 << 2,
-    /// <summary>A graded-alpha cutout re-filed as blended, drawn with no depth write.
-    /// ponytail: nothing sets it; the wash path behind it is dormant until something does.</summary>
+    /// <summary>The mesh lies flat (<see cref="DrawRecipe.LiesFlat"/>): drawn see-through, it is a wash laid over
+    /// another surface, and takes a polygon offset so it cannot z-fight what it lies on.</summary>
     Wash = 1 << 3,
     /// <summary>A dangly mesh: a permanent shadow mover, posed by the solver.</summary>
     Dangly = 1 << 4,
@@ -721,4 +759,7 @@ internal enum RecipeFlag : ushort
     /// <summary>A cutout whose coverage is map slot 1's alpha, because its <c>customShaderFS</c> is one of
     /// <see cref="ShaderFeatures.CoverNrmFs"/> (<see cref="AlloyRenderer.CoverNrmBit"/> on the record).</summary>
     CoverNrm = 1 << 12,
+    /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
+    /// can be one of these.</summary>
+    FacesUp = 1 << 13,
 }

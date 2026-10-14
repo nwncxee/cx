@@ -76,10 +76,14 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The material's Aurora blend pair, translated to GL at bind time. Only the blending
     /// classes read it.</summary>
     private static readonly byte[] _oSrc = new byte[MaxOwned], _oDst = new byte[MaxOwned];
-    /// <summary><see cref="AlloyCandidate.Wash"/>: a cutout rerouted into the blended class for its graded
-    /// fringe, and so drawn under a polygon offset (it is routinely a decal lying on an opaque surface).
-    /// Batch key term. Its DEPTH is the class's own -- see <c>BlendLaysDepth</c>.</summary>
+    /// <summary>A wash (<see cref="DbWashMode"/>): a see-through sheet lying flat, drawn under a polygon offset so it
+    /// cannot z-fight the surface it lies on; <see cref="WashSplit"/> draws its solid interior apart. Batch key term.
+    /// Its DEPTH is the class's own -- see <c>BlendLaysDepth</c>.</summary>
     internal static readonly byte[] _oWash = new byte[MaxOwned], _gWash = new byte[MaxOwned];
+    /// <summary>A ground decal (<see cref="DbDecal"/>): drawn into <see cref="DecalLayer"/> and folded into the
+    /// surface under it. The blended run puts these first, and it is a batch key term.</summary>
+    internal static readonly byte[] _oDecal = new byte[MaxOwned];
+    internal static readonly bool[] _gDecal = new bool[MaxOwned];
     /// <summary>This part's material said <c>twosided</c>, so it draws with face culling OFF. The
     /// engine's default -- and what a part with no material gets -- is culling ON, which is why this is the
     /// exception flag rather than a cull flag.</summary>
@@ -589,6 +593,13 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Where the opaque set ends and where the blended run ends, in batch indices. Each pass
     /// draws exactly its own range -- the depth prepass and the probe capture take the opaque prefix.</summary>
     internal static int _gOpaqueEnd, _gBlendEnd, _gWaterEnd;
+    /// <summary>Where the ground decals that open the blended run end: <see cref="_gOpaqueEnd"/> when there are none.</summary>
+    internal static int DecalEnd()
+    {
+        int g = _gOpaqueEnd;
+        while (g < _gBlendEnd && _gDecal[g]) g++;
+        return g;
+    }
     /// <summary>Where the cutout run begins inside the opaque set, so the opaque pass can time the two
     /// classes apart. Equals <see cref="_gOpaqueEnd"/> when nothing staged as cutout.</summary>
     private static int _gCutoutStart;

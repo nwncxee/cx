@@ -48,6 +48,10 @@ uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver t
 // #126: the engine's fAlphaDiscardValue, per batch -- 0.2 on the cutout and blended classes,
 // -1.0 (no test) on opaque and additive.
 uniform float uAlphaCut;
+// 1 = a split wash's (AlloyRenderer.WashSplit) solid interior alone, drawn with the cutouts -- the blended pass draws
+// the wash under GL_LESS against the depth that leaves
+uniform int uSolid;
+const float CX_SOLID_ALPHA = 0.99;
 layout(location = 0) out vec4 frag;
 #ifdef CX_A2C_MASK
 // CX-189: the coverage layer's own mask. Hardware alpha-to-coverage gives equal alpha one sample pattern,
@@ -73,6 +77,29 @@ int CxA2cMask(float a)
 // CX-188: the deferred pass's light record, read by a forward fragment lying on a deferred surface (blended only)
 layout(binding = 26) uniform usampler2D uLightRec;
 uniform int uLightRecOn;
+// CX-273: the deferred decal layer (DecalLayer). Before the opaque pass a ground decal over-blends its albedo,
+// coverage-weighted, into uDecalLayer (alpha = the share of the surface left showing); uDecalSurf keeps the prepass
+// depth it was judged on (.r) and the nearest decal's view depth (.g). Every surface lying under that decal -- the
+// prepassed ground, a cutout drawn over it, a wash's interior -- folds the layer into its albedo and is lit once.
+uniform int uDecal;      // 1 = fold the layer into this surface; 2 = a decal batch whose on-surface fragments the layer took
+uniform vec2 uDecalZ;    // the projection's (M33, M43): linear view depth = y / (ndc z + x)
+layout(rgba16f, binding = 6) readonly uniform image2D uDecalLayer;
+layout(rg32f, binding = 7) readonly uniform image2D uDecalSurf;
+/// How high above a surface a decal may lie and still fold into it: metres, plus a share of view depth for the
+/// depth buffer's own precision.
+const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
+/// Does a decal at linear view depth <paramref name="d"/> lie on the surface whose window depth is <paramref name="z"/>?
+/// As HEIGHT off that surface (a grazing ray stretches depth without bound), one-sided: a surface over the decal (a foot
+/// on it) never takes it. The writer and the blended pass ask it of the same inputs, so one of them takes each decal
+/// fragment; a surface folding the layer asks it of the nearest decal.
+bool CxDecalOn(float z, float d)
+{
+    if (!(z > 0.0 && z < 1.0)) return false;
+    float s = uDecalZ.y / ((z * 2.0 - 1.0) + uDecalZ.x);
+    float h = (s - d) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
+    float eps = CX_DECAL_TOL * s;
+    return h > -eps && h < CX_DECAL_TOL_M + eps;
+}
 #include "cx_oitout.glsl"
 // Slot mask bits, matching AlloyRenderer's 1 << (slot - 1).
 const int CX_SLOT_NORMAL = 1, CX_SLOT_SPEC = 2, CX_SLOT_ROUGH = 4,

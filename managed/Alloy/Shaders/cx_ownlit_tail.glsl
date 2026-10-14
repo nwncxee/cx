@@ -71,7 +71,9 @@
     // SpecularLight`, and the texUnit5 add just above it).
     // inc_lighting.shd:672-677: "Specularity ignores material transparency" -- vanilla pre-divides the
     // specular by the alpha it is about to be blended by, so a ghosted creature keeps its highlights.
-    float partA = coverage * d.rot.w;
+    // The PART's alpha, not the texture's: texture alpha is coverage -- where the sheet is not, nothing shines --
+    // and dividing by it drew every cutout's and decal's graded edge as a rim of highlight up to ten times over.
+    float partA = d.rot.w;
     if (partA < 1.0 && partA > 0.001) specLight /= max(partA, 0.1);
     vec3 lit = albedo * total + specLight;
     // ADR 0026: CxEmissiveStrength (KHR_materials_emissive_strength) scales the map into HDR, where the
