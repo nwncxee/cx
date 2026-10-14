@@ -39,14 +39,6 @@ const mat4 m_view_inv = mat4(1.0);
 // neither of which a rotation changes.
 vec3 vSurfaceNormal;
 vec3 vViewToSurface_n;
-// ...and the fragment's position from the eye, under that same identity view: its length and every dot
-// against the world normal are stock's exactly. A stage that reads its .xy gets world axes where stock has
-// screen ones -- fs_snowed01 offsets a sparkle lookup by it, the same scatter in another frame.
-vec3 vPosView;
-
-// inc_common.shd's brightness, both overloads, which a hosted body calls and the bridge never follows into.
-float ColorToBrightness(vec3 Color) { return dot(Color, vec3(0.3333333)); }
-float ColorToBrightness(vec4 Color) { return ColorToBrightness(Color.rgb); }
 
 /// #347: how lit this fragment is, for a stock file that would have asked the engine's light arrays.
 /// The RAW measurement -- the caller applies its own floor/full curve to it, which is where those

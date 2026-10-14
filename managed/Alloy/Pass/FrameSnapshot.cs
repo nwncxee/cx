@@ -246,21 +246,6 @@ internal static unsafe class FrameSnapshot
         Gl.BindTexture(Gl.TEXTURE_2D, _gl.ColTex);
         Gl.ActiveTexture(Gl.TEXTURE0 + DepthUnit);
         Gl.BindTexture(Gl.TEXTURE_2D, _gl.DepTex);
-        BindNoise(NoiseUnit);
-
-        // #339: the scene's environment map, on its own unit. Re-read per bind for AurTex's reason -- the
-        // pointer is borrowed and an area transition frees it.
-        _envTid = SceneEnvTid();
-        Gl.ActiveTexture(Gl.TEXTURE0 + EnvUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D, (uint)_envTid);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-    }
-
-    /// <summary>The engine's <c>solid_noise</c> on <paramref name="unit"/> under the REPEAT sampler -- the
-    /// texture every stage that reads <c>texUnitNoise</c> samples: the water stage here, a hosted lit body on
-    /// <see cref="TextureSlots.HostNoise"/>. Leaves unit 0 active.</summary>
-    internal static void BindNoise(uint unit)
-    {
         // #339: re-resolved every bind and never cached -- a CAurTexture* is borrowed and the engine frees
         // it on an area transition (see AurTex). A miss binds nothing, which reads as a dead-flat sea rather
         // than as a wrong one, so it is logged once.
@@ -269,8 +254,8 @@ internal static unsafe class FrameSnapshot
         // different RESOURCE or the same one built differently -- and only the object's own name says which.
         IntPtr noisePtr = CX.Framework.AurTex.FindByName(NoiseResref);
         int noise = CX.Framework.AurTex.Tid(noisePtr);
-        if (noise != _noiseEngTid) { _noiseName = AlloyCensus.TexName(noisePtr); _noiseEng = TexScan.Describe(noisePtr); }
         _noiseEngTid = noise;
+        if (noise != _noiseTid) { _noiseName = AlloyCensus.TexName(noisePtr); _noiseEng = TexScan.Describe(noisePtr); }
         // A zero here is "not uploaded YET" as often as "not there": AurTextureGet's create path queues the
         // upload on the engine's RefreshTextures list, so the first bind after a load legitimately misses.
         // Reported once, and worded as what it is -- a flat sea is the symptom either way.
@@ -278,19 +263,25 @@ internal static unsafe class FrameSnapshot
         {
             _noiseMissed = true;
             _log?.Info($"FrameSnapshot: the engine texture \"{NoiseResref}\" has no GL id yet -- loading CX's "
-                     + "own copy of it instead (the wave field and a hosted stage's texUnitNoise are sampled from "
-                     + "it; without one the sea is flat)");
+                     + "own copy of it instead (the wave field is sampled from it; without one the sea is flat)");
         }
         if (noise == 0) noise = OwnNoise();
         _noiseTid = noise;
-        Gl.ActiveTexture(Gl.TEXTURE0 + unit);
+        Gl.ActiveTexture(Gl.TEXTURE0 + NoiseUnit);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)noise);
         Gl.ActiveTexture(Gl.TEXTURE0);
         // ...under a sampler of our own, for the WRAP MODE. The wave field indexes the noise by world
         // position at four scales, so anything but REPEAT samples one edge texel over a whole harbour --
         // the same flat sea a missing texture gives, and just as silent. The engine's own params on this
         // object are not ours to assume, and not ours to change either.
-        if (EnsureNoiseSampler()) Gl.BindSampler(unit, _gl.NoiseSamp);
+        if (EnsureNoiseSampler()) Gl.BindSampler(NoiseUnit, _gl.NoiseSamp);
+
+        // #339: the scene's environment map, on its own unit. Re-read per bind for AurTex's reason -- the
+        // pointer is borrowed and an area transition frees it.
+        _envTid = SceneEnvTid();
+        Gl.ActiveTexture(Gl.TEXTURE0 + EnvUnit);
+        Gl.BindTexture(Gl.TEXTURE_2D, (uint)_envTid);
+        Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
     /// <summary>The environment-map texture id for this pass, or 0 when there is none to sample.

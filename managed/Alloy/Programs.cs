@@ -408,10 +408,8 @@ internal static unsafe class Programs
             bool short_ = vsBlocks < VsSsboNeed || bindings < needBind || units < LitUnitsNeed;
             _log?.Info($"AlloyRenderer: driver limits -- vertex SSBO blocks {vsBlocks} (needs {VsSsboNeed}, GL 4.6 floor 0), " +
                        $"SSBO bindings {bindings} (needs {needBind}, floor 8), fragment texture units {units} " +
-                       $"(needs {LitUnitsNeed}, {SunSoftUnitsNeed} for the sun's blocker search, "
-                       + $"{TextureSlots.HostNoise + 1} for a hosted stage's noise, floor 16)" +
-                       (short_ ? " -- BELOW ALLOY'S NEED: expect link failures on this driver"
-                        : units <= TextureSlots.HostNoise ? " -- a hosted stage that reads texUnitNoise will not link here" : ""));
+                       $"(needs {LitUnitsNeed}, {SunSoftUnitsNeed} for the sun's blocker search, floor 16)" +
+                       (short_ ? " -- BELOW ALLOY'S NEED: expect link failures on this driver" : ""));
         }
         string litFs = ShaderStages.Source(ShdLitFs);
         if (_bindless) litFs = BindlessFs(litFs);
