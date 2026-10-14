@@ -50,6 +50,8 @@ void Open(object oPC, object oTorch)
         JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     json jHeld = JsonObjectSet(JsonObject(), "image", JsonObjectSet(JsonObject(), "bind", JsonString(BIND_HELD)));
     jHeld = JsonObjectSet(jHeld, "size", JsonInt(48));
+    // The stock Use cursor looks like the default arrow, so the hold names the attack cursor.
+    jHeld = JsonObjectSet(jHeld, "cursor", JsonInt(7));
     jHeld = JsonObjectSet(jHeld, "confirm", JsonInt(1500));
     jWin = JsonObjectSet(jWin, "cx", JsonObjectSet(JsonObject(), "held", jHeld));
     int nToken = ShowRegister(oPC, jWin, "nuiheld");
@@ -66,5 +68,7 @@ void Show(object oPC)
     SetEventScript(GetModule(), EVENT_SCRIPT_MODULE_ON_NUI_EVENT, "nuiheld_nui");
     object oTorch = CreateItemOnObject("nw_it_torch001", oPC, 1, "NH_TORCH");
     if (!GetIsObjectValid(oTorch)) { ShowMark("torch-FAILED"); return; }
+    // The server sends a backpack item only while the inventory panel is open, and @item: draws only an item the client knows.
+    OpenInventory(oPC, oPC);
     DelayCommand(4.0, Open(oPC, oTorch));
 }

@@ -164,7 +164,7 @@ clamped, not refused; a refusal is a value the client could not read at all, so 
 ### `held.image`: an image under the pointer
 
 `held.image=<image>` shows that image centred on the pointer, above every NUI window, and swaps the engine cursor
-to `held.cursor` (the `Use` hand unless the server names another) while it is up. Send it when the player picks something up in a NUI
+to `held.cursor` (the `Use` cursor unless the server names another) while it is up. Send it when the player picks something up in a NUI
 window, and `held.image=` when they place it. The image never takes a click: the press that places it reaches the
 NUI window underneath.
 
@@ -191,7 +191,7 @@ A server a long way off answers a pick late. Declare what a pick shows and CX sh
 | `held.pick.<prefix>*=<image>` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
 | `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
 | `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
-| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`). The engine takes ids 0 to 293 and ignores a larger one, so a larger value is listed in `/policy` and the default shows |
+| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`). The stock `Use` art is the same as the default arrow, so name another id, such as 7 (`Attack`), for a change the player sees. The engine takes ids 0 to 293 and ignores a larger one, so a larger value is listed in `/policy` and the default shows |
 | `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
 | `held.opacity=<0-1>` | how opaque a confirmed hold is, clamped to 0-1, default 0.9 |
 | `held.pickopacity=<0-1>` | how opaque a pick still waiting for the server is, clamped to 0-1, default 0.55 |

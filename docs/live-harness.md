@@ -299,6 +299,8 @@ a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each
 
 `nuicx` builds a doll, a card and a themed window from `"cx"` members in the window JSON with an empty `.policy` file. Its doll turns with `NuiSetBind` at +6 s and +18 s, and `nuicx_nui.nss` logs the `refused` events on the element `cx` as `CXSHOW: nui-event` lines.
 
+`nuiheld` is a server that holds things, in stock NWScript with an empty `.policy`: a drag, a click and a pick the server never confirms. Its keys log the pointer's shape as `cursor <tag>:` lines in `xtool.log`, so the held cursor reads differently from the arrow before and after.
+
 `light-engine`, `light-warm`, `light-cold` and `light-torch` are one doll under the engine's light and three server light recipes (the wiki's Light section); each opens a single 300x420 window.
 
 `closebutton` opens two closable windows of one size side by side, the second under `nui.<id>.background=0`, presses where
