@@ -409,10 +409,11 @@ public static class HitTest
             if (!statics && (!Admits(q, own) || (own != o && !SceneDb.ObjVisible[o]))) continue;
             if (statics && SceneDb.ObjScene[o] != q.Scene) continue;
             ObjTests++;
-            if (TestObject(q, statics, o, ref to, ref r))
+            int hit = own;
+            if (TestObject(q, statics, o, ref to, ref r, ref hit))
             {
                 r.Kind = statics ? HitKind.Static : HitKind.Object;
-                r.Obj = SceneDb.Objects.IdAt(own);
+                r.Obj = SceneDb.Objects.IdAt(hit);
             }
         }
     }
@@ -439,20 +440,26 @@ public static class HitTest
     }
 
     /// <summary>One object: the sphere and box rejects, then every part of its range against the shortened
-    /// segment. Returns true when the segment got shorter, i.e. this object owns the nearest hit so far.</summary>
-    private static bool TestObject(in HitQuery q, bool statics, int o, ref Vector3 to, ref HitResult r)
+    /// segment. Returns true when the segment got shorter, i.e. this object owns the nearest hit so far;
+    /// <paramref name="hit"/> becomes the record the hit reports when that is not the object itself.</summary>
+    private static bool TestObject(in HitQuery q, bool statics, int o, ref Vector3 to, ref HitResult r,
+                                   ref int hit)
     {
         if (!SphereHit(q.From, to, SceneDb.HitObjSphereC[o], SceneDb.HitObjSphereR[o])) return false;
         Vector3 lo = SceneDb.HitObjBMin[o], hi = SceneDb.HitObjBMax[o];
         if (lo.X > hi.X) return false;
         if (!BoxHit(q.From, to, lo, hi)) return false;
 
-        // A text gob's hit test is its OWN, not its parts': StringGob::HitCheck @0x492920 polyhits the quad and
-        // answers `this` on the spot -- the per-line attached models it walks afterwards only refine a hit the
-        // quad has already made. A GUI list row has no parts at all, so the part loop answered nothing for it.
+        // A text gob's hit test is its OWN, not its parts': StringGob::HitCheck @0x492920 polyhits the quad, and
+        // only on a quad hit casts on into the models riding its visible lines. A GUI list row has no parts at
+        // all, so the part loop answered nothing for it.
         if (SceneDb.ObjKindOf[o] == ObjKind.Text)
-            return HitBounds.TextQuad(o, out Vector3 qlo, out Vector3 qhi)
-                && TestTextQuad(q, o, qlo, qhi, ref to, ref r);
+        {
+            if (!HitBounds.TextQuad(o, out Vector3 qlo, out Vector3 qhi) || !TestTextQuad(q, o, qlo, qhi, ref to, ref r))
+                return false;
+            LineModels(q, o, ref to, ref r, ref hit);
+            return true;
+        }
 
         bool any = false;
         int first = SceneDb.ObjPartFirst[o], count = SceneDb.ObjPartCount[o];
@@ -491,6 +498,46 @@ public static class HitTest
         r.Trigger = 0;
         r.Normal = Vector3.Zero;
         return true;
+    }
+
+    /// <summary>The rest of <c>StringGob::HitCheck</c> @0x492920: after a quad hit, each visible line's attached
+    /// model is cast in that line's frame, and a model hit is what the cast reports -- the only way to reach a chat
+    /// line's reply button (hover: a party member's status, click: a tell). The frames are <see cref="DbGui"/>'s;
+    /// no gate but geometry, as the engine calls the model's own <c>HitCheck</c> directly.</summary>
+    private static void LineModels(in HitQuery q, int o, ref Vector3 to, ref HitResult r, ref int hit)
+    {
+        QuadList? lines = TextObjects.Of(SceneDb.Objects.IdAt(o))?.PublishedQuads;
+        if (lines == null) return;
+        for (int k = 0; k < lines.AttachedCount; k++)
+        {
+            var (model, ax, ay) = lines.Attached[k];
+            if (!SceneDb.Objects.Valid(model)) continue;
+            Matrix4x4 frame = Matrix4x4.CreateTranslation(ax, ay, 0f) * SceneDb.ObjWorld[o];
+            if (!Matrix4x4.Invert(frame, out Matrix4x4 inv)) continue;
+            HitQuery lq = q;
+            lq.From = Vector3.Transform(q.From, inv);
+            Vector3 lto = Vector3.Transform(to, inv);
+            lq.To = lto;
+            int m = model.Index, first = SceneDb.ObjPartFirst[m], count = SceneDb.ObjPartCount[m];
+            bool any = false;
+            for (int p = first; p < first + count; p++)
+            {
+                if (SceneDb.PartMerged[p] || !SubtreeEnabled(first, p)) continue;
+                if (TestPart(lq, false, p, ref lto, ref r)) { any = true; r.Part = p; }
+            }
+            if (!any) continue;
+            to = Vector3.Transform(lto, frame);
+            hit = m;
+        }
+    }
+
+    /// <summary>Is <paramref name="model"/> riding one of text object <paramref name="text"/>'s visible lines?</summary>
+    public static bool RidesLine(DbId text, DbId model)
+    {
+        QuadList? lines = TextObjects.Of(text)?.PublishedQuads;
+        if (lines == null || model.IsNull) return false;
+        for (int k = 0; k < lines.AttachedCount; k++) if (lines.Attached[k].Model == model) return true;
+        return false;
     }
 
     /// <summary>Is <paramref name="p"/> drawable AND every ancestor of it too? <c>Part::HitCheck</c> @0x4394e0
