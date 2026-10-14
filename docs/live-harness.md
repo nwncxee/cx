@@ -41,8 +41,8 @@ tools/live/run-proton-live.sh --nui
 ```
 
 `--ladder` and `--showcase NAME` host the same modules as `run-live.sh`, and their marks are in the run's `nwclientLog1.txt`.
-Under Proton a shot can read back the frame from before the last one the client presented, so two shots of a change that
-match exactly are worth taking again before they count as evidence.
+Under Proton a shot can read back the frame from before the last one the client presented, so take the pair again before two
+shots that match exactly count as evidence.
 
 ## How it works
 
