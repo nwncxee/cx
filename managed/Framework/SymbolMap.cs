@@ -1054,8 +1054,8 @@ internal static unsafe class SymbolMap
     /// (x, y) + <c>xmm1</c> (z), light list in <c>rdi</c>, a zero int in <c>esi</c>, and the colour back the same way,
     /// <c>xmm0</c> (r, g) + <c>xmm1</c> (b) -- SysV's classification of a 12-byte three-float struct.</summary>
     public const string GetEmitterLighting = "_ZN12LightManager18GetEmitterLightingE6VectorP4ListIP9PartLightE";
-    /// <summary>LightManager::GetLensFlareLights() @0x4c1d80 -- the list (items at +0, count at +8) of every
-    /// light node with <c>lensflares 1</c>; <c>Scene::RenderLensFlares</c> is its one consumer. Read by <see cref="Halos"/>.</summary>
+    /// <summary>LightManager::GetLensFlareLights() @0x4c1d80 -- the list (items at +0, count at +8) of the frame's
+    /// candidate lights whose node has flare colour shifts; <c>Scene::RenderLensFlares</c> is its one consumer.</summary>
     [Fn("IntPtr(LightManager this)")]
     public const string GetLensFlareLights = "_ZN12LightManager18GetLensFlareLightsEv";
     /// <summary>The <c>currentscene</c> global @0x19ab950 -- <c>RenderEmitter</c> reads the tint's light list at

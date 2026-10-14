@@ -9,9 +9,9 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>Procedural light halos: the Alloy replacement for vanilla's lens-flare quads. The population is
-/// the engine's own <c>LightManager::GetLensFlareLights</c> list (every light node with <c>lensflares 1</c>),
-/// re-read each frame at the enrol slot; the look is a shader pair a hak can override. Vanilla's screen-space
-/// near-plane quad becomes a view-aligned billboard of world size, occluded per pixel against the scene.</summary>
+/// vanilla's, re-decided each frame at the enrol slot (<see cref="Flares"/>); the look is a shader pair a hak can
+/// override. Vanilla's screen-space near-plane quad becomes a view-aligned billboard of world size, occluded per
+/// pixel against the scene.</summary>
 internal static unsafe class Halos
 {
     internal const string ShdHaloVs = "cx_halo_vs", ShdHaloFs = "cx_halo_fs";
@@ -23,8 +23,9 @@ internal static unsafe class Halos
     /// probe it runs reads it there before binding <see cref="BindVis"/>.</summary>
     private const uint BindHalos = SsboSlots.Halos, BindVis = SsboSlots.HaloVis;
     private const uint GlTriangleStrip = 0x0005;   // not-an-offset: GL primitive-mode enum
-    /// <summary>Two vec4 per halo: (pos.xyz, world radius), (linear rgb with the engine fade folded in, flareradius).</summary>
-    private const int Floats = 8;
+    /// <summary>Three vec4 per halo: (pos.xyz, occlusion softness), (display rgb + shift with the fade folded in,
+    /// flareradius), (flaresizes[0] x halosize, flarepositions[0], unused, unused).</summary>
+    private const int Floats = 12;
     private const int InitialHalos = 64;
     /// <summary><c>Scene::RenderLensFlares</c> @0x471860's own integration terms: the occlusion fade travels at
     /// 3.0 per second on a delta floored at 0.02s, so a flare takes a third of a second to appear or vanish
@@ -35,6 +36,12 @@ internal static unsafe class Halos
     private const int VisScale = 1024, VisNone = 0;
     private const int Ring = GpuReadback.Slots;
     private const int OccGroup = 64;   // not-an-offset: local_size_x in cx_haloocc_c.glsl
+    /// <summary><c>ManageSceneBSP</c> @0x47fa80 gathers the frame's light candidates around the scene focus out to
+    /// this or the fog end, whichever is further, past each light's own adjusted radius.</summary>
+    private const float MinFocusReach = 45f;
+    /// <summary>The soft range, in metres, of the per-pixel cut and the probe: a surface this far in front of the
+    /// light starts to hide it.</summary>
+    private const float OcclusionSoftness = 0.6f;
 
     private static ExtenderLog? _log;
     private static float[] _stage = new float[InitialHalos * Floats];
@@ -79,13 +86,10 @@ internal static unsafe class Halos
         log.Info($"Halos: armed -- flare lights from the scene database drawn as procedural halos (/effects; size {Effects.HaloSize.V:F2} gain {Effects.Halos.V:F2})");
     }
 
+    /// <summary><c>RenderLensFlares</c> @0x471860 draws a flare, and integrates its fade, only while the camera
+    /// stands within its <c>flareradius</c>.</summary>
     private static bool Reaches(Vector3 pos, float flareRadius)
-    {
-        if (!FrameInputs.HasCamera || !FrameInputs.HasPerspective) return true;
-        float slack = flareRadius + Effects.HaloSize.V;
-        float far = FrameInputs.CamFar + slack;
-        return (pos - FrameInputs.CameraPos).LengthSquared() < far * far;
-    }
+        => !FrameInputs.HasCamera || (pos - FrameInputs.CameraPos).LengthSquared() <= flareRadius * flareRadius;
 
     /// <summary>Take the probe's last answer (read fenced, two frames late, in Alloy's context) and walk each
     /// flare's <c>PartLight+0xa0</c> toward it at the engine's own rate -- nothing engine-side integrates that
@@ -125,23 +129,23 @@ internal static unsafe class Halos
 
     private static void SetFade(IntPtr key, float v) => _dbFade[key] = v;
 
-    /// <summary>The halo population: every light of <paramref name="scene"/> whose node carries
-    /// flares, read off the database the way <c>DbLights</c> reads the rig. The size, shift and radius are the
-    /// same three node fields the engine reads off <c>MdlNodeLight</c> -- its "sizes" word (+0xc0) is the list
-    /// <c>InternalParseField</c> @0x54baf0 fills from <c>flarepositions</c>, so that is what is read here too.</summary>
-    internal static void EnrollDb(Db.DbId scene)
+    /// <summary>The halo population: every light of <paramref name="scene"/> that <see cref="Flares"/> admits, read
+    /// off the database the way <c>DbLights</c> reads the rig; <paramref name="radiusMult"/> is the rig's own.</summary>
+    internal static void EnrollDb(Db.DbId scene, float radiusMult)
     {
         _count = 0;
         if (_off || !Effects.HalosOn) return;
         int lits = Db.SceneDb.Lights.High, parts = Db.DbInputs.LightCount, n = lits + parts;
         if (n * Floats > _stage.Length) _stage = new float[n * Floats];
         if (n > _stageKey.Length) _stageKey = new IntPtr[n];
+        Vector3 focus = Db.SceneDb.SceneFocus[scene.Index];
+        float fogEnd = Db.SceneDb.SceneFogFar[scene.Index];
         fixed (float* stage = _stage)
         {
             for (int lit = 1; lit < lits; lit++)
-                if (Db.DbInputs.LitLight(lit, out Db.DbLight l)) StageDb(stage, in l, scene);
+                if (Db.DbInputs.LitLight(lit, out Db.DbLight l)) StageDb(stage, in l, scene, radiusMult, focus, fogEnd);
             for (int k = 0; k < parts; k++)
-                if (Db.DbInputs.Light(k, out Db.DbLight l) && l.Lit < 0) StageDb(stage, in l, scene);
+                if (Db.DbInputs.Light(k, out Db.DbLight l) && l.Lit < 0) StageDb(stage, in l, scene, radiusMult, focus, fogEnd);
         }
         Occlude();
         for (int i = 0; i < _count; i++)
@@ -152,21 +156,44 @@ internal static unsafe class Halos
         }
     }
 
-    private static void StageDb(float* stage, in Db.DbLight l, Db.DbId scene)
+    private static void StageDb(float* stage, in Db.DbLight l, Db.DbId scene, float radiusMult, Vector3 focus, float fogEnd)
     {
         if (!l.Enabled || !Db.SceneDb.Objects.Valid(l.Obj) || Db.SceneDb.ObjScene[l.Obj.Index].Value != scene.Value) return;
         LightDef? def = Db.DbInputs.LightDefOf(in l);
-        if (def == null || def.FlareTextures.Length <= 0) return;
-        float size = def.FlarePositions.Length > 0 ? def.FlarePositions[0] : 1f;
+        if (def == null || !Flares(def, l.Position, l.Colour, l.Radius, l.Multiplier, radiusMult, focus, fogEnd)) return;
+        // RenderLensFlares @0x471860 skips a light standing in a tile still under fog of war
+        int tile = Db.TileBuild.At(scene, l.Position);
+        if (tile >= 0 && Db.SceneDb.TileFogged[tile]) return;
+        // ponytail: the first flare element only -- vanilla draws one textured quad per texturenames entry along the
+        // flare axis (ring, streak); the rest need their textures, not this procedural profile
+        float size = def.FlareSizes.Length > 0 ? def.FlareSizes[0] : 0f;
         if (size <= 0f || !Reaches(l.Position, def.FlareRadius)) return;
-        Vector3 shift = def.FlareColors.Length > 0 ? def.FlareColors[0] : Vector3.Zero;
         float* d = stage + _count * Floats;
         d[0] = l.Position.X; d[1] = l.Position.Y; d[2] = l.Position.Z;
-        d[3] = size * Effects.HaloSize.V;
-        Vector3 tint = Tint(l.Colour, shift, 1f);
+        d[3] = OcclusionSoftness;
+        Vector3 tint = Tint(l.Colour, def.FlareColors[0], 1f);
         d[4] = tint.X; d[5] = tint.Y; d[6] = tint.Z;
         d[7] = def.FlareRadius;
+        d[8] = size * Effects.HaloSize.V;
+        d[9] = def.FlarePositions.Length > 0 ? def.FlarePositions[0] : 1f;
+        d[10] = 0f; d[11] = 0f;
         _stageKey[_count++] = l.Id;
+    }
+
+    /// <summary>Does vanilla flare this light? <c>GetLensFlareLights</c> @0x4c1d80 walks only the frame's candidates,
+    /// which <c>SetupLightsForThisPositionAndRadius</c> @0x4c1df0 admits when isdynamic or affectdynamic, radius in
+    /// (0, 1000), colour not black, multiplier above 0 and the scene focus within the adjusted radius plus
+    /// max(45, fog end); of those it keeps lights with flare colour shifts, and the draw loops their textures.</summary>
+    internal static bool Flares(LightDef def, Vector3 pos, Vector3 colour, float radius, float multiplier,
+                                float radiusMult, Vector3 focus, float fogEnd)
+    {
+        if (def.FlareColors.Length <= 0 || def.FlareTextures.Length <= 0) return false;
+        if (!def.Dynamic && !def.AffectDynamic) return false;
+        if (!(radius > 0f && radius < EngineLayout.DirectionalRange) || !(multiplier > 0f)) return false;
+        if (colour == Vector3.Zero) return false;
+        Db.DbLights.Adjust(radius, multiplier, radiusMult, ref colour, out float adjR);
+        float reach = adjR + MathF.Max(MinFocusReach, fogEnd);
+        return (pos - focus).LengthSquared() < reach * reach;
     }
 
     /// <summary>One flare's occlusion fade after one step: it travels toward <paramref name="target"/> at
@@ -179,22 +206,18 @@ internal static unsafe class Halos
         return fade < target ? MathF.Min(target, fade + step) : MathF.Max(target, fade - step);
     }
 
-    /// <summary>A staged halo's tint: the RAW light colour plus the node's shift, as <c>RenderLensFlares</c>
-    /// @0x471860 sums them, scaled down by its brightest channel when that is past 1, linearised, times the
-    /// clamped fade. Scaled rather than clamped per channel, which turns an overbright torch white. The cap
-    /// keeps the RGBA16F target finite; NaN in any input stages as 0.</summary>
+    /// <summary>A staged halo's colour: the RAW light colour plus the node's shift, as <c>RenderLensFlares</c>
+    /// @0x471860 sums them, times the clamped fade -- display space and unclamped above, because vanilla clamps each
+    /// channel only after the view weights the vertex stage applies. NaN stages as 0.</summary>
     internal static Vector3 Tint(Vector3 colour, Vector3 shift, float fade)
     {
         Vector3 v = colour + shift;
-        v = new Vector3(Finite(v.X), Finite(v.Y), Finite(v.Z));
-        float m = MathF.Max(v.X, MathF.Max(v.Y, v.Z));
-        if (m > 1f) v /= m;
         float f = fade > 0f ? MathF.Min(fade, 1f) : 0f;
-        return new Vector3(MathF.Pow(v.X, AlloyLights.SrgbGamma), MathF.Pow(v.Y, AlloyLights.SrgbGamma), MathF.Pow(v.Z, AlloyLights.SrgbGamma)) * f;
+        return new Vector3(Finite(v.X), Finite(v.Y), Finite(v.Z)) * f;
     }
 
-    /// <summary>A channel floored at 0 and capped at a finite bound: NaN reads 0, and an Inf cannot make the divide by
-    /// the brightest channel Inf/Inf.</summary>
+    /// <summary>A channel floored at 0 (no weight lifts a negative one past vanilla's clamp) and capped finite: NaN
+    /// reads 0, and an Inf cannot reach the vertex stage's weights as Inf x 0.</summary>
     private static float Finite(float c) => c > 0f ? MathF.Min(c, 1e6f) : 0f;
 
     /// <summary>The halo pass: after the particles, where vanilla draws its flares (step 29). Additive
@@ -219,7 +242,7 @@ internal static unsafe class Halos
         Gl.UniformMatrix4fv(_gl.LocProj, 1, 0, (float*)proj);
         Gl.Uniform1i(_gl.LocViz, Effects.HaloViz.V);
         Gl.Uniform1i(_gl.LocDepth, (int)SceneDepth.Unit);
-        Gl.Uniform1f(_gl.LocGain, Effects.Halos.V * AlloyLights.DayDim);
+        Gl.Uniform1f(_gl.LocGain, Effects.Halos.V);
         new PassState(depth: false, depthWrite: false, blend: true,
                       blendSrc: AlloyRenderer.GlOne, blendDst: AlloyRenderer.GlOne).Apply();
         Gl.BindVertexArray(EmptyVao());
@@ -350,9 +373,9 @@ internal static unsafe class Halos
           + (_occLate > 0 ? $", {_occLate} probe reads deferred (GPU behind)" : "");
     internal static string Describe() => $"{(_off ? "UNAVAILABLE" : Effects.HalosOn ? "on" : "off")} size {Effects.HaloSize.V:F2} gain {Effects.Halos.V:F2} viz {Effects.HaloViz.V}";
 
-    /// <summary>The occlusion integrator, headless. It is the whole of what the port owns on the CPU
-    /// side -- the probe itself has no seam -- and it fails invisibly in both directions: too slow and flares
-    /// smear through walls, too fast and they strobe.</summary>
+    /// <summary>The occlusion integrator, the tint and the population gate, headless: too slow a fade smears flares
+    /// through walls, too loose a gate lights halos vanilla never draws. Oracle: hand-written values read off
+    /// <c>RenderLensFlares</c> and <c>SetupLightsForThisPositionAndRadius</c>.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -364,24 +387,36 @@ internal static unsafe class Halos
         // Partial coverage is the whole point of measuring depth rather than casting one ray.
         check.Expect(Math.Abs(Step(0.5f, 0.5f, 1f) - 0.5f) < 1e-6f, "a flare already at its coverage holds");
         check.Expect(Step(0f, 0.4f, 1f) == 0.4f, "a partly covered flare settles at its coverage, not at 1");
-        // RenderLensFlares @0x471860 clamps each flare channel to [0,1]; an HDR light colour must not reach the
-        // RGBA16F target as Inf, where the halo's own zero-visibility pixels turn it into NaN.
-        check.Expect(Tint(new Vector3(255f, 0f, 0f), Vector3.Zero, 1f) == new Vector3(1f, 0f, 0f), "a light colour past 1 stages at 1, not at 255^2.2");
-        check.Expect(Tint(new Vector3(0.5f, 0f, -2f), new Vector3(0.6f, 0f, 0f), 1f) == new Vector3(1f, 0f, 0f), "colour + shift is capped above and floored below");
+        // The staged colour is vanilla's sum, raw: the clamp waits for the vertex stage's view weights.
+        check.Expect(Tint(new Vector3(255f, 0f, 0f), Vector3.Zero, 1f) == new Vector3(255f, 0f, 0f), "an overbright channel stages raw, not clamped");
+        Vector3 summed = Tint(new Vector3(0.5f, 0f, -2f), new Vector3(0.6f, 0f, 0f), 1f);
+        check.Expect(MathF.Abs(summed.X - 1.1f) < 1e-5f && summed.Y == 0f && summed.Z == 0f, "colour + shift is summed and floored at 0");
         check.Expect(Tint(new Vector3(float.NaN, 1f, 1f), Vector3.Zero, 1f).X == 0f && Tint(Vector3.One, Vector3.Zero, float.NaN) == Vector3.Zero,
                      "a NaN colour or fade stages as 0");
-        check.Expect(Tint(Vector3.One, Vector3.Zero, 3f) == Vector3.One, "the fade weight is clamped too");
+        check.Expect(Tint(Vector3.One, Vector3.Zero, 3f) == Vector3.One, "the fade weight is clamped");
         Vector3 inf = Tint(new Vector3(float.PositiveInfinity, 0.5f, 0f), Vector3.Zero, 1f);
-        check.Expect(float.IsFinite(inf.X) && float.IsFinite(inf.Y) && inf.X == 1f, "an infinite colour stages finite, not NaN");
-        // the shift joins the RAW colour before the cap, as vanilla sums them: a torch shifted toward blue keeps
-        // green and blue level -- normalising first and adding after would put blue above green
-        Vector3 shifted = Tint(new Vector3(1.75f, 1.5f, 1f), new Vector3(0f, 0f, 0.5f), 1f);
-        check.Expect(shifted.X == 1f && MathF.Abs(shifted.Y - shifted.Z) < 1e-5f && shifted.Y < 0.8f,
-                     $"a flare shift is summed into the raw colour before the cap ({shifted.X:F2}, {shifted.Y:F2}, {shifted.Z:F2})");
-        // !786 clamped each channel of the raw overbright colour to 1 before the distance weight: every halo white
-        Vector3 torch = Tint(new Vector3(1.75f, 1.5f, 1f), Vector3.Zero, 1f);
-        check.Expect(torch.X == 1f && torch.Y < 0.8f && torch.Z < 0.4f && torch.Z < torch.Y,
-                     $"an overbright torch's halo keeps the torch's hue ({torch.X:F2}, {torch.Y:F2}, {torch.Z:F2}), not white");
+        check.Expect(float.IsFinite(inf.X) && inf.Y == 0.5f, "an infinite colour stages finite");
+        Vector3 torch = Tint(new Vector3(1.75f, 1.5f, 1f), new Vector3(0f, 0f, 0.5f), 0.5f);
+        check.Expect(torch == new Vector3(0.875f, 0.75f, 0.75f), $"the shift joins the raw colour and the fade scales it ({torch.X:F3}, {torch.Y:F3}, {torch.Z:F3})");
+        // The population gate, against hand-written cases of SetupLightsForThisPositionAndRadius's predicate. The
+        // flare node is the stock tile lamp's shape: isdynamic 0, affectdynamic 1, a blue first colour shift.
+        var lamp = new LightDef { Dynamic = false, AffectDynamic = true, FlareTextures = new[] { "fxpa_lensflare" },
+                                  FlareColors = new[] { new Vector3(0f, 0f, 1f) } };
+        Vector3 at = new(10f, 0f, 0f), warm = new(1f, 0.8f, 0.5f);
+        check.Expect(Flares(lamp, at, warm, 5f, 1f, 1f, Vector3.Zero, 40f), "a lit flare lamp beside the focus flares");
+        check.Expect(!Flares(lamp, at, warm, 0f, 1f, 1f, Vector3.Zero, 40f), "a lamp at radius 0 (a window before Night) does not");
+        check.Expect(!Flares(lamp, at, warm, 5f, 0f, 1f, Vector3.Zero, 40f), "nor one at multiplier 0");
+        check.Expect(!Flares(lamp, at, Vector3.Zero, 5f, 1f, 1f, Vector3.Zero, 40f), "nor a black one, whatever its colour shift");
+        check.Expect(!Flares(lamp, at, warm, 1000f, 1f, 1f, Vector3.Zero, 40f), "nor one reaching 1000, the area pair's range");
+        var bakedOnly = new LightDef { Dynamic = false, AffectDynamic = false, FlareTextures = lamp.FlareTextures, FlareColors = lamp.FlareColors };
+        check.Expect(!Flares(bakedOnly, at, warm, 5f, 1f, 1f, Vector3.Zero, 40f), "nor one neither dynamic nor affecting dynamics");
+        var noShift = new LightDef { AffectDynamic = true, FlareTextures = lamp.FlareTextures };
+        check.Expect(!Flares(noShift, at, warm, 5f, 1f, 1f, Vector3.Zero, 40f), "nor one with textures but no colour shifts");
+        // reach to the focus: radius 5 x multiplier 1 + max(45, fog end)
+        Vector3 far = new(49.9f, 0f, 0f), farther = new(50.1f, 0f, 0f);
+        check.Expect(Flares(lamp, far, warm, 5f, 1f, 1f, Vector3.Zero, 40f) && !Flares(lamp, farther, warm, 5f, 1f, 1f, Vector3.Zero, 40f),
+                     "the focus reach is the adjusted radius plus 45 under a nearer fog end");
+        check.Expect(Flares(lamp, new Vector3(64.9f, 0f, 0f), warm, 5f, 1f, 1f, Vector3.Zero, 60f), "...and plus the fog end past 45");
         log.Info(check.Ok ? "Halos.SelfCheck: passed" : "Halos.SelfCheck: FAILED -- see above");
     }
 }

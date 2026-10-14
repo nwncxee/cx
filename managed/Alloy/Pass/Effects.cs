@@ -22,14 +22,14 @@ internal static class Effects
         G.Status = static () => $"{SkyBox.Stats()} | {CX.Alloy.Beams.Stats()} | halos {CX.Alloy.Halos.Describe()}";
 
         Halos = G.Slider("halos", "Light halos", 0f, 4f, 0.1f, 1f,
-                         help: "Brightness of the soft glow around every light source. 1 is the light's own colour; 0 draws no halos.")
+                         help: "Brightness of the glow around the lights that flare in vanilla. 1 is vanilla's; 0 draws no halos.")
                  .Ladder(Quality.Effects, 0f, 1f, 1f, 1f);
         G.Section("");
         Sky = G.Toggle("sky", "Alloy sky", true, Tier.ChatOnly,
                        help: "The sky dome drawn through CX (fogged horizon, HDR). Off, no sky dome is drawn.");
         Beams = G.Toggle("beams", "Alloy light beams", true, Tier.ChatOnly, help: "Light shafts drawn through CX.");
-        HaloSize = G.Slider("halosize", "Halo size", 0f, 2f, 0.1f, 0.6f, tier: Tier.ChatOnly,
-                            help: "World size of the glow, as a multiple of the light's own flare size.");
+        HaloSize = G.Slider("halosize", "Halo size", 0f, 2f, 0.1f, 1f, tier: Tier.ChatOnly,
+                            help: "Size of the glow as a multiple of vanilla's flare size (1 is vanilla's).");
         HaloViz = G.Slider("haloviz", "haloviz", 0, 1, 1, 0, tier: Tier.ChatOnly);
     }
 }

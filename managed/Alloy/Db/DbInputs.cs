@@ -187,8 +187,9 @@ internal static partial class DbInputs
     internal static string NodeName(int p) => NodeOf(p)?.Name ?? "?";
 
     /// <summary>The light node's file fields: an object light's own <see cref="DbLight.Def"/>, else the node
-    /// behind a tile light's part. Null when the light has neither.</summary>
-    internal static LightDef? LightDefOf(in DbLight l) => l.Def ?? (l.Part >= 0 ? NodeOf(l.Part)?.Light : null);
+    /// behind a tile light's part, else the tile light's record. Null when the light has none.</summary>
+    internal static LightDef? LightDefOf(in DbLight l)
+        => l.Def ?? (l.Part >= 0 ? NodeOf(l.Part)?.Light : null) ?? (l.Lit >= 0 ? SceneDb.LitDef[l.Lit] : null);
 
     private static NodeDef? NodeOf(int p)
     {

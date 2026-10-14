@@ -106,7 +106,7 @@ public sealed unsafe partial class AlloyRenderer
         // neither needs the engine's GL context and both are safe on the render thread.
         EmitterSim.StepDb(scene, DbFeed.FrameSeq);
         Beams.EnrollDb(scene);
-        Halos.EnrollDb(scene);
+        Halos.EnrollDb(scene, h.RadiusMult);
         // CX-120 bring-up: the whole drawn set's world extent against the camera, once, after the order is
         // built. "303 draws and a flat frame" is a question about WHERE things are, and no counter carries a
         // position. One pass over the order; this is a one-shot.
