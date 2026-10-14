@@ -228,7 +228,7 @@ public sealed unsafe partial class AlloyRenderer
     /// from it. A feature appended above this ceiling walks <c>_featPrimCount</c> off its end and throws
     /// mid-frame, so <see cref="CullSortSelfCheck"/> ties it to <see cref="ShaderFeatures.VsNames"/>, which
     /// any appended feature has to extend anyway.</summary>
-    private const ShaderFeature FeatCeiling = ShaderFeature.PaletteTint;
+    private const ShaderFeature FeatCeiling = ShaderFeature.Snowed;
     /// <summary>Buckets for the (feature, primitive) digit.</summary>
     private const int FeatPrimKeys = ((int)FeatCeiling + 1) * PrimTypes;
     /// <summary>Both indices are CLAMPED, not trusted: this is a sort digit, so a feature past the ceiling
