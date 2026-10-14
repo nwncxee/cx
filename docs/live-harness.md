@@ -189,7 +189,7 @@ row 2 (`cell#2`). Feed it in with `nui.cardfile`, and point at it with the point
     tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.cardforce=img' \
         --keys 'sleep:6000;shot:<dir>/cards.png'
     tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.hitdebug=1' \
-        --keys 'sleep:8000;move:100,100;sleep:300;move:190,249;sleep:1500;shot:<dir>/row2.png'
+        --keys 'sleep:8000;move:100,100;sleep:300;move:190,549;sleep:1500;shot:<dir>/row2.png'
 
 `nui.cardforce=img` shows the `img` cards as if the pointer rested on an element with that id, so the shot needs no
 pointer. The second run uses the real pointer: row 2 of the list shows its own card, and any other row shows the shared one.
