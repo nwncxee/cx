@@ -53,6 +53,9 @@ static unsigned cxa_ld(unsigned* p) { return (unsigned)InterlockedCompareExchang
 static void cxa_st(int64_t* p, int64_t v) { InterlockedExchange64(p, v); }
 static unsigned cxa_inc(unsigned* p) { return (unsigned)InterlockedIncrement((volatile LONG*)p); }
 static int32_t cxa_inc(int32_t* p) { return (int32_t)InterlockedIncrement((volatile LONG*)p); }
+static int32_t cxa_dec(int32_t* p) { return (int32_t)InterlockedDecrement((volatile LONG*)p); }
+static int32_t cxa_ld(int32_t* p) { return (int32_t)InterlockedCompareExchange((volatile LONG*)p, 0, 0); }
+static void cxa_st(int32_t* p, int32_t v) { InterlockedExchange((volatile LONG*)p, v); }
 static void cxa_sleep_ms(int ms) { Sleep((DWORD)ms); }
 static double cxa_now()
 {
@@ -102,6 +105,7 @@ static void* cxa_sym(void* lib, const char* n) { return dlsym(lib, n); }
 template <class T> static T cxa_ld(T* p) { return __atomic_load_n(p, __ATOMIC_ACQUIRE); }
 template <class T> static void cxa_st(T* p, T v) { __atomic_store_n(p, v, __ATOMIC_RELEASE); }
 template <class T> static T cxa_inc(T* p) { return __atomic_add_fetch(p, 1, __ATOMIC_ACQ_REL); }
+template <class T> static T cxa_dec(T* p) { return __atomic_sub_fetch(p, 1, __ATOMIC_ACQ_REL); }
 static void cxa_sleep_ms(int ms)
 {
     struct timespec t;
@@ -530,6 +534,18 @@ static CxaStats g_stats;
 static char g_err[256];
 static char g_describe[512];
 static uint32_t g_rngMain = 0x1234567u;
+/// The exit latch (atomic, no lock): set once at the engine's sound teardown and never cleared. Every entry
+/// point becomes a no-op and CX's own threads leave their loops, so nothing is inside Steam Audio or OpenAL
+/// when the process finalizes its static destructors.
+static int32_t g_stop;
+/// How many of CX's own threads (render, sim, bake) are inside the core right now, for the shutdown wait.
+static int32_t g_inside;
+/// The render thread is running, so its wake-up is initialised and worth posting.
+static int32_t g_renderLive;
+/// How long cxa_shutdown waits for CX's threads to leave the core. A sim tick is ~1 ms and a render frame well
+/// under that; a bake is the long one and is cancelled rather than waited out.
+enum { ShutdownWaitMs = 500 };
+
 static int g_testReq;   // the speaker test was asked for (under g_lk)
 static float g_music;   // the area music's audible level, 0..1 (under g_lk)
 static float g_rain = 1.0f;   // the reverb's wet scale while it rains (under g_lk)
@@ -1073,7 +1089,7 @@ static ALsizei AL_APIENTRY bus_callback(ALvoid* user, ALvoid* data, ALsizei byte
     Sa& s = g_sa;
     float* o = (float*)data;
     int want = bytes / (int)(sizeof(float) * s.busCh), done = 0;
-    if ((unsigned)(uintptr_t)user != cxa_ld(&g_busGen)) { memset(data, 0, (size_t)bytes); return bytes; }
+    if ((unsigned)(uintptr_t)user != cxa_ld(&g_busGen) || cxa_ld(&g_stop)) { memset(data, 0, (size_t)bytes); return bytes; }
     const int64_t cap = (int64_t)s.frame * RingFrames;
     int64_t r = s.ringR, w = cxa_ld(&s.ringW);
     while (done < want && r < w)
@@ -1094,13 +1110,14 @@ static ALsizei AL_APIENTRY bus_callback(ALvoid* user, ALvoid* data, ALsizei byte
     return bytes;
 }
 
-/// "CX sound render": keeps the ring RingAhead frames ahead of the callback.
+/// "CX sound render": keeps the ring RingAhead frames ahead of the callback, until the exit latch.
 static void render_main()
 {
     Sa& s = g_sa;
     const int64_t N = s.frame;
-    for (;;)
+    while (!cxa_ld(&g_stop))
     {
+        cxa_inc(&g_inside);
         unsigned gen = cxa_ld(&g_busGen);
         int64_t w = s.ringW;
         while (w - cxa_ld(&s.ringR) < RingAhead * N)
@@ -1110,6 +1127,7 @@ static void render_main()
             cxa_st(&s.ringW, w);
         }
         s.primed = 1;
+        cxa_dec(&g_inside);
         g_wake.wait(5);
     }
 }
@@ -1158,9 +1176,10 @@ static int preset_row(const char* label)
 }
 
 /// Loads the EnvAudio row into the bus's reverb slot; the send is live only while reverb is "preset".
+/// Needs a current context: every call it makes after the engine drops its own logs AL_INVALID_OPERATION.
 static void fx_apply()
 {
-    if (!g_fxSlot || !p_alEffecti) return;
+    if (!g_fxSlot || !p_alEffecti || !p_alcGetCurrentContext || !p_alcGetCurrentContext()) return;
     int on = g_cfg.enabled && g_cfg.reflections == 3 && g_envRow >= 0 && g_envRow < PresetCount;
     if (on)
     {
@@ -1214,7 +1233,7 @@ static int device_channels(ALCdevice* dev)
 static int g_busFailed;
 static void bus_open(ALCcontext* ctx)
 {
-    if (!ctx || ctx == g_busCtx || !p_alBufferCallbackSOFT || g_busFailed) return;
+    if (!ctx || ctx == g_busCtx || !p_alBufferCallbackSOFT || g_busFailed || cxa_ld(&g_stop)) return;
     g_busFailed = 1;   // latched until the bus is up: a refusal is said once, not retried every frame
     ALCdevice* dev = p_alcGetContextsDevice(ctx);
     if (!p_alIsExtensionPresent("AL_SOFT_callback_buffer") || !p_alIsExtensionPresent("AL_EXT_FLOAT32")
@@ -1236,6 +1255,7 @@ static void bus_open(ALCcontext* ctx)
         if (!sa_init(rate, ch, binaural)) return;
         g_wake.init();
         if (!start_thread()) { g_sa.ready = 0; set_err("the render thread failed to start"); return; }
+        cxa_st(&g_renderLive, 1);
     }
     ALenum fmt = g_sa.busCh == 8 ? AL_FORMAT_71CHN32 : g_sa.busCh == 6 ? AL_FORMAT_51CHN32
                : g_sa.busCh == 4 ? AL_FORMAT_QUAD32 : AL_FORMAT_STEREO_FLOAT32;
@@ -1582,7 +1602,7 @@ static void scene_install(float* verts, int nv, int32_t* tris, int nt, int bake,
 
 static IPLDeviationModel g_deviation = { IPL_DEVIATIONTYPE_DEFAULT, NULL, NULL };
 
-CX_EXPORT void cxa_sim_tick(void)
+static void sim_tick(void)
 {
     Sa& s = g_sa;
     if (!s.ready) return;
@@ -1759,9 +1779,19 @@ CX_EXPORT void cxa_sim_tick(void)
 // ---- the pathing bake (CX's "CX sound bake" thread) ----
 static void IPLCALL bake_progress(IPLfloat32 p, void* u) { (void)p; (void)u; }
 
+/// "CX sound sim", every 15 ms: one simulation tick, unless the exit latch is set. The in-core count is what
+/// cxa_shutdown waits on, so the thread is never inside Steam Audio once the call returns.
+CX_EXPORT void cxa_sim_tick(void)
+{
+    if (cxa_ld(&g_stop)) return;
+    cxa_inc(&g_inside);
+    sim_tick();
+    cxa_dec(&g_inside);
+}
+
 /// One bake if one is waiting: probes on a 4 m floor grid over the area, paths between every pair in sight.
 /// 1 when it did work, 0 when idle.
-CX_EXPORT int32_t cxa_bake_tick(void)
+static int32_t bake_tick(void)
 {
     Sa& s = g_sa;
     if (!s.ready) return 0;
@@ -1824,6 +1854,16 @@ CX_EXPORT int32_t cxa_bake_tick(void)
     return 1;
 }
 
+/// "CX sound bake": one bake pass, unless the exit latch is set. <see cref="cxa_sim_tick"/> on the count.
+CX_EXPORT int32_t cxa_bake_tick(void)
+{
+    if (cxa_ld(&g_stop)) return 0;
+    cxa_inc(&g_inside);
+    int32_t did = bake_tick();
+    cxa_dec(&g_inside);
+    return did;
+}
+
 // ---- the managed surface ----
 /// Resolves every entry point from the phonon and OpenAL libraries managed loaded. 0 = ok, else the index of the
 /// first missing symbol + 1 (and its name in cxa_error).
@@ -1883,6 +1923,7 @@ CX_EXPORT void cxa_config(const CxaConfig* c)
     ALuint back[MaxSlots];
     float gain[MaxSlots];
     int n = 0;
+    if (cxa_ld(&g_stop)) return;
     g_lk.on();
     int off = g_cfg.enabled && !c->enabled;
     g_cfg = *c;
@@ -1906,7 +1947,7 @@ CX_EXPORT void cxa_config(const CxaConfig* c)
 CX_EXPORT int32_t cxa_resampler(const char* name)
 {
     g_resampler = -1;
-    if (!name || !*name || !p_alGetStringiSOFT || !p_alcGetCurrentContext()) return -1;
+    if (!name || !*name || !p_alGetStringiSOFT || !p_alcGetCurrentContext() || cxa_ld(&g_stop)) return -1;
     ALint n = p_alGetInteger(AL_NUM_RESAMPLERS_SOFT);
     for (ALint i = 0; i < n; i++)
     {
@@ -1920,7 +1961,7 @@ CX_EXPORT int32_t cxa_resampler(const char* name)
 /// engine's sound init ran before the hooks were in. Main thread.
 CX_EXPORT void cxa_attach(void)
 {
-    if (p_alcGetCurrentContext && g_cfg.enabled) bus_open(p_alcGetCurrentContext());
+    if (p_alcGetCurrentContext && g_cfg.enabled && !cxa_ld(&g_stop)) bus_open(p_alcGetCurrentContext());
 }
 
 /// The speaker layout asked of OpenAL by channel count; 0 = what the system reports.
@@ -1939,23 +1980,27 @@ static ALCint output_mode(int channels)
 /// Device-level choices: taken by the next context the engine makes, and by the live device through
 /// alcResetDeviceSOFT when they changed; the listener gain whenever a context exists. Main thread.
 /// <paramref name="channels"/>: the speaker layout (0 = the system's); the bus fixes its own at the first open.
+/// The device and the context it reaches for are only valid while OpenAL has a current context.
 CX_EXPORT void cxa_device(int32_t hrtf, int32_t limiter, float master, int32_t channels)
 {
+    if (cxa_ld(&g_stop)) return;
     ALCint h = hrtf < 0 ? ALC_DONT_CARE_SOFT : hrtf ? ALC_TRUE : ALC_FALSE, l = limiter ? ALC_TRUE : ALC_FALSE;
     ALCint m = output_mode(channels);
     int changed = h != g_devHrtf || l != g_devLimiter || m != g_devMode;
     g_devHrtf = h; g_devLimiter = l; g_devMode = m;
-    if (changed && g_busDev && p_alcResetDeviceSOFT)
+    int live = p_alcGetCurrentContext && p_alcGetCurrentContext() != NULL;
+    if (changed && live && g_busDev && p_alcResetDeviceSOFT)
     {
         ALCint a[] = { ALC_HRTF_SOFT, g_devHrtf, ALC_OUTPUT_LIMITER_SOFT, g_devLimiter, ALC_OUTPUT_MODE_SOFT, g_devMode, 0 };
         p_alcResetDeviceSOFT(g_busDev, a);
     }
-    if (g_busCtx && p_alListenerf) p_alListenerf(AL_GAIN, master);
+    if (live && g_busCtx && p_alListenerf) p_alListenerf(AL_GAIN, master);
 }
 
 /// The speaker test: a burst from ahead, right, behind and left of the listener. 0 when no bus plays it.
 CX_EXPORT int32_t cxa_test_tone(void)
 {
+    if (cxa_ld(&g_stop)) return 0;
     g_lk.on();
     int ok = g_stats.busOpen && g_cfg.enabled;
     if (ok) g_testReq = 1;
@@ -1963,13 +2008,36 @@ CX_EXPORT int32_t cxa_test_tone(void)
     return ok;
 }
 
-/// 1 while OpenAL has a current context: the engine's stream calls check AL errors, and every one made after
-/// the engine drops its context at exit logs AL_INVALID_OPERATION.
-CX_EXPORT int32_t cxa_al_live(void) { return p_alcGetCurrentContext && p_alcGetCurrentContext() != NULL; }
+/// 1 while OpenAL has a current context AND CX's audio has not been stood down: the engine's stream calls check
+/// AL errors, and every one made after the engine drops its context at exit logs AL_INVALID_OPERATION.
+CX_EXPORT int32_t cxa_al_live(void)
+{
+    return !cxa_ld(&g_stop) && p_alcGetCurrentContext && p_alcGetCurrentContext() != NULL;
+}
+
+/// 1 once the exit latch is set: CX's own loops read it to leave.
+CX_EXPORT int32_t cxa_stopped(void) { return cxa_ld(&g_stop); }
+
+/// The engine is tearing its sound down (CExoSoundInternal::ShutDown, before alcDestroyContext): CX's audio
+/// stands down for good. Latches every entry point off, cancels a running path bake and waits, bounded, for
+/// CX's own threads to leave the core -- so nothing of ours is inside Steam Audio or OpenAL while the process
+/// finalizes. 1 when they all left, 0 when the wait ran out. Main thread, once.
+CX_EXPORT int32_t cxa_shutdown(void)
+{
+    cxa_st(&g_stop, 1);
+    g_lk.on();
+    int baking = g_baking && g_sa.ctx && p_iplPathBakerCancelBake;
+    if (baking) p_iplPathBakerCancelBake(g_sa.ctx);
+    g_lk.off();
+    if (cxa_ld(&g_renderLive)) g_wake.post();
+    for (int i = 0; i < ShutdownWaitMs && cxa_ld(&g_inside) > 0; i++) cxa_sleep_ms(1);
+    return cxa_ld(&g_inside) == 0;
+}
 
 /// The area music's audible level (0 silent .. 1 full), for the ambience duck. Main thread, per frame.
 CX_EXPORT void cxa_music(float level)
 {
+    if (cxa_ld(&g_stop)) return;
     g_lk.on();
     g_music = clampf(level, 0.0f, 1.0f);
     g_lk.off();
@@ -1978,6 +2046,7 @@ CX_EXPORT void cxa_music(float level)
 /// The reverb's wet scale while it rains (1 dry .. 0): rain soaks up echoes. Main thread, on change.
 CX_EXPORT void cxa_rain(float wet)
 {
+    if (cxa_ld(&g_stop)) return;
     g_lk.on();
     g_rain = clampf(wet, 0.0f, 1.0f);
     g_lk.off();
@@ -1985,13 +2054,14 @@ CX_EXPORT void cxa_rain(float wet)
 }
 
 /// The engine's 3D start, bracketed by the PlaySourceOn3DVoice hook on the thread that makes it.
-CX_EXPORT void cxa_begin3d(const CxaMeta* m) { t_meta = *m; t_pending = 1; }
+CX_EXPORT void cxa_begin3d(const CxaMeta* m) { if (cxa_ld(&g_stop)) return; t_meta = *m; t_pending = 1; }
 CX_EXPORT void cxa_end3d(void) { t_pending = 0; }
 
 /// CExoSoundSourceInternal::SetPosition for a playing 3D voice: the world position, not the z-negated one the
 /// engine forwards to AL on this path.
 CX_EXPORT void cxa_move(uint32_t src, float x, float y, float z)
 {
+    if (cxa_ld(&g_stop)) return;
     g_lk.on();
     int i = slot_of(src);
     if (i >= 0) { g_slots[i].pos[0] = x; g_slots[i].pos[1] = y; g_slots[i].pos[2] = z; }
@@ -2001,6 +2071,7 @@ CX_EXPORT void cxa_move(uint32_t src, float x, float y, float z)
 /// soundeax.2da's row for the area (CExoSound::SetEnvironment); -1 clears.
 CX_EXPORT void cxa_environment(int32_t row)
 {
+    if (cxa_ld(&g_stop)) return;
     g_envRow = row;
     fx_apply();
 }
@@ -2013,6 +2084,7 @@ CX_EXPORT int32_t cxa_scene(const float* verts, int32_t nv, const int32_t* tris,
 {
     float* v = NULL;
     int32_t* t = NULL;
+    if (cxa_ld(&g_stop)) return 0;
     if (nv > 0 && nt > 0)
     {
         v = (float*)malloc(sizeof(float) * 3 * (size_t)nv);
@@ -2048,7 +2120,7 @@ CX_EXPORT int32_t cxa_error(char* buf, int32_t len)
     return (int32_t)strlen(buf);
 }
 
-CX_EXPORT int32_t cxa_ready(void) { return g_sa.ready; }
+CX_EXPORT int32_t cxa_ready(void) { return !cxa_ld(&g_stop) && g_sa.ready; }
 
 /// What OpenAL says it is, filled when the bus opens; "" before.
 CX_EXPORT int32_t cxa_describe(char* buf, int32_t len)
@@ -2146,6 +2218,20 @@ CX_EXPORT int32_t cxa_selfcheck(char* msg, int32_t len)
     CXA_EXPECT(g_reflFreeze && g_slots[3].reflIdx < 0 && !g_slots[3].refl.ir && !g_sa.roomValid && !g_sa.roomParams.ir,
                "a scene swap takes every simulator IR out of the render's hands");
     g_reflFreeze = 0;
+    // the exit latch: once it is set, an entry point that would otherwise change state does nothing. Oracle:
+    // the two values written here by hand, which the unlatched calls below then overwrite. Runs before
+    // cxa_bind, so nothing is loaded, no thread is up, and the latch is the selfcheck's own to set and clear.
+    g_envRow = 7;
+    g_music = 0.37f;
+    cxa_st(&g_stop, 1);
+    cxa_environment(42);
+    cxa_music(1.0f);
+    CXA_EXPECT(cxa_stopped() && g_envRow == 7 && g_music == 0.37f && cxa_al_live() == 0 && cxa_ready() == 0
+               && cxa_bake_tick() == 0 && cxa_test_tone() == 0, "the exit latch makes every entry point a no-op");
+    cxa_st(&g_stop, 0);
+    cxa_environment(-1);
+    cxa_music(0.0f);
+    CXA_EXPECT(!cxa_stopped() && g_envRow == -1 && g_music == 0.0f, "unlatched, the same two calls land");
     snprintf(msg, (size_t)len, "ok");
     return 1;
 }

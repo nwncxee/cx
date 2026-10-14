@@ -69,6 +69,28 @@ internal static unsafe class SoundStreams
         return new CExoStreamingSoundSource(_spare[ch]).Internal != IntPtr.Zero;
     }
 
+    /// <summary>At the engine's sound teardown: every spare's Internal leaves the engine's stream lists, so none
+    /// of CX's is in the AsyncSoundStream thread's list when that list is freed. Returns how many were taken out,
+    /// of the spares CX ever made (<paramref name="made"/>).</summary>
+    internal static int Park(out int made)
+    {
+        made = 0;
+        int parked = 0;
+        if (EngineFn.StreamStop == null) return 0;
+        for (int ch = 0; ch < 2; ch++)
+        {
+            if (_spare[ch] == IntPtr.Zero) continue;
+            made++;
+            _parked[ch] = false;
+            var src = new CExoStreamingSoundSource(_spare[ch]);
+            if (src.Internal == IntPtr.Zero) continue;
+            // Stop, not Reset: Reset would build a fresh Internal off the CExoSoundInternal being destroyed
+            src.StreamStop();
+            parked++;
+        }
+        return parked;
+    }
+
     /// <summary>Per frame: a finished fade's Internal is reset (freeing its file), and the music level goes to the duck.</summary>
     internal static void Tick()
     {

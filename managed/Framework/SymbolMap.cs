@@ -2414,6 +2414,15 @@ internal static unsafe class SymbolMap
     /// it once at construction (music 0, ambient 1), so a swapped-in Internal needs it again.</summary>
     [Fn("void(CExoStreamingSoundSource this, int loop)")]
     public const string StreamSetLooping = "_ZN24CExoStreamingSoundSource10SetLoopingEi";
+    /// <summary><c>CExoSoundInternal::ShutDown()</c> @0x677a80 -- the engine's sound teardown: it destroys every
+    /// voice and then <c>alcDestroyContext</c>, so it is the last moment AL still works. Its only caller is
+    /// <c>~CExoSoundInternal</c>, itself only reached from <c>CExoSound::~CExoSound</c>, so it fires once.</summary>
+    [Fn("void(CExoSoundInternal this)")]
+    public const string SoundShutDown = "_ZN17CExoSoundInternal8ShutDownEv";
+    /// <summary><c>g_ExoSoundStreamThread</c> @0x19e75e0 -- the <c>CExoSoundStreamThread</c> OBJECT (not a pointer),
+    /// constructed at static init. Its detached thread runs while <see cref="EngineLayout.StreamThreadStop"/> is
+    /// zero, and nothing writes that flag before the destructor <c>atexit</c> runs.</summary>
+    public const string ExoSoundStreamThread = "g_ExoSoundStreamThread";
 
     // ---- the CX inventory screen. Every client
     //      GUI / CNWCMessage class here is unexported on Windows -> At() + an `rva` line; only
@@ -3503,6 +3512,8 @@ internal static unsafe class SymbolMap
         [StreamStop]             = Nm("?Stop@CExoStreamingSoundSource@@QEAAXXZ"),
         [StreamGetVolume]        = Nm("?GetVolume@CExoStreamingSoundSource@@QEAAEXZ"),
         [StreamSetLooping]       = Nm("?SetLooping@CExoStreamingSoundSource@@QEAAXH@Z"),
+        [SoundShutDown]          = Nm("?ShutDown@CExoSoundInternal@@QEAAXXZ"),
+        [ExoSoundStreamThread]   = Nm("?g_ExoSoundStreamThread@@3VCExoSoundStreamThread@@A"),
         // --- the CX inventory screen. CPanelInventory, CGuiInvbox,
         //     CGuiMulti*Invbox, CNWCItem and CNWCMessage are all unexported on nwmain.exe, so each row is an
         //     RVA read out of the Windows BODY (not a caller-shape guess): SetInventoryVisible's own body names

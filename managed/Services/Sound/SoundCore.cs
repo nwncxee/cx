@@ -61,6 +61,8 @@ internal static unsafe class SoundCore
     [DllImport(Lib)] internal static extern void cxa_music(float level);
     [DllImport(Lib)] internal static extern void cxa_rain(float wet);
     [DllImport(Lib)] internal static extern int cxa_al_live();
+    [DllImport(Lib)] internal static extern int cxa_stopped();
+    [DllImport(Lib)] internal static extern int cxa_shutdown();
     [DllImport(Lib)] internal static extern int cxa_resampler(byte* name);
     [DllImport(Lib)] internal static extern void cxa_attach();
     [DllImport(Lib)] internal static extern void cxa_begin3d(Meta* m);
