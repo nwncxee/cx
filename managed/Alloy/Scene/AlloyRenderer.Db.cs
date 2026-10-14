@@ -48,12 +48,29 @@ public sealed unsafe partial class AlloyRenderer
            && (DrawRecipe.Slots(recipe) & (IllumBit | EnvSlot)) == 0
            && !ShaderFeatures.Hosted(DrawRecipe.Feat(recipe));
 
-    /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>), under
-    /// a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque class keeps its prepass
-    /// depth exactly -- nor additive, which writes no depth to fight over; nor a GUI sheet or a posed mesh.</summary>
+    /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>) on a
+    /// static object, under a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque
+    /// class keeps its prepass depth exactly -- nor additive, which writes no depth to fight over; nor a coverage or
+    /// env-mapped material (whose alpha is not a sheet's edge) or a posed mesh. A GUI panel's objects are not static.</summary>
     internal static bool DbWash(int recipe, RecipeFlag rf, ObjFlag of)
         => (rf & RecipeFlag.Wash) != 0 && DrawRecipe.Cls(recipe) is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
-           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) == 0 && (of & ObjFlag.Gui) == 0;
+           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage | RecipeFlag.CoverNrm)) == 0
+           && (DrawRecipe.Slots(recipe) & EnvSlot) == 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
+
+    /// <summary>The class a slot draws in: the recipe's, except that an alpha-tested wash with a graded edge blends,
+    /// as vanilla draws its alpha-tested bucket (<c>Scene::RenderSinglePass</c> @0x56e5f0: blend and the 0.2 test
+    /// together). Drawn hard, its graded edge showed whatever colour the texture keeps under alpha 0.</summary>
+    internal static byte DbClass(int recipe, bool wash)
+        => wash && DrawRecipe.Cls(recipe) == (int)AlloyClass.Cutout && DrawRecipe.Graded(recipe)
+           ? (byte)AlloyClass.Blended : (byte)DrawRecipe.Cls(recipe);
+
+    /// <summary>Name a slot's wash in the log once its diffuse is measured -- before that its class is the
+    /// conservative cutout guess, which is every tile's ground.</summary>
+    private static void DbNoteWash(int recipe, RecipeFlag rf, ObjFlag of, bool lit, byte cls, byte decal, byte wash)
+    {
+        if (decal == 0 && wash != 0 && DrawRecipe.Measured(recipe))
+            DecalLayer.NoteRefused(recipe, (AlloyClass)cls, DbDecalWhyNot(recipe, rf, of, lit));
+    }
 
     /// <summary>The first term <see cref="DbDecal"/> refuses a flat see-through sheet on, for the log.</summary>
     private static string DbDecalWhyNot(int recipe, RecipeFlag rf, ObjFlag of, bool lit)
@@ -157,13 +174,12 @@ public sealed unsafe partial class AlloyRenderer
         _oLit[i] = (rf & RecipeFlag.Lit) != 0 && _lighting;
         if ((rf & RecipeFlag.Lit) != 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static)
             MeshArena.WantBake(DrawRecipe.Range(recipe));
-        _oCls[i] = (byte)DrawRecipe.Cls(recipe);
+        _oWash[i] = DbWash(recipe, rf, of) ? (byte)1 : (byte)0;
+        _oCls[i] = DbClass(recipe, _oWash[i] != 0);
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
-        _oWash[i] = DbWash(recipe, rf, of) ? (byte)1 : (byte)0;
         _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
-        if (_oDecal[i] == 0 && _oWash[i] != 0)
-            DecalLayer.NoteRefused(recipe, DbDecalWhyNot(recipe, rf, of, _oLit[i]));
+        DbNoteWash(recipe, rf, of, _oLit[i], _oCls[i], _oDecal[i], _oWash[i]);
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
         _oBucket[i] = 0;
         // No gob pointer exists in DB mode; the questions it answered are columns.
@@ -254,24 +270,25 @@ public sealed unsafe partial class AlloyRenderer
         {
             int recipe = _oDbRecipe[i];
             if (_oDbPart[i] < 0 || recipe < 0) continue;
-            byte cls = (byte)DrawRecipe.Cls(recipe);
+            RecipeFlag rf = DrawRecipe.Flags(recipe);
+            int o = SceneDb.PartObj[_oDbPart[i]].Index;
+            ObjFlag of = (uint)o < (uint)SceneDb.ObjFlags.Length ? SceneDb.ObjFlags[o] : ObjFlag.None;
+            // ...and the two routes the class decides: a wash (see-through and flat) and a ground decal (blended)
+            byte wash = DbWash(recipe, rf, of) ? (byte)1 : (byte)0;
+            byte cls = DbClass(recipe, wash != 0);
             // ...and the texture rotation with it: the bumpy-shiny half of RecipeFlag.RotateTexture latches
             // when the diffuse's .txi lands, which is after the slot took its columns.
             float wasCos = _oCos[i], wasSin = _oSin[i];
-            DbWriteTexRot(i, SceneDb.PartObj[_oDbPart[i]].Index, recipe, DrawRecipe.Flags(recipe));
+            DbWriteTexRot(i, o, recipe, rf);
             // ...and the .txi's blend pair and fullbright flag, which an offer that waited reads late.
-            bool lit = (DrawRecipe.Flags(recipe) & RecipeFlag.Lit) != 0 && _lighting;
-            bool a2c = (DrawRecipe.Flags(recipe) & RecipeFlag.Coverage) != 0;
+            bool lit = (rf & RecipeFlag.Lit) != 0 && _lighting;
+            bool a2c = (rf & RecipeFlag.Coverage) != 0;
             // ...and the slot-1 coverage bit, which the same late .mtr can turn on. It rides _oSlots, which
             // nothing re-derives per frame (the env bit is the one exception), so a recipe that gained it
             // after its slots were seated would keep drawing solid.
             int slots = (_oSlots[i] & ~CoverNrmBit) | (DrawRecipe.Slots(recipe) & CoverNrmBit);
-            // ...and the two routes the class decides: a ground decal (blended) and a wash (see-through)
-            RecipeFlag rf = DrawRecipe.Flags(recipe);
-            int o = SceneDb.PartObj[_oDbPart[i]].Index;
-            ObjFlag of = (uint)o < (uint)SceneDb.ObjFlags.Length ? SceneDb.ObjFlags[o] : ObjFlag.None;
             byte decal = lit && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
-            byte wash = DbWash(recipe, rf, of) ? (byte)1 : (byte)0;
+            if (wash != 0) DbNoteWash(recipe, rf, of, lit, cls, decal, wash);
             if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
                 && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
                 && slots == _oSlots[i]) continue;

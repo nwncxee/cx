@@ -52,6 +52,18 @@ discard (the layer takes the whole graded edge); a decal over an unlit or non-pr
 those pixels; a prepassed surface within that height of the decal (a foot standing on it) takes its albedo.
 `/alloy viz 53` shows what each surface folded. The layer is not drawn into the probe capture or the mirror.
 
+### Sheets that are not decals draw as washes
+
+A see-through sheet lying flat (every triangle within 45 degrees of horizontal, judged off the triangles) that
+is not a ground decal -- alpha-tested, refused by `DbDecal`, or a cover meant to hide what it lies on -- keeps
+its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`): under a polygon offset
+(-1, -2), so it does not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock
+ones at exactly 0). An alpha-tested wash whose diffuse measures graded alpha draws in the blended class, as
+vanilla draws its alpha-tested bucket (blend and the 0.2 test together): drawn hard, its edge showed the colour
+the texture keeps under alpha 0, white on many decal sheets. Only static objects' sheets are washes, and never
+a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
+session with the reason each is not a decal.
+
 ### The forward consumers' slim walk (`CX_LIGHT_LITE`)
 
 A transparent or per-vertex receiver compiled the whole of `CxClusteredLightLm`, which exists for a baked
