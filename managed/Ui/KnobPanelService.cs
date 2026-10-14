@@ -37,6 +37,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
+        _panel.Log = log;
         KnobPanel.SelfCheck(log);
         // Focusable = false like every CX window: the panel self-manages the keyboard (a framework focus change
         // clears WantsKeyboard silently, which would leave the engine gate up with nobody to drop it). Registered

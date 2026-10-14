@@ -269,7 +269,7 @@ public sealed partial class CascadeMenu
             if (it.HasChildren) rw += markW + Pad;
             if (rw > w) w = rw;
         }
-        if (items.Length > MaxVisible) w += ScrollColumn.BarW;
+        if (items.Length > MaxVisible) w += Theme.IsNative ? NativeChrome.BarWidth(Metrics.Scale) : ScrollColumn.BarW;
         if (w < MinWRows * ItemH) w = MinWRows * ItemH;
         return w > MaxW ? MaxW : w;
     }
@@ -495,10 +495,10 @@ public sealed partial class CascadeMenu
     }
 
     /// <summary>Draw every open level, deepest last: body, frame, the owning-row and hover fills, icons noted for
-    /// the owner (<see cref="Icons"/>), labels, counts, submenu marks (clipped to the level) and the scrollbar. A
-    /// level fades and slides in over <see cref="CascadeStyle.AnimMs"/> from its first draw (the drawn rect moves,
-    /// the hit rect never does); the drop gap and the dragged row's ghost draw on top. Zero-alloc.</summary>
-    public void Draw(VertexBatch b, GlyphAtlas atlas, float baseDrop, in CascadeStyle st)
+    /// the owner, labels, counts, submenu marks and the scrollbar, each level fading and sliding in over
+    /// <see cref="CascadeStyle.AnimMs"/>. With <paramref name="skin"/> a level is the game's own window art
+    /// instead of the body fill and frame. Zero-alloc.</summary>
+    public void Draw(VertexBatch b, GlyphAtlas atlas, float baseDrop, in CascadeStyle st, Skin? skin = null)
     {
         _iconN = 0;
         if (!Open) return;
@@ -514,9 +514,14 @@ public sealed partial class CascadeMenu
             e = e >= 1f ? 1f : e <= 0f ? 0f : 1f - (1f - e) * (1f - e);
             float alpha = st.Alpha * e, ox = i == 0 ? 0f : (Drill ? 1f : -1f) * (1f - e) * SlidePx, oy = i == 0 ? -(1f - e) * SlidePx : 0f;
             float x0 = lv.X + ox, y0 = lv.Y + oy, x1 = x0 + lv.W, y1 = y0 + lv.H, band = lv.HasBack ? ItemH : 0f;
-            b.Rect(x0, y0 - band, x1, y1, bg.r, bg.g, bg.b, bg.a * alpha);
-            Outline(b, x0 - 1f, y0 - band - 1f, x1 + 1f, y1 + 1f, frame, alpha);
-            float fillR = x1 - (lv.List.Overflows ? ScrollColumn.BarW : 0f), textClip = fillR - pad;
+            lv.List.Native = skin != null;
+            if (skin != null) skin.Draw(NativeChrome.Frame, x0 - 1f, y0 - band - 1f, x1 + 1f, y1 + 1f, NativeChrome.White(alpha));
+            else
+            {
+                b.Rect(x0, y0 - band, x1, y1, bg.r, bg.g, bg.b, bg.a * alpha);
+                Outline(b, x0 - 1f, y0 - band - 1f, x1 + 1f, y1 + 1f, frame, alpha);
+            }
+            float fillR = x1 - (lv.List.Overflows ? lv.List.Width : 0f), textClip = fillR - pad;
             float iconCol = lv.HasIcons ? ItemH : 0f;
             bool hasMark = atlas.TryGet(lv.Mark, out Glyph mg);
             float markW = hasMark ? mg.Advance : 0f;
@@ -563,7 +568,7 @@ public sealed partial class CascadeMenu
                 if (gy >= y0 - line && gy <= y1 + line) b.Rect(x0, gy - line, fillR, gy + line, tr, tg, tb, st.TextAlpha * alpha);
             }
             b.ClearClip();
-            lv.List.Draw(b, active);
+            lv.List.Draw(b, active, skin);
         }
         if (RowDrag && _pressLevel < Depth && (uint)_pressRow < (uint)_lv[_pressLevel].Items.Length)
         {
