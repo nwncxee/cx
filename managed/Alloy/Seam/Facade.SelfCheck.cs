@@ -171,6 +171,58 @@ internal static unsafe class FacadeSelfCheck
         }
     }
 
+    /// <summary>An invisible creature: <c>CNWCAnimBase::SetAlpha</c>'s colour shift reaches every grafted body
+    /// piece always, and the seam riders (head, weapon, effect) when propagated, unless a rider opted out or has
+    /// no attach behaviour. Oracle: the literal alpha handed in, against the untouched 1.</summary>
+    private static void Shifts(Checker check)
+    {
+        Func<string, bool> was = ObjectFns.ResourcePresent;
+        long unreadable = ObjectFns.UnreadableModels;
+        var o = new DbId[7];
+        try
+        {
+            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
+            for (int i = 0; i < o.Length; i++)
+                o[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            DbId body = o[0], graft = o[1], head = o[2], fx = o[3], quiet = o[4], loose = o[5], late = o[6];
+            foreach (DbId g in new[] { graft, late })
+            {
+                SceneDb.SetAttachTo(g.Index, body);
+                ObjectSlots.Flag(g, SeamFlag.Composed, true);
+            }
+            SceneDb.SetAttachTo(late.Index, default);
+            SceneDb.SetAttachTo(head.Index, body);
+            SceneDb.SetAttachTo(fx.Index, head);
+            SceneDb.SetAttachTo(quiet.Index, body);
+            *(byte*)(Facade.ObjectShell(quiet) + SeamLayout.GobPropagateHighlight) = 0;
+            SceneDb.SetAttachTo(loose.Index, body);
+            SceneDb.ObjAttachMode[loose.Index] = SceneDb.AttachNone;
+            nint bs = Facade.ObjectShell(body);
+            var white = new Vector3(1f, 1f, 1f);
+
+            ObjectSlots.Shift(body, bs, bs, white, 0.5f, false, false, 0);
+            check.Expect(SceneDb.ObjTint[body.Index].W == 0.5f && SceneDb.ObjTint[graft.Index].W == 0.5f,
+                         "a creature's colour shift reaches its grafted body pieces, propagated or not");
+            check.Expect(SceneDb.ObjTint[head.Index].W == 1f, "...and an unpropagated one stops at the creature's own gob");
+
+            ObjectSlots.Shift(body, bs, bs, white, 0.5f, false, true, 0);
+            check.Expect(SceneDb.ObjTint[head.Index].W == 0.5f && SceneDb.ObjTint[fx.Index].W == 0.5f,
+                         "a propagated shift reaches the riders and the riders' riders");
+            check.Expect(SceneDb.ObjTint[quiet.Index].W == 1f && SceneDb.ObjTint[loose.Index].W == 1f,
+                         "...but not a rider that turned propagation off, nor one with no attach behaviour");
+
+            SceneDb.SetAttachTo(late.Index, body);
+            ObjectSlots.InheritShift(late, body);
+            check.Expect(SceneDb.ObjTint[late.Index].W == 0.5f, "a piece appended to an invisible creature is invisible too");
+        }
+        finally
+        {
+            for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
+            ObjectFns.ResourcePresent = was;
+            ObjectFns.UnreadableModels = unreadable;
+        }
+    }
+
     private static void Vtables(Checker check)
     {
         // The counts in CX-183 section 1, which the generator must reproduce.
@@ -304,6 +356,7 @@ internal static unsafe class FacadeSelfCheck
         Facade.InSelfCheck = true;
         Factory(check);
         Riders(check);
+        Shifts(check);
 
         DbId id = SceneDb.Objects.Alloc();
         check.Expect(!id.IsNull, "the objects table would not hand out a record");

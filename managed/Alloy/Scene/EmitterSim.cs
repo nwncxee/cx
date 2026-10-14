@@ -324,7 +324,8 @@ internal static unsafe partial class EmitterSim
                 if (stepping && animating && _fadeExit == fade0 && _rate0 == rate0) _idle++;
                 continue;
             }
-            CensusE(in e, "live");
+            // The pass declines an emitter whose texture is not drawable, so "live" is only said once it is.
+            CensusE(in e, TexNameOf(ref slot) != 0 ? "live" : "no-texture");
 
             slot.Dist = (eye - e.OwnerPos).LengthSquared();
             if (_orderN < MaxEmitters) _order[_orderN++] = s;
