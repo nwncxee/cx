@@ -49,14 +49,24 @@ public sealed partial class KnobPanel
     {
         float em = Em;
         TrackRect(r, top, out float sx0, out float sx1, out _);
-        float th = 0.35f * em;
-        // NUI has no slider art: the track is the themed flat one, which the native palette already colours.
-        Fill(b, sx0, cy - th * 0.5f, sx1, cy + th * 0.5f, Track, alpha);
-        Outline(b, sx0, cy - th * 0.5f, sx1, cy + th * 0.5f, Frame2, alpha);
-        float knob = sx0 + r.Norm * (sx1 - sx0);
-        Fill(b, sx0, cy - th * 0.5f, knob, cy + th * 0.5f, Accent, alpha);
-        if (!Art(skin, NativeChrome.Button, knob - 0.375f * em, cy - 0.55f * em, knob + 0.375f * em, cy + 0.55f * em, alpha))
-            Fill(b, knob - 0.375f * em, cy - 0.55f * em, knob + 0.375f * em, cy + 0.55f * em, Grip, alpha);
+        float th = 0.35f * em, knob = sx0 + r.Norm * (sx1 - sx0), kh = 0.55f * em;
+        // NUI's slider is a flat rail filled in its border gold (the native Accent) under the nui_slider cursor. The
+        // art flushes before this batch, so the rail stops at the cursor's edges instead of covering it.
+        float y0 = cy - th * 0.5f, y1 = cy + th * 0.5f;
+        if (skin != null)
+        {
+            float kw = kh * NativeChrome.SliderAspect;
+            if (knob - kw > sx0) Fill(b, sx0, y0, knob - kw, y1, Accent, alpha);
+            if (knob + kw < sx1) { Fill(b, knob + kw, y0, sx1, y1, Track, alpha); Outline(b, knob + kw, y0, sx1, y1, Frame2, alpha); }
+            Art(skin, NativeChrome.Slider, knob - kw, cy - kh, knob + kw, cy + kh, alpha);
+        }
+        else
+        {
+            Fill(b, sx0, y0, sx1, y1, Track, alpha);
+            Outline(b, sx0, y0, sx1, y1, Frame2, alpha);
+            Fill(b, sx0, y0, knob, y1, Accent, alpha);
+            Fill(b, knob - 0.375f * em, cy - kh, knob + 0.375f * em, cy + kh, Grip, alpha);
+        }
         ValueRect(r, top, out float vx0, out float vx1, out float vy0, out float vy1);
         bool editing = EditingRow(r);
         if (!Art(skin, NativeChrome.Edit, vx0, vy0, vx1, vy1, alpha))

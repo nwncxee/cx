@@ -12,11 +12,10 @@ internal sealed partial class InventoryWindow
 
     /// <summary>The inventory's own skin parts, after <see cref="NativeChrome"/>'s common chrome.</summary>
     internal const int KCell = NativeChrome.Count, KSlot = KCell + 1, KGold = KSlot + 1, KGoldHot = KGold + 1,
-                       KGoldCursor = KGoldHot + 1, KLootCell = KGoldCursor + 1, KSlider = KLootCell + 1, KSil = KSlider + 1;
+                       KGoldCursor = KGoldHot + 1, KLootCell = KGoldCursor + 1, KSil = KLootCell + 1;
 
     /// <summary>The inventory's skin: the native chrome, then its own art -- the 32x32 cell tile (twice: backpack and loot
-    /// cells are scissored apart), the gold button's two faces, the coin cursor, the amount slider's cursor and the 14
-    /// silhouettes. ponytail: the cell tile's 4-texel slot frame is read off the art, not the MDL.</summary>
+    /// cells are scissored apart), the gold button's two faces, the coin cursor and the 14 silhouettes. ponytail: the cell tile's 4-texel slot frame is read off the art, not the MDL.</summary>
     internal static Skin NewSkin()
     {
         var extra = new SkinPart[KSil - NativeChrome.Count + InventoryModel.Slots.Length];
@@ -27,7 +26,6 @@ internal sealed partial class InventoryWindow
         extra[k++] = new("goldhot", "ctl_btn_jnl_inv", SrcX: GoldArtX, SrcY: GoldArtY + GoldArtSize, SrcW: GoldArtSize, SrcH: GoldArtSize);
         extra[k++] = new("goldcursor", "ir_buy");
         extra[k++] = new("lootcell", "gui_inv_bkgnd2");
-        extra[k++] = new("slider", "nui_slider");
         for (int i = 0; i < InventoryModel.Slots.Length; i++)
             extra[k++] = new("sil." + InventoryModel.Slots[i].Id, InventoryModel.Slots[i].Silhouette);
         return NativeChrome.NewSkin(extra);

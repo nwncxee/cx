@@ -279,9 +279,9 @@ public sealed partial class ChatWindow
     /// <summary>How far the content can scroll up before the oldest line reaches the top (0 when it all fits).</summary>
     public float MaxScroll => ContentH > ViewH ? ContentH - ViewH : 0f;
 
-    /// <summary>Scrollbar track height: the body minus the bottom <see cref="ResizeGrip"/>, so the thumb
-    /// never enters the resize-grip corner (they used to overlap and steal each other's clicks).</summary>
-    private float SbTrackH => System.Math.Max(0f, ViewH - ResizeGrip);
+    /// <summary>Scrollbar track height: the whole body on a locked window, else the body minus the bottom
+    /// <see cref="ResizeGrip"/>, so the thumb never enters the resize-grip corner.</summary>
+    private float SbTrackH => System.Math.Max(0f, ViewH - (Locked ? 0f : ResizeGrip));
 
     /// <summary>Thumb height (px), proportional to the (grip-reserved) track and floored at
     /// <see cref="SbMinThumb"/>. Only meaningful when the content overflows the body.</summary>

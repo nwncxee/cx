@@ -224,9 +224,9 @@ internal sealed class GoldPrompt
         float kx = tx0 + (tx1 - tx0) * Frac;
         Fill(under, tx0, tcy - th / 2f + 1f, kx, tcy + th / 2f - 1f, Accent, 0.8f);
         bool knobHot = _sliding || In(TrackX0 - 6f, SliderY, TrackX1 + 6f, SliderY + Btn, _mx, _my);
-        float kh = Btn * s / 2f, aspect = skin?.Aspect(InventoryWindow.KSlider) ?? 0f;
+        float kh = Btn * s / 2f, aspect = skin?.Aspect(NativeChrome.Slider) ?? 0f;
         float kw = aspect > 0f ? kh * aspect : 7f * s;
-        if (skin != null) skin.Draw(InventoryWindow.KSlider, kx - kw, tcy - kh, kx + kw, tcy + kh, InventoryWindow.ArtTint(knobHot));
+        if (skin != null) skin.Draw(NativeChrome.Slider, kx - kw, tcy - kh, kx + kw, tcy + kh, InventoryWindow.ArtTint(knobHot));
         else Fill(under, kx - kw, tcy - kh, kx + kw, tcy + kh, knobHot ? Accent2 : Accent);
 
         // chips

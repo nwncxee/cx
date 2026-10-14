@@ -376,7 +376,7 @@ internal sealed partial class InventoryWindow
             // Oracle: the part names, hand-written -- the common chrome first, the inventory's own from NativeChrome.Count.
             check.Expect(lskin.IndexOf("frame") == NativeChrome.Frame && lskin.IndexOf("buttonhot") == NativeChrome.ButtonHot
                          && lskin.IndexOf("thumb") == NativeChrome.Thumb, "the native chrome's parts keep their own indices");
-            check.Expect(lskin.IndexOf("cell") == NativeChrome.Count && lskin.IndexOf("slider") == KSlider
+            check.Expect(lskin.IndexOf("cell") == NativeChrome.Count && lskin.IndexOf("slider") == NativeChrome.Slider
                          && lskin.IndexOf("sil." + InventoryModel.Slots[0].Id) == KSil, "the inventory's extras land after them");
             check.Expect(lskin.IndexOf("scrollbar") < 0, "an undeclared part has no index");
             void ClearAll() { bu.Clear(); bo.Clear(); bgu.Clear(); bgo.Clear(); blu.Clear(); blo.Clear(); }

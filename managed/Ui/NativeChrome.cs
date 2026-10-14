@@ -9,7 +9,7 @@ namespace CX.Ui;
 public static class NativeChrome
 {
     public const int Frame = 0, Header = 1, Tab = 2, Button = 3, ButtonHot = 4, ButtonOn = 5, ButtonOnHot = 6, Close = 7, Edit = 8,
-                     Trough = 9, Thumb = 10, Up = 11, Down = 12, Count = 13;
+                     Trough = 9, Thumb = 10, Up = 11, Down = 12, Slider = 13, Count = 14;
 
     /// <summary>The policy prefix every native part answers to.</summary>
     public const string SkinName = "ui";
@@ -36,6 +36,7 @@ public static class NativeChrome
         new("thumb", "nui_scrollv", SrcX: 3, SrcY: 0, SrcW: 10, SrcH: 16, TileY: true),
         new("up", "nui_cnt_up"),
         new("down", "nui_cnt_down"),
+        new("slider", "nui_slider"),
     };
 
     /// <summary>A skin of the common parts, indices <see cref="Frame"/>..<see cref="Down"/>, then
@@ -55,6 +56,9 @@ public static class NativeChrome
     /// (<see cref="Skin.Flush"/>'s alpha is the whole batch's, so a fading element passes its own).</summary>
     public static uint White(float alpha)
         => 0xffffff00u | (uint)Math.Clamp((int)(alpha * 255f + 0.5f), 0, 255);  // not-an-offset: an rgba tint
+
+    /// <summary><c>nui_slider</c>'s width over its height (12x16): the slider cursor is stretched whole into that shape.</summary>
+    public const float SliderAspect = 0.75f;
 
     /// <summary>The thumb rect of a vertical bar at (<paramref name="x0"/>..<paramref name="x1"/>,
     /// <paramref name="y0"/>..<paramref name="y1"/>), arrows square at both ends; false when everything fits.</summary>

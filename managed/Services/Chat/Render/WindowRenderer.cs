@@ -363,9 +363,9 @@ public static partial class WindowRenderer
             else
             {
                 float sbx = bx + bw - ChatWindow.ScrollbarW, ins = Inset * Metrics.Scale;
-                // Track stops one grip above the body bottom to match the hit zone (ChatWindow.SbTrackH): keeps
+                // Track stops one grip above the body bottom (a locked window has no grip) to match ChatWindow.SbTrackH: keeps
                 // the thumb clear of the resize-grip corner.
-                Fill(b, sbx + ins, by + ins, bx + bw - ins, by + bh - ChatWindow.ResizeGrip, Track, 0.6f);
+                Fill(b, sbx + ins, by + ins, bx + bw - ins, by + bh - (win.Locked ? ins : ChatWindow.ResizeGrip), Track, 0.6f);
                 if (win.ThumbRect(out float tt, out float th))
                     b.Rect(sbx + ins, tt, bx + bw - ins, tt + th, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
             }
