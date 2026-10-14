@@ -29,8 +29,6 @@ uniform sampler2D uRoughTex;   // slot 3: roughness in r
 uniform sampler2D uHeightTex;  // slot 4: height, read for surface occlusion
 uniform sampler2D uIllumTex;   // slot 5: self-illumination
 uniform sampler2D uAoTex;      // #146 slot 7: baked ambient occlusion in r
-// The engine's solid_noise (texUnitNoise), bound for the hosted program alone: no other lit fragment reads it.
-layout(binding = 31) uniform sampler2D uNoise;
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
 uniform int uViz;              // /alloy viz, see OwnedLitFsMain

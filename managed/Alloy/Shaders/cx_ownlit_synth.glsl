@@ -348,8 +348,7 @@ void main()
     FragmentColor = vec4(1.0);      // stock main's own opener, for a body that skips it
     vFragmentNormal = N;
     vSurfaceNormal = normalize(vNrm);
-    vPosView = vWorld - uEyePos;
-    vViewToSurface_n = normalize(vPosView);
+    vViewToSurface_n = normalize(vWorld - uEyePos);
     fSpecularity = pbr.x; fRoughness = pbr.y; fMetallicness = pbr.z;
     SpecularColor = CxSpecColor(d.spc, albedo * matDiffuse, pbr.z, slots);
     // ADR 0026: a material that declares the glTF vocabulary is shaded by it under the modern model -- the
