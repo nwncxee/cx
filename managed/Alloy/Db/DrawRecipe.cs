@@ -555,6 +555,7 @@ internal static partial class DrawRecipe
         if (mesh.Beaming) f |= RecipeFlag.Beaming;
         if (mesh.TileFade != 0) f |= RecipeFlag.Fades;
         if (FacesUp(mesh)) f |= RecipeFlag.FacesUp;
+        if (LiesFlat(mesh)) f |= RecipeFlag.Wash;
         _flags[r] = f;
         _prim[r] = 0;
         int feat = MtrParams.Feature(mtr?.ShaderVs ?? "");
@@ -681,6 +682,26 @@ internal static partial class DrawRecipe
         return true;
     }
 
+    /// <summary>Every triangle within <see cref="UpCos"/> of horizontal, either side up, judged off the triangles
+    /// themselves: a sheet laid over another surface, whatever its authored normals say.
+    /// ponytail: in the node's own space -- a node orientation that stands the sheet up is not followed.</summary>
+    internal static bool LiesFlat(MeshDef mesh)
+    {
+        uint[] ix = mesh.Indices;
+        Vector3[] p = mesh.Positions;
+        bool any = false;
+        for (int t = 0; t + 2 < ix.Length; t += 3)
+        {
+            if (ix[t] >= p.Length || ix[t + 1] >= p.Length || ix[t + 2] >= p.Length) return false;
+            Vector3 n = Vector3.Cross(p[ix[t + 1]] - p[ix[t]], p[ix[t + 2]] - p[ix[t]]);
+            float len = n.Length();
+            if (len < 1e-8f) continue;
+            if (MathF.Abs(n.Z) < UpCos * len) return false;
+            any = true;
+        }
+        return any;
+    }
+
     /// <summary>The recipe's local box, six floats (min then max), into <paramref name="dst"/>.</summary>
     internal static void Box(int r, Span<float> dst)
     {
@@ -712,8 +733,8 @@ internal enum RecipeFlag : ushort
     Env = 1 << 1,
     /// <summary>The material's <c>twosided</c>: draws with face culling off.</summary>
     TwoSided = 1 << 2,
-    /// <summary>A graded-alpha cutout re-filed as blended, drawn with no depth write.
-    /// ponytail: nothing sets it; the wash path behind it is dormant until something does.</summary>
+    /// <summary>The mesh lies flat (<see cref="DrawRecipe.LiesFlat"/>): drawn see-through, it is a wash laid over
+    /// another surface, and takes a polygon offset so it cannot z-fight what it lies on.</summary>
     Wash = 1 << 3,
     /// <summary>A dangly mesh: a permanent shadow mover, posed by the solver.</summary>
     Dangly = 1 << 4,

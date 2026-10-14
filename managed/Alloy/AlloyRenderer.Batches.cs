@@ -989,8 +989,9 @@ public sealed unsafe partial class AlloyRenderer
         row.Mode = db ? Gl.TRIANGLES : _primTable[_oPrim[i]];
         row.NoCull = _oNoCull[i];
         row.Src = (byte)_oSrc[i]; row.Dst = (byte)_oDst[i]; row.Wash = (byte)_oWash[i];
-        // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside.
-        row.Blend = AlloyClasses.Blends(cls) ? (_oWash[i] << 16) | (_oSrc[i] << 8) | _oDst[i] : 0;
+        // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a
+        // wash's polygon offset, in any class
+        row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
         // A blended batch never straddles two creatures: the frame prepasses and colours each run of one gob's
         // batches as a unit, so the gob is a key term and a tag on the batch.
         row.GobKey = cls == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
@@ -1044,7 +1045,7 @@ public sealed unsafe partial class AlloyRenderer
             if (_oDbPart[i] >= 0) continue;
             _bAudited++;
             int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
-            int blend = AlloyClasses.Blends(_passCls[k]) ? (_oWash[i] << 16) | (_oSrc[i] << 8) | _oDst[i] : 0;
+            int blend = (_oWash[i] << 16) | (AlloyClasses.Blends(_passCls[k]) ? (_oSrc[i] << 8) | _oDst[i] : 0);
             IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
             bool recMoved = _recMovedAt[i] == _frameSeq;

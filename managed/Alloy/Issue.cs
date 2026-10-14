@@ -469,20 +469,19 @@ internal static unsafe class Issue
                 uint src = BlendGl(_gSrc[g]), dst = BlendGl(_gDst[g]);
                 if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
             }
-            bool wash = blend && _gWash[g] != 0;
             bool equal = _matchDepth && _gPrepassed[g];
-            // A wash takes the pass's own depth rule, like any other blended draw: it is a cutout Alloy chose
-            // to BLEND for its fringe, and vanilla writes that part's depth in bucket 1. Holding the mask off
-            // here left it with no depth anywhere -- the blended class is never prepassed -- and water and
-            // particles painted over the creature heads the reroute catches.
+            // never under EQUAL: a prepassed batch has to reproduce its prepass depth exactly
+            bool wash = _gWash[g] != 0 && !equal;
+            // A wash takes the pass's own depth rule: a cutout one writes its depth like any cutout, a blended
+            // one like any blended draw.
             byte mask = equal ? (byte)0 : _passDepthMask;
             if (mask != boundMask) { Gl.DepthMask(mask); boundMask = mask; }
             if (equal != boundEqual) { Gl.DepthFunc(equal ? Gl.EQUAL : Gl.LEQUAL); boundEqual = equal; }
-            bool test = !(wash && !_washTest);
+            bool test = !(blend && wash && !_washTest);
             if (test != boundTest) { if (test) Gl.Enable(Gl.DEPTH_TEST); else Gl.Disable(Gl.DEPTH_TEST); boundTest = test; }
-            // A wash is routinely a decal lying ON an opaque surface (a floor lattice at +0.005), and its
-            // depth comes from a different program than the prepass wrote the floor's with: LEQUAL alone
-            // z-fights at range. Pull it toward the eye by the same offset the highlight mask uses.
+            // A wash is a sheet lying ON another surface (a decal, a rug, a floor lattice at +0.005), and its
+            // depth comes from a different program and mesh than the prepass wrote the floor's with: LEQUAL
+            // alone z-fights. Pull it toward the eye by the same offset the highlight mask uses.
             if (wash != boundOffset)
             {
                 if (wash && Gl.PolygonOffset != null) { Gl.PolygonOffset(WashOffsetFactor, WashOffsetUnits); Gl.Enable(Gl.POLYGON_OFFSET_FILL); }
@@ -582,7 +581,7 @@ internal static unsafe class Issue
     /// <summary>Polygon offset for wash batches (see the wash note in the issue loop).</summary>
     private const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;
 
-    /// <summary><c>/alloy washtest 0</c>: wash batches draw with the depth TEST off too. A/B instrument, not a look.</summary>
+    /// <summary><c>/alloy washtest 0</c>: blended wash batches draw with the depth TEST off too. A/B instrument, not a look.</summary>
     private static bool _washTest => Renderer.WashTest.V;
 
     /// <summary>The depth mask the current pass set before <see cref="IssueColour"/>; a wash batch drops it

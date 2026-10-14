@@ -48,9 +48,17 @@ public sealed unsafe partial class AlloyRenderer
            && (DrawRecipe.Slots(recipe) & (IllumBit | EnvSlot)) == 0
            && !ShaderFeatures.Hosted(DrawRecipe.Feat(recipe));
 
-    /// <summary>The first term <see cref="DbDecal"/> refuses an up-facing see-through sheet on, for the log.</summary>
+    /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>), under
+    /// a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque class keeps its prepass
+    /// depth exactly -- nor additive, which writes no depth to fight over; nor a GUI sheet or a posed mesh.</summary>
+    internal static bool DbWash(int recipe, RecipeFlag rf, ObjFlag of)
+        => (rf & RecipeFlag.Wash) != 0 && DrawRecipe.Cls(recipe) is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
+           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) == 0 && (of & ObjFlag.Gui) == 0;
+
+    /// <summary>The first term <see cref="DbDecal"/> refuses a flat see-through sheet on, for the log.</summary>
     private static string DbDecalWhyNot(int recipe, RecipeFlag rf, ObjFlag of, bool lit)
         => DrawRecipe.Cls(recipe) != (int)AlloyClass.Blended ? $"class {(AlloyClass)DrawRecipe.Cls(recipe)}"
+         : (rf & RecipeFlag.FacesUp) == 0 ? "its normals do not face up"
          : !lit || (rf & RecipeFlag.Lit) == 0 ? "unlit"
          : (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) != 0 ? "posed or morphed"
          : (of & (ObjFlag.Static | ObjFlag.Sky)) != ObjFlag.Static ? "not a static object"
@@ -152,9 +160,9 @@ public sealed unsafe partial class AlloyRenderer
         _oCls[i] = (byte)DrawRecipe.Cls(recipe);
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
-        _oWash[i] = (rf & RecipeFlag.Wash) != 0 ? (byte)1 : (byte)0;
+        _oWash[i] = DbWash(recipe, rf, of) ? (byte)1 : (byte)0;
         _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
-        if (_oDecal[i] == 0 && (rf & RecipeFlag.FacesUp) != 0 && DrawRecipe.Cls(recipe) != (int)AlloyClass.Opaque)
+        if (_oDecal[i] == 0 && _oWash[i] != 0)
             DecalLayer.NoteRefused(recipe, DbDecalWhyNot(recipe, rf, of, _oLit[i]));
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
         _oBucket[i] = 0;
@@ -258,11 +266,17 @@ public sealed unsafe partial class AlloyRenderer
             // nothing re-derives per frame (the env bit is the one exception), so a recipe that gained it
             // after its slots were seated would keep drawing solid.
             int slots = (_oSlots[i] & ~CoverNrmBit) | (DrawRecipe.Slots(recipe) & CoverNrmBit);
-            if (_oCls[i] == cls && _oCos[i] == wasCos && _oSin[i] == wasSin
+            // ...and the two routes the class decides: a ground decal (blended) and a wash (see-through)
+            RecipeFlag rf = DrawRecipe.Flags(recipe);
+            int o = SceneDb.PartObj[_oDbPart[i]].Index;
+            ObjFlag of = (uint)o < (uint)SceneDb.ObjFlags.Length ? SceneDb.ObjFlags[o] : ObjFlag.None;
+            byte decal = lit && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
+            byte wash = DbWash(recipe, rf, of) ? (byte)1 : (byte)0;
+            if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
                 && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
                 && slots == _oSlots[i]) continue;
             if (slots != _oSlots[i]) { _oSlots[i] = slots; CasterGen++; }
-            _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c;
+            _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c; _oDecal[i] = decal; _oWash[i] = wash;
             _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
             // The slot moves between passes, so its staged record and batch row are both stale.
             UnstampRecord(i);

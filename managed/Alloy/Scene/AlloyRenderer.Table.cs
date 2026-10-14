@@ -76,9 +76,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The material's Aurora blend pair, translated to GL at bind time. Only the blending
     /// classes read it.</summary>
     private static readonly byte[] _oSrc = new byte[MaxOwned], _oDst = new byte[MaxOwned];
-    /// <summary><see cref="AlloyCandidate.Wash"/>: a cutout rerouted into the blended class for its graded
-    /// fringe, and so drawn under a polygon offset (it is routinely a decal lying on an opaque surface).
-    /// Batch key term. Its DEPTH is the class's own -- see <c>BlendLaysDepth</c>.</summary>
+    /// <summary>A wash (<see cref="DbWash"/>): a see-through sheet lying flat, drawn under a polygon offset so it
+    /// cannot z-fight the surface it lies on. Batch key term. Its DEPTH is the class's own -- see <c>BlendLaysDepth</c>.</summary>
     internal static readonly byte[] _oWash = new byte[MaxOwned], _gWash = new byte[MaxOwned];
     /// <summary>A ground decal (<see cref="DbDecal"/>): drawn into <see cref="DecalLayer"/> and folded into the
     /// surface under it. The blended run puts these first, and it is a batch key term.</summary>
