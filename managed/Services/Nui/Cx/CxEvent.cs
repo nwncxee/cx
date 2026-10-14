@@ -31,7 +31,7 @@ internal static unsafe class CxEvent
         try
         {
             byte* name = NewString(Refused, mem), element = NewString(Element, mem);
-            byte* payload = NewArray(mem, r.Kind.ToString().ToLowerInvariant(), r.Key, r.Value, r.Reason);
+            byte* payload = NewArray(mem, null, r.Kind.ToString().ToLowerInvariant(), r.Key, r.Value, r.Reason);
             IntPtr target = OperatingSystem.IsWindows() ? window : (IntPtr)Unsafe.AsPointer(ref new Nui__JSON__JsonWindow(window).WindowId);
             push(target, (IntPtr)name, (IntPtr)element, -1, (IntPtr)payload);
             return true;
@@ -72,11 +72,9 @@ internal static unsafe class CxEvent
         return s;
     }
 
-    /// <summary>A JSON array of strings: the value, its vector, and a string value for each item.</summary>
-    internal static byte* NewArray(List<IntPtr> mem, params string[] items) => NewArray(mem, null, items);
-
-    /// <summary>As <see cref="NewArray(List{IntPtr}, string[])"/>, with the container shapes picked by <paramref name="msvc"/>.</summary>
-    internal static byte* NewArray(List<IntPtr> mem, bool? msvc, string[] items)
+    /// <summary>A JSON array of strings: the value, its vector, and a string value for each item. <paramref name="msvc"/> picks the
+    /// container shapes: the running OS when null.</summary>
+    internal static byte* NewArray(List<IntPtr> mem, bool? msvc, params string[] items)
     {
         byte* vec = Alloc(mem, VectorBytes);
         byte* elems = Alloc(mem, JsonBytes * items.Length);

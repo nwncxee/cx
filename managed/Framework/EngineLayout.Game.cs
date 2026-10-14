@@ -585,6 +585,12 @@ public static unsafe partial class EngineLayout
     public static readonly int NuiWinJson = Field<byte>("Nui::JSON::JsonWindow", "windowJson");
     /// <summary>The deque of server bind updates waiting for the next <c>Update</c> (its address; libstdc++ and MSVC shape it differently).</summary>
     public static readonly int NuiWinIngest = Field<byte>("Nui::JSON::JsonWindow", "bindIngest");
+    /// <summary>A server bind update's bind name: an embedded std::string (its address).</summary>
+    public static readonly int NuiBindUpdateName = Field<byte>("Nui::JSON::BindUpdate", "name");
+    /// <summary>A server bind update's new value: an embedded nlohmann value (its address).</summary>
+    public static readonly int NuiBindUpdateJson = Field<byte>("Nui::JSON::BindUpdate", "json");
+    /// <summary>Bytes of one <c>BindUpdate</c>; a libstdc++ deque node holds eight.</summary>
+    public static readonly int NuiBindUpdateStride = Field("Nui::JSON::BindUpdate", "stride");
 
     // ---- lights ----
     // The light priority terms. MEASURED on both binaries with objdump: LightManager is name-exported on

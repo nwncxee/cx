@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace CX.Framework;
 
@@ -33,11 +34,19 @@ public static class PolicyRefusals
         public int LastSeq;
     }
 
-    /// <summary>Told of each refusal that is new, after the table lock is released, on whatever thread refused.</summary>
-    internal static Action<PolicyRefusal>? Added;
-
     private static PolicyRefusalState _s = new();
     private static readonly object _lock = new();
+
+    /// <summary>The number of the newest refusal; it starts again from 0 in a new session.</summary>
+    internal static int LastSeq => Volatile.Read(ref _s.LastSeq);
+
+    /// <summary>Appends to <paramref name="into"/> each refusal still held whose number is above <paramref name="seq"/>.</summary>
+    internal static void Since(int seq, List<PolicyRefusal> into)
+    {
+        lock (_lock)
+            foreach (PolicyRefusal e in _s.Entries)
+                if (e.Seq > seq) into.Add(e);
+    }
 
     /// <summary>Entries older than the ceiling allows, gone.</summary>
     public static int Dropped { get { lock (_lock) return _s.DroppedCount; } }
@@ -69,7 +78,6 @@ public static class PolicyRefusals
                 s.DroppedCount++;
             }
         }
-        Added?.Invoke(add);
     }
 
     /// <summary>The key was set to something good or released: its refusal no longer stands.</summary>

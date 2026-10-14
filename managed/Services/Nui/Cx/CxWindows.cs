@@ -1,9 +1,9 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using CX.Engine;
 using CX.Framework;
@@ -23,13 +23,14 @@ internal static unsafe class CxWindows
     /// <summary>Bytes of an engine <c>DynamicBinding</c>, on both builds.</summary>
     private const int BindingBytes = 392;
     private const int MaxWindows = 64, MaxOutbox = 16, EventsPerTick = 4, MaxBinds = 64;
-    private const int RecordBytes = 64, RecordName = 8, RecordJson = 40;
+    /// <summary>Deque member offsets: the compiler's container ABI, the same on every client build.</summary>
     private const int GccStart = 16, GccFinish = 48, GccNode = 24, GccLast = 16;
     private const int MsvcMap = 8, MsvcMapSize = 16, MsvcOff = 24, MsvcSize = 32;
 
     private sealed class BoundSetting
     {
         public string Name = "", Key = "";
+        public byte[] NameUtf8 = [];
         public bool Registered;
     }
 
@@ -43,12 +44,13 @@ internal static unsafe class CxWindows
         public IntPtr Json;
     }
 
-    /// <summary>Everything the hooks share; replaced whole by <see cref="Reset"/>.</summary>
+    /// <summary>Everything the hooks share.</summary>
     private sealed class CxState
     {
         public readonly Dictionary<IntPtr, CxWindow> Windows = new();
         public readonly Dictionary<string, IntPtr> Owner = new(StringComparer.OrdinalIgnoreCase);
-        public readonly ConcurrentQueue<PolicyRefusal> Late = new();
+        public readonly List<PolicyRefusal> Late = new();
+        public int LateSeq;
         public ExtenderLog? Log;
         public long SweepAt;
         public IntPtr CtorOrig, UpdateOrig;
@@ -61,7 +63,7 @@ internal static unsafe class CxWindows
     {
         var s = _s;
         s.Log = log;
-        if (!EngineLayout.Require(log, "CxWindows", "Nui::JSON::JsonWindow")
+        if (!EngineLayout.Require(log, "CxWindows", "Nui::JSON::JsonWindow", "Nui::JSON::BindUpdate")
             || !SymbolMap.Require(log, "CxWindows", SymbolMap.NuiJsonWindowCtor, SymbolMap.NuiJsonWindowUpdate, SymbolMap.NuiEventPush, SymbolMap.NuiJsonWindowBind, SymbolMap.NuiDynamicBindingDtor))
         {
             log.Always("CxWindows: the NUI window symbols or layout rows did not resolve -- \"cx\" members in a window's JSON are ignored");
@@ -70,8 +72,7 @@ internal static unsafe class CxWindows
         s.CtorOrig = (IntPtr)hooks.InstallNuiJsonWindowCtor(&OnCtor);
         s.UpdateOrig = (IntPtr)hooks.InstallNuiJsonWindowUpdate(&OnUpdate);
         s.Armed = s.CtorOrig != IntPtr.Zero && s.UpdateOrig != IntPtr.Zero;
-        if (!s.Armed) { log.Always("CxWindows: the window constructor or Update did not hook -- \"cx\" members are ignored"); return; }
-        PolicyRefusals.Added = r => { if (s.Owner.Count > 0) s.Late.Enqueue(r); };
+        if (!s.Armed) log.Always("CxWindows: the window constructor or Update did not hook -- \"cx\" members are ignored");
     }
 
     [UnmanagedCallersOnly]
@@ -113,29 +114,26 @@ internal static unsafe class CxWindows
         {
             s.Owner[set.Key] = self;
             if (!w.Keys.Contains(set.Key, StringComparer.OrdinalIgnoreCase)) w.Keys.Add(set.Key);
-            if (set.Bind != null) { if (w.Binds.Count < MaxBinds) w.Binds.Add(new BoundSetting { Name = set.Bind, Key = set.Key }); }
+            if (set.Bind != null) { if (w.Binds.Count < MaxBinds) w.Binds.Add(new BoundSetting { Name = set.Bind, NameUtf8 = Encoding.UTF8.GetBytes(set.Bind), Key = set.Key }); }
             else ServerPolicy.Set(set.Key, set.Value);
         }
-        foreach (PolicyRefusal r in plan.Refused) Queue(w, r);
+        foreach (PolicyRefusal r in plan.Refused)
+        {
+            PolicyRefusals.Add(r.Kind, r.Key, r.Value, r.Reason);
+            if (w.Outbox.Count < MaxOutbox) w.Outbox.Add(r);
+        }
+        s.LateSeq = PolicyRefusals.LastSeq;
         s.Log?.Info($"CxWindows: window '{id}' set {plan.Sets.Count} key(s), {plan.Refused.Count} refused, {w.Binds.Count} bound");
-    }
-
-    private static void Queue(CxWindow w, PolicyRefusal r)
-    {
-        PolicyRefusals.Add(r.Kind, r.Key, r.Value, r.Reason);
-        if (w.Outbox.Count < MaxOutbox) w.Outbox.Add(r);
     }
 
     private static void Tick(CxState s, IntPtr self)
     {
         long now = Environment.TickCount64;
-        while (s.Late.TryDequeue(out PolicyRefusal? r))
-            if (s.Owner.TryGetValue(r.Key, out IntPtr owner) && s.Windows.TryGetValue(owner, out CxWindow? ow) && ow.Outbox.Count < MaxOutbox
-                && !ow.Outbox.Exists(o => o.Key == r.Key && o.Reason == r.Reason)) ow.Outbox.Add(r);
+        Route(s);
         if (s.Windows.TryGetValue(self, out CxWindow? w))
         {
             w.Seen = now;
-            if (w.Binds.Count > 0) { Register(s, self, w); Ingest(s, self, w); }
+            if (w.Binds.Count > 0) { Register(self, w); Ingest(self, w); }
             for (int i = 0; i < EventsPerTick && w.Outbox.Count > 0; i++)
             {
                 CxEvent.PushRefusal(self, w.Outbox[0]);
@@ -145,9 +143,27 @@ internal static unsafe class CxWindows
         Sweep(s, now, false);
     }
 
+    /// <summary>Hands each refusal made since the last tick to the outbox of the window that owns its key, once per key and reason.</summary>
+    private static void Route(CxState s)
+    {
+        int seq = PolicyRefusals.LastSeq;
+        if (seq == s.LateSeq) return;
+        if (seq < s.LateSeq) s.LateSeq = 0;
+        s.Late.Clear();
+        PolicyRefusals.Since(s.LateSeq, s.Late);
+        s.LateSeq = seq;
+        foreach (PolicyRefusal r in s.Late)
+        {
+            if (!s.Owner.TryGetValue(r.Key, out IntPtr owner) || !s.Windows.TryGetValue(owner, out CxWindow? ow) || ow.Outbox.Count >= MaxOutbox) continue;
+            bool dup = false;
+            foreach (PolicyRefusal o in ow.Outbox) dup |= o.Key == r.Key && o.Reason == r.Reason;
+            if (!dup) ow.Outbox.Add(r);
+        }
+    }
+
     /// <summary>Tells the engine each bound setting's bind name, once, so an update for a name no element uses is kept and not
     /// discarded. <c>Bind</c> finds or creates the window's binding for a leaf, and the copy it returns is ended at once.</summary>
-    private static void Register(CxState s, IntPtr self, CxWindow w)
+    private static void Register(IntPtr self, CxWindow w)
     {
         foreach (BoundSetting b in w.Binds)
         {
@@ -188,7 +204,7 @@ internal static unsafe class CxWindows
 
     /// <summary>Reads the bind updates waiting in the window's queue before the engine drains it. The queue is a libstdc++ deque of
     /// 64-byte records on Linux, an MSVC deque of pointers to them on Windows; the window's own bind map is not touched.</summary>
-    private static void Ingest(CxState s, IntPtr self, CxWindow w)
+    private static void Ingest(IntPtr self, CxWindow w)
     {
         byte* q = (byte*)Unsafe.AsPointer(ref new Nui__JSON__JsonWindow(self).BindIngest);
         if (OperatingSystem.IsWindows())
@@ -196,7 +212,7 @@ internal static unsafe class CxWindows
             ulong size = *(ulong*)(q + MsvcSize), off = *(ulong*)(q + MsvcOff), mask = *(ulong*)(q + MsvcMapSize) - 1;
             byte** map = *(byte***)(q + MsvcMap);
             if (size == 0 || map == null || size > 4096) return;
-            for (ulong i = 0; i < size; i++) Record(s, w, map[(off + i) & mask]);
+            for (ulong i = 0; i < size; i++) Record(w, map[(off + i) & mask]);
             return;
         }
         byte* p = *(byte**)(q + GccStart), end = *(byte**)(q + GccFinish);
@@ -205,28 +221,30 @@ internal static unsafe class CxWindows
         byte** node = *(byte***)(q + GccStart + GccNode);
         for (int n = 0; p != end && n < 4096; n++)
         {
-            Record(s, w, p);
-            p += RecordBytes;
-            if (p == last) { node++; p = *node; last = p + RecordBytes * 8; }
+            Record(w, p);
+            p += EngineLayout.NuiBindUpdateStride;
+            if (p == last) { node++; p = *node; last = p + EngineLayout.NuiBindUpdateStride * 8; }
         }
     }
 
-    private static void Record(CxState s, CxWindow w, byte* rec)
+    /// <summary>Applies one queued update to the bound settings it names. A name is compared as bytes, so a record for no bound
+    /// setting allocates nothing.</summary>
+    private static void Record(CxWindow w, byte* rec)
     {
         if (rec == null) return;
-        string? name = NuiJsonRead.ReadString(rec + RecordName, OperatingSystem.IsWindows());
-        if (name == null) return;
+        var update = new Nui__JSON__BindUpdate((IntPtr)rec);
+        byte* name = (byte*)Unsafe.AsPointer(ref update.Name);
         foreach (BoundSetting b in w.Binds)
         {
-            if (b.Name != name) continue;
-            string? text = NuiJsonRead.Dump((IntPtr)(rec + RecordJson));
+            if (!NuiJsonRead.StringIs(name, OperatingSystem.IsWindows(), b.NameUtf8)) continue;
+            string? text = NuiJsonRead.Dump((IntPtr)Unsafe.AsPointer(ref update.Json));
             if (text == null) continue;
             try
             {
                 using JsonDocument doc = JsonDocument.Parse(text);
                 ServerPolicy.Set(b.Key, CxTranslate.BoundText(doc.RootElement));
             }
-            catch (JsonException) { continue; }
+            catch (JsonException) { }
         }
     }
 }

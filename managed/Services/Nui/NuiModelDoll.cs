@@ -346,7 +346,7 @@ internal static unsafe class NuiModelDoll
             EngineFn.GuiViewportDtor(d.Viewport);
             EngineFn.OperatorDelete(d.Viewport);
         }
-        _o.Log?.Always($"NuiModelDoll: slot {slot.Index} taken down in {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F2} ms");
+        _o.Log?.Info($"NuiModelDoll: slot {slot.Index} taken down in {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F2} ms");
     }
 
     /// <summary>The colour shift the fade machinery leaves a new creature at: alpha 1, colour white, to the attached parts too.</summary>

@@ -1,6 +1,8 @@
 using System;
 using System.Globalization;
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace CX.Services.Nui;
 
@@ -42,10 +44,23 @@ internal static unsafe partial class NuiJsonRead
     /// <summary>The text of a <c>std::string</c> at <paramref name="s"/>, or null when its length is not credible.</summary>
     internal static string? ReadString(byte* s, bool msvc)
     {
-        ulong len = *(ulong*)(s + (msvc ? MsvcStringSize : GccStringSize));
+        ulong len = Length(s, msvc);
         if (len > MaxText) return null;
-        byte* p = msvc && *(ulong*)(s + MsvcStringCap) < 16 ? s : *(byte**)s;
+        byte* p = Chars(s, msvc);
         return p == null ? null : Encoding.UTF8.GetString(p, (int)len);
+    }
+
+    private static ulong Length(byte* s, bool msvc) => *(ulong*)(s + (msvc ? MsvcStringSize : GccStringSize));
+
+    /// <summary>A <c>std::string</c>'s characters: MSVC keeps up to 15 inline, libstdc++ always points at them.</summary>
+    private static byte* Chars(byte* s, bool msvc) => msvc && *(ulong*)(s + MsvcStringCap) < 16 ? s : *(byte**)s;
+
+    /// <summary>Whether the <c>std::string</c> at <paramref name="s"/> holds exactly the bytes <paramref name="utf8"/>.</summary>
+    internal static bool StringIs(byte* s, bool msvc, ReadOnlySpan<byte> utf8)
+    {
+        if (Length(s, msvc) != (ulong)utf8.Length) return false;
+        byte* p = Chars(s, msvc);
+        return p != null && new ReadOnlySpan<byte>(p, utf8.Length).SequenceEqual(utf8);
     }
 
     /// <summary>The first object in the value at <paramref name="json"/> whose <c>bind</c> member is the string <paramref name="name"/>:
@@ -69,16 +84,13 @@ internal static unsafe partial class NuiJsonRead
         }
         if (*v != TObject) return null;
         byte* map = *(byte**)(v + ValueAt);
-        if (map == null) return null;
-        byte* head = msvc ? *(byte**)map : null;
-        byte* root = msvc ? (head == null ? null : *(byte**)(head + MsvcParent)) : *(byte**)(map + GccTreeRoot);
-        return FindIn(root, head, v, name, msvc, depth, 0, ref budget);
+        return map == null ? null : FindIn(TreeRoot(map, msvc, out byte* head), head, v, name, msvc, depth, 0, ref budget);
     }
 
     private static byte* FindIn(byte* n, byte* head, byte* owner, string name, bool msvc, int depth, int level, ref int budget)
     {
-        if (n == null || (msvc && (n == head || n[MsvcIsNil] != 0)) || --budget < 0 || level > MaxDepth) return null;
-        byte* hit = FindIn(*(byte**)(n + (msvc ? MsvcLeft : GccLeft)), head, owner, name, msvc, depth, level + 1, ref budget);
+        if (IsEnd(n, head, msvc) || --budget < 0 || level > MaxDepth) return null;
+        byte* hit = FindIn(Left(n, msvc), head, owner, name, msvc, depth, level + 1, ref budget);
         if (hit != null) return hit;
         byte* val = n + NodeValueAt + StringSize;
         if (ReadString(n + NodeValueAt, msvc) == "bind" && *val == TString)
@@ -87,7 +99,7 @@ internal static unsafe partial class NuiJsonRead
             if (str != null && ReadString(str, msvc) == name) return owner;
         }
         else if (Find(val, name, msvc, depth + 1, ref budget) is var f && f != null) return f;
-        return FindIn(*(byte**)(n + (msvc ? MsvcRight : GccRight)), head, owner, name, msvc, depth, level + 1, ref budget);
+        return FindIn(Right(n, msvc), head, owner, name, msvc, depth, level + 1, ref budget);
     }
 
     private static void Write(StringBuilder sb, byte* v, bool msvc, int depth, ref Budget b)
@@ -139,23 +151,16 @@ internal static unsafe partial class NuiJsonRead
         if (map == null) { b.Over = true; return; }
         sb.Append('{');
         bool first = true;
-        if (msvc)
-        {
-            byte* head = *(byte**)map;
-            byte* root = head == null ? null : *(byte**)(head + MsvcParent);
-            Walk(sb, root, head, true, ref first, depth, 0, ref b);
-        }
-        else Walk(sb, *(byte**)(map + GccTreeRoot), null, false, ref first, depth, 0, ref b);
+        Walk(sb, TreeRoot(map, msvc, out byte* head), head, msvc, ref first, depth, 0, ref b);
         sb.Append('}');
     }
 
-    /// <summary>Visits a tree node and both subtrees, smallest key first. libstdc++ ends a branch with a null; MSVC with the head
-    /// node, whose <c>_Isnil</c> byte is set.</summary>
+    /// <summary>Visits a tree node and both subtrees, smallest key first.</summary>
     private static void Walk(StringBuilder sb, byte* n, byte* head, bool msvc, ref bool first, int depth, int level, ref Budget b)
     {
-        if (b.Over || n == null || (msvc && (n == head || n[MsvcIsNil] != 0))) return;
+        if (b.Over || IsEnd(n, head, msvc)) return;
         if (++b.Nodes > MaxNodes || level > MaxDepth) { b.Over = true; return; }
-        Walk(sb, *(byte**)(n + (msvc ? MsvcLeft : GccLeft)), head, msvc, ref first, depth, level + 1, ref b);
+        Walk(sb, Left(n, msvc), head, msvc, ref first, depth, level + 1, ref b);
         string? key = ReadString(n + NodeValueAt, msvc);
         if (key == null) { b.Over = true; return; }
         if (!first) sb.Append(',');
@@ -163,25 +168,24 @@ internal static unsafe partial class NuiJsonRead
         Quote(sb, key);
         sb.Append(':');
         Write(sb, n + NodeValueAt + StringSize, msvc, depth + 1, ref b);
-        Walk(sb, *(byte**)(n + (msvc ? MsvcRight : GccRight)), head, msvc, ref first, depth, level + 1, ref b);
+        Walk(sb, Right(n, msvc), head, msvc, ref first, depth, level + 1, ref b);
     }
 
-    private static void Quote(StringBuilder sb, string s)
+    /// <summary>A <c>std::map</c>'s root node. MSVC's map holds a head node whose parent is the root; libstdc++'s holds the root.</summary>
+    private static byte* TreeRoot(byte* map, bool msvc, out byte* head)
     {
-        sb.Append('"');
-        foreach (char c in s)
-            switch (c)
-            {
-                case '"': sb.Append("\\\""); break;
-                case '\\': sb.Append("\\\\"); break;
-                case '\n': sb.Append("\\n"); break;
-                case '\r': sb.Append("\\r"); break;
-                case '\t': sb.Append("\\t"); break;
-                default:
-                    if (c < ' ') sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
-                    else sb.Append(c);
-                    break;
-            }
-        sb.Append('"');
+        head = msvc ? *(byte**)map : null;
+        if (!msvc) return *(byte**)(map + GccTreeRoot);
+        return head == null ? null : *(byte**)(head + MsvcParent);
     }
+
+    /// <summary>Whether a branch ends at <paramref name="n"/>: libstdc++ ends one with a null, MSVC with the head node, whose
+    /// <c>_Isnil</c> byte is set.</summary>
+    private static bool IsEnd(byte* n, byte* head, bool msvc) => n == null || (msvc && (n == head || n[MsvcIsNil] != 0));
+
+    private static byte* Left(byte* n, bool msvc) => *(byte**)(n + (msvc ? MsvcLeft : GccLeft));
+
+    private static byte* Right(byte* n, bool msvc) => *(byte**)(n + (msvc ? MsvcRight : GccRight));
+
+    private static void Quote(StringBuilder sb, string s) => sb.Append('"').Append(JsonEncodedText.Encode(s, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).Value).Append('"');
 }

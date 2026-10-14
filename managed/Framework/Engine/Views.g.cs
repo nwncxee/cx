@@ -3438,6 +3438,21 @@ public readonly unsafe partial struct NkWindow(IntPtr ptr)
     public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkWinSeq);
 }
 
+/// <summary>Typed view of an engine <c>Nui__JSON__BindUpdate*</c>.</summary>
+public readonly unsafe partial struct Nui__JSON__BindUpdate(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NuiBindUpdateJson"/>
+    public ref byte Json => ref *(byte*)(Ptr + EngineLayout.NuiBindUpdateJson);
+    /// <inheritdoc cref="EngineLayout.NuiBindUpdateName"/>
+    public ref byte Name => ref *(byte*)(Ptr + EngineLayout.NuiBindUpdateName);
+    /// <inheritdoc cref="EngineLayout.NuiBindUpdateStride"/>
+    public Nui__JSON__BindUpdate this[int i] => new(Ptr + i * EngineLayout.NuiBindUpdateStride);
+}
+
 /// <summary>Typed view of an engine <c>Nui__JSON__IdNode*</c>.</summary>
 public readonly unsafe partial struct Nui__JSON__IdNode(IntPtr ptr)
 {

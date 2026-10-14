@@ -26,6 +26,10 @@ internal static unsafe partial class NuiJsonRead
                 check.Expect(Dump(doc, msvc) == "{\"inner\":{\"a\":2.5,\"z\":null},\"list\":[1,\"x\",true],\"n\":42,\"name\":\"a \\\"quoted\\\" word that is longer than fifteen bytes\",\"zeta\":null}",
                              shape + ": a tree reads back as sorted compact JSON");
                 check.Expect(Dump(Obj(mem, msvc), msvc) == "{}", shape + ": an empty object is {}");
+                check.Expect(Dump(Str(mem, msvc, "line\nbreak \u00e9"), msvc) == "\"line\\nbreak \u00e9\"", shape + ": a control character is escaped and other text is kept");
+                byte* yaw = *(byte**)(Str(mem, msvc, "yaw") + 8), longer = *(byte**)(Str(mem, msvc, "a name past fifteen bytes") + 8);
+                check.Expect(StringIs(yaw, msvc, "yaw"u8) && !StringIs(yaw, msvc, "yaws"u8) && !StringIs(yaw, msvc, "yax"u8)
+                             && StringIs(longer, msvc, "a name past fifteen bytes"u8), shape + ": a string matches its own bytes only, inline or not");
                 var sent = new List<IntPtr>();
                 try
                 {

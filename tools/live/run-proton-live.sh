@@ -8,11 +8,11 @@
 # directory lives inside a throwaway Proton prefix, so the user's saves and nwn.ini are never opened.
 #
 #   tools/live/run-proton-live.sh [--seconds N] [--width W] [--height H] [--cfg k=v]... [--menu] [--out DIR]
-#                                 [--nui | --showcase NAME] [--keys 'script' [--keys-at N]]
+#                                 [--nui | --showcase NAME] [--keys 'script']
 #
 # --nui hosts the fixed NUI window module of run-live.sh (tools/live/ladder/cxnui.nss) built into the prefix's user
 # directory; --showcase NAME hosts run-live.sh's showcase of that name, its .policy as the card file and its .keys as the
-# default --keys; --keys runs an xtool.py key/shot script N seconds in (default 60), after the client has had time to load.
+# default --keys; --keys runs an xtool.py key/shot script 60 seconds in, after the client has had time to load.
 #
 # Default is the Linux harness's own module, so the shots line up with a `run-live.sh` run of the same name.
 set -u
@@ -39,7 +39,6 @@ while [ $# -gt 0 ]; do
         --nui)     NUI=1; MODULE="cxnui"; shift ;;
         --showcase) SHOWCASE="$2"; NUI=1; MODULE="cxshow"; shift 2 ;;
         --keys)    KEYS="$2"; shift 2 ;;
-        --keys-at) KEYS_AT="$2"; shift 2 ;;
         *) echo "run-proton-live: unknown option $1" >&2; exit 2 ;;
     esac
 done

@@ -27,7 +27,6 @@ internal static class CxTranslate
 {
     /// <summary>The member that carries the settings, on the window object or on any element.</summary>
     internal const string Member = "cx";
-    private const string ModelPrefix = "@model:";
 
     /// <summary>The plan for window <paramref name="windowId"/> whose JSON is <paramref name="json"/>.</summary>
     internal static CxPlan Translate(string windowId, string json)
@@ -62,17 +61,17 @@ internal static class CxTranslate
 
     private static void Window(CxPlan plan, string windowId, JsonElement cx)
     {
-        if (cx.ValueKind != JsonValueKind.Object) { Refuse(plan, "cx", Raw(cx), "the window's cx member must be an object"); return; }
+        if (cx.ValueKind != JsonValueKind.Object) { Refuse(plan, "cx", cx.GetRawText(), "the window's cx member must be an object"); return; }
         foreach (JsonProperty p in cx.EnumerateObject())
         {
             switch (p.Name)
             {
                 case "cardstyle":
                     if (p.Value.ValueKind == JsonValueKind.Object) plan.Sets.Add(new CxSet("cardstyle", p.Value.GetRawText(), null));
-                    else Refuse(plan, "cardstyle", Raw(p.Value), "cardstyle must be an object");
+                    else Refuse(plan, "cardstyle", p.Value.GetRawText(), "cardstyle must be an object");
                     break;
                 case "held":
-                    if (p.Value.ValueKind != JsonValueKind.Object) { Refuse(plan, "held", Raw(p.Value), "held must be an object"); break; }
+                    if (p.Value.ValueKind != JsonValueKind.Object) { Refuse(plan, "held", p.Value.GetRawText(), "held must be an object"); break; }
                     foreach (JsonProperty h in p.Value.EnumerateObject()) Scalar(plan, "held." + h.Name, h.Value);
                     break;
                 default:
@@ -84,7 +83,7 @@ internal static class CxTranslate
 
     private static void Element(CxPlan plan, JsonElement owner, JsonElement cx)
     {
-        if (cx.ValueKind != JsonValueKind.Object) { Refuse(plan, "cx", Raw(cx), "an element's cx member must be an object"); return; }
+        if (cx.ValueKind != JsonValueKind.Object) { Refuse(plan, "cx", cx.GetRawText(), "an element's cx member must be an object"); return; }
         string? id = owner.TryGetProperty("id", out JsonElement idE) && idE.ValueKind == JsonValueKind.String ? idE.GetString() : null;
         if (string.IsNullOrEmpty(id)) id = null;
         foreach (JsonProperty p in cx.EnumerateObject())
@@ -95,13 +94,13 @@ internal static class CxTranslate
                 case "card":
                     if (id == null) Refuse(plan, "card", "", "a card needs the element to have an id");
                     else if (p.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array) plan.Sets.Add(new CxSet("card." + id, p.Value.GetRawText(), null));
-                    else Refuse(plan, "card." + id, Raw(p.Value), "card must be a card object or an array of them");
+                    else Refuse(plan, "card." + id, p.Value.GetRawText(), "card must be a card object or an array of them");
                     break;
                 case "pick":
                     if (id == null) Refuse(plan, "pick", "", "a pick needs the element to have an id");
                     else Scalar(plan, "held.pick." + id, p.Value);
                     break;
-                default: Refuse(plan, "cx." + p.Name, Raw(p.Value), "not a cx member an element reads"); break;
+                default: Refuse(plan, "cx." + p.Name, p.Value.GetRawText(), "not a cx member an element reads"); break;
             }
         }
     }
@@ -110,7 +109,7 @@ internal static class CxTranslate
     {
         string? key = ModelKey(owner);
         if (key == null) { Refuse(plan, "model", "", "the element names no @model:<key> image"); return; }
-        if (settings.ValueKind != JsonValueKind.Object) { Refuse(plan, "model." + key, Raw(settings), "model must be an object"); return; }
+        if (settings.ValueKind != JsonValueKind.Object) { Refuse(plan, "model." + key, settings.GetRawText(), "model must be an object"); return; }
         foreach (JsonProperty p in settings.EnumerateObject()) Scalar(plan, "model." + key + "." + p.Name, p.Value);
     }
 
@@ -130,28 +129,22 @@ internal static class CxTranslate
         return null;
     }
 
-    private static string? Key(JsonElement v)
-    {
-        if (v.ValueKind != JsonValueKind.String) return null;
-        string s = v.GetString() ?? "";
-        return s.StartsWith(ModelPrefix, StringComparison.OrdinalIgnoreCase) && s.Length > ModelPrefix.Length ? s[ModelPrefix.Length..] : null;
-    }
+    private static string? Key(JsonElement v) => v.ValueKind == JsonValueKind.String ? ImageNames.ModelKey(v.GetString() ?? "") : null;
 
     /// <summary>One setting: a number, text, a switch, a list of numbers (joined with commas) or a NUI bind.</summary>
     private static void Scalar(CxPlan plan, string key, JsonElement v)
     {
         switch (v.ValueKind)
         {
-            case JsonValueKind.String: plan.Sets.Add(new CxSet(key, v.GetString() ?? "", null)); return;
-            case JsonValueKind.Number: plan.Sets.Add(new CxSet(key, v.GetRawText(), null)); return;
-            case JsonValueKind.True: plan.Sets.Add(new CxSet(key, "1", null)); return;
-            case JsonValueKind.False: plan.Sets.Add(new CxSet(key, "0", null)); return;
+            case JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False:
+                plan.Sets.Add(new CxSet(key, BoundText(v), null));
+                return;
             case JsonValueKind.Array:
             {
                 var sb = new StringBuilder();
                 foreach (JsonElement c in v.EnumerateArray())
                 {
-                    if (c.ValueKind != JsonValueKind.Number) { Refuse(plan, key, Raw(v), "a list holds numbers only"); return; }
+                    if (c.ValueKind != JsonValueKind.Number) { Refuse(plan, key, v.GetRawText(), "a list holds numbers only"); return; }
                     if (sb.Length > 0) sb.Append(',');
                     sb.Append(c.GetRawText());
                 }
@@ -166,7 +159,7 @@ internal static class CxTranslate
                 }
                 break;
         }
-        Refuse(plan, key, Raw(v), "a setting is a number, text, a list of numbers or {\"bind\": name}");
+        Refuse(plan, key, v.GetRawText(), "a setting is a number, text, a list of numbers or {\"bind\": name}");
     }
 
     /// <summary>A bound value as the policy line text: numbers as written, switches as 1 and 0, text as it is, null as released.</summary>
@@ -178,8 +171,6 @@ internal static class CxTranslate
         JsonValueKind.False => "0",
         _ => "",
     };
-
-    private static string Raw(JsonElement e) => e.GetRawText();
 
     private static void Refuse(CxPlan plan, string key, string value, string reason)
         => plan.Refused.Add(new PolicyRefusal(0, PolicyRefusals.KindOf(key), key, value, reason));

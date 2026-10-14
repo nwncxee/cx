@@ -887,6 +887,9 @@ offset	Nui::JSON::JsonWindow	windowId	0x1e0	0x230	# NuiWinId
 offset	Nui::JSON::JsonWindow	windowName	0x1e8	0x238	# NuiWinName
 offset	Nui::JSON::JsonWindow	windowJson	0x208	0x258	# NuiWinJson
 offset	Nui::JSON::JsonWindow	bindIngest	0x440	0x4a0	# NuiWinIngest
+offset	Nui::JSON::BindUpdate	name	0x8	0x8	# NuiBindUpdateName
+offset	Nui::JSON::BindUpdate	json	0x28	0x28	# NuiBindUpdateJson
+offset	Nui::JSON::BindUpdate	stride	0x40	0x40	# NuiBindUpdateStride
 offset	Nui::JSON::IdNode	key	0x8	0x10	# NuiIdNodeKey
 offset	Nui::JSON::IdNode	element	0x28	0x30	# NuiIdNodeElement
 # ---- CX-103/104/105: the scene pipeline's own rows. Gob 0x0..0x4b8 is the region #448 paired as identical
