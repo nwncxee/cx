@@ -125,6 +125,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 if (gl && _hRes[h] && _hVal[h] != 0 && Gl.MakeTextureHandleNonResidentARB != null)
                     Gl.MakeTextureHandleNonResidentARB(_hVal[h]);
+                else if (!gl) BindlessLedger.Forget(name);
                 ZeroHandle(_hVal[h]);
                 _hTid[h] = HandleTombstone; _hVal[h] = 0; _hRes[h] = false;
                 return;

@@ -275,7 +275,7 @@ public sealed unsafe class GlContextService : IExtenderService
 
         Context = ctx;
         Available = true;
-        log.Info($"GlContextService: 4.6 core context LIVE (0x{ctx:x}, GL_VERSION='{ver}', engine context {major}.{minor} with DSA) -- bracket every frame" +
+        log.Always($"GlContextService: 4.6 core context LIVE (0x{ctx:x}, GL_RENDERER='{renderer}', GL_VERSION='{ver}', engine context {major}.{minor} with DSA) -- bracket every frame" +
                  (dbg ? "; DEBUG context, KHR_debug messages go to this log (alloy.gldebug=1)" : ""));
     }
 
@@ -390,6 +390,10 @@ public sealed unsafe class GlContextService : IExtenderService
 
     /// <summary>The 4.6 bracket is open: <see cref="Enter"/> succeeded and <see cref="Leave"/> has not run.</summary>
     internal static bool Inside { get; private set; }
+
+    /// <summary>Is Alloy's 4.6 context current on THIS thread: the holder thread, or the game thread inside its
+    /// bracket. A bindless residency call anywhere else lands in the wrong context.</summary>
+    internal static bool Current46 => HeldHere || (Inside && !_heldElsewhere);
 
     /// <summary>Present the engine's drawable now, from the engine's context, and wait until the GPU has taken it:
     /// how a step that blocks the render thread (a shader compile) gets a frame on screen before it runs. Not the
@@ -534,7 +538,7 @@ public sealed unsafe class GlContextService : IExtenderService
             GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR => "deprecated", GL_DEBUG_TYPE_PORTABILITY => "PORTABILITY",
             GL_DEBUG_TYPE_PERFORMANCE => "performance", _ => "other",
         };
-        _log?.Info($"GlContextService: [gldebug] {kind} id {id} (source 0x{source:x}, severity 0x{severity:x}): {CStr(msg, 1024)}");
+        _log?.Always($"GlContextService: [gldebug] {kind} id {id} (source 0x{source:x}, severity 0x{severity:x}): {CStr(msg, 1024)}");
     }
 
     /// <summary>NVIDIA's "shadow sampler on a texture that is not a compare-on depth texture" warning.</summary>

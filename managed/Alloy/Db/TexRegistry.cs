@@ -471,15 +471,17 @@ internal static unsafe partial class TexRegistry
     internal static long HandlesDropped => _handlesDropped;
     private static long _handlesDropped;
 
-    /// <summary>Clear every queued dying handle out of the renderer's record blocks. GL-context thread, from
-    /// <see cref="Drain"/> only -- <see cref="AlloyRenderer.ZeroHandle"/> walks renderer tables and must not
-    /// run on the game thread beside a staging.</summary>
+    /// <summary>Make every queued dying handle non-resident and clear it out of the renderer's record blocks.
+    /// From <see cref="Drain"/> only, in Alloy's context: the one context the handle is resident in, and
+    /// <see cref="AlloyRenderer.ZeroHandle"/> must not run on the game thread beside a staging.</summary>
     private static void ZeroDyingHandles()
     {
+        bool gl = GlContextService.Current46 && Gl.MakeTextureHandleNonResidentARB != null;
         while (true)
         {
             ulong v;
             lock (_lock) { if (_dyingHandles.Count == 0) break; v = _dyingHandles.Dequeue(); }
+            if (gl) Gl.MakeTextureHandleNonResidentARB(v);
             AlloyRenderer.ZeroHandle(v);
             _handlesDropped++;
         }
