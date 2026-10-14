@@ -38,6 +38,8 @@ A setting may be NUI's own bind form, `{"bind": "doll_yaw"}`. It takes the value
 name, and releases the key when the value is `null`. No element has to use the bind: CX registers the name with the window, so the
 server gets no `unknown-bind` event.
 
+A stock client sends the server an `unknown-bind` event each time `NuiSetBind` sets a name only a `"cx"` member uses. Ignore it.
+
 CX reads the server's updates only. A value the player changes in the window, such as a slider on the same bind, does not move the
 setting.
 
@@ -54,7 +56,7 @@ is refused when the window opens. A setting it reads later, such as a `zoom` tha
 
 ### Limits
 
-- The settings of a window open at the time are the only ones read. A layout change sent with `NuiSetLayout` is not.
+- CX reads a window's settings when it opens. A group sent later with `NuiSetGroupLayout` keeps them, and CX does not read `"cx"` members inside it.
 - A window's keys are released 3 s after it stops updating.
 - `PolicySet` lines keep working. A key both set wins from whichever came last.
 - A player who turns off `nui.cxjson` (Advanced) gets the stock window.

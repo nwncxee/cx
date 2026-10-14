@@ -1,6 +1,6 @@
 //::///////////////////////////////////////////////
 //:: nuicx -- a doll, a card and a themed window set by "cx" members in the window JSON, with no policy line
-//:: The doll's yaw is a bind no element uses: NuiSetBind turns it at +6 s and +18 s. The label's card declares one bad member and the doll one bad value,
+//:: The doll's yaw is a bind no element uses: NuiSetBind turns it at +6 s and +18 s, and NuiSetGroupLayout sends the doll again at +10 s. The label's card declares one bad member and the doll one bad value,
 //:: which reach nuicx_nui as "refused" events on the element "cx".
 //:://////////////////////////////////////////////
 #include "inc_show"
@@ -45,9 +45,17 @@ void Turn(object oPC, int nToken, int nYaw)
     ShowMark("yaw " + IntToString(nYaw));
 }
 
+// The doll's group sent again with NuiSetGroupLayout: the window's cx settings must outlive it.
+void Relayout(object oPC, int nToken)
+{
+    NuiSetGroupLayout(oPC, nToken, "dollgroup", Doll());
+    ShowMark("relayout");
+}
+
 void Open(object oPC)
 {
-    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArray(), Tip()), Doll()));
+    json jGroup = NuiId(NuiGroup(Doll(), FALSE, NUI_SCROLLBARS_NONE), "dollgroup");
+    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArray(), Tip()), jGroup));
     json jWin = NuiWindow(jRoot, JsonString("Set from the window JSON"), NuiRect(40.0, 40.0, 340.0, 560.0),
         JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     json jCx = JsonObjectSet(JsonObject(), "fadein", JsonInt(600));
@@ -57,6 +65,7 @@ void Open(object oPC)
     NuiSetBind(oPC, nToken, BIND_YAW, JsonInt(270));
     DelayCommand(6.0, Turn(oPC, nToken, 90));
     DelayCommand(18.0, Turn(oPC, nToken, 180));
+    DelayCommand(10.0, Relayout(oPC, nToken));
 }
 
 void Show(object oPC)

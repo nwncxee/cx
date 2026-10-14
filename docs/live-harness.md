@@ -13,6 +13,8 @@ runs the framework in a stub host with no GL and no engine, cannot tell you.
 
 Options: `--module NAME` `--seconds N` `--cfg 'key=value'` (repeatable) `--out DIR` `--keys SCRIPT`
 `--char NAME` `--width W` `--height H` `--boot-timeout N` `--min-lit N` `--keep` `--ladder`.
+`--stock` runs the client without CX, to check that what a server sends a CX client does no harm to one without it. It needs
+OpenAL on the nix-ld path (`nixpkgs#openal.out`), which `cx-launch` otherwise brings, and grades no CX log line.
 Exit code 0 is PASS, 1 is FAIL, 2 is a setup problem (no build staged, no client, a client already
 running). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
 

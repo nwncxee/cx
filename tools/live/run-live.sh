@@ -58,6 +58,7 @@ SHOWCASE=""
 SHOWCASE_DIR="$ROOT/tools/live/showcase"
 SHOWCASE_LATE=40
 MENU=0
+STOCK=0
 EXPECT_EXIT=0
 clicked_exit=0
 SECONDS_SET=0
@@ -80,6 +81,9 @@ while [ $# -gt 0 ]; do
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
         --menu)          MENU=1; shift ;;
+        # The stock client, no CX loaded: for checking that what a server sends a CX client is harmless to one without it.
+        # It waits on the module script's own enter marker in the engine log and grades no CX log line.
+        --stock)         STOCK=1; shift ;;
         # Seconds to wait for the client to quit ON ITS OWN after --keys has run. The main menu's Exit is
         # the one control whose success is unambiguous without looking at a pixel: either the click was
         # picked and the client went, or it was not.
@@ -295,8 +299,10 @@ START_EPOCH=$(date +%s.%N)
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
     fi
+    LAUNCH=("$STAGE/cx-launch" ./nwmain-linux)
+    [ "$STOCK" = 1 ] && LAUNCH=(./nwmain-linux)
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
-        "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR" \
+        "${LAUNCH[@]}" -userdirectory "$USER_DIR" \
         +TestNewModule "$MODULE"
 ) > "$GS_LOG" 2>&1 &
 GS_PID=$!
@@ -382,6 +388,10 @@ AREA_MARK_NOHOLD='\[areaedge\] AreaLoaded send|PartTable: AreaLoaded send'
 # Alloy off runs no shadow bake and no part table, so neither mark exists: the session gate seeing a module is the edge left.
 AREA_MARK_ENGINE='\[uigate\] win=0x[1-9a-f][0-9a-f]* .*inModule=True'
 FRAME_MARK='first frame presented -- hook is LIVE'
+if [ "$STOCK" = 1 ]; then
+    CX_LOG="$USER_DIR/logs/nwclientLog1.txt"
+    AREA_MARK='CX(SHOW|NUI|LADDER): enter '
+fi
 reached=0
 area_epoch=""
 peak_rss=0
@@ -589,8 +599,8 @@ fi
 
 # ---- verdict ------------------------------------------------------------------------------------
 fails=()
-[ "$frames" = 1 ]      || fails+=("no frame was presented (CX never saw SwapBuffers)")
-if [ "$MENU" = 0 ]; then
+[ "$frames" = 1 ] || [ "$STOCK" = 1 ] || fails+=("no frame was presented (CX never saw SwapBuffers)")
+if [ "$MENU" = 0 ] && [ "$STOCK" = 0 ]; then
     [ -n "$present_count" ] || fails+=("no 'over N presents' period line in cx.log -- the frame count is unknown, so the soak is unproven")
 fi
 if [ "$MENU" = 1 ]; then
