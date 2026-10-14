@@ -36,11 +36,12 @@ public sealed unsafe partial class AlloyRenderer
         return SceneDb.Objects.Valid(o) && (SceneDb.ObjFlags[o.Index] & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
     }
 
-    /// <summary>Is this part a ground decal, folded into the surface under it (<see cref="DecalLayer"/>)? A lit,
-    /// plainly alpha-blended sheet facing up, on a static object, whose look is its albedo alone: no self-illumination,
-    /// no env map, no hosted body, nothing posed or morphed.</summary>
+    /// <summary>Is this part a ground decal, folded into the surface under it (<see cref="DecalLayer"/>)? A lit
+    /// blended or alpha-tested sheet lying flat, on a static object, plainly alpha-blended, whose look is its albedo
+    /// alone: no coverage layer, self-illumination, env map or hosted body, nothing posed or morphed.</summary>
     internal static bool DbDecal(int recipe, RecipeFlag rf, ObjFlag of)
-        => DrawRecipe.Cls(recipe) == (int)AlloyClass.Blended
+        => (DrawRecipe.Cls(recipe) == (int)AlloyClass.Blended
+            || DrawRecipe.Cls(recipe) == (int)AlloyClass.Cutout && (rf & RecipeFlag.Coverage) == 0)
            && (rf & (RecipeFlag.Lit | RecipeFlag.FacesUp)) == (RecipeFlag.Lit | RecipeFlag.FacesUp)
            && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) == 0
            && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static
@@ -50,7 +51,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The first term <see cref="DbDecal"/> refuses an up-facing see-through sheet on, for the log.</summary>
     private static string DbDecalWhyNot(int recipe, RecipeFlag rf, ObjFlag of, bool lit)
-        => DrawRecipe.Cls(recipe) != (int)AlloyClass.Blended ? $"class {(AlloyClass)DrawRecipe.Cls(recipe)}"
+        => (rf & RecipeFlag.FacesUp) == 0 ? "not lying flat (a triangle tilts past 45 degrees)"
+         : (rf & RecipeFlag.Coverage) != 0 ? "alpha-to-coverage material"
          : !lit || (rf & RecipeFlag.Lit) == 0 ? "unlit"
          : (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) != 0 ? "posed or morphed"
          : (of & (ObjFlag.Static | ObjFlag.Sky)) != ObjFlag.Static ? "not a static object"
@@ -154,7 +156,11 @@ public sealed unsafe partial class AlloyRenderer
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
         _oWash[i] = (rf & RecipeFlag.Wash) != 0 ? (byte)1 : (byte)0;
         _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
-        if (_oDecal[i] == 0 && (rf & RecipeFlag.FacesUp) != 0 && DrawRecipe.Cls(recipe) != (int)AlloyClass.Opaque)
+        // an alpha-tested sheet on the ground is a decal too: it joins the blended run, whose fragments off the
+        // ground still draw (alpha-tested, depth laid by the sweep), and the ground takes the rest with a soft edge
+        if (_oDecal[i] != 0) _oCls[i] = (byte)AlloyClass.Blended;
+        else if ((of & (ObjFlag.Gui | ObjFlag.Static)) == ObjFlag.Static && DrawRecipe.Cls(recipe) is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
+                 && ((rf & RecipeFlag.FacesUp) != 0 || DrawRecipe.Flat(recipe)))
             DecalLayer.NoteRefused(recipe, DbDecalWhyNot(recipe, rf, of, _oLit[i]));
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
         _oBucket[i] = 0;
@@ -258,11 +264,16 @@ public sealed unsafe partial class AlloyRenderer
             // nothing re-derives per frame (the env bit is the one exception), so a recipe that gained it
             // after its slots were seated would keep drawing solid.
             int slots = (_oSlots[i] & ~CoverNrmBit) | (DrawRecipe.Slots(recipe) & CoverNrmBit);
-            if (_oCls[i] == cls && _oCos[i] == wasCos && _oSin[i] == wasSin
+            // CX-273: ...and whether it is a ground decal, which the class and the blend pair decide
+            int o = SceneDb.PartObj[_oDbPart[i]].Index;
+            byte decal = lit && DbDecal(recipe, DrawRecipe.Flags(recipe), (uint)o < SceneDb.MaxObjects ? SceneDb.ObjFlags[o] : ObjFlag.None)
+                       ? (byte)1 : (byte)0;
+            if (decal != 0) cls = (byte)AlloyClass.Blended;
+            if (_oCls[i] == cls && _oDecal[i] == decal && _oCos[i] == wasCos && _oSin[i] == wasSin
                 && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
                 && slots == _oSlots[i]) continue;
             if (slots != _oSlots[i]) { _oSlots[i] = slots; CasterGen++; }
-            _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c;
+            _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c; _oDecal[i] = decal;
             _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
             // The slot moves between passes, so its staged record and batch row are both stale.
             UnstampRecord(i);
