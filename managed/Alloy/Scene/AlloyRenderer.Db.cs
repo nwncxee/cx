@@ -48,6 +48,18 @@ public sealed unsafe partial class AlloyRenderer
            && (DrawRecipe.Slots(recipe) & (IllumBit | EnvSlot)) == 0
            && !ShaderFeatures.Hosted(DrawRecipe.Feat(recipe));
 
+    /// <summary>The first term <see cref="DbDecal"/> refuses an up-facing see-through sheet on, for the log.</summary>
+    private static string DbDecalWhyNot(int recipe, RecipeFlag rf, ObjFlag of, bool lit)
+        => DrawRecipe.Cls(recipe) != (int)AlloyClass.Blended ? $"class {(AlloyClass)DrawRecipe.Cls(recipe)}"
+         : !lit || (rf & RecipeFlag.Lit) == 0 ? "unlit"
+         : (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) != 0 ? "posed or morphed"
+         : (of & (ObjFlag.Static | ObjFlag.Sky)) != ObjFlag.Static ? "not a static object"
+         : DrawRecipe.Src(recipe) != DrawRecipe.BlendSrcAlpha || DrawRecipe.Dst(recipe) != DrawRecipe.BlendInvSrcAlpha
+             ? $"blend pair {DrawRecipe.Src(recipe)}/{DrawRecipe.Dst(recipe)}"
+         : (DrawRecipe.Slots(recipe) & IllumBit) != 0 ? "self-illumination map"
+         : (DrawRecipe.Slots(recipe) & EnvSlot) != 0 ? "env map"
+         : ShaderFeatures.Hosted(DrawRecipe.Feat(recipe)) ? "hosted shader body" : "?";
+
     /// <summary>The self-illumination map's mask bit (map slot 4, the stage's <c>CX_SLOT_ILLUM</c>).</summary>
     private const int IllumBit = 1 << 4;
 
@@ -142,6 +154,8 @@ public sealed unsafe partial class AlloyRenderer
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
         _oWash[i] = (rf & RecipeFlag.Wash) != 0 ? (byte)1 : (byte)0;
         _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
+        if (_oDecal[i] == 0 && (rf & RecipeFlag.FacesUp) != 0 && DrawRecipe.Cls(recipe) != (int)AlloyClass.Opaque)
+            DecalLayer.NoteRefused(recipe, DbDecalWhyNot(recipe, rf, of, _oLit[i]));
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
         _oBucket[i] = 0;
         // No gob pointer exists in DB mode; the questions it answered are columns.

@@ -80,16 +80,19 @@ uniform int uDecal;      // 1 = fold the layer into this surface; 2 = a decal ba
 uniform vec2 uDecalZ;    // the projection's (M33, M43): linear view depth = y / (ndc z + x)
 layout(rgba16f, binding = 6) readonly uniform image2D uDecalLayer;
 layout(r32f, binding = 7) readonly uniform image2D uDecalSurf;
-/// How far a decal may lie off the prepassed surface and still fold into it: metres, plus a share of view depth.
-const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.003;
+/// How high above the prepassed surface a decal may lie and still fold into it: metres, plus a share of view
+/// depth for the depth buffer's own precision.
+const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
 /// Does a decal fragment at linear view depth <paramref name="d"/> lie on the prepassed surface whose window depth
-/// is <paramref name="z"/>? The layer's writer and the blended pass ask this of the same two numbers, so every
-/// decal fragment is taken by exactly one of them.
+/// is <paramref name="z"/>? Measured as HEIGHT off that surface, not as depth along the ray, which a grazing view
+/// stretches without bound. The layer's writer and the blended pass ask this of the same inputs, so every decal
+/// fragment is taken by exactly one of them.
 bool CxDecalOn(float z, float d)
 {
     if (!(z > 0.0 && z < 1.0)) return false;
     float s = uDecalZ.y / ((z * 2.0 - 1.0) + uDecalZ.x);
-    return abs(d - s) < CX_DECAL_TOL_M + CX_DECAL_TOL * s;
+    float h = abs(d - s) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
+    return h < CX_DECAL_TOL_M + CX_DECAL_TOL * s;
 }
 #include "cx_oitout.glsl"
 // Slot mask bits, matching AlloyRenderer's 1 << (slot - 1).

@@ -32,7 +32,13 @@ internal static unsafe class DecalLayer
         /// <summary>The projection's M33 and M43, which turn a window depth back into a view depth.</summary>
         public float Z0, Z1;
         public long Frames, Groups;
+        /// <summary>Recipes already named by <see cref="NoteRefused"/>, so each is logged once.</summary>
+        public readonly int[] Refused = new int[RefusedMax];
+        public int RefusedN;
     }
+
+    /// <summary>Up-facing see-through sheets <see cref="NoteRefused"/> names per session.</summary>
+    private const int RefusedMax = 24;
 
     private static DecalState _s = new();
 
@@ -81,6 +87,18 @@ internal static unsafe class DecalLayer
         Gl.BindImageTexture(ImgSurf, s.Surf, 0, 0, 0, Gl.READ_ONLY, Gl.R32F);
         s.Live = true;
         s.Frames++; s.Groups += to - from;
+    }
+
+    /// <summary>An up-facing see-through sheet that stays out of the layer: named once per recipe, with the reason,
+    /// for the first <see cref="RefusedMax"/> of a session. Cold -- a seat.</summary>
+    internal static void NoteRefused(int recipe, string why)
+    {
+        var s = _s;
+        if (s.RefusedN >= RefusedMax) return;
+        for (int k = 0; k < s.RefusedN; k++) if (s.Refused[k] == recipe) return;
+        s.Refused[s.RefusedN++] = recipe;
+        s.Log?.Info($"[decals] up-facing sheet '{Db.DrawRecipe.Model(recipe)?.Name}' (tex '{Db.DrawRecipe.TexName(recipe, 0)}') "
+                  + $"is not a ground decal: {why}");
     }
 
     /// <summary>Set the mode a pass draws in: <see cref="ModeFold"/> for the opaque pass, <see cref="ModeSkip"/>
