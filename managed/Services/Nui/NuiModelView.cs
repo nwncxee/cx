@@ -725,6 +725,7 @@ internal static unsafe class NuiModelView
             if (v.Built) WearVfx(v, Resolve(v));
         }
         RefuseVfx(v);
+        NuiModelDoll.SetEffects(v.Slot, v.Vfx.Length > 0 || v.Wear.Length > 0);
         string bgRaw = Policy(v.Key, "bg", "");
         Span<float> bg = stackalloc float[4];
         if (!NuiModelLook.Background(bgRaw, bg)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'");

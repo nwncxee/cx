@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
@@ -59,6 +60,8 @@ internal static unsafe class NuiModelDoll
         public int TargetW, TargetH;
         public readonly float[] Bg = new float[4];
         public bool Rendered, Claimed;
+        /// <summary>The view names effects or worn items, which may add light: with Alloy off a see-through background is then solved over black and white.</summary>
+        public bool Effects;
         public ModelLight Light = NuiModelLook.EngineLight;
         public readonly NuiModelGear.GearState Gear = new();
         /// <summary>The slot's Alloy-off scratch target and the rectangle its texture was last drawn at.</summary>
@@ -92,6 +95,7 @@ internal static unsafe class NuiModelDoll
         s.TargetTex = 0; s.TargetW = s.TargetH = 0;
         Array.Clear(s.Bg);
         s.Light = NuiModelLook.EngineLight;
+        s.Effects = false;
         s.Claimed = false;
         foreach (ModelSlot o in _o.Slots) if (o.Claimed) return;
         NuiModelGuard.Forget();
@@ -120,6 +124,7 @@ internal static unsafe class NuiModelDoll
     /// <summary>The slot's layer was drawn into its target: the doll's first frame has landed.</summary>
     internal static void MarkRendered(ModelSlot s) => s.Rendered = true;
     internal static void SetLight(ModelSlot s, ModelLight l) => s.Light = l;
+    internal static void SetEffects(ModelSlot s, bool on) => s.Effects = on;
     internal static void SetBackground(ModelSlot s, float r, float g, float b, float a) { s.Bg[0] = r; s.Bg[1] = g; s.Bg[2] = b; s.Bg[3] = a; }
     internal static void Background(ModelSlot s, float* c) { for (int i = 0; i < 4; i++) c[i] = s.Bg[i]; }
 
@@ -315,6 +320,7 @@ internal static unsafe class NuiModelDoll
     /// creature, then the view with its scene and camera.</summary>
     internal static void Destroy(ModelSlot slot)
     {
+        long t0 = Stopwatch.GetTimestamp();
         DollState d = slot.Doll;
         bool taken = d.Registered && !Holds(d.Id, d.Creature);
         NuiModelGear.Release(slot.Gear, d.Creature, taken);
@@ -340,7 +346,7 @@ internal static unsafe class NuiModelDoll
             EngineFn.GuiViewportDtor(d.Viewport);
             EngineFn.OperatorDelete(d.Viewport);
         }
-        _o.Log?.Always($"NuiModelDoll: slot {slot.Index} taken down");
+        _o.Log?.Always($"NuiModelDoll: slot {slot.Index} taken down in {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F2} ms");
     }
 
     /// <summary>The colour shift the fade machinery leaves a new creature at: alpha 1, colour white, to the attached parts too.</summary>
