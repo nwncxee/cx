@@ -32,6 +32,7 @@ public static unsafe partial class DbAnim
             Events(check);
             Reentrancy(check);
             Attach(check);
+            NoOrientation(check);
             Scaled(check);
             Carried(check);
             Refilled(check);
@@ -413,6 +414,50 @@ public static unsafe partial class DbAnim
         check.Expect(SceneDb.ObjSphere[o].W > 0f, "the transform step writes the object's cull sphere");
 
         Drop(child);
+        Drop(obj);
+        SceneDb.Scenes.Free(scene);
+    }
+
+    /// <summary>An effect on a creature: a no-orientation rider takes the part's position and keeps its own
+    /// orientation as the parent turns, and a world rotation solved back to a part's local composes to itself.
+    /// Oracle: the leaf's place worked out by hand and literal rotations.</summary>
+    private static void NoOrientation(Checker check)
+    {
+        ModelDef m = Chain();
+        DbId scene = SceneDb.Scenes.Alloc();
+        DbId obj = Subject(m, scene, out int first);
+        DbId fx = Subject(m, scene, out _);
+        int o = obj.Index, f = fx.Index;
+        Quaternion held = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 0.5f);
+        SceneDb.ObjPos[o] = new Vector3(10f, 0f, 0f);
+        SceneDb.ObjRot[o] = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f);
+        SceneDb.ObjAttachTo[f] = obj;
+        SceneDb.ObjAttachPart[f] = first + 2;
+        SceneDb.ObjAttachMode[f] = SceneDb.AttachNoOrientation;
+        SceneDb.ObjRot[f] = held;
+        Moved(o);
+        Moved(f);
+        ComposeObject(fx);
+        check.Expect(NearV(Translation(SceneDb.ObjWorld[f]), new Vector3(10f, 0f, 2f)),
+                     "a no-orientation rider sits on the part it rides");
+        check.Expect(MathF.Abs(Quaternion.Dot(RotOf(SceneDb.ObjWorld[f]), held)) > 0.9999f,
+                     "...and keeps its own orientation, not the part's");
+
+        SceneDb.ObjRot[o] = Quaternion.CreateFromAxisAngle(Vector3.UnitX, MathF.PI);
+        Moved(o);
+        ComposeObject(fx);
+        check.Expect(NearV(Translation(SceneDb.ObjWorld[f]), new Vector3(10f, 0f, -2f)),
+                     "...follows the part when the creature turns over");
+        check.Expect(MathF.Abs(Quaternion.Dot(RotOf(SceneDb.ObjWorld[f]), held)) > 0.9999f,
+                     "...and still keeps its own orientation");
+
+        Matrix4x4 parent = Build(2f, Quaternion.CreateFromAxisAngle(Vector3.UnitY, 0.7f), new Vector3(1f, 2f, 3f));
+        Quaternion want = Quaternion.CreateFromAxisAngle(Vector3.Normalize(new Vector3(1f, 1f, 0f)), 1.1f);
+        Quaternion got = RotOf(Build(1f, LocalRot(want, parent), Vector3.Zero) * parent);
+        check.Expect(MathF.Abs(Quaternion.Dot(got, want)) > 0.9999f,
+                     "a world rotation solved to a part's local composes back to itself under a turned parent");
+
+        Drop(fx);
         Drop(obj);
         SceneDb.Scenes.Free(scene);
     }

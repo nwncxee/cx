@@ -490,7 +490,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
 
     /// <summary>The attach itself: re-file <paramref name="id"/> as a rider of <paramref name="parent"/>'s
     /// part <paramref name="part"/>. Shared by <c>Gob::AttachToObject</c> and the reference re-point, which
-    /// is the engine's own sharing -- both reach <c>CAurBehaviorAttach</c>'s constructor.</summary>
+    /// is the engine's own sharing -- both reach <c>CAurBehaviorAttach</c>'s constructor @0x4a2d50, which places
+    /// the rider on the part, orientation included: the only rotation a no-orientation attach takes from it.</summary>
     private static void AttachAt(DbId id, nint shell, DbId parent, int part, byte mode)
     {
         Detach(id);
@@ -499,6 +500,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         SceneDb.ObjAttachMode[id.Index] = mode;
         AddAttachment(Facade.ObjectShell(parent), shell);
         InheritScene(id, shell, parent);
+        if (part >= 0)
+        {
+            Matrix4x4 w = DbAnim.PartWorld(part);
+            Facade.SetXform(id, shell, w.Translation, DbAnim.RotOf(w));
+        }
         SceneDb.Touch(id, Dirty.Tree | Dirty.Xform);
     }
 
@@ -598,13 +604,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         if (!PartShell.Resolve(part, out DbId owner, out int idx)) return 0;
         DbId p = Facade.Object(parent, 21);
         if (p.IsNull || owner.Value != p.Value) return 0;
-        Detach(id);
-        SceneDb.SetAttachTo(id.Index, p);
-        SceneDb.SetAttachPart(id.Index, idx);
-        SceneDb.ObjAttachMode[id.Index] = Mode(flags);
-        AddAttachment(Facade.ObjectShell(p), shell);
-        InheritScene(id, shell, p);
-        SceneDb.Touch(id, Dirty.Tree | Dirty.Xform);
+        AttachAt(id, shell, p, idx, Mode(flags));
         return shell;
     }
 

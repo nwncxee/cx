@@ -41,17 +41,8 @@ public sealed unsafe partial class ObjectSlots
     private static void SetColorShifting(nint self, EVec colour, float alpha, int propagate)
     {
         if (!Live(self, 48, out DbId id, out nint shell)) return;
-        *(short*)(shell + SeamLayout.GobColourShiftFlag) = 1;
-        float* c = (float*)(shell + SeamLayout.GobColourShift);
-        c[0] = colour.X; c[1] = colour.Y; c[2] = colour.Z;
-        *(float*)(shell + SeamLayout.GobColourAlpha) = alpha;
-        // the pick reads the engine's alpha (a faded object is out of it); the draw, PlaceableHold's held one at 1
-        SceneDb.HitObjAlpha[id.Index] = alpha;
-        SceneDb.ObjTint[id.Index] = new Vector4(colour.X, colour.Y, colour.Z, PlaceableHold.Held(shell) ? 1f : alpha);
-        Flag(id, SeamFlag.ColourShift, true);
-        SceneDb.Touch(id, Dirty.Material);
         if (Renderer.HlDiag.V) Facade.Log?.Info($"[hldiag] SetColorShifting o={id.Index} ({colour.X:F2},{colour.Y:F2},{colour.Z:F2}) a={alpha:F2} propagate={propagate}");
-        if (propagate != 0) FireEvent(self, EventNames.PropagateColorShift, 0);
+        Shift(id, self, shell, colour.V, alpha, illum: false, propagate != 0, 0);
     }
 
     /// <summary><c>Gob::SetIllumination(Vector colour, int propagate)</c> @0x4390a0: the same shape one offset
@@ -60,15 +51,82 @@ public sealed unsafe partial class ObjectSlots
     private static void SetIllumination(nint self, EVec colour, int propagate)
     {
         if (!Live(self, 49, out DbId id, out nint shell)) return;
-        *(short*)(shell + SeamLayout.GobIllumFlag) = 1;
-        float* c = (float*)(shell + SeamLayout.GobIllum);
-        c[0] = colour.X; c[1] = colour.Y; c[2] = colour.Z;
-        SceneDb.ObjEmissive[id.Index] = colour.V;
-        Flag(id, SeamFlag.Illuminated, true);
-        SceneDb.Touch(id, Dirty.Material);
         if (Renderer.HlDiag.V) Facade.Log?.Info($"[hldiag] SetIllumination o={id.Index} ({colour.X:F2},{colour.Y:F2},{colour.Z:F2}) propagate={propagate}");
-        if (propagate != 0) FireEvent(self, EventNames.PropagateIllumination, 0);
+        Shift(id, self, shell, colour.V, 0f, illum: true, propagate != 0, 0);
     }
+
+    /// <summary>How deep a propagated shift follows riders of riders: a guard against an attach cycle, which the
+    /// engine's own recursion would never return from. The compose already names such a cycle (DbAnim's
+    /// attach snap), so the cut needs no line of its own.</summary>
+    private const int MaxShiftDepth = 256;
+
+    /// <summary>A colour shift (or, with <paramref name="illum"/>, an illumination) on one object and on what
+    /// shares or inherits it. A grafted piece is part of the engine's ONE gob, so it always takes it; with
+    /// <paramref name="propagate"/>, each seam rider takes it too, as <c>PropagateColorShifting</c> @0x49fd90 /
+    /// <c>PropagateIllumination</c> @0x49fe00 give it to the gob a <c>CAurBehaviorAttach</c> carries.</summary>
+    internal static void Shift(DbId id, nint self, nint shell, Vector3 colour, float alpha, bool illum, bool propagate, int depth)
+    {
+        WriteShift(id, shell, colour, alpha, illum);
+        for (int k = SceneDb.FirstRider(id.Index); k != 0; k = SceneDb.NextRider(k - 1))
+        {
+            int c = k - 1;
+            if (SceneDb.ObjAttachTo[c].Value != id.Value || !SceneDb.Objects.LiveAt(c)) continue;
+            DbId cid = SceneDb.Objects.IdAt(c);
+            nint cs = Facade.ObjectShell(cid);
+            if (DbAnim.Grafted(c)) { WriteShift(cid, cs, colour, alpha, illum); continue; }
+            if (!propagate || SceneDb.ObjAttachMode[c] == SceneDb.AttachNone) continue;
+            if (cs == 0 || *(byte*)(cs + SeamLayout.GobPropagateHighlight) == 0) continue;
+            if (depth >= MaxShiftDepth) continue;
+            Shift(cid, cs, cs, colour, alpha, illum, true, depth + 1);
+        }
+        if (propagate) FireEvent(self, illum ? EventNames.PropagateIllumination : EventNames.PropagateColorShift, 0);
+    }
+
+    /// <summary>One object's own colour-shift or illumination words and columns.</summary>
+    private static void WriteShift(DbId id, nint shell, Vector3 colour, float alpha, bool illum)
+    {
+        int i = id.Index;
+        if (illum)
+        {
+            if (shell != 0)
+            {
+                *(short*)(shell + SeamLayout.GobIllumFlag) = 1;
+                float* e = (float*)(shell + SeamLayout.GobIllum);
+                e[0] = colour.X; e[1] = colour.Y; e[2] = colour.Z;
+            }
+            SceneDb.ObjEmissive[i] = colour;
+            Flag(id, SeamFlag.Illuminated, true);
+            SceneDb.Touch(id, Dirty.Material);
+            return;
+        }
+        if (shell != 0)
+        {
+            *(short*)(shell + SeamLayout.GobColourShiftFlag) = 1;
+            float* c = (float*)(shell + SeamLayout.GobColourShift);
+            c[0] = colour.X; c[1] = colour.Y; c[2] = colour.Z;
+            *(float*)(shell + SeamLayout.GobColourAlpha) = alpha;
+        }
+        // the pick reads the engine's alpha (a faded object is out of it); the draw, PlaceableHold's held one at 1
+        SceneDb.HitObjAlpha[i] = alpha;
+        SceneDb.ObjTint[i] = new Vector4(colour, shell != 0 && PlaceableHold.Held(shell) ? 1f : alpha);
+        Flag(id, SeamFlag.ColourShift, true);
+        SceneDb.Touch(id, Dirty.Material);
+    }
+
+    /// <summary>A grafted piece appended after its creature was shifted takes the shift it would have been
+    /// drawn with in the engine's one gob.</summary>
+    internal static void InheritShift(DbId child, DbId root)
+    {
+        int r = root.Index;
+        nint cs = Facade.ObjectShell(child), rs = Facade.ObjectShell(root);
+        if (Has(root, SeamFlag.ColourShift))
+        {
+            Vector4 t = SceneDb.ObjTint[r];
+            WriteShift(child, cs, new Vector3(t.X, t.Y, t.Z), rs != 0 ? *(float*)(rs + SeamLayout.GobColourAlpha) : t.W, false);
+        }
+        if (Has(root, SeamFlag.Illuminated)) WriteShift(child, cs, SceneDb.ObjEmissive[r], 0f, true);
+    }
+
 
     /// <summary><c>Gob::SetPropagateHighlightEffects</c> @0x444770: one byte at +0x1c, no event. On by default.</summary>
     [UnmanagedCallersOnly]

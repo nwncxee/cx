@@ -66,6 +66,7 @@ public sealed unsafe partial class ObjectSlots
         SceneDb.ObjSeamAppendHead[id.Index] = child;
         PltColors.Inherit(child, id);
         ObjectTex.InheritEnvMap(child, id);
+        InheritShift(child, id);
         // The engine force-enables the whole path to the graft, so a disabled ancestor cannot hide it.
         for (int p = at; p >= 0; p = SceneDb.PartParent[p]) SceneDb.PartEnabled[p] = true;
         // ...and sets the process flag, so the next Gob::ProcessGob re-gates the whole composition: the path

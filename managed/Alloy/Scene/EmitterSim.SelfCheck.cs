@@ -70,6 +70,26 @@ internal static unsafe partial class EmitterSim
         for (int i = 0; i < 60; i++) Tick(ref slot, ref e, 1f / 60f);
         check.Expect(slot.Live == 4, "one more second of a 3/s emitter is three more particles");
 
+        // ---- spawntype 1 is a trail: births follow the distance moved, and the p2p bit is no part of the
+        // choice (FountainEmitter::Update @0x4b1d9f). Oracle: hand-counted births for a literal move.
+        Reset();
+        e = Params(ModeFountain);
+        e.BirthRate = 10f; e.Life = 10f; e.Trail = true;
+        s = Slot0(in e);
+        slot = ref _tab[0];
+        for (int i = 0; i < 30; i++) Tick(ref slot, ref e, 1f / 60f);
+        check.Expect(slot.Live == 0, "a trail that does not move births nothing, however long it waits");
+        e.M.Pos = new Vector3(1f, 0f, 0f);
+        Tick(ref slot, ref e, 1f / 60f);
+        check.Expect(slot.Live == 10, "...and moved one metre at 10 a metre births ten, with no p2p target at all");
+        Reset();
+        e = Params(ModeFountain);
+        e.BirthRate = 3f; e.Life = 10f; e.Flags = FP2P;
+        s = Slot0(in e);
+        slot = ref _tab[0];
+        for (int i = 0; i < 21; i++) Tick(ref slot, ref e, 1f / 60f);
+        check.Expect(slot.Live == 1, "a p2p fountain of spawntype 0 births by time, target or not");
+
         // ---- lifetime and death, and the ORDER death leaves behind. An index-domain fade and the linked
         // render type both read the live slice as oldest-first, so a swap-remove would recolour the chain.
         Reset();
