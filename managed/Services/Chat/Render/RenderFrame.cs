@@ -5,6 +5,10 @@ using CX.Services.Chat.Core.Model;
 
 namespace CX.Services.Chat.Render;
 
+/// <summary>One piece of the native look: a <see cref="NativeChrome"/> part over a rect, tinted <c>rrggbbaa</c>.
+/// Laid out cold with the rest of the frame; the hot draw replays it through the live <see cref="Skin"/>.</summary>
+public readonly record struct SkinCmd(int Part, float X0, float Y0, float X1, float Y1, uint Rgba);
+
 /// <summary>One built chatbox frame: the interleaved verts + the metadata the animated draw needs. The
 /// body slice [<see cref="BodyStart"/>,<see cref="BodyEnd"/>) is the only part that fades/slides and is
 /// clipped to the body rect; everything outside it is static chrome. Built cold, drawn hot.</summary>
@@ -14,6 +18,10 @@ public sealed class RenderFrame
     public int Count;
     public List<PortraitQuad> Portraits = new();
     public List<LineSpanVerts> Spans = new();
+    /// <summary>The native look's game art for this frame, empty in the flat look. Commands below
+    /// <see cref="SkinOver"/> draw under the body, the rest over it (the open channel list).</summary>
+    public SkinCmd[] Skin = System.Array.Empty<SkinCmd>();
+    public int SkinOver;
     public int BodyStart, BodyEnd;    // vertex indices bounding the animated body slice
     public float Bx, By, Bw, Bh;      // body rect (px, y-down) -- the scissor for the body draw
     public bool Scrolled;             // active tab scrolled up (ScrollPx != 0): freeze the fade -- reading history

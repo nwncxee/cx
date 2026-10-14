@@ -108,32 +108,44 @@ internal sealed class CardPresenter
         _tip.Hover(found, "", hit.X, hit.Y, hit.Y + hit.H);
     }
 
+    /// <summary>True while a card on screen asks for the game's GUI art, so the owner arms its skin only then.</summary>
+    public bool WantsNative(bool playerNative)
+    {
+        if (_set == null) return false;
+        foreach (PanelDecl c in _set.Cards) if (c.St.WantsNative(playerNative)) return true;
+        return false;
+    }
+
     /// <summary>A press or a closed window: hide at once, no fade.</summary>
     public void Cut() { _tip.Cut(); _found = null; _gen = -1; }
 
     /// <summary>
-    /// Builds the layout when the card has just become visible or the font or scale moved, and places it. False when nothing is visible.
+    /// Builds the layout when the card has just become visible, the font or scale moved, or the look changed, and places it.
+    /// <paramref name="armed"/> is the owner's skin: native cards fall back to flat without it. False when nothing is visible.
     /// A frame that changes nothing allocates nothing.
     /// </summary>
-    public bool Prepare(float vw, float vh)
+    public bool Prepare(float vw, float vh, bool armed = false)
     {
         CardSet? set = _set;
         if (set == null || _tip.Alpha <= 0f) return false;
         float scale = Metrics.Scale;
-        int epoch = TextRig.AtlasEpoch;
-        if (_tip.Tick() || _rebuild || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale)
+        int epoch = TextRig.AtlasEpoch, theme = Theme.Epoch;
+        bool playerNative = Theme.IsNative, native = armed && WantsNative(playerNative);
+        if (_tip.Tick() || _rebuild || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale || set.ViewTheme != theme || set.ViewNative != native)
         {
             var views = new PanelView[set.Cards.Length];
             for (int i = 0; i < views.Length; i++)
             {
                 string own = set.Cards[i].Item;
                 uint oid = own.Length > 0 && uint.TryParse(own, System.Globalization.NumberStyles.AllowHexSpecifier, System.Globalization.CultureInfo.InvariantCulture, out uint d) ? d : _subject;
-                views[i] = PanelLayout.Build(set.Cards[i], scale, Face, oid == 0 ? default : SubjectOf(oid));
+                views[i] = PanelLayout.Build(set.Cards[i], scale, Face, oid == 0 ? default : SubjectOf(oid), armed && set.Cards[i].St.WantsNative(playerNative));
             }
             _rebuild = false;
             set.Views = views;
             set.ViewEpoch = epoch;
             set.ViewScale = scale;
+            set.ViewTheme = theme;
+            set.ViewNative = native;
         }
         CardPlacer.Place(set.Views!, _ex, _ey, _ew, _eh, vw, vh, scale, set.Cards.Length > 0 ? set.Cards[0].St : Fallback, _xs, _ys);
         return true;

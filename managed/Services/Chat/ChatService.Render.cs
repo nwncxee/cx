@@ -132,6 +132,10 @@ public sealed unsafe partial class ChatService
 
         if (GameGate.InGame)
         {
+            // Look edge: ui.look / ui.palette moved, or the native art's verdict changed -> re-lay every window's
+            // chrome. Probed first, so the build and this frame's draw agree on which look they are drawing.
+            ChatSkin.Probe(_log);
+            if (ChatSkin.LookChanged()) { DirtyAll(); Rebuild(); }
             // Scale edge: the frame host re-baked the atlas (ui.font or the game's UI scale moved) -> relay the chrome.
             if (Metrics.Scale != _appliedScale)
             {
@@ -277,7 +281,7 @@ public sealed unsafe partial class ChatService
         {
             ChatWindow src = wins[dragSrc];
             float gw = src.TabW;
-            frames[slot] = WindowRenderer.BuildGhostTab(atlas, src,
+            frames[slot] = WindowRenderer.BuildGhostTab(atlas,
                 _lastMx - gw * 0.5f, _lastMy - ChatWindow.TabBarH * 0.5f, gw, src.Active.Label);
         }
         // Quickbar chrome: band/borders/cog drawn first (under chat), settings panel drawn last (on top).
@@ -344,6 +348,7 @@ public sealed unsafe partial class ChatService
     private static void ResetSession()
     {
         ChatRenderer.ClearSessionState();   // crash-critical: freed engine textures must not carry over
+        ChatSkin.Rearm();                   // the next module's haks decide the native art again
         Dialog.DialogService.Close();       // drop any dialog left open by a mid-conversation disconnect
         _gmHour = -1;                        // drop the game clock: the next module re-anchors it
         // ponytail: racing a late-arriving ingest (disconnect teardown) can leave <=1 stale line; indices

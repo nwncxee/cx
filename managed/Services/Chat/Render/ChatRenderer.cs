@@ -290,6 +290,7 @@ public static unsafe class ChatRenderer
     private static void DrawFrame(Frame f, float* proj, float residual, System.DateTime now, System.DateTime ls)
     {
         RenderFrame rf = f.Rf;
+        DrawArt(rf, 0, rf.SkinOver);
         TextRig.BindText(proj);
         if (rf.BodyStart > 0) Gl.DrawArrays(Gl.TRIANGLES, 0, rf.BodyStart);
 
@@ -309,12 +310,29 @@ public static unsafe class ChatRenderer
             Gl.Disable(Gl.SCISSOR_TEST);
         }
 
+        DrawArt(rf, rf.SkinOver, rf.Skin.Length);
         int tail = _drawCount - rf.BodyEnd;
         if (tail > 0)
         {
-            TextRig.BindText(proj);   // the portrait pass switched program/VAO/buffer
+            TextRig.BindText(proj);   // the portrait and art passes switched program/VAO/buffer
             Gl.DrawArrays(Gl.TRIANGLES, rf.BodyEnd, tail);
         }
+    }
+
+    /// <summary>Replay one slice of a frame's native art through the live skin: one batch per part, one draw
+    /// per part. Nothing happens in the flat look, or while the art is refused. Hot, zero-alloc.</summary>
+    private static void DrawArt(RenderFrame rf, int from, int to)
+    {
+        if (from >= to) return;
+        Skin? skin = ChatSkin.Begin();
+        if (skin == null) return;
+        SkinCmd[] cmds = rf.Skin;
+        for (int i = from; i < to; i++)
+        {
+            SkinCmd c = cmds[i];
+            skin.Draw(c.Part, c.X0, c.Y0, c.X1, c.Y1, c.Rgba);
+        }
+        skin.Flush();
     }
 
     // ---- portrait pass ------------------------------------------------------------------

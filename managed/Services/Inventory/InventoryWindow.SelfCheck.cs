@@ -11,7 +11,7 @@ internal sealed partial class InventoryWindow
     /// <summary>Off-device: the model's fit rules, the layout at two scales and under a server policy, every drop rule,
     /// the page paging and the scrolled view, drops onto a tab, ctrl-click quick moves, the page stream (what is asked for
     /// when, loaders, blank pages refusing drops), the loot pane (placement, take / put / merge, its scroll and emit), the
-    /// search dim (Ctrl+F), stack counts, and a zero-alloc emit.</summary>
+    /// skin's part order, the search dim (Ctrl+F), stack counts, and a zero-alloc emit.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -373,6 +373,12 @@ internal sealed partial class InventoryWindow
             var blu = new VertexBatch(0f, 0f); var blo = new VertexBatch(0f, 0f);
             var licons = new InvIcon[64];
             Skin lskin = NewSkin();
+            // Oracle: the part names, hand-written -- the common chrome first, the inventory's own from NativeChrome.Count.
+            check.Expect(lskin.IndexOf("frame") == NativeChrome.Frame && lskin.IndexOf("buttonhot") == NativeChrome.ButtonHot
+                         && lskin.IndexOf("thumb") == NativeChrome.Thumb, "the native chrome's parts keep their own indices");
+            check.Expect(lskin.IndexOf("cell") == NativeChrome.Count && lskin.IndexOf("slider") == NativeChrome.Slider
+                         && lskin.IndexOf("sil." + InventoryModel.Slots[0].Id) == KSil, "the inventory's extras land after them");
+            check.Expect(lskin.IndexOf("scrollbar") < 0, "an undeclared part has no index");
             void ClearAll() { bu.Clear(); bo.Clear(); bgu.Clear(); bgo.Clear(); blu.Clear(); blo.Clear(); }
             w.Emit(bu, bo, bgu, bgo, blu, blo, lskin, latlas, latlas, licons);
             ClearAll();

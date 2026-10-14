@@ -11,12 +11,10 @@ internal static class InventoryKnobs
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, DragDrop, Search, Kilograms, Placed;
-    internal static readonly Knob<string> Look, Mode;
+    internal static readonly Knob<string> Mode;
     internal static readonly Knob<float> Size, X, Y;
     internal static readonly TextStyle Text;
 
-    /// <summary>The <see cref="Look"/> values: the game's own GUI art, or CX's flat palette.</summary>
-    internal const string LookNative = "native", LookFlat = "cx";
     /// <summary>The <see cref="Mode"/> values: vanilla page tabs, or one view scrolling through every page.</summary>
     internal const string ModeTabbed = "tabbed", ModeScrolled = "scrolled";
     private const float RectMax = 16384f;
@@ -27,8 +25,6 @@ internal static class InventoryKnobs
             masterHelp: "The inventory in CX's own window: the vanilla layout, sharp at any resolution, tabs or one view scrolling through every page, search. Off, the stock panel runs.",
             masterDefault: false, masterChanged: InventoryService.MasterChanged, order: 242, title: "Inventory");
         Enabled = G.Master!;
-        Look = G.Dropdown("look", "Look", new[] { LookNative, LookFlat }, LookNative, new[] { "Game art", "CX flat" },
-                          help: "Game art draws the window with NWN's own GUI textures (a server may re-skin it); CX flat uses the settings panel's palette.");
         Size = G.Slider("size", "Size", 0.75f, 3f, 0.05f, 1f, "x",
                         help: "Scale over the UI font scale. The window shrinks itself to fit the screen.", changed: InventoryService.Relayout);
         Mode = G.Dropdown("mode", "Pages", new[] { ModeTabbed, ModeScrolled }, ModeScrolled, new[] { "Tabs", "Scroll" },

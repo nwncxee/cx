@@ -61,6 +61,13 @@ internal static class CardSelfCheck
         return PanelLayout.Build(cards[0], 1f, m => (atlas, m), default);
     }
 
+    /// <summary>The card laid out in the game's GUI art, as an owner with an armed skin asks for it.</summary>
+    private static PanelView LayN(GlyphAtlas atlas, string cardJson)
+    {
+        PanelParser.TryParse(cardJson, out PanelDecl[] cards, out _);
+        return PanelLayout.Build(cards[0], 1f, m => (atlas, m), default, native: true);
+    }
+
     private static NuiHit Hit(string token, int row = -1, string image = "", float x = 50f, float y = 40f, float w = 30f, float h = 30f)
     {
         var hit = new NuiHit { Element = (IntPtr)1, Row = row, X = x, Y = y, W = w, H = h };
@@ -79,6 +86,8 @@ internal static class CardSelfCheck
         Placement(check);
         Styled(check, atlas);
         StyleRegistry(check, log);
+        Roles(check, log);
+        Looks(check, atlas, log);
         Registry(check, log);
         Presenting(check, atlas, log);
         log.Info(check.Ok ? "CardSelfCheck: passed" : "CardSelfCheck: FAILED");
@@ -107,7 +116,7 @@ internal static class CardSelfCheck
         bool order = c.Blocks.Length == kinds.Length;
         for (int i = 0; order && i < kinds.Length; i++) order = c.Blocks[i].Kind == kinds[i];
         check.Expect(order, "the blocks come back in order, an unknown type as text");
-        check.Expect(c.St.BgFrom == 0x102030FF && c.St.BgTo == 0x304050FF && c.St.Dir == BgDir.Vertical && c.St.Border == 0xAABBCCFF && c.Tab == "Equipped" && c.St.Width == 240f && c.Item == "1f",
+        check.Expect(c.St.BgFrom == 0x102030FF && c.St.BgTo is { } far && far == 0x304050FF && c.St.Dir == BgDir.Vertical && c.St.Border == 0xAABBCCFF && c.Tab == "Equipped" && c.St.Width == 240f && c.Item == "1f",
             "card fields: gradient, border, tab, width, item");
         check.Expect(c.Blocks[0].Color == 0x3399FFFF && c.Blocks[0].Size == 1.3f && c.Blocks[1].Size == 0.85f && c.Blocks[1].Color == 0xFFFFFF99, "a declared colour and size, a dim line");
         check.Expect(c.Blocks[7].Runs[0].Italic && c.Blocks[7].Runs[1].Italic, "italic on the block makes every run italic");
@@ -208,9 +217,12 @@ internal static class CardSelfCheck
         check.Expect(d.Pad == 10f && d.Gap == 4f && d.TextGap == 2f && d.StatusGap == 6f && d.IconGap == 4f && d.FrameInset == 2f && d.DividerMargin == 3f && d.SectionPad == 6f
             && d.FooterPad == 5f && d.FooterSplit == 0.62f && d.TabX == 8f && d.TabPad == 6f && d.TabExtra == 4f && d.TabDrop == 2f && d.StatusPx == 22f && d.IconsPx == 28f && d.ImageSize == 64f,
             "an empty style is every spacing the cards had before");
-        check.Expect(d.Text == 0xE6E6E6FF && d.BgFrom == 0x12161CF2 && d.Border == 0x6E6E6EFF && d.Divider == 0xFFFFFF30 && d.FooterBand == 0x00000066 && d.FrameFill == 0x00000066
-            && d.FrameLine == 0xB8B8B8C0 && d.TabBg == 0x000000B0 && d.DimAlpha == 0x99 && d.PulseMin == 0.35f && d.PulsePeriodMs == 1200f && d.Width == 300f && d.MinWidth == 160f && d.MaxWidth == 480f,
-            "and every colour, the pulse and the width range");
+        check.Expect(d.Text.Role == Role.Tx && d.Text.Alpha == 0xFF && d.BgFrom.Role == Role.PanelBg && d.BgFrom.Alpha == 0xF2 && d.Border.Role == Role.Border
+            && d.FrameLine.Role == Role.Grip && d.FrameLine.Alpha == 0xC0 && d.TabBg.Role == Role.MasterBg && d.TabBg.Alpha == 0xB0,
+            "a colour nobody set follows the player's look: text, background, border, icon frame and tab by role");
+        check.Expect(!d.Divider.IsRole && d.Divider == 0xFFFFFF30 && d.FooterBand == 0x00000066 && d.FrameFill == 0x00000066 && !d.TabText.Set && !d.Shadow.Set && !d.Glow.Set
+            && d.DimAlpha == 0x99 && d.PulseMin == 0.35f && d.PulsePeriodMs == 1200f && d.Width == 300f && d.MinWidth == 160f && d.MaxWidth == 480f,
+            "the washes stay as written, the optional colours unset, and the pulse and width range hold");
         check.Expect(d.Side == Side.Right && d.Flip && d.Offset == 8f && d.CardGap == 8f && d.Delay < 0f && d.FadeIn < 0f && d.Sizes.Length == 7 && d.Sizes[0] == 0.7f && d.Sizes[6] == 2f, "the placement, the player's own delay and the seven sizes");
 
         check.Expect(Near(LayS(atlas, "{\"pad\":4,\"textgap\":6}", "{\"width\":200,\"blocks\":[{\"text\":\"ab\"}]}").H, 4f + 20f + 6f + 4f), "pad 4 and text gap 6: 4 + 20 + 6 + 4 = 34");
@@ -283,6 +295,80 @@ internal static class CardSelfCheck
         check.Expect(!PanelParser.TryParse("{\"images\":[1]}", out _, out string why) && why == "an image is a JSON object"
                      && !PanelParser.TryParse("{\"images\":[null]}", out _, out _), "an image that is a number or null is refused, not thrown");
         check.Expect(!PanelParser.TryParse("{\"blocks\":[{\"text\":\"\\ud800\"}]}", out _, out why) && why.Length > 0, "a lone surrogate in a text is refused, not thrown");
+    }
+
+    /// <summary>
+    /// Oracle: the role names, alpha bytes and hex colours written into each check by hand, and the palette <see cref="Theme"/>
+    /// holds for a role, which no part of the parser computes.
+    /// </summary>
+    private static void Roles(Checker check, ExtenderLog log)
+    {
+        Paint border = StyleOf("{\"border\":\"@accent\"}").Border;
+        check.Expect(border.IsRole && border.Role == Role.Accent && border.Alpha == 0xFF, "@accent is kept as the accent role, opaque");
+        Paint half = StyleOf("{\"border\":\"@accent/80\"}").Border;
+        check.Expect(half.IsRole && half.Role == Role.Accent && half.Alpha == 0x80, "@accent/80 is the same role at half opacity");
+        check.Expect((uint)half == (Theme.Rgb(Role.Accent) << 8 | 0x80u) && (uint)border == Theme.Rgba(Role.Accent), "a role reads as the look's colour at the written opacity");
+        Paint flat = StyleOf("{\"border\":\"#112233\"}").Border;
+        check.Expect(!flat.IsRole && flat == 0x112233FFu && StyleOf("{\"border\":\"#11223344\"}").Border == 0x11223344u, "a colour written as hex is still exactly that colour");
+        check.Expect(PanelParser.TryParse("{\"blocks\":[{\"text\":\"a\",\"color\":\"@tx2\"}]}", out PanelDecl[] cards, out _) && cards[0].Blocks[0].Color.Role == Role.Tx2,
+            "a block colour takes a role too");
+        check.Expect(PanelParser.TryParse("{\"blocks\":[{\"text\":\"a\",\"color\":\"@tx2\",\"dim\":true}]}", out cards, out _) && cards[0].Blocks[0].Color.Role == Role.Tx2 && cards[0].Blocks[0].Color.Alpha == 0x99,
+            "a dim block keeps its role and takes the dim opacity");
+        check.Expect(PanelMarkup.TryParse("<c=@accent/80>x", out Run[] r, out _) && r.Length == 1 && r[0].Rgba.Role == Role.Accent && r[0].Rgba.Alpha == 0x80, "<c=@accent/80> colours a run by role");
+        check.Expect(PanelMarkup.TryParse("<c=@bogus>x", out r, out _) && r.Length == 1 && r[0].Text == "<c=@bogus>x", "an unknown role in markup stays as typed");
+        foreach (string wrong in new[] { "@bogus", "@", "@accent/", "@accent/8", "@accent/8g", "@accent/800", "accent", "@7" })
+            check.Expect(!PanelParser.TryParseStyle("{\"border\":\"" + wrong + "\"}", out _, out string why) && why.Contains("@role", StringComparison.Ordinal), $"'{wrong}' refuses the style like any bad colour");
+
+        CardRegistry.Reset();
+        CardRegistry.Init(log);
+        PolicyRefusals.ForgetPrefix("");
+        ServerPolicy.Apply("cardstyle={\"border\":\"@bogus\"}");
+        PolicyRefusal[] refused = PolicyRefusals.All();
+        check.Expect(refused.Length == 1 && refused[0].Kind == RefusalKind.Style && refused[0].Key == "cardstyle" && refused[0].Reason.Contains("@role", StringComparison.Ordinal),
+            "an unknown role is logged as a style refusal, with the colour forms in its reason");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
+    }
+
+    /// <summary>
+    /// Oracle: the three look words and the refusal text written out by hand, rectangle counts counted on the test
+    /// face (an empty card is one background quad and four border rects flat, one skin part native), and
+    /// <see cref="Theme"/>'s own look for <c>auto</c>.
+    /// </summary>
+    private static void Looks(Checker check, GlyphAtlas atlas, ExtenderLog log)
+    {
+        check.Expect(StyleOf("{}").Look == CardLook.Auto && StyleOf("{\"look\":\"native\"}").Look == CardLook.Native && StyleOf("{\"look\":\"flat\"}").Look == CardLook.Flat,
+            "look parses as auto, native or flat, and auto is the default");
+        check.Expect(!PanelParser.TryParseStyle("{\"look\":\"shiny\"}", out _, out string why) && why == "look 'shiny' is auto, native or flat", $"an unknown look refuses the style: '{why}'");
+        check.Expect(!PanelParser.TryParse("{\"look\":\"shiny\",\"blocks\":[]}", out _, out _) && PanelParser.TryParse("{\"look\":\"native\",\"blocks\":[]}", out PanelDecl[] own, out _) && own[0].St.Look == CardLook.Native,
+            "a card carries its own look, and a bad one refuses the card");
+        PanelStyle auto = StyleOf("{}"), native = StyleOf("{\"look\":\"native\"}"), flat = StyleOf("{\"look\":\"flat\"}");
+        check.Expect(auto.WantsNative(true) && !auto.WantsNative(false) && native.WantsNative(false) && !flat.WantsNative(true), "auto follows the player, native and flat decide for themselves");
+        check.Expect(auto.WantsNative(Theme.IsNative) == Theme.IsNative, "a card with no look of its own wears what the player chose");
+
+        PanelView art = LayN(atlas, "{\"width\":200,\"blocks\":[]}");
+        check.Expect(art.Back.VertexCount == 0 && art.Art.Count == 1 && art.Art[0].Part == NativeChrome.Frame
+                     && art.Art[0].X0 == 0f && Near(art.Art[0].X1, 200f) && Near(art.Art[0].Y1, art.H), "native: no background or border rects, one frame part over the whole card");
+        check.Expect(LayS(atlas, "{}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 && LayS(atlas, "{}", "{\"width\":200,\"blocks\":[]}").Art.Count == 0,
+            "flat: the background quad and four border rects, no art");
+        PanelView tab = LayN(atlas, "{\"width\":200,\"tab\":\"t\",\"blocks\":[]}");
+        check.Expect(tab.Art.Count == 2 && tab.Art[1].Part == NativeChrome.Tab && Near(tab.Art[1].Y1, 0f) && Near(tab.Art[1].Y0, -tab.TabH), "native: the tab band is the header art above the card");
+        PanelView boxes = LayN(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"icons\":[\"a\",\"b\",\"c\"],\"frame\":true}]}");
+        check.Expect(boxes.Art.Count == 4 && boxes.Back.VertexCount == 0 && boxes.Art[3].Part == NativeChrome.Frame, "native: a framed icon row draws three frame parts and no fills");
+        check.Expect(LayN(atlas, "{\"width\":200,\"glow\":\"#00ffff80\",\"corners\":\"#ffffff\",\"border2\":\"#ffffff\",\"bg\":\"#ff0000\",\"border\":\"#00ff00\",\"blocks\":[]}").Back.VertexCount == 0,
+            "native: a glow, corner brackets, a second border and the flat bg and border colours are all left to the art");
+        check.Expect(LayN(atlas, "{\"width\":200,\"shadow\":\"#000000\",\"blocks\":[{\"text\":\"ab\"}]}").Text.VertexCount == 24, "native: the text shadow still draws every glyph twice");
+
+        CardRegistry.Reset();
+        CardRegistry.Init(log);
+        PolicyRefusals.ForgetPrefix("");
+        ServerPolicy.Apply("cardstyle={\"look\":\"shiny\"}");
+        PolicyRefusal[] refused = PolicyRefusals.All();
+        check.Expect(refused.Length == 1 && refused[0].Kind == RefusalKind.Style && refused[0].Reason == "look 'shiny' is auto, native or flat", "an unknown look is logged as a style refusal");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
     }
 
     /// <summary>Oracle: lines typed into the checks; a card sent before the style, a style sent first, and a bad style, with the paddings read back.</summary>

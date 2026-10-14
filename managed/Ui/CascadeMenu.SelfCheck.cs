@@ -250,7 +250,7 @@ public sealed partial class CascadeMenu
         m.MouseMove(110f, 5f);
         check.Expect(m.DropLevel == -1, "drill: nowhere else is a target");
         m.MouseUp();
-        var dst = CascadeStyle.Default;
+        var dst = CascadeStyle.Current;
         m.Draw(b2 ??= new VertexBatch(atlas.SolidU, atlas.SolidV), atlas, 15f, in dst);
         check.Expect(m.Icons.Length == 0, "drill: the hidden root's icon is not reported");
         check.Expect(m.Key(KeyLeft).Kind == CascadeActionKind.None && m.Depth == 1 && m.Key(KeyEscape).Kind == CascadeActionKind.CloseAll, "drill: Left goes up, Esc at the root closes");
@@ -258,7 +258,7 @@ public sealed partial class CascadeMenu
 
         // Icons: reported for rows with icons only, inside the row's square; draw allocates nothing.
         var b = b2 ?? new VertexBatch(atlas.SolidU, atlas.SolidV);
-        var st = CascadeStyle.Default;
+        var st = CascadeStyle.Current;
         m.OpenAt(root, 100f, 100f, atlas, vpW, vpH);
         m.Draw(b, atlas, 15f, in st);
         check.Expect(m.Icons.Length == 1 && m.Icons[0].Resref == "ir_x" && m.Icons[0].X == l0.X + IconInset && m.Icons[0].Y == m.RowTop(0, 1) + IconInset

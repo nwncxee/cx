@@ -87,6 +87,9 @@ public sealed unsafe partial class RadialService : IExtenderService
     private const string CloseLeaf = "leaf", CloseEsc = "esc", CloseAway = "away", CloseArea = "area", CloseReenter = "reenter",
                          CloseOff = "off", CloseFont = "font";
     private static CascadeStyle _style;
+    /// <summary>The menu's art for the native look; the cascade and the row popup each flush it before the other
+    /// begins, so one skin serves both.</summary>
+    private static readonly Skin _skin = NativeChrome.NewSkin();
 
     private static readonly string[] RequiredSymbols =
     {
@@ -927,12 +930,13 @@ public sealed unsafe partial class RadialService : IExtenderService
         VertexBatch b = _batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
         b.Outline = RadialKnobs.Font.HaloPx;
-        uint text = RadialKnobs.Text.V;
-        _style.Bg = CascadeStyle.Rgba(RadialKnobs.Bg.V); _style.Frame = CascadeStyle.Rgba(RadialKnobs.Frame.V);
-        _style.Hover = CascadeStyle.Rgba(RadialKnobs.Hover.V);
-        _style.TextRgb = text >> 8; _style.TextAlpha = (text & 0xFF) / 255f; _style.Alpha = RadialKnobs.Opacity.V;
+        _style = CascadeStyle.Current;
+        _style.Alpha = RadialKnobs.Opacity.V;
         _style.AnimMs = RadialKnobs.Anim.V ? RadialKnobs.AnimMs.V : 0; _style.NowMs = Environment.TickCount64;
-        _menu.Draw(b, atlas, atlas.Ascent, in _style);
+        Skin? skin = Theme.IsNative && _skin.Arm(_log, "") ? _skin : null;
+        skin?.Begin();
+        _menu.Draw(b, atlas, atlas.Ascent, in _style, skin);
+        skin?.Flush();
         TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
         foreach (IconQuad q in _menu.Icons)
         {
@@ -943,7 +947,9 @@ public sealed unsafe partial class RadialService : IExtenderService
         VertexBatch cb = _ctxBatch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);   // after the icons: the popup is on top of everything
         cb.Reset(atlas.SolidU, atlas.SolidV);
         cb.Outline = b.Outline;
-        _ctx.Draw(cb, atlas, atlas.Ascent, in _style);
+        skin?.Begin();
+        _ctx.Draw(cb, atlas, atlas.Ascent, in _style, skin);
+        skin?.Flush();
         TextRig.DrawBatch(cb.AsSpan(), cb.VertexCount);
     }
 

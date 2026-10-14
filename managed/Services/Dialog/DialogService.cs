@@ -98,6 +98,9 @@ public sealed unsafe class DialogService : IExtenderService
     /// drops the instant a reply is chosen. False during the fade-out, so a closing window lets clicks through.</summary>
     public static bool IsOpen => _visible;
 
+    /// <summary>The window's art for the native look; one window, one skin.</summary>
+    private static readonly Skin _skin = NativeChrome.NewSkin();
+
     private static CloseDialogFn _closeOrig;
     private static ShowDialogEntryFn _entryOrig;
     private static ShowDialogRepliesFn _repliesOrig;
@@ -318,7 +321,7 @@ public sealed unsafe class DialogService : IExtenderService
                 DialogFrame? f = _frame;
                 if (f != null && ScrollGeom(f, out float trackTop, out float thumbH, out float maxScroll))
                 {
-                    float travel = _bodyHPub - thumbH;
+                    float travel = ScrollTravel(thumbH);
                     if (travel > 0f)
                     {
                         float sp = _gScroll + (y - _gy) * maxScroll / travel;
@@ -355,6 +358,11 @@ public sealed unsafe class DialogService : IExtenderService
                 float titleH = f.TitleH;
                 bool locked = DialogKnobs.Lock.V;
                 if (OverThumb(f, x, y)) { _pressConsumed = true; _grab = Grab.Scroll; _gy = y; _gScroll = _scroll; return true; }
+                if (ArrowStep(f, x, y) is float step and not 0f)
+                {
+                    float max = System.Math.Max(0f, f.ContentH - _bodyHPub);
+                    _scroll = System.Math.Clamp(_scroll + step, 0f, max); _pressConsumed = true; return true;
+                }
                 if (!locked && OverGrip(f, x, y))
                 { _pressConsumed = true; SeedRect(f); _grab = Grab.Resize; _gx = x; _gy = y; _gw = DialogKnobs.W.V; _gh = DialogKnobs.MaxHeight.V; return true; }
                 if (!locked && In(f.PanelX, f.PanelY, f.PanelW, titleH, x, y))
@@ -474,11 +482,36 @@ public sealed unsafe class DialogService : IExtenderService
         float bodyH = _bodyHPub, contentH = f.ContentH;
         if (contentH <= DialogKnobs.MaxHeight.V + 0.5f || bodyH <= 0f) return false;   // only scroll past the breakpoint
         maxScroll = contentH - bodyH; if (maxScroll < 0f) maxScroll = 0f;
-        thumbH = System.Math.Max(SbMinThumb, bodyH * bodyH / contentH);
         float bodyTop = f.PanelY + f.TitleH;
+        if (Theme.IsNative)
+        {
+            float sx = f.PanelX + f.PanelW - ScrollbarW;
+            if (!NativeChrome.ThumbRect(sx, bodyTop, f.PanelX + f.PanelW, bodyTop + bodyH, _scroll, bodyH, contentH,
+                                        out _, out float ny0, out _, out float ny1)) return false;
+            thumbTop = ny0; thumbH = ny1 - ny0;
+            return true;
+        }
+        thumbH = System.Math.Max(SbMinThumb, bodyH * bodyH / contentH);
         float frac = maxScroll > 0f ? _scroll / maxScroll : 0f;
         thumbTop = bodyTop + frac * (bodyH - thumbH);
         return true;
+    }
+
+    /// <summary>Thumb travel for a <paramref name="thumbH"/>-tall thumb: the body less both arrows and the thumb's
+    /// own padding in the game-art look, else the plain body.</summary>
+    private static float ScrollTravel(float thumbH)
+    {
+        float t = Theme.IsNative ? _bodyHPub - 2f * ScrollbarW - 2f * NativeChrome.PadY - thumbH : _bodyHPub - thumbH;
+        return t > 0f ? t : 0f;
+    }
+
+    /// <summary>The scroll a press on the game-art bar's arrows asks for (a tenth of the body, as nuklear); 0 elsewhere.</summary>
+    private static float ArrowStep(DialogFrame f, float x, float y)
+    {
+        if (!Theme.IsNative || !ScrollGeom(f, out _, out _, out _)) return 0f;
+        float x1 = f.PanelX + f.PanelW, y0 = f.PanelY + f.TitleH;
+        if (x < x1 - ScrollbarW || x >= x1 || y < y0 || y >= y0 + _bodyHPub) return 0f;
+        return NativeChrome.Arrow(y0, y0 + _bodyHPub, ScrollbarW, y) * _bodyHPub * NativeChrome.ArrowStep;
     }
 
     private static bool OverThumb(DialogFrame f, float x, float y)
@@ -712,18 +745,33 @@ public sealed unsafe class DialogService : IExtenderService
         int n = 0;
         float su = atlas.SolidU, sv = atlas.SolidV;
         float panelH = titleH + bodyH;
-        EmitRect(ref n, su, sv, panelX, panelY, panelX + panelW, panelY + panelH, BgCol);
-        // title band + separator
-        EmitRect(ref n, su, sv, panelX, panelY, panelX + panelW, panelY + titleH, HeaderCol);
-        EmitRect(ref n, su, sv, panelX, panelY + titleH - 0.5f, panelX + panelW, panelY + titleH + 0.5f, SepCol);
-        // borders
-        EmitBorder(ref n, su, sv, panelX, panelY, panelW, panelH);
+        Skin? skin = Theme.IsNative && _skin.Arm(_log, "") ? _skin : null;
+        skin?.Begin();
+        uint tint = NativeChrome.White(chromeA);
+        if (skin != null)
+        {
+            skin.Draw(NativeChrome.Frame, panelX, panelY, panelX + panelW, panelY + panelH, tint);
+            skin.Draw(NativeChrome.Header, panelX, panelY, panelX + panelW, panelY + titleH, tint);
+        }
+        else
+        {
+            EmitRect(ref n, su, sv, panelX, panelY, panelX + panelW, panelY + panelH, BgCol);
+            // title band + separator
+            EmitRect(ref n, su, sv, panelX, panelY, panelX + panelW, panelY + titleH, HeaderCol);
+            EmitRect(ref n, su, sv, panelX, panelY + titleH - 0.5f, panelX + panelW, panelY + titleH + 0.5f, SepCol);
+            // borders
+            EmitBorder(ref n, su, sv, panelX, panelY, panelW, panelH);
+        }
         // scrollbar
         if (scrollable && ScrollGeom(f, out float thumbTop, out float thumbH, out _))
         {
             float sx = panelX + panelW - ScrollbarW;
-            EmitRect(ref n, su, sv, sx, bodyTop, panelX + panelW, bodyTop + bodyH, TrackBgCol);
-            EmitRect(ref n, su, sv, sx, thumbTop, panelX + panelW, thumbTop + thumbH, KnobCol);
+            if (skin != null) NativeChrome.Scrollbar(skin, sx, bodyTop, panelX + panelW, bodyTop + bodyH, scroll, bodyH, contentH, _grab == Grab.Scroll);
+            else
+            {
+                EmitRect(ref n, su, sv, sx, bodyTop, panelX + panelW, bodyTop + bodyH, TrackBgCol);
+                EmitRect(ref n, su, sv, sx, thumbTop, panelX + panelW, thumbTop + thumbH, KnobCol);
+            }
         }
         // resize grip
         if (!DialogKnobs.Lock.V)
@@ -733,6 +781,7 @@ public sealed unsafe class DialogService : IExtenderService
                 EmitRect(ref n, su, sv, panelX + panelW - o - 1f, panelY + panelH - ResizeGripPx + o,
                          panelX + panelW - o, panelY + panelH - o, GripCol);
             }
+        skin?.Flush();
         TextRig.DrawBatch(_chrome, n / VertexBatch.Floats, chromeA);
 
         // 2. content: clipped to the body, offset by (bodyTop - scroll), faded.
@@ -773,20 +822,32 @@ public sealed unsafe class DialogService : IExtenderService
 
     // Layout constants (design px; the atlas is baked at the game's UI scale, so glyph metrics already scale).
     private const float PanelPad = 14f, ReplyGap = 6f, SepGap = 10f, BottomMargin = 90f, BorderW = 1f;
-    private const float ResizeGripPx = 16f, ScrollbarW = 9f, SbMinThumb = 24f, TitlePadY = 3f;
+    private const float ResizeGripPx = 16f, SbMinThumb = 24f, TitlePadY = 3f;
+    private const float FlatBarPx = 9f;
     private const float PortraitRows = 4.2f;
-    private static readonly (float r, float g, float b, float a) BgCol = (0.04f, 0.05f, 0.08f, 0.93f);
-    private static readonly (float r, float g, float b, float a) HeaderCol = (0.09f, 0.12f, 0.17f, 0.96f);
-    private static readonly (float r, float g, float b, float a) BorderCol = (0.33f, 0.44f, 0.60f, 0.95f);
-    private static readonly (float r, float g, float b, float a) SepCol = (0.30f, 0.36f, 0.46f, 0.8f);
-    private static readonly (float r, float g, float b, float a) HoverCol = (0.20f, 0.34f, 0.52f, 0.55f);
-    private static readonly (float r, float g, float b, float a) SelCol = (0.22f, 0.40f, 0.62f, 0.70f);   // text-selection highlight
-    private static readonly (float r, float g, float b, float a) TrackBgCol = (0.10f, 0.13f, 0.18f, 0.7f);
-    private static readonly (float r, float g, float b, float a) KnobCol = (0.42f, 0.54f, 0.72f, 0.95f);
-    private static readonly (float r, float g, float b, float a) GripCol = (0.40f, 0.50f, 0.64f, 0.8f);
-    private const uint NpcRgb = 0xF2F2F2, ReplyRgb = 0xE0E4EA, ReplyHoverRgb = 0xFFFFFF;  // not-an-offset: a colour
-    private const uint NumRgb = 0xFFD200, DimRgb = 0x7A7E86;  // not-an-offset: a colour
-    private const uint NameRgb = 0xEAF0F8;  // not-an-offset: a colour
+
+    /// <summary>The scrollbar gutter: NUI's bar in the game-art look, else the flat one. Layout, draw and
+    /// hit-test all read it, so the three never disagree.</summary>
+    private static float ScrollbarW => Theme.IsNative ? NativeChrome.BarWidth(Metrics.Scale) : FlatBarPx;
+
+    // The window's colours by role, re-read per frame so a look or palette change shows on the next one.
+    private static (float r, float g, float b, float a) BgCol => PanelChrome.C(Theme.Rgb(Role.PanelBg), 0.93f);
+    private static (float r, float g, float b, float a) HeaderCol => PanelChrome.C(Theme.Rgb(Role.HeaderBg), 0.96f);
+    private static (float r, float g, float b, float a) BorderCol => PanelChrome.C(Theme.Rgb(Role.Border), 0.95f);
+    private static (float r, float g, float b, float a) SepCol => PanelChrome.C(Theme.Rgb(Role.Frame), 0.8f);
+    private static (float r, float g, float b, float a) HoverCol => PanelChrome.C(Theme.Rgb(Role.Accent), 0.55f);
+    /// <summary>The text-selection highlight.</summary>
+    private static (float r, float g, float b, float a) SelCol => PanelChrome.C(Theme.Rgb(Role.Selected), 0.7f);
+    private static (float r, float g, float b, float a) TrackBgCol => PanelChrome.C(Theme.Rgb(Role.Track), 0.7f);
+    private static (float r, float g, float b, float a) KnobCol => PanelChrome.C(Theme.Rgb(Role.Accent2), 0.95f);
+    private static (float r, float g, float b, float a) GripCol => PanelChrome.C(Theme.Rgb(Role.Grip), 0.8f);
+    private static uint NpcRgb => Theme.Rgb(Role.Hi);
+    private static uint ReplyRgb => Theme.Rgb(Role.Tx);
+    private static uint ReplyHoverRgb => Theme.Rgb(Role.Hi);
+    private static uint DimRgb => Theme.Rgb(Role.Off);
+    private static uint NameRgb => Theme.Rgb(Role.Hi);
+    /// <summary>The reply numbering, vanilla's own gold whatever the look.</summary>
+    private const uint NumRgb = 0xFFD200;  // not-an-offset: a colour
 
     /// <summary>The window's text face: <c>dialog.font</c> / <c>dialog.typeface</c>, else the UI face (a miss bakes
     /// on the pool, and the re-bake rebuilds the window).</summary>

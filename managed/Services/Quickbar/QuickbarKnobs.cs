@@ -12,16 +12,13 @@ internal static class QuickbarKnobs
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Bars, Hidden, Compass, Replace, Labels, Placed, Locked, LockSlots;
     internal static readonly Knob<int> Align, Rows;
-    internal static readonly Knob<string> Look, Arrange;
+    internal static readonly Knob<string> Arrange;
     internal static readonly Knob<float> Size, GapX, GapY, X, Y;
     /// <summary>The key rows of the plain, Shift and Ctrl sets.</summary>
     internal static readonly Knob<string>[] Keys;
     /// <summary>The flat look's colours, RGBA.</summary>
-    internal static readonly Knob<uint> BgCol, BorderCol, SlotCol, SlotBorderCol, HoverCol, LabelCol, CountCol;
     internal static readonly TextStyle Text;
 
-    /// <summary>The <see cref="Look"/> values, as the inventory's.</summary>
-    internal const string LookNative = "native", LookFlat = "cx";
     /// <summary>The <see cref="Arrange"/> values.</summary>
     internal const string Stacked = "stacked", SideBySide = "side";
     /// <summary>The stock F1..F12 row each set's keys default to, with the set's modifier in front.</summary>
@@ -61,18 +58,8 @@ internal static class QuickbarKnobs
                         help: "Space between two buttons side by side, before Size scales it.");
         GapY = G.Slider("gapy", "Spacing down", 0f, 24f, 1f, QuickbarLayout.GapPx, "px", Tier.Advanced, changed: QuickbarService.Relayout,
                         help: "Space between two stacked rows of buttons, before Size scales it.");
-        Look = G.Dropdown("look", "Look", new[] { LookNative, LookFlat }, LookNative, new[] { "Game art", "CX flat" },
-                          help: "Game art draws the bar with NWN's own GUI textures (a server may re-skin it); CX flat uses the colours under CX quickbar colours.");
         Labels = G.Toggle("labels", "Show key labels", true, help: "Each button's key in its corner.");
         Text = new TextStyle(G, "the CX quickbar", sized: false, outline: 1, changed: QuickbarService.Relayout);
-        G.Section("CX quickbar colours");
-        BgCol = G.Swatch("bgcol", "Background", 0x0d0f17e6u, Tier.Advanced, help: "Behind the buttons, in the CX flat look.");
-        BorderCol = G.Swatch("bordercol", "Border", 0x2a3350ffu, Tier.Advanced, help: "The 1 px edge around the bar, in the CX flat look.");
-        SlotCol = G.Swatch("slotcol", "Button", 0x05060affu, Tier.Advanced, help: "Each button's fill, in the CX flat look.");
-        SlotBorderCol = G.Swatch("slotbordercol", "Button edge", 0x3a4460ffu, Tier.Advanced, help: "Each button's 1 px edge, in the CX flat look.");
-        HoverCol = G.Swatch("hovercol", "Highlight", 0xffffff26u, Tier.Advanced, help: "Over the button under the pointer.");
-        LabelCol = G.Swatch("labelcol", "Key labels", 0x8a93a6ffu, Tier.Advanced, help: "The key in each button's corner.");
-        CountCol = G.Swatch("countcol", "Counts", 0xeaf0f8ffu, Tier.Advanced, help: "Charges and stack counts.");
         G.Section("CX quickbar keys");
         Keys = new Knob<string>[QuickbarLayout.Sets];
         string[] keyNames = { "keys", "shiftkeys", "ctrlkeys" }, keyLabels = { "Plain keys", "Shift set keys", "Ctrl set keys" };

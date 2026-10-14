@@ -15,7 +15,8 @@ namespace CX.Services.Perf;
 public sealed class StreamingBarService : IExtenderService
 {
     private const float Pad = 4f;
-    private const uint CaptionRgb = 0xE8E4DA;   // not-an-offset: a colour
+    /// <summary>The caption's colour by role; the pill and the bar follow the same look.</summary>
+    private static uint CaptionRgb => Theme.Rgb(Role.Hi);
 
     private static readonly VertexBatch _b = new(0f, 0f);
     private static readonly char[] _text = new char[96];
@@ -108,17 +109,18 @@ public sealed class StreamingBarService : IExtenderService
         float x0 = (w - pillW) * 0.5f, y0 = 6f * s;
 
         _b.Reset(atlas.SolidU, atlas.SolidV);
-        _b.Rect(x0, y0, x0 + pillW, y0 + pillH, 0f, 0f, 0f, 0.55f);
+        PanelChrome.Fill(_b, x0, y0, x0 + pillW, y0 + pillH, Theme.Rgb(Role.PanelBg), 0.55f);
         float tx = x0 + (pillW - textW) * 0.5f, baseline = y0 + pad + atlas.Ascent;
-        float r = ((CaptionRgb >> 16) & 0xFF) / 255f, gg = ((CaptionRgb >> 8) & 0xFF) / 255f, bb = (CaptionRgb & 0xFF) / 255f;
+        uint caption = CaptionRgb;
+        float r = ((caption >> 16) & 0xFF) / 255f, gg = ((caption >> 8) & 0xFF) / 255f, bb = (caption & 0xFF) / 255f;
         for (int i = 0; i < _textLen; i++)
         {
             if (atlas.TryGet(_text[i], out Glyph gl)) { _b.Glyph(gl, tx, baseline, r, gg, bb, 1f); tx += gl.Advance; }
             else tx += atlas.AdvanceOf(new System.Text.Rune(_text[i]));
         }
         float bx0 = x0 + pad, bx1 = x0 + pillW - pad, by0 = y0 + pad * 2f + atlas.LineHeight;
-        _b.Rect(bx0, by0, bx1, by0 + barH, 0.16f, 0.16f, 0.18f, 1f);
-        _b.Rect(bx0, by0, bx0 + (bx1 - bx0) * fill, by0 + barH, 0.78f, 0.66f, 0.36f, 1f);
+        PanelChrome.Fill(_b, bx0, by0, bx1, by0 + barH, Theme.Rgb(Role.Track));
+        PanelChrome.Fill(_b, bx0, by0, bx0 + (bx1 - bx0) * fill, by0 + barH, Theme.Rgb(Role.Accent));
     }
 
     private static void Append(string s)

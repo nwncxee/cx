@@ -25,7 +25,7 @@ internal static unsafe class ShaderResource
     /// so a resref the engine also loads kills the client at its next shader compile.</summary>
     internal static string? Override(string resref, ExtenderLog? log)
     {
-        byte[]? b = Blob(resref, log);
+        byte[]? b = Blob(resref, ResTypeShd, log);
         if (b == null) return null;
         if (IsSpirv(b))
         {
@@ -46,7 +46,7 @@ internal static unsafe class ShaderResource
     internal static byte[]? OverrideSpirv(string resref, ExtenderLog? log)
     {
         if (!SpirvArmed) return null;
-        byte[]? b = Blob(resref, log);
+        byte[]? b = Blob(resref, ResTypeShd, log);
         if (b == null || !IsSpirv(b)) return null;
         if ((b.Length & 3) != 0)
         {
@@ -67,8 +67,9 @@ internal static unsafe class ShaderResource
     /// nothing downstream can audit one.</summary>
     internal static bool SpirvArmed => Renderer.Spirv.Boot;
 
-    /// <summary>The raw bytes behind <paramref name="resref"/>.shd, or null when nothing supplies it.</summary>
-    private static byte[]? Blob(string resref, ExtenderLog? log)
+    /// <summary>The raw bytes behind <paramref name="resref"/> at <paramref name="type"/>, or null when nothing supplies
+    /// it. Our own resrefs only (a <c>cx*</c> name the engine never loads): see <see cref="Override"/>. Main thread, cold.</summary>
+    internal static byte[]? Blob(string resref, ushort type, ExtenderLog? log)
     {
         if (_resManSym == IntPtr.Zero || EngineFn.ResManExists == null || EngineFn.ResManGetResObject == null
             || EngineFn.ResManSetResObject == null || EngineFn.ResManDemand == null || EngineFn.ResManRelease == null
@@ -79,9 +80,9 @@ internal static unsafe class ShaderResource
 
         byte* rr = stackalloc byte[ResRefBytes];
         for (int i = 0; i < ResRefBytes; i++) rr[i] = i < resref.Length ? (byte)resref[i] : (byte)0;
-        if (EngineFn.ResManExists(resMan, rr, ResTypeShd, null) == 0) return null;   // size out-param is null-checked there
+        if (EngineFn.ResManExists(resMan, rr, type, null) == 0) return null;   // size out-param is null-checked there
 
-        IntPtr res = EngineFn.ResManGetResObject(resMan, rr, ResTypeShd);
+        IntPtr res = EngineFn.ResManGetResObject(resMan, rr, type);
         if (res == IntPtr.Zero)
         {
             // First ask for this resource: no CRes exists yet, so make one exactly as CResHelper does --
@@ -89,7 +90,7 @@ internal static unsafe class ShaderResource
             res = EngineFn.OperatorNew((nuint)EngineLayout.SizeOfCRes);
             if (res == IntPtr.Zero) return null;
             EngineFn.CResCtor(res);
-            EngineFn.ResManSetResObject(resMan, rr, ResTypeShd, res);   // seeds the refcount at 1, like GetResObject's bump
+            EngineFn.ResManSetResObject(resMan, rr, type, res);   // seeds the refcount at 1, like GetResObject's bump
         }
         EngineFn.ResManDemand(resMan, res);
 

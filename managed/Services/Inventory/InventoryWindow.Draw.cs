@@ -10,36 +10,38 @@ internal sealed partial class InventoryWindow
 {
     // ---- the game-art skin ----
 
-    /// <summary>Skin part indices, in draw order.</summary>
-    internal const int KFrame = 0, KHeader = 1, KCell = 2, KSlot = 3, KButton = 4, KButtonHot = 5, KButtonOn = 6, KClose = 7,
-                       KEdit = 8, KTrough = 9, KThumb = 10, KGold = 11, KGoldHot = 12, KGoldCursor = 13, KLootCell = 14, KSil = 15;
+    /// <summary>The inventory's own skin parts, after <see cref="NativeChrome"/>'s common chrome.</summary>
+    internal const int KCell = NativeChrome.Count, KSlot = KCell + 1, KGold = KSlot + 1, KGoldHot = KGold + 1,
+                       KGoldCursor = KGoldHot + 1, KLootCell = KGoldCursor + 1, KSil = KLootCell + 1;
 
-    /// <summary>The inventory's skin: NUI's nine-sliced window, header, button, edit and scrollbar art as <c>nui.toml</c>
-    /// assigns it (insets 3, the engine's compiled-in value for those elements), the inventory's own 32x32 cell tile
-    /// (twice: backpack and loot cells are scissored apart) and the 14 silhouettes; a server re-points any part with
-    /// <c>inventory.skin.&lt;part&gt;</c>. ponytail: the cell tile's 4-texel slot frame is read off the art, not the MDL.</summary>
+    /// <summary>The inventory's skin: the native chrome, then its own art -- the 32x32 cell tile (twice: backpack and loot
+    /// cells are scissored apart), the gold button's two faces, the coin cursor and the 14 silhouettes. ponytail: the cell tile's 4-texel slot frame is read off the art, not the MDL.</summary>
     internal static Skin NewSkin()
     {
-        var parts = new SkinPart[KSil + InventoryModel.Slots.Length];
-        parts[KFrame] = new("frame", "nui_windowh", 3, 3, 3, 3);
-        parts[KHeader] = new("header", "nui_windowh", 3, 3, 3, 3);
-        parts[KCell] = new("cell", "gui_inv_bkgnd2");
-        parts[KSlot] = new("slot", "gui_inv_bkgnd2", 4, 4, 4, 4);
-        parts[KButton] = new("button", "nui_button_n", 3, 3, 3, 3);
-        parts[KButtonHot] = new("buttonhot", "nui_button_h", 3, 3, 3, 3);
-        parts[KButtonOn] = new("buttonon", "nui_button_a", 3, 3, 3, 3);
-        parts[KClose] = new("close", "nui_close");
-        parts[KEdit] = new("edit", "nui_windowh", 3, 3, 3, 3);
-        parts[KTrough] = new("trough", "nui_windowv", 3, 3, 3, 3);
-        parts[KThumb] = new("thumb", "nui_scrollv", 3, 3, 3, 3);
-        parts[KGold] = new("gold", "ctl_btn_jnl_inv", SrcX: GoldArtX, SrcY: GoldArtY, SrcW: GoldArtSize, SrcH: GoldArtSize);
-        parts[KGoldHot] = new("goldhot", "ctl_btn_jnl_inv", SrcX: GoldArtX, SrcY: GoldArtY + GoldArtSize, SrcW: GoldArtSize, SrcH: GoldArtSize);
-        parts[KGoldCursor] = new("goldcursor", "ir_buy");
-        parts[KLootCell] = new("lootcell", "gui_inv_bkgnd2");
+        var extra = new SkinPart[KSil - NativeChrome.Count + InventoryModel.Slots.Length];
+        int k = 0;
+        extra[k++] = new("cell", "gui_inv_bkgnd2");
+        extra[k++] = new("slot", "gui_inv_bkgnd2", SlotArtInset, SlotArtInset, SlotArtInset, SlotArtInset);
+        extra[k++] = new("gold", "ctl_btn_jnl_inv", SrcX: GoldArtX, SrcY: GoldArtY, SrcW: GoldArtSize, SrcH: GoldArtSize);
+        extra[k++] = new("goldhot", "ctl_btn_jnl_inv", SrcX: GoldArtX, SrcY: GoldArtY + GoldArtSize, SrcW: GoldArtSize, SrcH: GoldArtSize);
+        extra[k++] = new("goldcursor", "ir_buy");
+        extra[k++] = new("lootcell", "gui_inv_bkgnd2");
         for (int i = 0; i < InventoryModel.Slots.Length; i++)
-            parts[KSil + i] = new("sil." + InventoryModel.Slots[i].Id, InventoryModel.Slots[i].Silhouette);
-        return new Skin("inventory", parts);
+            extra[k++] = new("sil." + InventoryModel.Slots[i].Id, InventoryModel.Slots[i].Silhouette);
+        return NativeChrome.NewSkin(extra);
     }
+
+    /// <summary>The cell tile's own frame in texels, drawn 1:1: what art inside a slot insets by.</summary>
+    private const int SlotArtInset = 4;
+    /// <summary>The window art's nine-slice border, drawn 1:1: what a part inside a framed rect insets by.</summary>
+    internal const float FrameInset = 3f;
+
+    /// <summary>The tint of a native part that lights when hovered: the header label's grey idle, white hot.</summary>
+    internal static uint ArtTint(bool hot) => Theme.Rgba(hot ? Role.Hi : Role.Tx2);
+
+    /// <summary>The native button face: pressed or not, hovered or not, as NUI's selectable has all four.</summary>
+    internal static int ButtonFace(bool on, bool hot)
+        => on ? hot ? NativeChrome.ButtonOnHot : NativeChrome.ButtonOn : hot ? NativeChrome.ButtonHot : NativeChrome.Button;
 
     /// <summary>The stock gold button's face in <c>ctl_btn_jnl_inv</c> (128x128), texels from the top-left: the UVs of
     /// <c>ctl_inv_btn_gold.mdl</c>'s <c>Plane234</c> (u 0.6953..0.9922 after the wrap; v 0.2969..0.5938 up, 0..0.2969 the
@@ -49,8 +51,6 @@ internal sealed partial class InventoryWindow
     /// <summary>The line colour of the <c>gui_inv_bkgnd2</c> tile (sampled off a live frame): the tile draws only its top
     /// and left edge, so the grid's and the equip area's right and bottom edges are drawn in it.</summary>
     private const uint CellLine = 0x333333;   // not-an-offset: a colour
-    /// <summary>NUI's border gold (<c>nui.toml</c> <c>border_color</c>), the page rule in the scrolled view.</summary>
-    private const uint NuiGold = 0xAD8E60;    // not-an-offset: a colour
     private static readonly string[] TabText = { "I", "II", "III", "IV", "V", "VI" };
     /// <summary>Stack counts drawn as numbers; larger ones read "999+".</summary>
     private const int MaxCountText = 999;
@@ -99,12 +99,12 @@ internal sealed partial class InventoryWindow
         float x0 = X, y0 = Y, x1 = X + W, y1 = Y + H;
         float lh = text.LineHeight, slh = small.LineHeight;
 
-        if (skin != null) skin.Draw(KFrame, x0, y0, x1, y1, s);
+        if (skin != null) skin.Draw(NativeChrome.Frame, x0, y0, x1, y1);
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); }
 
         if (_title.On)
         {
-            if (skin != null) skin.Draw(KHeader, Sx(_title.X0), Sy(_title.Y0), Sx(_title.X1), Sy(_title.Y1), s);
+            if (skin != null) skin.Draw(NativeChrome.Header, Sx(_title.X0), Sy(_title.Y0), Sx(_title.X1), Sy(_title.Y1));
             else Fill(under, Sx(_title.X0) + 1f, Sy(_title.Y0) + 1f, Sx(_title.X1) - 1f, Sy(_title.Y1), HeaderBg);
             UiText.Draw(under, text, _title.Label, Sx(_title.X0 + Pad), Mid(_title, lh, text.Ascent), Tx, SearchOn && _search.On ? Sx(_search.X0) : Sx(_close.X0));
         }
@@ -112,7 +112,7 @@ internal sealed partial class InventoryWindow
         if (SearchOn && _search.On)
         {
             float sx0 = Sx(_search.X0), sy0 = Sy(_search.Y0), sx1 = Sx(_search.X1), sy1 = Sy(_search.Y1);
-            if (skin != null) skin.Draw(KEdit, sx0, sy0, sx1, sy1, s);
+            if (skin != null) skin.Draw(NativeChrome.Edit, sx0, sy0, sx1, sy1);
             else { Fill(under, sx0, sy0, sx1, sy1, Input); Outline(under, sx0, sy0, sx1, sy1, SearchFocused ? Accent2 : Frame); }
             float base_ = sy0 + (sy1 - sy0 - slh) / 2f + small.Ascent;
             float end = Search.Length > 0 ? UiText.Draw(under, small, Search, sx0 + 4f * s, base_, Tx, sx1 - 4f * s)
@@ -130,12 +130,12 @@ internal sealed partial class InventoryWindow
             if (!b.On) continue;
             float bx0 = Sx(b.X0), by0 = Sy(b.Y0), bx1 = Sx(b.X1), by1 = Sy(b.Y1);
             InvItem held = Model.Equipped[i];
-            if (skin != null) skin.Draw(KSlot, bx0, by0, bx1, by1, s);
+            if (skin != null) skin.Draw(KSlot, bx0, by0, bx1, by1);
             else { Fill(under, bx0, by0, bx1, by1, ListBg); Outline(under, bx0, by0, bx1, by1, Frame); }
             if (i == Chest && _ac.On) by1 = Math.Min(by1, Sy(_ac.Y0));
             if (held.Oid == InventoryModel.Invalid)
             {
-                if (skin != null) FitDraw(skin, KSil + i, bx0, by0, bx1, by1, s);
+                if (skin != null) FitDraw(skin, KSil + i, bx0, by0, bx1, by1);
                 else UiText.Draw(under, small, b.Label, bx0 + 3f * s, by0 + 2f * s + small.Ascent, Tx3, bx1 - 2f * s);
             }
             if (held.Oid != InventoryModel.Invalid && !(_drag && held.Oid == _dragOid) && n < icons.Length)
@@ -157,7 +157,7 @@ internal sealed partial class InventoryWindow
                 for (int cx = 0; cx < InventoryModel.Cols; cx++)
                 {
                     CellRect(cx, gy, out float cx0, out float cy0);
-                    if (skin != null) skin.Draw(KCell, cx0, cy0, cx0 + c, cy0 + c, s, read ? 0xffffffffu : BlankTint);
+                    if (skin != null) skin.Draw(KCell, cx0, cy0, cx0 + c, cy0 + c, read ? 0xffffffffu : BlankTint);
                     else Fill(gridUnder, cx0 + 1f, cy0 + 1f, cx0 + c, cy0 + c, Input, read ? 1f : 0.35f);
                 }
             }
@@ -169,7 +169,7 @@ internal sealed partial class InventoryWindow
                 {
                     if (gy % InventoryModel.Rows != 0 || gy == first && Top == first) continue;
                     CellRect(0, gy, out _, out float py0);
-                    Fill(gridOver, gx0, py0 - lw, gx1, py0 + lw, NuiGold, 0.85f);
+                    Fill(gridOver, gx0, py0 - lw, gx1, py0 + lw, Accent, 0.85f);
                     PageTag(gridOver, small, TabText[gy / InventoryModel.Rows], gx0, py0 + lw, s);
                 }
                 PageTag(gridOver, small, TabText[first / InventoryModel.Rows], gx0, Sy(_grid.Y0), s);
@@ -202,21 +202,21 @@ internal sealed partial class InventoryWindow
             {
                 float tx0 = Sx(_tabs.X0), ty0 = Sy(_tabs.Y0 + t * Cell), tx1 = Sx(_tabs.X1), ty1 = Sy(_tabs.Y0 + (t + 1) * Cell) - 1f;
                 bool on = t == Page, hot = _mx >= tx0 && _mx < tx1 && _my >= ty0 && _my < ty1;
-                if (skin != null) skin.Draw(on ? KButtonOn : hot ? KButtonHot : KButton, tx0, ty0, tx1, ty1, s);
+                if (skin != null) skin.Draw(ButtonFace(on, hot), tx0, ty0, tx1, ty1);
                 else { Fill(under, tx0, ty0, tx1, ty1, on ? NavOn : hot ? Frame2 : CatBg); Outline(under, tx0, ty0, tx1, ty1, ColBorder); }
                 string lbl = TabText[t];
                 UiText.Draw(under, small, lbl, (tx0 + tx1 - UiText.Measure(small, lbl)) / 2f, ty0 + (ty1 - ty0 - slh) / 2f + small.Ascent, on ? Hi : Tx2, float.MaxValue);
             }
 
         if (Scrolled && _scroll.On)
-            Scrollbar(under, skin, Sx(_scroll.X0), Sy(_scroll.Y0), Sx(_scroll.X1), Sy(_scroll.Y1), Top, ViewRows, PageLimit * InventoryModel.Rows, _scrolling);
+            Scrollbar(under, skin, Sx(_scroll.X0), Sy(_scroll.Y0), Sx(_scroll.X0) + BarW, Sy(_scroll.Y1), Top, ViewRows, PageLimit * InventoryModel.Rows, _scrolling);
         if (_ac.On)
             UiText.Draw(under, small, Model.ArmorClass, (Sx(_ac.X0) + Sx(_ac.X1) - UiText.Measure(small, Model.ArmorClass)) / 2f, Mid(_ac, slh, small.Ascent), Hi, Sx(_ac.X1));
         if (_goldButton.On)
         {
             float bx0 = Sx(_goldButton.X0), by0 = Sy(_goldButton.Y0), bx1 = Sx(_goldButton.X1), by1 = Sy(_goldButton.Y1);
             bool hot = In(_goldButton, _mx, _my);
-            if (skin != null) skin.Draw(hot ? KGoldHot : KGold, bx0, by0, bx1, by1, s);
+            if (skin != null) skin.Draw(hot ? KGoldHot : KGold, bx0, by0, bx1, by1);
             else
             {
                 Fill(under, bx0, by0, bx1, by1, hot ? Frame2 : CatBg); Outline(under, bx0, by0, bx1, by1, ColBorder);
@@ -244,24 +244,26 @@ internal sealed partial class InventoryWindow
         return n;
     }
 
-    /// <summary>A close button over the rect: the NUI X (brighter when hot), or a flat "x" on the accent when hot.</summary>
+    /// <summary>A close button over the rect: the NUI X inside the frame's border (brighter when hot), or a flat "x" on the
+    /// accent when hot.</summary>
     private void CloseButton(VertexBatch under, Skin? skin, GlyphAtlas text, float x0, float y0, float x1, float y1)
     {
-        float s = S;
         bool hot = _mx >= x0 && _mx < x1 && _my >= y0 && _my < y1;
-        if (skin != null) { skin.Draw(KClose, x0 + 3f * s, y0 + 3f * s, x1 - 3f * s, y1 - 3f * s, s, hot ? 0xffffffffu : 0xc8c8c8ffu); return; }   // not-an-offset: rgba tints
+        if (skin != null) { skin.Draw(NativeChrome.Close, x0 + FrameInset, y0 + FrameInset, x1 - FrameInset, y1 - FrameInset, ArtTint(hot)); return; }
         if (hot) Fill(under, x0, y0, x1, y1, Accent);
         UiText.Draw(under, text, "x", (x0 + x1 - UiText.Measure(text, "x")) / 2f, y0 + (y1 - y0 - text.LineHeight) / 2f + text.Ascent, Hi, float.MaxValue);
     }
 
-    /// <summary>A vertical scrollbar over the rect: the thumb spans rows <paramref name="top"/>..+<paramref name="view"/> of
-    /// <paramref name="total"/>, lit while hovered or <paramref name="held"/>.</summary>
+    /// <summary>A vertical scrollbar over the rect: the native bar NUI draws (trough, arrows, tiled thumb), or the flat
+    /// track whose thumb spans rows <paramref name="top"/>..+<paramref name="view"/> of <paramref name="total"/>, lit while
+    /// hovered or <paramref name="held"/>.</summary>
     private void Scrollbar(VertexBatch under, Skin? skin, float x0, float y0, float x1, float y1, float top, float view, float total, bool held)
     {
-        float ty0 = y0 + (y1 - y0) * top / total, ty1 = y0 + (y1 - y0) * Math.Min(1f, (top + view) / total);
         bool hot = held || _mx >= x0 && _mx < x1 && _my >= y0 && _my < y1;
-        if (skin != null) { skin.Draw(KTrough, x0, y0, x1, y1, S); skin.Draw(KThumb, x0, ty0, x1, ty1, S, hot ? 0xffffffffu : 0xc8c8c8ffu); }   // not-an-offset: rgba tints
-        else { Fill(under, x0, y0, x1, y1, Track); Fill(under, x0 + 1f, ty0, x1 - 1f, ty1, hot ? Accent2 : Accent); }
+        if (skin != null) { NativeChrome.Scrollbar(skin, x0, y0, x1, y1, top, view, total, hot); return; }
+        float ty0 = y0 + (y1 - y0) * top / total, ty1 = y0 + (y1 - y0) * Math.Min(1f, (top + view) / total);
+        Fill(under, x0, y0, x1, y1, Track);
+        Fill(under, x0 + 1f, ty0, x1 - 1f, ty1, hot ? Accent2 : Accent);
     }
 
     /// <summary>A stack's count in the bottom-right corner of its icon, whose bottom-right is (<paramref name="x1"/>,
@@ -303,7 +305,7 @@ internal sealed partial class InventoryWindow
         {
             float k = 1f - i / (float)LoaderDots, ang = head - i * MathF.Tau / LoaderDots, d = dot * (0.45f + 0.55f * k);
             float x = cx + MathF.Sin(ang) * r, y = cy - MathF.Cos(ang) * r;
-            Fill(b, x - d, y - d, x + d, y + d, NuiGold, 0.1f + 0.9f * k);
+            Fill(b, x - d, y - d, x + d, y + d, Accent, 0.1f + 0.9f * k);
         }
     }
 
@@ -320,7 +322,7 @@ internal sealed partial class InventoryWindow
     {
         float w = UiText.Measure(small, t) + 8f * s;
         Fill(b, x, y, x + w, y + small.LineHeight + 2f * s, PanelBg, 0.85f);
-        UiText.Draw(b, small, t, x + 4f * s, y + s + small.Ascent, NuiGold, float.MaxValue);
+        UiText.Draw(b, small, t, x + 4f * s, y + s + small.Ascent, Accent, float.MaxValue);
     }
 
     /// <summary>Drag feedback (the footprint under the pointer, green where it lands, red where it cannot; the slots that take
@@ -398,12 +400,12 @@ internal sealed partial class InventoryWindow
 
     /// <summary>A silhouette centred in its box at the art's aspect (the <c>inv_slot_*</c> sheets are padded to powers of
     /// two, so a stretch would distort them), faint.</summary>
-    private static void FitDraw(Skin skin, int part, float x0, float y0, float x1, float y1, float s)
+    private static void FitDraw(Skin skin, int part, float x0, float y0, float x1, float y1)
     {
-        float inset = 3f * s, bw = x1 - x0 - 2f * inset, bh = y1 - y0 - 2f * inset, a = skin.Aspect(part);
+        float inset = SlotArtInset, bw = x1 - x0 - 2f * inset, bh = y1 - y0 - 2f * inset, a = skin.Aspect(part);
         if (a <= 0f || bw <= 0f || bh <= 0f) return;
         float w = Math.Min(bw, bh * a), h = w / a;
         float cx = (x0 + x1) / 2f, cy = (y0 + y1) / 2f;
-        skin.Draw(part, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f, s, 0xffffff99u);  // not-an-offset: rgba tint, 60 % alpha
+        skin.Draw(part, cx - w / 2f, cy - h / 2f, cx + w / 2f, cy + h / 2f, 0xffffff99u);  // not-an-offset: rgba tint, 60 % alpha
     }
 }

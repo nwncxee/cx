@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using CX.Engine;
 using CX.Framework;
@@ -19,6 +20,8 @@ public sealed class CardService : IExtenderService
     private sealed class CardServiceState
     {
         public readonly CardPresenter Presenter = new();
+        /// <summary>The game's GUI art for a card that wears the native look; one skin draws every card on screen.</summary>
+        public readonly Skin Skin = NativeChrome.NewSkin();
         public bool Ready;
         public NuiHit Forced;
         public string ForcedKey = "";
@@ -38,7 +41,7 @@ public sealed class CardService : IExtenderService
         CardRegistry.Init(log);
         CardSelfCheck.Run(log);
         s.Presenter.SubjectOf = Subject;
-        Capabilities.Register("card", 6, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
+        Capabilities.Register("card", 8, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Cards.Changed += Capabilities.Refresh;
         TextRig.FontChanged += PanelFonts.WantAll;
@@ -110,10 +113,33 @@ public sealed class CardService : IExtenderService
         if (force.Length > 0) { has = true; hit = Forced(s, force); }
         else has = NuiHitTest.TryGet(out hit);
         s.Presenter.Update(has, in hit);
-        if (!s.Presenter.Prepare(TextRig.ViewportW, TextRig.ViewportH)) return;
+        bool armed = s.Presenter.WantsNative(Theme.IsNative) && s.Skin.Arm(s.Log, "");
+        if (!s.Presenter.Prepare(TextRig.ViewportW, TextRig.ViewportH, armed)) return;
         float a = s.Presenter.Alpha;
         PanelView[] views = s.Presenter.Views!;
+        Art(s.Skin, views, s.Presenter, a);
         for (int i = 0; i < views.Length; i++) DrawView(views[i], s.Presenter.X(i), s.Presenter.Y(i), a);
+    }
+
+    /// <summary>Every native card's art, under all the flat geometry and text: one pass of the one skin, flushed before
+    /// the first card draws. Nothing is emitted while no card wears it.</summary>
+    private static void Art(Skin skin, PanelView[] views, CardPresenter p, float alpha)
+    {
+        int n = 0;
+        for (int i = 0; i < views.Length; i++) n += views[i].Art.Count;
+        if (n == 0) return;
+        skin.Begin();
+        for (int i = 0; i < views.Length; i++)
+        {
+            float x = p.X(i), y = p.Y(i);
+            List<SkinRect> art = views[i].Art;
+            for (int j = 0; j < art.Count; j++)
+            {
+                SkinRect r = art[j];
+                skin.Draw(r.Part, x + r.X0, y + r.Y0, x + r.X1, y + r.Y1);
+            }
+        }
+        skin.Flush(alpha);
     }
 
     private static void DrawView(PanelView v, float x, float y, float a)

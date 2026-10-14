@@ -28,7 +28,8 @@ public sealed class Tooltip
     /// <summary>Widest text box before wrapping.</summary>
     public static float MaxW => 280f * Metrics.Scale;
     public static float Pad => 6f * Metrics.Scale;
-    private const uint FrameRgb = 0x8C8C8C;  // not-an-offset: a colour
+    /// <summary>The hairline around the box: the themed frame line.</summary>
+    private static uint FrameRgb => Theme.Rgb(Role.Tx2);
 
     /// <summary>Time source; the self-check substitutes a fake clock. Stopwatch ticks.</summary>
     internal static Func<long> Clock = Stopwatch.GetTimestamp;
@@ -111,13 +112,13 @@ public sealed class Tooltip
     public static void DrawMarker(VertexBatch b, GlyphAtlas atlas, float x, float baseline, uint rgb)
         => UiText.Draw(b, atlas, Marker, x, baseline, rgb, float.MaxValue, MarkerAlpha);
 
-    /// <summary>Draw the text box under the anchor at <see cref="Alpha"/>: word-wrapped to <see cref="MaxW"/>,
-    /// kept left of <paramref name="clampRight"/>, flipped above the row when it would pass
-    /// <paramref name="clampBottom"/>. <paramref name="baseDrop"/> is the baseline offset from a line's top.
-    /// Zero-alloc: the rune walk wraps in place.</summary>
+    /// <summary>Draw the text box under the anchor at <see cref="Alpha"/>: word-wrapped to <see cref="MaxW"/>, kept
+    /// left of <paramref name="clampRight"/>, flipped above the row past <paramref name="clampBottom"/>;
+    /// <paramref name="baseDrop"/> is the baseline offset from a line's top. With <paramref name="skin"/> the box is
+    /// the game's own window art over black -- NUI has no tooltip part. Zero-alloc.</summary>
     public void Draw(VertexBatch b, GlyphAtlas atlas, float baseDrop,
                      (float r, float g, float b, float a) bg, uint textRgb,
-                     float clampRight = float.MaxValue, float clampBottom = float.MaxValue)
+                     float clampRight = float.MaxValue, float clampBottom = float.MaxValue, Skin? skin = null)
     {
         float alpha = Alpha;
         if (alpha <= 0f || _text.Length == 0) return;
@@ -130,9 +131,14 @@ public sealed class Tooltip
         if (y0 + h > clampBottom && _top - 2f - h >= 0f) y0 = _top - 2f - h;
         if (x0 + w > clampRight) x0 = clampRight - w;
         if (x0 < 0f) x0 = 0f;
-        float fr = ((FrameRgb >> 16) & 0xFF) / 255f, fg = ((FrameRgb >> 8) & 0xFF) / 255f, fb = (FrameRgb & 0xFF) / 255f;
-        b.Rect(x0 - 1f, y0 - 1f, x0 + w + 1f, y0 + h + 1f, fr, fg, fb, alpha);
-        b.Rect(x0, y0, x0 + w, y0 + h, bg.r, bg.g, bg.b, 0.98f * alpha);
+        if (skin != null) skin.Draw(NativeChrome.Frame, x0 - 1f, y0 - 1f, x0 + w + 1f, y0 + h + 1f, NativeChrome.White(alpha));
+        else
+        {
+            uint frame = FrameRgb;
+            float fr = ((frame >> 16) & 0xFF) / 255f, fg = ((frame >> 8) & 0xFF) / 255f, fb = (frame & 0xFF) / 255f;
+            b.Rect(x0 - 1f, y0 - 1f, x0 + w + 1f, y0 + h + 1f, fr, fg, fb, alpha);
+            b.Rect(x0, y0, x0 + w, y0 + h, bg.r, bg.g, bg.b, 0.98f * alpha);
+        }
         int drawn = 0; float _ = 0f;
         Wrap(atlas, _text, maxW, b, x0 + pad, y0 + pad + baseDrop, lh, textRgb, ref drawn, ref _, alpha);
     }

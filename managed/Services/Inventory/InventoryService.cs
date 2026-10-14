@@ -317,11 +317,12 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.RefreshSearch();
 
         Skin? skin = null;
-        if (InventoryKnobs.Look.V == InventoryKnobs.LookNative && _skin.Arm(_log, ""))
+        if (Theme.IsNative && _skin.Arm(_log, ""))
         {
             _skin.Begin();
             skin = _skin;
         }
+        _inv.NativeArt = skin != null;
         _under ??= new VertexBatch(_text.SolidU, _text.SolidV);
         _over ??= new VertexBatch(_text.SolidU, _text.SolidV);
         _gridUnder ??= new VertexBatch(_text.SolidU, _text.SolidV);

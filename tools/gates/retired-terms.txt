@@ -30,3 +30,13 @@ cx_bakefinish_f	CX-215
 \bFromDiffuse\b	CX-227
 # The window-layer debug service and its ui.layerprobe knob, deleted: it drew two fixed rectangles.
 \blayerprobe\b	CX-263
+# One look for every CX window (ui.look / ui.palette): the per-feature look and colour knobs are gone.
+\b(inventory|quickbar)\.look\b	unified-ui-theme
+\bquickbar\.(bg|border|slot|slotborder|hover|label|count)col\b	unified-ui-theme
+\bradial\.(bg|frame|hover|text)\b	unified-ui-theme
+# The per-feature skin policy families: the native skin dresses every CX window, so each part answers to ui.skin.<part>.
+\b(inventory|quickbar)\.skin\.	unified-ui-theme
+# Chat's per-window colour overrides and their key type: every chat window follows ui.look / ui.palette.
+\bw[0-9]+\.col\.	unified-ui-theme
+\bw<N>\.col\b	unified-ui-theme
+\bChatColor\b	unified-ui-theme

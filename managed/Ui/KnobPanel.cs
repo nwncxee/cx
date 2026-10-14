@@ -320,6 +320,7 @@ public sealed partial class KnobPanel
     /// <summary>Seat the columns under the header for the current X/Y.</summary>
     private void Place()
     {
+        SyncColumnLook();
         float top = Y + HeaderH, h = H - HeaderH;
         float cw = MathF.Round(W * CatFrac), sw = SubFrac > 0f ? MathF.Round(W * SubFrac) : 0f;
         Cats.SetRect(X, top, cw, h);
@@ -377,6 +378,7 @@ public sealed partial class KnobPanel
     /// any expanded swatch's channels; then one Advanced disclosure and, open, every group's Advanced rows.</summary>
     internal void LayoutRows()
     {
+        SyncColumnLook();
         if (Source != null) { Source(); return; }
         if (Sub >= _subs.Length) Sub = _subs.Length - 1;
         if (Sub < 0 && _subs.Length > 0) Sub = 0;
@@ -609,7 +611,7 @@ public sealed partial class KnobPanel
     }
 
     /// <summary>The knob column's inner width: side pads and the gutter off.</summary>
-    private float ListInnerW() => List.W - 2f * Pad - ScrollColumn.BarW;
+    private float ListInnerW() => List.W - 2f * Pad - List.Width;
 
     /// <summary>Control width per kind, at layout: the label clip and the row's hit zones derive from it.</summary>
     private float ControlW(Row r)
@@ -769,7 +771,7 @@ public sealed partial class KnobPanel
     /// channel row's middle).</summary>
     private void ControlAnchor(Row r, float top, out float right, out float cy)
     {
-        right = List.X + List.W - Pad - ScrollColumn.BarW - (r.Master ? MasterPadX : 0f);
+        right = List.X + List.W - Pad - List.Width - (r.Master ? MasterPadX : 0f);
         cy = r.Kind == RowKind.Channel ? top + r.H * 0.5f : top + (r.Master ? MasterTop : 0f) + RowPadY + BodyLh * 0.5f;
     }
 
@@ -1241,35 +1243,70 @@ public sealed partial class KnobPanel
 
     // ---- draw (hot, zero-alloc) ----
 
-    /// <summary>The off-default dot: a small filled square centred on (<paramref name="cx"/>, <paramref name="cy"/>),
-    /// drawn on a row whose value left its default and on a submenu holding one.</summary>
-    private void Dot(VertexBatch b, float cx, float cy, float a = 1f)
-        => Fill(b, cx - DotR, cy - DotR, cx + DotR, cy + DotR, Accent2, a);
-
-    /// <summary>Draw the whole panel into <paramref name="b"/>: chrome, the columns clipped to their boxes,
-    /// their scrollbars, then the open dropdown list and the tooltip on top. Reads cached geometry and cached
-    /// value text only, and allocates nothing.</summary>
+    /// <summary>Draw the whole panel: chrome, the columns clipped to their boxes, their scrollbars, then the open
+    /// dropdown list and the tooltip on top. The flat look is one batch for the caller to upload; the native look
+    /// is two passes over one skin, so the body art lands under the body and the overlay art over it -- the body
+    /// pass is uploaded here and <paramref name="b"/> comes back holding the overlay alone. Allocates nothing.</summary>
     public void Emit(VertexBatch b)
     {
         if (!Open || Body == null || Small == null) return;
-        GlyphAtlas body = Body, small = Small;
-        float x = X, y = Y, w = W, h = ShownH, em = Em;
+        Skin? skin = Art();
+        Skin? rowArt = RowArt(skin);
+        skin?.Begin();
+        rowArt?.Begin();
+        EmitBody(b, skin, rowArt);
+        if (skin == null) { EmitOver(b, null); return; }
+        skin.Flush();
+        if (rowArt != null) FlushRowArt(rowArt);
+        TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
+        b.Clear();
+        skin.Begin();
+        EmitOver(b, skin);
+        skin.Flush();
+    }
 
-        Fill(b, x, y, x + w, y + h, PanelBg, 0.96f);
-        Outline(b, x, y, x + w, y + h, Border);
+    /// <summary>The open dropdown list and the tooltip, over everything the body pass drew.</summary>
+    private void EmitOver(VertexBatch b, Skin? skin)
+    {
+        GlyphAtlas? body = Body, small = Small;
+        if (body == null || small == null) return;
+        Drop.Draw(b, body, body.Ascent, C(ListBg), C(Selected), Tx, skin);
+        Tip.Draw(b, small, small.Ascent, C(ListBg), Tx, VpW, VpH, skin);
+    }
+
+    /// <summary>The panel itself: chrome, the three columns and their rows. <paramref name="rowArt"/> is the art of
+    /// everything inside the scrolling row column; <paramref name="skin"/> the window's own.</summary>
+    private void EmitBody(VertexBatch b, Skin? skin, Skin? rowArt)
+    {
+        GlyphAtlas body = Body!, small = Small!;
+        float x = X, y = Y, w = W, h = ShownH, em = Em;
+        SyncColumnLook();
+
+        if (!Art(skin, NativeChrome.Frame, x, y, x + w, y + h))
+        {
+            Fill(b, x, y, x + w, y + h, PanelBg, 0.96f);
+            Outline(b, x, y, x + w, y + h, Border);
+        }
         // header: title, the close ×
-        Fill(b, x + 1f, y + 1f, x + w - 1f, y + HeaderH, HeaderBg);
-        Fill(b, x + 1f, y + HeaderH - 1f, x + w - 1f, y + HeaderH, Border);
+        if (!Art(skin, NativeChrome.Header, x + 1f, y + 1f, x + w - 1f, y + HeaderH))
+        {
+            Fill(b, x + 1f, y + 1f, x + w - 1f, y + HeaderH, HeaderBg);
+            Fill(b, x + 1f, y + HeaderH - 1f, x + w - 1f, y + HeaderH, Border);
+        }
         float hbase = y + (HeaderH - body.LineHeight) * 0.5f + body.Ascent;
         float closeX1 = x + w - Pad + 0.2f * em, closeX0 = closeX1 - CloseW;
-        UiText.Draw(b, body, "×", closeX0 + (CloseW - UiText.Measure(body, "×")) * 0.5f, hbase, Grip, closeX1);
+        if (!Art(skin, NativeChrome.Close, closeX0, y + (HeaderH - CloseW) * 0.5f, closeX1, y + (HeaderH + CloseW) * 0.5f))
+            UiText.Draw(b, body, "×", closeX0 + (CloseW - UiText.Measure(body, "×")) * 0.5f, hbase, Grip, closeX1);
         DrawCollapse(b, body, closeX0, hbase);
         float titleClip1 = closeX0 - CollapseSpan - 0.6f * em;
         if (HeaderAction.Length > 0)
         {
             HeaderButtonRect(out float hx0, out float hx1, out float hy0, out float hy1);
-            Fill(b, hx0, hy0, hx1, hy1, NavOn);
-            Outline(b, hx0, hy0, hx1, hy1, Frame2);
+            if (!Art(skin, NativeChrome.Button, hx0, hy0, hx1, hy1))
+            {
+                Fill(b, hx0, hy0, hx1, hy1, NavOn);
+                Outline(b, hx0, hy0, hx1, hy1, Frame2);
+            }
             UiText.Draw(b, body, HeaderAction, hx0 + 0.9f * em, hbase, Tx, hx1 - 0.4f * em);
             titleClip1 = hx0 - 0.6f * em;
         }
@@ -1277,23 +1314,21 @@ public sealed partial class KnobPanel
         if (Collapsed) return;
 
         // categories
-        Fill(b, Cats.X, Cats.Y, Cats.X + Cats.W, Cats.Y + Cats.H, CatBg);
-        Fill(b, Cats.X + Cats.W - 1f, Cats.Y, Cats.X + Cats.W, Cats.Y + Cats.H, ColBorder);
+        ColumnBg(b, skin, Cats, CatBg);
         b.ClipY(Cats.Y, Cats.Y + Cats.H);
         for (int i = 0; i < Categories.Length; i++) Nav(b, body, Cats, i, Categories[i], i == Category, i == _hoverCat, false);
         b.ClearClip();
-        Cats.Draw(b, C(Accent));
+        Cats.Draw(b, C(Accent), skin);
 
         // submenus, each with its dot when a row is off-default
         if (SubFrac > 0f)
         {
-            Fill(b, SubCol.X, SubCol.Y, SubCol.X + SubCol.W, SubCol.Y + SubCol.H, SubBg);
-            Fill(b, SubCol.X + SubCol.W - 1f, SubCol.Y, SubCol.X + SubCol.W, SubCol.Y + SubCol.H, ColBorder);
+            ColumnBg(b, skin, SubCol, SubBg);
             b.ClipY(SubCol.Y, SubCol.Y + SubCol.H);
             var subs = _subs;
             for (int i = 0; i < subs.Length; i++) Nav(b, body, SubCol, i, subs[i].Name, i == Sub, i == _hoverSub, SubDirty(subs[i]));
             b.ClearClip();
-            SubCol.Draw(b, C(Accent));
+            SubCol.Draw(b, C(Accent), skin);
         }
 
         // knob column head: submenu title + its path, the reset box at the right
@@ -1302,7 +1337,7 @@ public sealed partial class KnobPanel
         if (_resettable)
         {
             ResetRect(out float rx0, out float rx1, out float ry0, out float ry1);
-            Outline(b, rx0, ry0, rx1, ry1, Frame2);
+            if (!Art(skin, NativeChrome.Button, rx0, ry0, rx1, ry1)) Outline(b, rx0, ry0, rx1, ry1, Frame2);
             UiText.Draw(b, small, ResetText, rx0 + 0.7f * em, (ry0 + ry1) * 0.5f - small.LineHeight * 0.5f + small.Ascent, Tx2, rx1);
             titleClip = rx0 - 0.5f * em;
         }
@@ -1312,7 +1347,7 @@ public sealed partial class KnobPanel
 
         // rows
         float clip0 = List.Y, clip1 = List.Y + List.H;
-        float colRight = kx + List.W - Pad - ScrollColumn.BarW;
+        float colRight = kx + List.W - Pad - List.Width;
         b.ClipY(clip0, clip1);
         var rows = _rows;
         for (int i = 0; i < rows.Count; i++)
@@ -1362,11 +1397,11 @@ public sealed partial class KnobPanel
                     float a = Greyed(r) ? OffAlpha : 1f;
                     ControlAnchor(r, top, out _, out float ccy);
                     UiText.Draw(b, body, r.Text, RowLeft(r), ccy - body.LineHeight * 0.5f + body.Ascent, Tx2, colRight, a);
-                    Slider(b, body, small, r, top, ccy, "", a);
+                    Slider(b, rowArt, body, small, r, top, ccy, "", a);
                     continue;
                 }
                 case RowKind.Item:
-                    Item(b, body, r, top, colRight);
+                    Item(b, rowArt, body, r, top, colRight);
                     continue;
             }
             Knob? k = r.K;
@@ -1375,7 +1410,7 @@ public sealed partial class KnobPanel
             float left = RowLeft(r);
             ControlAnchor(r, top, out float right, out float cy);
             float rowTop = top + (r.Master ? MasterTop : 0f);
-            if (r.Master)
+            if (r.Master && !Art(rowArt, NativeChrome.Frame, kx + Pad, top + MasterTop, colRight, top + r.H - MasterBottom, alpha))
             {
                 Fill(b, kx + Pad, top + MasterTop, colRight, top + r.H - MasterBottom, MasterBg);
                 Outline(b, kx + Pad, top + MasterTop, colRight, top + r.H - MasterBottom, ColBorder);
@@ -1417,14 +1452,19 @@ public sealed partial class KnobPanel
                 case KnobKind.Toggle:
                 {
                     float tx0 = right - ToggleW, ty0 = cy - ToggleH * 0.5f, ty1 = cy + ToggleH * 0.5f;
-                    Fill(b, tx0, ty0, right, ty1, r.On ? Accent : ToggleOff, alpha);
-                    Outline(b, tx0, ty0, right, ty1, r.On ? Accent2 : Frame, alpha);
+                    bool thot = ReferenceEquals(r, _hoverRow);
+                    if (!Art(rowArt, r.On ? thot ? NativeChrome.ButtonOnHot : NativeChrome.ButtonOn
+                                        : thot ? NativeChrome.ButtonHot : NativeChrome.Button, tx0, ty0, right, ty1, alpha))
+                    {
+                        Fill(b, tx0, ty0, right, ty1, r.On ? Accent : ToggleOff, alpha);
+                        Outline(b, tx0, ty0, right, ty1, r.On ? Accent2 : Frame, alpha);
+                    }
                     float kd = ToggleH - 0.35f * em, kx0 = r.On ? right - 0.17f * em - kd : tx0 + 0.17f * em;
                     Fill(b, kx0, cy - kd * 0.5f, kx0 + kd, cy + kd * 0.5f, r.On ? Hi : Grip, alpha);
                     break;
                 }
                 case KnobKind.Slider:
-                    Slider(b, body, small, r, top, cy, UnitOf(k), alpha);
+                    Slider(b, rowArt, body, small, r, top, cy, UnitOf(k), alpha);
                     break;
                 case KnobKind.Dropdown:
                 {
@@ -1432,8 +1472,10 @@ public sealed partial class KnobPanel
                     bool open = Drop.Open && ReferenceEquals(Drop.Tag, r);
                     string[] choices = ChoicesOf(r);
                     string cur = (uint)r.Selected < (uint)choices.Length ? choices[r.Selected] : r.Value;
-                    Dropdown.DrawBox(b, body, bx0, by0, bx1, by1, cy - body.LineHeight * 0.5f + body.Ascent, cur, C(Input), Tx, alpha);
-                    Outline(b, bx0, by0, bx1, by1, open ? Accent2 : Frame2, alpha);
+                    bool dart = Art(rowArt, NativeChrome.Edit, bx0, by0, bx1, by1, alpha);
+                    Dropdown.DrawBox(b, body, bx0, by0, bx1, by1, cy - body.LineHeight * 0.5f + body.Ascent, cur,
+                                     dart ? C(Input, 0f) : C(Input), Tx, alpha);
+                    if (!dart) Outline(b, bx0, by0, bx1, by1, open ? Accent2 : Frame2, alpha);
                     break;
                 }
                 case KnobKind.Text:
@@ -1455,8 +1497,11 @@ public sealed partial class KnobPanel
                     }
                     BoxRect(r, top, out float bx0, out float bx1, out float by0, out float by1);
                     bool editing = EditingRow(r);
-                    Fill(b, bx0, by0, bx1, by1, Input, alpha);
-                    Outline(b, bx0, by0, bx1, by1, editing ? Accent2 : Frame2, alpha);
+                    if (!Art(rowArt, NativeChrome.Edit, bx0, by0, bx1, by1, alpha))
+                    {
+                        Fill(b, bx0, by0, bx1, by1, Input, alpha);
+                        Outline(b, bx0, by0, bx1, by1, editing ? Accent2 : Frame2, alpha);
+                    }
                     string t = editing ? _editText : r.Value;
                     float tx0 = bx0 + 0.4f * em, tclip = bx1 - 0.3f * em;
                     int from = editing ? UiText.TailFrom(body, t, tclip - tx0 - 2f) : 0;
@@ -1467,9 +1512,12 @@ public sealed partial class KnobPanel
                 case KnobKind.Button:
                 {
                     BoxRect(r, top, out float bx0, out float bx1, out float by0, out float by1);
-                    bool armed = ConfirmArmed(r);
-                    Fill(b, bx0, by0, bx1, by1, NavOn, alpha);
-                    Outline(b, bx0, by0, bx1, by1, armed ? Warn : ReferenceEquals(r, _hoverRow) ? Accent2 : Frame2, alpha);
+                    bool armed = ConfirmArmed(r), bhot = ReferenceEquals(r, _hoverRow);
+                    if (!Art(rowArt, bhot ? NativeChrome.ButtonHot : NativeChrome.Button, bx0, by0, bx1, by1, alpha))
+                    {
+                        Fill(b, bx0, by0, bx1, by1, NavOn, alpha);
+                        Outline(b, bx0, by0, bx1, by1, armed ? Warn : bhot ? Accent2 : Frame2, alpha);
+                    }
                     UiText.Draw(b, body, armed ? ConfirmText : r.Text, bx0 + 0.9f * em, cy - body.LineHeight * 0.5f + body.Ascent, armed ? Warn : Tx, bx1 - 0.4f * em, alpha);
                     break;
                 }
@@ -1484,75 +1532,7 @@ public sealed partial class KnobPanel
             }
         }
         b.ClearClip();
-        List.Draw(b, C(Accent));
-        Drop.Draw(b, body, body.Ascent, C(ListBg), C(Selected), Tx);
-        Tip.Draw(b, small, small.Ascent, C(ListBg), Tx, VpW, VpH);
+        List.Draw(b, C(Accent), skin);
     }
 
-    /// <summary>A list item row: its text box (the edit text, tail in view, while editing; the placeholder on an empty
-    /// add box) and the remove ×; the add box closes the list with the row separator.</summary>
-    private void Item(VertexBatch b, GlyphAtlas body, Row r, float top, float colRight)
-    {
-        float em = Em, a = Greyed(r) ? OffAlpha : 1f;
-        ItemRect(r, top, out float x0, out float x1, out float y0, out float y1);
-        bool editing = EditingRow(r);
-        Fill(b, x0, y0, x1, y1, Input, a);
-        Outline(b, x0, y0, x1, y1, editing ? Accent2 : Frame2, a);
-        float tx0 = x0 + 0.4f * em, clip = x1 - 0.3f * em, baseY = (y0 + y1) * 0.5f - body.LineHeight * 0.5f + body.Ascent;
-        if (editing)
-        {
-            float end = UiText.Draw(b, body, _editText, UiText.TailFrom(body, _editText, clip - tx0 - 2f), tx0, baseY, Tx, clip, a);
-            Fill(b, end, y0 + 0.2f * em, end + 1.5f, y1 - 0.2f * em, Hi);
-        }
-        else if (r.Value.Length > 0) UiText.Draw(b, body, r.Value, tx0, baseY, Tx, clip, a);
-        else UiText.Draw(b, body, r.Text, tx0, baseY, Tx3, clip, a);
-        if (r.Adds)
-        {
-            Fill(b, List.X + Pad, top + r.H - 1f, colRight, top + r.H, 0xFFFFFF, 0.03f);
-            return;
-        }
-        RemoveRect(r, top, out float rx0, out float rx1, out float ry0, out float ry1);
-        bool hover = ReferenceEquals(r, _hoverRow);
-        Outline(b, rx0, ry0, rx1, ry1, hover ? Accent2 : Frame2, a);
-        UiText.Draw(b, body, "×", rx0 + (rx1 - rx0 - UiText.Measure(body, "×")) * 0.5f, baseY, hover ? Hi : Tx2, rx1, a);
-    }
-
-    /// <summary>A slider control (a knob row or a channel row): track, fill, grip, the value box (the edit text
-    /// while editing) and the unit.</summary>
-    private void Slider(VertexBatch b, GlyphAtlas body, GlyphAtlas small, Row r, float top, float cy, string unit, float alpha)
-    {
-        float em = Em;
-        TrackRect(r, top, out float sx0, out float sx1, out _);
-        float th = 0.35f * em;
-        Fill(b, sx0, cy - th * 0.5f, sx1, cy + th * 0.5f, Track, alpha);
-        Outline(b, sx0, cy - th * 0.5f, sx1, cy + th * 0.5f, Frame2, alpha);
-        float knob = sx0 + r.Norm * (sx1 - sx0);
-        Fill(b, sx0, cy - th * 0.5f, knob, cy + th * 0.5f, Accent, alpha);
-        Fill(b, knob - 0.375f * em, cy - 0.55f * em, knob + 0.375f * em, cy + 0.55f * em, Grip, alpha);
-        ValueRect(r, top, out float vx0, out float vx1, out float vy0, out float vy1);
-        bool editing = EditingRow(r);
-        Fill(b, vx0, vy0, vx1, vy1, Input, alpha);
-        Outline(b, vx0, vy0, vx1, vy1, editing ? Accent2 : Frame2, alpha);
-        string vtext = editing ? _editText : r.Value;
-        float vbase = cy - body.LineHeight * 0.5f + body.Ascent;
-        float vw = UiText.Measure(body, vtext);
-        float vx = editing ? vx0 + 0.3f * em : vx1 - 0.3f * em - vw;
-        if (vx < vx0 + 0.2f * em) vx = vx0 + 0.2f * em;
-        float vend = UiText.Draw(b, body, vtext, vx, vbase, Tx, vx1 - 0.2f * em, alpha);
-        if (editing) Fill(b, vend, vy0 + 0.2f * em, vend + 1.5f, vy1 - 0.2f * em, Hi);
-        if (unit.Length > 0) UiText.Draw(b, small, unit, vx1 + 0.3f * em, cy - small.LineHeight * 0.5f + small.Ascent, Tx3, vx1 + 0.3f * em + UnitW, alpha);
-    }
-
-    /// <summary>One nav item: the selected one gets the filled band and the accent bar, a hovered one a faint band,
-    /// a submenu with an off-default row its dot after the name.</summary>
-    private void Nav(VertexBatch b, GlyphAtlas body, ScrollColumn col, int i, string text, bool on, bool hover, bool dot)
-    {
-        float top = NavTop(col, i), x0 = col.X, x1 = col.X + col.W - (col.Overflows ? ScrollColumn.BarW : 0f);
-        if (top + NavH <= col.Y || top >= col.Y + col.H) return;
-        if (on) { Fill(b, x0, top, x1, top + NavH, NavOn); Fill(b, x0, top, x0 + 3f, top + NavH, Accent2); }
-        else if (hover) Fill(b, x0, top, x1, top + NavH, 0xFFFFFF, 0.03f);
-        float clip = x1 - 0.3f * Em - (dot ? 0.5f * Em + 2f * DotR : 0f);
-        float pen = UiText.Draw(b, body, text, x0 + NavPadX, top + (NavH - body.LineHeight) * 0.5f + body.Ascent, on ? Hi : Tx2, clip);
-        if (dot) Dot(b, pen + 0.5f * Em + DotR, top + NavH * 0.5f);
-    }
 }

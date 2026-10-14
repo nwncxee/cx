@@ -19,6 +19,12 @@ internal static class UiKnobs
     internal static readonly Knob<bool> HoverFocus, Snap, EdgeSnap, TextEdit, Streaming;
     /// <summary>Every CX tooltip's dwell and fade times, read live by <see cref="Tooltip"/>.</summary>
     internal static readonly Knob<float> TipDelay, TipFadeIn, TipFadeOut;
+    /// <summary>The one look every CX window follows (<see cref="Theme"/>); a server may hold both.</summary>
+    internal static readonly Knob<string> Look, Palette;
+    /// <summary>The custom palette's colour per <see cref="Role"/>, index-aligned; editable while <see cref="Palette"/> is custom.</summary>
+    internal static readonly Knob<uint>[] CustomRgb;
+    /// <summary>The id the custom palette saves under (<c>cxpal_&lt;id&gt;</c>).</summary>
+    internal static readonly Knob<string> CustomName;
 
     static UiKnobs()
     {
@@ -31,7 +37,7 @@ internal static class UiKnobs
         Typeface = G.Dropdown("typeface", "Typeface", FontRegistry.Names, FontRegistry.DefaultName, layout: true,
                               help: "The font every CX window draws with: the built-in DejaVu Sans, a font.<name> from cx.cfg, or one installed on this machine. Each element may pick its own in its Text rows. Type in the list to search.",
                               changed: UiHostService.ApplyTypeface);
-        ConsoleScale = G.Slider("consolescale", "Console text size", 1f, 3f, 0.25f, 1.5f, "x",
+        ConsoleScale = G.Slider("consolescale", "Console text size", 1f, 3f, 0.25f, 1.5f, "x", Tier.Advanced,
                                 help: "Size of the ~ console and the other text the game prints on screen, over the game's own 14px grid. Needs the Alloy renderer.");
         HoverFocus = G.Toggle("hoverfocus", "Focus a window by hovering", false, Tier.Advanced,
                               help: "A CX window takes the keyboard when the pointer rests on it, without a click.");
@@ -45,8 +51,36 @@ internal static class UiKnobs
                             help: "The game's own text boxes get selection (mouse drag, double-click, Shift+arrows, Ctrl+A), Ctrl+C/X/V, and Ctrl+arrow/Backspace/Delete by word. Needs the Alloy renderer.");
         Streaming = G.Toggle("streaming", "Show streaming progress", true,
                              help: "A thin bar at the top of the screen while the area is still arriving after the load screen: textures, geometry and light charts. You can play meanwhile; it hides once everything has landed. Needs the Alloy renderer.");
+        G.Section("Look");
+        Look = G.Dropdown("look", "Look", new[] { Theme.LookNative, Theme.LookFlat }, Theme.LookNative, new[] { "Game art", "Flat colour" },
+                          help: "Every CX window, chat included: Game art wears NWN's own GUI textures and colours (a server may re-skin them or hold this choice); Flat colour draws plain panels in the palette below.",
+                          changed: Theme.Apply);
+        string[] ids = new string[Theme.Palettes.Length], labels = new string[ids.Length];
+        for (int i = 0; i < ids.Length; i++) { ids[i] = Theme.Palettes[i].Id; labels[i] = Theme.Palettes[i].Label; }
+        Palette = G.Dropdown("palette", "Palette", ids, ids[0], labels, open: true,
+                             parse: v => (Theme.ValidId(v), v),
+                             help: "The colours of every CX window in the Flat colour look: a built-in set, Custom (edit it below), or one a palette file supplies -- yours in override/, or the server's. A server may hold this choice.",
+                             changed: Theme.Apply);
+        G.Section("Custom palette");
+        CustomRgb = new Knob<uint>[PaletteText.Labels.Length];
+        for (int i = 0; i < CustomRgb.Length; i++)
+            CustomRgb[i] = G.Swatch("custom_" + ((Role)i).ToString().ToLowerInvariant(), PaletteText.Labels[i], (Theme.Palettes[0].Rgb[i] << 8) | 0xff,
+                                    Tier.Advanced, help: "A colour of the Custom palette; pick Custom under Palette to edit it.", changed: Theme.Apply);
+        G.Button("customfrom", "Start from the previous palette", PaletteShare.StartFromPrevious, Tier.Advanced,
+                 help: "Copy the palette you used before Custom into the custom colours, to edit from there.");
+        CustomName = G.Text("customname", "Palette file name", "mine", Tier.Advanced,
+                            help: "The id the custom palette saves under: 1-10 of a-z, 0-9 and _. Saved as cxpal_<id>.txt.");
+        G.Button("customsave", "Save to override folder", PaletteShare.Save, Tier.Advanced,
+                 help: "Write the custom palette to override/cxpal_<id>.txt. It joins the Palette list; send the file to share it.");
+        G.Button("customcopy", "Copy palette to clipboard", PaletteShare.Copy, Tier.Advanced,
+                 help: "The current palette as palette-file text, ready to paste to someone.");
+        G.Button("custompaste", "Paste palette from clipboard", PaletteShare.Paste, Tier.Advanced,
+                 help: "Read palette-file text from the clipboard into the custom colours and switch to Custom.");
+        ServerPolicy.AllowKnobs("ui.look");
+        ServerPolicy.AllowKnobs("ui.palette");
+        Theme.SetFound(System.Array.Empty<Palette>());
         G.Section("Tooltips");
-        TipDelay = G.Slider("tipdelay", "Tooltip delay", 0f, 2f, 0.05f, Tooltip.DelaySec, "s",
+        TipDelay = G.Slider("tipdelay", "Tooltip delay", 0f, 2f, 0.05f, Tooltip.DelaySec, "s", Tier.Advanced,
                             help: "How long the pointer rests on something before its tooltip shows, in every CX window and on the CX quickbar. Moving to a neighbour while one shows skips the wait.");
         TipFadeIn = G.Slider("tipfadein", "Tooltip fade in", 0f, 1f, 0.01f, Tooltip.FadeInSec, "s", Tier.Advanced, help: "How long a tooltip takes to fade in. 0 shows it at once.");
         TipFadeOut = G.Slider("tipfadeout", "Tooltip fade out", 0f, 1f, 0.01f, Tooltip.FadeOutSec, "s", Tier.Advanced, help: "How long a tooltip takes to fade out after the pointer leaves. 0 hides it at once.");
@@ -96,6 +130,11 @@ internal static class UiCategory
         check.Expect(KnobGroup.Find("combattext.enabled") is Knob<bool> { Default: true } && KnobGroup.Find("combattext.bannersize") is Knob<float> { Default: 1.3f }, "combattext rows bind");
         var live = CommandRegistry.Global;
         foreach (string dead in new[] { "/np", "/ct", "/qbar", "/compass" }) check.Expect(!live.Knows(dead), $"{dead} is gone");
+        check.Expect(KnobGroup.Find("ui.look") is Knob<string> { Default: Theme.LookNative } && KnobGroup.Find("ui.palette") is Knob<string> { Default: "slate" },
+          "ui.look and ui.palette bind with their defaults");
+        Theme.SelfCheck(log);
+        PaletteText.SelfCheck(log);
+        NativeChrome.SelfCheck(log);
         log.Info(check.Ok ? "UiCategory.SelfCheck: passed" : "UiCategory.SelfCheck: FAILED");
     }
 }

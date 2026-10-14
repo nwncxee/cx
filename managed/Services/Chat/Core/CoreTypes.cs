@@ -26,9 +26,9 @@ public enum TsFormat { HourMin, HourMinSec, Hour12 }
 /// when the world timer isn't up, e.g. the main menu).</summary>
 public enum TsSource { Local, Game }
 
-/// <summary>Background fill of a chat window. Solid = <see cref="ChatColor.Background"/> alone; the gradient
-/// shapes run Background -> <see cref="ChatColor.Background2"/> along the window's direction/stop settings:
-/// Linear along the angle, Radial centre -> edge, Conic mirrored around the angle.</summary>
+/// <summary>Background fill of a chat window. Solid = the look's panel background alone; the gradient shapes
+/// run it to the look's second background colour along the window's direction/stop settings: Linear along the
+/// angle, Radial centre -> edge, Conic mirrored around the angle.</summary>
 public enum BgMode { Solid, Linear, Radial, Conic }
 
 /// <summary>A clickable portrait rect in screen pixels, carrying the line's PlayerId for tell targeting.</summary>

@@ -22,7 +22,8 @@ internal static class ChatKnobs
         G = KnobGroup.Declare("chat", "Interface", "Chat", master: "Enable the CX chatbox",
             masterHelp: "CX's own chat: multiple windows, tabs, portraits, tells routing. Off, the stock chat window runs. Takes effect at the next launch.",
             masterEffect: Effect.Restart, order: 210,
-            header: "Window colours, animation and tabs are on each window's own gear.");
+            header: "Window animation, background shape and tabs are on each window's own gear; the colours "
+                  + "come from the look under UI.");
         Enabled = G.Master!;
         TellOpen = G.Dropdown("tellopen", "When a tell arrives", new[] { 0, 1, 2 }, 0,
                               new[] { "nothing", "open a tab", "open a window" },

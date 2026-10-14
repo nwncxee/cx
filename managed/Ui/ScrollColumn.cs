@@ -14,8 +14,15 @@ public sealed class ScrollColumn
     public static float BarW => 8f * Metrics.Scale;
     /// <summary>Smallest thumb, so it stays grabbable when the content is very tall.</summary>
     public static float MinThumb => 24f * Metrics.Scale;
-    /// <summary>Track colour: fixed chrome (chat's <c>SbTrack</c>), not themeable.</summary>
-    private static readonly (float r, float g, float b, float a) Track = (0.04f, 0.05f, 0.07f, 0.55f);
+    /// <summary>Track alpha over whatever sits behind the column.</summary>
+    private const float TrackA = 0.55f;
+
+    /// <summary>This column wears the game's own scrollbar art: the gutter is NUI's width and the thumb sits
+    /// between the two arrows. The owner sets it beside the skin it armed, so a refused skin stays flat.</summary>
+    public bool Native;
+
+    /// <summary>This column's gutter width: NUI's bar while <see cref="Native"/>, else <see cref="BarW"/>.</summary>
+    public float Width => Native ? NativeChrome.BarWidth(Metrics.Scale) : BarW;
 
     /// <summary>The viewport rect (absolute px).</summary>
     public float X, Y, W, H;
@@ -37,7 +44,7 @@ public sealed class ScrollColumn
 
     /// <summary>True when the pointer is over the scrollbar gutter (only meaningful while overflowing).</summary>
     public bool OverBar(float mx, float my)
-        => Overflows && mx >= X + W - BarW && mx < X + W && my >= Y && my < Y + H;
+        => Overflows && mx >= X + W - Width && mx < X + W && my >= Y && my < Y + H;
 
     /// <summary>Content y under a pointer y (the owner hit-tests its rows against this).</summary>
     public float ToContent(float screenY) => screenY - Y + Offset;
@@ -45,11 +52,21 @@ public sealed class ScrollColumn
     public float ToScreen(float contentY) => contentY - Offset + Y;
 
     /// <summary>Thumb rect, or false when nothing scrolls. Proportional to the visible fraction, floored at
-    /// <see cref="MinThumb"/>; top of the track at Offset 0, bottom at <see cref="MaxOffset"/>.</summary>
+    /// <see cref="MinThumb"/>; top of the track at Offset 0, bottom at <see cref="MaxOffset"/>. A
+    /// <see cref="Native"/> column takes the engine's geometry instead (<see cref="NativeChrome.ThumbRect"/>), so
+    /// the drag and the art agree.</summary>
     public bool ThumbRect(out float top, out float height)
     {
         top = 0f; height = 0f;
         if (!Overflows) return false;
+        if (Native)
+        {
+            float bw = Width;
+            if (!NativeChrome.ThumbRect(X + W - bw, Y, X + W, Y + H, Offset, H, ContentH, out _, out float ny0, out _, out float ny1))
+                return false;
+            top = ny0; height = ny1 - ny0;
+            return true;
+        }
         height = H * H / ContentH;
         if (height < MinThumb) height = MinThumb;
         if (height > H) height = H;
@@ -59,7 +76,15 @@ public sealed class ScrollColumn
     }
 
     public bool OverThumb(float mx, float my)
-        => ThumbRect(out float t, out float h) && mx >= X + W - BarW && mx < X + W && my >= t && my < t + h;
+        => ThumbRect(out float t, out float h) && mx >= X + W - Width && mx < X + W && my >= t && my < t + h;
+
+    /// <summary>Thumb travel for a <paramref name="thumbH"/>-tall thumb: the track less both arrows and the thumb's
+    /// own padding while <see cref="Native"/>, else the plain viewport.</summary>
+    private float Travel(float thumbH)
+    {
+        float t = Native ? H - 2f * Width - 2f * NativeChrome.PadY - thumbH : H - thumbH;
+        return t > 0f ? t : 0f;
+    }
 
     /// <summary>Press: the thumb starts a drag; the rest of the gutter pages toward the pointer. True when the
     /// press landed on the bar (the owner then does not hit-test its content).</summary>
@@ -67,6 +92,8 @@ public sealed class ScrollColumn
     {
         if (!OverBar(mx, my)) return false;
         if (OverThumb(mx, my)) { _drag = true; _gy = my; _goff = Offset; return true; }
+        int arrow = Native ? NativeChrome.Arrow(Y, Y + H, Width, my) : 0;
+        if (arrow != 0) { ScrollBy(arrow * H * NativeChrome.ArrowStep); return true; }
         ThumbRect(out float top, out float _);
         ScrollBy(my < top ? -H : H);
         return true;
@@ -78,7 +105,7 @@ public sealed class ScrollColumn
         if (!_drag) return false;
         if (ThumbRect(out float _, out float th))
         {
-            float travel = H - th;
+            float travel = Travel(th);
             Offset = travel > 0f ? _goff + (my - _gy) * MaxOffset / travel : 0f;
             Clamp();
         }
@@ -110,11 +137,22 @@ public sealed class ScrollColumn
 
     /// <summary>Draw the track + thumb in the gutter at the right edge (nothing when the content fits). Pure and
     /// zero-alloc, like every input here: pixels in, offset out.</summary>
-    public void Draw(VertexBatch b, (float r, float g, float b, float a) thumb)
+    public void Draw(VertexBatch b, (float r, float g, float b, float a) thumb) => Draw(b, thumb, null);
+
+    /// <summary>The bar in the gutter at the right edge, nothing when the content fits: the game's own trough,
+    /// arrows and tiled thumb when <paramref name="skin"/> is given and this column is <see cref="Native"/> (lit
+    /// while <paramref name="hot"/> or dragging), else the themed track and thumb. Zero-alloc.</summary>
+    public void Draw(VertexBatch b, (float r, float g, float b, float a) thumb, Skin? skin, bool hot = false)
     {
+        if (!Overflows) return;
+        float x0 = X + W - Width;
+        if (Native && skin != null)
+        {
+            NativeChrome.Scrollbar(skin, x0, Y, X + W, Y + H, Offset, H, ContentH, hot || _drag);
+            return;
+        }
         if (!ThumbRect(out float top, out float h)) return;
-        float x0 = X + W - BarW;
-        b.Rect(x0, Y, X + W, Y + H, Track.r, Track.g, Track.b, Track.a);
+        PanelChrome.Fill(b, x0, Y, X + W, Y + H, Theme.Rgb(Role.Track), TrackA);
         b.Rect(x0, top, X + W, top + h, thumb.r, thumb.g, thumb.b, thumb.a);
     }
 
@@ -167,6 +205,37 @@ public sealed class ScrollColumn
         long delta = System.GC.GetAllocatedBytesForCurrentThread() - before;
         check.Expect(delta == 0, $"100 draws allocate nothing ({delta} bytes)");
 
+        NativeGeometry(check);
+
         log.Info(check.Ok ? "ScrollColumn.SelfCheck: passed" : "ScrollColumn.SelfCheck: FAILED");
+    }
+
+    /// <summary>Oracle: the engine's bar worked out by hand at GUI scale 1 -- an 18 px gutter, square arrows at both
+    /// ends, 4/2 padding -- over a 240 px box holding 1440 px of content: a 30 px thumb at (282..300, 70..100), 170 px
+    /// of travel, and its bottom two px above the down arrow when scrolled out.</summary>
+    private static void NativeGeometry(Checker check)
+    {
+        float saved = Metrics.Scale;
+        Metrics.Scale = 1f;
+        try
+        {
+            var sc = new ScrollColumn { Native = true };
+            sc.SetRect(100f, 50f, 200f, 240f);
+            sc.ContentH = 1440f;
+            check.Expect(sc.Width == 18f && BarW == 8f, $"a native column's gutter is NUI's 18 px, not the flat 8 ({sc.Width})");
+            check.Expect(sc.ThumbRect(out float t0, out float h0) && t0 == 70f && h0 == 30f,
+                         $"the thumb clears the up arrow and is a sixth of the track ({t0}, {h0})");
+            check.Expect(sc.OverBar(290f, 100f) && !sc.OverBar(281f, 100f), "the gutter starts 18 px in from the right edge");
+            check.Expect(sc.OverThumb(290f, 71f) && !sc.OverThumb(290f, 101f), "the thumb hit-tests over its native rect");
+            check.Expect(sc.MouseDown(290f, 71f) && sc.Dragging, "a press on the native thumb grabs it");
+            sc.MouseMove(290f, 71f + 170f);
+            check.Expect(sc.Offset == sc.MaxOffset, $"170 px of drag is the whole range ({sc.Offset} of {sc.MaxOffset})");
+            check.Expect(sc.ThumbRect(out float t1, out float h1) && t1 + h1 == 270f, $"scrolled out: the thumb ends 2 px above the down arrow ({t1 + h1})");
+            sc.MouseUp();
+            sc.Offset = 0f;
+            check.Expect(sc.MouseDown(290f, 285f) && sc.Offset == 24f, "a press in the down arrow steps a tenth of the box, as nuklear's scroll_step");
+            sc.MouseUp();
+        }
+        finally { Metrics.Scale = saved; }
     }
 }

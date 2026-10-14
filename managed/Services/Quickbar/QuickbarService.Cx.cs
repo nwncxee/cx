@@ -61,20 +61,25 @@ public sealed unsafe partial class QuickbarService
     private const float DragSlopPx = 5f;
     /// <summary>SDL_BUTTON_LMASK.</summary>
     private const uint SdlLeftMask = 1;  // not-an-offset: SDL key/event code
-    private const uint EquipLine = 0x5fd35f, ModeLine = 0xe8c060, GripDots = 0x8a93a6;  // not-an-offset: a colour
+    /// <summary>The stock button outlines, the engine's own meanings: green for an equipped item, gold for a mode
+    /// that is on.</summary>
+    private const uint EquipLine = 0x5fd35f, ModeLine = 0xe8c060;  // not-an-offset: a colour
+    /// <summary>The alpha of the wash over a hovered button.</summary>
+    private const byte HoverAlpha = 0x26;  // not-an-offset: an alpha
     /// <summary>SDL_Keymod bits: Ctrl and Shift either side, Alt the left one only (right Alt is AltGr).</summary>
     private const int KmodShift = 0x0003, KmodCtrl = 0x00C0, KmodLAlt = 0x0100;  // not-an-offset: SDL key/event code
     /// <summary>SDL keycodes the bind mode reads: Esc finishes, Backspace / Delete clear; the modifier keys alone bind nothing.</summary>
     private const int SdlkEscape = 27, SdlkBackspace = 8, SdlkDelete = 127, SdlkLCtrl = 0x400000E0, SdlkRGui = 0x400000E7;  // not-an-offset: SDL key/event code
     private const string BindHelp = "Hover a button and press a key to bind it  -  Backspace clears  -  Esc or a click elsewhere finishes";
-    /// <summary>Skin part indices, in draw order.</summary>
-    private const int KFrame = 0, KSlot = 1, KGrip = 2;
+    /// <summary>The bar's own skin parts, after <see cref="NativeChrome"/>'s common chrome.</summary>
+    private const int KSlot = NativeChrome.Count, KGrip = KSlot + 1;
+    /// <summary>The window art's nine-slice border, drawn 1:1: what a part inside the frame insets by.</summary>
+    private const float FrameInset = 3f;
 
-    /// <summary>The bar's skin: NUI's nine-sliced window behind it, the inventory's cell tile per button and NUI's scrollbar
-    /// trough for the grip, as the CX inventory's game-art look; a server re-points a part with <c>quickbar.skin.&lt;part&gt;</c>.</summary>
-    private static Skin NewSkin() => new("quickbar",
-        new SkinPart("frame", "nui_windowh", 3, 3, 3, 3), new SkinPart("slot", "gui_inv_bkgnd2", 4, 4, 4, 4),
-        new SkinPart("grip", "nui_windowv", 3, 3, 3, 3));
+    /// <summary>The bar's skin: the native chrome, then the inventory's cell tile per button and NUI's scrollbar trough
+    /// for the grip.</summary>
+    private static Skin NewSkin() => NativeChrome.NewSkin(
+        new SkinPart("slot", "gui_inv_bkgnd2", 4, 4, 4, 4), new SkinPart("grip", "nui_windowv", 3, 3, 3, 3));
 
     /// <summary>The CX bar owns the quickbar: the master and <c>quickbar.replace</c> on, and its hooks armed. The stock bar
     /// moves off-screen and its keys stand down; the CX bar's keys work even while it is hidden.</summary>
@@ -302,34 +307,34 @@ public sealed unsafe partial class QuickbarService
         QuickbarLayout l = _cx.Layout;
         GlyphAtlas text = _cx.Text!;
         Skin? skin = null;
-        if (QuickbarKnobs.Look.V == QuickbarKnobs.LookNative && _cx.Skin.Arm(_log, "")) { _cx.Skin.Begin(); skin = _cx.Skin; }
+        if (Theme.IsNative && _cx.Skin.Arm(_log, "")) { _cx.Skin.Begin(); skin = _cx.Skin; }
         VertexBatch under = _cx.Under ??= new VertexBatch(text.SolidU, text.SolidV), over = _cx.Over ??= new VertexBatch(text.SolidU, text.SolidV);
         under.Reset(text.SolidU, text.SolidV); over.Reset(text.SolidU, text.SolidV);
         under.Outline = over.Outline = TextStyle.HaloOf(QuickbarKnobs.Text.Outline.V, _cx.TextPx);
 
         float s = l.S;
-        if (skin != null) skin.Draw(KFrame, l.X, l.Y, l.X + l.W, l.Y + l.H, s);
-        else { FillRgba(under, l.X, l.Y, l.X + l.W, l.Y + l.H, QuickbarKnobs.BgCol.V); OutlineRgba(under, l.X, l.Y, l.X + l.W, l.Y + l.H, QuickbarKnobs.BorderCol.V); }
+        if (skin != null) skin.Draw(NativeChrome.Frame, l.X, l.Y, l.X + l.W, l.Y + l.H);
+        else { FillRgba(under, l.X, l.Y, l.X + l.W, l.Y + l.H, Theme.Rgba(Role.PanelBg, 0xe6)); OutlineRgba(under, l.X, l.Y, l.X + l.W, l.Y + l.H, Theme.Rgba(Role.Border)); }
         if (l.Grip > 0f)
         {
             float gx1 = l.X + (QuickbarLayout.PadPx + l.Grip) * s, gcx = (l.X + gx1) / 2f;
-            skin?.Draw(KGrip, l.X + 2f * s, l.Y + 2f * s, gx1 - 1f * s, l.Y + l.H - 2f * s, s);
-            for (float gy = l.Y + l.H / 2f - 6f * s; gy <= l.Y + l.H / 2f + 6f * s; gy += 4f * s) Fill(over, gcx - s, gy, gcx + s, gy + 2f * s, GripDots);
+            skin?.Draw(KGrip, l.X + FrameInset, l.Y + FrameInset, gx1 - 1f * s, l.Y + l.H - FrameInset);
+            for (float gy = l.Y + l.H / 2f - 6f * s; gy <= l.Y + l.H / 2f + 6f * s; gy += 4f * s) Fill(over, gcx - s, gy, gcx + s, gy + 2f * s, Tx2);
         }
 
         int mx = -1, my = -1;
         uint mouse = EngineFn.SdlGetMouseState != null ? EngineFn.SdlGetMouseState(&mx, &my) : 0;
         int hover = _cx.Binding ? l.SlotAt(mx, my, _cx.Held) : SlotAt(mx, my);
         TrackSlotDrag(mx, my, (mouse & SdlLeftMask) != 0, hover);
-        uint labelCol = QuickbarKnobs.LabelCol.V >> 8, countCol = QuickbarKnobs.CountCol.V >> 8;
+        uint labelCol = Tx2, countCol = Hi;
         IntPtr panel = QuickbarNative.Panel();
         float hx0 = 0f, hy0 = 0f, hy1 = 0f;
         for (int i = 0; i < l.Count; i++)
         {
             int b = l.ButtonOf(i, _cx.Held);
             l.SlotRect(i, out float x0, out float y0, out float x1, out float y1);
-            if (skin != null) skin.Draw(KSlot, x0, y0, x1, y1, s);
-            else { FillRgba(under, x0, y0, x1, y1, QuickbarKnobs.SlotCol.V); OutlineRgba(under, x0, y0, x1, y1, QuickbarKnobs.SlotBorderCol.V); }
+            if (skin != null) skin.Draw(KSlot, x0, y0, x1, y1);
+            else { FillRgba(under, x0, y0, x1, y1, Theme.Rgba(Role.ListBg)); OutlineRgba(under, x0, y0, x1, y1, Theme.Rgba(Role.Frame)); }
             QuickSlot q = QuickbarNative.Read(panel, b);
             if (q.Type != 0)
             {
@@ -349,7 +354,7 @@ public sealed unsafe partial class QuickbarService
                 string label = _cx.Keys.Label(b);
                 if (label.Length > 0) UiText.Draw(over, text, label, x0 + 2f * s, y0 + 1f * s + text.Ascent, _cx.Binding ? Hi : labelCol, x1 - 1f * s);
             }
-            if (b == hover) { FillRgba(over, x0, y0, x1, y1, QuickbarKnobs.HoverCol.V); hx0 = x0; hy0 = y0; hy1 = y1; }
+            if (b == hover) { FillRgba(over, x0, y0, x1, y1, Theme.Rgba(Role.Hi, HoverAlpha)); hx0 = x0; hy0 = y0; hy1 = y1; }
             if (_cx.Binding && b == hover) { Outline(over, x0, y0, x1, y1, Accent2); Outline(over, x0 + 1f, y0 + 1f, x1 - 1f, y1 - 1f, Accent2); }
         }
         if (_cx.Binding) DrawBindBanner(over, text, l);
@@ -425,9 +430,9 @@ public sealed unsafe partial class QuickbarService
         if (text == null || _cx.Tip.Alpha <= 0f) return;
         VertexBatch b = _cx.TipBatch ??= new VertexBatch(text.SolidU, text.SolidV);
         b.Reset(text.SolidU, text.SolidV);
-        uint bg = QuickbarKnobs.BgCol.V;
+        uint bg = Theme.Rgba(Role.PanelBg, 0xe6);
         _cx.Tip.Draw(b, text, text.Ascent, (((bg >> 24) & 0xFF) / 255f, ((bg >> 16) & 0xFF) / 255f, ((bg >> 8) & 0xFF) / 255f, 1f),
-                     QuickbarKnobs.CountCol.V >> 8, _cx.Vw, _cx.Vh);
+                     Hi, _cx.Vw, _cx.Vh);
         TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
     }
 
