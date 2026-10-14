@@ -141,6 +141,9 @@ public sealed unsafe partial class AlloyRenderer
                 CasterGen++;
                 if (env) _dbEnv++;
             }
+            // main only: the route is shared, and a slot that is or was a PLT never stages on a worker (refused above)
+            byte slotCls = main ? DbClsOf(part, recipe) : _oCls[i];
+            if (slotCls != _oCls[i]) { _oCls[i] = slotCls; UnstampRecord(i); DbSetGen++; }
             // The GL NAME, not the registry id. `tid` is two things at once in this pipeline: the batch sort key
             // AND what the non-bindless path actually binds (Issue: glBindTexture(GL_TEXTURE_2D, _gTex[g])).
             // Handing it a TexId made every bind-path draw -- every unlit part, and every part at all when

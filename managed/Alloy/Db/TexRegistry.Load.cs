@@ -372,8 +372,12 @@ internal static unsafe partial class TexRegistry
             // (GLRender::SetUniforms @0x4ccbf0). Turn creature env mapping off and the engine bakes the same
             // reading in: ImageFillAlpha @0x4b8c30 writes rgb = mix(envGrey, rgb, a) and then a = 255.
             // Opaque is that verdict. (The sheen itself still waits on an env map -- DrawRecipe's ponytail marker.)
+            // ...on an env-mapped gob. A gob the game gives NO env map (a cloakmodel.2da row whose ENVMAP is
+            // ****, CNWCCreatureAppearance::CreateCloak @0x736c90) is asked HasAlpha, which a PLT always answers
+            // yes, so there the palette alpha is coverage; that is per instance, so AlloyRenderer.DbClsOf says it.
             j.Cov = TexCoverage.Opaque;
-            j.CovWhy = TexCoverageOf.Why("PLT, palette alpha = reflectivity", j.Cov);
+            j.CovWhy = "PLT -> Opaque where its gob is env-mapped (palette alpha = reflectivity); a cutout on the "
+                     + "palette alpha where it is not";
             return;
         }
         if (j.Loc.ResType == TgaResType)

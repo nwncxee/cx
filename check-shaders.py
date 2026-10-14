@@ -503,6 +503,8 @@ def programs(g):
         "fullbright": (g["cx_own_vs"], g["cx_own_fs"]),
         "depth prepass": (g["cx_depth_v"], g["cx_depth_f"]),
         "keyhole depth prepass": (g["cx_depthkey_v"], g["cx_depthkey_f"]),
+        # Programs.EnsureDepthFeatProgram: the lit vertex text under the cutout/displaced depth stage
+        "feature depth prepass": (g["cx_ownlit_vs"], g["cx_depthfeat_f"]),
         "caster depth": (g["cx_cast_vs"], g["cx_cast_fs"]),
         "caster depth (alpha-tested)": (g["cx_castmask_v"], g["cx_castmask_f"]),
         "clustered lit": (g["cx_ownlit_vs"], g["cx_ownlit_fs"]),
