@@ -13,8 +13,10 @@ internal static unsafe class LoadScreen
 {
     /// <summary>The share of the bar the engine's own load phase owns; the bake hold fills the rest.</summary>
     internal const float EngineShare = 0.65f;
-    private const uint CaptionRgb = 0xE8E4DA, SkipRgb = 0x9A968C;   // not-an-offset: colours
-    private const float BgR = 0.04f, BgG = 0.04f, BgB = 0.05f;
+    /// <summary>The screen's three colours by role: the caption, the skip line and the backdrop.</summary>
+    private static uint CaptionRgb => Theme.Rgb(Role.Hi);
+    private static uint SkipRgb => Theme.Rgb(Role.Tx2);
+    private static uint BgRgb => Theme.Rgb(Role.PanelBg);
 
     /// <summary>The engine's <c>SetStatus</c>, for the bake phase's writes (which must not be remapped again).</summary>
     internal static StatusBarSetStatusFn Orig;
@@ -27,7 +29,7 @@ internal static unsafe class LoadScreen
     private static string _caption = "";
     private static float _skipX0, _skipX1, _skipY0, _skipY1;
     private static float _bakedW, _bakedH, _bakedShown, _bakedScale;
-    private static int _bakedEpoch = -1;
+    private static int _bakedEpoch = -1, _bakedTheme = -1;
     private static string? _bakedCaption;
     private static bool _bakedSkip, _bakedPanel;
 
@@ -113,7 +115,7 @@ internal static unsafe class LoadScreen
         GlyphAtlas? atlas = TextRig.Atlas;
         if (w <= 0f || h <= 0f || atlas == null) return;
         _fg.Reset(atlas.SolidU, atlas.SolidV);
-        _fg.Rect(0f, 0f, w, h, BgR, BgG, BgB, 1f);
+        PanelChrome.Fill(_fg, 0f, 0f, w, h, BgRgb);
         float y0 = h * 0.72f;
         UiText.Draw(_fg, atlas, caption, (w - UiText.Measure(atlas, caption)) * 0.5f, y0 - atlas.LineHeight * 0.6f, CaptionRgb, w);
         UiText.Draw(_fg, atlas, sub, (w - UiText.Measure(atlas, sub)) * 0.5f, y0 + atlas.LineHeight * 1.4f, SkipRgb, w);
@@ -126,22 +128,23 @@ internal static unsafe class LoadScreen
     private static void Rebake(GlyphAtlas atlas, float w, float h, bool panel)
     {
         if (_bakedW == w && _bakedH == h && _bakedShown == _shown && _bakedScale == Metrics.Scale && _bakedPanel == panel
-            && ReferenceEquals(_bakedCaption, _caption) && _bakedSkip == _skipOpen && _bakedEpoch == TextRig.AtlasEpoch)
+            && ReferenceEquals(_bakedCaption, _caption) && _bakedSkip == _skipOpen && _bakedEpoch == TextRig.AtlasEpoch
+            && _bakedTheme == Theme.Epoch)
             return;
         _bakedW = w; _bakedH = h; _bakedShown = _shown; _bakedScale = Metrics.Scale; _bakedPanel = panel;
-        _bakedCaption = _caption; _bakedSkip = _skipOpen; _bakedEpoch = TextRig.AtlasEpoch;
+        _bakedCaption = _caption; _bakedSkip = _skipOpen; _bakedEpoch = TextRig.AtlasEpoch; _bakedTheme = Theme.Epoch;
 
         _fg.Reset(atlas.SolidU, atlas.SolidV);
         float y0;
         if (panel) y0 = h - atlas.LineHeight * (_skipOpen ? 3.6f : 2.2f);
         else
         {
-            _fg.Rect(0f, 0f, w, h, BgR, BgG, BgB, 1f);
+            PanelChrome.Fill(_fg, 0f, 0f, w, h, BgRgb);
             float barW = MathF.Min(w * 0.5f, 640f * Metrics.Scale), barH = 10f * Metrics.Scale;
             float x0 = (w - barW) * 0.5f;
             y0 = h * 0.72f;
-            _fg.Rect(x0, y0, x0 + barW, y0 + barH, 0.16f, 0.16f, 0.18f, 1f);
-            _fg.Rect(x0, y0, x0 + barW * _shown, y0 + barH, 0.78f, 0.66f, 0.36f, 1f);
+            PanelChrome.Fill(_fg, x0, y0, x0 + barW, y0 + barH, Theme.Rgb(Role.Track));
+            PanelChrome.Fill(_fg, x0, y0, x0 + barW * _shown, y0 + barH, Theme.Rgb(Role.Accent));
             y0 -= atlas.LineHeight * 0.6f;
         }
         _fg.Outline = panel ? MathF.Max(1f, 1.5f * Metrics.Scale) : 0f;

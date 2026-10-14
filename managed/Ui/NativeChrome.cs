@@ -51,6 +51,11 @@ public static class NativeChrome
     /// <summary>The bar's width at <paramref name="scale"/>, whole px.</summary>
     public static float BarWidth(float scale) => MathF.Round(BarPx * scale);
 
+    /// <summary>The untinted tint at <paramref name="alpha"/>: what a part faded with its window draws with
+    /// (<see cref="Skin.Flush"/>'s alpha is the whole batch's, so a fading element passes its own).</summary>
+    public static uint White(float alpha)
+        => 0xffffff00u | (uint)Math.Clamp((int)(alpha * 255f + 0.5f), 0, 255);  // not-an-offset: an rgba tint
+
     /// <summary>The thumb rect of a vertical bar at (<paramref name="x0"/>..<paramref name="x1"/>,
     /// <paramref name="y0"/>..<paramref name="y1"/>), arrows square at both ends; false when everything fits.</summary>
     public static bool ThumbRect(float x0, float y0, float x1, float y1, float top, float view, float total,

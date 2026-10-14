@@ -13,7 +13,8 @@ public sealed class Dropdown
 {
     /// <summary>Rows the open list shows at most before it scrolls.</summary>
     public const int MaxVisible = 8;
-    private const uint FrameRgb = 0x8C8C8C;  // not-an-offset: a colour
+    /// <summary>The hairline around the open list and under the search row: the themed frame line.</summary>
+    private static uint FrameRgb => Theme.Rgb(Role.Tx2);
     private const float FrameA = 1f;
 
     public bool Open { get; private set; }
@@ -176,20 +177,29 @@ public sealed class Dropdown
     }
 
     /// <summary>Draw the open list on top of everything: frame, body, the selected + hovered fills, the
-    /// visible items (clipped to the box) and the scrollbar.</summary>
+    /// visible items (clipped to the box) and the scrollbar. With <paramref name="skin"/> given the list wears the
+    /// game's own window art (the search row its edit box) in place of the frame and body fills.</summary>
     public void Draw(VertexBatch b, GlyphAtlas atlas, float baseDrop,
-                     (float r, float g, float b, float a) bg, (float r, float g, float b, float a) active, uint textRgb)
+                     (float r, float g, float b, float a) bg, (float r, float g, float b, float a) active, uint textRgb,
+                     Skin? skin = null)
     {
         if (!Open) return;
+        List.Native = skin != null;
         float x0 = List.X, y0 = List.Y, x1 = List.X + List.W, y1 = List.Y + List.H;
-        float fr = ((FrameRgb >> 16) & 0xFF) / 255f, fg = ((FrameRgb >> 8) & 0xFF) / 255f, fb = (FrameRgb & 0xFF) / 255f;
-        b.Rect(x0 - 1f, Y - 1f, x1 + 1f, y1 + 1f, fr, fg, fb, FrameA);
-        b.Rect(x0, Y, x1, y1, bg.r, bg.g, bg.b, 0.98f);
-        float textClip = x1 - (List.Overflows ? ScrollColumn.BarW : 0f) - 2f;
+        uint frameRgb = FrameRgb;
+        float fr = ((frameRgb >> 16) & 0xFF) / 255f, fg = ((frameRgb >> 8) & 0xFF) / 255f, fb = (frameRgb & 0xFF) / 255f;
+        if (skin != null) skin.Draw(NativeChrome.Frame, x0 - 1f, Y - 1f, x1 + 1f, y1 + 1f);
+        else
+        {
+            b.Rect(x0 - 1f, Y - 1f, x1 + 1f, y1 + 1f, fr, fg, fb, FrameA);
+            b.Rect(x0, Y, x1, y1, bg.r, bg.g, bg.b, 0.98f);
+        }
+        float textClip = x1 - (List.Overflows ? List.Width : 0f) - 2f;
         float vpad = (ItemH - atlas.LineHeight) / 2f;
         if (Searching)
         {
-            b.Rect(x0, Y, x1, y0, active.r, active.g, active.b, active.a * 0.25f);
+            if (skin != null) skin.Draw(NativeChrome.Edit, x0, Y, x1, y0);
+            else b.Rect(x0, Y, x1, y0, active.r, active.g, active.b, active.a * 0.25f);
             b.Rect(x0, y0 - 1f, x1, y0, fr, fg, fb, FrameA);
             bool hint = Filter.Length == 0;
             float pen = UiText.Draw(b, atlas, hint ? SearchHint : Filter, x0 + 4f, Y + baseDrop + vpad, textRgb, x1 - 4f, hint ? 0.45f : 1f);
@@ -206,7 +216,7 @@ public sealed class Dropdown
             UiText.Draw(b, atlas, Choices[c], x0 + 4f, top + baseDrop + vpad, textRgb, textClip);
         }
         b.ClearClip();
-        List.Draw(b, active);
+        List.Draw(b, active, skin);
     }
 
     /// <summary>Off-device proof: a 27-entry list opens capped at <see cref="MaxVisible"/> rows, scrolls by wheel
