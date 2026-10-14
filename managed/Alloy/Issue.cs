@@ -298,11 +298,14 @@ internal static unsafe class Issue
         float boundCut = float.NaN;   // per PROGRAM: reset on every UseProgram below
         int litBase = -1, litCut = -1, litOitGob = -1; // the bound lit program's, whichever of the two it is
         int litSsaoOn = -1, litAoDirect = -1;
-        if (boundProg is 1 or 3 or 4 or 5 or 6)
+        // CX-273: the decal layer's mode for this loop, and the bound lit program's uDecal (-1 = not yet sent)
+        int decalMode = DecalLayer.Mode, litDecal = -1, boundDecal = -1;
+        bool decalWrite = decalMode == DecalLayer.ModeWrite;
+        if (boundProg is 1 or 3 or 4 or 5 or 6 or 8)
         {
             ref LitLoc H = ref LitLocOf(boundProg);
             litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
-            litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect;
+            litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect; litDecal = H.Decal;
         }
         // #379 follow-up: SSAO is per BATCH, not per program bind. The visibility buffer is computed from
         // the DEPTH PREPASS, and a batch the prepass skipped (cutout, an out-of-prepass feature, the whole
@@ -342,7 +345,7 @@ internal static unsafe class Issue
             // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
             // whose coverage comes off its own map still gets a per-primitive sample pattern.
             bool hostMask = hosted && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
-            int wantProg = water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
+            int wantProg = decalWrite && lit ? 8 : water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)
             {
@@ -377,7 +380,7 @@ internal static unsafe class Issue
                 else if (lit)
                 {
                     ref LitLoc L = ref LitLocOf(wantProg);
-                    Gl.UseProgram(wantProg == 7 ? Programs.ProgLitHostMask : hosted ? Programs._progLitHost
+                    Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal : wantProg == 7 ? Programs.ProgLitHostMask : hosted ? Programs._progLitHost
                                   : lists ? Programs._progLitList
                                   : deferred ? Programs._progLitDef : wantProg == 6 ? Programs._progLitMask : Programs._progLit46);
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
@@ -398,7 +401,8 @@ internal static unsafe class Issue
                     BindProbe();
                     // not inside the OIT bracket: the scene depth is that framebuffer's depth attachment there, and
                     // no blended batch reads SSAO (AoBlended) -- a bound, attached depth is a driver decompress
-                    SsaoPass.BindForDraw(SsaoPass.Live && !_capturing && !_oitOn, PostChain.DepthTex);
+                    SsaoPass.BindForDraw(SsaoPass.Live && !_capturing && !_oitOn, PostChain.DepthTex, depthToo: wantProg == 8);
+                    Gl.Uniform2f(L.DecalZ, DecalLayer.Z0, DecalLayer.Z1);
                     Gl.Uniform1i(L.SsaoHalf, SsaoPass.Half ? 1 : 0);
                     Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
                     UploadMaterialModel(L.Material);
@@ -413,6 +417,7 @@ internal static unsafe class Issue
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
+                    litDecal = L.Decal; boundDecal = -1;
                 }
                 else
                 {
@@ -441,8 +446,12 @@ internal static unsafe class Issue
                     Gl.Uniform1i(litSsaoOn, ssao);
                     Gl.Uniform1f(litAoDirect, ssao > 0 ? SsaoPass.Direct : 0f);
                 }
+                // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
+                int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
+                if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
             }
-            float cut = _coverPass ? CoverageLayer.Cut : AlloyClasses.Discard(_gCls[g]);
+            // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
+            float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f : AlloyClasses.Discard(_gCls[g]);
             if (cut != boundCut) { Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut; }
             // ...and the blend state, per batch, because the opaque PASS now mixes both: a plain opaque batch
             // draws with GL_BLEND off and a cutout batch with it on and the material's own pair, which is
@@ -455,7 +464,7 @@ internal static unsafe class Issue
                 if (blend) Gl.Enable(Gl.BLEND); else Gl.Disable(Gl.BLEND);
             }
             // Under OIT the pair is per draw buffer and set once by OitPass.Begin; glBlendFunc would clobber both.
-            if (blend && !_oitOn)
+            if (blend && !_oitOn && !decalWrite)
             {
                 uint src = BlendGl(_gSrc[g]), dst = BlendGl(_gDst[g]);
                 if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
@@ -530,15 +539,16 @@ internal static unsafe class Issue
         if (boundOffset) Gl.Disable(Gl.POLYGON_OFFSET_FILL);
     }
 
-    /// <summary>The uniform locations of one of the six lit programs, keyed by the issue loop's
+    /// <summary>The uniform locations of one of the seven lit programs, keyed by the issue loop's
     /// <c>wantProg</c>: 1 plain, 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant,
-    /// 7 the hosted one's. One place, because two sites in the loop pick from the same six.</summary>
+    /// 7 the hosted one's, 8 the decal layer's writer. One place, because two sites in the loop pick from them.</summary>
     private static ref LitLoc LitLocOf(int which)
         => ref (which == 3 ? ref Programs._litH
               : ref (which == 4 ? ref Programs._litL
                    : ref (which == 5 ? ref Programs._litD
                         : ref (which == 6 ? ref Programs._litM
-                             : ref (which == 7 ? ref Programs.HostMaskLoc : ref Programs._lit)))));
+                             : ref (which == 7 ? ref Programs.HostMaskLoc
+                                  : ref (which == 8 ? ref Programs.DecalLoc : ref Programs._lit))))));
 
     /// <summary>The batches being issued are <see cref="CoverageLayer"/>'s, cut at the layer's threshold rather
     /// than the class's (and through the mask variant when it is on). Set around the layer's one issue call.</summary>

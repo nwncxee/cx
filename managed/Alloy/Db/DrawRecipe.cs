@@ -554,6 +554,7 @@ internal static partial class DrawRecipe
         if (!mesh.Shadow) f |= RecipeFlag.NoShadow;
         if (mesh.Beaming) f |= RecipeFlag.Beaming;
         if (mesh.TileFade != 0) f |= RecipeFlag.Fades;
+        if (FacesUp(mesh)) f |= RecipeFlag.FacesUp;
         _flags[r] = f;
         _prim[r] = 0;
         int feat = MtrParams.Feature(mtr?.ShaderVs ?? "");
@@ -668,6 +669,18 @@ internal static partial class DrawRecipe
 
     private static bool _attached;
 
+    /// <summary>How far from +Z a <see cref="RecipeFlag.FacesUp"/> mesh's normals may lean: cos 45 degrees.</summary>
+    private const float UpCos = 0.7f;
+
+    /// <summary>Every normal of the mesh within <see cref="UpCos"/> of +Z: a sheet laid over the ground.</summary>
+    internal static bool FacesUp(MeshDef mesh)
+    {
+        if (mesh.Normals.Length == 0) return false;
+        foreach (Vector3 n in mesh.Normals)
+            if (!(n.Z >= UpCos * n.Length())) return false;
+        return true;
+    }
+
     /// <summary>The recipe's local box, six floats (min then max), into <paramref name="dst"/>.</summary>
     internal static void Box(int r, Span<float> dst)
     {
@@ -721,4 +734,7 @@ internal enum RecipeFlag : ushort
     /// <summary>A cutout whose coverage is map slot 1's alpha, because its <c>customShaderFS</c> is one of
     /// <see cref="ShaderFeatures.CoverNrmFs"/> (<see cref="AlloyRenderer.CoverNrmBit"/> on the record).</summary>
     CoverNrm = 1 << 12,
+    /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
+    /// can be one of these.</summary>
+    FacesUp = 1 << 13,
 }

@@ -46,6 +46,8 @@ void main()
     // probe capture never dissolves (a hole baked into the cube is permanent in every reflection).
     float kh = uCapture != 0 ? 1.0 : CxKeyhole(d.rot.z, vWorld, vDepth);
     if (kh < 0.0) discard;
+    // CX-273: a decal fragment the layer already folded into the surface under it draws nothing here
+    if (uDecal == 2 && CxDecalOn(imageLoad(uDecalSurf, ivec2(gl_FragCoord.xy)).r, vDepth)) discard;
     int slots = int(d.pbr.w);
     // 22 = normal-map coverage: magenta where the material's map REACHED the shader, grey where it
     // did not. The one thing viz 7 cannot say, because a mesh normal and a mapped one paint the same
@@ -288,6 +290,31 @@ void main()
     float envLevel = (slots & CX_SLOT_ENV) != 0 ? 1.0 - texel.a : 0.0;
     texel.rgb = mix(texel.rgb, CX_ENV_GREY, envLevel);
     vec3 albedo = CxLinear(texel.rgb);
+#ifdef CX_DECAL_WRITE
+    // CX-273: the layer's writer. A fragment lying on the prepassed surface goes into the layer at its coverage
+    // and is done -- the surface's own lit stage shades it; any other is left to the blended pass.
+    {
+        float z = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
+        float c = clamp(coverage * d.rot.w * kh, 0.0, 1.0);
+        if (c <= 0.0 || !CxDecalOn(z, vDepth)) discard;
+        frag = vec4(albedo * c, c);
+        oReveal = z;
+        return;
+    }
+#else
+    // CX-273: ...and its reader -- the prepassed surface (its depth is the one the decals were judged against)
+    // takes the decals' albedo over its own, before anything is lit, so ground and decal shade as one surface
+    float cxDecalCover = 0.0;
+    if (uDecal == 1)
+    {
+        ivec2 dp = ivec2(gl_FragCoord.xy);
+        vec4 dl = imageLoad(uDecalLayer, dp);
+        if (dl.a < 1.0 && abs(imageLoad(uDecalSurf, dp).r - gl_FragCoord.z) < CX_AO_DEPTH_EPS)
+        { albedo = albedo * dl.a + dl.rgb; cxDecalCover = 1.0 - dl.a; }
+    }
+    // 53 = the decal layer: how much of this surface's albedo the folded decals took, black where none did
+    if (uViz == 53) { frag = vec4(vec3(cxDecalCover), 1.0); return; }
+#endif
     // #122: the maps are sampled here and the synthesis itself is a pure function -- it has to fold
     // to a constant off-device (check-shaders.py) for the declared-beats-synthesised rule to be
     // checkable at all. A slot with nothing bound is not sampled, exactly as before.

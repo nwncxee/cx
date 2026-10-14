@@ -33,6 +33,25 @@ The deviation: the decal's specular lobe is the surface's (rough, specularity an
 the record was walked with), and the decal takes no film highlights of its own -- the surface's show through
 it at `1 - alpha`.
 
+### Ground decals fold into the surface (`DecalLayer`, CX-273)
+
+A ground decal is not lit at all. `AlloyRenderer.DbDecal` marks a lit, plainly alpha-blended (`SrcAlpha`,
+`OneMinusSrcAlpha`), up-facing sheet on a static object with no self-illumination, env map or hosted body; the
+blended run puts those first, and before the opaque pass `DecalLayer` draws them with the lit stage built as
+`CX_DECAL_WRITE`, which stops at the albedo. A fragment lying on the prepassed surface (`CxDecalOn`: within
+0.1 m plus 0.3% of view depth) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share
+of the surface left showing, and stamps the prepass depth into an R32F target; every other fragment is
+discarded there. In the opaque pass, a fragment whose depth IS that stamp folds the layer into its albedo
+(`albedo * a + rgb`) before anything is lit, so the decal takes the ground's normal, material, sun and local
+shadows, lightmap, SSR, wetness and point lights by being ground. The blended pass draws the decal batches
+again and drops exactly the fragments the layer took (`uDecal == 2`, the same `CxDecalOn` on the same stamp),
+so a sheet that only partly lies on the ground keeps the rest as before.
+
+The deviations: the decal has no specular, roughness or normal of its own (the ground's stand); no 0.2 alpha
+discard (the layer takes the whole graded edge); a decal over an unlit or non-prepassed surface is lost at
+those pixels; a prepassed surface within the tolerance above the decal (a foot standing on it) takes its albedo.
+`/alloy viz 53` shows what each surface folded. The layer is not drawn into the probe capture or the mirror.
+
 ### The forward consumers' slim walk (`CX_LIGHT_LITE`)
 
 A transparent or per-vertex receiver compiled the whole of `CxClusteredLightLm`, which exists for a baked

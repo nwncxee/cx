@@ -199,7 +199,7 @@ public static unsafe class Gl
     /// <summary>A compute write consumed as a divisor-1 vertex attribute (the grass scatter's stream).</summary>
     public const uint VERTEX_ATTRIB_ARRAY_BARRIER_BIT = 0x0001;
     /// <summary>An image store read back by the next level's dispatch (image) and by the lit stage (fetch).</summary>
-    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
+    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, READ_ONLY = 0x88B8, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
     public const uint ALL_BARRIER_BITS = 0xFFFFFFFF;   // not-an-offset: GL_ALL_BARRIER_BITS
     /// <summary>A compute write to a buffer the lit stage then reads as a uniform block (the probe's SH9).</summary>
     public const uint UNIFORM_BARRIER_BIT = 0x0004;
@@ -251,6 +251,9 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, uint, void> BindTexture, BindBuffer, BlendFunc;
     /// <summary>glBlendFunci (GL 4.0): a blend pair per draw buffer -- the OIT accumulation pair needs two.</summary>
     public static delegate* unmanaged<uint, uint, uint, void> BlendFunci;
+    /// <summary>glBlendFuncSeparatei (GL 4.0): separate colour and alpha pairs for one draw buffer -- the decal
+    /// layer over-blends its colour and multiplies its alpha down.</summary>
+    public static delegate* unmanaged<uint, uint, uint, uint, uint, void> BlendFuncSeparatei;
     /// <summary>glDrawBuffers: which colour attachments the bound FBO writes.</summary>
     public static delegate* unmanaged<int, uint*, void> DrawBuffers;
     public static delegate* unmanaged<int, uint*, void> GenTextures, GenVertexArrays, GenBuffers, DeleteBuffers;
@@ -607,6 +610,7 @@ public static unsafe class Gl
         CullFace = (delegate* unmanaged<uint, void>)P("glCullFace");
         BlendFunc = (delegate* unmanaged<uint, uint, void>)P("glBlendFunc");
         BlendFunci = (delegate* unmanaged<uint, uint, uint, void>)P("glBlendFunci");
+        BlendFuncSeparatei = (delegate* unmanaged<uint, uint, uint, uint, uint, void>)P("glBlendFuncSeparatei");
         DrawBuffers = (delegate* unmanaged<int, uint*, void>)P("glDrawBuffers");
         ActiveTexture = (delegate* unmanaged<uint, void>)P("glActiveTexture");
         UseProgram = (delegate* unmanaged<uint, void>)P("glUseProgram");

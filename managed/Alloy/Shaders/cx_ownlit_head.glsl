@@ -73,6 +73,24 @@ int CxA2cMask(float a)
 // CX-188: the deferred pass's light record, read by a forward fragment lying on a deferred surface (blended only)
 layout(binding = 26) uniform usampler2D uLightRec;
 uniform int uLightRecOn;
+// CX-273: the deferred decal layer (DecalLayer). Before the opaque pass a ground decal over-blends its albedo,
+// coverage-weighted, into uDecalLayer (alpha = the share of the surface left showing) and stamps the prepass depth
+// it lies on into uDecalSurf; the prepassed surface folds the layer into its own albedo and is lit once, as one.
+uniform int uDecal;      // 1 = fold the layer into this surface; 2 = a decal batch whose on-surface fragments the layer took
+uniform vec2 uDecalZ;    // the projection's (M33, M43): linear view depth = y / (ndc z + x)
+layout(rgba16f, binding = 6) readonly uniform image2D uDecalLayer;
+layout(r32f, binding = 7) readonly uniform image2D uDecalSurf;
+/// How far a decal may lie off the prepassed surface and still fold into it: metres, plus a share of view depth.
+const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.003;
+/// Does a decal fragment at linear view depth <paramref name="d"/> lie on the prepassed surface whose window depth
+/// is <paramref name="z"/>? The layer's writer and the blended pass ask this of the same two numbers, so every
+/// decal fragment is taken by exactly one of them.
+bool CxDecalOn(float z, float d)
+{
+    if (!(z > 0.0 && z < 1.0)) return false;
+    float s = uDecalZ.y / ((z * 2.0 - 1.0) + uDecalZ.x);
+    return abs(d - s) < CX_DECAL_TOL_M + CX_DECAL_TOL * s;
+}
 #include "cx_oitout.glsl"
 // Slot mask bits, matching AlloyRenderer's 1 << (slot - 1).
 const int CX_SLOT_NORMAL = 1, CX_SLOT_SPEC = 2, CX_SLOT_ROUGH = 4,

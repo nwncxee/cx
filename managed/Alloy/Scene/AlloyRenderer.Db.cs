@@ -36,6 +36,21 @@ public sealed unsafe partial class AlloyRenderer
         return SceneDb.Objects.Valid(o) && (SceneDb.ObjFlags[o.Index] & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
     }
 
+    /// <summary>Is this part a ground decal, folded into the surface under it (<see cref="DecalLayer"/>)? A lit,
+    /// plainly alpha-blended sheet facing up, on a static object, whose look is its albedo alone: no self-illumination,
+    /// no env map, no hosted body, nothing posed or morphed.</summary>
+    internal static bool DbDecal(int recipe, RecipeFlag rf, ObjFlag of)
+        => DrawRecipe.Cls(recipe) == (int)AlloyClass.Blended
+           && (rf & (RecipeFlag.Lit | RecipeFlag.FacesUp)) == (RecipeFlag.Lit | RecipeFlag.FacesUp)
+           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) == 0
+           && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static
+           && DrawRecipe.Src(recipe) == DrawRecipe.BlendSrcAlpha && DrawRecipe.Dst(recipe) == DrawRecipe.BlendInvSrcAlpha
+           && (DrawRecipe.Slots(recipe) & (IllumBit | EnvSlot)) == 0
+           && !ShaderFeatures.Hosted(DrawRecipe.Feat(recipe));
+
+    /// <summary>The self-illumination map's mask bit (map slot 4, the stage's <c>CX_SLOT_ILLUM</c>).</summary>
+    private const int IllumBit = 1 << 4;
+
     /// <summary>The sentinel a DB slot's <c>_oTri</c> carries: non-zero (so "vacated" still means vacated) and
     /// non-canonical (so an unbranched dereference faults rather than reads).</summary>
     private static IntPtr DbTri(int part) => (IntPtr)(-2L - part);
@@ -126,6 +141,7 @@ public sealed unsafe partial class AlloyRenderer
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
         _oWash[i] = (rf & RecipeFlag.Wash) != 0 ? (byte)1 : (byte)0;
+        _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
         _oBucket[i] = 0;
         // No gob pointer exists in DB mode; the questions it answered are columns.
