@@ -8,10 +8,11 @@
 # directory lives inside a throwaway Proton prefix, so the user's saves and nwn.ini are never opened.
 #
 #   tools/live/run-proton-live.sh [--seconds N] [--width W] [--height H] [--cfg k=v]... [--menu] [--out DIR]
-#                                 [--nui] [--keys 'script' [--keys-at N]]
+#                                 [--nui | --showcase NAME] [--keys 'script' [--keys-at N]]
 #
 # --nui hosts the fixed NUI window module of run-live.sh (tools/live/ladder/cxnui.nss) built into the prefix's user
-# directory; --keys runs an xtool.py key/shot script N seconds in (default 60), after the client has had time to load.
+# directory; --showcase NAME hosts run-live.sh's showcase of that name, its .policy as the card file and its .keys as the
+# default --keys; --keys runs an xtool.py key/shot script N seconds in (default 60), after the client has had time to load.
 #
 # Default is the Linux harness's own module, so the shots line up with a `run-live.sh` run of the same name.
 set -u
@@ -21,7 +22,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
 PROTON="${PROTON:-$HOME/.steam/root/steamapps/common/Proton - Experimental/proton}"
 MODULE="The Dark Ranger's Treasure"
-WIDTH=1280; HEIGHT=720; SECONDS_TO_RUN=60; MENU=0; REUSE=0; NUI=0; KEYS=""; KEYS_AT=60
+WIDTH=1280; HEIGHT=720; SECONDS_TO_RUN=60; MENU=0; REUSE=0; NUI=0; KEYS=""; KEYS_AT=60; SHOWCASE=""
 OUT="$ROOT/.scratch/live/proton"
 CFGS=()
 
@@ -36,12 +37,15 @@ while [ $# -gt 0 ]; do
         --menu)    MENU=1; shift ;;
         --reuse)   REUSE=1; shift ;;
         --nui)     NUI=1; MODULE="cxnui"; shift ;;
+        --showcase) SHOWCASE="$2"; NUI=1; MODULE="cxshow"; shift 2 ;;
         --keys)    KEYS="$2"; shift 2 ;;
         --keys-at) KEYS_AT="$2"; shift 2 ;;
         *) echo "run-proton-live: unknown option $1" >&2; exit 2 ;;
     esac
 done
 
+SHOW_DIR="$ROOT/tools/live/showcase"; SHOW_SRC="$SHOW_DIR/$SHOWCASE.nss"
+[ -z "$SHOWCASE" ] || [ -f "$SHOW_SRC" ] || { echo "run-proton-live: no showcase '$SHOWCASE' (needs $SHOW_SRC)" >&2; exit 2; }
 command -v gamescope >/dev/null || { echo "run-proton-live: gamescope not installed" >&2; exit 2; }
 [ -f "$NWN_DIR/bin/win32/nwmain.exe" ] || { echo "run-proton-live: no nwmain.exe under $NWN_DIR/bin/win32" >&2; exit 2; }
 [ -f "$PROTON" ] || { echo "run-proton-live: no proton at $PROTON (set PROTON)" >&2; exit 2; }
@@ -88,8 +92,12 @@ mkdir -p "$DOCS"
 rm -f "$DOCS/cx.log"
 if [ "$NUI" = 1 ]; then
     mkdir -p "$DOCS/modules"
-    NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$DOCS/modules" "$MODULE" \
+    NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$DOCS/modules" "$MODULE" ${SHOWCASE:+"$SHOW_SRC"} \
         || { echo "run-proton-live: the NUI module did not build" >&2; exit 2; }
+fi
+if [ -n "$SHOWCASE" ]; then
+    CFGS+=("nui.cardfile=Z:$SHOW_DIR/$SHOWCASE.policy")
+    [ -z "$KEYS" ] && [ -f "$SHOW_DIR/$SHOWCASE.keys" ] && KEYS=$(sed "s|@SHOTS@|$SHOTS|g" "$SHOW_DIR/$SHOWCASE.keys" | tr -d '\n')
 fi
 { echo "general.logs=1"; for c in ${CFGS+"${CFGS[@]}"}; do echo "$c"; done; } > "$DOCS/cx.cfg"
 
