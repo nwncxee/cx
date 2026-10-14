@@ -96,12 +96,18 @@ internal static unsafe class SoundCore
     }
 
     /// <summary>The core's pure pieces (distance curve, the engine's variance draw, axes and the listener frame,
-    /// resampler, shelf, capture, the EnvAudio join) -- headless, no library loaded.</summary>
+    /// resampler, shelf, capture, the EnvAudio join, the reverb mode an authored EnvAudio picks) -- headless, no
+    /// library loaded. Oracle: hand-written mode numbers.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         byte* b = stackalloc byte[256];
         int ok = cxa_selfcheck(b, 256);
         string msg = new string((sbyte*)b);
+        var check = new Checker(log);
+        check.Expect(SoundService.ReverbMode(1, 11) == 3 && SoundService.ReverbMode(2, 11) == 3, "an authored EnvAudio overrides the simulated reverb");
+        check.Expect(SoundService.ReverbMode(1, 0) == 1 && SoundService.ReverbMode(2, 0) == 2, "an unset EnvAudio keeps the simulation");
+        check.Expect(SoundService.ReverbMode(0, 11) == 0 && SoundService.ReverbMode(3, 0) == 3, "Off and Area preset are the player's");
+        if (!check.Ok) ok = 0;
         log.Info(ok != 0 ? "SoundCore.SelfCheck: passed" : $"SoundCore.SelfCheck: FAILED -- {msg}");
     }
 }
