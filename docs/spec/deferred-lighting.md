@@ -131,7 +131,7 @@ Known deviations), so the twin writes the derivatives:
 | `coat`, `coatRough`, `sheen`, `sheenRough`, `f0`, `specScale` | `cxCoat`, `cxCoatRough`, `cxSheen`, `cxSheenRough`, `cxF0`, `cxSpecScale` -- the state `CxLoopSpec` reads |
 | `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0`); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`) |
 | `diffT` (Wd) | d(final pixel) / d(`point`): albedo x matDiffuse x kd x coatT x wxTransmit x dirOcc, plus the couplings through `diffuse` (the legacy env pattern's `(ambient + diffuse) * pat`, the coat probe's `(ambient + diffuse) * cenv`), x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
-| `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
+| `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`, the part's own alpha `rot.w`, never the texture's coverage) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `lmLum` | luminance of the undimmed `lm` (the `lmSub.x` denominator); 0 on an unbaked pixel |
 | `lmShare` (L) | the full contribution of `lm` to the final pixel (its diffuse through Wd and its lobe through P), so the debt is `final -= L * min(lmSub.x / lmLum + lmSub.y, 1)` |
 | `lmTexel`, `lmMover`, `lmPick` | `CxLmTexelWorld(chart.rec)`, `CxLightmapMover(chart.rec, vChart)`, `chart.pick` (byte lanes: a set index past 254 reads back as no channel -- ponytail: widen the lane if an area ever closes that many sets) |
