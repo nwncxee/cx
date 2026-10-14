@@ -6,6 +6,9 @@ namespace CX.Services.Panels;
 /// <summary>Which way a panel's background gradient runs.</summary>
 internal enum BgDir { Vertical, Horizontal, Diagonal }
 
+/// <summary>The wave a <c>pulse</c> block fades along.</summary>
+internal enum PulseShape { Sine, Triangle, Square }
+
 /// <summary>Which edge of the element a card group sits against.</summary>
 internal enum Side { Right, Left, Above, Below }
 
@@ -52,6 +55,10 @@ internal sealed class PanelStyle
     public string Sides = "trbl";
 
     public float PulseMin = 0.35f, PulsePeriodMs = 1200f;
+    public PulseShape PulseWave = PulseShape.Sine;
+    /// <summary>The glow's fall-off exponent (1 is linear), the width of each of its rings in screen px, and the share of the
+    /// far colour at the two middle corners of a diagonal gradient.</summary>
+    public float GlowFalloff = 1f, GlowStep = 1f, DiagMix = 0.5f;
 
     public Side Side = Side.Right;
     public Align Align = Align.Start;

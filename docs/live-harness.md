@@ -191,7 +191,7 @@ pointer. The second run uses the real pointer: row 2 of the list shows its own c
 `nui.cardfile` is read again after the login, which clears a server's policy.
 
 For the late-data rules, `tools/live/ladder/cards-standin.policy` is a stand-in for the `cell` family and
-`tools/live/ladder/cards-late.policy` holds the real `cell#2`. `--cfg 'nui.cardlate=<seconds>:<path to cards-late.policy>'` applies the second
+`tools/live/ladder/cards-late.policy` holds the real `cell#2`. `--cfg 'nui.cardlatefile=<path to cards-late.policy>' --cfg 'nui.cardlatesec=<seconds>'` applies the second
 file that many seconds after the first, as a slow server would. Point at row 2 before and after it lands and shoot both.
 
 `--ui-scale 1.5` sets the client's UI scale (and lifts its resolution cap) for any run, so a NUI rectangle can be read at another scale.
@@ -258,7 +258,7 @@ These knobs are `ChatOnly` and exist for building and testing. None is advertise
 | knob | what it does |
 |---|---|
 | `nui.cardfile` | a file of `card.<key>=` policy lines read as if a server had sent them; read again after a login |
-| `nui.cardlate` | `<seconds>:<file>`, a second file applied that long after the card file |
+| `nui.cardlatefile`, `nui.cardlatesec` | a second file of policy lines, and the seconds after the card file that it is applied |
 | `nui.cardforce` | shows one key's cards as if the pointer rested on an element with that id |
 | `nui.heldprobe` | holds this image at the first NUI draw 50 s after boot, as `held.image` would |
 | `nui.policyprobe` | `key=value;key=value` window render properties, read under whatever a server sends |
@@ -280,7 +280,7 @@ script path as its third argument, so there is no second builder.
     tools/live/run-live.sh --showcase creatures --out <dir>
 
 The run takes about three minutes and writes the shots to `<dir>/shots`. A `@key@` in a `.policy` is the id of the creature
-`ShowSpawn` logged for that key (`CXSHOW: id key hex`); a poller fills it in and `nui.cardlate` applies it `--showcase-late N`
+`ShowSpawn` logged for that key (`CXSHOW: id key hex`); a poller fills it in and `nui.cardlatefile` applies it `--showcase-late N`
 seconds after login (default 40, so open that window later than that). The run fails when the script logs a `-FAILED` step or
 a key's creature never appears. `--min-lit` defaults to 0 here, since a window covers the scene.
 
@@ -315,7 +315,7 @@ on the player a second after the window opens. The shield comes off at 10 s, the
     tools/live/run-live.sh --nui --seconds 5 --cfg 'nui.cardfile=<path to model.policy>' \
         --keys 'sleep:4000;shot:<dir>/armed.png;sleep:12000;shot:<dir>/stripped.png'
 
-`model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlate=<seconds>:<path>`),
+`model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlatefile=<path>` and `nui.cardlatesec=<seconds>`),
 `model-vfx.policy` the two permanent effects the window puts on the player at 20 s (the temporary one stays off the doll), `model-vfx-all.policy` the same doll with `vfx=all`, which wears all three once they land (`NuiModelVfx: mirroring` lines),
 `model-standin.policy` and `model-standin-crop.policy` a stand-in with no target, with and without `standinrect`. `NuiModelGear:`
 lines in `cx.log` say each hand being filled and emptied.

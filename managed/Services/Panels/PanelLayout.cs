@@ -36,6 +36,7 @@ internal sealed class PanelView
     public float W, H, TabH;
     /// <summary>The pulse blocks' floor and period, from the card's style.</summary>
     public float PulseMin, PulsePeriodMs;
+    public PulseShape PulseWave;
     public readonly VertexBatch Back, Text;
     /// <summary>The glyphs of every <c>pulse</c> block, drawn pulsing; null when the panel has none.</summary>
     public VertexBatch? Pulse;
@@ -99,7 +100,7 @@ internal sealed class PanelLayout
         _c = c;
         PanelStyle st = c.St;
         GlyphAtlas baseAtlas = _face(1f).A;
-        _v = new PanelView(baseAtlas) { PulseMin = st.PulseMin, PulsePeriodMs = st.PulsePeriodMs };
+        _v = new PanelView(baseAtlas) { PulseMin = st.PulseMin, PulsePeriodMs = st.PulsePeriodMs, PulseWave = st.PulseWave };
         float w = st.Width * _s, pad = st.Pad * _s;
         float h = Stack(c.Blocks, pad, pad, w - 2f * pad, w, false) + pad;
         _v.W = w; _v.H = Math.Max(h, 2f * pad);
@@ -112,7 +113,7 @@ internal sealed class PanelLayout
             switch (st.Dir)
             {
                 case BgDir.Horizontal: Gradient(0, 0, w, _v.H, from, to, to, from); break;
-                case BgDir.Diagonal: uint mid = Mix(from, to); Gradient(0, 0, w, _v.H, from, mid, to, mid); break;
+                case BgDir.Diagonal: uint mid = Mix(from, to, st.DiagMix); Gradient(0, 0, w, _v.H, from, mid, to, mid); break;
                 default: Gradient(0, 0, w, _v.H, from, from, to, to); break;
             }
             Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
@@ -129,23 +130,26 @@ internal sealed class PanelLayout
         return _v;
     }
 
-    private static uint Mix(uint a, uint b)
+    /// <summary>Each channel of <paramref name="a"/> moved <paramref name="t"/> of the way to <paramref name="b"/>.</summary>
+    internal static uint Mix(uint a, uint b, float t)
     {
-        uint Ch(int sh) => (uint)((((a >> sh) & 0xFF) + ((b >> sh) & 0xFF)) / 2) << sh;
+        uint Ch(int sh) => (uint)(((a >> sh) & 0xFF) * (1f - t) + ((b >> sh) & 0xFF) * t) << sh;
         return Ch(24) | Ch(16) | Ch(8) | Ch(0);
     }
 
     /// <summary>Soft light round the panel: frames spread outward, each fainter than the one inside it.</summary>
     private void Glow(float w, float h)
     {
-        int steps = Math.Max(1, (int)MathF.Ceiling(St.GlowSpread * _s));
+        float step = St.GlowStep;
+        int steps = Math.Max(1, (int)MathF.Ceiling(St.GlowSpread * _s / step));
         uint glow = St.Glow;
         uint rgb = glow & 0xFFFFFF00, a0 = glow & 0xFF;
-        for (int i = 1; i <= steps; i++)
+        for (int n = 1; n <= steps; n++)
         {
-            uint a = (uint)(a0 * (1f - (i - 1f) / steps) * St.GlowAlpha);
-            Rect(-i, -i, w + i, -i + 1f, rgb | a); Rect(-i, h + i - 1f, w + i, h + i, rgb | a);
-            Rect(-i, -i + 1f, -i + 1f, h + i - 1f, rgb | a); Rect(w + i - 1f, -i + 1f, w + i, h + i - 1f, rgb | a);
+            uint a = (uint)(a0 * MathF.Pow(1f - (n - 1f) / steps, St.GlowFalloff) * St.GlowAlpha);
+            float i = n * step;
+            Rect(-i, -i, w + i, -i + step, rgb | a); Rect(-i, h + i - step, w + i, h + i, rgb | a);
+            Rect(-i, -i + step, -i + step, h + i - step, rgb | a); Rect(w + i - step, -i + step, w + i, h + i - step, rgb | a);
         }
     }
 

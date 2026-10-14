@@ -89,5 +89,24 @@ internal static class HeldPickSelfCheck
         HeldImageService.ReadLook(s, 3);
         check.Expect(s.Opacity == 1f && s.PickOpacity == 0f && s.Dx == 256f && s.Dy == 0f, "opacity clamps into 0-1, an offset into 256 px, and a word is the default");
         ServerPolicy.Clear();
+        ServerPolicy.Apply("held.cursor=293");
+        HeldImageService.ReadLook(s, 4);
+        check.Expect(s.CursorId == 293 && PolicyRefusals.All().Length == 0, "293, the engine's last cursor id, is taken");
+        ServerPolicy.Apply("held.cursor=294");
+        HeldImageService.ReadLook(s, 5);
+        check.Expect(s.CursorId == 25 && PolicyRefusals.All() is [{ Kind: RefusalKind.Held, Key: "held.cursor" }], "294 is past the engine's table: the default shows and /policy lists it");
+        ServerPolicy.Apply("held.cursor=none");
+        HeldImageService.ReadLook(s, 6);
+        check.Expect(s.CursorId == -1 && PolicyRefusals.All().Length == 0, "none hides the cursor swap and a good value clears the listing");
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
+        var over = new HeldImageModel();
+        over.Update(1, true, "abcdefghijklmnopq", 1, true, 1000);
+        HeldImageService.List(over);
+        check.Expect(over.Kind == HeldKind.Other && PolicyRefusals.All() is [{ Kind: RefusalKind.Held, Key: "held.image", Reason: "a resref is at most 16 characters" }],
+            "a 17-character resref draws nothing and /policy says why");
+        over.Update(2, true, "abcdefghijklmnop", 1, true, 1001);
+        check.Expect(over.Kind == HeldKind.Resref, "sixteen characters is a resref");
+        PolicyRefusals.ForgetPrefix("");
     }
 }

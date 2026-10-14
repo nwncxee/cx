@@ -40,6 +40,8 @@ cx_bakefinish_f	CX-215
 \bw[0-9]+\.col\.	unified-ui-theme
 \bw<N>\.col\b	unified-ui-theme
 \bChatColor\b	unified-ui-theme
+# The harness-only seconds:file knob became two typed knobs.
+nui\.cardlate([^fs]|$)	CX-263
 # The engine-compiled ASCII model cache: CX serves what the server ships, never its own compile of it.
 \bMdlCache\b	remove-mdl-compile
 \bcx-models\b	remove-mdl-compile

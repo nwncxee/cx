@@ -69,6 +69,11 @@ internal static class PanelLimits
     public const int MaxText = 400, MaxIcons = 16, MaxImages = 4, MaxIconName = 120;
     /// <summary>The ranges a style's lengths are clamped to: widths, icon and image sizes, and offsets (up to <see cref="MaxLen"/> either way).</summary>
     public const float AbsMinWidth = 32f, AbsMaxWidth = 2000f, MinIconPx = 4f, MaxIconPx = 256f, MaxImagePx = 1024f, MaxLen = 256f;
+    /// <summary>The longest resref the engine reads; a name that is not an <c>@</c> image name must fit.</summary>
+    public const int MaxResref = 16;
     public const int MaxSizes = 12;
+
+    /// <summary>True when <paramref name="name"/> is an <c>@item:</c>, <c>@look:</c> or <c>@model:</c> name, or a resref that fits.</summary>
+    public static bool NameOk(string name) => name.StartsWith('@') || name.Length <= MaxResref;
     public const float MinSize = 0.25f, MaxSize = 6f;
 }

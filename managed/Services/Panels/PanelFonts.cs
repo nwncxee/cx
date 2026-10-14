@@ -12,19 +12,43 @@ namespace CX.Services.Panels;
 /// </summary>
 internal static class PanelFonts
 {
+    /// <summary>The most distinct sizes the panels bake in one run; a declaration that would bake past it is refused.</summary>
+    public const int MaxFaces = 24;
+
     private sealed class FacesState
     {
         public readonly HashSet<float> Wanted = [];
+        /// <summary>Every size asked for this run. Baked faces stay in the glyph sheet, so this one is never emptied.</summary>
+        public readonly HashSet<float> Ever = [];
     }
 
     private static readonly FacesState _f = new();
 
-    /// <summary>Asks for the face of <paramref name="mult"/> times the player's text size; a new one is baked on the thread pool.</summary>
-    public static void Want(float mult)
+    /// <summary>Asks for the faces of <paramref name="mults"/> times the player's text size; a new one is baked on the thread pool.
+    /// False, asking for none, when the new ones would take the run past <see cref="MaxFaces"/>.</summary>
+    public static bool TryWant(IEnumerable<float> mults)
     {
-        lock (_f.Wanted) if (!_f.Wanted.Add(mult)) return;
-        float px = PxOf(mult);
-        if (TextRig.BakedFace(px) == null) ThreadPool.QueueUserWorkItem(static p => TextRig.Face(p), px, preferLocal: false);
+        var fresh = new List<float>();
+        lock (_f.Wanted)
+        {
+            int added = 0;
+            foreach (float m in mults)
+                if (!_f.Ever.Contains(m) && !fresh.Contains(m)) { fresh.Add(m); added++; }
+            if (_f.Ever.Count + added > MaxFaces) return false;
+            foreach (float m in mults) { _f.Wanted.Add(m); _f.Ever.Add(m); }
+        }
+        foreach (float m in fresh)
+        {
+            float px = PxOf(m);
+            if (TextRig.BakedFace(px) == null) ThreadPool.QueueUserWorkItem(static p => TextRig.Face(p), px, preferLocal: false);
+        }
+        return true;
+    }
+
+    /// <summary>Forgets every size asked for. For the self-check only.</summary>
+    internal static void Reset()
+    {
+        lock (_f.Wanted) { _f.Wanted.Clear(); _f.Ever.Clear(); }
     }
 
     /// <summary>Every card is gone: a font change stops asking for their faces. ponytail: the baked faces stay in the sheet for the

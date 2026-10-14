@@ -52,7 +52,9 @@ internal static class PanelMarkup
                 case "i": italic++; break;
                 case "/i": if (italic > 0) italic--; break;
                 case "br": list.Add(new Run("", "", default, 0, false, true)); break;
-                case "icon": list.Add(new Run("", arg, colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, false, false)); break;
+                case "icon":
+                    if (!PanelLimits.NameOk(arg)) { error = $"icon '{arg}' is over {PanelLimits.MaxResref} characters, the longest resref"; return false; }
+                    list.Add(new Run("", arg, colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, false, false)); break;
             }
             i = end;
         }

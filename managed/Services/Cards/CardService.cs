@@ -41,7 +41,7 @@ public sealed class CardService : IExtenderService
         CardRegistry.Init(log);
         CardSelfCheck.Run(log);
         s.Presenter.SubjectOf = Subject;
-        Capabilities.Register("card", 8, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
+        Capabilities.Register("card", 9, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Cards.Changed += Capabilities.Refresh;
         TextRig.FontChanged += PanelFonts.WantAll;
@@ -61,17 +61,14 @@ public sealed class CardService : IExtenderService
         s.LateDone = false;
     }
 
-    /// <summary><c>nui.cardlate</c> (<c>seconds:file</c>): the lines of that file, applied once the seconds have passed since the card file was read.</summary>
+    /// <summary><c>nui.cardlatefile</c>: the lines of that file, applied once <c>nui.cardlatesec</c> seconds have passed since the card file was read.</summary>
     private static void ApplyLate(CardServiceState s)
     {
-        string spec = NuiKnobs.CardLate.V;
-        int colon = spec.IndexOf(':');
-        if (s.LateDone || s.LoadedAt == 0 || colon <= 0 || !float.TryParse(spec.AsSpan(0, colon), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sec)) return;
-        if (Environment.TickCount64 - s.LoadedAt < (long)(sec * 1000f)) return;
+        string path = NuiKnobs.CardLateFile.V.Trim();
+        if (s.LateDone || s.LoadedAt == 0 || path.Length == 0) return;
+        if (Environment.TickCount64 - s.LoadedAt < NuiKnobs.CardLateSec.V * 1000L) return;
         s.LateDone = true;
-        string path = spec[(colon + 1)..].Trim();
-        if (path.Length == 0) { s.Log?.Always("Cards: nui.cardlate names no file after the colon"); return; }
-        if (ReadFile(s, "nui.cardlate", path) is { } text) s.Log?.Always($"Cards: nui.cardlate applied {ServerPolicy.Apply(text)} line(s)");
+        if (ReadFile(s, "nui.cardlatefile", path) is { } text) s.Log?.Always($"Cards: nui.cardlatefile applied {ServerPolicy.Apply(text)} line(s)");
     }
 
     /// <summary>The text of the file a test knob names, or null with the reason logged. Nothing a bad path throws leaves here.</summary>
@@ -154,7 +151,7 @@ public sealed class CardService : IExtenderService
             else DrawResref(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);
-        if (v.Pulse != null) TextRig.DrawBatch(v.Pulse.AsSpan(), v.Pulse.VertexCount, a * PanelPulse.Alpha(Environment.TickCount64, v.PulseMin, v.PulsePeriodMs), x, y);
+        if (v.Pulse != null) TextRig.DrawBatch(v.Pulse.AsSpan(), v.Pulse.VertexCount, a * PanelPulse.Alpha(Environment.TickCount64, v.PulseMin, v.PulsePeriodMs, v.PulseWave), x, y);
     }
 
     /// <summary>A model view stretched to the box. Nothing until the doll has been built and drawn once.</summary>

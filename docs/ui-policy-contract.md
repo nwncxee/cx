@@ -82,7 +82,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `8`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour and `look` for the game's own GUI art. Older values are listed below |
+| `cx_cap_card` | `9`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour, `look` for the game's own GUI art, and the glow, diagonal and pulse shape fields. Older values are listed below |
 | `cx_cap_palette` | `1`: the client reads `cxpal_<id>.txt` palette files from your content and offers them as `ui.palette` choices (see [Palettes](#palettes)) |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
@@ -101,6 +101,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 `cx_cap_card`:
 
+- `8` drew a glow that faded in a straight line over rings 1 px wide, a diagonal gradient whose middle corners were an even mix of its two colours, and a pulse on a sine wave: no `glowfalloff`, `glowstep`, `diagmix` or `pulseshape`. It listed none of its ceilings: it made an item for every distinct `@look:` and baked a face for every text size, without limit, and it cut an icon or image resref over 16 characters to 16 without saying so.
 - `7` had no `look` field: a card was always drawn in flat colour, never in the game's own GUI art, whatever the player's `ui.look`.
 - `6` took no role identifier (`@accent`, `@panelbg/f2`) where a colour goes, and the colours it left alone were fixed: a card drew
   the same greys whatever look and palette the player had chosen.
@@ -168,7 +169,7 @@ window, and `held.image=` when they place it. The image never takes a click: the
 NUI window underneath.
 
 `<image>` is a texture resref, `@item:<hex>`, `@look:<hex>` or `@model:<key>`, spelled as in a NUI image. Any other name (a malformed
-resref, a `@model:` with no key) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
+resref, a `@model:` with no key, a resref over 16 characters) holds the cursor and draws nothing, and `/policy` lists the value under `held.image`. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
 A `@model:<key>` is the model view of that key (see [Model views](#model-views)), `held.size` px on its longer side and in the view's own proportions.
 It counts toward the 8 live views, and its doll is built when the hold starts and taken down 1.5 s after it ends.
 
@@ -190,7 +191,7 @@ A server a long way off answers a pick late. Declare what a pick shows and CX sh
 | `held.pick.<prefix>*=<image>` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
 | `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
 | `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
-| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`) |
+| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`). The engine takes ids 0 to 293 and ignores a larger one, so a larger value is listed in `/policy` and the default shows |
 | `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
 | `held.opacity=<0-1>` | how opaque a confirmed hold is, clamped to 0-1, default 0.9 |
 | `held.pickopacity=<0-1>` | how opaque a pick still waiting for the server is, clamped to 0-1, default 0.55 |
@@ -371,6 +372,8 @@ lines `ui.look=native` and `ui.palette=ember`.
 | `border2`, `border2w`, `border2inset` | a second frame inside the first (a double border): colour, thickness and inset | colour, 0-256, 0-256 | none, 1, 3 |
 | `corners`, `cornerlen`, `cornerw` | bracket marks in the four corners: colour, arm length and thickness | colour, 0-256 | none, 12, 2 |
 | `glow`, `glowspread`, `glowalpha` | a soft light outside the card: its colour, how many px it spreads, and the share of the colour's opacity the nearest ring has (each ring out is fainter) | colour, 0-64, 0-1 | none, 8, 0.5 |
+| `glowfalloff`, `glowstep` | how the rings fade: the exponent of the fade from the nearest ring to the farthest (1 is a straight line, 2 drops faster at first, below 1 holds the light longer), and the width of each ring in screen px (not scaled with the UI) | 0.1-8, 1-16 | 1, 1 |
+| `diagmix` | with `dir` `d`, how much of the `to` colour the two middle corners carry: 0 is `from`, 1 is `to`, 0.5 an even mix | 0-1 | 0.5 |
 | `shadow`, `shadowdx`, `shadowdy` | a drop shadow under every glyph | colour, -16..16 | none, 1, 1 |
 | `divider` | the `divider`'s colour | colour | `#FFFFFF` at 19% |
 | `footerband` | the `footer`'s band | colour | `#000000` at 40% |
@@ -378,6 +381,7 @@ lines `ui.look=native` and `ui.palette=ember`.
 | `tabcolor`, `tabtext` | the tab's background, and its text (the default text colour when absent) | colour | `@masterbg/b0` |
 | `dimcolor`, `dimalpha` | what a `dim` block with no colour of its own draws in, and its opacity | colour (RGB used), 0-1 | `#FFFFFF`, 0.6 |
 | `pulsemin`, `pulseperiod` | a `pulse` block's faintest opacity, and ms for one full fade out and back | 0-1, 100-60000 | 0.35, 1200 |
+| `pulseshape` | the wave the fade follows: `sine`, `triangle` (straight lines up and down) or `square` (full for the first half of the period, then the faintest) | word | `sine` |
 
 The blocks take some of the same fields to override the card for one block: `after` (the space after it), `pad` (a `section` or
 `footer`), `margin` and `thick` (a `divider`), `spacing` (an `icons` row's gap, or a `status` icon's), `inset`, `framefill` and
@@ -431,7 +435,7 @@ when the client does not know the item.
 
 ### Images and icons
 
-An icon or image `src` is a texture resref (up to 16 characters), `@item:<hex>`, `@look:<hex>` or `@model:<key>`. `@item:` draws that item's
+An icon or image `src` is a texture resref (up to 16 characters; a longer one refuses the card, and `/policy` lists it), `@item:<hex>`, `@look:<hex>` or `@model:<key>`. `@item:` draws that item's
 inventory icon in its own colours. `@look:` draws the icon of an item described by its appearance, in the form a NUI
 `@look:` image takes. CX makes one throwaway item for each distinct look the declared cards name, when the declaration
 arrives, and ends it when no declared card names the look any more or the card is released. A name that does not resolve
@@ -456,7 +460,9 @@ These refuse the line (or, for keys held, the new key):
 | runs (styled pieces) per text | 48 |
 | icons per `icons` block | 16 |
 | images per card | 4 |
-| icon name or `src` | 120 characters |
+| icon name or `src` | 120 characters; a texture resref (no `@` prefix) 16 |
+| distinct `@look:` images across the cards held | 64 (the new key is refused) |
+| distinct text sizes asked for in one client run, across every style | 24 (a card that would bake a new size past it is refused, and a restyle that does drops the card) |
 
 These are clamped into their range and the card still draws:
 

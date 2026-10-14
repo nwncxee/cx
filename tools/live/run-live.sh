@@ -222,14 +222,14 @@ PY
 
 # ---- the showcase ---------------------------------------------------------------------------------
 # The policy is read at login, before the script has made the creatures it names, so the lines with a @key@ in
-# them wait in a second file the poller below fills in once every id is in the log; nui.cardlate applies it.
+# them wait in a second file the poller below fills in once every id is in the log; nui.cardlatefile applies it.
 if [ -n "$SHOWCASE" ]; then
     SHOW_SRC="$SHOWCASE_DIR/$SHOWCASE.nss"
     SHOW_POLICY="$SHOWCASE_DIR/$SHOWCASE.policy"
     [ -f "$SHOW_SRC" ] && [ -f "$SHOW_POLICY" ] || { echo "run-live: no showcase '$SHOWCASE' (needs $SHOW_SRC and $SHOW_POLICY)" >&2; exit 2; }
     SHOW_LATE="$OUT/showcase-late.policy"
     grep -v '@[A-Za-z0-9_]*@' "$SHOW_POLICY" > "$SHOW_LATE"
-    CFG_LINES+=("nui.cardfile=$SHOW_POLICY" "nui.cardlate=$SHOWCASE_LATE:$SHOW_LATE")
+    CFG_LINES+=("nui.cardfile=$SHOW_POLICY" "nui.cardlatefile=$SHOW_LATE" "nui.cardlatesec=$SHOWCASE_LATE")
     if [ -z "$KEYS" ] && [ -f "$SHOWCASE_DIR/$SHOWCASE.keys" ]; then
         KEYS=$(sed "s|@SHOTS@|$SHOTS|g" "$SHOWCASE_DIR/$SHOWCASE.keys" | tr -d '\n')
         [ "$SECONDS_SET" = 1 ] || SECONDS_IN=2
