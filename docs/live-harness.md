@@ -285,6 +285,10 @@ a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each
 
 `light-engine`, `light-warm`, `light-cold` and `light-torch` are one doll under the engine's light and three server light recipes (the wiki's Light section); each opens a single 300x420 window.
 
+`closebutton` opens two closable windows of one size side by side, the second under `nui.<id>.background=0`, presses where
+each close button sits, and logs `CXSHOW: show_close open` or `gone` every 2 s. A NUI button needs `down`, a pause and `up`:
+`click` releases in the same frame and NUI ignores it.
+
 `creatures` shows eight dolls, one window at a time: a hell hound, an ogre, a beholder, a troll and a red dragon by appearance row
 (`app:`), a spawned elf mercenary by object id, a model by name and an item. The hound, the ogre and the troll play named animations. `charcreate` is a character creation screen: the doll fills the window behind a column of buttons, and `charcreate_nui.nss` beside it is the NUI event handler, compiled into the module by `build-ladder.sh` and set with `SetEventScript`. `helm` shows
 the player's doll while a helmet is equipped, dropped and equipped again, with a shot between each step. `hostile` opens eight model views that name what the client has no row or file for (an effect row past `visualeffects.2da`, a base item the client lacks, an item whose model files are
