@@ -67,6 +67,9 @@ internal sealed partial class InventoryWindow
     public Func<uint, string>? NameOf;
 
     public bool Open { get; private set; }
+    /// <summary>Set by the owner each frame: the game-art skin drew it, so its scrollbars are laid out and hit-tested as
+    /// the native bar is drawn rather than as the flat one.</summary>
+    public bool NativeArt;
     /// <summary>Screen origin and the effective scale.</summary>
     public float X, Y, S = 1f;
     public float W => _wDesign * S;
@@ -200,6 +203,23 @@ internal sealed partial class InventoryWindow
     private float Sx(float d) => X + d * S;
     private float Sy(float d) => Y + d * S;
 
+    /// <summary>A scrollbar's width on screen: the native bar's whole-px 18, else the design width scaled.</summary>
+    private float BarW => NativeArt ? NativeChrome.BarWidth(S) : ScrollW * S;
+
+    /// <summary>The view's first row for the pointer at <paramref name="py"/>, its thumb centred on the pointer: over the
+    /// native bar's own track (arrows and padding, read back from <see cref="NativeChrome.ThumbRect"/>) between
+    /// <paramref name="y0"/> and <paramref name="y1"/>, or the flat bar's whole height. ponytail: a press on an arrow
+    /// drags to that end instead of stepping a row -- stepping wants a hit kind of its own.</summary>
+    private float ScrollAt(float py, float y0, float y1, float view, float total)
+    {
+        float max = Math.Max(0f, total - view);
+        if (!NativeArt) return Math.Clamp((py - y0) / Math.Max(1f, y1 - y0) * total - view / 2f, 0f, max);
+        NativeChrome.ThumbRect(0f, y0, BarW, y1, 0f, view, total, out _, out float t0, out _, out float t1);
+        NativeChrome.ThumbRect(0f, y0, BarW, y1, max, view, total, out _, out float tEnd, out _, out _);
+        float travel = tEnd - t0;
+        return travel <= 0f ? 0f : Math.Clamp((py - (t1 - t0) / 2f - t0) / travel * max, 0f, max);
+    }
+
     /// <summary>Screen origin of cell (<paramref name="cx"/>, global <paramref name="gy"/>), false when all
     /// <paramref name="h"/> rows from it are scrolled out of view (an item's origin may sit above the view).</summary>
     private bool CellRect(int cx, int gy, out float x0, out float y0, int h = 1)
@@ -227,7 +247,8 @@ internal sealed partial class InventoryWindow
         if (In(_grid, px, py))
             return new(InvHitKind.Cell, -1, Math.Min(InventoryModel.Cols - 1, (int)((px - Sx(_grid.X0)) / (Cell * S))),
                        Math.Min(PageLimit * InventoryModel.Rows - 1, (int)MathF.Floor(Top + (py - Sy(_grid.Y0)) / (Cell * S))));
-        if (Scrolled && In(_scroll, px, py)) return new(InvHitKind.Scroll);
+        if (Scrolled && _scroll.On && px >= Sx(_scroll.X0) && px < Sx(_scroll.X0) + BarW && py >= Sy(_scroll.Y0) && py < Sy(_scroll.Y1))
+            return new(InvHitKind.Scroll);
         if (In(_tabs, px, py))
         {
             int t = (int)((py - Sy(_tabs.Y0)) / (Cell * S));
@@ -256,10 +277,7 @@ internal sealed partial class InventoryWindow
 
     /// <summary>The scrollbar thumb follows the pointer, centred on it, without the glide.</summary>
     private void ScrollTo(float py)
-    {
-        float t = (py - Sy(_scroll.Y0)) / ((_scroll.Y1 - _scroll.Y0) * S);
-        Top = _target = Math.Clamp(t * PageLimit * InventoryModel.Rows - ViewRows / 2f, 0f, MaxTop);
-    }
+        => Top = _target = ScrollAt(py, Sy(_scroll.Y0), Sy(_scroll.Y1), ViewRows, PageLimit * InventoryModel.Rows);
 
     /// <summary>Per frame, before the emit: the scrolled view glides toward its target and runs while a drag hovers its top
     /// or bottom edge; the loot pane's view does the same (<see cref="LootTick"/>). Alloc-free.</summary>

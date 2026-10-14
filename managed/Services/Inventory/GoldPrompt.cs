@@ -24,6 +24,10 @@ internal sealed class GoldPrompt
     private const uint KeyKp1 = 0x40000059, KeyKp0 = 0x40000062;                                                    // not-an-offset: SDL keycodes
     /// <summary>The amount box holds at most this many digits (the wire's gold is an int).</summary>
     private const int MaxDigits = 9;
+    /// <summary>The window art's border, drawn 1:1: what a part inside the frame insets by.</summary>
+    private const float Inset = InventoryWindow.FrameInset;
+    /// <summary>The slider's bar in design px: the thin rail its cursor floats over, as NUI's own slider has.</summary>
+    private const float BarH = 6f;
 
     /// <summary>The chips: a fixed amount, or (negative) half / all of <see cref="Max"/>.</summary>
     private static readonly int[] ChipValue = { 1, 10, 100, 1000, -2, -1 };
@@ -188,12 +192,12 @@ internal sealed class GoldPrompt
         if (_maxFor != Max) { _maxFor = Max; _maxText = "of " + Max.ToString("N0", CultureInfo.CurrentCulture) + " gp"; }
 
         float x0 = X, y0 = Y, x1 = X + W, y1 = Y + H;
-        if (skin != null) { skin.Draw(InventoryWindow.KFrame, x0, y0, x1, y1); skin.Draw(InventoryWindow.KHeader, x0, y0, x1, Sy(TitleH)); }
+        if (skin != null) { skin.Draw(NativeChrome.Frame, x0, y0, x1, y1); skin.Draw(NativeChrome.Header, x0, y0, x1, Sy(TitleH)); }
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.98f); Outline(under, x0, y0, x1, y1, Border); Fill(under, x0 + 1f, y0 + 1f, x1 - 1f, Sy(TitleH), HeaderBg); }
         UiText.Draw(under, text, "Drop gold", Sx(Pad), y0 + (TitleH * s - lh) / 2f + text.Ascent, Tx, Sx(WDesign - Pad - CloseW));
         bool closeHot = In(WDesign - Pad - CloseW, 2f, WDesign - Pad, 2f + CloseW, _mx, _my);
-        if (skin != null) skin.Draw(InventoryWindow.KClose, Sx(WDesign - Pad - CloseW) + 3f * s, Sy(2f) + 3f * s, Sx(WDesign - Pad) - 3f * s, Sy(2f + CloseW) - 3f * s,
-                                    closeHot ? 0xffffffffu : 0xc8c8c8ffu);   // not-an-offset: rgba tints
+        if (skin != null) skin.Draw(NativeChrome.Close, Sx(WDesign - Pad - CloseW) + Inset, Sy(2f) + Inset, Sx(WDesign - Pad) - Inset, Sy(2f + CloseW) - Inset,
+                                    InventoryWindow.ArtTint(closeHot));
         else
         {
             if (closeHot) Fill(under, Sx(WDesign - Pad - CloseW), Sy(2f), Sx(WDesign - Pad), Sy(2f + CloseW), Accent);
@@ -203,7 +207,7 @@ internal sealed class GoldPrompt
         // amount: the coin icon, the box (right-aligned number), "of N gp" under it
         if (skin != null) skin.Draw(InventoryWindow.KGoldCursor, Sx(Pad), Sy(AmountY - 3f), Sx(Pad + IconSize), Sy(AmountY - 3f + IconSize));
         float bx0 = Sx(BoxX0), by0 = Sy(AmountY), bx1 = Sx(BoxX1), by1 = Sy(AmountY + Row);
-        if (skin != null) skin.Draw(InventoryWindow.KEdit, bx0, by0, bx1, by1);
+        if (skin != null) skin.Draw(NativeChrome.Edit, bx0, by0, bx1, by1);
         else { Fill(under, bx0, by0, bx1, by1, Input); Outline(under, bx0, by0, bx1, by1, Accent2); }
         float aw = UiText.Measure(text, _amountText);
         float ax = bx1 - 8f * s - aw, abase = by0 + (by1 - by0 - lh) / 2f + text.Ascent;
@@ -212,17 +216,17 @@ internal sealed class GoldPrompt
         if (!_replace) Fill(under, bx1 - 7f * s, abase - text.Ascent, bx1 - 6f * s, abase - text.Ascent + lh, Hi);
         UiText.Draw(under, small, _maxText, bx0 + 6f * s, abase - text.Ascent + (lh - slh) / 2f + small.Ascent, Tx3, ax - 6f * s);
 
-        // slider: − track +
+        // slider: − bar +, the cursor floating on it as NUI's own slider draws it
         StepButton(under, skin, text, MinusX0, "-");
         StepButton(under, skin, text, PlusX0, "+");
-        float tx0 = Sx(TrackX0), tx1 = Sx(TrackX1), tcy = Sy(SliderY + Btn / 2f), th = 6f * s;
-        if (skin != null) skin.Draw(InventoryWindow.KTrough, tx0, tcy - th / 2f, tx1, tcy + th / 2f);
-        else Fill(under, tx0, tcy - th / 2f, tx1, tcy + th / 2f, Track);
+        float tx0 = Sx(TrackX0), tx1 = Sx(TrackX1), tcy = Sy(SliderY + Btn / 2f), th = BarH * s;
+        Fill(under, tx0, tcy - th / 2f, tx1, tcy + th / 2f, Track);
         float kx = tx0 + (tx1 - tx0) * Frac;
-        Fill(under, tx0, tcy - th / 2f + 1f, kx, tcy + th / 2f - 1f, Warn, 0.8f);
+        Fill(under, tx0, tcy - th / 2f + 1f, kx, tcy + th / 2f - 1f, Accent, 0.8f);
         bool knobHot = _sliding || In(TrackX0 - 6f, SliderY, TrackX1 + 6f, SliderY + Btn, _mx, _my);
-        float kw = 7f * s, kh = Btn * s / 2f;
-        if (skin != null) skin.Draw(InventoryWindow.KThumb, kx - kw, tcy - kh, kx + kw, tcy + kh, knobHot ? 0xffffffffu : 0xc8c8c8ffu);   // not-an-offset: rgba tints
+        float kh = Btn * s / 2f, aspect = skin?.Aspect(InventoryWindow.KSlider) ?? 0f;
+        float kw = aspect > 0f ? kh * aspect : 7f * s;
+        if (skin != null) skin.Draw(InventoryWindow.KSlider, kx - kw, tcy - kh, kx + kw, tcy + kh, InventoryWindow.ArtTint(knobHot));
         else Fill(under, kx - kw, tcy - kh, kx + kw, tcy + kh, knobHot ? Accent2 : Accent);
 
         // chips
@@ -245,8 +249,7 @@ internal sealed class GoldPrompt
     {
         float x0 = Sx(dx0), y0 = Sy(dy0), x1 = Sx(dx1), y1 = Sy(dy1);
         bool hot = !off && _mx >= x0 && _mx < x1 && _my >= y0 && _my < y1;
-        if (skin != null) skin.Draw(on ? InventoryWindow.KButtonOn : hot ? InventoryWindow.KButtonHot : InventoryWindow.KButton, x0, y0, x1, y1,
-                                    off ? 0x80808080u : 0xffffffffu);   // not-an-offset: rgba tints
+        if (skin != null) skin.Draw(InventoryWindow.ButtonFace(on, hot), x0, y0, x1, y1, off ? 0x80808080u : 0xffffffffu);   // not-an-offset: rgba tints
         else { Fill(under, x0, y0, x1, y1, on ? NavOn : hot ? Frame2 : CatBg, off ? 0.5f : 1f); Outline(under, x0, y0, x1, y1, on ? Accent2 : ColBorder); }
         float w = UiText.Measure(face, label);
         UiText.Draw(under, face, label, (x0 + x1 - w) / 2f, y0 + (y1 - y0 - face.LineHeight) / 2f + face.Ascent, off ? Tx3 : on ? Hi : Tx, float.MaxValue);
