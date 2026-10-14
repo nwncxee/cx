@@ -336,9 +336,9 @@ internal static unsafe class Issue
             bool oitOut = hosted || _gSrc[g] != AuroraSrcAlpha || _gDst[g] != AuroraOneMinusSrcAlpha;
             if (_oitOn && oitOut) { _oitDeferred++; continue; }
             if (_onlyHosted && !oitOut) continue;
-            // a blended wash, whose solid interior WashInteriors draws with the cutouts and whose graded edge alone
-            // is left to the blended pass
-            bool split = _gWash[g] != 0 && !_gDecal[g] && lit && !oitOut && g >= _gOpaqueEnd;
+            // a split wash: WashInteriors draws its solid interior with the cutouts, and the decal layer's writer and
+            // the blended pass take only the graded rest
+            bool split = _gWash[g] == WashSplit && lit && !oitOut && g >= _gOpaqueEnd;
             if (interior && !split) continue;
             bool lists = lit && !water && !hosted && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
@@ -456,11 +456,12 @@ internal static unsafe class Issue
                 // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
                 int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
                 if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
-                int sm = interior ? 1 : 0;
+                int sm = interior ? 1 : decalWrite && split ? 2 : 0;
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
-            float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f : AlloyClasses.Discard(_gCls[g]);
+            // ...but a split wash keeps the class's test there, so the layer takes exactly what the blended pass would draw
+            float cut = _coverPass ? CoverageLayer.Cut : decalWrite && !split ? -1f : AlloyClasses.Discard(_gCls[g]);
             if (cut != boundCut) { Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut; }
             // ...and the blend state, per batch, because the opaque PASS now mixes both: a plain opaque batch
             // draws with GL_BLEND off and a cutout batch with it on and the material's own pair, which is
@@ -594,7 +595,7 @@ internal static unsafe class Issue
     private sealed class WashSplitState { public bool Interior, Ran; }
     private static readonly WashSplitState _split = new();
 
-    /// <summary>The blended washes' solid interiors in [<paramref name="from"/>, <paramref name="to"/>), drawn in the
+    /// <summary>The split washes' solid interiors in [<paramref name="from"/>, <paramref name="to"/>), drawn in the
     /// cutout pass's state through the deferred twin: only fragments at full coverage draw (<c>uSolid</c>).</summary>
     internal static void WashInteriors(int from, int to, Matrix4x4* vp, int* viewport, float near, float far)
     {

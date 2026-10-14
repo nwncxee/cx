@@ -284,7 +284,8 @@ void main()
     if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;
     // an OIT fragment at zero coverage adds nothing to either OIT path; a decal quad's blank margin skips the lit stage
     if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
-    if (uSolid != 0 && coverage * d.rot.w < CX_SOLID_ALPHA) discard;
+    float cxSolid = coverage * d.rot.w;
+    if (uSolid == 1 && cxSolid < CX_SOLID_ALPHA || uSolid == 2 && cxSolid >= CX_SOLID_ALPHA) discard;
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.

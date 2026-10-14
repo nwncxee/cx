@@ -1103,17 +1103,16 @@ public sealed unsafe partial class AlloyRenderer
         GpuEnd(GpuTerm.Coverage);
     }
 
-    /// <summary>The blended washes' fully covered interiors, solid and lit like the cutouts beside them: a covered
+    /// <summary>The split washes' fully covered interiors, solid and lit like the cutouts beside them: a covered
     /// texel needs no blending, and in the blended pass each one cost a forward-lit fragment. That pass then draws
     /// only each wash's graded edge.</summary>
     private static void WashInteriors(Matrix4x4* vp, int* viewport, float near, float far)
     {
-        int from = DecalEnd();
-        if (_capturing || from >= _gBlendEnd) return;
+        if (_capturing || _gOpaqueEnd >= _gBlendEnd) return;
         GpuBegin(GpuTerm.Washes);
         Gl.DepthMask(1);
         Gl.DepthFunc(Gl.LEQUAL);
-        Issue.WashInteriors(from, _gBlendEnd, vp, viewport, near, far);
+        Issue.WashInteriors(_gOpaqueEnd, _gBlendEnd, vp, viewport, near, far);
         GpuEnd(GpuTerm.Washes);
     }
 
