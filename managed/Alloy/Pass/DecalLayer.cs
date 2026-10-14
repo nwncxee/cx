@@ -4,10 +4,10 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>Deferred ground decals: ahead of the opaque pass every ground decal over-blends its albedo into a
-/// screen layer, and the prepassed surface under it folds that layer into its own albedo, so ground and decal are
-/// lit once, as one surface. A decal fragment that does not lie on that surface stays in the blended pass:
-/// <c>cx_ownlit_head</c>'s <c>CxDecalOn</c> splits every fragment between the two on the same inputs.</summary>
+/// <summary>Deferred ground decals: ahead of the opaque pass every ground decal lying on the prepassed surface
+/// over-blends its albedo into a screen layer, and each surface drawn under the nearest decal (ground, cutout, wash
+/// interior) folds that layer into its albedo, so surface and decal are lit once. The rest stays in the blended
+/// pass: <c>cx_ownlit_head</c>'s <c>CxDecalOn</c> splits every decal fragment between the two on the same inputs.</summary>
 internal static unsafe class DecalLayer
 {
     /// <summary>Image units the lit stage reads the layer and its surface depth on (<c>cx_ownlit_head</c>). Above
@@ -36,6 +36,9 @@ internal static unsafe class DecalLayer
         public readonly int[] Refused = new int[RefusedMax];
         public int RefusedN;
     }
+
+    /// <summary>The decal depth a pixel no decal reached clears to: farther than any surface, so none folds there.</summary>
+    private const float NoDecal = 1e30f;
 
     /// <summary>Flat see-through sheets <see cref="NoteRefused"/> names per session.</summary>
     private const int RefusedMax = 64;
@@ -67,24 +70,26 @@ internal static unsafe class DecalLayer
         Gl.DrawBuffers(2, bufs);
         float* clear = stackalloc float[4] { 0f, 0f, 0f, 1f };
         Gl.ClearBufferfv(Gl.COLOR, 0, clear);
-        clear[3] = 0f;
+        clear[0] = 1f; clear[1] = NoDecal; clear[3] = 0f;
         Gl.ClearBufferfv(Gl.COLOR, 1, clear);
         // no depth attachment: the writer's own CxDecalOn against the prepass depth is the visibility test
         Gl.DepthMask(0);
         Gl.Enable(Gl.BLEND); AlloyRenderer._blendOn = true;
         Gl.BlendFuncSeparatei(0, Gl.ONE, Gl.ONE_MINUS_SRC_ALPHA, Gl.ZERO, Gl.ONE_MINUS_SRC_ALPHA);
-        Gl.BlendFunci(1, Gl.ONE, Gl.ZERO);
+        // every writer at a pixel stamps the same prepass depth, so MIN keeps it and the nearest decal's depth
+        Gl.BlendEquationi(1, Gl.MIN);
         s.Mode = ModeWrite;
         Issue._holdProg = false;
         Issue.IssueColour(from, to, vp, viewport, near, far);
         s.Mode = ModeNone;
+        Gl.BlendEquationi(1, Gl.FUNC_ADD);
         Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
         Gl.Disable(Gl.BLEND); AlloyRenderer._blendOn = false;
         Gl.DepthMask(1);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)cur);
         Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.FRAMEBUFFER_BARRIER_BIT);
         Gl.BindImageTexture(ImgLayer, s.Layer, 0, 0, 0, Gl.READ_ONLY, Gl.RGBA16F);
-        Gl.BindImageTexture(ImgSurf, s.Surf, 0, 0, 0, Gl.READ_ONLY, Gl.R32F);
+        Gl.BindImageTexture(ImgSurf, s.Surf, 0, 0, 0, Gl.READ_ONLY, Gl.RG32F);
         s.Live = true;
         s.Frames++; s.Groups += to - from;
     }
@@ -101,8 +106,9 @@ internal static unsafe class DecalLayer
                   + $"draws as a {cls.ToString().ToLowerInvariant()} wash, not a ground decal: {why}");
     }
 
-    /// <summary>Set the mode a pass draws in: <see cref="ModeFold"/> for the opaque pass, <see cref="ModeSkip"/>
-    /// for the blended one, <see cref="ModeNone"/> after. Only takes while the layer is live.</summary>
+    /// <summary>Set the mode a pass draws in: <see cref="ModeFold"/> for the passes that draw surfaces (opaque,
+    /// cutout, wash interiors), <see cref="ModeSkip"/> for the blended one, <see cref="ModeNone"/> between and after.
+    /// Only takes while the layer is live.</summary>
     internal static void Use(int mode) => _s.Mode = _s.Live ? mode : ModeNone;
 
     /// <summary>After the blended pass: the layer's readers are done, so its image units are handed back.</summary>
@@ -113,7 +119,7 @@ internal static unsafe class DecalLayer
         if (!s.Live) return;
         s.Live = false;
         Gl.BindImageTexture(ImgLayer, 0, 0, 0, 0, Gl.READ_ONLY, Gl.RGBA16F);
-        Gl.BindImageTexture(ImgSurf, 0, 0, 0, 0, Gl.READ_ONLY, Gl.R32F);
+        Gl.BindImageTexture(ImgSurf, 0, 0, 0, 0, Gl.READ_ONLY, Gl.RG32F);
     }
 
     private static bool Ensure(int w, int h)
@@ -121,11 +127,11 @@ internal static unsafe class DecalLayer
         var s = _s;
         if (s.Fbo != 0 && s.W == w && s.H == h) return true;
         if (w <= 0 || h <= 0) return false;
-        if (Gl.BlendFuncSeparatei == null || Gl.BlendFunci == null || Gl.BindImageTexture == null
+        if (Gl.BlendFuncSeparatei == null || Gl.BlendEquationi == null || Gl.BindImageTexture == null
             || Gl.MemoryBarrier == null || Gl.ClearBufferfv == null || Gl.DrawBuffers == null)
-            return Fail("glBlendFuncSeparatei, glBindImageTexture or glMemoryBarrier is unresolved");
+            return Fail("glBlendFuncSeparatei, glBlendEquationi, glBindImageTexture or glMemoryBarrier is unresolved");
         RenderTarget.Create(ref s.Layer, Gl.RGBA16F, w, h, Gl.NEAREST);
-        RenderTarget.Create(ref s.Surf, Gl.R32F, w, h, Gl.NEAREST);
+        RenderTarget.Create(ref s.Surf, Gl.RG32F, w, h, Gl.NEAREST);
         if (s.Fbo == 0) { uint f; Gl.GenFramebuffers(1, &f); s.Fbo = f; }
         int cur; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &cur);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, s.Fbo);
@@ -135,7 +141,7 @@ internal static unsafe class DecalLayer
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)cur);
         s.W = w; s.H = h;
         if (status != Gl.FRAMEBUFFER_COMPLETE) return Fail($"its framebuffer is incomplete (0x{status:x})");
-        s.Log?.Info($"DecalLayer: {w}x{h}, RGBA16F albedo layer + R32F surface depth ({(long)w * h * 12 >> 20} MiB)");
+        s.Log?.Info($"DecalLayer: {w}x{h}, RGBA16F albedo layer + RG32F surface/decal depths ({(long)w * h * 16 >> 20} MiB)");
         return true;
     }
 
@@ -163,8 +169,12 @@ internal static unsafe class DecalLayer
         string head = AlloyRenderer.OwnedLitFsHead, synth = ShaderSource.Get("cx_ownlit_synth.glsl");
         check.Expect(head.Contains($"layout(rgba16f, binding = {ImgLayer}) readonly uniform image2D uDecalLayer;"),
           "the albedo layer's image unit is the one cx_ownlit_head declares");
-        check.Expect(head.Contains($"layout(r32f, binding = {ImgSurf}) readonly uniform image2D uDecalSurf;"),
+        check.Expect(head.Contains($"layout(rg32f, binding = {ImgSurf}) readonly uniform image2D uDecalSurf;"),
           "the surface depth's image unit is the one cx_ownlit_head declares");
+        check.Expect(synth.Contains("oDecalSurf = vec2(z, vDepth);")
+          && synth.Contains("CxDecalOn(gl_FragCoord.z, imageLoad(uDecalSurf, dp).g)")
+          && synth.Contains("uDecal == 2 && CxDecalOn(imageLoad(uDecalSurf, ivec2(gl_FragCoord.xy)).r, vDepth)"),
+          "the writer stores (prepass depth, decal depth); the blended skip reads the first and a folding surface the second");
         check.Expect(synth.Contains("!CxDecalOn(z, vDepth)) discard;")
           && synth.Contains("uDecal == 2 && CxDecalOn(imageLoad(uDecalSurf, ivec2(gl_FragCoord.xy)).r, vDepth)) discard;"),
           "the writer and the blended pass split decal fragments on the same test");

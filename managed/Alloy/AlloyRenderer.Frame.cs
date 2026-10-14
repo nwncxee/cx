@@ -477,8 +477,12 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case PassId.CutoutOwned:
                     // CX-188: the cutout class is the last G-buffer writer; close the attachment after it
+                    // CX-273: ...and its surfaces fold the decal layer too: a cutout or wash interior drawn over the
+                    // prepassed ground would otherwise cover a decal the ground took
+                    DecalLayer.Use(DecalLayer.ModeFold);
                     CutoutOwnedPass(_gOpaqueEnd, &vp, viewport, near, far);
                     WashInteriors(&vp, viewport, near, far);
+                    DecalLayer.Use(DecalLayer.ModeNone);
                     GBuffer.Detach();
                     break;
                 case PassId.CoverageOwned:

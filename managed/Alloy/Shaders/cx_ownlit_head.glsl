@@ -78,19 +78,20 @@ int CxA2cMask(float a)
 layout(binding = 26) uniform usampler2D uLightRec;
 uniform int uLightRecOn;
 // CX-273: the deferred decal layer (DecalLayer). Before the opaque pass a ground decal over-blends its albedo,
-// coverage-weighted, into uDecalLayer (alpha = the share of the surface left showing) and stamps the prepass depth
-// it lies on into uDecalSurf; the prepassed surface folds the layer into its own albedo and is lit once, as one.
+// coverage-weighted, into uDecalLayer (alpha = the share of the surface left showing); uDecalSurf keeps the prepass
+// depth it was judged on (.r) and the nearest decal's view depth (.g). Every surface lying under that decal -- the
+// prepassed ground, a cutout drawn over it, a wash's interior -- folds the layer into its albedo and is lit once.
 uniform int uDecal;      // 1 = fold the layer into this surface; 2 = a decal batch whose on-surface fragments the layer took
 uniform vec2 uDecalZ;    // the projection's (M33, M43): linear view depth = y / (ndc z + x)
 layout(rgba16f, binding = 6) readonly uniform image2D uDecalLayer;
-layout(r32f, binding = 7) readonly uniform image2D uDecalSurf;
-/// How high above the prepassed surface a decal may lie and still fold into it: metres, plus a share of view
-/// depth for the depth buffer's own precision.
+layout(rg32f, binding = 7) readonly uniform image2D uDecalSurf;
+/// How high above a surface a decal may lie and still fold into it: metres, plus a share of view depth for the
+/// depth buffer's own precision.
 const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
-/// Does a decal fragment at linear view depth <paramref name="d"/> lie on the prepassed surface whose window depth
-/// is <paramref name="z"/>? Measured as HEIGHT off that surface, not as depth along the ray, which a grazing view
-/// stretches without bound, and one-sided: a surface standing over the decal (a foot on it) never takes it. The
-/// layer's writer and the blended pass ask this of the same inputs, so each decal fragment is taken by one of them.
+/// Does a decal at linear view depth <paramref name="d"/> lie on the surface whose window depth is <paramref name="z"/>?
+/// As HEIGHT off that surface (a grazing ray stretches depth without bound), one-sided: a surface over the decal (a foot
+/// on it) never takes it. The writer and the blended pass ask it of the same inputs, so one of them takes each decal
+/// fragment; a surface folding the layer asks it of the nearest decal.
 bool CxDecalOn(float z, float d)
 {
     if (!(z > 0.0 && z < 1.0)) return false;

@@ -316,18 +316,18 @@ void main()
         float c = clamp(coverage * d.rot.w * kh, 0.0, 1.0);
         if (c <= 0.0 || !CxDecalOn(z, vDepth)) discard;
         frag = vec4(albedo * c, c);
-        oReveal = z;
+        oDecalSurf = vec2(z, vDepth);
         return;
     }
 #else
-    // CX-273: ...and its reader -- the prepassed surface (its depth is the one the decals were judged against)
-    // takes the decals' albedo over its own, before anything is lit, so ground and decal shade as one surface
+    // CX-273: ...and its reader -- any surface the nearest decal lies on (the prepassed ground, or a cutout or wash
+    // interior drawn over it) takes the decals' albedo over its own, before anything is lit, so they shade as one
     float cxDecalCover = 0.0;
     if (uDecal == 1)
     {
         ivec2 dp = ivec2(gl_FragCoord.xy);
         vec4 dl = imageLoad(uDecalLayer, dp);
-        if (dl.a < 1.0 && abs(imageLoad(uDecalSurf, dp).r - gl_FragCoord.z) < CX_AO_DEPTH_EPS)
+        if (dl.a < 1.0 && CxDecalOn(gl_FragCoord.z, imageLoad(uDecalSurf, dp).g))
         { albedo = albedo * dl.a + dl.rgb; cxDecalCover = 1.0 - dl.a; }
     }
     // 53 = the decal layer: how much of this surface's albedo the folded decals took, black where none did

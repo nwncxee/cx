@@ -42,16 +42,20 @@ blended run puts those first, and before the opaque pass `DecalLayer` draws them
 `CX_DECAL_WRITE`, which stops at the albedo. A fragment lying on the prepassed surface (`CxDecalOn`: at most
 0.1 m above it, plus 0.1% of view depth, measured as height off the surface so a grazing view does not stretch it;
 one-sided, so a surface standing over the decal -- a foot on it -- is never taken for its ground) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share
-of the surface left showing, and stamps the prepass depth into an R32F target; every other fragment is
-discarded there. In the opaque pass, a fragment whose depth IS that stamp folds the layer into its albedo
-(`albedo * a + rgb`) before anything is lit, so the decal takes the ground's normal, material, sun and local
-shadows, lightmap, SSR, wetness and point lights by being ground. The blended pass draws the decal batches
-again and drops exactly the fragments the layer took (`uDecal == 2`, the same `CxDecalOn` on the same stamp),
-so a sheet that only partly lies on the ground keeps the rest as before.
+of the surface left showing, and writes an RG32F pair under `MIN`: the prepass depth it was judged on, and the
+nearest decal's view depth. Every other fragment is discarded there. In the opaque pass, the cutout pass and the
+wash interiors, a fragment the nearest decal lies on (`CxDecalOn` again, this surface against that decal depth)
+folds the layer into its albedo (`albedo * a + rgb`) before anything is lit, so the decal takes the surface's
+normal, material, sun and local shadows, lightmap, SSR, wetness and point lights by being that surface. A cutout
+or wash interior drawn over the prepassed ground (a tileset's grass rim along a road) therefore shows the decal
+rather than covering it. The blended pass draws the decal batches again and drops exactly the fragments the layer
+took (`uDecal == 2`, the same `CxDecalOn` on the same prepass depth), so a sheet that only partly lies on the
+ground keeps the rest as before.
 
-The deviations: the decal has no specular, roughness or normal of its own (the ground's stand); no 0.2 alpha
-discard (the layer takes the whole graded edge); a decal over an unlit or non-prepassed surface is lost at
-those pixels.
+The deviations: the decal has no specular, roughness or normal of its own (the surface's stand); no 0.2 alpha
+discard on a blended-class decal (the layer takes the whole graded edge); a surface lying under the nearest decal
+at a pixel takes every decal folded there, even one that in fact lies below it; a decal over an unlit surface is
+lost at those pixels.
 `/alloy viz 53` shows what each surface folded. The layer is not drawn into the probe capture or the mirror.
 
 ### Sheets that are not decals draw as washes
