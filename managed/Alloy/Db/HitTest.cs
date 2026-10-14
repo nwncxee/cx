@@ -600,7 +600,9 @@ public static class HitTest
         // CHitInfo+0x20, so a walkmesh part is tested per triangle even on a mouse pick -- and it must be,
         // or the pick collapses onto the camera's own position the moment the camera is inside the tile's
         // walkmesh box, which it always is.
-        if (q.BoxOnly && !walkmesh)
+        // PartAnimMesh::HitCheckGeom @0x53d9e0 has no box arm either: it always casts the morphed faces.
+        bool morph = nd.Kind == NodeKind.AnimMesh;
+        if (q.BoxOnly && !walkmesh && !morph)
         {
             // g_HitCheckBoxExpansion is added AFTER the engine scales the box by the accumulated scale, so in
             // the unscaled part space the segment lives in, the expansion divides by that scale.
@@ -636,6 +638,13 @@ public static class HitTest
             if (f < 0) return false;
             // The AABB walk is the one arm that writes the face index, the surface bit and a normal.
             surf = nd.Mesh.Faces[f].Surface;
+        }
+        else if (morph)
+        {
+            if (!DbAnim.CastMorphed(p, nd.Mesh, a, ref b)) return false;
+            nrm = Vector3.Zero;
+            surf = -1;
+            f = -1;
         }
         else
         {

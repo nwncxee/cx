@@ -96,8 +96,23 @@ public static class HitBounds
             foreach (Vector3 v in nd.Mesh.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
             if (lo.X > hi.X) return;
         }
+        if (nd.Kind == NodeKind.AnimMesh) MorphBox(m, nd.Name, ref lo, ref hi);
         SceneDb.HitPartBMin[p] = lo;
         SceneDb.HitPartBMax[p] = hi;
+    }
+
+    /// <summary>Grows an animmesh's box over every morph frame its model's animations carry for it, so the box is a
+    /// superset of whatever pose <see cref="DbAnim.CastMorphed"/> casts against. Static: no re-file per morph.
+    /// ponytail: the model's own animations only; a supermodel's morphs keep the rest box.</summary>
+    internal static void MorphBox(ModelDef m, string node, ref Vector3 lo, ref Vector3 hi)
+    {
+        foreach (AnimDef a in m.Anims)
+            foreach (AnimNode an in a.Nodes)
+            {
+                if (an.AnimMesh == null || an.Name != node) continue;
+                foreach (Vector3[] frame in an.AnimMesh.Positions)
+                    foreach (Vector3 v in frame) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
+            }
     }
 
     /// <summary>The per-frame fold lives in <see cref="HitFeed.Fold"/>, which also re-seeds a changed tree's
