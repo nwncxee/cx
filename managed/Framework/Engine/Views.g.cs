@@ -383,6 +383,7 @@ global using unsafe StreamIsPlayingFn = delegate* unmanaged<nint, int>;
 global using unsafe StreamStopFn = delegate* unmanaged<nint, void>;
 global using unsafe StreamGetVolumeFn = delegate* unmanaged<nint, byte>;
 global using unsafe StreamSetLoopingFn = delegate* unmanaged<nint, int, void>;
+global using unsafe SoundShutDownFn = delegate* unmanaged<nint, void>;
 global using unsafe InvSetInventoryVisibleFn = delegate* unmanaged<nint, int, int, uint, void>;
 global using unsafe InvSetCharacterDataFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe GameCameraHitCheckFn = delegate* unmanaged<int, int, nint, nint, void>;
@@ -1319,6 +1320,8 @@ public readonly unsafe partial struct CExoSoundInternal(IntPtr ptr)
     public void SoundPlayOn2DVoice(CExoSoundSourceInternal source, C2DVoice voice) => EngineFn.SoundPlayOn2DVoice(Ptr, source.Ptr, voice.Ptr);
     /// <inheritdoc cref="SymbolMap.SoundPlayOn3DVoice"/>
     public void SoundPlayOn3DVoice(CExoSoundSourceInternal source, C3DVoice voice) => EngineFn.SoundPlayOn3DVoice(Ptr, source.Ptr, voice.Ptr);
+    /// <inheritdoc cref="SymbolMap.SoundShutDown"/>
+    public void SoundShutDown() => EngineFn.SoundShutDown(Ptr);
 }
 
 /// <summary>Typed view of an engine <c>CExoSoundSourceInternal*</c>.</summary>
@@ -1346,6 +1349,17 @@ public readonly unsafe partial struct CExoSoundSourceInternal(IntPtr ptr)
     public ref C2DVoice Voice2d => ref *(C2DVoice*)(Ptr + EngineLayout.SoundSrcVoice2D);
     /// <inheritdoc cref="EngineLayout.SoundSrcVoice3D"/>
     public ref C3DVoice Voice3d => ref *(C3DVoice*)(Ptr + EngineLayout.SoundSrcVoice3D);
+}
+
+/// <summary>Typed view of an engine <c>CExoSoundStreamThread*</c>.</summary>
+public readonly unsafe partial struct CExoSoundStreamThread(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.StreamThreadStop"/>
+    public ref int Stop => ref *(int*)(Ptr + EngineLayout.StreamThreadStop);
 }
 
 /// <summary>Typed view of an engine <c>CExoStreamingSoundSource*</c>.</summary>
@@ -5966,6 +5980,10 @@ public static unsafe class EngineFn
     private static bool _StreamSetLoopingDone;
     /// <inheritdoc cref="SymbolMap.StreamSetLooping"/>
     public static StreamSetLoopingFn StreamSetLooping => (StreamSetLoopingFn)(_StreamSetLoopingDone ? _StreamSetLooping : Resolve(ref _StreamSetLooping, ref _StreamSetLoopingDone, SymbolMap.StreamSetLooping));
+    private static IntPtr _SoundShutDown;
+    private static bool _SoundShutDownDone;
+    /// <inheritdoc cref="SymbolMap.SoundShutDown"/>
+    public static SoundShutDownFn SoundShutDown => (SoundShutDownFn)(_SoundShutDownDone ? _SoundShutDown : Resolve(ref _SoundShutDown, ref _SoundShutDownDone, SymbolMap.SoundShutDown));
     private static IntPtr _InvSetInventoryVisible;
     private static bool _InvSetInventoryVisibleDone;
     /// <inheritdoc cref="SymbolMap.InvSetInventoryVisible"/>
@@ -8601,6 +8619,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.StreamSetLooping"/>; returns the slot holding the next layer, or null.</summary>
     public static StreamSetLoopingFn* ChainStreamSetLooping(this HookService h, StreamSetLoopingFn handler, int priority) =>
         (StreamSetLoopingFn*)h.Chain(SymbolMap.StreamSetLooping, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SoundShutDown"/>; returns the original, or null.</summary>
+    public static SoundShutDownFn InstallSoundShutDown(this HookService h, SoundShutDownFn handler) =>
+        (SoundShutDownFn)h.Install(SymbolMap.SoundShutDown, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SoundShutDown"/>; returns the slot holding the next layer, or null.</summary>
+    public static SoundShutDownFn* ChainSoundShutDown(this HookService h, SoundShutDownFn handler, int priority) =>
+        (SoundShutDownFn*)h.Chain(SymbolMap.SoundShutDown, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.InvSetInventoryVisible"/>; returns the original, or null.</summary>
     public static InvSetInventoryVisibleFn InstallInvSetInventoryVisible(this HookService h, InvSetInventoryVisibleFn handler) =>
         (InvSetInventoryVisibleFn)h.Install(SymbolMap.InvSetInventoryVisible, (IntPtr)handler);

@@ -83,6 +83,29 @@ The engine's `alcCreateContext(dev, NULL)` gets CX's attributes instead (HRTF pe
 limiter); `sound.master` is the listener gain the engine never sets; `sound.resampler` picks OpenAL's resampler
 for what it still plays.
 
+## Exit
+
+Quitting is the one moment the engine tears its audio down while threads are still inside it.
+`CClientExoAppInternal::StopServices` deletes `g_pExoSound`; that destructor runs
+`CExoSoundInternal::ShutDown` (name-exported on both OSes), which frees every voice and then calls
+`alcDestroyContext`. `main` then returns rather than calling `exit`, so the `atexit` phase comes afterwards --
+and nothing in that path stops `g_ExoSoundStreamThread`, a **detached** thread that loops `AsyncUpdate` every
+10 ms. Its stop flag is written only by its own `atexit` destructor, which then frees the mutex, the condvar and
+the very stream list the thread is walking, without joining it. In between, every `AsyncUpdate` makes AL calls
+with no current context, and the engine's crash reporter drains its log ring without its mutex while that thread
+floods it -- a wedged `nwmain` at quit.
+
+So CX hooks `ShutDown` and, before calling the original, does three things. Its two crossfade spares leave the
+engine's stream lists (`CExoStreamingSoundSourceInternal::Stop`, which removes an Internal from both the stream
+thread's list and the sound's; `Reset` would instead build a fresh Internal off the object being destroyed).
+The stream thread's stop flag (`EngineLayout.StreamThreadStop`: +0x70 on Linux, +0x18 on Windows -- the class is
+laid out per OS) is set to 1, and the main thread sleeps 20 ms, two of that thread's cycles, which is all a
+detached thread with no join handle offers. And CX's own audio latches off through `cxa_shutdown`: it cancels a
+running path bake, wakes the render thread and waits, bounded, for the render, sim and bake threads to leave the
+core. Past that latch every `cxa_*` entry point is a no-op, so nothing of CX's is inside Steam Audio or OpenAL
+while the process finalizes. One line records it, whatever the log level:
+`sound: engine sound teardown -- AL live=..., stream-thread stop flag=..., CX spares parked=.../...`.
+
 ## Knobs
 
 `/settings` -> Audio -> Sound, or `/knobs`. Every row is one declaration in
@@ -96,7 +119,8 @@ silence.
 
 Headless (`native/cxaudio.cpp`'s SelfCheck in `run-demo.sh`): the distance curves, the engine's variance draw,
 the NWN -> Steam Audio axes and the listener frame, the resampler, the shelf, capture and loudness, the EnvAudio
-join by label.
+join by label, and the exit latch (after `cxa_shutdown` the entry points that would change state do nothing,
+and the same calls land once it is cleared).
 
 Native harness (Steam Audio + the pinned OpenAL rendering to OpenAL Soft's wave backend, a 20 x 20 x 6 m room
 with a wall, broadband noise at 3-8 m, 2026-09-27): HRTF gives 12 dB interaural difference at 90 degrees and is

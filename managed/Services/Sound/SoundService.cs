@@ -35,6 +35,8 @@ public sealed unsafe class SoundService : IExtenderService
         _log = log;
         _ = SoundKnobs.G;
         SoundCore.SelfCheck(log);
+        // armed whatever else stands down: the engine floods its log with contextless AL calls at exit on its own
+        SoundExit.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 40, Tick, "SoundService", log);
         if (!SymbolMap.Require(log, "sound", SymbolMap.SoundPlayOn3DVoice, SymbolMap.SoundPlayOn2DVoice, SymbolMap.SoundSourceSetPosition,
                                SymbolMap.SoundSetEnvironment, SymbolMap.SoundInitialize, SymbolMap.StreamFadeAndStop, SymbolMap.StreamCtor,
@@ -357,18 +359,21 @@ public sealed unsafe class SoundService : IExtenderService
                  + $"env row {_lastEnv}");
     }
 
+    /// <summary>Both loops end at the core's exit latch, so neither is inside Steam Audio while the process
+    /// finalizes (<c>cxa_shutdown</c> waits them out).</summary>
     private static void SimLoop()
     {
-        while (true)
+        while (SoundCore.cxa_stopped() == 0)
         {
             SoundCore.cxa_sim_tick();
             Thread.Sleep(15);
         }
     }
 
+    /// <inheritdoc cref="SimLoop"/>
     private static void BakeLoop()
     {
-        while (true)
+        while (SoundCore.cxa_stopped() == 0)
             if (SoundCore.cxa_bake_tick() == 0) Thread.Sleep(250);
     }
 

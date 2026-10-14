@@ -785,6 +785,9 @@ offset	CNWCAmbientSound	music	0x188	0x188	# AmbientMusic
 offset	CNWCAmbientSound	ambient	0x190	0x190	# AmbientBed
 offset	CNWCAmbientSound	truncated	0x1b8	0x1b8	# AmbientTruncated
 offset	CExoStreamingSoundSource	internal	0x0	0x0	# StreamInternal
+# CExoSoundStreamThread is laid out per OS: Linux has a pthread_cond_t + pthread_mutex_t ahead of the flag,
+# Windows a thread handle and a CRITICAL_SECTION. Both read off the constructor/destructor/thread proc.
+offset	CExoSoundStreamThread	stop	0x70	0x18	# StreamThreadStop
 offset	C2DVoice	source	0x8	0x8	# Voice2DSource
 
 # the CX inventory screen (CX-146 §10): every row paired on both programs.
