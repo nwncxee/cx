@@ -61,6 +61,13 @@ internal static class CardSelfCheck
         return PanelLayout.Build(cards[0], 1f, m => (atlas, m), default);
     }
 
+    /// <summary>The card laid out in the game's GUI art, as an owner with an armed skin asks for it.</summary>
+    private static PanelView LayN(GlyphAtlas atlas, string cardJson)
+    {
+        PanelParser.TryParse(cardJson, out PanelDecl[] cards, out _);
+        return PanelLayout.Build(cards[0], 1f, m => (atlas, m), default, native: true);
+    }
+
     private static NuiHit Hit(string token, int row = -1, string image = "", float x = 50f, float y = 40f, float w = 30f, float h = 30f)
     {
         var hit = new NuiHit { Element = (IntPtr)1, Row = row, X = x, Y = y, W = w, H = h };
@@ -80,6 +87,7 @@ internal static class CardSelfCheck
         Styled(check, atlas);
         StyleRegistry(check, log);
         Roles(check, log);
+        Looks(check, atlas, log);
         Registry(check, log);
         Presenting(check, atlas, log);
         log.Info(check.Ok ? "CardSelfCheck: passed" : "CardSelfCheck: FAILED");
@@ -318,6 +326,46 @@ internal static class CardSelfCheck
         PolicyRefusal[] refused = PolicyRefusals.All();
         check.Expect(refused.Length == 1 && refused[0].Kind == RefusalKind.Style && refused[0].Key == "cardstyle" && refused[0].Reason.Contains("@role", StringComparison.Ordinal),
             "an unknown role is logged as a style refusal, with the colour forms in its reason");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
+    }
+
+    /// <summary>
+    /// Oracle: the three look words and the refusal text written out by hand, rectangle counts counted on the test
+    /// face (an empty card is one background quad and four border rects flat, one skin part native), and
+    /// <see cref="Theme"/>'s own look for <c>auto</c>.
+    /// </summary>
+    private static void Looks(Checker check, GlyphAtlas atlas, ExtenderLog log)
+    {
+        check.Expect(StyleOf("{}").Look == CardLook.Auto && StyleOf("{\"look\":\"native\"}").Look == CardLook.Native && StyleOf("{\"look\":\"flat\"}").Look == CardLook.Flat,
+            "look parses as auto, native or flat, and auto is the default");
+        check.Expect(!PanelParser.TryParseStyle("{\"look\":\"shiny\"}", out _, out string why) && why == "look 'shiny' is auto, native or flat", $"an unknown look refuses the style: '{why}'");
+        check.Expect(!PanelParser.TryParse("{\"look\":\"shiny\",\"blocks\":[]}", out _, out _) && PanelParser.TryParse("{\"look\":\"native\",\"blocks\":[]}", out PanelDecl[] own, out _) && own[0].St.Look == CardLook.Native,
+            "a card carries its own look, and a bad one refuses the card");
+        PanelStyle auto = StyleOf("{}"), native = StyleOf("{\"look\":\"native\"}"), flat = StyleOf("{\"look\":\"flat\"}");
+        check.Expect(auto.WantsNative(true) && !auto.WantsNative(false) && native.WantsNative(false) && !flat.WantsNative(true), "auto follows the player, native and flat decide for themselves");
+        check.Expect(auto.WantsNative(Theme.IsNative) == Theme.IsNative, "a card with no look of its own wears what the player chose");
+
+        PanelView art = LayN(atlas, "{\"width\":200,\"blocks\":[]}");
+        check.Expect(art.Back.VertexCount == 0 && art.Art.Count == 1 && art.Art[0].Part == NativeChrome.Frame
+                     && art.Art[0].X0 == 0f && Near(art.Art[0].X1, 200f) && Near(art.Art[0].Y1, art.H), "native: no background or border rects, one frame part over the whole card");
+        check.Expect(LayS(atlas, "{}", "{\"width\":200,\"blocks\":[]}").Back.VertexCount == 6 + 24 && LayS(atlas, "{}", "{\"width\":200,\"blocks\":[]}").Art.Count == 0,
+            "flat: the background quad and four border rects, no art");
+        PanelView tab = LayN(atlas, "{\"width\":200,\"tab\":\"t\",\"blocks\":[]}");
+        check.Expect(tab.Art.Count == 2 && tab.Art[1].Part == NativeChrome.Tab && Near(tab.Art[1].Y1, 0f) && Near(tab.Art[1].Y0, -tab.TabH), "native: the tab band is the header art above the card");
+        PanelView boxes = LayN(atlas, "{\"width\":200,\"blocks\":[{\"type\":\"icons\",\"icons\":[\"a\",\"b\",\"c\"],\"frame\":true}]}");
+        check.Expect(boxes.Art.Count == 4 && boxes.Back.VertexCount == 0 && boxes.Art[3].Part == NativeChrome.Frame, "native: a framed icon row draws three frame parts and no fills");
+        check.Expect(LayN(atlas, "{\"width\":200,\"glow\":\"#00ffff80\",\"corners\":\"#ffffff\",\"border2\":\"#ffffff\",\"bg\":\"#ff0000\",\"border\":\"#00ff00\",\"blocks\":[]}").Back.VertexCount == 0,
+            "native: a glow, corner brackets, a second border and the flat bg and border colours are all left to the art");
+        check.Expect(LayN(atlas, "{\"width\":200,\"shadow\":\"#000000\",\"blocks\":[{\"text\":\"ab\"}]}").Text.VertexCount == 24, "native: the text shadow still draws every glyph twice");
+
+        CardRegistry.Reset();
+        CardRegistry.Init(log);
+        PolicyRefusals.ForgetPrefix("");
+        ServerPolicy.Apply("cardstyle={\"look\":\"shiny\"}");
+        PolicyRefusal[] refused = PolicyRefusals.All();
+        check.Expect(refused.Length == 1 && refused[0].Kind == RefusalKind.Style && refused[0].Reason == "look 'shiny' is auto, native or flat", "an unknown look is logged as a style refusal");
         CardRegistry.Reset();
         ServerPolicy.Clear();
         PolicyRefusals.ForgetPrefix("");

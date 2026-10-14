@@ -12,6 +12,9 @@ internal enum Side { Right, Left, Above, Below }
 /// <summary>How the card group lines up along the element's edge.</summary>
 internal enum Align { Start, Center, End }
 
+/// <summary>Which chrome a panel wears: <see cref="Auto"/> follows the player's <c>ui.look</c>, the other two decide.</summary>
+internal enum CardLook { Auto, Native, Flat }
+
 /// <summary>
 /// Every value that decides how a panel looks or where it sits. The field initialisers are the defaults and the only place
 /// they are written; the server's <c>cardstyle</c> line replaces them for every card, and a card's own fields replace them
@@ -41,6 +44,9 @@ internal sealed class PanelStyle
     public Paint DimColor = Paint.Literal(0xFFFFFFFF);  // not-an-offset: an RRGGBBAA colour
     public byte DimAlpha = 0x99;  // not-an-offset: an alpha byte
     public BgDir Dir = BgDir.Vertical;
+    /// <summary>Which chrome the panel wears; the owner resolves <see cref="CardLook.Auto"/> and stands native down when
+    /// the art is missing.</summary>
+    public CardLook Look = CardLook.Auto;
     public float BorderW = 1f, FrameW = 1f, Border2W = 1f, Border2Inset = 3f, ShadowDx = 1f, ShadowDy = 1f, GlowSpread = 8f, GlowAlpha = 0.5f, CornerLen = 12f, CornerW = 2f;
     /// <summary>Which edges the frame draws: any of <c>t r b l</c>.</summary>
     public string Sides = "trbl";
@@ -53,6 +59,10 @@ internal sealed class PanelStyle
     public float Offset = 8f, CardGap = 8f, Dx, Dy;
     /// <summary>Seconds a card waits before it shows, and its fades; below 0 follows the player's own tooltip timing.</summary>
     public float Delay = -1f, FadeIn = -1f, FadeOut = -1f;
+
+    /// <summary>True when this panel asks for the game's GUI art: its own choice, or the player's under
+    /// <see cref="CardLook.Auto"/>. The owner still stands it down when the skin is not whole.</summary>
+    public bool WantsNative(bool playerNative) => Look switch { CardLook.Native => true, CardLook.Flat => false, _ => playerNative };
 
     /// <summary>The nearest step of <see cref="Sizes"/> to <paramref name="v"/>.</summary>
     public float Snap(float v)

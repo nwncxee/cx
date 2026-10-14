@@ -32,7 +32,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `7`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour. Older values are listed below |
+| `cx_cap_card` | `8`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour and `look` for the game's own GUI art. Older values are listed below |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
@@ -50,6 +50,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 `cx_cap_card`:
 
+- `7` had no `look` field: a card was always drawn in flat colour, never in the game's own GUI art, whatever the player's `ui.look`.
 - `6` took no role identifier (`@accent`, `@panelbg/f2`) where a colour goes, and the colours it left alone were fixed: a card drew
   the same greys whatever look and palette the player had chosen.
 - `5` always drew the nearest ring of a `glow` at half the colour's opacity: no `glowalpha`.
@@ -274,6 +275,15 @@ before, `border` its border, `frameline` its edge highlight and `tabcolor` its d
 `footerband`, `framefill` and `dimcolor` are the same translucent white and black whatever the look. A field the server **does** set is
 drawn exactly as sent.
 
+**A card can wear the game's own GUI art.** `look` decides: `auto` (the default) follows the player's `ui.look`, `native` asks for the art
+whatever the player chose, `flat` asks for colour. It sits in `cardstyle` or on one card, not on a block -- the art is the card's ground,
+not a line's. Drawn native, the card's background and border are the stock window art (`nui_windowh`, nine-sliced with the engine's
+insets), its tab is the stock header art, and a framed icon's box is the window art again, so **`bg`, `border`, `border2`, `corners`,
+`glow`, `framefill` and `frameline` are ignored**: whatever colours the server set for those are not drawn. Everything else still
+applies -- text and run colours (roles included), `shadow` under the glyphs, every spacing, size and placement field, `divider`,
+`footerband` and a `section` tint. If the art is missing (a client whose GUI haks do not carry it), the card falls back to flat colour
+with the colours as sent, as every other CX window does. A client advertising `cx_cap_card` 7 or less ignores `look` and draws flat.
+
 A colour may also name a role instead of a value, so server content moves with the look too: `"@accent"` is the role identifier, and
 `"@accent/80"` the same role at a hex opacity (`00`-`ff`). It is resolved every time the card is drawn, so a player changing `ui.look` or
 `ui.palette` re-colours the cards on screen. The roles are
@@ -303,6 +313,7 @@ lines `ui.look=native` and `ui.palette=ember`.
 | `leading` | line height as a multiple of the text's | 0.5-4 | 1 |
 | `slant` | how far italic text leans | -1 to 1 | 0.2 |
 | `tabx`, `tabpad`, `tabextra`, `tabdrop` | the tab's left offset, its side padding, the height it adds to the line, and the text's drop from its top | 0-256 | 8, 6, 4, 2 |
+| `look` | the chrome the card wears: `auto` (the player's `ui.look`), `native` (the game's GUI art), `flat` (colour) | word | `auto` |
 | `color` | the default text colour | colour | `@tx` |
 | `bg` | as in the card table above (`dir` also takes `d`, top left to bottom right). Without `to` the fill is flat, and `to` may be clear | colour or object | `@panelbg/f2` |
 | `border` | the frame's colour | colour | `@border` |

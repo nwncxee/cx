@@ -21,6 +21,8 @@ internal sealed class CardSet
     public float ViewScale;
     /// <summary>The <see cref="Theme.Epoch"/> the cached layout baked its role colours at.</summary>
     public int ViewTheme;
+    /// <summary>Whether the cached layout wears the game's GUI art.</summary>
+    public bool ViewNative;
 
     public CardSet(string key, PanelDecl[] cards, string raw = "") { Key = key; Cards = cards; Raw = raw; }
 }
