@@ -8,6 +8,10 @@
 # directory lives inside a throwaway Proton prefix, so the user's saves and nwn.ini are never opened.
 #
 #   tools/live/run-proton-live.sh [--seconds N] [--width W] [--height H] [--cfg k=v]... [--menu] [--out DIR]
+#                                 [--nui] [--keys 'script' [--keys-at N]]
+#
+# --nui hosts the fixed NUI window module of run-live.sh (tools/live/ladder/cxnui.nss) built into the prefix's user
+# directory; --keys runs an xtool.py key/shot script N seconds in (default 60), after the client has had time to load.
 #
 # Default is the Linux harness's own module, so the shots line up with a `run-live.sh` run of the same name.
 set -u
@@ -15,7 +19,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
 PROTON="${PROTON:-$HOME/.steam/root/steamapps/common/Proton - Experimental/proton}"
 MODULE="The Dark Ranger's Treasure"
-WIDTH=1280; HEIGHT=720; SECONDS_TO_RUN=60; MENU=0; REUSE=0
+WIDTH=1280; HEIGHT=720; SECONDS_TO_RUN=60; MENU=0; REUSE=0; NUI=0; KEYS=""; KEYS_AT=60
 OUT="$ROOT/.scratch/live/proton"
 CFGS=()
 
@@ -29,6 +33,9 @@ while [ $# -gt 0 ]; do
         --cfg)     CFGS+=("$2"); shift 2 ;;
         --menu)    MENU=1; shift ;;
         --reuse)   REUSE=1; shift ;;
+        --nui)     NUI=1; MODULE="cxnui"; shift ;;
+        --keys)    KEYS="$2"; shift 2 ;;
+        --keys-at) KEYS_AT="$2"; shift 2 ;;
         *) echo "run-proton-live: unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -76,6 +83,11 @@ PFX="$OUT/pfx"; mkdir -p "$PFX"
 DOCS="$PFX/pfx/drive_c/cxuser"
 mkdir -p "$DOCS"
 rm -f "$DOCS/cx.log"
+if [ "$NUI" = 1 ]; then
+    mkdir -p "$DOCS/modules"
+    NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$DOCS/modules" "$MODULE" \
+        || { echo "run-proton-live: the NUI module did not build" >&2; exit 2; }
+fi
 { echo "general.logs=1"; for c in ${CFGS+"${CFGS[@]}"}; do echo "$c"; done; } > "$DOCS/cx.cfg"
 
 echo "run-proton-live: out    $OUT"
@@ -127,9 +139,15 @@ echo "run-proton-live: display $DISP (nested, headless)"
 # rather than on a rung: there is no ladder here, the question is only whether it boots and draws.
 end=$(( $(date +%s) + SECONDS_TO_RUN ))
 n=0
+start=$(date +%s); keys_done=0
 while [ "$(date +%s)" -lt "$end" ] && kill -0 "$GS_PID" 2>/dev/null; do
     sleep 10
     n=$((n + 1))
+    if [ -n "$KEYS" ] && [ "$keys_done" = 0 ] && [ $(( $(date +%s) - start )) -ge "$KEYS_AT" ]; then
+        keys_done=1
+        python3 "$ROOT/tools/live/xtool.py" keys "$DISP" "$KEYS" >> "$OUT/xtool.log" 2>&1 \
+            || echo "run-proton-live: key injection failed (see $OUT/xtool.log)"
+    fi
     python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$(printf '%s/%02d.png' "$SHOTS" "$n")" \
         >> "$OUT/xtool.log" 2>&1 || true
 done
