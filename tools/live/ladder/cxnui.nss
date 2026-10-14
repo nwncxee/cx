@@ -135,8 +135,9 @@ void Arm(object oPC, int nTry)
     }
     SetImmortal(oPC, TRUE);
     Mark("enter " + GetName(oPC) + " in " + GetName(GetArea(oPC)));
-    // The torch is made first and the window opened later: the client must know the item before @item: can draw it.
+    // The server sends backpack items only while the inventory panel is open, and @item: draws only an item the client knows.
     if (!GetIsObjectValid(GetItemPossessedBy(oPC, TORCH_TAG))) CreateItemOnObject(TORCH, oPC, 1, TORCH_TAG);
+    OpenInventory(oPC, oPC);
     DelayCommand(3.0, OpenWindow(oPC));
 }
 

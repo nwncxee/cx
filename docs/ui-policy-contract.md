@@ -80,7 +80,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | property | value |
 |---|---|
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
-| `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
+| `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon. The server sends a backpack item to the client only while the player's inventory panel is open, so draw a backpack item with `@look:` at any other time |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
 | `cx_cap_card` | `9`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour, `look` for the game's own GUI art, and the glow, diagonal and pulse shape fields. Older values are listed below |
 | `cx_cap_palette` | `1`: the client reads `cxpal_<id>.txt` palette files from your content and offers them as `ui.palette` choices (see [Palettes](#palettes)) |
