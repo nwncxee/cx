@@ -31,7 +31,7 @@ public sealed unsafe partial class AlloyRenderer
     /// untimed; the shadow bracket and the light build run their own elapsed queries OUTSIDE every term by
     /// pass order, which is the premise the guard rests on. The <c>*Key</c> terms are the keyhole-dissolving
     /// tails, and the deferred pass is three dispatches timed apart, so each knob behind them has a number.</summary>
-    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Coverage, Decals, Count }
+    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Coverage, Decals, Washes, Count }
     /// <summary>One elapsed query per term. TIME_ELAPSED cannot nest: a colour timer wrapping the grass and
     /// water ones has its inner End close it early, wedging both inner meters on a stale sample.</summary>
     private static readonly GpuQuery[] _qTerm = new GpuQuery[(int)GpuTerm.Count];
@@ -348,6 +348,8 @@ public sealed unsafe partial class AlloyRenderer
                          (_qTerm[(int)GpuTerm.PairDebt].Measured ? $" / pair debt {GpuMs(GpuTerm.PairDebt):F3}" : "") +
                          // CX-273: the ground decals' layer, which the blended term no longer carries
                          (_qTerm[(int)GpuTerm.Decals].Measured ? $" / decals {GpuMs(GpuTerm.Decals):F3}" : "") +
+                         // ...and the washes' solid interiors, drawn beside the cutouts so the blended term keeps only their edges
+                         (_qTerm[(int)GpuTerm.Washes].Measured ? $" / washes {GpuMs(GpuTerm.Washes):F3}" : "") +
                          (_qTerm[(int)GpuTerm.Weather].Measured ? $" / weather {GpuMs(GpuTerm.Weather):F3}" : "") +
                          $" (gpu terms total {GpuTermsTotal() + CasterPass.ShadowGpuMs:F2} incl. shadows {CasterPass.ShadowGpuMs:F2}; colour bracket span {GpuSpanMs:F2})" : "") +
                    // #121: captures per SESSION against frames per PERIOD. A number that tracks the frame

@@ -161,6 +161,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     {
         public int Oit, OitDim, OitGob, LightRecOn;
         public int Decal, DecalZ;   // CX-273: the decal layer's mode and the projection terms its depth test reads
+        public int Solid;           // a wash's solid interior (Issue._solidPass)
         public int AlphaMip;   // CX-191
         public int Tex, Vp, Base, Cut, Viz, Ssao, SsaoOn, SsaoHalf, AoDirect, AoCutout,
                    SunTex, SunDynTex, CubeTex, CubeCount, CubeDynTex,   // CX-43: the rest of the receiver and the light curve ride CxPass

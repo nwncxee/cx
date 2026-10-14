@@ -286,7 +286,7 @@ internal static unsafe class Issue
         // before its own range, so the first batch of either kind agrees with the state already set.
         bool boundBlend = _blendOn;
         byte boundMask = _passDepthMask;
-        bool boundEqual = false;
+        uint boundFunc = Gl.LEQUAL;
         bool boundTest = true;
         bool boundOffset = false;
         int boundOitGob = -1;
@@ -301,11 +301,13 @@ internal static unsafe class Issue
         // CX-273: the decal layer's mode for this loop, and the bound lit program's uDecal (-1 = not yet sent)
         int decalMode = DecalLayer.Mode, litDecal = -1, boundDecal = -1;
         bool decalWrite = decalMode == DecalLayer.ModeWrite;
+        int litSolid = -1, boundSolid = -1;
+        bool interior = _split.Interior;
         if (boundProg is 1 or 3 or 4 or 5 or 6 or 8)
         {
             ref LitLoc H = ref LitLocOf(boundProg);
             litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
-            litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect; litDecal = H.Decal;
+            litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect; litDecal = H.Decal; litSolid = H.Solid;
         }
         // #379 follow-up: SSAO is per BATCH, not per program bind. The visibility buffer is computed from
         // the DEPTH PREPASS, and a batch the prepass skipped (cutout, an out-of-prepass feature, the whole
@@ -334,13 +336,17 @@ internal static unsafe class Issue
             bool oitOut = hosted || _gSrc[g] != AuroraSrcAlpha || _gDst[g] != AuroraOneMinusSrcAlpha;
             if (_oitOn && oitOut) { _oitDeferred++; continue; }
             if (_onlyHosted && !oitOut) continue;
+            // a blended wash, whose solid interior WashInteriors draws with the cutouts and whose graded edge alone
+            // is left to the blended pass
+            bool split = _gWash[g] != 0 && !_gDecal[g] && lit && !oitOut && g >= _gOpaqueEnd;
+            if (interior && !split) continue;
             bool lists = lit && !water && !hosted && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
             // view -- the only draws whose pixels the deferred compute pass reads. Everything else keeps the
             // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz but the
             // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
             bool deferred = lit && !water && !hosted && !lists && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
-                            && g < _gOpaqueEnd && DeferredLights.Active && !_forwardOnly;
+                            && (g < _gOpaqueEnd || interior) && DeferredLights.Active && !_forwardOnly;
             // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
             // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
             // whose coverage comes off its own map still gets a per-primitive sample pattern.
@@ -418,6 +424,7 @@ internal static unsafe class Issue
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
                     litDecal = L.Decal; boundDecal = -1;
+                    litSolid = L.Solid; boundSolid = -1;
                 }
                 else
                 {
@@ -449,6 +456,8 @@ internal static unsafe class Issue
                 // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
                 int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
                 if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
+                int sm = interior ? 1 : 0;
+                if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
             float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f : AlloyClasses.Discard(_gCls[g]);
@@ -457,7 +466,7 @@ internal static unsafe class Issue
             // draws with GL_BLEND off and a cutout batch with it on and the material's own pair, which is
             // exactly the pair of states the engine draws buckets 0 and 1 in. Batches are class-grouped, so
             // this toggles about once per pass.
-            bool blend = AlloyClasses.Blends(_gCls[g]);
+            bool blend = AlloyClasses.Blends(_gCls[g]) && !interior;
             if (blend != boundBlend)
             {
                 boundBlend = blend;
@@ -476,7 +485,9 @@ internal static unsafe class Issue
             // one like any blended draw.
             byte mask = equal ? (byte)0 : _passDepthMask;
             if (mask != boundMask) { Gl.DepthMask(mask); boundMask = mask; }
-            if (equal != boundEqual) { Gl.DepthFunc(equal ? Gl.EQUAL : Gl.LEQUAL); boundEqual = equal; }
+            // the edge pass: an interior fragment meets its own depth there, and LESS drops it before it is shaded
+            uint func = equal ? Gl.EQUAL : split && _split.Ran && !interior ? Gl.LESS : Gl.LEQUAL;
+            if (func != boundFunc) { Gl.DepthFunc(func); boundFunc = func; }
             bool test = !(blend && wash && !_washTest);
             if (test != boundTest) { if (test) Gl.Enable(Gl.DEPTH_TEST); else Gl.Disable(Gl.DEPTH_TEST); boundTest = test; }
             // A wash is a sheet lying ON another surface (a decal, a rug, a floor lattice at +0.005), and its
@@ -523,7 +534,7 @@ internal static unsafe class Issue
                                                (void**)(offs + s), _gLen[g], bases + s);
             Counters._batches++;
             Counters._draws += _gLen[g];
-            Counters._drawsByClass[_gCls[g]] += _gLen[g];
+            if (!interior) Counters._drawsByClass[_gCls[g]] += _gLen[g];
             // CX-188: a twin draw went out, so the G-buffer holds pixels and the deferred pass has work
             if (deferred) GBuffer.Written = true;
         }
@@ -533,7 +544,7 @@ internal static unsafe class Issue
         _blendOn = boundBlend;
         _heldProg = boundProg;
         if (boundMask != _passDepthMask) Gl.DepthMask(_passDepthMask);
-        if (boundEqual) Gl.DepthFunc(Gl.LEQUAL);
+        if (boundFunc != Gl.LEQUAL) Gl.DepthFunc(Gl.LEQUAL);
         if (!boundTest) Gl.Enable(Gl.DEPTH_TEST);
         if (boundOffset) Gl.Disable(Gl.POLYGON_OFFSET_FILL);
     }
@@ -577,6 +588,24 @@ internal static unsafe class Issue
         _lightRec = false;
         _holdProg = false;
     }
+
+    /// <summary>The wash split's latches: the interior draw is being issued, and it was issued this frame, so the
+    /// blended pass draws those washes' edges alone.</summary>
+    private sealed class WashSplitState { public bool Interior, Ran; }
+    private static readonly WashSplitState _split = new();
+
+    /// <summary>The blended washes' solid interiors in [<paramref name="from"/>, <paramref name="to"/>), drawn in the
+    /// cutout pass's state through the deferred twin: only fragments at full coverage draw (<c>uSolid</c>).</summary>
+    internal static void WashInteriors(int from, int to, Matrix4x4* vp, int* viewport, float near, float far)
+    {
+        _split.Interior = true;
+        try { IssueColour(from, to, vp, viewport, near, far); }
+        finally { _split.Interior = false; }
+        _split.Ran = true;
+    }
+
+    /// <summary>The blended pass is done with this frame's interiors.</summary>
+    internal static void WashesDone() => _split.Ran = false;
 
     /// <summary>Polygon offset for wash batches (see the wash note in the issue loop).</summary>
     private const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;

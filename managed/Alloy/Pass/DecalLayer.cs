@@ -170,6 +170,9 @@ internal static unsafe class DecalLayer
           "the writer and the blended pass split decal fragments on the same test");
         check.Expect(synth.Contains($"uDecal == {ModeFold}") && synth.Contains($"uDecal == {ModeSkip}"),
           "the fold and skip modes are the values the stage tests");
+        check.Expect(ShaderSource.Get("cx_ownlit_v.glsl").Contains("invariant gl_Position;")
+          && synth.Contains("uSolid != 0 && coverage * d.rot.w < CX_SOLID_ALPHA) discard;"),
+          "a wash's interior and edge draws lay one depth, so GL_LESS drops exactly what the interior drew");
         log.Info(check.Ok ? "DecalLayer.SelfCheck: passed" : "DecalLayer.SelfCheck: FAILED");
     }
 }

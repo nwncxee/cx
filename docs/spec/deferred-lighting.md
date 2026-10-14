@@ -61,8 +61,12 @@ its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`
 (-1, -2), so it does not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock
 ones at exactly 0). An alpha-tested wash whose diffuse measures graded alpha draws in the blended class, as
 vanilla draws its alpha-tested bucket (blend and the 0.2 test together): drawn hard, its edge showed the colour
-the texture keeps under alpha 0, white on many decal sheets. Only static objects' sheets are washes, and never
-a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
+the texture keeps under alpha 0, white on many decal sheets. A blended wash draws in two parts: its fully covered
+texels (coverage times part alpha at least 0.99, `uSolid`) with the cutouts, solid and through the deferred twin
+(`Issue.WashInteriors`, the `washes` GPU term), and the rest in the blended pass under `GL_LESS`, where every
+interior fragment meets its own depth and is dropped before it is shaded -- a forward-lit blended fragment cost
+several opaque ones, and a rug or a dirt patch is mostly interior. Only static objects' sheets are washes, and
+never a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
 session with the reason each is not a decal.
 
 ### The forward consumers' slim walk (`CX_LIGHT_LITE`)

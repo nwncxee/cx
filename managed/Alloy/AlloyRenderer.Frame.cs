@@ -478,6 +478,7 @@ public sealed unsafe partial class AlloyRenderer
                 case PassId.CutoutOwned:
                     // CX-188: the cutout class is the last G-buffer writer; close the attachment after it
                     CutoutOwnedPass(_gOpaqueEnd, &vp, viewport, near, far);
+                    WashInteriors(&vp, viewport, near, far);
                     GBuffer.Detach();
                     break;
                 case PassId.CoverageOwned:
@@ -572,6 +573,7 @@ public sealed unsafe partial class AlloyRenderer
                         GpuEnd(GpuTerm.Blended);
                     }
                     Issue.LightRecEnd();
+                    Issue.WashesDone();
                     DecalLayer.End();
                     break;
                 case PassId.FbCopy:
@@ -1099,6 +1101,20 @@ public sealed unsafe partial class AlloyRenderer
         GpuBegin(GpuTerm.Coverage);
         Issue.IssueColour(_gA2cStart, opaqueEnd, vp, viewport, near, far);
         GpuEnd(GpuTerm.Coverage);
+    }
+
+    /// <summary>The blended washes' fully covered interiors, solid and lit like the cutouts beside them: a covered
+    /// texel needs no blending, and in the blended pass each one cost a forward-lit fragment. That pass then draws
+    /// only each wash's graded edge.</summary>
+    private static void WashInteriors(Matrix4x4* vp, int* viewport, float near, float far)
+    {
+        int from = DecalEnd();
+        if (_capturing || from >= _gBlendEnd) return;
+        GpuBegin(GpuTerm.Washes);
+        Gl.DepthMask(1);
+        Gl.DepthFunc(Gl.LEQUAL);
+        Issue.WashInteriors(from, _gBlendEnd, vp, viewport, near, far);
+        GpuEnd(GpuTerm.Washes);
     }
 
     /// <summary><see cref="CutoutOwnedPass"/> left the <c>NWN_ALPHA_MODE 2</c> tail for the coverage layer.</summary>

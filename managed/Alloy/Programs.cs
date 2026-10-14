@@ -575,7 +575,7 @@ internal static unsafe class Programs
         L.Tex = GlProgram.Loc(prog, "uTex");
         L.Cut = GlProgram.Loc(prog, "uAlphaCut"); L.AlphaMip = GlProgram.Loc(prog, "uAlphaMip");
         L.Viz = GlProgram.Loc(prog, "uViz"); L.Oit = GlProgram.Loc(prog, "uOit"); L.OitDim = GlProgram.Loc(prog, "uOitDim"); L.OitGob = GlProgram.Loc(prog, "uOitGob"); L.LightRecOn = GlProgram.Loc(prog, "uLightRecOn");
-        L.Decal = GlProgram.Loc(prog, "uDecal"); L.DecalZ = GlProgram.Loc(prog, "uDecalZ");
+        L.Decal = GlProgram.Loc(prog, "uDecal"); L.DecalZ = GlProgram.Loc(prog, "uDecalZ"); L.Solid = GlProgram.Loc(prog, "uSolid");
         L.SunTex = GlProgram.Loc(prog, "uSunShadow"); L.SunDynTex = GlProgram.Loc(prog, "uSunDynShadow");
         L.CubeTex = GlProgram.Loc(prog, "uLocalShadow"); L.CubeDynTex = GlProgram.Loc(prog, "uLocalDynShadow");
         L.CubeCount = GlProgram.Loc(prog, "uLocalCubes");
