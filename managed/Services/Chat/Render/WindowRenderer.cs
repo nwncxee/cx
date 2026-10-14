@@ -39,7 +39,8 @@ public static partial class WindowRenderer
     /// <see cref="EditBuffer.MaxLength"/> on first use, so a keystroke never reallocates it.</summary>
     [System.ThreadStatic] private static byte[]? _markupScratch;
 
-    private const uint EditRgb = 0xF0F0F0;  // not-an-offset: a colour
+    /// <summary>The input line's text: the brightest role, as the engine's own edit boxes draw.</summary>
+    private static uint EditRgb => Hi;
     /// <summary>Unread ephemeral tab: label + pulsing underline.</summary>
     private static uint UnreadRgb => Warn;
     /// <summary>Soft drop shadow outside the frame: rings of 1 px, outermost last, alpha scaled by the background's.</summary>
@@ -49,33 +50,42 @@ public static partial class WindowRenderer
     /// <summary>Inset of the channel chip / thumb / caret inside their bands (px at scale 1).</summary>
     private const float Inset = 3f;
 
-    /// <summary>Default colours (RGBA8, <c>0xRRGGBBAA</c>) for the themeable keys. The one source of truth
-    /// for both the render fields (via <see cref="ApplyPalette"/>) and the picker UI (via <see cref="CurrentColor"/>).</summary>
-    public static readonly Dictionary<string, uint> Defaults = new()
-    {
-        [ChatColor.Background] = 0x0d0f17bd, [ChatColor.Background2] = 0x192040bd,
-        [ChatColor.Frame] = (Border << 8) | 0xbd,
-        [ChatColor.Header] = 0x1a1f29d9, [ChatColor.Accent] = 0x335785f2,
-        [ChatColor.Input] = 0x050508e6, [ChatColor.Selection] = 0x38669eb3, [ChatColor.Text] = 0xd8dee9ff,
-    };
+    /// <summary>How opaque each chat surface draws: the window and its outline let the world through, the
+    /// header band and input bar less so, the accent and selection plates least.</summary>
+    internal const byte BgA = 0xbd, HeaderA = 0xd9, AccentA = 0xf2, InputA = 0xe6, SelA = 0xb3;  // not-an-offset: alphas
+
+    /// <summary>The chat chrome by meaning, each role at the alpha its surface draws: the window background and
+    /// the second colour a gradient runs to, the header band, the accent, the input bar, the selection, the
+    /// outline, the label text.</summary>
+    internal static uint Bg => Theme.Rgba(Role.PanelBg, BgA);
+    internal static uint Bg2 => Theme.Rgba(Role.NavOn, BgA);
+    internal static uint HeaderCol => Theme.Rgba(Role.HeaderBg, HeaderA);
+    internal static uint AccentCol => Theme.Rgba(Role.Accent, AccentA);
+    internal static uint InputCol => Theme.Rgba(Role.Input, InputA);
+    internal static uint SelCol => Theme.Rgba(Role.Selected, SelA);
+    internal static uint FrameCol => Theme.Rgba(Role.Border, BgA);
+    internal static uint TextCol => Theme.Rgba(Role.Tx);
+
+    /// <summary>A native-art tint: white at <paramref name="a"/>, so the game's art keeps the window's translucency.</summary>
+    private static uint Tint(byte a) => 0xffffff00u | a;  // not-an-offset: an rgba tint
+
+    /// <summary>Art tints: the part's own colours (opaque white), and the idle scrollbar thumb's
+    /// header-label grey, as NUI draws it (white under the pointer).</summary>
+    private const uint ArtWhite = 0xffffffffu, ThumbIdle = 0xc8c8c8ffu;  // not-an-offset: rgba tints
 
     private static (float r, float g, float b, float a) Unpack(uint rgba)
         => (((rgba >> 24) & 0xFF) / 255f, ((rgba >> 16) & 0xFF) / 255f, ((rgba >> 8) & 0xFF) / 255f, (rgba & 0xFF) / 255f);
 
-    /// <summary>The effective colour for a key (RGBA8): the per-window override, else the default.</summary>
-    public static uint CurrentColor(ChatWindow win, string key)
-        => win.Colors.TryGetValue(key, out uint v) ? v : Defaults[key];
-
-    private static Pal ResolvePalette(ChatWindow win) => new()
+    private static Pal ResolvePalette() => new()
     {
-        Bg = Unpack(CurrentColor(win, ChatColor.Background)),
-        Bg2 = Unpack(CurrentColor(win, ChatColor.Background2)),
-        TabBar = Unpack(CurrentColor(win, ChatColor.Header)),
-        TabActive = Unpack(CurrentColor(win, ChatColor.Accent)),
-        Footer = Unpack(CurrentColor(win, ChatColor.Input)),
-        SelBg = Unpack(CurrentColor(win, ChatColor.Selection)),
-        TabTextRgb = CurrentColor(win, ChatColor.Text) >> 8,
-        Frame = Unpack(CurrentColor(win, ChatColor.Frame)), FrameRgb = CurrentColor(win, ChatColor.Frame) >> 8,
+        Bg = Unpack(Bg),
+        Bg2 = Unpack(Bg2),
+        TabBar = Unpack(HeaderCol),
+        TabActive = Unpack(AccentCol),
+        Footer = Unpack(InputCol),
+        SelBg = Unpack(SelCol),
+        TabTextRgb = TextCol >> 8,
+        Frame = Unpack(FrameCol), FrameRgb = FrameCol >> 8,
     };
 
 
@@ -91,8 +101,8 @@ public static partial class WindowRenderer
     /// <summary>Portrait border, echoing vanilla's framed reply-portrait. A filled rect drawn behind the
     /// portrait (in the chrome batch) so its outer <see cref="PortraitFrameW"/> px show as a ring.</summary>
     private const float PortraitFrameW = 1f;
-    private static readonly (float r, float g, float b, float a) PortraitFrame = (0.58f, 0.58f, 0.58f, 1f);
-    private static readonly (float r, float g, float b, float a) PortraitFrameHover = (1f, 1f, 1f, 1f);
+    private static (float r, float g, float b, float a) PortraitFrame => C(Grip);
+    private static (float r, float g, float b, float a) PortraitFrameHover => C(Hi);
 
     /// <summary>Vertical gap between messages -- breathing room, and it keeps adjacent portrait frames from
     /// touching (which read as one continuous outline). ponytail: fixed; a density setting is the ceiling.</summary>
@@ -110,7 +120,10 @@ public static partial class WindowRenderer
                                     bool showFooter, string editText, int caret, bool showGrip,
                                     (int start, int end)? selection = null, GlyphAtlas? chrome = null)
     {
-        var p = ResolvePalette(win);
+        var p = ResolvePalette();
+        List<SkinCmd>? sk = ChatSkin.Native ? new List<SkinCmd>() : null;
+        void Art(int part, float x0, float y0, float x1, float y1, uint rgba = ArtWhite)
+            => sk!.Add(new SkinCmd(part, x0, y0, x1, y1, rgba));
         float halo = TextStyle.HaloOf(win.Outline, TextRig.FacePx(win.FontPx));
         chrome ??= atlas;
         float chromeBase = (ChatWindow.TabBarH - chrome.LineHeight) * 0.5f + chrome.Ascent;   // baseline drop that centres a line in a band (TabBarH == FooterH)
@@ -133,38 +146,58 @@ public static partial class WindowRenderer
         // (and the settings panel is closed), leaving just the background in the header band.
         // Unread ephemeral tabs force the header visible so the blink is seen.
         // Frame: a soft shadow outside (alpha scaled by the frame colour's), the 1 px outline on the edge.
+        // Native: the game's nine-sliced window art is the background, the outline and the shadow at once, and
+        // each tab is a NUI button -- so a hovered tab snaps to its hot art instead of easing a wash in.
         bool hasUnread = false;
         for (int i = 0; i < tabs.Count; i++) if (tabs[i].Unread && tabs[i].Ephemeral) { hasUnread = true; break; }
         bool inside = showGrip || settings.Open || hasUnread;
         bool showHeader = !win.AutoHideHeader || inside, showFrame = !win.AutoHideFrame || inside;
         float fa = p.Frame.a;
-        if (showFrame)
-            for (int k = ShadowAlpha.Length; k >= 1; k--)
-                Outline(b, win.X - k, win.Y - k, win.X + win.W + k, win.Y + win.H + k, 0x000000, ShadowAlpha[k - 1] * fa);
-        EmitBackground(b, win, p.Bg, p.Bg2);
+        if (sk != null)
+        {
+            if (showFrame) Art(NativeChrome.Frame, win.X, win.Y, win.X + win.W, win.Y + win.H, Tint(BgA));
+        }
+        else
+        {
+            if (showFrame)
+                for (int k = ShadowAlpha.Length; k >= 1; k--)
+                    Outline(b, win.X - k, win.Y - k, win.X + win.W + k, win.Y + win.H + k, 0x000000, ShadowAlpha[k - 1] * fa);
+            EmitBackground(b, win, p.Bg, p.Bg2);
+        }
         int blinkStart = 0, blinkEnd = 0, hoverStart = 0, hoverEnd = 0, leftStart = 0, leftEnd = 0;
         if (showHeader)
         {
             float barBot = win.Y + ChatWindow.TabBarH;
-            b.Rect(win.X, win.Y, win.X + win.W, barBot, p.TabBar.r, p.TabBar.g, p.TabBar.b, p.TabBar.a);
-            Fill(b, win.X, barBot - 1f, win.X + win.W, barBot, p.FrameRgb, p.TabBar.a);
+            if (sk != null) Art(NativeChrome.Header, win.X, win.Y, win.X + win.W, barBot, Tint(HeaderA));
+            else
+            {
+                b.Rect(win.X, win.Y, win.X + win.W, barBot, p.TabBar.r, p.TabBar.g, p.TabBar.b, p.TabBar.a);
+                Fill(b, win.X, barBot - 1f, win.X + win.W, barBot, p.FrameRgb, p.TabBar.a);
+            }
             float tabW = win.TabWFor(tabs.Count);
             float ul = 2f * Metrics.Scale;   // the active / unread underline
             for (int i = 0; i < tabs.Count; i++)
             {
                 float tx = win.X + i * tabW;
                 bool on = i == activeTab, eph = tabs[i].Ephemeral;
-                if (on)
+                bool hot = i == win.HoveredTab;
+                if (sk != null)
+                {
+                    Art(on ? hot ? NativeChrome.ButtonOnHot : NativeChrome.ButtonOn
+                           : hot ? NativeChrome.ButtonHot : NativeChrome.Button,
+                        tx, win.Y, tx + tabW, barBot, Tint(HeaderA));
+                }
+                else if (on)
                 {
                     b.Rect(tx, win.Y, tx + tabW, barBot - 1f, p.TabActive.r, p.TabActive.g, p.TabActive.b, p.TabActive.a * 0.35f);
                     b.Rect(tx + 1f, barBot - ul, tx + tabW - 1f, barBot, p.TabActive.r, p.TabActive.g, p.TabActive.b, p.TabActive.a);
                 }
-                else if (i == win.HoveredTab || i == win.LeftTab)
+                else if (hot || i == win.LeftTab)
                 {
                     // Hover plate: a lighter Accent wash the draw eases in (entered) or out (left).
-                    if (i == win.HoveredTab) hoverStart = b.VertexCount; else leftStart = b.VertexCount;
+                    if (hot) hoverStart = b.VertexCount; else leftStart = b.VertexCount;
                     b.Rect(tx, win.Y, tx + tabW, barBot - 1f, p.TabActive.r, p.TabActive.g, p.TabActive.b, p.TabActive.a * HoverWash);
-                    if (i == win.HoveredTab) hoverEnd = b.VertexCount; else leftEnd = b.VertexCount;
+                    if (hot) hoverEnd = b.VertexCount; else leftEnd = b.VertexCount;
                 }
                 // Unread ephemeral tab: gold label + an underline whose alpha the draw pulses.
                 bool unread = eph && tabs[i].Unread;
@@ -191,7 +224,7 @@ public static partial class WindowRenderer
             }
         }
 
-        if (showFrame) Outline(b, win.X, win.Y, win.X + win.W, win.Y + win.H, p.FrameRgb, fa);   // over the bar, so the frame is unbroken
+        if (showFrame && sk == null) Outline(b, win.X, win.Y, win.X + win.W, win.Y + win.H, p.FrameRgb, fa);   // over the bar, so the frame is unbroken
 
         // Body: one pixel-scrolled column. ScrollPx (px up from the content bottom) drives the layout, so
         // scrolling is smooth rather than message-quantised; partial messages at the top/bottom edges are
@@ -313,18 +346,35 @@ public static partial class WindowRenderer
         // affordance, kept up during a drag so the thumb doesn't vanish under the grabbing pointer.
         if (contentH > bh && (showGrip || win.ScrollDragging))
         {
-            float sbx = bx + bw - ChatWindow.ScrollbarW, ins = Inset * Metrics.Scale;
-            // Track stops one grip above the body bottom to match the hit zone (ChatWindow.SbTrackH): keeps
-            // the thumb clear of the resize-grip corner.
-            Fill(b, sbx + ins, by + ins, bx + bw - ins, by + bh - ChatWindow.ResizeGrip, Track, 0.6f);   // fixed chrome, not themeable
-            if (win.ThumbRect(out float tt, out float th))
-                b.Rect(sbx + ins, tt, bx + bw - ins, tt + th, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
+            if (sk != null)
+            {
+                // The native bar is the engine's: a trough, square arrows at both ends and the tiled thumb,
+                // over ChatWindow.ScrollbarW -- wider than the flat gutter, which is why the text width
+                // reserves it and the hit-test shares NativeChrome's geometry.
+                win.ScrollbarRect(out float sx0, out float sy0, out float sx1, out float sy1);
+                float sbw = sx1 - sx0;
+                Art(NativeChrome.Trough, sx0, sy0, sx1, sy1);
+                Art(NativeChrome.Up, sx0, sy0, sx1, sy0 + sbw);
+                Art(NativeChrome.Down, sx0, sy1 - sbw, sx1, sy1);
+                if (NativeChrome.ThumbRect(sx0, sy0, sx1, sy1, maxScroll - active.ScrollPx, bh, contentH,
+                                           out float ntx0, out float nty0, out float ntx1, out float nty1))
+                    Art(NativeChrome.Thumb, ntx0, nty0, ntx1, nty1, win.ScrollDragging ? ArtWhite : ThumbIdle);
+            }
+            else
+            {
+                float sbx = bx + bw - ChatWindow.ScrollbarW, ins = Inset * Metrics.Scale;
+                // Track stops one grip above the body bottom to match the hit zone (ChatWindow.SbTrackH): keeps
+                // the thumb clear of the resize-grip corner.
+                Fill(b, sbx + ins, by + ins, bx + bw - ins, by + bh - ChatWindow.ResizeGrip, Track, 0.6f);
+                if (win.ThumbRect(out float tt, out float th))
+                    b.Rect(sbx + ins, tt, bx + bw - ins, tt + th, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
+            }
         }
 
         // Pop-out input strip: below the frame, a channel dropdown at its left + a word-wrapped edit
         // line that grows the strip DOWNWARD one FooterH per wrapped row (so long input never clips).
         if (showFooter)
-            EmitInputStrip(b, chrome, win, editText, caret, selection, p);
+            EmitInputStrip(b, chrome, win, editText, caret, selection, p, sk);
 
         // Resize grip: three nested parallel diagonal lines in the bottom-right corner (the classic
         // "gripper"), shown while the pointer is over the window.
@@ -347,6 +397,7 @@ public static partial class WindowRenderer
 
         // Channel dropdown list (open): stacked over the body (away from the strip), so it draws LAST = on top.
         // The chosen channel wears the panel's nav look: a lit row with an accent bar at its left.
+        int skinOver = sk?.Count ?? 0;   // the art from here on sits over the body, where the list covers it
         if (showFooter && win.ChannelListOpen)
         {
             float fh = ChatWindow.FooterH, lx0 = win.X, lx1 = win.X + ChatWindow.DropdownW;
@@ -358,15 +409,24 @@ public static partial class WindowRenderer
                 if (!win.CanSelect(ch)) continue;
                 float top = win.ChannelItemTop(row);
                 bool sel = ch == win.SendChannel;
-                Fill(b, lx0, top, lx1, top + fh, sel ? NavOn : HeaderBg, 0.98f);
-                if (sel) b.Rect(lx0 + 1f, top, lx0 + 1f + 3f * Metrics.Scale, top + fh, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
+                if (sk != null) Art(sel ? NativeChrome.ButtonOn : NativeChrome.Button, lx0, top, lx1, top + fh);
+                else
+                {
+                    Fill(b, lx0, top, lx1, top + fh, sel ? NavOn : HeaderBg, 0.98f);
+                    if (sel) b.Rect(lx0 + 1f, top, lx0 + 1f + 3f * Metrics.Scale, top + fh, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
+                }
                 UiText.Draw(b, chrome, ch.ToString(), lx0 + ChatWindow.Pad + 3f * Metrics.Scale, top + chromeBase,
                             sel ? Hi : Tx2, lx1 - 2f);
                 if (top < minTop) minTop = top;
                 if (top + fh > maxBot) maxBot = top + fh;
                 row++;
             }
-            if (row > 0) Outline(b, lx0, minTop, lx1, maxBot, Border);
+            // The list's frame art flushes ahead of the row buttons (parts draw in declaration order).
+            if (row > 0)
+            {
+                if (sk != null) Art(NativeChrome.Frame, lx0, minTop, lx1, maxBot);
+                else Outline(b, lx0, minTop, lx1, maxBot, Border);
+            }
         }
 
 
@@ -375,6 +435,7 @@ public static partial class WindowRenderer
         return new RenderFrame
         {
             Verts = b.ToArray(), Count = b.VertexCount, Portraits = portraits, Spans = spans,
+            Skin = sk != null ? sk.ToArray() : System.Array.Empty<SkinCmd>(), SkinOver = skinOver,
             BodyStart = bodyStart, BodyEnd = bodyEnd, Bx = bx, By = by, Bw = bw, Bh = bh,
             Scrolled = active.ScrollPx != 0f,
             LastScroll = win.LastScroll,
@@ -386,20 +447,28 @@ public static partial class WindowRenderer
 
     /// <summary>A chrome-only frame for the ghost tab floating at the pointer during a tab drag.
     /// Draws on top of everything (appended as the last frame in the publish array).</summary>
-    public static RenderFrame BuildGhostTab(GlyphAtlas atlas, ChatWindow paletteWin,
-                                            float x, float y, float w, string label)
+    public static RenderFrame BuildGhostTab(GlyphAtlas atlas, float x, float y, float w, string label)
     {
-        var p = ResolvePalette(paletteWin);
+        var p = ResolvePalette();
         var b = new VertexBatch(atlas.SolidU, atlas.SolidV);
         float h = ChatWindow.TabBarH;
-        Fill(b, x, y, x + w, y + h, NavOn, 0.9f);
-        Outline(b, x, y, x + w, y + h, Border);
-        b.Rect(x + 1f, y + h - 2f * Metrics.Scale, x + w - 1f, y + h, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
+        bool art = ChatSkin.Native;
+        if (!art)
+        {
+            Fill(b, x, y, x + w, y + h, NavOn, 0.9f);
+            Outline(b, x, y, x + w, y + h, Border);
+            b.Rect(x + 1f, y + h - 2f * Metrics.Scale, x + w - 1f, y + h, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
+        }
         float lw = UiText.Measure(atlas, label), avail = w - 2f * ChatWindow.Pad;
         UiText.Draw(b, atlas, label, x + ChatWindow.Pad + (lw < avail ? (avail - lw) * 0.5f : 0f),
                     y + (h - atlas.LineHeight) * 0.5f + atlas.Ascent, Hi, x + w - ChatWindow.Pad);
         int vc = b.VertexCount;
-        return new RenderFrame { Verts = b.ToArray(), Count = vc, BodyStart = vc, BodyEnd = vc };
+        return new RenderFrame
+        {
+            Verts = b.ToArray(), Count = vc, BodyStart = vc, BodyEnd = vc,
+            Skin = art ? new[] { new SkinCmd(NativeChrome.ButtonOn, x, y, x + w, y + h, ArtWhite) }
+                       : System.Array.Empty<SkinCmd>(),
+        };
     }
 
     /// <summary>One diagonal grip line: a 45° segment (bottom-left to top-right) at corner-distance
@@ -523,7 +592,7 @@ public static partial class WindowRenderer
     /// Geometry comes from <see cref="InputStripLayout"/>, so the caret drawn here and the one a click computes
     /// are the same. Caret and selection are mapped from UTF-16 indices into wrapped rune rows.</summary>
     private static void EmitInputStrip(VertexBatch b, GlyphAtlas atlas, ChatWindow win, string editText,
-                                       int caret, (int start, int end)? selection, Pal p)
+                                       int caret, (int start, int end)? selection, Pal p, List<SkinCmd>? sk)
     {
         float fh = ChatWindow.FooterH, ins = Inset * Metrics.Scale;
         float baseDrop = (fh - atlas.LineHeight) * 0.5f + atlas.Ascent;
@@ -536,11 +605,20 @@ public static partial class WindowRenderer
         float fy = win.StripTop;
 
         // Strip background over all rows, framed like the window; the channel chip on the top row only.
-        b.Rect(win.X, fy, win.X + win.W, fy + fh * rows, p.Footer.r, p.Footer.g, p.Footer.b, p.Footer.a);
-        Outline(b, win.X, fy, win.X + win.W, fy + fh * rows, p.FrameRgb, p.Footer.a);
+        // Native: the engine's edit-box art for the strip, a NUI button for the chip.
         float cx0 = win.X + ins, cx1 = win.X + ChatWindow.DropdownW - ins;
-        Fill(b, cx0, fy + ins, cx1, fy + fh - ins, NavOn);
-        Outline(b, cx0, fy + ins, cx1, fy + fh - ins, Frame2);
+        if (sk != null)
+        {
+            sk.Add(new SkinCmd(NativeChrome.Edit, win.X, fy, win.X + win.W, fy + fh * rows, Tint(InputA)));
+            sk.Add(new SkinCmd(NativeChrome.Button, cx0, fy + ins, cx1, fy + fh - ins, ArtWhite));
+        }
+        else
+        {
+            b.Rect(win.X, fy, win.X + win.W, fy + fh * rows, p.Footer.r, p.Footer.g, p.Footer.b, p.Footer.a);
+            Outline(b, win.X, fy, win.X + win.W, fy + fh * rows, p.FrameRgb, p.Footer.a);
+            Fill(b, cx0, fy + ins, cx1, fy + fh - ins, NavOn);
+            Outline(b, cx0, fy + ins, cx1, fy + fh - ins, Frame2);
+        }
         UiText.Draw(b, atlas, win.SendChannel.ToString(), cx0 + ChatWindow.Pad, fy + baseDrop, Hi, cx1 - ChatWindow.Pad - UiText.Measure(atlas, "▾"));
         UiText.Draw(b, atlas, "▾", cx1 - ChatWindow.Pad * 0.5f - UiText.Measure(atlas, "▾"), fy + baseDrop, Tx2, cx1);
 

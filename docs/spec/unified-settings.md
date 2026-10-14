@@ -345,7 +345,13 @@ resref string is `"@item:" + ObjectToString(oItem)` draws that item's own invent
 (CX-155).
 
 **Chat** — groups `chat` (210), `snippets` (212, *Shortcuts*, parent `chat.enabled`). Chat's
-header: "Window colours, animation and tabs are on each window's own gear."
+header: "Window animation, background shape and tabs are on each window's own gear." The chrome
+colours are not chat's: every chat window reads the shared look (`ui.look` / `ui.palette`), so its
+background is `PanelBg`, a gradient runs to `NavOn`, the header band is `HeaderBg`, the accent
+`Accent`, the input bar `Input`, the selection `Selected` and the outline `Border`, each at the
+alpha that surface draws. Under `ui.look=native` the window wears NUI's own art instead — the
+nine-sliced frame, a button per tab, the edit box under the input line, and the engine's 18 px
+scrollbar, which the text width reserves and the thumb hit-test shares.
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
@@ -363,7 +369,7 @@ header: "Window colours, animation and tabs are on each window's own gear."
 | chat.rows | Arrow keys move through a long message | T | on | A | L | Editing | Up and Down move the cursor between a wrapped line's rows; they reach the history only from the first or last row. |
 | chat.histsearch | Search history by what you typed | T | on | A | L | History | With text in the line, Up recalls only earlier lines that start with it. |
 | chat.emotecol / speechcol / ooccol | Emote / Speech / OOC colour | Sw | e0b872ff / f2f2e6ff / 8c96a0ff | A | L | Markup colours | alpha ignored (text draws opaque) |
-| `w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, autohide, locked, tellshere, col.*, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone |
+| `w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
 | snippets.enabled | Expand chat shortcuts | T | on | U | L | — | Type a shortcut, then a space (or Enter), and it turns into its text. Ctrl+Z right after takes it back. |
 | snippets.list | Shortcuts | L | empty, hint `;bow *bows deeply*` | U | L | — | Each entry is the word to type, a space, then what it becomes. Enter adds the next one; clear an entry or press × to remove it. |
 
@@ -379,7 +385,9 @@ editor: since CX-696 it *is* `KnobPanel` (a row `Source` + `Publish`, `SubFrac =
 with ONE category column -- *Window settings*, one entry per kept tab, *Add new tab...* -- and
 the font rows are the window's own (`w<N>.font` / `w<N>.typeface`, absent = follow `ui.font` /
 `ui.typeface`; `w<N>.outline` off / thin / thick), drawn from a face of its own on the shared
-sheet. The tab bar keeps only the gear: a new window is the panel header's *Copy this window*,
+sheet. Its *Background* section holds only the fill's shape — `bgmode`, and for a gradient the
+direction and the two stops — since the colours it fills with come from the shared look.
+The tab bar keeps only the gear: a new window is the panel header's *Copy this window*,
 closing is the window category's *Close this window* (two presses; Main has no row).
 
 **Names & combat text** — groups `nameplate` (220, *Nameplates*), `combattext` (222, *Combat text*).

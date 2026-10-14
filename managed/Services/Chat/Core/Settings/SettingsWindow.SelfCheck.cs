@@ -8,14 +8,11 @@ namespace CX.Services.Chat.Core;
 public sealed partial class SettingsWindow
 {
     /// <summary>Off-device proof of the widget state machine: the category list, open/close/ownership, each
-    /// control type's edit, colour-channel expansion, the tab editor and the font rows.</summary>
+    /// control type's edit, the background shape rows, the tab editor and the font rows.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
 
-        // Resolve colours against a fixed table for the test (the shell wires the real renderer resolver).
-        var defs = new Dictionary<string, uint> { [ChatColor.Text] = 0x102030ff };
-        ColorResolver = (w, key) => w.Colors.TryGetValue(key, out uint v) ? v : (defs.TryGetValue(key, out uint d) ? d : 0x808080ffu);
         string[] realFaces = Typefaces;
         Typefaces = new[] { FollowUi, "Arial", "DejaVu Serif" };
 
@@ -153,18 +150,9 @@ public sealed partial class SettingsWindow
         check.Expect(!s.Panel.Drop.Open && win.Outline == outlBefore && s.TellOpenPicked == -1, "outside press closes the list, toggles nothing");
         check.Expect(outl.Help.Length > 0 && outl.H > tgl.H, "help rows wrap their help under the label; a row without help is compact");
 
-        // An alpha colour (Background) expands to 4 channels; the opaque Text colour to 3 (no dead A slider).
-        PressRow(s, win, Find(s, SetAct.ColorSwatch, ChatColor.Background));
-        check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ColorChannel).Count == 4, "alpha swatch expands to 4 channel rows");
-        PressRow(s, win, Find(s, SetAct.ColorSwatch, ChatColor.Background));
-        PressRow(s, win, Find(s, SetAct.ColorSwatch, ChatColor.Text));
-        check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ColorChannel).Count == 3, "opaque (Text) swatch expands to 3 channel rows");
-        Row rCh = s.Rows.Find(r => r.Act == SetAct.ColorChannel && r.Channel == 0)!;
-        Reveal(s, rCh);
-        s.Panel.TrackRect(rCh, s.Panel.RowTop(rCh), out float cx0, out float _, out float ccy);
-        s.MouseDown(cx0, ccy, win);
-        check.Expect(win.Colors.TryGetValue(ChatColor.Text, out uint tv) && ((tv >> 24) & 0xFF) == 0, "R channel full-left -> 0");
-        s.MouseUp();
+        // No colour rows: the look is shared (ui.look / ui.palette), this window only shapes the fill.
+        check.Expect(s.Rows.TrueForAll(r => r.Ctl != KnobKind.Swatch && r.Kind != KnobPanel.RowKind.Channel),
+          "the chat gear carries no colour swatch or channel row");
 
         // Close button, click-off.
         Open(s, win);
@@ -266,12 +254,10 @@ public sealed partial class SettingsWindow
         Row bgmRow = Find(s, SetAct.CycleBgMode);
         check.Expect(bgmRow.Ctl == KnobKind.Dropdown && bgmRow.Choices!.Length == 4, "BgMode is a 4-choice dropdown");
         check.Expect(Find(s, SetAct.SliderBgAngle) == null && Find(s, SetAct.SliderBgStart) == null, "gradient rows hidden when Solid");
-        check.Expect(Find(s, SetAct.ColorSwatch, ChatColor.Background2) == null, "bg2 swatch hidden when Solid");
         PressBox(s, win, bgmRow);
         check.Expect(s.Panel.Drop.Open && !s.Panel.Drop.List.Overflows, "4 shapes: the list fits");
         s.MouseDown(s.Panel.Drop.X + 5, s.Panel.Drop.ItemTop((int)BgMode.Linear) + 2, win); s.MouseUp();
         check.Expect(win.BgMode == BgMode.Linear, "picking Linear sets Linear");
-        check.Expect(Find(s, SetAct.ColorSwatch, ChatColor.Background2) != null, "bg2 swatch shown when non-Solid");
         check.Expect(Find(s, SetAct.SliderBgAngle) != null && Find(s, SetAct.SliderBgEnd) != null, "Linear shows direction + stops");
         Row endRow = Find(s, SetAct.SliderBgEnd);
         check.Expect(System.Math.Abs(endRow.Norm - 1f) < 1e-4f, "End seeds from BgEnd (100%)");
@@ -295,16 +281,17 @@ public sealed partial class SettingsWindow
         WheelToEnd(s);
         float lastTop = s.Panel.RowTop(s.Rows[^1]);
         check.Expect(lastTop >= s.Panel.List.Y && lastTop + s.Rows[^1].H <= s.Panel.List.Y + s.Panel.List.H + 0.01f, "wheeling to the end brings the last row into the box");
-        Row bgSw = Find(s, SetAct.ColorSwatch, ChatColor.Background);
-        PressRow(s, win, bgSw);
-        check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ColorChannel).Count == 4, "a scrolled-to swatch expands (offset-correct hit)");
+        Row scrolledRow = s.Rows[^1];
+        check.Expect(s.MouseDown(s.Panel.List.X + 5, s.Panel.RowTop(scrolledRow) + 2, win) && s.Open,
+          "a press on a row scrolled into the box is offset-correct");
+        s.MouseUp();
         {
             var vb = new VertexBatch(body.SolidU, body.SolidV);
             s.Panel.Emit(vb);
             long alloc0 = System.GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < 100; i++) { vb.Clear(); s.Panel.Emit(vb); }
             long delta = System.GC.GetAllocatedBytesForCurrentThread() - alloc0;
-            check.Expect(delta == 0, $"100 draws (expanded, scrolled) allocate nothing ({delta} bytes)");
+            check.Expect(delta == 0, $"100 draws (scrolled) allocate nothing ({delta} bytes)");
         }
         s.Reset();
 

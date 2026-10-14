@@ -116,7 +116,6 @@ public sealed unsafe partial class ChatService
             if (wc.AutoHideFrame is bool ahf) win.AutoHideFrame = ahf;
             if (wc.Locked is bool lk) win.Locked = lk;
             if (wc.TellsHere is bool th) win.TellsHere = th;
-            foreach (var kv in wc.Colors) win.Colors[kv.Key] = kv.Value;
             if (wc.Tabs.Count > 0)
             {
                 var tabs = new Tab[wc.Tabs.Count];
@@ -125,6 +124,9 @@ public sealed unsafe partial class ChatService
                 win.SetTabs(tabs);
             }
         }
+        if (config.RetiredColorKeys > 0)
+            _log?.Info($"[chat] {config.RetiredColorKeys} retired per-window colour key(s) in cx.cfg ignored "
+                     + "-- chat follows the shared look (ui.look / ui.palette); they leave the file on the next save");
     }
 
     /// <summary>Sync every window-owned field into the <c>chat</c> group's Hidden bag (a whole replace, so a
@@ -160,7 +162,6 @@ public sealed unsafe partial class ChatService
             wc.AutoHideHeader = win.AutoHideHeader; wc.AutoHideFrame = win.AutoHideFrame;
             wc.Locked = win.Locked;
             wc.TellsHere = win.TellsHere;
-            foreach (var kv in win.Colors) wc.Colors[kv.Key] = kv.Value;
             for (int j = 0; j < win.Tabs.Count; j++)
             {
                 if (win.Tabs[j].Ephemeral) continue; // AC4: unkept tabs excluded

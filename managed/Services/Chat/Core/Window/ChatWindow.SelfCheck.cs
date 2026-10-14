@@ -263,7 +263,6 @@ public sealed partial class ChatWindow
         src.BgMode = BgMode.Radial; src.BgEnd = 0.7f;
         src.AutoHideHeader = false;
         src.FontPx = 14; src.Typeface = "Arial";
-        src.Colors["bg"] = 0x112233ffu;
         var dst = new ChatWindow(50, 50, 300, 200, new[] { new Tab("Combat", 0x010) });
         dst.CopySettingsFrom(src);
         check.Expect(dst.Toggles == ChatToggle.Timestamp && dst.InputOnTop && !dst.AnimEnabled, "copy: toggles+inputOnTop+anim");
@@ -273,10 +272,6 @@ public sealed partial class ChatWindow
         check.Expect(dst.BgMode == BgMode.Radial && dst.BgEnd == 0.7f, "copy: bgmode + stops");
         check.Expect(!dst.AutoHideHeader, "copy: autoHideHeader");
         check.Expect(dst.FontPx == 14 && dst.Typeface == "Arial", "copy: font");
-        check.Expect(dst.Colors.ContainsKey("bg") && dst.Colors["bg"] == 0x112233ffu, "copy: colour override copied");
-        // Deep copy: mutating the source after copy must not affect the destination.
-        src.Colors["bg"] = 0xAABBCCDDu;
-        check.Expect(dst.Colors["bg"] == 0x112233ffu, "copy: deep-copied colours (no alias)");
         check.Expect(dst.X == 50 && dst.W == 300, "copy: rect untouched");
         check.Expect(dst.Tabs.Count == 1 && dst.Tabs[0].Label == "Combat", "copy: tabs untouched");
 
