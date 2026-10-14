@@ -261,8 +261,6 @@ internal static unsafe class MdlParseCheck
     private static void CompareTree(Job job, ModelDef m)
     {
         Interlocked.Increment(ref _compared);
-        // Which form CX parsed, so the time next to the engine's is comparable: MdlCache serves the engine
-        // the compiled binary of an ASCII source once it has one, and serves CX the same bytes.
         if (m.FromAscii) Interlocked.Increment(ref _fromAscii); else Interlocked.Increment(ref _fromBinary);
         if (m.Refusals != 0)
         {

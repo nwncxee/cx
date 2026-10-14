@@ -60,8 +60,7 @@ public static class MdlParser
         return z;
     }
 
-    /// <summary>The same content hash <c>MdlCache</c> keys its disk entries on, so a parsed model and a cached
-    /// compile of the same source carry one identity.</summary>
+    /// <summary>A 64-bit hash of a model's source bytes: its identity, whatever container served it.</summary>
     public static ulong ContentHash(ReadOnlySpan<byte> src)
     {
         ulong h = Seed ^ (ulong)(uint)src.Length;

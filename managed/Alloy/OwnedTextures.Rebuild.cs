@@ -116,7 +116,6 @@ internal static unsafe partial class OwnedTextures
         DdsReader.Tick();
         TexLoad.Drip();
         ModelLoad.Drip();
-        MdlCache.Drip();
         TexStream.Tick();
         DripTranscodes();
         if (_buildAndStore == null) return;

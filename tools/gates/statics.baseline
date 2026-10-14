@@ -92,8 +92,6 @@
 20 managed/Alloy/Highlight.cs
 16 managed/Alloy/Issue.cs
 5 managed/Alloy/MaterialExtraSlots.cs
-28 managed/Alloy/MdlCache.cs
-7 managed/Alloy/MdlCache.Pristine.cs
 1 managed/Alloy/Mdl/MdlBinaryPayload.cs
 2 managed/Alloy/Mdl/MdlParser.cs
 1 managed/Alloy/Mdl/MdlPost.cs

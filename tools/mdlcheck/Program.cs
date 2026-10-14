@@ -22,8 +22,6 @@ internal static class Program
 
     private static string Key = Path.Combine(RepoPath("NWN_DIR"), "data/nwn_base.key");
     private static string Ascii = RepoPath("CONTENT_MODELS");
-    private static string Cx = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                                            ".local/share/Neverwinter Nights/cx-models");
     /// <summary>A per-machine path from <c>tools/paths.py</c> (environment, <c>local.env</c>, then a stock default),
     /// found by walking up from the working directory; empty when unset.</summary>
     private static string RepoPath(string key)
@@ -51,7 +49,6 @@ internal static class Program
             {
                 case "--key": Key = args[++i]; break;
                 case "--ascii": Ascii = args[++i]; break;
-                case "--cx": Cx = args[++i]; break;
                 case "-v": _verbose++; break;
                 case "--limit": _limit = int.Parse(args[++i]); break;
                 case "--only": _only = args[++i]; break;
@@ -59,7 +56,7 @@ internal static class Program
                 default: modes.Add(args[i]); break;
             }
         }
-        if (modes.Count == 0) modes.AddRange(["golden", "bifs", "ascii", "oracle", "fuzz"]);
+        if (modes.Count == 0) modes.AddRange(["golden", "bifs", "ascii", "fuzz"]);
         Materials();
         int bad = 0;
         foreach (string m in modes)
@@ -69,8 +66,6 @@ internal static class Program
                 "woks" => Woks(),
                 "floors" => Floors(),
                 "ascii" => AsciiCorpus(),
-                "oracle" => Oracle(),
-                "dump" => Dump(),
                 "tree" => Tree(),
                 "animpos" => AnimPos(),
                 "fuzz" => Fuzz(),
@@ -149,9 +144,8 @@ internal static class Program
     }
 
     /// <summary>The golden fixture: ONE engine-compiled payload, checked in, parsed and asserted against
-    /// recorded values. The rest of the harness reads the engine's output from a cache that only exists on a
-    /// machine that has played the game; this one artefact makes the binary offsets a regression lock rather
-    /// than a round trip of one belief, and it fails if the reader's idea of the format ever drifts.
+    /// recorded values: a regression lock on the binary offsets that fails if the reader's idea of the format
+    /// ever drifts.
     /// <para>It is the ENGINE's own serialisation of a stock panel model, 1304 bytes, produced by this build
     /// of the client -- not Beamdog content.</para></summary>
     private static int Golden()
@@ -253,48 +247,6 @@ internal static class Program
                           + $"({parsed} parsed, {refused} refused, {threw} threw, {slow} over {MaxMs} ms, "
                           + $"{fat} over {MaxBytes >> 20} MiB; worst {worstMs} ms on {worst})");
         return threw == 0 && slow == 0 && fat == 0 ? 0 : 1;
-    }
-
-    /// <summary>Print both trees of one oracle pair side by side: the fastest way to see WHERE they part.</summary>
-    private static int Dump()
-    {
-        if (_only == null) return Fail("dump needs --only <resref>");
-        if (!Directory.Exists(Ascii)) return Fail("no content corpus: set CONTENT_MODELS or pass --ascii <dir>");
-        string? cached = null;
-        foreach (string f in Directory.EnumerateFiles(Cx, "*.mdl"))
-            if (Path.GetFileName(f).StartsWith(_only + ".", StringComparison.OrdinalIgnoreCase)) { cached = f; break; }
-        string? srcPath = null;
-        foreach (string f in Directory.EnumerateFiles(Ascii, "*.mdl", SearchOption.AllDirectories))
-            if (Path.GetFileNameWithoutExtension(f).Equals(_only, StringComparison.OrdinalIgnoreCase)) { srcPath = f; break; }
-        if (cached == null || srcPath == null) return Fail($"no pair for '{_only}' (cached={cached != null}, source={srcPath != null})");
-        byte[] bin = File.ReadAllBytes(cached), src = File.ReadAllBytes(srcPath);
-        ModelDef? a = MdlParser.Parse(bin.AsSpan(CxHeaderBytes), _only, out string? e1);
-        ModelDef? b = MdlParser.Parse(src, _only, out string? e2);
-        var srcs = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (string f in Directory.EnumerateFiles(Ascii, "*.mdl", SearchOption.AllDirectories))
-        {
-            string r2 = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
-            if (!srcs.TryGetValue(r2, out List<string>? l)) srcs[r2] = l = new List<string>();
-            l.Add(f);
-        }
-        if (_key == null && File.Exists(Key)) _key = new KeyBif(Key);
-        if (b != null) Chain(b, srcs, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        Console.WriteLine($"binary: {(a == null ? e1 : $"{a.Nodes.Length} nodes, class {a.Classification}, super '{a.SuperName}', r {a.Radius}")}");
-        Console.WriteLine($"ascii : {(b == null ? e2 : $"{b.Nodes.Length} nodes, class {b.Classification}, super '{b.SuperName}', r {b.Radius}")}");
-        if (a == null || b == null) return 1;
-        int n = Math.Max(a.Nodes.Length, b.Nodes.Length);
-        for (int i = 0; i < n; i++) Console.WriteLine($"  [{i,3}] {Row(a, i),-64} | {Row(b, i)}");
-        return 0;
-    }
-
-    private static string Row(ModelDef m, int i)
-    {
-        if (i >= m.Nodes.Length) return "-";
-        NodeDef d = m.Nodes[i];
-        string g = d.Mesh == null ? "" : $" v{d.Mesh.Positions.Length} f{d.Mesh.Faces.Length} t{d.Mesh.Tangents.Length} uv{d.Mesh.Uv[0].Length} a{d.Mesh.SurfaceArea:F2} hint{d.Mesh.RenderHintId}";
-        var ids = new StringBuilder();
-        foreach (ControllerTrack c in d.Controllers) { if (ids.Length != 0) ids.Append(','); ids.Append(c.Type).Append(':').Append(c.Times.Length).Append('x').Append(c.Columns); }
-        return $"{d.Kind} {d.Name} p{d.Parent} #{d.PartNumber}{g} [{ids}]";
     }
 
     /// <summary>Wire the parser's material-hint seam to the corpus's own <c>.mtr</c> files, so a mesh that
@@ -506,16 +458,8 @@ internal static class Program
         return failed == 0 ? 0 : 1;
     }
 
-    // ---- (c) the oracle: engine-compiled binary vs our read of its ASCII source ----
-
-    /// <summary>The content hash <c>MdlCache</c> keys its entries on, from the ONE implementation: the
-    /// parser's. A second copy of the constants here would be a second thing to keep in step.</summary>
-    private static ulong Hash(ReadOnlySpan<byte> src) => MdlParser.ContentHash(src);
-
-    /// <summary>A cached payload's 48-byte header: magic, format version, the client build key, the source
-    /// hash, the source length, the payload length and the resref. The oracle validates ALL of it, the way
-    /// <c>MdlCache.ReadHeader</c> does -- a payload compiled by another client build, or under another
-    /// resref, is not evidence about this parser.</summary>
+    /// <summary>The golden fixture's 48-byte header: magic, format version, the client build key, the source
+    /// hash, the source length, the payload length and the resref.</summary>
     private readonly record struct Head(ulong Build, ulong Hash, int SrcLen, int Payload, string ResRef);
 
     private const uint CxMagic = 0x444D5843;      // "CXMD"
@@ -532,179 +476,5 @@ internal static class Program
         if (!sb.ToString().Equals(resref, StringComparison.OrdinalIgnoreCase)) return null;
         return new Head(BitConverter.ToUInt64(file, 8), BitConverter.ToUInt64(file, 16),
                         BitConverter.ToInt32(file, 24), payload, sb.ToString());
-    }
-
-    /// <summary>Re-key a model's node numbers off its supermodel chain, as the engine's
-    /// <c>MaxTree::SynchronizeTree</c> does at the end of every <c>beginmodelgeom</c>. The parser cannot do it
-    /// (the chain is a resource lookup), so the harness stands in for the model cache.</summary>
-    private static void Chain(ModelDef m, Dictionary<string, List<string>> sources, HashSet<string> seen)
-    {
-        if (m.SuperName.Length == 0 || !seen.Add(m.Name)) return;
-        if (_chain.TryGetValue(m.SuperName, out ModelDef? super))
-        {
-            if (super != null) MdlPost.Resync(m, super);
-            return;
-        }
-        super = null;
-        if (sources.TryGetValue(m.SuperName, out List<string>? cands) && cands.Count != 0)
-            super = MdlParser.Parse(File.ReadAllBytes(cands[0]), m.SuperName, out _);
-        // A supermodel is often a base-game BINARY model (every body base chains to a_ba), so the containers
-        // are the second place to look -- exactly the order the engine's resource chain uses.
-        if (super == null && _key != null)
-        {
-            byte[]? d = _key.Read(m.SuperName, MdlResType);
-            if (d != null && d.Length > 12) super = MdlParser.Parse(d, m.SuperName, out _);
-        }
-        if (super != null) Chain(super, sources, seen);
-        _chain[m.SuperName] = super;
-        if (super != null)
-        {
-            if (_verbose > 0)
-                Console.WriteLine($"  chain: {m.Name} <- {super.Name} ({super.Nodes.Length} nodes, NodeIdNext {super.NodeIdNext}, super '{super.SuperName}')");
-            MdlPost.Resync(m, super);
-        }
-    }
-
-    private static readonly Dictionary<string, ModelDef?> _chain = new(StringComparer.OrdinalIgnoreCase);
-    private static KeyBif? _key;
-
-    private static int Oracle()
-    {
-        if (!Directory.Exists(Cx)) { Console.WriteLine($"oracle: SKIP (no {Cx})"); return 0; }
-        if (!Directory.Exists(Ascii)) { Console.WriteLine($"oracle: SKIP (no {Ascii})"); return 0; }
-
-        // resref -> every ASCII source file of that name in the corpus (haks overlay, so there may be several).
-        var sources = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (string f in Directory.EnumerateFiles(Ascii, "*.mdl", SearchOption.AllDirectories))
-        {
-            string r = Path.GetFileNameWithoutExtension(f).ToLowerInvariant();
-            if (!sources.TryGetValue(r, out List<string>? l)) sources[r] = l = new List<string>();
-            l.Add(f);
-        }
-
-        if (_key == null && File.Exists(Key)) _key = new KeyBif(Key);
-        List<string> cached = Directory.EnumerateFiles(Cx, "*.mdl").ToList();
-        if (_only != null) cached = cached.Where(f => Path.GetFileName(f).Contains(_only, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (cached.Count > _limit) cached = cached.Take(_limit).ToList();
-
-        int paired = 0, noSource = 0, noHash = 0, binFail = 0, srcFail = 0, clean = 0;
-        int badName = 0, badHeader = 0, otherBuild = 0, withSuper = 0;
-        var builds = new Dictionary<ulong, int>();
-        var diff = new ModelDiff { Examples2Keep = _verbose > 1 ? 4000 : 24 };
-        var sw = Stopwatch.StartNew();
-
-        // The oracle must not feed the ASCII side a render hint the ENGINE did not have: the corpus's .mtr
-        // files are not the chain the compile saw (a hak may have been absent, or the file has changed), and
-        // a hint CX has but the engine did not means CX generates a tangent frame the payload has no split
-        // for. So the ASCII side is read with the model's OWN renderhint only, and a tangent-presence
-        // difference on a mesh that states none is reported as the external-material residual it is.
-        // Pass 1 recovers the hint the ENGINE had: for every material a mesh names, did the payload come
-        // out with a tangent frame? That is exactly what the compile-time .mtr chain decided, so the ASCII
-        // side can then be read with the same answer and the tangents COMPARED instead of excused.
-        var engineHint = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (string f0 in cached)
-        {
-            string st = Path.GetFileNameWithoutExtension(f0);
-            int d0 = st.LastIndexOf('.');
-            if (d0 <= 0) continue;
-            byte[] fb;
-            try { fb = File.ReadAllBytes(f0); } catch { continue; }
-            Head? h0 = Header(fb, st[..d0]);
-            if (h0 == null) continue;
-            ModelDef? mb = MdlParser.Parse(fb.AsSpan(CxHeaderBytes, h0.Value.Payload), st[..d0], out _);
-            if (mb == null) continue;
-            foreach (NodeDef nd in mb.Nodes)
-            {
-                if (nd.Mesh is not { } me || me.RenderHintId != 0) continue;
-                string mat = me.MaterialName.Length != 0 ? me.MaterialName : me.Textures[0];
-                if (mat.Length == 0) continue;
-                int had = me.Tangents.Length != 0 ? 2 : 0;
-                // Any node with a tangent frame proves the material carried a hint; a node without one only
-                // fails to prove the opposite (a mesh with no UVs gets none either way).
-                if (had != 0 || !engineHint.ContainsKey(mat)) engineHint[mat] = Math.Max(had, engineHint.GetValueOrDefault(mat));
-            }
-        }
-        Console.WriteLine($"  recovered {engineHint.Count(k => k.Value != 0)} of {engineHint.Count} material render hints from the payloads");
-        Func<string, int>? savedHint = MdlParser.MaterialHint;
-        MdlParser.MaterialHint = n => engineHint.GetValueOrDefault(n);
-        try
-        {
-        foreach (string f in cached)
-        {
-            string stem = Path.GetFileNameWithoutExtension(f);           // <resref>.<hash16>
-            int dot = stem.LastIndexOf('.');
-            if (dot <= 0) { badName++; continue; }
-            string resref = stem[..dot];
-            if (!ulong.TryParse(stem[(dot + 1)..], System.Globalization.NumberStyles.HexNumber, null, out ulong want))
-            { badName++; continue; }
-
-            byte[] file;
-            try { file = File.ReadAllBytes(f); } catch { badHeader++; continue; }
-            Head? head = Header(file, resref);
-            if (head == null) { badHeader++; continue; }
-            // The payload is the ENGINE's serialisation, so a payload written by another client build says
-            // nothing about this one. Every file in the directory should agree; the ones that do not are
-            // counted and dropped.
-            builds.TryGetValue(head.Value.Build, out int seen);
-            builds[head.Value.Build] = seen + 1;
-            if (head.Value.Hash != want) { badHeader++; continue; }
-
-            if (!sources.TryGetValue(resref, out List<string>? cands)) { noSource++; continue; }
-            byte[]? src = null;
-            foreach (string c in cands)
-            {
-                byte[] d;
-                try { d = File.ReadAllBytes(c); } catch { continue; }
-                if (Hash(d) == want && d.Length == head.Value.SrcLen) { src = d; break; }
-            }
-            if (src == null) { noHash++; continue; }
-
-            ReadOnlySpan<byte> payload = file.AsSpan(CxHeaderBytes, head.Value.Payload);
-            ModelDef? fromBin = MdlParser.Parse(payload, resref, out string? e1);
-            ModelDef? fromSrc = MdlParser.Parse(src, resref, out string? e2);
-            if (fromSrc != null) Chain(fromSrc, sources, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-            paired++;
-            if (fromBin == null) { binFail++; if (_verbose > 0) Console.WriteLine($"  {resref}: binary {e1}"); continue; }
-            if (fromSrc == null) { srcFail++; if (_verbose > 0) Console.WriteLine($"  {resref}: ascii {e2}"); continue; }
-            if (fromSrc.SuperName.Length != 0) withSuper++;
-            diff.SuperModelled = fromSrc.SuperName.Length != 0;
-            int before = diff.Total;
-            diff.Compare(fromBin, fromSrc);
-            if (diff.Total == before) clean++;
-            else if (_verbose > 0) Console.WriteLine($"  {resref}: {diff.Total - before} mismatches");
-        }
-        }
-        finally { MdlParser.MaterialHint = savedHint; }
-        sw.Stop();
-
-        int accounted = paired + noSource + noHash + badName + badHeader;
-        if (builds.Count > 1)
-        {
-            ulong top = builds.OrderByDescending(k => k.Value).First().Key;
-            otherBuild = builds.Where(k => k.Key != top).Sum(k => k.Value);
-        }
-        Console.WriteLine($"oracle: {paired} pairs ({clean} identical) of {cached.Count} cached payloads "
-                          + $"({accounted} accounted for: {noSource} with no source in the corpus, {noHash} whose "
-                          + $"source no longer hashes to the payload's key, {badName} unnamed, {badHeader} with a "
-                          + $"header that did not validate), {binFail} binary parse failures, {srcFail} ascii "
-                          + $"parse failures in {sw.ElapsedMilliseconds} ms");
-        if (builds.Count > 1)
-            Console.WriteLine($"  WARNING: {builds.Count} distinct build keys in the cache, {otherBuild} payload(s) "
-                              + "not from the majority build -- those are not evidence about this parser");
-        Console.WriteLine($"  walked {diff.Models} models ({withSuper} with a supermodel), {diff.Nodes} nodes, "
-                          + $"{diff.Meshes} meshes; node kinds: {diff.KindCoverage()}");
-        Console.WriteLine($"  mismatches: {diff.Summary()}");
-        if (diff.Contaminated != 0)
-            Console.WriteLine($"  {diff.Contaminated} field(s) not compared: the payload carries a RUNTIME "
-                              + "mutation of the shared node (CombineParts grows the mesh radius, "
-                              + "SetPartTextureRotate sets rotatetexture) or an uninitialised tangent pool");
-        // The expected residual: everything here has a named, proven cause, so anything OUTSIDE it is new.
-        int expected = diff.Count(ModelDiff.Cat.PartNumberSuper) + diff.Count(ModelDiff.Cat.TangentExternal);
-        int unexplained = diff.Total - expected;
-        Console.WriteLine($"  expected residual {expected} (node numbers under a supermodel whose compile-time "
-                          + "chain state the cache key does not capture; tangent presence behind a .mtr the "
-                          + $"engine resolved at compile time and the corpus cannot reconstruct), unexplained {unexplained}");
-        foreach (string ex in diff.Examples) Console.WriteLine($"    {ex}");
-        return unexplained == 0 && binFail == 0 && srcFail == 0 && badName == 0 && badHeader == 0 ? 0 : 1;
     }
 }

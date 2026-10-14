@@ -86,9 +86,6 @@ internal static unsafe partial class ModelLoad
         /// <summary>The supermodel this file names, or empty: offered from the main thread at the publish.
         /// Allocated once with the job, which the pool recycles, so the worker allocates nothing for it.</summary>
         public readonly byte[] Super = new byte[ResRefChars + 1];
-        /// <summary>The resref this job reads, copied at the offer: what <see cref="MdlCache"/> needs on the
-        /// worker to name a compiled model. Fixed with the job, so the pool recycles it too.</summary>
-        public readonly byte[] Name = new byte[ResRefChars + 1];
         public string? Why;
         public long Ticks;
         public uint R0, R1, R2, R3;
@@ -184,9 +181,6 @@ internal static unsafe partial class ModelLoad
         LoadJob j = _jobs.Rent();
         j.Key = key; j.Sig = loc.TableId; j.Loc = loc; j.Data = null; j.Size = 0; j.Why = null; j.Ticks = 0;
         j.Super[0] = 0;
-        int nm = 0;
-        for (; nm < ResRefChars && name[nm] != 0; nm++) j.Name[nm] = name[nm];
-        j.Name[nm] = 0;
         j.R0 = resId[0]; j.R1 = resId[1]; j.R2 = resId[2]; j.R3 = resId[3];
         _jobs.Start("cx-mdl", Worker, MdlWorkers);
         _jobs.Offer(j, key, loc.TableId);
@@ -257,13 +251,10 @@ internal static unsafe partial class ModelLoad
     }
 
     /// <summary>Copy the read into a buffer laid out as the engine's own: <see cref="PrefixBytes"/> of zeroed
-    /// headroom, then the file. Records the supermodel a binary file names, for the main thread to offer. An ASCII
-    /// source with a compiled model in <see cref="MdlCache"/> is swapped for the compiled bytes HERE, on the
-    /// worker.</summary>
+    /// headroom, then the file. Records the supermodel a binary file names, for the main thread to offer.</summary>
     private static void Keep(LoadJob j, ReadOnlySpan<byte> raw)
     {
         if (raw.Length == 0) { j.Why = "no bytes"; return; }
-        raw = MdlCache.Worker(j.Name, raw);
         byte* block = (byte*)NativeMemory.AllocZeroed((nuint)(PrefixBytes + raw.Length));
         byte* data = block + PrefixBytes;
         raw.CopyTo(new Span<byte>(data, raw.Length));

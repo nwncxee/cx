@@ -355,8 +355,6 @@ offset	MdlNodeLight	flareSizes	0xc0	0xc8	# FlareSizes
 offset	MdlNodeLight	flareShifts	0xd0	0xd8	# FlareShifts
 offset	MdlNodeLight	fadingLight	0x108	0x110	# LightFadingLight
 offset	MdlNodeTriMesh	faces	0xb0	0xb0	# MeshFaces
-offset	MdlNodeTriMesh	radius	0xd8	0xd8	# MdlRadius
-offset	MdlNodeTriMesh	textureRotate	0x2b9	0x2b9	# MdlTextureRotate
 offset	MdlNodeTriMesh	bboxMin	0xc0	0xc0	# MdlBboxMin
 offset	MdlNodeTriMesh	bboxMax	0xcc	0xcc	# MdlBboxMax
 offset	MdlNodeTriMesh	faceCount	0xb8	0xb8	# MeshFaceCount

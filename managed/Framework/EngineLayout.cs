@@ -215,21 +215,6 @@ public static unsafe partial class EngineLayout
     public static readonly int MdlNodeKind = Field<uint>("MdlNode", "kind");
     /// <summary><see cref="MdlNodeKind"/>'s mask AND its expected value -- both bits must be set.</summary>
     public const int MdlNodeKindTriMesh = 0x21;
-    // ---- CX-113 (parser review A1): the two fields the engine MUTATES on a shared MdlNodeTriMesh at
-    //      RUNTIME, long after the parse. MdlCache serialises a Model through the engine's own compiler, so a
-    //      payload written after instantiation carries them -- and a later session loads that state back in.
-    //      Both are restored to their pristine values around the compile (MdlCache.Pristine). ----
-
-    /// <summary>MdlNodeTriMesh -&gt; the node's bounding radius. <c>CombineParts</c> (Linux @0x473d30,
-    /// Windows rva 0xc5f30) GROWS it on the host node of a merge, in the same three instructions on both
-    /// builds, and the node is the MODEL's, shared by every instance of it.</summary>
-    public static readonly int MdlRadius = Field<float>("MdlNodeTriMesh", "radius");
-    /// <summary>MdlNodeTriMesh -&gt; the sticky "this node's texture is rotated" byte.
-    /// <c>SetPartTextureRotate</c> (Linux @0x461670, Windows rva 0xd34c0) writes 1 here when the part's
-    /// material <c>HasBumpyShinyMap</c>, and nothing ever writes 0 -- so the pristine value is the
-    /// constructor's zero. Identical offset on both builds (<c>mov BYTE PTR [rdi+0x2b9],0x1</c>).</summary>
-    public static readonly int MdlTextureRotate = Field<byte>("MdlNodeTriMesh", "textureRotate");
-
     /// <summary>The mesh node's local bounding box, min then max -- what
     /// <c>WritePartHighlightVertices</c> builds its three glow quads from (Linux @0x45fe40, Windows rva
     /// 0xd4f30: the same six loads, +0xc0..+0xd4).</summary>

@@ -114,7 +114,7 @@ internal static unsafe class ModelFeed
             return false;
         }
 
-        /// <summary>Worker: read, swap in the compiled binary if there is one, parse. Touches no engine memory
+        /// <summary>Worker: read, parse. Touches no engine memory
         /// -- the location was copied for it -- and no GL.</summary>
         public ModelDef? Parse(object token, out string? why)
         {
@@ -140,13 +140,6 @@ internal static unsafe class ModelFeed
             if (raw.Length == 0) { why = "no bytes"; return null; }
             System.Threading.Interlocked.Add(ref _bytes, raw.Length);
             if (Ascii(raw)) System.Threading.Interlocked.Increment(ref _ascii);
-            // The ORIGINAL source, never MdlCache's engine-compiled payload. Two reasons, both decisive.
-            // (1) That payload is the engine's serialisation of a Model it had already INSTANTIATED, so it
-            // carries runtime mutations of the shared MdlNode -- CombineParts @0x473d30 grows
-            // MdlNodeTriMesh+0xd8 and SetPartTextureRotate @0x461670 sets node+0x2b9 -- and CX would be
-            // parsing another session's render state. (2) CX's own parser reads ASCII directly on this
-            // worker, so the detour buys nothing and would make any timing comparison between the two
-            // readers apples to oranges.
             // The name is NOT set here: the cache files the model under the resref it was asked for and
             // counts a file whose internal name disagrees (its Publish), so overwriting it here would hide
             // exactly the case the engine logs as "Model Names Differ".

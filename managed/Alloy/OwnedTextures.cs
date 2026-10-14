@@ -175,7 +175,6 @@ internal static unsafe partial class OwnedTextures
                 + "adopt it on and stays BORROWED (#360)");
         TexStream.Install(log, hooks);
         ModelLoad.Install(log, hooks);
-        MdlCache.Install(log, hooks);
     }
 
     private static AurTextureConstructImageFn* _origConstructImage;
