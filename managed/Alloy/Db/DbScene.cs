@@ -48,7 +48,6 @@ public static unsafe class DbScene
         SceneDb.SceneRenderAabb[i] = false;
         SceneDb.SceneObjects[i]?.Clear();
         SceneDb.SceneHighlights[i]?.Clear();
-        SceneDb.SceneHighlightN[i] = 0;
         for (int k = 0; k < SceneDb.SkyBoxSlots; k++) SceneDb.SetSceneSky(id, k, default);
         SceneDb.SceneLines[i]?.Clear();
         SceneDb.SceneFacade[i] = 0;
@@ -96,7 +95,6 @@ public static unsafe class DbScene
             members.Clear();
         }
         SceneDb.SceneHighlights[i]?.Clear();
-        SceneDb.SceneHighlightN[i] = 0;
         SceneDb.SceneLines[i]?.Clear();
         SceneDb.SceneName[i] = "";
         CX.Alloy.Seam.SceneFns.ReleaseWind(SceneDb.SceneFacade[i]);   // the shell owns it; it dies with it
@@ -139,7 +137,7 @@ public static unsafe class DbScene
         m.Add(obj);
         SceneDb.ObjScene[obj.Index] = scene;
         SceneDb.ObjCrossScene[obj.Index] = scene;
-        Seam.Facade.NoteJoin(scene, obj);
+        Seam.Facade.NoteJoin(scene, obj, was);
         SceneDb.TouchScene(scene, Dirty.Tree);
         SceneDb.Touch(obj, Dirty.Tree);
         SceneShell.CountChanged(scene);
@@ -157,7 +155,6 @@ public static unsafe class DbScene
         int i = scene.Index;
         if (SceneDb.SceneObjects[i]?.Remove(obj) != true) return false;
         SceneDb.SceneHighlights[i]?.Remove(obj);
-        SceneDb.Unhighlight(scene, obj);
         if (SceneDb.SceneBlindLights[i] == obj) SceneDb.SceneBlindLights[i] = default;
         if (SceneDb.SceneShadowGob[i] == obj) SceneDb.SceneShadowGob[i] = default;
         if (SceneDb.SceneSkyFade[i] == obj) SceneDb.SceneSkyFade[i] = default;
@@ -242,7 +239,6 @@ public static unsafe class DbScene
         if (!SceneDb.Scenes.Valid(scene)) return;
         if (SceneDb.SceneHighlights[scene.Index]?.Remove(obj) == true)
             SceneDb.TouchScene(scene, Dirty.Material);
-        SceneDb.Unhighlight(scene, obj);
     }
 
     /// <summary>The engine's naming rule (<c>Scene::Scene</c> @0x5724f0, <c>Gob::Gob</c> @0x540a00): the name,
@@ -314,6 +310,9 @@ public static unsafe class DbScene
     {
         if (!SceneDb.Objects.Valid(obj)) return;
         Leave(SceneDb.ObjScene[obj.Index], obj);
+        // A scene may highlight an object that is not its member, and that list is not the leave's.
+        for (int s = 0; s < SceneDb.MaxScenes; s++)
+            if (SceneDb.SceneHighlights[s]?.Remove(obj) == true) SceneDb.TouchScene(SceneDb.Scenes.IdAt(s), Dirty.Material);
     }
 
     /// <summary>Counters as they stand, so the off-device suite can put them back: a fixture is not work the

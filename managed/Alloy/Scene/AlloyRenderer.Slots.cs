@@ -128,9 +128,11 @@ public sealed unsafe partial class AlloyRenderer
         // ...and the cursor each class's fill left behind IS its end index.
         for (int k = 0; k < AlloyClasses.Count; k++) _clsEnd[k] = _clsCount[k];
         _orderCount = live;
+        long tIdx = FrameZones.Now;
         // the area index rides the same edge. Enrolment is the only thing that changes which slot holds
         // which part, so the grid is rebuilt here and never maintained incrementally.
         BuildIndex();
+        _churn.IndexTicks += FrameZones.Now - tIdx;
     }
 
     /// <summary>The middle radix digit: (lit, no-cull, VDO). The cull bit sits UNDER the lit one -- see

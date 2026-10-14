@@ -41,7 +41,7 @@
 21 managed/Alloy/Db/DbLights.cs
 5 managed/Alloy/Db/DbScene.cs
 1 managed/Alloy/Db/DbSky.cs
-10 managed/Alloy/Db/DbTriggers.cs
+6 managed/Alloy/Db/DbTriggers.cs
 12 managed/Alloy/Db/DbXform.Attach.cs
 8 managed/Alloy/Db/DbXform.cs
 6 managed/Alloy/Db/DrawRecipe.cs
@@ -107,7 +107,7 @@
 16 managed/Alloy/MeshLod.cs
 9 managed/Alloy/ModelFeed.cs
 8 managed/Alloy/ModelLoad.AreaKey.cs
-30 managed/Alloy/ModelLoad.cs
+27 managed/Alloy/ModelLoad.cs
 17 managed/Alloy/ModelLoad.Objects.cs
 13 managed/Alloy/ModelLoad.Tiles.cs
 13 managed/Alloy/ModelVerify.cs
@@ -121,7 +121,7 @@
 3 managed/Alloy/OwnedTextures.Cube.cs
 2 managed/Alloy/OwnedTextures.Dds.cs
 9 managed/Alloy/OwnedTextures.Plt.cs
-15 managed/Alloy/OwnedTextures.Rebuild.cs
+14 managed/Alloy/OwnedTextures.Rebuild.cs
 5 managed/Alloy/OwnedTextures.Retire.cs
 25 managed/Alloy/OwnedTextures.Transcode.cs
 23 managed/Alloy/Pass/AlloyLights.cs
@@ -157,7 +157,7 @@
 17 managed/Alloy/Pass/HighlightGlow.cs
 2 managed/Alloy/Pass/IdTarget.cs
 30 managed/Alloy/Pass/LightmapBake.Area.cs
-66 managed/Alloy/Pass/LightmapBake.cs
+65 managed/Alloy/Pass/LightmapBake.cs
 20 managed/Alloy/Pass/LightmapBake.Hold.cs
 31 managed/Alloy/Pass/LightmapBake.Lights.cs
 8 managed/Alloy/Pass/LightmapBake.Pack.cs
@@ -237,7 +237,7 @@
 7 managed/Alloy/Seam/PartShell.cs
 10 managed/Alloy/Seam/SceneFns.cs
 2 managed/Alloy/Seam/SceneProvider.cs
-10 managed/Alloy/Seam/SceneSlots.cs
+9 managed/Alloy/Seam/SceneSlots.cs
 3 managed/Alloy/Seam/SceneSlots.Only.cs
 8 managed/Alloy/Seam/SeamBridge.cs
 1 managed/Alloy/Seam/SeamCallers.cs
@@ -245,12 +245,12 @@
 2 managed/Alloy/Seam/SeamHit.cs
 2 managed/Alloy/Seam/SeamService.cs
 1 managed/Alloy/Seam/SeamShell.cs
-4 managed/Alloy/Seam/StringSlots.cs
+2 managed/Alloy/Seam/StringSlots.cs
 10 managed/Alloy/Seam/TexSeam.cs
 4 managed/Alloy/Seam/TileSetSeam.cs
 2 managed/Alloy/Seam/VisualXform.cs
 9 managed/Alloy/StaleAudit.cs
-25 managed/Alloy/TexLoad.cs
+22 managed/Alloy/TexLoad.cs
 4 managed/Alloy/TexLoad.Raster.cs
 1 managed/Alloy/TexScan.cs
 18 managed/Alloy/TexStream.cs

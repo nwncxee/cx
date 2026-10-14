@@ -172,6 +172,16 @@ internal static unsafe partial class GrassField
         _pushNowN = 0; _gl.PushWasN = -1;
         _pushClear = clear0;
 
+        // A pusher is kept only where grass lies: one marked cell (texels 8..11 square) must be found by a rect
+        // touching any of its texels and by no rect stopping a texel short.
+        bool[] cells0 = (bool[])_mask.Cell.Clone();
+        Array.Clear(_mask.Cell);
+        _mask.Cell[2 * MaskRes + 2] = true;
+        check.Expect(OnGrass(11, 11, 20, 20) && OnGrass(0, 0, 8, 8), "a rect touching a grass cell is on the grass");
+        check.Expect(!OnGrass(0, 0, 7, 30) && !OnGrass(12, 0, 30, 30), "...and one a texel short of it is not");
+        Array.Copy(cells0, _mask.Cell, cells0.Length);
+        _mask.OriginX = float.NaN;
+
         // ---- the toggle (#180). _off is the resolution latch and Grass.Enabled is the player's dial; they are
         // two flags on purpose, because /grass enabled 1 on a client whose grass globals never came up would
         // run the pass over null pointers. Direct field writes, not sets: a set arms the cx.cfg writer, and

@@ -17,10 +17,6 @@ internal static unsafe class DbGui
     /// <summary>Which scene this object is listed under, plus one (0 = not listed). The per-SCENE membership
     /// test R1-13 needs: "already listed" has to mean "listed HERE".</summary>
     private static readonly int[] _listedIn = new int[SceneDb.MaxObjects];
-    /// <summary>How many objects each scene's chain holds, so the length of the list <see cref="Draw"/> walks
-    /// is O(1) on the fallback path too (<c>SceneObjects</c> carries its own count). Maintained by
-    /// <see cref="Joined"/> and <see cref="Left"/>, the only two writers of the chain.</summary>
-    private static readonly int[] _sceneN = new int[SceneDb.MaxScenes];
     private static int _listed;
     private static bool _latch;
     private static long _textRuns, _refusedNoLayer, _controls;
@@ -37,7 +33,7 @@ internal static unsafe class DbGui
     internal static int Listed => _listed;
 
     /// <summary>The last <see cref="Draw"/>'s outcome for the view-order line: d drew, C drew after a depth clear,
-    /// x no scene, e empty, p no GUI pass, h held for streaming, b bubble refused, l no layer.</summary>
+    /// x no scene, e empty, p no GUI pass, b bubble refused, l no layer.</summary>
     internal static char LastWhy;
     internal static int LastIssued;
     internal static long TextRuns => _textRuns;
@@ -68,7 +64,7 @@ internal static unsafe class DbGui
         _objNext[o] = -1;
         if (_sceneLast[s] < 0) _sceneFirst[s] = o; else _objNext[_sceneLast[s]] = o;
         _sceneLast[s] = o;
-        _listed++; _sceneN[s]++;
+        _listed++;
     }
 
     /// <summary>Object <paramref name="o"/> left scene <paramref name="scene"/> (destroyed, or moved to
@@ -89,7 +85,7 @@ internal static unsafe class DbGui
                 if (prev < 0) _sceneFirst[s] = _objNext[i]; else _objNext[prev] = _objNext[i];
                 if (_sceneLast[s] == o) _sceneLast[s] = prev;
                 _objNext[o] = -1;
-                _listed--; _sceneN[s]--;
+                _listed--;
                 return;
             }
             prev = i;
@@ -119,35 +115,11 @@ internal static unsafe class DbGui
         // underneath to fall back on, so this is said rather than left as an empty screen.
         LastWhy = 'p';
         if (!GuiPass.Capturing) { Refuse(); return 0; }
-        // A panel whose textures are still streaming is HELD, whole, until they land: vanilla painted each
-        // missing one as its 1x1 white stand-in for a frame or two, the white flash on every panel open.
-        // Before the depth latch, so a held scene does not consume the run's clear.
-        if (_holdId[s] != scene.Value)
-        { _holdId[s] = scene.Value; _hold[s] = 0; _holdLoad[s] = -1; _holdMembers[s] = -1; }
-        // The member count of the list this draw actually walks: O(1) either way.
-        int mn = members != null ? members.Count : _sceneN[s];
-        if (_hold[s] >= MaxHold || (_holdLoad[s] == TexRegistry.LoadSerial && _holdMembers[s] == mn))
-            _prescanSkipped++;
-        else if (Streaming(members, head)) { _hold[s]++; _held++; LastWhy = 'h'; return 0; }
-        // SETTLED. _hold only ever counted the frames the panel was HELD, so a panel that never streams --
-        // the HUD, open all session -- re-ran this prescan over every member and every part of every member
-        // every frame, for ever. Two things can put a part of this panel back on the wire: a texture slot
-        // entering TexState.Loading (TexRegistry.LoadSerial), and a MEMBER ARRIVING -- a scene settles on the
-        // frame it is created, while its member list is still empty or short, and its controls attach over
-        // the frames after that, onto object slots whose textures may already be loading.
-        else { _holdLoad[s] = TexRegistry.LoadSerial; _holdMembers[s] = mn; _settled++; }
-
         Span<byte> name = stackalloc byte[GuiCapture.MaxSceneName];
         int n = SceneDb.SceneNameBytes(scene, name);
         name[n] = 0;
         float near, far;
-        bool clear, lit, bubble;
-        fixed (byte* np = name)
-        {
-            GuiCapture.DepthOf(np, ref _latch, out near, out far, out clear, v.Fovy);
-            lit = GuiCapture.IsLitScene(np);
-            bubble = Prefix(np, "sceneGUI_PNL_BUBBLE"u8);
-        }
+        bool clear, lit;
         // CX's own nameplate feature holds the engine at text-bubble mode 0 so that "nothing of vanilla's
         // ever draws" (NameplateService) and draws its own bubbles on the 2D UI. The engine honours that
         // text-bubble mode by never rendering a bubble panel's scene at all -- a whole ladder run captures
@@ -157,8 +129,15 @@ internal static unsafe class DbGui
         // sceneGUI_PNL_BUBBLE32_300 / pnl_bubble32_300 / node "Bubble09".
         // ...but the TOOLTIP is CGuiMan's own CGuiTextBubble on the same PNL_BUBBLE models, which the text-bubble
         // mode never touches (only CGuiInGamePopUpBubble reads it), so its scene is exempt by handle.
-        if (bubble && CX.Services.Nameplate.NameplateService.Suppressing && scene.Value != TooltipProbe.Scene)
-        { _bubblesRefused++; LastWhy = 'b'; return 0; }
+        // Before the depth latch, so a refused bubble does not consume the run's clear.
+        fixed (byte* np = name)
+        {
+            if (Prefix(np, "sceneGUI_PNL_BUBBLE"u8) && CX.Services.Nameplate.NameplateService.Suppressing
+                && scene.Value != TooltipProbe.Scene)
+            { _bubblesRefused++; LastWhy = 'b'; return 0; }
+            GuiCapture.DepthOf(np, ref _latch, out near, out far, out clear, v.Fovy);
+            lit = GuiCapture.IsLitScene(np);
+        }
         if (!GuiCapture.BeginDbLayer(v.X, v.Y, v.W, v.H, near, far, clear)) { _refusedNoLayer++; LastWhy = 'l'; return 0; }
         CX.Services.Nui.NuiModelDoll.ModelSlot? slot = CX.Services.Nui.NuiModelDoll.OfScene(SceneDb.SceneFacade[s]);
         uint redirect = slot?.TargetTex ?? 0u;
@@ -255,47 +234,7 @@ internal static unsafe class DbGui
         return issued;
     }
 
-    /// <summary>Draws a panel is held for at most while its textures stream; past it the panel draws and a
-    /// part still waiting is skipped rather than painted white.</summary>
-    private const int MaxHold = 30;
-    private static readonly int[] _hold = new int[SceneDb.MaxScenes];
-    private static readonly uint[] _holdId = new uint[SceneDb.MaxScenes];
-    /// <summary>The <see cref="TexRegistry.LoadSerial"/> at which this scene's prescan last found NOTHING
-    /// waiting, or -1 for a scene handle that has not settled yet. While the serial stands still no part can
-    /// have gone back to streaming, so the prescan is skipped. Invalidated by the serial, by the scene's MEMBER
-    /// COUNT (<see cref="_holdMembers"/>: a panel settles before its controls arrive) and by the handle.</summary>
-    private static readonly int[] _holdLoad = new int[SceneDb.MaxScenes];
-    /// <inheritdoc cref="_holdLoad"/>
-    private static readonly int[] _holdMembers = new int[SceneDb.MaxScenes];
-    private static long _held, _lPending, _settled, _prescanSkipped;
-
-    /// <summary>Is any drawable part of this scene waiting on a texture that is still loading?</summary>
-    private static bool Streaming(DbList? members, int head)
-    {
-        if (members != null)
-        {
-            for (int k = 0; k < members.Count; k++)
-                if (SceneDb.Objects.Valid(members[k]) && ObjStreaming(members[k].Index)) return true;
-            return false;
-        }
-        for (int o = head; o >= 0; o = _objNext[o])
-            if (SceneDb.Objects.LiveAt(o) && ObjStreaming(o)) return true;
-        return false;
-    }
-
-    private static bool ObjStreaming(int o)
-    {
-        if (!SceneDb.ObjVisible[o] || SceneDb.ObjKindOf[o] == ObjKind.Text) return false;
-        int first = SceneDb.ObjPartFirst[o], count = SceneDb.ObjPartCount[o];
-        if (count <= 0 || first < 0 || (long)first + count > SceneDb.MaxParts) return false;
-        for (int p = first; p < first + count; p++)
-        {
-            if (!SceneDb.Parts.LiveAt(p) || !SceneDb.PartEnabled[p] || SceneDb.PartMerged[p]) continue;
-            int recipe = SceneDb.PartRecipe[p];
-            if (recipe >= 0 && Loading(p, recipe)) return true;
-        }
-        return false;
-    }
+    private static long _lPending;
 
     /// <summary>This part's texture is named and on its way, but not here yet.</summary>
     private static bool Loading(int p, int recipe)
@@ -407,7 +346,7 @@ internal static unsafe class DbGui
             bool plt = Plt(p, recipe);
             bool envMapped = EnvMapped(p, recipe);
             uint tex = Texture(p, recipe);
-            // Still streaming past the hold: skip it this frame rather than paint the white stand-in. A texture
+            // Still streaming: skip it this frame rather than paint the white stand-in. A texture
             // that FAILED keeps the stand-in -- that one is loud on purpose (TexRegistry says so).
             if (tex == 0 && Loading(p, recipe)) { _lPending++; continue; }
             var d = new GuiCapture.DbDraw
@@ -737,7 +676,7 @@ internal static unsafe class DbGui
     {
         var check = new Checker(log, "DbGui.SelfCheck");
         for (int k = 0; k < SceneDb.MaxObjects; k++) { _objNext[k] = -1; _listedIn[k] = 0; }
-        Array.Fill(_sceneFirst, -1); Array.Fill(_sceneLast, -1); Array.Clear(_sceneN); _listed = 0;
+        Array.Fill(_sceneFirst, -1); Array.Fill(_sceneLast, -1); _listed = 0;
         var scene = DbId.Make(5, 1);
         SceneDb.SceneIsWorld[scene.Index] = false;   // a panel, which is the only thing the list holds
         for (int o = 1; o <= 4; o++) Joined(o, scene);
@@ -760,14 +699,8 @@ internal static unsafe class DbGui
         for (int i = _sceneFirst[scene.Index]; i >= 0 && n < seen.Length; i = _objNext[i]) seen[n++] = i;
         check.Expect(n == 3 && seen[2] == 9,
                      "a control created after the tail left still appends at the end");
-        // CX-188: the per-scene count IS the streaming prescan's member-set edge on this path. If it drifts
-        // from the chain, a panel settles with half its controls and the rest draw their white stand-ins --
-        // or it never settles and the prescan is back to every member, every part, every frame.
-        check.Expect(_sceneN[scene.Index] == n,
-                     $"the scene's member count ({_sceneN[scene.Index]}) left the chain's length ({n})");
         Left(1, scene); Left(3, scene); Left(9, scene);
         check.Expect(_listed == 0 && _sceneFirst[scene.Index] < 0, "the list empties completely");
-        check.Expect(_sceneN[scene.Index] == 0, "...and the member count empties with it");
         check.Expect(!TexelAlphaIsCoverage(true, true, false), "a doll's PLT part (a helm) takes no opacity from its palette alpha");
         check.Expect(!TexelAlphaIsCoverage(true, false, true), "a doll's env-mapped part (a weapon) takes none from its reflectivity mask");
         check.Expect(TexelAlphaIsCoverage(true, false, false), "a doll's plain textured part keeps its alpha");
@@ -787,8 +720,6 @@ internal static unsafe class DbGui
          + (_refusedNoLayer > 0 ? $" LAYERS REFUSED {_refusedNoLayer}" : "")
          + (_refusedNoPass > 0 ? $" NO GUI PASS {_refusedNoPass}" : "")
          + (_bubblesRefused > 0 ? $" {_bubblesRefused} vanilla bubble view(s) refused (CX draws its own)" : "")
-         + (_held > 0 ? $" {_held} draw(s) held for streaming textures" : "")
-         + $" streaming prescan: {_settled} settle(s), {_prescanSkipped} view(s) skipped it"
          + (_lPending > 0 ? $" {_lPending} part(s) skipped still streaming" : "")
          + (_notFinite > 0 ? $" {_notFinite} part(s) with a NON-FINITE matrix NOT DRAWN" : "")
          + " " + DbAnim.AttachStats()

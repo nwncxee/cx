@@ -164,6 +164,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             if (!SceneDb.ObjScene[id.Index].IsNull) PropagateScene(id, shell, default, 0);
             ReleaseRecord(id);
             SceneDb.ObjFacade[id.Index] = 0;
+            Highlight.SetClaim(self, false);
             SceneDb.Objects.Free(id);
             FreeShellLists(shell);
         }
@@ -210,6 +211,15 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         // its shadow gob and its skybox slots can each name this object, and the count word at the scene
         // shell is read by game code without a vtable -- so the leave cannot wait for a frame boundary.
         DbScene.ObjectDied(id);
+        // What it owns dies with it, as the engine's one tree did (Gob::~Gob, PartReference::~PartReference):
+        // nothing else holds an appended piece or a reference instance, so left alone they lived for the session.
+        for (DbId c = SceneDb.ObjSeamAppendHead[i]; SceneDb.Objects.Valid(c); )
+        {
+            DbId next = SceneDb.ObjSeamAppendNext[c.Index];
+            DestroyRecord(c);
+            c = next;
+        }
+        SceneDb.ObjSeamAppendHead[i] = default;
         DbAnim.ObjectRetired(id);
         ObjectTex.Free(id);
         TexSeam.ObjectDied(id);   // CX-117: the PLT colour rows and any material-param override
@@ -350,7 +360,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (TileBuild.RefuseMove(id, sc, "JoinScene"))
         {
-            if (shell != 0) Facade.SetSceneWord(shell, SceneDb.SceneFacade[SceneDb.ObjScene[id.Index].Index]);
+            DbId now = SceneDb.ObjScene[id.Index];
+            // A null record's Index 0 is a live scene's slot; the engine only needs a non-zero word here.
+            if (shell != 0) Facade.SetSceneWord(shell, now.IsNull ? sceneShell : SceneDb.SceneFacade[now.Index]);
             return;
         }
         DbId was = SceneDb.ObjScene[id.Index];

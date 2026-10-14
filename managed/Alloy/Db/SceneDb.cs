@@ -334,8 +334,11 @@ public static class SceneDb
     /// <summary>The last scene the object joined: what <c>CAurBehaviorCrossSceneAttach::SetScene(old,new)</c>
     /// @0x68c250 keeps at +0x70, so a control the game moved into a viewport scene goes back there.</summary>
     public static readonly DbId[] ObjCrossScene = new DbId[MaxObjects];
-    /// <summary>The object has joined a GUI scene at some point in its life, so its part shells are held at death.</summary>
-    public static readonly bool[] ObjEverInGui = new bool[MaxObjects];
+    /// <summary>The kinds of scene the object has joined in its life (<c>SeamShell.InGui</c> | <c>InWorld</c>); its
+    /// part shells are reused at death only when this is world alone.</summary>
+    public static readonly byte[] ObjSceneKinds = new byte[MaxObjects];
+    /// <summary>The game call chain that first put the object in a world scene (null: never, or a tile).</summary>
+    public static readonly string?[] ObjWorldJoinBy = new string?[MaxObjects];
     /// <summary>The object's part range in <see cref="Parts"/>: first part index and count (pre-order, [0] the root).</summary>
     public static readonly int[] ObjPartFirst = new int[MaxObjects], ObjPartCount = new int[MaxObjects];
     /// <summary>Attachment: the object this one rides on and the part (index into <see cref="Parts"/>) it hangs from.</summary>
@@ -962,40 +965,6 @@ public static class SceneDb
             case 2: SceneSky2[i] = o; break;
             case 3: SceneSky3[i] = o; break;
         }
-    }
-
-    /// <summary>The scene's highlight set as a per-object bit, which is what the glow and
-    /// outline passes read. A set rather than a walk: the engine asked each gob a flag, and the pass wants the
-    /// handful that answered yes.</summary>
-    public static readonly DbId[] SceneHighlight = new DbId[MaxScenes * MaxHighlight];
-    public static readonly int[] SceneHighlightN = new int[MaxScenes];
-    /// <summary>Objects one scene may highlight at once. The engine highlights a selection and a hover, so
-    /// this is generous; past it the add is refused and counted.</summary>
-    public const int MaxHighlight = 64;
-
-    /// <summary>Add <paramref name="o"/> to <paramref name="scene"/>'s highlight set; false when it is full
-    /// (refused loudly by the caller, never dropped quietly) or already in it.</summary>
-    public static bool Highlight(DbId scene, DbId o)
-    {
-        int s = scene.Index;
-        if ((uint)s >= MaxScenes) return false;
-        int n = SceneHighlightN[s];
-        for (int k = 0; k < n; k++) if (SceneHighlight[s * MaxHighlight + k].Value == o.Value) return false;
-        if (n >= MaxHighlight) return false;
-        SceneHighlight[s * MaxHighlight + n] = o;
-        SceneHighlightN[s] = n + 1;
-        return true;
-    }
-
-    /// <summary>Drop <paramref name="o"/> from <paramref name="scene"/>'s highlight set.</summary>
-    public static void Unhighlight(DbId scene, DbId o)
-    {
-        int s = scene.Index;
-        if ((uint)s >= MaxScenes) return;
-        int n = SceneHighlightN[s];
-        for (int k = 0; k < n; k++)
-            if (SceneHighlight[s * MaxHighlight + k].Value == o.Value)
-            { SceneHighlight[s * MaxHighlight + k] = SceneHighlight[s * MaxHighlight + n - 1]; SceneHighlightN[s] = n - 1; return; }
     }
 
     /// <summary>Mark part <paramref name="p"/> (an absolute index into <see cref="Parts"/>) dirty.</summary>
