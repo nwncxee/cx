@@ -107,7 +107,8 @@ internal static unsafe class PaletteShare
     private static void FromContent(List<Palette> found)
     {
         if (EngineFn.ResManGetResOfType == null || EngineFn.ExoStringListCount == null || EngineFn.ExoStringListGet == null
-            || EngineFn.ExoStringListDtor == null || EngineFn.OperatorDelete == null || !CX.Alloy.ResLocate.Attach(out _)) return;
+            || EngineFn.ExoStringListDtor == null || EngineFn.OperatorDelete == null || !CX.Alloy.ResLocate.Attach(out _)
+            || CX.Alloy.ResLocate.ResMan == IntPtr.Zero) return;
         IntPtr list = EngineFn.ResManGetResOfType(CX.Alloy.ResLocate.ResMan, ResTypeTxt, 0);
         if (list == IntPtr.Zero) return;
         var ids = new List<string>();
