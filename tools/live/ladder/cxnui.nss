@@ -2,7 +2,7 @@
 //:: cxnui -- a fixed NUI window for the live harness, and a second small one beside it
 //:: Module OnClientEnter. Once the PC stands in an area it is given a torch and,
 //:: three seconds later, opens one NUI window at a known place whose elements carry JSON ids: a label,
-//:: an @item: image with a tooltip, and a list whose row template has one id'd
+//:: an @item: image with a tooltip and an @look: image beside it, and a list whose row template has one id'd
 //:: cell. Margin, padding and size modifiers are on the id'd elements on purpose.
 //:: Every step writes "CXNUI: <step>" to the engine's log.
 //:://////////////////////////////////////////////
@@ -12,6 +12,8 @@ const float ARM_POLL = 0.5;
 const int ARM_TRIES = 120;
 const string TORCH = "nw_it_torch001";
 const string TORCH_TAG = "CXNUI_TORCH";
+/// A longsword described by its appearance, in the form a NUI @look: image takes.
+const string SWORD_LOOK = "00010000003d000b000b0000000000000000000000000000000000000000000000000000000000000000010101010101";
 const string WINDOW_ID = "cxnui";
 const int LIST_ROWS = 30;
 const float WINDOW_LIFE = 60.0;
@@ -94,6 +96,11 @@ void OpenWindow(object oPC)
     json jImage = NuiId(NuiTooltip(NuiMargin(NuiHeight(NuiWidth(
         NuiImage(JsonString("@item:" + ObjectToString(oTorch)), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
         64.0), 64.0), 3.0), JsonString("a torch")), "img");
+    // A described item beside it, so a card.@look: key has an element to match.
+    json jLook = NuiId(NuiMargin(NuiHeight(NuiWidth(
+        NuiImage(JsonString("@look:" + SWORD_LOOK), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
+        64.0), 64.0), 3.0), "look");
+    json jIcons = NuiRow(JsonArrayInsert(JsonArrayInsert(JsonArray(), jImage), jLook));
 
     // The doll the way a consumer draws it: a draw-list image stretched over a spacer, not a NuiImage.
     json jItems = JsonArrayInsert(JsonArray(), NuiDrawListImage(JsonBool(TRUE), JsonString("@model:me"),
@@ -106,8 +113,8 @@ void OpenWindow(object oPC)
     jCells = JsonArrayInsert(jCells, NuiListTemplateCell(jCell, 0.0, TRUE));
     json jList = NuiHeight(NuiList(jCells, JsonInt(LIST_ROWS), 24.0), 120.0);
 
-    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jImage), jModel), jList));
-    json jWin = NuiWindow(jRoot, JsonString("CX hit test"), NuiRect(20.0, 20.0, 340.0, 560.0),
+    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jIcons), jModel), jList));
+    json jWin = NuiWindow(jRoot, JsonString("CX hit test"), NuiRect(20.0, 20.0, 340.0, 600.0),
                           JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     int nToken = NuiCreate(oPC, jWin, WINDOW_ID);
     json jRows = JsonArray();
