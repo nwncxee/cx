@@ -267,10 +267,17 @@ public sealed unsafe class UiInputService : IExtenderService
     /// <summary>True while the pointer is over a NUI window. Those draw ON TOP of our below-NUI windows, so they take the press
     /// and the wheel; without this a NUI window dragged over the chatbox would look on top and still lose every click
     /// to it. Only the acquisition edges consult it -- motion and button-up stay unconditional, so a drag started on
-    /// our window still finishes across a NUI one. State is nuklear's from the frame just drawn: one frame of lag.</summary>
+    /// our window still finishes across a NUI one. Nuklear's hover answer, or its window list where that call is not exported.</summary>
     private static bool NuiHovered()
     {
-        if (_nuklearGlobal == IntPtr.Zero || _nkAnyHovered == null) return false;
+        if (_nuklearGlobal == IntPtr.Zero) return false;
+        if (_nkAnyHovered == null)
+        {
+            if (EngineFn.SdlGetMouseState == null) return false;
+            int mx = 0, my = 0;
+            EngineFn.SdlGetMouseState(&mx, &my);
+            return NuiCovers(mx, my);
+        }
         IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         return ctx != IntPtr.Zero && _nkAnyHovered(ctx) != 0;
     }
