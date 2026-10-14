@@ -600,7 +600,8 @@ colours (its per-part colours too, from an `@look:`), a cloak its model and colo
 helmet. An `@look:` the client cannot build is left out, never swapped for the engine's stand-in model, and logged once: a base item
 the client's `baseitems.2da` lacks, a model file the base item's model type loads and the game does not have (`<class>_<nnn>`, or `<class>_b_<nnn>`, `_m_` and `_t_` for a
 composite weapon), a cloak number past the end of `cloakmodel.2da`, or an item visual effect past the end of its table. Armour part numbers are not
-checked by CX: the engine's body builder looks up each part's model file itself. A helmet number with no model leaves the doll as it was.
+checked by CX: the engine's body builder turns each part number into a model file name, skips a part whose file is missing
+(the body shows a gap there) and reads its tables with their row counts checked, so a part number past what the game has costs a gap and nothing else. A helmet number with no model leaves the doll as it was.
 
 **Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
 With `vfx=all` the doll wears what its target shows, read from the target's effect list every frame, so the server need not send the line again when
@@ -615,8 +616,8 @@ CX cannot tell a permanent effect from a temporary one, because both reach the c
 and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
 a fire ring, writes its square into the image's alpha as well as its light. Alloy draws a doll that has such a draw twice,
 over black and over white, and reads each pixel's coverage from the difference, so on a transparent or translucent `bg` the
-fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll in one pass: give a
-doll with effects an opaque `bg` there. The doll's effects play their sounds where the doll stands, which is not where the player is.
+fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll itself, and a view
+that names `vfx` or `wear` on a transparent or translucent `bg` gets the same two passes, so the result is the same. The doll's effects play their sounds where the doll stands, which is not where the player is.
 
 **Lighting.** With Alloy on, a server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface
 normal dotted with `lightdir`) + what the model glows on its own, in linear light. Every view has its own light. With Alloy off the engine's

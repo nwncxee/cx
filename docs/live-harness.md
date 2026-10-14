@@ -306,6 +306,9 @@ passes when none of them crashes the client and the last two still draw. Run it 
 The character the client joins as depends on the renderer: with Alloy on it is the vault character (`fighter`, a human), with `alloy.enabled=0` it is the one `+TestNewModule` brings (Aluvian Darkstar, an elf). A picture
 that compares the two renderers passes `--char aluviandarkstar` to the Alloy run, so both show the same person.
 
+`perf-teardown` opens four dolls and closes them together at 20 s; run it with `--cfg general.frametimes=1 --seconds 40` and read the
+`NuiModelDoll: slot N taken down in X ms` lines and the `[frametimes]` window that holds them.
+
 ## Model view
 
 `--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
