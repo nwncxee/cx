@@ -404,23 +404,23 @@ public sealed unsafe partial class ObjectSlots
     }
 
     /// <summary><c>Gob::SetPartPosition(char const*, Vector, Quaternion)</c> @0x438ee0: place a part in WORLD
-    /// space, which means solving back through the parent chain. SIMPLIFIED: the seam writes the part's
-    /// parent-relative pose from the world pose using the parent's current world matrix -- the same composition
-    /// the engine does, except that CX's write is overwritten by the next pose the animation runtime writes.</summary>
+    /// space by writing the parent-relative pose that composes to it under the parent's current world. A
+    /// controller the part's animation keys overwrites it on the next pose, as in the engine.</summary>
     [UnmanagedCallersOnly]
     private static int SetPartPosition(nint self, nint name, EVec pos, EQuat rot)
     {
         if (!Live(self, 39, out DbId id, out _)) return 0;
         int p = PartByName(id, (byte*)name);
         if (p < 0) return 0;
-        DbAnim.ComposeFor(id);
+        DbId owner = SceneDb.PartObj[p];
+        DbAnim.ComposeFor(owner);
         int parent = SceneDb.PartParent[p];
-        Matrix4x4 parentWorld = parent >= 0 ? SceneDb.PartWorld[parent] : SceneDb.ObjWorld[id.Index];
+        Matrix4x4 parentWorld = parent >= 0 ? SceneDb.PartWorld[parent] : SceneDb.ObjWorld[owner.Index];
         if (!Matrix4x4.Invert(parentWorld, out Matrix4x4 inv)) return 0;
         SceneDb.PartPos[p] = Vector3.Transform(pos.V, inv);
-        SceneDb.PartRot[p] = Quaternion.Normalize(rot.Q * Quaternion.Inverse(Quaternion.CreateFromRotationMatrix(parentWorld)));
-        SceneDb.Touch(id, Dirty.Anim | Dirty.Xform);
-        DbAnim.PoseWritten(id);
+        SceneDb.PartRot[p] = DbAnim.LocalRot(rot.Q, parentWorld);
+        SceneDb.Touch(owner, Dirty.Anim | Dirty.Xform);
+        DbAnim.PoseWritten(owner);
         return 1;
     }
 

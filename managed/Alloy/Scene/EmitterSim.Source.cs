@@ -29,7 +29,7 @@ internal struct EmitMut
     internal Quat PrevWorldRot;
     /// <summary>The spawn basis: X, Y and Z axes of <see cref="Orient"/>.</summary>
     internal Vector3 Bx, By, Bz;
-    /// <summary>p2p: the fraction of a chain's spacing the last spawn did not consume.</summary>
+    /// <summary>A trail's spacing the last spawn did not consume.</summary>
     internal Vector3 P2pLeftover;
     /// <summary>Fractional births carried between frames.</summary>
     internal float SpawnAcc;
@@ -59,6 +59,8 @@ internal struct Emitter
     internal int Flags;
     internal short RenderOrder;
     internal bool Chunk, Loop, NoCull, Splat, Tinted;
+    /// <summary><c>spawntype</c> 1: a fountain births along the distance its emitter travelled, not by time.</summary>
+    internal bool Trail;
     /// <summary>DB mode only: the <c>chunkName</c> resref a chunk emitter spawns objects of.</summary>
     internal string? ChunkName;
     internal float ConeCap, WindStrength, WindFalloff;
@@ -141,6 +143,7 @@ internal static unsafe partial class EmitterSim
         e.Chunk = d.ChunkName.Length > 0;
         e.ChunkName = d.ChunkName;
         e.Loop = d.Loop;
+        e.Trail = d.SpawnType != 0;
         e.NoCull = d.TwoSidedTex;
         e.Splat = (e.Flags & FSplat) != 0;
         e.Tinted = (e.Flags & FTinted) != 0;

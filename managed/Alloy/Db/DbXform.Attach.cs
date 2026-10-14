@@ -67,7 +67,8 @@ public static unsafe partial class DbAnim
         }
         Matrix4x4 m = SceneDb.PartWorld[part];
         var p = new Vector3(m.M41, m.M42, m.M43) + offset;
-        Quaternion q = RotOf(m);
+        // CAurBehaviorAttachNoOrientation::Control @0x4a2bd0 puts the object's own orientation back after the solve.
+        Quaternion q = SceneDb.ObjAttachMode[i] == SceneDb.AttachNoOrientation ? SceneDb.ObjRot[i] : RotOf(m);
         _attachSnaps++;
         _byMode[SceneDb.ObjAttachMode[i] & 7]++;
         p += TextOffset(i, q);
@@ -233,7 +234,8 @@ public static unsafe partial class DbAnim
 
     /// <summary>Placements by attach VARIANT (<see cref="SceneDb.ObjAttachMode"/>), so "which subclass the game
     /// installs" is a measurement rather than a guess. <c>Gob::AttachToObject</c> @0x43e0e0's switch has five
-    /// arms and CX composes all of them as the plain one plus, for translate, the position offset.</summary>
+    /// arms; CX composes them as the plain one, plus the position offset for translate and the object's own
+    /// orientation for no-orientation.</summary>
     private static readonly long[] _byMode = new long[8];
 
     private static string Variants()

@@ -319,6 +319,12 @@ public static unsafe partial class DbAnim
         return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(b));
     }
 
+    /// <summary>The parent-relative rotation that composes to <paramref name="world"/> under
+    /// <paramref name="parentWorld"/>: a part's world is its local times its parent's, which is
+    /// <c>parent * local</c> in quaternion terms, so the local is <c>parent⁻¹ * world</c>.</summary>
+    internal static Quaternion LocalRot(Quaternion world, in Matrix4x4 parentWorld)
+        => Quaternion.Normalize(Quaternion.Inverse(RotOf(parentWorld)) * world);
+
     /// <summary>The part of <paramref name="obj"/> whose node is named <paramref name="name"/>, as an absolute
     /// part index, or -1 (<c>Gob::GetPart(char const*)</c>, Gob vtbl +0x238). Case-insensitive, and scoped to
     /// the parts instanced from the object's own model so a reference sub-tree cannot shadow a name.</summary>

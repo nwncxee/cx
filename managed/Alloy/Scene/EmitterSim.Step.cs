@@ -122,7 +122,7 @@ internal static unsafe partial class EmitterSim
         int n = (int)rate;
         if (n <= 0) { _rate0++; return; }
 
-        if ((e.Flags & FP2P) == 0)
+        if (!e.Trail)
         {
             // Time-metered birth. The engine divides the accumulated count by n+1 and births the remainder,
             // which is the same thing as "one particle every 1/rate seconds" with the fraction carried --
@@ -139,9 +139,8 @@ internal static unsafe partial class EmitterSim
             return;
         }
 
-        // p2p: birth along the line to the target, evenly spaced, carrying the leftover in
-        // P2pLeftover so a chain stays continuous across frames of different length.
-        if (!e.HasTarget) { _p2pNoTarget++; return; }
+        // A trail (spawntype 1; FountainEmitter::Update @0x4b1d9f tests it, not p2p): birth along the distance the
+        // emitter moved, evenly spaced, carrying the leftover in P2pLeftover so the trail stays continuous.
         Vector3 lead = e.M.Pos - e.M.PrevPos + e.M.P2pLeftover;
         float len = lead.Length();
         Vector3 dir = len > 0f ? lead / len : Vector3.Zero;
