@@ -600,8 +600,7 @@ Window-wide properties:
 |---|---|
 | `inventory.backpack.pages=N` | only pages 1..N are shown, scrolled to, or accept drops (1-6) |
 | `inventory.readonly=1` | no drag, no quick-move, no take from a container; the item radial (examine included) still works |
-| `inventory.skin.<part>=<resref>` | re-point one piece of the game-art skin: `frame header cell slot button buttonhot buttonon close edit trough thumb gold goldhot goldcursor lootcell sil.<slot id>` |
-| `quickbar.skin.<part>=<resref>` | the same for the CX quickbar's skin: `frame slot grip` |
+| `ui.skin.<part>=<resref>` | re-point one piece of the game-art skin every CX window wears (see below) |
 
 Actions for `.route`: `inventory.equip`, `inventory.unequip`, `inventory.move`, `inventory.merge`,
 `inventory.split` (shift-click a stack: half), `inventory.drop`, `inventory.use`, `inventory.radial` (`x;y` are the
@@ -622,6 +621,22 @@ the oid is the target and `amount` the gold; `7f000000` = the ground). An item r
 `inventory.quickbar` with the button's slot (0-35, three rows of 12) in `amount`; `engine` assigns it as the stock
 quickbar's own drop does. An item dragged out of a container drops or is used like a worn one (no barter, no quickbar,
 as the stock drag).
+
+### The skin
+
+The native look dresses every CX window from one set of parts, so one key re-points a piece everywhere it is drawn.
+The common chrome, NUI's own art with the insets the engine draws it at (the button hover face insets 7 px, the rest
+3 px; the scrollbar thumb is a sub-rect of `nui_scrollv` tiled down the bar):
+
+`frame header tab button buttonhot buttonon buttononhot close edit trough thumb up down`
+
+Then the parts a window brings of its own -- the inventory's `cell slot gold goldhot goldcursor lootcell slider
+sil.<slot id>`, the quickbar's `slot grip`:
+
+```
+ui.skin.frame=my_window
+ui.skin.sil.head=my_helm_ghost
+```
 
 A skin part the client does not have refuses the **whole** skin (logged with every missing name, a notice on
 screen, the window draws its flat look): alias only art you ship (research: CX-152).

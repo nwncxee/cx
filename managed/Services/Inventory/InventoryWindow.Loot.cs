@@ -53,7 +53,7 @@ internal sealed partial class InventoryWindow
             if (dx >= Pad && dx < Pad + LootGridW)
                 return new(InvHitKind.LootCell, -1, Math.Min(LootModel.Cols - 1, (int)((dx - Pad) / Cell)),
                            Math.Min(LootRows - 1, (int)MathF.Floor(_lootTop + (dy - LootGridY) / Cell)));
-            if (dx >= Pad + LootGridW + TabGap && dx < Pad + LootGridW + TabGap + ScrollW) return new(InvHitKind.LootScroll);
+            if (dx >= Pad + LootGridW + TabGap && dx < Pad + LootGridW + TabGap + BarW / S) return new(InvHitKind.LootScroll);
         }
         return new(InvHitKind.Loot);
     }
@@ -79,10 +79,7 @@ internal sealed partial class InventoryWindow
 
     /// <summary>The loot scrollbar's thumb follows the pointer, centred on it, without the glide.</summary>
     private void LootScrollTo(float py)
-    {
-        float t = (py - Ly(LootGridY)) / (LootViewRows * Cell * S);
-        _lootTop = _lootTarget = Math.Clamp(t * LootRows - LootViewRows / 2f, 0f, LootMaxTop);
-    }
+        => _lootTop = _lootTarget = ScrollAt(py, Ly(LootGridY), Ly(LootGridY + LootViewRows * Cell), LootViewRows, LootRows);
 
     /// <summary>From <see cref="Tick"/>: the loot view glides toward its target, runs while a drag hovers the grid's top or
     /// bottom edge, and stays inside the pages when their count drops.</summary>
@@ -139,7 +136,7 @@ internal sealed partial class InventoryWindow
     {
         if (!LootShown) return n;
         float s = S, x0 = LootX, y0 = Y, x1 = x0 + LootW, y1 = y0 + LootH, lh = text.LineHeight;
-        if (skin != null) { skin.Draw(KFrame, x0, y0, x1, y1); skin.Draw(KHeader, x0, y0, x1, Ly(TitleH)); }
+        if (skin != null) { skin.Draw(NativeChrome.Frame, x0, y0, x1, y1); skin.Draw(NativeChrome.Header, x0, y0, x1, Ly(TitleH)); }
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); Fill(under, x0 + 1f, y0 + 1f, x1 - 1f, Ly(TitleH), HeaderBg); }
         float bx0 = Lx(LootWDesign - Pad - CloseW);
         CloseButton(under, skin, text, bx0, Ly(2f), Lx(LootWDesign - Pad), Ly(2f + CloseW));
@@ -164,7 +161,7 @@ internal sealed partial class InventoryWindow
             {
                 if (gy % LootModel.Rows != 0 || gy == first && _lootTop == first) continue;
                 LootCellRect(0, gy, out _, out float py0);
-                Fill(lo, gx0, py0 - lw, gx1, py0 + lw, NuiGold, 0.85f);
+                Fill(lo, gx0, py0 - lw, gx1, py0 + lw, Accent, 0.85f);
                 PageTag(lo, small, CountText(gy / LootModel.Rows + 1), gx0, py0 + lw, s);
             }
             PageTag(lo, small, CountText(first / LootModel.Rows + 1), gx0, gy0, s);
@@ -182,7 +179,7 @@ internal sealed partial class InventoryWindow
             if (Loot.Blank(p)) PageLoader(lo, p * LootModel.Rows, LootModel.Rows, _lootTop, LootViewRows, gx0, gx1, gy0, s);
         if (skin != null) EdgeRB(under, gx0, gy0, gx1, Ly(LootGridY + LootViewRows * Cell), s);
         float sx0 = Lx(Pad + LootGridW + TabGap);
-        Scrollbar(under, skin, sx0, gy0, sx0 + ScrollW * s, Ly(LootGridY + LootViewRows * Cell), _lootTop, LootViewRows, LootRows, _lootScrolling);
+        Scrollbar(under, skin, sx0, gy0, sx0 + BarW, Ly(LootGridY + LootViewRows * Cell), _lootTop, LootViewRows, LootRows, _lootScrolling);
         return n;
     }
 

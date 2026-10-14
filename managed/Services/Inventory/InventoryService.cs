@@ -322,6 +322,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
             _skin.Begin();
             skin = _skin;
         }
+        _inv.NativeArt = skin != null;
         _under ??= new VertexBatch(_text.SolidU, _text.SolidV);
         _over ??= new VertexBatch(_text.SolidU, _text.SolidV);
         _gridUnder ??= new VertexBatch(_text.SolidU, _text.SolidV);
