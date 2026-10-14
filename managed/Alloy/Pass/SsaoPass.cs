@@ -205,13 +205,14 @@ internal static unsafe class SsaoPass
     /// <summary>From every lit-program bind: the visibility texture on its unit, or nothing when the pass
     /// did not run. Per bind and not once per frame because the frame snapshot takes the same unit at
     /// FbCopy, and lit additive draws follow it. Leaves unit 0 current for the batch loop.</summary>
-    internal static void BindForDraw(bool on, uint sceneDepth)
+    internal static void BindForDraw(bool on, uint sceneDepth, bool depthToo = false)
     {
         Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.Ssao);
         Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.LiveOut : 0);
         // ...and the depth it was computed FROM, so the lit stage can refuse a pixel that is not its own.
+        // depthToo: the decal layer's writer reads that depth with no visibility buffer behind it.
         Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SsaoDepth);
-        Gl.BindTexture(Gl.TEXTURE_2D, on ? sceneDepth : 0);
+        Gl.BindTexture(Gl.TEXTURE_2D, on || depthToo ? sceneDepth : 0);
         Gl.ActiveTexture(Gl.TEXTURE0);
     }
 

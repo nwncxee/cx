@@ -1,3 +1,18 @@
+// The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split wash's interior (uSolid).
+// One test, so main's early ask of a plain diffuse can never discard a texel the full one keeps.
+bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip)
+{
+    float s = coverage * alpha;
+    return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut
+        || uOit != 0 && s <= 0.0
+        || uSolid != 0 && s < CX_SOLID_ALPHA;
+}
+
+#ifdef CX_DECAL_WRITE
+// the layer's writer draws no views, so every lit input only a view reads folds out of it
+#define uViz 0
+#endif
+
 void main()
 {
     if (uCapture == 2 && vWorld.z < uMirrorZ) discard;
@@ -46,12 +61,19 @@ void main()
     // probe capture never dissolves (a hole baked into the cube is permanent in every reflection).
     float kh = uCapture != 0 ? 1.0 : CxKeyhole(d.rot.z, vWorld, vDepth);
     if (kh < 0.0) discard;
+    // CX-273: a decal fragment the layer already folded into the surface under it draws nothing here
+    if (uDecal == 2 && CxDecalOn(imageLoad(uDecalSurf, ivec2(gl_FragCoord.xy)).r, vDepth)) discard;
     int slots = int(d.pbr.w);
     // 22 = normal-map coverage: magenta where the material's map REACHED the shader, grey where it
     // did not. The one thing viz 7 cannot say, because a mesh normal and a mapped one paint the same
     // way there -- and a map that dropped out at the per-slot re-fetch looks exactly like content
     // that never declared one.
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
+    // A pass that discards on coverage asks it of a plain diffuse (no env, normal-map coverage, flow, PLT or tint) here,
+    // ahead of the maps, SSAO and the sun's taps; the full test below stays the authority. Uniform-gated: opaque skips it.
+    if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & (CX_SLOT_ENV | CX_SLOT_COVERNRM)) == 0
+        && feat != CX_FEAT_FLOWMAP && !CxPltOn(vDraw) && CxTintRow(vDraw) < 0
+        && CxCoverCut(texture(uTex, vUV, uLodBias).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
     vec2 uv = vUV;
     // #123, shd_flowmap: the RG map is a per-texel flow DIRECTION, and the diffuse slides along it in
     // two half-offset phases blended by their own distance from the midpoint -- the blend is what
@@ -279,15 +301,38 @@ void main()
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
-    if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;
-    // an OIT fragment at zero coverage adds nothing to either OIT path; a decal quad's blank margin skips the lit stage
-    if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
+    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.
     float envLevel = (slots & CX_SLOT_ENV) != 0 ? 1.0 - texel.a : 0.0;
     texel.rgb = mix(texel.rgb, CX_ENV_GREY, envLevel);
     vec3 albedo = CxLinear(texel.rgb);
+#ifdef CX_DECAL_WRITE
+    // CX-273: the layer's writer. A fragment lying on the prepassed surface goes into the layer at its coverage
+    // and is done -- the surface's own lit stage shades it; any other is left to the blended pass.
+    {
+        float z = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
+        float c = clamp(coverage * d.rot.w * kh, 0.0, 1.0);
+        if (c <= 0.0 || !CxDecalOn(z, vDepth)) discard;
+        frag = vec4(albedo * c, c);
+        oDecalSurf = vec2(z, vDepth);
+        return;
+    }
+#else
+    // CX-273: ...and its reader -- any surface the nearest decal lies on (the prepassed ground, or a cutout or wash
+    // interior drawn over it) takes the decals' albedo over its own, before anything is lit, so they shade as one
+    float cxDecalCover = 0.0;
+    if (uDecal == 1)
+    {
+        ivec2 dp = ivec2(gl_FragCoord.xy);
+        vec4 dl = imageLoad(uDecalLayer, dp);
+        if (dl.a < 1.0 && CxDecalOn(gl_FragCoord.z, imageLoad(uDecalSurf, dp).g))
+        { albedo = albedo * dl.a + dl.rgb; cxDecalCover = 1.0 - dl.a; }
+    }
+    // 53 = the decal layer: how much of this surface's albedo the folded decals took, black where none did
+    if (uViz == 53) { frag = vec4(vec3(cxDecalCover), 1.0); return; }
+#endif
     // #122: the maps are sampled here and the synthesis itself is a pure function -- it has to fold
     // to a constant off-device (check-shaders.py) for the declared-beats-synthesised rule to be
     // checkable at all. A slot with nothing bound is not sampled, exactly as before.
@@ -303,7 +348,8 @@ void main()
     FragmentColor = vec4(1.0);      // stock main's own opener, for a body that skips it
     vFragmentNormal = N;
     vSurfaceNormal = normalize(vNrm);
-    vViewToSurface_n = normalize(vWorld - uEyePos);
+    vPosView = vWorld - uEyePos;
+    vViewToSurface_n = normalize(vPosView);
     fSpecularity = pbr.x; fRoughness = pbr.y; fMetallicness = pbr.z;
     SpecularColor = CxSpecColor(d.spc, albedo * matDiffuse, pbr.z, slots);
     // ADR 0026: a material that declares the glTF vocabulary is shaded by it under the modern model -- the

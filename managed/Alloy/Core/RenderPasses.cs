@@ -185,6 +185,15 @@ internal static class RenderPasses
             ContextLost = Weather.ContextLost,
             Stats = _ => Weather.Stats(),
         }, log);
+        // CX-273: the ground decals' layer -- two frame-sized targets and an FBO, so it goes with the context.
+        r.Register(new PassLifecycle
+        {
+            Name = "decals",
+            Attach = DecalLayer.Attach,
+            SelfCheck = DecalLayer.SelfCheck,
+            ContextLost = DecalLayer.Forget,
+            Stats = DecalLayer.Stats,
+        }, log);
         r.Register(new PassLifecycle
         {
             Name = "scenedepth",

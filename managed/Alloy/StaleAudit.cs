@@ -151,8 +151,9 @@ public sealed unsafe partial class AlloyRenderer
             return $"recipe {recipe} is seated but the part's is {live} (the slot was not re-seated)";
         if (recipe >= 0)
         {
-            if (_oCls[i] != (byte)DrawRecipe.Cls(recipe))
-                return $"class {(AlloyClass)_oCls[i]} is seated, the recipe says {(AlloyClass)DrawRecipe.Cls(recipe)}";
+            byte cls = DbClsOf(part, recipe, _oWash[i] != 0);
+            if (_oCls[i] != cls)
+                return $"class {(AlloyClass)_oCls[i]} is seated, the recipe says {(AlloyClass)cls}";
             // The env bit is the one slot flag StageDbPart re-decides per frame; the rest ride the seat.
             bool env = DbEnvMapped(part, DbTexOf(part, recipe, 0));
             if (env != ((_oSlots[i] & EnvSlot) != 0))

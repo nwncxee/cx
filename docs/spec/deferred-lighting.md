@@ -33,6 +33,47 @@ The deviation: the decal's specular lobe is the surface's (rough, specularity an
 the record was walked with), and the decal takes no film highlights of its own -- the surface's show through
 it at `1 - alpha`.
 
+### Ground decals fold into the surface (`DecalLayer`, CX-273)
+
+A ground decal is not lit at all. `AlloyRenderer.DbDecal` marks a lit, plainly alpha-blended (`SrcAlpha`,
+`OneMinusSrcAlpha`), up-facing sheet on a static object with no self-illumination, env map or hosted body (an
+alpha-tested cover, even one drawing blended: a cover hides its ground's relief and material as well as its colour,
+and a fold keeps both -- see washes below); the blended run puts those first, and before the opaque pass `DecalLayer` draws them with the lit stage built as
+`CX_DECAL_WRITE`, which stops at the albedo. A fragment lying on the prepassed surface (`CxDecalOn`: at most
+0.1 m above it, plus 0.1% of view depth, measured as height off the surface so a grazing view does not stretch it;
+one-sided, so a surface standing over the decal -- a foot on it -- is never taken for its ground) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share
+of the surface left showing, and writes an RG32F pair under `MIN`: the prepass depth it was judged on, and the
+nearest decal's view depth. Every other fragment is discarded there. In the opaque pass, the cutout pass and the
+wash interiors, a fragment the nearest decal lies on (`CxDecalOn` again, this surface against that decal depth)
+folds the layer into its albedo (`albedo * a + rgb`) before anything is lit, so the decal takes the surface's
+normal, material, sun and local shadows, lightmap, SSR, wetness and point lights by being that surface. A cutout
+or wash interior drawn over the prepassed ground (a tileset's grass rim along a road) therefore shows the decal
+rather than covering it. The blended pass draws the decal batches again and drops exactly the fragments the layer
+took (`uDecal == 2`, the same `CxDecalOn` on the same prepass depth), so a sheet that only partly lies on the
+ground keeps the rest as before.
+
+The deviations: the decal has no specular, roughness or normal of its own (the surface's stand); no 0.2 alpha
+discard on a blended-class decal (the layer takes the whole graded edge); a surface lying under the nearest decal
+at a pixel takes every decal folded there, even one that in fact lies below it; a decal over an unlit surface is
+lost at those pixels.
+`/alloy viz 53` shows what each surface folded. The layer is not drawn into the probe capture or the mirror.
+
+### Sheets that are not decals draw as washes
+
+A see-through sheet lying flat (every triangle within 45 degrees of horizontal, judged off the triangles) that
+is not a ground decal -- alpha-tested, refused by `DbDecal`, or a cover meant to hide what it lies on -- keeps
+its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`): under a polygon offset
+(-1, -2), so it does not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock
+ones at exactly 0). An alpha-tested wash whose diffuse measures graded alpha draws in the blended class, as
+vanilla draws its alpha-tested bucket (blend and the 0.2 test together): drawn hard, its edge showed the colour
+the texture keeps under alpha 0, white on many decal sheets. A blending wash that is not a decal is
+**split** (`AlloyRenderer.WashSplit`): its fully covered texels (coverage times part alpha at least 0.99,
+`uSolid`) draw solid with the cutouts through the deferred twin (`Issue.WashInteriors`, the `washes` GPU
+term); the rest blends, drawn under `GL_LESS` so every interior fragment meets its own depth and is dropped
+unshaded. A forward-lit blended fragment costs several opaque ones, and these sheets cover much of a town's ground. Only static objects' sheets are washes, and
+never a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
+session with the reason each is not a decal.
+
 ### The forward consumers' slim walk (`CX_LIGHT_LITE`)
 
 A transparent or per-vertex receiver compiled the whole of `CxClusteredLightLm`, which exists for a baked
@@ -112,7 +153,7 @@ Known deviations), so the twin writes the derivatives:
 | `coat`, `coatRough`, `sheen`, `sheenRough`, `f0`, `specScale` | `cxCoat`, `cxCoatRough`, `cxSheen`, `cxSheenRough`, `cxF0`, `cxSpecScale` -- the state `CxLoopSpec` reads |
 | `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0`); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`) |
 | `diffT` (Wd) | d(final pixel) / d(`point`): albedo x matDiffuse x kd x coatT x wxTransmit x dirOcc, plus the couplings through `diffuse` (the legacy env pattern's `(ambient + diffuse) * pat`, the coat probe's `(ambient + diffuse) * cenv`), x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
-| `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
+| `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`, the part's own alpha `rot.w`, never the texture's coverage) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `lmLum` | luminance of the undimmed `lm` (the `lmSub.x` denominator); 0 on an unbaked pixel |
 | `lmShare` (L) | the full contribution of `lm` to the final pixel (its diffuse through Wd and its lobe through P), so the debt is `final -= L * min(lmSub.x / lmLum + lmSub.y, 1)` |
 | `lmTexel`, `lmMover`, `lmPick` | `CxLmTexelWorld(chart.rec)`, `CxLightmapMover(chart.rec, vChart)`, `chart.pick` (byte lanes: a set index past 254 reads back as no channel -- ponytail: widen the lane if an area ever closes that many sets) |

@@ -160,6 +160,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal struct LitLoc
     {
         public int Oit, OitDim, OitGob, LightRecOn;
+        public int Decal, DecalZ;   // CX-273: the decal layer's mode and the projection terms its depth test reads
+        public int Solid;           // a wash's solid interior (Issue._solidPass)
         public int AlphaMip;   // CX-191
         public int Tex, Vp, Base, Cut, Viz, Ssao, SsaoOn, SsaoHalf, AoDirect, AoCutout,
                    SunTex, SunDynTex, CubeTex, CubeCount, CubeDynTex,   // CX-43: the rest of the receiver and the light curve ride CxPass
@@ -203,7 +205,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <see cref="OwnedLitFsMain"/> and the water stage. Raise it when a stage adds one, or the new mode is
     /// silently clamped at the parse and the screenshot is of the old view.
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
-    internal const int LightVizMax = 52;   // 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 41/42/45/46 = SSR trust, the reflection, the probe behind it and the mirrored draw (CX-51); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
+    internal const int LightVizMax = 53;   // 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 41/42/45/46 = SSR trust, the reflection, the probe behind it and the mirrored draw (CX-51); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
     /// <summary><c>/alloy aotest 1</c>: bind every lit part's own DIFFUSE texture on the AO slot and set the
     /// bit, so the whole AO path -- mask, unit, sampler, ambient multiply -- runs end to end on stock content.
@@ -516,7 +518,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <c>_litFailed</c> are NOT cleared: a stage that could not build is a fact about the source.</summary>
     internal static void ContextLost()
     {
-        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitHost = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
+        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitHost = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
         Ablation.Forget(delete: false);
         Highlight.HighlightContextLost();
         TriggerHighlight.ContextLost();

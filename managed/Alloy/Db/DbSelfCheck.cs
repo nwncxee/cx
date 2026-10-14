@@ -54,6 +54,7 @@ internal static class DbSelfCheck
             check.Expect(Recycled(), "a recycled chunk inherits nothing: the feed's columns are re-seeded and a stale MeshDef shortcut cannot name a foreign range");
             check.Expect(Ceilings(), "the ceilings: a tree past the biggest size class, the 64k bucket, and the render flag as a bucket term");
             check.Expect(Census(), "CX-113's census: one placement per mesh-drawing part, dropped with the part range, and the merge moves the head's placement onto the merged mesh");
+            check.Expect(Sheets(), "a sheet lies flat off its triangles, either side up, whatever its authored normals say; a wall does not");
             check.Expect(BlendIndices(), "the recipe's blend pair is an INDEX into the engine's blendTranslationTable, not a GL factor");
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
@@ -81,6 +82,20 @@ internal static class DbSelfCheck
         }
         log.Info(check.Ok ? "PartTree.SelfCheck: passed" : "PartTree.SelfCheck: FAILED");
         return check.Ok;
+    }
+
+    /// <summary>Oracle: hand-built geometry. A flat quad with its authored normals pointing DOWN lies flat but does
+    /// not face up; the same quad wound the other way still lies flat; a vertical one does not.</summary>
+    private static bool Sheets()
+    {
+        MeshDef down = Quad("t");
+        down.Normals = new[] { -Vector3.UnitZ, -Vector3.UnitZ, -Vector3.UnitZ, -Vector3.UnitZ };
+        MeshDef under = Quad("t");
+        under.Indices = new uint[] { 0, 2, 1, 0, 3, 2 };
+        MeshDef wall = Quad("t");
+        wall.Positions = new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 0, 1), new Vector3(0, 0, 1) };
+        return DrawRecipe.LiesFlat(down) && !DrawRecipe.FacesUp(down) && DrawRecipe.LiesFlat(under)
+            && DrawRecipe.LiesFlat(Quad("t")) && DrawRecipe.FacesUp(Quad("t")) && !DrawRecipe.LiesFlat(wall);
     }
 
     // ---------------------------------------------------------------- fixtures

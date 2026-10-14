@@ -522,6 +522,7 @@ def programs(g):
                         (5, "#define CX_NO_HOT 1\n#define CX_ABLATE 4\n"), (6, "#define CX_NO_HOT 1\n"))},
         # CX-189: the coverage layer's mask variant -- Programs.EnsureMaskProgram's define, in the same place
         "clustered lit (A2C mask)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_A2C_MASK 1\n", 1)),
+        "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),

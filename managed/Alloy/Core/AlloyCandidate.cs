@@ -46,10 +46,6 @@ internal struct AlloyCandidate
     /// the blended and additive passes translate to <c>glBlendFunc</c>. Part of the batch key: one multidraw
     /// carries one blend state.</summary>
     public int Src, Dst;
-    /// <summary>A wash: a graded-alpha diffuse filed into the blended class rather than Cutout. Draws with the
-    /// depth mask OFF, because a wash occludes nothing -- vanilla gets the same picture from the model's
-    /// <c>transparencyhint</c> child order, which Alloy's distance sort does not reproduce.</summary>
-    public bool Wash;
     /// <summary>The SharedMaterial's <c>twosided</c> keyword -- this part draws with face culling OFF.
     /// False (cull back faces) is the engine's default and what a part with no material gets. Part of the
     /// batch key: culling is GL state, and one multidraw cannot vary it.</summary>

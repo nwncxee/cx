@@ -15,7 +15,8 @@ internal static unsafe class CasterGather
 {
     /// <summary>SSBO bindings private to this dispatch (<see cref="SsboSlots"/>), beside
     /// <see cref="CullPass.BindSphere"/>, which it also reads because the bounds are the colour cull's own.</summary>
-    internal const uint BindSrc = SsboSlots.GatherSrc, BindCmd = SsboSlots.GatherCmd, BindCount = SsboSlots.GatherCount;
+    internal const uint BindSrc = SsboSlots.GatherSrc, BindCmd = SsboSlots.GatherCmd, BindCount = SsboSlots.GatherCount,
+                        BindCast = SsboSlots.CastSphere;
 
     // CX-50: ...and the two COARSE runs of the same mesh, out of which every view picks one by its own texel
     // size. ONE record per caster whatever levels it has: the staging, its batch regions, the command buffer
@@ -109,6 +110,8 @@ internal static unsafe class CasterGather
         public int LuDrawN, LuViewN, LuCull, LuRx, LuGroups, LuPlanes;
         public uint ViewBuf;
         public int ViewCap;
+        public uint CastBuf;
+        public int CastCap;
         public readonly uint[] LyCmd = new uint[Rotation], LyCnt = new uint[Rotation];
         public long LyCmdCap;
         public int LyCntCap, LyAt;
@@ -227,7 +230,7 @@ internal static unsafe class CasterGather
         _gl.DrawN = 0;
         _gl.SrcDirty |= changed;
         if (drawN <= 0 || groups <= 0 || !Ensure()) return false;
-        if (CullPass.SphereBuf == 0) return false;   // no colour build yet: no bounds to cull against
+        if (CullPass.SphereBuf == 0 || _gl.CastBuf == 0) return false;   // no colour build yet: no bounds to cull against
 
         long srcWords = (long)drawN * SrcUints;
         bool grow = drawN > _gl.SrcCap;
@@ -271,6 +274,7 @@ internal static unsafe class CasterGather
         Gl.UseProgram(_gl.Prog);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindSrc, dyn ? _gl.DynSrcBuf : _gl.SrcBuf);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, CullPass.BindSphere, CullPass.SphereBuf);
+        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCast, _gl.CastBuf);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCmd, _gl.CmdBuf[_gl.At]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCount, _gl.CntBuf[_gl.At]);
         Gl.Uniform1i(_gl.UDrawN, drawN);
@@ -388,6 +392,17 @@ internal static unsafe class CasterGather
     /// stages -- <c>AlloyRenderer.DrawBufDecl</c>'s pattern, so the three cannot drift apart.</summary>
     internal static string ViewTblDecl => ShaderSource.Get("cx_viewtbl.glsl");
 
+    /// <summary>The per-slot caster sphere upload (<c>AlloyRenderer._dCastSph</c>), beside the colour cull's: always
+    /// geometric, so a posed skin or dangly part the colour cull exempts is still reach-culled per shadow view.</summary>
+    internal static void UploadCasterSpheres(float* spheres, int slots)
+    {
+        if (slots <= 0 || Gl.NamedBufferSubData == null) return;
+        if (_gl.CastBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.CastBuf = b; _gl.CastCap = 0; }
+        var size = (IntPtr)((long)slots * 4 * sizeof(float));
+        if (slots > _gl.CastCap) { Gl.NamedBufferData(_gl.CastBuf, size, null, Gl.DYNAMIC_DRAW); _gl.CastCap = slots; }
+        Gl.NamedBufferSubData(_gl.CastBuf, IntPtr.Zero, size, spheres);
+    }
+
     /// <summary>Layered dispatches issued, and views they covered -- the period line's halves.</summary>
     internal static long LayerDispatches, LayerViews;
 
@@ -416,7 +431,7 @@ internal static unsafe class CasterGather
     /// reusing a pair <see cref="Rotation"/> chunks later leaves the barriers standing.</summary>
     internal static bool DispatchLayer(float* views, int viewN, bool dynSrc = false)
     {
-        if (_gl.LayerProg == 0 || _gl.DrawN <= 0 || viewN <= 0 || CullPass.SphereBuf == 0) return false;
+        if (_gl.LayerProg == 0 || _gl.DrawN <= 0 || viewN <= 0 || CullPass.SphereBuf == 0 || _gl.CastBuf == 0) return false;
         // S8, as in Dispatch. The COMMAND buffer stays sized by the full staging: a survivor's region is its
         // own batch's, which is the full staging's, whichever source the thread came out of.
         bool dyn = dynSrc && DynamicReady;
@@ -442,6 +457,7 @@ internal static unsafe class CasterGather
         Gl.UseProgram(_gl.LayerProg);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindSrc, dyn ? _gl.DynSrcBuf : _gl.SrcBuf);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, CullPass.BindSphere, CullPass.SphereBuf);
+        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCast, _gl.CastBuf);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCmd, _gl.LyCmd[_gl.LyAt]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCount, _gl.LyCnt[_gl.LyAt]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindView, _gl.ViewBuf);
@@ -490,11 +506,9 @@ internal static unsafe class CasterGather
     // it). The ladder is MeshArena.Draw's, term for term -- level 2 falls back to level 1 and then to the
     // base run -- so a level the simplifier declined bakes the finer one and never nothing. Two cases need
     // no arithmetic at all and fall out of it: thresholds of 0 (detail off) and a bound exempt from the cull
-    // (1e30, a posed skin or a dangly), both of which keep the base run.
-    // ponytail: that exemption is the ceiling -- a creature or a dangly bakes full detail into every view,
-    // however far, because the bound this reads is the COLOUR cull's and the colour cull exempts them. The
-    // upgrade is a 12th word carrying _liveR, the geometric caster radius, which the live list already
-    // holds; it is left out because character shadows are the ones a regression would show in first.
+    // (1e30, a slot with no caster sphere either), both of which keep the base run.
+    // A posed skin or dangly reads its caster sphere here (uCast), so it is reach-culled per view; it still
+    // bakes its base run, because no coarser run is generated for a skinned or dangly mesh.
     /// <summary>The detail pick's GLSL, with the view's focus, its point flag and its two bound thresholds
     /// spelled as the calling dispatch reads them. Leaves <c>cnt</c>/<c>first</c> declared: the command
     /// write takes them instead of the record's level-0 words.</summary>
@@ -522,6 +536,7 @@ internal static unsafe class CasterGather
         layout(local_size_x = 64) in;   // GroupSize
 
         layout(std430, binding = 9) readonly buffer CxCullSphere { vec4 uSph[]; };
+        layout(std430, binding = 12) readonly buffer CxCastSphere { vec4 uCast[]; };
         layout(std430, binding = 8) readonly buffer CxGatherSrc  { uint uSrc[]; };
         layout(std430, binding = 10) writeonly buffer CxGatherCmd { uint uCmd[]; };
         layout(std430, binding = 11) buffer CxGatherCount         { uint uCnt[]; };
@@ -550,8 +565,9 @@ internal static unsafe class CasterGather
             if (uSet == 2 && uSrc[b + 6u] == 0u) return;
             int slot = int(uSrc[b + 3u]);
             vec4 s = uSph[slot];
-            // s.w >= 1e29 is NeverCull: bounds the colour cull exempts (posed skinmesh, dangly, displacing,
-            // degenerate) are exempt here identically -- never reach-culled.
+            // a bound the colour cull exempts (posed skin, dangly, displacing) takes the caster's geometric
+            // sphere, pose slack included; only a slot with neither stays never reach-culled
+            if (s.w >= 1e29) { vec4 g = uCast[slot]; if (g.w > 0.0 && g.w < 1e29) s = g; }
             if (uCull != 0 && s.w < 1e29)
             {
                 float r = s.w;
@@ -599,6 +615,7 @@ internal static unsafe class CasterGather
         layout(local_size_x = 64, local_size_y = 1) in;   // GroupSize
 
         layout(std430, binding = 9) readonly buffer CxCullSphere { vec4 uSph[]; };
+        layout(std430, binding = 12) readonly buffer CxCastSphere { vec4 uCast[]; };
         layout(std430, binding = 8) readonly buffer CxGatherSrc  { uint uSrc[]; };
         layout(std430, binding = 10) writeonly buffer CxGatherCmd { uint uCmd[]; };
         layout(std430, binding = 11) buffer CxGatherCount         { uint uCnt[]; };
@@ -623,6 +640,7 @@ internal static unsafe class CasterGather
             if (set == 2 && uSrc[b + 6u] == 0u) return;
             int slot = int(uSrc[b + 3u]);
             vec4 s = uSph[slot];
+            if (s.w >= 1e29) { vec4 g = uCast[slot]; if (g.w > 0.0 && g.w < 1e29) s = g; }
             if (uCull != 0 && s.w < 1e29)
             {
                 float r = s.w;
@@ -669,6 +687,7 @@ internal static unsafe class CasterGather
            && LayerCs.Contains("offEnds = abs(t) > uViewTbl[vi].b.w + r;")
            && LayerCs.Contains("offAxis = dot(perp, perp) > (reach + r) * (reach + r);")
            && LayerCs.Contains($"binding = {CullPass.BindSphere})") && LayerCs.Contains("CxCullSphere")
+           && LayerCs.Contains($"binding = {BindCast})") && LayerCs.Contains("if (s.w >= 1e29) { vec4 g = uCast[slot];")
            && LayerCs.Contains("if (uCull != 0 && s.w < 1e29)")
            && LayerCs.Contains($"uint b = i * {SrcUints}u;")
            && LayerCs.Contains("if (set == 1 && uSrc[b + 6u] != 0u) return;")
@@ -713,6 +732,7 @@ internal static unsafe class CasterGather
            && GatherCs.Contains("offAxis = dot(perp, perp) > (uReach + r) * (uReach + r);")
            // #303: the shared bounds, at the colour cull's own binding, with its own exemption value.
            && GatherCs.Contains($"binding = {CullPass.BindSphere})") && GatherCs.Contains("CxCullSphere")
+           && GatherCs.Contains($"binding = {BindCast})") && GatherCs.Contains("if (s.w >= 1e29) { vec4 g = uCast[slot];")
            && GatherCs.Contains("if (uCull != 0 && s.w < 1e29)")
            && GatherCs.Contains("uCmd[q + 4u] = uint(slot);")
            // #488: same receiver cull, flagged per dispatch
