@@ -2,12 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using CX.Framework;
 
 namespace CX.Services.Panels;
 
 /// <summary>
-/// The inline markup of a panel's text: <c>&lt;c=#RRGGBB[AA]&gt;</c>, <c>&lt;s=N&gt;</c> (snapped to the size ladder),
+/// The inline markup of a panel's text: <c>&lt;c=#RRGGBB[AA]&gt;</c> or <c>&lt;c=@role[/aa]&gt;</c>, <c>&lt;s=N&gt;</c> (snapped to the size ladder),
 /// <c>&lt;i&gt;</c>, their closing tags, <c>&lt;icon=NAME&gt;</c> and <c>&lt;br&gt;</c>; a newline in the string breaks the line
 /// too, and <c>&lt;&lt;</c> is a literal <c>&lt;</c>. A tag it does not know, or a bad value, stays in the text as typed.
 /// Cold: parses once, when a declaration arrives.
@@ -25,20 +24,20 @@ internal static class PanelMarkup
         error = "";
         if (s.Length > PanelLimits.MaxText) { error = $"text over {PanelLimits.MaxText} characters"; return false; }
         var list = new List<Run>();
-        var colors = new List<uint>();
+        var colors = new List<Paint>();
         var sizes = new List<float>();
         int italic = 0;
         var buf = new StringBuilder();
         void Flush()
         {
             if (buf.Length == 0) return;
-            list.Add(new Run(buf.ToString(), "", colors.Count > 0 ? colors[^1] : 0, sizes.Count > 0 ? sizes[^1] : 0, italic > 0, false));
+            list.Add(new Run(buf.ToString(), "", colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, italic > 0, false));
             buf.Clear();
         }
         for (int i = 0; i < s.Length; i++)
         {
             char ch = s[i];
-            if (ch == '\n') { Flush(); list.Add(new Run("", "", 0, 0, false, true)); continue; }
+            if (ch == '\n') { Flush(); list.Add(new Run("", "", default, 0, false, true)); continue; }
             if (ch != '<') { buf.Append(ch); continue; }
             if (i + 1 < s.Length && s[i + 1] == '<') { buf.Append('<'); i++; continue; }
             int end = s.IndexOf('>', i + 1);
@@ -46,14 +45,14 @@ internal static class PanelMarkup
             Flush();
             switch (name)
             {
-                case "c": colors.Add(HexColour.TryParse(arg, out uint c) ? c : 0); break;
+                case "c": colors.Add(Paint.TryParse(arg, out Paint c) ? c : default); break;
                 case "/c": if (colors.Count > 0) colors.RemoveAt(colors.Count - 1); break;
                 case "s": sizes.Add(style.Snap(size)); break;
                 case "/s": if (sizes.Count > 0) sizes.RemoveAt(sizes.Count - 1); break;
                 case "i": italic++; break;
                 case "/i": if (italic > 0) italic--; break;
-                case "br": list.Add(new Run("", "", 0, 0, false, true)); break;
-                case "icon": list.Add(new Run("", arg, colors.Count > 0 ? colors[^1] : 0, sizes.Count > 0 ? sizes[^1] : 0, false, false)); break;
+                case "br": list.Add(new Run("", "", default, 0, false, true)); break;
+                case "icon": list.Add(new Run("", arg, colors.Count > 0 ? colors[^1] : default, sizes.Count > 0 ? sizes[^1] : 0, false, false)); break;
             }
             i = end;
         }
@@ -73,7 +72,7 @@ internal static class PanelMarkup
         switch (name)
         {
             case "/c": case "/s": case "i": case "/i": case "br": return eq < 0;
-            case "c": return HexColour.TryParse(arg, out _);
+            case "c": return Paint.TryParse(arg, out _);
             case "s": return float.TryParse(arg, NumberStyles.Float, CultureInfo.InvariantCulture, out size) && float.IsFinite(size);
             case "icon": return arg.Length is > 0 and <= PanelLimits.MaxIconName;
             default: return false;

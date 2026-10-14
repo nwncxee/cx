@@ -8,7 +8,7 @@ namespace CX.Services.Cards;
 
 /// <summary>
 /// The cards one key holds, in the order they draw. <see cref="Views"/> is the render thread's cache of their layout: it
-/// is rebuilt when the card is shown, and when the font atlas or the UI scale changes under it.
+/// is rebuilt when the card is shown, and when the font atlas, the UI scale or the player's look changes under it.
 /// </summary>
 internal sealed class CardSet
 {
@@ -19,6 +19,8 @@ internal sealed class CardSet
     public PanelView[]? Views;
     public int ViewEpoch;
     public float ViewScale;
+    /// <summary>The <see cref="Theme.Epoch"/> the cached layout baked its role colours at.</summary>
+    public int ViewTheme;
 
     public CardSet(string key, PanelDecl[] cards, string raw = "") { Key = key; Cards = cards; Raw = raw; }
 }

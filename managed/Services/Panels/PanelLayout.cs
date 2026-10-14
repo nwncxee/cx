@@ -91,8 +91,8 @@ internal sealed class PanelLayout
         float h = Stack(c.Blocks, pad, pad, w - 2f * pad, w, false) + pad;
         _v.W = w; _v.H = Math.Max(h, 2f * pad);
         _v.TabH = c.Tab.Length > 0 ? baseAtlas.LineHeight + st.TabExtra * _s : 0f;
-        if (st.Glow != 0) Glow(w, _v.H);
-        uint from = st.BgFrom, to = st.BgTo ?? from;
+        if (st.Glow.Set) Glow(w, _v.H);
+        uint from = st.BgFrom, to = st.BgTo is { } far ? far : from;
         switch (st.Dir)
         {
             case BgDir.Horizontal: Gradient(0, 0, w, _v.H, from, to, to, from); break;
@@ -100,12 +100,12 @@ internal sealed class PanelLayout
             default: Gradient(0, 0, w, _v.H, from, from, to, to); break;
         }
         Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
-        if (st.Border2 != 0)
+        if (st.Border2.Set)
         {
             float i2 = st.Border2Inset * _s;
             if (_v.W > 2f * i2 && _v.H > 2f * i2) Frame(i2, i2, w - i2, _v.H - i2, st.Border2, st.Border2W, st.Sides);
         }
-        if (st.Corners != 0) Corners(w, _v.H);
+        if (st.Corners.Set) Corners(w, _v.H);
         if (_v.TabH > 0f) Tab(baseAtlas);
         foreach (PanelImage i in c.Images) Image(i);
         Stack(c.Blocks, pad, pad, w - 2f * pad, w, true);
@@ -122,7 +122,8 @@ internal sealed class PanelLayout
     private void Glow(float w, float h)
     {
         int steps = Math.Max(1, (int)MathF.Ceiling(St.GlowSpread * _s));
-        uint rgb = St.Glow & 0xFFFFFF00, a0 = St.Glow & 0xFF;
+        uint glow = St.Glow;
+        uint rgb = glow & 0xFFFFFF00, a0 = glow & 0xFF;
         for (int i = 1; i <= steps; i++)
         {
             uint a = (uint)(a0 * (1f - (i - 1f) / steps) * St.GlowAlpha);
@@ -149,7 +150,7 @@ internal sealed class PanelLayout
         foreach (Rune r in text.EnumerateRunes()) tw += a.AdvanceOf(r);
         float x = St.TabX * _s, pad = St.TabPad * _s;
         Rect(x, -_v.TabH, x + tw + 2f * pad, 0f, St.TabBg);
-        Words(text, x + pad, -_v.TabH + St.TabDrop * _s + a.Ascent, a, 1f, St.TabText != 0 ? St.TabText : St.Text, false);
+        Words(text, x + pad, -_v.TabH + St.TabDrop * _s + a.Ascent, a, 1f, St.TabText.Set ? St.TabText : St.Text, false);
     }
 
     private void Image(PanelImage i)
@@ -170,12 +171,12 @@ internal sealed class PanelLayout
     private float LayoutBlock(Block b, float x, float y, float w, float fullW, bool emit)
     {
         float gap = (b.After ?? St.Gap) * _s;
-        uint text = b.Color != 0 ? b.Color : St.Text;
+        uint text = b.Color.Set ? b.Color : St.Text;
         switch (b.Kind)
         {
             case BlockKind.Divider:
                 float m = (b.Margin ?? St.DividerMargin) * _s, th = Math.Max(1f, (b.Thick ?? St.DividerThick) * _s);
-                if (emit) Rect(0, y + m, fullW, y + m + th, b.Color != 0 ? b.Color : St.Divider);
+                if (emit) Rect(0, y + m, fullW, y + m + th, b.Color.Set ? b.Color : St.Divider);
                 return y + 2f * m + th + After(b);
             case BlockKind.Icons:
                 return Icons(b, x, y, w, emit) + gap;
@@ -184,7 +185,7 @@ internal sealed class PanelLayout
                 float end = Stack(b.Kids, x, y + sp, w, fullW, false) + sp;
                 if (emit)
                 {
-                    if (b.Tint != 0) Rect(0, y, fullW, end, b.Tint);
+                    if (b.Tint.Set) Rect(0, y, fullW, end, b.Tint);
                     Stack(b.Kids, x, y + sp, w, fullW, true);
                 }
                 return end + After(b);
@@ -206,7 +207,7 @@ internal sealed class PanelLayout
     private float Status(Block b, float x, float y, float w, bool emit)
     {
         float box = b.Icon.Length > 0 ? b.IconPx * _s : 0f, gap = box > 0f ? (b.Spacing ?? St.StatusGap) * _s : 0f;
-        uint text = b.Color != 0 ? b.Color : St.Text;
+        uint text = b.Color.Set ? b.Color : St.Text;
         float h = Flow(b.Runs, x + box + gap, y, w - box - gap, b.Size, text, b.Align, false);
         float rowH = Math.Max(h, box);
         if (!emit) return y + rowH;
@@ -222,8 +223,8 @@ internal sealed class PanelLayout
 
     private void FrameBox(Block b, float x, float y, float box)
     {
-        Rect(x, y, x + box, y + box, b.FrameFill != 0 ? b.FrameFill : St.FrameFill);
-        Frame(x, y, x + box, y + box, b.FrameLine != 0 ? b.FrameLine : St.FrameLine, St.FrameW, "trbl");
+        Rect(x, y, x + box, y + box, b.FrameFill.Set ? b.FrameFill : St.FrameFill);
+        Frame(x, y, x + box, y + box, b.FrameLine.Set ? b.FrameLine : St.FrameLine, St.FrameW, "trbl");
     }
 
     private float Icons(Block b, float x, float y, float w, bool emit)
@@ -246,12 +247,12 @@ internal sealed class PanelLayout
     private float Footer(Block b, float x, float y, float w, float fullW, bool emit)
     {
         float pad = (b.Pad ?? St.FooterPad) * _s;
-        uint rgba = b.Color != 0 ? b.Color : St.Text;
+        uint rgba = b.Color.Set ? b.Color : St.Text;
         float lw = b.Right.Length == 0 ? w : w * St.FooterSplit, rw = b.Runs.Length == 0 ? w : w * (1f - St.FooterSplit);
         float h = Math.Max(Flow(b.Runs, x, 0, lw, b.Size, rgba, 0, false), Flow(b.Right, x, 0, rw, b.Size, rgba, 1, false));
         if (emit)
         {
-            Rect(0, y, fullW, y + h + 2f * pad, b.Tint != 0 ? b.Tint : St.FooterBand);
+            Rect(0, y, fullW, y + h + 2f * pad, b.Tint.Set ? b.Tint : St.FooterBand);
             Flow(b.Runs, x, y + pad, lw, b.Size, rgba, 0, true);
             Flow(b.Right, x + w - rw, y + pad, rw, b.Size, rgba, 1, true);
         }
@@ -278,7 +279,7 @@ internal sealed class PanelLayout
             }
             float mult = r.Size > 0f ? r.Size : size;
             var (a, k) = _face(mult);
-            uint col = r.Rgba != 0 ? r.Rgba : rgba;
+            uint col = r.Rgba.Set ? r.Rgba : rgba;
             float asc = a.Ascent * k, desc = (a.LineHeight - a.Ascent) * k;
             if (r.Icon.Length > 0)
             {

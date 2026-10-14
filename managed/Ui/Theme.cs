@@ -79,10 +79,16 @@ public static class Theme
     /// <summary>Resolve a role identifier (<c>@accent</c>, case-insensitive) to <c>rrggbbaa</c>, opaque.</summary>
     public static bool TryRole(ReadOnlySpan<char> s, out uint rgba)
     {
-        rgba = 0;
-        if (s.Length < 2 || s[0] != '@' || !char.IsAsciiLetter(s[1]) || !Enum.TryParse(s[1..], true, out Role r) || !Enum.IsDefined(r)) return false;
-        rgba = Rgba(r);
-        return true;
+        bool ok = TryRoleName(s, out Role r);
+        rgba = ok ? Rgba(r) : 0;
+        return ok;
+    }
+
+    /// <summary>The role a role identifier names, for a caller that keeps the role itself and resolves it per frame.</summary>
+    public static bool TryRoleName(ReadOnlySpan<char> s, out Role role)
+    {
+        role = default;
+        return s.Length >= 2 && s[0] == '@' && char.IsAsciiLetter(s[1]) && Enum.TryParse(s[1..], true, out role) && Enum.IsDefined(role);
     }
 
     private static uint[] Shift(uint[] src, float hue, float satMul)

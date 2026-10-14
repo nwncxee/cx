@@ -1,4 +1,5 @@
 using System;
+using CX.Ui;
 
 namespace CX.Services.Panels;
 
@@ -14,7 +15,7 @@ internal enum Align { Start, Center, End }
 /// <summary>
 /// Every value that decides how a panel looks or where it sits. The field initialisers are the defaults and the only place
 /// they are written; the server's <c>cardstyle</c> line replaces them for every card, and a card's own fields replace them
-/// for that card. Lengths are design px, colours 0xRRGGBBAA.
+/// for that card. Lengths are design px; a colour is a <see cref="Paint"/>, so a default of it follows the player's look.
 /// </summary>
 internal sealed class PanelStyle
 {
@@ -26,13 +27,18 @@ internal sealed class PanelStyle
     public float StatusPx = 22f, IconsPx = 28f, ImageSize = 64f, Leading = 1f, Slant = 0.2f;
     public float TabX = 8f, TabPad = 6f, TabExtra = 4f, TabDrop = 2f;
 
+    /// <summary>The colours that follow the player's look, by role; a declared colour replaces one outright.</summary>
+    public Paint Text = Paint.Of(Role.Tx), BgFrom = Paint.Of(Role.PanelBg, 0xF2), Border = Paint.Of(Role.Border);
+    /// <summary>The frame of an icon and the tab behind a card's name, by role; the translucent black and white
+    /// washes sit over whatever the look draws, so they stay as written.</summary>
+    public Paint FrameLine = Paint.Of(Role.Grip, 0xC0), TabBg = Paint.Of(Role.MasterBg, 0xB0);
     // not-an-offset: RRGGBBAA colours
-    public uint Text = 0xE6E6E6FF, BgFrom = 0x12161CF2, Border = 0x6E6E6EFF, Divider = 0xFFFFFF30, FooterBand = 0x00000066;
-    public uint FrameFill = 0x00000066, FrameLine = 0xB8B8B8C0, TabBg = 0x000000B0, TabText = 0, Shadow = 0, Border2 = 0, Glow = 0, Corners = 0;
+    public Paint Divider = Paint.Literal(0xFFFFFF30), FooterBand = Paint.Literal(0x00000066), FrameFill = Paint.Literal(0x00000066);
+    public Paint TabText, Shadow, Border2, Glow, Corners;
     /// <summary>The gradient's far colour; null is the near colour, a flat fill.</summary>
-    public uint? BgTo;
+    public Paint? BgTo;
     /// <summary>The colour a <c>dim</c> block takes when it names none; only its RGB is used.</summary>
-    public uint DimColor = 0xFFFFFFFF;
+    public Paint DimColor = Paint.Literal(0xFFFFFFFF);  // not-an-offset: an RRGGBBAA colour
     public byte DimAlpha = 0x99;  // not-an-offset: an alpha byte
     public BgDir Dir = BgDir.Vertical;
     public float BorderW = 1f, FrameW = 1f, Border2W = 1f, Border2Inset = 3f, ShadowDx = 1f, ShadowDy = 1f, GlowSpread = 8f, GlowAlpha = 0.5f, CornerLen = 12f, CornerW = 2f;

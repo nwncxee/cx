@@ -32,7 +32,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
 | `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `6`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style). Older values are listed below |
+| `cx_cap_card` | `7`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour. Older values are listed below |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
@@ -50,6 +50,8 @@ A client that sends an older value reads less. Each line says what that value la
 
 `cx_cap_card`:
 
+- `6` took no role identifier (`@accent`, `@panelbg/f2`) where a colour goes, and the colours it left alone were fixed: a card drew
+  the same greys whatever look and palette the player had chosen.
 - `5` always drew the nearest ring of a `glow` at half the colour's opacity: no `glowalpha`.
 - `4` took no `@model:<key>` image `src`.
 - `3` had no style fields and no `cardstyle`; its spacing, colours, pulse, width range, size ladder, placement and delay were fixed.
@@ -221,9 +223,10 @@ declared. A field CX does not know is ignored. A field it knows with the wrong t
 a count or length over a limit (see [Limits](#limits)) is **refused**, and the whole line with it. A size that has a range is
 **clamped** into it instead.
 
-A colour is `"#RRGGBB"` or `"#RRGGBBAA"`. Anything else is not a colour: not `#RGB`, not `0x` and not a number. Every colour a server sends reads the
+A colour is `"#RRGGBB"` or `"#RRGGBBAA"`, or in a card, a style and a `<c=>` markup tag a **role identifier**: `"@accent"`, or `"@accent/80"` for
+a hex opacity (see [Style](#style)). Anything else is not a colour: not `#RGB`, not `0x` and not a number. Every colour a server sends reads the
 same way, in a card, a style, a `<c=>` markup tag and a model view's `bg`, `lightcolor` and `lightambient`; the model view settings also keep their
-number forms. No other key a server sends is a colour: the `nui.<id>.*` render keys, the inventory and held-image keys take numbers and text, and the swatch
+number forms and take no role identifier. No other key a server sends is a colour: the `nui.<id>.*` render keys, the inventory and held-image keys take numbers and text, and the swatch
 knobs (a colour written without the `#`) are the player's alone.
 
 | card field | meaning |
@@ -257,12 +260,28 @@ all off unless declared; the fields a type reads are listed here.
 
 ### Style
 
-Every look value of a card is a field of the style, with today's look as its default. A server that sets none sees no change. The
+Every look value of a card is a field of the style. A server that sets none gets a card in the player's own look (see below). The
 same fields can sit on a card (for that card), or in one `cardstyle=<JSON object>` line (for every card). A card's own field beats
 the style's, and the style's beats the default. `cardstyle` can come before or after the card lines: cards already held are laid
 out again against it. `cardstyle=` restores the defaults and so does `*=`; `card.*=` leaves the style alone. A style CX refuses is
 logged and the defaults apply. Lengths are design px (they scale with the UI), colours are `#RRGGBB` or `#RRGGBBAA`, and a length
 outside its range is clamped.
+
+**Colours follow the player's look.** The player picks one look for every CX window with two knobs: `ui.look` (`native`, the game's own
+GUI art, or `flat`) and `ui.palette` (`slate`, `ember`, `moss`, `wine`, `ash`). A colour field a server does not set follows that choice,
+so a card sits in the same chrome as the rest of CX: `color` is the look's text colour, `bg` its panel background at the same opacity as
+before, `border` its border, `frameline` its edge highlight and `tabcolor` its darkest ground. The washes are unchanged: `divider`,
+`footerband`, `framefill` and `dimcolor` are the same translucent white and black whatever the look. A field the server **does** set is
+drawn exactly as sent.
+
+A colour may also name a role instead of a value, so server content moves with the look too: `"@accent"` is the role identifier, and
+`"@accent/80"` the same role at a hex opacity (`00`-`ff`). It is resolved every time the card is drawn, so a player changing `ui.look` or
+`ui.palette` re-colours the cards on screen. The roles are
+`@panelbg`, `@border`, `@headerbg`, `@catbg`, `@subbg`, `@colborder`, `@navon`, `@accent`, `@accent2`, `@input`, `@selected`, `@tx`, `@tx2`,
+`@tx3`, `@grip`, `@hi`, `@toggleoff`, `@frame`, `@frame2`, `@track`, `@listbg`, `@masterbg`, `@stripbg`, `@stripborder`, `@warn`, `@off`,
+`@badgeframe` and `@ok` (case does not matter). A role no client knows refuses the line, like any bad colour, so send a role only to a
+client advertising `cx_cap_card` 7 or better. Both knobs are server-holdable if you would rather decide the look yourself: `PolicySet`
+lines `ui.look=native` and `ui.palette=ember`.
 
 | field | meaning | range | default |
 |---|---|---|---|
@@ -284,9 +303,9 @@ outside its range is clamped.
 | `leading` | line height as a multiple of the text's | 0.5-4 | 1 |
 | `slant` | how far italic text leans | -1 to 1 | 0.2 |
 | `tabx`, `tabpad`, `tabextra`, `tabdrop` | the tab's left offset, its side padding, the height it adds to the line, and the text's drop from its top | 0-256 | 8, 6, 4, 2 |
-| `color` | the default text colour | colour | `#E6E6E6` |
-| `bg` | as in the card table above (`dir` also takes `d`, top left to bottom right). Without `to` the fill is flat, and `to` may be clear | colour or object | `#12161C` at 95% |
-| `border` | the frame's colour | colour | `#6E6E6E` |
+| `color` | the default text colour | colour | `@tx` |
+| `bg` | as in the card table above (`dir` also takes `d`, top left to bottom right). Without `to` the fill is flat, and `to` may be clear | colour or object | `@panelbg/f2` |
+| `border` | the frame's colour | colour | `@border` |
 | `borderw` | the frame's thickness | 0-256, at least 1 px drawn; an empty `sides` draws no frame | 1 |
 | `sides` | which edges the frame draws: any of `t r b l` | text | `trbl` |
 | `border2`, `border2w`, `border2inset` | a second frame inside the first (a double border): colour, thickness and inset | colour, 0-256, 0-256 | none, 1, 3 |
@@ -295,8 +314,8 @@ outside its range is clamped.
 | `shadow`, `shadowdx`, `shadowdy` | a drop shadow under every glyph | colour, -16..16 | none, 1, 1 |
 | `divider` | the `divider`'s colour | colour | `#FFFFFF` at 19% |
 | `footerband` | the `footer`'s band | colour | `#000000` at 40% |
-| `framefill`, `frameline`, `framew` | the fill, line and thickness of an icon's frame | colour, colour, 0-256 | `#000000` at 40%, `#B8B8B8` at 75%, 1 |
-| `tabcolor`, `tabtext` | the tab's background, and its text (the default text colour when absent) | colour | `#000000` at 69% |
+| `framefill`, `frameline`, `framew` | the fill, line and thickness of an icon's frame | colour, colour, 0-256 | `#000000` at 40%, `@grip/c0`, 1 |
+| `tabcolor`, `tabtext` | the tab's background, and its text (the default text colour when absent) | colour | `@masterbg/b0` |
 | `dimcolor`, `dimalpha` | what a `dim` block with no colour of its own draws in, and its opacity | colour (RGB used), 0-1 | `#FFFFFF`, 0.6 |
 | `pulsemin`, `pulseperiod` | a `pulse` block's faintest opacity, and ms for one full fade out and back | 0-1, 100-60000 | 0.35, 1200 |
 
@@ -336,7 +355,7 @@ element's card exists. Send one small stand-in per id family when the window ope
 
 | markup | effect |
 |---|---|
-| `<c=#RRGGBB>...</c>` | colour (`#RRGGBBAA` for opacity) |
+| `<c=#RRGGBB>...</c>` | colour (`#RRGGBBAA` for opacity, or a role: `<c=@accent>`, `<c=@accent/80>`) |
 | `<s=1.6>...</s>` | size, snapped to the sizes above |
 | `<i>...</i>` | italic |
 | `<icon=NAME>` | an inline icon, as tall as its line |

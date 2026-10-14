@@ -72,7 +72,7 @@ internal static class PanelParser
     /// <summary>The number <paramref name="name"/> names in <paramref name="e"/>, or <paramref name="def"/>, clamped to the range.</summary>
     private static float Clamped(JsonElement e, string name, float def, float lo, float hi) => Math.Clamp(Num(e, name, def), lo, hi);
 
-    private static void Rgba(JsonElement e, string name, ref uint field)
+    private static void Rgba(JsonElement e, string name, ref Paint field)
     {
         if (e.TryGetProperty(name, out JsonElement v)) field = ColorOf(v, name);
     }
@@ -196,15 +196,15 @@ internal static class PanelParser
             "footer" => BlockKind.Footer, _ => BlockKind.Text,
         } };
         b.Size = st.Snap(Num(e, "size", 1f));
-        b.Color = Col(e, "color", 0);
-        if (Bool(e, "dim", false)) b.Color = (b.Color != 0 ? b.Color & 0xFFFFFF00 : st.DimColor & 0xFFFFFF00) | st.DimAlpha;
+        b.Color = Col(e, "color", default);
+        if (Bool(e, "dim", false)) b.Color = (b.Color.Set ? b.Color : st.DimColor).WithAlpha(st.DimAlpha);
         b.Runs = Runs(e, "text", Bool(e, "italic", false), st);
         b.Icon = Str(e, "icon", "");
         if (b.Icon.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
         b.Frame = Bool(e, "frame", false);
         b.Pulse = Bool(e, "pulse", type == "loading");
-        b.Tint = Col(e, "tint", 0);
-        b.FrameFill = Col(e, "framefill", 0); b.FrameLine = Col(e, "frameline", 0);
+        b.Tint = Col(e, "tint", default);
+        b.FrameFill = Col(e, "framefill", default); b.FrameLine = Col(e, "frameline", default);
         b.Align = Str(e, "align", "left") switch { "left" => 0, "right" => 1, "center" => 2, var a => throw new Refusal($"align '{a}' is left, center or right") };
         b.After = Opt(e, "after", -PanelLimits.MaxLen); b.Pad = Opt(e, "pad", 0f); b.Margin = Opt(e, "margin", 0f);
         b.Thick = Opt(e, "thick", 0f); b.Spacing = Opt(e, "spacing", 0f); b.Inset = Opt(e, "inset", 0f);
@@ -268,11 +268,11 @@ internal static class PanelParser
         return v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : throw new Refusal($"{name} is true or false");
     }
 
-    private static uint Col(JsonElement e, string name, uint def) => e.TryGetProperty(name, out JsonElement v) ? ColorOf(v, name) : def;
+    private static Paint Col(JsonElement e, string name, Paint def) => e.TryGetProperty(name, out JsonElement v) ? ColorOf(v, name) : def;
 
-    private static uint ColorOf(JsonElement v, string name)
+    private static Paint ColorOf(JsonElement v, string name)
     {
-        if (v.ValueKind != JsonValueKind.String || !HexColour.TryParse(v.GetString(), out uint c)) throw new Refusal($"{name} is a colour like #RRGGBB or #RRGGBBAA");
+        if (v.ValueKind != JsonValueKind.String || !Paint.TryParse(v.GetString(), out Paint c)) throw new Refusal($"{name} is a colour like #RRGGBB, #RRGGBBAA or @role");
         return c;
     }
 }
