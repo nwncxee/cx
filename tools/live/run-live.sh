@@ -16,7 +16,7 @@
 #
 # Nothing appears on the desktop: the client runs inside `gamescope --backend headless`, which gives
 # it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing plays on the
-# speakers: OpenAL Soft mixes into its null backend (ALSOFT_DRIVERS=null). Nothing of the user's
+# speakers: every audio route points nowhere (tools/live/isolate.sh). Nothing of the user's
 # is touched either -- a throwaway HOME + user directory is built under the out dir, and the client is
 # pointed at it with `-userdirectory`, so cx.cfg, cx.log, settings.tml, nwn.ini, the localvault and the
 # crashreport folder are all the harness's own copies.
@@ -32,6 +32,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=tools/live/isolate.sh
+. "$ROOT/tools/live/isolate.sh"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
 REAL_USER_DIR="${NWN_USER_DIR:-$HOME/.local/share/Neverwinter Nights}"
 
@@ -138,6 +140,7 @@ fi
 [ -n "$OUT" ] || OUT="$ROOT/.scratch/live/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT" || exit 2
 OUT="$(cd "$OUT" && pwd)"
+RUN_TAG="run-live:$$:$OUT"
 
 FAKE_HOME="$OUT/home"
 USER_DIR="$FAKE_HOME/.local/share/Neverwinter Nights"
@@ -287,7 +290,7 @@ START_EPOCH=$(date +%s.%N)
     export XDG_DATA_HOME="$FAKE_HOME/.local/share"
     export XDG_CACHE_HOME="$FAKE_HOME/.cache"
     export XDG_CONFIG_HOME="$FAKE_HOME/.config"
-    export ALSOFT_DRIVERS=null
+    live_isolate "$RUN_TAG"
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
@@ -336,7 +339,7 @@ cleanup() {
     for pid in $(tree_pids "${GS_PID:-}") ${CLIENT_PID:-} ${GS_PID:-} ${SHOW_PID:-}; do
         kill -KILL "$pid" 2>/dev/null
     done
-    return 0
+    live_sweep "$RUN_TAG"
 }
 trap cleanup EXIT INT TERM
 
@@ -511,6 +514,7 @@ fi
 crashes=$(find "$CRASH_DIR" -name '*.nwcrash.txt' 2>/dev/null | wc -l)
 alive_before_shutdown=0
 alive "$CLIENT_PID" && alive_before_shutdown=1
+audio_clients=$(live_audio_clients "$RUN_TAG")
 
 # ---- shutdown -----------------------------------------------------------------------------------
 # In-game the engine swallows SDL_QUIT -- the WM close box and SDL's own SIGTERM handler both reach it
@@ -555,6 +559,9 @@ if kill -0 "$GS_PID" 2>/dev/null; then
 fi
 wait "$GS_PID" 2>/dev/null
 GS_EXIT=$?
+sleep 2
+survivors=$(live_survivors "$RUN_TAG" | tr '\n' ',' | sed 's/,$//')
+live_sweep "$RUN_TAG"
 
 # ---- collect ------------------------------------------------------------------------------------
 cp -f "$CX_LOG" "$OUT/cx.log" 2>/dev/null
@@ -601,6 +608,11 @@ fi
 ledger=$(grep -m1 'BindlessLedger: VIOLATION' "$OUT/cx.log" 2>/dev/null)
 [ -z "$ledger" ]       || fails+=("BINDLESS: ${ledger#*BindlessLedger: }")
 [ "$shots" -ge 1 ]     || fails+=("no screenshot captured")
+case "$audio_clients" in
+    ""|unchecked) ;;
+    *) fails+=("AUDIO: the run reached the desktop's sound server [$(echo "$audio_clients" | tr '\n' ',' | sed 's/,$//')]") ;;
+esac
+[ -z "$survivors" ] || fails+=("LEFTOVER: process(es) outlived the run and were killed [$survivors]")
 # A black world still presents frames (2026-10-01: a fog-lane polarity bug blacked out every lit pixel and PASSed):
 # the settled shot's centre must be lit. --min-lit 0 turns it off for a scene that is legitimately dark.
 world_lit=$(grep -o "02-settled.png [0-9x]* nonblack=[0-9/]* world_lit=[0-9]*%" "$OUT/xtool.log" 2>/dev/null | tail -1 | sed 's/.*world_lit=\([0-9]*\)%/\1/')
@@ -667,6 +679,8 @@ fi
     echo "screenshots     $shots in $SHOTS"
     echo "world lit       ${world_lit:-?}% of the settled frame's centre (floor ${MIN_LIT}%), luma spread ${world_spread:-?}"
     echo "crash reports   $crashes"
+    echo "sound server    $([ "$audio_clients" = unchecked ] && echo 'unchecked (no pw-dump or jq)' || echo "${audio_clients:-not reached}")"
+    echo "leftovers       ${survivors:-none}"
     if [ "$LADDER" = 1 ]; then
         echo "ladder rungs   ${LADDER_STEPS:- none}"
         sed 's/^/ladder          /' "$OUT/ladder-markers.txt" 2>/dev/null

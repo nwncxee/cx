@@ -36,8 +36,14 @@ tools/live/run-live.sh --nui
 its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one:
 `glxinfo` inside it reports `OpenGL core profile version string: 4.6.0 NVIDIA`, which is what Alloy
 needs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
-log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either: the harness
-sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it.
+log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either.
+`tools/live/isolate.sh` sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it, and points
+PulseAudio, PipeWire and SDL audio at sockets that don't exist. The Proton run also disables wine's audio drivers.
+
+**Nothing outlives the run.** Every process the run starts carries `CX_LIVE_RUN=<tag>` in its environment, so the
+harness finds its own processes even after they leave the launch tree, as `wineserver` does. A run FAILs when one of
+them connects to the desktop's sound server (`sound server` in the summary, read with `pw-dump`) or is still alive
+after shutdown (`leftovers`). Both runners kill every tagged process on exit, Ctrl-C included.
 
 **Nothing of the user's is touched.** `$OUT/home` is a throwaway HOME and
 `$OUT/home/.local/share/Neverwinter Nights` a throwaway user directory, passed to the client as

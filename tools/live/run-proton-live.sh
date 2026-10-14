@@ -16,6 +16,8 @@
 # Default is the Linux harness's own module, so the shots line up with a `run-live.sh` run of the same name.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=tools/live/isolate.sh
+. "$ROOT/tools/live/isolate.sh"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
 PROTON="${PROTON:-$HOME/.steam/root/steamapps/common/Proton - Experimental/proton}"
 MODULE="The Dark Ranger's Treasure"
@@ -56,6 +58,7 @@ flock -w 2400 9 || { echo "run-proton-live: waited 40 min for $LIVE_LOCK -- givi
 mkdir -p "$OUT"
 # Absolute from here on: Proton resolves STEAM_COMPAT_DATA_PATH from its own cwd, not ours.
 OUT="$(cd "$OUT" && pwd)"
+RUN_TAG="run-proton-live:$$:$OUT"
 rm -rf "$OUT/shots" "$OUT/game" "$OUT/cx.log"
 SHOTS="$OUT/shots"; mkdir -p "$SHOTS"
 GS_LOG="$OUT/gamescope.log"
@@ -101,8 +104,9 @@ ARGS=(-userdirectory 'C:\cxuser')
     cd "$GAME/bin/win32" || exit 1
     export STEAM_COMPAT_DATA_PATH="$PFX"
     export STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam/root"
-    # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win.
-    export WINEDLLOVERRIDES="version=n,b"
+    live_isolate "$RUN_TAG"
+    # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win. No wine audio driver loads.
+    export WINEDLLOVERRIDES="version=n,b;winepulse.drv=d;winealsa.drv=d;wineoss.drv=d"
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
         "$PROTON" run "$GAME/bin/win32/nwmain.exe" ${ARGS+"${ARGS[@]}"}
 ) > "$GS_LOG" 2>&1 &
@@ -121,7 +125,7 @@ tree_pids() {
 cleanup() {
     local pid
     for pid in $(tree_pids "${GS_PID:-}") ${GS_PID:-}; do kill -KILL "$pid" 2>/dev/null; done
-    return 0
+    live_sweep "$RUN_TAG"
 }
 trap cleanup EXIT INT TERM
 
@@ -140,6 +144,7 @@ echo "run-proton-live: display $DISP (nested, headless)"
 end=$(( $(date +%s) + SECONDS_TO_RUN ))
 n=0
 start=$(date +%s); keys_done=0
+audio_clients=""
 while [ "$(date +%s)" -lt "$end" ] && kill -0 "$GS_PID" 2>/dev/null; do
     sleep 10
     n=$((n + 1))
@@ -148,6 +153,7 @@ while [ "$(date +%s)" -lt "$end" ] && kill -0 "$GS_PID" 2>/dev/null; do
         python3 "$ROOT/tools/live/xtool.py" keys "$DISP" "$KEYS" >> "$OUT/xtool.log" 2>&1 \
             || echo "run-proton-live: key injection failed (see $OUT/xtool.log)"
     fi
+    [ -n "$audio_clients" ] || audio_clients=$(live_audio_clients "$RUN_TAG")
     python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$(printf '%s/%02d.png' "$SHOTS" "$n")" \
         >> "$OUT/xtool.log" 2>&1 || true
 done
@@ -155,6 +161,9 @@ done
 kill -TERM "$GS_PID" 2>/dev/null
 sleep 5
 cleanup
+sleep 1
+survivors=$(live_survivors "$RUN_TAG" | tr '\n' ',' | sed 's/,$//')
+live_sweep "$RUN_TAG"
 
 # The Windows cx.log lives in the prefix, beside the Windows nwn.ini.
 [ -f "$DOCS/cx.log" ] && cp "$DOCS/cx.log" "$OUT/cx.log"
@@ -165,3 +174,14 @@ if [ -f "$OUT/cx.log" ]; then
 else
     echo "run-proton-live: NO cx.log -- the extender never wrote one (see $GS_LOG)"
 fi
+verdict=0
+case "$audio_clients" in
+    "") echo "run-proton-live: sound  not reached" ;;
+    unchecked) echo "run-proton-live: sound  unchecked (no pw-dump or jq)" ;;
+    *) echo "run-proton-live: AUDIO  the run reached the desktop's sound server [$(echo "$audio_clients" | tr '\n' ',' | sed 's/,$//')]"; verdict=1 ;;
+esac
+if [ -n "$survivors" ]; then
+    echo "run-proton-live: LEFTOVER process(es) outlived the run and were killed [$survivors]"
+    verdict=1
+fi
+exit $verdict
