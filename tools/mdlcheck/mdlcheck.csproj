@@ -20,7 +20,6 @@
     <Compile Include="../../managed/Alloy/Mdl/MdlAscii.cs" />
     <Compile Include="../../managed/Alloy/Mdl/MdlTokens.cs" />
     <Compile Include="../../managed/Alloy/Mdl/MdlPost.cs" />
-    <Compile Include="../../managed/Alloy/Mdl/ModelDiff.cs" />
     <Compile Include="../../managed/Alloy/Mdl/MdlSelfCheck.cs" />
     <Compile Include="../../managed/Alloy/Mdl/MdlBinaryPayload.cs" />
   </ItemGroup>

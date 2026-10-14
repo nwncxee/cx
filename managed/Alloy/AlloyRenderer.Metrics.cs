@@ -164,7 +164,7 @@ public sealed unsafe partial class AlloyRenderer
         _log?.Info($"AlloyRenderer: [alloy] {DbFeed.Stats()} | {DbTableNote()} | {DbPassNote()} "
                      + $"| {DbInputs.Stats()} | {DbGui.Stats()}");
         _log?.Info($"AlloyRenderer: [alloy] {Counters._lastEnrolled}/{Counters._lastCandidates} parts owned{CapacityNote()}" +
-                   (holes <= 0 ? "" : $" ({holes} NOT DRAWN)") + " [" + OwnedTextures.TranscodeNote() + "; " + OwnedTextures.CacheNote() + "; " + OwnedTextures.PrefetchNote() + TexStream.Note() + TexLoad.Note() + ModelLoad.Note() + MdlCache.Note() + "; " + DdsReader.Note() + "; " + RasterReader.Note() + "]" +
+                   (holes <= 0 ? "" : $" ({holes} NOT DRAWN)") + " [" + OwnedTextures.TranscodeNote() + "; " + OwnedTextures.CacheNote() + "; " + OwnedTextures.PrefetchNote() + TexStream.Note() + TexLoad.Note() + ModelLoad.Note() + "; " + DdsReader.Note() + "; " + RasterReader.Note() + "]" +
                    $" drawn by {OwnedClasses()} " +
                    $"/ {Counters._lastTextures} textures " +
                    $"({_litCount} lit, {Counters._litUnownable} lit left to the engine" +

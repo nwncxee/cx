@@ -343,8 +343,6 @@ global using unsafe FindAnimScaleFn = delegate* unmanaged<nint, nint, float>;
 global using unsafe BinaryFindModelFn = delegate* unmanaged<byte*, nint>;
 global using unsafe TileSetGetTileDataFn = delegate* unmanaged<nint, int, nint>;
 global using unsafe NwTileSetIDFn = delegate* unmanaged<nint, int, void>;
-global using unsafe CompileModelsFn = delegate* unmanaged<byte, byte*, byte*>;
-global using unsafe AliasGetAliasPathFn = delegate* unmanaged<nint, nint, int, nint>;
 global using unsafe RadialActivateInternalFn = delegate* unmanaged<nint, void>;
 global using unsafe RadialCreateSubMenuFn = delegate* unmanaged<nint, int, int>;
 global using unsafe RadialRecursiveAutoDeleteFn = delegate* unmanaged<nint, int>;
@@ -1191,8 +1189,6 @@ public readonly unsafe partial struct CExoAliasList(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="SymbolMap.AliasGetAliasPath"/>
-    public IntPtr AliasGetAliasPath(IntPtr name, int mode) => EngineFn.AliasGetAliasPath(Ptr, name, mode);
     /// <inheritdoc cref="SymbolMap.AliasResolveFileName"/>
     public void AliasResolveFileName(void* ret, IntPtr name, ushort resType) => EngineFn.AliasResolveFileName(ret, Ptr, name, resType);
 }
@@ -3289,8 +3285,6 @@ public readonly unsafe ref partial struct MdlNodeTriMesh(IntPtr ptr)
     public ref IntPtr IndexGroupCounts => ref *(IntPtr*)(Ptr + EngineLayout.MdlIndexGroupCounts);
     /// <inheritdoc cref="EngineLayout.MdlIndexGroups"/>
     public ref int IndexGroups => ref *(int*)(Ptr + EngineLayout.MdlIndexGroups);
-    /// <inheritdoc cref="EngineLayout.MdlRadius"/>
-    public ref float Radius => ref *(float*)(Ptr + EngineLayout.MdlRadius);
     /// <inheritdoc cref="EngineLayout.MdlRenderGate"/>
     public ref int RenderGate => ref *(int*)(Ptr + EngineLayout.MdlRenderGate);
     /// <inheritdoc cref="EngineLayout.MdlRenderGeom"/>
@@ -3299,8 +3293,6 @@ public readonly unsafe ref partial struct MdlNodeTriMesh(IntPtr ptr)
     public ref short RenderKind => ref *(short*)(Ptr + EngineLayout.MdlRenderKind);
     /// <inheritdoc cref="EngineLayout.MdlRestPool"/>
     public ref uint RestPool => ref *(uint*)(Ptr + EngineLayout.MdlRestPool);
-    /// <inheritdoc cref="EngineLayout.MdlTextureRotate"/>
-    public ref byte TextureRotate => ref *(byte*)(Ptr + EngineLayout.MdlTextureRotate);
     /// <inheritdoc cref="EngineLayout.MdlTileFade"/>
     public ref int TileFade => ref *(int*)(Ptr + EngineLayout.MdlTileFade);
     /// <inheritdoc cref="EngineLayout.MdlVertexCount"/>
@@ -5820,14 +5812,6 @@ public static unsafe class EngineFn
     private static bool _NwTileSetIDDone;
     /// <inheritdoc cref="SymbolMap.NwTileSetID"/>
     public static NwTileSetIDFn NwTileSetID => (NwTileSetIDFn)(_NwTileSetIDDone ? _NwTileSetID : Resolve(ref _NwTileSetID, ref _NwTileSetIDDone, SymbolMap.NwTileSetID));
-    private static IntPtr _CompileModels;
-    private static bool _CompileModelsDone;
-    /// <inheritdoc cref="SymbolMap.CompileModels"/>
-    public static CompileModelsFn CompileModels => (CompileModelsFn)(_CompileModelsDone ? _CompileModels : Resolve(ref _CompileModels, ref _CompileModelsDone, SymbolMap.CompileModels));
-    private static IntPtr _AliasGetAliasPath;
-    private static bool _AliasGetAliasPathDone;
-    /// <inheritdoc cref="SymbolMap.AliasGetAliasPath"/>
-    public static AliasGetAliasPathFn AliasGetAliasPath => (AliasGetAliasPathFn)(_AliasGetAliasPathDone ? _AliasGetAliasPath : Resolve(ref _AliasGetAliasPath, ref _AliasGetAliasPathDone, SymbolMap.AliasGetAliasPath));
     private static IntPtr _RadialActivateInternal;
     private static bool _RadialActivateInternalDone;
     /// <inheritdoc cref="SymbolMap.RadialActivateInternal"/>
@@ -8379,18 +8363,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NwTileSetID"/>; returns the slot holding the next layer, or null.</summary>
     public static NwTileSetIDFn* ChainNwTileSetID(this HookService h, NwTileSetIDFn handler, int priority) =>
         (NwTileSetIDFn*)h.Chain(SymbolMap.NwTileSetID, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.CompileModels"/>; returns the original, or null.</summary>
-    public static CompileModelsFn InstallCompileModels(this HookService h, CompileModelsFn handler) =>
-        (CompileModelsFn)h.Install(SymbolMap.CompileModels, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.CompileModels"/>; returns the slot holding the next layer, or null.</summary>
-    public static CompileModelsFn* ChainCompileModels(this HookService h, CompileModelsFn handler, int priority) =>
-        (CompileModelsFn*)h.Chain(SymbolMap.CompileModels, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.AliasGetAliasPath"/>; returns the original, or null.</summary>
-    public static AliasGetAliasPathFn InstallAliasGetAliasPath(this HookService h, AliasGetAliasPathFn handler) =>
-        (AliasGetAliasPathFn)h.Install(SymbolMap.AliasGetAliasPath, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.AliasGetAliasPath"/>; returns the slot holding the next layer, or null.</summary>
-    public static AliasGetAliasPathFn* ChainAliasGetAliasPath(this HookService h, AliasGetAliasPathFn handler, int priority) =>
-        (AliasGetAliasPathFn*)h.Chain(SymbolMap.AliasGetAliasPath, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RadialActivateInternal"/>; returns the original, or null.</summary>
     public static RadialActivateInternalFn InstallRadialActivateInternal(this HookService h, RadialActivateInternalFn handler) =>
         (RadialActivateInternalFn)h.Install(SymbolMap.RadialActivateInternal, (IntPtr)handler);

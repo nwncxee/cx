@@ -3,8 +3,7 @@
 CX reads models itself. `managed/Alloy/Mdl/` is a complete, engine-free port of the engine's own model reader:
 the binary container, the ASCII interpreter and the post-process that turns authored geometry into render
 geometry. Nothing in that directory touches engine memory, which is what lets `tools/mdlcheck` run the whole
-parse off the device -- over the game's own containers, over a content corpus (`CONTENT_MODELS`), and against the engine's
-own compiled output as an oracle.
+parse off the device -- over the game's own containers, and over a content corpus (`CONTENT_MODELS`).
 
 ## The files
 
@@ -16,7 +15,6 @@ own compiled output as an oracle.
 | `MdlBinaryPayload.cs` | every node type's own block: trimesh, skin, animmesh, dangly, aabb, light, emitter, reference. |
 | `MdlAscii.cs` | the console-script driver (nine whitelisted commands), `ImportMaxTree`, `ParseNode`, every class's field table, the three array-body forms, and `ReorderChildren` as libstdc++ sorts it. |
 | `MdlPost.cs` | `ProcessVerts`, the weld (`InternalGenVertices`, with the AABB variant), `BuildNeighborLists`, the index list, the tangent basis with its handedness split, `ComputeLocalSurfaceArea`, and `SynchronizeTree`. |
-| `ModelDiff.cs` | compares two `ModelDef` trees node for node and counts the mismatches by category. |
 | `MdlSelfCheck.cs` | the embedded fixtures: one ASCII model, one hand-built binary, the lexer's contracts. |
 | `../MdlParseCheck.cs` | the LIVE check (knob `mdl.check`): every model the engine reads is parsed again by CX on its own worker and compared with the engine's in-memory tree. The only engine-touching part. |
 
@@ -52,7 +50,7 @@ since `0x421 & 0x21 == 0x21`), then light, then the generic rule.
 - An emitter node raises the owning model's radius to 40.
 - `ReorderChildren` runs `std::sort` with a comparator under which nearly every pair is equal, so the child
   order is libstdc++'s introsort permutation, not a stable sort's. The three libstdc++ pieces are transcribed
-  from the decompile; the oracle confirms the permutation on every pair it walks.
+  from the decompile; the live check (below) compares the resulting order with the engine's tree.
 
 ## What CX does NOT take from the file
 
@@ -82,7 +80,7 @@ corpus's `.mtr` files; a session can point it at the engine's own lookup.
 
 ## Measured
 
-`tools/mdlcheck` (all five modes; `dotnet run -c Release --project tools/mdlcheck`):
+`tools/mdlcheck` (the four default modes; `dotnet run -c Release --project tools/mdlcheck`):
 
 - **golden** -- one engine-compiled payload checked in at `tools/mdlcheck/fixtures/`, parsed and asserted
   against recorded values, so the binary offsets are a regression lock and not a round trip of one belief.
@@ -93,31 +91,6 @@ corpus's `.mtr` files; a session can point it at the engine's own lookup.
   rather than quietly clamped.
 - **fuzz** -- **14400 mutations** (truncations and bit flips) of 240 real models: 0 throws, 0 over 4 s,
   0 over 192 MiB, worst case 149 ms.
-- **oracle** -- an engine-compiled payload against CX's read of its own ASCII source, pairing re-proved by
-  the content hash AND the full 48-byte header (magic, format version, build key, source length, resref).
-  On the 1099-payload cache this machine held: **202 pairs, 201 byte-identical trees**, of 2973 nodes and
-  2183 meshes -- the only residual 24 node numbers in one model (below). Node-kind coverage was Dummy 546,
-  TriMesh 2077, Light 163, Emitter 81, Aabb 79, Dangly 26, AnimMesh 1 and **no Skin, Reference, Camera or
-  Trigger nodes at all**, so those kinds rest on the live check and the fixtures. The oracle needs a cache
-  produced against the same content tree as the corpus; `--cx <dir>` points it at one.
-
-### Two things the oracle cannot speak for
-
-- **Runtime mutation of the shared node.** A payload compiled after the model was instantiated carries
-  `CombineParts` @0x473d30's grown mesh radius and `SetPartTextureRotate` @0x461670's rotate-texture flag,
-  and an uninitialised tangent pool for a vertex no triangle reached. Those are not parse results, so the
-  radius, the rotate flag and a NaN tangent are counted apart (321 fields on that cache) instead of being
-  called a mismatch. The producer is the model cache's to fix.
-- **A supermodel's compile-time chain state.** `beginmodelgeom` seeds a model's node counter from its
-  supermodel's, so a node's number depends on which supermodel was loaded when it was compiled -- which the
-  cache key does not capture. The 24 residual numbers are all one body base whose chain differed.
-
-### Tangent frames behind a `.mtr`
-
-A mesh with no `renderhint` takes its hint from the material it names, which the engine resolved through its
-own chain at compile time. The harness recovers that answer FROM the payloads (a material whose meshes came
-out with tangents carried a hint) and feeds it to the ASCII side, which is what lets the tangent values be
-compared rather than excused: 76 of 721 materials answered on that cache.
 
 ## The live check
 

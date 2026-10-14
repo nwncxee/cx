@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using CX.Framework;
-using CX.Alloy;   // MdlCache.Hash: the one content hash
+using CX.Alloy.Mdl;   // MdlParser.ContentHash: the one content hash
 
 namespace CX.Graphics;
 
@@ -30,13 +30,13 @@ internal static unsafe class ProgramBinary
         {
             if (_seed != 0 || GlContextService.Driver.Length == 0 || Gl.GetProgramBinary == null || Gl.ProgramBinaryLoad == null)
                 return _seed;
-            return _seed = MdlCache.Hash(MemoryMarshal.AsBytes(GlContextService.Driver.AsSpan())) | 1;
+            return _seed = MdlParser.ContentHash(MemoryMarshal.AsBytes(GlContextService.Driver.AsSpan())) | 1;
         }
     }
 
     /// <summary>Fold one stage -- its type and the exact text glShaderSource receives -- into a key. 0 stays 0.</summary>
     internal static ulong Key(ulong h, uint type, string text) =>
-        h == 0 ? 0 : ((h ^ type) * Golden) ^ MdlCache.Hash(MemoryMarshal.AsBytes(text.AsSpan()));
+        h == 0 ? 0 : ((h ^ type) * Golden) ^ MdlParser.ContentHash(MemoryMarshal.AsBytes(text.AsSpan()));
 
     /// <summary>The cached program for <paramref name="key"/>, or 0 to compile.</summary>
     internal static uint Load(ulong key, ExtenderLog? log, string what)

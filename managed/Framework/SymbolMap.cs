@@ -2175,21 +2175,6 @@ internal static unsafe class SymbolMap
     [Fn("void(IntPtr tile, int id)")]
     public const string NwTileSetID = "_ZN7CNWTile5SetIDEi";
 
-    // ---- the ASCII -> binary compile. The compiler is the ENGINE's own, reader and writer
-    // paired in one source file; nothing of ours writes an MDL. ----
-    /// <summary><c>compilemodelsinternal(bool asciiOnly, const char* name)</c> @0x448410 -- the whole ASCII-to-binary
-    /// model compile in one call, read-only on the model: a <c>strncasecmp</c> match over the global <c>Models</c>,
-    /// then <c>IODispatcher::Write</c> @0x4bc730 to <c>&lt;MODELCOMPILER alias&gt;/&lt;Model+0x10&gt;.mdl</c>. It
-    /// refuses an uninitialized skinmesh (which would serialise empty vertex blocks). Returns a static message buffer.</summary>
-    [Fn("byte*(byte asciiOnly, byte* name)")]
-    public const string CompileModels = "_Z21compilemodelsinternalbPKc";
-    /// <summary><c>CExoAliasList::GetAliasPath(CExoString const&amp;, int) const</c> @0x516db0 -- the alias table's raw
-    /// directory for an alias name, where <c>IODispatcher::Write</c> reads <c>MODELCOMPILER</c> from. NOT an sret
-    /// call: the MSVC mangling says <c>AEBVCExoString@@</c>, a const REFERENCE into the alias entry, so the call is
-    /// <c>(this, &amp;name, 0)</c> and the result is <c>{char* at +0, int len at +8}</c>. Nothing to free.</summary>
-    [Fn("IntPtr(CExoAliasList this, IntPtr name, int mode)")]
-    public const string AliasGetAliasPath = "_ZNK13CExoAliasList12GetAliasPathERK10CExoStringi";
-
     // ---- the radial menu seam. The whole
     //      CRadialMenu surface is name-exported on Windows; the client roots are identified by vtable compare
     //      (the _ZTV / vftable rows below), never called by name. ----
@@ -3124,11 +3109,6 @@ internal static unsafe class SymbolMap
         [TileSetGetTileData] = Nm("?GetTileData@CNWTileSet@@QEAAPEAVCNWTileData@@H@Z"),
         [TileDataGetModelResRef] = Nm("?GetModelResRef@CNWTileData@@QEAA?AVCResRef@@XZ"),
         [NwTileSetID] = Nm("?SetID@CNWTile@@QEAAXH@Z"),
-        // both name-exported. compilemodelsinternal is a free function (@@YA), so its message
-        // pointer return needs no argument reordering; GetAliasPath returns a const REFERENCE (AEBV), not a
-        // class by value, so there is no hidden buffer to order either.
-        [CompileModels] = Nm("?compilemodelsinternal@@YAPEBD_NPEBD@Z"),
-        [AliasGetAliasPath] = Nm("?GetAliasPath@CExoAliasList@@QEBAAEBVCExoString@@AEBV2@H@Z"),
         [AurResGetData] = Nm("?AurResGetData@@YAPEADH@Z"),
         // the model load funnel. All four name-exported; the MSVC names carry the return types
         // (Model*, MaxTree*, Gob*) Itanium drops, and GetResource's `SA` says it is static -- no `this`.
