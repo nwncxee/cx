@@ -120,7 +120,8 @@ silence.
 Headless (`native/cxaudio.cpp`'s SelfCheck in `run-demo.sh`): the distance curves, the engine's variance draw,
 the NWN -> Steam Audio axes and the listener frame, the resampler, the shelf, capture and loudness, the EnvAudio
 join by label, and the exit latch (after `cxa_shutdown` the entry points that would change state do nothing,
-and the same calls land once it is cleared).
+and the same calls land once it is cleared). `SoundCore.SelfCheck` adds, managed, the reverb mode an authored
+`EnvAudio` picks.
 
 Native harness (Steam Audio + the pinned OpenAL rendering to OpenAL Soft's wave backend, a 20 x 20 x 6 m room
 with a wall, broadband noise at 3-8 m, 2026-09-27): HRTF gives 12 dB interaural difference at 90 degrees and is
@@ -141,8 +142,14 @@ comments (next to the object, 10 m away, behind a wall), then each feature's kno
   (unverified whether that cancels the armed fade). Its fade-out always overlaps.
 - The two reserved 2D voices stay reserved: releasing them patches `GetFree2DVoice`'s bound, and raising the
   budget (`sound.voices2d`) buys more for nothing (research C4).
-- An area whose `EnvAudio` is row 0 (GENERIC) gets the interior/exterior fallback: an area that never set the field
-  reads 0 too.
+- The builder's soundscape wins: an area whose `EnvAudio` is set (any row but 0) plays that `soundeax.2da` preset
+  under Room and Every sound too, in place of Steam Audio's simulated echoes -- a carpeted 1x1 room must not ring
+  like the marble hall its one generic material simulates. Occlusion, transmission and pathing stay simulated;
+  the preset is one wet send on the mixed bus, so it loses the simulation's per-voice distance-scaled send and the
+  player's halved footstep send. A hook that lands after the area's `StartSounds` (Windows' late init) misses the
+  row until the next area.
+- An area whose `EnvAudio` is row 0 (GENERIC) keeps the simulation, and Area preset gives it the interior/exterior
+  fallback: an area that never set the field reads 0 too, so a builder cannot pick GENERIC on purpose.
 - One acoustic material per area, from its ARE flags as the engine's own `GetIsAreaNatural`/`GetIsAreaAboveGround`
   read them: natural and enclosed = **cave rock** (absorption 0.03/0.06/0.15, scattering 0.7 -- 0.05 in the highs rang metallic; the tail 2x, bounces
   3x), artificial underground = **masonry** (phonon.h's brick; 1.5x, 2x), anything else **generic**. The scene

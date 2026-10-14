@@ -23,6 +23,7 @@ public sealed unsafe class SoundService : IExtenderService
     private static SoundSetEnvironmentFn _setEnv;
     private static SoundInitializeFn _init;
     private static int _rowInterior = -1, _rowExterior = -1;
+    /// <summary>The area's EnvAudio row as authored: 0 = never set, -1 = no area yet.</summary>
     private static int _lastEnv = -1;
     private static long _statsAt;
     /// <summary>Starts that fell back to the stock path already said on screen: once, not every 10 s.</summary>
@@ -141,7 +142,7 @@ public sealed unsafe class SoundService : IExtenderService
         return true;
     }
 
-    /// <summary>The knobs, whole, to the core. Main thread (a knob's set), and cheap.</summary>
+    /// <summary>The knobs, whole, to the core. Main thread (a knob's set, or an area's EnvAudio), and cheap.</summary>
     internal static void Push()
     {
         if (!_armed) return;
@@ -149,7 +150,7 @@ public sealed unsafe class SoundService : IExtenderService
         c.Enabled = SoundKnobs.Enabled.V ? 1 : 0;
         c.Binaural = SoundKnobs.Output.Boot switch { SoundKnobs.OutHeadphones => 1, SoundKnobs.OutSpeakers => 0, _ => -1 };
         c.Occlusion = SoundKnobs.Occlusion.V;
-        c.Reflections = SoundKnobs.Reverb.V;
+        c.Reflections = ReverbMode(SoundKnobs.Reverb.V, _lastEnv);
         c.Pathing = SoundKnobs.Pathing.V ? 1 : 0;
         c.Rays = SoundKnobs.Rays.V;
         c.Bounces = SoundKnobs.Bounces.V;
@@ -270,17 +271,23 @@ public sealed unsafe class SoundService : IExtenderService
         if (al != 0) SoundCore.cxa_move(al, p.X, p.Y, p.Z);
     }
 
-    /// <summary>The area's EnvAudio row, for the "Area preset" reverb. Row 0 is also what an area that never set
-    /// the field carries (6 of 7 areas in one measured module), so 0 falls back on the interior flag.</summary>
+    /// <summary>The area's EnvAudio row, for the preset reverb. Row 0 is also what an area that never set the
+    /// field carries (6 of 7 areas in one measured module), so 0 falls back on the interior flag.</summary>
     [UnmanagedCallersOnly]
     private static void OnSetEnvironment(IntPtr sound, byte row)
     {
         _setEnv(sound, row);
         int r = row;
         if (r == 0) r = AreaInterior() ? _rowInterior : _rowExterior;
-        _lastEnv = r;
+        bool changed = (_lastEnv > 0) != (row > 0);
+        _lastEnv = row;
         SoundCore.cxa_environment(r);
+        if (changed) Push();
     }
+
+    /// <summary>The reverb mode the core runs: an area whose builder set its EnvAudio gets that preset instead of
+    /// the simulated room or per-sound echoes; Off and Area preset stay the player's choice.</summary>
+    internal static int ReverbMode(int knob, int envRow) => envRow > 0 && (knob is 1 or 2) ? 3 : knob;
 
     /// <summary>The voice budget, raised before the engine sizes its voice arrays (it clamps to 8..64 itself).</summary>
     [UnmanagedCallersOnly]
@@ -356,7 +363,7 @@ public sealed unsafe class SoundService : IExtenderService
                  + $"capture max {s.CaptureMsMax:F2} ms; "
                  + $"render {s.RenderMsAvg:F2} ms/frame (max {s.RenderMsMax:F2}, {s.Underruns} underruns), sim {s.SimMsAvg:F2} ms, reflections {s.ReflMsAvg:F1} ms; "
                  + $"scene {s.SceneTris} tris, {s.Probes} probes (bake {s.BakeState}); bus {(s.BusOpen != 0 ? $"{s.BusRate} Hz x{s.BusChannels}" : "closed")}; "
-                 + $"env row {_lastEnv}");
+                 + $"authored env row {_lastEnv}, reverb mode {ReverbMode(SoundKnobs.Reverb.V, _lastEnv)}");
     }
 
     /// <summary>Both loops end at the core's exit latch, so neither is inside Steam Audio while the process

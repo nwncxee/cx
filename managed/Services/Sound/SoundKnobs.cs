@@ -48,8 +48,9 @@ internal static class SoundKnobs
         Reverb = G.Dropdown("reverb", "Reverb", new[] { 0, 1, 2, 3 }, 1,
             new[] { "Off", "Room", "Every sound", "Area preset" }, changed: SoundService.Push,
             help: "Echo from the area's walls, floors and ceilings. Room simulates it once around you; Every sound also "
-                + "gives the four nearest sounds their own echoes, which costs noticeably more CPU. Area preset is the "
-                + "area's authored reverb type instead.");
+                + "gives the four nearest sounds their own echoes, which costs noticeably more CPU. An area whose builder "
+                + "chose its reverb type plays that one instead of either. Area preset plays the area's reverb type "
+                + "everywhere, guessing one where the builder chose none.");
         ReverbDb = G.Slider("reverblevel", "Reverb level", -24f, 6f, 1f, 0f, "dB", Tier.Advanced, changed: SoundService.Push,
             help: "How loud the echoes are against the sound itself.");
         RainDb = G.Slider("rainreverb", "Reverb in rain", -24f, 0f, 1f, -9f, "dB", Tier.ChatOnly,
