@@ -8,10 +8,11 @@
 # directory lives inside a throwaway Proton prefix, so the user's saves and nwn.ini are never opened.
 #
 #   tools/live/run-proton-live.sh [--seconds N] [--width W] [--height H] [--cfg k=v]... [--menu] [--out DIR]
-#                                 [--nui | --showcase NAME] [--keys 'script']
+#                                 [--nui | --ladder | --showcase NAME] [--keys 'script']
 #
 # --nui hosts the fixed NUI window module of run-live.sh (tools/live/ladder/cxnui.nss) built into the prefix's user
-# directory; --showcase NAME hosts run-live.sh's showcase of that name, its .policy as the card file and its .keys as the
+# directory; --ladder hosts run-live.sh's verification ladder (tools/live/ladder/cxladder.nss) the same way, and its
+# CXLADDER: marks land in the prefix's client log; --showcase NAME hosts run-live.sh's showcase of that name, its .policy as the card file and its .keys as the
 # default --keys; --keys runs an xtool.py key/shot script a second after the module logs the login (60 seconds in for the
 # default module), so a showcase's waits line up with its script.
 #
@@ -38,6 +39,7 @@ while [ $# -gt 0 ]; do
         --menu)    MENU=1; shift ;;
         --reuse)   REUSE=1; shift ;;
         --nui)     NUI=1; MODULE="cxnui"; shift ;;
+        --ladder)  NUI=1; MODULE="cxladder"; shift ;;
         --showcase) SHOWCASE="$2"; NUI=1; MODULE="cxshow"; shift 2 ;;
         --keys)    KEYS="$2"; shift 2 ;;
         *) echo "run-proton-live: unknown option $1" >&2; exit 2 ;;
@@ -155,7 +157,7 @@ start=$(date +%s); keys_done=0
 audio_clients=""
 # The NUI and showcase modules log their own login; their key scripts are timed from it, so they start a second after it.
 keys_due() {
-    if [ "$NUI" = 1 ]; then grep -qE 'CX(SHOW|NUI): enter ' "$DOCS/logs/nwclientLog1.txt" 2>/dev/null
+    if [ "$NUI" = 1 ]; then grep -qE 'CX(SHOW|NUI|LADDER): enter ' "$DOCS/logs/nwclientLog1.txt" 2>/dev/null
     else [ $(( $(date +%s) - start )) -ge "$KEYS_AT" ]; fi
 }
 while [ "$(date +%s)" -lt "$end" ] && kill -0 "$GS_PID" 2>/dev/null; do
@@ -183,6 +185,8 @@ live_sweep "$RUN_TAG"
 
 # The Windows cx.log lives in the prefix, beside the Windows nwn.ini.
 [ -f "$DOCS/cx.log" ] && cp "$DOCS/cx.log" "$OUT/cx.log"
+# The hosted module's own marks (CXNUI:, CXSHOW:, CXLADDER:) are in the client log.
+[ -f "$DOCS/logs/nwclientLog1.txt" ] && cp "$DOCS/logs/nwclientLog1.txt" "$OUT/nwclientLog1.txt"
 shots=$(find "$SHOTS" -name '*.png' -size +1k 2>/dev/null | wc -l)
 echo "run-proton-live: shots  $shots in $SHOTS"
 if [ -f "$OUT/cx.log" ]; then

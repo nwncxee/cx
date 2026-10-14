@@ -40,6 +40,10 @@ export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#free
 tools/live/run-proton-live.sh --nui
 ```
 
+`--ladder` and `--showcase NAME` host the same modules as `run-live.sh`, and their marks are in the run's `nwclientLog1.txt`.
+Under Proton a shot can read back the frame from before the last one the client presented, so two shots of a change that
+match exactly are worth taking again before they count as evidence.
+
 ## How it works
 
 **Nothing reaches the desktop.** The client runs inside `gamescope --backend headless`, which starts
