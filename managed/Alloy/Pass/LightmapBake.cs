@@ -151,7 +151,7 @@ internal static unsafe partial class LightmapBake
     internal static void BindForDraw(int locPages, int locMovers)
     {
         if (locPages < 0) return;
-        bool live = Enabled && _gl.Layers > 0 && _gl.BufChart != 0 && _gl.BufFilled;
+        bool live = Enabled && !FrameInputs.Blind && _gl.Layers > 0 && _gl.BufChart != 0 && _gl.BufFilled;
         // a shared point: left alone, the stage's unconditional uChart read lands in a compute pass's scratch
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindChart, _gl.BufChart);
         if (live)

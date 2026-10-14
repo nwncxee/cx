@@ -67,6 +67,9 @@ public static class FrameInputs
     public static Vector3 AreaAmbient { get => Read.AreaAmbient; set => _cur.AreaAmbient = value; }
     public static Vector3 AreaDiffuse { get => Read.AreaDiffuse; set => _cur.AreaDiffuse = value; }
     public static Vector3 AreaDiffuseDir { get => Read.AreaDiffuseDir; set => _cur.AreaDiffuseDir = value; }
+    /// <summary><c>Scene::SetBlindLights</c> is up for the walked scene: one object's lights alone light it, so
+    /// the baked pages (every static light) and the fog's sky term stand down with the area pair.</summary>
+    public static bool Blind { get => Read.Blind; set => _cur.Blind = value; }
     // --- The light snapshot: every active point light in the area, read from the LightManager MASTER list
     // once per world frame by SceneInputs. Values are COPIED, never the PartLight* (the engine frees it on
     // area/module boundaries -- the AurTexture lifetime lesson); the id is kept for equality only.
@@ -233,6 +236,7 @@ public static class FrameInputs
         public Vector3 AreaAmbient;
         public Vector3 AreaDiffuse;
         public Vector3 AreaDiffuseDir;
+        public bool Blind;
         public int LocalLightCount;
         public IntPtr[] LocalLightId = new IntPtr[InitialLights];
         public Vector3[] LocalLightPos = new Vector3[InitialLights];
@@ -307,6 +311,7 @@ public static class FrameInputs
             dst.AreaAmbient = src.AreaAmbient;
             dst.AreaDiffuse = src.AreaDiffuse;
             dst.AreaDiffuseDir = src.AreaDiffuseDir;
+            dst.Blind = src.Blind;
             dst.LocalLightCount = src.LocalLightCount;
             dst.Interior = src.Interior;
             dst.AreaExtent = src.AreaExtent;
