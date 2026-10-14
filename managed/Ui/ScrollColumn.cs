@@ -92,6 +92,8 @@ public sealed class ScrollColumn
     {
         if (!OverBar(mx, my)) return false;
         if (OverThumb(mx, my)) { _drag = true; _gy = my; _goff = Offset; return true; }
+        int arrow = Native ? NativeChrome.Arrow(Y, Y + H, Width, my) : 0;
+        if (arrow != 0) { ScrollBy(arrow * H * NativeChrome.ArrowStep); return true; }
         ThumbRect(out float top, out float _);
         ScrollBy(my < top ? -H : H);
         return true;
@@ -231,7 +233,7 @@ public sealed class ScrollColumn
             check.Expect(sc.ThumbRect(out float t1, out float h1) && t1 + h1 == 270f, $"scrolled out: the thumb ends 2 px above the down arrow ({t1 + h1})");
             sc.MouseUp();
             sc.Offset = 0f;
-            check.Expect(sc.MouseDown(290f, 285f) && sc.Offset == 240f, "a press in the down arrow pages one box");
+            check.Expect(sc.MouseDown(290f, 285f) && sc.Offset == 24f, "a press in the down arrow steps a tenth of the box, as nuklear's scroll_step");
             sc.MouseUp();
         }
         finally { Metrics.Scale = saved; }

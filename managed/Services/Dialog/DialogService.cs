@@ -358,6 +358,11 @@ public sealed unsafe class DialogService : IExtenderService
                 float titleH = f.TitleH;
                 bool locked = DialogKnobs.Lock.V;
                 if (OverThumb(f, x, y)) { _pressConsumed = true; _grab = Grab.Scroll; _gy = y; _gScroll = _scroll; return true; }
+                if (ArrowStep(f, x, y) is float step and not 0f)
+                {
+                    float max = System.Math.Max(0f, f.ContentH - _bodyHPub);
+                    _scroll = System.Math.Clamp(_scroll + step, 0f, max); _pressConsumed = true; return true;
+                }
                 if (!locked && OverGrip(f, x, y))
                 { _pressConsumed = true; SeedRect(f); _grab = Grab.Resize; _gx = x; _gy = y; _gw = DialogKnobs.W.V; _gh = DialogKnobs.MaxHeight.V; return true; }
                 if (!locked && In(f.PanelX, f.PanelY, f.PanelW, titleH, x, y))
@@ -498,6 +503,15 @@ public sealed unsafe class DialogService : IExtenderService
     {
         float t = Theme.IsNative ? _bodyHPub - 2f * ScrollbarW - 2f * NativeChrome.PadY - thumbH : _bodyHPub - thumbH;
         return t > 0f ? t : 0f;
+    }
+
+    /// <summary>The scroll a press on the game-art bar's arrows asks for (a tenth of the body, as nuklear); 0 elsewhere.</summary>
+    private static float ArrowStep(DialogFrame f, float x, float y)
+    {
+        if (!Theme.IsNative || !ScrollGeom(f, out _, out _, out _)) return 0f;
+        float x1 = f.PanelX + f.PanelW, y0 = f.PanelY + f.TitleH;
+        if (x < x1 - ScrollbarW || x >= x1 || y < y0 || y >= y0 + _bodyHPub) return 0f;
+        return NativeChrome.Arrow(y0, y0 + _bodyHPub, ScrollbarW, y) * _bodyHPub * NativeChrome.ArrowStep;
     }
 
     private static bool OverThumb(DialogFrame f, float x, float y)

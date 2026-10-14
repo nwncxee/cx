@@ -71,6 +71,9 @@ public static class NativeChrome
         return true;
     }
 
+    /// <summary>nuklear's <c>scroll_step</c>: an arrow press moves a tenth of the view.</summary>
+    public const float ArrowStep = 0.1f;
+
     /// <summary>Which arrow of a vertical bar <paramref name="py"/> presses: -1 up, 1 down, 0 the track. NUI steps the
     /// view on an arrow; it never drags from one.</summary>
     public static int Arrow(float y0, float y1, float w, float py) => py < y0 + w ? -1 : py >= y1 - w ? 1 : 0;
