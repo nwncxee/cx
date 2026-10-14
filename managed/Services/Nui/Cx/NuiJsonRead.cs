@@ -48,6 +48,48 @@ internal static unsafe partial class NuiJsonRead
         return p == null ? null : Encoding.UTF8.GetString(p, (int)len);
     }
 
+    /// <summary>The first object in the value at <paramref name="json"/> whose <c>bind</c> member is the string <paramref name="name"/>:
+    /// the address of that object's own value, which the engine's <c>Bind</c> reads. Zero when there is none.</summary>
+    internal static IntPtr FindBind(IntPtr json, string name, bool? msvc = null)
+    {
+        int budget = MaxNodes;
+        return (IntPtr)Find((byte*)json, name, msvc ?? OperatingSystem.IsWindows(), 0, ref budget);
+    }
+
+    private static byte* Find(byte* v, string name, bool msvc, int depth, ref int budget)
+    {
+        if (v == null || --budget < 0 || depth > MaxDepth) return null;
+        if (*v == TArray)
+        {
+            byte** vec = *(byte***)(v + ValueAt);
+            if (vec == null || vec[1] < vec[0]) return null;
+            for (byte* e = vec[0]; e < vec[1] && budget > 0; e += JsonSize)
+                if (Find(e, name, msvc, depth + 1, ref budget) is var f && f != null) return f;
+            return null;
+        }
+        if (*v != TObject) return null;
+        byte* map = *(byte**)(v + ValueAt);
+        if (map == null) return null;
+        byte* head = msvc ? *(byte**)map : null;
+        byte* root = msvc ? (head == null ? null : *(byte**)(head + MsvcParent)) : *(byte**)(map + GccTreeRoot);
+        return FindIn(root, head, v, name, msvc, depth, 0, ref budget);
+    }
+
+    private static byte* FindIn(byte* n, byte* head, byte* owner, string name, bool msvc, int depth, int level, ref int budget)
+    {
+        if (n == null || (msvc && (n == head || n[MsvcIsNil] != 0)) || --budget < 0 || level > MaxDepth) return null;
+        byte* hit = FindIn(*(byte**)(n + (msvc ? MsvcLeft : GccLeft)), head, owner, name, msvc, depth, level + 1, ref budget);
+        if (hit != null) return hit;
+        byte* val = n + NodeValueAt + StringSize;
+        if (ReadString(n + NodeValueAt, msvc) == "bind" && *val == TString)
+        {
+            byte* str = *(byte**)(val + ValueAt);
+            if (str != null && ReadString(str, msvc) == name) return owner;
+        }
+        else if (Find(val, name, msvc, depth + 1, ref budget) is var f && f != null) return f;
+        return FindIn(*(byte**)(n + (msvc ? MsvcRight : GccRight)), head, owner, name, msvc, depth, level + 1, ref budget);
+    }
+
     private static void Write(StringBuilder sb, byte* v, bool msvc, int depth, ref Budget b)
     {
         if (b.Over) return;

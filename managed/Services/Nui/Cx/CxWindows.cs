@@ -20,6 +20,8 @@ internal static unsafe class CxWindows
 {
     /// <summary>How long a window may go without a tick before it counts as closed.</summary>
     internal const long StaleMs = 3000;
+    /// <summary>Bytes of an engine <c>DynamicBinding</c>, on both builds.</summary>
+    private const int BindingBytes = 392;
     private const int MaxWindows = 64, MaxOutbox = 16, EventsPerTick = 4, MaxBinds = 64;
     private const int RecordBytes = 64, RecordName = 8, RecordJson = 40;
     private const int GccStart = 16, GccFinish = 48, GccNode = 24, GccLast = 16;
@@ -28,6 +30,7 @@ internal static unsafe class CxWindows
     private sealed class BoundSetting
     {
         public string Name = "", Key = "";
+        public bool Registered;
     }
 
     private sealed class CxWindow
@@ -37,6 +40,7 @@ internal static unsafe class CxWindows
         public readonly List<string> Keys = new();
         public readonly List<BoundSetting> Binds = new();
         public readonly List<PolicyRefusal> Outbox = new();
+        public IntPtr Json;
     }
 
     /// <summary>Everything the hooks share; replaced whole by <see cref="Reset"/>.</summary>
@@ -58,7 +62,7 @@ internal static unsafe class CxWindows
         var s = _s;
         s.Log = log;
         if (!EngineLayout.Require(log, "CxWindows", "Nui::JSON::JsonWindow")
-            || !SymbolMap.Require(log, "CxWindows", SymbolMap.NuiJsonWindowCtor, SymbolMap.NuiJsonWindowUpdate, SymbolMap.NuiEventPush))
+            || !SymbolMap.Require(log, "CxWindows", SymbolMap.NuiJsonWindowCtor, SymbolMap.NuiJsonWindowUpdate, SymbolMap.NuiEventPush, SymbolMap.NuiJsonWindowBind, SymbolMap.NuiDynamicBindingDtor))
         {
             log.Always("CxWindows: the NUI window symbols or layout rows did not resolve -- \"cx\" members in a window's JSON are ignored");
             return;
@@ -103,7 +107,7 @@ internal static unsafe class CxWindows
         Sweep(s, Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency, true);
         if (s.Windows.TryGetValue(self, out CxWindow? old)) Release(s, self, old);
         CxPlan plan = CxTranslate.Translate(id, json);
-        var w = new CxWindow { Id = id, Seen = Environment.TickCount64 };
+        var w = new CxWindow { Id = id, Seen = Environment.TickCount64, Json = (IntPtr)Unsafe.AsPointer(ref win.WindowJson) };
         s.Windows[self] = w;
         foreach (CxSet set in plan.Sets)
         {
@@ -131,7 +135,7 @@ internal static unsafe class CxWindows
         if (s.Windows.TryGetValue(self, out CxWindow? w))
         {
             w.Seen = now;
-            if (w.Binds.Count > 0) Ingest(s, self, w);
+            if (w.Binds.Count > 0) { Register(s, self, w); Ingest(s, self, w); }
             for (int i = 0; i < EventsPerTick && w.Outbox.Count > 0; i++)
             {
                 CxEvent.PushRefusal(self, w.Outbox[0]);
@@ -139,6 +143,26 @@ internal static unsafe class CxWindows
             }
         }
         Sweep(s, now, false);
+    }
+
+    /// <summary>Tells the engine each bound setting's bind name, once, so an update for a name no element uses is kept and not
+    /// discarded. <c>Bind</c> finds or creates the window's binding for a leaf, and the copy it returns is ended at once.</summary>
+    private static void Register(CxState s, IntPtr self, CxWindow w)
+    {
+        foreach (BoundSetting b in w.Binds)
+        {
+            if (b.Registered) continue;
+            b.Registered = true;
+            IntPtr leaf = NuiJsonRead.FindBind(w.Json, b.Name);
+            if (leaf == IntPtr.Zero || EngineFn.NuiJsonWindowBind == null || EngineFn.NuiDynamicBindingDtor == null) continue;
+            void* copy = NativeMemory.AllocZeroed(BindingBytes);
+            try
+            {
+                EngineFn.NuiJsonWindowBind(copy, self, leaf);
+                EngineFn.NuiDynamicBindingDtor((IntPtr)copy);
+            }
+            finally { NativeMemory.Free(copy); }
+        }
     }
 
     /// <summary>Releases the keys of windows that stopped ticking. Every second, or at once when <paramref name="force"/>.</summary>

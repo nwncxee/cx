@@ -1,6 +1,6 @@
 //::///////////////////////////////////////////////
 //:: nuicx -- a doll, a card and a themed window set by "cx" members in the window JSON, with no policy line
-//:: The doll's yaw is a bind: NuiSetBind turns it at +6 s and +18 s. The label's card declares one bad member and the doll one bad value,
+//:: The doll's yaw is a bind no element uses: NuiSetBind turns it at +6 s and +18 s. The label's card declares one bad member and the doll one bad value,
 //:: which reach nuicx_nui as "refused" events on the element "cx".
 //:://////////////////////////////////////////////
 #include "inc_show"
@@ -47,9 +47,7 @@ void Turn(object oPC, int nToken, int nYaw)
 
 void Open(object oPC)
 {
-    // The label names the bind, so the engine knows it: a bind no element names is discarded and reported to the server as unknown-bind.
-    json jYaw = NuiHeight(NuiLabel(NuiBind(BIND_YAW), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)), 24.0);
-    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), Tip()), jYaw), Doll()));
+    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArray(), Tip()), Doll()));
     json jWin = NuiWindow(jRoot, JsonString("Set from the window JSON"), NuiRect(40.0, 40.0, 340.0, 560.0),
         JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     json jCx = JsonObjectSet(JsonObject(), "fadein", JsonInt(600));

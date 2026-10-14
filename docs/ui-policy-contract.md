@@ -35,8 +35,8 @@ released when it closes.
 ### Bound values
 
 A setting may be NUI's own bind form, `{"bind": "doll_yaw"}`. It takes the value every time NWScript calls `NuiSetBind` on that
-name, and releases the key when the value is `null`. An element in the window must use the same bind name (a label that shows it
-is enough). The engine discards an update for a bind no element names and sends the server an `unknown-bind` event.
+name, and releases the key when the value is `null`. No element has to use the bind: CX registers the name with the window, so the
+server gets no `unknown-bind` event.
 
 CX reads the server's updates only. A value the player changes in the window, such as a slider on the same bind, does not move the
 setting.

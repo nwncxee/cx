@@ -35,6 +35,14 @@ internal static unsafe partial class NuiJsonRead
                 }
                 finally { foreach (IntPtr p in sent) NativeMemory.Free((void*)p); }
             }
+            foreach (bool msvc in new[] { false, true })
+            {
+                IntPtr leaf = Obj(mem, msvc, ("bind", Str(mem, msvc, "yaw")));
+                IntPtr tree = Obj(mem, msvc, ("a", Num(mem, 5, 1)), ("kids", Arr(mem, Obj(mem, msvc, ("v", leaf)), Num(mem, 5, 2))));
+                IntPtr found = FindBind(tree, "yaw", msvc);
+                check.Expect(found != IntPtr.Zero && *(byte**)(found + 8) == *(byte**)(leaf + 8), (msvc ? "MSVC" : "libstdc++") + ": a bind leaf nested in an object and an array is found, as a value whose map is the leaf's");
+                check.Expect(FindBind(tree, "pitch", msvc) == IntPtr.Zero, (msvc ? "MSVC" : "libstdc++") + ": a name no leaf has finds nothing");
+            }
             check.Expect(Dump(Num(mem, 9, 0), false) == null, "a value of an unknown type ends the dump");
         }
         finally { foreach (IntPtr p in mem) NativeMemory.Free((void*)p); }

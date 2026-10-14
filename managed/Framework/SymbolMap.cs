@@ -2044,6 +2044,16 @@ internal static unsafe class SymbolMap
     /// Queues nothing for an empty element id.</summary>
     [Fn("void(IntPtr window, IntPtr eventName, IntPtr elementId, int index, IntPtr payload)")]
     public const string NuiEventPush = "Nui::JSON::PushEvent";
+    /// <summary><c>Nui::JSON::JsonWindow::Bind(json const&amp; leaf)</c> @0x8735c0 (Windows rva 0x7408f0): finds or creates the window's
+    /// binding for the leaf's <c>bind</c> name, so the engine knows the name, and returns a <c>DynamicBinding</c> (0x188 bytes on both
+    /// builds) BY VALUE -- Itanium <c>(sret, this, leaf)</c>, Win64 <c>(this, sret, leaf)</c>. The copy holds a reference to the
+    /// window, so the caller must end it with <see cref="NuiDynamicBindingDtor"/>. Needs the window to be owned by a shared pointer.</summary>
+    [Fn("sret(Nui__JSON__JsonWindow this, IntPtr leaf)")]
+    public const string NuiJsonWindowBind = "_ZN3Nui4JSON10JsonWindow4BindERKN8nlohmann10basic_jsonISt3mapSt6vectorNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEblmdSaNS2_14adl_serializerES5_IhSaIhEEEE";
+    /// <summary><c>Nui::JSON::DynamicBinding::~DynamicBinding()</c> @0x88dff0 (Windows rva 0x735970): the destructor of a binding
+    /// <see cref="NuiJsonWindowBind"/> returned.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string NuiDynamicBindingDtor = "_ZN3Nui4JSON14DynamicBindingD1Ev";
     /// <summary><c>Nui::Layout::LayoutGroup</c>'s and <c>SingleGroup</c>'s vtables: the only layout classes that embed a kiwi
     /// solver. Identities, not hooks; an object's vptr is the symbol + <see cref="EngineLayout.VtblSymbolHeader"/>.</summary>
     public const string NuiLayoutGroupVtbl = "_ZTVN3Nui6Layout11LayoutGroupE";
@@ -3399,6 +3409,8 @@ internal static unsafe class SymbolMap
         [NuiJsonWindowCtor] = At(),   // the one function storing the JsonWindow vtable with an id, a name and the window JSON at +0x230/+0x238/+0x258
         [NuiJsonWindowUpdate] = At(), // "unknown-bind" and "bind update for unknown bind %s, value discarded"; the layout-update path calls LayoutableJ::Construct
         [NuiEventPush] = At(),        // the helper Update calls for "unknown-bind"; builds the 0x60-byte event record and queues it at rva 0x1423bc8
+        [NuiJsonWindowBind] = At(),   // "bind", "number_flags", "number_precision", "text_flags"; the map is window+0x268
+        [NuiDynamicBindingDtor] = At(), // the destructor Bind runs on its own temporary after copying it into the return slot
         [NuiLayoutGroupVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
         [NuiSingleGroupVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
         [NuiSpanVtbl] = At(),   // RTTI type descriptor -> COL -> vftable
