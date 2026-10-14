@@ -326,6 +326,7 @@ global using unsafe NuiHandleErrorFn = delegate* unmanaged<nint, nint, nint, voi
 global using unsafe NuiJsonWindowCtorFn = delegate* unmanaged<nint, int, nint, nint, nint>;
 global using unsafe NuiJsonWindowUpdateFn = delegate* unmanaged<nint, void>;
 global using unsafe NuiEventPushFn = delegate* unmanaged<nint, nint, nint, int, nint, void>;
+global using unsafe NuiDynamicBindingDtorFn = delegate* unmanaged<nint, void>;
 global using unsafe ManageSceneBSPFn = delegate* unmanaged<nint, long>;
 global using unsafe AddPartsToDrawBucketsFn = delegate* unmanaged<nint, long>;
 global using unsafe LerpFloatLerpedFn = delegate* unmanaged<nint, float>;
@@ -3461,6 +3462,8 @@ public readonly unsafe partial struct Nui__JSON__JsonWindow(IntPtr ptr)
     public ref byte BindIngest => ref *(byte*)(Ptr + EngineLayout.NuiWinIngest);
     /// <inheritdoc cref="EngineLayout.NuiIdsHead"/>
     public ref IntPtr IdsHead => ref *(IntPtr*)(Ptr + EngineLayout.NuiIdsHead);
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowBind"/>
+    public void NuiJsonWindowBind(void* ret, IntPtr leaf) => EngineFn.NuiJsonWindowBind(ret, Ptr, leaf);
     /// <inheritdoc cref="EngineLayout.NuiWinId"/>
     public ref int WindowId => ref *(int*)(Ptr + EngineLayout.NuiWinId);
     /// <inheritdoc cref="EngineLayout.NuiWinJson"/>
@@ -5746,6 +5749,19 @@ public static unsafe class EngineFn
     private static bool _NuiEventPushDone;
     /// <inheritdoc cref="SymbolMap.NuiEventPush"/>
     public static NuiEventPushFn NuiEventPush => (NuiEventPushFn)(_NuiEventPushDone ? _NuiEventPush : Resolve(ref _NuiEventPush, ref _NuiEventPushDone, SymbolMap.NuiEventPush));
+    private static IntPtr _NuiJsonWindowBind;
+    private static bool _NuiJsonWindowBindDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowBind"/>
+    public static void NuiJsonWindowBind(void* ret, IntPtr self, IntPtr leaf)
+    {
+        IntPtr fn = _NuiJsonWindowBindDone ? _NuiJsonWindowBind : Resolve(ref _NuiJsonWindowBind, ref _NuiJsonWindowBindDone, SymbolMap.NuiJsonWindowBind);
+        if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)fn)(self, (IntPtr)ret, leaf);
+        else ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)fn)((IntPtr)ret, self, leaf);
+    }
+    private static IntPtr _NuiDynamicBindingDtor;
+    private static bool _NuiDynamicBindingDtorDone;
+    /// <inheritdoc cref="SymbolMap.NuiDynamicBindingDtor"/>
+    public static NuiDynamicBindingDtorFn NuiDynamicBindingDtor => (NuiDynamicBindingDtorFn)(_NuiDynamicBindingDtorDone ? _NuiDynamicBindingDtor : Resolve(ref _NuiDynamicBindingDtor, ref _NuiDynamicBindingDtorDone, SymbolMap.NuiDynamicBindingDtor));
     private static IntPtr _ManageSceneBSP;
     private static bool _ManageSceneBSPDone;
     /// <inheritdoc cref="SymbolMap.ManageSceneBSP"/>
@@ -8284,6 +8300,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NuiEventPush"/>; returns the slot holding the next layer, or null.</summary>
     public static NuiEventPushFn* ChainNuiEventPush(this HookService h, NuiEventPushFn handler, int priority) =>
         (NuiEventPushFn*)h.Chain(SymbolMap.NuiEventPush, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiDynamicBindingDtor"/>; returns the original, or null.</summary>
+    public static NuiDynamicBindingDtorFn InstallNuiDynamicBindingDtor(this HookService h, NuiDynamicBindingDtorFn handler) =>
+        (NuiDynamicBindingDtorFn)h.Install(SymbolMap.NuiDynamicBindingDtor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiDynamicBindingDtor"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiDynamicBindingDtorFn* ChainNuiDynamicBindingDtor(this HookService h, NuiDynamicBindingDtorFn handler, int priority) =>
+        (NuiDynamicBindingDtorFn*)h.Chain(SymbolMap.NuiDynamicBindingDtor, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ManageSceneBSP"/>; returns the original, or null.</summary>
     public static ManageSceneBSPFn InstallManageSceneBSP(this HookService h, ManageSceneBSPFn handler) =>
         (ManageSceneBSPFn)h.Install(SymbolMap.ManageSceneBSP, (IntPtr)handler);
