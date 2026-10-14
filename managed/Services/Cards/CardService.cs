@@ -38,7 +38,7 @@ public sealed class CardService : IExtenderService
         CardRegistry.Init(log);
         CardSelfCheck.Run(log);
         s.Presenter.SubjectOf = Subject;
-        Capabilities.Register("card", 6, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
+        Capabilities.Register("card", 7, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.Cards.V && NuiHitTest.Armed);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Cards.Changed += Capabilities.Refresh;
         TextRig.FontChanged += PanelFonts.WantAll;

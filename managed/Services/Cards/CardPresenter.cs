@@ -120,8 +120,8 @@ internal sealed class CardPresenter
         CardSet? set = _set;
         if (set == null || _tip.Alpha <= 0f) return false;
         float scale = Metrics.Scale;
-        int epoch = TextRig.AtlasEpoch;
-        if (_tip.Tick() || _rebuild || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale)
+        int epoch = TextRig.AtlasEpoch, theme = Theme.Epoch;
+        if (_tip.Tick() || _rebuild || set.Views == null || set.ViewEpoch != epoch || set.ViewScale != scale || set.ViewTheme != theme)
         {
             var views = new PanelView[set.Cards.Length];
             for (int i = 0; i < views.Length; i++)
@@ -134,6 +134,7 @@ internal sealed class CardPresenter
             set.Views = views;
             set.ViewEpoch = epoch;
             set.ViewScale = scale;
+            set.ViewTheme = theme;
         }
         CardPlacer.Place(set.Views!, _ex, _ey, _ew, _eh, vw, vh, scale, set.Cards.Length > 0 ? set.Cards[0].St : Fallback, _xs, _ys);
         return true;

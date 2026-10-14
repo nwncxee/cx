@@ -9,17 +9,17 @@ internal enum BlockKind { Status, Text, Divider, Icons, Section, Footer }
 internal enum Anchor { TopLeft, TopRight, BottomLeft, BottomRight, Top, Bottom, Left, Right, Center }
 
 /// <summary>
-/// One styled piece of a text line. <see cref="Icon"/> makes it an inline icon, <see cref="Break"/> a line break. A
-/// <see cref="Rgba"/> of 0 and a <see cref="Size"/> of 0 inherit the block's colour and size.
+/// One styled piece of a text line. <see cref="Icon"/> makes it an inline icon, <see cref="Break"/> a line break. An unset
+/// <see cref="Rgba"/> and a <see cref="Size"/> of 0 inherit the block's colour and size.
 /// </summary>
 internal readonly struct Run
 {
     public readonly string Text, Icon;
-    public readonly uint Rgba;
+    public readonly Paint Rgba;
     public readonly float Size;
     public readonly bool Italic, Break;
 
-    public Run(string text, string icon, uint rgba, float size, bool italic, bool brk)
+    public Run(string text, string icon, Paint rgba, float size, bool italic, bool brk)
     {
         Text = text; Icon = icon; Rgba = rgba; Size = size; Italic = italic; Break = brk;
     }
@@ -32,7 +32,7 @@ internal sealed class Block
     public Run[] Runs = [], Right = [];
     public string Icon = "";
     public bool Frame, Pulse;
-    public uint Color, Tint, FrameFill, FrameLine;
+    public Paint Color, Tint, FrameFill, FrameLine;
     public float Size;
     /// <summary>Text alignment: 0 left, 1 right, 2 centre.</summary>
     public int Align;
