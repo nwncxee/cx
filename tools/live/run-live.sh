@@ -502,8 +502,11 @@ elif [ "$MENU" = 1 ] && [ "$menu_up" = 1 ]; then
     [ -r "/proc/$CLIENT_PID/status" ] && peak_rss=$(awk '/VmHWM/{print $2}' "/proc/$CLIENT_PID/status" 2>/dev/null || echo "$peak_rss")
 elif [ "$reached" = 1 ]; then
     echo "run-live: reached the area -- soaking ${SECONDS_IN}s"
+    soak_start=$(date +%s)
     half=$(( SECONDS_IN / 2 )); [ "$half" -lt 1 ] && half=1
-    sleep "$half"
+    # A showcase's script times its steps from the login, so its keys start at once and --seconds only adds soak after them.
+    lead=$half; [ -n "$SHOWCASE" ] && lead=1
+    sleep "$lead"
     if python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$SHOTS/01-early.png" >> "$OUT/xtool.log" 2>&1; then
         shots=$((shots + 1))
     fi
@@ -512,7 +515,9 @@ elif [ "$reached" = 1 ]; then
         python3 "$ROOT/tools/live/xtool.py" keys "$DISP" "$KEYS" >> "$OUT/xtool.log" 2>&1 \
             || echo "run-live: key injection failed (see $OUT/xtool.log)"
     fi
-    sleep "$half"
+    rest=$half
+    if [ -n "$SHOWCASE" ]; then rest=$(( SECONDS_IN - ($(date +%s) - soak_start) )); [ "$rest" -lt 1 ] && rest=1; fi
+    sleep "$rest"
     if python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$SHOTS/02-settled.png" >> "$OUT/xtool.log" 2>&1; then
         shots=$((shots + 1))
     fi

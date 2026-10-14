@@ -12,7 +12,8 @@
 #
 # --nui hosts the fixed NUI window module of run-live.sh (tools/live/ladder/cxnui.nss) built into the prefix's user
 # directory; --showcase NAME hosts run-live.sh's showcase of that name, its .policy as the card file and its .keys as the
-# default --keys; --keys runs an xtool.py key/shot script 60 seconds in, after the client has had time to load.
+# default --keys; --keys runs an xtool.py key/shot script a second after the module logs the login (60 seconds in for the
+# default module), so a showcase's waits line up with its script.
 #
 # Default is the Linux harness's own module, so the shots line up with a `run-live.sh` run of the same name.
 set -u
@@ -152,14 +153,22 @@ end=$(( $(date +%s) + SECONDS_TO_RUN ))
 n=0
 start=$(date +%s); keys_done=0
 audio_clients=""
+# The NUI and showcase modules log their own login; their key scripts are timed from it, so they start a second after it.
+keys_due() {
+    if [ "$NUI" = 1 ]; then grep -qE 'CX(SHOW|NUI): enter ' "$DOCS/logs/nwclientLog1.txt" 2>/dev/null
+    else [ $(( $(date +%s) - start )) -ge "$KEYS_AT" ]; fi
+}
 while [ "$(date +%s)" -lt "$end" ] && kill -0 "$GS_PID" 2>/dev/null; do
-    sleep 10
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 1
+        if [ -n "$KEYS" ] && [ "$keys_done" = 0 ] && keys_due; then
+            keys_done=1
+            sleep 1
+            python3 "$ROOT/tools/live/xtool.py" keys "$DISP" "$KEYS" >> "$OUT/xtool.log" 2>&1 \
+                || echo "run-proton-live: key injection failed (see $OUT/xtool.log)"
+        fi
+    done
     n=$((n + 1))
-    if [ -n "$KEYS" ] && [ "$keys_done" = 0 ] && [ $(( $(date +%s) - start )) -ge "$KEYS_AT" ]; then
-        keys_done=1
-        python3 "$ROOT/tools/live/xtool.py" keys "$DISP" "$KEYS" >> "$OUT/xtool.log" 2>&1 \
-            || echo "run-proton-live: key injection failed (see $OUT/xtool.log)"
-    fi
     [ -n "$audio_clients" ] || audio_clients=$(live_audio_clients "$RUN_TAG")
     python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$(printf '%s/%02d.png' "$SHOTS" "$n")" \
         >> "$OUT/xtool.log" 2>&1 || true

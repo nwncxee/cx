@@ -281,7 +281,8 @@ These knobs are `ChatOnly` and exist for building and testing. None is advertise
 A showcase is a module script plus the server policy it needs, for pictures and snippets rather than grading. Each is three
 files in `tools/live/showcase/`: `<name>.nss` (defines `Show(object oPC)`; its `OnClientEnter` comes from the include),
 `<name>.policy` (policy lines, fed in like `nui.cardfile`) and an optional `<name>.keys` (the default `--keys`; `@SHOTS@` is
-the run's shots folder). `inc_show.nss` is the shared half: arming on the PC's first area, `ShowRegister`/`ShowOpen` (one window
+the run's shots folder). A showcase's keys start 1 s after the area loads, so their waits line up with the script's
+`DelayCommand`s; `--seconds` only adds soak after them. `inc_show.nss` is the shared half: arming on the PC's first area, `ShowRegister`/`ShowOpen` (one window
 at a time, so the model view's one-doll limit holds), `ShowSpawn` (a passive stock creature, its id logged) and `ShowMorph` (the
 PC takes a creature's appearance). A themed window is a new `<name>.nss` that builds its own window JSON and calls
 `ShowRegister`, plus its `.policy`; the window function is the part a wiki page quotes. The build is `build-ladder.sh` with a
@@ -323,8 +324,9 @@ that compares the two renderers passes `--char aluviandarkstar` to the Alloy run
 
 ## Model view
 
-`--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
-on the player a second after the window opens. The shield comes off at 10 s, the sword at 13 s and the hair changes at 16 s, and two permanent visual effects and a temporary one go on at 20 s
+`--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, an off-hand dagger, a helmet and a
+cloak on the player a second after the window opens. The harness PC is a wizard and cannot equip a shield, so `model-wear.policy`
+previews one instead. The dagger comes off at 10 s, the sword at 13 s and the hair changes at 16 s, and two permanent visual effects and a temporary one go on at 20 s
 (`CXNUI:` markers). The window closes after 60 s. The doll's settings are policy lines in a file, fed in like the cards:
 
     tools/live/run-live.sh --nui --seconds 5 --cfg 'nui.cardfile=<path to model.policy>' \
