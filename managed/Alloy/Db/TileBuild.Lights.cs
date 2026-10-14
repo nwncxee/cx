@@ -170,6 +170,7 @@ public static partial class TileBuild
             SceneDb.LitAmbientOnly[k] = pl.AmbientOnly;
             SceneDb.LitDynamic[k] = pl.Dynamic;
             SceneDb.LitMainSlot[k] = pl.MainSlot;
+            SceneDb.LitDef[k] = pl.Def;
             if (into != null) into[count] = k;
             else { if (!_objLights.TryGetValue(obj.Value, out List<int>? l)) _objLights[obj.Value] = l = new List<int>(2); l.Add(k); }
             count++;
@@ -212,6 +213,7 @@ public static partial class TileBuild
         if (lp >= 0) DbInputs.PartDestroyed(lp);
         SceneDb.LitPart[k] = -1;
         SceneDb.LitTile[k] = default;
+        SceneDb.LitDef[k] = null;
         SceneDb.Lights.Free(SceneDb.Lights.IdAt(k));
     }
 

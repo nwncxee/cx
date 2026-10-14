@@ -133,7 +133,7 @@ internal static unsafe class SceneFog
         // match it against -- converging a cave's fog on some stand-in would be this feature overruling the
         // author exactly where it has no evidence. The sun lobe goes with it, because AreaDiffuse is the
         // directional light indoors too and a cave does not have a sun in its fog.
-        bool useSky = _haveSky && !capture;
+        bool useSky = _haveSky && !capture && !FrameInputs.Blind;
         float* v = stackalloc float[4];
         v[0] = useSky ? SkyMix : 0f; v[1] = HeightK; v[2] = playerZ + FloorOffset;
         Gl.Uniform3fv(loc.FogSky, 1, v);
@@ -159,7 +159,7 @@ internal static unsafe class SceneFog
     internal static void SkyfadeTint(float* rgb)
     {
         Vector3 c = FrameInputs.FogColor;   // display space, as the Scene block stores it
-        if (SkyMix > 0f && _haveSky)
+        if (SkyMix > 0f && _haveSky && !FrameInputs.Blind)
         {
             Vector3 lin = new Vector3(Lin(c.X), Lin(c.Y), Lin(c.Z));
             // The shader's own horizon weight at dir.z == 0 is 1.0 (smoothstep(-0.35, 0.0, 0.0)), and the

@@ -678,8 +678,8 @@ option turns this on and off."
 | lightmap.density | Lightmap density | S | 2–32 px/m · 8 | A | L | — | Lightmap texels per metre of world. Each instance's rectangle is capped at a quarter page; a change re-bakes the area. |
 | lightmap.movers | Creature shadows from baked lights | T | on | A | L | — | A creature standing under a baked light casts its shadow on the baked surface. Off is cheaper. |
 | lightmap.vram / window / near / tiers / hold / movertaps / moverlights / pairsize / paircount / disk | — | T, S | as declared | C | pairsize / paircount R, rest L | — | the page pool's memory budget, the baked radius round the player, the density tiers, the loading hold, the creature-and-light shadow atlas, the chart cache size |
-| effects.halos | Light halos | S | 0–4 step 0.1 · 1 | U | L | — | Brightness of the soft glow around every light source. 1 is the light's own colour; 0 draws no halos. Ladders on `quality.effects`. |
-| effects.sky / beams / halosize / haloviz | — | T, S | as declared | C | L | — | the sky dome, the light shafts, the halo's world size, the halo visualiser |
+| effects.halos | Light halos | S | 0–4 step 0.1 · 1 | U | L | — | Brightness of the glow around the lights that flare in vanilla. 1 is vanilla's; 0 draws no halos. Ladders on `quality.effects`. |
+| effects.sky / beams / halosize / haloviz | — | T, S | as declared | C | L | — | the sky dome, the light shafts, the halo's size as a multiple of vanilla's flare, the halo visualiser |
 
 **Image** — group `post` (330), no master (the resolve is the frame).
 

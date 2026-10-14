@@ -511,13 +511,20 @@ internal static unsafe class SceneSlots
         if (!s.IsNull) SceneFeed.StaticProjectionsStale(s);
     }
 
+    /// <summary><c>Scene::SetBlindLights</c> @0x45e010: from now on only <paramref name="obj"/>'s lights light the
+    /// scene (null = every light again). Cold -- an effect's apply and remove -- so each change is a log line.</summary>
     [UnmanagedCallersOnly]
     private static void SetBlindLights(nint self, nint obj)
     {
         DbId s = Id(self);
         if (s.IsNull) return;
-        SceneDb.SceneBlindLights[s.Index] = Facade.ObjectId(obj);
+        DbId o = Facade.ObjectId(obj);
+        if (SceneDb.SceneBlindLights[s.Index] == o) return;
+        SceneDb.SceneBlindLights[s.Index] = o;
         SceneFeed.LightsChanged(s);
+        _log?.Info(o.IsNull
+            ? $"SceneSlots: blind lights OFF on scene {s.Index} -- every light lights it again"
+            : $"SceneSlots: blind lights ON on scene {s.Index} -- only '{SceneDb.ObjModel[o.Index]?.Name ?? "?"}' (object {o.Index}) lights it: no other light, no area ambient or sun, no baked pages, black fog");
     }
 
     [UnmanagedCallersOnly]

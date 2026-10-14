@@ -133,9 +133,9 @@ internal static unsafe class AlloyLights
     internal static float AmbientScale => Lighting.Ambient.V;
     internal static float SunScale => Lighting.Sun.V;
     /// <summary>The daylight ratio's lamp side, <c>uDayDim</c>: 1 / k, where k eases from 1 to <c>light.daylight</c>
-    /// as the area directional's linear luminance crosses <c>daylow</c>..<c>dayhigh</c>. Every lamp term (live,
-    /// baked, halo) takes it, so the sun outweighs lamps by day with no rebake and no reliance on HDR or
-    /// auto-exposure. An interior has no sun: 1.</summary>
+    /// as the area directional's linear luminance crosses <c>daylow</c>..<c>dayhigh</c>. The live and baked lamp
+    /// terms take it, so the sun outweighs lamps by day with no rebake and no reliance on HDR or auto-exposure;
+    /// halos keep vanilla's flare brightness. An interior has no sun: 1.</summary>
     private static float SunLum
     {
         get { Vector3 d = FrameInputs.AreaDiffuse; return 0.2126f * d.X + 0.7152f * d.Y + 0.0722f * d.Z; }
