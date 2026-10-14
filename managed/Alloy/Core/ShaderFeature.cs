@@ -52,6 +52,10 @@ internal enum ShaderFeature
     /// glow, an anisotropic lobe, and a sway weighted by the mesh's vertex paint. Its per-material terms ride
     /// <see cref="TintTerms"/>' side table, reached by the row index in <c>feat.z</c>.</summary>
     PaletteTint = 12,
+    /// <summary><c>vs_snowed01</c>/<c>fs_snowed01</c> -- scripted snow cover. The slot-6 snow map laid over
+    /// upward-facing surfaces in world space, broken up by the engine noise, with a buildup the server eases
+    /// through the scriptable slots. Its vertex stage is stock lit, so nothing displaces.</summary>
+    Snowed = 13,
 }
 
 internal static class ShaderFeatures
@@ -64,7 +68,7 @@ internal static class ShaderFeatures
     {
         "", "shd_windgrass_vs", "shd_windleaf_vs", "shd_windplant_vs",
         "shd_roofkn_vs", "shd_roofknm_vs", "shd_nokeyhole_vs", "shd_flowmap_vs",
-        "", "vs_noirwet", "vs_noirgloss", "td_ground_vs", "vs_plt_wind",
+        "", "vs_noirwet", "vs_noirgloss", "td_ground_vs", "vs_plt_wind", "vs_snowed01",
     };
 
     /// <summary>The <c>customShaderFS</c> resrefs Alloy HOSTS, indexed like <see cref="VsNames"/>. An entry
@@ -75,7 +79,7 @@ internal static class ShaderFeatures
     {
         "", "", "", "",
         "", "", "", "",
-        "", "fs_noirwet", "fs_noirgloss", "td_ground_fs", "fs_plt_tinter",
+        "", "fs_noirwet", "fs_noirgloss", "td_ground_fs", "fs_plt_tinter", "fs_snowed01",
     };
 
     /// <summary>Does this feature's fragment side come from a HOSTED content stage? Such a batch draws through
@@ -103,12 +107,13 @@ internal static class ShaderFeatures
         return false;
     }
 
-    /// <summary>Does this feature read material texture slot 6? Two do, for different things -- the flow
-    /// map's RG direction field and the weather ground's snow overlay -- because the SLOT is the contract and
-    /// the name beside it is only what one shader calls it. Everything else leaves the bit clear, which is
-    /// vanilla's own <c>texture6Bound</c> test: a material that binds nothing there gets nothing sampled.</summary>
+    /// <summary>Does this feature read material texture slot 6? Three do -- the flow map's RG direction field
+    /// and two snow overlays -- because the SLOT is the contract and the name beside it is only what one
+    /// shader calls it. Everything else leaves the bit clear, which is vanilla's own <c>texture6Bound</c>
+    /// test: a material that binds nothing there gets nothing sampled.</summary>
     internal static bool ReadsAuxSlot(int feat)
-        => feat == (int)ShaderFeature.Flowmap || feat == (int)ShaderFeature.GroundWeather;
+        => feat == (int)ShaderFeature.Flowmap || feat == (int)ShaderFeature.GroundWeather
+           || feat == (int)ShaderFeature.Snowed;
 
     /// <summary>Does this feature read the four PALETTE slots, <c>texture7</c>..<c>texture10</c>? Only the
     /// palette tint does, and the same reading as <see cref="ReadsAuxSlot"/>'s applies: a material that binds

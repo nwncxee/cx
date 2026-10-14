@@ -33,6 +33,8 @@ internal static class DbLights
         // Cleared per walk: an area pair that is no longer in the scene must stop lighting it. The SUN is
         // deliberately NOT cleared -- see AreaTerm.
         FrameInputs.HasAreaAmbient = false; FrameInputs.HasAreaDiffuse = false;
+        DbId only = SceneFeed.BlindLights(scene);
+        FrameInputs.Blind = !only.IsNull;
         // The bake's own walk opens with ours: it closes a STATIC set over the lights it is told about, and a
         // walk that never began leaves every light dynamic and every tile unbaked.
         LightmapBake.BeginWalkDb(h.Area, h.PlaceableLights);
@@ -46,7 +48,7 @@ internal static class DbLights
             // Same scene filter the object lights get: a GUI scene's 3D view must not be lit by the world's
             // tile lamps, and the table is one table for every scene.
             if (!SceneDb.Objects.Valid(l.Obj) || SceneDb.ObjScene[l.Obj.Index].Value != scene.Value) continue;
-            Admit(in l, scene, radiusMult, in h, tile: true);
+            Admit(in l, scene, radiusMult, in h, tile: true, only);
         }
 
         // ...and the OBJECT lights, from the part registry. A tile light that DID become a part is in both
@@ -57,8 +59,11 @@ internal static class DbLights
             if (l.Lit >= 0) { _deduped++; continue; }
             if (SceneDb.PartObj[l.Part].IsNull) { _skipped++; continue; }
             if (SceneDb.ObjScene[SceneDb.PartObj[l.Part].Index].Value != scene.Value) continue;
-            Admit(in l, scene, radiusMult, in h, tile: false);
+            Admit(in l, scene, radiusMult, in h, tile: false, only);
         }
+
+        // Blind lights fade the area pair out as well, so the grey stand-in an unread ambient gets is wrong here.
+        if (!only.IsNull && !FrameInputs.HasAreaAmbient) { FrameInputs.AreaAmbient = Vector3.Zero; FrameInputs.HasAreaAmbient = true; }
 
         // The same tail the engine walk closes with: a light that left the rig has to fade rather than vanish,
         // and the bake's static set is only a set once it is closed.
@@ -94,6 +99,7 @@ internal static class DbLights
     {
         ulong h = 1469598103934665603UL;
         Mix(ref h, scene.Value);
+        Mix(ref h, SceneFeed.BlindLights(scene).Value);
         Mix(ref h, (uint)BitConverter.SingleToInt32Bits(radiusMult));
         Mix(ref h, DbInputs.LightRev);
         if (t.HaveArea)
@@ -137,18 +143,22 @@ internal static class DbLights
 
     /// <summary>One light into the frame's rig: the area-pair fork, the engine's admission tests, the
     /// adjusted radius/colour pair, and the bake's static verdict. Shared by both enumerations so a tile
-    /// light and an object light cannot drift apart in how they are admitted.</summary>
-    private static void Admit(in DbLight l, DbId scene, float radiusMult, in FrameHoist h, bool tile)
+    /// light and an object light cannot drift apart in how they are admitted. <paramref name="only"/> is the
+    /// scene's blind-lights object (<see cref="SceneFeed.BlindLights"/>), null when there is none.</summary>
+    private static void Admit(in DbLight l, DbId scene, float radiusMult, in FrameHoist h, bool tile, DbId only)
     {
         _walked++;
         if (tile) _tile++;
         if (!l.Enabled) { _skipped++; _skipOff++; return; }
+        // Scene::SetBlindLights @0x45e010 -> m_pOnlyGob: PrioritizeLights @0x4c0940 and ControlLightsFade keep that
+        // object's lights alone, area pair included. The bake still hears of every light: its static set is the area's.
+        bool blinded = !only.IsNull && l.Obj != only;
 
         float range = l.Radius, inten = l.Multiplier;
         // The two index -1 lights, picked exactly as LightManager::UpdateLights @0x4c06c0 picks them: a light
         // reaching DirectionalRange or further is the AREA pair -- kind 0 the directional diffuse (and, when
         // it reaches like one, the sun), anything else the ambient -- and the last of each wins.
-        if (range >= DirectionalRange) { AreaTerm(in l, in h); return; }
+        if (range >= DirectionalRange) { if (!blinded) AreaTerm(in l, in h); return; }
         Vector3 rgb = l.Colour;
         if (range <= 0f || inten <= 0f || (rgb.X == 0f && rgb.Y == 0f && rgb.Z == 0f))
         {
@@ -165,6 +175,7 @@ internal static class DbLights
         // engine objects, says whether the light holds still. A static light is what a tile is LIT BY: tiles
         // are lit from the baked pages and objects dynamically.
         bool isStatic = LightmapBake.RecordDb(l.Id, pos, adjR, rgb, ambient, l.Static, out int setIndex);
+        if (blinded) return;
         FrameInputs.RecordAreaLight(l.Id, pos, adjR, rgb, ambient, isStatic, setIndex);
         _admitted++;
         if (isStatic) _static++;
@@ -256,11 +267,13 @@ internal static class DbLights
         => $"dblights: {_reused} frames reused, {_walked} walked ({_tile} tile, {_deduped} deduped), {_admitted} admitted "
          + $"({_static} static), {_skipped} skipped (hidden {_skipOff}, no reach {_skipReach}, no multiplier {_skipMul}, "
          + $"black {_skipBlack}; {_skipAnimated} of them posed by an animation), area amb/dif {_areaAmb}/{_areaDif}"
+         + (FrameInputs.Blind ? " BLIND LIGHTS (one object's lights alone, no area pair, no baked pages)" : "")
          + (FrameInputs.HasAreaAmbient ? "" : " NO AREA AMBIENT")
          + (FrameInputs.HasAreaDiffuse ? "" : " NO AREA DIFFUSE");
 
-    /// <summary>Off-device: the arithmetic, and the admission. A light dropped here is an unlit area, and a
-    /// radius that drifted from the engine's is every lit sphere the wrong size.</summary>
+    /// <summary>Off-device: the arithmetic, and the admission (blind lights included). A light dropped here is an
+    /// unlit area, and a radius that drifted from the engine's is every lit sphere the wrong size. Oracle:
+    /// hand-written expected values over a synthetic database.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DbLights.SelfCheck");
@@ -331,6 +344,20 @@ internal static class DbLights
         Walk(scene, in noArea);
         check.Expect(FrameInputs.LightCount == 0, "a light on an invisible object does not light");
         SceneDb.ObjVisible[obj.Index] = true;
+
+        // Blind lights (a blindness effect's light): only the named object's lights light the scene.
+        DbId blind = SceneDb.Objects.Alloc();
+        SceneDb.SceneBlindLights[scene.Index] = blind;
+        Walk(scene, in noArea);
+        check.Expect(FrameInputs.Blind && FrameInputs.LightCount == 0,
+                     $"under another object's blind lights this light is out of the rig ({FrameInputs.LightCount})");
+        check.Expect(FrameInputs.HasAreaAmbient && FrameInputs.AreaAmbient == Vector3.Zero,
+                     "...and the area ambient is black, not the grey stand-in");
+        SceneDb.SceneBlindLights[scene.Index] = obj;
+        Walk(scene, in noArea);
+        check.Expect(FrameInputs.LightCount == 1, $"...while the blind object's own light still lights ({FrameInputs.LightCount})");
+        SceneDb.SceneBlindLights[scene.Index] = default;
+        SceneDb.Objects.Free(blind);
 
         // A TILE light, which is the case the part registry never saw: the Lit table is enumerated directly,
         // so a light node that never became a part still lights its area.

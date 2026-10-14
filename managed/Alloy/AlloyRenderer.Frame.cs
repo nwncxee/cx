@@ -1024,6 +1024,7 @@ public sealed unsafe partial class AlloyRenderer
                     Gl.Uniform1i(Programs._depthFeatTex, 0);
                     Gl.ActiveTexture(Gl.TEXTURE0);
                     UploadFeatureTerms(Programs._depthFeatFeat, viewport);
+                    Db.PltPalettes.Bind();   // a PLT cutout's alpha is its palette's, resolved by the stage
                 }
                 int s = _gStart[g];
                 _gPrepassed[g] = true;

@@ -11,6 +11,7 @@ uniform sampler2D uTex;
 uniform float uAlphaCut;
 #include "cx_keyhole.glsl"
 #include "cx_alphamip.glsl"
+#include "cx_plt.glsl"
 void main()
 {
     vec2 du1 = dFdx(vUV), du2 = dFdy(vUV);
@@ -24,6 +25,7 @@ void main()
     float mul = uDraw[vDraw].rot.w;
     if (mul <= uAlphaCut) discard;
     if ((int(uDraw[vDraw].pbr.w) & 64) != 0) return;
-    // CX-191: the colour pass tests the same compensated alpha, or its GL_EQUAL draw finds holes
-    if (CxAlphaMip(texture(uTex, vUV, uLodBias).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;
+    // CX-191: the colour pass tests the same compensated alpha, or its GL_EQUAL draw finds holes -- a PLT's
+    // included: its alpha is the palette's, and the pair texture's own alpha is 1 everywhere
+    if (CxAlphaMip(CxDiffuse(uTex, vUV, uLodBias, vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;
 }

@@ -9,6 +9,7 @@
 #define CX_FEAT_NOIRGLOSS 10
 #define CX_FEAT_GROUNDWEATHER 11
 #define CX_FEAT_PALETTETINT 12
+#define CX_FEAT_SNOWED 13
 // CX-223: is this record POSED -- does feat.y carry a bone base? feat.x alone cannot say so: the skin class
 // takes that lane from a content feature, but a CHARACTER shader (the palette tint) is skinned AND keeps its
 // own feature there, so the override displaces only a feature that never meets a bone. A -1 in feat.y is the

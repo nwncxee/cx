@@ -419,6 +419,7 @@ internal static unsafe class Issue
                     // CX-223: ...and the palette tint's side table, whose binding point is a shared one --
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.TintTerms.Bind();
+                    if (wantProg == 3 || wantProg == 7) FrameSnapshot.BindNoise(TextureSlots.HostNoise);
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;

@@ -7,7 +7,7 @@
 // 1 + round(coverage * 1024).
 #version 460 core
 layout(local_size_x = 64) in;
-layout(std430, binding = 8) readonly buffer CxHaloBuf { vec4 uHalos[]; };   // (pos, radius), (rgb, flareradius)
+layout(std430, binding = 8) readonly buffer CxHaloBuf { vec4 uHalos[]; };   // (pos, soft), (rgb, flareradius), (size, axis, -, -)
 layout(std430, binding = 9) writeonly buffer CxHaloVis { uint uVis[]; };   // Halos.BindVis
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -25,13 +25,13 @@ void main()
 {
     uint i = gl_GlobalInvocationID.x;
     if (i >= uint(uCount)) return;
-    vec4 a = uHalos[i * 2u];
+    vec4 a = uHalos[i * 3u];
     vec3 vp = (uView * vec4(a.xyz, 1.0)).xyz;
     vec4 clip = uProj * vec4(vp, 1.0);
     if (clip.w <= 0.0 || any(greaterThan(abs(clip.xy), vec2(clip.w)))) { uVis[i] = 0u; return; }
     vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
-    // Taps sit at HALF the halo's own projected radius -- the world radius through the projection is the NDC
-    // extent, halved again for UV -- so a big flare samples wide without reaching past its own disc.
+    // Taps sit at a quarter of the soft range through the projection (the NDC extent, halved again for UV),
+    // so the probe samples around the light without reaching past what the per-pixel cut softens over.
     vec2 spread = 0.25 * a.w * vec2(uProj[0][0], uProj[1][1]) / clip.w;
     float lightDepth = -vp.z;
     float soft = max(a.w, 1e-3);

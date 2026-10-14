@@ -224,10 +224,14 @@ public sealed unsafe partial class ObjectSlots
         q.StaticPlaceables = false;
         q.WalkMesh = false;
         q.BoxOnly = boxOnly;
-        if (!HitTest.Cast(q, out HitResult r) || r.Obj.Value != id.Value) return 0;
+        if (!HitTest.Cast(q, out HitResult r)) return 0;
+        // StringGob::HitCheck answers the model riding the line it hit (a chat line's reply button), not itself.
+        nint hit = r.Obj.Value == id.Value ? shell
+                 : HitTest.RidesLine(id, r.Obj) ? SceneDb.ObjFacade[r.Obj.Index] : 0;
+        if (hit == 0) return 0;
         if (at != null) *at = EVec.From(r.Point);
         if (info != 0) HitTest.Fill(r, (byte*)info);
-        return shell;
+        return hit;
     }
 
     /// <summary><c>Gob::HitCheck(Vector from, Vector to, Vector* at, CHitInfo* info)</c> @0x4381d0: one

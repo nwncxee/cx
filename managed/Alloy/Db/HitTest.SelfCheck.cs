@@ -198,6 +198,38 @@ public static unsafe partial class HitTestCheck
                 ok = Fail(log, "a text gob answered a pick outside its own quad");
         }
 
+        // A model riding line 0, as a chat line's reply button does: in no scene, so only the line walk reaches it.
+        // Exit's quad (centred on pixel 400,440 in its own frame) is carried to (rx + rw/2, ry), half over the row,
+        // and lifted 0.1 toward the camera -- where BUT_CHAT_REPLY's Portrait node sits, in front of the text.
+        DbId rider = w.Exit;
+        HitGrid.Remove(rider.Index);
+        SceneDb.ObjScene[rider.Index] = default;
+        int rp = SceneDb.ObjPartFirst[rider.Index];
+        for (int p = rp; p < rp + SceneDb.ObjPartCount[rider.Index]; p++)
+            SceneDb.PartWorld[p] = Matrix4x4.CreateTranslation(0f, 0f, 0.1f);
+        TextDoc? doc = TextObjects.Of(row);
+        if (doc == null) ok = Fail(log, "the list row has no document to hang a line model on");
+        else
+        {
+            float ax = (rx + rw / 2 - 400) * k - SceneDb.ObjPos[ri].X, ay = (ry - 440) * k - SceneDb.ObjPos[ri].Y;
+            doc.PublishedQuads = new QuadList { Attached = [(rider, ax, ay)], AttachedCount = 1 };
+            DbId PickAt(int px)
+            {
+                if (!DbCamera.PickSegment(w.Cam, px, ry, 0f, 0f, vw, vh, default, out Vector3 pa, out Vector3 pb))
+                    return default;
+                var lq = HitQuery.Pick(w.Scene, pa, pb);
+                lq.SurfaceMask = HitQuery.All;
+                return HitTest.Cast(lq, out HitResult lr) ? lr.Obj : default;
+            }
+            if (PickAt(rx + rw / 4) != rider)
+                ok = Fail(log, "a pick on the model riding a list row's line did not answer that model");
+            if (PickAt(rx - rw / 4) != row)
+                ok = Fail(log, "a pick on a row with a line model, off the model, did not answer the row");
+            if (PickAt(rx + rw * 3 / 4) == rider)
+                ok = Fail(log, "a line model answered a pick outside its row's quad -- the engine never casts there");
+            doc.ResetQuads();
+        }
+
         HitGrid.Remove(ri);
         TextObjects.Destroy(row);
         return ok;

@@ -184,7 +184,7 @@ public sealed unsafe partial class AlloyRenderer
         if ((rf & RecipeFlag.Lit) != 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static)
             MeshArena.WantBake(DrawRecipe.Range(recipe));
         bool washes = DbWash(recipe, rf, of);
-        _oCls[i] = DbClass(recipe, washes);
+        _oCls[i] = DbClsOf(part, recipe, washes);
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
         _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
@@ -269,6 +269,20 @@ public sealed unsafe partial class AlloyRenderer
         if (fixedUp > 0) CasterPass.ShadowInvalidate();
     }
 
+    /// <summary>The slot's class: <see cref="DbClass"/>'s, except that an opaque PLT on an instance with no env map
+    /// is a cutout. <c>Material::GetIsOpaque</c> @0x4c6190 answers opaque for an env-mapped gob without asking the
+    /// texture; without one it asks <c>HasAlpha</c>, which every PLT answers yes (alpha mean 0.5), so the palette
+    /// alpha is coverage there -- palette row 61 is alpha 0 throughout, the "ragged cloak" colour.</summary>
+    private static byte DbClsOf(int part, int recipe, bool wash)
+    {
+        byte cls = DbClass(recipe, wash);
+        if (cls != (byte)AlloyClass.Opaque) return cls;
+        TexId diffuse = DbTexOf(part, recipe, 0);
+        // ponytail: the shadow keeps the solid silhouette -- the caster cut samples the pair texture, whose alpha
+        // is 1; resolve the palette in cx_castmaskcut's handle stage if a ragged cloak's shadow ever matters.
+        return TexRegistry.KindOf(diffuse) == TexKind.Plt && !DbEnvMapped(part, diffuse) ? (byte)AlloyClass.Cutout : cls;
+    }
+
     /// <summary>A recipe's CLASS moves once its diffuse lands (<see cref="DrawRecipe.Reclassify"/>), so every
     /// slot drawing it is told: the class columns are written at the seat and read by the route every pass, so
     /// a part interned before its texture arrived would otherwise keep the conservative cutout guess for ever.
@@ -285,7 +299,7 @@ public sealed unsafe partial class AlloyRenderer
             ObjFlag of = (uint)o < (uint)SceneDb.ObjFlags.Length ? SceneDb.ObjFlags[o] : ObjFlag.None;
             // ...and the two routes the class decides: a wash (see-through and flat) and a ground decal (blended)
             bool washes = DbWash(recipe, rf, of);
-            byte cls = DbClass(recipe, washes);
+            byte cls = DbClsOf(_oDbPart[i], recipe, washes);
             // ...and the texture rotation with it: the bumpy-shiny half of RecipeFlag.RotateTexture latches
             // when the diffuse's .txi lands, which is after the slot took its columns.
             float wasCos = _oCos[i], wasSin = _oSin[i];
@@ -426,7 +440,7 @@ public sealed unsafe partial class AlloyRenderer
                 TexId d = DrawRecipe.Tex(rec, 0);
                 tex = $" tex0={(d.IsNull ? "(none)" : TexRegistry.ResrefOf(d))}"
                     + $" {TexRegistry.KindOf(d)}/{TexRegistry.StateOf(d)}"
-                    + $" cls={(AlloyClass)DrawRecipe.Cls(rec)} reveal={SceneDb.PartReveal[p]:F2}"
+                    + $" cls={(AlloyClass)DbClsOf(p, rec, false)} env={(SceneDb.PartEnvMapped(p) ? 1 : 0)} reveal={SceneDb.PartReveal[p]:F2}"
                     + $" alpha={SceneDb.PartAlpha[p]:F2} fade={SceneDb.PartFade[p]:F2}";
             }
             int rng = DrawRecipe.Range(rec);

@@ -834,6 +834,9 @@ public static class SceneDb
     /// <summary>A tileset MAIN light: the one the area's palette rows re-colour through
     /// <c>Scene::SetTileLights</c>. Slot 0 is main light 1, slot 1 main light 2.</summary>
     public static readonly int[] LitMainSlot = new int[MaxLights];
+    /// <summary>The light node's own definition (flags, flares): a tile light that never became a part has no
+    /// other way back to it.</summary>
+    public static readonly LightDef?[] LitDef = new LightDef?[MaxLights];
 
     // ---- CX-117: PLT colours (owner: TexRegistry / PltColors) ----
 

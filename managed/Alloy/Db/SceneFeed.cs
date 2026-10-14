@@ -203,7 +203,7 @@ public static class SceneFeed
 
     /// <summary>This view's fog into <see cref="FrameInputs"/>. The three sources -- the AREA's own scene, the
     /// scene SHELL's words, the scene columns -- are all engine or game-thread state, so the choice between
-    /// them is made at the fold (<see cref="FrameHoist.FoldFog"/>) and all that happens here is the copy.</summary>
+    /// them is made at the fold (<see cref="FrameHoist.FoldFog"/>); here it is copied, black under blind lights.</summary>
     private static void FogTerms(int i, in RenderSnapshot.ViewRec v, in FrameHoist h)
     {
         _fogPath = v.Fog.Path;
@@ -212,7 +212,8 @@ public static class SceneFeed
         {
             FrameInputs.FogStart = v.Fog.Start;
             FrameInputs.FogEnd = v.Fog.End;
-            FrameInputs.FogColor = v.Fog.Colour;
+            // Scene::DoFog @0x45f1b0's blind-lights branch
+            FrameInputs.FogColor = SceneDb.SceneBlindLights[i].IsNull ? v.Fog.Colour : Vector3.Zero;
         }
         FogNote(i, in h);
     }

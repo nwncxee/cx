@@ -73,6 +73,7 @@ public static partial class TileBuild
         /// picks them by NAME (<c>strcasecmp</c> against the model name plus <c>"ml1"</c>/<c>"ml2"</c>), not by
         /// node ORDER, which gets a tile with a third light node wrong.</summary>
         public int MainSlot;
+        public LightDef? Def;
     }
 
     private static readonly Dictionary<ModelDef, MergePlan> _plans = new();
@@ -512,6 +513,7 @@ public static partial class TileBuild
                 Dynamic = ld?.Dynamic ?? false,
                 Priority = ld?.Priority ?? 0,
                 MainSlot = i == ml1 ? 0 : i == ml2 ? 1 : -1,
+                Def = ld,
             };
             at++;
         }
