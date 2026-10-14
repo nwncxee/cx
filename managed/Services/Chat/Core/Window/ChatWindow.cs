@@ -330,6 +330,15 @@ public sealed partial class ChatWindow
         return y1 - y0 - 2f * (x1 - x0) - 2f * NativeChrome.PadY - height;
     }
 
+    /// <summary>Scroll a press on the native bar's arrows asks for: a tenth of the view, up = older; 0 elsewhere.</summary>
+    private float ArrowStep(float mx, float my)
+    {
+        if (!Render.ChatSkin.Native || ContentH <= ViewH) return 0f;
+        ScrollbarRect(out float x0, out float y0, out float x1, out float y1);
+        if (mx < x0 || mx >= x1 || my < y0 || my >= y1) return 0f;
+        return -NativeChrome.Arrow(y0, y1, x1 - x0, my) * ViewH * NativeChrome.ArrowStep;
+    }
+
     /// <summary>True when the pointer is over the scrollbar thumb (the grab zone).</summary>
     public bool OverScrollThumb(float mx, float my)
     {
@@ -586,6 +595,7 @@ public sealed partial class ChatWindow
         // Scrollbar track stops one ResizeGrip above the bottom (see SbTrackH), so thumb and grip no longer
         // share the bottom-right corner -- both stay grabbable regardless of test order.
         if (OverScrollThumb(mx, my)) { _grab = Grab.Scroll; _gy = my; _gsp = Active.ScrollPx; return true; }
+        if (ArrowStep(mx, my) is float step and not 0f) { ScrollByPx(step); return true; }
         if (OverResizeGrip(mx, my)) { if (!Locked) { _grab = Grab.Resize; _gx = mx; _gy = my; _gw = W; _gh = H; } return true; }
         int tab = TabAt(mx, my);
         if (tab >= 0)
