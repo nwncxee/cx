@@ -1,3 +1,18 @@
+// The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split wash's interior or rest (uSolid).
+// One test, so main's early ask of a plain diffuse can never discard a texel the full one keeps.
+bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip)
+{
+    float s = coverage * alpha;
+    return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut
+        || uOit != 0 && s <= 0.0
+        || uSolid == 1 && s < CX_SOLID_ALPHA || uSolid == 2 && s >= CX_SOLID_ALPHA;
+}
+
+#ifdef CX_DECAL_WRITE
+// the layer's writer draws no views, so every lit input only a view reads folds out of it
+#define uViz 0
+#endif
+
 void main()
 {
     if (uCapture == 2 && vWorld.z < uMirrorZ) discard;
@@ -54,6 +69,11 @@ void main()
     // way there -- and a map that dropped out at the per-slot re-fetch looks exactly like content
     // that never declared one.
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
+    // A pass that discards on coverage asks it of a plain diffuse (no env, normal-map coverage, flow, PLT or tint) here,
+    // ahead of the maps, SSAO and the sun's taps; the full test below stays the authority. Uniform-gated: opaque skips it.
+    if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & (CX_SLOT_ENV | CX_SLOT_COVERNRM)) == 0
+        && feat != CX_FEAT_FLOWMAP && !CxPltOn(vDraw) && CxTintRow(vDraw) < 0
+        && CxCoverCut(texture(uTex, vUV, uLodBias).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
     vec2 uv = vUV;
     // #123, shd_flowmap: the RG map is a per-texel flow DIRECTION, and the diffuse slides along it in
     // two half-offset phases blended by their own distance from the midpoint -- the blend is what
@@ -281,11 +301,7 @@ void main()
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
-    if (uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut) discard;
-    // an OIT fragment at zero coverage adds nothing to either OIT path; a decal quad's blank margin skips the lit stage
-    if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
-    float cxSolid = coverage * d.rot.w;
-    if (uSolid == 1 && cxSolid < CX_SOLID_ALPHA || uSolid == 2 && cxSolid >= CX_SOLID_ALPHA) discard;
+    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.

@@ -171,8 +171,12 @@ internal static unsafe class DecalLayer
         check.Expect(synth.Contains($"uDecal == {ModeFold}") && synth.Contains($"uDecal == {ModeSkip}"),
           "the fold and skip modes are the values the stage tests");
         check.Expect(ShaderSource.Get("cx_ownlit_v.glsl").Contains("invariant gl_Position;")
-          && synth.Contains("if (uSolid == 1 && cxSolid < CX_SOLID_ALPHA || uSolid == 2 && cxSolid >= CX_SOLID_ALPHA) discard;"),
+          && synth.Contains("|| uSolid == 1 && s < CX_SOLID_ALPHA || uSolid == 2 && s >= CX_SOLID_ALPHA;"),
           "a split wash's interior draw and its other two lay one depth and split its texels on one threshold");
+        check.Expect(synth.IndexOf("&& CxCoverCut(texture(uTex, vUV, uLodBias).a") is > 0 and var early
+          && early < synth.IndexOf("CxSunShadow(") && early < synth.IndexOf("uNrmTex, uv, uLodBias).rg")
+          && synth.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;"),
+          "a plain-diffuse texel a pass discards on coverage never pays for the normal map or the sun's shadow taps");
         log.Info(check.Ok ? "DecalLayer.SelfCheck: passed" : "DecalLayer.SelfCheck: FAILED");
     }
 }
