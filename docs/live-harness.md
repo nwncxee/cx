@@ -30,6 +30,11 @@ export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#libg
 tools/live/run-live.sh --nui
 ```
 
+`tools/live/run-proton-live.sh` also needs the libraries Proton's wine loads through nix-ld on the same path: freetype,
+fontconfig, libX11, libxcb, libXext, libXi, libXcursor, libXrandr, libXrender, libXfixes, libXcomposite, libXinerama,
+libXxf86vm, libxkbcommon, wayland, vulkan-loader, alsa-lib, libpulseaudio, zlib and libpng. Without freetype, wine stops
+with "cannot find FreeType". The rest are untrimmed.
+
 ## How it works
 
 **Nothing reaches the desktop.** The client runs inside `gamescope --backend headless`, which starts
