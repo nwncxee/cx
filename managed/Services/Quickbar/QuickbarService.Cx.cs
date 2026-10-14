@@ -319,7 +319,7 @@ public sealed unsafe partial class QuickbarService
         {
             float gx1 = l.X + (QuickbarLayout.PadPx + l.Grip) * s, gcx = (l.X + gx1) / 2f;
             skin?.Draw(KGrip, l.X + FrameInset, l.Y + FrameInset, gx1 - 1f * s, l.Y + l.H - FrameInset);
-            for (float gy = l.Y + l.H / 2f - 6f * s; gy <= l.Y + l.H / 2f + 6f * s; gy += 4f * s) Fill(over, gcx - s, gy, gcx + s, gy + 2f * s, Grip);
+            for (float gy = l.Y + l.H / 2f - 6f * s; gy <= l.Y + l.H / 2f + 6f * s; gy += 4f * s) Fill(over, gcx - s, gy, gcx + s, gy + 2f * s, Tx2);
         }
 
         int mx = -1, my = -1;

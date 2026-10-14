@@ -206,10 +206,12 @@ internal sealed partial class InventoryWindow
     /// <summary>A scrollbar's width on screen: the native bar's whole-px 18, else the design width scaled.</summary>
     private float BarW => NativeArt ? NativeChrome.BarWidth(S) : ScrollW * S;
 
+    /// <summary>The row step a press at <paramref name="py"/> on the native bar's arrows asks for; 0 off them or flat.</summary>
+    private int ArrowAt(float py, float y0, float y1) => NativeArt ? NativeChrome.Arrow(y0, y1, BarW, py) : 0;
+
     /// <summary>The view's first row for the pointer at <paramref name="py"/>, its thumb centred on the pointer: over the
     /// native bar's own track (arrows and padding, read back from <see cref="NativeChrome.ThumbRect"/>) between
-    /// <paramref name="y0"/> and <paramref name="y1"/>, or the flat bar's whole height. ponytail: a press on an arrow
-    /// drags to that end instead of stepping a row -- stepping wants a hit kind of its own.</summary>
+    /// <paramref name="y0"/> and <paramref name="y1"/>, or the flat bar's whole height.</summary>
     private float ScrollAt(float py, float y0, float y1, float view, float total)
     {
         float max = Math.Max(0f, total - view);
@@ -327,8 +329,16 @@ internal sealed partial class InventoryWindow
             case InvHitKind.LootClose: Act?.Invoke(new InvAction(InvActKind.CloseLoot, Other: Loot.Oid)); return true;
             case InvHitKind.Search: SearchFocused = true; return true;
             case InvHitKind.Tab: SetPage(h.Index); return true;
-            case InvHitKind.Scroll: _scrolling = true; ScrollTo(py); return true;
-            case InvHitKind.LootScroll: _lootScrolling = true; LootScrollTo(py); return true;
+            case InvHitKind.Scroll:
+                if (ArrowAt(py, Sy(_scroll.Y0), Sy(_scroll.Y1)) is int step and not 0)
+                    _target = Math.Clamp(_target + step, 0f, Math.Max(0f, PageLimit * InventoryModel.Rows - ViewRows));
+                else { _scrolling = true; ScrollTo(py); }
+                return true;
+            case InvHitKind.LootScroll:
+                if (ArrowAt(py, Ly(LootGridY), Ly(LootGridY + LootViewRows * Cell)) is int lstep and not 0)
+                    _lootTarget = Math.Clamp(_lootTarget + lstep, 0f, LootMaxTop);
+                else { _lootScrolling = true; LootScrollTo(py); }
+                return true;
             case InvHitKind.Gold: if (!ReadOnly) Act?.Invoke(new InvAction(InvActKind.Gold)); return true;
             case InvHitKind.Title or InvHitKind.LootTitle:
                 _moving = true; _moveDx = px - X; _moveDy = py - Y; return true;

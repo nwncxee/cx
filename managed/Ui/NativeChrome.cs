@@ -66,6 +66,10 @@ public static class NativeChrome
         return true;
     }
 
+    /// <summary>Which arrow of a vertical bar <paramref name="py"/> presses: -1 up, 1 down, 0 the track. NUI steps the
+    /// view on an arrow; it never drags from one.</summary>
+    public static int Arrow(float y0, float y1, float w, float py) => py < y0 + w ? -1 : py >= y1 - w ? 1 : 0;
+
     /// <summary>The trough, both arrows and, when the content overflows, the tiled thumb (white
     /// <paramref name="hot"/>, the header-label grey idle).</summary>
     public static void Scrollbar(Skin skin, float x0, float y0, float x1, float y1, float top, float view, float total, bool hot)
@@ -91,6 +95,7 @@ public static class NativeChrome
         check.Expect(e1 == 216f, "scrolled out: the thumb ends padding above the down arrow");
         ThumbRect(0f, 0f, 18f, 236f, 0f, 1f, 10000f, out _, out float m0, out _, out float m1);
         check.Expect(m1 - m0 == 16f, "a long list's thumb keeps one whole rib");
+        check.Expect(Arrow(0f, 236f, 18f, 17f) == -1 && Arrow(0f, 236f, 18f, 18f) == 0 && Arrow(0f, 236f, 18f, 218f) == 1, "the arrows are the square ends");
         log.Info(check.Ok ? "NativeChrome.SelfCheck: passed" : "NativeChrome.SelfCheck: FAILED");
     }
 }
