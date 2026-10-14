@@ -1,5 +1,6 @@
 # Pull-request validation. `ci` builds the extender and proves it loads C# into a foreign process
 # (run-demo.sh, no game needed); there is no unit-test project yet, so the build + load smoke is the gate.
+# `windows` builds the Windows leg with build-win-native.sh, the script release.yml ships, beside `ci`.
 # `no-decompiled` runs the decompiled-code check and the rule gates on every pull request: a listing can
 # hide in any file, Markdown included. Releases are built by release.yml on a v* tag.
 name: ci
@@ -39,6 +40,7 @@ jobs:
             'native/*'
             'third_party/*'
             build.sh
+            build-win-native.sh
             run-demo.sh
             flake.nix
             flake.lock
@@ -51,6 +53,7 @@ jobs:
             packaging/cx-launch
             packaging/licenses.sh
             packaging/README.txt
+            packaging/README-win.txt
             LICENSE
           )
           files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
@@ -92,6 +95,30 @@ jobs:
             ./build.sh
             CX_NO_BUILD=1 ./run-demo.sh
           '
+
+  windows:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 20
+    steps:
+      # Git for Windows defaults to autocrlf=true; a CRLF submodule tree makes the LF funchook patch not apply.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.401 # the SDK flake.lock pins; bump the two together
+
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+
+      - name: Build
+        shell: bash
+        run: ./build-win-native.sh
 
   no-decompiled:
     runs-on: ubuntu-24.04

@@ -49,6 +49,9 @@ nix shell --inputs-from . nixpkgs#cachix -c cachix push <cache> "$path"
 nix shell --inputs-from . nixpkgs#cachix -c cachix pin <cache> cx-openal-soft "$path" --keep-revisions 1
 ```
 
+Push only `.#openal`. Never push `.#winsdk`: it is Microsoft's SDK, and its licence forbids
+redistributing it.
+
 `<cache>` is the cache's name: the first part of the cache URL's host. The pin stops the cache's
 garbage collection from evicting the path. Always pin under `cx-openal-soft`, so the new path replaces
 the old one instead of piling up beside it.

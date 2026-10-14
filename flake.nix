@@ -108,6 +108,24 @@
         dontFixup = true;
       };
 
+      # build-win.sh's Windows 10 SDK and MSVC libraries, fetched from Microsoft by xwin and pinned by hash.
+      # Building it accepts Microsoft's licence for whoever builds it, so it stays out of the binary cache.
+      winSdkVersion = "10.0.19041";
+      winMsvcVersion = "14.44.17.14";
+      winsdk = pkgs.stdenvNoCC.mkDerivation {
+        name = "cx-winsdk-${winSdkVersion}-msvc-${winMsvcVersion}";
+        nativeBuildInputs = [ pkgs.xwin ];
+        SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+        buildCommand = ''
+          xwin --accept-license --cache-dir "$TMPDIR/xwin" --arch x86_64 --manifest-version 17 \
+            --sdk-version ${winSdkVersion} --crt-version ${winMsvcVersion} \
+            splat --copy --use-winsysroot-style --preserve-ms-arch-notation --output "$out"
+        '';
+        outputHashMode = "recursive";
+        outputHashAlgo = "sha256";
+        outputHash = "sha256-fA6dZyonH/Yydb1r9nFjhcTbSMICFTMLDjStI8/2vkc=";
+      };
+
       shellEnv = {
         OPENAL_LIB = "${openal}/lib/libopenal.so.1";
         DOTNET_ROOT = "${pkgs.dotnet-sdk_10}/share/dotnet";
@@ -115,10 +133,15 @@
         DOTNET_NOLOGO = "1";
         DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1";
       };
+
+      devShell = shellEnv // {
+        packages = [ pythonDev ] ++ ciPackages ++ devPackages;
+        buildInputs = ciLibraries;
+      };
     in
     assert pinned;
     {
-      packages.${system}.openal = openal;
+      packages.${system} = { inherit openal winsdk; };
 
       devShells.${system} = {
         gates = pkgs.mkShellNoCC { packages = gatesPackages; };
@@ -131,11 +154,15 @@
           }
         );
 
-        default = pkgs.mkShell (
-          shellEnv
+        default = pkgs.mkShell devShell;
+
+        # The default shell plus the Windows SDK and MSVC tree build-win.sh needs.
+        win = pkgs.mkShell (
+          devShell
           // {
-            packages = [ pythonDev ] ++ ciPackages ++ devPackages;
-            buildInputs = ciLibraries;
+            SDK = "${winsdk}/Windows Kits/10";
+            SDKVER = winSdkVersion;
+            MSVC = "${winsdk}/VC/Tools/MSVC/${winMsvcVersion}";
           }
         );
       };

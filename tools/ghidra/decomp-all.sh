@@ -6,9 +6,6 @@
 # The output is Beamdog's code: it lives outside the repo and is never committed or published.
 # One dump per client build; regenerate on update day (docs/update-day.md).
 set -euo pipefail
-GHIDRA="${GHIDRA:-/opt/ghidra}"
-PROJDIR="${GHIDRA_PROJDIR:-$HOME/ghidra}"
-PROJ="${GHIDRA_PROJ:-nwn-linux}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 out="${1:?output dir, e.g. $NWN_DECOMP/<build>}"
@@ -17,11 +14,7 @@ threads="${2:-8}"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 
-export GHIDRA_HEADLESS_MAXMEM="${GHIDRA_HEADLESS_MAXMEM:-6G}"
-flock "$PROJDIR/.cx-headless.lock" "$GHIDRA/support/analyzeHeadless" "$PROJDIR" "$PROJ" \
-    -process nwmain-linux -noanalysis -readOnly \
-    -scriptPath "$HERE" -postScript DecompAll.java "$out" "$threads" \
-  > "$out/headless.log" 2>&1
+"$HERE/headless.sh" nwmain-linux DecompAll.java "$out" "$threads" > "$out/headless.log" 2>&1
 grep -q 'DecompAll: done' "$out/headless.log" || { echo "FAILED, see $out/headless.log" >&2; exit 1; }
 
 cat > "$out/README.md" <<'EOF'

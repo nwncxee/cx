@@ -2,9 +2,7 @@
 // incoming parameter -- the decompiler's dataflow view, so a register-promoted `this` and an
 // inlined accessor both still resolve to (parameter, displacement).
 //
-// Headless (see dump-offsets.sh):
-//   analyzeHeadless <projdir> <projname> -process <prog> -noanalysis -readOnly \
-//       -scriptPath tools/ghidra -postScript OffsetDump.java <out.tsv> [selector...]
+// Headless: tools/ghidra/dump-offsets.sh <prog> <out.tsv> [selector...]
 //
 // Selectors (any number; none = every named, non-thunk function):
 //   class:CNWCCreature     every function in that namespace

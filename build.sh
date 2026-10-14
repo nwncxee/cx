@@ -7,6 +7,8 @@ JOBS=${JOBS:-$(nproc)}
 
 if [ ! -f build/libfunchook.a ] || [ ! -f build/libdistorm.a ]; then
   echo ">> building funchook (once)..."
+  # A fresh clone or a git worktree starts with the submodule and its nested diStorm empty.
+  [ -d third_party/funchook/distorm/src ] || git submodule update --init --recursive third_party/funchook
   # Static, and PIC because it gets linked into the shared cx_managed.so (DirectPInvoke; see the csproj).
   cmake -S third_party/funchook -B build/funchook \
     -DFUNCHOOK_BUILD_SHARED=OFF -DFUNCHOOK_BUILD_STATIC=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
