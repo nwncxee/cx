@@ -289,6 +289,8 @@ Every showcase opens a full-screen dark backdrop window first (`ShowBackdrop` in
 `chrome` (a stock titled window with its own draw list under `nui.<id>.background=0`), `diablo`, `solasta`, `pathfinder`, `swtor`, `cyberpunk`, `masseffect`, `dragonage` and `bg3` are eight looks built from the same keys:
 a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each `.keys` takes `window.png` and `card.png`.
 
+`nuicx` builds a doll, a card and a themed window from `"cx"` members in the window JSON with an empty `.policy` file. Its doll turns with `NuiSetBind` at +6 s and +18 s, and `nuicx_nui.nss` logs the `refused` events on the element `cx` as `CXSHOW: nui-event` lines.
+
 `light-engine`, `light-warm`, `light-cold` and `light-torch` are one doll under the engine's light and three server light recipes (the wiki's Light section); each opens a single 300x420 window.
 
 `closebutton` opens two closable windows of one size side by side, the second under `nui.<id>.background=0`, presses where

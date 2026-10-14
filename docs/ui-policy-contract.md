@@ -9,6 +9,56 @@ at a value, and it can set **component properties** no knob exposes (hide the go
 button, route an action to the server). The player's own values are never overwritten: they stay underneath,
 `cx.cfg` keeps only them, and they come back the moment the policy lets go.
 
+## Settings in the window JSON (stock NWScript)
+
+A server that only has stock NWScript drives every primitive below from the NUI window JSON it already builds. Add a `"cx"` member
+to the window object or to an element, with `JsonObjectSet`, before `NuiCreate`. A stock client ignores the member and shows the
+window unchanged. CX turns each member into the policy line of the same name in the rest of this document, so the keys, values
+and limits there apply as written. Nothing is sent at login: the settings arrive with the window each time it opens, and are
+released when it closes.
+
+| where | member | becomes |
+| --- | --- | --- |
+| an image or draw list image named `@model:<key>` | `"model": {"target": "player", "drag": 1, "yaw": 270}` | `model.<key>.<setting>` for each setting ([Model views](#model-views)) |
+| any element with an `id` | `"card": [ ... ]` (a card object or an array of them) | `card.<id>` ([Cards](#cards)) |
+| any element with an `id` | `"pick": "<image>"` | `held.pick.<id>` ([Optimistic pick](#optimistic-pick)) |
+| the window object | `"background": 0`, `"fadein": 150`, `"fadeout"`, `"opacity"` | `nui.<window id>.<member>` ([NUI window render keys](#nui-window-render-keys)) |
+| the window object | `"cardstyle": { ... }` | `cardstyle` ([Style](#style)) |
+| the window object | `"held": {"size": 40, ...}` | `held.<member>` ([`held.image`](#heldimage-an-image-under-the-pointer)) |
+
+- A model view takes its key from the image's `@model:<key>` name, so the image must say it. A settings list of numbers is written
+  as a JSON array (`"rot": [0, 90, 0]`), a switch as `true` or `false`.
+- A card needs the element's `id`. Cards in a list share one `id`, as in [Cards](#cards).
+- Use letters, digits and underscores in the window id, the id you give `NuiCreate`. CX reads it as written.
+- `"background": 0` hides the title bar and frame, and the window still drags by its hidden title bar. Stock NUI cannot do that.
+
+### Bound values
+
+A setting may be NUI's own bind form, `{"bind": "doll_yaw"}`. It takes the value every time NWScript calls `NuiSetBind` on that
+name, and releases the key when the value is `null`. An element in the window must use the same bind name (a label that shows it
+is enough). The engine discards an update for a bind no element names and sends the server an `unknown-bind` event.
+
+CX reads the server's updates only. A value the player changes in the window, such as a slider on the same bind, does not move the
+setting.
+
+### Events from CX
+
+CX reports to the server as a NUI event with the element id `cx`, which reaches the module's NUI event script when the window has one.
+
+| event type | payload |
+| --- | --- |
+| `refused` | a JSON array `[kind, key, value, reason]`, the same row `/policy` lists under `refused:` |
+
+`NuiGetEventType()` is `refused`, `NuiGetEventElement()` is `cx` and `NuiGetEventPayload()` is the array. A member CX cannot read
+is refused when the window opens. A setting it reads later, such as a `zoom` that is not two numbers, is refused when the model view loads.
+
+### Limits
+
+- The settings of a window open at the time are the only ones read. A layout change sent with `NuiSetLayout` is not.
+- A window's keys are released 3 s after it stops updating.
+- `PolicySet` lines keep working. A key both set wins from whichever came last.
+- A player who turns off `nui.cxjson` (Advanced) gets the stock window.
+
 ## Wire
 
 One message family, the existing CX device major (CLAUDE.md: reuse an opcode; a stock client discards an unknown
