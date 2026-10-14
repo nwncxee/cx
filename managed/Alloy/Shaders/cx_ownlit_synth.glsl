@@ -1,11 +1,11 @@
-// The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split wash's interior or rest (uSolid).
+// The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split wash's interior (uSolid).
 // One test, so main's early ask of a plain diffuse can never discard a texel the full one keeps.
 bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip)
 {
     float s = coverage * alpha;
     return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut
         || uOit != 0 && s <= 0.0
-        || uSolid == 1 && s < CX_SOLID_ALPHA || uSolid == 2 && s >= CX_SOLID_ALPHA;
+        || uSolid != 0 && s < CX_SOLID_ALPHA;
 }
 
 #ifdef CX_DECAL_WRITE

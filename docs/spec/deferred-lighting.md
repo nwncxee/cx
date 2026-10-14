@@ -37,8 +37,8 @@ it at `1 - alpha`.
 
 A ground decal is not lit at all. `AlloyRenderer.DbDecal` marks a lit, plainly alpha-blended (`SrcAlpha`,
 `OneMinusSrcAlpha`), up-facing sheet on a static object with no self-illumination, env map or hosted body (an
-alpha-tested cover qualifies by the class it draws in -- see washes below, which fold only their graded part); the
-blended run puts those first, and before the opaque pass `DecalLayer` draws them with the lit stage built as
+alpha-tested cover, even one drawing blended: a cover hides its ground's relief and material as well as its colour,
+and a fold keeps both -- see washes below); the blended run puts those first, and before the opaque pass `DecalLayer` draws them with the lit stage built as
 `CX_DECAL_WRITE`, which stops at the albedo. A fragment lying on the prepassed surface (`CxDecalOn`: at most
 0.1 m above it, plus 0.1% of view depth, measured as height off the surface so a grazing view does not stretch it;
 one-sided, so a surface standing over the decal -- a foot on it -- is never taken for its ground) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share
@@ -66,13 +66,11 @@ its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`
 (-1, -2), so it does not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock
 ones at exactly 0). An alpha-tested wash whose diffuse measures graded alpha draws in the blended class, as
 vanilla draws its alpha-tested bucket (blend and the 0.2 test together): drawn hard, its edge showed the colour
-the texture keeps under alpha 0, white on many decal sheets. A blending wash that is not a blended-class decal is
+the texture keeps under alpha 0, white on many decal sheets. A blending wash that is not a decal is
 **split** (`AlloyRenderer.WashSplit`): its fully covered texels (coverage times part alpha at least 0.99,
-`uSolid == 1`) draw solid with the cutouts through the deferred twin (`Issue.WashInteriors`, the `washes` GPU
-term), so a cover keeps its own normal and material where it covers; the rest folds into the surface under it
-like a decal when it lies on one (`uSolid == 2` in the layer's writer, at the class's 0.2 test) and otherwise
-blends, drawn under `GL_LESS` so every interior fragment meets its own depth and is dropped unshaded. A
-forward-lit blended fragment costs several opaque ones, and these sheets cover much of a town's ground. Only static objects' sheets are washes, and
+`uSolid`) draw solid with the cutouts through the deferred twin (`Issue.WashInteriors`, the `washes` GPU
+term); the rest blends, drawn under `GL_LESS` so every interior fragment meets its own depth and is dropped
+unshaded. A forward-lit blended fragment costs several opaque ones, and these sheets cover much of a town's ground. Only static objects' sheets are washes, and
 never a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a
 session with the reason each is not a decal.
 

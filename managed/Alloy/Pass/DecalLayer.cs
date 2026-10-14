@@ -181,8 +181,8 @@ internal static unsafe class DecalLayer
         check.Expect(synth.Contains($"uDecal == {ModeFold}") && synth.Contains($"uDecal == {ModeSkip}"),
           "the fold and skip modes are the values the stage tests");
         check.Expect(ShaderSource.Get("cx_ownlit_v.glsl").Contains("invariant gl_Position;")
-          && synth.Contains("|| uSolid == 1 && s < CX_SOLID_ALPHA || uSolid == 2 && s >= CX_SOLID_ALPHA;"),
-          "a split wash's interior draw and its other two lay one depth and split its texels on one threshold");
+          && synth.Contains("|| uSolid != 0 && s < CX_SOLID_ALPHA;"),
+          "a split wash's interior and edge draws lay one depth, so GL_LESS drops exactly what the interior drew");
         check.Expect(synth.IndexOf("&& CxCoverCut(texture(uTex, vUV, uLodBias).a") is > 0 and var early
           && early < synth.IndexOf("CxSunShadow(") && early < synth.IndexOf("uNrmTex, uv, uLodBias).rg")
           && synth.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;"),

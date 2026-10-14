@@ -48,8 +48,8 @@ uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver t
 // #126: the engine's fAlphaDiscardValue, per batch -- 0.2 on the cutout and blended classes,
 // -1.0 (no test) on opaque and additive.
 uniform float uAlphaCut;
-// A split wash (AlloyRenderer.WashSplit): 1 = its solid interior alone, drawn with the cutouts -- the blended pass
-// draws the wash under GL_LESS against the depth that leaves; 2 = all but that interior (the decal layer's writer)
+// 1 = a split wash's (AlloyRenderer.WashSplit) solid interior alone, drawn with the cutouts -- the blended pass draws
+// the wash under GL_LESS against the depth that leaves
 uniform int uSolid;
 const float CX_SOLID_ALPHA = 0.99;
 layout(location = 0) out vec4 frag;
