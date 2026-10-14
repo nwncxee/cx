@@ -35,9 +35,8 @@ it at `1 - alpha`.
 
 ### Ground decals fold into the surface (`DecalLayer`, CX-273)
 
-A ground decal is not lit at all. `AlloyRenderer.DbDecal` marks a lit, blended or alpha-tested (no coverage
-layer), plainly alpha-blended (`SrcAlpha`, `OneMinusSrcAlpha`) sheet whose every triangle lies within 45 degrees
-of horizontal, either side up (an alpha-tested one joins the blended run), on a static object with no self-illumination, env map or hosted body; the
+A ground decal is not lit at all. `AlloyRenderer.DbDecal` marks a lit, plainly alpha-blended (`SrcAlpha`,
+`OneMinusSrcAlpha`), up-facing sheet on a static object with no self-illumination, env map or hosted body; the
 blended run puts those first, and before the opaque pass `DecalLayer` draws them with the lit stage built as
 `CX_DECAL_WRITE`, which stops at the albedo. A fragment lying on the prepassed surface (`CxDecalOn`: at most
 0.1 m above it, plus 0.1% of view depth, measured as height off the surface so a grazing view does not stretch it) over-blends `albedo * coverage` into an RGBA16F layer whose alpha is the share

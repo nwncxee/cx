@@ -672,31 +672,13 @@ internal static partial class DrawRecipe
     /// <summary>How far from +Z a <see cref="RecipeFlag.FacesUp"/> mesh's normals may lean: cos 45 degrees.</summary>
     private const float UpCos = 0.7f;
 
-    /// <summary>Every triangle of the mesh within <see cref="UpCos"/> of horizontal: a sheet laid over the ground.
-    /// Off the triangles' own planes, either side up -- authored normals on such sheets are routinely flipped or
-    /// missing, and a two-sided sheet seen from above is still one.</summary>
+    /// <summary>Every normal of the mesh within <see cref="UpCos"/> of +Z: a sheet laid over the ground.</summary>
     internal static bool FacesUp(MeshDef mesh)
     {
-        uint[] ix = mesh.Indices;
-        Vector3[] p = mesh.Positions;
-        bool any = false;
-        for (int t = 0; t + 2 < ix.Length; t += 3)
-        {
-            if (ix[t] >= p.Length || ix[t + 1] >= p.Length || ix[t + 2] >= p.Length) return false;
-            Vector3 n = Vector3.Cross(p[ix[t + 1]] - p[ix[t]], p[ix[t + 2]] - p[ix[t]]);
-            float len = n.Length();
-            if (len < 1e-8f) continue;
-            if (MathF.Abs(n.Z) < UpCos * len) return false;
-            any = true;
-        }
-        return any;
-    }
-
-    /// <summary>The recipe's box is a sheet: its height under a tenth of its wider side.</summary>
-    internal static bool Flat(int r)
-    {
-        float dx = _box[r * 6 + 3] - _box[r * 6], dy = _box[r * 6 + 4] - _box[r * 6 + 1], dz = _box[r * 6 + 5] - _box[r * 6 + 2];
-        return dz < 0.1f * MathF.Max(dx, dy);
+        if (mesh.Normals.Length == 0) return false;
+        foreach (Vector3 n in mesh.Normals)
+            if (!(n.Z >= UpCos * n.Length())) return false;
+        return true;
     }
 
     /// <summary>The recipe's local box, six floats (min then max), into <paramref name="dst"/>.</summary>
@@ -752,7 +734,7 @@ internal enum RecipeFlag : ushort
     /// <summary>A cutout whose coverage is map slot 1's alpha, because its <c>customShaderFS</c> is one of
     /// <see cref="ShaderFeatures.CoverNrmFs"/> (<see cref="AlloyRenderer.CoverNrmBit"/> on the record).</summary>
     CoverNrm = 1 << 12,
-    /// <summary>Every triangle lies within 45 degrees of horizontal (<see cref="DrawRecipe.FacesUp"/>): a ground
-    /// decal can be one of these.</summary>
+    /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
+    /// can be one of these.</summary>
     FacesUp = 1 << 13,
 }
