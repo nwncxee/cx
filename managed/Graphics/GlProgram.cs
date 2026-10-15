@@ -133,7 +133,7 @@ internal static unsafe class GlProgram
         ProgramBinary.Key(ProgramBinary.Key(ProgramBinary.Seed, Gl.VERTEX_SHADER, tv), Gl.FRAGMENT_SHADER, tf);
 
     /// <summary>What <see cref="Prefetch"/> issued that no build has claimed yet, by <see cref="PairKey"/>.
-    /// Lives inside one caller's build; <see cref="DropPrefetched"/> ends it.</summary>
+    /// Lives inside one <see cref="PrefetchScope"/>.</summary>
     private sealed class PrefetchState
     {
         internal readonly System.Collections.Generic.Dictionary<ulong, (uint Prog, uint V, uint F, long T0)> Inflight = new();
@@ -143,14 +143,21 @@ internal static unsafe class GlProgram
 
     /// <summary>Start every vertex+fragment program in <paramref name="set"/> -- compile and link, no status read --
     /// so the driver's compiler threads build them side by side, and the two-stage <c>Graphics</c> call for the
-    /// same texts claims one instead of compiling. A null fragment text is skipped; with no
-    /// <see cref="GlContextService.ParallelCompile"/> nothing is issued and every build compiles in turn.</summary>
-    internal static void Prefetch(ReadOnlySpan<(string Vs, string? Fs, bool Host)> set)
+    /// same texts claims one instead of compiling, until the returned scope ends. A null fragment text is skipped;
+    /// with no <see cref="GlContextService.ParallelCompile"/> nothing is issued and every build compiles in turn.</summary>
+    internal static PrefetchScope Prefetch(ReadOnlySpan<(string Vs, string? Fs, bool Host)> set, ExtenderLog? log)
     {
-        if (!GlContextService.ParallelCompile) return;
+        if (!GlContextService.ParallelCompile) return new PrefetchScope(log);
+        if (ProgramBinary.Seed == 0)
+        {
+            log?.Info("GlProgram: the program binary cache is off, so a parallel build has no key to be claimed by -- compiling in turn");
+            return new PrefetchScope(log);
+        }
         foreach (var (vs, fs, host) in set)
         {
             if (fs == null) continue;
+            // ponytail: every entry is keyed through Lib, which the overridable builds skip; they differ only when an
+            // unsafe stage override meets a safe library override, and that one program compiles in turn
             string tv = Text(Lib(vs, null, ""), null, "", host), tf = Text(Lib(fs, null, ""), null, "", host);
             ulong key = PairKey(tv, tf);
             if (key == 0 || _prefetch.Inflight.ContainsKey(key) || ProgramBinary.Has(key)) continue;
@@ -158,6 +165,15 @@ internal static unsafe class GlProgram
             uint v = Issue(Gl.VERTEX_SHADER, tv), f = Issue(Gl.FRAGMENT_SHADER, tf);
             _prefetch.Inflight[key] = (StartLink(v, f), v, f, Stopwatch.GetTimestamp());
         }
+        return new PrefetchScope(log);
+    }
+
+    /// <summary>The span of one <see cref="Prefetch"/>: disposing it drops whatever no build claimed.</summary>
+    internal readonly ref struct PrefetchScope
+    {
+        private readonly ExtenderLog? _log;
+        internal PrefetchScope(ExtenderLog? log) => _log = log;
+        public void Dispose() => DropPrefetched(_log);
     }
 
     /// <summary>The program <see cref="Prefetch"/> issued under <paramref name="key"/>, waited for; 0 when none was
@@ -170,17 +186,17 @@ internal static unsafe class GlProgram
         Gl.DeleteShader(f.V); Gl.DeleteShader(f.F);
         if (ok != 0) { Labels[f.Prog] = what; return Cache(key, f.Prog, f.T0, log, what, "compiled in parallel, ready after"); }
         Gl.DeleteProgram(f.Prog);
-        log?.Info($"{what}: the parallel build did not link -- building it again in turn, with the retries");
+        log?.Info($"{what}: WARN the parallel build did not link -- building it again in turn, with the retries");
         return 0;
     }
 
     /// <summary>Delete what <see cref="Prefetch"/> issued and no build claimed -- a guess at texts the builds did
     /// not take, after an override fell back or a contract refused -- and say so, so a miss is not silent.</summary>
-    internal static void DropPrefetched(ExtenderLog? log)
+    private static void DropPrefetched(ExtenderLog? log)
     {
         if (_prefetch.Inflight.Count == 0) return;
         foreach (var f in _prefetch.Inflight.Values) { Gl.DeleteProgram(f.Prog); Gl.DeleteShader(f.V); Gl.DeleteShader(f.F); }
-        log?.Info($"GlProgram: {_prefetch.Inflight.Count} program(s) compiled in parallel went unclaimed -- "
+        log?.Info($"GlProgram: WARN {_prefetch.Inflight.Count} program(s) compiled in parallel went unclaimed -- "
                 + "the builds took other texts than the ones issued; dropped");
         _prefetch = new PrefetchState();
     }

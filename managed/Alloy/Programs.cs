@@ -457,12 +457,10 @@ internal static unsafe class Programs
         litFs = WithSkyView(litFs);
         string litVs = ShaderStages.Source(ShdLitVs);
         bool hosted = VanillaShader.HostArmed && System.Linq.Enumerable.Any(ShaderFeatures.FsNames, n => n.Length > 0);
-        // every build below, from the texts each is expected to take, issued at once so the driver compiles
-        // them side by side; one the builds do not take is dropped at the end
         GlProgram.Texts(ShdLitVs, litVs, ShdLitFs, litFs, null, "", out string pv, out string pf);
         var guess = Variants(pf);
-        GlProgram.Prefetch([(pv, pf, false), (pv, guess.List, false), (pv, guess.Def, false), (pv, guess.Decal, false),
-                            (pv, hosted ? pf : null, true)]);
+        using var prefetched = GlProgram.Prefetch([(pv, pf, false), (pv, guess.List, false), (pv, guess.Def, false),
+                                                   (pv, guess.Decal, false), (pv, hosted ? pf : null, true)], _log);
         // #350: from the hosted regions' STUBS -- the program every lit batch draws with carries no content
         // body; the second build below carries them for the batches that need them.
         uint prog = GlProgram.Graphics(ShdLitVs, litVs, ShdLitFs, litFs,
@@ -492,7 +490,6 @@ internal static unsafe class Programs
         if (prog != 0) _litVsSrc = vsSrc;
         if (prog == 0)
         {
-            GlProgram.DropPrefetched(_log);
             _litFailed = true;
             _log?.Info("AlloyRenderer: the lit program is unavailable -- every lit part is skipped, which is an "
                      + "empty world; nothing draws behind the refusal");
@@ -547,7 +544,6 @@ internal static unsafe class Programs
             if (ph == 0) _log?.Info("AlloyRenderer: hosted lit program unavailable -- hosted materials draw the plain lit path");
             else { _progLitHost = ph; _litH = LitLocs(ph); _hostMask.Fs = hfs; }
         }
-        GlProgram.DropPrefetched(_log);
         _log?.Info("AlloyRenderer: lit program ready (4.6 context) -- forward except the point lights, which the "
                  + "deferred twin and DeferredLights add");
     }

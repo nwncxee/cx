@@ -506,21 +506,23 @@ public sealed unsafe class GlContextService : IExtenderService
         }
     }
 
+    /// <summary>The <c>glMaxShaderCompilerThreads</c> count that means the implementation's own maximum.</summary>
+    private const uint AllCompilerThreads = uint.MaxValue;
+
     /// <summary>Give the (current) 4.6 context every compiler thread it has. Logged either way: without the
     /// extension a shader cache miss costs the sum of its programs, not the longest one.</summary>
     private static bool ArmParallelCompile(ExtenderLog log)
     {
-        string name = Gl.HasExt("GL_KHR_parallel_shader_compile"u8) ? "glMaxShaderCompilerThreadsKHR"
-                    : Gl.HasExt("GL_ARB_parallel_shader_compile"u8) ? "glMaxShaderCompilerThreadsARB" : "";
-        var threads = name.Length > 0 ? (delegate* unmanaged<uint, void>)GP(name) : null;
+        string ext = Gl.HasExt("GL_KHR_parallel_shader_compile"u8) ? "KHR" : Gl.HasExt("GL_ARB_parallel_shader_compile"u8) ? "ARB" : "";
+        var threads = ext.Length > 0 ? (delegate* unmanaged<uint, void>)GP("glMaxShaderCompilerThreads" + ext) : null;
         if (threads == null)
         {
             log.Info("GlContextService: the driver has no parallel shader compile (KHR/ARB_parallel_shader_compile) "
                    + "-- a shader cache miss builds its programs one after another");
             return false;
         }
-        threads(uint.MaxValue);   // the implementation's own maximum
-        log.Info($"GlContextService: parallel shader compile armed ({name[^3..]}_parallel_shader_compile) -- "
+        threads(AllCompilerThreads);
+        log.Info($"GlContextService: parallel shader compile armed ({ext}_parallel_shader_compile) -- "
                + "a shader cache miss builds its programs side by side");
         return true;
     }
