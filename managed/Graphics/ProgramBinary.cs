@@ -38,6 +38,9 @@ internal static unsafe class ProgramBinary
     internal static ulong Key(ulong h, uint type, string text) =>
         h == 0 ? 0 : ((h ^ type) * Golden) ^ MdlParser.ContentHash(MemoryMarshal.AsBytes(text.AsSpan()));
 
+    /// <summary>Is there a blob for <paramref name="key"/> to try? Not whether the driver will take it.</summary>
+    internal static bool Has(ulong key) => key != 0 && File.Exists(PathOf(key));
+
     /// <summary>The cached program for <paramref name="key"/>, or 0 to compile.</summary>
     internal static uint Load(ulong key, ExtenderLog? log, string what)
     {

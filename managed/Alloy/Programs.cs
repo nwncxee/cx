@@ -455,9 +455,17 @@ internal static unsafe class Programs
         }
         // ...and the sky-visibility map is the one unit above those two, by the same rule.
         litFs = WithSkyView(litFs);
+        string litVs = ShaderStages.Source(ShdLitVs);
+        bool hosted = VanillaShader.HostArmed && System.Linq.Enumerable.Any(ShaderFeatures.FsNames, n => n.Length > 0);
+        // every build below, from the texts each is expected to take, issued at once so the driver compiles
+        // them side by side; one the builds do not take is dropped at the end
+        GlProgram.Texts(ShdLitVs, litVs, ShdLitFs, litFs, null, "", out string pv, out string pf);
+        var guess = Variants(pf);
+        GlProgram.Prefetch([(pv, pf, false), (pv, guess.List, false), (pv, guess.Def, false), (pv, guess.Decal, false),
+                            (pv, hosted ? pf : null, true)]);
         // #350: from the hosted regions' STUBS -- the program every lit batch draws with carries no content
         // body; the second build below carries them for the batches that need them.
-        uint prog = GlProgram.Graphics(ShdLitVs, ShaderStages.Source(ShdLitVs), ShdLitFs, litFs,
+        uint prog = GlProgram.Graphics(ShdLitVs, litVs, ShdLitFs, litFs,
                                        _log, "AlloyRenderer lit program",
                                        out string vsSrc, out string fsSrc, host: false);
         string finalFs = fsSrc;
@@ -484,6 +492,7 @@ internal static unsafe class Programs
         if (prog != 0) _litVsSrc = vsSrc;
         if (prog == 0)
         {
+            GlProgram.DropPrefetched(_log);
             _litFailed = true;
             _log?.Info("AlloyRenderer: the lit program is unavailable -- every lit part is skipped, which is an "
                      + "empty world; nothing draws behind the refusal");
@@ -494,8 +503,8 @@ internal static unsafe class Programs
         _litFsSrc = finalFs;
         // The OIT-lists twin: the same text that just compiled, plus the append block, bound only inside a mode-2
         // bracket. Verified on the text because a content override may carry no block at all.
-        string listFs = OitPass.WithLists(finalFs);
-        uint pl = listFs.Contains("atomicAdd(uOitCount") ? GlProgram.Graphics(vsSrc, listFs, _log, "AlloyRenderer lit program (OIT lists)", host: false) : 0;
+        var (listFs, defFs, decalFs) = Variants(finalFs);
+        uint pl = listFs != null ? GlProgram.Graphics(vsSrc, listFs, _log, "AlloyRenderer lit program (OIT lists)", host: false) : 0;
         _progLitList = pl;
         if (pl != 0) _litL = LitLocs(pl);
         else _log?.Info("AlloyRenderer: lit OIT-lists twin unavailable -- /alloy oit 2 resolves the weighted way");
@@ -503,9 +512,8 @@ internal static unsafe class Programs
         // CX-188 (ADR 0029): the DEFERRED twin, from the same final text. A content override of cx_ownlit_fs
         // (or of a library inside it) that never calls CxGbufWrite cannot be one -- there is no half-deferred
         // frame, so the whole pass stands down with the override named.
-        string defFs = WithDeferred(finalFs);
         _progLitDef = 0;
-        if (!defFs.Contains("CxGbufWrite(g)"))
+        if (defFs == null)
             _log?.Info($"AlloyRenderer: the lit fragment stage in use never calls CxGbufWrite -- a content " +
                        $"{ShdLitFs}.shd (or a library override inside it) predates CX-188, so DEFERRED POINT LIGHTS " +
                        "ARE OFF for the session and every light draws through the forward loop. Regenerate the " +
@@ -519,17 +527,16 @@ internal static unsafe class Programs
         }
         // CX-273: the decal layer's writer, from the same final text. Optional: without it decals blend as before.
         ForgetDecal(delete: true);
-        _decal.Prog = GlProgram.Graphics(vsSrc, ShaderStages.WithDefine(finalFs, "CX_DECAL_WRITE 1"), _log,
-                                         "AlloyRenderer lit program (decal layer)", host: false);
+        _decal.Prog = GlProgram.Graphics(vsSrc, decalFs, _log, "AlloyRenderer lit program (decal layer)", host: false);
         if (_decal.Prog != 0) _decal.Loc = LitLocs(_decal.Prog);
         else _log?.Info("AlloyRenderer: the decal layer's writer did not build -- ground decals stay in the blended pass");
         // #350: the SECOND lit program, the one with the content bodies in. Same text, hosted regions spliced
         // instead of stubbed; same contracts, because it draws the same records. Optional twice over: alloy.hostfs=0,
         // no hosted feature, or a failed build all leave it 0 and hosted materials on the plain path.
         _progLitHost = 0;
-        if (VanillaShader.HostArmed && System.Linq.Enumerable.Any(ShaderFeatures.FsNames, n => n.Length > 0))
+        if (hosted)
         {
-            uint ph = GlProgram.Graphics(ShdLitVs, ShaderStages.Source(ShdLitVs), ShdLitFs, litFs,
+            uint ph = GlProgram.Graphics(ShdLitVs, litVs, ShdLitFs, litFs,
                                          _log, "AlloyRenderer hosted lit program", out _, out string hfs, host: true);
             if (ph != 0 && !(ShaderContract.RecordSafe(hfs) && ShaderContract.LinearSafe(hfs)
                              && (!_bindless || hfs.Contains("CxTexH"))))
@@ -540,8 +547,18 @@ internal static unsafe class Programs
             if (ph == 0) _log?.Info("AlloyRenderer: hosted lit program unavailable -- hosted materials draw the plain lit path");
             else { _progLitHost = ph; _litH = LitLocs(ph); _hostMask.Fs = hfs; }
         }
+        GlProgram.DropPrefetched(_log);
         _log?.Info("AlloyRenderer: lit program ready (4.6 context) -- forward except the point lights, which the "
                  + "deferred twin and DeferredLights add");
+    }
+
+    /// <summary>The lit variants' fragment texts from the lit stage's final text: the OIT-lists twin, the deferred
+    /// twin and the decal layer's writer, null where that text cannot carry the variant.</summary>
+    private static (string? List, string? Def, string Decal) Variants(string fs)
+    {
+        string list = OitPass.WithLists(fs), def = WithDeferred(fs);
+        return (list.Contains("atomicAdd(uOitCount") ? list : null, def.Contains("CxGbufWrite(g)") ? def : null,
+                ShaderStages.WithDefine(fs, "CX_DECAL_WRITE 1"));
     }
 
     /// <summary>Build the hosted A2C mask program from the HOSTED program's own final text. False = no

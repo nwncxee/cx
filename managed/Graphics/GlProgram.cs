@@ -44,9 +44,10 @@ internal static unsafe class GlProgram
     private static uint Pair(string vs, string fs, ExtenderLog? log, string what, bool host)
     {
         string tv = Text(vs, log, what, host), tf = Text(fs, log, what, host);
-        ulong key = ProgramBinary.Key(ProgramBinary.Key(ProgramBinary.Seed, Gl.VERTEX_SHADER, tv), Gl.FRAGMENT_SHADER, tf);
+        ulong key = PairKey(tv, tf);
         uint p = ProgramBinary.Load(key, log, what);
         if (p != 0) { Labels[p] = what; return p; }
+        if ((p = Claim(key, log, what)) != 0) return p;
         LightmapBake.CompileNotice();
         long t0 = Stopwatch.GetTimestamp();
         uint v = Compile(Gl.VERTEX_SHADER, vs, tv, log, what, host, out bool cv), f = Compile(Gl.FRAGMENT_SHADER, fs, tf, log, what, host, out bool cf);
@@ -103,20 +104,85 @@ internal static unsafe class GlProgram
             log?.Info($"{what}: SPIR-V override did not build -- falling back to the embedded default");
             return Graphics(vs, fs, log, what, host);
         }
-        // the stage override first, then the libraries inside whichever text won: a dumped stage keeps its
-        // brackets, so a library override still reaches it
-        string? ovs = ShaderResource.Override(vsRef, log), ofs = ShaderResource.Override(fsRef, log);
-        vsSource = ShaderSource.Content(ovs ?? vs, log); fsSource = ShaderSource.Content(ofs ?? fs, log);
-        if (!ShaderContract.PassSafe(vsSource) || !ShaderContract.PassSafe(fsSource))
-        {
-            log?.Info($"{what}: an override .shd reads the pass terms outside the CxPass block (predates CX-43) -- building the embedded default");
-            vsSource = vs; fsSource = fs;
-        }
+        Texts(vsRef, vs, fsRef, fs, log, what, out vsSource, out fsSource);
         uint prog = Pair(vsSource, fsSource, log, what, host);
         if (prog != 0 || (ReferenceEquals(vsSource, vs) && ReferenceEquals(fsSource, fs))) return prog;
         log?.Info($"{what}: override .shd failed to build -- falling back to the embedded default");
         vsSource = vs; fsSource = fs;
         return Pair(vs, fs, log, what, host);
+    }
+
+    /// <summary>The texts the overridable <see cref="Graphics(string, string, string, string, ExtenderLog?, string)"/>
+    /// builds first: the stage override, then the libraries inside whichever text won, back to the embedded
+    /// stages when either reads the pass terms outside the <c>CxPass</c> block.</summary>
+    internal static void Texts(string vsRef, string vs, string fsRef, string fs, ExtenderLog? log, string what,
+                               out string vsSource, out string fsSource)
+    {
+        // the stage override first, then the libraries inside whichever text won: a dumped stage keeps its
+        // brackets, so a library override still reaches it
+        string? ovs = ShaderResource.Override(vsRef, log), ofs = ShaderResource.Override(fsRef, log);
+        vsSource = ShaderSource.Content(ovs ?? vs, log); fsSource = ShaderSource.Content(ofs ?? fs, log);
+        if (ShaderContract.PassSafe(vsSource) && ShaderContract.PassSafe(fsSource)) return;
+        log?.Info($"{what}: an override .shd reads the pass terms outside the CxPass block (predates CX-43) -- building the embedded default");
+        vsSource = vs; fsSource = fs;
+    }
+
+    /// <summary>The <see cref="ProgramBinary"/> key of a vertex+fragment pair's first-try texts: what the cache
+    /// and <see cref="Prefetch"/>'s claims both look a pair up by.</summary>
+    private static ulong PairKey(string tv, string tf) =>
+        ProgramBinary.Key(ProgramBinary.Key(ProgramBinary.Seed, Gl.VERTEX_SHADER, tv), Gl.FRAGMENT_SHADER, tf);
+
+    /// <summary>What <see cref="Prefetch"/> issued that no build has claimed yet, by <see cref="PairKey"/>.
+    /// Lives inside one caller's build; <see cref="DropPrefetched"/> ends it.</summary>
+    private sealed class PrefetchState
+    {
+        internal readonly System.Collections.Generic.Dictionary<ulong, (uint Prog, uint V, uint F, long T0)> Inflight = new();
+    }
+
+    private static PrefetchState _prefetch = new();
+
+    /// <summary>Start every vertex+fragment program in <paramref name="set"/> -- compile and link, no status read --
+    /// so the driver's compiler threads build them side by side, and the two-stage <c>Graphics</c> call for the
+    /// same texts claims one instead of compiling. A null fragment text is skipped; with no
+    /// <see cref="GlContextService.ParallelCompile"/> nothing is issued and every build compiles in turn.</summary>
+    internal static void Prefetch(ReadOnlySpan<(string Vs, string? Fs, bool Host)> set)
+    {
+        if (!GlContextService.ParallelCompile) return;
+        foreach (var (vs, fs, host) in set)
+        {
+            if (fs == null) continue;
+            string tv = Text(Lib(vs, null, ""), null, "", host), tf = Text(Lib(fs, null, ""), null, "", host);
+            ulong key = PairKey(tv, tf);
+            if (key == 0 || _prefetch.Inflight.ContainsKey(key) || ProgramBinary.Has(key)) continue;
+            LightmapBake.CompileNotice();
+            uint v = Issue(Gl.VERTEX_SHADER, tv), f = Issue(Gl.FRAGMENT_SHADER, tf);
+            _prefetch.Inflight[key] = (StartLink(v, f), v, f, Stopwatch.GetTimestamp());
+        }
+    }
+
+    /// <summary>The program <see cref="Prefetch"/> issued under <paramref name="key"/>, waited for; 0 when none was
+    /// issued or it did not link, and the caller's own build then repeats it in turn, retries and log lines included.</summary>
+    private static uint Claim(ulong key, ExtenderLog? log, string what)
+    {
+        if (!_prefetch.Inflight.Remove(key, out var f)) return 0;
+        int ok; Gl.GetProgramiv(f.Prog, Gl.LINK_STATUS, &ok);
+        if (ok != 0) { Notes(f.V, true, log, what); Notes(f.F, true, log, what); Notes(f.Prog, false, log, what); }
+        Gl.DeleteShader(f.V); Gl.DeleteShader(f.F);
+        if (ok != 0) { Labels[f.Prog] = what; return Cache(key, f.Prog, f.T0, log, what, "compiled in parallel, ready after"); }
+        Gl.DeleteProgram(f.Prog);
+        log?.Info($"{what}: the parallel build did not link -- building it again in turn, with the retries");
+        return 0;
+    }
+
+    /// <summary>Delete what <see cref="Prefetch"/> issued and no build claimed -- a guess at texts the builds did
+    /// not take, after an override fell back or a contract refused -- and say so, so a miss is not silent.</summary>
+    internal static void DropPrefetched(ExtenderLog? log)
+    {
+        if (_prefetch.Inflight.Count == 0) return;
+        foreach (var f in _prefetch.Inflight.Values) { Gl.DeleteProgram(f.Prog); Gl.DeleteShader(f.V); Gl.DeleteShader(f.F); }
+        log?.Info($"GlProgram: {_prefetch.Inflight.Count} program(s) compiled in parallel went unclaimed -- "
+                + "the builds took other texts than the ones issued; dropped");
+        _prefetch = new PrefetchState();
     }
 
     /// <summary>The overridable link for callers that do not care where the stages came from.</summary>
@@ -148,11 +214,11 @@ internal static unsafe class GlProgram
 
     /// <summary>Save a program that linked from its first-try texts, and log what the miss cost; a stubbed
     /// retry is not cached, so its WARN lines repeat every launch instead of going quiet behind a blob.</summary>
-    private static uint Cache(ulong key, uint prog, long t0, ExtenderLog? log, string what)
+    private static uint Cache(ulong key, uint prog, long t0, ExtenderLog? log, string what, string done = "compiled in")
     {
         if (prog == 0) return 0;
         bool saved = ProgramBinary.Save(key, prog, log, what);
-        log?.Info($"{what}: compiled in {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0} ms"
+        log?.Info($"{what}: {done} {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0} ms"
                 + (saved ? " -- saved to cx-shaders/" : key == 0 ? " -- not cached" : ""));
         return prog;
     }
@@ -196,6 +262,23 @@ internal static unsafe class GlProgram
     private static uint Link(ExtenderLog? log, string what, uint a, uint b = 0, uint c = 0, uint d = 0,
                              (string Name, uint Loc)[]? attribs = null)
     {
+        if (GlContextService.Debug) log?.Always($"GlProgram: [gldebug] linking {what}");
+        uint prog = StartLink(a, b, c, d, attribs);
+        int ok; Gl.GetProgramiv(prog, Gl.LINK_STATUS, &ok);
+        Gl.DeleteShader(a);
+        if (b != 0) Gl.DeleteShader(b);
+        if (c != 0) Gl.DeleteShader(c);
+        if (d != 0) Gl.DeleteShader(d);
+        if (ok != 0) { Notes(prog, false, log, what); Labels[prog] = what; return prog; }
+        log?.Info($"{what}: link failed -- {InfoLog(prog, false)}");
+        Gl.DeleteProgram(prog);
+        return 0;
+    }
+
+    /// <summary>Create a program from compiled stages, bind <paramref name="attribs"/> and start the link. Reads no
+    /// status, so under <see cref="GlContextService.ParallelCompile"/> the driver may still be linking on return.</summary>
+    private static uint StartLink(uint a, uint b, uint c = 0, uint d = 0, (string Name, uint Loc)[]? attribs = null)
+    {
         uint prog = Gl.CreateProgram();
         if (Gl.ProgramParameteri != null) Gl.ProgramParameteri(prog, Gl.PROGRAM_BINARY_RETRIEVABLE_HINT, 1);
         Gl.AttachShader(prog, a);
@@ -210,17 +293,8 @@ internal static unsafe class GlProgram
                 n[name.Length] = 0;
                 fixed (byte* np = n) Gl.BindAttribLocation(prog, loc, np);
             }
-        if (GlContextService.Debug) log?.Always($"GlProgram: [gldebug] linking {what}");
         Gl.LinkProgram(prog);
-        int ok; Gl.GetProgramiv(prog, Gl.LINK_STATUS, &ok);
-        Gl.DeleteShader(a);
-        if (b != 0) Gl.DeleteShader(b);
-        if (c != 0) Gl.DeleteShader(c);
-        if (d != 0) Gl.DeleteShader(d);
-        if (ok != 0) { Notes(prog, false, log, what); Labels[prog] = what; return prog; }
-        log?.Info($"{what}: link failed -- {InfoLog(prog, false)}");
-        Gl.DeleteProgram(prog);
-        return 0;
+        return prog;
     }
 
     /// <summary>Compile one stage. The source's sizing tokens are expanded here and nowhere else, so an
@@ -291,18 +365,25 @@ internal static unsafe class GlProgram
 
     private static uint CompileText(uint type, string src, ExtenderLog? log, string what)
     {
-        uint sh = Gl.CreateShader(type);
-        Span<byte> b = stackalloc byte[src.Length + 1];
-        for (int i = 0; i < src.Length; i++) b[i] = (byte)src[i];
-        b[src.Length] = 0;
-        fixed (byte* p = b) { byte* pp = p; Gl.ShaderSource(sh, 1, &pp, null); }
         if (GlContextService.Debug) log?.Always($"GlProgram: [gldebug] compiling {what} (type 0x{type:x}, {src.Length} chars)");
-        Gl.CompileShader(sh);
+        uint sh = Issue(type, src);
         int ok; Gl.GetShaderiv(sh, Gl.COMPILE_STATUS, &ok);
         if (ok != 0) { Notes(sh, true, log, what); return sh; }
         log?.Info($"{what}: shader compile failed (type=0x{type:x}) -- {InfoLog(sh, true)}");
         Gl.DeleteShader(sh);
         return 0;
+    }
+
+    /// <summary>Create one stage from finished text and start its compile; reads no status.</summary>
+    private static uint Issue(uint type, string src)
+    {
+        uint sh = Gl.CreateShader(type);
+        Span<byte> b = stackalloc byte[src.Length + 1];
+        for (int i = 0; i < src.Length; i++) b[i] = (byte)src[i];
+        b[src.Length] = 0;
+        fixed (byte* p = b) { byte* pp = p; Gl.ShaderSource(sh, 1, &pp, null); }
+        Gl.CompileShader(sh);
+        return sh;
     }
 
     /// <summary>A successful build's info log, when the driver left one. Mesa's compiler reports warnings
