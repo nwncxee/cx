@@ -15,8 +15,8 @@ namespace CX.Alloy.Db;
 internal static unsafe partial class TexRegistry
 {
     /// <summary>Resource types: TGA, DDS and PLT (<c>CResHelper&lt;CResPLT,6&gt;</c>). The registry asks for
-    /// the PLT first for a <see cref="TexKind.Plt"/> slot and the DDS/TGA pair otherwise, which is the order
-    /// the engine's own texture loader uses.</summary>
+    /// the PLT alone for a <see cref="TexKind.Plt"/> slot, and otherwise the DDS/TGA pair in the order the
+    /// engine's format race (<see cref="TexLoad.Winner"/>) ranks them.</summary>
     private const ushort TgaResType = 3, PltResType = 6, DdsResType = 0x7f1;   // not-an-offset: restype ids
 
     /// <summary>Loads in flight at once. The queue IS the budget: past it an acquire stays
@@ -248,7 +248,7 @@ internal static unsafe partial class TexRegistry
 
     /// <summary>Where this resref's bytes live, for the kind asked. A PLT slot takes the PLT restype alone --
     /// a PLT and a DDS of the same name are different images and resolving one as the other is how a head
-    /// ends up wearing a wall.</summary>
+    /// ends up wearing a wall. A DDS/TGA pair goes in the engine's race order: a hak's TGA beats a base DDS.</summary>
     private static bool LocateFor(string resref, TexKind kind, uint* resId, out TexLocation loc, out TexKind found, out string? why)
     {
         loc = default; why = null; found = TexKind.Plain;
@@ -256,10 +256,15 @@ internal static unsafe partial class TexRegistry
         TexRegistry.ResRef(resref, name);
         Span<ushort> types = stackalloc ushort[3];
         int nTypes;
-        if (kind == TexKind.Plt) { types[0] = PltResType; nTypes = 1; }
-        else if (kind == TexKind.Plain) { types[0] = DdsResType; types[1] = TgaResType; nTypes = 2; }
-        else { types[0] = DdsResType; types[1] = TgaResType; types[2] = PltResType; nTypes = 3; }
         fixed (byte* p = name)
+        {
+            if (kind == TexKind.Plt) { types[0] = PltResType; nTypes = 1; }
+            else
+            {
+                bool tga = TexLoad.Winner(p, out _, out _) == TgaResType;
+                types[0] = tga ? TgaResType : DdsResType; types[1] = tga ? DdsResType : TgaResType; types[2] = PltResType;
+                nTypes = kind == TexKind.Plain ? 2 : 3;
+            }
             for (int t = 0; t < nTypes; t++)
             {
                 ushort rt = types[t];
@@ -268,6 +273,7 @@ internal static unsafe partial class TexRegistry
                 { found = rt == PltResType ? TexKind.Plt : TexKind.Plain; return true; }
                 why ??= w ?? $"restype {rt} is {src}";
             }
+        }
         why ??= kind switch
         {
             TexKind.Plt => "no PLT resource of that name",
