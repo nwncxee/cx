@@ -115,6 +115,25 @@ failing case by feeding a `Byte01` offset a 2.
 | `CAurBehavior` | `vtbl.AsBehaviorCameraFollow` | `0x48` | `0x40` | same |
 | `CycleTIDTextureController` | `vtbl.Control` | `0x10` | `0x08` | same |
 
+### Day/night state
+
+9 rows, all `Same`. Each was read off the Windows body of the same function that writes it
+on Linux (addresses in `docs/windows-symbols.md`'s day/night section), so the anchor column
+names the writer rather than repeating the pair of addresses.
+
+| Class | Field | Linux | Windows | How anchored |
+|---|---|---|---|---|
+| `CNWCArea` | `usesDayNightCycle` | `0xd8` | same | the first test of all four `SetAs*`; `Area_ChangeDayNight` saves, forces 1, restores |
+| `CNWCArea` | `dawnRunning` / `duskRunning` | `0x2ac` / `0x2b0` | same | `SetAsDawn` stores `(1, 0)` and `SetAsDusk` `(0, 1)` as one 8-byte write; `UpdateDayNightCycle` gates on the pair |
+| `CNWCArea` | `shadowOpacity` | `0x104` | same | every writer of `shadowalpha` reads `(float)byte[+0x104] / 100` |
+| `CNWCArea` | `sunDirection` / `moonDirection` | `0xcc` / `0xac` | same | `SetAsDay` hands `+0xcc` and `SetAsNight` `+0xac` to `SetGlobalLightDirection` |
+| `CNWCModule` | `transitionElapsed` / `transitionLength` | `0x174` / `0x178` | same | `SetTimeOfDayState`'s tail writes `ms / 1000` and `minutesPerHour * 60`; `Area_ChangeDayNight` writes the pair too |
+
+The live colours (`nightAmbient` `0x164`, `nightDiffuse` `0x170`, `nightFog` `0x17c`, the day
+triple at `0x1c8`/`0x1d4`/`0x1e0`), `isNight` `0xdc` and the two fog amount bytes already had
+rows. The fog AMOUNT is lerped inside `UpdateDayNightCycle` from the two palette bytes and
+otherwise set outright.
+
 ### Alloy: the Scene walk (#436)
 
 124 rows, 33 of them `Unresolved`. Measured 2026-09-11 by running

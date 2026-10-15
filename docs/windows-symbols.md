@@ -498,6 +498,52 @@ NUI-typing / pointer-precedence gates), still unanchored on Windows.
 | `CClientExoApp::OnLostFocus` | same | stuck-key clear on focus loss lost; self-heals on next full press |
 | `g_pNuklear` (data) | client global, not exported; data symbols aren't string-anchorable | NUI-typing gate lost; a hotkey pressed while typing in a NUI field may fire |
 
+## Day/night machine (CX-285) -- anchored on build `0x68e408bc`
+
+Seventeen `CNWCArea`/`CNWCModule`/`CNWCMessage` functions, none name-exported. Two seed
+anchors carry the rest, and every body decompiles statement-for-statement against its named
+Linux original with **every field displacement identical**.
+
+Seeds:
+
+- `StringRefs.java "controlpart sun gidy_sun_amb color %f %f %f"` and the `_diff` twin: one
+  reference each, which is `SetGlobalLightAmbient` / `SetGlobalLightDiffuse`.
+- `StringRefs.java "mainscene.fogcolor %f %f %f"`: exactly two references, `SetFog` (the one
+  that also sets the clear colour) and `SetFogAmount` (the one that re-pushes the stored colour).
+- `StringRefs.java "flash0%i"` + `"PNL_LIGHTNING"`: one reference each, both in `CNWCArea::Update`.
+- `CNWCModule::SetTimeOfDayState` was already anchored by the `ModuleMinutesPerHour` row
+  (`+0x178 = byte[+0x15c] * 60.0`).
+
+| Linux symbol | Linux nm | Windows rva | How anchored |
+|---|---|---|---|
+| `CNWCModule::SetTimeOfDayState` | `0x7d96e0` | `0x7cfbb0` | the `minutes-per-hour * 60` body; state 1/2/3/4 arms match |
+| `CNWCArea::SetAsDay` | `0x7064a0` | `0x7e5390` | `SetTimeOfDayState`'s state-1 callee (and state-4's first) |
+| `CNWCArea::SetAsNight` | `0x7062f0` | `0x7e55f0` | its state-2 callee (and state-3's first) |
+| `CNWCArea::SetAsDawn` | `0x7067a0` | `0x7e5330` | its state-3 second callee; body sets dawn-running + isNight |
+| `CNWCArea::SetAsDusk` | `0x706640` | `0x7e5580` | its state-4 second callee; body sets dusk-running, clears isNight |
+| `CNWCArea::SetGlobalLightAmbient` | `0x7022d0` | `0x7e5b40` | `gidy_sun_amb` string, sole reference |
+| `CNWCArea::SetGlobalLightDiffuse` | `0x702510` | `0x7e5be0` | `gidy_sun_diff` string, sole reference |
+| `CNWCArea::SetGlobalLightDirection` | `0x704000` | `0x7e5d10` | `SetAsDay`/`SetAsNight`'s direction callee; `9233.093`, cos 0.9998477 / 0.9961947 |
+| `CNWCArea::SetFog` | `0x702380` | `0x7e5850` | `mainscene.fogcolor`, the arm that also calls `SetClearColor` |
+| `CNWCArea::SetFogAmount` | `0x7026e0` | `0x7e5990` | the other `mainscene.fogcolor` reference |
+| `CNWCArea::SetFogColors` | `0x704440` | `0x7e5a50` | sole callee of `HandleServerToPlayerArea` with the `-1e7` sentinels |
+| `CNWCArea::SetAreaLightColor` | `0x704140` | `0x7e5010` | sole 4-slot callee of the same handler; slot offsets `0x164/0x170/0x1c8/0x1d4` |
+| `CNWCArea::SetAreaLightDirection` | `0x704350` | `0x7e5250` | the handler's 2-slot direction callee; tail-calls `SetGlobalLightDirection` |
+| `CNWCArea::UpdateDayNightCycle` | `0x706a20` | `0x7e90b0` | `CNWCArea::Update`'s only float callee that reads module `+0x174/+0x178` and writes `projectionalpha` |
+| `CNWCArea::Update` | `0x707560` | `0x7e7da0` | `flash0%i` + `PNL_LIGHTNING`, both unique |
+| `CNWCMessage::HandleServerToPlayerArea` | `0x7a79b0` | `0x76d910` | sole caller of `LoadArea` (rva `0x7dba70`), `SetAsDawn`, `SetAsDusk`, `SetAreaLightColor`, `SetFogColors` |
+| `shadowalpha` (data) | `0x18aa17c` | — | name-exported: `?shadowalpha@@3MA` |
+
+**The lightning flash has no leaf on Windows.** `CNWCArea::SetLightningDone` exists at rva
+`0x7e5eb0`, but MSVC inlined its only call site into `CNWCArea::Update`, so the standalone body
+is never entered; the flash start is inline in `Update` on both builds. A consumer watches the
+flash from `AreaUpdate`.
+
+Vtable slots seen in passing, all consistent with #433's −8 rule for `CNWCArea`:
+`SetFog` Linux `vtbl+0x30` / Windows `+0x28`, `SetGlobalLightDiffuse` `+0x50` / `+0x40`,
+`SetGlobalLightAmbient` `+0x58` / `+0x48`. All three are hooked at the body, so the slot is
+provenance, not a row.
+
 ## Reading the tester's log (#421)
 
 No debugger on the tester's side: `cx.log` (in `Documents\Neverwinter Nights\`, beside `nwn.ini`)

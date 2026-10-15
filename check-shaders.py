@@ -579,6 +579,7 @@ def programs(g):
         "weather map scatter": (g["cx_wx_scat_c"],),
         "weather map integrate": (g["cx_wx_int_c"],),
         "weather shelter cache": (g["cx_wx_shel_c"],),
+        "sky visibility bake": (g["cx_skybake"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
     }

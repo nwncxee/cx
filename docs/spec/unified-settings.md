@@ -639,7 +639,8 @@ rung). `alloy`'s `PanelStatus` is the renderer's own line ("Running: Alloy / Van
 **Lighting** — groups `light` (310, *Lights*), `shadow` (312, *Shadows*), `ao` (314, *Ambient
 occlusion*), `lightmap` (316, *Baked lighting*), `effects` (318, *Effects*). `light`,
 `ao` and `effects` have no master; `ao`'s header: "The game's own Ambient Occlusion video
-option turns this on and off."
+option turns this on and off." `lighttrace` (320, *Lighting trace*) is a ChatOnly master alone,
+so it adds no submenu content.
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
@@ -648,6 +649,7 @@ option turns this on and off."
 | light.flickerspeed | Flicker speed | S | 0.1–4 step 0.05 · 1.00 | A | L | Lights | Rate of the flicker; 1 is a fireplace. |
 | light.ambient | Ambient light | S | 0–4 step 0.05 · 1.00 | U | L | Lights | Scales the area's ambient fill. 1 is the area author's value. |
 | light.sun | Sun and moon | S | 0–4 step 0.05 · 1.00 | U | L | Lights | Scales the area's directional light. 1 is the area author's value. |
+| light.sky | Shade under cover | S | 0–1 step 0.05 · 0.85 | U | L | Lights | Outdoors, how much the ambient fill drops where little open sky reaches -- an alley, an arcade, the space under a roof. A vanilla area has one ambient for the whole of it, so 0 is that flat fill back and needs no content change either way. Interiors are unaffected, and this needs Shadows switched on: it reads the same view of the area the shadows are cast from. Water and effects keep the flat fill. |
 | light.probe | Reflections from the scene | T | on | U | L | Reflections | Materials with an environment map reflect a capture of the surroundings instead of the stock sphere map. Ladders on `quality.reflections`. |
 | light.ssr | Screen-space reflections | T | on | U | L | Reflections | Glossy and rain-wet surfaces also reflect what is on screen -- grass, creatures, anything drawn -- and keep the capture where a reflection leaves the screen. Ladders on `quality.reflections`. |
 | light.ssrplanar | Mirror reflections on flat ground | T | off | U | L | Reflections | Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set, drawn without moving lights, so a street lit by them mirrors darker than it is. |
@@ -680,6 +682,7 @@ option turns this on and off."
 | lightmap.vram / window / near / tiers / hold / movertaps / moverlights / pairsize / paircount / disk | — | T, S | as declared | C | pairsize / paircount R, rest L | — | the page pool's memory budget, the baked radius round the player, the density tiers, the loading hold, the creature-and-light shadow atlas, the chart cache size |
 | effects.halos | Light halos | S | 0–4 step 0.1 · 1 | U | L | — | Brightness of the glow around the lights that flare in vanilla. 1 is vanilla's; 0 draws no halos. Ladders on `quality.effects`. |
 | effects.sky / beams / halosize / haloviz | — | T, S | as declared | C | L | — | the sky dome, the light shafts, the halo's size as a multiple of vanilla's flare, the halo visualiser |
+| lighttrace.enabled | Trace every area-light change to cx.log | T | off | **C** | L | — | cfg-only diagnostic for area builders: every light, direction and fog packet the server sends, every day/night state change and transition, the lightning flash, and once a second the colours the engine applied to the area's sun next to the ones Alloy rendered -- all under the `[lighttrace]` prefix. Off costs nothing per frame. |
 
 **Image** — group `post` (330), no master (the resolve is the frame).
 

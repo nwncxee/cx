@@ -202,6 +202,22 @@ global using unsafe AreaSetWeatherFn = delegate* unmanaged<nint, byte, float, in
 global using unsafe AreaStartWeatherFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe TileSetGetFn = delegate* unmanaged<nint, nint, nint>;
 global using unsafe AreaStopWeatherFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe ModuleSetTimeOfDayStateFn = delegate* unmanaged<nint, byte, uint, int, void>;
+global using unsafe AreaSetAsDawnFn = delegate* unmanaged<nint, void>;
+global using unsafe AreaSetAsDuskFn = delegate* unmanaged<nint, void>;
+global using unsafe AreaSetAsDayFn = delegate* unmanaged<nint, void>;
+global using unsafe AreaSetAsNightFn = delegate* unmanaged<nint, void>;
+global using unsafe AreaUpdateDayNightCycleFn = delegate* unmanaged<nint, float, void>;
+global using unsafe AreaSetGlobalLightAmbientFn = delegate* unmanaged<nint, int, CX.Engine.VectorArg, int>;
+global using unsafe AreaSetGlobalLightDiffuseFn = delegate* unmanaged<nint, int, CX.Engine.VectorArg, int>;
+global using unsafe AreaSetGlobalLightDirectionFn = delegate* unmanaged<nint, CX.Engine.VectorArg, byte, int>;
+global using unsafe AreaSetAreaLightColorFn = delegate* unmanaged<nint, uint, CX.Engine.VectorArg, float, void>;
+global using unsafe AreaSetAreaLightDirectionFn = delegate* unmanaged<nint, uint, CX.Engine.VectorArg, float, void>;
+global using unsafe AreaSetFogColorsFn = delegate* unmanaged<nint, CX.Engine.VectorArg, CX.Engine.VectorArg, float, void>;
+global using unsafe AreaSetFogAmountFn = delegate* unmanaged<nint, int, int>;
+global using unsafe AreaSetFogFn = delegate* unmanaged<nint, int, CX.Engine.VectorArg, int>;
+global using unsafe AreaUpdateFn = delegate* unmanaged<nint, float, void>;
+global using unsafe HandleServerToPlayerAreaFn = delegate* unmanaged<nint, byte, int>;
 global using unsafe SceneInitBspFn = delegate* unmanaged<nint, int, int, int, byte, float, void>;
 global using unsafe SceneSpawnTileFn = delegate* unmanaged<nint, byte*, System.Numerics.Vector3*, int, int, nint, nint>;
 global using unsafe SceneDeleteTileFn = delegate* unmanaged<nint, System.Numerics.Vector3*, void>;
@@ -1883,6 +1899,30 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public int AreaLoadBorder(IntPtr loadscreen, float progress) => EngineFn.AreaLoadBorder(Ptr, loadscreen, progress);
     /// <inheritdoc cref="SymbolMap.AreaReloadBorder"/>
     public void AreaReloadBorder() => EngineFn.AreaReloadBorder(Ptr);
+    /// <inheritdoc cref="SymbolMap.AreaSetAreaLightColor"/>
+    public void AreaSetAreaLightColor(uint slot, VectorArg colour, float fade) => EngineFn.AreaSetAreaLightColor(Ptr, slot, colour, fade);
+    /// <inheritdoc cref="SymbolMap.AreaSetAreaLightDirection"/>
+    public void AreaSetAreaLightDirection(uint which, VectorArg dir, float fade) => EngineFn.AreaSetAreaLightDirection(Ptr, which, dir, fade);
+    /// <inheritdoc cref="SymbolMap.AreaSetAsDawn"/>
+    public void AreaSetAsDawn() => EngineFn.AreaSetAsDawn(Ptr);
+    /// <inheritdoc cref="SymbolMap.AreaSetAsDay"/>
+    public void AreaSetAsDay() => EngineFn.AreaSetAsDay(Ptr);
+    /// <inheritdoc cref="SymbolMap.AreaSetAsDusk"/>
+    public void AreaSetAsDusk() => EngineFn.AreaSetAsDusk(Ptr);
+    /// <inheritdoc cref="SymbolMap.AreaSetAsNight"/>
+    public void AreaSetAsNight() => EngineFn.AreaSetAsNight(Ptr);
+    /// <inheritdoc cref="SymbolMap.AreaSetFog"/>
+    public int AreaSetFog(int amount, VectorArg colour) => EngineFn.AreaSetFog(Ptr, amount, colour);
+    /// <inheritdoc cref="SymbolMap.AreaSetFogAmount"/>
+    public int AreaSetFogAmount(int amount) => EngineFn.AreaSetFogAmount(Ptr, amount);
+    /// <inheritdoc cref="SymbolMap.AreaSetFogColors"/>
+    public void AreaSetFogColors(VectorArg sun, VectorArg moon, float fade) => EngineFn.AreaSetFogColors(Ptr, sun, moon, fade);
+    /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightAmbient"/>
+    public int AreaSetGlobalLightAmbient(int apply, VectorArg colour) => EngineFn.AreaSetGlobalLightAmbient(Ptr, apply, colour);
+    /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightDiffuse"/>
+    public int AreaSetGlobalLightDiffuse(int apply, VectorArg colour) => EngineFn.AreaSetGlobalLightDiffuse(Ptr, apply, colour);
+    /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightDirection"/>
+    public int AreaSetGlobalLightDirection(VectorArg dir, byte coarse) => EngineFn.AreaSetGlobalLightDirection(Ptr, dir, coarse);
     /// <inheritdoc cref="SymbolMap.AreaSetTile"/>
     public void AreaSetTile(IntPtr tile, int id, int orientation, int height) => EngineFn.AreaSetTile(Ptr, tile, id, orientation, height);
     /// <inheritdoc cref="SymbolMap.AreaSetWeather"/>
@@ -1891,6 +1931,12 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public void AreaStartWeather(byte kind) => EngineFn.AreaStartWeather(Ptr, kind);
     /// <inheritdoc cref="SymbolMap.AreaStopWeather"/>
     public void AreaStopWeather(byte kind) => EngineFn.AreaStopWeather(Ptr, kind);
+    /// <inheritdoc cref="SymbolMap.AreaUpdate"/>
+    public void AreaUpdate(float dt) => EngineFn.AreaUpdate(Ptr, dt);
+    /// <inheritdoc cref="SymbolMap.AreaUpdateDayNightCycle"/>
+    public void AreaUpdateDayNightCycle(float dt) => EngineFn.AreaUpdateDayNightCycle(Ptr, dt);
+    /// <inheritdoc cref="EngineLayout.AreaDawnRunning"/>
+    public ref int DawnRunning => ref *(int*)(Ptr + EngineLayout.AreaDawnRunning);
     /// <inheritdoc cref="EngineLayout.AreaDayAmbient"/>
     public Span<float> DayAmbient { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayAmbient), 3); }
     /// <inheritdoc cref="EngineLayout.AreaDayDiffuse"/>
@@ -1899,6 +1945,8 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public Span<float> DayFog { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayFog), 3); }
     /// <inheritdoc cref="EngineLayout.AreaDayFogAmount"/>
     public ref byte DayFogAmount => ref *(byte*)(Ptr + EngineLayout.AreaDayFogAmount);
+    /// <inheritdoc cref="EngineLayout.AreaDuskRunning"/>
+    public ref int DuskRunning => ref *(int*)(Ptr + EngineLayout.AreaDuskRunning);
     /// <inheritdoc cref="EngineLayout.AreaFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.AreaFlags);
     /// <inheritdoc cref="EngineLayout.AreaFogAmount"/>
@@ -1907,6 +1955,10 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref uint Id => ref *(uint*)(Ptr + EngineLayout.AreaId);
     /// <inheritdoc cref="EngineLayout.AreaIsNight"/>
     public ref int IsNight => ref *(int*)(Ptr + EngineLayout.AreaIsNight);
+    /// <inheritdoc cref="EngineLayout.AreaLightningFlash"/>
+    public ref float LightningFlash => ref *(float*)(Ptr + EngineLayout.AreaLightningFlash);
+    /// <inheritdoc cref="EngineLayout.AreaMoonDirection"/>
+    public Span<float> MoonDirection { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaMoonDirection), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightAmbient"/>
     public Span<float> NightAmbient { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightAmbient), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightDiffuse"/>
@@ -1925,16 +1977,22 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref IntPtr PlaceableLights => ref *(IntPtr*)(Ptr + EngineLayout.AreaPlaceableLights);
     /// <inheritdoc cref="EngineLayout.AreaScene"/>
     public ref Scene Scene => ref *(Scene*)(Ptr + EngineLayout.AreaScene);
+    /// <inheritdoc cref="EngineLayout.AreaShadowOpacity"/>
+    public ref byte ShadowOpacity => ref *(byte*)(Ptr + EngineLayout.AreaShadowOpacity);
     /// <inheritdoc cref="EngineLayout.AreaStaticPlaceableCount"/>
     public ref int StaticPlaceableCount => ref *(int*)(Ptr + EngineLayout.AreaStaticPlaceableCount);
     /// <inheritdoc cref="EngineLayout.AreaStaticPlaceables"/>
     public ref IntPtr StaticPlaceables => ref *(IntPtr*)(Ptr + EngineLayout.AreaStaticPlaceables);
+    /// <inheritdoc cref="EngineLayout.AreaSunDirection"/>
+    public Span<float> SunDirection { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaSunDirection), 3); }
     /// <inheritdoc cref="SymbolMap.TestDirectLine"/>
     public int TestDirectLine(CNWCCreature creature, VectorArg from, VectorArg to, float space, float height, int checkCreatures) => EngineFn.TestDirectLine(Ptr, creature.Ptr, from, to, space, height, checkCreatures);
     /// <inheritdoc cref="EngineLayout.AreaTileHeight"/>
     public ref int TileHeight => ref *(int*)(Ptr + EngineLayout.AreaTileHeight);
     /// <inheritdoc cref="EngineLayout.AreaTileWidth"/>
     public ref int TileWidth => ref *(int*)(Ptr + EngineLayout.AreaTileWidth);
+    /// <inheritdoc cref="EngineLayout.AreaUsesDayNightCycle"/>
+    public ref int UsesDayNightCycle => ref *(int*)(Ptr + EngineLayout.AreaUsesDayNightCycle);
 }
 
 /// <summary>Typed view of an engine <c>CNWCCombatAttackData*</c>.</summary>
@@ -2160,8 +2218,14 @@ public readonly unsafe partial struct CNWCModule(IntPtr ptr)
     public ref int Hour => ref *(int*)(Ptr + EngineLayout.ModuleHour);
     /// <inheritdoc cref="EngineLayout.ModuleMinutesPerHour"/>
     public ref byte MinutesPerHour => ref *(byte*)(Ptr + EngineLayout.ModuleMinutesPerHour);
+    /// <inheritdoc cref="SymbolMap.ModuleSetTimeOfDayState"/>
+    public void ModuleSetTimeOfDayState(byte state, uint elapsedMs, int force) => EngineFn.ModuleSetTimeOfDayState(Ptr, state, elapsedMs, force);
     /// <inheritdoc cref="SymbolMap.TiltCamera"/>
     public void TiltCamera(float deg, int impulse) => EngineFn.TiltCamera(Ptr, deg, impulse);
+    /// <inheritdoc cref="EngineLayout.ModuleTransitionElapsed"/>
+    public ref float TransitionElapsed => ref *(float*)(Ptr + EngineLayout.ModuleTransitionElapsed);
+    /// <inheritdoc cref="EngineLayout.ModuleTransitionLength"/>
+    public ref float TransitionLength => ref *(float*)(Ptr + EngineLayout.ModuleTransitionLength);
     /// <inheritdoc cref="SymbolMap.TurnCamera"/>
     public void TurnCamera(float deg, int impulse) => EngineFn.TurnCamera(Ptr, deg, impulse);
 }
@@ -5576,6 +5640,70 @@ public static unsafe class EngineFn
     private static bool _AreaStopWeatherDone;
     /// <inheritdoc cref="SymbolMap.AreaStopWeather"/>
     public static AreaStopWeatherFn AreaStopWeather => (AreaStopWeatherFn)(_AreaStopWeatherDone ? _AreaStopWeather : Resolve(ref _AreaStopWeather, ref _AreaStopWeatherDone, SymbolMap.AreaStopWeather));
+    private static IntPtr _ModuleSetTimeOfDayState;
+    private static bool _ModuleSetTimeOfDayStateDone;
+    /// <inheritdoc cref="SymbolMap.ModuleSetTimeOfDayState"/>
+    public static ModuleSetTimeOfDayStateFn ModuleSetTimeOfDayState => (ModuleSetTimeOfDayStateFn)(_ModuleSetTimeOfDayStateDone ? _ModuleSetTimeOfDayState : Resolve(ref _ModuleSetTimeOfDayState, ref _ModuleSetTimeOfDayStateDone, SymbolMap.ModuleSetTimeOfDayState));
+    private static IntPtr _AreaSetAsDawn;
+    private static bool _AreaSetAsDawnDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetAsDawn"/>
+    public static AreaSetAsDawnFn AreaSetAsDawn => (AreaSetAsDawnFn)(_AreaSetAsDawnDone ? _AreaSetAsDawn : Resolve(ref _AreaSetAsDawn, ref _AreaSetAsDawnDone, SymbolMap.AreaSetAsDawn));
+    private static IntPtr _AreaSetAsDusk;
+    private static bool _AreaSetAsDuskDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetAsDusk"/>
+    public static AreaSetAsDuskFn AreaSetAsDusk => (AreaSetAsDuskFn)(_AreaSetAsDuskDone ? _AreaSetAsDusk : Resolve(ref _AreaSetAsDusk, ref _AreaSetAsDuskDone, SymbolMap.AreaSetAsDusk));
+    private static IntPtr _AreaSetAsDay;
+    private static bool _AreaSetAsDayDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetAsDay"/>
+    public static AreaSetAsDayFn AreaSetAsDay => (AreaSetAsDayFn)(_AreaSetAsDayDone ? _AreaSetAsDay : Resolve(ref _AreaSetAsDay, ref _AreaSetAsDayDone, SymbolMap.AreaSetAsDay));
+    private static IntPtr _AreaSetAsNight;
+    private static bool _AreaSetAsNightDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetAsNight"/>
+    public static AreaSetAsNightFn AreaSetAsNight => (AreaSetAsNightFn)(_AreaSetAsNightDone ? _AreaSetAsNight : Resolve(ref _AreaSetAsNight, ref _AreaSetAsNightDone, SymbolMap.AreaSetAsNight));
+    private static IntPtr _AreaUpdateDayNightCycle;
+    private static bool _AreaUpdateDayNightCycleDone;
+    /// <inheritdoc cref="SymbolMap.AreaUpdateDayNightCycle"/>
+    public static AreaUpdateDayNightCycleFn AreaUpdateDayNightCycle => (AreaUpdateDayNightCycleFn)(_AreaUpdateDayNightCycleDone ? _AreaUpdateDayNightCycle : Resolve(ref _AreaUpdateDayNightCycle, ref _AreaUpdateDayNightCycleDone, SymbolMap.AreaUpdateDayNightCycle));
+    private static IntPtr _AreaSetGlobalLightAmbient;
+    private static bool _AreaSetGlobalLightAmbientDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightAmbient"/>
+    public static AreaSetGlobalLightAmbientFn AreaSetGlobalLightAmbient => (AreaSetGlobalLightAmbientFn)(_AreaSetGlobalLightAmbientDone ? _AreaSetGlobalLightAmbient : Resolve(ref _AreaSetGlobalLightAmbient, ref _AreaSetGlobalLightAmbientDone, SymbolMap.AreaSetGlobalLightAmbient));
+    private static IntPtr _AreaSetGlobalLightDiffuse;
+    private static bool _AreaSetGlobalLightDiffuseDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightDiffuse"/>
+    public static AreaSetGlobalLightDiffuseFn AreaSetGlobalLightDiffuse => (AreaSetGlobalLightDiffuseFn)(_AreaSetGlobalLightDiffuseDone ? _AreaSetGlobalLightDiffuse : Resolve(ref _AreaSetGlobalLightDiffuse, ref _AreaSetGlobalLightDiffuseDone, SymbolMap.AreaSetGlobalLightDiffuse));
+    private static IntPtr _AreaSetGlobalLightDirection;
+    private static bool _AreaSetGlobalLightDirectionDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightDirection"/>
+    public static AreaSetGlobalLightDirectionFn AreaSetGlobalLightDirection => (AreaSetGlobalLightDirectionFn)(_AreaSetGlobalLightDirectionDone ? _AreaSetGlobalLightDirection : Resolve(ref _AreaSetGlobalLightDirection, ref _AreaSetGlobalLightDirectionDone, SymbolMap.AreaSetGlobalLightDirection));
+    private static IntPtr _AreaSetAreaLightColor;
+    private static bool _AreaSetAreaLightColorDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetAreaLightColor"/>
+    public static AreaSetAreaLightColorFn AreaSetAreaLightColor => (AreaSetAreaLightColorFn)(_AreaSetAreaLightColorDone ? _AreaSetAreaLightColor : Resolve(ref _AreaSetAreaLightColor, ref _AreaSetAreaLightColorDone, SymbolMap.AreaSetAreaLightColor));
+    private static IntPtr _AreaSetAreaLightDirection;
+    private static bool _AreaSetAreaLightDirectionDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetAreaLightDirection"/>
+    public static AreaSetAreaLightDirectionFn AreaSetAreaLightDirection => (AreaSetAreaLightDirectionFn)(_AreaSetAreaLightDirectionDone ? _AreaSetAreaLightDirection : Resolve(ref _AreaSetAreaLightDirection, ref _AreaSetAreaLightDirectionDone, SymbolMap.AreaSetAreaLightDirection));
+    private static IntPtr _AreaSetFogColors;
+    private static bool _AreaSetFogColorsDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetFogColors"/>
+    public static AreaSetFogColorsFn AreaSetFogColors => (AreaSetFogColorsFn)(_AreaSetFogColorsDone ? _AreaSetFogColors : Resolve(ref _AreaSetFogColors, ref _AreaSetFogColorsDone, SymbolMap.AreaSetFogColors));
+    private static IntPtr _AreaSetFogAmount;
+    private static bool _AreaSetFogAmountDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetFogAmount"/>
+    public static AreaSetFogAmountFn AreaSetFogAmount => (AreaSetFogAmountFn)(_AreaSetFogAmountDone ? _AreaSetFogAmount : Resolve(ref _AreaSetFogAmount, ref _AreaSetFogAmountDone, SymbolMap.AreaSetFogAmount));
+    private static IntPtr _AreaSetFog;
+    private static bool _AreaSetFogDone;
+    /// <inheritdoc cref="SymbolMap.AreaSetFog"/>
+    public static AreaSetFogFn AreaSetFog => (AreaSetFogFn)(_AreaSetFogDone ? _AreaSetFog : Resolve(ref _AreaSetFog, ref _AreaSetFogDone, SymbolMap.AreaSetFog));
+    private static IntPtr _AreaUpdate;
+    private static bool _AreaUpdateDone;
+    /// <inheritdoc cref="SymbolMap.AreaUpdate"/>
+    public static AreaUpdateFn AreaUpdate => (AreaUpdateFn)(_AreaUpdateDone ? _AreaUpdate : Resolve(ref _AreaUpdate, ref _AreaUpdateDone, SymbolMap.AreaUpdate));
+    private static IntPtr _HandleServerToPlayerArea;
+    private static bool _HandleServerToPlayerAreaDone;
+    /// <inheritdoc cref="SymbolMap.HandleServerToPlayerArea"/>
+    public static HandleServerToPlayerAreaFn HandleServerToPlayerArea => (HandleServerToPlayerAreaFn)(_HandleServerToPlayerAreaDone ? _HandleServerToPlayerArea : Resolve(ref _HandleServerToPlayerArea, ref _HandleServerToPlayerAreaDone, SymbolMap.HandleServerToPlayerArea));
     private static IntPtr _SceneInitBsp;
     private static bool _SceneInitBspDone;
     /// <inheritdoc cref="SymbolMap.SceneInitBsp"/>
@@ -7897,6 +8025,102 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.AreaStopWeather"/>; returns the slot holding the next layer, or null.</summary>
     public static AreaStopWeatherFn* ChainAreaStopWeather(this HookService h, AreaStopWeatherFn handler, int priority) =>
         (AreaStopWeatherFn*)h.Chain(SymbolMap.AreaStopWeather, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ModuleSetTimeOfDayState"/>; returns the original, or null.</summary>
+    public static ModuleSetTimeOfDayStateFn InstallModuleSetTimeOfDayState(this HookService h, ModuleSetTimeOfDayStateFn handler) =>
+        (ModuleSetTimeOfDayStateFn)h.Install(SymbolMap.ModuleSetTimeOfDayState, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ModuleSetTimeOfDayState"/>; returns the slot holding the next layer, or null.</summary>
+    public static ModuleSetTimeOfDayStateFn* ChainModuleSetTimeOfDayState(this HookService h, ModuleSetTimeOfDayStateFn handler, int priority) =>
+        (ModuleSetTimeOfDayStateFn*)h.Chain(SymbolMap.ModuleSetTimeOfDayState, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetAsDawn"/>; returns the original, or null.</summary>
+    public static AreaSetAsDawnFn InstallAreaSetAsDawn(this HookService h, AreaSetAsDawnFn handler) =>
+        (AreaSetAsDawnFn)h.Install(SymbolMap.AreaSetAsDawn, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetAsDawn"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetAsDawnFn* ChainAreaSetAsDawn(this HookService h, AreaSetAsDawnFn handler, int priority) =>
+        (AreaSetAsDawnFn*)h.Chain(SymbolMap.AreaSetAsDawn, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetAsDusk"/>; returns the original, or null.</summary>
+    public static AreaSetAsDuskFn InstallAreaSetAsDusk(this HookService h, AreaSetAsDuskFn handler) =>
+        (AreaSetAsDuskFn)h.Install(SymbolMap.AreaSetAsDusk, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetAsDusk"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetAsDuskFn* ChainAreaSetAsDusk(this HookService h, AreaSetAsDuskFn handler, int priority) =>
+        (AreaSetAsDuskFn*)h.Chain(SymbolMap.AreaSetAsDusk, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetAsDay"/>; returns the original, or null.</summary>
+    public static AreaSetAsDayFn InstallAreaSetAsDay(this HookService h, AreaSetAsDayFn handler) =>
+        (AreaSetAsDayFn)h.Install(SymbolMap.AreaSetAsDay, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetAsDay"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetAsDayFn* ChainAreaSetAsDay(this HookService h, AreaSetAsDayFn handler, int priority) =>
+        (AreaSetAsDayFn*)h.Chain(SymbolMap.AreaSetAsDay, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetAsNight"/>; returns the original, or null.</summary>
+    public static AreaSetAsNightFn InstallAreaSetAsNight(this HookService h, AreaSetAsNightFn handler) =>
+        (AreaSetAsNightFn)h.Install(SymbolMap.AreaSetAsNight, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetAsNight"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetAsNightFn* ChainAreaSetAsNight(this HookService h, AreaSetAsNightFn handler, int priority) =>
+        (AreaSetAsNightFn*)h.Chain(SymbolMap.AreaSetAsNight, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaUpdateDayNightCycle"/>; returns the original, or null.</summary>
+    public static AreaUpdateDayNightCycleFn InstallAreaUpdateDayNightCycle(this HookService h, AreaUpdateDayNightCycleFn handler) =>
+        (AreaUpdateDayNightCycleFn)h.Install(SymbolMap.AreaUpdateDayNightCycle, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaUpdateDayNightCycle"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaUpdateDayNightCycleFn* ChainAreaUpdateDayNightCycle(this HookService h, AreaUpdateDayNightCycleFn handler, int priority) =>
+        (AreaUpdateDayNightCycleFn*)h.Chain(SymbolMap.AreaUpdateDayNightCycle, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetGlobalLightAmbient"/>; returns the original, or null.</summary>
+    public static AreaSetGlobalLightAmbientFn InstallAreaSetGlobalLightAmbient(this HookService h, AreaSetGlobalLightAmbientFn handler) =>
+        (AreaSetGlobalLightAmbientFn)h.Install(SymbolMap.AreaSetGlobalLightAmbient, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetGlobalLightAmbient"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetGlobalLightAmbientFn* ChainAreaSetGlobalLightAmbient(this HookService h, AreaSetGlobalLightAmbientFn handler, int priority) =>
+        (AreaSetGlobalLightAmbientFn*)h.Chain(SymbolMap.AreaSetGlobalLightAmbient, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetGlobalLightDiffuse"/>; returns the original, or null.</summary>
+    public static AreaSetGlobalLightDiffuseFn InstallAreaSetGlobalLightDiffuse(this HookService h, AreaSetGlobalLightDiffuseFn handler) =>
+        (AreaSetGlobalLightDiffuseFn)h.Install(SymbolMap.AreaSetGlobalLightDiffuse, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetGlobalLightDiffuse"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetGlobalLightDiffuseFn* ChainAreaSetGlobalLightDiffuse(this HookService h, AreaSetGlobalLightDiffuseFn handler, int priority) =>
+        (AreaSetGlobalLightDiffuseFn*)h.Chain(SymbolMap.AreaSetGlobalLightDiffuse, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetGlobalLightDirection"/>; returns the original, or null.</summary>
+    public static AreaSetGlobalLightDirectionFn InstallAreaSetGlobalLightDirection(this HookService h, AreaSetGlobalLightDirectionFn handler) =>
+        (AreaSetGlobalLightDirectionFn)h.Install(SymbolMap.AreaSetGlobalLightDirection, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetGlobalLightDirection"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetGlobalLightDirectionFn* ChainAreaSetGlobalLightDirection(this HookService h, AreaSetGlobalLightDirectionFn handler, int priority) =>
+        (AreaSetGlobalLightDirectionFn*)h.Chain(SymbolMap.AreaSetGlobalLightDirection, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetAreaLightColor"/>; returns the original, or null.</summary>
+    public static AreaSetAreaLightColorFn InstallAreaSetAreaLightColor(this HookService h, AreaSetAreaLightColorFn handler) =>
+        (AreaSetAreaLightColorFn)h.Install(SymbolMap.AreaSetAreaLightColor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetAreaLightColor"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetAreaLightColorFn* ChainAreaSetAreaLightColor(this HookService h, AreaSetAreaLightColorFn handler, int priority) =>
+        (AreaSetAreaLightColorFn*)h.Chain(SymbolMap.AreaSetAreaLightColor, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetAreaLightDirection"/>; returns the original, or null.</summary>
+    public static AreaSetAreaLightDirectionFn InstallAreaSetAreaLightDirection(this HookService h, AreaSetAreaLightDirectionFn handler) =>
+        (AreaSetAreaLightDirectionFn)h.Install(SymbolMap.AreaSetAreaLightDirection, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetAreaLightDirection"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetAreaLightDirectionFn* ChainAreaSetAreaLightDirection(this HookService h, AreaSetAreaLightDirectionFn handler, int priority) =>
+        (AreaSetAreaLightDirectionFn*)h.Chain(SymbolMap.AreaSetAreaLightDirection, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetFogColors"/>; returns the original, or null.</summary>
+    public static AreaSetFogColorsFn InstallAreaSetFogColors(this HookService h, AreaSetFogColorsFn handler) =>
+        (AreaSetFogColorsFn)h.Install(SymbolMap.AreaSetFogColors, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetFogColors"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetFogColorsFn* ChainAreaSetFogColors(this HookService h, AreaSetFogColorsFn handler, int priority) =>
+        (AreaSetFogColorsFn*)h.Chain(SymbolMap.AreaSetFogColors, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetFogAmount"/>; returns the original, or null.</summary>
+    public static AreaSetFogAmountFn InstallAreaSetFogAmount(this HookService h, AreaSetFogAmountFn handler) =>
+        (AreaSetFogAmountFn)h.Install(SymbolMap.AreaSetFogAmount, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetFogAmount"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetFogAmountFn* ChainAreaSetFogAmount(this HookService h, AreaSetFogAmountFn handler, int priority) =>
+        (AreaSetFogAmountFn*)h.Chain(SymbolMap.AreaSetFogAmount, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaSetFog"/>; returns the original, or null.</summary>
+    public static AreaSetFogFn InstallAreaSetFog(this HookService h, AreaSetFogFn handler) =>
+        (AreaSetFogFn)h.Install(SymbolMap.AreaSetFog, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaSetFog"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaSetFogFn* ChainAreaSetFog(this HookService h, AreaSetFogFn handler, int priority) =>
+        (AreaSetFogFn*)h.Chain(SymbolMap.AreaSetFog, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AreaUpdate"/>; returns the original, or null.</summary>
+    public static AreaUpdateFn InstallAreaUpdate(this HookService h, AreaUpdateFn handler) =>
+        (AreaUpdateFn)h.Install(SymbolMap.AreaUpdate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AreaUpdate"/>; returns the slot holding the next layer, or null.</summary>
+    public static AreaUpdateFn* ChainAreaUpdate(this HookService h, AreaUpdateFn handler, int priority) =>
+        (AreaUpdateFn*)h.Chain(SymbolMap.AreaUpdate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.HandleServerToPlayerArea"/>; returns the original, or null.</summary>
+    public static HandleServerToPlayerAreaFn InstallHandleServerToPlayerArea(this HookService h, HandleServerToPlayerAreaFn handler) =>
+        (HandleServerToPlayerAreaFn)h.Install(SymbolMap.HandleServerToPlayerArea, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.HandleServerToPlayerArea"/>; returns the slot holding the next layer, or null.</summary>
+    public static HandleServerToPlayerAreaFn* ChainHandleServerToPlayerArea(this HookService h, HandleServerToPlayerAreaFn handler, int priority) =>
+        (HandleServerToPlayerAreaFn*)h.Chain(SymbolMap.HandleServerToPlayerArea, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SceneInitBsp"/>; returns the original, or null.</summary>
     public static SceneInitBspFn InstallSceneInitBsp(this HookService h, SceneInitBspFn handler) =>
         (SceneInitBspFn)h.Install(SymbolMap.SceneInitBsp, (IntPtr)handler);

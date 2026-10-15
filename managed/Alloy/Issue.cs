@@ -411,6 +411,8 @@ internal static unsafe class Issue
                     Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
                     UploadMaterialModel(L.Material);
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing);
+                    // Not in the probe capture: CxAmbientShape reads the probe back, so the term would land twice.
+                    SkyView.UploadLit(L.SkyVp, L.SkyTerm, _capturing && !_planar);
                     Weather.BindEsm(L.CoverEsm, _oitOn || lists);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, _capturing);
                     // The master PLT palette on its own unit; a no-op until a master palette exists.

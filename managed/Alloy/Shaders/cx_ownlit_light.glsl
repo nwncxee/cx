@@ -162,7 +162,8 @@
     vec3 ambShape = vec3(ambDir);
     if (uMaterial.y > 0.0 && uCapture != 1 && uProbeMips > 0.0)
         ambShape = mix(ambShape, max(CxAmbientShape(N), vec3(0.15)), uMaterial.y);
-    vec3 ambient = uAreaAmbient * matAmbient * ambShape * occl;
+    // The GEOMETRIC normal, not the shading one: a normal map must not move where the sky lookup lands.
+    vec3 ambient = uAreaAmbient * matAmbient * ambShape * occl * CxSkyView(vWorld, normalize(vNrm));
     // 34 = the ONLY term occlusion can move inside `total` (the (1-spec) share of the ambient).
     //      Black at both /ao on 0 and /ao on 1 means AO has nothing to scale here, however bright
     //      viz 8 reads -- which no other view in the ladder can say.

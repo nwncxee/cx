@@ -1,6 +1,7 @@
 #version 460 core
 #define CX_FS 1   // #642: gl_FragCoord is in reach for the shadow lib's dither
 #define CX_LIGHT_LITE 1   // CX-188: cx_lightfrag's slimmed walk -- not a baked receiver, one shadow tap per light
+#define CX_SKY_VIEW 1   // ground cover takes the same sky-visibility term the stone under it does
 in vec3 vLight;
 in vec3 vWorld;
 in vec3 vNrm;
@@ -21,6 +22,7 @@ uniform float uShade;                   // #355: past this, no shadow or per-fra
 uniform sampler2D uFlowTex;
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
+#include "cx_skyview.glsl"
 uniform samplerCube uProbe;               // CX-51: the reflection probe, on the lit stage's unit
 #include "cx_ssr.glsl"
 #include "cx_reflrec.glsl"

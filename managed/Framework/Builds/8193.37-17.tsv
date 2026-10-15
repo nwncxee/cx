@@ -780,6 +780,15 @@ offset	CNWCArea	dayFogAmount	0xc4	0xc4	# AreaDayFogAmount
 offset	CNWCArea	fogAmount	0x310	0x310	# AreaFogAmount
 offset	CNWCArea	isNight	0xdc	0xdc	# AreaIsNight
 offset	CNWCArea	scene	0x248	0x248	# AreaScene
+offset	CNWCArea	usesDayNightCycle	0xd8	0xd8	# AreaUsesDayNightCycle
+offset	CNWCArea	dawnRunning	0x2ac	0x2ac	# AreaDawnRunning
+offset	CNWCArea	duskRunning	0x2b0	0x2b0	# AreaDuskRunning
+offset	CNWCArea	shadowOpacity	0x104	0x104	# AreaShadowOpacity
+offset	CNWCArea	sunDirection	0xcc	0xcc	# AreaSunDirection
+offset	CNWCArea	moonDirection	0xac	0xac	# AreaMoonDirection
+offset	CNWCArea	lightningFlash	0x2e4	0x2e4	# AreaLightningFlash
+offset	CNWCModule	transitionElapsed	0x174	0x174	# ModuleTransitionElapsed
+offset	CNWCModule	transitionLength	0x178	0x178	# ModuleTransitionLength
 offset	CNWCAmbientSound	music	0x188	0x188	# AmbientMusic
 offset	CNWCAmbientSound	ambient	0x190	0x190	# AmbientBed
 offset	CNWCAmbientSound	truncated	0x1b8	0x1b8	# AmbientTruncated
@@ -1097,6 +1106,22 @@ rva	_ZN8CNWCArea12ReloadBorderEv	0x7e1e40	# AreaReloadBorder
 rva	_ZN8CNWCArea10SetWeatherEhf	0x7e63c0	# AreaSetWeather
 rva	_ZN8CNWCArea12StartWeatherEh	0x7e69a0	# AreaStartWeather
 rva	_ZN8CNWCArea11StopWeatherEh	0x7e69e0	# AreaStopWeather
+rva	_ZN10CNWCModule17SetTimeOfDayStateEhji	0x7cfbb0	# ModuleSetTimeOfDayState
+rva	_ZN8CNWCArea9SetAsDawnEv	0x7e5330	# AreaSetAsDawn
+rva	_ZN8CNWCArea9SetAsDuskEv	0x7e5580	# AreaSetAsDusk
+rva	_ZN8CNWCArea8SetAsDayEv	0x7e5390	# AreaSetAsDay
+rva	_ZN8CNWCArea10SetAsNightEv	0x7e55f0	# AreaSetAsNight
+rva	_ZN8CNWCArea19UpdateDayNightCycleEf	0x7e90b0	# AreaUpdateDayNightCycle
+rva	_ZN8CNWCArea6UpdateEf	0x7e7da0	# AreaUpdate
+rva	_ZN8CNWCArea21SetGlobalLightAmbientEi6Vector	0x7e5b40	# AreaSetGlobalLightAmbient
+rva	_ZN8CNWCArea21SetGlobalLightDiffuseEi6Vector	0x7e5be0	# AreaSetGlobalLightDiffuse
+rva	_ZN8CNWCArea23SetGlobalLightDirectionE6Vectorb	0x7e5d10	# AreaSetGlobalLightDirection
+rva	_ZN8CNWCArea17SetAreaLightColorEj6Vectorf	0x7e5010	# AreaSetAreaLightColor
+rva	_ZN8CNWCArea21SetAreaLightDirectionEj6Vectorf	0x7e5250	# AreaSetAreaLightDirection
+rva	_ZN8CNWCArea12SetFogColorsE6VectorS0_f	0x7e5a50	# AreaSetFogColors
+rva	_ZN8CNWCArea12SetFogAmountEi	0x7e5990	# AreaSetFogAmount
+rva	_ZN8CNWCArea6SetFogEi6Vector	0x7e5850	# AreaSetFog
+rva	_ZN11CNWCMessage24HandleServerToPlayerAreaEh	0x76d910	# HandleServerToPlayerArea
 rva	_ZN10CNWCModule10TurnCameraEfi	0x7cfe60	# TurnCamera
 rva	_ZN10CNWCModule10TiltCameraEfi	0x7cfdb0	# TiltCamera
 rva	_ZN21CClientExoAppInternal15UpdateDriveModeEv	0x6f1e40	# UpdateDriveMode
