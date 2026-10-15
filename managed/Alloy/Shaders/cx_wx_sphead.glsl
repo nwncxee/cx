@@ -15,6 +15,7 @@ uniform vec2 uSplashV;         // the centre's xy velocity, m/s: a crown is plac
 uniform sampler2D uCoverDepth; // the cover layer as plain depth (Weather.Esm's texture view)
 uniform mat4 uCoverVp;         // world -> the cover view's clip space; zero matrix = no map, and nothing draws
 uniform mat4 uCoverVpInv;      // ...and back, for the landing point
+uniform sampler2D uSceneDepth; // the finished frame's depth copy: a landing point it shows nothing at hangs in the air
 // Footstep splashes (Weather.Tracks): instances past uSplashRain are CX_FOOT_CROWNS crowns per footfall.
 uniform int uSplashRain;       // instances that are rain crowns
 const int CX_FOOT_MAX = 16;

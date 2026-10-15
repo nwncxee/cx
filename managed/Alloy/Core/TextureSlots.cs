@@ -79,7 +79,7 @@ internal static class TextureSlots
     /// precipitation programs bind no material maps, and the splash program is the only thing in that
     /// bracket that binds a sampler2D below unit 10 at all.</summary>
     internal const uint CoverDepth = MapBase;
-    /// <summary>The scene depth the soft-particle fade reads.</summary>
+    /// <summary>The scene depth the soft-particle fade and the splash contact test read.</summary>
     internal const uint SceneDepth = 15;
     /// <summary>The four G-buffer lanes and the frame depth (ADR 0029), read by the DEFERRED COMPUTE program
     /// (<see cref="DeferredLights"/>) and by nothing else. The MAP BLOCK's units, on <see cref="CoverDepth"/>'s
@@ -291,6 +291,7 @@ internal static class TextureSlots
         check.Expect(AlloyRenderer.OitOutFs.Contains("uniform ivec2 uOitDim;") && AlloyRenderer.OitOutFs.Contains("uniform int uOitGob;"), "uOitDim/uOitGob are what OitPass.Upload and IssueColour write");
         check.Expect(Particles.ParticleFsHead.Contains("uniform sampler2D uSceneDepth;"), $"{SceneDepth} uSceneDepth");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uCoverDepth;"), $"{CoverDepth} uCoverDepth (splash program)");
+        check.Expect(Weather.SplashVs.Contains("uniform sampler2D uSceneDepth;"), $"{SceneDepth} uSceneDepth (splash program)");
         // CX-188: the deferred pass declares its five by layout(binding), so no bind-time glUniform1i can miss
         // one -- but the units still have to be the ones C# binds, which is what this pins.
         string deferred = ShaderStages.Source(DeferredLights.ShdCs);
