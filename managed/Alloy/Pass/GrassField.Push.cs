@@ -272,7 +272,7 @@ internal static unsafe partial class GrassField
         if (strided) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, PushRes);
         fixed (byte* p = _push)
             Gl.TextureSubImage2D(_gl.PushTex, 0, x0, y0, w, h, Gl.RGBA, Gl.UNSIGNED_BYTE,
-                                 p + ((long)y0 * PushRes + x0) * PushChannels);
+                                 &p[((long)y0 * PushRes + x0) * PushChannels]);
         if (strided) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, 0);
         _pushTexels += (long)w * h;
     }

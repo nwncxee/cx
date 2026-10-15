@@ -106,7 +106,7 @@ internal static unsafe partial class GrassField
             Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
             // no DSA respecify exists and the name is the engine's: this rides DrawSlot's draw bind of tid
             for (int l = 0; l < n; l++)
-                Gl.TexImage2D(Gl.TEXTURE_2D, l, (int)Gl.RGBA8, lw[l], lh[l], 0, Gl.RGBA, Gl.UNSIGNED_BYTE, pp + off[l]);
+                Gl.TexImage2D(Gl.TEXTURE_2D, l, (int)Gl.RGBA8, lw[l], lh[l], 0, Gl.RGBA, Gl.UNSIGNED_BYTE, &pp[off[l]]);
             Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 4);
         }
         Gl.TextureParameteri(t, Gl.TEXTURE_MAX_LEVEL, n - 1);

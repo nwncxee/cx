@@ -168,7 +168,7 @@ internal static unsafe class Halos
         // flare axis (ring, streak); the rest need their textures, not this procedural profile
         float size = def.FlareSizes.Length > 0 ? def.FlareSizes[0] : 0f;
         if (size <= 0f || !Reaches(l.Position, def.FlareRadius)) return;
-        float* d = stage + _count * Floats;
+        float* d = &stage[_count * Floats];
         d[0] = l.Position.X; d[1] = l.Position.Y; d[2] = l.Position.Z;
         d[3] = OcclusionSoftness;
         Vector3 tint = Tint(l.Colour, def.FlareColors[0], 1f);

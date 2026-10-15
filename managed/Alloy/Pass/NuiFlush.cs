@@ -171,14 +171,13 @@ internal static unsafe class NuiFlush
         int w = *_screenW, h = *_screenH;
         if (w <= 0 || h <= 0) { _empty++; return; }
         Matrix4x4 mvp = Ortho(w, h);
-        byte* cmd = FirstCmd(_cmds, n, c.DrawCmdOffset);
+        NkDrawCommand* cmd = (NkDrawCommand*)FirstCmd(_cmds, n, c.DrawCmdOffset);
         if (cmd == null) { _empty++; return; }
-        byte* last = cmd - (n - 1) * sizeof(NkDrawCommand);
         int offset = 0, sx = int.MinValue, sy = 0, sw = 0, sh = 0;
         bool open = false;
-        for (; cmd >= last; cmd -= sizeof(NkDrawCommand))
+        for (int step = 0; step < n; step++)
         {
-            ref NkDrawCommand d = ref *(NkDrawCommand*)cmd;
+            ref NkDrawCommand d = ref cmd[-step];
             int count = (int)d.ElemCount;
             if (count <= 0) continue;
             Scissor(d.ClipX, d.ClipY, d.ClipW, d.ClipH, h, out int nx, out int ny, out int nw, out int nh);
@@ -188,7 +187,7 @@ internal static unsafe class NuiFlush
                 if (!GuiCapture.BeginRawLayer(0, 0, w, h, nx, ny, nw, nh)) break;
                 sx = nx; sy = ny; sw = nw; sh = nh; open = true;
             }
-            GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, idx + offset, count, 0, Gl.TRIANGLES, mvp,
+            GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, &idx[offset], count, 0, Gl.TRIANGLES, mvp,
                            d.TextureId, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
             offset += count;
             _cmdsDrawn++;
@@ -231,7 +230,7 @@ internal static unsafe class NuiFlush
     {
         ref NkBuffer b = ref *(NkBuffer*)cmds;
         if (count <= 0 || b.Size == 0 || b.MemoryPtr == IntPtr.Zero) return null;
-        return (byte*)b.MemoryPtr + (long)b.MemorySize - cmdOffset;
+        return &((byte*)b.MemoryPtr)[(long)b.MemorySize - cmdOffset];
     }
 
     /// <summary>A fixed <c>nk_buffer</c> over our own memory -- the four stores <c>nk_buffer_init_fixed</c>
@@ -345,12 +344,12 @@ internal static unsafe class NuiFlush
         // command's worth, because the push only writes it for the first one.
         byte* mem = stackalloc byte[256];
         NkBuffer cmds = Fixed(mem, 256);
-        for (int i = 0; i < 3; i++) ((NkDrawCommand*)(mem + 256))[-1 - i].ElemCount = (uint)(i + 1);
+        for (int i = 0; i < 3; i++) ((NkDrawCommand*)&mem[256])[-1 - i].ElemCount = (uint)(i + 1);
         byte* first = FirstCmd((IntPtr)(&cmds), 3, sizeof(NkDrawCommand));
-        check.Expect(first == mem + 256 - sizeof(NkDrawCommand), "the first command is the last record in the buffer");
-        byte* lastCmd = first - 2 * sizeof(NkDrawCommand);
+        check.Expect(first == &mem[256 - sizeof(NkDrawCommand)], "the first command is the last record in the buffer");
+        var firstCmd = (NkDrawCommand*)first;
         int seen = 0;
-        for (byte* p = first; p >= lastCmd; p -= sizeof(NkDrawCommand)) seen = seen * 10 + (int)((NkDrawCommand*)p)->ElemCount;
+        for (int k = 0; k < 3; k++) seen = seen * 10 + (int)firstCmd[-k].ElemCount;
         check.Expect(seen == 123, "the walk runs downwards through every command, in submission order");
         check.Expect(FirstCmd((IntPtr)(&cmds), 0, 0) == null, "no commands is no walk");
 

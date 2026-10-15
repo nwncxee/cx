@@ -64,9 +64,9 @@ internal static unsafe class TriggerHighlight
                     zmin = MathF.Min(zmin, w.Z); zmax = MathF.Max(zmax, w.Z);
                 }
                 float h = t.Height;
-                float* hdr = s + _count * 4;
+                float* hdr = &s[_count * 4];
                 hdr[0] = _points; hdr[1] = np; hdr[2] = zmin - h; hdr[3] = zmax + h;
-                float* col = s + (MaxTriggers + _count) * 4;
+                float* col = &s[(MaxTriggers + _count) * 4];
                 col[0] = t.Colour.X; col[1] = t.Colour.Y; col[2] = t.Colour.Z; col[3] = alpha;
                 _points += np;
                 _count++;

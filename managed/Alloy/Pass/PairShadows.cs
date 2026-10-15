@@ -362,7 +362,7 @@ internal static unsafe class PairShadows
                 float pad = PadMetres + PadTexels * texel * dist;
                 fixed (float* d = _rec)
                 {
-                    float* w = d + HeaderFloats + (long)pi * RecFloats;
+                    float* w = &d[HeaderFloats + (long)pi * RecFloats];
                     Buffer.MemoryCopy(&vp, w, 64, 64);
                     w[16] = _lPr[i].X; w[17] = _lPr[i].Y; w[18] = _lPr[i].Z; w[19] = _lPr[i].W;
                     w[20] = _lCol[i].X; w[21] = _lCol[i].Y; w[22] = _lCol[i].Z; w[23] = texel;

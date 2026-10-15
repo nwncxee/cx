@@ -112,11 +112,11 @@ internal static unsafe class GuiContent
         fixed (float* r = &GuiCapture.Records[di * GuiCapture.RecFloats])
         {
             Gl.UniformMatrix4fv(p.Mvp, 1, 0, r);
-            Gl.UniformMatrix4fv(p.Mv, 1, 0, r + 16);
+            Gl.UniformMatrix4fv(p.Mv, 1, 0, &r[16]);
             float* t = stackalloc float[16];
-            TextureMatrix(r + 32, t);
+            TextureMatrix(&r[32], t);
             Gl.UniformMatrix4fv(p.Texture, 1, 0, t);
-            float* g = r + 36;
+            float* g = &r[36];
             Gl.Uniform4f(p.Color, Lin(g[0], gamma), Lin(g[1], gamma), Lin(g[2], gamma), g[3]);
         }
         Gl.Uniform2f(p.Screen, viewW, viewH);

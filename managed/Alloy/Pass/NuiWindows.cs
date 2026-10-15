@@ -213,13 +213,13 @@ internal static unsafe class NuiWindows
         if (end <= begin || end - begin > MaxSnapshot) { st.SnapValid = false; return; }
         int len = (int)(end - begin);
         Grow(ref st.Snap, ref st.SnapCap, len);
-        Buffer.MemoryCopy(mem + begin, st.Snap, len, len);
+        Buffer.MemoryCopy(&mem[begin], st.Snap, len, len);
         int pos = 0;
         while (pos < len)
         {
-            byte* cmd = st.Snap + pos;
-            ulong rel = *(ulong*)(cmd + 8) - begin;
-            *(ulong*)(cmd + 8) = rel;
+            var cmd = new NuiCmd(&st.Snap[pos]);
+            ulong rel = cmd.Next - begin;
+            cmd.Next = rel;
             if (rel <= (ulong)pos || rel >= (ulong)len) break;
             pos = (int)rel;
         }
@@ -240,10 +240,10 @@ internal static unsafe class NuiWindows
         int pos = 0;
         while (pos < st.SnapLen)
         {
-            byte* cmd = st.Work + pos;
-            ulong rel = *(ulong*)(cmd + 8);
-            *(ulong*)(cmd + 8) = at + rel;
-            if (*(int*)cmd == CmdImage && new NkCommandImage((IntPtr)cmd).Handle != atlas) cmd[0x30 + 3] = 0;
+            var cmd = new NuiCmd(&st.Work[pos]);
+            ulong rel = cmd.Next;
+            cmd.Next = at + rel;
+            if (cmd.Type == CmdImage && new NkCommandImage((IntPtr)cmd.P).Handle != atlas) cmd.Colour(0x30).A = 0;
             if (rel <= (ulong)pos || rel >= (ulong)st.SnapLen) break;
             pos = (int)rel;
         }
@@ -294,12 +294,12 @@ internal static unsafe class NuiWindows
         bool chrome = background < 1f && FindChromeEnd(mem, off, end, out chromeEnd);
         for (int n = 0; off < end && n < MaxCommands; n++)
         {
-            byte* cmd = mem + off;
-            int type = *(int*)cmd;
+            var cmd = new NuiCmd(&mem[off]);
+            int type = cmd.Type;
             float f = all;
             if (chrome && off <= chromeEnd) f *= background;
             if (f < 1f) ScaleCommand(cmd, type, f);
-            ulong next = *(ulong*)(cmd + 8);
+            ulong next = cmd.Next;
             if (next <= off) break;
             off = next;
         }
@@ -315,17 +315,18 @@ internal static unsafe class NuiWindows
         bool drawn = false;
         for (int n = 0; off < end && n < MaxCommands; n++)
         {
-            byte* cmd = mem + off;
-            int type = *(int*)cmd;
-            ulong next = *(ulong*)(cmd + 8);
+            var cmd = new NuiCmd(&mem[off]);
+            int type = cmd.Type;
+            ulong next = cmd.Next;
             if (type == CmdScissor)
             {
                 if (!drawn) return false;
                 at = off;
-                if (next > off && next < end && *(int*)(mem + next) == CmdRectFilled)
+                if (next > off && next < end && new NuiCmd(&mem[next]).Type == CmdRectFilled)
                 {
-                    Rect(mem + next, CmdRectFilled, out float x, out float y, out float w, out float h);
-                    int sx = *(short*)(cmd + 0x10), sy = *(short*)(cmd + 0x12), sw = *(ushort*)(cmd + 0x14), sh = *(ushort*)(cmd + 0x16);
+                    Rect(new NuiCmd(&mem[next]), CmdRectFilled, out float x, out float y, out float w, out float h);
+                    NuiShortRect clip = cmd.Rect(0x10);
+                    int sx = clip.X, sy = clip.Y, sw = clip.W, sh = clip.H;
                     if (x == sx && y == sy && w == sw && h == sh) at = next;
                 }
                 return true;
@@ -338,31 +339,32 @@ internal static unsafe class NuiWindows
     }
 
     /// <summary>A rect-shaped command's x, y, w, h: the filled rect keeps them at +0x12, the image at +0x10, the stroked rect at +0x14.</summary>
-    private static void Rect(byte* cmd, int type, out float x, out float y, out float w, out float h)
+    private static void Rect(NuiCmd cmd, int type, out float x, out float y, out float w, out float h)
     {
         int at = type == CmdRect ? 0x14 : type == CmdImage ? 0x10 : 0x12;
-        x = *(short*)(cmd + at); y = *(short*)(cmd + at + 2); w = *(ushort*)(cmd + at + 4); h = *(ushort*)(cmd + at + 6);
+        NuiShortRect r = cmd.Rect(at);
+        x = r.X; y = r.Y; w = r.W; h = r.H;
     }
 
     /// <summary>Scale the alpha byte of every colour in one command. Offsets are <c>nk_convert</c>'s own reads, per type.</summary>
-    internal static void ScaleCommand(byte* cmd, int type, float f)
+    internal static void ScaleCommand(NuiCmd cmd, int type, float f)
     {
         switch (type)
         {
-            case CmdLine: case CmdRectFilled: case CmdCircle: Alpha(cmd + 0x1a, f); break;
-            case CmdCurve: Alpha(cmd + 0x22, f); break;
-            case CmdRect: case CmdTriangleFilled: Alpha(cmd + 0x1c, f); break;
-            case CmdRectMulti: Alpha(cmd + 0x18, f); Alpha(cmd + 0x1c, f); Alpha(cmd + 0x20, f); Alpha(cmd + 0x24, f); break;
-            case CmdCircleFilled: Alpha(cmd + 0x18, f); break;
-            case CmdArc: case CmdArcFilled: Alpha(cmd + 0x20, f); break;
-            case CmdTriangle: Alpha(cmd + 0x1e, f); break;
-            case CmdPolygon: case CmdPolygonFilled: case CmdPolyline: Alpha(cmd + 0x10, f); break;
-            case CmdText: Alpha(cmd + 0x18, f); Alpha(cmd + 0x1c, f); break;
-            case CmdImage: Alpha(cmd + 0x30, f); break;
+            case CmdLine: case CmdRectFilled: case CmdCircle: Alpha(ref cmd.Colour(0x1a), f); break;
+            case CmdCurve: Alpha(ref cmd.Colour(0x22), f); break;
+            case CmdRect: case CmdTriangleFilled: Alpha(ref cmd.Colour(0x1c), f); break;
+            case CmdRectMulti: Alpha(ref cmd.Colour(0x18), f); Alpha(ref cmd.Colour(0x1c), f); Alpha(ref cmd.Colour(0x20), f); Alpha(ref cmd.Colour(0x24), f); break;
+            case CmdCircleFilled: Alpha(ref cmd.Colour(0x18), f); break;
+            case CmdArc: case CmdArcFilled: Alpha(ref cmd.Colour(0x20), f); break;
+            case CmdTriangle: Alpha(ref cmd.Colour(0x1e), f); break;
+            case CmdPolygon: case CmdPolygonFilled: case CmdPolyline: Alpha(ref cmd.Colour(0x10), f); break;
+            case CmdText: Alpha(ref cmd.Colour(0x18), f); Alpha(ref cmd.Colour(0x1c), f); break;
+            case CmdImage: Alpha(ref cmd.Colour(0x30), f); break;
         }
     }
 
-    private static void Alpha(byte* rgba, float f) => rgba[3] = (byte)(rgba[3] * f + 0.5f);
+    private static void Alpha(ref NuiRgba c, float f) => c.A = (byte)(c.A * f + 0.5f);
 
     internal static string Stats() => _s.Styles.Count == 0 ? "nui windows: none seen" : $"nui windows: {_s.Styles.Count} seen, {_s.Applied} styled draws";
 
@@ -392,14 +394,14 @@ internal static unsafe class NuiWindows
             // Three commands in a 0x100-byte queue: a window-sized fill, its stroked bounds, a text; type @0, next @8.
             byte* mem = stackalloc byte[0x100];
             for (int i = 0; i < 0x100; i++) mem[i] = 0;
-            byte* a = mem + 0x10, b = mem + 0x50, t = mem + 0x90;
-            *(int*)a = 5; *(ulong*)(a + 8) = 0x50; Put(a + 0x12, 100, 200, 300, 150); a[0x1a + 3] = 200;
-            *(int*)b = 4; *(ulong*)(b + 8) = 0x90; Put(b + 0x14, 100, 200, 300, 150); b[0x1c + 3] = 100;
-            *(int*)t = 16; *(ulong*)(t + 8) = 0xe0; t[0x18 + 3] = 80; t[0x1c + 3] = 255;
+            byte* a = &mem[0x10], b = &mem[0x50], t = &mem[0x90];
+            *(int*)a = 5; *(ulong*)&a[8] = 0x50; Put(&a[0x12], 100, 200, 300, 150); a[0x1a + 3] = 200;
+            *(int*)b = 4; *(ulong*)&b[8] = 0x90; Put(&b[0x14], 100, 200, 300, 150); b[0x1c + 3] = 100;
+            *(int*)t = 16; *(ulong*)&t[8] = 0xe0; t[0x18 + 3] = 80; t[0x1c + 3] = 255;
             byte* win = stackalloc byte[0x200];
             for (int i = 0; i < 0x200; i++) win[i] = 0;
-            *(ulong*)(win + 0x90) = 0x10; *(ulong*)(win + 0x98) = 0xe0;
-            float* bounds = (float*)(win + 0x4c);
+            *(ulong*)&win[0x90] = 0x10; *(ulong*)&win[0x98] = 0xe0;
+            float* bounds = (float*)&win[0x4c];
             bounds[0] = 100; bounds[1] = 200; bounds[2] = 300; bounds[3] = 150;
             check.Expect(ScaleWindow(mem, 0x100, (IntPtr)win, 0.5f, 1f) == 0, "no background asked, none reported found");
             check.Expect(a[0x1d] == 100 && b[0x1f] == 50 && t[0x1b] == 40 && t[0x1f] == 128, "opacity 0.5 halves every colour's alpha (200->100, 100->50, 80->40, 255->128)");
@@ -409,7 +411,7 @@ internal static unsafe class NuiWindows
             a[0x1d] = 200; b[0x1f] = 100;
             ScaleWindow(mem, 0x100, (IntPtr)win, 0.5f, 0.5f);
             check.Expect(a[0x1d] == 100 && b[0x1f] == 50 && t[0x1f] == 128, "opacity alone fades what the server drew (200*0.5, 100*0.5)");
-            *(ulong*)(win + 0x98) = 0x50;
+            *(ulong*)&win[0x98] = 0x50;
             a[0x1d] = 200; b[0x1f] = 100;
             ScaleWindow(mem, 0x100, (IntPtr)win, 0.5f, 1f);
             check.Expect(a[0x1d] == 100 && b[0x1f] == 100, "the walk stops at the window's end");
@@ -420,27 +422,27 @@ internal static unsafe class NuiWindows
             int[] kinds = [17, 16, 5, 17, 1, 5, 1, 16];
             for (int i = 0; i < 8; i++)
             {
-                byte* c = sk + at[i];
+                byte* c = &sk[at[i]];
                 *(int*)c = kinds[i];
-                *(ulong*)(c + 8) = i < 7 ? at[i + 1] : 0x290;
+                *(ulong*)&c[8] = i < 7 ? at[i + 1] : 0x290;
             }
-            sk[0x10 + 0x33] = 255; sk[0x60 + 0x1f] = 255; Put(sk + 0xb0 + 0x12, 100, 200, 300, 150); sk[0xb0 + 0x1d] = 255;
+            sk[0x10 + 0x33] = 255; sk[0x60 + 0x1f] = 255; Put(&sk[0xb0 + 0x12], 100, 200, 300, 150); sk[0xb0 + 0x1d] = 255;
             sk[0x100 + 0x33] = 255;
-            *(short*)(sk + 0x150 + 0x10) = 104; *(short*)(sk + 0x150 + 0x12) = 204; *(ushort*)(sk + 0x150 + 0x14) = 292; *(ushort*)(sk + 0x150 + 0x16) = 142;
-            Put(sk + 0x1a0 + 0x12, 104, 204, 292, 142); sk[0x1a0 + 0x1d] = 255;
+            *(short*)&sk[0x150 + 0x10] = 104; *(short*)&sk[0x150 + 0x12] = 204; *(ushort*)&sk[0x150 + 0x14] = 292; *(ushort*)&sk[0x150 + 0x16] = 142;
+            Put(&sk[0x1a0 + 0x12], 104, 204, 292, 142); sk[0x1a0 + 0x1d] = 255;
             sk[0x240 + 0x1f] = 255;
-            *(ulong*)(win + 0x90) = 0x10; *(ulong*)(win + 0x98) = 0x290;
+            *(ulong*)&win[0x90] = 0x10; *(ulong*)&win[0x98] = 0x290;
             check.Expect(ScaleWindow(sk, 0x400, (IntPtr)win, 1f, 0f) == 1, "the skinned chrome is found by the content fill");
             check.Expect(sk[0x10 + 0x33] == 0 && sk[0x60 + 0x1f] == 0 && sk[0xb0 + 0x1d] == 0 && sk[0x100 + 0x33] == 0 && sk[0x1a0 + 0x1d] == 0,
                          "background 0 clears the title bar, frame, body and content fill");
             check.Expect(sk[0x240 + 0x1f] == 255, "...and leaves the widget text");
             // A server fill the size of the window right after the content fill's scissor is the server's.
             for (int i = 0; i < 0x400; i++) sk[i] = 0;
-            byte* c0 = sk + 0x10, c1 = sk + 0x60, c2 = sk + 0xb0;
-            *(int*)c0 = 1; *(ulong*)(c0 + 8) = 0x60; *(short*)(c0 + 0x10) = 100; *(short*)(c0 + 0x12) = 200; *(ushort*)(c0 + 0x14) = 300; *(ushort*)(c0 + 0x16) = 150;
-            *(int*)c1 = 5; *(ulong*)(c1 + 8) = 0xb0; Put(c1 + 0x12, 100, 200, 300, 150); c1[0x1d] = 255;
-            *(int*)c2 = 1; *(ulong*)(c2 + 8) = 0x100;
-            *(ulong*)(win + 0x90) = 0x10; *(ulong*)(win + 0x98) = 0x100;
+            byte* c0 = &sk[0x10], c1 = &sk[0x60], c2 = &sk[0xb0];
+            *(int*)c0 = 1; *(ulong*)&c0[8] = 0x60; *(short*)&c0[0x10] = 100; *(short*)&c0[0x12] = 200; *(ushort*)&c0[0x14] = 300; *(ushort*)&c0[0x16] = 150;
+            *(int*)c1 = 5; *(ulong*)&c1[8] = 0xb0; Put(&c1[0x12], 100, 200, 300, 150); c1[0x1d] = 255;
+            *(int*)c2 = 1; *(ulong*)&c2[8] = 0x100;
+            *(ulong*)&win[0x90] = 0x10; *(ulong*)&win[0x98] = 0x100;
             check.Expect(ScaleWindow(sk, 0x400, (IntPtr)win, 1f, 0f) == 0 && c1[0x1d] == 255, "a transparent window starts at a clip: its first fill is the server's, even at the window's size");
         }
         finally { _s = saved; }
@@ -449,6 +451,6 @@ internal static unsafe class NuiWindows
 
     private static void Put(byte* at, short x, short y, ushort w, ushort h)
     {
-        *(short*)at = x; *(short*)(at + 2) = y; *(ushort*)(at + 4) = w; *(ushort*)(at + 6) = h;
+        *(short*)at = x; *(short*)&at[2] = y; *(ushort*)&at[4] = w; *(ushort*)&at[6] = h;
     }
 }

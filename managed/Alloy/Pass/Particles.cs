@@ -427,7 +427,7 @@ internal static unsafe partial class Particles
             // stale one -- the compute pass walks spans by group membership, not by what was written.
             _span[i * 4] = 0; _span[i * 4 + 1] = 0; _span[i * 4 + 2] = (uint)at; _span[i * 4 + 3] = 0;
             if (!EnsureBlock(ref e, _sCount[k])) { _wrote[i] = 0; continue; }
-            int wrote = BuildEmitter(ref e, _recs + (long)e.RecBase * RecFloats, _sCount[k],
+            int wrote = BuildEmitter(ref e, &_recs[(long)e.RecBase * RecFloats], _sCount[k],
                                      camFwd, camQ, axisY, axisX, eye,
                                      lit && _sCls[k] == ClsBlend);
             _wrote[i] = wrote;
@@ -436,14 +436,14 @@ internal static unsafe partial class Particles
             // simulation skipped -- costs a hash of its own memory and no bus traffic at all.
             // ponytail: a camera-derived basis in record slots 8..14 can never match across a rotation.
             // Upgrade: build the basis in cx_particle_v instead. See Fnv for the measurement that parks it.
-            ulong h = Fnv(_recs + (long)e.RecBase * RecFloats, (long)wrote * RecFloats);
+            ulong h = Fnv(&_recs[(long)e.RecBase * RecFloats], (long)wrote * RecFloats);
             if (h != e.Hash)
             {
                 e.Hash = h;
                 Gl.NamedBufferSubData(_gl.RecBuf,
                                       (IntPtr)((long)e.RecBase * RecFloats * sizeof(float)),
                                       (IntPtr)((long)wrote * RecFloats * sizeof(float)),
-                                      _recs + (long)e.RecBase * RecFloats);
+                                      &_recs[(long)e.RecBase * RecFloats]);
                 _blockUploads++;
             }
             else _blockSkips++;
@@ -1033,14 +1033,14 @@ internal static unsafe partial class Particles
                             in Vector3 right, float soft, in Vector3 up, float type,
                             in Vector3 centre, float u0, float u1, float v0, float v1, in Vector3 prev)
     {
-        p[0] = pos.X; p[1] = pos.Y; p[2] = pos.Z; *(uint*)(p + 3) = col;
-        p[4] = far.X; p[5] = far.Y; p[6] = far.Z; *(uint*)(p + 7) = colFar;
+        p[0] = pos.X; p[1] = pos.Y; p[2] = pos.Z; *(uint*)&p[3] = col;
+        p[4] = far.X; p[5] = far.Y; p[6] = far.Z; *(uint*)&p[7] = colFar;
         p[8] = right.X; p[9] = right.Y; p[10] = right.Z; p[11] = soft;
         p[12] = up.X; p[13] = up.Y; p[14] = up.Z; p[15] = type;
         p[16] = centre.X; p[17] = centre.Y; p[18] = centre.Z; p[19] = 0f;
         p[20] = u0; p[21] = u1; p[22] = v0; p[23] = v1;
         p[24] = prev.X; p[25] = prev.Y; p[26] = prev.Z; p[27] = 0f;
-        p += RecFloats;
+        p = &p[RecFloats];
     }
 
     /// <summary>FNV-1a over a record block, eight bytes at a time. The delta's whole change detector: the
@@ -1052,7 +1052,7 @@ internal static unsafe partial class Particles
         ulong h = 14695981039346656037UL;
         ulong* q = (ulong*)f;
         for (long i = 0; i < floats / 2; i++) { h ^= q[i]; h *= 1099511628211UL; }
-        if ((floats & 1) != 0) { h ^= *(uint*)(f + floats - 1); h *= 1099511628211UL; }
+        if ((floats & 1) != 0) { h ^= *(uint*)&f[floats - 1]; h *= 1099511628211UL; }
         return h;
     }
 

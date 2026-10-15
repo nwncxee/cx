@@ -362,7 +362,7 @@ internal static unsafe partial class GrassField
         if (_dumped < DumpFaces)
             for (int f = 0; f < faces && _dumped < DumpFaces; f++)
             {
-                float* v = verts + f * 9;
+                float* v = &verts[f * 9];
                 Vector3 a0 = new(v[0], v[1], v[2]), b0 = new(v[3], v[4], v[5]), c0 = new(v[6], v[7], v[8]);
                 _dumped++;
                 _log?.Info($"GrassField: [face] mat={mat} density={info.Density:F3} height={height:F2} "
@@ -376,7 +376,7 @@ internal static unsafe partial class GrassField
             int n = (int)(BladesForFace(blades[f], per) * thin);
             if (n <= 0) continue;
             if (_faceCount >= MaxFaces) { _capped = true; break; }
-            float* v = verts + f * 9;
+            float* v = &verts[f * 9];
             Vector3 a = new(v[0], v[1], v[2]), b = new(v[3], v[4], v[5]), c = new(v[6], v[7], v[8]);
             uint seed = Hash(BitConverter.SingleToUInt32Bits(a.X)
                            ^ (BitConverter.SingleToUInt32Bits(b.Y) * 2654435761u)

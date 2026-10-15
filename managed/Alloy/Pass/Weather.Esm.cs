@@ -30,7 +30,7 @@ internal static unsafe partial class Weather
         if (_gl.EsmFailed || Gl.TextureView == null) return;
         int size = mapSize < EsmSizeMax ? mapSize : EsmSizeMax;
         if (!EnsureEsm(array, layer, size)) return;
-        int* save = stackalloc int[6]; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, save); Gl.GetIntegerv(Gl.VIEWPORT, save + 1);
+        int* save = stackalloc int[6]; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, save); Gl.GetIntegerv(Gl.VIEWPORT, &save[1]);
         int prog; Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prog);
         // depth units: the cover view spans CoverDepthRadii x radius; the feather is half the knob each side
         float spread = EsmMinSpreadM / (CoverDepthRadii * radius);
