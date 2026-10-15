@@ -812,6 +812,7 @@ builds -- no interpolation, no analogy.
 | `CNWMessage.cursor` | `0x44` / `0x44` | the byte offset those bodies load, use and then advance by the width read |
 | `CNWRules.twoDimArrays` | `0x130` / `0x130` | `CNWCArea::AddPlaceableObjectStatic` (Linux `0x7091c0`, Windows rva `0x7d95a0`): `*(C2DA **)(*(longlong *)(g_pRules + 0x130) + 0x140)` on both. The Linux disassembly spells the global's own deref out -- `lea g_pRules(%rip),%rcx; mov (%rcx),%rdx; mov 0x130(%rdx),%rdx` -- so the hops are off the `CNWRules*`, not off the global's address |
 | `CTwoDimArrays.placeables` | `0x140` / `0x140` | the second hop of that same expression, in `AddPlaceableObjectStatic` and `RespawnStaticPlaceablesForTile` (`0x708aa0`) alike |
+| `CTwoDimArrays.damageLevels` | `0x238` / `0x238` | `CNWCCreature::ShowFeedbackBubbleText` (Linux nm `0x71a800`, Windows rva `0x80b240`): `*(C2DA **)(*(longlong *)(g_pRules + 0x130) + 0x238)`, then `C2DA::GetINTEntry` with the `STRING_REF` column on the row the damage byte names, then `CTlkTable::GetSimpleString`. Identical on both |
 
 **Why the message is readable ahead.** Every typed read of 8, 16 or 32 bits is a
 plain little-endian load at the cursor; only sub-byte widths go through

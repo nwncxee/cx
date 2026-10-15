@@ -100,6 +100,11 @@ global using unsafe GuiPanelUnToggleOffFn = delegate* unmanaged<nint, void>;
 global using unsafe HandleServerToPlayerChatFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe PlaceableUpdateDeleteFn = delegate* unmanaged<nint, int>;
 global using unsafe ShowFloatyTextFn = delegate* unmanaged<nint, nint, CX.Engine.VectorArg, nint, int, void>;
+global using unsafe TlkSetOverrideFn = delegate* unmanaged<nint, uint, nint, void>;
+global using unsafe TlkClearOverridesFn = delegate* unmanaged<nint, void>;
+global using unsafe TlkOpenFileAlternateFn = delegate* unmanaged<nint, nint, int>;
+global using unsafe TlkCloseFileAlternateFn = delegate* unmanaged<nint, void>;
+global using unsafe TlkReloadFn = delegate* unmanaged<nint, int>;
 global using unsafe GetViewPortFn = delegate* unmanaged<float*, void>;
 global using unsafe GuiObjectHitCheckFn = delegate* unmanaged<nint, int, int, int, int, nint>;
 global using unsafe GuiManHandleGuiTimerFn = delegate* unmanaged<nint, int, void>;
@@ -2625,6 +2630,17 @@ public readonly unsafe partial struct CResTGA(IntPtr ptr)
     public ref int SrcSize => ref *(int*)(Ptr + EngineLayout.TgaSrcSize);
 }
 
+/// <summary>Typed view of an engine <c>CTlkTable*</c>.</summary>
+public readonly unsafe partial struct CTlkTable(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="SymbolMap.TlkGetSimpleString"/>
+    public void TlkGetSimpleString(void* ret, uint strref) => EngineFn.TlkGetSimpleString(ret, Ptr, strref);
+}
+
 /// <summary>Typed view of an engine <c>CTwoDimArrays*</c>.</summary>
 public readonly unsafe partial struct CTwoDimArrays(IntPtr ptr)
 {
@@ -2636,6 +2652,8 @@ public readonly unsafe partial struct CTwoDimArrays(IntPtr ptr)
     public ref IntPtr Appearance => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimAppearance);
     /// <inheritdoc cref="EngineLayout.TwoDimCloakModel"/>
     public ref IntPtr CloakModel => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimCloakModel);
+    /// <inheritdoc cref="EngineLayout.TwoDimDamageLevels"/>
+    public ref IntPtr DamageLevels => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimDamageLevels);
     /// <inheritdoc cref="EngineLayout.TwoDimFootstepSounds"/>
     public ref IntPtr FootstepSounds => ref *(IntPtr*)(Ptr + EngineLayout.TwoDimFootstepSounds);
     /// <inheritdoc cref="EngineLayout.TwoDimItemVisualEffects"/>
@@ -5232,6 +5250,35 @@ public static unsafe class EngineFn
     private static bool _ShowFloatyTextDone;
     /// <inheritdoc cref="SymbolMap.ShowFloatyText"/>
     public static ShowFloatyTextFn ShowFloatyText => (ShowFloatyTextFn)(_ShowFloatyTextDone ? _ShowFloatyText : Resolve(ref _ShowFloatyText, ref _ShowFloatyTextDone, SymbolMap.ShowFloatyText));
+    private static IntPtr _TlkGetSimpleString;
+    private static bool _TlkGetSimpleStringDone;
+    /// <inheritdoc cref="SymbolMap.TlkGetSimpleString"/>
+    public static void TlkGetSimpleString(void* ret, IntPtr self, uint strref)
+    {
+        IntPtr fn = _TlkGetSimpleStringDone ? _TlkGetSimpleString : Resolve(ref _TlkGetSimpleString, ref _TlkGetSimpleStringDone, SymbolMap.TlkGetSimpleString);
+        if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, IntPtr, uint, void>)fn)(self, (IntPtr)ret, strref);
+        else ((delegate* unmanaged<IntPtr, IntPtr, uint, void>)fn)((IntPtr)ret, self, strref);
+    }
+    private static IntPtr _TlkSetOverride;
+    private static bool _TlkSetOverrideDone;
+    /// <inheritdoc cref="SymbolMap.TlkSetOverride"/>
+    public static TlkSetOverrideFn TlkSetOverride => (TlkSetOverrideFn)(_TlkSetOverrideDone ? _TlkSetOverride : Resolve(ref _TlkSetOverride, ref _TlkSetOverrideDone, SymbolMap.TlkSetOverride));
+    private static IntPtr _TlkClearOverrides;
+    private static bool _TlkClearOverridesDone;
+    /// <inheritdoc cref="SymbolMap.TlkClearOverrides"/>
+    public static TlkClearOverridesFn TlkClearOverrides => (TlkClearOverridesFn)(_TlkClearOverridesDone ? _TlkClearOverrides : Resolve(ref _TlkClearOverrides, ref _TlkClearOverridesDone, SymbolMap.TlkClearOverrides));
+    private static IntPtr _TlkOpenFileAlternate;
+    private static bool _TlkOpenFileAlternateDone;
+    /// <inheritdoc cref="SymbolMap.TlkOpenFileAlternate"/>
+    public static TlkOpenFileAlternateFn TlkOpenFileAlternate => (TlkOpenFileAlternateFn)(_TlkOpenFileAlternateDone ? _TlkOpenFileAlternate : Resolve(ref _TlkOpenFileAlternate, ref _TlkOpenFileAlternateDone, SymbolMap.TlkOpenFileAlternate));
+    private static IntPtr _TlkCloseFileAlternate;
+    private static bool _TlkCloseFileAlternateDone;
+    /// <inheritdoc cref="SymbolMap.TlkCloseFileAlternate"/>
+    public static TlkCloseFileAlternateFn TlkCloseFileAlternate => (TlkCloseFileAlternateFn)(_TlkCloseFileAlternateDone ? _TlkCloseFileAlternate : Resolve(ref _TlkCloseFileAlternate, ref _TlkCloseFileAlternateDone, SymbolMap.TlkCloseFileAlternate));
+    private static IntPtr _TlkReload;
+    private static bool _TlkReloadDone;
+    /// <inheritdoc cref="SymbolMap.TlkReload"/>
+    public static TlkReloadFn TlkReload => (TlkReloadFn)(_TlkReloadDone ? _TlkReload : Resolve(ref _TlkReload, ref _TlkReloadDone, SymbolMap.TlkReload));
     private static IntPtr _GetViewPort;
     private static bool _GetViewPortDone;
     /// <inheritdoc cref="SymbolMap.GetViewPort"/>
@@ -7413,6 +7460,36 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ShowFloatyText"/>; returns the slot holding the next layer, or null.</summary>
     public static ShowFloatyTextFn* ChainShowFloatyText(this HookService h, ShowFloatyTextFn handler, int priority) =>
         (ShowFloatyTextFn*)h.Chain(SymbolMap.ShowFloatyText, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TlkSetOverride"/>; returns the original, or null.</summary>
+    public static TlkSetOverrideFn InstallTlkSetOverride(this HookService h, TlkSetOverrideFn handler) =>
+        (TlkSetOverrideFn)h.Install(SymbolMap.TlkSetOverride, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TlkSetOverride"/>; returns the slot holding the next layer, or null.</summary>
+    public static TlkSetOverrideFn* ChainTlkSetOverride(this HookService h, TlkSetOverrideFn handler, int priority) =>
+        (TlkSetOverrideFn*)h.Chain(SymbolMap.TlkSetOverride, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TlkClearOverrides"/>; returns the original, or null.</summary>
+    public static TlkClearOverridesFn InstallTlkClearOverrides(this HookService h, TlkClearOverridesFn handler) =>
+        (TlkClearOverridesFn)h.Install(SymbolMap.TlkClearOverrides, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TlkClearOverrides"/>; returns the slot holding the next layer, or null.</summary>
+    public static TlkClearOverridesFn* ChainTlkClearOverrides(this HookService h, TlkClearOverridesFn handler, int priority) =>
+        (TlkClearOverridesFn*)h.Chain(SymbolMap.TlkClearOverrides, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TlkOpenFileAlternate"/>; returns the original, or null.</summary>
+    public static TlkOpenFileAlternateFn InstallTlkOpenFileAlternate(this HookService h, TlkOpenFileAlternateFn handler) =>
+        (TlkOpenFileAlternateFn)h.Install(SymbolMap.TlkOpenFileAlternate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TlkOpenFileAlternate"/>; returns the slot holding the next layer, or null.</summary>
+    public static TlkOpenFileAlternateFn* ChainTlkOpenFileAlternate(this HookService h, TlkOpenFileAlternateFn handler, int priority) =>
+        (TlkOpenFileAlternateFn*)h.Chain(SymbolMap.TlkOpenFileAlternate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TlkCloseFileAlternate"/>; returns the original, or null.</summary>
+    public static TlkCloseFileAlternateFn InstallTlkCloseFileAlternate(this HookService h, TlkCloseFileAlternateFn handler) =>
+        (TlkCloseFileAlternateFn)h.Install(SymbolMap.TlkCloseFileAlternate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TlkCloseFileAlternate"/>; returns the slot holding the next layer, or null.</summary>
+    public static TlkCloseFileAlternateFn* ChainTlkCloseFileAlternate(this HookService h, TlkCloseFileAlternateFn handler, int priority) =>
+        (TlkCloseFileAlternateFn*)h.Chain(SymbolMap.TlkCloseFileAlternate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TlkReload"/>; returns the original, or null.</summary>
+    public static TlkReloadFn InstallTlkReload(this HookService h, TlkReloadFn handler) =>
+        (TlkReloadFn)h.Install(SymbolMap.TlkReload, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TlkReload"/>; returns the slot holding the next layer, or null.</summary>
+    public static TlkReloadFn* ChainTlkReload(this HookService h, TlkReloadFn handler, int priority) =>
+        (TlkReloadFn*)h.Chain(SymbolMap.TlkReload, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GetViewPort"/>; returns the original, or null.</summary>
     public static GetViewPortFn InstallGetViewPort(this HookService h, GetViewPortFn handler) =>
         (GetViewPortFn)h.Install(SymbolMap.GetViewPort, (IntPtr)handler);

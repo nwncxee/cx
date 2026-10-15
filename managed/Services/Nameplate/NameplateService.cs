@@ -98,6 +98,8 @@ public sealed unsafe class NameplateService : IExtenderService
         _origItemPlate = hooks.InstallItemShowFeedbackBubbleText(&OnItemPlate);
         _origChat = hooks.InstallHandleServerToPlayerChat(&OnServerChat);
 
+        if (!BandWords.Install(hooks)) log.Info("NameplateService: a TLK hook did not install -- band captions may lag a server's TLK change");
+
         _chatHooked = _origChat != null;
         if (!_chatHooked) log.Info("NameplateService: channel styling disabled (chat handler unhooked)");
 
@@ -292,11 +294,13 @@ public sealed unsafe class NameplateService : IExtenderService
     {
         bool inModule = GameGate.InModule;
         if (_wasInModule && !inModule) _table.Clear();
+        if (_wasInModule != inModule) BandWords.Stale();
         _wasInModule = inModule;
 
         if (!_armed) return;
         bool want = NameplateKnobs.Enabled.V;
         if (want != _suppressed) ApplyMaster(want);
+        BandWords.Refresh();
 
         int queue = NameplateKnobs.Queue.V; float animMs = NameplateKnobs.Anim.V;
         _table.Drain(queue, animMs);   // BEFORE every early return below: the hook ring is fixed-size
@@ -536,7 +540,7 @@ public sealed unsafe class NameplateService : IExtenderService
     {
         bool band = NameplateKnobs.HealthBand.V && e.Damage >= 0;
         float nameW = MeasureName(e, atlas, TextMaxW(scale), out int nameLines);
-        float bandW = band ? MeasureRunes(atlas, PlateLayout.BandText(e.Damage)) : 0f;
+        float bandW = band ? MeasureRunes(atlas, PlateLayout.BandText(BandWords.Current, e.Damage)) : 0f;
         bool portrait = portraits && e.PortraitResref.Length != 0;
         OverrideLayout ov = LayoutOverride(e, atlas, scale, nameLines, band, bandW);
         PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, ov.ShowName ? nameLines : 0,
@@ -855,7 +859,7 @@ public sealed unsafe class NameplateService : IExtenderService
         bool band = NameplateKnobs.HealthBand.V && e.Damage >= 0;
         bool bar = NameplateKnobs.HealthBar.V && e.Damage >= 0;
         float nameW = MeasureName(e, atlas, TextMaxW(scale), out int nameLines);
-        string bandText = band ? PlateLayout.BandText(e.Damage) : "";
+        string bandText = band ? PlateLayout.BandText(BandWords.Current, e.Damage) : "";
         float bandW = band ? MeasureRunes(atlas, bandText) : 0f;
         bool portrait = portraits && e.PortraitResref.Length != 0;
         OverrideLayout ov = LayoutOverride(e, atlas, scale, nameLines, band, bandW);
