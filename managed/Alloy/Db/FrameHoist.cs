@@ -28,6 +28,10 @@ public struct FrameHoist
     /// area light pair takes its colour from, and the fog colour the area would fog with. Resolved here so
     /// the renderer carries one triple each instead of a pair plus the switch.</summary>
     public Vector3 Ambient, Diffuse, FogColour;
+    /// <summary>The fog AMOUNT the area last applied, the number the engine places the fog start with. 0 is no
+    /// fog at all: the area's fog is switched off rather than drawn as the thin ramp vanilla leaves at its clip
+    /// distance.</summary>
+    public float FogAmount;
     /// <summary>The area has its own <c>Scene</c> (<c>CNWCArea+0x248</c>) -- the object the game writes every
     /// area-wide render setting into, and what <c>SetFog</c>/<c>SetFogAmount</c> refuse without.</summary>
     public bool HaveAreaScene;
@@ -55,7 +59,7 @@ public struct FrameHoist
         if (a.IsNull)
         {
             h.Interior = false; h.Extent = default; h.Night = false;
-            h.Ambient = default; h.Diffuse = default; h.FogColour = default;
+            h.Ambient = default; h.Diffuse = default; h.FogColour = default; h.FogAmount = 0;
             h.HaveAreaScene = false; h.AreaFogStart = 0f; h.AreaFogEnd = 0f;
             h.PlaceableLights = 0;
         }
@@ -68,6 +72,7 @@ public struct FrameHoist
             h.Ambient = Triple(night ? a.NightAmbient : a.DayAmbient);
             h.Diffuse = Triple(night ? a.NightDiffuse : a.DayDiffuse);
             h.FogColour = Triple(night ? a.NightFog : a.DayFog);
+            h.FogAmount = a.FogAmount;
             h.PlaceableLights = a.PlaceableLightCount;
             Scene sc = a.Scene;
             h.HaveAreaScene = !sc.IsNull;
@@ -90,6 +95,8 @@ public struct FrameHoist
         /// <summary>Which source answered: 1 the area, 2 the scene columns, 3 the scene shell. On the log
         /// line, because a wrong fog in a player's session has to name its source from cx.log.</summary>
         public int Path;
+        /// <summary><see cref="Path"/> for the area's own scene: the one source whose range outlives its fog.</summary>
+        public const int AreaPath = 1;
         public bool On;
         public float Start, End;
         public Vector3 Colour;
@@ -104,8 +111,8 @@ public struct FrameHoist
         // object sits at CNWCArea+0x248, so reading them there needs no FindScene lookup by name.
         if (h.HaveArea && h.HaveAreaScene)
         {
-            fog.Path = 1;
-            fog.On = true;   // loading an area emits FuncInterp("mainscene.fog 1") with no test beyond "the sun model was created"
+            fog.Path = ViewFog.AreaPath;
+            fog.On = h.FogAmount != 0;
             fog.Start = h.AreaFogStart;
             fog.End = h.AreaFogEnd;
             fog.Colour = h.FogColour;
@@ -143,11 +150,16 @@ public struct FrameHoist
         {
             Area = 0x1234, HaveArea = true, Night = true, Interior = true,
             Ambient = Vector3.One, FogColour = new Vector3(0.2f, 0.3f, 0.4f),
-            HaveAreaScene = true, AreaFogStart = 30f, AreaFogEnd = 45f,
+            HaveAreaScene = true, AreaFogStart = 30f, AreaFogEnd = 45f, FogAmount = 10,
         };
         FoldFog(default, in h, out ViewFog f);
         check.Expect(f.Path == 1 && f.On && f.Start == 30f && f.End == 45f && f.Colour == h.FogColour,
                      "an area with its own scene fogs from the area's palette and its own range");
+        h.FogAmount = 0;
+        FoldFog(default, in h, out f);
+        check.Expect(f.Path == 1 && !f.On && f.Start == 30f && f.End == 45f && f.Colour == new Vector3(0.2f, 0.3f, 0.4f),
+                     "fog amount 0 turns the area's fog off and still hands over its range, which fog of war ramps on");
+        h.FogAmount = 10;
         h.HaveAreaScene = false;
         FoldFog(default, in h, out f);
         check.Expect(f.Path == 0 && !f.On,

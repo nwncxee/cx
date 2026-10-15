@@ -208,7 +208,8 @@ public static class SceneFeed
     {
         _fogPath = v.Fog.Path;
         FrameInputs.FogOn = v.Fog.On;
-        if (v.Fog.On)
+        // the area's range outlives its fog: fog of war ramps on it with the fog itself off
+        if (v.Fog.On || v.Fog.Path == FrameHoist.ViewFog.AreaPath)
         {
             FrameInputs.FogStart = v.Fog.Start;
             FrameInputs.FogEnd = v.Fog.End;
@@ -242,7 +243,7 @@ public static class SceneFeed
         // the area's terms as the FOLD read them, not a fresh walk. This line runs inside the draw,
         // which may be the render thread, where CurrentArea() is a read of the game thread's memory.
         string area = !h.HaveArea ? "no area"
-            : $"area night={h.Night} fog=({h.FogColour.X:F3},{h.FogColour.Y:F3},{h.FogColour.Z:F3}) "
+            : $"area night={h.Night} fog=({h.FogColour.X:F3},{h.FogColour.Y:F3},{h.FogColour.Z:F3}) amount={h.FogAmount:F0} "
             + $"scene={(h.HaveAreaScene ? "set" : "null")} range={h.AreaFogStart:F1}/{h.AreaFogEnd:F1}";
         _log?.Info($"SceneFeed: fog scene={i} path={_fogPath} on={on} col=({col.X:F3},{col.Y:F3},{col.Z:F3}) "
                    + $"start={FrameInputs.FogStart:F1} end={end:F1} | {area} | clear=({clr[0]:F3},{clr[1]:F3},{clr[2]:F3})"

@@ -656,6 +656,10 @@ public static unsafe partial class EngineLayout
     public static readonly int AreaDayFog = Field<float>("CNWCArea", "dayFog", count: 3);
     /// <inheritdoc cref="AreaDayFog"/>
     public static readonly int AreaDayFogAmount = Field<byte>("CNWCArea", "dayFogAmount");
+    /// <summary>CNWCArea -&gt; the fog AMOUNT the area last APPLIED, as a float: <c>SetFog</c> @0x802380 and
+    /// <c>SetFogAmount</c> @0x8026e0 (rva 0x7e5850 / 0x7e5990) store it, and <c>CNWCModule::Update</c> places
+    /// the fog start with it. Unlike the day/night pair it is the one the server's fog message took.</summary>
+    public static readonly int AreaFogAmount = Field<float>("CNWCArea", "fogAmount");
     /// <summary>CNWCArea -&gt; non-zero when the area is on its NIGHT palette. <c>SetAsDay</c> clears it,
     /// <c>SetAsNight</c> sets it, and <c>LoadArea</c> branches on it to pick which of the two pairs to
     /// apply.</summary>
