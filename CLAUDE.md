@@ -204,6 +204,7 @@ A rule the compiler can check is a build error, not a gate. `managed/.editorconf
 have gone through X" or "this pattern should never appear" gets a ban line or an analyzer rule in the change that
 fixes it, so the next one fails to compile instead of waiting for a reviewer. A new rule names a real symbol and
 is proven once with a planted call that fails the build. No tests that read source text.
+The `standards-reviewer` agent (`.claude/agents/`) asks for the missing ban in review.
 
 ## Gates (CX-192)
 
@@ -250,6 +251,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
+- `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma with no
+  `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 
