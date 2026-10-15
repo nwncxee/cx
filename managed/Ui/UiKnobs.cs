@@ -11,6 +11,8 @@ internal static class UiKnobs
     internal static readonly KnobGroup G;
     internal static readonly Knob<int> Font, GridPx;
     internal static readonly Knob<float> ConsoleScale;
+    /// <summary>The outline ladder (<see cref="TextStyle.OutlineLevels"/>) for the console and posted-string layer.</summary>
+    internal static readonly Knob<int> ConsoleOutline;
     /// <summary>The face <c>default</c> binds to; with <see cref="Font"/> it is the base every element's own
     /// <see cref="TextStyle"/> rows follow until set.</summary>
     internal static readonly Knob<string> Typeface;
@@ -39,6 +41,8 @@ internal static class UiKnobs
                               changed: UiHostService.ApplyTypeface);
         ConsoleScale = G.Slider("consolescale", "Console text size", 1f, 3f, 0.25f, 1.5f, "x", Tier.Advanced,
                                 help: "Size of the ~ console and the other text the game prints on screen, over the game's own 14px grid. Needs the Alloy renderer.");
+        ConsoleOutline = G.Dropdown("consoleoutline", "Console text outline", TextStyle.OutlineLevels, 1, TextStyle.OutlineNames, tier: Tier.Advanced,
+                                    help: "A dark edge around the letters of the ~ console and the other text the game prints on screen, so they read over a bright scene. Needs the Alloy renderer.");
         HoverFocus = G.Toggle("hoverfocus", "Focus a window by hovering", false, Tier.Advanced,
                               help: "A CX window takes the keyboard when the pointer rests on it, without a click.");
         Snap = G.Toggle("snap", "Snap windows to a grid", false, Tier.Advanced,
