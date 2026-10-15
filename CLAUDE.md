@@ -196,7 +196,7 @@ A rule the compiler can check is a build error, not a gate. `managed/.editorconf
 - `managed/BannedSymbols.txt` (RS0030, BannedApiAnalyzers): a call that must go through one helper. Each line's
   message says what to call instead. Only that helper disables RS0030, with its reason on the pragma.
 - `tools/analyzers/` (CX0001 and on): a pattern that is no single symbol. CX0001 refuses `p + n`, `p - n`,
-  `p += n`, `p++` on a pointer or `IntPtr`, `(nint)p + n`, and `&p[i]` or `Unsafe.AsPointer(ref p[i])` on a pointer or array, outside `managed/Framework/`: a place in memory is a field on a view
+  `p += n`, `p++` on a pointer or `IntPtr`, `(nint)p + n`, `((float*)&v)[i]`, and `&p[i]` or `Unsafe.AsPointer(ref p[i])` on a pointer or array, outside `managed/Framework/`: a place in memory is a field on a view
   (engine memory), a struct or a `Span<T>` (our own). Reading a value through a typed pointer (`px[i]`) is fine; taking its address is the move. A bounds-checked span
   (slice it, pin the slice, `BinaryPrimitives` over it) is fine.
   CX0002 refuses a `fixed` buffer anywhere: name the fields, or use an `[InlineArray]` of a named element type.

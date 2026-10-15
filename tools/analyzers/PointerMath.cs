@@ -39,6 +39,19 @@ public sealed class PointerMath : DiagnosticAnalyzer
         context.RegisterOperationAction(OnStep, OperationKind.Increment, OperationKind.Decrement);
         context.RegisterSyntaxNodeAction(OnAddressOf, SyntaxKind.AddressOfExpression);
         context.RegisterOperationAction(OnAsPointer, OperationKind.Invocation);
+        context.RegisterSyntaxNodeAction(OnReinterpretIndex, SyntaxKind.ElementAccessExpression);
+    }
+
+    /// <summary><c>((float*)&amp;v)[i]</c> reads a struct as an array of its lanes: the lane is a field nobody named.</summary>
+    private static void OnReinterpretIndex(SyntaxNodeAnalysisContext c)
+    {
+        var at = (ElementAccessExpressionSyntax)c.Node;
+        SyntaxNode e = at.Expression;
+        while (e is ParenthesizedExpressionSyntax p) e = p.Expression;
+        if (e is not CastExpressionSyntax cast) return;
+        SyntaxNode o = cast.Expression;
+        while (o is ParenthesizedExpressionSyntax p) o = p.Expression;
+        if (o is PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.AddressOfExpression }) Report(c.ReportDiagnostic, at);
     }
 
     /// <summary><c>&amp;p[i]</c> is <c>p + i</c>; on an array it is the same move once the array is pinned.</summary>
