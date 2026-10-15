@@ -96,12 +96,20 @@ public sealed unsafe partial class LightTraceService
         (*St.FogColours)(area, sun, moon, fade);
     }
 
-    /// <summary>The fog amount on its own, which re-pushes the area's stored colour. The packet that caused it
-    /// is traced as its minor, so this records the APPLIED amount for the sampler and prints nothing.</summary>
+    /// <summary>The fog amount on its own, which re-pushes the area's stored colour; recorded for the sampler.
+    /// Reached from a fog-amount packet, it also prints the two amounts the packet has just stored.</summary>
     [UnmanagedCallersOnly]
     private static int OnFogAmount(nint area, int amount)
     {
-        if (On) { St.Fog = amount; St.FogSeen = true; }
+        if (On)
+        {
+            St.Fog = amount; St.FogSeen = true;
+            if (St.InFogPacket)
+            {
+                var a = new CNWCArea(area);
+                Say(LightTraceLines.FogAmount(a.DayFogAmount, a.NightFogAmount, a.Id));
+            }
+        }
         return (*St.FogAmount)(area, amount);
     }
 
@@ -178,13 +186,19 @@ public sealed unsafe partial class LightTraceService
         return r;
     }
 
+    /// <summary>The area message that sets both palettes' fog amounts, then pushes the live one.</summary>
+    private const byte FogAmountMinor = 0x09;   // not-an-offset: a message minor
+
     /// <summary>The area message's minor, named before the switch runs: the colour, direction and fog leaves
     /// all drop a packet whose area id is not the current one, so the pair of lines tells them apart.</summary>
     [UnmanagedCallersOnly]
     private static int OnAreaMessage(nint msg, byte minor)
     {
         if (On && LightTraceLines.MinorName(minor) is string name) Say(LightTraceLines.Minor(minor, name));
-        return (*St.AreaMessage)(msg, minor);
+        if (minor != FogAmountMinor) return (*St.AreaMessage)(msg, minor);
+        St.InFogPacket = true;
+        try { return (*St.AreaMessage)(msg, minor); }
+        finally { St.InFogPacket = false; }
     }
 
     /// <summary>The area's own step, which runs the crossfade and the lightning flash. HOT: off, this is one

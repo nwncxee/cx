@@ -53,7 +53,7 @@ public sealed unsafe partial class LightTraceService : IExtenderService
     }
 
     /// <summary>The sampled values, once a frame: what the engine applied to the area's sun, the fog it
-    /// pushed, and what Alloy rendered. When the trace is off this is one field read and a return -- nothing
+    /// pushed, and what Alloy rendered once an area is up. When the trace is off this is one field read and a return -- nothing
     /// is formatted, nothing allocates and no engine memory is touched.</summary>
     private static void Sample()
     {
@@ -76,6 +76,7 @@ public sealed unsafe partial class LightTraceService : IExtenderService
             Say(LightTraceLines.AppliedFog(St.Fog, St.FogRgb));
         }
 
+        if (FrameInputs.AreaPtr == IntPtr.Zero) return;
         var alloy = new LightTriple(FrameInputs.HasAreaAmbient ? FrameInputs.AreaAmbient : default,
                                     FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuse : default,
                                     FrameInputs.HasSun ? FrameInputs.SunDir : default);

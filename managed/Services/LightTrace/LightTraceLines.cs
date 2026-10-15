@@ -92,8 +92,9 @@ internal static partial class LightTraceLines
         => FormattableString.Invariant(
             $"{Tag} packet fog-colour sun={Fog(sun)} moon={Fog(moon)} fade={fade:F2}s area={Hex(area)}");
 
-    internal static string FogAmount(int amount, uint area)
-        => FormattableString.Invariant($"{Tag} packet fog-amount n={amount} area={Hex(area)}");
+    /// <summary>The fog-amount packet as the area took it: one message carries both palettes' amounts.</summary>
+    internal static string FogAmount(byte sun, byte moon, uint area)
+        => FormattableString.Invariant($"{Tag} packet fog-amount sun={sun} moon={moon} area={Hex(area)}");
 
     internal static string AppliedFog(float amount, Vector3 rgb)
         => FormattableString.Invariant($"{Tag} applied fog n={amount:F1} rgb={V3(rgb)}");
@@ -126,8 +127,10 @@ internal static partial class LightTraceLines
     internal static string Applied(in LightTriple t)
         => FormattableString.Invariant($"{Tag} applied amb={V3(t.Ambient)} dif={V3(t.Diffuse)} dir={V3(t.Dir)}");
 
+    /// <summary>What Alloy shades with: the applied colours raised to its gamma, so they read darker than the
+    /// applied line by design.</summary>
     internal static string Alloy(in LightTriple t)
-        => FormattableString.Invariant($"{Tag} alloy amb={V3(t.Ambient)} dif={V3(t.Diffuse)} sun={V3(t.Dir)}");
+        => FormattableString.Invariant($"{Tag} alloy linear amb={V3(t.Ambient)} dif={V3(t.Diffuse)} sun={V3(t.Dir)}");
 
     /// <summary>Should a sampled line go out? Never twice inside <see cref="PeriodMs"/>, and never while the
     /// values stand still; the first sample of a session always goes, so the log opens with a baseline.</summary>

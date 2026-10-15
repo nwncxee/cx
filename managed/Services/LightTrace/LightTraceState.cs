@@ -61,6 +61,8 @@ internal sealed unsafe class LightTraceState
     internal Vector3 FogRgb, FogRgbSent;
     internal long FogAt = -1;
     internal bool FogSeen;
+    /// <summary>A fog-amount packet is being handled, so the amount leaf it reaches reports the packet.</summary>
+    internal bool InFogPacket;
 
     /// <summary>The shadow tint as it last went out, and when.</summary>
     internal float ShadowSent;

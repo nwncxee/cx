@@ -53,8 +53,8 @@ internal static partial class LightTraceLines
         string kept = FogColour(new Vector3(0.5f, 0.5f, 0.6f), new Vector3(-1e7f, -1e7f, -1e7f), 0f, 0x2au);
         check.Expect(kept == "[lighttrace] packet fog-colour sun=(0.500,0.500,0.600) moon=keep fade=0.00s area=0x0000002a",
                      $"a fog vector the engine leaves alone reads as kept ({kept})");
-        string amount = FogAmount(25, 0x2au);
-        check.Expect(amount == "[lighttrace] packet fog-amount n=25 area=0x0000002a", $"the fog-amount line ({amount})");
+        string amount = FogAmount(25, 60, 0x2au);
+        check.Expect(amount == "[lighttrace] packet fog-amount sun=25 moon=60 area=0x0000002a", $"the fog-amount line ({amount})");
         string tod = TimeOfDay(4, 12000, 1);
         check.Expect(tod == "[lighttrace] time-of-day state=4 dusk elapsed=12000ms force=1", $"the time-of-day line ({tod})");
         string minor = Minor(0x06, "change-day-night");
@@ -83,7 +83,7 @@ internal static partial class LightTraceLines
         check.Expect(applied == "[lighttrace] applied amb=(0.180,0.196,0.251) dif=(1.000,0.950,0.850) dir=(0.000,0.000,1.000)",
                      $"the applied-to-gidy_sun line ({applied})");
         string alloy = Alloy(in t);
-        check.Expect(alloy == "[lighttrace] alloy amb=(0.180,0.196,0.251) dif=(1.000,0.950,0.850) sun=(0.000,0.000,1.000)",
+        check.Expect(alloy == "[lighttrace] alloy linear amb=(0.180,0.196,0.251) dif=(1.000,0.950,0.850) sun=(0.000,0.000,1.000)",
                      $"the what-Alloy-rendered line ({alloy})");
 
         var same = t;
