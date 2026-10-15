@@ -52,6 +52,7 @@ internal static unsafe class ProgramBinary
         catch (Exception e) { log?.Info($"{what}: cached program binary unreadable ({e.Message}) -- compiling"); return 0; }
         if (blob.Length <= 4) { Drop(path); return 0; }
         uint prog = Gl.CreateProgram();
+        if (GlContextService.Debug) log?.Always($"ProgramBinary: [gldebug] loading {what} from cx-shaders/");
         fixed (byte* p = blob.AsSpan(4)) Gl.ProgramBinaryLoad(prog, BitConverter.ToUInt32(blob, 0), p, blob.Length - 4);
         int ok; Gl.GetProgramiv(prog, Gl.LINK_STATUS, &ok);
         if (ok == 0)

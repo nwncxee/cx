@@ -212,6 +212,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!GlContextService.Enter()) { NoFrameBehindUs("the 4.6 context could not be made current"); DbNoDraw("the 4.6 context could not be made current"); return false; }
         FrameZones.Add(FrameZones.Zone.Enter, tEnter);
         GpuCheckpoint("the previous frame's GPU work is complete at this bracket's entry");
+        Step("deferred bracket work: texture deletes, uploads and handle mints");
         long tOwn = FrameZones.Now;
         // #211's queued texture deletes, CX-117's registry uploads/mints, the master PLT palette and the
         // per-record colour rows: the frame's context-bound deferred work, declared once in Arm and run here
@@ -221,10 +222,12 @@ public sealed unsafe partial class AlloyRenderer
         GlContextService.RunInBracketHere();
         OwnedBuffers.ClearDirty();   // #260: geometry uploaded itself at the engine's commit; close the window
         ClearItemCommits();
+        Step("ApplySwaps");
         ApplySwaps();   // #386: swapped texture names take their new handles here, in the context that owns residency
         OwnedBuffers.HighWater();    // ...and report the mark the funnel recorded, where a string is affordable
         FrameZones.Add(FrameZones.Zone.Own, tOwn);
         long tPrep = FrameZones.Now, lights0 = FrameZones.Ticks(FrameZones.Zone.Lights);
+        Step("EnsureProgram");
         if (!Programs.EnsureProgram()) { DbNoDraw("the world program did not build"); GlContextService.Leave(); return false; }
         BindTarget();
         // #117/#119: the lighting rig, the GL state and the batch BUILD are bracket preamble -- both
@@ -233,6 +236,7 @@ public sealed unsafe partial class AlloyRenderer
         if (lightingOn)
         {
             long tLights = FrameZones.Now;
+            Step("the lighting rig");
             AlloyLights.Upload(_frameSeq);
             // The cluster buffers are only meaningful once THIS pass's build has run: a skipped build
             // leaves them holding another camera's binning (or, before the first dispatch, undefined
@@ -260,6 +264,7 @@ public sealed unsafe partial class AlloyRenderer
         // keyed on its class rather than on _gLit, so without this term /alloy light 0 (or a failed
         // lit program, or a build that refused) would leave the water program reading undefined
         // BufferData contents -- an unbounded per-fragment light loop, not a dim sea.
+        Step("the water program");
         _waterArmed = FrameSnapshot.Usable && lightingOn && Programs.EnsureWaterProgram();
         FrameZones.Add(FrameZones.Zone.Prep, tPrep, FrameZones.Ticks(FrameZones.Zone.Lights) - lights0);
         // #139/#132: from here to PassId.PostProcess the colour passes draw into an RGBA16F target that
@@ -268,10 +273,12 @@ public sealed unsafe partial class AlloyRenderer
         // Alloy stages to fall back to, so the whole pass stands down and the engine renders it vanilla.
         // Staging first would stamp OwnGen on parts the iterator then suppresses and nobody draws.
         long tPostBegin = FrameZones.Now;
+        Step("PostChain.Begin");
         bool postOk = PostChain.Begin(viewport, engClear, engClearDepth);
         FrameZones.Add(FrameZones.Zone.Post, tPostBegin);
         if (!postOk) { DbNoDraw("PostChain.Begin refused"); GlContextService.Leave(); return false; }
         long tPump = FrameZones.Now;
+        Step("the arena pumps");
         GpuFrameStart();
         TickCycleTextures();
         // #287's scale, hoisted ahead of the staging walk: the automatic-LOD pick reads it there, and the
@@ -282,6 +289,7 @@ public sealed unsafe partial class AlloyRenderer
         CX.Alloy.Db.MeshArena.Pump();   // CX-114: the one model-space arena -- frees land and both mirrors go up
         FrameZones.Add(FrameZones.Zone.Pump, tPump);
         long tBuild = FrameZones.Now;
+        Step("BuildBatches");
         int groups = BuildBatches(lightingOn);
         FrameZones.Add(FrameZones.Zone.Build, tBuild);
         // CX-120: the one point both scene layers converge on with the frame's inputs final and its records
@@ -290,6 +298,7 @@ public sealed unsafe partial class AlloyRenderer
         CreatureParityDump();   // CX-120: the composed body, per node, in both layers' one line format
         if (groups <= 0) { DbNoDraw("BuildBatches produced no batch"); Gl.BindVertexArray(0); GlContextService.Leave(); return false; }
         long tUp = FrameZones.Now;
+        Step("the record and handle upload");
         StageSky();
         bool drawsUp = Issue.UploadDraws();
         Db.PltColors.Upload();   // the frame-start push ran before this frame's PLT rows were staged
@@ -313,6 +322,7 @@ public sealed unsafe partial class AlloyRenderer
         // the COMPACTING boundary instead: batches above it are sorted back-to-front by a second
         // dispatch rather than appended by the atomic.
         long tCull = FrameZones.Now;
+        Step("the cull dispatch");
         // The batch list's draw count, read off the last batch rather than from _drawN -- StageSky
         // appends to _drawN below and its draws have no source record and no batch of their own.
         int cullDraws = _gStart[groups - 1] + _gLen[groups - 1];
@@ -369,6 +379,7 @@ public sealed unsafe partial class AlloyRenderer
         foreach ((PassId id, Bracket bracket) in FrameGraph.Passes)
         {
             if (bracket != Bracket.Colour) continue;
+            Step(PassName(id));
             long tId = FrameZones.Now;
             long kid0 = PassChildTicks;
             switch (id)
@@ -736,13 +747,42 @@ public sealed unsafe partial class AlloyRenderer
         GlContextService.Leave();
     }
 
+    /// <summary>The colour bracket's step trace: world frames it still names, and the frame it is naming.</summary>
+    private sealed class StepTraceState
+    {
+        public int FramesLeft = StepTraceFrames, Frame = -1;
+    }
+    private static StepTraceState _steps = new();
+
+    /// <summary>World frames whose colour-bracket steps <see cref="Step"/> names, from the first.</summary>
+    private const int StepTraceFrames = 5;
+
+    /// <summary>Under <c>alloy.gldebug=1</c>, for the first world frames: name the step about to run. The debug
+    /// log is synchronous, so a CPU-side crash leaves its step as the log's last line.</summary>
+    internal static void Step(string what)
+    {
+        if (!GlContextService.Debug) return;
+        StepTraceState s = _steps;
+        if (s.Frame != _frameSeq)
+        {
+            if (s.FramesLeft <= 0) return;
+            s.FramesLeft--; s.Frame = _frameSeq;
+        }
+        (int now, int peak) = BindlessLedger.ResidentCount;
+        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
+    }
+
+    /// <summary>A pass's name for <see cref="Step"/>; only reached under <c>alloy.gldebug=1</c>.</summary>
+    internal static string PassName(PassId id) => GlContextService.Debug ? id.ToString() : "";
+
     /// <summary>Under <c>alloy.gldebug=1</c> only: wait for the GPU here and say so, so a driver timeout's log
     /// ends at the last stage the GPU finished rather than at the last line the CPU queued.</summary>
     private static void GpuCheckpoint(string what)
     {
         if (!GlContextService.Debug || Gl.Finish == null) return;
         Gl.Finish();
-        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what}");
+        (int now, int peak) = BindlessLedger.ResidentCount;
+        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
     }
 
     /// <summary>Ticks the zones <see cref="FrameZones.Zone.Passes"/> subtracts have taken this frame, so a pass
