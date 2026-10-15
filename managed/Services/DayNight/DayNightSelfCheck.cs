@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Services.DayNight;
@@ -47,6 +48,8 @@ internal static class DayNightSelfCheck
         Vanilla(check);
         Owned(check);
         Replay(check);
+        LengthChange(check);
+        Lightning(check);
         Policy(check);
         log.Info(check.Ok ? "DayNight.SelfCheck: passed" : "DayNight.SelfCheck: FAILED");
     }
@@ -58,7 +61,7 @@ internal static class DayNightSelfCheck
 
         // Dusk at t = 0.25: the crossfade is day*0.75 + night*0.25, then |2t-1| = 0.5 moves half the lost
         // diffuse into ambient and halves the diffuse, and the beam alpha is the negative (t-1)*0.05.
-        LightFrame v = DayNightBlend.Vanilla(in day, in night, 0.25f, Phase.Dusk, Opacity);
+        LightFrame v = DayNightBlend.Vanilla(in day, in night, 0.25f, DayNightPhase.Dusk, Opacity);
         check.Expect(Near(v.Light.Ambient, new Vector3(0.575f, 0.700f, 0.825f)), "vanilla dusk ambient at t=0.25 takes half the lost diffuse");
         check.Expect(Near(v.Light.Diffuse, new Vector3(0.350f, 0.400f, 0.450f)), "vanilla dusk diffuse at t=0.25 is the crossfade halved");
         check.Expect(Near(v.Light.Fog, new Vector3(0.250f, 0.350f, 0.450f)), "vanilla dusk fog colour at t=0.25 is the plain crossfade");
@@ -67,17 +70,17 @@ internal static class DayNightSelfCheck
         check.Expect(Near(v.ProjectionAlpha, -0.0375f), "vanilla dusk beam alpha at t=0.25 is the negative (t-1)*0.05");
 
         // Dawn at the midpoint: no direct light at all, half of it in ambient, shadows fully off.
-        LightFrame mid = DayNightBlend.Vanilla(in night, in day, 0.5f, Phase.Dawn, Opacity);
+        LightFrame mid = DayNightBlend.Vanilla(in night, in day, 0.5f, DayNightPhase.Dawn, Opacity);
         check.Expect(Near(mid.Light.Diffuse, Vector3.Zero), "vanilla loses all direct light at the midpoint");
         check.Expect(Near(mid.Light.Ambient, new Vector3(0.60f, 0.75f, 0.90f)), "vanilla midpoint ambient is the crossfade plus half the diffuse");
         check.Expect(Near(mid.ShadowAlpha, 0f), "vanilla blanks the shadows at the midpoint");
         check.Expect(Near(mid.ProjectionAlpha, 0.025f), "vanilla dawn beam alpha at the midpoint is t*0.05");
 
         // The two ends take the `|2t-1| <= -1` and `>= 1` branches, where no shaping applies at all.
-        LightFrame start = DayNightBlend.Vanilla(in night, in day, 0f, Phase.Dawn, Opacity);
+        LightFrame start = DayNightBlend.Vanilla(in night, in day, 0f, DayNightPhase.Dawn, Opacity);
         check.Expect(Near(in start.Light, in night) && Near(start.ShadowAlpha, 0.80f) && Near(start.ProjectionAlpha, 0f),
             "a dawn opens on the night palette at full shadows");
-        LightFrame over = DayNightBlend.Vanilla(in night, in day, 1.7f, Phase.Dawn, Opacity);
+        LightFrame over = DayNightBlend.Vanilla(in night, in day, 1.7f, DayNightPhase.Dawn, Opacity);
         check.Expect(Near(in over.Light, in day) && Near(over.ShadowAlpha, 0.80f) && Near(over.ProjectionAlpha, 0.05f),
             "a clock past its length clamps to the day palette, not past it");
     }
@@ -119,54 +122,51 @@ internal static class DayNightSelfCheck
         var r = new DayNightReading
         {
             Area = 1, Night = night, Day = day, MoonDir = MoonDir, SunDir = SunDir,
-            Running = Phase.None, IsNight = false, T = 0f, Opacity = Opacity,
+            Running = DayNightPhase.None, IsNight = false, T = 0f, Opacity = Opacity,
         };
 
-        // The server has already made it day. Nothing is pushed: the engine's own values stand there.
+        // The server has already made it day: the engine's own values stand where the machine wants them.
         DayNightStep s = DayNightMachine.Advance(in r, ref m, 0.016f);
         check.Expect(!s.Push && Near(in s.Frame.Light, in day), "a steady day needs nothing pushed");
 
-        // The engine's dawn hour: SetAsNight cuts the area to night and SetAsDawn starts an hour of dawn.
-        // Vanilla shows the night palette here; owned mode must still show day.
-        r.Running = Phase.Dawn;
+        // The dawn hour: the engine cuts the area to night, then starts an hour of dawn.
+        r.Running = DayNightPhase.Dawn;
         r.IsNight = true;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
-        LightFrame vanillaHere = DayNightBlend.Vanilla(in night, in day, 0f, Phase.Dawn, Opacity);
-        check.Expect(Near(in vanillaHere.Light, in night), "vanilla would have shown the night palette at the dawn's first frame");
+        // Vanilla shows the night palette on this frame (pinned above); owned mode must still show day.
         check.Expect(s.Push && Near(in s.Frame.Light, in day) && Near(s.Frame.ProjectionAlpha, 0.05f),
             "the dawn-hour state does not flip an area that is already lit for day");
         check.Expect(Near(s.Direction, SunDir), "and it does not point the light back at the moon");
 
-        // The engine swaps the body at the midpoint. Owned mode is already there, and keeps its shadows.
+        // The engine swaps the light's body at the midpoint.
         r.T = 0.5f;
         r.IsNight = false;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         check.Expect(!s.Flip && Near(in s.Frame.Light, in day) && Near(s.Frame.ShadowAlpha, 0.80f),
             "the midpoint body swap is not a dip and not a flip");
 
-        // A forged repeat of the same state rewinds the module's clock to zero.
+        // A forged repeat of the same state rewinds the clock to zero.
         r.T = 0f;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         check.Expect(s.Restart && Near(s.HoldT, 0.5f) && Near(in s.Frame.Light, in day),
             "a repeated time-of-day state holds the clock where it was instead of replaying the dawn");
 
-        // ...and the real clock runs on from there.
         r.T = 1f;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         check.Expect(!s.Restart && Near(s.HoldT, -1f), "a clock that moves forward is left alone");
-        r.Running = Phase.None;
+        r.Running = DayNightPhase.None;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         check.Expect(!s.Push, "a transition that ran to its end leaves the engine's own values standing");
 
-        // A dusk cut short by a day state: the part-done transition must glide, not snap back.
-        r.Running = Phase.Dusk;
+        // A dusk cut short by a day state.
+        r.Running = DayNightPhase.Dusk;
         r.T = 0f;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         r.T = 0.5f;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         LightFrame half = s.Frame;
         check.Expect(Near(half.Light.Ambient, new Vector3(0.30f, 0.40f, 0.50f)), "a dusk half done is half way between the palettes");
-        r.Running = Phase.None;
+        r.Running = DayNightPhase.None;
         r.IsNight = false;
         s = DayNightMachine.Advance(in r, ref m, DayNightBlend.CutFade / 2f);
         check.Expect(s.Push && !Near(in s.Frame.Light, in day) && !Near(in s.Frame.Light, in half.Light),
@@ -184,14 +184,76 @@ internal static class DayNightSelfCheck
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
         check.Expect(!s.Push && Near(in s.Frame.Light, in night), "a finished cut fade stops pushing");
 
-        // A different area starts over from whatever that area shows, with no glide carried across.
-        r.Area = 2;
-        r.Running = Phase.Dawn;
+        // An area edge starts over from what THAT area shows, with no glide carried across. The seed is the
+        // engine's shaped frame: a dawn at t=0.25 of the fixture's palettes, worked out by hand.
+        r.Edge = true;
+        r.Running = DayNightPhase.Dawn;
         r.T = 0.25f;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);
-        LightFrame seeded = DayNightBlend.Vanilla(in night, in day, 0.25f, Phase.Dawn, Opacity);
-        check.Expect(Near(in s.Frame.Light, in seeded.Light),
-            "a new area is picked up at what the engine shows there, dip and all");
+        check.Expect(Near(s.Frame.Light.Ambient, new Vector3(0.325f, 0.450f, 0.575f))
+                  && Near(s.Frame.Light.Diffuse, new Vector3(0.250f, 0.300f, 0.350f))
+                  && Near(s.Frame.Light.Fog, new Vector3(0.550f, 0.650f, 0.750f))
+                  && Near(s.Frame.Light.FogAmount, 30f)
+                  && Near(s.Frame.ShadowAlpha, 0.40f) && Near(s.Frame.ProjectionAlpha, 0.0125f),
+            "an area edge is picked up at the engine's own shaped frame, dip and all");
+
+        // The same pointer with no edge announced must NOT be mistaken for the same area's continuation.
+        r.Edge = false;
+        r.T = 0.5f;
+        s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        check.Expect(!s.Restart && s.Shade, "a transition writes the shadow global; the clock ran forward");
+    }
+
+    /// <summary>The monotone-t hold is a FRACTION, which is what lets a server change a transition's length
+    /// without replaying it. Oracle: the fractions below, with the wall-clock consequence worked out by
+    /// hand -- a 1200 s dusk held at 0.5 that becomes a 10 s one has 5 s left, not 600.</summary>
+    private static void LengthChange(Checker check)
+    {
+        var m = default(DayNightMemory);
+        var r = new DayNightReading
+        {
+            Area = 7, Edge = true, Night = Night, Day = Day, MoonDir = MoonDir, SunDir = SunDir,
+            Running = DayNightPhase.Dusk, IsNight = false, T = 0f, Opacity = Opacity,
+        };
+        DayNightStep s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        r.Edge = false;
+        r.T = 0.5f;
+        s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        check.Expect(Near(s.HoldT, -1f), "a dusk half way through holds nothing");
+
+        // Area_ChangeDayNight arrives with its own 10 s duration and elapsed 0, so the engine's t drops to 0.
+        r.T = 0f;
+        s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        check.Expect(s.Restart && Near(s.HoldT, 0.5f),
+            "the hold is the fraction the dusk had reached, so it resumes half done at whatever the new length is");
+        LightFrame held = s.Frame;
+
+        // ...and the new length then carries it on, forward, from that fraction.
+        r.T = 0.75f;
+        s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        check.Expect(!s.Restart && Near(s.HoldT, -1f) && !Near(in s.Frame.Light, in held.Light),
+            "the shortened dusk runs on from where it was instead of starting again");
+    }
+
+    /// <summary>Outside a transition the shadow global is left alone, so the lightning flash's own dimming --
+    /// which <c>CNWCArea::Update</c> applies before the day/night update -- survives a cut crossfade.</summary>
+    private static void Lightning(Checker check)
+    {
+        var m = default(DayNightMemory);
+        var r = new DayNightReading
+        {
+            Area = 9, Edge = true, Night = Night, Day = Day, MoonDir = MoonDir, SunDir = SunDir,
+            Running = DayNightPhase.None, IsNight = false, T = 0f, Opacity = Opacity,
+        };
+        DayNightStep s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        check.Expect(!s.Push && !s.Shade, "a steady frame writes neither the light nor the shadow global");
+        r.Edge = false;
+        r.IsNight = true;
+        s = DayNightMachine.Advance(in r, ref m, DayNightBlend.CutFade / 2f);
+        check.Expect(s.Cut && s.Push && !s.Shade, "a cut crossfade pushes the light and leaves the shadow global alone");
+        r.Running = DayNightPhase.Dusk;
+        s = DayNightMachine.Advance(in r, ref m, 0.016f);
+        check.Expect(s.Shade && Near(s.Frame.ShadowAlpha, 0.80f), "a transition writes it, at full opacity");
     }
 
     /// <summary>The policy key: a component property, listed by <c>/policy</c> like any other.</summary>
