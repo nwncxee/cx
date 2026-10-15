@@ -2,7 +2,7 @@
 //:: cxnui -- a fixed NUI window for the live harness, and a second small one beside it
 //:: Module OnClientEnter. Once the PC stands in an area it is given a torch and,
 //:: three seconds later, opens one NUI window at a known place whose elements carry JSON ids: a label,
-//:: an @item: image with a tooltip, and a list whose row template has one id'd
+//:: an @item: image with a tooltip and an @look: image beside it, and a list whose row template has one id'd
 //:: cell. Margin, padding and size modifiers are on the id'd elements on purpose.
 //:: Every step writes "CXNUI: <step>" to the engine's log.
 //:://////////////////////////////////////////////
@@ -12,6 +12,8 @@ const float ARM_POLL = 0.5;
 const int ARM_TRIES = 120;
 const string TORCH = "nw_it_torch001";
 const string TORCH_TAG = "CXNUI_TORCH";
+/// A longsword described by its appearance, in the form a NUI @look: image takes.
+const string SWORD_LOOK = "00010000003d000b000b0000000000000000000000000000000000000000000000000000000000000000010101010101";
 const string WINDOW_ID = "cxnui";
 const int LIST_ROWS = 30;
 const float WINDOW_LIFE = 60.0;
@@ -28,17 +30,20 @@ void Change(object oPC)
     Mark("changed hair colour and head");
 }
 
-// The model view's gear: a sword, a shield, a helmet and a cloak go on, then the shield and the sword come off,
-// so a shot before and after each shows the doll following the equip and the unequip.
+// The model view's gear: a sword, an off-hand dagger, a helmet and a cloak go on, then the dagger and the sword come off,
+// so a shot before and after each shows the doll following the equip and the unequip. The PC is a wizard, who cannot
+// equip a shield; model-wear.policy previews one.
 void Wear(object oPC)
 {
     object oSword = CreateItemOnObject("nw_wswls001", oPC, 1, "CXNUI_SWORD");
-    object oShield = CreateItemOnObject("nw_ashlw001", oPC, 1, "CXNUI_SHIELD");
+    object oOffhand = CreateItemOnObject("nw_wswdg001", oPC, 1, "CXNUI_OFFHAND");
     object oHelm = CreateItemOnObject("nw_arhe001", oPC, 1, "CXNUI_HELM");
-    object oCloak = CreateItemOnObject("nw_cloth001", oPC, 1, "CXNUI_CLOAK");
-    Mark("gear " + ObjectToString(oSword) + " " + ObjectToString(oShield) + " " + ObjectToString(oHelm) + " " + ObjectToString(oCloak));
+    object oCloak = CreateItemOnObject("x2_it_mcloak001", oPC, 1, "CXNUI_CLOAK");
+    // A magical cloak arrives unidentified, and the client refuses to equip one.
+    SetIdentified(oCloak, TRUE);
+    Mark("gear " + ObjectToString(oSword) + " " + ObjectToString(oOffhand) + " " + ObjectToString(oHelm) + " " + ObjectToString(oCloak));
     AssignCommand(oPC, ActionEquipItem(oSword, INVENTORY_SLOT_RIGHTHAND));
-    AssignCommand(oPC, ActionEquipItem(oShield, INVENTORY_SLOT_LEFTHAND));
+    AssignCommand(oPC, ActionEquipItem(oOffhand, INVENTORY_SLOT_LEFTHAND));
     AssignCommand(oPC, ActionEquipItem(oHelm, INVENTORY_SLOT_HEAD));
     AssignCommand(oPC, ActionEquipItem(oCloak, INVENTORY_SLOT_CLOAK));
     Mark("wear");
@@ -94,6 +99,11 @@ void OpenWindow(object oPC)
     json jImage = NuiId(NuiTooltip(NuiMargin(NuiHeight(NuiWidth(
         NuiImage(JsonString("@item:" + ObjectToString(oTorch)), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
         64.0), 64.0), 3.0), JsonString("a torch")), "img");
+    // A described item beside it, so a card.@look: key has an element to match.
+    json jLook = NuiId(NuiMargin(NuiHeight(NuiWidth(
+        NuiImage(JsonString("@look:" + SWORD_LOOK), JsonInt(NUI_ASPECT_FIT), JsonInt(NUI_HALIGN_CENTER), JsonInt(NUI_VALIGN_MIDDLE)),
+        64.0), 64.0), 3.0), "look");
+    json jIcons = NuiRow(JsonArrayInsert(JsonArrayInsert(JsonArray(), jImage), jLook));
 
     // The doll the way a consumer draws it: a draw-list image stretched over a spacer, not a NuiImage.
     json jItems = JsonArrayInsert(JsonArray(), NuiDrawListImage(JsonBool(TRUE), JsonString("@model:me"),
@@ -106,8 +116,8 @@ void OpenWindow(object oPC)
     jCells = JsonArrayInsert(jCells, NuiListTemplateCell(jCell, 0.0, TRUE));
     json jList = NuiHeight(NuiList(jCells, JsonInt(LIST_ROWS), 24.0), 120.0);
 
-    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jImage), jModel), jList));
-    json jWin = NuiWindow(jRoot, JsonString("CX hit test"), NuiRect(20.0, 20.0, 340.0, 560.0),
+    json jRoot = NuiCol(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArrayInsert(JsonArray(), jLabel), jIcons), jModel), jList));
+    json jWin = NuiWindow(jRoot, JsonString("CX hit test"), NuiRect(20.0, 20.0, 340.0, 600.0),
                           JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(FALSE), JsonBool(TRUE));
     int nToken = NuiCreate(oPC, jWin, WINDOW_ID);
     json jRows = JsonArray();
@@ -116,7 +126,7 @@ void OpenWindow(object oPC)
     NuiSetBind(oPC, nToken, "rows", jRows);
     Mark("open token " + IntToString(nToken) + " torch " + ObjectToString(oTorch));
     DelayCommand(1.0, Wear(oPC));
-    DelayCommand(10.0, Strip(oPC, "CXNUI_SHIELD"));
+    DelayCommand(10.0, Strip(oPC, "CXNUI_OFFHAND"));
     DelayCommand(13.0, Strip(oPC, "CXNUI_SWORD"));
     DelayCommand(16.0, Change(oPC));
     DelayCommand(20.0, Glow(oPC));
@@ -135,8 +145,9 @@ void Arm(object oPC, int nTry)
     }
     SetImmortal(oPC, TRUE);
     Mark("enter " + GetName(oPC) + " in " + GetName(GetArea(oPC)));
-    // The torch is made first and the window opened later: the client must know the item before @item: can draw it.
+    // The server sends backpack items only while the inventory panel is open, and @item: draws only an item the client knows.
     if (!GetIsObjectValid(GetItemPossessedBy(oPC, TORCH_TAG))) CreateItemOnObject(TORCH, oPC, 1, TORCH_TAG);
+    OpenInventory(oPC, oPC);
     DelayCommand(3.0, OpenWindow(oPC));
 }
 

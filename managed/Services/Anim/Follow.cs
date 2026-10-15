@@ -135,8 +135,7 @@ internal static unsafe class Follow
     internal static void Measure(ref PoseService.Slot s, IntPtr torso)
     {
         if (torso == IntPtr.Zero) return;
-        fixed (float* o = s.Out)
-            s.TorsoFix = Log(Local(torso) * Quaternion.Conjugate(*(Quat*)(o + 4 * TorsoBone)));
+        s.TorsoFix = Log(Local(torso) * Quaternion.Conjugate(s.Out[TorsoBone]));
     }
 
     /// <summary>Turns each upper arm by its lag about the shoulder and the forearm by <see cref="ForearmShare"/> more

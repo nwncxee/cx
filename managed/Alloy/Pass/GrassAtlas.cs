@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -39,10 +40,11 @@ internal static unsafe class GrassAtlas
 
     private static Cell Measure(byte* rgba, int stride, int x0, int y0, int w, int h)
     {
-        byte* Px(int x, int y) => rgba + ((y0 + y) * stride + x0 + x) * 4;
+        TexelRec* texels = (TexelRec*)rgba;
+        ref TexelRec Px(int x, int y) => ref texels[(y0 + y) * stride + x0 + x];
         int edge = Math.Max(1, h / 10), lo = 0, hi = 0;
         for (int y = 0; y < edge; y++)
-            for (int x = 0; x < w; x++) { lo += Px(x, y)[3] > Cut ? 1 : 0; hi += Px(x, h - 1 - y)[3] > Cut ? 1 : 0; }
+            for (int x = 0; x < w; x++) { lo += Px(x, y).A > Cut ? 1 : 0; hi += Px(x, h - 1 - y).A > Cut ? 1 : 0; }
         bool flip = hi > lo;
         // m[y*w+x] in ROOT-FIRST order
         var m = new bool[w * h];
@@ -56,17 +58,17 @@ internal static unsafe class GrassAtlas
             bool any = false;
             for (int x = 0; x < w; x++)
             {
-                byte* p = Px(x, sy);
-                bool on = p[3] > Cut;
+                ref TexelRec p = ref Px(x, sy);
+                bool on = p.A > Cut;
                 m[y * w + x] = on;
                 if (on)
                 {
                     n++; any = true; run++;
                     top[x] = y + 1;
-                    var c = new Vector3(p[0], p[1], p[2]) / 255f;
+                    var c = new Vector3(p.R, p.G, p.B) / 255f;
                     if (Foreign(c)) foreign++;
                     int k = Math.Min(y * 3 / h, 2);
-                    float a = p[3] / 255f;
+                    float a = p.A / 255f;
                     band[k] += c * a; bandW[k] += a;
                 }
                 if ((!on || x == w - 1) && run > 0) { runs++; runSum += run; run = 0; }

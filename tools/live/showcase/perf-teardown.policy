@@ -1,0 +1,12 @@
+model.d0.target=player
+model.d0.size=256x384
+model.d0.yaw=270
+model.d1.target=player
+model.d1.size=256x384
+model.d1.yaw=270
+model.d2.target=player
+model.d2.size=256x384
+model.d2.yaw=270
+model.d3.target=player
+model.d3.size=256x384
+model.d3.yaw=270

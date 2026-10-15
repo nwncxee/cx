@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using CX.Alloy.Mdl;
 using CX.Framework;
 
@@ -34,22 +35,22 @@ public static unsafe partial class DbAnim
         Moved(obj.Index);
         ComposeObject(obj);
 
-        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
         try
         {
             check.Expect(SkinPalette(first + 2, dst), "a skinmesh solves a palette");
             // bone 0 is `root` at the object's origin; the mesh is at (0,0,2), so root in mesh space is
             // (0,0,-2). A transposed store would put -2 in m[11] and leave m[14] at 0.
-            check.Expect(Math.Abs(dst[12]) < 1e-4f && Math.Abs(dst[13]) < 1e-4f
-                         && Math.Abs(dst[14] + 2f) < 1e-4f,
+            check.Expect(Math.Abs((*dst)[0].M41) < 1e-4f && Math.Abs((*dst)[0].M42) < 1e-4f
+                         && Math.Abs((*dst)[0].M43 + 2f) < 1e-4f,
                          "bone 0 is its node expressed in the SKINMESH's space, translation in 12..14");
-            check.Expect(Math.Abs(dst[0] - 1f) < 1e-4f && Math.Abs(dst[5] - 1f) < 1e-4f
-                         && Math.Abs(dst[10] - 1f) < 1e-4f && dst[15] == 1f,
+            check.Expect(Math.Abs((*dst)[0].M11 - 1f) < 1e-4f && Math.Abs((*dst)[0].M22 - 1f) < 1e-4f
+                         && Math.Abs((*dst)[0].M33 - 1f) < 1e-4f && (*dst)[0].M44 == 1f,
                          "...with an identity rotation for an unrotated chain");
             // bone 1 is `mid`, one link closer: (0,0,-1).
-            check.Expect(Math.Abs(dst[16 + 14] + 1f) < 1e-4f, "bone 1 is one link closer to the mesh");
+            check.Expect(Math.Abs((*dst)[1].M43 + 1f) < 1e-4f, "bone 1 is one link closer to the mesh");
             // An unused slot is the identity, not the previous part's matrices.
-            check.Expect(dst[2 * 16] == 1f && dst[2 * 16 + 15] == 1f, "an unused bone slot is the identity");
+            check.Expect((*dst)[2].M11 == 1f && (*dst)[2].M44 == 1f, "an unused bone slot is the identity");
 
             // ...and the same thing under a ROTATED chain, against an oracle taken from the columns rather
             // than hand-worked: with an identity bind pose, a bone's matrix must carry its node's origin to
@@ -66,10 +67,7 @@ public static unsafe partial class DbAnim
                 int bp = first + b;
                 Vector3 want = Vector3.Transform(
                     new Vector3(SceneDb.PartWorld[bp].M41, SceneDb.PartWorld[bp].M42, SceneDb.PartWorld[bp].M43), inv);
-                var bm = new Matrix4x4(dst[b * 16], dst[b * 16 + 1], dst[b * 16 + 2], dst[b * 16 + 3],
-                                       dst[b * 16 + 4], dst[b * 16 + 5], dst[b * 16 + 6], dst[b * 16 + 7],
-                                       dst[b * 16 + 8], dst[b * 16 + 9], dst[b * 16 + 10], dst[b * 16 + 11],
-                                       dst[b * 16 + 12], dst[b * 16 + 13], dst[b * 16 + 14], dst[b * 16 + 15]);
+                var bm = (*dst)[b];
                 check.Expect(NearV(Vector3.Transform(Vector3.Zero, bm), want),
                              $"bone {b} carries its node's origin to the skinmesh's space under a rotated chain");
             }
@@ -109,7 +107,7 @@ public static unsafe partial class DbAnim
         Moved(body.Index); ComposeObject(body);
         Moved(pi); ComposeObject(piece);
 
-        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
         try
         {
             check.Expect(SkinPalette(mesh, dst), "the graft solves a palette against the first tree");
@@ -218,7 +216,7 @@ public static unsafe partial class DbAnim
         SceneDb.ObjSeamAppendHead[body.Index] = piece;
         SceneDb.ObjSeamAppendNext[pi] = default;
 
-        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
         try
         {
             for (int pass = 0; pass < 2; pass++)
@@ -238,8 +236,8 @@ public static unsafe partial class DbAnim
                 Matrix4x4 extRest = SceneDb.PartWorld[extBone], localRest = SceneDb.PartWorld[localBone];
                 check.Expect(SkinPalette(mesh, dst), $"a grafted ASCII piece solves a palette on {at}");
                 for (int b = 0; b < 3; b++)
-                    check.Expect(Math.Abs(dst[b * 16 + 12]) < 1e-4f && Math.Abs(dst[b * 16 + 13]) < 1e-4f
-                                 && Math.Abs(dst[b * 16 + 14]) < 1e-4f && Math.Abs(dst[b * 16] - 1f) < 1e-4f,
+                    check.Expect(Math.Abs((*dst)[b].M41) < 1e-4f && Math.Abs((*dst)[b].M42) < 1e-4f
+                                 && Math.Abs((*dst)[b].M43) < 1e-4f && Math.Abs((*dst)[b].M11 - 1f) < 1e-4f,
                                  $"...and at REST every slot is the identity (slot {b}, on {at})");
 
                 // the EXTERNAL bone moves: the body's own "mid", which no node of the piece's file carries
@@ -276,7 +274,7 @@ public static unsafe partial class DbAnim
     }
 
     /// <summary>A palette slot's translation, as the stage holds it.</summary>
-    private static Vector3 SlotPos(float* dst, int b) => new(dst[b * 16 + 12], dst[b * 16 + 13], dst[b * 16 + 14]);
+    private static Vector3 SlotPos(BonePalette* dst, int b) => (*dst)[b].Translation;
 
     /// <summary>Where a bone's origin must land in the skinmesh's space, from the world columns the compose
     /// wrote: <c>meshRest * inverse(boneRest) * boneWorld * inverse(meshWorld)</c>, with the two rest matrices
@@ -325,16 +323,16 @@ public static unsafe partial class DbAnim
             Matrix4x4.Invert(SceneDb.PartWorld[mesh], out Matrix4x4 inv);
             return Vector3.Transform(SceneDb.PartWorld[bone].Translation, inv);
         }
-        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
         try
         {
             Vector3 want = Want(bodyFirst + 2);
-            check.Expect(SkinPalette(mesh, dst) && NearV(new Vector3(dst[12], dst[13], dst[14]), want),
+            check.Expect(SkinPalette(mesh, dst) && NearV(new Vector3((*dst)[0].M41, (*dst)[0].M42, (*dst)[0].M43), want),
                          $"an appended piece's bone map names the BODY's node, not its own "
-                         + $"(got {dst[12]:F2},{dst[13]:F2},{dst[14]:F2}, want {want.X:F2},{want.Y:F2},{want.Z:F2})");
+                         + $"(got {(*dst)[0].M41:F2},{(*dst)[0].M42:F2},{(*dst)[0].M43:F2}, want {want.X:F2},{want.Y:F2},{want.Z:F2})");
             SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
             want = Want(first + 2);
-            check.Expect(SkinPalette(mesh, dst) && NearV(new Vector3(dst[12], dst[13], dst[14]), want),
+            check.Expect(SkinPalette(mesh, dst) && NearV(new Vector3((*dst)[0].M41, (*dst)[0].M42, (*dst)[0].M43), want),
                          "...and an ATTACHED gob's (a robe's) names its own, its tree being its own");
             SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
 
@@ -342,7 +340,7 @@ public static unsafe partial class DbAnim
             SceneDb.PartPos[bodyFirst + 1] = new Vector3(1f, 2f, 1f);
             Moved(body.Index); Finish(body);
             int slot = SceneDb.PartBoneBase[mesh];
-            float* st = slot < 0 ? null : AlloyRenderer.DbBoneStage(slot);
+            float* st = slot < 0 ? null : (float*)Unsafe.AsPointer(ref AlloyRenderer.DbBoneStage(slot));
             want = Want(bodyFirst + 2);
             check.Expect(st != null && NearV(new Vector3(st[12], st[13], st[14]), want),
                          "a riding piece's palette follows the BODY's pose, not frozen at its first solve "
@@ -421,12 +419,12 @@ public static unsafe partial class DbAnim
             ComposeObject(obj);
             Matrix4x4 meshRest = SceneDb.PartWorld[first + 2], boneRest = SceneDb.PartWorld[first + 1];
 
-            float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+            BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
             try
             {
                 check.Expect(SkinPalette(first + 2, dst), $"a bind-poseless skin solves from the {what}");
-                check.Expect(Math.Abs(dst[12]) < 1e-4f && Math.Abs(dst[13]) < 1e-4f
-                             && Math.Abs(dst[14]) < 1e-4f && Math.Abs(dst[0] - 1f) < 1e-4f,
+                check.Expect(Math.Abs((*dst)[0].M41) < 1e-4f && Math.Abs((*dst)[0].M42) < 1e-4f
+                             && Math.Abs((*dst)[0].M43) < 1e-4f && Math.Abs((*dst)[0].M11 - 1f) < 1e-4f,
                              $"...and its REST pose is the identity ({what})");
                 // Move the LINK between the bone and the mesh, so the mesh travels and the bone does not:
                 // the palette must then stop being the identity. The broken reading resolved slot 0 to
@@ -438,10 +436,10 @@ public static unsafe partial class DbAnim
                 Matrix4x4.Invert(boneRest, out Matrix4x4 boneRestInv);
                 Matrix4x4.Invert(SceneDb.PartWorld[first + 2], out Matrix4x4 meshInv);
                 Matrix4x4 want = meshRest * boneRestInv * SceneDb.PartWorld[first + 1] * meshInv;
-                check.Expect(NearV(new Vector3(dst[12], dst[13], dst[14]),
+                check.Expect(NearV(new Vector3((*dst)[0].M41, (*dst)[0].M42, (*dst)[0].M43),
                                    new Vector3(want.M41, want.M42, want.M43)),
                              $"...slot 0 is MID carried into the mesh's space, not the identity ({what})");
-                check.Expect(Math.Abs(dst[12]) + Math.Abs(dst[13]) + Math.Abs(dst[14]) > 1e-3f,
+                check.Expect(Math.Abs((*dst)[0].M41) + Math.Abs((*dst)[0].M42) + Math.Abs((*dst)[0].M43) > 1e-3f,
                              $"...which is not the identity a lost bone would leave ({what})");
             }
             finally { NativeMemory.Free(dst); }
@@ -567,7 +565,7 @@ public static unsafe partial class DbAnim
         Moved(body.Index); ComposeObject(body);
         Moved(pi); ComposeObject(piece);
 
-        float* dst = (float*)NativeMemory.Alloc((nuint)(BoneCount * 16) * sizeof(float));
+        BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
         try
         {
             Vector3 a0 = PosedVertex(skinA, 0, dst), b0 = PosedVertex(skinB, 0, dst);
@@ -644,7 +642,7 @@ public static unsafe partial class DbAnim
     /// <summary>One skinned vertex's posed WORLD position, skinned on the CPU as the vertex stage does: the
     /// weighted sum of the vertex through each bone matrix the palette holds, then the part's own world
     /// matrix. Independent of the stitch, which states weights and normals but never a position.</summary>
-    private static Vector3 PosedVertex(int part, int vi, float* dst)
+    private static Vector3 PosedVertex(int part, int vi, BonePalette* dst)
     {
         SkinDef? s = StitchSkin(part) ?? ModelSkin(part);
         MeshDef? mesh = ModelMesh(part);
@@ -662,11 +660,7 @@ public static unsafe partial class DbAnim
     }
 
     /// <summary>One palette slot as a matrix, in the order <c>Store</c> wrote it.</summary>
-    private static Matrix4x4 PaletteSlot(float* dst, int b)
-        => new(dst[b * 16], dst[b * 16 + 1], dst[b * 16 + 2], dst[b * 16 + 3],
-               dst[b * 16 + 4], dst[b * 16 + 5], dst[b * 16 + 6], dst[b * 16 + 7],
-               dst[b * 16 + 8], dst[b * 16 + 9], dst[b * 16 + 10], dst[b * 16 + 11],
-               dst[b * 16 + 12], dst[b * 16 + 13], dst[b * 16 + 14], dst[b * 16 + 15]);
+    private static Matrix4x4 PaletteSlot(BonePalette* dst, int b) => (*dst)[b];
 
     /// <summary>The normal the ARENA holds for one of a part's vertices, in world terms: what the GPU will
     /// actually shade with, read back from the arena's own mirror rather than from any CPU copy.</summary>

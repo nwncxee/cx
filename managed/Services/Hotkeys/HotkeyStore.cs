@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using CX.Framework;
 
 namespace CX.Services.Hotkeys;
@@ -180,8 +179,11 @@ public static class HotkeyStore
         Armed = new HashSet<int>(keys);
     }
 
-    /// <summary>A fresh, crypto-random 128-bit token as 32 lowercase hex chars.</summary>
-    private static string Mint() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+    /// <summary>
+    /// A fresh token: a v4 GUID (122 bits from the OS CSPRNG) as 32 lowercase hex chars. Not
+    /// <c>RandomNumberGenerator</c>: on Linux it loads OpenSSL, which the client's own exported OpenSSL breaks.
+    /// </summary>
+    private static string Mint() => Guid.NewGuid().ToString("N");
 
     /// <summary>
     /// One runnable check on the leak-critical invariant: a token the client never granted must restore

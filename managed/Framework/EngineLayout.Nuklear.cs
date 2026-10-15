@@ -13,6 +13,10 @@ public static unsafe partial class EngineLayout
     public static readonly int NkCtxCurrent = Field<IntPtr>("NkContext", "current");
     /// <summary><c>nk_window</c>: the panel its widgets are laid out in.</summary>
     public static readonly int NkWinLayout = Field<IntPtr>("NkWindow", "layout");
+    /// <summary><c>nk_context</c>: the window that has the focus (<c>active</c>).</summary>
+    public static readonly int NkCtxActive = Field<IntPtr>("NkContext", "active");
+    /// <summary><c>nk_window</c>: non-zero while a text edit in the window has the focus (<c>edit.active</c>).</summary>
+    public static readonly int NkWinEditActive = Field<int>("NkWindow", "editActive");
     /// <summary><c>nk_command</c>, the header of every queued draw command: its <c>nk_command_type</c> and the buffer offset of the next.</summary>
     public static readonly int NkCmdType = Field<int>("NkCommand", "type");
     /// <inheritdoc cref="NkCmdType"/>

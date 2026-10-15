@@ -40,14 +40,14 @@ internal static unsafe class Issue
     /// slot was one call each, and radeonsi stages, copies and barriers EVERY call into a buffer the GPU is
     /// still reading (<c>si_buffer_subdata</c> forces DISCARD_RANGE), so the call count is the cost there.
     /// Duplicates collapse. Caller sorts once; both record buffers walk the same list.</summary>
-    private static void UploadRuns(uint buf, void* data, int recBytes)
+    private static void UploadRuns<T>(uint buf, T[] data, int recBytes) where T : unmanaged
     {
         for (int d = 0; d < _recDirtyN;)
         {
             d = NextRun(_recDirty, _recDirtyN, d, out int first, out int last);
-            long off = (long)first * recBytes;
-            Gl.NamedBufferSubData(buf, (IntPtr)off,
-                             (IntPtr)((long)(last - first + 1) * recBytes), (byte*)data + off);
+            int off = first * recBytes, len = (last - first + 1) * recBytes;
+            fixed (byte* p = MemoryMarshal.AsBytes(data.AsSpan()).Slice(off, len))
+                Gl.NamedBufferSubData(buf, (IntPtr)off, (IntPtr)len, p);
         }
     }
 
@@ -95,12 +95,12 @@ internal static unsafe class Issue
         bool whole = grew || _recDirtyAll || _recDirtyN > _drawN / 4;
         if (whole) { WholeUploads++; WholeBytes += (long)cap * DrawFloats * sizeof(float); }
         if (!whole) Array.Sort(_recDirty, 0, _recDirtyN);
-        fixed (float* p = _dData)
+        fixed (DrawRecordBlock* p = _dData)
         {
             if (whole)
                 Gl.NamedBufferSubData(_drawBuf, IntPtr.Zero,
                                       (IntPtr)((long)cap * DrawFloats * sizeof(float)), p);
-            else UploadRuns(_drawBuf, p, DrawFloats * sizeof(float));
+            else UploadRuns(_drawBuf, _dData, sizeof(DrawRecordBlock));
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindDraw, _drawBuf);
         StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
@@ -127,7 +127,7 @@ internal static unsafe class Issue
     /// bring it up to date on a frame the colour bracket has not reached (or refused).</summary>
     /// <summary>The handle table as the GPU sees it: <see cref="AlloyRenderer._dTexH"/> with every zero
     /// replaced by a stand-in's handle; a partial upload rewrites only the dirty records it sends.</summary>
-    private static readonly ulong[] _gpuTexH = new ulong[MaxRecords * 8];
+    private static readonly TexHandles[] _gpuTexH = new TexHandles[MaxRecords];
 
     internal static void UploadHandles(int cap, bool whole)
     {
@@ -142,22 +142,19 @@ internal static unsafe class Issue
         // slot to the transparent-black texel; the CPU table keeps its zeros, which ZeroHandle and the stale
         // audit read.
         ulong whiteH = HandleFor(OwnedTextures.WhiteTid()), nullH = HandleFor(OwnedTextures.NullTid());
-        long n = (long)cap * 8;
+        long n = (long)cap * TexHandles.MaterialSlots;
         if (whole)
-            for (long k = 0; k < n; k++) _gpuTexH[k] = GpuHandle(k, whiteH, nullH);
+            for (int rec = 0; rec < cap; rec++) GpuRecordHandles(rec, whiteH, nullH);
         else
             for (int d = 0; d < _recDirtyN; d++)
-            {
-                long r = (long)_recDirty[d] * 8;
-                if (r + 8 <= n) for (long k = r; k < r + 8; k++) _gpuTexH[k] = GpuHandle(k, whiteH, nullH);
-            }
-        fixed (ulong* p = _gpuTexH)
+                if (_recDirty[d] < cap) GpuRecordHandles(_recDirty[d], whiteH, nullH);
+        fixed (TexHandles* p = _gpuTexH)
         {
-            BindlessLedger.CheckTable(p, n, "the record handle table");
+            BindlessLedger.CheckTable((ulong*)p, n, "the record handle table");
             if (whole)
                 Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)(n * sizeof(ulong)), p);
             else
-                UploadRuns(_texHBuf, p, 8 * sizeof(ulong));
+                UploadRuns(_texHBuf, _gpuTexH, sizeof(TexHandles));
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindTexH, _texHBuf);
         StaleMirrorHandles(cap, whole, _recDirty, _recDirtyN);
@@ -165,11 +162,14 @@ internal static unsafe class Issue
     }
     private static int _texHCapGpu;
 
-    /// <summary>Entry <paramref name="k"/> of the handle table as the GPU must see it: no zero handle.</summary>
-    private static ulong GpuHandle(long k, ulong whiteH, ulong nullH)
+    /// <summary>Record <paramref name="rec"/>'s handles as the GPU must see them: no zero handle.</summary>
+    private static void GpuRecordHandles(int rec, ulong whiteH, ulong nullH)
     {
-        ulong v = _dTexH[k];
-        return v != 0 ? v : (k & 7) == 0 ? whiteH : nullH;
+        for (int s = 0; s < TexHandles.MaterialSlots; s++)
+        {
+            ulong v = _dTexH[rec][s];
+            _gpuTexH[rec][s] = v != 0 ? v : s == 0 ? whiteH : nullH;
+        }
     }
 
     /// <summary>Called by the caster bake, inside its bracket, before its first view: the standing staging
@@ -200,7 +200,7 @@ internal static unsafe class Issue
 
     /// <summary>One bone block, <c>_boneSlots</c> palettes from <paramref name="stage"/>, onto
     /// <paramref name="binding"/>.</summary>
-    internal static void UploadBoneBlock(ref uint buf, float* stage, uint binding)
+    internal static void UploadBoneBlock(ref uint buf, BonePalette* stage, uint binding)
     {
         if (buf == 0) { uint b; Gl.CreateBuffers(1, &b); buf = b; }
         var size = (IntPtr)((long)Math.Max(_boneSlots, 1) * BoneFloats * sizeof(float));
@@ -230,15 +230,15 @@ internal static unsafe class Issue
     {
         bool indirect = CullPass.Active;
         if (indirect) CullPass.BindForDraw(CullPass.PhaseColour);
-        IssueBatches(from, to, (float*)vp, viewport, near, far, indirect);
+        IssueBatches(from, to, in *vp, viewport, near, far, indirect);
         if (indirect) { CullPass.UnbindForDraw(); BindStagedSlots(); }
     }
 
-    internal static void IssueBatches(int from, int groups, float* vpRaw, int* viewport, float near, float far,
+    internal static void IssueBatches(int from, int groups, in Matrix4x4 vp, int* viewport, float near, float far,
                                      bool indirect = false)
     {
         long tIssue = FrameZones.Now;
-        try { IssueBatchesInner(from, groups, vpRaw, viewport, near, far, indirect); }
+        try { IssueBatchesInner(from, groups, vp, viewport, near, far, indirect); }
         finally { FrameZones.Add(FrameZones.Zone.Issue, tIssue); }
     }
 
@@ -263,7 +263,7 @@ internal static unsafe class Issue
     /// re-sent for every batch, and it is a DIFFERENT location per program, so a program switch cannot leave a
     /// stale one behind; the stages read record uDrawBase + gl_DrawID for the per-part model matrix, texture
     /// rotation and material colours.</summary>
-    internal static void IssueBatchesInner(int from, int groups, float* vpRaw, int* viewport, float near, float far,
+    internal static void IssueBatchesInner(int from, int groups, in Matrix4x4 vp, int* viewport, float near, float far,
                                           bool indirect)
     {
         // A probe capture must not carry the debug viz through: /alloy viz would bake flat cyan (or a
@@ -318,8 +318,6 @@ internal static unsafe class Issue
         int* boundSlot = stackalloc int[MapSlots];
         int drawn = 0;
         for (int s = 0; s < MapSlots; s++) boundSlot[s] = -1;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = from; g < groups; g++)
         {
             if (_onlyGobSet && _gGob[g] != _onlyGob) continue;
@@ -366,9 +364,9 @@ internal static unsafe class Issue
                 if (water)
                 {
                     Gl.UseProgram(Programs._progWater);
-                    Gl.UniformMatrix4fv(Programs._watVp, 1, 0, vpRaw);
-                    Gl.UniformMatrix4fv(Programs._watView, 1, 0, _waterView);
-                    Gl.UniformMatrix4fv(Programs._watProj, 1, 0, _waterProj);
+                    fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(Programs._watVp, 1, 0, (float*)vpm);
+                    fixed (Matrix4x4* wv = &_waterView) Gl.UniformMatrix4fv(Programs._watView, 1, 0, (float*)wv);
+                    fixed (Matrix4x4* wp = &_waterProj) Gl.UniformMatrix4fv(Programs._watProj, 1, 0, (float*)wp);
                     Gl.Uniform2f(Programs._watNearFar, _waterNear, _waterFar);
                     AlloyLights.BindForDraw();
                     Gl.Uniform1i(Programs._watViz, viz);
@@ -392,7 +390,7 @@ internal static unsafe class Issue
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
                     if (wantProg == 7) Gl.Uniform1i(Programs.HostMaskSamples, CoverageLayer.Samples);
                     Gl.Uniform1i(L.Tex, 0);
-                    Gl.UniformMatrix4fv(L.Vp, 1, 0, vpRaw);
+                    fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vpm);
                     AlloyLights.BindForDraw();
                     Gl.Uniform1i(L.Viz, viz);
                     Gl.Uniform1f(L.AoCutout, Ao.Cutout.V);
@@ -436,7 +434,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(Programs._locAlphaMip, Renderer.CutMip.V);
                     Gl.Uniform1i(Programs._locViz, viz);
                     OitPass.Upload(Programs._locOit, Programs._locOitDim, _oitOn); boundOitGob = -1;
-                    Gl.UniformMatrix4fv(Programs._locVp, 1, 0, vpRaw);
+                    fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(Programs._locVp, 1, 0, (float*)vpm);
                     UploadFeatureTerms(Programs._locFeat, viewport);
                 }
             }
@@ -530,8 +528,7 @@ internal static unsafe class Issue
             uint prim = _gMode[g];
             if (indirect) CullPass.Draw(prim, g, s, _gLen[g]);
             else
-                Gl.MultiDrawElementsBaseVertex(prim, counts + s, GlUnsignedShort,
-                                               (void**)(offs + s), _gLen[g], bases + s);
+                AlloyRenderer.MultiDrawRange(prim, s, _gLen[g]);
             Counters._batches++;
             Counters._draws += _gLen[g];
             if (!interior) Counters._drawsByClass[_gCls[g]] += _gLen[g];
@@ -656,7 +653,7 @@ internal static unsafe class Issue
     /// taken immediately before it. Depth writes go back ON -- the one piece of state separating this pass
     /// from the blended one, and what lets additive draw after water and stand in FRONT of it, as vanilla
     /// arranges it. Stands down whole when the copy was refused or the program did not build.</summary>
-    internal static void WaterOwnedPass(int from, int to, Matrix4x4* vp, float* view, float* proj,
+    internal static void WaterOwnedPass(int from, int to, Matrix4x4* vp, in Matrix4x4 view, in Matrix4x4 proj,
                                        int* viewport, float near, float far)
     {
         if (to <= from || !FrameSnapshot.Ready || !_waterArmed) return;

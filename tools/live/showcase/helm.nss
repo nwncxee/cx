@@ -1,6 +1,6 @@
 //::///////////////////////////////////////////////
 //:: helm -- the player's doll while a helmet goes on and comes off
-//:: A plain doll of the player. The PC wears a sword, a shield, a helmet and a cloak all at once, changes head and hair,
+//:: A plain doll of the player. The PC wears a sword, an off-hand dagger, a helmet and a cloak all at once, changes head and hair,
 //:: drops the helmet and puts it on again, so a shot taken between each step shows whether the doll's head and helmet follow the creature.
 //:://////////////////////////////////////////////
 #include "inc_show"
@@ -19,11 +19,12 @@ void OpenDoll(object oPC, string sKey, string sTitle)
 void WearAll(object oPC)
 {
     object oSword = CreateItemOnObject("nw_wswls001", oPC);
-    object oShield = CreateItemOnObject("nw_ashlw001", oPC);
+    object oOffhand = CreateItemOnObject("nw_wswdg001", oPC);
     object oHelm = CreateItemOnObject("nw_arhe001", oPC, 1, "SHOW_HELM");
-    object oCloak = CreateItemOnObject("nw_cloth001", oPC);
+    object oCloak = CreateItemOnObject("x2_it_mcloak001", oPC);
+    SetIdentified(oCloak, TRUE);
     AssignCommand(oPC, ActionEquipItem(oSword, INVENTORY_SLOT_RIGHTHAND));
-    AssignCommand(oPC, ActionEquipItem(oShield, INVENTORY_SLOT_LEFTHAND));
+    AssignCommand(oPC, ActionEquipItem(oOffhand, INVENTORY_SLOT_LEFTHAND));
     AssignCommand(oPC, ActionEquipItem(oHelm, INVENTORY_SLOT_HEAD));
     AssignCommand(oPC, ActionEquipItem(oCloak, INVENTORY_SLOT_CLOAK));
     ShowMark("wear all");

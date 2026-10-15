@@ -89,6 +89,7 @@ internal static class CardSelfCheck
         Roles(check, log);
         Looks(check, atlas, log);
         Registry(check, log);
+        Configurable(check);
         Presenting(check, atlas, log);
         log.Info(check.Ok ? "CardSelfCheck: passed" : "CardSelfCheck: FAILED");
     }
@@ -657,6 +658,72 @@ internal static class CardSelfCheck
             CardRegistry.Reset();
             ServerPolicy.Clear();
         }
+    }
+
+    /// <summary>Oracle: arithmetic done by hand on the numbers in each check (a 128-alpha glow, a 0.5 share of it for the nearest ring, a 400 ms
+    /// wave), and the ceilings the contract states: 64 looks, 24 text sizes, 16-character resrefs.</summary>
+    private static void Configurable(Checker check)
+    {
+        GlyphAtlas atlas = TestAtlas();
+        PanelStyle d = StyleOf("{}");
+        check.Expect(d.GlowFalloff == 1f && d.GlowStep == 1f && d.DiagMix == 0.5f && d.PulseWave == PulseShape.Sine, "an empty style keeps the linear glow, 1 px rings, an even diagonal and the sine pulse");
+        float Ring2(string extra) => LayS(atlas, "{\"glow\":\"#00ffff80\",\"glowspread\":2" + extra + "}", "{\"width\":200,\"blocks\":[]}").Back.ToArray()[24 * VertexBatch.Floats + VertexBatch.Floats - 1];
+        check.Expect(Near(Ring2(""), 32f / 255f) && Near(Ring2(",\"glowfalloff\":1"), 32f / 255f) && Near(Ring2(",\"glowfalloff\":2"), 16f / 255f) && Near(Ring2(",\"glowfalloff\":0.1"), 128f * MathF.Pow(0.5f, 0.1f) * 0.5f / 255f),
+            "the second of two rings is a quarter of the nearest at falloff 2, half at 1, and nearly the whole at 0.1");
+        check.Expect(StyleOf("{\"glowfalloff\":99,\"glowstep\":99,\"diagmix\":-3}") is { GlowFalloff: 8f, GlowStep: 16f, DiagMix: 0f }, "the three fields clamp to 0.1-8, 1-16 and 0-1");
+        PanelView wide = LayS(atlas, "{\"glow\":\"#00ffff80\",\"glowspread\":4,\"glowstep\":2}", "{\"width\":200,\"blocks\":[]}");
+        check.Expect(wide.Back.VertexCount == 6 + 24 + 48 && Near(wide.Back.ToArray()[0], -2f), "a 4 px spread in 2 px rings is two rings, the first starting 2 px out");
+        check.Expect(PanelLayout.Mix(0x00000000u, 0xC8C8C8C8u, 0.5f) == 0x64646464u && PanelLayout.Mix(0x00000000u, 0xC8C8C8C8u, 0.25f) == 0x32323232u && PanelLayout.Mix(0x10203040u, 0xFFFFFFFFu, 0f) == 0x10203040u,
+            "the diagonal's middle corners are the near colour, a quarter or half way to the far one");
+        check.Expect(Near(PanelPulse.Alpha(50, 0f, 400f, PulseShape.Triangle), 0.75f) && Near(PanelPulse.Alpha(300, 0f, 400f, PulseShape.Triangle), 0f) && Near(PanelPulse.Alpha(50, 0f, 400f, PulseShape.Square), 1f)
+            && Near(PanelPulse.Alpha(250, 0f, 400f, PulseShape.Square), 0f) && Near(PanelPulse.Alpha(50, 0f, 400f), 0.5f + 0.5f * MathF.Sin(MathF.PI / 4f)),
+            "a triangle climbs 0.5 to 1 in a quarter, a square is full then the floor, and the default is the sine");
+        check.Expect(StyleOf("{\"pulseshape\":\"triangle\"}").PulseWave == PulseShape.Triangle && !PanelParser.TryParseStyle("{\"pulseshape\":\"saw\"}", out _, out _), "the shape is a word, and an unknown one is refused");
+        check.Expect(LayS(atlas, "{\"pulseshape\":\"square\"}", "{\"blocks\":[]}").PulseWave == PulseShape.Square, "the shape reaches the view");
+
+        string R(string n) => "{\"blocks\":[{\"type\":\"icons\",\"icons\":[\"" + n + "\"]}]}";
+        check.Expect(PanelParser.TryParse(R("abcdefghijklmnop"), out _, out _) && !PanelParser.TryParse(R("abcdefghijklmnopq"), out _, out string why) && why.Contains("16") && PanelParser.TryParse(R("@look:abcdefghijklmnopqrstuvwxyz"), out _, out _),
+            "an icon resref is 16 characters at most, and an @ name may be longer");
+        check.Expect(!PanelParser.TryParse("{\"images\":[{\"src\":\"abcdefghijklmnopq\"}],\"blocks\":[]}", out _, out _) && !PanelParser.TryParse("{\"blocks\":[{\"type\":\"status\",\"icon\":\"abcdefghijklmnopq\",\"text\":\"x\"}]}", out _, out _)
+            && !PanelParser.TryParse("{\"blocks\":[{\"text\":\"a <icon=abcdefghijklmnopq> b\"}]}", out _, out _) && PanelParser.TryParse("{\"blocks\":[{\"text\":\"a <icon=abcdefghijklmnop> b\"}]}", out _, out _),
+            "an image, a status icon and an inline icon are held to the same 16");
+
+        ServerPolicy.Clear();
+        CardRegistry.Reset();
+        PolicyRefusals.ForgetPrefix("");
+        string LookCard(int from, int n)
+        {
+            var sb = new StringBuilder("{\"blocks\":[{\"type\":\"icons\",\"icons\":[");
+            for (int i = 0; i < n; i++) sb.Append(i == 0 ? "" : ",").Append("\"@look:").Append(from + i).Append('"');
+            return sb.Append("]}]}").ToString();
+        }
+        check.Expect(CardRegistry.Set("a", LookCard(0, 16)) && CardRegistry.Set("b", LookCard(16, 16)) && CardRegistry.Set("c", LookCard(32, 16)) && CardRegistry.Set("d", LookCard(48, 16)), "64 distinct looks across four cards are held");
+        check.Expect(!CardRegistry.Set("e", LookCard(64, 1)) && CardRegistry.Find("e") == null && PolicyRefusals.All() is [{ Kind: RefusalKind.Card, Key: "card.e" }], "a 65th look is refused and listed");
+        check.Expect(CardRegistry.Set("e", LookCard(0, 16)) && CardRegistry.Set("a", LookCard(100, 16)) is false && CardRegistry.Find("a") == null, "a card naming looks already held adds none, and one that swaps its own for new ones counts them anew and, refused, keeps no card");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
+
+        var sizes = new System.Collections.Generic.HashSet<float>();
+        for (int i = 0; i < 24; i++) sizes.Add(0.5f + i * 0.05f);
+        var over = new System.Collections.Generic.HashSet<float>(sizes) { 3f };
+        check.Expect(PanelFonts.MaxFaces == 24 && PanelFonts.TryHold(sizes) && PanelFonts.TryHold(sizes) && PanelFonts.Count == 24 && !PanelFonts.TryHold(over) && PanelFonts.Count == 24,
+            "24 distinct sizes are the ceiling: holding the same ones again is free, a 25th is refused and changes nothing");
+        check.Expect(PanelFonts.TryHold(new System.Collections.Generic.HashSet<float> { 0.5f, 0.75f }) && PanelFonts.Count == 2, "a size no longer listed is released");
+        var fresh = new System.Collections.Generic.HashSet<float> { 0.5f, 0.75f };
+        for (int i = 0; i < 22; i++) fresh.Add(3f + i * 0.1f);
+        check.Expect(PanelFonts.TryHold(fresh) && PanelFonts.Count == 24, "released sizes make room for new ones");
+        PanelFonts.Reset();
+        check.Expect(PanelFonts.Count == 0, "a reset holds none");
+        check.Expect(CardRegistry.Set("a", "{\"blocks\":[{\"text\":\"x\",\"size\":2}]}") && CardRegistry.Set("b", "{\"blocks\":[{\"text\":\"a<s=0.7>b</s>\",\"size\":2}]}")
+                     && PanelFonts.Count == 2, "two cards hold the sizes they use, a shared one once");
+        CardRegistry.Set("b", "");
+        check.Expect(PanelFonts.Count == 1, "a card's release lets go of the sizes only it used: " + PanelFonts.Count);
+        CardRegistry.Release("");
+        check.Expect(PanelFonts.Count == 0, "with no cards held the panels hold no faces");
+        CardRegistry.Reset();
+        ServerPolicy.Clear();
+        PolicyRefusals.ForgetPrefix("");
     }
 
     /// <summary>Oracle: hand-written declarations and the looks counted off them by eye; the fake mint hands out 1, 2, 3 and zero for a name containing "bad".</summary>

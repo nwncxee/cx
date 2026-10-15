@@ -16,7 +16,7 @@ internal static unsafe class NuiImageSpot
     private const int MaxWindows = 256;
 
     /// <summary>A texture watched, and the rectangle it was last drawn at.</summary>
-    private sealed class Spot
+    internal sealed class Spot
     {
         public uint Tex;
         public bool Found;
@@ -26,37 +26,29 @@ internal static unsafe class NuiImageSpot
     private sealed class SpotState
     {
         public IntPtr* CtxSlot;
-        public readonly Spot[] Spots = MakeSpots();
         public bool Any;
-    }
-
-    private static Spot[] MakeSpots()
-    {
-        var a = new Spot[NuiModelDoll.MaxViews];
-        for (int i = 0; i < a.Length; i++) a[i] = new Spot();
-        return a;
     }
 
     private static readonly SpotState _s = new();
 
     internal static void Init() => _s.CtxSlot = (IntPtr*)Native.Sym(SymbolMap.Nuklear);
 
-    /// <summary>Watch <paramref name="tex"/> as model slot <paramref name="slot"/>'s from the next frame on; 0 stops.</summary>
-    internal static void Watch(int slot, uint tex)
+    /// <summary>Watch <paramref name="tex"/> as <paramref name="slot"/>'s from the next frame on; 0 stops.</summary>
+    internal static void Watch(NuiModelDoll.ModelSlot slot, uint tex)
     {
-        Spot p = _s.Spots[slot];
+        Spot p = slot.Spot;
         p.Tex = tex;
         if (tex == 0) p.Found = false;
         bool any = false;
-        foreach (Spot q in _s.Spots) any |= q.Tex != 0;
+        foreach (NuiModelDoll.ModelSlot q in NuiModelDoll.Slots) any |= q.Spot.Tex != 0;
         _s.Any = any;
     }
 
     /// <summary>Is nuklear's pointer over where slot <paramref name="slot"/>'s watched texture was drawn last frame?</summary>
-    internal static bool PointerOn(int slot)
+    internal static bool PointerOn(NuiModelDoll.ModelSlot slot)
     {
         SpotState s = _s;
-        Spot p = s.Spots[slot];
+        Spot p = slot.Spot;
         if (!p.Found || s.CtxSlot == null) return false;
         IntPtr ctx = *s.CtxSlot;
         return NuiHitTest.Pointer(ctx, out float x, out float y) && NuiHitTest.Contains(p.X, p.Y, p.W, p.H, x, y);
@@ -70,10 +62,9 @@ internal static unsafe class NuiImageSpot
         IntPtr ctx = *s.CtxSlot;
         if (ctx == IntPtr.Zero) return;
         var c = new NkContext(ctx);
-        byte* mem = (byte*)c.MemPtr;
         ulong allocated = c.MemAllocated;
         uint seq = c.Seq;
-        foreach (Spot q in s.Spots) q.Found = false;
+        foreach (NuiModelDoll.ModelSlot q in NuiModelDoll.Slots) q.Spot.Found = false;
         int n = 0;
         for (IntPtr w = c.WindowBegin; w != IntPtr.Zero && n < MaxWindows; w = new NkWindow(w).Next, n++)
         {
@@ -82,16 +73,19 @@ internal static unsafe class NuiImageSpot
             ulong off = win.BufBegin, end = Math.Min(win.BufEnd, allocated);
             while (off < end)
             {
-                var cmd = new NkCommand((IntPtr)(mem + off));
+                var cmd = c.CommandAt(off);
                 var img = new NkCommandImage(cmd.Ptr);
                 if (cmd.Type == CmdImage)
-                    foreach (Spot q in s.Spots)
+                    foreach (NuiModelDoll.ModelSlot m in NuiModelDoll.Slots)
+                    {
+                        Spot q = m.Spot;
                         if (q.Tex != 0 && (uint)img.Handle == q.Tex)
                         {
                             q.Found = true;
                             q.X = img.X; q.Y = img.Y;
                             q.W = img.W; q.H = img.H;
                         }
+                    }
                 ulong next = cmd.Next;
                 if (next <= off) break;
                 off = next;

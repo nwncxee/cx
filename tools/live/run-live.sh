@@ -16,7 +16,7 @@
 #
 # Nothing appears on the desktop: the client runs inside `gamescope --backend headless`, which gives
 # it its own nested Xwayland on the real GPU (verified GL 4.6 / NVIDIA there). Nothing plays on the
-# speakers: OpenAL Soft mixes into its null backend (ALSOFT_DRIVERS=null). Nothing of the user's
+# speakers: every audio route points nowhere (tools/live/isolate.sh). Nothing of the user's
 # is touched either -- a throwaway HOME + user directory is built under the out dir, and the client is
 # pointed at it with `-userdirectory`, so cx.cfg, cx.log, settings.tml, nwn.ini, the localvault and the
 # crashreport folder are all the harness's own copies.
@@ -32,6 +32,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=tools/live/isolate.sh
+. "$ROOT/tools/live/isolate.sh"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
 REAL_USER_DIR="${NWN_USER_DIR:-$HOME/.local/share/Neverwinter Nights}"
 
@@ -56,6 +58,7 @@ SHOWCASE=""
 SHOWCASE_DIR="$ROOT/tools/live/showcase"
 SHOWCASE_LATE=40
 MENU=0
+STOCK=0
 EXPECT_EXIT=0
 clicked_exit=0
 SECONDS_SET=0
@@ -78,6 +81,9 @@ while [ $# -gt 0 ]; do
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
         --menu)          MENU=1; shift ;;
+        # The stock client, no CX loaded: for checking that what a server sends a CX client is harmless to one without it.
+        # It waits on the module script's own enter marker in the engine log and grades no CX log line.
+        --stock)         STOCK=1; shift ;;
         # Seconds to wait for the client to quit ON ITS OWN after --keys has run. The main menu's Exit is
         # the one control whose success is unambiguous without looking at a pixel: either the click was
         # picked and the client went, or it was not.
@@ -138,6 +144,7 @@ fi
 [ -n "$OUT" ] || OUT="$ROOT/.scratch/live/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT" || exit 2
 OUT="$(cd "$OUT" && pwd)"
+RUN_TAG="run-live:$$:$OUT"
 
 FAKE_HOME="$OUT/home"
 USER_DIR="$FAKE_HOME/.local/share/Neverwinter Nights"
@@ -219,14 +226,14 @@ PY
 
 # ---- the showcase ---------------------------------------------------------------------------------
 # The policy is read at login, before the script has made the creatures it names, so the lines with a @key@ in
-# them wait in a second file the poller below fills in once every id is in the log; nui.cardlate applies it.
+# them wait in a second file the poller below fills in once every id is in the log; nui.cardlatefile applies it.
 if [ -n "$SHOWCASE" ]; then
     SHOW_SRC="$SHOWCASE_DIR/$SHOWCASE.nss"
     SHOW_POLICY="$SHOWCASE_DIR/$SHOWCASE.policy"
     [ -f "$SHOW_SRC" ] && [ -f "$SHOW_POLICY" ] || { echo "run-live: no showcase '$SHOWCASE' (needs $SHOW_SRC and $SHOW_POLICY)" >&2; exit 2; }
     SHOW_LATE="$OUT/showcase-late.policy"
     grep -v '@[A-Za-z0-9_]*@' "$SHOW_POLICY" > "$SHOW_LATE"
-    CFG_LINES+=("nui.cardfile=$SHOW_POLICY" "nui.cardlate=$SHOWCASE_LATE:$SHOW_LATE")
+    CFG_LINES+=("nui.cardfile=$SHOW_POLICY" "nui.cardlatefile=$SHOW_LATE" "nui.cardlatesec=$SHOWCASE_LATE")
     if [ -z "$KEYS" ] && [ -f "$SHOWCASE_DIR/$SHOWCASE.keys" ]; then
         KEYS=$(sed "s|@SHOTS@|$SHOTS|g" "$SHOWCASE_DIR/$SHOWCASE.keys" | tr -d '\n')
         [ "$SECONDS_SET" = 1 ] || SECONDS_IN=2
@@ -287,13 +294,15 @@ START_EPOCH=$(date +%s.%N)
     export XDG_DATA_HOME="$FAKE_HOME/.local/share"
     export XDG_CACHE_HOME="$FAKE_HOME/.cache"
     export XDG_CONFIG_HOME="$FAKE_HOME/.config"
-    export ALSOFT_DRIVERS=null
+    live_isolate "$RUN_TAG"
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
             "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
     fi
+    LAUNCH=("$STAGE/cx-launch" ./nwmain-linux)
+    [ "$STOCK" = 1 ] && LAUNCH=(./nwmain-linux)
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
-        "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR" \
+        "${LAUNCH[@]}" -userdirectory "$USER_DIR" \
         +TestNewModule "$MODULE"
 ) > "$GS_LOG" 2>&1 &
 GS_PID=$!
@@ -336,7 +345,7 @@ cleanup() {
     for pid in $(tree_pids "${GS_PID:-}") ${CLIENT_PID:-} ${GS_PID:-} ${SHOW_PID:-}; do
         kill -KILL "$pid" 2>/dev/null
     done
-    return 0
+    live_sweep "$RUN_TAG"
 }
 trap cleanup EXIT INT TERM
 
@@ -379,6 +388,10 @@ AREA_MARK_NOHOLD='\[areaedge\] AreaLoaded send|PartTable: AreaLoaded send'
 # Alloy off runs no shadow bake and no part table, so neither mark exists: the session gate seeing a module is the edge left.
 AREA_MARK_ENGINE='\[uigate\] win=0x[1-9a-f][0-9a-f]* .*inModule=True'
 FRAME_MARK='first frame presented -- hook is LIVE'
+if [ "$STOCK" = 1 ]; then
+    CX_LOG="$USER_DIR/logs/nwclientLog1.txt"
+    AREA_MARK='CX(SHOW|NUI|LADDER): enter '
+fi
 reached=0
 area_epoch=""
 peak_rss=0
@@ -489,8 +502,11 @@ elif [ "$MENU" = 1 ] && [ "$menu_up" = 1 ]; then
     [ -r "/proc/$CLIENT_PID/status" ] && peak_rss=$(awk '/VmHWM/{print $2}' "/proc/$CLIENT_PID/status" 2>/dev/null || echo "$peak_rss")
 elif [ "$reached" = 1 ]; then
     echo "run-live: reached the area -- soaking ${SECONDS_IN}s"
+    soak_start=$(date +%s)
     half=$(( SECONDS_IN / 2 )); [ "$half" -lt 1 ] && half=1
-    sleep "$half"
+    # A showcase's script times its steps from the login, so its keys start at once and --seconds only adds soak after them.
+    lead=$half; [ -n "$SHOWCASE" ] && lead=1
+    sleep "$lead"
     if python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$SHOTS/01-early.png" >> "$OUT/xtool.log" 2>&1; then
         shots=$((shots + 1))
     fi
@@ -499,7 +515,9 @@ elif [ "$reached" = 1 ]; then
         python3 "$ROOT/tools/live/xtool.py" keys "$DISP" "$KEYS" >> "$OUT/xtool.log" 2>&1 \
             || echo "run-live: key injection failed (see $OUT/xtool.log)"
     fi
-    sleep "$half"
+    rest=$half
+    if [ -n "$SHOWCASE" ]; then rest=$(( SECONDS_IN - ($(date +%s) - soak_start) )); [ "$rest" -lt 1 ] && rest=1; fi
+    sleep "$rest"
     if python3 "$ROOT/tools/live/xtool.py" shot "$DISP" "$SHOTS/02-settled.png" >> "$OUT/xtool.log" 2>&1; then
         shots=$((shots + 1))
     fi
@@ -511,6 +529,7 @@ fi
 crashes=$(find "$CRASH_DIR" -name '*.nwcrash.txt' 2>/dev/null | wc -l)
 alive_before_shutdown=0
 alive "$CLIENT_PID" && alive_before_shutdown=1
+audio_clients=$(live_audio_clients "$RUN_TAG")
 
 # ---- shutdown -----------------------------------------------------------------------------------
 # In-game the engine swallows SDL_QUIT -- the WM close box and SDL's own SIGTERM handler both reach it
@@ -555,6 +574,9 @@ if kill -0 "$GS_PID" 2>/dev/null; then
 fi
 wait "$GS_PID" 2>/dev/null
 GS_EXIT=$?
+sleep 2
+survivors=$(live_survivors "$RUN_TAG" | tr '\n' ',' | sed 's/,$//')
+live_sweep "$RUN_TAG"
 
 # ---- collect ------------------------------------------------------------------------------------
 cp -f "$CX_LOG" "$OUT/cx.log" 2>/dev/null
@@ -582,8 +604,8 @@ fi
 
 # ---- verdict ------------------------------------------------------------------------------------
 fails=()
-[ "$frames" = 1 ]      || fails+=("no frame was presented (CX never saw SwapBuffers)")
-if [ "$MENU" = 0 ]; then
+[ "$frames" = 1 ] || [ "$STOCK" = 1 ] || fails+=("no frame was presented (CX never saw SwapBuffers)")
+if [ "$MENU" = 0 ] && [ "$STOCK" = 0 ]; then
     [ -n "$present_count" ] || fails+=("no 'over N presents' period line in cx.log -- the frame count is unknown, so the soak is unproven")
 fi
 if [ "$MENU" = 1 ]; then
@@ -601,6 +623,11 @@ fi
 ledger=$(grep -m1 'BindlessLedger: VIOLATION' "$OUT/cx.log" 2>/dev/null)
 [ -z "$ledger" ]       || fails+=("BINDLESS: ${ledger#*BindlessLedger: }")
 [ "$shots" -ge 1 ]     || fails+=("no screenshot captured")
+case "$audio_clients" in
+    ""|unchecked) ;;
+    *) fails+=("AUDIO: the run reached the desktop's sound server [$(echo "$audio_clients" | tr '\n' ',' | sed 's/,$//')]") ;;
+esac
+[ -z "$survivors" ] || fails+=("LEFTOVER: process(es) outlived the run and were killed [$survivors]")
 # A black world still presents frames (2026-10-01: a fog-lane polarity bug blacked out every lit pixel and PASSed):
 # the settled shot's centre must be lit. --min-lit 0 turns it off for a scene that is legitimately dark.
 world_lit=$(grep -o "02-settled.png [0-9x]* nonblack=[0-9/]* world_lit=[0-9]*%" "$OUT/xtool.log" 2>/dev/null | tail -1 | sed 's/.*world_lit=\([0-9]*\)%/\1/')
@@ -667,6 +694,8 @@ fi
     echo "screenshots     $shots in $SHOTS"
     echo "world lit       ${world_lit:-?}% of the settled frame's centre (floor ${MIN_LIT}%), luma spread ${world_spread:-?}"
     echo "crash reports   $crashes"
+    echo "sound server    $([ "$audio_clients" = unchecked ] && echo 'unchecked (no pw-dump or jq)' || echo "${audio_clients:-not reached}")"
+    echo "leftovers       ${survivors:-none}"
     if [ "$LADDER" = 1 ]; then
         echo "ladder rungs   ${LADDER_STEPS:- none}"
         sed 's/^/ladder          /' "$OUT/ladder-markers.txt" 2>/dev/null

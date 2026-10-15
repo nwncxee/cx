@@ -252,9 +252,9 @@ internal static class TexSeam
         for (int l = 0; l < SceneDb.PltLayers; l++)
             Expect(PltColors.Row(obj, l) == 0,
                 $"row {l} survived the object's death -- the next tenant of this index inherits its colours");
-        var leftover = new float[AlloyRenderer.ParamFloats];
-        MaterialParams.Apply(obj, leftover);
-        Expect(leftover[AlloyRenderer.ParamExt + 1] == 0f, "a material-param override survived the object's death");
+        var leftover = new ParamRow();
+        MaterialParams.Apply(obj, ref leftover);
+        Expect(leftover.Ext.Ext0.Y == 0f, "a material-param override survived the object's death");
 
         SceneDb.ObjPartFirst[obj.Index] = svFirst;
         SceneDb.ObjPartCount[obj.Index] = svCount;
@@ -366,10 +366,9 @@ internal static class TexSeam
 /// OBJECT as a sparse list, and the stage consults it only for an object that has any.</summary>
 internal static class MaterialParams
 {
-    /// <summary>One override: which of the record's twenty parameter floats, and the value. The lane is
-    /// resolved from the engine's parameter name once, here, against the same table
-    /// <c>AlloyRenderer.Enroll</c>'s material read uses -- there is no second vocabulary.</summary>
-    private readonly record struct Over(byte Lane, float Value);
+    /// <summary>One override: which parameter of the record, and the value. The parameter is resolved from the
+    /// engine's name once, here -- there is no second vocabulary.</summary>
+    private readonly record struct Over(ParamName Param, float Value);
 
     private static readonly Dictionary<uint, List<Over>> _byObj = new();
     private static long _sets, _resets, _unknown, _applied;
@@ -384,8 +383,8 @@ internal static class MaterialParams
     internal static void Set(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log)
     {
         if (!SceneDb.Objects.Valid(obj) || string.IsNullOrEmpty(paramName)) return;
-        int lane = LaneOf(paramName!);
-        if (lane < 0)
+        ParamName lane = ParamOf(paramName!);
+        if (lane == ParamName.None)
         {
             _unknown++;
             if (_unknownOnce.Add(paramName!))
@@ -403,7 +402,7 @@ internal static class MaterialParams
             _resets++;
             if (_byObj.TryGetValue(obj.Value, out List<Over>? had))
             {
-                had.RemoveAll(o => o.Lane == lane);
+                had.RemoveAll(o => o.Param == lane);
                 if (had.Count == 0) _byObj.Remove(obj.Value);
             }
         }
@@ -419,8 +418,8 @@ internal static class MaterialParams
             }
             _sets++;
             if (!_byObj.TryGetValue(obj.Value, out List<Over>? list)) _byObj[obj.Value] = list = new List<Over>(4);
-            list.RemoveAll(o => o.Lane == lane);
-            list.Add(new Over((byte)lane, v));
+            list.RemoveAll(o => o.Param == lane);
+            list.Add(new Over(lane, v));
         }
         if (!string.IsNullOrEmpty(materialFilter)) _filtered++;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
@@ -440,39 +439,33 @@ internal static class MaterialParams
         return 1;
     }
 
-    /// <summary>Lay this object's overrides over the twenty parameter floats the recipe just wrote into the
+    /// <summary>Lay this object's overrides over the parameter row the recipe just wrote into the
     /// record. Called from the DB stage, and only for an object that has any.</summary>
-    internal static void Apply(DbId obj, Span<float> param)
+    internal static void Apply(DbId obj, ref ParamRow param)
     {
         if (_byObj.Count == 0 || !_byObj.TryGetValue(obj.Value, out List<Over>? list)) return;
-        for (int i = 0; i < list.Count; i++)
-            if (list[i].Lane < param.Length) { param[list[i].Lane] = list[i].Value; _applied++; }
+        for (int i = 0; i < list.Count; i++) { param.Set(list[i].Param, list[i].Value); _applied++; }
     }
 
-    /// <summary>The engine's parameter name -> the record's float lane. The same table
-    /// <c>AlloyRenderer.Enroll.ReadMaterial</c> / <c>ReadExt</c> fill from a live material: the two stock
-    /// vec4s then ADR 0026's three extension vec4s at <c>ParamExt</c>. A multi-component parameter names its
-    /// first lane, and the engine's own setter writes one scalar too.</summary>
-    internal static int LaneOf(string name)
-    {
-        const int X = AlloyRenderer.ParamExt;
-        return name.ToLowerInvariant() switch
+    /// <summary>The engine's parameter name -> the record's parameter. A multi-component parameter names its
+    /// first component, and the engine's own setter writes one scalar too.</summary>
+    internal static ParamName ParamOf(string name)
+        => name.ToLowerInvariant() switch
         {
-            "specularity" => 0,
-            "roughness" => 1,
-            "metallicness" => 2,
-            "customspecularcolor" => 4,
-            "cxmetallic" => X + 0,
-            "cxroughness" => X + 1,
-            "cxclearcoat" => X + 2,
-            "cxclearcoatroughness" => X + 3,
-            "cxsheencolor" => X + 4,
-            "cxsheenroughness" => X + 7,
-            "cxemissivestrength" => X + 8,
-            "cxorm" => X + 9,
-            _ => -1,
+            "specularity" => ParamName.Specularity,
+            "roughness" => ParamName.Roughness,
+            "metallicness" => ParamName.Metallicness,
+            "customspecularcolor" => ParamName.CustomSpecularColor,
+            "cxmetallic" => ParamName.CxMetallic,
+            "cxroughness" => ParamName.CxRoughness,
+            "cxclearcoat" => ParamName.CxClearcoat,
+            "cxclearcoatroughness" => ParamName.CxClearcoatRoughness,
+            "cxsheencolor" => ParamName.CxSheenColor,
+            "cxsheenroughness" => ParamName.CxSheenRoughness,
+            "cxemissivestrength" => ParamName.CxEmissiveStrength,
+            "cxorm" => ParamName.CxOrm,
+            _ => ParamName.None,
         };
-    }
 
     /// <summary>The engine reads one token out of the value (<c>sscanf(value, "%s %*s", ...)</c> on a
     /// single-component parameter), so "0.4 junk" is 0.4 there and here.</summary>
@@ -497,33 +490,33 @@ internal static class MaterialParams
             ok = false;
             log.Always($"MaterialParams.SelfCheck: {what}");
         }
-        Expect(LaneOf("Roughness") == 1 && LaneOf("roughness") == 1, "Roughness is not lane 1, case-insensitively");
-        Expect(LaneOf("CxRoughness") == AlloyRenderer.ParamExt + 1, "CxRoughness is not the extension block's lane 1");
-        Expect(LaneOf("NotAParam") < 0, "an unknown parameter name resolved to a lane");
+        Expect(ParamOf("Roughness") == ParamName.Roughness && ParamOf("roughness") == ParamName.Roughness, "Roughness is not the roughness parameter, case-insensitively");
+        Expect(ParamOf("CxRoughness") == ParamName.CxRoughness, "CxRoughness is not the extension roughness");
+        Expect(ParamOf("NotAParam") == ParamName.None, "an unknown parameter name resolved to a parameter");
 
         (long sv_s, long sv_r, long sv_u, long sv_a, long sv_f) = (_sets, _resets, _unknown, _applied, _filtered);
         DbId obj = SceneDb.Objects.Alloc();
         if (obj.IsNull) { Expect(false, "the object table would not allocate"); return ok; }
         SceneDb.ObjPartFirst[obj.Index] = 0; SceneDb.ObjPartCount[obj.Index] = 0;
         SceneDb.Objects.TakeDirty();
-        var p = new float[AlloyRenderer.ParamFloats];
+        var p = new ParamRow();
 
         Set(obj, "CxRoughness", "0.25", null, null);
         Expect((SceneDb.Objects.DirtyAt(obj.Index) & Dirty.Material) != 0, "a set did not mark the object");
-        Apply(obj, p);
-        Expect(Math.Abs(p[AlloyRenderer.ParamExt + 1] - 0.25f) < 1e-6f, "the override did not reach its lane");
-        Expect(p[0] == 0f, "the override touched another lane");
+        Apply(obj, ref p);
+        Expect(Math.Abs(p.Ext.Ext0.Y - 0.25f) < 1e-6f, "the override did not reach its lane");
+        Expect(p.Specularity == 0f, "the override touched another lane");
 
         Set(obj, "CxRoughness", "0.5 trailing junk", null, null);
-        Array.Clear(p);
-        Apply(obj, p);
-        Expect(Math.Abs(p[AlloyRenderer.ParamExt + 1] - 0.5f) < 1e-6f,
+        p = default;
+        Apply(obj, ref p);
+        Expect(Math.Abs(p.Ext.Ext0.Y - 0.5f) < 1e-6f,
             "a second set did not replace the first, or the value was not read as one token");
 
         Set(obj, "CxRoughness", "", null, null);     // the engine's reset-to-default form
-        Array.Clear(p);
-        Apply(obj, p);
-        Expect(p[AlloyRenderer.ParamExt + 1] == 0f, "an empty value did not RESET the override");
+        p = default;
+        Apply(obj, ref p);
+        Expect(p.Ext.Ext0.Y == 0f, "an empty value did not RESET the override");
         Expect(!Any, "the table kept an entry for an object with no overrides left");
 
         Set(obj, "Specularity", "0.9", null, null);

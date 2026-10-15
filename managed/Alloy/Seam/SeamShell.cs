@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -35,7 +36,6 @@ public static class SeamLayout
     /// <summary>Inline name array; `Gob::GetName` @0x444660 is `return this + 0x24`, and `Gob::~Gob` copies it
     /// with a 0x100 bound, so 0x24..0x87 is the name's room.</summary>
     public static readonly int GobName = EngineLayout.SeamGobName;
-    public const int GobNameMax = 0x40;   // not-an-offset: the length of the inline char array at Gob+0x24, not a place in it
     /// <summary>`Gob::GetScene` @0x4447b0 `return *(Scene**)(this+0x88)`; read raw by `GuiAurAttachToObject`.</summary>
     public static readonly int GobScene = EngineLayout.GobScene;
     /// <summary>Root `Part*` of LOD 0; `AurEnableShadowing` @0x461ad0 reads it raw. `NewCAurObject` fills
@@ -227,8 +227,6 @@ public static unsafe class SeamShell
     /// ~4 MB held at worst, which buys a detection window of a whole area's worth of destroys.</summary>
     internal const int RingSize = 1024;
 
-    internal static readonly int HeaderSize = (sizeof(SeamHeader) + 15) & ~15;
-
     private static readonly nint[,] _ring = new nint[4, RingSize];
     private static readonly int[] _ringHead = new int[4], _ringTail = new int[4], _ringLive = new int[4];
 
@@ -298,12 +296,12 @@ public static unsafe class SeamShell
             if (FrameNo - Head(b)->RetiredAt < QuarantineFrames) continue;
             _overflow.RemoveAt(i);
             Quarantined--;
-            NativeMemory.AlignedFree((void*)(b - HeaderSize));
+            NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(b));
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static SeamHeader* Head(nint shell) => (SeamHeader*)(shell - HeaderSize);
+    internal static SeamHeader* Head(nint shell) => Headroom<SeamHeader>.Header(shell);
 
     /// <summary>A zeroed shell of <paramref name="kind"/> carrying <paramref name="id"/>, with its primary
     /// vptr set; 0 when the block cannot be had (the caller logs and refuses). The SafePointer list is left
@@ -331,12 +329,12 @@ public static unsafe class SeamShell
         }
         if (shell == 0)
         {
-            void* block = NativeMemory.AlignedAlloc((nuint)(HeaderSize + size), 16);
+            void* block = NativeMemory.AlignedAlloc((nuint)(Headroom<SeamHeader>.Size + size), 16);
             if (block == null) return 0;
-            shell = (nint)block + HeaderSize;
+            shell = Headroom<SeamHeader>.PayloadOf(block);
             Allocated++;
         }
-        NativeMemory.Fill((void*)(shell - HeaderSize), (nuint)(HeaderSize + size), 0);
+        NativeMemory.Fill(Headroom<SeamHeader>.BlockOf(shell), (nuint)(Headroom<SeamHeader>.Size + size), 0);
         SeamHeader* head = Head(shell);
         head->Magic = Magic;
         head->Id = id.Value;
@@ -344,9 +342,9 @@ public static unsafe class SeamShell
         head->State = StateLive;
         *(nint*)shell = Facade.Table(SeamLayout.PrimaryTable(kind));
         if (kind == FacadeKind.String)
-            *(nint*)(shell + SeamLayout.StringGobString) = Facade.Table(SeamTable.CAurString);
+            new StringGob(shell).SeamStringSub = Facade.Table(SeamTable.CAurString);
         else if (kind == FacadeKind.Camera)
-            *(nint*)(shell + SeamLayout.CameraGobSub) = Facade.Table(SeamTable.CameraGob);
+            *(nint*)new CX.Engine.Camera(shell).GobSub = Facade.Table(SeamTable.CameraGob);
         Live++;
         return shell;
     }
@@ -396,7 +394,7 @@ public static unsafe class SeamShell
                 _ringTail[k] = (_ringTail[k] + 1) % RingSize;
                 _ringLive[k]--;
                 Quarantined--;
-                NativeMemory.AlignedFree((void*)(evicted - HeaderSize));
+                NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(evicted));
             }
             else
             {
@@ -467,11 +465,11 @@ public static unsafe class SeamShell
                 _ring[k, _ringTail[k]] = 0;
                 _ringTail[k] = (_ringTail[k] + 1) % RingSize;
                 _ringLive[k]--;
-                if (b != 0) NativeMemory.AlignedFree((void*)(b - HeaderSize));
+                if (b != 0) NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(b));
             }
             _ringHead[k] = 0;
         }
-        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree((void*)(b - HeaderSize));
+        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(b));
         _held = new HeldState();
         Quarantined = 0;
     }

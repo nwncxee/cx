@@ -106,18 +106,19 @@ public sealed unsafe partial class RasterReader
             return IntPtr.Zero;
         }
         int face = dw * dh * px, n = face * faces;
-        byte* pixels = (byte*)_znam((nuint)n + TgaTagTail);
+        byte* pixels = (byte*)_znam((nuint)(n + TgaTagTail));
         // Not the TGA tag (3): an AurReleaseRaster on this buffer logs a refusal instead of calling a stale owner.
-        *(short*)(pixels + n + 4) = 0;
+        MemoryMarshal.Write(new Span<byte>(pixels, n + TgaTagTail).Slice(n + 4), (short)0);
         int l0 = DdsReader.LevelSize(dw, dh, DdsReader.ChannelsOf(f));
         if (faces == 1)
             BcnDecode.Unpack(new ReadOnlySpan<byte>(data, l0), dw, dh, f, new Span<byte>(pixels, n));
         else
         {
             byte[] tmp = new byte[face];   // cold: once per cube DDS load
+            var faceBytes = new ReadOnlySpan<byte>(data, (int)(5 * i.FaceStride + i.Level0));
             for (int k = 0; k < faces; k++)
             {
-                BcnDecode.Unpack(new ReadOnlySpan<byte>(data + k * i.FaceStride, l0), dw, dh, f, tmp);
+                BcnDecode.Unpack(faceBytes.Slice((int)(k * i.FaceStride), l0), dw, dh, f, tmp);
                 CubeStrip.Place(tmp, dw, px, k, new Span<byte>(pixels, n));
             }
         }

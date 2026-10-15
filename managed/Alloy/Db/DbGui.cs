@@ -456,12 +456,11 @@ internal static unsafe class DbGui
     private static void ProbePixels(int o, int p, int recipe, in RenderSnapshot.ViewRec v, in GuiCapture.DbDraw d)
     {
         if (_probeN == 0 || _probeSaid >= MaxProbeLines || v.W <= 0 || v.H <= 0) return;
-        Span<float> b = stackalloc float[6];
-        DrawRecipe.Box(recipe, b);
+        Box b = DrawRecipe.ModelBox(recipe);
         float lo = float.MaxValue, hi = float.MinValue, lo2 = float.MaxValue, hi2 = float.MinValue;
         for (int c = 0; c < 8; c++)
         {
-            var corner = new Vector3(b[(c & 1) != 0 ? 3 : 0], b[(c & 2) != 0 ? 4 : 1], b[(c & 4) != 0 ? 5 : 2]);
+            var corner = new Vector3((c & 1) != 0 ? b.Max.X : b.Min.X, (c & 2) != 0 ? b.Max.Y : b.Min.Y, (c & 4) != 0 ? b.Max.Z : b.Min.Z);
             Vector4 clip = Vector4.Transform(new Vector4(corner, 1f), d.Mvp);
             if (clip.W <= 1e-6f) return;   // behind the view: no screen box to test
             float sx = v.X + (clip.X / clip.W * 0.5f + 0.5f) * v.W;
@@ -481,7 +480,7 @@ internal static unsafe class DbGui
             _probeSaid++;
             nint shell = CX.Alloy.Seam.Facade.ObjectShell(SceneDb.Objects.IdAt(o));
             float shellAlpha = shell == 0 ? -1f
-                : *(float*)(shell + CX.Alloy.Seam.SeamLayout.GobColourAlpha);
+                : new CX.Engine.Gob(shell).Alpha;
             _log?.Info($"DbGui: [probe {_probeX[k]},{_probeY[k]}] scene={SceneDb.ObjScene[o].Index} "
                 + $"\"{SceneDb.SceneName[SceneDb.ObjScene[o].Index]}\" o={o} model="
                 + $"{SceneDb.ObjModel[o]?.Name ?? "-"} p={p} node=\"{NodeName(p)}\" cls={d.Blend} "
@@ -570,7 +569,7 @@ internal static unsafe class DbGui
     private static float ShellAlpha(int o)
     {
         nint shell = SceneDb.ObjFacade[o];
-        return shell == 0 ? 1f : *(float*)(shell + CX.Alloy.Seam.SeamLayout.GobColourAlpha);
+        return shell == 0 ? 1f : new CX.Engine.Gob(shell).Alpha;
     }
 
     /// <summary>Where the FACADE says this object is -- the words <c>Gob::GetPosition</c> answers and the ones
@@ -618,7 +617,7 @@ internal static unsafe class DbGui
     private static nint ShellBeh(int o)
     {
         nint shell = SceneDb.ObjFacade[o];
-        return shell == 0 ? 0 : *(nint*)(shell + CX.Alloy.Seam.SeamLayout.GobBehavior);
+        return shell == 0 ? 0 : new CX.Engine.Gob(shell).Attach.Ptr;
     }
 
     /// <summary>An attached object whose anchor part did not resolve: name the parent's nodes once per

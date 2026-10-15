@@ -132,7 +132,7 @@ public static unsafe partial class DbAnim
     /// <summary>Part <paramref name="part"/>'s 64-bone palette, written into <paramref name="dst"/>
     /// (<c>64 * 16</c> floats, column-major affine per bone -- see <c>Db/DbPose.LAYOUT.md</c>). False = the
     /// part is not skinned or its bind pose is missing, and it must not be drawn skinned.</summary>
-    public static bool SkinPalette(int part, float* dst) => SkinSolve(part, dst);
+    internal static bool SkinPalette(int part, BonePalette* dst) => SkinSolve(part, dst);
 
     /// <summary>Part <paramref name="part"/>'s solved dangly positions: <c>3 * count</c> model-space floats
     /// the feed uploads in place of the mesh's rest positions. Null = this part has no dangly state.</summary>

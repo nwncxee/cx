@@ -9,6 +9,58 @@ at a value, and it can set **component properties** no knob exposes (hide the go
 button, route an action to the server). The player's own values are never overwritten: they stay underneath,
 `cx.cfg` keeps only them, and they come back the moment the policy lets go.
 
+## Settings in the window JSON (stock NWScript)
+
+A server that only has stock NWScript drives every primitive below from the NUI window JSON it already builds. Add a `"cx"` member
+to the window object or to an element, with `JsonObjectSet`, before `NuiCreate`. A stock client ignores the member and shows the
+window unchanged. CX turns each member into the policy line of the same name in the rest of this document, so the keys, values
+and limits there apply as written. Nothing is sent at login: the settings arrive with the window each time it opens, and are
+released when it closes.
+
+| where | member | becomes |
+| --- | --- | --- |
+| an image or draw list image named `@model:<key>` | `"model": {"target": "player", "drag": 1, "yaw": 270}` | `model.<key>.<setting>` for each setting ([Model views](#model-views)) |
+| any element with an `id` | `"card": [ ... ]` (a card object or an array of them) | `card.<id>` ([Cards](#cards)) |
+| any element with an `id` | `"pick": "<image>"` | `held.pick.<id>` ([Optimistic pick](#optimistic-pick)) |
+| the window object | `"background": 0`, `"fadein": 150`, `"fadeout"`, `"opacity"` | `nui.<window id>.<member>` ([NUI window render keys](#nui-window-render-keys)) |
+| the window object | `"cardstyle": { ... }` | `cardstyle` ([Style](#style)) |
+| the window object | `"held": {"size": 40, ...}` | `held.<member>` ([`held.image`](#heldimage-an-image-under-the-pointer)) |
+
+- A model view takes its key from the image's `@model:<key>` name, so the image must say it. A settings list of numbers is written
+  as a JSON array (`"rot": [0, 90, 0]`), a switch as `true` or `false`.
+- A card needs the element's `id`. Cards in a list share one `id`, as in [Cards](#cards).
+- Use letters, digits and underscores in the window id, the id you give `NuiCreate`. CX reads it as written.
+- `"background": 0` hides the title bar and frame, and the window still drags by its hidden title bar. Stock NUI cannot do that.
+
+### Bound values
+
+A setting may be NUI's own bind form, `{"bind": "doll_yaw"}`. It takes the value every time NWScript calls `NuiSetBind` on that
+name, and releases the key when the value is `null`. No element has to use the bind: CX registers the name with the window, so the
+server gets no `unknown-bind` event.
+
+A stock client sends the server an `unknown-bind` event each time `NuiSetBind` sets a name only a `"cx"` member uses. Ignore it.
+
+CX reads the server's updates only. A value the player changes in the window, such as a slider on the same bind, does not move the
+setting.
+
+### Events from CX
+
+CX reports to the server as a NUI event with the element id `cx`, which reaches the module's NUI event script when the window has one.
+
+| event type | payload |
+| --- | --- |
+| `refused` | a JSON array `[kind, key, value, reason]`, the same row `/policy` lists under `refused:` |
+
+`NuiGetEventType()` is `refused`, `NuiGetEventElement()` is `cx` and `NuiGetEventPayload()` is the array. A member CX cannot read
+is refused when the window opens. A setting it reads later, such as a `zoom` that is not two numbers, is refused when the model view loads.
+
+### Limits
+
+- CX reads a window's settings when it opens. A group sent later with `NuiSetGroupLayout` keeps them, and CX does not read `"cx"` members inside it.
+- A window's keys are released 3 s after it stops updating.
+- `PolicySet` lines keep working. A key both set wins from whichever came last.
+- A player who turns off `nui.cxjson` (Advanced) gets the stock window.
+
 ## Wire
 
 One message family, the existing CX device major (CLAUDE.md: reuse an opcode; a stock client discards an unknown
@@ -30,9 +82,9 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | property | value |
 |---|---|
 | `cx_version` | `major * 1000000 + minor * 1000 + patch`; `0.7.0` is `7000`, `0` for an unversioned build |
-| `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon |
+| `cx_cap_itemicon` | `1`: `@item:<hex>` images draw the item's own icon. The server sends a backpack item to the client only while the player's inventory panel is open, so draw a backpack item with `@look:` at any other time |
 | `cx_cap_lookicon` | `1`: `@look:<hex>` images draw a described item (base item, parts, colours) |
-| `cx_cap_card` | `8`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour and `look` for the game's own GUI art. Older values are listed below |
+| `cx_cap_card` | `9`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour, `look` for the game's own GUI art, and the glow, diagonal and pulse shape fields. Older values are listed below |
 | `cx_cap_palette` | `1`: the client reads `cxpal_<id>.txt` palette files from your content and offers them as `ui.palette` choices (see [Palettes](#palettes)) |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
 | `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
@@ -51,6 +103,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 `cx_cap_card`:
 
+- `8` drew a glow that faded in a straight line over rings 1 px wide, a diagonal gradient whose middle corners were an even mix of its two colours, and a pulse on a sine wave: no `glowfalloff`, `glowstep`, `diagmix` or `pulseshape`. It listed none of its ceilings: it made an item for every distinct `@look:` and baked a face for every text size, without limit, and it cut an icon or image resref over 16 characters to 16 without saying so.
 - `7` had no `look` field: a card was always drawn in flat colour, never in the game's own GUI art, whatever the player's `ui.look`.
 - `6` took no role identifier (`@accent`, `@panelbg/f2`) where a colour goes, and the colours it left alone were fixed: a card drew
   the same greys whatever look and palette the player had chosen.
@@ -113,12 +166,12 @@ clamped, not refused; a refusal is a value the client could not read at all, so 
 ### `held.image`: an image under the pointer
 
 `held.image=<image>` shows that image centred on the pointer, above every NUI window, and swaps the engine cursor
-to `held.cursor` (the `Use` hand unless the server names another) while it is up. Send it when the player picks something up in a NUI
+to `held.cursor` (the `Use` cursor unless the server names another) while it is up. Send it when the player picks something up in a NUI
 window, and `held.image=` when they place it. The image never takes a click: the press that places it reaches the
 NUI window underneath.
 
 `<image>` is a texture resref, `@item:<hex>`, `@look:<hex>` or `@model:<key>`, spelled as in a NUI image. Any other name (a malformed
-resref, a `@model:` with no key) holds the cursor and draws nothing. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
+resref, a `@model:` with no key, a resref over 16 characters) holds the cursor and draws nothing, and `/policy` lists the value under `held.image`. The image is `held.size` px (32 unless set) for each inventory cell its art fills, at the GUI scale.
 A `@model:<key>` is the model view of that key (see [Model views](#model-views)), `held.size` px on its longer side and in the view's own proportions.
 It counts toward the 8 live views, and its doll is built when the hold starts and taken down 1.5 s after it ends.
 
@@ -140,7 +193,7 @@ A server a long way off answers a pick late. Declare what a pick shows and CX sh
 | `held.pick.<prefix>*=<image>` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
 | `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
 | `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
-| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`) |
+| `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`). The stock `Use` art is the same as the default arrow, so name another id, such as 7 (`Attack`), for a change the player sees. The engine takes ids 0 to 293 and ignores a larger one, so a larger value is listed in `/policy` and the default shows |
 | `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
 | `held.opacity=<0-1>` | how opaque a confirmed hold is, clamped to 0-1, default 0.9 |
 | `held.pickopacity=<0-1>` | how opaque a pick still waiting for the server is, clamped to 0-1, default 0.55 |
@@ -206,8 +259,6 @@ A card is found by the element the pointer is over. CX tries these keys in order
   for the rest.
 - `<hex>` of an `@item:` key is the item's `ObjectToString`, lowercase, with no leading zeros.
 - A `@look:` key matches on its first 96 bytes, which is as much of the image name as CX keeps.
-- Image keys work on Linux only, because only the Linux client reads the image name an element draws. The Windows client
-  logs this once at start. On Windows key every card by `id`.
 - Keys compare without regard to case, so ids that differ only by case share a card. A key is at most 96 bytes, and
   a client holds at most 256.
 
@@ -323,6 +374,8 @@ lines `ui.look=native` and `ui.palette=ember`.
 | `border2`, `border2w`, `border2inset` | a second frame inside the first (a double border): colour, thickness and inset | colour, 0-256, 0-256 | none, 1, 3 |
 | `corners`, `cornerlen`, `cornerw` | bracket marks in the four corners: colour, arm length and thickness | colour, 0-256 | none, 12, 2 |
 | `glow`, `glowspread`, `glowalpha` | a soft light outside the card: its colour, how many px it spreads, and the share of the colour's opacity the nearest ring has (each ring out is fainter) | colour, 0-64, 0-1 | none, 8, 0.5 |
+| `glowfalloff`, `glowstep` | how the rings fade: the exponent of the fade from the nearest ring to the farthest (1 is a straight line, 2 drops faster at first, below 1 holds the light longer), and the width of each ring in screen px (not scaled with the UI) | 0.1-8, 1-16 | 1, 1 |
+| `diagmix` | with `dir` `d`, how much of the `to` colour the two middle corners carry: 0 is `from`, 1 is `to`, 0.5 an even mix | 0-1 | 0.5 |
 | `shadow`, `shadowdx`, `shadowdy` | a drop shadow under every glyph | colour, -16..16 | none, 1, 1 |
 | `divider` | the `divider`'s colour | colour | `#FFFFFF` at 19% |
 | `footerband` | the `footer`'s band | colour | `#000000` at 40% |
@@ -330,6 +383,7 @@ lines `ui.look=native` and `ui.palette=ember`.
 | `tabcolor`, `tabtext` | the tab's background, and its text (the default text colour when absent) | colour | `@masterbg/b0` |
 | `dimcolor`, `dimalpha` | what a `dim` block with no colour of its own draws in, and its opacity | colour (RGB used), 0-1 | `#FFFFFF`, 0.6 |
 | `pulsemin`, `pulseperiod` | a `pulse` block's faintest opacity, and ms for one full fade out and back | 0-1, 100-60000 | 0.35, 1200 |
+| `pulseshape` | the wave the fade follows: `sine`, `triangle` (straight lines up and down) or `square` (full for the first half of the period, then the faintest) | word | `sine` |
 
 The blocks take some of the same fields to override the card for one block: `after` (the space after it), `pad` (a `section` or
 `footer`), `margin` and `thick` (a `divider`), `spacing` (an `icons` row's gap, or a `status` icon's), `inset`, `framefill` and
@@ -383,7 +437,7 @@ when the client does not know the item.
 
 ### Images and icons
 
-An icon or image `src` is a texture resref (up to 16 characters), `@item:<hex>`, `@look:<hex>` or `@model:<key>`. `@item:` draws that item's
+An icon or image `src` is a texture resref (up to 16 characters; a longer one refuses the card, and `/policy` lists it), `@item:<hex>`, `@look:<hex>` or `@model:<key>`. `@item:` draws that item's
 inventory icon in its own colours. `@look:` draws the icon of an item described by its appearance, in the form a NUI
 `@look:` image takes. CX makes one throwaway item for each distinct look the declared cards name, when the declaration
 arrives, and ends it when no declared card names the look any more or the card is released. A name that does not resolve
@@ -408,7 +462,9 @@ These refuse the line (or, for keys held, the new key):
 | runs (styled pieces) per text | 48 |
 | icons per `icons` block | 16 |
 | images per card | 4 |
-| icon name or `src` | 120 characters |
+| icon name or `src` | 120 characters; a texture resref (no `@` prefix) 16 |
+| distinct `@look:` images across the cards held | 64 (a card that would take the cards held past it is refused) |
+| distinct text sizes across the cards held | 24 (a card that would take the cards held past it is refused, and a restyle that does drops the card; a size no held card uses is released) |
 
 These are clamped into their range and the card still draws:
 
@@ -443,7 +499,7 @@ Alloy off.
 | key | meaning |
 |---|---|
 | `nui.<id>.opacity=0.6` | the whole window, 0-1 |
-| `nui.<id>.background=0` | the engine's own title bar, frame and body fill, 0-1. At 0 only the widgets and the server's draw list draw, and the window still drags by its hidden title bar. A `transparent` window keeps its title bar and frame, so they fade too. A window with no title, close or collapse button, `border=false` and `transparent` has nothing to fade, and a server rect the size of the window stays |
+| `nui.<id>.background=0` | the engine's own title bar, frame and body fill, 0-1. At 0 only the widgets and the server's draw list draw, the window still drags by its hidden title bar, and a press where its hidden close button sits closes it. A `transparent` window keeps its title bar and frame, so they fade too. A window with no title, close or collapse button, `border=false` and `transparent` has nothing to fade, and a server rect the size of the window stays |
 | `nui.<id>.fadein=150` | ms from invisible to the window's opacity, from the frame it opens |
 | `nui.<id>.fadeout=150` | ms the window takes to fade away after it closes |
 
@@ -546,7 +602,8 @@ colours (its per-part colours too, from an `@look:`), a cloak its model and colo
 helmet. An `@look:` the client cannot build is left out, never swapped for the engine's stand-in model, and logged once: a base item
 the client's `baseitems.2da` lacks, a model file the base item's model type loads and the game does not have (`<class>_<nnn>`, or `<class>_b_<nnn>`, `_m_` and `_t_` for a
 composite weapon), a cloak number past the end of `cloakmodel.2da`, or an item visual effect past the end of its table. Armour part numbers are not
-checked by CX: the engine's body builder looks up each part's model file itself. A helmet number with no model leaves the doll as it was.
+checked by CX: the engine's body builder turns each part number into a model file name, skips a part whose file is missing
+(the body shows a gap there) and reads its tables with their row counts checked, so a part number past what the game has costs a gap and nothing else. A helmet number with no model leaves the doll as it was.
 
 **Visual effects.** The doll copies the target's looks, not its effects, so it wears none unless `vfx` lists them.
 With `vfx=all` the doll wears what its target shows, read from the target's effect list every frame, so the server need not send the line again when
@@ -561,8 +618,8 @@ CX cannot tell a permanent effect from a temporary one, because both reach the c
 and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
 a fire ring, writes its square into the image's alpha as well as its light. Alloy draws a doll that has such a draw twice,
 over black and over white, and reads each pixel's coverage from the difference, so on a transparent or translucent `bg` the
-fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll in one pass: give a
-doll with effects an opaque `bg` there. The doll's effects play their sounds where the doll stands, which is not where the player is.
+fire covers what it lights and the window shows through the rest. With Alloy off the engine draws the doll itself, and a view
+that names `vfx` or `wear` on a transparent or translucent `bg` gets the same two passes, so the result is the same. The doll's effects play their sounds where the doll stands, which is not where the player is.
 
 **Lighting.** With Alloy on, a server light shades the doll as texture * (`lightambient` + `lightcolor` * the larger of 0 and the surface
 normal dotted with `lightdir`) + what the model glows on its own, in linear light. Every view has its own light. With Alloy off the engine's

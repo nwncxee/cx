@@ -26,7 +26,6 @@ internal static unsafe partial class GrassField
     private const int MaxFaces = 262_144;
     /// <summary>Floats per resident face: <c>vec4 (a, first blade)</c>, <c>vec4 (b, seed)</c>, <c>vec4 (c, blades)</c>,
     /// the integers as their float bit patterns.</summary>
-    private const int FaceFloats = 12;
     /// <summary>Blades one patch may carry. A patch over it has every face's count scaled down (and the period
     /// line says so); under it, a big patch is split across up to <see cref="MaxSplit"/> workgroups.</summary>
     internal const int MaxPatchBlades = 1 << 18;
@@ -122,7 +121,7 @@ internal static unsafe partial class GrassField
     private static int _groundDiag = 3;
     private static int _prepGen = -1, _seen;
     /// <summary>CPU-side face stream. Allocated once, cold: the draw path never allocates.</summary>
-    private static float[]? _faces;
+    private static GrassFace[]? _faces;
     private static int _uploaded;
 
     /// <summary>The frame's visible patch table, two uvec4 each (<c>cx_gblade_c.glsl</c>'s <c>uPatch</c>).</summary>
@@ -327,9 +326,9 @@ internal static unsafe partial class GrassField
     private static int Bake(IntPtr list)
     {
         var tl = new CAurTriangleList(list);
-        float* verts = (float*)tl.Verts;
+        GrassTriRec* verts = (GrassTriRec*)tl.Verts;
         int* blades = (int*)tl.Blades;
-        int faces = tl.VertFloats / 9;
+        int faces = tl.VertFloats / (sizeof(GrassTriRec) / sizeof(float));
         // The list's own two arrays have to agree before either is read: the blade counts are indexed by face.
         if (verts != null && blades != null && tl.BladeCount < faces) { verts = null; }
         return BakeFaces(list, verts, blades, faces, tl.Mat);
@@ -338,7 +337,7 @@ internal static unsafe partial class GrassField
     /// <summary>Intern and scatter one patch from world-space faces and their per-face blade counts, whatever
     /// produced them -- an engine <c>CAurTriangleList</c> or the scene database (<see cref="BakeDb"/>).
     /// <paramref name="key"/> is the patch's identity in the intern table.</summary>
-    private static int BakeFaces(IntPtr key, float* verts, int* blades, int faces, int mat)
+    private static int BakeFaces(IntPtr key, GrassTriRec* verts, int* blades, int faces, int mat)
     {
         // The one refusal that CANNOT be interned: there is no slot to intern it in. Counted instead, and
         // loud in the period line -- past this point every list retries, which is the state to see.
@@ -362,8 +361,8 @@ internal static unsafe partial class GrassField
         if (_dumped < DumpFaces)
             for (int f = 0; f < faces && _dumped < DumpFaces; f++)
             {
-                float* v = verts + f * 9;
-                Vector3 a0 = new(v[0], v[1], v[2]), b0 = new(v[3], v[4], v[5]), c0 = new(v[6], v[7], v[8]);
+                ref GrassTriRec v = ref verts[f];
+                Vector3 a0 = v.A, b0 = v.B, c0 = v.C;
                 _dumped++;
                 _log?.Info($"GrassField: [face] mat={mat} density={info.Density:F3} height={height:F2} "
                            + $"area={Vector3.Cross(b0 - a0, c0 - a0).Length() * 0.5f:F3} blades={blades[f]} "
@@ -376,15 +375,12 @@ internal static unsafe partial class GrassField
             int n = (int)(BladesForFace(blades[f], per) * thin);
             if (n <= 0) continue;
             if (_faceCount >= MaxFaces) { _capped = true; break; }
-            float* v = verts + f * 9;
-            Vector3 a = new(v[0], v[1], v[2]), b = new(v[3], v[4], v[5]), c = new(v[6], v[7], v[8]);
+            ref GrassTriRec v = ref verts[f];
+            Vector3 a = v.A, b = v.B, c = v.C;
             uint seed = Hash(BitConverter.SingleToUInt32Bits(a.X)
                            ^ (BitConverter.SingleToUInt32Bits(b.Y) * 2654435761u)
                            ^ (BitConverter.SingleToUInt32Bits(c.Z) * 40503u));
-            int o = _faceCount * FaceFloats;
-            _faces[o] = a.X; _faces[o + 1] = a.Y; _faces[o + 2] = a.Z; _faces[o + 3] = BitConverter.Int32BitsToSingle(total);
-            _faces[o + 4] = b.X; _faces[o + 5] = b.Y; _faces[o + 6] = b.Z; _faces[o + 7] = BitConverter.UInt32BitsToSingle(seed);
-            _faces[o + 8] = c.X; _faces[o + 9] = c.Y; _faces[o + 10] = c.Z; _faces[o + 11] = BitConverter.Int32BitsToSingle(n);
+            _faces[_faceCount] = new GrassFace { A = a, FirstBlade = total, B = b, Seed = seed, C = c, BladeCount = n };
             _faceCount++;
             total += n;
             min = Vector3.Min(min, Vector3.Min(a, Vector3.Min(b, c)));
@@ -415,15 +411,14 @@ internal static unsafe partial class GrassField
     private static void Upload()
     {
         if (_faces == null || _faceCount <= _uploaded) return;
-        int floats = (_faceCount - _uploaded) * FaceFloats;
+        int bytes = (_faceCount - _uploaded) * sizeof(GrassFace);
         // The first write after a Forget (area load, /grass density) starts at byte 0, over a range the GPU
         // may still be reading from last frame -- orphan it rather than make the driver serialise, at exactly
         // the two moments this class exists to keep smooth. Every later write is an append past the read range.
         if (_uploaded == 0)
-            Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * FaceFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        fixed (float* src = &_faces[_uploaded * FaceFloats])
-            Gl.NamedBufferSubData(_gl.FaceBuf, (IntPtr)(_uploaded * FaceFloats * sizeof(float)),
-                                  (IntPtr)(floats * sizeof(float)), src);
+            Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * sizeof(GrassFace)), null, Gl.DYNAMIC_DRAW);
+        fixed (GrassFace* src = _faces.AsSpan(_uploaded))
+            Gl.NamedBufferSubData(_gl.FaceBuf, (IntPtr)(_uploaded * sizeof(GrassFace)), (IntPtr)bytes, src);
         _uploaded = _faceCount;
     }
 
@@ -449,8 +444,8 @@ internal static unsafe partial class GrassField
     /// few thousand entries; the blade count never reaches it.</summary>
     private static void Issue(int seen, Matrix4x4* vp, int* viewport, float near, float far, bool lightingOn)
     {
-        float* planes = stackalloc float[24];
-        Frustum(vp, planes);
+        Span<Vector4> planes = stackalloc Vector4[6];
+        Frustum(in *vp, planes);
         Vector3 eye = AlloyRenderer.EyePos;
         float farDist = FarDist();
         // #355: the dither ramp is the CUT-OFF's edge, not the whole range -- the ladder thins the field by
@@ -658,7 +653,7 @@ internal static unsafe partial class GrassField
     /// <summary>Upload the frame's tables, reset the commands, and run the scatter: one workgroup per visible
     /// patch (times <paramref name="split"/> for the biggest), then the clamp. The barrier covers every way its
     /// output is read: as commands, as instance attributes, and by the stat copy.</summary>
-    private static void Scatter(int n, int split, float* planes, Vector3* eye, float fadeFrom, float farDist, int matN, float* pw)
+    private static void Scatter(int n, int split, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, int matN, float* pw)
     {
         fixed (uint* t = _visTable)
         {
@@ -678,7 +673,7 @@ internal static unsafe partial class GrassField
         Gl.NamedBufferSubData(_gl.CmdBuf, IntPtr.Zero, (IntPtr)(Cmds * 4 * sizeof(uint)), cmd);
 
         Gl.UseProgram(_gl.ProgScatter);
-        Gl.Uniform4fv(_gl.LocS.Planes, 6, planes);
+        fixed (Vector4* pl = planes) Gl.Uniform4fv(_gl.LocS.Planes, 6, (float*)pl);
         Gl.Uniform3fv(_gl.LocS.Eye, 1, (float*)eye);
         Gl.Uniform4f(_gl.LocS.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
         Gl.Uniform2f(_gl.LocS.Fade, fadeFrom, farDist);
@@ -858,24 +853,28 @@ internal static unsafe partial class GrassField
 
     /// <summary>The six frustum planes of a row-vector <c>clip = v * VP</c> matrix (the convention every owned
     /// stage uses): each plane is a COLUMN of VP added to or subtracted from the w column.</summary>
-    internal static void Frustum(Matrix4x4* vp, float* planes)
+    internal static void Frustum(in Matrix4x4 m, Span<Vector4> planes)
     {
-        float* m = (float*)vp;   // row-major: m[r * 4 + c]
+        Vector4 w = new(m.M14, m.M24, m.M34, m.M44);
         for (int i = 0; i < 6; i++)
         {
-            int c = i >> 1;
-            float s = (i & 1) == 0 ? 1f : -1f;
-            for (int r = 0; r < 4; r++) planes[i * 4 + r] = m[r * 4 + 3] + s * m[r * 4 + c];
+            Vector4 col = (i >> 1) switch
+            {
+                0 => new Vector4(m.M11, m.M21, m.M31, m.M41),
+                1 => new Vector4(m.M12, m.M22, m.M32, m.M42),
+                _ => new Vector4(m.M13, m.M23, m.M33, m.M43),
+            };
+            planes[i] = (i & 1) == 0 ? w + col : w - col;
         }
     }
 
     /// <summary>Is the AABB on the inside of every plane? The "positive vertex" test: only the corner furthest
     /// along each plane's normal can save the box, so one dot product per plane decides it.</summary>
-    internal static bool Visible(Vector3 min, Vector3 max, float* planes)
+    internal static bool Visible(Vector3 min, Vector3 max, ReadOnlySpan<Vector4> planes)
     {
         for (int i = 0; i < 6; i++)
         {
-            float nx = planes[i * 4], ny = planes[i * 4 + 1], nz = planes[i * 4 + 2], d = planes[i * 4 + 3];
+            float nx = planes[i].X, ny = planes[i].Y, nz = planes[i].Z, d = planes[i].W;
             float px = nx >= 0f ? max.X : min.X;
             float py = ny >= 0f ? max.Y : min.Y;
             float pz = nz >= 0f ? max.Z : min.Z;

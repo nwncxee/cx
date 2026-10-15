@@ -154,14 +154,14 @@ internal static unsafe class SceneFns
         SceneDb.CamFacade[id.Index] = shell;
         string unique = DbScene.UniqueName(n);
         SceneDb.CamName[id.Index] = unique;
-        Facade.SetName(shell + SeamLayout.CameraGobSub, unique);
+        Facade.SetName(new CX.Engine.Camera(shell).GobSub, unique);
         // The object row's shell is the camera block's +8 INTERIOR -- the literal pointer the engine passes
         // as the camera's CAurObject* (GuiAttachViewport @0x68bda0 writes (CAurObject*)(camera + 8)), and the
         // address Facade.GobOf already maps back to this row. Without the forward half, every reader of
         // ObjFacade saw a camera as shell-less: BehaviorSeam.Attached then wrote no attach word, so the
         // engine's own CAurBehaviorSubwindow::Control failed its "am I still the owner's behaviour" test and
         // returned before Camera::SetViewPort -- every GUI viewport camera kept an empty rect.
-        if (SceneDb.Objects.Valid(obj)) SceneDb.ObjFacade[obj.Index] = shell + SeamLayout.CameraGobSub;
+        if (SceneDb.Objects.Valid(obj)) SceneDb.ObjFacade[obj.Index] = new CX.Engine.Camera(shell).GobSub;
         _newCamera++;
         return shell;
     }

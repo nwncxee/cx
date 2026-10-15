@@ -214,8 +214,8 @@ internal static unsafe class TintTerms
                 Bind();
                 return;
             }
-            fixed (uint* p = s.Words)
-                Gl.NamedBufferSubData(s.Ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p + off);
+            fixed (uint* p = s.Words.AsSpan(off))
+                Gl.NamedBufferSubData(s.Ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p);
             s.Uploads++;
             s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
         }

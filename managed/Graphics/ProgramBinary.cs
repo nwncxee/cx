@@ -52,7 +52,7 @@ internal static unsafe class ProgramBinary
         catch (Exception e) { log?.Info($"{what}: cached program binary unreadable ({e.Message}) -- compiling"); return 0; }
         if (blob.Length <= 4) { Drop(path); return 0; }
         uint prog = Gl.CreateProgram();
-        fixed (byte* p = blob) Gl.ProgramBinaryLoad(prog, BitConverter.ToUInt32(blob, 0), p + 4, blob.Length - 4);
+        fixed (byte* p = blob.AsSpan(4)) Gl.ProgramBinaryLoad(prog, BitConverter.ToUInt32(blob, 0), p, blob.Length - 4);
         int ok; Gl.GetProgramiv(prog, Gl.LINK_STATUS, &ok);
         if (ok == 0)
         {
@@ -76,7 +76,7 @@ internal static unsafe class ProgramBinary
         if (len <= 0) { log?.Info($"{what}: driver returned no program binary -- the next launch compiles it again"); return false; }
         byte[] blob = new byte[len + 4];
         int got; uint fmt;
-        fixed (byte* p = blob) Gl.GetProgramBinary(prog, len, &got, &fmt, p + 4);
+        fixed (byte* p = blob.AsSpan(4)) Gl.GetProgramBinary(prog, len, &got, &fmt, p);
         if (got <= 0) { log?.Info($"{what}: driver returned no program binary -- the next launch compiles it again"); return false; }
         BitConverter.TryWriteBytes(blob.AsSpan(0, 4), fmt);
         try

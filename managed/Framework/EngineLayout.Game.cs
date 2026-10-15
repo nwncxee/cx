@@ -577,6 +577,22 @@ public static unsafe partial class EngineLayout
     public static readonly int NuiIdNodeKey = Field<byte>("Nui::JSON::IdNode", "key");
     /// <inheritdoc cref="NuiIdNodeKey"/>
     public static readonly int NuiIdNodeElement = Field<IntPtr>("Nui::JSON::IdNode", "element");
+    /// <summary>The window's numeric id (what <c>NuiCreate</c> returns as the token).</summary>
+    public static readonly int NuiWinId = Field<int>("Nui::JSON::JsonWindow", "windowId");
+    /// <summary>The window's string id as the server named it: an embedded std::string (its address).</summary>
+    public static readonly int NuiWinName = Field<byte>("Nui::JSON::JsonWindow", "windowName");
+    /// <summary>The window JSON the server sent: an embedded nlohmann value (its address).</summary>
+    public static readonly int NuiWinJson = Field<byte>("Nui::JSON::JsonWindow", "windowJson");
+    /// <summary>The deque of server bind updates waiting for the next <c>Update</c> (its address; libstdc++ and MSVC shape it differently).</summary>
+    public static readonly int NuiWinIngest = Field<byte>("Nui::JSON::JsonWindow", "bindIngest");
+    /// <summary>A server bind update's bind name: an embedded std::string (its address).</summary>
+    public static readonly int NuiBindUpdateName = Field<byte>("Nui::JSON::BindUpdate", "name");
+    /// <summary>A server bind update's new value: an embedded nlohmann value (its address).</summary>
+    public static readonly int NuiBindUpdateJson = Field<byte>("Nui::JSON::BindUpdate", "json");
+    /// <summary>Bytes of one <c>BindUpdate</c>; a libstdc++ deque node holds eight.</summary>
+    public static readonly int NuiBindUpdateStride = Field("Nui::JSON::BindUpdate", "stride");
+    /// <summary>Bytes of a <c>DynamicBinding</c>, the record <c>JsonWindow::Bind</c> fills and its destructor frees.</summary>
+    public static readonly int NuiDynamicBindingSize = Field("Nui::JSON::DynamicBinding", "sizeof");
 
     // ---- lights ----
     // The light priority terms. MEASURED on both binaries with objdump: LightManager is name-exported on

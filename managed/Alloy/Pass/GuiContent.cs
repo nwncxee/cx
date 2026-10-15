@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using System.Text;
 using CX.Engine;
@@ -109,14 +110,14 @@ internal static unsafe class GuiContent
     /// <c>screenParams</c> is the view's size (<c>GLRender::m_viewport</c> w, h), as the engine feeds it. Hot.</summary>
     internal static void Feed(Prog p, int di, int viewW, int viewH, bool gamma)
     {
-        fixed (float* r = &GuiCapture.Records[di * GuiCapture.RecFloats])
+        ref GuiRec rec = ref GuiCapture.Records[di];
+        fixed (Matrix4x4* r = &rec.Mvp, mv = &rec.Mv)
+        fixed (float* g = &rec.Colour.X)
         {
-            Gl.UniformMatrix4fv(p.Mvp, 1, 0, r);
-            Gl.UniformMatrix4fv(p.Mv, 1, 0, r + 16);
-            float* t = stackalloc float[16];
-            TextureMatrix(r + 32, t);
-            Gl.UniformMatrix4fv(p.Texture, 1, 0, t);
-            float* g = r + 36;
+            Gl.UniformMatrix4fv(p.Mvp, 1, 0, (float*)r);
+            Gl.UniformMatrix4fv(p.Mv, 1, 0, (float*)mv);
+            Matrix4x4 t = TextureMatrix(rec.TexRot);
+            Gl.UniformMatrix4fv(p.Texture, 1, 0, (float*)&t);
             Gl.Uniform4f(p.Color, Lin(g[0], gamma), Lin(g[1], gamma), Lin(g[2], gamma), g[3]);
         }
         Gl.Uniform2f(p.Screen, viewW, viewH);
@@ -125,11 +126,11 @@ internal static unsafe class GuiContent
 
     /// <summary>The record's texture 2x2 <c>(a, b, c, d)</c> -- <c>u' = a*u + b*v</c>, <c>v' = c*u + d*v</c> -- as
     /// the column-major <c>m_texture</c> whose <c>mat2</c> and <c>vec4(u, v, 0, 1)</c> products give the same.</summary>
-    internal static void TextureMatrix(float* tm, float* m)
-    {
-        for (int i = 0; i < 16; i++) m[i] = 0f;
-        m[0] = tm[0]; m[1] = tm[2]; m[4] = tm[1]; m[5] = tm[3]; m[10] = 1f; m[15] = 1f;
-    }
+    internal static Matrix4x4 TextureMatrix(Vector4 tm)
+        => new(tm.X, tm.Z, 0f, 0f,
+               tm.Y, tm.W, 0f, 0f,
+               0f, 0f, 1f, 0f,
+               0f, 0f, 0f, 1f);
 
     /// <summary>The engine's <c>GetColorSpaceFromSRGB</c> on a uniform colour while gamma correction is on.</summary>
     private static float Lin(float c, bool gamma) => gamma ? MathF.Sign(c) * MathF.Pow(MathF.Abs(c), 2.2f) : c;
@@ -151,11 +152,9 @@ internal static unsafe class GuiContent
         check.Expect(vsp.Contains("#define varying out\n", StringComparison.Ordinal), "a vertex stage writes its varyings out");
         check.Expect(!vsp.Contains("compat_glFragColor", StringComparison.Ordinal), "...and declares no fragment output");
 
-        float* tm = stackalloc float[4] { 2f, 3f, 5f, 7f };
-        float* m = stackalloc float[16];
-        TextureMatrix(tm, m);
+        Matrix4x4 m = TextureMatrix(new Vector4(2f, 3f, 5f, 7f));
         float u = 11f, v = 13f;
-        float ou = m[0] * u + m[4] * v + m[12], ov = m[1] * u + m[5] * v + m[13];
+        float ou = m.M11 * u + m.M21 * v + m.M41, ov = m.M12 * u + m.M22 * v + m.M42;
         check.Expect(ou == 61f && ov == 146f, "m_texture * (11, 13, 0, 1) is (2*11 + 3*13, 5*11 + 7*13)");
 
         static Db.MtrDef Mtr(string text) => Db.MtrDef.Parse(Encoding.ASCII.GetBytes(text), "selfcheck");

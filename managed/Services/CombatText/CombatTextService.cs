@@ -48,6 +48,9 @@ public sealed unsafe class CombatTextService : IExtenderService
     private static float PeakPxRaw()
         => MathF.Round(CombatTextKnobs.Text.Px * FloatyAnim.PopFrom * CombatTextKnobs.BannerSize.V);
 
+    /// <summary>The owner name the peak face is held under.</summary>
+    private const string FaceOwner = "combattext";
+
     /// <summary>COLD: (re)bake the peak face, dropping the previous one so the sheet does not accumulate every
     /// ceiling ever tried. Runs at arm time, on a <c>combattext.bannersize</c> or text-row set, and after a UI font change.</summary>
     internal static void RequestPeakFace()
@@ -56,9 +59,9 @@ public sealed unsafe class CombatTextService : IExtenderService
         float px = PeakPx();
         string face = CombatTextKnobs.Text.Typeface.V;
         if (px == _peakPx && face == _peakFace && TextRig.BakedFace(face, px) != null) return;
-        if (_peakPx != 0f && (_peakPx != px || face != _peakFace)) TextRig.ReleaseFace(_peakFace, _peakPx);
+        if (_peakPx != 0f && (_peakPx != px || face != _peakFace)) TextRig.ReleaseFace(_peakFace, _peakPx, FaceOwner);
         _peakFace = face;
-        _peakPx = TextRig.Face(face, px) != null ? px : 0f;
+        _peakPx = TextRig.Face(face, px, FaceOwner) != null ? px : 0f;
         _log?.Info($"CombatTextService: peak face {(_peakPx > 0f ? $"{face} @ {_peakPx}px" : "unavailable, drawing from the UI face")}");
     }
 

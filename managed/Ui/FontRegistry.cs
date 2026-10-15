@@ -75,7 +75,7 @@ public static class FontRegistry
             yield break;
         }
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string data = Environment.GetEnvironmentVariable("XDG_DATA_HOME") is { Length: > 0 } x ? x : Path.Combine(home, ".local", "share");
+        string data = HostEnv.DataHome;
         yield return "/usr/share/fonts";
         yield return "/usr/local/share/fonts";
         yield return Path.Combine(data, "fonts");

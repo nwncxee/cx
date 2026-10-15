@@ -85,7 +85,7 @@ public sealed unsafe class PromptCommandService : IExtenderService
         for (int i = 0; i < 16; i++) exo[i] = 0;   // the dtor below frees whatever buffer lands here
         edit.GuiEditGetText(exo);
         byte* buf = *(byte**)exo;
-        uint len = *(uint*)(exo + 8);
+        uint len = ((ExoStringRec*)exo)->Len;
         var sb = new StringBuilder((int)Math.Min(len, 4096));
         for (uint k = 0; k < len && k < 4096; k++)
         {
@@ -128,7 +128,7 @@ public sealed unsafe class PromptCommandService : IExtenderService
             IntPtr exo = Native.NewExoString(line);
 #if WINDOWS
             _append(gui.Ptr, exo, ConsoleChannel, 0, 0, (IntPtr)resref);
-            *(long*)exo = 0; *(long*)(exo + 8) = 0;   // Win64: the callee destroyed its by-value CExoString copy
+            *(ExoStringRec*)exo = default;   // Win64: the callee destroyed its by-value CExoString copy
 #else
             _append(gui.Ptr, exo, ConsoleChannel, 0, 0, default);
 #endif

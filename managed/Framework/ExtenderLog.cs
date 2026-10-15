@@ -11,7 +11,7 @@ public sealed class ExtenderLog
 {
     private static readonly string LogPath = OperatingSystem.IsWindows()
         ? Path.Combine(Native.DefaultUserDirectory(), "cx.log")
-        : Path.Combine(Environment.GetEnvironmentVariable("HOME") ?? "/tmp", "cx.log");
+        : Path.Combine(HostEnv.Home, "cx.log");
 
     /// <summary>The one gate every line passes: <c>general.logs=1</c> keeps it open, the default closes it once
     /// <see cref="Settings.Load"/> has read cx.cfg, and <c>General.Logs</c> flips it live. Off means off at the CALL
@@ -73,7 +73,7 @@ public sealed class ExtenderLog
     public static void Flush()
     {
         _wake.Set();
-        for (int i = 0; i < 200 && !_queue.IsEmpty; i++) Thread.Sleep(1);
+        for (int i = 0; i < 200 && !_queue.IsEmpty; i++) BlockingWait.Sleep(1, "self-checks only, never a frame hook");
     }
 
     /// <summary>Interpolation handler: when <see cref="Enabled"/> is false, <c>shouldAppend</c> tells the

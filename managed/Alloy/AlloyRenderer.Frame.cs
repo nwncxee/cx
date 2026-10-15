@@ -178,14 +178,14 @@ public sealed unsafe partial class AlloyRenderer
         _projMtx = proj;   // #347: what a spliced stock file reads as m_proj
         Matrix4x4 vp = view * proj;
         // every froxel input comes off THIS pass's projection, never the capture side (see TryPerspective)
-        bool perspective = AlloyLights.TryPerspective((float*)&proj, out float p00, out float p11,
+        bool perspective = AlloyLights.TryPerspective(proj, out float p00, out float p11,
                                                       out float near, out float far);
         // #120: this pass's eye, for the specular view vector. Same row-vector convention as above, so the
         // inverse view's translation IS the eye. Pass-local state, read off this pass's own stacks -- the
         // SCENE camera is not derived here any more (#257 reads it whole at the anchor), so there is no
         // contest between passes left to resolve. Ahead of the frustum, which measures its fog clamp from it.
         if (perspective && Matrix4x4.Invert(view, out Matrix4x4 camToWorld)) _eyePos = camToWorld.Translation;
-        SetPassFrustum((float*)&vp, perspective);   // #330: the route gate's planes, this pass's own
+        SetPassFrustum(vp, perspective);   // #330: the route gate's planes, this pass's own
         // Cap 5 is the engine's own lit predicate (Ghidra MatStatic @0x450560 / RenderFlat @0x450eb0): with
         // it off every part gets flat white, so the flat variant IS vanilla for this pass.
         // CX-120: the last term is the ENGINE's lighting cap (RenderInterface::IsEnabled(5)), which only the
@@ -237,7 +237,7 @@ public sealed unsafe partial class AlloyRenderer
             // The cluster buffers are only meaningful once THIS pass's build has run: a skipped build
             // leaves them holding another camera's binning (or, before the first dispatch, undefined
             // BufferData contents), and a lit part would then sample arbitrary light indices.
-            lightingOn = AlloyLights.Build((float*)&view, p00, p11, near, far, viewport[2], viewport[3], tally: true)
+            lightingOn = AlloyLights.Build(view, p00, p11, near, far, viewport[2], viewport[3], tally: true)
                          && Programs._progLit46 != 0;
             FrameZones.Add(FrameZones.Zone.Lights, tLights);
         }
@@ -320,11 +320,11 @@ public sealed unsafe partial class AlloyRenderer
         // this pass has no perspective projection, and the test then stands down.
         float lodScale = _lodScale;
         // #303: the spheres go up whatever the cull mode -- the shadow gather reads the same buffer.
-        fixed (float* sph = _dSph)
+        fixed (Sphere* sph = _dSph)
             CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
-        fixed (float* cs = _dCastSph)
+        fixed (Sphere* cs = _dCastSph)
             CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
-        fixed (uint* src = _dSrc)
+        fixed (CullSrcRec* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull
             // down for the whole pass rather than leaving a stale list armed behind it.
@@ -600,7 +600,7 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case PassId.WaterOwned:
                     GpuBegin(GpuTerm.Water);
-                    Issue.WaterOwnedPass(_gBlendEnd, _gWaterEnd, &vp, (float*)&view, (float*)&proj,
+                    Issue.WaterOwnedPass(_gBlendEnd, _gWaterEnd, &vp, view, proj,
                                    viewport, near, far);
                     GpuEnd(GpuTerm.Water);
                     break;
@@ -762,12 +762,11 @@ public sealed unsafe partial class AlloyRenderer
         if (!FrameSnapshot.Rect) return false;
         float vw = viewport[2], vh = viewport[3];
         float minx = vw, miny = vh, maxx = 0f, maxy = 0f;
-        fixed (float* sph = _dSph)
-            for (int g = _gBlendEnd; g < _gWaterEnd; g++)
+        for (int g = _gBlendEnd; g < _gWaterEnd; g++)
                 for (int d = _gStart[g], e = d + _gLen[g]; d < e; d++)
                 {
-                    float* s = sph + (long)_dSlot[d] * 4;
-                    if (s[3] >= NeverCull || !SphereRect(vp, vw, vh, p00, p11, s[0], s[1], s[2], s[3],
+                    ref Sphere s = ref _dSph[_dSlot[d]];
+                    if (s.Radius >= NeverCull || !SphereRect(vp, vw, vh, p00, p11, s.Center.X, s.Center.Y, s.Center.Z, s.Radius,
                                                           out float ax, out float ay, out float bx, out float by))
                         return false;
                     minx = MathF.Min(minx, ax); maxx = MathF.Max(maxx, bx);
@@ -835,8 +834,6 @@ public sealed unsafe partial class AlloyRenderer
         uint boundVao = 0;
         int boundCull = -1, boundTex = -1;
         float boundCut = float.NaN;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = from; g < to; g++)
         {
             if (Issue._onlyGobSet && _gGob[g] != Issue._onlyGob) continue;
@@ -850,8 +847,7 @@ public sealed unsafe partial class AlloyRenderer
             BindBatchState(g, ref boundCull, ref boundVao);
             if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
             else
-                Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort,
-                                               (void**)(offs + s), _gLen[g], bases + s);
+                MultiDrawRange(_gMode[g], s, _gLen[g]);
         }
         if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
         Gl.ColorMask(1, 1, 1, 1);
@@ -897,15 +893,13 @@ public sealed unsafe partial class AlloyRenderer
         Gl.UseProgram(Programs._progDepth);
         Gl.UniformMatrix4fv(Programs._depthVp, 1, 0, (float*)vp);
         uint boundVao = 0;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = _gBlendEnd; g < _gWaterEnd; g++)
         {
             int s = _gStart[g];
             Gl.Uniform1i(Programs._depthBase, s);
             uint vao = VaoName(_gVao[g], _gCls[g]);
             if (vao != boundVao) { Gl.BindVertexArray(vao); boundVao = vao; }
-            Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort, (void**)(offs + s), _gLen[g], bases + s);
+            MultiDrawRange(_gMode[g], s, _gLen[g]);
         }
         Gl.BindVertexArray(0);
     }
@@ -949,8 +943,6 @@ public sealed unsafe partial class AlloyRenderer
         // identically; culling is the other half of it -- an identical clip position on a triangle only one
         // of the two passes rasterises still loses the fragment. Same batches, same state, same depth.
         int boundCull = -1;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         // #322: TWO SWEEPS -- all plain batches under one program bind, then all keyhole ones under the
         // other. Dissolve membership is per-frame camera state (thousands of parts keyhole at once under a
         // roofed area), so the cut order interleaves the two programs, and binding per alternation was the
@@ -992,8 +984,7 @@ public sealed unsafe partial class AlloyRenderer
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
                 else
-                    Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort,
-                                                   (void**)(offs + s), _gLen[g], bases + s);
+                    MultiDrawRange(_gMode[g], s, _gLen[g]);
                 drawn += _gLen[g];
             }
         }
@@ -1005,8 +996,6 @@ public sealed unsafe partial class AlloyRenderer
         // this runs as its own sweep under one program bind.
         GpuEnd(GpuTerm.PrepassKey);
         if (_prepassFeat && Programs.EnsureDepthFeatProgram())
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         {
             GpuBegin(GpuTerm.PrepassFeat);
             bool bound = false; int boundTex = -1; float boundCut = float.NaN;
@@ -1035,8 +1024,7 @@ public sealed unsafe partial class AlloyRenderer
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
                 else
-                    Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort,
-                                                   (void**)(offs + s), _gLen[g], bases + s);
+                    MultiDrawRange(_gMode[g], s, _gLen[g]);
                 drawn += _gLen[g]; skipped -= _gLen[g]; if (!retest) Counters._prepassFeatDraws += _gLen[g];
             }
             GpuEnd(GpuTerm.PrepassFeat);
@@ -1153,14 +1141,13 @@ public sealed unsafe partial class AlloyRenderer
     {
         float lx = 1f, ly = 1f, hx = -1f, hy = -1f;
         bool full = false;
-        fixed (float* sph = _dSph)
         {
             for (int g = _gA2cStart; g < _gOpaqueEnd && !full; g++)
                 for (int k = _gStart[g], e = k + _gLen[g]; k < e && !full; k++)
                 {
                     int slot = _dSlot[k];
-                    float* sp = sph + (long)slot * 4;
-                    var s = new Vector4(sp[0], sp[1], sp[2], sp[3]);
+                    Sphere sp = _dSph[slot];
+                    var s = new Vector4(sp.Center, sp.Radius);
                     if (s.W >= NeverCull)
                     {
                         int part = _oDbPart[slot];
@@ -1249,9 +1236,9 @@ public sealed unsafe partial class AlloyRenderer
             if (!ok) break;
             Matrix4x4 view = EnvProbe.FaceView(f);
             // A cube face is exactly 90deg, so the projection's p00 and p11 are both cot(45) = 1.
-            AlloyLights.Build((float*)&view, 1f, 1f, fnear, ffar, EnvProbe.Size, EnvProbe.Size, tally: false);
+            AlloyLights.Build(view, 1f, 1f, fnear, ffar, EnvProbe.Size, EnvProbe.Size, tally: false);
             Gl.ColorMask(1, 1, 1, 1);
-            Issue.IssueBatches(0, groups, (float*)&vp, faceVp, fnear, ffar);
+            Issue.IssueBatches(0, groups, vp, faceVp, fnear, ffar);
             Gl.ColorMask(1, 1, 1, 0);   // the dome is infinitely far: the clear's alpha 0 already says so
             // the real sky behind the world, so a wet street mirrors the dome and not the clear colour; the
             // dome is parked at this frame's camera, which is where the probe stands
@@ -1297,7 +1284,7 @@ public sealed unsafe partial class AlloyRenderer
         if (indirect) CullPass.BindForDraw(CullPass.PhaseMirror);
         Issue._holdProg = false;
         AlloyLights.BorrowedTable = true;
-        try { Issue.IssueBatches(0, _gOpaqueEnd, (float*)&mVp, pvp, near, far, indirect); }
+        try { Issue.IssueBatches(0, _gOpaqueEnd, mVp, pvp, near, far, indirect); }
         finally
         {
             AlloyLights.BorrowedTable = false;

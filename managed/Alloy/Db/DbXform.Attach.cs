@@ -98,7 +98,7 @@ public static unsafe partial class DbAnim
             return Vector3.Transform(own, q);
         }
         nint shell = SceneDb.ObjFacade[i];
-        if (shell == 0 || *(nint*)(shell + SeamLayout.GobBehavior) != owner)
+        if (shell == 0 || new Gob(shell).Attach.Ptr != owner)
         { SceneDb.TextOffsetBehavior[i] = 0; return default; }
         _textOffsets++;
         return Vector3.Transform(SceneDb.TextPosOffset[i], q);
@@ -113,7 +113,7 @@ public static unsafe partial class DbAnim
         part = -1; offset = default;
         nint shell = SceneDb.ObjFacade[i];
         if (shell == 0) return false;
-        nint beh = *(nint*)(shell + SeamLayout.GobBehavior);
+        nint beh = new Gob(shell).Attach.Ptr;
         if (beh == 0) return false;
         DbBehaviorKind kind = Kind(beh);
         if (kind != DbBehaviorKind.CrossSceneAttach && kind != DbBehaviorKind.CrossSceneAttachOffset)

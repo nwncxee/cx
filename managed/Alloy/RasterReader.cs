@@ -109,12 +109,15 @@ public sealed unsafe partial class RasterReader : IExtenderService
         return r;
     }
 
+    /// <summary>Where the colour map starts in the resource: after the header and the image id.</summary>
+    private static int ColorMapOffset(byte* raw) => sizeof(TgaHeader) + ((TgaHeader*)raw)->IdLength;
+
     /// <summary>Whether the engine's parse state is what <see cref="Own"/> writes for this file.</summary>
     private static bool FieldsAgree(CResTGA tga, byte* raw, int length, in Tga t)
-        => tga.Header == (IntPtr)raw && tga.ColorMap == (IntPtr)(raw + TgaHeaderBytes + raw[TgaIdLen]) && tga.Parsed == 1
+        => tga.Header == (IntPtr)raw && (byte*)tga.ColorMap - raw == ColorMapOffset(raw) && tga.Parsed == 1
            && (t.Type == 10
                ? tga.Size == t.Bytes && tga.SrcSize == length - t.Offset && tga.Compressed == 1 && tga.Owned == 1
-               : tga.Size == length - t.Offset && tga.Pixels == (IntPtr)(raw + t.Offset) && tga.Compressed == 0 && tga.Owned == 0
+               : tga.Size == length - t.Offset && (byte*)tga.Pixels - raw == t.Offset && tga.Compressed == 0 && tga.Owned == 0
                  && tga.ColorMapped == 0);
 
     /// <summary><c>OnResourceServiced</c>'s success, done by Alloy: the same fields the engine's branch for the
@@ -130,15 +133,17 @@ public sealed unsafe partial class RasterReader : IExtenderService
         }
         var tga = new CResTGA(res);
         bool fresh = t.Rle || t.Cmap != 0;
-        byte* px = fresh ? (byte*)_znam((nuint)t.Bytes + TgaTagTail) : raw + t.Offset;
+        Span<byte> resource = new(raw, bytes.Length);
+        Span<byte> pixels = fresh ? new Span<byte>((void*)_znam((nuint)(t.Bytes + TgaTagTail)), t.Bytes) : resource[t.Offset..];
+        byte* px = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(pixels));
         if (fresh) tga.Owned = 1;
         if (t.Type == 9 || t.Rle) { tga.SrcSize = bytes.Length - t.Offset; tga.Compressed = 1; }
         if (t.Cmap != 0) tga.ColorMapped = 1;
-        DecodeTga(bytes, t, new Span<byte>(px, t.Bytes));
+        DecodeTga(bytes, t, pixels[..t.Bytes]);
         // GetTGAAttrib reads the depth off the header: the engine must see the RGB(A) this is, not the 8-bit indices.
-        if (t.Cmap != 0) raw[TgaBits] = (byte)(t.Px * 8);
+        if (t.Cmap != 0) ((TgaHeader*)raw)->PixelBits = (byte)(t.Px * 8);
         tga.Header = (IntPtr)raw;
-        tga.ColorMap = (IntPtr)(raw + TgaHeaderBytes + raw[TgaIdLen]);
+        tga.ColorMap = (IntPtr)Unsafe.AsPointer(ref resource[ColorMapOffset(raw)]);
         tga.Pixels = (IntPtr)px;
         tga.Size = fresh ? t.Bytes : bytes.Length - t.Offset;
         tga.Parsed = 1;
@@ -164,7 +169,7 @@ public sealed unsafe partial class RasterReader : IExtenderService
         if (t.Beyond && !_own) { why = "decoded differently by the engine while it owns TGA decoding"; return null; }
         if (t.Px != 1 && t.Px != 3 && t.Px != 4) { why = $"{t.Px} bytes/pixel"; return null; }
         r = new Raster(t.W, t.H, t.Px);
-        byte* px = (byte*)NativeMemory.Alloc((nuint)r.Bytes + TgaTagTail);
+        byte* px = (byte*)NativeMemory.Alloc((nuint)(r.Bytes + TgaTagTail));
         DecodeTga(raw, t, new Span<byte>(px, r.Bytes));
         return px;
     }
@@ -236,13 +241,16 @@ public sealed unsafe partial class RasterReader : IExtenderService
     internal static bool SelfCheck(ExtenderLog log)
     {
         bool ok = true;
+        // The fixture's header, laid out by hand from the file format: the oracle for TgaHeader's own layout.
+        const int HeaderLen = 18, IdLenAt = 0, CmapTypeAt = 1, TypeAt = 2, CmapFirstAt = 3, CmapLenAt = 5, CmapBitsAt = 7,
+                  WidthAt = 12, HeightAt = 14, BitsAt = 16;   // not-an-offset: the TGA file format's fields
         static byte[] Tga(int type, int w, int h, int bits, int idLen, params byte[] body)
         {
-            var b = new byte[TgaHeaderBytes + idLen + body.Length];
-            b[TgaIdLen] = (byte)idLen; b[TgaType] = (byte)type; b[TgaBits] = (byte)bits;
-            BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(TgaW), (ushort)w);
-            BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(TgaH), (ushort)h);
-            body.CopyTo(b, TgaHeaderBytes + idLen);
+            var b = new byte[HeaderLen + idLen + body.Length];
+            b[IdLenAt] = (byte)idLen; b[TypeAt] = (byte)type; b[BitsAt] = (byte)bits;
+            BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(WidthAt), (ushort)w);
+            BinaryPrimitives.WriteUInt16LittleEndian(b.AsSpan(HeightAt), (ushort)h);
+            body.CopyTo(b, HeaderLen + idLen);
             return b;
         }
         bool Decodes(byte[] file, params byte[] want)
@@ -278,7 +286,7 @@ public sealed unsafe partial class RasterReader : IExtenderService
         static byte[] Mapped(int type, int w, params byte[] indices)
         {
             var b = Tga(type, w, 1, 8, 0, new byte[] { 1, 2, 3, 4, 5, 6 }.Concat(indices).ToArray());
-            b[TgaCmapType] = 1; b[TgaCmapFirst] = 2; b[TgaCmapLen] = 2; b[TgaCmapBits] = 24;
+            b[CmapTypeAt] = 1; b[CmapFirstAt] = 2; b[CmapLenAt] = 2; b[CmapBitsAt] = 24;
             return b;
         }
         ok &= Decodes(Mapped(9, 3, 0x81, 3, 0x00, 2), 6, 5, 4, 6, 5, 4, 3, 2, 1);

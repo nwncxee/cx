@@ -1,0 +1,80 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Text;
+using CX.Engine;
+using CX.Framework;
+
+namespace CX.Services.Nui;
+
+/// <summary>
+/// Sends the server a NUI event on the reserved element <see cref="Element"/>: the event name, the element id and a JSON array
+/// payload, built in memory this class owns and frees after the call. The engine's push helper copies all three, so nothing it
+/// receives outlives the call. The string and array shapes follow the running compiler's (<see cref="Layout"/>).
+/// </summary>
+internal static unsafe class CxEvent
+{
+    /// <summary>The element id every CX event carries.</summary>
+    internal const string Element = "cx";
+    /// <summary>The event name of a setting CX refused; the payload is <c>[kind, key, value, reason]</c>.</summary>
+    internal const string Refused = "refused";
+    private const int MaxText = 200;
+    private const byte JsonString = 3, JsonArray = 2;
+
+    /// <summary>Queue a refusal event for <paramref name="window"/>. False when the push helper did not resolve.</summary>
+    internal static bool PushRefusal(IntPtr window, PolicyRefusal r)
+    {
+        var push = EngineFn.NuiEventPush;
+        if (push == null) return false;
+        var mem = new List<IntPtr>(8);
+        try
+        {
+            byte* name = NewString(Refused, mem), element = NewString(Element, mem);
+            byte* payload = NewArray(mem, null, r.Kind.ToString().ToLowerInvariant(), r.Key, r.Value, r.Reason);
+            IntPtr target = OperatingSystem.IsWindows() ? window : (IntPtr)Unsafe.AsPointer(ref new Nui__JSON__JsonWindow(window).WindowId);
+            push(target, (IntPtr)name, (IntPtr)element, -1, (IntPtr)payload);
+            return true;
+        }
+        finally { foreach (IntPtr p in mem) NativeMemory.Free((void*)p); }
+    }
+
+    private static byte* Alloc(List<IntPtr> mem, int bytes)
+    {
+        byte* p = (byte*)NativeMemory.AllocZeroed((nuint)bytes);
+        mem.Add((IntPtr)p);
+        return p;
+    }
+
+    /// <summary>A 32-byte <c>std::string</c> holding <paramref name="text"/> (UTF-8, cut at <see cref="MaxText"/> bytes).</summary>
+    internal static byte* NewString(string text, List<IntPtr> mem, StdAbi? abi = null)
+    {
+        byte[] b = Encoding.UTF8.GetBytes(text);
+        int n = Math.Min(b.Length, MaxText);
+        var s = new NuiStdString(Alloc(mem, NuiStdString.Bytes), abi ?? StdAbi.Native);
+        byte* chars = n <= NuiStdString.InlineMax ? s.Inline : Alloc(mem, n + 1);
+        for (int i = 0; i < n; i++) chars[i] = b[i];
+        s.Set(chars, (ulong)n);
+        return s.Ptr;
+    }
+
+    /// <summary>A JSON array of strings: the value, its vector, and a string value for each item. <paramref name="abi"/> picks the
+    /// container shapes: the running OS when null.</summary>
+    internal static byte* NewArray(List<IntPtr> mem, StdAbi? abi, params string[] items)
+    {
+        var vec = new NuiJsonVector(Alloc(mem, NuiJsonVector.Bytes));
+        var elems = new NuiJsonValue(Alloc(mem, NuiJsonValue.Bytes * items.Length));
+        for (int i = 0; i < items.Length; i++)
+        {
+            elems.At(i).Type = JsonString;
+            elems.At(i).Pointer = NewString(items[i], mem, abi);
+        }
+        vec.Begin = elems.Ptr;
+        vec.End = elems.At(items.Length).Ptr;
+        vec.Cap = vec.End;
+        var top = new NuiJsonValue(Alloc(mem, NuiJsonValue.Bytes));
+        top.Type = JsonArray;
+        top.Pointer = vec.Ptr;
+        return top.Ptr;
+    }
+}

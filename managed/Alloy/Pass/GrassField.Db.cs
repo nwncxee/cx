@@ -33,7 +33,7 @@ internal static unsafe partial class GrassField
 
     /// <summary>Scratch for one part's grass faces: nine floats and a blade count each, grown to the largest
     /// part met and then reused. Not on the hot path -- a part is baked once per area.</summary>
-    private static float[] _dbVerts = Array.Empty<float>();
+    private static GrassTriRec[] _dbVerts = Array.Empty<GrassTriRec>();
     private static int[] _dbBlades = Array.Empty<int>();
 
     /// <summary>Grass materials one part may carry. The tileset's own count is small; a part past this keeps
@@ -56,9 +56,9 @@ internal static unsafe partial class GrassField
         int seen = 0;
         float far = FarDist();
         Vector3 eye = SceneFog.Origin(out _);
-        fixed (float* planes = _binPlanes)
+        Vector4[] planes = _binPlanes;
         {
-        CullPass.Planes((float*)vp, planes, AlloyRenderer.EyePos);
+        CullPass.Planes(in *vp, planes, AlloyRenderer.EyePos);
         for (int k = 0; k < _dbListN; k++)
         {
             int part = _dbList[k];
@@ -84,7 +84,7 @@ internal static unsafe partial class GrassField
 
     /// <summary>Is this part's own sphere inside the view and inside the grass cut-off? The sphere is the
     /// part's model-space bound placed by its world matrix -- the same pair the cull reads.</summary>
-    private static bool PartInView(int part, float* planes, Vector3 eye, float far)
+    private static bool PartInView(int part, ReadOnlySpan<Vector4> planes, Vector3 eye, float far)
     {
         Vector3 centre = Vector3.Transform(SceneDb.PartCenter[part], SceneDb.PartWorld[part]);
         float radius = SceneDb.PartRadius[part];
@@ -162,7 +162,7 @@ internal static unsafe partial class GrassField
             if (at == matN && matN < MaxPartMats) mats[matN++] = s;
         }
         if (matN == 0) return;
-        if (_dbVerts.Length < faces * 9) { _dbVerts = new float[faces * 9]; _dbBlades = new int[faces]; }
+        if (_dbVerts.Length < faces) { _dbVerts = new GrassTriRec[faces]; _dbBlades = new int[faces]; }
         Matrix4x4 world = SceneDb.PartWorld[part];
         int firstPatch = _patchCount;
         for (int i = 0; i < matN; i++)
@@ -170,7 +170,7 @@ internal static unsafe partial class GrassField
             int mat = mats[i];
             float density = GrassInfo(mat).Density;
             int n = 0;
-            fixed (float* verts = _dbVerts)
+            fixed (GrassTriRec* verts = _dbVerts)
             fixed (int* blades = _dbBlades)
             {
                 for (int f = 0; f < faces; f++)
@@ -187,10 +187,7 @@ internal static unsafe partial class GrassField
                     // blade is not filed at all, which is the engine's own zero-count early out.
                     int count = (int)(Vector3.Cross(b - a, c - a).Length() * 0.5f * density);
                     if (count <= 0) continue;
-                    int o = n * 9;
-                    verts[o] = a.X; verts[o + 1] = a.Y; verts[o + 2] = a.Z;
-                    verts[o + 3] = b.X; verts[o + 4] = b.Y; verts[o + 5] = b.Z;
-                    verts[o + 6] = c.X; verts[o + 7] = c.Y; verts[o + 8] = c.Z;
+                    verts[n] = new GrassTriRec { A = a, B = b, C = c };
                     blades[n] = count;
                     n++;
                 }

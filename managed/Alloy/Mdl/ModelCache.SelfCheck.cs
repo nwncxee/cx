@@ -272,7 +272,7 @@ public static partial class ModelCache
         _source = fx;
         fx.Models["crossing"] = Fix("crossing", "", 1f, []);
         Prefetch("crossing");
-        for (int i = 0; i < 1000 && Finished == 0; i++) System.Threading.Thread.Sleep(1);
+        for (int i = 0; i < 1000 && Finished == 0; i++) BlockingWait.Sleep(1, "self-check: wait for the loader thread");
         _sourceGen++;                                 // stand in for a SetSource between the parse and the pump
         Pump();
         check.Expect(FindModel("crossing") == null && StaleSources == 1,
@@ -424,7 +424,7 @@ public static partial class ModelCache
         BudgetOverride = 0;                       // the harshest budget there is
         fx.Models["pre"] = Fix("pre", "", 1f, []);
         Prefetch("pre");
-        for (int i = 0; i < 1000 && FindModel("pre") == null; i++) { Drain(); System.Threading.Thread.Sleep(1); }
+        for (int i = 0; i < 1000 && FindModel("pre") == null; i++) { Drain(); BlockingWait.Sleep(1, "self-check: wait for the loader thread"); }
         check.Expect(FindModel("pre") != null, "a prefetched model never reached the table");
         Trim();
         check.Expect(FindModel("pre") != null,
@@ -444,7 +444,7 @@ public static partial class ModelCache
         BudgetOverride = 0;
         fx.Models["unasked"] = Fix("unasked", "", 1f, []);
         Prefetch("unasked");
-        for (int i = 0; i < 1000 && FindModel("unasked") == null; i++) { Drain(); System.Threading.Thread.Sleep(1); }
+        for (int i = 0; i < 1000 && FindModel("unasked") == null; i++) { Drain(); BlockingWait.Sleep(1, "self-check: wait for the loader thread"); }
         check.Expect(FindModel("unasked") != null, "the read-ahead never landed");
         for (int i = 0; i <= LoaderGraceDrips; i++) Pump();
         check.Expect(FindModel("unasked") == null && LoaderDropped == 1,

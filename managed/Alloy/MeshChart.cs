@@ -297,7 +297,7 @@ internal static unsafe partial class MeshChart
         if (pos.Type != Gl.FLOAT || pos.Size != 3) return;
         bool hasNrm = nrmHost != null && nrm.Type == Gl.FLOAT && nrm.Size == 3;
         bool hasUv = uvHost != null && uv.Type == Gl.FLOAT && uv.Size == 2;
-        ushort* src = (ushort*)(elemHost + first * 2);
+        var src = new HostIndices(elemHost, first);
         int maxI = -1;
         for (int i = 0; i < count; i++) { int v = src[i]; if (v > maxI) maxI = v; }
         if (maxI < 0) return;
@@ -320,17 +320,17 @@ internal static unsafe partial class MeshChart
             if (d < 0)
             {
                 d = n++; _remap[v] = d;
-                float* p = (float*)(posHost + pos.Off + (long)(baseVertex + v) * pos.Stride);
-                j.Pos[d * 3] = p[0]; j.Pos[d * 3 + 1] = p[1]; j.Pos[d * 3 + 2] = p[2];
+                ref Vector3 p = ref new HostVertices(posHost, pos).Pos(baseVertex + v);
+                j.Pos[d * 3] = p.X; j.Pos[d * 3 + 1] = p.Y; j.Pos[d * 3 + 2] = p.Z;
                 if (hasNrm)
                 {
-                    float* q = (float*)(nrmHost + nrm.Off + (long)(baseVertex + v) * nrm.Stride);
-                    j.Nrm[d * 3] = q[0]; j.Nrm[d * 3 + 1] = q[1]; j.Nrm[d * 3 + 2] = q[2];
+                    ref Vector3 q = ref new HostVertices(nrmHost, nrm).Normal(baseVertex + v);
+                    j.Nrm[d * 3] = q.X; j.Nrm[d * 3 + 1] = q.Y; j.Nrm[d * 3 + 2] = q.Z;
                 }
                 if (hasUv)
                 {
-                    float* t = (float*)(uvHost + uv.Off + (long)(baseVertex + v) * uv.Stride);
-                    j.Uv[d * 2] = t[0]; j.Uv[d * 2 + 1] = t[1];
+                    ref Vector2 t = ref new HostVertices(uvHost, uv).Uv(baseVertex + v);
+                    j.Uv[d * 2] = t.X; j.Uv[d * 2 + 1] = t.Y;
                 }
             }
             j.Idx[i] = (ushort)d;

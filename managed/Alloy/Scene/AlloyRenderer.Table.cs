@@ -1,3 +1,4 @@
+using CX.Engine;
 using System.Collections.Generic;
 using System;
 using CX.Alloy.Db;
@@ -49,10 +50,7 @@ public sealed unsafe partial class AlloyRenderer
     /// Metallicness, _) then (CustomSpecularColor.rgb, declared?). Read once at enrollment off the material's
     /// parsed .mtr list; 0 means "not declared" and the shader synthesises it, as the stock shaders do. The
     /// spare w carries the live slot mask per frame, so index 3 of each pair is never written here.</summary>
-    private static readonly float[] _oParam = new float[MaxOwned * ParamFloats];
-    /// <summary>Staged floats per part: the two stock PBR vec4s, then ADR 0026's three extension vec4s
-    /// (<see cref="ExtFloat"/> onward in the record) at <see cref="ParamExt"/>.</summary>
-    internal const int ParamFloats = 20, ParamExt = 8;
+    private static readonly ParamRow[] _oParam = new ParamRow[MaxOwned];
     /// <summary>Which of slots 1..5 this material had a texture in at enrollment (bit s-1), plus slot 6, the
     /// flow map, at bit 5 -- above the five, below <see cref="EnvSlot"/>. The live tid is still re-fetched
     /// per frame like slot 0's; this only says which slots are worth asking for.</summary>
@@ -235,7 +233,7 @@ public sealed unsafe partial class AlloyRenderer
             vao = MeshChart.DbSlot; item = Db.DrawRecipe.Range(_oDbRecipe[i]);
         }
         else { vao = _oVao[i]; item = _oItem[i]; }
-        fixed (float* r = _dData) model = *(Matrix4x4*)(r + (long)i * DrawFloats);
+        model = _dData[i].Model;
         return true;
     }
 
@@ -244,18 +242,18 @@ public sealed unsafe partial class AlloyRenderer
     internal static readonly int[] _dCount = new int[MaxOwned];
     internal static readonly nint[] _dOff = new nint[MaxOwned];
     internal static readonly int[] _dBase = new int[MaxOwned];
-    internal static readonly float[] _dData = new float[MaxRecords * DrawFloats];
+    internal static readonly DrawRecordBlock[] _dData = new DrawRecordBlock[MaxRecords];
     /// <summary>The world bounding sphere of each RECORD, parallel to <see cref="_dData"/> -- centre in xyz,
     /// radius in w, written on the same edges the record is because it is a function of the same model matrix.
     /// A radius of <see cref="NeverCull"/> means "do not cull me": the vertices move under a matrix that does
     /// not (skinned, dangly, a displacing feature), or the bbox is degenerate. Unknown bounds mean VISIBLE.</summary>
-    private static readonly float[] _dSph = new float[MaxRecords * 4];
+    private static readonly Sphere[] _dSph = new Sphere[MaxRecords];
     /// <summary>The radius that exempts a record from the cull. Large enough to fail every plane test and
     /// finite, so it survives a matrix multiply without becoming a NaN.</summary>
     internal const float NeverCull = 1e30f;
     /// <summary>Per-draw bindless handles, 8 per record (diffuse + material slots 1..7), parallel to
     /// <see cref="_dData"/>. 0 = slot empty; the record's slot mask already forbids sampling those.</summary>
-    internal static readonly ulong[] _dTexH = new ulong[MaxRecords * 8];
+    internal static readonly TexHandles[] _dTexH = new TexHandles[MaxRecords];
     /// <summary>The per-draw index array -- for draw <c>n</c> of this pass, the RECORD slot it reads. Records
     /// are indexed by ownership slot and persist across frames, while draw order is per pass (a fading tile
     /// joins the blended run, sorted from this pass's eye), so the two cannot be the same number. The only
@@ -355,12 +353,12 @@ public sealed unsafe partial class AlloyRenderer
         // marked AND un-memoised -- a zeroed handle that is never re-resolved is the radeonsi page fault.
         const ulong fakeDying = 0xD1E1A5E0u;   // not-an-offset: a stand-in handle value, never dereferenced
         for (int i = 0; i < 4; i++) { _gate[i].TexStale = false; _recTexStamp[i] = _stageTexSerial; }
-        ulong svH = _dTexH[2 * 8 + 3]; long svZeroed = HandlesZeroed;
-        _dTexH[2 * 8 + 3] = fakeDying;
+        ulong svH = _dTexH[2][3]; long svZeroed = HandlesZeroed;
+        _dTexH[2][3] = fakeDying;
         ZeroHandle(fakeDying);
-        ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && _dTexH[2 * 8 + 3] == 0
+        ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && _dTexH[2][3] == 0
               && !_gate[1].TexStale && _recTexStamp[1] == _stageTexSerial;
-        _dTexH[2 * 8 + 3] = svH; HandlesZeroed = svZeroed;
+        _dTexH[2][3] = svH; HandlesZeroed = svZeroed;
         _recTid[1] = 77; _recTidS[3 * MapSlots + 2] = 77; _recTid[2] = 78;
         for (int i = 0; i < 4; i++) _gate[i].TexStale = i == 1 || i == 3;
 
@@ -404,20 +402,17 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_swapN == 0 && !_swapOverflow) return;
         int n = _swapOverflow ? _ownCount : _swapN;
-        fixed (ulong* th = _dTexH)
+        for (int k = 0; k < n; k++)
         {
-            for (int k = 0; k < n; k++)
-            {
-                int i = _swapOverflow ? k : _swapSlots[k];
-                _recSwapped[i] = false;
-                if (_oTri[i] == IntPtr.Zero) continue;
-                ulong* hh = th + (long)i * 8;
-                if (hh[0] == 0) continue;
-                hh[0] = HandleFor(_recTid[i]);
-                for (int s = 0; s < MapSlots; s++) hh[1 + s] = _recTidS[i * MapSlots + s] != 0 ? HandleFor(_recTidS[i * MapSlots + s]) : 0;
-                _texHDirty = true;
-                MarkRecordDirty(i);
-            }
+            int i = _swapOverflow ? k : _swapSlots[k];
+            _recSwapped[i] = false;
+            if (_oTri[i] == IntPtr.Zero) continue;
+            ref TexHandles hh = ref _dTexH[i];
+            if (hh[0] == 0) continue;
+            hh[0] = HandleFor(_recTid[i]);
+            for (int s = 0; s < MapSlots; s++) hh[1 + s] = _recTidS[i * MapSlots + s] != 0 ? HandleFor(_recTidS[i * MapSlots + s]) : 0;
+            _texHDirty = true;
+            MarkRecordDirty(i);
         }
         _swapN = 0; _swapOverflow = false;
     }
@@ -480,17 +475,17 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (v == 0) return;
         NoteTexStalePending();
-        int n = _ownCount * 8;
-        for (int j = 0; j < n; j++)
-        {
-            if (_dTexH[j] != v) continue;
-            _dTexH[j] = 0;
-            // the full re-resolve, not ApplySwaps: that one skips a block whose slot 0 reads 0 as "unlit"
-            MarkTexStale(j >> 3);
-            MarkRecordDirty(j >> 3);
-            _texHDirty = true;
-            HandlesZeroed++;
-        }
+        for (int j = 0; j < _ownCount; j++)
+            for (int s = 0; s < TexHandles.MaterialSlots; s++)
+            {
+                if (_dTexH[j][s] != v) continue;
+                _dTexH[j][s] = 0;
+                // the full re-resolve, not ApplySwaps: that one skips a block whose slot 0 reads 0 as "unlit"
+                MarkTexStale(j);
+                MarkRecordDirty(j);
+                _texHDirty = true;
+                HandlesZeroed++;
+            }
     }
     /// <summary>Handle table entries zeroed under a dying handle (the hazard count), and bakes that found
     /// handle changes the colour bracket had not uploaded yet (the window count). Both on the [casters] line.</summary>
@@ -618,7 +613,7 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly int[] _skSrc = new int[MaxSkyDraws], _skDst = new int[MaxSkyDraws];
     /// <summary>The constant colour <c>PartTriMesh::Mat</c> would have set for this sky part -- white,
     /// or the scene's fog colour where the gob carries the +0x19 tint byte. Three floats per draw.</summary>
-    private static readonly float[] _skTint = new float[MaxSkyDraws * 3];
+    private static readonly Vector3[] _skTint = new Vector3[MaxSkyDraws];
     /// <summary>The role's alpha, as the engine's <c>SetColor4f</c> fourth component: the plain unlit stage
     /// reads it off the draw record, a hosted stage from <c>globalColor</c>, so it is carried here once for
     /// both.</summary>
@@ -630,7 +625,7 @@ public sealed unsafe partial class AlloyRenderer
     /// stage declares before the maps an unlit sky cannot use. Unit 0 always, the rest only for a hosted
     /// stage -- and the ENGINE's own objects there, never an owned copy (see <see cref="SkyStage"/>).</summary>
     internal const int MaxEngTex = 4;
-    private static readonly int[] _skTex = new int[MaxSkyDraws * MaxEngTex];
+    private static readonly SkyTexUnits[] _skTex = new SkyTexUnits[MaxSkyDraws];
     private static int _skyFirst, _skyN;
     internal static uint _drawBuf;
     /// <summary>The per-draw texture-handle SSBO (binding <see cref="BindTexH"/>).</summary>
@@ -642,11 +637,11 @@ public sealed unsafe partial class AlloyRenderer
     /// stage is native and GROWS (<c>EnsureBoneSlots</c>) rather than dropping a crowd past the budget;
     /// <c>Counters._boneHigh</c> is the per-report high-water mark that keeps the ceiling counted.</summary>
     internal static uint _boneBuf;
-    internal static float* _boneStage;
+    internal static BonePalette* _boneStage;
     internal static int _boneSlots, _boneCap;
     /// <summary>Last frame's palette, slot for slot beside <see cref="_boneStage"/> (the two swap
     /// once a frame), for the mover sweep's previous clip position. Streamed only when a skinned mover draws.</summary>
-    internal static float* _bonePrevStage;
+    internal static BonePalette* _bonePrevStage;
     /// <summary>The frame a posed record's palette last differed from the one before it -- the
     /// skinned twin of <c>_recMovedAt</c>, read by the mover pick.</summary>
     private static readonly int[] _poseMovedAt = new int[MaxOwned];

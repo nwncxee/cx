@@ -16,16 +16,11 @@ internal static unsafe partial class DdsReader
 {
     /// <summary>The release tag's distance before level 0 for each DDS container: the header, then the
     /// engine's <c>{short restype; void* owner;}</c> (<c>ReleaseRaster</c> @0x1123180 reads -0x1e / -0x8a).</summary>
-    private const int TagBytes = 10;
-    private static int HeaderOf(int container) => container == ContainerMs ? MsHeader : LegacyHeader;
-    private static int TagOff(int container) => HeaderOf(container) + TagBytes;
     /// <summary>What a buffer of ours carries at its tag slot: none of the engine's (0x7f1, 0x819, 0x80b, 3), so
     /// the engine's release refuses it with a logged error rather than calling through its null owner.</summary>
     private const short OurTag = 0x0cd5;   // not-an-offset: a tag value
     /// <summary>Headroom ahead of level 0 in our buffers: past the widest tag slot, 16-byte aligned.</summary>
-    private const int Prefix = MsHeader + 16;
-    /// <inheritdoc cref="Prefix"/>
-    internal const int PrefixBytes = Prefix;
+    internal static readonly int PrefixBytes = Headroom<DdsMsPrefix>.Size;
 
     // Data-symbol slots, not functions: the generator's EngineFn resolves a symbol as code, so these are typed here.
     private static delegate* unmanaged<IntPtr, int*, int*, int*, int*, int*, float*, byte*> _engGet;
@@ -79,14 +74,14 @@ internal static unsafe partial class DdsReader
         => _armed ? $"dds: {_agreed} agreed, {_padded} partial chains padded, {_mismatched} MISMATCHED, {_refused} refused{FormatsNote()}" : "dds: engine";
 
     /// <summary>Worker-safe: parse <paramref name="raw"/> and lay its padded mip chain out in a buffer shaped
-    /// exactly as <see cref="OnGet"/>'s own answers are, with <see cref="Prefix"/> bytes of headroom for the
+    /// exactly as <see cref="OnGet"/>'s own answers are, with <see cref="PrefixBytes"/> bytes of headroom for the
     /// release tag the main thread writes. Returns level 0, or null with <paramref name="why"/> set. No engine
     /// read, no GL, no shared state -- everything it needs is in the bytes it was handed.</summary>
     internal static byte* Prepare(ReadOnlySpan<byte> raw, out Info info, out string? why)
     {
         if (!Parse(raw, out info, out why)) return null;
-        byte* mem = (byte*)NativeMemory.Alloc((nuint)(Prefix + info.ChainBytes));
-        byte* ours = mem + Prefix;
+        byte* mem = (byte*)NativeMemory.Alloc((nuint)(PrefixBytes + info.ChainBytes));
+        byte* ours = (byte*)Headroom<DdsMsPrefix>.PayloadOf(mem);
         CopyChain(raw, info, new Span<byte>(ours, (int)info.ChainBytes));
         return ours;
     }
@@ -94,7 +89,7 @@ internal static unsafe partial class DdsReader
     /// <summary>Release a <see cref="Prepare"/> buffer the engine never took.</summary>
     internal static void FreePrepared(byte* level0)
     {
-        if (level0 != null) NativeMemory.Free(level0 - Prefix);
+        if (level0 != null) NativeMemory.Free(Headroom<DdsMsPrefix>.BlockOf((nint)level0));
     }
 
     /// <summary>Hand a <see cref="Prepare"/>d buffer to the engine as the getter's answer: the release tag, the
@@ -108,8 +103,8 @@ internal static unsafe partial class DdsReader
             FreePrepared(ours);
             return null;
         }
-        *(short*)(ours - TagOff(i.Container)) = OurTag;
-        *(IntPtr*)(ours - TagOff(i.Container) + 2) = IntPtr.Zero;
+        var tag = new DdsTag(ours, i.Container == ContainerMs);
+        tag.Type = OurTag; tag.Owner = IntPtr.Zero;
         *container = i.Container; *w = i.W; *h = i.H; *ch = i.Channels; *size = i.Level0; *alpha = i.AlphaMean;
         _answers[(nint)ours] = i;
         return ours;
@@ -154,7 +149,7 @@ internal static unsafe partial class DdsReader
         int c = *container;
         if (c != ContainerLegacy && c != ContainerMs) return data;   // KTX: the engine's alone
         // The owner's CRes is found through the engine's own tag slot; its data must be where the header ends.
-        IntPtr owner = *(IntPtr*)(data - TagOff(c) + 2);
+        IntPtr owner = new DdsTag(data, c == ContainerMs).Owner;
         var res = new CRes(owner == IntPtr.Zero ? IntPtr.Zero : new CAuroraCompressedTextureDDS(owner).Res);
         if (res.IsNull || res.Data == IntPtr.Zero)
         {
@@ -171,7 +166,7 @@ internal static unsafe partial class DdsReader
         }
         if (!i.EngineReads) return Beyond(name, data, bytes, i, container, w, h, ch, size, alpha);
         if (i.Container != c || i.W != *w || i.H != *h || i.Channels != *ch || i.Level0 != *size
-            || i.AlphaMean != *alpha || raw + i.DataOffset != data)
+            || i.AlphaMean != *alpha || data - raw != i.DataOffset)
         {
             if (++_mismatched <= LogCap)
                 Disagree(name, $"engine c{c} {*w}x{*h} ch{*ch} l0 {*size} a{*alpha} at +{data - raw} vs ours c{i.Container} {i.W}x{i.H} ch{i.Channels} l0 {i.Level0} a{i.AlphaMean} at +{i.DataOffset}");
@@ -181,11 +176,11 @@ internal static unsafe partial class DdsReader
         // The forced path decodes level 0 and releases at once, so it is never padded, and a cube's faces follow in the resource.
         if (ForUnpack) { _answers[(nint)data] = i; return data; }
         if (i.Present == i.Levels) return data;
-        byte* mem = (byte*)NativeMemory.Alloc((nuint)(Prefix + i.ChainBytes));
-        byte* ours = mem + Prefix;
+        byte* mem = (byte*)NativeMemory.Alloc((nuint)(PrefixBytes + i.ChainBytes));
+        byte* ours = (byte*)Headroom<DdsMsPrefix>.PayloadOf(mem);
         CopyChain(bytes, i, new Span<byte>(ours, (int)i.ChainBytes));
-        *(short*)(ours - TagOff(c)) = OurTag;
-        *(IntPtr*)(ours - TagOff(c) + 2) = IntPtr.Zero;
+        var tag = new DdsTag(ours, c == ContainerMs);
+        tag.Type = OurTag; tag.Owner = IntPtr.Zero;
         _engRelease(data, *w, *h, *ch, *size, c);
         if (++_padded <= LogCap)
             _log?.Info($"DdsReader: {Marshal.PtrToStringAnsi(name)} carries {i.Present} of {i.Levels} mip levels -- padded (the engine would read past the resource)");
@@ -198,8 +193,8 @@ internal static unsafe partial class DdsReader
         _answers.Remove((nint)data);
         if (size == 0 && TexLoad.FreeRaster(data, w, h, ch)) return;
         if (data != null && size != 0 && (container == ContainerLegacy || container == ContainerMs)
-            && *(short*)(data - TagOff(container)) == OurTag)
-        { NativeMemory.Free(data - Prefix); return; }
+            && new DdsTag(data, container == ContainerMs).Type == OurTag)
+        { NativeMemory.Free(Headroom<DdsMsPrefix>.BlockOf((nint)data)); return; }
         _engRelease(data, w, h, ch, size, container);
     }
 

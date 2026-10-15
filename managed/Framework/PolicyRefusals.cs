@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace CX.Framework;
 
@@ -36,12 +37,24 @@ public static class PolicyRefusals
     private static PolicyRefusalState _s = new();
     private static readonly object _lock = new();
 
+    /// <summary>The number of the newest refusal; it starts again from 0 in a new session.</summary>
+    internal static int LastSeq => Volatile.Read(ref _s.LastSeq);
+
+    /// <summary>Appends to <paramref name="into"/> each refusal still held whose number is above <paramref name="seq"/>.</summary>
+    internal static void Since(int seq, List<PolicyRefusal> into)
+    {
+        lock (_lock)
+            foreach (PolicyRefusal e in _s.Entries)
+                if (e.Seq > seq) into.Add(e);
+    }
+
     /// <summary>Entries older than the ceiling allows, gone.</summary>
     public static int Dropped { get { lock (_lock) return _s.DroppedCount; } }
 
     /// <summary>Record that <paramref name="key"/> was refused. The same key, value and reason again changes nothing.</summary>
     public static void Add(RefusalKind kind, string key, string value, string reason)
     {
+        PolicyRefusal add;
         lock (_lock)
         {
             PolicyRefusalState s = _s;
@@ -55,7 +68,7 @@ public static class PolicyRefusals
                 break;
             }
             key = Cut(key, MaxKey); value = Cut(value, MaxValue); reason = Cut(reason, MaxReason);
-            var add = new PolicyRefusal(++s.LastSeq, kind, key, value, reason);
+            add = new PolicyRefusal(++s.LastSeq, kind, key, value, reason);
             s.Entries.Add(add);
             s.HeldBytes += Size(add);
             while (s.Entries.Count > MaxEntries || s.HeldBytes > MaxBytes)

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -238,7 +239,7 @@ internal static unsafe class CullPass
     /// caller then submits exactly as before. <paramref name="groups"/> is every batch of the pass and
     /// <paramref name="compactBelow"/> is where the compacting half ends; <paramref name="src"/> is
     /// <see cref="SrcUints"/> uints per draw, staged by the batch walk itself.</summary>
-    internal static bool Begin(int groups, int drawN, uint* src,
+    internal static bool Begin(int groups, int drawN, CullSrcRec* src,
                               float lodScale, int compactBelow, Vector3 eye)
     {
         _phase = -1;
@@ -288,11 +289,11 @@ internal static unsafe class CullPass
     /// culls against this same buffer, so it must stay current under <c>/alloy cull 0</c> and during a probe
     /// capture alike. Indexed by RECORD slot, exactly as the records are, and uploaded whole -- four floats
     /// against the record's forty-four. Not on <see cref="StreamRing"/>: next frame's gather reads it.</summary>
-    internal static void UploadSpheres(float* spheres, int sphereSlots)
+    internal static void UploadSpheres(Sphere* spheres, int sphereSlots)
     {
         if (sphereSlots <= 0 || Gl.NamedBufferSubData == null) return;
         if (_gl.SphBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.SphBuf = b; }
-        var sphSize = (IntPtr)((long)sphereSlots * 4 * sizeof(float));
+        var sphSize = (IntPtr)((long)sphereSlots * sizeof(Sphere));
         if (sphereSlots > _gl.SphCap) { Gl.NamedBufferData(_gl.SphBuf, sphSize, null, Gl.DYNAMIC_DRAW); _gl.SphCap = sphereSlots; }
         Gl.NamedBufferSubData(_gl.SphBuf, IntPtr.Zero, sphSize, spheres);
     }
@@ -335,9 +336,9 @@ internal static unsafe class CullPass
         if (stale && useHiZ) fixed (Matrix4x4* pv = &_gl.PyrVp) Gl.UniformMatrix4fv(_gl.UPyrVP, 1, 0, (float*)pv);
         else Gl.UniformMatrix4fv(_gl.UPyrVP, 1, 0, (float*)vp);
         Gl.Uniform1i(_gl.URej, stale ? RejWrite : phase == PhaseRetest ? RejRead : RejOff);
-        float* planes = stackalloc float[24];
-        Planes((float*)vp, planes, _eye);
-        Gl.Uniform4fv(_gl.UPlanes, 6, planes);
+        Vector4* planes = stackalloc Vector4[6];
+        Planes(in *vp, new Span<Vector4>(planes, 6), _eye);
+        Gl.Uniform4fv(_gl.UPlanes, 6, (float*)planes);
         Gl.Uniform1f(_gl.ULodPx, MathF.Max(lodPx >= 0f ? lodPx : LodPx, 0f));
         Gl.Uniform1f(_gl.UClipZ, clipZ);
         Gl.Uniform1f(_gl.ULodScale, _lodScale);
@@ -579,23 +580,26 @@ internal static unsafe class CullPass
     /// plane distance is in world units and the sphere test is a plain compare. Row-major here means the
     /// combination is <c>clip = v * VP</c>, so the planes come off the COLUMNS. <paramref name="eye"/> is the
     /// eye the caller's vp was built from: a mirrored subframe measuring from the wrong camera is the bug.</summary>
-    internal static void Planes(float* m, float* p, Vector3 eye)
+    internal static void Planes(in Matrix4x4 m, Span<Vector4> p, Vector3 eye)
     {
-        // m[r*4+c] is row r, column c of the row-vector matrix: clip.c = sum_r v[r] * m[r*4+c].
+        // clip.c = sum_r v[r] * m.row[r].c, so a plane is built from column 3 and column c of every row.
+        Vector4 r0 = new(m.M11, m.M12, m.M13, m.M14), r1 = new(m.M21, m.M22, m.M23, m.M24),
+                r2 = new(m.M31, m.M32, m.M33, m.M34), r3 = new(m.M41, m.M42, m.M43, m.M44);
         for (int i = 0; i < 6; i++)
         {
             int c = i >> 1;
             float s = (i & 1) == 0 ? 1f : -1f;
-            float x = m[0 * 4 + 3] + s * m[0 * 4 + c];
-            float y = m[1 * 4 + 3] + s * m[1 * 4 + c];
-            float z = m[2 * 4 + 3] + s * m[2 * 4 + c];
-            float w = m[3 * 4 + 3] + s * m[3 * 4 + c];
+            float x = r0.W + s * Col(r0, c);
+            float y = r1.W + s * Col(r1, c);
+            float z = r2.W + s * Col(r2, c);
+            float w = r3.W + s * Col(r3, c);
             float len = MathF.Sqrt(x * x + y * y + z * z);
             if (len > 0f) { x /= len; y /= len; z /= len; w /= len; }
-            p[i * 4 + 0] = x; p[i * 4 + 1] = y; p[i * 4 + 2] = z; p[i * 4 + 3] = w;
+            p[i] = new Vector4(x, y, z, w);
         }
-
     }
+
+    private static float Col(Vector4 row, int c) => c == 0 ? row.X : c == 1 ? row.Y : row.Z;
 
     /// <summary>Headless check of the two pieces that are arithmetic rather than GL: the plane extraction
     /// and the compacted list itself, against the CPU-staged one the <c>BaseVertex</c> path would submit.
@@ -609,13 +613,12 @@ internal static unsafe class CullPass
         Matrix4x4 view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 0), new Vector3(0, 0, -10), Vector3.UnitY);
         Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 1.0f, 1f, 100f);
         Matrix4x4 vp = view * proj;
-        float* planes = stackalloc float[24];
-        Planes((float*)&vp, planes, Vector3.Zero);
+        Vector4[] planes = new Vector4[6];
+        Planes(in vp, planes, Vector3.Zero);
         bool Inside(Vector3 pt, float r)
         {
             for (int i = 0; i < 6; i++)
-                if (planes[i * 4] * pt.X + planes[i * 4 + 1] * pt.Y + planes[i * 4 + 2] * pt.Z
-                    + planes[i * 4 + 3] < -r) return false;
+                if (planes[i].X * pt.X + planes[i].Y * pt.Y + planes[i].Z * pt.Z + planes[i].W < -r) return false;
             return true;
         }
         check.Expect(Inside(new Vector3(0, 0, -10), 1f), "a point straight ahead is inside the frustum");
@@ -628,17 +631,20 @@ internal static unsafe class CullPass
         // needs the sphere's height. A fog that came back to the frustum would cull a skyline again.
         bool fogWas = FrameInputs.FogOn; float endWas = FrameInputs.FogEnd;
         FrameInputs.FogOn = true; FrameInputs.FogEnd = 50f;
-        Planes((float*)&vp, planes, Vector3.Zero);
+        Planes(in vp, planes, Vector3.Zero);
         check.Expect(Inside(new Vector3(0, 0, -60), 1f), "fog does not slide a frustum plane: a point past the fog end survives it");
         FrameInputs.FogOn = fogWas; FrameInputs.FogEnd = endWas;
-        Planes((float*)&vp, planes, Vector3.Zero);
+        Planes(in vp, planes, Vector3.Zero);
         check.Expect(!Inside(new Vector3(0, 0, -500), 1f), "fog off: the far plane is the engine's again");
 
         // The pack, against what the shader reads out of it. Not a GL call in sight: this is a memory layout
         // shared with GLSL, and every field landing one slot over is a draw reading its neighbour's range.
-        uint* src = stackalloc uint[2 * SrcUints];
-        Pack(src, 30, 200, 7, 11, 0, 0);
-        Pack(src + SrcUints, 60, 400, 9, 13, 0, 0);
+        CullSrcRec* recs = stackalloc CullSrcRec[2];
+        uint* src = (uint*)recs;
+        check.Expect(sizeof(CullSrcRec) == 6 * sizeof(uint) && sizeof(CullSrcRec) == SrcUints * sizeof(uint),
+                     "the staged record is six words, the stride both compute stages read");
+        Pack(ref recs[0], 30, 200, 7, 11, 0, 0);
+        Pack(ref recs[1], 60, 400, 9, 13, 0, 0);
         check.Expect(src[0] == 30 && src[1] == 100 && src[2] == 7 && src[3] == 11 && src[4] == 0 && src[5] == 0,
           "draw 0 packs count/firstIndex/baseVertex/slot/batch/start in that order");
         check.Expect(src[SrcUints + 1] == 200, "...and the byte offset becomes an ELEMENT index (two-byte indices)");
@@ -650,24 +656,24 @@ internal static unsafe class CullPass
 
     /// <summary>One draw's source record, written where the batch walk already writes the same draw's
     /// count/offset/base. The one place the layout <see cref="CullCs"/> reads back is spelled out.</summary>
-    internal static void Pack(uint* r, int idxCount, nint byteOff, int baseVertex, int slot,
+    internal static void Pack(ref CullSrcRec r, int idxCount, nint byteOff, int baseVertex, int slot,
                              int batch, int batchStart)
     {
-        r[0] = (uint)idxCount;
+        r.IndexCount = (uint)idxCount;
         // The indirect command's firstIndex is in ELEMENTS; the staged offset is pre-multiplied to the byte
         // offset MultiDrawElementsBaseVertex takes. Two-byte indices, so the halving is exact.
-        r[1] = (uint)((long)byteOff / 2);
-        r[2] = (uint)baseVertex;
-        r[3] = (uint)slot;
-        r[4] = (uint)batch;
-        r[5] = (uint)batchStart;
+        r.FirstIndex = (uint)((long)byteOff / 2);
+        r.BaseVertex = (uint)baseVertex;
+        r.Slot = (uint)slot;
+        r.Batch = (uint)batch;
+        r.OutBase = (uint)batchStart;
     }
 
     /// <summary>Does the compute-produced draw list agree with the CPU-staged one? A line-by-line port of
     /// <see cref="CullCs"/>'s <c>main</c>, run one invocation at a time -- which is what a sequential
     /// <c>atomicAdd</c> is. Two standards: a COMPACTING batch is asserted as a SET (the atomic's order is not
     /// deterministic on hardware), an ORDERED one as a SEQUENCE, which is the whole point of one.</summary>
-    private static bool Parity(ExtenderLog log, Matrix4x4 vp, float* planes)
+    private static bool Parity(ExtenderLog log, Matrix4x4 vp, Vector4[] planes)
     {
         var check = new Checker(log, "CullPass.ParitySelfCheck");
 
@@ -676,29 +682,28 @@ internal static unsafe class CullPass
         const int drawN = 10, groups = 3, compactBelow = 2;
         int* gStart = stackalloc int[groups] { 0, 3, 6 };
         int* gLen = stackalloc int[groups] { 3, 3, 4 };
-        uint* src = stackalloc uint[drawN * SrcUints];
-        float* sph = stackalloc float[drawN * 4];
+        CullSrcRec* src = stackalloc CullSrcRec[drawN];
+        SphereRec* sph = stackalloc SphereRec[drawN];
         float* key = stackalloc float[drawN];
         var eye = Vector3.Zero;
         int n = 0;
         for (int g = 0; g < groups; g++)
             for (int d = 0; d < gLen[g]; d++, n++)
             {
-                Pack(src + (long)n * SrcUints, 30 + n, 2 * n, n, n, g, gStart[g]);
-                float* s = sph + (long)n * 4;
-                s[0] = 0f; s[1] = 0f; s[2] = -10f; s[3] = 1f;
+                Pack(ref src[n], 30 + n, 2 * n, n, n, g, gStart[g]);
+                sph[n] = new SphereRec { Centre = new Vector3(0f, 0f, -10f), Radius = 1f };
             }
         // ...and the three populations a cull has to get right: outside the frustum, exempt, sub-pixel.
-        sph[1 * 4 + 0] = 500f;                                   // draw 1: far off to the side
-        sph[4 * 4 + 3] = AlloyRenderer.NeverCull;                // draw 4: unknown bounds, never culled
-        sph[5 * 4 + 3] = 0.001f;                                 // draw 5: a speck, for the LOD test
+        sph[1].Centre.X = 500f;                                   // draw 1: far off to the side
+        sph[4].Radius = AlloyRenderer.NeverCull;                // draw 4: unknown bounds, never culled
+        sph[5].Radius = 0.001f;                                 // draw 5: a speck, for the LOD test
         // The sorted batch: near, far, equally far (the tie), and one the frustum drops.
-        sph[6 * 4 + 2] = -10f;
-        sph[7 * 4 + 2] = -30f;
-        sph[8 * 4 + 2] = -30f;
-        sph[9 * 4 + 0] = 500f;
+        sph[6].Centre.Z = -10f;
+        sph[7].Centre.Z = -30f;
+        sph[8].Centre.Z = -30f;
+        sph[9].Centre.X = 500f;
 
-        uint* cmd = stackalloc uint[drawN * CmdUints];
+        DrawCmdRec* cmd = stackalloc DrawCmdRec[drawN];
         int* outSlot = stackalloc int[drawN];
         uint* cnt = stackalloc uint[groups];
 
@@ -742,7 +747,7 @@ internal static unsafe class CullPass
         // exactly the hi-Z rejects; the fresh pyramid then admits 2, and phase two draws it and nothing else.
         bool* occ = stackalloc bool[drawN];
         uint* rej = stackalloc uint[drawN];
-        uint* cmd2 = stackalloc uint[drawN * CmdUints];
+        DrawCmdRec* cmd2 = stackalloc DrawCmdRec[drawN];
         int* out2 = stackalloc int[drawN];
         uint* cnt2 = stackalloc uint[groups];
         occ[0] = true; occ[2] = true; occ[6] = true;
@@ -774,29 +779,27 @@ internal static unsafe class CullPass
     /// other line is <see cref="CullCs"/>'s and <see cref="SortCs"/>'s, in order -- two loops because there
     /// are two dispatches, and the barrier between them is what the loop boundary stands for.
     /// <paramref name="scramble"/> runs the invocations backwards, which the sorted range must survive.</summary>
-    private static void Emulate(uint* src, float* sph, int drawN, int groups, float* planes, Matrix4x4 vp,
+    private static void Emulate(CullSrcRec* src, SphereRec* sph, int drawN, int groups, Vector4[] planes, Matrix4x4 vp,
                                 float lodPx, float lodScale, int compactBelow, Vector3 eye, float* key,
-                                uint* cmd, int* outSlot, uint* cnt, bool scramble = false,
+                                DrawCmdRec* cmd, int* outSlot, uint* cnt, bool scramble = false,
                                 int rejMode = 0, uint* rej = null, bool* occ = null)
     {
         for (int g = 0; g < groups; g++) cnt[g] = 0;
         for (int q = 0; q < drawN; q++)
         {
             int i = scramble ? drawN - 1 - q : q;
-            uint* b = src + (long)i * SrcUints;
-            bool sorted = b[4] >= (uint)compactBelow;
+            ref CullSrcRec b = ref src[i];
+            bool sorted = b.Batch >= (uint)compactBelow;
             if (rejMode == RejRead && (sorted || rej[i] == 0u)) continue;
-            int slot = (int)b[3];
-            float* s = sph + (long)slot * 4;
-            var c = new Vector3(s[0], s[1], s[2]);
-            float r = s[3];
+            int slot = (int)b.Slot;
+            var c = sph[slot].Centre;
+            float r = sph[slot].Radius;
             bool keep = true;
             bool hiz = false;
             if (r < 1e29f)
             {
                 for (int p = 0; p < 6 && keep; p++)
-                    keep = !(planes[p * 4] * c.X + planes[p * 4 + 1] * c.Y + planes[p * 4 + 2] * c.Z
-                             + planes[p * 4 + 3] < -r);
+                    keep = !(planes[p].X * c.X + planes[p].Y * c.Y + planes[p].Z * c.Z + planes[p].W < -r);
                 if (keep && !sorted && lodPx > 0f && lodScale > 0f)
                 {
                     float w = Vector4.Transform(new Vector4(c, 1f), vp).W;
@@ -810,58 +813,47 @@ internal static unsafe class CullPass
             {
                 Vector3 d = c - eye;
                 key[i] = keep ? Vector3.Dot(d, d) : -1f;
-                if (keep) cnt[b[4]]++;
+                if (keep) cnt[b.Batch]++;
                 continue;
             }
             if (!keep) continue;
-            uint o = b[5] + cnt[b[4]]++;
-            uint k = o * 5u;
-            cmd[k] = b[0];
-            cmd[k + 1u] = 1u;
-            cmd[k + 2u] = b[1];
-            cmd[k + 3u] = b[2];
-            cmd[k + 4u] = 0u;
+            uint o = b.OutBase + cnt[b.Batch]++;
+            cmd[o] = new DrawCmdRec { Count = b.IndexCount, InstanceCount = 1u, FirstIndex = b.FirstIndex, BaseVertex = b.BaseVertex };
             outSlot[o] = slot;
         }
         // ...and the second dispatch: the rank sort.
         for (int q = 0; q < drawN; q++)
         {
             int i = scramble ? drawN - 1 - q : q;
-            uint* b = src + (long)i * SrcUints;
-            uint batch = b[4];
+            ref CullSrcRec b = ref src[i];
+            uint batch = b.Batch;
             if (batch < (uint)compactBelow) continue;
             float k = key[i];
             if (k < 0f) continue;
-            uint bas = b[5];
+            uint bas = b.OutBase;
             uint rank = 0;
             for (uint j = bas; j < (uint)drawN; j++)
             {
-                if (src[(long)j * SrcUints + 4] != batch) break;
+                if (src[j].Batch != batch) break;
                 if (j == (uint)i) continue;
                 float kj = key[j];
                 if (kj < 0f) continue;
                 if (kj > k || (kj == k && j < (uint)i)) rank++;
             }
             uint o = bas + rank;
-            uint cw = o * 5u;
-            cmd[cw] = b[0];
-            cmd[cw + 1u] = 1u;
-            cmd[cw + 2u] = b[1];
-            cmd[cw + 3u] = b[2];
-            cmd[cw + 4u] = 0u;
-            outSlot[o] = (int)b[3];
+            cmd[o] = new DrawCmdRec { Count = b.IndexCount, InstanceCount = 1u, FirstIndex = b.FirstIndex, BaseVertex = b.BaseVertex };
+            outSlot[o] = (int)b.Slot;
         }
     }
 
     /// <summary>The submitted run really is back-to-front. Read off the SPHERES rather than the
     /// keys, so a key the emulator computed wrongly cannot agree with itself.</summary>
-    private static bool Sorted(float* sph, int* outSlot, int start, int count, Vector3 eye, ExtenderLog log)
+    private static bool Sorted(SphereRec* sph, int* outSlot, int start, int count, Vector3 eye, ExtenderLog log)
     {
         float prev = float.MaxValue;
         for (int o = start; o < start + count; o++)
         {
-            float* s = sph + (long)outSlot[o] * 4;
-            Vector3 d = new Vector3(s[0], s[1], s[2]) - eye;
+            Vector3 d = sph[outSlot[o]].Centre - eye;
             float k = Vector3.Dot(d, d);
             if (k > prev)
             { log.Info($"CullPass.ParitySelfCheck FAIL: output {o} is farther than the one before it"); return false; }
@@ -874,7 +866,7 @@ internal static unsafe class CullPass
     /// own record slot -- and it landed inside that batch's output region. The two ways a compaction can be
     /// wrong that the draw call cannot survive: a draw written into someone else's region, and a command
     /// paired with the wrong record slot.</summary>
-    private static bool Agrees(uint* src, int drawN, int groups, int* gStart, uint* cmd,
+    private static bool Agrees(CullSrcRec* src, int drawN, int groups, int* gStart, DrawCmdRec* cmd,
                               int* outSlot, uint* cnt, ExtenderLog log)
     {
         bool ok = true;
@@ -883,13 +875,13 @@ internal static unsafe class CullPass
             {
                 int found = -1;
                 for (int d = 0; d < drawN; d++)
-                    if ((int)src[(long)d * SrcUints + 3] == outSlot[o] && (int)src[(long)d * SrcUints + 4] == g)
+                    if ((int)src[d].Slot == outSlot[o] && (int)src[d].Batch == g)
                         found = d;
                 if (found < 0)
                 { log.Info($"CullPass.ParitySelfCheck FAIL: output {o} names a slot batch {g} never staged"); ok = false; continue; }
-                uint* b = src + (long)found * SrcUints;
-                uint* k = cmd + (long)o * CmdUints;
-                if (k[0] != b[0] || k[1] != 1u || k[2] != b[1] || k[3] != b[2] || k[4] != 0u)
+                ref CullSrcRec b = ref src[found];
+                ref DrawCmdRec k = ref cmd[o];
+                if (k.Count != b.IndexCount || k.InstanceCount != 1u || k.FirstIndex != b.FirstIndex || k.BaseVertex != b.BaseVertex || k.BaseInstance != 0u)
                 { log.Info($"CullPass.ParitySelfCheck FAIL: output {o}'s command is not its staged draw's range"); ok = false; }
             }
         return ok;

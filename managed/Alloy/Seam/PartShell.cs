@@ -1,7 +1,9 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 
 namespace CX.Alloy.Seam;
 
@@ -32,7 +34,6 @@ public static unsafe class PartShell
         public uint Pad;
     }
 
-    private static readonly int HeadSize = (sizeof(Head) + 15) & ~15;
     private static nint _table;
     private static long _alive, _made;
 
@@ -46,9 +47,11 @@ public static unsafe class PartShell
         void* block = NativeMemory.AlignedAlloc((nuint)((2 + Slots) * sizeof(nint)), 64);
         if (block == null) { Facade.Log?.Always("seam: no memory for the Part vtable -- GetPart will refuse"); return; }
         NativeMemory.Fill(block, (nuint)((2 + Slots) * sizeof(nint)), 0);
-        nint point = (nint)block + 2 * sizeof(nint);
+        var words = new Span<nint>(block, 2 + Slots);
+        Span<nint> slots = words[2..];
+        nint point = (nint)Unsafe.AsPointer(ref slots[0]);
         nint refuse = (nint)(delegate* unmanaged<nint, nint>)&Refuse;
-        for (int i = 0; i < Slots; i++) ((nint*)point)[i] = refuse;
+        for (int i = 0; i < Slots; i++) slots[i] = refuse;
         int world = GetWorldSlot;
         // 0 is what an unresolved row reads as, and GetWorld is never slot 0 (the destructor is, on both
         // OSes), so 0 and anything past the table are the same refusal.
@@ -60,7 +63,7 @@ public static unsafe class PartShell
             NativeMemory.AlignedFree(block);
             return;
         }
-        ((nint*)point)[world] = (nint)(delegate* unmanaged<nint, nint, nint, void>)&GetWorld;
+        slots[world] = (nint)(delegate* unmanaged<nint, nint, nint, void>)&GetWorld;
         _table = point;
     }
 
@@ -69,11 +72,11 @@ public static unsafe class PartShell
     public static nint For(DbId obj, int part)
     {
         if (_table == 0 || !SceneDb.Objects.Valid(obj)) return 0;
-        for (nint p = SceneDb.ObjSeamPartShells[obj.Index]; p != 0; p = ((Head*)(p - HeadSize))->Next)
-            if (((Head*)(p - HeadSize))->Part == part) return p;
-        void* block = NativeMemory.AlignedAlloc((nuint)(HeadSize + sizeof(nint)), 16);
+        for (nint p = SceneDb.ObjSeamPartShells[obj.Index]; p != 0; p = Headroom<Head>.Header(p)->Next)
+            if (Headroom<Head>.Header(p)->Part == part) return p;
+        void* block = NativeMemory.AlignedAlloc((nuint)(Headroom<Head>.Size + sizeof(nint)), 16);
         if (block == null) { Facade.Log?.Always("seam: no memory for a Part shell -- GetPart refused"); return 0; }
-        nint shell = (nint)block + HeadSize;
+        nint shell = Headroom<Head>.PayloadOf(block);
         Head* h = (Head*)block;
         h->Magic = Magic;
         h->ObjId = obj.Value;
@@ -91,7 +94,7 @@ public static unsafe class PartShell
     {
         obj = default; part = -1;
         if (self == 0) return false;
-        Head* h = (Head*)(self - HeadSize);
+        Head* h = Headroom<Head>.Header(self);
         if (h->Magic != Magic) return false;
         obj = new DbId(h->ObjId);
         part = h->Part;
@@ -110,7 +113,7 @@ public static unsafe class PartShell
         bool hold = SceneDb.ObjSceneKinds[obj.Index] != SeamShell.InWorld;
         while (p != 0)
         {
-            Head* h = (Head*)(p - HeadSize);
+            Head* h = Headroom<Head>.Header(p);
             nint next = h->Next;
             h->ObjId = 0;                      // retired: Resolve fails, GetWorld takes the poison path
             h->RetiredAt = SeamShell.FrameNo;
@@ -133,7 +136,7 @@ public static unsafe class PartShell
         nint p = _quarantine;
         while (p != 0)
         {
-            Head* h = (Head*)(p - HeadSize);
+            Head* h = Headroom<Head>.Header(p);
             nint next = h->Next;
             if (SeamShell.FrameNo - h->RetiredAt >= SeamShell.QuarantineFrames)
             {
@@ -175,7 +178,7 @@ public static unsafe class PartShell
         {
             // A retired part shell, or one whose object died: the out-params keep the identity the engine
             // seeds, and the call is named once so a behaviour still driving a dead attachment is visible.
-            Head* h = (Head*)(self - HeadSize);
+            Head* h = Headroom<Head>.Header(self);
             if (h->Magic == Magic && h->ObjId == 0)
             {
                 _afterDeath++;

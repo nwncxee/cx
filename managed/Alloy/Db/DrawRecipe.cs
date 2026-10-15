@@ -16,9 +16,6 @@ internal static partial class DrawRecipe
     /// session rather than the area and the models' own release is what retires entries.</summary>
     internal const int Max = 1 << 14;
 
-    /// <summary>The PBR floats a recipe stages verbatim into its record, matching
-    /// <c>AlloyRenderer.ParamFloats</c>: the two stock vec4s then ADR 0026's three extension vec4s.</summary>
-    internal const int ParamFloats = 20;
     /// <summary>Texture slots a recipe names: diffuse, the seven map slots (five maps, flow, AO), then the
     /// four PALETTE slots. The palette four are held but never BOUND -- the lit stage spends texture units
     /// 0..30, so they reach their one reader as handles in <see cref="TintTerms"/>' row.</summary>
@@ -107,7 +104,7 @@ internal static partial class DrawRecipe
     private static readonly byte[] _src = new byte[Max], _dst = new byte[Max], _prim = new byte[Max];
     private static readonly int[] _feat = new int[Max];
     private static readonly float[] _featF = new float[Max * 4];
-    private static readonly float[] _param = new float[Max * ParamFloats];
+    private static readonly ParamRow[] _param = new ParamRow[Max];
     private static readonly int[] _slots = new int[Max];
     private static readonly string[] _tex = new string[Max * TexSlots];
     /// <summary>The registry slot each texture slot names (<c>TexId.Value</c>; 0 = no texture). The bindless
@@ -122,7 +119,7 @@ internal static partial class DrawRecipe
     private static readonly float[] _cos = new float[Max], _sin = new float[Max];
     private static readonly Vector3[] _centre = new Vector3[Max];
     private static readonly float[] _radius = new float[Max];
-    private static readonly float[] _box = new float[Max * 6];
+    private static readonly Box[] _box = new Box[Max];
     private static readonly int[] _range = new int[Max];
     /// <summary>The recipe's material DECLARES water (<see cref="DeclaredWater"/>) -- the model-side half of
     /// the engine's water test, kept per recipe because <see cref="Reclassify"/> re-asks the class of every
@@ -279,7 +276,8 @@ internal static partial class DrawRecipe
     internal static float Radius(int r) => _radius[r];
     /// <summary>The mesh-arena range this recipe draws from, -1 when the arena could not hold it.</summary>
     internal static int Range(int r) => _range[r];
-    internal static float Param(int r, int k) => _param[r * ParamFloats + k];
+    /// <summary>The material terms this recipe stages into its record.</summary>
+    internal static ParamRow Params(int r) => _param[r];
 
     internal static float FeatF(int r, int k) => _featF[r * 4 + k];
     /// <summary>The resident bindless handle for one texture slot, or 0 -- which the draw submits the white
@@ -570,10 +568,10 @@ internal static partial class DrawRecipe
         featF[0] = feat;
         // The stock PBR vec4s: 0 means "not declared" and the shader synthesises it. NOT the MDL's shininess:
         // the engine never turns it into a roughness, and 1 - shininess/128 read PLT armour as rough metal.
-        Span<float> param = _param.AsSpan(r * ParamFloats, ParamFloats);
-        param.Clear();
-        MtrParams.ResetExt(param[AlloyRenderer.ParamExt..]);
-        MtrParams.Fold(mtr, param, featF);
+        ref ParamRow param = ref _param[r];
+        param = default;
+        MtrParams.ResetExt(ref param.Ext);
+        MtrParams.Fold(mtr, ref param, featF);
         // CX-223: a palette-tint material takes a row in the side table and the record carries its INDEX in
         // the feature's own feat.z lane, so the tint's terms cost the other hundred thousand records nothing.
         // A table with no row left is the feature OFF for this material -- the plain lit path, which is what
@@ -630,8 +628,7 @@ internal static partial class DrawRecipe
         _centre[r] = (lo + hi) * 0.5f;
         Vector3 ex = hi - lo;
         _radius[r] = 0.5f * ex.Length();
-        _box[r * 6 + 0] = lo.X; _box[r * 6 + 1] = lo.Y; _box[r * 6 + 2] = lo.Z;
-        _box[r * 6 + 3] = hi.X; _box[r * 6 + 4] = hi.Y; _box[r * 6 + 5] = hi.Z;
+        _box[r] = new Box { Min = lo, Max = hi };
         _range[r] = MeshArena.Acquire(mesh);
         if (_range[r] < 0 && !_rangeQueued[r] && _rangeWaitN < _rangeWait.Length)
         { _rangeWait[_rangeWaitN++] = r; _rangeQueued[r] = true; }
@@ -706,11 +703,8 @@ internal static partial class DrawRecipe
         return any;
     }
 
-    /// <summary>The recipe's local box, six floats (min then max), into <paramref name="dst"/>.</summary>
-    internal static void Box(int r, Span<float> dst)
-    {
-        for (int k = 0; k < 6; k++) dst[k] = _box[r * 6 + k];
-    }
+    /// <summary>The recipe's local box.</summary>
+    internal static Box ModelBox(int r) => _box[r];
 
     /// <summary>The env-map bit of the slot mask: the material declares an env map with no texture behind it (the
     /// per-area probe replaces what it held). It is <see cref="AlloyRenderer.EnvSlot"/> and nothing else -- that

@@ -82,7 +82,7 @@ internal static unsafe partial class TexLoad
             if (px != null)
             {
                 ok &= !FreeRaster(px, 2, 1, 3);   // untagged: the engine's release would see it
-                *(short*)(px + r.Bytes + RasterTagAt) = RasterTag;
+                TagRaster(px, r.Bytes);
                 ok &= FreeRaster(px, 2, 1, 3);
             }
         }

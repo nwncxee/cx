@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
@@ -22,7 +23,6 @@ internal static unsafe class NuiItemIcons
     private const int PaletteRowShift = 10;
     /// <summary>std::string {data, size, capacity} as <c>DataBlock::FromBase64</c> reads it: libstdc++ size at +8;
     /// MSVC size at +0x10 and capacity at +0x18, whose data field is a pointer only when capacity >= 16.</summary>
-    private const int StrLenGnu = 8, StrLenMsvc = 0x10, StrCapMsvc = 0x18, StrBytes = 32;  // not-an-offset: std::string ABI, not an engine class
 
     private static ExtenderLog? _log;
     private static Knob<bool>? _enabled, _on;
@@ -133,13 +133,11 @@ internal static unsafe class NuiItemIcons
     /// <c>FromBase64</c> (which adopts its decode, so the block frees itself). The string header only points at ours.</summary>
     private static IntPtr Answer(IntPtr ret)
     {
-        byte* str = stackalloc byte[StrBytes];
-        NativeMemory.Clear(str, StrBytes);
+        byte* str = stackalloc byte[NuiStdString.Bytes];
+        NativeMemory.Clear(str, NuiStdString.Bytes);
         fixed (byte* b = _b64)
         {
-            *(byte**)str = b;
-            if (OperatingSystem.IsWindows()) { *(ulong*)(str + StrLenMsvc) = (ulong)_b64Len; *(ulong*)(str + StrCapMsvc) = (ulong)_b64Len; }
-            else *(ulong*)(str + StrLenGnu) = (ulong)_b64Len;
+            new NuiStdString(str).Borrow(b, (ulong)_b64Len);
             return _fromBase64(ret, (IntPtr)str);
         }
     }
@@ -253,9 +251,30 @@ internal static unsafe class NuiItemIcons
     {
         public uint BaseItem;
         public byte Gender, VisualEffect;
-        public fixed ushort Models[LookModels];
-        public fixed byte Colors[LookColors];
-        public fixed byte PartColors[LookPartColors];
+        public LookModelSet Models;
+        public LookColorSet Colors;
+        public LookPartColorSet PartColors;
+    }
+
+    /// <summary>The 19 model numbers of a look, one per part.</summary>
+    [InlineArray(LookModels)]
+    private struct LookModelSet
+    {
+        private ushort _model;
+    }
+
+    /// <summary>The 6 colours of a look: leather, cloth, metal, then the rest.</summary>
+    [InlineArray(LookColors)]
+    private struct LookColorSet
+    {
+        private byte _colour;
+    }
+
+    /// <summary>The per-part colours of a look, part-major, <c>ff</c> = inherit.</summary>
+    [InlineArray(LookPartColors)]
+    private struct LookPartColorSet
+    {
+        private byte _colour;
     }
 
     private const int LookModels = 19, LookColors = 6, LookPartColors = LookModels * LookColors;
@@ -268,40 +287,43 @@ internal static unsafe class NuiItemIcons
     /// </summary>
     private static bool ParseLook(byte* s, Look* look)
     {
-        ReadOnlySpan<byte> prefix = "@look:"u8;
-        for (int i = 0; i < prefix.Length; i++) if (s[i] != prefix[i]) return false;
-        byte* p = s + prefix.Length;
-        if (!Hex(ref p, 4, out uint v)) return false;
+        ReadOnlySpan<byte> prefix = "@look:"u8, text = MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s);
+        for (int i = 0; i < prefix.Length; i++) if (i >= text.Length || text[i] != prefix[i]) return false;
+        int p = prefix.Length;
+        if (!Hex(text, ref p, 4, out uint v)) return false;
         look->BaseItem = v;
-        if (!Hex(ref p, 2, out v)) return false;
+        if (!Hex(text, ref p, 2, out v)) return false;
         look->Gender = (byte)v;
-        if (!Hex(ref p, 2, out v)) return false;
+        if (!Hex(text, ref p, 2, out v)) return false;
         look->VisualEffect = (byte)v;
         for (int i = 0; i < LookModels; i++)
         {
-            if (!Hex(ref p, 4, out v)) return false;
+            if (!Hex(text, ref p, 4, out v)) return false;
             look->Models[i] = (ushort)v;
         }
         for (int i = 0; i < LookColors; i++)
         {
-            if (!Hex(ref p, 2, out v)) return false;
+            if (!Hex(text, ref p, 2, out v)) return false;
             look->Colors[i] = (byte)v;
         }
-        bool parts = *p != 0;
+        bool parts = At(text, p) != 0;
         for (int i = 0; i < LookPartColors; i++)
         {
-            if (parts && !Hex(ref p, 2, out v)) return false;
+            if (parts && !Hex(text, ref p, 2, out v)) return false;
             look->PartColors[i] = parts ? (byte)v : (byte)0xff;
         }
-        return *p == 0;
+        return At(text, p) == 0;
     }
 
-    private static bool Hex(ref byte* p, int digits, out uint value)
+    private static byte At(ReadOnlySpan<byte> text, int p) => p < text.Length ? text[p] : (byte)0;
+
+    private static bool Hex(ReadOnlySpan<byte> text, ref int p, int digits, out uint value)
     {
         value = 0;
         for (int i = 0; i < digits; i++, p++)
         {
-            int d = *p is >= (byte)'0' and <= (byte)'9' ? *p - '0' : (*p | 0x20) is >= 'a' and <= 'f' ? (*p | 0x20) - 'a' + 10 : -1;
+            int c = At(text, p);
+            int d = c is >= '0' and <= '9' ? c - '0' : (c | 0x20) is >= 'a' and <= 'f' ? (c | 0x20) - 'a' + 10 : -1;
             if (d < 0) return false;
             value = value << 4 | (uint)d;
         }
@@ -376,7 +398,7 @@ internal static unsafe class NuiItemIcons
         CNWBaseItem b = BaseItemOf((int)look->BaseItem);
         if (b.IsNull || look->BaseItem == NuiModelGuard.CloakBaseItem) return true;
         var names = new string[3];
-        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), new ReadOnlySpan<ushort>(look->Models, LookModels), names);
+        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), (ReadOnlySpan<ushort>)look->Models, names);
         for (int i = 0; i < n; i++)
             if (!CX.Alloy.ModelFeed.Present(names[i])) { why = $"the client has no model '{names[i]}' for base item {look->BaseItem}"; return false; }
         return true;
@@ -406,7 +428,7 @@ internal static unsafe class NuiItemIcons
     {
         Look look;
         if (dst.Length < LookPartColors || !ParseLookText(text, &look)) return false;
-        new Span<byte>(look.PartColors, LookPartColors).CopyTo(dst);
+        ((ReadOnlySpan<byte>)look.PartColors).CopyTo(dst);
         return true;
     }
 
@@ -419,8 +441,8 @@ internal static unsafe class NuiItemIcons
         Look look = default;
         look.BaseItem = (uint)v.BaseItem;
         look.Gender = v.Gender;
-        v.Models.CopyTo(new Span<ushort>(look.Models, LookModels));
-        v.Colors.CopyTo(new Span<byte>(look.Colors, LookColors));
+        v.Models.CopyTo(look.Models);
+        v.Colors.CopyTo(look.Colors);
         for (int i = 0; i < LookPartColors; i++) look.PartColors[i] = 0xff;
         return Mint(&look);
     }
@@ -438,7 +460,7 @@ internal static unsafe class NuiItemIcons
     private static IntPtr Mint(Look* look)
     {
         if (_createItem == null || _identity == IntPtr.Zero) return IntPtr.Zero;
-        return _createItem(IntPtr.Zero, look->BaseItem, look->Models, look->Colors, look->PartColors,
+        return _createItem(IntPtr.Zero, look->BaseItem, (ushort*)&look->Models, (byte*)&look->Colors, (byte*)&look->PartColors,
                            (sbyte)look->Gender, look->VisualEffect, _identity);
     }
 
@@ -473,7 +495,7 @@ internal static unsafe class NuiItemIcons
         {
             case IconKind.Layered:
                 var layered = new CLayeredIcon(icon);
-                AddPlt(resref, (ushort*)layered.Scheme, layered.SchemeCount);
+                AddPlt(resref, (ushort*)layered.Scheme, 0, layered.SchemeCount);
                 break;
             case IconKind.Composite:
                 var composite = new CCompositeIcon(icon);
@@ -489,7 +511,7 @@ internal static unsafe class NuiItemIcons
                 for (int slot = 0; slot < EngineLayout.ArmorIconLayers; slot++)
                 {
                     Span<byte> name = names.Slice(slot * EngineLayout.ArmorIconResRefStride, EngineLayout.ArmorIconResRefStride);
-                    if (name[0] != 0 && AddPlt(name, perLayer != null ? perLayer + k * count : shared, count)) k++;
+                    if (name[0] != 0 && perLayer != null ? AddPlt(name, perLayer, k * count, count) : AddPlt(name, shared, 0, count)) k++;
                 }
                 break;
             default:
@@ -502,7 +524,7 @@ internal static unsafe class NuiItemIcons
     /// <summary>One PLT layer through the engine's reader and <c>ImageDecode</c>'s lookup (<c>palette[(scheme[layer] &lt;&lt; 10)
     /// + index*4]</c>), a pixel whose layer or row is out of range left transparent where the engine would read stale
     /// memory. True when the PLT exists.</summary>
-    private static bool AddPlt(ReadOnlySpan<byte> name, ushort* scheme, int count)
+    private static bool AddPlt(ReadOnlySpan<byte> name, ushort* scheme, int first, int count)
     {
         if (scheme == null || (uint)count > RadialIcons.MaxScheme) return false;
         byte* c = stackalloc byte[RefLen + 1];
@@ -512,14 +534,14 @@ internal static unsafe class NuiItemIcons
         if (px == null) return false;
         if (Fit(w, h, c))
         {
-            byte* pal = *_palette;
+            uint* pal = (uint*)*_palette;
             int rows = *_paletteRows;
             uint[] dst = _layer!;
             for (int i = 0; i < w * h; i++)
             {
                 int layer = px[2 * i + 1];
-                int row = layer < count ? scheme[layer] : -1;
-                dst[i] = pal != null && (uint)row < (uint)rows ? *(uint*)(pal + (row << PaletteRowShift) + px[2 * i] * 4) : 0;
+                int row = layer < count ? scheme[first + layer] : -1;
+                dst[i] = pal != null && (uint)row < (uint)rows ? pal[(row << (PaletteRowShift - 2)) + px[2 * i]] : 0;
             }
             Blend(w * h);
         }
@@ -545,8 +567,8 @@ internal static unsafe class NuiItemIcons
             uint[] dst = _layer!;
             for (int i = 0; i < w * h; i++)
             {
-                byte* p = px + i * bpp;
-                dst[i] = (uint)(p[0] | p[1] << 8 | p[2] << 16 | (bpp == 4 ? p[3] : 255) << 24);
+                int o = i * bpp;
+                dst[i] = (uint)(px[o] | px[o + 1] << 8 | px[o + 2] << 16 | (bpp == 4 ? px[o + 3] : 255) << 24);
             }
             Blend(w * h);
         }

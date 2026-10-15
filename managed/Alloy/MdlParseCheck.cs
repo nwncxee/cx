@@ -205,13 +205,15 @@ internal static unsafe class MdlParseCheck
                 int per = bez ? cols * 3 : cols;
                 long want = (long)keys + (long)keys * per;
                 if (data == IntPtr.Zero || keys <= 0 || cols <= 0 || want > MaxKeys) continue;
-                for (int k = 0; k < keys; k++) t.Keys.Add(*(float*)(data + (tk + k) * sizeof(float)));
-                for (int k = 0; k < keys * per; k++) t.Keys.Add(*(float*)(data + (vk + k) * sizeof(float)));
+                var pool = new ReadOnlySpan<float>((void*)data, Math.Max(tk + keys, vk + keys * per));
+                for (int k = 0; k < keys; k++) t.Keys.Add(pool[tk + k]);
+                for (int k = 0; k < keys * per; k++) t.Keys.Add(pool[vk + k]);
             }
         int kids = n.ChildCount;
         IntPtr items = n.Children;
         if (items == IntPtr.Zero || kids <= 0) return;
-        for (int i = 0; i < kids; i++) Walk(*(IntPtr*)(items + i * sizeof(IntPtr)), me, t);
+        var kidPtrs = new ReadOnlySpan<IntPtr>((void*)items, kids);
+        for (int i = 0; i < kids; i++) Walk(kidPtrs[i], me, t);
     }
 
     /// <summary>The trigger kind passes the engine's mesh test but carries no mesh payload.</summary>

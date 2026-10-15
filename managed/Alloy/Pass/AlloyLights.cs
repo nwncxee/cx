@@ -572,6 +572,7 @@ internal static unsafe class AlloyLights
         if (n * 8 > _stage.Length) _stage = new float[n * 8];
         if (n > _gl.SsboLights) GrowLightBuffer(n);
         float rmin = float.MaxValue, rmax = 0f, rsum = 0f;
+        Span<AreaLightRec> recs = System.Runtime.InteropServices.MemoryMarshal.Cast<float, AreaLightRec>(_stage.AsSpan());
         fixed (float* s = _stage)
         {
             for (int i = 0; i < n; i++)
@@ -579,15 +580,15 @@ internal static unsafe class AlloyLights
                 Vector4 pr = FrameInputs.AreaLightPosRange[i];
                 Vector3 c = FrameInputs.AreaLightColor[i];
                 rmin = MathF.Min(rmin, pr.W); rmax = MathF.Max(rmax, pr.W); rsum += pr.W;
-                float* d = s + i * 8;
-                d[0] = pr.X; d[1] = pr.Y; d[2] = pr.Z; d[3] = pr.W;
-                d[4] = c.X; d[5] = c.Y; d[6] = c.Z;
+                ref AreaLightRec d = ref recs[i];
+                d.PosRange = pr;
+                d.Color = c;
                 // the record's spare w is this light's shadow-cube slot (#95), -1 for a light with no cube.
                 // Riding the existing pad is what keeps the cube receiver from needing a second buffer keyed
                 // the same way -- and the walk already resolved the slot by light identity.
-                d[7] = FrameInputs.AreaLightAmbient[i] ? FrameInputs.AmbientSlot : FrameInputs.AreaLightSlot[i];
+                d.Slot = FrameInputs.AreaLightAmbient[i] ? FrameInputs.AmbientSlot : FrameInputs.AreaLightSlot[i];
                 // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
-                if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d[7] += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
+                if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
             Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
         }
@@ -610,13 +611,13 @@ internal static unsafe class AlloyLights
     /// slicing and the froxel bounds can never disagree about which pass they belong to -- this pass may be
     /// rendering a probe cube, whose projection is its own. Raw bytes are row-major and GLSL reads them
     /// column-major, so <c>G[2][3] == -1</c> is CHECKED: an ortho or reversed-Z projection returns false.</summary>
-    internal static bool TryPerspective(float* proj, out float p00, out float p11, out float near, out float far)
+    internal static bool TryPerspective(in Matrix4x4 proj, out float p00, out float p11, out float near, out float far)
     {
-        p00 = proj[0]; p11 = proj[5];
+        p00 = proj.M11; p11 = proj.M22;
         near = 0f; far = 0f;
         if (!(p00 > 0f) || !(p11 > 0f)) return false;
-        if (MathF.Abs(proj[11] + 1f) > WRowEpsilon) return false;
-        float a = proj[10], b = proj[14];
+        if (MathF.Abs(proj.M34 + 1f) > WRowEpsilon) return false;
+        float a = proj.M33, b = proj.M43;
         float da = a - 1f, db = a + 1f;
         if (MathF.Abs(da) < 1e-6f || MathF.Abs(db) < 1e-6f) return false;
         near = b / da; far = b / db;
@@ -631,7 +632,7 @@ internal static unsafe class AlloyLights
     /// <paramref name="vpH"/> viewport. <paramref name="view"/> is the engine's view matrix as raw bytes
     /// (row-major v*M, read column-major by GLSL = the transpose); <paramref name="tally"/> lets a sampled
     /// frame's build add its entry totals to the period line -- the screen's build, not a probe face's.</summary>
-    internal static bool Build(float* view, float p00, float p11, float near, float far, int vpW, int vpH, bool tally)
+    internal static bool Build(in Matrix4x4 view, float p00, float p11, float near, float far, int vpW, int vpH, bool tally)
     {
         // NOT gated on the light count: with zero point lights the dispatch still writes an all-zero cluster
         // table, which is exactly right -- the lit parts then shade on area ambient + sun alone instead of
@@ -647,7 +648,7 @@ internal static unsafe class AlloyLights
 
         Gl.UseProgram(_gl.Prog);
         Gl.Uniform3i(_gl.LocGrid, GridX, GridY, GridZ);
-        Gl.UniformMatrix4fv(_gl.LocView, 1, 0, view);
+        fixed (Matrix4x4* vm = &view) Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)vm);
         Gl.Uniform2f(_gl.LocProjXY, p00, p11);
         Gl.Uniform2f(_gl.LocZ, near, far);
         Gl.Uniform1i(_gl.LocCount, _gl.Uploaded);
@@ -734,24 +735,24 @@ internal static unsafe class AlloyLights
     internal static bool FillDraw(byte* b, int* viewport, float near, float far)
     {
         if (near < MinNear) near = MinNear;
-        *(Vector4*)(b + AlloyRenderer.PbTile) = new Vector4(viewport[0], viewport[1],
+        var pb = (PassBlock*)b;
+        pb->Tile = new Vector4(viewport[0], viewport[1],
             MathF.Max((float)viewport[2] / GridX, 1f), MathF.Max((float)viewport[3] / GridY, 1f));
-        int* grid = (int*)(b + AlloyRenderer.PbGrid);
-        grid[0] = GridX; grid[1] = GridY; grid[2] = GridZ;
-        *(float*)(b + AlloyRenderer.PbReach) = ReachUniform;
+        pb->GridX = GridX; pb->GridY = GridY; pb->GridZ = GridZ;
+        pb->Reach = ReachUniform;
         LastFalloff = new Vector3(_gain, _srcRadius, _falloffPow);
-        *(Vector3*)(b + AlloyRenderer.PbFalloff) = LastFalloff;
-        *(float*)(b + AlloyRenderer.PbWrap) = _wrap;
-        *(Vector2*)(b + AlloyRenderer.PbZ) = new Vector2(near, far > near ? far : near * 2f);
-        *(Vector2*)(b + AlloyRenderer.PbAtten) = new Vector2(_atten.X, _atten.Y);
-        *(Vector2*)(b + AlloyRenderer.PbHot) = new Vector2(_hot, MathF.Max(_hotSize, 1e-4f));
-        *(Vector2*)(b + AlloyRenderer.PbSss) = new Vector2(_sss, SssOn ? SssK(_sss) : 0f);
-        *(float*)(b + AlloyRenderer.PbWrapN) = _wrapN;
-        *(float*)(b + AlloyRenderer.PbDayDim) = DayDim;
-        *(Vector2*)(b + AlloyRenderer.PbRelevance) = new Vector2(_rel, _rel * 2f);
+        pb->Falloff = LastFalloff;
+        pb->Wrap = _wrap;
+        pb->Z = new Vector2(near, far > near ? far : near * 2f);
+        pb->Atten = new Vector2(_atten.X, _atten.Y);
+        pb->Hot = new Vector2(_hot, MathF.Max(_hotSize, 1e-4f));
+        pb->Sss = new Vector2(_sss, SssOn ? SssK(_sss) : 0f);
+        pb->WrapN = _wrapN;
+        pb->DayDim = DayDim;
+        pb->Relevance = new Vector2(_rel, _rel * 2f);
         bool own = !BorrowedTable && viewport[2] == _builtW && viewport[3] == _builtH && near == _builtNear
                    && (far > near ? far : near * 2f) == _builtFar;
-        *(float*)(b + AlloyRenderer.PbBounds) = own ? 1f : 0f;
+        pb->Bounds = own ? 1f : 0f;
         return own;
     }
 

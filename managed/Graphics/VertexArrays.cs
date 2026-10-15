@@ -49,7 +49,7 @@ public static unsafe class VertexArrays
         Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_NORMALIZED, &nm);
         Gl.GetVertexAttribPointerv(loc, Gl.VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
         if (ty == 0 || bf == 0) return false;
-        s.Buf = (uint)bf; s.Size = sz; s.Type = (uint)ty; s.Stride = st; s.Off = (long)ptr;
+        s.Buf = (uint)bf; s.Size = sz; s.Type = (uint)ty; s.Stride = st; s.Off = (nint)ptr;
         s.Norm = (byte)(nm != 0 ? 1 : 0);
         return true;
     }

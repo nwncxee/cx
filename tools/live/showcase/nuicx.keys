@@ -1,0 +1,1 @@
+sleep:12000;shot:@SHOTS@/a-yaw90.png;sleep:14000;shot:@SHOTS@/b-yaw180.png;move:190,98;sleep:400;move:197,100;sleep:2500;shot:@SHOTS@/c-card.png

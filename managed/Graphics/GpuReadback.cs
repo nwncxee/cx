@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace CX.Graphics;
 
@@ -15,7 +17,7 @@ public unsafe struct GpuReadback
     private uint _buf;
     private byte* _map;
     private long _slotBytes;
-    private fixed long _fence[Slots];
+    private SlotFences _fence;
 
     /// <summary>Capacity per slot, in bytes.</summary>
     public readonly long SlotBytes => _slotBytes;
@@ -59,7 +61,9 @@ public unsafe struct GpuReadback
     {
         if (_map == null || _fence[slot] == 0) return null;
         uint st = Gl.ClientWaitSync((IntPtr)_fence[slot], 0, 0);
-        return st == Gl.ALREADY_SIGNALED || st == Gl.CONDITION_SATISFIED ? _map + slot * _slotBytes : null;
+        if (st != Gl.ALREADY_SIGNALED && st != Gl.CONDITION_SATISFIED) return null;
+        var all = new Span<byte>(_map, checked((int)(_slotBytes * Slots)));
+        fixed (byte* start = all.Slice(checked((int)(slot * _slotBytes)))) return start;
     }
 
     /// <summary>Delete the buffer and the fences (the context is current).</summary>
@@ -75,5 +79,12 @@ public unsafe struct GpuReadback
     {
         for (int i = 0; i < Slots; i++) _fence[i] = 0;
         _buf = 0; _map = null; _slotBytes = 0;
+    }
+
+    /// <summary>One fence name per slot.</summary>
+    [InlineArray(Slots)]
+    private struct SlotFences
+    {
+        private long _fence;
     }
 }

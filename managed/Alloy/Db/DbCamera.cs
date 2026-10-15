@@ -119,7 +119,7 @@ public static unsafe class DbCamera
             // CAurBehaviorSubwindow) is followed by a pose read BACK from the shell (DbAnim.SyncFromShell), and
             // stale words there put the list camera at the origin, every row behind its near plane.
             nint sh = SceneDb.ObjFacade[pobj.Index];
-            if (sh != 0) { float* w = (float*)(sh + Seam.SeamLayout.GobPos); w[0] = p.X; w[1] = p.Y; w[2] = p.Z; }
+            if (sh != 0) new Gob(sh).Position = p;
             SceneDb.Touch(pobj, Dirty.Xform);
         }
         SceneDb.CamVolumeSet[i] = false;
@@ -171,7 +171,7 @@ public static unsafe class DbCamera
         {
             SceneDb.ObjRot[robj.Index] = q;
             nint sh = SceneDb.ObjFacade[robj.Index];
-            if (sh != 0) { float* w = (float*)(sh + Seam.SeamLayout.GobRot); w[0] = q.W; w[1] = q.X; w[2] = q.Y; w[3] = q.Z; }
+            if (sh != 0) new Gob(sh).Rot = q;
             SceneDb.Touch(robj, Dirty.Xform);
         }
         SceneDb.CamVolumeSet[cam.Index] = false;
@@ -390,16 +390,16 @@ public static unsafe class DbCamera
     {
         if (!SceneDb.Cameras.Valid(cam) || !v.Valid) return;
         Matrix4x4 m = v.View * v.Proj;
-        float* p = stackalloc float[24];
-        CullPass.Planes((float*)&m, p, PosOf(cam));
+        Span<Vector4> p = stackalloc Vector4[6];
+        CullPass.Planes(m, p, PosOf(cam));
         int b = cam.Index * SceneDb.ViewPlanes;
         // CullPass emits left, right, bottom, top, near, far and inside-POSITIVE; the ENGINE's list -- which
         // GetViewVolume(i) must index, because the game's callers index it the engine's way -- is near, far,
         // then the four sides, inside-NEGATIVE. So: permute, then negate.
         for (int k = 0; k < SceneDb.ViewPlanes; k++)
         {
-            int src = Order[k] * 4;
-            SceneDb.CamVolume[b + k] = new Plane(-p[src], -p[src + 1], -p[src + 2], -p[src + 3]);
+            Vector4 q = p[Order[k]];
+            SceneDb.CamVolume[b + k] = new Plane(-q.X, -q.Y, -q.Z, -q.W);
         }
         SceneDb.CamVolumeSet[cam.Index] = true;
     }

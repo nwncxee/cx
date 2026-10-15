@@ -35,7 +35,7 @@ VIEW = 'CX.Engine.'
 # The Span constructor is too big for the default inliner; the property is not.
 INLINE = '[System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]'
 # Value types that live in CX.Engine but are copied, not pointed at.
-VALUES = {'Quat', 'Vec3'}
+VALUES = {'Quat', 'Vec3', 'NkColor'}
 # A global using alias compiles with NO usings in scope, so every name in one is spelled in full: a C#
 # keyword and an already-qualified name stay, a bare name is a CX.Engine type.
 PRIMS = {'void', 'bool', 'byte', 'sbyte', 'short', 'ushort', 'int', 'uint', 'long', 'ulong',
@@ -113,7 +113,12 @@ def main():
         t = typ.removeprefix(VIEW)
         if typ.startswith(VIEW) and t not in VALUES:
             classes.setdefault(t, {})
-        n = re.search(r'count:\s*(\d+)', rest)
+        n = re.search(r'count:\s*([^,)\s]+)', rest)
+        if n:
+            try:
+                n = (n[0], str(int(n[1], 0)))
+            except ValueError:
+                sys.exit(f'!! {cls}.{field}: count {n[1]!r} is not a number the generator can read')
         if re.search(r'embedded:\s*true', rest):
             if t not in classes:
                 sys.exit(f'!! {cls}.{field}: embedded needs a view type')

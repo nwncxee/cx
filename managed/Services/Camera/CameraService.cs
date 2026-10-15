@@ -245,7 +245,7 @@ public sealed unsafe class CameraService : IExtenderService
     private static void Adjust(IntPtr self, float dt)
     {
         var b = new CAurBehaviorCameraFollow(self);
-        IntPtr cam = new CAurBehavior(self).Owner - CameraFromOwner;
+        IntPtr cam = new CAurBehavior(self).OwnerCamera;
         CamSink c = CamSink.Of(cam);
         if (!c.Ok)
         {
@@ -341,7 +341,7 @@ public sealed unsafe class CameraService : IExtenderService
     private static void Recenter(IntPtr self, float dt)
     {
         var b = new CAurBehaviorCameraFollow(self);
-        Gate g = Check(self, new CAurBehavior(self).Owner - CameraFromOwner, out int mode);
+        Gate g = Check(self, new CAurBehavior(self).OwnerCamera, out int mode);
         if (g != Gate.Active)
         {
             if (g != Gate.NotWorldCamera) { _pursuing = false; _recenterVel = 0f; }

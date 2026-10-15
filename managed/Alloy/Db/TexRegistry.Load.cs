@@ -717,7 +717,8 @@ internal static unsafe partial class TexRegistry
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = DdsReader.LevelSize(w, h, j.Channels);
-                Gl.CompressedTextureSubImage2D(dst, l, 0, 0, w, h, j.GlFmt, sz, j.Data + off);
+                fixed (byte* lvl = new Span<byte>(j.Data, checked((int)(off + sz))).Slice((int)off))
+                    Gl.CompressedTextureSubImage2D(dst, l, 0, 0, w, h, j.GlFmt, sz, lvl);
                 off += sz;
             }
         }
@@ -726,7 +727,8 @@ internal static unsafe partial class TexRegistry
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
-                Gl.TextureSubImage2D(dst, l, 0, 0, w, h, j.PixFmt, j.PixType, j.Data + off);
+                fixed (byte* lvl = new Span<byte>(j.Data, checked((int)(off + (long)w * h * PltImage.BytesPerPixel))).Slice((int)off))
+                    Gl.TextureSubImage2D(dst, l, 0, 0, w, h, j.PixFmt, j.PixType, lvl);
                 off += (long)w * h * PltImage.BytesPerPixel;
             }
         }

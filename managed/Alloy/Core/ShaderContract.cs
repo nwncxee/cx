@@ -67,10 +67,11 @@ internal static class ShaderContract
     {
         get
         {
-            Span<float> param = stackalloc float[AlloyRenderer.ParamFloats], feat = stackalloc float[4];
-            param.Clear(); feat.Clear();
+            var param = new ParamRow();
+            Span<float> feat = stackalloc float[4];
+            feat.Clear();
             feat[0] = (int)ShaderFeature.PaletteTint;
-            Db.MtrParams.Fold(null, param, feat);
+            Db.MtrParams.Fold(null, ref param, feat);
             return feat[1];
         }
     }

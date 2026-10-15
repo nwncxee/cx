@@ -405,7 +405,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _shaderConstF = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsF);
         _shaderConstI = (int*)Native.Sym(SymbolMap.GlGlobalShaderConstantsI);
         _shaderConstV = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV);
-        _shaderConstV4 = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV4);
+        _shaderConstV4 = (Vector4*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV4);
         // #346: the targeting shape degrades the same way the dissolve does -- unresolved leaves uTgtMode
         // at the "nothing to draw" default, which is a missing overlay, not a misrender.
         if (_shaderConstI == null || _shaderConstV == null || _shaderConstV4 == null)
@@ -636,8 +636,12 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The engine's water draw bucket (<c>Scene::RenderSinglePass</c> @0x46e5f0's "Water" scope).
     /// One name, read by the ownable-bucket list and by the suppression that has to agree with it.</summary>
     internal const int WaterBucket = 6;
-    internal static float* _waterView, _waterProj;
+    internal static Matrix4x4 _waterView, _waterProj;
     internal static float _waterNear = 1f, _waterFar = 100f;
+
+    /// <summary>One uniform location per scriptable slot of one kind.</summary>
+    [System.Runtime.CompilerServices.InlineArray(ScriptableSlots)]
+    internal struct ScriptableLocs { private int _e; }
 
     /// <summary>Every location the shared feature terms upload to, the eye and the four fog-target terms
     /// included: the fog colour is direction-dependent, so every stage that fogs uploads the same five values
@@ -650,9 +654,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         /// standing bug: a content shader that starts reading a new slot compiles, links and reads zero --
         /// a feature that silently does nothing under Alloy and works under the engine. Filled at program
         /// build; a slot the stage does not use is -1, which GL ignores.</summary>
-        internal fixed int SInt[ScriptableSlots];
-        internal fixed int SFloat[ScriptableSlots];
-        internal fixed int SVec[ScriptableSlots];
+        internal ScriptableLocs SInt;
+        internal ScriptableLocs SFloat;
+        internal ScriptableLocs SVec;
         /// <summary>Bit i set when slot i of that kind resolved to a live location, so the upload walks only
         /// what the program declares instead of 48 calls, nearly all of them to -1.</summary>
         internal int SIntLive, SFloatLive, SVecLive;
@@ -693,7 +697,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// under its own, and a stale one would tell a stock file it was drawing 2D UI.</summary>
     private static Matrix4x4 _projMtx = Matrix4x4.Identity;
     private static int* _shaderConstI;
-    private static float* _shaderConstV, _shaderConstV4;
+    private static float* _shaderConstV;
+    private static Vector4* _shaderConstV4;
 
     /// <summary>Stand-in area ambient for the frames before the engine's first index -1 light bind. Grey, not
     /// black: a missing capture must not paint the world dark.</summary>

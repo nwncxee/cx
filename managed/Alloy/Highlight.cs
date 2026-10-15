@@ -276,7 +276,8 @@ internal static unsafe class Highlight
         {
             if (rootHit[i] != 0) { hit++; continue; }
             var root = new DbId((uint)arr[i]);
-            HighlightGlow.Stage(root, cols + i * 3, kids, DbAttached(root, 0, kids, kidRoot, 0));
+            fixed (float* c3 = new Span<float>(cols, MaxHlRoots * 3).Slice(i * 3, 3))
+                HighlightGlow.Stage(root, c3, kids, DbAttached(root, 0, kids, kidRoot, 0));
         }
         HighlightGlow.Draw(view, proj, display);
         if (hit == 0) return;
@@ -329,11 +330,10 @@ internal static unsafe class Highlight
             for (int p = first; p < first + SceneDb.ObjPartCount[o] && slot < 0; p++) slot = SceneDb.PartSlot[p];
             string rec = "no drawn part";
             if (slot >= 0)
-                fixed (float* d = _dData)
-                {
-                    float* r = d + (long)slot * DrawFloats;
-                    rec = $"record dif=({r[24]:F2},{r[25]:F2},{r[26]:F2}) emi=({r[28]:F2},{r[29]:F2},{r[30]:F2})";
-                }
+            {
+                ref DrawRecordBlock r = ref _dData[slot];
+                rec = $"record dif=({r.DifR:F2},{r.DifG:F2},{r.DifB:F2}) emi=({r.EmiR:F2},{r.EmiG:F2},{r.EmiB:F2})";
+            }
             _log?.Info($"[hldiag] root o={o} \"{SceneDb.ObjModel[o]?.Name ?? "-"}\" tint={SceneDb.ObjTint[o]} "
                        + $"illum={SceneDb.ObjEmissive[o]} flags={SceneDb.ObjSeamFlags[o]:x} {rec}");
         }
@@ -350,8 +350,6 @@ internal static unsafe class Highlight
         int boundCull = -1, boundColor = -1, boundCut = -1;
         // The blended class writes depth too now (Issue.TransparentPass depthWrite), so a translucent creature matches.
         int end = groups < _gBlendEnd ? groups : _gBlendEnd;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = 0; g < end; g++)
         {
             if (ShaderFeatures.OutOfPrepass(_gFeat[g])) continue;
@@ -391,8 +389,7 @@ internal static unsafe class Highlight
                 }
                 BindBatchState(g, ref boundCull, ref boundVao);
                 Gl.Uniform1i(_hlBase, j);
-                Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + j, GlUnsignedShort,
-                                               (void**)(offs + j), 1, bases + j);
+                AlloyRenderer.MultiDrawRange(_gMode[g], j, 1);
             }
         }
     }

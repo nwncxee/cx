@@ -883,6 +883,14 @@ offset	Nui::Layout::LayoutGroup	editWidth	0x638	0x770	# NuiGroupEditWidth
 offset	Nui::Layout::LayoutGroup	editHeight	0x640	0x778	# NuiGroupEditHeight
 offset	Nui::Layout::LayoutGroup	scaleConstraints	0x668	0x7a0	# NuiGroupScaleConstraints
 offset	Nui::JSON::JsonWindow	idsHead	0x418	0x468	# NuiIdsHead
+offset	Nui::JSON::JsonWindow	windowId	0x1e0	0x230	# NuiWinId
+offset	Nui::JSON::JsonWindow	windowName	0x1e8	0x238	# NuiWinName
+offset	Nui::JSON::JsonWindow	windowJson	0x208	0x258	# NuiWinJson
+offset	Nui::JSON::JsonWindow	bindIngest	0x440	0x4a0	# NuiWinIngest
+offset	Nui::JSON::BindUpdate	name	0x8	0x8	# NuiBindUpdateName
+offset	Nui::JSON::BindUpdate	json	0x28	0x28	# NuiBindUpdateJson
+offset	Nui::JSON::BindUpdate	stride	0x40	0x40	# NuiBindUpdateStride
+offset	Nui::JSON::DynamicBinding	sizeof	0x188	0x188	# NuiDynamicBindingSize
 offset	Nui::JSON::IdNode	key	0x8	0x10	# NuiIdNodeKey
 offset	Nui::JSON::IdNode	element	0x28	0x30	# NuiIdNodeElement
 # ---- CX-103/104/105: the scene pipeline's own rows. Gob 0x0..0x4b8 is the region #448 paired as identical
@@ -1185,10 +1193,16 @@ rva	_ZN11CNWCMessage33SendPlayerToServerInput_SplitItemEji	0x7c0050	# SendInputS
 rva	_ZN11CNWCMessage33SendPlayerToServerInput_MergeItemEjj	0x7bfd90	# SendInputMergeItem (6/22)
 rva	_ZN3Nui6Layout6Widget6RenderEP10nk_context	0x9528e0	# NuiWidgetRender
 rva	_ZN3Nui4JSON10JsonWindow6RenderEv	0x74b810	# NuiJsonWindowRender
+rva	_ZN3Nui6Window17GetImageWithCacheERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt8functionIFSt10shared_ptrI7NkImageEvEE	0x6c24b0	# NuiGetImageWithCache
 rva	Nui::JSON::DynamicBinding::s_array_index	0x129728c	# NuiArrayIndex (DATA)
 rva	nk_layout_widget_space	0xa6c0b0	# NkLayoutWidgetSpace
 rva	_ZTVN3Nui6Layout14StatefulWidgetE	0xe6dff0	# NuiStatefulWidgetVtbl
 rva	_ZN3Nui4JSON10JsonWindow11HandleErrorEPKcS3_	0x746650	# NuiHandleError
+rva	_ZN3Nui4JSON10JsonWindowC1EiNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN8nlohmann10basic_jsonISt3mapSt6vectorS7_blmdSaNS8_14adl_serializerESB_IhSaIhEEEE	0x730620	# NuiJsonWindowCtor
+rva	_ZN3Nui4JSON10JsonWindow6UpdateEv	0x74d750	# NuiJsonWindowUpdate
+rva	Nui::JSON::PushEvent	0x746130	# NuiEventPush
+rva	_ZN3Nui4JSON10JsonWindow4BindERKN8nlohmann10basic_jsonISt3mapSt6vectorNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEblmdSaNS2_14adl_serializerES5_IhSaIhEEEE	0x7408f0	# NuiJsonWindowBind
+rva	_ZN3Nui4JSON14DynamicBindingD1Ev	0x735970	# NuiDynamicBindingDtor
 rva	_ZTVN3Nui6Layout11LayoutGroupE	0xe6ce10	# NuiLayoutGroupVtbl
 rva	_ZTVN3Nui6Layout11SingleGroupE	0xe6ce58	# NuiSingleGroupVtbl
 rva	_ZTVN3Nui6Layout4SpanE	0xe39670	# NuiSpanVtbl
@@ -1215,6 +1229,7 @@ lva	nk_sdl.ogl.cmds	0x1a12a28	# NkCmds (DATA)
 lva	nk_sdl.ogl.tex_null	0x1a12aa0	# NkTexNull (DATA)
 lva	Nui::JSON::DynamicBinding::s_array_index	0x18ab050	# NuiArrayIndex (DATA)
 lva	nk_layout_widget_space	0xdd8340	# NkLayoutWidgetSpace
+lva	Nui::JSON::PushEvent	0x86f680	# NuiEventPush
 
 # ---- CX-109/110 ----
 offset	Camera	scene	0x90	0x90	# CameraScene
@@ -1310,6 +1325,8 @@ offset	CNWCItem	gender	0x212	0x1f2	# ItemGender
 offset	NkContext	mousePos	0x14c	0x14c	# NkCtxMousePos
 offset	NkContext	current	0x6738	0x6738	# NkCtxCurrent
 offset	NkWindow	layout	0xa8	0xa8	# NkWinLayout
+offset	NkContext	active	0x6730	0x6730	# NkCtxActive
+offset	NkWindow	editActive	0x18c	0x18c	# NkWinEditActive
 offset	NkCommandImage	handle	0x18	0x18	# NkCmdImageHandle
 offset	NkCommand	type	0x0	0x0	# NkCmdType
 offset	NkCommand	next	0x8	0x8	# NkCmdNext
@@ -1329,3 +1346,63 @@ offset	CNWCVisualEffectOnObject	shown	0xd8	0xd8	# EffectShown
 offset	CNWCVisualEffectOnObject	lasting	0xfc	0xfc	# EffectLasting
 offset	CNWCVisualEffectOnObject	source	0x58	0x58	# EffectSource
 offset	CNWCVisualEffectOnObject	node	0x28	0x28	# EffectNode
+offset	CNWCItem	asObject	0x48	0x48	# ItemAsObject
+offset	NkPanel	offsetX	0x18	0x18	# NkPanelOffsetX
+offset	NkPanel	offsetY	0x20	0x20	# NkPanelOffsetY
+offset	NkPanel	atX	0x28	0x28	# NkPanelAtX
+offset	NkPanel	atY	0x2c	0x2c	# NkPanelAtY
+offset	NkPanel	maxX	0x30	0x30	# NkPanelMaxX
+offset	NkPanel	bounds	0x8	0x8	# NkPanelBounds
+offset	NkPanel	clip	0x44	0x44	# NkPanelClip
+offset	NkPanel	rowType	0x70	0x70	# NkPanelRowType
+offset	NkPanel	rowIndex	0x74	0x74	# NkPanelRowIndex
+offset	NkPanel	rowHeight	0x78	0x78	# NkPanelRowHeight
+offset	NkPanel	rowColumns	0x80	0x80	# NkPanelRowColumns
+offset	NkPanel	rowItemOffset	0x98	0x98	# NkPanelRowItemOffset
+offset	NkPanel	rowItem	0xa0	0xa0	# NkPanelRowItem
+offset	NkContext	styleScrollV	0x3060	0x3060	# NkCtxStyleScrollV
+offset	NkContext	styleScrollH	0x2bb8	0x2bb8	# NkCtxStyleScrollH
+offset	NkContext	barSizeX	0x41ec	0x41ec	# NkCtxBarSizeX
+offset	NkContext	barSizeY	0x41f0	0x41f0	# NkCtxBarSizeY
+offset	NkContext	leftDown	0x10c	0x10c	# NkCtxLeftDown
+offset	NkContext	leftClicked	0x110	0x110	# NkCtxLeftClicked
+offset	NkContext	clicked	0x114	0x114	# NkCtxClicked
+offset	NkContext	delta	0x15c	0x15c	# NkCtxDelta
+offset	NkContext	wheel	0x164	0x164	# NkCtxWheel
+offset	NkCommandBuffer	base	0x0	0x0	# NkCmdBufBase
+offset	NkCommandBuffer	end	0x30	0x30	# NkCmdBufEnd
+offset	NkCommandBuffer	layout	0x40	0x40	# NkCmdBufLayout
+offset	NkBuffer	memory	0x40	0x40	# NkBufMemory
+offset	NkBuffer	allocated	0x58	0x58	# NkBufAllocated
+offset	LerpFloat	from	0x8	0x8	# LerpFrom
+offset	VdoElemItem	count	0x4	0x4	# VdoElemItemCount
+offset	VdoElemItem	stride	0x8	0x8	# VdoElemItemStride
+offset	NkCommandScissor	x	0x10	0x10	# NkCmdScissorX
+offset	NkCommandScissor	y	0x12	0x12	# NkCmdScissorY
+offset	NkCommandScissor	w	0x14	0x14	# NkCmdScissorW
+offset	NkCommandScissor	h	0x16	0x16	# NkCmdScissorH
+offset	NkCommandLine	color	0x1a	0x1a	# NkCmdLineColor
+offset	NkCommandCurve	color	0x22	0x22	# NkCmdCurveColor
+offset	NkCommandRect	color	0x1c	0x1c	# NkCmdRectColor
+offset	NkCommandRectFilled	x	0x12	0x12	# NkCmdRectFilledX
+offset	NkCommandRectFilled	y	0x14	0x14	# NkCmdRectFilledY
+offset	NkCommandRectFilled	w	0x16	0x16	# NkCmdRectFilledW
+offset	NkCommandRectFilled	h	0x18	0x18	# NkCmdRectFilledH
+offset	NkCommandRectFilled	color	0x1a	0x1a	# NkCmdRectFilledColor
+offset	NkCommandRectMultiColor	left	0x18	0x18	# NkCmdRectMultiLeft
+offset	NkCommandRectMultiColor	top	0x1c	0x1c	# NkCmdRectMultiTop
+offset	NkCommandRectMultiColor	bottom	0x20	0x20	# NkCmdRectMultiBottom
+offset	NkCommandRectMultiColor	right	0x24	0x24	# NkCmdRectMultiRight
+offset	NkCommandCircle	color	0x1a	0x1a	# NkCmdCircleColor
+offset	NkCommandCircleFilled	color	0x18	0x18	# NkCmdCircleFilledColor
+offset	NkCommandArc	color	0x20	0x20	# NkCmdArcColor
+offset	NkCommandArcFilled	color	0x20	0x20	# NkCmdArcFilledColor
+offset	NkCommandTriangle	color	0x1e	0x1e	# NkCmdTriangleColor
+offset	NkCommandTriangleFilled	color	0x1c	0x1c	# NkCmdTriangleFilledColor
+offset	NkCommandPolygon	color	0x10	0x10	# NkCmdPolygonColor
+offset	NkCommandPolygonFilled	color	0x10	0x10	# NkCmdPolygonFilledColor
+offset	NkCommandPolyline	color	0x10	0x10	# NkCmdPolylineColor
+offset	NkCommandText	background	0x18	0x18	# NkCmdTextBackground
+offset	NkCommandText	foreground	0x1c	0x1c	# NkCmdTextForeground
+offset	NkCommandImage	color	0x30	0x30	# NkCmdImageColor
+offset	CallBack	seamName	0x0	0x0	# SeamCallBackName

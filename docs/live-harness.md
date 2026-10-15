@@ -13,8 +13,36 @@ runs the framework in a stub host with no GL and no engine, cannot tell you.
 
 Options: `--module NAME` `--seconds N` `--cfg 'key=value'` (repeatable) `--out DIR` `--keys SCRIPT`
 `--char NAME` `--width W` `--height H` `--boot-timeout N` `--min-lit N` `--keep` `--ladder`.
+`--stock` runs the client without CX, to check that what a server sends a CX client does no harm to one without it. It needs
+OpenAL on the nix-ld path (`nixpkgs#openal.out`), which `cx-launch` otherwise brings, and grades no CX log line.
 Exit code 0 is PASS, 1 is FAIL, 2 is a setup problem (no build staged, no client, a client already
 running). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
+
+## NixOS outside the Steam runtime
+
+NixOS runs the client through nix-ld. The harness needs two things a NixOS host may not have:
+
+- `gamescope` from the host's own nixpkgs, not the flake's pin. Its Vulkan driver must match the host's
+  glibc, or gamescope stops with "vulkan: failed to find physical device".
+- `libGL.so.1` on the nix-ld library path, from libglvnd.
+
+```sh
+export PATH="$(nix build --no-link --print-out-paths nixpkgs#gamescope)/bin:$PATH"
+export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#libglvnd)/lib:/run/opengl-driver/lib:$NIX_LD_LIBRARY_PATH"
+tools/live/run-live.sh --nui
+```
+
+`tools/live/run-proton-live.sh` also needs freetype, libX11 and libXext on the same path, because Proton's wine loads them
+through nix-ld. Without freetype, wine stops with "cannot find FreeType". Without libXext, the client never presents a frame.
+
+```sh
+export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#freetype.out nixpkgs#libx11.out nixpkgs#libxext.out | sed 's|$|/lib|' | paste -sd:):$NIX_LD_LIBRARY_PATH"
+tools/live/run-proton-live.sh --nui
+```
+
+`--ladder` and `--showcase NAME` host the same modules as `run-live.sh`, and their marks are in the run's `nwclientLog1.txt`.
+Under Proton a shot can read back the frame from before the last one the client presented, so take the pair again before two
+shots that match exactly count as evidence.
 
 ## How it works
 
@@ -22,8 +50,14 @@ running). It works from any worktree: it runs the `cx-linux-x64/` staged next to
 its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one:
 `glxinfo` inside it reports `OpenGL core profile version string: 4.6.0 NVIDIA`, which is what Alloy
 needs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
-log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either: the harness
-sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it.
+log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either.
+`tools/live/isolate.sh` sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it, and points
+PulseAudio, PipeWire and SDL audio at sockets that don't exist. The Proton run also disables wine's audio drivers.
+
+**Nothing outlives the run.** Every process the run starts carries `CX_LIVE_RUN=<tag>` in its environment, so the
+harness finds its own processes even after they leave the launch tree, as `wineserver` does. A run FAILs when one of
+them connects to the desktop's sound server (`sound server` in the summary, read with `pw-dump`) or is still alive
+after shutdown (`leftovers`). Both runners kill every tagged process on exit, Ctrl-C included.
 
 **Nothing of the user's is touched.** `$OUT/home` is a throwaway HOME and
 `$OUT/home/.local/share/Neverwinter Nights` a throwaway user directory, passed to the client as
@@ -164,14 +198,14 @@ row 2 (`cell#2`). Feed it in with `nui.cardfile`, and point at it with the point
     tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.cardforce=img' \
         --keys 'sleep:6000;shot:<dir>/cards.png'
     tools/live/run-live.sh --nui --cfg 'nui.cardfile=<path to cards.policy>' --cfg 'nui.hitdebug=1' \
-        --keys 'sleep:8000;move:100,100;sleep:300;move:190,249;sleep:1500;shot:<dir>/row2.png'
+        --keys 'sleep:8000;move:100,100;sleep:300;move:190,559;sleep:1500;shot:<dir>/row2.png'
 
 `nui.cardforce=img` shows the `img` cards as if the pointer rested on an element with that id, so the shot needs no
 pointer. The second run uses the real pointer: row 2 of the list shows its own card, and any other row shows the shared one.
 `nui.cardfile` is read again after the login, which clears a server's policy.
 
 For the late-data rules, `tools/live/ladder/cards-standin.policy` is a stand-in for the `cell` family and
-`tools/live/ladder/cards-late.policy` holds the real `cell#2`. `--cfg 'nui.cardlate=<seconds>:<path to cards-late.policy>'` applies the second
+`tools/live/ladder/cards-late.policy` holds the real `cell#2`. `--cfg 'nui.cardlatefile=<path to cards-late.policy>' --cfg 'nui.cardlatesec=<seconds>'` applies the second
 file that many seconds after the first, as a slow server would. Point at row 2 before and after it lands and shoot both.
 
 `--ui-scale 1.5` sets the client's UI scale (and lifts its resolution cap) for any run, so a NUI rectangle can be read at another scale.
@@ -238,7 +272,7 @@ These knobs are `ChatOnly` and exist for building and testing. None is advertise
 | knob | what it does |
 |---|---|
 | `nui.cardfile` | a file of `card.<key>=` policy lines read as if a server had sent them; read again after a login |
-| `nui.cardlate` | `<seconds>:<file>`, a second file applied that long after the card file |
+| `nui.cardlatefile`, `nui.cardlatesec` | a second file of policy lines, and the seconds after the card file that it is applied |
 | `nui.cardforce` | shows one key's cards as if the pointer rested on an element with that id |
 | `nui.heldprobe` | holds this image at the first NUI draw 50 s after boot, as `held.image` would |
 | `nui.policyprobe` | `key=value;key=value` window render properties, read under whatever a server sends |
@@ -251,7 +285,8 @@ These knobs are `ChatOnly` and exist for building and testing. None is advertise
 A showcase is a module script plus the server policy it needs, for pictures and snippets rather than grading. Each is three
 files in `tools/live/showcase/`: `<name>.nss` (defines `Show(object oPC)`; its `OnClientEnter` comes from the include),
 `<name>.policy` (policy lines, fed in like `nui.cardfile`) and an optional `<name>.keys` (the default `--keys`; `@SHOTS@` is
-the run's shots folder). `inc_show.nss` is the shared half: arming on the PC's first area, `ShowRegister`/`ShowOpen` (one window
+the run's shots folder). A showcase's keys start 1 s after the area loads, so their waits line up with the script's
+`DelayCommand`s; `--seconds` only adds soak after them. `inc_show.nss` is the shared half: arming on the PC's first area, `ShowRegister`/`ShowOpen` (one window
 at a time, so the model view's one-doll limit holds), `ShowSpawn` (a passive stock creature, its id logged) and `ShowMorph` (the
 PC takes a creature's appearance). A themed window is a new `<name>.nss` that builds its own window JSON and calls
 `ShowRegister`, plus its `.policy`; the window function is the part a wiki page quotes. The build is `build-ladder.sh` with a
@@ -260,7 +295,7 @@ script path as its third argument, so there is no second builder.
     tools/live/run-live.sh --showcase creatures --out <dir>
 
 The run takes about three minutes and writes the shots to `<dir>/shots`. A `@key@` in a `.policy` is the id of the creature
-`ShowSpawn` logged for that key (`CXSHOW: id key hex`); a poller fills it in and `nui.cardlate` applies it `--showcase-late N`
+`ShowSpawn` logged for that key (`CXSHOW: id key hex`); a poller fills it in and `nui.cardlatefile` applies it `--showcase-late N`
 seconds after login (default 40, so open that window later than that). The run fails when the script logs a `-FAILED` step or
 a key's creature never appears. `--min-lit` defaults to 0 here, since a window covers the scene.
 
@@ -269,7 +304,15 @@ Every showcase opens a full-screen dark backdrop window first (`ShowBackdrop` in
 `chrome` (a stock titled window with its own draw list under `nui.<id>.background=0`), `diablo`, `solasta`, `pathfinder`, `swtor`, `cyberpunk`, `masseffect`, `dragonage` and `bg3` are eight looks built from the same keys:
 a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each `.keys` takes `window.png` and `card.png`.
 
+`nuicx` builds a doll, a card and a themed window from `"cx"` members in the window JSON with an empty `.policy` file. Its doll turns with `NuiSetBind` at +6 s and +18 s, and `nuicx_nui.nss` logs the `refused` events on the element `cx` as `CXSHOW: nui-event` lines.
+
+`nuiheld` is a server that holds things, in stock NWScript with an empty `.policy`: a drag, a click and a pick the server never confirms. Its keys log the pointer's shape as `cursor <tag>:` lines in `xtool.log`, so the held cursor reads differently from the arrow before and after.
+
 `light-engine`, `light-warm`, `light-cold` and `light-torch` are one doll under the engine's light and three server light recipes (the wiki's Light section); each opens a single 300x420 window.
+
+`closebutton` opens two closable windows of one size side by side, the second under `nui.<id>.background=0`, presses where
+each close button sits, and logs `CXSHOW: show_close open` or `gone` every 2 s. A NUI button needs `down`, a pause and `up`:
+`click` releases in the same frame and NUI ignores it.
 
 `creatures` shows eight dolls, one window at a time: a hell hound, an ogre, a beholder, a troll and a red dragon by appearance row
 (`app:`), a spawned elf mercenary by object id, a model by name and an item. The hound, the ogre and the troll play named animations. `charcreate` is a character creation screen: the doll fills the window behind a column of buttons, and `charcreate_nui.nss` beside it is the NUI event handler, compiled into the module by `build-ladder.sh` and set with `SetEventScript`. `helm` shows
@@ -280,16 +323,20 @@ passes when none of them crashes the client and the last two still draw. Run it 
 The character the client joins as depends on the renderer: with Alloy on it is the vault character (`fighter`, a human), with `alloy.enabled=0` it is the one `+TestNewModule` brings (Aluvian Darkstar, an elf). A picture
 that compares the two renderers passes `--char aluviandarkstar` to the Alloy run, so both show the same person.
 
+`perf-teardown` opens four dolls and closes them together at 20 s; run it with `--cfg general.frametimes=1 --seconds 40` and read the
+`NuiModelDoll: slot N taken down in X ms` lines and the `[frametimes]` window that holds them.
+
 ## Model view
 
-`--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, a shield, a helmet and a cloak
-on the player a second after the window opens. The shield comes off at 10 s, the sword at 13 s and the hair changes at 16 s, and two permanent visual effects and a temporary one go on at 20 s
+`--nui` also shows the player as a doll, a `NuiDrawListImage` of `@model:me`, and puts a sword, an off-hand dagger, a helmet and a
+cloak on the player a second after the window opens. The harness PC is a wizard and cannot equip a shield, so `model-wear.policy`
+previews one instead. The dagger comes off at 10 s, the sword at 13 s and the hair changes at 16 s, and two permanent visual effects and a temporary one go on at 20 s
 (`CXNUI:` markers). The window closes after 60 s. The doll's settings are policy lines in a file, fed in like the cards:
 
     tools/live/run-live.sh --nui --seconds 5 --cfg 'nui.cardfile=<path to model.policy>' \
         --keys 'sleep:4000;shot:<dir>/armed.png;sleep:12000;shot:<dir>/stripped.png'
 
-`model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlate=<seconds>:<path>`),
+`model.policy` is the doll alone, `model-wear.policy` an item to preview (apply it late with `nui.cardlatefile=<path>` and `nui.cardlatesec=<seconds>`),
 `model-vfx.policy` the two permanent effects the window puts on the player at 20 s (the temporary one stays off the doll), `model-vfx-all.policy` the same doll with `vfx=all`, which wears all three once they land (`NuiModelVfx: mirroring` lines),
 `model-standin.policy` and `model-standin-crop.policy` a stand-in with no target, with and without `standinrect`. `NuiModelGear:`
 lines in `cx.log` say each hand being filled and emptied.

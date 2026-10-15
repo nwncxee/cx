@@ -39,11 +39,8 @@ internal static unsafe class Transition
             s.Blending = true;
             s.BlendT = 0f;
             Blends++;
-            fixed (float* o = s.Out, sp = s.Spin, src = s.Src, ss = s.SrcSpin)
-            {
-                new Span<float>(o, PoseService.Bones.Count * 4).CopyTo(new Span<float>(src, PoseService.Bones.Count * 4));
-                new Span<float>(sp, PoseService.Bones.Count * 3).CopyTo(new Span<float>(ss, PoseService.Bones.Count * 3));
-            }
+            s.Src = s.Out;
+            s.SrcSpin = s.Spin;
         }
         if (s.Blending && (s.BlendT += dt) >= BlendTime) s.Blending = false;
         return s.Blending;
@@ -55,27 +52,25 @@ internal static unsafe class Transition
     internal static void Pose(ref PoseService.Slot s, in PoseService.Bones b, bool blending, bool tracked, float dt)
     {
         float w = Ease01(s.BlendT / BlendTime), decay = MathF.Exp(-dt * MathF.Log(2f) / SpinHalfLife);
-        fixed (float* o = s.Out, sp = s.Spin, src = s.Src, ss = s.SrcSpin)
-        fixed (long* parts = s.OutParts)
-            for (int i = 0; i < PoseService.Bones.Count; i++)
+        for (int i = 0; i < PoseService.Bones.Count; i++)
+        {
+            IntPtr p = b[i];
+            bool same = tracked && p != IntPtr.Zero && s.OutParts[i] == (long)p;
+            s.OutParts[i] = (long)p;
+            if (p == IntPtr.Zero) continue;
+            Quaternion e = Local(p), q = e;
+            if (blending && same)
             {
-                IntPtr p = b[i];
-                bool same = tracked && p != IntPtr.Zero && parts[i] == (long)p;
-                parts[i] = (long)p;
-                if (p == IntPtr.Zero) continue;
-                Quaternion e = Local(p), q = e;
-                if (blending && same)
-                {
-                    Vector3 v = *(Vector3*)(ss + 3 * i) * decay;
-                    Quaternion from = Quaternion.Normalize(Exp(v * dt) * *(Quat*)(src + 4 * i));
-                    *(Vector3*)(ss + 3 * i) = v;
-                    *(Quat*)(src + 4 * i) = from;
-                    q = Quaternion.Slerp(from, e, w);
-                    SetLocal(p, q);
-                }
-                *(Vector3*)(sp + 3 * i) = same && dt > 0f ? Clamp(Log(q * Quaternion.Conjugate(*(Quat*)(o + 4 * i))) / dt) : Vector3.Zero;
-                *(Quat*)(o + 4 * i) = q;
+                Vector3 v = s.SrcSpin[i] * decay;
+                Quaternion from = Quaternion.Normalize(Exp(v * dt) * s.Src[i]);
+                s.SrcSpin[i] = v;
+                s.Src[i] = from;
+                q = Quaternion.Slerp(from, e, w);
+                SetLocal(p, q);
             }
+            s.Spin[i] = same && dt > 0f ? Clamp(Log(q * Quaternion.Conjugate(s.Out[i])) / dt) : Vector3.Zero;
+            s.Out[i] = q;
+        }
     }
 
     /// <summary>Smoothstep over [0, 1]: the hand-over starts and ends at rest.</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Framework;
 
@@ -12,8 +13,8 @@ namespace CX.Alloy;
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    private static float[] _saRec = Array.Empty<float>();
-    private static ulong[] _saTexH = Array.Empty<ulong>();
+    private static DrawRecordBlock[] _saRec = Array.Empty<DrawRecordBlock>();
+    private static TexHandles[] _saTexH = Array.Empty<TexHandles>();
     private static bool[] _saSaid = Array.Empty<bool>();
     /// <summary>The frame each slot last ENTERED the DB staging walk, and the frame it last reached the PLT
     /// decision in it. A stale record that was never entered is a slot nothing draws; one that was entered
@@ -36,8 +37,8 @@ public sealed unsafe partial class AlloyRenderer
     private static void StaleAuditAlloc()
     {
         int cap = MaxRecords;
-        if (_saRec.Length == 0) _saRec = new float[(long)cap * DrawFloats];
-        if (_saTexH.Length == 0) _saTexH = new ulong[(long)cap * 8];
+        if (_saRec.Length == 0) _saRec = new DrawRecordBlock[cap];
+        if (_saTexH.Length == 0) _saTexH = new TexHandles[cap];
         if (_saSaid.Length == 0) _saSaid = new bool[cap];
         if (_saEnter.Length == 0) { _saEnter = new long[cap]; _saPltAt = new long[cap]; }
     }
@@ -48,12 +49,12 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (!StaleAuditOn) return;
         StaleAuditAlloc();
-        if (whole) { Array.Copy(_dData, _saRec, Math.Min((long)cap * DrawFloats, _saRec.Length)); return; }
+        if (whole) { Array.Copy(_dData, _saRec, Math.Min(cap, _saRec.Length)); return; }
         for (int d = 0; d < dirtyN; d++)
         {
             int s = dirty[d];
             if ((uint)s >= (uint)cap) continue;
-            Array.Copy(_dData, (long)s * DrawFloats, _saRec, (long)s * DrawFloats, DrawFloats);
+            _saRec[s] = _dData[s];
         }
     }
 
@@ -62,12 +63,12 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (!StaleAuditOn) return;
         StaleAuditAlloc();
-        if (whole) { Array.Copy(_dTexH, _saTexH, Math.Min((long)cap * 8, _saTexH.Length)); return; }
+        if (whole) { Array.Copy(_dTexH, _saTexH, Math.Min(cap, _saTexH.Length)); return; }
         for (int d = 0; d < dirtyN; d++)
         {
             int s = dirty[d];
             if ((uint)s >= (uint)cap) continue;
-            Array.Copy(_dTexH, (long)s * 8, _saTexH, (long)s * 8, 8);
+            _saTexH[s] = _dTexH[s];
         }
     }
 
@@ -129,17 +130,17 @@ public sealed unsafe partial class AlloyRenderer
     private static string? StaleAuditSlot(int i, int part)
     {
         // The upload mirrors: a value the CPU holds and the GPU does not.
-        long rb = (long)i * DrawFloats;
+        ReadOnlySpan<float> cpu = MemoryMarshal.Cast<DrawRecordBlock, float>(MemoryMarshal.CreateReadOnlySpan(ref _dData[i], 1));
+        ReadOnlySpan<float> gpu = MemoryMarshal.Cast<DrawRecordBlock, float>(MemoryMarshal.CreateReadOnlySpan(ref _saRec[i], 1));
         for (int f = 0; f < DrawFloats; f++)
-            if (_dData[rb + f] != _saRec[rb + f])
-                return $"record float {f} is {_dData[rb + f]:R} on the CPU and {_saRec[rb + f]:R} on the GPU "
+            if (cpu[f] != gpu[f])
+                return $"record float {f} is {cpu[f]:R} on the CPU and {gpu[f]:R} on the GPU "
                      + "(the record changed without MarkRecordDirty)";
         if (_bindless)
         {
-            long tb = (long)i * 8;
-            for (int s = 0; s < 8; s++)
-                if (_dTexH[tb + s] != _saTexH[tb + s])
-                    return $"texture handle {s} is 0x{_dTexH[tb + s]:x} on the CPU and 0x{_saTexH[tb + s]:x} "
+            for (int s = 0; s < TexHandles.MaterialSlots; s++)
+                if (_dTexH[i][s] != _saTexH[i][s])
+                    return $"texture handle {s} is 0x{_dTexH[i][s]:x} on the CPU and 0x{_saTexH[i][s]:x} "
                          + "on the GPU (the handle table changed without a dirty slot)";
         }
         string? plt = PltColors.MirrorDiff(i);

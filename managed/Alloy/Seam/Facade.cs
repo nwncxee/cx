@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using CX.Alloy.Db;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -50,7 +51,7 @@ public static unsafe partial class Facade
         if ((nuint)off >= (nuint)_tableBytes || (off & 7) != 0) return 0;
         int w = (int)(off >> 3);
         if ((_pointBits[w >> 6] & (1UL << (w & 63))) == 0) return 0;
-        return self + ((nint*)vptr)[-2];
+        return self + Itanium.OffsetToTop(vptr);
     }
 
     /// <summary>Resolve <paramref name="self"/> to its record for logical slot <paramref name="logical"/>, or
@@ -88,7 +89,7 @@ public static unsafe partial class Facade
         if (state != SeamShell.StateLive) { Poison(shell, logical, member, file); return false; }
         if ((FacadeKind)SeamShell.Head(shell)->Kind == FacadeKind.Camera)
         {
-            gob = shell + SeamLayout.CameraGobSub;
+            gob = new CX.Engine.Camera(shell).GobSub;
             id = SceneDb.Cameras.Valid(raw) ? SceneDb.CamObj[raw.Index] : default;
         }
         else
@@ -109,7 +110,7 @@ public static unsafe partial class Facade
         nint shell = Shell(self);
         if (shell == 0) return 0;
         return (FacadeKind)SeamShell.Head(shell)->Kind == FacadeKind.Camera
-             ? shell + SeamLayout.CameraGobSub : shell;
+             ? new CX.Engine.Camera(shell).GobSub : shell;
     }
 
     /// <summary>The record behind a <c>CAurScene*</c>.</summary>
@@ -191,13 +192,13 @@ public static unsafe partial class Facade
         FacadeKind kind = (FacadeKind)SeamShell.Head(shell)->Kind;
         NullSafePointers(shell, kind);
         Highlight.SetClaim(shell, false);
-        if (kind == FacadeKind.Camera) Highlight.SetClaim(shell + SeamLayout.CameraGobSub, false);
+        if (kind == FacadeKind.Camera) Highlight.SetClaim(new CX.Engine.Camera(shell).GobSub, false);
         // The vptrs go to the poison twins BEFORE the record is released. Every slot is then a counted
         // refusal, including the ones that answer from the shell's own words and never resolve a handle --
         // a use-after-free can no longer read stale data or, worse, WRITE into a block queued for reuse.
         *(nint*)shell = Poison(SeamLayout.PrimaryTable(kind));
-        if (kind == FacadeKind.String) *(nint*)(shell + SeamLayout.StringGobString) = Poison(SeamTable.CAurString);
-        else if (kind == FacadeKind.Camera) *(nint*)(shell + SeamLayout.CameraGobSub) = Poison(SeamTable.CameraGob);
+        if (kind == FacadeKind.String) new StringGob(shell).SeamStringSub = Poison(SeamTable.CAurString);
+        else if (kind == FacadeKind.Camera) *(nint*)new CX.Engine.Camera(shell).GobSub = Poison(SeamTable.CameraGob);
         switch (kind)
         {
             case FacadeKind.Object:
@@ -227,29 +228,34 @@ public static unsafe partial class Facade
     /// (<c>SafePointer::operator=</c> @0x477d70 appends <c>this</c>); one that does not is a seam bug, named.</summary>
     private static void NullSafePointers(nint shell, FacadeKind kind)
     {
-        int at = SeamLayout.SafeListAt(kind);
-        nint arr = *(nint*)(shell + at);
-        int count = *(int*)(shell + at + 8);
+        ExoArray list = kind switch
+        {
+            FacadeKind.Scene => new CX.Engine.Scene(shell).SafeArray,
+            FacadeKind.Camera => new Gob(new CX.Engine.Camera(shell).GobSub).SafeArray,
+            _ => new Gob(shell).SafeArray,
+        };
+        nint arr = list.Data;
+        int count = list.Count;
         if (arr != 0 && count > 0)
         {
-            nint owner = kind == FacadeKind.Camera ? shell + SeamLayout.CameraGobSub : shell;
+            nint owner = kind == FacadeKind.Camera ? new CX.Engine.Camera(shell).GobSub : shell;
             for (int i = 0; i < count; i++)
             {
-                nint sp = ((nint*)arr)[i];
+                nint sp = list[i];
                 if (sp == 0) continue;
-                nint target = *(nint*)sp;
+                nint target = ((SafePointerRec*)sp)->Target;
                 if (target != owner && target != 0)
                 {
                     Log?.Always($"seam: SafePointer 0x{sp:x} in a facade's back-ref list targets 0x{target:x}, not 0x{owner:x} -- left alone");
                     continue;
                 }
-                *(nint*)sp = 0;
-                *(int*)(sp + 8) = -1;
+                ((SafePointerRec*)sp)->Target = 0;
+                ((SafePointerRec*)sp)->Index = -1;
             }
         }
-        *(nint*)(shell + at) = 0;
-        *(int*)(shell + at + 8) = 0;
-        *(int*)(shell + at + 12) = 0;
+        list.Data = 0;
+        list.Count = 0;
+        list.Cap = 0;
         if (arr == 0) return;
         // The array is the GAME's: the shell hands out capacity 0 so the first Add is the engine's own
         // realloc(NULL), and every later one comes from the same heap. nwmain.exe statically links its CRT and
@@ -270,10 +276,9 @@ public static unsafe partial class Facade
         SceneDb.ObjRot[id.Index] = rot;
         if (shell != 0)
         {
-            float* p = (float*)(shell + SeamLayout.GobPos);
-            p[0] = pos.X; p[1] = pos.Y; p[2] = pos.Z;
-            float* q = (float*)(shell + SeamLayout.GobRot);
-            q[0] = rot.W; q[1] = rot.X; q[2] = rot.Y; q[3] = rot.Z;
+            var g = new Gob(shell);
+            g.Position = pos;
+            g.Rot = rot;
         }
         SceneDb.Touch(id, Dirty.Xform);
     }
@@ -283,16 +288,14 @@ public static unsafe partial class Facade
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Vector3 ShellPos(nint shell)
     {
-        float* p = (float*)(shell + SeamLayout.GobPos);
-        return new Vector3(p[0], p[1], p[2]);
+        return new Gob(shell).Position;
     }
 
     /// <inheritdoc cref="SetXform"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Quaternion ShellRot(nint shell)
     {
-        float* q = (float*)(shell + SeamLayout.GobRot);
-        return new Quaternion(q[1], q[2], q[3], q[0]);
+        return new Gob(shell).Rot;
     }
 
     /// <summary>Copy <paramref name="name"/> into the shell's inline name array at +0x24, truncated to the
@@ -301,9 +304,9 @@ public static unsafe partial class Facade
     /// not a managed string.</summary>
     public static void SetName(nint shell, ReadOnlySpan<char> name)
     {
-        byte* dst = (byte*)(shell + SeamLayout.GobName);
+        Span<byte> dst = new Gob(shell).SeamName;
         int n = 0;
-        for (int i = 0; i < name.Length && n < SeamLayout.GobNameMax - 1; i++)
+        for (int i = 0; i < name.Length && n < dst.Length - 1; i++)
         {
             char c = name[i];
             dst[n++] = c < 0x80 ? (byte)c : (byte)'?';
@@ -315,27 +318,27 @@ public static unsafe partial class Facade
     /// because the engine's text is a single-byte codepage and this storage is handed straight back to it.</summary>
     public static void SetName(nint shell, byte* name)
     {
-        byte* dst = (byte*)(shell + SeamLayout.GobName);
+        Span<byte> dst = new Gob(shell).SeamName;
         int n = 0;
         if (name != null)
-            while (n < SeamLayout.GobNameMax - 1 && name[n] != 0) { dst[n] = name[n]; n++; }
+            while (n < dst.Length - 1 && name[n] != 0) { dst[n] = name[n]; n++; }
         dst[n] = 0;
     }
 
     /// <summary>The shell's name as the game would read it.</summary>
     public static string NameOf(nint shell)
     {
-        byte* s = (byte*)(shell + SeamLayout.GobName);
+        ReadOnlySpan<byte> s = new Gob(shell).SeamName;
         int n = 0;
-        while (n < SeamLayout.GobNameMax && s[n] != 0) n++;
-        return System.Text.Encoding.ASCII.GetString(s, n);
+        while (n < s.Length && s[n] != 0) n++;
+        return System.Text.Encoding.ASCII.GetString(s[..n]);
     }
 
     /// <summary>The scene shell the game reads at <c>Gob</c> +0x88, kept current by every attach and detach.</summary>
-    public static void SetSceneWord(nint shell, nint sceneShell) => *(nint*)(shell + SeamLayout.GobScene) = sceneShell;
+    public static void SetSceneWord(nint shell, nint sceneShell) => new Gob(shell).Scene = sceneShell;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static nint SceneWord(nint shell) => *(nint*)(shell + SeamLayout.GobScene);
+    public static nint SceneWord(nint shell) => new Gob(shell).Scene;
 
     // ---- the refusal paths ----
 

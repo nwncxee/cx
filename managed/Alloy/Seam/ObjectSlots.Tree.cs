@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 using CX.Alloy.Mdl;
 
 namespace CX.Alloy.Seam;
@@ -262,29 +263,25 @@ public sealed unsafe partial class ObjectSlots
     internal static void RecomputeBounds(DbId id, nint shell)
     {
         if (shell == 0) return;
-        float* lo = (float*)(shell + SeamLayout.GobBoundsMin);
-        float* hi = (float*)(shell + SeamLayout.GobBoundsMax);
+        var g = new Gob(shell);
         // A zero or non-finite scale would collapse the box, and the box is a DIVISOR for the game:
         // CMainMenuBackgroundPanel::Reposition @0x9205b0 computes screenWidth / |max.x - min.x|. Scale 0 there
         // is an infinite object scale and a NaN position, which is how the main menu's backdrop vanished.
-        float scale = *(float*)(shell + SeamLayout.GobScaleFinal) * VisualXform.Scale(shell);
+        float scale = g.ScaleBase * VisualXform.Scale(shell);
         if (!float.IsFinite(scale) || scale == 0f) scale = 1f;
         if (SeamBridge.ObjectBounds(id, true, out Vector3 min, out Vector3 max) && Usable(id, shell, ref min, ref max))
         {
             min *= scale; max *= scale;
-            lo[0] = min.X; lo[1] = min.Y; lo[2] = min.Z;
-            hi[0] = max.X; hi[1] = max.Y; hi[2] = max.Z;
-            Vector3 c = (min + max) * 0.5f;
-            float* ctr = (float*)(shell + SeamLayout.GobSphereCentre);
-            ctr[0] = c.X; ctr[1] = c.Y; ctr[2] = c.Z;
-            *(float*)(shell + SeamLayout.GobSphereRadius) = (max - min).Length() * 0.5f;
+            g.BoundsMin = min;
+            g.BoundsMax = max;
+            g.Centre = (min + max) * 0.5f;
+            g.Radius = (max - min).Length() * 0.5f;
             return;
         }
-        lo[0] = BoundsSeed; lo[1] = BoundsSeed; lo[2] = BoundsSeed;
-        hi[0] = -BoundsSeed; hi[1] = -BoundsSeed; hi[2] = -BoundsSeed;
-        float* z = (float*)(shell + SeamLayout.GobSphereCentre);
-        z[0] = 0f; z[1] = 0f; z[2] = 0f;
-        *(float*)(shell + SeamLayout.GobSphereRadius) = 0f;
+        g.BoundsMin = new Vector3(BoundsSeed);
+        g.BoundsMax = new Vector3(-BoundsSeed);
+        g.Centre = Vector3.Zero;
+        g.Radius = 0f;
     }
 
     /// <summary>The object's bounds from its part range (the per-part boxes), in OBJECT space: a part's
@@ -330,17 +327,16 @@ public sealed unsafe partial class ObjectSlots
     /// <summary>Read the cached box out of the shell.</summary>
     internal static void ReadBox(nint shell, out Vector3 min, out Vector3 max)
     {
-        float* lo = (float*)(shell + SeamLayout.GobBoundsMin);
-        float* hi = (float*)(shell + SeamLayout.GobBoundsMax);
-        min = new Vector3(lo[0], lo[1], lo[2]);
-        max = new Vector3(hi[0], hi[1], hi[2]);
+        var g = new Gob(shell);
+        min = g.BoundsMin;
+        max = g.BoundsMax;
     }
 
     /// <summary>Read the cached sphere out of the shell.</summary>
     internal static void ReadSphere(nint shell, out Vector3 centre, out float radius)
     {
-        float* c = (float*)(shell + SeamLayout.GobSphereCentre);
-        centre = new Vector3(c[0], c[1], c[2]);
-        radius = *(float*)(shell + SeamLayout.GobSphereRadius);
+        var g = new Gob(shell);
+        centre = g.Centre;
+        radius = g.Radius;
     }
 }

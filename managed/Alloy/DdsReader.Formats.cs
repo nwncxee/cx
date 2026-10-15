@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -45,12 +46,12 @@ internal static unsafe partial class DdsReader
             return Drop(name, data, c, w, h, ch, size, $"{Describe(i)}: {no}");
         // The forced path decodes level 0 of every face straight from the copy; a 2D answer is the padded chain the engine walks.
         long n = !ForUnpack ? i.ChainBytes : i.Faces == 6 ? 5 * i.FaceStride + i.Level0 : i.Level0;
-        byte* mem = (byte*)NativeMemory.Alloc((nuint)(Prefix + n));
-        byte* ours = mem + Prefix;
+        byte* mem = (byte*)NativeMemory.Alloc((nuint)(PrefixBytes + n));
+        byte* ours = (byte*)Headroom<DdsMsPrefix>.PayloadOf(mem);
         if (ForUnpack) bytes.Slice(i.DataOffset, (int)n).CopyTo(new Span<byte>(ours, (int)n));
         else CopyChain(bytes, i, new Span<byte>(ours, (int)n));
-        *(short*)(ours - TagOff(c)) = OurTag;
-        *(IntPtr*)(ours - TagOff(c) + 2) = IntPtr.Zero;
+        var tag = new DdsTag(ours, c == ContainerMs);
+        tag.Type = OurTag; tag.Owner = IntPtr.Zero;
         _engRelease(data, *w, *h, *ch, *size, c);
         *w = i.W; *h = i.H; *ch = i.Channels; *size = i.Level0; *alpha = i.AlphaMean;
         _answers[(nint)ours] = i;

@@ -90,7 +90,7 @@ public sealed unsafe class DrawStatsService : IExtenderService
         {
             _indexed++;
             idx = size != uint.MaxValue ? (int)size
-                : *(int*)(v.ElemItems + item * 8 + 4);
+                : new VdoElemItem(v.ElemItems)[(int)item].Count;
             _idxSum += idx;
         }
         int prog = 0;

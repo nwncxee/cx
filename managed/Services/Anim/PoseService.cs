@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Alloy.Seam;
@@ -106,11 +107,11 @@ public sealed unsafe class PoseService : IExtenderService
         public int LastAnim;
         public bool Blending;
         public float BlendT;
-        public fixed float Out[Bones.Count * 4];
-        public fixed float Spin[Bones.Count * 3];
-        public fixed float Src[Bones.Count * 4];
-        public fixed float SrcSpin[Bones.Count * 3];
-        public fixed long OutParts[Bones.Count];
+        public BoneQuats Out;
+        public BoneVecs Spin;
+        public BoneQuats Src;
+        public BoneVecs SrcSpin;
+        public BoneParts OutParts;
         /// <summary><see cref="FootPlacement.Weight"/>'s stairs grade and the moving hold timer.</summary>
         public float Grade, Moving;
         /// <summary><see cref="Anim.Gait"/>: the engine's own locomotion, read rather than measured. <c>Gait</c> is
@@ -140,9 +141,7 @@ public sealed unsafe class PoseService : IExtenderService
         public bool Loco, HasPrev;
         public float Stance, Factor, VFactor, RateF;
         public Vector3 PrevR, PrevL;
-        public fixed long RateRun[Stride.TrackedRuns];
-        public fixed float RateEngine[Stride.TrackedRuns];
-        public fixed float RateWritten[Stride.TrackedRuns];
+        public RunRates Rates;
         /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces, the animation
         /// the stance speed was measured on (a change of it is a different stride), the seconds since a foot last
         /// bore the body's weight, and whether the pose is on the ground at all -- off it, the pacing and the foot
@@ -190,8 +189,43 @@ public sealed unsafe class PoseService : IExtenderService
         public float FollowW, FollowWV;
         /// <summary>The engine's rotations, w-first, in <see cref="BoneIndex"/> order (4 floats each), and the
         /// parts they came from: a rotation is restored only onto the same part.</summary>
-        public fixed float Rot[Bones.Count * 4];
-        public fixed long Parts[Bones.Count];
+        public BoneQuats Rot;
+        public BoneParts Parts;
+    }
+
+    /// <summary>One rotation per bone, in <see cref="BoneIndex"/> order.</summary>
+    [InlineArray(Bones.Count)]
+    internal struct BoneQuats
+    {
+        private Quat _bone;
+    }
+
+    /// <summary>One vector per bone, in <see cref="BoneIndex"/> order.</summary>
+    [InlineArray(Bones.Count)]
+    internal struct BoneVecs
+    {
+        private Vector3 _bone;
+    }
+
+    /// <summary>The engine part each bone came from, in <see cref="BoneIndex"/> order.</summary>
+    [InlineArray(Bones.Count)]
+    internal struct BoneParts
+    {
+        private long _bone;
+    }
+
+    /// <summary>What <see cref="Stride"/> remembers of one run it paced: its id, the engine's rate and the rate it wrote.</summary>
+    internal struct RunRate
+    {
+        public long Id;
+        public float Engine, Written;
+    }
+
+    /// <summary>The runs <see cref="Stride"/> tracks on one body.</summary>
+    [InlineArray(Stride.TrackedRuns)]
+    internal struct RunRates
+    {
+        private RunRate _run;
     }
 
     /// <summary>Open-addressed, <see cref="Probe"/> slots per lookup. ponytail: a gob that leaves the scene
@@ -488,10 +522,9 @@ public sealed unsafe class PoseService : IExtenderService
             if (now - p.At > PendingTicks) continue;
             ref Slot s = ref _slots[p.Slot];
             if (s.Gob != p.Gob || !s.Applied) continue;
-            fixed (long* parts = s.Parts)
-                for (int k = 0; k < Bones.Count; k++)
-                    if (parts[k] != 0 && bones[k] != IntPtr.Zero)
-                        PoseRig.SetLocal((IntPtr)parts[k], PoseRig.Local(bones[k]));
+            for (int k = 0; k < Bones.Count; k++)
+                if (s.Parts[k] != 0 && bones[k] != IntPtr.Zero)
+                    PoseRig.SetLocal((IntPtr)s.Parts[k], PoseRig.Local(bones[k]));
             _followed++;
         }
     }
@@ -519,21 +552,21 @@ public sealed unsafe class PoseService : IExtenderService
         if (NameIs(name, "pelvis_g\0"u8)) return 9;
         int side = Lower(name[0]) switch { (byte)'r' => 0, (byte)'l' => 3, _ => -1 };
         if (side < 0) return -1;
-        if (NameIs(name + 1, "thigh_g\0"u8)) return side;
-        if (NameIs(name + 1, "shin_g\0"u8)) return side + 1;
-        if (NameIs(name + 1, "foot_g\0"u8)) return side + 2;
+        if (NameIs(name, "thigh_g\0"u8, 1)) return side;
+        if (NameIs(name, "shin_g\0"u8, 1)) return side + 1;
+        if (NameIs(name, "foot_g\0"u8, 1)) return side + 2;
         int arm = 10 + side;
-        if (NameIs(name + 1, "bicep_g\0"u8)) return arm;
-        if (NameIs(name + 1, "forearm_g\0"u8)) return arm + 1;
-        if (NameIs(name + 1, "hand_g\0"u8)) return arm + 2;
+        if (NameIs(name, "bicep_g\0"u8, 1)) return arm;
+        if (NameIs(name, "forearm_g\0"u8, 1)) return arm + 1;
+        if (NameIs(name, "hand_g\0"u8, 1)) return arm + 2;
         return -1;
     }
 
     /// <summary>ASCII case-insensitive compare of a C string against a NUL-terminated literal.</summary>
-    private static bool NameIs(byte* s, ReadOnlySpan<byte> lit)
+    private static bool NameIs(byte* s, ReadOnlySpan<byte> lit, int at = 0)
     {
         for (int i = 0; i < lit.Length; i++)
-            if (Lower(s[i]) != lit[i]) return false;
+            if (Lower(s[at + i]) != lit[i]) return false;
         return true;
     }
 
@@ -611,22 +644,18 @@ public sealed unsafe class PoseService : IExtenderService
     private static void Restore(ref Slot s, in Bones bones)
     {
         PoseRig.SetPos(s.Root, s.RootPos);
-        fixed (float* r = s.Rot)
-        fixed (long* p = s.Parts)
-            for (int i = 0; i < Bones.Count; i++)
-                if (bones[i] != IntPtr.Zero && bones[i] == (IntPtr)p[i]) PoseRig.SetLocal(bones[i], *(Quat*)(r + 4 * i));
+        for (int i = 0; i < Bones.Count; i++)
+            if (bones[i] != IntPtr.Zero && bones[i] == (IntPtr)s.Parts[i]) PoseRig.SetLocal(bones[i], s.Rot[i]);
     }
 
     private static void Save(ref Slot s, IntPtr root, in Bones bones)
     {
         s.RootPos = PoseRig.Pos(root);
-        fixed (float* r = s.Rot)
-        fixed (long* p = s.Parts)
-            for (int i = 0; i < Bones.Count; i++)
-            {
-                p[i] = (long)bones[i];
-                if (bones[i] != IntPtr.Zero) *(Quat*)(r + 4 * i) = PoseRig.Local(bones[i]);
-            }
+        for (int i = 0; i < Bones.Count; i++)
+        {
+            s.Parts[i] = (long)bones[i];
+            if (bones[i] != IntPtr.Zero) s.Rot[i] = PoseRig.Local(bones[i]);
+        }
     }
 
     private static void Apply(ref Slot s, IntPtr gob, IntPtr root, in Bones bones, IntPtr scene, float dt)

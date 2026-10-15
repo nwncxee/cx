@@ -323,6 +323,10 @@ global using unsafe KiwiOptimizeFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe ReportCrashToUserFn = delegate* unmanaged<nint, byte*, byte*, void>;
 global using unsafe CrashHandlerExposeFn = delegate* unmanaged<byte*, byte*, bool, void>;
 global using unsafe NuiHandleErrorFn = delegate* unmanaged<nint, nint, nint, void>;
+global using unsafe NuiJsonWindowCtorFn = delegate* unmanaged<nint, int, nint, nint, nint>;
+global using unsafe NuiJsonWindowUpdateFn = delegate* unmanaged<nint, void>;
+global using unsafe NuiEventPushFn = delegate* unmanaged<nint, nint, nint, int, nint, void>;
+global using unsafe NuiDynamicBindingDtorFn = delegate* unmanaged<nint, void>;
 global using unsafe ManageSceneBSPFn = delegate* unmanaged<nint, long>;
 global using unsafe AddPartsToDrawBucketsFn = delegate* unmanaged<nint, long>;
 global using unsafe LerpFloatLerpedFn = delegate* unmanaged<nint, float>;
@@ -1725,6 +1729,17 @@ public readonly unsafe partial struct CGuiTextBubble(IntPtr ptr)
     public ref CAurString AurString => ref *(CAurString*)(Ptr + EngineLayout.TextBubbleString);
 }
 
+/// <summary>Typed view of an engine <c>CGuiViewport*</c>.</summary>
+public readonly unsafe partial struct CGuiViewport(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.GuiViewportRecord"/>
+    public ref IntPtr Record => ref *(IntPtr*)(Ptr + EngineLayout.GuiViewportRecord);
+}
+
 /// <summary>Typed view of an engine <c>CHitInfo*</c>.</summary>
 public readonly unsafe partial struct CHitInfo(IntPtr ptr)
 {
@@ -2068,6 +2083,8 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.ItemAsObject"/>
+    public CNWCObject AsObject => new(Ptr + EngineLayout.ItemAsObject);
     /// <inheritdoc cref="EngineLayout.ItemBaseItem"/>
     public ref int BaseItem => ref *(int*)(Ptr + EngineLayout.ItemBaseItem);
     /// <inheritdoc cref="EngineLayout.ItemColors"/>
@@ -2576,6 +2593,8 @@ public readonly unsafe partial struct CallBack(IntPtr ptr)
     public ref IntPtr SeamData => ref *(IntPtr*)(Ptr + EngineLayout.SeamCallBackData);
     /// <inheritdoc cref="EngineLayout.SeamCallBackFn"/>
     public ref IntPtr SeamFn => ref *(IntPtr*)(Ptr + EngineLayout.SeamCallBackFn);
+    /// <inheritdoc cref="EngineLayout.SeamCallBackName"/>
+    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamCallBackName), 32); }
     /// <inheritdoc cref="EngineLayout.SeamCallBackSizeof"/>
     public ref int SeamSizeof => ref *(int*)(Ptr + EngineLayout.SeamCallBackSizeof);
 }
@@ -2916,7 +2935,7 @@ public readonly unsafe ref partial struct Gob(IntPtr ptr)
     /// <inheritdoc cref="EngineLayout.SeamGobForceAnim"/>
     public ref byte SeamForceAnim => ref *(byte*)(Ptr + EngineLayout.SeamGobForceAnim);
     /// <inheritdoc cref="EngineLayout.SeamGobName"/>
-    public ref byte SeamName => ref *(byte*)(Ptr + EngineLayout.SeamGobName);
+    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamGobName), 64); }
     /// <inheritdoc cref="EngineLayout.SeamGobPersonalSpace"/>
     public ref byte SeamPersonalSpace => ref *(byte*)(Ptr + EngineLayout.SeamGobPersonalSpace);
     /// <inheritdoc cref="EngineLayout.SeamGobSafeCap"/>
@@ -2962,6 +2981,8 @@ public readonly unsafe partial struct LerpFloat(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.LerpFrom"/>
+    public ref float From => ref *(float*)(Ptr + EngineLayout.LerpFrom);
     /// <inheritdoc cref="SymbolMap.LerpFloatLerped"/>
     public float LerpFloatLerped() => EngineFn.LerpFloatLerped(Ptr);
     /// <inheritdoc cref="EngineLayout.LerpMode"/>
@@ -3337,6 +3358,19 @@ public readonly unsafe partial struct NewController(IntPtr ptr)
     public ref ushort ValueKey => ref *(ushort*)(Ptr + EngineLayout.NewControllerValueKey);
 }
 
+/// <summary>Typed view of an engine <c>NkBuffer*</c>.</summary>
+public readonly unsafe partial struct NkBuffer(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkBufAllocated"/>
+    public ref ulong Allocated => ref *(ulong*)(Ptr + EngineLayout.NkBufAllocated);
+    /// <inheritdoc cref="EngineLayout.NkBufMemory"/>
+    public ref IntPtr Memory => ref *(IntPtr*)(Ptr + EngineLayout.NkBufMemory);
+}
+
 /// <summary>Typed view of an engine <c>NkCommand*</c>.</summary>
 public readonly unsafe partial struct NkCommand(IntPtr ptr)
 {
@@ -3350,6 +3384,76 @@ public readonly unsafe partial struct NkCommand(IntPtr ptr)
     public ref int Type => ref *(int*)(Ptr + EngineLayout.NkCmdType);
 }
 
+/// <summary>Typed view of an engine <c>NkCommandArc*</c>.</summary>
+public readonly unsafe partial struct NkCommandArc(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdArcColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdArcColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandArcFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandArcFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdArcFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdArcFilledColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandBuffer*</c>.</summary>
+public readonly unsafe partial struct NkCommandBuffer(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdBufBase"/>
+    public ref IntPtr Base => ref *(IntPtr*)(Ptr + EngineLayout.NkCmdBufBase);
+    /// <inheritdoc cref="EngineLayout.NkCmdBufEnd"/>
+    public ref ulong End => ref *(ulong*)(Ptr + EngineLayout.NkCmdBufEnd);
+    /// <inheritdoc cref="EngineLayout.NkCmdBufLayout"/>
+    public ref IntPtr Layout => ref *(IntPtr*)(Ptr + EngineLayout.NkCmdBufLayout);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandCircle*</c>.</summary>
+public readonly unsafe partial struct NkCommandCircle(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdCircleColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdCircleColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandCircleFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandCircleFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdCircleFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdCircleFilledColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandCurve*</c>.</summary>
+public readonly unsafe partial struct NkCommandCurve(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdCurveColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdCurveColor);
+}
+
 /// <summary>Typed view of an engine <c>NkCommandImage*</c>.</summary>
 public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
 {
@@ -3357,6 +3461,8 @@ public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdImageColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdImageColor);
     /// <inheritdoc cref="EngineLayout.NkCmdImageH"/>
     public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdImageH);
     /// <inheritdoc cref="EngineLayout.NkCmdImageHandle"/>
@@ -3369,6 +3475,149 @@ public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
     public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdImageY);
 }
 
+/// <summary>Typed view of an engine <c>NkCommandLine*</c>.</summary>
+public readonly unsafe partial struct NkCommandLine(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdLineColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdLineColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandPolygon*</c>.</summary>
+public readonly unsafe partial struct NkCommandPolygon(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdPolygonColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdPolygonColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandPolygonFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandPolygonFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdPolygonFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdPolygonFilledColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandPolyline*</c>.</summary>
+public readonly unsafe partial struct NkCommandPolyline(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdPolylineColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdPolylineColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandRect*</c>.</summary>
+public readonly unsafe partial struct NkCommandRect(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdRectColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandRectFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandRectFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectFilledColor);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledH"/>
+    public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdRectFilledH);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledW"/>
+    public ref ushort W => ref *(ushort*)(Ptr + EngineLayout.NkCmdRectFilledW);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledX"/>
+    public ref short X => ref *(short*)(Ptr + EngineLayout.NkCmdRectFilledX);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledY"/>
+    public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdRectFilledY);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandRectMultiColor*</c>.</summary>
+public readonly unsafe partial struct NkCommandRectMultiColor(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiBottom"/>
+    public ref NkColor Bottom => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiBottom);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiLeft"/>
+    public ref NkColor Left => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiLeft);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiRight"/>
+    public ref NkColor Right => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiRight);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiTop"/>
+    public ref NkColor Top => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiTop);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandScissor*</c>.</summary>
+public readonly unsafe partial struct NkCommandScissor(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorH"/>
+    public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdScissorH);
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorW"/>
+    public ref ushort W => ref *(ushort*)(Ptr + EngineLayout.NkCmdScissorW);
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorX"/>
+    public ref short X => ref *(short*)(Ptr + EngineLayout.NkCmdScissorX);
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorY"/>
+    public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdScissorY);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandText*</c>.</summary>
+public readonly unsafe partial struct NkCommandText(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdTextBackground"/>
+    public ref NkColor Background => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTextBackground);
+    /// <inheritdoc cref="EngineLayout.NkCmdTextForeground"/>
+    public ref NkColor Foreground => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTextForeground);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandTriangle*</c>.</summary>
+public readonly unsafe partial struct NkCommandTriangle(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdTriangleColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTriangleColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandTriangleFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandTriangleFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdTriangleFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTriangleFilledColor);
+}
+
 /// <summary>Typed view of an engine <c>NkContext*</c>.</summary>
 public readonly unsafe partial struct NkContext(IntPtr ptr)
 {
@@ -3376,14 +3625,28 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCtxActive"/>
+    public ref IntPtr Active => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxActive);
+    /// <inheritdoc cref="EngineLayout.NkCtxBarSizeX"/>
+    public ref float BarSizeX => ref *(float*)(Ptr + EngineLayout.NkCtxBarSizeX);
+    /// <inheritdoc cref="EngineLayout.NkCtxBarSizeY"/>
+    public ref float BarSizeY => ref *(float*)(Ptr + EngineLayout.NkCtxBarSizeY);
+    /// <inheritdoc cref="EngineLayout.NkCtxClicked"/>
+    public Span<float> Clicked { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkCtxClicked), 2); }
     /// <inheritdoc cref="EngineLayout.NkCtxCurrent"/>
     public ref IntPtr Current => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxCurrent);
+    /// <inheritdoc cref="EngineLayout.NkCtxDelta"/>
+    public Span<float> Delta { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkCtxDelta), 2); }
     /// <inheritdoc cref="EngineLayout.NkCtxDeltaTime"/>
     public ref float DeltaTime => ref *(float*)(Ptr + EngineLayout.NkCtxDeltaTime);
     /// <inheritdoc cref="EngineLayout.NkCtxDrawCmdCount"/>
     public ref int DrawCmdCount => ref *(int*)(Ptr + EngineLayout.NkCtxDrawCmdCount);
     /// <inheritdoc cref="EngineLayout.NkCtxDrawCmdOffset"/>
     public ref long DrawCmdOffset => ref *(long*)(Ptr + EngineLayout.NkCtxDrawCmdOffset);
+    /// <inheritdoc cref="EngineLayout.NkCtxLeftClicked"/>
+    public ref uint LeftClicked => ref *(uint*)(Ptr + EngineLayout.NkCtxLeftClicked);
+    /// <inheritdoc cref="EngineLayout.NkCtxLeftDown"/>
+    public ref int LeftDown => ref *(int*)(Ptr + EngineLayout.NkCtxLeftDown);
     /// <inheritdoc cref="EngineLayout.NkCtxMemAllocated"/>
     public ref ulong MemAllocated => ref *(ulong*)(Ptr + EngineLayout.NkCtxMemAllocated);
     /// <inheritdoc cref="EngineLayout.NkCtxMemPtr"/>
@@ -3392,6 +3655,12 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public Span<float> MousePos { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkCtxMousePos), 2); }
     /// <inheritdoc cref="EngineLayout.NkCtxSeq"/>
     public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkCtxSeq);
+    /// <inheritdoc cref="EngineLayout.NkCtxStyleScrollH"/>
+    public NkStyleScrollbar StyleScrollH => new(Ptr + EngineLayout.NkCtxStyleScrollH);
+    /// <inheritdoc cref="EngineLayout.NkCtxStyleScrollV"/>
+    public NkStyleScrollbar StyleScrollV => new(Ptr + EngineLayout.NkCtxStyleScrollV);
+    /// <inheritdoc cref="EngineLayout.NkCtxWheel"/>
+    public Span<float> Wheel { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkCtxWheel), 2); }
     /// <inheritdoc cref="EngineLayout.NkCtxWindowBegin"/>
     public ref IntPtr WindowBegin => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxWindowBegin);
 }
@@ -3405,6 +3674,50 @@ public readonly unsafe partial struct NkImage(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.NkImageGlTexture"/>
     public ref uint GlTexture => ref *(uint*)(Ptr + EngineLayout.NkImageGlTexture);
+}
+
+/// <summary>Typed view of an engine <c>NkPanel*</c>.</summary>
+public readonly unsafe partial struct NkPanel(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkPanelAtX"/>
+    public ref float AtX => ref *(float*)(Ptr + EngineLayout.NkPanelAtX);
+    /// <inheritdoc cref="EngineLayout.NkPanelAtY"/>
+    public ref float AtY => ref *(float*)(Ptr + EngineLayout.NkPanelAtY);
+    /// <inheritdoc cref="EngineLayout.NkPanelBounds"/>
+    public Span<float> Bounds { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkPanelBounds), 4); }
+    /// <inheritdoc cref="EngineLayout.NkPanelClip"/>
+    public Span<float> Clip { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkPanelClip), 4); }
+    /// <inheritdoc cref="EngineLayout.NkPanelMaxX"/>
+    public ref float MaxX => ref *(float*)(Ptr + EngineLayout.NkPanelMaxX);
+    /// <inheritdoc cref="EngineLayout.NkPanelOffsetX"/>
+    public ref IntPtr OffsetX => ref *(IntPtr*)(Ptr + EngineLayout.NkPanelOffsetX);
+    /// <inheritdoc cref="EngineLayout.NkPanelOffsetY"/>
+    public ref IntPtr OffsetY => ref *(IntPtr*)(Ptr + EngineLayout.NkPanelOffsetY);
+    /// <inheritdoc cref="EngineLayout.NkPanelRowColumns"/>
+    public ref int RowColumns => ref *(int*)(Ptr + EngineLayout.NkPanelRowColumns);
+    /// <inheritdoc cref="EngineLayout.NkPanelRowHeight"/>
+    public ref float RowHeight => ref *(float*)(Ptr + EngineLayout.NkPanelRowHeight);
+    /// <inheritdoc cref="EngineLayout.NkPanelRowIndex"/>
+    public ref int RowIndex => ref *(int*)(Ptr + EngineLayout.NkPanelRowIndex);
+    /// <inheritdoc cref="EngineLayout.NkPanelRowItem"/>
+    public Span<float> RowItem { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.NkPanelRowItem), 4); }
+    /// <inheritdoc cref="EngineLayout.NkPanelRowItemOffset"/>
+    public ref float RowItemOffset => ref *(float*)(Ptr + EngineLayout.NkPanelRowItemOffset);
+    /// <inheritdoc cref="EngineLayout.NkPanelRowType"/>
+    public ref int RowType => ref *(int*)(Ptr + EngineLayout.NkPanelRowType);
+}
+
+/// <summary>Typed view of an engine <c>NkStyleScrollbar*</c>.</summary>
+public readonly unsafe partial struct NkStyleScrollbar(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
 }
 
 /// <summary>Typed view of an engine <c>NkWindow*</c>.</summary>
@@ -3422,6 +3735,8 @@ public readonly unsafe partial struct NkWindow(IntPtr ptr)
     public ref ulong BufEnd => ref *(ulong*)(Ptr + EngineLayout.NkWinBufEnd);
     /// <inheritdoc cref="EngineLayout.NkWinBufLast"/>
     public ref ulong BufLast => ref *(ulong*)(Ptr + EngineLayout.NkWinBufLast);
+    /// <inheritdoc cref="EngineLayout.NkWinEditActive"/>
+    public ref int EditActive => ref *(int*)(Ptr + EngineLayout.NkWinEditActive);
     /// <inheritdoc cref="EngineLayout.NkWinFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.NkWinFlags);
     /// <inheritdoc cref="EngineLayout.NkWinLayout"/>
@@ -3432,6 +3747,21 @@ public readonly unsafe partial struct NkWindow(IntPtr ptr)
     public ref IntPtr Next => ref *(IntPtr*)(Ptr + EngineLayout.NkWinNext);
     /// <inheritdoc cref="EngineLayout.NkWinSeq"/>
     public ref uint Seq => ref *(uint*)(Ptr + EngineLayout.NkWinSeq);
+}
+
+/// <summary>Typed view of an engine <c>Nui__JSON__BindUpdate*</c>.</summary>
+public readonly unsafe partial struct Nui__JSON__BindUpdate(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NuiBindUpdateJson"/>
+    public ref byte Json => ref *(byte*)(Ptr + EngineLayout.NuiBindUpdateJson);
+    /// <inheritdoc cref="EngineLayout.NuiBindUpdateName"/>
+    public ref byte Name => ref *(byte*)(Ptr + EngineLayout.NuiBindUpdateName);
+    /// <inheritdoc cref="EngineLayout.NuiBindUpdateStride"/>
+    public Nui__JSON__BindUpdate this[int i] => new(Ptr + i * EngineLayout.NuiBindUpdateStride);
 }
 
 /// <summary>Typed view of an engine <c>Nui__JSON__IdNode*</c>.</summary>
@@ -3454,8 +3784,18 @@ public readonly unsafe partial struct Nui__JSON__JsonWindow(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NuiWinIngest"/>
+    public ref byte BindIngest => ref *(byte*)(Ptr + EngineLayout.NuiWinIngest);
     /// <inheritdoc cref="EngineLayout.NuiIdsHead"/>
     public ref IntPtr IdsHead => ref *(IntPtr*)(Ptr + EngineLayout.NuiIdsHead);
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowBind"/>
+    public void NuiJsonWindowBind(void* ret, IntPtr leaf) => EngineFn.NuiJsonWindowBind(ret, Ptr, leaf);
+    /// <inheritdoc cref="EngineLayout.NuiWinId"/>
+    public ref int WindowId => ref *(int*)(Ptr + EngineLayout.NuiWinId);
+    /// <inheritdoc cref="EngineLayout.NuiWinJson"/>
+    public ref byte WindowJson => ref *(byte*)(Ptr + EngineLayout.NuiWinJson);
+    /// <inheritdoc cref="EngineLayout.NuiWinName"/>
+    public ref byte WindowName => ref *(byte*)(Ptr + EngineLayout.NuiWinName);
 }
 
 /// <summary>Typed view of an engine <c>Nui__Layout__LayoutGroup*</c>.</summary>
@@ -4124,6 +4464,19 @@ public readonly unsafe partial struct TileData(IntPtr ptr)
     public ref IntPtr SourcePart1 => ref *(IntPtr*)(Ptr + EngineLayout.TileSourcePart1);
     /// <inheritdoc cref="EngineLayout.TileSourcePart2"/>
     public ref IntPtr SourcePart2 => ref *(IntPtr*)(Ptr + EngineLayout.TileSourcePart2);
+}
+
+/// <summary>Typed view of an engine <c>VdoElemItem*</c>.</summary>
+public readonly unsafe partial struct VdoElemItem(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.VdoElemItemCount"/>
+    public ref int Count => ref *(int*)(Ptr + EngineLayout.VdoElemItemCount);
+    /// <inheritdoc cref="EngineLayout.VdoElemItemStride"/>
+    public VdoElemItem this[int i] => new(Ptr + i * EngineLayout.VdoElemItemStride);
 }
 
 /// <summary>Typed view of an engine <c>VertexDataObject*</c>.</summary>
@@ -5723,6 +6076,31 @@ public static unsafe class EngineFn
     private static bool _NuiHandleErrorDone;
     /// <inheritdoc cref="SymbolMap.NuiHandleError"/>
     public static NuiHandleErrorFn NuiHandleError => (NuiHandleErrorFn)(_NuiHandleErrorDone ? _NuiHandleError : Resolve(ref _NuiHandleError, ref _NuiHandleErrorDone, SymbolMap.NuiHandleError));
+    private static IntPtr _NuiJsonWindowCtor;
+    private static bool _NuiJsonWindowCtorDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowCtor"/>
+    public static NuiJsonWindowCtorFn NuiJsonWindowCtor => (NuiJsonWindowCtorFn)(_NuiJsonWindowCtorDone ? _NuiJsonWindowCtor : Resolve(ref _NuiJsonWindowCtor, ref _NuiJsonWindowCtorDone, SymbolMap.NuiJsonWindowCtor));
+    private static IntPtr _NuiJsonWindowUpdate;
+    private static bool _NuiJsonWindowUpdateDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowUpdate"/>
+    public static NuiJsonWindowUpdateFn NuiJsonWindowUpdate => (NuiJsonWindowUpdateFn)(_NuiJsonWindowUpdateDone ? _NuiJsonWindowUpdate : Resolve(ref _NuiJsonWindowUpdate, ref _NuiJsonWindowUpdateDone, SymbolMap.NuiJsonWindowUpdate));
+    private static IntPtr _NuiEventPush;
+    private static bool _NuiEventPushDone;
+    /// <inheritdoc cref="SymbolMap.NuiEventPush"/>
+    public static NuiEventPushFn NuiEventPush => (NuiEventPushFn)(_NuiEventPushDone ? _NuiEventPush : Resolve(ref _NuiEventPush, ref _NuiEventPushDone, SymbolMap.NuiEventPush));
+    private static IntPtr _NuiJsonWindowBind;
+    private static bool _NuiJsonWindowBindDone;
+    /// <inheritdoc cref="SymbolMap.NuiJsonWindowBind"/>
+    public static void NuiJsonWindowBind(void* ret, IntPtr self, IntPtr leaf)
+    {
+        IntPtr fn = _NuiJsonWindowBindDone ? _NuiJsonWindowBind : Resolve(ref _NuiJsonWindowBind, ref _NuiJsonWindowBindDone, SymbolMap.NuiJsonWindowBind);
+        if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)fn)(self, (IntPtr)ret, leaf);
+        else ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, void>)fn)((IntPtr)ret, self, leaf);
+    }
+    private static IntPtr _NuiDynamicBindingDtor;
+    private static bool _NuiDynamicBindingDtorDone;
+    /// <inheritdoc cref="SymbolMap.NuiDynamicBindingDtor"/>
+    public static NuiDynamicBindingDtorFn NuiDynamicBindingDtor => (NuiDynamicBindingDtorFn)(_NuiDynamicBindingDtorDone ? _NuiDynamicBindingDtor : Resolve(ref _NuiDynamicBindingDtor, ref _NuiDynamicBindingDtorDone, SymbolMap.NuiDynamicBindingDtor));
     private static IntPtr _ManageSceneBSP;
     private static bool _ManageSceneBSPDone;
     /// <inheritdoc cref="SymbolMap.ManageSceneBSP"/>
@@ -8243,6 +8621,30 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NuiHandleError"/>; returns the slot holding the next layer, or null.</summary>
     public static NuiHandleErrorFn* ChainNuiHandleError(this HookService h, NuiHandleErrorFn handler, int priority) =>
         (NuiHandleErrorFn*)h.Chain(SymbolMap.NuiHandleError, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiJsonWindowCtor"/>; returns the original, or null.</summary>
+    public static NuiJsonWindowCtorFn InstallNuiJsonWindowCtor(this HookService h, NuiJsonWindowCtorFn handler) =>
+        (NuiJsonWindowCtorFn)h.Install(SymbolMap.NuiJsonWindowCtor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiJsonWindowCtor"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiJsonWindowCtorFn* ChainNuiJsonWindowCtor(this HookService h, NuiJsonWindowCtorFn handler, int priority) =>
+        (NuiJsonWindowCtorFn*)h.Chain(SymbolMap.NuiJsonWindowCtor, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiJsonWindowUpdate"/>; returns the original, or null.</summary>
+    public static NuiJsonWindowUpdateFn InstallNuiJsonWindowUpdate(this HookService h, NuiJsonWindowUpdateFn handler) =>
+        (NuiJsonWindowUpdateFn)h.Install(SymbolMap.NuiJsonWindowUpdate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiJsonWindowUpdate"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiJsonWindowUpdateFn* ChainNuiJsonWindowUpdate(this HookService h, NuiJsonWindowUpdateFn handler, int priority) =>
+        (NuiJsonWindowUpdateFn*)h.Chain(SymbolMap.NuiJsonWindowUpdate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiEventPush"/>; returns the original, or null.</summary>
+    public static NuiEventPushFn InstallNuiEventPush(this HookService h, NuiEventPushFn handler) =>
+        (NuiEventPushFn)h.Install(SymbolMap.NuiEventPush, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiEventPush"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiEventPushFn* ChainNuiEventPush(this HookService h, NuiEventPushFn handler, int priority) =>
+        (NuiEventPushFn*)h.Chain(SymbolMap.NuiEventPush, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiDynamicBindingDtor"/>; returns the original, or null.</summary>
+    public static NuiDynamicBindingDtorFn InstallNuiDynamicBindingDtor(this HookService h, NuiDynamicBindingDtorFn handler) =>
+        (NuiDynamicBindingDtorFn)h.Install(SymbolMap.NuiDynamicBindingDtor, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiDynamicBindingDtor"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiDynamicBindingDtorFn* ChainNuiDynamicBindingDtor(this HookService h, NuiDynamicBindingDtorFn handler, int priority) =>
+        (NuiDynamicBindingDtorFn*)h.Chain(SymbolMap.NuiDynamicBindingDtor, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ManageSceneBSP"/>; returns the original, or null.</summary>
     public static ManageSceneBSPFn InstallManageSceneBSP(this HookService h, ManageSceneBSPFn handler) =>
         (ManageSceneBSPFn)h.Install(SymbolMap.ManageSceneBSP, (IntPtr)handler);

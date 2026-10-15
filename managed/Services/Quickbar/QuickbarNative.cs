@@ -153,7 +153,7 @@ internal static unsafe class QuickbarNative
         IntPtr gm = Native.Sym(SymbolMap.GuiMan);
         if (gm == IntPtr.Zero || *(IntPtr*)gm == IntPtr.Zero || DragMove == IntPtr.Zero) return false;
         IntPtr src = new CGuiMan(*(IntPtr*)gm).MouseCapture;
-        if (src == IntPtr.Zero || *(IntPtr*)(*(IntPtr*)src + EngineLayout.DragMoveSlot) != DragMove) return false;
+        if (src == IntPtr.Zero || new CGuiDragSource(src).HandleMouseMoveCapturedFn != DragMove) return false;
         var drag = new CGuiDragSource(src);
         if (drag.Dragging == 0) return false;
         icon = drag.Icon;
@@ -176,7 +176,7 @@ internal static unsafe class QuickbarNative
 
     /// <summary>Button <paramref name="b"/> of a panel the caller already walked to.</summary>
     public static IntPtr Button(IntPtr panel, int b)
-        => panel == IntPtr.Zero || (uint)b >= Buttons ? IntPtr.Zero : panel + EngineLayout.QuickbarButtons + b * EngineLayout.QuickbarButtonStride;
+        => panel == IntPtr.Zero || (uint)b >= Buttons ? IntPtr.Zero : new CPanelQuickBar(panel).Button(b);
 
     private static int Index(IntPtr button)
     {
@@ -200,7 +200,8 @@ internal static unsafe class QuickbarNative
 
     private static bool NameIs(IntPtr s, ReadOnlySpan<byte> z)
     {
-        for (int i = 0; i < z.Length; i++) if (((byte*)s)[i] != z[i]) return false;
+        var name = new ReadOnlySpan<byte>((void*)s, z.Length);
+        for (int i = 0; i < z.Length; i++) if (name[i] != z[i]) return false;
         return true;
     }
 

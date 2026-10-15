@@ -124,7 +124,7 @@ internal static unsafe partial class ModelLoad
 
         _seen++;
         uint at = _rec0 + (uint)_seen * (uint)_stride + (uint)_appearanceAt;
-        if (_seen >= _count || at + CountBytes > len || *(ushort*)(buf + at) != appearance)
+        if (_seen >= _count || at + CountBytes > len || U16(new ReadOnlySpan<byte>(buf, (int)len), at) != appearance)
             Stand($"record {_seen} of {_count} arrived as appearance {appearance}, not the one read ahead");
         else if (_seen == _count - 1) Reset();
     }
@@ -146,8 +146,9 @@ internal static unsafe partial class ModelLoad
         ObjectRecords = (int)count;
         ObjectOffers = 0;
         AreaKeyObjects(FoldPlaceables(buf, rec0, count, (uint)stride, (uint)at), (int)count);
+        var b = new ReadOnlySpan<byte>(buf, (int)len);
         for (uint k = 1; k < count && !_blockOff; k++)
-            OfferAppearance(*(ushort*)(buf + rec0 + k * (uint)stride + (uint)at));
+            OfferAppearance(U16(b, rec0 + k * (uint)stride + (uint)at));
         if (_blockOff) return;
         _objLog?.Info($"ModelLoad.Objects: {count} static placeable(s) ahead, {_kinds.Count} appearance(s), "
                       + $"{ObjectOffers} model(s) offered");
@@ -160,8 +161,9 @@ internal static unsafe partial class ModelLoad
     {
         if (cursor > len || cursor < (uint)stride + CountBytes) return false;
         uint rec0 = cursor - (uint)stride;
-        if (*(ushort*)(buf + rec0 + at) != appearance) return false;
-        uint count = *(ushort*)(buf + rec0 - CountBytes);
+        var b = new ReadOnlySpan<byte>(buf, (int)len);
+        if (U16(b, rec0 + at) != appearance) return false;
+        uint count = U16(b, rec0 - CountBytes);
         if (count == 0 || count > MaxRecords || (ulong)rec0 + (ulong)count * (ulong)stride > len) return false;
         _rec0 = rec0; _stride = stride; _appearanceAt = at; _count = count;
         return true;
@@ -221,20 +223,21 @@ internal static unsafe partial class ModelLoad
             uint len = rec0 + (uint)(Records * stride);
             byte* buf = stackalloc byte[(int)len];
             for (uint i = 0; i < len; i++) buf[i] = 0;
-            *(ushort*)(buf + rec0 - CountBytes) = Records;
-            for (int k = 0; k < Records; k++) *(ushort*)(buf + rec0 + k * stride + at) = kinds[k];
+            var bs = new Span<byte>(buf, (int)len);
+            Put(bs, rec0 - CountBytes, (ushort)Records);
+            for (int k = 0; k < Records; k++) Put(bs, rec0 + k * stride + at, kinds[k]);
 
             uint cursor = rec0 + (uint)stride;
             Reset();
             check.Expect(Shape(buf, len, cursor, kinds[0], stride, at), $"typed={typed}: the first record's shape is recognised");
             check.Expect(_rec0 == rec0 && _count == Records, $"typed={typed}: record 0 and the count come back off the cursor");
-            check.Expect(*(ushort*)(buf + _rec0 + 2 * (uint)_stride + (uint)_appearanceAt) == kinds[2],
+            check.Expect(U16(bs, _rec0 + 2 * (uint)_stride + (uint)_appearanceAt) == kinds[2],
                          $"typed={typed}: the last record reads ahead at the same stride");
             Reset();
             check.Expect(!Shape(buf, len, cursor, (ushort)(kinds[0] + 1), stride, at), $"typed={typed}: a different appearance is not this shape");
             Reset();
             check.Expect(!Shape(buf, cursor, cursor, kinds[0], stride, at), $"typed={typed}: a block running past the buffer is refused");
-            *(ushort*)(buf + rec0 - CountBytes) = 0;
+            Put(bs, rec0 - CountBytes, (ushort)0);
             Reset();
             check.Expect(!Shape(buf, len, cursor, kinds[0], stride, at), $"typed={typed}: a zero count is refused");
         }

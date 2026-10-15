@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Mdl;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Db;
@@ -239,6 +240,7 @@ public static unsafe partial class DbAnim
         byte* any = stackalloc byte[2];
         any[0] = (byte)'*'; any[1] = 0;
         nint cb = RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent, any, 0);
+        check.Expect(new CallBack(cb).SeamName.Length == 32, "a callback block's name holds the engine's 32 bytes");
         PlayAnimation(obj, "wave", 1f, RunFlags.NoReuse, 0f);
         check.Expect(_runN[obj.Index] == 1, "a new run evicts the runs below it, as the engine's does");
         check.Expect(_evN >= 1 && _ev[0] == "donewave", "...announcing each evicted run first");

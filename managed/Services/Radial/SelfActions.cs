@@ -174,7 +174,7 @@ internal static unsafe class SelfActions
         {
             var leaf = new RadialSlot(0, SlotKind.Entry, "Rest", "ir_rest", "", false, 0, IntPtr.Zero, _addr[5], IntPtr.Zero, IntPtr.Zero);
             check.Expect(KeyOf(leaf) == null, "a handler on an object of no known class is not a self action");
-            check.Expect(KeyOf(leaf with { Fn = _addr[5] + 1 }) == null && KeyOf(leaf with { Fn = (IntPtr)0x2000 }) == null && KeyOf(leaf with { Kind = SlotKind.Creator }) == null,
+            check.Expect(KeyOf(leaf with { Fn = (IntPtr)((long)_addr[5] + 1) }) == null && KeyOf(leaf with { Fn = (IntPtr)0x2000 }) == null && KeyOf(leaf with { Kind = SlotKind.Creator }) == null,
                 "a virtual thunk, a foreign fn, a submenu: none");
             var pin = new RadialPin { Fn = Prefix + "rest", Param = 0 };
             check.Expect(IsSelf(pin) && IndexOf(pin) == 5 && IndexOf(new RadialPin { Fn = Prefix + "nope" }) < 0 && IndexOf(new RadialPin { Fn = "x" }) < 0,

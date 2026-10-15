@@ -1,3 +1,4 @@
+using CX.Engine;
 using System;
 using System.Numerics;
 using CX.Alloy.Mdl;
@@ -46,7 +47,7 @@ public static unsafe partial class DbAnim
     /// <see cref="ResolveBone"/> and its inverse bind from <see cref="SkinDef.SlotBind"/> where the file
     /// stated one and from the assembled rest pose where it did not. Row-vector throughout --
     /// <c>bind = meshRest * inverse(boneRest)</c>, and the slot is <c>bind * boneWorld * inverse(meshWorld)</c>.</summary>
-    private static bool NamedPalette(int part, SkinDef skin, int slots, float* dst)
+    private static bool NamedPalette(int part, SkinDef skin, int slots, ref BonePalette dst)
     {
         if (!Matrix4x4.Invert(SceneDb.PartWorld[part], out Matrix4x4 meshInv)) return false;
         SkinBindState? st = NamedBind(part, skin, slots);
@@ -54,12 +55,12 @@ public static unsafe partial class DbAnim
         int limit = Math.Min(slots, BoneCount);
         for (int b = 0; b < BoneCount; b++)
         {
-            float* m = dst + b * 16;
+            ref Matrix4x4 m = ref dst[b];
             int bp = b < limit ? st.Bone[b] : -1;
             // A name that resolved nowhere keeps the identity, which is what FindPartIndexDFS's -1 leaves the
             // engine's own slot.
-            if (bp < 0 || !SceneDb.Parts.LiveAt(bp)) { Identity(m); continue; }
-            Store(st.Bind[b] * SceneDb.PartWorld[bp] * meshInv, m);
+            if (bp < 0 || !SceneDb.Parts.LiveAt(bp)) { m = Matrix4x4.Identity; continue; }
+            m = Store(st.Bind[b] * SceneDb.PartWorld[bp] * meshInv);
         }
         _named.Palettes++;
         return true;

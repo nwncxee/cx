@@ -1,4 +1,6 @@
+using CX.Engine;
 using System;
+using System.Numerics;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -16,7 +18,7 @@ internal static unsafe class AreaGrid
 
     /// <summary>Per cell: the head of its slot list (-1 empty) and the real world AABB of everything in it.</summary>
     private static readonly int[] _head = new int[Cells];
-    private static readonly float[] _box = new float[Cells * 6];
+    private static readonly Box[] _box = new Box[Cells];
     /// <summary>Per slot: the next slot in its cell's list. Sized by the ownership table, like every other
     /// per-slot column, and written only by <see cref="Add"/>.</summary>
     private static readonly int[] _next = new int[AlloyRenderer.MaxOwned];
@@ -45,21 +47,24 @@ internal static unsafe class AreaGrid
         _filed = 0; _unboxedN = 0; _occupied = 0;
     }
 
-    /// <summary>File <paramref name="slot"/> under its world AABB (six floats, min then max).</summary>
-    internal static void Add(int slot, float* box)
+    /// <summary>File <paramref name="slot"/> under its world AABB.</summary>
+    internal static void Add(int slot, in Box box)
     {
-        int cell = Cell(box[0], box[1]);
+        int cell = Cell(box.Min.X, box.Min.Y);
         if (_head[cell] < 0)
         {
             _occupied++;
-            int o = cell * 6;
-            for (int k = 0; k < 6; k++) _box[o + k] = box[k];
+            _box[cell] = box;
         }
         else
         {
-            int o = cell * 6;
-            for (int k = 0; k < 3; k++) if (box[k] < _box[o + k]) _box[o + k] = box[k];
-            for (int k = 3; k < 6; k++) if (box[k] > _box[o + k]) _box[o + k] = box[k];
+            ref Box u = ref _box[cell];
+            if (box.Min.X < u.Min.X) u.Min.X = box.Min.X;
+            if (box.Min.Y < u.Min.Y) u.Min.Y = box.Min.Y;
+            if (box.Min.Z < u.Min.Z) u.Min.Z = box.Min.Z;
+            if (box.Max.X > u.Max.X) u.Max.X = box.Max.X;
+            if (box.Max.Y > u.Max.Y) u.Max.Y = box.Max.Y;
+            if (box.Max.Z > u.Max.Z) u.Max.Z = box.Max.Z;
         }
         _next[slot] = _head[cell];
         _head[cell] = slot;
@@ -81,21 +86,20 @@ internal static unsafe class AreaGrid
         return (iy << Bits) | ix;
     }
 
-    /// <summary>Append every filed slot whose cell survives <paramref name="planes"/> (six vec4s, the
+    /// <summary>Append every filed slot whose cell survives <paramref name="planes"/> (six planes, the
     /// <see cref="CullPass.Planes"/> convention: a point is inside when <c>dot(n, p) + d &gt;= 0</c>) into
     /// <paramref name="into"/> from <paramref name="n"/>, plus every unboundable slot. <paramref name="slack"/>
     /// grows each cell box, so a cell about to enter the view is yielded the frame before. Allocation-free.</summary>
-    internal static int Query(float* planes, float slack, int[] into, int n)
+    internal static int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
     {
         for (int k = 0; k < _unboxedN && n < into.Length; k++) into[n++] = _unboxed[k];
-        fixed (float* boxes = _box)
-            for (int c = 0; c < Cells; c++)
-            {
-                int head = _head[c];
-                if (head < 0) continue;
-                if (!BoxInFrustum(planes, boxes + c * 6, slack)) continue;
-                for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
-            }
+        for (int c = 0; c < Cells; c++)
+        {
+            int head = _head[c];
+            if (head < 0) continue;
+            if (!BoxInFrustum(planes, in _box[c], slack)) continue;
+            for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
+        }
         return n;
     }
 
@@ -103,32 +107,29 @@ internal static unsafe class AreaGrid
     /// slot only through its filed cell and tests that cell's UNION box, so a box that has left the union is
     /// invisible to every query. Reports the filed cell, the cell it would be filed under now, and whether the
     /// union still covers it. Off the hot path -- asked only once the audit has found a miss.</summary>
-    internal static bool StillFiled(int slot, float* box, out int filed, out int now, out bool covered)
+    internal static bool StillFiled(int slot, in Box box, out int filed, out int now, out bool covered)
     {
         filed = (uint)slot < (uint)_cellOf.Length ? _cellOf[slot] : -1;
-        now = Cell(box[0], box[1]);
+        now = Cell(box.Min.X, box.Min.Y);
         covered = false;
         if (filed < 0) return false;
-        fixed (float* b = _box)
-        {
-            float* u = b + filed * 6;
-            covered = box[0] >= u[0] && box[1] >= u[1] && box[2] >= u[2]
-                   && box[3] <= u[3] && box[4] <= u[4] && box[5] <= u[5];
-        }
+        ref Box u = ref _box[filed];
+        covered = box.Min.X >= u.Min.X && box.Min.Y >= u.Min.Y && box.Min.Z >= u.Min.Z
+               && box.Max.X <= u.Max.X && box.Max.Y <= u.Max.Y && box.Max.Z <= u.Max.Z;
         return filed == now && covered;
     }
 
     /// <summary>The standard n-vertex box test: for each plane, the box corner FARTHEST along the plane normal.
     /// Behind every one of the six and the box cannot be in view.</summary>
-    internal static bool BoxInFrustum(float* planes, float* box, float slack)
+    internal static bool BoxInFrustum(ReadOnlySpan<Vector4> planes, in Box box, float slack)
     {
         for (int f = 0; f < 6; f++)
         {
-            float* p = planes + f * 4;
-            float x = p[0] >= 0f ? box[3] + slack : box[0] - slack;
-            float y = p[1] >= 0f ? box[4] + slack : box[1] - slack;
-            float z = p[2] >= 0f ? box[5] + slack : box[2] - slack;
-            if (p[0] * x + p[1] * y + p[2] * z + p[3] < 0f) return false;
+            Vector4 p = planes[f];
+            float x = p.X >= 0f ? box.Max.X + slack : box.Min.X - slack;
+            float y = p.Y >= 0f ? box.Max.Y + slack : box.Min.Y - slack;
+            float z = p.Z >= 0f ? box.Max.Z + slack : box.Min.Z - slack;
+            if (p.X * x + p.Y * y + p.Z * z + p.W < 0f) return false;
         }
         return true;
     }
@@ -141,10 +142,10 @@ internal static unsafe class AreaGrid
     {
         var check = new Checker(log, "AreaGrid.SelfCheck");
         Begin();
-        float* near = stackalloc float[6] { 0f, 0f, 0f, 1f, 1f, 1f };            // cell (0,0)
-        float* far = stackalloc float[6] { 300f, 300f, 0f, 301f, 301f, 1f };     // cell (30,30)
-        Add(0, near);
-        Add(1, far);
+        var near = new Box { Min = new Vector3(0f, 0f, 0f), Max = new Vector3(1f, 1f, 1f) };            // cell (0,0)
+        var far = new Box { Min = new Vector3(300f, 300f, 0f), Max = new Vector3(301f, 301f, 1f) };     // cell (30,30)
+        Add(0, in near);
+        Add(1, in far);
         AddUnboxed(2);
         check.Expect(Filed == 2 && Unboxed == 1 && Occupied == 2, "two cells filed, one slot unboundable");
         check.Expect(Cell(0f, 0f) != Cell(300f, 300f), "two tiles 30 apart are different cells");
@@ -153,9 +154,9 @@ internal static unsafe class AreaGrid
                      "...and a negative coordinate wraps into the far corner rather than out of the table");
 
         // A half-space keeping x >= 100: the near cell is out, the far one is in, the unboundable one always in.
-        float* planes = stackalloc float[24];
-        for (int f = 0; f < 6; f++) { planes[f * 4] = 0f; planes[f * 4 + 1] = 0f; planes[f * 4 + 2] = 0f; planes[f * 4 + 3] = 1f; }
-        planes[0] = 1f; planes[3] = -100f;
+        Span<Vector4> planes = stackalloc Vector4[6];
+        planes.Fill(new Vector4(0f, 0f, 0f, 1f));
+        planes[0] = new Vector4(1f, 0f, 0f, -100f);
         int[] into = new int[8];
         int n = Query(planes, 0f, into, 0);
         bool sawNear = false, sawFar = false, sawUnboxed = false;
@@ -167,23 +168,23 @@ internal static unsafe class AreaGrid
         for (int k = 0; k < n; k++) if (into[k] == 0) sawNear = true;
         check.Expect(sawNear, "the route slack yields a cell about to enter the view");
         // A plane nothing can satisfy empties the query but keeps the unboundable slots.
-        planes[0] = 1f; planes[3] = -1e9f;
+        planes[0] = new Vector4(1f, 0f, 0f, -1e9f);
         n = Query(planes, 0f, into, 0);
         check.Expect(n == 1 && into[0] == 2, "a frustum that reaches nothing still yields the unboundable slots");
 
         // CX-188: and the filing's own staleness test, which is what the [vischeck] miss log now reports.
         // A query reaches a slot ONLY through the cell it was filed under, so a box that moved after the
         // filing is invisible to every query -- the property this asserts is that the test says so.
-        check.Expect(StillFiled(0, near, out int cellWas, out int cellNow, out bool covered)
+        check.Expect(StillFiled(0, in near, out int cellWas, out int cellNow, out bool covered)
                      && cellWas == cellNow && covered, "a slot whose box has not moved still reads as filed where it is");
-        float* moved = stackalloc float[6] { 300f, 300f, 0f, 301f, 301f, 1f };   // the far cell, not slot 0's
-        check.Expect(!StillFiled(0, moved, out cellWas, out cellNow, out covered)
+        var moved = new Box { Min = new Vector3(300f, 300f, 0f), Max = new Vector3(301f, 301f, 1f) };   // the far cell, not slot 0's
+        check.Expect(!StillFiled(0, in moved, out cellWas, out cellNow, out covered)
                      && cellWas != cellNow && !covered,
                      "a slot whose box left its filed cell no longer reads as filed, and names both cells");
-        float* grown = stackalloc float[6] { 0f, 0f, 0f, 40f, 1f, 1f };          // same cell, past its union
-        check.Expect(!StillFiled(0, grown, out cellWas, out cellNow, out covered) && !covered,
+        var grown = new Box { Min = new Vector3(0f, 0f, 0f), Max = new Vector3(40f, 1f, 1f) };          // same cell, past its union
+        check.Expect(!StillFiled(0, in grown, out cellWas, out cellNow, out covered) && !covered,
                      "a box that outgrew its cell's union no longer reads as covered by it");
-        check.Expect(!StillFiled(7, near, out cellWas, out _, out _) && cellWas < 0,
+        check.Expect(!StillFiled(7, in near, out cellWas, out _, out _) && cellWas < 0,
                      "an unfiled slot reads as unfiled and names no cell");
 
         Begin();

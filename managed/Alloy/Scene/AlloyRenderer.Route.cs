@@ -26,7 +26,7 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly IntPtr[] _oFadeTile = new IntPtr[MaxOwned];
     /// <summary>This pass's six frustum planes (<see cref="CullPass.Planes"/>), and whether the pass had a
     /// perspective projection to take them from. Without one every slot routes.</summary>
-    private static readonly float[] _passPlanes = new float[24];
+    private static readonly Vector4[] _passPlanes = new Vector4[6];
     private static bool _passFrustumOk;
     /// <summary>World units added to a slot's slack-scaled sphere before the plane test: one frame of camera
     /// motion, so a part entering the view is routed the frame it appears rather than the frame after.</summary>
@@ -47,25 +47,25 @@ public sealed unsafe partial class AlloyRenderer
     /// only thing that says which.</summary>
     private static long _disNoLit, _disNoFeat;
 
-    /// <summary>The part's world box at enrolment (six floats), for the dissolve verdict AND for
+    /// <summary>The part's world box at enrolment (min and max corners), for the dissolve verdict AND for
     /// <see cref="AreaGrid"/>'s filing -- the same box, populated by <c>ComputePartBBox</c> @0x561370 for tile
     /// geometry and six zeros for everything hanging off a gob.</summary>
-    internal static readonly float[] _oBox = new float[MaxOwned * 6];
+    internal static readonly Box[] _oBox = new Box[MaxOwned];
     /// <summary>Off-device: the box verdict against the decompiled rule. A plane z = 5 facing up (0,0,1,-5):
     /// a box below it dissolves (its lowest corner is under the plane), a box above it does not, the height
     /// cut refuses a box whose top is under it, and keyhole-off refuses everything. A verdict that picks the
     /// wrong corner passes the roof through the aperture or dissolves the floor.</summary>
     private static bool KeyholeBoxSelfCheck(ExtenderLog log)
     {
-        float* pl = stackalloc float[4] { 0f, 0f, 1f, -5f };
-        float* below = stackalloc float[6] { -1f, -1f, 0f, 1f, 1f, 2f };
-        float* above = stackalloc float[6] { -1f, -1f, 6f, 1f, 1f, 8f };
-        float* straddle = stackalloc float[6] { -1f, -1f, 4f, 1f, 1f, 6f };
-        bool ok = PartTable.KeyholeDissolvesBox(below, 1, pl, -10f)
-                  && !PartTable.KeyholeDissolvesBox(above, 1, pl, -10f)
-                  && PartTable.KeyholeDissolvesBox(straddle, 1, pl, -10f)
-                  && !PartTable.KeyholeDissolvesBox(below, 1, pl, 3f)      // top at 2, cut at 3: refused
-                  && !PartTable.KeyholeDissolvesBox(below, 0, pl, -10f);
+        var pl = new Vector4(0f, 0f, 1f, -5f);
+        var below = new Box { Min = new Vector3(-1f, -1f, 0f), Max = new Vector3(1f, 1f, 2f) };
+        var above = new Box { Min = new Vector3(-1f, -1f, 6f), Max = new Vector3(1f, 1f, 8f) };
+        var straddle = new Box { Min = new Vector3(-1f, -1f, 4f), Max = new Vector3(1f, 1f, 6f) };
+        bool ok = PartTable.KeyholeDissolvesBox(in below, 1, pl, -10f)
+                  && !PartTable.KeyholeDissolvesBox(in above, 1, pl, -10f)
+                  && PartTable.KeyholeDissolvesBox(in straddle, 1, pl, -10f)
+                  && !PartTable.KeyholeDissolvesBox(in below, 1, pl, 3f)      // top at 2, cut at 3: refused
+                  && !PartTable.KeyholeDissolvesBox(in below, 0, pl, -10f);
         if (!ok) log.Info("AlloyRenderer.KeyholeBoxSelfCheck: FAILED -- the cached-box dissolve verdict disagrees with the decompiled rule");
         return ok;
     }
@@ -78,7 +78,7 @@ public sealed unsafe partial class AlloyRenderer
     /// could have drifted past <see cref="VisDriftUnits"/> anywhere in view (<see cref="VisDrifted"/>).</summary>
     private static readonly int[] _vis = new int[MaxOwned];
     private static readonly int[] _visStart = new int[AlloyClasses.Count], _visEnd = new int[AlloyClasses.Count];
-    private static readonly float[] _visPlanes = new float[24];
+    private static readonly Vector4[] _visPlanes = new Vector4[6];
     private static int _visBuiltAt, _visEnrollGen = -1, _visEpoch = -1;
     /// <summary>Bumped by every <see cref="BuildIndex"/>: the set must be rebuilt WHOLE after one, even when
     /// no enrolment generation moved (a budgeted walk bumps it at its begin, frames before the finish that
@@ -116,8 +116,7 @@ public sealed unsafe partial class AlloyRenderer
         for (int k = 0; k < _orderCount; k++) _orderRank[_order[k]] = k;
         AreaGrid.Begin();
         _dynN = 0; _unboxedEmpty = 0;
-        fixed (float* boxes = _oBox)
-            for (int k = 0; k < _orderCount; k++)
+        for (int k = 0; k < _orderCount; k++)
             {
                 int i = _order[k];
                 // "Does this slot move" -- a non-static object's part. A mover is routed every pass rather
@@ -129,9 +128,9 @@ public sealed unsafe partial class AlloyRenderer
                 // The world box ComputePartBBox filled at tile spawn. One that was never filled is a part with
                 // no bounds to index on, and unbounded means VISIBLE -- the same answer its NeverCull sphere
                 // already gave the cull.
-                float* b = boxes + (long)i * 6;
-                if (HasBox(b)) AreaGrid.Add(i, b);
-                else { AreaGrid.AddUnboxed(i); if (b[0] == 0f && b[1] == 0f && b[2] == 0f && b[3] == 0f && b[4] == 0f && b[5] == 0f) _unboxedEmpty++; }
+                ref Box b = ref _oBox[i];
+                if (HasBox(in b)) AreaGrid.Add(i, in b);
+                else { AreaGrid.AddUnboxed(i); if (b.Min == Vector3.Zero && b.Max == Vector3.Zero) _unboxedEmpty++; }
             }
         // The set of slots changed, so last pass's visible set describes nothing.
         _visIndexGen++;
@@ -141,9 +140,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>Scene::SpawnTile</c> fills it, so all-zero is "never filled"; a zero extent on one axis is a flat,
     /// axis-aligned surface (a wall, a floor) and IS a box. Requiring a positive width on x and y left every
     /// axis-aligned wall unboxed -- walked and sphere-tested every pass, whatever the camera saw.</summary>
-    private static bool HasBox(float* b)
-        => b[3] >= b[0] && b[4] >= b[1] && b[5] >= b[2]
-           && (b[0] != 0f || b[1] != 0f || b[2] != 0f || b[3] != 0f || b[4] != 0f || b[5] != 0f);
+    private static bool HasBox(in Box b)
+        => b.Max.X >= b.Min.X && b.Max.Y >= b.Min.Y && b.Max.Z >= b.Min.Z
+           && (b.Min != Vector3.Zero || b.Max != Vector3.Zero);
     /// <summary>Of the unboxed slots at the last index build, how many had an all-zero (never filled) box.</summary>
     private static int _unboxedEmpty;
 
@@ -161,14 +160,14 @@ public sealed unsafe partial class AlloyRenderer
         _visWhy = full ? 2 : 1;
         _visRebuilds++; FrameZones.Count(FrameZones.Ev.VisRebuild);
         _visBuiltAt = _frameSeq; _visEnrollGen = _enrollGen; _visEpoch = _recEpoch; _visIndexSeen = _visIndexGen;
-        Array.Copy(_passPlanes, _visPlanes, 24);
+        Array.Copy(_passPlanes, _visPlanes, _passPlanes.Length);
         // An enrolment or an epoch bump means some slot has no record to serve and MUST be rebuilt whatever
         // the frustum says, so that one rebuild walks the whole order. Every other rebuild is index-driven.
         if (full) { _texStalePending = false; BuildVisibleFull(); MarkVisibleSet(); return; }
         int n = 0;
         for (int k = 0; k < _dynN && n < _vis.Length; k++) _vis[n++] = _dynList[k];
         int fromGrid = n;
-        fixed (float* p = _passPlanes) n = AreaGrid.Query(p, RouteSlackUnits + VisDriftUnits, _vis, n);
+        n = AreaGrid.Query(_passPlanes, RouteSlackUnits + VisDriftUnits, _vis, n);
         n = TrimVisible(fromGrid, n);
         _visIndexed += n;
         SortVisibleByOrder(n);
@@ -180,8 +179,8 @@ public sealed unsafe partial class AlloyRenderer
     /// it? No for an empty box, for a <see cref="NeverCull"/> sphere (the geometry leaves its bounds), or for a
     /// MATRIX slot, whose <c>_oBox</c> is unscaled while the cull sphere it is weighed against is scaled. The
     /// grid files on that same unscaled box, so refusing to excuse it puts the case on <c>vischeck</c>'s misses.</summary>
-    private static bool BoxBinds(int i, float* b, float* sph)
-        => HasBox(b) && sph[(long)i * 4 + 3] < NeverCull && !_oMx[i];
+    private static bool BoxBinds(int i, in Box b)
+        => HasBox(in b) && _dSph[i].Radius < NeverCull && !_oMx[i];
 
     /// <summary>Keep the candidates whose OWN box survives this pass's planes, not every slot filed in a
     /// surviving cell: a cell carries the union of its members' boxes, so testing each member is strictly
@@ -190,21 +189,18 @@ public sealed unsafe partial class AlloyRenderer
     private static int TrimVisible(int from, int n)
     {
         int w = from;
-        fixed (float* ob = _oBox)
-        fixed (float* sp = _dSph)
-        fixed (float* pp = _passPlanes)
-            for (int k = from; k < n; k++)
+        for (int k = from; k < n; k++)
             {
                 int i = _vis[k];
-                float* b = ob + (long)i * 6;
+                ref Box b = ref _oBox[i];
                 // An unboundable slot has no box to test and is always visible, exactly as its NeverCull
                 // sphere already made it. So is a slot whose SPHERE is NeverCull: that exemption exists
                 // because the geometry leaves its bounds (a wind-swayed plant, a roofknm offset), which is a
                 // statement about this box too -- the cell union used to give such a part a tile of margin,
                 // and taking that away with a box its vertices do not stay inside is how geometry vanishes at
                 // the screen edge. A MATRIX slot is exempt too -- see BoxBinds for all three.
-                if (!BoxBinds(i, b, sp)
-                    || AreaGrid.BoxInFrustum(pp, b, RouteSlackUnits + VisDriftUnits)) _vis[w++] = i;
+                if (!BoxBinds(i, in b)
+                    || AreaGrid.BoxInFrustum(_passPlanes, in b, RouteSlackUnits + VisDriftUnits)) _vis[w++] = i;
             }
         _visTrimmed += n - w;
         return w;
@@ -217,30 +213,25 @@ public sealed unsafe partial class AlloyRenderer
     private static bool TrimSelfCheck(Checker check)
     {
         const int inView = 0, outView = 1, exempt = 2, mx = 3;
-        float[] boxWas = new float[24];
-        Array.Copy(_oBox, boxWas, 24);
-        float[] sphWas = new float[16];
-        Array.Copy(_dSph, sphWas, 16);
-        float[] planesWas = (float[])_passPlanes.Clone();
+        var boxWas = new Box[4];
+        Array.Copy(_oBox, boxWas, boxWas.Length);
+        var sphWas = new Sphere[4];
+        Array.Copy(_dSph, sphWas, sphWas.Length);
+        Vector4[] planesWas = (Vector4[])_passPlanes.Clone();
         int[] visWas = { _vis[0], _vis[1], _vis[2], _vis[3] };
         bool mxWas = _oMx[mx];
 
         // Six planes keeping x >= 0 (five degenerate ones that keep everything), as AreaGrid's own check does.
-        for (int f = 0; f < 6; f++)
-        { _passPlanes[f * 4] = 0f; _passPlanes[f * 4 + 1] = 0f; _passPlanes[f * 4 + 2] = 0f; _passPlanes[f * 4 + 3] = 1f; }
-        _passPlanes[0] = 1f; _passPlanes[3] = 0f;
-        void Box(int i, float x0, float x1)
-        {
-            _oBox[i * 6] = x0; _oBox[i * 6 + 1] = 0f; _oBox[i * 6 + 2] = 0f;
-            _oBox[i * 6 + 3] = x1; _oBox[i * 6 + 4] = 1f; _oBox[i * 6 + 5] = 1f;
-        }
-        Box(inView, 10f, 20f);
-        Box(outView, -500f, -490f);
-        Box(exempt, -500f, -490f);
-        Box(mx, -500f, -490f);
-        _dSph[inView * 4 + 3] = 1f; _dSph[outView * 4 + 3] = 1f; _dSph[exempt * 4 + 3] = NeverCull;
+        Array.Fill(_passPlanes, new Vector4(0f, 0f, 0f, 1f));
+        _passPlanes[0] = new Vector4(1f, 0f, 0f, 0f);
+        void Slab(int i, float x0, float x1) => _oBox[i] = new Box { Min = new Vector3(x0, 0f, 0f), Max = new Vector3(x1, 1f, 1f) };
+        Slab(inView, 10f, 20f);
+        Slab(outView, -500f, -490f);
+        Slab(exempt, -500f, -490f);
+        Slab(mx, -500f, -490f);
+        _dSph[inView].Radius = 1f; _dSph[outView].Radius = 1f; _dSph[exempt].Radius = NeverCull;
         // A matrix slot with an ordinary, cullable sphere: the only thing that keeps it is its class.
-        _dSph[mx * 4 + 3] = 1f; _oMx[mx] = true;
+        _dSph[mx].Radius = 1f; _oMx[mx] = true;
         _vis[0] = inView; _vis[1] = outView; _vis[2] = exempt; _vis[3] = mx;
         int n = TrimVisible(0, 4);
         bool ok = n == 3 && _vis[0] == inView && _vis[1] == exempt && _vis[2] == mx;
@@ -252,9 +243,9 @@ public sealed unsafe partial class AlloyRenderer
                      + "test dropped would be excused instead of counted");
         ok &= !BoxInPass(outView) && BoxInPass(exempt) && BoxInPass(mx);
 
-        Array.Copy(boxWas, _oBox, 24);
-        Array.Copy(sphWas, _dSph, 16);
-        Array.Copy(planesWas, _passPlanes, 24);
+        Array.Copy(boxWas, _oBox, boxWas.Length);
+        Array.Copy(sphWas, _dSph, sphWas.Length);
+        Array.Copy(planesWas, _passPlanes, planesWas.Length);
         for (int k = 0; k < 4; k++) _vis[k] = visWas[k];
         _oMx[mx] = mxWas;
         return ok;
@@ -268,12 +259,13 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VisDrifted()
     {
         Vector3 e = _eyePos;
-        float reach = MathF.Max(0f, _passPlanes[20] * e.X + _passPlanes[21] * e.Y + _passPlanes[22] * e.Z + _passPlanes[23])
+        Vector4 far = _passPlanes[5];
+        float reach = MathF.Max(0f, far.X * e.X + far.Y * e.Y + far.Z * e.Z + far.W)
                       * VisReachScale;
-        for (int o = 0; o < 24; o += 4)
+        for (int f = 0; f < _passPlanes.Length; f++)
         {
-            float dx = _passPlanes[o] - _visPlanes[o], dy = _passPlanes[o + 1] - _visPlanes[o + 1];
-            float dz = _passPlanes[o + 2] - _visPlanes[o + 2], dw = _passPlanes[o + 3] - _visPlanes[o + 3];
+            float dx = _passPlanes[f].X - _visPlanes[f].X, dy = _passPlanes[f].Y - _visPlanes[f].Y;
+            float dz = _passPlanes[f].Z - _visPlanes[f].Z, dw = _passPlanes[f].W - _visPlanes[f].W;
             if (MathF.Abs(dx * e.X + dy * e.Y + dz * e.Z + dw) + MathF.Sqrt(dx * dx + dy * dy + dz * dz) * reach > VisDriftUnits)
                 return true;
         }
@@ -326,7 +318,7 @@ public sealed unsafe partial class AlloyRenderer
     /// and does the set miss any live slot the pass's own sphere test would route? A miss -- a slot the full
     /// walk draws and the set does not -- is the flicker. A rolling 1/<see cref="VisAuditSlices"/> slice of the
     /// table per PASS, against this frame's own set and planes; a COLLAPSE walks the whole table at once.</summary>
-    private static void AuditVisible(int routed, float* sph)
+    private static void AuditVisible(int routed)
     {
         // A full pass has no set to be missing from -- and it must NOT touch the cursor: a probe pass that
         // walks the whole order every frame would otherwise rewind it, and the world pass would audit the
@@ -345,7 +337,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             int i = _order[k];
             if (_oTri[i] == IntPtr.Zero || _gate[i].RecGen != _recEpoch || _visMark[i] == gen) continue;
-            if (!SphereInPass(i, sph)) continue;
+            if (!SphereInPass(i)) continue;
             // BW6: the set now excludes a candidate by its OWN box rather than by its cell's union, so the
             // population "the sphere would route it and the box says it is not in view" is what the trim
             // removed. It is not a miss -- the part's geometry is inside a box that BINDS it, which is the one
@@ -365,28 +357,27 @@ public sealed unsafe partial class AlloyRenderer
         _visLogged++;
         string where = "";
         if (first >= 0)
-            fixed (float* ob = _oBox)
             {
-                float* b = ob + (long)first * 6;
-                float* sp = sph + (long)first * 4;
+                ref Box b = ref _oBox[first];
+                ref Sphere sp = ref _dSph[first];
                 int held = Array.IndexOf(_vis, first, 0, _visEnd[AlloyClasses.Count - 1]);
                 // CX-188: the one question the line never asked. A query reaches a slot only through the cell
                 // it was FILED under and tests that cell's union box, so a box that moved after the filing
                 // (DbWriteWorldBox runs on every record rewrite; the grid is built once per enrolment) is
                 // invisible to every query. "filed 123 now 456" or "union no" says that is what happened;
                 // "filed 123 now 123 union yes" says it is not, and the loss is downstream of the cell test.
-                bool stillFiled = AreaGrid.StillFiled(first, ob + (long)first * 6, out int cellWas, out int cellNow, out bool covered);
+                bool stillFiled = AreaGrid.StillFiled(first, in b, out int cellWas, out int cellNow, out bool covered);
                 where = $" first miss slot {first} cls {_oCls[first]} rank {_orderRank[first]} gob {(_oGob[first] != IntPtr.Zero ? "yes" : "no")} "
                       + $"grid {(stillFiled ? "agrees" : "STALE")} (filed cell {cellWas}, box now in {cellNow}, cell union covers it: {(covered ? "yes" : "NO")}) "
                       + $"{(held >= 0 ? $"IN the set at {held} but outside its class cut" : "absent from the set")} "
-                      + $"box ({b[0]:F1},{b[1]:F1},{b[2]:F1})-({b[3]:F1},{b[4]:F1},{b[5]:F1}) "
-                      + $"sphere ({sp[0]:F1},{sp[1]:F1},{sp[2]:F1} r{sp[3]:F1})";
+                      + $"box ({b.Min.X:F1},{b.Min.Y:F1},{b.Min.Z:F1})-({b.Max.X:F1},{b.Max.Y:F1},{b.Max.Z:F1}) "
+                      + $"sphere ({sp.Center.X:F1},{sp.Center.Y:F1},{sp.Center.Z:F1} r{sp.Radius:F1})";
             }
         _log?.Info($"AlloyRenderer: [vischeck] {(collapse ? "COLLAPSE (whole table)" : $"miss (slice {from}..{to} of {_orderCount})")} frame {_frameSeq}: routed {routed} vs mean "
                    + $"{_routedAvg}, visible set {total} ({(_visWhy == 0 ? "reused" : _visWhy == 1 ? "rebuilt from the index" : "rebuilt full")}, "
                    + $"built at {_visBuiltAt}, enrol gen {_visEnrollGen}/{_enrollGen}, epoch {_visEpoch}/{_recEpoch}), {_dynN} gob slots, "
                    + $"{AreaGrid.Filed} filed in {AreaGrid.Occupied} cells, {AreaGrid.Unboxed} unboxed, {missed} live slot(s) the set misses;"
-                   + where + $" eye ({_eyePos.X:F1},{_eyePos.Y:F1},{_eyePos.Z:F1}) near plane ({_passPlanes[16]:F2},{_passPlanes[17]:F2},{_passPlanes[18]:F2},{_passPlanes[19]:F1})");
+                   + where + $" eye ({_eyePos.X:F1},{_eyePos.Y:F1},{_eyePos.Z:F1}) near plane ({_passPlanes[4].X:F2},{_passPlanes[4].Y:F2},{_passPlanes[4].Z:F2},{_passPlanes[4].W:F1})");
     }
 
     /// <summary>Is a static slot's own world box in this pass's planes with the route slack? A gob slot or an
@@ -394,13 +385,10 @@ public sealed unsafe partial class AlloyRenderer
     private static bool BoxInPass(int i)
     {
         if (_oGob[i] != IntPtr.Zero) return true;
-        fixed (float* ob = _oBox) fixed (float* pp = _passPlanes) fixed (float* sp = _dSph)
-        {
-            float* b = ob + (long)i * 6;
-            // Exactly the trim's own predicate: a box that does not bind cannot excuse the slot's absence, so
-            // such a slot reads as a real miss rather than as box-excluded.
-            return !BoxBinds(i, b, sp) || AreaGrid.BoxInFrustum(pp, b, RouteSlackUnits);
-        }
+        ref Box b = ref _oBox[i];
+        // Exactly the trim's own predicate: a box that does not bind cannot excuse the slot's absence, so
+        // such a slot reads as a real miss rather than as box-excluded.
+        return !BoxBinds(i, in b) || AreaGrid.BoxInFrustum(_passPlanes, in b, RouteSlackUnits);
     }
 
     /// <summary>The hunt's clause. Collapses and misses are LIFETIME totals (a miss must read 0 for the
@@ -466,24 +454,23 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Is the slot's cull sphere inside this pass's six planes, with the route slack?</summary>
-    private static bool SphereInPass(int i, float* sph)
+    private static bool SphereInPass(int i)
     {
-        float* s = sph + (long)i * 4;
-        if (s[3] >= NeverCull) return true;
-        float r = s[3] * ShadowMath.FrustumCullSlack + RouteSlackUnits;
-        fixed (float* p = _passPlanes)
-            for (int f = 0; f < 6; f++)
-            {
-                float* pl = p + f * 4;
-                if (pl[0] * s[0] + pl[1] * s[1] + pl[2] * s[2] + pl[3] < -r) return false;
-            }
+        ref Sphere s = ref _dSph[i];
+        if (s.Radius >= NeverCull) return true;
+        float r = s.Radius * ShadowMath.FrustumCullSlack + RouteSlackUnits;
+        for (int f = 0; f < 6; f++)
+        {
+            Vector4 pl = _passPlanes[f];
+            if (pl.X * s.Center.X + pl.Y * s.Center.Y + pl.Z * s.Center.Z + pl.W < -r) return false;
+        }
         return true;
     }
 
-    private static void SetPassFrustum(float* vp, bool perspective)
+    private static void SetPassFrustum(in Matrix4x4 vp, bool perspective)
     {
         _passFrustumOk = perspective;
-        if (perspective) fixed (float* p = _passPlanes) CullPass.Planes(vp, p, _eyePos);
+        if (perspective) CullPass.Planes(vp, _passPlanes, _eyePos);
     }
 
     // ================= BW7: the gate row =================
@@ -527,7 +514,7 @@ public sealed unsafe partial class AlloyRenderer
     /// serve (stale epoch, new tenant, a retired texture name), or (b) the part is in this pass's view, where
     /// its identity is re-verified and its alpha, fade and dissolve re-read. A slot failing both keeps its
     /// record, spheres and shadow levels as they stand, stamped verified for the shadow side; serial (ADR 0022).</summary>
-    private static bool RouteWanted(int i, float* sph)
+    private static bool RouteWanted(int i)
     {
         if (_fullPoll || !_passFrustumOk) return true;
         // BW7: one address, one bounds check, one line -- the four record terms are one row.
@@ -539,7 +526,7 @@ public sealed unsafe partial class AlloyRenderer
         if (g.TexStale) { _routeStale++; return true; }
         // #336: no stamp on the rejected slot -- the shadow side reads "moved on its LAST build, and that
         // build was last frame" (SlotRecMoved), so an unvisited slot reads still on its own.
-        if (!SphereInPass(i, sph)) { _routeOut++; return false; }
+        if (!SphereInPass(i)) { _routeOut++; return false; }
         _routeIn++;
         return true;
     }
@@ -569,7 +556,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The slot's model matrix: the column the transform step composed on the game thread, which the
     /// feed rewrote the record from when it changed. Read, never recomposed here, and the engine is asked
     /// nothing.</summary>
-    private static Matrix4x4 ChaseModel(int i, float* r, bool stale, bool newTenant, ref StageCounters c)
+    private static Matrix4x4 ChaseModel(int i, bool stale, bool newTenant, ref StageCounters c)
     {
         // Nothing to chase: the transform step composed this matrix on the game thread and the feed rewrote the
         // record when it did, so the draw reads the column and asks the engine nothing.
@@ -692,10 +679,10 @@ public sealed unsafe partial class AlloyRenderer
         // off-by-one leaves a tail of slots no frame ever audits -- the flicker hunt going quiet about them.
         check.Expect(SliceCoverSelfCheck(check), "the rolling visible-set audit does not cover the table");
 
-        float* wall = stackalloc float[6] { 10f, 20f, 0f, 20f, 20f, 5f };
-        float* never = stackalloc float[6];
-        float* inverted = stackalloc float[6] { 5f, 5f, 0f, 1f, 6f, 1f };
-        check.Expect(HasBox(wall) && !HasBox(never) && !HasBox(inverted),
+        var wall = new Box { Min = new Vector3(10f, 20f, 0f), Max = new Vector3(20f, 20f, 5f) };
+        var never = new Box();
+        var inverted = new Box { Min = new Vector3(5f, 5f, 0f), Max = new Vector3(1f, 6f, 1f) };
+        check.Expect(HasBox(in wall) && !HasBox(in never) && !HasBox(in inverted),
                      "a flat axis-aligned wall is indexed; a never-filled or inverted box is not");
 
         log.Info(check.Ok ? "AlloyRenderer.ChaseSelfCheck: passed"

@@ -23,9 +23,6 @@ internal static unsafe class Halos
     /// probe it runs reads it there before binding <see cref="BindVis"/>.</summary>
     private const uint BindHalos = SsboSlots.Halos, BindVis = SsboSlots.HaloVis;
     private const uint GlTriangleStrip = 0x0005;   // not-an-offset: GL primitive-mode enum
-    /// <summary>Three vec4 per halo: (pos.xyz, occlusion softness), (display rgb + shift with the fade folded in,
-    /// flareradius), (flaresizes[0] x halosize, flarepositions[0], unused, unused).</summary>
-    private const int Floats = 12;
     private const int InitialHalos = 64;
     /// <summary><c>Scene::RenderLensFlares</c> @0x471860's own integration terms: the occlusion fade travels at
     /// 3.0 per second on a delta floored at 0.02s, so a flare takes a third of a second to appear or vanish
@@ -44,7 +41,7 @@ internal static unsafe class Halos
     private const float OcclusionSoftness = 0.6f;
 
     private static ExtenderLog? _log;
-    private static float[] _stage = new float[InitialHalos * Floats];
+    private static HaloRec[] _stage = new HaloRec[InitialHalos];
     /// <summary>The <c>PartLight*</c> behind each staged halo, so a ring sample can be matched back to the
     /// light it measured. Compared, never dereferenced without finding it in THIS frame's list first -- the
     /// area edge frees every one of them.</summary>
@@ -136,11 +133,11 @@ internal static unsafe class Halos
         _count = 0;
         if (_off || !Effects.HalosOn) return;
         int lits = Db.SceneDb.Lights.High, parts = Db.DbInputs.LightCount, n = lits + parts;
-        if (n * Floats > _stage.Length) _stage = new float[n * Floats];
+        if (n > _stage.Length) _stage = new HaloRec[n];
         if (n > _stageKey.Length) _stageKey = new IntPtr[n];
         Vector3 focus = Db.SceneDb.SceneFocus[scene.Index];
         float fogEnd = Db.SceneDb.SceneFogFar[scene.Index];
-        fixed (float* stage = _stage)
+        fixed (HaloRec* stage = _stage)
         {
             for (int lit = 1; lit < lits; lit++)
                 if (Db.DbInputs.LitLight(lit, out Db.DbLight l)) StageDb(stage, in l, scene, radiusMult, focus, fogEnd);
@@ -152,11 +149,11 @@ internal static unsafe class Halos
         {
             float f = _occFailed ? 1f : Fade(_stageKey[i]);
             f = f > 0f ? MathF.Min(f, 1f) : 0f;
-            _stage[i * Floats + 4] *= f; _stage[i * Floats + 5] *= f; _stage[i * Floats + 6] *= f;
+            _stage[i].Tint *= f;
         }
     }
 
-    private static void StageDb(float* stage, in Db.DbLight l, Db.DbId scene, float radiusMult, Vector3 focus, float fogEnd)
+    private static void StageDb(HaloRec* stage, in Db.DbLight l, Db.DbId scene, float radiusMult, Vector3 focus, float fogEnd)
     {
         if (!l.Enabled || !Db.SceneDb.Objects.Valid(l.Obj) || Db.SceneDb.ObjScene[l.Obj.Index].Value != scene.Value) return;
         LightDef? def = Db.DbInputs.LightDefOf(in l);
@@ -168,15 +165,14 @@ internal static unsafe class Halos
         // flare axis (ring, streak); the rest need their textures, not this procedural profile
         float size = def.FlareSizes.Length > 0 ? def.FlareSizes[0] : 0f;
         if (size <= 0f || !Reaches(l.Position, def.FlareRadius)) return;
-        float* d = stage + _count * Floats;
-        d[0] = l.Position.X; d[1] = l.Position.Y; d[2] = l.Position.Z;
-        d[3] = OcclusionSoftness;
-        Vector3 tint = Tint(l.Colour, def.FlareColors[0], 1f);
-        d[4] = tint.X; d[5] = tint.Y; d[6] = tint.Z;
-        d[7] = def.FlareRadius;
-        d[8] = size * Effects.HaloSize.V;
-        d[9] = def.FlarePositions.Length > 0 ? def.FlarePositions[0] : 1f;
-        d[10] = 0f; d[11] = 0f;
+        ref HaloRec d = ref stage[_count];
+        d.Pos = l.Position;
+        d.Softness = OcclusionSoftness;
+        d.Tint = Tint(l.Colour, def.FlareColors[0], 1f);
+        d.FlareRadius = def.FlareRadius;
+        d.Size = size * Effects.HaloSize.V;
+        d.FlarePosition = def.FlarePositions.Length > 0 ? def.FlarePositions[0] : 1f;
+        d.Spare = default;
         _stageKey[_count++] = l.Id;
     }
 
@@ -230,10 +226,10 @@ internal static unsafe class Halos
         if (_count > _gl.SsboCap)
         {
             _gl.SsboCap = Math.Max(_count, InitialHalos);
-            Gl.NamedBufferData(_gl.Buf, (IntPtr)(_gl.SsboCap * Floats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
+            Gl.NamedBufferData(_gl.Buf, (IntPtr)(_gl.SsboCap * sizeof(HaloRec)), null, Gl.DYNAMIC_DRAW);
         }
-        fixed (float* s = _stage)
-            Gl.NamedBufferSubData(_gl.Buf, IntPtr.Zero, (IntPtr)(_count * Floats * sizeof(float)), s);
+        fixed (HaloRec* s = _stage)
+            Gl.NamedBufferSubData(_gl.Buf, IntPtr.Zero, (IntPtr)(_count * sizeof(HaloRec)), s);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindHalos, _gl.Buf);
         SceneDepth.Bind();
         Probe(view, proj);

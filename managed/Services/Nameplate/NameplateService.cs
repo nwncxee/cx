@@ -1,3 +1,4 @@
+using System.Numerics;
 using System;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -1140,7 +1141,7 @@ public sealed unsafe class NameplateService : IExtenderService
         if (!TextRig._pvaoUp) TextRig.SetupPortraitVao();
 
         int* tids = stackalloc int[MaxPortraitsPerFrame];
-        float* verts = stackalloc float[VertexBatch.Floats * 6 * MaxPortraitsPerFrame];
+        QuadVerts* verts = stackalloc QuadVerts[MaxPortraitsPerFrame];
         int drawn = 0;
         for (int i = 0; i < count; i++)
         {
@@ -1149,7 +1150,7 @@ public sealed unsafe class NameplateService : IExtenderService
             if (tid == 0) continue;
             PortraitDiag(tid, _portraitRef[i]);
             tids[drawn] = tid;
-            TextRig.FillQuad(verts + drawn * VertexBatch.Floats * 6,
+            TextRig.FillQuad(ref verts[drawn],
                              new CX.Services.Chat.Core.Model.PortraitQuad(
                                  _portraitRect[o], _portraitRect[o + 1], _portraitRect[o + 2], _portraitRect[o + 3],
                                  _portraitRef[i], default),
@@ -1158,18 +1159,17 @@ public sealed unsafe class NameplateService : IExtenderService
         }
         if (drawn == 0) return;
 
-        float* m = stackalloc float[16];
-        TextRig.Ortho(m, TextRig.ViewportW, TextRig.ViewportH);
+        Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
 
         Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
         Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
         Gl.UseProgram(TextRig._progRgb);
-        Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.Uniform1i(TextRig._uTexRgb, 0);
         Gl.BindVertexArray(TextRig._pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(VertexBatch.Floats * 6 * drawn * sizeof(float)), verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(drawn * sizeof(QuadVerts)), verts, Gl.DYNAMIC_DRAW);
         for (int i = 0; i < drawn; i++)
         {
             Gl.BindTexture(Gl.TEXTURE_2D, (uint)tids[i]);

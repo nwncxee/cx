@@ -246,19 +246,19 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (shell == 0) return;
         CallbackList.FreeAll(shell);
-        FreeEngineList(shell + SeamLayout.GobAttachList);
+        FreeEngineList(new Gob(shell).AttachArray);
     }
 
     /// <summary>Release a <c>CExoArrayList</c> the ENGINE grew inside our shell (the attachment list at +0x4a8,
     /// which <c>Gob::AddAttachment</c> @0x5424a0 reallocs in place). The array belongs to whichever heap grew
     /// it, so the rule is the SafePointer list's: free it on Linux, count it on Windows, where nwmain statically
     /// links its CRT and exports no <c>free</c>.</summary>
-    private static void FreeEngineList(nint list)
+    private static void FreeEngineList(ExoArray list)
     {
-        nint arr = *(nint*)list;
-        *(nint*)list = 0;
-        *(int*)(list + 8) = 0;
-        *(int*)(list + 12) = 0;
+        nint arr = list.Data;
+        list.Data = 0;
+        list.Count = 0;
+        list.Cap = 0;
         if (arr == 0) return;
         if (OperatingSystem.IsWindows()) SeamShell.NoteForeignArray();
         else NativeMemory.Free((void*)arr);
@@ -297,7 +297,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static nint GetName(nint self)
     {
         nint shell = Facade.GobBlock(self);
-        return shell == 0 ? 0 : shell + SeamLayout.GobName;
+        return shell == 0 ? 0 : (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(new Gob(shell).SeamName));
     }
 
     /// <summary><c>Gob::GetModelName</c> @0x437270 returns <c>model + 0x10</c>, the name inside the MODEL, so
@@ -400,11 +400,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
                     Carry(pid, c, Facade.ObjectShell(c), psc, pss);
                 }
             // The shell list too, for a rider some engine path filed there without the seam's attach.
-            nint arr = *(nint*)(pshell + SeamLayout.GobAttachList);
-            int n = *(int*)(pshell + SeamLayout.GobAttachCount);
-            for (int i = 0; i < n && arr != 0; i++)
+            ExoArray attached = new Gob(pshell).AttachArray;
+            int n = attached.Count;
+            for (int i = 0; i < n && attached.Data != 0; i++)
             {
-                nint child = ((nint*)arr)[i];
+                nint child = attached[i];
                 if (child != 0) Carry(pid, Facade.Object(child, 19), child, psc, pss);
             }
             // The APPEND chain as well. Gob::Append's children ride a part rather than the attach list (CX makes
@@ -455,9 +455,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         // CAurBehaviorCrossSceneAttach::SetScene() @0x58b560: a control the game moved to another scene
         // (CGuiViewport::TakeModel puts the server list in its viewport's) returns THERE when its parent
         // gets a scene -- unless its +0x80 latch is set ("Dislodge", "StopSceneChanges"), when it stays put.
-        nint cbeh = SceneDb.ObjFacade[c.Index] == 0 ? 0 : *(nint*)(SceneDb.ObjFacade[c.Index] + SeamLayout.GobBehavior);
+        nint cbeh = SceneDb.ObjFacade[c.Index] == 0 ? 0 : new Gob(SceneDb.ObjFacade[c.Index]).Behavior;
         bool cross = cbeh != 0 && DbAnim.IsCrossSceneAttach(cbeh);
-        if (cross && *(byte*)(cbeh + CX.Framework.EngineLayout.CrossAttachLatch) != 0) return;
+        if (cross && new CAurBehaviorCrossSceneAttach(cbeh).Latch != 0) return;
         if (!sc.IsNull && cross)
         {
             DbId kept = SceneDb.ObjCrossScene[c.Index];
@@ -526,37 +526,37 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static void AddAttachment(nint parent, nint child)
     {
         if (parent == 0 || child == 0) return;
-        nint list = parent + SeamLayout.GobAttachList;
-        int n = *(int*)(list + 8), cap = *(int*)(list + 12);
-        nint arr = *(nint*)list;
+        ExoArray list = new Gob(parent).AttachArray;
+        int n = list.Count, cap = list.Cap;
+        nint arr = list.Data;
         if (n >= 16) return;                     // the engine stops adding past 16 attachments
-        for (int i = 0; i < n; i++) if (((nint*)arr)[i] == child) return;
+        for (int i = 0; i < n; i++) if (list[i] == child) return;
         if (n == cap)
         {
             int grow = cap == 0 ? 16 : cap * 2;
             void* bigger = NativeMemory.Realloc((void*)arr, (nuint)(grow * sizeof(nint)));
             if (bigger == null) { Facade.Log?.Always("seam: out of memory growing an attachment list"); return; }
             arr = (nint)bigger;
-            *(nint*)list = arr;
-            *(int*)(list + 12) = grow;
+            list.Data = arr;
+            list.Cap = grow;
         }
-        ((nint*)arr)[n] = child;
-        *(int*)(list + 8) = n + 1;
+        list[n] = child;
+        list.Count = n + 1;
     }
 
     /// <summary>The engine's <c>Gob::RemoveAttachment</c> @0x53f8f0: close the gap, keep the order.</summary>
     private static void RemoveAttachment(nint parent, nint child)
     {
         if (parent == 0 || child == 0) return;
-        nint list = parent + SeamLayout.GobAttachList;
-        nint arr = *(nint*)list;
-        int n = *(int*)(list + 8);
+        ExoArray list = new Gob(parent).AttachArray;
+        nint arr = list.Data;
+        int n = list.Count;
         if (arr == 0) return;
         for (int i = 0; i < n; i++)
         {
-            if (((nint*)arr)[i] != child) continue;
-            for (int j = i; j < n - 1; j++) ((nint*)arr)[j] = ((nint*)arr)[j + 1];
-            *(int*)(list + 8) = n - 1;
+            if (list[i] != child) continue;
+            for (int j = i; j < n - 1; j++) list[j] = list[j + 1];
+            list.Count = n - 1;
             return;
         }
     }
@@ -669,12 +669,12 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static void Gather(nint shell, nint list, int depth)
     {
         if (depth > 16) return;
-        nint arr = *(nint*)(shell + SeamLayout.GobAttachList);
-        int n = *(int*)(shell + SeamLayout.GobAttachCount);
-        if (arr == 0) return;
+        ExoArray attached = new Gob(shell).AttachArray;
+        int n = attached.Count;
+        if (attached.Data == 0) return;
         for (int i = 0; i < n; i++)
         {
-            nint child = ((nint*)arr)[i];
+            nint child = attached[i];
             if (child == 0) continue;
             if (!Contains(list, child)) EngineFn.ListAddCAurObject(list, child);
             nint cs = Facade.GobBlock(child);
@@ -683,12 +683,12 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     }
 
     /// <summary>Is <paramref name="item"/> already in the engine's <c>{ptr, count, capacity}</c> list?</summary>
-    private static bool Contains(nint list, nint item)
+    private static bool Contains(nint listHead, nint item)
     {
-        nint arr = *(nint*)list;
-        int n = *(int*)(list + 8);
-        if (arr == 0) return false;
-        for (int i = 0; i < n; i++) if (((nint*)arr)[i] == item) return true;
+        ExoArray list = new(listHead);
+        int n = list.Count;
+        if (list.Data == 0) return false;
+        for (int i = 0; i < n; i++) if (list[i] == item) return true;
         return false;
     }
 
@@ -781,14 +781,14 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static nint GetExternalData(nint self)
     {
         nint shell = Facade.GobBlock(self);
-        return shell == 0 ? 0 : *(nint*)(shell + SeamLayout.GobExternal);
+        return shell == 0 ? 0 : new Gob(shell).ExternalData;
     }
 
     [UnmanagedCallersOnly]
     private static void SetExternalData(nint self, nint data)
     {
         nint shell = Facade.GobBlock(self);
-        if (shell != 0) *(nint*)(shell + SeamLayout.GobExternal) = data;
+        if (shell != 0) new Gob(shell).ExternalData = data;
     }
 
     /// <summary><c>Gob::GetExternalDataType</c> @0x444720 = <c>*(int*)(this+0x498)</c>.</summary>
@@ -796,7 +796,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static int GetExternalDataType(nint self)
     {
         nint shell = Facade.GobBlock(self);
-        return shell == 0 ? 0 : *(int*)(shell + SeamLayout.GobExternalType);
+        return shell == 0 ? 0 : new Gob(shell).ExternalType;
     }
 
     [UnmanagedCallersOnly]
@@ -804,7 +804,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) return;
-        *(int*)(shell + SeamLayout.GobExternalType) = type;
+        new Gob(shell).ExternalType = type;
         NoteKind(self, type);
     }
 
@@ -831,9 +831,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         nint a = Facade.GobBlock(self), b = Facade.GobBlock(other);
         if (a == 0 || b == 0) return;
-        *(nint*)(a + SeamLayout.GobExternal) = *(nint*)(b + SeamLayout.GobExternal);
-        *(int*)(a + SeamLayout.GobExternalType) = *(int*)(b + SeamLayout.GobExternalType);
-        NoteKind(self, *(int*)(a + SeamLayout.GobExternalType));
+        new Gob(a).ExternalData = new Gob(b).ExternalData;
+        new Gob(a).ExternalType = new Gob(b).ExternalType;
+        NoteKind(self, new Gob(a).ExternalType);
     }
 
     // ---- textures and materials: the seam only resolves and marks ----
@@ -868,7 +868,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (rows == 0 || layers <= 0) return 0;
         int n = Math.Min(layers, SceneDb.PltLayers);
-        for (int i = 0; i < n; i++) dst[i] = ((ushort*)rows)[i];
+        var src = new ReadOnlySpan<ushort>((void*)rows, n);
+        for (int i = 0; i < n; i++) dst[i] = src[i];
         PltRowsOn(id, dst[..n], 0);
         if (layers > SceneDb.PltLayers)
         {

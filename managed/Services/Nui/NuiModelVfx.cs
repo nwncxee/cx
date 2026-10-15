@@ -210,7 +210,8 @@ internal static unsafe class NuiModelVfx
     private static IntPtr TransformFor(byte* scratch)
     {
         if (!OperatingSystem.IsWindows()) return _v.Identity;
-        EngineFn.TransformCopy((IntPtr)scratch, _v.Identity, (IntPtr)(scratch + TransformBytes / 2));
+        fixed (byte* half = new Span<byte>(scratch, TransformBytes).Slice(TransformBytes / 2))
+            EngineFn.TransformCopy((IntPtr)scratch, _v.Identity, (IntPtr)half);
         return (IntPtr)scratch;
     }
 
@@ -254,5 +255,6 @@ internal static unsafe class NuiModelVfx
                      "a part past 255 is the problem, and so is the seventeenth effect");
         check.Expect(parts.Length == 3 && parts[0] == new VfxRow(147, 1) && parts[1] == new VfxRow(147, 5) && parts[2] == new VfxRow(7, 255),
                      "a row names its part, the same row on two parts is worn twice, and a bad part skips the entry");
+        log.Info(check.Ok ? "NuiModelVfx.SelfCheck: passed" : "NuiModelVfx.SelfCheck: FAILED");
     }
 }

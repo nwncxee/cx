@@ -22,7 +22,16 @@ internal static unsafe partial class ModelLoad
     /// The engine writes a restype at <c>ptr-10</c> and the owning <c>CAuroraModel*</c> at <c>ptr-8</c> and
     /// <c>ReleaseResource</c> switches on that ushort, so ours is left ZERO: a buffer the release chain misses
     /// falls through the engine's release instead of taking virtuals on a pointer that is not an object.</summary>
-    private const int PrefixBytes = 16;
+    private static readonly int PrefixBytes = Headroom<ModelHeadroom>.Size;
+
+    /// <summary>The 16 bytes ahead of a served model buffer, as the engine's release chain reads them.</summary>
+    private struct ModelHeadroom
+    {
+        public uint Spare;
+        public ushort SpareTag;
+        public ushort ResType;
+        public nint Owner;
+    }
 
     /// <summary>The <c>{0, modelDataSize, rawDataSize}</c> wrapper a binary MDL starts with: the model block
     /// begins after it, and a first dword of zero is what <c>ReadSync</c> discriminates binary from ASCII on.</summary>
@@ -256,7 +265,7 @@ internal static unsafe partial class ModelLoad
     {
         if (raw.Length == 0) { j.Why = "no bytes"; return; }
         byte* block = (byte*)NativeMemory.AllocZeroed((nuint)(PrefixBytes + raw.Length));
-        byte* data = block + PrefixBytes;
+        byte* data = (byte*)Headroom<ModelHeadroom>.PayloadOf(block);
         raw.CopyTo(new Span<byte>(data, raw.Length));
         j.Data = data;
         j.Size = raw.Length;
@@ -343,7 +352,7 @@ internal static unsafe partial class ModelLoad
 
     private static void Free(in LoadEntry e)
     {
-        if (e.Data != IntPtr.Zero) NativeMemory.Free((byte*)e.Data - PrefixBytes);
+        if (e.Data != IntPtr.Zero) NativeMemory.Free(Headroom<ModelHeadroom>.BlockOf(e.Data));
     }
 
     // ---- the serve, main thread, inside the engine's AurResGet ----
@@ -353,8 +362,8 @@ internal static unsafe partial class ModelLoad
     private static bool IsMdl(byte* ext)
     {
         if (ext == null) return false;
-        byte* p = *ext == (byte)'.' ? ext + 1 : ext;
-        return (p[0] | 0x20) == 'm' && (p[1] | 0x20) == 'd' && (p[2] | 0x20) == 'l' && p[3] == 0;
+        int o = *ext == (byte)'.' ? 1 : 0;
+        return (ext[o] | 0x20) == 'm' && (ext[o + 1] | 0x20) == 'd' && (ext[o + 2] | 0x20) == 'l' && ext[o + 3] == 0;
     }
 
     [UnmanagedCallersOnly]
@@ -412,7 +421,7 @@ internal static unsafe partial class ModelLoad
         _out.Remove(data);
         if (!_jobs.Entries.TryGetValue(key, out LoadEntry e) || e.Data != data)
         {
-            NativeMemory.Free((byte*)data - PrefixBytes);   // the entry went while the engine held it
+            NativeMemory.Free(Headroom<ModelHeadroom>.BlockOf((nint)data));   // the entry went while the engine held it
             return;
         }
         e.Out = false;

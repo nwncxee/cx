@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
@@ -63,6 +64,9 @@ public static unsafe partial class TextRig
     /// object is epoch-scoped: re-fetch when <see cref="AtlasEpoch"/> changes. Null when headless or refused.</summary>
     public static GlyphAtlas? Face(float px) => _defaultName == null ? null : Face(_defaultName, px);
 
+    /// <summary>As <see cref="Face(float)"/>, held by <paramref name="owner"/> until it calls <see cref="ReleaseFace(float, string)"/>.</summary>
+    public static GlyphAtlas? Face(float px, string owner) => _defaultName == null ? null : Face(_defaultName, px, owner);
+
     /// <summary>Hot, alloc-free lookup of an already-baked default-typeface face; null on a miss (never bakes).</summary>
     public static GlyphAtlas? BakedFace(float px)
         => _sheet != null && _defaultName != null && _sheet.TryFace(_defaultName, px, out GlyphAtlas f) ? f : null;
@@ -73,10 +77,28 @@ public static unsafe partial class TextRig
 
     /// <summary>A face of the <see cref="FontRegistry"/> name <paramref name="typeface"/> at <paramref name="px"/>;
     /// see <see cref="Face(float)"/>. An unknown or refused name is the default typeface.</summary>
-    public static GlyphAtlas? Face(string typeface, float px)
+    public static GlyphAtlas? Face(string typeface, float px) => Face(typeface, px, SessionOwner);
+
+    /// <summary>As <see cref="Face(string, float)"/>, held by <paramref name="owner"/> until it calls
+    /// <see cref="ReleaseFace(string, float, string)"/>.</summary>
+    public static GlyphAtlas? Face(string typeface, float px, string owner)
     {
-        lock (_bakeLock) return FaceLocked(typeface, px);
+        lock (_bakeLock)
+        {
+            GlyphAtlas? f = FaceLocked(typeface, px);
+            if (f == null) return null;
+            var key = (FontRegistry.Effective(typeface), px);
+            if (!_holders.TryGetValue(key, out HashSet<string>? who)) _holders[key] = who = new HashSet<string>(StringComparer.Ordinal);
+            who.Add(owner);
+            return f;
+        }
     }
+
+    /// <summary>The holder of a face asked for with no owner: it is held for the session.</summary>
+    private const string SessionOwner = "";
+
+    /// <summary>The owners holding each extra face. A face whose last owner lets go leaves the sheet at the next bake.</summary>
+    private static readonly Dictionary<(string Typeface, float Px), HashSet<string>> _holders = new();
 
     /// <summary>Serialises the cold mutators of <see cref="_requests"/> (<see cref="Face(string, float)"/>,
     /// <see cref="ReleaseFace"/>, <see cref="SetFont"/>): the input thread and a pool-thread peak-face re-request
@@ -117,14 +139,29 @@ public static unsafe partial class TextRig
     public static GlyphAtlas? BakedIconFace(float px)
         => _sheet != null && _sheet.TryFace(Icons.Name, px, out GlyphAtlas f) ? f : null;
 
-    /// <summary>Drop a face request of the registry name <paramref name="typeface"/> a caller no longer needs (a
-    /// superseded peak face), so the sheet stops carrying it from the next re-bake on. Cold; no bake of its own --
-    /// the face stays usable until then. The default face (index 0) is never dropped.</summary>
-    public static void ReleaseFace(string typeface, float px)
+    /// <summary><paramref name="owner"/> no longer needs its face of <paramref name="typeface"/> at <paramref name="px"/>. When no
+    /// owner holds it, the sheet stops carrying it from the next re-bake on. Cold; no bake of its own -- the face stays usable
+    /// until then. The default face (index 0) is never dropped.</summary>
+    public static void ReleaseFace(string typeface, float px, string owner)
     {
         typeface = FontRegistry.Effective(typeface);
-        lock (_bakeLock) for (int i = _requests.Count - 1; i >= 1; i--)
-            if (_requests[i].Typeface == typeface && _requests[i].Px == px) _requests.RemoveAt(i);
+        lock (_bakeLock)
+        {
+            if (_holders.TryGetValue((typeface, px), out HashSet<string>? who))
+            {
+                who.Remove(owner);
+                if (who.Count > 0) return;
+                _holders.Remove((typeface, px));
+            }
+            for (int i = _requests.Count - 1; i >= 1; i--)
+                if (_requests[i].Typeface == typeface && _requests[i].Px == px) _requests.RemoveAt(i);
+        }
+    }
+
+    /// <summary>As <see cref="ReleaseFace(string, float, string)"/> for the default typeface.</summary>
+    public static void ReleaseFace(float px, string owner)
+    {
+        if (_defaultName != null) ReleaseFace(_defaultName, px, owner);
     }
 
     /// <summary>Raised COLD after <see cref="SetFont"/> swaps in a re-baked sheet, so a face derived from the UI size
@@ -300,10 +337,10 @@ public static unsafe partial class TextRig
             if (_requests[i].Typeface == DefaultFace) _requests[i] = _requests[i] with { Font = font };
     }
 
-    internal static void BindText(float* proj)
+    internal static void BindText(in Matrix4x4 proj)
     {
         Gl.UseProgram(_prog);
-        Gl.UniformMatrix4fv(_uProj, 1, (byte)Gl.FALSE, proj);
+        fixed (Matrix4x4* pm = &proj) Gl.UniformMatrix4fv(_uProj, 1, (byte)Gl.FALSE, (float*)pm);
         Gl.BindTexture(Gl.TEXTURE_2D, _tex);   // already on TEXTURE0
         Gl.Uniform1i(_uTex, 0);
         Gl.Uniform1f(_uAlpha, _textAlpha);     // 1 for chat; the dialog fade overrides via DrawBatch
@@ -427,20 +464,16 @@ public static unsafe partial class TextRig
     /// image arrives upside down: map the quad top to V=1 (image top) and the bottom to the content floor,
     /// which flips it upright AND crops the pow2 black pad band. Full U (no horizontal padding). y-down like
     /// the text ortho. <paramref name="residual"/> slides it with the body; <paramref name="alpha"/> fades it.</summary>
-    internal static void FillQuad(float* v, PortraitQuad q, float residual, float alpha)
+    internal static void FillQuad(ref QuadVerts v, PortraitQuad q, float residual, float alpha)
     {
         float x0 = q.X, y0 = q.Y + residual, x1 = q.X + q.W, y1 = q.Y + q.H + residual;
         float vTop = 1f, vBot = 1f - PortraitContentV;
-        Vtx(v, 0, x0, y0, 0, vTop, alpha); Vtx(v, 1, x1, y0, 1, vTop, alpha); Vtx(v, 2, x1, y1, 1, vBot, alpha);
-        Vtx(v, 3, x0, y0, 0, vTop, alpha); Vtx(v, 4, x1, y1, 1, vBot, alpha); Vtx(v, 5, x0, y1, 0, vBot, alpha);
+        v[0] = Vtx(x0, y0, 0, vTop, alpha); v[1] = Vtx(x1, y0, 1, vTop, alpha); v[2] = Vtx(x1, y1, 1, vBot, alpha);
+        v[3] = Vtx(x0, y0, 0, vTop, alpha); v[4] = Vtx(x1, y1, 1, vBot, alpha); v[5] = Vtx(x0, y1, 0, vBot, alpha);
     }
 
-    private static void Vtx(float* v, int i, float x, float y, float u, float w, float alpha)
-    {
-        int o = i * Floats;
-        v[o] = x; v[o + 1] = y; v[o + 2] = u; v[o + 3] = w;
-        v[o + 4] = 1f; v[o + 5] = 1f; v[o + 6] = 1f; v[o + 7] = alpha;
-    }
+    private static ShadedVertex Vtx(float x, float y, float u, float w, float alpha)
+        => new() { X = x, Y = y, U = u, V = w, R = 1f, G = 1f, B = 1f, A = alpha };
 
     private const string FSrcRgb =
         "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\nuniform sampler2D uTex;\nout vec4 o;\n" +
@@ -498,11 +531,11 @@ public static unsafe partial class TextRig
     }
 
     /// <summary>Column-major ortho for glOrtho(0,w,h,0,-1,1): top-left origin, y grows downward.</summary>
-    internal static void Ortho(float* m, float w, float h)
-    {
-        for (int i = 0; i < 16; i++) m[i] = 0;
-        m[0] = 2f / w; m[5] = -2f / h; m[10] = -1f; m[12] = -1f; m[13] = 1f; m[15] = 1f;
-    }
+    internal static Matrix4x4 Ortho(float w, float h)
+        => new(2f / w, 0f, 0f, 0f,
+               0f, -2f / h, 0f, 0f,
+               0f, 0f, -1f, 0f,
+               -1f, 1f, 0f, 1f);
 
     private const string VSrc =
         "#version 330 core\nlayout(location=0) in vec2 aPos;\nlayout(location=1) in vec2 aUV;\n" +
@@ -657,8 +690,7 @@ public static unsafe partial class TextRig
             Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
             int vw = ViewportW, vh = ViewportH;
-            float* m = stackalloc float[16];
-            Ortho(m, vw, vh);
+            Matrix4x4 m = Ortho(vw, vh);
 
             // GL scissor is bottom-left origin; our rects are y-down top-left, so flip Y.
             if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, vh - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
@@ -700,20 +732,19 @@ public static unsafe partial class TextRig
         Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE);
         Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, ViewportH);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* verts = stackalloc float[Floats * 6];
-        FillQuad(verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
+        QuadVerts verts = default;
+        FillQuad(ref verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
 
         Gl.UseProgram(_progRgb);
-        Gl.UniformMatrix4fv(_uProjRgb, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjRgb, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexRgb, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(Floats * 6 * sizeof(float)), verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &verts, Gl.DYNAMIC_DRAW);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
         bool samp = EnsurePortraitSampler();
         if (samp) Gl.BindSampler(0, _psamp);
@@ -791,21 +822,20 @@ public static unsafe partial class TextRig
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, ViewportH);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
-        float* v = stackalloc float[Floats * 6];
-        Vtx(v, 0, x, y, 0, 1, a); Vtx(v, 1, x1, y, u1, 1, a); Vtx(v, 2, x1, y1, u1, v0, a);
-        Vtx(v, 3, x, y, 0, 1, a); Vtx(v, 4, x1, y1, u1, v0, a); Vtx(v, 5, x, y1, 0, v0, a);
+        QuadVerts v = default;
+        v[0] = Vtx(x, y, 0, 1, a); v[1] = Vtx(x1, y, u1, 1, a); v[2] = Vtx(x1, y1, u1, v0, a);
+        v[3] = Vtx(x, y, 0, 1, a); v[4] = Vtx(x1, y1, u1, v0, a); v[5] = Vtx(x, y1, 0, v0, a);
 
         Gl.UseProgram(_progIconPlt);
-        Gl.UniformMatrix4fv(_uProjIconPlt, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjIconPlt, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexIconPlt, 0);
         Gl.Uniform1i(_uPalIconPlt, 1);
         fixed (int* r = rows) Gl.Uniform1iv(_uRowsIconPlt, 10, r);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(Floats * 6 * sizeof(float)), v, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &v, Gl.DYNAMIC_DRAW);
         Gl.ActiveTexture(Gl.TEXTURE0 + 1);
         Gl.BindTexture(Gl.TEXTURE_2D, pal);
         Gl.ActiveTexture(Gl.TEXTURE0);
@@ -861,21 +891,20 @@ public static unsafe partial class TextRig
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, ViewportH);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
 
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
         float vt = flipV ? 0f : 1f, vb = flipV ? 1f : v0;
-        float* v = stackalloc float[Floats * 6];
-        Vtx(v, 0, x, y, 0, vt, a); Vtx(v, 1, x1, y, u1, vt, a); Vtx(v, 2, x1, y1, u1, vb, a);
-        Vtx(v, 3, x, y, 0, vt, a); Vtx(v, 4, x1, y1, u1, vb, a); Vtx(v, 5, x, y1, 0, vb, a);
+        QuadVerts v = default;
+        v[0] = Vtx(x, y, 0, vt, a); v[1] = Vtx(x1, y, u1, vt, a); v[2] = Vtx(x1, y1, u1, vb, a);
+        v[3] = Vtx(x, y, 0, vt, a); v[4] = Vtx(x1, y1, u1, vb, a); v[5] = Vtx(x, y1, 0, vb, a);
 
         Gl.UseProgram(_progIcon);
-        Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexIcon, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(Floats * 6 * sizeof(float)), v, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &v, Gl.DYNAMIC_DRAW);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
         bool samp = EnsurePortraitSampler();
         if (samp) Gl.BindSampler(0, _psamp);

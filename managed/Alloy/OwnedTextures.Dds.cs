@@ -69,7 +69,8 @@ internal static unsafe partial class OwnedTextures
         for (int l = 0, w = i.W, h = i.H; l < levels; l++, w = System.Math.Max(1, w >> 1), h = System.Math.Max(1, h >> 1))
         {
             int sz = DdsReader.LevelSize(w, h, i.Channels);
-            Gl.CompressedTextureSubImage2D(dst, l, 0, 0, w, h, fmt, sz, chain + off);
+            fixed (byte* level = new ReadOnlySpan<byte>(chain, (int)i.ChainBytes).Slice((int)off, sz))
+                Gl.CompressedTextureSubImage2D(dst, l, 0, 0, w, h, fmt, sz, level);
             off += sz;
         }
         uint err = Gl.GetError();

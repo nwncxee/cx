@@ -21,6 +21,8 @@ public sealed unsafe class HeldImageService : IExtenderService
     /// <summary>The engine cursor shown while something is held unless <c>held.cursor</c> names another or <c>none</c>: the <c>Use</c> row
     /// of <c>cursors.2da</c>, whose <c>CursorID</c> column is 25.</summary>
     internal const int DefaultCursorId = 25;
+    /// <summary>The highest cursor id the engine takes: its cursor setter ignores a larger one and leaves the cursor as it was.</summary>
+    internal const int MaxCursorId = 293;
     /// <summary>The look keys: the image's size a cell, the cursor, and how long a hold outlives a NUI that draws nothing.</summary>
     private const string SizeKey = "held.size", CursorKey = "held.cursor", GraceKey = "held.grace";
     /// <summary>The opacity keys: a confirmed hold, and a pick still waiting for the server (0-1); and the image's offset from the pointer in px.</summary>
@@ -146,7 +148,11 @@ public sealed unsafe class HeldImageService : IExtenderService
             s.Minted = NuiItemIcons.MintLook(m.Name);
             if (s.Minted == IntPtr.Zero) Notice(s, "an @look: image made no item -- nothing follows the pointer");
         }
-        else if (m.Kind == HeldKind.Other) Notice(s, $"'{m.Name}' is not an image this client draws -- only the cursor changes");
+        else if (m.Kind == HeldKind.Other)
+        {
+            Notice(s, $"'{m.Name}' is not an image this client draws -- only the cursor changes");
+            List(m);
+        }
     }
 
     /// <summary>The server's look for a hold, read when the policy moves: size, cursor, opacity, pick opacity, offset and grace, each back to its default when released.</summary>
@@ -155,12 +161,23 @@ public sealed unsafe class HeldImageService : IExtenderService
         s.LookEpoch = epoch;
         s.SizePx = ServerPolicy.Int(SizeKey, (int)DefaultSizePx, MinSizePx, MaxSizePx);
         string cursor = ServerPolicy.Str(CursorKey, "");
-        s.CursorId = cursor == "none" ? -1 : int.TryParse(cursor, out int id) && id >= 0 ? id : DefaultCursorId;
+        s.CursorId = cursor == "none" ? -1 : int.TryParse(cursor, out int id) && id is >= 0 and <= MaxCursorId ? id : Bad(cursor);
         s.Opacity = ServerPolicy.Float(OpacityKey, DefaultOpacity, 0f, 1f);
         s.PickOpacity = ServerPolicy.Float(PickOpacityKey, DefaultPickOpacity, 0f, 1f);
         s.Dx = ServerPolicy.Float(DxKey, 0f, -MaxOffsetPx, MaxOffsetPx);
         s.Dy = ServerPolicy.Float(DyKey, 0f, -MaxOffsetPx, MaxOffsetPx);
         s.Model.GraceMs = ServerPolicy.Int(GraceKey, HeldImageModel.DefaultGraceMs, 0, MaxGraceMs);
+    }
+
+    /// <summary>A hold that draws nothing because its value is no image: listed by <c>/policy</c> under <c>held.image</c>.</summary>
+    internal static void List(HeldImageModel m) => PolicyRefusals.Add(RefusalKind.Held, Key, m.Name, HeldImageModel.WhyOther(m.Name));
+
+    /// <summary>A <c>held.cursor</c> value that is not <c>none</c> or an id from 0 to <see cref="MaxCursorId"/>: listed by <c>/policy</c>, and the default shows.
+    /// An empty value is a key never sent.</summary>
+    private static int Bad(string cursor)
+    {
+        if (cursor.Length > 0) PolicyRefusals.Add(RefusalKind.Held, CursorKey, cursor, $"not none or a cursor id from 0 to {MaxCursorId}");
+        return DefaultCursorId;
     }
 
     private static void Notice(HeldState s, string text)

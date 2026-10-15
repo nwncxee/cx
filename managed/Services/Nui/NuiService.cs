@@ -59,12 +59,15 @@ public sealed unsafe class NuiService : IExtenderService
         NuiScrollbarHide.SelfCheck(log);
         NuiLayoutErrors.SelfCheck(log);
         NuiHitTest.SelfCheck(log);
+        NuiJsonRead.SelfCheck(log);
+        CxTranslate.SelfCheck(log);
         NuiItemIcons.Init(log, hooks);
         NuiModelView.Init(log, hooks);
         NuiScrollbars.Init(log, hooks);
         NuiScrollbarHide.Init(log, hooks);
         NuiSolver.Init(log, hooks);
         NuiLayoutErrors.Init(log, hooks);
+        CxWindows.Init(log, hooks);
         NuiHitTest.Init(log, hooks);
         if (!EngineLayout.Require(log, "NuiService", "Nui::Layout::Layoutable")) return;
         IntPtr render = Native.Sym(SymbolMap.NuiWidgetRender);
@@ -74,7 +77,7 @@ public sealed unsafe class NuiService : IExtenderService
             Fail("Widget::Render or the StatefulWidget vtable did not resolve");
             return;
         }
-        if (*(IntPtr*)(_statefulVptr + EngineLayout.NuiRenderSlot) != render)
+        if (Nui__Layout__Layoutable.RenderEntry(_statefulVptr) != render)
         {
             Fail("the StatefulWidget vtable's Render slot is not Widget::Render");
             return;
@@ -117,7 +120,8 @@ public sealed unsafe class NuiService : IExtenderService
         if (b.X + b.W + CullMargin > b.ClipX && b.X - CullMargin < b.ClipX + b.ClipW
             && b.Y + b.H + CullMargin > b.ClipY && b.Y - CullMargin < b.ClipY + b.ClipH) return false;
         float edge = b.Left + b.W;
-        if (edge > *(float*)(b.Panel + NuiNuklear.MaxXOff)) *(float*)(b.Panel + NuiNuklear.MaxXOff) = edge;
+        var panel = new NkPanel((IntPtr)b.Panel);
+        if (edge > panel.MaxX) panel.MaxX = edge;
         return true;
     }
 

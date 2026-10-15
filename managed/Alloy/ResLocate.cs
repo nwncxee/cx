@@ -63,9 +63,9 @@ internal static unsafe class ResLocate
     {
         const ulong Prime = 0x100000001B3UL;   // not-an-offset: FNV-1a 64 prime
         ulong h = 0xCBF29CE484222325UL;        // not-an-offset: FNV-1a 64 basis
-        for (byte* p = name; *p != 0; p++)
+        for (int k = 0; name[k] != 0; k++)
         {
-            uint c = *p; if (c - 'A' < 26) c += 32;
+            uint c = name[k]; if (c - 'A' < 26) c += 32;
             h = (h ^ c) * Prime;
         }
         return h;
@@ -120,7 +120,7 @@ internal static unsafe class ResLocate
             case KindBif:
             {
                 if (files == IntPtr.Zero) { why = "the table has no file array"; return false; }
-                IntPtr file = ((IntPtr*)files)[id[1]];
+                IntPtr file = t.FileAt(id[1]);
                 if (file == IntPtr.Zero) { why = $"BIF {id[1]} is not loaded"; return false; }
                 IntPtr entries = new CExoResFile(file).Entries;
                 if (entries == IntPtr.Zero) { why = "the BIF's resource table is unloaded"; return false; }
@@ -200,16 +200,14 @@ internal static unsafe class ResLocate
         if (dir == null) return null;
         byte* buf = stackalloc byte[MaxPathChars];
         int n = 0;
-        for (byte* p = dir; *p != 0 && n < MaxPathChars - ResRefChars - 2; p++) buf[n++] = *p;
+        for (int k = 0; dir[k] != 0 && n < MaxPathChars - ResRefChars - 2; k++) buf[n++] = dir[k];
         if (n > 0 && buf[n - 1] != (byte)'/' && buf[n - 1] != (byte)':') buf[n++] = (byte)'/';
         Span<byte> rr = e.ResRef;
         for (int i = 0; i < rr.Length && rr[i] != 0; i++) buf[n++] = rr[i];
         buf[n] = 0;
         // A CExoString is {char* buf; int len; int cap}; ResolveFileName only reads it, so a forged shell serves.
-        long* shell = stackalloc long[2];
-        shell[0] = (long)buf;
-        shell[1] = n;
-        return Resolve((IntPtr)shell, resType);
+        ExoStringRec shell = new() { Buf = buf, Len = (uint)n };
+        return Resolve((IntPtr)(&shell), resType);
     }
 
     /// <summary>One <c>CExoAliasList::ResolveFileName</c>: an alias name plus a restype to an absolute

@@ -11,16 +11,19 @@ namespace CX.Services.Nui;
 /// scene -- the same call character creation's preview goes through -- with a framebuffer of ours bound, then copies the
 /// result, flipped, into the NUI image's texture. GL state the engine caches (viewport, scissor, depth mask) is put back.
 /// </summary>
-internal static unsafe class NuiModelEngine
+internal static unsafe partial class NuiModelEngine
 {
     private const uint Rgba8 = 0x8058;   // not-an-offset: GL enums
     private const uint ColorBufferBit = 0x4000, ReadBinding = 0x8CAA;   // not-an-offset: GL enums
 
     /// <summary>One slot's scratch target: the colour and depth the engine draws its scene into, and the size they were made at.</summary>
-    private sealed class Scratch
+    internal sealed class Scratch
     {
         public uint Fbo, Color, Depth;
         public int W, H;
+        /// <summary>The second pass (over white) and the solved image, made only for a view that needs the solve; at <see cref="W"/> by <see cref="H"/>.</summary>
+        public uint WhiteFbo, WhiteColor, OutFbo, OutColor;
+        public int SolveW, SolveH;
     }
 
     private sealed class EngineGlState
@@ -28,15 +31,7 @@ internal static unsafe class NuiModelEngine
         public SceneRenderOnlyGobsFn Orig;
         public ExtenderLog? Log;
         public uint FboDst;
-        public readonly Scratch[] Per = MakePer();
         public bool Armed, Said;
-    }
-
-    private static Scratch[] MakePer()
-    {
-        var a = new Scratch[NuiModelDoll.MaxViews];
-        for (int i = 0; i < a.Length; i++) a[i] = new Scratch();
-        return a;
     }
 
     /// <summary>The exact scene name <c>Scene::RenderOnlyGobs</c> compares (<c>strcasecmp</c>, whole string) to light a GUI scene.</summary>
@@ -67,7 +62,7 @@ internal static unsafe class NuiModelEngine
         uint tex = slot.TargetTex;
         if (tex == 0 || !NuiModelDoll.TargetSize(slot, out int w, out int h) || !Gl.Init(_e.Log!)) { Lit(scene); CX.Services.Perf.FrameProbe.Lap(ref span, false); return; }
         EngineGlState e = _e;
-        Scratch sc = e.Per[slot.Index];
+        Scratch sc = slot.Scratch;
         int fbo, bound, scissor, mask, rd;
         Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &fbo);
         Gl.GetIntegerv(ReadBinding, &rd);
@@ -75,20 +70,21 @@ internal static unsafe class NuiModelEngine
         Gl.GetIntegerv(Gl.SCISSOR_TEST, &scissor);
         Gl.GetIntegerv(Gl.DEPTH_WRITEMASK, &mask);
         Ensure(e, sc, slot.Index, w, h);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, sc.Fbo);
-        Gl.Disable(Gl.SCISSOR_TEST);
         float* c = stackalloc float[4];
         NuiModelDoll.Background(slot, c);
-        Gl.ClearBufferfv(Gl.COLOR, 0, c);
-        Gl.DepthMask(1);
-        Gl.Clear(Gl.DEPTH_BUFFER_BIT | Gl.STENCIL_BUFFER_BIT);
-        Gl.DepthMask((byte)mask);
-        if (scissor != 0) Gl.Enable(Gl.SCISSOR_TEST);
-        Lit(scene);
-        Gl.Disable(Gl.SCISSOR_TEST);
+        bool solve = c[3] < 1f && slot.Effects && EnsureSolve(e.Log, sc, w, h);
+        uint from = sc.Fbo;
+        if (solve)
+        {
+            Draw(scene, sc.Fbo, Black, scissor, mask);
+            Draw(scene, sc.WhiteFbo, White, scissor, mask);
+            Resolve(sc, c, w, h);
+            from = sc.OutFbo;
+        }
+        else Draw(scene, sc.Fbo, new ReadOnlySpan<float>(c, 4), scissor, mask);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, e.FboDst);
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
-        Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, sc.Fbo);
+        Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, from);
         Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, e.FboDst);
         Gl.BlitFramebuffer(0, 0, w, h, 0, h, w, 0, ColorBufferBit, (uint)Gl.NEAREST);
         if (scissor != 0) Gl.Enable(Gl.SCISSOR_TEST);
@@ -99,6 +95,22 @@ internal static unsafe class NuiModelEngine
         NuiModelDoll.MarkRendered(slot);
         CX.Services.Perf.FrameProbe.Lap(ref span, false);
         if (!e.Said) { e.Said = true; e.Log?.Always($"NuiModelEngine: first frame drawn into texture {tex} ({w}x{h}), slot {slot.Index}"); }
+    }
+
+    private static readonly float[] Black = [0f, 0f, 0f, 1f], White = [1f, 1f, 1f, 1f];
+
+    /// <summary>One engine draw of <paramref name="scene"/> into <paramref name="fbo"/>, which is cleared to <paramref name="clear"/> and to depth first.</summary>
+    private static void Draw(IntPtr scene, uint fbo, ReadOnlySpan<float> clear, int scissor, int mask)
+    {
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, fbo);
+        Gl.Disable(Gl.SCISSOR_TEST);
+        fixed (float* c = clear) Gl.ClearBufferfv(Gl.COLOR, 0, c);
+        Gl.DepthMask(1);
+        Gl.Clear(Gl.DEPTH_BUFFER_BIT | Gl.STENCIL_BUFFER_BIT);
+        Gl.DepthMask((byte)mask);
+        if (scissor != 0) Gl.Enable(Gl.SCISSOR_TEST);
+        Lit(scene);
+        Gl.Disable(Gl.SCISSOR_TEST);
     }
 
     /// <summary>The engine's own draw of <paramref name="scene"/>, with its name shown as the one name the engine lights. The engine
@@ -113,6 +125,18 @@ internal static unsafe class NuiModelEngine
         Buffer.MemoryCopy(saved, name, NameSave, NameSave);
     }
 
+    /// <summary>A new RGBA colour texture, <paramref name="w"/> by <paramref name="h"/>, linear filtered. The texture binding it leaves is the caller's to put back.</summary>
+    private static uint Colour(int w, int h)
+    {
+        uint t;
+        Gl.GenTextures(1, &t);
+        Gl.BindTexture(Gl.TEXTURE_2D, t);
+        Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Rgba8, w, h, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+        return t;
+    }
+
     /// <summary>The slot's scratch colour and depth the engine draws into, and the two framebuffers; remade when the size changes.</summary>
     private static void Ensure(EngineGlState e, Scratch k, int slot, int w, int h)
     {
@@ -121,11 +145,7 @@ internal static unsafe class NuiModelEngine
         if (k.Color != 0 && k.W == w && k.H == h) return;
         uint t;
         if (k.Color != 0) { uint* old = stackalloc uint[2]; old[0] = k.Color; old[1] = k.Depth; Gl.DeleteTextures(2, old); }
-        Gl.GenTextures(1, &t); k.Color = t;
-        Gl.BindTexture(Gl.TEXTURE_2D, t);
-        Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Rgba8, w, h, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+        k.Color = Colour(w, h);
         Gl.GenTextures(1, &t); k.Depth = t;
         Gl.BindTexture(Gl.TEXTURE_2D, t);
         Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Gl.DEPTH24_STENCIL8, w, h, 0, Gl.DEPTH_STENCIL, Gl.UNSIGNED_INT_24_8, null);

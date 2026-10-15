@@ -90,7 +90,7 @@ internal static class ServerPing
             if (ep == 0 || !GameGate.InGame)
             {
                 LastMs = -1; known = 0; server = null;
-                Thread.Sleep(PeriodMs); continue;
+                BlockingWait.Sleep(PeriodMs, "the ping thread"); continue;
             }
             if (ep != known)
             {
@@ -116,7 +116,7 @@ internal static class ServerPing
                 }
             }
             catch (SocketException) { LastMs = -1; }
-            Thread.Sleep(PeriodMs);
+            BlockingWait.Sleep(PeriodMs, "the ping thread");
         }
     }
 

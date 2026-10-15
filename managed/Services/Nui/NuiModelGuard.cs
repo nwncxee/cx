@@ -96,5 +96,6 @@ internal static class NuiModelGuard
         for (int i = 0; i < 200; i++) Once($"hostile {i}");
         check.Expect(!Once("one more"), "past the cap nothing new is said");
         Forget();
+        log.Info(check.Ok ? "NuiModelGuard.SelfCheck: passed" : "NuiModelGuard.SelfCheck: FAILED");
     }
 }

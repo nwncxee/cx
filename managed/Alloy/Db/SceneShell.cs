@@ -10,13 +10,6 @@ namespace CX.Alloy.Db;
 /// POINTERS, rebuilt on cold edges only; the <c>+0x08</c>/<c>+0x10</c>/<c>+0x14</c> SafePointers are the game's.</summary>
 public static unsafe class SceneShell
 {
-    /// <summary>Where the member list's array pointer and count sit. <c>EngineLayout</c>'s own rows, per OS
-    /// and build-locked, because they are the ENGINE's class layout and the one direct reader
-    /// (<c>GetAurSceneObjectCount</c> @0x68b380) is engine code compiled against it -- not a CX invention
-    /// that happens to agree.</summary>
-    public static int ObjListPtr => EngineLayout.SceneGobs;
-    public static int ObjListCount => EngineLayout.SceneGobCount;
-
     private static ExtenderLog? _log;
     private static long _rebuilds, _mirrorBytes;
 
@@ -40,7 +33,7 @@ public static unsafe class SceneShell
         _stale[i] = true;
         nint shell = SceneDb.SceneFacade[i];
         if (shell == 0) return;
-        *(int*)(shell + ObjListCount) = SceneDb.SceneObjects[i]?.Count ?? 0;
+        new CX.Engine.Scene(shell).GobCount = SceneDb.SceneObjects[i]?.Count ?? 0;
     }
 
     /// <summary>Bring the native array at <c>Scene+0x130</c> up to date if anything is about to read it.
@@ -77,8 +70,8 @@ public static unsafe class SceneShell
         _rebuilds++;
         nint shell = SceneDb.SceneFacade[i];
         if (shell == 0) return;
-        *(nint*)(shell + ObjListPtr) = _mirror[i];
-        *(int*)(shell + ObjListCount) = n;
+        new CX.Engine.Scene(shell).Gobs = _mirror[i];
+        new CX.Engine.Scene(shell).GobCount = n;
     }
 
     /// <summary>The shell was just minted: write every mirrored word at once.</summary>
@@ -95,8 +88,8 @@ public static unsafe class SceneShell
         nint shell = SceneDb.SceneFacade[i];
         if (shell != 0)
         {
-            *(nint*)(shell + ObjListPtr) = 0;
-            *(int*)(shell + ObjListCount) = 0;
+            new CX.Engine.Scene(shell).Gobs = 0;
+            new CX.Engine.Scene(shell).GobCount = 0;
         }
         NativeMemory.Free((void*)_mirror[i]);
         _mirrorBytes -= _mirrorCap[i] * (long)sizeof(nint);

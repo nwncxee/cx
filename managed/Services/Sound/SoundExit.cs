@@ -45,7 +45,7 @@ internal static unsafe class SoundExit
         if (StreamThread != IntPtr.Zero)
         {
             new CExoSoundStreamThread(StreamThread).Stop = 1;
-            Thread.Sleep(StreamThreadCycleMs);
+            BlockingWait.Sleep(StreamThreadCycleMs, "the shutdown path, after the frame loop has stopped");
             flag = new CExoSoundStreamThread(StreamThread).Stop;
         }
         int idle = SoundCore.cxa_shutdown();

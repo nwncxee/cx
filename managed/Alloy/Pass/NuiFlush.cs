@@ -132,7 +132,7 @@ internal static unsafe class NuiFlush
                 NkConvertConfig cfg = Config();
                 BufferClear(_cmds);
                 res = _convert(ctx, _cmds, (IntPtr)(&vbuf), (IntPtr)(&ebuf), (IntPtr)(&cfg));
-                if (res == 0) { Record(ctx, v, e); return; }
+                if (res == 0) { Record(ctx, v); return; }
             }
             if (attempt > 0 || !Grow(res)) { StandDown(res); return; }
         }
@@ -163,7 +163,7 @@ internal static unsafe class NuiFlush
     /// <summary>Walk the draw commands and hand each run to <see cref="GuiCapture"/>, opening a new raw layer only
     /// when the scissor changes. The layers are flushed at the frame boundary, after the below-NUI windows and before the
     /// above-NUI ones.</summary>
-    private static void Record(IntPtr ctx, byte* vtx, ushort* idx)
+    private static void Record(IntPtr ctx, byte* vtx)
     {
         var c = new NkContext(ctx);
         int n = c.DrawCmdCount;
@@ -171,14 +171,13 @@ internal static unsafe class NuiFlush
         int w = *_screenW, h = *_screenH;
         if (w <= 0 || h <= 0) { _empty++; return; }
         Matrix4x4 mvp = Ortho(w, h);
-        byte* cmd = FirstCmd(_cmds, n, c.DrawCmdOffset);
+        NkDrawCommand* cmd = (NkDrawCommand*)FirstCmd(_cmds, n, c);
         if (cmd == null) { _empty++; return; }
-        byte* last = cmd - (n - 1) * sizeof(NkDrawCommand);
         int offset = 0, sx = int.MinValue, sy = 0, sw = 0, sh = 0;
         bool open = false;
-        for (; cmd >= last; cmd -= sizeof(NkDrawCommand))
+        for (int step = 0; step < n; step++)
         {
-            ref NkDrawCommand d = ref *(NkDrawCommand*)cmd;
+            ref NkDrawCommand d = ref cmd[-step];
             int count = (int)d.ElemCount;
             if (count <= 0) continue;
             Scissor(d.ClipX, d.ClipY, d.ClipW, d.ClipH, h, out int nx, out int ny, out int nw, out int nh);
@@ -188,8 +187,9 @@ internal static unsafe class NuiFlush
                 if (!GuiCapture.BeginRawLayer(0, 0, w, h, nx, ny, nw, nh)) break;
                 sx = nx; sy = ny; sw = nw; sh = nh; open = true;
             }
-            GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, idx + offset, count, 0, Gl.TRIANGLES, mvp,
-                           d.TextureId, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
+            fixed (ushort* run = _idx.AsSpan(offset, count))
+                GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, run, count, 0, Gl.TRIANGLES, mvp,
+                               d.TextureId, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
             offset += count;
             _cmdsDrawn++;
         }
@@ -224,14 +224,14 @@ internal static unsafe class NuiFlush
     }
 
     /// <summary>The first draw command. The list is allocated BACKWARDS from the end of <paramref name="cmds"/>, and
-    /// <paramref name="cmdOffset"/> is the distance from that end to the FIRST command -- written once, in the
+    /// the context's <c>drawCmdOffset</c> is the distance from that end to the FIRST command -- written once, in the
     /// <c>cmd_count == 0</c> branch of the push (@0xddc480), so it stays one command's worth however many follow.
     /// The walk then runs DOWNWARD in submission order. Null when the buffer is unset or empty.</summary>
-    internal static byte* FirstCmd(IntPtr cmds, int count, long cmdOffset)
+    internal static byte* FirstCmd(IntPtr cmds, int count, NkContext ctx)
     {
         ref NkBuffer b = ref *(NkBuffer*)cmds;
         if (count <= 0 || b.Size == 0 || b.MemoryPtr == IntPtr.Zero) return null;
-        return (byte*)b.MemoryPtr + (long)b.MemorySize - cmdOffset;
+        return NkQueue.FirstDrawCommand(b.MemoryPtr, (long)b.MemorySize, ctx);
     }
 
     /// <summary>A fixed <c>nk_buffer</c> over our own memory -- the four stores <c>nk_buffer_init_fixed</c>
@@ -343,16 +343,22 @@ internal static unsafe class NuiFlush
 
         // The walk: three commands allocated backwards from the end of a 256-byte buffer. cmd_offset is one
         // command's worth, because the push only writes it for the first one.
-        byte* mem = stackalloc byte[256];
-        NkBuffer cmds = Fixed(mem, 256);
-        for (int i = 0; i < 3; i++) ((NkDrawCommand*)(mem + 256))[-1 - i].ElemCount = (uint)(i + 1);
-        byte* first = FirstCmd((IntPtr)(&cmds), 3, sizeof(NkDrawCommand));
-        check.Expect(first == mem + 256 - sizeof(NkDrawCommand), "the first command is the last record in the buffer");
-        byte* lastCmd = first - 2 * sizeof(NkDrawCommand);
+        NkDrawCommand* recs = stackalloc NkDrawCommand[3];
+        NkBuffer cmds = Fixed(recs, 3 * sizeof(NkDrawCommand));
+        for (int i = 0; i < 3; i++) recs[2 - i].ElemCount = (uint)(i + 1);
+        Span<byte> ctxMem = stackalloc byte[EngineLayout.NkCtxDrawCmdOffset + sizeof(ulong)];
+        ctxMem.Clear();
+        NkContext fx;
+        fixed (byte* ctxAt = ctxMem) fx = new NkContext((IntPtr)ctxAt);
+        fx.DrawCmdOffset = sizeof(NkDrawCommand);
+        byte* first = FirstCmd((IntPtr)(&cmds), 3, fx);
+        check.Expect(first - (byte*)recs == 2 * sizeof(NkDrawCommand), "the first command is the last record in the buffer");
+        var firstCmd = (NkDrawCommand*)first;
         int seen = 0;
-        for (byte* p = first; p >= lastCmd; p -= sizeof(NkDrawCommand)) seen = seen * 10 + (int)((NkDrawCommand*)p)->ElemCount;
+        for (int k = 0; k < 3; k++) seen = seen * 10 + (int)firstCmd[-k].ElemCount;
         check.Expect(seen == 123, "the walk runs downwards through every command, in submission order");
-        check.Expect(FirstCmd((IntPtr)(&cmds), 0, 0) == null, "no commands is no walk");
+        fx.DrawCmdOffset = 0;
+        check.Expect(FirstCmd((IntPtr)(&cmds), 0, fx) == null, "no commands is no walk");
 
         Scissor(10f, 20f, 100f, 50f, 768, out int sx, out int sy, out int sw, out int sh);
         check.Expect(sx == 10 && sw == 100 && sh == 50 && sy == 768 - 70, "a clip rect flips to a bottom-left scissor");

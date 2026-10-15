@@ -113,6 +113,8 @@ internal static class PanelParser
         Len(e, "shadowdx", ref st.ShadowDx, -16f, 16f); Len(e, "shadowdy", ref st.ShadowDy, -16f, 16f);
         Len(e, "glowspread", ref st.GlowSpread, 0f, 64f); Len(e, "glowalpha", ref st.GlowAlpha, 0f, 1f); Len(e, "cornerlen", ref st.CornerLen); Len(e, "cornerw", ref st.CornerW);
         Len(e, "pulsemin", ref st.PulseMin, 0f, 1f); Len(e, "pulseperiod", ref st.PulsePeriodMs, 100f, 60_000f);
+        Len(e, "glowfalloff", ref st.GlowFalloff, 0.1f, 8f); Len(e, "glowstep", ref st.GlowStep, 1f, 16f); Len(e, "diagmix", ref st.DiagMix, 0f, 1f);
+        st.PulseWave = Str(e, "pulseshape", "") switch { "" => st.PulseWave, "sine" => PulseShape.Sine, "triangle" => PulseShape.Triangle, "square" => PulseShape.Square, var x => throw new Refusal($"pulseshape '{x}' is sine, triangle or square") };
         string sides = Str(e, "sides", st.Sides);
         foreach (char ch in sides) if ("trbl".IndexOf(ch) < 0) throw new Refusal("sides uses only t, r, b and l");
         st.Sides = sides;
@@ -154,6 +156,7 @@ internal static class PanelParser
                 if (i.ValueKind != JsonValueKind.Object) throw new Refusal("an image is a JSON object");
                 string src = Str(i, "src", "");
                 if (src.Length is 0 or > PanelLimits.MaxIconName) throw new Refusal("an image needs a src");
+                if (!PanelLimits.NameOk(src)) throw new Refusal($"image '{src}' is over {PanelLimits.MaxResref} characters, the longest resref");
                 l.Add(new PanelImage
                 {
                     Src = src,
@@ -202,6 +205,7 @@ internal static class PanelParser
         b.Runs = Runs(e, "text", Bool(e, "italic", false), st);
         b.Icon = Str(e, "icon", "");
         if (b.Icon.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
+        if (!PanelLimits.NameOk(b.Icon)) throw new Refusal($"icon '{b.Icon}' is over {PanelLimits.MaxResref} characters, the longest resref");
         b.Frame = Bool(e, "frame", false);
         b.Pulse = Bool(e, "pulse", type == "loading");
         b.Tint = Col(e, "tint", default);
@@ -219,6 +223,7 @@ internal static class PanelParser
                 {
                     string s = n.ValueKind == JsonValueKind.String ? n.GetString()! : throw new Refusal("an icon name is a string");
                     if (s.Length > PanelLimits.MaxIconName) throw new Refusal("an icon name is too long");
+                    if (!PanelLimits.NameOk(s)) throw new Refusal($"icon '{s}' is over {PanelLimits.MaxResref} characters, the longest resref");
                     names.Add(s);
                 }
                 b.Icons = names.ToArray();

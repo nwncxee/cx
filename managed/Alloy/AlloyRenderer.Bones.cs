@@ -72,7 +72,7 @@ public sealed unsafe partial class AlloyRenderer
         // CX-26: once a FRAME -- a second pose in the same frame (a reflection subframe) re-solves the same
         // animation state and must not make it its own history.
         bool roll = _poseRollSeq != _frameSeq;
-        if (roll) { _poseRollSeq = _frameSeq; float* t = _boneStage; _boneStage = _bonePrevStage; _bonePrevStage = t; }
+        if (roll) { _poseRollSeq = _frameSeq; BonePalette* t = _boneStage; _boneStage = _bonePrevStage; _bonePrevStage = t; }
         // CX-120 seam-anim: a DB palette is solved on the game thread, before this swap, so it lives in the
         // DB stage and is copied into whichever buffer THIS frame uploads -- here, the one moment both
         // buffers mean what their names say (Scene/AlloyRenderer.DbBones.cs).
@@ -111,13 +111,13 @@ public sealed unsafe partial class AlloyRenderer
         if (want <= _boneCap) return true;
         int cap = _boneCap == 0 ? MaxBoneSlots : _boneCap;
         while (cap < want) cap *= 2;
-        float* next, prev;
-        nuint bytes = (nuint)cap * BoneFloats * sizeof(float);
-        try { next = (float*)NativeMemory.Realloc(_boneStage, bytes); }
+        BonePalette* next, prev;
+        nuint bytes = (nuint)cap * (nuint)sizeof(BonePalette);
+        try { next = (BonePalette*)NativeMemory.Realloc(_boneStage, bytes); }
         catch (OutOfMemoryException) { return false; }
         if (next == null) return false;
         _boneStage = next;
-        try { prev = (float*)NativeMemory.Realloc(_bonePrevStage, bytes); }
+        try { prev = (BonePalette*)NativeMemory.Realloc(_bonePrevStage, bytes); }
         catch (OutOfMemoryException) { return false; }
         if (prev == null) return false;
         _bonePrevStage = prev; _boneCap = cap;

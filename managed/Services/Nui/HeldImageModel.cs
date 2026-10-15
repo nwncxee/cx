@@ -123,6 +123,12 @@ internal sealed class HeldImageModel
         return HeldKind.Resref;
     }
 
+    /// <summary>Why <see cref="Classify"/> drew nothing for <paramref name="value"/>, for <c>/policy</c>.</summary>
+    internal static string WhyOther(string value)
+        => value.StartsWith('@') ? "an @item: id is up to eight hex digits, and @model: needs a key"
+         : value.Length > ResrefMax ? $"a resref is at most {ResrefMax} characters"
+         : "a resref is letters, digits and _";
+
     /// <summary>Oracle: hand-written names and values, and a hand-driven clock and draw counter.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {

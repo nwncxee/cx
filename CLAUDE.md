@@ -189,6 +189,14 @@ history or a ticket number; `tools/gates/comments.sh` refuses a `///` block over
 Past 1,500 lines a `.cs` file is split by responsibility -- `partial` files or sibling
 classes, one job each, the way `AlloyRenderer`'s are; `tools/gates/file-size.sh` refuses otherwise.
 
+## Coding standards (ADR 0031)
+
+`CODING_STANDARDS.md` holds the coding rules: what fails the build, how a place in memory is named, threads and
+the host. A rule the compiler can check is a line in `managed/BannedSymbols.txt` (RS0030) or a rule in
+`tools/analyzers/` (CX0001 and on), and `managed/.editorconfig` makes both errors. Add a ban the day its helper
+exists, and give every "should have gone through X" review finding its ban in the change that fixes it. The
+`standards-reviewer` agent (`.claude/agents/`) reviews a diff against the standards.
+
 ## Gates (CX-192)
 
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from
@@ -234,6 +242,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
+- `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
+  `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 

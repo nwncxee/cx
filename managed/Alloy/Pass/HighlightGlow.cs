@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -13,8 +14,6 @@ namespace CX.Alloy;
 /// its node's box centre, scaled by the pulse. Additive over the finished frame, depth-tested, unfogged.</summary>
 internal static unsafe class HighlightGlow
 {
-    /// <summary>Four vec4 per quad: (centre, alpha), (half-axis U, 0), (half-axis V, 0), (rgb, 0).</summary>
-    private const int Floats = 16;
     /// <summary>ponytail: a fixed staging ceiling (1 MiB) -- a Tab-highlight-all in a crowded area is the
     /// worst case; past it the rest is NOT DRAWN and logged once. Grow it if the log ever says so.</summary>
     private const int MaxQuads = 16384;
@@ -27,7 +26,7 @@ internal static unsafe class HighlightGlow
     /// 0x12f1b78), in the part's local frame as the engine does it.</summary>
     private const float EyeBias = -0.001f;
 
-    private static readonly float[] _stage = new float[MaxQuads * Floats];
+    private static readonly GlowRec[] _stage = new GlowRec[MaxQuads];
     private static int _quads, _dropped;
     /// <summary>Everything the GL context owns, plus the glow texture held against it: context loss replaces it.</summary>
     private sealed class GlowGlState
@@ -115,8 +114,7 @@ internal static unsafe class HighlightGlow
             if (mesh == null) continue;
             if (_quads + 3 > MaxQuads) { _dropped++; continue; }
             if (!Matrix4x4.Decompose(SceneDb.PartWorld[p], out Vector3 sc, out Quaternion rot, out Vector3 pos)) continue;
-            fixed (float* s = _stage)
-                _quads += Quads(mesh.BMin, mesh.BMax, pos, rot, sc.X, _pulse, _eye, _alphaScale, rgb, s + _quads * Floats);
+            _quads += Quads(mesh.BMin, mesh.BMax, pos, rot, sc.X, _pulse, _eye, _alphaScale, rgb, _stage.AsSpan(_quads));
         }
     }
 
@@ -132,11 +130,22 @@ internal static unsafe class HighlightGlow
         return true;
     }
 
+    /// <summary>One component of <paramref name="v"/> by axis (0 = X, 1 = Y, 2 = Z).</summary>
+    private static ref float Axis(ref Vector3 v, int a)
+    {
+        switch (a)
+        {
+            case 0: return ref v.X;
+            case 1: return ref v.Y;
+            default: return ref v.Z;
+        }
+    }
+
     /// <summary>One mesh part's three quads, in the engine's order: the x plane spans (y, z), the y plane
     /// (x, z), the z plane (x, y). Alpha is <c>dot(plane normal, eye direction)^2 * intensity</c>, so a quad
     /// seen edge-on vanishes. A zero-area quad is skipped. Returns the quads written.</summary>
     internal static int Quads(Vector3 bmin, Vector3 bmax, Vector3 pos, Quaternion rot, float scale, float pulse,
-                              Vector3 eye, float intensity, Vector3 rgb, float* d)
+                              Vector3 eye, float intensity, Vector3 rgb, Span<GlowRec> d)
     {
         Vector3 mid = (bmin + bmax) * (0.5f * scale);
         Vector3 half = (bmax - bmin) * (0.5f * pulse * scale);
@@ -149,21 +158,21 @@ internal static unsafe class HighlightGlow
         for (int a = 0; a < 3; a++)
         {
             int u = a == 0 ? 1 : 0, v = a == 2 ? 1 : 2;
-            float hu = ((float*)&half)[u], hv = ((float*)&half)[v];
+            float hu = Axis(ref half, u), hv = Axis(ref half, v);
             if (hu == 0f || hv == 0f) continue;
             Vector3 centre = mid, axisU = default, axisV = default, n = default;
-            ((float*)&centre)[a] = ((float*)&biased)[a];
-            ((float*)&axisU)[u] = hu;
-            ((float*)&axisV)[v] = hv;
-            ((float*)&n)[a] = 1f;
+            Axis(ref centre, a) = Axis(ref biased, a);
+            Axis(ref axisU, u) = hu;
+            Axis(ref axisV, v) = hv;
+            Axis(ref n, a) = 1f;
             float f = Vector3.Dot(Vector3.Transform(n, rot), toEye);
             Vector3 c = pos + Vector3.Transform(centre, rot), wu = Vector3.Transform(axisU, rot),
                     wv = Vector3.Transform(axisV, rot);
-            float* r = d + written * Floats;
-            r[0] = c.X; r[1] = c.Y; r[2] = c.Z; r[3] = Math.Clamp(f * f * intensity, 0f, 1f);
-            r[4] = wu.X; r[5] = wu.Y; r[6] = wu.Z; r[7] = 0f;
-            r[8] = wv.X; r[9] = wv.Y; r[10] = wv.Z; r[11] = 0f;
-            r[12] = rgb.X; r[13] = rgb.Y; r[14] = rgb.Z; r[15] = 0f;
+            ref GlowRec r = ref d[written];
+            r.Centre = new Vector4(c, Math.Clamp(f * f * intensity, 0f, 1f));
+            r.AxisU = new Vector4(wu, 0f);
+            r.AxisV = new Vector4(wv, 0f);
+            r.Colour = new Vector4(rgb, 0f);
             written++;
         }
         return written;
@@ -195,10 +204,10 @@ internal static unsafe class HighlightGlow
         if (_quads > _gl.Cap)
         {
             _gl.Cap = Math.Max(_quads, 1024);
-            Gl.NamedBufferData(_gl.Buf, (IntPtr)(_gl.Cap * Floats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
+            Gl.NamedBufferData(_gl.Buf, (IntPtr)(_gl.Cap * sizeof(GlowRec)), null, Gl.DYNAMIC_DRAW);
         }
-        fixed (float* s = _stage)
-            Gl.NamedBufferSubData(_gl.Buf, IntPtr.Zero, (IntPtr)(_quads * Floats * sizeof(float)), s);
+        fixed (GlowRec* s = _stage)
+            Gl.NamedBufferSubData(_gl.Buf, IntPtr.Zero, (IntPtr)(_quads * sizeof(GlowRec)), s);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindGlow, _gl.Buf);
         Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.HiliteDepth);
         Gl.BindTexture(Gl.TEXTURE_2D, PostChain.DepthTex);
@@ -260,26 +269,27 @@ internal static unsafe class HighlightGlow
         check.Expect(MathF.Abs(Pulse(-MathF.PI / 2f, 0.5f, 2.5f) - 2.5f) < 1e-5f
                      && MathF.Abs(Pulse(MathF.PI / 2f, 0.5f, 2.5f) - 2.8125f) < 1e-5f, "the pulse swings size .. size * (1 + amplitude / 4)");
 
-        float* d = stackalloc float[3 * Floats];
+        Span<GlowRec> d = stackalloc GlowRec[3];
+        check.Expect(sizeof(GlowRec) == 64, "a glow quad is four vec4s");
         // a unit box centred on (0, 0, 1) at the origin, unrotated, eye straight above
         int q = Quads(new Vector3(-1f, -1f, 0f), new Vector3(1f, 1f, 2f), default, Quaternion.Identity, 1f, 2f,
                       new Vector3(0f, 0f, 10f), 0.3f, Vector3.One, d);
         check.Expect(q == 3, "a solid box gives three quads");
-        check.Expect(MathF.Abs(d[0] - 0f) < 1e-3f && MathF.Abs(d[2] - 1f) < 1e-5f && d[5] == 2f && d[10] == 2f,
+        check.Expect(MathF.Abs(d[0].Centre.X) < 1e-3f && MathF.Abs(d[0].Centre.Z - 1f) < 1e-5f && d[0].AxisU.Y == 2f && d[0].AxisV.Z == 2f,
                      "the x plane sits at the box centre and spans y and z, pulse-scaled");
-        check.Expect(d[3] == 0f && d[Floats + 3] == 0f && MathF.Abs(d[2 * Floats + 3] - 0.3f) < 1e-5f,
+        check.Expect(d[0].Centre.W == 0f && d[1].Centre.W == 0f && MathF.Abs(d[2].Centre.W - 0.3f) < 1e-5f,
                      "only the plane facing the eye glows: alpha = dot^2 * intensity");
-        check.Expect(MathF.Abs(d[2 * Floats + 2] - (1f - 0.001f)) < 1e-6f, "the fixed coordinate takes the engine's 0.001 eye bias");
+        check.Expect(MathF.Abs(d[2].Centre.Z - (1f - 0.001f)) < 1e-6f, "the fixed coordinate takes the engine's 0.001 eye bias");
 
         // the gob's transform moves and turns the box: yaw 90 degrees, 2 units along x, scale 2
         Quaternion yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 2f);
         q = Quads(new Vector3(1f, 0f, 0f), new Vector3(3f, 2f, 2f), new Vector3(2f, 0f, 0f), yaw, 2f, 1f,
                   new Vector3(2f, 0f, 50f), 1f, Vector3.One, d);
         // local centre (2, 1, 1) * 2 = (4, 2, 2); yawed -> (-2, 4, 2); plus the position -> (0, 4, 2)
-        check.Expect(q == 3 && MathF.Abs(d[Floats + 0]) < 1e-3f && MathF.Abs(d[Floats + 1] - 4f) < 1e-2f
-                     && MathF.Abs(d[Floats + 2] - 2f) < 1e-2f, "the box centre is composed through scale, rotation, position");
+        check.Expect(q == 3 && MathF.Abs(d[1].Centre.X) < 1e-3f && MathF.Abs(d[1].Centre.Y - 4f) < 1e-2f
+                     && MathF.Abs(d[1].Centre.Z - 2f) < 1e-2f, "the box centre is composed through scale, rotation, position");
         // the x plane's U half-axis is local y (1 * scale 2), which the yaw turns onto -x
-        check.Expect(MathF.Abs(d[4] + 2f) < 1e-4f && MathF.Abs(d[5]) < 1e-4f, "the half-axes turn with the part");
+        check.Expect(MathF.Abs(d[0].AxisU.X + 2f) < 1e-4f && MathF.Abs(d[0].AxisU.Y) < 1e-4f, "the half-axes turn with the part");
 
         check.Expect(Quads(new Vector3(-1f, -1f, 0f), new Vector3(1f, 1f, 0f), default, Quaternion.Identity, 1f, 1f,
                            new Vector3(0f, 0f, 5f), 1f, Vector3.One, d) == 1, "a flat box keeps only its own plane");

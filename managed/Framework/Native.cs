@@ -201,11 +201,7 @@ public static unsafe class Native
         if (launched != null) return launched;
         if (OperatingSystem.IsWindows())
             return System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Neverwinter Nights");
-        string? xdg = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-        string data = string.IsNullOrEmpty(xdg)
-            ? System.IO.Path.Combine(Environment.GetEnvironmentVariable("HOME") ?? "/tmp", ".local", "share")
-            : xdg;
-        return System.IO.Path.Combine(data, "Neverwinter Nights");
+        return System.IO.Path.Combine(HostEnv.DataHome, "Neverwinter Nights");
     }
 
     /// <summary>The <c>-userdirectory</c> the client was launched with, or null. Read from the command line, the one

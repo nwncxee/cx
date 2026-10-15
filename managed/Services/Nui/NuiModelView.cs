@@ -138,7 +138,7 @@ internal static unsafe class NuiModelView
     private static string KeyOf(byte* s)
     {
         var sb = new StringBuilder();
-        for (byte* p = s + ImageNames.Model.Length; *p != 0 && sb.Length < MaxKey; p++) sb.Append((char)*p);
+        for (int i = ImageNames.Model.Length; s[i] != 0 && sb.Length < MaxKey; i++) sb.Append((char)s[i]);
         return sb.ToString();
     }
 
@@ -256,7 +256,8 @@ internal static unsafe class NuiModelView
     internal static void Loaded(byte* resref, IntPtr ret)
     {
         if (KeyOf(resref) != _s.PendingKey) return;
-        IntPtr nk = *(IntPtr*)ret, ctrl = *(IntPtr*)(ret + IntPtr.Size);
+        var sharedPtr = new ReadOnlySpan<IntPtr>((void*)ret, 2);
+        IntPtr nk = sharedPtr[0], ctrl = sharedPtr[1];
         for (int i = _s.Views.Count - 1; i >= 0; i--)
         {
             ViewData old = _s.Views[i];
@@ -327,7 +328,7 @@ internal static unsafe class NuiModelView
     {
         if (v.Built) s.Log?.Always($"NuiModelView: '{v.Key}' closed -- doll taken down");
         if (v.Dragging) EndDrag(v);
-        NuiImageSpot.Watch(v.Slot.Index, 0);
+        NuiImageSpot.Watch(v.Slot, 0);
         NuiModelDoll.Free(v.Slot);
         if (v.OwnTex != 0) { uint t = v.OwnTex; Gl.DeleteTextures(1, &t); v.OwnTex = 0; }
         v.Built = false;
@@ -434,7 +435,7 @@ internal static unsafe class NuiModelView
         if (v.Dragging) Turn(v);
         NuiModelDoll.Orbit(slot, Distance(v), Centre(v), ModelTurn(v), v.Yaw + v.DragYaw, v.Pitch);
         v.Target = tex;
-        if (!v.Owned) NuiImageSpot.Watch(slot.Index, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
+        if (!v.Owned) NuiImageSpot.Watch(slot, v.Drag > 0f || v.ZoomMax > 0f ? tex : 0);
         if (slot.Rendered) v.WasRendered = true;
     }
 
@@ -459,7 +460,7 @@ internal static unsafe class NuiModelView
     private static ViewData? Under(Func<ViewData, bool> wants)
     {
         foreach (ViewData v in _s.Views)
-            if (!v.Owned && v.Built && wants(v) && NuiImageSpot.PointerOn(v.Slot.Index)) return v;
+            if (!v.Owned && v.Built && wants(v) && NuiImageSpot.PointerOn(v.Slot)) return v;
         return null;
     }
 
@@ -725,6 +726,7 @@ internal static unsafe class NuiModelView
             if (v.Built) WearVfx(v, Resolve(v));
         }
         RefuseVfx(v);
+        NuiModelDoll.SetEffects(v.Slot, v.Vfx.Length > 0 || v.Wear.Length > 0);
         string bgRaw = Policy(v.Key, "bg", "");
         Span<float> bg = stackalloc float[4];
         if (!NuiModelLook.Background(bgRaw, bg)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'");
@@ -755,7 +757,7 @@ internal static unsafe class NuiModelView
     private static void Teardown(ViewState s, ViewData v, uint tex)
     {
         NuiModelDoll.Destroy(v.Slot);
-        NuiImageSpot.Watch(v.Slot.Index, 0);
+        NuiImageSpot.Watch(v.Slot, 0);
         v.Built = false;
         v.Target = tex;
         s.Log?.Always($"NuiModelView: '{v.Key}' -- doll taken down{(v.Owned ? "" : ", stand-in restored")}");

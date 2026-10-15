@@ -14,8 +14,6 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiScrollbars
 {
-    // nk_input, the same on both builds (the behavior reads them).
-    private const int InLeftDown = 0x10c, InLeftClicked = 0x110, InClickedX = 0x114, InDeltaX = 0x15c, InWheelX = 0x164;  // not-an-offset: nuklear input ABI, not an engine class
     /// <summary><c>nk_widget_state</c> ACTIVED: the behavior's drag arm ran.</summary>
     private const uint StateActived = 0x20;  // not-an-offset: nuklear state bit
     /// <summary>Seconds for a glide to close 63% of its remaining distance.</summary>
@@ -79,29 +77,30 @@ internal static unsafe class NuiScrollbars
 
         bool grow = Grow(s, c, (float*)empty0, (float*)empty1, p, l, offset, target, range,
                          out float start, out float span, out float len);
-        float* mouseDelta = (float*)(input + InDeltaX) + p;
-        float savedDelta = *mouseDelta;
-        if (grow && span > 1f) *mouseDelta = savedDelta * (range / span) * (s[l] / target);
+        var ctx = new NkContext(input);
+        Span<float> mouseDelta = ctx.Delta;
+        float savedDelta = mouseDelta[p];
+        if (grow && span > 1f) mouseDelta[p] = savedDelta * (range / span) * (s[l] / target);
 
-        float* wheel = (float*)(input + InWheelX) + p;
-        float savedWheel = *wheel;
+        Span<float> wheel = ctx.Wheel;
+        float savedWheel = wheel[p];
         ref Glide g = ref Slot(s, axis);
         if (g.Live && MathF.Floor(g.Cur) != offset) g.Live = false;
         float based = g.Live ? g.Cur : offset;
         bool glide = _smooth!.V && range > 0 && has != 0 && savedWheel != 0
-                     && *(int*)(input + InLeftDown) == 0 && *(uint*)(input + InLeftClicked) == 0;
+                     && ctx.LeftDown == 0 && ctx.LeftClicked == 0;
         if (glide)
         {
             g.Dest = Math.Clamp((g.Live ? g.Dest : based) + step * -savedWheel, 0f, range);
             if (!g.Live) g.Seen = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 60;
             g.Cur = based;
             g.Live = true;
-            *wheel = 0;
+            wheel[p] = 0;
         }
 
         float r = _behaviorOrig(state, input, has, track, thumb, empty0, empty1, offset, target, step, axis);
-        *mouseDelta = savedDelta;
-        *wheel = savedWheel;
+        mouseDelta[p] = savedDelta;
+        wheel[p] = savedWheel;
 
         if (g.Live && (r != offset || (*(uint*)state & StateActived) != 0)) g.Live = false;
         else if (g.Live) r = Advance(ref g, range);
@@ -110,7 +109,7 @@ internal static unsafe class NuiScrollbars
         {
             float frac = range > 0 ? Math.Clamp(r / range, 0f, 1f) : 0f;
             if ((*(uint*)state & StateActived) != 0)
-                ((float*)(input + InClickedX))[p] = start + frac * span + len * 0.5f;
+                ctx.Clicked[p] = start + frac * span + len * 0.5f;
             _latchThumb = thumb; _latchAxis = p; _latchPos = start + frac * span;
         }
         return r;
@@ -142,7 +141,7 @@ internal static unsafe class NuiScrollbars
     [UnmanagedCallersOnly]
     private static void OnDraw(IntPtr output, uint state, IntPtr style, IntPtr track, IntPtr thumb)
     {
-        if (_latchThumb == thumb && thumb != IntPtr.Zero) ((float*)thumb)[_latchAxis] = _latchPos;
+        if (_latchThumb == thumb && thumb != IntPtr.Zero) new Span<float>((void*)thumb, 4)[_latchAxis] = _latchPos;
         _latchThumb = IntPtr.Zero;
         _drawOrig(output, state, style, track, thumb);
     }

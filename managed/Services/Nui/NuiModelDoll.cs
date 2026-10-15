@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
@@ -24,8 +25,6 @@ internal static unsafe class NuiModelDoll
     internal const int MaxViews = 8;
     /// <summary>The engine's invalid object id, the value an id slot holds before <c>AddInternalObject</c> fills it.</summary>
     internal const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
-    /// <summary>Where a <c>CNWCObject</c> sits inside a <c>CNWCItem</c>: what the game-object array registers.</summary>
-    internal const int ItemObject = 0x48;   // not-an-offset: the CNWCObject inside a CNWCItem
     /// <summary>Character creation first-build flags for <c>SetAppearance</c>: body (with its parts), head, tail, wing and cloak; 0x40 would build the base body only.</summary>
     internal const byte BuildFlags = 0x2f;   // not-an-offset: SetAppearance flag bits
     /// <summary>The flags for a model that is not built from body parts (a hell hound, an ogre, a beholder): bit 0x40 takes the engine's
@@ -59,8 +58,13 @@ internal static unsafe class NuiModelDoll
         public int TargetW, TargetH;
         public readonly float[] Bg = new float[4];
         public bool Rendered, Claimed;
+        /// <summary>The view names effects or worn items, which may add light: with Alloy off a see-through background is then solved over black and white.</summary>
+        public bool Effects;
         public ModelLight Light = NuiModelLook.EngineLight;
         public readonly NuiModelGear.GearState Gear = new();
+        /// <summary>The slot's Alloy-off scratch target and the rectangle its texture was last drawn at.</summary>
+        public readonly NuiModelEngine.Scratch Scratch = new();
+        public readonly NuiImageSpot.Spot Spot = new();
         public ModelSlot(int index) => Index = index;
     }
 
@@ -69,14 +73,8 @@ internal static unsafe class NuiModelDoll
     {
         public ExtenderLog? Log;
         public IntPtr AppMgr;
-        public readonly ModelSlot[] Slots = MakeSlots();
-    }
-
-    private static ModelSlot[] MakeSlots()
-    {
-        var a = new ModelSlot[MaxViews];
-        for (int i = 0; i < a.Length; i++) a[i] = new ModelSlot(i);
-        return a;
+        public readonly ModelSlot[] Slots = new ModelSlot[MaxViews];
+        public DollOwnerState() { for (int i = 0; i < Slots.Length; i++) Slots[i] = new ModelSlot(i); }
     }
 
     private static readonly DollOwnerState _o = new();
@@ -95,6 +93,7 @@ internal static unsafe class NuiModelDoll
         s.TargetTex = 0; s.TargetW = s.TargetH = 0;
         Array.Clear(s.Bg);
         s.Light = NuiModelLook.EngineLight;
+        s.Effects = false;
         s.Claimed = false;
         foreach (ModelSlot o in _o.Slots) if (o.Claimed) return;
         NuiModelGuard.Forget();
@@ -123,6 +122,7 @@ internal static unsafe class NuiModelDoll
     /// <summary>The slot's layer was drawn into its target: the doll's first frame has landed.</summary>
     internal static void MarkRendered(ModelSlot s) => s.Rendered = true;
     internal static void SetLight(ModelSlot s, ModelLight l) => s.Light = l;
+    internal static void SetEffects(ModelSlot s, bool on) => s.Effects = on;
     internal static void SetBackground(ModelSlot s, float r, float g, float b, float a) { s.Bg[0] = r; s.Bg[1] = g; s.Bg[2] = b; s.Bg[3] = a; }
     internal static void Background(ModelSlot s, float* c) { for (int i = 0; i < 4; i++) c[i] = s.Bg[i]; }
 
@@ -273,7 +273,7 @@ internal static unsafe class NuiModelDoll
         NativeMemory.Clear((void*)vp, (nuint)EngineLayout.SizeOfGuiViewport);
         EngineFn.GuiViewportCtor(vp, name);
         d.Viewport = vp;
-        IntPtr record = *(IntPtr*)(vp + EngineLayout.GuiViewportRecord);
+        IntPtr record = new CGuiViewport(vp).Record;
         d.Scene = record == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)record;
         d.Camera = EngineFn.GuiViewportGetCamera(vp);
         slot.Doll = d;
@@ -318,6 +318,7 @@ internal static unsafe class NuiModelDoll
     /// creature, then the view with its scene and camera.</summary>
     internal static void Destroy(ModelSlot slot)
     {
+        long t0 = Stopwatch.GetTimestamp();
         DollState d = slot.Doll;
         bool taken = d.Registered && !Holds(d.Id, d.Creature);
         NuiModelGear.Release(slot.Gear, d.Creature, taken);
@@ -343,14 +344,14 @@ internal static unsafe class NuiModelDoll
             EngineFn.GuiViewportDtor(d.Viewport);
             EngineFn.OperatorDelete(d.Viewport);
         }
-        _o.Log?.Always($"NuiModelDoll: slot {slot.Index} taken down");
+        _o.Log?.Info($"NuiModelDoll: slot {slot.Index} taken down in {Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F2} ms");
     }
 
     /// <summary>The colour shift the fade machinery leaves a new creature at: alpha 1, colour white, to the attached parts too.</summary>
     internal static void Opaque(IntPtr model)
     {
         if (model == IntPtr.Zero) return;
-        IntPtr fn = *(IntPtr*)(*(IntPtr*)model + EngineLayout.GobSetColorShiftingSlot);
+        IntPtr fn = new Gob(model).SetColorShiftingFn;
         ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
     }
 

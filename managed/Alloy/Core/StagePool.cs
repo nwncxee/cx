@@ -112,7 +112,7 @@ internal static class StagePool
         chunks = Math.Clamp(chunks, 1, Math.Max(1, Environment.ProcessorCount));
         if (chunks == 1) { try { _job(0, 1); } catch (Exception e) { _fault = e; } return _fault == null; }
         Prewake(chunks);
-        if (testGapMs > 0) Thread.Sleep(testGapMs);   // self-check only: outlive the workers' spin window
+        if (testGapMs > 0) BlockingWait.Sleep(testGapMs, "self-check only: outlive the workers' spin window");
         _chunks = chunks;
         _tRelease = Stopwatch.GetTimestamp();
         // Both BEFORE the publish. A spinning worker can see the new generation, run a tiny chunk and reach its

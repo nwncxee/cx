@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Alloy.Seam;
 using CX.Alloy.Db;
 using CX.Engine;
@@ -131,7 +132,6 @@ public sealed unsafe partial class AlloyRenderer
         int n = 0;
         Span<int> pick = stackalloc int[SampleParts];
         Span<float> key = stackalloc float[SampleParts];
-        fixed (float* data = _dData)
             for (int k = 0; k < _orderCount; k++)
             {
                 int i = _order[k];
@@ -156,22 +156,21 @@ public sealed unsafe partial class AlloyRenderer
             pick[b + 1] = pi; key[b + 1] = pk;
         }
         P($"parts.ordered={_orderCount} sampled={n}");
-        fixed (float* data = _dData)
             for (int s = 0; s < n; s++)
             {
                 int i = pick[s];
-                float* r = data + (long)i * DrawFloats;
-                Matrix4x4 mm = *(Matrix4x4*)r;
+                ref DrawRecordBlock r = ref _dData[i];
+                Matrix4x4 mm = r.Model;
                 P($"part[{s}] at={mm.M41:F2},{mm.M42:F2},{mm.M43:F2} cls={_oCls[i]} lit={_oLit[i]} "
-                  + $"slots={_oSlots[i]} feat={r[40]:F1},{r[41]:F1},{r[42]:F1},{r[43]:F1}");
-                P($"part[{s}] amb={r[20]:F3},{r[21]:F3},{r[22]:F3},{r[23]:F3} dif={r[24]:F3},{r[25]:F3},{r[26]:F3},{r[27]:F3}");
-                P($"part[{s}] emi={r[28]:F3},{r[29]:F3},{r[30]:F3},{r[31]:F1} rot={r[16]:F3},{r[17]:F3},{r[18]:F3},{r[19]:F3}");
-                P($"part[{s}] pbr={r[32]:F3},{r[33]:F3},{r[34]:F3},{r[35]:F1} spc={r[36]:F3},{r[37]:F3},{r[38]:F3},{r[39]:F3}");
-                P($"part[{s}] ext={r[ExtFloat]:F3},{r[ExtFloat + 1]:F3},{r[ExtFloat + 2]:F3},{r[ExtFloat + 3]:F3} "
-                  + $"hidden={r[RevealFloat]:F3} tid={_recTid[i]} slotmask={_recSlotMask[i]}");
-                fixed (float* sp = _dSph)
-                    P($"part[{s}] sphere={sp[i * 4]:F2},{sp[i * 4 + 1]:F2},{sp[i * 4 + 2]:F2},r={sp[i * 4 + 3]:F2} "
-                      + $"count={_dCount[i]} base={_dBase[i]} off={(long)_dOff[i]}");
+                  + $"slots={_oSlots[i]} feat={r.FeatX:F1},{r.FeatY:F1},{r.FeatZ:F1},{r.FeatW:F1}");
+                P($"part[{s}] amb={r.AmbR:F3},{r.AmbG:F3},{r.AmbB:F3},{r.AmbW:F3} dif={r.DifR:F3},{r.DifG:F3},{r.DifB:F3},{r.DifW:F3}");
+                P($"part[{s}] emi={r.EmiR:F3},{r.EmiG:F3},{r.EmiB:F3},{r.EmiW:F1} rot={r.Cos:F3},{r.Sin:F3},{r.Dissolve:F3},{r.Alpha:F3}");
+                P($"part[{s}] pbr={r.PbrR:F3},{r.PbrG:F3},{r.PbrB:F3},{r.Slots:F1} spc={r.PbrX:F3},{r.PbrY:F3},{r.PbrZ:F3},{r.PbrW:F3}");
+                P($"part[{s}] ext={r.Ext.Ext0.X:F3},{r.Ext.Ext0.Y:F3},{r.Ext.Ext0.Z:F3},{r.Ext.Ext0.W:F3} "
+                  + $"hidden={r.Ext.Ext2.W:F3} tid={_recTid[i]} slotmask={_recSlotMask[i]}");
+                ref Sphere sp = ref _dSph[i];
+                P($"part[{s}] sphere={sp.Center.X:F2},{sp.Center.Y:F2},{sp.Center.Z:F2},r={sp.Radius:F2} "
+                  + $"count={_dCount[i]} base={_dBase[i]} off={(long)_dOff[i]}");
             }
         // ---- (5) the BLENDED population, named ----
         // Picked by NODE NAME off the part's model, which settles WHICH record a complaint is about: the
@@ -199,7 +198,6 @@ public sealed unsafe partial class AlloyRenderer
             for (; b >= 0 && bkey[b] > pk; b--) { bpick[b + 1] = bpick[b]; bkey[b + 1] = bkey[b]; }
             bpick[b + 1] = pi; bkey[b + 1] = pk;
         }
-        fixed (float* data = _dData)
             for (int s = 0; s < bn; s++)
             {
                 int i = bpick[s];
@@ -218,13 +216,13 @@ public sealed unsafe partial class AlloyRenderer
                     Mdl.MeshDef? md = rec >= 0 ? Db.DrawRecipe.Mesh(rec) : null;
                     if (md != null) tex = md.Textures[0];
                 }
-                float* r = data + (long)i * DrawFloats;
-                Matrix4x4 mm = *(Matrix4x4*)r;
+                ref DrawRecordBlock r = ref _dData[i];
+                Matrix4x4 mm = r.Model;
                 P($"blend[{s}] node='{node}' model='{model}' tex0='{tex}' at={mm.M41:F2},{mm.M42:F2},{mm.M43:F2} "
                   + $"cls={_oCls[i]} lit={_oLit[i]} nocull={_oNoCull[i]} src={_oSrc[i]} dst={_oDst[i]} wash={_oWash[i]}");
-                P($"blend[{s}] amb={r[20]:F3},{r[21]:F3},{r[22]:F3},{r[23]:F3} dif={r[24]:F3},{r[25]:F3},{r[26]:F3},{r[27]:F3}");
-                P($"blend[{s}] emi={r[28]:F3},{r[29]:F3},{r[30]:F3},{r[31]:F1} rot={r[16]:F3},{r[17]:F3},{r[18]:F3},{r[19]:F3} "
-                  + $"feat={r[40]:F1},{r[41]:F1},{r[42]:F1},{r[43]:F1}");
+                P($"blend[{s}] amb={r.AmbR:F3},{r.AmbG:F3},{r.AmbB:F3},{r.AmbW:F3} dif={r.DifR:F3},{r.DifG:F3},{r.DifB:F3},{r.DifW:F3}");
+                P($"blend[{s}] emi={r.EmiR:F3},{r.EmiG:F3},{r.EmiB:F3},{r.EmiW:F1} rot={r.Cos:F3},{r.Sin:F3},{r.Dissolve:F3},{r.Alpha:F3} "
+                  + $"feat={r.FeatX:F1},{r.FeatY:F1},{r.FeatZ:F1},{r.FeatW:F1}");
                 P($"blend[{s}] tid={_recTid[i]} slotmask={_recSlotMask[i]} count={_dCount[i]}");
             }
         P($"blend.count={bn}");
@@ -281,14 +279,12 @@ public sealed unsafe partial class AlloyRenderer
             pick[b + 1] = pk; key[b + 1] = kq;
         }
         P($"khcol: eye={F3(eye)} fwd={F3(fwd)} hits={n} of {_stageRouted} routed");
-        fixed (float* data = _dData)
-        fixed (float* bx = _oBox)
             for (int s = 0; s < n; s++)
             {
                 int k = pick[s], i = _pass[k];
                 float t = key[s];
-                float* b = bx + (long)i * 6;
-                float* r = data + (long)i * DrawFloats;
+                ref Box b = ref _oBox[i];
+                ref DrawRecordBlock r = ref _dData[i];
                 string node = _oDbPart[i] >= 0
                     ? Db.PartTree.NameOf(_oDbPart[i])
                     : (_oNode[i] == IntPtr.Zero ? "" : new MdlNode(_oNode[i]).NameText ?? "");
@@ -299,12 +295,12 @@ public sealed unsafe partial class AlloyRenderer
                 float worldZ = eye.Z + fwd.Z * t;
                 float floorTerm = Math.Clamp(worldZ - 1f - rt.PlayerPos.Z, 0f, 1f);
                 float lvl = (1f - 0.5f * 0.35f + (off < 0f ? 0.5f / off : 0f)) * floorTerm;
-                bool punch = r[18] > 0f && off < 0f && rad > 0f && lvl >= 0.3f;
+                bool punch = r.Dissolve > 0f && off < 0f && rad > 0f && lvl >= 0.3f;
                 P($"khcol[{s}] depth={t:F2} slot={i} dbpart={_oDbPart[i]} node='{node}' cls={_oCls[i]} "
-                + $"lit={_oLit[i]} dis={_pkDis[k]} rec.dissolve={r[18]:F2} tid={_recTid[i]} "
-                + $"feat={r[40]:F1},{r[41]:F1} box=({b[0]:F1},{b[1]:F1},{b[2]:F1})..({b[3]:F1},{b[4]:F1},{b[5]:F1})");
+                + $"lit={_oLit[i]} dis={_pkDis[k]} rec.dissolve={r.Dissolve:F2} tid={_recTid[i]} "
+                + $"feat={r.FeatX:F1},{r.FeatY:F1} box=({b.Min.X:F1},{b.Min.Y:F1},{b.Min.Z:F1})..({b.Max.X:F1},{b.Max.Y:F1},{b.Max.Z:F1})");
                 P($"khcol[{s}] off={off:F2} r={rad:F3} worldZ={worldZ:F2} floorTerm={floorTerm:F2} "
-                + $"lvl={lvl:F3} -> {(punch ? "PUNCH" : r[18] <= 0f ? "not enabled" : off >= 0f ? "off >= 0" : floorTerm <= 0f ? "floor clamp" : "level below 0,3")}");
+                + $"lvl={lvl:F3} -> {(punch ? "PUNCH" : r.Dissolve <= 0f ? "not enabled" : off >= 0f ? "off >= 0" : floorTerm <= 0f ? "floor clamp" : "level below 0,3")}");
             }
     }
 
@@ -313,16 +309,15 @@ public sealed unsafe partial class AlloyRenderer
     private static bool CentreRayHits(Vector3 eye, Vector3 fwd, int i, out float t)
     {
         t = 0f;
-        fixed (float* bx = _oBox)
         {
-            float* b = bx + (long)i * 6;
-            if (!(b[3] > b[0]) && !(b[4] > b[1]) && !(b[5] > b[2])) return false;   // never filled
+            ref Box b = ref _oBox[i];
+            if (!(b.Max.X > b.Min.X) && !(b.Max.Y > b.Min.Y) && !(b.Max.Z > b.Min.Z)) return false;   // never filled
             float lo = 0f, hi = float.MaxValue;
             for (int a = 0; a < 3; a++)
             {
                 float o = a == 0 ? eye.X : a == 1 ? eye.Y : eye.Z;
                 float d = a == 0 ? fwd.X : a == 1 ? fwd.Y : fwd.Z;
-                float mn = b[a], mx = b[a + 3];
+                float mn = a == 0 ? b.Min.X : a == 1 ? b.Min.Y : b.Min.Z, mx = a == 0 ? b.Max.X : a == 1 ? b.Max.Y : b.Max.Z;
                 if (MathF.Abs(d) < 1e-6f) { if (o < mn || o > mx) return false; continue; }
                 float t0 = (mn - o) / d, t1 = (mx - o) / d;
                 if (t0 > t1) (t0, t1) = (t1, t0);

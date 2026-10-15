@@ -83,8 +83,8 @@ public sealed unsafe partial class CasterPass
     /// per-view term is -- so the layered and per-view paths pick the same level for the same caster.</summary>
     private static readonly float[] _qLodR1 = new float[MaxBakeViews], _qLodR2 = new float[MaxBakeViews];
     private static int _qN;
-    /// <summary>One chunk's staged view table, in <see cref="CasterGather.ViewFloats"/> layout.</summary>
-    private static readonly float[] _viewStage = new float[MaxBakeViews * CasterGather.ViewFloats];
+    /// <summary>One chunk's staged view table.</summary>
+    private static readonly CasterViewRec[] _viewStage = new CasterViewRec[MaxBakeViews];
     private static long _layerFlushFails;
 
     /// <summary>Is the layered path taking this frame's views?</summary>
@@ -312,12 +312,12 @@ public sealed unsafe partial class CasterPass
         while (true)
         {
             int vn = 0, sets = 0;
-            fixed (float* vs = _viewStage)
+            fixed (CasterViewRec* vs = _viewStage)
                 while (k2 < n && vn < chunk)
                 { if (_qTex[k2] == tex) { sets |= 1 << _qSet[k2]; StageView(vs, vn++, k2); } k2++; }
             if (vn == 0) break;
             bool ok;
-            fixed (float* vs = _viewStage)
+            fixed (CasterViewRec* vs = _viewStage)
                 ok = CasterGather.DispatchLayer(vs, vn, sets == 1 << CasterGather.SetDynamic);
             if (!ok) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0); return false; }
             DrawLayered(vn, sets);
@@ -330,18 +330,18 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>One queued view into the chunk's staged table, in the layout the dispatch and the layered
     /// vertex stage both read (mat4 vp; focus/reach; dir/along; receiver/point/set/layer; detail).</summary>
-    private static void StageView(float* dst, int vi, int k)
+    private static void StageView(CasterViewRec* dst, int vi, int k)
     {
-        float* r = dst + (long)vi * CasterGather.ViewFloats;
-        fixed (Matrix4x4* m = &_qVp[k]) Buffer.MemoryCopy(m, r, 64, 64);
-        r[16] = _qFocus[k].X; r[17] = _qFocus[k].Y; r[18] = _qFocus[k].Z; r[19] = _qReach[k];
-        r[20] = _qDir[k].X; r[21] = _qDir[k].Y; r[22] = _qDir[k].Z; r[23] = _qAlong[k];
-        r[24] = _qRx[k] ? 1f : 0f;   // #488: the receiver cull applies to this view
-        r[25] = _qPoint[k] ? 1f : 0f;
-        r[26] = _qSet[k];
-        r[27] = _qLayer[k];
-        r[CasterGather.ViewLodR1] = _qLodR1[k];
-        r[CasterGather.ViewLodR2] = _qLodR2[k];
+        ref CasterViewRec r = ref dst[vi];
+        r.Vp = _qVp[k];
+        r.Focus = _qFocus[k]; r.Reach = _qReach[k];
+        r.Dir = _qDir[k]; r.Along = _qAlong[k];
+        r.Receiver = _qRx[k] ? 1f : 0f;   // #488: the receiver cull applies to this view
+        r.Point = _qPoint[k] ? 1f : 0f;
+        r.Set = _qSet[k];
+        r.Layer = _qLayer[k];
+        r.LodR1 = _qLodR1[k];
+        r.LodR2 = _qLodR2[k];
     }
 
     /// <summary>The layered pass's batch loop: <see cref="GatherSubmit"/>'s state walk minus the per-view

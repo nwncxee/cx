@@ -104,17 +104,17 @@ internal static unsafe class Gait
         byte* first = (byte*)c.Waypoints, at = (byte*)c.WaypointCursor;
         int n = Math.Min((int)c.WaypointCount, MaxPoints);
         if (first == null || at == null || n <= 0) return 0f;
-        byte* end = first + n * PointSize;
-        if (at < first || at >= end) return 0f;
+        long k = at - first;
+        if (k < 0 || k >= (long)n * PointSize) return 0f;
+        Span<Vector3> points = new(first, n);
         Vector3 p = c.DesiredPos;
         float px = p.X, py = p.Y, sum = 0f;
-        for (; at < end; at += PointSize)
+        for (int i = (int)(k / PointSize); i < n; i++)
         {
-            // the waypoints are 12 bytes apart, so a Vector3 read of one is unaligned: three floats instead
-            float* q = (float*)at;
-            float dx = q[0] - px, dy = q[1] - py;
+            Vector3 q = points[i];
+            float dx = q.X - px, dy = q.Y - py;
             sum += MathF.Sqrt(dx * dx + dy * dy);
-            px = q[0]; py = q[1];
+            px = q.X; py = q.Y;
         }
         return sum;
     }

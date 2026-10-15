@@ -72,12 +72,9 @@ internal static unsafe class Stride
     {
         s.RateF = f;
         int n = Math.Min(PoseRig.RunCount(gob), TrackedRuns);
-        fixed (long* run = s.RateRun)
-        fixed (float* eng = s.RateEngine, wrote = s.RateWritten)
         {
-            long* keepRun = stackalloc long[TrackedRuns];
-            float* keepEng = stackalloc float[TrackedRuns];
-            float* keepWrote = stackalloc float[TrackedRuns];
+            Span<PoseService.RunRate> rates = s.Rates;
+            Span<PoseService.RunRate> keep = stackalloc PoseService.RunRate[TrackedRuns];
             int kept = 0;
             for (int i = 0; i < n; i++)
             {
@@ -86,17 +83,12 @@ internal static unsafe class Stride
                 float cur = r.Rate, baseRate = cur;
                 long id = r.Id;
                 for (int k = 0; k < TrackedRuns; k++)
-                    if (run[k] == id) { if (cur == wrote[k]) baseRate = eng[k]; break; }
+                    if (rates[k].Id == id) { if (cur == rates[k].Written) baseRate = rates[k].Engine; break; }
                 float want = baseRate * f;
                 if (want != cur) r.Rate = want;
-                keepRun[kept] = id; keepEng[kept] = baseRate; keepWrote[kept] = want; kept++;
+                keep[kept++] = new PoseService.RunRate { Id = id, Engine = baseRate, Written = want };
             }
-            for (int k = 0; k < TrackedRuns; k++)
-            {
-                run[k] = k < kept ? keepRun[k] : 0;
-                eng[k] = k < kept ? keepEng[k] : 0f;
-                wrote[k] = k < kept ? keepWrote[k] : 0f;
-            }
+            for (int k = 0; k < TrackedRuns; k++) rates[k] = k < kept ? keep[k] : default;
         }
     }
 
@@ -119,10 +111,11 @@ internal static unsafe class Stride
             float rate = br.Rate;
             long id = br.Id;
             if (tracked)
-                fixed (long* run = b.RateRun)
-                fixed (float* eng = b.RateEngine, wrote = b.RateWritten)
-                    for (int k = 0; k < TrackedRuns; k++)
-                        if (run[k] == id) { if (rate == wrote[k]) rate = eng[k]; break; }
+            {
+                Span<PoseService.RunRate> rates = b.Rates;
+                for (int k = 0; k < TrackedRuns; k++)
+                    if (rates[k].Id == id) { if (rate == rates[k].Written) rate = rates[k].Engine; break; }
+            }
             r.Rate = rate * f;
             if (!phase) continue;
             float t = br.Time - lead * r.Rate, len = br.Length;
