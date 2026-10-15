@@ -24,6 +24,9 @@ public sealed unsafe class GlContextService : IExtenderService
     /// <summary>GL_RENDERER|GL_VERSION of the 4.6 context, empty until it is live: the driver half of every
     /// <see cref="ProgramBinary"/> key, so a driver update misses instead of offering a stale blob.</summary>
     internal static string Driver { get; private set; } = "";
+    /// <summary>The 4.6 context builds programs on driver threads (KHR/ARB_parallel_shader_compile), so
+    /// <see cref="GlProgram.Prefetch"/> issues a set at once; false = every program compiles in turn.</summary>
+    internal static bool ParallelCompile { get; private set; }
     private const int GLX_FBCONFIG_ID = 0x8013;
     private const int GLX_CONTEXT_MAJOR_VERSION_ARB = 0x2091, GLX_CONTEXT_MINOR_VERSION_ARB = 0x2092;
     private const int GLX_CONTEXT_PROFILE_MASK_ARB = 0x9126, GLX_CONTEXT_CORE_PROFILE_BIT_ARB = 0x1;
@@ -270,6 +273,7 @@ public sealed unsafe class GlContextService : IExtenderService
         string renderer = getString != null ? CStr(getString(GL_RENDERER)) : "?";
         _zink = renderer.Contains("zink", StringComparison.OrdinalIgnoreCase);
         Driver = renderer + "|" + ver;
+        ParallelCompile = ArmParallelCompile(log);
         bool dbg = _debug && ArmDebug();
         Gl.DrainErrors();   // fresh-context error queue starts clean
         MakeCur(_engCtx);
@@ -500,6 +504,27 @@ public sealed unsafe class GlContextService : IExtenderService
             _dbgTotal = 0;
             _frames = 0; _err46 = 0; _errEng = 0; _switchFails = 0;
         }
+    }
+
+    /// <summary>The <c>glMaxShaderCompilerThreads</c> count that means the implementation's own maximum.</summary>
+    private const uint AllCompilerThreads = uint.MaxValue;
+
+    /// <summary>Give the (current) 4.6 context every compiler thread it has. Logged either way: without the
+    /// extension a shader cache miss costs the sum of its programs, not the longest one.</summary>
+    private static bool ArmParallelCompile(ExtenderLog log)
+    {
+        string ext = Gl.HasExt("GL_KHR_parallel_shader_compile"u8) ? "KHR" : Gl.HasExt("GL_ARB_parallel_shader_compile"u8) ? "ARB" : "";
+        var threads = ext.Length > 0 ? (delegate* unmanaged<uint, void>)GP("glMaxShaderCompilerThreads" + ext) : null;
+        if (threads == null)
+        {
+            log.Info("GlContextService: the driver has no parallel shader compile (KHR/ARB_parallel_shader_compile) "
+                   + "-- a shader cache miss builds its programs one after another");
+            return false;
+        }
+        threads(AllCompilerThreads);
+        log.Info($"GlContextService: parallel shader compile armed ({ext}_parallel_shader_compile) -- "
+               + "a shader cache miss builds its programs side by side");
+        return true;
     }
 
     /// <summary>Wire the KHR_debug callback on the (current) 4.6 context. Everything enabled, then the
