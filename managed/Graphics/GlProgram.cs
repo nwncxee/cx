@@ -210,6 +210,7 @@ internal static unsafe class GlProgram
                 n[name.Length] = 0;
                 fixed (byte* np = n) Gl.BindAttribLocation(prog, loc, np);
             }
+        if (GlContextService.Debug) log?.Always($"GlProgram: [gldebug] linking {what}");
         Gl.LinkProgram(prog);
         int ok; Gl.GetProgramiv(prog, Gl.LINK_STATUS, &ok);
         Gl.DeleteShader(a);
@@ -295,6 +296,7 @@ internal static unsafe class GlProgram
         for (int i = 0; i < src.Length; i++) b[i] = (byte)src[i];
         b[src.Length] = 0;
         fixed (byte* p = b) { byte* pp = p; Gl.ShaderSource(sh, 1, &pp, null); }
+        if (GlContextService.Debug) log?.Always($"GlProgram: [gldebug] compiling {what} (type 0x{type:x}, {src.Length} chars)");
         Gl.CompileShader(sh);
         int ok; Gl.GetShaderiv(sh, Gl.COMPILE_STATUS, &ok);
         if (ok != 0) { Notes(sh, true, log, what); return sh; }

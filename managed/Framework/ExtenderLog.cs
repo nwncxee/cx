@@ -6,7 +6,7 @@ namespace CX.Framework;
 /// <summary>Injected logger, writing stderr plus a log file. The file lands in $HOME (/tmp only if $HOME is unset)
 /// because the Steam Linux Runtime gives the game a container-private /tmp the host cannot see. Never blocks the
 /// caller: <see cref="Info(string)"/> enqueues and a background thread writes, so a line queued microseconds
-/// before a crash can be lost -- the engine's own crash file is the forensic record.</summary>
+/// before a crash can be lost -- unless <see cref="Synchronous"/> or <see cref="AlwaysNow"/> wrote it.</summary>
 public sealed class ExtenderLog
 {
     private static readonly string LogPath = OperatingSystem.IsWindows()
@@ -19,9 +19,15 @@ public sealed class ExtenderLog
     /// evaluates when this is false, so a census behind a closed gate is never walked at all.</summary>
     public static bool Enabled = true;
 
+    /// <summary>Every line is on disk before its call returns: set by <c>alloy.gldebug=1</c>, so the log of a crash
+    /// ends at the crash. Costs a file write per line on the caller's thread.</summary>
+    public static bool Synchronous;
+
     private static readonly ConcurrentQueue<string> _queue = new();
     private static readonly AutoResetEvent _wake = new(false);
+    private static readonly object _fileLock = new();
     private static Thread? _writer;
+    private static StreamWriter? _file;
 
     public void Info(string message)
     {
@@ -39,7 +45,15 @@ public sealed class ExtenderLog
             _writer = new Thread(Drain) { IsBackground = true, Name = "cx-log" };
             _writer.Start();
         }
-        _wake.Set();
+        if (Synchronous) WriteQueued();
+        else _wake.Set();
+    }
+
+    /// <summary><see cref="Always"/>, on disk before it returns: for the line a crash may follow at once.</summary>
+    public void AlwaysNow(string message)
+    {
+        Always(message);
+        WriteQueued();
     }
 
     /// <summary>The interpolated-string overload the compiler prefers for <c>$"..."</c> arguments.</summary>
@@ -52,20 +66,29 @@ public sealed class ExtenderLog
     private static void Drain()
     {
         Affinity.ClearThis();
-        StreamWriter? file = null;
         while (true)
         {
             _wake.WaitOne();
-            try { file ??= new StreamWriter(new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { NewLine = "\n" }; }
+            WriteQueued();
+        }
+    }
+
+    /// <summary>Write and flush everything queued, on the calling thread: the writer thread's loop, and the
+    /// synchronous paths.</summary>
+    private static void WriteQueued()
+    {
+        lock (_fileLock)
+        {
+            try { _file ??= new StreamWriter(new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { NewLine = "\n" }; }
             catch { /* log is best-effort */ }
             while (_queue.TryDequeue(out var l))
             {
                 Console.Error.WriteLine(l);
-                try { file?.WriteLine(l); }
-                catch { file = null; }
+                try { _file?.WriteLine(l); }
+                catch { _file = null; }
             }
-            try { file?.Flush(); }
-            catch { file = null; }
+            try { _file?.Flush(); }
+            catch { _file = null; }
         }
     }
 
@@ -100,8 +123,8 @@ public sealed class ExtenderLog
         public string ToStringAndClear() => _on ? _h.ToStringAndClear() : "";
     }
 
-    /// <summary>Off-device: a disabled log must not evaluate its holes, an enabled one must; and the queue
-    /// must reach the file.</summary>
+    /// <summary>Off-device: a disabled log must not evaluate its holes, an enabled one must; the queue must reach
+    /// the file; and an <see cref="AlwaysNow"/> line is in the file before it returns. Oracle: the file's own bytes.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         int evaluated = 0;
@@ -115,6 +138,23 @@ public sealed class ExtenderLog
         ok &= evaluated == 1;
         Flush();
         Enabled = saved;
-        log.Info(ok ? "ExtenderLog.SelfCheck: passed" : "ExtenderLog.SelfCheck: FAILED -- the disabled log evaluated its holes");
+        string mark = $"ExtenderLog.SelfCheck: on disk before return {Environment.TickCount64}";
+        log.AlwaysNow(mark);
+        bool now = TailHas(mark);
+        log.Info(ok && now ? "ExtenderLog.SelfCheck: passed"
+                 : !ok ? "ExtenderLog.SelfCheck: FAILED -- the disabled log evaluated its holes"
+                 : "ExtenderLog.SelfCheck: FAILED -- an AlwaysNow line was not in the file when the call returned");
+    }
+
+    /// <summary>Does the log file's last few KiB hold <paramref name="text"/>? Off-device only.</summary>
+    private static bool TailHas(string text)
+    {
+        try
+        {
+            using var f = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            f.Seek(Math.Max(0, f.Length - 8192), SeekOrigin.Begin);
+            return new StreamReader(f).ReadToEnd().Contains(text, StringComparison.Ordinal);
+        }
+        catch (IOException) { return false; }
     }
 }

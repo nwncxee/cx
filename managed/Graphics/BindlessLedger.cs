@@ -150,7 +150,7 @@ internal static unsafe class BindlessLedger
     {
         long n = ++s.Hits[(int)r];
         if (n <= LoudPerRule)
-            s.Log?.Always($"BindlessLedger: VIOLATION {r} at {call} (handle 0x{h:x}, texture {tex}): {Why[(int)r]}. "
+            s.Log?.AlwaysNow($"BindlessLedger: VIOLATION {r} at {call} (handle 0x{h:x}, texture {tex}): {Why[(int)r]}. "
                         + $"AMD's driver faults on this; NVIDIA and Mesa let it pass ({n} so far{(n == LoudPerRule ? ", quiet from here" : "")})");
     }
 
