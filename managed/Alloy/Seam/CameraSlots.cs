@@ -514,7 +514,34 @@ internal static unsafe class CameraSlots
                    + $"\"{SceneDb.SceneName[scene.Index]}\" rect=({rx},{ry},{rw},{rh}) "
                    + $"from=({from.X:F2},{from.Y:F2},{from.Z:F2}) to=({to.X:F2},{to.Y:F2},{to.Z:F2}) "
                    + $"kind={(int)kind} hit={(at != null ? $"({at->X:F2},{at->Y:F2},{at->Z:F2})" : "-")} {who}");
+        if (!world) Under(scene, from);
     }
+
+    /// <summary>The objects of the pick's scene (or of none) under a panel pick's column -- the hit box covers it, or
+    /// the origin is within <see cref="UnderReach"/> -- with the gates <c>HitTest.Admits</c> reads, so a control that
+    /// draws under the cursor but is not the one hit says which gate or which box turned it away.</summary>
+    private static void Under(DbId scene, Vector3 at)
+    {
+        for (int o = 0, n = 0; o < SceneDb.Objects.High && n < UnderMax; o++)
+        {
+            if (!SceneDb.Objects.LiveAt(o)) continue;
+            DbId sc = SceneDb.ObjScene[o];
+            if (!sc.IsNull && sc.Value != scene.Value) continue;
+            Vector3 lo = SceneDb.HitObjBMin[o], hi = SceneDb.HitObjBMax[o], w = SceneDb.ObjWorld[o].Translation;
+            bool inBox = lo.X <= hi.X && at.X >= lo.X && at.X <= hi.X && at.Y >= lo.Y && at.Y <= hi.Y;
+            if (!inBox && (MathF.Abs(w.X - at.X) > UnderReach || MathF.Abs(w.Y - at.Y) > UnderReach)) continue;
+            n++;
+            _log?.Info($"[dbpick]   under o={o} \"{SceneDb.ObjModel[o]?.Name ?? SceneDb.ObjSeamModelName[o] ?? "-"}\" "
+                + $"scene={(sc.IsNull ? "NONE" : sc.Index.ToString())} "
+                + $"inBox={inBox} visible={SceneDb.ObjVisible[o]} alpha={SceneDb.HitObjAlpha[o]:F2} cls={SceneDb.HitObjClass[o]} "
+                + $"box=({lo.X:F2},{lo.Y:F2},{lo.Z:F2})..({hi.X:F2},{hi.Y:F2},{hi.Z:F2}) at=({w.X:F2},{w.Y:F2},{w.Z:F2}) "
+                + $"parts={SceneDb.ObjPartCount[o]} kind={SceneDb.ObjKindOf[o]} attachTo=o{SceneDb.ObjAttachTo[o].Index}");
+        }
+    }
+
+    /// <summary>GUI units (a party-bar button is 0.36 across) an object's origin may sit from the pick and still be listed.</summary>
+    private const float UnderReach = 0.5f;
+    private const int UnderMax = 24;
 
     private const int WorldPickMax = 60, GuiPickMax = 60;
     private static readonly int[] _guiSaid = new int[SceneDb.MaxCameras];

@@ -133,6 +133,20 @@ public static unsafe partial class HitTestCheck
 
         ok &= TextRow(log, w, Vw, Vh);
 
+        // Coplanar controls tie on depth, and Scene::HitCheckGob @0x45f860 keeps the LAST member that hits: a
+        // portrait joined after the frame it sits on answers a pick on it, and the frame answers around it.
+        DbId frame = Fixture.GuiExtra(w.Scene, "Frame", 400, 680, 300, 100);
+        DbId portrait = Fixture.GuiExtra(w.Scene, "Portrait", 400, 680, 80, 24);
+        DbId PickGui(int px, int py)
+        {
+            if (!DbCamera.PickSegment(w.Cam, px, py, 0f, 0f, Vw, Vh, default, out Vector3 pa, out Vector3 pb)) return default;
+            var gq = HitQuery.Pick(w.Scene, pa, pb);
+            gq.SurfaceMask = HitQuery.All;
+            return HitTest.Cast(gq, out HitResult gr) ? gr.Obj : default;
+        }
+        if (PickGui(400, 680) != portrait) ok = Fail(log, "a pick on a control coplanar with its panel frame did not answer the control, the later member");
+        if (PickGui(500, 680) != frame) ok = Fail(log, "a pick on a panel frame beside its control did not answer the frame");
+
         // Two different pixels must give two different segments -- the one-line statement of the bug.
         DbCamera.PickSegment(w.Cam, 100, 100, 0f, 0f, Vw, Vh, default, out Vector3 p0, out _);
         DbCamera.PickSegment(w.Cam, 700, 600, 0f, 0f, Vw, Vh, default, out Vector3 p1, out _);

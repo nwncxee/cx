@@ -115,6 +115,7 @@ public static unsafe partial class HitTestCheck
             SceneDb.ObjKindOf[i] = ObjKind.Model;
             SceneDb.ObjModel[i] = model;
             SceneDb.ObjScene[i] = scene;
+            DbScene.Members(scene).Add(o);
             SceneDb.ObjPos[i] = pos; SceneDb.ObjRot[i] = rot; SceneDb.ObjScale[i] = scale;
             SceneDb.ObjWorld[i] = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateFromQuaternion(rot)
                                   * Matrix4x4.CreateTranslation(pos);
@@ -150,6 +151,7 @@ public static unsafe partial class HitTestCheck
         {
             DbId s = SceneDb.Scenes.Alloc();
             SceneDb.SceneIsWorld[s.Index] = true;
+            SceneDb.SceneObjects[s.Index]?.Clear();
             Array.Resize(ref _scenes, _scenes.Length + 1);
             _scenes[^1] = s;
             return s;
@@ -265,6 +267,15 @@ public static unsafe partial class HitTestCheck
             return w;
         }
 
+        /// <summary>One more control on the GUI fixture's panel, joined after everything already on it.</summary>
+        internal static DbId GuiExtra(DbId scene, string name, int px, int py, int pw, int ph)
+        {
+            DbId o = GuiControl(scene, name, px, py, pw, ph);
+            Array.Resize(ref _objs, _objs.Length + 1);
+            _objs[^1] = o;
+            return o;
+        }
+
         /// <summary>One control: a quad in the z=0 plane covering the given pixel rect, mapped through the
         /// engine's ortho scale. Its own classification is 0 -- a GUI model is not an effect, and the hit
         /// test's effect gate would drop it if it were.</summary>
@@ -349,7 +360,8 @@ public static unsafe partial class HitTestCheck
                 SceneDb.Objects.Free(o);
             }
             foreach (DbId c in _cams) if (SceneDb.Cameras.Valid(c)) SceneDb.Cameras.Free(c);
-            foreach (DbId sc in _scenes) if (SceneDb.Scenes.Valid(sc)) SceneDb.Scenes.Free(sc);
+            foreach (DbId sc in _scenes)
+                if (SceneDb.Scenes.Valid(sc)) { SceneDb.SceneObjects[sc.Index]?.Clear(); SceneDb.Scenes.Free(sc); }
             _cams = Array.Empty<DbId>();
             GuiTargets = Array.Empty<(int, int, DbId, string)>();
             _objs = Array.Empty<DbId>();

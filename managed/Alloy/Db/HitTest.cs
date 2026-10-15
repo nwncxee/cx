@@ -191,14 +191,18 @@ public static class HitTest
         // The engine runs BSPHitCheck unconditionally on a world scene and decides INSIDE the node visitor
         // which of the three static lists to walk; which parts the pass admits is therefore a per-part gate
         // (see TestPart), not a reason to skip the pass.
-        if (SceneDb.Scenes.Valid(q.Scene) && SceneDb.SceneIsWorld[q.Scene.Index])
+        bool world = SceneDb.Scenes.Valid(q.Scene) && SceneDb.SceneIsWorld[q.Scene.Index];
+        if (world)
         {
             Pass(q, statics: true, ref to, ref r);
             DbTriggers.Cast(q, ref to, ref r);
             GroundZero(q, ref to, ref r);
         }
         if (q.Objects)
-            Pass(q, statics: false, ref to, ref r);
+        {
+            if (world) Pass(q, statics: false, ref to, ref r);
+            else Members(q, ref to, ref r);
+        }
 
         if (r.Kind != HitKind.None)
         {
@@ -387,34 +391,47 @@ public static class HitTest
         GroundHits++;
     }
 
-    /// <summary>One of the two passes: the area's static set, or the objects. Both walk the same grid and the
-    /// same per-object test; which records they admit is the only difference, which is why the engine's two
+    /// <summary>A world scene's pass: its static set, or its objects. Both walk the same grid and the same
+    /// per-object test; which records they admit is the only difference, which is why the engine's two
     /// quite different walks (a BSP recursion and a gob-list loop) collapse into one here.</summary>
     private static void Pass(in HitQuery q, bool statics, ref Vector3 to, ref HitResult r)
     {
         int[] cells = Candidates;
         int n = HitGrid.Query(q.From, to, cells);
         CellVisits += n;
-        for (int k = 0; k < n; k++)
+        for (int k = 0; k < n; k++) Candidate(q, statics, cells[k], ref to, ref r);
+    }
+
+    /// <summary>The object pass over a scene with no tile grid -- a GUI panel's -- as <c>Scene::HitCheckGob</c>
+    /// @0x45f860 walks it: the member list in order, every hit taken, so of two at the same depth the LATER one
+    /// wins. A panel's controls sit coplanar on it and join after it, which is how a party portrait beats its frame.</summary>
+    private static void Members(in HitQuery q, ref Vector3 to, ref HitResult r)
+    {
+        DbList? members = SceneDb.SceneObjects[q.Scene.Index];
+        if (members == null) return;
+        for (int k = 0; k < members.Count; k++)
+            if (SceneDb.Objects.Valid(members[k])) Candidate(q, false, members[k].Index, ref to, ref r);
+    }
+
+    /// <summary>One candidate record of a pass: its gates, then its test.</summary>
+    private static void Candidate(in HitQuery q, bool statics, int o, ref Vector3 to, ref HitResult r)
+    {
+        if (!SceneDb.Objects.LiveAt(o)) return;
+        if (SceneDb.HitObjStatic[o] != statics) return;
+        // The engine's BSP pass applies NONE of the object gates -- no classification, no alpha, no door
+        // test, no ignore list -- because the static set is in no object list for them to be read off.
+        // A grafted body piece is its creature's in the engine (one part tree, Gob::Append @0x4422a0), so the
+        // creature's gates apply and the creature is what the hit reports: the game reads the hit object's
+        // external data type (5 = creature), which only the creature's own record carries.
+        int own = statics ? o : DbAnim.GraftRoot(o);
+        if (!statics && (!Admits(q, own) || (own != o && !SceneDb.ObjVisible[o]))) return;
+        if (statics && SceneDb.ObjScene[o] != q.Scene) return;
+        ObjTests++;
+        int hit = own;
+        if (TestObject(q, statics, o, ref to, ref r, ref hit))
         {
-            int o = cells[k];
-            if (!SceneDb.Objects.LiveAt(o)) continue;
-            if (SceneDb.HitObjStatic[o] != statics) continue;
-            // The engine's BSP pass applies NONE of the object gates -- no classification, no alpha, no door
-            // test, no ignore list -- because the static set is in no object list for them to be read off.
-            // A grafted body piece is its creature's in the engine (one part tree, Gob::Append @0x4422a0), so the
-            // creature's gates apply and the creature is what the hit reports: the game reads the hit object's
-            // external data type (5 = creature), which only the creature's own record carries.
-            int own = statics ? o : DbAnim.GraftRoot(o);
-            if (!statics && (!Admits(q, own) || (own != o && !SceneDb.ObjVisible[o]))) continue;
-            if (statics && SceneDb.ObjScene[o] != q.Scene) continue;
-            ObjTests++;
-            int hit = own;
-            if (TestObject(q, statics, o, ref to, ref r, ref hit))
-            {
-                r.Kind = statics ? HitKind.Static : HitKind.Object;
-                r.Obj = SceneDb.Objects.IdAt(hit);
-            }
+            r.Kind = statics ? HitKind.Static : HitKind.Object;
+            r.Obj = SceneDb.Objects.IdAt(hit);
         }
     }
 
@@ -728,7 +745,7 @@ public static class HitTest
     /// <summary>The engine's <c>BoxIntersect</c> with its face code: 0 miss, -1 the segment started inside,
     /// else 1..6 naming the face (axis <c>(code-1)/2</c>, sign +1 when <c>(code-1)&amp;1</c>), which is how
     /// <c>PartTriMesh::HitCheckGeom</c>'s box arm gets a normal. <paramref name="to"/> is shortened to the
-    /// entry point on a face hit, left alone on an inside hit.</summary>
+    /// entry point on a face hit, ON the face plane as the engine writes it; left alone on an inside hit.</summary>
     public static int BoxFace(Vector3 from, ref Vector3 to, Vector3 min, Vector3 max, out Vector3 normal)
     {
         normal = default;
@@ -760,7 +777,13 @@ public static class HitTest
             }
         }
         if (code == 0) return 0;
-        to = from + d * best;
+        Vector3 at = from + d * best;
+        // The face's own coordinate, exactly: a coplanar box tested next must tie at t = 1, not miss by an ulp.
+        int axis = (code - 1) / 2;
+        float face = ((code - 1) & 1) == 0 ? (axis == 0 ? min.X : axis == 1 ? min.Y : min.Z)
+                                         : (axis == 0 ? max.X : axis == 1 ? max.Y : max.Z);
+        if (axis == 0) at.X = face; else if (axis == 1) at.Y = face; else at.Z = face;
+        to = at;
         return code;
     }
 
