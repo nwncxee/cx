@@ -12,22 +12,23 @@ public sealed unsafe partial class LightTraceService
     /// that rewrites them sits inside it and the log shows the server's own values.</summary>
     private const int TracePriority = 1000;
 
-    private static readonly IntPtr AppMgr = Native.Sym(SymbolMap.AppManager);
-    private static readonly GetModuleFn GetModule = EngineFn.GetModule;
+    /// <summary>One percent of full opacity: finer than any shadow change worth a line.</summary>
+    private const float ShadowEps = 0.01f;
 
-    /// <summary>Chain every leaf an area's light can change through. Each handler is a knob test, a format on
-    /// the cold paths, and a call through its slot.</summary>
-    private static bool Hook(ExtenderLog log, HookService hooks)
+    /// <summary>Chain every leaf an area's light can change through, and arm the trace only if every one of
+    /// them took. Each handler is a knob test, a format on the cold paths, and a call through its slot.</summary>
+    private static void Hook(ExtenderLog log, HookService hooks)
     {
-        if (!EngineLayout.Require(log, "LightTrace", "CNWCArea", "CNWCModule")) return false;
+        if (!EngineLayout.Require(log, "LightTrace", "CNWCArea", "CNWCModule")) { Refuse(log, "engine offsets"); return; }
         if (!SymbolMap.Require(log, "LightTrace", SymbolMap.AppManager, SymbolMap.GetModule,
                                SymbolMap.AreaSetAreaLightColor, SymbolMap.AreaSetAreaLightDirection,
-                               SymbolMap.AreaSetFogColors, SymbolMap.AreaSetFogAmount,
+                               SymbolMap.AreaSetFogColors, SymbolMap.AreaSetFogAmount, SymbolMap.AreaSetFog,
                                SymbolMap.AreaSetGlobalLightAmbient, SymbolMap.AreaSetGlobalLightDiffuse,
                                SymbolMap.AreaSetGlobalLightDirection, SymbolMap.ModuleSetTimeOfDayState,
                                SymbolMap.AreaSetAsDawn, SymbolMap.AreaSetAsDusk, SymbolMap.AreaSetAsDay,
                                SymbolMap.AreaSetAsNight, SymbolMap.AreaUpdate, SymbolMap.AreaLoadArea,
-                               SymbolMap.HandleServerToPlayerArea, SymbolMap.ShadowAlpha)) return false;
+                               SymbolMap.HandleServerToPlayerArea, SymbolMap.ShadowAlpha))
+        { Refuse(log, "engine symbols"); return; }
 
         St.ShadowAlpha = (float*)Native.Sym(SymbolMap.ShadowAlpha);
 
@@ -35,6 +36,7 @@ public sealed unsafe partial class LightTraceService
         St.Direction = hooks.ChainAreaSetAreaLightDirection(&OnAreaLightDirection, TracePriority);
         St.FogColours = hooks.ChainAreaSetFogColors(&OnFogColors, TracePriority);
         St.FogAmount = hooks.ChainAreaSetFogAmount(&OnFogAmount, TracePriority);
+        St.FogPush = hooks.ChainAreaSetFog(&OnFogPush, TracePriority);
         St.GlobalAmbient = hooks.ChainAreaSetGlobalLightAmbient(&OnGlobalAmbient, TracePriority);
         St.GlobalDiffuse = hooks.ChainAreaSetGlobalLightDiffuse(&OnGlobalDiffuse, TracePriority);
         St.GlobalDirection = hooks.ChainAreaSetGlobalLightDirection(&OnGlobalDirection, TracePriority);
@@ -48,22 +50,23 @@ public sealed unsafe partial class LightTraceService
         St.AreaMessage = hooks.ChainHandleServerToPlayerArea(&OnAreaMessage, TracePriority);
 
         bool ok = St.Colour != null && St.Direction != null && St.FogColours != null && St.FogAmount != null
-               && St.GlobalAmbient != null && St.GlobalDiffuse != null && St.GlobalDirection != null
-               && St.TimeOfDay != null && St.AsDawn != null && St.AsDusk != null && St.AsDay != null
-               && St.AsNight != null && St.Update != null && St.LoadArea != null && St.AreaMessage != null
-               && St.ShadowAlpha != null;
-        log.Info(ok ? "LightTrace: chained the day/night machine's 15 leaves"
-                    : "LightTrace: standing down -- a chain on the day/night machine was refused");
-        return ok;
+               && St.FogPush != null && St.GlobalAmbient != null && St.GlobalDiffuse != null
+               && St.GlobalDirection != null && St.TimeOfDay != null && St.AsDawn != null && St.AsDusk != null
+               && St.AsDay != null && St.AsNight != null && St.Update != null && St.LoadArea != null
+               && St.AreaMessage != null && St.ShadowAlpha != null;
+        if (!ok) { Refuse(log, "a chain on the day/night machine"); return; }
+        St.Armed = true;
+        St.Why = "";
+        log.Info("LightTrace: chained the day/night machine's 16 leaves");
     }
 
-    /// <summary>The client module, which holds the transition clock. Two pointer loads and the engine's own
-    /// getter; read once per frame while the trace is on, never while it is off.</summary>
-    private static CNWCModule Module()
+    /// <summary>The trace cannot run: nothing the knob does would produce a line, so say which half refused
+    /// and keep the reason for the status line.</summary>
+    private static void Refuse(ExtenderLog log, string what)
     {
-        IntPtr mgr = AppMgr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)AppMgr;
-        IntPtr app = mgr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)mgr;
-        return new CNWCModule(app == IntPtr.Zero ? IntPtr.Zero : GetModule(app));
+        St.Armed = false;
+        St.Why = what + " did not resolve on this client build";
+        log.Info($"LightTrace: standing down -- {St.Why}");
     }
 
     private static Vector3 Vec(VectorArg a)
@@ -71,8 +74,6 @@ public sealed unsafe partial class LightTraceService
         Vec3 v = a.Value;
         return new Vector3(v.X, v.Y, v.Z);
     }
-
-    // ---- the four packets (cold: one server message each) --------------------------------------------
 
     [UnmanagedCallersOnly]
     private static void OnAreaLightColor(nint area, uint slot, VectorArg colour, float fade)
@@ -95,8 +96,8 @@ public sealed unsafe partial class LightTraceService
         (*St.FogColours)(area, sun, moon, fade);
     }
 
-    /// <summary>The fog amount, which the dawn/dusk crossfade also pushes every frame: the value is recorded
-    /// and the sampler decides whether a line is due.</summary>
+    /// <summary>The fog amount on its own, which re-pushes the area's stored colour. The packet that caused it
+    /// is traced as its minor, so this records the APPLIED amount for the sampler and prints nothing.</summary>
     [UnmanagedCallersOnly]
     private static int OnFogAmount(nint area, int amount)
     {
@@ -104,8 +105,17 @@ public sealed unsafe partial class LightTraceService
         return (*St.FogAmount)(area, amount);
     }
 
-    // ---- what reaches gidy_sun (per frame across a transition: recorded, never formatted here) --------
+    /// <summary>The one push of fog to the scene, which the dawn/dusk crossfade and CX's own blend both use:
+    /// amount AND colour, every frame across a transition, so it is recorded and never formatted here.</summary>
+    [UnmanagedCallersOnly]
+    private static int OnFogPush(nint area, int amount, VectorArg colour)
+    {
+        if (On) { St.Fog = amount; St.FogRgb = Vec(colour); St.FogSeen = true; }
+        return (*St.FogPush)(area, amount, colour);
+    }
 
+    /// <summary>The ambient that reaches <c>gidy_sun</c>, pushed every frame across a transition: recorded for
+    /// the sampler, never formatted here.</summary>
     [UnmanagedCallersOnly]
     private static int OnGlobalAmbient(nint area, int apply, VectorArg colour)
     {
@@ -113,6 +123,7 @@ public sealed unsafe partial class LightTraceService
         return (*St.GlobalAmbient)(area, apply, colour);
     }
 
+    /// <inheritdoc cref="OnGlobalAmbient"/>
     [UnmanagedCallersOnly]
     private static int OnGlobalDiffuse(nint area, int apply, VectorArg colour)
     {
@@ -121,14 +132,13 @@ public sealed unsafe partial class LightTraceService
         return (*St.GlobalDiffuse)(area, apply, colour);
     }
 
+    /// <inheritdoc cref="OnGlobalAmbient"/>
     [UnmanagedCallersOnly]
     private static int OnGlobalDirection(nint area, VectorArg dir, byte coarse)
     {
         if (On) { St.AppliedDir = Vec(dir); St.AppliedSeen = true; }
         return (*St.GlobalDirection)(area, dir, coarse);
     }
-
-    // ---- the state machine (cold) --------------------------------------------------------------------
 
     [UnmanagedCallersOnly]
     private static void OnTimeOfDayState(nint module, byte state, uint elapsedMs, int force)
@@ -177,11 +187,9 @@ public sealed unsafe partial class LightTraceService
         return (*St.AreaMessage)(msg, minor);
     }
 
-    // ---- the per-frame edges -------------------------------------------------------------------------
-
     /// <summary>The area's own step, which runs the crossfade and the lightning flash. HOT: off, this is one
-    /// field read and the call on; on, it reads the transition flags and the shadow tint and formats only at
-    /// an edge.</summary>
+    /// field read and the call on; on, it reads the state the engine just wrote and formats only at an edge or
+    /// once a second.</summary>
     [UnmanagedCallersOnly]
     private static void OnAreaUpdate(nint area, float dt)
     {
@@ -190,45 +198,45 @@ public sealed unsafe partial class LightTraceService
         Edges(area);
     }
 
+    /// <summary>The two edges the engine leaves in its own state, read after it has stepped: the dawn/dusk
+    /// flags with the module's clock, and the flash timer, which is non-zero exactly while a flash runs -- so
+    /// neither edge depends on what anything did to the shadow tint.</summary>
     private static void Edges(nint area)
     {
         var a = new CNWCArea(area);
-        string? running = a.DawnRunning != 0 ? "dawn" : a.DuskRunning != 0 ? "dusk" : null;
+        DayNightPhase running = a.Transition;
         long now = Environment.TickCount64;
-        CNWCModule m = Module();
-        float t = !m.IsNull && m.TransitionLength > 0f ? m.TransitionElapsed / m.TransitionLength : 0f;
+        CNWCModule m = CNWCModule.Current;
         if (running != St.Transition)
         {
-            if (running != null)
-                Say(LightTraceLines.TransitionStart(running, m.IsNull ? 0f : m.TransitionLength));
-            else if (St.Transition != null)
-                Say(LightTraceLines.TransitionEnd(St.Transition, (now - St.TransitionAt) / 1000f));
+            Say(running != DayNightPhase.None
+                ? LightTraceLines.TransitionStart(running, m.IsNull ? 0f : m.TransitionLength)
+                : LightTraceLines.TransitionEnd(St.Transition, (now - St.TransitionAt) / 1000f));
             St.Transition = running;
             St.TransitionAt = now;
         }
 
-        float alpha = *St.ShadowAlpha;
-        float expected = LightTraceLines.ShadowExpected(a.ShadowOpacity, t, running != null);
-        bool flashing = LightTraceLines.Flashing(alpha, expected);
+        bool flashing = a.LightningFlash != 0f;
         if (flashing != St.Flashing)
         {
             St.Flashing = flashing;
             Say(LightTraceLines.Lightning(flashing));
         }
+
+        float alpha = *St.ShadowAlpha;
         if (LightTraceLines.DueScalar(now, St.ShadowAt, St.ShadowSent, alpha, ShadowEps))
         {
             St.ShadowSent = alpha;
             St.ShadowAt = now;
+            float t = m.IsNull ? 0f : m.TransitionProgress;
             Say(LightTraceLines.Shadow(alpha, a.ShadowOpacity, Cause(running, t, flashing)));
         }
     }
 
-    /// <summary>One percent of full opacity: finer than any shadow change worth a line.</summary>
-    private const float ShadowEps = 0.01f;
-
     /// <summary>Why the shadow tint is where it is, for the line that reports it.</summary>
-    private static string Cause(string? running, float t, bool flashing)
+    private static string Cause(DayNightPhase running, float t, bool flashing)
         => flashing ? "lightning flash"
-         : running != null ? FormattableString.Invariant($"transition {running} t={t:F2}")
-         : "steady";
+         : running != DayNightPhase.None
+             ? FormattableString.Invariant($"transition {LightTraceLines.PhaseName(running)} t={t:F2}")
+             : "steady";
 }

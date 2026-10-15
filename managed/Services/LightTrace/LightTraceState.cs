@@ -1,16 +1,23 @@
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Services.LightTrace;
 
 /// <summary>
-/// Everything the lighting trace remembers: the log it writes to, the chain slots it calls through, the
-/// sampled values with the time each last went out, and the transition and flash it believes are running.
-/// One owner, so the trace has no loose state to forget.
+/// Everything the lighting trace remembers: the log it writes to, whether it is armed at all, the chain slots
+/// it calls through, the sampled values with the time each last went out, and the transition and flash it last
+/// saw. One owner, so the trace has no loose state to forget.
 /// </summary>
 internal sealed unsafe class LightTraceState
 {
     internal ExtenderLog? Log;
+
+    /// <summary>Every chain installed and every symbol resolved: without this the knob does nothing, and
+    /// <see cref="Why"/> says what refused.</summary>
+    internal bool Armed;
+    /// <summary>Why the trace is not armed; "" once it is.</summary>
+    internal string Why = "not initialised";
 
     /// <summary>Lines written since boot, for the <c>/lighttrace</c> status line.</summary>
     internal long Lines;
@@ -20,6 +27,7 @@ internal sealed unsafe class LightTraceState
     internal AreaSetAreaLightDirectionFn* Direction;
     internal AreaSetFogColorsFn* FogColours;
     internal AreaSetFogAmountFn* FogAmount;
+    internal AreaSetFogFn* FogPush;
     internal AreaSetGlobalLightAmbientFn* GlobalAmbient;
     internal AreaSetGlobalLightDiffuseFn* GlobalDiffuse;
     internal AreaSetGlobalLightDirectionFn* GlobalDirection;
@@ -48,8 +56,9 @@ internal sealed unsafe class LightTraceState
     internal LightTriple AlloySent;
     internal long AlloyAt = -1;
 
-    /// <summary>The fog amount the engine last applied, as it last went out, and when.</summary>
+    /// <summary>The fog amount and colour the engine last pushed, as they last went out, and when.</summary>
     internal float Fog, FogSent;
+    internal Vector3 FogRgb, FogRgbSent;
     internal long FogAt = -1;
     internal bool FogSeen;
 
@@ -57,12 +66,10 @@ internal sealed unsafe class LightTraceState
     internal float ShadowSent;
     internal long ShadowAt = -1;
 
-    /// <summary>The dawn or dusk transition the trace believes is running, null when none is, and the tick it
-    /// was first seen on.</summary>
-    internal string? Transition;
+    /// <summary>The transition the trace last saw running, and the tick it was first seen on.</summary>
+    internal DayNightPhase Transition;
     internal long TransitionAt;
 
-    /// <summary>True while the shadow tint sits at the lightning flash's fraction of what the area and any
-    /// transition alone would make it.</summary>
+    /// <summary>Whether a lightning flash was running the last time the area stepped.</summary>
     internal bool Flashing;
 }

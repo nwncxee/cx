@@ -639,7 +639,8 @@ rung). `alloy`'s `PanelStatus` is the renderer's own line ("Running: Alloy / Van
 **Lighting** — groups `light` (310, *Lights*), `shadow` (312, *Shadows*), `ao` (314, *Ambient
 occlusion*), `lightmap` (316, *Baked lighting*), `effects` (318, *Effects*). `light`,
 `ao` and `effects` have no master; `ao`'s header: "The game's own Ambient Occlusion video
-option turns this on and off."
+option turns this on and off." `lighttrace` (320, *Lighting trace*) is a ChatOnly master alone,
+so it adds no submenu content.
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
@@ -681,6 +682,7 @@ option turns this on and off."
 | lightmap.vram / window / near / tiers / hold / movertaps / moverlights / pairsize / paircount / disk | — | T, S | as declared | C | pairsize / paircount R, rest L | — | the page pool's memory budget, the baked radius round the player, the density tiers, the loading hold, the creature-and-light shadow atlas, the chart cache size |
 | effects.halos | Light halos | S | 0–4 step 0.1 · 1 | U | L | — | Brightness of the glow around the lights that flare in vanilla. 1 is vanilla's; 0 draws no halos. Ladders on `quality.effects`. |
 | effects.sky / beams / halosize / haloviz | — | T, S | as declared | C | L | — | the sky dome, the light shafts, the halo's size as a multiple of vanilla's flare, the halo visualiser |
+| lighttrace.enabled | Trace every area-light change to cx.log | T | off | **C** | L | — | cfg-only diagnostic for area builders: every light, direction and fog packet the server sends, every day/night state change and transition, the lightning flash, and once a second the colours the engine applied to the area's sun next to the ones Alloy rendered -- all under the `[lighttrace]` prefix. Off costs nothing per frame. |
 
 **Image** — group `post` (330), no master (the resolve is the frame).
 

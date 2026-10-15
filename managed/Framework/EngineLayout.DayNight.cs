@@ -27,6 +27,11 @@ public static unsafe partial class EngineLayout
     public static readonly int AreaSunDirection = Field<float>("CNWCArea", "sunDirection", count: 3);
     /// <summary>CNWCArea -&gt; the live MOON direction, <see cref="AreaSunDirection"/>'s night twin.</summary>
     public static readonly int AreaMoonDirection = Field<float>("CNWCArea", "moonDirection", count: 3);
+    /// <summary>CNWCArea -&gt; seconds left of the client-side lightning flash (float): non-zero exactly while
+    /// one runs. <c>CNWCArea::Update</c> sets it to the flash model's length, counts it down and zeroes it at
+    /// the end -- Linux @0x707560 and Windows rva 0x7e7da0, where MSVC inlined <c>SetLightningDone</c> into it.
+    /// The next-flash delay sits beside it; the constructor zeroes the pair as one store.</summary>
+    public static readonly int AreaLightningFlash = Field<float>("CNWCArea", "lightningFlash");
 
     /// <summary>CNWCModule -&gt; seconds elapsed in the current dawn/dusk transition (float).
     /// <c>SetTimeOfDayState</c> seeds it from the packet's milliseconds and <c>Area_ChangeDayNight</c> zeroes

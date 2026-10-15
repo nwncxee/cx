@@ -1955,6 +1955,8 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref uint Id => ref *(uint*)(Ptr + EngineLayout.AreaId);
     /// <inheritdoc cref="EngineLayout.AreaIsNight"/>
     public ref int IsNight => ref *(int*)(Ptr + EngineLayout.AreaIsNight);
+    /// <inheritdoc cref="EngineLayout.AreaLightningFlash"/>
+    public ref float LightningFlash => ref *(float*)(Ptr + EngineLayout.AreaLightningFlash);
     /// <inheritdoc cref="EngineLayout.AreaMoonDirection"/>
     public Span<float> MoonDirection { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaMoonDirection), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightAmbient"/>
