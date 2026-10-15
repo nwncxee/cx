@@ -98,6 +98,7 @@ public sealed unsafe class GlContextService : IExtenderService
         _disabled = !CX.Alloy.Renderer.Gl46.Boot;
         OptedOut = _disabled;
         _debug = CX.Alloy.Renderer.GlDebug.Boot;
+        if (_debug) ExtenderLog.Synchronous = true;   // a debug session's log must end where the crash is
         // does the 4.6 context's DEFAULT FRAMEBUFFER address the same surface the engine presents?
         // On GLX both contexts name one drawable and the question never arises. Under WGL the pairing is
         // Wine's to make, and if the two contexts track their own back buffer against a shared chain, the

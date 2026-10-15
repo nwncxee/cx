@@ -334,7 +334,9 @@ public sealed unsafe partial class CasterPass : IExtenderService
         bool entered = GlContextService.Enter();
         _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;
         if (!entered) { AlloyRenderer.PosedByShadow = false; return; }
+        AlloyRenderer.Step("shadow bracket: the pose upload");
         AlloyRenderer.ShadowPoseUpload();   // the GL half of ShadowPose above: this frame's bones, uploaded
+        AlloyRenderer.Step("shadow bracket: dead handles and the bake's handle upload");
         OwnedTextures.DropDeadHandles();        // the colour drain is AFTER this bracket; textures die on area load before both
         Issue.UploadHandlesForBake();   // a handle dropped since the last colour upload must not be sampled below
         // #260: the bake and the colour pass read the SAME buffer -- the pool's, which Alloy uploaded at the
@@ -353,6 +355,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         ReceiverFrame();
         if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted))
         {
+            AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
             if (EnsureCommon() && CasterGather.Ensure()) { EnsureLayered(); EnsureHandleMask(); _gStaged = GatherStage(); }
             // #303: the compute dispatch is the ONLY selection path. A program that can never build would
             // otherwise idle here forever with the engine's stencil shadows already suppressed.
@@ -366,6 +369,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         foreach ((PassId id, Bracket bracket) in FrameGraph.Passes)
         {
             if (bracket != Bracket.Shadow) continue;
+            AlloyRenderer.Step("shadow bracket: " + AlloyRenderer.PassName(id));
             switch (id)
             {
                 case PassId.SunCascades:
@@ -385,6 +389,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // #307: the queued stale views flush in one layered pass per target, HERE -- the publish arrays the
         // passes wrote above assumed the bakes land. A failed flush publishes nothing for the frame instead:
         // the receiver samples no maps (a one-frame blink, never a lie) and the blanket re-bakes from scratch.
+        AlloyRenderer.Step("shadow bracket: the layered flush");
         if (!FlushLayered())
         {
             _layerFlushFails++;
