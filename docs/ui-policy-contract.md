@@ -762,7 +762,7 @@ While the key is held:
 - **No flip-back, and no restart.** The dawn-hour state arriving on an area already lit for day does not put
   it back to night: the transition crossfades from what is on screen, so a state that only repeats what the
   area shows is a visual no-op. A repeated time-of-day state or a second `Area_ChangeDayNight` cannot rewind
-  the transition clock either -- within one transition the clock only moves forward.
+  the transition either (see the clock below).
 - **No pop at the body change.** The light direction turns along the short arc from one body to the other
   over the transition instead of cutting at the midpoint.
 - **Cuts become crossfades.** A palette change that arrives with no fade of its own -- the client re-applying
@@ -770,11 +770,31 @@ While the key is held:
   that do carry a fade keep the server's own length, as they already do.
 - **The beam tint follows dusk down** instead of running negative for the hour.
 
-What does not change: the skybox crossfade, the ambient sounds, the tile day/night animations, the area's
-`isNight` flag and the shadow-light count are all still the engine's, on the engine's own clock. So are fades
-the server sends: while a light-direction or colour fade is in flight it wins for those frames, because it is
-the server's own instruction. Taking the key mid-transition is not a jump either -- the client starts from
-the shaped value it was showing and crossfades on from there.
+### The transition clock
+
+Within one transition the clock's **fraction** never decreases: a rewound clock is written back, and the
+clock written is the engine's own, the same one the skybox crossfade and the tile day/night animations read.
+That is the point -- all three stay in step with the light instead of replaying with it. The flip side is
+that owned mode does move an engine field, so "the engine's own clock, untouched" is not true here.
+
+The hold is a fraction, not an elapsed time, so a server that changes a transition's **length** changes how
+much wall-clock time is left. A 20-minute dusk half done, re-sent as a 10-second one, finishes in 5 seconds
+rather than 10 minutes; the same dusk re-sent as a 20-minute one takes 10 more minutes. How long a transition
+takes is the server's to say. What owned mode refuses is being sent back to the start.
+
+### What does not change
+
+The skybox crossfade, the ambient sounds, the tile day/night animations, the area's `isNight` flag and the
+shadow-light count are all still the engine's, driven by the clock above. So are fades the server sends:
+while a light-direction or colour fade is in flight it wins for those frames, because it is the server's own
+instruction. The lightning flash keeps its own dimming of the shadow tint, because outside a transition owned
+mode does not write that global at all. And taking the key mid-transition is not a jump -- the client starts
+from the shaped value it was showing and crossfades on from there.
+
+The price is native work per transition frame: re-applying the light runs the engine's own setters, and those
+build console-command text and interpret it (two `sprintf`s and two parses for the sun's colours, two more
+for the fog). It is the same path the engine's own transition takes, once more per frame, and it buys the
+whole of the above. Outside a transition and outside a cut crossfade nothing is pushed at all.
 
 The server end of the same problem is running one day/night clock instead of two. Nothing here replaces that;
 it stops the client fighting a server that has its own.

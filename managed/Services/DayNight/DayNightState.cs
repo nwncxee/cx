@@ -1,26 +1,46 @@
-using System;
 using CX.Framework;
 
 namespace CX.Services.DayNight;
 
 /// <summary>
-/// Everything owned day/night carries between frames: the chain slot, the two render globals, the engine
-/// handles the per-frame path needs, the machine's memory, and the policy verdict cached on its epoch.
+/// Everything owned day/night carries between frames: the chain slots, the two render globals, the machine's
+/// memory, and the policy verdict cached on its epoch.
 /// </summary>
 internal sealed unsafe class DayNightState
 {
     internal ExtenderLog? Log;
     internal AreaUpdateDayNightCycleFn* Next;
+    internal AreaLoadAreaFn* Load;
+    internal AreaSetAsDawnFn* AsDawn;
+    internal AreaSetAsDuskFn* AsDusk;
+    internal AreaSetAsDayFn* AsDay;
+    internal AreaSetAsNightFn* AsNight;
     /// <summary>The <c>shadowalpha</c> and <c>projectionalpha</c> globals the transition drives.</summary>
     internal float* Shadow, Projection;
-    /// <summary>The <c>g_pAppManager</c> global, the walk to the module's transition clock.</summary>
-    internal IntPtr AppMgr;
     internal DayNightMemory Memory;
+
+    /// <summary>An area is loading into the current object: nothing is pushed, and the <c>SetAs*</c> calls
+    /// inside the load must not put the previous area's light into the new one.</summary>
+    internal bool InLoad;
+    /// <summary>An area has loaded and the machine has not picked the new one up yet.</summary>
+    internal bool Edge;
+    /// <summary>A hold is already in flight, so a nested <c>SetAs*</c> does not hold a second time.</summary>
+    internal bool Holding;
+
     /// <summary>Which diagnoses have already been logged for the area the memory is on.</summary>
     internal int Said;
+    internal const int SaidCut = 1, SaidRestart = 2, SaidFlip = 4;
 
     private int _epoch = -1;
     private bool _owned;
+
+    /// <summary>Everything the machine remembers, dropped: the next owned frame seeds itself from whatever
+    /// the engine is showing then.</summary>
+    internal void Forget()
+    {
+        Memory.Have = false;
+        Said = 0;
+    }
 
     /// <summary>Is the server holding the opt-in? One field compare per frame; the policy read happens only
     /// when a line has moved, and a change says so once in the log.</summary>

@@ -1,10 +1,8 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 
 namespace CX.Services.DayNight;
-
-/// <summary>Which transition an area is running: its dawn and dusk flags as one value.</summary>
-internal enum Phase { None, Dawn, Dusk }
 
 /// <summary>One of an area's two light palettes -- the four terms a dawn or dusk crossfades.</summary>
 internal struct LightSet
@@ -74,13 +72,13 @@ internal static class DayNightBlend
     /// <summary>Vanilla's own shaping: the crossfade, then direct light scaled by <c>|2t-1|</c> with half the
     /// loss moved into ambient and the shadows faded out and back in. Owned mode does none of it; this is the
     /// reference the self-check pins and the value owned mode seeds itself from.</summary>
-    internal static LightFrame Vanilla(in LightSet from, in LightSet to, float t, Phase phase, byte opacity)
+    internal static LightFrame Vanilla(in LightSet from, in LightSet to, float t, DayNightPhase phase, byte opacity)
     {
         float tc = MathF.Min(t, 1f);
         var f = new LightFrame
         {
             Light = Lerp(in from, in to, tc),
-            ProjectionAlpha = phase == Phase.Dawn ? tc * DayProjectionAlpha : (tc - 1f) * DayProjectionAlpha,
+            ProjectionAlpha = phase == DayNightPhase.Dawn ? tc * DayProjectionAlpha : (tc - 1f) * DayProjectionAlpha,
         };
         float s = tc + tc - 1f;
         if (s <= -1f || s > 1f) { f.ShadowAlpha = opacity / OpacityScale; return f; }
