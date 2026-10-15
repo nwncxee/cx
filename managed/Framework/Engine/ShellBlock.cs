@@ -1,15 +1,18 @@
 namespace CX.Engine;
 
-/// <summary>A native block that holds CX's own header and then the shell the engine is handed: the shell address
-/// is the block address plus the header size, and the header is read back by stepping the same distance down.</summary>
-public static unsafe class ShellBlock
+/// <summary>A native block that holds a CX header of type <typeparamref name="T"/> and then the shell the engine is
+/// handed. The header takes <see cref="Size"/> bytes, 16-aligned, so the shell keeps the block's alignment.</summary>
+public static unsafe class ShellBlock<T> where T : unmanaged
 {
-    /// <summary>The shell inside <paramref name="block"/>, whose header is <paramref name="headerBytes"/> long.</summary>
-    public static nint ShellOf(void* block, int headerBytes) => (nint)block + headerBytes;
+    /// <summary>Bytes from the block start to the shell.</summary>
+    public static readonly int Size = (sizeof(T) + 15) & ~15;
+
+    /// <summary>The shell inside <paramref name="block"/>.</summary>
+    public static nint ShellOf(void* block) => (nint)block + Size;
 
     /// <summary>The block a shell lives in.</summary>
-    public static void* BlockOf(nint shell, int headerBytes) => (void*)(shell - headerBytes);
+    public static void* BlockOf(nint shell) => (void*)(shell - Size);
 
     /// <summary>The header in front of a shell.</summary>
-    public static T* Header<T>(nint shell, int headerBytes) where T : unmanaged => (T*)(shell - headerBytes);
+    public static T* Header(nint shell) => (T*)(shell - Size);
 }
