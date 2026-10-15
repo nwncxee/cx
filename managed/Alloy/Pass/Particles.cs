@@ -81,7 +81,7 @@ internal static unsafe partial class Particles
     /// colFar} {right.xyz, soft} {up.xyz, type} {centre.xyz, -} {u0,u1,v0,v1} {prev.xyz, -}</c>, the two
     /// colours as <c>uintBitsToFloat</c>. All WORLD space -- the build transforms the centre and the two
     /// axes, cheaper than the corners -- and <c>prev</c> is where that centre was LAST frame.</summary>
-    private const int RecFloats = ParticleRec.N;
+    private static readonly int RecFloats = sizeof(ParticleRec) / sizeof(float);
     /// <summary>The record and index buffers the vertex stage names, above the light rig it also reads
     /// (<see cref="SsboSlots"/>).</summary>
     internal const uint BindRecs = SsboSlots.ParticleRecs, BindIdx = SsboSlots.ParticleIdx;
@@ -247,7 +247,7 @@ internal static unsafe partial class Particles
     private static PartGlState _gl = new();
     /// <summary>The CPU shadow of the record buffer, addressed by <see cref="Emit.RecBase"/>. The build
     /// writes here; only the blocks whose hash moved are sent to GL.</summary>
-    private static float* _recs;
+    private static ParticleRec* _recs;
     private static int _recsCap, _recTop;
     /// <summary>Record indices in DRAW order, one per particle. The WRITE of this list is the GPU's, so the
     /// CPU shadow is only the <c>/particles sort 0</c> path's staging area -- kept because that dial is the
@@ -427,7 +427,8 @@ internal static unsafe partial class Particles
             // stale one -- the compute pass walks spans by group membership, not by what was written.
             _span[i * 4] = 0; _span[i * 4 + 1] = 0; _span[i * 4 + 2] = (uint)at; _span[i * 4 + 3] = 0;
             if (!EnsureBlock(ref e, _sCount[k])) { _wrote[i] = 0; continue; }
-            int wrote = BuildEmitter(ref e, ((ParticleRec*)_recs)[e.RecBase].V, _sCount[k],
+            Span<ParticleRec> block = new Span<ParticleRec>(_recs, _recsCap).Slice(e.RecBase, e.RecCap);
+            int wrote = BuildEmitter(ref e, block, _sCount[k],
                                      camFwd, camQ, axisY, axisX, eye,
                                      lit && _sCls[k] == ClsBlend);
             _wrote[i] = wrote;
@@ -436,14 +437,14 @@ internal static unsafe partial class Particles
             // simulation skipped -- costs a hash of its own memory and no bus traffic at all.
             // ponytail: a camera-derived basis in record slots 8..14 can never match across a rotation.
             // Upgrade: build the basis in cx_particle_v instead. See Fnv for the measurement that parks it.
-            ulong h = Fnv(((ParticleRec*)_recs)[e.RecBase].V, (long)wrote * RecFloats);
+            ulong h = Fnv(block.Slice(0, wrote));
             if (h != e.Hash)
             {
                 e.Hash = h;
-                Gl.NamedBufferSubData(_gl.RecBuf,
-                                      (IntPtr)((long)e.RecBase * RecFloats * sizeof(float)),
-                                      (IntPtr)((long)wrote * RecFloats * sizeof(float)),
-                                      ((ParticleRec*)_recs)[e.RecBase].V);
+                fixed (ParticleRec* up = block)
+                    Gl.NamedBufferSubData(_gl.RecBuf,
+                                          (IntPtr)((long)e.RecBase * sizeof(ParticleRec)),
+                                          (IntPtr)((long)wrote * sizeof(ParticleRec)), up);
                 _blockUploads++;
             }
             else _blockSkips++;
@@ -784,7 +785,7 @@ internal static unsafe partial class Particles
     /// <summary>Port of <c>PartEmitter::RenderEmitter</c>'s build loop: six vertices per particle, written
     /// in the engine's own order and layout. Returns the vertex count written.
     /// <para>Allocation-free by construction -- this runs inside the colour bracket.</para></summary>
-    private static int BuildEmitter(ref Emit e, float* dst, int count,
+    private static int BuildEmitter(ref Emit e, Span<ParticleRec> dst, int count,
                                     Vector3 camFwd, Vector4 camQ, Vector3 axisY, Vector3 axisX,
                                     Vector3 eye, bool drawsLit)
     {
@@ -894,7 +895,7 @@ internal static unsafe partial class Particles
         float vizType = type;
         IntPtr* parts = e.Parts;
         float u0 = 0f, u1 = 1f, v0 = 0f, v1 = 1f;
-        var recs = (ParticleRec*)dst;
+        Span<ParticleRec> recs = dst;
         int written = 0;
         // Is the mirror's own content last frame's? A slice reassigned (Hash 0) or an emitter the pass did
         // not build last frame holds some other frame's particles, which is no history at all.
@@ -1021,9 +1022,9 @@ internal static unsafe partial class Particles
                 up = Vector3.TransformNormal(up, e.Model);
             }
             // Last frame's centre for THIS record slot, out of the mirror before the write overwrites it.
-            float* p = recs[written++].V;
-            Put(p, pos, col, far, colFar, right, soft, up, vizType, centre, u0, u1, v0, v1,
-                PrevCentre(fresh, new Vector3(p[16], p[17], p[18]), centre));
+            ref ParticleRec rec = ref recs[written++];
+            Put(ref rec, pos, col, far, colFar, right, soft, up, vizType, centre, u0, u1, v0, v1,
+                PrevCentre(fresh, rec.Centre, centre));
         }
         return written;
     }
@@ -1031,29 +1032,27 @@ internal static unsafe partial class Particles
     /// <summary>One record, in the <see cref="RecFloats"/> layout. The two colours ride the <c>w</c> slots
     /// as raw bits, which is what <c>uintBitsToFloat</c> undoes in the stage.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Put(float* p, in Vector3 pos, uint col, in Vector3 far, uint colFar,
+    private static void Put(ref ParticleRec p, in Vector3 pos, uint col, in Vector3 far, uint colFar,
                             in Vector3 right, float soft, in Vector3 up, float type,
                             in Vector3 centre, float u0, float u1, float v0, float v1, in Vector3 prev)
     {
-        p[0] = pos.X; p[1] = pos.Y; p[2] = pos.Z; p[3] = BitConverter.UInt32BitsToSingle(col);
-        p[4] = far.X; p[5] = far.Y; p[6] = far.Z; p[7] = BitConverter.UInt32BitsToSingle(colFar);
-        p[8] = right.X; p[9] = right.Y; p[10] = right.Z; p[11] = soft;
-        p[12] = up.X; p[13] = up.Y; p[14] = up.Z; p[15] = type;
-        p[16] = centre.X; p[17] = centre.Y; p[18] = centre.Z; p[19] = 0f;
-        p[20] = u0; p[21] = u1; p[22] = v0; p[23] = v1;
-        p[24] = prev.X; p[25] = prev.Y; p[26] = prev.Z; p[27] = 0f;
+        p.Pos = pos; p.Col = BitConverter.UInt32BitsToSingle(col);
+        p.Far = far; p.ColFar = BitConverter.UInt32BitsToSingle(colFar);
+        p.Right = right; p.Soft = soft;
+        p.Up = up; p.Type = type;
+        p.Centre = centre; p.CentreW = 0f;
+        p.U0 = u0; p.U1 = u1; p.V0 = v0; p.V1 = v1;
+        p.Prev = prev; p.PrevW = 0f;
     }
 
     /// <summary>FNV-1a over a record block, eight bytes at a time. The delta's whole change detector: the
     /// engine simulates particles and tells nobody, so "did this emitter move" is a question about its own
     /// bytes and nothing else. It cannot match for an emitter whose billboard basis is the CAMERA's, since a
     /// rotation dirties the stored right and up -- measured at about 8KB a frame, and left that way.</summary>
-    private static ulong Fnv(float* f, long floats)
+    private static ulong Fnv(ReadOnlySpan<ParticleRec> recs)
     {
         ulong h = 14695981039346656037UL;
-        ulong* q = (ulong*)f;
-        for (long i = 0; i < floats / 2; i++) { h ^= q[i]; h *= 1099511628211UL; }
-        if ((floats & 1) != 0) { h ^= BitConverter.SingleToUInt32Bits(f[floats - 1]); h *= 1099511628211UL; }
+        foreach (ulong q in MemoryMarshal.Cast<ParticleRec, ulong>(recs)) { h ^= q; h *= 1099511628211UL; }
         return h;
     }
 
@@ -1319,13 +1318,13 @@ internal static unsafe partial class Particles
             int want = _recsCap > 0 ? _recsCap : MinRecs;
             while (want < _recTop + parts && want < MaxRecs) want *= 2;
             if (want < _recTop + parts) { ResetBlocks(); return false; }
-            float* grown = (float*)NativeMemory.Alloc((nuint)((long)want * RecFloats * sizeof(float)));
+            ParticleRec* grown = (ParticleRec*)NativeMemory.Alloc((nuint)((long)want * sizeof(ParticleRec)));
             if (_recs != null) NativeMemory.Free(_recs);
             _recs = grown;
             _recsCap = want;
             if (_gl.RecBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.RecBuf = b; }
             Gl.NamedBufferData(_gl.RecBuf,
-                               (IntPtr)((long)want * RecFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
+                               (IntPtr)((long)want * sizeof(ParticleRec)), null, Gl.DYNAMIC_DRAW);
             // The new store holds nothing, so every block is stale by construction.
             for (int i = 0; i < _tabN; i++) _tab[i].Hash = 0;
         }

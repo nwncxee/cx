@@ -579,15 +579,15 @@ internal static unsafe class AlloyLights
                 Vector4 pr = FrameInputs.AreaLightPosRange[i];
                 Vector3 c = FrameInputs.AreaLightColor[i];
                 rmin = MathF.Min(rmin, pr.W); rmax = MathF.Max(rmax, pr.W); rsum += pr.W;
-                float* d = ((AreaLightRec*)s)[i].V;
-                d[0] = pr.X; d[1] = pr.Y; d[2] = pr.Z; d[3] = pr.W;
-                d[4] = c.X; d[5] = c.Y; d[6] = c.Z;
+                ref AreaLightRec d = ref ((AreaLightRec*)s)[i];
+                d.PosRange = pr;
+                d.Color = c;
                 // the record's spare w is this light's shadow-cube slot (#95), -1 for a light with no cube.
                 // Riding the existing pad is what keeps the cube receiver from needing a second buffer keyed
                 // the same way -- and the walk already resolved the slot by light identity.
-                d[7] = FrameInputs.AreaLightAmbient[i] ? FrameInputs.AmbientSlot : FrameInputs.AreaLightSlot[i];
+                d.Slot = FrameInputs.AreaLightAmbient[i] ? FrameInputs.AmbientSlot : FrameInputs.AreaLightSlot[i];
                 // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
-                if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d[7] += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
+                if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
             Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
         }
@@ -734,25 +734,24 @@ internal static unsafe class AlloyLights
     internal static bool FillDraw(byte* b, int* viewport, float near, float far)
     {
         if (near < MinNear) near = MinNear;
-        var pb = new PassParamBlock(b);
-        pb.Tile = new Vector4(viewport[0], viewport[1],
+        var pb = (PassBlock*)b;
+        pb->Tile = new Vector4(viewport[0], viewport[1],
             MathF.Max((float)viewport[2] / GridX, 1f), MathF.Max((float)viewport[3] / GridY, 1f));
-        int* grid = pb.Grid;
-        grid[0] = GridX; grid[1] = GridY; grid[2] = GridZ;
-        pb.Reach = ReachUniform;
+        pb->GridX = GridX; pb->GridY = GridY; pb->GridZ = GridZ;
+        pb->Reach = ReachUniform;
         LastFalloff = new Vector3(_gain, _srcRadius, _falloffPow);
-        pb.Falloff = LastFalloff;
-        pb.Wrap = _wrap;
-        pb.Z = new Vector2(near, far > near ? far : near * 2f);
-        pb.Atten = new Vector2(_atten.X, _atten.Y);
-        pb.Hot = new Vector2(_hot, MathF.Max(_hotSize, 1e-4f));
-        pb.Sss = new Vector2(_sss, SssOn ? SssK(_sss) : 0f);
-        pb.WrapN = _wrapN;
-        pb.DayDim = DayDim;
-        pb.Relevance = new Vector2(_rel, _rel * 2f);
+        pb->Falloff = LastFalloff;
+        pb->Wrap = _wrap;
+        pb->Z = new Vector2(near, far > near ? far : near * 2f);
+        pb->Atten = new Vector2(_atten.X, _atten.Y);
+        pb->Hot = new Vector2(_hot, MathF.Max(_hotSize, 1e-4f));
+        pb->Sss = new Vector2(_sss, SssOn ? SssK(_sss) : 0f);
+        pb->WrapN = _wrapN;
+        pb->DayDim = DayDim;
+        pb->Relevance = new Vector2(_rel, _rel * 2f);
         bool own = !BorrowedTable && viewport[2] == _builtW && viewport[3] == _builtH && near == _builtNear
                    && (far > near ? far : near * 2f) == _builtFar;
-        pb.Bounds = own ? 1f : 0f;
+        pb->Bounds = own ? 1f : 0f;
         return own;
     }
 

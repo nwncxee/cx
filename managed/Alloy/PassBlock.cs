@@ -31,4 +31,20 @@ internal unsafe struct PassBlock
     [FieldOffset(AlloyRenderer.PbFullModel)] public float FullModel;
     [FieldOffset(AlloyRenderer.PbSunPenum)] public float SunPenum;
     [FieldOffset(AlloyRenderer.PbSearchTaps)] public float SearchTaps;
+    [FieldOffset(AlloyRenderer.PbFade)] public float FadeFirst;
+    [FieldOffset(AlloyRenderer.PbTile)] public Vector4 Tile;
+    [FieldOffset(AlloyRenderer.PbGrid)] public int GridX;
+    [FieldOffset(AlloyRenderer.PbGrid + 4)] public int GridY;
+    [FieldOffset(AlloyRenderer.PbGrid + 8)] public int GridZ;
+    [FieldOffset(AlloyRenderer.PbReach)] public float Reach;
+    [FieldOffset(AlloyRenderer.PbFalloff)] public Vector3 Falloff;
+    [FieldOffset(AlloyRenderer.PbWrap)] public float Wrap;
+    [FieldOffset(AlloyRenderer.PbZ)] public Vector2 Z;
+    [FieldOffset(AlloyRenderer.PbAtten)] public Vector2 Atten;
+    [FieldOffset(AlloyRenderer.PbHot)] public Vector2 Hot;
+    [FieldOffset(AlloyRenderer.PbSss)] public Vector2 Sss;
+    [FieldOffset(AlloyRenderer.PbWrapN)] public float WrapN;
+    [FieldOffset(AlloyRenderer.PbDayDim)] public float DayDim;
+    [FieldOffset(AlloyRenderer.PbRelevance)] public Vector2 Relevance;
+    [FieldOffset(AlloyRenderer.PbBounds)] public float Bounds;
 }

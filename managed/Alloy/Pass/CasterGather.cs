@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -202,12 +203,12 @@ internal static unsafe class CasterGather
     /// <summary>S8: publish this frame's dynamic source. Uploaded whole every frame it is used -- it is a few
     /// hundred records, and its membership moves every frame by construction. False = there is none, and a
     /// dynamic view falls back to the full source, which is the same set by a longer road.</summary>
-    internal static bool DynamicSource(int drawN, uint* src)
+    internal static bool DynamicSource(int drawN, CasterSrcRec* src)
     {
         _gl.DynDrawN = 0;
         if (_gl.Prog == 0 || drawN <= 0) return false;
         if (_gl.DynSrcBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.DynSrcBuf = b; _gl.DynSrcCap = 0; }
-        long bytes = (long)drawN * SrcUints * sizeof(uint);
+        long bytes = (long)drawN * sizeof(CasterSrcRec);
         if (drawN > _gl.DynSrcCap)
         { Gl.NamedBufferData(_gl.DynSrcBuf, (IntPtr)bytes, null, Gl.DYNAMIC_DRAW); _gl.DynSrcCap = drawN; }
         Gl.NamedBufferSubData(_gl.DynSrcBuf, IntPtr.Zero, (IntPtr)bytes, src);
@@ -225,21 +226,20 @@ internal static unsafe class CasterGather
     /// reports no <paramref name="changed"/> bytes sends nothing at all (the caller knows; no hash). The
     /// bounds live in <see cref="CullPass"/>'s sphere buffer, which the colour build maintains, so nothing
     /// per-draw is uploaded here on a settled frame.</summary>
-    internal static bool Begin(int drawN, int groups, uint* src, bool changed)
+    internal static bool Begin(int drawN, int groups, CasterSrcRec* src, bool changed)
     {
         _gl.DrawN = 0;
         _gl.SrcDirty |= changed;
         if (drawN <= 0 || groups <= 0 || !Ensure()) return false;
         if (CullPass.SphereBuf == 0 || _gl.CastBuf == 0) return false;   // no colour build yet: no bounds to cull against
 
-        long srcWords = (long)drawN * SrcUints;
         bool grow = drawN > _gl.SrcCap;
         if (_gl.SrcBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.SrcBuf = b; grow = true; }
         if (grow || _gl.SrcDirty)
         {
             if (grow)
-            { Gl.NamedBufferData(_gl.SrcBuf, (IntPtr)((long)drawN * SrcUints * sizeof(uint)), null, Gl.DYNAMIC_DRAW); _gl.SrcCap = drawN; }
-            Gl.NamedBufferSubData(_gl.SrcBuf, IntPtr.Zero, (IntPtr)(srcWords * sizeof(uint)), src);
+            { Gl.NamedBufferData(_gl.SrcBuf, (IntPtr)((long)drawN * sizeof(CasterSrcRec)), null, Gl.DYNAMIC_DRAW); _gl.SrcCap = drawN; }
+            Gl.NamedBufferSubData(_gl.SrcBuf, IntPtr.Zero, (IntPtr)((long)drawN * sizeof(CasterSrcRec)), src);
             _gl.SrcDirty = false;
             Uploads++;
         }
@@ -381,12 +381,9 @@ internal static unsafe class CasterGather
     /// <see cref="AlloyRenderer.MaxOwned"/>.</summary>
     internal const uint BindView = SsboSlots.ViewTbl;
     internal const int ViewShift = 18;
-    /// <summary>Floats per view-table record: mat4 vp + (focus, reach) + (dir, along) + (receiver, point,
-    /// set, layer) + (the two detail thresholds, two spare). std430 gives this struct no padding.</summary>
+    /// <summary>Floats per view-table record, the shader's <c>CxView</c>: mat4 vp + (focus, reach) + (dir, along)
+    /// + (receiver, point, set, layer) + (the two detail thresholds, two spare). std430 gives it no padding.</summary>
     internal const int ViewFloats = 32;
-    /// <summary>The staged view's words the layered dispatch reads its detail thresholds at -- a contract
-    /// shared with <c>CxView.d</c>, which <c>CasterPass.StageView</c> fills.</summary>
-    internal const int ViewLodR1 = 28, ViewLodR2 = 29;
 
     /// <summary>The view table's GLSL declaration, shared by the layered dispatch and both layered depth
     /// stages -- <c>AlloyRenderer.DrawBufDecl</c>'s pattern, so the three cannot drift apart.</summary>
@@ -429,7 +426,7 @@ internal static unsafe class CasterGather
     /// command buffer to draws x views, and leave the indirect/parameter bindings armed for
     /// <see cref="DrawLayer"/>. Same rotation argument as <see cref="Dispatch"/> -- chunks are serial, and
     /// reusing a pair <see cref="Rotation"/> chunks later leaves the barriers standing.</summary>
-    internal static bool DispatchLayer(float* views, int viewN, bool dynSrc = false)
+    internal static bool DispatchLayer(CasterViewRec* views, int viewN, bool dynSrc = false)
     {
         if (_gl.LayerProg == 0 || _gl.DrawN <= 0 || viewN <= 0 || CullPass.SphereBuf == 0 || _gl.CastBuf == 0) return false;
         // S8, as in Dispatch. The COMMAND buffer stays sized by the full staging: a survivor's region is its
@@ -439,8 +436,8 @@ internal static unsafe class CasterGather
         if (dyn) DynDispatches++;
         if (_gl.ViewBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.ViewBuf = b; _gl.ViewCap = 0; }
         if (viewN > _gl.ViewCap)
-        { Gl.NamedBufferData(_gl.ViewBuf, (IntPtr)((long)viewN * ViewFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW); _gl.ViewCap = viewN; }
-        Gl.NamedBufferSubData(_gl.ViewBuf, IntPtr.Zero, (IntPtr)((long)viewN * ViewFloats * sizeof(float)), views);
+        { Gl.NamedBufferData(_gl.ViewBuf, (IntPtr)((long)viewN * sizeof(CasterViewRec)), null, Gl.DYNAMIC_DRAW); _gl.ViewCap = viewN; }
+        Gl.NamedBufferSubData(_gl.ViewBuf, IntPtr.Zero, (IntPtr)((long)viewN * sizeof(CasterViewRec)), views);
 
         _gl.LyAt = (_gl.LyAt + 1) % Rotation;
         long cmds = (long)_gl.DrawN * viewN;
@@ -473,7 +470,7 @@ internal static unsafe class CasterGather
         Gl.BindBuffer(Gl.PARAMETER_BUFFER, _gl.LyCnt[_gl.LyAt]);
         LayerDispatches++; LayerViews += viewN;
         int rxViews = 0;
-        for (int i = 0; i < viewN; i++) if (views[i * ViewFloats + 24] != 0f) rxViews++;
+        for (int i = 0; i < viewN; i++) if (views[i].Receiver != 0f) rxViews++;
         _gl.Dispatched = true; _gl.SampleBuf = _gl.LyCnt[_gl.LyAt]; _gl.SampleViews = viewN; _gl.SampleRxViews = rxViews;
         _gl.SampleDrawN = srcN; _gl.SampleDyn = dyn;
         return true;
@@ -680,6 +677,13 @@ internal static unsafe class CasterGather
         }
         """).Replace("@SLOPE@", Slope);
 
+    /// <summary>Where the view record keeps its first detail threshold, in bytes, measured off the record itself.</summary>
+    private static long ViewLodAt()
+    {
+        CasterViewRec v = default;
+        return (byte*)&v.LodR1 - (byte*)&v;
+    }
+
     /// <summary>What <c>CasterPass.SelfCheck</c> pins about the layered dispatch, on <see cref="SourceSafe"/>'s
     /// argument: every term whose silent drift deletes a shadow, spelled from the same constants.</summary>
     internal static bool LayerSafe()
@@ -697,7 +701,7 @@ internal static unsafe class CasterGather
            // the command taking the PICKED run. A pick whose result nothing reads is full detail
            // everywhere, silently, and a lane one float over is another view's thresholds.
            && ViewTblDecl.Contains("struct CxView { mat4 vp; vec4 a; vec4 b; vec4 c; vec4 d; };")
-           && ViewFloats == 32 && ViewLodR1 == 28 && ViewLodR2 == 29
+           && ViewFloats == 32 && sizeof(CasterViewRec) == 32 * sizeof(float) && ViewLodAt() == 28 * sizeof(float)
            && LayerCs.Contains("float lq = vc.y != 0.0 ? s.w / max(length(s.xyz - uViewTbl[vi].a.xyz), 1e-4) : s.w;")
            && LayerCs.Contains("if (lq < uViewTbl[vi].d.x)")
            && LayerCs.Contains("if (lq < uViewTbl[vi].d.y && c2 != 0u) { cnt = c2; first = uSrc[b + 10u]; lvl = 2u; }")

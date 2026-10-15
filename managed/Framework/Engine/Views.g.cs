@@ -3382,6 +3382,28 @@ public readonly unsafe partial struct NkCommand(IntPtr ptr)
     public ref int Type => ref *(int*)(Ptr + EngineLayout.NkCmdType);
 }
 
+/// <summary>Typed view of an engine <c>NkCommandArc*</c>.</summary>
+public readonly unsafe partial struct NkCommandArc(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdArcColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdArcColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandArcFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandArcFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdArcFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdArcFilledColor);
+}
+
 /// <summary>Typed view of an engine <c>NkCommandBuffer*</c>.</summary>
 public readonly unsafe partial struct NkCommandBuffer(IntPtr ptr)
 {
@@ -3397,6 +3419,39 @@ public readonly unsafe partial struct NkCommandBuffer(IntPtr ptr)
     public ref IntPtr Layout => ref *(IntPtr*)(Ptr + EngineLayout.NkCmdBufLayout);
 }
 
+/// <summary>Typed view of an engine <c>NkCommandCircle*</c>.</summary>
+public readonly unsafe partial struct NkCommandCircle(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdCircleColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdCircleColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandCircleFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandCircleFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdCircleFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdCircleFilledColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandCurve*</c>.</summary>
+public readonly unsafe partial struct NkCommandCurve(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdCurveColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdCurveColor);
+}
+
 /// <summary>Typed view of an engine <c>NkCommandImage*</c>.</summary>
 public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
 {
@@ -3404,6 +3459,8 @@ public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdImageColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdImageColor);
     /// <inheritdoc cref="EngineLayout.NkCmdImageH"/>
     public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdImageH);
     /// <inheritdoc cref="EngineLayout.NkCmdImageHandle"/>
@@ -3414,6 +3471,149 @@ public readonly unsafe partial struct NkCommandImage(IntPtr ptr)
     public ref short X => ref *(short*)(Ptr + EngineLayout.NkCmdImageX);
     /// <inheritdoc cref="EngineLayout.NkCmdImageY"/>
     public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdImageY);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandLine*</c>.</summary>
+public readonly unsafe partial struct NkCommandLine(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdLineColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdLineColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandPolygon*</c>.</summary>
+public readonly unsafe partial struct NkCommandPolygon(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdPolygonColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdPolygonColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandPolygonFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandPolygonFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdPolygonFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdPolygonFilledColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandPolyline*</c>.</summary>
+public readonly unsafe partial struct NkCommandPolyline(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdPolylineColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdPolylineColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandRect*</c>.</summary>
+public readonly unsafe partial struct NkCommandRect(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdRectColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandRectFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandRectFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectFilledColor);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledH"/>
+    public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdRectFilledH);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledW"/>
+    public ref ushort W => ref *(ushort*)(Ptr + EngineLayout.NkCmdRectFilledW);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledX"/>
+    public ref short X => ref *(short*)(Ptr + EngineLayout.NkCmdRectFilledX);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectFilledY"/>
+    public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdRectFilledY);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandRectMultiColor*</c>.</summary>
+public readonly unsafe partial struct NkCommandRectMultiColor(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiBottom"/>
+    public ref NkColor Bottom => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiBottom);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiLeft"/>
+    public ref NkColor Left => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiLeft);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiRight"/>
+    public ref NkColor Right => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiRight);
+    /// <inheritdoc cref="EngineLayout.NkCmdRectMultiTop"/>
+    public ref NkColor Top => ref *(NkColor*)(Ptr + EngineLayout.NkCmdRectMultiTop);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandScissor*</c>.</summary>
+public readonly unsafe partial struct NkCommandScissor(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorH"/>
+    public ref ushort H => ref *(ushort*)(Ptr + EngineLayout.NkCmdScissorH);
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorW"/>
+    public ref ushort W => ref *(ushort*)(Ptr + EngineLayout.NkCmdScissorW);
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorX"/>
+    public ref short X => ref *(short*)(Ptr + EngineLayout.NkCmdScissorX);
+    /// <inheritdoc cref="EngineLayout.NkCmdScissorY"/>
+    public ref short Y => ref *(short*)(Ptr + EngineLayout.NkCmdScissorY);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandText*</c>.</summary>
+public readonly unsafe partial struct NkCommandText(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdTextBackground"/>
+    public ref NkColor Background => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTextBackground);
+    /// <inheritdoc cref="EngineLayout.NkCmdTextForeground"/>
+    public ref NkColor Foreground => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTextForeground);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandTriangle*</c>.</summary>
+public readonly unsafe partial struct NkCommandTriangle(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdTriangleColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTriangleColor);
+}
+
+/// <summary>Typed view of an engine <c>NkCommandTriangleFilled*</c>.</summary>
+public readonly unsafe partial struct NkCommandTriangleFilled(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCmdTriangleFilledColor"/>
+    public ref NkColor Color => ref *(NkColor*)(Ptr + EngineLayout.NkCmdTriangleFilledColor);
 }
 
 /// <summary>Typed view of an engine <c>NkContext*</c>.</summary>

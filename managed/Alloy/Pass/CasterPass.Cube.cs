@@ -301,7 +301,7 @@ public sealed unsafe partial class CasterPass
         // as visible shadow pop-in; with it the churn is paid gradually while hidden, which is what the
         // pre-cull behaviour paid continuously.
         int warmBudget = 1;
-        float* dynBox = stackalloc float[DynSpheres * MoverBoxF];
+        MoverBox* dynBox = stackalloc MoverBox[DynSpheres];
         CubeDynSphereGen++;
 
         // #322 review's visibility verdict, hoisted: ONE SphereInCameraFrustum per ranked light, read below
@@ -689,10 +689,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>Fold one mover's box into at most <see cref="DynSpheres"/> AABBs (min xyz, max xyz): a new box
     /// while there is room, else the one whose squared extent grows least (which favours small boxes).
     /// Returns the box count.</summary>
-    /// <summary>Floats per mover box: min xyz, max xyz, and the lone mover's own radius (-1 once merged).</summary>
-    internal const int MoverBoxF = 7;
-
-    private static int AddMoverBox(float* b, int n, float x, float y, float z, float r)
+    private static int AddMoverBox(MoverBox* b, int n, float x, float y, float z, float r)
     {
         int at = n;
         if (n == DynSpheres)
@@ -701,21 +698,21 @@ public sealed unsafe partial class CasterPass
             float best = float.MaxValue;
             for (int i = 0; i < n; i++)
             {
-                float* e = ((MoverBox*)b)[i].V;
-                float ux = MathF.Max(e[3], x + r) - MathF.Min(e[0], x - r), uy = MathF.Max(e[4], y + r) - MathF.Min(e[1], y - r),
-                      uz = MathF.Max(e[5], z + r) - MathF.Min(e[2], z - r);
-                float ex = e[3] - e[0], ey = e[4] - e[1], ez = e[5] - e[2];
+                ref MoverBox e = ref b[i];
+                float ux = MathF.Max(e.Max.X, x + r) - MathF.Min(e.Min.X, x - r), uy = MathF.Max(e.Max.Y, y + r) - MathF.Min(e.Min.Y, y - r),
+                      uz = MathF.Max(e.Max.Z, z + r) - MathF.Min(e.Min.Z, z - r);
+                float ex = e.Max.X - e.Min.X, ey = e.Max.Y - e.Min.Y, ez = e.Max.Z - e.Min.Z;
                 float d = ux * ux + uy * uy + uz * uz - (ex * ex + ey * ey + ez * ez);
                 if (d < best) { best = d; at = i; }
             }
-            float* t = ((MoverBox*)b)[at].V;
-            t[6] = -1f;
-            t[0] = MathF.Min(t[0], x - r); t[1] = MathF.Min(t[1], y - r); t[2] = MathF.Min(t[2], z - r);
-            t[3] = MathF.Max(t[3], x + r); t[4] = MathF.Max(t[4], y + r); t[5] = MathF.Max(t[5], z + r);
+            ref MoverBox t = ref b[at];
+            t.Radius = -1f;
+            t.Min = new Vector3(MathF.Min(t.Min.X, x - r), MathF.Min(t.Min.Y, y - r), MathF.Min(t.Min.Z, z - r));
+            t.Max = new Vector3(MathF.Max(t.Max.X, x + r), MathF.Max(t.Max.Y, y + r), MathF.Max(t.Max.Z, z + r));
             return n;
         }
-        float* w = ((MoverBox*)b)[at].V;
-        w[0] = x - r; w[1] = y - r; w[2] = z - r; w[3] = x + r; w[4] = y + r; w[5] = z + r; w[6] = r;
+        ref MoverBox w = ref b[at];
+        w.Min = new Vector3(x - r, y - r, z - r); w.Max = new Vector3(x + r, y + r, z + r); w.Radius = r;
         return n + 1;
     }
 
@@ -742,7 +739,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>Publish a slot's mover spheres, each padded by <see cref="HotPad"/> for its distance from the
     /// light: the boxes' bounding spheres, or -- with no box (roaming, or no mover found) -- the light's whole
     /// reach in sphere 0, which is the conservative answer.</summary>
-    private static void WriteDynSpheres(int slot, int boxes, float* b, Vector3 pos, float far)
+    private static void WriteDynSpheres(int slot, int boxes, MoverBox* b, Vector3 pos, float far)
     {
         if (boxes == 0) HotRoam++; else HotSlots++;
         for (int i = 0; i < DynSpheres; i++)
@@ -755,13 +752,13 @@ public sealed unsafe partial class CasterPass
                 continue;
             }
             if (i >= boxes) { CubeDynSphere[k + 3] = -1f; continue; }
-            float* e = ((MoverBox*)b)[i].V;
-            float hx = (e[3] - e[0]) * 0.5f, hy = (e[4] - e[1]) * 0.5f, hz = (e[5] - e[2]) * 0.5f;
-            CubeDynSphere[k] = e[0] + hx; CubeDynSphere[k + 1] = e[1] + hy; CubeDynSphere[k + 2] = e[2] + hz;
+            ref MoverBox e = ref b[i];
+            float hx = (e.Max.X - e.Min.X) * 0.5f, hy = (e.Max.Y - e.Min.Y) * 0.5f, hz = (e.Max.Z - e.Min.Z) * 0.5f;
+            CubeDynSphere[k] = e.Min.X + hx; CubeDynSphere[k + 1] = e.Min.Y + hy; CubeDynSphere[k + 2] = e.Min.Z + hz;
             // a lone mover's box is its sphere's cube: the corner sphere (r x 1.73) tripled the shadow cone every
             // fragment under a hot light ray-tests, and with it the fragments that pay the hot path
-            float r = e[6] >= 0f ? e[6] : MathF.Sqrt(hx * hx + hy * hy + hz * hz);
-            float dx = e[0] + hx - pos.X, dy = e[1] + hy - pos.Y, dz = e[2] + hz - pos.Z, dd = dx * dx + dy * dy + dz * dz;
+            float r = e.Radius >= 0f ? e.Radius : MathF.Sqrt(hx * hx + hy * hy + hz * hz);
+            float dx = e.Min.X + hx - pos.X, dy = e.Min.Y + hy - pos.Y, dz = e.Min.Z + hz - pos.Z, dd = dx * dx + dy * dy + dz * dz;
             r += HotPad(MathF.Sqrt(dd));
             CubeDynSphere[k + 3] = r;
             HotSpheres++;

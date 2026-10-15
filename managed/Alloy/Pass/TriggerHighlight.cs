@@ -25,7 +25,7 @@ internal static unsafe class TriggerHighlight
     private const int Vec4s = PointBase + MaxPoints;
     private const uint BindTrig = SsboSlots.Trig;
 
-    private static readonly float[] _stage = new float[Vec4s * 4];
+    private static readonly Vector4[] _stage = new Vector4[Vec4s];
     private static int _count, _points;
     /// <summary>Enrolments that took at least one trigger (a non-zero highlight alpha), and draws that drew one,
     /// for the DB period line.</summary>
@@ -45,32 +45,29 @@ internal static unsafe class TriggerHighlight
         _count = 0; _points = 0;
         if (_failed) return;
         int n = Db.DbTriggers.Count;
-        fixed (float* s = _stage)
-            for (int i = 0; i < n && _count < MaxTriggers; i++)
+        for (int i = 0; i < n && _count < MaxTriggers; i++)
+        {
+            Db.DbTriggers.Entry t = Db.DbTriggers.At(i);
+            if (!t.Highlighted || !t.Half) continue;
+            float alpha = t.Colour.W;
+            if (!(alpha > 0f)) continue;
+            Vector3[] pts = t.Outline;
+            int np = pts.Length;
+            if (np < 3 || _points + np > MaxPoints) continue;
+            float zmin = float.MaxValue, zmax = float.MinValue;
+            for (int p = 0; p < np; p++)
             {
-                Db.DbTriggers.Entry t = Db.DbTriggers.At(i);
-                if (!t.Highlighted || !t.Half) continue;
-                float alpha = t.Colour.W;
-                if (!(alpha > 0f)) continue;
-                Vector3[] pts = t.Outline;
-                int np = pts.Length;
-                if (np < 3 || _points + np > MaxPoints) continue;
-                float zmin = float.MaxValue, zmax = float.MinValue;
-                for (int p = 0; p < np; p++)
-                {
-                    Vector3 w = pts[p];
-                    s[(PointBase + _points + p) * 4] = w.X;
-                    s[(PointBase + _points + p) * 4 + 1] = w.Y;
-                    zmin = MathF.Min(zmin, w.Z); zmax = MathF.Max(zmax, w.Z);
-                }
-                float h = t.Height;
-                float* hdr = ((TriggerRow*)s)[_count].V;
-                hdr[0] = _points; hdr[1] = np; hdr[2] = zmin - h; hdr[3] = zmax + h;
-                float* col = ((TriggerRow*)s)[MaxTriggers + _count].V;
-                col[0] = t.Colour.X; col[1] = t.Colour.Y; col[2] = t.Colour.Z; col[3] = alpha;
-                _points += np;
-                _count++;
+                Vector3 w = pts[p];
+                _stage[PointBase + _points + p].X = w.X;
+                _stage[PointBase + _points + p].Y = w.Y;
+                zmin = MathF.Min(zmin, w.Z); zmax = MathF.Max(zmax, w.Z);
             }
+            float h = t.Height;
+            _stage[_count] = new Vector4(_points, np, zmin - h, zmax + h);
+            _stage[MaxTriggers + _count] = t.Colour;
+            _points += np;
+            _count++;
+        }
         if (_count > 0) Enrolled++;
     }
 
@@ -81,8 +78,8 @@ internal static unsafe class TriggerHighlight
     {
         if (_count == 0 || PostChain.DepthTex == 0 || !EnsureProgram()) return;
         if (!Matrix4x4.Invert(*vp, out Matrix4x4 inv)) return;
-        fixed (float* s = _stage)
-            Gl.NamedBufferSubData(_buf, IntPtr.Zero, (IntPtr)((PointBase + _points) * 4 * sizeof(float)), s);
+        fixed (Vector4* s = _stage)
+            Gl.NamedBufferSubData(_buf, IntPtr.Zero, (IntPtr)((PointBase + _points) * sizeof(Vector4)), s);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindTrig, _buf);
         Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.HiliteDepth);
         Gl.BindTexture(Gl.TEXTURE_2D, PostChain.DepthTex);

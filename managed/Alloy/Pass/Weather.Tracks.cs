@@ -40,7 +40,7 @@ internal static unsafe partial class Weather
     internal static Knob<bool> Tracks = null!;
     internal static Knob<float> TrackFill = null!, FootSplash = null!;
 
-    private static float[]? _track;
+    private static TrackTexel[]? _track;
     /// <summary>Stamped texel rows not yet uploaded, in unwrapped texel coordinates; lo &gt; hi = none.</summary>
     private static int _trackLo = int.MaxValue, _trackHi = int.MinValue;
     private static long _trackEpoch = Stopwatch.GetTimestamp();
@@ -114,7 +114,7 @@ internal static unsafe partial class Weather
     /// at least as deep as what the texel still shows; one holding another repeat's print takes it only when
     /// that print has faded or lies farther from <paramref name="focus"/>, so a step one period away never
     /// erases the trail at the player's feet. The rows touched widen <paramref name="lo"/>..<paramref name="hi"/>.</summary>
-    internal static void Print(float[] t, Vector2 at, Vector2 h, float now, float rate, Vector2 focus, ref int lo, ref int hi)
+    internal static void Print(TrackTexel[] t, Vector2 at, Vector2 h, float now, float rate, Vector2 focus, ref int lo, ref int hi)
     {
         const float tpm = TrackSize / TrackPeriodM;
         int cx = (int)MathF.Floor(at.X * tpm), cy = (int)MathF.Floor(at.Y * tpm);
@@ -125,33 +125,33 @@ internal static unsafe partial class Weather
             float d = PrintDepth(new Vector2((gx + 0.5f) / tpm, (gy + 0.5f) / tpm) - at, h);
             if (d <= 0.01f) continue;
             int tx = FloorDiv(gx), ty = FloorDiv(gy);
-            int i = ((gy - ty * TrackSize) * TrackSize + gx - tx * TrackSize) * 4;
-            if (d < TexelShows(t, i, tx, ty, now, rate)) continue;
-            if ((t[i + 2] != tx || t[i + 3] != ty) && TexelShows(t, i, (int)t[i + 2], (int)t[i + 3], now, rate) > 0f)
+            ref TrackTexel e = ref t[(gy - ty * TrackSize) * TrackSize + gx - tx * TrackSize];
+            if (d < TexelShows(in e, tx, ty, now, rate)) continue;
+            if ((e.TileX != tx || e.TileY != ty) && TexelShows(in e, (int)e.TileX, (int)e.TileY, now, rate) > 0f)
             {
-                Vector2 held = new(((int)t[i + 2] * TrackSize + gx - tx * TrackSize + 0.5f) / tpm,
-                                   ((int)t[i + 3] * TrackSize + gy - ty * TrackSize + 0.5f) / tpm);
+                Vector2 held = new(((int)e.TileX * TrackSize + gx - tx * TrackSize + 0.5f) / tpm,
+                                   ((int)e.TileY * TrackSize + gy - ty * TrackSize + 0.5f) / tpm);
                 Vector2 mine = new((gx + 0.5f) / tpm, (gy + 0.5f) / tpm);
                 if (Vector2.DistanceSquared(held, focus) <= Vector2.DistanceSquared(mine, focus)) continue;
             }
-            t[i] = d; t[i + 1] = now; t[i + 2] = tx; t[i + 3] = ty;
+            e = new TrackTexel { Depth = d, Stamp = now, TileX = tx, TileY = ty };
             lo = Math.Min(lo, gy); hi = Math.Max(hi, gy);
         }
     }
 
-    /// <summary>What texel <paramref name="i"/> shows to a point in tile (<paramref name="tx"/>, <paramref name="ty"/>):
+    /// <summary>What texel <paramref name="e"/> shows to a point in tile (<paramref name="tx"/>, <paramref name="ty"/>):
     /// <c>CxTrackTexel</c>'s read, on the CPU.</summary>
-    private static float TexelShows(float[] t, int i, int tx, int ty, float now, float rate)
-        => t[i + 2] != tx || t[i + 3] != ty ? 0f : t[i] * Math.Clamp(1f - (now - t[i + 1]) * rate, 0f, 1f);
+    private static float TexelShows(in TrackTexel e, int tx, int ty, float now, float rate)
+        => e.TileX != tx || e.TileY != ty ? 0f : e.Depth * Math.Clamp(1f - (now - e.Stamp) * rate, 0f, 1f);
 
     private static int FloorDiv(int g) => (int)MathF.Floor(g / (float)TrackSize);
 
     /// <summary>The print depth a point shows, nearest texel: the self-check's read of what the stage will see.</summary>
-    private static float TrackAt(float[] t, Vector2 p, float now, float rate)
+    private static float TrackAt(TrackTexel[] t, Vector2 p, float now, float rate)
     {
         const float tpm = TrackSize / TrackPeriodM;
         int gx = (int)MathF.Floor(p.X * tpm), gy = (int)MathF.Floor(p.Y * tpm), tx = FloorDiv(gx), ty = FloorDiv(gy);
-        return TexelShows(t, ((gy - ty * TrackSize) * TrackSize + gx - tx * TrackSize) * 4, tx, ty, now, rate);
+        return TexelShows(in t[(gy - ty * TrackSize) * TrackSize + gx - tx * TrackSize], tx, ty, now, rate);
     }
 
     /// <summary>Per lit bind: the rows stamped since the last one go up, and the texture goes on its unit (0 while
@@ -159,7 +159,7 @@ internal static unsafe partial class Weather
     private static void BindTracks()
     {
         // allocated here, on the first snowy lit bind, never inside the footstep hook
-        if (_track == null && Tracks.V && _snow > TrackMinSnow) _track = new float[TrackSize * TrackSize * 4];
+        if (_track == null && Tracks.V && _snow > TrackMinSnow) _track = new TrackTexel[TrackSize * TrackSize];
         if (_track == null || !EnsureTrack()) { Bind(TrackUnit, 0); return; }
         if (_gl.TrackAll || _trackHi >= _trackLo) Upload();
         Bind(TrackUnit, _gl.TrackTex);
@@ -174,23 +174,23 @@ internal static unsafe partial class Weather
         Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &svRow);
         if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
         if (svRow != 0) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, 0);
-        fixed (float* p = _track)
+        if (_gl.TrackAll || _trackHi - _trackLo + 1 >= TrackSize) TrackRows(0, TrackSize);
+        else
         {
-            if (_gl.TrackAll || _trackHi - _trackLo + 1 >= TrackSize) TrackRows(p, 0, TrackSize);
-            else
-            {
-                int a = _trackLo - FloorDiv(_trackLo) * TrackSize, b = _trackHi - FloorDiv(_trackHi) * TrackSize;
-                if (a <= b) TrackRows(p, a, b - a + 1);
-                else { TrackRows(p, a, TrackSize - a); TrackRows(p, 0, b + 1); }
-            }
+            int a = _trackLo - FloorDiv(_trackLo) * TrackSize, b = _trackHi - FloorDiv(_trackHi) * TrackSize;
+            if (a <= b) TrackRows(a, b - a + 1);
+            else { TrackRows(a, TrackSize - a); TrackRows(0, b + 1); }
         }
         if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpack);
         if (svRow != 0) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, svRow);
         _gl.TrackAll = false; _trackLo = int.MaxValue; _trackHi = int.MinValue;
     }
 
-    private static void TrackRows(float* p, int row, int n)
-        => Gl.TextureSubImage2D(_gl.TrackTex, 0, 0, row, TrackSize, n, Gl.RGBA, Gl.FLOAT, ((TrackRowRec*)p)[row].V);
+    private static void TrackRows(int row, int n)
+    {
+        fixed (TrackTexel* first = _track.AsSpan(row * TrackSize))
+            Gl.TextureSubImage2D(_gl.TrackTex, 0, 0, row, TrackSize, n, Gl.RGBA, Gl.FLOAT, first);
+    }
 
     private static bool EnsureTrack()
     {
@@ -245,7 +245,7 @@ internal static unsafe partial class Weather
         check.Expect(PrintDepth(new Vector2(ToeAt, 0f), h) > 0.99f && PrintDepth(new Vector2(HeelAt, 0f), h) > 0.99f
           && PrintDepth(side * 0.08f, h) == 0f && PrintDepth(h * 0.12f, h) > 0f,
           "a print is a sole: deep at toe and heel, longer along the heading than across it");
-        var t = new float[TrackSize * TrackSize * 4];
+        var t = new TrackTexel[TrackSize * TrackSize];
         int lo = int.MaxValue, hi = int.MinValue;
         Vector2 at = new(5.03f, 7.01f);
         Print(t, at, h, 10f, 0.01f, at, ref lo, ref hi);
@@ -276,13 +276,13 @@ internal static unsafe partial class Weather
           && GlslConst(v, "CX_FOOT_LIFE") == FootLifeSec && GlslConst(v, "CX_FOOT_STAGGER") == FootStaggerSec,
           "the foot crowns live as long in the stage as the CPU keeps them");
 
-        float[]? track = _track; float snow = _snow, wet = _wet; bool en = Enabled.V; ulong sides = _sideBits;
+        TrackTexel[]? track = _track; float snow = _snow, wet = _wet; bool en = Enabled.V; ulong sides = _sideBits;
         Vector4[] foot = (Vector4[])_foot.Clone(); int next = _footNext, prints = _prints;
         // the player's cx.cfg is live here: pin every knob the path reads to its declared default
         bool tr = Tracks.V; float fill = TrackFill.V, fs = FootSplash.V, ws = WetStrength.V, ss = SnowStrength.V;
         Tracks.V = true; TrackFill.V = TrackFill.Default; FootSplash.V = FootSplash.Default; WetStrength.V = 1f; SnowStrength.V = 1f;
         _track = null; Enabled.V = true; Array.Clear(_sideId); _snow = 0f; _wet = 0f; Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
-        _track = new float[TrackSize * TrackSize * 4];
+        _track = new TrackTexel[TrackSize * TrackSize];
         FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
         check.Expect(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f) == 0f
           && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f) == 0f && FootLive(1f) == 0,
