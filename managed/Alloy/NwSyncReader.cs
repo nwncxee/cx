@@ -45,6 +45,14 @@ internal static unsafe class NwSyncReader
     /// <summary>The handler's provider slot: 0 none, 1 zlib, 2 zstd. Every live row is 2.</summary>
     private const int ProviderZstd = 2;
     /// <summary>magic + version + provider + plain size.</summary>
+    /// <summary>An NWSync blob up to its zstd frame: the NSYC header, the zstd provider's pair, then the frame.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NsycBlob
+    {
+        public int Magic, Version, Provider, Plain, ZstdTag, ZstdDict;
+        public byte Frame;
+    }
+
     private const int NsycHeader = 16;
     /// <summary>The zstd provider's own pair ahead of the frame: a format tag that must be 1, and a dictionary id.</summary>
     private const int ZstdSubHeader = 8;
@@ -493,7 +501,8 @@ internal static unsafe class NwSyncReader
             Fail("short", ref _errors, $"a {len}-byte NWSync blob cannot carry its own header");
             return false;
         }
-        int magic = *(int*)blob, version = *(int*)(blob + 4), provider = *(int*)(blob + 8), plain = *(int*)(blob + 12);
+        var hdr = (NsycBlob*)blob;
+        int magic = hdr->Magic, version = hdr->Version, provider = hdr->Provider, plain = hdr->Plain;
         if (magic != NsycMagic || version != NsycVersion)
         {
             Fail("header", ref _errors, $"NWSync blob header is magic 0x{magic:x8} version {version} (expected NSYC version {NsycVersion})");
@@ -509,14 +518,13 @@ internal static unsafe class NwSyncReader
             Fail("plainsize", ref _errors, $"NWSync blob declares a {plain}-byte resource");
             return false;
         }
-        byte* sub = blob + NsycHeader;
-        if (*(int*)sub != 1 || *(int*)(sub + 4) != 0)
+        if (hdr->ZstdTag != 1 || hdr->ZstdDict != 0)
         {
             Fail("zstdsub", ref _errors,
-                 $"zstd payload is tag {*(int*)sub} dictionary {*(int*)(sub + 4)}; this reader carries no dictionary");
+                 $"zstd payload is tag {hdr->ZstdTag} dictionary {hdr->ZstdDict}; this reader carries no dictionary");
             return false;
         }
-        byte* frame = sub + ZstdSubHeader;
+        byte* frame = &hdr->Frame;
         nuint frameLen = (nuint)(len - NsycHeader - ZstdSubHeader);
         byte* dst = (byte*)NativeMemory.Alloc((nuint)plain);
         long t0 = Stopwatch.GetTimestamp();

@@ -154,7 +154,7 @@ internal static unsafe class MeshLod
     {
         if (elemHost == null || vertHost == null || count < 3 || count % 3 != 0) return;
         if (pos.Type != Gl.FLOAT || pos.Size != 3) return;
-        ushort* src = (ushort*)(elemHost + first * 2);
+        var src = new HostIndices(elemHost, first);
         int maxI = -1;
         for (int i = 0; i < count; i++) { int v = src[i]; if (v > maxI) maxI = v; }
         int verts = maxI + 1;
@@ -169,7 +169,7 @@ internal static unsafe class MeshLod
         for (int i = 0; i < count; i++)
         {
             int v = src[i];
-            float* p = (float*)(vertHost + pos.Off + (long)(baseVertex + v) * pos.Stride);
+            float* p = new HostVertices(vertHost, pos).Floats(baseVertex + v);
             j.Pos[v * 3] = p[0]; j.Pos[v * 3 + 1] = p[1]; j.Pos[v * 3 + 2] = p[2];
         }
         _offered++;
@@ -272,8 +272,8 @@ internal static unsafe class MeshLod
         fixed (ushort* p = _mirror)
         {
             if (_uploaded < _used && _capacity >= _used)
-                Gl.NamedBufferSubData(_ebo, (IntPtr)((long)dirtyFrom * 2),
-                                 (IntPtr)((long)(_used - dirtyFrom) * 2), p + dirtyFrom);
+                fixed (ushort* tail = _mirror.AsSpan(dirtyFrom, _used - dirtyFrom))
+                    Gl.NamedBufferSubData(_ebo, (IntPtr)((long)dirtyFrom * 2), (IntPtr)((long)(_used - dirtyFrom) * 2), tail);
             else
             {
                 _capacity = _mirror.Length;

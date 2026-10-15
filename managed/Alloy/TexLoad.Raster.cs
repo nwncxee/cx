@@ -19,6 +19,16 @@ internal static unsafe partial class TexLoad
     /// <summary>The tag's place past the pixels, inside <see cref="RasterReader.TgaTagTail"/>.</summary>
     private const int RasterTagAt = 4;
 
+    /// <summary>The tag word <c>ReleaseRaster</c> reads past the <paramref name="bytes"/> pixels of a raster buffer of ours.</summary>
+    private static void TagRaster(byte* px, long bytes)
+    {
+        short tag = RasterTag;
+        MemoryMarshal.Write(new Span<byte>(px, (int)bytes + RasterTagAt + sizeof(short)).Slice((int)bytes + RasterTagAt), in tag);
+    }
+
+    private static bool HasRasterTag(byte* data, long bytes)
+        => MemoryMarshal.Read<short>(new ReadOnlySpan<byte>(data, (int)bytes + RasterTagAt + sizeof(short)).Slice((int)bytes + RasterTagAt)) == RasterTag;
+
     private static delegate* unmanaged<IntPtr, int*, int*, int*, byte*> _engRaster;
     private static IntPtr* _rasterSlot, _releaseSlot;
     private static long _rasterSwaps;
@@ -58,7 +68,7 @@ internal static unsafe partial class TexLoad
             if (read != null) NoteEngineTga(name);
             return read;
         }
-        *(short*)(px + r.Bytes + RasterTagAt) = RasterTag;
+        TagRaster(px, r.Bytes);
         *w = r.W; *h = r.H; *bpp = r.Px;
         return px;
     }
@@ -66,7 +76,7 @@ internal static unsafe partial class TexLoad
     /// <summary>From the release slot: true when the buffer is a TGA of ours, and it is freed.</summary>
     internal static bool FreeRaster(byte* data, int w, int h, int bpp)
     {
-        if (data == null || bpp == 2 || w <= 0 || h <= 0 || *(short*)(data + (long)w * h * bpp + RasterTagAt) != RasterTag) return false;
+        if (data == null || bpp == 2 || w <= 0 || h <= 0 || !HasRasterTag(data, (long)w * h * bpp)) return false;
         NativeMemory.Free(data);
         return true;
     }

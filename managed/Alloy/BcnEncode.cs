@@ -16,8 +16,13 @@ internal static unsafe class BcnEncode
 
     /// <summary>Encode one RGBA8 level into <paramref name="dst"/> (sized by <see cref="LevelSize"/>).</summary>
     internal static void EncodeLevel(byte* rgba, int w, int h, bool bc3, byte* dst)
+        => EncodeLevel(new ReadOnlySpan<byte>(rgba, w * h * 4), w, h, bc3, new Span<byte>(dst, LevelSize(w, h, bc3)));
+
+    /// <summary>The span form of <see cref="EncodeLevel(byte*, int, int, bool, byte*)"/>.</summary>
+    internal static void EncodeLevel(ReadOnlySpan<byte> src, int w, int h, bool bc3, Span<byte> @out)
     {
-        byte* px = stackalloc byte[64];
+        Span<byte> px = stackalloc byte[64];
+        int o = 0;
         for (int by = 0; by < h; by += 4)
         for (int bx = 0; bx < w; bx += 4)
         {
@@ -26,12 +31,12 @@ internal static unsafe class BcnEncode
             {
                 // clamp-sample: an edge block repeats its last row/column
                 int sx = bx + x >= w ? w - 1 : bx + x, sy = by + y >= h ? h - 1 : by + y;
-                byte* s = rgba + (sy * (long)w + sx) * 4;
-                byte* d = px + (y * 4 + x) * 4;
+                ReadOnlySpan<byte> s = src.Slice((sy * w + sx) * 4, 4);
+                Span<byte> d = px.Slice((y * 4 + x) * 4, 4);
                 d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
             }
-            if (bc3) { Bc4Block(px, dst); dst += 8; }
-            Bc1Block(px, dst); dst += 8;
+            if (bc3) { Bc4Block(px, @out.Slice(o)); o += 8; }
+            Bc1Block(px, @out.Slice(o)); o += 8;
         }
     }
 
@@ -43,7 +48,7 @@ internal static unsafe class BcnEncode
 
     /// <summary>One 4x4 colour block -&gt; 8 bytes of BC1, always in 4-colour mode (c0 &gt; c1, or equal
     /// endpoints with every index 0, whose palette is degenerate either way).</summary>
-    private static void Bc1Block(byte* px, byte* dst)
+    private static void Bc1Block(ReadOnlySpan<byte> px, Span<byte> dst)
     {
         int rMin = 255, gMin = 255, bMin = 255, rMax = 0, gMax = 0, bMax = 0;
         // Two attempts: the visible texels alone, then -- only if the block has none -- all sixteen, whose
@@ -53,7 +58,7 @@ internal static unsafe class BcnEncode
             int seen = 0;
             for (int i = 0; i < 16; i++)
             {
-                byte* p = px + i * 4;
+                ReadOnlySpan<byte> p = px.Slice(i * 4, 4);
                 if (pass == 0 && p[3] <= MatteAlpha) continue;
                 seen++;
                 if (p[0] < rMin) rMin = p[0]; if (p[0] > rMax) rMax = p[0];
@@ -76,7 +81,7 @@ internal static unsafe class BcnEncode
             int len = dr * dr + dg * dg + db * db;
             for (int i = 0; i < 16; i++)
             {
-                byte* p = px + i * 4;
+                ReadOnlySpan<byte> p = px.Slice(i * 4, 4);
                 int dot = (p[0] - rMin) * dr + (p[1] - gMin) * dg + (p[2] - bMin) * db;
                 int t = (dot * 3 + len / 2) / len;               // 0..3 along c1->c0
                 t = t < 0 ? 0 : t > 3 ? 3 : t;
@@ -88,7 +93,7 @@ internal static unsafe class BcnEncode
     }
 
     /// <summary>One 4x4 alpha block -&gt; 8 bytes of BC4, always in the 8-value (a0 &gt; a1) mode.</summary>
-    private static void Bc4Block(byte* px, byte* dst)
+    private static void Bc4Block(ReadOnlySpan<byte> px, Span<byte> dst)
     {
         int aMin = 255, aMax = 0;
         for (int i = 0; i < 16; i++)

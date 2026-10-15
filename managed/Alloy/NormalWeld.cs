@@ -49,7 +49,7 @@ internal static unsafe class NormalWeld
     {
         if (Angle <= 0f || _key == null || count < 3 || count > MaxCorners) { Refused++; return; }
         if (pos.Type != Gl.FLOAT || pos.Size != 3 || pos.Buf != nrm.Buf) { Refused++; return; }
-        ushort* idx = (ushort*)(elemHost + first * 2);
+        var idx = new HostIndices(elemHost, first);
         int minI = int.MaxValue, maxI = -1;
         for (int i = 0; i < count; i++) { int v = idx[i]; if (v < minI) minI = v; if (v > maxI) maxI = v; }
         if (maxI - minI >= MaxVerts) { Refused++; return; }
@@ -110,12 +110,12 @@ internal static unsafe class NormalWeld
         if (welded == 0) return;
         long off = nrm.Off + (long)(baseVertex + minI) * nrm.Stride;
         long span = (long)(maxI - minI) * nrm.Stride + nrm.Size * 4;
-        Gl.NamedBufferSubData(nrm.Buf, (IntPtr)off, (IntPtr)span, vertHost + off);
+        new HostShadow(vertHost).Upload(nrm.Buf, off, span);
         if (_logLeft-- > 0)
             _log?.Info($"NormalWeld: {welded} welded / {kept} kept of {maxI - minI + 1} verts ({tris} tris, {Angle:F0} deg)");
     }
 
-    private static float* P(byte* host, in VertexStream s, int v) => (float*)(host + s.Off + (long)v * s.Stride);
+    private static float* P(byte* host, in VertexStream s, int v) => new HostVertices(host, s).Floats(v);
 
     /// <summary>Parts fed from a parsed model's own post-process, and the ones that could not be.</summary>
     internal static int ModelParts, ModelRefused;
@@ -136,7 +136,7 @@ internal static unsafe class NormalWeld
         }
         long off = nrm.Off + (long)baseVertex * nrm.Stride;
         long span = (long)(vertCount - 1) * nrm.Stride + nrm.Size * 4;
-        Gl.NamedBufferSubData(nrm.Buf, (IntPtr)off, (IntPtr)span, vertHost + off);
+        new HostShadow(vertHost).Upload(nrm.Buf, off, span);
         ModelParts++;
         return true;
     }

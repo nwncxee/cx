@@ -98,32 +98,32 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
     /// kept, anything else (including N the engine owns) is ignored. Cold; allocates the entry.</summary>
     internal static void Note(IntPtr shared, byte* line)
     {
-        byte* p = line;
-        while (*p == ' ' || *p == '\t') p++;
-        if (!StartsWithTexture(p)) return;
-        p += 7;
+        int q = 0;
+        while (line[q] == ' ' || line[q] == '\t') q++;
+        if (!StartsWithTexture(line, q)) return;
+        q += 7;
         int n = 0, digits = 0;
-        while (*p >= '0' && *p <= '9' && digits < 3) { n = n * 10 + (*p - '0'); p++; digits++; }
-        if (digits == 0 || (*p != 0 && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n')) return;
+        while (line[q] >= '0' && line[q] <= '9' && digits < 3) { n = n * 10 + (line[q] - '0'); q++; digits++; }
+        if (digits == 0 || (line[q] != 0 && line[q] != ' ' && line[q] != '\t' && line[q] != '\r' && line[q] != '\n')) return;
         int s = n - First;
         if ((uint)s >= Count) return;
-        while (*p == ' ' || *p == '\t') p++;
+        while (line[q] == ' ' || line[q] == '\t') q++;
         lock (_lock)
         {
             if (!_table.TryGetValue(shared, out IntPtr ep))
                 _table[shared] = ep = (IntPtr)NativeMemory.AllocZeroed((nuint)sizeof(Entry));
-            byte* dst = ((Entry*)ep)->Names + s * NameLen;
+            Span<byte> dst = new Span<byte>(((Entry*)ep)->Names, Count * NameLen).Slice(s * NameLen, NameLen);
             int i = 0;
             // sscanf("%s") shape, as ::Parse(char const*, char*) @0x446740 does it: one whitespace-delimited token.
-            while (i < NameLen - 1 && *p > ' ') dst[i++] = *p++;
+            while (i < NameLen - 1 && line[q] > ' ') dst[i++] = line[q++];
             dst[i] = 0;
         }
     }
 
-    private static bool StartsWithTexture(byte* p)
+    private static bool StartsWithTexture(byte* line, int at)
     {
         const string k = "texture";
-        for (int i = 0; i < k.Length; i++) if ((p[i] | 0x20) != k[i]) return false;
+        for (int i = 0; i < k.Length; i++) if ((line[at + i] | 0x20) != k[i]) return false;
         return true;
     }
 
@@ -133,17 +133,20 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
     {
         // Names are copied out so the engine's texture load (disk, NWSync) runs with the lock released: the
         // stage workers take it per owned part, and a load edge must not stall a colour frame.
-        byte* names = stackalloc byte[Count * NameLen];
+        Span<byte> names = stackalloc byte[Count * NameLen];
         lock (_lock)
         {
             if (!_table.TryGetValue(shared, out var ep)) return;
-            Buffer.MemoryCopy(((Entry*)ep)->Names, names, Count * NameLen, Count * NameLen);
+            new ReadOnlySpan<byte>(((Entry*)ep)->Names, Count * NameLen).CopyTo(names);
         }
         for (int s = 0; s < Count; s++)
         {
-            byte* name = names + s * NameLen;
-            if (*name == 0) continue;
-            IntPtr tex = _loadTexture(name);
+            IntPtr tex;
+            fixed (byte* name = names.Slice(s * NameLen, NameLen))
+            {
+                if (*name == 0) continue;
+                tex = _loadTexture(name);
+            }
             IntPtr old;
             lock (_lock)
             {
@@ -182,7 +185,8 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
         lock (_lock)
         {
             if (!_table.TryGetValue(shared, out var ep)) return "";
-            return Marshal.PtrToStringAnsi((IntPtr)(((Entry*)ep)->Names + s * NameLen)) ?? "";
+            fixed (byte* nm = new Span<byte>(((Entry*)ep)->Names, Count * NameLen).Slice(s * NameLen, NameLen))
+                return Marshal.PtrToStringAnsi((IntPtr)nm) ?? "";
         }
     }
 
