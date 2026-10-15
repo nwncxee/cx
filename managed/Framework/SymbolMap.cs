@@ -464,11 +464,28 @@ internal static unsafe class SymbolMap
     /// xmm1 = b*/, CExoString* font /*rdx*/, int bg /*ecx*/)</c>; font <c>fnt_floaty_smal</c> = number, "" = banner.</summary>
     [Fn("void(CNWCObject this, IntPtr text, VectorArg colour, IntPtr font, int background)")]
     public const string ShowFloatyText = "_ZN10CNWCObject14ShowFloatyTextE10CExoString6VectorS0_i";
-    /// <summary>CTlkTable::GetSimpleString(unsigned int) @0x541fe0 -- strref to text. Returns a CExoString by
-    /// value, i.e. <b>sret</b>: <c>(CExoString* out /*rdi*/, CTlkTable* this /*rsi*/, uint strref /*edx*/)</c>,
-    /// and the buffer it writes is CALLER-OWNED (zero the struct first, free it after). Used once, cold, to
-    /// resolve the two critical-hit strrefs the client formats its crit banner from.</summary>
+    /// <summary>CTlkTable::GetSimpleString(unsigned int) @0x541fe0 -- strref to text, through the server's overrides
+    /// and custom TLK. Returns a CExoString by value (<b>sret</b>); the buffer it writes is CALLER-OWNED (zero the
+    /// struct first, free it with <see cref="ExoStringDtor"/>).</summary>
+    [Fn("sret(CTlkTable this, uint strref)")]
     public const string TlkGetSimpleString = "_ZN9CTlkTable15GetSimpleStringEj";
+    /// <summary>CTlkTable::SetOverride(uint strref, CExoString const&amp;) -- the server's text for one strref. Hooked
+    /// only to learn that a resolved string may have changed.</summary>
+    [Fn("void(IntPtr self, uint strref, IntPtr text)")]
+    public const string TlkSetOverride = "_ZN9CTlkTable11SetOverrideEjRK10CExoString";
+    /// <summary>CTlkTable::ClearOverrides() -- drops every server text. Hooked like <see cref="TlkSetOverride"/>.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string TlkClearOverrides = "_ZN9CTlkTable14ClearOverridesEv";
+    /// <summary>CTlkTable::OpenFileAlternate(CExoString const&amp;) -- opens a module's custom TLK. Hooked like
+    /// <see cref="TlkSetOverride"/>.</summary>
+    [Fn("int(IntPtr self, IntPtr file)")]
+    public const string TlkOpenFileAlternate = "_ZN9CTlkTable17OpenFileAlternateERK10CExoString";
+    /// <summary>CTlkTable::CloseFileAlternate() -- closes the custom TLK. Hooked like <see cref="TlkSetOverride"/>.</summary>
+    [Fn("void(IntPtr self)")]
+    public const string TlkCloseFileAlternate = "_ZN9CTlkTable18CloseFileAlternateEv";
+    /// <summary>CTlkTable::Reload() -- re-reads the base TLK (a language change). Hooked like <see cref="TlkSetOverride"/>.</summary>
+    [Fn("int(IntPtr self)")]
+    public const string TlkReload = "_ZN9CTlkTable6ReloadEv";
 
     /// <summary>RenderInterface::GetViewPort(float*) @0x45d0b0 -- tail-jumps to GLRender::GetViewPort, which
     /// widens the four ints of <c>GLRender::m_viewport</c> into the caller's float[4] {x, y, w, h}. The same
@@ -3083,6 +3100,11 @@ internal static unsafe class SymbolMap
         //     arrives as a pointer; a by-value CExoString is the callee's to destroy. ---
         [TlkTable]           = Nm("?g_pTlkTable@@3PEAVCTlkTable@@EA"),
         [TlkGetSimpleString] = Nm("?GetSimpleString@CTlkTable@@QEAA?AVCExoString@@I@Z"),
+        [TlkSetOverride]     = Nm("?SetOverride@CTlkTable@@QEAAXIAEBVCExoString@@@Z"),
+        [TlkClearOverrides]  = Nm("?ClearOverrides@CTlkTable@@QEAAXXZ"),
+        [TlkOpenFileAlternate] = Nm("?OpenFileAlternate@CTlkTable@@QEAAHAEBVCExoString@@@Z"),
+        [TlkCloseFileAlternate] = Nm("?CloseFileAlternate@CTlkTable@@QEAAXXZ"),
+        [TlkReload]          = Nm("?Reload@CTlkTable@@QEAAHXZ"),
         [GetViewPort]        = Nm("?GetViewPort@RenderInterface@@SAXPEAM@Z"),
         [GetGameObject]      = At(),
         [GetObjectName]      = At(),

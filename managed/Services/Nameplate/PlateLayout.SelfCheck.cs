@@ -455,10 +455,32 @@ public static partial class PlateLayout
         check.Expect(yo == 0f && lp == 0f, "losing the push absorbs back the other way");
 
         // ---- Bands + reaction ----
-        check.Expect(BandText(0) == "Uninjured" && BandText(5) == "Dead", "band table ends are the spec strings");
-        check.Expect(BandText(2) == "Injured", "band table middle is the spec string");
-        check.Expect(BandText(-1) == "Uninjured" && BandText(99) == "Dead", "out-of-range band index clamps");
-        check.Expect(ReferenceEquals(BandText(1), BandText(1)), "band text is a cached string, not built per call");
+        string[] stock = StockBandTexts;
+        check.Expect(BandText(stock, 0) == "Uninjured" && BandText(stock, 5) == "Dead", "band table ends are the game's own words");
+        check.Expect(BandText(stock, 2) == "Injured" && BandText(stock, 3) == "Heavily Wounded", "the stock fourth band is the game's Heavily Wounded");
+        check.Expect(BandText(stock, -1) == "Uninjured" && BandText(stock, 99) == "Dead", "out-of-range band index clamps");
+        check.Expect(ReferenceEquals(BandText(stock, 1), BandText(stock, 1)), "band text is a cached string, not built per call");
+
+        // ---- BandCaptions: what the client's table resolved to ----
+        string[] got = BandCaptions(new string?[] { "Fine", "", "   ", null, " Hurt ", "Gone" });
+        check.Expect(got.Length == BandCount, "one caption per band");
+        check.Expect(got[0] == "Fine" && got[5] == "Gone", "a resolved caption is shown as the table gave it");
+        check.Expect(got[1] == "" && got[2] == "", "a blank or whitespace-only caption stays empty, the server chose no word");
+        check.Expect(got[3] == "Heavily Wounded", "a failed lookup falls back to the stock word");
+        check.Expect(got[4] == "Hurt", "a caption loses its stray edge spaces");
+        string[] shortGot = BandCaptions(new string?[] { "Only" });
+        check.Expect(shortGot[0] == "Only" && shortGot[1] == "Barely Injured" && shortGot[5] == "Dead", "bands past a short answer take the stock words");
+        check.Expect(BandCaptions(new string?[] { null, null, null, null, null, null })[3] == "Heavily Wounded", "an all-failed lookup is the stock set");
+        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine" && BandText(got, 12) == "Gone", "a live caption set clamps like the stock one");
+
+        // ---- A blank caption measures no width ----
+        PlateMetrics withBlank = Measure(40f, 1, 0f, false, true, false, 10f, 1f);
+        PlateMetrics noBand = Measure(40f, 1, 0f, false, false, false, 10f, 1f);
+        check.Expect(Near(withBlank.W, noBand.W), "a blank band caption does not widen the plate");
+        check.Expect(Near(withBlank.H - noBand.H, 10f), "a blank band caption keeps its line, where a spliced override can sit");
+        PlateMetrics wideBand = Measure(40f, 1, 90f, false, true, false, 10f, 1f);
+        check.Expect(Near(wideBand.W - withBlank.W, 50f), "a caption wider than the name widens the plate by the difference");
+
         var b0 = BandColor(0);
         check.Expect(Near(b0.r, 128f / 255f) && Near(b0.g, 1f) && Near(b0.b, 128f / 255f), "band 0 colour");
         var b4 = BandColor(4);

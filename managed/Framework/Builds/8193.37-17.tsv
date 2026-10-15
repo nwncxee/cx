@@ -602,6 +602,7 @@ offset	CTwoDimArrays	footstepSounds	0x200	0x200	# TwoDimFootstepSounds
 offset	CTwoDimArrays	visualEffects	0x280	0x280	# TwoDimVisualEffects
 offset	CTwoDimArrays	cloakModel	0x1d8	0x1d8	# TwoDimCloakModel
 offset	CTwoDimArrays	itemVisualEffects	0x260	0x260	# TwoDimItemVisualEffects
+offset	CTwoDimArrays	damageLevels	0x238	0x238	# TwoDimDamageLevels
 offset	C2DA	rows	0x50	0x50	# TwoDaRows
 offset	CNWCObject	areaPtr	0x30	0x30	# ObjAreaPtr
 offset	CNWCObject	footstepSkip	0x108	0x108	# ObjFootstepSkip

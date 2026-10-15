@@ -134,14 +134,16 @@ Offsets (all verified in CX-179):
 - `*g_pAppManager` → `+8` = `CClientExoAppInternal`; `+0x180` word: **bit 0** = the
   "show mouse-over feedback" option, **bit 1** = Tab currently held. Two derefs.
 
-Health bands, index = `stats[0x8e]`:
+Health bands, index = `stats[0x8e]`. The text column is the stock wording; the plate shows what the client's
+`damagelevels.2da` `STRING_REF` cell resolves to through the TLK (a blank result draws no caption), and falls
+back to these words only when the lookup fails:
 
 | idx | text | colour |
 | --- | --- | --- |
 | 0 | Uninjured | 128,255,128 |
 | 1 | Barely Injured | 200,255,1 |
 | 2 | Injured | 255,200,1 |
-| 3 | Badly Wounded | 255,100,1 |
+| 3 | Heavily Wounded | 255,100,1 |
 | 4 | Near Death | 255,80,64 |
 | 5 | Dead | 128,128,128 |
 

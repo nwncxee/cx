@@ -205,6 +205,11 @@ public static unsafe partial class EngineLayout
     /// <c>*(byte*)(stats + 0x8e)</c> to pick the injury line's colour on both builds.</summary>
     public static readonly int StatsDamage = Field<byte>("CNWCCreatureStats", "damage");
 
+    /// <summary>The 2DA table -&gt; <c>damagelevels.2da</c> (+0x238 on both builds): <c>CNWCCreature::ShowFeedbackBubbleText</c>
+    /// (Linux @0x71a800, Windows rva 0x80b240) reads it as <c>*(*(g_pRules + 0x130) + 0x238)</c> and takes the
+    /// <c>STRING_REF</c> cell of the row the damage byte names.</summary>
+    public static readonly int TwoDimDamageLevels = Field<IntPtr>("CTwoDimArrays", "damageLevels");
+
     /// <summary>CNWCCreatureStats: current HP (temporary excluded), temporary HP and max HP, shorts. One
     /// creature-update flag is their only writer (Linux nm @0x7a1550, Windows rva 0x781e80: four
     /// <c>ReadSHORT</c>s beside <c>CPanelPartyBar::SetMemberHealth</c>), and the server sends it for the

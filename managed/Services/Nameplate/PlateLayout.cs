@@ -68,8 +68,10 @@ public static partial class PlateLayout
     /// <summary>Number of health bands (<c>CNWCCreatureStats + 0x8e</c> is 0..5).</summary>
     public const int BandCount = 6;
 
-    private static readonly string[] BandTexts =
-        { "Uninjured", "Barely Injured", "Injured", "Badly Wounded", "Near Death", "Dead" };
+    /// <summary>The stock caption of each band: <c>damagelevels.2da</c>'s words in the game's own TLK. The plate
+    /// shows these only where the client's table cannot be read.</summary>
+    public static readonly string[] StockBandTexts =
+        { "Uninjured", "Barely Injured", "Injured", "Heavily Wounded", "Near Death", "Dead" };
 
     /// <summary>Band colours as flat 0..255 (r,g,b) triplets in band order; normalised by
     /// <see cref="BandColor"/>.</summary>
@@ -649,10 +651,22 @@ public static partial class PlateLayout
         return BandFill[b];
     }
 
-    /// <summary>Health-band caption. Out-of-range indices clamp to the nearest band; the returned string is a
-    /// cached literal, never built (hot path).</summary>
-    public static string BandText(int band) =>
-        BandTexts[band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band];
+    /// <summary>One caption per band from what the client's table resolved to: a null entry (the lookup failed)
+    /// takes the stock word, a blank one stays <c>""</c> (the server chose no caption), anything else is trimmed.
+    /// Cold: allocates the array once per resolve. Missing trailing entries count as failed lookups.</summary>
+    public static string[] BandCaptions(ReadOnlySpan<string?> resolved)
+    {
+        var captions = new string[BandCount];
+        for (int i = 0; i < BandCount; i++)
+            captions[i] = i >= resolved.Length || resolved[i] is not { } r ? StockBandTexts[i] : r.Trim();
+        return captions;
+    }
+
+    /// <summary>Health-band caption from <paramref name="captions"/> (<see cref="BandCaptions"/> or
+    /// <see cref="StockBandTexts"/>). Out-of-range indices clamp to the nearest band; the returned string is a
+    /// cached one, never built (hot path), and may be empty.</summary>
+    public static string BandText(string[] captions, int band) =>
+        captions[band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band];
 
     /// <summary>Name colour by reaction byte (<c>CNWCCreature + 0x3a8</c>): 1 friend green, 2 enemy red,
     /// anything else neutral blue. 0..1.</summary>
