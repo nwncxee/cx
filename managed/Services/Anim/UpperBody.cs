@@ -11,9 +11,9 @@ namespace CX.Services.Anim;
 
 /// <summary>
 /// Lean, aim, look-at sharing and hit reactions, a <see cref="PoseService"/> module. Every one is a small rotation of
-/// <c>torso_g</c> (a child of the root, so the legs and foot placement are untouched), summed as one axis-angle vector
+/// the torso (a child of the root, so the legs and foot placement are untouched), summed as one axis-angle vector
 /// in the character's frame: <c>R</c> = radians about the character's right (positive tips the top back), <c>F</c> =
-/// about its forward (positive tips it right). <c>neck_g</c> takes back half the lean and adds a share of a hit.
+/// about its forward (positive tips it right). The neck takes back half the lean and adds a share of a hit.
 /// </summary>
 internal static unsafe class UpperBody
 {
@@ -219,7 +219,7 @@ internal static unsafe class UpperBody
 
     /// <summary>Hands <see cref="TorsoYaw"/>/<see cref="NeckYaw"/> of the head's turn to the torso and neck (about the
     /// neck's own up and right axes) and rewrites the head's local so its world rotation -- where it looks -- is
-    /// unchanged: the engine's own look-at turns <c>head_g</c> alone, up to <c>HEAD_ARC_H</c> (60° for playable races).
+    /// unchanged: the engine's own look-at turns the <c>HEAD_NAME</c> node alone, up to <c>HEAD_ARC_H</c> (60° for playable races).
     /// Runs before <see cref="Write"/>, which the head then follows as a child.</summary>
     internal static void ShareLook(in PoseService.Bones b, float yaw, float pitch)
     {

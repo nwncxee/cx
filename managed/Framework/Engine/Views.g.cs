@@ -154,6 +154,7 @@ global using unsafe AreaLoadAreaFn = delegate* unmanaged<nint, nint, nint, int>;
 global using unsafe AreaAddPlaceableStaticFn = delegate* unmanaged<nint, uint, ushort, CX.Engine.VectorArg, CX.Engine.VectorArg, int>;
 global using unsafe C2DAGetCExoStringEntryFn = delegate* unmanaged<nint, int, nint, nint, int>;
 global using unsafe C2DAGetINTEntryFn = delegate* unmanaged<nint, int, nint, int*, int>;
+global using unsafe TwoDimGetCached2DAFn = delegate* unmanaged<nint, nint, int, nint>;
 global using unsafe AreaGetSurfaceMaterialFn = delegate* unmanaged<nint, CX.Engine.VectorArg, int>;
 global using unsafe SoundPlay3DOneShotFn = delegate* unmanaged<nint, byte*, CX.Engine.VectorArg, float, byte, uint, byte, void>;
 global using unsafe MaterialInitializeTexturesFn = delegate* unmanaged<nint, nint, nint, nint, nint, void>;
@@ -3417,6 +3418,8 @@ public readonly unsafe ref partial struct Model(IntPtr ptr)
     public ref float AnimScale => ref *(float*)(Ptr + EngineLayout.MdlcModelAnimScale);
     /// <inheritdoc cref="EngineLayout.MdlcModelAnims"/>
     public ref IntPtr Anims => ref *(IntPtr*)(Ptr + EngineLayout.MdlcModelAnims);
+    /// <inheritdoc cref="EngineLayout.ModelName"/>
+    public ref byte Name => ref *(byte*)(Ptr + EngineLayout.ModelName);
     /// <inheritdoc cref="EngineLayout.NodeOwnerFlags"/>
     public ref byte OwnerFlags => ref *(byte*)(Ptr + EngineLayout.NodeOwnerFlags);
     /// <inheritdoc cref="EngineLayout.MdlParseModelRoot"/>
@@ -5475,6 +5478,10 @@ public static unsafe class EngineFn
     private static bool _C2DAGetINTEntryDone;
     /// <inheritdoc cref="SymbolMap.C2DAGetINTEntry"/>
     public static C2DAGetINTEntryFn C2DAGetINTEntry => (C2DAGetINTEntryFn)(_C2DAGetINTEntryDone ? _C2DAGetINTEntry : Resolve(ref _C2DAGetINTEntry, ref _C2DAGetINTEntryDone, SymbolMap.C2DAGetINTEntry));
+    private static IntPtr _TwoDimGetCached2DA;
+    private static bool _TwoDimGetCached2DADone;
+    /// <inheritdoc cref="SymbolMap.TwoDimGetCached2DA"/>
+    public static TwoDimGetCached2DAFn TwoDimGetCached2DA => (TwoDimGetCached2DAFn)(_TwoDimGetCached2DADone ? _TwoDimGetCached2DA : Resolve(ref _TwoDimGetCached2DA, ref _TwoDimGetCached2DADone, SymbolMap.TwoDimGetCached2DA));
     private static IntPtr _AreaGetSurfaceMaterial;
     private static bool _AreaGetSurfaceMaterialDone;
     /// <inheritdoc cref="SymbolMap.AreaGetSurfaceMaterial"/>
@@ -7784,6 +7791,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.C2DAGetINTEntry"/>; returns the slot holding the next layer, or null.</summary>
     public static C2DAGetINTEntryFn* ChainC2DAGetINTEntry(this HookService h, C2DAGetINTEntryFn handler, int priority) =>
         (C2DAGetINTEntryFn*)h.Chain(SymbolMap.C2DAGetINTEntry, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.TwoDimGetCached2DA"/>; returns the original, or null.</summary>
+    public static TwoDimGetCached2DAFn InstallTwoDimGetCached2DA(this HookService h, TwoDimGetCached2DAFn handler) =>
+        (TwoDimGetCached2DAFn)h.Install(SymbolMap.TwoDimGetCached2DA, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.TwoDimGetCached2DA"/>; returns the slot holding the next layer, or null.</summary>
+    public static TwoDimGetCached2DAFn* ChainTwoDimGetCached2DA(this HookService h, TwoDimGetCached2DAFn handler, int priority) =>
+        (TwoDimGetCached2DAFn*)h.Chain(SymbolMap.TwoDimGetCached2DA, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.AreaGetSurfaceMaterial"/>; returns the original, or null.</summary>
     public static AreaGetSurfaceMaterialFn InstallAreaGetSurfaceMaterial(this HookService h, AreaGetSurfaceMaterialFn handler) =>
         (AreaGetSurfaceMaterialFn)h.Install(SymbolMap.AreaGetSurfaceMaterial, (IntPtr)handler);

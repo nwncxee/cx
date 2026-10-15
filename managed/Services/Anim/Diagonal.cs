@@ -11,7 +11,7 @@ namespace CX.Services.Anim;
 /// Diagonal moves and turns, a <see cref="PoseService"/> module (<c>anim.diagonal</c>, <c>anim.pivot</c>). A forward
 /// diagonal (<c>pausewalkfl/fr</c>, <c>runfl/fr</c>, 0x54..0x57) plays the straight walk or run instead, swapped by id
 /// inside <c>CNWCAnimBase::GetAnimationName</c> so the length, the pacing and a module's <c>ReplaceObjectAnimation</c>
-/// all follow; the hips (<c>pelvis_g</c>) then spring toward the travel over a planted foot, the chest taking <see cref="UpperShare"/>.
+/// all follow; the hips then spring toward the travel over a planted foot, the chest taking <see cref="UpperShare"/>.
 /// </summary>
 internal static unsafe class Diagonal
 {

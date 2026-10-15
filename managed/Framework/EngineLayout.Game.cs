@@ -265,6 +265,9 @@ public static unsafe partial class EngineLayout
     /// <c>Gob::EndLookAtAnimate</c> reads it and calls a virtual on it at the same offset on both builds (Linux
     /// nm @0x4979e0, Windows rva 0x50eb0, name-exported <c>?EndLookAtAnimate@Gob@@UEAAXXZ</c>).</summary>
     public static readonly int GobLookAt = Field<CX.Engine.LookAtAnimation>("Gob", "lookAt");
+    /// <summary>Model -&gt; its name, MaxTree's <c>char[64]</c>: what the model file states. <c>Gob::GetModelName</c>
+    /// (Linux nm @0x537270, Windows rva 0x8f410, name-exported) answers <c>*(gob+0x68) + 0x10</c> on both builds.</summary>
+    public static readonly int ModelName = Field<byte>("Model", "name");
     /// <summary><c>sizeof(CPanelOkCancel)</c>: the <c>operator new</c> argument in the engine's own spawn path
     /// -- Linux <c>COptionsPanel::HandleQuitClick</c> nm @0x6b9800 allocates 0x3a0, the Windows ExitButton twins
     /// (rva 0x7103a0, 0x84f480) allocate 0x360. The wrong size and the ctor/dtor touch out-of-bounds

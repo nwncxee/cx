@@ -59,6 +59,7 @@ offset	Gob	envOverride	0x480	0x480	# GobEnvOverride
 offset	Model	anims	0x98	0x98	# MdlcModelAnims
 offset	Model	animCount	0xa0	0xa0	# MdlcModelAnimCount
 offset	Model	super	0xa8	0xa8	# MdlcModelSuper
+offset	Model	name	0x10	0x10	# ModelName
 offset	Model	animScale	0xcc	0xcc	# MdlcModelAnimScale
 offset	Model	ownerFlags	0x8e	0x92	# NodeOwnerFlags
 offset	MdlNode	parent	0x60	0x60	# MdlNodeParent

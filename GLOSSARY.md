@@ -476,3 +476,15 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 - **Hold budget** — the `lightmap.hold` seconds after which the hold offers a skip. 0 = no hold.
 - **Hard cap** — the fixed ceiling past which the hold always releases, set by the server's own
   readiness deadline. Not a knob: a safety ceiling nobody tunes.
+
+## Animation
+
+- **Rig map** — `cx_rig.2da`, the content file that tells the pose layer (foot IK, foot lock, upper-body
+  follow, the other corrections) which node is which bone on a skeleton whose names are not the stock
+  biped's. One row per skeleton model: a `MODEL` column holding its resref, matched against the body's
+  model and then each supermodel in turn, and one column per bone — `RTHIGH RSHIN RFOOT LTHIGH LSHIN
+  LFOOT PELVIS TORSO NECK RBICEP RFOREARM RHAND LBICEP LFOREARM LHAND`; `****` or a missing column is
+  no such bone. Resolved like any 2DA, so a hak or NWSync copy wins. No file or no row keeps the stock
+  names (`rthigh_g` ...); a body with neither gets no correction. The head is not in it: like the
+  engine's own look-at, CX takes `appearance.2da`'s `HEAD_NAME`, `head_g` when that is blank. Never
+  inferred from a stock 2DA's rows (`capart.2da` says where a piece attaches, not what the node is).

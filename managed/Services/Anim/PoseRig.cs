@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
 using CX.Alloy.Seam;
@@ -109,15 +111,16 @@ internal static unsafe class PoseRig
         return !look.IsNull && look.Finished == 0;
     }
 
-    /// <summary>Every bone the body's part range names, first match wins. DB mode scans the range by node name.</summary>
-    internal static void FindBones(IntPtr gob, IntPtr root, ref PoseService.Bones bones)
+    /// <summary>Every bone the body's part range names by <paramref name="rig"/>'s names, first match wins. DB mode
+    /// scans the range by node name.</summary>
+    internal static void FindBones(IntPtr gob, IntPtr root, byte[][] rig, ref PoseService.Bones bones)
     {
-        if (!Db) { PoseService.FindBones(root, ref bones, 0); return; }
-        FindBones(Obj(gob), ref bones);
+        if (!Db) { PoseService.FindBones(root, rig, ref bones, 0); return; }
+        FindBones(Obj(gob), rig, ref bones);
     }
 
-    /// <inheritdoc cref="FindBones(IntPtr, IntPtr, ref PoseService.Bones)"/>
-    internal static void FindBones(DbId o, ref PoseService.Bones bones)
+    /// <inheritdoc cref="FindBones(IntPtr, IntPtr, byte[][], ref PoseService.Bones)"/>
+    internal static void FindBones(DbId o, byte[][] rig, ref PoseService.Bones bones)
     {
         if (o.IsNull) return;
         int first = SceneDb.ObjPartFirst[o.Index], n = SceneDb.ObjPartCount[o.Index];
@@ -131,13 +134,37 @@ internal static unsafe class PoseRig
             if (s.Length > MaxName) continue;
             for (int k = 0; k < s.Length; k++) name[k] = (byte)s[k];
             name[s.Length] = 0;
-            int bone = PoseService.BoneIndex(name);
+            int bone = PoseService.BoneIndex(name, rig);
             if (bone >= 0 && bones[bone] == IntPtr.Zero) bones[bone] = Handle(p);
         }
     }
 
-    /// <summary>Longest node name tested as a bone: the longest bone name is 10.</summary>
+    /// <summary>Longest node name tested as a bone: an MDL node name is a <c>char[32]</c>.</summary>
     private const int MaxName = 31;
+
+    /// <summary>The body's model name as a <see cref="RigMap"/> cache key; zero for no model.</summary>
+    internal static (ulong, ulong) ModelKey(IntPtr gob)
+    {
+        if (!Db) { Model m = new Gob(gob).Node; return m.IsNull ? default : RigMap.Key(m.Chars); }
+        DbId o = Obj(gob);
+        return o.IsNull || SceneDb.ObjModel[o.Index] is not { } d ? default : RigMap.Key(d.Name);
+    }
+
+    /// <summary>The body's model and its supermodels' names, nearest first. Cold: it allocates.</summary>
+    internal static List<string> ModelChain(IntPtr gob)
+    {
+        var chain = new List<string>();
+        if (!Db)
+        {
+            for (Model m = new Gob(gob).Node; !m.IsNull && chain.Count < RigMap.MaxChain; m = m.Super)
+                chain.Add(Marshal.PtrToStringAnsi((IntPtr)m.Chars) ?? "");
+            return chain;
+        }
+        DbId o = Obj(gob);
+        for (ModelDef? d = o.IsNull ? null : SceneDb.ObjModel[o.Index]; d != null && chain.Count < RigMap.MaxChain; d = d.Super)
+            chain.Add(d.Name);
+        return chain;
+    }
 
     /// <summary>Runs on the body's queue, oldest first and newest last as the engine lists them.</summary>
     internal static int RunCount(IntPtr gob) => Db ? DbAnim.RunCount(Obj(gob)) : new Gob(gob).RunCount;
