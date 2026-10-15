@@ -19,7 +19,7 @@ editor. The compiler sees types, so it can tell a pointer plus an integer from a
    symbol is a rule in `tools/analyzers/`, the repository's own analyzer. `managed/.editorconfig` makes both
    errors. A gate is for what the compiler cannot see: comments, file sizes, shaders, docs.
 2. **CX0001: only `managed/Framework/` adds an offset to a pointer.** Anywhere else, `p + n`, `p - n`,
-   `p += n` and `p++` on a pointer or an `IntPtr` fail the build, and so do `(nint)p + n`, `((float*)&v)[i]`, `&p[i]` and
+   `p += n` and `p++` on a pointer or an `IntPtr` fail the build, and so do `(nint)p + n`, `(long)p`, `((float*)&v)[i]`, `((float*)p)[k]`, `&p[i]` and
    `Unsafe.AsPointer(ref p[i])`. Read engine memory through a field on a view
    (`Field<T>` rows and `Views.g.cs`). Give other memory a container of its own: a view under
    `Framework/Engine/`, an unmanaged struct, or a `Span<T>`. Reading a value as `px[i]` is allowed. A bounds-checked span is a container too: slicing one, pinning the slice
