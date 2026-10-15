@@ -30,7 +30,7 @@ public struct NuiRgba
 public unsafe struct NuiCmdBlock
 {
     /// <summary>Bytes per slot, enough for the largest command's fields.</summary>
-    public const int Size = 0x50;
+    public const int Size = 80;
     /// <summary>The slot's bytes.</summary>
     public fixed byte B[Size];
 }

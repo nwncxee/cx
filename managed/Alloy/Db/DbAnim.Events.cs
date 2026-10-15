@@ -12,7 +12,7 @@ namespace CX.Alloy.Db;
 public static unsafe partial class DbAnim
 {
     /// <summary>Longest event name a callback block holds, less the terminator.</summary>
-    private const int CbNameMax = 0x1f;
+    private const int CbNameMax = 31;
     /// <summary>Callbacks one object may hold. The engine's array grows without bound; a creature registers
     /// twelve and the attach behaviour six more on its parent.</summary>
     private const int MaxCallbacks = 32;
