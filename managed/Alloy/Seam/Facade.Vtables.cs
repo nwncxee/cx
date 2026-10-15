@@ -81,16 +81,17 @@ public static unsafe partial class Facade
             : (nint)(delegate* unmanaged<nint, Quad>)&PoisonQuad;
 
         int missing = 0;
-        nint cursor = _tableBase;
+        var slots = new Span<nint>(block, words);
+        int cursor = 0;
         foreach (SeamTable t in tables)
         {
             nint zero = Refusal(t);
             ReadOnlySpan<short> order = SeamVtables.Order(t);
-            ((nint*)cursor)[0] = SeamVtables.OffsetToTop(t);
-            ((nint*)cursor)[1] = 0;
-            nint point = cursor + 2 * sizeof(nint);
-            _table[(int)t] = point;
-            PointBit(point);
+            slots[cursor] = SeamVtables.OffsetToTop(t);
+            slots[cursor + 1] = 0;
+            int point = cursor + 2;
+            _table[(int)t] = (nint)Unsafe.AsPointer(ref slots[point]);
+            PointBit(_table[(int)t]);
             var unfilled = new StringBuilder();
             for (int s = 0; s < order.Length; s++)
             {
@@ -106,25 +107,25 @@ public static unsafe partial class Facade
                         unfilled.Append(SeamVtables.Name(logical));
                     }
                 }
-                ((nint*)point)[s] = fn;
+                slots[point + s] = fn;
             }
             if (unfilled.Length > 0 && census)
                 log.Always($"seam: {t} has unimplemented slots, each a counted refusal when called: {unfilled}");
-            cursor = point + order.Length * sizeof(nint);
+            cursor = point + order.Length;
 
             // The poison twin, laid out right after: same offset-to-top so a sub-object pointer still
             // normalises, same length so a slot index cannot run past it, every entry a refusal.
-            ((nint*)cursor)[0] = SeamVtables.OffsetToTop(t);
-            ((nint*)cursor)[1] = 0;
-            nint pPoint = cursor + 2 * sizeof(nint);
-            _poison[(int)t] = pPoint;
-            PointBit(pPoint);
+            slots[cursor] = SeamVtables.OffsetToTop(t);
+            slots[cursor + 1] = 0;
+            int pPoint = cursor + 2;
+            _poison[(int)t] = (nint)Unsafe.AsPointer(ref slots[pPoint]);
+            PointBit(_poison[(int)t]);
             for (int s2 = 0; s2 < order.Length; s2++)
             {
                 int logical = order[s2];
-                ((nint*)pPoint)[s2] = logical >= 0 && SeamVtables.ByValue(logical) ? byValue : zero;
+                slots[pPoint + s2] = logical >= 0 && SeamVtables.ByValue(logical) ? byValue : zero;
             }
-            cursor = pPoint + order.Length * sizeof(nint);
+            cursor = pPoint + order.Length;
         }
         _built = true;
         if (census) log.Info($"seam: {tables.Length} vtables built for {(OperatingSystem.IsWindows() ? "Windows" : "Linux")} slot order, "

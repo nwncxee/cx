@@ -141,7 +141,7 @@ internal static unsafe class CameraSlots
     /// reaches as the literal <c>camera + 8</c>. Returning the same address is what keeps the two routes
     /// consistent.</summary>
     [UnmanagedCallersOnly]
-    private static nint AsCAurObject(nint self) => self == 0 ? 0 : self + FacadeParts.CameraObjectOffset;
+    private static nint AsCAurObject(nint self) => self == 0 ? 0 : new Camera(self).GobSub;
 
     /// <summary>Slot 26, <c>CAurCamera::AsAurCamera</c> -- a real <c>CAurCamera</c> body the concrete class does
     /// not override, so it is the identity.</summary>
