@@ -768,7 +768,8 @@ public sealed unsafe partial class AlloyRenderer
             if (s.FramesLeft <= 0) return;
             s.FramesLeft--; s.Frame = _frameSeq;
         }
-        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what}");
+        (int now, int peak) = BindlessLedger.ResidentCount;
+        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
     }
 
     /// <summary>A pass's name for <see cref="Step"/>; only reached under <c>alloy.gldebug=1</c>.</summary>
@@ -780,7 +781,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (!GlContextService.Debug || Gl.Finish == null) return;
         Gl.Finish();
-        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what}");
+        (int now, int peak) = BindlessLedger.ResidentCount;
+        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
     }
 
     /// <summary>Ticks the zones <see cref="FrameZones.Zone.Passes"/> subtracts have taken this frame, so a pass

@@ -31,6 +31,7 @@ internal static unsafe class BindlessLedger
         public readonly Dictionary<uint, ulong> HandleOf = new(4096);
         public readonly HashSet<ulong> Resident = new(4096);
         public readonly long[] Hits = new long[(int)Rule.Count];
+        public int Peak;
         public ExtenderLog? Log;
         public delegate* unmanaged<uint, ulong> Get;
         public delegate* unmanaged<ulong, void> MakeResident, MakeNonResident;
@@ -48,6 +49,12 @@ internal static unsafe class BindlessLedger
     internal static long Total
     {
         get { long n = 0; foreach (long h in _s.Hits) n += h; return n; }
+    }
+
+    /// <summary>Handles resident in Alloy's context now, and the most there have been at once.</summary>
+    internal static (int Now, int Peak) ResidentCount
+    {
+        get { lock (_lock) return (_s.Resident.Count, _s.Peak); }
     }
 
     /// <summary>Swap the shims in over the resolved pointers. From <see cref="Gl.Init"/>, once.</summary>
@@ -127,6 +134,7 @@ internal static unsafe class BindlessLedger
     {
         if (!here) Hit(s, Rule.WrongContext, h, 0, "glMakeTextureHandleResidentARB");
         else if (!s.Resident.Add(h)) Hit(s, Rule.ReResident, h, 0, "glMakeTextureHandleResidentARB");
+        else if (s.Resident.Count > s.Peak) s.Peak = s.Resident.Count;
     }
 
     private static void NonResident(LedgerState s, ulong h, bool here)
@@ -165,6 +173,10 @@ internal static unsafe class BindlessLedger
         Minted(s, 7, 0x70); Resident(s, 0x70, true); NonResident(s, 0x70, true); Deleted(s, 7);
         long clean = 0; foreach (long h in s.Hits) clean += h;
         check.Expect(clean == 0, "the legal mint, resident, non-resident, delete sequence reported a breach");
+
+        Minted(s, 11, 0xB0); Resident(s, 0xB0, true); Minted(s, 12, 0xC0); Resident(s, 0xC0, true);
+        NonResident(s, 0xB0, true); NonResident(s, 0xC0, true); Deleted(s, 11); Deleted(s, 12);
+        check.Expect(s.Resident.Count == 0 && s.Peak == 2, $"two handles resident at once read back as now {s.Resident.Count}, peak {s.Peak}");
 
         Minted(s, 8, 0x80); Resident(s, 0x80, true);
         NonResident(s, 0x80, false);
