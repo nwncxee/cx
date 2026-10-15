@@ -775,6 +775,6 @@ internal readonly unsafe struct DbLineList
 {
     private readonly nint _p;
     public DbLineList(nint p) => _p = p;
-    public nint Items => _p == 0 ? 0 : *(nint*)_p;
-    public int Count => _p == 0 ? 0 : *(int*)(_p + 8);
+    public nint Items => _p == 0 ? 0 : new ExoArray(_p).Data;
+    public int Count => _p == 0 ? 0 : new ExoArray(_p).Count;
 }

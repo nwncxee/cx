@@ -16,8 +16,8 @@ public sealed unsafe partial class ObjectSlots
     private static void SetBehavior(nint self, nint behavior)
     {
         if (!Live(self, 22, out DbId id, out nint shell)) return;
-        nint old = *(nint*)(shell + SeamLayout.GobBehavior);
-        *(nint*)(shell + SeamLayout.GobBehavior) = behavior;
+        nint old = new Gob(shell).Behavior;
+        new Gob(shell).Behavior = behavior;
         // The matching column write, so the behaviour the game installs actually SOLVES: BehaviorSolvers is
         // not installed, so the game's own Control runs, its Part::GetWorld call is virtual and lands on the
         // seam's Part vtable, and DbAnim solves the engine's classes over columns.
@@ -35,7 +35,7 @@ public sealed unsafe partial class ObjectSlots
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 70); return 0; }
-        return *(nint*)(shell + SeamLayout.GobBehavior);
+        return new Gob(shell).Behavior;
     }
 
     /// <summary><c>Gob::BehaviorMessage(char const*)</c> @0x437400: forward the message to the installed
@@ -47,7 +47,7 @@ public sealed unsafe partial class ObjectSlots
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 44); return; }
-        nint beh = *(nint*)(shell + SeamLayout.GobBehavior);
+        nint beh = new Gob(shell).Behavior;
         bool say = Renderer.HitCheck.Boot && _saidMessage < 60 && beh != 0 && DbAnim.IsCrossSceneAttach(beh);
         string before = say ? Said(self, shell, beh) : "";
         BehaviorSeam.Message(beh, message);
@@ -86,12 +86,6 @@ public sealed unsafe partial class ObjectSlots
 /// fields, never their allocation. 10 measured slots; the destructor pair collapses on Windows.</summary>
 public static unsafe class BehaviorSeam
 {
-    /// <summary>Linux byte offsets in a <c>CAurBehavior</c> vtable. Windows is one pointer earlier for every
-    /// slot after the collapsed destructor pair.</summary>
-    private static readonly int DeletingDtor = EngineLayout.SeamCAurBehaviorVtblDtorDeleting;
-    private static readonly int MessageSlot = EngineLayout.SeamCAurBehaviorVtblMessage;
-    private static readonly int GetTypeSlot = EngineLayout.SeamCAurBehaviorVtblGetType;
-
     /// <summary>The type id <c>CAurBehaviorCrossSceneAttach::GetType</c> @0x58bff0 returns: an INTEGER tag,
     /// not the address of a string -- 0x314d18 is in no section of the image, and the Windows export
     /// <c>?GetType@CAurBehavior@@UEAAHXZ</c> carries the <c>int</c> return Itanium drops.
@@ -116,7 +110,7 @@ public static unsafe class BehaviorSeam
     public static nint Installed(DbId obj)
     {
         nint shell = Facade.ObjectShell(obj);
-        return shell == 0 ? 0 : *(nint*)(shell + SeamLayout.GobBehavior);
+        return shell == 0 ? 0 : new Gob(shell).Behavior;
     }
 
     /// <summary>A behaviour was attached to <paramref name="target"/>. The pairing is the shell's own +0x450
@@ -126,7 +120,7 @@ public static unsafe class BehaviorSeam
     {
         nint shell = Facade.ObjectShell(target);
         if (shell == 0) return;
-        *(nint*)(shell + SeamLayout.GobBehavior) = behavior;
+        new Gob(shell).Behavior = behavior;
     }
 
     /// <summary>Construct the chase camera's behaviour as <c>Camera::SetFollow</c> @0x5aa500 does:
@@ -152,7 +146,7 @@ public static unsafe class BehaviorSeam
         }
         nint beh = alloc(CameraFollowSize);
         if (beh == 0) return 0;
-        ((delegate* unmanaged<nint, nint, nint, void>)ctor)(beh, cameraShell + SeamLayout.CameraGobSub, target);
+        ((delegate* unmanaged<nint, nint, nint, void>)ctor)(beh, new Camera(cameraShell).GobSub, target);
         _followsMade++;
         return beh;
     }
@@ -172,9 +166,8 @@ public static unsafe class BehaviorSeam
     public static void Message(nint behavior, nint message)
     {
         if (behavior == 0 || message == 0) return;
-        nint vptr = *(nint*)behavior;
-        if (vptr == 0) return;
-        var fn = (delegate* unmanaged<nint, nint, void>)*(nint*)(vptr + MessageSlot);
+        if (*(nint*)behavior == 0) return;
+        var fn = (delegate* unmanaged<nint, nint, void>)new CAurBehavior(behavior).MessageFn;
         if (fn != null) fn(behavior, message);
     }
 
@@ -182,9 +175,8 @@ public static unsafe class BehaviorSeam
     public static int TypeOf(nint behavior)
     {
         if (behavior == 0) return 0;
-        nint vptr = *(nint*)behavior;
-        if (vptr == 0) return 0;
-        var fn = (delegate* unmanaged<nint, int>)*(nint*)(vptr + GetTypeSlot);
+        if (*(nint*)behavior == 0) return 0;
+        var fn = (delegate* unmanaged<nint, int>)new CAurBehavior(behavior).GetTypeFn;
         return fn == null ? 0 : fn(behavior);
     }
 
@@ -194,9 +186,8 @@ public static unsafe class BehaviorSeam
     public static void Destroy(nint behavior)
     {
         if (behavior == 0) return;
-        nint vptr = *(nint*)behavior;
-        if (vptr == 0) return;
-        var fn = (delegate* unmanaged<nint, void>)*(nint*)(vptr + DeletingDtor);
+        if (*(nint*)behavior == 0) return;
+        var fn = (delegate* unmanaged<nint, void>)new CAurBehavior(behavior).DtorDeletingFn;
         if (fn != null) fn(behavior);
     }
 
@@ -206,17 +197,17 @@ public static unsafe class BehaviorSeam
     /// whose layout is the game's and which ADR 0028 says the seam must not read.</summary>
     public static void Rescale(DbId id, nint shell)
     {
-        float* ch = (float*)(shell + SeamLayout.GobScaleChannel);
+        Span<float> ch = new Gob(shell).ScaleChannels;
         float own = ch[0] * ch[1];
         DbId parent = SceneDb.ObjAttachTo[id.Index];
         float inherited = 1f;
         if (SceneDb.Objects.Valid(parent))
         {
             nint p = SceneDb.ObjFacade[parent.Index];
-            if (p != 0) inherited = *(float*)(p + SeamLayout.GobScaleFinal);
+            if (p != 0) inherited = new Gob(p).ScaleBase;
         }
         float final = own * inherited;
-        *(float*)(shell + SeamLayout.GobScaleFinal) = final;
+        new Gob(shell).ScaleBase = final;
         SceneDb.ObjScale[id.Index] = final;
         SceneDb.Touch(id, Dirty.Xform);
     }

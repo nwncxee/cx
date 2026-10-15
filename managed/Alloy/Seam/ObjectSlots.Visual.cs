@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 
 namespace CX.Alloy.Seam;
 
@@ -75,7 +76,7 @@ public sealed unsafe partial class ObjectSlots
             nint cs = Facade.ObjectShell(cid);
             if (DbAnim.Grafted(c)) { WriteShift(cid, cs, colour, alpha, illum); continue; }
             if (!propagate || SceneDb.ObjAttachMode[c] == SceneDb.AttachNone) continue;
-            if (cs == 0 || *(byte*)(cs + SeamLayout.GobPropagateHighlight) == 0) continue;
+            if (cs == 0 || new Gob(cs).PropagateHilite == 0) continue;
             if (depth >= MaxShiftDepth) continue;
             Shift(cid, cs, cs, colour, alpha, illum, true, depth + 1);
         }
@@ -90,9 +91,9 @@ public sealed unsafe partial class ObjectSlots
         {
             if (shell != 0)
             {
-                *(short*)(shell + SeamLayout.GobIllumFlag) = 1;
-                float* e = (float*)(shell + SeamLayout.GobIllum);
-                e[0] = colour.X; e[1] = colour.Y; e[2] = colour.Z;
+                var g = new Gob(shell);
+                g.SelfIllum = 1;
+                g.Emissive = colour;
             }
             SceneDb.ObjEmissive[i] = colour;
             Flag(id, SeamFlag.Illuminated, true);
@@ -101,10 +102,10 @@ public sealed unsafe partial class ObjectSlots
         }
         if (shell != 0)
         {
-            *(short*)(shell + SeamLayout.GobColourShiftFlag) = 1;
-            float* c = (float*)(shell + SeamLayout.GobColourShift);
-            c[0] = colour.X; c[1] = colour.Y; c[2] = colour.Z;
-            *(float*)(shell + SeamLayout.GobColourAlpha) = alpha;
+            var g = new Gob(shell);
+            g.ColourMul = 1;
+            g.Colour = colour;
+            g.Alpha = alpha;
         }
         // the pick reads the engine's alpha (a faded object is out of it); the draw, PlaceableHold's held one at 1
         SceneDb.HitObjAlpha[i] = alpha;
@@ -122,7 +123,7 @@ public sealed unsafe partial class ObjectSlots
         if (Has(root, SeamFlag.ColourShift))
         {
             Vector4 t = SceneDb.ObjTint[r];
-            WriteShift(child, cs, new Vector3(t.X, t.Y, t.Z), rs != 0 ? *(float*)(rs + SeamLayout.GobColourAlpha) : t.W, false);
+            WriteShift(child, cs, new Vector3(t.X, t.Y, t.Z), rs != 0 ? new Gob(rs).Alpha : t.W, false);
         }
         if (Has(root, SeamFlag.Illuminated)) WriteShift(child, cs, SceneDb.ObjEmissive[r], 0f, true);
     }
@@ -133,7 +134,7 @@ public sealed unsafe partial class ObjectSlots
     private static void SetPropagateHighlightEffects(nint self, byte on)
     {
         if (!Live(self, 50, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobPropagateHighlight) = on;
+        new Gob(shell).PropagateHilite = on;
         Flag(id, SeamFlag.PropagateHighlight, on != 0);
         SceneDb.Touch(id, Dirty.Material);
     }
@@ -151,7 +152,7 @@ public sealed unsafe partial class ObjectSlots
     private static void Shadows(nint self, int logical, bool on)
     {
         if (!Live(self, logical, out DbId id, out nint shell)) return;
-        *(short*)(shell + SeamLayout.GobShadows) = on ? (short)1 : (short)0;
+        new Gob(shell).SeamShadows = on ? (short)1 : (short)0;
         Flag(id, SeamFlag.Shadows, on);
         SceneDb.Touch(id, Dirty.Visible);
     }
@@ -182,8 +183,8 @@ public sealed unsafe partial class ObjectSlots
     private static void SetWind(nint self, byte on, float strength)
     {
         if (!Live(self, 56, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobWindFlag) = on;
-        *(float*)(shell + SeamLayout.GobWindStrength) = strength;
+        new Gob(shell).WindSource = on;
+        new Gob(shell).WindStrength = strength;
         Flag(id, SeamFlag.Wind, on != 0);
         SceneDb.ObjSeamWind[id.Index] = strength;
         SceneDb.Touch(id, Dirty.Material);
@@ -236,7 +237,7 @@ public sealed unsafe partial class ObjectSlots
     private static void SetRenderPersonalSpace(nint self, byte on)
     {
         if (!Live(self, 73, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobPersonalSpace) = on;
+        new Gob(shell).SeamPersonalSpace = on;
         Flag(id, SeamFlag.PersonalSpace, on != 0);
     }
 
@@ -247,7 +248,7 @@ public sealed unsafe partial class ObjectSlots
     private static void EnableInViewVolume(nint self)
     {
         if (!Live(self, 86, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobInView) = 1;
+        new Gob(shell).InView = 1;
         Flag(id, SeamFlag.InView, true);
         FireEvent(self, EventNames.PropagateViewVolume, 0);
     }
@@ -256,7 +257,7 @@ public sealed unsafe partial class ObjectSlots
     private static void DisableInViewVolume(nint self)
     {
         if (!Live(self, 87, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobInView) = 0;
+        new Gob(shell).InView = 0;
         Flag(id, SeamFlag.InView, false);
     }
 
@@ -267,7 +268,7 @@ public sealed unsafe partial class ObjectSlots
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 88); return 0; }
-        return *(byte*)(shell + SeamLayout.GobInView);
+        return new Gob(shell).InView;
     }
 
     // ---- hit tests: the cast is CX-118's, the slot is the seam's ----

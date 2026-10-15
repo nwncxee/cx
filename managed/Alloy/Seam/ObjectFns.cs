@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -143,8 +144,8 @@ public sealed unsafe class ObjectFns : ISeamProvider
             return 0;
         }
         SeedShell(shell);
-        *(float*)(shell + SeamLayout.GobLodDist1) = lodNear;
-        *(float*)(shell + SeamLayout.GobLodDist2) = lodFar;
+        new Gob(shell).LodNear = lodNear;
+        new Gob(shell).LodFar = lodFar;
         string? label = name == 0 ? null : Marshal.PtrToStringUTF8(name);
         // NewCAurObject: no name of its own takes the model's STATED name, case kept -- a .gui panel's scene is
         // named after it, and Camera::UpscaleViewport compares that scene name exactly.
@@ -174,7 +175,7 @@ public sealed unsafe class ObjectFns : ISeamProvider
         // it WITHOUT a vtable and hand it to the free SetShadows. A seam Part shell for the root is what
         // makes those two work unhooked (SetShadows itself is replaced, and resolves this pointer).
         if (SceneDb.ObjPartCount[i] > 0)
-            *(nint*)(shell + SeamLayout.GobRoot) = PartShell.For(id, SceneDb.ObjPartFirst[i]);
+            new Gob(shell).PartTree = new Part(PartShell.For(id, SceneDb.ObjPartFirst[i]));
         ObjectSlots.FireEvent(shell, EventNames.EmitterTarget, 0);
         ObjectSlots.RecomputeBounds(id, shell);
         return shell;
@@ -210,22 +211,21 @@ public sealed unsafe class ObjectFns : ISeamProvider
     /// zeroed shell would be an object with no scale, a black colour fold and an inverted identity.</summary>
     internal static void SeedShell(nint shell)
     {
-        float* rot = (float*)(shell + SeamLayout.GobRot);
-        rot[0] = 1f;                                            // w first: Gob::Gob writes 1.0f at +0xb4
-        float* ch = (float*)(shell + SeamLayout.GobScaleChannel);
+        var g = new Gob(shell);
+        g.Rot.W = 1f;                                           // w first: Gob::Gob writes 1.0f at +0xb4
+        Span<float> ch = g.ScaleChannels;
         ch[0] = 1f; ch[1] = 1f;
-        *(float*)(shell + SeamLayout.GobScaleFinal) = 1f;
-        float* tint = (float*)(shell + SeamLayout.GobColourShift);
-        tint[0] = 1f; tint[1] = 1f; tint[2] = 1f;
-        *(float*)(shell + SeamLayout.GobColourAlpha) = 1f;
-        *(short*)(shell + SeamLayout.GobShadows) = 1;
-        *(byte*)(shell + SeamLayout.GobPropagateHighlight) = 1;
-        *(byte*)(shell + SeamLayout.GobInView) = 1;
-        *(float*)(shell + SeamLayout.GobTriMeshArea) = -1f;   // the engine's "area not computed" sentinel
+        g.ScaleBase = 1f;
+        g.Colour = Vector3.One;
+        g.Alpha = 1f;
+        g.SeamShadows = 1;
+        g.PropagateHilite = 1;
+        g.InView = 1;
+        g.SeamTriMeshArea = -1f;   // the engine's "area not computed" sentinel
         VisualXform.Seed(shell);
-        *(int*)(shell + SeamLayout.GobLodLevel) = 0;
-        *(float*)(shell + SeamLayout.GobLodDist1) = LodNoSwitch;
-        *(float*)(shell + SeamLayout.GobLodDist2) = LodNoSwitch;
+        g.LodLevel = 0;
+        g.LodNear = LodNoSwitch;
+        g.LodFar = LodNoSwitch;
     }
 
     /// <summary><c>NewCAurString(int maxLines)</c> @0x494050: allocate a <c>StringGob</c> and return its
@@ -245,7 +245,7 @@ public sealed unsafe class ObjectFns : ISeamProvider
         if (shell == 0) { TextObjects.Destroy(id); return 0; }
         SeedShell(shell);
         SceneDb.Touch(id, Dirty.Created | Dirty.Text);
-        return shell + SeamLayout.StringGobString;
+        return new StringGob(shell).StringSub;
     }
 
     /// <summary><c>SetShadows(Part*, int)</c> @0x460c90 -- a FREE function the engine recurses over a part
@@ -262,7 +262,7 @@ public sealed unsafe class ObjectFns : ISeamProvider
         }
         nint shell = Facade.ObjectShell(obj);
         if (shell == 0) return;
-        *(short*)(shell + SeamLayout.GobShadows) = on != 0 ? (short)1 : (short)0;
+        new Gob(shell).SeamShadows = on != 0 ? (short)1 : (short)0;
         ObjectSlots.Flag(obj, SeamFlag.Shadows, on != 0);
         SceneDb.Touch(obj, Dirty.Visible);
     }

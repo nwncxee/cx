@@ -1,18 +1,13 @@
 using System;
 using System.Numerics;
 using CX.Alloy.Db;
+using CX.Engine;
 
 namespace CX.Alloy.Seam;
 
 /// <summary>The facade services the scene and camera seam reaches for beyond <see cref="Facade"/> itself.</summary>
 public static unsafe class FacadeParts
 {
-    /// <summary>Where a camera shell's <c>CAurObject</c> sub-object sits, measured on both images: a
-    /// <c>Camera</c> is <c>: CAurCamera, Gob</c> with <c>CAurCamera</c>'s vptr at +0 and <c>Gob</c>'s at +8
-    /// (<c>Camera::Camera</c> @0x5a42c0 runs <c>Gob::Gob(this + 8, name)</c>), and
-    /// <c>GuiAttachViewport</c> @0x58bda0 reaches it as the literal <c>(CAurObject*)(camera + 8)</c>.</summary>
-    public static readonly int CameraObjectOffset = SeamLayout.CameraGobSub;
-
     /// <summary>The object record a camera IS -- its <c>Gob</c> half. An <c>ObjKind.Empty</c> record with no
     /// model: the engine's <c>Camera</c> inherits every <c>Gob</c> word and uses almost none of them, and the
     /// ones it does use are a transform.</summary>
@@ -47,13 +42,13 @@ public static unsafe class FacadeParts
     public static nint ExternalData(DbId obj)
     {
         nint shell = Facade.ObjectShell(obj);
-        return shell == 0 ? 0 : *(nint*)(shell + SeamLayout.GobExternal);
+        return shell == 0 ? 0 : new Gob(shell).ExternalData;
     }
 
     /// <inheritdoc cref="ExternalData"/>
     public static int ExternalDataType(DbId obj)
     {
         nint shell = Facade.ObjectShell(obj);
-        return shell == 0 ? 0 : *(int*)(shell + SeamLayout.GobExternalType);
+        return shell == 0 ? 0 : new Gob(shell).ExternalType;
     }
 }

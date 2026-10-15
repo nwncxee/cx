@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 
 namespace CX.Alloy.Seam;
 
@@ -70,7 +71,7 @@ public sealed unsafe partial class ObjectSlots
     private static void ForceAnim(nint self, int logical, bool on)
     {
         if (!Live(self, logical, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobForceAnim) = on ? (byte)1 : (byte)0;
+        new Gob(shell).SeamForceAnim = on ? (byte)1 : (byte)0;
         Flag(id, SeamFlag.ForceAnimate, on);
         DbAnim.SetAnimationsEnabled(id, on, force: true);
     }
@@ -88,7 +89,7 @@ public sealed unsafe partial class ObjectSlots
     private static void AnimGate(nint self, int logical, bool on)
     {
         if (!Live(self, logical, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobAnimEnabled) = on ? (byte)1 : (byte)0;
+        new Gob(shell).SeamAnimEnabled = on ? (byte)1 : (byte)0;
         Flag(id, SeamFlag.Animate, on);
         DbAnim.SetAnimationsEnabled(id, on, force: false);
     }
@@ -99,7 +100,7 @@ public sealed unsafe partial class ObjectSlots
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 77); return 0; }
-        return *(byte*)(shell + SeamLayout.GobAnimEnabled);
+        return new Gob(shell).SeamAnimEnabled;
     }
 
     /// <summary><c>Gob::IsForceAnimated()</c> @0x436ea0: the +0x1a byte.</summary>
@@ -108,7 +109,7 @@ public sealed unsafe partial class ObjectSlots
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 85); return 0; }
-        return *(byte*)(shell + SeamLayout.GobForceAnim) ;
+        return new Gob(shell).SeamForceAnim;
     }
 
     /// <summary><c>Gob::SetSynchronizeAnimations(bool)</c> @0x4447d0: one byte at +0x1b8 -- play this
@@ -117,7 +118,7 @@ public sealed unsafe partial class ObjectSlots
     private static void SetSynchronizeAnimations(nint self, byte on)
     {
         if (!Live(self, 78, out DbId id, out nint shell)) return;
-        *(byte*)(shell + SeamLayout.GobSyncAnim) = on;
+        new Gob(shell).SyncHier = on;
         Flag(id, SeamFlag.SyncAnimate, on != 0);
         DbAnim.SetSynchronizeAnimations(id, on != 0);
     }

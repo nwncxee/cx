@@ -1,8 +1,10 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -194,7 +196,7 @@ internal static unsafe class FacadeSelfCheck
             SceneDb.SetAttachTo(head.Index, body);
             SceneDb.SetAttachTo(fx.Index, head);
             SceneDb.SetAttachTo(quiet.Index, body);
-            *(byte*)(Facade.ObjectShell(quiet) + SeamLayout.GobPropagateHighlight) = 0;
+            new Gob(Facade.ObjectShell(quiet)).PropagateHilite = 0;
             SceneDb.SetAttachTo(loose.Index, body);
             SceneDb.ObjAttachMode[loose.Index] = SceneDb.AttachNone;
             nint bs = Facade.ObjectShell(body);
@@ -377,7 +379,7 @@ internal static unsafe class FacadeSelfCheck
         if (camShell != 0)
         {
             check.Expect(*(nint*)camShell == Facade.Table(SeamTable.Camera), "a camera's +0 vptr is not the Camera table");
-            nint sub = camShell + SeamLayout.CameraGobSub;
+            nint sub = new CX.Engine.Camera(camShell).GobSub;
             check.Expect(*(nint*)sub == Facade.Table(SeamTable.CameraGob), "a camera's +8 vptr is not its Gob table");
             check.Expect(Facade.Shell(sub) == camShell, "a camera's CAurObject sub-object did not normalise to the shell");
             // The sub-object's RECORD and its Gob words. The one handle in a camera shell's header is the
@@ -400,7 +402,7 @@ internal static unsafe class FacadeSelfCheck
         nint textShell = text.IsNull ? 0 : Facade.Mint(FacadeKind.String, text);
         if (textShell != 0)
         {
-            nint sub = textShell + SeamLayout.StringGobString;
+            nint sub = new StringGob(textShell).StringSub;
             check.Expect(*(nint*)sub == Facade.Table(SeamTable.CAurString), "a text shell's +0x4c0 vptr is not the CAurString table");
             check.Expect(Facade.Shell(sub) == textShell, "a text shell's CAurString sub-object did not normalise to the shell");
             check.Expect(Facade.StringRecord(sub, SeamSlot.Unnamed).Value == text.Value,
@@ -413,9 +415,9 @@ internal static unsafe class FacadeSelfCheck
         // The engine's own `SafePointer<CAurObject>::operator=` @0x477d70 is what assigns a CHitInfo's
         // SafePointer at +0x48/+0x50 against it, and it reallocs the array in place from whatever is there:
         // a non-null pointer with a zero capacity, or garbage, is a free() of a pointer we never allocated.
-        check.Expect(*(nint*)(shell + SeamLayout.GobSafeList) == 0
-                     && *(int*)(shell + SeamLayout.GobSafeCount) == 0
-                     && *(int*)(shell + SeamLayout.GobSafeCap) == 0,
+        check.Expect(new Gob(shell).SafePointers == 0
+                     && new Gob(shell).SafePointerCount == 0
+                     && new Gob(shell).SeamSafeCap == 0,
             "a newborn shell's SafePointer list is not an empty {NULL, 0, 0} CExoArrayList");
 
         // The mirrored words: a setter must leave the shell and the column agreeing, because game code reads
@@ -440,18 +442,18 @@ internal static unsafe class FacadeSelfCheck
         // SafePointer is {target, int index}, the list at +0x08 is {array, count, capacity}, and the retire
         // must zero every target and set every index to -1 (SafePointerList<T>::~SafePointerList @0x445470).
         const int n = 3;
-        nint sps = (nint)NativeMemory.AllocZeroed(n * 16);
+        SafePointerRec* sps = (SafePointerRec*)NativeMemory.AllocZeroed(n * 16);
+        var recs = new Span<SafePointerRec>(sps, n);
         nint arr = (nint)NativeMemory.AllocZeroed(n * (nuint)sizeof(nint));
         for (int k = 0; k < n; k++)
         {
-            nint sp = sps + k * 16;
-            *(nint*)sp = shell;
-            *(int*)(sp + 8) = k;
-            ((nint*)arr)[k] = sp;
+            recs[k].Target = shell;
+            recs[k].Index = k;
+            ((nint*)arr)[k] = (nint)Unsafe.AsPointer(ref recs[k]);
         }
-        *(nint*)(shell + SeamLayout.GobSafeList) = arr;
-        *(int*)(shell + SeamLayout.GobSafeCount) = n;
-        *(int*)(shell + SeamLayout.GobSafeCap) = n;
+        new Gob(shell).SafePointers = arr;
+        new Gob(shell).SafePointerCount = n;
+        new Gob(shell).SeamSafeCap = n;
 
         CX.Alloy.Highlight.SetClaim(shell, true);
         long poisonBefore = Facade.PoisonCalls;
@@ -468,14 +470,14 @@ internal static unsafe class FacadeSelfCheck
         bool nulled = true, unindexed = true;
         for (int k = 0; k < n; k++)
         {
-            nulled &= *(nint*)(sps + k * 16) == 0;
-            unindexed &= *(int*)(sps + k * 16 + 8) == -1;
+            nulled &= recs[k].Target == 0;
+            unindexed &= recs[k].Index == -1;
         }
         check.Expect(nulled, "retiring a facade left a SafePointer still pointing at it");
         check.Expect(unindexed, "retiring a facade left a SafePointer's index set");
-        check.Expect(*(nint*)(shell + SeamLayout.GobSafeList) == 0 && *(int*)(shell + SeamLayout.GobSafeCount) == 0,
+        check.Expect(new Gob(shell).SafePointers == 0 && new Gob(shell).SafePointerCount == 0,
             "the back-reference list was not emptied at retire");
-        NativeMemory.Free((void*)sps);
+        NativeMemory.Free(sps);
 
         // The poison path: a retired shell answers no handle, counts the call and names the slot once. The
         // two USE AFTER FREE lines and the one alien line below are this check FIRING the refusal on purpose.
@@ -502,7 +504,7 @@ internal static unsafe class FacadeSelfCheck
         // review #4: a vptr that merely LANDS inside the vtable block is not one of ours either. The range
         // test alone adjusted such a pointer by whatever the word ahead of it held and handed the result on
         // as a shell -- a wild read in the path whose whole job is to refuse it.
-        *(nint*)notOurs = Facade.Table(SeamTable.Gob) + sizeof(nint);
+        *(nint*)notOurs = (nint)Unsafe.AsPointer(ref new Span<nint>((void*)Facade.Table(SeamTable.Gob), 2)[1]);
         check.Expect(Facade.Shell(notOurs) == 0,
             "a vptr that points INTO a table rather than at its address point must not normalise");
         *(nint*)notOurs = 0;
@@ -626,7 +628,7 @@ internal static unsafe class FacadeSelfCheck
         DbFeed.InitObject(churn.Index);
         nint wshell = Facade.Mint(FacadeKind.Object, wobj), gshell = Facade.Mint(FacadeKind.Object, gobj),
              ushell = Facade.Mint(FacadeKind.Object, uobj), cshell = Facade.Mint(FacadeKind.Camera, default);
-        SceneDb.ObjFacade[cobj.Index] = cshell + SeamLayout.CameraGobSub;
+        SceneDb.ObjFacade[cobj.Index] = new CX.Engine.Camera(cshell).GobSub;
         nint wpart = PartShell.For(wobj, 0), before = PartShell.For(gobj, 0), unjoined = PartShell.For(uobj, 0),
              cpart = PartShell.For(cobj, 0);
         nint remint = 0;
