@@ -14,10 +14,6 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiScrollbarHide
 {
-    /// <summary>Per <c>nk_command_type</c> 0..18: the first <c>nk_color</c>'s offset, 0 = none. Multi-colour rects carry four
-    /// colours and text two, each 4 bytes apart; alpha is a colour's last byte.</summary>
-    private static ReadOnlySpan<byte> ColorAt => [0, 0, 0x1a, 0x22, 0x1c, 0x1a, 0x18, 0x1a, 0x18, 0x20, 0x20, 0x1e, 0x1c, 0x10, 0x10, 0x10, 0x18, 0x30, 0];  // not-an-offset: nuklear command ABI
-    private const int MultiColor = 6, Text = 16, LastType = 18;
     /// <summary>Seconds to fade fully in, and out.</summary>
     private const float FadeIn = 0.12f, FadeOut = 0.35f;
     /// <summary>A bar unseen this long has closed; its fade slot is free.</summary>
@@ -204,17 +200,12 @@ internal static unsafe class NuiScrollbarHide
         {
             var cmd = buffer.CommandAt(off);
             int type = cmd.Type;
-            if ((uint)type > LastType)
+            if ((uint)type > NkCommand.LastType)
             {
                 if (!_warned) { _warned = true; _log?.Always($"NuiScrollbarHide: unknown nuklear command type {type} -- that bar draws at full opacity"); }
                 return;
             }
-            int at = ColorAt[type], n = type == MultiColor ? 4 : type == Text ? 2 : at != 0 ? 1 : 0;
-            for (int c = 0; c < n; c++)
-            {
-                ref byte a = ref cmd.ColourAlpha(at, c);
-                a = (byte)(a * alpha + 0.5f);
-            }
+            foreach (ref NkColor c in cmd.Colours) c.A = (byte)(c.A * alpha + 0.5f);
             ulong next = cmd.Next;
             if (next <= off) return;
             off = next;
