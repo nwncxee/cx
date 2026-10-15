@@ -1901,6 +1901,8 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref byte DayFogAmount => ref *(byte*)(Ptr + EngineLayout.AreaDayFogAmount);
     /// <inheritdoc cref="EngineLayout.AreaFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.AreaFlags);
+    /// <inheritdoc cref="EngineLayout.AreaFogAmount"/>
+    public ref float FogAmount => ref *(float*)(Ptr + EngineLayout.AreaFogAmount);
     /// <inheritdoc cref="EngineLayout.AreaId"/>
     public ref uint Id => ref *(uint*)(Ptr + EngineLayout.AreaId);
     /// <inheritdoc cref="EngineLayout.AreaIsNight"/>

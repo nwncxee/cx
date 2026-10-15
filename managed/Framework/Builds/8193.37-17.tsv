@@ -777,6 +777,7 @@ offset	CNWCArea	nightFog	0x17c	0x17c	# AreaNightFog
 offset	CNWCArea	nightFogAmount	0xa4	0xa4	# AreaNightFogAmount
 offset	CNWCArea	dayFog	0x1e0	0x1e0	# AreaDayFog
 offset	CNWCArea	dayFogAmount	0xc4	0xc4	# AreaDayFogAmount
+offset	CNWCArea	fogAmount	0x310	0x310	# AreaFogAmount
 offset	CNWCArea	isNight	0xdc	0xdc	# AreaIsNight
 offset	CNWCArea	scene	0x248	0x248	# AreaScene
 offset	CNWCAmbientSound	music	0x188	0x188	# AmbientMusic
