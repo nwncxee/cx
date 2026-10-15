@@ -129,6 +129,8 @@ public static unsafe partial class EngineLayout
     /// the dtor, then <c>operator delete(this, 0x2b8)</c> when <c>flags &amp; 1</c>). The two take different arguments,
     /// so NuiItemIcons calls it per OS.</summary>
     public static readonly int ItemDeleteSlot = Field("CNWCItem", "vtbl.Delete", Expect.VtblSlot);
+    /// <summary>The <c>CNWCObject</c> inside a <c>CNWCItem</c>: what the game-object array registers.</summary>
+    public static readonly int ItemAsObject = Field<CX.Engine.CNWCObject>("CNWCItem", "asObject", embedded: true);
     /// <summary>CGameObject: the object type byte <c>CClientExoAppInternal::GetItemByGameObjectID</c> tests for 6
     /// (item) before casting -- Linux @0x63f3a0, Windows rva 0x6d82a0, both <c>go+0xc</c>.</summary>
     public static readonly int GameObjType = Field<byte>("CGameObject", "type");

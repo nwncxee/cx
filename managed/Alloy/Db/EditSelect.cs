@@ -218,7 +218,7 @@ internal static unsafe class EditSelect
         var sb = new StringBuilder(to - from);
         for (int i = from; i < to && i < all.Length; i++)
         {
-            int cp = EngineFn.Cx119EncodingSingleCharToUtf8 == null ? all[i] : EngineFn.Cx119EncodingSingleCharToUtf8(all[i], 0);
+            int cp = EngineFn.EncodingSingleCharToUtf8 == null ? all[i] : EngineFn.EncodingSingleCharToUtf8(all[i], 0);
             sb.Append(cp is > 0 and < 0x110000 and not (>= 0xD800 and <= 0xDFFF) ? char.ConvertFromUtf32(cp) : "?");
         }
         byte[] u = Encoding.UTF8.GetBytes(sb.Append('\0').ToString());

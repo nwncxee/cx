@@ -575,18 +575,18 @@ internal static unsafe class SymbolMap
     //      construction rather than by matching a library version. All name-exported on BOTH OSes (verified
     //      in nwmain.exe's export table), so one Nm() row each. ----
     [Fn("void(byte* spc, byte* pixels, int width, int height, int strideInBytes, int padding, void* allocContext)")]
-    public const string Cx119StbttPackBegin           = "stbtt_PackBegin";
+    public const string StbttPackBegin             = "stbtt_PackBegin";
     [Fn("void(byte* spc)")]
-    public const string Cx119StbttPackEnd             = "stbtt_PackEnd";
+    public const string StbttPackEnd               = "stbtt_PackEnd";
     [Fn("void(byte* spc, int hOversample, int vOversample)")]
-    public const string Cx119StbttPackSetOversampling = "stbtt_PackSetOversampling";
+    public const string StbttPackSetOversampling   = "stbtt_PackSetOversampling";
     [Fn("int(byte* spc, byte* fontdata, int fontIndex, byte* ranges, int numRanges)")]
-    public const string Cx119StbttPackFontRanges      = "stbtt_PackFontRanges";
+    public const string StbttPackFontRanges        = "stbtt_PackFontRanges";
     /// <summary><c>Encoding::SingleCharToUTF8(char, Encoding::Locale)</c> @0x5fcef0 -- one codepage byte to its
     /// Unicode codepoint, honouring the client's locale and a module's <c>encoding.2da</c> override. Returns
     /// <c>int</c>, which the MSVC export name carries and the Itanium one does not.</summary>
     [Fn("int(byte b, int locale)")]
-    public const string Cx119EncodingSingleCharToUtf8 = "_ZN8Encoding16SingleCharToUTF8EcNS_6LocaleE";
+    public const string EncodingSingleCharToUtf8   = "_ZN8Encoding16SingleCharToUTF8EcNS_6LocaleE";
 
     // The client runs an OpenGL 3.3 CORE context (verified: SDL_GL_SetAttribute PROFILE_MASK=CORE),
     // so the owned draw is shader+VAO+VBO. Modern GL (>=1.3) resolves through this exported SDL entry.
@@ -3167,11 +3167,11 @@ internal static unsafe class SymbolMap
         [StbttMakeCodepointBitmap]   = Nm("stbtt_MakeCodepointBitmap"),
         [StbttFindGlyphIndex]        = Nm("stbtt_FindGlyphIndex"),
         // the engine's own stb_truetype pack API + codepage mapper, name-exported on both OSes.
-        [Cx119StbttPackBegin]           = Nm("stbtt_PackBegin"),
-        [Cx119StbttPackEnd]             = Nm("stbtt_PackEnd"),
-        [Cx119StbttPackSetOversampling] = Nm("stbtt_PackSetOversampling"),
-        [Cx119StbttPackFontRanges]      = Nm("stbtt_PackFontRanges"),
-        [Cx119EncodingSingleCharToUtf8] = Nm("?SingleCharToUTF8@Encoding@@YAHDW4Locale@1@@Z"),
+        [StbttPackBegin]             = Nm("stbtt_PackBegin"),
+        [StbttPackEnd]               = Nm("stbtt_PackEnd"),
+        [StbttPackSetOversampling]   = Nm("stbtt_PackSetOversampling"),
+        [StbttPackFontRanges]        = Nm("stbtt_PackFontRanges"),
+        [EncodingSingleCharToUtf8]   = Nm("?SingleCharToUTF8@Encoding@@YAHDW4Locale@1@@Z"),
         [SdlGlGetProcAddress]        = Nm("SDL_GL_GetProcAddress"),
         [SdlGetMouseState]           = Nm("SDL_GetMouseState"),
         [SdlCaptureMouse]            = Nm("SDL_CaptureMouse"),
