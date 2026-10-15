@@ -256,7 +256,7 @@ internal static unsafe partial class ModelLoad
     {
         if (raw.Length == 0) { j.Why = "no bytes"; return; }
         byte* block = (byte*)NativeMemory.AllocZeroed((nuint)(PrefixBytes + raw.Length));
-        byte* data = block + PrefixBytes;
+        byte* data = Headroom.Payload(block, PrefixBytes);
         raw.CopyTo(new Span<byte>(data, raw.Length));
         j.Data = data;
         j.Size = raw.Length;
@@ -343,7 +343,7 @@ internal static unsafe partial class ModelLoad
 
     private static void Free(in LoadEntry e)
     {
-        if (e.Data != IntPtr.Zero) NativeMemory.Free((byte*)e.Data - PrefixBytes);
+        if (e.Data != IntPtr.Zero) NativeMemory.Free(Headroom.Allocation(e.Data, PrefixBytes));
     }
 
     // ---- the serve, main thread, inside the engine's AurResGet ----
@@ -353,7 +353,7 @@ internal static unsafe partial class ModelLoad
     private static bool IsMdl(byte* ext)
     {
         if (ext == null) return false;
-        byte* p = *ext == (byte)'.' ? ext + 1 : ext;
+        byte* p = *ext == (byte)'.' ? &ext[1] : ext;
         return (p[0] | 0x20) == 'm' && (p[1] | 0x20) == 'd' && (p[2] | 0x20) == 'l' && p[3] == 0;
     }
 
@@ -412,7 +412,7 @@ internal static unsafe partial class ModelLoad
         _out.Remove(data);
         if (!_jobs.Entries.TryGetValue(key, out LoadEntry e) || e.Data != data)
         {
-            NativeMemory.Free((byte*)data - PrefixBytes);   // the entry went while the engine held it
+            NativeMemory.Free(Headroom.Allocation(data, PrefixBytes));   // the entry went while the engine held it
             return;
         }
         e.Out = false;

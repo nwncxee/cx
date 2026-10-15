@@ -47,7 +47,7 @@ internal static unsafe class Issue
             d = NextRun(_recDirty, _recDirtyN, d, out int first, out int last);
             long off = (long)first * recBytes;
             Gl.NamedBufferSubData(buf, (IntPtr)off,
-                             (IntPtr)((long)(last - first + 1) * recBytes), (byte*)data + off);
+                             (IntPtr)((long)(last - first + 1) * recBytes), &((byte*)data)[off]);
         }
     }
 
@@ -530,8 +530,8 @@ internal static unsafe class Issue
             uint prim = _gMode[g];
             if (indirect) CullPass.Draw(prim, g, s, _gLen[g]);
             else
-                Gl.MultiDrawElementsBaseVertex(prim, counts + s, GlUnsignedShort,
-                                               (void**)(offs + s), _gLen[g], bases + s);
+                Gl.MultiDrawElementsBaseVertex(prim, &counts[s], GlUnsignedShort,
+                                               (void**)(&offs[s]), _gLen[g], &bases[s]);
             Counters._batches++;
             Counters._draws += _gLen[g];
             if (!interior) Counters._drawsByClass[_gCls[g]] += _gLen[g];

@@ -86,7 +86,7 @@ internal static unsafe partial class DdsReader
     {
         if (!Parse(raw, out info, out why)) return null;
         byte* mem = (byte*)NativeMemory.Alloc((nuint)(Prefix + info.ChainBytes));
-        byte* ours = mem + Prefix;
+        byte* ours = Headroom.Payload(mem, Prefix);
         CopyChain(raw, info, new Span<byte>(ours, (int)info.ChainBytes));
         return ours;
     }
@@ -94,7 +94,7 @@ internal static unsafe partial class DdsReader
     /// <summary>Release a <see cref="Prepare"/> buffer the engine never took.</summary>
     internal static void FreePrepared(byte* level0)
     {
-        if (level0 != null) NativeMemory.Free(level0 - Prefix);
+        if (level0 != null) NativeMemory.Free(Headroom.Allocation(level0, Prefix));
     }
 
     /// <summary>Hand a <see cref="Prepare"/>d buffer to the engine as the getter's answer: the release tag, the
@@ -108,8 +108,8 @@ internal static unsafe partial class DdsReader
             FreePrepared(ours);
             return null;
         }
-        *(short*)(ours - TagOff(i.Container)) = OurTag;
-        *(IntPtr*)(ours - TagOff(i.Container) + 2) = IntPtr.Zero;
+        var tag = new DdsTag(ours, TagOff(i.Container));
+        tag.Type = OurTag; tag.Owner = IntPtr.Zero;
         *container = i.Container; *w = i.W; *h = i.H; *ch = i.Channels; *size = i.Level0; *alpha = i.AlphaMean;
         _answers[(nint)ours] = i;
         return ours;
@@ -154,7 +154,7 @@ internal static unsafe partial class DdsReader
         int c = *container;
         if (c != ContainerLegacy && c != ContainerMs) return data;   // KTX: the engine's alone
         // The owner's CRes is found through the engine's own tag slot; its data must be where the header ends.
-        IntPtr owner = *(IntPtr*)(data - TagOff(c) + 2);
+        IntPtr owner = new DdsTag(data, TagOff(c)).Owner;
         var res = new CRes(owner == IntPtr.Zero ? IntPtr.Zero : new CAuroraCompressedTextureDDS(owner).Res);
         if (res.IsNull || res.Data == IntPtr.Zero)
         {
@@ -171,7 +171,7 @@ internal static unsafe partial class DdsReader
         }
         if (!i.EngineReads) return Beyond(name, data, bytes, i, container, w, h, ch, size, alpha);
         if (i.Container != c || i.W != *w || i.H != *h || i.Channels != *ch || i.Level0 != *size
-            || i.AlphaMean != *alpha || raw + i.DataOffset != data)
+            || i.AlphaMean != *alpha || Headroom.Payload(raw, i.DataOffset) != data)
         {
             if (++_mismatched <= LogCap)
                 Disagree(name, $"engine c{c} {*w}x{*h} ch{*ch} l0 {*size} a{*alpha} at +{data - raw} vs ours c{i.Container} {i.W}x{i.H} ch{i.Channels} l0 {i.Level0} a{i.AlphaMean} at +{i.DataOffset}");
@@ -182,10 +182,10 @@ internal static unsafe partial class DdsReader
         if (ForUnpack) { _answers[(nint)data] = i; return data; }
         if (i.Present == i.Levels) return data;
         byte* mem = (byte*)NativeMemory.Alloc((nuint)(Prefix + i.ChainBytes));
-        byte* ours = mem + Prefix;
+        byte* ours = Headroom.Payload(mem, Prefix);
         CopyChain(bytes, i, new Span<byte>(ours, (int)i.ChainBytes));
-        *(short*)(ours - TagOff(c)) = OurTag;
-        *(IntPtr*)(ours - TagOff(c) + 2) = IntPtr.Zero;
+        var tag = new DdsTag(ours, TagOff(c));
+        tag.Type = OurTag; tag.Owner = IntPtr.Zero;
         _engRelease(data, *w, *h, *ch, *size, c);
         if (++_padded <= LogCap)
             _log?.Info($"DdsReader: {Marshal.PtrToStringAnsi(name)} carries {i.Present} of {i.Levels} mip levels -- padded (the engine would read past the resource)");
@@ -198,8 +198,8 @@ internal static unsafe partial class DdsReader
         _answers.Remove((nint)data);
         if (size == 0 && TexLoad.FreeRaster(data, w, h, ch)) return;
         if (data != null && size != 0 && (container == ContainerLegacy || container == ContainerMs)
-            && *(short*)(data - TagOff(container)) == OurTag)
-        { NativeMemory.Free(data - Prefix); return; }
+            && new DdsTag(data, TagOff(container)).Type == OurTag)
+        { NativeMemory.Free(Headroom.Allocation(data, Prefix)); return; }
         _engRelease(data, w, h, ch, size, container);
     }
 

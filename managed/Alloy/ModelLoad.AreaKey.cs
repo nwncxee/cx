@@ -68,10 +68,10 @@ internal static unsafe partial class ModelLoad
         ulong h = FoldSeed;
         for (uint k = 0; k < count; k++)
         {
-            byte* rec = buf + rec0 + k * stride;
-            h = Fold(h, *(ushort*)(rec + at));
+            byte* rec = &buf[rec0 + k * stride];
+            h = Fold(h, *(ushort*)&rec[at]);
             for (uint j = 0; j < 6; j++)
-                h = FoldQ(h, *(float*)(rec + first + j * step), j < 3 ? PosQuantum : OrientQuantum);
+                h = FoldQ(h, *(float*)&rec[first + j * step], j < 3 ? PosQuantum : OrientQuantum);
         }
         return h;
     }
@@ -128,25 +128,25 @@ internal static unsafe partial class ModelLoad
             for (int i = 0; i < len; i++) buf[i] = 0;
             for (int k = 0; k < Records; k++)
             {
-                byte* rec = buf + k * stride;
-                *(ushort*)(rec + at) = (ushort)(100 + k);
-                for (uint j = 0; j < 6; j++) *(float*)(rec + first + j * step) = k + j * 0.25f;
+                byte* rec = &buf[k * stride];
+                *(ushort*)&rec[at] = (ushort)(100 + k);
+                for (uint j = 0; j < 6; j++) *(float*)&rec[first + j * step] = k + j * 0.25f;
             }
             ulong h0 = FoldPlaceables(buf, 0, Records, (uint)stride, (uint)at);
             check.Expect(h0 == FoldPlaceables(buf, 0, Records, (uint)stride, (uint)at), $"typed={typed}: the placeable fold is deterministic");
             check.Expect(h0 != FoldPlaceables(buf, 0, Records - 1, (uint)stride, (uint)at), $"typed={typed}: a record dropped is a different fold");
-            *(ushort*)(buf + 2 * stride + at) = 7;
+            *(ushort*)&buf[2 * stride + at] = 7;
             check.Expect(h0 != FoldPlaceables(buf, 0, Records, (uint)stride, (uint)at), $"typed={typed}: an appearance is in the fold");
-            *(ushort*)(buf + 2 * stride + at) = 102;
-            *(float*)(buf + stride + first) += 1f;
+            *(ushort*)&buf[2 * stride + at] = 102;
+            *(float*)&buf[stride + first] += 1f;
             check.Expect(h0 != FoldPlaceables(buf, 0, Records, (uint)stride, (uint)at), $"typed={typed}: a moved placeable is in the fold");
-            *(float*)(buf + stride + first) -= 1f;
-            *(float*)(buf + stride + first + 5 * step) += 0.5f;
+            *(float*)&buf[stride + first] -= 1f;
+            *(float*)&buf[stride + first + 5 * step] += 0.5f;
             check.Expect(h0 != FoldPlaceables(buf, 0, Records, (uint)stride, (uint)at), $"typed={typed}: a turned placeable is in the fold");
-            *(float*)(buf + stride + first + 5 * step) -= 0.5f;
-            *(float*)(buf + stride + first) += PosQuantum / 4f;
+            *(float*)&buf[stride + first + 5 * step] -= 0.5f;
+            *(float*)&buf[stride + first] += PosQuantum / 4f;
             check.Expect(h0 == FoldPlaceables(buf, 0, Records, (uint)stride, (uint)at), $"typed={typed}: a quarter of the position quantum is the same fold");
-            *(float*)(buf + stride + first) -= PosQuantum / 4f;
+            *(float*)&buf[stride + first] -= PosQuantum / 4f;
             check.Expect(first + 5 * step + 4 == stride, $"typed={typed}: the six floats end exactly at the record's stride");
         }
         ulong t = FoldSeed;

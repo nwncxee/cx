@@ -155,20 +155,20 @@ internal static unsafe partial class ModelLoad
         uint step = 4 + type, ints = (uint)TileInts * step, word = 2 + type, one = 1 + type;
         if (cursor < ints) return false;
         uint p = cursor - ints;
-        if (*(int*)(buf + p + type) != id) return false;
+        if (*(int*)&buf[p + type] != id) return false;
         if (_tileIds.Length < n) _tileIds = new int[n];
         ulong fold = FoldSeed;
         for (int k = 0; k < n; k++)
         {
             if ((ulong)p + ints + word > len) return false;
-            int t = *(int*)(buf + p + type);
+            int t = *(int*)&buf[p + type];
             if ((uint)t >= (uint)tiles) return false;
             _tileIds[k] = t;
             // the id alone would key two areas laid out of the same tiles alike, so the record's orientation
             // and height fold in beside it
-            fold = Fold(Fold(Fold(fold, t), *(int*)(buf + p + step + type)), *(int*)(buf + p + 2 * step + type));
+            fold = Fold(Fold(Fold(fold, t), *(int*)&buf[p + step + type]), *(int*)&buf[p + 2 * step + type]);
             p += ints;
-            uint flags = *(ushort*)(buf + p + type) & (uint)TileFlagMask;
+            uint flags = *(ushort*)&buf[p + type] & (uint)TileFlagMask;
             fold = Fold(fold, (long)flags);
             p += word + (uint)BitOperations.PopCount(flags) * one;
             if (p > len) return false;
@@ -224,9 +224,9 @@ internal static unsafe partial class ModelLoad
             uint p = Pad;
             for (int k = 0; k < Records; k++)
             {
-                *(int*)(buf + p + type) = ids[k];
+                *(int*)&buf[p + type] = ids[k];
                 p += ints;
-                *(ushort*)(buf + p + type) = flags[k];
+                *(ushort*)&buf[p + type] = flags[k];
                 p += word + (uint)BitOperations.PopCount(flags[k] & (uint)TileFlagMask) * one;
             }
 

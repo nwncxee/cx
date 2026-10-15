@@ -432,9 +432,10 @@ internal static unsafe partial class OwnedTextures
     {
         const ulong Prime = 0x100000001B3UL;   // not-an-offset: FNV-1a 64 prime
         ulong h = 0xCBF29CE484222325UL;   // not-an-offset: FNV-1a 64 basis
-        for (byte* p = NameOf(tex); *p != 0; p++)
+        byte* nm = NameOf(tex);
+        for (int k = 0; nm[k] != 0; k++)
         {
-            uint c = *p; if (c - 'A' < 26) c += 32;
+            uint c = nm[k]; if (c - 'A' < 26) c += 32;
             h = (h ^ c) * Prime;
         }
         var b = new CAurTextureBasic(tex);
@@ -519,7 +520,7 @@ internal static unsafe partial class OwnedTextures
 
         int* saved = stackalloc int[CarriedParams.Length];
         for (int i = 0; i < CarriedParams.Length; i++)
-            Gl.GetTextureParameteriv(q.Src, CarriedParams[i], saved + i);
+            Gl.GetTextureParameteriv(q.Src, CarriedParams[i], &saved[i]);
 
         uint dst;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);

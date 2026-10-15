@@ -383,7 +383,7 @@ internal static unsafe class TexStream
         IntPtr* items = stackalloc IntPtr[8];
         byte* head = stackalloc byte[16];
         IntPtr* built = stackalloc IntPtr[8];
-        IntPtr T(int i) => (IntPtr)(texs + i * obj);   // the queue array is rewritten in place, so compare against these
+        IntPtr T(int i) => (IntPtr)(&texs[i * obj]);   // the queue array is rewritten in place, so compare against these
         for (int i = 0; i < n; i++) { items[i] = T(i); *(byte*)T(i) = (byte)(i == 1 || i == 5 ? 0 : 1); }   // byte 0 = world
         new CAurTextureBasic(T(3)).FlagNoDrain = 1;
         _fakeQ = new EngineList((IntPtr)head);

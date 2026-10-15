@@ -160,7 +160,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int s = 0; s < n; s++)
             {
                 int i = pick[s];
-                float* r = data + (long)i * DrawFloats;
+                float* r = &data[(long)i * DrawFloats];
                 Matrix4x4 mm = *(Matrix4x4*)r;
                 P($"part[{s}] at={mm.M41:F2},{mm.M42:F2},{mm.M43:F2} cls={_oCls[i]} lit={_oLit[i]} "
                   + $"slots={_oSlots[i]} feat={r[40]:F1},{r[41]:F1},{r[42]:F1},{r[43]:F1}");
@@ -218,7 +218,7 @@ public sealed unsafe partial class AlloyRenderer
                     Mdl.MeshDef? md = rec >= 0 ? Db.DrawRecipe.Mesh(rec) : null;
                     if (md != null) tex = md.Textures[0];
                 }
-                float* r = data + (long)i * DrawFloats;
+                float* r = &data[(long)i * DrawFloats];
                 Matrix4x4 mm = *(Matrix4x4*)r;
                 P($"blend[{s}] node='{node}' model='{model}' tex0='{tex}' at={mm.M41:F2},{mm.M42:F2},{mm.M43:F2} "
                   + $"cls={_oCls[i]} lit={_oLit[i]} nocull={_oNoCull[i]} src={_oSrc[i]} dst={_oDst[i]} wash={_oWash[i]}");
@@ -287,8 +287,8 @@ public sealed unsafe partial class AlloyRenderer
             {
                 int k = pick[s], i = _pass[k];
                 float t = key[s];
-                float* b = bx + (long)i * 6;
-                float* r = data + (long)i * DrawFloats;
+                float* b = &bx[(long)i * 6];
+                float* r = &data[(long)i * DrawFloats];
                 string node = _oDbPart[i] >= 0
                     ? Db.PartTree.NameOf(_oDbPart[i])
                     : (_oNode[i] == IntPtr.Zero ? "" : new MdlNode(_oNode[i]).NameText ?? "");
@@ -315,7 +315,7 @@ public sealed unsafe partial class AlloyRenderer
         t = 0f;
         fixed (float* bx = _oBox)
         {
-            float* b = bx + (long)i * 6;
+            float* b = &bx[(long)i * 6];
             if (!(b[3] > b[0]) && !(b[4] > b[1]) && !(b[5] > b[2])) return false;   // never filled
             float lo = 0f, hi = float.MaxValue;
             for (int a = 0; a < 3; a++)

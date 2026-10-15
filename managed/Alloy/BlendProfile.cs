@@ -63,7 +63,7 @@ internal static unsafe class BlendProfile
         Gl.GetQueryObjectiv(_q[_n], Gl.QUERY_RESULT_AVAILABLE, &ready);
         if (ready == 0) return;
         fixed (ulong* t = _t)
-            for (int i = 0; i <= _n; i++) Gl.GetQueryObjectui64v(_q[i], Gl.QUERY_RESULT, t + i);
+            for (int i = 0; i <= _n; i++) Gl.GetQueryObjectui64v(_q[i], Gl.QUERY_RESULT, &t[i]);
         for (int i = 0; i < _n; i++) _order[i] = i;
         Array.Sort(_order, 0, _n, Comparer.Instance);
         double total = (_t[_n] - _t[0]) / 1e6;

@@ -18,6 +18,7 @@ internal static unsafe class BcnEncode
     internal static void EncodeLevel(byte* rgba, int w, int h, bool bc3, byte* dst)
     {
         byte* px = stackalloc byte[64];
+        long o = 0;
         for (int by = 0; by < h; by += 4)
         for (int bx = 0; bx < w; bx += 4)
         {
@@ -26,12 +27,12 @@ internal static unsafe class BcnEncode
             {
                 // clamp-sample: an edge block repeats its last row/column
                 int sx = bx + x >= w ? w - 1 : bx + x, sy = by + y >= h ? h - 1 : by + y;
-                byte* s = rgba + (sy * (long)w + sx) * 4;
-                byte* d = px + (y * 4 + x) * 4;
+                byte* s = &rgba[(sy * (long)w + sx) * 4];
+                byte* d = &px[(y * 4 + x) * 4];
                 d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
             }
-            if (bc3) { Bc4Block(px, dst); dst += 8; }
-            Bc1Block(px, dst); dst += 8;
+            if (bc3) { Bc4Block(px, &dst[o]); o += 8; }
+            Bc1Block(px, &dst[o]); o += 8;
         }
     }
 
@@ -53,7 +54,7 @@ internal static unsafe class BcnEncode
             int seen = 0;
             for (int i = 0; i < 16; i++)
             {
-                byte* p = px + i * 4;
+                byte* p = &px[i * 4];
                 if (pass == 0 && p[3] <= MatteAlpha) continue;
                 seen++;
                 if (p[0] < rMin) rMin = p[0]; if (p[0] > rMax) rMax = p[0];
@@ -76,7 +77,7 @@ internal static unsafe class BcnEncode
             int len = dr * dr + dg * dg + db * db;
             for (int i = 0; i < 16; i++)
             {
-                byte* p = px + i * 4;
+                byte* p = &px[i * 4];
                 int dot = (p[0] - rMin) * dr + (p[1] - gMin) * dg + (p[2] - bMin) * db;
                 int t = (dot * 3 + len / 2) / len;               // 0..3 along c1->c0
                 t = t < 0 ? 0 : t > 3 ? 3 : t;

@@ -54,7 +54,7 @@ public sealed unsafe partial class AlloyRenderer
             if (next == null) return;
             _dpStage = next; _dpCap = cap;
         }
-        Buffer.MemoryCopy(dst, _dpStage + _dpUsed, (long)n * 12, (long)n * 12);
+        Buffer.MemoryCopy(dst, &_dpStage[_dpUsed], (long)n * 12, (long)n * 12);
         _oDpAt[i] = _frameSeq; _oDpBase[i] = _dpUsed; _oDpN[i] = n;
         _dpUsed = need;
     }
@@ -150,7 +150,7 @@ public sealed unsafe partial class AlloyRenderer
             // A DB slot carries no engine primitive enum, and index 0 is GL_POINTS in the engine's translation
             // table; an arena draw is TRIANGLES, as the colour batch row says for it unconditionally.
             Gl.MultiDrawElementsBaseVertex(DbSlot(i) ? Gl.TRIANGLES : _primTable[_oPrim[i]],
-                                           counts + d, GlUnsignedShort, (void**)(offs + d), 1, bases + d);
+                                           &counts[d], GlUnsignedShort, (void**)(&offs[d]), 1, &bases[d]);
             _mvDrawn++;
             if (_oBone[i] >= 0) _mvSkinDrawn++;
         }

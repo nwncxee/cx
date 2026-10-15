@@ -115,7 +115,7 @@ internal static unsafe partial class OwnedTextures
                     long off = 0;
                     for (int i = 0; i < job.Levels; i++)
                     {
-                        BcnEncode.EncodeLevel(px + job.Off[i], job.Lw[i], job.Lh[i], bc3, blocks + off);
+                        BcnEncode.EncodeLevel(&px[job.Off[i]], job.Lw[i], job.Lh[i], bc3, &blocks[off]);
                         job.Off[i] = off;   // re-used: the level's offset in the BLOCK buffer from here on
                         off += BcnEncode.LevelSize(job.Lw[i], job.Lh[i], bc3);
                     }
@@ -161,7 +161,7 @@ internal static unsafe partial class OwnedTextures
         fixed (byte* blocks = job.Blocks)
             for (int i = 0; i < job.Levels; i++)
                 Gl.CompressedTextureSubImage2D(dst, i, 0, 0, job.Lw[i], job.Lh[i], fmt,
-                                               BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3), blocks + job.Off[i]);
+                                               BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3), &blocks[job.Off[i]]);
         uint err = Gl.GetError();
         if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpackBuf);
         if (err != 0)

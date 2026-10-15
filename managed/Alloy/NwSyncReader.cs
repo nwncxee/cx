@@ -493,7 +493,8 @@ internal static unsafe class NwSyncReader
             Fail("short", ref _errors, $"a {len}-byte NWSync blob cannot carry its own header");
             return false;
         }
-        int magic = *(int*)blob, version = *(int*)(blob + 4), provider = *(int*)(blob + 8), plain = *(int*)(blob + 12);
+        int* hdr = (int*)blob;
+        int magic = hdr[0], version = hdr[1], provider = hdr[2], plain = hdr[3];
         if (magic != NsycMagic || version != NsycVersion)
         {
             Fail("header", ref _errors, $"NWSync blob header is magic 0x{magic:x8} version {version} (expected NSYC version {NsycVersion})");
@@ -509,14 +510,15 @@ internal static unsafe class NwSyncReader
             Fail("plainsize", ref _errors, $"NWSync blob declares a {plain}-byte resource");
             return false;
         }
-        byte* sub = blob + NsycHeader;
-        if (*(int*)sub != 1 || *(int*)(sub + 4) != 0)
+        byte* sub = &blob[NsycHeader];
+        int* subHdr = (int*)sub;
+        if (subHdr[0] != 1 || subHdr[1] != 0)
         {
             Fail("zstdsub", ref _errors,
-                 $"zstd payload is tag {*(int*)sub} dictionary {*(int*)(sub + 4)}; this reader carries no dictionary");
+                 $"zstd payload is tag {subHdr[0]} dictionary {subHdr[1]}; this reader carries no dictionary");
             return false;
         }
-        byte* frame = sub + ZstdSubHeader;
+        byte* frame = &sub[ZstdSubHeader];
         nuint frameLen = (nuint)(len - NsycHeader - ZstdSubHeader);
         byte* dst = (byte*)NativeMemory.Alloc((nuint)plain);
         long t0 = Stopwatch.GetTimestamp();

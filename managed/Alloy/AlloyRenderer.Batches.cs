@@ -393,7 +393,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         fixed (float* sp = _dSph)
         {
-            float* s = sp + (long)i * 4;
+            float* s = &sp[(long)i * 4];
             if (_oBone[i] >= 0 || ShaderFeatures.OutOfPrepass(feat) || PartTable.IsDangly(tri)
                 || !(_oR[i] > 0f))
             { s[0] = 0f; s[1] = 0f; s[2] = 0f; s[3] = NeverCull; return; }
@@ -415,7 +415,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         fixed (float* sp = _dCastSph)
         {
-            float* s = sp + (long)i * 4;
+            float* s = &sp[(long)i * 4];
             float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
             // a posed skin and a dangly move their vertices off the bind box; the origin bound is the looser fit for them
             if (f.HasModel && _oBr[i] > 0f && !_vSkin[_oVao[i]] && !_oDangly[i])
@@ -469,7 +469,7 @@ public sealed unsafe partial class AlloyRenderer
         bool m = false;
         if (f.HasModel)
         {
-            Matrix4x4* model = (Matrix4x4*)r, prev = (Matrix4x4*)(r + PrevFloat);
+            Matrix4x4* model = (Matrix4x4*)r, prev = (Matrix4x4*)&r[PrevFloat];
             if (Moved(in *model, in f.Model, MoveStep))
             {
                 if (roll) *prev = *model;
@@ -478,15 +478,15 @@ public sealed unsafe partial class AlloyRenderer
             else if (roll && *prev != *model) { *prev = *model; m = true; }
             if (fresh) *prev = f.Model;
         }
-        m |= St(r + 18, f.Dissolve) | St(r + 19, f.Alpha);
+        m |= St(&r[18], f.Dissolve) | St(&r[19], f.Alpha);
         if (f.Lit)
         {
-            m |= St(r + 20, f.AmbR) | St(r + 21, f.AmbG) | St(r + 22, f.AmbB)
-                 | St(r + 28, f.EmiR) | St(r + 29, f.EmiG) | St(r + 30, f.EmiB)
-                 | St(r + 35, f.Slots);
-            m |= St(r + 24, f.DifR) | St(r + 25, f.DifG) | St(r + 26, f.DifB);
+            m |= St(&r[20], f.AmbR) | St(&r[21], f.AmbG) | St(&r[22], f.AmbB)
+                 | St(&r[28], f.EmiR) | St(&r[29], f.EmiG) | St(&r[30], f.EmiB)
+                 | St(&r[35], f.Slots);
+            m |= St(&r[24], f.DifR) | St(&r[25], f.DifG) | St(&r[26], f.DifB);
         }
-        m |= St(r + 40, f.FeatX) | St(r + 41, f.FeatY);
+        m |= St(&r[40], f.FeatX) | St(&r[41], f.FeatY);
         return m;
     }
 
@@ -499,7 +499,7 @@ public sealed unsafe partial class AlloyRenderer
     /// whose class does not stage a node has no live matrix to re-read.</summary>
     private static void WriteStable(float* r, int i, bool lit)
     {
-        if (!_oMx[i]) { *(Matrix4x4*)r = Matrix4x4.Identity; *(Matrix4x4*)(r + PrevFloat) = Matrix4x4.Identity; }
+        if (!_oMx[i]) { *(Matrix4x4*)r = Matrix4x4.Identity; *(Matrix4x4*)&r[PrevFloat] = Matrix4x4.Identity; }
         r[16] = _oCos[i]; r[17] = _oSin[i];
         int fo = i * 4;
         r[42] = _oFeat[fo + 2];
@@ -615,13 +615,13 @@ public sealed unsafe partial class AlloyRenderer
             bool mm = WritePerFrame(r, in f);
             // #392: the frame the matrix moved, prev holds where it WAS; the next build (nothing moved) rolls
             // prev up to the model and re-sends once; the one after that is quiet.
-            bool prevLag = *(Matrix4x4*)(r + PrevFloat) == was && *(Matrix4x4*)r == f.Model;
-            bool catchUp = WritePerFrame(r, in f) && *(Matrix4x4*)(r + PrevFloat) == f.Model && !WritePerFrame(r, in f);
+            bool prevLag = *(Matrix4x4*)&r[PrevFloat] == was && *(Matrix4x4*)r == f.Model;
+            bool catchUp = WritePerFrame(r, in f) && *(Matrix4x4*)&r[PrevFloat] == f.Model && !WritePerFrame(r, in f);
             // ...and a second build in the SAME frame (roll: false) leaves prev where the first put it.
             f.Model = Matrix4x4.CreateTranslation(3f, 3f, 3f);
             WritePerFrame(r, in f);
-            Matrix4x4 held = *(Matrix4x4*)(r + PrevFloat);
-            bool sameFrame = !WritePerFrame(r, in f, roll: false) && *(Matrix4x4*)(r + PrevFloat) == held;
+            Matrix4x4 held = *(Matrix4x4*)&r[PrevFloat];
+            bool sameFrame = !WritePerFrame(r, in f, roll: false) && *(Matrix4x4*)&r[PrevFloat] == held;
             f.Model = was;
             WritePerFrame(r, in f, fresh: true);
             if (!mm) log.Info("AlloyRenderer.SplitSelfCheck: FAILED -- a moved model matrix does not "
@@ -784,7 +784,7 @@ public sealed unsafe partial class AlloyRenderer
             int tid = row.Tid, slots = row.Slots;
             int idxCount = row.IdxCount;
             int v = row.Vao;
-            float* r = data + (long)i * DrawFloats;
+            float* r = &data[(long)i * DrawFloats];
             uint mode = row.Mode;
             // Automatic mesh LOD: the level came off the row (arithmetic on the cull's own sphere); the RANGE
             // is looked up here because a generated run lives in MeshLod's own element buffer, so the level
@@ -906,12 +906,12 @@ public sealed unsafe partial class AlloyRenderer
                 NoteMoverDraw(n, row.Posed, row.Dangly);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.
-            CullPass.Pack(srcAll + (long)n * CullPass.SrcUints, idxCount, _dOff[n], _dBase[n], i,
+            CullPass.Pack(&srcAll[(long)n * CullPass.SrcUints], idxCount, _dOff[n], _dBase[n], i,
                           groups - 1, _gStart[groups - 1]);
             // #287: ...and after the record block, so the extent is measured on the sphere this frame wrote.
             if (cls <= (int)AlloyClass.Cutout)
             {
-                float* sp = sphAll + (long)i * 4;
+                float* sp = &sphAll[(long)i * 4];
                 if (sp[3] < NeverCull)
                 {
                     lox = MathF.Min(lox, sp[0]); hix = MathF.Max(hix, sp[0]);
@@ -1005,7 +1005,7 @@ public sealed unsafe partial class AlloyRenderer
         if (MeshLod.On && _lodScale > 0f)
             fixed (float* sphAll = _dSph)
             {
-                float* lsp = sphAll + (long)i * 4;
+                float* lsp = &sphAll[(long)i * 4];
                 if (lsp[3] < NeverCull)
                 {
                     float dx = lsp[0] - _eyePos.X, dy = lsp[1] - _eyePos.Y, dz = lsp[2] - _eyePos.Z;
@@ -1056,7 +1056,7 @@ public sealed unsafe partial class AlloyRenderer
             int lvl = 0;
             if (MeshLod.On && _lodScale > 0f)
             {
-                float* lsp = sph + (long)i * 4;
+                float* lsp = &sph[(long)i * 4];
                 if (lsp[3] < NeverCull)
                 {
                     float dx = lsp[0] - _eyePos.X, dy = lsp[1] - _eyePos.Y, dz = lsp[2] - _eyePos.Z;
@@ -1214,7 +1214,7 @@ public sealed unsafe partial class AlloyRenderer
             // The draw carries the arena's VAO name.
             uint vaoName = _skVaoName[i];
             if (vaoName != boundVaoName) { Gl.BindVertexArray(vaoName); boundVaoName = vaoName; }
-            int* tex = texAll + i * MaxEngTex;
+            int* tex = &texAll[i * MaxEngTex];
             // Unit 0 for either stage; the rest only where a hosted stage could declare them. Units 1 and 2
             // are the shadow ARRAYS (TextureSlots.SunShadow/LocalShadow) and 3 is the material map block, so a
             // plain sky draw has no business touching them -- and the next BindPass is what puts a hosted
@@ -1223,9 +1223,9 @@ public sealed unsafe partial class AlloyRenderer
             for (int k = 0; k < units; k++)
                 if (tex[k] != boundTex[k]) { Gl.BindTextureUnit((uint)k, (uint)tex[k]); boundTex[k] = tex[k]; }
             int s = _skyFirst + i;
-            if (_skProg[i] != 0) SkyStage.Draw(prog, s, t3 + i * 3, _skAlpha[i], SceneFog.SkyBand);
-            else { Gl.Uniform3fv(Programs._locTint, 1, t3 + i * 3); Gl.Uniform1i(Programs._locBase, s); }
-            Gl.MultiDrawElementsBaseVertex(_skMode[i], counts + s, GlUnsignedShort, (void**)(offs + s), 1, bases + s);
+            if (_skProg[i] != 0) SkyStage.Draw(prog, s, &t3[i * 3], _skAlpha[i], SceneFog.SkyBand);
+            else { Gl.Uniform3fv(Programs._locTint, 1, &t3[i * 3]); Gl.Uniform1i(Programs._locBase, s); }
+            Gl.MultiDrawElementsBaseVertex(_skMode[i], &counts[s], GlUnsignedShort, (void**)(&offs[s]), 1, &bases[s]);
             Counters._batches++; Counters._draws++;
             if (_skProg[i] != 0) SkyBox.NoteHosted();
         }

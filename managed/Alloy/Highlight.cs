@@ -276,7 +276,7 @@ internal static unsafe class Highlight
         {
             if (rootHit[i] != 0) { hit++; continue; }
             var root = new DbId((uint)arr[i]);
-            HighlightGlow.Stage(root, cols + i * 3, kids, DbAttached(root, 0, kids, kidRoot, 0));
+            HighlightGlow.Stage(root, &cols[i * 3], kids, DbAttached(root, 0, kids, kidRoot, 0));
         }
         HighlightGlow.Draw(view, proj, display);
         if (hit == 0) return;
@@ -331,7 +331,7 @@ internal static unsafe class Highlight
             if (slot >= 0)
                 fixed (float* d = _dData)
                 {
-                    float* r = d + (long)slot * DrawFloats;
+                    float* r = &d[(long)slot * DrawFloats];
                     rec = $"record dif=({r[24]:F2},{r[25]:F2},{r[26]:F2}) emi=({r[28]:F2},{r[29]:F2},{r[30]:F2})";
                 }
             _log?.Info($"[hldiag] root o={o} \"{SceneDb.ObjModel[o]?.Name ?? "-"}\" tint={SceneDb.ObjTint[o]} "
@@ -391,8 +391,8 @@ internal static unsafe class Highlight
                 }
                 BindBatchState(g, ref boundCull, ref boundVao);
                 Gl.Uniform1i(_hlBase, j);
-                Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + j, GlUnsignedShort,
-                                               (void**)(offs + j), 1, bases + j);
+                Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[j], GlUnsignedShort,
+                                               (void**)(&offs[j]), 1, &bases[j]);
             }
         }
     }

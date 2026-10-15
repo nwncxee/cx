@@ -70,7 +70,7 @@ internal static unsafe class TexScan
         if (t.GetCompressedSize() > 0)
         {
             int fmt = t.GetCompressionFormat();
-            byte* data = px + t.GetNumMipHeaderBytes();
+            byte* data = &px[t.GetNumMipHeaderBytes()];
             r.W = w; r.H = h;
             if (DdsReader.Lookup(px, out DdsReader.Info dds) && !DdsReader.EngineUploads(dds.Format))
                 return ScanDecoded(data, w, h, dds.Format, cut, ref r);
@@ -92,10 +92,10 @@ internal static unsafe class TexScan
             fixed (byte* op = o)
                 for (int y = 0; y < ch; y++)
                 {
-                    byte* s = px + (y0 + y) * stride + (long)x0 * bpp;
-                    byte* d = op + (long)y * cw * 4;
-                    for (int x = 0; x < cw; x++, s += bpp, d += 4)
-                    { d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = bpp == 4 ? s[3] : (byte)255; }
+                    byte* s0 = &px[(y0 + y) * stride + (long)x0 * bpp];
+                    byte* d0 = &op[(long)y * cw * 4];
+                    for (int x = 0; x < cw; x++)
+                    { byte* s = &s0[x * bpp], d = &d0[x * 4]; d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = bpp == 4 ? s[3] : (byte)255; }
                 }
             r.Rgba = o;
         }
@@ -127,8 +127,8 @@ internal static unsafe class TexScan
         if (bpp == 4)
             for (int y = 0; y < ch; y++)
             {
-                byte* s = px + (y0 + y) * stride + (long)x0 * 4 + 3;
-                for (int x = 0; x < cw; x++, s += 4) { if (*s < cut) dropped++; else if (*s < OpaqueAlpha) graded++; }
+                byte* s = &px[(y0 + y) * stride + (long)x0 * 4 + 3];
+                for (int x = 0; x < cw; x++) { int a = s[x * 4]; if (a < cut) dropped++; else if (a < OpaqueAlpha) graded++; }
             }
         r.Holes = dropped / (float)((long)cw * ch);
         r.Graded = graded / (float)((long)cw * ch);
@@ -137,7 +137,7 @@ internal static unsafe class TexScan
         for (int y = 0; y < ch; y += step)
             for (int x = 0; x < cw; x += step)
             {
-                byte* s = px + (y0 + y) * stride + (long)(x0 + x) * bpp;
+                byte* s = &px[(y0 + y) * stride + (long)(x0 + x) * bpp];
                 if (bpp >= 3) { rs += s[0]; gs += s[1]; bs += s[2]; }
                 else { rs += s[0]; gs += s[0]; bs += s[0]; }
                 n++;
@@ -155,8 +155,8 @@ internal static unsafe class TexScan
         for (int by = 0; by < bh; by++)
             for (int bx = 0; bx < bw; bx++)
             {
-                byte* b = data + ((long)by * bw + bx) * bytes;
-                byte* c = dxt5 ? b + 8 : b;
+                byte* b = &data[((long)by * bw + bx) * bytes];
+                byte* c = dxt5 ? &b[8] : b;
                 int c0 = c[0] | (c[1] << 8), c1 = c[2] | (c[3] << 8);
                 uint idx = (uint)(c[4] | (c[5] << 8) | (c[6] << 16) | (c[7] << 24));
                 rs += Expand5(c0 >> 11) + Expand5(c1 >> 11);
@@ -218,16 +218,16 @@ internal static unsafe class TexScan
         for (int i = 1; i < levels; i++)
         {
             int sw = lw[i - 1], sh = lh[i - 1], dw = lw[i], dh = lh[i];
-            byte* s = px + off[i - 1], d = px + off[i];
+            byte* s = &px[off[i - 1]], d = &px[off[i]];
             for (int y = 0; y < dh; y++)
             {
                 int y0 = Math.Min(y * 2, sh - 1), y1 = Math.Min(y * 2 + 1, sh - 1);
                 for (int x = 0; x < dw; x++)
                 {
                     int x0 = Math.Min(x * 2, sw - 1), x1 = Math.Min(x * 2 + 1, sw - 1);
-                    byte* p00 = s + ((long)y0 * sw + x0) * 4, p01 = s + ((long)y0 * sw + x1) * 4;
-                    byte* p10 = s + ((long)y1 * sw + x0) * 4, p11 = s + ((long)y1 * sw + x1) * 4;
-                    byte* o = d + ((long)y * dw + x) * 4;
+                    byte* p00 = &s[((long)y0 * sw + x0) * 4], p01 = &s[((long)y0 * sw + x1) * 4];
+                    byte* p10 = &s[((long)y1 * sw + x0) * 4], p11 = &s[((long)y1 * sw + x1) * 4];
+                    byte* o = &d[((long)y * dw + x) * 4];
                     // #499: alpha-weighted colour -- a transparent texel's (black) colour must not darken the
                     // level. Alpha itself is the plain mean; a fully transparent box keeps the plain mean too.
                     int wa = p00[3] + p01[3] + p10[3] + p11[3];

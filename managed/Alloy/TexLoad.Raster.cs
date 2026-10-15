@@ -58,7 +58,7 @@ internal static unsafe partial class TexLoad
             if (read != null) NoteEngineTga(name);
             return read;
         }
-        *(short*)(px + r.Bytes + RasterTagAt) = RasterTag;
+        *(short*)&px[r.Bytes + RasterTagAt] = RasterTag;
         *w = r.W; *h = r.H; *bpp = r.Px;
         return px;
     }
@@ -66,7 +66,7 @@ internal static unsafe partial class TexLoad
     /// <summary>From the release slot: true when the buffer is a TGA of ours, and it is freed.</summary>
     internal static bool FreeRaster(byte* data, int w, int h, int bpp)
     {
-        if (data == null || bpp == 2 || w <= 0 || h <= 0 || *(short*)(data + (long)w * h * bpp + RasterTagAt) != RasterTag) return false;
+        if (data == null || bpp == 2 || w <= 0 || h <= 0 || *(short*)&data[(long)w * h * bpp + RasterTagAt] != RasterTag) return false;
         NativeMemory.Free(data);
         return true;
     }

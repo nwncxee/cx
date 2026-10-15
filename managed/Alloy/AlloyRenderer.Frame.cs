@@ -766,7 +766,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int g = _gBlendEnd; g < _gWaterEnd; g++)
                 for (int d = _gStart[g], e = d + _gLen[g]; d < e; d++)
                 {
-                    float* s = sph + (long)_dSlot[d] * 4;
+                    float* s = &sph[(long)_dSlot[d] * 4];
                     if (s[3] >= NeverCull || !SphereRect(vp, vw, vh, p00, p11, s[0], s[1], s[2], s[3],
                                                           out float ax, out float ay, out float bx, out float by))
                         return false;
@@ -850,8 +850,8 @@ public sealed unsafe partial class AlloyRenderer
             BindBatchState(g, ref boundCull, ref boundVao);
             if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
             else
-                Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort,
-                                               (void**)(offs + s), _gLen[g], bases + s);
+                Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort,
+                                               (void**)(&offs[s]), _gLen[g], &bases[s]);
         }
         if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
         Gl.ColorMask(1, 1, 1, 1);
@@ -905,7 +905,7 @@ public sealed unsafe partial class AlloyRenderer
             Gl.Uniform1i(Programs._depthBase, s);
             uint vao = VaoName(_gVao[g], _gCls[g]);
             if (vao != boundVao) { Gl.BindVertexArray(vao); boundVao = vao; }
-            Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort, (void**)(offs + s), _gLen[g], bases + s);
+            Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort, (void**)(&offs[s]), _gLen[g], &bases[s]);
         }
         Gl.BindVertexArray(0);
     }
@@ -992,8 +992,8 @@ public sealed unsafe partial class AlloyRenderer
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
                 else
-                    Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort,
-                                                   (void**)(offs + s), _gLen[g], bases + s);
+                    Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort,
+                                                   (void**)(&offs[s]), _gLen[g], &bases[s]);
                 drawn += _gLen[g];
             }
         }
@@ -1035,8 +1035,8 @@ public sealed unsafe partial class AlloyRenderer
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
                 else
-                    Gl.MultiDrawElementsBaseVertex(_gMode[g], counts + s, GlUnsignedShort,
-                                                   (void**)(offs + s), _gLen[g], bases + s);
+                    Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort,
+                                                   (void**)(&offs[s]), _gLen[g], &bases[s]);
                 drawn += _gLen[g]; skipped -= _gLen[g]; if (!retest) Counters._prepassFeatDraws += _gLen[g];
             }
             GpuEnd(GpuTerm.PrepassFeat);
@@ -1159,7 +1159,7 @@ public sealed unsafe partial class AlloyRenderer
                 for (int k = _gStart[g], e = k + _gLen[g]; k < e && !full; k++)
                 {
                     int slot = _dSlot[k];
-                    float* sp = sph + (long)slot * 4;
+                    float* sp = &sph[(long)slot * 4];
                     var s = new Vector4(sp[0], sp[1], sp[2], sp[3]);
                     if (s.W >= NeverCull)
                     {
