@@ -297,12 +297,12 @@ public static unsafe class SeamShell
             if (FrameNo - Head(b)->RetiredAt < QuarantineFrames) continue;
             _overflow.RemoveAt(i);
             Quarantined--;
-            NativeMemory.AlignedFree(ShellBlock<SeamHeader>.BlockOf(b));
+            NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(b));
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static SeamHeader* Head(nint shell) => ShellBlock<SeamHeader>.Header(shell);
+    internal static SeamHeader* Head(nint shell) => Headroom<SeamHeader>.Header(shell);
 
     /// <summary>A zeroed shell of <paramref name="kind"/> carrying <paramref name="id"/>, with its primary
     /// vptr set; 0 when the block cannot be had (the caller logs and refuses). The SafePointer list is left
@@ -330,12 +330,12 @@ public static unsafe class SeamShell
         }
         if (shell == 0)
         {
-            void* block = NativeMemory.AlignedAlloc((nuint)(ShellBlock<SeamHeader>.Size + size), 16);
+            void* block = NativeMemory.AlignedAlloc((nuint)(Headroom<SeamHeader>.Size + size), 16);
             if (block == null) return 0;
-            shell = ShellBlock<SeamHeader>.ShellOf(block);
+            shell = Headroom<SeamHeader>.PayloadOf(block);
             Allocated++;
         }
-        NativeMemory.Fill(ShellBlock<SeamHeader>.BlockOf(shell), (nuint)(ShellBlock<SeamHeader>.Size + size), 0);
+        NativeMemory.Fill(Headroom<SeamHeader>.BlockOf(shell), (nuint)(Headroom<SeamHeader>.Size + size), 0);
         SeamHeader* head = Head(shell);
         head->Magic = Magic;
         head->Id = id.Value;
@@ -395,7 +395,7 @@ public static unsafe class SeamShell
                 _ringTail[k] = (_ringTail[k] + 1) % RingSize;
                 _ringLive[k]--;
                 Quarantined--;
-                NativeMemory.AlignedFree(ShellBlock<SeamHeader>.BlockOf(evicted));
+                NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(evicted));
             }
             else
             {
@@ -466,11 +466,11 @@ public static unsafe class SeamShell
                 _ring[k, _ringTail[k]] = 0;
                 _ringTail[k] = (_ringTail[k] + 1) % RingSize;
                 _ringLive[k]--;
-                if (b != 0) NativeMemory.AlignedFree(ShellBlock<SeamHeader>.BlockOf(b));
+                if (b != 0) NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(b));
             }
             _ringHead[k] = 0;
         }
-        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree(ShellBlock<SeamHeader>.BlockOf(b));
+        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree(Headroom<SeamHeader>.BlockOf(b));
         _held = new HeldState();
         Quarantined = 0;
     }

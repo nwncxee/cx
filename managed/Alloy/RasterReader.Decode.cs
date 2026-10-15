@@ -9,11 +9,31 @@ namespace CX.Alloy;
 /// reads, so <c>tools/rastercheck</c> compiles this file alone and runs it over real files.</summary>
 public sealed unsafe partial class RasterReader
 {
-    private const int TgaHeaderBytes = 18;
-    /// <summary>TGA header fields: id length, colour-map type, image type, colour-map first index and length (u16)
-    /// and entry bits, w, h (u16), bits.</summary>
-    private const int TgaIdLen = 0, TgaCmapType = 1, TgaType = 2, TgaCmapFirst = 3, TgaCmapLen = 5, TgaCmapBits = 7,
-                      TgaW = 12, TgaH = 14, TgaBits = 16;
+    /// <summary>The 18-byte TGA file header, little-endian as the file is.</summary>
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct TgaHeader
+    {
+        /// <summary>Bytes of image id between the header and the colour map.</summary>
+        public byte IdLength;
+        /// <summary>1 when a colour map follows.</summary>
+        public byte ColorMapType;
+        /// <summary>The image type: 1/9 colour-mapped, 2/10 true colour, 3/11 greyscale; 9, 10 and 11 are RLE.</summary>
+        public byte ImageType;
+        /// <summary>Index of the first colour-map entry.</summary>
+        public ushort ColorMapFirst;
+        /// <summary>Entries in the colour map.</summary>
+        public ushort ColorMapLength;
+        /// <summary>Bits per colour-map entry.</summary>
+        public byte ColorMapBits;
+        /// <summary>Image origin, unused.</summary>
+        public ushort XOrigin, YOrigin;
+        /// <summary>Image size in pixels.</summary>
+        public ushort Width, Height;
+        /// <summary>Bits per pixel.</summary>
+        public byte PixelBits;
+        /// <summary>Descriptor bits, unused.</summary>
+        public byte Descriptor;
+    }
     /// <summary><c>ReadUnmappedRLETGA</c>'s refusal: more decoded bytes than this and the demand fails.</summary>
     private const uint TgaRleMax = 0x0fffffff;   // not-an-offset: a size cap
     /// <summary>One PLT layer's palette row: 256 four-byte entries (<c>ImageDecode</c>'s <c>row &lt;&lt; 10</c>).</summary>
@@ -49,23 +69,24 @@ public sealed unsafe partial class RasterReader
     internal static Verdict ParseTga(ReadOnlySpan<byte> raw, out Tga t, out string? why)
     {
         t = default; why = null;
-        if (raw.Length < TgaHeaderBytes) { why = $"{raw.Length} bytes, shorter than the header"; return Verdict.Unchecked; }
-        t.Type = raw[TgaType];
-        t.W = BinaryPrimitives.ReadUInt16LittleEndian(raw[TgaW..]);
-        t.H = BinaryPrimitives.ReadUInt16LittleEndian(raw[TgaH..]);
-        t.Px = raw[TgaBits] >> 3;
-        t.Offset = TgaHeaderBytes + raw[TgaIdLen] + BinaryPrimitives.ReadUInt16LittleEndian(raw[TgaCmapLen..]) * (raw[TgaCmapBits] >> 3);
+        if (raw.Length < sizeof(TgaHeader)) { why = $"{raw.Length} bytes, shorter than the header"; return Verdict.Unchecked; }
+        TgaHeader h = MemoryMarshal.Read<TgaHeader>(raw);
+        t.Type = h.ImageType;
+        t.W = h.Width;
+        t.H = h.Height;
+        t.Px = h.PixelBits >> 3;
+        t.Offset = sizeof(TgaHeader) + h.IdLength + h.ColorMapLength * (h.ColorMapBits >> 3);
         long bytes = (long)t.W * t.H * t.Px;
         switch (t.Type)
         {
             case 1: case 9:
-                int cbits = raw[TgaCmapBits];
-                if (raw[TgaCmapType] != 1 || raw[TgaBits] != 8 || (cbits != 24 && cbits != 32))
-                { why = $"colour map type {raw[TgaCmapType]}, {cbits}-bit entries, {raw[TgaBits]}-bit indices"; return Verdict.Unchecked; }
+                int cbits = h.ColorMapBits;
+                if (h.ColorMapType != 1 || h.PixelBits != 8 || (cbits != 24 && cbits != 32))
+                { why = $"colour map type {h.ColorMapType}, {cbits}-bit entries, {h.PixelBits}-bit indices"; return Verdict.Unchecked; }
                 t.Cmap = t.Px = cbits >> 3;
-                t.CmapFirst = BinaryPrimitives.ReadUInt16LittleEndian(raw[TgaCmapFirst..]);
-                t.CmapLen = BinaryPrimitives.ReadUInt16LittleEndian(raw[TgaCmapLen..]);
-                t.CmapAt = TgaHeaderBytes + raw[TgaIdLen];
+                t.CmapFirst = h.ColorMapFirst;
+                t.CmapLen = h.ColorMapLength;
+                t.CmapAt = sizeof(TgaHeader) + h.IdLength;
                 bytes = (long)t.W * t.H * t.Px;
                 if (bytes > TgaRleMax) { why = $"colour-mapped, decodes to {bytes} bytes"; return Verdict.Unchecked; }
                 if (raw.Length < t.Offset || !MappedFits(raw[t.Offset..], t.W * t.H, t.Type == 9, t.CmapFirst, t.CmapLen))

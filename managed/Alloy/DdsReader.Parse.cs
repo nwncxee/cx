@@ -9,7 +9,8 @@ internal static partial class DdsReader
 {
     /// <summary>The engine's <c>Aurora::AuroraContainerFormats</c> for the two DDS headers.</summary>
     internal const int ContainerLegacy = 1, ContainerMs = 2;
-    private const int LegacyHeader = 20, MsHeader = 128, Dx10Header = MsHeader + 20;
+    internal const int LegacyHeader = 20, MsHeader = 128;
+    private const int Dx10Header = MsHeader + 20;
     /// <summary>Microsoft header fields read (from the file start, magic included): dwHeight, dwWidth, dwDepth,
     /// dwMipMapCount, ddspf.dwFourCC, dwCaps2; then the DX10 extension's dxgiFormat, resourceDimension, miscFlag, arraySize.</summary>
     private const int MsHeight = 12, MsWidth = 16, MsMips = 28, MsFourCC = 84, MsCaps2 = 112,

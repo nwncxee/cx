@@ -1377,3 +1377,4 @@ offset	NkBuffer	allocated	0x58	0x58	# NkBufAllocated
 offset	LerpFloat	target	0x8	0x8	# LerpTarget
 offset	VdoElemItem	count	0x4	0x4	# VdoElemItemCount
 offset	VdoElemItem	stride	0x8	0x8	# VdoElemItemStride
+offset	CallBack	seamName	0x0	0x0	# SeamCallBackName

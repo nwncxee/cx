@@ -71,11 +71,11 @@ public static unsafe class PartShell
     public static nint For(DbId obj, int part)
     {
         if (_table == 0 || !SceneDb.Objects.Valid(obj)) return 0;
-        for (nint p = SceneDb.ObjSeamPartShells[obj.Index]; p != 0; p = ShellBlock<Head>.Header(p)->Next)
-            if (ShellBlock<Head>.Header(p)->Part == part) return p;
-        void* block = NativeMemory.AlignedAlloc((nuint)(ShellBlock<Head>.Size + sizeof(nint)), 16);
+        for (nint p = SceneDb.ObjSeamPartShells[obj.Index]; p != 0; p = Headroom<Head>.Header(p)->Next)
+            if (Headroom<Head>.Header(p)->Part == part) return p;
+        void* block = NativeMemory.AlignedAlloc((nuint)(Headroom<Head>.Size + sizeof(nint)), 16);
         if (block == null) { Facade.Log?.Always("seam: no memory for a Part shell -- GetPart refused"); return 0; }
-        nint shell = ShellBlock<Head>.ShellOf(block);
+        nint shell = Headroom<Head>.PayloadOf(block);
         Head* h = (Head*)block;
         h->Magic = Magic;
         h->ObjId = obj.Value;
@@ -93,7 +93,7 @@ public static unsafe class PartShell
     {
         obj = default; part = -1;
         if (self == 0) return false;
-        Head* h = ShellBlock<Head>.Header(self);
+        Head* h = Headroom<Head>.Header(self);
         if (h->Magic != Magic) return false;
         obj = new DbId(h->ObjId);
         part = h->Part;
@@ -112,7 +112,7 @@ public static unsafe class PartShell
         bool hold = SceneDb.ObjSceneKinds[obj.Index] != SeamShell.InWorld;
         while (p != 0)
         {
-            Head* h = ShellBlock<Head>.Header(p);
+            Head* h = Headroom<Head>.Header(p);
             nint next = h->Next;
             h->ObjId = 0;                      // retired: Resolve fails, GetWorld takes the poison path
             h->RetiredAt = SeamShell.FrameNo;
@@ -135,7 +135,7 @@ public static unsafe class PartShell
         nint p = _quarantine;
         while (p != 0)
         {
-            Head* h = ShellBlock<Head>.Header(p);
+            Head* h = Headroom<Head>.Header(p);
             nint next = h->Next;
             if (SeamShell.FrameNo - h->RetiredAt >= SeamShell.QuarantineFrames)
             {
@@ -177,7 +177,7 @@ public static unsafe class PartShell
         {
             // A retired part shell, or one whose object died: the out-params keep the identity the engine
             // seeds, and the call is named once so a behaviour still driving a dead attachment is visible.
-            Head* h = ShellBlock<Head>.Header(self);
+            Head* h = Headroom<Head>.Header(self);
             if (h->Magic == Magic && h->ObjId == 0)
             {
                 _afterDeath++;

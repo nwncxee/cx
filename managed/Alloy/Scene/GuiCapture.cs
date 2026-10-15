@@ -589,6 +589,9 @@ internal static unsafe class GuiCapture
         check.Expect(!c4 && n4 == 0f && f4 == 1f && !latch, "a non-GUI view takes the full range and drops the latch");
         Put("sceneGUI_minimap"); DepthOf(a, ref latch, out _, out _, out bool c5);
         check.Expect(c5, "...so the next GUI view clears again");
+        var rec = new GuiRec();
+        check.Expect(sizeof(GuiRec) == 256 && (byte*)&rec.Flags - (byte*)&rec == 208 && (byte*)&rec.PltRows - (byte*)&rec == 224,
+            "the GUI record is sixteen vec4: flags at float 52, the PLT rows at float 56");
         log.Info(check.Ok ? "GuiCapture.SelfCheck: passed" : "GuiCapture.SelfCheck: FAILED");
     }
 }

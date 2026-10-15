@@ -8,23 +8,21 @@ namespace CX.Engine;
 /// ints. Every list the seam shells carry (back-references, callbacks, attachments) has this shape.</summary>
 public readonly unsafe struct ExoArray(IntPtr ptr)
 {
-    private const int CountAt = 8, CapAt = 12;
-
     /// <summary>The list head.</summary>
     public readonly IntPtr Ptr = ptr;
     /// <summary>The element array, or zero.</summary>
-    public ref IntPtr Data => ref *(IntPtr*)Ptr;
+    public ref IntPtr Data => ref ((ExoArrayRec*)Ptr)->Items;
     /// <summary>Elements in use.</summary>
-    public ref int Count => ref *(int*)(Ptr + CountAt);
+    public ref int Count => ref ((ExoArrayRec*)Ptr)->Count;
     /// <summary>Elements the array has room for.</summary>
-    public ref int Cap => ref *(int*)(Ptr + CapAt);
+    public ref int Cap => ref ((ExoArrayRec*)Ptr)->Alloc;
     /// <summary>Element <paramref name="i"/> of a list of pointers; no bounds check.</summary>
     public ref IntPtr this[int i] => ref ((IntPtr*)Data)[i];
 }
 
 /// <summary>A <c>SafePointer</c>: the target object's address, then the index of its slot in the target's
 /// back-reference list.</summary>
-[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, Size = 16)]
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
 public struct SafePointerRec
 {
     /// <summary>The object it names.</summary>
