@@ -318,8 +318,6 @@ internal static unsafe class Issue
         int* boundSlot = stackalloc int[MapSlots];
         int drawn = 0;
         for (int s = 0; s < MapSlots; s++) boundSlot[s] = -1;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = from; g < groups; g++)
         {
             if (_onlyGobSet && _gGob[g] != _onlyGob) continue;
@@ -530,8 +528,7 @@ internal static unsafe class Issue
             uint prim = _gMode[g];
             if (indirect) CullPass.Draw(prim, g, s, _gLen[g]);
             else
-                Gl.MultiDrawElementsBaseVertex(prim, &counts[s], GlUnsignedShort,
-                                               (void**)(&offs[s]), _gLen[g], &bases[s]);
+                MultiDrawRange(prim, s, _gLen[g]);
             Counters._batches++;
             Counters._draws += _gLen[g];
             if (!interior) Counters._drawsByClass[_gCls[g]] += _gLen[g];

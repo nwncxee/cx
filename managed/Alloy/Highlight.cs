@@ -350,8 +350,6 @@ internal static unsafe class Highlight
         int boundCull = -1, boundColor = -1, boundCut = -1;
         // The blended class writes depth too now (Issue.TransparentPass depthWrite), so a translucent creature matches.
         int end = groups < _gBlendEnd ? groups : _gBlendEnd;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = 0; g < end; g++)
         {
             if (ShaderFeatures.OutOfPrepass(_gFeat[g])) continue;
@@ -391,8 +389,7 @@ internal static unsafe class Highlight
                 }
                 BindBatchState(g, ref boundCull, ref boundVao);
                 Gl.Uniform1i(_hlBase, j);
-                Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[j], GlUnsignedShort,
-                                               (void**)(&offs[j]), 1, &bases[j]);
+                MultiDrawRange(_gMode[g], j, 1);
             }
         }
     }

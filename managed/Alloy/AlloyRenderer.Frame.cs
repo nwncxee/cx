@@ -762,11 +762,10 @@ public sealed unsafe partial class AlloyRenderer
         if (!FrameSnapshot.Rect) return false;
         float vw = viewport[2], vh = viewport[3];
         float minx = vw, miny = vh, maxx = 0f, maxy = 0f;
-        fixed (float* sph = _dSph)
-            for (int g = _gBlendEnd; g < _gWaterEnd; g++)
+        for (int g = _gBlendEnd; g < _gWaterEnd; g++)
                 for (int d = _gStart[g], e = d + _gLen[g]; d < e; d++)
                 {
-                    float* s = &sph[(long)_dSlot[d] * 4];
+                    ReadOnlySpan<float> s = _dSph.AsSpan(_dSlot[d] * 4, 4);
                     if (s[3] >= NeverCull || !SphereRect(vp, vw, vh, p00, p11, s[0], s[1], s[2], s[3],
                                                           out float ax, out float ay, out float bx, out float by))
                         return false;
@@ -835,8 +834,6 @@ public sealed unsafe partial class AlloyRenderer
         uint boundVao = 0;
         int boundCull = -1, boundTex = -1;
         float boundCut = float.NaN;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = from; g < to; g++)
         {
             if (Issue._onlyGobSet && _gGob[g] != Issue._onlyGob) continue;
@@ -850,8 +847,7 @@ public sealed unsafe partial class AlloyRenderer
             BindBatchState(g, ref boundCull, ref boundVao);
             if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
             else
-                Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort,
-                                               (void**)(&offs[s]), _gLen[g], &bases[s]);
+                MultiDrawRange(_gMode[g], s, _gLen[g]);
         }
         if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
         Gl.ColorMask(1, 1, 1, 1);
@@ -897,15 +893,13 @@ public sealed unsafe partial class AlloyRenderer
         Gl.UseProgram(Programs._progDepth);
         Gl.UniformMatrix4fv(Programs._depthVp, 1, 0, (float*)vp);
         uint boundVao = 0;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int g = _gBlendEnd; g < _gWaterEnd; g++)
         {
             int s = _gStart[g];
             Gl.Uniform1i(Programs._depthBase, s);
             uint vao = VaoName(_gVao[g], _gCls[g]);
             if (vao != boundVao) { Gl.BindVertexArray(vao); boundVao = vao; }
-            Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort, (void**)(&offs[s]), _gLen[g], &bases[s]);
+            MultiDrawRange(_gMode[g], s, _gLen[g]);
         }
         Gl.BindVertexArray(0);
     }
@@ -949,8 +943,6 @@ public sealed unsafe partial class AlloyRenderer
         // identically; culling is the other half of it -- an identical clip position on a triangle only one
         // of the two passes rasterises still loses the fragment. Same batches, same state, same depth.
         int boundCull = -1;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         // #322: TWO SWEEPS -- all plain batches under one program bind, then all keyhole ones under the
         // other. Dissolve membership is per-frame camera state (thousands of parts keyhole at once under a
         // roofed area), so the cut order interleaves the two programs, and binding per alternation was the
@@ -992,8 +984,7 @@ public sealed unsafe partial class AlloyRenderer
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
                 else
-                    Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort,
-                                                   (void**)(&offs[s]), _gLen[g], &bases[s]);
+                    MultiDrawRange(_gMode[g], s, _gLen[g]);
                 drawn += _gLen[g];
             }
         }
@@ -1005,8 +996,6 @@ public sealed unsafe partial class AlloyRenderer
         // this runs as its own sweep under one program bind.
         GpuEnd(GpuTerm.PrepassKey);
         if (_prepassFeat && Programs.EnsureDepthFeatProgram())
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         {
             GpuBegin(GpuTerm.PrepassFeat);
             bool bound = false; int boundTex = -1; float boundCut = float.NaN;
@@ -1035,8 +1024,7 @@ public sealed unsafe partial class AlloyRenderer
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
                 else
-                    Gl.MultiDrawElementsBaseVertex(_gMode[g], &counts[s], GlUnsignedShort,
-                                                   (void**)(&offs[s]), _gLen[g], &bases[s]);
+                    MultiDrawRange(_gMode[g], s, _gLen[g]);
                 drawn += _gLen[g]; skipped -= _gLen[g]; if (!retest) Counters._prepassFeatDraws += _gLen[g];
             }
             GpuEnd(GpuTerm.PrepassFeat);
@@ -1153,13 +1141,12 @@ public sealed unsafe partial class AlloyRenderer
     {
         float lx = 1f, ly = 1f, hx = -1f, hy = -1f;
         bool full = false;
-        fixed (float* sph = _dSph)
         {
             for (int g = _gA2cStart; g < _gOpaqueEnd && !full; g++)
                 for (int k = _gStart[g], e = k + _gLen[g]; k < e && !full; k++)
                 {
                     int slot = _dSlot[k];
-                    float* sp = &sph[(long)slot * 4];
+                    ReadOnlySpan<float> sp = _dSph.AsSpan(slot * 4, 4);
                     var s = new Vector4(sp[0], sp[1], sp[2], sp[3]);
                     if (s.W >= NeverCull)
                     {

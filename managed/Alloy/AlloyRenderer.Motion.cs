@@ -134,8 +134,6 @@ public sealed unsafe partial class AlloyRenderer
         Gl.Uniform2f(_mvJitter, jx, jy);
         Gl.Uniform2f(_mvSize, viewport[2], viewport[3]);
         uint boundVao = 0; int boundCull = -1;
-        fixed (int* counts = _dCount, bases = _dBase)
-        fixed (nint* offs = _dOff)
         for (int k = 0; k < n; k++)
         {
             int d = _mvDraw[k], i = _dSlot[d];
@@ -149,8 +147,7 @@ public sealed unsafe partial class AlloyRenderer
             else Gl.Uniform2i(_mvDanglyLoc, 0, 0);
             // A DB slot carries no engine primitive enum, and index 0 is GL_POINTS in the engine's translation
             // table; an arena draw is TRIANGLES, as the colour batch row says for it unconditionally.
-            Gl.MultiDrawElementsBaseVertex(DbSlot(i) ? Gl.TRIANGLES : _primTable[_oPrim[i]],
-                                           &counts[d], GlUnsignedShort, (void**)(&offs[d]), 1, &bases[d]);
+            MultiDrawRange(DbSlot(i) ? Gl.TRIANGLES : _primTable[_oPrim[i]], d, 1);
             _mvDrawn++;
             if (_oBone[i] >= 0) _mvSkinDrawn++;
         }
