@@ -51,6 +51,7 @@ public sealed unsafe class SceneInputs : IExtenderService
         if (_stage < 4) log.Info($"SceneInputs: shadow.stage={_stage} -- the shadows feed stops after {(_stage < 3 ? "the focus" : "the cube bind (no bake)")}");
 
         ShadowMath.SelfCheck(log);   // pure math, runs headless
+        SkyMath.SelfCheck(log);      // ...and the overhead sky view's fit and horizon estimate
         FadeSelfCheck(log);          // ...and so does the fade-out bookkeeping
         FrameRead.SelfCheck(log);    // ...and the camera conventions the scene feed derives from
         // CurrentArea() is DB mode's fog and interior source too, so it resolves whatever the shadows say.

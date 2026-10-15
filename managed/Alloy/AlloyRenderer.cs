@@ -171,6 +171,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
                    WxEdge, WxRun, WxCache,             // R5: the shelter kernel, the run-off / shoreline terms, the shelter cache flag
                    LmPages, LmMovers,                  // #674
                    LightOcc,                           // light.hidden
+                   SkyVp, SkyTerm,                     // CX-290: the overhead sky view's fit and look terms
                    Material;                           // ADR 0026: light.brdf / ambientdir / specaa
         public FeatLoc Feat;
     }

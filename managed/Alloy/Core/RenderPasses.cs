@@ -313,6 +313,18 @@ internal static class RenderPasses
             ContextLost = OitPass.ContextLost,
             Stats = OitPass.Stats,
         }, log);
+        // CX-290: the sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render);
+        // what is registered here is the map baked from it -- a GL texture and a compute program, so it goes
+        // with the context, and the area edge is what makes the bake another area's.
+        r.Register(new PassLifecycle
+        {
+            Name = "skyview",
+            Attach = SkyView.Attach,
+            SelfCheck = SkyView.SelfCheck,
+            ContextLost = SkyView.Forget,
+            Revoke = SkyView.Revoke,
+            Stats = _ => SkyView.Stats(),
+        }, log);
         r.Register(new PassLifecycle
         {
             Name = "ao",

@@ -372,6 +372,21 @@ internal static unsafe class Programs
     internal static string WithoutSunSoft(string fs)
         => fs.Replace(SunSoftDefine, "// CX-49: the soft sun filter is OFF -- too few fragment texture units for its raw cascade views");
 
+    /// <summary>...and what the SKY-VISIBILITY term asks: one more, the highest unit Alloy binds. A driver
+    /// short of it keeps the lit program -- <see cref="WithoutSkyView"/> takes the define out so the map is
+    /// never declared -- and the area ambient fills an alley as vanilla does.</summary>
+    internal static readonly int SkyViewUnitsNeed = (int)TextureSlots.SkyMap + 1;
+
+    /// <summary>The define that compiles the sky-visibility term into a stage. It lives in
+    /// <c>cx_ownlit_head.glsl</c>, so a dumped stage and any override built from one carry it.</summary>
+    internal const string SkyViewDefine = "#define CX_SKY_VIEW 1";
+
+    /// <summary><paramref name="fs"/> with <see cref="SkyViewDefine"/> commented out: <c>CxSkyView</c>
+    /// compiles to a constant 1 and <c>uSkyMap</c> is not declared, which is what a driver short of
+    /// <see cref="SkyViewUnitsNeed"/> units needs in order to link the lit program at all.</summary>
+    internal static string WithoutSkyView(string fs)
+        => fs.Replace(SkyViewDefine, "// CX-290: the sky-visibility term is OFF -- too few fragment texture units for its map");
+
     /// <summary>Build the lit variant. A failure disarms lit ownership for the session (and the next
     /// enrollment hands every lit part back to the engine) -- never a silent fallback to fullbright, which
     /// would look worse than vanilla.</summary>
@@ -425,6 +440,12 @@ internal static unsafe class Programs
             litFs = WithoutSunSoft(litFs);
             _log?.Info($"AlloyRenderer: the sun's blocker search is OFF -- {litUnits} fragment texture units, "
                      + $"needs {SunSoftUnitsNeed}; sun shadows take the fixed four-tap cross (point-light cubes are unaffected)");
+        }
+        // CX-290: ...and the sky-visibility map is the one unit above those two, by the same rule.
+        if (litUnits < SkyViewUnitsNeed)
+        {
+            litFs = WithoutSkyView(litFs);
+            SkyView.NoTextureUnit();
         }
         // #350: from the hosted regions' STUBS -- the program every lit batch draws with carries no content
         // body; the second build below carries them for the batches that need them.
@@ -587,6 +608,7 @@ internal static unsafe class Programs
         L.LightOcc = GlProgram.Loc(prog, "uLightOcc");
         L.Material = GlProgram.Loc(prog, "uMaterial");
         L.AoDirect = GlProgram.Loc(prog, "uAoDirect"); L.AoCutout = GlProgram.Loc(prog, "uAoCutout");
+        L.SkyVp = GlProgram.Loc(prog, "uSkyVp"); L.SkyTerm = GlProgram.Loc(prog, "uSkyTerm");
         L.Weather = GlProgram.Loc(prog, "uWeather"); L.WeatherLook = GlProgram.Loc(prog, "uWeatherLook");
         L.CoverVp = GlProgram.Loc(prog, "uCoverVp"); L.CoverLayer = GlProgram.Loc(prog, "uCoverLayer");
         L.SnowLook = GlProgram.Loc(prog, "uSnowLook"); L.SnowLight = GlProgram.Loc(prog, "uSnowLight"); L.CoverEsm = GlProgram.Loc(prog, "uCoverEsmP"); L.SnowPom = GlProgram.Loc(prog, "uSnowPom");

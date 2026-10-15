@@ -140,6 +140,12 @@ internal static class TextureSlots
     /// so no bind-time <c>glUniform1i</c> can miss it.</summary>
     internal const uint PltPalette = 19;
 
+    /// <summary>The sky-visibility map (<see cref="SkyView"/>), read by the lit stage: the HIGHEST unit
+    /// Alloy claims. Declared behind <c>CX_SKY_VIEW</c>, which <see cref="Programs.WithoutSkyView"/> takes
+    /// out of the stage on a driver reporting fewer than <see cref="Programs.SkyViewUnitsNeed"/> fragment
+    /// units, exactly as the soft sun's two raw views are.</summary>
+    internal const uint SkyMap = 31;
+
     /// <summary>The (static light, mover) pair depth atlas (<see cref="PairShadows"/>). Read by the debt
     /// dispatch and -- for an unbaked receiver whose light traded its dyn page for tiles -- by
     /// <c>CxLocalShadowQ</c>, so by every program that lights. Past the 0..15 budget for
@@ -221,8 +227,16 @@ internal static class TextureSlots
         // deferred shadow pass's CX_PAIR_RECV compiles in, so it is named here rather than counted.
         check.Expect(!litDecls.Contains("#define CX_PAIR_RECV"), $"{PairMap} uPairMap is exempt only while the lit stage never defines CX_PAIR_RECV");
         foreach (uint u in Claimed(litDecls))
-            check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap,
+            check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap
+                      || u == SkyMap,
               $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} but sits above Programs.LitUnitsNeed ({Programs.LitUnitsNeed})");
+        check.Expect(SkyMap + 1 == Programs.SkyViewUnitsNeed && Programs.SunSoftUnitsNeed < Programs.SkyViewUnitsNeed,
+          $"the sky view's need is {Programs.SkyViewUnitsNeed} fragment units, its map sits on {SkyMap}");
+        check.Expect(SkyView.Lib.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;")
+          && litDecls.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;"), $"{SkyMap} uSkyMap (lit program)");
+        check.Expect(litDecls.Contains(Programs.SkyViewDefine)
+          && !Programs.WithoutSkyView(litDecls).Contains(Programs.SkyViewDefine),
+          "the sky-visibility term is removable: the stage carries the define and Programs.WithoutSkyView takes it out");
         check.Expect(SunShadowDynRaw + 1 == Programs.SunSoftUnitsNeed,
           $"the soft sun's need is {Programs.SunSoftUnitsNeed} fragment units, its highest view is {SunShadowDynRaw}");
         check.Expect(Programs.LitUnitsNeed < Programs.SunSoftUnitsNeed

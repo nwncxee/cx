@@ -377,6 +377,9 @@ public sealed unsafe partial class CasterPass : IExtenderService
                 case PassId.RainCover:
                     CoverPass(focus, sun);
                     break;
+                case PassId.SkyMap:
+                    SkyPass(sun);
+                    break;
             }
         }
         // #307: the queued stale views flush in one layered pass per target, HERE -- the publish arrays the
@@ -385,7 +388,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         if (!FlushLayered())
         {
             _layerFlushFails++;
-            CascadeCount = 0; CubeCount = 0; CoverRelease();
+            CascadeCount = 0; CubeCount = 0; CoverRelease(); SkyRelease();
             Array.Clear(SunDynMask); Array.Clear(CubeDynPage);
             PairShadows.Stand();   // the pair tiles never landed either: no light may be read as paired this frame
             _invalidate = true; _sunScanned = false; _cubeScanned = false;
@@ -398,6 +401,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
             GrassField.DrawShadows(_gl.Fbo, _gl.SunDynTex, _mapSize, _sunDynRebaked, CascadeCount);
         }
         CoverFiltered();
+        SkyBaked();
         Array.Clear(_sunRebaked); Array.Clear(_sunDynRebaked);
         // ...and only now may the frame's invalidation be consumed: every pass that ran reached every one of
         // its views, so each of them recorded this frame's movers against its own slots.
