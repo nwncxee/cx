@@ -2594,7 +2594,7 @@ public readonly unsafe partial struct CallBack(IntPtr ptr)
     /// <inheritdoc cref="EngineLayout.SeamCallBackFn"/>
     public ref IntPtr SeamFn => ref *(IntPtr*)(Ptr + EngineLayout.SeamCallBackFn);
     /// <inheritdoc cref="EngineLayout.SeamCallBackName"/>
-    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamCallBackName), 0); }
+    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamCallBackName), 32); }
     /// <inheritdoc cref="EngineLayout.SeamCallBackSizeof"/>
     public ref int SeamSizeof => ref *(int*)(Ptr + EngineLayout.SeamCallBackSizeof);
 }
@@ -2935,7 +2935,7 @@ public readonly unsafe ref partial struct Gob(IntPtr ptr)
     /// <inheritdoc cref="EngineLayout.SeamGobForceAnim"/>
     public ref byte SeamForceAnim => ref *(byte*)(Ptr + EngineLayout.SeamGobForceAnim);
     /// <inheritdoc cref="EngineLayout.SeamGobName"/>
-    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamGobName), 0); }
+    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamGobName), 64); }
     /// <inheritdoc cref="EngineLayout.SeamGobPersonalSpace"/>
     public ref byte SeamPersonalSpace => ref *(byte*)(Ptr + EngineLayout.SeamGobPersonalSpace);
     /// <inheritdoc cref="EngineLayout.SeamGobSafeCap"/>
