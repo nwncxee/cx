@@ -47,6 +47,7 @@ jobs:
             .gitmodules
             .github/workflows/ci.yml
             'tools/engine/*'
+            'tools/analyzers/*'
             tools/build-openal.sh
             tools/deps.json
             tools/deps.py

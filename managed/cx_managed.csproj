@@ -24,6 +24,14 @@
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>
 
+  <!-- Compiler rules (ADR 0031). A call listed in BannedSymbols.txt is RS0030 and the repository's own analyzers
+       (tools/analyzers/) refuse what names no symbol, such as a pointer plus an offset; .editorconfig makes both errors. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0" PrivateAssets="all" />
+    <AdditionalFiles Include="BannedSymbols.txt" />
+    <ProjectReference Include="../tools/analyzers/cx_analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
   <!-- Keep our own assembly whole: the service host discovers services by
        reflection, so their constructors must survive trimming. Trimming a tiny
        extender saves nothing; rooting it removes all reflection/AOT fragility. -->

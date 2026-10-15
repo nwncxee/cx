@@ -189,6 +189,22 @@ history or a ticket number; `tools/gates/comments.sh` refuses a `///` block over
 Past 1,500 lines a `.cs` file is split by responsibility -- `partial` files or sibling
 classes, one job each, the way `AlloyRenderer`'s are; `tools/gates/file-size.sh` refuses otherwise.
 
+## Compiler rules (ADR 0031)
+
+A rule the compiler can check is a build error, not a gate. `managed/.editorconfig` sets both to error:
+
+- `managed/BannedSymbols.txt` (RS0030, BannedApiAnalyzers): a call that must go through one helper. Each line's
+  message says what to call instead. Only that helper disables RS0030, with its reason on the pragma.
+- `tools/analyzers/` (CX0001 and on): a pattern that is no single symbol. CX0001 refuses `p + n`, `p - n`,
+  `p += n`, `p++` on a pointer or `IntPtr` outside `managed/Framework/`: a place in memory is a field on a view
+  (engine memory), a struct or a `Span<T>` (our own). Indexing a typed pointer (`px[i]`) is fine.
+
+**Ban it the day its helper exists.** Writing a helper meant to be the only way to make a call means adding its
+`BannedSymbols.txt` line and moving every caller in the same change. A review finding of the kind "this should
+have gone through X" or "this pattern should never appear" gets a ban line or an analyzer rule in the change that
+fixes it, so the next one fails to compile instead of waiting for a reviewer. A new rule names a real symbol and
+is proven once with a planted call that fails the build. No tests that read source text.
+
 ## Gates (CX-192)
 
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from

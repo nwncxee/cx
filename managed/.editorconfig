@@ -1,0 +1,6 @@
+# Compiler rules that stop the build (ADR 0031).
+[*.cs]
+# A call listed in BannedSymbols.txt.
+dotnet_diagnostic.RS0030.severity = error
+# A pointer plus an offset outside managed/Framework/.
+dotnet_diagnostic.CX0001.severity = warning
