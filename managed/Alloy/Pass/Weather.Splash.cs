@@ -167,10 +167,10 @@ internal static unsafe partial class Weather
     /// <summary>One crown part: a ring on the ground or a droplet streak, as premultiplied scatter.</summary>
     internal static string SplashFs => ShaderSource.Get("cx_splash_f.glsl");
 
-    /// <summary>What about this pass cannot be seen going wrong: the crown-part count the draw multiplies by
-    /// has to be the one the stage divides by; a splash's ring has to be the same physical size as the ripple
-    /// the same drop leaves on the water beside it; the screen-size terms have to fade the ring rather than
-    /// grow it; and the clock has to wrap on a whole lifetime, or the field re-rolls in one frame.</summary>
+    /// <summary>What about this pass cannot be seen going wrong, against the GLSL text and hand-written literals:
+    /// the crown-part count the draw multiplies by has to be the one the stage divides by; a ring has to be the
+    /// puddle ripple's size; screen size and lens distance have to fade a crown rather than grow it; and the
+    /// clock has to wrap on a whole lifetime, or the field re-rolls in one frame.</summary>
     private static void SplashSelfCheck(Checker check)
     {
         string v = SplashVs;
@@ -190,6 +190,9 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("float floorM = CX_SPLASH_MINPX / max(px, 1e-3);")
           && v.Contains("dim = (CX_SPLASH_DROP_M * len) / (w * l);"),
           "a sub-pixel DROPLET widens to a pixel and gives back the area in scatter, rather than flickering");
+        check.Expect(v.Contains("const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);")
+          && v.Contains("dim *= gain * smoothstep(CX_SPLASH_NEAR.x, CX_SPLASH_NEAR.y, -cv.z);"),
+          "a crown inside a metre of the lens fades out rather than filling the screen (a camera in a wall sits on the surface the rain lands on)");
         check.Expect(v.Contains("float d = texture(uCoverDepth, uv).r;") && v.Contains("if (d >= 1.0) return p;")
           && v.Contains("if (uCoverVp[3][3] == 0.0) return p;"),
           "a splash lands where the cover map says the rain does, and nowhere when it says nothing");

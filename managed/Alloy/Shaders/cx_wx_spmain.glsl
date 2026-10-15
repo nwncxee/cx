@@ -37,6 +37,9 @@ const vec2 CX_SPLASH_PX = vec2(1.0, 2.5);
 /// catches and misses it. Widening it to about a pixel and dividing the scatter by the area that added is
 /// the energy-conserving answer, and it is the DROPLETS only; the ring above never moves.
 const float CX_SPLASH_MINPX = 1.2;
+/// View depths, metres, over which a crown fades in from the lens: nearer than the first it is not drawn. A
+/// world-sized crown that close is a screen-wide smear, which is what a camera inside a wall sees.
+const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);
 /// Crowns one footfall throws, scattered over the sole (Weather.FootCrowns).
 const int CX_FOOT_CROWNS = 4;
 /// A foot crown's life and the spread of its births, seconds (Weather.FootLifeSec / FootStaggerSec).
@@ -175,7 +178,7 @@ void main()
         pos = P + axis * (corner.y * l * 0.5) + side * (corner.x * w * 0.5);
     }
 
-    dim *= gain;
+    dim *= gain * smoothstep(CX_SPLASH_NEAR.x, CX_SPLASH_NEAR.y, -cv.z);
     vUV = corner;
     vAge = age;
     vPart = float(part);
