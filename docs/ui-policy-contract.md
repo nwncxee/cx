@@ -737,6 +737,48 @@ Players make palettes too: Custom under Look edits every role, *Save to override
 `override/cxpal_<id>.txt`, and *Copy palette to clipboard* gives the same text to share; a file dropped into
 `override/` is listed on the next module load.
 
+## Day and night
+
+A server that runs its own day/night system can switch the client's dawn/dusk shaping off and have the
+transition done its way:
+
+```
+daynight.server=1
+```
+
+A component property, not a knob: the renderer's knobs stay the player's. Send nothing and the client keeps
+vanilla's shaping exactly, which is what vanilla content is built against.
+
+Vanilla crossfades the area's two palettes -- ambient, diffuse, fog colour, fog amount -- over the module's
+dawn and dusk hour, and shapes the result: direct light scaled by `|2t-1|`, so it is gone at the midpoint;
+half the missing light moved into ambient; shadows faded out and back in; the light's body switched from sun
+to moon at the midpoint, while the shadows are invisible. Two fixed palettes need that. A server computing
+its own twilight gets it on top of its own curve, at the engine's whole hours.
+
+While the key is held:
+
+- **No midpoint dip.** Direct light and shadows stay at full strength across the whole transition, and
+  nothing is added to ambient.
+- **No flip-back, and no restart.** The dawn-hour state arriving on an area already lit for day does not put
+  it back to night: the transition crossfades from what is on screen, so a state that only repeats what the
+  area shows is a visual no-op. A repeated time-of-day state or a second `Area_ChangeDayNight` cannot rewind
+  the transition clock either -- within one transition the clock only moves forward.
+- **No pop at the body change.** The light direction turns along the short arc from one body to the other
+  over the transition instead of cutting at the midpoint.
+- **Cuts become crossfades.** A palette change that arrives with no fade of its own -- the client re-applying
+  a whole palette, or a transition cut short -- crossfades over **0.5 s** from what is on screen. Changes
+  that do carry a fade keep the server's own length, as they already do.
+- **The beam tint follows dusk down** instead of running negative for the hour.
+
+What does not change: the skybox crossfade, the ambient sounds, the tile day/night animations, the area's
+`isNight` flag and the shadow-light count are all still the engine's, on the engine's own clock. So are fades
+the server sends: while a light-direction or colour fade is in flight it wins for those frames, because it is
+the server's own instruction. Taking the key mid-transition is not a jump either -- the client starts from
+the shaped value it was showing and crossfades on from there.
+
+The server end of the same problem is running one day/night clock instead of two. Nothing here replaces that;
+it stops the client fighting a server that has its own.
+
 ## Example
 
 ```
