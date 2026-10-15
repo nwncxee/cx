@@ -120,8 +120,8 @@ internal static unsafe class SunGlide
     /// a fade-0 burst.</summary>
     internal static void Install(ExtenderLog log, HookService hooks)
     {
-        if (SymbolMap.Require(log, "SunGlide", SymbolMap.AreaSetAreaLightColor))
-            _hook.Next = hooks.ChainAreaSetAreaLightColor(&OnColour, ColourPriority);
+        if (!SymbolMap.Require(log, "SunGlide", SymbolMap.AreaSetAreaLightColor)) return;
+        _hook.Next = hooks.ChainAreaSetAreaLightColor(&OnColour, ColourPriority);
         if (_hook.Next == null)
             log.Always("SunGlide: the area colour leaf did not chain -- a large sun move lands at once, never eased");
     }
