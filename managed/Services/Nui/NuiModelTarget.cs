@@ -161,7 +161,7 @@ internal static unsafe class NuiModelTarget
         long done = OperatingSystem.IsWindows()
             ? (long)((delegate* unmanaged<IntPtr, ResRefArg*, byte, byte, IntPtr>)_t.LoadModel)(item, &none, slot, 0)
             : ((delegate* unmanaged<IntPtr, ResRefArg, byte, byte, int>)_t.LoadModel)(item, none, slot, 0);
-        IntPtr model = new CNWCCreature(item + NuiModelDoll.ItemObject).GetModel(0xff, slot);
+        IntPtr model = new CNWCCreature(new CNWCItem(item).AsObject.Ptr).GetModel(0xff, slot);
         if (model == IntPtr.Zero) _t.Log?.Always($"NuiModelTarget: LoadModel slot 0x{slot:x} answered {done & 0xff}, and the item has no model there");
         return model;
     }

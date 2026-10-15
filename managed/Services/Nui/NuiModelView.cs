@@ -138,7 +138,7 @@ internal static unsafe class NuiModelView
     private static string KeyOf(byte* s)
     {
         var sb = new StringBuilder();
-        for (byte* p = s + ImageNames.Model.Length; *p != 0 && sb.Length < MaxKey; p++) sb.Append((char)*p);
+        for (int i = ImageNames.Model.Length; s[i] != 0 && sb.Length < MaxKey; i++) sb.Append((char)s[i]);
         return sb.ToString();
     }
 
@@ -256,7 +256,7 @@ internal static unsafe class NuiModelView
     internal static void Loaded(byte* resref, IntPtr ret)
     {
         if (KeyOf(resref) != _s.PendingKey) return;
-        IntPtr nk = *(IntPtr*)ret, ctrl = *(IntPtr*)(ret + IntPtr.Size);
+        IntPtr nk = ((IntPtr*)ret)[0], ctrl = ((IntPtr*)ret)[1];
         for (int i = _s.Views.Count - 1; i >= 0; i--)
         {
             ViewData old = _s.Views[i];

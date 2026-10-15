@@ -25,8 +25,6 @@ internal static unsafe class NuiModelDoll
     internal const int MaxViews = 8;
     /// <summary>The engine's invalid object id, the value an id slot holds before <c>AddInternalObject</c> fills it.</summary>
     internal const uint InvalidId = 0x7f000000;   // not-an-offset: INVALID_OBJECT_ID
-    /// <summary>Where a <c>CNWCObject</c> sits inside a <c>CNWCItem</c>: what the game-object array registers.</summary>
-    internal const int ItemObject = 0x48;   // not-an-offset: the CNWCObject inside a CNWCItem
     /// <summary>Character creation first-build flags for <c>SetAppearance</c>: body (with its parts), head, tail, wing and cloak; 0x40 would build the base body only.</summary>
     internal const byte BuildFlags = 0x2f;   // not-an-offset: SetAppearance flag bits
     /// <summary>The flags for a model that is not built from body parts (a hell hound, an ogre, a beholder): bit 0x40 takes the engine's
@@ -275,7 +273,7 @@ internal static unsafe class NuiModelDoll
         NativeMemory.Clear((void*)vp, (nuint)EngineLayout.SizeOfGuiViewport);
         EngineFn.GuiViewportCtor(vp, name);
         d.Viewport = vp;
-        IntPtr record = *(IntPtr*)(vp + EngineLayout.GuiViewportRecord);
+        IntPtr record = new CGuiViewport(vp).Record;
         d.Scene = record == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)record;
         d.Camera = EngineFn.GuiViewportGetCamera(vp);
         slot.Doll = d;
@@ -353,7 +351,7 @@ internal static unsafe class NuiModelDoll
     internal static void Opaque(IntPtr model)
     {
         if (model == IntPtr.Zero) return;
-        IntPtr fn = *(IntPtr*)(*(IntPtr*)model + EngineLayout.GobSetColorShiftingSlot);
+        IntPtr fn = new Gob(model).SetColorShiftingFn;
         ((delegate* unmanaged<IntPtr, EVec, float, int, void>)fn)(model, new EVec { X = 1, Y = 1, Z = 1 }, 1f, 1);
     }
 

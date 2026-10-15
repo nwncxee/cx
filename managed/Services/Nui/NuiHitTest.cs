@@ -419,20 +419,21 @@ internal static unsafe class NuiHitTest
         var saved = _s;
         try
         {
-            IntPtr ctx = (IntPtr)mem, win = (IntPtr)(mem + 0x7000), panel = (IntPtr)(mem + 0x7100), above = (IntPtr)(mem + 0x7200);
-            IntPtr widget = (IntPtr)(mem + 0x6000);
-            uint* scroll = (uint*)(mem + 0x7300);
+            IntPtr ctx = (IntPtr)mem, win = NuiScratch.At(mem, 0x7000), panel = NuiScratch.At(mem, 0x7100), above = NuiScratch.At(mem, 0x7200);
+            IntPtr widget = NuiScratch.At(mem, 0x6000);
+            uint* scroll = (uint*)NuiScratch.At(mem, 0x7300);
+            var pn = new NkPanel(panel);
             scroll[0] = 3; scroll[1] = 4;
             new NkContext(ctx).Current = win;
             new NkWindow(win).Layout = panel;
             new NkWindow(win).Next = above;
-            *(IntPtr*)(panel + 0x18) = (IntPtr)(scroll);
-            *(IntPtr*)(panel + 0x20) = (IntPtr)(scroll + 1);
-            *(float*)(panel + 0x28) = 10; *(float*)(panel + 0x2c) = 20;
-            *(int*)(panel + 0x70) = 6;
-            float* clip = (float*)(panel + 0x44);
+            pn.OffsetX = (IntPtr)scroll;
+            pn.OffsetY = NuiScratch.At(mem, 0x7304);
+            pn.AtX = 10; pn.AtY = 20;
+            pn.RowType = 6;
+            Span<float> clip = pn.Clip;
             clip[0] = 0; clip[1] = 0; clip[2] = 200; clip[3] = 300;
-            float* item = (float*)(panel + 0xa0);
+            Span<float> item = pn.RowItem;
             item[0] = 5; item[1] = 6; item[2] = 100; item[3] = 20;
 
             bool got = NuiNuklear.TryBox(widget, ctx, out var box);
@@ -440,9 +441,9 @@ internal static unsafe class NuiHitTest
             new Nui__Layout__Layoutable(widget).NoPush = 1;
             check.Expect(!NuiNuklear.TryBox(widget, ctx, out _), "a child the parent did not push has no rectangle");
             new Nui__Layout__Layoutable(widget).NoPush = 0;
-            *(int*)(panel + 0x70) = 0;
+            pn.RowType = 0;
             check.Expect(!NuiNuklear.TryBox(widget, ctx, out _), "a panel outside a free-space row has no rectangle");
-            *(int*)(panel + 0x70) = 6;
+            pn.RowType = 6;
 
             void Mouse(float x, float y) { Span<float> m = new NkContext(ctx).MousePos; m[0] = x; m[1] = y; }
             Span<float> wb = new NkWindow(win).Bounds;
@@ -470,16 +471,16 @@ internal static unsafe class NuiHitTest
             Mouse(80, 30);
             check.Expect(!CoveredAbove(ctx, 80, 30), "a point outside the upper window is not covered");
 
-            *(int*)(panel + 0x74) = 2; *(int*)(panel + 0x80) = 2; *(float*)(panel + 0x78) = 24; *(float*)(panel + 0x98) = 9;
+            pn.RowIndex = 2; pn.RowColumns = 2; pn.RowHeight = 24; pn.RowItemOffset = 9;
             var rowSave = NuiNuklear.StartRow((byte*)panel);
-            check.Expect(rowSave.Moved && *(int*)(panel + 0x74) == 0 && *(float*)(panel + 0x2c) == 44 && *(float*)(panel + 0x98) == 0,
+            check.Expect(rowSave.Moved && pn.RowIndex == 0 && pn.AtY == 44 && pn.RowItemOffset == 0,
                 "a full row starts the next one: index 0, at_y 20 + height 24, offset 0");
             NuiNuklear.EndRow((byte*)panel, in rowSave);
-            check.Expect(*(int*)(panel + 0x74) == 2 && *(float*)(panel + 0x2c) == 20 && *(float*)(panel + 0x98) == 9, "and the panel is put back as it was");
-            *(int*)(panel + 0x74) = 1;
+            check.Expect(pn.RowIndex == 2 && pn.AtY == 20 && pn.RowItemOffset == 9, "and the panel is put back as it was");
+            pn.RowIndex = 1;
             rowSave = NuiNuklear.StartRow((byte*)panel);
-            check.Expect(!rowSave.Moved && *(int*)(panel + 0x74) == 1 && *(float*)(panel + 0x2c) == 20, "a row with a column left is not advanced");
-            IntPtr map = (IntPtr)(mem + 0x4000);
+            check.Expect(!rowSave.Moved && pn.RowIndex == 1 && pn.AtY == 20, "a row with a column left is not advanced");
+            IntPtr map = NuiScratch.At(mem, 0x4000);
             BuildMap(mem, map, (IntPtr)widget, "slot_head", (IntPtr)0x2222, "x");
             Span<byte> id = stackalloc byte[NuiHit.TokenCap];
             int n = ResolveId(map, widget, id);
@@ -559,16 +560,16 @@ internal static unsafe class NuiHitTest
     private static void BuildMap(byte* mem, IntPtr window, IntPtr elementA, string idA, IntPtr elementB, string idB)
     {
         bool win = OperatingSystem.IsWindows();
-        byte* a = mem + 0x5400, b = mem + 0x5600, sentinel = mem + 0x5800;
+        byte* a = (byte*)NuiScratch.At(mem, 0x5400), b = (byte*)NuiScratch.At(mem, 0x5600), sentinel = (byte*)NuiScratch.At(mem, 0x5800);
         void Node(byte* node, IntPtr next, IntPtr element, string id)
         {
             *(IntPtr*)node = next;
             var view = new Nui__JSON__IdNode((IntPtr)node);
             view.Element = element;
-            byte* key = (byte*)Unsafe.AsPointer(ref view.Key);
-            for (int i = 0; i < id.Length; i++) (win ? key : key + 0x10)[i] = (byte)id[i];
-            if (win) { *(ulong*)(key + 0x10) = (ulong)id.Length; *(ulong*)(key + 0x18) = 15; }
-            else { *(byte**)key = key + 0x10; *(ulong*)(key + 8) = (ulong)id.Length; }
+            var key = new NuiStdString((byte*)Unsafe.AsPointer(ref view.Key));
+            byte* chars = key.Inline(win);
+            for (int i = 0; i < id.Length; i++) chars[i] = (byte)id[i];
+            key.Set(win, chars, (ulong)id.Length);
         }
         Node(a, (IntPtr)b, elementA, idA);
         Node(b, win ? (IntPtr)sentinel : IntPtr.Zero, elementB, idB);

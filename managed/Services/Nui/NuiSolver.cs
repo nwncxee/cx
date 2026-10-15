@@ -116,9 +116,9 @@ internal static unsafe class NuiSolver
         {
             // m_infeasible_rows empty: no unvisited row is negative, so the pushes match vanilla's (remarks).
             if (_bufBytes < k * stride) Grow(k * stride);
-            for (int i = 0; i < k; i++) Buffer.MemoryCopy((void*)(begin + _cand[i] * stride), _buf + i * stride, stride, stride);
+            for (int i = 0; i < k; i++) Buffer.MemoryCopy((void*)new kiwi__impl__SymbolPair(begin)[_cand[i]].Ptr, (void*)new kiwi__impl__SymbolPair((IntPtr)_buf)[i].Ptr, stride, stride);
             sv.Rows = (IntPtr)_buf;
-            sv.RowsEnd = (IntPtr)(_buf + k * stride);
+            sv.RowsEnd = new kiwi__impl__SymbolPair((IntPtr)_buf)[k].Ptr;
             _substituteOrig(self, symbol, row);
             sv.Rows = begin;
             sv.RowsEnd = end;
@@ -361,17 +361,17 @@ internal static unsafe class NuiSolver
         var mem = (byte*)NativeMemory.AllocZeroed(4096);
         try
         {
-            IntPtr rows = (IntPtr)mem, cellArea = (IntPtr)(mem + 1024);
+            IntPtr rows = (IntPtr)mem, cellArea = NuiScratch.At(mem, 1024);
             int cellAt = 0;
             IntPtr MakeRow(int slot, params ulong[] ids)
             {
-                IntPtr row = (IntPtr)(mem + 2048 + slot * 64);
-                IntPtr c0 = cellArea + cellAt * stride;
+                IntPtr row = NuiScratch.At(mem, 2048 + slot * 64);
+                IntPtr c0 = new kiwi__impl__SymbolPair(cellArea)[cellAt].Ptr;
                 for (int i = 0; i < ids.Length; i++) new kiwi__impl__SymbolPair(c0)[i].Id = ids[i];
                 cellAt += ids.Length;
                 var r = new kiwi__impl__Row(row);
                 r.Cells = c0;
-                r.CellsEnd = c0 + ids.Length * stride;
+                r.CellsEnd = new kiwi__impl__SymbolPair(c0)[ids.Length].Ptr;
                 return row;
             }
             void Entry(int i, ulong key, IntPtr row)
@@ -383,7 +383,7 @@ internal static unsafe class NuiSolver
             Entry(0, 5, MakeRow(0, 1, 3));
             Entry(1, 7, MakeRow(1, 3, 4));
             Entry(2, 9, MakeRow(2, 2));
-            Rebuild(ix, rows, rows + 3 * stride);
+            Rebuild(ix, rows, new kiwi__impl__SymbolPair(rows)[3].Ptr);
             check.Expect(Collect(ix, 3, rows, 3, 0) == 2 && _cand[0] == 0 && _cand[1] == 1, "symbol 3 is in the rows keyed 5 and 7");
             check.Expect(Collect(ix, 2, rows, 3, 0) == 1 && _cand[0] == 2, "symbol 2 only in row 9");
             check.Expect(Collect(ix, 8, rows, 3, 0) == 0, "symbol 8 is nowhere");

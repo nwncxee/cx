@@ -10,7 +10,7 @@ public static unsafe partial class EngineLayout
     /// viewport's scene-view record (<c>CAurScene*</c> at +0, <c>CAurCamera*</c> at +8, enabled byte at +0x10).</summary>
     public static readonly int SizeOfCreature = Field("CNWCCreature", "sizeof");
     public static readonly int SizeOfGuiViewport = Field("CGuiViewport", "sizeof");
-    public static readonly int GuiViewportRecord = Field("CGuiViewport", "record");
+    public static readonly int GuiViewportRecord = Field<IntPtr>("CGuiViewport", "record");
     public static readonly int GobSetColorShiftingSlot = Field("Gob", "vtbl.SetColorShifting", Expect.VtblSlot);
     public static readonly int SizeOfAppearanceInfo = Field("CCAppearanceInfo", "sizeof");
     /// <summary>The object id of the item whose model is the creature's helmet (<c>0x7f000000</c> = none), read by <c>CreateHead</c>: the
