@@ -40,6 +40,15 @@ const float CX_SPLASH_MINPX = 1.2;
 /// View depths, metres, over which a crown fades in from the lens: nearer than the first it is not drawn. A
 /// world-sized crown that close is a screen-wide smear, which is what a camera inside a wall sees.
 const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);
+/// Metres the landing point may stand off the plane through its four cover-texel neighbours before it is an
+/// edge and draws nothing. A plane's filtered depth is exact, so this only has to clear depth precision.
+const float CX_SPLASH_FLAT_M = 0.02;
+/// The steepest surface a crown stands on, as the normal's z: about 80 degrees. Past it the fall grazes the
+/// face, and the cover map sees it edge-on.
+const float CX_SPLASH_STEEP = 0.17;
+/// How far past a landing point the frame may show the scene before the point hangs in the air: metres, plus a
+/// share of the view depth for the spread a grazing view puts across one pixel.
+const vec2 CX_SPLASH_CONTACT = vec2(0.25, 0.02);
 /// Crowns one footfall throws, scattered over the sole (Weather.FootCrowns).
 const int CX_FOOT_CROWNS = 4;
 /// A foot crown's life and the spread of its births, seconds (Weather.FootLifeSec / FootStaggerSec).
@@ -47,6 +56,9 @@ const float CX_FOOT_LIFE = 0.3;
 const float CX_FOOT_STAGGER = 0.06;
 /// Metres over which a footfall's crowns scatter about the foot.
 const float CX_FOOT_SPREAD = 0.12;
+/// Metres the cover map's hit under a footfall may sit from the foot and still be the ground it stands on;
+/// farther, it is a roof over the foot, and the crown keeps world up.
+const float CX_FOOT_GROUND_M = 0.3;
 /// Droplet launch speed, as a share of a rain crown's: damp ground (x) flicks, standing water (y) throws.
 const vec2 CX_FOOT_V0 = vec2(0.9, 1.6);
 /// Ring reach, as a share of a rain drop's: a foot displaces far more water.
@@ -60,27 +72,53 @@ vec3 CxCoverWorld(vec2 uv, float d)
     return w.xyz / w.w;
 }
 
-/// Where the rain lands over `xy`: the cover view's first hit along the fall. Two passes, the second a
-/// Newton step -- the first projection has to guess the height and the reconstruction knows it, so
-/// re-projecting at the real Z takes out the lateral error the fall's lean caused (the map scatter's own
-/// trick). `ok` false = no map, outside its fit, or nothing stood in that ray.
-vec3 CxSplashLand(vec2 xy, out bool ok)
+vec3 CxCoverAt(vec2 uv) { return CxCoverWorld(uv, texture(uCoverDepth, uv).r); }
+
+/// Where the rain lands over `xy`, and the normal of the surface it lands on: the cover view's first hit
+/// along the fall. Two passes, the second a Newton step -- the first projection has to guess the height and
+/// the reconstruction knows it, so re-projecting at the real Z takes out the lateral error the fall's lean
+/// caused (the map scatter's own trick). `ok` false = no map, outside its fit, nothing stood in that ray,
+/// or the hit is no plane a crown can stand on (an edge, or steeper than CX_SPLASH_STEEP).
+vec3 CxSplashLand(vec2 xy, out vec3 up, out bool ok)
 {
     ok = false;
+    up = vec3(0.0, 0.0, 1.0);
     vec3 p = vec3(xy, uSplashC.z);
     if (uCoverVp[3][3] == 0.0) return p;
+    vec2 uv;
     for (int i = 0; i < 2; i++)
     {
         vec4 c = uCoverVp * vec4(xy, p.z, 1.0);
         vec3 n = c.xyz / c.w;
         if (any(greaterThan(abs(n.xy), vec2(1.0)))) return p;
-        vec2 uv = n.xy * 0.5 + 0.5;
+        uv = n.xy * 0.5 + 0.5;
         float d = texture(uCoverDepth, uv).r;
         if (d >= 1.0) return p;
         p = CxCoverWorld(uv, d);
     }
-    ok = true;
+    // the filtered depth is exact on a plane and a blend across an edge: off the plane its four neighbours
+    // span, the point hangs between a roof and the ground under it
+    vec2 e = 1.0 / vec2(textureSize(uCoverDepth, 0));
+    vec3 xp = CxCoverAt(uv + vec2(e.x, 0.0)), xn = CxCoverAt(uv - vec2(e.x, 0.0));
+    vec3 yp = CxCoverAt(uv + vec2(0.0, e.y)), yn = CxCoverAt(uv - vec2(0.0, e.y));
+    if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;
+    up = normalize(cross(xp - xn, yp - yn));
+    if (up.z < 0.0) up = -up;
+    ok = up.z >= CX_SPLASH_STEEP;
     return p;
+}
+
+/// False when the frame shows the scene well past `p`: the cover map has a surface there the frame never drew
+/// (a wall the keyhole dissolved) and a crown on it would hang in the air. Off screen there is nothing to
+/// test, and a point something nearer hides is the depth test's to clip.
+bool CxSplashSeen(vec3 p)
+{
+    vec4 v = uView * vec4(p, 1.0);
+    vec4 c = uProj * v;
+    if (c.w <= 0.0 || any(greaterThan(abs(c.xy), vec2(c.w)))) return true;
+    float ndc = texture(uSceneDepth, c.xy / c.w * 0.5 + 0.5).r * 2.0 - 1.0;
+    float scene = uProj[3].z / (ndc + uProj[2].z);
+    return scene + v.z < CX_SPLASH_CONTACT.x - CX_SPLASH_CONTACT.y * v.z;
 }
 
 void main()
@@ -95,7 +133,7 @@ void main()
     float slice = floor(ph);
     float age = fract(ph);
     float life = uSplashP.y, gain = 1.0, v0k = 1.0, ringM = CX_SPLASH_RING_M;
-    vec3 L;
+    vec3 L, up = vec3(0.0, 0.0, 1.0);
     bool alive;
     if (foot)
     {
@@ -108,6 +146,10 @@ void main()
         slice = float(crown);
         float fr = CX_FOOT_SPREAD * sqrt(hf.x), fa = hf.y * 6.2831853;
         L = f.xyz + vec3(cos(fa) * fr, sin(fa) * fr, 0.0);
+        vec3 n;
+        bool onPlane;
+        vec3 ground = CxSplashLand(L.xy, n, onPlane);
+        if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }
         vec4 m = CxWetMap(L.xy);
         bool mapped = CxWetMapped(m);
         float wet = mapped ? clamp(m.x * uWxMapXf.w, 0.0, 1.0) * CxWetShelter(m, L.z) : uFootW.x;
@@ -127,29 +169,31 @@ void main()
         // off the centre as it stood at this crown's birth, so a crown never rides along with a moving player
         vec2 xy = uSplashC.xy - uSplashV * (age * uSplashP.y) + vec2(cos(ang), sin(ang)) * rad;
         bool ok;
-        L = CxSplashLand(xy, ok);
+        L = CxSplashLand(xy, up, ok);
         // no edge: the field thins by crown COUNT from three quarters of the disc out, the way the drops do --
         // a brightness ramp on a circle reads as a ring on the ground
         float edge = 1.0 - smoothstep(0.75, 1.0, rad / max(uSplashP.z, 1e-3));
-        alive = ok && fract(hp.z * 91.7) <= edge;
+        alive = ok && fract(hp.z * 91.7) <= edge && CxSplashSeen(L);
     }
 
     vec2 corner = vec2(float((gl_VertexID & 1) * 2 - 1), float((gl_VertexID >> 1) * 2 - 1));
     vec3 P = L, axis = vec3(0.0), side = vec3(0.0);
-    vec3 N = vec3(0.0, 0.0, 1.0);
+    // the crown's frame on the surface it hit; on level ground T and B are world x and y
+    vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), up)), B = cross(up, T);
+    vec3 N = up;
     float len = 0.0;
     if (part > 0)
     {
         vec3 hd = CxHash3(crown * 2246822519u + uint(slice) * 3266489917u + uint(part));
         if (part >= CX_SPLASH_DROPS - 1 && hd.z > 0.5) alive = false;
         float a = (float(part) - 0.5 + hc.y) * 6.2831853 / float(CX_SPLASH_DROPS);
-        float theta = 0.5 + 0.45 * hd.x;          // radians off vertical: a crown leans out 29 to 54 degrees
-        vec3 dir = vec3(cos(a) * sin(theta), sin(a) * sin(theta), cos(theta));
+        float theta = 0.5 + 0.45 * hd.x;          // radians off the normal: a crown leans out 29 to 54 degrees
+        vec3 dir = T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);
         float v0 = mix(CX_SPLASH_V0.x, CX_SPLASH_V0.y, hd.y) * v0k;
         float t = age * life;
         vec3 vel = dir * v0 - vec3(0.0, 0.0, CX_SPLASH_G * t);
         P = L + dir * (v0 * t) - vec3(0.0, 0.0, 0.5 * CX_SPLASH_G * t * t);
-        if (P.z < L.z) alive = false;             // back in the water: the droplet is spent
+        if (dot(P - L, up) < 0.0) alive = false;  // back in the water: the droplet is spent
         vec3 toCam = uEye - P;
         axis = normalize(vel);
         side = normalize(cross(axis, toCam));
@@ -165,10 +209,10 @@ void main()
     vec3 pos;
     if (part == 0)
     {
-        // the ring: a world-XY quad over the landing point, its radius run out inside the fragment stage so
-        // the quad never changes size. Strictly world-sized -- the footprint only FADES it.
+        // the ring: a quad in the surface plane over the landing point, its radius run out inside the fragment
+        // stage so the quad never changes size. Strictly world-sized -- the footprint only FADES it.
         dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px);
-        pos = P + vec3(corner * (ringM * 1.15), CX_SPLASH_LIFT);
+        pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;
     }
     else
     {

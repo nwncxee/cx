@@ -42,7 +42,7 @@ internal static unsafe partial class Weather
     private const float SplashVelMax = 20f;
     private static int _splashes;
 
-    private struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP; }
+    private struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP; }
 
     private static void DeclareSplashKnobs()
     {
@@ -79,7 +79,9 @@ internal static unsafe partial class Weather
             _log?.Info("Weather: no plain-depth view of the cover map -- rain splashes sit out (the landing point is unreadable without it)");
         }
         Matrix4x4 vp = default, inv = default;
-        if (crowns > 0 && Matrix4x4.Invert(CasterPass.CoverVp, out inv)) vp = CasterPass.CoverVp;
+        // the footfalls read the map too, for the ground under the foot, so it binds whether or not it rains
+        bool cover = Cover.V && CasterPass.CoverFresh && CoverDepthView != 0 && Matrix4x4.Invert(CasterPass.CoverVp, out inv);
+        if (cover) vp = CasterPass.CoverVp;
         else crowns = 0;
         if (crowns + feet <= 0 || !EnsureSplash()) return;
         if (!AlloyLights.TryPerspective(*proj, out _, out float p11, out _, out _)) return;
@@ -99,9 +101,10 @@ internal static unsafe partial class Weather
         Gl.UniformMatrix4fv(l.CoverVp, 1, 0, (float*)&vp);
         Gl.UniformMatrix4fv(l.CoverVpInv, 1, 0, (float*)&inv);
         Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.CoverDepth);
-        Gl.BindTexture(Gl.TEXTURE_2D, crowns > 0 ? CoverDepthView : 0);
+        Gl.BindTexture(Gl.TEXTURE_2D, cover ? CoverDepthView : 0);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.Uniform1i(l.CoverDepth, (int)TextureSlots.CoverDepth);
+        Gl.Uniform1i(l.Depth, (int)SceneDepth.Unit);
         // the footfalls: past the rain crowns, gated per point by the wetness map (bound by UploadMap)
         Gl.Uniform1i(l.Rain, crowns * SplashParts);
         fixed (Vector4* f = _footLive) Gl.Uniform4fv(l.Foot, feet, (float*)f);
@@ -133,6 +136,7 @@ internal static unsafe partial class Weather
         l.P = GlProgram.Loc(_gl.ProgSplash, "uSplashP"); l.C = GlProgram.Loc(_gl.ProgSplash, "uSplashC"); l.V = GlProgram.Loc(_gl.ProgSplash, "uSplashV");
         l.CoverDepth = GlProgram.Loc(_gl.ProgSplash, "uCoverDepth");
         l.CoverVp = GlProgram.Loc(_gl.ProgSplash, "uCoverVp"); l.CoverVpInv = GlProgram.Loc(_gl.ProgSplash, "uCoverVpInv");
+        l.Depth = GlProgram.Loc(_gl.ProgSplash, "uSceneDepth");
         l.Tint = GlProgram.Loc(_gl.ProgSplash, "uTint"); l.Alpha = GlProgram.Loc(_gl.ProgSplash, "uAlpha");
         l.Rain = GlProgram.Loc(_gl.ProgSplash, "uSplashRain"); l.Foot = GlProgram.Loc(_gl.ProgSplash, "uFoot"); l.FootW = GlProgram.Loc(_gl.ProgSplash, "uFootW");
         l.WxMapXf = GlProgram.Loc(_gl.ProgSplash, "uWxMapXf"); l.WxMapP = GlProgram.Loc(_gl.ProgSplash, "uWxMapP");
@@ -168,9 +172,9 @@ internal static unsafe partial class Weather
     internal static string SplashFs => ShaderSource.Get("cx_splash_f.glsl");
 
     /// <summary>What about this pass cannot be seen going wrong, against the GLSL text and hand-written literals:
-    /// the crown-part count the draw multiplies by has to be the one the stage divides by; a ring has to be the
-    /// puddle ripple's size; screen size and lens distance have to fade a crown rather than grow it; and the
-    /// clock has to wrap on a whole lifetime, or the field re-rolls in one frame.</summary>
+    /// the part count the draw multiplies by has to be the one the stage divides by; a crown has to stand on a
+    /// plane the frame draws, laid out in it, at the puddle ripple's size; screen size and lens distance have to
+    /// fade it, never grow it; and the clock has to wrap on a whole lifetime.</summary>
     private static void SplashSelfCheck(Checker check)
     {
         string v = SplashVs;
@@ -184,7 +188,7 @@ internal static unsafe partial class Weather
           && v.Contains("float life = uSplashP.y, gain = 1.0, v0k = 1.0, ringM = CX_SPLASH_RING_M;")
           && v.Contains("ringM = CX_SPLASH_RING_M * mix(CX_FOOT_RING.x, CX_FOOT_RING.y, pool);")
           && v.Contains("dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px);")
-          && v.Contains("pos = P + vec3(corner * (ringM * 1.15), CX_SPLASH_LIFT);")
+          && v.Contains("pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;")
           && v.Contains("vSeed = (0.4 + 0.6 * fract(hc.x * 7.31)) * dim;"),
           "the ring is strictly world-sized: its screen size only FADES it");
         check.Expect(v.Contains("float floorM = CX_SPLASH_MINPX / max(px, 1e-3);")
@@ -196,6 +200,20 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("float d = texture(uCoverDepth, uv).r;") && v.Contains("if (d >= 1.0) return p;")
           && v.Contains("if (uCoverVp[3][3] == 0.0) return p;"),
           "a splash lands where the cover map says the rain does, and nowhere when it says nothing");
+        check.Expect(v.Contains("if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;"),
+          "no crown on an edge texel, where the filtered depth blends a roof with the ground under it and the point hangs in the air");
+        check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));")
+          && v.Contains("vec3 dir = T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);")
+          && v.Contains("if (dot(P - L, up) < 0.0) alive = false;"),
+          "a crown stands on the surface it hit: the ring lies in its plane and the droplets leave along its normal");
+        check.Expect(v.Contains("if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }"),
+          "a footfall's crowns stand on the ground under the foot too, unless the cover map's hit there is a roof over it");
+        float steep = MathF.Acos(GlslConst(v, "CX_SPLASH_STEEP")) * (180f / MathF.PI);
+        check.Expect(MathF.Abs(steep - 80f) < 0.5f && v.Contains("ok = up.z >= CX_SPLASH_STEEP;"),
+          $"only a face the fall grazes, past 80 degrees, takes no crown (got {steep:F1})");
+        check.Expect(v.Contains("alive = ok && fract(hp.z * 91.7) <= edge && CxSplashSeen(L);")
+          && v.Contains("return scene + v.z < CX_SPLASH_CONTACT.x - CX_SPLASH_CONTACT.y * v.z;"),
+          "no crown where the frame shows nothing at the landing point: a wall the keyhole dissolved is still in the cover map");
         check.Expect(ShaderContract.LinearSafe(SplashFs) && SplashFs.Contains("scatter * cov")
           && SplashFs.Contains("dot(scatter, CX_WX_LUMA)") && !SplashFs.Contains("uSoft"),
           "the splash stage is linear premultiplied scatter with no contact fade (a splash sits ON the surface)");

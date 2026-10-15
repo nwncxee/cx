@@ -144,12 +144,9 @@ internal static unsafe partial class Weather
         int splashes = SplashCount() + FootLive(TrackNow);
         if (count <= 0 && drips <= 0 && splashes <= 0) return;
         Tick(wind);
-        // only the falling streaks and drips fade against the scene; a splash sits on it and reads no copy
-        if (count > 0 || drips > 0)
-        {
-            if (!SceneDepth.Take(viewport)) return;
-            SceneDepth.Bind();
-        }
+        // the falling streaks and drips fade against the scene; a splash tests its landing point against it
+        if (!SceneDepth.Take(viewport)) return;
+        SceneDepth.Bind();
         // R1: PREMULTIPLIED. The stages write the scatter already weighted by coverage and an extinction
         // proportional to it, so an unlit drop is transparent instead of a dark film over the scene.
         new PassState(depth: true, depthWrite: false, blend: true,
