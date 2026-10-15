@@ -207,21 +207,23 @@ internal static unsafe class RadialIcons
                 ushort* shared = (ushort*)armor.Scheme;
                 ushort* perLayer = (ushort*)armor.LayerSchemes;
                 Span<byte> layers = armor.Resrefs;
+                Span<ushort> table = perLayer != null ? new Span<ushort>(perLayer, EngineLayout.ArmorIconLayers * count) : default;
                 int n = 0;
                 for (int slot = 0; slot < EngineLayout.ArmorIconLayers; slot++)
                 {
                     Span<byte> name = layers.Slice(slot * EngineLayout.ArmorIconResRefStride, EngineLayout.ArmorIconResRefStride);
                     if (name[0] == 0) continue;
-                    ushort* scheme = perLayer != null
-                        ? (ushort*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(new Span<ushort>(perLayer, (n + 1) * count).Slice(n * count)))
-                        : shared;
-                    IntPtr tex = FindPlt(name, scheme, count);
-                    int tid = tex == IntPtr.Zero ? 0 : AurTex.Tid(tex);
-                    // A find MISS is the engine's own skip for a layer it never made a texture for -- except
-                    // in DB mode, where it made none at all, so CX's own resolve is asked before skipping.
-                    if (tid == 0) tid = CxPlt(name, scheme, count, n);
-                    if (tid == 0 && tex == IntPtr.Zero) continue;
-                    tids[n++] = tid;
+                    fixed (ushort* own = perLayer != null ? table.Slice(n * count, count) : default)
+                    {
+                        ushort* scheme = perLayer != null ? own : shared;
+                        IntPtr tex = FindPlt(name, scheme, count);
+                        int tid = tex == IntPtr.Zero ? 0 : AurTex.Tid(tex);
+                        // A find MISS is the engine's own skip for a layer it never made a texture for -- except
+                        // in DB mode, where it made none at all, so CX's own resolve is asked before skipping.
+                        if (tid == 0) tid = CxPlt(name, scheme, count, n);
+                        if (tid == 0 && tex == IntPtr.Zero) continue;
+                        tids[n++] = tid;
+                    }
                 }
                 return n;
             }
@@ -381,10 +383,10 @@ internal static unsafe class RadialIcons
         {
             _find = &FakeFind; _get = &FakeGet; _ready = true;
             _fakeTex = (IntPtr)vt;   // any non-null: AurTex is unarmed headless, so Tid() answers 0 and only the walk is checked
-            _vtLayered = (IntPtr)vt->Layered; _vtComposite = (IntPtr)vt->Composite; _vtArmor = (IntPtr)vt->Armor;
+            _vtLayered = (IntPtr)(&vt->Layered); _vtComposite = (IntPtr)(&vt->Composite); _vtArmor = (IntPtr)(&vt->Armor);
             Put(_fakeMissName, "no_such_plt");
 
-            icon->Vptr = (IntPtr)vt->Plain;
+            icon->Vptr = (IntPtr)(&vt->Plain);
             Put(new CGuiIcon((IntPtr)icon).Resref, "isk_pocket");
             check.Expect(Classify((IntPtr)icon) == IconKind.Plain, "an unlisted vptr is Plain");
             _fakeGets = _fakeFinds = 0;
@@ -410,7 +412,7 @@ internal static unsafe class RadialIcons
             check.Expect(Classify((IntPtr)icon) == IconKind.Composite && Layers((IntPtr)icon, tids) == 3 && _fakeGets == 3 && _fakeFinds == 0
               && LastName() == "iwaxe_t_1", "composite = three gets, 01 -> 03");
 
-            NativeMemory.Clear(icon->Body, 0xf8);
+            NativeMemory.Clear(&icon->Body, (nuint)sizeof(FakeIconBody));
             icon->Vptr = _vtArmor;
             var armor = new CArmorIcon((IntPtr)icon);
             Span<byte> layers = armor.Resrefs;
@@ -439,19 +441,33 @@ internal static unsafe class RadialIcons
         log.Info(check.Ok ? "RadialIcons.SelfCheck: passed" : "RadialIcons.SelfCheck: FAILED");
     }
 
-    private unsafe struct FakeVtables
+    /// <summary>A fake vtable: only its address matters, as the vptr an icon is classified by.</summary>
+    [StructLayout(LayoutKind.Sequential, Size = 0x10)]
+    private struct FakeTable
     {
-        public fixed byte Header[0x10];
-        public fixed byte Layered[0x10];
-        public fixed byte Composite[0x10];
-        public fixed byte Armor[0x10];
-        public fixed byte Plain[0x10];
-        public fixed byte Rest[0xb0];
     }
 
-    private unsafe struct FakeIcon
+    /// <summary>Room after the fake tables, so a read past one lands in memory the check owns.</summary>
+    [StructLayout(LayoutKind.Sequential, Size = 0xb0)]
+    private struct FakeSpare
+    {
+    }
+
+    private struct FakeVtables
+    {
+        public FakeTable Header, Layered, Composite, Armor, Plain;
+        public FakeSpare Rest;
+    }
+
+    /// <summary>The icon's own fields, which the icon views read and write in place.</summary>
+    [StructLayout(LayoutKind.Sequential, Size = 0xf8)]
+    private struct FakeIconBody
+    {
+    }
+
+    private struct FakeIcon
     {
         public IntPtr Vptr;
-        public fixed byte Body[0xf8];
+        public FakeIconBody Body;
     }
 }

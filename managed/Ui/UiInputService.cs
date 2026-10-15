@@ -161,7 +161,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     if (!NuiEditFocused())
                     {
                         if (!UiHost.AnyKeyboardOwner) CX.Alloy.Db.EditSelect.BeforeText();   // typing replaces a game edit box's selection
-                        UiHost.DispatchText((nint)((SdlEvent*)ev)->Text);   // finished UTF-8 -> the keyboard owner's edit line
+                        UiHost.DispatchText((nint)(&((SdlEvent*)ev)->Text));   // finished UTF-8 -> the keyboard owner's edit line
                     }
                     break;
                 case SdlMouseMotion:

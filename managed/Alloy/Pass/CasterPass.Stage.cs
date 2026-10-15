@@ -14,7 +14,7 @@ public sealed unsafe partial class CasterPass
 {
     /// <summary>The compute gather's per-frame staging. Parallel to the live list but in BATCH order,
     /// which is what lets one dispatch feed one glMultiDrawElementsIndirectCount per batch.</summary>
-    private static readonly uint[] _gSrc = new uint[MaxCasters * CasterGather.SrcUints];
+    private static readonly CasterSrcRec[] _gSrc = new CasterSrcRec[MaxCasters];
     /// <summary>Batch key per staged draw, and the live index it names. The key orders masked draws last (one
     /// program switch instead of one per VAO), then by VAO, primitive and mask texture -- the (VAO, prim,
     /// maskTex) key the multidraws cut on.</summary>
@@ -58,15 +58,15 @@ public sealed unsafe partial class CasterPass
     /// <summary>The two staged words that can move without a re-staging -- the index count (an entry turned
     /// off draws nothing) and the set flag. True = they differed, i.e. the source buffer needs re-uploading.
     /// One function so the changed-set walk and its audit cannot diverge.</summary>
-    private static bool WriteStagedWords(uint* src, int d, int i)
+    private static bool WriteStagedWords(CasterSrcRec* src, int d, int i)
     {
-        uint* r = ((CasterSrcRec*)src)[(long)d].W;
+        ref CasterSrcRec r = ref src[d];
         uint cnt = _liveOff[i] ? 0u : (uint)_liveIdxCount[i], set = _liveDyn[i] ? 1u : 0u;
-        if (r[0] == cnt && r[CasterGather.SetFlagWord] == set) return false;
+        if (r.IndexCount == cnt && r.SetFlag == set) return false;
         // The batch's dynamic population follows the set flag, and the batch is the word the staging wrote
         // beside it -- no second lookup.
-        if (r[CasterGather.SetFlagWord] != set) _gDynN[(int)r[4]] += set != 0 ? 1 : -1;
-        r[0] = cnt; r[CasterGather.SetFlagWord] = set;
+        if (r.SetFlag != set) _gDynN[(int)r.Batch] += set != 0 ? 1 : -1;
+        r.IndexCount = cnt; r.SetFlag = set;
         return true;
     }
 
@@ -75,7 +75,7 @@ public sealed unsafe partial class CasterPass
     /// have from the full source, and the command buffer, count buffer, batch table and draw loop are
     /// untouched. What changes is the thread count, and dynamic faces are most of the frame's views.</summary>
     private const int MaxDynSrc = 8192;
-    private static readonly uint[] _dSrc = new uint[MaxDynSrc * CasterGather.SrcUints];
+    private static readonly CasterSrcRec[] _dSrc = new CasterSrcRec[MaxDynSrc];
     /// <summary>Frames the dynamic source stood, the draws it covered, frames past <see cref="MaxDynSrc"/>
     /// (which fall back to the full source -- the same set by a longer road), and the audit's misses.</summary>
     private static long _dSrcFrames, _dSrcDraws, _dSrcOver, _dSrcAudits, _dSrcMiss;
@@ -91,8 +91,8 @@ public sealed unsafe partial class CasterPass
     private static void StageDynamicSource()
     {
         if (!Shadows.DynSrc.V || _gN <= 0 || _dMoverCount <= 0) { CasterGather.StandDynamic(); return; }
-        fixed (uint* src = _gSrc)
-        fixed (uint* dst = _dSrc)
+        fixed (CasterSrcRec* src = _gSrc)
+        fixed (CasterSrcRec* dst = _dSrc)
         {
             int m = CopyDynamicSource(src, dst);
             if (m < 0) { _dSrcOver++; CasterGather.StandDynamic(); return; }
@@ -106,17 +106,15 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>The copy itself, apart from the GL upload so the self-check can drive it: every staged mover's
     /// record, verbatim. -1 = more movers than <see cref="MaxDynSrc"/> holds.</summary>
-    private static int CopyDynamicSource(uint* src, uint* dst)
+    private static int CopyDynamicSource(CasterSrcRec* src, CasterSrcRec* dst)
     {
-        const long RecBytes = CasterGather.SrcUints * sizeof(uint);
         int m = 0;
         for (int q = 0; q < _dMoverCount; q++)
         {
             int d = _gAt[_dMoverIdx[q]];
             if (d < 0) continue;   // this mover is not in the staging at all (no VAO, blended, mask -1)
             if (m >= MaxDynSrc) return -1;
-            Buffer.MemoryCopy(((CasterSrcRec*)src)[(long)d].W,
-                              ((CasterSrcRec*)dst)[(long)m].W, RecBytes, RecBytes);
+            dst[m] = src[d];
             m++;
         }
         return m;
@@ -126,21 +124,21 @@ public sealed unsafe partial class CasterPass
     /// draws a dynamic view would DRAW -- a missing one is a mover with no shadow in its own page, an extra
     /// one a still caster baked into the moving layer. "Would draw" and not "has the set flag", since an
     /// entry that turns off keeps its flag; both directions are counted, and both must read 0.</summary>
-    private static void AuditDynamicSource(uint* src, uint* dst, int m)
+    private static void AuditDynamicSource(CasterSrcRec* src, CasterSrcRec* dst, int m)
     {
         _dSrcAudits++;
         int want = 0;
         for (int d = 0; d < _gN; d++)
         {
-            uint* r = ((CasterSrcRec*)src)[(long)d].W;
-            if (r[CasterGather.SetFlagWord] != 0u && r[0] != 0u) want++;
+            ref CasterSrcRec r = ref src[d];
+            if (r.SetFlag != 0u && r.IndexCount != 0u) want++;
         }
         int dyn = 0, extra = 0;
         for (int k = 0; k < m; k++)
         {
-            uint* r = ((CasterSrcRec*)dst)[(long)k].W;
-            if (r[CasterGather.SetFlagWord] == 0u) { extra++; continue; }
-            if (r[0] != 0u) dyn++;
+            ref CasterSrcRec r = ref dst[k];
+            if (r.SetFlag == 0u) { extra++; continue; }
+            if (r.IndexCount != 0u) dyn++;
         }
         if (want != dyn) _dSrcMiss++;
         if (extra > 0) { _dSrcExtra += extra; _dSrcMiss++; }
@@ -186,25 +184,25 @@ public sealed unsafe partial class CasterPass
     /// <see cref="SelfCheck"/> runs it: a field landing one slot over is a caster baking at its neighbour's
     /// matrix, and none of it needs a GL context to be wrong. Word 3 is the OWNERSHIP SLOT -- the dispatch
     /// culls <c>CxCullSphere[slot]</c> and writes it as <c>baseInstance</c> for the depth stages.</summary>
-    private static void StageOne(uint* src, int d, int i, int g, int start)
+    private static void StageOne(CasterSrcRec* src, int d, int i, int g, int start)
     {
-        uint* r = ((CasterSrcRec*)src)[(long)d].W;
-        r[0] = _liveOff[i] ? 0u : (uint)_liveIdxCount[i];   // an entry turned off draws nothing
+        ref CasterSrcRec r = ref src[d];
+        r.IndexCount = _liveOff[i] ? 0u : (uint)_liveIdxCount[i];   // an entry turned off draws nothing
         // in INDICES already, unlike the colour path's byte offsets -- the indirect command takes elements
-        r[1] = _liveFirst[i];
-        r[2] = _liveBaseVert[i];
-        r[3] = (uint)_liveSlot[i];
-        r[4] = (uint)g;
-        r[5] = (uint)start;
+        r.FirstIndex = _liveFirst[i];
+        r.BaseVertex = _liveBaseVert[i];
+        r.Slot = (uint)_liveSlot[i];
+        r.Batch = (uint)g;
+        r.OutBase = (uint)start;
         // #305: the set flag the dispatch filter reads -- which of the two arrays this caster belongs in.
-        r[CasterGather.SetFlagWord] = _liveDyn[i] ? 1u : 0u;
+        r.SetFlag = _liveDyn[i] ? 1u : 0u;
         // CX-50: ...and the same mesh's two coarse runs, out of which each view's dispatch picks one. Read
         // HERE rather than carried in the live list: the staging is rebuilt whenever the list moves, and a
         // level is a property of the range for its whole life (the simplifier runs inside Acquire), so this
         // is no staler than the base run beside it -- which the same walk reads the same way.
         AlloyRenderer.DbCasterLevels(_liveSlot[i], out uint c1, out uint f1, out uint c2, out uint f2);
-        r[CasterGather.Cnt1Word] = c1; r[CasterGather.First1Word] = f1;
-        r[CasterGather.Cnt2Word] = c2; r[CasterGather.First2Word] = f2;
+        r.Count1 = c1; r.First1 = f1;
+        r.Count2 = c2; r.First2 = f2;
     }
 
     /// <summary>Stage the whole frame once, in batch order, and publish it. Everything per-view that is not
@@ -216,7 +214,7 @@ public sealed unsafe partial class CasterPass
         if (_gCollectSeq == _collectSeq && _gListVer == _listVer)
         {   // #328: the list stood, so the staging stands. The set flag is the one word that moves per frame
             // (a caster starting or stopping); the gather skips the upload when nothing did.
-            fixed (uint* src = _gSrc)
+            fixed (CasterSrcRec* src = _gSrc)
             {
                 bool changed = false;
                 // SL1: the CHANGED entries, not all of them. r[0] follows _liveOff and _liveIdxCount and
@@ -314,7 +312,7 @@ public sealed unsafe partial class CasterPass
         if (n == 0) return true;   // an empty world is a coherent staging: every view bakes a clear
         Array.Sort(_gKey, _gLive, 0, n);
         int g = -1;
-        fixed (uint* src = _gSrc)
+        fixed (CasterSrcRec* src = _gSrc)
             for (int d = 0; d < n; d++)
             {
                 int i = _gLive[d];
@@ -334,7 +332,7 @@ public sealed unsafe partial class CasterPass
             }
         _gGroups = g + 1; _gCreatures = creatures; _gN = n; _gMasked = maskedN;
         bool ok;
-        fixed (uint* src = _gSrc)
+        fixed (CasterSrcRec* src = _gSrc)
             ok = CasterGather.Begin(n, _gGroups, src, true);
         if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }
         else CasterGather.StandDynamic();

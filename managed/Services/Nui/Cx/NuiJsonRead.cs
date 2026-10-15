@@ -38,22 +38,22 @@ internal static unsafe partial class NuiJsonRead
     }
 
     /// <summary>The text of a <c>std::string</c> at <paramref name="s"/>, or null when its length is not credible.</summary>
-    internal static string? ReadString(byte* s, bool msvc) => ReadString(new NuiStdString(s), msvc);
+    internal static string? ReadString(byte* s, bool msvc) => ReadString(new NuiStdString(s, msvc));
 
-    private static string? ReadString(NuiStdString s, bool msvc)
+    private static string? ReadString(NuiStdString s)
     {
-        ulong len = s.Length(msvc);
+        ulong len = s.Length;
         if (len > MaxText) return null;
-        byte* p = s.Chars(msvc);
+        byte* p = s.Chars;
         return p == null ? null : Encoding.UTF8.GetString(p, (int)len);
     }
 
     /// <summary>Whether the <c>std::string</c> at <paramref name="s"/> holds exactly the bytes <paramref name="utf8"/>.</summary>
     internal static bool StringIs(byte* s, bool msvc, ReadOnlySpan<byte> utf8)
     {
-        var str = new NuiStdString(s);
-        if (str.Length(msvc) != (ulong)utf8.Length) return false;
-        byte* p = str.Chars(msvc);
+        var str = new NuiStdString(s, msvc);
+        if (str.Length != (ulong)utf8.Length) return false;
+        byte* p = str.Chars;
         return p != null && new ReadOnlySpan<byte>(p, utf8.Length).SequenceEqual(utf8);
     }
 
@@ -87,7 +87,7 @@ internal static unsafe partial class NuiJsonRead
         var hit = FindIn(n.Left(msvc), head, owner, name, msvc, depth, level + 1, ref budget);
         if (hit.Ptr != null) return hit;
         var val = n.Value;
-        if (ReadString(n.Key, msvc) == "bind" && val.Type == TString)
+        if (ReadString(n.Key(msvc)) == "bind" && val.Type == TString)
         {
             byte* str = val.Pointer;
             if (str != null && ReadString(str, msvc) == name) return owner;
@@ -155,7 +155,7 @@ internal static unsafe partial class NuiJsonRead
         if (b.Over || n.IsEnd(head, msvc)) return;
         if (++b.Nodes > MaxNodes || level > MaxDepth) { b.Over = true; return; }
         Walk(sb, n.Left(msvc), head, msvc, ref first, depth, level + 1, ref b);
-        string? key = ReadString(n.Key, msvc);
+        string? key = ReadString(n.Key(msvc));
         if (key == null) { b.Over = true; return; }
         if (!first) sb.Append(',');
         first = false;

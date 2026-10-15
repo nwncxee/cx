@@ -26,10 +26,8 @@ internal static unsafe class NuiWindows
     /// <summary>More than <c>nk_window</c>'s size, which is under 0x200 on both builds.</summary>
     private const int FakeWindowBytes = 0x400;   // not-an-offset: allocation size
 
-    /// <summary>nuklear's command types (<c>nk_command_type</c>) that carry colours.</summary>
-    private const int CmdScissor = 1, CmdLine = 2, CmdCurve = 3, CmdRect = 4, CmdRectFilled = 5, CmdRectMulti = 6, CmdCircle = 7, CmdCircleFilled = 8,
-                      CmdArc = 9, CmdArcFilled = 10, CmdTriangle = 11, CmdTriangleFilled = 12, CmdPolygon = 13, CmdPolygonFilled = 14,
-                      CmdPolyline = 15, CmdText = 16, CmdImage = 17;
+    /// <summary>The <c>nk_command_type</c>s this pass reads by kind: the clip, the filled rectangle and the image.</summary>
+    private const int CmdScissor = 1, CmdRectFilled = 5, CmdImage = 17;
 
     /// <summary>One window's resolved properties. <see cref="Epoch"/> is the policy epoch they were read at.</summary>
     internal sealed unsafe class Style
@@ -213,10 +211,10 @@ internal static unsafe class NuiWindows
         if (end <= begin || end - begin > MaxSnapshot) { st.SnapValid = false; return; }
         int len = (int)(end - begin);
         Grow(ref st.Snap, ref st.SnapCap, len);
-        Buffer.MemoryCopy(new NuiQueue(mem).Begin(win).P, st.Snap, len, len);
+        Buffer.MemoryCopy((void*)new NkQueue(mem).Begin(win).Ptr, st.Snap, len, len);
         int pos = 0;
-        var snap = new NuiQueue(st.Snap);
-        NuiCmd cmd = snap.Head;
+        var snap = new NkQueue(st.Snap);
+        NkCommand cmd = snap.Head;
         while (pos < len)
         {
             ulong rel = cmd.Next - begin;
@@ -240,14 +238,14 @@ internal static unsafe class NuiWindows
         Buffer.MemoryCopy(st.Snap, st.Work, st.SnapLen, st.SnapLen);
         ulong at = (ulong)(st.Work - mem);
         int pos = 0;
-        var work = new NuiQueue(st.Work);
-        NuiCmd cmd = work.Head;
+        var work = new NkQueue(st.Work);
+        NkCommand cmd = work.Head;
         while (pos < st.SnapLen)
         {
             ulong rel = cmd.Next;
-            NuiCmd following = work.After(cmd);
+            NkCommand following = work.After(cmd);
             cmd.Next = at + rel;
-            if (cmd.Type == CmdImage && new NkCommandImage((IntPtr)cmd.P).Handle != atlas) cmd.ImageColour.A = 0;
+            if (cmd.Type == CmdImage && new NkCommandImage(cmd.Ptr).Handle != atlas) new NkCommandImage(cmd.Ptr).Color.A = 0;
             if (rel <= (ulong)pos || rel >= (ulong)st.SnapLen) break;
             pos = (int)rel;
             cmd = following;
@@ -296,15 +294,14 @@ internal static unsafe class NuiWindows
         var win = new NkWindow(window);
         ulong off = win.BufBegin, end = Math.Min(win.BufEnd, allocated);
         ulong chromeEnd = 0;
-        var queue = new NuiQueue(mem);
+        var queue = new NkQueue(mem);
         bool chrome = background < 1f && FindChromeEnd(queue, win, end, out chromeEnd);
-        NuiCmd cmd = queue.Begin(win);
+        NkCommand cmd = queue.Begin(win);
         for (int n = 0; off < end && n < MaxCommands; n++)
         {
-            int type = cmd.Type;
             float f = all;
             if (chrome && off <= chromeEnd) f *= background;
-            if (f < 1f) ScaleCommand(cmd, type, f);
+            if (f < 1f) ScaleCommand(cmd, f);
             ulong next = cmd.Next;
             if (next <= off) break;
             off = next;
@@ -316,11 +313,11 @@ internal static unsafe class NuiWindows
     /// <summary>The engine draws a window's title bar, frame and body before it first clips to the content, then fills the content
     /// rectangle once more. A window with no such commands before its first scissor (no title bar, border or fill) has no chrome, and what
     /// follows is the server's. The chrome ends at that content fill, or at the scissor when no fill follows it.</summary>
-    private static bool FindChromeEnd(NuiQueue queue, NkWindow win, ulong end, out ulong at)
+    private static bool FindChromeEnd(NkQueue queue, NkWindow win, ulong end, out ulong at)
     {
         at = 0;
         ulong off = win.BufBegin;
-        NuiCmd cmd = queue.Begin(win);
+        NkCommand cmd = queue.Begin(win);
         bool drawn = false;
         for (int n = 0; off < end && n < MaxCommands; n++)
         {
@@ -332,10 +329,9 @@ internal static unsafe class NuiWindows
                 at = off;
                 if (next > off && next < end && queue.After(cmd).Type == CmdRectFilled)
                 {
-                    Rect(queue.After(cmd), CmdRectFilled, out float x, out float y, out float w, out float h);
-                    NuiShortRect clip = cmd.ScissorRect;
-                    int sx = clip.X, sy = clip.Y, sw = clip.W, sh = clip.H;
-                    if (x == sx && y == sy && w == sw && h == sh) at = next;
+                    var fill = new NkCommandRectFilled(queue.After(cmd).Ptr);
+                    var clip = new NkCommandScissor(cmd.Ptr);
+                    if (fill.X == clip.X && fill.Y == clip.Y && fill.W == clip.W && fill.H == clip.H) at = next;
                 }
                 return true;
             }
@@ -347,32 +343,13 @@ internal static unsafe class NuiWindows
         return false;
     }
 
-    /// <summary>A rect-shaped command's x, y, w, h: the filled rect keeps them at +0x12, the image at +0x10, the stroked rect at +0x14.</summary>
-    private static void Rect(NuiCmd cmd, int type, out float x, out float y, out float w, out float h)
+    /// <summary>Scale the alpha byte of every colour in one command.</summary>
+    internal static void ScaleCommand(NkCommand cmd, float f)
     {
-        NuiShortRect r = type == CmdRect ? cmd.StrokedRect : type == CmdImage ? cmd.ImageRect : cmd.FilledRect;
-        x = r.X; y = r.Y; w = r.W; h = r.H;
+        foreach (ref NkColor c in cmd.Colours) Alpha(ref c, f);
     }
 
-    /// <summary>Scale the alpha byte of every colour in one command. Offsets are <c>nk_convert</c>'s own reads, per type.</summary>
-    internal static void ScaleCommand(NuiCmd cmd, int type, float f)
-    {
-        switch (type)
-        {
-            case CmdLine: case CmdRectFilled: case CmdCircle: Alpha(ref cmd.LineColour, f); break;
-            case CmdCurve: Alpha(ref cmd.CurveColour, f); break;
-            case CmdRect: case CmdTriangleFilled: Alpha(ref cmd.RectColour, f); break;
-            case CmdRectMulti: Alpha(ref cmd.MultiLeft, f); Alpha(ref cmd.MultiTop, f); Alpha(ref cmd.MultiBottom, f); Alpha(ref cmd.MultiRight, f); break;
-            case CmdCircleFilled: Alpha(ref cmd.CircleFilledColour, f); break;
-            case CmdArc: case CmdArcFilled: Alpha(ref cmd.ArcColour, f); break;
-            case CmdTriangle: Alpha(ref cmd.TriangleColour, f); break;
-            case CmdPolygon: case CmdPolygonFilled: case CmdPolyline: Alpha(ref cmd.PolygonColour, f); break;
-            case CmdText: Alpha(ref cmd.TextBackground, f); Alpha(ref cmd.TextForeground, f); break;
-            case CmdImage: Alpha(ref cmd.ImageColour, f); break;
-        }
-    }
-
-    private static void Alpha(ref NuiRgba c, float f) => c.A = (byte)(c.A * f + 0.5f);
+    private static void Alpha(ref NkColor c, float f) => c.A = (byte)(c.A * f + 0.5f);
 
     internal static string Stats() => _s.Styles.Count == 0 ? "nui windows: none seen" : $"nui windows: {_s.Styles.Count} seen, {_s.Applied} styled draws";
 
@@ -399,68 +376,77 @@ internal static unsafe class NuiWindows
             name[0] = (byte)'a'; name[1] = (byte)'b';
             check.Expect(Hash(name) == 0x089c4407b545986a, "FNV-1a 64 of 'ab'");
 
-            // Three commands in a 0x100-byte queue: a window-sized fill, its stroked bounds, a text; type @0, next @8.
-            const int S = NuiCmdBlock.Size;
-            NuiCmdBlock* blk = stackalloc NuiCmdBlock[8];
-            new Span<byte>(blk, 8 * S).Clear();
-            byte* mem = (byte*)blk;
-            NuiCmd ca = new(blk[0].B), cb = new(blk[1].B), ct = new(blk[2].B);
-            ca.Type = 5; ca.Next = S; Put(ref ca.FilledRect, 100, 200, 300, 150); ca.LineColour.A = 200;
-            cb.Type = 4; cb.Next = 2 * S; Put(ref cb.StrokedRect, 100, 200, 300, 150); cb.RectColour.A = 100;
-            ct.Type = 16; ct.Next = 3 * S; ct.TextBackground.A = 80; ct.TextForeground.A = 255;
-            byte* win = stackalloc byte[0x200];
-            new Span<byte>(win, 0x200).Clear();
-            var wnd = new NkWindow((IntPtr)win);
-            wnd.BufBegin = 0; wnd.BufEnd = 3 * S;
-            wnd.Bounds[0] = 100; wnd.Bounds[1] = 200; wnd.Bounds[2] = 300; wnd.Bounds[3] = 150;
-            check.Expect(ScaleWindow(mem, 4 * S, (IntPtr)win, 0.5f, 1f) == 0, "no background asked, none reported found");
-            check.Expect(ca.LineColour.A == 100 && cb.RectColour.A == 50 && ct.TextBackground.A == 40 && ct.TextForeground.A == 128, "opacity 0.5 halves every colour's alpha (200->100, 100->50, 80->40, 255->128)");
-            ca.LineColour.A = 200; cb.RectColour.A = 100; ct.TextBackground.A = 80; ct.TextForeground.A = 255;
-            check.Expect(ScaleWindow(mem, 4 * S, (IntPtr)win, 1f, 0f) == 0, "a window with no chrome before its first clip has no engine chrome");
-            check.Expect(ca.LineColour.A == 200 && cb.RectColour.A == 100 && ct.TextBackground.A == 80, "background 0 leaves the server's window-sized fill, its stroked bounds and its text");
-            ca.LineColour.A = 200; cb.RectColour.A = 100;
-            ScaleWindow(mem, 4 * S, (IntPtr)win, 0.5f, 0.5f);
-            check.Expect(ca.LineColour.A == 100 && cb.RectColour.A == 50 && ct.TextForeground.A == 128, "opacity alone fades what the server drew (200*0.5, 100*0.5)");
-            wnd.BufEnd = S;
-            ca.LineColour.A = 200; cb.RectColour.A = 100;
-            ScaleWindow(mem, 4 * S, (IntPtr)win, 0.5f, 1f);
-            check.Expect(ca.LineColour.A == 100 && cb.RectColour.A == 100, "the walk stops at the window's end");
-            // A skinned window: header image, title text, body fill, frame image, content scissor, the same rect filled, a scissor, a widget text.
-            new Span<byte>(blk, 8 * S).Clear();
-            int[] kinds = [17, 16, 5, 17, 1, 5, 1, 16];
-            for (int i = 0; i < 8; i++)
+            // Commands laid out byte by byte from nuklear's structs, literal offsets: type @0, next @8; a filled rect's
+            // box @0x12 and colour @0x1a; a stroked rect's box @0x14 and colour @0x1c; text colours @0x18, @0x1c;
+            // an image's colour @0x30; a scissor's box @0x10. Three commands: a window-sized fill, its bounds, a text.
+            const int S = CmdSlot;
+            byte[] q = new byte[8 * S];
+            fixed (byte* mem = q)
             {
-                var c = new NuiCmd(blk[i].B);
-                c.Type = kinds[i];
-                c.Next = (ulong)((i + 1) * S);
+                Head(q, 0, 5); Box(q, 0, 0x12, 100, 200, 300, 150); AlphaAt(q, 0, 0x1a) = 200;
+                Head(q, 1, 4); Box(q, 1, 0x14, 100, 200, 300, 150); AlphaAt(q, 1, 0x1c) = 100;
+                Head(q, 2, 16); AlphaAt(q, 2, 0x18) = 80; AlphaAt(q, 2, 0x1c) = 255;
+                byte* win = stackalloc byte[0x200];
+                new Span<byte>(win, 0x200).Clear();
+                var wnd = new NkWindow((IntPtr)win);
+                wnd.BufBegin = 0; wnd.BufEnd = 3 * S;
+                wnd.Bounds[0] = 100; wnd.Bounds[1] = 200; wnd.Bounds[2] = 300; wnd.Bounds[3] = 150;
+                check.Expect(ScaleWindow(mem, 4 * S, (IntPtr)win, 0.5f, 1f) == 0, "no background asked, none reported found");
+                check.Expect(AlphaAt(q, 0, 0x1a) == 100 && AlphaAt(q, 1, 0x1c) == 50 && AlphaAt(q, 2, 0x18) == 40 && AlphaAt(q, 2, 0x1c) == 128, "opacity 0.5 halves every colour's alpha (200->100, 100->50, 80->40, 255->128)");
+                AlphaAt(q, 0, 0x1a) = 200; AlphaAt(q, 1, 0x1c) = 100; AlphaAt(q, 2, 0x18) = 80; AlphaAt(q, 2, 0x1c) = 255;
+                check.Expect(ScaleWindow(mem, 4 * S, (IntPtr)win, 1f, 0f) == 0, "a window with no chrome before its first clip has no engine chrome");
+                check.Expect(AlphaAt(q, 0, 0x1a) == 200 && AlphaAt(q, 1, 0x1c) == 100 && AlphaAt(q, 2, 0x18) == 80, "background 0 leaves the server's window-sized fill, its stroked bounds and its text");
+                AlphaAt(q, 0, 0x1a) = 200; AlphaAt(q, 1, 0x1c) = 100;
+                ScaleWindow(mem, 4 * S, (IntPtr)win, 0.5f, 0.5f);
+                check.Expect(AlphaAt(q, 0, 0x1a) == 100 && AlphaAt(q, 1, 0x1c) == 50 && AlphaAt(q, 2, 0x1c) == 128, "opacity alone fades what the server drew (200*0.5, 100*0.5)");
+                wnd.BufEnd = S;
+                AlphaAt(q, 0, 0x1a) = 200; AlphaAt(q, 1, 0x1c) = 100;
+                ScaleWindow(mem, 4 * S, (IntPtr)win, 0.5f, 1f);
+                check.Expect(AlphaAt(q, 0, 0x1a) == 100 && AlphaAt(q, 1, 0x1c) == 100, "the walk stops at the window's end");
+                // A skinned window: header image, title text, body fill, frame image, content scissor, the same rect filled, a scissor, a widget text.
+                Array.Clear(q);
+                int[] kinds = [17, 16, 5, 17, 1, 5, 1, 16];
+                for (int i = 0; i < 8; i++) Head(q, i, kinds[i]);
+                AlphaAt(q, 0, 0x30) = 255; AlphaAt(q, 1, 0x1c) = 255; Box(q, 2, 0x12, 100, 200, 300, 150); AlphaAt(q, 2, 0x1a) = 255;
+                AlphaAt(q, 3, 0x30) = 255;
+                Box(q, 4, 0x10, 104, 204, 292, 142);
+                Box(q, 5, 0x12, 104, 204, 292, 142); AlphaAt(q, 5, 0x1a) = 255;
+                AlphaAt(q, 7, 0x1c) = 255;
+                wnd.BufBegin = 0; wnd.BufEnd = 8 * S;
+                check.Expect(ScaleWindow(mem, 8 * S, (IntPtr)win, 1f, 0f) == 1, "the skinned chrome is found by the content fill");
+                check.Expect(AlphaAt(q, 0, 0x30) == 0 && AlphaAt(q, 1, 0x1c) == 0 && AlphaAt(q, 2, 0x1a) == 0 && AlphaAt(q, 3, 0x30) == 0 && AlphaAt(q, 5, 0x1a) == 0,
+                             "background 0 clears the title bar, frame, body and content fill");
+                check.Expect(AlphaAt(q, 7, 0x1c) == 255, "...and leaves the widget text");
+                // A server fill the size of the window right after the content fill's scissor is the server's.
+                Array.Clear(q);
+                Head(q, 0, 1); Box(q, 0, 0x10, 100, 200, 300, 150);
+                Head(q, 1, 5); Box(q, 1, 0x12, 100, 200, 300, 150); AlphaAt(q, 1, 0x1a) = 255;
+                Head(q, 2, 1);
+                wnd.BufBegin = 0; wnd.BufEnd = 3 * S;
+                check.Expect(ScaleWindow(mem, 8 * S, (IntPtr)win, 1f, 0f) == 0 && AlphaAt(q, 1, 0x1a) == 255, "a transparent window starts at a clip: its first fill is the server's, even at the window's size");
             }
-            var s0 = new NuiCmd(blk[0].B); var s1 = new NuiCmd(blk[1].B); var s2 = new NuiCmd(blk[2].B); var s3 = new NuiCmd(blk[3].B);
-            var s4 = new NuiCmd(blk[4].B); var s5 = new NuiCmd(blk[5].B); var s7 = new NuiCmd(blk[7].B);
-            s0.ImageColour.A = 255; s1.TextForeground.A = 255; Put(ref s2.FilledRect, 100, 200, 300, 150); s2.LineColour.A = 255;
-            s3.ImageColour.A = 255;
-            s4.ScissorRect = new NuiShortRect { X = 104, Y = 204, W = 292, H = 142 };
-            Put(ref s5.FilledRect, 104, 204, 292, 142); s5.LineColour.A = 255;
-            s7.TextForeground.A = 255;
-            wnd.BufBegin = 0; wnd.BufEnd = 8 * S;
-            check.Expect(ScaleWindow(mem, 8 * S, (IntPtr)win, 1f, 0f) == 1, "the skinned chrome is found by the content fill");
-            check.Expect(s0.ImageColour.A == 0 && s1.TextForeground.A == 0 && s2.LineColour.A == 0 && s3.ImageColour.A == 0 && s5.LineColour.A == 0,
-                         "background 0 clears the title bar, frame, body and content fill");
-            check.Expect(s7.TextForeground.A == 255, "...and leaves the widget text");
-            // A server fill the size of the window right after the content fill's scissor is the server's.
-            new Span<byte>(blk, 8 * S).Clear();
-            NuiCmd c0 = new(blk[0].B), c1 = new(blk[1].B), c2 = new(blk[2].B);
-            c0.Type = 1; c0.Next = S; c0.ScissorRect = new NuiShortRect { X = 100, Y = 200, W = 300, H = 150 };
-            c1.Type = 5; c1.Next = 2 * S; Put(ref c1.FilledRect, 100, 200, 300, 150); c1.LineColour.A = 255;
-            c2.Type = 1; c2.Next = 3 * S;
-            wnd.BufBegin = 0; wnd.BufEnd = 3 * S;
-            check.Expect(ScaleWindow(mem, 8 * S, (IntPtr)win, 1f, 0f) == 0 && c1.LineColour.A == 255, "a transparent window starts at a clip: its first fill is the server's, even at the window's size");
         }
         finally { _s = saved; }
         log.Info(check.Ok ? "NuiWindows.SelfCheck: passed" : "NuiWindows.SelfCheck: FAILED");
     }
 
-    private static void Put(ref NuiShortRect r, short x, short y, ushort w, ushort h)
+    /// <summary>Bytes one hand-built command takes in the self-check's queue, past the largest command's fields.</summary>
+    private const int CmdSlot = 80;
+
+    private static void Head(byte[] q, int i, int type)
     {
-        r = new NuiShortRect { X = x, Y = y, W = w, H = h };
+        BitConverter.TryWriteBytes(q.AsSpan(i * CmdSlot), type);
+        BitConverter.TryWriteBytes(q.AsSpan(i * CmdSlot + 8), (ulong)((i + 1) * CmdSlot));
     }
+
+    private static void Box(byte[] q, int i, int at, short x, short y, ushort w, ushort h)
+    {
+        Span<byte> c = q.AsSpan(i * CmdSlot + at);
+        BitConverter.TryWriteBytes(c, x);
+        BitConverter.TryWriteBytes(c[2..], y);
+        BitConverter.TryWriteBytes(c[4..], w);
+        BitConverter.TryWriteBytes(c[6..], h);
+    }
+
+    private static ref byte AlphaAt(byte[] q, int i, int colourAt) => ref q[i * CmdSlot + colourAt + 3];
 }
