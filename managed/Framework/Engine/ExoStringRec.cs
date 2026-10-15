@@ -11,4 +11,7 @@ public unsafe struct ExoStringRec
     [FieldOffset(0)] public byte* Buf;
     /// <summary>The length in bytes.</summary>
     [FieldOffset(8)] public uint Len;
+
+    /// <summary>The text, read as <see cref="CX.Framework.Native.ReadExo"/> reads it.</summary>
+    public string Text => CX.Framework.Native.ReadExo((IntPtr)System.Runtime.CompilerServices.Unsafe.AsPointer(ref this));
 }

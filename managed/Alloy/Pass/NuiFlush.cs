@@ -350,7 +350,7 @@ internal static unsafe class NuiFlush
         var fx = new NkContext((IntPtr)ctxMem);
         fx.DrawCmdOffset = sizeof(NkDrawCommand);
         byte* first = FirstCmd((IntPtr)(&cmds), 3, fx);
-        check.Expect(first == (byte*)Unsafe.AsPointer(ref recs[2]), "the first command is the last record in the buffer");
+        check.Expect(first == (byte*)Unsafe.AsPointer(ref new Span<NkDrawCommand>(recs, 3)[2]), "the first command is the last record in the buffer");
         var firstCmd = (NkDrawCommand*)first;
         int seen = 0;
         for (int k = 0; k < 3; k++) seen = seen * 10 + (int)firstCmd[-k].ElemCount;

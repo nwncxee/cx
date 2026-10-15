@@ -1325,6 +1325,8 @@ offset	CNWCItem	gender	0x212	0x1f2	# ItemGender
 offset	NkContext	mousePos	0x14c	0x14c	# NkCtxMousePos
 offset	NkContext	current	0x6738	0x6738	# NkCtxCurrent
 offset	NkWindow	layout	0xa8	0xa8	# NkWinLayout
+offset	NkContext	active	0x6730	0x6730	# NkCtxActive
+offset	NkWindow	editActive	0x18c	0x18c	# NkWinEditActive
 offset	NkCommandImage	handle	0x18	0x18	# NkCmdImageHandle
 offset	NkCommand	type	0x0	0x0	# NkCmdType
 offset	NkCommand	next	0x8	0x8	# NkCmdNext

@@ -212,7 +212,7 @@ public sealed unsafe class DialogService : IExtenderService
             uint* ip = (uint*)indices;
             for (int i = 0; i < n; i++)
             {
-                texts[i] = Native.ReadExo((IntPtr)Unsafe.AsPointer(ref ((ExoStringRec*)replies)[i]));   // CExoString is 16 bytes
+                texts[i] = ((ExoStringRec*)replies)[i].Text;
                 idx[i] = ip != null ? ip[i] : 0xffffffff;
             }
             _replies = MakeReplies(texts, idx, numOldReplies);

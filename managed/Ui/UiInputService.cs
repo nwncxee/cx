@@ -334,10 +334,10 @@ public sealed unsafe class UiInputService : IExtenderService
         if (_nuklearGlobal == IntPtr.Zero) return false;
         IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         if (ctx == IntPtr.Zero) return false;
-        for (IntPtr w = ((UiNkContext*)ctx)->Begin; w != IntPtr.Zero; w = ((UiNkWindow*)w)->Next)
+        for (var w = new NkWindow(new NkContext(ctx).WindowBegin); !w.IsNull; w = new NkWindow(w.Next))
         {
-            if ((((UiNkWindow*)w)->Flags & (NkWinHiddenClosed | NkWinMinimized)) != 0) continue;
-            float* b = ((UiNkWindow*)w)->Bounds;
+            if ((w.Flags & (NkWinHiddenClosed | NkWinMinimized)) != 0) continue;
+            Span<float> b = w.Bounds;
             if (x >= b[0] && x < b[0] + b[2] && y >= b[1] && y < b[1] + b[3]) return true;
         }
         return false;
@@ -348,8 +348,8 @@ public sealed unsafe class UiInputService : IExtenderService
         if (_nuklearGlobal == IntPtr.Zero) return false;
         IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         if (ctx == IntPtr.Zero) return false;
-        IntPtr win = ((UiNkContext*)ctx)->ActiveWindow;
-        return win != IntPtr.Zero && ((UiNkWindow*)win)->EditActive != 0;
+        var win = new NkWindow(new NkContext(ctx).Active);
+        return !win.IsNull && win.EditActive != 0;
     }
 
     private static bool KeyboardModeActive()

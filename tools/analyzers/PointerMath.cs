@@ -38,17 +38,45 @@ public sealed class PointerMath : DiagnosticAnalyzer
         context.RegisterOperationAction(OnCompound, OperationKind.CompoundAssignment);
         context.RegisterOperationAction(OnStep, OperationKind.Increment, OperationKind.Decrement);
         context.RegisterSyntaxNodeAction(OnAddressOf, SyntaxKind.AddressOfExpression);
+        context.RegisterOperationAction(OnAsPointer, OperationKind.Invocation);
     }
 
     /// <summary><c>&amp;p[i]</c> is <c>p + i</c>; on an array it is the same move once the array is pinned.</summary>
     private static void OnAddressOf(SyntaxNodeAnalysisContext c)
     {
         var node = (PrefixUnaryExpressionSyntax)c.Node;
-        if (node.Operand is not ElementAccessExpressionSyntax at) return;
-        ITypeSymbol? t = c.SemanticModel.GetTypeInfo(at.Expression, c.CancellationToken).Type;
-        if (t?.TypeKind is not (TypeKind.Pointer or TypeKind.Array)) return;
-        if (t.TypeKind == TypeKind.Array && at.ArgumentList.Arguments.Count == 1 && at.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax { Token.ValueText: "0" }) return;
-        Report(c.ReportDiagnostic, node);
+        if (node.Operand is ElementAccessExpressionSyntax at && Moved(c.SemanticModel, at, c.CancellationToken))
+            Report(c.ReportDiagnostic, node);
+    }
+
+    /// <summary><c>Unsafe.AsPointer(ref p[i])</c> is <c>&amp;p[i]</c>. The address of a view's field, or of a bounds-checked
+    /// span element, is not a move.</summary>
+    private static void OnAsPointer(OperationAnalysisContext c)
+    {
+        var op = (IInvocationOperation)c.Operation;
+        if (op.TargetMethod.Name != "AsPointer" || op.TargetMethod.ContainingType.ToDisplayString() != "System.Runtime.CompilerServices.Unsafe"
+            || op.Arguments.Length != 1 || op.SemanticModel == null) return;
+        if (Strip(op.Arguments[0].Syntax) is ElementAccessExpressionSyntax at && Moved(op.SemanticModel, at, c.CancellationToken))
+            Report(c.ReportDiagnostic, op.Syntax);
+    }
+
+    /// <summary>The expression an argument passes, without <c>ref</c> or parentheses.</summary>
+    private static SyntaxNode Strip(SyntaxNode n)
+    {
+        if (n is ArgumentSyntax a) n = a.Expression;
+        while (n is ParenthesizedExpressionSyntax p) n = p.Expression;
+        if (n is RefExpressionSyntax r) n = r.Expression;
+        while (n is ParenthesizedExpressionSyntax p) n = p.Expression;
+        return n;
+    }
+
+    /// <summary>True when <paramref name="at"/> indexes a pointer, or an array past element 0.</summary>
+    private static bool Moved(SemanticModel model, ElementAccessExpressionSyntax at, System.Threading.CancellationToken ct)
+    {
+        ITypeSymbol? t = model.GetTypeInfo(at.Expression, ct).Type;
+        if (t?.TypeKind == TypeKind.Pointer) return true;
+        return t?.TypeKind == TypeKind.Array
+            && !(at.ArgumentList.Arguments.Count == 1 && at.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax { Token.ValueText: "0" });
     }
 
     private static void OnBinary(OperationAnalysisContext c)

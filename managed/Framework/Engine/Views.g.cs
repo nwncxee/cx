@@ -3423,6 +3423,8 @@ public readonly unsafe partial struct NkContext(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkCtxActive"/>
+    public ref IntPtr Active => ref *(IntPtr*)(Ptr + EngineLayout.NkCtxActive);
     /// <inheritdoc cref="EngineLayout.NkCtxBarSizeX"/>
     public ref float BarSizeX => ref *(float*)(Ptr + EngineLayout.NkCtxBarSizeX);
     /// <inheritdoc cref="EngineLayout.NkCtxBarSizeY"/>
@@ -3531,6 +3533,8 @@ public readonly unsafe partial struct NkWindow(IntPtr ptr)
     public ref ulong BufEnd => ref *(ulong*)(Ptr + EngineLayout.NkWinBufEnd);
     /// <inheritdoc cref="EngineLayout.NkWinBufLast"/>
     public ref ulong BufLast => ref *(ulong*)(Ptr + EngineLayout.NkWinBufLast);
+    /// <inheritdoc cref="EngineLayout.NkWinEditActive"/>
+    public ref int EditActive => ref *(int*)(Ptr + EngineLayout.NkWinEditActive);
     /// <inheritdoc cref="EngineLayout.NkWinFlags"/>
     public ref uint Flags => ref *(uint*)(Ptr + EngineLayout.NkWinFlags);
     /// <inheritdoc cref="EngineLayout.NkWinLayout"/>
