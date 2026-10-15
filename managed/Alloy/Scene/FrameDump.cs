@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Numerics;
 using System.IO;
 using System.Text;
 using CX.Framework;
@@ -69,7 +70,7 @@ internal static unsafe class FrameDump
     /// mint. <b>Show</b> is the human column: the texture NAMES, which under merge belong on the draw.</para></summary>
     internal static void Row_(int cls, bool lit, int vao, IntPtr mat, int recipe, uint mode, int feat, bool dis,
                               int blend, bool noCull, int slots, bool merge, int idxCount, nint off,
-                              int baseVertex, float* r)
+                              int baseVertex, in DrawRecordBlock r)
     {
         var k = new StringBuilder(128);
         k.Append("cls=").Append(((AlloyClass)cls).ToString())
@@ -106,35 +107,40 @@ internal static unsafe class FrameDump
             AppendSlots(d, mat, recipe, slots);
         }
         d.Append(" m=");
-        for (int f = 0; f < 16; f++) { if (f != 0) d.Append(','); F(d, r[f]); }
-        d.Append(" rot="); F(d, r[16]); d.Append(','); F(d, r[17]);
-        // r[20..39] are written by the LIT branch alone, and _dData is allocated once and never cleared --
+        Matrix4x4 mdl = r.Model;
+        F(d, mdl.M11); d.Append(','); F(d, mdl.M12); d.Append(','); F(d, mdl.M13); d.Append(','); F(d, mdl.M14); d.Append(',');
+        F(d, mdl.M21); d.Append(','); F(d, mdl.M22); d.Append(','); F(d, mdl.M23); d.Append(','); F(d, mdl.M24); d.Append(',');
+        F(d, mdl.M31); d.Append(','); F(d, mdl.M32); d.Append(','); F(d, mdl.M33); d.Append(','); F(d, mdl.M34); d.Append(',');
+        F(d, mdl.M41); d.Append(','); F(d, mdl.M42); d.Append(','); F(d, mdl.M43); d.Append(','); F(d, mdl.M44);
+        d.Append(" rot="); F(d, r.Cos); d.Append(','); F(d, r.Sin);
+        // the lit lanes are written by the LIT branch alone, and _dData is allocated once and never cleared --
         // so printing them for an unlit draw serialises whatever the previous frame left in that slot, and
         // slot assignment follows enrollment order, which is pointer-hash order. That is a diff that changes
         // between runs for no reason connected to the code under test, which is the one thing this file
         // exists not to do.
         if (lit)
         {
-            d.Append(" amb="); F(d, r[20]); d.Append(','); F(d, r[21]); d.Append(','); F(d, r[22]);
+            d.Append(" amb="); F(d, r.AmbR); d.Append(','); F(d, r.AmbG); d.Append(','); F(d, r.AmbB);
             if (cls != (int)AlloyClass.Water)
-            { d.Append(" dif="); F(d, r[24]); d.Append(','); F(d, r[25]); d.Append(','); F(d, r[26]); }
-            d.Append(" emi="); F(d, r[28]); d.Append(','); F(d, r[29]); d.Append(','); F(d, r[30]);
+            { d.Append(" dif="); F(d, r.DifR); d.Append(','); F(d, r.DifG); d.Append(','); F(d, r.DifB); }
+            d.Append(" emi="); F(d, r.EmiR); d.Append(','); F(d, r.EmiG); d.Append(','); F(d, r.EmiB);
             d.Append(" par=");
-            for (int f = 32; f < 40; f++) { if (f != 32) d.Append(','); F(d, r[f]); }
+            F(d, r.PbrR); d.Append(','); F(d, r.PbrG); d.Append(','); F(d, r.PbrB); d.Append(','); F(d, r.Slots); d.Append(',');
+            F(d, r.PbrX); d.Append(','); F(d, r.PbrY); d.Append(','); F(d, r.PbrZ); d.Append(','); F(d, r.PbrW);
         }
         // #147's water body overwrites the diffuse slot whether or not the batch was lit, so it is the one
         // group of four an unlit draw does have written.
         if (cls == (int)AlloyClass.Water)
         {
             d.Append(" body=");
-            for (int f = 24; f < 28; f++) { if (f != 24) d.Append(','); F(d, r[f]); }
+            F(d, r.DifR); d.Append(','); F(d, r.DifG); d.Append(','); F(d, r.DifB); d.Append(','); F(d, r.DifW);
         }
         d.Append(" f4=");
-        for (int f = 40; f < 44; f++) { if (f != 40) d.Append(','); F(d, r[f]); }
+        F(d, r.FeatX); d.Append(','); F(d, r.FeatY); d.Append(','); F(d, r.FeatZ); d.Append(','); F(d, r.FeatW);
         // Everything past here varies with time rather than with the code, so a diff of an animated scene
         // can cut the line at the bar instead of reading around it.
-        d.Append(" | dissolve="); F(d, r[18]);
-        d.Append(" alpha="); F(d, r[19]);
+        d.Append(" | dissolve="); F(d, r.Dissolve);
+        d.Append(" alpha="); F(d, r.Alpha);
 
         _rows.Add(new Row { Key = k.ToString(), Draw = d.ToString(), Vao = vao, Off = off, Base = baseVertex });
     }
@@ -233,12 +239,11 @@ internal static unsafe class FrameDump
         model.NodeByName["body"] = 1;
         int recipe = Db.DrawRecipe.Intern(model, 1, plan: false);
         if (recipe < 0) { log.Info("FrameDump.SelfCheck: FAILED -- the recipe table would not intern the check's mesh"); return false; }
-        float* r = stackalloc float[AlloyRenderer.DrawFloats];
-        for (int i = 0; i < AlloyRenderer.DrawFloats; i++) r[i] = 0f;
+        var r = new DrawRecordBlock();
         _rows.Clear();
         Row_((int)AlloyClass.Cutout, lit: true, vao: 1, mat: IntPtr.Zero, recipe: recipe, mode: 4, feat: 0,
              dis: false, blend: 0, noCull: false, slots: AlloyRenderer.SlotBit(0), merge: true, idxCount: 3,
-             off: 0, baseVertex: 0, r);
+             off: 0, baseVertex: 0, in r);
         bool ok = _rows.Count == 1 && _rows[0].Draw.Contains("tex=cx_fd_diffuse", StringComparison.Ordinal)
                                    && _rows[0].Draw.Contains("cx_fd_normal", StringComparison.Ordinal);
         if (!ok)

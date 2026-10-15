@@ -1,6 +1,7 @@
 using CX.Engine;
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Framework;
 
@@ -537,7 +538,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Write slot <paramref name="i"/>'s per-draw record from the database columns -- the DB-mode
     /// counterpart of <c>StagePart</c>'s record half, with every term a column read instead of a pointer
     /// chase. Returns false when the part has no resident geometry yet (counted, re-asked next frame).</summary>
-    internal static bool DbStage(int i, float* data)
+    internal static bool DbStage(int i)
     {
         int part = _oDbPart[i];
         if (part < 0) return false;
@@ -550,7 +551,7 @@ public sealed unsafe partial class AlloyRenderer
 
         DbId obj = SceneDb.PartObj[part];
         int o = obj.Index;
-        float* r = ((DrawRec*)data)[i].F;
+        ref DrawRecordBlock r = ref _dData[i];
         bool fresh = _gate[i].RecGen != _recEpoch || _gate[i].RecEnroll != _gate[i].EnrollGen;
         var f = default(RecordFrameState);
         f.HasModel = true;
@@ -558,7 +559,7 @@ public sealed unsafe partial class AlloyRenderer
         // The keyhole lane is the stage's (1 = dissolving, gated on lit and feature); PartDissolve is the
         // inverse sense, and writing it here flipped every folded solid part to dissolving until the stage
         // flipped it back -- two record rewrites a fold, enough to push the frame into a whole-table upload.
-        f.Dissolve = fresh ? 0f : r[18];
+        f.Dissolve = fresh ? 0f : r.Dissolve;
         Vector4 tint = SceneDb.ObjTint[o];
         f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * tint.W;
         f.Lit = _oLit[i];
@@ -574,11 +575,11 @@ public sealed unsafe partial class AlloyRenderer
         f.FeatX = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
         f.FeatY = _oBone[i] >= 0 ? _oBone[i] * (float)BoneCount : _oFeat[i * 4 + 1];
 
-        if (fresh) DbWriteStable(r, i);
+        if (fresh) DbWriteStable(ref r, i);
         // #302's mover level, stamped HERE as well as in StageDbPart: this fold write consumes the move, so the
         // stage that runs after it in the same frame sees the model already in place and would never stamp it.
-        bool casterMoved = Moved(in *(Matrix4x4*)r, in f.Model, CasterStep);
-        bool moved = WritePerFrame(r, in f, roll: true, fresh: fresh);
+        bool casterMoved = Moved(in r.Model, in f.Model, CasterStep);
+        bool moved = WritePerFrame(ref r, in f, roll: true, fresh: fresh);
         if (fresh || moved) MarkRecordDirty(i);
         if (casterMoved || fresh) _recMovedAt[i] = _frameSeq;
         _gate[i].RecGen = _recEpoch; _gate[i].RecEnroll = _gate[i].EnrollGen; _gate[i].RecFrame = _frameSeq;
@@ -588,29 +589,29 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The DB-mode stable half: the same record fields <c>WriteStable</c> writes, sourced from the
     /// recipe and the object's flags instead of <c>_oTri</c>'s vtable and <c>_oGob</c>'s attachment chain.</summary>
-    private static void DbWriteStable(float* r, int i)
+    private static void DbWriteStable(ref DrawRecordBlock r, int i)
     {
         int recipe = _oDbRecipe[i], part = _oDbPart[i];
         int o = SceneDb.PartObj[part].Index;
         ObjFlag of = (uint)o < SceneDb.MaxObjects ? SceneDb.ObjFlags[o] : ObjFlag.None;
-        r[16] = _oCos[i]; r[17] = _oSin[i];
+        r.Cos = _oCos[i]; r.Sin = _oSin[i];
         int fo = i * 4;
-        r[42] = _oFeat[fo + 2];
+        r.FeatZ = _oFeat[fo + 2];
         // feat.w = -1 marks a DANGLY part for the receiver gate, exactly as the engine path's vtable probe did.
-        r[43] = (DrawRecipe.Flags(recipe) & RecipeFlag.Dangly) != 0 ? -1f : _oFeat[fo + 3];
+        r.FeatW = (DrawRecipe.Flags(recipe) & RecipeFlag.Dangly) != 0 ? -1f : _oFeat[fo + 3];
         if (!_oLit[i]) return;
-        r[23] = 1f; r[27] = 1f;
+        r.AmbW = 1f; r.DifW = 1f;
         // emi.w, the contact-shadow receiver class and the snow gate: 1 tileset, 0 object, -1 creature. Up the
         // ATTACHMENT chain (CreaturePart), because a body piece, a held weapon or a creature's VFX is its own
         // object and only the body carries the flag -- the object's own flags snowed on every PC's limbs. An
         // EFFECT-class model (a VFX) is no surface for snow either.
         bool fx = ((SceneDb.PartModel[part]?.Classification ?? 0) & HitTest.ClassEffect) != 0;
-        r[31] = (of & ObjFlag.Tile) != 0 ? 1f : fx || CreaturePart(i) ? -1f : 0f;
-        if (r[31] < 0f) RecCreature++; else if (r[31] > 0f) RecTile++; else RecObject++;
+        r.EmiW = (of & ObjFlag.Tile) != 0 ? 1f : fx || CreaturePart(i) ? -1f : 0f;
+        if (r.EmiW < 0f) RecCreature++; else if (r.EmiW > 0f) RecTile++; else RecObject++;
         int po = i * ParamFloats;
-        r[32] = _oParam[po]; r[33] = _oParam[po + 1]; r[34] = _oParam[po + 2];
-        r[36] = _oParam[po + 4]; r[37] = _oParam[po + 5]; r[38] = _oParam[po + 6]; r[39] = _oParam[po + 7];
-        for (int k = 0; k < ParamFloats - ParamExt; k++) r[ExtFloat + k] = _oParam[po + ParamExt + k];
+        r.PbrR = _oParam[po]; r.PbrG = _oParam[po + 1]; r.PbrB = _oParam[po + 2];
+        r.PbrX = _oParam[po + 4]; r.PbrY = _oParam[po + 5]; r.PbrZ = _oParam[po + 6]; r.PbrW = _oParam[po + 7];
+        r.Ext = MemoryMarshal.Read<MaterialExt>(MemoryMarshal.AsBytes(_oParam.AsSpan(po + ParamExt, ParamFloats - ParamExt)));
     }
 
     /// <summary>The DB-mode cull sphere: the recipe's model-space centre and radius through the part's world
@@ -629,11 +630,7 @@ public sealed unsafe partial class AlloyRenderer
             cx = c.X; cy = c.Y; cz = c.Z;
             rad = _oR[i] * DbScaleOf(in f.Model);
         }
-        fixed (float* sp = _dSph)
-        {
-            float* s = ((Stride4f*)sp)[i].F;
-            s[0] = cx; s[1] = cy; s[2] = cz; s[3] = rad;
-        }
+        _dSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = rad };
         // The caster sphere is the same bound, GEOMETRIC even for the exempted kinds, with a skinned part's
         // pose slack: a bind-pose box does not reach where an extended arm or a swinging cloak does.
         Vector3 gc = Vector3.Transform(new Vector3(_oBx[i], _oBy[i], _oBz[i]), f.Model);
@@ -642,11 +639,7 @@ public sealed unsafe partial class AlloyRenderer
         if ((rf & RecipeFlag.Skinned) != 0) gr = MathF.Max(gr + 2f, 3f);
         if (!(gr > 0f)) gr = DegenerateCasterRadius;
         _dCastSlack[i] = bare > 0f ? gr - bare : 0f;
-        fixed (float* sp = _dCastSph)
-        {
-            float* s = ((Stride4f*)sp)[i].F;
-            s[0] = gc.X; s[1] = gc.Y; s[2] = gc.Z; s[3] = gr;
-        }
+        _dCastSph[i] = new Sphere { Center = gc, Radius = gr };
     }
 
     /// <summary>The largest axis scale a composed matrix applies -- the factor a radius has to carry so a

@@ -122,7 +122,7 @@ internal static partial class DrawRecipe
     private static readonly float[] _cos = new float[Max], _sin = new float[Max];
     private static readonly Vector3[] _centre = new Vector3[Max];
     private static readonly float[] _radius = new float[Max];
-    private static readonly float[] _box = new float[Max * 6];
+    private static readonly Box[] _box = new Box[Max];
     private static readonly int[] _range = new int[Max];
     /// <summary>The recipe's material DECLARES water (<see cref="DeclaredWater"/>) -- the model-side half of
     /// the engine's water test, kept per recipe because <see cref="Reclassify"/> re-asks the class of every
@@ -630,8 +630,7 @@ internal static partial class DrawRecipe
         _centre[r] = (lo + hi) * 0.5f;
         Vector3 ex = hi - lo;
         _radius[r] = 0.5f * ex.Length();
-        _box[r * 6 + 0] = lo.X; _box[r * 6 + 1] = lo.Y; _box[r * 6 + 2] = lo.Z;
-        _box[r * 6 + 3] = hi.X; _box[r * 6 + 4] = hi.Y; _box[r * 6 + 5] = hi.Z;
+        _box[r] = new Box { Min = lo, Max = hi };
         _range[r] = MeshArena.Acquire(mesh);
         if (_range[r] < 0 && !_rangeQueued[r] && _rangeWaitN < _rangeWait.Length)
         { _rangeWait[_rangeWaitN++] = r; _rangeQueued[r] = true; }
@@ -706,11 +705,8 @@ internal static partial class DrawRecipe
         return any;
     }
 
-    /// <summary>The recipe's local box, six floats (min then max), into <paramref name="dst"/>.</summary>
-    internal static void Box(int r, Span<float> dst)
-    {
-        for (int k = 0; k < 6; k++) dst[k] = _box[r * 6 + k];
-    }
+    /// <summary>The recipe's local box.</summary>
+    internal static Box ModelBox(int r) => _box[r];
 
     /// <summary>The env-map bit of the slot mask: the material declares an env map with no texture behind it (the
     /// per-area probe replaces what it held). It is <see cref="AlloyRenderer.EnvSlot"/> and nothing else -- that

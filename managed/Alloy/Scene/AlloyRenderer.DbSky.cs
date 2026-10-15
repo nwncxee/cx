@@ -31,9 +31,6 @@ public sealed unsafe partial class AlloyRenderer
         // object's own placement is wherever it was created, and the engine path corrects for that the same
         // way (SkyBox.Capture: pos += SkyPos - Gob.Position).
         Vector3 focus = SceneDb.SceneFocus[scene.Index];
-        fixed (float* data = _dData)
-        fixed (float* t3 = _skTint)
-        fixed (int* texAll = _skTex)
         for (int r = 0; r < nr; r++)
         {
             DbId obj = roles[r].Obj;
@@ -68,26 +65,26 @@ public sealed unsafe partial class AlloyRenderer
                 int srec = _recOwnCap + _skyN;
                 _dSlot[n] = srec;
                 MarkRecordDirty(srec);
-                float* rec = ((DrawRec*)data)[srec].F;
+                ref DrawRecordBlock rec = ref _dData[srec];
                 Matrix4x4 m = SceneDb.PartWorld[p];
                 m.M41 += park.X; m.M42 += park.Y; m.M43 += park.Z;
-                *(Matrix4x4*)rec = m;
+                rec.Model = m;
                 // identity texture rotation, no dissolve, the role's alpha; no feature, and the lit block is
                 // never read because the sky takes an unlit stage (the engine draws it Disable(5)).
                 bool tinted = (SceneDb.ObjFlags[o] & ObjFlag.FogTint) != 0;
-                float* tint = ((Stride3f*)t3)[_skyN].F;
-                if (tinted) SceneFog.SkyfadeTint(tint);
+                ref Vector3 tint = ref _skTint[_skyN];
+                if (tinted) { fixed (float* t = &tint.X) SceneFog.SkyfadeTint(t); }
                 else
                 {
-                    tint[0] = 1f; tint[1] = 1f; tint[2] = 1f;
+                    tint = Vector3.One;
                     // the dome feeds the fog its sky colour; the fog-tinted band must not (it is the fog), and
                     // neither may a hosted stage's diffuse -- fst_sky's is a night moon mask
                     if (prog == 0) SceneFog.NoteSkyDb(DbTexOf(p, recipe, 0), roles[r].Alpha);
                 }
-                rec[16] = 1f; rec[17] = 0f; rec[18] = 0f;
-                rec[19] = tinted ? 1f : roles[r].Alpha;
-                rec[40] = 0f; rec[41] = 0f; rec[42] = 0f; rec[43] = 0f;
-                int* tex = ((Stride4i*)texAll)[_skyN].F;
+                rec.Cos = 1f; rec.Sin = 0f; rec.Dissolve = 0f;
+                rec.Alpha = tinted ? 1f : roles[r].Alpha;
+                rec.FeatX = 0f; rec.FeatY = 0f; rec.FeatZ = 0f; rec.FeatW = 0f;
+                ref SkyTexUnits tex = ref _skTex[_skyN];
                 tex[0] = (int)texName;
                 // Every unit the stage could declare, 0 included: an unbound unit samples black under the
                 // engine, never a neighbour's texture.
@@ -103,7 +100,7 @@ public sealed unsafe partial class AlloyRenderer
                 _skVao[_skyN] = -1; _skVaoName[_skyN] = vao;
                 _skMode[_skyN] = Gl.TRIANGLES;   // gl-ok: an enum value staged for the pass, no call
                 _skSrc[_skyN] = roles[r].Src; _skDst[_skyN] = roles[r].Dst;
-                _skAlpha[_skyN] = rec[19];
+                _skAlpha[_skyN] = rec.Alpha;
                 _skProg[_skyN] = prog;
                 _skyN++; _drawN = n + 1; staged++;
             }

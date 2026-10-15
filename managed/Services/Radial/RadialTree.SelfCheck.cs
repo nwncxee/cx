@@ -161,7 +161,7 @@ internal static unsafe partial class RadialTree
             check.Expect(eventCell == (IntPtr)0x5150, "Invoke restores s_pCurrentEventObject");
             check.Expect(!Invoke((IntPtr)menu, 4) && _fakeCalls == 1, "Invoke on an unset entry does nothing");
             check.Expect(Invoke((IntPtr)menu, 3) && _fakeCalls == 2 && _fakeParam == -7
-                && _fakeSelf == (win ? (IntPtr)handlerObj : (IntPtr)((long)handlerObj + ObjAdj)),
+                && (long)_fakeSelf - (long)handlerObj == (win ? 0 : ObjAdj),
                 win ? "Invoke slot 3 (Win64 pair)" : $"Invoke slot 3 decodes the virtual thunk: this = obj + adj ({(long)_fakeSelf - (long)handlerObj:x})");
             check.Expect(Materialize((IntPtr)menu, 9) == IntPtr.Zero && !Invoke((IntPtr)menu, -1), "out-of-range slots are refused");
 

@@ -320,10 +320,10 @@ public sealed unsafe partial class AlloyRenderer
         // this pass has no perspective projection, and the test then stands down.
         float lodScale = _lodScale;
         // #303: the spheres go up whatever the cull mode -- the shadow gather reads the same buffer.
-        fixed (float* sph = _dSph)
-            CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
-        fixed (float* cs = _dCastSph)
-            CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
+        fixed (Sphere* sph = _dSph)
+            CullPass.UploadSpheres((float*)sph, _recOwnCap + MaxSkyDraws);
+        fixed (Sphere* cs = _dCastSph)
+            CasterGather.UploadCasterSpheres((float*)cs, _recOwnCap + MaxSkyDraws);
         fixed (uint* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull
@@ -765,8 +765,8 @@ public sealed unsafe partial class AlloyRenderer
         for (int g = _gBlendEnd; g < _gWaterEnd; g++)
                 for (int d = _gStart[g], e = d + _gLen[g]; d < e; d++)
                 {
-                    ReadOnlySpan<float> s = _dSph.AsSpan(_dSlot[d] * 4, 4);
-                    if (s[3] >= NeverCull || !SphereRect(vp, vw, vh, p00, p11, s[0], s[1], s[2], s[3],
+                    ref Sphere s = ref _dSph[_dSlot[d]];
+                    if (s.Radius >= NeverCull || !SphereRect(vp, vw, vh, p00, p11, s.Center.X, s.Center.Y, s.Center.Z, s.Radius,
                                                           out float ax, out float ay, out float bx, out float by))
                         return false;
                     minx = MathF.Min(minx, ax); maxx = MathF.Max(maxx, bx);
@@ -1146,8 +1146,8 @@ public sealed unsafe partial class AlloyRenderer
                 for (int k = _gStart[g], e = k + _gLen[g]; k < e && !full; k++)
                 {
                     int slot = _dSlot[k];
-                    ReadOnlySpan<float> sp = _dSph.AsSpan(slot * 4, 4);
-                    var s = new Vector4(sp[0], sp[1], sp[2], sp[3]);
+                    Sphere sp = _dSph[slot];
+                    var s = new Vector4(sp.Center, sp.Radius);
                     if (s.W >= NeverCull)
                     {
                         int part = _oDbPart[slot];

@@ -56,7 +56,7 @@ public static unsafe partial class DbAnim
                     continue;
                 }
             }
-            if (!Palette(p, skin, AlloyRenderer.DbBoneStage(slot)))
+            if (!Palette(p, skin, ref AlloyRenderer.DbBoneStage(slot)))
             {
                 AlloyRenderer.DbFreeBone(slot);
                 SceneDb.PartBoneBase[p] = -1;
@@ -86,7 +86,7 @@ public static unsafe partial class DbAnim
     /// 16 floats the vertex stage reads. An unused slot gets the identity rather than the previous part's
     /// matrices.
     /// </summary>
-    private static bool Palette(int part, SkinDef skin, float* dst)
+    private static bool Palette(int part, SkinDef skin, ref BonePalette dst)
     {
         int[] bones = skin.BoneNodes;
         // A compiled binary states a BONE MAP in BoneNodes -- one entry per model node, holding that node's slot
@@ -108,7 +108,7 @@ public static unsafe partial class DbAnim
         // An ASCII file states bone NAMES, and a name is the only thing that survives a graft: the piece's own
         // Find answered -1 for every bone that lives in the skeleton it hangs off, and those slots took the
         // identity -- the piece stayed in its bind pose while the client posed it.
-        if (!isMap && skin.BoneNames.Length > 0) return NamedPalette(part, skin, slots, dst);
+        if (!isMap && skin.BoneNames.Length > 0) return NamedPalette(part, skin, slots, ref dst);
         if (!derived && skin.BindTranslation.Length < skin.BindRotation.Length) return false;
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj)) return false;
@@ -132,18 +132,18 @@ public static unsafe partial class DbAnim
         int limit = Math.Min(slots, BoneCount);
         for (int b = 0; b < BoneCount; b++)
         {
-            float* m = ((Stride16f*)dst)[b].F;
-            if (b >= limit) { Identity(m); continue; }
+            ref Matrix4x4 m = ref dst[b];
+            if (b >= limit) { m = Matrix4x4.Identity; continue; }
             int node = isMap ? MapNode(bones, b) : (b < bones.Length ? bones[b] : -1);
             int bp = node < 0 ? -1 : FindPart(first, n, boneModel, node);
-            if (bp < 0 || (rest == null && (uint)node >= (uint)skin.BindRotation.Length)) { Identity(m); continue; }
+            if (bp < 0 || (rest == null && (uint)node >= (uint)skin.BindRotation.Length)) { m = Matrix4x4.Identity; continue; }
             // bone space -> node space -> mesh space.
             Matrix4x4 bind = rest != null
                            ? rest[b]
                            : Matrix4x4.CreateFromQuaternion(skin.BindRotation[node])
                              * Matrix4x4.CreateTranslation(skin.BindTranslation[node]);
             Matrix4x4 w = bind * SceneDb.PartWorld[bp] * meshInv;
-            Store(w, m);
+            m = Store(w);
         }
         return true;
     }
@@ -254,19 +254,8 @@ public static unsafe partial class DbAnim
     /// GLSL reads a 64-byte run as. <c>Alloy/Scene/SkinPose.cs</c>'s <c>Compose</c> has the pair of transposes
     /// this is derived from, and its self-check pins the layout -- the one thing here a sign slip would
     /// silently invert.</summary>
-    private static void Store(in Matrix4x4 w, float* m)
-    {
-        m[0] = w.M11; m[1] = w.M12; m[2] = w.M13; m[3] = 0f;
-        m[4] = w.M21; m[5] = w.M22; m[6] = w.M23; m[7] = 0f;
-        m[8] = w.M31; m[9] = w.M32; m[10] = w.M33; m[11] = 0f;
-        m[12] = w.M41; m[13] = w.M42; m[14] = w.M43; m[15] = 1f;
-    }
-
-    private static void Identity(float* m)
-    {
-        for (int i = 0; i < 16; i++) m[i] = 0f;
-        m[0] = 1f; m[5] = 1f; m[10] = 1f; m[15] = 1f;
-    }
+    private static Matrix4x4 Store(in Matrix4x4 w)
+        => new(w.M11, w.M12, w.M13, 0f, w.M21, w.M22, w.M23, 0f, w.M31, w.M32, w.M33, 0f, w.M41, w.M42, w.M43, 1f);
 
     /// <summary>The API's body: one part's palette into a caller's buffer (<c>64 * 16</c> floats). Used by the
     /// self-checks and by any consumer that wants the matrices without the stage.</summary>
@@ -278,7 +267,7 @@ public static unsafe partial class DbAnim
         int node = SceneDb.PartNode[part];
         if ((uint)node >= (uint)m.Nodes.Length) return false;
         SkinDef? skin = StitchSkin(part) ?? m.Nodes[node].Skin;
-        return skin != null && Palette(part, skin, dst);
+        return skin != null && Palette(part, skin, ref *(BonePalette*)dst);
     }
 
     /// <summary>The skin layer's period numbers.</summary>

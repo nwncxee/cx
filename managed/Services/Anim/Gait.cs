@@ -110,11 +110,10 @@ internal static unsafe class Gait
         float px = p.X, py = p.Y, sum = 0f;
         for (; k < end; k += PointSize)
         {
-            // the waypoints are 12 bytes apart, so a Vector3 read of one is unaligned: three floats instead
-            float* q = ((Stride3f*)first)[k / PointSize].F;
-            float dx = q[0] - px, dy = q[1] - py;
+            Vector3 q = ((Vector3*)first)[k / PointSize];
+            float dx = q.X - px, dy = q.Y - py;
             sum += MathF.Sqrt(dx * dx + dy * dy);
-            px = q[0]; py = q[1];
+            px = q.X; py = q.Y;
         }
         return sum;
     }
