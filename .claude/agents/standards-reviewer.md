@@ -30,6 +30,8 @@ List every changed file and open each one. A file you did not open is a file you
   present; you check it is true.
 - A new `BannedSymbols.txt` line or analyzer rule with no proof in the PR that a planted call fails the build.
 - A container under `managed/Framework/` that holds logic rather than layout, written to get past CX0001.
+- `new Span<T>(ptr, n)` or `new ReadOnlySpan<T>(ptr, n)` outside `managed/Framework/`: the caller's `n` checks
+  nothing. Ask for a view member or a `NativeBuffer<T>` (ADR 0031 decision 3, CX-284).
 - A method that takes a layout offset, a stride or a header size as a parameter and adds it to a pointer, or reads
   "bytes at N" out of a span. That is `p + n` behind a call; the offset comes from the type (a field, `sizeof(T)`,
   a view row). An offset the memory itself stores (nuklear's command `next`) is data, like an index, and may be

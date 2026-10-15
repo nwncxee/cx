@@ -197,8 +197,10 @@ A rule the compiler can check is a build error, not a gate. `managed/.editorconf
   message says what to call instead. Only that helper disables RS0030, with its reason on the pragma.
 - `tools/analyzers/` (CX0001 and on): a pattern that is no single symbol. CX0001 refuses `p + n`, `p - n`,
   `p += n`, `p++` on a pointer or `IntPtr`, `(nint)p + n`, `(long)p`, `((float*)&v)[i]` or `((float*)p)[k]`, and `&p[i]` or `Unsafe.AsPointer(ref p[i])` on a pointer or array, outside `managed/Framework/`: a place in memory is a field on a view
-  (engine memory), a struct or a `Span<T>` (our own). Reading a value through a typed pointer (`px[i]`) is fine; taking its address is the move. A bounds-checked span
-  (slice it, pin the slice, `BinaryPrimitives` over it) is fine.
+  (engine memory), a struct or a `Span<T>` (our own). Reading a value through a typed pointer (`px[i]`) is fine; taking its address is the move. A span from a raw
+  pointer is built only under `managed/Framework/`, by a view (its count row) or a `NativeBuffer<T>` (its
+  allocation); `new Span<T>(ptr, n)` elsewhere is refused in review until CX-284 bans it. Slicing, pinning and
+  `BinaryPrimitives` over an owner's span are fine.
   CX0002 refuses a `fixed` buffer anywhere: name the fields, or use an `[InlineArray]` of a named element type.
 
 **Ban it the day its helper exists.** Writing a helper meant to be the only way to make a call means adding its
