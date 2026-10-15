@@ -239,7 +239,7 @@ internal static unsafe class CullPass
     /// caller then submits exactly as before. <paramref name="groups"/> is every batch of the pass and
     /// <paramref name="compactBelow"/> is where the compacting half ends; <paramref name="src"/> is
     /// <see cref="SrcUints"/> uints per draw, staged by the batch walk itself.</summary>
-    internal static bool Begin(int groups, int drawN, uint* src,
+    internal static bool Begin(int groups, int drawN, CullSrcRec* src,
                               float lodScale, int compactBelow, Vector3 eye)
     {
         _phase = -1;
@@ -601,9 +601,6 @@ internal static unsafe class CullPass
 
     private static float Col(Vector4 row, int c) => c == 0 ? row.X : c == 1 ? row.Y : row.Z;
 
-    /// <summary>The same planes for a caller holding the matrix and the output as raw floats.</summary>
-    internal static void Planes(float* m, float* p, Vector3 eye) => Planes(in *(Matrix4x4*)m, new Span<Vector4>(p, 6), eye);
-
     /// <summary>Headless check of the two pieces that are arithmetic rather than GL: the plane extraction
     /// and the compacted list itself, against the CPU-staged one the <c>BaseVertex</c> path would submit.
     /// Both fail silently in the worst possible way -- a wrong plane culls the world, a wrong compaction
@@ -644,7 +641,8 @@ internal static unsafe class CullPass
         // shared with GLSL, and every field landing one slot over is a draw reading its neighbour's range.
         CullSrcRec* recs = stackalloc CullSrcRec[2];
         uint* src = (uint*)recs;
-        check.Expect(sizeof(CullSrcRec) == 6 * sizeof(uint), "the staged record is six words, the stride both compute stages read");
+        check.Expect(sizeof(CullSrcRec) == 6 * sizeof(uint) && sizeof(CullSrcRec) == SrcUints * sizeof(uint),
+                     "the staged record is six words, the stride both compute stages read");
         Pack(ref recs[0], 30, 200, 7, 11, 0, 0);
         Pack(ref recs[1], 60, 400, 9, 13, 0, 0);
         check.Expect(src[0] == 30 && src[1] == 100 && src[2] == 7 && src[3] == 11 && src[4] == 0 && src[5] == 0,
@@ -670,11 +668,6 @@ internal static unsafe class CullPass
         r.Batch = (uint)batch;
         r.OutBase = (uint)batchStart;
     }
-
-    /// <summary>The same pack onto a staged record the caller holds as raw words.</summary>
-    internal static void Pack(uint* r, int idxCount, nint byteOff, int baseVertex, int slot,
-                             int batch, int batchStart)
-        => Pack(ref *(CullSrcRec*)r, idxCount, byteOff, baseVertex, slot, batch, batchStart);
 
     /// <summary>Does the compute-produced draw list agree with the CPU-staged one? A line-by-line port of
     /// <see cref="CullCs"/>'s <c>main</c>, run one invocation at a time -- which is what a sequential

@@ -610,13 +610,13 @@ internal static unsafe class AlloyLights
     /// slicing and the froxel bounds can never disagree about which pass they belong to -- this pass may be
     /// rendering a probe cube, whose projection is its own. Raw bytes are row-major and GLSL reads them
     /// column-major, so <c>G[2][3] == -1</c> is CHECKED: an ortho or reversed-Z projection returns false.</summary>
-    internal static bool TryPerspective(float* proj, out float p00, out float p11, out float near, out float far)
+    internal static bool TryPerspective(in Matrix4x4 proj, out float p00, out float p11, out float near, out float far)
     {
-        p00 = proj[0]; p11 = proj[5];
+        p00 = proj.M11; p11 = proj.M22;
         near = 0f; far = 0f;
         if (!(p00 > 0f) || !(p11 > 0f)) return false;
-        if (MathF.Abs(proj[11] + 1f) > WRowEpsilon) return false;
-        float a = proj[10], b = proj[14];
+        if (MathF.Abs(proj.M34 + 1f) > WRowEpsilon) return false;
+        float a = proj.M33, b = proj.M43;
         float da = a - 1f, db = a + 1f;
         if (MathF.Abs(da) < 1e-6f || MathF.Abs(db) < 1e-6f) return false;
         near = b / da; far = b / db;
@@ -631,7 +631,7 @@ internal static unsafe class AlloyLights
     /// <paramref name="vpH"/> viewport. <paramref name="view"/> is the engine's view matrix as raw bytes
     /// (row-major v*M, read column-major by GLSL = the transpose); <paramref name="tally"/> lets a sampled
     /// frame's build add its entry totals to the period line -- the screen's build, not a probe face's.</summary>
-    internal static bool Build(float* view, float p00, float p11, float near, float far, int vpW, int vpH, bool tally)
+    internal static bool Build(in Matrix4x4 view, float p00, float p11, float near, float far, int vpW, int vpH, bool tally)
     {
         // NOT gated on the light count: with zero point lights the dispatch still writes an all-zero cluster
         // table, which is exactly right -- the lit parts then shade on area ambient + sun alone instead of
@@ -647,7 +647,7 @@ internal static unsafe class AlloyLights
 
         Gl.UseProgram(_gl.Prog);
         Gl.Uniform3i(_gl.LocGrid, GridX, GridY, GridZ);
-        Gl.UniformMatrix4fv(_gl.LocView, 1, 0, view);
+        fixed (Matrix4x4* vm = &view) Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)vm);
         Gl.Uniform2f(_gl.LocProjXY, p00, p11);
         Gl.Uniform2f(_gl.LocZ, near, far);
         Gl.Uniform1i(_gl.LocCount, _gl.Uploaded);

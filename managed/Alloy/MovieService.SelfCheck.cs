@@ -1,3 +1,4 @@
+using System.Numerics;
 using System;
 using CX.Framework;
 
@@ -69,11 +70,11 @@ public sealed unsafe partial class MovieService
                      "...and stops half a texel short of the decoded frame's edge, inside the pow2 pad");
 
         // 5. V0 is the TOP of the screen: the decoder uploads row 0 first and the engine's quad puts it there.
-        float* v = stackalloc float[16];
+        Span<Vector4> v = stackalloc Vector4[4];
         pad.Write(v);
-        check.Expect(v[1] > 0f && v[3] == pad.V0 && v[5] < 0f && v[7] == pad.V1,
+        check.Expect(v[0].Y > 0f && v[0].W == pad.V0 && v[1].Y < 0f && v[1].W == pad.V1,
                      "the strip's first vertex is top-left at V0, so the frame is not drawn upside down");
-        check.Expect(v[0] == -pad.Sx && v[8] == pad.Sx && v[12] == pad.Sx && v[13] == -pad.Sy,
+        check.Expect(v[0].X == -pad.Sx && v[2].X == pad.Sx && v[3].X == pad.Sx && v[3].Y == -pad.Sy,
                      "...and the four vertices are a triangle strip, not a fan");
 
         log.Info(check.Ok

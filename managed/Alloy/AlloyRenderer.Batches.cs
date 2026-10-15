@@ -164,7 +164,7 @@ public sealed unsafe partial class AlloyRenderer
     /// staged beside <c>_dCount/_dOff/_dBase/_dSlot</c> by the walk that already writes them: the draw's batch
     /// and that batch's output base are both known at this store, because the cut has just placed the draw.
     /// The four draw-args columns stay on the CPU -- <c>/alloy cull 0</c> falls back to CPU pointers.</summary>
-    private static readonly uint[] _dSrc = new uint[MaxOwned * CullPass.SrcUints];
+    private static readonly CullSrcRec[] _dSrc = new CullSrcRec[MaxOwned];
 
     /// <summary>Off-device: the sort really is back-to-front, really is stable, and really carries each
     /// entry's alpha with its index -- a permutation that lost the alpha pairing would draw every blended
@@ -875,8 +875,7 @@ public sealed unsafe partial class AlloyRenderer
                 NoteMoverDraw(n, row.Posed, row.Dangly);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.
-            fixed (uint* srcRec = _dSrc.AsSpan(n * CullPass.SrcUints, CullPass.SrcUints))
-                CullPass.Pack(srcRec, idxCount, _dOff[n], _dBase[n], i, groups - 1, _gStart[groups - 1]);
+            CullPass.Pack(ref _dSrc[n], idxCount, _dOff[n], _dBase[n], i, groups - 1, _gStart[groups - 1]);
             // #287: ...and after the record block, so the extent is measured on the sphere this frame wrote.
             if (cls <= (int)AlloyClass.Cutout)
             {

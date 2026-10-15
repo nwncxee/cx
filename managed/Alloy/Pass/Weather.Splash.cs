@@ -82,7 +82,7 @@ internal static unsafe partial class Weather
         if (crowns > 0 && Matrix4x4.Invert(CasterPass.CoverVp, out inv)) vp = CasterPass.CoverVp;
         else crowns = 0;
         if (crowns + feet <= 0 || !EnsureSplash()) return;
-        if (!AlloyLights.TryPerspective((float*)proj, out _, out float p11, out _, out _)) return;
+        if (!AlloyLights.TryPerspective(*proj, out _, out float p11, out _, out _)) return;
         ref SpLoc l = ref _locSplash;
         Gl.UseProgram(_gl.ProgSplash);
         Gl.UniformMatrix4fv(l.View, 1, 0, (float*)view);

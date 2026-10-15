@@ -70,7 +70,7 @@ internal static unsafe class FbPostStage
     internal static void SetCamera(Matrix4x4* view, Matrix4x4* proj)
     {
         _view = *view;
-        AlloyLights.TryPerspective((float*)proj, out _, out _, out _near, out _far);
+        AlloyLights.TryPerspective(*proj, out _, out _, out _near, out _far);
     }
 
     /// <summary>From <see cref="PostStack.Run"/>, ahead of the stage draw: every engine name the chain reads,

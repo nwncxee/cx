@@ -60,8 +60,8 @@ internal static unsafe partial class GrassField
 
         // an identity VP: clip == world, so the frustum is the [-1,1] cube
         Matrix4x4 id = Matrix4x4.Identity;
-        float* planes = stackalloc float[24];
-        Frustum(&id, planes);
+        Span<Vector4> planes = stackalloc Vector4[6];
+        Frustum(in id, planes);
         check.Expect(Visible(new Vector3(-0.5f), new Vector3(0.5f), planes), "a box inside the cube is visible");
         check.Expect(!Visible(new Vector3(2f, 2f, 2f), new Vector3(3f, 3f, 3f), planes), "a box past +x/+y/+z is culled");
         check.Expect(!Visible(new Vector3(-3f), new Vector3(-2f), planes), "and one past -x/-y/-z is too");

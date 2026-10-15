@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
@@ -336,10 +337,10 @@ public static unsafe partial class TextRig
             if (_requests[i].Typeface == DefaultFace) _requests[i] = _requests[i] with { Font = font };
     }
 
-    internal static void BindText(float* proj)
+    internal static void BindText(in Matrix4x4 proj)
     {
         Gl.UseProgram(_prog);
-        Gl.UniformMatrix4fv(_uProj, 1, (byte)Gl.FALSE, proj);
+        fixed (Matrix4x4* pm = &proj) Gl.UniformMatrix4fv(_uProj, 1, (byte)Gl.FALSE, (float*)pm);
         Gl.BindTexture(Gl.TEXTURE_2D, _tex);   // already on TEXTURE0
         Gl.Uniform1i(_uTex, 0);
         Gl.Uniform1f(_uAlpha, _textAlpha);     // 1 for chat; the dialog fade overrides via DrawBatch
@@ -530,11 +531,11 @@ public static unsafe partial class TextRig
     }
 
     /// <summary>Column-major ortho for glOrtho(0,w,h,0,-1,1): top-left origin, y grows downward.</summary>
-    internal static void Ortho(float* m, float w, float h)
-    {
-        for (int i = 0; i < 16; i++) m[i] = 0;
-        m[0] = 2f / w; m[5] = -2f / h; m[10] = -1f; m[12] = -1f; m[13] = 1f; m[15] = 1f;
-    }
+    internal static Matrix4x4 Ortho(float w, float h)
+        => new(2f / w, 0f, 0f, 0f,
+               0f, -2f / h, 0f, 0f,
+               0f, 0f, -1f, 0f,
+               -1f, 1f, 0f, 1f);
 
     private const string VSrc =
         "#version 330 core\nlayout(location=0) in vec2 aPos;\nlayout(location=1) in vec2 aUV;\n" +
@@ -689,8 +690,7 @@ public static unsafe partial class TextRig
             Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
             int vw = ViewportW, vh = ViewportH;
-            float* m = stackalloc float[16];
-            Ortho(m, vw, vh);
+            Matrix4x4 m = Ortho(vw, vh);
 
             // GL scissor is bottom-left origin; our rects are y-down top-left, so flip Y.
             if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, vh - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
@@ -732,8 +732,7 @@ public static unsafe partial class TextRig
         Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE);
         Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, ViewportH);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
@@ -741,7 +740,7 @@ public static unsafe partial class TextRig
         FillQuad(ref verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
 
         Gl.UseProgram(_progRgb);
-        Gl.UniformMatrix4fv(_uProjRgb, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjRgb, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexRgb, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
@@ -823,15 +822,14 @@ public static unsafe partial class TextRig
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, ViewportH);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
         QuadVerts v = default;
         v[0] = Vtx(x, y, 0, 1, a); v[1] = Vtx(x1, y, u1, 1, a); v[2] = Vtx(x1, y1, u1, v0, a);
         v[3] = Vtx(x, y, 0, 1, a); v[4] = Vtx(x1, y1, u1, v0, a); v[5] = Vtx(x, y1, 0, v0, a);
 
         Gl.UseProgram(_progIconPlt);
-        Gl.UniformMatrix4fv(_uProjIconPlt, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjIconPlt, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexIconPlt, 0);
         Gl.Uniform1i(_uPalIconPlt, 1);
         fixed (int* r = rows) Gl.Uniform1iv(_uRowsIconPlt, 10, r);
@@ -893,8 +891,7 @@ public static unsafe partial class TextRig
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, ViewportH);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
 
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
         float vt = flipV ? 0f : 1f, vb = flipV ? 1f : v0;
@@ -903,7 +900,7 @@ public static unsafe partial class TextRig
         v[3] = Vtx(x, y, 0, vt, a); v[4] = Vtx(x1, y1, u1, vb, a); v[5] = Vtx(x, y1, 0, vb, a);
 
         Gl.UseProgram(_progIcon);
-        Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexIcon, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);

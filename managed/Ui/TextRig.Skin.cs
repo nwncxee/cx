@@ -1,3 +1,4 @@
+using System.Numerics;
 using CX.Graphics;
 
 namespace CX.Ui;
@@ -60,10 +61,9 @@ public static unsafe partial class TextRig
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, vh - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* m = stackalloc float[16];
-        Ortho(m, ViewportW, vh);
+        Matrix4x4 m = Ortho(ViewportW, vh);
         Gl.UseProgram(_progSkin);
-        Gl.UniformMatrix4fv(_uProjSkin, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(_uProjSkin, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexSkin, 0);
         Gl.Uniform1f(_uAlphaSkin, alpha < 1f ? alpha : 1f);
         Gl.BindVertexArray(_pvao);

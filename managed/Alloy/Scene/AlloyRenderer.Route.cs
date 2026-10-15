@@ -467,10 +467,10 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    private static void SetPassFrustum(float* vp, bool perspective)
+    private static void SetPassFrustum(in Matrix4x4 vp, bool perspective)
     {
         _passFrustumOk = perspective;
-        if (perspective) fixed (Vector4* p = _passPlanes) CullPass.Planes(vp, (float*)p, _eyePos);
+        if (perspective) CullPass.Planes(vp, _passPlanes, _eyePos);
     }
 
     // ================= BW7: the gate row =================
@@ -556,7 +556,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The slot's model matrix: the column the transform step composed on the game thread, which the
     /// feed rewrote the record from when it changed. Read, never recomposed here, and the engine is asked
     /// nothing.</summary>
-    private static Matrix4x4 ChaseModel(int i, float* r, bool stale, bool newTenant, ref StageCounters c)
+    private static Matrix4x4 ChaseModel(int i, bool stale, bool newTenant, ref StageCounters c)
     {
         // Nothing to chase: the transform step composed this matrix on the game thread and the feed rewrote the
         // record when it did, so the draw reads the column and asks the engine nothing.

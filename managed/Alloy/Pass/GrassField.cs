@@ -444,8 +444,8 @@ internal static unsafe partial class GrassField
     /// few thousand entries; the blade count never reaches it.</summary>
     private static void Issue(int seen, Matrix4x4* vp, int* viewport, float near, float far, bool lightingOn)
     {
-        float* planes = stackalloc float[24];
-        Frustum(vp, planes);
+        Span<Vector4> planes = stackalloc Vector4[6];
+        Frustum(in *vp, planes);
         Vector3 eye = AlloyRenderer.EyePos;
         float farDist = FarDist();
         // #355: the dither ramp is the CUT-OFF's edge, not the whole range -- the ladder thins the field by
@@ -653,7 +653,7 @@ internal static unsafe partial class GrassField
     /// <summary>Upload the frame's tables, reset the commands, and run the scatter: one workgroup per visible
     /// patch (times <paramref name="split"/> for the biggest), then the clamp. The barrier covers every way its
     /// output is read: as commands, as instance attributes, and by the stat copy.</summary>
-    private static void Scatter(int n, int split, float* planes, Vector3* eye, float fadeFrom, float farDist, int matN, float* pw)
+    private static void Scatter(int n, int split, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, int matN, float* pw)
     {
         fixed (uint* t = _visTable)
         {
@@ -673,7 +673,7 @@ internal static unsafe partial class GrassField
         Gl.NamedBufferSubData(_gl.CmdBuf, IntPtr.Zero, (IntPtr)(Cmds * 4 * sizeof(uint)), cmd);
 
         Gl.UseProgram(_gl.ProgScatter);
-        Gl.Uniform4fv(_gl.LocS.Planes, 6, planes);
+        fixed (Vector4* pl = planes) Gl.Uniform4fv(_gl.LocS.Planes, 6, (float*)pl);
         Gl.Uniform3fv(_gl.LocS.Eye, 1, (float*)eye);
         Gl.Uniform4f(_gl.LocS.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
         Gl.Uniform2f(_gl.LocS.Fade, fadeFrom, farDist);
@@ -853,24 +853,28 @@ internal static unsafe partial class GrassField
 
     /// <summary>The six frustum planes of a row-vector <c>clip = v * VP</c> matrix (the convention every owned
     /// stage uses): each plane is a COLUMN of VP added to or subtracted from the w column.</summary>
-    internal static void Frustum(Matrix4x4* vp, float* planes)
+    internal static void Frustum(in Matrix4x4 m, Span<Vector4> planes)
     {
-        float* m = (float*)vp;   // row-major: m[r * 4 + c]
+        Vector4 w = new(m.M14, m.M24, m.M34, m.M44);
         for (int i = 0; i < 6; i++)
         {
-            int c = i >> 1;
-            float s = (i & 1) == 0 ? 1f : -1f;
-            for (int r = 0; r < 4; r++) planes[i * 4 + r] = m[r * 4 + 3] + s * m[r * 4 + c];
+            Vector4 col = (i >> 1) switch
+            {
+                0 => new Vector4(m.M11, m.M21, m.M31, m.M41),
+                1 => new Vector4(m.M12, m.M22, m.M32, m.M42),
+                _ => new Vector4(m.M13, m.M23, m.M33, m.M43),
+            };
+            planes[i] = (i & 1) == 0 ? w + col : w - col;
         }
     }
 
     /// <summary>Is the AABB on the inside of every plane? The "positive vertex" test: only the corner furthest
     /// along each plane's normal can save the box, so one dot product per plane decides it.</summary>
-    internal static bool Visible(Vector3 min, Vector3 max, float* planes)
+    internal static bool Visible(Vector3 min, Vector3 max, ReadOnlySpan<Vector4> planes)
     {
         for (int i = 0; i < 6; i++)
         {
-            float nx = planes[i * 4], ny = planes[i * 4 + 1], nz = planes[i * 4 + 2], d = planes[i * 4 + 3];
+            float nx = planes[i].X, ny = planes[i].Y, nz = planes[i].Z, d = planes[i].W;
             float px = nx >= 0f ? max.X : min.X;
             float py = ny >= 0f ? max.Y : min.Y;
             float pz = nz >= 0f ? max.Z : min.Z;
