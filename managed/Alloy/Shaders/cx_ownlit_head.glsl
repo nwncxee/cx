@@ -2,6 +2,7 @@
 #define CX_FS 1   // #642: gl_FragCoord is in reach for the shadow lib's dither
 #define CX_LIT_MATERIAL 1   // ADR 0026: the light loop folds the material's own lobe in (CxLoopSpec)
 #define CX_SUN_SOFT 1   // CX-49: the LIT surface is the one sun receiver that takes the blocker search + disc
+#define CX_SKY_VIEW 1   // CX-290: ...and the one that scales the area ambient by the sky its point can see
 in vec2 vUV;
 in vec3 vWorld;
 in vec3 vNrm;
@@ -31,6 +32,7 @@ uniform sampler2D uIllumTex;   // slot 5: self-illumination
 uniform sampler2D uAoTex;      // #146 slot 7: baked ambient occlusion in r
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
+#include "cx_skyview.glsl"
 uniform int uViz;              // /alloy viz, see OwnedLitFsMain
 // #121: the per-area IBL probe, holding LINEAR radiance (EnvProbe captures with uCapture = 1, which
 // is what skips the display-space encode below). uProbeMips 0 = nothing captured yet, so no ambient

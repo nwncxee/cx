@@ -36,6 +36,8 @@ public sealed unsafe partial class CasterPass
         public bool MaskHFailed;
         /// <summary>The published depth arrays (0 = none yet): sun cascades, sun movers, static cubes, mover pool.</summary>
         public uint CascadeTex, SunDynTex, CubeTex, CubeDynTex;
+        /// <summary>The overhead sky view's own one-layer depth target, compare mode off.</summary>
+        public uint SkyDepth;
         /// <summary>The target textures <see cref="BeginTarget"/> has verified complete, ring-replaced when
         /// full: the sun array, the static cubes and the dyn pool interleave per view, so one latch would
         /// re-check nearly every attach.</summary>
@@ -113,6 +115,7 @@ public sealed unsafe partial class CasterPass
         Array.Clear(_cubeBaked); Array.Clear(_cubeHadMover); Array.Clear(_cubeKeyId);
         Array.Clear(_sunBaked); Array.Clear(_sunHadMover); Array.Clear(_sunFitValid);
         CoverRelease();
+        SkyRelease();
         // #305: the pool pages name lights that just went away, and the published page indices with them.
         Array.Clear(_cubeCombined); Array.Clear(CubeDynPage);
         // #306: the sun's half of the same wipe, degrade window included.
@@ -492,7 +495,7 @@ public sealed unsafe partial class CasterPass
         { Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0); Disarm("the caster depth framebuffer is incomplete"); return false; }
         Gl.Viewport(0, 0, size, size);
         // clamp only the directional maps: a point cube's near plane IS the self-shadow skip the lightmap bake clips at
-        if (tex == _gl.DepthTex || tex == _gl.SunDynTex) Gl.Enable(Gl.DEPTH_CLAMP); else Gl.Disable(Gl.DEPTH_CLAMP);
+        if (tex == _gl.DepthTex || tex == _gl.SunDynTex || tex == _gl.SkyDepth) Gl.Enable(Gl.DEPTH_CLAMP); else Gl.Disable(Gl.DEPTH_CLAMP);
         // #302: the depth stages read ALLOY's per-draw records and ALLOY's bone block, at Alloy's own binding
         // points. Re-bound per view (per flush target on the layered path) rather than once per frame because
         // the colour pass is entitled to rebind both between frames, and a bake reading a buffer that has

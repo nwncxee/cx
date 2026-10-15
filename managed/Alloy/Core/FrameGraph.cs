@@ -23,6 +23,10 @@ internal enum PassId
     /// <summary>The rain occlusion map -- one ortho depth view along the fall vector, baked from the
     /// still casters into the sun array's spare layer and held on its fit key (<see cref="CasterPass"/>).</summary>
     RainCover,
+    /// <summary>The overhead sky view -- one ortho depth render of the still casters straight down, fitted
+    /// to the area's extent and held until that geometry changes. <see cref="SkyView"/> bakes it into the
+    /// map the lit stage scales the area ambient by.</summary>
+    SkyMap,
     DepthPrepass,
     /// <summary>Screen-space ambient occlusion from the prepass depth, BEFORE the colour pass so the lit
     /// stage reads it as a lighting input (its ambient term) rather than a post stage darkening the finished
@@ -121,6 +125,7 @@ internal static class FrameGraph
         (PassId.SunCascades,     Bracket.Shadow),
         (PassId.LocalLightCubes, Bracket.Shadow),
         (PassId.RainCover,       Bracket.Shadow),
+        (PassId.SkyMap,          Bracket.Shadow),
         (PassId.DepthPrepass,    Bracket.Colour),
         (PassId.AmbientOcclusion, Bracket.Colour),
         (PassId.OpaqueOwned,     Bracket.Colour),

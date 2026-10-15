@@ -53,7 +53,7 @@ void main()
                   + (uVLit != 0 ? vLight : ((uLit != 0 && near) ? CxClusteredDiffuse(vWorld, N, vDepth) : vec3(0.0)));
     // vanilla (inc_lighting.shd:411/:520): the ground's vertex colour joins the DIFFUSE sum as
     // StaticLight, and the ambient term carries no NdotL factor in the forced-vertex-lighting path
-    vec3 ambient = uAreaAmbient * uMatAmbient;
+    vec3 ambient = uAreaAmbient * uMatAmbient * CxSkyView(vWorld, CX_SKY_UP);
     // #478: no screen-space AO on a blade. Blades are not in the depth SsaoPass reads, so the pixel's
     // occlusion is whatever stands behind the blade, and it read as the scene showing through the
     // field; the ground tint is what grounds a blade now. A root ramp on everything.

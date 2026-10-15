@@ -9,7 +9,7 @@ namespace CX.Alloy;
 internal static class Lighting
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<float> Gain, Ambient, Sun, Overbright, Sss, Wrap, WrapNdl, Hot, HotSize, Radius, Falloff,
+    internal static readonly Knob<float> Gain, Ambient, Sun, Sky, Overbright, Sss, Wrap, WrapNdl, Hot, HotSize, Radius, Falloff,
                                          ProbeGain, BinReach, AmbientDir,
                                          Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, SsrPlanarCull, Relevance, Floor, FullModel;
     internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes;
@@ -28,6 +28,12 @@ internal static class Lighting
                            help: "Scales the area's ambient fill. 1 is the area author's value.");
         Sun = G.Slider("sun", "Sun and moon", 0f, 4f, 0.05f, 1f,
                        help: "Scales the area's directional light. 1 is the area author's value.");
+        Sky = G.Slider("sky", "Shade under cover", 0f, 1f, 0.05f, 0.85f,
+                       help: "Outdoors, how much the ambient fill drops where little open sky reaches -- an alley, "
+                           + "an arcade, the space under a roof. A vanilla area has one ambient for the whole of it, "
+                           + "so 0 is that flat fill back and needs no content change either way. Interiors are "
+                           + "unaffected, and this needs Shadows switched on: it reads the same view of the area the "
+                           + "shadows are cast from. Water and effects keep the flat fill.");
         Overbright = G.Slider("overbright", "Carried-light boost", 0f, 1f, 0.05f, 0f, tier: Tier.Advanced,
                               help: "How much of a torch's extra intensity shows at its centre instead of only as reach. "
                                   + "0 is the stock game; 0.5 makes carried lights stand out.");

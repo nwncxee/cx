@@ -45,3 +45,5 @@ nui\.cardlate([^fs]|$)	CX-263
 # The engine-compiled ASCII model cache: CX serves what the server ships, never its own compile of it.
 \bMdlCache\b	remove-mdl-compile
 \bcx-models\b	remove-mdl-compile
+# The sky-visibility reach was a knob baked into the map but missing from the re-bake key; a const now.
+\blight\.skyrange\b	CX-290

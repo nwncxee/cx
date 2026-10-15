@@ -731,6 +731,7 @@ internal static unsafe partial class GrassField
         Gl.Uniform4f(loc.Look, Grass.Backlight.V, Grass.Sheen.V, Weather.WetShown, Weather.WetDark.V);
         Weather.UploadMap(loc.WxMapXf, loc.WxMapP, false);
         Weather.UploadGrassEdge(loc.CoverVp, loc.CoverLayer, loc.WxEdge, loc.WxCache);
+        SkyView.UploadLit(loc.SkyVp, loc.SkyTerm, capturing: false);
         AlloyRenderer.BindPass(loc.CubeCount, viewport, near, far);
     }
 

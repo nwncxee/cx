@@ -171,6 +171,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
                    WxEdge, WxRun, WxCache,             // R5: the shelter kernel, the run-off / shoreline terms, the shelter cache flag
                    LmPages, LmMovers,                  // #674
                    LightOcc,                           // light.hidden
+                   SkyVp, SkyTerm,                     // CX-290: the overhead sky view's fit and look terms
                    Material;                           // ADR 0026: light.brdf / ambientdir / specaa
         public FeatLoc Feat;
     }
@@ -396,6 +397,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _getTexture = EngineFn.MatGetTexture;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         if (CycleTextures.SelfCheck(log)) CycleTextures.Attach(log, hooks);   // #331; a failed check freezes cycles, not Alloy
+        Db.SunGlide.Install(log, hooks);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);
         if (_runtime == null)
@@ -630,7 +632,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     private static bool DbSelfChecks(ExtenderLog log)
         => DbGrid.SelfCheck(log) & DbFeed.SelfCheck(log) & DbInputs.SelfCheck(log) & DbGui.SelfCheck(log)
            & DbLights.SelfCheck(log) & DbSky.SelfCheck(log) & DbEmitterChannels.SelfCheck(log)
-           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log);
+           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log) & Db.SunGlide.SelfCheck(log);
 
     internal static bool _waterArmed;
     /// <summary>The engine's water draw bucket (<c>Scene::RenderSinglePass</c> @0x46e5f0's "Water" scope).
