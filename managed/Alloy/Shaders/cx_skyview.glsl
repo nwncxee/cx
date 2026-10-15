@@ -7,6 +7,9 @@
 // (Programs.WithoutSkyView), and the term is then 1 everywhere.
 #ifndef CX_SKYVIEW_LIB
 #define CX_SKYVIEW_LIB
+// Ground cover (grass cards, blades) asks about the column ABOVE it: a blade's own normal points out of the
+// blade, and the sky over a lawn is not in that direction.
+#define CX_SKY_UP vec3(0.0, 0.0, 1.0)
 #ifdef CX_SKY_VIEW
 layout(binding = 31) uniform sampler2D uSkyMap;
 uniform mat4 uSkyVp;     // world -> the overhead view's clip space

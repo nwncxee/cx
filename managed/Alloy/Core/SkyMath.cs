@@ -40,6 +40,9 @@ internal static partial class SkyMath
     /// <summary>The nearest radius, in metres. Everything inside it belongs to the contact-scale AO
     /// (<c>ao.radius</c>, 0.6 m), so the two terms meet rather than overlap.</summary>
     internal const float NearM = 1f;
+    /// <summary>The farthest radius, in metres: far enough to find the building across a street, near
+    /// enough that the map's own texels still resolve it. Baked into the map, so not a live dial.</summary>
+    internal const float RangeM = 16f;
     /// <summary>The fit's floor half-extent, in metres. A small area would otherwise get a shallow depth
     /// range (the ortho fit spans its own radius below the centre), and a pit or a tower would clamp.</summary>
     internal const float MinRadiusM = 48f;

@@ -34,7 +34,8 @@ void main()
     float sheen = pow(clamp(dot(N, normalize(uAreaDir + V)), 0.0, 1.0), 40.0) * uLook.y * vRoot;
     // self-occlusion inside the clump: the root sits in its neighbours' shade
     float ao = mix(1.0 - uRootAo, 1.0, sqrt(vRoot));
-    vec3 lit = albedo * ((uAreaAmbient * vMatAmb + point * vMatDif) * ao + (sun * ao + uAreaDiffuse * sh * back) * vMatDif)
+    vec3 lit = albedo * ((uAreaAmbient * vMatAmb * CxSkyView(vWorld, CX_SKY_UP) + point * vMatDif) * ao
+                        + (sun * ao + uAreaDiffuse * sh * back) * vMatDif)
              + uAreaDiffuse * sh * sheen;
     // CX-51: a blade reflects as the ground around it does -- the probe, under the split-sum
     // weight at the roughness the wet splice gives that ground (the legacy 0.6, wetted toward 0.35). Without

@@ -48,6 +48,7 @@ internal static unsafe partial class GrassField
         public int Look, Segments, Width, Probe;
         public int WxMapXf, WxMapP;   // R2: the area wetness map's fit and look
         public int CoverVp, CoverLayer, WxEdge, WxCache;   // R5: the cover map's own shelter test, shared with the lit stage
+        public int SkyVp, SkyTerm;   // the overhead sky view's fit and look terms, shared with the lit stage
         public int Frame, Vp, Eye, Fade, Tex, MatAmb, MatDif, Lit, WindGain, WindSpeed, Msaa, Edge, Lod, Shade, Viz, Tuft, VLit, Cast, CastWidth, RootAo, GroundTint, Ground, GroundOn, GroundViz, SoftEdge, Snow;
         public int PushTex, PushGain, PushWindow;
         public int PrevVp, PrevTime, Jitter, MSize;   // CX-48: the velocity arm's own four
@@ -164,7 +165,7 @@ internal static unsafe partial class GrassField
     {
         if (_gl.Prog != 0) return true;
         if (_down.Failed) return false;
-        string fs = EmbeddedFs, vs = ShaderStages.Source(ShdGrassVs);
+        string fs = Programs.WithSkyView(EmbeddedFs), vs = ShaderStages.Source(ShdGrassVs);
         uint prog = GlProgram.Graphics(ShdGrassVs, vs, ShdGrassFs, fs, _log,
                                        "GrassField instanced grass", out _, out string fsSrc);
         // #132: an override written before the linear flip still ends in CxRevert, links cleanly, and
@@ -211,7 +212,7 @@ internal static unsafe partial class GrassField
     /// blade pair, colour and cascade depth off one vertex text (without it every atlas draws as cards).</summary>
     private static bool EnsureScatter()
     {
-        string bvs = ShaderStages.Source(ShdBladeVs), bfs = ShaderStages.Source(ShdBladeFs);
+        string bvs = ShaderStages.Source(ShdBladeVs), bfs = Programs.WithSkyView(ShaderStages.Source(ShdBladeFs));
         uint b = GlProgram.Graphics(ShdBladeVs, bvs, ShdBladeFs, bfs, _log, "GrassField procedural blades", out string bvsSrc, out string bfsSrc);
         if (b != 0 && !ShaderContract.LinearSafe(bfsSrc))
         {
@@ -310,6 +311,7 @@ internal static unsafe partial class GrassField
             CubeCount = GlProgram.Loc(prog, "uLocalCubes"),
             WxMapXf = GlProgram.Loc(prog, "uWxMapXf"), WxMapP = GlProgram.Loc(prog, "uWxMapP"),
             CoverVp = GlProgram.Loc(prog, "uCoverVp"), CoverLayer = GlProgram.Loc(prog, "uCoverLayer"), WxEdge = GlProgram.Loc(prog, "uWxEdge"), WxCache = GlProgram.Loc(prog, "uWxCache"),
+            SkyVp = GlProgram.Loc(prog, "uSkyVp"), SkyTerm = GlProgram.Loc(prog, "uSkyTerm"),
         };
 
     private static bool EnsureProgramTail(uint prog)
@@ -331,6 +333,8 @@ internal static unsafe partial class GrassField
     internal static string GrassVs => ShaderSource.Get("cx_grass_v.glsl");
 
     internal static string GrassFsHead => ShaderSource.Get("cx_grass_fhead.glsl");
+
+    internal static string BladeFsHead => ShaderSource.Get("cx_gblade_fhead.glsl");
 
     /// <summary>The fragment stage. Two discards and no blending at all, which is the whole replacement:
     /// vanilla's fade rides in the alpha channel its cutout reads, so a blade in the fade band is

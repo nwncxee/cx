@@ -41,8 +41,7 @@ void main()
         float tmax = 0.0;
         for (int k = 0; k < CX_SKY_STEPS; k++)
         {
-            float r = CX_SKY_NEAR_M * pow(max(uSkyFit.y, CX_SKY_NEAR_M) / CX_SKY_NEAR_M,
-                                          float(k) / float(CX_SKY_STEPS - 1));
+            float r = CX_SKY_NEAR_M * pow(max(uSkyFit.y, CX_SKY_NEAR_M) / CX_SKY_NEAR_M, float(k) / float(CX_SKY_STEPS - 1));
             tmax = max(tmax, (CxSkyH(uv + dir * (r * uSkyFit.x)) - h) / r);
         }
         open += 1.0 / (1.0 + tmax * tmax);

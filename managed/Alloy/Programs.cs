@@ -385,7 +385,19 @@ internal static unsafe class Programs
     /// compiles to a constant 1 and <c>uSkyMap</c> is not declared, which is what a driver short of
     /// <see cref="SkyViewUnitsNeed"/> units needs in order to link the lit program at all.</summary>
     internal static string WithoutSkyView(string fs)
-        => fs.Replace(SkyViewDefine, "// CX-290: the sky-visibility term is OFF -- too few fragment texture units for its map");
+        => fs.Replace(SkyViewDefine, "// the sky-visibility term is OFF -- too few fragment texture units for its map");
+
+    /// <summary><paramref name="fs"/> as this driver can link it: unchanged where the map's unit seats, and
+    /// <see cref="WithoutSkyView"/>'d where it does not. Asked per program (the lit stage and both grass
+    /// stages read the map), so the order the three are built in cannot decide the answer.</summary>
+    internal static string WithSkyView(string fs)
+    {
+        int units = 0;
+        Gl.GetIntegerv(Gl.MAX_TEXTURE_IMAGE_UNITS, &units);
+        if (units >= SkyViewUnitsNeed) return fs;
+        SkyView.NoTextureUnit();
+        return WithoutSkyView(fs);
+    }
 
     /// <summary>Build the lit variant. A failure disarms lit ownership for the session (and the next
     /// enrollment hands every lit part back to the engine) -- never a silent fallback to fullbright, which
@@ -441,12 +453,8 @@ internal static unsafe class Programs
             _log?.Info($"AlloyRenderer: the sun's blocker search is OFF -- {litUnits} fragment texture units, "
                      + $"needs {SunSoftUnitsNeed}; sun shadows take the fixed four-tap cross (point-light cubes are unaffected)");
         }
-        // CX-290: ...and the sky-visibility map is the one unit above those two, by the same rule.
-        if (litUnits < SkyViewUnitsNeed)
-        {
-            litFs = WithoutSkyView(litFs);
-            SkyView.NoTextureUnit();
-        }
+        // ...and the sky-visibility map is the one unit above those two, by the same rule.
+        litFs = WithSkyView(litFs);
         // #350: from the hosted regions' STUBS -- the program every lit batch draws with carries no content
         // body; the second build below carries them for the batches that need them.
         uint prog = GlProgram.Graphics(ShdLitVs, ShaderStages.Source(ShdLitVs), ShdLitFs, litFs,
