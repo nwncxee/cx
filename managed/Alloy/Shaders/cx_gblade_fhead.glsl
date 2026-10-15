@@ -1,6 +1,7 @@
 #version 460 core
 #define CX_FS 1
 #define CX_LIGHT_LITE 1   // CX-188: cx_lightfrag's slimmed walk -- not a baked receiver, one shadow tap per light
+#define CX_SKY_VIEW 1   // ground cover takes the same sky-visibility term the stone under it does
 // CX-24: the blade fragment head. Opaque, and no discard anywhere in the stage: early-Z does the work the
 // card path's depth prepass does.
 in vec3 vLight;
@@ -24,6 +25,7 @@ uniform float uShade;                   // past this, no cascade taps
 uniform int uViz;                       // /alloy viz: 3 = the sun's visibility, as the lit stage's own 3
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
+#include "cx_skyview.glsl"
 uniform samplerCube uProbe;               // CX-51: the reflection probe, on the lit stage's unit
 #include "cx_ssr.glsl"
 #include "cx_reflrec.glsl"

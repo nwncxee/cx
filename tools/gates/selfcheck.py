@@ -2,12 +2,17 @@
 """CX-200: refuse self-check assertions that cannot fail, and skip paths that pass silently.
 
 Scope: every `*SelfCheck*.cs` under managed/, plus the body of any method elsewhere whose name
-contains "SelfCheck". Inside that scope four shapes are refused:
+contains "SelfCheck" or that runs a `Checker` of its own (TextureSlots.Check and friends are suites
+whatever they are called). Inside that scope five shapes are refused:
 
   1. an Expect(...) whose condition is a compile-time constant (literal arithmetic only);
   2. an Expect(...) comparing a `const` declared in the same file against a plain literal;
   3. an Expect(...) whose two operands across == / != are syntactically identical;
-  4. a hand-written "SKIPPED" log line -- a skip goes through Checker.Skip, which counts it.
+  4. an Expect(...) comparing a value against a DECLARATION DERIVED FROM IT across == / != -- `A == B`
+     where B is declared `= A + 1`, anywhere under managed/, so a sibling partial or another file is no
+     escape (CX-290). Two independently declared constants held to each other are a real invariant and
+     stay; a value read out of a second artifact is a local or a call and resolves to nothing;
+  5. a hand-written "SKIPPED" log line -- a skip goes through Checker.Skip, which counts it.
 
 `-v` lists each hit with its file and line. Exit 1 when anything is refused.
 """
@@ -90,7 +95,9 @@ def mask(src: str, strings: bool = True) -> str:
 
 
 def regions(path: Path, masked: str):
-    """(start, end) offsets of the self-check scope in this file."""
+    """(start, end) offsets of the self-check scope in this file: a *SelfCheck* file is all of it; elsewhere
+    it is the body of each method that NAMES itself a self-check, plus the block that runs a `Checker` of its
+    own (TextureSlots.Check and friends are suites whatever they are called)."""
     if "SelfCheck" in path.name:
         return [(0, len(masked))]
     out = []
@@ -110,17 +117,37 @@ def regions(path: Path, masked: str):
         if not rest.startswith("{"):
             continue
         body = masked.index("{", k)
-        depth, e = 0, body
-        while e < len(masked):
-            if masked[e] == "{":
-                depth += 1
-            elif masked[e] == "}":
-                depth -= 1
-                if depth == 0:
-                    break
-            e += 1
-        out.append((body, e))
+        out.append((body, matching(masked, body)))
+    # ...and the block each `new Checker(` sits directly inside, which is the suite's own body
+    if "new Checker(" in masked:
+        # the INNERMOST block holding each `new Checker(`: scanning forward, the first `}` whose own `{`
+        # opened before it is that block, and an inner block that opened after it must not claim it
+        want = [m.start() for m in re.finditer(r"new Checker\s*\(", masked)]
+        stack = []
+        for i, c in enumerate(masked):
+            if c == "{":
+                stack.append(i)
+            elif c == "}" and stack:
+                open_at = stack.pop()
+                claimed = [w for w in want if open_at < w < i]
+                if claimed:
+                    out.append((open_at, i))
+                    want = [w for w in want if w not in claimed]
     return out
+
+
+def matching(masked: str, brace: int) -> int:
+    """The offset of the `}` closing the `{` at brace."""
+    depth, e = 0, brace
+    while e < len(masked):
+        if masked[e] == "{":
+            depth += 1
+        elif masked[e] == "}":
+            depth -= 1
+            if depth == 0:
+                return e
+        e += 1
+    return len(masked)
 
 
 def first_arg(masked: str, open_paren: int):
@@ -221,11 +248,141 @@ def consts(masked: str):
     return out
 
 
-def scan(path: Path):
+CHAIN = re.compile(r"(?:[A-Za-z_]\w*\s*\.\s*)*[A-Za-z_]\w*")
+TYPE_DECL = re.compile(r"\b(?:class|record|struct)\s+(\w+)")
+FIELD = re.compile(r"\b(?:private|internal|public|protected)(?:\s+(?:private|internal|public|protected|static|new))*"
+                   r"\s+(const|static\s+readonly|readonly\s+static)\s+([A-Za-z_][\w.]*)\s+([^;]+);")
+
+
+def chains(expr: str):
+    """Maximal dotted identifier chains READ in expr, with their whitespace squeezed out. Casts, keywords
+    and anything immediately called drop out: `(int)` is not a name, and `Cell(1)` is a call whose result
+    the declarations below say nothing about."""
+    flat = NUMBER.sub(" ", expr)
+    out = []
+    for m in CHAIN.finditer(flat):
+        name = "".join(m.group(0).split())
+        if not name or name in KEYWORDS:
+            continue
+        if flat[m.end():].lstrip()[:1] == "(":
+            continue
+        out.append(name)
+    return out
+
+
+def declared_values(src: str):
+    """(key, initialiser) for every class-level `const` and `static readonly` SCALAR field in src, keyed by
+    bare name and by Type.Name. A generic or array field is skipped: its value is not a number to compare."""
+    out = []
+    for m in FIELD.finditer(src):
+        kind, ty, body = m.group(1), m.group(2), m.group(3)
+        if "[" in ty or "<" in ty:
+            continue
+        owner = None
+        for t in TYPE_DECL.finditer(src, 0, m.start()):
+            owner = t.group(1)
+        for d0, d1 in split_top(body, (",",)):
+            decl = body[d0:d1]
+            if "=" not in decl:
+                continue
+            name, _, init = decl.partition("=")
+            name = name.strip()
+            if not name.isidentifier():
+                continue
+            init = init.strip()
+            if "[" in init or "{" in init or "(" in init and ("new" in init or "=>" in init):
+                continue
+            out.append((name, owner, init, kind))
+    return out
+
+
+def constant_table(root: Path):
+    """Every name under root whose value is fixed at compile time: a `const`, or a `static readonly` whose
+    initialiser resolves to constants. Keyed by `Type.Name` always, and by the bare name only where exactly
+    one declaration in the tree carries it -- an ambiguous bare name resolves to nothing rather than to the
+    wrong file's constant."""
+    decls, bare_count = [], {}
+    for path in sorted(root.rglob("*.cs")):
+        if path.name == "Views.g.cs":
+            continue
+        src = path.read_text(encoding="utf-8", errors="replace")
+        if "const " not in src and "readonly " not in src:
+            continue
+        for name, owner, init, kind in declared_values(mask(src)):
+            decls.append((name, owner, init, kind))
+            bare_count[name] = bare_count.get(name, 0) + 1
+    table = {}
+
+    def put(name, owner, init):
+        if owner:
+            table[f"{owner}.{name}"] = init
+        if bare_count.get(name) == 1:
+            table[name] = init
+
+    pending = []
+    for name, owner, init, kind in decls:
+        if kind == "const":
+            put(name, owner, init)
+        else:
+            pending.append((name, owner, init))
+    # a static readonly built out of constants is one too; two passes settle every chain that ships
+    for _ in range(3):
+        rest = []
+        for name, owner, init in pending:
+            if all(c in table for c in chains(init)):
+                put(name, owner, init)
+            else:
+                rest.append((name, owner, init))
+        if len(rest) == len(pending):
+            break
+        pending = rest
+    return table
+
+
+def canon(name: str, table):
+    """One key per declaration, however the reader spelled it: the bare name where that is unambiguous
+    across the tree, else the Type.Name form. None for a name no declaration answers."""
+    tail = name.rsplit(".", 1)[-1]
+    if tail in table:
+        return tail
+    return name if name in table else None
+
+
+def declared(expr: str, table):
+    """The declarations an expression READS, as canonical keys."""
+    return {k for k in (canon(c, table) for c in chains(expr)) if k}
+
+
+def closure(name, table, seen=None):
+    """Every declaration reachable from name's initialiser, transitively."""
+    seen = seen if seen is not None else set()
+    for key in declared(table.get(name, ""), table):
+        if key in seen:
+            continue
+        seen.add(key)
+        closure(key, table, seen)
+    return seen
+
+
+def restates(left: str, right: str, table):
+    """A declaration on one side built out of a declaration on the other: the assertion reads that
+    initialiser back rather than offering a second opinion on it. The SAME name on both sides is not this
+    -- a mask test and a function of its own input are both real checks. Returns the pair, or None."""
+    ln, rn = declared(left, table), declared(right, table)
+    for a, b in ((ln, rn), (rn, ln)):
+        for name in b:
+            reach = closure(name, table)
+            for other in a:
+                if other != name and other in reach:
+                    return other, name
+    return None
+
+
+def scan(path: Path, table=None):
     src = path.read_text(encoding="utf-8", errors="replace")
     # Cheap pre-filter before the character walk: nothing to say about a file with no self-check in it,
     # or one whose self-check asserts nothing and logs no skip.
-    if "SelfCheck" not in src or ("Expect(" not in src and "SKIPPED" not in src):
+    if ("SelfCheck" not in src and "new Checker(" not in src) or ("Expect(" not in src and "SKIPPED" not in src):
         return []
     masked = mask(src)
     # Strings kept, so two calls that differ only in a string argument are not read as one text.
@@ -269,10 +426,19 @@ def scan(path: Path):
                 if ln == rn:
                     hits.append((line_of(at), "both operands of == / != are the same text", f"{lt} == {rt}"))
                     continue
+                flagged = False
                 for a, b in ((ln, rn), (rn, ln)):
                     if a in decl and is_literal(b):
                         hits.append((line_of(at), f"the const {a} against its own kind of literal", f"{lt} == {rt}"))
+                        flagged = True
                         break
+                if flagged or table is None:
+                    continue
+                pair = restates(ln, rn, table)
+                if pair:
+                    hits.append((line_of(at),
+                                 f"{pair[1]} is DECLARED from {pair[0]}, so the compare restates that declaration",
+                                 f"{lt} == {rt}"))
         for m in re.finditer(r"\.(?:Always|Info|Warn|Error)\s*\(", window):
             stmt_end = window.find(";", m.end())
             stmt = src[lo + m.start():lo + (stmt_end if stmt_end > 0 else m.end())]
@@ -286,10 +452,11 @@ def scan(path: Path):
 def main():
     verbose = "-v" in sys.argv
     total = 0
+    table = constant_table(MANAGED)
     for path in sorted(MANAGED.rglob("*.cs")):
         if path.name == "Views.g.cs":
             continue
-        for line, why, text in scan(path):
+        for line, why, text in scan(path, table):
             total += 1
             rel = path.relative_to(ROOT)
             print(f"  {rel}:{line}: {why}" + (f"\n      {text}" if verbose else ""), file=sys.stderr)

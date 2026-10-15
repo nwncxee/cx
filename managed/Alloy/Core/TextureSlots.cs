@@ -230,15 +230,24 @@ internal static class TextureSlots
             check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap
                       || u == SkyMap,
               $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} but sits above Programs.LitUnitsNeed ({Programs.LitUnitsNeed})");
-        check.Expect(SkyMap + 1 == Programs.SkyViewUnitsNeed && Programs.SunSoftUnitsNeed < Programs.SkyViewUnitsNeed,
-          $"the sky view's need is {Programs.SkyViewUnitsNeed} fragment units, its map sits on {SkyMap}");
         check.Expect(SkyView.Lib.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;")
           && litDecls.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;"), $"{SkyMap} uSkyMap (lit program)");
         check.Expect(litDecls.Contains(Programs.SkyViewDefine)
           && !Programs.WithoutSkyView(litDecls).Contains(Programs.SkyViewDefine),
           "the sky-visibility term is removable: the stage carries the define and Programs.WithoutSkyView takes it out");
-        check.Expect(SunShadowDynRaw + 1 == Programs.SunSoftUnitsNeed,
-          $"the soft sun's need is {Programs.SunSoftUnitsNeed} fragment units, its highest view is {SunShadowDynRaw}");
+        // ...and the two removable features' unit NEEDS, each against the highest unit the COMPILED stage
+        // actually declares for it: a sampler that moved up without its need moving link-fails on a driver
+        // reporting exactly that many units, and nothing else would say so.
+        uint topSoft = 0, topSky = 0;
+        foreach (uint u in Claimed(litDecls))
+        {
+            if (u == SkyMap) topSky = u;
+            else if (u == SunShadowRaw || u == SunShadowDynRaw) topSoft = Math.Max(topSoft, u);
+        }
+        check.Expect((int)topSoft + 1 == Programs.SunSoftUnitsNeed,
+          $"the soft sun declares up to unit {topSoft}, so its need is {topSoft + 1}; Programs says {Programs.SunSoftUnitsNeed}");
+        check.Expect((int)topSky + 1 == Programs.SkyViewUnitsNeed && Programs.SunSoftUnitsNeed < Programs.SkyViewUnitsNeed,
+          $"the sky view declares unit {topSky}, so its need is {topSky + 1}; Programs says {Programs.SkyViewUnitsNeed}");
         check.Expect(Programs.LitUnitsNeed < Programs.SunSoftUnitsNeed
           && ShaderSource.Get(AlloyRenderer.ShdLitFs + ".glsl").Contains(Programs.SunSoftDefine)
           && !Programs.WithoutSunSoft(litDecls).Contains(Programs.SunSoftDefine),
