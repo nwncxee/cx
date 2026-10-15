@@ -78,10 +78,22 @@ internal static partial class LightTraceLines
 
     internal static string FogColour(Vector3 sun, Vector3 moon, float fade, uint area)
         => FormattableString.Invariant(
-            $"{Tag} packet fog-colour sun={V3(sun)} moon={V3(moon)} fade={fade:F2}s area={Hex(area)}");
+            $"{Tag} packet fog-colour sun={Fog(sun)} moon={Fog(moon)} fade={fade:F2}s area={Hex(area)}");
 
     internal static string FogAmount(int amount, uint area)
         => FormattableString.Invariant($"{Tag} packet fog-amount n={amount} area={Hex(area)}");
+
+    internal static string AppliedFog(float amount)
+        => FormattableString.Invariant($"{Tag} applied fog n={amount:F1}");
+
+    internal static string Shadow(float alpha, int opacity, string cause)
+        => FormattableString.Invariant($"{Tag} shadowalpha={alpha:F3} opacity={opacity} {cause}");
+
+    internal static string Lightning(bool flashing)
+        => flashing ? $"{Tag} lightning flash -- shadows dimmed" : $"{Tag} lightning done -- shadows restored";
+
+    internal static string Loaded(uint area, int cycle, int night)
+        => FormattableString.Invariant($"{Tag} area-loaded area={Hex(area)} cycle={cycle} night={night}");
 
     internal static string TimeOfDay(byte state, uint elapsedMs, int force)
         => FormattableString.Invariant(
@@ -109,6 +121,26 @@ internal static partial class LightTraceLines
     /// values stand still; the first sample of a session always goes, so the log opens with a baseline.</summary>
     internal static bool Due(long nowMs, long lastMs, in LightTriple last, in LightTriple next)
         => lastMs < 0 || (nowMs - lastMs >= PeriodMs && next.Differs(in last));
+
+    /// <summary><see cref="Due"/> for a single number: the fog amount and the shadow tint.</summary>
+    internal static bool DueScalar(long nowMs, long lastMs, float last, float next, float eps)
+        => lastMs < 0 || (nowMs - lastMs >= PeriodMs && MathF.Abs(next - last) > eps);
+
+    /// <summary>What the shadow tint would be with no lightning: the area's shadow opacity as a fraction,
+    /// scaled by |2t-1| while a dawn or dusk transition runs, which is the engine's own arithmetic.</summary>
+    internal static float ShadowExpected(int opacity, float t, bool transition)
+        => opacity / 100f * (transition ? MathF.Abs(2f * Math.Clamp(t, 0f, 1f) - 1f) : 1f);
+
+    /// <summary>Is the shadow tint sitting at the lightning flash's 40% of <paramref name="expected"/>? The
+    /// flash is the only writer that multiplies the tint, so the ratio names it; a tint the transition has
+    /// already taken to nothing is no verdict either way, so it reads as not flashing.</summary>
+    internal static bool Flashing(float alpha, float expected)
+        => expected > 1e-3f && alpha <= 0.7f * expected;
+
+    /// <summary>A fog vector <c>SetFogColors</c> leaves alone carries -1e7 in all three floats.</summary>
+    internal static bool FogKept(Vector3 v) => v.X <= -1e6f && v.Y <= -1e6f && v.Z <= -1e6f;
+
+    private static string Fog(Vector3 v) => FogKept(v) ? "keep" : V3(v);
 
     private static string V3(Vector3 v) => FormattableString.Invariant($"({v.X:F3},{v.Y:F3},{v.Z:F3})");
 

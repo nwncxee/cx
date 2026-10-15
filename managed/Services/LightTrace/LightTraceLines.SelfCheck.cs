@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using CX.Framework;
 
@@ -50,6 +51,9 @@ internal static partial class LightTraceLines
         string fog = FogColour(new Vector3(0.5f, 0.5f, 0.6f), new Vector3(0.1f, 0.1f, 0.2f), 8f, 0x2au);
         check.Expect(fog == "[lighttrace] packet fog-colour sun=(0.500,0.500,0.600) moon=(0.100,0.100,0.200) fade=8.00s area=0x0000002a",
                      $"the fog-colour line ({fog})");
+        string kept = FogColour(new Vector3(0.5f, 0.5f, 0.6f), new Vector3(-1e7f, -1e7f, -1e7f), 0f, 0x2au);
+        check.Expect(kept == "[lighttrace] packet fog-colour sun=(0.500,0.500,0.600) moon=keep fade=0.00s area=0x0000002a",
+                     $"a fog vector the engine leaves alone reads as kept ({kept})");
         string amount = FogAmount(25, 0x2au);
         check.Expect(amount == "[lighttrace] packet fog-amount n=25 area=0x0000002a", $"the fog-amount line ({amount})");
         string tod = TimeOfDay(4, 12000, 1);
@@ -62,6 +66,33 @@ internal static partial class LightTraceLines
         check.Expect(start == "[lighttrace] transition dusk start len=1200.0s", $"the transition-start line ({start})");
         string end = TransitionEnd("dusk", 1201.3f);
         check.Expect(end == "[lighttrace] transition dusk end after=1201.3s", $"the transition-end line ({end})");
+
+        string loaded = Loaded(0x2au, 1, 0);
+        check.Expect(loaded == "[lighttrace] area-loaded area=0x0000002a cycle=1 night=0", $"the area-loaded line ({loaded})");
+        string appliedFog = AppliedFog(25f);
+        check.Expect(appliedFog == "[lighttrace] applied fog n=25.0", $"the applied-fog line ({appliedFog})");
+        string shadow = Shadow(0.12f, 30, "transition dusk t=0.60");
+        check.Expect(shadow == "[lighttrace] shadowalpha=0.120 opacity=30 transition dusk t=0.60",
+                     $"the shadow-tint line ({shadow})");
+        check.Expect(Lightning(true) == "[lighttrace] lightning flash -- shadows dimmed"
+                     && Lightning(false) == "[lighttrace] lightning done -- shadows restored",
+                     "the two lightning lines");
+
+        // The engine's shadow-tint arithmetic: opacity as a fraction, scaled by |2t-1| across a transition.
+        check.Expect(MathF.Abs(ShadowExpected(30, 0f, false) - 0.30f) < 1e-5f,
+                     $"outside a transition the tint is the area's opacity ({ShadowExpected(30, 0f, false)})");
+        check.Expect(MathF.Abs(ShadowExpected(30, 0.25f, true) - 0.15f) < 1e-5f,
+                     $"a quarter into a transition it is halved ({ShadowExpected(30, 0.25f, true)})");
+        check.Expect(ShadowExpected(30, 0.5f, true) < 1e-6f, "at the midpoint shadows are off entirely");
+        check.Expect(MathF.Abs(ShadowExpected(30, 2f, true) - 0.30f) < 1e-5f, "t past 1 is clamped, not extrapolated");
+        check.Expect(Flashing(0.12f, 0.30f), "a tint at 40% of the expected one is the lightning flash");
+        check.Expect(!Flashing(0.30f, 0.30f), "...and the expected tint itself is not");
+        check.Expect(!Flashing(0f, 0f), "a transition midpoint, where there is no tint to dim, is no verdict");
+
+        check.Expect(DueScalar(0L, -1L, 25f, 25f, 0.5f), "the first scalar sample always goes out");
+        check.Expect(!DueScalar(500L, 0L, 25f, 30f, 0.5f), "a scalar change inside the second waits");
+        check.Expect(!DueScalar(1000L, 0L, 25f, 25.1f, 0.5f), "a scalar nudge under the tolerance says nothing");
+        check.Expect(DueScalar(1000L, 0L, 25f, 30f, 0.5f), "a second later, a scalar change goes out");
 
         var t = new LightTriple(new Vector3(0.18f, 0.196f, 0.251f), new Vector3(1f, 0.95f, 0.85f),
                                 new Vector3(0f, 0f, 1f));
