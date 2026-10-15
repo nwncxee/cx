@@ -411,6 +411,9 @@ internal static unsafe class Issue
                     Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
                     UploadMaterialModel(L.Material);
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing);
+                    // CX-290: the probe capture takes the term too -- it is not camera-dependent, and a
+                    // reflection of an alley should carry the alley's own ambient.
+                    SkyView.UploadLit(L.SkyVp, L.SkyTerm);
                     Weather.BindEsm(L.CoverEsm, _oitOn || lists);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, _capturing);
                     // The master PLT palette on its own unit; a no-op until a master palette exists.

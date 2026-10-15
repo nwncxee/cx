@@ -162,7 +162,10 @@
     vec3 ambShape = vec3(ambDir);
     if (uMaterial.y > 0.0 && uCapture != 1 && uProbeMips > 0.0)
         ambShape = mix(ambShape, max(CxAmbientShape(N), vec3(0.15)), uMaterial.y);
-    vec3 ambient = uAreaAmbient * matAmbient * ambShape * occl;
+    // CX-290: ...and the sky-visibility term, which is the only part of the ambient that varies ACROSS an
+    // area -- vanilla has one value for the whole of it, so an alley at noon was as bright as the street.
+    // The GEOMETRIC normal, not the shading one: a normal map must not move where the lookup lands.
+    vec3 ambient = uAreaAmbient * matAmbient * ambShape * occl * CxSkyView(vWorld, normalize(vNrm));
     // 34 = the ONLY term occlusion can move inside `total` (the (1-spec) share of the ambient).
     //      Black at both /ao on 0 and /ao on 1 means AO has nothing to scale here, however bright
     //      viz 8 reads -- which no other view in the ladder can say.
