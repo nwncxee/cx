@@ -62,7 +62,6 @@ internal static unsafe class NuiImageSpot
         IntPtr ctx = *s.CtxSlot;
         if (ctx == IntPtr.Zero) return;
         var c = new NkContext(ctx);
-        byte* mem = (byte*)c.MemPtr;
         ulong allocated = c.MemAllocated;
         uint seq = c.Seq;
         foreach (NuiModelDoll.ModelSlot q in NuiModelDoll.Slots) q.Spot.Found = false;
@@ -74,7 +73,7 @@ internal static unsafe class NuiImageSpot
             ulong off = win.BufBegin, end = Math.Min(win.BufEnd, allocated);
             while (off < end)
             {
-                var cmd = new NkCommand((IntPtr)(mem + off));
+                var cmd = c.CommandAt(off);
                 var img = new NkCommandImage(cmd.Ptr);
                 if (cmd.Type == CmdImage)
                     foreach (NuiModelDoll.ModelSlot m in NuiModelDoll.Slots)

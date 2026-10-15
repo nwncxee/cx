@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Services.Nui;
@@ -13,16 +14,6 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiScrollbarHide
 {
-    private const int StyleScrollV = 0x3060, StyleScrollH = 0x2bb8, CtxBarSizeX = 0x41ec, CtxBarSizeY = 0x41f0;  // not-an-offset: nk_context ABI (same on both builds), not an engine class
-    private const int InMouseX = 0x14c, InLeftDown = 0x10c, InClickedX = 0x114;  // not-an-offset: nk_input ABI
-    /// <summary>A scrollbar's <c>out</c> is always <c>&amp;window-&gt;buffer</c> (window+0x68), so the panel being ended is
-    /// <c>window-&gt;layout</c> 0x40 past it -- for a group too, whose window is <c>nk_group_scrolled_end</c>'s stack copy.</summary>
-    private const int OutLayout = 0x40, PanelBounds = 0x08;  // not-an-offset: nuklear window/panel ABI
-    private const int CmdBufEnd = 0x30, BufferMemory = 0x40, BufferAllocated = 0x58, CmdNext = 0x08;  // not-an-offset: nk_command_buffer / nk_buffer / nk_command ABI
-    /// <summary>Per <c>nk_command_type</c> 0..18: the first <c>nk_color</c>'s offset, 0 = none. Multi-colour rects carry four
-    /// colours and text two, each 4 bytes apart; alpha is a colour's last byte.</summary>
-    private static ReadOnlySpan<byte> ColorAt => [0, 0, 0x1a, 0x22, 0x1c, 0x1a, 0x18, 0x1a, 0x18, 0x20, 0x20, 0x1e, 0x1c, 0x10, 0x10, 0x10, 0x18, 0x30, 0];  // not-an-offset: nuklear command ABI
-    private const int MultiColor = 6, Text = 16, LastType = 18;
     /// <summary>Seconds to fade fully in, and out.</summary>
     private const float FadeIn = 0.12f, FadeOut = 0.35f;
     /// <summary>A bar unseen this long has closed; its fade slot is free.</summary>
@@ -127,7 +118,7 @@ internal static unsafe class NuiScrollbarHide
         if (!_enabled!.V) return false;
         if (input != IntPtr.Zero) _ctx = input;
         if (_auto!.V && Fits(axis, w, h, target)) return true;
-        if (!_hover!.V || _ctx == IntPtr.Zero || (style != _ctx + StyleScrollV && style != _ctx + StyleScrollH)) return false;
+        if (!_hover!.V || _ctx == IntPtr.Zero || (style != new NkContext(_ctx).StyleScrollV.Ptr && style != new NkContext(_ctx).StyleScrollH.Ptr)) return false;
         alpha = Advance(ref Slot(x, y, w, h, axis), Wanted(axis, output, x, y, w, h));
         return false;
     }
@@ -140,19 +131,22 @@ internal static unsafe class NuiScrollbarHide
     /// or a drag that started on this bar is still held.</summary>
     private static bool Wanted(int axis, IntPtr output, float x, float y, float w, float h)
     {
-        float mx = *(float*)(_ctx + InMouseX), my = *(float*)(_ctx + InMouseX + 4);
-        if (*(int*)(_ctx + InLeftDown) != 0)
+        var ctx = new NkContext(_ctx);
+        Span<float> mouse = ctx.MousePos;
+        float mx = mouse[0], my = mouse[1];
+        if (ctx.LeftDown != 0)
         {
-            float cx = *(float*)(_ctx + InClickedX), cy = *(float*)(_ctx + InClickedX + 4);
+            Span<float> clicked = ctx.Clicked;
+            float cx = clicked[0], cy = clicked[1];
             if (cx >= x && cx < x + w && cy >= y && cy < y + h) return true;
         }
-        IntPtr panel = *(IntPtr*)(output + OutLayout);
+        IntPtr panel = new NkCommandBuffer(output).Layout;
         if (panel == IntPtr.Zero) return true;
-        float* b = (float*)(panel + PanelBounds);
+        Span<float> b = new NkPanel(panel).Bounds;
         float x0 = MathF.Min(b[0], x), y0 = MathF.Min(b[1], y);
         float x1 = MathF.Max(b[0] + b[2], x + w), y1 = MathF.Max(b[1] + b[3], y + h);
-        if (axis == 0) y1 += *(float*)(_ctx + CtxBarSizeY);
-        else x1 += *(float*)(_ctx + CtxBarSizeX);
+        if (axis == 0) y1 += ctx.BarSizeY;
+        else x1 += ctx.BarSizeX;
         return mx >= x0 && mx < x1 && my >= y0 && my < y1;
     }
 
@@ -191,33 +185,28 @@ internal static unsafe class NuiScrollbarHide
     /// pushed past it.</summary>
     private static ulong Mark(IntPtr output)
     {
-        byte* buf = *(byte**)output;
-        ulong ptr = *(ulong*)(buf + BufferMemory);
-        return ((ptr + *(ulong*)(buf + BufferAllocated) + 7) & ~7UL) - ptr;
+        var buf = new NkBuffer(new NkCommandBuffer(output).Base);
+        ulong ptr = (ulong)buf.Memory;
+        return ((ptr + buf.Allocated + 7) & ~7UL) - ptr;
     }
 
     /// <summary>Scales the alpha of every command appended since <paramref name="from"/>. The buffer is dynamic and may
     /// have moved during the call, so it is walked by offset from the re-read memory pointer, as <c>nk__next</c> does.</summary>
     private static void Scale(IntPtr output, ulong from, float alpha)
     {
-        byte* mem = *(byte**)(*(IntPtr*)output + BufferMemory);
-        ulong end = *(ulong*)(output + CmdBufEnd);
+        var buffer = new NkBuffer(new NkCommandBuffer(output).Base);
+        ulong end = new NkCommandBuffer(output).End;
         for (ulong off = from; off < end;)
         {
-            byte* cmd = mem + off;
-            int type = *(int*)cmd;
-            if ((uint)type > LastType)
+            var cmd = buffer.CommandAt(off);
+            int type = cmd.Type;
+            if ((uint)type > NkCommand.LastType)
             {
                 if (!_warned) { _warned = true; _log?.Always($"NuiScrollbarHide: unknown nuklear command type {type} -- that bar draws at full opacity"); }
                 return;
             }
-            int at = ColorAt[type], n = type == MultiColor ? 4 : type == Text ? 2 : at != 0 ? 1 : 0;
-            for (int c = 0; c < n; c++)
-            {
-                byte* a = cmd + at + 4 * c + 3;
-                *a = (byte)(*a * alpha + 0.5f);
-            }
-            ulong next = *(ulong*)(cmd + CmdNext);
+            foreach (ref NkColor c in cmd.Colours) c.A = (byte)(c.A * alpha + 0.5f);
+            ulong next = cmd.Next;
             if (next <= off) return;
             off = next;
         }
@@ -239,22 +228,24 @@ internal static unsafe class NuiScrollbarHide
         byte* cb = (byte*)NativeMemory.AllocZeroed(0x40);
         try
         {
-            *(IntPtr*)cb = (IntPtr)buf;
-            *(IntPtr*)(buf + BufferMemory) = (IntPtr)mem;
+            new NkCommandBuffer((IntPtr)cb).Base = (IntPtr)buf;
+            new NkBuffer((IntPtr)buf).Memory = (IntPtr)mem;
+            void Put(int at, uint v) => MemoryMarshal.Write(new Span<byte>(mem, 512)[at..], in v);
             void Cmd(int off, int type, int next, uint color, int at)
             {
-                *(int*)(mem + off) = type;
-                *(ulong*)(mem + off + CmdNext) = (ulong)next;
-                if (at != 0) *(uint*)(mem + off + at) = color;
+                var c = new NkBuffer((IntPtr)buf).CommandAt((ulong)off);
+                c.Type = type;
+                c.Next = (ulong)next;
+                if (at != 0) Put(off + at, color);
             }
             Cmd(0, 5, 0x20, 0xff102030, 0x1a);
-            *(ulong*)(buf + BufferAllocated) = 0x1c;
+            new NkBuffer((IntPtr)buf).Allocated = 0x1c;
             ulong from = Mark((IntPtr)cb);
             Cmd(0x20, 5, 0x40, 0xff102030, 0x1a);
             Cmd(0x40, 17, 0x78, 0x80ffffff, 0x30);
             Cmd(0x78, 16, 0xb8, 0xffffffff, 0x18);
-            *(uint*)(mem + 0x78 + 0x1c) = 0xff00ff00;
-            *(ulong*)(cb + CmdBufEnd) = 0xb8;
+            Put(0x78 + 0x1c, 0xff00ff00);
+            new NkCommandBuffer((IntPtr)cb).End = 0xb8;
             Scale((IntPtr)cb, from, 0.5f);
             check.Expect(from == 0x20 && mem[0x1a + 3] == 0xff, "the mark is the aligned front; a command before it is untouched");
             check.Expect(mem[0x20 + 0x1a + 3] == 0x80 && mem[0x20 + 0x1a] == 0x30, "a filled rect's alpha halves, its colour stays");
@@ -262,7 +253,7 @@ internal static unsafe class NuiScrollbarHide
             check.Expect(mem[0x78 + 0x18 + 3] == 0x80 && mem[0x78 + 0x1c + 3] == 0x80, "text: background and foreground both");
             byte* moved = (byte*)NativeMemory.AllocZeroed(512);
             Buffer.MemoryCopy(mem, moved, 512, 512);
-            *(IntPtr*)(buf + BufferMemory) = (IntPtr)moved;
+            new NkBuffer((IntPtr)buf).Memory = (IntPtr)moved;
             Scale((IntPtr)cb, 0x40, 0f);
             check.Expect(moved[0x40 + 0x30 + 3] == 0 && mem[0x40 + 0x30 + 3] == 0x40, "the walk follows a buffer that moved");
             NativeMemory.Free(moved);

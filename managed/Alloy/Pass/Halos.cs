@@ -25,7 +25,7 @@ internal static unsafe class Halos
     private const uint GlTriangleStrip = 0x0005;   // not-an-offset: GL primitive-mode enum
     /// <summary>Three vec4 per halo: (pos.xyz, occlusion softness), (display rgb + shift with the fade folded in,
     /// flareradius), (flaresizes[0] x halosize, flarepositions[0], unused, unused).</summary>
-    private const int Floats = 12;
+    private const int Floats = HaloRec.N;
     private const int InitialHalos = 64;
     /// <summary><c>Scene::RenderLensFlares</c> @0x471860's own integration terms: the occlusion fade travels at
     /// 3.0 per second on a delta floored at 0.02s, so a flare takes a third of a second to appear or vanish
@@ -168,7 +168,7 @@ internal static unsafe class Halos
         // flare axis (ring, streak); the rest need their textures, not this procedural profile
         float size = def.FlareSizes.Length > 0 ? def.FlareSizes[0] : 0f;
         if (size <= 0f || !Reaches(l.Position, def.FlareRadius)) return;
-        float* d = stage + _count * Floats;
+        float* d = ((HaloRec*)stage)[_count].V;
         d[0] = l.Position.X; d[1] = l.Position.Y; d[2] = l.Position.Z;
         d[3] = OcclusionSoftness;
         Vector3 tint = Tint(l.Colour, def.FlareColors[0], 1f);

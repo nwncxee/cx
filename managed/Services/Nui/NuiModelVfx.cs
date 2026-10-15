@@ -210,7 +210,8 @@ internal static unsafe class NuiModelVfx
     private static IntPtr TransformFor(byte* scratch)
     {
         if (!OperatingSystem.IsWindows()) return _v.Identity;
-        EngineFn.TransformCopy((IntPtr)scratch, _v.Identity, (IntPtr)(scratch + TransformBytes / 2));
+        fixed (byte* half = new Span<byte>(scratch, TransformBytes).Slice(TransformBytes / 2))
+            EngineFn.TransformCopy((IntPtr)scratch, _v.Identity, (IntPtr)half);
         return (IntPtr)scratch;
     }
 

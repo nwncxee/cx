@@ -701,20 +701,20 @@ public sealed unsafe partial class CasterPass
             float best = float.MaxValue;
             for (int i = 0; i < n; i++)
             {
-                float* e = b + i * MoverBoxF;
+                float* e = ((MoverBox*)b)[i].V;
                 float ux = MathF.Max(e[3], x + r) - MathF.Min(e[0], x - r), uy = MathF.Max(e[4], y + r) - MathF.Min(e[1], y - r),
                       uz = MathF.Max(e[5], z + r) - MathF.Min(e[2], z - r);
                 float ex = e[3] - e[0], ey = e[4] - e[1], ez = e[5] - e[2];
                 float d = ux * ux + uy * uy + uz * uz - (ex * ex + ey * ey + ez * ez);
                 if (d < best) { best = d; at = i; }
             }
-            float* t = b + at * MoverBoxF;
+            float* t = ((MoverBox*)b)[at].V;
             t[6] = -1f;
             t[0] = MathF.Min(t[0], x - r); t[1] = MathF.Min(t[1], y - r); t[2] = MathF.Min(t[2], z - r);
             t[3] = MathF.Max(t[3], x + r); t[4] = MathF.Max(t[4], y + r); t[5] = MathF.Max(t[5], z + r);
             return n;
         }
-        float* w = b + at * MoverBoxF;
+        float* w = ((MoverBox*)b)[at].V;
         w[0] = x - r; w[1] = y - r; w[2] = z - r; w[3] = x + r; w[4] = y + r; w[5] = z + r; w[6] = r;
         return n + 1;
     }
@@ -755,7 +755,7 @@ public sealed unsafe partial class CasterPass
                 continue;
             }
             if (i >= boxes) { CubeDynSphere[k + 3] = -1f; continue; }
-            float* e = b + i * MoverBoxF;
+            float* e = ((MoverBox*)b)[i].V;
             float hx = (e[3] - e[0]) * 0.5f, hy = (e[4] - e[1]) * 0.5f, hz = (e[5] - e[2]) * 0.5f;
             CubeDynSphere[k] = e[0] + hx; CubeDynSphere[k + 1] = e[1] + hy; CubeDynSphere[k + 2] = e[2] + hz;
             // a lone mover's box is its sphere's cube: the corner sphere (r x 1.73) tripled the shadow cone every

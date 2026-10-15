@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -279,14 +280,14 @@ internal static unsafe partial class LightmapBake
         int* vp = stackalloc int[4] { 0, 0, PageSize, PageSize };
         AlloyLights.FillDraw(b, vp, 1f, 100f);
         AlloyRenderer.PassVec(b, AlloyRenderer.PbLight, pos.X, pos.Y, pos.Z, far);
-        *(Vector2*)(b + AlloyRenderer.PbLocalPlane) = new Vector2(MathF.Max(BakeNear, CasterPass.CubeNearPlane), 1f / _cubeSize);
+        new PassParamBlock(b).LocalPlane = new Vector2(MathF.Max(BakeNear, CasterPass.CubeNearPlane), 1f / _cubeSize);
         // the disc everywhere (no screen to stand it down against), the near skip, no cap; PCSS off:
         // the bake has no raw view of its cube -- a fixed disc at the softness knob. ponytail: bind the
         // scratch cube through the raw sampler too if the bake's penumbra ever needs to match the live one.
         AlloyRenderer.PassVec(b, AlloyRenderer.PbLocalSoft, AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, 0f, 0f);
-        *(float*)(b + AlloyRenderer.PbLocalFloor) = AlloyLights.ShadowFloor;
+        new PassParamBlock(b).LocalFloor = AlloyLights.ShadowFloor;
         AlloyRenderer.PassVec(b, AlloyRenderer.PbLocalPcss, 0f, 0f, Shadows.Taps.V, 0f);
-        *(float*)(b + AlloyRenderer.PbFade) = 1f;
+        new PassParamBlock(b).Fade = 1f;
         AlloyRenderer.FlushPassBlock();
         Gl.BindVertexArray(MeshChart.Vao);
         for (int k = 0; k < _bakeRects.Count; k++)
