@@ -209,11 +209,11 @@ public sealed unsafe partial class AlloyRenderer
         // pass for the life of the area. Correct either way, needlessly expensive one way.
         DbWriteWorldBox(i, recipe, SceneDb.PartWorld[part]);
         _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = _oR[i];
-        int po = i * ParamFloats, fo = i * 4;
-        for (int k = 0; k < ParamFloats; k++) _oParam[po + k] = DrawRecipe.Param(recipe, k);
+        int fo = i * 4;
+        _oParam[i] = DrawRecipe.Params(recipe);
         // CX-117: Gob::SetMaterialParam's per-OBJECT overrides, over the recipe's shared floats. Gated on the
         // table being non-empty, so a scene that never calls it pays one bool.
-        if (Seam.MaterialParams.Any) Seam.MaterialParams.Apply(SceneDb.PartObj[part], _oParam.AsSpan(po, ParamFloats));
+        if (Seam.MaterialParams.Any) Seam.MaterialParams.Apply(SceneDb.PartObj[part], ref _oParam[i]);
         for (int k = 0; k < 4; k++) _oFeat[fo + k] = DrawRecipe.FeatF(recipe, k);
         _oSlots[i] = DrawRecipe.Slots(recipe);
         UnstampRecord(i);
@@ -608,10 +608,10 @@ public sealed unsafe partial class AlloyRenderer
         bool fx = ((SceneDb.PartModel[part]?.Classification ?? 0) & HitTest.ClassEffect) != 0;
         r.EmiW = (of & ObjFlag.Tile) != 0 ? 1f : fx || CreaturePart(i) ? -1f : 0f;
         if (r.EmiW < 0f) RecCreature++; else if (r.EmiW > 0f) RecTile++; else RecObject++;
-        int po = i * ParamFloats;
-        r.PbrR = _oParam[po]; r.PbrG = _oParam[po + 1]; r.PbrB = _oParam[po + 2];
-        r.PbrX = _oParam[po + 4]; r.PbrY = _oParam[po + 5]; r.PbrZ = _oParam[po + 6]; r.PbrW = _oParam[po + 7];
-        r.Ext = MemoryMarshal.Read<MaterialExt>(MemoryMarshal.AsBytes(_oParam.AsSpan(po + ParamExt, ParamFloats - ParamExt)));
+        ref ParamRow p = ref _oParam[i];
+        r.PbrR = p.Specularity; r.PbrG = p.Roughness; r.PbrB = p.Metallicness;
+        r.PbrX = p.CustomR; r.PbrY = p.CustomG; r.PbrZ = p.CustomB; r.PbrW = p.CustomDeclared;
+        r.Ext = p.Ext;
     }
 
     /// <summary>The DB-mode cull sphere: the recipe's model-space centre and radius through the part's world

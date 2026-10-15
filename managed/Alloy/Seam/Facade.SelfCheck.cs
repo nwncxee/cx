@@ -449,9 +449,10 @@ internal static unsafe class FacadeSelfCheck
 
         Facade.SetName(shell, "cx_selfcheck");
         check.Expect(Facade.NameOf(shell) == "cx_selfcheck", "the inline name array did not round trip");
-        var longName = new string('n', SeamLayout.GobNameMax + 32);
+        const int NameRoom = 0x40;   // not-an-offset: the length of the engine's inline name array, from the build file
+        var longName = new string('n', NameRoom + 32);
         Facade.SetName(shell, longName);
-        check.Expect(Facade.NameOf(shell).Length == SeamLayout.GobNameMax - 1,
+        check.Expect(Facade.NameOf(shell).Length == NameRoom - 1,
             "a name longer than the engine's array must be truncated, not written past the field");
 
         // The SafePointer back-reference list, over a synthetic one the way the game builds it: a

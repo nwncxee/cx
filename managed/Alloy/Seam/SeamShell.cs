@@ -36,7 +36,6 @@ public static class SeamLayout
     /// <summary>Inline name array; `Gob::GetName` @0x444660 is `return this + 0x24`, and `Gob::~Gob` copies it
     /// with a 0x100 bound, so 0x24..0x87 is the name's room.</summary>
     public static readonly int GobName = EngineLayout.SeamGobName;
-    public const int GobNameMax = 0x40;   // not-an-offset: the length of the inline char array at Gob+0x24, not a place in it
     /// <summary>`Gob::GetScene` @0x4447b0 `return *(Scene**)(this+0x88)`; read raw by `GuiAurAttachToObject`.</summary>
     public static readonly int GobScene = EngineLayout.GobScene;
     /// <summary>Root `Part*` of LOD 0; `AurEnableShadowing` @0x461ad0 reads it raw. `NewCAurObject` fills

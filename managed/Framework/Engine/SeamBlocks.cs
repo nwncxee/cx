@@ -39,8 +39,6 @@ public readonly unsafe ref partial struct Gob
     public ExoArray CallbackArray => new(Ptr + EngineLayout.GobCallbacks);
     /// <summary>The attached gobs.</summary>
     public ExoArray AttachArray => new(Ptr + EngineLayout.SeamGobAttachList);
-    /// <summary>The inline name array; its address is what <c>Gob::GetName</c> hands back.</summary>
-    public byte* NameBytes => (byte*)(Ptr + EngineLayout.SeamGobName);
     /// <summary>The installed behaviour's address, or zero.</summary>
     public IntPtr Behavior { get => Attach.Ptr; set => Attach = new CAurBehavior(value); }
     /// <summary>Animated float <paramref name="i"/> of the embedded visual-transform record, which lays its
