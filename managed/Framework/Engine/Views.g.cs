@@ -216,7 +216,6 @@ global using unsafe AreaSetAreaLightDirectionFn = delegate* unmanaged<nint, uint
 global using unsafe AreaSetFogColorsFn = delegate* unmanaged<nint, CX.Engine.VectorArg, CX.Engine.VectorArg, float, void>;
 global using unsafe AreaSetFogAmountFn = delegate* unmanaged<nint, int, int>;
 global using unsafe AreaSetFogFn = delegate* unmanaged<nint, int, CX.Engine.VectorArg, int>;
-global using unsafe AreaSetLightningDoneFn = delegate* unmanaged<nint, void>;
 global using unsafe AreaUpdateFn = delegate* unmanaged<nint, float, void>;
 global using unsafe HandleServerToPlayerAreaFn = delegate* unmanaged<nint, byte, int>;
 global using unsafe SceneInitBspFn = delegate* unmanaged<nint, int, int, int, byte, float, void>;
@@ -1924,8 +1923,6 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public int AreaSetGlobalLightDiffuse(int apply, VectorArg colour) => EngineFn.AreaSetGlobalLightDiffuse(Ptr, apply, colour);
     /// <inheritdoc cref="SymbolMap.AreaSetGlobalLightDirection"/>
     public int AreaSetGlobalLightDirection(VectorArg dir, byte coarse) => EngineFn.AreaSetGlobalLightDirection(Ptr, dir, coarse);
-    /// <inheritdoc cref="SymbolMap.AreaSetLightningDone"/>
-    public void AreaSetLightningDone() => EngineFn.AreaSetLightningDone(Ptr);
     /// <inheritdoc cref="SymbolMap.AreaSetTile"/>
     public void AreaSetTile(IntPtr tile, int id, int orientation, int height) => EngineFn.AreaSetTile(Ptr, tile, id, orientation, height);
     /// <inheritdoc cref="SymbolMap.AreaSetWeather"/>
@@ -1942,24 +1939,12 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref int DawnRunning => ref *(int*)(Ptr + EngineLayout.AreaDawnRunning);
     /// <inheritdoc cref="EngineLayout.AreaDayAmbient"/>
     public Span<float> DayAmbient { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayAmbient), 3); }
-    /// <inheritdoc cref="EngineLayout.AreaDayAmbientFade"/>
-    public ref int DayAmbientFade => ref *(int*)(Ptr + EngineLayout.AreaDayAmbientFade);
-    /// <inheritdoc cref="EngineLayout.AreaDayAmbientTarget"/>
-    public Span<float> DayAmbientTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayAmbientTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaDayDiffuse"/>
     public Span<float> DayDiffuse { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayDiffuse), 3); }
-    /// <inheritdoc cref="EngineLayout.AreaDayDiffuseFade"/>
-    public ref int DayDiffuseFade => ref *(int*)(Ptr + EngineLayout.AreaDayDiffuseFade);
-    /// <inheritdoc cref="EngineLayout.AreaDayDiffuseTarget"/>
-    public Span<float> DayDiffuseTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayDiffuseTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaDayFog"/>
     public Span<float> DayFog { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayFog), 3); }
     /// <inheritdoc cref="EngineLayout.AreaDayFogAmount"/>
     public ref byte DayFogAmount => ref *(byte*)(Ptr + EngineLayout.AreaDayFogAmount);
-    /// <inheritdoc cref="EngineLayout.AreaDayFogFade"/>
-    public ref int DayFogFade => ref *(int*)(Ptr + EngineLayout.AreaDayFogFade);
-    /// <inheritdoc cref="EngineLayout.AreaDayFogTarget"/>
-    public Span<float> DayFogTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaDayFogTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaDuskRunning"/>
     public ref int DuskRunning => ref *(int*)(Ptr + EngineLayout.AreaDuskRunning);
     /// <inheritdoc cref="EngineLayout.AreaFlags"/>
@@ -1972,30 +1957,14 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref int IsNight => ref *(int*)(Ptr + EngineLayout.AreaIsNight);
     /// <inheritdoc cref="EngineLayout.AreaMoonDirection"/>
     public Span<float> MoonDirection { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaMoonDirection), 3); }
-    /// <inheritdoc cref="EngineLayout.AreaMoonDirectionFade"/>
-    public ref int MoonDirectionFade => ref *(int*)(Ptr + EngineLayout.AreaMoonDirectionFade);
-    /// <inheritdoc cref="EngineLayout.AreaMoonDirectionTarget"/>
-    public Span<float> MoonDirectionTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaMoonDirectionTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightAmbient"/>
     public Span<float> NightAmbient { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightAmbient), 3); }
-    /// <inheritdoc cref="EngineLayout.AreaNightAmbientFade"/>
-    public ref int NightAmbientFade => ref *(int*)(Ptr + EngineLayout.AreaNightAmbientFade);
-    /// <inheritdoc cref="EngineLayout.AreaNightAmbientTarget"/>
-    public Span<float> NightAmbientTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightAmbientTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightDiffuse"/>
     public Span<float> NightDiffuse { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightDiffuse), 3); }
-    /// <inheritdoc cref="EngineLayout.AreaNightDiffuseFade"/>
-    public ref int NightDiffuseFade => ref *(int*)(Ptr + EngineLayout.AreaNightDiffuseFade);
-    /// <inheritdoc cref="EngineLayout.AreaNightDiffuseTarget"/>
-    public Span<float> NightDiffuseTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightDiffuseTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightFog"/>
     public Span<float> NightFog { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightFog), 3); }
     /// <inheritdoc cref="EngineLayout.AreaNightFogAmount"/>
     public ref byte NightFogAmount => ref *(byte*)(Ptr + EngineLayout.AreaNightFogAmount);
-    /// <inheritdoc cref="EngineLayout.AreaNightFogFade"/>
-    public ref int NightFogFade => ref *(int*)(Ptr + EngineLayout.AreaNightFogFade);
-    /// <inheritdoc cref="EngineLayout.AreaNightFogTarget"/>
-    public Span<float> NightFogTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaNightFogTarget), 3); }
     /// <inheritdoc cref="EngineLayout.AreaObjectCount"/>
     public ref int ObjectCount => ref *(int*)(Ptr + EngineLayout.AreaObjectCount);
     /// <inheritdoc cref="EngineLayout.AreaObjectIds"/>
@@ -2014,10 +1983,6 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref IntPtr StaticPlaceables => ref *(IntPtr*)(Ptr + EngineLayout.AreaStaticPlaceables);
     /// <inheritdoc cref="EngineLayout.AreaSunDirection"/>
     public Span<float> SunDirection { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaSunDirection), 3); }
-    /// <inheritdoc cref="EngineLayout.AreaSunDirectionFade"/>
-    public ref int SunDirectionFade => ref *(int*)(Ptr + EngineLayout.AreaSunDirectionFade);
-    /// <inheritdoc cref="EngineLayout.AreaSunDirectionTarget"/>
-    public Span<float> SunDirectionTarget { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaSunDirectionTarget), 3); }
     /// <inheritdoc cref="SymbolMap.TestDirectLine"/>
     public int TestDirectLine(CNWCCreature creature, VectorArg from, VectorArg to, float space, float height, int checkCreatures) => EngineFn.TestDirectLine(Ptr, creature.Ptr, from, to, space, height, checkCreatures);
     /// <inheritdoc cref="EngineLayout.AreaTileHeight"/>
@@ -2255,8 +2220,6 @@ public readonly unsafe partial struct CNWCModule(IntPtr ptr)
     public void ModuleSetTimeOfDayState(byte state, uint elapsedMs, int force) => EngineFn.ModuleSetTimeOfDayState(Ptr, state, elapsedMs, force);
     /// <inheritdoc cref="SymbolMap.TiltCamera"/>
     public void TiltCamera(float deg, int impulse) => EngineFn.TiltCamera(Ptr, deg, impulse);
-    /// <inheritdoc cref="EngineLayout.ModuleTimeOfDayState"/>
-    public ref byte TimeOfDayState => ref *(byte*)(Ptr + EngineLayout.ModuleTimeOfDayState);
     /// <inheritdoc cref="EngineLayout.ModuleTransitionElapsed"/>
     public ref float TransitionElapsed => ref *(float*)(Ptr + EngineLayout.ModuleTransitionElapsed);
     /// <inheritdoc cref="EngineLayout.ModuleTransitionLength"/>
@@ -5731,10 +5694,6 @@ public static unsafe class EngineFn
     private static bool _AreaSetFogDone;
     /// <inheritdoc cref="SymbolMap.AreaSetFog"/>
     public static AreaSetFogFn AreaSetFog => (AreaSetFogFn)(_AreaSetFogDone ? _AreaSetFog : Resolve(ref _AreaSetFog, ref _AreaSetFogDone, SymbolMap.AreaSetFog));
-    private static IntPtr _AreaSetLightningDone;
-    private static bool _AreaSetLightningDoneDone;
-    /// <inheritdoc cref="SymbolMap.AreaSetLightningDone"/>
-    public static AreaSetLightningDoneFn AreaSetLightningDone => (AreaSetLightningDoneFn)(_AreaSetLightningDoneDone ? _AreaSetLightningDone : Resolve(ref _AreaSetLightningDone, ref _AreaSetLightningDoneDone, SymbolMap.AreaSetLightningDone));
     private static IntPtr _AreaUpdate;
     private static bool _AreaUpdateDone;
     /// <inheritdoc cref="SymbolMap.AreaUpdate"/>
@@ -8148,12 +8107,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.AreaSetFog"/>; returns the slot holding the next layer, or null.</summary>
     public static AreaSetFogFn* ChainAreaSetFog(this HookService h, AreaSetFogFn handler, int priority) =>
         (AreaSetFogFn*)h.Chain(SymbolMap.AreaSetFog, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.AreaSetLightningDone"/>; returns the original, or null.</summary>
-    public static AreaSetLightningDoneFn InstallAreaSetLightningDone(this HookService h, AreaSetLightningDoneFn handler) =>
-        (AreaSetLightningDoneFn)h.Install(SymbolMap.AreaSetLightningDone, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.AreaSetLightningDone"/>; returns the slot holding the next layer, or null.</summary>
-    public static AreaSetLightningDoneFn* ChainAreaSetLightningDone(this HookService h, AreaSetLightningDoneFn handler, int priority) =>
-        (AreaSetLightningDoneFn*)h.Chain(SymbolMap.AreaSetLightningDone, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.AreaUpdate"/>; returns the original, or null.</summary>
     public static AreaUpdateFn InstallAreaUpdate(this HookService h, AreaUpdateFn handler) =>
         (AreaUpdateFn)h.Install(SymbolMap.AreaUpdate, (IntPtr)handler);

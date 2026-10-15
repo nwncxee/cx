@@ -1166,7 +1166,7 @@ internal static unsafe class SymbolMap
     [Fn("void(CNWCArea this, byte kind)")]
     public const string AreaStopWeather = "_ZN8CNWCArea11StopWeatherEh";
 
-    // ---- the day/night machine (CX-285's trigger table). Three layers: CNWCModule::SetTimeOfDayState is the
+    // ---- the day/night machine. Three layers: CNWCModule::SetTimeOfDayState is the
     //      state machine (1 day, 2 night, 3 dawn, 4 dusk); the four CNWCArea::SetAs* switch the area between
     //      its two palettes and start/stop a transition; UpdateDayNightCycle crossfades them every frame, and
     //      the five Set*Light*/SetFog* leaves are where the server's packets and all of the above land.
@@ -1279,17 +1279,9 @@ internal static unsafe class SymbolMap
     [Fn("int(CNWCArea this, int amount, VectorArg colour)")]
     public const string AreaSetFog = "_ZN8CNWCArea6SetFogEi6Vector";
     /// <summary>
-    /// <c>CNWCArea::SetLightningDone()</c> @0x704e60 (rva 0x7e5eb0) -- the end of a client-side lightning flash:
-    /// restores <see cref="ShadowAlpha"/> from the engine's cached copy, hides the flash model and rolls the next
-    /// delay. ABI <c>(this)</c>. LINUX ONLY as a hook: MSVC inlined the only call site into
-    /// <see cref="AreaUpdate"/>, so the Windows body is reachable but never entered.
-    /// </summary>
-    [Fn("void(CNWCArea this)")]
-    public const string AreaSetLightningDone = "_ZN8CNWCArea16SetLightningDoneEv";
-    /// <summary>
     /// <c>CNWCArea::Update(float dt)</c> @0x707560 (rva 0x7e7da0) -- the area's per-frame step, and the only site
-    /// of the lightning flash START (inline on both builds: screen fade, <c>flash0N</c> model, thunder, shadow
-    /// alpha x 0.4). It also drives the light/fog fade timers and calls
+    /// of the lightning flash (inline on both builds: screen fade, <c>flash0N</c> model, thunder, shadow alpha
+    /// x 0.4, and its end). It also drives the light/fog fade timers and calls
     /// <see cref="AreaUpdateDayNightCycle"/>. HOT: once per frame. ABI <c>(this, float)</c>.
     /// </summary>
     [Fn("void(CNWCArea this, float dt)")]
@@ -3286,9 +3278,6 @@ internal static unsafe class SymbolMap
         [AreaSetFog]                  = At(),
         [HandleServerToPlayerArea]    = At(),
         [ShadowAlpha]                 = Nm("?shadowalpha@@3MA"),
-        // The body IS there, at rva 0x7e5eb0, but MSVC inlined CNWCArea::Update's one call to it, so nothing
-        // on Windows ever enters it: a hook would be silently dead. The Windows edge is AreaUpdate.
-        [AreaSetLightningDone] = LinuxOnly("MSVC inlined it into CNWCArea::Update; hook AreaUpdate on Windows"),
 
         // --- the rest of the table. The 142 Nm rows below are MECHANICAL -- MSVC mangling carries the
         // return type Itanium drops, so llvm-undname over nwmain.exe's 18237 exports pairs on

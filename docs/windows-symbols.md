@@ -534,13 +534,10 @@ Seeds:
 | `CNWCMessage::HandleServerToPlayerArea` | `0x7a79b0` | `0x76d910` | sole caller of `LoadArea` (rva `0x7dba70`), `SetAsDawn`, `SetAsDusk`, `SetAreaLightColor`, `SetFogColors` |
 | `shadowalpha` (data) | `0x18aa17c` | — | name-exported: `?shadowalpha@@3MA` |
 
-**One declared Linux-only.** `CNWCArea::SetLightningDone` exists on Windows at rva `0x7e5eb0`
-with the identical body, but MSVC **inlined its only call site** into `CNWCArea::Update`: the
-shadow-alpha restore, the `rand() % 5000 / 1000 + 5.0` re-arm and the flash hide all appear
-in `Update` itself, and the standalone body has no code reference (only the CFG function
-table). A hook there would be silently dead, so the row is `LinuxOnly` and the Windows edge is
-`AreaUpdate`. The flash **start** is inline in `Update` on *both* builds, so there is no
-`StartLightning` leaf to hook anywhere.
+**The lightning flash has no leaf on Windows.** `CNWCArea::SetLightningDone` exists at rva
+`0x7e5eb0`, but MSVC inlined its only call site into `CNWCArea::Update`, so the standalone body
+is never entered; the flash start is inline in `Update` on both builds. A consumer watches the
+flash from `AreaUpdate`.
 
 Vtable slots seen in passing, all consistent with #433's −8 rule for `CNWCArea`:
 `SetFog` Linux `vtbl+0x30` / Windows `+0x28`, `SetGlobalLightDiffuse` `+0x50` / `+0x40`,
