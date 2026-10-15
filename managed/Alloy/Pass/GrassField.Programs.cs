@@ -61,7 +61,7 @@ internal static unsafe partial class GrassField
     private static bool EnsureBuffers()
     {
         if (_gl.Vao != 0) return true;
-        _faces ??= new float[MaxFaces * FaceFloats];
+        _faces ??= new GrassFace[MaxFaces];
 
         // The card template: two crossed quads in blade-local space. x/y span [-0.5, 0.5] (one quad along x,
         // one along y), z runs 0 at the root to 1 at the tip, and the UVs are the 0..1 of one atlas cell.
@@ -94,7 +94,7 @@ internal static unsafe partial class GrassField
         if (vao == 0) return _down.Fail(_log, "the grass buffers could not be created", "no grass draws");
         uint template = b[0];
         _gl.FaceBuf = b[1]; _gl.PatchBuf = b[2]; _gl.MatBuf = b[3]; _gl.OutBuf = b[4]; _gl.CmdBuf = b[5]; _gl.StatBuf = b[6];
-        Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * FaceFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
+        Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * sizeof(GrassFace)), null, Gl.DYNAMIC_DRAW);
         Gl.NamedBufferData(_gl.CmdBuf, (IntPtr)(Cmds * 4 * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
         Gl.ZeroBuffer(_gl.CmdBuf, Cmds * 4 * sizeof(uint));   // the shadow and motion draws read last frame's commands
         const uint flags = Gl.MAP_READ_BIT | Gl.MAP_PERSISTENT_BIT | Gl.MAP_COHERENT_BIT;

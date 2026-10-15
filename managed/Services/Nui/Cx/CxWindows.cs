@@ -97,7 +97,7 @@ internal static unsafe class CxWindows
         var win = new Nui__JSON__JsonWindow(self);
         string? json = NuiJsonRead.Dump((IntPtr)Unsafe.AsPointer(ref win.WindowJson));
         if (json == null || !json.Contains("\"cx\"", StringComparison.Ordinal)) return;
-        string id = NuiJsonRead.ReadString((byte*)Unsafe.AsPointer(ref win.WindowName), OperatingSystem.IsWindows()) ?? "";
+        string id = NuiJsonRead.ReadString((byte*)Unsafe.AsPointer(ref win.WindowName)) ?? "";
         if (id.Length == 0 || (s.Windows.Count >= MaxWindows && !s.Windows.ContainsKey(self))) return;
         Sweep(s, Environment.TickCount64, true);
         if (s.Windows.TryGetValue(self, out CxWindow? old)) Release(s, self, old);
@@ -211,7 +211,7 @@ internal static unsafe class CxWindows
         byte* name = (byte*)Unsafe.AsPointer(ref update.Name);
         foreach (BoundSetting b in w.Binds)
         {
-            if (!NuiJsonRead.StringIs(name, OperatingSystem.IsWindows(), b.NameUtf8)) continue;
+            if (!NuiJsonRead.StringIs(name, StdAbi.Native, b.NameUtf8)) continue;
             string? text = NuiJsonRead.Dump((IntPtr)Unsafe.AsPointer(ref update.Json));
             if (text == null) continue;
             try

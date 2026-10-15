@@ -3,10 +3,9 @@ using CX.Framework;
 
 namespace CX.Engine;
 
-/// <summary>Where one compiler keeps the parts of a <c>std::string</c>, picked once when the view is made. libstdc++: a data
-/// pointer, the length at +8 and a 16-byte inline buffer at +16 that also holds the capacity of a heap string; the pointer is
-/// always valid. MSVC: the inline buffer first, then the length at +16 and the capacity at +24; the pointer is valid only
-/// past 15 characters.</summary>
+/// <summary>Where one compiler keeps the parts of a <c>std::string</c>. libstdc++: a data pointer, the length at +8 and a
+/// 16-byte inline buffer at +16 that also holds the capacity of a heap string; the pointer is always valid. MSVC: the inline
+/// buffer first, then the length at +16 and the capacity at +24; the pointer is valid only past 15 characters.</summary>
 internal readonly struct StdStringShape(int sizeAt, int capAt, int inlineAt)
 {
     /// <summary>Offset of the length.</summary>
@@ -15,11 +14,32 @@ internal readonly struct StdStringShape(int sizeAt, int capAt, int inlineAt)
     public readonly int CapAt = capAt;
     /// <summary>Offset of the inline buffer.</summary>
     public readonly int InlineAt = inlineAt;
+}
 
-    /// <summary>libstdc++'s shape.</summary>
-    public static readonly StdStringShape Gcc = new(8, -1, 16);
-    /// <summary>MSVC's shape.</summary>
-    public static readonly StdStringShape Msvc = new(16, 24, 0);
+/// <summary>One compiler's container layouts: the <c>std::string</c> and the <c>std::map</c> tree nodes. Chosen once, when a
+/// view is made: the running compiler's (<see cref="Native"/>), or the other one for a check that builds both. libstdc++'s
+/// tree keeps its root in the map header and ends a branch with null; MSVC's keeps a head node whose parent is the root and
+/// ends a branch with that head, whose <c>_Isnil</c> byte is set.</summary>
+public readonly struct StdAbi
+{
+    internal readonly StdStringShape String;
+    internal readonly bool HeadNode;
+    internal readonly int RootAt, HeadParentAt, LeftAt, ParentAt, RightAt, NilAt;
+    /// <summary>The compiler's name, for a check's messages.</summary>
+    public readonly string Name;
+
+    private StdAbi(string name, StdStringShape str, bool headNode, int rootAt, int headParentAt, int leftAt, int parentAt, int rightAt, int nilAt)
+    {
+        Name = name; String = str; HeadNode = headNode; RootAt = rootAt; HeadParentAt = headParentAt;
+        LeftAt = leftAt; ParentAt = parentAt; RightAt = rightAt; NilAt = nilAt;
+    }
+
+    /// <summary>libstdc++'s layouts.</summary>
+    public static readonly StdAbi Gcc = new("libstdc++", new(8, -1, 16), false, 16, 0, 16, 8, 24, 0);
+    /// <summary>MSVC's layouts.</summary>
+    public static readonly StdAbi Msvc = new("MSVC", new(16, 24, 0), true, 0, 8, 0, 8, 16, 25);
+    /// <summary>The running compiler's.</summary>
+    public static StdAbi Native => OperatingSystem.IsWindows() ? Msvc : Gcc;
 }
 
 /// <summary>A <c>std::string</c> in one compiler's shape, 32 bytes on both. The shape is chosen when the view is made: the
@@ -36,13 +56,13 @@ public readonly unsafe struct NuiStdString
     public const int InlineMax = 15;
 
     /// <summary>Views the string at <paramref name="ptr"/> in the running compiler's shape.</summary>
-    public NuiStdString(byte* ptr) : this(ptr, OperatingSystem.IsWindows()) { }
+    public NuiStdString(byte* ptr) : this(ptr, StdAbi.Native) { }
 
-    /// <summary>Views the string at <paramref name="ptr"/> in MSVC's shape or libstdc++'s.</summary>
-    public NuiStdString(byte* ptr, bool msvc)
+    /// <summary>Views the string at <paramref name="ptr"/> in <paramref name="abi"/>'s shape.</summary>
+    public NuiStdString(byte* ptr, StdAbi abi)
     {
         Ptr = ptr;
-        _shape = msvc ? StdStringShape.Msvc : StdStringShape.Gcc;
+        _shape = abi.String;
     }
 
     /// <summary>The character count.</summary>
@@ -77,10 +97,22 @@ public readonly unsafe struct NuiStdString
 
 /// <summary>An <c>nlohmann::json</c> value: 16 bytes on both builds, a type byte and then the payload at +8. Values of an array
 /// lie end to end.</summary>
-public readonly unsafe struct NuiJsonValue(byte* ptr)
+public readonly unsafe struct NuiJsonValue
 {
     /// <summary>The address of the value.</summary>
-    public readonly byte* Ptr = ptr;
+    public readonly byte* Ptr;
+    private readonly StdAbi _abi;
+
+    /// <summary>Views the value at <paramref name="ptr"/> with the running compiler's containers.</summary>
+    public NuiJsonValue(byte* ptr) : this(ptr, StdAbi.Native) { }
+
+    /// <summary>Views the value at <paramref name="ptr"/> with <paramref name="abi"/>'s containers.</summary>
+    public NuiJsonValue(byte* ptr, StdAbi abi)
+    {
+        Ptr = ptr;
+        _abi = abi;
+    }
+
     /// <summary>The value's size.</summary>
     public const int Bytes = 16;
     private const int PayloadAt = 8;
@@ -89,6 +121,10 @@ public readonly unsafe struct NuiJsonValue(byte* ptr)
     public ref byte Type => ref *Ptr;
     /// <summary>The payload read as a pointer: the object's map, the array's vector or the string.</summary>
     public ref byte* Pointer => ref *(byte**)(Ptr + PayloadAt);
+    /// <summary>The payload as a string.</summary>
+    public NuiStdString String => new(*(byte**)(Ptr + PayloadAt), _abi);
+    /// <summary>The payload as an object's map.</summary>
+    public NuiJsonMap Map => new(*(byte**)(Ptr + PayloadAt), _abi);
     /// <summary>The payload read as a boolean byte.</summary>
     public ref byte Bool => ref Ptr[PayloadAt];
     /// <summary>The payload read as a signed integer.</summary>
@@ -100,9 +136,11 @@ public readonly unsafe struct NuiJsonValue(byte* ptr)
     /// <summary>The payload's address.</summary>
     public byte* PayloadPtr => Ptr + PayloadAt;
     /// <summary>The value <paramref name="i"/> places after this one in an array.</summary>
-    public NuiJsonValue At(int i) => new(Ptr + i * Bytes);
+    public NuiJsonValue At(int i) => new(Ptr + i * Bytes, _abi);
+    /// <summary>The value at <paramref name="first"/>, an element of this value's array, in the same containers.</summary>
+    public NuiJsonValue Elements(byte* first) => new(first, _abi);
     /// <summary>The next value in an array.</summary>
-    public NuiJsonValue Next() => new(Ptr + Bytes);
+    public NuiJsonValue Next() => new(Ptr + Bytes, _abi);
     /// <summary>Copies another value's 16 bytes over this one.</summary>
     public void CopyFrom(NuiJsonValue other) => Buffer.MemoryCopy(other.Ptr, Ptr, Bytes, Bytes);
 }
@@ -125,79 +163,84 @@ public readonly unsafe struct NuiJsonVector(byte* ptr)
 
 /// <summary>A <c>std::map&lt;std::string, json&gt;</c>: libstdc++'s red-black tree (the root in the header at +16) or MSVC's (a
 /// head node whose parent is the root).</summary>
-public readonly unsafe struct NuiJsonMap(byte* ptr)
+public readonly unsafe struct NuiJsonMap
 {
     /// <summary>The address of the map object.</summary>
-    public readonly byte* Ptr = ptr;
+    public readonly byte* Ptr;
+    private readonly StdAbi _abi;
     /// <summary>The object's size.</summary>
     public const int Bytes = 48;
-    private const int GccRoot = 16, MsvcParent = 8;
+
+    /// <summary>Views the map at <paramref name="ptr"/> in <paramref name="abi"/>'s layout.</summary>
+    public NuiJsonMap(byte* ptr, StdAbi abi)
+    {
+        Ptr = ptr;
+        _abi = abi;
+    }
 
     /// <summary>The root node, or null for an empty tree. <paramref name="head"/> is MSVC's head node (the end marker), null on libstdc++.</summary>
-    public NuiJsonMapNode Root(bool msvc, out NuiJsonMapNode head)
+    public NuiJsonMapNode Root(out NuiJsonMapNode head)
     {
-        if (!msvc)
+        if (!_abi.HeadNode)
         {
             head = default;
-            return new(*(byte**)(Ptr + GccRoot));
+            return new(*(byte**)(Ptr + _abi.RootAt), _abi);
         }
-        head = new(*(byte**)Ptr);
-        return head.Ptr == null ? default : new(*(byte**)(head.Ptr + MsvcParent));
+        head = new(*(byte**)(Ptr + _abi.RootAt), _abi);
+        return head.Ptr == null ? default : new(*(byte**)(head.Ptr + _abi.HeadParentAt), _abi);
     }
 
     /// <summary>Points the map at <paramref name="head"/> (MSVC) with <paramref name="root"/> as its root, or at the root alone (libstdc++).</summary>
-    public void SetRoot(bool msvc, NuiJsonMapNode root, NuiJsonMapNode head)
+    public void SetRoot(NuiJsonMapNode root, NuiJsonMapNode head)
     {
-        if (msvc)
+        if (_abi.HeadNode)
         {
-            *(byte**)Ptr = head.Ptr;
-            *(byte**)(head.Ptr + MsvcParent) = root.Ptr == null ? head.Ptr : root.Ptr;
+            *(byte**)(Ptr + _abi.RootAt) = head.Ptr;
+            *(byte**)(head.Ptr + _abi.HeadParentAt) = root.Ptr == null ? head.Ptr : root.Ptr;
         }
-        else *(byte**)(Ptr + GccRoot) = root.Ptr;
+        else *(byte**)(Ptr + _abi.RootAt) = root.Ptr;
     }
 }
 
 /// <summary>A node of <see cref="NuiJsonMap"/>: the compiler's 32-byte tree header, then the key string and the value.</summary>
-public readonly unsafe struct NuiJsonMapNode(byte* ptr)
+public readonly unsafe struct NuiJsonMapNode
 {
     /// <summary>The address of the node.</summary>
-    public readonly byte* Ptr = ptr;
+    public readonly byte* Ptr;
+    private readonly StdAbi _abi;
     /// <summary>The node's size.</summary>
     public const int Bytes = 80;
-    private const int GccParent = 8, GccLeft = 16, GccRight = 24;
-    private const int MsvcLeft = 0, MsvcParent = 8, MsvcRight = 16, MsvcIsNil = 25;
     private const int KeyAt = 32, ValueAt = 64;
 
-    /// <summary>The key string, in the shape of the compiler whose tree this is.</summary>
-    public NuiStdString Key(bool msvc) => new(Ptr + KeyAt, msvc);
+    /// <summary>Views the node at <paramref name="ptr"/> in <paramref name="abi"/>'s layout.</summary>
+    public NuiJsonMapNode(byte* ptr, StdAbi abi)
+    {
+        Ptr = ptr;
+        _abi = abi;
+    }
+
+    /// <summary>The key string.</summary>
+    public NuiStdString Key => new(Ptr + KeyAt, _abi);
     /// <summary>The value.</summary>
-    public NuiJsonValue Value => new(Ptr + ValueAt);
+    public NuiJsonValue Value => new(Ptr + ValueAt, _abi);
     /// <summary>The left child.</summary>
-    public NuiJsonMapNode Left(bool msvc) => new(*(byte**)(Ptr + (msvc ? MsvcLeft : GccLeft)));
+    public NuiJsonMapNode Left => new(*(byte**)(Ptr + _abi.LeftAt), _abi);
     /// <summary>The right child.</summary>
-    public NuiJsonMapNode Right(bool msvc) => new(*(byte**)(Ptr + (msvc ? MsvcRight : GccRight)));
+    public NuiJsonMapNode Right => new(*(byte**)(Ptr + _abi.RightAt), _abi);
 
     /// <summary>Whether a branch ends here: libstdc++ ends one with a null, MSVC with the head node, whose <c>_Isnil</c> byte is set.</summary>
-    public bool IsEnd(NuiJsonMapNode head, bool msvc) => Ptr == null || (msvc && (Ptr == head.Ptr || Ptr[MsvcIsNil] != 0));
+    public bool IsEnd(NuiJsonMapNode head) => Ptr == null || (_abi.HeadNode && (Ptr == head.Ptr || Ptr[_abi.NilAt] != 0));
 
     /// <summary>Marks this node as MSVC's head (end marker).</summary>
-    public void MarkHead() => Ptr[MsvcIsNil] = 1;
+    public void MarkHead() { if (_abi.HeadNode) Ptr[_abi.NilAt] = 1; }
 
     /// <summary>Links the node into a tree; a missing link is null on libstdc++ and the head node on MSVC.</summary>
-    public void Link(bool msvc, NuiJsonMapNode left, NuiJsonMapNode parent, NuiJsonMapNode right, NuiJsonMapNode head)
+    public void Link(NuiJsonMapNode left, NuiJsonMapNode parent, NuiJsonMapNode right, NuiJsonMapNode head)
     {
-        if (msvc)
-        {
-            *(byte**)(Ptr + MsvcLeft) = left.Ptr == null ? head.Ptr : left.Ptr;
-            *(byte**)(Ptr + MsvcParent) = parent.Ptr == null ? head.Ptr : parent.Ptr;
-            *(byte**)(Ptr + MsvcRight) = right.Ptr == null ? head.Ptr : right.Ptr;
-        }
-        else
-        {
-            *(byte**)(Ptr + GccParent) = parent.Ptr;
-            *(byte**)(Ptr + GccLeft) = left.Ptr;
-            *(byte**)(Ptr + GccRight) = right.Ptr;
-        }
+        byte* none = _abi.HeadNode ? head.Ptr : null;
+        *(byte**)(Ptr + _abi.LeftAt) = left.Ptr == null ? none : left.Ptr;
+        *(byte**)(Ptr + _abi.ParentAt) = parent.Ptr == null ? none : parent.Ptr;
+        *(byte**)(Ptr + _abi.RightAt) = right.Ptr == null ? none : right.Ptr;
     }
 }
 
@@ -217,7 +260,7 @@ public readonly unsafe ref struct NuiBindQueue(byte* queue)
     /// <summary>Walks the queue without allocating.</summary>
     public ref struct Enumerator
     {
-        private readonly bool _msvc;
+        private readonly bool _windows;
         private readonly byte** _map;
         private readonly ulong _off, _mask, _size;
         private ulong _i;
@@ -227,9 +270,9 @@ public readonly unsafe ref struct NuiBindQueue(byte* queue)
 
         internal Enumerator(byte* q)
         {
-            _msvc = OperatingSystem.IsWindows();
+            _windows = OperatingSystem.IsWindows();
             Current = default;
-            if (_msvc)
+            if (_windows)
             {
                 _size = *(ulong*)(q + MsvcSize);
                 _off = *(ulong*)(q + MsvcOff);
@@ -254,7 +297,7 @@ public readonly unsafe ref struct NuiBindQueue(byte* queue)
             while (true)
             {
                 byte* rec;
-                if (_msvc)
+                if (_windows)
                 {
                     if (_i >= _size) return false;
                     rec = _map[(_off + _i++) & _mask];

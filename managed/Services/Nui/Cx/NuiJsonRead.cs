@@ -27,18 +27,18 @@ internal static unsafe partial class NuiJsonRead
     /// <summary>One dump's counters.</summary>
     private struct Budget { public int Nodes; public bool Over; }
 
-    /// <summary>The value at <paramref name="json"/> as compact JSON text, or null when it passed a bound. <paramref name="msvc"/>
+    /// <summary>The value at <paramref name="json"/> as compact JSON text, or null when it passed a bound. <paramref name="abi"/>
     /// picks the container shapes: the running OS by default.</summary>
-    internal static string? Dump(IntPtr json, bool? msvc = null)
+    internal static string? Dump(IntPtr json, StdAbi? abi = null)
     {
         var sb = new StringBuilder();
         var b = new Budget();
-        Write(sb, new NuiJsonValue((byte*)json), msvc ?? OperatingSystem.IsWindows(), 0, ref b);
+        Write(sb, new NuiJsonValue((byte*)json, abi ?? StdAbi.Native), 0, ref b);
         return b.Over ? null : sb.ToString();
     }
 
     /// <summary>The text of a <c>std::string</c> at <paramref name="s"/>, or null when its length is not credible.</summary>
-    internal static string? ReadString(byte* s, bool msvc) => ReadString(new NuiStdString(s, msvc));
+    internal static string? ReadString(byte* s, StdAbi? abi = null) => ReadString(new NuiStdString(s, abi ?? StdAbi.Native));
 
     private static string? ReadString(NuiStdString s)
     {
@@ -49,9 +49,9 @@ internal static unsafe partial class NuiJsonRead
     }
 
     /// <summary>Whether the <c>std::string</c> at <paramref name="s"/> holds exactly the bytes <paramref name="utf8"/>.</summary>
-    internal static bool StringIs(byte* s, bool msvc, ReadOnlySpan<byte> utf8)
+    internal static bool StringIs(byte* s, StdAbi abi, ReadOnlySpan<byte> utf8)
     {
-        var str = new NuiStdString(s, msvc);
+        var str = new NuiStdString(s, abi);
         if (str.Length != (ulong)utf8.Length) return false;
         byte* p = str.Chars;
         return p != null && new ReadOnlySpan<byte>(p, utf8.Length).SequenceEqual(utf8);
@@ -59,50 +59,50 @@ internal static unsafe partial class NuiJsonRead
 
     /// <summary>The first object in the value at <paramref name="json"/> whose <c>bind</c> member is the string <paramref name="name"/>:
     /// the address of that object's own value, which the engine's <c>Bind</c> reads. Zero when there is none.</summary>
-    internal static IntPtr FindBind(IntPtr json, string name, bool? msvc = null)
+    internal static IntPtr FindBind(IntPtr json, string name, StdAbi? abi = null)
     {
         int budget = MaxNodes;
-        return (IntPtr)Find(new NuiJsonValue((byte*)json), name, msvc ?? OperatingSystem.IsWindows(), 0, ref budget).Ptr;
+        return (IntPtr)Find(new NuiJsonValue((byte*)json, abi ?? StdAbi.Native), name, 0, ref budget).Ptr;
     }
 
-    private static NuiJsonValue Find(NuiJsonValue v, string name, bool msvc, int depth, ref int budget)
+    private static NuiJsonValue Find(NuiJsonValue v, string name, int depth, ref int budget)
     {
         if (v.Ptr == null || --budget < 0 || depth > MaxDepth) return default;
         if (v.Type == TArray)
         {
             var vec = new NuiJsonVector(v.Pointer);
             if (vec.Ptr == null || vec.End < vec.Begin) return default;
-            for (var e = new NuiJsonValue(vec.Begin); e.Ptr < vec.End && budget > 0; e = e.Next())
-                if (Find(e, name, msvc, depth + 1, ref budget) is var f && f.Ptr != null) return f;
+            for (var e = v.Elements(vec.Begin); e.Ptr < vec.End && budget > 0; e = e.Next())
+                if (Find(e, name, depth + 1, ref budget) is var f && f.Ptr != null) return f;
             return default;
         }
         if (v.Type != TObject) return default;
-        var map = new NuiJsonMap(v.Pointer);
-        return map.Ptr == null ? default : FindIn(map.Root(msvc, out var head), head, v, name, msvc, depth, 0, ref budget);
+        var map = v.Map;
+        return map.Ptr == null ? default : FindIn(map.Root(out var head), head, v, name, depth, 0, ref budget);
     }
 
-    private static NuiJsonValue FindIn(NuiJsonMapNode n, NuiJsonMapNode head, NuiJsonValue owner, string name, bool msvc, int depth, int level, ref int budget)
+    private static NuiJsonValue FindIn(NuiJsonMapNode n, NuiJsonMapNode head, NuiJsonValue owner, string name, int depth, int level, ref int budget)
     {
-        if (n.IsEnd(head, msvc) || --budget < 0 || level > MaxDepth) return default;
-        var hit = FindIn(n.Left(msvc), head, owner, name, msvc, depth, level + 1, ref budget);
+        if (n.IsEnd(head) || --budget < 0 || level > MaxDepth) return default;
+        var hit = FindIn(n.Left, head, owner, name, depth, level + 1, ref budget);
         if (hit.Ptr != null) return hit;
         var val = n.Value;
-        if (ReadString(n.Key(msvc)) == "bind" && val.Type == TString)
+        if (ReadString(n.Key) == "bind" && val.Type == TString)
         {
             byte* str = val.Pointer;
-            if (str != null && ReadString(str, msvc) == name) return owner;
+            if (str != null && ReadString(val.String) == name) return owner;
         }
-        else if (Find(val, name, msvc, depth + 1, ref budget) is var f && f.Ptr != null) return f;
-        return FindIn(n.Right(msvc), head, owner, name, msvc, depth, level + 1, ref budget);
+        else if (Find(val, name, depth + 1, ref budget) is var f && f.Ptr != null) return f;
+        return FindIn(n.Right, head, owner, name, depth, level + 1, ref budget);
     }
 
-    private static void Write(StringBuilder sb, NuiJsonValue v, bool msvc, int depth, ref Budget b)
+    private static void Write(StringBuilder sb, NuiJsonValue v, int depth, ref Budget b)
     {
         if (b.Over) return;
         if (++b.Nodes > MaxNodes || depth > MaxDepth || sb.Length > MaxText) { b.Over = true; return; }
         switch (v.Type)
         {
-            case TObject: WriteObject(sb, new NuiJsonMap(v.Pointer), msvc, depth, ref b); break;
+            case TObject: WriteObject(sb, v.Map, depth, ref b); break;
             case TArray:
             {
                 var vec = new NuiJsonVector(v.Pointer);
@@ -110,10 +110,10 @@ internal static unsafe partial class NuiJsonRead
                 byte* first = vec.Begin, last = vec.End;
                 if (last < first || (last - first) / NuiJsonValue.Bytes > MaxNodes) { b.Over = true; return; }
                 sb.Append('[');
-                for (var e = new NuiJsonValue(first); e.Ptr < last; e = e.Next())
+                for (var e = v.Elements(first); e.Ptr < last; e = e.Next())
                 {
                     if (e.Ptr != first) sb.Append(',');
-                    Write(sb, e, msvc, depth + 1, ref b);
+                    Write(sb, e, depth + 1, ref b);
                 }
                 sb.Append(']');
                 break;
@@ -121,7 +121,7 @@ internal static unsafe partial class NuiJsonRead
             case TString:
             {
                 byte* str = v.Pointer;
-                string? s = str == null ? null : ReadString(str, msvc);
+                string? s = str == null ? null : ReadString(v.String);
                 if (s == null) { b.Over = true; return; }
                 Quote(sb, s);
                 break;
@@ -140,29 +140,29 @@ internal static unsafe partial class NuiJsonRead
         }
     }
 
-    private static void WriteObject(StringBuilder sb, NuiJsonMap map, bool msvc, int depth, ref Budget b)
+    private static void WriteObject(StringBuilder sb, NuiJsonMap map, int depth, ref Budget b)
     {
         if (map.Ptr == null) { b.Over = true; return; }
         sb.Append('{');
         bool first = true;
-        Walk(sb, map.Root(msvc, out var head), head, msvc, ref first, depth, 0, ref b);
+        Walk(sb, map.Root(out var head), head, ref first, depth, 0, ref b);
         sb.Append('}');
     }
 
     /// <summary>Visits a tree node and both subtrees, smallest key first.</summary>
-    private static void Walk(StringBuilder sb, NuiJsonMapNode n, NuiJsonMapNode head, bool msvc, ref bool first, int depth, int level, ref Budget b)
+    private static void Walk(StringBuilder sb, NuiJsonMapNode n, NuiJsonMapNode head, ref bool first, int depth, int level, ref Budget b)
     {
-        if (b.Over || n.IsEnd(head, msvc)) return;
+        if (b.Over || n.IsEnd(head)) return;
         if (++b.Nodes > MaxNodes || level > MaxDepth) { b.Over = true; return; }
-        Walk(sb, n.Left(msvc), head, msvc, ref first, depth, level + 1, ref b);
-        string? key = ReadString(n.Key(msvc));
+        Walk(sb, n.Left, head, ref first, depth, level + 1, ref b);
+        string? key = ReadString(n.Key);
         if (key == null) { b.Over = true; return; }
         if (!first) sb.Append(',');
         first = false;
         Quote(sb, key);
         sb.Append(':');
-        Write(sb, n.Value, msvc, depth + 1, ref b);
-        Walk(sb, n.Right(msvc), head, msvc, ref first, depth, level + 1, ref b);
+        Write(sb, n.Value, depth + 1, ref b);
+        Walk(sb, n.Right, head, ref first, depth, level + 1, ref b);
     }
 
     private static void Quote(StringBuilder sb, string s) => sb.Append('"').Append(JsonEncodedText.Encode(s, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).Value).Append('"');

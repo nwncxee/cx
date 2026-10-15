@@ -391,11 +391,11 @@ internal static unsafe class CasterGather
 
     /// <summary>The per-slot caster sphere upload (<c>AlloyRenderer._dCastSph</c>), beside the colour cull's: always
     /// geometric, so a posed skin or dangly part the colour cull exempts is still reach-culled per shadow view.</summary>
-    internal static void UploadCasterSpheres(float* spheres, int slots)
+    internal static void UploadCasterSpheres(Sphere* spheres, int slots)
     {
         if (slots <= 0 || Gl.NamedBufferSubData == null) return;
         if (_gl.CastBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.CastBuf = b; _gl.CastCap = 0; }
-        var size = (IntPtr)((long)slots * 4 * sizeof(float));
+        var size = (IntPtr)((long)slots * sizeof(Sphere));
         if (slots > _gl.CastCap) { Gl.NamedBufferData(_gl.CastBuf, size, null, Gl.DYNAMIC_DRAW); _gl.CastCap = slots; }
         Gl.NamedBufferSubData(_gl.CastBuf, IntPtr.Zero, size, spheres);
     }

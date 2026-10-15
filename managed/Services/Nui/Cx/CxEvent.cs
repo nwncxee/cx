@@ -47,28 +47,27 @@ internal static unsafe class CxEvent
     }
 
     /// <summary>A 32-byte <c>std::string</c> holding <paramref name="text"/> (UTF-8, cut at <see cref="MaxText"/> bytes).</summary>
-    internal static byte* NewString(string text, List<IntPtr> mem, bool? msvc = null)
+    internal static byte* NewString(string text, List<IntPtr> mem, StdAbi? abi = null)
     {
         byte[] b = Encoding.UTF8.GetBytes(text);
         int n = Math.Min(b.Length, MaxText);
-        bool win = msvc ?? OperatingSystem.IsWindows();
-        var s = new NuiStdString(Alloc(mem, NuiStdString.Bytes), win);
+        var s = new NuiStdString(Alloc(mem, NuiStdString.Bytes), abi ?? StdAbi.Native);
         byte* chars = n <= NuiStdString.InlineMax ? s.Inline : Alloc(mem, n + 1);
         for (int i = 0; i < n; i++) chars[i] = b[i];
         s.Set(chars, (ulong)n);
         return s.Ptr;
     }
 
-    /// <summary>A JSON array of strings: the value, its vector, and a string value for each item. <paramref name="msvc"/> picks the
+    /// <summary>A JSON array of strings: the value, its vector, and a string value for each item. <paramref name="abi"/> picks the
     /// container shapes: the running OS when null.</summary>
-    internal static byte* NewArray(List<IntPtr> mem, bool? msvc, params string[] items)
+    internal static byte* NewArray(List<IntPtr> mem, StdAbi? abi, params string[] items)
     {
         var vec = new NuiJsonVector(Alloc(mem, NuiJsonVector.Bytes));
         var elems = new NuiJsonValue(Alloc(mem, NuiJsonValue.Bytes * items.Length));
         for (int i = 0; i < items.Length; i++)
         {
             elems.At(i).Type = JsonString;
-            elems.At(i).Pointer = NewString(items[i], mem, msvc);
+            elems.At(i).Pointer = NewString(items[i], mem, abi);
         }
         vec.Begin = elems.Ptr;
         vec.End = elems.At(items.Length).Ptr;
