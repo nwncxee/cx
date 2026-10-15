@@ -128,7 +128,7 @@ public sealed unsafe class PromptCommandService : IExtenderService
             IntPtr exo = Native.NewExoString(line);
 #if WINDOWS
             _append(gui.Ptr, exo, ConsoleChannel, 0, 0, (IntPtr)resref);
-            *(long*)exo = 0; *(long*)(exo + 8) = 0;   // Win64: the callee destroyed its by-value CExoString copy
+            *(ExoStringRec*)exo = default;   // Win64: the callee destroyed its by-value CExoString copy
 #else
             _append(gui.Ptr, exo, ConsoleChannel, 0, 0, default);
 #endif
