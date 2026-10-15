@@ -132,7 +132,7 @@ internal static unsafe class NuiFlush
                 NkConvertConfig cfg = Config();
                 BufferClear(_cmds);
                 res = _convert(ctx, _cmds, (IntPtr)(&vbuf), (IntPtr)(&ebuf), (IntPtr)(&cfg));
-                if (res == 0) { Record(ctx, v, e); return; }
+                if (res == 0) { Record(ctx, v); return; }
             }
             if (attempt > 0 || !Grow(res)) { StandDown(res); return; }
         }
@@ -163,7 +163,7 @@ internal static unsafe class NuiFlush
     /// <summary>Walk the draw commands and hand each run to <see cref="GuiCapture"/>, opening a new raw layer only
     /// when the scissor changes. The layers are flushed at the frame boundary, after the below-NUI windows and before the
     /// above-NUI ones.</summary>
-    private static void Record(IntPtr ctx, byte* vtx, ushort* idx)
+    private static void Record(IntPtr ctx, byte* vtx)
     {
         var c = new NkContext(ctx);
         int n = c.DrawCmdCount;
@@ -187,8 +187,9 @@ internal static unsafe class NuiFlush
                 if (!GuiCapture.BeginRawLayer(0, 0, w, h, nx, ny, nw, nh)) break;
                 sx = nx; sy = ny; sw = nw; sh = nh; open = true;
             }
-            GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, &((IndexRec*)idx)[offset].V, count, 0, Gl.TRIANGLES, mvp,
-                           d.TextureId, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
+            fixed (ushort* run = _idx.AsSpan(offset, count))
+                GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, run, count, 0, Gl.TRIANGLES, mvp,
+                               d.TextureId, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
             offset += count;
             _cmdsDrawn++;
         }
@@ -230,7 +231,7 @@ internal static unsafe class NuiFlush
     {
         ref NkBuffer b = ref *(NkBuffer*)cmds;
         if (count <= 0 || b.Size == 0 || b.MemoryPtr == IntPtr.Zero) return null;
-        return NuiQueue.FirstDrawCommand(b.MemoryPtr, (long)b.MemorySize, ctx);
+        return NkQueue.FirstDrawCommand(b.MemoryPtr, (long)b.MemorySize, ctx);
     }
 
     /// <summary>A fixed <c>nk_buffer</c> over our own memory -- the four stores <c>nk_buffer_init_fixed</c>
@@ -345,12 +346,13 @@ internal static unsafe class NuiFlush
         NkDrawCommand* recs = stackalloc NkDrawCommand[3];
         NkBuffer cmds = Fixed(recs, 3 * sizeof(NkDrawCommand));
         for (int i = 0; i < 3; i++) recs[2 - i].ElemCount = (uint)(i + 1);
-        byte* ctxMem = stackalloc byte[0x6800];
-        new Span<byte>(ctxMem, 0x6800).Clear();
-        var fx = new NkContext((IntPtr)ctxMem);
+        Span<byte> ctxMem = stackalloc byte[EngineLayout.NkCtxDrawCmdOffset + sizeof(ulong)];
+        ctxMem.Clear();
+        NkContext fx;
+        fixed (byte* ctxAt = ctxMem) fx = new NkContext((IntPtr)ctxAt);
         fx.DrawCmdOffset = sizeof(NkDrawCommand);
         byte* first = FirstCmd((IntPtr)(&cmds), 3, fx);
-        check.Expect(first == (byte*)Unsafe.AsPointer(ref new Span<NkDrawCommand>(recs, 3)[2]), "the first command is the last record in the buffer");
+        check.Expect(first - (byte*)recs == 2 * sizeof(NkDrawCommand), "the first command is the last record in the buffer");
         var firstCmd = (NkDrawCommand*)first;
         int seen = 0;
         for (int k = 0; k < 3; k++) seen = seen * 10 + (int)firstCmd[-k].ElemCount;

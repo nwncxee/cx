@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using CX.Engine;
 using CX.Framework;
 using CX.Alloy;
 using CX.Graphics;
@@ -306,18 +307,19 @@ public sealed unsafe partial class CasterPass
                 _liveCut[i] = CasterCut.Cutout; _liveSlot[i] = 4100 + i;
                 _liveDyn[i] = i == 1;   // #305: the set flag, one of each, so a swap fails
             }
-            uint* src = stackalloc uint[2 * CasterGather.SrcUints];
+            CasterSrcRec* recs = stackalloc CasterSrcRec[2];
+            uint* src = (uint*)recs;
             // CX-50: the WHOLE record, every word of it. Filled with a sentinel first, because stackalloc is
             // not zeroed and the staging array is not either: a word StageOne leaves alone is whatever the
             // last staging left there, which for a level's (count, first) is another mesh's geometry.
             for (int w = 0; w < 2 * CasterGather.SrcUints; w++) src[w] = 2989u;
-            StageOne(src, 0, 0, 0, 0); StageOne(src, 1, 1, 1, 1);
-            bool whole = true;
+            StageOne(recs, 0, 0, 0, 0); StageOne(recs, 1, 1, 1, 1);
+            bool whole = sizeof(CasterSrcRec) == 11 * sizeof(uint);
             for (int w = 0; w < 2 * CasterGather.SrcUints; w++) whole &= src[w] != 2989u;
-            StageOne(src, 0, 0, 0, 0);
-            _liveOff[1] = true; StageOne(src, 1, 1, 1, 1);
+            StageOne(recs, 0, 0, 0, 0);
+            _liveOff[1] = true; StageOne(recs, 1, 1, 1, 1);
             bool off = src[CasterGather.SrcUints] == 0;
-            _liveOff[1] = false; StageOne(src, 1, 1, 1, 1);
+            _liveOff[1] = false; StageOne(recs, 1, 1, 1, 1);
             bool pack = src[0] == 30 && src[1] == 100 && src[2] == 7 && src[3] == 4100 && src[4] == 0
                         && src[5] == 0 && src[6] == 0
                         && src[CasterGather.SrcUints] == 31
@@ -337,13 +339,13 @@ public sealed unsafe partial class CasterPass
             _liveOff[0] = false; _liveOff[1] = false;
             _liveDyn[0] = false; _liveDyn[1] = true;
             src[4] = 0; src[CasterGather.SrcUints + 4] = 1;              // each entry its own batch
-            bool words = !WriteStagedWords(src, 0, 0) && !WriteStagedWords(src, 1, 1);   // already in step
+            bool words = !WriteStagedWords(recs, 0, 0) && !WriteStagedWords(recs, 1, 1);   // already in step
             _liveDyn[0] = true;                                         // a still caster starts moving
-            words &= WriteStagedWords(src, 0, 0) && src[CasterGather.SetFlagWord] == 1 && _gDynN[0] == 1;
+            words &= WriteStagedWords(recs, 0, 0) && src[CasterGather.SetFlagWord] == 1 && _gDynN[0] == 1;
             _liveOff[0] = true;
-            words &= WriteStagedWords(src, 0, 0) && src[0] == 0 && _gDynN[0] == 1;   // off, still dynamic
+            words &= WriteStagedWords(recs, 0, 0) && src[0] == 0 && _gDynN[0] == 1;   // off, still dynamic
             _liveDyn[0] = false; _liveOff[0] = false;
-            words &= WriteStagedWords(src, 0, 0) && src[0] == 30 && _gDynN[0] == 0;
+            words &= WriteStagedWords(recs, 0, 0) && src[0] == 30 && _gDynN[0] == 0;
             // ...and the skip: a batch with no dynamic caster is nothing to a dynamic view, a batch with
             // nothing else is nothing to a static view, and a mixed chunk skips neither.
             // batch 0 holds the still caster, batch 1 the mover.
@@ -389,28 +391,29 @@ public sealed unsafe partial class CasterPass
             src[CasterGather.SetFlagWord] = 0u; src[CasterGather.SrcUints + CasterGather.SetFlagWord] = 1u;
             _gAt[0] = 0; _gAt[1] = 1;
             _dMoverIdx[0] = 1; _dMoverCount = 1;
-            uint* dyn = stackalloc uint[2 * CasterGather.SrcUints];
+            CasterSrcRec* dynRecs = stackalloc CasterSrcRec[2];
+            uint* dyn = (uint*)dynRecs;
             for (int i = 0; i < 2 * CasterGather.SrcUints; i++) dyn[i] = 0xdeadu;
-            int dm = CopyDynamicSource(src, dyn);
+            int dm = CopyDynamicSource(recs, dynRecs);
             bool copy = dm == 1;
             for (int w = 0; w < CasterGather.SrcUints; w++)
                 copy &= dyn[w] == src[CasterGather.SrcUints + w];   // the MOVER's record, word for word
             long missWas = _dSrcMiss;
-            AuditDynamicSource(src, dyn, dm);
+            AuditDynamicSource(recs, dynRecs, dm);
             copy &= _dSrcMiss == missWas;   // one staged mover, one copied: no miss
             // ...and both directions of the audit actually fire. Missing: the copy drops the mover. Extra: it
             // takes a still caster, which the shader's set filter would reject but which means the copy walked
             // the wrong set -- the direction "would draw" on both sides cannot see.
-            AuditDynamicSource(src, dyn, 0);
+            AuditDynamicSource(recs, dynRecs, 0);
             copy &= _dSrcMiss == missWas + 1;
             dyn[CasterGather.SetFlagWord] = 0u;
-            AuditDynamicSource(src, dyn, dm);
+            AuditDynamicSource(recs, dynRecs, dm);
             copy &= _dSrcMiss == missWas + 3 && _dSrcExtra == 1;   // one for want != dyn, one for the extra
             dyn[CasterGather.SetFlagWord] = 1u;
             _dSrcExtra = 0;
             // ...and a mover the staging does not hold is skipped rather than copied as slot -1.
             _gAt[1] = -1;
-            copy &= CopyDynamicSource(src, dyn) == 0;
+            copy &= CopyDynamicSource(recs, dynRecs) == 0;
             _gAt[0] = 0; _gAt[1] = 0; _dMoverCount = 0; _gN = 0; _liveCount = 0;
             _liveDyn[1] = false;
             _dSrcMiss = missWas; _dSrcAudits = 0;
@@ -447,15 +450,14 @@ public sealed unsafe partial class CasterPass
         {
             const int movers = DynSpheres + 6;
             const float big = 12f;   // the one mover the tightness bound below is measured against
-            float* box = stackalloc float[DynSpheres * MoverBoxF];
-            float* mv = stackalloc float[movers * 4];
+            MoverBox* box = stackalloc MoverBox[DynSpheres];
+            Vector4* mv = stackalloc Vector4[movers];
             for (int i = 0; i < movers; i++)
             {   // a ring of creatures round the light, and a 12 m mover among them
-                mv[i * 4] = 25f * MathF.Cos(i * 0.9f); mv[i * 4 + 1] = 25f * MathF.Sin(i * 0.9f); mv[i * 4 + 2] = i % 3;
-                mv[i * 4 + 3] = i == 5 ? big : 0.5f + (i % 4) * 0.25f;
+                mv[i] = new Vector4(25f * MathF.Cos(i * 0.9f), 25f * MathF.Sin(i * 0.9f), i % 3, i == 5 ? big : 0.5f + (i % 4) * 0.25f);
             }
             int n = 0;
-            for (int i = 0; i < movers; i++) n = AddMoverBox(box, n, mv[i * 4], mv[i * 4 + 1], mv[i * 4 + 2], mv[i * 4 + 3]);
+            for (int i = 0; i < movers; i++) n = AddMoverBox(box, n, mv[i].X, mv[i].Y, mv[i].Z, mv[i].W);
             WriteDynSpheres(0, n, box, Vector3.Zero, 40f);
             bool held = n == DynSpheres && CubeDynSphere[(DynSpheres - 1) * 4 + 3] >= 0f;
             for (int i = 0; i < movers && held; i++)
@@ -464,8 +466,8 @@ public sealed unsafe partial class CasterPass
                 for (int s = 0; s < DynSpheres && !inOne; s++)
                 {
                     float sx = CubeDynSphere[s * 4], sy = CubeDynSphere[s * 4 + 1], sz = CubeDynSphere[s * 4 + 2], sr = CubeDynSphere[s * 4 + 3];
-                    float dx = mv[i * 4] - sx, dy = mv[i * 4 + 1] - sy, dz = mv[i * 4 + 2] - sz;
-                    inOne = sr >= 0f && MathF.Sqrt(dx * dx + dy * dy + dz * dz) + mv[i * 4 + 3] <= sr + 1e-3f;
+                    float dx = mv[i].X - sx, dy = mv[i].Y - sy, dz = mv[i].Z - sz;
+                    inOne = sr >= 0f && MathF.Sqrt(dx * dx + dy * dy + dz * dz) + mv[i].W <= sr + 1e-3f;
                 }
                 held = inOne;
             }

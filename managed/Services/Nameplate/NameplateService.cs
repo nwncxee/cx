@@ -1140,7 +1140,7 @@ public sealed unsafe class NameplateService : IExtenderService
         if (!TextRig._pvaoUp) TextRig.SetupPortraitVao();
 
         int* tids = stackalloc int[MaxPortraitsPerFrame];
-        float* verts = stackalloc float[VertexBatch.Floats * 6 * MaxPortraitsPerFrame];
+        QuadVerts* verts = stackalloc QuadVerts[MaxPortraitsPerFrame];
         int drawn = 0;
         for (int i = 0; i < count; i++)
         {
@@ -1149,7 +1149,7 @@ public sealed unsafe class NameplateService : IExtenderService
             if (tid == 0) continue;
             PortraitDiag(tid, _portraitRef[i]);
             tids[drawn] = tid;
-            TextRig.FillQuad(((QuadVerts*)verts)[drawn].F,
+            TextRig.FillQuad(ref verts[drawn],
                              new CX.Services.Chat.Core.Model.PortraitQuad(
                                  _portraitRect[o], _portraitRect[o + 1], _portraitRect[o + 2], _portraitRect[o + 3],
                                  _portraitRef[i], default),
@@ -1169,7 +1169,7 @@ public sealed unsafe class NameplateService : IExtenderService
         Gl.Uniform1i(TextRig._uTexRgb, 0);
         Gl.BindVertexArray(TextRig._pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(VertexBatch.Floats * 6 * drawn * sizeof(float)), verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(drawn * sizeof(QuadVerts)), verts, Gl.DYNAMIC_DRAW);
         for (int i = 0; i < drawn; i++)
         {
             Gl.BindTexture(Gl.TEXTURE_2D, (uint)tids[i]);

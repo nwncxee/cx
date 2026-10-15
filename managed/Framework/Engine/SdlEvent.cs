@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace CX.Engine;
@@ -32,5 +33,12 @@ public unsafe struct SdlEvent
     /// <summary>A wheel event's vertical scroll.</summary>
     [FieldOffset(0x14)] public int WheelY;
     /// <summary>A text-input event's UTF-8 text.</summary>
-    [FieldOffset(0xc)] public fixed byte Text[32];
+    [FieldOffset(0xc)] public SdlText Text;
+}
+
+/// <summary>The 32 bytes an <c>SDL_TextInputEvent</c> carries its UTF-8 text in.</summary>
+[InlineArray(32)]
+public struct SdlText
+{
+    private byte _first;
 }

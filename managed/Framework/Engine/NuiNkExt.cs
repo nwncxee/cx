@@ -25,15 +25,34 @@ public struct NkColor
     public byte R, G, B, A;
 }
 
+/// <summary>Nuklear's command queue: commands are reached by the offsets the queue itself stores.</summary>
+public readonly unsafe struct NkQueue
+{
+    private readonly byte* _base;
+
+    /// <summary>Views the queue that starts at <paramref name="queueBase"/>.</summary>
+    public NkQueue(byte* queueBase) => _base = queueBase;
+
+    /// <summary>The command at the queue's base.</summary>
+    public NkCommand Head => new((IntPtr)_base);
+
+    /// <summary>The first command of <paramref name="window"/>.</summary>
+    public NkCommand Begin(NkWindow window) => new((IntPtr)(_base + window.BufBegin));
+
+    /// <summary>The command <paramref name="cmd"/> links to.</summary>
+    public NkCommand After(NkCommand cmd) => new((IntPtr)(_base + cmd.Next));
+
+    /// <summary>The first draw command of the buffer whose memory is <paramref name="memoryPtr"/>: the context's
+    /// <c>drawCmdOffset</c> back from the memory's end.</summary>
+    public static byte* FirstDrawCommand(IntPtr memoryPtr, long memorySize, NkContext ctx)
+        => (byte*)memoryPtr + memorySize - ctx.DrawCmdOffset;
+}
+
 /// <inheritdoc cref="NkCommand"/>
 public readonly unsafe partial struct NkCommand
 {
     /// <summary>The highest <c>nk_command_type</c> this layout knows (<c>NK_COMMAND_CUSTOM</c>).</summary>
     public const int LastType = 18;
-    private const int MultiColor = 6, Text = 16;
-
-    /// <summary>Per <c>nk_command_type</c> 0..18: the byte offset of the command's first <c>nk_color</c>, 0 = none.</summary>
-    private static ReadOnlySpan<byte> FirstColour => [0, 0, 0x1a, 0x22, 0x1c, 0x1a, 0x18, 0x1a, 0x18, 0x20, 0x20, 0x1e, 0x1c, 0x10, 0x10, 0x10, 0x18, 0x30, 0];
 
     /// <summary>The command's colours: four for a multi-colour rect, two for text (background, foreground), one for
     /// any other drawing command, none for a scissor, a custom command or a type past <see cref="LastType"/>.</summary>
@@ -41,10 +60,26 @@ public readonly unsafe partial struct NkCommand
     {
         get
         {
-            int type = Type;
-            if ((uint)type > LastType || FirstColour[type] == 0) return default;
-            int n = type == MultiColor ? 4 : type == Text ? 2 : 1;
-            return new Span<NkColor>((void*)(Ptr + FirstColour[type]), n);
+            switch (Type)
+            {
+                case 2: return MemoryMarshal.CreateSpan(ref new NkCommandLine(Ptr).Color, 1);
+                case 3: return MemoryMarshal.CreateSpan(ref new NkCommandCurve(Ptr).Color, 1);
+                case 4: return MemoryMarshal.CreateSpan(ref new NkCommandRect(Ptr).Color, 1);
+                case 5: return MemoryMarshal.CreateSpan(ref new NkCommandRectFilled(Ptr).Color, 1);
+                case 6: return MemoryMarshal.CreateSpan(ref new NkCommandRectMultiColor(Ptr).Left, 4);
+                case 7: return MemoryMarshal.CreateSpan(ref new NkCommandCircle(Ptr).Color, 1);
+                case 8: return MemoryMarshal.CreateSpan(ref new NkCommandCircleFilled(Ptr).Color, 1);
+                case 9: return MemoryMarshal.CreateSpan(ref new NkCommandArc(Ptr).Color, 1);
+                case 10: return MemoryMarshal.CreateSpan(ref new NkCommandArcFilled(Ptr).Color, 1);
+                case 11: return MemoryMarshal.CreateSpan(ref new NkCommandTriangle(Ptr).Color, 1);
+                case 12: return MemoryMarshal.CreateSpan(ref new NkCommandTriangleFilled(Ptr).Color, 1);
+                case 13: return MemoryMarshal.CreateSpan(ref new NkCommandPolygon(Ptr).Color, 1);
+                case 14: return MemoryMarshal.CreateSpan(ref new NkCommandPolygonFilled(Ptr).Color, 1);
+                case 15: return MemoryMarshal.CreateSpan(ref new NkCommandPolyline(Ptr).Color, 1);
+                case 16: return MemoryMarshal.CreateSpan(ref new NkCommandText(Ptr).Background, 2);
+                case 17: return MemoryMarshal.CreateSpan(ref new NkCommandImage(Ptr).Color, 1);
+                default: return default;
+            }
         }
     }
 }

@@ -327,9 +327,9 @@ internal static unsafe partial class GrassField
     private static int Bake(IntPtr list)
     {
         var tl = new CAurTriangleList(list);
-        float* verts = (float*)tl.Verts;
+        GrassTriRec* verts = (GrassTriRec*)tl.Verts;
         int* blades = (int*)tl.Blades;
-        int faces = tl.VertFloats / 9;
+        int faces = tl.VertFloats / (sizeof(GrassTriRec) / sizeof(float));
         // The list's own two arrays have to agree before either is read: the blade counts are indexed by face.
         if (verts != null && blades != null && tl.BladeCount < faces) { verts = null; }
         return BakeFaces(list, verts, blades, faces, tl.Mat);
@@ -338,7 +338,7 @@ internal static unsafe partial class GrassField
     /// <summary>Intern and scatter one patch from world-space faces and their per-face blade counts, whatever
     /// produced them -- an engine <c>CAurTriangleList</c> or the scene database (<see cref="BakeDb"/>).
     /// <paramref name="key"/> is the patch's identity in the intern table.</summary>
-    private static int BakeFaces(IntPtr key, float* verts, int* blades, int faces, int mat)
+    private static int BakeFaces(IntPtr key, GrassTriRec* verts, int* blades, int faces, int mat)
     {
         // The one refusal that CANNOT be interned: there is no slot to intern it in. Counted instead, and
         // loud in the period line -- past this point every list retries, which is the state to see.
@@ -362,8 +362,8 @@ internal static unsafe partial class GrassField
         if (_dumped < DumpFaces)
             for (int f = 0; f < faces && _dumped < DumpFaces; f++)
             {
-                float* v = ((GrassTriRec*)verts)[f].V;
-                Vector3 a0 = new(v[0], v[1], v[2]), b0 = new(v[3], v[4], v[5]), c0 = new(v[6], v[7], v[8]);
+                ref GrassTriRec v = ref verts[f];
+                Vector3 a0 = v.A, b0 = v.B, c0 = v.C;
                 _dumped++;
                 _log?.Info($"GrassField: [face] mat={mat} density={info.Density:F3} height={height:F2} "
                            + $"area={Vector3.Cross(b0 - a0, c0 - a0).Length() * 0.5f:F3} blades={blades[f]} "
@@ -376,8 +376,8 @@ internal static unsafe partial class GrassField
             int n = (int)(BladesForFace(blades[f], per) * thin);
             if (n <= 0) continue;
             if (_faceCount >= MaxFaces) { _capped = true; break; }
-            float* v = ((GrassTriRec*)verts)[f].V;
-            Vector3 a = new(v[0], v[1], v[2]), b = new(v[3], v[4], v[5]), c = new(v[6], v[7], v[8]);
+            ref GrassTriRec v = ref verts[f];
+            Vector3 a = v.A, b = v.B, c = v.C;
             uint seed = Hash(BitConverter.SingleToUInt32Bits(a.X)
                            ^ (BitConverter.SingleToUInt32Bits(b.Y) * 2654435761u)
                            ^ (BitConverter.SingleToUInt32Bits(c.Z) * 40503u));

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Framework;
 
@@ -29,11 +30,18 @@ internal static unsafe class SoundCore
         public float Detune;
         public int RandomStart;
         public float DriftDb, Normalize;
-        public fixed float CatGainDb[Categories];
-        public fixed float CatTargetDb[Categories];
+        public CategoryDb CatGainDb;
+        public CategoryDb CatTargetDb;
         public int DupCap;
         public float ShelfDb, DuckDb;
         public int Fix3d, Compressor;
+    }
+
+    /// <summary>One decibel figure per sound category.</summary>
+    [InlineArray(Categories)]
+    internal struct CategoryDb
+    {
+        private float _db;
     }
 
     [StructLayout(LayoutKind.Sequential)]

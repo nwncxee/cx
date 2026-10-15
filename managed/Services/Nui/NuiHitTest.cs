@@ -574,10 +574,10 @@ internal static unsafe class NuiHitTest
             *(IntPtr*)node = next;
             var view = new Nui__JSON__IdNode((IntPtr)node);
             view.Element = element;
-            var key = new NuiStdString((byte*)Unsafe.AsPointer(ref view.Key));
-            byte* chars = key.Inline(win);
+            var key = new NuiStdString((byte*)Unsafe.AsPointer(ref view.Key), win);
+            byte* chars = key.Inline;
             for (int i = 0; i < id.Length; i++) chars[i] = (byte)id[i];
-            key.Set(win, chars, (ulong)id.Length);
+            key.Set(chars, (ulong)id.Length);
         }
         Node(a, (IntPtr)b, elementA, idA);
         Node(b, win ? (IntPtr)sentinel : IntPtr.Zero, elementB, idB);
