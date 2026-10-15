@@ -26,7 +26,6 @@ internal static unsafe partial class GrassField
     private const int MaxFaces = 262_144;
     /// <summary>Floats per resident face: <c>vec4 (a, first blade)</c>, <c>vec4 (b, seed)</c>, <c>vec4 (c, blades)</c>,
     /// the integers as their float bit patterns.</summary>
-    private const int FaceFloats = 12;
     /// <summary>Blades one patch may carry. A patch over it has every face's count scaled down (and the period
     /// line says so); under it, a big patch is split across up to <see cref="MaxSplit"/> workgroups.</summary>
     internal const int MaxPatchBlades = 1 << 18;
@@ -122,7 +121,7 @@ internal static unsafe partial class GrassField
     private static int _groundDiag = 3;
     private static int _prepGen = -1, _seen;
     /// <summary>CPU-side face stream. Allocated once, cold: the draw path never allocates.</summary>
-    private static float[]? _faces;
+    private static GrassFace[]? _faces;
     private static int _uploaded;
 
     /// <summary>The frame's visible patch table, two uvec4 each (<c>cx_gblade_c.glsl</c>'s <c>uPatch</c>).</summary>
@@ -381,10 +380,7 @@ internal static unsafe partial class GrassField
             uint seed = Hash(BitConverter.SingleToUInt32Bits(a.X)
                            ^ (BitConverter.SingleToUInt32Bits(b.Y) * 2654435761u)
                            ^ (BitConverter.SingleToUInt32Bits(c.Z) * 40503u));
-            int o = _faceCount * FaceFloats;
-            _faces[o] = a.X; _faces[o + 1] = a.Y; _faces[o + 2] = a.Z; _faces[o + 3] = BitConverter.Int32BitsToSingle(total);
-            _faces[o + 4] = b.X; _faces[o + 5] = b.Y; _faces[o + 6] = b.Z; _faces[o + 7] = BitConverter.UInt32BitsToSingle(seed);
-            _faces[o + 8] = c.X; _faces[o + 9] = c.Y; _faces[o + 10] = c.Z; _faces[o + 11] = BitConverter.Int32BitsToSingle(n);
+            _faces[_faceCount] = new GrassFace { A = a, FirstBlade = total, B = b, Seed = seed, C = c, BladeCount = n };
             _faceCount++;
             total += n;
             min = Vector3.Min(min, Vector3.Min(a, Vector3.Min(b, c)));
@@ -415,15 +411,14 @@ internal static unsafe partial class GrassField
     private static void Upload()
     {
         if (_faces == null || _faceCount <= _uploaded) return;
-        int floats = (_faceCount - _uploaded) * FaceFloats;
+        int bytes = (_faceCount - _uploaded) * sizeof(GrassFace);
         // The first write after a Forget (area load, /grass density) starts at byte 0, over a range the GPU
         // may still be reading from last frame -- orphan it rather than make the driver serialise, at exactly
         // the two moments this class exists to keep smooth. Every later write is an append past the read range.
         if (_uploaded == 0)
-            Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * FaceFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        fixed (float* src = _faces.AsSpan(_uploaded * FaceFloats))
-            Gl.NamedBufferSubData(_gl.FaceBuf, (IntPtr)(_uploaded * FaceFloats * sizeof(float)),
-                                  (IntPtr)(floats * sizeof(float)), src);
+            Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * sizeof(GrassFace)), null, Gl.DYNAMIC_DRAW);
+        fixed (GrassFace* src = _faces.AsSpan(_uploaded))
+            Gl.NamedBufferSubData(_gl.FaceBuf, (IntPtr)(_uploaded * sizeof(GrassFace)), (IntPtr)bytes, src);
         _uploaded = _faceCount;
     }
 

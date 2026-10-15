@@ -228,3 +228,20 @@ public struct TexelRec
     /// <summary>Alpha.</summary>
     public byte A;
 }
+
+/// <summary>One resident grass face as the scatter stage reads it: three corners, each followed by one word.</summary>
+public struct GrassFace
+{
+    /// <summary>First corner.</summary>
+    public Vector3 A;
+    /// <summary>Blades before this face in its patch.</summary>
+    public int FirstBlade;
+    /// <summary>Second corner.</summary>
+    public Vector3 B;
+    /// <summary>The face's scatter seed.</summary>
+    public uint Seed;
+    /// <summary>Third corner.</summary>
+    public Vector3 C;
+    /// <summary>Blades on this face.</summary>
+    public int BladeCount;
+}
