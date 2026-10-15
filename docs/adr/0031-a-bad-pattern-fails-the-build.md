@@ -19,9 +19,9 @@ editor. The compiler sees types, so it can tell a pointer plus an integer from a
    symbol is a rule in `tools/analyzers/`, the repository's own analyzer. `managed/.editorconfig` makes both
    errors. A gate is for what the compiler cannot see: comments, file sizes, shaders, docs.
 2. **CX0001: only `managed/Framework/` adds an offset to a pointer.** Anywhere else, `p + n`, `p - n`,
-   `p += n` and `p++` on a pointer or an `IntPtr` fail the build. Read engine memory through a field on a view
+   `p += n` and `p++` on a pointer or an `IntPtr` fail the build, and so does `&p[i]`. Read engine memory through a field on a view
    (`Field<T>` rows and `Views.g.cs`). Give other memory a container of its own: a view under
-   `Framework/Engine/`, an unmanaged struct, or a `Span<T>`. Indexing a typed pointer (`px[i]`) is allowed.
+   `Framework/Engine/`, an unmanaged struct, or a `Span<T>`. Reading a value as `px[i]` is allowed.
 3. **The calls that do the same thing without the `+` are banned.** `Marshal.Read*`/`Write*` with an offset,
    `Marshal.PtrToStructure`, `IntPtr.Add`/`Subtract` and `Unsafe.Add`/`AddByteOffset` are lines in
    `BannedSymbols.txt`.

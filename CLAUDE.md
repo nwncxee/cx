@@ -196,8 +196,8 @@ A rule the compiler can check is a build error, not a gate. `managed/.editorconf
 - `managed/BannedSymbols.txt` (RS0030, BannedApiAnalyzers): a call that must go through one helper. Each line's
   message says what to call instead. Only that helper disables RS0030, with its reason on the pragma.
 - `tools/analyzers/` (CX0001 and on): a pattern that is no single symbol. CX0001 refuses `p + n`, `p - n`,
-  `p += n`, `p++` on a pointer or `IntPtr` outside `managed/Framework/`: a place in memory is a field on a view
-  (engine memory), a struct or a `Span<T>` (our own). Indexing a typed pointer (`px[i]`) is fine.
+  `p += n`, `p++` on a pointer or `IntPtr`, and `&p[i]` on a pointer or array, outside `managed/Framework/`: a place in memory is a field on a view
+  (engine memory), a struct or a `Span<T>` (our own). Reading a value through a typed pointer (`px[i]`) is fine; taking its address is the move.
 
 **Ban it the day its helper exists.** Writing a helper meant to be the only way to make a call means adding its
 `BannedSymbols.txt` line and moving every caller in the same change. A review finding of the kind "this should
