@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 
 namespace CX.Engine;
@@ -8,7 +9,7 @@ namespace CX.Engine;
 public unsafe struct ExoArrayRec
 {
     /// <summary>The items.</summary>
-    public byte* Items;
+    public IntPtr Items;
     /// <summary>Entries in use.</summary>
     public int Count;
     /// <summary>Entries allocated.</summary>

@@ -639,6 +639,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal static float* _waterView, _waterProj;
     internal static float _waterNear = 1f, _waterFar = 100f;
 
+    /// <summary>One uniform location per scriptable slot of one kind.</summary>
+    [System.Runtime.CompilerServices.InlineArray(ScriptableSlots)]
+    internal struct ScriptableLocs { private int _e; }
+
     /// <summary>Every location the shared feature terms upload to, the eye and the four fog-target terms
     /// included: the fog colour is direction-dependent, so every stage that fogs uploads the same five values
     /// through <see cref="UploadFog"/>.</summary>
@@ -650,9 +654,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         /// standing bug: a content shader that starts reading a new slot compiles, links and reads zero --
         /// a feature that silently does nothing under Alloy and works under the engine. Filled at program
         /// build; a slot the stage does not use is -1, which GL ignores.</summary>
-        internal fixed int SInt[ScriptableSlots];
-        internal fixed int SFloat[ScriptableSlots];
-        internal fixed int SVec[ScriptableSlots];
+        internal ScriptableLocs SInt;
+        internal ScriptableLocs SFloat;
+        internal ScriptableLocs SVec;
         /// <summary>Bit i set when slot i of that kind resolved to a live location, so the upload walks only
         /// what the program declares instead of 48 calls, nearly all of them to -1.</summary>
         internal int SIntLive, SFloatLive, SVecLive;

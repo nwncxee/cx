@@ -21,7 +21,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The caster's world sphere, written on the same edge as <c>_dSph</c> but always GEOMETRIC:
     /// centred on the part's own vertex box (<c>_oB*</c>), never <see cref="NeverCull"/>. A re-bake predicate
     /// needs bounds that name the views they dirty, which "somewhere" cannot.</summary>
-    private static readonly float[] _dCastSph = new float[MaxRecords * 4];
+    private static readonly Sphere[] _dCastSph = new Sphere[MaxRecords];
     /// <summary>The pose slack <c>_dCastSph</c>'s radius carries for a skinned part (0 otherwise): what a cull
     /// needs and a shadow FRAMING must not take, or a body's tile frames a 6 m ball round a 2 m creature.</summary>
     private static readonly float[] _dCastSlack = new float[MaxRecords];
@@ -156,11 +156,7 @@ public sealed unsafe partial class AlloyRenderer
     /// departing caster's last known bounds.</summary>
     internal static void SelfCheckCasterSphere(int slot, float cx, float cy, float cz, float r)
     {
-        fixed (float* sp = _dCastSph)
-        {
-            float* s = ((Stride4f*)sp)[slot].F;
-            s[0] = cx; s[1] = cy; s[2] = cz; s[3] = r;
-        }
+        _dCastSph[slot] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
     }
     internal static int SlotEnrollGen(int slot) => _gate[slot].EnrollGen;
 
@@ -416,11 +412,8 @@ public sealed unsafe partial class AlloyRenderer
 
     internal static void CasterSphere(int slot, out float cx, out float cy, out float cz, out float r)
     {
-        fixed (float* sp = _dCastSph)
-        {
-            float* s = ((Stride4f*)sp)[slot].F;
-            cx = s[0]; cy = s[1]; cz = s[2]; r = s[3];
-        }
+        Sphere s = _dCastSph[slot];
+        cx = s.Center.X; cy = s.Center.Y; cz = s.Center.Z; r = s.Radius;
     }
 
     /// <summary>The caster VAO id is DENSE across both geometry sources: an engine slot keeps its VDO slot
@@ -456,12 +449,9 @@ public sealed unsafe partial class AlloyRenderer
     internal static void CasterProbe(int slot, out Vector3 lag, out Vector3 live,
                                      out bool mx, out bool known, out int feat)
     {
-        fixed (float* d = _dData)
-        {
-            var m = *(Matrix4x4*)(((DrawRec*)d)[slot].F);
-            lag = new Vector3(m.M41, m.M42, m.M43);
-            feat = (int)d[(long)slot * DrawFloats + 40];
-        }
+        ref DrawRecordBlock rec = ref _dData[slot];
+        lag = new Vector3(rec.Model.M41, rec.Model.M42, rec.Model.M43);
+        feat = (int)rec.FeatX;
         mx = _oMx[slot];
         known = _gate[slot].RecGen == _recEpoch;
         // CX-103: "live" is what Alloy composes for the slot THIS instant, not what the engine's draw-bucket
@@ -480,5 +470,5 @@ public sealed unsafe partial class AlloyRenderer
     internal static uint TexHandleBuf => _texHBuf;
     /// <summary>The slot's diffuse handle as the block holds it; 0 = never minted (unlit, unmerged, or
     /// refused), which a sampler reads as black.</summary>
-    internal static ulong RecordHandle0(int slot) => _dTexH[(long)slot * 8];
+    internal static ulong RecordHandle0(int slot) => _dTexH[slot][0];
 }

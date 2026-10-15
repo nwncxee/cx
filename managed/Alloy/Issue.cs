@@ -95,12 +95,12 @@ internal static unsafe class Issue
         bool whole = grew || _recDirtyAll || _recDirtyN > _drawN / 4;
         if (whole) { WholeUploads++; WholeBytes += (long)cap * DrawFloats * sizeof(float); }
         if (!whole) Array.Sort(_recDirty, 0, _recDirtyN);
-        fixed (float* p = _dData)
+        fixed (DrawRecordBlock* p = _dData)
         {
             if (whole)
                 Gl.NamedBufferSubData(_drawBuf, IntPtr.Zero,
                                       (IntPtr)((long)cap * DrawFloats * sizeof(float)), p);
-            else UploadRuns(_drawBuf, _dData, DrawFloats * sizeof(float));
+            else UploadRuns(_drawBuf, _dData, sizeof(DrawRecordBlock));
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindDraw, _drawBuf);
         StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
@@ -127,7 +127,7 @@ internal static unsafe class Issue
     /// bring it up to date on a frame the colour bracket has not reached (or refused).</summary>
     /// <summary>The handle table as the GPU sees it: <see cref="AlloyRenderer._dTexH"/> with every zero
     /// replaced by a stand-in's handle; a partial upload rewrites only the dirty records it sends.</summary>
-    private static readonly ulong[] _gpuTexH = new ulong[MaxRecords * 8];
+    private static readonly TexHandles[] _gpuTexH = new TexHandles[MaxRecords];
 
     internal static void UploadHandles(int cap, bool whole)
     {
@@ -142,22 +142,19 @@ internal static unsafe class Issue
         // slot to the transparent-black texel; the CPU table keeps its zeros, which ZeroHandle and the stale
         // audit read.
         ulong whiteH = HandleFor(OwnedTextures.WhiteTid()), nullH = HandleFor(OwnedTextures.NullTid());
-        long n = (long)cap * 8;
+        long n = (long)cap * TexHandles.MaterialSlots;
         if (whole)
-            for (long k = 0; k < n; k++) _gpuTexH[k] = GpuHandle(k, whiteH, nullH);
+            for (int rec = 0; rec < cap; rec++) GpuRecordHandles(rec, whiteH, nullH);
         else
             for (int d = 0; d < _recDirtyN; d++)
-            {
-                long r = (long)_recDirty[d] * 8;
-                if (r + 8 <= n) for (long k = r; k < r + 8; k++) _gpuTexH[k] = GpuHandle(k, whiteH, nullH);
-            }
-        fixed (ulong* p = _gpuTexH)
+                if (_recDirty[d] < cap) GpuRecordHandles(_recDirty[d], whiteH, nullH);
+        fixed (TexHandles* p = _gpuTexH)
         {
-            BindlessLedger.CheckTable(p, n, "the record handle table");
+            BindlessLedger.CheckTable((ulong*)p, n, "the record handle table");
             if (whole)
                 Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)(n * sizeof(ulong)), p);
             else
-                UploadRuns(_texHBuf, _gpuTexH, 8 * sizeof(ulong));
+                UploadRuns(_texHBuf, _gpuTexH, sizeof(TexHandles));
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindTexH, _texHBuf);
         StaleMirrorHandles(cap, whole, _recDirty, _recDirtyN);
@@ -165,11 +162,14 @@ internal static unsafe class Issue
     }
     private static int _texHCapGpu;
 
-    /// <summary>Entry <paramref name="k"/> of the handle table as the GPU must see it: no zero handle.</summary>
-    private static ulong GpuHandle(long k, ulong whiteH, ulong nullH)
+    /// <summary>Record <paramref name="rec"/>'s handles as the GPU must see them: no zero handle.</summary>
+    private static void GpuRecordHandles(int rec, ulong whiteH, ulong nullH)
     {
-        ulong v = _dTexH[k];
-        return v != 0 ? v : (k & 7) == 0 ? whiteH : nullH;
+        for (int s = 0; s < TexHandles.MaterialSlots; s++)
+        {
+            ulong v = _dTexH[rec][s];
+            _gpuTexH[rec][s] = v != 0 ? v : s == 0 ? whiteH : nullH;
+        }
     }
 
     /// <summary>Called by the caster bake, inside its bracket, before its first view: the standing staging
@@ -200,7 +200,7 @@ internal static unsafe class Issue
 
     /// <summary>One bone block, <c>_boneSlots</c> palettes from <paramref name="stage"/>, onto
     /// <paramref name="binding"/>.</summary>
-    internal static void UploadBoneBlock(ref uint buf, float* stage, uint binding)
+    internal static void UploadBoneBlock(ref uint buf, BonePalette* stage, uint binding)
     {
         if (buf == 0) { uint b; Gl.CreateBuffers(1, &b); buf = b; }
         var size = (IntPtr)((long)Math.Max(_boneSlots, 1) * BoneFloats * sizeof(float));

@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using CX.Alloy.Mdl;
 using CX.Engine;
+using CX.Framework;
 
 namespace CX.Alloy.Db;
 
@@ -11,8 +12,6 @@ namespace CX.Alloy.Db;
 /// <c>GetPersonalRadius</c>/<c>GetPath</c> are QUERIES the handler answers through the data pointer.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Longest event name a callback block holds, less the terminator.</summary>
-    private const int CbNameMax = 31;
     /// <summary>Callbacks one object may hold. The engine's array grows without bound; a creature registers
     /// twelve and the attach behaviour six more on its parent.</summary>
     private const int MaxCallbacks = 32;
@@ -37,13 +36,17 @@ public static unsafe partial class DbAnim
             }
             return 0;
         }
-        var b = (DbCallbackRec*)NativeMemory.AllocZeroed((nuint)sizeof(DbCallbackRec));
+        nint block = (nint)NativeMemory.AllocZeroed((nuint)EngineLayout.SeamCallBackSizeof);
+        var b = new CallBack(block);
         if (name != null)
-            for (int k = 0; k < CbNameMax && name[k] != 0; k++) b->Name[k] = name[k];
-        b->Fn = fn;
-        b->Data = data;
-        _cb[i * MaxCallbacks + _cbN[i]++] = (nint)b;
-        return (nint)b;
+        {
+            Span<byte> dst = b.SeamName;
+            for (int k = 0; k < dst.Length - 1 && name[k] != 0; k++) dst[k] = name[k];
+        }
+        b.SeamFn = fn;
+        b.SeamData = data;
+        _cb[i * MaxCallbacks + _cbN[i]++] = block;
+        return block;
     }
 
     private static void CbDeregister(DbId obj, nint cb)
@@ -130,11 +133,11 @@ public static unsafe partial class DbAnim
             byte* cb = (byte*)_cb[b + k];
             if (cb == null) continue;
             if (!(cb[0] == 0 || cb[0] == (byte)'*') && !Named(cb, name)) continue;
-            nint fn = ((DbCallbackRec*)cb)->Fn;
+            nint fn = new CallBack((nint)cb).SeamFn;
             if (fn == 0) continue;
             // The caller's data overrides the entry's own when it is non-null -- which is how the engine's two
             // QUERY events (GetPersonalRadius, GetPath) hand the handler a buffer to write into.
-            nint arg = data != 0 ? data : ((DbCallbackRec*)cb)->Data;
+            nint arg = data != 0 ? data : new CallBack((nint)cb).SeamData;
             ((delegate* unmanaged<nint, byte*, nint, void>)fn)(SceneDb.ObjFacade[i], name, arg);
             // A handler can destroy the object; the engine's own SafePointer check is this generation test,
             // and it needs no registration because a freed record's generation has already moved on.

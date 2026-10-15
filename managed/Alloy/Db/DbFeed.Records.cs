@@ -144,7 +144,6 @@ public static unsafe partial class DbFeed
     {
         DbTable t = SceneDb.Parts;
         int n = t.DirtyCount;
-        fixed (float* data = AlloyRenderer._dData)
         {
             for (int k = 0; k < n; k++)
             {
@@ -176,18 +175,18 @@ public static unsafe partial class DbFeed
                         _staticPartFrame++;
                     }
                 }
-                FoldOnePart(p, d, data);
+                FoldOnePart(p, d);
             }
             // R1-10: the parts whose geometry was not resident when they were staged. DbStage's refusal is a
             // DEFERRAL, not a drop, so they are re-asked here every frame until they take -- which is what
             // the doc always claimed and the code did not do.
-            DrainRetry(data);
+            DrainRetry();
         }
         t.TakeDirty();
         CloseStaticParts();
     }
 
-    private static void FoldOnePart(int p, Dirty d, float* data)
+    private static void FoldOnePart(int p, Dirty d)
     {
         // A light, an emitter or any other non-mesh node has no record and no slot; it files itself with its
         // own consumer instead, on the same edge, so the two cannot drift apart.
@@ -207,7 +206,7 @@ public static unsafe partial class DbFeed
         if ((d & (Dirty.Created | Dirty.Tree | Dirty.Texture | Dirty.Material)) != Dirty.None)
             AlloyRenderer.DbTexDirty(slot);
         if (fresh) LastSeated++; else LastRewritten++;
-        if (!AlloyRenderer.DbStage(slot, data)) Retry(p);
+        if (!AlloyRenderer.DbStage(slot)) Retry(p);
     }
 
     /// <summary>R1-10: parts whose last stage could not resolve geometry or a texture. A bounded set, drained
@@ -231,7 +230,7 @@ public static unsafe partial class DbFeed
         _retrying[p] = true;
     }
 
-    private static void DrainRetry(float* data)
+    private static void DrainRetry()
     {
         int w = 0;
         for (int k = 0; k < _retryN; k++)
@@ -239,7 +238,7 @@ public static unsafe partial class DbFeed
             int p = _retry[k];
             int slot = SceneDb.Parts.LiveAt(p) ? SceneDb.PartSlot[p] : -1;
             if (slot < 0) { _retrying[p] = false; continue; }
-            if (AlloyRenderer.DbStage(slot, data)) { _retrying[p] = false; continue; }
+            if (AlloyRenderer.DbStage(slot)) { _retrying[p] = false; continue; }
             _retry[w++] = p;
         }
         _retryN = w;
@@ -338,7 +337,7 @@ public static unsafe partial class DbFeed
     /// with an enabled part and a visible object in <paramref name="scene"/>. <see cref="VisibleSlot"/>(0..count);
     /// allocation-free, O(visible).</summary><remarks>Workers stage from these columns unlocked, sound only because
     /// the frame boundary freezes them: fold and publish precede the draw, and no seam setter runs inside it.</remarks>
-    internal static int Visible(DbId scene, float* planes, float slack)
+    internal static int Visible(DbId scene, ReadOnlySpan<Vector4> planes, float slack)
     {
         long t0 = FrameZones.Now;
         _visSlotN = 0;

@@ -1405,3 +1405,4 @@ offset	NkCommandPolyline	color	0x10	0x10	# NkCmdPolylineColor
 offset	NkCommandText	background	0x18	0x18	# NkCmdTextBackground
 offset	NkCommandText	foreground	0x1c	0x1c	# NkCmdTextForeground
 offset	NkCommandImage	color	0x30	0x30	# NkCmdImageColor
+offset	CallBack	seamName	0x0	0x0	# SeamCallBackName

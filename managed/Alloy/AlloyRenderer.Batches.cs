@@ -23,7 +23,6 @@ public sealed unsafe partial class AlloyRenderer
         int n = 0, nb = 0, na = 0;
         PrepareVisible();
         OccludeFrame();   // #537: the hit fan this walk tags occluders from
-        fixed (float* sph = _dSph)
         {
         for (int c = (int)AlloyClass.Opaque; c <= (int)AlloyClass.Cutout; c++)
         {
@@ -31,7 +30,7 @@ public sealed unsafe partial class AlloyRenderer
             int[] list = RouteRange(c, out int from, out int to);
             for (int k = from; k < to; k++)
             {
-                if (!RouteLive(list[k], k, sph, out int i, out IntPtr tri)) continue;
+                if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
                 bool samp = (k & (ChaseEvery - 1)) == 0;
                 long tFade = samp ? FrameZones.Now : 0;
                 // The fade overlay, and the part's own animated alpha with it: while its tile fades, an opaque
@@ -71,12 +70,12 @@ public sealed unsafe partial class AlloyRenderer
         // CX-189: the alpha-to-coverage cutouts close the cutout run, after its keyhole tail
         for (int a = 0; a < na; a++)
         { int i = _a2cTmp[a]; _pass[n] = i; _passCls[n] = (byte)AlloyClass.Cutout; _passAlpha[n] = 1f; _passDis[n] = _a2cDis[a]; n++; }
-        AuditVisible(n, sph);
+        AuditVisible(n);
         {
         int[] list = RouteRange((int)AlloyClass.Blended, out int from, out int to);
         for (int k = from; k < to; k++)
         {
-            if (!RouteLive(list[k], k, sph, out int i, out IntPtr tri)) continue;
+            if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
             float alpha = LiveAlpha(i, tri);
             if (alpha <= 0f && _oTile[i] != IntPtr.Zero) continue;   // #546
             _blend[nb] = i;
@@ -98,7 +97,7 @@ public sealed unsafe partial class AlloyRenderer
         int[] list = RouteRange((int)AlloyClass.Water, out int from, out int to);
         for (int k = from; k < to; k++)
         {
-            if (!RouteLive(list[k], k, sph, out int i, out IntPtr tri)) continue;
+            if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
             float alpha = LiveAlpha(i, tri);
             if (alpha <= 0f && _oTile[i] != IntPtr.Zero) continue;   // #546
             _pass[n] = i; _passCls[n] = (byte)AlloyClass.Water;
@@ -110,7 +109,7 @@ public sealed unsafe partial class AlloyRenderer
         int[] list = RouteRange((int)AlloyClass.Additive, out int from, out int to);
         for (int k = from; k < to; k++)
         {
-            if (!RouteLive(list[k], k, sph, out int i, out IntPtr tri)) continue;
+            if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
             // Additive fades too: the engine routes an additive part on a fading tile into bucket 8 like any
             // other, and IterSight suppresses it there, so a glow left at full brightness through a fade
             // would be ours to explain.
@@ -129,14 +128,14 @@ public sealed unsafe partial class AlloyRenderer
     /// skip a vacated one, and REVOKE a failed identity, so every dereference the frame makes from here on
     /// sits behind one verdict and the staging walk does not re-check. Behind the FRUSTUM GATE too: a slot
     /// this pass cannot see keeps last frame's record untouched (see <see cref="RouteWanted"/>).</summary>
-    private static bool RouteLive(int slot, int k, float* sph, out int i, out IntPtr tri)
+    private static bool RouteLive(int slot, int k, out int i, out IntPtr tri)
     {
         // The Route sample -- taken on the slots the gate rejects, which is the walk's O(world) half
         bool samp = (k & (ChaseEvery - 1)) == 0;
         long t0 = samp ? FrameZones.Now : 0;
         i = slot;
         tri = _oTri[i];
-        if (tri == IntPtr.Zero || !RouteWanted(i, sph))
+        if (tri == IntPtr.Zero || !RouteWanted(i))
         {
             if (samp) FrameZones.AddSampled(FrameZones.Zone.Route, t0, ChaseEvery);
             
@@ -383,7 +382,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The record fields ADR 0017's split table calls PER-FRAME, gathered off the live scene by the
     /// staging walk and handed to <see cref="WritePerFrame"/>. A plain value struct, so no engine pointer
     /// reaches this far and the split is checkable off-device. Move a field into the stable half
-    /// (<see cref="WriteStable"/>) and it reads as a frozen texture; <see cref="SplitSelfCheck"/> goes red.</summary>
+    /// (<c>DbWriteStable</c>) and it reads as a frozen texture; <see cref="SplitSelfCheck"/> goes red.</summary>
     internal struct RecordFrameState
     {
         /// <summary>Matrix-class parts only -- creatures, doors, dangly, anything on a node. A part whose
@@ -403,15 +402,14 @@ public sealed unsafe partial class AlloyRenderer
     private static void WriteSphere(int i, in RecordFrameState f, IntPtr tri, int feat)
     {
         {
-            Span<float> s = _dSph.AsSpan(i * 4, 4);
             if (_oBone[i] >= 0 || ShaderFeatures.OutOfPrepass(feat) || PartTable.IsDangly(tri)
                 || !(_oR[i] > 0f))
-            { s[0] = 0f; s[1] = 0f; s[2] = 0f; s[3] = NeverCull; return; }
+            { _dSph[i] = new Sphere { Radius = NeverCull }; return; }
             // The centre is the model TRANSLATION, not _oC* through the matrix: that bbox centre is not
             // object-space (EyeDist2, CasterPass), and transforming it would add the node translation twice.
             float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
             if (f.HasModel) { cx = f.Model.M41; cy = f.Model.M42; cz = f.Model.M43; r *= DbAnim.ScaleOf(f.Model); }
-            s[0] = cx; s[1] = cy; s[2] = cz; s[3] = r;
+            _dSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
         }
     }
 
@@ -424,7 +422,6 @@ public sealed unsafe partial class AlloyRenderer
     private static void WriteCasterSphere(int i, in RecordFrameState f)
     {
         {
-            Span<float> s = _dCastSph.AsSpan(i * 4, 4);
             float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
             // a posed skin and a dangly move their vertices off the bind box; the origin bound is the looser fit for them
             if (f.HasModel && _oBr[i] > 0f && !_vSkin[_oVao[i]] && !_oDangly[i])
@@ -445,7 +442,7 @@ public sealed unsafe partial class AlloyRenderer
             // vanish sweep take the whole-frame blanket when it blinks out. One tile's diagonal is the
             // honest bound for the population this actually is.
             if (!(r > 0f)) r = DegenerateCasterRadius;
-            s[0] = cx; s[1] = cy; s[2] = cz; s[3] = r;
+            _dCastSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
             _dCastSlack[i] = bare > 0f ? r - bare : 0f;
         }
     }
@@ -473,14 +470,13 @@ public sealed unsafe partial class AlloyRenderer
     /// moved, which is the whole scheme. <c>prev</c> (floats 44..59) is LAST FRAME's model:
     /// <paramref name="roll"/> says this is the record's first build this frame, and <paramref name="fresh"/>
     /// seeds prev = model so a new tenant never carries the last tenant's matrix as its history.</summary>
-    private static bool WritePerFrame(float* r, in RecordFrameState f, bool roll = true, bool fresh = false)
+    private static bool WritePerFrame(ref DrawRecordBlock rec, in RecordFrameState f, bool roll = true, bool fresh = false)
     {
         bool m = false;
-        var rec = (DrawRecordBlock*)r;
         if (f.HasModel)
         {
-            ref Matrix4x4 model = ref rec->Model;
-            ref Matrix4x4 prev = ref rec->Prev;
+            ref Matrix4x4 model = ref rec.Model;
+            ref Matrix4x4 prev = ref rec.Prev;
             if (Moved(in model, in f.Model, MoveStep))
             {
                 if (roll) prev = model;
@@ -489,52 +485,20 @@ public sealed unsafe partial class AlloyRenderer
             else if (roll && prev != model) { prev = model; m = true; }
             if (fresh) prev = f.Model;
         }
-        m |= St(ref rec->Dissolve, f.Dissolve) | St(ref rec->Alpha, f.Alpha);
+        m |= St(ref rec.Dissolve, f.Dissolve) | St(ref rec.Alpha, f.Alpha);
         if (f.Lit)
         {
-            m |= St(ref rec->AmbR, f.AmbR) | St(ref rec->AmbG, f.AmbG) | St(ref rec->AmbB, f.AmbB)
-                 | St(ref rec->EmiR, f.EmiR) | St(ref rec->EmiG, f.EmiG) | St(ref rec->EmiB, f.EmiB)
-                 | St(ref rec->Slots, f.Slots);
-            m |= St(ref rec->DifR, f.DifR) | St(ref rec->DifG, f.DifG) | St(ref rec->DifB, f.DifB);
+            m |= St(ref rec.AmbR, f.AmbR) | St(ref rec.AmbG, f.AmbG) | St(ref rec.AmbB, f.AmbB)
+                 | St(ref rec.EmiR, f.EmiR) | St(ref rec.EmiG, f.EmiG) | St(ref rec.EmiB, f.EmiB)
+                 | St(ref rec.Slots, f.Slots);
+            m |= St(ref rec.DifR, f.DifR) | St(ref rec.DifG, f.DifG) | St(ref rec.DifB, f.DifB);
         }
-        m |= St(ref rec->FeatX, f.FeatX) | St(ref rec->FeatY, f.FeatY);
+        m |= St(ref rec.FeatX, f.FeatX) | St(ref rec.FeatY, f.FeatY);
         return m;
     }
 
     /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line.</summary>
     internal static int RecCreature, RecObject, RecTile;
-
-    /// <summary>The stable half -- written when the slot is built and never again while it holds the same
-    /// part. The texture rotation cannot change without failing <c>IdentityOk</c> (which revokes), a .mtr does
-    /// not animate, and the alpha ones are literal constants. An identity model matrix is here too: a part
-    /// whose class does not stage a node has no live matrix to re-read.</summary>
-    private static void WriteStable(float* r, int i, bool lit)
-    {
-        var rec = (DrawRecordBlock*)r;
-        if (!_oMx[i]) { rec->Model = Matrix4x4.Identity; rec->Prev = Matrix4x4.Identity; }
-        rec->Cos = _oCos[i]; rec->Sin = _oSin[i];
-        int fo = i * 4;
-        rec->FeatZ = _oFeat[fo + 2];
-        // #308 follow-up: -1 marks a DANGLY part for the receiver's creature gate (skinmesh is already
-        // feat.x). Safe reuse: feat.w is only otherwise read inside the wind/roof feature branches, and no
-        // dangly mesh names one of those forks.
-        rec->FeatW = PartTable.IsDangly(_oTri[i]) ? -1f : _oFeat[fo + 3];
-        if (!lit) return;
-        rec->AmbW = 1f; rec->DifW = 1f;
-        // emi.w: the contact-shadow RECEIVER flag -- 1 on tileset geometry, 0 on an object. A depth march
-        // on a low-poly creature or cloak reads its own facets as blockers; the ground under it does not.
-        // Static geometry (no gob at all) IS the tileset: only an object instances off a gob, and the gob'd
-        // half a SpawnTile split leaves is caught by the tile-gob test.
-        // #618: -1 marks a CREATURE's part (the root of its attachment chain is a creature gob), for the snow
-        // gate -- snow does not settle on a moving body. Safe reuse: every other reader tests > 0.5.
-        rec->EmiW = _oGob[i] == IntPtr.Zero || _oTileGob[i] ? 1f
-              : CreaturePart(i) ? -1f : 0f;
-        if (rec->EmiW < 0f) RecCreature++; else if (rec->EmiW > 0f) RecTile++; else RecObject++;
-        int o = i * ParamFloats;
-        rec->PbrR = _oParam[o]; rec->PbrG = _oParam[o + 1]; rec->PbrB = _oParam[o + 2];
-        rec->PbrX = _oParam[o + 4]; rec->PbrY = _oParam[o + 5]; rec->PbrZ = _oParam[o + 6]; rec->PbrW = _oParam[o + 7];
-        for (int k = 0; k < ParamFloats - ParamExt; k++) rec->Ext[k] = _oParam[o + ParamExt + k];
-    }
 
     /// <summary>The caster sphere off a part's own-space box: every box corner through a rotated, scaled, translated
     /// model lands inside it, and the centre follows the box rather than the node origin. Scratch slot 0, restored.</summary>
@@ -545,8 +509,7 @@ public sealed unsafe partial class AlloyRenderer
         int wasDb = _oDbPart[i]; _oDbPart[i] = -1;
         float bx = _oBx[i], by = _oBy[i], bz = _oBz[i], br = _oBr[i], ccx = _oCx[i], ccy = _oCy[i], ccz = _oCz[i], cr = _oR[i];
         int vao = _oVao[i];
-        Span<float> was = stackalloc float[4];
-        for (int k = 0; k < 4; k++) was[k] = _dCastSph[k];
+        Sphere was = _dCastSph[0];
         float wasSlack = _dCastSlack[i];
         var lo = new Vector3(-0.5f, -2.5f, 3.2f); var hi = new Vector3(0.5f, -1.7f, 12.3f);   // the harbour ship's mast
         Vector3 c = 0.5f * (lo + hi);
@@ -574,7 +537,7 @@ public sealed unsafe partial class AlloyRenderer
         _vSkin[0] = skin; _oDangly[i] = dangly;
         _oDbPart[i] = wasDb;
         _oBx[i] = bx; _oBy[i] = by; _oBz[i] = bz; _oBr[i] = br; _oCx[i] = ccx; _oCy[i] = ccy; _oCz[i] = ccz; _oR[i] = cr; _oVao[i] = vao;
-        for (int k = 0; k < 4; k++) _dCastSph[k] = was[k];
+        _dCastSph[0] = was;
         _dCastSlack[i] = wasSlack;
         if (!framed) log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- a skinned part culls at {skinR:F3} (want 20.315) "
                             + $"and frames at {CasterFrameRadius(i):F3} (want 18.315): the pose slack leaks into the framing");
@@ -586,11 +549,11 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Off-device, the split itself: every field of <see cref="RecordFrameState"/> is perturbed on
     /// its own and must make the record a mover, and a record re-written with the values it already holds must
-    /// not. Move one out of <see cref="WritePerFrame"/> into <see cref="WriteStable"/> and its perturbation
+    /// not. Move one out of <see cref="WritePerFrame"/> into <c>DbWriteStable</c> and its perturbation
     /// stops being seen -- a fading tile stuck at full opacity, with nothing else to say so.</summary>
     private static bool SplitSelfCheck(ExtenderLog log)
     {
-        float[] rec = new float[DrawFloats];
+        var rec = new DrawRecordBlock();
         var f = default(RecordFrameState);
         f.HasModel = true; f.Model = Matrix4x4.CreateTranslation(1f, 2f, 3f);
         f.Dissolve = 1f; f.Alpha = 0.5f; f.Lit = true;
@@ -599,43 +562,42 @@ public sealed unsafe partial class AlloyRenderer
         f.EmiR = 0.7f; f.EmiG = 0.8f; f.EmiB = 0.9f;
         f.Slots = 3f; f.FeatX = 5f; f.FeatY = 6f;
         bool ok;
-        fixed (float* r = rec)
         {
-            ok = WritePerFrame(r, in f, fresh: true) && !WritePerFrame(r, in f);
+            ok = WritePerFrame(ref rec, in f, fresh: true) && !WritePerFrame(ref rec, in f);
             if (!ok) log.Info("AlloyRenderer.SplitSelfCheck: FAILED -- a record is a mover every frame, or "
                               + "never one; either way the persistent-record scheme is not running");
             // one field at a time, restored after each, so a miss names itself rather than being masked by
             // the next perturbation
-            ok &= Perturb(r, ref f, ref f.Dissolve, log, "rot.z dissolve")
-                  & Perturb(r, ref f, ref f.Alpha, log, "rot.w alpha")
-                  & Perturb(r, ref f, ref f.AmbR, log, "amb.r")
-                  & Perturb(r, ref f, ref f.AmbG, log, "amb.g")
-                  & Perturb(r, ref f, ref f.AmbB, log, "amb.b")
-                  & Perturb(r, ref f, ref f.DifR, log, "dif.r")
-                  & Perturb(r, ref f, ref f.DifG, log, "dif.g")
-                  & Perturb(r, ref f, ref f.DifB, log, "dif.b")
-                  & Perturb(r, ref f, ref f.EmiR, log, "emi.r")
-                  & Perturb(r, ref f, ref f.EmiG, log, "emi.g")
-                  & Perturb(r, ref f, ref f.EmiB, log, "emi.b")
-                  & Perturb(r, ref f, ref f.Slots, log, "pbr.w live slot mask")
-                  & Perturb(r, ref f, ref f.FeatX, log, "feat.x")
-                  & Perturb(r, ref f, ref f.FeatY, log, "feat.y bone base");
+            ok &= Perturb(ref rec, ref f, ref f.Dissolve, log, "rot.z dissolve")
+                  & Perturb(ref rec, ref f, ref f.Alpha, log, "rot.w alpha")
+                  & Perturb(ref rec, ref f, ref f.AmbR, log, "amb.r")
+                  & Perturb(ref rec, ref f, ref f.AmbG, log, "amb.g")
+                  & Perturb(ref rec, ref f, ref f.AmbB, log, "amb.b")
+                  & Perturb(ref rec, ref f, ref f.DifR, log, "dif.r")
+                  & Perturb(ref rec, ref f, ref f.DifG, log, "dif.g")
+                  & Perturb(ref rec, ref f, ref f.DifB, log, "dif.b")
+                  & Perturb(ref rec, ref f, ref f.EmiR, log, "emi.r")
+                  & Perturb(ref rec, ref f, ref f.EmiG, log, "emi.g")
+                  & Perturb(ref rec, ref f, ref f.EmiB, log, "emi.b")
+                  & Perturb(ref rec, ref f, ref f.Slots, log, "pbr.w live slot mask")
+                  & Perturb(ref rec, ref f, ref f.FeatX, log, "feat.x")
+                  & Perturb(ref rec, ref f, ref f.FeatY, log, "feat.y bone base");
             // ...and the matrix, which is the one the ticket names first: a mover the split does not know
             // about is a frozen record, and it reads as correct until the thing moves.
             Matrix4x4 was = f.Model;
             f.Model = Matrix4x4.CreateTranslation(9f, 9f, 9f);
-            bool mm = WritePerFrame(r, in f);
+            bool mm = WritePerFrame(ref rec, in f);
             // #392: the frame the matrix moved, prev holds where it WAS; the next build (nothing moved) rolls
             // prev up to the model and re-sends once; the one after that is quiet.
-            bool prevLag = ((DrawRecordBlock*)r)->Prev == was && ((DrawRecordBlock*)r)->Model == f.Model;
-            bool catchUp = WritePerFrame(r, in f) && ((DrawRecordBlock*)r)->Prev == f.Model && !WritePerFrame(r, in f);
+            bool prevLag = rec.Prev == was && rec.Model == f.Model;
+            bool catchUp = WritePerFrame(ref rec, in f) && rec.Prev == f.Model && !WritePerFrame(ref rec, in f);
             // ...and a second build in the SAME frame (roll: false) leaves prev where the first put it.
             f.Model = Matrix4x4.CreateTranslation(3f, 3f, 3f);
-            WritePerFrame(r, in f);
-            Matrix4x4 held = ((DrawRecordBlock*)r)->Prev;
-            bool sameFrame = !WritePerFrame(r, in f, roll: false) && ((DrawRecordBlock*)r)->Prev == held;
+            WritePerFrame(ref rec, in f);
+            Matrix4x4 held = rec.Prev;
+            bool sameFrame = !WritePerFrame(ref rec, in f, roll: false) && rec.Prev == held;
             f.Model = was;
-            WritePerFrame(r, in f, fresh: true);
+            WritePerFrame(ref rec, in f, fresh: true);
             if (!mm) log.Info("AlloyRenderer.SplitSelfCheck: FAILED -- a moved model matrix does not "
                               + "re-send its record; every creature and door would freeze where it stood");
             if (!prevLag || !catchUp || !sameFrame)
@@ -646,13 +608,13 @@ public sealed unsafe partial class AlloyRenderer
         return ok;
     }
 
-    private static bool Perturb(float* r, ref RecordFrameState f, ref float field, ExtenderLog log, string name)
+    private static bool Perturb(ref DrawRecordBlock rec, ref RecordFrameState f, ref float field, ExtenderLog log, string name)
     {
         float was = field;
         field = was + 1f;
-        bool seen = WritePerFrame(r, in f);
+        bool seen = WritePerFrame(ref rec, in f);
         field = was;
-        WritePerFrame(r, in f);
+        WritePerFrame(ref rec, in f);
         if (!seen)
             log.Info($"AlloyRenderer.SplitSelfCheck: FAILED -- {name} is not a per-frame field any more; "
                      + "a record that stops carrying it renders stale state and says nothing");
@@ -757,19 +719,18 @@ public sealed unsafe partial class AlloyRenderer
         // ...and the instrument for the skip it gates: a serial that moves every frame re-resolves the whole
         // table every frame, which is the skip bought back. The period line carries both numbers.
         if (_stageTexSerial != _texSerialWas) { _texSerialMoves++; _texSerialWas = _stageTexSerial; }
-        fixed (float* data = _dData)
         {
             if (chunks > 1 && StagePool.Run(chunks, _log))
             {
                 for (int k = 0; k < routed; k++)
                     if (_pkVerdict[k] == Deferred)
-                    { _stageDeferred++; FrameZones.Count(FrameZones.Ev.Deferred); _pkVerdict[k] = StagePart(k, data, slotTid, lightingOn, ref _stageCounters[0], main: true); }
+                    { _stageDeferred++; FrameZones.Count(FrameZones.Ev.Deferred); _pkVerdict[k] = StagePart(k, slotTid, lightingOn, ref _stageCounters[0], main: true); }
             }
             else
             {
                 // A plain field write, not a Set: no Changed, no cfg write -- the stand-down is this session's.
                 if (chunks > 1) { Renderer.Threads.V = 0; _log?.Info("AlloyRenderer: /alloy threads stood down by a StagePool fault; the frame re-staged serially (set /alloy threads again to re-arm)"); }
-                for (int k = 0; k < routed; k++) _pkVerdict[k] = StagePart(k, data, slotTid, lightingOn, ref _stageCounters[0], main: true);
+                for (int k = 0; k < routed; k++) _pkVerdict[k] = StagePart(k, slotTid, lightingOn, ref _stageCounters[0], main: true);
             }
         }
         _stageFrames++;
@@ -919,19 +880,18 @@ public sealed unsafe partial class AlloyRenderer
             // #287: ...and after the record block, so the extent is measured on the sphere this frame wrote.
             if (cls <= (int)AlloyClass.Cutout)
             {
-                ReadOnlySpan<float> sp = _dSph.AsSpan(i * 4, 4);
-                if (sp[3] < NeverCull)
+                ref Sphere sp = ref _dSph[i];
+                if (sp.Radius < NeverCull)
                 {
-                    lox = MathF.Min(lox, sp[0]); hix = MathF.Max(hix, sp[0]);
-                    loy = MathF.Min(loy, sp[1]); hiy = MathF.Max(hiy, sp[1]);
-                    loz = MathF.Min(loz, sp[2]); hiz = MathF.Max(hiz, sp[2]);
-                    maxR = MathF.Max(maxR, sp[3]);
+                    lox = MathF.Min(lox, sp.Center.X); hix = MathF.Max(hix, sp.Center.X);
+                    loy = MathF.Min(loy, sp.Center.Y); hiy = MathF.Max(hiy, sp.Center.Y);
+                    loz = MathF.Min(loz, sp.Center.Z); hiz = MathF.Max(hiz, sp.Center.Z);
+                    maxR = MathF.Max(maxR, sp.Radius);
                 }
             }
             if (FrameDump.Capturing)
-                fixed (float* r = _dData.AsSpan(i * DrawFloats, DrawFloats))
-                    FrameDump.Row_(cls, lit, v, _oMat[i], _oDbRecipe[i], mode, feat, dis, blend, noCull, slots, merge,
-                                   idxCount, _dOff[n], _dBase[n], r);
+                FrameDump.Row_(cls, lit, v, _oMat[i], _oDbRecipe[i], mode, feat, dis, blend, noCull, slots, merge,
+                               idxCount, _dOff[n], _dBase[n], in _dData[i]);
             _gLen[groups - 1]++;
             n++;
             if (noCull) Counters._twoSidedDraws++;
@@ -1013,11 +973,11 @@ public sealed unsafe partial class AlloyRenderer
         int lvl = 0;
         if (MeshLod.On && _lodScale > 0f)
             {
-                ReadOnlySpan<float> lsp = _dSph.AsSpan(i * 4, 4);
-                if (lsp[3] < NeverCull)
+                ref Sphere lsp = ref _dSph[i];
+                if (lsp.Radius < NeverCull)
                 {
-                    float dx = lsp[0] - _eyePos.X, dy = lsp[1] - _eyePos.Y, dz = lsp[2] - _eyePos.Z;
-                    lvl = MeshLod.Level(lsp[3], MathF.Sqrt(dx * dx + dy * dy + dz * dz), _lodScale);
+                    float dx = lsp.Center.X - _eyePos.X, dy = lsp.Center.Y - _eyePos.Y, dz = lsp.Center.Z - _eyePos.Z;
+                    lvl = MeshLod.Level(lsp.Radius, MathF.Sqrt(dx * dx + dy * dy + dz * dz), _lodScale);
                 }
             }
         row.Lvl = lvl;
@@ -1063,11 +1023,11 @@ public sealed unsafe partial class AlloyRenderer
             int lvl = 0;
             if (MeshLod.On && _lodScale > 0f)
             {
-                ReadOnlySpan<float> lsp = _dSph.AsSpan(i * 4, 4);
-                if (lsp[3] < NeverCull)
+                ref Sphere lsp = ref _dSph[i];
+                if (lsp.Radius < NeverCull)
                 {
-                    float dx = lsp[0] - _eyePos.X, dy = lsp[1] - _eyePos.Y, dz = lsp[2] - _eyePos.Z;
-                    lvl = MeshLod.Level(lsp[3], MathF.Sqrt(dx * dx + dy * dy + dz * dz), _lodScale);
+                    float dx = lsp.Center.X - _eyePos.X, dy = lsp.Center.Y - _eyePos.Y, dz = lsp.Center.Z - _eyePos.Z;
+                    lvl = MeshLod.Level(lsp.Radius, MathF.Sqrt(dx * dx + dy * dy + dz * dz), _lodScale);
                 }
             }
             string bad =
@@ -1140,9 +1100,8 @@ public sealed unsafe partial class AlloyRenderer
         int routed = _stageRouted;
         int from = (int)((long)routed * w / chunks), to = (int)((long)routed * (w + 1) / chunks);
         int* slotTid = stackalloc int[MapSlots];
-        fixed (float* data = _dData)
-            for (int k = from; k < to; k++)
-                _pkVerdict[k] = StagePart(k, data, slotTid, _stageLighting, ref _stageCounters[w], main: false);
+        for (int k = from; k < to; k++)
+            _pkVerdict[k] = StagePart(k, slotTid, _stageLighting, ref _stageCounters[w], main: false);
     }
     private static int _stageRouted;
     private static bool _stageLighting;
@@ -1154,8 +1113,8 @@ public sealed unsafe partial class AlloyRenderer
     /// write its record, sphere and cast admission -- everything that touches ONLY this slot's arrays, so it
     /// is order-free where the batch walk is not. The worker rule (ADR 0022): off the main thread, a path that
     /// mints a GL object, logs, allocates or touches a shared collection returns <see cref="Deferred"/>.</summary>
-    private static byte StagePart(int k, float* data, int* slotTid, bool lightingOn, ref StageCounters c, bool main)
-        => StageDbPart(k, _pass[k], data, lightingOn, ref c, main);
+    private static byte StagePart(int k, int* slotTid, bool lightingOn, ref StageCounters c, bool main)
+        => StageDbPart(k, _pass[k], lightingOn, ref c, main);
 
     /// <summary>Stage the sky's draws behind the batch records, in the engine's own order -- current sky, then
     /// the one fading in over it, then the cross-fade gob. One record per part, carrying the model matrix
@@ -1217,7 +1176,7 @@ public sealed unsafe partial class AlloyRenderer
             // The draw carries the arena's VAO name.
             uint vaoName = _skVaoName[i];
             if (vaoName != boundVaoName) { Gl.BindVertexArray(vaoName); boundVaoName = vaoName; }
-            Span<int> tex = _skTex.AsSpan(i * MaxEngTex, MaxEngTex);
+            ref SkyTexUnits tex = ref _skTex[i];
             // Unit 0 for either stage; the rest only where a hosted stage could declare them. Units 1 and 2
             // are the shadow ARRAYS (TextureSlots.SunShadow/LocalShadow) and 3 is the material map block, so a
             // plain sky draw has no business touching them -- and the next BindPass is what puts a hosted
@@ -1226,7 +1185,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int k = 0; k < units; k++)
                 if (tex[k] != boundTex[k]) { Gl.BindTextureUnit((uint)k, (uint)tex[k]); boundTex[k] = tex[k]; }
             int s = _skyFirst + i;
-            fixed (float* tint = _skTint.AsSpan(i * 3, 3))
+            fixed (float* tint = &_skTint[i].X)
             {
                 if (_skProg[i] != 0) SkyStage.Draw(prog, s, tint, _skAlpha[i], SceneFog.SkyBand);
                 else { Gl.Uniform3fv(Programs._locTint, 1, tint); Gl.Uniform1i(Programs._locBase, s); }

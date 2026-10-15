@@ -25,31 +25,31 @@ public sealed unsafe partial class AlloyRenderer
     private static string _recWhySample = "";
 
     /// <summary>Which of <see cref="WritePerFrame"/>'s inputs differ from what record <paramref name="r"/> holds.</summary>
-    private static int RecWhy(float* r, in RecordFrameState f, bool modelMoved)
+    private static int RecWhy(in DrawRecordBlock r, in RecordFrameState f, bool modelMoved)
     {
         int m = modelMoved ? 1 << RecWhyModel : 0;
-        if (!modelMoved && ((DrawRec*)r)->Prev != ((DrawRec*)r)->Model) m |= 1 << RecWhyPrev;
-        if (r[18] != f.Dissolve) m |= 1 << RecWhyDissolve;
-        if (r[19] != f.Alpha) m |= 1 << RecWhyAlpha;
+        if (!modelMoved && r.Prev != r.Model) m |= 1 << RecWhyPrev;
+        if (r.Dissolve != f.Dissolve) m |= 1 << RecWhyDissolve;
+        if (r.Alpha != f.Alpha) m |= 1 << RecWhyAlpha;
         if (f.Lit)
         {
-            if (r[20] != f.AmbR || r[21] != f.AmbG || r[22] != f.AmbB) m |= 1 << RecWhyAmb;
-            if (r[24] != f.DifR || r[25] != f.DifG || r[26] != f.DifB) m |= 1 << RecWhyDif;
-            if (r[28] != f.EmiR || r[29] != f.EmiG || r[30] != f.EmiB) m |= 1 << RecWhyEmi;
-            if (r[35] != f.Slots) m |= 1 << RecWhySlots;
+            if (r.AmbR != f.AmbR || r.AmbG != f.AmbG || r.AmbB != f.AmbB) m |= 1 << RecWhyAmb;
+            if (r.DifR != f.DifR || r.DifG != f.DifG || r.DifB != f.DifB) m |= 1 << RecWhyDif;
+            if (r.EmiR != f.EmiR || r.EmiG != f.EmiG || r.EmiB != f.EmiB) m |= 1 << RecWhyEmi;
+            if (r.Slots != f.Slots) m |= 1 << RecWhySlots;
         }
-        if (r[40] != f.FeatX || r[41] != f.FeatY) m |= 1 << RecWhyFeat;
+        if (r.FeatX != f.FeatX || r.FeatY != f.FeatY) m |= 1 << RecWhyFeat;
         return m;
     }
 
-    private static void NoteRecWhy(int why, int part, float* r, in RecordFrameState f)
+    private static void NoteRecWhy(int why, int part, in DrawRecordBlock r, in RecordFrameState f)
     {
         for (int b = 0; b < RecWhyCount; b++) if ((why & (1 << b)) != 0) System.Threading.Interlocked.Increment(ref _recWhy[b]);
         if ((why & ((1 << RecWhyModel) | (1 << RecWhyStale))) != 0 || System.Threading.Interlocked.Exchange(ref _recWhySampled, 1) != 0) return;
         DbId o = SceneDb.PartObj[part];
         _recWhySample = $" sample part={part} obj={o.Index} flags={SceneDb.ObjFlags[o.Index]} why=0x{why:x}"
-                      + $" alpha {r[19]:G6}->{f.Alpha:G6} amb ({r[20]:G6},{r[21]:G6},{r[22]:G6})->({f.AmbR:G6},{f.AmbG:G6},{f.AmbB:G6})"
-                      + $" dif ({r[24]:G6})->({f.DifR:G6}) emi ({r[28]:G6})->({f.EmiR:G6}) slots {r[35]}->{f.Slots}";
+                      + $" alpha {r.Alpha:G6}->{f.Alpha:G6} amb ({r.AmbR:G6},{r.AmbG:G6},{r.AmbB:G6})->({f.AmbR:G6},{f.AmbG:G6},{f.AmbB:G6})"
+                      + $" dif ({r.DifR:G6})->({f.DifR:G6}) emi ({r.EmiR:G6})->({f.EmiR:G6}) slots {r.Slots}->{f.Slots}";
     }
 
     /// <summary>The period's rewrite reasons and sample, then reset.</summary>
@@ -70,7 +70,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>One database part staged. Verdicts are <c>StagePart</c>'s: <c>Staged</c>, <c>Skipped</c> (this
     /// pass draws nothing for it) or <c>Deferred</c> (a worker could not take it; the main thread re-runs it).</summary>
-    private static byte StageDbPart(int k, int i, float* data, bool lightingOn, ref StageCounters c, bool main)
+    private static byte StageDbPart(int k, int i, bool lightingOn, ref StageCounters c, bool main)
     {
         int part = _oDbPart[i], recipe = _oDbRecipe[i];
         if (StaleAuditArmed(i)) _saEnter[i] = _frameSeq;
@@ -171,9 +171,8 @@ public sealed unsafe partial class AlloyRenderer
                 tid = main ? OwnedTextures.WhiteTid() : OwnedTextures.WhiteName;
             }
             if (_bindless)
-                fixed (ulong* th = _dTexH)
                 {
-                    ulong* hh = ((Stride8u*)th)[i].F;
+                    ref TexHandles hh = ref _dTexH[i];
                     bool moved = false;
                     for (int s = 0; s < 8; s++)
                     {
@@ -281,19 +280,19 @@ public sealed unsafe partial class AlloyRenderer
         // CX-120 (integration 4): the tile's fog-of-war REVEAL, in the record's one spare lane. Vanilla fogs
         // an unexplored interior tile toward black (RenderDrawBucket @0x46d060: fog colour x f^2, fog end x f)
         // rather than fading its alpha, which is why this is a fog term and PartFade stays plain alpha.
-        float* r = ((DrawRec*)data)[i].F;
+        ref DrawRecordBlock r = ref _dData[i];
         // HIDDEN, not reveal -- see RevealFloat: an unwritten lane is 0 and 0 must mean explored.
         float hidden = 1f - SceneDb.PartReveal[part];
-        bool revealMoved = r[RevealFloat] != hidden;
-        r[RevealFloat] = hidden;
+        bool revealMoved = r.Ext.Ext2.W != hidden;
+        r.Ext.Ext2.W = hidden;
         bool stale = _gate[i].RecGen != _recEpoch || _gate[i].RecEnroll != _gate[i].EnrollGen;
-        if (stale) DbWriteStable(r, i);
+        if (stale) DbWriteStable(ref r, i);
         // #302, as the engine path: the mover level wants GEOMETRY motion compared before the write consumes it,
         // not "the record was re-sent" -- alpha, ambient and reveal rewrites charged as movers re-bake shadows.
-        bool casterMoved = Moved(in *(Matrix4x4*)r, in f.Model, CasterStep);
-        bool modelMoved = casterMoved || Moved(in *(Matrix4x4*)r, in f.Model, MoveStep);
-        int why = RecWhy(r, in f, modelMoved) | (stale ? 1 << RecWhyStale : 0) | (revealMoved ? 1 << RecWhyReveal : 0);
-        bool rec = WritePerFrame(r, in f, roll: _gate[i].RecFrame != _frameSeq, fresh: stale);
+        bool casterMoved = Moved(in r.Model, in f.Model, CasterStep);
+        bool modelMoved = casterMoved || Moved(in r.Model, in f.Model, MoveStep);
+        int why = RecWhy(in r, in f, modelMoved) | (stale ? 1 << RecWhyStale : 0) | (revealMoved ? 1 << RecWhyReveal : 0);
+        bool rec = WritePerFrame(ref r, in f, roll: _gate[i].RecFrame != _frameSeq, fresh: stale);
         rec |= stale | revealMoved;
         if (rec)
         {
@@ -303,7 +302,7 @@ public sealed unsafe partial class AlloyRenderer
             MarkRecordDirty(i, ref c);
             if (casterMoved || stale) _recMovedAt[i] = _frameSeq;
             System.Threading.Interlocked.Increment(ref modelMoved ? ref _dbRecModel : ref _dbRecOther);
-            NoteRecWhy(why, part, r, in f);
+            NoteRecWhy(why, part, in r, in f);
         }
         else c.RecStable++;
         _gate[i].RecGen = _recEpoch; _gate[i].RecFrame = _frameSeq; _gate[i].RecEnroll = _gate[i].EnrollGen;
@@ -353,12 +352,12 @@ public sealed unsafe partial class AlloyRenderer
                 _dbDumpedTile = isTile;
                 _dbRecDump++;
                 _log?.Info($"AlloyRenderer: [db] {(isTile ? "TILE" : "OBJ ")} part={part} lit={lit} "
-                           + $"amb=({r[20]:F3},{r[21]:F3},{r[22]:F3},{r[23]:F3}) "
-                           + $"dif=({r[24]:F3},{r[25]:F3},{r[26]:F3},{r[27]:F3}) "
-                           + $"emi=({r[28]:F3},{r[29]:F3},{r[30]:F3},w={r[31]:F1}) "
-                           + $"slots={slots} feat=({r[40]:F1},{r[41]:F1},{r[42]:F1},{r[43]:F1}) "
-                           + $"alpha={f.Alpha:F3} dissolve={f.Dissolve:F3} hidden={r[RevealFloat]:F3} "
-                           + $"pbr=({r[32]:F2},{r[33]:F2},{r[34]:F2}) texH0={DrawRecipe.TexHandle(recipe, 0) != 0} "
+                           + $"amb=({r.AmbR:F3},{r.AmbG:F3},{r.AmbB:F3},{r.AmbW:F3}) "
+                           + $"dif=({r.DifR:F3},{r.DifG:F3},{r.DifB:F3},{r.DifW:F3}) "
+                           + $"emi=({r.EmiR:F3},{r.EmiG:F3},{r.EmiB:F3},w={r.EmiW:F1}) "
+                           + $"slots={slots} feat=({r.FeatX:F1},{r.FeatY:F1},{r.FeatZ:F1},{r.FeatW:F1}) "
+                           + $"alpha={f.Alpha:F3} dissolve={f.Dissolve:F3} hidden={r.Ext.Ext2.W:F3} "
+                           + $"pbr=({r.PbrR:F2},{r.PbrG:F2},{r.PbrB:F2}) texH0={DrawRecipe.TexHandle(recipe, 0) != 0} "
                            + $"lmrect={LightmapBake.HasRecordForSelfCheck(i)}");
             }
         }
@@ -471,25 +470,22 @@ public sealed unsafe partial class AlloyRenderer
     /// engine path read a box <c>ComputePartBBox</c> had already filled in world space at tile spawn.</summary>
     internal static void DbWriteWorldBox(int i, int recipe, in Matrix4x4 m)
     {
-        Span<float> b = stackalloc float[6];
-        DrawRecipe.Box(recipe, b);
+        Box b = DrawRecipe.ModelBox(recipe);
         var lo = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
         var hi = new Vector3(float.MinValue, float.MinValue, float.MinValue);
         for (int corner = 0; corner < 8; corner++)
         {
-            var p = new Vector3(b[(corner & 1) != 0 ? 3 : 0], b[(corner & 2) != 0 ? 4 : 1], b[(corner & 4) != 0 ? 5 : 2]);
+            var p = new Vector3((corner & 1) != 0 ? b.Max.X : b.Min.X, (corner & 2) != 0 ? b.Max.Y : b.Min.Y, (corner & 4) != 0 ? b.Max.Z : b.Min.Z);
             Vector3 w = Vector3.Transform(p, m);
             lo = Vector3.Min(lo, w); hi = Vector3.Max(hi, w);
         }
-        int o = i * 6;
         // CX-188: the gen counts a box that MOVED, not a call. The caller gates this on `rec`, which is also
         // true for a reveal change, a staleness re-send and the per-frame roll -- so a counter bumped per call
         // would move on a still frame and no reader could skip on it. Six compares against six stores.
-        if (_oBox[o] != lo.X || _oBox[o + 1] != lo.Y || _oBox[o + 2] != lo.Z
-            || _oBox[o + 3] != hi.X || _oBox[o + 4] != hi.Y || _oBox[o + 5] != hi.Z)
+        ref Box held = ref _oBox[i];
+        if (held.Min != lo || held.Max != hi)
         {
-            _oBox[o] = lo.X; _oBox[o + 1] = lo.Y; _oBox[o + 2] = lo.Z;
-            _oBox[o + 3] = hi.X; _oBox[o + 4] = hi.Y; _oBox[o + 5] = hi.Z;
+            held.Min = lo; held.Max = hi;
             BoxGen++;
         }
     }
