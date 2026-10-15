@@ -22,7 +22,7 @@ internal static unsafe partial class TexLoad
     /// <summary>The four restypes <c>CAuroraInterface::GetHighestPriorityTextureFormat</c> @0x1125480 probes,
     /// in its own order. Alloy prepares <see cref="DdsResType"/> and <see cref="TgaResType"/>.</summary>
     private const ushort KtxResType = 0x819, DdsResType = 0x7f1, Pc4ResType = 0x80b, TgaResType = 3;   // not-an-offset: restype ids
-    /// <summary>Container kinds in the engine's priority order: a loose file beats NWSync beats a hak beats the
+    /// <summary>Container kinds in the engine's priority order: a hak beats NWSync beats a loose file beats the
     /// base BIF (<c>CExoResMan::Exists</c>'s out-parameter is <see cref="EngineLayout.KeyTableKind"/>, not the
     /// priority -- the race compares container quality, and that is what this order is).</summary>
     private static ReadOnlySpan<int> KindOrder => [2, 5, 3, 1];
@@ -173,9 +173,9 @@ internal static unsafe partial class TexLoad
     }
 
     /// <summary>The engine's own format race, run without reading anything: <c>GetHighestPriorityTextureFormat</c>
-    /// probes KTX, DDS, 4PC and TGA, then picks by CONTAINER KIND -- loose file &gt; NWSync &gt; hak &gt; base BIF
+    /// probes KTX, DDS, 4PC and TGA, then picks by CONTAINER KIND -- hak &gt; NWSync &gt; loose file &gt; base BIF
     /// -- taking the formats in that same order inside each kind. Returns the winning restype, 0 for none.</summary>
-    private static ushort Winner(byte* name, out IntPtr table, out IntPtr entry)
+    internal static ushort Winner(byte* name, out IntPtr table, out IntPtr entry)
     {
         table = entry = IntPtr.Zero;
         Span<IntPtr> tables = stackalloc IntPtr[FormatOrder.Length];
