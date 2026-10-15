@@ -512,7 +512,7 @@ internal static unsafe partial class LightmapBake
     /// second misses the first's files. The rect sampled is the LOWEST key of the area, not the first one
     /// enrolled -- enrolment order moves with a streamed texture, so two runs sampled different rects and the
     /// A/B could not tell a moved key term from a moved sample. Held until the hold's close.</summary>
-    private static bool _keyLogged;
+    private static bool _keyReported;
     private static bool _keyHave;
     private static ulong _keyContent, _keyKey;
     private static Matrix4x4 _keyM;
@@ -525,7 +525,7 @@ internal static unsafe partial class LightmapBake
 
     private static void LogKeySample(ulong content, in Matrix4x4 m, Vector3 c, float r, ulong key)
     {
-        if (_keyLogged || !KeySampleBeats(_keyHave, _keyKey, key)) return;
+        if (_keyReported || !KeySampleBeats(_keyHave, _keyKey, key)) return;
         _keyHave = true;
         _keyContent = content; _keyM = m; _keyC = c; _keyR = r; _keyKey = key;
     }
@@ -534,8 +534,8 @@ internal static unsafe partial class LightmapBake
     /// run with the hold off still writes the line.</summary>
     private static void FlushKeySample()
     {
-        if (_keyLogged || !_keyHave) return;
-        _keyLogged = true;
+        if (_keyReported || !_keyHave) return;
+        _keyReported = true;
         Vector3 c = _keyC; float r = _keyR;
         int n = 0; for (int i = 0; i < _setN; i++) if (Touches(i, c, r)) n++;
         Vector2 at = AlloyLights.Atten;
@@ -694,7 +694,7 @@ internal static unsafe partial class LightmapBake
         _areaHalve = 0; _refineAt = 0;
         Repack();
         _landed = _landedHits = _refused = _pastCap = _bakeSkips = _uncached = 0; _pageMs = 0; _pageMsN = 0;
-        _logLeft = LogCap; _knownLogged = false; _keyLogged = false; _keyHave = false; _keyKey = 0;
+        _logLeft = LogCap; _knownLogged = false; _keyReported = false; _keyHave = false; _keyKey = 0;
         // CX-56: _loadArmed is deliberately untouched -- it says the CURRENT area's lights are all spawned,
         // which a revoke does not change, so the set this reopens re-closes on the very next walk.
         SetHash = 0; _setN = 0; _stN = 0; _seen.Clear(); _seenPtr.Clear(); Reopen(); _rekeyPending = false;

@@ -12,8 +12,8 @@ INSTALL
   The game loads version.dll. Beside it is the audio runtime CX uses: cx_openal.dll (OpenAL Soft)
   and phonon.dll (Steam Audio). None of the game's own files are touched.
 
-  Windows Defender sometimes quarantines version.dll. That's a false positive, so add it to
-  Defender's exclusions.
+  Some antivirus (Defender, Kaspersky) flags version.dll as an injector. Check the zip against SHA256SUMS on the release page, then add version.dll to your
+  antivirus exclusions. When in doubt, please contact xtul_ on Discord.
 
 DID IT WORK?
   The main menu shows a line of credits in the top-left corner.

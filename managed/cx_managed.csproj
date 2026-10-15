@@ -8,6 +8,12 @@
     <PublishAot>true</PublishAot>
     <NativeLib>Shared</NativeLib>
     <AssemblyName>cx_managed</AssemblyName>
+    <!-- The Windows version resource (Properties > Details): without these every field reads "cx_managed", and
+         an unsigned version.dll that will not say what it is scores as a sideloading proxy with antivirus. -->
+    <Product>NWNCX:EE</Product>
+    <AssemblyTitle>NWNCX:EE client extender for Neverwinter Nights: Enhanced Edition</AssemblyTitle>
+    <Company>Michał Piasecki</Company>
+    <Copyright>Copyright (c) 2026 Michał Piasecki</Copyright>
     <!-- `dotnet publish -r win-x64` cross-compiles the .dll on Linux (unsupported by
          Microsoft, works): see the win-x64 block below and build-win.sh. -->
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">linux-x64</RuntimeIdentifier>
