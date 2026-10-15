@@ -2880,7 +2880,7 @@ public static unsafe partial class EngineLayout
     /// <summary>EnableAnimations / IsAnimating.</summary>
     public static readonly int SeamGobAnimEnabled = Field<byte>("Gob", "seamAnimEnabled");
     /// <summary>inline char[0x40]; Gob::GetName returns its address.</summary>
-    public static readonly int SeamGobName = Field<byte>("Gob", "seamName");
+    public static readonly int SeamGobName = Field<byte>("Gob", "seamName", count: 0x40);
     /// <summary>TurnOnShadows / TurnOffShadows, a 16-bit store.</summary>
     public static readonly int SeamGobShadows = Field<short>("Gob", "seamShadows");
     /// <summary>SetRenderPersonalSpace.</summary>

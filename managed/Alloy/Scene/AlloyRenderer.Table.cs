@@ -50,10 +50,7 @@ public sealed unsafe partial class AlloyRenderer
     /// Metallicness, _) then (CustomSpecularColor.rgb, declared?). Read once at enrollment off the material's
     /// parsed .mtr list; 0 means "not declared" and the shader synthesises it, as the stock shaders do. The
     /// spare w carries the live slot mask per frame, so index 3 of each pair is never written here.</summary>
-    private static readonly float[] _oParam = new float[MaxOwned * ParamFloats];
-    /// <summary>Staged floats per part: the two stock PBR vec4s, then ADR 0026's three extension vec4s
-    /// (<see cref="ExtFloat"/> onward in the record) at <see cref="ParamExt"/>.</summary>
-    internal const int ParamFloats = 20, ParamExt = 8;
+    private static readonly ParamRow[] _oParam = new ParamRow[MaxOwned];
     /// <summary>Which of slots 1..5 this material had a texture in at enrollment (bit s-1), plus slot 6, the
     /// flow map, at bit 5 -- above the five, below <see cref="EnvSlot"/>. The live tid is still re-fetched
     /// per frame like slot 0's; this only says which slots are worth asking for.</summary>

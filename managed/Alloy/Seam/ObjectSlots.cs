@@ -297,7 +297,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static nint GetName(nint self)
     {
         nint shell = Facade.GobBlock(self);
-        return shell == 0 ? 0 : (nint)new Gob(shell).NameBytes;
+        return shell == 0 ? 0 : (nint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(new Gob(shell).SeamName));
     }
 
     /// <summary><c>Gob::GetModelName</c> @0x437270 returns <c>model + 0x10</c>, the name inside the MODEL, so

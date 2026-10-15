@@ -2935,7 +2935,7 @@ public readonly unsafe ref partial struct Gob(IntPtr ptr)
     /// <inheritdoc cref="EngineLayout.SeamGobForceAnim"/>
     public ref byte SeamForceAnim => ref *(byte*)(Ptr + EngineLayout.SeamGobForceAnim);
     /// <inheritdoc cref="EngineLayout.SeamGobName"/>
-    public ref byte SeamName => ref *(byte*)(Ptr + EngineLayout.SeamGobName);
+    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamGobName), 0); }
     /// <inheritdoc cref="EngineLayout.SeamGobPersonalSpace"/>
     public ref byte SeamPersonalSpace => ref *(byte*)(Ptr + EngineLayout.SeamGobPersonalSpace);
     /// <inheritdoc cref="EngineLayout.SeamGobSafeCap"/>

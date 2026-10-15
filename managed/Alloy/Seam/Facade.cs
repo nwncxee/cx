@@ -304,9 +304,9 @@ public static unsafe partial class Facade
     /// not a managed string.</summary>
     public static void SetName(nint shell, ReadOnlySpan<char> name)
     {
-        byte* dst = new Gob(shell).NameBytes;
+        Span<byte> dst = new Gob(shell).SeamName;
         int n = 0;
-        for (int i = 0; i < name.Length && n < SeamLayout.GobNameMax - 1; i++)
+        for (int i = 0; i < name.Length && n < dst.Length - 1; i++)
         {
             char c = name[i];
             dst[n++] = c < 0x80 ? (byte)c : (byte)'?';
@@ -318,20 +318,20 @@ public static unsafe partial class Facade
     /// because the engine's text is a single-byte codepage and this storage is handed straight back to it.</summary>
     public static void SetName(nint shell, byte* name)
     {
-        byte* dst = new Gob(shell).NameBytes;
+        Span<byte> dst = new Gob(shell).SeamName;
         int n = 0;
         if (name != null)
-            while (n < SeamLayout.GobNameMax - 1 && name[n] != 0) { dst[n] = name[n]; n++; }
+            while (n < dst.Length - 1 && name[n] != 0) { dst[n] = name[n]; n++; }
         dst[n] = 0;
     }
 
     /// <summary>The shell's name as the game would read it.</summary>
     public static string NameOf(nint shell)
     {
-        byte* s = new Gob(shell).NameBytes;
+        ReadOnlySpan<byte> s = new Gob(shell).SeamName;
         int n = 0;
-        while (n < SeamLayout.GobNameMax && s[n] != 0) n++;
-        return System.Text.Encoding.ASCII.GetString(s, n);
+        while (n < s.Length && s[n] != 0) n++;
+        return System.Text.Encoding.ASCII.GetString(s[..n]);
     }
 
     /// <summary>The scene shell the game reads at <c>Gob</c> +0x88, kept current by every attach and detach.</summary>

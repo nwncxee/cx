@@ -49,18 +49,18 @@ internal static class MtrParams
 
     /// <summary>The extension floats before any material is read: -1 = "not declared" for every term a 0 is
     /// legal for (a dielectric, a mirror); the layer weights and the sheen colour are 0 = absent.</summary>
-    internal static void ResetExt(Span<float> ext)
+    internal static void ResetExt(ref MaterialExt ext)
     {
-        ext.Clear();
-        ext[0] = ext[1] = ext[3] = -1f;   // CxMetallic, CxRoughness, CxClearcoatRoughness
-        ext[7] = ext[8] = -1f;            // CxSheenRoughness, CxEmissiveStrength
+        ext = default;
+        ext.Ext0.X = ext.Ext0.Y = ext.Ext0.W = -1f;   // CxMetallic, CxRoughness, CxClearcoatRoughness
+        ext.Ext1.W = ext.Ext2.X = -1f;                // CxSheenRoughness, CxEmissiveStrength
     }
 
     /// <summary>Fold <paramref name="mtr"/>'s parameters, in file order (a later line wins), into the record's
-    /// <paramref name="param"/> floats (stock pair, then <see cref="AlloyRenderer.ParamExt"/>'s extension) and
+    /// <paramref name="param"/> row and
     /// the feature vec4 <paramref name="feat"/> (x = the feature, yzw its parameters). A name nobody reads is
     /// left alone; an int-typed parameter counts only where the engine's shader reads it as one.</summary>
-    internal static void Fold(MtrDef? mtr, Span<float> param, Span<float> feat)
+    internal static void Fold(MtrDef? mtr, ref ParamRow param, Span<float> feat)
     {
         int f = (int)feat[0];
         if (mtr != null)
@@ -71,19 +71,19 @@ internal static class MtrParams
                 {
                     if ((f == (int)ShaderFeature.RoofKn || f == (int)ShaderFeature.RoofKnM) && Is(name, "iRoofInterior"))
                         feat[3] = v[0];
-                    if (Is(name, "CxOrm")) param[AlloyRenderer.ParamExt + 9] = v[0] != 0f ? 1f : 0f;
+                    if (Is(name, "CxOrm")) param.Ext.Ext2.Y = v[0] != 0f ? 1f : 0f;
                     continue;
                 }
                 if (FeatureParam(f, name, v[0], feat)) continue;
-                if (Ext(name, v, param[AlloyRenderer.ParamExt..])) continue;
-                if (Is(name, "Specularity")) param[0] = v[0];
-                else if (Is(name, "Roughness")) param[1] = v[0];
-                else if (Is(name, "Metallicness")) param[2] = v[0];
+                if (Ext(name, v, ref param.Ext)) continue;
+                if (Is(name, "Specularity")) param.Specularity = v[0];
+                else if (Is(name, "Roughness")) param.Roughness = v[0];
+                else if (Is(name, "Metallicness")) param.Metallicness = v[0];
                 else if (Is(name, "CustomSpecularColor") && v.Length >= 3)
                 {
-                    param[4] = v[0]; param[5] = v[1]; param[6] = v[2];
+                    param.CustomR = v[0]; param.CustomG = v[1]; param.CustomB = v[2];
                     // black IS the engine's "no custom colour" sentinel (inc_material.shd compares against it)
-                    param[7] = v[0] != 0f || v[1] != 0f || v[2] != 0f ? 1f : 0f;
+                    param.CustomDeclared = v[0] != 0f || v[1] != 0f || v[2] != 0f ? 1f : 0f;
                 }
             }
         // fSwaySpeed divides, and 1.0 is what every wind .mtr states: an undeclared one is the authored case.
@@ -155,18 +155,18 @@ internal static class MtrParams
     /// <summary>ADR 0026's vocabulary into the three extension vec4s: (CxMetallic, CxRoughness, CxClearcoat,
     /// CxClearcoatRoughness), (CxSheenColor.rgb, CxSheenRoughness), (CxEmissiveStrength, CxOrm, _, _). Clamped
     /// here, so a typo'd 50 reads as the maximum rather than an HDR blow-out.</summary>
-    private static bool Ext(string name, float[] p, Span<float> x)
+    private static bool Ext(string name, float[] p, ref MaterialExt x)
     {
         float v = Math.Clamp(p[0], 0f, 1f);
-        if (Is(name, "CxMetallic")) x[0] = v;
-        else if (Is(name, "CxRoughness")) x[1] = v;
-        else if (Is(name, "CxClearcoat")) x[2] = v;
-        else if (Is(name, "CxClearcoatRoughness")) x[3] = v;
+        if (Is(name, "CxMetallic")) x.Ext0.X = v;
+        else if (Is(name, "CxRoughness")) x.Ext0.Y = v;
+        else if (Is(name, "CxClearcoat")) x.Ext0.Z = v;
+        else if (Is(name, "CxClearcoatRoughness")) x.Ext0.W = v;
         else if (Is(name, "CxSheenColor") && p.Length >= 3)
-        { x[4] = v; x[5] = Math.Clamp(p[1], 0f, 1f); x[6] = Math.Clamp(p[2], 0f, 1f); }
-        else if (Is(name, "CxSheenRoughness")) x[7] = v;
-        else if (Is(name, "CxEmissiveStrength")) x[8] = Math.Clamp(p[0], 0f, MaxEmissiveStrength);
-        else if (Is(name, "CxOrm")) x[9] = p[0] > 0.5f ? 1f : 0f;
+        { x.Ext1.X = v; x.Ext1.Y = Math.Clamp(p[1], 0f, 1f); x.Ext1.Z = Math.Clamp(p[2], 0f, 1f); }
+        else if (Is(name, "CxSheenRoughness")) x.Ext1.W = v;
+        else if (Is(name, "CxEmissiveStrength")) x.Ext2.X = Math.Clamp(p[0], 0f, MaxEmissiveStrength);
+        else if (Is(name, "CxOrm")) x.Ext2.Y = p[0] > 0.5f ? 1f : 0f;
         else return false;
         return true;
     }
@@ -188,22 +188,23 @@ internal static class MtrParams
             + "parameter float fSwayStrength 0.25\nparameter int Metallicness 1\n"
             + "texture7 community_t7\ntexture11 my_orm\ntexture15 last\n";
         MtrDef m = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes(text), "selfcheck");
-        Span<float> param = stackalloc float[20], feat = stackalloc float[4];
-        param.Clear(); feat.Clear();
-        ResetExt(param[8..]);
+        var param = new ParamRow();
+        Span<float> feat = stackalloc float[4];
+        feat.Clear();
+        ResetExt(ref param.Ext);
         feat[0] = Feature(m.ShaderVs);
-        Fold(m, param, feat);
+        Fold(m, ref param, feat);
         check.Expect(feat[0] == 1f, "customShaderVS shd_windgrass_vs is not the wind-grass feature (1)");
         check.Expect(Feature("shd_roofkn_vs") == 4 && Feature("shd_roofknm_vs") == 5 && Feature("vs_other") == 0,
                      "the roof forks are not told apart, or an unknown VS names a feature");
         check.Expect(feat[1] == 1f && feat[2] == 0.25f, "wind: an undeclared fSwaySpeed is 1, fSwayStrength lands in feat.z");
-        check.Expect(param[0] == 0.5f && param[1] == 0.3f, "the stock Specularity/Roughness do not land in pbr.xy");
-        check.Expect(param[2] == 0f, "an int-typed Metallicness was read (the engine binds it as an int uniform)");
-        check.Expect(param[4] == 0.5f && param[7] == 1f, "a non-black CustomSpecularColor did not land with its on flag");
-        check.Expect(param[8] == 0f && param[9] == -1f, "a declared CxMetallic 0 or an absent CxRoughness lost its meaning");
-        check.Expect(param[10] == 1f, "CxClearcoat is not case-folded and clamped to 1");
-        check.Expect(param[12] == 0.2f && param[13] == 0.3f && param[14] == 0.4f, "CxSheenColor's three components");
-        check.Expect(param[16] == -1f && param[17] == 1f, "an int CxOrm 1 is not read, or a longer name matched CxEmissiveStrength");
+        check.Expect(param.Specularity == 0.5f && param.Roughness == 0.3f, "the stock Specularity/Roughness do not land in pbr.xy");
+        check.Expect(param.Metallicness == 0f, "an int-typed Metallicness was read (the engine binds it as an int uniform)");
+        check.Expect(param.CustomR == 0.5f && param.CustomDeclared == 1f, "a non-black CustomSpecularColor did not land with its on flag");
+        check.Expect(param.Ext.Ext0.X == 0f && param.Ext.Ext0.Y == -1f, "a declared CxMetallic 0 or an absent CxRoughness lost its meaning");
+        check.Expect(param.Ext.Ext0.Z == 1f, "CxClearcoat is not case-folded and clamped to 1");
+        check.Expect(param.Ext.Ext1.X == 0.2f && param.Ext.Ext1.Y == 0.3f && param.Ext.Ext1.Z == 0.4f, "CxSheenColor's three components");
+        check.Expect(param.Ext.Ext2.X == -1f && param.Ext.Ext2.Y == 1f, "an int CxOrm 1 is not read, or a longer name matched CxEmissiveStrength");
         check.Expect(m.Textures[7] == "community_t7" && m.Textures[11] == "my_orm" && m.Textures[15] == "last",
                      "texture7/11/15 are not all parsed");
         check.Expect(DrawRecipe.MtrTextureOf(7) == 11 && DrawRecipe.MtrTextureOf(6) == 6,
