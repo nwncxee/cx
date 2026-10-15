@@ -45,5 +45,5 @@ editor. The compiler sees types, so it can tell a pointer plus an integer from a
 - `tools/analyzers/` is a build input, so CI builds when it changes. The Windows job compiles the `#if WINDOWS`
   code, so a Windows-only site fails there.
 - The same list bans the other calls with a helper: `Thread.Sleep` goes through `BlockingWait.Sleep`, which takes
-  the reason the thread may block. Blocking on a `Task` is banned outright, because the extender has no async
-  path. `Environment.GetEnvironmentVariable` goes through `HostEnv`.
+  the reason the thread may block. The `Task` and `ValueTask` types are banned outright, because the extender has no async path.
+  A ban line without a parameter list bans one overload only, so a type ban is the way to close a family. `Environment.GetEnvironmentVariable` goes through `HostEnv`.

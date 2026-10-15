@@ -209,7 +209,7 @@ is proven once with a planted call that fails the build. No tests that read sour
 The `standards-reviewer` agent (`.claude/agents/`) asks for the missing ban in review.
 
 Banned today: pointer reads with an offset (`Marshal.Read*`, `Unsafe.Add`, ...) -> a view; `Thread.Sleep` ->
-`BlockingWait.Sleep(ms, why)`; blocking on a `Task` -> never; `Environment.GetEnvironmentVariable` -> `HostEnv`.
+`BlockingWait.Sleep(ms, why)`; `Task`/`ValueTask` -> never (type bans: a member line with no parameter list bans one overload only); `Environment.GetEnvironmentVariable` -> `HostEnv`.
 
 ## Gates (CX-192)
 
