@@ -467,14 +467,20 @@ internal static unsafe class NuiLayoutErrors
             log.Info("NuiLayoutErrors.SelfCheck: skipped (no kiwi layout rows for this build)");
             return;
         }
-        byte* mem = (byte*)NativeMemory.AllocZeroed(4096);
+        var blocks = new System.Collections.Generic.List<IntPtr>();
+        IntPtr Block(int n)
+        {
+            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
+            blocks.Add(p);
+            return p;
+        }
         try
         {
-            IntPtr width = NuiScratch.At(mem, 3000);
+            IntPtr width = Block(512);
             IntPtr Data(int at, double constant)
             {
-                var cd = new kiwi__ConstraintData(NuiScratch.At(mem, at));
-                IntPtr terms = NuiScratch.At(mem, at + 256);
+                var cd = new kiwi__ConstraintData(Block(256));
+                IntPtr terms = Block(256);
                 new kiwi__Term(terms).Variable = width;
                 new kiwi__Term(terms).Coefficient = 1.0;
                 cd.Terms = new kiwi__Term(terms);
@@ -485,7 +491,7 @@ internal static unsafe class NuiLayoutErrors
                 return cd.Ptr;
             }
             IntPtr accepted = Data(0, -64), adding = Data(512, -32);
-            IntPtr solver = NuiScratch.At(mem, 1024), cns = NuiScratch.At(mem, 1536), row = NuiScratch.At(mem, 2048), cells = NuiScratch.At(mem, 2304);
+            IntPtr solver = Block(512), cns = Block(512), row = Block(256), cells = Block(1024);
             var pair = new kiwi__impl__CnPair(cns);
             pair.Data = new kiwi__ConstraintData(accepted);
             pair.Marker = 5;
@@ -551,7 +557,7 @@ internal static unsafe class NuiLayoutErrors
         }
         finally
         {
-            NativeMemory.Free(mem);
+            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
         }
         if (check.Ok) log.Info("NuiLayoutErrors.SelfCheck: passed");
     }

@@ -359,13 +359,22 @@ internal static unsafe class NuiSolver
         if (stride == 0) { log.Info("NuiSolver.SelfCheck: skipped (no kiwi layout rows for this build)"); return; }
         var ix = new Index();
         var mem = (byte*)NativeMemory.AllocZeroed(4096);
+        var blocks = new System.Collections.Generic.List<IntPtr>();
+        IntPtr Block(int n)
+        {
+            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
+            blocks.Add(p);
+            return p;
+        }
+        var rowBlocks = new IntPtr[4];
         try
         {
-            IntPtr rows = (IntPtr)mem, cellArea = NuiScratch.At(mem, 1024);
+            IntPtr rows = (IntPtr)mem, cellArea = Block(1024);
+            for (int b = 0; b < rowBlocks.Length; b++) rowBlocks[b] = Block(64);
             int cellAt = 0;
             IntPtr MakeRow(int slot, params ulong[] ids)
             {
-                IntPtr row = NuiScratch.At(mem, 2048 + slot * 64);
+                IntPtr row = rowBlocks[slot];
                 IntPtr c0 = new kiwi__impl__SymbolPair(cellArea)[cellAt].Ptr;
                 for (int i = 0; i < ids.Length; i++) new kiwi__impl__SymbolPair(c0)[i].Id = ids[i];
                 cellAt += ids.Length;
@@ -406,6 +415,7 @@ internal static unsafe class NuiSolver
         }
         finally
         {
+            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
             NativeMemory.Free(mem);
         }
         log.Info(check.Ok ? "NuiSolver.SelfCheck: passed" : "NuiSolver.SelfCheck: FAILED");

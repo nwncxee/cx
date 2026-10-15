@@ -5,8 +5,15 @@ namespace CX.Engine;
 /// <inheritdoc cref="NkBuffer"/>
 public readonly unsafe partial struct NkBuffer
 {
-    /// <summary>The command <paramref name="off"/> bytes into a buffer whose memory block starts at <paramref name="memory"/>.</summary>
-    public static NkCommand CommandAt(IntPtr memory, ulong off) => new(memory + (nint)off);
+    /// <summary>The command at nuklear's buffer offset <paramref name="off"/> (the value a window's begin or a command's next holds).</summary>
+    public NkCommand CommandAt(ulong off) => new(Memory + (nint)off);
+}
+
+/// <inheritdoc cref="NkContext"/>
+public readonly unsafe partial struct NkContext
+{
+    /// <summary>The command at nuklear's buffer offset <paramref name="off"/> in the context's own memory.</summary>
+    public NkCommand CommandAt(ulong off) => new(MemPtr + (nint)off);
 }
 
 /// <inheritdoc cref="NkCommand"/>

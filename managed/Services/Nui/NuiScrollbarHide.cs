@@ -198,11 +198,11 @@ internal static unsafe class NuiScrollbarHide
     /// have moved during the call, so it is walked by offset from the re-read memory pointer, as <c>nk__next</c> does.</summary>
     private static void Scale(IntPtr output, ulong from, float alpha)
     {
-        IntPtr mem = new NkBuffer(new NkCommandBuffer(output).Base).Memory;
+        var buffer = new NkBuffer(new NkCommandBuffer(output).Base);
         ulong end = new NkCommandBuffer(output).End;
         for (ulong off = from; off < end;)
         {
-            var cmd = NkBuffer.CommandAt(mem, off);
+            var cmd = buffer.CommandAt(off);
             int type = cmd.Type;
             if ((uint)type > LastType)
             {
@@ -242,7 +242,7 @@ internal static unsafe class NuiScrollbarHide
             void Put(int at, uint v) => MemoryMarshal.Write(new Span<byte>(mem, 512)[at..], in v);
             void Cmd(int off, int type, int next, uint color, int at)
             {
-                var c = new NkCommand(NuiScratch.At(mem, off));
+                var c = new NkBuffer((IntPtr)buf).CommandAt((ulong)off);
                 c.Type = type;
                 c.Next = (ulong)next;
                 if (at != 0) Put(off + at, color);

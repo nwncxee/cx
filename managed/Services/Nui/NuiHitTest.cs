@@ -416,19 +416,26 @@ internal static unsafe class NuiHitTest
         }
         const int Size = 0x8000;  // not-an-offset: the fake nuklear/NUI memory is this big
         byte* mem = (byte*)NativeMemory.AllocZeroed(Size);
+        var blocks = new System.Collections.Generic.List<IntPtr>();
+        IntPtr Block(int n)
+        {
+            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
+            blocks.Add(p);
+            return p;
+        }
         var saved = _s;
         try
         {
-            IntPtr ctx = (IntPtr)mem, win = NuiScratch.At(mem, 0x7000), panel = NuiScratch.At(mem, 0x7100), above = NuiScratch.At(mem, 0x7200);
-            IntPtr widget = NuiScratch.At(mem, 0x6000);
-            uint* scroll = (uint*)NuiScratch.At(mem, 0x7300);
+            IntPtr ctx = (IntPtr)mem, win = Block(0x400), panel = Block(0x400), above = Block(0x400);
+            IntPtr widget = Block(0x400);
+            uint* scrollX = (uint*)Block(8), scrollY = (uint*)Block(8);
             var pn = new NkPanel(panel);
-            scroll[0] = 3; scroll[1] = 4;
+            *scrollX = 3; *scrollY = 4;
             new NkContext(ctx).Current = win;
             new NkWindow(win).Layout = panel;
             new NkWindow(win).Next = above;
-            pn.OffsetX = (IntPtr)scroll;
-            pn.OffsetY = NuiScratch.At(mem, 0x7304);
+            pn.OffsetX = (IntPtr)scrollX;
+            pn.OffsetY = (IntPtr)scrollY;
             pn.AtX = 10; pn.AtY = 20;
             pn.RowType = 6;
             Span<float> clip = pn.Clip;
@@ -480,8 +487,8 @@ internal static unsafe class NuiHitTest
             pn.RowIndex = 1;
             rowSave = NuiNuklear.StartRow((byte*)panel);
             check.Expect(!rowSave.Moved && pn.RowIndex == 1 && pn.AtY == 20, "a row with a column left is not advanced");
-            IntPtr map = NuiScratch.At(mem, 0x4000);
-            BuildMap(mem, map, (IntPtr)widget, "slot_head", (IntPtr)0x2222, "x");
+            IntPtr map = Block(0x800);
+            BuildMap(Block(0x100), Block(0x100), Block(0x100), map, (IntPtr)widget, "slot_head", (IntPtr)0x2222, "x");
             Span<byte> id = stackalloc byte[NuiHit.TokenCap];
             int n = ResolveId(map, widget, id);
             check.Expect(n == 9 && Encoding.UTF8.GetString(id[..n]) == "slot_head", "the id map names the first element slot_head");
@@ -550,6 +557,7 @@ internal static unsafe class NuiHitTest
         finally
         {
             _s = saved;
+            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
             NativeMemory.Free(mem);
         }
         if (check.Ok) log.Info("NuiHitTest.SelfCheck: passed");
@@ -557,10 +565,10 @@ internal static unsafe class NuiHitTest
 
     /// <summary>Two id-map nodes in the running OS's container layout: libstdc++'s null-ended chain from the before-begin
     /// pointer, MSVC's circular list from a sentinel. Keys short enough to live inline in the std::string.</summary>
-    private static void BuildMap(byte* mem, IntPtr window, IntPtr elementA, string idA, IntPtr elementB, string idB)
+    private static void BuildMap(IntPtr nodeA, IntPtr nodeB, IntPtr nodeSentinel, IntPtr window, IntPtr elementA, string idA, IntPtr elementB, string idB)
     {
         bool win = OperatingSystem.IsWindows();
-        byte* a = (byte*)NuiScratch.At(mem, 0x5400), b = (byte*)NuiScratch.At(mem, 0x5600), sentinel = (byte*)NuiScratch.At(mem, 0x5800);
+        byte* a = (byte*)nodeA, b = (byte*)nodeB, sentinel = (byte*)nodeSentinel;
         void Node(byte* node, IntPtr next, IntPtr element, string id)
         {
             *(IntPtr*)node = next;
