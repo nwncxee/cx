@@ -98,7 +98,7 @@ public sealed unsafe class NameplateService : IExtenderService
         _origItemPlate = hooks.InstallItemShowFeedbackBubbleText(&OnItemPlate);
         _origChat = hooks.InstallHandleServerToPlayerChat(&OnServerChat);
 
-        if (BandWords.Install(hooks) < 5) log.Info("NameplateService: a TLK hook did not install -- band captions may lag a server's TLK change");
+        if (!BandWords.Install(hooks)) log.Info("NameplateService: a TLK hook did not install -- band captions may lag a server's TLK change");
 
         _chatHooked = _origChat != null;
         if (!_chatHooked) log.Info("NameplateService: channel styling disabled (chat handler unhooked)");
@@ -294,6 +294,7 @@ public sealed unsafe class NameplateService : IExtenderService
     {
         bool inModule = GameGate.InModule;
         if (_wasInModule && !inModule) _table.Clear();
+        if (_wasInModule != inModule) BandWords.Stale();
         _wasInModule = inModule;
 
         if (!_armed) return;

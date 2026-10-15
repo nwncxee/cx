@@ -455,23 +455,14 @@ public static partial class PlateLayout
         check.Expect(yo == 0f && lp == 0f, "losing the push absorbs back the other way");
 
         // ---- Bands + reaction ----
-        string[] stock = StockBandTexts;
-        check.Expect(BandText(stock, 0) == "Uninjured" && BandText(stock, 5) == "Dead", "band table ends are the game's own words");
-        check.Expect(BandText(stock, 2) == "Injured" && BandText(stock, 3) == "Heavily Wounded", "the stock fourth band is the game's Heavily Wounded");
-        check.Expect(BandText(stock, -1) == "Uninjured" && BandText(stock, 99) == "Dead", "out-of-range band index clamps");
-        check.Expect(ReferenceEquals(BandText(stock, 1), BandText(stock, 1)), "band text is a cached string, not built per call");
-
-        // ---- BandCaptions: what the client's table resolved to ----
         string[] got = BandCaptions(new string?[] { "Fine", "", "   ", null, " Hurt ", "Gone" });
         check.Expect(got.Length == BandCount, "one caption per band");
         check.Expect(got[0] == "Fine" && got[5] == "Gone", "a resolved caption is shown as the table gave it");
         check.Expect(got[1] == "" && got[2] == "", "a blank or whitespace-only caption stays empty, the server chose no word");
-        check.Expect(got[3] == "Heavily Wounded", "a failed lookup falls back to the stock word");
+        check.Expect(got[3] == "", "a cell that did not parse draws no caption, never a typed-in word");
         check.Expect(got[4] == "Hurt", "a caption loses its stray edge spaces");
-        string[] shortGot = BandCaptions(new string?[] { "Only" });
-        check.Expect(shortGot[0] == "Only" && shortGot[1] == "Barely Injured" && shortGot[5] == "Dead", "bands past a short answer take the stock words");
-        check.Expect(BandCaptions(new string?[] { null, null, null, null, null, null })[3] == "Heavily Wounded", "an all-failed lookup is the stock set");
-        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine" && BandText(got, 12) == "Gone", "a live caption set clamps like the stock one");
+        check.Expect(BandText(got, 1) == "" && BandText(got, -4) == "Fine" && BandText(got, 12) == "Gone", "out-of-range band index clamps");
+        check.Expect(ReferenceEquals(BandText(got, 0), BandText(got, 0)), "band text is a cached string, not built per call");
 
         // ---- A blank caption measures no width ----
         PlateMetrics withBlank = Measure(40f, 1, 0f, false, true, false, 10f, 1f);

@@ -134,18 +134,21 @@ Offsets (all verified in CX-179):
 - `*g_pAppManager` → `+8` = `CClientExoAppInternal`; `+0x180` word: **bit 0** = the
   "show mouse-over feedback" option, **bit 1** = Tab currently held. Two derefs.
 
-Health bands, index = `stats[0x8e]`. The text column is the stock wording; the plate shows what the client's
-`damagelevels.2da` `STRING_REF` cell resolves to through the TLK (a blank result draws no caption), and falls
-back to these words only when the lookup fails:
+Health bands, index = `stats[0x8e]`. The plate shows what the client's `damagelevels.2da` `STRING_REF` cell
+resolves to through the TLK. The text column is the stock TLK's answer, for reference only: no word is typed into
+the code. A blank result, or a cell `C2DA::GetINTEntry` refuses, draws no caption. The engine's own bubble ignores
+that refusal and resolves the 0 written for an empty cell, which is strref 0, "Bad Strref".
 
-| idx | text | colour |
-| --- | --- | --- |
-| 0 | Uninjured | 128,255,128 |
-| 1 | Barely Injured | 200,255,1 |
-| 2 | Injured | 255,200,1 |
-| 3 | Heavily Wounded | 255,100,1 |
-| 4 | Near Death | 255,80,64 |
-| 5 | Dead | 128,128,128 |
+| idx | `STRING_REF` | text | colour |
+| --- | --- | --- | --- |
+| 0 | 6409 | Uninjured | 128,255,128 |
+| 1 | 6410 | Barely Injured | 200,255,1 |
+| 2 | 6411 | Injured | 255,200,1 |
+| 3 | 6412 | Badly Wounded | 255,100,1 |
+| 4 | 6413 | Near Death | 255,80,64 |
+| 5 | 6414 | Dead | 128,128,128 |
+
+Row 3's `LABEL` is `HEAVILY_WOUNDED`, but a label is never shown: the word is strref 6412, "Badly Wounded".
 
 `SetPopUpBubbleText` ABI — **verified by disassembly at `0x7e8050`**:
 `(IntPtr this /*rdi*/, IntPtr pExoString /*rsi, hidden pointer*/, int forceShow /*edx*/,

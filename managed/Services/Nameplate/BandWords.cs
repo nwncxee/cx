@@ -8,29 +8,24 @@ namespace CX.Services.Nameplate;
 /// <summary>
 /// The health-band captions a plate draws: each row of the client's <c>damagelevels.2da</c> names a strref in
 /// its <c>STRING_REF</c> column, and the TLK lookup answers with whatever the hak table, a custom TLK or a
-/// server override says. Resolved once and cached; four TLK entry points invalidate the cache and the next
-/// frame re-resolves. Cold work only: the draw path reads <see cref="Current"/>.
+/// server override says. Resolved once and cached; the TLK entry points and the module edge invalidate the
+/// cache and the next frame re-resolves. Cold work only: the draw path reads <see cref="Current"/>.
 /// </summary>
 internal static unsafe class BandWords
 {
     /// <summary>The 2da column holding each band's strref.</summary>
     private static ReadOnlySpan<byte> StringRefColumn => "STRING_REF\0"u8;
 
-    /// <summary>sizeof(CExoString) is 16; the sret buffer gets spare room, as a 16-byte one has smashed a canary.</summary>
+    /// <summary>Bytes for one CExoString buffer: sizeof is 16, and the sret callee gets 16 more of slack.</summary>
     private const int ExoScratch = 32;
 
-    /// <summary>Resolve attempts allowed per invalidation when the engine's tables are not reachable yet, so a
-    /// client that never answers does not retry every frame.</summary>
-    private const int MaxTries = 8;
-
-    /// <summary>The cache and the counters behind it; one object, so nothing here is a loose static.</summary>
+    /// <summary>The cache and the counter behind it; one object, so nothing here is a loose static.</summary>
     private sealed class BandWordsState
     {
-        public string[] Words = PlateLayout.StockBandTexts;
-        /// <summary>Bumped by every TLK hook; the cache is current when <see cref="Seen"/> matches it.</summary>
+        public string[] Words = PlateLayout.BandCaptions(new string?[PlateLayout.BandCount]);
+        /// <summary>Bumped by every invalidation; the cache is current when <see cref="SeenGeneration"/> matches it.</summary>
         public int Generation;
-        public int Seen = -1;
-        public int Tries = MaxTries;
+        public int SeenGeneration = -1;
     }
 
     /// <summary>The hooks' originals, kept apart from the state because they are set once at install.</summary>
@@ -43,70 +38,62 @@ internal static unsafe class BandWords
         public TlkReloadFn Reload;
     }
 
-    private static readonly BandWordsState _s = new();
-    private static readonly OriginalCalls _o = new();
+    private static readonly BandWordsState _state = new();
+    private static readonly OriginalCalls _originals = new();
 
-    /// <summary>The captions to draw, one per band. Stock words until the first resolve succeeds.</summary>
-    public static string[] Current => _s.Words;
+    /// <summary>The captions to draw, one per band. All empty until the first resolve succeeds.</summary>
+    public static string[] Current => _state.Words;
 
     /// <summary>Hook every TLK entry point that can change what a strref resolves to. A server sends overrides
     /// at login and can send more later; a module opens or closes a custom TLK. Each handler runs the original
-    /// and marks the cache stale. Returns how many hooks took.</summary>
-    public static int Install(HookService hooks)
+    /// and marks the cache stale. False when any hook did not take.</summary>
+    public static bool Install(HookService hooks)
     {
-        _o.SetOverride = hooks.InstallTlkSetOverride(&OnSetOverride);
-        _o.ClearOverrides = hooks.InstallTlkClearOverrides(&OnClearOverrides);
-        _o.OpenFileAlternate = hooks.InstallTlkOpenFileAlternate(&OnOpenFileAlternate);
-        _o.CloseFileAlternate = hooks.InstallTlkCloseFileAlternate(&OnCloseFileAlternate);
-        _o.Reload = hooks.InstallTlkReload(&OnReload);
-        int n = 0;
-        if (_o.SetOverride != null) n++;
-        if (_o.ClearOverrides != null) n++;
-        if (_o.OpenFileAlternate != null) n++;
-        if (_o.CloseFileAlternate != null) n++;
-        if (_o.Reload != null) n++;
-        return n;
+        _originals.SetOverride = hooks.InstallTlkSetOverride(&OnSetOverride);
+        _originals.ClearOverrides = hooks.InstallTlkClearOverrides(&OnClearOverrides);
+        _originals.OpenFileAlternate = hooks.InstallTlkOpenFileAlternate(&OnOpenFileAlternate);
+        _originals.CloseFileAlternate = hooks.InstallTlkCloseFileAlternate(&OnCloseFileAlternate);
+        _originals.Reload = hooks.InstallTlkReload(&OnReload);
+        return _originals.SetOverride != null && _originals.ClearOverrides != null && _originals.OpenFileAlternate != null
+            && _originals.CloseFileAlternate != null && _originals.Reload != null;
     }
 
-    private static void Stale() { _s.Generation++; _s.Tries = MaxTries; }
+    /// <summary>Marks the cache stale: the next <see cref="Refresh"/> resolves again.</summary>
+    internal static void Stale() => _state.Generation++;
 
     [UnmanagedCallersOnly]
     private static void OnSetOverride(IntPtr self, uint strref, IntPtr text)
-    { if (_o.SetOverride != null) _o.SetOverride(self, strref, text); Stale(); }
+    { _originals.SetOverride(self, strref, text); Stale(); }
 
     [UnmanagedCallersOnly]
     private static void OnClearOverrides(IntPtr self)
-    { if (_o.ClearOverrides != null) _o.ClearOverrides(self); Stale(); }
+    { _originals.ClearOverrides(self); Stale(); }
 
     [UnmanagedCallersOnly]
     private static int OnOpenFileAlternate(IntPtr self, IntPtr file)
-    { int r = _o.OpenFileAlternate != null ? _o.OpenFileAlternate(self, file) : 0; Stale(); return r; }
+    { int r = _originals.OpenFileAlternate(self, file); Stale(); return r; }
 
     [UnmanagedCallersOnly]
     private static void OnCloseFileAlternate(IntPtr self)
-    { if (_o.CloseFileAlternate != null) _o.CloseFileAlternate(self); Stale(); }
+    { _originals.CloseFileAlternate(self); Stale(); }
 
     [UnmanagedCallersOnly]
     private static int OnReload(IntPtr self)
-    { int r = _o.Reload != null ? _o.Reload(self) : 0; Stale(); return r; }
+    { int r = _originals.Reload(self); Stale(); return r; }
 
-    /// <summary>Re-resolve the captions when a TLK hook has fired since the last resolve. One int compare when
-    /// nothing changed; the resolve itself is six table reads and six TLK lookups. If the tables are not
-    /// reachable yet the stock words stand and the next call tries again, up to <see cref="MaxTries"/> times.</summary>
+    /// <summary>Re-resolve the captions when the cache is stale. One int compare when nothing changed; the
+    /// resolve itself is six table reads and six TLK lookups. If the tables are not reachable yet the cache
+    /// stays stale and the next call tries again.</summary>
     public static void Refresh()
     {
-        if (_s.Seen == _s.Generation) return;
+        if (_state.SeenGeneration == _state.Generation) return;
         string?[]? resolved = Read();
-        if (resolved == null)
-        {
-            if (--_s.Tries > 0) return;
-            resolved = new string?[PlateLayout.BandCount];
-        }
-        _s.Words = PlateLayout.BandCaptions(resolved);
-        _s.Seen = _s.Generation;
+        if (resolved == null) return;
+        _state.Words = PlateLayout.BandCaptions(resolved);
+        _state.SeenGeneration = _state.Generation;
     }
 
-    /// <summary>Each band's resolved text, null where its lookup failed; null overall when the rules, the TLK or
+    /// <summary>Each band's resolved text, null where its cell does not parse; null overall when the rules, the TLK or
     /// the table itself is not reachable yet. A strref the TLK answers with an empty string is a real
     /// <c>""</c>, the table's way of saying the band has no word.</summary>
     private static string?[]? Read()
@@ -123,7 +110,7 @@ internal static unsafe class BandWords
 
         var words = new string?[PlateLayout.BandCount];
         byte* col = stackalloc byte[ExoScratch];
-        new Span<byte>(col, ExoScratch).Clear();
+        NativeMemory.Clear(col, ExoScratch);
         fixed (byte* name = StringRefColumn) EngineFn.ExoStringInit((IntPtr)col, name, uint.MaxValue);
         for (int row = 0; row < words.Length; row++)
         {
@@ -139,7 +126,7 @@ internal static unsafe class BandWords
     private static string TlkText(IntPtr tlk, uint strref)
     {
         byte* exo = stackalloc byte[ExoScratch];
-        new Span<byte>(exo, ExoScratch).Clear();
+        NativeMemory.Clear(exo, ExoScratch);
         new CTlkTable(tlk).TlkGetSimpleString(exo, strref);
         string text = Native.ReadExo((IntPtr)exo);
         EngineFn.ExoStringDtor((IntPtr)exo);
