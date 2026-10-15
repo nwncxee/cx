@@ -1,4 +1,5 @@
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -30,7 +31,7 @@ internal static unsafe partial class Weather
         if (_gl.EsmFailed || Gl.TextureView == null) return;
         int size = mapSize < EsmSizeMax ? mapSize : EsmSizeMax;
         if (!EnsureEsm(array, layer, size)) return;
-        int* save = stackalloc int[6]; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, save); Gl.GetIntegerv(Gl.VIEWPORT, save + 1);
+        int* save = stackalloc int[1], vpSave = stackalloc int[4]; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, save); Gl.GetIntegerv(Gl.VIEWPORT, vpSave);
         int prog; Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prog);
         // depth units: the cover view spans CoverDepthRadii x radius; the feather is half the knob each side
         float spread = EsmMinSpreadM / (CoverDepthRadii * radius);
@@ -59,7 +60,7 @@ internal static unsafe partial class Weather
         Gl.BindVertexArray(0);
         new PassState(depth: true, depthWrite: true).Apply();   // the bracket's own state, for whatever bakes next
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)save[0]);
-        Gl.Viewport(save[1], save[2], save[3], save[4]);
+        Gl.Viewport(vpSave[0], vpSave[1], vpSave[2], vpSave[3]);
         Gl.UseProgram((uint)prog);
         _gl.EsmValid = true; EsmBakes++;
         // R2: the same bake, latched into the area wetness map -- the depth view is already in hand here
