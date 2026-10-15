@@ -62,6 +62,11 @@ internal enum PassId
     /// reads the depth and colour of the frame so far, and a translucent surface drawn over a reflection must
     /// composite over the finished one. Blended surfaces keep the probe alone.</summary>
     Reflections,
+    /// <summary>The graded cutouts' fringes: the texels between the 0.2 cut and the core cut, blended with the
+    /// material's pair, unsorted and writing no depth -- vanilla's bucket 1 -- over the core depth the cutout
+    /// pass laid. After grass, so a blade behind a fringe is in the frame, and after the reflections, so the
+    /// fringe composites over a finished one.</summary>
+    FringeOwned,
     /// <summary>The blended class -- genuine alpha, sorted back-to-front per part, depth writes off. Ahead of
     /// the framebuffer copy the FB-sampling and water classes read, so one copy serves both classes instead of
     /// the engine's two (fade is a blended-class member). Its colour draw writes no depth under OIT, so the
@@ -135,6 +140,7 @@ internal static class FrameGraph
         (PassId.CoverageOwned,   Bracket.Colour),
         (PassId.GrassOwned,      Bracket.Colour),
         (PassId.Reflections,     Bracket.Colour),
+        (PassId.FringeOwned,     Bracket.Colour),
         (PassId.BlendedOwned,    Bracket.Colour),
         (PassId.FbCopy,          Bracket.Colour),
         (PassId.WaterOwned,      Bracket.Colour),

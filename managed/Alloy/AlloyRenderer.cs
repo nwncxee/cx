@@ -520,7 +520,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <c>_litFailed</c> are NOT cleared: a stage that could not build is a fact about the source.</summary>
     internal static void ContextLost()
     {
-        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitHost = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
+        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitHost = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetVariants(delete: false); Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
         Ablation.Forget(delete: false);
         Highlight.HighlightContextLost();
         TriggerHighlight.ContextLost();

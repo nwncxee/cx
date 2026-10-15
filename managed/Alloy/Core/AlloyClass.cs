@@ -1,3 +1,4 @@
+using CX.Alloy.Db;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -56,9 +57,19 @@ internal static class AlloyClasses
 
     /// <summary>Does this class draw with <c>GL_BLEND</c> on, using the material's own blend pair? The three
     /// sorted classes, and NOT cutout: a cutout keeps its depth write, and a graded texel that both blends and
-    /// stamps depth punches sky-coloured holes through foliage. ponytail: hard edges on graded foliage; the
-    /// upgrade path is coverage (<see cref="CoverageLayer"/>, opt-in per material), not blending cutout.</summary>
+    /// stamps depth punches sky-coloured holes through foliage. A graded cutout's blend is its fringe's
+    /// (<see cref="Fringes"/>), drawn in a pass of its own with no depth write.</summary>
     internal static bool Blends(int cls) => cls != (int)AlloyClass.Opaque && cls != (int)AlloyClass.Cutout;
+
+    /// <summary>A fringed cutout's core cut: only texels at or above it draw in the cutout pass, and the
+    /// fringe pass blends the band between <see cref="Discard"/> and it. The lit stage's <c>CX_SOLID_ALPHA</c>.</summary>
+    internal const float SolidAlpha = 0.99f;
+
+    /// <summary>Does this part draw in two pieces -- a depth-writing core above <see cref="SolidAlpha"/> and a
+    /// blended fringe below it? A cutout whose diffuse measured graded, and not a wash: a wash has its own
+    /// split (<c>WashSplit</c>). A binary or unmeasured diffuse draws whole.</summary>
+    internal static bool Fringes(int cls, TexCoverage coverage, byte wash)
+        => cls == (int)AlloyClass.Cutout && coverage == TexCoverage.Blended && wash == 0;
 
     /// <summary>The engine's <c>fAlphaDiscardValue</c> for this class (<c>GLRender::SetUniforms</c> @0x4ccbf0:
     /// 0.2 under <c>Enable(1)</c>, -1.0 otherwise). Cutout and blended get the test -- a fading tile is a
@@ -110,6 +121,26 @@ internal static class AlloyClasses
         check.Expect(!Blends((int)AlloyClass.Cutout), "#357: nor does a cutout -- it writes depth, so it must be opaque");
         check.Expect(Blends((int)AlloyClass.Blended) && Blends((int)AlloyClass.Additive), "blended and additive do");
         check.Expect(Blends((int)AlloyClass.Water), "and so does water -- the engine draws bucket 6 under Enable(0)");
+        // The split rule, rows of class x coverage x wash written out by hand (1 = WashWhole, 2 = WashSplit):
+        // true = a core and a fringe draw, false = the part draws whole in its class.
+        (AlloyClass Cls, TexCoverage Cov, byte Wash, bool Split)[] rows =
+        {
+            (AlloyClass.Cutout, TexCoverage.Blended, 0, true),
+            (AlloyClass.Cutout, TexCoverage.Cutout, 0, false),
+            (AlloyClass.Cutout, TexCoverage.Opaque, 0, false),
+            (AlloyClass.Cutout, TexCoverage.Unknown, 0, false),
+            (AlloyClass.Cutout, TexCoverage.Blended, 1, false),
+            (AlloyClass.Cutout, TexCoverage.Blended, 2, false),
+            (AlloyClass.Opaque, TexCoverage.Blended, 0, false),
+            (AlloyClass.Blended, TexCoverage.Blended, 0, false),
+            (AlloyClass.Blended, TexCoverage.Blended, 2, false),
+            (AlloyClass.Water, TexCoverage.Blended, 0, false),
+            (AlloyClass.Additive, TexCoverage.Blended, 0, false),
+        };
+        foreach (var r in rows)
+            check.Expect(Fringes((int)r.Cls, r.Cov, r.Wash) == r.Split,
+              $"{r.Cls} over a {r.Cov} diffuse, wash {r.Wash}: should {(r.Split ? "" : "not ")}split into core and fringe");
+        check.Expect(SolidAlpha > Discard((int)AlloyClass.Cutout), "the core cut sits above the 0.2 cut, or the fringe band is empty");
         check.Expect(Discard((int)AlloyClass.Cutout) == 0.2f && Discard((int)AlloyClass.Blended) == 0.2f,
           "the engine's 0.2 cutout, on the two classes it draws under Enable(1)");
         check.Expect(Discard((int)AlloyClass.Opaque) < 0f && Discard((int)AlloyClass.Additive) < 0f
