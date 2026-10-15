@@ -277,7 +277,7 @@ internal static unsafe class GuiCapture
         d.Stream = true; d.Stride = stride; d.Format = fmt; d.Prim = glPrim; d.Slot = 0; d.Count = count;
         if (idx != null)
         {
-            fixed (ushort* dst = &Idx[IdxN]) for (int i = 0; i < count; i++) dst[i] = (ushort)(idx[idxAt + i] - lo);
+            fixed (ushort* dst = Idx.AsSpan(IdxN)) for (int i = 0; i < count; i++) dst[i] = (ushort)(idx[idxAt + i] - lo);
             d.Indexed = true; d.Offset = IdxN * 2L; d.BaseVertex = at / stride;
             IdxN += count;
         }
@@ -357,7 +357,7 @@ internal static unsafe class GuiCapture
         d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = p.Mvp;
             ((GuiRec*)r)->Mv = p.Mv;
@@ -372,7 +372,7 @@ internal static unsafe class GuiCapture
                     | (p.Lit && p.EnvMap ? FlagEnvMap : 0) | (p.Lit && p.EnvMap && p.EnvTex != 0 ? FlagEnvTex : 0);
         if (p.Tex != 0 && p.PltRows != null)
         {
-            fixed (float* r = &Records[DrawN * RecFloats])
+            fixed (float* r = Records.AsSpan(DrawN * RecFloats))
             {
                 for (int k = 0; k < 8; k++) r[56 + k] = p.PltRows[p.PltAt + k];
                 r[54] = p.PltRows[p.PltAt + 8];
@@ -394,7 +394,7 @@ internal static unsafe class GuiCapture
         if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
         float* src = AlloyRenderer.DbBoneStage(slot);
         if (src == null) return flags;
-        fixed (float* dst = &Bones[SkinN * BoneFloats])
+        fixed (float* dst = Bones.AsSpan(SkinN * BoneFloats))
             Buffer.MemoryCopy(src, dst, BoneFloats * sizeof(float), BoneFloats * sizeof(float));
         Records[DrawN * RecFloats + 53] = SkinN * BoneFloats / 4;
         SkinN++;
@@ -425,7 +425,7 @@ internal static unsafe class GuiCapture
         ref Draw d = ref Draws[DrawN];
         if (!Stage(ref d, vtx, stride, fmt, glPrim, idx, count, first)) return;
         d.Blend = true; d.Src = src; d.Dst = dst; d.DepthTest = false; d.DepthWrite = false; d.Cull = false; d.Tex = tex;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = mvp;
             ((GuiRec*)r)->Mv = Matrix4x4.Identity;
@@ -449,7 +449,7 @@ internal static unsafe class GuiCapture
                    null, count, 0)) return;
         d.Blend = true; d.Src = src; d.Dst = dst;
         d.DepthTest = depthTest; d.DepthWrite = depthWrite; d.Cull = false; d.Tex = tex;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = mvp;
             ((GuiRec*)r)->Mv = mvp;
@@ -489,7 +489,7 @@ internal static unsafe class GuiCapture
         Matrix4x4 mv = st[ModeModel].Top * (own ? av.View : st[ModeView].Top);
         Matrix4x4 mvp = mv * (own ? av.Proj : st[ModeProj].Top);
         ref Matrix4x4 tm = ref st[ModeTexture].Top;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = mvp;
             ((GuiRec*)r)->Mv = mv;
@@ -509,7 +509,7 @@ internal static unsafe class GuiCapture
     private static int Skin(int flags)
     {
         if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
-        fixed (float* dst = &Bones[SkinN * BoneFloats])
+        fixed (float* dst = Bones.AsSpan(SkinN * BoneFloats))
             Buffer.MemoryCopy(_bones, dst, BoneFloats * sizeof(float), BoneFloats * sizeof(float));
         Records[DrawN * RecFloats + 53] = SkinN * BoneFloats / 4;
         SkinN++;

@@ -66,7 +66,7 @@ internal static unsafe class StreamRing
         long at = Bump(ref _used, len);
         if (_used > Region) return Failed(site, Why.Overflow, len);
         long off = (long)_at * Region + at;
-        if (bytes > 0) Buffer.MemoryCopy(src, _map + off, Region - at, bytes);
+        if (bytes > 0) new ReadOnlySpan<byte>(src, checked((int)bytes)).CopyTo(new Span<byte>(_map, checked((int)(off + bytes))).Slice(checked((int)off)));
         r = new Range { Off = off, Len = len, Gen = _gen };
         r.Bind(binding);
         return true;

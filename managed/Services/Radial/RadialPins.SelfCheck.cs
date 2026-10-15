@@ -197,7 +197,7 @@ internal static unsafe partial class RadialPins
         check.Expect(Validate(new RadialPin { Fn = SubToken, Param = 9 }, sub) && !Validate(new RadialPin { Fn = SubToken, Param = 8 }, sub)
           && !Validate(new RadialPin { Fn = "", Param = 9 }, sub), "a submenu hoist validates on kind + param; a reorder never validates");
         check.Expect(FnToken(sub) == SubToken && FnToken(default) == "", "token: sub for a submenu, empty for an empty slot");
-        IntPtr fn = OperatingSystem.IsWindows() ? Base + 0x1000 : SymbolMap.Resolve("malloc", null);
+        IntPtr fn = OperatingSystem.IsWindows() ? (IntPtr)((long)Base + 0x1000) : SymbolMap.Resolve("malloc", null);
         if (fn != IntPtr.Zero)
         {
             var leaf = new RadialSlot(0, SlotKind.Entry, "", "", "", false, 0x1300007a, IntPtr.Zero, fn, IntPtr.Zero, IntPtr.Zero);
@@ -209,14 +209,14 @@ internal static unsafe partial class RadialPins
             check.Expect(!Validate(new RadialPin { Fn = tok, Param = 0x1300007b }, leaf), "a different param (another class slot) does not");
             check.Expect(Validate(pin, leaf with { Param = 0x1300007a | TransientBit }) && Validate(new RadialPin { Fn = tok, Param = 0x1300007a | TransientBit }, leaf),
                 "the transient bit (spontaneous caster out of uses) is no part of the identity");
-            var off = leaf with { Fn = fn + 2 };
+            var off = leaf with { Fn = (IntPtr)((long)fn + 2) };
             check.Expect(!Validate(pin, off) && (OperatingSystem.IsWindows() || FnToken(off) == ""), "a different fn does not; an inexact address has no name");
-            check.Expect(OperatingSystem.IsWindows() || FnToken(leaf with { Fn = fn + 1 }) == "", "an odd fn with no handler object is not persistable");
+            check.Expect(OperatingSystem.IsWindows() || FnToken(leaf with { Fn = (IntPtr)((long)fn + 1) }) == "", "an odd fn with no handler object is not persistable");
             var subEntry = sub with { Fn = fn };
             string st = FnToken(subEntry);
             check.Expect(st == SubToken + ":" + tok && Validate(new RadialPin { Fn = st, Param = 9 }, subEntry)
               && !Validate(new RadialPin { Fn = SubToken, Param = 9 }, subEntry) && !Validate(new RadialPin { Fn = st, Param = 9 }, sub)
-              && !Validate(new RadialPin { Fn = st, Param = 9 }, subEntry with { Fn = fn + 2 }),
+              && !Validate(new RadialPin { Fn = st, Param = 9 }, subEntry with { Fn = (IntPtr)((long)fn + 2) }),
               $"a submenu with an entry carries the entry in its token and validates on both (\"{st}\")");
             check.Expect(!Validate(new RadialPin { Fn = "_ZNoSuchSymbolEv", Param = 0x1300007a }, leaf), "a name that no longer resolves does not");
         }

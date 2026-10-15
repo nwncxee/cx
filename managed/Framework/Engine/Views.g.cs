@@ -4157,6 +4157,19 @@ public readonly unsafe partial struct TileData(IntPtr ptr)
     public ref IntPtr SourcePart2 => ref *(IntPtr*)(Ptr + EngineLayout.TileSourcePart2);
 }
 
+/// <summary>Typed view of an engine <c>VdoElemItem*</c>.</summary>
+public readonly unsafe partial struct VdoElemItem(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.VdoElemItemCount"/>
+    public ref int Count => ref *(int*)(Ptr + EngineLayout.VdoElemItemCount);
+    /// <inheritdoc cref="EngineLayout.VdoElemItemStride"/>
+    public VdoElemItem this[int i] => new(Ptr + i * EngineLayout.VdoElemItemStride);
+}
+
 /// <summary>Typed view of an engine <c>VertexDataObject*</c>.</summary>
 public readonly unsafe ref partial struct VertexDataObject(IntPtr ptr)
 {

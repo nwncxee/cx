@@ -82,7 +82,7 @@ public sealed unsafe partial class ChatService
             if (buf != IntPtr.Zero && len > 0 && len <= 128)
             {
                 var sb = new StringBuilder((int)len);
-                for (uint k = 0; k < len; k++) sb.Append((char)*(byte*)(buf + (int)k));
+                for (uint k = 0; k < len; k++) sb.Append((char)((byte*)buf)[k]);
                 string name = sb.ToString();
                 uint ingestId = plr.PlayerId;
                 StartTellTo(name, ingestId);
@@ -101,11 +101,11 @@ public sealed unsafe partial class ChatService
         if (exo != IntPtr.Zero)
         {
             IntPtr buf = *(IntPtr*)exo;
-            uint len = *(uint*)(exo + 0x8);
+            uint len = ((ExoStringRec*)exo)->Len;
             if (buf != IntPtr.Zero && len > 0 && len <= 256)
             {
                 var sb = new StringBuilder((int)len);
-                for (uint k = 0; k < len; k++) sb.Append((char)*(byte*)(buf + (int)k));
+                for (uint k = 0; k < len; k++) sb.Append((char)((byte*)buf)[k]);
                 text = sb.ToString();
             }
             if (OperatingSystem.IsWindows()) Native.DestroyExoString(exo);   // Win64: the callee owns the copy

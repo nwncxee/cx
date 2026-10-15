@@ -28,7 +28,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int RecWhy(float* r, in RecordFrameState f, bool modelMoved)
     {
         int m = modelMoved ? 1 << RecWhyModel : 0;
-        if (!modelMoved && *(Matrix4x4*)(&r[PrevFloat]) != *(Matrix4x4*)r) m |= 1 << RecWhyPrev;
+        if (!modelMoved && ((DrawRec*)r)->Prev != ((DrawRec*)r)->Model) m |= 1 << RecWhyPrev;
         if (r[18] != f.Dissolve) m |= 1 << RecWhyDissolve;
         if (r[19] != f.Alpha) m |= 1 << RecWhyAlpha;
         if (f.Lit)

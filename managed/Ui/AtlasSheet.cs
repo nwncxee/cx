@@ -210,10 +210,10 @@ public sealed unsafe class AtlasSheet
             for (int y = 0; y < SolidSide; y++) for (int x = 0; x < SolidSide; x++) sheet.Pixels[(sy + y) * side + sx + x] = 255;
             float su = (sx + SolidSide * 0.5f) / side, sv = (sy + SolidSide * 0.5f) / side;
 
-            fixed (byte* px = sheet.Pixels)
-                foreach (ref Box b in bs)
+            foreach (ref Box b in bs)
                 {
-                    EngineFn.StbttMakeCodepointBitmap((byte*)infos[b.Face], px + b.Y * side + b.X, b.W, b.H, side, b.Scale, b.Scale, b.Cp);
+                    fixed (byte* px = sheet.Pixels.AsSpan(b.Y * side + b.X))
+                        EngineFn.StbttMakeCodepointBitmap((byte*)infos[b.Face], px, b.W, b.H, side, b.Scale, b.Scale, b.Cp);
                     faces[b.Face].Store(b.Cp, new Glyph
                     {
                         U0 = b.X / (float)side, V0 = b.Y / (float)side,

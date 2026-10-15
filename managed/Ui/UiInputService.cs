@@ -23,11 +23,9 @@ public sealed unsafe class UiInputService : IExtenderService
 
     // NUI keyboard-focus probe: ctx->active (0x6730) is the focused window; win->edit.active (0x18c) is nonzero
     // while an edit box has focus. NUI runs a parallel SDL pump, so a key typed in a NUI field still reaches us.
-    private const int NkActiveWindowOff = 0x6730, NkWinEditActiveOff = 0x18c;  // not-an-offset: nuklear context ABI, not an engine class
     /// <summary>nuklear's window list, as <c>nk_window_is_any_hovered</c> @0xee69f0 walks it: ctx->begin, win->flags
     /// (skipped when hidden|closed), win->bounds (x,y,w,h floats in SDL window pixels -- nk_sdl_handle_event feeds
     /// the raw event x/y), win->next. Minimized windows show only a header, so they cover nothing.</summary>
-    private const int NkBeginOff = 0x6720, NkWinFlagsOff = 0x48, NkWinBoundsOff = 0x4c, NkWinNextOff = 0x1c0;  // not-an-offset: nuklear context ABI, not an engine class
     private const uint NkWinHiddenClosed = 0x4400, NkWinMinimized = 0x10000;  // not-an-offset: nuklear window flags
     // Native (vanilla) dialog probe: *(gui+0x70) non-null while a native conversation panel is up.
     private const int UiCursorId = 3;   // engine walk/default ground pointer
@@ -163,7 +161,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     if (!NuiEditFocused())
                     {
                         if (!UiHost.AnyKeyboardOwner) CX.Alloy.Db.EditSelect.BeforeText();   // typing replaces a game edit box's selection
-                        UiHost.DispatchText(((SdlEvent*)ev)->Text);   // finished UTF-8 -> the keyboard owner's edit line
+                        UiHost.DispatchText((nint)((SdlEvent*)ev)->Text);   // finished UTF-8 -> the keyboard owner's edit line
                     }
                     break;
                 case SdlMouseMotion:
@@ -336,10 +334,10 @@ public sealed unsafe class UiInputService : IExtenderService
         if (_nuklearGlobal == IntPtr.Zero) return false;
         IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         if (ctx == IntPtr.Zero) return false;
-        for (IntPtr w = *(IntPtr*)(ctx + NkBeginOff); w != IntPtr.Zero; w = *(IntPtr*)(w + NkWinNextOff))
+        for (IntPtr w = ((UiNkContext*)ctx)->Begin; w != IntPtr.Zero; w = ((UiNkWindow*)w)->Next)
         {
-            if ((*(uint*)(w + NkWinFlagsOff) & (NkWinHiddenClosed | NkWinMinimized)) != 0) continue;
-            float* b = (float*)(w + NkWinBoundsOff);
+            if ((((UiNkWindow*)w)->Flags & (NkWinHiddenClosed | NkWinMinimized)) != 0) continue;
+            float* b = ((UiNkWindow*)w)->Bounds;
             if (x >= b[0] && x < b[0] + b[2] && y >= b[1] && y < b[1] + b[3]) return true;
         }
         return false;
@@ -350,8 +348,8 @@ public sealed unsafe class UiInputService : IExtenderService
         if (_nuklearGlobal == IntPtr.Zero) return false;
         IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         if (ctx == IntPtr.Zero) return false;
-        IntPtr win = *(IntPtr*)(ctx + NkActiveWindowOff);
-        return win != IntPtr.Zero && *(int*)(win + NkWinEditActiveOff) != 0;
+        IntPtr win = ((UiNkContext*)ctx)->ActiveWindow;
+        return win != IntPtr.Zero && ((UiNkWindow*)win)->EditActive != 0;
     }
 
     private static bool KeyboardModeActive()

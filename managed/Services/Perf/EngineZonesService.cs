@@ -104,17 +104,17 @@ public sealed unsafe class EngineZonesService : IExtenderService
         if (_meshBuckets == null) return;
         ClearPairCounts(_meshBuckets);
         ClearPairCounts(_fadeBuckets);
-        *(int*)(_capBuckets + 8) = 0;
-        *(int*)(_staticShadowBucket + 8) = 0;
-        *(int*)(_meshShadowBucket + 8) = 0;
+        ((ExoArrayRec*)_capBuckets)->Count = 0;
+        ((ExoArrayRec*)_staticShadowBucket)->Count = 0;
+        ((ExoArrayRec*)_meshShadowBucket)->Count = 0;
     }
 
     private static void ClearPairCounts(byte* list)
     {
-        byte* pairs = *(byte**)list;
-        int alloc = *(int*)(list + 0xc);
+        var head = (ExoArrayRec*)list;
+        var pairs = (ExoArrayRec*)head->Items;
         if (pairs == null) return;
-        for (int k = 0; k < alloc; k++) *(int*)(pairs + (long)k * 16 + 8) = 0;
+        for (int k = 0; k < head->Alloc; k++) pairs[k].Count = 0;
     }
 
     [UnmanagedCallersOnly]

@@ -370,7 +370,7 @@ public static unsafe class ChatRenderer
             int tid = TextRig.ResolvePortraitTid(quads[i].Resref);
             if (tid == 0) continue;   // not uploaded yet, or unresolvable -> skip this frame
             tids[drawn] = tid;
-            TextRig.FillQuad(verts + drawn * Floats * 6, quads[i], residual, a);   // slide with the body + fade
+            TextRig.FillQuad(((QuadVerts*)verts)[drawn].F, quads[i], residual, a);   // slide with the body + fade
             drawn++;
         }
         if (drawn == 0) return;
