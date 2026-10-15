@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -20,8 +19,6 @@ internal static unsafe class CxWindows
 {
     /// <summary>How long a window may go without a tick before it counts as closed.</summary>
     internal const long StaleMs = 3000;
-    /// <summary>Bytes of an engine <c>DynamicBinding</c>, on both builds.</summary>
-    private const int BindingBytes = 392;
     private const int MaxWindows = 64, MaxOutbox = 16, EventsPerTick = 4, MaxBinds = 64;
     /// <summary>Deque member offsets: the compiler's container ABI, the same on every client build.</summary>
     private const int GccStart = 16, GccFinish = 48, GccNode = 24, GccLast = 16;
@@ -38,7 +35,7 @@ internal static unsafe class CxWindows
     {
         public string Id = "";
         public long Seen;
-        public readonly List<string> Keys = new();
+        public readonly HashSet<string> Keys = new(StringComparer.OrdinalIgnoreCase);
         public readonly List<BoundSetting> Binds = new();
         public readonly List<PolicyRefusal> Outbox = new();
         public IntPtr Json;
@@ -63,7 +60,7 @@ internal static unsafe class CxWindows
     {
         var s = _s;
         s.Log = log;
-        if (!EngineLayout.Require(log, "CxWindows", "Nui::JSON::JsonWindow", "Nui::JSON::BindUpdate")
+        if (!EngineLayout.Require(log, "CxWindows", "Nui::JSON::JsonWindow", "Nui::JSON::BindUpdate", "Nui::JSON::DynamicBinding")
             || !SymbolMap.Require(log, "CxWindows", SymbolMap.NuiJsonWindowCtor, SymbolMap.NuiJsonWindowUpdate, SymbolMap.NuiEventPush, SymbolMap.NuiJsonWindowBind, SymbolMap.NuiDynamicBindingDtor))
         {
             log.Always("CxWindows: the NUI window symbols or layout rows did not resolve -- \"cx\" members in a window's JSON are ignored");
@@ -105,7 +102,7 @@ internal static unsafe class CxWindows
         if (json == null || !json.Contains("\"cx\"", StringComparison.Ordinal)) return;
         string id = NuiJsonRead.ReadString((byte*)Unsafe.AsPointer(ref win.WindowName), OperatingSystem.IsWindows()) ?? "";
         if (id.Length == 0 || (s.Windows.Count >= MaxWindows && !s.Windows.ContainsKey(self))) return;
-        Sweep(s, Stopwatch.GetTimestamp() * 1000 / Stopwatch.Frequency, true);
+        Sweep(s, Environment.TickCount64, true);
         if (s.Windows.TryGetValue(self, out CxWindow? old)) Release(s, self, old);
         CxPlan plan = CxTranslate.Translate(id, json);
         var w = new CxWindow { Id = id, Seen = Environment.TickCount64, Json = (IntPtr)Unsafe.AsPointer(ref win.WindowJson) };
@@ -113,7 +110,7 @@ internal static unsafe class CxWindows
         foreach (CxSet set in plan.Sets)
         {
             s.Owner[set.Key] = self;
-            if (!w.Keys.Contains(set.Key, StringComparer.OrdinalIgnoreCase)) w.Keys.Add(set.Key);
+            w.Keys.Add(set.Key);
             if (set.Bind != null) { if (w.Binds.Count < MaxBinds) w.Binds.Add(new BoundSetting { Name = set.Bind, NameUtf8 = Encoding.UTF8.GetBytes(set.Bind), Key = set.Key }); }
             else ServerPolicy.Set(set.Key, set.Value);
         }
@@ -171,7 +168,7 @@ internal static unsafe class CxWindows
             b.Registered = true;
             IntPtr leaf = NuiJsonRead.FindBind(w.Json, b.Name);
             if (leaf == IntPtr.Zero || EngineFn.NuiJsonWindowBind == null || EngineFn.NuiDynamicBindingDtor == null) continue;
-            void* copy = NativeMemory.AllocZeroed(BindingBytes);
+            void* copy = NativeMemory.AllocZeroed((nuint)EngineLayout.NuiDynamicBindingSize);
             try
             {
                 EngineFn.NuiJsonWindowBind(copy, self, leaf);

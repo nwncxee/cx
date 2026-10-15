@@ -39,24 +39,23 @@ internal static class CxTranslate
             if (root.ValueKind != JsonValueKind.Object) return plan;
             if (root.TryGetProperty(Member, out JsonElement wcx)) Window(plan, windowId, wcx);
             foreach (JsonProperty p in root.EnumerateObject())
-                if (p.Name != Member) Walk(plan, p.Value, 0);
+                if (p.Name != Member) Walk(plan, p.Value);
         }
         catch (JsonException) { Refuse(plan, "cx", json.Length > 64 ? json[..64] : json, "the window JSON could not be read"); }
         return plan;
     }
 
-    private static void Walk(CxPlan plan, JsonElement e, int depth)
+    private static void Walk(CxPlan plan, JsonElement e)
     {
-        if (depth > 60) return;
         if (e.ValueKind == JsonValueKind.Array)
         {
-            foreach (JsonElement c in e.EnumerateArray()) Walk(plan, c, depth + 1);
+            foreach (JsonElement c in e.EnumerateArray()) Walk(plan, c);
             return;
         }
         if (e.ValueKind != JsonValueKind.Object) return;
         foreach (JsonProperty p in e.EnumerateObject())
             if (p.Name == Member) Element(plan, e, p.Value);
-            else Walk(plan, p.Value, depth + 1);
+            else Walk(plan, p.Value);
     }
 
     private static void Window(CxPlan plan, string windowId, JsonElement cx)

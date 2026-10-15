@@ -591,6 +591,8 @@ public static unsafe partial class EngineLayout
     public static readonly int NuiBindUpdateJson = Field<byte>("Nui::JSON::BindUpdate", "json");
     /// <summary>Bytes of one <c>BindUpdate</c>; a libstdc++ deque node holds eight.</summary>
     public static readonly int NuiBindUpdateStride = Field("Nui::JSON::BindUpdate", "stride");
+    /// <summary>Bytes of a <c>DynamicBinding</c>, the record <c>JsonWindow::Bind</c> fills and its destructor frees.</summary>
+    public static readonly int NuiDynamicBindingSize = Field("Nui::JSON::DynamicBinding", "sizeof");
 
     // ---- lights ----
     // The light priority terms. MEASURED on both binaries with objdump: LightManager is name-exported on

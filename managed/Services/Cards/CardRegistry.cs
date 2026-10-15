@@ -138,14 +138,16 @@ internal static class CardRegistry
         }
         if (LooksPast(key, cards))
         {
+            Drop(key);
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, $"more than {CardLimits.MaxLooks} distinct @look: images across the cards held");
-            _s.Log?.Info($"Cards: refused '{key}': more than {CardLimits.MaxLooks} distinct @look: images");
+            _s.Log?.Info($"Cards: refused '{key}': more than {CardLimits.MaxLooks} distinct @look: images; it keeps no card");
             return false;
         }
         if (!PanelFonts.TryHold(SizesHeld(key, cards)))
         {
+            Drop(key);
             PolicyRefusals.Add(RefusalKind.Card, Prefix + key, value, FacesWhy);
-            _s.Log?.Info($"Cards: refused '{key}': {FacesWhy}");
+            _s.Log?.Info($"Cards: refused '{key}': {FacesWhy}; it keeps no card");
             return false;
         }
         Index.Put(key, new CardSet(key, cards, value));

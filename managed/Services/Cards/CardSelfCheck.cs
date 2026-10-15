@@ -699,7 +699,7 @@ internal static class CardSelfCheck
         }
         check.Expect(CardRegistry.Set("a", LookCard(0, 16)) && CardRegistry.Set("b", LookCard(16, 16)) && CardRegistry.Set("c", LookCard(32, 16)) && CardRegistry.Set("d", LookCard(48, 16)), "64 distinct looks across four cards are held");
         check.Expect(!CardRegistry.Set("e", LookCard(64, 1)) && CardRegistry.Find("e") == null && PolicyRefusals.All() is [{ Kind: RefusalKind.Card, Key: "card.e" }], "a 65th look is refused and listed");
-        check.Expect(CardRegistry.Set("e", LookCard(0, 16)) && CardRegistry.Set("a", LookCard(100, 16)) is false && CardRegistry.Find("a") != null, "a card naming looks already held adds none, and one that swaps its own for new ones counts them anew");
+        check.Expect(CardRegistry.Set("e", LookCard(0, 16)) && CardRegistry.Set("a", LookCard(100, 16)) is false && CardRegistry.Find("a") == null, "a card naming looks already held adds none, and one that swaps its own for new ones counts them anew and, refused, keeps no card");
         CardRegistry.Reset();
         ServerPolicy.Clear();
         PolicyRefusals.ForgetPrefix("");
