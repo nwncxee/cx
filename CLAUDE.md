@@ -196,14 +196,15 @@ A rule the compiler can check is a build error, not a gate. `managed/.editorconf
 - `managed/BannedSymbols.txt` (RS0030, BannedApiAnalyzers): a call that must go through one helper. Each line's
   message says what to call instead. Only that helper disables RS0030, with its reason on the pragma.
 - `tools/analyzers/` (CX0001 and on): a pattern that is no single symbol. CX0001 refuses `p + n`, `p - n`,
-  `p += n`, `p++` on a pointer or `IntPtr` outside `managed/Framework/`: a place in memory is a field on a view
-  (engine memory), a struct or a `Span<T>` (our own). Indexing a typed pointer (`px[i]`) is fine.
+  `p += n`, `p++` on a pointer or `IntPtr`, and `&p[i]` on a pointer or array, outside `managed/Framework/`: a place in memory is a field on a view
+  (engine memory), a struct or a `Span<T>` (our own). Reading a value through a typed pointer (`px[i]`) is fine; taking its address is the move.
 
 **Ban it the day its helper exists.** Writing a helper meant to be the only way to make a call means adding its
 `BannedSymbols.txt` line and moving every caller in the same change. A review finding of the kind "this should
 have gone through X" or "this pattern should never appear" gets a ban line or an analyzer rule in the change that
 fixes it, so the next one fails to compile instead of waiting for a reviewer. A new rule names a real symbol and
 is proven once with a planted call that fails the build. No tests that read source text.
+The `standards-reviewer` agent (`.claude/agents/`) asks for the missing ban in review.
 
 ## Gates (CX-192)
 
@@ -250,6 +251,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
+- `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma with no
+  `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 
