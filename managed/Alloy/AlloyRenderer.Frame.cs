@@ -1062,7 +1062,7 @@ public sealed unsafe partial class AlloyRenderer
                 _gPrepassed[g] = true;
                 Gl.Uniform1i(Programs._depthFeatBase, s);
                 // CX-294: a fringed batch lays its core's depth alone, the cut its GL_EQUAL colour draw makes
-                float cut = _gFringe[g] && Programs.ProgFringe != 0 ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
+                float cut = _gFringe[g] && Issue.CoreCut ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
                 if (cut != boundCut) { Gl.Uniform1f(Programs._depthFeatCut, cut); boundCut = cut; }
                 if (!_bindless && cut >= 0f && _gTex[g] != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)_gTex[g]); boundTex = _gTex[g]; }
                 BindBatchState(g, ref boundCull, ref boundVao);

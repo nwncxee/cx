@@ -1026,7 +1026,7 @@ public sealed unsafe partial class AlloyRenderer
             if (_oDbPart[i] >= 0) continue;
             _bAudited++;
             int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
-            int blend = BlendTerm(i, _passCls[k], false);
+            int blend = (_oWash[i] << 16) | (AlloyClasses.Blends(_passCls[k]) ? (_oSrc[i] << 8) | _oDst[i] : 0);
             IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
             bool recMoved = _recMovedAt[i] == _frameSeq;

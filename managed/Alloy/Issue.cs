@@ -305,8 +305,7 @@ internal static unsafe class Issue
         int litSolid = -1, boundSolid = -1;
         bool interior = _split.Interior;
         bool fringePass = _fringe.Pass;
-        // CX-294: a fringed batch's core cut, on every view that draws its fringe (a capture draws it whole)
-        bool cores = !_capturing && Programs.ProgFringe != 0;
+        bool coreCut = CoreCut;
         if (boundProg is 1 or 3 or 4 or 5 or 6 or 8 or 9)
         {
             ref LitLoc H = ref LitLocOf(boundProg);
@@ -466,7 +465,7 @@ internal static unsafe class Issue
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
             float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f
-                      : cores && !fringePass && _gFringe[g] ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
+                      : coreCut && !fringePass && _gFringe[g] ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
             if (cut != boundCut) { Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut; }
             // ...and the blend state, per batch: off for opaque and cutout (a graded cutout's blend is its fringe's,
             // drawn in the fringe pass), on with the material's own pair for the sorted classes and the fringe.
@@ -628,7 +627,12 @@ internal static unsafe class Issue
         Gl.Enable(Gl.BLEND); _blendOn = true;
     }
 
+    /// <summary>Close the fringe pass: the next pass sets its own blend and depth mask.</summary>
     internal static void FringeEnd() { _fringe.Pass = false; _passDepthMask = 1; }
+
+    /// <summary>Do fringed batches cut at the core threshold on this view? Only where the fringe pass draws their
+    /// band: a capture, or a lit build with no fringe program, draws them whole. The prepass and colour pass both ask.</summary>
+    internal static bool CoreCut => !_capturing && Programs.ProgFringe != 0;
 
     /// <summary>Polygon offset for wash batches (see the wash note in the issue loop).</summary>
     private const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;
