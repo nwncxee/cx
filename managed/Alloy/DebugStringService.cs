@@ -175,6 +175,7 @@ public sealed unsafe class DebugStringService : IExtenderService
         if (vw <= 0f || vh <= 0f) return;
 
         float px = FacePx(gui);
+        float halo = TextStyle.HaloOf(UiKnobs.ConsoleOutline.V, px);
         GlyphAtlas? atlas = TextRig.BakedFace(FontRegistry.MonospaceName, px);
         if (atlas == null && px != _askedPx)
         {
@@ -191,16 +192,18 @@ public sealed unsafe class DebugStringService : IExtenderService
         atlas ??= TextRig.Atlas;
         if (atlas == null) return;
 
-        if (Changed(n, atlas, vw, vh, gui)) Bake(n, atlas, vw, vh, gui);
+        if (Changed(n, atlas, vw, vh, gui, halo)) Bake(n, atlas, vw, vh, gui, halo);
         TextRig.DrawBatch(_batch.AsSpan(), _batch.VertexCount);
     }
 
     /// <summary>Is this frame's layer different from the one <see cref="_batch"/> holds? A posted string is
     /// static for its whole lifetime in the common case, so the answer is normally no and the frame costs one
-    /// comparison walk instead of a glyph walk.</summary>
-    private static bool Changed(int n, GlyphAtlas atlas, float vw, float vh, float gui)
+    /// comparison walk instead of a glyph walk. The baked halo is the batch's own <see cref="VertexBatch.Outline"/>:
+    /// <see cref="Bake"/> is its one writer.</summary>
+    private static bool Changed(int n, GlyphAtlas atlas, float vw, float vh, float gui, float halo)
     {
-        if (n != _wasN || !ReferenceEquals(atlas, _wasAtlas) || vw != _wasW || vh != _wasH || gui != _wasGui) return true;
+        if (n != _wasN || !ReferenceEquals(atlas, _wasAtlas) || vw != _wasW || vh != _wasH || gui != _wasGui
+            || halo != _batch.Outline) return true;
         for (int i = 0; i < n; i++)
         {
             ref Post a = ref _cur[i];
@@ -214,10 +217,12 @@ public sealed unsafe class DebugStringService : IExtenderService
     }
 
     /// <summary>Rebuild the layer's vertices. Cold in the steady state (see <see cref="Changed"/>); allocates
-    /// nothing after the first frame -- <see cref="VertexBatch.Clear"/> keeps the float list's capacity.</summary>
-    private static void Bake(int n, GlyphAtlas atlas, float vw, float vh, float gui)
+    /// nothing after the first frame -- <see cref="VertexBatch.Clear"/> keeps the float list's capacity.
+    /// <paramref name="halo"/> is the outline radius in px, 0 for none.</summary>
+    private static void Bake(int n, GlyphAtlas atlas, float vw, float vh, float gui, float halo)
     {
         _batch.Reset(atlas.SolidU, atlas.SolidV);
+        _batch.Outline = halo;
         for (int i = 0; i < n; i++)
         {
             ref Post p = ref _cur[i];
@@ -240,8 +245,8 @@ public sealed unsafe class DebugStringService : IExtenderService
 
     // ---- off-device proof --------------------------------------------------------------------
 
-    /// <summary>The grid transcription and the capture ring, both pure: the two places a silent mistake would
-    /// put a posted string in the wrong place or lose it.</summary>
+    /// <summary>The grid transcription, the capture ring and the outlined bake: where a silent mistake would misplace,
+    /// lose or un-outline a posted string. Oracle: hand-written cells, and the halo's eight quads per glyph.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DebugStringService.SelfCheck");
@@ -297,6 +302,18 @@ public sealed unsafe class DebugStringService : IExtenderService
         for (int i = _curN; i < MaxStrings + 4; i++) Capture(s, 0, i, 1f, 1f, 1f, 1f);
         _log = live;
         check.Expect(_curN == MaxStrings && _overflowed, "the ring stops at its ceiling and says so");
+
+        // The outline: a thin halo is 8 black quads under each glyph's body, and a changed outline alone re-bakes.
+        var face = new GlyphAtlas();
+        face.Store('a', new Glyph { W = 4, H = 4, U1 = 1f, V1 = 1f, Advance = 10f });
+        _curN = 0;
+        Capture(s, 0, 0, 1f, 1f, 1f, 1f);
+        Bake(1, face, w, h, 1f, 1f);
+        check.Expect(_batch.VertexCount == 6 * (8 + 1), $"a thin outline lays 8 halo quads under the one glyph ({_batch.VertexCount} verts)");
+        check.Expect(!Changed(1, face, w, h, 1f, 1f) && Changed(1, face, w, h, 1f, 0f), "the same layer is kept; a new outline re-bakes it");
+        Bake(1, face, w, h, 1f, 0f);
+        check.Expect(_batch.VertexCount == 6, "outline off: the body alone");
+        _batch.Clear(); _batch.Outline = 0f; _wasN = -1; _wasAtlas = null;
         _curN = keptN; _overflowed = keptOverflow;
 
         log.Info(check.Ok ? "DebugStringService.SelfCheck: passed" : "DebugStringService.SelfCheck: FAILED");
