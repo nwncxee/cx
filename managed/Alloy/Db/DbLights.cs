@@ -24,8 +24,7 @@ internal static class DbLights
     internal static void Walk(DbId scene, in FrameHoist h)
     {
         float radiusMult = h.RadiusMult;
-        // A reused rig still owes the sun its motion: the glide runs on the clock, not on the walk, and the
-        // signature does not move while the engine's own direction holds still between the server's steps.
+        // The rig's signature does not move between a server's steps, so a reused frame owes the sun its glide.
         if (Unchanged(scene, radiusMult, in h)) { _reused++; if (WorldScene(scene)) CoastSun(); return; }
         int parts = DbInputs.LightCount, lits = SceneDb.Lights.High;
         FrameInputs.BeginAreaLights(parts + lits);
@@ -66,6 +65,9 @@ internal static class DbLights
 
         // Blind lights fade the area pair out as well, so the grey stand-in an unread ambient gets is wrong here.
         if (!only.IsNull && !FrameInputs.HasAreaAmbient) { FrameInputs.AreaAmbient = Vector3.Zero; FrameInputs.HasAreaAmbient = true; }
+
+        // Blind lights suppress the pair deliberately: a sun frozen mid-glide jumps when they end.
+        if (!FrameInputs.HasAreaDiffuse && WorldScene(scene)) CoastSun();
 
         // The same tail the engine walk closes with: a light that left the rig has to fade rather than vanish,
         // and the bake's static set is only a set once it is closed.
@@ -211,8 +213,7 @@ internal static class DbLights
         FrameInputs.HasAreaDiffuse = true;
         _areaDif++;
         bool sun = l.Radius > DirectionalRange;
-        // The WORLD's sun is the one a server steps; a GUI scene's own directional light is a lamp aimed at a
-        // model and follows its scene exactly.
+        // A GUI scene's directional light is a lamp aimed at a model: it follows its own scene exactly.
         PublishDir(WorldScene(scene) ? SunGlide.Follow(toLight, sun) : Vector3.Normalize(toLight), sun);
     }
 
@@ -414,36 +415,33 @@ internal static class DbLights
         SceneDb.Lights.Free(lid); SceneDb.Lights.TakeDirty();
         DbInputs.RegisterTileLight(p, -1);
 
-        // The area PAIR's direction, end to end: the engine's own directional light reaches past
-        // DirectionalRange, and what reaches the cascades and the shading is the glided direction. The edge
-        // is announced first and last, so this fixture neither inherits a sun nor leaves one behind.
-        SunGlide.AreaEdge();
+        // The area PAIR's direction, end to end, on a glide state of the fixture's own.
+        SunGlideState live = SunGlide.Swap(new SunGlideState());
         SceneDb.SceneIsWorld[scene.Index] = true;
         DbId sid = SceneDb.Lights.Alloc();
         int sk = sid.Index;
         SceneDb.LitObj[sk] = obj;
         SceneDb.LitPart[sk] = -1;
-        SceneDb.LitPos[sk] = Overhead(0.0) * SunReach;
+        SceneDb.LitPos[sk] = SunGlide.Overhead(0.0) * SunReach;
         SceneDb.LitColour[sk] = new Vector3(1f, 1f, 1f);
         SceneDb.LitRange[sk] = SunReach;
         SceneDb.LitMultiplier[sk] = 1f;
         SceneDb.LitAmbientOnly[sk] = false;
         Walk(scene, in noArea);
-        check.Expect(FrameInputs.HasAreaDiffuse && (FrameInputs.AreaDiffuseDir - Overhead(0.0)).Length() < 1e-5f,
+        check.Expect(FrameInputs.HasAreaDiffuse && (FrameInputs.AreaDiffuseDir - SunGlide.Overhead(0.0)).Length() < 1e-5f,
                      $"an area's first sun is shown, not glided to ({FrameInputs.AreaDiffuseDir})");
         check.Expect(FrameInputs.HasSun && FrameInputs.SunDir == -FrameInputs.AreaDiffuseDir,
                      $"...and the sun travels the way the to-light vector came from ({FrameInputs.SunDir})");
-        // A server's unfaded step, 1.5 degrees: under the cut threshold, so the shown direction sets off
-        // towards it rather than arriving on this frame.
-        SceneDb.LitPos[sk] = Overhead(1.5) * SunReach;
+        // A server's unfaded step of 1.5 degrees: under the cut threshold, so the sun sets off towards it.
+        SceneDb.LitPos[sk] = SunGlide.Overhead(1.5) * SunReach;
         Walk(scene, in noArea);
-        Vector3 at0 = Overhead(0.0), at15 = Overhead(1.5), live = FrameInputs.AreaDiffuseDir;
-        check.Expect(Vector3.Dot(live, at0) > Vector3.Dot(live, at15),
-                     $"a small step glides instead of landing on its own frame ({live})");
-        check.Expect(FrameInputs.SunDir == -live, "...with one direction behind both the cascades and the shading");
+        Vector3 at0 = SunGlide.Overhead(0.0), at15 = SunGlide.Overhead(1.5), dir = FrameInputs.AreaDiffuseDir;
+        check.Expect(Vector3.Dot(dir, at0) > Vector3.Dot(dir, at15),
+                     $"a small step glides instead of landing on its own frame ({dir})");
+        check.Expect(FrameInputs.SunDir == -dir, "...with one direction behind both the cascades and the shading");
         SceneDb.Lights.Free(sid); SceneDb.Lights.TakeDirty();
         SceneDb.SceneIsWorld[scene.Index] = false;
-        SunGlide.AreaEdge();
+        SunGlide.Swap(live);
 
         // A destroyed light leaves the rig in the same frame, with no sweep and no tombstone.
         DbInputs.PartDestroyed(p);
@@ -466,14 +464,6 @@ internal static class DbLights
     /// <summary>The fixture sun's reach: past <see cref="DirectionalRange"/>, so the walk takes the light for
     /// the area pair and for the sun rather than for a lamp.</summary>
     private const float SunReach = 10000f;
-
-    /// <summary>A unit to-light direction <paramref name="deg"/> degrees off straight up, in the XZ plane:
-    /// the fixture's sun, and the oracle its direction expectations are written against.</summary>
-    private static Vector3 Overhead(double deg)
-    {
-        double r = deg * Math.PI / 180.0;
-        return new Vector3((float)Math.Sin(r), 0f, (float)Math.Cos(r));
-    }
 
     private static ModelDef LightModel()
     {

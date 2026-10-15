@@ -24,8 +24,9 @@ internal sealed class SunGlideState
     /// <summary>When the last snap or retarget happened -- the base the next step's interval is measured
     /// from.</summary>
     public double Last;
-    /// <summary>Steps glided and changes snapped this session, for the period line.</summary>
-    public long Steps, Snaps;
+    /// <summary>For the period line: changes far enough apart to be a server's STEPS, changes arriving every
+    /// frame (an engine fade or an owned twilight, which is plain following), and cuts.</summary>
+    public long Steps, Follows, Snaps;
 }
 
 /// <summary><b>Continuous motion out of a stepped sun:</b> a server that moves the area light in small
@@ -39,8 +40,8 @@ internal static class SunGlide
     /// than a server's nudge.</summary>
     private const float SnapDegrees = 3f;
 
-    /// <summary>The shortest a glide may take, in seconds. The floor is what keeps an engine-side FADE --
-    /// which retargets every frame -- behaving as plain following.</summary>
+    /// <summary>The shortest a glide may take, in seconds. The floor is what keeps a direction that changes
+    /// every frame -- an engine fade, an owned twilight -- behaving as plain following.</summary>
     private const double MinGlide = 0.05;
 
     /// <summary>The longest a glide may take, in seconds: the ceiling on how long an unknown or very slow
@@ -55,7 +56,7 @@ internal static class SunGlide
     /// vanishes and the target is already the answer to every visible precision.</summary>
     private const float Still = 1e-5f;
 
-    private static readonly SunGlideState _state = new();
+    private static SunGlideState _state = new();
 
     /// <summary>Alloy's own frame clock -- seconds since load, so the glide is frame-rate independent and a
     /// frame that walks its scene twice gets one answer.</summary>
@@ -71,8 +72,9 @@ internal static class SunGlide
         return Step(_state, engineToLight, Now, edge);
     }
 
-    /// <summary>A frame whose light rig was REUSED: no engine sample, so the glide advances on the clock
-    /// alone. False when there is nothing shown yet or the glide has already landed.</summary>
+    /// <summary>A frame that published no directional term of its own -- a reused rig, or blind lights
+    /// suppressing the pair: the glide advances on the clock alone. False when nothing is shown yet or the
+    /// glide has already landed.</summary>
     internal static bool Coast(out Vector3 shown, out bool sun)
     {
         sun = _state.Sun;
@@ -85,11 +87,20 @@ internal static class SunGlide
     /// <summary>The area edge: the next sample is a different area's sun, so it snaps.</summary>
     internal static void AreaEdge() => _state.Edge = true;
 
-    /// <summary>The glide's clause on the period line: whether steps are being glided, how long each glide
-    /// runs, and how far behind the engine the shown direction sits.</summary>
+    /// <summary>Drive the glide from a state of one's own, and hand back the live one: a fixture's steps must
+    /// not land in the session's census, nor the session's sun inherit a fixture's direction.</summary>
+    internal static SunGlideState Swap(SunGlideState s)
+    {
+        SunGlideState was = _state;
+        _state = s;
+        return was;
+    }
+
+    /// <summary>The glide's clause on the period line: whether the direction arrives in steps or every frame,
+    /// how long each glide runs, and how far behind the engine the shown direction sits.</summary>
     internal static string Note()
-        => $"sunglide: {_state.Steps} glided, {_state.Snaps} snapped, {_state.Length:F2} s glide, "
-         + $"{Degrees(_state.Shown, _state.Target):F2} deg behind";
+        => $"sunglide: {_state.Steps} glided, {_state.Follows} followed, {_state.Snaps} snapped, "
+         + $"{_state.Length:F2} s glide, {Degrees(_state.Shown, _state.Target):F2} deg behind";
 
     /// <summary>The pure seam: the engine's current to-light direction and the clock in, the direction to
     /// show out. A change under <see cref="SnapDegrees"/> glides over the measured interval between recent
@@ -101,13 +112,16 @@ internal static class SunGlide
         if (areaEdge || !s.HasShown) return Snap(s, to, now);
         if (to == s.Target) return Advance(s, now);
         if (Vector3.Dot(s.Target, to) < SnapCos) return Snap(s, to, now);
+        // Measured before Last moves: this interval is both the glide's length and what tells a server's step
+        // from a direction that changes every frame.
+        double interval = now - s.Last;
         Vector3 from = Advance(s, now);
         s.From = from;
         s.Target = to;
         s.Start = now;
-        s.Length = Math.Clamp(now - s.Last, MinGlide, MaxGlide);
+        s.Length = Math.Clamp(interval, MinGlide, MaxGlide);
         s.Last = now;
-        s.Steps++;
+        if (interval > MinGlide) s.Steps++; else s.Follows++;
         return from;
     }
 
@@ -151,6 +165,15 @@ internal static class SunGlide
     private static float Degrees(Vector3 a, Vector3 b)
         => MathF.Atan2(Vector3.Cross(a, b).Length(), Vector3.Dot(a, b)) * (180f / MathF.PI);
 
+    /// <summary>A unit to-light direction <paramref name="deg"/> degrees off straight up, in the XZ plane.
+    /// Two of these slerp to the one at the interpolated angle, which is what lets this check and
+    /// <c>DbLights.SelfCheck</c> write their direction expectations as literals.</summary>
+    internal static Vector3 Overhead(double deg)
+    {
+        double r = deg * Math.PI / 180.0;
+        return new Vector3((float)Math.Sin(r), 0f, (float)Math.Cos(r));
+    }
+
     /// <summary>Off-device: the glide's whole contract over a hand-driven clock -- the first sample snaps, a
     /// small step glides, a cut lands at once, a step mid-glide re-targets without a jump, and the glide
     /// length follows the measured cadence. Oracle: hand-worked literals -- the slerp between two directions
@@ -158,25 +181,16 @@ internal static class SunGlide
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "SunGlide.SelfCheck");
-
-        // A to-light direction `deg` degrees off straight up, in the XZ plane. Two of these slerp to the one
-        // at the interpolated angle, which is what makes every expectation below a literal.
-        static Vector3 Dir(double deg)
-        {
-            double r = deg * Math.PI / 180.0;
-            return new Vector3((float)Math.Sin(r), 0f, (float)Math.Cos(r));
-        }
         static bool Near(Vector3 a, Vector3 b) => (a - b).Length() < 1e-5f;
-
         var s = new SunGlideState();
 
         // Entering an area shows its sun on the first frame.
-        Vector3 shown = Step(s, Dir(0), 0.0, areaEdge: false);
-        check.Expect(Near(shown, Dir(0)) && s.Length == 0.0, $"the first sample snaps ({shown})");
+        Vector3 shown = Step(s, Overhead(0), 0.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(0)) && s.Length == 0.0, $"the first sample snaps ({shown})");
 
         // A 0.5 deg step 20 s later glides, over the 20 s measured since the last change.
-        shown = Step(s, Dir(0.5), 20.0, areaEdge: false);
-        check.Expect(Near(shown, Dir(0)), $"a small step does not move the sun on its own frame ({shown})");
+        shown = Step(s, Overhead(0.5), 20.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(0)), $"a small step does not move the sun on its own frame ({shown})");
         check.Expect(Math.Abs(s.Length - 20.0) < 1e-9, $"...and its glide runs for the measured 20 s ({s.Length})");
 
         // Halfway: sin and cos of 0.25 deg, which is where a slerp between 0 and 0.5 deg is at t = 0.5.
@@ -186,38 +200,42 @@ internal static class SunGlide
 
         // ...and it lands on the engine's direction rather than overshooting or stopping short.
         shown = Advance(s, 40.0);
-        check.Expect(Near(shown, Dir(0.5)) && s.Length == 0.0, $"the glide lands on the step's direction ({shown})");
+        check.Expect(Near(shown, Overhead(0.5)) && s.Length == 0.0, $"the glide lands on the step's direction ({shown})");
         check.Expect(Advance(s, 1000.0) == shown, "...and stays there with no further sample");
-        check.Expect(s.Steps == 1 && s.Snaps == 1, $"one step glided, one snap ({s.Steps}/{s.Snaps})");
+        check.Expect(s.Steps == 1 && s.Follows == 0 && s.Snaps == 1,
+                     $"one step glided, nothing followed, one snap ({s.Steps}/{s.Follows}/{s.Snaps})");
 
         // A 30 deg change is a cut: a time jump, a script's move, the vanilla midpoint's body swap.
-        shown = Step(s, Dir(30.5), 60.0, areaEdge: false);
-        check.Expect(Near(shown, Dir(30.5)) && s.Length == 0.0, $"a 30 deg change lands on its own frame ({shown})");
+        shown = Step(s, Overhead(30.5), 60.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(30.5)) && s.Length == 0.0, $"a 30 deg change lands on its own frame ({shown})");
 
         // An area edge snaps even a change small enough to glide.
-        shown = Step(s, Dir(30.9), 80.0, areaEdge: true);
-        check.Expect(Near(shown, Dir(30.9)) && s.Length == 0.0, $"an area edge snaps a 0.4 deg change ({shown})");
+        shown = Step(s, Overhead(30.9), 80.0, areaEdge: true);
+        check.Expect(Near(shown, Overhead(30.9)) && s.Length == 0.0, $"an area edge snaps a 0.4 deg change ({shown})");
 
         // A step arriving mid-glide re-targets from where the sun is SHOWN, with no jump.
         var m = new SunGlideState();
-        Step(m, Dir(0), 0.0, areaEdge: false);
-        Step(m, Dir(0.5), 20.0, areaEdge: false);
+        Step(m, Overhead(0), 0.0, areaEdge: false);
+        Step(m, Overhead(0.5), 20.0, areaEdge: false);
         Vector3 mid = Advance(m, 30.0);
-        shown = Step(m, Dir(1.0), 30.0, areaEdge: false);
+        shown = Step(m, Overhead(1.0), 30.0, areaEdge: false);
         check.Expect(Near(shown, mid), $"a step mid-glide shows the same direction that frame ({shown} vs {mid})");
         check.Expect(Math.Abs(m.Length - 10.0) < 1e-9, $"...over the 10 s since the last step ({m.Length})");
-        check.Expect(Near(Advance(m, 40.0), Dir(1.0)), "...and lands on the new direction");
+        check.Expect(Near(Advance(m, 40.0), Overhead(1.0)), "...and lands on the new direction");
 
-        // The clamp, both ends: an engine-side fade retargets every frame, and a first step after a long
-        // quiet spell must not glide for the whole spell.
+        // The floor: a direction that changes every frame is followed, and the census says so.
         var f = new SunGlideState();
-        Step(f, Dir(0), 0.0, areaEdge: false);
-        Step(f, Dir(0.01), 0.001, areaEdge: false);
-        check.Expect(Math.Abs(f.Length - MinGlide) < 1e-9, $"a per-frame change glides for the floor ({f.Length})");
+        Step(f, Overhead(0), 0.0, areaEdge: false);
+        Step(f, Overhead(0.01), 0.001, areaEdge: false);
+        check.Expect(Math.Abs(f.Length - 0.05) < 1e-9, $"a per-frame change glides for the floor ({f.Length})");
+        check.Expect(f.Steps == 0 && f.Follows == 1, $"...and counts as following, not as a step ({f.Steps}/{f.Follows})");
+
+        // The ceiling: a first step after a long quiet spell must not glide for the whole spell.
         var q = new SunGlideState();
-        Step(q, Dir(0), 0.0, areaEdge: false);
-        Step(q, Dir(0.5), 600.0, areaEdge: false);
-        check.Expect(Math.Abs(q.Length - MaxGlide) < 1e-9, $"a 600 s gap glides for the ceiling ({q.Length})");
+        Step(q, Overhead(0), 0.0, areaEdge: false);
+        Step(q, Overhead(0.5), 600.0, areaEdge: false);
+        check.Expect(Math.Abs(q.Length - 30.0) < 1e-9, $"a 600 s gap glides for the ceiling ({q.Length})");
+        check.Expect(q.Steps == 1 && q.Follows == 0, $"...and still counts as one step ({q.Steps}/{q.Follows})");
 
         // A degenerate sample is not a direction: the engine's light sits at the origin before it is placed.
         var z = new SunGlideState();
