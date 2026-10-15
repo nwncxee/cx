@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Services.Nui;
@@ -27,7 +28,7 @@ internal static unsafe partial class NuiJsonRead
                              shape + ": a tree reads back as sorted compact JSON");
                 check.Expect(Dump(Obj(mem, msvc), msvc) == "{}", shape + ": an empty object is {}");
                 check.Expect(Dump(Str(mem, msvc, "line\nbreak \u00e9"), msvc) == "\"line\\nbreak \u00e9\"", shape + ": a control character is escaped and other text is kept");
-                byte* yaw = *(byte**)(Str(mem, msvc, "yaw") + 8), longer = *(byte**)(Str(mem, msvc, "a name past fifteen bytes") + 8);
+                byte* yaw = new NuiJsonValue((byte*)Str(mem, msvc, "yaw")).Pointer, longer = new NuiJsonValue((byte*)Str(mem, msvc, "a name past fifteen bytes")).Pointer;
                 check.Expect(StringIs(yaw, msvc, "yaw"u8) && !StringIs(yaw, msvc, "yaws"u8) && !StringIs(yaw, msvc, "yax"u8)
                              && StringIs(longer, msvc, "a name past fifteen bytes"u8), shape + ": a string matches its own bytes only, inline or not");
                 var sent = new List<IntPtr>();
@@ -44,7 +45,7 @@ internal static unsafe partial class NuiJsonRead
                 IntPtr leaf = Obj(mem, msvc, ("bind", Str(mem, msvc, "yaw")));
                 IntPtr tree = Obj(mem, msvc, ("a", Num(mem, 5, 1)), ("kids", Arr(mem, Obj(mem, msvc, ("v", leaf)), Num(mem, 5, 2))));
                 IntPtr found = FindBind(tree, "yaw", msvc);
-                check.Expect(found != IntPtr.Zero && *(byte**)(found + 8) == *(byte**)(leaf + 8), (msvc ? "MSVC" : "libstdc++") + ": a bind leaf nested in an object and an array is found, as a value whose map is the leaf's");
+                check.Expect(found != IntPtr.Zero && new NuiJsonValue((byte*)found).Pointer == new NuiJsonValue((byte*)leaf).Pointer, (msvc ? "MSVC" : "libstdc++") + ": a bind leaf nested in an object and an array is found, as a value whose map is the leaf's");
                 check.Expect(FindBind(tree, "pitch", msvc) == IntPtr.Zero, (msvc ? "MSVC" : "libstdc++") + ": a name no leaf has finds nothing");
             }
             check.Expect(Dump(Num(mem, 9, 0), false) == null, "a value of an unknown type ends the dump");
@@ -62,57 +63,49 @@ internal static unsafe partial class NuiJsonRead
 
     private static IntPtr Num(List<IntPtr> mem, byte type, double v)
     {
-        byte* j = A(mem, 16);
-        j[0] = type;
-        if (type == 7) *(double*)(j + 8) = v; else *(long*)(j + 8) = (long)v;
-        return (IntPtr)j;
+        var j = new NuiJsonValue(A(mem, NuiJsonValue.Bytes));
+        j.Type = type;
+        if (type == 7) j.Float = v; else j.Int = (long)v;
+        return (IntPtr)j.Ptr;
     }
 
     private static IntPtr Bool(List<IntPtr> mem, bool v)
     {
-        byte* j = A(mem, 16);
-        j[0] = 4;
-        j[8] = v ? (byte)1 : (byte)0;
-        return (IntPtr)j;
+        var j = new NuiJsonValue(A(mem, NuiJsonValue.Bytes));
+        j.Type = 4;
+        j.Bool = v ? (byte)1 : (byte)0;
+        return (IntPtr)j.Ptr;
     }
 
-    private static void SetString(List<IntPtr> mem, byte* s, bool msvc, string text)
+    private static void SetString(List<IntPtr> mem, NuiStdString s, bool msvc, string text)
     {
         byte[] b = Encoding.UTF8.GetBytes(text);
-        bool heap = b.Length > 15;
-        byte* chars = heap ? A(mem, b.Length + 1) : msvc ? s : s + 16;
+        byte* chars = b.Length > NuiStdString.InlineMax ? A(mem, b.Length + 1) : s.Inline(msvc);
         for (int i = 0; i < b.Length; i++) chars[i] = b[i];
-        if (msvc)
-        {
-            if (heap) *(byte**)s = chars;
-            *(ulong*)(s + 16) = (ulong)b.Length;
-            *(ulong*)(s + 24) = heap ? (ulong)b.Length : 15UL;
-        }
-        else
-        {
-            *(byte**)s = chars;
-            *(ulong*)(s + 8) = (ulong)b.Length;
-        }
+        s.Set(msvc, chars, (ulong)b.Length);
     }
 
     private static IntPtr Str(List<IntPtr> mem, bool msvc, string text)
     {
-        byte* own = A(mem, 32), j = A(mem, 16);
+        var own = new NuiStdString(A(mem, NuiStdString.Bytes));
+        var j = new NuiJsonValue(A(mem, NuiJsonValue.Bytes));
         SetString(mem, own, msvc, text);
-        j[0] = 3;
-        *(byte**)(j + 8) = own;
-        return (IntPtr)j;
+        j.Type = 3;
+        j.Pointer = own.Ptr;
+        return (IntPtr)j.Ptr;
     }
 
     private static IntPtr Arr(List<IntPtr> mem, params IntPtr[] items)
     {
-        byte* vec = A(mem, 24), elems = A(mem, 16 * items.Length), j = A(mem, 16);
-        for (int i = 0; i < items.Length; i++) Buffer.MemoryCopy((void*)items[i], elems + 16 * i, 16, 16);
-        ((byte**)vec)[0] = elems;
-        ((byte**)vec)[1] = elems + 16 * items.Length;
-        j[0] = 2;
-        *(byte**)(j + 8) = vec;
-        return (IntPtr)j;
+        var vec = new NuiJsonVector(A(mem, NuiJsonVector.Bytes));
+        var elems = new NuiJsonValue(A(mem, NuiJsonValue.Bytes * items.Length));
+        var j = new NuiJsonValue(A(mem, NuiJsonValue.Bytes));
+        for (int i = 0; i < items.Length; i++) elems.At(i).CopyFrom(new NuiJsonValue((byte*)items[i]));
+        vec.Begin = elems.Ptr;
+        vec.End = elems.At(items.Length).Ptr;
+        j.Type = 2;
+        j.Pointer = vec.Ptr;
+        return (IntPtr)j.Ptr;
     }
 
     /// <summary>An object whose map is a balanced tree of the members sorted by key, in the compiler's node shape.</summary>
@@ -120,37 +113,27 @@ internal static unsafe partial class NuiJsonRead
     {
         var sorted = new List<(string Key, IntPtr Value)>(members);
         sorted.Sort((x, y) => string.CompareOrdinal(x.Key, y.Key));
-        byte* head = A(mem, 80);
-        if (msvc) head[25] = 1;
-        byte* root = Build(mem, msvc, sorted, 0, sorted.Count - 1, null, head);
-        byte* map = A(mem, 48), j = A(mem, 16);
-        if (msvc) { *(byte**)map = head; *(byte**)(head + 8) = root == null ? head : root; }
-        else *(byte**)(map + 16) = root;
-        j[0] = 1;
-        *(byte**)(j + 8) = map;
-        return (IntPtr)j;
+        var head = new NuiJsonMapNode(A(mem, NuiJsonMapNode.Bytes));
+        if (msvc) head.MarkHead();
+        var root = Build(mem, msvc, sorted, 0, sorted.Count - 1, default, head);
+        var map = new NuiJsonMap(A(mem, NuiJsonMap.Bytes));
+        var j = new NuiJsonValue(A(mem, NuiJsonValue.Bytes));
+        map.SetRoot(msvc, root, head);
+        j.Type = 1;
+        j.Pointer = map.Ptr;
+        return (IntPtr)j.Ptr;
     }
 
-    private static byte* Build(List<IntPtr> mem, bool msvc, List<(string Key, IntPtr Value)> m, int lo, int hi, byte* parent, byte* head)
+    private static NuiJsonMapNode Build(List<IntPtr> mem, bool msvc, List<(string Key, IntPtr Value)> m, int lo, int hi, NuiJsonMapNode parent, NuiJsonMapNode head)
     {
-        if (lo > hi) return null;
+        if (lo > hi) return default;
         int mid = (lo + hi) / 2;
-        byte* n = A(mem, 80);
-        byte* left = Build(mem, msvc, m, lo, mid - 1, n, head), right = Build(mem, msvc, m, mid + 1, hi, n, head);
-        SetString(mem, n + 32, msvc, m[mid].Key);
-        Buffer.MemoryCopy((void*)m[mid].Value, n + 64, 16, 16);
-        if (msvc)
-        {
-            *(byte**)n = left == null ? head : left;
-            *(byte**)(n + 8) = parent == null ? head : parent;
-            *(byte**)(n + 16) = right == null ? head : right;
-        }
-        else
-        {
-            *(byte**)(n + 8) = parent;
-            *(byte**)(n + 16) = left;
-            *(byte**)(n + 24) = right;
-        }
+        var n = new NuiJsonMapNode(A(mem, NuiJsonMapNode.Bytes));
+        var left = Build(mem, msvc, m, lo, mid - 1, n, head);
+        var right = Build(mem, msvc, m, mid + 1, hi, n, head);
+        SetString(mem, n.Key, msvc, m[mid].Key);
+        n.Value.CopyFrom(new NuiJsonValue((byte*)m[mid].Value));
+        n.Link(msvc, left, parent, right, head);
         return n;
     }
 }

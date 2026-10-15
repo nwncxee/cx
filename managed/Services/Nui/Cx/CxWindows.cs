@@ -20,9 +20,6 @@ internal static unsafe class CxWindows
     /// <summary>How long a window may go without a tick before it counts as closed.</summary>
     internal const long StaleMs = 3000;
     private const int MaxWindows = 64, MaxOutbox = 16, EventsPerTick = 4, MaxBinds = 64;
-    /// <summary>Deque member offsets: the compiler's container ABI, the same on every client build.</summary>
-    private const int GccStart = 16, GccFinish = 48, GccNode = 24, GccLast = 16;
-    private const int MsvcMap = 8, MsvcMapSize = 16, MsvcOff = 24, MsvcSize = 32;
 
     private sealed class BoundSetting
     {
@@ -203,33 +200,14 @@ internal static unsafe class CxWindows
     /// 64-byte records on Linux, an MSVC deque of pointers to them on Windows; the window's own bind map is not touched.</summary>
     private static void Ingest(IntPtr self, CxWindow w)
     {
-        byte* q = (byte*)Unsafe.AsPointer(ref new Nui__JSON__JsonWindow(self).BindIngest);
-        if (OperatingSystem.IsWindows())
-        {
-            ulong size = *(ulong*)(q + MsvcSize), off = *(ulong*)(q + MsvcOff), mask = *(ulong*)(q + MsvcMapSize) - 1;
-            byte** map = *(byte***)(q + MsvcMap);
-            if (size == 0 || map == null || size > 4096) return;
-            for (ulong i = 0; i < size; i++) Record(w, map[(off + i) & mask]);
-            return;
-        }
-        byte* p = *(byte**)(q + GccStart), end = *(byte**)(q + GccFinish);
-        if (p == end) return;
-        byte* last = *(byte**)(q + GccStart + GccLast);
-        byte** node = *(byte***)(q + GccStart + GccNode);
-        for (int n = 0; p != end && n < 4096; n++)
-        {
-            Record(w, p);
-            p += EngineLayout.NuiBindUpdateStride;
-            if (p == last) { node++; p = *node; last = p + EngineLayout.NuiBindUpdateStride * 8; }
-        }
+        foreach (Nui__JSON__BindUpdate update in new NuiBindQueue((byte*)Unsafe.AsPointer(ref new Nui__JSON__JsonWindow(self).BindIngest)))
+            Record(w, update);
     }
 
     /// <summary>Applies one queued update to the bound settings it names. A name is compared as bytes, so a record for no bound
     /// setting allocates nothing.</summary>
-    private static void Record(CxWindow w, byte* rec)
+    private static void Record(CxWindow w, Nui__JSON__BindUpdate update)
     {
-        if (rec == null) return;
-        var update = new Nui__JSON__BindUpdate((IntPtr)rec);
         byte* name = (byte*)Unsafe.AsPointer(ref update.Name);
         foreach (BoundSetting b in w.Binds)
         {

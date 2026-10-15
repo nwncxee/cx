@@ -23,8 +23,6 @@ internal static unsafe class NuiLayoutErrors
     private const double Required = 1001001000.0;
     /// <summary>What UnsatisfiableConstraint::what() says; HandleError's message carries it for a solver failure.</summary>
     private const string Unsatisfiable = "The constraint can not be satisfied.";
-    /// <summary>A std::shared_ptr, an element's child record: the pointer, then the control block. Both ABIs.</summary>
-    private const int SharedPtrSize = 16;
     private const int MaxElements = 100_000, MaxDepth = 64, MaxShown = 40;
     /// <summary>Field slots past an element's twelve variables: a group's own width and height edit variables.</summary>
     private const int GivenWidth = 12, GivenHeight = 13;
@@ -242,8 +240,8 @@ internal static unsafe class NuiLayoutErrors
         for (int f = 0; f < v.Length; f++) vars.TryAdd(v[f], (me, f));
         if ((group && parent >= 0) || depth >= MaxDepth) return;
         int i = 0;
-        for (IntPtr c = view.Children; c < view.ChildrenEnd; c += SharedPtrSize)
-            Visit(*(IntPtr*)c, me, i++, depth + 1, cap, vars);
+        for (int c = 0, n = view.ChildCount; c < n; c++)
+            Visit(view.Child(c), me, i++, depth + 1, cap, vars);
     }
 
     /// <summary>The rules the failing row was built from: the one being added, then every rule whose marker or other
@@ -469,14 +467,20 @@ internal static unsafe class NuiLayoutErrors
             log.Info("NuiLayoutErrors.SelfCheck: skipped (no kiwi layout rows for this build)");
             return;
         }
-        byte* mem = (byte*)NativeMemory.AllocZeroed(4096);
+        var blocks = new System.Collections.Generic.List<IntPtr>();
+        IntPtr Block(int n)
+        {
+            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
+            blocks.Add(p);
+            return p;
+        }
         try
         {
-            IntPtr width = (IntPtr)(mem + 3000);
+            IntPtr width = Block(512);
             IntPtr Data(int at, double constant)
             {
-                var cd = new kiwi__ConstraintData((IntPtr)(mem + at));
-                IntPtr terms = (IntPtr)(mem + at + 256);
+                var cd = new kiwi__ConstraintData(Block(256));
+                IntPtr terms = Block(256);
                 new kiwi__Term(terms).Variable = width;
                 new kiwi__Term(terms).Coefficient = 1.0;
                 cd.Terms = new kiwi__Term(terms);
@@ -487,7 +491,7 @@ internal static unsafe class NuiLayoutErrors
                 return cd.Ptr;
             }
             IntPtr accepted = Data(0, -64), adding = Data(512, -32);
-            IntPtr solver = (IntPtr)(mem + 1024), cns = (IntPtr)(mem + 1536), row = (IntPtr)(mem + 2048), cells = (IntPtr)(mem + 2304);
+            IntPtr solver = Block(512), cns = Block(512), row = Block(256), cells = Block(1024);
             var pair = new kiwi__impl__CnPair(cns);
             pair.Data = new kiwi__ConstraintData(accepted);
             pair.Marker = 5;
@@ -553,7 +557,7 @@ internal static unsafe class NuiLayoutErrors
         }
         finally
         {
-            NativeMemory.Free(mem);
+            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
         }
         if (check.Ok) log.Info("NuiLayoutErrors.SelfCheck: passed");
     }
