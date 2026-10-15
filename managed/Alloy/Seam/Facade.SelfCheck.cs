@@ -15,6 +15,23 @@ namespace CX.Alloy.Seam;
 /// nulling, the poison path and two-frame quarantine, and a setter leaving shell word and column agreeing.</summary>
 internal static unsafe class FacadeSelfCheck
 {
+    /// <summary>The SafePointerList head at the start of a shell, laid out by hand from the build file's offsets
+    /// (array +0x8, count +0x10, capacity +0x14): the oracle for the <c>Gob</c> view's own rows.</summary>
+    [StructLayout(LayoutKind.Explicit, Size = 0x18)]
+    private struct SafeListHead
+    {
+        [FieldOffset(0x8)] public nint Array;   // not-an-offset: the build file's literal, kept apart from the rows under test
+        [FieldOffset(0x10)] public int Count;   // not-an-offset: as above
+        [FieldOffset(0x14)] public int Cap;   // not-an-offset: as above
+    }
+
+    /// <summary>A block that is not a facade: nothing but a word where a vptr would be.</summary>
+    private struct ForeignBlock
+    {
+        public nint Vptr;
+        private long _rest0, _rest1, _rest2, _rest3, _rest4, _rest5, _rest6;
+    }
+
     internal static bool Run(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -415,9 +432,8 @@ internal static unsafe class FacadeSelfCheck
         // The engine's own `SafePointer<CAurObject>::operator=` @0x477d70 is what assigns a CHitInfo's
         // SafePointer at +0x48/+0x50 against it, and it reallocs the array in place from whatever is there:
         // a non-null pointer with a zero capacity, or garbage, is a free() of a pointer we never allocated.
-        check.Expect(new Gob(shell).SafePointers == 0
-                     && new Gob(shell).SafePointerCount == 0
-                     && new Gob(shell).SeamSafeCap == 0,
+        ref SafeListHead born = ref *(SafeListHead*)shell;
+        check.Expect(born.Array == 0 && born.Count == 0 && born.Cap == 0,
             "a newborn shell's SafePointer list is not an empty {NULL, 0, 0} CExoArrayList");
 
         // The mirrored words: a setter must leave the shell and the column agreeing, because game code reads
@@ -442,18 +458,19 @@ internal static unsafe class FacadeSelfCheck
         // SafePointer is {target, int index}, the list at +0x08 is {array, count, capacity}, and the retire
         // must zero every target and set every index to -1 (SafePointerList<T>::~SafePointerList @0x445470).
         const int n = 3;
-        SafePointerRec* sps = (SafePointerRec*)NativeMemory.AllocZeroed(n * 16);
+        SafePointerRec* sps = (SafePointerRec*)NativeMemory.AllocZeroed((nuint)(n * sizeof(SafePointerRec)));
         var recs = new Span<SafePointerRec>(sps, n);
         nint arr = (nint)NativeMemory.AllocZeroed(n * (nuint)sizeof(nint));
         for (int k = 0; k < n; k++)
         {
             recs[k].Target = shell;
             recs[k].Index = k;
-            ((nint*)arr)[k] = (nint)Unsafe.AsPointer(ref recs[k]);
+            fixed (SafePointerRec* one = &recs[k]) ((nint*)arr)[k] = (nint)one;
         }
-        new Gob(shell).SafePointers = arr;
-        new Gob(shell).SafePointerCount = n;
-        new Gob(shell).SeamSafeCap = n;
+        ref SafeListHead head = ref *(SafeListHead*)shell;
+        head.Array = arr;
+        head.Count = n;
+        head.Cap = n;
 
         CX.Alloy.Highlight.SetClaim(shell, true);
         long poisonBefore = Facade.PoisonCalls;
@@ -475,7 +492,7 @@ internal static unsafe class FacadeSelfCheck
         }
         check.Expect(nulled, "retiring a facade left a SafePointer still pointing at it");
         check.Expect(unindexed, "retiring a facade left a SafePointer's index set");
-        check.Expect(new Gob(shell).SafePointers == 0 && new Gob(shell).SafePointerCount == 0,
+        check.Expect(head.Array == 0 && head.Count == 0,
             "the back-reference list was not emptied at retire");
         NativeMemory.Free(sps);
 
@@ -499,18 +516,20 @@ internal static unsafe class FacadeSelfCheck
 
         // An alien pointer: something that was never a facade is a named refusal, not a crash.
         long aliens = Facade.AlienCalls;
-        nint notOurs = (nint)NativeMemory.AllocZeroed(64);
+        ForeignBlock* foreign = (ForeignBlock*)NativeMemory.AllocZeroed((nuint)sizeof(ForeignBlock));
+        nint notOurs = (nint)foreign;
         check.Expect(Facade.Shell(notOurs) == 0, "a pointer with a foreign vptr must not normalise");
         // review #4: a vptr that merely LANDS inside the vtable block is not one of ours either. The range
         // test alone adjusted such a pointer by whatever the word ahead of it held and handed the result on
         // as a shell -- a wild read in the path whose whole job is to refuse it.
-        *(nint*)notOurs = (nint)Unsafe.AsPointer(ref new Span<nint>((void*)Facade.Table(SeamTable.Gob), 2)[1]);
+        Span<nint> table = new((void*)Facade.Table(SeamTable.Gob), 2);
+        fixed (nint* inside = &table[1]) foreign->Vptr = (nint)inside;
         check.Expect(Facade.Shell(notOurs) == 0,
             "a vptr that points INTO a table rather than at its address point must not normalise");
-        *(nint*)notOurs = 0;
+        foreign->Vptr = 0;
         check.Expect(Facade.Object(notOurs, SeamSlot.Unnamed).IsNull, "a foreign pointer must not resolve to a record");
         check.Expect(Facade.AlienCalls > aliens, "a foreign pointer must be counted");
-        NativeMemory.Free((void*)notOurs);
+        NativeMemory.Free(foreign);
 
         GuiHold(check);
         PartHold(check);

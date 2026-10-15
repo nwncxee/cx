@@ -208,7 +208,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         PassBinds++;
         byte* b = PassBegin();
-        FillPassBlock(b);
+        FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
         FlushPassBlock();
         BindSunMaps();
@@ -245,26 +245,18 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The block's name died with the context; the next send mints a new one.</summary>
     internal static void PassContextLost() => _passBuf = 0;
 
-    internal static void PassVec(byte* b, int off, Vector3 v) => MemoryMarshal.Write(new Span<byte>(b, PassBytes).Slice(off), in v);
-    internal static void PassVec(byte* b, int off, float x, float y, float z, float w)
-    {
-        var v = new Vector4(x, y, z, w);
-        MemoryMarshal.Write(new Span<byte>(b, PassBytes).Slice(off), in v);
-    }
-
     /// <summary>Every <c>CxPass</c> member from this pass's state: the engine's area terms, the cascade and
     /// cube receivers as <see cref="CasterPass"/> published them, and the probe. A stale cascade or cube set
     /// leaves its half zero, which the receivers read as nothing to sample.</summary>
-    private static void FillPassBlock(byte* b)
+    private static void FillPassBlock(PassBlock* blk)
     {
-        var blk = (PassBlock*)b;
         if (FrameInputs.HasAreaAmbient)
             // AlloyLights.AmbientScale / SunScale are the live /light dials -- applied here, so a retune shows
             // on the very next pass.
-            PassVec(b, PbAmbient, FrameInputs.AreaAmbient * AlloyLights.AmbientScale);
+            blk->Ambient = FrameInputs.AreaAmbient * AlloyLights.AmbientScale;
         else
         {
-            PassVec(b, PbAmbient, new Vector3(DefaultAmbient));
+            blk->Ambient = new Vector3(DefaultAmbient);
             if (!Diag._ambientFallbackLogged)
             {
                 Diag._ambientFallbackLogged = true;
@@ -272,8 +264,8 @@ public sealed unsafe partial class AlloyRenderer
                            "(if this persists, SetLightGL's index -1 path never fired)");
             }
         }
-        PassVec(b, PbDiffuse, FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuse * AlloyLights.SunScale : default);
-        PassVec(b, PbDir, FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuseDir : new Vector3(0f, 0f, 1f));
+        blk->Diffuse = FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuse * AlloyLights.SunScale : default;
+        blk->Dir = FrameInputs.HasAreaDiffuse ? FrameInputs.AreaDiffuseDir : new Vector3(0f, 0f, 1f);
 
         if (CasterPass.CascadesFresh)
         {
@@ -285,8 +277,8 @@ public sealed unsafe partial class AlloyRenderer
                 blk->SunBias[i] = range > 0f ? _sunWorldBias / range : 0f;
                 blk->SunRadius[i] = CasterPass.CascadeFitRadius[i];
             }
-            new ReadOnlySpan<float>(CasterPass.CascadeVp, 0, n * 16).CopyTo(new Span<float>(blk->SunVp, 64));
-            new ReadOnlySpan<float>(CasterPass.SunDynMask, 0, 4).CopyTo(new Span<float>(blk->SunDyn, 4));
+            new ReadOnlySpan<float>(CasterPass.CascadeVp, 0, n * 16).CopyTo(MemoryMarshal.Cast<Matrix4x4, float>((Span<Matrix4x4>)blk->SunVp));
+            new ReadOnlySpan<float>(CasterPass.SunDynMask, 0, 4).CopyTo((Span<float>)blk->SunDyn);
             blk->SunFocus = CasterPass.SunFocusLive;
             blk->SunCascades = n;
         }
@@ -294,7 +286,7 @@ public sealed unsafe partial class AlloyRenderer
         // for the sun, taken off the staged bytes rather than off the publisher, so the witness cannot
         // disagree with what the receiver samples.
         _rxSunN = blk->SunCascades;
-        _rxSunVp3 = blk->SunVp0Col3;
+        _rxSunVp3 = new Vector4(blk->SunVp[0].M41, blk->SunVp[0].M42, blk->SunVp[0].M43, blk->SunVp[0].M44);
         _rxSunFocus = blk->SunFocus;
         _rxAreaDif = blk->Diffuse;
         _rxAreaDir = blk->Dir;
@@ -303,7 +295,7 @@ public sealed unsafe partial class AlloyRenderer
         blk->LocalFloor = AlloyLights.ShadowFloor;
         // Source radius (0 = no raw view, no search), temporal phase (golden-ratio turns per frame, 0
         // with no taa to integrate it), disc taps; w = the view depth past which no cube is read (0 = none)
-        PassVec(b, PbLocalPcss, _rawSampler != 0 ? AlloyLights.ShadowSource : 0f,
+        blk->LocalPcss = new Vector4(_rawSampler != 0 ? AlloyLights.ShadowSource : 0f,
                 PostStack.TaaLive ? (_frameSeq * 0.618034f) % 1f : 0f, Shadows.Taps.V, AlloyLights.ShadowDist);
         // CX-49: the sun's own source size, as penumbra texels per unit of stored cascade depth -- the same
         // "no raw view, no search" gate the cubes take, and the same temporal phase and tap count out of
@@ -314,7 +306,7 @@ public sealed unsafe partial class AlloyRenderer
         // Pixels -> world radius per unit view depth, so the shader compares its disc against the
         // screen without knowing the projection. 0 (no perspective this pass) = the disc everywhere.
         float discZ = _lodScale > 0f ? AlloyLights.ShadowDiscPx / _lodScale : 0f;
-        PassVec(b, PbLocalSoft, AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, discZ, AlloyLights.ShadowCap);
+        blk->LocalSoft = new Vector4(AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, discZ, AlloyLights.ShadowCap);
         // shadow.perpixel, the per-pixel SHADOW budget every walk and the deferred record share.
         // A caller that fills the block itself (the lightmap bake) leaves it zero, which every reader takes as
         // "no budget" -- the pre-budget path.
@@ -328,8 +320,8 @@ public sealed unsafe partial class AlloyRenderer
         if (CasterPass.CubesFresh)
         {
             int n = CasterPass.CubeCount;
-            new ReadOnlySpan<float>(CasterPass.CubeLight, 0, n * 4).CopyTo(new Span<float>(blk->Light, 256));
-            for (int i = 0; i < n; i++) { blk->DynPage[i * 4] = CasterPass.CubeDynPage[i]; blk->Fade[i * 4] = CasterPass.CubeFade[i]; }
+            new ReadOnlySpan<float>(CasterPass.CubeLight, 0, n * 4).CopyTo(MemoryMarshal.Cast<Vector4, float>((Span<Vector4>)blk->Light));
+            for (int i = 0; i < n; i++) { blk->DynPage[i].Value = CasterPass.CubeDynPage[i]; blk->Fade[i].Value = CasterPass.CubeFade[i]; }
             blk->LocalPlane = new Vector2(CasterPass.CubeNearPlane, 1f / CasterPass.CubeFaceSize);
         }
 

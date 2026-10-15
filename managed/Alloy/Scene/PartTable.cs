@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using CX.Engine;
 using CX.Framework;
 namespace CX.Alloy;
@@ -54,13 +55,13 @@ internal static unsafe class PartTable
     /// @0x4a6f70 requires a gobless part above the cut and <c>BoxAbovePlane</c> @0x5b32d0 negative;
     /// <c>BoxAbovePlane</c> evaluates the plane at the box corner that minimises it (each axis takes min when
     /// its coefficient is positive) as <c>y*b + a*x + c*z + d</c>, in that order, in floats.</summary>
-    internal static bool KeyholeDissolvesBox(float* box, byte keyholeOn, float* plane, float cut)
+    internal static bool KeyholeDissolvesBox(in Box box, byte keyholeOn, Vector4 plane, float cut)
     {
-        if (keyholeOn == 0 || !(box[5] > cut)) return false;
-        float a = plane[0], b = plane[1], c = plane[2], d = plane[3];
-        float x = a > 0f ? box[0] : box[3];
-        float y = b > 0f ? box[1] : box[4];
-        float z = c > 0f ? box[2] : box[5];
+        if (keyholeOn == 0 || !(box.Max.Z > cut)) return false;
+        float a = plane.X, b = plane.Y, c = plane.Z, d = plane.W;
+        float x = a > 0f ? box.Min.X : box.Max.X;
+        float y = b > 0f ? box.Min.Y : box.Max.Y;
+        float z = c > 0f ? box.Min.Z : box.Max.Z;
         return y * b + a * x + c * z + d < 0f;
     }
 }

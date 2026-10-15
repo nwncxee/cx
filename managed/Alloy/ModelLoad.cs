@@ -22,8 +22,16 @@ internal static unsafe partial class ModelLoad
     /// The engine writes a restype at <c>ptr-10</c> and the owning <c>CAuroraModel*</c> at <c>ptr-8</c> and
     /// <c>ReleaseResource</c> switches on that ushort, so ours is left ZERO: a buffer the release chain misses
     /// falls through the engine's release instead of taking virtuals on a pointer that is not an object.</summary>
-    private const int PrefixBytes = 16;
-    private struct Headroom16 { public fixed byte Bytes[PrefixBytes]; }
+    private static readonly int PrefixBytes = Headroom<ModelHeadroom>.Size;
+
+    /// <summary>The 16 bytes ahead of a served model buffer, as the engine's release chain reads them.</summary>
+    private struct ModelHeadroom
+    {
+        public uint Spare;
+        public ushort SpareTag;
+        public ushort ResType;
+        public nint Owner;
+    }
 
     /// <summary>The <c>{0, modelDataSize, rawDataSize}</c> wrapper a binary MDL starts with: the model block
     /// begins after it, and a first dword of zero is what <c>ReadSync</c> discriminates binary from ASCII on.</summary>
@@ -257,7 +265,7 @@ internal static unsafe partial class ModelLoad
     {
         if (raw.Length == 0) { j.Why = "no bytes"; return; }
         byte* block = (byte*)NativeMemory.AllocZeroed((nuint)(PrefixBytes + raw.Length));
-        byte* data = Headroom<Headroom16>.PayloadOf(block);
+        byte* data = (byte*)Headroom<ModelHeadroom>.PayloadOf(block);
         raw.CopyTo(new Span<byte>(data, raw.Length));
         j.Data = data;
         j.Size = raw.Length;
@@ -344,7 +352,7 @@ internal static unsafe partial class ModelLoad
 
     private static void Free(in LoadEntry e)
     {
-        if (e.Data != IntPtr.Zero) NativeMemory.Free(Headroom<Headroom16>.AllocationOf(e.Data));
+        if (e.Data != IntPtr.Zero) NativeMemory.Free(Headroom<ModelHeadroom>.BlockOf(e.Data));
     }
 
     // ---- the serve, main thread, inside the engine's AurResGet ----
@@ -413,7 +421,7 @@ internal static unsafe partial class ModelLoad
         _out.Remove(data);
         if (!_jobs.Entries.TryGetValue(key, out LoadEntry e) || e.Data != data)
         {
-            NativeMemory.Free(Headroom<Headroom16>.AllocationOf(data));   // the entry went while the engine held it
+            NativeMemory.Free(Headroom<ModelHeadroom>.BlockOf((nint)data));   // the entry went while the engine held it
             return;
         }
         e.Out = false;

@@ -2593,6 +2593,8 @@ public readonly unsafe partial struct CallBack(IntPtr ptr)
     public ref IntPtr SeamData => ref *(IntPtr*)(Ptr + EngineLayout.SeamCallBackData);
     /// <inheritdoc cref="EngineLayout.SeamCallBackFn"/>
     public ref IntPtr SeamFn => ref *(IntPtr*)(Ptr + EngineLayout.SeamCallBackFn);
+    /// <inheritdoc cref="EngineLayout.SeamCallBackName"/>
+    public Span<byte> SeamName { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.SeamCallBackName), 0); }
     /// <inheritdoc cref="EngineLayout.SeamCallBackSizeof"/>
     public ref int SeamSizeof => ref *(int*)(Ptr + EngineLayout.SeamCallBackSizeof);
 }

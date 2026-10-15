@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using System.Text;
 using CX.Engine;
@@ -109,11 +110,12 @@ internal static unsafe class GuiContent
     /// <c>screenParams</c> is the view's size (<c>GLRender::m_viewport</c> w, h), as the engine feeds it. Hot.</summary>
     internal static void Feed(Prog p, int di, int viewW, int viewH, bool gamma)
     {
-        Span<float> rs = GuiCapture.Records.AsSpan(di * GuiCapture.RecFloats);
-        fixed (float* r = rs, mv = rs[16..], tx = rs[32..], g = rs[36..])
+        ref GuiRec rec = ref GuiCapture.Records[di];
+        fixed (Matrix4x4* r = &rec.Mvp, mv = &rec.Mv)
+        fixed (float* tx = &rec.TexRot.X, g = &rec.Colour.X)
         {
-            Gl.UniformMatrix4fv(p.Mvp, 1, 0, r);
-            Gl.UniformMatrix4fv(p.Mv, 1, 0, mv);
+            Gl.UniformMatrix4fv(p.Mvp, 1, 0, (float*)r);
+            Gl.UniformMatrix4fv(p.Mv, 1, 0, (float*)mv);
             float* t = stackalloc float[16];
             TextureMatrix(tx, t);
             Gl.UniformMatrix4fv(p.Texture, 1, 0, t);

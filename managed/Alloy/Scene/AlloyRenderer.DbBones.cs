@@ -33,13 +33,13 @@ public sealed unsafe partial class AlloyRenderer
     /// GAME thread at the end of the animate step, and <c>PoseSkinned</c> swaps the pair once per frame after
     /// that. <see cref="DbBonePublish"/> copies from here into whichever buffer the frame is about to upload.
     /// </summary>
-    internal static float* DbBoneStage(int slot)
+    internal static ref BonePalette DbBoneStage(int slot)
     {
         EnsureDbStage(slot + 1);
-        return ((BoneRec*)_dbStage)[slot].F;
+        return ref _dbStage[slot];
     }
 
-    private static float* _dbStage, _dbPrev;
+    private static BonePalette* _dbStage, _dbPrev;
     private static int _dbStageSlots;
     private static readonly System.Collections.Generic.HashSet<int> _dbLive = new();
     /// <summary>Slots claimed but not yet published, whose motion-vector history is their own first pose.</summary>
@@ -51,9 +51,9 @@ public sealed unsafe partial class AlloyRenderer
         if (want <= _dbStageSlots) return;
         int cap = _dbStageSlots == 0 ? 16 : _dbStageSlots;
         while (cap < want) cap *= 2;
-        nuint bytes = (nuint)cap * BoneFloats * sizeof(float);
-        _dbStage = (float*)NativeMemory.Realloc(_dbStage, bytes);
-        _dbPrev = (float*)NativeMemory.Realloc(_dbPrev, bytes);
+        nuint bytes = (nuint)cap * (nuint)sizeof(BonePalette);
+        _dbStage = (BonePalette*)NativeMemory.Realloc(_dbStage, bytes);
+        _dbPrev = (BonePalette*)NativeMemory.Realloc(_dbPrev, bytes);
         _dbStageSlots = cap;
     }
 
@@ -68,14 +68,14 @@ public sealed unsafe partial class AlloyRenderer
         foreach (int slot in _dbLive)
         {
             if (slot < 0 || slot >= _boneTop || !EnsureBoneSlots(slot + 1)) continue;
-            var now = new ReadOnlySpan<float>(((BoneRec*)_dbStage)[slot].F, BoneFloats);
-            var prev = new Span<float>(((BoneRec*)_dbPrev)[slot].F, BoneFloats);
+            ref BonePalette now = ref _dbStage[slot];
+            ref BonePalette prev = ref _dbPrev[slot];
             // A FRESH slot's history is its own pose, or a creature's first frame smears from whatever the
             // slot held before it.
-            if (_dbFresh.Remove(slot)) now.CopyTo(prev);
-            prev.CopyTo(new Span<float>(((BoneRec*)_bonePrevStage)[slot].F, BoneFloats));
-            now.CopyTo(new Span<float>(((BoneRec*)_boneStage)[slot].F, BoneFloats));
-            now.CopyTo(prev);
+            if (_dbFresh.Remove(slot)) prev = now;
+            _bonePrevStage[slot] = prev;
+            _boneStage[slot] = now;
+            prev = now;
         }
     }
 

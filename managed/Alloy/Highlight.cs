@@ -331,8 +331,8 @@ internal static unsafe class Highlight
             string rec = "no drawn part";
             if (slot >= 0)
             {
-                ReadOnlySpan<float> r = _dData.AsSpan(slot * DrawFloats, DrawFloats);
-                rec = $"record dif=({r[24]:F2},{r[25]:F2},{r[26]:F2}) emi=({r[28]:F2},{r[29]:F2},{r[30]:F2})";
+                ref DrawRecordBlock r = ref _dData[slot];
+                rec = $"record dif=({r.DifR:F2},{r.DifG:F2},{r.DifB:F2}) emi=({r.EmiR:F2},{r.EmiG:F2},{r.EmiB:F2})";
             }
             _log?.Info($"[hldiag] root o={o} \"{SceneDb.ObjModel[o]?.Name ?? "-"}\" tint={SceneDb.ObjTint[o]} "
                        + $"illum={SceneDb.ObjEmissive[o]} flags={SceneDb.ObjSeamFlags[o]:x} {rec}");

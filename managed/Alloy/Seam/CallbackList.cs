@@ -59,7 +59,6 @@ internal static unsafe class CallbackList
 {
     /// <summary><c>CallBack</c>: <c>char name[0x20]</c>, <c>fn</c> at +0x20, <c>void* data</c> at +0x28.</summary>
     private static readonly int Size = EngineLayout.SeamCallBackSizeof;
-    private const int NameMax = 0x20;   // not-an-offset: the length of the inline name array, 31 chars + NUL
     /// <summary>The engine's first growth is capacity 0x10 (a 0x80-byte malloc), then doubling.</summary>
     private const int FirstCap = 0x10;   // not-an-offset: the capacity the engine's first growth asks for
 
@@ -88,12 +87,12 @@ internal static unsafe class CallbackList
             return 0;
         }
         nint cb = (nint)block;
-        byte* dst = (byte*)cb;
         if (name != 0)
         {
             byte* src = (byte*)name;
+            Span<byte> dst = new CallBack(cb).SeamName;
             int n = 0;
-            while (n < NameMax - 1 && src[n] != 0) { dst[n] = src[n]; n++; }
+            while (n < dst.Length - 1 && src[n] != 0) { dst[n] = src[n]; n++; }
         }
         new CallBack(cb).SeamFn = fn;
         new CallBack(cb).SeamData = data;

@@ -424,8 +424,8 @@ internal static unsafe class GuiPass
         long rec = (long)GuiCapture.DrawN * GuiCapture.RecFloats * sizeof(float);
         long bones = (long)GuiCapture.SkinN * GuiCapture.BoneFloats * sizeof(float);
         Orphan(_gl.Buf, ref _gl.BufCap, rec + bones);
-        fixed (float* r = GuiCapture.Records) Gl.NamedBufferSubData(_gl.Buf, IntPtr.Zero, (IntPtr)rec, r);
-        if (bones > 0) fixed (float* b = GuiCapture.Bones) Gl.NamedBufferSubData(_gl.Buf, (IntPtr)rec, (IntPtr)bones, b);
+        fixed (GuiRec* r = GuiCapture.Records) Gl.NamedBufferSubData(_gl.Buf, IntPtr.Zero, (IntPtr)rec, r);
+        if (bones > 0) fixed (BonePalette* b = GuiCapture.Bones) Gl.NamedBufferSubData(_gl.Buf, (IntPtr)rec, (IntPtr)bones, b);
         if (GuiCapture.VtxN > 0)
         {
             Orphan(_gl.VtxBuf, ref _gl.VtxCap, GuiCapture.VtxN);

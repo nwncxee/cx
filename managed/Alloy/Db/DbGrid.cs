@@ -1,5 +1,6 @@
 using CX.Engine;
 using System;
+using System.Numerics;
 using CX.Framework;
 
 namespace CX.Alloy.Db;
@@ -16,7 +17,7 @@ internal static unsafe class DbGrid
     /// <summary>Per cell: the head of its object list (-1 empty) and the real world AABB of everything in it.
     /// The box only ever GROWS, which costs a candidate when a static leaves and never a miss.</summary>
     private static readonly int[] _head = new int[Cells];
-    private static readonly float[] _box = new float[Cells * 6];
+    private static readonly Box[] _box = new Box[Cells];
     /// <summary>Per object: the next object in its cell's list, and which cell it is in (-1 not filed,
     /// <see cref="CellUnboxed"/> unbounded, <see cref="CellMover"/> on the mover list).</summary>
     private static readonly int[] _next = new int[SceneDb.MaxObjects];
@@ -108,22 +109,22 @@ internal static unsafe class DbGrid
 
     private static void Grow(int cell, float cx, float cy, float cz, float r)
     {
-        int b = cell * 6;
+        ref Box b = ref _box[cell];
         // The first entry SETS the box; every later one only grows it. An empty cell's stale box would
         // otherwise swallow the whole area once anything was filed back into it.
         if (_head[cell] < 0)
         {
             _occupied++;
-            _box[b + 0] = cx - r; _box[b + 1] = cy - r; _box[b + 2] = cz - r;
-            _box[b + 3] = cx + r; _box[b + 4] = cy + r; _box[b + 5] = cz + r;
+            b.Min = new Vector3(cx - r, cy - r, cz - r);
+            b.Max = new Vector3(cx + r, cy + r, cz + r);
             return;
         }
-        if (cx - r < _box[b + 0]) _box[b + 0] = cx - r;
-        if (cy - r < _box[b + 1]) _box[b + 1] = cy - r;
-        if (cz - r < _box[b + 2]) _box[b + 2] = cz - r;
-        if (cx + r > _box[b + 3]) _box[b + 3] = cx + r;
-        if (cy + r > _box[b + 4]) _box[b + 4] = cy + r;
-        if (cz + r > _box[b + 5]) _box[b + 5] = cz + r;
+        if (cx - r < b.Min.X) b.Min.X = cx - r;
+        if (cy - r < b.Min.Y) b.Min.Y = cy - r;
+        if (cz - r < b.Min.Z) b.Min.Z = cz - r;
+        if (cx + r > b.Max.X) b.Max.X = cx + r;
+        if (cy + r > b.Max.Y) b.Max.Y = cy + r;
+        if (cz + r > b.Max.Z) b.Max.Z = cz + r;
     }
 
     /// <summary>The cell a world XY falls in. Wraps, so any coordinate is a valid cell.</summary>
@@ -138,19 +139,18 @@ internal static unsafe class DbGrid
     /// <c>CullPass.Planes</c> convention: inside when <c>dot(n, p) + d &gt;= 0</c>), plus every mover and every
     /// unbounded object, into <paramref name="into"/> from <paramref name="n"/>; <paramref name="slack"/> grows
     /// each cell box so a cell about to enter view is yielded a frame early. Returns the new count, allocation-free.</summary>
-    internal static int Query(float* planes, float slack, int[] into, int n)
+    internal static int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
     {
         if (!_ready) return n;
         for (int k = 0; k < _unboxedN && n < into.Length; k++) into[n++] = _unboxed[k];
         for (int k = 0; k < _moverN && n < into.Length; k++) into[n++] = _movers[k];
-        fixed (float* boxes = _box)
-            for (int c = 0; c < Cells; c++)
-            {
-                int head = _head[c];
-                if (head < 0) continue;
-                if (!AreaGrid.BoxInFrustum(planes, ((Stride6f*)boxes)[c].F, slack)) continue;
-                for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
-            }
+        for (int c = 0; c < Cells; c++)
+        {
+            int head = _head[c];
+            if (head < 0) continue;
+            if (!AreaGrid.BoxInFrustum(planes, in _box[c], slack)) continue;
+            for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
+        }
         return n;
     }
 
@@ -170,9 +170,9 @@ internal static unsafe class DbGrid
         check.Expect(Cell(0f, 0f) != Cell(300f, 300f), "two tiles 30 apart are different cells");
         check.Expect(Cell(0f, 0f) == Cell(Dim * CellSize, 0f), "the grid wraps at its width");
 
-        float* planes = stackalloc float[24];
-        for (int f = 0; f < 6; f++) { planes[f * 4] = 0f; planes[f * 4 + 1] = 0f; planes[f * 4 + 2] = 0f; planes[f * 4 + 3] = 1f; }
-        planes[0] = 1f; planes[3] = -100f;          // keep x >= 100
+        Span<Vector4> planes = stackalloc Vector4[6];
+        planes.Fill(new Vector4(0f, 0f, 0f, 1f));
+        planes[0] = new Vector4(1f, 0f, 0f, -100f);          // keep x >= 100
         int[] into = new int[16];
         int n = Query(planes, 0f, into, 0);
         bool near = false, far = false, unb = false, mov = false;
