@@ -32,7 +32,7 @@ public sealed unsafe class DayNightService : IExtenderService
         _s.Projection = (float*)Native.Sym(SymbolMap.ProjectionAlpha);
         if (_s.Shadow == null || _s.Projection == null)
         {
-            log.Info("DayNight: shadowalpha/projectionalpha did not resolve -- owned day/night stands down, vanilla shaping only");
+            log.Always("DayNight: shadowalpha/projectionalpha did not resolve -- owned day/night stands down, vanilla shaping only");
             return;
         }
         _s.Next = hooks.ChainAreaUpdateDayNightCycle(&OnUpdateDayNightCycle, ChainPriority);
@@ -43,9 +43,8 @@ public sealed unsafe class DayNightService : IExtenderService
         _s.AsNight = hooks.ChainAreaSetAsNight(&OnSetAsNight, ChainPriority);
         bool ok = _s.Next != null && _s.Load != null && _s.AsDawn != null && _s.AsDusk != null
                && _s.AsDay != null && _s.AsNight != null;
-        log.Info(ok
-            ? $"DayNight: chained UpdateDayNightCycle, LoadArea and the four SetAs*; a server owns dawn/dusk with '{DayNightPolicy.Key}=1'"
-            : "DayNight: a chain on the day/night machine was refused -- owned day/night stands down, vanilla shaping only");
+        if (ok) log.Info($"DayNight: chained UpdateDayNightCycle, LoadArea and the four SetAs*; a server owns dawn/dusk with '{DayNightPolicy.Key}=1'");
+        else log.Always("DayNight: a chain on the day/night machine was refused -- owned day/night stands down, vanilla shaping only");
     }
 
     /// <summary>The engine's own update runs first and keeps all of its bookkeeping -- skybox, sounds, tile
@@ -102,28 +101,26 @@ public sealed unsafe class DayNightService : IExtenderService
     // palette then starts on the next update.
 
     [UnmanagedCallersOnly]
-    private static void OnSetAsDawn(IntPtr area) { (*_s.AsDawn)(area); Hold(area); }
+    private static void OnSetAsDawn(IntPtr area) { _s.Cutting++; try { (*_s.AsDawn)(area); } finally { _s.Cutting--; } Hold(area); }
 
     [UnmanagedCallersOnly]
-    private static void OnSetAsDusk(IntPtr area) { (*_s.AsDusk)(area); Hold(area); }
+    private static void OnSetAsDusk(IntPtr area) { _s.Cutting++; try { (*_s.AsDusk)(area); } finally { _s.Cutting--; } Hold(area); }
 
     [UnmanagedCallersOnly]
-    private static void OnSetAsDay(IntPtr area) { (*_s.AsDay)(area); Hold(area); }
+    private static void OnSetAsDay(IntPtr area) { _s.Cutting++; try { (*_s.AsDay)(area); } finally { _s.Cutting--; } Hold(area); }
 
     [UnmanagedCallersOnly]
-    private static void OnSetAsNight(IntPtr area) { (*_s.AsNight)(area); Hold(area); }
+    private static void OnSetAsNight(IntPtr area) { _s.Cutting++; try { (*_s.AsNight)(area); } finally { _s.Cutting--; } Hold(area); }
 
-    /// <summary>Put back what was on screen. Silent during a load, on an area the machine has not picked up,
-    /// and inside itself: <c>SetAsDawn</c> reaches <c>SetAsDay</c> on a non-cycle area, so it holds once.</summary>
+    /// <summary>Put back what was on screen, once the outermost cut has returned: <c>SetAsDawn</c> reaches
+    /// <c>SetAsDay</c> on a non-cycle area. Silent during a load and on an area the machine has not picked up.</summary>
     private static void Hold(IntPtr areaPtr)
     {
         DayNightState s = _s;
-        if (s.InLoad || s.Holding || s.Edge || areaPtr == IntPtr.Zero) return;
+        if (s.InLoad || s.Cutting > 0 || s.Edge || areaPtr == IntPtr.Zero) return;
         if (!s.Memory.Have || s.Memory.Area != areaPtr || !s.Owned) return;
         var area = new CNWCArea(areaPtr);
-        s.Holding = true;
-        try { Apply(area, in s.Memory.Applied, s.Memory.Direction, true, area.Transition != DayNightPhase.None); }
-        finally { s.Holding = false; }
+        Apply(area, in s.Memory.Applied, s.Memory.Direction, true, area.Transition != DayNightPhase.None);
     }
 
     /// <summary>The held values, through the engine's own setters: the sun model's two colours, the fog pair,

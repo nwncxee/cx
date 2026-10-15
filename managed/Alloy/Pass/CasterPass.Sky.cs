@@ -79,6 +79,10 @@ public sealed unsafe partial class CasterPass
         SkyView.Bake(_gl.SkyDepth, _sky.Fit);
     }
 
+    /// <summary>Area edge: the map and the key it was rendered under both describe an area that has gone, even
+    /// when the client hands the next area the same <c>CNWCArea</c>, which would otherwise read as still fresh.</summary>
+    internal static void SkyAreaEdge() => SkyRelease();
+
     /// <summary>The caster set went away (area edge, module unload, a failed flush): so did the world the
     /// map was baked from.</summary>
     private static void SkyRelease()

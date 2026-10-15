@@ -197,7 +197,7 @@ internal static class DayNightSelfCheck
                   && Near(s.Frame.ShadowAlpha, 0.40f) && Near(s.Frame.ProjectionAlpha, 0.0125f),
             "an area edge is picked up at the engine's own shaped frame, dip and all");
 
-        // The same pointer with no edge announced must NOT be mistaken for the same area's continuation.
+        // Past the edge, the same area's transition runs on: no restart, and it writes the shadow global.
         r.Edge = false;
         r.T = 0.5f;
         s = DayNightMachine.Advance(in r, ref m, 0.016f);

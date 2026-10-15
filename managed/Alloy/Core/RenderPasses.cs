@@ -322,7 +322,7 @@ internal static class RenderPasses
             Attach = SkyView.Attach,
             SelfCheck = SkyView.SelfCheck,
             ContextLost = SkyView.Forget,
-            Revoke = SkyView.Revoke,
+            Revoke = CasterPass.SkyAreaEdge,
             Stats = _ => SkyView.Stats(),
         }, log);
         r.Register(new PassLifecycle

@@ -75,7 +75,7 @@ internal static unsafe class SkyView
         else if (Shadows.Stage.Boot < 4)
             _s.Down = $"shadow.stage={Shadows.Stage.Boot} stops the feed before the bake, so there is no overhead view";
         if (_s.Down != null)
-            log.Info($"SkyView: {_s.Down} -- the sky-visibility term is OFF and the area ambient fills an "
+            log.Always($"SkyView: {_s.Down} -- the sky-visibility term is OFF and the area ambient fills an "
                    + "alley as vanilla does (turn Shadows on to get it back)");
     }
 
@@ -86,7 +86,7 @@ internal static unsafe class SkyView
         _gl.NoUnit = true;
         if (_s.SaidNoUnit) return;
         _s.SaidNoUnit = true;
-        _s.Log?.Info("SkyView: the lit stage has no texture unit for the sky map on this driver -- the "
+        _s.Log?.Always("SkyView: the lit stage has no texture unit for the sky map on this driver -- the "
                    + "sky-visibility term is off, and the area ambient fills an alley as vanilla does");
     }
 
@@ -139,8 +139,8 @@ internal static unsafe class SkyView
         Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
-    /// <summary>Area edge: the baked map describes an area that has gone. The depth view it came from is
-    /// released with the caster set, and the next exterior frame bakes again.</summary>
+    /// <summary>The baked map describes an area that has gone; <see cref="CasterPass.SkyAreaEdge"/> drops the
+    /// key it was rendered under, so the next exterior frame bakes again.</summary>
     internal static void Revoke() => _gl.Valid = false;
 
     internal static void Forget() => _gl = new SkyGlState();
@@ -183,7 +183,7 @@ internal static unsafe class SkyView
     {
         _gl.Failed = true;
         _gl.Prog = 0;
-        _s.Log?.Info($"SkyView: {why} -- the sky-visibility term is off, and the area ambient fills an "
+        _s.Log?.Always($"SkyView: {why} -- the sky-visibility term is off, and the area ambient fills an "
                    + "alley as vanilla does");
     }
 

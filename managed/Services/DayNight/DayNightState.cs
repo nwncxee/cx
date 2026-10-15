@@ -24,8 +24,8 @@ internal sealed unsafe class DayNightState
     internal bool InLoad;
     /// <summary>An area has loaded and the machine has not picked the new one up yet.</summary>
     internal bool Edge;
-    /// <summary>A hold is already in flight, so a nested <c>SetAs*</c> does not hold a second time.</summary>
-    internal bool Holding;
+    /// <summary>How deep the <c>SetAs*</c> cuts are nested; the hold waits for the outermost to return.</summary>
+    internal int Cutting;
 
     /// <summary>Which diagnoses have already been logged for the area the memory is on.</summary>
     internal int Said;

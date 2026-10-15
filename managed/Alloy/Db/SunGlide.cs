@@ -43,6 +43,9 @@ internal static class SunGlide
     /// <summary>The shortest a glide may take, in seconds. The floor is what keeps a direction that changes
     /// every frame -- an engine fade, an owned twilight -- behaving as plain following.</summary>
     private const double MinGlide = 0.05;
+    /// <summary>The census's line between a server's step and per-frame following: longer than any frame a
+    /// playable client takes, far shorter than any server's step cadence.</summary>
+    private const double StepFloor = 0.25;
 
     /// <summary>The longest a glide may take, in seconds: the ceiling on how long an unknown or very slow
     /// cadence can hold the shown direction behind the engine's.</summary>
@@ -121,7 +124,7 @@ internal static class SunGlide
         s.Start = now;
         s.Length = Math.Clamp(interval, MinGlide, MaxGlide);
         s.Last = now;
-        if (interval > MinGlide) s.Steps++; else s.Follows++;
+        if (interval > StepFloor) s.Steps++; else s.Follows++;
         return from;
     }
 

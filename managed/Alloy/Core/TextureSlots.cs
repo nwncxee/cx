@@ -172,6 +172,15 @@ internal static class TextureSlots
             yield return uint.Parse(m.Groups[1].Value);
     }
 
+    /// <summary>The unit the source declares for the sampler named <paramref name="sampler"/>; 0 when it
+    /// declares none, which fails every need it is compared with.</summary>
+    private static uint Unit(string src, string sampler)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(
+            src, @"layout\(binding\s*=\s*(\d+)\)\s*uniform\s+\w*sampler\w*\s+" + sampler + @"\s*;");
+        return m.Success ? uint.Parse(m.Groups[1].Value) : 0;
+    }
+
     /// <summary>The first unit two of those declarations both claim, named with both samplers; null when
     /// every unit is claimed once.</summary>
     private static string? DoubleClaimed(string src)
@@ -235,15 +244,9 @@ internal static class TextureSlots
         check.Expect(litDecls.Contains(Programs.SkyViewDefine)
           && !Programs.WithoutSkyView(litDecls).Contains(Programs.SkyViewDefine),
           "the sky-visibility term is removable: the stage carries the define and Programs.WithoutSkyView takes it out");
-        // ...and the two removable features' unit NEEDS, each against the highest unit the COMPILED stage
-        // actually declares for it: a sampler that moved up without its need moving link-fails on a driver
-        // reporting exactly that many units, and nothing else would say so.
-        uint topSoft = 0, topSky = 0;
-        foreach (uint u in Claimed(litDecls))
-        {
-            if (u == SkyMap) topSky = u;
-            else if (u == SunShadowRaw || u == SunShadowDynRaw) topSoft = Math.Max(topSoft, u);
-        }
+        // The removable features' needs against the units the stage's source declares for their samplers.
+        uint topSoft = Math.Max(Unit(litDecls, "uSunShadowRaw"), Unit(litDecls, "uSunDynShadowRaw"));
+        uint topSky = Unit(litDecls, "uSkyMap");
         check.Expect((int)topSoft + 1 == Programs.SunSoftUnitsNeed,
           $"the soft sun declares up to unit {topSoft}, so its need is {topSoft + 1}; Programs says {Programs.SunSoftUnitsNeed}");
         check.Expect((int)topSky + 1 == Programs.SkyViewUnitsNeed && Programs.SunSoftUnitsNeed < Programs.SkyViewUnitsNeed,

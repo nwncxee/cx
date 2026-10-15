@@ -221,12 +221,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
   than `statics.baseline` allows fails. Free: `static readonly`, `const`, static methods/properties, and a
   lifetime owner -- a plain field whose type is a `...State` class declared under `managed/`.
-- `selfcheck.sh`: inside a `*SelfCheck*` file, a `SelfCheck` method or any block that runs a `Checker`, an
-  `Expect` that cannot fail fails -- a compile-time-constant condition, a `const` compared to its own kind of
-  literal, the same text on both sides of `==`/`!=`, or a value compared against a declaration DERIVED from
-  it (`A == B` where `B` is declared `= A + 1`, in any file, so a sibling partial is no escape) -- and so does
-  a hand-written `SKIPPED` log line. Two independently declared constants held to each other stay: that is a
-  real invariant, not a restatement.
+- `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
+  a compile-time-constant condition, a `const` compared to its own kind of literal, or the same text on both
+  sides of `==`/`!=` -- and so does a hand-written `SKIPPED` log line.
 
   **The independent-oracle rule.** A self-check's expected value comes from an independent oracle: a
   hand-written literal, golden data or a fixture, or a second artifact (the embedded GLSL text, a build

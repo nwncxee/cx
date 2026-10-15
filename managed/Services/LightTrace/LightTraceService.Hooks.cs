@@ -66,7 +66,7 @@ public sealed unsafe partial class LightTraceService
     {
         St.Armed = false;
         St.Why = what + " did not resolve on this client build";
-        log.Info($"LightTrace: standing down -- {St.Why}");
+        log.Always($"LightTrace: standing down -- {St.Why}");
     }
 
     private static Vector3 Vec(VectorArg a)
@@ -216,7 +216,7 @@ public sealed unsafe partial class LightTraceService
             St.TransitionAt = now;
         }
 
-        bool flashing = a.LightningFlash != 0f;
+        bool flashing = a.LightningFlash > 0f;
         if (flashing != St.Flashing)
         {
             St.Flashing = flashing;
