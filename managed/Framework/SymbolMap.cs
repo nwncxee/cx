@@ -1165,6 +1165,153 @@ internal static unsafe class SymbolMap
     /// <summary>CNWCArea::StopWeather(unsigned char). ABI: <c>(CNWCArea*, uchar)</c>; the byte is unused.</summary>
     [Fn("void(CNWCArea this, byte kind)")]
     public const string AreaStopWeather = "_ZN8CNWCArea11StopWeatherEh";
+
+    // ---- the day/night machine (CX-285's trigger table). Three layers: CNWCModule::SetTimeOfDayState is the
+    //      state machine (1 day, 2 night, 3 dawn, 4 dusk); the four CNWCArea::SetAs* switch the area between
+    //      its two palettes and start/stop a transition; UpdateDayNightCycle crossfades them every frame, and
+    //      the five Set*Light*/SetFog* leaves are where the server's packets and all of the above land.
+    //      Every `Vector` here crosses BY VALUE -- SysV xmm pair, Win64 a pointer -- i.e. VectorArg.
+    //      Windows anchors: SetTimeOfDayState and the SetAs* from the state machine's own body; the two
+    //      global-light setters by their unique "controlpart sun gidy_sun_*" format strings; the rest from
+    //      callers/callees of those (docs/windows-symbols.md). Every field displacement is IDENTICAL on both.
+    /// <summary>
+    /// <c>CNWCModule::SetTimeOfDayState(uchar state, uint elapsedMs, int force)</c> @0x7d96e0 (rva 0x7cfbb0) --
+    /// state 1 day, 2 night, 3 dawn, 4 dusk. On a cycle area it runs the matching <c>SetAs*</c> pair BEFORE its
+    /// same-state early-out, so a repeat of the live state still relights; then it stores the state and resets
+    /// the transition clock. ABI <c>(this, uchar, uint, int)</c>; called by ModuleUpdate_Time and LoadArea.
+    /// </summary>
+    [Fn("void(CNWCModule this, byte state, uint elapsedMs, int force)")]
+    public const string ModuleSetTimeOfDayState = "_ZN10CNWCModule17SetTimeOfDayStateEhji";
+    /// <summary>
+    /// <c>CNWCArea::SetAsDawn()</c> @0x7067a0 (rva 0x7e5330) -- on a cycle area it only arms the transition
+    /// (dawn-running, isNight, shadow alpha) and leaves the crossfade to <see cref="AreaUpdateDayNightCycle"/>;
+    /// on a non-cycle area it degrades to <see cref="AreaSetAsNight"/> or <see cref="AreaSetAsDay"/>.
+    /// ABI <c>(this)</c>, no return.
+    /// </summary>
+    [Fn("void(CNWCArea this)")]
+    public const string AreaSetAsDawn = "_ZN8CNWCArea9SetAsDawnEv";
+    /// <summary><c>CNWCArea::SetAsDusk()</c> @0x706640 (rva 0x7e5580) -- <see cref="AreaSetAsDawn"/>'s mirror:
+    /// arms dusk-running and clears isNight. ABI <c>(this)</c>, no return.</summary>
+    [Fn("void(CNWCArea this)")]
+    public const string AreaSetAsDusk = "_ZN8CNWCArea9SetAsDuskEv";
+    /// <summary>
+    /// <c>CNWCArea::SetAsDay()</c> @0x7064a0 (rva 0x7e5390) -- the whole day palette at once: clears isNight and
+    /// both transition flags, pushes the day fog/ambient/diffuse through the three virtuals, moves the sun to the
+    /// day direction, sets one shadow light and the day skybox, and plays the day tile animations.
+    /// ABI <c>(this)</c>, no return.
+    /// </summary>
+    [Fn("void(CNWCArea this)")]
+    public const string AreaSetAsDay = "_ZN8CNWCArea8SetAsDayEv";
+    /// <summary><c>CNWCArea::SetAsNight()</c> @0x7062f0 (rva 0x7e55f0) -- <see cref="AreaSetAsDay"/>'s mirror on
+    /// the night palette; the shadow-light count comes from the client options. ABI <c>(this)</c>.</summary>
+    [Fn("void(CNWCArea this)")]
+    public const string AreaSetAsNight = "_ZN8CNWCArea10SetAsNightEv";
+    /// <summary>
+    /// <c>CNWCArea::UpdateDayNightCycle(float dt)</c> @0x706a20 (rva 0x7e90b0) -- the per-frame crossfade while
+    /// a transition runs: t = module elapsed / length, clamped; lerps ambient, diffuse, fog colour and fog
+    /// amount, scales diffuse and shadow alpha by |2t-1|, swaps the light direction at t = 0.5 and ends the
+    /// transition at t = 1. ABI <c>(this, float)</c>, no return; its one caller is <see cref="AreaUpdate"/>.
+    /// </summary>
+    [Fn("void(CNWCArea this, float dt)")]
+    public const string AreaUpdateDayNightCycle = "_ZN8CNWCArea19UpdateDayNightCycleEf";
+    /// <summary>
+    /// <c>CNWCArea::SetGlobalLightAmbient(int, Vector)</c> @0x7022d0 (rva 0x7e5b40) -- VIRTUAL (Linux vtbl+0x58,
+    /// Windows +0x48), hooked at the body. Pushes the colour as <c>controlpart sun gidy_sun_amb color</c> and
+    /// ignores the int. Returns 1 when the area has a scene, else 0. ABI <c>(this, int, Vector)</c> -- Linux
+    /// <c>rdi, esi, xmm0+xmm1</c>, Win64 <c>rcx, edx, r8</c>.
+    /// </summary>
+    [Fn("int(CNWCArea this, int apply, VectorArg colour)")]
+    public const string AreaSetGlobalLightAmbient = "_ZN8CNWCArea21SetGlobalLightAmbientEi6Vector";
+    /// <summary>
+    /// <c>CNWCArea::SetGlobalLightDiffuse(int apply, Vector)</c> @0x702510 (rva 0x7e5be0) -- VIRTUAL (Linux
+    /// vtbl+0x50, Windows +0x40), hooked at the body. apply 0 hides the sun light outright; otherwise the colour
+    /// goes to <c>gidy_sun_diff</c> AND to <c>AurSetTileColor(colour * 0.5)</c>. Returns 1 when the sun object
+    /// exists. Same register shape as <see cref="AreaSetGlobalLightAmbient"/>.
+    /// </summary>
+    [Fn("int(CNWCArea this, int apply, VectorArg colour)")]
+    public const string AreaSetGlobalLightDiffuse = "_ZN8CNWCArea21SetGlobalLightDiffuseEi6Vector";
+    /// <summary>
+    /// <c>CNWCArea::SetGlobalLightDirection(Vector dir, bool coarse)</c> @0x704000 (rva 0x7e5d10) -- moves
+    /// <c>gidy_sun</c> to <c>dir * 9233.093</c> immediately, but rebuilds the static projections only once the
+    /// direction has turned past 1 degree (coarse: 5 degrees) since the last rebuild. Returns 1 when the sun
+    /// object exists. ABI <c>(this, Vector, bool)</c> -- Linux <c>rdi, xmm0+xmm1, esi</c>; Win64 <c>rcx, rdx, r8b</c>.
+    /// </summary>
+    [Fn("int(CNWCArea this, VectorArg dir, byte coarse)")]
+    public const string AreaSetGlobalLightDirection = "_ZN8CNWCArea23SetGlobalLightDirectionE6Vectorb";
+    /// <summary>
+    /// <c>CNWCArea::SetAreaLightColor(uint slot, Vector colour, float fade)</c> @0x704140 (rva 0x7e5010) --
+    /// slot 0/1 moon ambient/diffuse, 2/3 sun ambient/diffuse. fade 0 writes the live slot and pushes it when it
+    /// is the live palette and no transition runs; fade &gt; 0 writes the slot's target and its timer instead.
+    /// ABI <c>(this, uint, Vector, float)</c>; the only caller is <see cref="HandleServerToPlayerArea"/>.
+    /// </summary>
+    [Fn("void(CNWCArea this, uint slot, VectorArg colour, float fade)")]
+    public const string AreaSetAreaLightColor = "_ZN8CNWCArea17SetAreaLightColorEj6Vectorf";
+    /// <summary>
+    /// <c>CNWCArea::SetAreaLightDirection(uint which, Vector dir, float fade)</c> @0x704350 (rva 0x7e5250) --
+    /// which 0 the moon direction, 1 the sun's; same fade-0 / fade-&gt;-target split as
+    /// <see cref="AreaSetAreaLightColor"/>, and an immediate one tail-calls
+    /// <see cref="AreaSetGlobalLightDirection"/> with the fine threshold. ABI <c>(this, uint, Vector, float)</c>.
+    /// </summary>
+    [Fn("void(CNWCArea this, uint which, VectorArg dir, float fade)")]
+    public const string AreaSetAreaLightDirection = "_ZN8CNWCArea21SetAreaLightDirectionEj6Vectorf";
+    /// <summary>
+    /// <c>CNWCArea::SetFogColors(Vector sun, Vector moon, float fade)</c> @0x704440 (rva 0x7e5a50) -- writes the
+    /// day and night fog colours, each skipped when all three of its floats are -1e7 ("leave this one"). fade 0
+    /// writes the live colour, fade &gt; 0 the target plus its timer; it never pushes, so the next
+    /// <see cref="AreaSetFog"/> is what reaches the scene. ABI <c>(this, Vector, Vector, float)</c>.
+    /// </summary>
+    [Fn("void(CNWCArea this, VectorArg sun, VectorArg moon, float fade)")]
+    public const string AreaSetFogColors = "_ZN8CNWCArea12SetFogColorsE6VectorS0_f";
+    /// <summary>
+    /// <c>CNWCArea::SetFogAmount(int amount)</c> @0x7026e0 (rva 0x7e5990) -- VIRTUAL (Linux vtbl+0x68), hooked at
+    /// the body: re-pushes the area's STORED fog colour and stores the amount at
+    /// <see cref="EngineLayout.AreaFogAmount"/> (and its byte copy). Returns 1 when the area has a scene.
+    /// ABI <c>(this, int)</c>. The fog amount has no fade slot of its own.
+    /// </summary>
+    [Fn("int(CNWCArea this, int amount)")]
+    public const string AreaSetFogAmount = "_ZN8CNWCArea12SetFogAmountEi";
+    /// <summary>
+    /// <c>CNWCArea::SetFog(int amount, Vector colour)</c> @0x702380 (rva 0x7e5850) -- VIRTUAL (Linux vtbl+0x30,
+    /// Windows +0x28), hooked at the body: the one push of fog to the scene, and it sets the CLEAR COLOUR to the
+    /// fog colour as well. Returns 1 when the area has a scene. ABI <c>(this, int, Vector)</c> -- Linux
+    /// <c>rdi, esi, xmm0+xmm1</c>, Win64 <c>rcx, edx, r8</c>.
+    /// </summary>
+    [Fn("int(CNWCArea this, int amount, VectorArg colour)")]
+    public const string AreaSetFog = "_ZN8CNWCArea6SetFogEi6Vector";
+    /// <summary>
+    /// <c>CNWCArea::SetLightningDone()</c> @0x704e60 (rva 0x7e5eb0) -- the end of a client-side lightning flash:
+    /// restores <see cref="ShadowAlpha"/> from the engine's cached copy, hides the flash model and rolls the next
+    /// delay. ABI <c>(this)</c>. LINUX ONLY as a hook: MSVC inlined the only call site into
+    /// <see cref="AreaUpdate"/>, so the Windows body is reachable but never entered.
+    /// </summary>
+    [Fn("void(CNWCArea this)")]
+    public const string AreaSetLightningDone = "_ZN8CNWCArea16SetLightningDoneEv";
+    /// <summary>
+    /// <c>CNWCArea::Update(float dt)</c> @0x707560 (rva 0x7e7da0) -- the area's per-frame step, and the only site
+    /// of the lightning flash START (inline on both builds: screen fade, <c>flash0N</c> model, thunder, shadow
+    /// alpha x 0.4). It also drives the light/fog fade timers and calls
+    /// <see cref="AreaUpdateDayNightCycle"/>. HOT: once per frame. ABI <c>(this, float)</c>.
+    /// </summary>
+    [Fn("void(CNWCArea this, float dt)")]
+    public const string AreaUpdate = "_ZN8CNWCArea6UpdateEf";
+    // Minor -> leaf, so a consumer hooks the leaf instead of this switch (each one is a direct call):
+    //   0x01 ClientArea -> CNWCArea::LoadArea (palette, directions, fog, cycle and isNight from the packet,
+    //        then SetAsDay/SetAsNight, then SetTimeOfDayState(state, elapsed, force = 1))
+    //   0x06 Area_ChangeDayNight -> the cycle flag forced to 1 for the call, then SetAsDawn (ReadBOOL true) or
+    //        SetAsDusk, then module transition length = the packet's float and elapsed = 0
+    //   0x08 -> SetFogColors   0x09 -> SetFogAmount   0x0e/0x0f/0x11/0x12 -> SetAreaLightColor slot 0/1/2/3
+    //   0x10/0x13 -> SetAreaLightDirection moon/sun   0x04 -> Start/StopWeather   0x14 -> AreaSetTile
+    /// <summary>
+    /// <c>CNWCMessage::HandleServerToPlayerArea(uchar minor)</c> @0x7a79b0 (rva 0x76d910) -- the area message's
+    /// whole switch; the minor-to-leaf map is in the comment above. Both the ClientArea reload (0x01) and the
+    /// day/night flip (0x06) are INLINE here, so this is the only hook point for either edge.
+    /// ABI <c>(this, uchar)</c>, returns int (1 = handled).
+    /// </summary>
+    [Fn("int(IntPtr msg, byte minor)")]
+    public const string HandleServerToPlayerArea = "_ZN11CNWCMessage24HandleServerToPlayerAreaEh";
+    /// <summary>Global <c>shadowalpha</c> @0x18aa17c (float) -- the shadow tint the day/night machine owns: area
+    /// shadow opacity / 100, scaled to 0 across a transition's midpoint and to 40% during a lightning flash.</summary>
+    public const string ShadowAlpha = "shadowalpha";
     /// <summary>Scene::InitBSP(int w, int h, int border, bool, float cell) @0x46c330 (Scene vt+0x30) -- the
     /// tile BSP covers <c>(w + 2*border) x (h + 2*border)</c> cells, and <c>SceneBSPGetTileData</c> CLAMPS a
     /// position outside it onto the edge leaf (BSPFitSphere), so a wider ring needs a wider border here.
@@ -3113,6 +3260,35 @@ internal static unsafe class SymbolMap
         [AreaSetWeather]   = At(),
         [AreaStartWeather] = At(),
         [AreaStopWeather]  = At(),
+
+        // --- the day/night machine. Anchor chain, all confirmed body-for-body against the Linux originals
+        //     and all field displacements identical: the two global-light setters by their unique
+        //     "controlpart sun gidy_sun_amb|gidy_sun_diff color %f %f %f" strings; SetFog / SetFogAmount by
+        //     "mainscene.fogcolor %f %f %f" (the only two users); SetTimeOfDayState from the anchored
+        //     ModuleMinutesPerHour read, and the four SetAs* as its state-1/2/3/4 callees; SetGlobalLightDirection
+        //     as SetAsDay's direction callee; UpdateDayNightCycle and CNWCArea::Update as its only caller pair
+        //     ("flash0%i" + "PNL_LIGHTNING" are unique to Update); HandleServerToPlayerArea as the sole caller of
+        //     LoadArea, SetAsDawn, SetAsDusk, SetAreaLightColor and SetFogColors, which also anchors those three.
+        [ModuleSetTimeOfDayState]     = At(),
+        [AreaSetAsDawn]               = At(),
+        [AreaSetAsDusk]               = At(),
+        [AreaSetAsDay]                = At(),
+        [AreaSetAsNight]              = At(),
+        [AreaUpdateDayNightCycle]     = At(),
+        [AreaUpdate]                  = At(),
+        [AreaSetGlobalLightAmbient]   = At(),
+        [AreaSetGlobalLightDiffuse]   = At(),
+        [AreaSetGlobalLightDirection] = At(),
+        [AreaSetAreaLightColor]       = At(),
+        [AreaSetAreaLightDirection]   = At(),
+        [AreaSetFogColors]            = At(),
+        [AreaSetFogAmount]            = At(),
+        [AreaSetFog]                  = At(),
+        [HandleServerToPlayerArea]    = At(),
+        [ShadowAlpha]                 = Nm("?shadowalpha@@3MA"),
+        // The body IS there, at rva 0x7e5eb0, but MSVC inlined CNWCArea::Update's one call to it, so nothing
+        // on Windows ever enters it: a hook would be silently dead. The Windows edge is AreaUpdate.
+        [AreaSetLightningDone] = LinuxOnly("MSVC inlined it into CNWCArea::Update; hook AreaUpdate on Windows"),
 
         // --- the rest of the table. The 142 Nm rows below are MECHANICAL -- MSVC mangling carries the
         // return type Itanium drops, so llvm-undname over nwmain.exe's 18237 exports pairs on
