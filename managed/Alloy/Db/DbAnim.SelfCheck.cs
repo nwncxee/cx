@@ -30,6 +30,7 @@ public static unsafe partial class DbAnim
             PoseWrite(check);
             Amputation(check);
             Crossfade(check);
+            StateReplay(check);
             Events(check);
             Reentrancy(check);
             Attach(check);
@@ -263,6 +264,28 @@ public static unsafe partial class DbAnim
         Pose(obj, anim, ps, 0.5f);
         check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(2f, 0f, 0f)),
                      "half weight is halfway between the column's previous pose and the new key");
+        Drop(obj);
+        SceneDb.Scenes.Free(scene);
+    }
+
+    /// <summary>A GUI panel's state animation, played the way <c>CGuiObject::PlayStateAnimation</c> @0x586a20 does
+    /// on every update: end the run, replay it at 1000x the state, step 1 ms, freeze. Oracle: hand-computed, 500
+    /// replays at weight 0.002 (1 ms of the 0.5 s fade) leave mid's x at 2(1 - 0.998^500) = 1.2650.</summary>
+    private static void StateReplay(Checker check)
+    {
+        ModelDef m = Chain();
+        DbId scene = SceneDb.Scenes.Alloc();
+        SceneDb.SceneIsWorld[scene.Index] = false;
+        DbId obj = Subject(m, scene, out int first);
+        for (int k = 0; k < 500; k++)
+        {
+            PlayAnimation(obj, "wave", 1f, RunFlags.EndOnly, 0f);
+            PlayAnimation(obj, "wave", 1000f, 0, 0f);
+            Advance(obj, 0.001f, _runN[obj.Index]);
+            PlayAnimation(obj, "wave", 0f, 0, 0f);
+        }
+        check.Expect(MathF.Abs(SceneDb.PartPos[first + 1].X - 1.2650f) < 2e-3f,
+                     $"a replayed GUI state settles by its linear weights, uneased (mid x {SceneDb.PartPos[first + 1].X:F4}, want 1.2650)");
         Drop(obj);
         SceneDb.Scenes.Free(scene);
     }

@@ -429,7 +429,7 @@ public static unsafe partial class DbAnim
 
             // The FIELD, not the rate cached at the top: an event fired above may have changed it.
             bool reverse = _rRate[s] < 0f;
-            Pose(obj, anim, s, Weight(w));
+            Pose(obj, anim, s, Weight(i, w));
             float from = _rPrev[s], to = _rTime[s];
             if (!FireEvents(obj, anim, from, to, reverse)) return false;
             _runs++;
@@ -440,10 +440,14 @@ public static unsafe partial class DbAnim
         return true;
     }
 
-    /// <summary>The crossfade weight remap: smoothstep inside (0, 1), the weights the runtime sets outright
-    /// left alone. The knob lives with <c>CrossfadeService</c>; the remap is applied here, the one place the
-    /// weight reaches a pose.</summary>
-    private static float Weight(float w) => CX.Services.Anim.CrossfadeService.Weight(w);
+    /// <summary>The crossfade weight remap (the knob lives with <c>CrossfadeService</c>), for objects outside a GUI
+    /// panel's scene. A panel replays its state animation every update and settles over many tiny linear weights
+    /// (the party bar's locator arrow), which smoothstep squares to nothing.</summary>
+    private static float Weight(int i, float w)
+    {
+        DbId sc = SceneDb.ObjScene[i];
+        return SceneDb.Scenes.Valid(sc) && !SceneDb.SceneIsWorld[sc.Index] ? w : CX.Services.Anim.CrossfadeService.Weight(w);
+    }
 
     /// <summary><c>CurrentAnimation</c> @0x499ac0: the first run in queue order whose flags carry neither
     /// <see cref="RunFlags.AddIn"/> nor <see cref="RunFlags.Queued"/> (the engine's one <c>&amp; 0x28</c>
