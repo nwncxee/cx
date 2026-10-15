@@ -321,9 +321,9 @@ public sealed unsafe partial class AlloyRenderer
         float lodScale = _lodScale;
         // #303: the spheres go up whatever the cull mode -- the shadow gather reads the same buffer.
         fixed (Sphere* sph = _dSph)
-            CullPass.UploadSpheres((float*)sph, _recOwnCap + MaxSkyDraws);
+            CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
         fixed (Sphere* cs = _dCastSph)
-            CasterGather.UploadCasterSpheres((float*)cs, _recOwnCap + MaxSkyDraws);
+            CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
         fixed (uint* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull

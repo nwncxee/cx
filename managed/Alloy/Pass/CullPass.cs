@@ -289,11 +289,11 @@ internal static unsafe class CullPass
     /// culls against this same buffer, so it must stay current under <c>/alloy cull 0</c> and during a probe
     /// capture alike. Indexed by RECORD slot, exactly as the records are, and uploaded whole -- four floats
     /// against the record's forty-four. Not on <see cref="StreamRing"/>: next frame's gather reads it.</summary>
-    internal static void UploadSpheres(float* spheres, int sphereSlots)
+    internal static void UploadSpheres(Sphere* spheres, int sphereSlots)
     {
         if (sphereSlots <= 0 || Gl.NamedBufferSubData == null) return;
         if (_gl.SphBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.SphBuf = b; }
-        var sphSize = (IntPtr)((long)sphereSlots * 4 * sizeof(float));
+        var sphSize = (IntPtr)((long)sphereSlots * sizeof(Sphere));
         if (sphereSlots > _gl.SphCap) { Gl.NamedBufferData(_gl.SphBuf, sphSize, null, Gl.DYNAMIC_DRAW); _gl.SphCap = sphereSlots; }
         Gl.NamedBufferSubData(_gl.SphBuf, IntPtr.Zero, sphSize, spheres);
     }
