@@ -92,7 +92,7 @@ public static unsafe class Native
     /// codepage). Run it after colour parsing (tag bytes are raw); keep the byte-space string for anything sent back.</summary>
     public static string EngineText(string s)
     {
-        var fn = EngineFn.Cx119EncodingSingleCharToUtf8;
+        var fn = EngineFn.EncodingSingleCharToUtf8;
         if (fn == null) return s;
         int i = 0;
         while (i < s.Length && (s[i] < 0x80 || s[i] > 0xff)) i++;

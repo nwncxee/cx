@@ -542,6 +542,10 @@ public static unsafe partial class EngineLayout
     public static readonly int VdoElemItems = Field<IntPtr>("VertexDataObject", "elemItems");
     /// <inheritdoc cref="VdoElemItems"/>
     public static readonly int VdoElemCount = Field<int>("VertexDataObject", "elemCount");
+    /// <summary>VertexDataObject element item -&gt; the element count a whole-stream draw (<c>size</c> = -1) covers.</summary>
+    public static readonly int VdoElemItemCount = Field<int>("VdoElemItem", "count");
+    /// <inheritdoc cref="VdoElemItemCount"/>
+    public static readonly int VdoElemItemStride = Field("VdoElemItem", "stride");
 
     // ---- classes with no validated function pair on either side ----
 
@@ -2834,6 +2838,9 @@ public static unsafe partial class EngineLayout
     public static readonly int LerpMode = Field<int>("LerpFloat", "mode");
     /// <inheritdoc cref="LerpMode"/>
     public static readonly int LerpValue = Field<float>("LerpFloat", "value");
+    /// <summary>LerpFloat -&gt; the value the lerp starts from (<c>WriteGFF</c> rva 0x2ea250 writes it as ValueFrom);
+    /// <see cref="LerpValue"/> is where it ends. <c>Gob::Gob</c> seeds both with the same start.</summary>
+    public static readonly int LerpFrom = Field<float>("LerpFloat", "from");
     /// <summary>The gob's bounding sphere, in the form the engine's own BSP visitor @0x481000 uses --
     /// radius at +0x178, LOCAL centre at +0x17c. That visitor computes the LOD distance as
     /// <c>|camPos - (gob.position + gob.rot * centre)|^2</c>, and <c>Scene::AddPartsToDrawBuckets</c> feeds the
@@ -2933,6 +2940,8 @@ public static unsafe partial class EngineLayout
     public static readonly int SeamCallBackData = Field<IntPtr>("CallBack", "seamData");
     /// <summary>Gob::RegisterCallBack's operator new size.</summary>
     public static readonly int SeamCallBackSizeof = Field<int>("CallBack", "seamSizeof");
+    /// <summary><c>CallBack</c>: the event name, a NUL-terminated array inline at the start of the record.</summary>
+    public static readonly int SeamCallBackName = Field<byte>("CallBack", "seamName", count: 0x20);
     /// <summary>one animated float of a CAurObjectVisualTransformData.</summary>
     public static readonly int SeamLerpFloatSizeof = Field<int>("LerpFloat", "seamSizeof");
     /// <summary>Itanium slot 1; MSVC's single scalar-deleting destructor is slot 0.</summary>

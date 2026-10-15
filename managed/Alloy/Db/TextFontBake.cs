@@ -82,8 +82,8 @@ public static unsafe class TextFontBake
 
     private static TextFont? Ttf(string key, in TextFontLoad.FontName n)
     {
-        if (EngineFn.Cx119StbttPackBegin == null || EngineFn.Cx119StbttPackFontRanges == null
-            || EngineFn.Cx119StbttPackSetOversampling == null || EngineFn.Cx119StbttPackEnd == null)
+        if (EngineFn.StbttPackBegin == null || EngineFn.StbttPackFontRanges == null
+            || EngineFn.StbttPackSetOversampling == null || EngineFn.StbttPackEnd == null)
             return Refuse(key, "the client's stb_truetype pack exports are unresolved");
 
         byte[]? ttf = Res(n.Resref, TextFontLoad.ResTtf);
@@ -155,10 +155,10 @@ public static unsafe class TextFontBake
             r->NumChars = glyphs;
             r->CharData = chars;
 
-            EngineFn.Cx119StbttPackBegin((byte*)spc, (byte*)cov, w, h, 0, TextFontLoad.AtlasPadding, null);
-            EngineFn.Cx119StbttPackSetOversampling((byte*)spc, TextFontLoad.Oversample, TextFontLoad.Oversample);
-            EngineFn.Cx119StbttPackFontRanges((byte*)spc, (byte*)font, 0, (byte*)r, 1);
-            EngineFn.Cx119StbttPackEnd((byte*)spc);
+            EngineFn.StbttPackBegin((byte*)spc, (byte*)cov, w, h, 0, TextFontLoad.AtlasPadding, null);
+            EngineFn.StbttPackSetOversampling((byte*)spc, TextFontLoad.Oversample, TextFontLoad.Oversample);
+            EngineFn.StbttPackFontRanges((byte*)spc, (byte*)font, 0, (byte*)r, 1);
+            EngineFn.StbttPackEnd((byte*)spc);
 
             int baseline = BaseLine(font, px);
             var pc = (StbPackedChar*)chars;
@@ -238,7 +238,7 @@ public static unsafe class TextFontBake
     /// override both apply. Without the export the byte is its own codepoint (Latin-1), which is what the
     /// engine's default locale does below 0x80 and for 0xa0..0xff.</summary>
     private static int Codepoint(byte b)
-        => EngineFn.Cx119EncodingSingleCharToUtf8 == null ? b : EngineFn.Cx119EncodingSingleCharToUtf8(b, 0);
+        => EngineFn.EncodingSingleCharToUtf8 == null ? b : EngineFn.EncodingSingleCharToUtf8(b, 0);
 
     // ---- bitmap fonts ----
 

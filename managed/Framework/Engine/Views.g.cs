@@ -126,11 +126,11 @@ global using unsafe StbttGetCodepointHMetricsFn = delegate* unmanaged<byte*, int
 global using unsafe StbttGetCodepointBitmapBoxFn = delegate* unmanaged<byte*, int, float, float, int*, int*, int*, int*, void>;
 global using unsafe StbttMakeCodepointBitmapFn = delegate* unmanaged<byte*, byte*, int, int, int, float, float, int, void>;
 global using unsafe StbttFindGlyphIndexFn = delegate* unmanaged<byte*, int, int>;
-global using unsafe Cx119StbttPackBeginFn = delegate* unmanaged<byte*, byte*, int, int, int, int, void*, void>;
-global using unsafe Cx119StbttPackEndFn = delegate* unmanaged<byte*, void>;
-global using unsafe Cx119StbttPackSetOversamplingFn = delegate* unmanaged<byte*, int, int, void>;
-global using unsafe Cx119StbttPackFontRangesFn = delegate* unmanaged<byte*, byte*, int, byte*, int, int>;
-global using unsafe Cx119EncodingSingleCharToUtf8Fn = delegate* unmanaged<byte, int, int>;
+global using unsafe StbttPackBeginFn = delegate* unmanaged<byte*, byte*, int, int, int, int, void*, void>;
+global using unsafe StbttPackEndFn = delegate* unmanaged<byte*, void>;
+global using unsafe StbttPackSetOversamplingFn = delegate* unmanaged<byte*, int, int, void>;
+global using unsafe StbttPackFontRangesFn = delegate* unmanaged<byte*, byte*, int, byte*, int, int>;
+global using unsafe EncodingSingleCharToUtf8Fn = delegate* unmanaged<byte, int, int>;
 global using unsafe RiEnableFn = delegate* unmanaged<int, void>;
 global using unsafe RiDisableFn = delegate* unmanaged<int, void>;
 global using unsafe RiIsEnabledFn = delegate* unmanaged<int, byte>;
@@ -5363,26 +5363,26 @@ public static unsafe class EngineFn
     private static bool _StbttFindGlyphIndexDone;
     /// <inheritdoc cref="SymbolMap.StbttFindGlyphIndex"/>
     public static StbttFindGlyphIndexFn StbttFindGlyphIndex => (StbttFindGlyphIndexFn)(_StbttFindGlyphIndexDone ? _StbttFindGlyphIndex : Resolve(ref _StbttFindGlyphIndex, ref _StbttFindGlyphIndexDone, SymbolMap.StbttFindGlyphIndex));
-    private static IntPtr _Cx119StbttPackBegin;
-    private static bool _Cx119StbttPackBeginDone;
-    /// <inheritdoc cref="SymbolMap.Cx119StbttPackBegin"/>
-    public static Cx119StbttPackBeginFn Cx119StbttPackBegin => (Cx119StbttPackBeginFn)(_Cx119StbttPackBeginDone ? _Cx119StbttPackBegin : Resolve(ref _Cx119StbttPackBegin, ref _Cx119StbttPackBeginDone, SymbolMap.Cx119StbttPackBegin));
-    private static IntPtr _Cx119StbttPackEnd;
-    private static bool _Cx119StbttPackEndDone;
-    /// <inheritdoc cref="SymbolMap.Cx119StbttPackEnd"/>
-    public static Cx119StbttPackEndFn Cx119StbttPackEnd => (Cx119StbttPackEndFn)(_Cx119StbttPackEndDone ? _Cx119StbttPackEnd : Resolve(ref _Cx119StbttPackEnd, ref _Cx119StbttPackEndDone, SymbolMap.Cx119StbttPackEnd));
-    private static IntPtr _Cx119StbttPackSetOversampling;
-    private static bool _Cx119StbttPackSetOversamplingDone;
-    /// <inheritdoc cref="SymbolMap.Cx119StbttPackSetOversampling"/>
-    public static Cx119StbttPackSetOversamplingFn Cx119StbttPackSetOversampling => (Cx119StbttPackSetOversamplingFn)(_Cx119StbttPackSetOversamplingDone ? _Cx119StbttPackSetOversampling : Resolve(ref _Cx119StbttPackSetOversampling, ref _Cx119StbttPackSetOversamplingDone, SymbolMap.Cx119StbttPackSetOversampling));
-    private static IntPtr _Cx119StbttPackFontRanges;
-    private static bool _Cx119StbttPackFontRangesDone;
-    /// <inheritdoc cref="SymbolMap.Cx119StbttPackFontRanges"/>
-    public static Cx119StbttPackFontRangesFn Cx119StbttPackFontRanges => (Cx119StbttPackFontRangesFn)(_Cx119StbttPackFontRangesDone ? _Cx119StbttPackFontRanges : Resolve(ref _Cx119StbttPackFontRanges, ref _Cx119StbttPackFontRangesDone, SymbolMap.Cx119StbttPackFontRanges));
-    private static IntPtr _Cx119EncodingSingleCharToUtf8;
-    private static bool _Cx119EncodingSingleCharToUtf8Done;
-    /// <inheritdoc cref="SymbolMap.Cx119EncodingSingleCharToUtf8"/>
-    public static Cx119EncodingSingleCharToUtf8Fn Cx119EncodingSingleCharToUtf8 => (Cx119EncodingSingleCharToUtf8Fn)(_Cx119EncodingSingleCharToUtf8Done ? _Cx119EncodingSingleCharToUtf8 : Resolve(ref _Cx119EncodingSingleCharToUtf8, ref _Cx119EncodingSingleCharToUtf8Done, SymbolMap.Cx119EncodingSingleCharToUtf8));
+    private static IntPtr _StbttPackBegin;
+    private static bool _StbttPackBeginDone;
+    /// <inheritdoc cref="SymbolMap.StbttPackBegin"/>
+    public static StbttPackBeginFn StbttPackBegin => (StbttPackBeginFn)(_StbttPackBeginDone ? _StbttPackBegin : Resolve(ref _StbttPackBegin, ref _StbttPackBeginDone, SymbolMap.StbttPackBegin));
+    private static IntPtr _StbttPackEnd;
+    private static bool _StbttPackEndDone;
+    /// <inheritdoc cref="SymbolMap.StbttPackEnd"/>
+    public static StbttPackEndFn StbttPackEnd => (StbttPackEndFn)(_StbttPackEndDone ? _StbttPackEnd : Resolve(ref _StbttPackEnd, ref _StbttPackEndDone, SymbolMap.StbttPackEnd));
+    private static IntPtr _StbttPackSetOversampling;
+    private static bool _StbttPackSetOversamplingDone;
+    /// <inheritdoc cref="SymbolMap.StbttPackSetOversampling"/>
+    public static StbttPackSetOversamplingFn StbttPackSetOversampling => (StbttPackSetOversamplingFn)(_StbttPackSetOversamplingDone ? _StbttPackSetOversampling : Resolve(ref _StbttPackSetOversampling, ref _StbttPackSetOversamplingDone, SymbolMap.StbttPackSetOversampling));
+    private static IntPtr _StbttPackFontRanges;
+    private static bool _StbttPackFontRangesDone;
+    /// <inheritdoc cref="SymbolMap.StbttPackFontRanges"/>
+    public static StbttPackFontRangesFn StbttPackFontRanges => (StbttPackFontRangesFn)(_StbttPackFontRangesDone ? _StbttPackFontRanges : Resolve(ref _StbttPackFontRanges, ref _StbttPackFontRangesDone, SymbolMap.StbttPackFontRanges));
+    private static IntPtr _EncodingSingleCharToUtf8;
+    private static bool _EncodingSingleCharToUtf8Done;
+    /// <inheritdoc cref="SymbolMap.EncodingSingleCharToUtf8"/>
+    public static EncodingSingleCharToUtf8Fn EncodingSingleCharToUtf8 => (EncodingSingleCharToUtf8Fn)(_EncodingSingleCharToUtf8Done ? _EncodingSingleCharToUtf8 : Resolve(ref _EncodingSingleCharToUtf8, ref _EncodingSingleCharToUtf8Done, SymbolMap.EncodingSingleCharToUtf8));
     private static IntPtr _RiEnable;
     private static bool _RiEnableDone;
     /// <inheritdoc cref="SymbolMap.RiEnable"/>
@@ -7616,36 +7616,36 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.StbttFindGlyphIndex"/>; returns the slot holding the next layer, or null.</summary>
     public static StbttFindGlyphIndexFn* ChainStbttFindGlyphIndex(this HookService h, StbttFindGlyphIndexFn handler, int priority) =>
         (StbttFindGlyphIndexFn*)h.Chain(SymbolMap.StbttFindGlyphIndex, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.Cx119StbttPackBegin"/>; returns the original, or null.</summary>
-    public static Cx119StbttPackBeginFn InstallCx119StbttPackBegin(this HookService h, Cx119StbttPackBeginFn handler) =>
-        (Cx119StbttPackBeginFn)h.Install(SymbolMap.Cx119StbttPackBegin, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.Cx119StbttPackBegin"/>; returns the slot holding the next layer, or null.</summary>
-    public static Cx119StbttPackBeginFn* ChainCx119StbttPackBegin(this HookService h, Cx119StbttPackBeginFn handler, int priority) =>
-        (Cx119StbttPackBeginFn*)h.Chain(SymbolMap.Cx119StbttPackBegin, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.Cx119StbttPackEnd"/>; returns the original, or null.</summary>
-    public static Cx119StbttPackEndFn InstallCx119StbttPackEnd(this HookService h, Cx119StbttPackEndFn handler) =>
-        (Cx119StbttPackEndFn)h.Install(SymbolMap.Cx119StbttPackEnd, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.Cx119StbttPackEnd"/>; returns the slot holding the next layer, or null.</summary>
-    public static Cx119StbttPackEndFn* ChainCx119StbttPackEnd(this HookService h, Cx119StbttPackEndFn handler, int priority) =>
-        (Cx119StbttPackEndFn*)h.Chain(SymbolMap.Cx119StbttPackEnd, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.Cx119StbttPackSetOversampling"/>; returns the original, or null.</summary>
-    public static Cx119StbttPackSetOversamplingFn InstallCx119StbttPackSetOversampling(this HookService h, Cx119StbttPackSetOversamplingFn handler) =>
-        (Cx119StbttPackSetOversamplingFn)h.Install(SymbolMap.Cx119StbttPackSetOversampling, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.Cx119StbttPackSetOversampling"/>; returns the slot holding the next layer, or null.</summary>
-    public static Cx119StbttPackSetOversamplingFn* ChainCx119StbttPackSetOversampling(this HookService h, Cx119StbttPackSetOversamplingFn handler, int priority) =>
-        (Cx119StbttPackSetOversamplingFn*)h.Chain(SymbolMap.Cx119StbttPackSetOversampling, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.Cx119StbttPackFontRanges"/>; returns the original, or null.</summary>
-    public static Cx119StbttPackFontRangesFn InstallCx119StbttPackFontRanges(this HookService h, Cx119StbttPackFontRangesFn handler) =>
-        (Cx119StbttPackFontRangesFn)h.Install(SymbolMap.Cx119StbttPackFontRanges, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.Cx119StbttPackFontRanges"/>; returns the slot holding the next layer, or null.</summary>
-    public static Cx119StbttPackFontRangesFn* ChainCx119StbttPackFontRanges(this HookService h, Cx119StbttPackFontRangesFn handler, int priority) =>
-        (Cx119StbttPackFontRangesFn*)h.Chain(SymbolMap.Cx119StbttPackFontRanges, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.Cx119EncodingSingleCharToUtf8"/>; returns the original, or null.</summary>
-    public static Cx119EncodingSingleCharToUtf8Fn InstallCx119EncodingSingleCharToUtf8(this HookService h, Cx119EncodingSingleCharToUtf8Fn handler) =>
-        (Cx119EncodingSingleCharToUtf8Fn)h.Install(SymbolMap.Cx119EncodingSingleCharToUtf8, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.Cx119EncodingSingleCharToUtf8"/>; returns the slot holding the next layer, or null.</summary>
-    public static Cx119EncodingSingleCharToUtf8Fn* ChainCx119EncodingSingleCharToUtf8(this HookService h, Cx119EncodingSingleCharToUtf8Fn handler, int priority) =>
-        (Cx119EncodingSingleCharToUtf8Fn*)h.Chain(SymbolMap.Cx119EncodingSingleCharToUtf8, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttPackBegin"/>; returns the original, or null.</summary>
+    public static StbttPackBeginFn InstallStbttPackBegin(this HookService h, StbttPackBeginFn handler) =>
+        (StbttPackBeginFn)h.Install(SymbolMap.StbttPackBegin, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttPackBegin"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttPackBeginFn* ChainStbttPackBegin(this HookService h, StbttPackBeginFn handler, int priority) =>
+        (StbttPackBeginFn*)h.Chain(SymbolMap.StbttPackBegin, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttPackEnd"/>; returns the original, or null.</summary>
+    public static StbttPackEndFn InstallStbttPackEnd(this HookService h, StbttPackEndFn handler) =>
+        (StbttPackEndFn)h.Install(SymbolMap.StbttPackEnd, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttPackEnd"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttPackEndFn* ChainStbttPackEnd(this HookService h, StbttPackEndFn handler, int priority) =>
+        (StbttPackEndFn*)h.Chain(SymbolMap.StbttPackEnd, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttPackSetOversampling"/>; returns the original, or null.</summary>
+    public static StbttPackSetOversamplingFn InstallStbttPackSetOversampling(this HookService h, StbttPackSetOversamplingFn handler) =>
+        (StbttPackSetOversamplingFn)h.Install(SymbolMap.StbttPackSetOversampling, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttPackSetOversampling"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttPackSetOversamplingFn* ChainStbttPackSetOversampling(this HookService h, StbttPackSetOversamplingFn handler, int priority) =>
+        (StbttPackSetOversamplingFn*)h.Chain(SymbolMap.StbttPackSetOversampling, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttPackFontRanges"/>; returns the original, or null.</summary>
+    public static StbttPackFontRangesFn InstallStbttPackFontRanges(this HookService h, StbttPackFontRangesFn handler) =>
+        (StbttPackFontRangesFn)h.Install(SymbolMap.StbttPackFontRanges, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttPackFontRanges"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttPackFontRangesFn* ChainStbttPackFontRanges(this HookService h, StbttPackFontRangesFn handler, int priority) =>
+        (StbttPackFontRangesFn*)h.Chain(SymbolMap.StbttPackFontRanges, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.EncodingSingleCharToUtf8"/>; returns the original, or null.</summary>
+    public static EncodingSingleCharToUtf8Fn InstallEncodingSingleCharToUtf8(this HookService h, EncodingSingleCharToUtf8Fn handler) =>
+        (EncodingSingleCharToUtf8Fn)h.Install(SymbolMap.EncodingSingleCharToUtf8, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.EncodingSingleCharToUtf8"/>; returns the slot holding the next layer, or null.</summary>
+    public static EncodingSingleCharToUtf8Fn* ChainEncodingSingleCharToUtf8(this HookService h, EncodingSingleCharToUtf8Fn handler, int priority) =>
+        (EncodingSingleCharToUtf8Fn*)h.Chain(SymbolMap.EncodingSingleCharToUtf8, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RiEnable"/>; returns the original, or null.</summary>
     public static RiEnableFn InstallRiEnable(this HookService h, RiEnableFn handler) =>
         (RiEnableFn)h.Install(SymbolMap.RiEnable, (IntPtr)handler);
