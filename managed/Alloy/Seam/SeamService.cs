@@ -5,6 +5,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using CX.Alloy.Db;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -57,7 +58,7 @@ public sealed unsafe class SeamService : IExtenderService
         ObjectBridge.ObjectAdjustedScale = static o =>
         {
             nint sh = Facade.ObjectShell(o);
-            return sh == 0 ? 1f : *(float*)(sh + SeamLayout.GobScaleFinal) * VisualXform.Scale(sh);
+            return sh == 0 ? 1f : new Gob(sh).ScaleBase * VisualXform.Scale(sh);
         };
 
         SeamBridge.ObjectBounds = ObjectSlots.PartRangeBounds;

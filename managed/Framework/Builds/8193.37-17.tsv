@@ -1344,3 +1344,4 @@ offset	CNWCVisualEffectOnObject	shown	0xd8	0xd8	# EffectShown
 offset	CNWCVisualEffectOnObject	lasting	0xfc	0xfc	# EffectLasting
 offset	CNWCVisualEffectOnObject	source	0x58	0x58	# EffectSource
 offset	CNWCVisualEffectOnObject	node	0x28	0x28	# EffectNode
+offset	LerpFloat	target	0x8	0x8	# LerpTarget

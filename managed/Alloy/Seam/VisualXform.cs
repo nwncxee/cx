@@ -49,30 +49,30 @@ public static unsafe class VisualXform
         if (shell == 0) return;
         foreach (int which in stackalloc[] { ScaleX, ScaleY, ScaleZ, AnimationSpeed })
         {
-            float* f = (float*)(shell + At + which * Stride);
-            f[1] = 1f;
-            f[2] = 1f;
+            LerpFloat lerp = new Gob(shell).VisualLerp(which);
+            lerp.Value = 1f;
+            lerp.Target = 1f;
         }
     }
 
     /// <summary>The record inside <paramref name="shell"/>.</summary>
-    public static nint Of(nint shell) => shell == 0 ? Zero : shell + At;
+    public static nint Of(nint shell) => shell == 0 ? Zero : new Gob(shell).ScaleLerp.Ptr;
 
     /// <summary>Copy the caller's record in verbatim and <c>Refresh</c> each of the ten, which is exactly what
     /// <c>Gob::SetVisualTransformData</c> does -- ten 0x40-byte field copies then the refresh.</summary>
     public static void Store(nint shell, nint src)
     {
         if (shell == 0 || src == 0) return;
-        Buffer.MemoryCopy((void*)src, (void*)(shell + At), Size, Size);
+        Buffer.MemoryCopy((void*)src, (void*)new Gob(shell).ScaleLerp.Ptr, Size, Size);
         if (EngineFn.LerpFloatRefresh == null) { Warn(); return; }
-        for (int i = 0; i < Count; i++) EngineFn.LerpFloatRefresh(shell + At + i * Stride);
+        for (int i = 0; i < Count; i++) EngineFn.LerpFloatRefresh(new Gob(shell).VisualLerp(i).Ptr);
     }
 
     private static float Sample(nint shell, int which, float fallback)
     {
         if (shell == 0) return fallback;
         if (EngineFn.LerpFloatLerped == null) { Warn(); return fallback; }
-        return EngineFn.LerpFloatLerped(shell + At + which * Stride);
+        return new Gob(shell).VisualLerp(which).LerpFloatLerped();
     }
 
     /// <summary><c>Gob::GetAdjustedScale</c> uses ScaleX ONLY: ScaleY and ScaleZ are read by the game layer,
@@ -107,8 +107,8 @@ public static unsafe class VisualXform
         if (shell == 0 || EngineFn.LerpFloatLerped == null) return;
         for (int i = 0; i < AnimationSpeed && !lerping; i++)
         {
-            nint r = shell + At + i * Stride;
-            lerping = EngineFn.LerpFloatLerped(r) != ((float*)r)[2];
+            LerpFloat r = new Gob(shell).VisualLerp(i);
+            lerping = r.LerpFloatLerped() != r.Target;
         }
         Vector3 t = Translate(shell);
         if (t != Vector3.Zero) pos += Vector3.Transform(t, rot);

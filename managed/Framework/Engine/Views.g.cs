@@ -2972,6 +2972,8 @@ public readonly unsafe partial struct LerpFloat(IntPtr ptr)
     public ref int Mode => ref *(int*)(Ptr + EngineLayout.LerpMode);
     /// <inheritdoc cref="EngineLayout.SeamLerpFloatSizeof"/>
     public ref int SeamSizeof => ref *(int*)(Ptr + EngineLayout.SeamLerpFloatSizeof);
+    /// <inheritdoc cref="EngineLayout.LerpTarget"/>
+    public ref float Target => ref *(float*)(Ptr + EngineLayout.LerpTarget);
     /// <inheritdoc cref="EngineLayout.LerpValue"/>
     public ref float Value => ref *(float*)(Ptr + EngineLayout.LerpValue);
 }
