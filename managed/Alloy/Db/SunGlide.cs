@@ -1,5 +1,7 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Db;
@@ -24,16 +26,28 @@ internal sealed class SunGlideState
     /// <summary>When the last snap or retarget happened -- the base the next step's interval is measured
     /// from.</summary>
     public double Last;
+    /// <summary>The fade the server gave the area's last colour packet, and when it arrived: a cut in the
+    /// same burst eases over it.</summary>
+    public float Fade;
+    public double FadeAt = double.NegativeInfinity;
     /// <summary>For the period line: changes far enough apart to be a server's STEPS, changes arriving every
-    /// frame (an engine fade or an owned twilight, which is plain following), and cuts.</summary>
-    public long Steps, Follows, Snaps;
+    /// frame (an engine fade or an owned twilight, which is plain following), cuts eased over their burst's
+    /// colour fade, and cuts that landed at once.</summary>
+    public long Steps, Follows, Eased, Snaps;
+}
+
+/// <summary>The colour leaf's chain slot: the one piece of the glide that a <see cref="SunGlide.Swap"/> must
+/// not take away.</summary>
+internal sealed unsafe class SunGlideHookState
+{
+    public AreaSetAreaLightColorFn* Next;
 }
 
 /// <summary><b>Continuous motion out of a stepped sun:</b> a server that moves the area light in small
 /// unfaded steps hands the client a new direction every few seconds, which the cascades and the shading
 /// would otherwise take on the frame it arrives. A small step glides over the interval the steps are
-/// arriving at; a cut lands at once.</summary>
-internal static class SunGlide
+/// arriving at; a cut eases over the fade its burst gave the colours, and lands at once without one.</summary>
+internal static unsafe class SunGlide
 {
     /// <summary>A direction change beyond this is a cut, not a step: an area load, a time jump, a script's
     /// deliberate move and the vanilla dusk midpoint's sun-to-moon swap all move the direction much further
@@ -59,7 +73,19 @@ internal static class SunGlide
     /// vanishes and the target is already the answer to every visible precision.</summary>
     private const float Still = 1e-5f;
 
+    /// <summary>How recent a colour packet must be, in seconds, to belong to a cut's burst. A server sends a
+    /// burst's packets back to back and the next burst no sooner than a second later.</summary>
+    private const double Burst = 0.5;
+
+    /// <summary>A cut to a direction this close to opposite lands at once: no turn between the two is the
+    /// obvious one, and the slerp's denominator heads for zero.</summary>
+    private const float Opposed = -0.99f;
+
+    /// <summary>Inside the lighting trace, which reports the packet as it arrived.</summary>
+    private const int ColourPriority = 30;
+
     private static SunGlideState _state = new();
+    private static SunGlideHookState _hook = new();
 
     /// <summary>Alloy's own frame clock -- seconds since load, so the glide is frame-rate independent and a
     /// frame that walks its scene twice gets one answer.</summary>
@@ -90,6 +116,30 @@ internal static class SunGlide
     /// <summary>The area edge: the next sample is a different area's sun, so it snaps.</summary>
     internal static void AreaEdge() => _state.Edge = true;
 
+    /// <summary>Hear every area colour packet's fade. Without the chain a cut lands at once, as it would with
+    /// a fade-0 burst.</summary>
+    internal static void Install(ExtenderLog log, HookService hooks)
+    {
+        if (SymbolMap.Require(log, "SunGlide", SymbolMap.AreaSetAreaLightColor))
+            _hook.Next = hooks.ChainAreaSetAreaLightColor(&OnColour, ColourPriority);
+        if (_hook.Next == null)
+            log.Always("SunGlide: the area colour leaf did not chain -- a large sun move lands at once, never eased");
+    }
+
+    [UnmanagedCallersOnly]
+    private static void OnColour(nint area, uint slot, VectorArg colour, float fade)
+    {
+        Heard(_state, fade, Now);
+        (*_hook.Next)(area, slot, colour, fade);
+    }
+
+    /// <summary>A colour packet arrived with this fade: the pure half of <see cref="OnColour"/>.</summary>
+    internal static void Heard(SunGlideState s, float fade, double now)
+    {
+        s.Fade = fade;
+        s.FadeAt = now;
+    }
+
     /// <summary>Drive the glide from a state of one's own, and hand back the live one: a fixture's steps must
     /// not land in the session's census, nor the session's sun inherit a fixture's direction.</summary>
     internal static SunGlideState Swap(SunGlideState s)
@@ -102,19 +152,19 @@ internal static class SunGlide
     /// <summary>The glide's clause on the period line: whether the direction arrives in steps or every frame,
     /// how long each glide runs, and how far behind the engine the shown direction sits.</summary>
     internal static string Note()
-        => $"sunglide: {_state.Steps} glided, {_state.Follows} followed, {_state.Snaps} snapped, "
+        => $"sunglide: {_state.Steps} glided, {_state.Follows} followed, {_state.Eased} eased, {_state.Snaps} snapped, "
          + $"{_state.Length:F2} s glide, {Degrees(_state.Shown, _state.Target):F2} deg behind";
 
     /// <summary>The pure seam: the engine's current to-light direction and the clock in, the direction to
     /// show out. A change under <see cref="SnapDegrees"/> glides over the measured interval between recent
-    /// steps; anything larger, a first sample or an area edge snaps.</summary>
+    /// steps; a larger one is a <see cref="Cut"/>; a first sample or an area edge snaps.</summary>
     internal static Vector3 Step(SunGlideState s, Vector3 engineToLight, double now, bool areaEdge)
     {
         if (engineToLight.LengthSquared() <= 1e-8f) return s.Shown;
         Vector3 to = Vector3.Normalize(engineToLight);
         if (areaEdge || !s.HasShown) return Snap(s, to, now);
         if (to == s.Target) return Advance(s, now);
-        if (Vector3.Dot(s.Target, to) < SnapCos) return Snap(s, to, now);
+        if (Vector3.Dot(s.Target, to) < SnapCos) return Cut(s, to, now);
         // Measured before Last moves: this interval is both the glide's length and what tells a server's step
         // from a direction that changes every frame.
         double interval = now - s.Last;
@@ -140,6 +190,23 @@ internal static class SunGlide
         return s.Shown;
     }
 
+    /// <summary>A change too large to be a step: a time jump, a lightning flash, a script's move. A server
+    /// that sends the direction unfaded still fades the colours of the same burst, and the sun turns over
+    /// that fade; a burst with none (a flash) lands at once.</summary>
+    private static Vector3 Cut(SunGlideState s, Vector3 to, double now)
+    {
+        double fade = now - s.FadeAt <= Burst ? s.Fade : 0.0;
+        Vector3 from = Advance(s, now);
+        if (fade <= 0.0 || Vector3.Dot(from, to) < Opposed) return Snap(s, to, now);
+        s.From = from;
+        s.Target = to;
+        s.Start = now;
+        s.Length = Math.Min(fade, MaxGlide);
+        s.Last = now;
+        s.Eased++;
+        return from;
+    }
+
     /// <summary>This direction, now, with no glide: a cut, a first sample or an area edge. The interval clock
     /// restarts here, so the next step is measured from the cut rather than from before it.</summary>
     private static Vector3 Snap(SunGlideState s, Vector3 to, double now)
@@ -153,8 +220,8 @@ internal static class SunGlide
         return to;
     }
 
-    /// <summary>Constant-rate interpolation between two unit directions. The pair is never more than
-    /// <see cref="SnapDegrees"/> apart, so the denominator is in no danger of the antiparallel case.</summary>
+    /// <summary>Constant-rate interpolation between two unit directions. <see cref="Cut"/> refuses a pair
+    /// near <see cref="Opposed"/>, so the denominator stays clear of the antiparallel case.</summary>
     private static Vector3 Slerp(Vector3 a, Vector3 b, float t)
     {
         float theta = MathF.Atan2(Vector3.Cross(a, b).Length(), Vector3.Dot(a, b));
@@ -177,10 +244,9 @@ internal static class SunGlide
         return new Vector3((float)Math.Sin(r), 0f, (float)Math.Cos(r));
     }
 
-    /// <summary>Off-device: the glide's whole contract over a hand-driven clock -- the first sample snaps, a
-    /// small step glides, a cut lands at once, a step mid-glide re-targets without a jump, and the glide
-    /// length follows the measured cadence. Oracle: hand-worked literals -- the slerp between two directions
-    /// 0.5 deg apart is the direction 0.25 deg from each at its midpoint.</summary>
+    /// <summary>Off-device: the glide's contract over a hand-driven clock -- snaps, glides, cuts eased over
+    /// their burst's fade or landed at once, re-targets, and the measured cadence. Oracle: hand-worked
+    /// literals -- a slerp's midpoint in the XZ plane is the direction at the mean angle (0.25 deg, 15 deg).</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "SunGlide.SelfCheck");
@@ -215,6 +281,34 @@ internal static class SunGlide
         // An area edge snaps even a change small enough to glide.
         shown = Step(s, Overhead(30.9), 80.0, areaEdge: true);
         check.Expect(Near(shown, Overhead(30.9)) && s.Length == 0.0, $"an area edge snaps a 0.4 deg change ({shown})");
+
+        // A time jump: the burst faded its colours over 2 s, so the 30 deg turn takes those 2 s.
+        var e = new SunGlideState();
+        Step(e, Overhead(0), 0.0, areaEdge: false);
+        Heard(e, 2f, 10.0);
+        shown = Step(e, Overhead(30), 10.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(0)) && Math.Abs(e.Length - 2.0) < 1e-9,
+                     $"a cut in a 2 s colour burst starts where the sun was and runs 2 s ({shown}, {e.Length})");
+        // sin and cos of 15 deg: halfway along the turn from 0 to 30 deg.
+        check.Expect(Near(Advance(e, 11.0), new Vector3(0.258819045f, 0f, 0.965925826f)),
+                     $"halfway through, the sun is at 15 deg ({e.Shown})");
+        check.Expect(Near(Advance(e, 12.0), Overhead(30)) && e.Length == 0.0, "...and lands on the cut's direction");
+        check.Expect(e.Eased == 1 && e.Snaps == 1, $"one cut eased, the first sample snapped ({e.Eased}/{e.Snaps})");
+
+        // A lightning flash: its burst sets the colours with no fade, so the sun lands at once.
+        Heard(e, 0f, 20.0);
+        shown = Step(e, Overhead(75), 20.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(75)) && e.Length == 0.0, $"a cut in a fade-0 burst lands at once ({shown})");
+
+        // A colour fade from an earlier burst is not this cut's.
+        Heard(e, 2f, 30.0);
+        shown = Step(e, Overhead(40), 31.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(40)) && e.Length == 0.0, $"a fade heard 1 s before the cut is ignored ({shown})");
+
+        // Nearly opposite: no turn between the two is the obvious one.
+        Heard(e, 2f, 40.0);
+        shown = Step(e, Overhead(-139), 40.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(-139)) && e.Length == 0.0, $"a 179 deg cut lands at once ({shown})");
 
         // A step arriving mid-glide re-targets from where the sun is SHOWN, with no jump.
         var m = new SunGlideState();
