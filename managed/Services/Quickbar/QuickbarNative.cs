@@ -200,7 +200,8 @@ internal static unsafe class QuickbarNative
 
     private static bool NameIs(IntPtr s, ReadOnlySpan<byte> z)
     {
-        for (int i = 0; i < z.Length; i++) if (((byte*)s)[i] != z[i]) return false;
+        var name = new ReadOnlySpan<byte>((void*)s, z.Length);
+        for (int i = 0; i < z.Length; i++) if (name[i] != z[i]) return false;
         return true;
     }
 

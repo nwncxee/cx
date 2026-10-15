@@ -163,19 +163,20 @@ internal static unsafe partial class OwnedTextures
             if (_inFlight.Contains(k) || !_res.TryGetValue(k, out Entry e)) { _cacheMisses++; return false; }
             if (big != null) big[c] = e.Owned; else names[c] = e.Owned;
         }
-        IntPtr arr = _znam((nuint)cells * 4);
-        if (arr == IntPtr.Zero) return false;
+        IntPtr arrPtr = _znam((nuint)cells * 4);
+        if (arrPtr == IntPtr.Zero) return false;
+        Span<uint> arr = new((void*)arrPtr, cells);
         for (int c = 0; c < cells; c++)
         {
             uint name = big != null ? big[c] : names[c];
-            ((uint*)arr)[c] = name;
+            arr[c] = name;
             _engineHeld.Add(name);
             ulong k = (k0 & ~CellMask) | (uint)c;
             _index[(int)name] = k;
             Entry e = _res[k];
             if (e.Idle != 0) { _idleBytes -= e.Bytes; _res[k] = new Entry(e.Owned, e.Bytes, e.Gen, 0); _pendingHandles.Remove(e.Owned); }   // live again: its handle must not be dropped under a record
         }
-        FillWarm(tex, arr, in m);
+        FillWarm(tex, arrPtr, in m);
         _cacheHits++;
         FrameZones.Count(FrameZones.Ev.TexWarm);
         return true;

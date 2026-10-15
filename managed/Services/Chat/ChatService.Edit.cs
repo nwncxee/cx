@@ -81,9 +81,7 @@ public sealed unsafe partial class ChatService
             uint len = plr.CreatureNameLen;
             if (buf != IntPtr.Zero && len > 0 && len <= 128)
             {
-                var sb = new StringBuilder((int)len);
-                for (uint k = 0; k < len; k++) sb.Append((char)((byte*)buf)[k]);
-                string name = sb.ToString();
+                string name = Encoding.Latin1.GetString(new ReadOnlySpan<byte>((void*)buf, (int)len));
                 uint ingestId = plr.PlayerId;
                 StartTellTo(name, ingestId);
                 return;
@@ -104,9 +102,7 @@ public sealed unsafe partial class ChatService
             uint len = ((ExoStringRec*)exo)->Len;
             if (buf != IntPtr.Zero && len > 0 && len <= 256)
             {
-                var sb = new StringBuilder((int)len);
-                for (uint k = 0; k < len; k++) sb.Append((char)((byte*)buf)[k]);
-                text = sb.ToString();
+                text = Encoding.Latin1.GetString(new ReadOnlySpan<byte>((void*)buf, (int)len));
             }
             if (OperatingSystem.IsWindows()) Native.DestroyExoString(exo);   // Win64: the callee owns the copy
         }

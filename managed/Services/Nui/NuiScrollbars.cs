@@ -141,7 +141,7 @@ internal static unsafe class NuiScrollbars
     [UnmanagedCallersOnly]
     private static void OnDraw(IntPtr output, uint state, IntPtr style, IntPtr track, IntPtr thumb)
     {
-        if (_latchThumb == thumb && thumb != IntPtr.Zero) ((float*)thumb)[_latchAxis] = _latchPos;
+        if (_latchThumb == thumb && thumb != IntPtr.Zero) new Span<float>((void*)thumb, 4)[_latchAxis] = _latchPos;
         _latchThumb = IntPtr.Zero;
         _drawOrig(output, state, style, track, thumb);
     }

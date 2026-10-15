@@ -104,12 +104,11 @@ internal static unsafe class CallbackList
     internal static void Remove(nint shell, nint cb)
     {
         ExoArray list = new Gob(shell).CallbackArray;
-        nint arr = list.Data;
-        if (arr == 0 || cb == 0) return;
+        if (list.Data == 0 || cb == 0) return;
         for (int i = 0; i < list.Count; i++)
         {
-            if (((nint*)arr)[i] != cb) continue;
-            for (int j = i; j < list.Count - 1; j++) ((nint*)arr)[j] = ((nint*)arr)[j + 1];
+            if (list[i] != cb) continue;
+            for (int j = i; j < list.Count - 1; j++) list[j] = list[j + 1];
             list.Count--;
             NativeMemory.Free((void*)cb);
             Alive--;
@@ -130,7 +129,7 @@ internal static unsafe class CallbackList
         if (!SeamShell.Known(shell, out byte state, out DbId id) || state != SeamShell.StateLive) return;
         for (int i = n - 1; i >= 0; i--)
         {
-            nint cb = ((nint*)arr)[i];
+            nint cb = list[i];
             if (cb == 0) continue;
             byte* cbName = (byte*)cb;
             bool fires = cbName[0] == 0 || cbName[0] == (byte)'*' || NameEquals(cbName, (byte*)name);
@@ -197,7 +196,7 @@ internal static unsafe class CallbackList
         {
             for (int i = 0; i < n; i++)
             {
-                nint cb = ((nint*)arr)[i];
+                nint cb = list[i];
                 if (cb == 0) continue;
                 NativeMemory.Free((void*)cb);
                 Alive--;

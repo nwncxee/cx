@@ -188,7 +188,7 @@ internal static unsafe class OwnedBuffers
             // CommitElementStreamData @0x45c9c0 unlocks with `xor %edx,%edx` -- but the clamp costs one
             // compare and the alternative is an out-of-bounds read of the engine's heap.
             if (offset > (uint)bytes) span = 0; else if (offset + span > bytes) span = bytes - offset;
-            if (span > 0) new HostShadow(host).Upload(name, offset, span);
+            if (span > 0) new HostShadow(host).UploadBytes(name, offset, span);
             _subUploads++;
         }
         else if (dynamic)

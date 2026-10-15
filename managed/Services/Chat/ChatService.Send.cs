@@ -75,9 +75,10 @@ public sealed unsafe partial class ChatService
             IntPtr listBase = intern.Players;
             int count = intern.PlayerCount;
             if (listBase == IntPtr.Zero || count <= 0 || count > 64) return list;
+            var players = new ReadOnlySpan<IntPtr>((void*)listBase, count);
             for (int i = 0; i < count; i++)
             {
-                var player = new CNWCPlayer(((IntPtr*)listBase)[i]);
+                var player = new CNWCPlayer(players[i]);
                 if (!player.IsNull) list.Add(player);
             }
             return list;
@@ -89,9 +90,7 @@ public sealed unsafe partial class ChatService
             IntPtr buf = player.CreatureName;
             uint len = player.CreatureNameLen;
             if (buf == IntPtr.Zero || len == 0 || len > 128) return null;
-            var sb = new StringBuilder((int)len);
-            for (uint k = 0; k < len; k++) sb.Append((char)((byte*)buf)[k]);
-            return sb.ToString();
+            return Encoding.Latin1.GetString(new ReadOnlySpan<byte>((void*)buf, (int)len));
         }
 
         /// <summary>The local player's ingest-space playerId, from the shared roster walk. Cold (Tell ingest only).</summary>

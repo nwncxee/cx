@@ -210,9 +210,10 @@ public sealed unsafe class DialogService : IExtenderService
             var texts = new string[n];
             var idx = new uint[n];
             uint* ip = (uint*)indices;
+            Span<ExoStringRec> recs = new((void*)replies, n);
             for (int i = 0; i < n; i++)
             {
-                texts[i] = ((ExoStringRec*)replies)[i].Text;
+                texts[i] = recs[i].Text;
                 idx[i] = ip != null ? ip[i] : 0xffffffff;
             }
             _replies = MakeReplies(texts, idx, numOldReplies);

@@ -178,6 +178,7 @@ public sealed unsafe class KeyCurveService : IExtenderService
         float* t = stackalloc float[8];
         float* p = stackalloc float[8 * 3];
         float* q = stackalloc float[8 * 4];
+        Span<Quaternion> qk = new(q, 8);
 
         Keys(t, 0f, 1f, 2f, 3f);
         Along(p, 0f, 1f, 1f, 0f);
@@ -216,7 +217,7 @@ public sealed unsafe class KeyCurveService : IExtenderService
         check.Expect(seam, "positions: a loop leaves its last key at the speed it enters its first");
 
         Keys(t, 0f, 1f, 2f, 3f);
-        Spun(q, 0f, 0.5f, 0.5f, 0f);
+        Spun(qk, 0f, 0.5f, 0.5f, 0f);
         bool turnHeld = true;
         for (float x = 0.01f; x < 3f; x += 0.01f)
         {
@@ -229,19 +230,19 @@ public sealed unsafe class KeyCurveService : IExtenderService
         check.Expect(turnHeld, "rotations: stay unit, hold between two equal keys, and never turn past the hold");
 
         Keys(t, 0f, 0.4f, 0.6f, 1.5f, 2f);
-        Spun(q, 0f, 0.3f, 1.1f, 1.2f, 2f);
+        Spun(qk, 0f, 0.3f, 1.1f, 1.2f, 2f);
         Quaternion* flip = stackalloc Quaternion[5];
-        for (int k = 0; k < 5; k++) flip[k] = k % 2 == 1 ? Quaternion.Negate(((Quaternion*)q)[k]) : ((Quaternion*)q)[k];
+        for (int k = 0; k < 5; k++) flip[k] = k % 2 == 1 ? Quaternion.Negate(qk[k]) : qk[k];
         bool keysHit = true, signFree = true;
         for (int k = 1; k < 5; k++)
-            keysHit &= Turn(new(t, 8), new(q, 32), 5, t[k], out Quaternion r) && MathF.Abs(Quaternion.Dot(r, ((Quaternion*)q)[k])) > 1f - 1e-5f;
+            keysHit &= Turn(new(t, 8), new(q, 32), 5, t[k], out Quaternion r) && MathF.Abs(Quaternion.Dot(r, qk[k])) > 1f - 1e-5f;
         for (float x = 0.01f; x < 2f; x += 0.01f)
             signFree &= Turn(new(t, 8), new(q, 32), 5, x, out Quaternion a) && Turn(new(t, 8), new((float*)flip, 20), 5, x, out Quaternion b)
                         && MathF.Abs(Quaternion.Dot(a, b)) > 1f - 1e-5f;
         check.Expect(keysHit && signFree, "rotations: squad passes through every key and does not care which sign a key is stored with");
 
         Keys(t, 0f, 0.5f, 1f, 1.5f, 2f);
-        Spun(q, 0f, 0.3f, 0.6f, 0.9f, 1.2f);
+        Spun(qk, 0f, 0.3f, 0.6f, 0.9f, 1.2f);
         bool slerped = true;
         for (float x = 0.01f; x < 2f; x += 0.01f)
             slerped &= Turn(new(t, 8), new(q, 32), 5, x, out Quaternion r) && MathF.Abs(Quaternion.Dot(r, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.6f * x))) > 1f - 1e-6f;
@@ -261,8 +262,8 @@ public sealed unsafe class KeyCurveService : IExtenderService
     }
 
     /// <summary>Rotation keys turned <paramref name="a"/> radians about Z, stored x, y, z, w.</summary>
-    private static void Spun(float* q, params ReadOnlySpan<float> a)
+    private static void Spun(Span<Quaternion> q, params ReadOnlySpan<float> a)
     {
-        for (int k = 0; k < a.Length; k++) ((Quaternion*)q)[k] = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, a[k]);
+        for (int k = 0; k < a.Length; k++) q[k] = Quaternion.CreateFromAxisAngle(Vector3.UnitZ, a[k]);
     }
 }

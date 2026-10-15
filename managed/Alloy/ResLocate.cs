@@ -120,7 +120,7 @@ internal static unsafe class ResLocate
             case KindBif:
             {
                 if (files == IntPtr.Zero) { why = "the table has no file array"; return false; }
-                IntPtr file = ((IntPtr*)files)[id[1]];
+                IntPtr file = t.FileAt(id[1]);
                 if (file == IntPtr.Zero) { why = $"BIF {id[1]} is not loaded"; return false; }
                 IntPtr entries = new CExoResFile(file).Entries;
                 if (entries == IntPtr.Zero) { why = "the BIF's resource table is unloaded"; return false; }
@@ -206,10 +206,8 @@ internal static unsafe class ResLocate
         for (int i = 0; i < rr.Length && rr[i] != 0; i++) buf[n++] = rr[i];
         buf[n] = 0;
         // A CExoString is {char* buf; int len; int cap}; ResolveFileName only reads it, so a forged shell serves.
-        long* shell = stackalloc long[2];
-        shell[0] = (long)buf;
-        shell[1] = n;
-        return Resolve((IntPtr)shell, resType);
+        ExoStringRec shell = new() { Buf = buf, Len = (uint)n };
+        return Resolve((IntPtr)(&shell), resType);
     }
 
     /// <summary>One <c>CExoAliasList::ResolveFileName</c>: an alias name plus a restype to an absolute

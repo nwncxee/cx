@@ -59,25 +59,25 @@ internal static unsafe class NormalWeld
         // pass 1: face normals (area-weighted) + cluster corners by exact position
         for (int t = 0; t < tris; t++)
         {
-            Vector3* p0 = P(vertHost, pos, baseVertex + idx[t * 3]);
-            Vector3* p1 = P(vertHost, pos, baseVertex + idx[t * 3 + 1]);
-            Vector3* p2 = P(vertHost, pos, baseVertex + idx[t * 3 + 2]);
-            float ax = p1->X - p0->X, ay = p1->Y - p0->Y, az = p1->Z - p0->Z;
-            float bx = p2->X - p0->X, by = p2->Y - p0->Y, bz = p2->Z - p0->Z;
+            ref Vector3 p0 = ref Pos(vertHost, pos, baseVertex + idx[t * 3]);
+            ref Vector3 p1 = ref Pos(vertHost, pos, baseVertex + idx[t * 3 + 1]);
+            ref Vector3 p2 = ref Pos(vertHost, pos, baseVertex + idx[t * 3 + 2]);
+            float ax = p1.X - p0.X, ay = p1.Y - p0.Y, az = p1.Z - p0.Z;
+            float bx = p2.X - p0.X, by = p2.Y - p0.Y, bz = p2.Z - p0.Z;
             float fx = ay * bz - az * by, fy = az * bx - ax * bz, fz = ax * by - ay * bx;
             // winding-indifferent: sign the face by its own corners' authored normals, not by a guess at
             // the engine's winding -- a mesh that winds the other way would otherwise weld nothing, silently
-            Vector3* n0 = P(vertHost, nrm, baseVertex + idx[t * 3]);
-            Vector3* n1 = P(vertHost, nrm, baseVertex + idx[t * 3 + 1]);
-            Vector3* n2 = P(vertHost, nrm, baseVertex + idx[t * 3 + 2]);
-            if (fx * (n0->X + n1->X + n2->X) + fy * (n0->Y + n1->Y + n2->Y) + fz * (n0->Z + n1->Z + n2->Z) < 0f)
+            ref Vector3 n0 = ref Normal(vertHost, nrm, baseVertex + idx[t * 3]);
+            ref Vector3 n1 = ref Normal(vertHost, nrm, baseVertex + idx[t * 3 + 1]);
+            ref Vector3 n2 = ref Normal(vertHost, nrm, baseVertex + idx[t * 3 + 2]);
+            if (fx * (n0.X + n1.X + n2.X) + fy * (n0.Y + n1.Y + n2.Y) + fz * (n0.Z + n1.Z + n2.Z) < 0f)
             { fx = -fx; fy = -fy; fz = -fz; }
             _fn[t * 3] = fx; _fn[t * 3 + 1] = fy; _fn[t * 3 + 2] = fz;
             for (int c = 0; c < 3; c++)
             {
                 int corner = t * 3 + c;
-                Vector3* p = c == 0 ? p0 : c == 1 ? p1 : p2;
-                int s = Slot(*p, gen);
+                ref Vector3 p = ref (c == 0 ? ref p0 : ref (c == 1 ? ref p1 : ref p2));
+                int s = Slot(p, gen);
                 _cornerTri[corner] = t; _next[corner] = _head[s]; _head[s] = corner;
             }
         }
@@ -89,34 +89,34 @@ internal static unsafe class NormalWeld
             int v = idx[i];
             if (_vertGen[v - minI] == gen) continue;
             _vertGen[v - minI] = gen;
-            Vector3* p = P(vertHost, pos, baseVertex + v);
-            Vector3* n = P(vertHost, nrm, baseVertex + v);
-            float nl = MathF.Sqrt(n->X * n->X + n->Y * n->Y + n->Z * n->Z);
+            ref Vector3 p = ref Pos(vertHost, pos, baseVertex + v);
+            ref Vector3 n = ref Normal(vertHost, nrm, baseVertex + v);
+            float nl = MathF.Sqrt(n.X * n.X + n.Y * n.Y + n.Z * n.Z);
             if (nl < 1e-8f) { kept++; continue; }
             float sx = 0, sy = 0, sz = 0; int faces = 0;
-            for (int c = _head[Slot(*p, gen)]; c >= 0; c = _next[c])
+            for (int c = _head[Slot(p, gen)]; c >= 0; c = _next[c])
             {
                 int t = _cornerTri[c] * 3;
                 float fx = _fn[t], fy = _fn[t + 1], fz = _fn[t + 2];
                 float fl = MathF.Sqrt(fx * fx + fy * fy + fz * fz);
                 if (fl < 1e-12f) continue;
-                if ((fx * n->X + fy * n->Y + fz * n->Z) / (fl * nl) < cosT) continue;
+                if ((fx * n.X + fy * n.Y + fz * n.Z) / (fl * nl) < cosT) continue;
                 sx += fx; sy += fy; sz += fz; faces++;
             }
             float sl = MathF.Sqrt(sx * sx + sy * sy + sz * sz);
             if (faces < 2 || sl < 1e-12f) { kept++; continue; }
-            n->X = sx / sl; n->Y = sy / sl; n->Z = sz / sl; welded++;
+            n.X = sx / sl; n.Y = sy / sl; n.Z = sz / sl; welded++;
         }
         Parts++; Welded += welded; Kept += kept;
         if (welded == 0) return;
-        long off = nrm.Off + (long)(baseVertex + minI) * nrm.Stride;
-        long span = (long)(maxI - minI) * nrm.Stride + nrm.Size * 4;
-        new HostShadow(vertHost).Upload(nrm.Buf, off, span);
+        new HostShadow(vertHost).UploadVertices(nrm, baseVertex + minI, maxI - minI + 1);
         if (_logLeft-- > 0)
             _log?.Info($"NormalWeld: {welded} welded / {kept} kept of {maxI - minI + 1} verts ({tris} tris, {Angle:F0} deg)");
     }
 
-    private static Vector3* P(byte* host, in VertexStream s, int v) => (Vector3*)new HostVertices(host, s).Floats(v);
+    private static ref Vector3 Pos(byte* host, in VertexStream s, int v) => ref new HostVertices(host, s).Pos(v);
+
+    private static ref Vector3 Normal(byte* host, in VertexStream s, int v) => ref new HostVertices(host, s).Normal(v);
 
     /// <summary>Parts fed from a parsed model's own post-process, and the ones that could not be.</summary>
     internal static int ModelParts, ModelRefused;
@@ -132,12 +132,10 @@ internal static unsafe class NormalWeld
             || nrm.Type != Gl.FLOAT || nrm.Size < 3) { ModelRefused++; return false; }
         for (int v = 0; v < vertCount; v++)
         {
-            Vector3* n = P(vertHost, nrm, baseVertex + v);
-            n->X = normals[v].X; n->Y = normals[v].Y; n->Z = normals[v].Z;
+            ref Vector3 n = ref Normal(vertHost, nrm, baseVertex + v);
+            n.X = normals[v].X; n.Y = normals[v].Y; n.Z = normals[v].Z;
         }
-        long off = nrm.Off + (long)baseVertex * nrm.Stride;
-        long span = (long)(vertCount - 1) * nrm.Stride + nrm.Size * 4;
-        new HostShadow(vertHost).Upload(nrm.Buf, off, span);
+        new HostShadow(vertHost).UploadVertices(nrm, baseVertex, vertCount);
         ModelParts++;
         return true;
     }

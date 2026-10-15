@@ -51,7 +51,7 @@ public static unsafe partial class Facade
         if ((nuint)off >= (nuint)_tableBytes || (off & 7) != 0) return 0;
         int w = (int)(off >> 3);
         if ((_pointBits[w >> 6] & (1UL << (w & 63))) == 0) return 0;
-        return self + ((nint*)vptr)[-2];
+        return self + Itanium.OffsetToTop(vptr);
     }
 
     /// <summary>Resolve <paramref name="self"/> to its record for logical slot <paramref name="logical"/>, or
@@ -241,7 +241,7 @@ public static unsafe partial class Facade
             nint owner = kind == FacadeKind.Camera ? new CX.Engine.Camera(shell).GobSub : shell;
             for (int i = 0; i < count; i++)
             {
-                nint sp = ((nint*)arr)[i];
+                nint sp = list[i];
                 if (sp == 0) continue;
                 nint target = ((SafePointerRec*)sp)->Target;
                 if (target != owner && target != 0)
