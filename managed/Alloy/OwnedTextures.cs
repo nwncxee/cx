@@ -518,9 +518,9 @@ internal static unsafe partial class OwnedTextures
             return;
         }
 
-        int* saved = stackalloc int[CarriedParams.Length];
+        Span<int> saved = stackalloc int[CarriedParams.Length];
         for (int i = 0; i < CarriedParams.Length; i++)
-            Gl.GetTextureParameteriv(q.Src, CarriedParams[i], &saved[i]);
+            fixed (int* sv = saved.Slice(i, 1)) Gl.GetTextureParameteriv(q.Src, CarriedParams[i], sv);
 
         uint dst;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);

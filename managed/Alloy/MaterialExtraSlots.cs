@@ -100,7 +100,7 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
     {
         int q = 0;
         while (line[q] == ' ' || line[q] == '\t') q++;
-        if (!StartsWithTexture(&line[q])) return;
+        if (!StartsWithTexture(line, q)) return;
         q += 7;
         int n = 0, digits = 0;
         while (line[q] >= '0' && line[q] <= '9' && digits < 3) { n = n * 10 + (line[q] - '0'); q++; digits++; }
@@ -112,7 +112,7 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
         {
             if (!_table.TryGetValue(shared, out IntPtr ep))
                 _table[shared] = ep = (IntPtr)NativeMemory.AllocZeroed((nuint)sizeof(Entry));
-            byte* dst = &((Entry*)ep)->Names[s * NameLen];
+            Span<byte> dst = new Span<byte>(((Entry*)ep)->Names, Count * NameLen).Slice(s * NameLen, NameLen);
             int i = 0;
             // sscanf("%s") shape, as ::Parse(char const*, char*) @0x446740 does it: one whitespace-delimited token.
             while (i < NameLen - 1 && line[q] > ' ') dst[i++] = line[q++];
@@ -120,10 +120,10 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
         }
     }
 
-    private static bool StartsWithTexture(byte* p)
+    private static bool StartsWithTexture(byte* line, int at)
     {
         const string k = "texture";
-        for (int i = 0; i < k.Length; i++) if ((p[i] | 0x20) != k[i]) return false;
+        for (int i = 0; i < k.Length; i++) if ((line[at + i] | 0x20) != k[i]) return false;
         return true;
     }
 
@@ -133,17 +133,20 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
     {
         // Names are copied out so the engine's texture load (disk, NWSync) runs with the lock released: the
         // stage workers take it per owned part, and a load edge must not stall a colour frame.
-        byte* names = stackalloc byte[Count * NameLen];
+        Span<byte> names = stackalloc byte[Count * NameLen];
         lock (_lock)
         {
             if (!_table.TryGetValue(shared, out var ep)) return;
-            Buffer.MemoryCopy(((Entry*)ep)->Names, names, Count * NameLen, Count * NameLen);
+            new ReadOnlySpan<byte>(((Entry*)ep)->Names, Count * NameLen).CopyTo(names);
         }
         for (int s = 0; s < Count; s++)
         {
-            byte* name = &names[s * NameLen];
-            if (*name == 0) continue;
-            IntPtr tex = _loadTexture(name);
+            IntPtr tex;
+            fixed (byte* name = names.Slice(s * NameLen, NameLen))
+            {
+                if (*name == 0) continue;
+                tex = _loadTexture(name);
+            }
             IntPtr old;
             lock (_lock)
             {
@@ -182,7 +185,8 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
         lock (_lock)
         {
             if (!_table.TryGetValue(shared, out var ep)) return "";
-            return Marshal.PtrToStringAnsi((IntPtr)(&((Entry*)ep)->Names[s * NameLen])) ?? "";
+            fixed (byte* nm = new Span<byte>(((Entry*)ep)->Names, Count * NameLen).Slice(s * NameLen, NameLen))
+                return Marshal.PtrToStringAnsi((IntPtr)nm) ?? "";
         }
     }
 

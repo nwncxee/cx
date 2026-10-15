@@ -23,6 +23,7 @@ internal static unsafe partial class ModelLoad
     /// <c>ReleaseResource</c> switches on that ushort, so ours is left ZERO: a buffer the release chain misses
     /// falls through the engine's release instead of taking virtuals on a pointer that is not an object.</summary>
     private const int PrefixBytes = 16;
+    private struct Headroom16 { public fixed byte Bytes[PrefixBytes]; }
 
     /// <summary>The <c>{0, modelDataSize, rawDataSize}</c> wrapper a binary MDL starts with: the model block
     /// begins after it, and a first dword of zero is what <c>ReadSync</c> discriminates binary from ASCII on.</summary>
@@ -256,7 +257,7 @@ internal static unsafe partial class ModelLoad
     {
         if (raw.Length == 0) { j.Why = "no bytes"; return; }
         byte* block = (byte*)NativeMemory.AllocZeroed((nuint)(PrefixBytes + raw.Length));
-        byte* data = Headroom.Payload(block, PrefixBytes);
+        byte* data = Headroom<Headroom16>.PayloadOf(block);
         raw.CopyTo(new Span<byte>(data, raw.Length));
         j.Data = data;
         j.Size = raw.Length;
@@ -343,7 +344,7 @@ internal static unsafe partial class ModelLoad
 
     private static void Free(in LoadEntry e)
     {
-        if (e.Data != IntPtr.Zero) NativeMemory.Free(Headroom.Allocation(e.Data, PrefixBytes));
+        if (e.Data != IntPtr.Zero) NativeMemory.Free(Headroom<Headroom16>.AllocationOf(e.Data));
     }
 
     // ---- the serve, main thread, inside the engine's AurResGet ----
@@ -353,8 +354,8 @@ internal static unsafe partial class ModelLoad
     private static bool IsMdl(byte* ext)
     {
         if (ext == null) return false;
-        byte* p = *ext == (byte)'.' ? &ext[1] : ext;
-        return (p[0] | 0x20) == 'm' && (p[1] | 0x20) == 'd' && (p[2] | 0x20) == 'l' && p[3] == 0;
+        int o = *ext == (byte)'.' ? 1 : 0;
+        return (ext[o] | 0x20) == 'm' && (ext[o + 1] | 0x20) == 'd' && (ext[o + 2] | 0x20) == 'l' && ext[o + 3] == 0;
     }
 
     [UnmanagedCallersOnly]
@@ -412,7 +413,7 @@ internal static unsafe partial class ModelLoad
         _out.Remove(data);
         if (!_jobs.Entries.TryGetValue(key, out LoadEntry e) || e.Data != data)
         {
-            NativeMemory.Free(Headroom.Allocation(data, PrefixBytes));   // the entry went while the engine held it
+            NativeMemory.Free(Headroom<Headroom16>.AllocationOf(data));   // the entry went while the engine held it
             return;
         }
         e.Out = false;

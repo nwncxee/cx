@@ -40,14 +40,14 @@ internal static unsafe class Issue
     /// slot was one call each, and radeonsi stages, copies and barriers EVERY call into a buffer the GPU is
     /// still reading (<c>si_buffer_subdata</c> forces DISCARD_RANGE), so the call count is the cost there.
     /// Duplicates collapse. Caller sorts once; both record buffers walk the same list.</summary>
-    private static void UploadRuns(uint buf, void* data, int recBytes)
+    private static void UploadRuns<T>(uint buf, T[] data, int recBytes) where T : unmanaged
     {
         for (int d = 0; d < _recDirtyN;)
         {
             d = NextRun(_recDirty, _recDirtyN, d, out int first, out int last);
-            long off = (long)first * recBytes;
-            Gl.NamedBufferSubData(buf, (IntPtr)off,
-                             (IntPtr)((long)(last - first + 1) * recBytes), &((byte*)data)[off]);
+            int off = first * recBytes, len = (last - first + 1) * recBytes;
+            fixed (byte* p = MemoryMarshal.AsBytes(data.AsSpan()).Slice(off, len))
+                Gl.NamedBufferSubData(buf, (IntPtr)off, (IntPtr)len, p);
         }
     }
 
@@ -100,7 +100,7 @@ internal static unsafe class Issue
             if (whole)
                 Gl.NamedBufferSubData(_drawBuf, IntPtr.Zero,
                                       (IntPtr)((long)cap * DrawFloats * sizeof(float)), p);
-            else UploadRuns(_drawBuf, p, DrawFloats * sizeof(float));
+            else UploadRuns(_drawBuf, _dData, DrawFloats * sizeof(float));
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindDraw, _drawBuf);
         StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
@@ -157,7 +157,7 @@ internal static unsafe class Issue
             if (whole)
                 Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)(n * sizeof(ulong)), p);
             else
-                UploadRuns(_texHBuf, p, 8 * sizeof(ulong));
+                UploadRuns(_texHBuf, _gpuTexH, 8 * sizeof(ulong));
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindTexH, _texHBuf);
         StaleMirrorHandles(cap, whole, _recDirty, _recDirtyN);
@@ -528,7 +528,7 @@ internal static unsafe class Issue
             uint prim = _gMode[g];
             if (indirect) CullPass.Draw(prim, g, s, _gLen[g]);
             else
-                MultiDrawRange(prim, s, _gLen[g]);
+                AlloyRenderer.MultiDrawRange(prim, s, _gLen[g]);
             Counters._batches++;
             Counters._draws += _gLen[g];
             if (!interior) Counters._drawsByClass[_gCls[g]] += _gLen[g];

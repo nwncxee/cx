@@ -126,7 +126,7 @@ public sealed unsafe partial class AlloyRenderer
         Gl.Uniform1f(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
         Gl.Uniform1f(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
         Gl.Uniform1f(loc.TgtRangeL, _shaderConstF[TgtRange]);
-        Gl.Uniform4fv(loc.TgtColL, 1, &_shaderConstV4[TgtColour * 4]);
+        Gl.Uniform4fv(loc.TgtColL, 1, &((Vector4*)_shaderConstV4)[TgtColour].X);
         Gl.Uniform3fv(loc.TgtWorldL, 1, _shaderConstV);
     }
 
@@ -148,7 +148,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int m = l->SFloatLive; m != 0; m &= m - 1)
             { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform1f(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
             for (int m = l->SVecLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform4fv(l->SVec[i], 1, &_shaderConstV4[(SVecBase + i) * 4]); }
+            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform4fv(l->SVec[i], 1, &((Vector4*)_shaderConstV4)[SVecBase + i].X); }
         }
     }
 
@@ -245,14 +245,19 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The block's name died with the context; the next send mints a new one.</summary>
     internal static void PassContextLost() => _passBuf = 0;
 
-    internal static void PassVec(byte* b, int off, Vector3 v) => *(Vector3*)(&b[off]) = v;
-    internal static void PassVec(byte* b, int off, float x, float y, float z, float w) => *(Vector4*)(&b[off]) = new Vector4(x, y, z, w);
+    internal static void PassVec(byte* b, int off, Vector3 v) => MemoryMarshal.Write(new Span<byte>(b, PassBytes).Slice(off), in v);
+    internal static void PassVec(byte* b, int off, float x, float y, float z, float w)
+    {
+        var v = new Vector4(x, y, z, w);
+        MemoryMarshal.Write(new Span<byte>(b, PassBytes).Slice(off), in v);
+    }
 
     /// <summary>Every <c>CxPass</c> member from this pass's state: the engine's area terms, the cascade and
     /// cube receivers as <see cref="CasterPass"/> published them, and the probe. A stale cascade or cube set
     /// leaves its half zero, which the receivers read as nothing to sample.</summary>
     private static void FillPassBlock(byte* b)
     {
+        var blk = (PassBlock*)b;
         if (FrameInputs.HasAreaAmbient)
             // AlloyLights.AmbientScale / SunScale are the live /light dials -- applied here, so a retune shows
             // on the very next pass.
@@ -273,30 +278,29 @@ public sealed unsafe partial class AlloyRenderer
         if (CasterPass.CascadesFresh)
         {
             int n = CasterPass.CascadeCount;
-            float* texel = (float*)(&b[PbSunTexel]), bias = (float*)(&b[PbSunBias]), radius = (float*)(&b[PbSunRadius]);
             for (int i = 0; i < n; i++)
             {
-                texel[i] = CasterPass.CascadeTexel[i];
+                blk->SunTexel[i] = CasterPass.CascadeTexel[i];
                 float range = CasterPass.CascadeRange[i];
-                bias[i] = range > 0f ? _sunWorldBias / range : 0f;
-                radius[i] = CasterPass.CascadeFitRadius[i];
+                blk->SunBias[i] = range > 0f ? _sunWorldBias / range : 0f;
+                blk->SunRadius[i] = CasterPass.CascadeFitRadius[i];
             }
-            fixed (float* vp = CasterPass.CascadeVp) Buffer.MemoryCopy(vp, &b[PbSunVp], 256, n * 16 * sizeof(float));
-            fixed (float* dm = CasterPass.SunDynMask) Buffer.MemoryCopy(dm, &b[PbSunDyn], 16, 16);
-            PassVec(b, PbSunFocus, CasterPass.SunFocusLive);
-            *(int*)(&b[PbSunCascades]) = n;
+            new ReadOnlySpan<float>(CasterPass.CascadeVp, 0, n * 16).CopyTo(new Span<float>(blk->SunVp, 64));
+            new ReadOnlySpan<float>(CasterPass.SunDynMask, 0, 4).CopyTo(new Span<float>(blk->SunDyn, 4));
+            blk->SunFocus = CasterPass.SunFocusLive;
+            blk->SunCascades = n;
         }
         // Cold (read once per period by CasterPass's [sunrx] clause): what this pass block ACTUALLY carries
         // for the sun, taken off the staged bytes rather than off the publisher, so the witness cannot
         // disagree with what the receiver samples.
-        _rxSunN = *(int*)(&b[PbSunCascades]);
-        _rxSunVp3 = *(Vector4*)(&b[PbSunVp + 48]);
-        _rxSunFocus = *(Vector3*)(&b[PbSunFocus]);
-        _rxAreaDif = *(Vector3*)(&b[PbDiffuse]);
-        _rxAreaDir = *(Vector3*)(&b[PbDir]);
+        _rxSunN = blk->SunCascades;
+        _rxSunVp3 = blk->SunVp0Col3;
+        _rxSunFocus = blk->SunFocus;
+        _rxAreaDif = blk->Diffuse;
+        _rxAreaDir = blk->Dir;
 
         if (!_rawProbed) ProbeRawSampler();
-        *(float*)(&b[PbLocalFloor]) = AlloyLights.ShadowFloor;
+        blk->LocalFloor = AlloyLights.ShadowFloor;
         // Source radius (0 = no raw view, no search), temporal phase (golden-ratio turns per frame, 0
         // with no taa to integrate it), disc taps; w = the view depth past which no cube is read (0 = none)
         PassVec(b, PbLocalPcss, _rawSampler != 0 ? AlloyLights.ShadowSource : 0f,
@@ -305,8 +309,8 @@ public sealed unsafe partial class AlloyRenderer
         // "no raw view, no search" gate the cubes take, and the same temporal phase and tap count out of
         // uLocalPcss above. A caller that fills the block itself (the lightmap bake) leaves it zero, which
         // the receiver reads as the fixed four-tap cross.
-        *(float*)(&b[PbSunPenum]) = _rawSampler != 0 ? CasterPass.SunPenumbraScale : 0f;
-        *(float*)(&b[PbSearchTaps]) = Shadows.Search.V;
+        blk->SunPenum = _rawSampler != 0 ? CasterPass.SunPenumbraScale : 0f;
+        blk->SearchTaps = Shadows.Search.V;
         // Pixels -> world radius per unit view depth, so the shader compares its disc against the
         // screen without knowing the projection. 0 (no perspective this pass) = the disc everywhere.
         float discZ = _lodScale > 0f ? AlloyLights.ShadowDiscPx / _lodScale : 0f;
@@ -314,25 +318,24 @@ public sealed unsafe partial class AlloyRenderer
         // shadow.perpixel, the per-pixel SHADOW budget every walk and the deferred record share.
         // A caller that fills the block itself (the lightmap bake) leaves it zero, which every reader takes as
         // "no budget" -- the pre-budget path.
-        *(float*)(&b[PbShBudget]) = AlloyLights.ShadowPerPixel;
+        blk->ShBudget = AlloyLights.ShadowPerPixel;
         // light.floor, the brightness a light's REACH ends at. Zero in a block a caller filled
         // itself (the lightmap bake, which wants every light's authored radius), which reads as no cut.
-        *(float*)(&b[PbLightFloor]) = AlloyLights.LightFloor;
+        blk->LightFloor = AlloyLights.LightFloor;
         // light.fullmodel, the lighting LOD's cut. Zero in a self-filled block (the bake), which
         // reads as the full model for every light -- the bake has exactly one light and it is the hero.
-        *(float*)(&b[PbFullModel]) = AlloyLights.FullModel;
+        blk->FullModel = AlloyLights.FullModel;
         if (CasterPass.CubesFresh)
         {
             int n = CasterPass.CubeCount;
-            fixed (float* l = CasterPass.CubeLight) Buffer.MemoryCopy(l, &b[PbLight], 1024, n * 4 * sizeof(float));
-            float* page = (float*)(&b[PbDynPage]), fade = (float*)(&b[PbFade]);
-            for (int i = 0; i < n; i++) { page[i * 4] = CasterPass.CubeDynPage[i]; fade[i * 4] = CasterPass.CubeFade[i]; }
-            *(Vector2*)(&b[PbLocalPlane]) = new Vector2(CasterPass.CubeNearPlane, 1f / CasterPass.CubeFaceSize);
+            new ReadOnlySpan<float>(CasterPass.CubeLight, 0, n * 4).CopyTo(new Span<float>(blk->Light, 256));
+            for (int i = 0; i < n; i++) { blk->DynPage[i * 4] = CasterPass.CubeDynPage[i]; blk->Fade[i * 4] = CasterPass.CubeFade[i]; }
+            blk->LocalPlane = new Vector2(CasterPass.CubeNearPlane, 1f / CasterPass.CubeFaceSize);
         }
 
-        *(float*)(&b[PbProbeMips]) = ProbeLive ? EnvProbe.Mips : 0f;
-        *(float*)(&b[PbProbeGain]) = EnvProbe.Gain;
-        *(int*)(&b[PbSceneEnv]) = _sceneEnv ? 1 : 0;
+        blk->ProbeMips = ProbeLive ? EnvProbe.Mips : 0f;
+        blk->ProbeGain = EnvProbe.Gain;
+        blk->SceneEnv = _sceneEnv ? 1 : 0;
     }
 
     /// <summary>May this pass sample the IBL probe? Never during a capture: sampling a texture that is an

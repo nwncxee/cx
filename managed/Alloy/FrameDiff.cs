@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Alloy.Seam;
 using CX.Alloy.Db;
 using CX.Engine;
@@ -131,7 +132,6 @@ public sealed unsafe partial class AlloyRenderer
         int n = 0;
         Span<int> pick = stackalloc int[SampleParts];
         Span<float> key = stackalloc float[SampleParts];
-        fixed (float* data = _dData)
             for (int k = 0; k < _orderCount; k++)
             {
                 int i = _order[k];
@@ -156,12 +156,11 @@ public sealed unsafe partial class AlloyRenderer
             pick[b + 1] = pi; key[b + 1] = pk;
         }
         P($"parts.ordered={_orderCount} sampled={n}");
-        fixed (float* data = _dData)
             for (int s = 0; s < n; s++)
             {
                 int i = pick[s];
-                float* r = &data[(long)i * DrawFloats];
-                Matrix4x4 mm = *(Matrix4x4*)r;
+                ReadOnlySpan<float> r = _dData.AsSpan(i * DrawFloats, DrawFloats);
+                Matrix4x4 mm = MemoryMarshal.Read<Matrix4x4>(MemoryMarshal.AsBytes(r));
                 P($"part[{s}] at={mm.M41:F2},{mm.M42:F2},{mm.M43:F2} cls={_oCls[i]} lit={_oLit[i]} "
                   + $"slots={_oSlots[i]} feat={r[40]:F1},{r[41]:F1},{r[42]:F1},{r[43]:F1}");
                 P($"part[{s}] amb={r[20]:F3},{r[21]:F3},{r[22]:F3},{r[23]:F3} dif={r[24]:F3},{r[25]:F3},{r[26]:F3},{r[27]:F3}");
@@ -199,7 +198,6 @@ public sealed unsafe partial class AlloyRenderer
             for (; b >= 0 && bkey[b] > pk; b--) { bpick[b + 1] = bpick[b]; bkey[b + 1] = bkey[b]; }
             bpick[b + 1] = pi; bkey[b + 1] = pk;
         }
-        fixed (float* data = _dData)
             for (int s = 0; s < bn; s++)
             {
                 int i = bpick[s];
@@ -218,8 +216,8 @@ public sealed unsafe partial class AlloyRenderer
                     Mdl.MeshDef? md = rec >= 0 ? Db.DrawRecipe.Mesh(rec) : null;
                     if (md != null) tex = md.Textures[0];
                 }
-                float* r = &data[(long)i * DrawFloats];
-                Matrix4x4 mm = *(Matrix4x4*)r;
+                ReadOnlySpan<float> r = _dData.AsSpan(i * DrawFloats, DrawFloats);
+                Matrix4x4 mm = MemoryMarshal.Read<Matrix4x4>(MemoryMarshal.AsBytes(r));
                 P($"blend[{s}] node='{node}' model='{model}' tex0='{tex}' at={mm.M41:F2},{mm.M42:F2},{mm.M43:F2} "
                   + $"cls={_oCls[i]} lit={_oLit[i]} nocull={_oNoCull[i]} src={_oSrc[i]} dst={_oDst[i]} wash={_oWash[i]}");
                 P($"blend[{s}] amb={r[20]:F3},{r[21]:F3},{r[22]:F3},{r[23]:F3} dif={r[24]:F3},{r[25]:F3},{r[26]:F3},{r[27]:F3}");
@@ -281,14 +279,12 @@ public sealed unsafe partial class AlloyRenderer
             pick[b + 1] = pk; key[b + 1] = kq;
         }
         P($"khcol: eye={F3(eye)} fwd={F3(fwd)} hits={n} of {_stageRouted} routed");
-        fixed (float* data = _dData)
-        fixed (float* bx = _oBox)
             for (int s = 0; s < n; s++)
             {
                 int k = pick[s], i = _pass[k];
                 float t = key[s];
-                float* b = &bx[(long)i * 6];
-                float* r = &data[(long)i * DrawFloats];
+                ReadOnlySpan<float> b = _oBox.AsSpan(i * 6, 6);
+                ReadOnlySpan<float> r = _dData.AsSpan(i * DrawFloats, DrawFloats);
                 string node = _oDbPart[i] >= 0
                     ? Db.PartTree.NameOf(_oDbPart[i])
                     : (_oNode[i] == IntPtr.Zero ? "" : new MdlNode(_oNode[i]).NameText ?? "");
@@ -313,9 +309,8 @@ public sealed unsafe partial class AlloyRenderer
     private static bool CentreRayHits(Vector3 eye, Vector3 fwd, int i, out float t)
     {
         t = 0f;
-        fixed (float* bx = _oBox)
         {
-            float* b = &bx[(long)i * 6];
+            ReadOnlySpan<float> b = _oBox.AsSpan(i * 6, 6);
             if (!(b[3] > b[0]) && !(b[4] > b[1]) && !(b[5] > b[2])) return false;   // never filled
             float lo = 0f, hi = float.MaxValue;
             for (int a = 0; a < 3; a++)

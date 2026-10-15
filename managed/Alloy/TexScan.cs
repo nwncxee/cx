@@ -70,12 +70,12 @@ internal static unsafe class TexScan
         if (t.GetCompressedSize() > 0)
         {
             int fmt = t.GetCompressionFormat();
-            byte* data = &px[t.GetNumMipHeaderBytes()];
+            int hdr = t.GetNumMipHeaderBytes();
             r.W = w; r.H = h;
             if (DdsReader.Lookup(px, out DdsReader.Info dds) && !DdsReader.EngineUploads(dds.Format))
-                return ScanDecoded(data, w, h, dds.Format, cut, ref r);
-            if (fmt == FmtDxt1) ScanDxt(data, w, h, false, cut, ref r);
-            else if (fmt == FmtDxt5) ScanDxt(data, w, h, true, cut, ref r);
+                return ScanDecoded(px, hdr, w, h, dds.Format, cut, ref r);
+            if (fmt == FmtDxt1) ScanDxt(DxtTop(px, hdr, w, h, false), w, h, false, cut, ref r);
+            else if (fmt == FmtDxt5) ScanDxt(DxtTop(px, hdr, w, h, true), w, h, true, cut, ref r);
             else { LastRefusedFormat = fmt; return false; }
             return true;
         }
@@ -84,18 +84,18 @@ internal static unsafe class TexScan
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny || bpp < 1 || bpp > 4) return false;
         int x0 = (cell % nx) * cw, y0 = (cell / nx) * ch;
         long stride = (long)w * bpp;
-        ScanRaw(px, stride, bpp, x0, y0, cw, ch, cut, ref r);
+        var image = new ReadOnlySpan<byte>(px, (int)(stride * h));
+        ScanRaw(image, stride, bpp, x0, y0, cw, ch, cut, ref r);
         r.W = cw; r.H = ch;
         if (wantPixels && bpp >= 3)
         {
             byte[] o = ArrayPool<byte>.Shared.Rent((int)ChainBytes(cw, ch, r.Mips));
-            fixed (byte* op = o)
-                for (int y = 0; y < ch; y++)
-                {
-                    byte* s0 = &px[(y0 + y) * stride + (long)x0 * bpp];
-                    byte* d0 = &op[(long)y * cw * 4];
-                    for (int x = 0; x < cw; x++)
-                    { byte* s = &s0[x * bpp], d = &d0[x * 4]; d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = bpp == 4 ? s[3] : (byte)255; }
+            for (int y = 0; y < ch; y++)
+            {
+                ReadOnlySpan<byte> s0 = image.Slice((int)((y0 + y) * stride + (long)x0 * bpp));
+                Span<byte> d0 = o.AsSpan((int)((long)y * cw * 4));
+                for (int x = 0; x < cw; x++)
+                { ReadOnlySpan<byte> s = s0.Slice(x * bpp); Span<byte> d = d0.Slice(x * 4); d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = bpp == 4 ? s[3] : (byte)255; }
                 }
             r.Rgba = o;
         }
@@ -105,13 +105,14 @@ internal static unsafe class TexScan
     /// <summary>A format the engine names by its same-sized stand-in (BC7 as DXT5 and so on) is scanned from its
     /// own decode; one with no CPU decoder here (BC6H, SNORM RGTC -- none carries alpha) is left unscanned.
     /// ponytail: a full level-0 decode on the main thread; move it to cx-bcn if such textures show in the Tex zone.</summary>
-    private static bool ScanDecoded(byte* data, int w, int h, DdsReader.Fmt f, int cut, ref Result r)
+    private static bool ScanDecoded(byte* image, int hdr, int w, int h, DdsReader.Fmt f, int cut, ref Result r)
     {
         if (!BcnDecode.Decodes(f)) { LastRefusedFormat = FmtDecodedBase + (int)f; return false; }
         int px = BcnDecode.PixelBytes(f), n = w * h * px;
         byte[] buf = ArrayPool<byte>.Shared.Rent(n);
-        BcnDecode.Unpack(new ReadOnlySpan<byte>(data, DdsReader.LevelSize(w, h, DdsReader.ChannelsOf(f))), w, h, f, buf.AsSpan(0, n));
-        fixed (byte* p = buf) ScanRaw(p, (long)w * px, px, 0, 0, w, h, cut, ref r);
+        int lvl = DdsReader.LevelSize(w, h, DdsReader.ChannelsOf(f));
+        BcnDecode.Unpack(new ReadOnlySpan<byte>(image, hdr + lvl).Slice(hdr), w, h, f, buf.AsSpan(0, n));
+        ScanRaw(buf.AsSpan(0, n), (long)w * px, px, 0, 0, w, h, cut, ref r);
         ArrayPool<byte>.Shared.Return(buf);
         return true;
     }
@@ -119,15 +120,19 @@ internal static unsafe class TexScan
     /// <summary><see cref="LastRefusedFormat"/> for a DDS format with no decoder: this plus its <see cref="DdsReader.Fmt"/>.</summary>
     private const int FmtDecodedBase = 100;
 
+    /// <summary>The top level of a BC1/BC3 image that begins <paramref name="hdr"/> bytes into <paramref name="image"/>.</summary>
+    private static ReadOnlySpan<byte> DxtTop(byte* image, int hdr, int w, int h, bool dxt5)
+        => new ReadOnlySpan<byte>(image, hdr + ((w + 3) / 4) * ((h + 3) / 4) * (dxt5 ? 16 : 8)).Slice(hdr);
+
     /// <summary>Full-resolution alpha count (a sparse scan misses the railing that IS the cutout), mean
     /// colour on a stride so a 2k sheet costs a few hundred adds.</summary>
-    private static void ScanRaw(byte* px, long stride, int bpp, int x0, int y0, int cw, int ch, int cut, ref Result r)
+    private static void ScanRaw(ReadOnlySpan<byte> px, long stride, int bpp, int x0, int y0, int cw, int ch, int cut, ref Result r)
     {
         long dropped = 0, graded = 0;
         if (bpp == 4)
             for (int y = 0; y < ch; y++)
             {
-                byte* s = &px[(y0 + y) * stride + (long)x0 * 4 + 3];
+                ReadOnlySpan<byte> s = px.Slice((int)((y0 + y) * stride + (long)x0 * 4 + 3));
                 for (int x = 0; x < cw; x++) { int a = s[x * 4]; if (a < cut) dropped++; else if (a < OpaqueAlpha) graded++; }
             }
         r.Holes = dropped / (float)((long)cw * ch);
@@ -137,7 +142,7 @@ internal static unsafe class TexScan
         for (int y = 0; y < ch; y += step)
             for (int x = 0; x < cw; x += step)
             {
-                byte* s = &px[(y0 + y) * stride + (long)(x0 + x) * bpp];
+                ReadOnlySpan<byte> s = px.Slice((int)((y0 + y) * stride + (long)(x0 + x) * bpp));
                 if (bpp >= 3) { rs += s[0]; gs += s[1]; bs += s[2]; }
                 else { rs += s[0]; gs += s[0]; bs += s[0]; }
                 n++;
@@ -147,7 +152,7 @@ internal static unsafe class TexScan
 
     /// <summary>DXT1/DXT5 blocks: alpha per texel exactly (DXT1's 1-bit key when c0 &lt;= c1, DXT5's 3-bit
     /// ramp), mean from the block endpoints -- a block's texels sit between them.</summary>
-    private static void ScanDxt(byte* data, int w, int h, bool dxt5, int cut, ref Result r)
+    private static void ScanDxt(ReadOnlySpan<byte> data, int w, int h, bool dxt5, int cut, ref Result r)
     {
         int bw = (w + 3) / 4, bh = (h + 3) / 4, bytes = dxt5 ? 16 : 8;
         long dropped = 0, graded = 0, rs = 0, gs = 0, bs = 0;
@@ -155,8 +160,8 @@ internal static unsafe class TexScan
         for (int by = 0; by < bh; by++)
             for (int bx = 0; bx < bw; bx++)
             {
-                byte* b = &data[((long)by * bw + bx) * bytes];
-                byte* c = dxt5 ? &b[8] : b;
+                ReadOnlySpan<byte> b = data.Slice((int)(((long)by * bw + bx) * bytes), bytes);
+                ReadOnlySpan<byte> c = dxt5 ? b.Slice(8) : b;
                 int c0 = c[0] | (c[1] << 8), c1 = c[2] | (c[3] << 8);
                 uint idx = (uint)(c[4] | (c[5] << 8) | (c[6] << 16) | (c[7] << 24));
                 rs += Expand5(c0 >> 11) + Expand5(c1 >> 11);
@@ -191,7 +196,7 @@ internal static unsafe class TexScan
     internal static bool MeanOfRaster(byte* px, int w, int h, int bpp, out Vector3 mean)
     {
         Result r = default;
-        ScanRaw(px, (long)w * bpp, bpp, 0, 0, w, h, 0, ref r);
+        ScanRaw(new ReadOnlySpan<byte>(px, w * h * bpp), (long)w * bpp, bpp, 0, 0, w, h, 0, ref r);
         mean = r.Mean;
         return r.MeanOk;
     }
@@ -200,7 +205,7 @@ internal static unsafe class TexScan
     internal static bool MeanOfDxt(byte* data, int w, int h, bool dxt5, out Vector3 mean)
     {
         Result r = default;
-        ScanDxt(data, w, h, dxt5, 0, ref r);
+        ScanDxt(DxtTop(data, 0, w, h, dxt5), w, h, dxt5, 0, ref r);
         mean = r.Mean;
         return r.MeanOk;
     }
@@ -215,19 +220,21 @@ internal static unsafe class TexScan
     /// <paramref name="off"/> and the sizes are the chain the caller laid out with <see cref="Chain"/>.</summary>
     internal static void BuildMips(byte* px, int levels, int* lw, int* lh, long* off)
     {
+        var all = new Span<byte>(px, (int)(off[levels - 1] + (long)lw[levels - 1] * lh[levels - 1] * 4));
         for (int i = 1; i < levels; i++)
         {
             int sw = lw[i - 1], sh = lh[i - 1], dw = lw[i], dh = lh[i];
-            byte* s = &px[off[i - 1]], d = &px[off[i]];
+            ReadOnlySpan<byte> s = all.Slice((int)off[i - 1], sw * sh * 4);
+            Span<byte> d = all.Slice((int)off[i], dw * dh * 4);
             for (int y = 0; y < dh; y++)
             {
                 int y0 = Math.Min(y * 2, sh - 1), y1 = Math.Min(y * 2 + 1, sh - 1);
                 for (int x = 0; x < dw; x++)
                 {
                     int x0 = Math.Min(x * 2, sw - 1), x1 = Math.Min(x * 2 + 1, sw - 1);
-                    byte* p00 = &s[((long)y0 * sw + x0) * 4], p01 = &s[((long)y0 * sw + x1) * 4];
-                    byte* p10 = &s[((long)y1 * sw + x0) * 4], p11 = &s[((long)y1 * sw + x1) * 4];
-                    byte* o = &d[((long)y * dw + x) * 4];
+                    ReadOnlySpan<byte> p00 = s.Slice((y0 * sw + x0) * 4), p01 = s.Slice((y0 * sw + x1) * 4);
+                    ReadOnlySpan<byte> p10 = s.Slice((y1 * sw + x0) * 4), p11 = s.Slice((y1 * sw + x1) * 4);
+                    Span<byte> o = d.Slice((y * dw + x) * 4);
                     // #499: alpha-weighted colour -- a transparent texel's (black) colour must not darken the
                     // level. Alpha itself is the plain mean; a fully transparent box keeps the plain mean too.
                     int wa = p00[3] + p01[3] + p10[3] + p11[3];
@@ -274,14 +281,14 @@ internal static unsafe class TexScan
         var check = new Checker(log);
         // DXT1: c0 = 0 <= c1 = 0xffff -> 4-colour+key mode; indices all 3 -> every texel transparent
         byte* d1 = stackalloc byte[8] { 0, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-        Result r = default; ScanDxt(d1, 4, 4, false, 51, ref r);
+        Result r = default; ScanDxt(new ReadOnlySpan<byte>(d1, 8), 4, 4, false, 51, ref r);
         check.Expect(r.Holes == 1f, $"dxt1 keyed block: holes {r.Holes}");
         byte* d1s = stackalloc byte[8] { 0xff, 0xff, 0, 0, 0, 0, 0, 0 };   // c0 > c1: opaque mode
-        r = default; ScanDxt(d1s, 4, 4, false, 51, ref r);
+        r = default; ScanDxt(new ReadOnlySpan<byte>(d1s, 8), 4, 4, false, 51, ref r);
         check.Expect(r.Holes == 0f && r.MeanOk && MathF.Abs(r.Mean.X - 0.5f) < 0.01f, $"dxt1 opaque block: holes {r.Holes} mean {r.Mean}");
         // DXT5: a0 = 255, a1 = 0, indices: texel 0 -> 1 (alpha 0), the rest 0 (alpha 255)
         byte* d5 = stackalloc byte[16]; d5[0] = 255; d5[1] = 0; d5[2] = 1;
-        r = default; ScanDxt(d5, 4, 4, true, 51, ref r);
+        r = default; ScanDxt(new ReadOnlySpan<byte>(d5, 16), 4, 4, true, 51, ref r);
         check.Expect(MathF.Abs(r.Holes - 1f / 16f) < 1e-6f, $"dxt5 ramp block: holes {r.Holes}");
         int* lw = stackalloc int[16], lh = stackalloc int[16]; long* off = stackalloc long[16];
         int n = Chain(8, 2, true, 16, lw, lh, off, out long total);

@@ -188,7 +188,7 @@ internal static unsafe class OwnedBuffers
             // CommitElementStreamData @0x45c9c0 unlocks with `xor %edx,%edx` -- but the clamp costs one
             // compare and the alternative is an out-of-bounds read of the engine's heap.
             if (offset > (uint)bytes) span = 0; else if (offset + span > bytes) span = bytes - offset;
-            if (span > 0) Gl.NamedBufferSubData(name, (IntPtr)offset, (IntPtr)span, &host[offset]);
+            if (span > 0) new HostShadow(host).Upload(name, offset, span);
             _subUploads++;
         }
         else if (dynamic)
@@ -424,9 +424,10 @@ internal static unsafe class OwnedBuffers
 
         // A fake pool table: two 0x20-byte descriptors behind a base pointer, laid out exactly as
         // RequestPool leaves them.
-        byte* mem = stackalloc byte[0x20 + 2 * EngineLayout.PoolStride];   // a SIZE here, not a field read
-        var table = new GlPoolTable((IntPtr)mem);
-        var pools = new GlPool((IntPtr)(&mem[0x20]));
+        byte* tableMem = stackalloc byte[0x20];
+        byte* poolMem = stackalloc byte[2 * EngineLayout.PoolStride];   // a SIZE here, not a field read
+        var table = new GlPoolTable((IntPtr)tableMem);
+        var pools = new GlPool((IntPtr)poolMem);
         table.Base = pools;
         table.Count = 2;
         byte* payload = stackalloc byte[64];

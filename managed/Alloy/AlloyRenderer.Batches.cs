@@ -352,12 +352,9 @@ public sealed unsafe partial class AlloyRenderer
         return dx * dx + dy * dy + dz * dz;
     }
 
-    /// <summary>Store <paramref name="v"/> and say whether that changed anything. The whole persistent-record
-    /// scheme is this compare: a field written every frame with the value it already held is not a mover, and
-    /// the record it sits in does not need re-sending.</summary>
     /// <summary>One multidraw over draws <paramref name="first"/> .. +<paramref name="count"/> of the per-draw
     /// count, offset and base-vertex tables.</summary>
-    private static void MultiDrawRange(uint mode, int first, int count)
+    internal static void MultiDrawRange(uint mode, int first, int count)
     {
         if (count <= 0) return;
         fixed (int* c = _dCount.AsSpan(first, count))
@@ -366,6 +363,9 @@ public sealed unsafe partial class AlloyRenderer
             Gl.MultiDrawElementsBaseVertex(mode, c, GlUnsignedShort, (void**)o, count, b);
     }
 
+    /// <summary>Store <paramref name="v"/> and say whether that changed anything. The whole persistent-record
+    /// scheme is this compare: a field written every frame with the value it already held is not a mover, and
+    /// the record it sits in does not need re-sending.</summary>
     private static bool St(ref float p, float v)
     {
         if (p == v) return false;

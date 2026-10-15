@@ -178,15 +178,17 @@ internal static unsafe partial class TexLoad
     private static ushort Winner(byte* name, out IntPtr table, out IntPtr entry)
     {
         table = entry = IntPtr.Zero;
-        IntPtr* tables = stackalloc IntPtr[FormatOrder.Length];
-        IntPtr* entries = stackalloc IntPtr[FormatOrder.Length];
+        Span<IntPtr> tables = stackalloc IntPtr[FormatOrder.Length];
+        Span<IntPtr> entries = stackalloc IntPtr[FormatOrder.Length];
         int* kinds = stackalloc int[FormatOrder.Length];
         IntPtr resman = ResLocate.ResMan;
         if (resman == IntPtr.Zero) return 0;
         for (int f = 0; f < FormatOrder.Length; f++)
         {
             kinds[f] = 0;
-            if (EngineFn.ResManGetKeyEntry(resman, name, FormatOrder[f], &tables[f], &entries[f], 0) == 0) continue;
+            fixed (IntPtr* tp = tables.Slice(f, 1))
+            fixed (IntPtr* ep = entries.Slice(f, 1))
+                if (EngineFn.ResManGetKeyEntry(resman, name, FormatOrder[f], tp, ep, 0) == 0) continue;
             kinds[f] = new CExoKeyTable(tables[f]).Kind;
         }
         foreach (int k in KindOrder)

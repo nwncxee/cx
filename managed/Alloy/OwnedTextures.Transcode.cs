@@ -105,7 +105,6 @@ internal static unsafe partial class OwnedTextures
                 for (int i = 0; i < job.Levels; i++) blk += BcnEncode.LevelSize(job.Lw[i], job.Lh[i], true);
                 job.Blocks = ArrayPool<byte>.Shared.Rent((int)blk);
                 fixed (byte* px = job.Pixels)
-                fixed (byte* blocks = job.Blocks)
                 fixed (int* lw = job.Lw, lh = job.Lh) fixed (long* offs = job.Off)
                 {
                     TexScan.BuildMips(px, job.Levels, lw, lh, offs);
@@ -115,7 +114,8 @@ internal static unsafe partial class OwnedTextures
                     long off = 0;
                     for (int i = 0; i < job.Levels; i++)
                     {
-                        BcnEncode.EncodeLevel(&px[job.Off[i]], job.Lw[i], job.Lh[i], bc3, &blocks[off]);
+                        BcnEncode.EncodeLevel(job.Pixels.AsSpan((int)job.Off[i], job.Lw[i] * job.Lh[i] * 4), job.Lw[i], job.Lh[i], bc3,
+                                              job.Blocks.AsSpan((int)off, BcnEncode.LevelSize(job.Lw[i], job.Lh[i], bc3)));
                         job.Off[i] = off;   // re-used: the level's offset in the BLOCK buffer from here on
                         off += BcnEncode.LevelSize(job.Lw[i], job.Lh[i], bc3);
                     }
@@ -158,10 +158,12 @@ internal static unsafe partial class OwnedTextures
         // corrupted every level but the base on AMD/Mesa.
         Gl.TextureStorage2D(dst, job.Levels, fmt, job.Lw[0], job.Lh[0]);
         Gl.TextureParameteri(dst, Gl.TEXTURE_MAX_LEVEL, Math.Min(maxLevel, job.Levels - 1));
-        fixed (byte* blocks = job.Blocks)
-            for (int i = 0; i < job.Levels; i++)
-                Gl.CompressedTextureSubImage2D(dst, i, 0, 0, job.Lw[i], job.Lh[i], fmt,
-                                               BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3), &blocks[job.Off[i]]);
+        for (int i = 0; i < job.Levels; i++)
+        {
+            int size = BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3);
+            fixed (byte* level = job.Blocks.AsSpan((int)job.Off[i], size))
+                Gl.CompressedTextureSubImage2D(dst, i, 0, 0, job.Lw[i], job.Lh[i], fmt, size, level);
+        }
         uint err = Gl.GetError();
         if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpackBuf);
         if (err != 0)

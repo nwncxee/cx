@@ -54,7 +54,7 @@ public sealed unsafe partial class AlloyRenderer
             if (next == null) return;
             _dpStage = next; _dpCap = cap;
         }
-        Buffer.MemoryCopy(dst, &_dpStage[_dpUsed], (long)n * 12, (long)n * 12);
+        new ReadOnlySpan<float>(dst, n * 3).CopyTo(new Span<float>(_dpStage, _dpCap).Slice(_dpUsed, n * 3));
         _oDpAt[i] = _frameSeq; _oDpBase[i] = _dpUsed; _oDpN[i] = n;
         _dpUsed = need;
     }
