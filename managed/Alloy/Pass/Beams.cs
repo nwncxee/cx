@@ -141,7 +141,8 @@ internal static unsafe partial class Beams
             if (StageDb(i, staged)) _sBeam[staged++] = i;
             else _refused++;
         if (staged == 0) return;
-        DrawDb(view, proj, in dir, _alpha != null ? *_alpha : DefaultAlpha, staged);
+        // Vanilla dusk writes (t - 1) * 0.05, a negative alpha; its magnitude is the (1 - t) * 0.05 that mirrors dawn.
+        DrawDb(view, proj, in dir, _alpha != null ? MathF.Abs(*_alpha) : DefaultAlpha, staged);
         Gl.Disable(Gl.BLEND);
         Gl.DepthMask(1);
         _drawn += staged;
