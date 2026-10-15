@@ -150,8 +150,8 @@ internal static unsafe partial class TexRegistry
         Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &svRow);
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
         Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, c.FullW);
-        fixed (byte* p = c.Pixels)
-            Gl.TextureSubImage2D(name, 0, 0, 0, c.CellW, c.CellH, c.PixFmt, c.PixType, p + ((long)y * c.FullW + x) * c.Px);
+        fixed (byte* p = c.Pixels.AsSpan(checked((int)(((long)y * c.FullW + x) * c.Px))))
+            Gl.TextureSubImage2D(name, 0, 0, 0, c.CellW, c.CellH, c.PixFmt, c.PixType, p);
         Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, svRow);
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, svAlign);
         if (c.Mip && Gl.GenerateTextureMipmap != null) Gl.GenerateTextureMipmap(name);

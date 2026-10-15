@@ -1,6 +1,7 @@
 using System.Numerics;
 using System;
 using System.Text;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Db;
@@ -799,7 +800,7 @@ public static class TextObjectsSelfCheck
     {
         var d = Doc(Synthetic());
         byte* p = (byte*)TextSlots.DisplayInfo(d);
-        *(float*)(p + 0xc) = 4.5f; *(float*)(p + 0x10) = 1.25f;
+        ((TextDisplayInfo*)p)->Width = 4.5f; ((TextDisplayInfo*)p)->Height = 1.25f;
         c.Expect(TextSlots.ApplyDisplayInfo(d) && d.MaxWidth == 4.5f && d.MaxHeight == 1.25f,
           "a box written through the display block is adopted on the next slot call");
         d.MaxWidth = 2f;
@@ -811,8 +812,8 @@ public static class TextObjectsSelfCheck
         TextObjects.Relayout(d);
         TextObjects.ScrollToLine(d, 29);
         TextObjects.Stale(d);
-        c.Expect(*(int*)(p + 8) == d.ScrollBudget && d.ScrollBudget > 0 && *(int*)p == d.TopLine,
-          $"the cached block follows the scroll (budget {*(int*)(p + 8)} vs {d.ScrollBudget}), so the thumb is not the minimum");
+        c.Expect(((TextDisplayInfo*)p)->ScrollBudget == d.ScrollBudget && d.ScrollBudget > 0 && ((TextDisplayInfo*)p)->TopLine == d.TopLine,
+          $"the cached block follows the scroll (budget {((TextDisplayInfo*)p)->ScrollBudget} vs {d.ScrollBudget}), so the thumb is not the minimum");
     }
 
     /// <summary>Slot 7's model rides its line into the published quad list at that line's pen -- the list

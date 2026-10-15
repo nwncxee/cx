@@ -21,7 +21,6 @@ public sealed unsafe class MouseLookService : IExtenderService
 
     // ---- SDL_Event layout (same rows UiInputService reads; motion adds the relative pair) ----
     private const uint SdlWindowEvent = 0x200, SdlMouseMotion = 0x400, SdlMouseDown = 0x401, SdlMouseUp = 0x402;  // not-an-offset: SDL key/event code
-    private const int EvWindowKindOff = 0xc, EvButtonOff = 0x10, EvXOff = 0x14, EvYOff = 0x18, EvXRelOff = 0x1c, EvYRelOff = 0x20;  // not-an-offset: SDL_Event ABI, not an engine class
     private const byte SdlWindowFocusLost = 0xd, SdlButtonMiddle = 2, SdlButtonRight = 3;  // not-an-offset: SDL key/event code
     /// <summary><c>sizeof(SDL_Event)</c> in SDL2: the held press is copied whole for the replay.</summary>
     private const int SdlEventSize = 56;
@@ -50,7 +49,6 @@ public sealed unsafe class MouseLookService : IExtenderService
     private const int KmodAlt = 0x300;  // not-an-offset: SDL key/event code
     private const uint SdlKeyDown = 0x300;  // not-an-offset: SDL key/event code
     /// <summary>SDL_KeyboardEvent: <c>repeat</c> byte and <c>keysym.sym</c>; the Alt keycodes.</summary>
-    private const int EvRepeatOff = 0xd, EvSymOff = 0x14;  // not-an-offset: SDL_Event ABI, not an engine class
     private const uint SdlkLAlt = 0x400000E2, SdlkRAlt = 0x400000E6;  // not-an-offset: SDL key/event code
     /// <summary>Alt as a toggle (the mode's <c>alttoggle</c>): the cursor is freed until the next Alt press.</summary>
     private static bool _altFree;
@@ -104,17 +102,17 @@ public sealed unsafe class MouseLookService : IExtenderService
         if (!MouseLook.Enabled.V) { if (_state != State.Idle) Release(); return Forward(ev); }
         // Only while the action camera would otherwise be up: Alt+Tab, an Alt chord in a dialog and any Alt the
         // GUI or a CX window owns the keyboard for are not the cursor toggle.
-        if (MouseLook.AltToggle.V && ActionGateOpen() && *(uint*)ev == SdlKeyDown && *(byte*)(ev + EvRepeatOff) == 0
-            && *(uint*)(ev + EvSymOff) is SdlkLAlt or SdlkRAlt) _altFree = !_altFree;
+        if (MouseLook.AltToggle.V && ActionGateOpen() && *(uint*)ev == SdlKeyDown && ((SdlEvent*)ev)->Repeat == 0
+            && ((SdlEvent*)ev)->SymU is SdlkLAlt or SdlkRAlt) _altFree = !_altFree;
         bool want = ActionWanted();
         if (want != _action) SetAction(want);
         if (_action) return OnActionEvent(ev);
         switch (*(uint*)ev)
         {
             case SdlMouseDown:
-                byte b = *(byte*)(ev + EvButtonOff);
+                byte b = ((SdlEvent*)ev)->Button;
                 if (_state != State.Idle || (b != SdlButtonMiddle && !(b == SdlButtonRight && MouseLook.Right.V))) break;
-                int mx = *(int*)(ev + EvXOff), my = *(int*)(ev + EvYOff);
+                int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                 if (UiInputService.EngineGuiWantsPress() || UiHost.HitTest(mx, my) != null) break;   // the GUI's press
                 _originX = mx; _originY = my; _button = b;
                 if (b == SdlButtonMiddle)
@@ -131,7 +129,7 @@ public sealed unsafe class MouseLookService : IExtenderService
                 if (_state == State.Idle) break;
                 if (_state == State.Pending)
                 {
-                    int dx = *(int*)(ev + EvXOff) - _originX, dy = *(int*)(ev + EvYOff) - _originY;
+                    int dx = ((SdlEvent*)ev)->X - _originX, dy = ((SdlEvent*)ev)->Y - _originY;
                     int threshold = MouseLook.Threshold.V;
                     if (dx * dx + dy * dy <= threshold * threshold) break;   // a still click so far: the engine tracks it
                     _state = State.Looking; _looks++;
@@ -145,19 +143,19 @@ public sealed unsafe class MouseLookService : IExtenderService
                     float w = ViewportWidth();
                     float k = MouseLook.Sens.V / w;
                     var mod = new CNWCModule(module);
-                    mod.TurnCamera(*(int*)(ev + EvXRelOff) * TurnPerPx * k, 1);
-                    mod.TiltCamera(*(int*)(ev + EvYRelOff) * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
+                    mod.TurnCamera(((SdlEvent*)ev)->XRel * TurnPerPx * k, 1);
+                    mod.TiltCamera(((SdlEvent*)ev)->YRel * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
                 }
                 return 0;
             case SdlMouseUp:
-                if (_state == State.Idle || *(byte*)(ev + EvButtonOff) != _button) break;
+                if (_state == State.Idle || ((SdlEvent*)ev)->Button != _button) break;
                 if (_button == SdlButtonMiddle)
                 {
                     // CExoInputInternal::AddEvent turns a button event's x/y into a mouse-move BEFORE the button
                     // action, and the engine's orbit is still armed on the up: under relative mode that x/y is
                     // SDL's drifted, window-clamped position, so the up would carry the whole drag as one turn.
                     Release();
-                    *(int*)(ev + EvXOff) = _originX; *(int*)(ev + EvYOff) = _originY;
+                    ((SdlEvent*)ev)->X = _originX; ((SdlEvent*)ev)->Y = _originY;
                     return Forward(ev);
                 }
                 if (_state == State.Pending)
@@ -170,7 +168,7 @@ public sealed unsafe class MouseLookService : IExtenderService
                 Release();
                 return 0;
             case SdlWindowEvent:
-                if (*(byte*)(ev + EvWindowKindOff) == SdlWindowFocusLost && _state != State.Idle) Release();
+                if (((SdlEvent*)ev)->WindowKind == SdlWindowFocusLost && _state != State.Idle) Release();
                 break;
         }
         return Forward(ev);
@@ -222,19 +220,19 @@ public sealed unsafe class MouseLookService : IExtenderService
                 {
                     float k = MouseLook.Sens.V / ViewportWidth();
                     var mod = new CNWCModule(module);
-                    mod.TurnCamera(*(int*)(ev + EvXRelOff) * TurnPerPx * k, 1);
-                    mod.TiltCamera(*(int*)(ev + EvYRelOff) * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
+                    mod.TurnCamera(((SdlEvent*)ev)->XRel * TurnPerPx * k, 1);
+                    mod.TiltCamera(((SdlEvent*)ev)->YRel * TiltPerPx * k * (MouseLook.Invert.V ? -1f : 1f), 1);
                 }
-                *(int*)(ev + EvXOff) = ax; *(int*)(ev + EvYOff) = ay;
-                *(int*)(ev + EvXRelOff) = 0; *(int*)(ev + EvYRelOff) = 0;
+                ((SdlEvent*)ev)->X = ax; ((SdlEvent*)ev)->Y = ay;
+                ((SdlEvent*)ev)->XRel = 0; ((SdlEvent*)ev)->YRel = 0;
                 break;
             case SdlMouseDown:
             case SdlMouseUp:
-                *(int*)(ev + EvXOff) = ax; *(int*)(ev + EvYOff) = ay;
+                ((SdlEvent*)ev)->X = ax; ((SdlEvent*)ev)->Y = ay;
                 break;
             case SdlWindowEvent:
                 // The latch too: a toggled-free cursor must not survive the alt-tab that freed it.
-                if (*(byte*)(ev + EvWindowKindOff) == SdlWindowFocusLost) { _altFree = false; SetAction(false); }
+                if (((SdlEvent*)ev)->WindowKind == SdlWindowFocusLost) { _altFree = false; SetAction(false); }
                 break;
         }
         return Forward(ev);

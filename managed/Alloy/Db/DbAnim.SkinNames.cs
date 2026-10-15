@@ -54,7 +54,7 @@ public static unsafe partial class DbAnim
         int limit = Math.Min(slots, BoneCount);
         for (int b = 0; b < BoneCount; b++)
         {
-            float* m = dst + b * 16;
+            float* m = ((Stride16f*)dst)[b].F;
             int bp = b < limit ? st.Bone[b] : -1;
             // A name that resolved nowhere keeps the identity, which is what FindPartIndexDFS's -1 leaves the
             // engine's own slot.

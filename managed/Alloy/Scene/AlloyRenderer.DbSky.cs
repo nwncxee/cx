@@ -1,3 +1,4 @@
+using CX.Engine;
 using System;
 using System.Numerics;
 using CX.Alloy.Db;
@@ -67,14 +68,14 @@ public sealed unsafe partial class AlloyRenderer
                 int srec = _recOwnCap + _skyN;
                 _dSlot[n] = srec;
                 MarkRecordDirty(srec);
-                float* rec = data + (long)srec * DrawFloats;
+                float* rec = ((DrawRec*)data)[srec].F;
                 Matrix4x4 m = SceneDb.PartWorld[p];
                 m.M41 += park.X; m.M42 += park.Y; m.M43 += park.Z;
                 *(Matrix4x4*)rec = m;
                 // identity texture rotation, no dissolve, the role's alpha; no feature, and the lit block is
                 // never read because the sky takes an unlit stage (the engine draws it Disable(5)).
                 bool tinted = (SceneDb.ObjFlags[o] & ObjFlag.FogTint) != 0;
-                float* tint = t3 + _skyN * 3;
+                float* tint = ((Stride3f*)t3)[_skyN].F;
                 if (tinted) SceneFog.SkyfadeTint(tint);
                 else
                 {
@@ -86,7 +87,7 @@ public sealed unsafe partial class AlloyRenderer
                 rec[16] = 1f; rec[17] = 0f; rec[18] = 0f;
                 rec[19] = tinted ? 1f : roles[r].Alpha;
                 rec[40] = 0f; rec[41] = 0f; rec[42] = 0f; rec[43] = 0f;
-                int* tex = texAll + _skyN * MaxEngTex;
+                int* tex = ((Stride4i*)texAll)[_skyN].F;
                 tex[0] = (int)texName;
                 // Every unit the stage could declare, 0 included: an unbound unit samples black under the
                 // engine, never a neighbour's texture.

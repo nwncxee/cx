@@ -1,3 +1,4 @@
+using CX.Engine;
 using System;
 using System.Runtime.InteropServices;
 
@@ -35,7 +36,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static float* DbBoneStage(int slot)
     {
         EnsureDbStage(slot + 1);
-        return _dbStage + (long)slot * BoneFloats;
+        return ((BoneRec*)_dbStage)[slot].F;
     }
 
     private static float* _dbStage, _dbPrev;
@@ -67,14 +68,13 @@ public sealed unsafe partial class AlloyRenderer
         foreach (int slot in _dbLive)
         {
             if (slot < 0 || slot >= _boneTop || !EnsureBoneSlots(slot + 1)) continue;
-            long off = (long)slot * BoneFloats;
-            var now = new ReadOnlySpan<float>(_dbStage + off, BoneFloats);
-            var prev = new Span<float>(_dbPrev + off, BoneFloats);
+            var now = new ReadOnlySpan<float>(((BoneRec*)_dbStage)[slot].F, BoneFloats);
+            var prev = new Span<float>(((BoneRec*)_dbPrev)[slot].F, BoneFloats);
             // A FRESH slot's history is its own pose, or a creature's first frame smears from whatever the
             // slot held before it.
             if (_dbFresh.Remove(slot)) now.CopyTo(prev);
-            prev.CopyTo(new Span<float>(_bonePrevStage + off, BoneFloats));
-            now.CopyTo(new Span<float>(_boneStage + off, BoneFloats));
+            prev.CopyTo(new Span<float>(((BoneRec*)_bonePrevStage)[slot].F, BoneFloats));
+            now.CopyTo(new Span<float>(((BoneRec*)_boneStage)[slot].F, BoneFloats));
             now.CopyTo(prev);
         }
     }

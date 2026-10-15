@@ -36,7 +36,7 @@ public static unsafe class SceneRay
         _scene = (IntPtr*)Native.Sym(SymbolMap.CurrentScene);
         _statics = (int*)Native.Sym(SymbolMap.HitcheckStaticTrimesh);
         if (_hitCheck == null || _reset == null || _scene == null) return;
-        _info = (byte*)NativeMemory.AllocZeroed(SizeOfHitInfo + 8);
+        _info = (byte*)NativeMemory.AllocZeroed((nuint)sizeof(HitInfoBlock));
     }
 
     /// <summary>The world scene being animated/rendered, or zero (no area, or a GUI panel's scene).</summary>
@@ -81,8 +81,9 @@ public static unsafe class SceneRay
         var info = new CHitInfo((IntPtr)_info);
         // hit-test mode 0 = BSP parts then gobs; -0x40000001 and box 0 are the camera's own arguments
         _reset((IntPtr)_info, 0, -0x40000001L, 0);
-        *(IntPtr*)(_info + SizeOfHitInfo) = ignore;
-        info.IgnoreList = (IntPtr)(_info + SizeOfHitInfo);
+        var block = (HitInfoBlock*)_info;
+        block->IgnoreSlot = ignore;
+        info.IgnoreList = (IntPtr)(&block->IgnoreSlot);
         info.IgnoreCount = 1;
         Vec3 h;
         // Both ends of the segment cross BY VALUE: the locals are what VectorArg points Win64 at.

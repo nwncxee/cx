@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Mdl;
+using CX.Engine;
 
 namespace CX.Alloy.Db;
 
@@ -431,11 +432,12 @@ public static partial class TextSlots
         if (!d.InfoOut) return;
         byte* p = (byte*)d.InfoBuf;
         new Span<byte>(p, DisplayInfoSize).Clear();
-        *(int*)p = d.TopLine; *(int*)(p + 4) = d.VisibleLines; *(int*)(p + 8) = d.ScrollBudget;
-        *(float*)(p + 0xc) = d.InfoW = d.MaxWidth; *(float*)(p + 0x10) = d.InfoH = d.MaxHeight;
-        *(float*)(p + 0x14) = d.TotalHeight; *(float*)(p + 0x18) = d.VisibleHeight;
-        *(float*)(p + 0x1c) = d.SubLineScroll; *(int*)(p + 0x20) = d.PixelScroll ? 1 : 0;
-        if (d.Font != null) *(float*)(p + 0x28) = d.Font.FontHeight / TextObjects.UnitPerPixel;
+        var info = (TextDisplayInfo*)p;
+        info->TopLine = d.TopLine; info->VisibleLines = d.VisibleLines; info->ScrollBudget = d.ScrollBudget;
+        info->Width = d.InfoW = d.MaxWidth; info->Height = d.InfoH = d.MaxHeight;
+        info->TotalHeight = d.TotalHeight; info->VisibleHeight = d.VisibleHeight;
+        info->SubLineScroll = d.SubLineScroll; info->PixelScroll = d.PixelScroll ? 1 : 0;
+        if (d.Font != null) info->FontHeight = d.Font.FontHeight / TextObjects.UnitPerPixel;
     }
 
     /// <summary>Adopt a box the game wrote through the handed-out display block since the last slot call, the
@@ -453,7 +455,7 @@ public static partial class TextSlots
     {
         if (!d.InfoOut) return false;
         byte* p = (byte*)d.InfoBuf;
-        float w = *(float*)(p + 0xc), h = *(float*)(p + 0x10);
+        float w = ((TextDisplayInfo*)p)->Width, h = ((TextDisplayInfo*)p)->Height;
         if (w == d.InfoW && h == d.InfoH) return false;
         if (w != d.InfoW) d.MaxWidth = d.InfoW = w;
         if (h != d.InfoH) d.MaxHeight = d.InfoH = h;

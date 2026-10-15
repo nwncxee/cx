@@ -1,3 +1,4 @@
+using CX.Engine;
 using System.Collections.Generic;
 using System;
 using CX.Alloy.Db;
@@ -235,7 +236,7 @@ public sealed unsafe partial class AlloyRenderer
             vao = MeshChart.DbSlot; item = Db.DrawRecipe.Range(_oDbRecipe[i]);
         }
         else { vao = _oVao[i]; item = _oItem[i]; }
-        fixed (float* r = _dData) model = *(Matrix4x4*)(r + (long)i * DrawFloats);
+        fixed (float* r = _dData) model = *(Matrix4x4*)(((DrawRec*)r)[i].F);
         return true;
     }
 
@@ -411,7 +412,7 @@ public sealed unsafe partial class AlloyRenderer
                 int i = _swapOverflow ? k : _swapSlots[k];
                 _recSwapped[i] = false;
                 if (_oTri[i] == IntPtr.Zero) continue;
-                ulong* hh = th + (long)i * 8;
+                ulong* hh = ((Stride8u*)th)[i].F;
                 if (hh[0] == 0) continue;
                 hh[0] = HandleFor(_recTid[i]);
                 for (int s = 0; s < MapSlots; s++) hh[1 + s] = _recTidS[i * MapSlots + s] != 0 ? HandleFor(_recTidS[i * MapSlots + s]) : 0;

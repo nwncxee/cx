@@ -241,14 +241,14 @@ public static class TextQuads
         QuadList? list = d.PublishedQuads;
         if (list == null || list.QuadVerts == 0 || list.RunCount == 0) return 0;
         int issued = 0;
-        fixed (float* q = list.Quads)
-            for (int i = 0; i < list.RunCount; i++)
+        for (int i = 0; i < list.RunCount; i++)
             {
                 var run = list.Runs[i];
                 if (run.Count <= 0) continue;
                 var rgba = new Vector4(run.R, run.G, run.B, i == list.CaretRun ? caretAlpha : run.A);
-                GuiCapture.TextRun(q + (long)run.First * VertFloats, run.Count, Gl.TRIANGLES, mvp, i == list.SelRun ? 0 : (int)atlas,
-                                   rgba, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA, depthTest, depthWrite);
+                fixed (float* q = list.Quads.AsSpan(checked((int)((long)run.First * VertFloats))))
+                    GuiCapture.TextRun(q, run.Count, Gl.TRIANGLES, mvp, i == list.SelRun ? 0 : (int)atlas,
+                                       rgba, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA, depthTest, depthWrite);
                 issued++;
             }
         return issued;

@@ -119,7 +119,7 @@ public static unsafe class DbCamera
             // CAurBehaviorSubwindow) is followed by a pose read BACK from the shell (DbAnim.SyncFromShell), and
             // stale words there put the list camera at the origin, every row behind its near plane.
             nint sh = SceneDb.ObjFacade[pobj.Index];
-            if (sh != 0) { float* w = (float*)(sh + Seam.SeamLayout.GobPos); w[0] = p.X; w[1] = p.Y; w[2] = p.Z; }
+            if (sh != 0) new Gob(sh).Position = p;
             SceneDb.Touch(pobj, Dirty.Xform);
         }
         SceneDb.CamVolumeSet[i] = false;
@@ -171,7 +171,7 @@ public static unsafe class DbCamera
         {
             SceneDb.ObjRot[robj.Index] = q;
             nint sh = SceneDb.ObjFacade[robj.Index];
-            if (sh != 0) { float* w = (float*)(sh + Seam.SeamLayout.GobRot); w[0] = q.W; w[1] = q.X; w[2] = q.Y; w[3] = q.Z; }
+            if (sh != 0) new Gob(sh).Rot = q;
             SceneDb.Touch(robj, Dirty.Xform);
         }
         SceneDb.CamVolumeSet[cam.Index] = false;

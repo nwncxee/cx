@@ -1,3 +1,4 @@
+using CX.Engine;
 using System;
 using System.Numerics;
 using CX.Alloy.Db;
@@ -27,7 +28,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int RecWhy(float* r, in RecordFrameState f, bool modelMoved)
     {
         int m = modelMoved ? 1 << RecWhyModel : 0;
-        if (!modelMoved && *(Matrix4x4*)(r + PrevFloat) != *(Matrix4x4*)r) m |= 1 << RecWhyPrev;
+        if (!modelMoved && *(Matrix4x4*)(&r[PrevFloat]) != *(Matrix4x4*)r) m |= 1 << RecWhyPrev;
         if (r[18] != f.Dissolve) m |= 1 << RecWhyDissolve;
         if (r[19] != f.Alpha) m |= 1 << RecWhyAlpha;
         if (f.Lit)
@@ -172,7 +173,7 @@ public sealed unsafe partial class AlloyRenderer
             if (_bindless)
                 fixed (ulong* th = _dTexH)
                 {
-                    ulong* hh = th + (long)i * 8;
+                    ulong* hh = ((Stride8u*)th)[i].F;
                     bool moved = false;
                     for (int s = 0; s < 8; s++)
                     {
@@ -280,7 +281,7 @@ public sealed unsafe partial class AlloyRenderer
         // CX-120 (integration 4): the tile's fog-of-war REVEAL, in the record's one spare lane. Vanilla fogs
         // an unexplored interior tile toward black (RenderDrawBucket @0x46d060: fog colour x f^2, fog end x f)
         // rather than fading its alpha, which is why this is a fog term and PartFade stays plain alpha.
-        float* r = data + (long)i * DrawFloats;
+        float* r = ((DrawRec*)data)[i].F;
         // HIDDEN, not reveal -- see RevealFloat: an unwritten lane is 0 and 0 must mean explored.
         float hidden = 1f - SceneDb.PartReveal[part];
         bool revealMoved = r[RevealFloat] != hidden;

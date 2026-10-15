@@ -129,7 +129,7 @@ public sealed unsafe partial class AlloyRenderer
                 // The world box ComputePartBBox filled at tile spawn. One that was never filled is a part with
                 // no bounds to index on, and unbounded means VISIBLE -- the same answer its NeverCull sphere
                 // already gave the cull.
-                float* b = boxes + (long)i * 6;
+                float* b = ((Stride6f*)boxes)[i].F;
                 if (HasBox(b)) AreaGrid.Add(i, b);
                 else { AreaGrid.AddUnboxed(i); if (b[0] == 0f && b[1] == 0f && b[2] == 0f && b[3] == 0f && b[4] == 0f && b[5] == 0f) _unboxedEmpty++; }
             }
@@ -196,7 +196,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int k = from; k < n; k++)
             {
                 int i = _vis[k];
-                float* b = ob + (long)i * 6;
+                float* b = ((Stride6f*)ob)[i].F;
                 // An unboundable slot has no box to test and is always visible, exactly as its NeverCull
                 // sphere already made it. So is a slot whose SPHERE is NeverCull: that exemption exists
                 // because the geometry leaves its bounds (a wind-swayed plant, a roofknm offset), which is a
@@ -367,15 +367,15 @@ public sealed unsafe partial class AlloyRenderer
         if (first >= 0)
             fixed (float* ob = _oBox)
             {
-                float* b = ob + (long)first * 6;
-                float* sp = sph + (long)first * 4;
+                float* b = ((Stride6f*)ob)[first].F;
+                float* sp = ((Stride4f*)sph)[first].F;
                 int held = Array.IndexOf(_vis, first, 0, _visEnd[AlloyClasses.Count - 1]);
                 // CX-188: the one question the line never asked. A query reaches a slot only through the cell
                 // it was FILED under and tests that cell's union box, so a box that moved after the filing
                 // (DbWriteWorldBox runs on every record rewrite; the grid is built once per enrolment) is
                 // invisible to every query. "filed 123 now 456" or "union no" says that is what happened;
                 // "filed 123 now 123 union yes" says it is not, and the loss is downstream of the cell test.
-                bool stillFiled = AreaGrid.StillFiled(first, ob + (long)first * 6, out int cellWas, out int cellNow, out bool covered);
+                bool stillFiled = AreaGrid.StillFiled(first, ((Stride6f*)ob)[first].F, out int cellWas, out int cellNow, out bool covered);
                 where = $" first miss slot {first} cls {_oCls[first]} rank {_orderRank[first]} gob {(_oGob[first] != IntPtr.Zero ? "yes" : "no")} "
                       + $"grid {(stillFiled ? "agrees" : "STALE")} (filed cell {cellWas}, box now in {cellNow}, cell union covers it: {(covered ? "yes" : "NO")}) "
                       + $"{(held >= 0 ? $"IN the set at {held} but outside its class cut" : "absent from the set")} "
@@ -396,7 +396,7 @@ public sealed unsafe partial class AlloyRenderer
         if (_oGob[i] != IntPtr.Zero) return true;
         fixed (float* ob = _oBox) fixed (float* pp = _passPlanes) fixed (float* sp = _dSph)
         {
-            float* b = ob + (long)i * 6;
+            float* b = ((Stride6f*)ob)[i].F;
             // Exactly the trim's own predicate: a box that does not bind cannot excuse the slot's absence, so
             // such a slot reads as a real miss rather than as box-excluded.
             return !BoxBinds(i, b, sp) || AreaGrid.BoxInFrustum(pp, b, RouteSlackUnits);
@@ -468,13 +468,13 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is the slot's cull sphere inside this pass's six planes, with the route slack?</summary>
     private static bool SphereInPass(int i, float* sph)
     {
-        float* s = sph + (long)i * 4;
+        float* s = ((Stride4f*)sph)[i].F;
         if (s[3] >= NeverCull) return true;
         float r = s[3] * ShadowMath.FrustumCullSlack + RouteSlackUnits;
         fixed (float* p = _passPlanes)
             for (int f = 0; f < 6; f++)
             {
-                float* pl = p + f * 4;
+                float* pl = ((Stride4f*)p)[f].F;
                 if (pl[0] * s[0] + pl[1] * s[1] + pl[2] * s[2] + pl[3] < -r) return false;
             }
         return true;

@@ -1,4 +1,6 @@
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace CX.Graphics;
 
@@ -59,7 +61,9 @@ public unsafe struct GpuReadback
     {
         if (_map == null || _fence[slot] == 0) return null;
         uint st = Gl.ClientWaitSync((IntPtr)_fence[slot], 0, 0);
-        return st == Gl.ALREADY_SIGNALED || st == Gl.CONDITION_SATISFIED ? _map + slot * _slotBytes : null;
+        if (st != Gl.ALREADY_SIGNALED && st != Gl.CONDITION_SATISFIED) return null;
+        var all = new Span<byte>(_map, checked((int)(_slotBytes * Slots)));
+        return (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(all.Slice(checked((int)(slot * _slotBytes)))));
     }
 
     /// <summary>Delete the buffer and the fences (the context is current).</summary>

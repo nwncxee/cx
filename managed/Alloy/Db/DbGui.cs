@@ -481,7 +481,7 @@ internal static unsafe class DbGui
             _probeSaid++;
             nint shell = CX.Alloy.Seam.Facade.ObjectShell(SceneDb.Objects.IdAt(o));
             float shellAlpha = shell == 0 ? -1f
-                : *(float*)(shell + CX.Alloy.Seam.SeamLayout.GobColourAlpha);
+                : new CX.Engine.Gob(shell).Alpha;
             _log?.Info($"DbGui: [probe {_probeX[k]},{_probeY[k]}] scene={SceneDb.ObjScene[o].Index} "
                 + $"\"{SceneDb.SceneName[SceneDb.ObjScene[o].Index]}\" o={o} model="
                 + $"{SceneDb.ObjModel[o]?.Name ?? "-"} p={p} node=\"{NodeName(p)}\" cls={d.Blend} "
@@ -570,7 +570,7 @@ internal static unsafe class DbGui
     private static float ShellAlpha(int o)
     {
         nint shell = SceneDb.ObjFacade[o];
-        return shell == 0 ? 1f : *(float*)(shell + CX.Alloy.Seam.SeamLayout.GobColourAlpha);
+        return shell == 0 ? 1f : new CX.Engine.Gob(shell).Alpha;
     }
 
     /// <summary>Where the FACADE says this object is -- the words <c>Gob::GetPosition</c> answers and the ones
@@ -618,7 +618,7 @@ internal static unsafe class DbGui
     private static nint ShellBeh(int o)
     {
         nint shell = SceneDb.ObjFacade[o];
-        return shell == 0 ? 0 : *(nint*)(shell + CX.Alloy.Seam.SeamLayout.GobBehavior);
+        return shell == 0 ? 0 : new CX.Engine.Gob(shell).Attach.Ptr;
     }
 
     /// <summary>An attached object whose anchor part did not resolve: name the parent's nodes once per

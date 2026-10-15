@@ -12,6 +12,9 @@ internal static unsafe class PltImage
 {
     /// <summary>Bytes per PLT pixel on the GPU: R = intensity, G = layer, as RG8.</summary>
     internal const int BytesPerPixel = 2;
+
+    /// <summary>One PLT texel as the chain stores it: intensity, then layer.</summary>
+    internal struct Texel { public byte Intensity, Layer; }
     internal const int HeaderBytes = 24;
     /// <summary><c>'PLT '</c>, the dword <c>OnResourceServiced</c> compares. The shipped files carry
     /// <c>"PLT V1  "</c>; the engine never looks past the first four bytes.</summary>
@@ -131,22 +134,21 @@ internal static unsafe class PltImage
     /// destination texel's parity; taking the lower index walked <c>pmh0_chest004</c>'s metal 63% -> 79%.</summary>
     internal static void BuildMips(byte* chain, int w, int h, int levels)
     {
+        var px = (Texel*)chain;
         long srcOff = 0;
         for (int l = 1; l < levels; l++)
         {
             int sw = w, sh = h;
             w = Math.Max(1, w >> 1); h = Math.Max(1, h >> 1);
-            long dstOff = srcOff + (long)sw * sh * BytesPerPixel;
-            byte* s = chain + srcOff, d = chain + dstOff;
+            long dstOff = srcOff + (long)sw * sh;
             for (int y = 0; y < h; y++)
             {
                 int y0 = y * 2, y1 = Math.Min(y0 + 1, sh - 1);
                 for (int x = 0; x < w; x++)
                 {
                     int x0 = x * 2, x1 = Math.Min(x0 + 1, sw - 1);
-                    Reduce(s, sw, x0, y0, x1, y1, (x ^ y) & 1, out byte inten, out byte layer);
-                    byte* o = d + ((long)y * w + x) * BytesPerPixel;
-                    o[0] = inten; o[1] = layer;
+                    Reduce(px, srcOff, sw, x0, y0, x1, y1, (x ^ y) & 1, out byte inten, out byte layer);
+                    px[dstOff + (long)y * w + x] = new Texel { Intensity = inten, Layer = layer };
                 }
             }
             srcOff = dstOff;
@@ -157,17 +159,17 @@ internal static unsafe class PltImage
     /// decided by <paramref name="parity"/> -- the destination texel's <c>(x ^ y) &amp; 1</c> -- which takes
     /// the lowest tied layer on one texel and the next one along on its neighbour, so neither layer grows
     /// at the other's expense down the chain.</summary>
-    private static void Reduce(byte* s, int sw, int x0, int y0, int x1, int y1, int parity, out byte inten, out byte layer)
+    private static void Reduce(Texel* s, long at, int sw, int x0, int y0, int x1, int y1, int parity, out byte inten, out byte layer)
     {
-        byte* a = s + ((long)y0 * sw + x0) * BytesPerPixel;
-        byte* b = s + ((long)y0 * sw + x1) * BytesPerPixel;
-        byte* c = s + ((long)y1 * sw + x0) * BytesPerPixel;
-        byte* e = s + ((long)y1 * sw + x1) * BytesPerPixel;
-        int best = a[1], bestN = 0;
+        Texel a = s[at + (long)y0 * sw + x0];
+        Texel b = s[at + (long)y0 * sw + x1];
+        Texel c = s[at + (long)y1 * sw + x0];
+        Texel e = s[at + (long)y1 * sw + x1];
+        int best = a.Layer, bestN = 0;
         for (int k = 0; k < 4; k++)
         {
-            int cand = (k == 0 ? a : k == 1 ? b : k == 2 ? c : e)[1];
-            int n = (a[1] == cand ? 1 : 0) + (b[1] == cand ? 1 : 0) + (c[1] == cand ? 1 : 0) + (e[1] == cand ? 1 : 0);
+            int cand = (k == 0 ? a : k == 1 ? b : k == 2 ? c : e).Layer;
+            int n = (a.Layer == cand ? 1 : 0) + (b.Layer == cand ? 1 : 0) + (c.Layer == cand ? 1 : 0) + (e.Layer == cand ? 1 : 0);
             if (n > bestN) { best = cand; bestN = n; }
             else if (n == bestN && cand != best)
             {
@@ -175,10 +177,10 @@ internal static unsafe class PltImage
             }
         }
         int sum = 0, cnt = 0;
-        if (a[1] == best) { sum += a[0]; cnt++; }
-        if (b[1] == best) { sum += b[0]; cnt++; }
-        if (c[1] == best) { sum += c[0]; cnt++; }
-        if (e[1] == best) { sum += e[0]; cnt++; }
+        if (a.Layer == best) { sum += a.Intensity; cnt++; }
+        if (b.Layer == best) { sum += b.Intensity; cnt++; }
+        if (c.Layer == best) { sum += c.Intensity; cnt++; }
+        if (e.Layer == best) { sum += e.Intensity; cnt++; }
         inten = (byte)((sum + (cnt >> 1)) / cnt);
         layer = (byte)best;
     }

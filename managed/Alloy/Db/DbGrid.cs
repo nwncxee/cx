@@ -147,7 +147,7 @@ internal static unsafe class DbGrid
             {
                 int head = _head[c];
                 if (head < 0) continue;
-                if (!AreaGrid.BoxInFrustum(planes, boxes + c * 6, slack)) continue;
+                if (!AreaGrid.BoxInFrustum(planes, ((Stride6f*)boxes)[c].F, slack)) continue;
                 for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
             }
         return n;

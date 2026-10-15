@@ -20,8 +20,6 @@ public sealed unsafe class UiInputService : IExtenderService
     // ---- SDL_Event layout (verified against WinMessageHandler; same offsets the old capture used) ----
     private const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301, SdlTextInput = 0x303;  // not-an-offset: SDL key/event code
     private const uint SdlMouseMotion = 0x400, SdlMouseDown = 0x401, SdlMouseUp = 0x402, SdlMouseWheel = 0x403;  // not-an-offset: SDL key/event code
-    private const int SdlEvTextOff = 0xC, SdlEvSymOff = 0x14, SdlEvButtonOff = 0x10;  // not-an-offset: SDL_Event ABI, not an engine class
-    private const int SdlEvMouseXOff = 0x14, SdlEvMouseYOff = 0x18, SdlEvWheelYOff = 0x14;  // not-an-offset: SDL_Event ABI, not an engine class
 
     // NUI keyboard-focus probe: ctx->active (0x6730) is the focused window; win->edit.active (0x18c) is nonzero
     // while an edit box has focus. NUI runs a parallel SDL pump, so a key typed in a NUI field still reaches us.
@@ -154,23 +152,23 @@ public sealed unsafe class UiInputService : IExtenderService
                     // (it runs pre-HandleWMKeyDown with no modifier check). Only when no full owner is typing
                     // (an owner suppresses keybinds via the keyboard-mode gate). Keyups still pass -> no stuck key.
                     if (!UiHost.AnyKeyboardOwner
-                        && UiHost.DispatchKeyPumpSwallow(*(uint*)(ev + SdlEvSymOff), RawMods()))
+                        && UiHost.DispatchKeyPumpSwallow(((SdlEvent*)ev)->SymU, RawMods()))
                         return 0;
                     break;
                 case SdlKeyUp:
-                    _keysDown.Remove(*(uint*)(ev + SdlEvSymOff));
+                    _keysDown.Remove(((SdlEvent*)ev)->SymU);
                     break;
                 case SdlTextInput:
                     // ...and the same for finished text: a focused NUI edit box owns the keyboard outright.
                     if (!NuiEditFocused())
                     {
                         if (!UiHost.AnyKeyboardOwner) CX.Alloy.Db.EditSelect.BeforeText();   // typing replaces a game edit box's selection
-                        UiHost.DispatchText(ev + SdlEvTextOff);   // finished UTF-8 -> the keyboard owner's edit line
+                        UiHost.DispatchText(((SdlEvent*)ev)->Text);   // finished UTF-8 -> the keyboard owner's edit line
                     }
                     break;
                 case SdlMouseMotion:
                 {
-                    int mx = *(int*)(ev + SdlEvMouseXOff), my = *(int*)(ev + SdlEvMouseYOff);
+                    int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     if (UiHost.HoverToFocus) UiHost.HoverFocusAt(mx, my);
                     if (UiHost.DispatchMouseMotion(mx, my))
                     {
@@ -185,8 +183,8 @@ public sealed unsafe class UiInputService : IExtenderService
                 }
                 case SdlMouseDown:
                 {
-                    byte btn = *(byte*)(ev + SdlEvButtonOff);
-                    int mx = *(int*)(ev + SdlEvMouseXOff), my = *(int*)(ev + SdlEvMouseYOff);
+                    byte btn = ((SdlEvent*)ev)->Button;
+                    int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     IntPtr gui = VanillaGuiAt(GuiPressMask);
                     bool ours = MenuWindowAt(mx, my);
                     if (KeyDiag)
@@ -205,18 +203,18 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseUp:
                 {
                     CX.Alloy.Db.EditSelect.MouseUp();
-                    if (*(byte*)(ev + SdlEvButtonOff) == SdlButtonLeft) CX.Services.Nui.NuiModelView.OnRelease();
-                    byte btn = *(byte*)(ev + SdlEvButtonOff);
-                    int mx = *(int*)(ev + SdlEvMouseXOff), my = *(int*)(ev + SdlEvMouseYOff);
+                    if (((SdlEvent*)ev)->Button == SdlButtonLeft) CX.Services.Nui.NuiModelView.OnRelease();
+                    byte btn = ((SdlEvent*)ev)->Button;
+                    int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     if (UiHost.DispatchMouseButton(false, btn, mx, my)) return 0;
                     break;
                 }
                 case SdlMouseWheel:
                     Pointer(out float x, out float y);
-                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff), captureOnly: true, x, y)) return 0;
-                    if (NuiHovered() && CX.Services.Nui.NuiModelView.OnWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
+                    if (UiHost.DispatchMouseWheel(((SdlEvent*)ev)->WheelY, captureOnly: true, x, y)) return 0;
+                    if (NuiHovered() && CX.Services.Nui.NuiModelView.OnWheel(((SdlEvent*)ev)->WheelY)) return 0;
                     if (NuiHovered() || (VanillaGuiAt(GuiWheelMask) != IntPtr.Zero && !MenuWindowUnderPointer())) break;   // ...and the scroll
-                    if (UiHost.DispatchMouseWheel(*(int*)(ev + SdlEvWheelYOff))) return 0;
+                    if (UiHost.DispatchMouseWheel(((SdlEvent*)ev)->WheelY)) return 0;
                     break;
             }
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using CX.Alloy.Seam;
 using CX.Engine;
 using CX.Framework;
@@ -168,7 +169,7 @@ public static unsafe partial class DbAnim
         {
             _dispSaid[obj.Index]++;
             nint sh = SceneDb.ObjFacade[obj.Index];
-            float* w = sh == 0 ? null : (float*)(sh + Seam.SeamLayout.GobPos);
+            float* w = sh == 0 ? null : (float*)Unsafe.AsPointer(ref new Gob(sh).Position);
             // CAurBehaviorCrossSceneAttach::Control's inputs: the child's own behaviour word must be this
             // behaviour, the target live, and the part the one GetWorld is asked for.
             nint target = new CAurBehavior((IntPtr)beh).Target.Ptr;
@@ -179,7 +180,7 @@ public static unsafe partial class DbAnim
             _log?.Info($"[dbbeh] Control o={obj.Index} \"{SceneDb.ObjModel[obj.Index]?.Name ?? "-"}\" "
                        + $"vtbl=0x{vtbl:x} column={SceneDb.ObjPos[obj.Index]} "
                        + (w == null ? "shell=-" : $"shell=<{w[0]}, {w[1]}, {w[2]}>")
-                       + $" own={(sh == 0 ? 0 : *(nint*)(sh + Seam.SeamLayout.GobBehavior)) == beh} "
+                       + $" own={(sh == 0 ? 0 : new Gob(sh).Attach.Ptr) == beh} "
                        + $"target=o{Facade.ObjectId(target).Index} part={pw}");
         }
         if (ShellPoseSync == null)

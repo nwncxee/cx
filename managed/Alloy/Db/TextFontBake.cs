@@ -135,49 +135,45 @@ public static unsafe class TextFontBake
         // stbtt keeps a pointer into the font bytes for the whole pack, so they live in native memory for it.
         IntPtr font = Marshal.AllocHGlobal(ttf.Length);
         IntPtr cov = Marshal.AllocHGlobal(w * h);
-        IntPtr chars = Marshal.AllocHGlobal(glyphs * PackedCharBytes);
+        IntPtr chars = Marshal.AllocHGlobal(glyphs * sizeof(StbPackedChar));
         IntPtr cps = Marshal.AllocHGlobal(glyphs * sizeof(int));
         IntPtr spc = Marshal.AllocHGlobal(PackContextBytes);
-        IntPtr range = Marshal.AllocHGlobal(PackRangeBytes);
+        IntPtr range = Marshal.AllocHGlobal(sizeof(StbPackRange));
         try
         {
             Marshal.Copy(ttf, 0, font, ttf.Length);
             new Span<byte>((void*)cov, w * h).Clear();
             new Span<byte>((void*)spc, PackContextBytes).Clear();
-            new Span<byte>((void*)range, PackRangeBytes).Clear();
+            new Span<byte>((void*)range, sizeof(StbPackRange)).Clear();
 
             int* cp = (int*)cps;
             for (int i = 0; i < glyphs; i++) cp[i] = Codepoint((byte)i);
 
-            byte* r = (byte*)range;
-            *(float*)r = px;                       // font_size
-            *(int*)(r + 4) = 0;                    // first_unicode_codepoint_in_range (the engine leaves this
-                                                   // uninitialised; stb ignores it when the array is non-null)
-            *(IntPtr*)(r + 8) = cps;               // array_of_unicode_codepoints
-            *(int*)(r + 16) = glyphs;              // num_chars
-            *(IntPtr*)(r + 24) = chars;            // chardata_for_range
+            var r = (StbPackRange*)range;
+            r->FontSize = px;
+            r->Codepoints = cps;
+            r->NumChars = glyphs;
+            r->CharData = chars;
 
             EngineFn.Cx119StbttPackBegin((byte*)spc, (byte*)cov, w, h, 0, TextFontLoad.AtlasPadding, null);
             EngineFn.Cx119StbttPackSetOversampling((byte*)spc, TextFontLoad.Oversample, TextFontLoad.Oversample);
-            EngineFn.Cx119StbttPackFontRanges((byte*)spc, (byte*)font, 0, r, 1);
+            EngineFn.Cx119StbttPackFontRanges((byte*)spc, (byte*)font, 0, (byte*)r, 1);
             EngineFn.Cx119StbttPackEnd((byte*)spc);
 
             int baseline = BaseLine(font, px);
-            byte* pc = (byte*)chars;
+            var pc = (StbPackedChar*)chars;
             int maxX1 = 0;
             for (int i = 0; i < glyphs; i++)
             {
-                int x1 = *(ushort*)(pc + i * PackedCharBytes + 4);
+                int x1 = pc[i].X1;
                 if (x1 > maxX1) maxX1 = x1;
             }
             int cropW = TextFontLoad.CropWidth(w, maxX1);
 
             for (int i = 0; i < glyphs; i++)
             {
-                byte* g = pc + i * PackedCharBytes;
-                var p = new TextFontLoad.Packed(
-                    *(ushort*)g, *(ushort*)(g + 2), *(ushort*)(g + 4), *(ushort*)(g + 6),
-                    *(float*)(g + 8), *(float*)(g + 12), *(float*)(g + 16), *(float*)(g + 20), *(float*)(g + 24));
+                StbPackedChar g = pc[i];
+                var p = new TextFontLoad.Packed(g.X0, g.Y0, g.X1, g.Y1, g.XOff, g.YOff, g.XAdvance, g.XOff2, g.YOff2);
                 TextFontLoad.GlyphCoords(p, cropW, h, baseline, px,
                     out f.UlU[i], out f.UlV[i], out f.UlZ[i], out f.LrU[i], out f.LrV[i], out f.LrZ[i]);
                 // The extrapolated part of the v range is trimmed off both the range and the quad by the same
@@ -309,5 +305,5 @@ public static unsafe class TextFontBake
     /// bytes (the stack <c>CAuroraTTFTexture::Load</c> reserves) and <c>stbtt_fontinfo</c> 168
     /// (<c>GetBaseLine</c>'s); both are over-allocated here against a future build. <c>stbtt_packedchar</c> 28
     /// and <c>stbtt_pack_range</c> 40 are exact, being read field by field.</summary>
-    private const int PackContextBytes = 128, FontInfoBytes = 256, PackedCharBytes = 28, PackRangeBytes = 40;
+    private const int PackContextBytes = 128, FontInfoBytes = 256;
 }

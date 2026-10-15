@@ -519,21 +519,21 @@ public sealed unsafe class PoseService : IExtenderService
         if (NameIs(name, "pelvis_g\0"u8)) return 9;
         int side = Lower(name[0]) switch { (byte)'r' => 0, (byte)'l' => 3, _ => -1 };
         if (side < 0) return -1;
-        if (NameIs(name + 1, "thigh_g\0"u8)) return side;
-        if (NameIs(name + 1, "shin_g\0"u8)) return side + 1;
-        if (NameIs(name + 1, "foot_g\0"u8)) return side + 2;
+        if (NameIs(name, "thigh_g\0"u8, 1)) return side;
+        if (NameIs(name, "shin_g\0"u8, 1)) return side + 1;
+        if (NameIs(name, "foot_g\0"u8, 1)) return side + 2;
         int arm = 10 + side;
-        if (NameIs(name + 1, "bicep_g\0"u8)) return arm;
-        if (NameIs(name + 1, "forearm_g\0"u8)) return arm + 1;
-        if (NameIs(name + 1, "hand_g\0"u8)) return arm + 2;
+        if (NameIs(name, "bicep_g\0"u8, 1)) return arm;
+        if (NameIs(name, "forearm_g\0"u8, 1)) return arm + 1;
+        if (NameIs(name, "hand_g\0"u8, 1)) return arm + 2;
         return -1;
     }
 
     /// <summary>ASCII case-insensitive compare of a C string against a NUL-terminated literal.</summary>
-    private static bool NameIs(byte* s, ReadOnlySpan<byte> lit)
+    private static bool NameIs(byte* s, ReadOnlySpan<byte> lit, int at = 0)
     {
         for (int i = 0; i < lit.Length; i++)
-            if (Lower(s[i]) != lit[i]) return false;
+            if (Lower(s[at + i]) != lit[i]) return false;
         return true;
     }
 
@@ -614,7 +614,7 @@ public sealed unsafe class PoseService : IExtenderService
         fixed (float* r = s.Rot)
         fixed (long* p = s.Parts)
             for (int i = 0; i < Bones.Count; i++)
-                if (bones[i] != IntPtr.Zero && bones[i] == (IntPtr)p[i]) PoseRig.SetLocal(bones[i], *(Quat*)(r + 4 * i));
+                if (bones[i] != IntPtr.Zero && bones[i] == (IntPtr)p[i]) PoseRig.SetLocal(bones[i], ((Quat*)r)[i]);
     }
 
     private static void Save(ref Slot s, IntPtr root, in Bones bones)
@@ -625,7 +625,7 @@ public sealed unsafe class PoseService : IExtenderService
             for (int i = 0; i < Bones.Count; i++)
             {
                 p[i] = (long)bones[i];
-                if (bones[i] != IntPtr.Zero) *(Quat*)(r + 4 * i) = PoseRig.Local(bones[i]);
+                if (bones[i] != IntPtr.Zero) ((Quat*)r)[i] = PoseRig.Local(bones[i]);
             }
     }
 

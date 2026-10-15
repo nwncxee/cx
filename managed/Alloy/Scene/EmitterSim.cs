@@ -336,8 +336,8 @@ internal static unsafe partial class EmitterSim
         for (int i = 0; i < _orderN; i++)
         {
             ref Slot slot = ref _tab[_order[i]];
-            Particles.Enroll(IntPtr.Zero, slot.Part, TexNameOf(ref slot), IntPtr.Zero,
-                             _ptrs + slot.Base, slot.Live);
+            fixed (IntPtr* block = new Span<IntPtr>(_ptrs, _slotCap).Slice(slot.Base))
+                Particles.Enroll(IntPtr.Zero, slot.Part, TexNameOf(ref slot), IntPtr.Zero, block, slot.Live);
         }
         if (stepping) Reclaim();
         FrameZones.Add(FrameZones.Zone.Emit, tEmit);
@@ -819,8 +819,9 @@ internal static unsafe partial class EmitterSim
         _slotTop += want;
         // The old block is abandoned rather than freed: the arena is a bump allocator and its only reclaim
         // is the whole-arena reset below, which is exactly the trade Particles' record blocks already make.
-        IntPtr* pt = _ptrs + at;
-        for (int i = 0; i < want; i++) pt[i] = (IntPtr)(_pool + (long)(at + i) * EngineLayout.ParticleStride);
+        Span<IntPtr> pt = new Span<IntPtr>(_ptrs, _slotCap).Slice(at, want);
+        var records = new Particle((IntPtr)_pool);
+        for (int i = 0; i < want; i++) pt[i] = records[at + i].Ptr;
         // Carry the live particles across. A controller animates birthrate and lifespan, so an emitter's
         // ceiling moves while it burns -- and a grow that dropped its population would make a ramping
         // fountain visibly restart, which is the wrong kind of cheap.

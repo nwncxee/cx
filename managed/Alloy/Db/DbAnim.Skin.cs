@@ -131,7 +131,7 @@ public static unsafe partial class DbAnim
         int limit = Math.Min(slots, BoneCount);
         for (int b = 0; b < BoneCount; b++)
         {
-            float* m = dst + b * 16;
+            float* m = ((Stride16f*)dst)[b].F;
             if (b >= limit) { Identity(m); continue; }
             int node = isMap ? MapNode(bones, b) : (b < bones.Length ? bones[b] : -1);
             int bp = node < 0 ? -1 : FindPart(first, n, boneModel, node);
