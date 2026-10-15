@@ -786,6 +786,7 @@ offset	CNWCArea	duskRunning	0x2b0	0x2b0	# AreaDuskRunning
 offset	CNWCArea	shadowOpacity	0x104	0x104	# AreaShadowOpacity
 offset	CNWCArea	sunDirection	0xcc	0xcc	# AreaSunDirection
 offset	CNWCArea	moonDirection	0xac	0xac	# AreaMoonDirection
+offset	CNWCArea	lightningFlash	0x2e4	0x2e4	# AreaLightningFlash
 offset	CNWCModule	transitionElapsed	0x174	0x174	# ModuleTransitionElapsed
 offset	CNWCModule	transitionLength	0x178	0x178	# ModuleTransitionLength
 offset	CNWCAmbientSound	music	0x188	0x188	# AmbientMusic

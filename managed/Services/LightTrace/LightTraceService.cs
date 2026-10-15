@@ -5,16 +5,17 @@ using CX.Framework;
 namespace CX.Services.LightTrace;
 
 /// <summary>
-/// The lighting trace: one knob, and a chain on every leaf the engine changes an area's light through, so
-/// "the nights are too dark" becomes a log showing what the server sent, what the engine applied and what
-/// Alloy rendered. Off by default, and off is one field read on the per-frame paths.
+/// The lighting trace, off by default: a chain on every leaf an area's light moves through, so "the nights
+/// are too dark" becomes a log of what the server sent, what the engine applied and what Alloy rendered. The
+/// APPLIED values exist only inside <c>SetGlobalLight*</c> and <c>SetFog</c>, and the transition and flash
+/// edges only in <c>CNWCArea::Update</c>'s state, so those chains record and leave the format to the sampler.
 /// </summary>
 public sealed unsafe partial class LightTraceService : IExtenderService
 {
     private static readonly LightTraceState St = new();
 
-    /// <summary>The one gate every handler opens with.</summary>
-    private static bool On => LightTraceKnobs.On.V;
+    /// <summary>The one gate every handler opens with: the knob, and a trace that actually installed.</summary>
+    private static bool On => LightTraceKnobs.On.V && St.Armed;
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
@@ -33,13 +34,15 @@ public sealed unsafe partial class LightTraceService : IExtenderService
     {
         St.AppliedSeen = false; St.FogSeen = false; St.Flashing = false;
         St.AppliedAt = -1; St.AlloyAt = -1; St.FogAt = -1; St.ShadowAt = -1;
-        Say(On ? $"{LightTraceLines.Tag} on -- every area-light change from here"
-               : $"{LightTraceLines.Tag} off");
+        if (!St.Armed) { St.Log?.Always($"{LightTraceLines.Tag} unavailable -- {St.Why}"); return; }
+        Say(LightTraceKnobs.On.V ? $"{LightTraceLines.Tag} on -- every area-light change from here"
+                                 : $"{LightTraceLines.Tag} off");
     }
 
     private static string Status()
-        => On ? $"lighttrace: on, {St.Lines} line(s) written; grep cx.log for {LightTraceLines.Tag}"
-              : $"lighttrace: off ({St.Lines} line(s) written this session)";
+        => !St.Armed ? $"lighttrace: unavailable -- {St.Why}"
+         : LightTraceKnobs.On.V ? $"lighttrace: on, {St.Lines} line(s) written; grep cx.log for {LightTraceLines.Tag}"
+         : $"lighttrace: off ({St.Lines} line(s) written this session)";
 
     /// <summary>Write one trace line. Cold by construction: every caller is a packet, a state change or a
     /// once-a-second sample, so the format is allowed to allocate.</summary>
@@ -49,7 +52,7 @@ public sealed unsafe partial class LightTraceService : IExtenderService
         St.Log?.Always(line);
     }
 
-    /// <summary>The sampled values, once a frame: what the engine applied to the area's sun, the fog amount it
+    /// <summary>The sampled values, once a frame: what the engine applied to the area's sun, the fog it
     /// pushed, and what Alloy rendered. When the trace is off this is one field read and a return -- nothing
     /// is formatted, nothing allocates and no engine memory is touched.</summary>
     private static void Sample()
@@ -65,11 +68,12 @@ public sealed unsafe partial class LightTraceService : IExtenderService
             Say(LightTraceLines.Applied(in applied));
         }
 
-        if (St.FogSeen && LightTraceLines.DueScalar(now, St.FogAt, St.FogSent, St.Fog, FogEps))
+        if (St.FogSeen && LightTraceLines.DueFog(now, St.FogAt, St.FogSent, St.Fog, St.FogRgbSent, St.FogRgb))
         {
             St.FogSent = St.Fog;
+            St.FogRgbSent = St.FogRgb;
             St.FogAt = now;
-            Say(LightTraceLines.AppliedFog(St.Fog));
+            Say(LightTraceLines.AppliedFog(St.Fog, St.FogRgb));
         }
 
         var alloy = new LightTriple(FrameInputs.HasAreaAmbient ? FrameInputs.AreaAmbient : default,
@@ -82,7 +86,4 @@ public sealed unsafe partial class LightTraceService : IExtenderService
             Say(LightTraceLines.Alloy(in alloy));
         }
     }
-
-    /// <summary>The fog amount is a 0..100 byte on the wire, so half a point is below its resolution.</summary>
-    private const float FogEps = 0.5f;
 }

@@ -1,12 +1,13 @@
 using System;
 using System.Globalization;
 using System.Numerics;
+using CX.Engine;
 
 namespace CX.Services.LightTrace;
 
 /// <summary>
 /// The lighting trace's pure half: the engine's slot, state and message numbers as names, one stable
-/// <c>cx.log</c> line per event, and the once-a-second change-only decision the sampled lines run through.
+/// <c>cx.log</c> line per event, and the once-a-second change-only decisions the sampled lines run through.
 /// Nothing here reads engine memory or GL -- every value arrives as an argument, so it is all checkable
 /// off-device.
 /// </summary>
@@ -24,6 +25,9 @@ internal static partial class LightTraceLines
     /// <summary>A direction step the server sends is a quarter of a degree or more, about 0.004 per
     /// component; this sits well under it.</summary>
     internal const float DirEps = 1e-3f;
+
+    /// <summary>The fog amount is a 0..100 byte on the wire, so half a point is below its resolution.</summary>
+    internal const float FogEps = 0.5f;
 
     /// <summary>The area's four colour slots by name. Slots 0/1 write the area's NIGHT ambient and diffuse
     /// pair, 2/3 its DAY pair, which is the branch table of <c>CNWCArea::SetAreaLightColor</c>.</summary>
@@ -52,6 +56,14 @@ internal static partial class LightTraceLines
         3 => "dawn",
         4 => "dusk",
         _ => "state" + state.ToString(CultureInfo.InvariantCulture),
+    };
+
+    /// <summary>The running transition by name, for the lines that report one.</summary>
+    internal static string PhaseName(DayNightPhase phase) => phase switch
+    {
+        DayNightPhase.Dawn => "dawn",
+        DayNightPhase.Dusk => "dusk",
+        _ => "none",
     };
 
     /// <summary>The name of an area message minor that can move the area's light, or null for one that
@@ -83,8 +95,8 @@ internal static partial class LightTraceLines
     internal static string FogAmount(int amount, uint area)
         => FormattableString.Invariant($"{Tag} packet fog-amount n={amount} area={Hex(area)}");
 
-    internal static string AppliedFog(float amount)
-        => FormattableString.Invariant($"{Tag} applied fog n={amount:F1}");
+    internal static string AppliedFog(float amount, Vector3 rgb)
+        => FormattableString.Invariant($"{Tag} applied fog n={amount:F1} rgb={V3(rgb)}");
 
     internal static string Shadow(float alpha, int opacity, string cause)
         => FormattableString.Invariant($"{Tag} shadowalpha={alpha:F3} opacity={opacity} {cause}");
@@ -105,11 +117,11 @@ internal static partial class LightTraceLines
     internal static string SetAs(string which, uint area, int cycle, int night)
         => FormattableString.Invariant($"{Tag} set-as {which} area={Hex(area)} cycle={cycle} night={night}");
 
-    internal static string TransitionStart(string which, float lengthSec)
-        => FormattableString.Invariant($"{Tag} transition {which} start len={lengthSec:F1}s");
+    internal static string TransitionStart(DayNightPhase phase, float lengthSec)
+        => FormattableString.Invariant($"{Tag} transition {PhaseName(phase)} start len={lengthSec:F1}s");
 
-    internal static string TransitionEnd(string which, float afterSec)
-        => FormattableString.Invariant($"{Tag} transition {which} end after={afterSec:F1}s");
+    internal static string TransitionEnd(DayNightPhase phase, float afterSec)
+        => FormattableString.Invariant($"{Tag} transition {PhaseName(phase)} end after={afterSec:F1}s");
 
     internal static string Applied(in LightTriple t)
         => FormattableString.Invariant($"{Tag} applied amb={V3(t.Ambient)} dif={V3(t.Diffuse)} dir={V3(t.Dir)}");
@@ -122,20 +134,20 @@ internal static partial class LightTraceLines
     internal static bool Due(long nowMs, long lastMs, in LightTriple last, in LightTriple next)
         => lastMs < 0 || (nowMs - lastMs >= PeriodMs && next.Differs(in last));
 
-    /// <summary><see cref="Due"/> for a single number: the fog amount and the shadow tint.</summary>
+    /// <summary><see cref="Due"/> for a single number: the shadow tint.</summary>
     internal static bool DueScalar(long nowMs, long lastMs, float last, float next, float eps)
         => lastMs < 0 || (nowMs - lastMs >= PeriodMs && MathF.Abs(next - last) > eps);
 
-    /// <summary>What the shadow tint would be with no lightning: the area's shadow opacity as a fraction,
-    /// scaled by |2t-1| while a dawn or dusk transition runs, which is the engine's own arithmetic.</summary>
-    internal static float ShadowExpected(int opacity, float t, bool transition)
-        => opacity / 100f * (transition ? MathF.Abs(2f * Math.Clamp(t, 0f, 1f) - 1f) : 1f);
+    /// <summary><see cref="Due"/> for the fog pair: the amount reaches the engine on a call of its own, apart
+    /// from the one that carries the colour, so either of them moving is worth the line.</summary>
+    internal static bool DueFog(long nowMs, long lastMs, float lastN, float nextN, Vector3 lastRgb, Vector3 nextRgb)
+        => lastMs < 0
+        || (nowMs - lastMs >= PeriodMs
+            && (MathF.Abs(nextN - lastN) > FogEps || Moved(nextRgb, lastRgb, ColourEps)));
 
-    /// <summary>Is the shadow tint sitting at the lightning flash's 40% of <paramref name="expected"/>? The
-    /// flash is the only writer that multiplies the tint, so the ratio names it; a tint the transition has
-    /// already taken to nothing is no verdict either way, so it reads as not flashing.</summary>
-    internal static bool Flashing(float alpha, float expected)
-        => expected > 1e-3f && alpha <= 0.7f * expected;
+    /// <summary>Has any channel moved by more than <paramref name="eps"/>?</summary>
+    internal static bool Moved(Vector3 a, Vector3 b, float eps)
+        => MathF.Abs(a.X - b.X) > eps || MathF.Abs(a.Y - b.Y) > eps || MathF.Abs(a.Z - b.Z) > eps;
 
     /// <summary>A fog vector <c>SetFogColors</c> leaves alone carries -1e7 in all three floats.</summary>
     internal static bool FogKept(Vector3 v) => v.X <= -1e6f && v.Y <= -1e6f && v.Z <= -1e6f;
@@ -157,10 +169,7 @@ internal readonly struct LightTriple(Vector3 ambient, Vector3 diffuse, Vector3 d
 
     /// <summary>Has this triple moved from <paramref name="o"/> by enough to be worth a line?</summary>
     internal bool Differs(in LightTriple o)
-        => Moved(Ambient, o.Ambient, LightTraceLines.ColourEps)
-        || Moved(Diffuse, o.Diffuse, LightTraceLines.ColourEps)
-        || Moved(Dir, o.Dir, LightTraceLines.DirEps);
-
-    private static bool Moved(Vector3 a, Vector3 b, float eps)
-        => MathF.Abs(a.X - b.X) > eps || MathF.Abs(a.Y - b.Y) > eps || MathF.Abs(a.Z - b.Z) > eps;
+        => LightTraceLines.Moved(Ambient, o.Ambient, LightTraceLines.ColourEps)
+        || LightTraceLines.Moved(Diffuse, o.Diffuse, LightTraceLines.ColourEps)
+        || LightTraceLines.Moved(Dir, o.Dir, LightTraceLines.DirEps);
 }
