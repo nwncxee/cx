@@ -16,3 +16,12 @@ M:System.Runtime.CompilerServices.Unsafe.Add``1(System.Void*,System.Int32);Read 
 M:System.Runtime.CompilerServices.Unsafe.AddByteOffset``1(``0@,System.IntPtr);Read the place as a field on a view under Framework/ (ADR 0031)
 M:System.Runtime.CompilerServices.Unsafe.AddByteOffset``1(``0@,System.UIntPtr);Read the place as a field on a view under Framework/ (ADR 0031)
 M:System.Runtime.CompilerServices.Unsafe.SubtractByteOffset``1(``0@,System.IntPtr);Read the place as a field on a view under Framework/ (ADR 0031)
+M:System.Threading.Thread.Sleep(System.Int32);Block a thread through BlockingWait.Sleep, which takes the reason blocking is safe there
+M:System.Threading.Thread.Sleep(System.TimeSpan);Block a thread through BlockingWait.Sleep, which takes the reason blocking is safe there
+M:System.Threading.Tasks.Task.Wait;Do not block on a task: the extender has no async path, and a blocked frame hook stalls the game
+P:System.Threading.Tasks.Task`1.Result;Do not block on a task: the extender has no async path, and a blocked frame hook stalls the game
+M:System.Runtime.CompilerServices.TaskAwaiter.GetResult;Do not block on a task: the extender has no async path, and a blocked frame hook stalls the game
+M:System.Runtime.CompilerServices.TaskAwaiter`1.GetResult;Do not block on a task: the extender has no async path, and a blocked frame hook stalls the game
+M:System.Environment.GetEnvironmentVariable(System.String);Read the host's environment through HostEnv; a CX setting is a knob, never a variable (ADR 0025)
+M:System.Environment.GetEnvironmentVariable(System.String,System.EnvironmentVariableTarget);Read the host's environment through HostEnv; a CX setting is a knob, never a variable (ADR 0025)
+M:System.Environment.GetEnvironmentVariables;Read the host's environment through HostEnv; a CX setting is a knob, never a variable (ADR 0025)

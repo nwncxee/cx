@@ -117,7 +117,7 @@ public sealed unsafe class SoundService : IExtenderService
         }
         else
         {
-            string? managed = Environment.GetEnvironmentVariable("CX_MANAGED");
+            string? managed = HostEnv.ManagedLibrary;
             dir = managed == null ? "" : Path.GetDirectoryName(Path.GetFullPath(managed)) ?? "";
             if (!NativeLibrary.TryLoad(Path.Combine(dir, "libopenal.so.1"), out openal))
             {
@@ -373,7 +373,7 @@ public sealed unsafe class SoundService : IExtenderService
         while (SoundCore.cxa_stopped() == 0)
         {
             SoundCore.cxa_sim_tick();
-            Thread.Sleep(15);
+            BlockingWait.Sleep(15, "the sound simulation thread");
         }
     }
 
@@ -381,7 +381,7 @@ public sealed unsafe class SoundService : IExtenderService
     private static void BakeLoop()
     {
         while (SoundCore.cxa_stopped() == 0)
-            if (SoundCore.cxa_bake_tick() == 0) Thread.Sleep(250);
+            if (SoundCore.cxa_bake_tick() == 0) BlockingWait.Sleep(250, "the sound bake thread, idle");
     }
 
     [DllImport("cxboot")] private static extern int cx_openal_redirect(out IntPtr module, out IntPtr why);

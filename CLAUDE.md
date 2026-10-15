@@ -206,6 +206,9 @@ fixes it, so the next one fails to compile instead of waiting for a reviewer. A 
 is proven once with a planted call that fails the build. No tests that read source text.
 The `standards-reviewer` agent (`.claude/agents/`) asks for the missing ban in review.
 
+Banned today: pointer reads with an offset (`Marshal.Read*`, `Unsafe.Add`, ...) -> a view; `Thread.Sleep` ->
+`BlockingWait.Sleep(ms, why)`; blocking on a `Task` -> never; `Environment.GetEnvironmentVariable` -> `HostEnv`.
+
 ## Gates (CX-192)
 
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from
