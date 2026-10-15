@@ -23,16 +23,24 @@ internal sealed class SunGlideState
     public bool Edge;
     /// <summary>The live glide's start and length in seconds. Length 0 means it has landed.</summary>
     public double Start, Length;
+    /// <summary>The move in flight is an eased cut: it runs on an ease-in-out curve, and a step arriving during
+    /// it moves its end instead of starting a glide of its own.</summary>
+    public bool Easing;
     /// <summary>When the last snap or retarget happened -- the base the next step's interval is measured
     /// from.</summary>
     public double Last;
-    /// <summary>The fade the server gave the area's last colour packet, and when it arrived: a cut in the
-    /// same burst eases over it.</summary>
+    /// <summary>The fade the server gave the area's last colour packet, and when it arrived: a cut in a burst
+    /// whose colours were set with no fade is a lightning flash.</summary>
     public float Fade;
     public double FadeAt = double.NegativeInfinity;
+    /// <summary>When the last flash's cut landed, and when the area's first sample was shown.</summary>
+    public double FlashAt = double.NegativeInfinity, EdgeAt = double.NegativeInfinity;
+    /// <summary>No colour packet is heard, so a flash cannot be told from a time change and every cut lands
+    /// at once.</summary>
+    public bool Deaf;
     /// <summary>For the period line: changes far enough apart to be a server's STEPS, changes arriving every
-    /// frame (an engine fade or an owned twilight, which is plain following), cuts eased over their burst's
-    /// colour fade, and cuts that landed at once.</summary>
+    /// frame (an engine fade or an owned twilight, which is plain following), eased cuts, and cuts that
+    /// landed at once.</summary>
     public long Steps, Follows, Eased, Snaps;
 }
 
@@ -46,7 +54,7 @@ internal sealed unsafe class SunGlideHookState
 /// <summary><b>Continuous motion out of a stepped sun:</b> a server that moves the area light in small
 /// unfaded steps hands the client a new direction every few seconds, which the cascades and the shading
 /// would otherwise take on the frame it arrives. A small step glides over the interval the steps are
-/// arriving at; a cut eases over the fade its burst gave the colours, and lands at once without one.</summary>
+/// arriving at; a time change eases over a length that grows with its size; a lightning flash lands at once.</summary>
 internal static unsafe class SunGlide
 {
     /// <summary>A direction change beyond this is a cut, not a step: an area load, a time jump, a script's
@@ -76,6 +84,18 @@ internal static unsafe class SunGlide
     /// <summary>How recent a colour packet must be, in seconds, to belong to a cut's burst. A server sends a
     /// burst's packets back to back and the next burst no sooner than a second later.</summary>
     private const double Burst = 0.5;
+
+    /// <summary>How long after a flash a cut is its way back, in seconds. A flash holds for under a second,
+    /// and the server's own sun tick can beat its restore.</summary>
+    private const double Excursion = 2.0;
+
+    /// <summary>How long after an area's first sample a cut still lands at once, in seconds: the server
+    /// corrects a freshly loaded area within a second, and a sun swinging into place there is the load showing.</summary>
+    private const double Settle = 2.0;
+
+    /// <summary>An eased cut's seconds per square-root degree: an hour's 15 deg turns in about 1.2 s, a quarter
+    /// of the sky in about 2.8 s and the widest eased cut in under 4 s -- brisk when small, never dragging.</summary>
+    private const double EaseRate = 0.3;
 
     /// <summary>A cut to a direction this close to opposite lands at once: no turn between the two is the
     /// obvious one, and the slerp's denominator heads for zero.</summary>
@@ -116,14 +136,14 @@ internal static unsafe class SunGlide
     /// <summary>The area edge: the next sample is a different area's sun, so it snaps.</summary>
     internal static void AreaEdge() => _state.Edge = true;
 
-    /// <summary>Hear every area colour packet's fade. Without the chain a cut lands at once, as it would with
-    /// a fade-0 burst.</summary>
+    /// <summary>Hear every area colour packet's fade: what tells a lightning flash from a time change.</summary>
     internal static void Install(ExtenderLog log, HookService hooks)
     {
-        if (!SymbolMap.Require(log, "SunGlide", SymbolMap.AreaSetAreaLightColor)) return;
         _hook.Next = hooks.ChainAreaSetAreaLightColor(&OnColour, ColourPriority);
-        if (_hook.Next == null)
-            log.Always("SunGlide: the area colour leaf did not chain -- a large sun move lands at once, never eased");
+        if (_hook.Next != null) return;
+        _state.Deaf = true;
+        log.Always("SunGlide: the area colour leaf did not chain -- a flash cannot be told from a time change, "
+                 + "so every large sun move lands at once");
     }
 
     [UnmanagedCallersOnly]
@@ -162,9 +182,11 @@ internal static unsafe class SunGlide
     {
         if (engineToLight.LengthSquared() <= 1e-8f) return s.Shown;
         Vector3 to = Vector3.Normalize(engineToLight);
-        if (areaEdge || !s.HasShown) return Snap(s, to, now);
+        if (areaEdge || !s.HasShown) { s.EdgeAt = now; return Snap(s, to, now); }
         if (to == s.Target) return Advance(s, now);
         if (Vector3.Dot(s.Target, to) < SnapCos) return Cut(s, to, now);
+        // The sun's own tick during an eased cut: the cut keeps its curve and lands on the newer direction.
+        if (s.Easing && s.Length > 0) { s.Target = to; s.Last = now; return Advance(s, now); }
         // Measured before Last moves: this interval is both the glide's length and what tells a server's step
         // from a direction that changes every frame.
         double interval = now - s.Last;
@@ -179,33 +201,42 @@ internal static unsafe class SunGlide
     }
 
     /// <summary>The glide's position at <paramref name="now"/>, with no new sample: a slerp from where the
-    /// glide started to the engine's direction, which lands and stays landed.</summary>
+    /// glide started to the engine's direction -- at constant rate for a glide, eased in and out for a cut --
+    /// which lands and stays landed.</summary>
     internal static Vector3 Advance(SunGlideState s, double now)
     {
         if (!s.HasShown) return s.Shown;
         if (s.Length <= 0) { s.Shown = s.Target; return s.Shown; }
         double t = (now - s.Start) / s.Length;
-        if (t >= 1.0) { s.Length = 0; s.Shown = s.Target; return s.Shown; }
+        if (t >= 1.0) { s.Length = 0; s.Easing = false; s.Shown = s.Target; return s.Shown; }
+        if (s.Easing) t = t * t * (3.0 - 2.0 * t);
         s.Shown = t <= 0.0 ? s.From : Slerp(s.From, s.Target, (float)t);
         return s.Shown;
     }
 
-    /// <summary>A change too large to be a step: a time jump, a lightning flash, a script's move. A server
-    /// that sends the direction unfaded still fades the colours of the same burst, and the sun turns over
-    /// that fade; a burst with none (a flash) lands at once.</summary>
+    /// <summary>A change too large to be a step. A lightning flash -- its burst sets the colours with no fade
+    /// -- lands at once, and so does its way back and a freshly loaded area's correction. Anything else is a
+    /// time change: a jump of hours, a script's move, a dusk's sun-to-moon swap, eased over
+    /// <see cref="EaseSeconds"/>.</summary>
     private static Vector3 Cut(SunGlideState s, Vector3 to, double now)
     {
-        double fade = now - s.FadeAt <= Burst ? s.Fade : 0.0;
         Vector3 from = Advance(s, now);
-        if (fade <= 0.0 || Vector3.Dot(from, to) < Opposed) return Snap(s, to, now);
+        if (now - s.FadeAt <= Burst && s.Fade <= 0f) s.FlashAt = now;
+        if (s.Deaf || now - s.FlashAt <= Excursion || now - s.EdgeAt <= Settle || Vector3.Dot(from, to) < Opposed)
+            return Snap(s, to, now);
         s.From = from;
         s.Target = to;
         s.Start = now;
-        s.Length = Math.Min(fade, MaxGlide);
+        s.Length = EaseSeconds(Degrees(from, to));
+        s.Easing = true;
         s.Last = now;
         s.Eased++;
         return from;
     }
+
+    /// <summary>How long a cut of <paramref name="deg"/> degrees turns for: the square root keeps a small jump
+    /// brisk and a large one from dragging.</summary>
+    internal static double EaseSeconds(double deg) => EaseRate * Math.Sqrt(deg);
 
     /// <summary>This direction, now, with no glide: a cut, a first sample or an area edge. The interval clock
     /// restarts here, so the next step is measured from the cut rather than from before it.</summary>
@@ -215,6 +246,7 @@ internal static unsafe class SunGlide
         s.HasShown = true;
         s.Start = now;
         s.Length = 0;
+        s.Easing = false;
         s.Last = now;
         s.Snaps++;
         return to;
@@ -244,9 +276,9 @@ internal static unsafe class SunGlide
         return new Vector3((float)Math.Sin(r), 0f, (float)Math.Cos(r));
     }
 
-    /// <summary>Off-device: the glide's contract over a hand-driven clock -- snaps, glides, cuts eased over
-    /// their burst's fade or landed at once, re-targets, and the measured cadence. Oracle: hand-worked
-    /// literals -- a slerp's midpoint in the XZ plane is the direction at the mean angle (0.25 deg, 15 deg).</summary>
+    /// <summary>Off-device: the glide's contract over a hand-driven clock -- snaps, glides, eased time changes,
+    /// flashes landed at once, re-targets, the measured cadence. Oracle: hand-worked literals -- a slerp in the
+    /// XZ plane sits at the interpolated angle, 3t^2 - 2t^3 is 0.15625 at a quarter, 0.3 * sqrt(36) is 1.8.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "SunGlide.SelfCheck");
@@ -274,41 +306,64 @@ internal static unsafe class SunGlide
         check.Expect(s.Steps == 1 && s.Follows == 0 && s.Snaps == 1,
                      $"one step glided, nothing followed, one snap ({s.Steps}/{s.Follows}/{s.Snaps})");
 
-        // A 30 deg change is a cut: a time jump, a script's move, the vanilla midpoint's body swap.
+        // With no colour packet heard, a flash cannot be told from a time change: a 30 deg cut lands at once.
+        s.Deaf = true;
         shown = Step(s, Overhead(30.5), 60.0, areaEdge: false);
-        check.Expect(Near(shown, Overhead(30.5)) && s.Length == 0.0, $"a 30 deg change lands on its own frame ({shown})");
+        check.Expect(Near(shown, Overhead(30.5)) && s.Length == 0.0, $"a deaf glide lands a 30 deg cut at once ({shown})");
+        s.Deaf = false;
 
         // An area edge snaps even a change small enough to glide.
         shown = Step(s, Overhead(30.9), 80.0, areaEdge: true);
         check.Expect(Near(shown, Overhead(30.9)) && s.Length == 0.0, $"an area edge snaps a 0.4 deg change ({shown})");
 
-        // A time jump: the burst faded its colours over 2 s, so the 30 deg turn takes those 2 s.
+        // A 36 deg time jump turns for 0.3 * sqrt(36) = 1.8 s, starting where the sun was.
         var e = new SunGlideState();
         Step(e, Overhead(0), 0.0, areaEdge: false);
         Heard(e, 2f, 10.0);
-        shown = Step(e, Overhead(30), 10.0, areaEdge: false);
-        check.Expect(Near(shown, Overhead(0)) && Math.Abs(e.Length - 2.0) < 1e-9,
-                     $"a cut in a 2 s colour burst starts where the sun was and runs 2 s ({shown}, {e.Length})");
-        // sin and cos of 15 deg: halfway along the turn from 0 to 30 deg.
-        check.Expect(Near(Advance(e, 11.0), new Vector3(0.258819045f, 0f, 0.965925826f)),
-                     $"halfway through, the sun is at 15 deg ({e.Shown})");
-        check.Expect(Near(Advance(e, 12.0), Overhead(30)) && e.Length == 0.0, "...and lands on the cut's direction");
-        check.Expect(e.Eased == 1 && e.Snaps == 1, $"one cut eased, the first sample snapped ({e.Eased}/{e.Snaps})");
+        shown = Step(e, Overhead(36), 10.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(0)) && Math.Abs(e.Length - 1.8) < 1e-4,
+                     $"a 36 deg time jump starts where the sun was and turns for 1.8 s ({shown}, {e.Length})");
+        // A quarter of the way in, 3t^2 - 2t^3 = 0.15625 of 36 deg: 5.625 deg, sin and cos of pi/32.
+        check.Expect(Near(Advance(e, 10.45), new Vector3(0.0980171403f, 0f, 0.995184727f)),
+                     $"a quarter of the way in, the turn has eased to 5.625 deg ({e.Shown})");
+        // Halfway in time is halfway in angle: sin and cos of 18 deg.
+        check.Expect(Near(Advance(e, 10.9), new Vector3(0.309016994f, 0f, 0.951056516f)),
+                     $"halfway in, the sun is at 18 deg ({e.Shown})");
 
-        // A lightning flash: its burst sets the colours with no fade, so the sun lands at once.
+        // The sun's own 0.25 deg tick mid-turn moves where the turn ends, not its curve.
+        Step(e, Overhead(36.25), 10.9, areaEdge: false);
+        check.Expect(e.Start == 10.0 && Math.Abs(e.Length - 1.8) < 1e-4,
+                     $"a tick mid-turn keeps the turn's start and length ({e.Start}, {e.Length})");
+        check.Expect(Near(Advance(e, 12.0), Overhead(36.25)) && e.Length == 0.0, "...and the turn lands on the tick");
+        check.Expect(e.Eased == 1 && e.Snaps == 1 && e.Steps == 0,
+                     $"one cut eased, the first sample snapped, no glide started ({e.Eased}/{e.Snaps}/{e.Steps})");
+
+        // A lightning flash sets its colours with no fade: the sun lands on it at once...
         Heard(e, 0f, 20.0);
-        shown = Step(e, Overhead(75), 20.0, areaEdge: false);
-        check.Expect(Near(shown, Overhead(75)) && e.Length == 0.0, $"a cut in a fade-0 burst lands at once ({shown})");
+        shown = Step(e, Overhead(80), 20.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(80)) && e.Length == 0.0, $"a cut in a fade-0 colour burst lands at once ({shown})");
+        // ...and back at once 0.7 s later, though the restore fades its colours over 0.3 s.
+        Heard(e, 0.3f, 20.7);
+        shown = Step(e, Overhead(36.25), 20.7, areaEdge: false);
+        check.Expect(Near(shown, Overhead(36.25)) && e.Length == 0.0, $"the flash's way back lands at once ({shown})");
 
-        // A colour fade from an earlier burst is not this cut's.
-        Heard(e, 2f, 30.0);
-        shown = Step(e, Overhead(40), 31.0, areaEdge: false);
-        check.Expect(Near(shown, Overhead(40)) && e.Length == 0.0, $"a fade heard 1 s before the cut is ignored ({shown})");
+        // Long after the flash, a cut with no colour packet at all -- a script's move -- is a time change.
+        shown = Step(e, Overhead(0.25), 30.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(36.25)) && Math.Abs(e.Length - 1.8) < 1e-4,
+                     $"a direction-only 36 deg cut 9.3 s after the flash eases for 1.8 s ({shown}, {e.Length})");
+
+        // A freshly loaded area's correction lands at once: a sun swinging into place would be the load showing.
+        var a = new SunGlideState();
+        Step(a, Overhead(0), 0.0, areaEdge: true);
+        Heard(a, 2f, 0.6);
+        shown = Step(a, Overhead(20), 0.6, areaEdge: false);
+        check.Expect(Near(shown, Overhead(20)) && a.Length == 0.0, $"a correction 0.6 s after an area edge lands at once ({shown})");
 
         // Nearly opposite: no turn between the two is the obvious one.
-        Heard(e, 2f, 40.0);
-        shown = Step(e, Overhead(-139), 40.0, areaEdge: false);
-        check.Expect(Near(shown, Overhead(-139)) && e.Length == 0.0, $"a 179 deg cut lands at once ({shown})");
+        var o = new SunGlideState();
+        Step(o, Overhead(0), 0.0, areaEdge: false);
+        shown = Step(o, Overhead(179), 10.0, areaEdge: false);
+        check.Expect(Near(shown, Overhead(179)) && o.Length == 0.0, $"a 179 deg cut lands at once ({shown})");
 
         // A step arriving mid-glide re-targets from where the sun is SHOWN, with no jump.
         var m = new SunGlideState();
@@ -340,8 +395,8 @@ internal static unsafe class SunGlide
                      "a zero direction is not a sample");
 
         log.Info(check.Ok ? "SunGlide.SelfCheck: passed"
-                          : "SunGlide.SelfCheck: FAILED -- the area's sun would teleport on every server step, "
-                          + "or drift away from the direction the engine is holding");
+                          : "SunGlide.SelfCheck: FAILED -- the area's sun would teleport on a server step or a "
+                          + "time change, sweep through a lightning flash, or drift from the engine's direction");
         return check.Ok;
     }
 }
