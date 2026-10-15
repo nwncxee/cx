@@ -51,7 +51,7 @@ public static unsafe class VisualXform
         {
             LerpFloat lerp = new Gob(shell).VisualLerp(which);
             lerp.Value = 1f;
-            lerp.Target = 1f;
+            lerp.From = 1f;
         }
     }
 
@@ -100,7 +100,7 @@ public static unsafe class VisualXform
 
     /// <summary>The three adjusted getters folded onto (pos, rot, scale): translate rotated by the RAW
     /// orientation, then raw x YawPitchRoll, then scale x ScaleX. <paramref name="lerping"/> while any of the
-    /// nine has not reached its end value (<c>LerpFloat</c>+8, the value <see cref="Seed"/> writes as "to").</summary>
+    /// nine has not reached its end value (<see cref="CX.Framework.EngineLayout.LerpValue"/>, what a settled lerp returns).</summary>
     public static void Adjust(nint shell, ref Vector3 pos, ref Quaternion rot, ref float scale, out bool lerping)
     {
         lerping = false;
@@ -108,7 +108,7 @@ public static unsafe class VisualXform
         for (int i = 0; i < AnimationSpeed && !lerping; i++)
         {
             LerpFloat r = new Gob(shell).VisualLerp(i);
-            lerping = r.LerpFloatLerped() != r.Target;
+            lerping = r.LerpFloatLerped() != r.Value;
         }
         Vector3 t = Translate(shell);
         if (t != Vector3.Zero) pos += Vector3.Transform(t, rot);

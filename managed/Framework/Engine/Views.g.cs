@@ -2981,14 +2981,14 @@ public readonly unsafe partial struct LerpFloat(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.LerpFrom"/>
+    public ref float From => ref *(float*)(Ptr + EngineLayout.LerpFrom);
     /// <inheritdoc cref="SymbolMap.LerpFloatLerped"/>
     public float LerpFloatLerped() => EngineFn.LerpFloatLerped(Ptr);
     /// <inheritdoc cref="EngineLayout.LerpMode"/>
     public ref int Mode => ref *(int*)(Ptr + EngineLayout.LerpMode);
     /// <inheritdoc cref="EngineLayout.SeamLerpFloatSizeof"/>
     public ref int SeamSizeof => ref *(int*)(Ptr + EngineLayout.SeamLerpFloatSizeof);
-    /// <inheritdoc cref="EngineLayout.LerpTarget"/>
-    public ref float Target => ref *(float*)(Ptr + EngineLayout.LerpTarget);
     /// <inheritdoc cref="EngineLayout.LerpValue"/>
     public ref float Value => ref *(float*)(Ptr + EngineLayout.LerpValue);
 }
