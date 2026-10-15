@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -58,8 +59,6 @@ internal static unsafe class CallbackList
 {
     /// <summary><c>CallBack</c>: <c>char name[0x20]</c>, <c>fn</c> at +0x20, <c>void* data</c> at +0x28.</summary>
     private static readonly int Size = EngineLayout.SeamCallBackSizeof;
-    private static readonly int FnAt = EngineLayout.SeamCallBackFn;
-    private static readonly int DataAt = EngineLayout.SeamCallBackData;
     private const int NameMax = 0x20;   // not-an-offset: the length of the inline name array, 31 chars + NUL
     /// <summary>The engine's first growth is capacity 0x10 (a 0x80-byte malloc), then doubling.</summary>
     private const int FirstCap = 0x10;   // not-an-offset: the capacity the engine's first growth asks for
@@ -69,20 +68,18 @@ internal static unsafe class CallbackList
 
     internal static nint Add(nint shell, nint fn, nint name, nint data)
     {
-        nint* arrp = (nint*)(shell + SeamLayout.GobCallbackList);
-        int* cnt = (int*)(shell + SeamLayout.GobCallbackCount);
-        int* cap = (int*)(shell + SeamLayout.GobCallbackCap);
-        if (*cnt == *cap)
+        ExoArray list = new Gob(shell).CallbackArray;
+        if (list.Count == list.Cap)
         {
-            int grow = *cap == 0 ? FirstCap : *cap * 2;
-            void* bigger = NativeMemory.Realloc((void*)*arrp, (nuint)(grow * sizeof(nint)));
+            int grow = list.Cap == 0 ? FirstCap : list.Cap * 2;
+            void* bigger = NativeMemory.Realloc((void*)list.Data, (nuint)(grow * sizeof(nint)));
             if (bigger == null)
             {
                 Facade.Log?.Always("seam: out of memory growing a callback list -- RegisterCallBack refused");
                 return 0;
             }
-            *arrp = (nint)bigger;
-            *cap = grow;
+            list.Data = (nint)bigger;
+            list.Cap = grow;
         }
         void* block = NativeMemory.AllocZeroed((nuint)Size);
         if (block == null)
@@ -98,23 +95,23 @@ internal static unsafe class CallbackList
             int n = 0;
             while (n < NameMax - 1 && src[n] != 0) { dst[n] = src[n]; n++; }
         }
-        *(nint*)(cb + FnAt) = fn;
-        *(nint*)(cb + DataAt) = data;
-        ((nint*)*arrp)[(*cnt)++] = cb;
+        new CallBack(cb).SeamFn = fn;
+        new CallBack(cb).SeamData = data;
+        list[list.Count++] = cb;
         Alive++;
         return cb;
     }
 
     internal static void Remove(nint shell, nint cb)
     {
-        nint arr = *(nint*)(shell + SeamLayout.GobCallbackList);
-        int* cnt = (int*)(shell + SeamLayout.GobCallbackCount);
+        ExoArray list = new Gob(shell).CallbackArray;
+        nint arr = list.Data;
         if (arr == 0 || cb == 0) return;
-        for (int i = 0; i < *cnt; i++)
+        for (int i = 0; i < list.Count; i++)
         {
             if (((nint*)arr)[i] != cb) continue;
-            for (int j = i; j < *cnt - 1; j++) ((nint*)arr)[j] = ((nint*)arr)[j + 1];
-            (*cnt)--;
+            for (int j = i; j < list.Count - 1; j++) ((nint*)arr)[j] = ((nint*)arr)[j + 1];
+            list.Count--;
             NativeMemory.Free((void*)cb);
             Alive--;
             return;
@@ -127,8 +124,9 @@ internal static unsafe class CallbackList
     /// is the caller's, or the callback's own when null; the walk stops once the object dies -- it may delete it.</summary>
     internal static void Dispatch(nint self, nint shell, nint name, nint data)
     {
-        nint arr = *(nint*)(shell + SeamLayout.GobCallbackList);
-        int n = *(int*)(shell + SeamLayout.GobCallbackCount);
+        ExoArray list = new Gob(shell).CallbackArray;
+        nint arr = list.Data;
+        int n = list.Count;
         if (arr == 0 || n <= 0) return;
         if (!SeamShell.Known(shell, out byte state, out DbId id) || state != SeamShell.StateLive) return;
         for (int i = n - 1; i >= 0; i--)
@@ -138,9 +136,9 @@ internal static unsafe class CallbackList
             byte* cbName = (byte*)cb;
             bool fires = cbName[0] == 0 || cbName[0] == (byte)'*' || NameEquals(cbName, (byte*)name);
             if (!fires) continue;
-            var fn = (delegate* unmanaged<nint, nint, nint, void>)*(nint*)(cb + FnAt);
+            var fn = (delegate* unmanaged<nint, nint, nint, void>)new CallBack(cb).SeamFn;
             if (fn == null) continue;
-            nint arg = data != 0 ? data : *(nint*)(cb + DataAt);
+            nint arg = data != 0 ? data : new CallBack(cb).SeamData;
             fn(self, name, arg);
             if (!SeamShell.Known(shell, out state, out DbId now) || state != SeamShell.StateLive
                 || now.Value != id.Value) return;
@@ -148,9 +146,9 @@ internal static unsafe class CallbackList
             // can have shifted down (a callback deregistered one). The engine snapshots the count and walks
             // backwards, so a shift below the cursor is already accounted for; what it does not do is
             // re-read the count, and neither does this -- re-reading would fire a shifted entry twice.
-            arr = *(nint*)(shell + SeamLayout.GobCallbackList);
+            arr = list.Data;
             if (arr == 0) return;
-            int live = *(int*)(shell + SeamLayout.GobCallbackCount);
+            int live = list.Count;
             if (i > live) i = live;   // the list shrank past the cursor: resume at its new end
         }
     }
@@ -193,8 +191,9 @@ internal static unsafe class CallbackList
     /// <summary>Free the object's callbacks and their list; the object destroy does this before the record goes.</summary>
     internal static void FreeAll(nint shell)
     {
-        nint arr = *(nint*)(shell + SeamLayout.GobCallbackList);
-        int n = *(int*)(shell + SeamLayout.GobCallbackCount);
+        ExoArray list = new Gob(shell).CallbackArray;
+        nint arr = list.Data;
+        int n = list.Count;
         if (arr != 0)
         {
             for (int i = 0; i < n; i++)
@@ -206,8 +205,8 @@ internal static unsafe class CallbackList
             }
             NativeMemory.Free((void*)arr);
         }
-        *(nint*)(shell + SeamLayout.GobCallbackList) = 0;
-        *(int*)(shell + SeamLayout.GobCallbackCount) = 0;
-        *(int*)(shell + SeamLayout.GobCallbackCap) = 0;
+        list.Data = 0;
+        list.Count = 0;
+        list.Cap = 0;
     }
 }
