@@ -22,7 +22,6 @@ public sealed unsafe class FreeCameraService : IExtenderService
 
     private const uint SdlWindowEvent = 0x200, SdlKeyDown = 0x300, SdlKeyUp = 0x301, SdlMouseMotion = 0x400, SdlMouseDown = 0x401, SdlMouseUp = 0x402, SdlMouseWheel = 0x403;  // not-an-offset: SDL key/event code
     /// <summary>SDL_KeyboardEvent: repeat byte at +0xd, keysym.scancode at +0x10; button/motion rows as MouseLook's; wheel y at +0x14.</summary>
-    private const int EvWindowKindOff = 0xc, EvRepeatOff = 0xd, EvScancodeOff = 0x10, EvButtonOff = 0x10, EvXOff = 0x14, EvYOff = 0x18, EvXRelOff = 0x1c, EvYRelOff = 0x20, EvWheelYOff = 0x14;  // not-an-offset: SDL_Event ABI, not an engine class
     private const byte SdlWindowFocusLost = 0xd, SdlButtonLeft = 1, SdlButtonMiddle = 2, SdlButtonRight = 3;  // not-an-offset: SDL key/event code
     /// <summary>SDL scancodes (layout-independent): Escape, Space, C, Z, X, left/right Shift.</summary>
     private const int ScEscape = 41, ScSpace = 44, ScC = 6, ScZ = 29, ScX = 27, ScLShift = 225, ScRShift = 229;
@@ -159,9 +158,9 @@ public sealed unsafe class FreeCameraService : IExtenderService
             case SdlKeyUp:
                 if (ChatService.WantsKey) break;
                 bool down = *(uint*)ev == SdlKeyDown;
-                switch (*(int*)(ev + EvScancodeOff))
+                switch (((SdlEvent*)ev)->Scancode)
                 {
-                    case ScEscape: if (down && *(byte*)(ev + EvRepeatOff) == 0) Leave(Why.User); return 0;
+                    case ScEscape: if (down && ((SdlEvent*)ev)->Repeat == 0) Leave(Why.User); return 0;
                     case ScSpace: _up = down; return 0;
                     case ScC: _down = down; return 0;
                     case ScZ: _rollL = down; return 0;
@@ -171,8 +170,8 @@ public sealed unsafe class FreeCameraService : IExtenderService
                 break;
             case SdlMouseDown:
             {
-                byte b = *(byte*)(ev + EvButtonOff);
-                int mx = *(int*)(ev + EvXOff), my = *(int*)(ev + EvYOff);
+                byte b = ((SdlEvent*)ev)->Button;
+                int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                 if (b is not (SdlButtonLeft or SdlButtonMiddle or SdlButtonRight) || _looking) break;
                 if (UiInputService.EngineGuiWantsPress() || UiHost.HitTest(mx, my) != null) break;
                 _ate |= (byte)(1 << b);
@@ -181,26 +180,26 @@ public sealed unsafe class FreeCameraService : IExtenderService
             }
             case SdlMouseUp:
             {
-                byte b = *(byte*)(ev + EvButtonOff);
+                byte b = ((SdlEvent*)ev)->Button;
                 if ((_ate & (1 << b)) == 0) break;
                 _ate &= (byte)~(1 << b);
                 if (b == SdlButtonRight) StopLook();
                 return 0;
             }
             case SdlMouseMotion:
-                if (!_looking) { _mx = *(int*)(ev + EvXOff); _my = *(int*)(ev + EvYOff); break; }
+                if (!_looking) { _mx = ((SdlEvent*)ev)->X; _my = ((SdlEvent*)ev)->Y; break; }
                 {
                     float kx = MouseLook.Sens.V * FreeCam.Sens.V / MouseLookService.ViewportWidth();
-                    _yaw = Wrap(_yaw + *(int*)(ev + EvXRelOff) * MouseLookService.TurnPerPx * kx);
-                    _pitch = Math.Clamp(_pitch + *(int*)(ev + EvYRelOff) * MouseLookService.TiltPerPx * kx * (MouseLook.Invert.V ? -1f : 1f), PitchFloor, PitchCeil);
+                    _yaw = Wrap(_yaw + ((SdlEvent*)ev)->XRel * MouseLookService.TurnPerPx * kx);
+                    _pitch = Math.Clamp(_pitch + ((SdlEvent*)ev)->YRel * MouseLookService.TiltPerPx * kx * (MouseLook.Invert.V ? -1f : 1f), PitchFloor, PitchCeil);
                 }
                 return 0;
             case SdlMouseWheel:
                 if (UiHost.HitTest(_mx, _my) != null) break;
-                FreeCam.Speed.Set(FreeCam.Speed.V * (*(int*)(ev + EvWheelYOff) > 0 ? 1.25f : 0.8f));
+                FreeCam.Speed.Set(FreeCam.Speed.V * (((SdlEvent*)ev)->WheelY > 0 ? 1.25f : 0.8f));
                 return 0;
             case SdlWindowEvent:
-                if (*(byte*)(ev + EvWindowKindOff) == SdlWindowFocusLost) { StopLook(); _up = _down = _rollL = _rollR = _fast = false; }
+                if (((SdlEvent*)ev)->WindowKind == SdlWindowFocusLost) { StopLook(); _up = _down = _rollL = _rollR = _fast = false; }
                 break;
         }
         return Forward(ev);

@@ -1,3 +1,4 @@
+using CX.Engine;
 using System;
 using CX.Framework;
 
@@ -93,7 +94,7 @@ internal static unsafe class AreaGrid
             {
                 int head = _head[c];
                 if (head < 0) continue;
-                if (!BoxInFrustum(planes, boxes + c * 6, slack)) continue;
+                if (!BoxInFrustum(planes, ((Stride6f*)boxes)[c].F, slack)) continue;
                 for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
             }
         return n;
@@ -111,7 +112,7 @@ internal static unsafe class AreaGrid
         if (filed < 0) return false;
         fixed (float* b = _box)
         {
-            float* u = b + filed * 6;
+            float* u = ((Stride6f*)b)[filed].F;
             covered = box[0] >= u[0] && box[1] >= u[1] && box[2] >= u[2]
                    && box[3] <= u[3] && box[4] <= u[4] && box[5] <= u[5];
         }
@@ -124,7 +125,7 @@ internal static unsafe class AreaGrid
     {
         for (int f = 0; f < 6; f++)
         {
-            float* p = planes + f * 4;
+            float* p = ((Stride4f*)planes)[f].F;
             float x = p[0] >= 0f ? box[3] + slack : box[0] - slack;
             float y = p[1] >= 0f ? box[4] + slack : box[1] - slack;
             float z = p[2] >= 0f ? box[5] + slack : box[2] - slack;

@@ -1,3 +1,4 @@
+using CX.Engine;
 using System;
 using System.Numerics;
 using CX.Alloy.Db;
@@ -549,7 +550,7 @@ public sealed unsafe partial class AlloyRenderer
 
         DbId obj = SceneDb.PartObj[part];
         int o = obj.Index;
-        float* r = data + (long)i * DrawFloats;
+        float* r = ((DrawRec*)data)[i].F;
         bool fresh = _gate[i].RecGen != _recEpoch || _gate[i].RecEnroll != _gate[i].EnrollGen;
         var f = default(RecordFrameState);
         f.HasModel = true;
@@ -630,7 +631,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         fixed (float* sp = _dSph)
         {
-            float* s = sp + (long)i * 4;
+            float* s = ((Stride4f*)sp)[i].F;
             s[0] = cx; s[1] = cy; s[2] = cz; s[3] = rad;
         }
         // The caster sphere is the same bound, GEOMETRIC even for the exempted kinds, with a skinned part's
@@ -643,7 +644,7 @@ public sealed unsafe partial class AlloyRenderer
         _dCastSlack[i] = bare > 0f ? gr - bare : 0f;
         fixed (float* sp = _dCastSph)
         {
-            float* s = sp + (long)i * 4;
+            float* s = ((Stride4f*)sp)[i].F;
             s[0] = gc.X; s[1] = gc.Y; s[2] = gc.Z; s[3] = gr;
         }
     }

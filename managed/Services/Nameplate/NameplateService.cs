@@ -1149,7 +1149,7 @@ public sealed unsafe class NameplateService : IExtenderService
             if (tid == 0) continue;
             PortraitDiag(tid, _portraitRef[i]);
             tids[drawn] = tid;
-            TextRig.FillQuad(verts + drawn * VertexBatch.Floats * 6,
+            TextRig.FillQuad(((QuadVerts*)verts)[drawn].F,
                              new CX.Services.Chat.Core.Model.PortraitQuad(
                                  _portraitRect[o], _portraitRect[o + 1], _portraitRect[o + 2], _portraitRect[o + 3],
                                  _portraitRef[i], default),

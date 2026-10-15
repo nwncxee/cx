@@ -960,16 +960,17 @@ public static unsafe partial class MeshArena
     private static void UploadVerts(Section s, int stride)
     {
         if (s.Vbo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; s.Vbo = b; s.Uploaded = 0; s.Capacity = 0; }
-        fixed (float* p = s.Mirror)
+        if (s.Uploaded < s.Used && s.Capacity >= s.Used)
         {
-            if (s.Uploaded < s.Used && s.Capacity >= s.Used)
+            fixed (float* p = s.Mirror.AsSpan(checked((int)((long)s.Uploaded * stride))))
                 Gl.NamedBufferSubData(s.Vbo, (IntPtr)((long)s.Uploaded * stride * 4),
-                                      (IntPtr)((long)(s.Used - s.Uploaded) * stride * 4), p + (long)s.Uploaded * stride);
-            else
-            {
-                s.Capacity = s.Mirror.Length / stride;
+                                      (IntPtr)((long)(s.Used - s.Uploaded) * stride * 4), p);
+        }
+        else
+        {
+            s.Capacity = s.Mirror.Length / stride;
+            fixed (float* p = s.Mirror)
                 Gl.NamedBufferData(s.Vbo, (IntPtr)((long)s.Mirror.Length * 4), p, Gl.STATIC_DRAW);
-            }
         }
         s.Uploaded = s.Used;
     }
@@ -977,15 +978,16 @@ public static unsafe partial class MeshArena
     private static void UploadIndices()
     {
         if (_ebo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; _ebo = b; _iUploaded = 0; _iCapacity = 0; }
-        fixed (ushort* p = _iMirror)
+        if (_iUploaded < _iUsed && _iCapacity >= _iUsed)
         {
-            if (_iUploaded < _iUsed && _iCapacity >= _iUsed)
-                Gl.NamedBufferSubData(_ebo, (IntPtr)((long)_iUploaded * 2), (IntPtr)((long)(_iUsed - _iUploaded) * 2), p + _iUploaded);
-            else
-            {
-                _iCapacity = _iMirror.Length;
+            fixed (ushort* p = _iMirror.AsSpan(_iUploaded))
+                Gl.NamedBufferSubData(_ebo, (IntPtr)((long)_iUploaded * 2), (IntPtr)((long)(_iUsed - _iUploaded) * 2), p);
+        }
+        else
+        {
+            _iCapacity = _iMirror.Length;
+            fixed (ushort* p = _iMirror)
                 Gl.NamedBufferData(_ebo, (IntPtr)((long)_iCapacity * 2), p, Gl.STATIC_DRAW);
-            }
         }
         _iUploaded = _iUsed;
     }

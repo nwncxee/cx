@@ -446,9 +446,7 @@ public static unsafe partial class DbAnim
         if (n == 0 || c.Values.Length < 3) return default;
         int st = Rows(c) * c.Columns;
         if (!c.Bezier && n >= 3 && AnimKnobs.Curves.V)
-            fixed (float* times = c.Times)
-            fixed (float* vals = c.Values)
-                if (st == 3 && KeyCurveService.Position(times, vals, n, t, out Vector3 curve)) return curve;
+            if (st == 3 && KeyCurveService.Position(c.Times, c.Values, n, t, out Vector3 curve)) return curve;
         Key(c, t, out int idx, out float a);
         if (idx == 0) return V3(c.Values, 0);
         if (idx >= n) return V3(c.Values, (n - 1) * st);
@@ -474,9 +472,7 @@ public static unsafe partial class DbAnim
         if (n == 0 || c.Values.Length < 4) return Quaternion.Identity;
         int st = Rows(c) * c.Columns;
         if (n >= 3 && AnimKnobs.Curves.V)
-            fixed (float* times = c.Times)
-            fixed (float* vals = c.Values)
-                if (st == 4 && KeyCurveService.Turn(times, vals, n, t, out Quaternion curve)) return curve;
+            if (st == 4 && KeyCurveService.Turn(c.Times, c.Values, n, t, out Quaternion curve)) return curve;
         Key(c, t, out int idx, out float a);
         if (idx == 0) return Q4(c.Values, 0);
         if (idx >= n) return Q4(c.Values, (n - 1) * st);

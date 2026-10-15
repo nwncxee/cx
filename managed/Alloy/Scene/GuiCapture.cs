@@ -245,10 +245,10 @@ internal static unsafe class GuiCapture
         {
             ushort* ehost = (ushort*)OwnedBuffers.PoolHost(s.ElemToken);
             if (ehost == null) { Refuse(ref _noHost, "an indexed stream with no element shadow"); return; }
-            idx = ehost + offset;
+            idx = ehost;
         }
         ref Draw d = ref Draws[DrawN];
-        if (!Stage(ref d, vhost, stride, fmt, _primTable[prim], idx, (int)size, (int)offset)) return;
+        if (!Stage(ref d, vhost, stride, fmt, _primTable[prim], idx, (int)size, (int)offset, (int)offset)) return;
         int flags = Snapshot(ref d);
         if ((fmt & GuiStream.FmtColor) != 0) flags |= FlagVColor;
         Seal(flags);
@@ -257,13 +257,13 @@ internal static unsafe class GuiCapture
     /// <summary>Copy one run into staging and point <paramref name="d"/> at it. Indexed: the referenced vertex span is
     /// copied and the indices rebased onto it; otherwise <paramref name="first"/>/<paramref name="count"/> vertices. Every
     /// run starts on a multiple of its stride, so a draw addresses it by base or first vertex. False = over a ceiling.</summary>
-    private static bool Stage(ref Draw d, byte* vtx, int stride, uint fmt, uint glPrim, ushort* idx, int count, int first)
+    private static bool Stage(ref Draw d, byte* vtx, int stride, uint fmt, uint glPrim, ushort* idx, int count, int first, int idxAt = 0)
     {
         int lo = first, n = count;
         if (idx != null)
         {
             lo = int.MaxValue; int hi = -1;
-            for (int i = 0; i < count; i++) { int x = idx[i]; if (x < lo) lo = x; if (x > hi) hi = x; }
+            for (int i = 0; i < count; i++) { int x = idx[idxAt + i]; if (x < lo) lo = x; if (x > hi) hi = x; }
             n = hi - lo + 1;
             if (IdxN + count > IdxMax) { Overflow("indices"); return false; }
         }
@@ -272,12 +272,12 @@ internal static unsafe class GuiCapture
         int at = (VtxN + stride - 1) / stride * stride;
         long bytes = (long)n * stride;
         if (at + bytes > VtxBytes) { Overflow("vertex bytes"); return false; }
-        fixed (byte* dst = &Vtx[at]) Buffer.MemoryCopy(vtx + (long)lo * stride, dst, bytes, bytes);
+        new ReadOnlySpan<byte>(vtx, checked((int)((long)lo * stride + bytes))).Slice(lo * stride, (int)bytes).CopyTo(Vtx.AsSpan(at));
         VtxN = at + (int)bytes;
         d.Stream = true; d.Stride = stride; d.Format = fmt; d.Prim = glPrim; d.Slot = 0; d.Count = count;
         if (idx != null)
         {
-            fixed (ushort* dst = &Idx[IdxN]) for (int i = 0; i < count; i++) dst[i] = (ushort)(idx[i] - lo);
+            fixed (ushort* dst = Idx.AsSpan(IdxN)) for (int i = 0; i < count; i++) dst[i] = (ushort)(idx[idxAt + i] - lo);
             d.Indexed = true; d.Offset = IdxN * 2L; d.BaseVertex = at / stride;
             IdxN += count;
         }
@@ -357,22 +357,22 @@ internal static unsafe class GuiCapture
         d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = p.Mvp;
-            *(Matrix4x4*)(r + 16) = p.Mv;
+            ((GuiRec*)r)->Mv = p.Mv;
             r[32] = 1f; r[33] = 0f; r[34] = 0f; r[35] = 1f;
-            *(Vector4*)(r + 36) = p.Lit && p.ServerLight ? new Vector4(p.LightDir, 0f) : p.Colour;
-            *(Vector4*)(r + 40) = p.Lit ? p.Ambient : Vector4.Zero;
-            *(Vector4*)(r + 44) = p.Lit ? p.Diffuse : Vector4.Zero;
-            *(Vector4*)(r + 48) = p.Lit ? p.Emissive : Vector4.Zero;
+            ((GuiRec*)r)->Colour = p.Lit && p.ServerLight ? new Vector4(p.LightDir, 0f) : p.Colour;
+            ((GuiRec*)r)->Ambient = p.Lit ? p.Ambient : Vector4.Zero;
+            ((GuiRec*)r)->Diffuse = p.Lit ? p.Diffuse : Vector4.Zero;
+            ((GuiRec*)r)->Emissive = p.Lit ? p.Emissive : Vector4.Zero;
         }
         int flags = (p.Tex != 0 ? FlagTex : 0) | (p.AlphaTest ? FlagAlphaTest : 0) | (p.Lit ? FlagLit : 0)
                     | (p.SolidTexel ? FlagSolidTexel : 0) | (p.Lit && p.ServerLight ? FlagServerLight : 0)
                     | (p.Lit && p.EnvMap ? FlagEnvMap : 0) | (p.Lit && p.EnvMap && p.EnvTex != 0 ? FlagEnvTex : 0);
         if (p.Tex != 0 && p.PltRows != null)
         {
-            fixed (float* r = &Records[DrawN * RecFloats])
+            fixed (float* r = Records.AsSpan(DrawN * RecFloats))
             {
                 for (int k = 0; k < 8; k++) r[56 + k] = p.PltRows[p.PltAt + k];
                 r[54] = p.PltRows[p.PltAt + 8];
@@ -394,7 +394,7 @@ internal static unsafe class GuiCapture
         if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
         float* src = AlloyRenderer.DbBoneStage(slot);
         if (src == null) return flags;
-        fixed (float* dst = &Bones[SkinN * BoneFloats])
+        fixed (float* dst = Bones.AsSpan(SkinN * BoneFloats))
             Buffer.MemoryCopy(src, dst, BoneFloats * sizeof(float), BoneFloats * sizeof(float));
         Records[DrawN * RecFloats + 53] = SkinN * BoneFloats / 4;
         SkinN++;
@@ -425,10 +425,10 @@ internal static unsafe class GuiCapture
         ref Draw d = ref Draws[DrawN];
         if (!Stage(ref d, vtx, stride, fmt, glPrim, idx, count, first)) return;
         d.Blend = true; d.Src = src; d.Dst = dst; d.DepthTest = false; d.DepthWrite = false; d.Cull = false; d.Tex = tex;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = mvp;
-            *(Matrix4x4*)(r + 16) = Matrix4x4.Identity;
+            ((GuiRec*)r)->Mv = Matrix4x4.Identity;
             r[32] = 1f; r[33] = 0f; r[34] = 0f; r[35] = 1f;
             r[36] = 1f; r[37] = 1f; r[38] = 1f; r[39] = 1f;
         }
@@ -449,12 +449,12 @@ internal static unsafe class GuiCapture
                    null, count, 0)) return;
         d.Blend = true; d.Src = src; d.Dst = dst;
         d.DepthTest = depthTest; d.DepthWrite = depthWrite; d.Cull = false; d.Tex = tex;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = mvp;
-            *(Matrix4x4*)(r + 16) = mvp;
+            ((GuiRec*)r)->Mv = mvp;
             r[32] = 1f; r[33] = 0f; r[34] = 0f; r[35] = 1f;
-            *(Vector4*)(r + 36) = rgba;
+            ((GuiRec*)r)->Colour = rgba;
         }
         Seal(tex != 0 ? FlagTex : 0);
         Layers[LayerN - 1].Count = DrawN - Layers[LayerN - 1].First;
@@ -489,17 +489,17 @@ internal static unsafe class GuiCapture
         Matrix4x4 mv = st[ModeModel].Top * (own ? av.View : st[ModeView].Top);
         Matrix4x4 mvp = mv * (own ? av.Proj : st[ModeProj].Top);
         ref Matrix4x4 tm = ref st[ModeTexture].Top;
-        fixed (float* r = &Records[DrawN * RecFloats])
+        fixed (float* r = Records.AsSpan(DrawN * RecFloats))
         {
             *(Matrix4x4*)r = mvp;
-            *(Matrix4x4*)(r + 16) = mv;
+            ((GuiRec*)r)->Mv = mv;
             r[32] = tm.M11; r[33] = tm.M21; r[34] = tm.M12; r[35] = tm.M22;
             for (int i = 0; i < 4; i++) r[36 + i] = _color[i];
             bool lit = (caps & (1u << CapLighting)) != 0;
             var m = new GlMaterial((IntPtr)_material);
-            *(Vector4*)(r + 40) = lit ? m.Ambient : Vector4.Zero;
-            *(Vector4*)(r + 44) = lit ? m.Diffuse : Vector4.Zero;
-            *(Vector4*)(r + 48) = lit ? m.Emissive : Vector4.Zero;
+            ((GuiRec*)r)->Ambient = lit ? m.Ambient : Vector4.Zero;
+            ((GuiRec*)r)->Diffuse = lit ? m.Diffuse : Vector4.Zero;
+            ((GuiRec*)r)->Emissive = lit ? m.Emissive : Vector4.Zero;
             return (d.Tex != 0 ? FlagTex : 0) | (lit ? FlagLit : 0) | ((caps & (1u << CapAlphaTest)) != 0 ? FlagAlphaTest : 0);
         }
     }
@@ -509,7 +509,7 @@ internal static unsafe class GuiCapture
     private static int Skin(int flags)
     {
         if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
-        fixed (float* dst = &Bones[SkinN * BoneFloats])
+        fixed (float* dst = Bones.AsSpan(SkinN * BoneFloats))
             Buffer.MemoryCopy(_bones, dst, BoneFloats * sizeof(float), BoneFloats * sizeof(float));
         Records[DrawN * RecFloats + 53] = SkinN * BoneFloats / 4;
         SkinN++;

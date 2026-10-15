@@ -96,8 +96,8 @@ internal static unsafe partial class RadialTree
             "Cast "u8.CopyTo(new Span<byte>(line0, 32));
             "Spell"u8.CopyTo(new Span<byte>(line1, 32));
             _line0 = (IntPtr)line0; _line1 = (IntPtr)line1; _fakeGob = (IntPtr)gob;
-            *(IntPtr*)(textVt + EngineLayout.AurStringGetTextLineCountSlot) = (IntPtr)(delegate* unmanaged<IntPtr, int>)&FakeLineCount;
-            *(IntPtr*)(textVt + EngineLayout.AurStringGetTextLineSlot) = (IntPtr)(delegate* unmanaged<IntPtr, int, IntPtr>)&FakeLine;
+            ((IntPtr*)textVt)[EngineLayout.AurStringGetTextLineCountSlot / sizeof(IntPtr)] = (IntPtr)(delegate* unmanaged<IntPtr, int>)&FakeLineCount;
+            ((IntPtr*)textVt)[EngineLayout.AurStringGetTextLineSlot / sizeof(IntPtr)] = (IntPtr)(delegate* unmanaged<IntPtr, int, IntPtr>)&FakeLine;
             *(IntPtr*)gob = *(IntPtr*)countGob = (IntPtr)textVt;
             new CGuiTextBubble((IntPtr)bubble).AurString = new CAurString((IntPtr)gob);
             "3"u8.CopyTo(new Span<byte>(countLine, 32));
@@ -124,8 +124,8 @@ internal static unsafe partial class RadialTree
             {
                 e3.Fn = (IntPtr)(0x28 + 1);
                 e3.Adj = (IntPtr)ObjAdj;
-                *(IntPtr*)(handlerObj + ObjAdj) = (IntPtr)handlerVt;
-                *(IntPtr*)(handlerVt + 0x28) = fake;
+                ((IntPtr*)handlerObj)[ObjAdj / sizeof(IntPtr)] = (IntPtr)handlerVt;
+                ((IntPtr*)handlerVt)[0x28 / sizeof(IntPtr)] = fake;
             }
             root.Param[3] = -7;
 
@@ -161,7 +161,7 @@ internal static unsafe partial class RadialTree
             check.Expect(eventCell == (IntPtr)0x5150, "Invoke restores s_pCurrentEventObject");
             check.Expect(!Invoke((IntPtr)menu, 4) && _fakeCalls == 1, "Invoke on an unset entry does nothing");
             check.Expect(Invoke((IntPtr)menu, 3) && _fakeCalls == 2 && _fakeParam == -7
-                && _fakeSelf == (win ? (IntPtr)handlerObj : (IntPtr)(handlerObj + ObjAdj)),
+                && _fakeSelf == (win ? (IntPtr)handlerObj : (IntPtr)((long)handlerObj + ObjAdj)),
                 win ? "Invoke slot 3 (Win64 pair)" : $"Invoke slot 3 decodes the virtual thunk: this = obj + adj ({(long)_fakeSelf - (long)handlerObj:x})");
             check.Expect(Materialize((IntPtr)menu, 9) == IntPtr.Zero && !Invoke((IntPtr)menu, -1), "out-of-range slots are refused");
 

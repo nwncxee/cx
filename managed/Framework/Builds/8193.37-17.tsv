@@ -1373,3 +1373,5 @@ offset	NkCommandBuffer	layout	0x40	0x40	# NkCmdBufLayout
 offset	NkBuffer	memory	0x40	0x40	# NkBufMemory
 offset	NkBuffer	allocated	0x58	0x58	# NkBufAllocated
 offset	LerpFloat	target	0x8	0x8	# LerpTarget
+offset	VdoElemItem	count	0x4	0x4	# VdoElemItemCount
+offset	VdoElemItem	stride	0x8	0x8	# VdoElemItemStride

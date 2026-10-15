@@ -55,7 +55,7 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
                     HandleArmSet(data, size);
                     return 1;
                 case ServerPolicy.PolicyMinor:
-                    if (size - 3 <= int.MaxValue) ServerPolicy.Apply(System.Text.Encoding.UTF8.GetString(data + 3, (int)(size - 3)));
+                    if (size - 3 <= int.MaxValue) ServerPolicy.Apply(System.Text.Encoding.UTF8.GetString(new ReadOnlySpan<byte>(data, (int)size).Slice(3)));
                     return 1;
             }
         }
@@ -129,7 +129,7 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
         if (size <= 3) return "";
         int len = (int)size - 3;
         var bytes = new byte[len];
-        Marshal.Copy((IntPtr)(data + 3), bytes, 0, len);
+        new ReadOnlySpan<byte>(data, len + 3).Slice(3).CopyTo(bytes);
         return System.Text.Encoding.ASCII.GetString(bytes).Trim();
     }
 

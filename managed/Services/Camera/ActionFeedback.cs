@@ -87,11 +87,11 @@ internal static unsafe class ActionFeedback
         if (minor == MinorCancelAction) { _at = 0; _kind = 0; _target = 0; return; }
         if (len < HeaderBytes) return;
         // GetWriteMessage stamps the BYTE-stream total here; the bit stream is memcpy'd past it, so bytes <= len.
-        uint bytes = *(uint*)(buf + 3);
+        uint bytes = MemoryMarshal.Read<uint>(new ReadOnlySpan<byte>(buf, (int)len).Slice(3));
         if (bytes < HeaderBytes || bytes > len) return;
         int off = TargetOffset(minor, buf, bytes);
         if (off < 0) return;
-        uint oid = off > 0 && off + 4 <= bytes ? *(uint*)(buf + off) : TypingSignal.ObjectInvalid;
+        uint oid = off > 0 && off + 4 <= bytes ? MemoryMarshal.Read<uint>(new ReadOnlySpan<byte>(buf, (int)len).Slice(off)) : TypingSignal.ObjectInvalid;
         _target = oid == TypingSignal.ObjectInvalid ? 0u : oid;
         _kind = minor;
         _at = Environment.TickCount64;

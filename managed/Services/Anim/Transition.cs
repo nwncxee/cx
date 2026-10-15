@@ -66,15 +66,15 @@ internal static unsafe class Transition
                 Quaternion e = Local(p), q = e;
                 if (blending && same)
                 {
-                    Vector3 v = *(Vector3*)(ss + 3 * i) * decay;
-                    Quaternion from = Quaternion.Normalize(Exp(v * dt) * *(Quat*)(src + 4 * i));
-                    *(Vector3*)(ss + 3 * i) = v;
-                    *(Quat*)(src + 4 * i) = from;
+                    Vector3 v = ((Vector3*)ss)[i] * decay;
+                    Quaternion from = Quaternion.Normalize(Exp(v * dt) * ((Quat*)src)[i]);
+                    ((Vector3*)ss)[i] = v;
+                    ((Quat*)src)[i] = from;
                     q = Quaternion.Slerp(from, e, w);
                     SetLocal(p, q);
                 }
-                *(Vector3*)(sp + 3 * i) = same && dt > 0f ? Clamp(Log(q * Quaternion.Conjugate(*(Quat*)(o + 4 * i))) / dt) : Vector3.Zero;
-                *(Quat*)(o + 4 * i) = q;
+                ((Vector3*)sp)[i] = same && dt > 0f ? Clamp(Log(q * Quaternion.Conjugate(((Quat*)o)[i])) / dt) : Vector3.Zero;
+                ((Quat*)o)[i] = q;
             }
     }
 

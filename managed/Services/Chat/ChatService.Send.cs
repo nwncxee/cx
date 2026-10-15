@@ -77,7 +77,7 @@ public sealed unsafe partial class ChatService
             if (listBase == IntPtr.Zero || count <= 0 || count > 64) return list;
             for (int i = 0; i < count; i++)
             {
-                var player = new CNWCPlayer(*(IntPtr*)(listBase + i * 8));
+                var player = new CNWCPlayer(((IntPtr*)listBase)[i]);
                 if (!player.IsNull) list.Add(player);
             }
             return list;
@@ -90,7 +90,7 @@ public sealed unsafe partial class ChatService
             uint len = player.CreatureNameLen;
             if (buf == IntPtr.Zero || len == 0 || len > 128) return null;
             var sb = new StringBuilder((int)len);
-            for (uint k = 0; k < len; k++) sb.Append((char)*(byte*)(buf + (int)k));
+            for (uint k = 0; k < len; k++) sb.Append((char)((byte*)buf)[k]);
             return sb.ToString();
         }
 

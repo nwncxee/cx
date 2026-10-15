@@ -84,7 +84,7 @@ internal static unsafe class DbKeyhole
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj) || (SceneDb.ObjFlags[obj.Index] & (ObjFlag.Tile | ObjFlag.Static)) == 0) return false;
         float* plane = stackalloc float[4] { p0, p1, p2, p3 };
-        fixed (float* b = &AlloyRenderer._oBox[i * 6])
+        fixed (float* b = AlloyRenderer._oBox.AsSpan(i * 6))
             if (!PartTable.KeyholeDissolvesBox(b, on, plane, cut)) return false;
         _cut++;
         return true;

@@ -29,7 +29,6 @@ public sealed unsafe class TabTargetService : IExtenderService
     private const int ChainPriority = 50;
     private const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301;  // not-an-offset: SDL key/event code
     /// <summary>SDL_KeyboardEvent: <c>repeat</c>, <c>keysym.scancode</c>, <c>keysym.sym</c>.</summary>
-    private const int EvRepeatOff = 0xd, EvScancodeOff = 0x10, EvSymOff = 0x14;  // not-an-offset: SDL_Event ABI, not an engine class
     private const int KmodShift = 0x0003;  // not-an-offset: SDL key/event code
     /// <summary>SDL scancode range of the modifier keys, never a "release fires" key.</summary>
     private const int ScancodeLCtrl = 0xE0, ScancodeRGui = 0xE7;  // not-an-offset: SDL key/event code
@@ -115,14 +114,14 @@ public sealed unsafe class TabTargetService : IExtenderService
         uint type = *(uint*)ev;
         if (type == SdlKeyUp)
         {
-            if (_pending != IntPtr.Zero && _pendingKey != 0 && *(int*)(ev + EvScancodeOff) == _pendingKey) ResolvePending();
+            if (_pending != IntPtr.Zero && _pendingKey != 0 && ((SdlEvent*)ev)->Scancode == _pendingKey) ResolvePending();
             return Forward(ev);
         }
-        if (type != SdlKeyDown || *(byte*)(ev + EvRepeatOff) != 0) return Forward(ev);
-        int scancode = *(int*)(ev + EvScancodeOff);
+        if (type != SdlKeyDown || ((SdlEvent*)ev)->Repeat != 0) return Forward(ev);
+        int scancode = ((SdlEvent*)ev)->Scancode;
         if (scancode is < ScancodeLCtrl or > ScancodeRGui) _lastKeyDown = scancode;
         if (!UiInputService.ChordGateClear()) return Forward(ev);
-        int sym = *(int*)(ev + EvSymOff);
+        int sym = ((SdlEvent*)ev)->Sym;
         if (_cycleCode != 0 && sym == _cycleCode)
         {
             Cycle((EngineFn.SdlGetModState() & KmodShift) != 0);

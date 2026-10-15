@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using CX.Alloy.Mdl;
+using CX.Engine;
 
 namespace CX.Alloy.Db;
 
@@ -10,8 +11,8 @@ namespace CX.Alloy.Db;
 /// <c>GetPersonalRadius</c>/<c>GetPath</c> are QUERIES the handler answers through the data pointer.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>The engine's <c>CallBack</c> block: 0x30 bytes, name[0x20], fn, data.</summary>
-    private const int CbSize = 0x30, CbFn = 0x20, CbData = 0x28, CbNameMax = 0x1f;   // not-an-offset: CX's own CallBack block, laid out as the engine's
+    /// <summary>Longest event name a callback block holds, less the terminator.</summary>
+    private const int CbNameMax = 0x1f;
     /// <summary>Callbacks one object may hold. The engine's array grows without bound; a creature registers
     /// twelve and the attach behaviour six more on its parent.</summary>
     private const int MaxCallbacks = 32;
@@ -36,11 +37,11 @@ public static unsafe partial class DbAnim
             }
             return 0;
         }
-        byte* b = (byte*)NativeMemory.AllocZeroed(CbSize);
+        var b = (DbCallbackRec*)NativeMemory.AllocZeroed((nuint)sizeof(DbCallbackRec));
         if (name != null)
-            for (int k = 0; k < CbNameMax && name[k] != 0; k++) b[k] = name[k];
-        *(nint*)(b + CbFn) = fn;
-        *(nint*)(b + CbData) = data;
+            for (int k = 0; k < CbNameMax && name[k] != 0; k++) b->Name[k] = name[k];
+        b->Fn = fn;
+        b->Data = data;
         _cb[i * MaxCallbacks + _cbN[i]++] = (nint)b;
         return (nint)b;
     }
@@ -129,11 +130,11 @@ public static unsafe partial class DbAnim
             byte* cb = (byte*)_cb[b + k];
             if (cb == null) continue;
             if (!(cb[0] == 0 || cb[0] == (byte)'*') && !Named(cb, name)) continue;
-            nint fn = *(nint*)(cb + CbFn);
+            nint fn = ((DbCallbackRec*)cb)->Fn;
             if (fn == 0) continue;
             // The caller's data overrides the entry's own when it is non-null -- which is how the engine's two
             // QUERY events (GetPersonalRadius, GetPath) hand the handler a buffer to write into.
-            nint arg = data != 0 ? data : *(nint*)(cb + CbData);
+            nint arg = data != 0 ? data : ((DbCallbackRec*)cb)->Data;
             ((delegate* unmanaged<nint, byte*, nint, void>)fn)(SceneDb.ObjFacade[i], name, arg);
             // A handler can destroy the object; the engine's own SafePointer check is this generation test,
             // and it needs no registration because a freed record's generation has already moved on.
@@ -276,7 +277,7 @@ public static unsafe partial class DbAnim
         private static nint Make(string s)
         {
             int n = Math.Min(s.Length, NameMax - 1);
-            byte* p = (byte*)NativeMemory.AllocZeroed((nuint)n + 1);
+            byte* p = (byte*)NativeMemory.AllocZeroed((nuint)(n + 1));
             for (int i = 0; i < n; i++) p[i] = (byte)s[i];
             return (nint)p;
         }

@@ -158,7 +158,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         fixed (float* sp = _dCastSph)
         {
-            float* s = sp + (long)slot * 4;
+            float* s = ((Stride4f*)sp)[slot].F;
             s[0] = cx; s[1] = cy; s[2] = cz; s[3] = r;
         }
     }
@@ -418,7 +418,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         fixed (float* sp = _dCastSph)
         {
-            float* s = sp + (long)slot * 4;
+            float* s = ((Stride4f*)sp)[slot].F;
             cx = s[0]; cy = s[1]; cz = s[2]; r = s[3];
         }
     }
@@ -458,7 +458,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         fixed (float* d = _dData)
         {
-            var m = *(Matrix4x4*)(d + (long)slot * DrawFloats);
+            var m = *(Matrix4x4*)(((DrawRec*)d)[slot].F);
             lag = new Vector3(m.M41, m.M42, m.M43);
             feat = (int)d[(long)slot * DrawFloats + 40];
         }

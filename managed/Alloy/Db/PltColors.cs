@@ -281,8 +281,8 @@ internal static unsafe class PltColors
             int off = _dirtyLo * WordsPerRecord, n = (_dirtyHi - _dirtyLo + 1) * WordsPerRecord;
             if (off + n <= _sized)
             {
-                fixed (uint* p = _words)
-                    Gl.NamedBufferSubData(_ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p + off);
+                fixed (uint* p = _words.AsSpan(off))
+                    Gl.NamedBufferSubData(_ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p);
                 _uploads++;
                 Mirror(off, n);
             }

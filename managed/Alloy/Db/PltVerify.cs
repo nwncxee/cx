@@ -145,7 +145,7 @@ internal static unsafe class PltVerify
             {
                 int at = (s * PltPalettes.RowsPerSlot + r) * PltPalettes.RowBytes;
                 var a = mine.Slice(at, PltPalettes.RowBytes);
-                var e = new ReadOnlySpan<byte>((byte*)theirs + at, PltPalettes.RowBytes);
+                var e = new ReadOnlySpan<byte>((byte*)theirs, at + PltPalettes.RowBytes).Slice(at);
                 if (a.SequenceEqual(e)) continue;
                 if (bad++ != 0) continue;
                 firstSlot = s; firstRow = r;
