@@ -2,6 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Seam;
@@ -298,12 +299,12 @@ public static unsafe class SeamShell
             if (FrameNo - Head(b)->RetiredAt < QuarantineFrames) continue;
             _overflow.RemoveAt(i);
             Quarantined--;
-            NativeMemory.AlignedFree((void*)(b - HeaderSize));
+            NativeMemory.AlignedFree(ShellBlock.BlockOf(b, HeaderSize));
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static SeamHeader* Head(nint shell) => (SeamHeader*)(shell - HeaderSize);
+    internal static SeamHeader* Head(nint shell) => ShellBlock.Header<SeamHeader>(shell, HeaderSize);
 
     /// <summary>A zeroed shell of <paramref name="kind"/> carrying <paramref name="id"/>, with its primary
     /// vptr set; 0 when the block cannot be had (the caller logs and refuses). The SafePointer list is left
@@ -333,10 +334,10 @@ public static unsafe class SeamShell
         {
             void* block = NativeMemory.AlignedAlloc((nuint)(HeaderSize + size), 16);
             if (block == null) return 0;
-            shell = (nint)block + HeaderSize;
+            shell = ShellBlock.ShellOf(block, HeaderSize);
             Allocated++;
         }
-        NativeMemory.Fill((void*)(shell - HeaderSize), (nuint)(HeaderSize + size), 0);
+        NativeMemory.Fill(ShellBlock.BlockOf(shell, HeaderSize), (nuint)(HeaderSize + size), 0);
         SeamHeader* head = Head(shell);
         head->Magic = Magic;
         head->Id = id.Value;
@@ -344,9 +345,9 @@ public static unsafe class SeamShell
         head->State = StateLive;
         *(nint*)shell = Facade.Table(SeamLayout.PrimaryTable(kind));
         if (kind == FacadeKind.String)
-            *(nint*)(shell + SeamLayout.StringGobString) = Facade.Table(SeamTable.CAurString);
+            new StringGob(shell).SeamStringSub = Facade.Table(SeamTable.CAurString);
         else if (kind == FacadeKind.Camera)
-            *(nint*)(shell + SeamLayout.CameraGobSub) = Facade.Table(SeamTable.CameraGob);
+            *(nint*)new CX.Engine.Camera(shell).GobSub = Facade.Table(SeamTable.CameraGob);
         Live++;
         return shell;
     }
@@ -396,7 +397,7 @@ public static unsafe class SeamShell
                 _ringTail[k] = (_ringTail[k] + 1) % RingSize;
                 _ringLive[k]--;
                 Quarantined--;
-                NativeMemory.AlignedFree((void*)(evicted - HeaderSize));
+                NativeMemory.AlignedFree(ShellBlock.BlockOf(evicted, HeaderSize));
             }
             else
             {
@@ -467,11 +468,11 @@ public static unsafe class SeamShell
                 _ring[k, _ringTail[k]] = 0;
                 _ringTail[k] = (_ringTail[k] + 1) % RingSize;
                 _ringLive[k]--;
-                if (b != 0) NativeMemory.AlignedFree((void*)(b - HeaderSize));
+                if (b != 0) NativeMemory.AlignedFree(ShellBlock.BlockOf(b, HeaderSize));
             }
             _ringHead[k] = 0;
         }
-        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree((void*)(b - HeaderSize));
+        foreach (nint b in _held.Blocks) NativeMemory.AlignedFree(ShellBlock.BlockOf(b, HeaderSize));
         _held = new HeldState();
         Quarantined = 0;
     }

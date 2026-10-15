@@ -162,7 +162,7 @@ public sealed unsafe partial class ObjectSlots
     private static float GetAdjustedScale(nint self)
     {
         if (!Live(self, 91, out DbId id, out nint shell)) return 1f;
-        return *(float*)(shell + SeamLayout.GobScaleFinal) * VisualXform.Scale(shell);
+        return new Gob(shell).ScaleBase * VisualXform.Scale(shell);
     }
 
     /// <summary><c>Gob::GetAdjustedPosition() const</c> @0x439900: the object's position plus the visual
@@ -241,10 +241,10 @@ public sealed unsafe partial class ObjectSlots
     {
         if (!Live(self, 55, out DbId id, out nint shell)) return 0;
         if ((uint)type >= 2 || SceneDb.ObjModel[id.Index] == null) return 0;
-        float* ch = (float*)(shell + SeamLayout.GobScaleChannel);
+        Span<float> ch = new Gob(shell).ScaleChannels;
         ch[type] = scale;
         float final = ch[0] * ch[1];
-        *(float*)(shell + SeamLayout.GobScaleFinal) = final;
+        new Gob(shell).ScaleBase = final;
         SceneDb.ObjScale[id.Index] = final;
         SceneDb.ObjSeamScaleMode[id.Index] = (byte)type;
         SceneDb.Touch(id, Dirty.Xform);

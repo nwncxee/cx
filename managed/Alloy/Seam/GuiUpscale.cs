@@ -36,7 +36,7 @@ internal static unsafe class GuiUpscale
         nameBlock = (nint)NativeMemory.AllocZeroed((nuint)(EngineLayout.SceneName + NameBytes));
         nint cam = (nint)NativeMemory.AllocZeroed((nuint)(ShellAt + sizeof(nint)));
         *(nint**)cam = table;
-        *(nint**)(cam + SeamLayout.CameraGobSub) = table;
+        *(nint**)new Camera(cam).GobSub = table;
         new Camera(cam).Scene = new Scene(nameBlock);
         return cam;
     }
@@ -44,7 +44,7 @@ internal static unsafe class GuiUpscale
     /// <summary>The scratch camera's <c>AsCAurCamera</c>: the real shell, which is what
     /// <c>CGuiMan::FindCameraInActivePanels</c> compares the open panels' cameras against.</summary>
     [UnmanagedCallersOnly]
-    private static nint AsCAurCamera(nint self) => *(nint*)(Cam + ShellAt);
+    private static nint AsCAurCamera(nint self) => new Camera(Cam).ParkedShell;
 
     /// <summary>Say once, at boot, that panels cannot follow the UI scale. Called from <see cref="SeamFrame"/>.</summary>
     internal static void Announce(ExtenderLog log)
@@ -68,7 +68,7 @@ internal static unsafe class GuiUpscale
         if (!SceneDb.Scenes.Valid(scene) || SceneDb.CamFacade[i] == 0) { Said(i, scene, 1, in up); return; }
         byte* dst = (byte*)Unsafe.AsPointer(ref new Scene(NameBlock).Name);
         dst[SceneDb.SceneNameBytes(scene, new Span<byte>(dst, NameBytes))] = 0;
-        *(nint*)(Cam + ShellAt) = SceneDb.CamFacade[i];
+        new Camera(Cam).ParkedShell = SceneDb.CamFacade[i];
         float* vp = stackalloc float[4] { vx, vy, vw, vh };
         float* rect = stackalloc float[4] { SceneDb.CamViewX[i], SceneDb.CamViewY[i], SceneDb.CamViewW[i], SceneDb.CamViewH[i] };
         float* o = stackalloc float[OutFloats];
