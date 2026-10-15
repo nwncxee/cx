@@ -77,19 +77,19 @@ internal static unsafe partial class NuiJsonRead
         return (IntPtr)j.Ptr;
     }
 
-    private static void SetString(List<IntPtr> mem, NuiStdString s, bool msvc, string text)
+    private static void SetString(List<IntPtr> mem, NuiStdString s, string text)
     {
         byte[] b = Encoding.UTF8.GetBytes(text);
-        byte* chars = b.Length > NuiStdString.InlineMax ? A(mem, b.Length + 1) : s.Inline(msvc);
+        byte* chars = b.Length > NuiStdString.InlineMax ? A(mem, b.Length + 1) : s.Inline;
         for (int i = 0; i < b.Length; i++) chars[i] = b[i];
-        s.Set(msvc, chars, (ulong)b.Length);
+        s.Set(chars, (ulong)b.Length);
     }
 
     private static IntPtr Str(List<IntPtr> mem, bool msvc, string text)
     {
-        var own = new NuiStdString(A(mem, NuiStdString.Bytes));
+        var own = new NuiStdString(A(mem, NuiStdString.Bytes), msvc);
         var j = new NuiJsonValue(A(mem, NuiJsonValue.Bytes));
-        SetString(mem, own, msvc, text);
+        SetString(mem, own, text);
         j.Type = 3;
         j.Pointer = own.Ptr;
         return (IntPtr)j.Ptr;
@@ -131,7 +131,7 @@ internal static unsafe partial class NuiJsonRead
         var n = new NuiJsonMapNode(A(mem, NuiJsonMapNode.Bytes));
         var left = Build(mem, msvc, m, lo, mid - 1, n, head);
         var right = Build(mem, msvc, m, mid + 1, hi, n, head);
-        SetString(mem, n.Key, msvc, m[mid].Key);
+        SetString(mem, n.Key(msvc), m[mid].Key);
         n.Value.CopyFrom(new NuiJsonValue((byte*)m[mid].Value));
         n.Link(msvc, left, parent, right, head);
         return n;

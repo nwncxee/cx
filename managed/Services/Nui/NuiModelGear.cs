@@ -445,10 +445,9 @@ internal static unsafe class NuiModelGear
         Plan(many, string.Join(',', System.Linq.Enumerable.Repeat("zz", 40)), 0);
         check.Expect(TakeRefusal(many, out _, out refWhy) && refWhy == "past the 8 items a wear value may name", "a wear value past eight items is recorded");
 
-        byte* rec = stackalloc byte[256];
-        new Span<byte>(rec, 256).Clear();
-        SetI32(rec, 0xc8, 1);
-        SetU16(rec, 0, 9);
+        byte[] rec = new byte[256];
+        BitConverter.TryWriteBytes(rec.AsSpan(0xc8), 1);
+        BitConverter.TryWriteBytes(rec.AsSpan(0), (ushort)9);
         var g = new GearState();
         g.Dress.Armor = true;
         g.Dress.Cloak = true;
@@ -457,27 +456,19 @@ internal static unsafe class NuiModelGear
         Array.Fill(g.Dress.ArmorPartColors, (byte)0xff);
         g.Dress.ArmorPartColors[113] = 7;
         g.Dress.CloakModel = 0x2b;
-        Dress(g, rec);
-        check.Expect(U16(rec, 0x26) == 100 && U16(rec, 0x26 + 36) == 118 && U16(rec, 0) == 9, "armour parts fill the 19 words at 0x26 and leave the set at 0 alone");
+        fixed (byte* at = rec) Dress(g, at);
+        check.Expect(BitConverter.ToUInt16(rec, 0x26) == 100 && BitConverter.ToUInt16(rec, 0x26 + 36) == 118 && BitConverter.ToUInt16(rec, 0) == 9, "armour parts fill the 19 words at 0x26 and leave the set at 0 alone");
         check.Expect(rec[0x4c] == 10 && rec[0x51] == 15, "the six armour colours sit at 0x4c");
         check.Expect(rec[0x52] == 0xff && rec[0xc3] == 7, "the 114 part colours end where the helmet id begins");
-        check.Expect(I32(rec, 0xc8) == 0, "armour clears the worn flag, so the body is built from the set at 0x26");
-        check.Expect(U16(rec, 0xec) == 40 && U16(rec, 0xf6) == 45 && U16(rec, 0xf8) == 0x2b, "the cloak colours are six words before the cloak model");
-        check.Expect(I32(rec, 0xc4) == 0, "no helmet previewed leaves the helmet id as it was");
-        new Span<byte>(rec, 256).Clear();
-        SetI32(rec, 0xc8, 1);
+        check.Expect(BitConverter.ToInt32(rec, 0xc8) == 0, "armour clears the worn flag, so the body is built from the set at 0x26");
+        check.Expect(BitConverter.ToUInt16(rec, 0xec) == 40 && BitConverter.ToUInt16(rec, 0xf6) == 45 && BitConverter.ToUInt16(rec, 0xf8) == 0x2b, "the cloak colours are six words before the cloak model");
+        check.Expect(BitConverter.ToInt32(rec, 0xc4) == 0, "no helmet previewed leaves the helmet id as it was");
+        Array.Clear(rec);
+        BitConverter.TryWriteBytes(rec.AsSpan(0xc8), 1);
         g.Dress = new Dressing();
-        Dress(g, rec);
-        bool clear = I32(rec, 0xc8) == 1;
+        fixed (byte* at = rec) Dress(g, at);
+        bool clear = BitConverter.ToInt32(rec, 0xc8) == 1;
         for (int i = 0; i < 256; i++) clear &= i is >= 0xc8 and < 0xcc || rec[i] == 0;
         check.Expect(clear, "a record with nothing previewed is left untouched");
     }
-
-    private static int I32(byte* rec, int at) => System.Runtime.InteropServices.MemoryMarshal.Read<int>(new ReadOnlySpan<byte>(rec, 256)[at..]);
-
-    private static ushort U16(byte* rec, int at) => System.Runtime.InteropServices.MemoryMarshal.Read<ushort>(new ReadOnlySpan<byte>(rec, 256)[at..]);
-
-    private static void SetI32(byte* rec, int at, int v) => System.Runtime.InteropServices.MemoryMarshal.Write(new Span<byte>(rec, 256)[at..], in v);
-
-    private static void SetU16(byte* rec, int at, ushort v) => System.Runtime.InteropServices.MemoryMarshal.Write(new Span<byte>(rec, 256)[at..], in v);
 }

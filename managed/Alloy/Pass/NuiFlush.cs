@@ -346,12 +346,13 @@ internal static unsafe class NuiFlush
         NkDrawCommand* recs = stackalloc NkDrawCommand[3];
         NkBuffer cmds = Fixed(recs, 3 * sizeof(NkDrawCommand));
         for (int i = 0; i < 3; i++) recs[2 - i].ElemCount = (uint)(i + 1);
-        byte* ctxMem = stackalloc byte[0x6800];
-        new Span<byte>(ctxMem, 0x6800).Clear();
-        var fx = new NkContext((IntPtr)ctxMem);
+        Span<byte> ctxMem = stackalloc byte[EngineLayout.NkCtxDrawCmdOffset + sizeof(ulong)];
+        ctxMem.Clear();
+        NkContext fx;
+        fixed (byte* ctxAt = ctxMem) fx = new NkContext((IntPtr)ctxAt);
         fx.DrawCmdOffset = sizeof(NkDrawCommand);
         byte* first = FirstCmd((IntPtr)(&cmds), 3, fx);
-        check.Expect(first == (byte*)Unsafe.AsPointer(ref new Span<NkDrawCommand>(recs, 3)[2]), "the first command is the last record in the buffer");
+        check.Expect(first - (byte*)recs == 2 * sizeof(NkDrawCommand), "the first command is the last record in the buffer");
         var firstCmd = (NkDrawCommand*)first;
         int seen = 0;
         for (int k = 0; k < 3; k++) seen = seen * 10 + (int)firstCmd[-k].ElemCount;

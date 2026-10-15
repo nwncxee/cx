@@ -230,13 +230,13 @@ internal static unsafe class NuiScrollbarHide
         {
             new NkCommandBuffer((IntPtr)cb).Base = (IntPtr)buf;
             new NkBuffer((IntPtr)buf).Memory = (IntPtr)mem;
-            void Put(int at, uint v) => MemoryMarshal.Write(new Span<byte>(mem, 512)[at..], in v);
+            Span<byte> bytes = new(mem, 512);
             void Cmd(int off, int type, int next, uint color, int at)
             {
                 var c = new NkBuffer((IntPtr)buf).CommandAt((ulong)off);
                 c.Type = type;
                 c.Next = (ulong)next;
-                if (at != 0) Put(off + at, color);
+                if (at != 0) BitConverter.TryWriteBytes(new Span<byte>(mem, 512)[(off + at)..], color);
             }
             Cmd(0, 5, 0x20, 0xff102030, 0x1a);
             new NkBuffer((IntPtr)buf).Allocated = 0x1c;
@@ -244,7 +244,7 @@ internal static unsafe class NuiScrollbarHide
             Cmd(0x20, 5, 0x40, 0xff102030, 0x1a);
             Cmd(0x40, 17, 0x78, 0x80ffffff, 0x30);
             Cmd(0x78, 16, 0xb8, 0xffffffff, 0x18);
-            Put(0x78 + 0x1c, 0xff00ff00);
+            BitConverter.TryWriteBytes(bytes[(0x78 + 0x1c)..], 0xff00ff00);
             new NkCommandBuffer((IntPtr)cb).End = 0xb8;
             Scale((IntPtr)cb, from, 0.5f);
             check.Expect(from == 0x20 && mem[0x1a + 3] == 0xff, "the mark is the aligned front; a command before it is untouched");

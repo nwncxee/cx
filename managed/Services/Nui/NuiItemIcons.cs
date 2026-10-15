@@ -137,7 +137,7 @@ internal static unsafe class NuiItemIcons
         NativeMemory.Clear(str, NuiStdString.Bytes);
         fixed (byte* b = _b64)
         {
-            new NuiStdString(str).Borrow(OperatingSystem.IsWindows(), b, (ulong)_b64Len);
+            new NuiStdString(str).Borrow(b, (ulong)_b64Len);
             return _fromBase64(ret, (IntPtr)str);
         }
     }

@@ -52,10 +52,10 @@ internal static unsafe class CxEvent
         byte[] b = Encoding.UTF8.GetBytes(text);
         int n = Math.Min(b.Length, MaxText);
         bool win = msvc ?? OperatingSystem.IsWindows();
-        var s = new NuiStdString(Alloc(mem, NuiStdString.Bytes));
-        byte* chars = n <= NuiStdString.InlineMax ? s.Inline(win) : Alloc(mem, n + 1);
+        var s = new NuiStdString(Alloc(mem, NuiStdString.Bytes), win);
+        byte* chars = n <= NuiStdString.InlineMax ? s.Inline : Alloc(mem, n + 1);
         for (int i = 0; i < n; i++) chars[i] = b[i];
-        s.Set(win, chars, (ulong)n);
+        s.Set(chars, (ulong)n);
         return s.Ptr;
     }
 

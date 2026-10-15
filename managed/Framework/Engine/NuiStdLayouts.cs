@@ -3,58 +3,75 @@ using CX.Framework;
 
 namespace CX.Engine;
 
-/// <summary>A <c>std::string</c> in the running compiler's shape, 32 bytes on both: libstdc++ keeps a data pointer, a length and
-/// a 16-byte inline buffer; MSVC keeps the inline buffer first, then the length and the capacity, and up to 15 characters
-/// live inline.</summary>
-public readonly unsafe struct NuiStdString(byte* ptr)
+/// <summary>Where one compiler keeps the parts of a <c>std::string</c>, picked once when the view is made. libstdc++: a data
+/// pointer, the length at +8 and a 16-byte inline buffer at +16 that also holds the capacity of a heap string; the pointer is
+/// always valid. MSVC: the inline buffer first, then the length at +16 and the capacity at +24; the pointer is valid only
+/// past 15 characters.</summary>
+internal readonly struct StdStringShape(int sizeAt, int capAt, int inlineAt)
+{
+    /// <summary>Offset of the length.</summary>
+    public readonly int SizeAt = sizeAt;
+    /// <summary>Offset of the capacity word, or -1 when the capacity lives in the inline buffer.</summary>
+    public readonly int CapAt = capAt;
+    /// <summary>Offset of the inline buffer.</summary>
+    public readonly int InlineAt = inlineAt;
+
+    /// <summary>libstdc++'s shape.</summary>
+    public static readonly StdStringShape Gcc = new(8, -1, 16);
+    /// <summary>MSVC's shape.</summary>
+    public static readonly StdStringShape Msvc = new(16, 24, 0);
+}
+
+/// <summary>A <c>std::string</c> in one compiler's shape, 32 bytes on both. The shape is chosen when the view is made: the
+/// running compiler's, or the other one for a check that builds both.</summary>
+public readonly unsafe struct NuiStdString
 {
     /// <summary>The address of the string object.</summary>
-    public readonly byte* Ptr = ptr;
+    public readonly byte* Ptr;
+    private readonly StdStringShape _shape;
+
     /// <summary>The object's size.</summary>
     public const int Bytes = 32;
     /// <summary>The most characters that fit inline.</summary>
     public const int InlineMax = 15;
-    private const int GccSize = 8, GccBuf = 16, MsvcSize = 16, MsvcCap = 24;
+
+    /// <summary>Views the string at <paramref name="ptr"/> in the running compiler's shape.</summary>
+    public NuiStdString(byte* ptr) : this(ptr, OperatingSystem.IsWindows()) { }
+
+    /// <summary>Views the string at <paramref name="ptr"/> in MSVC's shape or libstdc++'s.</summary>
+    public NuiStdString(byte* ptr, bool msvc)
+    {
+        Ptr = ptr;
+        _shape = msvc ? StdStringShape.Msvc : StdStringShape.Gcc;
+    }
 
     /// <summary>The character count.</summary>
-    public ulong Length(bool msvc) => *(ulong*)(Ptr + (msvc ? MsvcSize : GccSize));
+    public ulong Length => *(ulong*)(Ptr + _shape.SizeAt);
 
     /// <summary>The characters: MSVC keeps up to 15 inline, libstdc++ always points at them.</summary>
-    public byte* Chars(bool msvc) => msvc && *(ulong*)(Ptr + MsvcCap) < 16 ? Ptr : *(byte**)Ptr;
+    public byte* Chars => _shape.CapAt >= 0 && *(ulong*)(Ptr + _shape.CapAt) < InlineMax + 1 ? Ptr : *(byte**)Ptr;
 
     /// <summary>Where a string of up to <see cref="InlineMax"/> characters keeps them.</summary>
-    public byte* Inline(bool msvc) => msvc ? Ptr : Ptr + GccBuf;
+    public byte* Inline => Ptr + _shape.InlineAt;
 
     /// <summary>Points the string at <paramref name="n"/> characters that something else owns: pointer and length, and MSVC's
     /// capacity.</summary>
-    public void Borrow(bool msvc, byte* chars, ulong n)
+    public void Borrow(byte* chars, ulong n)
     {
         *(byte**)Ptr = chars;
-        if (msvc)
-        {
-            *(ulong*)(Ptr + MsvcSize) = n;
-            *(ulong*)(Ptr + MsvcCap) = n;
-        }
-        else *(ulong*)(Ptr + GccSize) = n;
+        *(ulong*)(Ptr + _shape.SizeAt) = n;
+        if (_shape.CapAt >= 0) *(ulong*)(Ptr + _shape.CapAt) = n;
     }
 
     /// <summary>Points the string at <paramref name="chars"/> (<see cref="Inline"/> when <paramref name="n"/> fits, else a heap
     /// block of <c>n + 1</c> bytes) and sets its length and capacity.</summary>
-    public void Set(bool msvc, byte* chars, ulong n)
+    public void Set(byte* chars, ulong n)
     {
         bool heap = n > InlineMax;
-        if (msvc)
-        {
-            if (heap) *(byte**)Ptr = chars;
-            *(ulong*)(Ptr + MsvcSize) = n;
-            *(ulong*)(Ptr + MsvcCap) = heap ? n : InlineMax;
-        }
-        else
-        {
-            *(byte**)Ptr = chars;
-            *(ulong*)(Ptr + GccSize) = n;
-            if (heap) *(ulong*)(Ptr + GccBuf) = n;
-        }
+        if (heap || _shape.CapAt < 0) *(byte**)Ptr = chars;
+        *(ulong*)(Ptr + _shape.SizeAt) = n;
+        if (_shape.CapAt >= 0) *(ulong*)(Ptr + _shape.CapAt) = heap ? n : InlineMax;
+        else if (heap) *(ulong*)(Ptr + _shape.InlineAt) = n;
     }
 }
 
@@ -151,8 +168,8 @@ public readonly unsafe struct NuiJsonMapNode(byte* ptr)
     private const int MsvcLeft = 0, MsvcParent = 8, MsvcRight = 16, MsvcIsNil = 25;
     private const int KeyAt = 32, ValueAt = 64;
 
-    /// <summary>The key string.</summary>
-    public NuiStdString Key => new(Ptr + KeyAt);
+    /// <summary>The key string, in the shape of the compiler whose tree this is.</summary>
+    public NuiStdString Key(bool msvc) => new(Ptr + KeyAt, msvc);
     /// <summary>The value.</summary>
     public NuiJsonValue Value => new(Ptr + ValueAt);
     /// <summary>The left child.</summary>
