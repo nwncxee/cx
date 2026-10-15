@@ -68,9 +68,6 @@ public static partial class PlateLayout
     /// <summary>Number of health bands (<c>CNWCCreatureStats + 0x8e</c> is 0..5).</summary>
     public const int BandCount = 6;
 
-    private static readonly string[] BandTexts =
-        { "Uninjured", "Barely Injured", "Injured", "Badly Wounded", "Near Death", "Dead" };
-
     /// <summary>Band colours as flat 0..255 (r,g,b) triplets in band order; normalised by
     /// <see cref="BandColor"/>.</summary>
     private static readonly float[] BandRgb =
@@ -649,10 +646,20 @@ public static partial class PlateLayout
         return BandFill[b];
     }
 
-    /// <summary>Health-band caption. Out-of-range indices clamp to the nearest band; the returned string is a
-    /// cached literal, never built (hot path).</summary>
-    public static string BandText(int band) =>
-        BandTexts[band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band];
+    /// <summary>One caption per band from what the client's table resolved to, trimmed: a null entry (the cell
+    /// did not parse) or a blank one is <c>""</c>, no caption. Cold: allocates the array once per resolve.</summary>
+    public static string[] BandCaptions(string?[] resolved)
+    {
+        var captions = new string[BandCount];
+        for (int i = 0; i < BandCount; i++) captions[i] = resolved[i]?.Trim() ?? "";
+        return captions;
+    }
+
+    /// <summary>Health-band caption from <paramref name="captions"/>, a <see cref="BandCaptions"/> result.
+    /// Out-of-range indices clamp to the nearest band; the returned string is a
+    /// cached one, never built (hot path), and may be empty.</summary>
+    public static string BandText(string[] captions, int band) =>
+        captions[band < 0 ? 0 : band >= BandCount ? BandCount - 1 : band];
 
     /// <summary>Name colour by reaction byte (<c>CNWCCreature + 0x3a8</c>): 1 friend green, 2 enemy red,
     /// anything else neutral blue. 0..1.</summary>
