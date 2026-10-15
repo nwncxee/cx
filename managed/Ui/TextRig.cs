@@ -463,20 +463,16 @@ public static unsafe partial class TextRig
     /// image arrives upside down: map the quad top to V=1 (image top) and the bottom to the content floor,
     /// which flips it upright AND crops the pow2 black pad band. Full U (no horizontal padding). y-down like
     /// the text ortho. <paramref name="residual"/> slides it with the body; <paramref name="alpha"/> fades it.</summary>
-    internal static void FillQuad(float* v, PortraitQuad q, float residual, float alpha)
+    internal static void FillQuad(ref QuadVerts v, PortraitQuad q, float residual, float alpha)
     {
         float x0 = q.X, y0 = q.Y + residual, x1 = q.X + q.W, y1 = q.Y + q.H + residual;
         float vTop = 1f, vBot = 1f - PortraitContentV;
-        Vtx(v, 0, x0, y0, 0, vTop, alpha); Vtx(v, 1, x1, y0, 1, vTop, alpha); Vtx(v, 2, x1, y1, 1, vBot, alpha);
-        Vtx(v, 3, x0, y0, 0, vTop, alpha); Vtx(v, 4, x1, y1, 1, vBot, alpha); Vtx(v, 5, x0, y1, 0, vBot, alpha);
+        v[0] = Vtx(x0, y0, 0, vTop, alpha); v[1] = Vtx(x1, y0, 1, vTop, alpha); v[2] = Vtx(x1, y1, 1, vBot, alpha);
+        v[3] = Vtx(x0, y0, 0, vTop, alpha); v[4] = Vtx(x1, y1, 1, vBot, alpha); v[5] = Vtx(x0, y1, 0, vBot, alpha);
     }
 
-    private static void Vtx(float* v, int i, float x, float y, float u, float w, float alpha)
-    {
-        int o = i * Floats;
-        v[o] = x; v[o + 1] = y; v[o + 2] = u; v[o + 3] = w;
-        v[o + 4] = 1f; v[o + 5] = 1f; v[o + 6] = 1f; v[o + 7] = alpha;
-    }
+    private static ShadedVertex Vtx(float x, float y, float u, float w, float alpha)
+        => new() { X = x, Y = y, U = u, V = w, R = 1f, G = 1f, B = 1f, A = alpha };
 
     private const string FSrcRgb =
         "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\nuniform sampler2D uTex;\nout vec4 o;\n" +
@@ -741,15 +737,15 @@ public static unsafe partial class TextRig
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        float* verts = stackalloc float[Floats * 6];
-        FillQuad(verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
+        QuadVerts verts = default;
+        FillQuad(ref verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
 
         Gl.UseProgram(_progRgb);
         Gl.UniformMatrix4fv(_uProjRgb, 1, (byte)Gl.FALSE, m);
         Gl.Uniform1i(_uTexRgb, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(Floats * 6 * sizeof(float)), verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &verts, Gl.DYNAMIC_DRAW);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
         bool samp = EnsurePortraitSampler();
         if (samp) Gl.BindSampler(0, _psamp);
@@ -830,9 +826,9 @@ public static unsafe partial class TextRig
         float* m = stackalloc float[16];
         Ortho(m, ViewportW, ViewportH);
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
-        float* v = stackalloc float[Floats * 6];
-        Vtx(v, 0, x, y, 0, 1, a); Vtx(v, 1, x1, y, u1, 1, a); Vtx(v, 2, x1, y1, u1, v0, a);
-        Vtx(v, 3, x, y, 0, 1, a); Vtx(v, 4, x1, y1, u1, v0, a); Vtx(v, 5, x, y1, 0, v0, a);
+        QuadVerts v = default;
+        v[0] = Vtx(x, y, 0, 1, a); v[1] = Vtx(x1, y, u1, 1, a); v[2] = Vtx(x1, y1, u1, v0, a);
+        v[3] = Vtx(x, y, 0, 1, a); v[4] = Vtx(x1, y1, u1, v0, a); v[5] = Vtx(x, y1, 0, v0, a);
 
         Gl.UseProgram(_progIconPlt);
         Gl.UniformMatrix4fv(_uProjIconPlt, 1, (byte)Gl.FALSE, m);
@@ -841,7 +837,7 @@ public static unsafe partial class TextRig
         fixed (int* r = rows) Gl.Uniform1iv(_uRowsIconPlt, 10, r);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(Floats * 6 * sizeof(float)), v, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &v, Gl.DYNAMIC_DRAW);
         Gl.ActiveTexture(Gl.TEXTURE0 + 1);
         Gl.BindTexture(Gl.TEXTURE_2D, pal);
         Gl.ActiveTexture(Gl.TEXTURE0);
@@ -902,16 +898,16 @@ public static unsafe partial class TextRig
 
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
         float vt = flipV ? 0f : 1f, vb = flipV ? 1f : v0;
-        float* v = stackalloc float[Floats * 6];
-        Vtx(v, 0, x, y, 0, vt, a); Vtx(v, 1, x1, y, u1, vt, a); Vtx(v, 2, x1, y1, u1, vb, a);
-        Vtx(v, 3, x, y, 0, vt, a); Vtx(v, 4, x1, y1, u1, vb, a); Vtx(v, 5, x, y1, 0, vb, a);
+        QuadVerts v = default;
+        v[0] = Vtx(x, y, 0, vt, a); v[1] = Vtx(x1, y, u1, vt, a); v[2] = Vtx(x1, y1, u1, vb, a);
+        v[3] = Vtx(x, y, 0, vt, a); v[4] = Vtx(x1, y1, u1, vb, a); v[5] = Vtx(x, y1, 0, vb, a);
 
         Gl.UseProgram(_progIcon);
         Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, m);
         Gl.Uniform1i(_uTexIcon, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(Floats * 6 * sizeof(float)), v, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &v, Gl.DYNAMIC_DRAW);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
         bool samp = EnsurePortraitSampler();
         if (samp) Gl.BindSampler(0, _psamp);

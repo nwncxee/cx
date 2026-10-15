@@ -361,7 +361,7 @@ public static unsafe class ChatRenderer
         // resman lookup returning a borrowed pointer (verified: no AddRef, no GL on the hit path) + a TID
         // read; zero GC alloc on our side. We never cache the pointer -- see ResolveTid.
         int* tids = stackalloc int[k];
-        float* verts = stackalloc float[Floats * 6 * k];
+        QuadVerts* verts = stackalloc QuadVerts[k];
         int drawn = 0;
         for (int i = 0; i < k; i++)
         {
@@ -370,7 +370,7 @@ public static unsafe class ChatRenderer
             int tid = TextRig.ResolvePortraitTid(quads[i].Resref);
             if (tid == 0) continue;   // not uploaded yet, or unresolvable -> skip this frame
             tids[drawn] = tid;
-            TextRig.FillQuad(((QuadVerts*)verts)[drawn].F, quads[i], residual, a);   // slide with the body + fade
+            TextRig.FillQuad(ref verts[drawn], quads[i], residual, a);   // slide with the body + fade
             drawn++;
         }
         if (drawn == 0) return;
@@ -381,7 +381,7 @@ public static unsafe class ChatRenderer
         Gl.Uniform1i(TextRig._uTexRgb, 0);
         Gl.BindVertexArray(TextRig._pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (System.IntPtr)(Floats * 6 * drawn * sizeof(float)), verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (System.IntPtr)(drawn * sizeof(QuadVerts)), verts, Gl.DYNAMIC_DRAW);
         bool samp = TextRig.EnsurePortraitSampler();
         if (samp) Gl.BindSampler(0, TextRig._psamp);
         for (int i = 0; i < drawn; i++)

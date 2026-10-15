@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
@@ -250,9 +251,30 @@ internal static unsafe class NuiItemIcons
     {
         public uint BaseItem;
         public byte Gender, VisualEffect;
-        public fixed ushort Models[LookModels];
-        public fixed byte Colors[LookColors];
-        public fixed byte PartColors[LookPartColors];
+        public LookModelSet Models;
+        public LookColorSet Colors;
+        public LookPartColorSet PartColors;
+    }
+
+    /// <summary>The 19 model numbers of a look, one per part.</summary>
+    [InlineArray(LookModels)]
+    private struct LookModelSet
+    {
+        private ushort _model;
+    }
+
+    /// <summary>The 6 colours of a look: leather, cloth, metal, then the rest.</summary>
+    [InlineArray(LookColors)]
+    private struct LookColorSet
+    {
+        private byte _colour;
+    }
+
+    /// <summary>The per-part colours of a look, part-major, <c>ff</c> = inherit.</summary>
+    [InlineArray(LookPartColors)]
+    private struct LookPartColorSet
+    {
+        private byte _colour;
     }
 
     private const int LookModels = 19, LookColors = 6, LookPartColors = LookModels * LookColors;
@@ -376,7 +398,7 @@ internal static unsafe class NuiItemIcons
         CNWBaseItem b = BaseItemOf((int)look->BaseItem);
         if (b.IsNull || look->BaseItem == NuiModelGuard.CloakBaseItem) return true;
         var names = new string[3];
-        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), new ReadOnlySpan<ushort>(look->Models, LookModels), names);
+        int n = NuiModelGuard.ItemModels(b.ModelType, ClassOf(b), (ReadOnlySpan<ushort>)look->Models, names);
         for (int i = 0; i < n; i++)
             if (!CX.Alloy.ModelFeed.Present(names[i])) { why = $"the client has no model '{names[i]}' for base item {look->BaseItem}"; return false; }
         return true;
@@ -406,7 +428,7 @@ internal static unsafe class NuiItemIcons
     {
         Look look;
         if (dst.Length < LookPartColors || !ParseLookText(text, &look)) return false;
-        new Span<byte>(look.PartColors, LookPartColors).CopyTo(dst);
+        ((ReadOnlySpan<byte>)look.PartColors).CopyTo(dst);
         return true;
     }
 
@@ -419,8 +441,8 @@ internal static unsafe class NuiItemIcons
         Look look = default;
         look.BaseItem = (uint)v.BaseItem;
         look.Gender = v.Gender;
-        v.Models.CopyTo(new Span<ushort>(look.Models, LookModels));
-        v.Colors.CopyTo(new Span<byte>(look.Colors, LookColors));
+        v.Models.CopyTo(look.Models);
+        v.Colors.CopyTo(look.Colors);
         for (int i = 0; i < LookPartColors; i++) look.PartColors[i] = 0xff;
         return Mint(&look);
     }
@@ -438,7 +460,7 @@ internal static unsafe class NuiItemIcons
     private static IntPtr Mint(Look* look)
     {
         if (_createItem == null || _identity == IntPtr.Zero) return IntPtr.Zero;
-        return _createItem(IntPtr.Zero, look->BaseItem, look->Models, look->Colors, look->PartColors,
+        return _createItem(IntPtr.Zero, look->BaseItem, (ushort*)&look->Models, (byte*)&look->Colors, (byte*)&look->PartColors,
                            (sbyte)look->Gender, look->VisualEffect, _identity);
     }
 
