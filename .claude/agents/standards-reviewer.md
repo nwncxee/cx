@@ -30,8 +30,12 @@ List every changed file and open each one. A file you did not open is a file you
   present; you check it is true.
 - A new `BannedSymbols.txt` line or analyzer rule with no proof in the PR that a planted call fails the build.
 - A container under `managed/Framework/` that holds logic rather than layout, written to get past CX0001.
-- A method under `managed/Framework/` that takes an offset, a stride or a header size as a parameter and adds it
-  to a pointer. That is `p + n` behind a call; the offset comes from the type (a field, `sizeof(T)`, a view row).
+- A method that takes a layout offset, a stride or a header size as a parameter and adds it to a pointer, or reads
+  "bytes at N" out of a span. That is `p + n` behind a call; the offset comes from the type (a field, `sizeof(T)`,
+  a view row). An offset the memory itself stores (nuklear's command `next`) is data, like an index, and may be
+  passed.
+- A record type that is a blob: a generic `StrideN`-style struct, an `[InlineArray]` of bytes or floats read at
+  hand-picked indices, or one layout declared twice (a hand-written struct beside a generated view).
 - A test or self-check that reads `.cs` source text to enforce a rule the compiler or a gate could enforce.
 
 ## Step 4 -- the rest of the law

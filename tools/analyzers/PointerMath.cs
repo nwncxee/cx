@@ -23,7 +23,7 @@ public sealed class PointerMath : DiagnosticAnalyzer
         "CX.Layout",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "A pointer plus an offset, or &p[i], is a field nobody named. Declare it as a row and read it through its view, "
+        description: "A pointer plus an offset, (nint)p + n, or &p[i], is a field nobody named. Declare it as a row and read it through its view, "
             + "or give the memory a struct, a view or a Span of its own; only managed/Framework/ adds an offset to a pointer.");
 
     /// <inheritdoc/>
@@ -102,11 +102,17 @@ public sealed class PointerMath : DiagnosticAnalyzer
     /// <summary>True when <paramref name="ptr"/> is an address and <paramref name="by"/> an integer offset, not a second address.</summary>
     private static bool Moves(IOperation ptr, IOperation by)
     {
+        if (FromPointer(ptr) && !FromPointer(by)) return true;
         ITypeSymbol? p = ptr.Type, n = Unconverted(by).Type;
         if (p == null || n == null) return false;
         if (p.TypeKind == TypeKind.Pointer) return n.TypeKind != TypeKind.Pointer;
         return IsAddress(Unconverted(ptr).Type) && !IsAddress(n) && n.TypeKind != TypeKind.Pointer;
     }
+
+    /// <summary>True when <paramref name="o"/> is a pointer cast to an integer: <c>(nint)p</c>, <c>(long)p</c>.</summary>
+    private static bool FromPointer(IOperation o) =>
+        Unconverted(o) is IConversionOperation { IsImplicit: false } conv && conv.Operand.Type?.TypeKind == TypeKind.Pointer
+        && conv.Type?.TypeKind != TypeKind.Pointer;
 
     private static bool IsAddress(ITypeSymbol? t) => t?.SpecialType is SpecialType.System_IntPtr or SpecialType.System_UIntPtr;
 
