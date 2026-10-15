@@ -80,8 +80,8 @@ internal static class AlloyClasses
 
     /// <summary>Off-device: the classifier's precedence, the one thing about it not readable off a single
     /// line. Additive beats opacity (the engine tests the blend factor first), opacity beats both transparency
-    /// terms, and a texture-alpha part with nothing declared is a cutout -- the majority of NWN content, and
-    /// the reason the missing sort survives at all.</summary>
+    /// terms, and a texture-alpha part with nothing declared is a cutout. Oracle: hand-written rows, the core and
+    /// fringe split's among them (class x coverage x wash).</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyClasses.SelfCheck");
