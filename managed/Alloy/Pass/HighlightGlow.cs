@@ -130,6 +130,17 @@ internal static unsafe class HighlightGlow
         return true;
     }
 
+    /// <summary>One component of <paramref name="v"/> by axis (0 = X, 1 = Y, 2 = Z).</summary>
+    private static ref float Axis(ref Vector3 v, int a)
+    {
+        switch (a)
+        {
+            case 0: return ref v.X;
+            case 1: return ref v.Y;
+            default: return ref v.Z;
+        }
+    }
+
     /// <summary>One mesh part's three quads, in the engine's order: the x plane spans (y, z), the y plane
     /// (x, z), the z plane (x, y). Alpha is <c>dot(plane normal, eye direction)^2 * intensity</c>, so a quad
     /// seen edge-on vanishes. A zero-area quad is skipped. Returns the quads written.</summary>
@@ -147,13 +158,13 @@ internal static unsafe class HighlightGlow
         for (int a = 0; a < 3; a++)
         {
             int u = a == 0 ? 1 : 0, v = a == 2 ? 1 : 2;
-            float hu = ((float*)&half)[u], hv = ((float*)&half)[v];
+            float hu = Axis(ref half, u), hv = Axis(ref half, v);
             if (hu == 0f || hv == 0f) continue;
             Vector3 centre = mid, axisU = default, axisV = default, n = default;
-            ((float*)&centre)[a] = ((float*)&biased)[a];
-            ((float*)&axisU)[u] = hu;
-            ((float*)&axisV)[v] = hv;
-            ((float*)&n)[a] = 1f;
+            Axis(ref centre, a) = Axis(ref biased, a);
+            Axis(ref axisU, u) = hu;
+            Axis(ref axisV, v) = hv;
+            Axis(ref n, a) = 1f;
             float f = Vector3.Dot(Vector3.Transform(n, rot), toEye);
             Vector3 c = pos + Vector3.Transform(centre, rot), wu = Vector3.Transform(axisU, rot),
                     wv = Vector3.Transform(axisV, rot);

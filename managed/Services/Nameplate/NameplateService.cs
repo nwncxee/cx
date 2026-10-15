@@ -1,3 +1,4 @@
+using System.Numerics;
 using System;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -1158,13 +1159,12 @@ public sealed unsafe class NameplateService : IExtenderService
         }
         if (drawn == 0) return;
 
-        float* m = stackalloc float[16];
-        TextRig.Ortho(m, TextRig.ViewportW, TextRig.ViewportH);
+        Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
 
         Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
         Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
         Gl.UseProgram(TextRig._progRgb);
-        Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, m);
+        Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.Uniform1i(TextRig._uTexRgb, 0);
         Gl.BindVertexArray(TextRig._pvao);

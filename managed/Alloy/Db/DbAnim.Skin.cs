@@ -259,7 +259,7 @@ public static unsafe partial class DbAnim
 
     /// <summary>The API's body: one part's palette into a caller's buffer (<c>64 * 16</c> floats). Used by the
     /// self-checks and by any consumer that wants the matrices without the stage.</summary>
-    private static bool SkinSolve(int part, float* dst)
+    private static bool SkinSolve(int part, BonePalette* dst)
     {
         if ((uint)part >= (uint)SceneDb.MaxParts || !SceneDb.Parts.LiveAt(part)) return false;
         ModelDef? m = SceneDb.PartModel[part];
@@ -267,7 +267,7 @@ public static unsafe partial class DbAnim
         int node = SceneDb.PartNode[part];
         if ((uint)node >= (uint)m.Nodes.Length) return false;
         SkinDef? skin = StitchSkin(part) ?? m.Nodes[node].Skin;
-        return skin != null && Palette(part, skin, ref *(BonePalette*)dst);
+        return skin != null && Palette(part, skin, ref *dst);
     }
 
     /// <summary>The skin layer's period numbers.</summary>

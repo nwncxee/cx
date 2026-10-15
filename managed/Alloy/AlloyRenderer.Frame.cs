@@ -178,14 +178,14 @@ public sealed unsafe partial class AlloyRenderer
         _projMtx = proj;   // #347: what a spliced stock file reads as m_proj
         Matrix4x4 vp = view * proj;
         // every froxel input comes off THIS pass's projection, never the capture side (see TryPerspective)
-        bool perspective = AlloyLights.TryPerspective((float*)&proj, out float p00, out float p11,
+        bool perspective = AlloyLights.TryPerspective(proj, out float p00, out float p11,
                                                       out float near, out float far);
         // #120: this pass's eye, for the specular view vector. Same row-vector convention as above, so the
         // inverse view's translation IS the eye. Pass-local state, read off this pass's own stacks -- the
         // SCENE camera is not derived here any more (#257 reads it whole at the anchor), so there is no
         // contest between passes left to resolve. Ahead of the frustum, which measures its fog clamp from it.
         if (perspective && Matrix4x4.Invert(view, out Matrix4x4 camToWorld)) _eyePos = camToWorld.Translation;
-        SetPassFrustum((float*)&vp, perspective);   // #330: the route gate's planes, this pass's own
+        SetPassFrustum(vp, perspective);   // #330: the route gate's planes, this pass's own
         // Cap 5 is the engine's own lit predicate (Ghidra MatStatic @0x450560 / RenderFlat @0x450eb0): with
         // it off every part gets flat white, so the flat variant IS vanilla for this pass.
         // CX-120: the last term is the ENGINE's lighting cap (RenderInterface::IsEnabled(5)), which only the
@@ -237,7 +237,7 @@ public sealed unsafe partial class AlloyRenderer
             // The cluster buffers are only meaningful once THIS pass's build has run: a skipped build
             // leaves them holding another camera's binning (or, before the first dispatch, undefined
             // BufferData contents), and a lit part would then sample arbitrary light indices.
-            lightingOn = AlloyLights.Build((float*)&view, p00, p11, near, far, viewport[2], viewport[3], tally: true)
+            lightingOn = AlloyLights.Build(view, p00, p11, near, far, viewport[2], viewport[3], tally: true)
                          && Programs._progLit46 != 0;
             FrameZones.Add(FrameZones.Zone.Lights, tLights);
         }
@@ -324,7 +324,7 @@ public sealed unsafe partial class AlloyRenderer
             CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
         fixed (Sphere* cs = _dCastSph)
             CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
-        fixed (uint* src = _dSrc)
+        fixed (CullSrcRec* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull
             // down for the whole pass rather than leaving a stale list armed behind it.
@@ -600,7 +600,7 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case PassId.WaterOwned:
                     GpuBegin(GpuTerm.Water);
-                    Issue.WaterOwnedPass(_gBlendEnd, _gWaterEnd, &vp, (float*)&view, (float*)&proj,
+                    Issue.WaterOwnedPass(_gBlendEnd, _gWaterEnd, &vp, view, proj,
                                    viewport, near, far);
                     GpuEnd(GpuTerm.Water);
                     break;
@@ -1236,9 +1236,9 @@ public sealed unsafe partial class AlloyRenderer
             if (!ok) break;
             Matrix4x4 view = EnvProbe.FaceView(f);
             // A cube face is exactly 90deg, so the projection's p00 and p11 are both cot(45) = 1.
-            AlloyLights.Build((float*)&view, 1f, 1f, fnear, ffar, EnvProbe.Size, EnvProbe.Size, tally: false);
+            AlloyLights.Build(view, 1f, 1f, fnear, ffar, EnvProbe.Size, EnvProbe.Size, tally: false);
             Gl.ColorMask(1, 1, 1, 1);
-            Issue.IssueBatches(0, groups, (float*)&vp, faceVp, fnear, ffar);
+            Issue.IssueBatches(0, groups, vp, faceVp, fnear, ffar);
             Gl.ColorMask(1, 1, 1, 0);   // the dome is infinitely far: the clear's alpha 0 already says so
             // the real sky behind the world, so a wet street mirrors the dome and not the clear colour; the
             // dome is parked at this frame's camera, which is where the probe stands
@@ -1284,7 +1284,7 @@ public sealed unsafe partial class AlloyRenderer
         if (indirect) CullPass.BindForDraw(CullPass.PhaseMirror);
         Issue._holdProg = false;
         AlloyLights.BorrowedTable = true;
-        try { Issue.IssueBatches(0, _gOpaqueEnd, (float*)&mVp, pvp, near, far, indirect); }
+        try { Issue.IssueBatches(0, _gOpaqueEnd, mVp, pvp, near, far, indirect); }
         finally
         {
             AlloyLights.BorrowedTable = false;

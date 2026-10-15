@@ -56,9 +56,9 @@ internal static unsafe partial class GrassField
         int seen = 0;
         float far = FarDist();
         Vector3 eye = SceneFog.Origin(out _);
-        fixed (float* planes = _binPlanes)
+        Vector4[] planes = _binPlanes;
         {
-        CullPass.Planes((float*)vp, planes, AlloyRenderer.EyePos);
+        CullPass.Planes(in *vp, planes, AlloyRenderer.EyePos);
         for (int k = 0; k < _dbListN; k++)
         {
             int part = _dbList[k];
@@ -84,7 +84,7 @@ internal static unsafe partial class GrassField
 
     /// <summary>Is this part's own sphere inside the view and inside the grass cut-off? The sphere is the
     /// part's model-space bound placed by its world matrix -- the same pair the cull reads.</summary>
-    private static bool PartInView(int part, float* planes, Vector3 eye, float far)
+    private static bool PartInView(int part, ReadOnlySpan<Vector4> planes, Vector3 eye, float far)
     {
         Vector3 centre = Vector3.Transform(SceneDb.PartCenter[part], SceneDb.PartWorld[part]);
         float radius = SceneDb.PartRadius[part];

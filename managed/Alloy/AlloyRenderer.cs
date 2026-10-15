@@ -636,7 +636,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The engine's water draw bucket (<c>Scene::RenderSinglePass</c> @0x46e5f0's "Water" scope).
     /// One name, read by the ownable-bucket list and by the suppression that has to agree with it.</summary>
     internal const int WaterBucket = 6;
-    internal static float* _waterView, _waterProj;
+    internal static Matrix4x4 _waterView, _waterProj;
     internal static float _waterNear = 1f, _waterFar = 100f;
 
     /// <summary>One uniform location per scriptable slot of one kind.</summary>

@@ -1,3 +1,4 @@
+using System.Numerics;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
@@ -181,8 +182,7 @@ public static unsafe class ChatRenderer
             Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
             Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
-            float* m = stackalloc float[16];
-            TextRig.Ortho(m, TextRig.ViewportW, TextRig.ViewportH);
+            Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
 
             for (int i = 0; i < frames.Length; i++)
             {
@@ -287,7 +287,7 @@ public static unsafe class ChatRenderer
     /// <summary>Draw the frame in three slices: chrome above the body, the animated body under a body-rect
     /// scissor (with the portrait pass), then chrome below. The scissor flip reads the frame's published
     /// viewport height (<see cref="TextRig.ViewportH"/>).</summary>
-    private static void DrawFrame(Frame f, float* proj, float residual, System.DateTime now, System.DateTime ls)
+    private static void DrawFrame(Frame f, in Matrix4x4 proj, float residual, System.DateTime now, System.DateTime ls)
     {
         RenderFrame rf = f.Rf;
         DrawArt(rf, 0, rf.SkinOver);
@@ -345,7 +345,7 @@ public static unsafe class ChatRenderer
     /// through the RGBA program. Cache-hit path is zero-alloc (dict lookup + one virtual TID read); only a
     /// first-seen resref pays an <c>AurTextureGet</c>. A texture whose TID is still 0 (not yet uploaded by
     /// the engine's RefreshTextures pass, or a bad resref) is simply skipped this frame.</summary>
-    private static void DrawPortraits(IReadOnlyList<PortraitQuad> quads, float* proj,
+    private static void DrawPortraits(IReadOnlyList<PortraitQuad> quads, in Matrix4x4 proj,
                                       float residual, System.DateTime now, System.DateTime ls, bool scrolled,
                                       bool animEnabled, double holdSec, double fadeSec)
     {
@@ -376,7 +376,7 @@ public static unsafe class ChatRenderer
         if (drawn == 0) return;
 
         Gl.UseProgram(TextRig._progRgb);
-        Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, proj);
+        fixed (Matrix4x4* pm = &proj) Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, (float*)pm);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.Uniform1i(TextRig._uTexRgb, 0);
         Gl.BindVertexArray(TextRig._pvao);
@@ -432,8 +432,7 @@ public static unsafe class ChatRenderer
             Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
             Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
-            float* m = stackalloc float[16];
-            TextRig.Ortho(m, TextRig.ViewportW, TextRig.ViewportH);
+            Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
 
             TextRig.BindText(m);
             Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._vbo);

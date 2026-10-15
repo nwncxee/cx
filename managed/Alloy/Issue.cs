@@ -230,15 +230,15 @@ internal static unsafe class Issue
     {
         bool indirect = CullPass.Active;
         if (indirect) CullPass.BindForDraw(CullPass.PhaseColour);
-        IssueBatches(from, to, (float*)vp, viewport, near, far, indirect);
+        IssueBatches(from, to, in *vp, viewport, near, far, indirect);
         if (indirect) { CullPass.UnbindForDraw(); BindStagedSlots(); }
     }
 
-    internal static void IssueBatches(int from, int groups, float* vpRaw, int* viewport, float near, float far,
+    internal static void IssueBatches(int from, int groups, in Matrix4x4 vp, int* viewport, float near, float far,
                                      bool indirect = false)
     {
         long tIssue = FrameZones.Now;
-        try { IssueBatchesInner(from, groups, vpRaw, viewport, near, far, indirect); }
+        try { IssueBatchesInner(from, groups, vp, viewport, near, far, indirect); }
         finally { FrameZones.Add(FrameZones.Zone.Issue, tIssue); }
     }
 
@@ -263,7 +263,7 @@ internal static unsafe class Issue
     /// re-sent for every batch, and it is a DIFFERENT location per program, so a program switch cannot leave a
     /// stale one behind; the stages read record uDrawBase + gl_DrawID for the per-part model matrix, texture
     /// rotation and material colours.</summary>
-    internal static void IssueBatchesInner(int from, int groups, float* vpRaw, int* viewport, float near, float far,
+    internal static void IssueBatchesInner(int from, int groups, in Matrix4x4 vp, int* viewport, float near, float far,
                                           bool indirect)
     {
         // A probe capture must not carry the debug viz through: /alloy viz would bake flat cyan (or a
@@ -364,9 +364,9 @@ internal static unsafe class Issue
                 if (water)
                 {
                     Gl.UseProgram(Programs._progWater);
-                    Gl.UniformMatrix4fv(Programs._watVp, 1, 0, vpRaw);
-                    Gl.UniformMatrix4fv(Programs._watView, 1, 0, _waterView);
-                    Gl.UniformMatrix4fv(Programs._watProj, 1, 0, _waterProj);
+                    fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(Programs._watVp, 1, 0, (float*)vpm);
+                    fixed (Matrix4x4* wv = &_waterView) Gl.UniformMatrix4fv(Programs._watView, 1, 0, (float*)wv);
+                    fixed (Matrix4x4* wp = &_waterProj) Gl.UniformMatrix4fv(Programs._watProj, 1, 0, (float*)wp);
                     Gl.Uniform2f(Programs._watNearFar, _waterNear, _waterFar);
                     AlloyLights.BindForDraw();
                     Gl.Uniform1i(Programs._watViz, viz);
@@ -390,7 +390,7 @@ internal static unsafe class Issue
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
                     if (wantProg == 7) Gl.Uniform1i(Programs.HostMaskSamples, CoverageLayer.Samples);
                     Gl.Uniform1i(L.Tex, 0);
-                    Gl.UniformMatrix4fv(L.Vp, 1, 0, vpRaw);
+                    fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vpm);
                     AlloyLights.BindForDraw();
                     Gl.Uniform1i(L.Viz, viz);
                     Gl.Uniform1f(L.AoCutout, Ao.Cutout.V);
@@ -434,7 +434,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(Programs._locAlphaMip, Renderer.CutMip.V);
                     Gl.Uniform1i(Programs._locViz, viz);
                     OitPass.Upload(Programs._locOit, Programs._locOitDim, _oitOn); boundOitGob = -1;
-                    Gl.UniformMatrix4fv(Programs._locVp, 1, 0, vpRaw);
+                    fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(Programs._locVp, 1, 0, (float*)vpm);
                     UploadFeatureTerms(Programs._locFeat, viewport);
                 }
             }
@@ -653,7 +653,7 @@ internal static unsafe class Issue
     /// taken immediately before it. Depth writes go back ON -- the one piece of state separating this pass
     /// from the blended one, and what lets additive draw after water and stand in FRONT of it, as vanilla
     /// arranges it. Stands down whole when the copy was refused or the program did not build.</summary>
-    internal static void WaterOwnedPass(int from, int to, Matrix4x4* vp, float* view, float* proj,
+    internal static void WaterOwnedPass(int from, int to, Matrix4x4* vp, in Matrix4x4 view, in Matrix4x4 proj,
                                        int* viewport, float near, float far)
     {
         if (to <= from || !FrameSnapshot.Ready || !_waterArmed) return;

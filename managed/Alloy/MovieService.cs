@@ -1,3 +1,4 @@
+using System.Numerics;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -38,12 +39,12 @@ internal readonly unsafe struct MoviePlate
 
     /// <summary>The four triangle-strip vertices (x, y, u, v), screen-top at V0: the decoder uploads the
     /// frame's first row first, and the engine's quad maps it to the top of the screen.</summary>
-    internal void Write(float* v)
+    internal void Write(Span<Vector4> v)
     {
-        v[0] = -Sx; v[1] = Sy; v[2] = U0; v[3] = V0;
-        v[4] = -Sx; v[5] = -Sy; v[6] = U0; v[7] = V1;
-        v[8] = Sx; v[9] = Sy; v[10] = U1; v[11] = V0;
-        v[12] = Sx; v[13] = -Sy; v[14] = U1; v[15] = V1;
+        v[0] = new Vector4(-Sx, Sy, U0, V0);
+        v[1] = new Vector4(-Sx, -Sy, U0, V1);
+        v[2] = new Vector4(Sx, Sy, U1, V0);
+        v[3] = new Vector4(Sx, -Sy, U1, V1);
     }
 }
 
@@ -151,14 +152,14 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.Clear(Gl.COLOR_BUFFER_BIT);
         Gl.ClearColor(clear[0], clear[1], clear[2], clear[3]);
 
-        float* verts = stackalloc float[16];
-        MoviePlate.Fit(frameW, frameH, texW, texH, vp[2], vp[3]).Write(verts);
+        Vector4* verts = stackalloc Vector4[4];
+        MoviePlate.Fit(frameW, frameH, texW, texH, vp[2], vp[3]).Write(new Span<Vector4>(verts, 4));
 
         Gl.UseProgram(_prog);
         Gl.Uniform1i(_uTex, 0);
         Gl.BindVertexArray(_vao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _vbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(16 * sizeof(float)), verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(4 * sizeof(Vector4)), verts, Gl.DYNAMIC_DRAW);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
         // A sampler object, never glTexParameteri: the texture is the engine's and it caches what it set on
