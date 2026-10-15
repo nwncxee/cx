@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -46,10 +47,10 @@ public sealed unsafe class PoseService : IExtenderService
     private static ReadOnlySpan<byte> Denied =>
         "sit\0standup\0kd\0ckd\0dead\0cdead\0die\0gu\0cgu\0getlow\0getmid\0cgetmid\0kneel\0meditate\0worship\0mount\0custom\0appear\0cappear\0disappear\0cdisappear\0"u8;
 
-    /// <summary>The parts the layer writes, found by name each frame (equipment swaps rebuild parts): the names
-    /// <c>FindPart</c> matches case-insensitively, carried by every stock humanoid (a_ba and its descendants, 257 of
-    /// 663 stock a_/c_ models). Every rest orientation is identity, so a bone's rest frame is the model's -- +X right,
-    /// +Y forward, +Z up -- and a gob without all six leg parts is skipped whole.</summary>
+    /// <summary>The parts the layer writes, found each frame by the body's <see cref="RigMap"/> names (equipment swaps
+    /// rebuild parts). The stock names are carried by 257 of 663 stock a_/c_ models, every rest orientation identity, so
+    /// a bone's rest frame is the model's -- +X right, +Y forward, +Z up; a content rig's rests are taken to be the same.
+    /// A gob without all six leg parts is skipped whole.</summary>
     internal struct Bones
     {
         public const int Count = 16;
@@ -244,7 +245,8 @@ public sealed unsafe class PoseService : IExtenderService
         _log = log;
         _ = AnimKnobs.G;
         SelfCheck(log);
-        if (!EngineLayout.Require(log, "Pose", "Gob", "Part", "MdlNode", "AnimRun", "Animation", "CHitInfo", "Scene")) return;
+        RigMap.Init(log);
+        if (!EngineLayout.Require(log, "Pose", "Gob", "Part", "MdlNode", "Model", "AnimRun", "Animation", "CHitInfo", "Scene")) return;
         if (!SymbolMap.Require(log, "Pose", SymbolMap.GobAnimate, SymbolMap.PartGetWorld, SymbolMap.GobGetAdjustedScale,
                                SymbolMap.SceneHitCheck, SymbolMap.HitInfoReset, SymbolMap.CurrentScene)) return;
         SceneRay.Init();
@@ -288,8 +290,9 @@ public sealed unsafe class PoseService : IExtenderService
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 
         IntPtr root = PoseRig.Root(gob);
+        IntPtr body = Owner(gob);
         Bones bones = default;
-        if (root != IntPtr.Zero) PoseRig.FindBones(gob, root, ref bones);
+        if (root != IntPtr.Zero) PoseRig.FindBones(gob, root, RigOf(gob, body), ref bones);
         bool found = bones.Legs;
         int slot = Find(gob);
         if (slot >= 0)
@@ -301,7 +304,6 @@ public sealed unsafe class PoseService : IExtenderService
                 s.Applied = false;
             }
         }
-        IntPtr body = Owner(gob);
         if (body != IntPtr.Zero) { Attached(gob, root, bones, slot, body, next, dt, t0); return; }
         // out of the view volume the engine does not even advance the gob's time: nothing to correct
         found &= PoseRig.InView(gob) && Near(gob);
@@ -322,7 +324,7 @@ public sealed unsafe class PoseService : IExtenderService
     /// this frame's step. True when a pose column was written.</summary>
     private static bool DbBefore(DbId obj, float dt)
     {
-        IntPtr gob = DbBody(obj, out IntPtr root, out Bones bones);
+        IntPtr gob = DbBody(obj, out IntPtr root, out Bones bones, out IntPtr body);
         if (gob == IntPtr.Zero) return false;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int slot = Find(gob);
@@ -335,7 +337,6 @@ public sealed unsafe class PoseService : IExtenderService
                 s.Applied = false;
             }
         }
-        IntPtr body = Owner(gob);
         if (body != IntPtr.Zero)
         {
             int bs = Find(body);
@@ -353,29 +354,37 @@ public sealed unsafe class PoseService : IExtenderService
     /// on every bone both have -- the body already finished this frame, so it pulls rather than waits.</summary>
     private static bool DbAfter(DbId obj, float dt)
     {
-        IntPtr gob = DbBody(obj, out IntPtr root, out Bones bones);
+        IntPtr gob = DbBody(obj, out IntPtr root, out Bones bones, out IntPtr body);
         if (gob == IntPtr.Zero) return false;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         int slot = Find(gob);
-        IntPtr body = Owner(gob);
         if (body != IntPtr.Zero) DbAttached(gob, root, bones, slot, body);
         else if (bones.Legs && PoseRig.InView(gob) && Near(gob) && AnyOn) Correct(gob, root, bones, slot, dt);
         _ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         return PoseRig.TakeWrote();
     }
 
-    /// <summary>The creature gob (facade shell) behind <paramref name="obj"/> with its root part and bones; zero
-    /// when the layer is off or the object is no creature's.</summary>
-    private static IntPtr DbBody(DbId obj, out IntPtr root, out Bones bones)
+    /// <summary>The creature gob (facade shell) behind <paramref name="obj"/> with its root part, bones and the body
+    /// it is attached to (<see cref="Owner"/>); zero when the layer is off or the object is no creature's.</summary>
+    private static IntPtr DbBody(DbId obj, out IntPtr root, out Bones bones, out IntPtr body)
     {
-        root = IntPtr.Zero;
+        root = body = IntPtr.Zero;
         bones = default;
         if (!_armed) return IntPtr.Zero;
         IntPtr gob = Facade.ObjectShell(obj);
         if (gob == IntPtr.Zero || new Gob(gob).ExternalType != GobKindCreature) return IntPtr.Zero;
         root = PoseRig.Root(gob);
-        if (root != IntPtr.Zero) PoseRig.FindBones(gob, root, ref bones);
+        body = Owner(gob);
+        if (root != IntPtr.Zero) PoseRig.FindBones(gob, root, RigOf(gob, body), ref bones);
         return gob;
+    }
+
+    /// <summary>The names <paramref name="gob"/>'s bones go by: its creature's rig, read off the body (<paramref name="owner"/>
+    /// for an attachment), so an attachment matches by its body's names.</summary>
+    private static byte[][] RigOf(IntPtr gob, IntPtr owner)
+    {
+        IntPtr creature = _creatures ? new Gob(gob).ExternalData : IntPtr.Zero;
+        return RigMap.Of(owner != IntPtr.Zero ? owner : gob, creature == IntPtr.Zero ? -1 : RigMap.Appearance(creature));
     }
 
     /// <summary><see cref="Attached"/> and <see cref="CopyToAttachments"/> as one pull: save the attachment's
@@ -393,7 +402,7 @@ public sealed unsafe class PoseService : IExtenderService
         s.Applied = true;
         Bones from = default;
         IntPtr broot = PoseRig.Root(body);
-        if (broot != IntPtr.Zero) PoseRig.FindBones(body, broot, ref from);
+        if (broot != IntPtr.Zero) PoseRig.FindBones(body, broot, RigOf(body, IntPtr.Zero), ref from);
         for (int k = 0; k < Bones.Count; k++)
             if (bones[k] != IntPtr.Zero && from[k] != IntPtr.Zero) PoseRig.SetLocal(bones[k], PoseRig.Local(from[k]));
         _followed++;
@@ -530,47 +539,37 @@ public sealed unsafe class PoseService : IExtenderService
     }
 
     /// <summary>One pass over the part tree, matching every bone name at once (first match wins).</summary>
-    internal static void FindBones(IntPtr part, ref Bones bones, int depth)
+    internal static void FindBones(IntPtr part, byte[][] rig, ref Bones bones, int depth)
     {
         if (depth > MaxDepth) return;
         IntPtr node = new Part(part).Node.Ptr;
-        int bone = node == IntPtr.Zero ? -1 : BoneIndex(new MdlNode(node).Chars);
+        int bone = node == IntPtr.Zero ? -1 : BoneIndex(new MdlNode(node).Chars, rig);
         if (bone >= 0 && bones[bone] == IntPtr.Zero) bones[bone] = part;
         IntPtr* kids = (IntPtr*)new Part(part).Children;
         int n = new Part(part).ChildCount;
         for (int i = 0; i < n && kids != null; i++)
-            if (kids[i] != IntPtr.Zero) FindBones(kids[i], ref bones, depth + 1);
+            if (kids[i] != IntPtr.Zero) FindBones(kids[i], rig, ref bones, depth + 1);
     }
 
-    /// <summary>0..5 for r-thigh, r-shin, r-foot, l-thigh, l-shin, l-foot, 6 torso, 7 neck, 8 head, 9 pelvis,
-    /// 10..15 for r-bicep, r-forearm, r-hand, l-bicep, l-forearm, l-hand (case-insensitive, <c>_g</c> suffix), else -1.</summary>
-    internal static int BoneIndex(byte* name)
+    /// <summary>The bone <paramref name="name"/> is in <paramref name="rig"/>, whole and case-insensitive: 0..5 for r-thigh,
+    /// r-shin, r-foot, l-thigh, l-shin, l-foot, 6 torso, 7 neck, 8 head, 9 pelvis, 10..15 for r-bicep, r-forearm, r-hand,
+    /// l-bicep, l-forearm, l-hand; -1 for none.</summary>
+    internal static int BoneIndex(byte* name, byte[][] rig)
     {
-        if (NameIs(name, "torso_g\0"u8)) return 6;
-        if (NameIs(name, "neck_g\0"u8)) return 7;
-        if (NameIs(name, "head_g\0"u8)) return 8;
-        if (NameIs(name, "pelvis_g\0"u8)) return 9;
-        int side = Lower(name[0]) switch { (byte)'r' => 0, (byte)'l' => 3, _ => -1 };
-        if (side < 0) return -1;
-        if (NameIs(name, "thigh_g\0"u8, 1)) return side;
-        if (NameIs(name, "shin_g\0"u8, 1)) return side + 1;
-        if (NameIs(name, "foot_g\0"u8, 1)) return side + 2;
-        int arm = 10 + side;
-        if (NameIs(name, "bicep_g\0"u8, 1)) return arm;
-        if (NameIs(name, "forearm_g\0"u8, 1)) return arm + 1;
-        if (NameIs(name, "hand_g\0"u8, 1)) return arm + 2;
+        for (int i = 0; i < Bones.Count; i++)
+            if (rig[i].Length > 0 && NameIs(name, rig[i])) return i;
         return -1;
     }
 
-    /// <summary>ASCII case-insensitive compare of a C string against a NUL-terminated literal.</summary>
-    private static bool NameIs(byte* s, ReadOnlySpan<byte> lit, int at = 0)
+    /// <summary>ASCII case-insensitive compare of a C string against a lowercase NUL-terminated name.</summary>
+    private static bool NameIs(byte* s, ReadOnlySpan<byte> lit)
     {
         for (int i = 0; i < lit.Length; i++)
-            if (Lower(s[at + i]) != lit[i]) return false;
+            if (Lower(s[i]) != lit[i]) return false;
         return true;
     }
 
-    private static byte Lower(byte c) => c is >= (byte)'A' and <= (byte)'Z' ? (byte)(c | 0x20) : c;
+    internal static byte Lower(byte c) => c is >= (byte)'A' and <= (byte)'Z' ? (byte)(c | 0x20) : c;
 
     /// <summary>True when any animation on the gob's run list is one <see cref="Denied"/> names: the one being
     /// blended from counts as much as the one blended to, so a sit-down or a get-up never gets a correction.
@@ -906,8 +905,10 @@ public sealed unsafe class PoseService : IExtenderService
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "Pose.SelfCheck");
+        byte[][] st = RigMap.Stock;
         fixed (byte* a = "RThigh_g\0"u8, b = "lfoot_g\0"u8, c = "rthigh_g01\0"u8, d = "Torso_g\0"u8, e = "neck_g\0"u8, g = "head_g\0"u8)
-            check.Expect(BoneIndex(a) == 0 && BoneIndex(b) == 5 && BoneIndex(c) == -1 && BoneIndex(d) == 6 && BoneIndex(e) == 7 && BoneIndex(g) == 8,
+            check.Expect(BoneIndex(a, st) == 0 && BoneIndex(b, st) == 5 && BoneIndex(c, st) == -1 && BoneIndex(d, st) == 6
+                         && BoneIndex(e, st) == 7 && BoneIndex(g, st) == 8,
                          "bone names match whole and case-insensitive");
         fixed (byte* a = "sitdown\0"u8, b = "ckdbckps\0"u8, c = "pause1\0"u8, d = "cwalkf\0"u8, e = "gustandb\0"u8, f = "greeting\0"u8)
             check.Expect(IsDenied(a) && IsDenied(b) && IsDenied(e) && !IsDenied(c) && !IsDenied(d) && !IsDenied(f),
@@ -1050,7 +1051,8 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
         check.Expect(DriveEase.SelfCheck(), "keyboard weight: a drive sets off at 30% of its speed and is at full speed in 0.4 s; let go, it slows evenly over exactly the path the engine would have coasted, never speeding up, in about twice the engine's time; a walk-run change keeps the speed");
         fixed (byte* a = "pelvis_g\0"u8, b = "Lbicep_g\0"u8, c = "rforearm_g\0"u8, d = "lhand_g\0"u8, e = "lhand\0"u8, g = "Lshoulder_g\0"u8)
-            check.Expect(BoneIndex(a) == 9 && BoneIndex(b) == 13 && BoneIndex(c) == 11 && BoneIndex(d) == 15 && BoneIndex(e) == -1 && BoneIndex(g) == -1,
+            check.Expect(BoneIndex(a, st) == 9 && BoneIndex(b, st) == 13 && BoneIndex(c, st) == 11 && BoneIndex(d, st) == 15
+                         && BoneIndex(e, st) == -1 && BoneIndex(g, st) == -1,
                          "the hips and arms match by their _g bone names only");
         check.Expect(Transition.SelfCheck(), "movement changes: the old movement carries on and crossfades into the new one, continuous where it starts, a reversal slows through zero instead of flipping");
         check.Expect(Mass.SelfCheck(), "mass: a start, a stop and the bottom of a drop dip the pelvis and it settles back a little past neutral; steady walking and a steady descent carry no dip; the chest's lean overshoots a step by under a fifth");
@@ -1060,16 +1062,40 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Follow.SelfCheck(), "follow-through: a turn on the spot swings the arms behind, then they swing through; a stop swings them forward; either settles to a tenth of its swing within 1.2 s, the lag is capped, and an action eases it out; the neck keeps a shake off the head but not the sway, and carries it along past its cap");
         check.Expect(Weight.SelfCheck(), "weight cues: a cruise on a path loads nothing; the engine's ramp and a drive's ease each dip the pelvis by the rate's worth of load and pitch the lean into and out of the travel; a drive at full speed carries no cue at all, a body off any path falls back to the measured acceleration, and no cue passes the running stop's");
         check.Expect(Settle.SelfCheck(), "stops and starts through the feet: the settle step's arc leaves the ground and lands back on it, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a start seeds the cycle with the stance's front foot planted just past its touchdown");
-        check.Expect(DbRigCheck(), "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, and the restore puts the animation's values back -- root height and every bone");
+        string[] stockNodes = ["root", "rthigh_g", "rshin_g", "rfoot_g", "lthigh_g", "lshin_g", "lfoot_g"];
+        string[] ownNodes = ["root", "Bip_R_Thigh", "Bip_R_Calf", "Bip_R_Foot", "Bip_L_Thigh", "Bip_L_Calf", "Bip_L_Foot"];
+        check.Expect(DbRigCheck(stockNodes, st, out bool legs) && legs, "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, and the restore puts the animation's values back -- root height and every bone");
+        check.Expect(RigMapCheck(out byte[][] mapped), "rig map: a supermodel's row names the limbs, a blank cell names no bone, the appearance names the head, and a chain with no row keeps the stock names");
+        check.Expect(DbRigCheck(ownNodes, mapped, out legs) && legs && DbRigCheck(ownNodes, st, out bool unmapped) && !unmapped,
+                     "rig map: a skeleton with its own bone names gets foot IK when the map names its legs, and none on the stock names alone");
         log.Info(check.Ok ? "Pose.SelfCheck: passed" : "Pose.SelfCheck: FAILED");
     }
 
-    /// <summary>The layer over a synthetic SceneDb leg pair (root, then thigh -> shin -> foot each side): what DB
-    /// mode's step drives. Leaves the table as it found it.</summary>
-    private static bool DbRigCheck()
+    /// <summary>A hand-written rig map row, as the engine's 2DA hands its cells over (bone order, blank as empty),
+    /// against hand-written names: what <paramref name="rig"/>, the map's rig for a model whose supermodel has the
+    /// row, must match and must not.</summary>
+    private static bool RigMapCheck(out byte[][] rig)
     {
+        var rows = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cx_pose_skel"] = ["Bip_R_Thigh", "Bip_R_Calf", "Bip_R_Foot", "Bip_L_Thigh", "Bip_L_Calf", "Bip_L_Foot", "Bip_Spine", "", "", "",
+                                "", "", "", "", "", ""],
+        };
+        rig = RigMap.Build(["cx_pose_kid", "CX_POSE_SKEL"], "Wolf_head", rows);
+        byte[][] none = RigMap.Build(["cx_pose_kid"], "head_g", rows);
+        fixed (byte* thigh = "BIP_R_THIGH\0"u8, foot = "bip_r_foot\0"u8, spine = "bip_spine\0"u8, head = "wolf_head\0"u8, stock = "rthigh_g\0"u8)
+            return BoneIndex(thigh, rig) == 0 && BoneIndex(foot, rig) == 2 && BoneIndex(spine, rig) == 6
+                   && BoneIndex(head, rig) == 8 && BoneIndex(stock, rig) == -1 && rig[7].Length == 0 && rig[9].Length == 0
+                   && BoneIndex(stock, none) == 0 && BoneIndex(thigh, none) == -1;
+    }
+
+    /// <summary>The layer over a synthetic SceneDb leg pair (root, then thigh -> shin -> foot each side, named
+    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives. <paramref name="legs"/>
+    /// says the rig found all six; with fewer there is nothing to drive, and it passes. Leaves the table as it found it.</summary>
+    private static bool DbRigCheck(string[] names, byte[][] rig, out bool legs)
+    {
+        legs = false;
         var m = new CX.Alloy.Mdl.ModelDef { Name = "cx_pose_rig", AnimScale = 1f, BMin = new Vector3(-1f), BMax = new Vector3(1f) };
-        string[] names = ["root", "rthigh_g", "rshin_g", "rfoot_g", "lthigh_g", "lshin_g", "lfoot_g"];
         int[] parent = [-1, 0, 1, 2, 0, 4, 5];
         Vector3[] at = [Vector3.Zero, new(0.1f, 0f, 1f), new(0f, 0.02f, -0.5f), new(0f, 0f, -0.5f),
                         new(-0.1f, 0f, 1f), new(0f, 0.02f, -0.5f), new(0f, 0f, -0.5f)];
@@ -1101,9 +1127,11 @@ public sealed unsafe class PoseService : IExtenderService
             int first = SceneDb.ObjPartFirst[o];
             DbAnim.PartGetWorld(first, out _, out _);   // composes the object matrix the chain ends in
             Bones b = default;
-            PoseRig.FindBones(obj, ref b);
+            PoseRig.FindBones(obj, rig, ref b);
+            legs = b.Legs;
+            if (!legs) return true;
             IntPtr root = PoseRig.Handle(first);
-            ok = b.Legs && PoseRig.Index(b.RFoot) == first + 3 && PoseRig.Index(b.LThigh) == first + 4;
+            ok = PoseRig.Index(b.RFoot) == first + 3 && PoseRig.Index(b.LThigh) == first + 4;
             PoseRig.World(b.RFoot, out Vector3 foot0, out _);
             DbAnim.PartGetWorld(first + 3, out Vector3 composed, out _);
             ok &= Vector3.Distance(foot0, composed) < 1e-4f;

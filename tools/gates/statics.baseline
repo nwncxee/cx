@@ -272,7 +272,7 @@
 17 managed/Services/Camera/CameraDriveService.cs
 47 managed/Services/Camera/CameraService.cs
 27 managed/Services/Camera/FreeCameraService.cs
-13 managed/Services/Camera/HeadTrackService.cs
+12 managed/Services/Camera/HeadTrackService.cs
 23 managed/Services/Camera/MouseLookService.cs
 7 managed/Services/Camera/SceneRay.cs
 8 managed/Services/Camera/StepGuardService.cs

@@ -774,6 +774,12 @@ internal static unsafe class SymbolMap
     /// Windows): <c>PlayFootstep</c>'s appearance.2da reads. Nonzero = the cell held an int.</summary>
     [Fn("int(IntPtr twoda, int row, IntPtr column, int* result)")]
     public const string C2DAGetINTEntry = "_ZN4C2DA11GetINTEntryEiRK10CExoStringPi";
+    /// <summary><c>CTwoDimArrays::GetCached2DA(CExoString name, int cached)</c> @0x11bfe60 (exported on Windows) -- the 2DA
+    /// a script's <c>Get2DAString</c> reads, loaded through the resource manager into the engine's own LRU cache (with
+    /// <c>cached</c> 0); null when no such 2DA loads. The name is by value: the caller destroys it on Itanium, the callee
+    /// on Win64. The table may be evicted later, so read it at once.</summary>
+    [Fn("IntPtr(IntPtr arrays, IntPtr name, int cached)")]
+    public const string TwoDimGetCached2DA = "_ZN13CTwoDimArrays12GetCached2DAE10CExoStringi";
     /// <summary><c>CNWCArea::GetSurfaceMaterial(Vector)</c> @0x703390 -- the surfacemat.2da row under a point, what
     /// <c>PlayFootstep</c> picks its column by. Windows: CNWCArea name-exports nothing here, so rva 0x7db100, the
     /// call Windows <c>PlayFootstep</c> (rva 0x8057c0) makes with the creature's +0x30 and a pointer to its +0x38.</summary>
@@ -3041,6 +3047,7 @@ internal static unsafe class SymbolMap
         [ExoStringInit]     = Nm("?InitFromCharArray@CExoString@@AEAAAEAV1@PEBDI@Z"),
         [C2DAGetCExoStringEntry] = Nm("?GetCExoStringEntry@C2DA@@QEAAHHAEBVCExoString@@PEAV2@@Z"),
         [C2DAGetINTEntry]   = Nm("?GetINTEntry@C2DA@@QEAAHHAEBVCExoString@@PEAH@Z"),
+        [TwoDimGetCached2DA] = Nm("?GetCached2DA@CTwoDimArrays@@QEAAPEAVC2DA@@VCExoString@@H@Z"),
         [SoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
         [ExoSound]          = Nm("?g_pExoSound@@3PEAVCExoSound@@EA"),
         [AreaGetSurfaceMaterial] = At(),

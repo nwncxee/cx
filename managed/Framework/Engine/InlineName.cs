@@ -12,6 +12,13 @@ public readonly unsafe partial struct Animation
 }
 
 /// <inheritdoc cref="Animation"/>
+public readonly unsafe ref partial struct Model
+{
+    /// <inheritdoc cref="EngineLayout.ModelName"/>
+    public byte* Chars => (byte*)Unsafe.AsPointer(ref Name);
+}
+
+/// <inheritdoc cref="Animation"/>
 public readonly unsafe ref partial struct MdlNode
 {
     /// <inheritdoc cref="EngineLayout.MdlNodeName"/>

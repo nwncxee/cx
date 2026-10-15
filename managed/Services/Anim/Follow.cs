@@ -44,7 +44,7 @@ internal static unsafe class Follow
     /// rest instead (as <see cref="PoseMath.Wobble"/>).</summary>
     private const float Substep = 1f / 120f;
     private const int MaxSteps = 12;
-    /// <summary><c>torso_g</c>'s index in <see cref="PoseService.BoneIndex"/> order.</summary>
+    /// <summary>The torso's index in <see cref="PoseService.BoneIndex"/> order.</summary>
     private const int TorsoBone = 6;
 
     /// <summary>The pendulums, a_ba's rig in model units off <c>torso_g</c>:

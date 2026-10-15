@@ -6,6 +6,7 @@ using CX.Alloy.Db;
 using CX.Alloy.Seam;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Anim;
 
 namespace CX.Services.Camera;
 
@@ -24,12 +25,6 @@ public sealed unsafe class HeadTrackService : IExtenderService
     private static BeginLookAtAnimateFn _begin;
     /// <inheritdoc cref="_begin"/>
     private static PartGetWorldFn _getWorld;
-
-    /// <summary>The head node name handed to <c>FindPart</c>, preallocated: the hook is not allowed to allocate, and
-    /// the engine keeps no copy. <c>head_g</c> is what vanilla looks for when <c>appearance.2da</c> names none.
-    /// ponytail: the per-row HEAD_NAME is not read, so a race whose head node is named otherwise simply does not
-    /// track (<c>BeginLookAtAnimate</c> returns silently); the upgrade path is that column, this name the fallback.</summary>
-    private static byte* _headNode;
 
     /// <summary>The gob we drove this frame, and the key <see cref="OnControl"/> matches an animation by
     /// (<c>LookAtAnimation+0x30</c> is the looker's gob). Zero = not driving.</summary>
@@ -53,15 +48,12 @@ public sealed unsafe class HeadTrackService : IExtenderService
         _log = log;
         CameraKnobs.Declare();
         SelfCheck(log);
+        RigMap.Init(log);
         if (!EngineLayout.Require(log, "HeadTrack", "CNWCCreature", "LookAtAnimation", "Part")) return;
         if (!SymbolMap.Require(log, "HeadTrack", SymbolMap.UpdateLookAt, SymbolMap.LookAtControl,
                                SymbolMap.BeginLookAtAnimate, SymbolMap.PartGetWorld)) return;
         _begin = EngineFn.BeginLookAtAnimate;
         _getWorld = EngineFn.PartGetWorld;
-
-        ReadOnlySpan<byte> node = "head_g\0"u8;
-        _headNode = (byte*)NativeMemory.AllocZeroed((nuint)node.Length);
-        node.CopyTo(new Span<byte>(_headNode, node.Length));
 
         _updateOrig = hooks.InstallUpdateLookAt(&OnUpdateLookAt);
         if (_updateOrig == null) { log.Info("HeadTrack: standing down (UpdateLookAt install refused)"); return; }
@@ -93,9 +85,10 @@ public sealed unsafe class HeadTrackService : IExtenderService
         }
         IntPtr gob = Model(creature);
         if (gob == IntPtr.Zero) { _gob = IntPtr.Zero; _updateOrig(creature); return; }
+        var head = RigMap.Head(RigMap.Appearance(creature));
         _gob = gob; _drives++;
-        if (Renderer.On) { DriveDb(gob); return; }
-        _begin(gob, gob, _headNode, _headNode, MouseLook.HeadYaw.V, MouseLook.HeadPitch.V, Blend, Reach);
+        if (Renderer.On) { DriveDb(gob, head.Text); return; }
+        fixed (byte* node = head.Name) _begin(gob, gob, node, node, MouseLook.HeadYaw.V, MouseLook.HeadPitch.V, Blend, Reach);
     }
 
     /// <summary>The look-at slot's own body, and <c>Gob::BeginLookAtAnimate</c> called directly.</summary>
@@ -103,12 +96,12 @@ public sealed unsafe class HeadTrackService : IExtenderService
 
     /// <summary>The model is a scene-database facade, with no engine part tree for <c>Gob::BeginLookAtAnimate</c>
     /// to walk and no <c>LookAtAnimation</c> for <see cref="OnControl"/> to re-aim: the database's own look-at
-    /// is begun and then aimed, with the same clamp and release.</summary>
-    private static void DriveDb(IntPtr gob)
+    /// is begun on <paramref name="head"/> and then aimed, with the same clamp and release.</summary>
+    private static void DriveDb(IntPtr gob, string head)
     {
         DbId id = Facade.Object(gob, LookAtSlot);
         if (id.Value == 0) return;
-        DbAnim.BeginLookAt(id, id, HeadName, HeadName, MouseLook.HeadYaw.V, MouseLook.HeadPitch.V, Blend, Reach);
+        DbAnim.BeginLookAt(id, id, head, head, MouseLook.HeadYaw.V, MouseLook.HeadPitch.V, Blend, Reach);
         CameraService.Rendered(out _, out float camYaw, out float camPitch, out _);
         Vector3 dir = -CameraService.Forward(CameraService.Pose(camYaw, camPitch));
         if (!DbAnim.LookAtMeasure(id, dir, out float want, out float pitch)) return;
@@ -116,9 +109,6 @@ public sealed unsafe class HeadTrackService : IExtenderService
         DbAnim.LookAtAim(id, yaw, pitch);
         _writes++;
     }
-
-    /// <summary><see cref="_headNode"/> as the database's lookup takes it.</summary>
-    private const string HeadName = "head_g";
 
     /// <summary>The creature's Gob, through the engine's own accessor: <c>GetModel(0xff, 1)</c> forwards to
     /// the CNWCAnimBase at +0x78, which answers <c>*(animBase + 0xc8)</c>.</summary>
