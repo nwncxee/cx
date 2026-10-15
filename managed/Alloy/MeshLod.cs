@@ -169,8 +169,8 @@ internal static unsafe class MeshLod
         for (int i = 0; i < count; i++)
         {
             int v = src[i];
-            float* p = new HostVertices(vertHost, pos).Floats(baseVertex + v);
-            j.Pos[v * 3] = p[0]; j.Pos[v * 3 + 1] = p[1]; j.Pos[v * 3 + 2] = p[2];
+            ref Vector3 p = ref new HostVertices(vertHost, pos).Pos(baseVertex + v);
+            j.Pos[v * 3] = p.X; j.Pos[v * 3 + 1] = p.Y; j.Pos[v * 3 + 2] = p.Z;
         }
         _offered++;
         _jobs.Offer(j, j.Key, sig);

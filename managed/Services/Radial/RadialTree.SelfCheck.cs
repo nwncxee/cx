@@ -173,7 +173,7 @@ internal static unsafe partial class RadialTree
             check.Expect(!Invoke((IntPtr)menu, 4) && _fakeCalls == 1, "Invoke on an unset entry does nothing");
             check.Expect(Invoke((IntPtr)menu, 3) && _fakeCalls == 2 && _fakeParam == -7
                 && _fakeSelf == (win ? (IntPtr)handlerObj : (IntPtr)(&handlerObj->Vptr)),
-                win ? "Invoke slot 3 (Win64 pair)" : $"Invoke slot 3 decodes the virtual thunk: this = obj + adj ({(long)_fakeSelf - (long)handlerObj:x})");
+                win ? "Invoke slot 3 (Win64 pair)" : $"Invoke slot 3 decodes the virtual thunk: this = obj + adj ({_fakeSelf - (IntPtr)handlerObj:x})");
             check.Expect(Materialize((IntPtr)menu, 9) == IntPtr.Zero && !Invoke((IntPtr)menu, -1), "out-of-range slots are refused");
 
             // BuildItems: slots 0 (entry), 1 (disabled creator), 2 (child), 3 (entry) -- empties 4..7 dropped, tags = slot.

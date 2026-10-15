@@ -401,11 +401,10 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
                 }
             // The shell list too, for a rider some engine path filed there without the seam's attach.
             ExoArray attached = new Gob(pshell).AttachArray;
-            nint arr = attached.Data;
             int n = attached.Count;
-            for (int i = 0; i < n && arr != 0; i++)
+            for (int i = 0; i < n && attached.Data != 0; i++)
             {
-                nint child = ((nint*)arr)[i];
+                nint child = attached[i];
                 if (child != 0) Carry(pid, Facade.Object(child, 19), child, psc, pss);
             }
             // The APPEND chain as well. Gob::Append's children ride a part rather than the attach list (CX makes
@@ -531,7 +530,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         int n = list.Count, cap = list.Cap;
         nint arr = list.Data;
         if (n >= 16) return;                     // the engine stops adding past 16 attachments
-        for (int i = 0; i < n; i++) if (((nint*)arr)[i] == child) return;
+        for (int i = 0; i < n; i++) if (list[i] == child) return;
         if (n == cap)
         {
             int grow = cap == 0 ? 16 : cap * 2;
@@ -541,7 +540,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             list.Data = arr;
             list.Cap = grow;
         }
-        ((nint*)arr)[n] = child;
+        list[n] = child;
         list.Count = n + 1;
     }
 
@@ -555,8 +554,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         if (arr == 0) return;
         for (int i = 0; i < n; i++)
         {
-            if (((nint*)arr)[i] != child) continue;
-            for (int j = i; j < n - 1; j++) ((nint*)arr)[j] = ((nint*)arr)[j + 1];
+            if (list[i] != child) continue;
+            for (int j = i; j < n - 1; j++) list[j] = list[j + 1];
             list.Count = n - 1;
             return;
         }
@@ -671,12 +670,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (depth > 16) return;
         ExoArray attached = new Gob(shell).AttachArray;
-        nint arr = attached.Data;
         int n = attached.Count;
-        if (arr == 0) return;
+        if (attached.Data == 0) return;
         for (int i = 0; i < n; i++)
         {
-            nint child = ((nint*)arr)[i];
+            nint child = attached[i];
             if (child == 0) continue;
             if (!Contains(list, child)) EngineFn.ListAddCAurObject(list, child);
             nint cs = Facade.GobBlock(child);
@@ -688,10 +686,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     private static bool Contains(nint listHead, nint item)
     {
         ExoArray list = new(listHead);
-        nint arr = list.Data;
         int n = list.Count;
-        if (arr == 0) return false;
-        for (int i = 0; i < n; i++) if (((nint*)arr)[i] == item) return true;
+        if (list.Data == 0) return false;
+        for (int i = 0; i < n; i++) if (list[i] == item) return true;
         return false;
     }
 
@@ -871,7 +868,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         if (rows == 0 || layers <= 0) return 0;
         int n = Math.Min(layers, SceneDb.PltLayers);
-        for (int i = 0; i < n; i++) dst[i] = ((ushort*)rows)[i];
+        var src = new ReadOnlySpan<ushort>((void*)rows, n);
+        for (int i = 0; i < n; i++) dst[i] = src[i];
         PltRowsOn(id, dst[..n], 0);
         if (layers > SceneDb.PltLayers)
         {

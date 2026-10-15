@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using CX.Graphics;
 
 namespace CX.Framework;
@@ -17,8 +18,14 @@ internal readonly unsafe struct HostVertices
         _stride = stream.Stride;
     }
 
-    /// <summary>The attribute's floats at <paramref name="vertex"/>.</summary>
-    internal float* Floats(long vertex) => (float*)(_at + vertex * _stride);
+    /// <summary>The position at <paramref name="vertex"/>, a stream of three floats.</summary>
+    internal ref Vector3 Pos(long vertex) => ref *(Vector3*)(_at + vertex * _stride);
+
+    /// <summary>The normal at <paramref name="vertex"/>, a stream of three floats.</summary>
+    internal ref Vector3 Normal(long vertex) => ref *(Vector3*)(_at + vertex * _stride);
+
+    /// <summary>The texture coordinate at <paramref name="vertex"/>, a stream of two floats.</summary>
+    internal ref Vector2 Uv(long vertex) => ref *(Vector2*)(_at + vertex * _stride);
 }
 
 /// <summary>A run of 16-bit indices in an engine pool's host shadow, starting at index <c>first</c>.</summary>
@@ -41,7 +48,13 @@ internal readonly unsafe struct HostShadow
     /// <summary>The shadow whose first byte is <paramref name="host"/>.</summary>
     internal HostShadow(byte* host) => _host = host;
 
-    /// <summary>Upload the shadow's bytes [<paramref name="offset"/>, +<paramref name="size"/>) to the same range of <paramref name="buffer"/>.</summary>
-    internal void Upload(uint buffer, long offset, long size)
+    /// <summary>Upload the bytes of <paramref name="count"/> vertices of <paramref name="stream"/> from <paramref name="firstVertex"/>:
+    /// from the first one's attribute to the end of the last one's, to the same range of the stream's buffer.</summary>
+    internal void UploadVertices(in VertexStream stream, long firstVertex, long count)
+        => UploadBytes(stream.Buf, stream.Off + firstVertex * stream.Stride, (count - 1) * stream.Stride + stream.Size * sizeof(float));
+
+    /// <summary>Upload the shadow's bytes [<paramref name="offset"/>, +<paramref name="size"/>) to the same range of
+    /// <paramref name="buffer"/>: a range the engine itself named.</summary>
+    internal void UploadBytes(uint buffer, long offset, long size)
         => Gl.NamedBufferSubData(buffer, (IntPtr)offset, (IntPtr)size, _host + offset);
 }

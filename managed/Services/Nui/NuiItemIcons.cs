@@ -534,14 +534,14 @@ internal static unsafe class NuiItemIcons
         if (px == null) return false;
         if (Fit(w, h, c))
         {
-            byte* pal = *_palette;
+            uint* pal = (uint*)*_palette;
             int rows = *_paletteRows;
             uint[] dst = _layer!;
             for (int i = 0; i < w * h; i++)
             {
                 int layer = px[2 * i + 1];
                 int row = layer < count ? scheme[first + layer] : -1;
-                dst[i] = pal != null && (uint)row < (uint)rows ? ((uint*)pal)[(row << (PaletteRowShift - 2)) + px[2 * i]] : 0;
+                dst[i] = pal != null && (uint)row < (uint)rows ? pal[(row << (PaletteRowShift - 2)) + px[2 * i]] : 0;
             }
             Blend(w * h);
         }

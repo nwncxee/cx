@@ -40,7 +40,8 @@ internal static unsafe class GrassAtlas
 
     private static Cell Measure(byte* rgba, int stride, int x0, int y0, int w, int h)
     {
-        ref TexelRec Px(int x, int y) => ref ((TexelRec*)rgba)[(y0 + y) * stride + x0 + x];
+        TexelRec* texels = (TexelRec*)rgba;
+        ref TexelRec Px(int x, int y) => ref texels[(y0 + y) * stride + x0 + x];
         int edge = Math.Max(1, h / 10), lo = 0, hi = 0;
         for (int y = 0; y < edge; y++)
             for (int x = 0; x < w; x++) { lo += Px(x, y).A > Cut ? 1 : 0; hi += Px(x, h - 1 - y).A > Cut ? 1 : 0; }

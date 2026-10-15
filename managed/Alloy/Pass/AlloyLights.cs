@@ -572,6 +572,7 @@ internal static unsafe class AlloyLights
         if (n * 8 > _stage.Length) _stage = new float[n * 8];
         if (n > _gl.SsboLights) GrowLightBuffer(n);
         float rmin = float.MaxValue, rmax = 0f, rsum = 0f;
+        Span<AreaLightRec> recs = System.Runtime.InteropServices.MemoryMarshal.Cast<float, AreaLightRec>(_stage.AsSpan());
         fixed (float* s = _stage)
         {
             for (int i = 0; i < n; i++)
@@ -579,7 +580,7 @@ internal static unsafe class AlloyLights
                 Vector4 pr = FrameInputs.AreaLightPosRange[i];
                 Vector3 c = FrameInputs.AreaLightColor[i];
                 rmin = MathF.Min(rmin, pr.W); rmax = MathF.Max(rmax, pr.W); rsum += pr.W;
-                ref AreaLightRec d = ref ((AreaLightRec*)s)[i];
+                ref AreaLightRec d = ref recs[i];
                 d.PosRange = pr;
                 d.Color = c;
                 // the record's spare w is this light's shadow-cube slot (#95), -1 for a light with no cube.

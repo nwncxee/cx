@@ -440,8 +440,9 @@ public sealed unsafe class StringSlots : ISeamProvider
             r.Buf[i] = (nint)b;
             r.Cap[i] = want;
         }
-        src.CopyTo(new Span<byte>((void*)r.Buf[i], r.Cap[i]));
-        ((byte*)r.Buf[i])[src.Length] = 0;
+        Span<byte> dst = new((void*)r.Buf[i], r.Cap[i]);
+        src.CopyTo(dst);
+        dst[src.Length] = 0;
         return r.Buf[i];
     }
 

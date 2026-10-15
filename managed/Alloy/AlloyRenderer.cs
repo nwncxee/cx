@@ -405,7 +405,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _shaderConstF = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsF);
         _shaderConstI = (int*)Native.Sym(SymbolMap.GlGlobalShaderConstantsI);
         _shaderConstV = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV);
-        _shaderConstV4 = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV4);
+        _shaderConstV4 = (Vector4*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV4);
         // #346: the targeting shape degrades the same way the dissolve does -- unresolved leaves uTgtMode
         // at the "nothing to draw" default, which is a missing overlay, not a misrender.
         if (_shaderConstI == null || _shaderConstV == null || _shaderConstV4 == null)
@@ -697,7 +697,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// under its own, and a stale one would tell a stock file it was drawing 2D UI.</summary>
     private static Matrix4x4 _projMtx = Matrix4x4.Identity;
     private static int* _shaderConstI;
-    private static float* _shaderConstV, _shaderConstV4;
+    private static float* _shaderConstV;
+    private static Vector4* _shaderConstV4;
 
     /// <summary>Stand-in area ambient for the frames before the engine's first index -1 light bind. Grey, not
     /// black: a missing capture must not paint the world dark.</summary>

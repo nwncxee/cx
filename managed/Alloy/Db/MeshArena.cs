@@ -1075,7 +1075,7 @@ public static unsafe partial class MeshArena
                 Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_STRIDE, &st);
                 Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &bf);
                 void* ptr; Gl.GetVertexAttribPointerv(loc, Gl.VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
-                rows += $" [{loc}]size={sz} type=0x{ty:x} stride={st} off={(long)ptr} buf={bf}";
+                rows += $" [{loc}]size={sz} type=0x{ty:x} stride={st} off={(nint)ptr} buf={bf}";
             }
             _log.Always($"MeshArena: [vaodump] fmt={(Fmt)f} vao={s.Vao} vbo={s.Vbo} ebo={_ebo} elemBinding={elem} "
                       + $"verts={s.Used} uploaded={s.Uploaded} indices={_iUsed}{rows}");

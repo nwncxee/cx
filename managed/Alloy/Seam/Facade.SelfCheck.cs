@@ -461,15 +461,15 @@ internal static unsafe class FacadeSelfCheck
         const int n = 3;
         SafePointerRec* sps = (SafePointerRec*)NativeMemory.AllocZeroed((nuint)(n * sizeof(SafePointerRec)));
         var recs = new Span<SafePointerRec>(sps, n);
-        nint arr = (nint)NativeMemory.AllocZeroed(n * (nuint)sizeof(nint));
+        nint* arr = (nint*)NativeMemory.AllocZeroed(n * (nuint)sizeof(nint));
         for (int k = 0; k < n; k++)
         {
             recs[k].Target = shell;
             recs[k].Index = k;
-            fixed (SafePointerRec* one = &recs[k]) ((nint*)arr)[k] = (nint)one;
+            fixed (SafePointerRec* one = &recs[k]) arr[k] = (nint)one;
         }
         ref SafeListHead head = ref *(SafeListHead*)shell;
-        head.Array = arr;
+        head.Array = (nint)arr;
         head.Count = n;
         head.Cap = n;
 

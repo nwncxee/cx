@@ -126,7 +126,7 @@ public sealed unsafe partial class AlloyRenderer
         Gl.Uniform1f(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
         Gl.Uniform1f(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
         Gl.Uniform1f(loc.TgtRangeL, _shaderConstF[TgtRange]);
-        Gl.Uniform4fv(loc.TgtColL, 1, &((Vector4*)_shaderConstV4)[TgtColour].X);
+        Gl.Uniform4fv(loc.TgtColL, 1, &_shaderConstV4[TgtColour].X);
         Gl.Uniform3fv(loc.TgtWorldL, 1, _shaderConstV);
     }
 
@@ -148,7 +148,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int m = l->SFloatLive; m != 0; m &= m - 1)
             { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform1f(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
             for (int m = l->SVecLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform4fv(l->SVec[i], 1, &((Vector4*)_shaderConstV4)[SVecBase + i].X); }
+            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform4fv(l->SVec[i], 1, &_shaderConstV4[SVecBase + i].X); }
         }
     }
 

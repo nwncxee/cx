@@ -48,9 +48,10 @@ public static unsafe class PartShell
         if (block == null) { Facade.Log?.Always("seam: no memory for the Part vtable -- GetPart will refuse"); return; }
         NativeMemory.Fill(block, (nuint)((2 + Slots) * sizeof(nint)), 0);
         var words = new Span<nint>(block, 2 + Slots);
-        nint point = (nint)Unsafe.AsPointer(ref words[2]);
+        Span<nint> slots = words[2..];
+        nint point = (nint)Unsafe.AsPointer(ref slots[0]);
         nint refuse = (nint)(delegate* unmanaged<nint, nint>)&Refuse;
-        for (int i = 0; i < Slots; i++) ((nint*)point)[i] = refuse;
+        for (int i = 0; i < Slots; i++) slots[i] = refuse;
         int world = GetWorldSlot;
         // 0 is what an unresolved row reads as, and GetWorld is never slot 0 (the destructor is, on both
         // OSes), so 0 and anything past the table are the same refusal.
@@ -62,7 +63,7 @@ public static unsafe class PartShell
             NativeMemory.AlignedFree(block);
             return;
         }
-        ((nint*)point)[world] = (nint)(delegate* unmanaged<nint, nint, nint, void>)&GetWorld;
+        slots[world] = (nint)(delegate* unmanaged<nint, nint, nint, void>)&GetWorld;
         _table = point;
     }
 

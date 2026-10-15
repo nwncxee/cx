@@ -256,7 +256,8 @@ internal static unsafe class NuiModelView
     internal static void Loaded(byte* resref, IntPtr ret)
     {
         if (KeyOf(resref) != _s.PendingKey) return;
-        IntPtr nk = ((IntPtr*)ret)[0], ctrl = ((IntPtr*)ret)[1];
+        var sharedPtr = new ReadOnlySpan<IntPtr>((void*)ret, 2);
+        IntPtr nk = sharedPtr[0], ctrl = sharedPtr[1];
         for (int i = _s.Views.Count - 1; i >= 0; i--)
         {
             ViewData old = _s.Views[i];

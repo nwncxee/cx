@@ -211,7 +211,7 @@ public static unsafe partial class DbAnim
         {
             // Re-read the count: a dependency's animate can add or drop dependencies of ours.
             if (i >= b.DepCount) continue;
-            nint dep = ((nint**)b.Deps)[i] == null ? 0 : *((nint**)b.Deps)[i];
+            nint dep = b.DepList[i] == 0 ? 0 : *(nint*)b.DepList[i];
             if (dep == 0) continue;
             DbId d = Facade.ObjectId(dep);
             if (d.IsNull) continue;
