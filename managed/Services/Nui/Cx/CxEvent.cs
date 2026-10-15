@@ -19,7 +19,7 @@ internal static unsafe class CxEvent
     internal const string Element = "cx";
     /// <summary>The event name of a setting CX refused; the payload is <c>[kind, key, value, reason]</c>.</summary>
     internal const string Refused = "refused";
-    private const int StringBytes = 32, JsonBytes = 16, VectorBytes = 24, InlineMax = 15, MaxText = 200;
+    private const int MaxText = 200;
     private const byte JsonString = 3, JsonArray = 2;
 
     /// <summary>Queue a refusal event for <paramref name="window"/>. False when the push helper did not resolve.</summary>
@@ -52,43 +52,30 @@ internal static unsafe class CxEvent
         byte[] b = Encoding.UTF8.GetBytes(text);
         int n = Math.Min(b.Length, MaxText);
         bool win = msvc ?? OperatingSystem.IsWindows();
-        byte* s = Alloc(mem, StringBytes);
-        byte* chars;
-        if (n <= InlineMax) chars = win ? s : s + 16;
-        else chars = Alloc(mem, n + 1);
+        var s = new NuiStdString(Alloc(mem, NuiStdString.Bytes));
+        byte* chars = n <= NuiStdString.InlineMax ? s.Inline(win) : Alloc(mem, n + 1);
         for (int i = 0; i < n; i++) chars[i] = b[i];
-        if (win)
-        {
-            if (n > InlineMax) *(byte**)s = chars;
-            *(ulong*)(s + 16) = (ulong)n;
-            *(ulong*)(s + 24) = n > InlineMax ? (ulong)n : InlineMax;
-        }
-        else
-        {
-            *(byte**)s = chars;
-            *(ulong*)(s + 8) = (ulong)n;
-            if (n > InlineMax) *(ulong*)(s + 16) = (ulong)n;
-        }
-        return s;
+        s.Set(win, chars, (ulong)n);
+        return s.Ptr;
     }
 
     /// <summary>A JSON array of strings: the value, its vector, and a string value for each item. <paramref name="msvc"/> picks the
     /// container shapes: the running OS when null.</summary>
     internal static byte* NewArray(List<IntPtr> mem, bool? msvc, params string[] items)
     {
-        byte* vec = Alloc(mem, VectorBytes);
-        byte* elems = Alloc(mem, JsonBytes * items.Length);
+        var vec = new NuiJsonVector(Alloc(mem, NuiJsonVector.Bytes));
+        var elems = new NuiJsonValue(Alloc(mem, NuiJsonValue.Bytes * items.Length));
         for (int i = 0; i < items.Length; i++)
         {
-            elems[i * JsonBytes] = JsonString;
-            *(byte**)(elems + i * JsonBytes + 8) = NewString(items[i], mem, msvc);
+            elems.At(i).Type = JsonString;
+            elems.At(i).Pointer = NewString(items[i], mem, msvc);
         }
-        ((byte**)vec)[0] = elems;
-        ((byte**)vec)[1] = elems + JsonBytes * items.Length;
-        ((byte**)vec)[2] = elems + JsonBytes * items.Length;
-        byte* top = Alloc(mem, JsonBytes);
-        top[0] = JsonArray;
-        *(byte**)(top + 8) = vec;
-        return top;
+        vec.Begin = elems.Ptr;
+        vec.End = elems.At(items.Length).Ptr;
+        vec.Cap = vec.End;
+        var top = new NuiJsonValue(Alloc(mem, NuiJsonValue.Bytes));
+        top.Type = JsonArray;
+        top.Pointer = vec.Ptr;
+        return top.Ptr;
     }
 }

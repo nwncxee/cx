@@ -30,7 +30,7 @@ internal static unsafe class NuiModelHelm
         var info = new CCAppearanceInfo((IntPtr)record);
         uint real = info.HelmId;
         if (real == NuiModelDoll.InvalidId) { Drop(h); info.HelmId = NuiModelDoll.InvalidId; return; }
-        if (h.Item != IntPtr.Zero && h.From == real && NuiModelDoll.Holds(h.Id, h.Item + NuiModelDoll.ItemObject)) { info.HelmId = h.Id; return; }
+        if (h.Item != IntPtr.Zero && h.From == real && NuiModelDoll.Holds(h.Id, new CNWCItem(h.Item).AsObject.Ptr)) { info.HelmId = h.Id; return; }
         Drop(h);
         info.HelmId = Make(h, real) ? h.Id : NuiModelDoll.InvalidId;
     }

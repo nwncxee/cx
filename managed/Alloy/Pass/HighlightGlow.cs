@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Alloy.Db;
 using CX.Alloy.Mdl;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -14,7 +15,7 @@ namespace CX.Alloy;
 internal static unsafe class HighlightGlow
 {
     /// <summary>Four vec4 per quad: (centre, alpha), (half-axis U, 0), (half-axis V, 0), (rgb, 0).</summary>
-    private const int Floats = 16;
+    private const int Floats = GlowRec.N;
     /// <summary>ponytail: a fixed staging ceiling (1 MiB) -- a Tab-highlight-all in a crowded area is the
     /// worst case; past it the rest is NOT DRAWN and logged once. Grow it if the log ever says so.</summary>
     private const int MaxQuads = 16384;
@@ -116,7 +117,7 @@ internal static unsafe class HighlightGlow
             if (_quads + 3 > MaxQuads) { _dropped++; continue; }
             if (!Matrix4x4.Decompose(SceneDb.PartWorld[p], out Vector3 sc, out Quaternion rot, out Vector3 pos)) continue;
             fixed (float* s = _stage)
-                _quads += Quads(mesh.BMin, mesh.BMax, pos, rot, sc.X, _pulse, _eye, _alphaScale, rgb, s + _quads * Floats);
+                _quads += Quads(mesh.BMin, mesh.BMax, pos, rot, sc.X, _pulse, _eye, _alphaScale, rgb, ((GlowRec*)s)[_quads].V);
         }
     }
 
@@ -159,7 +160,7 @@ internal static unsafe class HighlightGlow
             float f = Vector3.Dot(Vector3.Transform(n, rot), toEye);
             Vector3 c = pos + Vector3.Transform(centre, rot), wu = Vector3.Transform(axisU, rot),
                     wv = Vector3.Transform(axisV, rot);
-            float* r = d + written * Floats;
+            float* r = ((GlowRec*)d)[written].V;
             r[0] = c.X; r[1] = c.Y; r[2] = c.Z; r[3] = Math.Clamp(f * f * intensity, 0f, 1f);
             r[4] = wu.X; r[5] = wu.Y; r[6] = wu.Z; r[7] = 0f;
             r[8] = wv.X; r[9] = wv.Y; r[10] = wv.Z; r[11] = 0f;

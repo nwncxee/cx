@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -355,7 +356,8 @@ internal static unsafe partial class LightmapBake
         {
             if (!_gl.BufFilled) { Gl.NamedBufferData(_gl.BufChart, (IntPtr)((long)_rec.Length * 4), p, Gl.DYNAMIC_DRAW); _gl.BufFilled = true; }
             else if (_dirtyHi >= _dirtyLo)
-                Gl.NamedBufferSubData(_gl.BufChart, (IntPtr)((long)_dirtyLo * RecFloats * 4), (IntPtr)((long)(_dirtyHi - _dirtyLo + 1) * RecFloats * 4), p + (long)_dirtyLo * RecFloats);
+                fixed (float* q = _rec.AsSpan((int)((long)_dirtyLo * RecFloats)))
+                Gl.NamedBufferSubData(_gl.BufChart, (IntPtr)((long)_dirtyLo * RecFloats * 4), (IntPtr)((long)(_dirtyHi - _dirtyLo + 1) * RecFloats * 4), q);
         }
         _dirtyLo = int.MaxValue; _dirtyHi = -1;
     }
@@ -480,7 +482,7 @@ internal static unsafe partial class LightmapBake
     {
         long total = (long)_uw * _uh * TexelBytes;
         long end = SliceEnd(_uDone, total, CopyPer(Hold));
-        fixed (byte* d = _readBufs[_uBuf]) Buffer.MemoryCopy(_uMap + _uDone, d + _uDone, total - _uDone, end - _uDone);
+        new ReadOnlySpan<byte>(_uMap, (int)total)[(int)_uDone..(int)end].CopyTo(_readBufs[_uBuf].AsSpan((int)_uDone));
         _uDone = end;
         if (_uDone < total) return;
         if (Gl.UnmapNamedBuffer != null) Gl.UnmapNamedBuffer(_gl.Pbo);
@@ -565,15 +567,14 @@ internal static unsafe partial class LightmapBake
             uploaded += (long)cw * ch * TexelBytes;
             strided = true;
             Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, uw);
-            fixed (byte* p = data)
             {
                 // ponytail: a block row a call; UNPACK_COMPRESSED_BLOCK_* would take the cell in one if this shows
                 for (int by = 0; by < ch; by += Block)
                 {
-                    Gl.CompressedTextureSubImage3D(_gl.TexA, 0, cx, cy + by, r.Page, cw, Block, 1, FormatA, cw * Block, p + UnionOffset(0, ux, uy + by, uw, uh));
-                    Gl.CompressedTextureSubImage3D(_gl.TexB, 0, cx, cy + by, r.Page, cw, Block, 1, FormatB, cw * Block, p + UnionOffset(1, ux, uy + by, uw, uh));
+                    fixed (byte* pa = data.AsSpan((int)UnionOffset(0, ux, uy + by, uw, uh))) Gl.CompressedTextureSubImage3D(_gl.TexA, 0, cx, cy + by, r.Page, cw, Block, 1, FormatA, cw * Block, pa);
+                    fixed (byte* pb = data.AsSpan((int)UnionOffset(1, ux, uy + by, uw, uh))) Gl.CompressedTextureSubImage3D(_gl.TexB, 0, cx, cy + by, r.Page, cw, Block, 1, FormatB, cw * Block, pb);
                 }
-                Gl.TextureSubImage3D(_gl.TexC, 0, cx, cy, r.Page, cw, ch, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, p + UnionOffset(2, ux, uy, uw, uh));
+                fixed (byte* pc = data.AsSpan((int)UnionOffset(2, ux, uy, uw, uh))) Gl.TextureSubImage3D(_gl.TexC, 0, cx, cy, r.Page, cw, ch, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, pc);
             }
             Land(ri, true); _pending--; adopted++;
         }

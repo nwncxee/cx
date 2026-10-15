@@ -109,14 +109,14 @@ internal static unsafe class GuiContent
     /// <c>screenParams</c> is the view's size (<c>GLRender::m_viewport</c> w, h), as the engine feeds it. Hot.</summary>
     internal static void Feed(Prog p, int di, int viewW, int viewH, bool gamma)
     {
-        fixed (float* r = &GuiCapture.Records[di * GuiCapture.RecFloats])
+        Span<float> rs = GuiCapture.Records.AsSpan(di * GuiCapture.RecFloats);
+        fixed (float* r = rs, mv = rs[16..], tx = rs[32..], g = rs[36..])
         {
             Gl.UniformMatrix4fv(p.Mvp, 1, 0, r);
-            Gl.UniformMatrix4fv(p.Mv, 1, 0, r + 16);
+            Gl.UniformMatrix4fv(p.Mv, 1, 0, mv);
             float* t = stackalloc float[16];
-            TextureMatrix(r + 32, t);
+            TextureMatrix(tx, t);
             Gl.UniformMatrix4fv(p.Texture, 1, 0, t);
-            float* g = r + 36;
             Gl.Uniform4f(p.Color, Lin(g[0], gamma), Lin(g[1], gamma), Lin(g[2], gamma), g[3]);
         }
         Gl.Uniform2f(p.Screen, viewW, viewH);

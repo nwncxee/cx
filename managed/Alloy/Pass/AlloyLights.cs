@@ -579,7 +579,7 @@ internal static unsafe class AlloyLights
                 Vector4 pr = FrameInputs.AreaLightPosRange[i];
                 Vector3 c = FrameInputs.AreaLightColor[i];
                 rmin = MathF.Min(rmin, pr.W); rmax = MathF.Max(rmax, pr.W); rsum += pr.W;
-                float* d = s + i * 8;
+                float* d = ((AreaLightRec*)s)[i].V;
                 d[0] = pr.X; d[1] = pr.Y; d[2] = pr.Z; d[3] = pr.W;
                 d[4] = c.X; d[5] = c.Y; d[6] = c.Z;
                 // the record's spare w is this light's shadow-cube slot (#95), -1 for a light with no cube.
@@ -734,24 +734,25 @@ internal static unsafe class AlloyLights
     internal static bool FillDraw(byte* b, int* viewport, float near, float far)
     {
         if (near < MinNear) near = MinNear;
-        *(Vector4*)(b + AlloyRenderer.PbTile) = new Vector4(viewport[0], viewport[1],
+        var pb = new PassParamBlock(b);
+        pb.Tile = new Vector4(viewport[0], viewport[1],
             MathF.Max((float)viewport[2] / GridX, 1f), MathF.Max((float)viewport[3] / GridY, 1f));
-        int* grid = (int*)(b + AlloyRenderer.PbGrid);
+        int* grid = pb.Grid;
         grid[0] = GridX; grid[1] = GridY; grid[2] = GridZ;
-        *(float*)(b + AlloyRenderer.PbReach) = ReachUniform;
+        pb.Reach = ReachUniform;
         LastFalloff = new Vector3(_gain, _srcRadius, _falloffPow);
-        *(Vector3*)(b + AlloyRenderer.PbFalloff) = LastFalloff;
-        *(float*)(b + AlloyRenderer.PbWrap) = _wrap;
-        *(Vector2*)(b + AlloyRenderer.PbZ) = new Vector2(near, far > near ? far : near * 2f);
-        *(Vector2*)(b + AlloyRenderer.PbAtten) = new Vector2(_atten.X, _atten.Y);
-        *(Vector2*)(b + AlloyRenderer.PbHot) = new Vector2(_hot, MathF.Max(_hotSize, 1e-4f));
-        *(Vector2*)(b + AlloyRenderer.PbSss) = new Vector2(_sss, SssOn ? SssK(_sss) : 0f);
-        *(float*)(b + AlloyRenderer.PbWrapN) = _wrapN;
-        *(float*)(b + AlloyRenderer.PbDayDim) = DayDim;
-        *(Vector2*)(b + AlloyRenderer.PbRelevance) = new Vector2(_rel, _rel * 2f);
+        pb.Falloff = LastFalloff;
+        pb.Wrap = _wrap;
+        pb.Z = new Vector2(near, far > near ? far : near * 2f);
+        pb.Atten = new Vector2(_atten.X, _atten.Y);
+        pb.Hot = new Vector2(_hot, MathF.Max(_hotSize, 1e-4f));
+        pb.Sss = new Vector2(_sss, SssOn ? SssK(_sss) : 0f);
+        pb.WrapN = _wrapN;
+        pb.DayDim = DayDim;
+        pb.Relevance = new Vector2(_rel, _rel * 2f);
         bool own = !BorrowedTable && viewport[2] == _builtW && viewport[3] == _builtH && near == _builtNear
                    && (far > near ? far : near * 2f) == _builtFar;
-        *(float*)(b + AlloyRenderer.PbBounds) = own ? 1f : 0f;
+        pb.Bounds = own ? 1f : 0f;
         return own;
     }
 

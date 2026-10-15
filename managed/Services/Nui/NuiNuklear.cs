@@ -10,10 +10,6 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiNuklear
 {
-        private const int OffsetXOff = 0x18, OffsetYOff = 0x20, AtXOff = 0x28, AtYOff = 0x2c;  // not-an-offset: nuklear panel ABI, not an engine class
-    private const int RowIndexOff = 0x74, RowHeightOff = 0x78, RowColumnsOff = 0x80, RowItemOffsetOff = 0x98;  // not-an-offset: nuklear panel ABI, not an engine class
-    internal const int MaxXOff = 0x30;  // not-an-offset: nuklear panel ABI, not an engine class
-    private const int ClipOff = 0x44, RowTypeOff = 0x70, RowItemOff = 0xa0;  // not-an-offset: nuklear panel ABI, not an engine class
     /// <summary><c>NK_LAYOUT_STATIC_FREE</c>: the row type of <c>nk_layout_space_begin(ctx, NK_STATIC, h, INT_MAX)</c>,
     /// which every NUI group's <c>RenderInside</c> opens (Linux @0x84e0f0, Windows rva 0x952920).</summary>
     private const int StaticFree = 6;
@@ -39,12 +35,13 @@ internal static unsafe class NuiNuklear
     /// so a read-only layout query sees where that widget will land; <see cref="EndRow"/> puts the fields back.</summary>
     internal static RowSave StartRow(byte* panel)
     {
-        var save = new RowSave { Index = *(int*)(panel + RowIndexOff), AtY = *(float*)(panel + AtYOff), ItemOffset = *(float*)(panel + RowItemOffsetOff) };
-        if (*(int*)(panel + RowColumnsOff) > save.Index) return save;
+        var p = new NkPanel((IntPtr)panel);
+        var save = new RowSave { Index = p.RowIndex, AtY = p.AtY, ItemOffset = p.RowItemOffset };
+        if (p.RowColumns > save.Index) return save;
         save.Moved = true;
-        *(int*)(panel + RowIndexOff) = 0;
-        *(float*)(panel + AtYOff) = save.AtY + *(float*)(panel + RowHeightOff);
-        *(float*)(panel + RowItemOffsetOff) = 0;
+        p.RowIndex = 0;
+        p.AtY = save.AtY + p.RowHeight;
+        p.RowItemOffset = 0;
         return save;
     }
 
@@ -52,15 +49,16 @@ internal static unsafe class NuiNuklear
     internal static void EndRow(byte* panel, in RowSave save)
     {
         if (!save.Moved) return;
-        *(int*)(panel + RowIndexOff) = save.Index;
-        *(float*)(panel + AtYOff) = save.AtY;
-        *(float*)(panel + RowItemOffsetOff) = save.ItemOffset;
+        var p = new NkPanel((IntPtr)panel);
+        p.RowIndex = save.Index;
+        p.AtY = save.AtY;
+        p.RowItemOffset = save.ItemOffset;
     }
 
     /// <summary>Fills <paramref name="b"/>'s clip from <paramref name="panel"/>'s.</summary>
     internal static void ReadClip(byte* panel, ref Box b)
     {
-        float* clip = (float*)(panel + ClipOff);
+        Span<float> clip = new NkPanel((IntPtr)panel).Clip;
         b.ClipX = clip[0]; b.ClipY = clip[1]; b.ClipW = clip[2]; b.ClipH = clip[3];
     }
 
@@ -73,12 +71,14 @@ internal static unsafe class NuiNuklear
         IntPtr win = new NkContext(ctx).Current;
         if (win == IntPtr.Zero) return false;
         byte* p = (byte*)new NkWindow(win).Layout;
-        if (p == null || *(int*)(p + RowTypeOff) != StaticFree) return false;
-        float* item = (float*)(p + RowItemOff);
+        if (p == null) return false;
+        var panel = new NkPanel((IntPtr)p);
+        if (panel.RowType != StaticFree) return false;
+        Span<float> item = panel.RowItem;
         b.Panel = p;
-        b.Left = *(float*)(p + AtXOff) + item[0];
-        b.X = b.Left - **(uint**)(p + OffsetXOff);
-        b.Y = *(float*)(p + AtYOff) + item[1] - **(uint**)(p + OffsetYOff);
+        b.Left = panel.AtX + item[0];
+        b.X = b.Left - *(uint*)panel.OffsetX;
+        b.Y = panel.AtY + item[1] - *(uint*)panel.OffsetY;
         b.W = item[2];
         b.H = item[3];
         ReadClip(p, ref b);
