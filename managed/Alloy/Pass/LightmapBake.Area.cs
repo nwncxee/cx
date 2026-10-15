@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Numerics;
 using System.Threading;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -372,11 +373,10 @@ internal static unsafe partial class LightmapBake
             if (bytes != null && table != null)
             {
                 int y = up.Row, rows = BandRows(un.W, un.H, y);
-                fixed (byte* p = bytes)
                 {
-                    Gl.CompressedTextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatA, un.W * rows, &p[UnionOffset(0, 0, y, un.W, un.H)]);
-                    Gl.CompressedTextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatB, un.W * rows, &p[UnionOffset(1, 0, y, un.W, un.H)]);
-                    Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &p[UnionOffset(2, 0, y, un.W, un.H)]);
+                    fixed (byte* pa = bytes.AsSpan((int)UnionOffset(0, 0, y, un.W, un.H))) Gl.CompressedTextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatA, un.W * rows, pa);
+                    fixed (byte* pb = bytes.AsSpan((int)UnionOffset(1, 0, y, un.W, un.H))) Gl.CompressedTextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatB, un.W * rows, pb);
+                    fixed (byte* pc = bytes.AsSpan((int)UnionOffset(2, 0, y, un.W, un.H))) Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, pc);
                 }
                 up.Row = y + rows;
                 if (up.Row < un.H) continue;

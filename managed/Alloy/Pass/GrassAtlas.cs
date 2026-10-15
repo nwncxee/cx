@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -39,7 +40,7 @@ internal static unsafe class GrassAtlas
 
     private static Cell Measure(byte* rgba, int stride, int x0, int y0, int w, int h)
     {
-        byte* Px(int x, int y) => &rgba[((y0 + y) * stride + x0 + x) * 4];
+        byte* Px(int x, int y) => ((TexelRec*)rgba)[(y0 + y) * stride + x0 + x].B;
         int edge = Math.Max(1, h / 10), lo = 0, hi = 0;
         for (int y = 0; y < edge; y++)
             for (int x = 0; x < w; x++) { lo += Px(x, y)[3] > Cut ? 1 : 0; hi += Px(x, h - 1 - y)[3] > Cut ? 1 : 0; }

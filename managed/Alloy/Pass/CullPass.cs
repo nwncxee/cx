@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -638,7 +639,7 @@ internal static unsafe class CullPass
         // shared with GLSL, and every field landing one slot over is a draw reading its neighbour's range.
         uint* src = stackalloc uint[2 * SrcUints];
         Pack(src, 30, 200, 7, 11, 0, 0);
-        Pack(&src[SrcUints], 60, 400, 9, 13, 0, 0);
+        Pack(((CullSrcRec*)src)[1].W, 60, 400, 9, 13, 0, 0);
         check.Expect(src[0] == 30 && src[1] == 100 && src[2] == 7 && src[3] == 11 && src[4] == 0 && src[5] == 0,
           "draw 0 packs count/firstIndex/baseVertex/slot/batch/start in that order");
         check.Expect(src[SrcUints + 1] == 200, "...and the byte offset becomes an ELEMENT index (two-byte indices)");
@@ -684,8 +685,8 @@ internal static unsafe class CullPass
         for (int g = 0; g < groups; g++)
             for (int d = 0; d < gLen[g]; d++, n++)
             {
-                Pack(&src[(long)n * SrcUints], 30 + n, 2 * n, n, n, g, gStart[g]);
-                float* s = &sph[(long)n * 4];
+                Pack(((CullSrcRec*)src)[(long)n].W, 30 + n, 2 * n, n, n, g, gStart[g]);
+                float* s = ((SphereRec*)sph)[(long)n].V;
                 s[0] = 0f; s[1] = 0f; s[2] = -10f; s[3] = 1f;
             }
         // ...and the three populations a cull has to get right: outside the frustum, exempt, sub-pixel.
@@ -783,11 +784,11 @@ internal static unsafe class CullPass
         for (int q = 0; q < drawN; q++)
         {
             int i = scramble ? drawN - 1 - q : q;
-            uint* b = &src[(long)i * SrcUints];
+            uint* b = ((CullSrcRec*)src)[(long)i].W;
             bool sorted = b[4] >= (uint)compactBelow;
             if (rejMode == RejRead && (sorted || rej[i] == 0u)) continue;
             int slot = (int)b[3];
-            float* s = &sph[(long)slot * 4];
+            float* s = ((SphereRec*)sph)[(long)slot].V;
             var c = new Vector3(s[0], s[1], s[2]);
             float r = s[3];
             bool keep = true;
@@ -827,7 +828,7 @@ internal static unsafe class CullPass
         for (int q = 0; q < drawN; q++)
         {
             int i = scramble ? drawN - 1 - q : q;
-            uint* b = &src[(long)i * SrcUints];
+            uint* b = ((CullSrcRec*)src)[(long)i].W;
             uint batch = b[4];
             if (batch < (uint)compactBelow) continue;
             float k = key[i];
@@ -860,7 +861,7 @@ internal static unsafe class CullPass
         float prev = float.MaxValue;
         for (int o = start; o < start + count; o++)
         {
-            float* s = &sph[(long)outSlot[o] * 4];
+            float* s = ((SphereRec*)sph)[(long)outSlot[o]].V;
             Vector3 d = new Vector3(s[0], s[1], s[2]) - eye;
             float k = Vector3.Dot(d, d);
             if (k > prev)
@@ -887,8 +888,8 @@ internal static unsafe class CullPass
                         found = d;
                 if (found < 0)
                 { log.Info($"CullPass.ParitySelfCheck FAIL: output {o} names a slot batch {g} never staged"); ok = false; continue; }
-                uint* b = &src[(long)found * SrcUints];
-                uint* k = &cmd[(long)o * CmdUints];
+                uint* b = ((CullSrcRec*)src)[(long)found].W;
+                uint* k = ((DrawCmdRec*)cmd)[(long)o].W;
                 if (k[0] != b[0] || k[1] != 1u || k[2] != b[1] || k[3] != b[2] || k[4] != 0u)
                 { log.Info($"CullPass.ParitySelfCheck FAIL: output {o}'s command is not its staged draw's range"); ok = false; }
             }

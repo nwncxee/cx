@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
@@ -360,9 +361,8 @@ internal static unsafe class PairShadows
                 float texel = 2f * halfSin / MathF.Sqrt(MathF.Max(1f - halfSin * halfSin, 1e-6f)) / _tile;
                 // the volume test's sphere: the cone's own slack plus everything the tap reads past it
                 float pad = PadMetres + PadTexels * texel * dist;
-                fixed (float* d = _rec)
+                fixed (float* w = _rec.AsSpan((int)(HeaderFloats + (long)pi * RecFloats)))
                 {
-                    float* w = &d[HeaderFloats + (long)pi * RecFloats];
                     Buffer.MemoryCopy(&vp, w, 64, 64);
                     w[16] = _lPr[i].X; w[17] = _lPr[i].Y; w[18] = _lPr[i].Z; w[19] = _lPr[i].W;
                     w[20] = _lCol[i].X; w[21] = _lCol[i].Y; w[22] = _lCol[i].Z; w[23] = texel;

@@ -60,7 +60,7 @@ public sealed unsafe partial class CasterPass
     /// One function so the changed-set walk and its audit cannot diverge.</summary>
     private static bool WriteStagedWords(uint* src, int d, int i)
     {
-        uint* r = &src[(long)d * CasterGather.SrcUints];
+        uint* r = ((CasterSrcRec*)src)[(long)d].W;
         uint cnt = _liveOff[i] ? 0u : (uint)_liveIdxCount[i], set = _liveDyn[i] ? 1u : 0u;
         if (r[0] == cnt && r[CasterGather.SetFlagWord] == set) return false;
         // The batch's dynamic population follows the set flag, and the batch is the word the staging wrote
@@ -115,8 +115,8 @@ public sealed unsafe partial class CasterPass
             int d = _gAt[_dMoverIdx[q]];
             if (d < 0) continue;   // this mover is not in the staging at all (no VAO, blended, mask -1)
             if (m >= MaxDynSrc) return -1;
-            Buffer.MemoryCopy(&src[(long)d * CasterGather.SrcUints],
-                              &dst[(long)m * CasterGather.SrcUints], RecBytes, RecBytes);
+            Buffer.MemoryCopy(((CasterSrcRec*)src)[(long)d].W,
+                              ((CasterSrcRec*)dst)[(long)m].W, RecBytes, RecBytes);
             m++;
         }
         return m;
@@ -132,13 +132,13 @@ public sealed unsafe partial class CasterPass
         int want = 0;
         for (int d = 0; d < _gN; d++)
         {
-            uint* r = &src[(long)d * CasterGather.SrcUints];
+            uint* r = ((CasterSrcRec*)src)[(long)d].W;
             if (r[CasterGather.SetFlagWord] != 0u && r[0] != 0u) want++;
         }
         int dyn = 0, extra = 0;
         for (int k = 0; k < m; k++)
         {
-            uint* r = &dst[(long)k * CasterGather.SrcUints];
+            uint* r = ((CasterSrcRec*)dst)[(long)k].W;
             if (r[CasterGather.SetFlagWord] == 0u) { extra++; continue; }
             if (r[0] != 0u) dyn++;
         }
@@ -188,7 +188,7 @@ public sealed unsafe partial class CasterPass
     /// culls <c>CxCullSphere[slot]</c> and writes it as <c>baseInstance</c> for the depth stages.</summary>
     private static void StageOne(uint* src, int d, int i, int g, int start)
     {
-        uint* r = &src[(long)d * CasterGather.SrcUints];
+        uint* r = ((CasterSrcRec*)src)[(long)d].W;
         r[0] = _liveOff[i] ? 0u : (uint)_liveIdxCount[i];   // an entry turned off draws nothing
         // in INDICES already, unlike the colour path's byte offsets -- the indirect command takes elements
         r[1] = _liveFirst[i];

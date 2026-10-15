@@ -70,7 +70,7 @@ internal static unsafe partial class GrassField
             if (!rebaked[i]) continue;
             Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, tex, 0, i);
             Matrix4x4 vp;
-            fixed (float* pub = CasterPass.CascadeVp) vp = *(Matrix4x4*)&pub[i * 16];
+            fixed (float* pub = CasterPass.CascadeVp.AsSpan(i * 16)) vp = *(Matrix4x4*)pub;
             if (blades)
             {
                 Gl.UseProgram(_gl.ProgBladeDepth);

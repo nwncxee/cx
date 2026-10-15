@@ -244,7 +244,7 @@ public sealed unsafe partial class CasterPass
                 // frame fitting against a centre no map was baked at.
                 _sunFitC[i * 3] = c.X; _sunFitC[i * 3 + 1] = c.Y; _sunFitC[i * 3 + 2] = c.Z;
                 _sunFitValid[i] = true;
-                fixed (float* pub = CascadeVp) *(Matrix4x4*)&pub[i * 16] = vp;
+                fixed (float* pub = CascadeVp.AsSpan(i * 16)) *(Matrix4x4*)pub = vp;
                 CascadeTexel[i] = 2f * radius / _mapSize;
                 CascadeRange[i] = 2f * radius;
                 done++;

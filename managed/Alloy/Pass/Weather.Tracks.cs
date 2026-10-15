@@ -190,7 +190,7 @@ internal static unsafe partial class Weather
     }
 
     private static void TrackRows(float* p, int row, int n)
-        => Gl.TextureSubImage2D(_gl.TrackTex, 0, 0, row, TrackSize, n, Gl.RGBA, Gl.FLOAT, &p[row * TrackSize * 4]);
+        => Gl.TextureSubImage2D(_gl.TrackTex, 0, 0, row, TrackSize, n, Gl.RGBA, Gl.FLOAT, ((TrackRowRec*)p)[row].V);
 
     private static bool EnsureTrack()
     {

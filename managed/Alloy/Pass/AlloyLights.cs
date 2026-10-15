@@ -579,7 +579,7 @@ internal static unsafe class AlloyLights
                 Vector4 pr = FrameInputs.AreaLightPosRange[i];
                 Vector3 c = FrameInputs.AreaLightColor[i];
                 rmin = MathF.Min(rmin, pr.W); rmax = MathF.Max(rmax, pr.W); rsum += pr.W;
-                float* d = &s[i * 8];
+                float* d = ((AreaLightRec*)s)[i].V;
                 d[0] = pr.X; d[1] = pr.Y; d[2] = pr.Z; d[3] = pr.W;
                 d[4] = c.X; d[5] = c.Y; d[6] = c.Z;
                 // the record's spare w is this light's shadow-cube slot (#95), -1 for a light with no cube.

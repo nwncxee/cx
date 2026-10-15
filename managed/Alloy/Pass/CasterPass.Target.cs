@@ -332,8 +332,8 @@ public sealed unsafe partial class CasterPass
     /// vertex stage both read (mat4 vp; focus/reach; dir/along; receiver/point/set/layer; detail).</summary>
     private static void StageView(float* dst, int vi, int k)
     {
-        float* r = &dst[(long)vi * CasterGather.ViewFloats];
-        fixed (Matrix4x4* m = &_qVp[k]) Buffer.MemoryCopy(m, r, 64, 64);
+        float* r = ((CasterViewRec*)dst)[(long)vi].V;
+        fixed (Matrix4x4* m = _qVp.AsSpan(k)) Buffer.MemoryCopy(m, r, 64, 64);
         r[16] = _qFocus[k].X; r[17] = _qFocus[k].Y; r[18] = _qFocus[k].Z; r[19] = _qReach[k];
         r[20] = _qDir[k].X; r[21] = _qDir[k].Y; r[22] = _qDir[k].Z; r[23] = _qAlong[k];
         r[24] = _qRx[k] ? 1f : 0f;   // #488: the receiver cull applies to this view
