@@ -189,29 +189,13 @@ history or a ticket number; `tools/gates/comments.sh` refuses a `///` block over
 Past 1,500 lines a `.cs` file is split by responsibility -- `partial` files or sibling
 classes, one job each, the way `AlloyRenderer`'s are; `tools/gates/file-size.sh` refuses otherwise.
 
-## Compiler rules (ADR 0031)
+## Coding standards (ADR 0031)
 
-A rule the compiler can check is a build error, not a gate. `managed/.editorconfig` sets both to error:
-
-- `managed/BannedSymbols.txt` (RS0030, BannedApiAnalyzers): a call that must go through one helper. Each line's
-  message says what to call instead. Only that helper disables RS0030, with its reason on the pragma.
-- `tools/analyzers/` (CX0001 and on): a pattern that is no single symbol. CX0001 refuses `p + n`, `p - n`,
-  `p += n`, `p++` on a pointer or `IntPtr`, `(nint)p + n`, `(long)p`, `((float*)&v)[i]` or `((float*)p)[k]`, and `&p[i]` or `Unsafe.AsPointer(ref p[i])` on a pointer or array, outside `managed/Framework/`: a place in memory is a field on a view
-  (engine memory), a struct or a `Span<T>` (our own). Reading a value through a typed pointer (`px[i]`) is fine; taking its address is the move. A span from a raw
-  pointer is built only under `managed/Framework/`, by a view (its count row) or a `NativeBuffer<T>` (its
-  allocation); `new Span<T>(ptr, n)` elsewhere is refused in review until CX-284 bans it. Slicing, pinning and
-  `BinaryPrimitives` over an owner's span are fine.
-  CX0002 refuses a `fixed` buffer anywhere: name the fields, or use an `[InlineArray]` of a named element type.
-
-**Ban it the day its helper exists.** Writing a helper meant to be the only way to make a call means adding its
-`BannedSymbols.txt` line and moving every caller in the same change. A review finding of the kind "this should
-have gone through X" or "this pattern should never appear" gets a ban line or an analyzer rule in the change that
-fixes it, so the next one fails to compile instead of waiting for a reviewer. A new rule names a real symbol and
-is proven once with a planted call that fails the build. No tests that read source text.
-The `standards-reviewer` agent (`.claude/agents/`) asks for the missing ban in review.
-
-Banned today: pointer reads with an offset (`Marshal.Read*`, `Unsafe.Add`, ...) -> a view; `Thread.Sleep` ->
-`BlockingWait.Sleep(ms, why)`; `Task`/`ValueTask` -> never (type bans: a member line with no parameter list bans one overload only); `Environment.GetEnvironmentVariable` -> `HostEnv`.
+`CODING_STANDARDS.md` holds the coding rules: what fails the build, how a place in memory is named, threads and
+the host. A rule the compiler can check is a line in `managed/BannedSymbols.txt` (RS0030) or a rule in
+`tools/analyzers/` (CX0001 and on), and `managed/.editorconfig` makes both errors. Add a ban the day its helper
+exists, and give every "should have gone through X" review finding its ban in the change that fixes it. The
+`standards-reviewer` agent (`.claude/agents/`) reviews a diff against the standards.
 
 ## Gates (CX-192)
 

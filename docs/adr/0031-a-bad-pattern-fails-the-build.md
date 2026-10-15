@@ -47,6 +47,8 @@ editor. The compiler sees types, so it can tell a pointer plus an integer from a
   error, with no baseline.
 - Every new hook or engine read declares its row and reads the field. The `engine-views` gate keeps its
   `not-an-offset:` check.
+- `CODING_STANDARDS.md` states these rules for everyday use, and the `standards-reviewer` agent reviews a diff
+  against it.
 - `tools/analyzers/` is a build input, so CI builds when it changes. The Windows job compiles the `#if WINDOWS`
   code, so a Windows-only site fails there.
 - The same list bans the other calls with a helper: `Thread.Sleep` goes through `BlockingWait.Sleep`, which takes
