@@ -1,7 +1,8 @@
     // #121/CX-51: the reflection on EVERY lit surface, as the probe sees it. The material's env map is not
     // consulted: it was the vanilla renderer's stand-in for exactly this; it still marks legacy content shiny
-    // (CxSynthPbr). Radiance under the split-sum weight -- DFG with dielectric Fresnel on legacy content,
-    // specular occlusion, capped at 1 so no bounce adds energy. /light probegain is the dial. The weight goes
+    // (CxSynthPbr). Radiance under the split-sum weight -- DFG on the material's own F0 (SpecularColor x
+    // Specularity, the scale vanilla's env term takes, so a matte or dark texel stays matte), specular
+    // occlusion, capped at 1 so no bounce adds energy. /light probegain is the dial. The weight goes
     // out in the reflection record too, and Ssr swaps the probe for the screen wherever the screen shows R.
     // what a puddle's water reflects never reaches the stone under it: at grazing angles the mirror, not the
     // lit ground, is what the eye gets
@@ -22,8 +23,7 @@
     {
         vec3 R = reflect(-V, N);
         vec2 reflAb = CxEnvBrdf(NoV, sqrt(rough)) * vec2(1.0, cxFresnel);
-        vec3 reflF0 = physical ? cxF0 : mix(vec3(CX_DIELECTRIC_F0), cxF0, metal);
-        reflW = min((reflF0 * reflAb.x + reflAb.y) * msc * CxSpecOcclusion(NoV, occl, rough) * coatT * uProbeGain, vec3(1.0));
+        reflW = min((cxF0 * reflAb.x + reflAb.y) * msc * CxSpecOcclusion(NoV, occl, rough) * coatT * uProbeGain, vec3(1.0));
         if (uProbeMips > 0.0)
         {
             vec3 env = CxProbeFetch(uProbe, vWorld, R, sqrt(rough) * (uProbeMips - 1.0));
