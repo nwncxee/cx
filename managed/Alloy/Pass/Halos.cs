@@ -474,9 +474,10 @@ internal static unsafe class Halos
 
     internal static void ResetPeriod() { _drawn = 0; _occFaded = 0; _occLate = 0; _groups = 0; _bare = 0; _st.Short = 0; }
     internal static string Stats() => _off ? "halos unavailable" : !Effects.HalosOn ? "halos off"
-        : $"halos {_st.Count} flare elements, {_drawn} drawn in {_groups} texture groups ({_bare} on the "
-          + $"procedural profile), {(_occFailed ? "occlusion fade OFF" : $"{_occFaded} fading")}"
-          + (_st.Short > 0 ? $", {_st.Short} named a texture with no size/position/shift of its own" : "")
+        : $"halos {_st.Count} flare elements this frame; this period {_drawn} element draws in {_groups} texture "
+          + $"groups ({_bare} on the procedural profile, their texture not yet resident), "
+          + $"{(_occFailed ? "occlusion fade OFF" : $"{_occFaded} fading")}"
+          + (_st.Short > 0 ? $", {_st.Short} element draws skipped for a texture with no size/position/shift" : "")
           + (_occLate > 0 ? $", {_occLate} probe reads deferred (GPU behind)" : "");
     internal static string Describe() => $"{(_off ? "UNAVAILABLE" : Effects.HalosOn ? "on" : "off")} size {Effects.HaloSize.V:F2} gain {Effects.Halos.V:F2} viz {Effects.HaloViz.V}";
 

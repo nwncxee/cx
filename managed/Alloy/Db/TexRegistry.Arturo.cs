@@ -153,7 +153,7 @@ internal static unsafe partial class TexRegistry
     /// clock it reads and the counters the registry's note prints.</summary>
     private sealed class ArturoState
     {
-        public long Last, Steps, Uploads;
+        public long Last, Steps, Uploads, Bytes;
         public int Unbuilt, Flat, Huge;
         /// <summary>The slot's ripple, filed at the upload; null for every texture that does not ripple.</summary>
         public readonly Arturo?[] Slots = new Arturo?[MaxSlots];
@@ -286,7 +286,7 @@ internal static unsafe partial class TexRegistry
             a.Acc -= MathF.Floor(a.Acc / ArturoTick) * ArturoTick;
             a.Sub = (a.Sub + 1) % 3;
             _artState.Steps++;
-            if (a.Sub == 2) { a.Warp(); UploadWarp(name, a); _artState.Uploads++; continue; }
+            if (a.Sub == 2) { a.Warp(); UploadWarp(name, a); _artState.Uploads++; _artState.Bytes += a.Out.Length; continue; }
             if (a.Sub == 0)
             {
                 a.Phase += a.Speed * dt * 1.5f;
@@ -382,7 +382,7 @@ internal static unsafe partial class TexRegistry
     {
         int live = 0;
         lock (_lock) foreach (int i in _artState.Running) if (_artState.Slots[i] != null) live++;
-        return $", {live} rippling ({_artState.Uploads} warps)"
+        return $", {live} rippling ({_artState.Uploads} warps, {_artState.Bytes >> 20} MiB uploaded)"
              + (_artState.Unbuilt > 0 ? $", {_artState.Unbuilt} ARTURO TEXTURE(S) NOT ANIMATED (compressed, or not a power of two)" : "")
              + (_artState.Huge > 0 ? $", {_artState.Huge} ARTURO GRID(S) CLAMPED to {ArturoGridMax}" : "")
              + (_artState.Flat > 0 ? $", {_artState.Flat} arturo without distort (vanilla draws those flat too)" : "");

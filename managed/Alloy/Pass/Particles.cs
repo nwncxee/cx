@@ -101,7 +101,7 @@ internal static unsafe partial class Particles
 
     /// <summary>Emitters tracked at once. Past this an emitter is declined and, with the engine walk gone,
     /// does not draw at all -- which is the whole cost of the cap.</summary>
-    private const int MaxEmitters = 8192;
+    internal const int MaxEmitters = 8192;
     /// <summary>Draw groups per pass. One group is one <c>glDrawArrays</c>; overflowing it declines the
     /// remaining emitters rather than merging groups that must not merge.</summary>
     private const int MaxGroups = 4096;

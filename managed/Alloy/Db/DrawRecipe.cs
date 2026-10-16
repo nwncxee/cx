@@ -53,9 +53,7 @@ internal static partial class DrawRecipe
         string name = mtr != null && mtr.Textures[src].Length > 0 ? mtr.Textures[src]
                     : s != 0 && !ModelMaps(mesh) ? ""
                     : src < mesh.Textures.Length ? mesh.Textures[src] : "";
-        // "null" is the MDL's way of writing NO TEXTURE -- the same spelling the supermodel line uses. Taken
-        // literally it becomes a resref nothing can load, the slot fails, the record gets no handle, and the
-        // part draws BLACK: that is the black door-sized quad in the ladder's area 2 (T_Door09, tex0='null').
+        // "null" is the MDL's NO TEXTURE; taken as a resref the slot fails and the part draws black
         return name.Equals("null", StringComparison.OrdinalIgnoreCase) ? "" : name;
     }
 
@@ -566,9 +564,7 @@ internal static partial class DrawRecipe
         // in vanilla (lightmap x diffuse), so that unlit every tile in the game. The model-side equivalent of
         // the blend flag is the additive renderhint, which is what the materials carrying it declare.
         if (!additive) f |= RecipeFlag.Lit;
-        // No env-map term here, and none is missing: the engine's own answer is Material::HasEnvMap
-        // (mat+0x40), which is the DIFFUSE's `.txi envmaptexture` or the gob's assigned map -- both per
-        // INSTANCE, neither a property of the model. AlloyRenderer.DbEnvMapped asks them per part.
+        // no env-map term: Material::HasEnvMap is per instance, asked per part by AlloyRenderer.DbEnvMapped
         if (mesh.RotateTexture) f |= RecipeFlag.RotateTexture;
         if (nd.Kind == NodeKind.Dangly) f |= RecipeFlag.Dangly;
         if (nd.Kind == NodeKind.Skin) f |= RecipeFlag.Skinned;

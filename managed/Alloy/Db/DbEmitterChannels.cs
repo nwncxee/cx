@@ -48,7 +48,7 @@ internal static class DbEmitterChannels
     internal static int ChannelOf(int type)
         => (uint)type < (uint)_index.Length ? _index[type] : -1;
 
-    private static readonly Vector4[] _value = new Vector4[MaxBlocks * 34];
+    private static readonly Vector4[] _value = new Vector4[MaxBlocks * Channels];
     private static readonly int[] _blockOf = new int[SceneDb.MaxParts];
     private static readonly int[] _partOf = new int[MaxBlocks];
     private static int _blockN;
@@ -214,9 +214,7 @@ internal static class DbEmitterChannels
         check.Expect(Value(p, Ctl.EmBirthRate, new Vector4(7f, 0f, 0f, 0f)).X == 7f,
                      "...and the part index reads unwritten again, not the dead emitter's rate");
 
-        // The CEILING, over the population a real area has. A refused block is not a dropped diagnostic:
-        // the emitter falls back to its node's REST keys, and a VFX whose size or alpha is entirely
-        // animated (zero size, negative alpha at rest) then draws nothing at all.
+        // the ceiling, over the emitter population a real area has
         const int Crowd = 300;
         var crowd = new DbId[Crowd];
         for (int k = 0; k < Crowd; k++)
@@ -233,8 +231,7 @@ internal static class DbEmitterChannels
         check.Expect(!Stats().Contains("REFUSED", StringComparison.Ordinal),
                      "...with no block refused along the way");
 
-        // The session edge releases every block at once; the per-part path cannot be relied on there,
-        // because the table it walks is cleared in the same breath.
+        // the session edge releases every block at once, not through the per-part path
         ForgetAll();
         check.Expect(Blocks == 0, "a session edge releases every block");
         check.Expect(Value(crowd[0].Index, Ctl.EmBirthRate, new Vector4(4f, 0f, 0f, 0f)).X == 4f,
@@ -242,8 +239,7 @@ internal static class DbEmitterChannels
         for (int k = 0; k < Crowd; k++) SceneDb.Parts.Free(crowd[k]);
         SceneDb.Parts.TakeDirty();
 
-        // A node whose REST alpha is negative is the shape this ceiling bites: the file states -0.4 and the
-        // animation lifts it to 0.5, so reading the rest key is an invisible effect rather than a dim one.
+        // vdr_spellres's shape: rest alpha -0.4, lifted to 0.5 by its animation
         Write(p, Ctl.EmAlphaStart, new Vector4(0.5f, 0f, 0f, 0f), 1f);
         check.Expect(Value(p, Ctl.EmAlphaStart, default).X == 0.5f,
                      "an animated alpha reads the key, not the node's negative rest value");

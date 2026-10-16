@@ -304,8 +304,7 @@ internal static unsafe partial class Particles
         t = SceneTint(new Vector3(0.005f, 0f, 0f));
         check.Expect(MathF.Abs(t.X - 0.5f) < 1e-3f, $"...and falls off over a hundredth of a unit ({t.X})");
 
-        // The area ambient rides in unattenuated, in the space a light record stores it: a rig value of 0.25
-        // is 0.25^(1/2.2) = 0.5326 authored, which is what an authored vertex colour is multiplied by.
+        // the area ambient rides in unattenuated and authored: a linear 0.25 is 0.25^(1/2.2) = 0.5326
         FrameInputs.BeginAreaLights(0);
         FrameInputs.AreaAmbient = new Vector3(0.25f, 0f, 0f);
         FrameInputs.HasAreaAmbient = true;

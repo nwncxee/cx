@@ -804,9 +804,7 @@ internal static unsafe partial class EmitterSim
         // emitter's own parameters ask for, so a clamp reported without it cannot be acted on. Taken before
         // the block is rounded up, so it reports the demand and not our own quantisation.
         if (want > _capPeak) _capPeak = want;
-        // Clamped BEFORE the round-up: an emitter whose parameters ask for more than the whole arena would
-        // overflow the power-of-two step. The arena's own cap is the only ceiling -- there is no per-emitter
-        // share, because the engine has none either.
+        // clamped BEFORE the round-up, or an ask past the whole arena overflows the power-of-two step
         if (want > MaxSlots) { want = MaxSlots; _capped++; }
         want = Block(want);
         if (slot.Cap >= want) return true;
