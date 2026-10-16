@@ -88,7 +88,7 @@ internal enum PassId
     /// punch-through first (it writes depth), then the alpha-blended remainder back-to-front, then additive.
     /// The only class that declines PER ITEM, so a declined layer composites over an Alloy one regardless.</summary>
     ParticlesOwned,
-    /// <summary>Procedural light halos (<see cref="Halos"/>): vanilla's lens flares, step 29, right after the
+    /// <summary>Light flares (<see cref="Halos"/>): vanilla's lens-flare chain, step 29, right after the
     /// particles. Additive, no depth write; occlusion is the shader's own depth read.</summary>
     HalosOwned,
     /// <summary>Rain and snow (<see cref="Weather"/>): the instanced precipitation field, after the halos.

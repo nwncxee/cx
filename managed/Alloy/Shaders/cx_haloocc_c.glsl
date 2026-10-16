@@ -7,7 +7,7 @@
 // 1 + round(coverage * 1024).
 #version 460 core
 layout(local_size_x = 64) in;
-layout(std430, binding = 8) readonly buffer CxHaloBuf { vec4 uHalos[]; };   // (pos, soft), (rgb, flareradius), (size, axis, -, -)
+layout(std430, binding = 8) readonly buffer CxHaloBuf { vec4 uHalos[]; };   // (pos, soft), (rgb, flareradius), (size, axis, probe, -)
 layout(std430, binding = 9) writeonly buffer CxHaloVis { uint uVis[]; };   // Halos.BindVis
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -25,6 +25,9 @@ void main()
 {
     uint i = gl_GlobalInvocationID.x;
     if (i >= uint(uCount)) return;
+    // Every element of a light sits at the same world point, so only its lead is measured; the CPU reads
+    // nothing from the rest and five depth taps an element would buy that nothing.
+    if (uHalos[i * 3u + 2u].z == 0.0) { uVis[i] = 0u; return; }
     vec4 a = uHalos[i * 3u];
     vec3 vp = (uView * vec4(a.xyz, 1.0)).xyz;
     vec4 clip = uProj * vec4(vp, 1.0);
