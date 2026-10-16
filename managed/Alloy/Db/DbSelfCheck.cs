@@ -60,6 +60,7 @@ internal static class DbSelfCheck
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
             check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
+            check.Expect(HintDecal(), "a transparencyhint makes a flat face-up sheet on a static object a ground decal, and leaves every recipe a cutout");
             check.Expect(NormalAlphaCoverage(), "CX-218: a material whose customShaderFS takes its coverage from map slot 1's alpha is a CUTOUT with the slot-1 bit on the record, even when its diffuse measures fully opaque");
             check.Expect(AbsentMaterialNeverWaits(), "a material the layer answered ABSENT is final, so the part is never put on the late-.mtr wait list and the landing edge has nothing to do for it");
             check.Expect(RecycledWaiterDropped(), "a waiting part whose slot was recycled before the read landed is dropped, never folded into the slot's new tenant");
@@ -906,6 +907,34 @@ internal static class DbSelfCheck
                && SceneDb.PartTexName(f, 1) == "stone_n" && SceneDb.PartMtl[f].RenderHint == 2;
     }
 
+    /// <summary>A flat, lit, face-up quad on a static object is a ground decal exactly when its model's
+    /// <c>transparencyhint</c> is set, and the hint leaves its recipe a cutout. Oracle: the two hand-built
+    /// models (one hint apart) and the expected answers written out.</summary>
+    private static bool HintDecal()
+    {
+        Reset();
+        MtrDef.Forget();
+        MtrDef.Bytes = _ => null;
+        int Sheet(string name, int hint, out ModelDef model)
+        {
+            MeshDef mesh = Quad("cx_sc_hintdecal");
+            mesh.TransparencyHint = hint;
+            model = Model(name, new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh }, new MeshDef?[] { null, mesh });
+            return DrawRecipe.Intern(model, 1, plan: false);
+        }
+        int hinted = Sheet("cx_sc_hintdecal_h", 1, out ModelDef hm), plain = Sheet("cx_sc_hintdecal_p", 0, out ModelDef pm);
+        bool ok = hinted >= 0 && plain >= 0
+               && DrawRecipe.Cls(hinted) == (int)AlloyClass.Cutout && DrawRecipe.Cls(plain) == (int)AlloyClass.Cutout
+               && AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.Static)
+               && !AlloyRenderer.DbDecal(plain, DrawRecipe.Flags(plain), ObjFlag.Static)
+               && !AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.None);
+        DrawRecipe.Forget(hm);
+        DrawRecipe.Forget(pm);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
+        return ok;
+    }
+
     /// <summary>A material whose <c>customShaderFS</c> is one of <see cref="ShaderFeatures.CoverNrmFs"/> draws
     /// as a CUTOUT off map slot 1's alpha whatever its diffuse measures; one naming another stage over the same
     /// textures does not. Oracles, both hand-written: the two <c>.mtr</c> texts (one word apart) and the
@@ -947,7 +976,7 @@ internal static class DbSelfCheck
         // ...and the fence case: a GRADED diffuse (its alpha is the env reflectivity) under a model that
         // declares transparency. Vanilla draws this content in the opaque bucket -- its gob env map is what
         // GetIsOpaque answers with -- so the only hole in it is its own stage's discard, and the class must
-        // stay the hard cutout. The same pair over any other stage is the blend it has always been.
+        // stay the hard cutout. The same pair over any other stage is a cutout too, carrying the hint for a sheet.
         int hintR = Recipe(hair.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
                            "cx_sc_nrmhint", "cx_sc_nrmhint_mdl", out ModelDef hintMdl, hint: 1);
         int blendR = Recipe(plain.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
@@ -956,7 +985,9 @@ internal static class DbSelfCheck
         DrawRecipe.Reclassify();
         ok &= hintR >= 0 && DrawRecipe.Cls(hintR) == (int)AlloyClass.Cutout
                          && (DrawRecipe.Slots(hintR) & AlloyRenderer.CoverNrmBit) != 0;
-        ok &= blendR >= 0 && DrawRecipe.Cls(blendR) == (int)AlloyClass.Blended
+        ok &= blendR >= 0 && DrawRecipe.Cls(blendR) == (int)AlloyClass.Cutout
+                          && (DrawRecipe.Flags(blendR) & RecipeFlag.HintBlended) != 0
+                          && (DrawRecipe.Flags(hintR) & RecipeFlag.HintBlended) == 0
                           && (DrawRecipe.Slots(blendR) & AlloyRenderer.CoverNrmBit) == 0;
         DrawRecipe.Forget(hintMdl);
         DrawRecipe.Forget(blendMdl);

@@ -451,14 +451,16 @@ internal static partial class DrawRecipe
     /// <c>blending additive</c> is the (SRC_ALPHA, ONE) pair and so the additive class -- no depth write, no shadow --
     /// and <c>decal 1</c> is the fullbright flag. Known once the diffuse's acquire offered it, so <see cref="Fill"/>
     /// asks after its texture loop and <see cref="Reclassify"/> again for an offer that waited.</summary>
-    private static void TxiWords(int r, bool hintAdditive, bool declared)
+    private static void TxiWords(int r, bool hintAdditive, bool hinted)
     {
         var d = new TexId(_texId[r * TexSlots]);
         bool additive = hintAdditive || TexRegistry.TxiAdditive(d);
         _dst[r] = additive ? BlendOne : BlendInvSrcAlpha;
         if (hintAdditive || TexRegistry.TxiDecal(d)) _flags[r] &= ~RecipeFlag.Lit;
         else _flags[r] |= RecipeFlag.Lit;
-        _cls[r] = (byte)ClassOf(r, additive, declared);
+        _cls[r] = (byte)ClassOf(r, additive, false);
+        if (hinted && ClassOf(r, additive, true) == AlloyClass.Blended) _flags[r] |= RecipeFlag.HintBlended;
+        else _flags[r] &= ~RecipeFlag.HintBlended;
         if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
         // CX-218: and the slot-1 coverage, which only means anything on a part that HAS a slot-1 map and is
@@ -521,9 +523,9 @@ internal static partial class DrawRecipe
         _coverage[r] = mtr is { AlphaMode: 2 };
         _coverNrm[r] = mtr != null && ShaderFeatures.CoversFromNormalAlpha(mtr.ShaderFs);
         _content[r] = GuiContent.Key(mtr);
-        // TransparencyHint > 0 is the model's own "this is see-through" (the engine's child-order sort key);
-        // a mesh with no alpha anywhere and no hint is genuinely opaque.
-        bool declared = mesh.TransparencyHint > 0;
+        // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
+        // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
+        bool hinted = mesh.TransparencyHint > 0;
         // R1-8. The engine's own test is Material::GetIsOpaque @0x5c6190, and its terms are: the SharedMaterial's
         // `transparency` keyword, an env map, a non-default destination blend, and -- last -- whether the DIFFUSE
         // actually carries alpha coverage, which it asks the texture's own vtable. The first three are model
@@ -535,7 +537,7 @@ internal static partial class DrawRecipe
         // convenient: a cutout is alpha-tested AND depth-writing, so a diffuse that turns out to be fully
         // opaque passes the 0.2 discard on every texel and draws identically. Guessing OPAQUE the other way
         // would punch the alpha out of every graded leaf and fringe in the game.
-        _cls[r] = (byte)ClassOf(r, additive, declared);
+        _cls[r] = (byte)ClassOf(r, additive, false);
         RecipeFlag f = RecipeFlag.None;
         // R1-9. The engine reads the Material's blend flag (mat+0x98): set means it sends flat white
         // and the part is fullbright. `!Lightmapped` was plainly wrong -- a lightmapped tile is still SHADED
@@ -615,7 +617,7 @@ internal static partial class DrawRecipe
         // own `rotatetexture` on for good. Re-asked in Reclassify because the diffuse's .txi is not read
         // until the texture lands, which is after the recipe is interned.
         if (TexRegistry.BumpyShiny(new TexId(_texId[r * TexSlots]))) _flags[r] |= RecipeFlag.RotateTexture;
-        TxiWords(r, additive, declared);
+        TxiWords(r, additive, hinted);
         _cos[r] = 1f; _sin[r] = 0f;
         // A compiled mesh's bmin/bmax is the compiler's word, and community compilers get it wrong; the draw
         // culls on this box, so it is grown over the vertices the arena actually draws.
@@ -756,4 +758,7 @@ internal enum RecipeFlag : ushort
     /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
     /// can be one of these.</summary>
     FacesUp = 1 << 13,
+    /// <summary>The model's <c>transparencyhint</c> would have blended this part. Only a flat sheet acts on it
+    /// (<see cref="AlloyClasses.SlotClass"/>): vanilla reads the hint as a child draw order, never a blend.</summary>
+    HintBlended = 1 << 14,
 }
