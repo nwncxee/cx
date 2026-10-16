@@ -76,6 +76,7 @@ internal static unsafe partial class TexRegistry
     private static void TxiMaterial(int i, string? txi, Job j)
     {
         ParseTxi(txi, out byte blend, out bool decal, out j.GridX, out j.GridY, out j.Cycle, out j.Fps);
+        ParseArturo(txi, out j.Arturo);
         lock (_lock)
         {
             if (_txiBlend[i] == blend && _txiDecal[i] == decal) return;

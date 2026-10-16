@@ -663,7 +663,7 @@ internal static unsafe partial class TexRegistry
         => $"texreg: {_live} textures ({_residentBytes / (1 << 20)} MiB held, {_idleBytes / (1 << 20)} MiB idle"
          + $", {_peakBytes / (1 << 20)} MiB peak), {_acquires} acquires ({_hits} shared), {_uploads} uploaded"
          + $", {_mints} handles, {_marks} arrival marks, {_evicted} evicted, {_reloads} reloaded"
-         + $", {_previews} previews first ({Workers} decode workers), {CycleNote()}"
+         + $", {_previews} previews first ({Workers} decode workers), {CycleNote()}{ArturoNote()}"
          + (_failed == 0 ? "" : $", {_failed} FAILED (white stand-in)")
          + (_full == 0 ? "" : $", {_full} REFUSED (table full)")
          + (_samplerAsks == 0 ? "" : $", {_samplerDone}/{_samplerAsks} sampler change(s) applied")

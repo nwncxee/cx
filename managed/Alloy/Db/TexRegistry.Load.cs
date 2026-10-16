@@ -75,6 +75,9 @@ internal static unsafe partial class TexRegistry
         public bool Cycle;
         public float Fps = 1f;
         public byte[]? Pixels;
+        /// <summary>The <c>.txi</c> ripple (<see cref="ParseArturo"/>); <see cref="Pixels"/> is the image the
+        /// warp fetches from once <see cref="KeepArturo"/> has kept it.</summary>
+        public ArturoTxi Arturo;
     }
 
     /// <summary>Does this texture's <c>.txi</c> name a <c>bumpyshinytexture</c>? That is the water class:
@@ -372,6 +375,7 @@ internal static unsafe partial class TexRegistry
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
+            KeepArturo(j);
             return;
         }
         byte* chain = DdsReader.Prepare(raw, out DdsReader.Info info, out string? dw);
@@ -518,6 +522,7 @@ internal static unsafe partial class TexRegistry
         }
         ApplySamplerWishes();
         StepCycles();
+        StepArturo();
         // ...and AGAIN: ApplySamplerWishes drops and re-mints handles of its own, and leaving those to the
         // next frame's drain is a whole frame of records pointing at a handle this one just retired.
         ZeroDyingHandles();
@@ -596,6 +601,7 @@ internal static unsafe partial class TexRegistry
         if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
+        FileArturo(j);
         Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 
