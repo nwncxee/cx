@@ -134,7 +134,7 @@ public struct GrassTriRec
     public Vector3 C;
 }
 
-/// <summary>One lens-flare record: three vec4s and two spare lanes.</summary>
+/// <summary>One flare element: three vec4s and two spare lanes.</summary>
 public struct HaloRec
 {
     /// <summary>Light position.</summary>
@@ -145,12 +145,12 @@ public struct HaloRec
     public Vector3 Tint;
     /// <summary>Flare radius.</summary>
     public float FlareRadius;
-    /// <summary>First flare element's size times the halo size.</summary>
+    /// <summary>This element's size times the halo size.</summary>
     public float Size;
-    /// <summary>First flare element's position along the axis.</summary>
+    /// <summary>This element's position along the centre-to-light axis.</summary>
     public float FlarePosition;
-    /// <summary>Unused lanes.</summary>
-    public Vector2 Spare;
+    /// <summary>x: 1 on the one element of a light the occlusion probe measures, 0 on the rest. y unused.</summary>
+    public Vector2 Probe;
 }
 
 /// <summary>One highlight-glow quad.</summary>

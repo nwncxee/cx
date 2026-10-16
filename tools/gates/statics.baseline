@@ -151,7 +151,7 @@
 5 managed/Alloy/Pass/GrassField.Samplers.cs
 7 managed/Alloy/Pass/GrassField.Shadows.cs
 13 managed/Alloy/Pass/GuiPass.cs
-14 managed/Alloy/Pass/Halos.cs
+13 managed/Alloy/Pass/Halos.cs
 17 managed/Alloy/Pass/HighlightGlow.cs
 2 managed/Alloy/Pass/IdTarget.cs
 30 managed/Alloy/Pass/LightmapBake.Area.cs
