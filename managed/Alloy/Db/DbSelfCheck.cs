@@ -49,6 +49,7 @@ internal static class DbSelfCheck
             check.Expect(ArenaCompact(), "mesh arena: a compaction slides the live ranges down and rebases their index runs");
             check.Expect(ArenaStreams(), "mesh arena: the packed tangent and paint words round-trip, sit last in both formats, and land at the locations the lit vertex stage declares");
             check.Expect(ArenaStreamIdentity(), "mesh arena: two meshes that differ only in their tangent frame or their paint are different content, so they get ranges of their own");
+            check.Expect(ArenaOneUvSet(), "mesh arena: a mesh's second UV set is neither uploaded nor part of its identity, and the staged vertex carries set 0");
             check.Expect(Claimed(), "DbTable.Claim/Unclaim: every part of a live range is a LIVE table slot with a generation, and a freed range's handles are dead");
             check.Expect(OneAllocator(), "the part index space has ONE allocator: single-slot Alloc and range AllocRange never hand out the same index, in boot order (fixtures first, trees after)");
             check.Expect(Recycled(), "a recycled chunk inherits nothing: the feed's columns are re-seeded and a stale MeshDef shortcut cannot name a foreign range");
@@ -611,6 +612,26 @@ internal static class DbSelfCheck
             for (int j = i + 1; j < r.Length; j++) ok &= r[i] != r[j];
         }
         foreach (int id in r) if (id >= 0) MeshArena.Release(id);
+        MeshArena.FrameEdgeForCheck();
+        return ok;
+    }
+
+    /// <summary>Only UV set 0 is uploaded, so a second set is not part of a range's identity and the staged
+    /// vertex carries set 0 with the chart slot still clear. Oracle: the hand-counted range tally and the
+    /// hand-written UVs the quad is built from.</summary>
+    private static bool ArenaOneUvSet()
+    {
+        Reset();
+        MeshDef plain = Quad("uvset");
+        MeshDef twoSets = Quad("uvset");
+        twoSets.Uv[1] = new[] { Vector2.One, Vector2.Zero, Vector2.UnitY, Vector2.UnitX };
+        int a = MeshArena.Acquire(plain), b = MeshArena.Acquire(twoSets);
+        // corner 1 of the quad: set 0 says (1,0) and set 1 says (0,0), so the probe tells them apart
+        bool ok = a >= 0 && a == b && MeshArena.MeshCount == 1
+               && MeshArena.VertexProbe(a, 1, out _, out _, out Vector2 uv, out Vector2 chart)
+               && uv == Vector2.UnitX && chart == Vector2.Zero;
+        if (a >= 0) MeshArena.Release(a);
+        if (b >= 0) MeshArena.Release(b);
         MeshArena.FrameEdgeForCheck();
         return ok;
     }

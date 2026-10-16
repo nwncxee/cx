@@ -446,6 +446,8 @@ public static unsafe partial class MeshArena
 
         GrowMirror(s, (s.Used + nv) * stride, stride);
         int tanWord = TanWord(fmt), paintWord = PaintWord(fmt);
+        // ponytail: set 0 only, which is every set anything samples -- the engine pointers sets 1..3 at
+        // attributes 11..13 that no stock stage declares. Uploading one means mixing it into ContentKey too.
         Vector2[] uv = mesh.Uv[0];
         var bmin = new Vector3(float.MaxValue);
         var bmax = new Vector3(float.MinValue);
