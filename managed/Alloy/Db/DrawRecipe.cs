@@ -565,13 +565,9 @@ internal static partial class DrawRecipe
         // in vanilla (lightmap x diffuse), so that unlit every tile in the game. The model-side equivalent of
         // the blend flag is the additive renderhint, which is what the materials carrying it declare.
         if (!additive) f |= RecipeFlag.Lit;
-        // NOT from shininess. The engine's Env is Material::HasEnvMap (mat+0x40) -- a DECLARED environment
-        // map -- and it means "this is shiny 2002 content, so read its diffuse alpha as a reflectivity mask".
-        // Nearly every NWN mesh carries some shininess and almost none declares an env map, so inferring one
-        // from the other marked the whole world env-mapped and sent every tile down the reflective branch
-        // with no probe behind it. A MeshDef states no env map, so until the material path provides one the
-        // honest answer is no.
-        // ponytail: no env map in DB mode. The upgrade is the .mtr/material term, not a shininess guess.
+        // No env-map term here, and none is missing: the engine's own answer is Material::HasEnvMap
+        // (mat+0x40), which is the DIFFUSE's `.txi envmaptexture` or the gob's assigned map -- both per
+        // INSTANCE, neither a property of the model. AlloyRenderer.DbEnvMapped asks them per part.
         if (mesh.RotateTexture) f |= RecipeFlag.RotateTexture;
         if (nd.Kind == NodeKind.Dangly) f |= RecipeFlag.Dangly;
         if (nd.Kind == NodeKind.Skin) f |= RecipeFlag.Skinned;
@@ -624,7 +620,6 @@ internal static partial class DrawRecipe
             if (wait) _texPending++;
             if (!string.IsNullOrEmpty(name)) mask |= MaskBitOf(s, feat);
         }
-        if ((f & RecipeFlag.Env) != 0) mask |= EnvSlotBit;
         _slots[r] = mask;
         // The engine's second route into the tile texture rotation, and it LATCHES: SetPartTextureRotate
         // @0x561670 writes `mdlnode+0x2b9 = 1` on a material with a bumpy-shiny map, i.e. it turns the mesh's
@@ -722,11 +717,6 @@ internal static partial class DrawRecipe
     /// <summary>The recipe's local box.</summary>
     internal static Box ModelBox(int r) => _box[r];
 
-    /// <summary>The env-map bit of the slot mask: the material declares an env map with no texture behind it (the
-    /// per-area probe replaces what it held). It is <see cref="AlloyRenderer.EnvSlot"/> and nothing else -- that
-    /// value is FROZEN at 64 because shipped <c>cx_ownlit_fs.shd</c> overrides carry a copy of it, so any second
-    /// definition here is a fact that can drift from content on disk.</summary>
-    internal const int EnvSlotBit = AlloyRenderer.EnvSlot;
     /// <summary><c>Aurora::AuroraBlendModes</c> values, which <see cref="Issue.BlendGl"/> translates to
     /// <c>glBlendFunc</c> factors. These are INDICES into the engine's <c>blendTranslationTable</c> @0x12f5040,
     /// which <c>GLRender::SetBlendFunc</c> @0x5cb0c0 indexes with both arguments; in .rodata that table is
@@ -743,8 +733,6 @@ internal enum RecipeFlag : ushort
     None = 0,
     /// <summary>The engine would draw this part LIT (it is not lightmapped into its own vertices).</summary>
     Lit = 1 << 0,
-    /// <summary>The material declares an env map: the "this is shiny" bit the stock shaders read.</summary>
-    Env = 1 << 1,
     /// <summary>The material's <c>twosided</c>: draws with face culling off.</summary>
     TwoSided = 1 << 2,
     /// <summary>The mesh lies flat (<see cref="DrawRecipe.LiesFlat"/>): drawn see-through, it is a wash laid over
