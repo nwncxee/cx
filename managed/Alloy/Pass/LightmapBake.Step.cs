@@ -167,8 +167,8 @@ internal static unsafe partial class LightmapBake
         Gl.Uniform1i(_bMode, 0);
         BindNullCubes();
         Gl.Uniform1f(_bDepth, -1f);
-        Gl.BindVertexArray(MeshChart.Vao);
-        for (int k = 0; k < _bakeRects.Count; k++) DrawRect(_bakeRects[k]);
+        uint vao = 0;
+        for (int k = 0; k < _bakeRects.Count; k++) DrawRect(_bakeRects[k], ref vao);
         Gl.BindVertexArray(0);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         if (_logLeft > 0) LogNearest(page);
@@ -242,10 +242,13 @@ internal static unsafe partial class LightmapBake
         Gl.Viewport(0, 0, PageSize, PageSize);
     }
 
-    private static void DrawRect(int ri)
+    private static void DrawRect(int ri, ref uint vao)
     {
         ref Rect r = ref _rects[ri];
         if (r.Slot < 0 || !MeshChart.Range(r.Vao, r.Item, 0, out int baseVertex, out nint off, out int count, out _)) return;
+        uint want = MeshChart.VaoOf(r.Vao, r.Item);
+        if (want == 0) return;
+        if (want != vao) { Gl.BindVertexArray(want); vao = want; }
         Gl.Uniform1i(_bSlot, r.Slot);
         Gl.Uniform4f(_bRect, r.X, r.Y, r.S, 0f);
         Gl.Uniform1f(_bSoftWorld, 1f / (MeshChart.AtlasTexelsPerUnit * r.S));
@@ -290,13 +293,13 @@ internal static unsafe partial class LightmapBake
         blk->LocalPcss = new Vector4(0f, 0f, Shadows.Taps.V, 0f);
         blk->Fade[0].Value = 1f;
         AlloyRenderer.FlushPassBlock();
-        Gl.BindVertexArray(MeshChart.Vao);
+        uint vao = 0;
         for (int k = 0; k < _bakeRects.Count; k++)
         {
             ref Rect r = ref _rects[_bakeRects[k]];
             if (!Touches(l, r.C, r.R)) continue;
             Gl.Uniform1i(_bChan, _bakePicks[k].ChannelOf(l));
-            DrawRect(_bakeRects[k]);
+            DrawRect(_bakeRects[k], ref vao);
         }
         Gl.BindVertexArray(0);
         Gl.DepthFunc(Gl.LEQUAL);   // every later pass assumes LEQUAL (#364)

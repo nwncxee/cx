@@ -131,6 +131,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// handedness in the 2-bit lane) and vertex paint (normalized RGBA8). Location 3 is the lightmap chart
     /// (<see cref="MeshChart.LocChartUv"/>), so these take the next two free slots.</summary>
     internal const uint LocTangent = 4, LocPaint = 5;
+    /// <summary>UV set 1's attribute, with sets 2 and 3 after it: the engine's own <c>vTcIn1..3</c> locations
+    /// (<c>GLRender::ConnectShaderData</c> @0x4ce8e0), so a content stage reads them where it would in vanilla.</summary>
+    internal const uint LocUvSet1 = 11;
 
     internal static ExtenderLog? _log;
     private static bool _armed;

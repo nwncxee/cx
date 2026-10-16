@@ -146,6 +146,10 @@ internal static unsafe partial class MeshChart
         /// <summary>The source range carried the arena's two packed words (<see cref="Tan"/>,
         /// <see cref="Paint"/>), so the charted copy re-emits them instead of zeroing them.</summary>
         internal bool HasPacked;
+        /// <summary>The source range's layout, which the charted copy files back into: a mesh with UV sets 1..3
+        /// keeps them (<see cref="UvSets"/>, six floats a vertex) through the chart.</summary>
+        internal CX.Alloy.Db.MeshArena.Fmt Format;
+        internal float[] UvSets = Array.Empty<float>();
         internal ushort[] Idx = Array.Empty<ushort>();
         internal float[] Pos = Array.Empty<float>(), Nrm = Array.Empty<float>(), Uv = Array.Empty<float>();
         internal uint[] Tan = Array.Empty<uint>(), Paint = Array.Empty<uint>();
@@ -234,7 +238,8 @@ internal static unsafe partial class MeshChart
     /// path, and it allocates the job's arrays.</summary>
     internal static bool OfferDb(int range)
     {
-        if (!CX.Alloy.Db.MeshArena.HostMeshSize(range, out int nv, out int ni, out ulong content, out uint gen))
+        if (!CX.Alloy.Db.MeshArena.HostMeshSize(range, out int nv, out int ni, out ulong content, out uint gen,
+                                                out CX.Alloy.Db.MeshArena.Fmt fmt))
             return false;
         // The signature is the content hash and the range's hand-out generation: a recycled range index is a
         // DIFFERENT mesh under the same item, and Wanted re-charts on a signature change.
@@ -242,7 +247,7 @@ internal static unsafe partial class MeshChart
         if (!Wanted(DbSlot, range, ni, sig, out _)) return false;
         Job j = _jobs.Rent();
         j.Key = KeyOf(DbSlot, range); j.Sig = sig;
-        j.IdxCount = ni; j.HasNrm = true; j.HasUv = true; j.HasPacked = true;
+        j.IdxCount = ni; j.HasNrm = true; j.HasUv = true; j.HasPacked = true; j.Format = fmt;
         j.Refused = Refusal.None; j.Hit = false; j.Stale = false;
         j.Out0N = j.Out1N = j.Out2N = 0; j.OutVerts = 0; j.Charts = 0; j.Loose = 0;
         Grow(ref j.Idx, ni);
@@ -251,7 +256,8 @@ internal static unsafe partial class MeshChart
         if (j.Uv.Length < nv * 2) j.Uv = new float[nv * 2];
         if (j.Tan.Length < nv) j.Tan = new uint[nv];
         if (j.Paint.Length < nv) j.Paint = new uint[nv];
-        if (!CX.Alloy.Db.MeshArena.HostMeshCopy(range, j.Pos, j.Nrm, j.Uv, j.Tan, j.Paint, j.Idx))
+        if (CX.Alloy.Db.MeshArena.CarriesUvSets(fmt) && j.UvSets.Length < nv * 6) j.UvSets = new float[nv * 6];
+        if (!CX.Alloy.Db.MeshArena.HostMeshCopy(range, j.Pos, j.Nrm, j.Uv, j.Tan, j.Paint, j.Idx, j.UvSets))
         { _jobs.Recycle(j); Skip(Refusal.Input); return false; }
         j.VertCount = nv;
         _offered++;
@@ -306,7 +312,7 @@ internal static unsafe partial class MeshChart
 
         Job j = _jobs.Rent();
         j.Key = KeyOf(slot, item); j.Sig = sig;
-        j.IdxCount = count; j.HasNrm = hasNrm; j.HasUv = hasUv; j.HasPacked = false;
+        j.IdxCount = count; j.HasNrm = hasNrm; j.HasUv = hasUv; j.HasPacked = false; j.Format = CX.Alloy.Db.MeshArena.Fmt.Static;
         j.Refused = Refusal.None; j.Hit = false; j.Stale = false; j.Out0N = j.Out1N = j.Out2N = 0; j.OutVerts = 0; j.Charts = 0; j.Loose = 0;
         Grow(ref j.Idx, count);
         if (j.Pos.Length < (maxI + 1) * 3) j.Pos = new float[(maxI + 1) * 3];
@@ -403,6 +409,7 @@ internal static unsafe partial class MeshChart
         Mix(MemoryMarshal.AsBytes(j.Local.AsSpan(0, j.VertCount * 3)));
         if (j.HasNrm) Mix(MemoryMarshal.AsBytes(j.Nrm.AsSpan(0, j.VertCount * 3)));
         if (j.HasUv) Mix(MemoryMarshal.AsBytes(j.Uv.AsSpan(0, j.VertCount * 2)));
+        if (CX.Alloy.Db.MeshArena.CarriesUvSets(j.Format)) Mix(MemoryMarshal.AsBytes(j.UvSets.AsSpan(0, j.VertCount * 6)));
         Mix(MemoryMarshal.AsBytes(j.Idx.AsSpan(0, j.IdxCount)));
         return h;
     }
@@ -530,18 +537,20 @@ internal static unsafe partial class MeshChart
         }
     }
 
-    /// <summary>Interleave one charted mesh into <see cref="CX.Alloy.Db.MeshArena.Fmt.Static"/>'s layout and
-    /// file it. The chart UVs are the stream the arena's fourth column exists for; two charted meshes with the
-    /// same bytes come back as ONE range, refcounted, like every other mesh in the arena.</summary>
+    /// <summary>Interleave one charted mesh into its source's layout (<see cref="Job.Format"/>) and file it. The
+    /// chart UVs are the stream the arena's fourth column exists for; two charted meshes with the same bytes
+    /// come back as ONE range, refcounted, like every other mesh in the arena.</summary>
     private static int FileRange(Job j)
     {
         int n = j.OutVerts;
         if (n <= 0 || j.Out0N < 3) return -1;
-        if (_stage.Length < n * Stride) _stage = new float[Math.Max(n * Stride, (1 << 12) * Stride)];
-        int tanWord = CX.Alloy.Db.MeshArena.TanWord(CX.Alloy.Db.MeshArena.Fmt.Static);
+        int stride = CX.Alloy.Db.MeshArena.StrideBytes(j.Format) / 4;
+        if (_stage.Length < n * stride) _stage = new float[Math.Max(n * stride, (1 << 12) * stride)];
+        int tanWord = CX.Alloy.Db.MeshArena.TanWord(j.Format);
+        int setWord = CX.Alloy.Db.MeshArena.CarriesUvSets(j.Format) ? CX.Alloy.Db.MeshArena.UvSetWord(j.Format) : -1;
         for (int i = 0; i < n; i++)
         {
-            int o = i * Stride, src = j.Xref[i];
+            int o = i * stride, src = j.Xref[i];
             _stage[o] = j.Pos[src * 3]; _stage[o + 1] = j.Pos[src * 3 + 1]; _stage[o + 2] = j.Pos[src * 3 + 2];
             if (j.HasNrm) { _stage[o + 3] = j.Nrm[src * 3]; _stage[o + 4] = j.Nrm[src * 3 + 1]; _stage[o + 5] = j.Nrm[src * 3 + 2]; }
             else _stage[o + 3] = _stage[o + 4] = _stage[o + 5] = 0f;
@@ -554,9 +563,10 @@ internal static unsafe partial class MeshChart
             _stage[o + tanWord] = BitConverter.UInt32BitsToSingle(j.HasPacked ? j.Tan[src] : 0u);
             _stage[o + tanWord + 1] = BitConverter.UInt32BitsToSingle(
                 j.HasPacked ? j.Paint[src] : CX.Alloy.Db.MeshArena.PaintWhite);
+            if (setWord >= 0) j.UvSets.AsSpan(src * 6, 6).CopyTo(_stage.AsSpan(o + setWord, 6));
         }
-        return CX.Alloy.Db.MeshArena.AcquireRaw(PlacedKey(j.Content, j.Bmin), CX.Alloy.Db.MeshArena.Fmt.Static, n,
-                                                _stage.AsSpan(0, n * Stride),
+        return CX.Alloy.Db.MeshArena.AcquireRaw(PlacedKey(j.Content, j.Bmin), j.Format, n,
+                                                _stage.AsSpan(0, n * stride),
                                                 j.Out0, j.Out0N, j.Out1, j.Out1N, j.Out2, j.Out2N,
                                                 j.Bmin, j.Bmax);
     }
@@ -577,6 +587,12 @@ internal static unsafe partial class MeshChart
             || !Current(slot, item, in e)) return false;
         return CX.Alloy.Db.MeshArena.Runs(e.Range, lod, out baseVertex, out off, out count, out level);
     }
+
+    /// <summary>The VAO an entry's charted range draws from -- its source's layout, which is the static one unless
+    /// the mesh carries UV sets 1..3. 0 = no chart.</summary>
+    internal static uint VaoOf(int slot, int item)
+        => _table.TryGetValue(KeyOf(slot, item), out Entry e) && e.Done && e.Refused == Refusal.None
+           ? CX.Alloy.Db.MeshArenaDraw.VaoOf(e.Range) : 0u;
 
     /// <summary>Is a DB entry's chart still of the mesh its arena range holds? The key is the range INDEX, and an
     /// area hop recycles indices: until the new tenant is re-offered, the old entry would hand its draws the

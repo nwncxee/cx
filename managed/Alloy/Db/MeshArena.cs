@@ -15,14 +15,28 @@ namespace CX.Alloy.Db;
 /// </summary>
 public static unsafe partial class MeshArena
 {
-    /// <summary>Which vertex layout a range lives in. One VBO and one VAO each.</summary>
-    public enum Fmt : byte { Static = 0, Skinned = 1 }
+    /// <summary>Which vertex layout a range lives in. One VBO and one VAO each. The two <c>Uv</c> formats also
+    /// carry the MDL's UV sets 1..3, and only a mesh that has one lives there, so no other mesh pays the stride.</summary>
+    public enum Fmt : byte { Static = 0, Skinned = 1, StaticUv = 2, SkinnedUv = 3 }
 
-    private const int Formats = 2;
+    internal const int Formats = 4;
     /// <summary>Floats per vertex, per format: pos3 nrm3 uv2 chart2, plus a packed bone-index word and four
-    /// weights for <see cref="Fmt.Skinned"/>, and LAST in both a packed tangent word and a packed
-    /// vertex-paint word -- two words rather than five floats, because every mesh pays for the stride.</summary>
-    private static readonly int[] StrideOf = { 12, 17 };
+    /// weights for the skinned pair, then UV sets 1..3 (2 floats each) for the <c>Uv</c> pair, and LAST in all of
+    /// them a packed tangent word and a packed vertex-paint word -- two words rather than five floats.</summary>
+    private static readonly int[] StrideOf = { 12, 17, 18, 23 };
+
+    /// <summary>Is <paramref name="f"/> one of the two skinned layouts?</summary>
+    internal static bool IsSkinned(Fmt f) => f is Fmt.Skinned or Fmt.SkinnedUv;
+    /// <summary>Does <paramref name="f"/> carry UV sets 1..3?</summary>
+    internal static bool CarriesUvSets(Fmt f) => f >= Fmt.StaticUv;
+    /// <summary>The layout a mesh lives in: skinned or not, with UV sets 1..3 or not.</summary>
+    internal static Fmt FormatFor(bool skinned, bool uvSets) => (Fmt)((skinned ? 1 : 0) + (uvSets ? 2 : 0));
+    /// <summary>Float index of UV set 1 in a <c>Uv</c> format; sets 2 and 3 follow it, right before the packed words.</summary>
+    internal static int UvSetWord(Fmt f) => StrideOf[(int)f] - 8;
+    /// <summary>Does <paramref name="m"/> carry any of UV sets 1..3? Vanilla uploads each one whose pool exists
+    /// (<c>VertexPrimitiveFlat::SetupArrays</c> @0x458920) at <c>vTcIn1..3</c>, for a content shader to read.</summary>
+    internal static bool HasUvSets(MeshDef m) => m.Uv[1].Length != 0 || m.Uv[2].Length != 0 || m.Uv[3].Length != 0;
+    private static Section[] NewSections() => new Section[] { new(), new(), new(), new() };
 
     /// <summary>Float index of the packed tangent word, which is the second-to-last of either format: the
     /// two packed words sit after the format's own streams, so <see cref="Fmt.Skinned"/>'s bone slots and
@@ -103,7 +117,7 @@ public static unsafe partial class MeshArena
         internal bool Full;
     }
 
-    private static Section[] _sect = { new(), new() };
+    private static Section[] _sect = NewSections();
     private static ushort[] _iMirror = Array.Empty<ushort>();
     private static int _iUsed, _iUploaded, _iCapacity, _iDead;
     private static uint _ebo;
@@ -380,7 +394,7 @@ public static unsafe partial class MeshArena
         return -1;
     }
 
-    /// <summary>FNV-1a over the mesh's GPU content: counts, positions, normals, the diffuse UV set, the two
+    /// <summary>FNV-1a over the mesh's GPU content: counts, positions, normals, all four UV sets, the two
     /// packed words, the indices and, for a skinned mesh, its bone slots and weights. <paramref name="second"/>
     /// is an independent FNV over the same bytes in the other direction, so a hit is verified rather than
     /// assumed.</summary>
@@ -400,11 +414,15 @@ public static unsafe partial class MeshArena
         MixU((uint)m.Positions.Length);
         MixU((uint)m.Indices.Length);
         MixU((uint)(m.Normals.Length != 0 ? 1 : 0) | (uint)(m.Uv[0].Length != 0 ? 2 : 0) | (skin != null ? 4u : 0u)
-           | (uint)(m.Tangents.Length != 0 ? 8 : 0) | (uint)(m.Colors.Length != 0 ? 16 : 0));
+           | (uint)(m.Tangents.Length != 0 ? 8 : 0) | (uint)(m.Colors.Length != 0 ? 16 : 0) | (HasUvSets(m) ? 32u : 0u));
         for (int i = 0; i < m.Positions.Length; i++) { MixF(m.Positions[i].X); MixF(m.Positions[i].Y); MixF(m.Positions[i].Z); }
         for (int i = 0; i < m.Normals.Length; i++) { MixF(m.Normals[i].X); MixF(m.Normals[i].Y); MixF(m.Normals[i].Z); }
-        Vector2[] uv = m.Uv[0];
-        for (int i = 0; i < uv.Length; i++) { MixF(uv[i].X); MixF(uv[i].Y); }
+        for (int k = 0; k < m.Uv.Length; k++)
+        {
+            Vector2[] uv = m.Uv[k];
+            MixU((uint)uv.Length);
+            for (int i = 0; i < uv.Length; i++) { MixF(uv[i].X); MixF(uv[i].Y); }
+        }
         // The two packed words AS UPLOADED: two meshes that differ only in their tangent frame or their paint
         // are different GPU content, so they must not share a range.
         for (int i = 0; i < m.Tangents.Length; i++) MixU(PackTangent(m.Tangents[i]));
@@ -436,7 +454,7 @@ public static unsafe partial class MeshArena
                             ushort[] i0, ushort[]? i1, int n1, ushort[]? i2, int n2)
     {
         int nv = mesh.Positions.Length;
-        Fmt fmt = skin != null ? Fmt.Skinned : Fmt.Static;
+        Fmt fmt = FormatFor(skin != null, HasUvSets(mesh));
         int stride = StrideOf[(int)fmt];
         Section s = _sect[(int)fmt];
         if (s.Used + nv > MaxVerts) { s.Full = true; return Refuse(Refusal.Section); }
@@ -445,9 +463,7 @@ public static unsafe partial class MeshArena
         if (id < 0) return Refuse(Refusal.Table);
 
         GrowMirror(s, (s.Used + nv) * stride, stride);
-        int tanWord = TanWord(fmt), paintWord = PaintWord(fmt);
-        // ponytail: set 0 only, which is every set anything samples -- the engine pointers sets 1..3 at
-        // attributes 11..13 that no stock stage declares. Uploading one means mixing it into ContentKey too.
+        int tanWord = TanWord(fmt), paintWord = PaintWord(fmt), setWord = CarriesUvSets(fmt) ? UvSetWord(fmt) : -1;
         Vector2[] uv = mesh.Uv[0];
         var bmin = new Vector3(float.MaxValue);
         var bmax = new Vector3(float.MinValue);
@@ -477,6 +493,11 @@ public static unsafe partial class MeshArena
                 i < mesh.Tangents.Length ? PackTangent(mesh.Tangents[i]) : 0u);
             s.Mirror[o + paintWord] = BitConverter.UInt32BitsToSingle(
                 i < mesh.Colors.Length ? mesh.Colors[i] : PaintWhite);
+            for (int k = 1; setWord >= 0 && k <= 3; k++)
+            {
+                Vector2 t = i < mesh.Uv[k].Length ? mesh.Uv[k][i] : default;
+                s.Mirror[o + setWord + 2 * k - 2] = t.X; s.Mirror[o + setWord + 2 * k - 1] = t.Y;
+            }
             if (skin == null) continue;
             // four bone SLOTS packed one per byte, pulled as a vec4 of 0..255 at location 8 (UNSIGNED_BYTE,
             // not normalized), and four weights at location 9
@@ -512,7 +533,7 @@ public static unsafe partial class MeshArena
         _acquired++;
         _unsharedBytes += (long)nv * stride * 4;
         if (_logLeft-- > 0)
-            _log?.Info($"MeshArena: mesh {i0.Length / 3} tris {nv} verts -> range {id} {(fmt == Fmt.Skinned ? "(skinned) " : "")}"
+            _log?.Info($"MeshArena: mesh {i0.Length / 3} tris {nv} verts -> range {id} {(IsSkinned(fmt) ? "(skinned) " : "")}{(CarriesUvSets(fmt) ? "(uv sets 1-3) " : "")}"
                        + $"(lod {rr.Cnt1 / 3}/{rr.Cnt2 / 3})"
                        + (mesh.Tangents.Length != 0 ? " +tangents" : " NO tangents")
                        + (mesh.Colors.Length != 0 ? " +paint" : "") + $", arena {Size()}");
@@ -1011,7 +1032,10 @@ public static unsafe partial class MeshArena
         { Buf = s.Vbo, Size = 4, Type = Gl.INT_2_10_10_10_REV, Stride = bytes, Off = TanWord(f) * 4, Norm = 1 });
         VertexArrays.Bind(vao, AlloyRenderer.LocPaint, new VertexStream
         { Buf = s.Vbo, Size = 4, Type = Gl.UNSIGNED_BYTE, Stride = bytes, Off = PaintWord(f) * 4, Norm = 1 });
-        if (f == Fmt.Skinned)
+        for (uint k = 0; CarriesUvSets(f) && k < 3; k++)
+            VertexArrays.Bind(vao, AlloyRenderer.LocUvSet1 + k, new VertexStream
+            { Buf = s.Vbo, Size = 2, Type = Gl.FLOAT, Stride = bytes, Off = (UvSetWord(f) + 2 * (int)k) * 4 });
+        if (IsSkinned(f))
         {
             // location 8 is a vec4 in the shader: UNSIGNED_BYTE with normalize OFF converts 0..255 to 0.0..255.0
             VertexArrays.Bind(vao, AlloyRenderer.LocBoneIdx, new VertexStream { Buf = s.Vbo, Size = 4, Type = Gl.UNSIGNED_BYTE, Stride = bytes, Off = 40 });
@@ -1114,7 +1138,7 @@ public static unsafe partial class MeshArena
             _pub = Array.Empty<Pub?>();
             _rangeHigh = 1; _rangeFree = -1;
             _byContent.Clear(); _byMesh.Clear(); _pendingFree.Clear();
-            _sect = new[] { new Section(), new Section() };
+            _sect = NewSections();
             _iMirror = Array.Empty<ushort>();
             _iUsed = _iUploaded = _iCapacity = _iDead = 0;
             _ebo = 0; _elementsFull = false;

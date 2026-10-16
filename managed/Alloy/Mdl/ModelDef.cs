@@ -160,9 +160,8 @@ public sealed class MeshDef
     public Vector3[] Normals = Array.Empty<Vector3>();
     /// <summary>xyz tangent, w handedness; empty when the mesh has no UVs to derive them from.</summary>
     public Vector4[] Tangents = Array.Empty<Vector4>();
-    /// <summary>Up to four UV sets; an absent set is an empty array. Set 0 is the diffuse one and the only
-    /// one uploaded -- 1..3 are kept because the weld splits on them the way the engine's own vertex compare
-    /// does, so the welded vertex count depends on sets nothing samples.</summary>
+    /// <summary>Up to four UV sets; an absent set is an empty array. Set 0 is the diffuse one; 1..3 are what a
+    /// content shader reads at <c>vTcIn1..3</c>, uploaded only for a mesh that carries one.</summary>
     public Vector2[][] Uv = { Array.Empty<Vector2>(), Array.Empty<Vector2>(), Array.Empty<Vector2>(), Array.Empty<Vector2>() };
     /// <summary>Per-vertex RGBA8, or empty.</summary>
     public uint[] Colors = Array.Empty<uint>();

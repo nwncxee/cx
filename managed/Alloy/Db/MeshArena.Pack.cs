@@ -65,4 +65,23 @@ public static unsafe partial class MeshArena
             return true;
         }
     }
+
+    /// <summary>UV set <paramref name="set"/> (1..3) as this range uploaded it for vertex <paramref name="v"/>, off
+    /// the host MIRROR; false = no such range or vertex, or a format that carries no UV sets.</summary>
+    internal static bool UvSetProbe(int range, int v, int set, out System.Numerics.Vector2 uv)
+    {
+        uv = default;
+        lock (_gate)
+        {
+            if (!Alive(range) || set is < 1 or > 3) return false;
+            ref Range r = ref _ranges[range];
+            if ((uint)v >= (uint)r.NV || !CarriesUvSets(r.Format)) return false;
+            Section s = _sect[(int)r.Format];
+            int o = (r.Base + v) * StrideOf[(int)r.Format];
+            if (o + StrideOf[(int)r.Format] > s.Mirror.Length) return false;
+            int w = o + UvSetWord(r.Format) + 2 * (set - 1);
+            uv = new System.Numerics.Vector2(s.Mirror[w], s.Mirror[w + 1]);
+            return true;
+        }
+    }
 }

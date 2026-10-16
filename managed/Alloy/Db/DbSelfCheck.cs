@@ -49,7 +49,7 @@ internal static class DbSelfCheck
             check.Expect(ArenaCompact(), "mesh arena: a compaction slides the live ranges down and rebases their index runs");
             check.Expect(ArenaStreams(), "mesh arena: the packed tangent and paint words round-trip, sit last in both formats, and land at the locations the lit vertex stage declares");
             check.Expect(ArenaStreamIdentity(), "mesh arena: two meshes that differ only in their tangent frame or their paint are different content, so they get ranges of their own");
-            check.Expect(ArenaOneUvSet(), "mesh arena: a mesh's second UV set is neither uploaded nor part of its identity, and the staged vertex carries set 0");
+            check.Expect(ArenaUvSets(), "mesh arena: a mesh with UV sets 1..3 lives in the Uv format, uploads them at attributes 11..13 after the bone streams, and is content of its own");
             check.Expect(Claimed(), "DbTable.Claim/Unclaim: every part of a live range is a LIVE table slot with a generation, and a freed range's handles are dead");
             check.Expect(OneAllocator(), "the part index space has ONE allocator: single-slot Alloc and range AllocRange never hand out the same index, in boot order (fixtures first, trees after)");
             check.Expect(Recycled(), "a recycled chunk inherits nothing: the feed's columns are re-seeded and a stale MeshDef shortcut cannot name a foreign range");
@@ -616,22 +616,33 @@ internal static class DbSelfCheck
         return ok;
     }
 
-    /// <summary>Only UV set 0 is uploaded, so a second set is not part of a range's identity and the staged
-    /// vertex carries set 0 with the chart slot still clear. Oracle: the hand-counted range tally and the
-    /// hand-written UVs the quad is built from.</summary>
-    private static bool ArenaOneUvSet()
+    /// <summary>UV sets 1..3 reach the GPU in their own format, only for a mesh that has one. Oracle: the
+    /// layout byte offsets and the engine's <c>vTcIn1</c> location as hand-written literals, the hand-counted
+    /// range tally, and the hand-written quad UVs.</summary>
+    private static bool ArenaUvSets()
     {
+        if (MeshArena.StrideBytes(MeshArena.Fmt.StaticUv) != 72 || MeshArena.StrideBytes(MeshArena.Fmt.SkinnedUv) != 92) return false;
+        if (MeshArena.UvSetWord(MeshArena.Fmt.StaticUv) * 4 != 40 || MeshArena.UvSetWord(MeshArena.Fmt.SkinnedUv) * 4 != 60) return false;
+        if (MeshArena.TanWord(MeshArena.Fmt.SkinnedUv) * 4 != 84 || MeshArena.PaintWord(MeshArena.Fmt.SkinnedUv) * 4 != 88) return false;
+        if (AlloyRenderer.LocUvSet1 != 11) return false;
+
         Reset();
         MeshDef plain = Quad("uvset");
         MeshDef twoSets = Quad("uvset");
         twoSets.Uv[1] = new[] { Vector2.One, Vector2.Zero, Vector2.UnitY, Vector2.UnitX };
-        int a = MeshArena.Acquire(plain), b = MeshArena.Acquire(twoSets);
-        // corner 1 of the quad: set 0 says (1,0) and set 1 says (0,0), so the probe tells them apart
-        bool ok = a >= 0 && a == b && MeshArena.MeshCount == 1
-               && MeshArena.VertexProbe(a, 1, out _, out _, out Vector2 uv, out Vector2 chart)
-               && uv == Vector2.UnitX && chart == Vector2.Zero;
+        MeshDef third = Quad("uvset");
+        third.Uv[3] = new[] { new Vector2(0.25f, 0.75f), Vector2.Zero, Vector2.Zero, Vector2.Zero };
+        int a = MeshArena.Acquire(plain), b = MeshArena.Acquire(twoSets), c = MeshArena.Acquire(third);
+        bool ok = a >= 0 && b >= 0 && c >= 0 && a != b && b != c && MeshArena.MeshCount == 3
+               && MeshArena.FormatOf(a) == MeshArena.Fmt.Static && MeshArena.FormatOf(b) == MeshArena.Fmt.StaticUv
+               && MeshArena.UvSetProbe(b, 0, 1, out Vector2 s1) && s1 == Vector2.One
+               && MeshArena.UvSetProbe(b, 0, 2, out Vector2 s2) && s2 == Vector2.Zero
+               && MeshArena.UvSetProbe(c, 0, 3, out Vector2 s3) && s3 == new Vector2(0.25f, 0.75f)
+               && MeshArena.VertexProbe(b, 1, out _, out _, out Vector2 uv0, out _) && uv0 == Vector2.UnitX
+               && !MeshArena.UvSetProbe(a, 0, 1, out _);
         if (a >= 0) MeshArena.Release(a);
         if (b >= 0) MeshArena.Release(b);
+        if (c >= 0) MeshArena.Release(c);
         MeshArena.FrameEdgeForCheck();
         return ok;
     }

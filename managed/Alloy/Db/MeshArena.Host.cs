@@ -44,35 +44,37 @@ public static unsafe partial class MeshArena
     /// <summary>The shape of <paramref name="range"/>'s finest run, for a consumer that must size its
     /// own buffers before it copies -- <see cref="CX.Alloy.MeshChart"/>'s DB offer. False = nothing to chart
     /// (gone, charted already, skinned, or under a triangle).</summary>
-    internal static bool HostMeshSize(int range, out int nv, out int ni, out ulong content, out uint gen)
+    internal static bool HostMeshSize(int range, out int nv, out int ni, out ulong content, out uint gen, out Fmt fmt)
     {
-        nv = ni = 0; content = 0; gen = 0;
+        nv = ni = 0; content = 0; gen = 0; fmt = Fmt.Static;
         lock (_gate)
         {
             if (!Alive(range)) return false;
             ref Range r = ref _ranges[range];
             // A charted range is the chart's OWN output: charting it again would key a chart on a chart.
-            if (r.Charted || r.Offered || r.Format != Fmt.Static || r.Cnt0 < 3 || r.NV <= 0) return false;
-            nv = r.NV; ni = (int)r.Cnt0; content = r.Content; gen = (uint)r.Gen;
+            if (r.Charted || r.Offered || IsSkinned(r.Format) || r.Cnt0 < 3 || r.NV <= 0) return false;
+            nv = r.NV; ni = (int)r.Cnt0; content = r.Content; gen = (uint)r.Gen; fmt = r.Format;
             return true;
         }
     }
 
     /// <summary>Copy that run's attributes out, densely: the arena's vertices are already range-local, so the
     /// indices come back as they are and the caller needs no remap. Spans must be at least the sizes
-    /// <see cref="HostMeshSize"/> gave, for the same range, nothing freed in between -- both calls take the lock,
-    /// and a range that died between them answers false. Cold: once per mesh per session.</summary>
+    /// <see cref="HostMeshSize"/> gave (<paramref name="uvSets"/> six floats a vertex, for a format that carries
+    /// UV sets 1..3), nothing freed in between; a range that died between the calls answers false. Cold.</summary>
     internal static bool HostMeshCopy(int range, Span<float> pos, Span<float> nrm, Span<float> uv,
-                                      Span<uint> tangent, Span<uint> paint, Span<ushort> idx)
+                                      Span<uint> tangent, Span<uint> paint, Span<ushort> idx, Span<float> uvSets)
     {
         lock (_gate)
         {
             if (!Alive(range)) return false;
             ref Range r = ref _ranges[range];
-            if (r.Charted || r.Format != Fmt.Static || r.Cnt0 < 3 || r.NV <= 0) return false;
-            Section s = _sect[(int)Fmt.Static];
-            int stride = StrideOf[(int)Fmt.Static];
-            int tanWord = TanWord(Fmt.Static), paintWord = PaintWord(Fmt.Static);
+            if (r.Charted || IsSkinned(r.Format) || r.Cnt0 < 3 || r.NV <= 0) return false;
+            Section s = _sect[(int)r.Format];
+            int stride = StrideOf[(int)r.Format];
+            int tanWord = TanWord(r.Format), paintWord = PaintWord(r.Format);
+            int setWord = CarriesUvSets(r.Format) ? UvSetWord(r.Format) : -1;
+            if (setWord >= 0 && uvSets.Length < r.NV * 6) return false;
             long at = (long)r.Off0 / 2;
             if ((long)(r.Base + r.NV) * stride > s.Mirror.Length || at + r.Cnt0 > _iUsed) return false;
             if (pos.Length < r.NV * 3 || nrm.Length < r.NV * 3 || uv.Length < r.NV * 2 || idx.Length < r.Cnt0) return false;
@@ -87,6 +89,7 @@ public static unsafe partial class MeshArena
                 // set, so a charted vertex's tangent and paint are its source vertex's.
                 tangent[v] = BitConverter.SingleToUInt32Bits(s.Mirror[o + tanWord]);
                 paint[v] = BitConverter.SingleToUInt32Bits(s.Mirror[o + paintWord]);
+                if (setWord >= 0) s.Mirror.AsSpan(o + setWord, 6).CopyTo(uvSets.Slice(v * 6, 6));
             }
             for (long k = 0; k < r.Cnt0; k++)
             {
@@ -143,7 +146,7 @@ public static unsafe partial class MeshArena
                 int i = cursor + k;
                 if (i >= n) i -= n;
                 ref Range r = ref _ranges[i];
-                if (r.Live && r.Bake && !r.Charted && !r.Offered && r.Format == Fmt.Static && r.Cnt0 >= 3 && r.NV > 0)
+                if (r.Live && r.Bake && !r.Charted && !r.Offered && !IsSkinned(r.Format) && r.Cnt0 >= 3 && r.NV > 0)
                 { cursor = i + 1; return i; }
             }
             cursor = 0;
