@@ -107,6 +107,21 @@ public static unsafe class Native
     /// SDL_TEXTINPUT and Ctrl+V handlers run), the atlas map on the way out -- "łódź" reads "?ód?" on cp1252.</summary>
     public static string EngineTyped(string s) => EngineText(Encoding.Latin1.GetString(EngineBytes(s)));
 
+    /// <summary>A strref's text for DISPLAY as <c>CTlkTable::GetSimpleString</c> resolves it -- base TLK, a module's
+    /// custom TLK, a server override -- or null while no TLK is loaded (pre-main, the stub host). COLD paths only.</summary>
+    public static string? TlkText(uint strref)
+    {
+        IntPtr sym = Sym(SymbolMap.TlkTable);
+        IntPtr tlk = sym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)sym;
+        if (tlk == IntPtr.Zero || EngineFn.ExoStringDtor == null) return null;
+        byte* exo = stackalloc byte[32];                    // > sizeof(CExoString): slack for the sret callee
+        NativeMemory.Clear(exo, 32);
+        new CTlkTable(tlk).TlkGetSimpleString(exo, strref);
+        string text = ReadExo((IntPtr)exo);
+        EngineFn.ExoStringDtor((IntPtr)exo);
+        return EngineText(text);
+    }
+
     /// <summary>The std::string and CExoString readers against hand-built layouts -- the stub host has no engine to call.</summary>
     public static void SelfCheck(ExtenderLog log)
     {

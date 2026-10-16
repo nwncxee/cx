@@ -1,3 +1,6 @@
+using System.Globalization;
+using CX.Framework;
+
 namespace CX.Services.Chat.Core;
 
 /// <summary>GUIINGAME_MESSAGE_* flag values read from the binary's rodata. The channel value from the
@@ -5,16 +8,21 @@ namespace CX.Services.Chat.Core;
 /// direct <c>mask &amp; channel</c>. "Combat" maps to TO_HIT; CCMESSAGE (0x80) is feedback text.</summary>
 public static class FilterChannel
 {
-    public static readonly (uint Bit, string Label)[] Editable =
+    /// <summary>The tab editor's channel toggles. A channel the game names takes its word from the TLK's chat
+    /// channel names, read on every call so a language or a server override shows on the next layout.</summary>
+    public static (uint Bit, string Label)[] Editable() => new[]
     {
-        (0x001, "Talk"),
-        (0x002, "Tell"),
-        (0x004, "Shout"),
-        (0x008, "Whisper"),
-        (0x010, "To-Hit"),
-        (0x020, "Server"),
-        (0x040, "Party"),
-        (0x080, "Feedback"),
-        (0x400, "DM"),
+        (0x001u, Word(66754)),
+        (0x002u, Word(66753)),
+        (0x004u, Word(66751)),
+        (0x008u, Word(66752)),
+        (0x010u, "To-Hit"),
+        (0x020u, "Server"),
+        (0x040u, Word(66755)),
+        (0x080u, "Feedback"),
+        (0x400u, Word(66756)),
     };
+
+    /// <summary>The TLK's text for a strref; the number itself where no TLK is loaded (the stub host).</summary>
+    private static string Word(uint strref) => Native.TlkText(strref) ?? strref.ToString(CultureInfo.InvariantCulture);
 }

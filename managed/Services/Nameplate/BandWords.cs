@@ -16,7 +16,7 @@ internal static unsafe class BandWords
     /// <summary>The 2da column holding each band's strref.</summary>
     private static ReadOnlySpan<byte> StringRefColumn => "STRING_REF\0"u8;
 
-    /// <summary>Bytes for one CExoString buffer: sizeof is 16, and the sret callee gets 16 more of slack.</summary>
+    /// <summary>Bytes for one CExoString buffer: sizeof is 16, and 16 more of slack.</summary>
     private const int ExoScratch = 32;
 
     /// <summary>The cache and the counter behind it; one object, so nothing here is a loose static.</summary>
@@ -116,20 +116,9 @@ internal static unsafe class BandWords
         {
             int strref = -1;
             if (EngineFn.C2DAGetINTEntry(table, row, (IntPtr)col, &strref) == 0 || strref == -1) continue;
-            words[row] = Native.EngineText(TlkText(tlk, (uint)strref));
+            words[row] = Native.TlkText((uint)strref);
         }
         EngineFn.ExoStringDtor((IntPtr)col);
         return words;
-    }
-
-    /// <summary>One TLK lookup through the sret call, the caller-owned buffer zeroed first and freed after.</summary>
-    private static string TlkText(IntPtr tlk, uint strref)
-    {
-        byte* exo = stackalloc byte[ExoScratch];
-        NativeMemory.Clear(exo, ExoScratch);
-        new CTlkTable(tlk).TlkGetSimpleString(exo, strref);
-        string text = Native.ReadExo((IntPtr)exo);
-        EngineFn.ExoStringDtor((IntPtr)exo);
-        return text;
     }
 }

@@ -169,7 +169,7 @@ public sealed partial class SettingsWindow
         check.Expect(win.Tabs.Count == 2 && win.Tabs[1].Label == "All" && win.Tabs[1].ChannelMask == 0xffffffff, "add creates an All-channel tab");
         check.Expect(s.Panel.Category == 2 && s.CategoryTab == 1 && s.Panel.Categories.Length == 4 && s.Panel.Categories[3] == AddTabCategory,
           "the new tab's category is selected; add moved down");
-        check.Expect(s.Rows.FindAll(r => r.Act == SetAct.TabChannel && r.Key == "1").Count == FilterChannel.Editable.Length, "the tab category shows the channel toggles");
+        check.Expect(s.Rows.FindAll(r => r.Act == SetAct.TabChannel && r.Key == "1").Count == FilterChannel.Editable().Length, "the tab category shows the channel toggles");
         check.Expect(Find(s, SetAct.ToggleBit) == null, "...and none of the window rows");
 
         // Channel toggle: flip the Talk bit (0x001) and verify XOR preserves other bits.

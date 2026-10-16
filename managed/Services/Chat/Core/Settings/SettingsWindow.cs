@@ -218,7 +218,7 @@ public sealed partial class SettingsWindow
         rows.Add(new Row { Ctl = KnobKind.Text, Act = SetAct.TabLabel, Text = "Label", Value = tab.Label, Key = tk,
                            HelpText = "The name on the tab." });
         AddSection(rows, "Channels");
-        foreach (var (bit, chLabel) in FilterChannel.Editable)
+        foreach (var (bit, chLabel) in FilterChannel.Editable())
             rows.Add(new Row { Ctl = KnobKind.Toggle, Act = SetAct.TabChannel, Text = chLabel,
                                On = (tab.ChannelMask & bit) != 0, Bit = bit, Key = tk });
         if (win.Tabs.Count > 1)
