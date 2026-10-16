@@ -47,3 +47,5 @@ nui\.cardlate([^fs]|$)	CX-263
 \bcx-models\b	remove-mdl-compile
 # The sky-visibility reach was a knob baked into the map but missing from the re-bake key; a const now.
 \blight\.skyrange\b	CX-290
+# Graded cutouts draw whole: the blended fringe pass and its per-texture core cut are gone.
+FringeOwned|ProgFringe|CxCutBias|\bCoreCuts?\b|VizFringe	CX-298

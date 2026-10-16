@@ -688,8 +688,7 @@ public sealed unsafe partial class AlloyRenderer
         int groups = 0, n = 0;
         int keyVao = -1, keyTex = -1, keyFeat = -1, keyCls = -1, keyBlend = -1;
         uint keyMode = 0;
-        bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyCovN = false, keyDecal = false, keyFringe = false;
-        byte keyCore = 0;
+        bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyCovN = false, keyDecal = false;
         IntPtr keyGob = IntPtr.Zero;
         // #322 step 1: attribute the Build monolith before drawing any phase boundary -- Scan is the
         // routing walk, Restage everything after it. No behaviour change; the [zones] line gains the split.
@@ -809,10 +808,6 @@ public sealed unsafe partial class AlloyRenderer
             bool covN = (slots & CoverNrmBit) != 0;
             // CX-273: ...and a ground decal draws in the layer's own pass, so it is a key term too
             bool decal = row.Decal;
-            // CX-294: ...and a graded cutout draws again in the fringe pass, which takes its batches alone
-            bool fringe = row.Fringe;
-            // ...at its texture's own core cut, a uniform per batch
-            byte core = row.Core;
             // #153: under bindless a LIT batch no longer splits on its textures -- the handles ride the
             // record, so one multidraw spans every texture in the class. Feat/dis stay in the key only for
             // the depth prepass's whole-batch drop; unlit parts keep the bind path and the full key.
@@ -832,8 +827,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             if (!sameSlots || lit != keyLit || vKey != keyVao || tidKey != keyTex || mode != keyMode
                 || feat != keyFeat || dis != keyDis || cls != keyCls || blend != keyBlend
-                || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || covN != keyCovN || decal != keyDecal
-                || fringe != keyFringe || core != keyCore)
+                || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || covN != keyCovN || decal != keyDecal)
             {
                 // #292 (AC6): what the cull term cost. Counted as the batches it OPENED on its own -- every
                 // other key term agreed and only the culling state differed -- so the line reports the split
@@ -859,12 +853,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gFeat[groups] = feat; _gDis[groups] = dis;
                 _gCls[groups] = (byte)cls; _gSrc[groups] = row.Src; _gDst[groups] = row.Dst; _gWash[groups] = row.Wash;
                 _gNoCull[groups] = noCull; _gGob[groups] = gobKey; _gA2c[groups] = a2c; _gCovN[groups] = covN;
-                _gDecal[groups] = decal; _gFringe[groups] = fringe; _gCore[groups] = core;
+                _gDecal[groups] = decal;
                 if (!merge) for (int s = 0; s < MapSlots; s++) _gTexN[groups * MapSlots + s] = slotTid[s];
                 groups++;
                 keyLit = lit; keyVao = vKey; keyTex = tidKey; keyMode = mode; keyFeat = feat; keyDis = dis;
                 keyCls = cls; keyBlend = blend; keyNoCull = noCull; keyGob = gobKey; keyA2c = a2c; keyCovN = covN;
-                keyDecal = decal; keyFringe = fringe; keyCore = core;
+                keyDecal = decal;
             }
             
             _dCount[n] = idxCount;
@@ -935,8 +929,8 @@ public sealed unsafe partial class AlloyRenderer
         public nint IdxOff;
         public uint Mode;
         public IntPtr GobKey;
-        public byte Cls, Src, Dst, Wash, Core;
-        public bool Lit, Dis, NoCull, HasGob, Moved, Posed, Dangly, Decal, Fringe;
+        public byte Cls, Src, Dst, Wash;
+        public bool Lit, Dis, NoCull, HasGob, Moved, Posed, Dangly, Decal;
     }
     /// <summary>One row per ROUTED rank, so the ownership table's size is the bound (a pass with no visible set
     /// walks the whole order). ~80 bytes x <see cref="MaxOwned"/> = 13 MB, which is a quarter of what the record
@@ -964,10 +958,8 @@ public sealed unsafe partial class AlloyRenderer
         row.NoCull = _oNoCull[i];
         row.Src = (byte)_oSrc[i]; row.Dst = (byte)_oDst[i]; row.Wash = (byte)_oWash[i];
         // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a
-        // wash's polygon offset, in any class. A fringed cutout blends in its fringe pass, so its pair is a term too.
-        row.Fringe = db && SlotFringes(i, cls, lit, slots, feat);
-        row.Core = row.Fringe ? _oCore[i] : (byte)0;
-        row.Blend = BlendTerm(i, cls, row.Fringe);
+        // wash's polygon offset, in any class
+        row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
         // A blended batch never straddles two creatures: the frame prepasses and colours each run of one gob's
         // batches as a unit, so the gob is a key term and a tag on the batch.
         row.GobKey = cls == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
@@ -994,17 +986,6 @@ public sealed unsafe partial class AlloyRenderer
         row.Posed = posed; row.Dangly = dangly;
         row.Moved = posed ? recMoved || _poseMovedAt[i] == _frameSeq : dangly || recMoved && _oMx[i];
     }
-
-    /// <summary>The batch key's blend term: the wash's polygon offset, and the material's pair wherever it draws blended.</summary>
-    private static int BlendTerm(int i, int cls, bool fringe)
-        => (_oWash[i] << 16) | (AlloyClasses.Blends(cls) || fringe ? (_oSrc[i] << 8) | _oDst[i] : 0);
-
-    /// <summary>Does slot <paramref name="i"/> draw a core and a fringe? <see cref="AlloyClasses.Fringes"/> over its
-    /// measured diffuse, for a lit part whose cut is that diffuse's own: not a coverage-layer part, an env-mapped or
-    /// slot-1 coverage material (their diffuse alpha is not the cut), or a hosted body (the fringe program hosts none).</summary>
-    private static bool SlotFringes(int i, int cls, bool lit, int slots, int feat)
-        => lit && !_oA2c[i] && (slots & (EnvSlot | CoverNrmBit)) == 0 && !ShaderFeatures.Hosted(feat)
-           && AlloyClasses.Fringes(cls, _oCov[i], _oWash[i]);
 
     /// <summary>BW2: one frame in this many rebuilds every staged <see cref="BatchRow"/> the old way and counts
     /// the disagreements. Power of two.</summary>

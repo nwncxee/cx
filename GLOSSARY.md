@@ -361,11 +361,6 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   is genuine alpha: it draws after, sorted back-to-front, and never writes depth. The split is what
   makes a missing sort harmless for the majority of content and makes alpha-blended geometry
   incapable of occluding what it does not draw.
-- **Core and fringe** — how a cutout whose diffuse alpha measured graded draws, as vanilla's alpha-tested
-  bucket does (blend plus the 0.2 cut). The *core* is its texels at or above the solid threshold (0.99),
-  drawn and depth-written with the cutouts. The *fringe* is the band from 0.2 up to that threshold, drawn
-  in its own pass before the blended class: blended with the material's pair, unsorted, slim-lit, writing
-  no depth. A binary-alpha cutout has no fringe. A wash has its own split.
 - **Resolve stage** — the single fullscreen pass that encodes the linear Alloy frame to display
   space at the end of the frame. Distinct from a *post stack*: the resolve is a colour-space
   correction that makes Alloy blending mathematically right, not a place for tonemapping, exposure,

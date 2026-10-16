@@ -27,5 +27,5 @@ void main()
     if ((int(uDraw[vDraw].pbr.w) & 64) != 0) return;
     // CX-191: the colour pass tests the same compensated alpha, or its GL_EQUAL draw finds holes -- a PLT's
     // included: its alpha is the palette's, and the pair texture's own alpha is 1 everywhere
-    if (CxAlphaMip(CxDiffuse(uTex, vUV, CxCutBias(uAlphaCut, uLodBias), vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;
+    if (CxAlphaMip(CxDiffuse(uTex, vUV, uLodBias, vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;
 }

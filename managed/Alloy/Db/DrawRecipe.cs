@@ -100,9 +100,6 @@ internal static partial class DrawRecipe
     private static readonly int[] _node = new int[Max];
     private static readonly MeshDef?[] _mesh = new MeshDef?[Max];
     private static readonly byte[] _cls = new byte[Max];
-    /// <summary>The diffuse's core bucket as <see cref="Reclassify"/> last saw it: a preview's bucket replaced by the
-    /// full chain's counts as a move, so the slots on the recipe re-read theirs.</summary>
-    private static readonly byte[] _coreSeen = new byte[Max];
     private static readonly RecipeFlag[] _flags = new RecipeFlag[Max];
     private static readonly byte[] _src = new byte[Max], _dst = new byte[Max], _prim = new byte[Max];
     private static readonly int[] _feat = new int[Max];
@@ -438,15 +435,12 @@ internal static partial class DrawRecipe
                 _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
             }
-            byte core = TexRegistry.Core(new TexId(_texId[r * TexSlots]));
-            bool coreMoved = core != _coreSeen[r];
-            _coreSeen[r] = core;
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
             byte wasCls = _cls[r], wasDst = _dst[r];
             RecipeFlag wasFlags = _flags[r];
             TxiWords(r, additive, mesh.TransparencyHint > 0);
             if (TexRegistry.BumpyShiny(new TexId(_texId[r * TexSlots]))) _flags[r] |= RecipeFlag.RotateTexture;
-            if (_cls[r] == wasCls && _flags[r] == wasFlags && _dst[r] == wasDst && !coreMoved) continue;
+            if (_cls[r] == wasCls && _flags[r] == wasFlags && _dst[r] == wasDst) continue;
             if (_cls[r] != wasCls) Reclassified++;
             moved++;
         }

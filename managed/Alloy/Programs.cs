@@ -63,35 +63,25 @@ internal static unsafe class Programs
     /// written instead. 0 = no twin, which is what stands the deferred pass down. Bound for the opaque and
     /// cutout lit batches of the main view; every other lit draw keeps the forward loop.</summary>
     internal static uint _progLitDef;
-    /// <summary>One variant of the lit program spliced from its final text, and its locations.</summary>
-    private sealed class LitVariantState
+    /// <summary>The decal layer's writer (<see cref="DecalLayer"/>) and its locations: the same final text with
+    /// <c>CX_DECAL_WRITE</c>, which stops at the albedo and writes it into the layer.</summary>
+    private sealed class DecalProgState
     {
         public uint Prog;
         public LitLoc Loc;
     }
-    /// <summary>The decal layer's writer (<see cref="DecalLayer"/>): the final text with <c>CX_DECAL_WRITE</c>,
-    /// which stops at the albedo and writes it into the layer.</summary>
-    private static LitVariantState _decal = new();
-    /// <summary>The graded cutouts' fringe program: the final text with <c>CX_LIGHT_LITE</c>, the slim forward
-    /// walk. No OIT block and no side effect, so it keeps early-Z under its <c>GL_LESS</c> test.</summary>
-    private static LitVariantState _fringe = new();
+    private static DecalProgState _decal = new();
     /// <summary>The decal writer, or 0 -- no writer, and decals stay in the blended pass.</summary>
     internal static uint ProgDecal => _decal.Prog;
     /// <summary>Its uniform locations, for the issue loop's program table.</summary>
     internal static ref LitLoc DecalLoc => ref _decal.Loc;
-    /// <summary>Drop the decal writer's and the fringe program's names: deleted when <paramref name="delete"/> (a
-    /// module change), forgotten when the context took it.</summary>
-    internal static void ForgetVariants(bool delete)
+    /// <summary>Drop the writer's name: deleted when <paramref name="delete"/> (a module change), forgotten when
+    /// the context took it.</summary>
+    internal static void ForgetDecal(bool delete)
     {
         if (delete && _decal.Prog != 0) Gl.DeleteProgram(_decal.Prog);
-        if (delete && _fringe.Prog != 0) Gl.DeleteProgram(_fringe.Prog);
-        _decal = new LitVariantState();
-        _fringe = new LitVariantState();
+        _decal = new DecalProgState();
     }
-    /// <summary>The fringe program, or 0 -- no fringe, and every graded cutout draws whole at the 0.2 cut.</summary>
-    internal static uint ProgFringe => _fringe.Prog;
-    /// <summary>Its uniform locations, for the issue loop's program table.</summary>
-    internal static ref LitLoc FringeLoc => ref _fringe.Loc;
     /// <summary>The lit program with <c>CX_A2C_MASK</c> -- the coverage layer's own sample mask
     /// (<c>alloy.a2cmask</c>). Built on the layer's first ask; 0 until then or after a refusal.</summary>
     internal static uint _progLitMask;
@@ -230,7 +220,7 @@ internal static unsafe class Programs
         if (_progLitHost != 0) Gl.DeleteProgram(_progLitHost);
         if (_progLitList != 0) Gl.DeleteProgram(_progLitList);
         if (_progLitDef != 0) Gl.DeleteProgram(_progLitDef);
-        ForgetVariants(delete: true);
+        ForgetDecal(delete: true);
         if (_progLitMask != 0) Gl.DeleteProgram(_progLitMask);
         if (_hostMask.Prog != 0) Gl.DeleteProgram(_hostMask.Prog);
         _hostMask = new HostMaskState();
@@ -470,7 +460,7 @@ internal static unsafe class Programs
         GlProgram.Texts(ShdLitVs, litVs, ShdLitFs, litFs, null, "", out string pv, out string pf);
         var guess = Variants(pf);
         using var prefetched = GlProgram.Prefetch([(pv, pf, false), (pv, guess.List, false), (pv, guess.Def, false),
-                                                   (pv, guess.Decal, false), (pv, guess.Fringe, false), (pv, hosted ? pf : null, true)], _log);
+                                                   (pv, guess.Decal, false), (pv, hosted ? pf : null, true)], _log);
         // #350: from the hosted regions' STUBS -- the program every lit batch draws with carries no content
         // body; the second build below carries them for the batches that need them.
         uint prog = GlProgram.Graphics(ShdLitVs, litVs, ShdLitFs, litFs,
@@ -510,7 +500,7 @@ internal static unsafe class Programs
         _litFsSrc = finalFs;
         // The OIT-lists twin: the same text that just compiled, plus the append block, bound only inside a mode-2
         // bracket. Verified on the text because a content override may carry no block at all.
-        var (listFs, defFs, decalFs, fringeFs) = Variants(finalFs);
+        var (listFs, defFs, decalFs) = Variants(finalFs);
         uint pl = listFs != null ? GlProgram.Graphics(vsSrc, listFs, _log, "AlloyRenderer lit program (OIT lists)", host: false) : 0;
         _progLitList = pl;
         if (pl != 0) _litL = LitLocs(pl);
@@ -533,14 +523,10 @@ internal static unsafe class Programs
             else _log?.Info("AlloyRenderer: lit deferred twin did not build -- deferred point lights are off for the session");
         }
         // CX-273: the decal layer's writer, from the same final text. Optional: without it decals blend as before.
-        ForgetVariants(delete: true);
+        ForgetDecal(delete: true);
         _decal.Prog = GlProgram.Graphics(vsSrc, decalFs, _log, "AlloyRenderer lit program (decal layer)", host: false);
         if (_decal.Prog != 0) _decal.Loc = LitLocs(_decal.Prog);
         else _log?.Info("AlloyRenderer: the decal layer's writer did not build -- ground decals stay in the blended pass");
-        // CX-294: the graded cutouts' fringe, from the same final text. Optional: without it they draw whole.
-        _fringe.Prog = GlProgram.Graphics(vsSrc, fringeFs, _log, "AlloyRenderer lit program (fringe)", host: false);
-        if (_fringe.Prog != 0) _fringe.Loc = LitLocs(_fringe.Prog);
-        else _log?.Info("AlloyRenderer: the fringe program did not build -- graded cutouts draw whole, hard-edged at the 0.2 cut");
         // #350: the SECOND lit program, the one with the content bodies in. Same text, hosted regions spliced
         // instead of stubbed; same contracts, because it draws the same records. Optional twice over: alloy.hostfs=0,
         // no hosted feature, or a failed build all leave it 0 and hosted materials on the plain path.
@@ -563,12 +549,12 @@ internal static unsafe class Programs
     }
 
     /// <summary>The lit variants' fragment texts from the lit stage's final text: the OIT-lists twin, the deferred
-    /// twin, the decal layer's writer and the fringe, null where that text cannot carry the variant.</summary>
-    private static (string? List, string? Def, string Decal, string Fringe) Variants(string fs)
+    /// twin and the decal layer's writer, null where that text cannot carry the variant.</summary>
+    private static (string? List, string? Def, string Decal) Variants(string fs)
     {
         string list = OitPass.WithLists(fs), def = WithDeferred(fs);
         return (list.Contains("atomicAdd(uOitCount") ? list : null, def.Contains("CxGbufWrite(g)") ? def : null,
-                ShaderStages.WithDefine(fs, "CX_DECAL_WRITE 1"), ShaderStages.WithDefine(fs, "CX_LIGHT_LITE 1"));
+                ShaderStages.WithDefine(fs, "CX_DECAL_WRITE 1"));
     }
 
     /// <summary>Build the hosted A2C mask program from the HOSTED program's own final text. False = no

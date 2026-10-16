@@ -145,12 +145,6 @@ public sealed unsafe partial class AlloyRenderer
             // main only: the route is shared, and a slot that is or was a PLT never stages on a worker (refused above)
             byte slotCls = main ? DbClsOf(part, recipe, _oWash[i] != 0) : _oCls[i];
             if (slotCls != _oCls[i]) { _oCls[i] = slotCls; UnstampRecord(i); DbSetGen++; }
-            // ...and the coverage the fringe split reads: the same measurement lands it
-            if (main && (TexRegistry.Coverage(diffuse) != _oCov[i] || TexRegistry.Core(diffuse) != _oCore[i]))
-            {
-                _oCov[i] = TexRegistry.Coverage(diffuse); _oCore[i] = TexRegistry.Core(diffuse);
-                _oTexKey[i] = DbTexKey(recipe, _oCov[i], _oCore[i]); UnstampRecord(i);
-            }
             // The GL NAME, not the registry id. `tid` is two things at once in this pipeline: the batch sort key
             // AND what the non-bindless path actually binds (Issue: glBindTexture(GL_TEXTURE_2D, _gTex[g])).
             // Handing it a TexId made every bind-path draw -- every unlit part, and every part at all when

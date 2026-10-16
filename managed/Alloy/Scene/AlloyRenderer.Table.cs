@@ -78,14 +78,6 @@ public sealed unsafe partial class AlloyRenderer
     /// cannot z-fight the surface it lies on; <see cref="WashSplit"/> draws its solid interior apart. Batch key term.
     /// Its DEPTH is the class's own -- see <c>BlendLaysDepth</c>.</summary>
     internal static readonly byte[] _oWash = new byte[MaxOwned], _gWash = new byte[MaxOwned];
-    /// <summary>What this part's diffuse alpha measured (<see cref="Db.TexCoverage"/>): a graded cutout draws a core
-    /// and a fringe (<see cref="AlloyClasses.Fringes"/>). The batch's answer is <see cref="_gFringe"/>, a key term.</summary>
-    private static readonly Db.TexCoverage[] _oCov = new Db.TexCoverage[MaxOwned];
-    internal static readonly bool[] _gFringe = new bool[MaxOwned];
-    /// <summary>A graded diffuse's core bucket (<see cref="AlloyClasses.CoreCut"/>), measured with <see cref="_oCov"/>;
-    /// the batch's is <see cref="_gCore"/>, a key term, so a core pass cuts each batch at its own level.</summary>
-    private static readonly byte[] _oCore = new byte[MaxOwned];
-    internal static readonly byte[] _gCore = new byte[MaxOwned];
     /// <summary>A ground decal (<see cref="DbDecal"/>): drawn into <see cref="DecalLayer"/> and folded into the
     /// surface under it. The blended run puts these first, and it is a batch key term.</summary>
     internal static readonly byte[] _oDecal = new byte[MaxOwned];

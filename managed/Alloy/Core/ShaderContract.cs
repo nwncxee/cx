@@ -603,8 +603,8 @@ internal static class ShaderContract
                   // CX-191: through the mip-level compensation, the same call in the feature prepass so its
                   // depth and the GL_EQUAL colour draw keep the same holes
                   && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
-                  && OwnedLitFsMain.Contains("return cut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= cut")
-                  && OwnedLitFsMain.Contains("if (CxCoverCut(cutCov, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
+                  && OwnedLitFsMain.Contains("return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut")
+                  && OwnedLitFsMain.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
                   // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
                   && OwnedLitFsMain.Contains("cxTintRow = CxTintRow(vDraw);")
                   && OwnedLitFsMain.Contains("if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }")
@@ -614,12 +614,7 @@ internal static class ShaderContract
                   && OwnedLitFsHead.Contains($"#define CX_SLOT_COVERNRM {CoverNrmBit}")
                   && OwnedLitFsMain.Contains("if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)")
                   && OwnedLitFsMain.Contains("{ coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }")
-                  && DepthFeatFs.Contains("if (CxAlphaMip(CxDiffuse(uTex, vUV, CxCutBias(uAlphaCut, uLodBias), vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
-                  // CX-294: a fringed cutout's core is both tests above at AlloyClasses.SolidAlpha, the lit stage's own
-                  // solid threshold -- drifted apart, the fringe pass and the core disagree on which texels are whose
-                  && OwnedLitFsHead.Contains("const float CX_SOLID_ALPHA = " + AlloyClasses.SolidAlpha.ToString(System.Globalization.CultureInfo.InvariantCulture) + ";")
-                  // ...and the fringe's slim walk leaves a baked receiver's static lights to its pages, or they light it twice
-                  && AlloyLights.FragmentLib.Contains("if (baked > 0.5 && int(cs.w) >= 128) continue;")
+                  && DepthFeatFs.Contains("if (CxAlphaMip(CxDiffuse(uTex, vUV, uLodBias, vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
                   // engine spends it once: inc_standard.shd:289 multiplies only .rgb through there. A stage

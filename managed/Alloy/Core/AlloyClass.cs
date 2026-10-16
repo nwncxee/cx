@@ -1,4 +1,3 @@
-using CX.Alloy.Db;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -57,37 +56,9 @@ internal static class AlloyClasses
 
     /// <summary>Does this class draw with <c>GL_BLEND</c> on, using the material's own blend pair? The three
     /// sorted classes, and NOT cutout: a cutout keeps its depth write, and a graded texel that both blends and
-    /// stamps depth punches sky-coloured holes through foliage. A graded cutout's blend is its fringe's
-    /// (<see cref="Fringes"/>), drawn in a pass of its own with no depth write.</summary>
+    /// stamps depth punches sky-coloured holes through foliage. ponytail: hard edges on graded foliage, which
+    /// look right live; a blended second pass over the graded band cost ~10 ms on foliage and changed nothing.</summary>
     internal static bool Blends(int cls) => cls != (int)AlloyClass.Opaque && cls != (int)AlloyClass.Cutout;
-
-    /// <summary>The highest core cut, on RAW alpha (no <c>alloy.cutmip</c> scaling): a fringed cutout whose diffuse is not
-    /// measured yet draws only texels above it solid. The lit stage's <c>CX_SOLID_ALPHA</c>, a wash interior's cut.</summary>
-    internal const float SolidAlpha = 0.99f;
-
-    /// <summary>The core cuts a fringed texture can take, highest first: bucket 0 is <see cref="SolidAlpha"/> (not yet
-    /// measured), the rest are where a measured interior lands (<see cref="Db.TexCoverageOf.CoreOf"/>). Few, because
-    /// fringed batches split on the bucket.</summary>
-    private static readonly float[] CoreCuts = { SolidAlpha, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f };
-
-    /// <summary>How many core buckets there are: the sort digit's graded half is banded by it.</summary>
-    internal const int CoreBuckets = 6;
-
-    /// <summary>The core cut of bucket <paramref name="b"/>.</summary>
-    internal static float CoreCut(byte b) => CoreCuts[b];
-
-    /// <summary>The highest bucket whose cut sits at or below <paramref name="level"/>; the last (0.5) for a level under every cut.</summary>
-    internal static byte CoreBucket(float level)
-    {
-        for (byte b = 0; b < CoreCuts.Length; b++) if (CoreCuts[b] <= level) return b;
-        return (byte)(CoreCuts.Length - 1);
-    }
-
-    /// <summary>Does this part draw in two pieces -- a depth-writing core above its diffuse's <see cref="CoreCut"/> and a
-    /// blended fringe below it? A cutout whose diffuse measured graded, and not a wash: a wash has its own
-    /// split (<c>WashSplit</c>). A binary or unmeasured diffuse draws whole.</summary>
-    internal static bool Fringes(int cls, TexCoverage coverage, byte wash)
-        => false; // ponytail: split off to test whether the fringe is needed at all
 
     /// <summary>The engine's <c>fAlphaDiscardValue</c> for this class (<c>GLRender::SetUniforms</c> @0x4ccbf0:
     /// 0.2 under <c>Enable(1)</c>, -1.0 otherwise). Cutout and blended get the test -- a fading tile is a
@@ -98,8 +69,8 @@ internal static class AlloyClasses
 
     /// <summary>Off-device: the classifier's precedence, the one thing about it not readable off a single
     /// line. Additive beats opacity (the engine tests the blend factor first), opacity beats both transparency
-    /// terms, and a texture-alpha part with nothing declared is a cutout. Oracle: hand-written rows, the core and
-    /// fringe split's among them (class x coverage x wash).</summary>
+    /// terms, and a texture-alpha part with nothing declared is a cutout -- the majority of NWN content, and
+    /// the reason the missing sort survives at all.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyClasses.SelfCheck");
@@ -139,29 +110,6 @@ internal static class AlloyClasses
         check.Expect(!Blends((int)AlloyClass.Cutout), "#357: nor does a cutout -- it writes depth, so it must be opaque");
         check.Expect(Blends((int)AlloyClass.Blended) && Blends((int)AlloyClass.Additive), "blended and additive do");
         check.Expect(Blends((int)AlloyClass.Water), "and so does water -- the engine draws bucket 6 under Enable(0)");
-        // The split rule, rows of class x coverage x wash written out by hand (1 = WashWhole, 2 = WashSplit):
-        // true = a core and a fringe draw, false = the part draws whole in its class.
-        (AlloyClass Cls, TexCoverage Cov, byte Wash, bool Split)[] rows =
-        {
-            (AlloyClass.Cutout, TexCoverage.Blended, 0, false),
-            (AlloyClass.Cutout, TexCoverage.Cutout, 0, false),
-            (AlloyClass.Cutout, TexCoverage.Opaque, 0, false),
-            (AlloyClass.Cutout, TexCoverage.Unknown, 0, false),
-            (AlloyClass.Cutout, TexCoverage.Blended, 1, false),
-            (AlloyClass.Cutout, TexCoverage.Blended, 2, false),
-            (AlloyClass.Opaque, TexCoverage.Blended, 0, false),
-            (AlloyClass.Blended, TexCoverage.Blended, 0, false),
-            (AlloyClass.Blended, TexCoverage.Blended, 2, false),
-            (AlloyClass.Water, TexCoverage.Blended, 0, false),
-            (AlloyClass.Additive, TexCoverage.Blended, 0, false),
-        };
-        foreach (var r in rows)
-            check.Expect(Fringes((int)r.Cls, r.Cov, r.Wash) == r.Split,
-              $"{r.Cls} over a {r.Cov} diffuse, wash {r.Wash}: should {(r.Split ? "" : "not ")}split into core and fringe");
-        check.Expect(SolidAlpha > Discard((int)AlloyClass.Cutout), "the core cut sits above the 0.2 cut, or the fringe band is empty");
-        check.Expect(CoreCut(0) == 0.99f && CoreCut(CoreBucket(0.95f)) == 0.9f && CoreCut(CoreBucket(0.1f)) == 0.5f
-          && CoreCut(CoreBucket(1f)) == 0.99f, "a level takes the highest cut at or below it, and 0.5 under every one");
-        check.Expect(CoreCut(CoreBucket(0f)) > Discard((int)AlloyClass.Cutout), "the lowest core cut sits above the 0.2 cut");
         check.Expect(Discard((int)AlloyClass.Cutout) == 0.2f && Discard((int)AlloyClass.Blended) == 0.2f,
           "the engine's 0.2 cutout, on the two classes it draws under Enable(1)");
         check.Expect(Discard((int)AlloyClass.Opaque) < 0f && Discard((int)AlloyClass.Additive) < 0f
