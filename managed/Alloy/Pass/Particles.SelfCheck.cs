@@ -262,6 +262,60 @@ internal static unsafe partial class Particles
         check.Expect(PrevCentre(false, new Vector3(100f, 0f, 0f), new Vector3(1f, 2f, 3f)) == new Vector3(1f, 2f, 3f),
           "...and a step no particle could have taken is a recycled slot, which takes a zero step too");
 
+        TintCheck(check);
+
         log.Info(check.Ok ? "Particles.SelfCheck: passed" : "Particles.SelfCheck: FAILED");
     }
+
+    /// <summary>The emitter tint over a synthetic light rig. Oracle: RGB literals worked out by hand from the
+    /// engine's own curve -- <c>1 - d / reach</c> per light, the area pair unattenuated, the sum clamped to 1.
+    /// </summary>
+    private static void TintCheck(Checker check)
+    {
+        bool amb0 = FrameInputs.HasAreaAmbient, dif0 = FrameInputs.HasAreaDiffuse;
+        Vector3 ambWas = FrameInputs.AreaAmbient, difWas = FrameInputs.AreaDiffuse;
+        FrameInputs.HasAreaAmbient = false; FrameInputs.HasAreaDiffuse = false;
+
+        // One lamp 10 units away with 20 of reach: half its colour reaches the sample point.
+        FrameInputs.BeginAreaLights(4);
+        FrameInputs.RecordAreaLight((IntPtr)1, new Vector3(10f, 0f, 0f), 20f, new Vector3(0.5f, 0.25f, 0.125f));
+        Vector3 t = SceneTint(Vector3.Zero);
+        check.Expect(Near(t, new Vector3(0.25f, 0.125f, 0.0625f)),
+          $"a lamp at half its reach tints with half its colour ({t})");
+
+        // ...and one past its reach contributes nothing, which is what keeps a whole area's lamps off the sum.
+        FrameInputs.RecordAreaLight((IntPtr)2, new Vector3(30f, 0f, 0f), 20f, new Vector3(1f, 1f, 1f));
+        t = SceneTint(Vector3.Zero);
+        check.Expect(Near(t, new Vector3(0.25f, 0.125f, 0.0625f)),
+          $"a lamp past its own reach adds nothing ({t})");
+
+        // The sum is clamped, not averaged: two lamps on top of the sample point cannot drive it past white.
+        FrameInputs.BeginAreaLights(2);
+        FrameInputs.RecordAreaLight((IntPtr)1, Vector3.Zero, 20f, new Vector3(0.8f, 0.8f, 0.8f));
+        FrameInputs.RecordAreaLight((IntPtr)2, Vector3.Zero, 20f, new Vector3(0.8f, 0.8f, 0.8f));
+        t = SceneTint(Vector3.Zero);
+        check.Expect(Near(t, Vector3.One), $"two lamps at the sample point clamp to white rather than summing past it ({t})");
+
+        // A reachless light: 0.9999 at its own position, and 0.01 of reach anywhere else.
+        FrameInputs.BeginAreaLights(1);
+        FrameInputs.RecordAreaLight((IntPtr)1, Vector3.Zero, 0f, new Vector3(1f, 0f, 0f));
+        t = SceneTint(Vector3.Zero);
+        check.Expect(MathF.Abs(t.X - 0.9999f) < 1e-4f, $"a reachless light at the sample point is all but full ({t.X})");
+        t = SceneTint(new Vector3(0.005f, 0f, 0f));
+        check.Expect(MathF.Abs(t.X - 0.5f) < 1e-3f, $"...and falls off over a hundredth of a unit ({t.X})");
+
+        // the area ambient rides in unattenuated and authored: a linear 0.25 is 0.25^(1/2.2) = 0.5326
+        FrameInputs.BeginAreaLights(0);
+        FrameInputs.AreaAmbient = new Vector3(0.25f, 0f, 0f);
+        FrameInputs.HasAreaAmbient = true;
+        t = SceneTint(new Vector3(500f, 500f, 500f));
+        check.Expect(MathF.Abs(t.X - 0.5326f) < 1e-3f && t.Y == 0f,
+          $"the area ambient tints everywhere, at the authored value behind the rig's linear one ({t})");
+
+        FrameInputs.BeginAreaLights(0);
+        FrameInputs.AreaAmbient = ambWas; FrameInputs.AreaDiffuse = difWas;
+        FrameInputs.HasAreaAmbient = amb0; FrameInputs.HasAreaDiffuse = dif0;
+    }
+
+    private static bool Near(Vector3 a, Vector3 b) => (a - b).Length() < 1e-4f;
 }

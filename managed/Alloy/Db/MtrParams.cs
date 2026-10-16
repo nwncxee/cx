@@ -174,9 +174,9 @@ internal static class MtrParams
     private static bool Is(string a, string b) => a.Equals(b, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A hand-written <c>.mtr</c> through <see cref="MtrDef.Parse"/>, <see cref="Fold"/>,
-    /// <see cref="FoldTint"/> and the recipe's slot mapping. Oracle: the literals in the text, and the slot
-    /// contract in <c>docs/spec/materials.md</c> -- <c>texture11</c> is the AO/ORM map on its own mask bit,
-    /// and <c>texture7</c>..<c>texture10</c> are the palette tint's four, on theirs.</summary>
+    /// <see cref="FoldTint"/> and the recipe's slot mapping and sourcing. Oracle: the literals in the text
+    /// and in the hand-built meshes below, plus the slot contract in <c>docs/spec/materials.md</c> --
+    /// <c>texture11</c> is the AO/ORM map on its own bit, <c>texture7</c>..<c>texture10</c> the palette's.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MtrParams.SelfCheck");
@@ -226,6 +226,26 @@ internal static class MtrParams
                          $"palette slot {k} is bound for a feature that does not read it");
         }
         check.Expect(DrawRecipe.TexSlots == 12, "a recipe does not name 12 texture slots (diffuse, 7 maps, 4 palette)");
+        // Where a slot's resref comes from. A model's texture1..3 are map slots only on a mesh that carries a
+        // tangent frame -- the engine compiles no shader that samples those units for any other mesh.
+        var plain = new Mdl.MeshDef();
+        plain.Textures[0] = "tile_diff"; plain.Textures[1] = "tile_lm"; plain.Textures[2] = "tile_x";
+        check.Expect(DrawRecipe.SlotName(0, null, plain) == "tile_diff", "a mesh's texture0 is not the diffuse slot's source");
+        check.Expect(DrawRecipe.SlotName(1, null, plain) == "" && DrawRecipe.SlotName(2, null, plain) == "",
+                     "a mesh with no tangent frame still feeds its texture1/texture2 to the normal and spec slots");
+        var hinted = new Mdl.MeshDef { RenderHintId = 2 };
+        hinted.Textures[0] = "wall_diff"; hinted.Textures[1] = "wall_n"; hinted.Textures[2] = "wall_s";
+        check.Expect(DrawRecipe.SlotName(1, null, hinted) == "wall_n" && DrawRecipe.SlotName(2, null, hinted) == "wall_s",
+                     "a normalandspecmapped mesh's own texture1/texture2 do not reach the normal and spec slots");
+        var tanned = new Mdl.MeshDef { Tangents = new System.Numerics.Vector4[1] };
+        tanned.Textures[0] = "a"; tanned.Textures[1] = "a_n";
+        check.Expect(DrawRecipe.SlotName(1, null, tanned) == "a_n", "a mesh whose file supplied tangents loses its texture1");
+        MtrDef nm = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("texture1 mtr_n\n"), "slotcheck");
+        check.Expect(DrawRecipe.SlotName(1, nm, plain) == "mtr_n", "a .mtr's declared texture1 is gated on the MODEL's tangent frame");
+        var nulled = new Mdl.MeshDef { RenderHintId = 2 };
+        nulled.Textures[0] = "NULL"; nulled.Textures[1] = "null";
+        check.Expect(DrawRecipe.SlotName(0, null, nulled) == "" && DrawRecipe.SlotName(1, null, nulled) == "",
+                     "the MDL's \"null\" placeholder is taken as a resref");
         // ...and the terms a palette .mtr states, through FoldTint, against the literals in the text below.
         const string tintText = "customShaderVS VS_PLT_WIND\ncustomShaderFS fs_plt_tinter\n"
             + "parameter float fIllumColor 0.1 0.2 0.3\nparameter float fAlphaMipScale 0.5\n"

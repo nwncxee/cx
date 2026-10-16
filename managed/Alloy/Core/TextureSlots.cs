@@ -290,6 +290,7 @@ internal static class TextureSlots
         check.Expect(AlloyRenderer.OitOutFs.Contains("uniform sampler2D uOitDepth;"), $"{OitDepth} uOitDepth (blended output)");
         check.Expect(AlloyRenderer.OitOutFs.Contains("uniform ivec2 uOitDim;") && AlloyRenderer.OitOutFs.Contains("uniform int uOitGob;"), "uOitDim/uOitGob are what OitPass.Upload and IssueColour write");
         check.Expect(Particles.ParticleFsHead.Contains("uniform sampler2D uSceneDepth;"), $"{SceneDepth} uSceneDepth");
+        check.Expect(ShaderStages.Source(Halos.ShdHaloFs).Contains("uniform sampler2D uFlare;"), $"{Diffuse} uFlare (flare program)");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uCoverDepth;"), $"{CoverDepth} uCoverDepth (splash program)");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uSceneDepth;"), $"{SceneDepth} uSceneDepth (splash program)");
         // CX-188: the deferred pass declares its five by layout(binding), so no bind-time glUniform1i can miss

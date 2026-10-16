@@ -228,6 +228,7 @@ internal static unsafe class FrameDump
             Indices = new uint[] { 0, 1, 2 },
             BMin = -System.Numerics.Vector3.One, BMax = System.Numerics.Vector3.One,
             Textures = new[] { "cx_fd_diffuse", "cx_fd_normal" },
+            RenderHintId = 2,   // without a tangent-frame hint a model's texture1 is no map slot
         };
         var model = new Mdl.ModelDef { Name = "cx_fd_dump", ContentHash = 0xFD00FD00UL };
         model.Nodes = new[]

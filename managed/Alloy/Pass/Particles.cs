@@ -101,13 +101,15 @@ internal static unsafe partial class Particles
 
     /// <summary>Emitters tracked at once. Past this an emitter is declined and, with the engine walk gone,
     /// does not draw at all -- which is the whole cost of the cap.</summary>
-    private const int MaxEmitters = 8192;
+    internal const int MaxEmitters = 8192;
     /// <summary>Draw groups per pass. One group is one <c>glDrawArrays</c>; overflowing it declines the
     /// remaining emitters rather than merging groups that must not merge.</summary>
     private const int MaxGroups = 4096;
-    /// <summary>Record-buffer growth, in records: start here, double until the frame fits, stop at the cap
-    /// (112 bytes each, so the cap is 56MB) and stand the pass down rather than truncating.</summary>
-    private const int MinRecs = 1024, MaxRecs = 1 << 19;
+    /// <summary>Record-buffer growth, in records: start here and double until the frame fits.</summary>
+    private const int MinRecs = 1024;
+    /// <summary>The record buffer's cap (112 bytes each, so 56MB): past it the pass stands down rather than
+    /// truncating, which also makes it the most particles the simulation behind it is worth stepping.</summary>
+    internal const int MaxRecs = 1 << 19;
 
     /// <summary>One captured emitter. Only the identity and the transform are held; everything the build
     /// reads is re-read off the live emitter at draw time.</summary>
@@ -267,9 +269,9 @@ internal static unsafe partial class Particles
     // it and only the split says which.
     private static int _decFade, _decEmpty, _decShader, _decTex, _decFull, _reclaimed, _softPasses,
                        _emissive, _litGroups;
-    /// <summary>Tinted emitters drawn WITHOUT the scene tint, because there is no engine light list to sample
-    /// at the emitter's origin. A named difference, on the period line.</summary>
-    private static int _dbNoTint;
+    /// <summary>Light records the emitter tint walked this period -- the cost of sampling the rig per tinted
+    /// emitter, and the trip-wire for the walk's ponytail (<see cref="SceneTint"/>).</summary>
+    private static int _tintLights;
     /// <summary>How far inside its own cell a quad's UV range is pulled, as a fraction of the cell. An atlas
     /// cell has no border, so bilinear filtering at its edge reaches into the NEIGHBOURING cell and a mip
     /// averages cells outright. ponytail: a fraction of the cell rather than a true half-texel, which would
@@ -812,16 +814,13 @@ internal static unsafe partial class Particles
         float rate = !byAge ? 1f / MathF.Max(1, e.PartCount)
                             : life > 0f ? 1f / life : NoLifeRate;
 
-        // colour, optionally run through the scene lighting at the emitter's position first
+        // colour, optionally run through the scene lighting at the emitter's position first. The engine
+        // decides whether to interpolate off the DECLARED pair, before either the tint or the clamp.
         Vector3 cStart = emv.ColorStart, cEnd = emv.ColorEnd;
-        // CX-188: a `m_isTinted` emitter draws its declared colour. The CPU tint sampled the ENGINE's
-        // light list at the emitter's origin, and the database has no such list to sample -- every emitter
-        // here is a database emitter (nothing fills a snapshot from a PartEmitter any more), so the engine
-        // arm was dead. Counted, not assumed.
-        if (tinted) { tinted = false; _dbNoTint++; }
+        bool lerpColor = cStart != cEnd;
+        if (tinted) { Vector3 tint = SceneTint(emv.M.Pos); cStart *= tint; cEnd *= tint; }
         cStart = Vector3.Clamp(cStart, Vector3.Zero, Vector3.One) * ByteScale;
         cEnd = Vector3.Clamp(cEnd, Vector3.Zero, Vector3.One) * ByteScale;
-        bool lerpColor = cStart != cEnd;
 
         // alpha: the emitter's own pair, folded with the tile's and the Gob's.
         // DB mode reads the two columns that carry those: PartFade is the tile-fade/reveal product the tiles
@@ -1397,7 +1396,7 @@ internal static unsafe partial class Particles
         for (int i = 0; i < ClsCount; i++) _cCls[i] = 0;
         _cSplat = 0; _cTinted = 0; _cGrid = 0;
         _blockUploads = 0; _blockSkips = 0; _recResets = 0; _sorted = 0; _sortSkipped = 0;
-        _dbNoTint = 0;
+        _tintLights = 0;
     }
 
     /// <summary>AC 4's number: emitters owned against draws issued. Vanilla's ratio is 1:1 by construction --
@@ -1424,7 +1423,7 @@ internal static unsafe partial class Particles
                + (_sortSkipped == 0 ? "" : $", {_sortSkipped} sort-skipped (over {SortCap})"))
           + (_recResets == 0 ? "" : $", {_recResets} BLOCK-ALLOCATOR RESETS (see EnsureBlock)")
           + (_overflow == 0 ? "" : $", {_overflow} passes OVERFLOWED (group or record cap)")
-          + (_dbNoTint == 0 ? "" : $", {_dbNoTint} tinted emitters drawn UNTINTED (DB mode has no engine light list)")
+          + (_tintLights == 0 ? "" : $", tint={(float)_tintLights / MathF.Max(1, frames):F0} light samples/frame")
           + Census();
 
     /// <summary><c>/particles diag 1</c> only: which of the seven billboard bases and which blend classes this period

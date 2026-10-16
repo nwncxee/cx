@@ -3337,12 +3337,12 @@ public readonly unsafe partial struct MdlNodeLight(IntPtr ptr)
     public ref int FadingLight => ref *(int*)(Ptr + EngineLayout.LightFadingLight);
     /// <inheritdoc cref="EngineLayout.FlareCount"/>
     public ref int FlareCount => ref *(int*)(Ptr + EngineLayout.FlareCount);
+    /// <inheritdoc cref="EngineLayout.FlarePositions"/>
+    public ref IntPtr FlarePositions => ref *(IntPtr*)(Ptr + EngineLayout.FlarePositions);
     /// <inheritdoc cref="EngineLayout.FlareRadius"/>
     public ref float FlareRadius => ref *(float*)(Ptr + EngineLayout.FlareRadius);
     /// <inheritdoc cref="EngineLayout.FlareShifts"/>
     public ref IntPtr FlareShifts => ref *(IntPtr*)(Ptr + EngineLayout.FlareShifts);
-    /// <inheritdoc cref="EngineLayout.FlareSizes"/>
-    public ref IntPtr FlareSizes => ref *(IntPtr*)(Ptr + EngineLayout.FlareSizes);
     /// <inheritdoc cref="EngineLayout.MdlLightPriority"/>
     public ref int LightPriority => ref *(int*)(Ptr + EngineLayout.MdlLightPriority);
 }

@@ -271,6 +271,14 @@ internal static class ShaderContract
     public static bool LitSlotSafe(string fs)
         => SlotSafe(fs, "uTex") && SlotSafe(fs, TextureSlots.MapSamplers) && SlotSafe(fs, "uProbe");
 
+    /// <summary>The flare pair's own contract. The staged list is grouped by texture and drawn one range at a
+    /// time, so a vertex stage that indexes the raw <c>gl_InstanceID</c> draws the first group's elements for
+    /// every group -- a wrong flare in a wrong place, silently -- and a fragment stage with no
+    /// <c>uFlare</c>/<c>uTextured</c> samples the material diffuse left on unit 0.</summary>
+    public static bool FlareSafe(string vs, string fs)
+        => vs.Contains("uniform int uFirst;") && vs.Contains("uFirst + gl_InstanceID")
+        && fs.Contains("uniform int uTextured;") && SlotSafe(fs, "uFlare");
+
     /// <summary>Headless check of the one desync that fails SILENTLY: the per-draw SSBO's binding point and
     /// record stride live twice, as C# constants driving the staging writes and as literal GLSL in
     /// <see cref="AlloyRenderer.DrawBufDecl"/>. Verified against glslang reflection: model@0 rot@64 amb@80
@@ -686,6 +694,12 @@ internal static class ShaderContract
                   && !LitSlotSafe(OwnedLitFsHead.Replace("uniform samplerCube uProbe;", ""))
                   // ...and the same over every other overridable stage that binds a unit, so the embedded
                   // text of each passes the guard its own override will be held to.
+                  // the flare pair's own guard, and a stage override that predates the element chain failing it
+                  && FlareSafe(ShaderStages.Source(Halos.ShdHaloVs), ShaderStages.Source(Halos.ShdHaloFs))
+                  && !FlareSafe(ShaderStages.Source(Halos.ShdHaloVs).Replace("uFirst + gl_InstanceID", "gl_InstanceID"),
+                                ShaderStages.Source(Halos.ShdHaloFs))
+                  && !FlareSafe(ShaderStages.Source(Halos.ShdHaloVs),
+                                ShaderStages.Source(Halos.ShdHaloFs).Replace("uniform sampler2D uFlare;", ""))
                   && SlotSafe(FrameSnapshot.FsHead, "uTex", "uFbColor", "uFbDepth", "uNoise", "uEnvMap")
                   && SlotSafe(PostChain.ResolveFs, "uHdr", "uBloom")
                   && SlotSafe(GrassField.GrassFsHead, "uTex")

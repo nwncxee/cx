@@ -56,18 +56,13 @@ internal static unsafe partial class TexRegistry
         public System.Numerics.Vector3 Mean;
         public bool MeanOk;
         /// <summary>The slot's <c>.txi</c> names a <c>bumpyshinytexture</c>, which is the engine's own route
-        /// into the water class. <see cref="TxiNamesBumpyShiny"/>.</summary>
+        /// into the water class. Read at the offer, on the game thread. <see cref="TxiNamesBumpyShiny"/>.</summary>
         public bool BumpyShiny;
-        /// <summary>What the texture's own <c>.txi</c> RESOURCE said, read on the game thread at the offer
-        /// (the worker may not touch the engine's resource tables).</summary>
-        public bool BumpyShinyTxi;
         /// <summary>The slot's <c>.txi</c> names an <c>envmaptexture</c>, which is what makes the engine's
         /// material env-MAPPED (<c>Material::ParseField</c> @0x5c5850 stores it at <c>+0xd</c>,
         /// <c>Material::HasEnvMap</c> @0x5c6180 answers for it) -- the "this is shiny 2002 content" flag the
         /// lit stage spends the diffuse alpha as reflectivity on. <see cref="TxiNamesEnvMap"/>.</summary>
         public bool EnvMap;
-        /// <inheritdoc cref="BumpyShinyTxi"/>
-        public bool EnvMapTxi;
         public long Bytes;
         public string? Why;
         /// <summary>Came off the fast queue: a preview pass, which a texture needing no preview finishes whole.</summary>
@@ -80,53 +75,23 @@ internal static unsafe partial class TexRegistry
         public bool Cycle;
         public float Fps = 1f;
         public byte[]? Pixels;
+        /// <summary>The <c>.txi</c> ripple (<see cref="ParseArturo"/>), and the running one the worker built
+        /// from it (<see cref="KeepArturo"/>) for the bracket to file.</summary>
+        public ArturoTxi Arturo;
+        /// <inheritdoc cref="Arturo"/>
+        public Arturo? Ripple;
     }
 
-    /// <summary>The <c>.txi</c> keyword the water class is decided on, as the engine reads it:
-    /// <c>Material::ParseField</c> @0x5c5850 stores a <c>bumpyshinytexture</c> name, which
-    /// <c>Material::HasBumpyShinyMap</c> @0x5c5ca0 answers for -- the term
-    /// <c>Scene::AddPartsTreeToDrawBuckets</c> @0x460880 files a part into draw bucket 6 on.</summary>
-    private static ReadOnlySpan<byte> BumpyShinyKey => "bumpyshinytexture"u8;
-    /// <summary>The <c>.txi</c> keyword a material's environment map is declared with:
-    /// <c>Material::ParseField</c> @0x5c5850 matches <c>envmaptexture</c> and parses it into the field
-    /// <c>Material::HasEnvMap</c> @0x5c6180 reads, which is <c>PartTriMesh::Draw</c> @0x4513d0's own routing
-    /// condition into the environment-mapped branch.</summary>
-    private static ReadOnlySpan<byte> EnvMapKey => "envmaptexture"u8;
-
-    /// <summary>Bytes at the end of a texture resource that the <c>.txi</c> block can live in. The shipped
-    /// blocks are a handful of lines; this is the window, not a budget.</summary>
-    private const int TxiTailBytes = 64 * 1024;
-
-    /// <summary>Does this texture resource's appended <c>.txi</c> name a <c>bumpyshinytexture</c>? Scanned out
-    /// of the resource's own tail, where the shipped data is: the stock water textures carry their <c>.txi</c>
-    /// inside the TGA, after the image. Case-insensitive, as the engine's <c>strcasecmp</c> is.
-    /// <c>ponytail:</c> a SEPARATE <c>.txi</c> resource is not seen -- locate it at intern, on the game thread.</summary>
+    /// <summary>Does this texture's <c>.txi</c> name a <c>bumpyshinytexture</c>? That is the water class:
+    /// <c>Material::ParseField</c> @0x5c5850 stores the name, <c>Material::HasBumpyShinyMap</c> @0x5c5ca0
+    /// answers for it, and <c>Scene::AddPartsTreeToDrawBuckets</c> @0x460880 files the part into bucket 6 on
+    /// it. Case-insensitive, as the engine's <c>strcasecmp</c> is.</summary>
     private static bool TxiNamesBumpyShiny(string? txi)
         => txi != null && txi.Contains("bumpyshinytexture", StringComparison.OrdinalIgnoreCase);
 
     /// <inheritdoc cref="TxiNamesBumpyShiny(string)"/>
     private static bool TxiNamesEnvMap(string? txi)
         => txi != null && txi.Contains("envmaptexture", StringComparison.OrdinalIgnoreCase);
-
-    /// <inheritdoc cref="TxiNamesBumpyShiny(string)"/>
-    private static bool TxiNamesBumpyShiny(ReadOnlySpan<byte> raw) => TxiNames(raw, BumpyShinyKey);
-
-    /// <inheritdoc cref="TxiNamesBumpyShiny(string)"/>
-    private static bool TxiNamesEnvMap(ReadOnlySpan<byte> raw) => TxiNames(raw, EnvMapKey);
-
-    /// <summary>Does the resource's appended <c>.txi</c> tail name <paramref name="key"/>? Case-insensitive,
-    /// like the engine's <c>strcasecmp</c>.</summary>
-    private static bool TxiNames(ReadOnlySpan<byte> raw, ReadOnlySpan<byte> key)
-    {
-        ReadOnlySpan<byte> tail = raw.Length > TxiTailBytes ? raw[^TxiTailBytes..] : raw;
-        for (int i = 0; i + key.Length <= tail.Length; i++)
-        {
-            int k = 0;
-            while (k < key.Length && (tail[i + k] | 0x20) == key[k]) k++;   // the keyword is ASCII lower case
-            if (k == key.Length) return true;
-        }
-        return false;
-    }
 
     /// <summary>What the bracket publishes back to the game thread: the slot it uploaded for, the generation
     /// it uploaded against, and either a name and handle or the reason there is none.</summary>
@@ -184,20 +149,20 @@ internal static unsafe partial class TexRegistry
         Job j = Rent();
         j.Slot = i; j.Gen = _gen[i] & 0xFFF; j.Resref = resref; j.Kind = _kind[i];
         j.Data = null; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
-        string? txi = _kind[i] != TexKind.Plt ? ReadResourceText(resref, TextFontLoad.ResTxi) : null;
+        // The .txi is its own resource, and the only one the engine reads: CAurTextureBasic::Init @0x588940
+        // and Material::Init @0x5c5b90 both take it from AurResGet(name, ".txi"), which reaches the resman's
+        // CResHelper<CResTXI,2022> and nothing else. So it is looked up here, on the thread that may read the
+        // resource tables, and a hak's .txi beats the base game's by the resman's own order.
+        string? txi = ReadResourceText(resref, TextFontLoad.ResTxi);
         TxiSampler(i, txi);
-        j.Pixels = null; j.FullW = 0;
+        j.Pixels = null; j.FullW = 0; j.Ripple = null;
         TxiMaterial(i, txi, j);
         j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.MeanOk = false;
         j.Nearest = _nearest[i]; j.Mip = _mipmap[i];
-        // The material .txi is its OWN resource for most shipped textures -- ttf01_water01 has one, and the
-        // engine's Material::Init @0x5c5b90 reads it by name -- so it is looked up here, on the thread that
-        // may read the resource tables. The worker scans the image's tail as well, because some textures
-        // carry the block appended to the TGA instead.
-        j.BumpyShinyTxi = TxiNamesBumpyShiny(txi);
-        j.EnvMapTxi = TxiNamesEnvMap(txi);
+        j.BumpyShiny = TxiNamesBumpyShiny(txi);
+        j.EnvMap = TxiNamesEnvMap(txi);
         uint* resId = stackalloc uint[ResLocate.ResIdWords];
-        if (!LocateFor(resref, j.Kind, resId, out j.Loc, out TexKind found, out string? why))
+        if (!LocateFor(resref, j.Kind, TxiIsProcedural(j.Arturo, j.GridX, j.GridY), resId, out j.Loc, out TexKind found, out string? why))
         { Recycle(j); _pend[i] = PendNone; Fail(i, why ?? "no resource"); return; }
         // Auto resolved to whatever the resource tables hold, and that is the slot's kind from here on: a PLT
         // takes the pair decode and the shader resolve, anything else the ordinary one. The slot KEY does not
@@ -221,19 +186,29 @@ internal static unsafe partial class TexRegistry
     private static void TxiSampler(int i, string? txi)
     {
         if (txi == null) return;
+        lock (_lock)
+        {
+            bool clamp = _clamp[i], nearest = _nearest[i], mip = _mipmap[i];
+            TxiSamplerWords(txi, ref clamp, ref nearest, ref mip);
+            _clamp[i] = clamp; _nearest[i] = nearest; _mipmap[i] = mip;
+        }
+    }
+
+    /// <summary>The sampler words of one <c>.txi</c> text, applied over the state the slot already has: a word
+    /// the text does not name leaves its flag where it was, as the engine's ctor defaults do.</summary>
+    private static void TxiSamplerWords(string? txi, ref bool clamp, ref bool nearest, ref bool mip)
+    {
+        if (txi == null) return;
         foreach (string raw in txi.Split('\n'))
         {
             string line = raw.Trim();
             int sp = line.IndexOfAny([' ', '\t']);
             if (sp < 0 || !int.TryParse(line.AsSpan(sp + 1).Trim(), out int v)) continue;
             ReadOnlySpan<char> key = line.AsSpan(0, sp);
-            lock (_lock)
-            {
-                // ponytail: one bool for both axes, so a one-axis clamp (1 or 2) clamps both; per-axis = a bits column.
-                if (key.Equals("clamp", StringComparison.OrdinalIgnoreCase)) _clamp[i] = (v & 3) != 0;
-                else if (key.Equals("filter", StringComparison.OrdinalIgnoreCase)) _nearest[i] = v == 0;
-                else if (key.Equals("mipmap", StringComparison.OrdinalIgnoreCase)) _mipmap[i] = v != 0;
-            }
+            // ponytail: one bool for both axes, so a one-axis clamp (1 or 2) clamps both; per-axis = a bits column.
+            if (key.Equals("clamp", StringComparison.OrdinalIgnoreCase)) clamp = (v & 3) != 0;
+            else if (key.Equals("filter", StringComparison.OrdinalIgnoreCase)) nearest = v == 0;
+            else if (key.Equals("mipmap", StringComparison.OrdinalIgnoreCase)) mip = v != 0;
         }
     }
 
@@ -248,8 +223,9 @@ internal static unsafe partial class TexRegistry
 
     /// <summary>Where this resref's bytes live, for the kind asked. A PLT slot takes the PLT restype alone --
     /// a PLT and a DDS of the same name are different images and resolving one as the other is how a head
-    /// ends up wearing a wall. A DDS/TGA pair goes in the engine's race order: a hak's TGA beats a base DDS.</summary>
-    private static bool LocateFor(string resref, TexKind kind, uint* resId, out TexLocation loc, out TexKind found, out string? why)
+    /// ends up wearing a wall. A DDS/TGA pair goes in the engine's race order, except that
+    /// <paramref name="raw"/> puts the TGA first -- <see cref="TxiIsProcedural"/>.</summary>
+    private static bool LocateFor(string resref, TexKind kind, bool raw, uint* resId, out TexLocation loc, out TexKind found, out string? why)
     {
         loc = default; why = null; found = TexKind.Plain;
         Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
@@ -261,7 +237,7 @@ internal static unsafe partial class TexRegistry
             if (kind == TexKind.Plt) { types[0] = PltResType; nTypes = 1; }
             else
             {
-                bool tga = TexLoad.Winner(p, out _, out _) == TgaResType;
+                bool tga = raw || TexLoad.Winner(p, out _, out _) == TgaResType;
                 types[0] = tga ? TgaResType : DdsResType; types[1] = tga ? DdsResType : TgaResType; types[2] = PltResType;
                 nTypes = kind == TexKind.Plain ? 2 : 3;
             }
@@ -354,8 +330,6 @@ internal static unsafe partial class TexRegistry
     /// <summary>Decode the bytes the read produced, whichever container they came from.</summary>
     private static void Decode(Job j, ReadOnlySpan<byte> raw)
     {
-        j.BumpyShiny = j.BumpyShinyTxi || TxiNamesBumpyShiny(raw);
-        j.EnvMap = j.EnvMapTxi || TxiNamesEnvMap(raw);
         if (j.Fast && j.Kind != TexKind.Plt && j.Loc.ResType != TgaResType && j.GridX * j.GridY <= 1 && TryTail(j, raw)) return;
         if (j.Kind == TexKind.Plt)
         {
@@ -404,6 +378,7 @@ internal static unsafe partial class TexRegistry
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
+            KeepArturo(j);
             return;
         }
         byte* chain = DdsReader.Prepare(raw, out DdsReader.Info info, out string? dw);
@@ -550,6 +525,7 @@ internal static unsafe partial class TexRegistry
         }
         ApplySamplerWishes();
         StepCycles();
+        StepArturo();
         // ...and AGAIN: ApplySamplerWishes drops and re-mints handles of its own, and leaving those to the
         // next frame's drain is a whole frame of records pointing at a handle this one just retired.
         ZeroDyingHandles();
@@ -628,6 +604,7 @@ internal static unsafe partial class TexRegistry
         if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
+        FileArturo(j);
         Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 

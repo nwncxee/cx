@@ -11,9 +11,12 @@ namespace CX.Alloy.Db;
 /// they are built from the SAME dirty fold the record feed runs, so they cannot drift from it.</para></summary>
 internal static partial class DbInputs
 {
-    /// <summary>Light and emitter parts held at once. A heavy persistent-world area measured a few hundred lights; the
+    /// <summary>Light parts held at once. A heavy persistent-world area measured a few hundred lights; the
     /// ceiling is loud (<see cref="Spilled"/>) rather than silent.</summary>
-    internal const int MaxLights = 1 << 12, MaxEmitters = 1 << 12;
+    internal const int MaxLights = 1 << 12;
+    /// <summary>Emitter parts held at once: the draw table's own cap, since an emitter past it could be fed
+    /// but never drawn. A city area measured 2,880; the engine has no ceiling, so this one is loud too.</summary>
+    internal const int MaxEmitters = Particles.MaxEmitters;
 
     // ---- lights ----
     private static readonly int[] _lightPart = new int[MaxLights];
@@ -361,7 +364,9 @@ internal static partial class DbInputs
     internal static void Reset()
     {
         for (int k = 0; k < _lightN; k++) _lightDef[k] = null;
-        for (int k = 0; k < _emitN; k++) _emitDef[k] = null;
+        // release per-part emitter state BEFORE clearing the table that names the parts, or both strand
+        for (int k = 0; k < _emitN; k++) { EmitterSim.ForgetDbPart(_emitPart[k]); _emitDef[k] = null; }
+        DbEmitterChannels.ForgetAll();
         _lightN = 0; _emitN = 0; Spilled = 0; TileLights = 0; ChunkSpawnsRefused = 0;
     }
 

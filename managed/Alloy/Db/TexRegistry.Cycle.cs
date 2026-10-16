@@ -76,6 +76,7 @@ internal static unsafe partial class TexRegistry
     private static void TxiMaterial(int i, string? txi, Job j)
     {
         ParseTxi(txi, out byte blend, out bool decal, out j.GridX, out j.GridY, out j.Cycle, out j.Fps);
+        ParseArturo(txi, out j.Arturo);
         lock (_lock)
         {
             if (_txiBlend[i] == blend && _txiDecal[i] == decal) return;
@@ -92,10 +93,18 @@ internal static unsafe partial class TexRegistry
         if (j.Compressed) { System.Threading.Interlocked.Increment(ref _gridCompressed); return; }
         int cw = j.W / Math.Max(j.GridX, 1), ch = j.H / Math.Max(j.GridY, 1);
         if (cw < 1 || ch < 1) return;
-        j.Pixels = new byte[(long)j.W * j.H * j.Channels];
-        new ReadOnlySpan<byte>(j.Data, j.Pixels.Length).CopyTo(j.Pixels);
+        j.Pixels = KeepWholeImage(j);
         j.FullW = j.W; j.W = cw; j.H = ch; j.Levels = Levels(cw, ch);
         j.Bytes = (long)cw * ch * j.Channels;
+    }
+
+    /// <summary>WORKER: the job's decoded raster as a managed copy, which is what a texture the registry
+    /// re-uploads part of every frame is built out of. The length is the decode's own, not the caller's.</summary>
+    private static byte[] KeepWholeImage(Job j)
+    {
+        var px = new byte[(long)j.W * j.H * j.Channels];
+        new ReadOnlySpan<byte>(j.Data, px.Length).CopyTo(px);
+        return px;
     }
 
     /// <summary>BRACKET, after the upload: file the slot's cycle (a grid with no <c>cycle</c> shows cell 0, as the engine's does).</summary>

@@ -352,7 +352,7 @@ offset	MdlNodeEmitter	flags	0x170	0x174	# EmitterFlags
 offset	MdlNodeEmitter	renderOrder	0x16c	0x170	# EmitterRenderOrder
 offset	MdlNodeLight	flareRadius	0x9c	0xa0	# FlareRadius
 offset	MdlNodeLight	flareCount	0xa8	0xb0	# FlareCount
-offset	MdlNodeLight	flareSizes	0xc0	0xc8	# FlareSizes
+offset	MdlNodeLight	flarePositions	0xc0	0xc8	# FlarePositions
 offset	MdlNodeLight	flareShifts	0xd0	0xd8	# FlareShifts
 offset	MdlNodeLight	fadingLight	0x108	0x110	# LightFadingLight
 offset	MdlNodeTriMesh	faces	0xb0	0xb0	# MeshFaces

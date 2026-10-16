@@ -14,14 +14,15 @@ internal static unsafe partial class TexRegistry
     internal static bool SelfCheck(ExtenderLog log)
     {
         bool ok = PltCheck(log) & PaletteCheck(log) & RegistryCheck(log) & PltColors.SelfCheck(log)
-                & TexCoverageOf.SelfCheck(log) & TxiCheck(log) & TxiSelfCheck(new Checker(log, "TexRegistry.TxiSelfCheck"));
+                & TexCoverageOf.SelfCheck(log) & TxiCheck(log) & TxiSelfCheck(new Checker(log, "TexRegistry.TxiSelfCheck"))
+                & ArturoSelfCheck(new Checker(log, "TexRegistry.ArturoSelfCheck"));
         log.Info(ok ? "TexRegistry.SelfCheck: passed" : "TexRegistry.SelfCheck: FAILED");
         return ok;
     }
 
-    /// <summary>The water keyword, on the shipped shape of the data: a TGA with its <c>.txi</c> appended
-    /// after the image, the engine's own case-insensitive compare, and the two ways a scan can be wrong --
-    /// a texture with no <c>.txi</c> at all and one whose block names a different map.</summary>
+    /// <summary>Every word the registry takes from a <c>.txi</c>, read off the one text the engine reads --
+    /// the separate resource. Oracle: the stock <c>ttf01_water01.txi</c> and <c>fxpa_flame02.txi</c> blocks
+    /// typed out here, plus a texture that has no <c>.txi</c> at all.</summary>
     private static bool TxiCheck(ExtenderLog log)
     {
         bool ok = true;
@@ -31,24 +32,27 @@ internal static unsafe partial class TexRegistry
             ok = false;
             log.Always($"TexRegistry.SelfCheck: {what}");
         }
-        static byte[] Tga(string txi)
-        {
-            var head = new byte[64];
-            byte[] tail = System.Text.Encoding.ASCII.GetBytes("TRUEVISION-XFILE.\0" + txi);
-            var b = new byte[head.Length + tail.Length];
-            head.CopyTo(b, 0); tail.CopyTo(b, head.Length);
-            return b;
-        }
-        // The shipped block, verbatim from data/os_textures.bif's rural water texture.
-        Expect(TxiNamesBumpyShiny(Tga("bumpyshinytexture ttr01__env\nbumpmaptexture shinywater\nproceduretype arturo\n")),
-               "the shipped water .txi does not read as bumpy-shiny");
-        Expect(TxiNamesBumpyShiny(Tga("BumpyShinyTexture TM_Refl_Glass4\n")),
+        const string Water = "bumpyshinytexture ttr01__env\r\nbumpmaptexture shinywater\r\n\r\nproceduretype arturo\r\n";
+        Expect(TxiNamesBumpyShiny(Water), "the stock water .txi does not read as bumpy-shiny");
+        Expect(!TxiNamesEnvMap(Water), "the stock water .txi reads as env-mapped as well");
+        Expect(TxiNamesEnvMap("envmaptexture tm_coinbase01\r\nalphamean 0.75\r\n"), "an env-map .txi does not read as env-mapped");
+        Expect(TxiNamesBumpyShiny("BumpyShinyTexture TM_Refl_Glass4\r\n"),
                "the keyword is compared case-sensitively (the engine uses strcasecmp)");
-        Expect(!TxiNamesBumpyShiny(Tga("envmaptexture tm_coinbase01\nalphamean 0.75\n")),
-               "a .txi naming only an env map reads as bumpy-shiny");
-        Expect(!TxiNamesBumpyShiny(new byte[128]), "a texture with no .txi at all reads as bumpy-shiny");
-        log.Info(ok ? "TexRegistry.SelfCheck: the water .txi keyword reads on the shipped shape"
-                    : "TexRegistry.SelfCheck: the water .txi keyword FAILED");
+        Expect(!TxiNamesBumpyShiny(null), "a texture with no .txi at all reads as bumpy-shiny");
+        Expect(!TxiNamesEnvMap(null), "a texture with no .txi at all reads as env-mapped");
+        // The ctor's state CAurTextureBasic starts every texture in: repeat, mipmapped, linear.
+        bool clamp = false, nearest = false, mip = true;
+        TxiSamplerWords("clamp 3\r\nmipmap 0\r\nfilter 0\r\n", ref clamp, ref nearest, ref mip);
+        Expect(clamp && nearest && !mip, "the sampler words of a separate .txi do not reach the slot");
+        clamp = false; nearest = false; mip = true;
+        TxiSamplerWords("proceduretype cycle\r\nnumx 4\r\nnumy 4\r\nfps 32\r\nblending additive\r\ndecal 1\r\n",
+                        ref clamp, ref nearest, ref mip);
+        Expect(!clamp && !nearest && mip, "the stock flame .txi, which names no sampler word, moves the sampler");
+        clamp = true; nearest = true; mip = false;
+        TxiSamplerWords(null, ref clamp, ref nearest, ref mip);
+        Expect(clamp && nearest && !mip, "no .txi at all does not leave the sampler where it was");
+        log.Info(ok ? "TexRegistry.SelfCheck: the separate .txi reads as the engine reads it"
+                    : "TexRegistry.SelfCheck: the separate .txi FAILED");
         return ok;
     }
 

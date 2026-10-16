@@ -424,8 +424,8 @@ internal static unsafe partial class EmitterSim
 
     /// <summary>Take the next free record, or null when the block is full -- which the caller treats as "no
     /// birth this frame" and which is ALWAYS a particle vanilla would have drawn: the engine births from
-    /// <c>operator new</c> with nothing to stop it, so a full block is either a burst <see cref="Want"/>
-    /// failed to size for or our <see cref="MaxPerEmitter"/> ceiling. Counted and named once.</summary>
+    /// <c>operator new</c> with nothing to stop it, so a full block is a burst <see cref="Want"/> failed to
+    /// size for. Counted and named once.</summary>
     private static Particle Take(ref Slot slot)
     {
         if (slot.Live >= slot.Cap)

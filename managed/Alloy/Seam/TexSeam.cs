@@ -295,6 +295,7 @@ internal static class TexSeam
                     Indices = new uint[] { 0, 1, 2 },
                     BMin = -Vector3.One, BMax = Vector3.One,
                     Textures = new[] { "cx_sc_skin", "", "", "cx_sc_rough" },
+                    RenderHintId = 2,   // without a tangent-frame hint a model's texture1+ is no map slot
                 },
             },
         };

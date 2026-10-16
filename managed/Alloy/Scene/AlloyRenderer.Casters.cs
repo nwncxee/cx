@@ -426,7 +426,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static bool IsArenaVao(int v) => v >= DbVaoBase;
 
     /// <summary>How many distinct caster VAO ids exist: every VDO slot, then one per arena section.</summary>
-    internal const int CasterVaoIds = DbVaoBase + 2;
+    internal const int CasterVaoIds = DbVaoBase + MeshArena.Formats;
 
     /// <summary>The caster VAO id for an ownership slot, from whichever source it draws out of.</summary>
     internal static int CasterVaoId(int slot)

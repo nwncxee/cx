@@ -1280,17 +1280,17 @@ public static unsafe partial class EngineLayout
     /// 2-byte member, and <see cref="EmitterChunkModel"/> and <see cref="EmitterFlags"/> bracket it.</summary>
     public static readonly int EmitterRenderOrder = Field<short>("MdlNodeEmitter", "renderOrder");
 
-    // ---- MdlNodeLight: the lens-flare declaration (no validated pair on either build) ----
+    // ---- MdlNodeLight: the lens-flare declaration (Alloy parses the MDL itself; no reader on either build) ----
 
-    /// <summary>The light node's flare parameters: <c>flareradius</c>, the flare count, the
-    /// <c>flaresizes</c> float array and the <c>flarecolorshifts</c> vec3 array.
-    /// <para><c>Scene::RenderLensFlares</c> (@0x471860 / rva 0xcea90) reads all four on both builds, each
-    /// pinned by its arithmetic; the class diverges in two segments, the radius +0x4 and the rest +0x8.</para></summary>
+    /// <summary>The light node's flare parameters, where <c>MdlNodeLight::InternalParseField</c> @0x44baf0 puts
+    /// them: <c>flareradius</c>, the element count (the resolved texture list's, set by
+    /// <c>InternalPostProcess</c> @0x457fd0), <c>flarepositions</c> and <c>flarecolorshifts</c>. Windows is
+    /// <c>Scene::RenderLensFlares</c>' arithmetic (rva 0xcea90); the radius diverges +0x4, the rest +0x8.</summary>
     public static readonly int FlareRadius = Field<float>("MdlNodeLight", "flareRadius");
     /// <inheritdoc cref="FlareRadius"/>
     public static readonly int FlareCount = Field<int>("MdlNodeLight", "flareCount");
     /// <inheritdoc cref="FlareRadius"/>
-    public static readonly int FlareSizes = Field<IntPtr>("MdlNodeLight", "flareSizes");
+    public static readonly int FlarePositions = Field<IntPtr>("MdlNodeLight", "flarePositions");
     /// <inheritdoc cref="FlareRadius"/>
     public static readonly int FlareShifts = Field<IntPtr>("MdlNodeLight", "flareShifts");
     /// <summary>The MDL light node's <c>fadingLight</c> field, parsed by

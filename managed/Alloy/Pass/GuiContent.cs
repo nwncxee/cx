@@ -28,13 +28,18 @@ internal static unsafe class GuiContent
         public int Mvp, Mv, Texture, Color, Screen, Unit0;
     }
 
-    /// <summary>The engine's attribute locations (<c>GLRender::ConnectShaderData</c>) for the streams the mesh
-    /// arena's VAO carries, at the locations it carries them. <c>vCustomColor</c> has no stream: location 4
-    /// is never enabled, so it reads the GL default.</summary>
+    /// <summary>The engine's attribute names (<c>GLRender::ConnectShaderData</c>) bound to the locations the mesh
+    /// arena's VAO carries those streams at: vertex colour is the arena's paint word, and UV sets 1..3 sit where
+    /// the engine puts them. <c>vCustomColor</c> has no stream, so it takes a location the arena never enables.</summary>
     private static readonly (string, uint)[] Attribs =
     {
-        ("vPos", 0), ("vTcIn", 1), ("vNormal", 2), ("vColor", 3), ("vCustomColor", 4), ("vIndex", 8), ("vWeight", 9),
+        ("vPos", AlloyRenderer.LocPos), ("vTcIn", AlloyRenderer.LocUv), ("vNormal", AlloyRenderer.LocNrm),
+        ("vColor", AlloyRenderer.LocPaint), ("vCustomColor", UnusedLoc), ("vIndex", AlloyRenderer.LocBoneIdx),
+        ("vWeight", AlloyRenderer.LocBoneW), ("vTcIn1", AlloyRenderer.LocUvSet1), ("vTcIn2", AlloyRenderer.LocUvSet1 + 1),
+        ("vTcIn3", AlloyRenderer.LocUvSet1 + 2),
     };
+    /// <summary>A location no arena format enables, so an attribute bound there reads the GL default.</summary>
+    private const uint UnusedLoc = 6;
 
     /// <summary><c>LightManager::m_nMaxLights</c>' static default. ponytail: the options can change it; a GUI program
     /// lights nothing, so it only sizes arrays nobody fills. Read the live value if a lit GUI shader ever shows up.</summary>
