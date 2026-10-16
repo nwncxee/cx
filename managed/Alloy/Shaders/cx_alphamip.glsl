@@ -21,6 +21,10 @@ float CxAlphaMipAt(float a, vec2 du1, vec2 du2, vec2 texSize, float bias, float 
     float lod = 0.5 * log2(max(max(dot(dx, dx), dot(dy, dy)), 1e-8)) + bias;
     return a * (1.0 + clamp(lod, 0.0, log2(max(texSize.x, texSize.y))) * scale);
 }
+// CX-298: a fringed cutout's core cut (any cut above the engine's 0.2) reads its alpha this many levels sharper
+// than the drawn mip: a minified leaf atlas averages its interior below every cut, and the fringe keeps the soft edge.
+const float CX_CORE_SHARPEN = 2.0;
+float CxCutBias(float cut, float bias) { return cut > 0.2 ? bias - CX_CORE_SHARPEN : bias; }
 float CxAlphaMip(float a, vec2 du1, vec2 du2, vec2 texSize, float bias)
 {
     return CxAlphaMipAt(a, du1, du2, texSize, bias, uAlphaMip);

@@ -75,7 +75,7 @@ void main()
     // ahead of the maps, SSAO and the sun's taps; the full test below stays the authority. Uniform-gated: opaque skips it.
     if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & (CX_SLOT_ENV | CX_SLOT_COVERNRM)) == 0
         && feat != CX_FEAT_FLOWMAP && !CxPltOn(vDraw) && CxTintRow(vDraw) < 0
-        && CxCoverCut(texture(uTex, vUV, uLodBias).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
+        && CxCoverCut(texture(uTex, vUV, CxCutBias(uAlphaCut, uLodBias)).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
     vec2 uv = vUV;
     // #123, shd_flowmap: the RG map is a per-texel flow DIRECTION, and the diffuse slides along it in
     // two half-offset phases blended by their own distance from the midpoint -- the blend is what
@@ -303,10 +303,13 @@ void main()
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
-    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
+    float cutCov = coverage;
+    if (uAlphaCut > 0.2 && tintCov.x < 0.0 && (slots & CX_SLOT_COVERNRM) == 0)
+        cutCov = (plt ? CxPltResolve(uTex, uvA, CxCutBias(uAlphaCut, uLodBias), vDraw) : texture(uTex, uvA, CxCutBias(uAlphaCut, uLodBias))).a;
+    if (CxCoverCut(cutCov, d.rot.w, du1, du2, cutSize, cutMip)) discard;
     // 54 = the core/fringe split of the nearest card, per texel: green core, magenta fringe, grey other cutouts
     if (uViz == 54 && uAlphaCut >= 0.0)
-    { frag = vec4(uAlphaCut <= 0.2 ? vec3(0.5) : coverage > uAlphaCut ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 1.0), 1.0); return; }
+    { frag = vec4(uAlphaCut <= 0.2 ? vec3(0.5) : cutCov > uAlphaCut ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 1.0), 1.0); return; }
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.
