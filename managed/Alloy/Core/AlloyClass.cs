@@ -76,14 +76,14 @@ internal static class AlloyClasses
     /// <summary>The core cut of bucket <paramref name="b"/>.</summary>
     internal static float CoreCut(byte b) => CoreCuts[b];
 
-    /// <summary>The highest bucket whose cut sits at or below <paramref name="level"/>; the lowest cut below every one.</summary>
+    /// <summary>The highest bucket whose cut sits at or below <paramref name="level"/>; the last (0.5) for a level under every cut.</summary>
     internal static byte CoreBucket(float level)
     {
         for (byte b = 0; b < CoreCuts.Length; b++) if (CoreCuts[b] <= level) return b;
         return (byte)(CoreCuts.Length - 1);
     }
 
-    /// <summary>Does this part draw in two pieces -- a depth-writing core above <see cref="SolidAlpha"/> and a
+    /// <summary>Does this part draw in two pieces -- a depth-writing core above its diffuse's <see cref="CoreCut"/> and a
     /// blended fringe below it? A cutout whose diffuse measured graded, and not a wash: a wash has its own
     /// split (<c>WashSplit</c>). A binary or unmeasured diffuse draws whole.</summary>
     internal static bool Fringes(int cls, TexCoverage coverage, byte wash)
@@ -161,6 +161,7 @@ internal static class AlloyClasses
         check.Expect(SolidAlpha > Discard((int)AlloyClass.Cutout), "the core cut sits above the 0.2 cut, or the fringe band is empty");
         check.Expect(CoreCut(0) == 0.99f && CoreCut(CoreBucket(0.95f)) == 0.9f && CoreCut(CoreBucket(0.1f)) == 0.5f
           && CoreCut(CoreBucket(1f)) == 0.99f, "a level takes the highest cut at or below it, and 0.5 under every one");
+        check.Expect(CoreCut(CoreBucket(0f)) > Discard((int)AlloyClass.Cutout), "the lowest core cut sits above the 0.2 cut");
         check.Expect(Discard((int)AlloyClass.Cutout) == 0.2f && Discard((int)AlloyClass.Blended) == 0.2f,
           "the engine's 0.2 cutout, on the two classes it draws under Enable(1)");
         check.Expect(Discard((int)AlloyClass.Opaque) < 0f && Discard((int)AlloyClass.Additive) < 0f
