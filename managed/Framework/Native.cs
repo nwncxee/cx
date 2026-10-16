@@ -18,6 +18,9 @@ public static unsafe class Native
     /// </summary>
     public static IntPtr Sym(string linux) => SymbolMap.Resolve(linux, null);
 
+    /// <summary>Bytes for one CExoString buffer the engine fills: sizeof is 16, and 16 more of slack.</summary>
+    public const int ExoScratch = 32;
+
     /// <summary>
     /// Build a CExoString on the native heap from a C# string, as <see cref="EngineBytes"/> encodes it.
     /// The layout is opaque: we zero an over-sized buffer and let the client's own InitFromCharArray
@@ -25,8 +28,8 @@ public static unsafe class Native
     /// </summary>
     public static IntPtr NewExoString(string s)
     {
-        IntPtr exo = Marshal.AllocHGlobal(32);              // > sizeof(CExoString); zeroed below
-        for (int i = 0; i < 32; i++) ((byte*)exo)[i] = 0;
+        IntPtr exo = Marshal.AllocHGlobal(ExoScratch);
+        for (int i = 0; i < ExoScratch; i++) ((byte*)exo)[i] = 0;
         if (EngineFn.ExoStringInit == null) return exo;
         byte[] b = EngineBytes(s);
         fixed (byte* p = b) EngineFn.ExoStringInit(exo, p, (uint)b.Length);   // copies into its own buffer
@@ -106,6 +109,23 @@ public static unsafe class Native
     /// <summary>Typed or pasted text as a vanilla field holds and shows it: <c>FromUTF8</c> on the way in (what the
     /// SDL_TEXTINPUT and Ctrl+V handlers run), the atlas map on the way out -- "łódź" reads "?ód?" on cp1252.</summary>
     public static string EngineTyped(string s) => EngineText(Encoding.Latin1.GetString(EngineBytes(s)));
+
+    /// <summary>A strref's text for DISPLAY as <c>CTlkTable::GetSimpleString</c> resolves it -- base TLK, a module's
+    /// custom TLK, a server override -- or null while no TLK is loaded (pre-main, the stub host). COLD paths only.</summary>
+    public static string? TlkText(uint strref)
+    {
+        IntPtr sym = Sym(SymbolMap.TlkTable);
+        IntPtr tlk = sym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)sym;
+        if (tlk == IntPtr.Zero || EngineFn.ExoStringDtor == null || Sym(SymbolMap.TlkGetSimpleString) == IntPtr.Zero) return null;
+        byte* exo = stackalloc byte[ExoScratch];
+        NativeMemory.Clear(exo, ExoScratch);
+#pragma warning disable RS0030 // Native.TlkText is the one reader of a strref
+        new CTlkTable(tlk).TlkGetSimpleString(exo, strref);
+#pragma warning restore RS0030
+        string text = ReadExo((IntPtr)exo);
+        EngineFn.ExoStringDtor((IntPtr)exo);
+        return EngineText(text);
+    }
 
     /// <summary>The std::string and CExoString readers against hand-built layouts -- the stub host has no engine to call.</summary>
     public static void SelfCheck(ExtenderLog log)
