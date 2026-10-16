@@ -12,17 +12,20 @@ public static class FilterChannel
     /// channel names, read on every call so a language or a server override shows on the next layout.</summary>
     public static (uint Bit, string Label)[] Editable() => new[]
     {
-        (0x001u, Word(66754)),
-        (0x002u, Word(66753)),
-        (0x004u, Word(66751)),
-        (0x008u, Word(66752)),
+        (0x001u, Word(ChannelWord.Talk)),
+        (0x002u, Word(ChannelWord.Tell)),
+        (0x004u, Word(ChannelWord.Shout)),
+        (0x008u, Word(ChannelWord.Whisper)),
         (0x010u, "To-Hit"),
         (0x020u, "Server"),
-        (0x040u, Word(66755)),
+        (0x040u, Word(ChannelWord.Party)),
         (0x080u, "Feedback"),
-        (0x400u, Word(66756)),
+        (0x400u, Word(ChannelWord.DM)),
     };
 
-    /// <summary>The TLK's text for a strref; the number itself where no TLK is loaded (the stub host).</summary>
-    private static string Word(uint strref) => Native.TlkText(strref) ?? strref.ToString(CultureInfo.InvariantCulture);
+    /// <summary>The TLK's chat channel names: consecutive strrefs, starting at Shout.</summary>
+    private enum ChannelWord : uint { Shout = 66751, Whisper, Tell, Talk, Party, DM }
+
+    /// <summary>The TLK's text for a channel; its strref where no TLK is loaded (the stub host).</summary>
+    private static string Word(ChannelWord w) => Native.TlkText((uint)w) ?? ((uint)w).ToString(CultureInfo.InvariantCulture);
 }

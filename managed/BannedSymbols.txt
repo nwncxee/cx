@@ -46,3 +46,4 @@ T:System.Threading.Tasks.Task;The extender has no async path: a task blocked on 
 T:System.Threading.Tasks.Task`1;The extender has no async path: a task blocked on in a frame hook stalls the game; use a thread and BlockingWait
 T:System.Threading.Tasks.ValueTask;The extender has no async path: a task blocked on in a frame hook stalls the game; use a thread and BlockingWait
 T:System.Threading.Tasks.ValueTask`1;The extender has no async path: a task blocked on in a frame hook stalls the game; use a thread and BlockingWait
+M:CX.Engine.CTlkTable.TlkGetSimpleString(System.Void*,System.UInt32);Resolve a strref through Native.TlkText

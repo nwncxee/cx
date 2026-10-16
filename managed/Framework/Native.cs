@@ -18,6 +18,9 @@ public static unsafe class Native
     /// </summary>
     public static IntPtr Sym(string linux) => SymbolMap.Resolve(linux, null);
 
+    /// <summary>Bytes for one CExoString buffer the engine fills: sizeof is 16, and 16 more of slack.</summary>
+    public const int ExoScratch = 32;
+
     /// <summary>
     /// Build a CExoString on the native heap from a C# string, as <see cref="EngineBytes"/> encodes it.
     /// The layout is opaque: we zero an over-sized buffer and let the client's own InitFromCharArray
@@ -25,8 +28,8 @@ public static unsafe class Native
     /// </summary>
     public static IntPtr NewExoString(string s)
     {
-        IntPtr exo = Marshal.AllocHGlobal(32);              // > sizeof(CExoString); zeroed below
-        for (int i = 0; i < 32; i++) ((byte*)exo)[i] = 0;
+        IntPtr exo = Marshal.AllocHGlobal(ExoScratch);
+        for (int i = 0; i < ExoScratch; i++) ((byte*)exo)[i] = 0;
         if (EngineFn.ExoStringInit == null) return exo;
         byte[] b = EngineBytes(s);
         fixed (byte* p = b) EngineFn.ExoStringInit(exo, p, (uint)b.Length);   // copies into its own buffer
@@ -113,10 +116,12 @@ public static unsafe class Native
     {
         IntPtr sym = Sym(SymbolMap.TlkTable);
         IntPtr tlk = sym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)sym;
-        if (tlk == IntPtr.Zero || EngineFn.ExoStringDtor == null) return null;
-        byte* exo = stackalloc byte[32];                    // > sizeof(CExoString): slack for the sret callee
-        NativeMemory.Clear(exo, 32);
+        if (tlk == IntPtr.Zero || EngineFn.ExoStringDtor == null || Sym(SymbolMap.TlkGetSimpleString) == IntPtr.Zero) return null;
+        byte* exo = stackalloc byte[ExoScratch];
+        NativeMemory.Clear(exo, ExoScratch);
+#pragma warning disable RS0030 // Native.TlkText is the one reader of a strref
         new CTlkTable(tlk).TlkGetSimpleString(exo, strref);
+#pragma warning restore RS0030
         string text = ReadExo((IntPtr)exo);
         EngineFn.ExoStringDtor((IntPtr)exo);
         return EngineText(text);
