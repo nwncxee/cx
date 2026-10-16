@@ -22,10 +22,10 @@ internal struct InvItem
     public bool Usable;
 }
 
-/// <summary>One equip slot of the vanilla panel: its policy id, label, <c>INVENTORY_SLOT_*</c> mask, its box in the
-/// vanilla layout (px, y-down, relative to the equip area; <c>inv_equip.gui</c> × 100) and its empty-slot
-/// silhouette.</summary>
-internal readonly record struct SlotDef(string Id, string Label, uint Mask, float X, float Y, float W, float H, string Silhouette);
+/// <summary>One equip slot of the vanilla panel: its policy id, label (the TLK's word at <c>StrRef</c>, else
+/// <c>Label</c>), <c>INVENTORY_SLOT_*</c> mask, its box in the vanilla layout (px, y-down, relative to the equip area;
+/// <c>inv_equip.gui</c> × 100) and its empty-slot silhouette.</summary>
+internal readonly record struct SlotDef(string Id, uint StrRef, string Label, uint Mask, float X, float Y, float W, float H, string Silhouette);
 
 /// <summary>A paged item grid: <see cref="GridCols"/> × <see cref="GridRows"/> cells a page, the pages stacked in global
 /// rows (<c>page * GridRows + localRow</c>, row 0 on top as displayed); a footprint never crosses a page, as the stock
@@ -181,20 +181,20 @@ internal sealed class InventoryModel : ItemGrid
     /// slot i. Boxes are the <c>inv_eqp_*</c> art sizes at their <c>.gui</c> positions.</summary>
     public static readonly SlotDef[] Slots =
     {
-        new("bullets",   "Bullets",     0x1000,  102f, 130f, 33f, 68f,  "inv_slot_sling"),   // not-an-offset: INVENTORY_SLOT mask
-        new("bolts",     "Bolts",       0x2000,  135f, 130f, 33f, 68f,  "inv_slot_bolts"),
-        new("arrows",    "Arrows",      0x800,    69f, 130f, 33f, 68f,  "inv_slot_arrow"),
-        new("leftring",  "Left ring",   0x80,    234f, 130f, 33f, 34f,  "inv_slot_ring"),
-        new("righthand", "Right hand",  0x10,      0f,   0f, 69f, 198f, "inv_slot_right"),
-        new("belt",      "Belt",        0x400,   168f, 130f, 66f, 68f,  "inv_slot_belt"),
-        new("head",      "Head",        0x1,     234f,   0f, 66f, 78f,  "inv_slot_helm"),
-        new("chest",     "Armor",       0x2,      69f,   0f, 99f, 130f, "inv_slot_armor"),
-        new("boots",     "Boots",       0x4,     300f, 130f, 60f, 68f,  "inv_slot_boots"),
-        new("rightring", "Right ring",  0x100,   234f, 164f, 33f, 34f,  "inv_slot_ring"),
-        new("lefthand",  "Left hand",   0x20,    168f,   0f, 66f, 130f, "inv_slot_left"),
-        new("arms",      "Gloves",      0x8,     234f,  78f, 66f, 52f,  "inv_slot_gloves"),
-        new("cloak",     "Cloak",       0x40,    300f,   0f, 60f, 130f, "inv_slot_cloak"),
-        new("neck",      "Neck",        0x200,   267f, 130f, 33f, 68f,  "inv_slot_amulet"),
+        new("bullets",   6759, "",             0x1000,  102f, 130f, 33f, 68f,  "inv_slot_sling"),   // not-an-offset: INVENTORY_SLOT mask
+        new("bolts",     6758, "",             0x2000,  135f, 130f, 33f, 68f,  "inv_slot_bolts"),
+        new("arrows",    6757, "",             0x800,    69f, 130f, 33f, 68f,  "inv_slot_arrow"),
+        new("leftring",  0,    "Left ring",    0x80,    234f, 130f, 33f, 34f,  "inv_slot_ring"),
+        new("righthand", 0,    "Right hand",   0x10,      0f,   0f, 69f, 198f, "inv_slot_right"),
+        new("belt",      1518, "",             0x400,   168f, 130f, 66f, 68f,  "inv_slot_belt"),
+        new("head",      123,  "",             0x1,     234f,   0f, 66f, 78f,  "inv_slot_helm"),
+        new("chest",     335,  "",             0x2,      69f,   0f, 99f, 130f, "inv_slot_armor"),
+        new("boots",     1520, "",             0x4,     300f, 130f, 60f, 68f,  "inv_slot_boots"),
+        new("rightring", 0,    "Right ring",   0x100,   234f, 164f, 33f, 34f,  "inv_slot_ring"),
+        new("lefthand",  0,    "Left hand",    0x20,    168f,   0f, 66f, 130f, "inv_slot_left"),
+        new("arms",      0,    "Gloves",       0x8,     234f,  78f, 66f, 52f,  "inv_slot_gloves"),
+        new("cloak",     2220, "",             0x40,    300f,   0f, 60f, 130f, "inv_slot_cloak"),
+        new("neck",      0,    "Neck",         0x200,   267f, 130f, 33f, 68f,  "inv_slot_amulet"),
     };
 
     /// <summary><see cref="ItemGrid.Flip(int, int, int)"/> for the backpack's 6-row pages.</summary>

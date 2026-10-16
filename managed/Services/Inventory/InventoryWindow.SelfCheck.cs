@@ -11,7 +11,7 @@ internal sealed partial class InventoryWindow
     /// <summary>Off-device: the model's fit rules, the layout at two scales and under a server policy, every drop rule,
     /// the page paging and the scrolled view, drops onto a tab, ctrl-click quick moves, the page stream (what is asked for
     /// when, loaders, blank pages refusing drops), the loot pane (placement, take / put / merge, its scroll and emit), the
-    /// skin's part order, the search dim (Ctrl+F), stack counts, and a zero-alloc emit.</summary>
+    /// skin's part order, the search dim (Ctrl+F), stack counts, a zero-alloc emit, and the window's TLK words (hand-written stand-ins).</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -48,6 +48,7 @@ internal sealed partial class InventoryWindow
             var acts = new List<InvAction>();
             w.Act = acts.Add;
             w.NameOf = oid => oid == 101 ? "Longsword" : oid is 102 or 103 or 202 ? "Arrows" : "Ring of Protection";
+            w.Word = strref => strref switch { 123 => "Head", 3731 => "Gepäck", 7260 => "Suchen", 6685 => "Behälter", _ => "?" };
             InventoryModel m = w.Model;
             m.Items[0] = new InvItem { Oid = 101, X = 0, Y = 0, W = 1, H = 3, SlotMask = 0x10 | 0x20, BaseId = 1 };         // not-an-offset: slot masks
             m.Items[1] = new InvItem { Oid = 102, X = 2, Y = 0, W = 1, H = 2, SlotMask = 0x800, BaseId = 20, Stackable = true, Stack = 20 };   // not-an-offset: arrows
@@ -90,6 +91,8 @@ internal sealed partial class InventoryWindow
             check.Expect(w.H <= 600f && w.W <= 800f, "the window shrinks to fit a small screen");
 
             w.Layout(1f, false, true, 4000, 4000);
+            check.Expect(w._title.Label == "Gepäck" && w._search.Label == "Suchen" && w._containerWord == "Behälter",
+                         "the title, search box and nameless container read the TLK's Inventory, Search and Container");
             w.X = 0f; w.Y = 0f;
             float Cx(int cx) => (6f + 33f * cx + 10f) * w.S;
             float Cy(int ly) => (24f + 6f + 198f + 6f + 33f * ly + 10f) * w.S;

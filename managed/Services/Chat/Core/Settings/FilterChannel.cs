@@ -1,4 +1,3 @@
-using System.Globalization;
 using CX.Framework;
 
 namespace CX.Services.Chat.Core;
@@ -26,6 +25,6 @@ public static class FilterChannel
     /// <summary>The TLK's chat channel names: consecutive strrefs, starting at Shout.</summary>
     private enum ChannelWord : uint { Shout = 66751, Whisper, Tell, Talk, Party, DM }
 
-    /// <summary>The TLK's text for a channel; its strref where no TLK is loaded (the stub host).</summary>
-    private static string Word(ChannelWord w) => Native.TlkText((uint)w) ?? ((uint)w).ToString(CultureInfo.InvariantCulture);
+    /// <summary>The TLK's text for a channel.</summary>
+    private static string Word(ChannelWord w) => Native.TlkText((uint)w);
 }
