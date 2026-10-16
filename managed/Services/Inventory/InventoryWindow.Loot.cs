@@ -24,6 +24,8 @@ internal sealed partial class InventoryWindow
     private float _vw, _vh;
     /// <summary>A server's title for every container (<c>inventory.loot.label</c>), empty for the container's own name.</summary>
     private string _lootLabel = "";
+    /// <summary>The TLK's Container: the title of a container with no name.</summary>
+    private string _containerWord = "";
 
     private const float LootGridW = LootModel.Cols * Cell, LootGridY = TitleH + Pad;
     private const float LootWDesign = Pad + LootGridW + TabGap + ScrollW + Pad;
@@ -140,7 +142,7 @@ internal sealed partial class InventoryWindow
         else { Fill(under, x0, y0, x1, y1, PanelBg, 0.97f); Outline(under, x0, y0, x1, y1, Border); Fill(under, x0 + 1f, y0 + 1f, x1 - 1f, Ly(TitleH), HeaderBg); }
         float bx0 = Lx(LootWDesign - Pad - CloseW);
         CloseButton(under, skin, text, bx0, Ly(2f), Lx(LootWDesign - Pad), Ly(2f + CloseW));
-        string title = _lootLabel.Length > 0 ? _lootLabel : Loot.Title.Length > 0 ? Loot.Title : "Container";
+        string title = _lootLabel.Length > 0 ? _lootLabel : Loot.Title.Length > 0 ? Loot.Title : _containerWord;
         UiText.Draw(under, text, title, Lx(Pad), y0 + (TitleH * s - lh) / 2f + text.Ascent, Tx, bx0 - 2f * s);
 
         float c = Cell * s, lw = Math.Max(1f, MathF.Round(s)), gx0 = Lx(Pad), gx1 = Lx(Pad + LootGridW), gy0 = Ly(LootGridY);
