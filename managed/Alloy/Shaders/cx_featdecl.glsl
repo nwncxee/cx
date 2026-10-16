@@ -9,6 +9,9 @@
 #define CX_FEAT_NOIRGLOSS 10
 #define CX_FEAT_GROUNDWEATHER 11
 #define CX_FEAT_PALETTETINT 12
+// CX-303: the first CONTENT stage id. Every id from here up names one content fragment stage (ContentPrograms), a
+// character shader as often as not, so it keeps its id while posed exactly as the palette tint does.
+#define CX_FEAT_CONTENT0 13
 // CX-223: is this record POSED -- does feat.y carry a bone base? feat.x alone cannot say so: the skin class
 // takes that lane from a content feature, but a CHARACTER shader (the palette tint) is skinned AND keeps its
 // own feature there, so the override displaces only a feature that never meets a bone. A -1 in feat.y is the
@@ -16,7 +19,7 @@
 bool CxSkinned(vec4 feat)
 {
     int fx = int(feat.x);
-    return (fx == CX_FEAT_SKIN || fx == CX_FEAT_PALETTETINT) && feat.y >= 0.0;
+    return (fx == CX_FEAT_SKIN || fx == CX_FEAT_PALETTETINT || fx >= CX_FEAT_CONTENT0) && feat.y >= 0.0;
 }
 uniform int uTimeOfDay;        // worldtimerTimeOfDay, the engine's own int
 // The animation clock, wrapped to the hour in int. float(uTimeOfDay) steps 8 at the end of the day, which is

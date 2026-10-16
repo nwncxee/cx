@@ -71,9 +71,12 @@ void main()
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
     // A pass that discards on coverage asks it of a plain diffuse (no env, normal-map coverage, flow, PLT or tint) here,
     // ahead of the maps, SSAO and the sun's taps; the full test below stays the authority. Uniform-gated: opaque skips it.
+    // CX-303: not in a content stage's program -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
+#ifndef CX_CONTENT_PROGRAM
     if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & (CX_SLOT_ENV | CX_SLOT_COVERNRM)) == 0
         && feat != CX_FEAT_FLOWMAP && !CxPltOn(vDraw) && CxTintRow(vDraw) < 0
         && CxCoverCut(texture(uTex, vUV, uLodBias).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
+#endif
     vec2 uv = vUV;
     // #123, shd_flowmap: the RG map is a per-texel flow DIRECTION, and the diffuse slides along it in
     // two half-offset phases blended by their own distance from the midpoint -- the blend is what
@@ -301,7 +304,9 @@ void main()
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
+#ifndef CX_CONTENT_PROGRAM
     if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
+#endif
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.
@@ -345,6 +350,9 @@ void main()
     // (`min(MATERIAL_ROUGHNESS_VALUE, WET_ROUGHNESS)` is a comparison); the specular colour is
     // synthesised from the PRE-body albedo because SetupSpecularity runs before the body in stock.
     CxHostTexel = vec4(albedo, coverage);
+    CxHostUV = uv;
+    CxHostDu = vec4(du1, du2);
+    CxHostCutAt = vec3(cutSize, cutMip);
     FragmentColor = vec4(1.0);      // stock main's own opener, for a body that skips it
     vFragmentNormal = N;
     vSurfaceNormal = normalize(vNrm);
@@ -369,6 +377,12 @@ void main()
         albedo = FragmentColor.rgb;
         N = normalize(vFragmentNormal);
         pbr = vec3(fSpecularity, fRoughness, fMetallicness);
+#ifdef CX_CONTENT_PROGRAM
+        // CX-303: a content stage's alpha IS its coverage -- the hair stages hand back the map they cut on -- and it
+        // made its own cut; what is left is the OIT pass's zero-coverage drop
+        coverage = FragmentColor.a;
+        if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
+#endif
     }
     if (!physical && CxBareMaterial(d.pbr.xyz, slots)) cxFresnel = 0.0;
     // 31/32/33 = the surface this fragment shades with -- albedo, shading normal,

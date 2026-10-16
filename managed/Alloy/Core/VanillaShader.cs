@@ -50,6 +50,12 @@ internal static unsafe class VanillaShader
     /// one whole content stage -- it has one <c>main</c> to stand in for.</summary>
     internal const string MainEntry = "CxVanMain";
 
+    /// <summary>The CONTENT marker. The region names a content fragment stage Alloy runs through
+    /// <see cref="ContentStage"/>'s translation, in a program of the stage's own (<see cref="ContentPrograms"/>); its
+    /// stub is the dispatcher that hosts nothing. Spliced here, not beside, so the stage's includes share this
+    /// compilation unit's visited list with the hook region.</summary>
+    internal const string ContentMark = "// $VANILLA-CONTENT ";
+
     /// <summary>The SKIP marker. <c>// $VANILLA-SKIP a b c</c> names includes the stage's own environment
     /// stands in for, so the resolver never follows them -- per stage, where <see cref="Supplied"/> is every
     /// stage's. The hosted post chain is the customer: <c>inc_postpr</c> pulls <c>inc_lighting</c> and
@@ -75,7 +81,8 @@ internal static unsafe class VanillaShader
         int cursor = 0;
         while (at >= 0)
         {
-            bool hosted = string.CompareOrdinal(src, at, Host, 0, Host.Length) == 0;
+            bool content = string.CompareOrdinal(src, at, ContentMark, 0, ContentMark.Length) == 0;
+            bool hosted = content || string.CompareOrdinal(src, at, Host, 0, Host.Length) == 0;
             bool whole = !hosted && string.CompareOrdinal(src, at, Main, 0, Main.Length) == 0;
             if (!hosted && !whole && string.CompareOrdinal(src, at, Begin, 0, Begin.Length) != 0)
             {
@@ -88,7 +95,7 @@ internal static unsafe class VanillaShader
                 at = src.IndexOf(Marker, at + Marker.Length, StringComparison.Ordinal);
                 continue;
             }
-            int nameAt = at + (hosted ? Host.Length : whole ? Main.Length : Begin.Length);
+            int nameAt = at + (content ? ContentMark.Length : hosted ? Host.Length : whole ? Main.Length : Begin.Length);
             int eol = src.IndexOf('\n', nameAt);
             int end = src.IndexOf(End, nameAt, StringComparison.Ordinal);
             if (eol < 0 || end < 0) break;
@@ -106,6 +113,7 @@ internal static unsafe class VanillaShader
             }
             string? stock = ask ? EngineText(resref, log) : null;
             string? body = stock == null ? null
+                         : content ? CX.Alloy.ContentStage.Region(resref, log, what, seen, src[..at])
                          : hosted ? HostText(stock, resref, log, what, seen)
                          : whole ? MainText(stock, resref, log, what, seen, src[..at])
                          : Validate(Includes(stock, log, what, seen, 0, AlloyRenderer.VanillaStandardFs), stub, resref, log, what);
@@ -113,7 +121,8 @@ internal static unsafe class VanillaShader
             {
                 seen.Add(resref);
                 sb.Append(body);
-                log?.Info($"{what}: {resref}.shd " + (hosted ? "hosted" : whole ? "run whole" : "spliced") + $" from the resource chain ({stock!.Length} chars)");
+                log?.Info($"{what}: {resref}.shd " + (content ? "translated as a content stage" : hosted ? "hosted" : whole ? "run whole" : "spliced")
+                        + $" from the resource chain ({stock!.Length} chars)");
             }
             else
             {
@@ -151,17 +160,17 @@ internal static unsafe class VanillaShader
     /// never becomes a name the content file is required to define.</summary>
     private static readonly Regex StubFn = new(@"(?m)^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{", RegexOptions.Compiled);
     private static readonly Regex MainFn = new(@"\bvoid\s+main\s*\(\s*(?:void)?\s*\)", RegexOptions.Compiled);
-    private static readonly Regex OwnDefine = new(@"(?m)^[ \t]*#[ \t]*define[ \t]+(\w+)", RegexOptions.Compiled);
+    internal static readonly Regex OwnDefine = new(@"(?m)^[ \t]*#[ \t]*define[ \t]+(\w+)", RegexOptions.Compiled);
 
     /// <summary>The engine's PLT scheme feed, which it hands a custom shader as <c>uniform float
     /// PLTscheme[15]</c> -- one normalised master-palette row per layer, set per MATERIAL BIND. Alloy draws a
     /// multidraw batch, so there is no per-draw uniform to set: the same numbers come out of the per-record
     /// row block as a function, so the declaration goes and every index becomes that call.</summary>
-    private static readonly Regex PltSchemeDecl =
+    internal static readonly Regex PltSchemeDecl =
         new(@"(?m)^[ \t]*uniform\b[^;\n]*\bPLTscheme\b[^;\n]*;[^\n]*\n?", RegexOptions.Compiled);
     /// <summary>One <c>PLTscheme[...]</c> read. The index may be any expression without a bracket of its own,
     /// which is what every stock use is (<c>int(ColorPLT.g * 255.0 + 0.5)</c>).</summary>
-    private static readonly Regex PltSchemeUse =
+    internal static readonly Regex PltSchemeUse =
         new(@"\bPLTscheme\s*\[([^\]\[]*)\]", RegexOptions.Compiled);
 
     /// <summary>The names <see cref="AlloyRenderer.VanillaEnvDefs"/> supplies as macros. A hosted stage's own
@@ -280,6 +289,10 @@ internal static unsafe class VanillaShader
         free(handle);
         return text;
     }
+
+    /// <summary>The resource chain's text for <paramref name="resref"/><c>.shd</c>, or null -- also when the bridge is
+    /// disarmed, which then asks the engine for nothing. The reader a content stage's translation resolves through.</summary>
+    internal static string? ChainText(string resref) => _armed && resref.Length <= ShaderResource.ResRefBytes ? EngineText(resref, null) : null;
 
     /// <summary>Can the resource chain answer for this resref, and is the bridge armed to ask? A
     /// caller whose fallback stub is not a usable picture asks BEFORE building, and refuses instead of

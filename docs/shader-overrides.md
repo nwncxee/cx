@@ -170,6 +170,81 @@ entry can carry. `ShaderSource.SelfCheck` refuses a longer name.
   are the engine's own global shader constants; `CxTargetStrength()` and `CxTargetApply()` are what the
   stages call.
 
+## Content stages
+
+The stages above are Alloy's own. A **content stage** is yours: the `customShaderFS` a `.mtr` names, the
+way you write one for the stock renderer. Alloy runs any of them, not only the few it knows by name
+(CX-303), under these rules.
+
+**When it runs.** The `.mtr` names both `customShaderVS` and `customShaderFS`, as the engine requires
+before it builds a content program at all. The fragment stage is not a stock one (`fslit_nm` and the
+rest are Alloy's own shading already), not one Alloy hosts or reproduces by name (`td_ground_fs`,
+`fs_noirwet`, `fs_noirgloss`, `fs_plt_tinter`, `fs_plt_hair`, `fs_plt_hair2`), and the vertex stage is
+not one Alloy reproduces as a feature (the wind, roof, nokeyhole and flowmap forks). Each stage gets a
+program pair of its own, a forward one and a deferred twin, built the first time a part on it draws.
+Until then that part draws the plain lit path.
+
+**What it is.** Your stage runs as a **surface modifier**. Alloy has done the stock setup by the time
+your `main()` starts: `FragmentColor` holds the texel in working space, `vFragmentNormal` the shading
+normal, and `fSpecularity`, `fRoughness`, `fMetallicness`, `SpecularColor` the synthesised material.
+Whatever you write to those, Alloy then lights, deferred or forward. `ApplyStandardShader()` is a
+no-op, so:
+
+- a stage written the stock way (setup, edit, apply) works as written;
+- an edit you make **after** `ApplyStandardShader()` lands on the surface colour, before the
+  lighting, not on the lit result;
+- a stage that never calls `SetupStandardShaderInputs()` and lights itself is shaded again as a surface.
+
+The alpha you leave in `FragmentColor` (or `gl_FragColor`) is the part's coverage. A stage that
+discards or writes its own alpha draws outside the depth prepass, at a small cost.
+
+**The environment.** The engine's prologue defines are there (`SHADER_QUALITY_MODE 2`,
+`NO_DISCARD 0`, `BUILD_VERSION`/`BUILD_REVISION` of the running client, `varying`, `texture2D`,
+`gl_FragColor`), and so is `CX_ALLOY`, so a stage can specialise for Alloy with
+`#ifdef CX_ALLOY`. The engine's vocabulary maps onto Alloy's values:
+
+- the varyings (`vTexCoords`, `vPosWorld`, `vPosView`, `vVertexNormal`, the tangent pair);
+- `texUnit0`..`texUnit6` with their `textureNBound` flags;
+- `texUnitNoise` (the engine's `solid_noise`), `texUnitEnvCube` (the area probe);
+- the material terms, the fog, camera, player and wind terms;
+- `inc_scriptable`'s block, set by name from the engine's own constants;
+- the stock helpers (`ApplyColorSpace`, `ColorToBrightness`, `AlphaDiscard`, `SetupTSB`, the noise and
+  hash functions and so on).
+
+"View space" is world space with the eye at the origin, so `normalize(vPosView)` is the view direction
+and `m_view_inv * vPosView` is the world position, as they are in the engine. The full map is
+`cx_content_f.glsl`, and like every library it is overridable as `cx_content_f.shd`.
+`cx_constd_f.glsl` is the stand-in for `inc_standard`.
+
+**Parameters.** A uniform your stage declares reads its `.mtr` `parameter` line under the engine's own
+upload rules:
+
+- the name is case-sensitive;
+- one value feeds a `float`, two to four values feed a `vec4`, and `parameter int` feeds an `int`;
+- a `vec2` or `vec3` is never fed (the engine's `glUniform4fv` does not fit one), so it keeps its GLSL
+  default;
+- a uniform no line states keeps its GLSL initialiser;
+- `SetMaterialShaderUniformInt/Vec4` on an object overrides a parameter its `.mtr` declares, for that
+  object only, and an empty value resets them all;
+- twelve parameters per stage.
+
+**What it does not do yet.**
+
+- Your vertex stage does not run. A varying it writes reads zero, except `fVertexHeight`, which is the
+  world height.
+- `texture7`..`texture10` are not bound for a content stage.
+- The engine's per-light arrays are empty (Alloy lights the surface itself), and the module clock reads
+  zero.
+
+**Checking it.**
+
+- `grep "mtr shader:" cx.log` lists every fragment stage a material named and what Alloy did with it.
+- `grep "Alloy content stage" cx.log` says, per stage, that it runs, how many parameter lanes it took,
+  and what the translation could only approximate. A stage that cannot run says why, as NOT RUN.
+- Offline, `CX_CONTENT_STAGES=<dir> ./check-shaders.py` builds every stage under `<dir>` the way the
+  engine does (from the game's own `base_shaders.bif`) and as Alloy runs it. It fails when Alloy cannot
+  run a stage the engine can.
+
 ## The guards
 
 An override that fails to compile or link costs you a log line and nothing else: the

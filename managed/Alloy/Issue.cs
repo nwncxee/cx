@@ -349,7 +349,7 @@ internal static unsafe class Issue
         bool decalWrite = decalMode == DecalLayer.ModeWrite;
         int litSolid = -1, boundSolid = -1;
         bool interior = _split.Interior;
-        if (boundProg is 1 or 3 or 4 or 5 or 6 or 8)
+        if (boundProg is 1 or 3 or 4 or 5 or 6 or 8 || ContentPrograms.IsProg(boundProg))
         {
             ref LitLoc H = ref LitLocOf(boundProg);
             litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
@@ -371,24 +371,31 @@ internal static unsafe class Issue
             // #350: a hosted feature draws through the second lit program (3); everything else lit through
             // the first (1). Batches are cut on the feature id, so this is one switch per hosted batch.
             bool hosted = !water && HostedBody(lit, _gFeat[g]);
+            // CX-303: a content stage draws through a program of its own, deferred twin included
+            bool content = hosted && ShaderFeatures.IsContent(_gFeat[g]);
             bool oitOut = SitsOitOut(hosted, _gSrc[g], _gDst[g]);
             if (_oitOn && oitOut) { _oitDeferred++; continue; }
             if (_onlyHosted && !oitOut) continue;
             // a split wash: WashInteriors draws its solid interior with the cutouts, and the blended pass the graded rest
-            bool split = _gWash[g] == WashSplit && lit && !oitOut && g >= _gOpaqueEnd;
+            // CX-303: a content wash splits too -- its interior through its own program, its edge after the resolve
+            bool split = _gWash[g] == WashSplit && lit && g >= _gOpaqueEnd
+                         && (!oitOut || content && _gSrc[g] == AuroraSrcAlpha && _gDst[g] == AuroraOneMinusSrcAlpha);
             if (interior && !split) continue;
             bool lists = lit && !water && !hosted && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
             // view -- the only draws whose pixels the deferred compute pass reads. Everything else keeps the
             // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz but the
             // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
-            bool deferred = lit && !water && !hosted && !lists && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
+            bool deferred = lit && !water && (!hosted || content && ContentPrograms.HasDeferred(_gFeat[g])) && !lists
+                            && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
                             && (g < _gOpaqueEnd || interior) && DeferredLights.Active && !_forwardOnly;
             // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
             // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
             // whose coverage comes off its own map still gets a per-primitive sample pattern.
-            bool hostMask = hosted && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
-            int wantProg = decalWrite && lit ? 8 : water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
+            bool hostMask = hosted && !content && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
+            int wantProg = decalWrite && lit ? 8 : water ? 2 : hostMask ? 7
+                         : content ? ContentPrograms.ProgId(_gFeat[g], deferred)
+                         : hosted ? 3 : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)
             {
@@ -397,7 +404,7 @@ internal static unsafe class Issue
                 // CX-188: only the twin declares outputs on draw buffers 4..7, and a draw buffer no output
                 // reaches is UNDEFINED rather than untouched -- so every other program in these passes draws
                 // with those four masked off and leaves whatever record is already there.
-                if (GBuffer.Armed) GBuffer.MaskColour(wantProg == 5);
+                if (GBuffer.Armed) GBuffer.MaskColour(wantProg == 5 || ContentPrograms.IsDeferred(wantProg));
                 // CX-51: the probe's alpha is 1 / distance, and only the lit stage writes one; the rest keep the clear's "far"
                 if (_capturing && !_planar) Gl.ColorMask(1, 1, 1, (byte)(wantProg == 1 ? 1 : 0));
                 if (water)
@@ -423,7 +430,8 @@ internal static unsafe class Issue
                 else if (lit)
                 {
                     ref LitLoc L = ref LitLocOf(wantProg);
-                    Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal : wantProg == 7 ? Programs.ProgLitHostMask : hosted ? Programs._progLitHost
+                    Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal : wantProg == 7 ? Programs.ProgLitHostMask
+                                  : content ? ContentPrograms.Program(wantProg) : hosted ? Programs._progLitHost
                                   : lists ? Programs._progLitList
                                   : deferred ? Programs._progLitDef : wantProg == 6 ? Programs._progLitMask : Programs._progLit46);
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
@@ -459,6 +467,7 @@ internal static unsafe class Issue
                     // CX-223: ...and the palette tint's side table, whose binding point is a shared one --
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.TintTerms.Bind();
+                    if (content) ContentPrograms.BindExtras(wantProg);
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
@@ -586,16 +595,20 @@ internal static unsafe class Issue
         if (boundOffset) Gl.Disable(Gl.POLYGON_OFFSET_FILL);
     }
 
-    /// <summary>The uniform locations of one of the seven lit programs, keyed by the issue loop's
-    /// <c>wantProg</c>: 1 plain, 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant,
-    /// 7 the hosted one's, 8 the decal layer's writer. One place, because two sites in the loop pick from them.</summary>
+    /// <summary>The uniform locations of one of the lit programs, keyed by the issue loop's <c>wantProg</c>: 1 plain,
+    /// 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant, 7 the hosted one's, 8 the decal
+    /// layer's writer, <see cref="ContentPrograms.ProgBase"/> and up a content stage's. One place, because two sites in
+    /// the loop pick from them.</summary>
     private static ref LitLoc LitLocOf(int which)
-        => ref (which == 3 ? ref Programs._litH
+    {
+        if (ContentPrograms.IsProg(which)) return ref ContentPrograms.Loc(which);
+        return ref (which == 3 ? ref Programs._litH
               : ref (which == 4 ? ref Programs._litL
                    : ref (which == 5 ? ref Programs._litD
                         : ref (which == 6 ? ref Programs._litM
                              : ref (which == 7 ? ref Programs.HostMaskLoc
                                   : ref (which == 8 ? ref Programs.DecalLoc : ref Programs._lit))))));
+    }
 
     /// <summary>The batches being issued are <see cref="CoverageLayer"/>'s, cut at the layer's threshold rather
     /// than the class's (and through the mask variant when it is on). Set around the layer's one issue call.</summary>
@@ -671,8 +684,11 @@ internal static unsafe class Issue
     /// <summary>Aurora blend-mode indices (see <see cref="BlendGl"/>) of the one pair OIT accumulates.</summary>
     private const byte AuroraSrcAlpha = 0, AuroraOneMinusSrcAlpha = 1;
 
-    /// <summary>Does a lit, non-water batch draw through the hosted program (a content fragment stage)?</summary>
-    internal static bool HostedBody(bool lit, int feat) => lit && Programs._progLitHost != 0 && ShaderFeatures.Hosted(feat);
+    /// <summary>Does a lit, non-water batch draw a content fragment stage's body -- through the hosted program, or
+    /// through its own once a translated content stage's program is built?</summary>
+    internal static bool HostedBody(bool lit, int feat)
+        => lit && (ShaderFeatures.IsContent(feat) ? ContentPrograms.Ready(feat)
+                   : Programs._progLitHost != 0 && ShaderFeatures.Hosted(feat));
 
     /// <summary>Does a blended batch sit the OIT accumulation out and draw after the resolve, the plain-blend way? A
     /// hosted program declares no revealage output (left undefined it resolves as white patches), and weighted

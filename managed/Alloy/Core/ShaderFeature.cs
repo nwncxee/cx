@@ -52,6 +52,10 @@ internal enum ShaderFeature
     /// glow, an anisotropic lobe, and a sway weighted by the mesh's vertex paint. Its per-material terms ride
     /// <see cref="TintTerms"/>' side table, reached by the row index in <c>feat.z</c>.</summary>
     PaletteTint = 12,
+    /// <summary>The first CONTENT stage: any <c>customShaderFS</c> Alloy neither reproduces nor hosts by name
+    /// runs translated, in a program of its own (<see cref="ContentPrograms"/>), under an id from here up -- one
+    /// per stage, handed out as stages are first seen (<see cref="ShaderFeatures.MaxContent"/> of them).</summary>
+    Content0 = 13,
 }
 
 internal static class ShaderFeatures
@@ -82,7 +86,17 @@ internal static class ShaderFeatures
     /// the second lit program, the one that carries the bodies -- keeping them out of the program every other
     /// fragment runs, where they cost registers on thousands of draws that never take the branch (measured:
     /// opaque 15,1 -> 5,4 ms with the regions stubbed).</summary>
-    internal static bool Hosted(int feat) => (uint)feat < (uint)FsNames.Length && FsNames[feat].Length > 0;
+    internal static bool Hosted(int feat) => (uint)feat < (uint)FsNames.Length && FsNames[feat].Length > 0 || IsContent(feat);
+
+    /// <summary>Content stage ids a session may hand out. The whole corpus measured names 25 distinct non-stock
+    /// fragment stages; a stage past the last id draws the plain lit path, said once.</summary>
+    internal const int MaxContent = 64;
+
+    /// <summary>Every feature id the record can carry: the named ones, then the content range.</summary>
+    internal const int FeatureCount = (int)ShaderFeature.Content0 + MaxContent;
+
+    /// <summary>Is this a content stage's id (<see cref="ShaderFeature.Content0"/> and up)?</summary>
+    internal static bool IsContent(int feat) => feat >= (int)ShaderFeature.Content0 && feat < FeatureCount;
 
     /// <summary>Content fragment stages whose COVERAGE is map slot 1's alpha: they discard on
     /// <c>texUnit1.a</c> below <see cref="CoverNrmCut"/> and leave the diffuse alpha to the env-map level.
@@ -103,12 +117,12 @@ internal static class ShaderFeatures
         return false;
     }
 
-    /// <summary>Does this feature read material texture slot 6? Two do, for different things -- the flow
-    /// map's RG direction field and the weather ground's snow overlay -- because the SLOT is the contract and
-    /// the name beside it is only what one shader calls it. Everything else leaves the bit clear, which is
-    /// vanilla's own <c>texture6Bound</c> test: a material that binds nothing there gets nothing sampled.</summary>
+    /// <summary>Does this feature read material texture slot 6? The flow map's RG direction field, the weather
+    /// ground's snow overlay, and any content stage's <c>texUnit6</c> -- the SLOT is the contract, the name is
+    /// only what one shader calls it. Everything else leaves the bit clear, which is vanilla's own
+    /// <c>texture6Bound</c> test: a material that binds nothing there gets nothing sampled.</summary>
     internal static bool ReadsAuxSlot(int feat)
-        => feat == (int)ShaderFeature.Flowmap || feat == (int)ShaderFeature.GroundWeather;
+        => feat == (int)ShaderFeature.Flowmap || feat == (int)ShaderFeature.GroundWeather || IsContent(feat);
 
     /// <summary>Does this feature read the four PALETTE slots, <c>texture7</c>..<c>texture10</c>? Only the
     /// palette tint does, and the same reading as <see cref="ReadsAuxSlot"/>'s applies: a material that binds
@@ -121,11 +135,11 @@ internal static class ShaderFeatures
     /// over it -- because its diffuse carries the palette intensity, not an opacity.</summary>
     internal static bool HostedCoverage(int feat) => feat == (int)ShaderFeature.PaletteTint;
 
-    /// <summary>May a record carry this content feature AND a bone base at once? The palette tint must: it
-    /// is a CHARACTER shader, and a character's body parts are posed. Every other feature is tileset or
-    /// placeable work that never meets a bone, so the skinmesh class takes <c>feat.x</c> from it and the
-    /// vertex stage finds the bone base by that id.</summary>
-    internal static bool PosedToo(int feat) => feat == (int)ShaderFeature.PaletteTint;
+    /// <summary>May a record carry this content feature AND a bone base at once? The palette tint and every
+    /// content stage must: they are CHARACTER shaders as often as not, and a character's body parts are posed.
+    /// Every other feature is tileset or placeable work that never meets a bone, so the skinmesh class takes
+    /// <c>feat.x</c> from it and the vertex stage finds the bone base by that id.</summary>
+    internal static bool PosedToo(int feat) => feat == (int)ShaderFeature.PaletteTint || IsContent(feat);
 
     /// <summary>The feature a record carries in <c>feat.x</c>: the content one, unless a POSE displaces it.
     /// The one expression behind every site that writes or keys on it -- the record, the sort digit, the batch
@@ -141,11 +155,11 @@ internal static class ShaderFeatures
     internal static bool Displaces(int feat)
         => feat >= (int)ShaderFeature.WindGrass && feat <= (int)ShaderFeature.RoofKnM;
 
-    /// <summary>Must this batch stay OUT of the depth prepass? Exactly what <see cref="Displaces"/> names, and
-    /// nothing else. The skinmesh class does not: the constraint is that both stages compute
-    /// <c>gl_Position</c> from a character-for-character IDENTICAL expression under <c>invariant</c>, and the
-    /// depth stage has the same <c>CxSkinMat</c> text over the same <c>uBone</c> binding in the same order.</summary>
-    internal static bool OutOfPrepass(int feat) => Displaces(feat);
+    /// <summary>Must this batch stay OUT of the depth prepass? What <see cref="Displaces"/> names, and a content
+    /// stage that makes its own coverage (<see cref="ContentPrograms.Cuts"/>): the prepass cuts on the texel, so
+    /// it would write depth where the stage leaves a hole. The skinmesh class does not: both stages compute
+    /// <c>gl_Position</c> from a character-for-character IDENTICAL expression under <c>invariant</c>.</summary>
+    internal static bool OutOfPrepass(int feat) => Displaces(feat) || ContentPrograms.Cuts(feat);
 
     /// <summary>Does this feature switch keyholing OFF? Those parts keep their ownership when the camera
     /// would dissolve them, because their vanilla shader ignores the dissolve too. Read off each fork's

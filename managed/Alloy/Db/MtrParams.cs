@@ -18,21 +18,23 @@ internal static class MtrParams
     /// not per material -- one content stage is named by hundreds of them.</summary>
     private static readonly System.Collections.Generic.HashSet<string> _fsSeen = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Say what Alloy does with a material's <c>customShaderFS</c>, once per name. A content stage
-    /// Alloy neither hosts nor reproduces does not run, and one whose own body held the coverage discard then
-    /// draws SOLID with nothing anywhere saying why. Grep <c>mtr shader:</c> for the list.</summary>
+    /// <summary>Say what Alloy does with a material's <c>customShaderFS</c>, once per name: translated as a content
+    /// stage, hosted, reproduced, or not run and why. Grep <c>mtr shader:</c> for the list, and <c>Alloy content
+    /// stage</c> for what each translated one became.</summary>
     internal static void NoteCustomFs(string fs, int feat, bool coverNrm, ExtenderLog? log)
     {
         if (fs.Length == 0 || log == null) return;
         lock (_fsSeen)
             if (!_fsSeen.Add(fs)) return;
-        string what = ShaderFeatures.Hosted(feat) ? "HOSTED -- its own body runs inside the Alloy lit stage"
+        string what = ShaderFeatures.IsContent(feat) ? "TRANSLATED -- it runs as a content stage in a program of its own, "
+                      + "built the first time a part on it draws (grep \"Alloy content stage\")"
+            : ShaderFeatures.Hosted(feat) ? "HOSTED -- its own body runs inside the Alloy lit stage"
             : coverNrm ? "coverage reproduced -- the cutout tests map slot 1's alpha at "
                          + $"{ShaderFeatures.CoverNrmCut}, and the rest of its body is shading Alloy does itself"
             : feat != 0 ? "reproduced as an Alloy shader feature"
-            : "NOT RUN -- Alloy neither hosts nor reproduces it. A stock permutation (fslit*, fst*) loses "
-              + "nothing, the Alloy stage IS that shading; a CUSTOM stage's own work -- a coverage discard, "
-              + "its own colour -- simply does not happen, and such a part draws as a plain lit one";
+            : "NOT RUN -- a stock stage (Alloy's own stage IS that shading, nothing is lost), a stage paired with a "
+              + "vertex feature Alloy reproduces, or one named with no vertex stage (which the engine does not build "
+              + "either)";
         log.Info($"mtr shader: \"{fs}\" {what}");
     }
 
@@ -88,9 +90,9 @@ internal static class MtrParams
             }
         // fSwaySpeed divides, and 1.0 is what every wind .mtr states: an undeclared one is the authored case.
         if (f >= (int)ShaderFeature.WindGrass && f <= (int)ShaderFeature.WindPlant && feat[1] == 0f) feat[1] = 1f;
-        // The palette tint keeps its own id in feat.x while posed, so feat.y is the BONE BASE and -1 is the
-        // unposed sentinel CxSkinned tests -- a 0 there would pose every unposed palette part off bone slot 0.
-        if (f == (int)ShaderFeature.PaletteTint) feat[1] = -1f;
+        // The palette tint and a content stage keep their own id in feat.x while posed, so feat.y is the BONE BASE
+        // and -1 is the unposed sentinel CxSkinned tests -- a 0 there would pose every unposed such part off bone 0.
+        if (ShaderFeatures.PosedToo(f)) feat[1] = -1f;
     }
 
     /// <summary>Terms a palette-tint material states, in <see cref="TintTerms"/>' row order: illumination

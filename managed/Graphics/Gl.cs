@@ -352,6 +352,7 @@ public static unsafe class Gl
     public static delegate* unmanaged<int, float, void> Uniform1f;
     public static delegate* unmanaged<int, float, float, void> Uniform2f;
     public static delegate* unmanaged<int, int, int, void> Uniform2i;
+    public static delegate* unmanaged<int, uint, uint, void> Uniform2ui;
     /// <summary>glBlendColor: the constant the CONSTANT_ALPHA blend factors read (constant-alpha blends).</summary>
     public static delegate* unmanaged<float, float, float, float, void> BlendColor;
     public static delegate* unmanaged<int, float, float, float, void> Uniform3f;
@@ -690,6 +691,7 @@ public static unsafe class Gl
         Uniform1f = (delegate* unmanaged<int, float, void>)P("glUniform1f");
         Uniform2f = (delegate* unmanaged<int, float, float, void>)P("glUniform2f");
         Uniform2i = (delegate* unmanaged<int, int, int, void>)P("glUniform2i");
+        Uniform2ui = (delegate* unmanaged<int, uint, uint, void>)P("glUniform2ui");
         BlendColor = (delegate* unmanaged<float, float, float, float, void>)P("glBlendColor");
         Uniform3f = (delegate* unmanaged<int, float, float, float, void>)P("glUniform3f");
         Uniform4f = (delegate* unmanaged<int, float, float, float, float, void>)P("glUniform4f");

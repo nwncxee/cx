@@ -87,6 +87,10 @@ internal static unsafe class FrameSnapshot
         return Db.TexRegistry.TryResident(_ownNoise, out uint name, out _) ? (int)name : 0;
     }
 
+    /// <summary>The noise a content stage samples as <c>texUnitNoise</c>: CX's own <c>solid_noise</c>, the one copy
+    /// that is owned and so has a bindless handle. 0 until it is resident.</summary>
+    internal static int ContentNoiseTid() => OwnNoise();
+
     /// <inheritdoc cref="OwnNoise"/>
     private static Db.TexId _ownNoise;
     /// <inheritdoc cref="OwnNoise"/>

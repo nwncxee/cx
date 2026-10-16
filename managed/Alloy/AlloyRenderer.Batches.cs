@@ -259,10 +259,10 @@ public sealed unsafe partial class AlloyRenderer
         int litCulled = SortKeyOf(false, true, 0), litMax = SortKeyOf(true, true, MaxVdos - 1);
         bool ok = litMax == _sortCount.Length - 1 && unlitCulled == 0 && unlitFree < litCulled;
         // #327: the (feature, primitive) digit fills its buckets exactly, and an out-of-table prim clamps.
-        ok &= (int)FeatCeiling == ShaderFeatures.VsNames.Length - 1
-              && FeatPrimKeyOf((int)FeatCeiling, PrimTypes - 1) == _featPrimCount.Length - 1
-              && FeatPrimKeyOf((int)FeatCeiling, PrimTypes + 5) == _featPrimCount.Length - 1
-              && FeatPrimKeyOf((int)FeatCeiling + 3, 0) == _featPrimCount.Length - PrimTypes
+        ok &= ShaderFeatures.VsNames.Length == (int)ShaderFeature.Content0
+              && FeatPrimKeyOf(FeatCeiling, PrimTypes - 1) == _featPrimCount.Length - 1
+              && FeatPrimKeyOf(FeatCeiling, PrimTypes + 5) == _featPrimCount.Length - 1
+              && FeatPrimKeyOf(FeatCeiling + 3, 0) == _featPrimCount.Length - PrimTypes
               && FeatPrimKeyOf(0, -1) == 0 && FeatPrimKeyOf(0, 0) == 0;
         if (!ok) log.Info("AlloyRenderer.CullSortSelfCheck: FAILED -- a radix digit does not fit its " +
                           "buckets, or the cull bit outranks the lit one");
@@ -280,18 +280,18 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>nm -S</c>, indexed by the mdl node's prim type. The key clamps rather than trusts the index: the
     /// draw path reads the table unguarded, but a sort bucket must not.</summary>
     private const int PrimTypes = 7;
-    /// <summary><see cref="ShaderFeature"/>'s last member, named here because the sort table below is sized
-    /// from it. A feature appended above this ceiling walks <c>_featPrimCount</c> off its end and throws
-    /// mid-frame, so <see cref="CullSortSelfCheck"/> ties it to <see cref="ShaderFeatures.VsNames"/>, which
-    /// any appended feature has to extend anyway.</summary>
-    private const ShaderFeature FeatCeiling = ShaderFeature.PaletteTint;
+    /// <summary>The highest feature id a record carries -- the last content stage's -- named here because the sort
+    /// table below is sized from it. A feature past this ceiling walks <c>_featPrimCount</c> off its end and throws
+    /// mid-frame, so <see cref="CullSortSelfCheck"/> ties it to <see cref="ShaderFeatures.FeatureCount"/>, and the
+    /// named features to <see cref="ShaderFeatures.VsNames"/>.</summary>
+    private const int FeatCeiling = ShaderFeatures.FeatureCount - 1;
     /// <summary>Buckets for the (feature, primitive) digit.</summary>
-    private const int FeatPrimKeys = ((int)FeatCeiling + 1) * PrimTypes;
+    private const int FeatPrimKeys = (FeatCeiling + 1) * PrimTypes;
     /// <summary>Both indices are CLAMPED, not trusted: this is a sort digit, so a feature past the ceiling
     /// merely shares a bucket (one extra batch cut, never a wrong draw) where an unclamped one takes the
     /// frame down. The self-check is what makes the drift loud; the clamp is what makes it survivable.</summary>
     private static int FeatPrimKeyOf(int feat, int prim)
-        => Math.Clamp(feat, 0, (int)FeatCeiling) * PrimTypes + Math.Clamp(prim, 0, PrimTypes - 1);
+        => Math.Clamp(feat, 0, FeatCeiling) * PrimTypes + Math.Clamp(prim, 0, PrimTypes - 1);
 
     /// <summary>Order the blended run back to front -- the farthest key first, so nearer surfaces composite
     /// over what is already behind them. Stable, which keeps parts at equal distance in their texture-grouped
@@ -511,7 +511,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void WriteSphere(int i, in RecordFrameState f, IntPtr tri, int feat)
     {
         {
-            if (_oBone[i] >= 0 || ShaderFeatures.OutOfPrepass(feat) || PartTable.IsDangly(tri)
+            if (_oBone[i] >= 0 || ShaderFeatures.Displaces(feat) || PartTable.IsDangly(tri)
                 || !(_oR[i] > 0f))
             { _dSph[i] = new Sphere { Radius = NeverCull }; return; }
             // The centre is the model TRANSLATION, not _oC* through the matrix: that bbox centre is not

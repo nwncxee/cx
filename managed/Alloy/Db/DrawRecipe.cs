@@ -91,6 +91,9 @@ internal static partial class DrawRecipe
         /// record carries in <c>feat.z</c>. Seeded -1, because a zero-filled column would hand the untinted
         /// majority row 0 and retire it out from under whoever owns it.</summary>
         public readonly int[] TintRow = new int[Max];
+        /// <summary>Each recipe's parsed <c>.mtr</c>, or null: what a content stage's side-table row is filled from
+        /// (<see cref="ContentRows"/>). Shared and immutable, so the column holds the reference.</summary>
+        public readonly MtrDef?[] Mtr = new MtrDef?[Max];
 
         public SlotState() { System.Array.Fill(TintRow, -1); }
         public int RetiredInUse, DoubleRetire;
@@ -104,6 +107,9 @@ internal static partial class DrawRecipe
 
     /// <summary>The log the ownership refusals are said on. Set by the feed.</summary>
     internal static CX.Framework.ExtenderLog? Log { get => _own.Log; set => _own.Log = value; }
+
+    /// <summary>Recipe <paramref name="r"/>'s parsed <c>.mtr</c>, or null.</summary>
+    internal static MtrDef? Mtr(int r) => (uint)r < Max ? _own.Mtr[r] : null;
 
     /// <summary>Slot <paramref name="r"/>'s current hand-out generation.</summary>
     internal static uint Gen(int r) => (uint)r < Max ? _own.Gen[r] : 0;
@@ -194,6 +200,7 @@ internal static partial class DrawRecipe
         if (_range[r] >= 0) MeshArena.Release(_range[r]);
         _range[r] = -1;
         if (_own.TintRow[r] >= 0) { TintTerms.Free(_own.TintRow[r], r); _own.TintRow[r] = -1; }
+        _own.Mtr[r] = null;
         for (int s = 0; s < TexSlots; s++)
         {
             int o = r * TexSlots + s;
@@ -577,7 +584,10 @@ internal static partial class DrawRecipe
         _flags[r] = f;
         _prim[r] = 0;
         int feat = MtrParams.Feature(mtr?.ShaderVs ?? "");
+        // CX-303: no reproduced vertex feature, so any other stage the material names runs translated
+        if (feat == 0) feat = ContentPrograms.Register(mtr);
         _feat[r] = feat;
+        _own.Mtr[r] = mtr;
         MtrParams.NoteCustomFs(mtr?.ShaderFs ?? "", feat, _coverNrm[r], Log);
         Span<float> featF = _featF.AsSpan(r * 4, 4);
         featF.Clear();
@@ -604,6 +614,13 @@ internal static partial class DrawRecipe
                 TintTerms.SetTerms(_own.TintRow[r], tint);
                 featF[2] = _own.TintRow[r];
             }
+        }
+        // ...and a content stage's row carries its material's own uniforms the same way; -1 (the table full) leaves
+        // the stage reading every uniform's default, which CxContentRow makes a defined read
+        else if (ShaderFeatures.IsContent(feat))
+        {
+            _own.TintRow[r] = TintTerms.AllocContent(r);
+            featF[2] = _own.TintRow[r];
         }
         int mask = 0;
         for (int s = 0; s < TexSlots; s++)

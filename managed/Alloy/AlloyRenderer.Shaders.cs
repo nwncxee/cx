@@ -64,6 +64,14 @@ public sealed unsafe partial class AlloyRenderer
     /// texel in (<c>FragmentColor *= MainTextureColor</c>), so an empty stand-in hands the body WHITE.</summary>
     internal static string VanillaStandardFs => ShaderSource.Get("cx_vanstd_f.glsl");
 
+    /// <summary>What a CONTENT stage gets in place of <c>inc_standard</c> (<see cref="ContentStage"/>): the hosted
+    /// stand-in plus the stock stage's own coverage cut, which a content program makes instead of Alloy's.</summary>
+    internal static string ContentStandardFs => ShaderSource.Get("cx_constd_f.glsl");
+
+    /// <summary>The environment a content stage compiles in: the engine prologue, its vocabulary mapped onto Alloy's
+    /// values, and the stock helpers (<see cref="ContentStage"/>).</summary>
+    internal static string ContentEnvFs => ShaderSource.Get("cx_content_f.glsl");
+
     /// <summary>What a stage Alloy runs WHOLE gets in place of <c>inc_standard</c> (<c>// $VANILLA-MAIN</c>).
     /// No Alloy shading surrounds it, so both calls carry their stock body: setup takes the display-space
     /// texel into working space and multiplies it in, apply reverts to display space. Its own <c>inc_noir</c>

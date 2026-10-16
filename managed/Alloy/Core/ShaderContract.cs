@@ -371,7 +371,22 @@ internal static class ShaderContract
                   && ShaderFeatures.WithPose((int)ShaderFeature.GroundWeather, posed: false) == (int)ShaderFeature.GroundWeather
                   && ShaderFeatures.Hosted(ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true))
                   && CoverageLayer.HasCoverageSource(ShaderFeatures.WithPose((int)ShaderFeature.PaletteTint, posed: true))
-                  && FeatDecl.Contains("return (fx == CX_FEAT_SKIN || fx == CX_FEAT_PALETTETINT) && feat.y >= 0.0;")
+                  && FeatDecl.Contains("return (fx == CX_FEAT_SKIN || fx == CX_FEAT_PALETTETINT || fx >= CX_FEAT_CONTENT0) && feat.y >= 0.0;")
+                  // CX-303: the content range -- its first id in the GLSL is the enum's, every id in it is hosted and
+                  // keeps its id while posed, and nothing below it is content
+                  && FeatDecl.Contains($"#define CX_FEAT_CONTENT0 {(int)ShaderFeature.Content0}\n")
+                  && ShaderFeatures.IsContent((int)ShaderFeature.Content0)
+                  && ShaderFeatures.IsContent(ShaderFeatures.FeatureCount - 1)
+                  && !ShaderFeatures.IsContent((int)ShaderFeature.PaletteTint)
+                  && !ShaderFeatures.IsContent(ShaderFeatures.FeatureCount)
+                  && ShaderFeatures.Hosted((int)ShaderFeature.Content0)
+                  && ShaderFeatures.WithPose((int)ShaderFeature.Content0, posed: true) == (int)ShaderFeature.Content0
+                  && !ShaderFeatures.Displaces((int)ShaderFeature.Content0)
+                  // ...and a content program skips Alloy's own coverage cut for the stand-in's, and takes the body's alpha
+                  && OwnedLitFsMain.Contains("#ifndef CX_CONTENT_PROGRAM\n    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
+                  && OwnedLitFsMain.Contains("        coverage = FragmentColor.a;\n")
+                  && ContentStandardFs.Contains("void SetupStandardShaderInputs()")
+                  && ContentStandardFs.Contains("#if ENVIRONMENT_MAP != 1 && NO_TEXTURE != 1")
                   // ...and the unposed sentinel the test above reads, off a hand-written palette .mtr
                   && TintUnposedSentinel == -1f
                   // #348: the two look features, and the properties that keep them out of the wind forks'

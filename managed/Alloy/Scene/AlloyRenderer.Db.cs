@@ -39,8 +39,9 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Is this part a ground decal, folded into the surface under it (<see cref="DecalLayer"/>)? A lit
-    /// sheet facing up whose <c>transparencyhint</c> would blend it (<see cref="RecipeFlag.HintBlended"/>), on a static object, with no self-illumination, env map or hosted body,
-    /// nothing posed or morphed. Never an alpha-tested cover: it hides its ground, normal and material too.</summary>
+    /// sheet facing up whose <c>transparencyhint</c> would blend it (<see cref="RecipeFlag.HintBlended"/>), on a static object, with no self-illumination, env map or named hosted body,
+    /// nothing posed or morphed. Never an alpha-tested cover: it hides its ground, normal and material too. A content stage's
+    /// decal folds its plain albedo, and the surface it lies on runs its own body over it.</summary>
     internal static bool DbDecal(int recipe, RecipeFlag rf, ObjFlag of, bool env)
         => (rf & RecipeFlag.HintBlended) != 0
            && (rf & (RecipeFlag.Lit | RecipeFlag.FacesUp)) == (RecipeFlag.Lit | RecipeFlag.FacesUp)
@@ -48,7 +49,7 @@ public sealed unsafe partial class AlloyRenderer
            && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static
            && DrawRecipe.Src(recipe) == DrawRecipe.BlendSrcAlpha && DrawRecipe.Dst(recipe) == DrawRecipe.BlendInvSrcAlpha
            && (DrawRecipe.Slots(recipe) & IllumBit) == 0 && !env
-           && !ShaderFeatures.Hosted(DrawRecipe.Feat(recipe));
+           && (!ShaderFeatures.Hosted(DrawRecipe.Feat(recipe)) || ShaderFeatures.IsContent(DrawRecipe.Feat(recipe)));
 
     /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>) on a
     /// static object, under a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque
@@ -94,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
              ? $"blend pair {DrawRecipe.Src(recipe)}/{DrawRecipe.Dst(recipe)}"
          : (DrawRecipe.Slots(recipe) & IllumBit) != 0 ? "self-illumination map"
          : env ? "env map"
-         : ShaderFeatures.Hosted(DrawRecipe.Feat(recipe)) ? "hosted shader body" : "?";
+         : ShaderFeatures.Hosted(DrawRecipe.Feat(recipe)) && !ShaderFeatures.IsContent(DrawRecipe.Feat(recipe)) ? "hosted shader body" : "?";
 
     /// <summary>The self-illumination map's mask bit (map slot 4, the stage's <c>CX_SLOT_ILLUM</c>).</summary>
     private const int IllumBit = 1 << 4;
@@ -217,6 +218,12 @@ public sealed unsafe partial class AlloyRenderer
         // table being non-empty, so a scene that never calls it pays one bool.
         if (Seam.MaterialParams.Any) Seam.MaterialParams.Apply(SceneDb.PartObj[part], ref _oParam[i]);
         for (int k = 0; k < 4; k++) _oFeat[fo + k] = DrawRecipe.FeatF(recipe, k);
+        // CX-303: ...and an object carrying SetMaterialShaderUniform values reads them from a side-table row of its own
+        if (ShaderFeatures.IsContent((int)_oFeat[fo]) && Seam.MaterialParams.HasContent(SceneDb.PartObj[part]))
+        {
+            int own = Db.TintTerms.ObjectRow(recipe, SceneDb.PartObj[part].Value);
+            if (own >= 0) _oFeat[fo + 2] = own;
+        }
         _oSlots[i] = DrawRecipe.Slots(recipe);
         UnstampRecord(i);
     }
@@ -624,7 +631,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         RecipeFlag rf = DrawRecipe.Flags(_oDbRecipe[i]);
         bool exempt = _oBone[i] >= 0 || (rf & RecipeFlag.Dangly) != 0
-                      || ShaderFeatures.OutOfPrepass((int)_oFeat[i * 4]) || !(_oR[i] > 0f);
+                      || ShaderFeatures.Displaces((int)_oFeat[i * 4]) || !(_oR[i] > 0f);
         float cx, cy, cz, rad;
         if (exempt) { cx = 0f; cy = 0f; cz = 0f; rad = NeverCull; }
         else

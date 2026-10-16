@@ -78,7 +78,11 @@ internal static unsafe class BlendProfile
         _n = 0; _state = 0;
     }
 
-    private static string ProgName(int p) => p switch { 0 => "fullbright", 1 => "lit", 2 => "water", 3 => "hosted", 4 => "lit lists", 5 => "deferred twin", _ => "?" };
+    private static string ProgName(int p) => p switch
+    {
+        0 => "fullbright", 1 => "lit", 2 => "water", 3 => "hosted", 4 => "lit lists", 5 => "deferred twin",
+        _ => ContentPrograms.IsProg(p) ? (ContentPrograms.IsDeferred(p) ? "content stage, deferred" : "content stage") : "?",
+    };
 
     private sealed class Comparer : System.Collections.Generic.IComparer<int>
     {

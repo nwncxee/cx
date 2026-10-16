@@ -119,8 +119,11 @@ the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
   while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6, 7}` otherwise) and detach after
   `CutoutOwned`. A prepassed batch draws at `GL_EQUAL`, a non-prepassed one at `LEQUAL` with depth writes, so
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.
-- A forward draw in those passes (hosted content, a viz batch) writes no G-buffer and can land on a pixel a twin
-  already wrote. The record carries the twin's view depth; the reader drops it when the frame's depth no longer
+- A content stage (CX-303) draws through its own deferred twin: the content program's final text under the same two
+  defines. Its body only edits the surface inputs (the `inc_standard` stand-in's `ApplyStandardShader` is empty), so
+  it writes the G-buffer like any other; a stage with no twin draws forward.
+- A forward draw in those passes (a named hosted stage, a content stage with no twin, a viz batch) writes no G-buffer
+  and can land on a pixel a twin already wrote. The record carries the twin's view depth; the reader drops it when the frame's depth no longer
   agrees within `CX_GB_RECORD` (Ssr's record test). The depth the deferred pass reads is the depth buffer AFTER
   the cutout pass -- the prepass plus any colour-pass writes -- and the tile depth bounds come from it too.
 - `DeferredLights` runs after the last writer and before grass, whose root blend copies the lit frame under

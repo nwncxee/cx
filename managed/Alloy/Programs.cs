@@ -232,7 +232,8 @@ internal static unsafe class Programs
         GrassField.DropProgram();
         PostStack.DropSpliced();
         SkyStage.DropPrograms();
-        _log?.Info("AlloyRenderer: module changed -- the spliced programs (lit, hosted lit, water, grass, post, sky) are dropped and rebuild from this module's resource chain");
+        ContentPrograms.DropSpliced();
+        _log?.Info("AlloyRenderer: module changed -- the spliced programs (lit, hosted lit, content stages, water, grass, post, sky) are dropped and rebuild from this module's resource chain");
     }
 
     internal static bool EnsureProgram()
@@ -269,6 +270,7 @@ internal static unsafe class Programs
         }
         if (_prog46 == 0) return false;
         if (_lighting && _progLit46 == 0 && !_litFailed) EnsureLitProgram();
+        if (_progLit46 != 0) ContentPrograms.EnsureWanted();
         return true;
     }
 

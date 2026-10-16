@@ -15,7 +15,10 @@
 //           multipliers, and reads no vertex paint. None of that is a character's sway, and the pair's own
 //           vertex stage is the author's content, so there is nothing here to transcribe it from.
 //   pal01 = texture7 and texture8 as bindless handles; pal23 = texture9 and texture10
-struct CxTint { vec4 glow; vec4 terms; uvec4 pal01; uvec4 pal23; };
+//   cpOn  = CX-303: which content lanes the material states (bit n = lane n), in x
+//   cp    = CX-303: a content stage's parameters, one lane per uniform the side table feeds (ContentStage)
+#define CX_CP_LANES 12
+struct CxTint { vec4 glow; vec4 terms; uvec4 pal01; uvec4 pal23; uvec4 cpOn; vec4 cp[CX_CP_LANES]; };
 layout(std430, binding = 15) readonly buffer CxTintBuf { CxTint uTint[]; };
 
 // Which palette map the COVERAGE comes from: texture9, whose blue channel is the authored coverage -- the
@@ -91,3 +94,20 @@ vec4 CxTintCoverage(int draw, int row, vec2 uv)
 vec4 CxTintCoverage(int draw, int row, vec2 uv) { return vec4(0.0, 0.0, 1.0, 1.0); }
 #endif
 
+
+// CX-303: a CONTENT stage's row -- its material's .mtr parameters, or a private copy carrying the object's own
+// SetMaterialShaderUniform values. Read through feat.z like the palette tint's, by a separate accessor so a content
+// record never takes the tint's coverage or glow.
+int CxContentRow(int draw)
+{
+    if (int(uDraw[draw].feat.x) < CX_FEAT_CONTENT0) return -1;
+    int row = int(uDraw[draw].feat.z);
+    return row >= 0 && row < uTint.length() ? row : -1;
+}
+
+// This fragment's content row, resolved once by the content body's wrapper; the parameter macros read it.
+int cxConRow;
+
+// Does the material state content lane l? A lane it does not state reads the uniform's own GLSL default.
+bool CxCpOn(int l) { return cxConRow >= 0 && (uTint[cxConRow].cpOn.x & (1u << uint(l))) != 0u; }
+vec4 CxCp(int l) { return cxConRow >= 0 ? uTint[cxConRow].cp[clamp(l, 0, CX_CP_LANES - 1)] : vec4(0.0); }
