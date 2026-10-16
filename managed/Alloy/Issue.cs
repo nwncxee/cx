@@ -630,6 +630,7 @@ internal static unsafe class Issue
         _fringe.Pass = true;
         _passDepthMask = 0;
         Gl.DepthMask(0);
+        Gl.DepthFunc(Gl.LEQUAL);   // the issue loop assumes it, and the cutout run can leave EQUAL bound
         Gl.Enable(Gl.BLEND); _blendOn = true;
     }
 

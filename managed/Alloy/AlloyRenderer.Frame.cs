@@ -866,14 +866,13 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Depth only at LEQUAL, through the prepass's alpha-testing stage at each batch's own cut, over the
-    /// batches of [from, to) that <see cref="BlendLaysDepth"/> admits (and are fringed, for
-    /// <paramref name="fringe"/>). False = nothing swept: no feature stage, or an empty range.</summary>
+    /// batches of [from, to) the stage can draw as their colour pass does (<see cref="BlendLaysDepth"/>), fringed ones
+    /// alone for <paramref name="fringe"/>. False = nothing swept: no feature stage, or an empty range.</summary>
     private static bool DepthSweep(int from, int to, Matrix4x4* vp, int* viewport, bool fringe)
     {
         if (to <= from || !_prepassFeat || !Programs.EnsureDepthFeatProgram()) return false;
         bool indirect = CullPass.Active;
-        // The COLOUR phase's commands, not the prepass phase's: this lays depth for exactly the batches the
-        // blended colour draw kept, and the two phases test against different pyramids (#489).
+        // the colour phase's commands: depth for exactly the batches the colour draw keeps (its pyramid, not the prepass's)
         if (indirect) CullPass.BindForDraw(CullPass.PhaseColour);
         Gl.ColorMask(0, 0, 0, 0);
         Gl.DepthMask(1);
@@ -885,6 +884,7 @@ public sealed unsafe partial class AlloyRenderer
         Gl.Uniform1i(Programs._depthFeatTex, 0);
         Gl.ActiveTexture(Gl.TEXTURE0);
         UploadFeatureTerms(Programs._depthFeatFeat, viewport);
+        Db.PltPalettes.Bind();   // a PLT cutout's alpha is its palette's
         uint boundVao = 0;
         int boundCull = -1, boundTex = -1;
         float boundCut = float.NaN;
