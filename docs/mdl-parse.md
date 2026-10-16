@@ -59,6 +59,11 @@ since `0x421 & 0x21 == 0x21`), then light, then the generic rule.
 - **The four reserved per-vertex streams** at file 0x24c/0x250/0x254/0x25c are loaded, sized and serialised by
   the engine and never written or sampled by it. CX drops them.
 - `texindices1..3` are parsed by the engine and never read; CX keeps them on `MeshRaw` for fidelity.
+- **UV sets 1..3** (`tverts1..3`) are parsed and welded on both sides and reach no shader on either. The
+  engine pointers and enables them as attributes 11/12/13 (`vTcIn1/2/3`) whenever the pools exist, and no
+  stock stage declares one; Alloy keeps them off the vertex because the weld splits on them, so the welded
+  vertex count depends on sets nothing samples. There is no lightmap sampler in this client at all:
+  `texture1` lands on texture unit 1, where the only shader that declares it reads a normal map at UV set 0.
 - A **skin's bone map** is a PART index the engine resolves at instance time against the instantiated part
   tree (`PartSkin::PostProcess`), not a node index from the file. CX resolves bone names against the model's
   own node tree instead, so `SkinDef.BoneNodes` is a different space from a compiled file's.
