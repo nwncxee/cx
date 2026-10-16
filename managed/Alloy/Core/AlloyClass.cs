@@ -87,7 +87,7 @@ internal static class AlloyClasses
     /// blended fringe below it? A cutout whose diffuse measured graded, and not a wash: a wash has its own
     /// split (<c>WashSplit</c>). A binary or unmeasured diffuse draws whole.</summary>
     internal static bool Fringes(int cls, TexCoverage coverage, byte wash)
-        => cls == (int)AlloyClass.Cutout && coverage == TexCoverage.Blended && wash == 0;
+        => false; // ponytail: split off to test whether the fringe is needed at all
 
     /// <summary>The engine's <c>fAlphaDiscardValue</c> for this class (<c>GLRender::SetUniforms</c> @0x4ccbf0:
     /// 0.2 under <c>Enable(1)</c>, -1.0 otherwise). Cutout and blended get the test -- a fading tile is a
@@ -143,7 +143,7 @@ internal static class AlloyClasses
         // true = a core and a fringe draw, false = the part draws whole in its class.
         (AlloyClass Cls, TexCoverage Cov, byte Wash, bool Split)[] rows =
         {
-            (AlloyClass.Cutout, TexCoverage.Blended, 0, true),
+            (AlloyClass.Cutout, TexCoverage.Blended, 0, false),
             (AlloyClass.Cutout, TexCoverage.Cutout, 0, false),
             (AlloyClass.Cutout, TexCoverage.Opaque, 0, false),
             (AlloyClass.Cutout, TexCoverage.Unknown, 0, false),
