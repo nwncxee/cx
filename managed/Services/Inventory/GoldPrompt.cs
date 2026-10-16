@@ -48,7 +48,7 @@ internal sealed class GoldPrompt
     private float _moveDx, _moveDy, _mx = -1f, _my = -1f;
     private string _amountText = "", _maxText = "";
     /// <summary>TLK strrefs: the engine's Cancel button, the radial menu's Drop (<c>actions.2da</c> DropItem).</summary>
-    private const uint CancelWord = 67, DropWord = 553;
+    private const uint CancelStrRef = 67, DropStrRef = 553;
     /// <summary>The action buttons' words, read from the TLK on <see cref="Show"/>.</summary>
     private string _cancel = "", _drop = "";
     private int _amountFor = -1, _maxFor = -1;
@@ -60,7 +60,7 @@ internal sealed class GoldPrompt
     {
         Max = Math.Max(0, max); Amount = Max; S = scale;
         Open = true; _replace = true; _sliding = _moving = false;
-        _cancel = Native.TlkText(CancelWord); _drop = Native.TlkText(DropWord);
+        _cancel = Native.TlkText(CancelStrRef); _drop = Native.TlkText(DropStrRef);
         X = cx - W / 2f; Y = cy - H / 2f;
         Clamp(vw, vh);
     }
