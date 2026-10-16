@@ -359,11 +359,28 @@ public static class SceneDb
                                   _kidOf = new int[MaxObjects];
     private static readonly DbId[] _kidParent = new DbId[MaxObjects];
 
-    /// <summary>The one writer of <see cref="ObjAttachTo"/>; files the rider link with it.</summary>
+    /// <summary>The one writer of <see cref="ObjAttachTo"/>; files the rider link with it and re-roots the rider
+    /// and everything riding it (<see cref="ObjRunRoot"/>).</summary>
     public static void SetAttachTo(int child, DbId parent)
     {
         ObjAttachTo[child] = parent;
         LinkRider(child, parent);
+        DbId root = !Objects.Valid(parent) ? Objects.IdAt(child)
+                  : Objects.Valid(ObjRunRoot[parent.Index]) ? ObjRunRoot[parent.Index] : parent;
+        Reroot(child, root, 0);
+    }
+
+    /// <summary>How deep <see cref="Reroot"/> follows riders: an attach cycle stops here rather than recursing for ever.
+    /// DbAnim's attach snap already names such a cycle, so the cut needs no line of its own.</summary>
+    private const int MaxRerootDepth = 64;
+
+    private static void Reroot(int o, DbId root, int depth)
+    {
+        ObjRunRoot[o] = root;
+        if (depth >= MaxRerootDepth) return;
+        uint self = Objects.IdAt(o).Value;
+        for (int k = FirstRider(o); k != 0; k = NextRider(k - 1))
+            if (ObjAttachTo[k - 1].Value == self) Reroot(k - 1, root, depth + 1);
     }
 
     /// <summary>Re-file <paramref name="child"/> under <paramref name="parent"/>'s rider list (appended, so
@@ -873,8 +890,8 @@ public static class SceneDb
     /// @0x561670, <c>orient * 90</c> degrees on every eligible mesh (<c>PartTriMesh+0xb0</c>). Per OBJECT, not
     /// per recipe: one <see cref="DrawRecipe"/> serves every placement; a static placeable gets orient 0.</summary>
     public static readonly byte[] ObjTexRotate = new byte[MaxObjects];
-    /// <summary>The object a blended run composites WITH and a fade applies to: the root of the attachment
-    /// chain, or the explicit fade owner. Resolved when attachment or fade ownership changes, never per frame
+    /// <summary>The object a blended run composites WITH: the root of the attachment chain, the object itself
+    /// when it rides nothing. Seeded at allocation and kept by <see cref="SetAttachTo"/>, never climbed per frame
     /// (the engine path climbed <c>Gob+0x68</c> up to eight hops per blended part, per pass).</summary>
     public static readonly DbId[] ObjRunRoot = new DbId[MaxObjects];
     /// <summary>Which part-tree alternate this object shows (the engine's <c>GobPartTree</c> pick). A part of

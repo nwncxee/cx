@@ -242,6 +242,39 @@ internal static unsafe class FacadeSelfCheck
         }
     }
 
+    /// <summary>The run root a blended object id comes from: a fresh object is its own, a rider takes its creature's,
+    /// a rider's rider follows it, and a detached piece is its own again. Oracle: the handles the check made.</summary>
+    private static void RunRoots(Checker check)
+    {
+        Func<string, bool> was = ObjectFns.ResourcePresent;
+        long unreadable = ObjectFns.UnreadableModels;
+        var o = new DbId[4];
+        try
+        {
+            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
+            for (int i = 0; i < o.Length; i++)
+                o[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            DbId body = o[0], head = o[1], fx = o[2], sword = o[3];
+            check.Expect(SceneDb.ObjRunRoot[body.Index] == body, "a fresh object is its own run root");
+            SceneDb.SetAttachTo(fx.Index, head);
+            SceneDb.SetAttachTo(head.Index, body);
+            SceneDb.SetAttachTo(sword.Index, body);
+            check.Expect(SceneDb.ObjRunRoot[head.Index] == body && SceneDb.ObjRunRoot[sword.Index] == body,
+                         "a creature's riders share its run root");
+            check.Expect(SceneDb.ObjRunRoot[fx.Index] == body, "...and so does a rider's rider that rode first");
+            SceneDb.SetAttachTo(head.Index, default);
+            check.Expect(SceneDb.ObjRunRoot[head.Index] == head && SceneDb.ObjRunRoot[fx.Index] == head,
+                         "a detached piece is its own run root again, with what rides it");
+            check.Expect(SceneDb.ObjRunRoot[sword.Index] == body, "...and its sibling keeps the creature's");
+        }
+        finally
+        {
+            for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
+            ObjectFns.ResourcePresent = was;
+            ObjectFns.UnreadableModels = unreadable;
+        }
+    }
+
     private static void Vtables(Checker check)
     {
         // The counts in CX-183 section 1, which the generator must reproduce.
@@ -376,6 +409,7 @@ internal static unsafe class FacadeSelfCheck
         Factory(check);
         Riders(check);
         Shifts(check);
+        RunRoots(check);
 
         DbId id = SceneDb.Objects.Alloc();
         check.Expect(!id.IsNull, "the objects table would not hand out a record");

@@ -103,11 +103,16 @@ internal static unsafe class OitPass
         Gl.Uniform2iv(loc, 1, dim);
     }
 
+    /// <summary>Will <see cref="Begin"/> open the bracket this frame, as far as the route can tell before it? The route
+    /// then orders the blended range by state, not distance. What draws that range outside the bracket draws it in that
+    /// order: the env-probe capture, and a frame <see cref="Begin"/> refuses with no scene depth or an empty viewport.</summary>
+    internal static bool OrderFree => !_gl.Failed && Mode != 0 && Gl.BlendFunci != null && Gl.DrawBuffers != null;
+
     /// <summary>Open the accumulation pair for the blended range. False = draw the old way this frame.</summary>
     internal static bool Begin(uint depthTex, int* viewport)
     {
         var g = _gl;
-        if (g.Failed || Mode == 0 || depthTex == 0 || Gl.BlendFunci == null || Gl.DrawBuffers == null) return false;
+        if (!OrderFree || depthTex == 0) return false;
         int w = viewport[0] + viewport[2], h = viewport[1] + viewport[3];
         if (!EnsureTargets(w, h) || !EnsurePrograms()) return false;
         g.Linked = Mode == 2 && ListsArmed && EnsureLists(w, h);

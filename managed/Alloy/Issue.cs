@@ -325,14 +325,8 @@ internal static unsafe class Issue
             bool lit = _gLit[g];
             // #350: a hosted feature draws through the second lit program (3); everything else lit through
             // the first (1). Batches are cut on the feature id, so this is one switch per hosted batch.
-            bool hosted = lit && !water && Programs._progLitHost != 0 && ShaderFeatures.Hosted(_gFeat[g]);
-            // A hosted content program declares no revealage output: under OIT it would leave that buffer
-            // undefined (NaN, which the resolve and the bloom then spread as white patches and blue blotches).
-            // Those batches sit the accumulation out and draw after the resolve the plain-blend way.
-            // ...and so does any pair that is not SrcAlpha/OneMinusSrcAlpha: weighted blending can represent
-            // only that one. A content veil (a modulating fog dome around the player) fed through it composites
-            // the veil's colour over the whole view instead of darkening by it.
-            bool oitOut = hosted || _gSrc[g] != AuroraSrcAlpha || _gDst[g] != AuroraOneMinusSrcAlpha;
+            bool hosted = !water && HostedBody(lit, _gFeat[g]);
+            bool oitOut = SitsOitOut(hosted, _gSrc[g], _gDst[g]);
             if (_oitOn && oitOut) { _oitDeferred++; continue; }
             if (_onlyHosted && !oitOut) continue;
             // a split wash: WashInteriors draws its solid interior with the cutouts, and the blended pass the graded rest
@@ -631,6 +625,15 @@ internal static unsafe class Issue
     private static int _oitDeferred;
     /// <summary>Aurora blend-mode indices (see <see cref="BlendGl"/>) of the one pair OIT accumulates.</summary>
     private const byte AuroraSrcAlpha = 0, AuroraOneMinusSrcAlpha = 1;
+
+    /// <summary>Does a lit, non-water batch draw through the hosted program (a content fragment stage)?</summary>
+    internal static bool HostedBody(bool lit, int feat) => lit && Programs._progLitHost != 0 && ShaderFeatures.Hosted(feat);
+
+    /// <summary>Does a blended batch sit the OIT accumulation out and draw after the resolve, the plain-blend way? A
+    /// hosted program declares no revealage output (left undefined it resolves as white patches), and weighted
+    /// blending represents only the SrcAlpha / OneMinusSrcAlpha pair: a modulating veil would paint its colour.</summary>
+    internal static bool SitsOitOut(bool hosted, int src, int dst)
+        => hosted || src != AuroraSrcAlpha || dst != AuroraOneMinusSrcAlpha;
 
     /// <summary>The blending classes (ADR 0011): blended draws sorted back-to-front, then additive unsorted,
     /// because addition commutes. Depth TESTING stays on against the opaque set's depth, and the per-batch

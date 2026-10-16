@@ -377,7 +377,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !SortSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !CasterBoundSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !CasterBoundSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
             || !Issue.RunsSelfCheck(log) || !StreamRing.SelfCheck(log)
