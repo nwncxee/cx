@@ -618,6 +618,8 @@ internal static class ShaderContract
                   // CX-294: a fringed cutout's core is both tests above at AlloyClasses.SolidAlpha, the lit stage's own
                   // solid threshold -- drifted apart, the fringe pass and the core disagree on which texels are whose
                   && OwnedLitFsHead.Contains("const float CX_SOLID_ALPHA = " + AlloyClasses.SolidAlpha.ToString(System.Globalization.CultureInfo.InvariantCulture) + ";")
+                  // ...and the fringe pass drops the core's texels by the complement of that cut: it tests at LEQUAL over its own swept depth
+                  && OwnedLitFsMain.Contains($"|| uSolid == {Issue.SolidFringe} && coverage > CX_SOLID_ALPHA;")
                   // ...and the fringe's slim walk leaves a baked receiver's static lights to its pages, or they light it twice
                   && AlloyLights.FragmentLib.Contains("if (baked > 0.5 && int(cs.w) >= 128) continue;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.

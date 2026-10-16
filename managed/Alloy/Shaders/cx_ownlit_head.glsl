@@ -51,7 +51,7 @@ uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver t
 // -1.0 (no test) on opaque and additive.
 uniform float uAlphaCut;
 // 1 = a split wash's (AlloyRenderer.WashSplit) solid interior alone, drawn with the cutouts -- the blended pass draws
-// the wash under GL_LESS against the depth that leaves
+// the wash under GL_LESS against the depth that leaves. 2 = a fringe's band alone, its core's texels dropped.
 uniform int uSolid;
 const float CX_SOLID_ALPHA = 0.99;
 layout(location = 0) out vec4 frag;

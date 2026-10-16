@@ -859,7 +859,18 @@ public sealed unsafe partial class AlloyRenderer
     /// composite: laid first it would occlude the surfaces OIT accumulates. <c>/alloy blenddepth 0</c> off.</summary>
     private static void BlendedDepthSweep(int from, int to, Matrix4x4* vp, int* viewport)
     {
-        if (to <= from || !_blendDepth || !_prepassFeat || !Programs.EnsureDepthFeatProgram()) return;
+        if (!_blendDepth || !DepthSweep(from, to, vp, viewport, fringe: false)) return;
+        // Hand back what the blended class left and the copy, water and additive passes read as already set.
+        Gl.DepthMask(0);
+        Gl.Enable(Gl.BLEND); _blendOn = true;
+    }
+
+    /// <summary>Depth only at LEQUAL, through the prepass's alpha-testing stage at each batch's own cut, over the
+    /// batches of [from, to) that <see cref="BlendLaysDepth"/> admits (and are fringed, for
+    /// <paramref name="fringe"/>). False = nothing swept: no feature stage, or an empty range.</summary>
+    private static bool DepthSweep(int from, int to, Matrix4x4* vp, int* viewport, bool fringe)
+    {
+        if (to <= from || !_prepassFeat || !Programs.EnsureDepthFeatProgram()) return false;
         bool indirect = CullPass.Active;
         // The COLOUR phase's commands, not the prepass phase's: this lays depth for exactly the batches the
         // blended colour draw kept, and the two phases test against different pyramids (#489).
@@ -880,7 +891,7 @@ public sealed unsafe partial class AlloyRenderer
         for (int g = from; g < to; g++)
         {
             if (Issue._onlyGobSet && _gGob[g] != Issue._onlyGob) continue;
-            if (!BlendLaysDepth(g)) continue;
+            if (!BlendLaysDepth(g) || fringe && !_gFringe[g]) continue;
             int s = _gStart[g];
             Gl.Uniform1i(Programs._depthFeatBase, s);
             float cut = AlloyClasses.Discard(_gCls[g]);
@@ -894,9 +905,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
         Gl.ColorMask(1, 1, 1, 1);
-        // Hand back what the blended class left and the copy, water and additive passes read as already set.
-        Gl.DepthMask(0);
-        Gl.Enable(Gl.BLEND); _blendOn = true;
+        return true;
     }
 
     /// <summary>A solid red band into the frame target for each upload <see cref="StreamRing"/> failed this
@@ -1157,11 +1166,16 @@ public sealed unsafe partial class AlloyRenderer
         GpuEnd(GpuTerm.Washes);
     }
 
-    /// <summary>The graded cutouts' fringes (<see cref="Issue.FringeBegin"/>) over the plain cutout run, on their own
-    /// GPU term with the keyhole tail apart. <c>/alloy bench</c>'s fringe rung opens and closes the term with no draw.</summary>
+    /// <summary>The graded cutouts' fringes (<see cref="Issue.FringeBegin"/>) over the plain cutout run: first the
+    /// band's nearest depth, so the colour draw shades one fringe layer per pixel instead of every overlapping one
+    /// (vanilla's bucket 1 writes depth too), then the band itself, each on its own GPU term with the keyhole tail
+    /// apart. <c>/alloy bench</c>'s fringe rung opens and closes the terms with no draw.</summary>
     private static void FringeOwnedPass(Matrix4x4* vp, int* viewport, float near, float far)
     {
         if (Programs.ProgFringe == 0 || _gA2cStart <= _gCutoutStart) return;
+        GpuBegin(GpuTerm.FringeDepth);
+        if (!Ablation.FringeSkip) DepthSweep(_gCutoutStart, _gA2cStart, vp, viewport, fringe: true);
+        GpuEnd(GpuTerm.FringeDepth);
         Issue.FringeBegin();
         if (Ablation.FringeSkip) { GpuBegin(GpuTerm.Fringe); GpuEnd(GpuTerm.Fringe); }
         else IssueClass(_gCutoutStart, _gA2cStart, GpuTerm.Fringe, GpuTerm.FringeKey, vp, viewport, near, far);

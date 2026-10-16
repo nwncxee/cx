@@ -460,7 +460,7 @@ internal static unsafe class Issue
                 // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
                 int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
                 if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
-                int sm = interior ? 1 : 0;
+                int sm = interior ? SolidInterior : fringePass ? SolidFringe : 0;
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
@@ -494,9 +494,9 @@ internal static unsafe class Issue
             // one like any blended draw.
             byte mask = equal ? (byte)0 : _passDepthMask;
             if (mask != boundMask) { Gl.DepthMask(mask); boundMask = mask; }
-            // the edge pass and the fringe pass: an interior or core fragment meets its own depth there, and LESS
-            // drops it before it is shaded
-            uint func = equal ? Gl.EQUAL : split && _split.Ran && !interior || fringePass ? Gl.LESS : Gl.LEQUAL;
+            // the edge pass: an interior fragment meets its own depth there, and LESS drops it before it is shaded.
+            // The fringe tests LEQUAL against its own swept depth and drops its core in the stage (SolidFringe).
+            uint func = equal ? Gl.EQUAL : split && _split.Ran && !interior ? Gl.LESS : Gl.LEQUAL;
             if (func != boundFunc) { Gl.DepthFunc(func); boundFunc = func; }
             bool test = !(blend && wash && !_washTest);
             if (test != boundTest) { if (test) Gl.Enable(Gl.DEPTH_TEST); else Gl.Disable(Gl.DEPTH_TEST); boundTest = test; }
@@ -618,7 +618,7 @@ internal static unsafe class Issue
     internal static void WashesDone() => _split.Ran = false;
 
     /// <summary>The fringe pass is issuing: only fringed batches draw, through the fringe program, blended with the
-    /// material's pair at <c>GL_LESS</c> and no depth write.</summary>
+    /// material's pair at <c>GL_LEQUAL</c> over the band's swept depth, with no depth write.</summary>
     private sealed class FringeState { public bool Pass; }
     private static readonly FringeState _fringe = new();
 
@@ -632,6 +632,10 @@ internal static unsafe class Issue
         Gl.DepthMask(0);
         Gl.Enable(Gl.BLEND); _blendOn = true;
     }
+
+    /// <summary>The lit stage's <c>uSolid</c>: a split wash's interior alone, or a fringe's band alone (raw
+    /// coverage at or below <see cref="AlloyClasses.SolidAlpha"/>, the complement of its core's cut).</summary>
+    internal const int SolidInterior = 1, SolidFringe = 2;
 
     /// <summary>Close the fringe pass: the next pass sets its own blend and depth mask.</summary>
     internal static void FringeEnd() { _fringe.Pass = false; _passDepthMask = 1; }
