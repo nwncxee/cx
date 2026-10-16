@@ -280,7 +280,6 @@ public static partial class TileBuild
         // receiver class 1 and the LOD/weld skip, which is right for tileset geometry and WRONG for a Static
         // placeable, so the caller says which this is (seam-feed's ObjFlag contract).
         SceneDb.ObjFlags[o] = (tile ? ObjFlag.Tile : ObjFlag.None) | ObjFlag.Static;
-        SceneDb.ObjRunRoot[o] = obj;
         MergePlan plan = Plan(def);
         Vector3 c = Vector3.Transform((plan.BMin + plan.BMax) * 0.5f, place);
         SceneDb.ObjSphere[o] = new Vector4(c, (plan.BMax - plan.BMin).Length() * 0.5f);

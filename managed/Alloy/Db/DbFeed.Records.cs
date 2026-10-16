@@ -424,7 +424,8 @@ public static unsafe partial class DbFeed
         // ...and the texture rotation, for the same reason: a recycled slot that kept a quarter turn would
         // turn the next tenant's tile textures through an angle its own placement never asked for.
         SceneDb.ObjTexRotate[o] = 0;
-        SceneDb.ObjRunRoot[o] = default;
+        // ...and the run root: the last tenant's may be a creature it rode, whose OIT id the next one would share.
+        SceneDb.ObjRunRoot[o] = SceneDb.Objects.IdAt(o);
         SceneDb.ObjLodShown[o] = 0;
         SceneDb.ObjSphere[o] = default;
         SceneDb.ObjTint[o] = Vector4.One;

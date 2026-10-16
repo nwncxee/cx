@@ -85,11 +85,21 @@ public sealed unsafe partial class AlloyRenderer
         }
         SortBlended(_blend, _blendKey, _blendAlpha, nb);
         // CX-273: the ground decals open the run, back to front among themselves, so the layer's writer draws one
-        // contiguous range and the rest keep their order behind it
-        for (int pick = 1; pick >= 0; pick--)
-            for (int a = 0; a < nb; a++)
-                if (_oDecal[_blend[a]] == pick)
-                { _pass[n] = _blend[a]; _passCls[n] = (byte)AlloyClass.Blended; _passAlpha[n] = _blendAlpha[a]; n++; }
+        // contiguous range. CX-190: under OIT the rest is ordered by state, so it batches like the opaque range.
+        bool free = OitPass.OrderFree;
+        for (int a = 0; a < nb; a++)
+        {
+            int i = _blend[a];
+            bool dis = Dissolves(i, _oTri[i], ref _stageCounters[0]);
+            _sortComp[a] = BlendComp(BlendRank(i, dis, free), a, dis);
+        }
+        _sortComp.AsSpan(0, nb).Sort();
+        for (int a = 0; a < nb; a++)
+        {
+            int from = CompPos(_sortComp[a]);
+            _pass[n] = _blend[from]; _passCls[n] = (byte)AlloyClass.Blended; _passAlpha[n] = _blendAlpha[from];
+            _passDis[n] = CompDis(_sortComp[a]); n++;
+        }
         // #129: water, unsorted. ponytail: a per-part back-to-front sort is skipped because water planes are
         // per-tile, coplanar and depth-writing -- they cannot overlap each other in a way a sort would fix.
         // Add one if a map ever stacks a waterfall sheet in front of a pool.
@@ -192,6 +202,53 @@ public sealed unsafe partial class AlloyRenderer
         return ok;
     }
 
+    /// <summary>Off-device: which blended draws carry an OIT object id, the run's order above distance in both modes,
+    /// and the ghost curve. Oracle: hand-written rows, and the expected permutation of a run spelled out by hand.</summary>
+    private static bool OitOrderSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "AlloyRenderer.OitOrderSelfCheck");
+        check.Expect(OitGrouped(objAlpha: 0.5f, decal: false, wash: 0), "a ghosted creature's part carries its object");
+        check.Expect(OitGrouped(objAlpha: 0.999f, decal: false, wash: 0), "...however slightly it is faded");
+        check.Expect(!OitGrouped(objAlpha: 1f, decal: false, wash: 0),
+                     "a blended material on an unfaded object, creature or static, composites every layer");
+        check.Expect(OitGrouped(objAlpha: 1f, decal: true, wash: WashWhole), "a ground decal keeps its object");
+        check.Expect(OitGrouped(objAlpha: 1f, decal: false, wash: WashSplit), "a split wash's rest keeps its object");
+        check.Expect(!OitGrouped(objAlpha: 1f, decal: false, wash: WashWhole), "a whole wash on a fading tile does not");
+        check.Expect(GhostCurve(0.5f, 2f) == 0.75f && GhostCurve(0.25f, 1f) == 0.25f,
+                     "a ghost draws as n layers of itself: half at two layers is three quarters, one layer is unchanged");
+        check.Expect(GhostCurve(0f, 1.5f) == 0f && GhostCurve(1f, 1.5f) == 1f,
+                     "fully invisible stays invisible and opaque stays opaque, so a fade has no step");
+
+        // Positions are the back-to-front order; gob is an object index + 1. Entry 9 holds the widest terms.
+        (bool decal, bool oitOut, int gob, bool dis, int rank)[] run =
+        {
+            (false, false, 0, false, 50), (true, false, 0, false, 900), (false, true, 0, false, 10),
+            (false, false, 0, false, 20), (false, false, 7, false, 5), (true, false, 0, false, 3),
+            (false, false, 0, true, 1), (false, true, 0, false, 400), (false, false, 7, false, 2),
+            (false, false, SceneDb.MaxObjects, true, MaxOwned - 1),
+        };
+        string Order(bool free)
+        {
+            var comp = new ulong[run.Length];
+            for (int a = 0; a < run.Length; a++)
+                comp[a] = BlendComp(BlendRankOf(run[a].decal, free, run[a].oitOut, run[a].gob, run[a].dis, run[a].rank),
+                                    a, run[a].dis);
+            Array.Sort(comp);
+            var s = new System.Text.StringBuilder();
+            foreach (ulong c in comp) s.Append(CompPos(c)).Append(CompDis(c) ? "d " : " ");
+            return s.ToString().TrimEnd();
+        }
+        string oit = Order(free: true), sorted = Order(free: false);
+        check.Expect(oit == "1 5 3 0 6d 8 4 9d 2 7",
+                     $"order-free: decals back to front, then object, keyhole bit and rank, then OIT's sit-outs back to front (got {oit})");
+        check.Expect(sorted == "1 5 0 2 3 4 6d 7 8 9d", $"sorted: decals back to front, then the rest back to front (got {sorted})");
+        ulong last = BlendComp(BlendRankOf(false, true, false, 0, false, 5), MaxOwned - 1, true);
+        check.Expect(CompPos(last) == MaxOwned - 1 && CompDis(last)
+                     && last < BlendComp(BlendRankOf(false, true, false, 0, false, 6), 0, false),
+                     "the last run position and its keyhole bit fit under the rank");
+        return check.Ok;
+    }
+
     /// <summary>Off-device: the middle radix digit's buckets and the rank of its two bits. A key wider than
     /// <see cref="_sortCount"/> throws out of the enrollment sweep; a wrong RANK costs nothing visible, only
     /// one more lighting-rig re-send per class forever. The width is asserted against the array itself rather
@@ -270,6 +327,55 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
+    /// <summary>Bits of an enrollment rank or a run position, both below <see cref="MaxOwned"/>; an object id
+    /// (index + 1) takes 17 more, for <see cref="SceneDb.MaxObjects"/>.</summary>
+    private const int SlotBits = 18, GobBits = 17;
+    private const int GroupShift = SlotBits + 1 + GobBits;
+    private const ulong SlotMask = (1ul << SlotBits) - 1;
+
+    /// <summary>The blended run's order above its back-to-front one. The ground decals open it. While OIT is
+    /// order-free (<paramref name="free"/>) the rest goes by state -- object, keyhole bit, enrollment rank, the
+    /// terms the batch cut keys on -- and what sits OIT out closes it, back to front for the sweep after the resolve.</summary>
+    private static ulong BlendRankOf(bool decal, bool free, bool oitOut, int gob, bool dis, int rank)
+        => decal ? 0ul
+         : !free ? 1ul << GroupShift
+         : oitOut ? 2ul << GroupShift
+         : 1ul << GroupShift | (ulong)gob << (SlotBits + 1) | (dis ? 1ul << SlotBits : 0ul) | (ulong)rank;
+
+    /// <summary><see cref="BlendRankOf"/> off slot <paramref name="i"/>'s columns.</summary>
+    private static ulong BlendRank(int i, bool dis, bool free)
+    {
+        int part = _oDbPart[i];
+        DbId root = RunRoot(i);
+        int gob = SceneDb.Objects.Valid(root) && OitGrouped(DbObjAlpha(part), false, _oWash[i]) ? root.Index + 1 : 0;
+        return BlendRankOf(_oDecal[i] != 0, free, SlotSitsOitOut(i), gob, dis, _orderRank[i]);
+    }
+
+    /// <summary><see cref="Issue.SitsOitOut"/> off slot <paramref name="i"/>'s columns.</summary>
+    private static bool SlotSitsOitOut(int i)
+        => Issue.SitsOitOut(Issue.HostedBody(_oLit[i], (int)_oFeat[i * 4]), _oSrc[i], _oDst[i]);
+
+    /// <summary>One sort word: the rank, then the back-to-front position (unique, so the sort is stable), then the
+    /// keyhole bit, which rides below the position and so never orders anything.</summary>
+    private static ulong BlendComp(ulong rank, int pos, bool dis) => rank << (SlotBits + 1) | (ulong)pos << 1 | (dis ? 1ul : 0ul);
+    private static int CompPos(ulong comp) => (int)(comp >> 1 & SlotMask);
+    private static bool CompDis(ulong comp) => (comp & 1) != 0;
+
+    /// <summary>Does a blended draw carry its run root as its OIT object id? When its object is faded as a whole --
+    /// ghosting, the one case where an object must not show its own interior -- and for a ground decal or a split
+    /// wash's rest, whose stacked sheets composite as one layer per object.</summary>
+    internal static bool OitGrouped(float objAlpha, bool decal, byte wash) => objAlpha < 1f || decal || wash == WashSplit;
+
+    /// <summary>The object alpha slot <paramref name="i"/> draws with. Where the list resolve composites a faded object
+    /// once, its overlapping parts no longer thicken it, so it draws as <c>alloy.ghost</c> layers of itself.</summary>
+    private static float GhostAlpha(int i, int cls, float objAlpha)
+        => objAlpha < 1f && cls == (int)AlloyClass.Blended && OitPass.Dedupes && !SlotSitsOitOut(i)
+           ? GhostCurve(objAlpha, Renderer.Ghost.V) : objAlpha;
+
+    /// <summary><paramref name="a"/> as <paramref name="layers"/> layers of itself, 1 - (1 - a)^layers. 0 and 1 are
+    /// fixed points, so a fade in or out stays continuous and a fully invisible object stays invisible.</summary>
+    internal static float GhostCurve(float a, float layers) => 1f - MathF.Pow(1f - a, layers);
+
     /// <summary>Up to this many blended entries the insertion sort is cheaper than the keyed one; past it the
     /// insertion sort's quadratic walk over an unsorted route order cost milliseconds a frame.</summary>
     private const int InsertionMax = 32;
@@ -302,14 +408,14 @@ public sealed unsafe partial class AlloyRenderer
         => SceneDb.PartAlpha[_oDbPart[i]] * SceneDb.PartFade[_oDbPart[i]] * DbObjAlpha(_oDbPart[i]);
 
     /// <summary>The blended sort key: a part sorts by its RUN ROOT's distance, so every part of one creature
-    /// carries the same key and the stable sort lands them contiguous -- one run the frame can depth-prepass
-    /// and colour as a unit. A part with no run root keeps its own centre.</summary>
+    /// carries the same key and the stable sort lands them contiguous. A part whose root is gone (a rider
+    /// outliving its creature) keeps its own centre.</summary>
     private static float BlendKey(int i)
     {
         // CX-120: a part sorts by its RUN ROOT's world position -- the object a fade and a blended run apply to,
         // resolved when attachment changed rather than climbed per part per pass.
-        DbId root = SceneDb.ObjRunRoot[SceneDb.PartObj[_oDbPart[i]].Index];
-        if (root.IsNull) return EyeDist2(i);
+        DbId root = RunRoot(i);
+        if (!SceneDb.Objects.Valid(root)) return EyeDist2(i);
         Matrix4x4 w = SceneDb.ObjWorld[root.Index];
         float dx = w.M41 - _eyePos.X, dy = w.M42 - _eyePos.Y, dz = w.M43 - _eyePos.Z;
         return dx * dx + dy * dy + dz * dz;
@@ -318,8 +424,11 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The blended batch key's run identity -- the run root as an opaque value, compared and never
     /// dereferenced by every reader. A creature's body parts and held items share one root, so one ghosted
     /// creature is one layer rather than one per part.</summary>
-    private static IntPtr RunKey(int i)
-        => (IntPtr)(long)SceneDb.ObjRunRoot[SceneDb.PartObj[_oDbPart[i]].Index].Value;
+    private static IntPtr RunKey(int i) => (IntPtr)(long)RunRoot(i).Value;
+
+    /// <summary>Slot <paramref name="i"/>'s object's run root (<see cref="SceneDb.ObjRunRoot"/>); stale once a
+    /// rider outlives its creature, so a reader that dereferences it checks it first.</summary>
+    private static DbId RunRoot(int i) => SceneDb.ObjRunRoot[SceneDb.PartObj[_oDbPart[i]].Index];
 
     /// <summary>Is this part a creature's? Its own object, or any object up its attachment chain, carries the
     /// creature flag -- a hat or a held weapon is its own object hanging off the body's. A player character is
@@ -799,8 +908,7 @@ public sealed unsafe partial class AlloyRenderer
             // #292: ...and so is face culling, for exactly the same reason. Sorted under the lit bit
             // (SortKeyOf), so this cuts at most twice per class rather than once per interleaved part.
             bool noCull = row.NoCull;
-            // A blended batch never straddles two creatures: the frame prepasses and colours each run of
-            // one gob's batches as a unit, so the gob is a key term here and a tag on the batch.
+            // The OIT object id is one uniform per batch, so it is a key term here and a tag on the batch.
             IntPtr gobKey = row.GobKey;
             // CX-189: an alpha-to-coverage cutout draws in its own layer, so it never shares a batch
             bool a2c = cls == (int)AlloyClass.Cutout && _oA2c[i];
@@ -960,9 +1068,9 @@ public sealed unsafe partial class AlloyRenderer
         // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a
         // wash's polygon offset, in any class
         row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
-        // A blended batch never straddles two creatures: the frame prepasses and colours each run of one gob's
-        // batches as a unit, so the gob is a key term and a tag on the batch.
-        row.GobKey = cls == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
+        // The OIT object id is one uniform per batch, so it is a key term and a tag on the batch.
+        row.GobKey = cls == (int)AlloyClass.Blended && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i])
+                   ? RunKey(i) : IntPtr.Zero;
         row.Decal = cls == (int)AlloyClass.Blended && _oDecal[i] != 0;
         // "has an instance behind it", which in DB mode is "is not tileset geometry".
         row.HasGob = db ? (SceneDb.ObjFlags[SceneDb.PartObj[_oDbPart[i]].Index] & ObjFlag.Tile) == 0
@@ -1012,7 +1120,8 @@ public sealed unsafe partial class AlloyRenderer
             _bAudited++;
             int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
             int blend = (_oWash[i] << 16) | (AlloyClasses.Blends(_passCls[k]) ? (_oSrc[i] << 8) | _oDst[i] : 0);
-            IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended ? RunKey(i) : IntPtr.Zero;
+            IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended
+                            && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i]) ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
             bool recMoved = _recMovedAt[i] == _frameSeq;
             bool moved = posed ? recMoved || _poseMovedAt[i] == _frameSeq : dangly || recMoved && _oMx[i];

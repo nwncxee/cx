@@ -254,7 +254,7 @@ public sealed unsafe partial class AlloyRenderer
         DbId obj = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(obj)) { _dbOrphan++; return Skipped; }
         int o = obj.Index;
-        bool dis = cls <= (int)AlloyClass.Cutout ? _passDis[k] : Dissolves(i, _oTri[i], ref c);
+        bool dis = cls <= (int)AlloyClass.Blended ? _passDis[k] : Dissolves(i, _oTri[i], ref c);
         if (dis) c.OwnDissolve++;
 
         var f = default(RecordFrameState);
@@ -262,7 +262,7 @@ public sealed unsafe partial class AlloyRenderer
         f.Model = SceneDb.PartWorld[part];
         f.Dissolve = dis ? 1f : 0f;
         Vector4 tint = SceneDb.ObjTint[o];
-        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * tint.W;
+        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * GhostAlpha(i, cls, tint.W);
         f.Lit = lit;
         if (lit)
         {
