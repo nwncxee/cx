@@ -90,7 +90,7 @@
 12 managed/Alloy/DebugStringService.cs
 2 managed/Alloy/FrameDiff.cs
 20 managed/Alloy/Highlight.cs
-16 managed/Alloy/Issue.cs
+14 managed/Alloy/Issue.cs
 5 managed/Alloy/MaterialExtraSlots.cs
 1 managed/Alloy/Mdl/MdlBinaryPayload.cs
 2 managed/Alloy/Mdl/MdlParser.cs
