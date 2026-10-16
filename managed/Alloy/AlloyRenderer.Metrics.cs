@@ -272,7 +272,9 @@ public sealed unsafe partial class AlloyRenderer
                    $"{(float)Counters._recStable / Counters._frames:F0} stable ({_recOwnCap} slots), " +
                    // CX-43: program switches that took the pass terms, and how many of them had to send the block
                    $"pass block {(float)PassBinds / Counters._frames:F1} binds/frame ({(float)PassBindsBorrowed / Counters._frames:F1} through another view's cluster table), {(float)PassUploads / Counters._frames:F1} sends/frame, " +
-                   $"record table {Issue.WholeUploads} whole upload(s) ({Issue.WholeBytes >> 20} MiB) over {Counters._frames} frames, " +
+                   $"record table {Issue.Uploads.Whole} whole upload(s) ({Issue.Uploads.RecordBytes >> 20} MiB, handle table {Issue.Uploads.HandleBytes >> 20} MiB: " +
+                   $"{Issue.Uploads.Growth} growth, {Issue.Uploads.Overflow} overflow, {Issue.Uploads.Restage} restage, {Issue.Uploads.OverBudget} past {Issue.RunBudget} runs) " +
+                   $"and {Issue.Uploads.Deltas} delta(s) of {(float)Issue.Uploads.DeltaRuns / Math.Max(1, Issue.Uploads.Deltas):F1} runs, max {Issue.Uploads.MaxRuns} runs, over {Counters._frames} frames, " +
                    // #330: how much of the engine chase the view bounded away, and the poll audit.
                    ChaseNote() + ", " +
                    (Counters._watchEnrolled == 0 ? "" :

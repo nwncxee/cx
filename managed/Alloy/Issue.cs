@@ -60,21 +60,47 @@ internal static unsafe class Issue
         return d;
     }
 
+    /// <summary>The runs <see cref="NextRun"/> walks in the first <paramref name="n"/> of sorted
+    /// <paramref name="dirty"/>.</summary>
+    private static int CountRuns(int[] dirty, int n)
+    {
+        int runs = 0;
+        for (int d = 0; d < n; runs++) d = NextRun(dirty, n, d, out _, out _);
+        return runs;
+    }
+
+    /// <summary>The most runs one delta upload sends; past it the whole table goes up in one call. A delta costs
+    /// its call count (<see cref="UploadRuns"/>), so the budget is in runs, not in a share of the view's draws.</summary>
+    // ponytail: a guessed break-even; tune it from the period line's runs, or scatter the deltas from the
+    // stream ring on the GPU, which makes every delta one call and leaves only growth whole.
+    internal const int RunBudget = 512;
+
+    /// <summary>Sort the dirty list for <see cref="UploadRuns"/> and count its runs.</summary>
+    private static int SortedRuns()
+    {
+        int n = Math.Min(_recDirtyN, _recDirty.Length);
+        Array.Sort(_recDirty, 0, n);
+        return CountRuns(_recDirty, n);
+    }
+
     /// <summary>A wrong run uploads a stale record over a live slot, silently, so this joins the disarm
-    /// chain: duplicates collapse, adjacent slots merge, a gap splits.</summary>
+    /// chain: duplicates collapse, adjacent slots merge, a gap splits, and a prefix counts only its own runs.
+    /// Oracle: the hand-counted runs of the literal lists below.</summary>
     internal static bool RunsSelfCheck(ExtenderLog log)
     {
         int[] dirty = { 5, 3, 4, 9, 3, 11, 10 };
         Array.Sort(dirty);
         int d = NextRun(dirty, dirty.Length, 0, out int f0, out int l0);
         d = NextRun(dirty, dirty.Length, d, out int f1, out int l1);
-        bool ok = f0 == 3 && l0 == 5 && f1 == 9 && l1 == 11 && d == dirty.Length;
-        if (!ok) log.Info("AlloyRenderer.RunsSelfCheck: FAILED -- the dirty-slot runs do not merge as sorted");
+        int[] three = { 3, 3, 4, 5, 9, 10, 11, 20 };
+        bool ok = f0 == 3 && l0 == 5 && f1 == 9 && l1 == 11 && d == dirty.Length
+               && CountRuns(three, three.Length) == 3 && CountRuns(three, 4) == 1 && CountRuns(three, 0) == 0;
+        if (!ok) log.Info("AlloyRenderer.RunsSelfCheck: FAILED -- the dirty-slot runs do not merge or count as sorted");
         return ok;
     }
 
     /// <summary>Push the records that MOVED into the persistent per-draw SSBO, then stream the draw-to-slot
-    /// index array this pass's order needs. Past a quarter of the table a wholesale upload is cheaper, as a
+    /// index array this pass's order needs. Past <see cref="RunBudget"/> runs a wholesale upload is cheaper, as a
     /// reallocation or a dirty-list overflow also are. A persistent buffer cannot orphan, so a SubData over a
     /// buffer the GPU may still be reading can sync. False = the slot array did not stream, frame sits out.</summary>
     internal static bool UploadDraws()
@@ -88,13 +114,18 @@ internal static unsafe class Issue
                           (IntPtr)((long)cap * DrawFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
             grew = true;
         }
-        // Against what this frame DRAWS, not against the high-water capacity: _recOwnCap latches at the
-        // largest area of the session and never shrinks, so thresholding on it would leave a small interior
-        // issuing thousands of scattered SubData calls into a buffer that can no longer orphan -- one
-        // enrollment's worth of hitch, once a cadence, in exactly the "just left the city" case.
-        bool whole = grew || _recDirtyAll || _recDirtyN > _drawN / 4;
-        if (whole) { WholeUploads++; WholeBytes += (long)cap * DrawFloats * sizeof(float); }
-        if (!whole) Array.Sort(_recDirty, 0, _recDirtyN);
+        UploadState u = Uploads;
+        bool restaged = RecordEpoch != u.EpochSent;
+        u.EpochSent = RecordEpoch;
+        int runs = grew || _recDirtyAll ? 0 : SortedRuns();
+        bool whole = grew || _recDirtyAll || runs > RunBudget;
+        u.MaxRuns = Math.Max(u.MaxRuns, runs);
+        if (!whole) { if (runs > 0) { u.Deltas++; u.DeltaRuns += runs; } }
+        else
+        {
+            if (grew) u.Growth++; else if (_recDirtyAll) u.Overflow++; else if (restaged) u.Restage++; else u.OverBudget++;
+            u.RecordBytes += (long)cap * DrawFloats * sizeof(float);
+        }
         fixed (DrawRecordBlock* p = _dData)
         {
             if (whole)
@@ -112,9 +143,21 @@ internal static unsafe class Issue
             return StreamRing.Stream(StreamRing.Site.DrawSlots, BindDrawIdx, p, (long)_drawN * sizeof(int), out _slotRange);
     }
 
-    /// <summary>This period's whole-table record uploads and their bytes: every one is a SubData over the whole
-    /// capacity into a buffer the GPU may still be reading.</summary>
-    internal static long WholeUploads, WholeBytes;
+    /// <summary>One period's record-table uploads: the whole ones by reason, the bytes the whole record and handle
+    /// tables sent (each one SubData into a buffer the GPU may still be reading), the deltas by their runs, and the
+    /// most runs any upload had. <c>EpochSent</c> spans periods: a whole upload on a newer epoch is a restage.</summary>
+    internal sealed class UploadState
+    {
+        internal long Growth, Overflow, Restage, OverBudget, RecordBytes, HandleBytes, Deltas, DeltaRuns;
+        internal int MaxRuns, EpochSent;
+        internal long Whole => Growth + Overflow + Restage + OverBudget;
+    }
+
+    /// <summary>This period's upload tallies; <see cref="ResetPeriod"/> replaces it.</summary>
+    internal static UploadState Uploads = new();
+
+    /// <summary>Start a period's tallies, keeping the record epoch the last upload sent.</summary>
+    internal static void ResetPeriod() => Uploads = new() { EpochSent = Uploads.EpochSent };
 
     /// <summary>The staged draw-to-slot array's ring slice, for <see cref="BindStagedSlots"/>.</summary>
     internal static StreamRing.Range _slotRange;
@@ -152,7 +195,10 @@ internal static unsafe class Issue
         {
             BindlessLedger.CheckTable((ulong*)p, n, "the record handle table");
             if (whole)
+            {
                 Gl.NamedBufferSubData(_texHBuf, IntPtr.Zero, (IntPtr)(n * sizeof(ulong)), p);
+                Uploads.HandleBytes += n * sizeof(ulong);
+            }
             else
                 UploadRuns(_texHBuf, _gpuTexH, sizeof(TexHandles));
         }
@@ -179,8 +225,7 @@ internal static unsafe class Issue
     {
         if (!_bindless || !_texHDirty) return;
         int cap = _recOwnCap + MaxSkyDraws;
-        bool whole = _recDirtyAll || _recDirtyN > _drawN / 4 || cap > _texHCapGpu;
-        if (!whole) Array.Sort(_recDirty, 0, Math.Min(_recDirtyN, _recDirty.Length));
+        bool whole = _recDirtyAll || cap > _texHCapGpu || SortedRuns() > RunBudget;
         UploadHandles(cap, whole);
         BakeHandleUploads++;
     }
