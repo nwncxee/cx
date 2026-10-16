@@ -30,6 +30,10 @@ internal static unsafe partial class TexRegistry
     private const float ArturoHeightScale = 0.0078125f;
     /// <summary>Knuth's multiplicative step, spreading slot numbers into unrelated generator seeds.</summary>
     private const uint RngSeedStep = 2654435761u;
+    /// <summary>The widest wave grid a <c>.txi</c> may ask for. The stock extreme is 128, and the grid is a
+    /// square of floats, so this is the line past which content would be sizing the bracket's own memory.
+    /// <c>ponytail:</c> clamped and counted; a real ceiling would size it against the texture instead.</summary>
+    private const int ArturoGridMax = 512;
 
     /// <summary>One texture's running ripple: the controller's two wave grids, the source image it warps and
     /// the buffer it uploads. Every array is allocated once, at the file, so a step allocates nothing.</summary>
@@ -52,8 +56,9 @@ internal static unsafe partial class TexRegistry
         }
 
         /// <summary>The starting wave and the two steps <c>ArturoTextureController::Init</c> @0x5d6a70 runs
-        /// over it before the first frame.</summary>
-        public void Seed() { Lay(); Wave(); Wave(); }
+        /// over it, then one whole height map: the sub-steps fill half each, and the first warp must not read
+        /// the half that has not had its turn yet.</summary>
+        public void Seed() { Lay(); Wave(); Wave(); Fill(0, H); }
 
         /// <summary>The starting wave: a radial sine bump over the grid, with the previous frame flat.</summary>
         public void Lay()
@@ -144,11 +149,16 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    /// <summary>What the ripple costs and refuses, for the registry's note.</summary>
+    /// <summary>Every ripple there is, and what they cost and refuse: the slot table the bracket walks, the
+    /// clock it reads and the counters the registry's note prints.</summary>
     private sealed class ArturoState
     {
         public long Last, Steps, Uploads;
-        public int Unbuilt, Flat;
+        public int Unbuilt, Flat, Huge;
+        /// <summary>The slot's ripple, filed at the upload; null for every texture that does not ripple.</summary>
+        public readonly Arturo?[] Slots = new Arturo?[MaxSlots];
+        /// <summary>Slots that may hold a ripple, walked by the bracket; a slot whose ripple is gone drops off.</summary>
+        public readonly List<int> Running = new();
     }
 
     /// <summary>The angled warp's direction per height byte, tabulated once as the engine's own
@@ -164,10 +174,6 @@ internal static unsafe partial class TexRegistry
     }
 
     private static readonly ArturoState _artState = new();
-    /// <summary>The slot's ripple, filed at the upload; null for every texture that does not ripple.</summary>
-    private static readonly Arturo?[] _arturo = new Arturo?[MaxSlots];
-    /// <summary>Slots that may hold a ripple, walked by the bracket; a slot whose ripple is gone drops off.</summary>
-    private static readonly List<int> _arturoing = new();
 
     /// <summary>The arturo words, line by line as <c>CAurTextureBasic::ParseField</c> @0x5881e0 feeds them:
     /// a <c>proceduretype</c> line replaces the controller, so the words before it are lost and a later
@@ -203,13 +209,31 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    /// <summary>WORKER: a rippling texture keeps its decoded image, which is the source every warp fetches from.</summary>
+    /// <summary>Does this <c>.txi</c> put a controller on the texture? <c>AurGetImageWrapper</c> @0x584cc0
+    /// reaches for the compressed container only when the texture has neither a controller nor a grid, so
+    /// a declared one is what makes the engine load the uncompressed image instead.</summary>
+    private static bool TxiIsProcedural(in ArturoTxi a, int gridX, int gridY) => a.On || gridX * gridY > 1;
+
+    /// <summary>WORKER: a rippling texture keeps its image and the buffers the warp runs in, so the bracket
+    /// allocates nothing. <c>ponytail:</c> a ripple on a BCn texture stands down, counted -- vanilla never
+    /// loads one, because a controller is what sends it down the uncompressed path.</summary>
     private static void KeepArturo(Job j)
     {
         if (!j.Arturo.On || j.Arturo.Distort == 0 || j.Pixels != null || j.Compressed || j.Data == null) return;
         if (j.Channels < 1 || !Pow2(j.W) || !Pow2(j.H)) return;
-        j.Pixels = new byte[(long)j.W * j.H * j.Channels];
-        new ReadOnlySpan<byte>(j.Data, j.Pixels.Length).CopyTo(j.Pixels);
+        int aw = Math.Clamp(j.Arturo.GridW, 1, ArturoGridMax), ah = Math.Clamp(j.Arturo.GridH, 1, ArturoGridMax);
+        if (aw != j.Arturo.GridW || ah != j.Arturo.GridH) System.Threading.Interlocked.Increment(ref _artState.Huge);
+        j.Pixels = KeepWholeImage(j);
+        j.Ripple = new Arturo
+        {
+            Gen = j.Gen, W = j.W, H = j.H, Px = j.Channels, Aw = aw, Ah = ah,
+            Angle = j.Arturo.Angle, Amp = j.Arturo.Amplitude, Speed = j.Arturo.Speed,
+            PixFmt = j.PixFmt, PixType = j.PixType, Mip = j.GenMips,
+            Rng = (uint)j.Slot * RngSeedStep | 1u,
+            Cur = new float[aw * ah], Prev = new float[aw * ah], Next = new float[aw * ah],
+            Height = new byte[(long)j.W * j.H], Src = j.Pixels, Out = new byte[j.Pixels.Length],
+        };
+        j.Ripple.Seed();
     }
 
     /// <summary>Is <paramref name="n"/> a power of two? The warp wraps with a mask, so a texture that is not
@@ -220,48 +244,40 @@ internal static unsafe partial class TexRegistry
     private static void FileArturo(Job j)
     {
         if (!j.Arturo.On || j.Tail) return;
-        // The engine never fills a height map for a controller with no `distort`: Control returns on every
-        // sub-step before the rows are written, so there is nothing to reproduce.
+        // Control returns on all three sub-steps before the height rows are written when there is no
+        // `distort`, so vanilla has no ripple here either.
         if (j.Arturo.Distort == 0) { _artState.Flat++; return; }
-        if (j.Pixels == null) { _artState.Unbuilt++; return; }
-        int aw = Math.Max(1, j.Arturo.GridW), ah = Math.Max(1, j.Arturo.GridH);
-        var a = new Arturo
-        {
-            Gen = j.Gen, W = j.W, H = j.H, Px = j.Channels, Aw = aw, Ah = ah,
-            Angle = j.Arturo.Angle, Amp = j.Arturo.Amplitude, Speed = j.Arturo.Speed,
-            PixFmt = j.PixFmt, PixType = j.PixType, Mip = j.GenMips,
-            Rng = (uint)j.Slot * RngSeedStep | 1u,
-            Cur = new float[aw * ah], Prev = new float[aw * ah], Next = new float[aw * ah],
-            Height = new byte[(long)j.W * j.H], Src = j.Pixels, Out = new byte[j.Pixels.Length],
-        };
-        a.Seed();
+        if (j.Ripple == null) { _artState.Unbuilt++; return; }
         lock (_lock)
         {
             if ((_gen[j.Slot] & 0xFFF) != j.Gen) return;
-            _arturo[j.Slot] = a;
-            if (!_arturoing.Contains(j.Slot)) _arturoing.Add(j.Slot);
+            _artState.Slots[j.Slot] = j.Ripple;
+            if (!_artState.Running.Contains(j.Slot)) _artState.Running.Add(j.Slot);
         }
     }
 
+    /// <summary>The slot's ripple, dropped where the slot itself is reset.</summary>
+    private static void ClearArturo(int i) => _artState.Slots[i] = null;
+
     /// <summary>BRACKET, once a frame: step every resident ripple on the controller's own clock -- one
     /// sub-step per 0.03 s, the phase advanced on the first of three and the warp uploaded on the third.
-    /// ponytail: the engine shares one clock and one sub-step counter across all of them and runs them per
-    /// bind, so an unseen ripple pauses there; here each texture carries its own and runs whether seen or not.</summary>
+    /// ponytail: one clock per texture, and at most one sub-step a frame, so under 33 fps the ripple slows
+    /// with the frame; the engine shares one clock across all of them and steps it from every bind instead.</summary>
     private static void StepArturo()
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         float dt = _artState.Last == 0 ? 0f : (now - _artState.Last) / (float)System.Diagnostics.Stopwatch.Frequency;
         _artState.Last = now;
-        if (_arturoing.Count == 0 || Gl.TextureSubImage2D == null) return;
-        for (int k = _arturoing.Count - 1; k >= 0; k--)
+        List<int> running = _artState.Running;
+        if (running.Count == 0 || Gl.TextureSubImage2D == null) return;
+        for (int k = running.Count - 1; k >= 0; k--)
         {
-            int i = _arturoing[k];
+            int i = running[k];
             Arturo? a; uint name; uint gen;
-            lock (_lock) { a = _arturo[i]; name = _preview[i] ? 0u : _name[i]; gen = _gen[i] & 0xFFF; }
+            lock (_lock) { a = _artState.Slots[i]; name = _preview[i] ? 0u : _name[i]; gen = _gen[i] & 0xFFF; }
             if (a == null || a.Gen != gen)
             {
-                lock (_lock) { if (ReferenceEquals(_arturo[i], a)) _arturo[i] = null; }
-                _arturoing.RemoveAt(k);
+                lock (_lock) { if (ReferenceEquals(_artState.Slots[i], a)) _artState.Slots[i] = null; running.RemoveAt(k); }
                 continue;
             }
             if (name == 0) continue;
@@ -308,9 +324,17 @@ internal static unsafe partial class TexRegistry
         check.Expect(a.On && a.GridW == 15 && a.GridH == 15 && a.Distort == 0 && a.Angle == 1
                      && a.Amplitude == 5f && a.Speed == 1f, "a bare arturo line takes the controllers' own defaults");
         ParseArturo("speed 9\nproceduretype arturo\narturowidth 4\nproceduretype cycle\narturoheight 7\n", out a);
-        check.Expect(!a.On && a.GridH == ArturoGrid, "a later proceduretype takes the ripple away");
+        check.Expect(!a.On && a.GridH == 15, "a later proceduretype takes the ripple away");
         ParseArturo("arturowidth 4\nproceduretype arturo\n", out a);
-        check.Expect(a.GridW == ArturoGrid, "a word before the proceduretype line reaches the controller");
+        check.Expect(a.GridW == 15, "a word before the proceduretype line reaches the controller");
+
+        // The term that sends a texture down the uncompressed path. Every stock arturo water ships a BCn DDS
+        // beside its TGA, and a ripple cannot be written into a compressed level, so this decides the feature.
+        ParseArturo("proceduretype arturo\ndistort 1\n", out a);
+        check.Expect(TxiIsProcedural(a, 1, 1), "a declared ripple takes the uncompressed container");
+        ParseArturo("envmaptexture tm_coinbase01\n", out a);
+        check.Expect(!TxiIsProcedural(a, 1, 1) && TxiIsProcedural(a, 4, 4),
+                     "a plain texture races for its container, a flipbook grid does not");
 
         var r = new Arturo
         {
@@ -357,9 +381,10 @@ internal static unsafe partial class TexRegistry
     private static string ArturoNote()
     {
         int live = 0;
-        lock (_lock) foreach (int i in _arturoing) if (_arturo[i] != null) live++;
+        lock (_lock) foreach (int i in _artState.Running) if (_artState.Slots[i] != null) live++;
         return $", {live} rippling ({_artState.Uploads} warps)"
              + (_artState.Unbuilt > 0 ? $", {_artState.Unbuilt} ARTURO TEXTURE(S) NOT ANIMATED (compressed, or not a power of two)" : "")
+             + (_artState.Huge > 0 ? $", {_artState.Huge} ARTURO GRID(S) CLAMPED to {ArturoGridMax}" : "")
              + (_artState.Flat > 0 ? $", {_artState.Flat} arturo without distort (vanilla draws those flat too)" : "");
     }
 }
