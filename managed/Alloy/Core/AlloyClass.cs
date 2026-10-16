@@ -71,13 +71,12 @@ internal static class AlloyClasses
     /// <c>transparencyhint</c> would blend it, draws blended; so does a graded cutout wash. Anything else, a
     /// hinted tree included, keeps the recipe's class: vanilla reads the hint only as a child draw order.</summary>
     internal static byte SlotClass(int recipeCls, bool hintBlended, bool graded, bool wash, bool decal)
-        => decal || wash && (hintBlended || recipeCls == (int)AlloyClass.Cutout && graded)
+        => decal || (wash && (hintBlended || (recipeCls == (int)AlloyClass.Cutout && graded)))
            ? (byte)AlloyClass.Blended : (byte)recipeCls;
 
-    /// <summary>Off-device: the classifier's precedence, the one thing about it not readable off a single
-    /// line. Additive beats opacity (the engine tests the blend factor first), opacity beats both transparency
-    /// terms, and a texture-alpha part with nothing declared is a cutout -- the majority of NWN content, and
-    /// the reason the missing sort survives at all.</summary>
+    /// <summary>Off-device: the classifier's precedence (additive beats opacity, opacity beats both transparency
+    /// terms, texture alpha alone is a cutout) and the slot rule. Oracle: hand-written tables of expected classes,
+    /// never a call to the rule under test.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyClasses.SelfCheck");
@@ -132,25 +131,21 @@ internal static class AlloyClasses
           "water draws after the blended class (fade is in its copy) and before additive (glow is not)");
         check.Expect(Count == System.Enum.GetValues<AlloyClass>().Length, "Count sizes the per-class arrays");
 
-        // The slot rule, rows written out by hand: a transparencyhint blends a flat sheet (decal, wash) and
-        // nothing else; a graded cutout wash blends its edge whatever the hint; every other slot keeps its class.
-        (AlloyClass Cls, bool Hint, bool Graded, bool Wash, bool Decal, AlloyClass Want)[] slots =
-        {
-            (AlloyClass.Cutout, true, true, false, false, AlloyClass.Cutout),
-            (AlloyClass.Cutout, true, false, false, false, AlloyClass.Cutout),
-            (AlloyClass.Cutout, true, true, false, true, AlloyClass.Blended),
-            (AlloyClass.Cutout, true, false, true, false, AlloyClass.Blended),
-            (AlloyClass.Cutout, true, true, true, true, AlloyClass.Blended),
-            (AlloyClass.Cutout, false, true, true, false, AlloyClass.Blended),
-            (AlloyClass.Cutout, false, false, true, false, AlloyClass.Cutout),
-            (AlloyClass.Cutout, false, true, false, false, AlloyClass.Cutout),
-            (AlloyClass.Opaque, false, false, false, false, AlloyClass.Opaque),
-            (AlloyClass.Additive, false, true, true, false, AlloyClass.Additive),
-            (AlloyClass.Water, false, true, false, false, AlloyClass.Water),
-        };
-        foreach (var r in slots)
-            check.Expect(SlotClass((int)r.Cls, r.Hint, r.Graded, r.Wash, r.Decal) == (byte)r.Want,
-              $"a {r.Cls} recipe, hint {r.Hint}, graded {r.Graded}, wash {r.Wash}, decal {r.Decal}: a {r.Want} slot");
+        // Named arguments for the same reason as Row: four adjacent bools swap silently.
+        static AlloyClass Slot(AlloyClass cls, bool hint = false, bool graded = false, bool wash = false, bool decal = false)
+            => (AlloyClass)SlotClass((int)cls, hintBlended: hint, graded: graded, wash: wash, decal: decal);
+
+        check.Expect(Slot(AlloyClass.Cutout, hint: true, graded: true) == AlloyClass.Cutout, "a hinted tree is a cutout");
+        check.Expect(Slot(AlloyClass.Cutout, hint: true) == AlloyClass.Cutout, "and so is a hinted binary-alpha part");
+        check.Expect(Slot(AlloyClass.Cutout, hint: true, graded: true, decal: true) == AlloyClass.Blended,
+          "a ground decal blends: the decal layer takes its batches from the blended range");
+        check.Expect(Slot(AlloyClass.Cutout, hint: true, wash: true) == AlloyClass.Blended,
+          "a hinted wash blends, graded or not");
+        check.Expect(Slot(AlloyClass.Cutout, graded: true, wash: true) == AlloyClass.Blended,
+          "an unhinted graded wash blends its edge");
+        check.Expect(Slot(AlloyClass.Cutout, wash: true) == AlloyClass.Cutout, "an unhinted binary wash stays a cutout");
+        check.Expect(Slot(AlloyClass.Cutout, graded: true) == AlloyClass.Cutout, "a plain graded cutout stays a cutout");
+        check.Expect(Slot(AlloyClass.Opaque) == AlloyClass.Opaque, "an opaque part stays opaque");
 
         log.Info(check.Ok ? "AlloyClasses.SelfCheck: passed" : "AlloyClasses.SelfCheck: FAILED");
     }

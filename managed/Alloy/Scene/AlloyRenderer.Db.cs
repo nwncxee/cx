@@ -59,9 +59,9 @@ public sealed unsafe partial class AlloyRenderer
            && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage | RecipeFlag.CoverNrm)) == 0
            && (DrawRecipe.Slots(recipe) & EnvSlot) == 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
 
-    /// <summary>The class a slot draws in (<see cref="AlloyClasses.SlotClass"/>). A graded wash blends as vanilla draws
-    /// its alpha-tested bucket (<c>Scene::RenderSinglePass</c> @0x56e5f0: blend and the 0.2 test together); drawn
-    /// hard, its edge showed whatever colour the texture keeps under alpha 0.</summary>
+    /// <summary>The class a slot draws in (<see cref="AlloyClasses.SlotClass"/>): blended for a ground decal, a wash
+    /// with <see cref="RecipeFlag.HintBlended"/>, or a graded cutout wash (vanilla's blend plus 0.2 test,
+    /// <c>Scene::RenderSinglePass</c> @0x56e5f0); otherwise the recipe's class.</summary>
     internal static byte DbClass(int recipe, bool wash, bool decal)
         => AlloyClasses.SlotClass(DrawRecipe.Cls(recipe), (DrawRecipe.Flags(recipe) & RecipeFlag.HintBlended) != 0,
                                   DrawRecipe.Graded(recipe), wash, decal);
@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The first term <see cref="DbDecal"/> refuses a flat see-through sheet on, for the log.</summary>
     private static string DbDecalWhyNot(int recipe, RecipeFlag rf, ObjFlag of, bool lit)
-        => (rf & RecipeFlag.HintBlended) == 0 ? $"class {(AlloyClass)DrawRecipe.Cls(recipe)}, no blending transparencyhint"
+        => (rf & RecipeFlag.HintBlended) == 0 ? "no transparencyhint that would blend it"
          : (rf & RecipeFlag.FacesUp) == 0 ? "its normals do not face up"
          : !lit || (rf & RecipeFlag.Lit) == 0 ? "unlit"
          : (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) != 0 ? "posed or morphed"
@@ -186,6 +186,7 @@ public sealed unsafe partial class AlloyRenderer
         if ((rf & RecipeFlag.Lit) != 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static)
             MeshArena.WantBake(DrawRecipe.Range(recipe));
         bool washes = DbWash(recipe, rf, of);
+        // before the class: a decal slot draws blended
         _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
         _oCls[i] = DbClsOf(part, recipe, washes, _oDecal[i] != 0);
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
