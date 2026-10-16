@@ -946,9 +946,11 @@ internal static class DbSelfCheck
         int hinted = Sheet("cx_sc_hintdecal_h", 1, out ModelDef hm), plain = Sheet("cx_sc_hintdecal_p", 0, out ModelDef pm);
         bool ok = hinted >= 0 && plain >= 0
                && DrawRecipe.Cls(hinted) == (int)AlloyClass.Cutout && DrawRecipe.Cls(plain) == (int)AlloyClass.Cutout
-               && AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.Static)
-               && !AlloyRenderer.DbDecal(plain, DrawRecipe.Flags(plain), ObjFlag.Static)
-               && !AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.None);
+               && AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.Static, env: false)
+               && !AlloyRenderer.DbDecal(plain, DrawRecipe.Flags(plain), ObjFlag.Static, env: false)
+               && !AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.None, env: false)
+               // an env-mapped instance is refused: its diffuse alpha is reflectivity, not a sheet's edge
+               && !AlloyRenderer.DbDecal(hinted, DrawRecipe.Flags(hinted), ObjFlag.Static, env: true);
         DrawRecipe.Forget(hm);
         DrawRecipe.Forget(pm);
         DrawRecipe.Pump();

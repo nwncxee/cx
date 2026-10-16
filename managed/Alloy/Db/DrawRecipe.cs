@@ -44,6 +44,27 @@ internal static partial class DrawRecipe
          : s - 1 == FlowSlot && !ShaderFeatures.ReadsAuxSlot(feat) ? 0
          : AlloyRenderer.SlotBit(s - 1);
 
+    /// <summary>The resref recipe slot <paramref name="s"/> binds: the material's <c>textureN</c> where it
+    /// declares one, else the MODEL's own word for that slot -- which past the diffuse only counts on a mesh
+    /// that has a tangent frame (<see cref="ModelMaps"/>).</summary>
+    internal static string SlotName(int s, MtrDef? mtr, MeshDef mesh)
+    {
+        int src = MtrTextureOf(s);
+        string name = mtr != null && mtr.Textures[src].Length > 0 ? mtr.Textures[src]
+                    : s != 0 && !ModelMaps(mesh) ? ""
+                    : src < mesh.Textures.Length ? mesh.Textures[src] : "";
+        // "null" is the MDL's way of writing NO TEXTURE -- the same spelling the supermodel line uses. Taken
+        // literally it becomes a resref nothing can load, the slot fails, the record gets no handle, and the
+        // part draws BLACK: that is the black door-sized quad in the ladder's area 2 (T_Door09, tex0='null').
+        return name.Equals("null", StringComparison.OrdinalIgnoreCase) ? "" : name;
+    }
+
+    /// <summary>Do this mesh's own <c>texture1</c>..<c>texture3</c> reach the map slots? Only with a tangent
+    /// frame: <c>GLRender::GetShaderByAttributes</c> @0x5cfa40 picks a <c>*_nm</c> program only for a vertex
+    /// object carrying both the tangent and bitangent streams, and no other stock program so much as declares
+    /// those sampler units -- so on any other mesh the words name a texture the engine never reads.</summary>
+    private static bool ModelMaps(MeshDef mesh) => mesh.Tangents.Length != 0 || mesh.RenderHintId is 2 or 3;
+
     /// <summary>Palette slot <paramref name="k"/>'s bindless handle on recipe <paramref name="r"/>, for the
     /// one reader that takes them that way (<see cref="TintTerms.Upload"/>). 0 until the texture is resident.</summary>
     internal static ulong PalHandle(int r, int k)
@@ -544,13 +565,9 @@ internal static partial class DrawRecipe
         // in vanilla (lightmap x diffuse), so that unlit every tile in the game. The model-side equivalent of
         // the blend flag is the additive renderhint, which is what the materials carrying it declare.
         if (!additive) f |= RecipeFlag.Lit;
-        // NOT from shininess. The engine's Env is Material::HasEnvMap (mat+0x40) -- a DECLARED environment
-        // map -- and it means "this is shiny 2002 content, so read its diffuse alpha as a reflectivity mask".
-        // Nearly every NWN mesh carries some shininess and almost none declares an env map, so inferring one
-        // from the other marked the whole world env-mapped and sent every tile down the reflective branch
-        // with no probe behind it. A MeshDef states no env map, so until the material path provides one the
-        // honest answer is no.
-        // ponytail: no env map in DB mode. The upgrade is the .mtr/material term, not a shininess guess.
+        // No env-map term here, and none is missing: the engine's own answer is Material::HasEnvMap
+        // (mat+0x40), which is the DIFFUSE's `.txi envmaptexture` or the gob's assigned map -- both per
+        // INSTANCE, neither a property of the model. AlloyRenderer.DbEnvMapped asks them per part.
         if (mesh.RotateTexture) f |= RecipeFlag.RotateTexture;
         if (nd.Kind == NodeKind.Dangly) f |= RecipeFlag.Dangly;
         if (nd.Kind == NodeKind.Skin) f |= RecipeFlag.Skinned;
@@ -594,14 +611,7 @@ internal static partial class DrawRecipe
         int mask = 0;
         for (int s = 0; s < TexSlots; s++)
         {
-            int src = MtrTextureOf(s);
-            string name = mtr != null && mtr.Textures[src].Length > 0 ? mtr.Textures[src]
-                        : src < mesh.Textures.Length ? mesh.Textures[src] : "";
-            // "null" is the MDL's way of writing NO TEXTURE -- the same spelling the supermodel line uses,
-            // and the one MdlPost already honours for the lightmap slot. Taken literally it becomes a resref
-            // nothing can load, the slot fails, the record gets no handle, and the part draws BLACK: that is
-            // the black door-sized quad in the ladder's area 2 (T_Door09, tex0='null', state=Failed, h0=NO).
-            if (name.Equals("null", StringComparison.OrdinalIgnoreCase)) name = "";
+            string name = SlotName(s, mtr, mesh);
             _tex[r * TexSlots + s] = name;
             TexId id = string.IsNullOrEmpty(name) ? default : TexRegistry.Acquire(name);
             _texId[r * TexSlots + s] = id.Value;
@@ -610,7 +620,6 @@ internal static partial class DrawRecipe
             if (wait) _texPending++;
             if (!string.IsNullOrEmpty(name)) mask |= MaskBitOf(s, feat);
         }
-        if ((f & RecipeFlag.Env) != 0) mask |= EnvSlotBit;
         _slots[r] = mask;
         // The engine's second route into the tile texture rotation, and it LATCHES: SetPartTextureRotate
         // @0x561670 writes `mdlnode+0x2b9 = 1` on a material with a bumpy-shiny map, i.e. it turns the mesh's
@@ -708,11 +717,6 @@ internal static partial class DrawRecipe
     /// <summary>The recipe's local box.</summary>
     internal static Box ModelBox(int r) => _box[r];
 
-    /// <summary>The env-map bit of the slot mask: the material declares an env map with no texture behind it (the
-    /// per-area probe replaces what it held). It is <see cref="AlloyRenderer.EnvSlot"/> and nothing else -- that
-    /// value is FROZEN at 64 because shipped <c>cx_ownlit_fs.shd</c> overrides carry a copy of it, so any second
-    /// definition here is a fact that can drift from content on disk.</summary>
-    internal const int EnvSlotBit = AlloyRenderer.EnvSlot;
     /// <summary><c>Aurora::AuroraBlendModes</c> values, which <see cref="Issue.BlendGl"/> translates to
     /// <c>glBlendFunc</c> factors. These are INDICES into the engine's <c>blendTranslationTable</c> @0x12f5040,
     /// which <c>GLRender::SetBlendFunc</c> @0x5cb0c0 indexes with both arguments; in .rodata that table is
@@ -729,8 +733,6 @@ internal enum RecipeFlag : ushort
     None = 0,
     /// <summary>The engine would draw this part LIT (it is not lightmapped into its own vertices).</summary>
     Lit = 1 << 0,
-    /// <summary>The material declares an env map: the "this is shiny" bit the stock shaders read.</summary>
-    Env = 1 << 1,
     /// <summary>The material's <c>twosided</c>: draws with face culling off.</summary>
     TwoSided = 1 << 2,
     /// <summary>The mesh lies flat (<see cref="DrawRecipe.LiesFlat"/>): drawn see-through, it is a wash laid over
