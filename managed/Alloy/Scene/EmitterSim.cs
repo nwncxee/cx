@@ -410,6 +410,7 @@ internal static unsafe partial class EmitterSim
         _log?.Info($"EmitterSim: [db census] ...rate={e.BirthRate:F2} life={e.Life:F2} mode={e.Mode} "
                    + $"type={e.Type} size={e.SizeStartX:F2} alpha={e.AlphaStart:F2}->{e.AlphaEnd:F2} "
                    + $"vel={e.Velocity:F2} faded={e.Faded} loop={e.Loop} chunk={e.Chunk} trail={e.Trail} "
+                   + $"keyed={(DbEmitterChannels.BlockOf(e.Part) >= 0 ? 1 : 0)} "
                    + $"at=({e.WorldPos.X:F1},{e.WorldPos.Y:F1},{e.WorldPos.Z:F1})");
     }
 

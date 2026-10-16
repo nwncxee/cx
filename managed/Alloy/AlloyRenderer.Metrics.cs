@@ -162,7 +162,7 @@ public sealed unsafe partial class AlloyRenderer
         // #325: the old single colour timer's span, opaque through additive (water = copy + draw).
         double colourMs = 0; for (int t = (int)GpuTerm.Opaque; t <= (int)GpuTerm.Additive; t++) colourMs += GpuMs((GpuTerm)t);
         _log?.Info($"AlloyRenderer: [alloy] {DbFeed.Stats()} | {DbTableNote()} | {DbPassNote()} "
-                     + $"| {DbInputs.Stats()} | {DbGui.Stats()}");
+                     + $"| {DbInputs.Stats()} | {DbEmitterChannels.Stats()} | {DbGui.Stats()}");
         _log?.Info($"AlloyRenderer: [alloy] {Counters._lastEnrolled}/{Counters._lastCandidates} parts owned{CapacityNote()}" +
                    (holes <= 0 ? "" : $" ({holes} NOT DRAWN)") + " [" + OwnedTextures.TranscodeNote() + "; " + OwnedTextures.CacheNote() + "; " + OwnedTextures.PrefetchNote() + TexStream.Note() + TexLoad.Note() + ModelLoad.Note() + "; " + DdsReader.Note() + "; " + RasterReader.Note() + "]" +
                    $" drawn by {OwnedClasses()} " +
