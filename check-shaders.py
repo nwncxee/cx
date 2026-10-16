@@ -523,8 +523,6 @@ def programs(g):
         # CX-189: the coverage layer's mask variant -- Programs.EnsureMaskProgram's define, in the same place
         "clustered lit (A2C mask)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_A2C_MASK 1\n", 1)),
         "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
-        # CX-294: the graded cutouts' fringe -- Programs.Variants' define, in the same place
-        "clustered lit (fringe)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_LIGHT_LITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),
@@ -610,7 +608,7 @@ def check_early_z(progs):
             return sorted({m.group(0).split("(")[0].strip() for m in SIDE_EFFECTS.finditer(r.stdout)})
         bad = 0
         for name, want in (("clustered lit", False), ("clustered lit (OIT lists)", True),
-                           ("clustered lit (deferred twin)", False), ("clustered lit (A2C mask)", False), ("clustered lit (fringe)", False),
+                           ("clustered lit (deferred twin)", False), ("clustered lit (A2C mask)", False),
                            ("owned water", False), ("grass blades", False)):
             got = effects(name)
             ok = bool(got) == want

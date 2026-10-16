@@ -454,12 +454,14 @@ uniform int uLmMovers;
 // A/B keeps today's path for the captures, the transparents and every /alloy viz mode.
 
 #ifdef CX_LIGHT_LITE
-/// CX-188 step 5: the walk the FORWARD consumers get -- grass cards and blades, water, particles, weather,
-/// and the graded cutouts' fringe. Same signature and same per-light arithmetic as the full walk below; what it
-/// leaves out is everything that exists for a BAKED opaque receiver, which now goes deferred (ADR 0029).
-/// <para>Not compiled: the hot-light branch, its 16-sphere mover ray test, the CxMoverOwe debt and the mirror
-/// walk of baked statics -- `lmSub` is 0 by construction. A baked receiver (only the fringe passes one) skips
-/// every static light, as the full walk's CX_NO_HOT arm does for a non-glossy one; the rest pass `baked` 0.</para>
+/// CX-188 step 5: the walk the FORWARD consumers get -- grass cards and blades, water, particles, weather.
+/// Same signature and same per-light arithmetic as the full walk below; what it leaves out is everything that
+/// exists for a BAKED opaque receiver, which now goes deferred (ADR 0029).
+/// <para>Unreachable here, so not compiled: every one of these calls arrives through CxClusteredLight or
+/// CxClusteredDiffuse, whose `baked` is 0, so `inPages` is false and with it the hot-light branch, its
+/// 16-sphere mover ray test, the CxMoverOwe debt and the mirror walk of baked statics -- `lmSub` is 0 by
+/// construction. The glossy mirror CANDIDATE goes too: none of these programs uploads uLightOcc, so it reads
+/// (0, 0) and CxGlossy is already false at every one of them, light.hidden or not.</para>
 /// <para>The shadow is ONE hardware tap per shadowing light -- no blocker search, no Vogel disc, no
 /// two-candidate cap to rank them with. That is the full walk's own `shadow.cap 0` path, which the lightbench
 /// measured cheaper than two PCSS candidates, and it shadows EVERY light rather than the cap's strongest two,
@@ -478,8 +480,7 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 {
     spec = vec3(0.0); lmSub = vec3(0.0);
     uint cl = CxCluster(viewDepth);
-    // a baked receiver (the graded cutouts' fringe) has every static light in its pages: the cold ones trail the list
-    uint n = baked > 0.5 ? CxListLive(cl) : CxListWalk(cl);
+    uint n = CxListWalk(cl);
     vec3 acc = vec3(0.0);
     // shadow.cubedist, as above: a far fragment pays no cube fetch at all, the last quarter fades the cut out
     float dfade = (uLocalPcss.w > 0.0 ? 1.0 - smoothstep(uLocalPcss.w * 0.75, uLocalPcss.w, viewDepth) : 1.0) * cxRecvShadow;
@@ -516,7 +517,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         cxLod = uFullModel > 0.0 ? smoothstep(uFullModel * 0.5, uFullModel, share) : 1.0;
         vec4 pr = uLights[li * 2u];
         vec4 cs = uLights[li * 2u + 1u];
-        if (baked > 0.5 && int(cs.w) >= 128) continue;   // ...and so are the hot ones: no hot branch here
         int slot = CxLightSlot(int(cs.w));
         vec3 c, L; float att, f2, ndlRaw, ndl;
         if (!CxPointLight(pr, cs.rgb, worldPos, N, c, L, att, f2, ndlRaw, ndl)) continue;

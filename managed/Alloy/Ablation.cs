@@ -13,9 +13,9 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe class Ablation
 {
-    /// <summary>The swappable program sites: the three compute passes, the lit program the blended
-    /// accumulation draws with, and the fringe pass (whose one rung draws nothing).</summary>
-    internal const int Lights = 0, Shadows = 1, Debt = 2, Lit = 3, Fringe = 4;
+    /// <summary>The swappable program sites: the three compute passes, and the lit program the blended
+    /// accumulation draws with.</summary>
+    internal const int Lights = 0, Shadows = 1, Debt = 2, Lit = 3;
     /// <summary>The longest compute ladder (the deferred walk's eight rungs, its probes at 9..12) and the
     /// blended one's. Rung 0 is the shipped program, which no variant stands for.</summary>
     internal const int MaxRung = 12, MaxLitRung = 6;
@@ -25,12 +25,6 @@ internal static unsafe class Ablation
     /// batch there, and non-zero only inside <see cref="Blended"/>; no field on this class has an initialiser,
     /// so the class takes no static constructor and that read is a plain static load.</summary>
     internal static int DrawCap;
-
-    /// <summary>The fringe pass's one rung: open and close its GPU term with no draw in it.</summary>
-    private sealed class FringeRungState { public bool Skip; }
-    private static readonly FringeRungState _fringe = new();
-    /// <summary>The fringe pass draws nothing this step (rung 1 of its ladder).</summary>
-    internal static bool FringeSkip => _fringe.Skip;
 
     /// <summary>Per site and rung: the variant program (0 = not built) and the latch that stops a refused rung
     /// recompiling on every step. Lazy -- nothing is built at boot or on a frame no bench is driving.</summary>
@@ -47,7 +41,6 @@ internal static unsafe class Ablation
     internal static bool Rung(int site, int rung, ExtenderLog? log)
     {
         if (site == Lit) return LitRung(rung, log);
-        if (site == Fringe) { _fringe.Skip = rung == 1; return rung <= 1; }
         uint shipped = _shipped == null ? 0u : _shipped[site];
         if (rung <= 0)
         {
@@ -71,7 +64,6 @@ internal static unsafe class Ablation
     {
         for (int s = 0; s < Sites; s++) Rung(s, 0, log);
         LitRung(0, log);
-        _fringe.Skip = false;
     }
 
     /// <summary>The variants are gone: the context that held them was lost, or <paramref name="delete"/> -- the
@@ -88,7 +80,6 @@ internal static unsafe class Ablation
         _progs = null; _failed = null; _shipped = null;
         _litProgs = null; _litLocs = null;
         _litProg = 0; _litList = 0; _litCap = 0; _litSkip = false;
-        _fringe.Skip = false;
     }
 
     /// <summary>One rung's program, built on the first step that asks for it.</summary>

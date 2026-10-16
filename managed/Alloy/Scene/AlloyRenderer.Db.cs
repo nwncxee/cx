@@ -175,8 +175,8 @@ public sealed unsafe partial class AlloyRenderer
         _oRotBits[i] = 0;
         // R1-18: the batch sort's texture digit. The recipe's diffuse TexId folded into the key space, so
         // parts sharing a texture sort contiguous exactly as the engine path's interned CAurTexture* did.
-        _oCov[i] = DbCoverage(part, recipe);
-        _oTexKey[i] = DbTexKey(recipe, _oCov[i]);
+        uint tex0 = DrawRecipe.Tex(recipe, 0).Value;
+        _oTexKey[i] = tex0 == 0 ? 0 : (int)((tex0 * 2654435761u >> 8) % (MaxMats - 1)) + 1;
         DbWriteTexRot(i, o, recipe, rf);
         // Every DB part is matrix-class: its world matrix is composed, never baked into its vertices. The
         // arena holds MODEL-space geometry (that is what makes one range serve every instance), which is
@@ -271,18 +271,6 @@ public sealed unsafe partial class AlloyRenderer
         if (fixedUp > 0) CasterPass.ShadowInvalidate();
     }
 
-    /// <summary>What the part's own diffuse alpha measured: the override column's texture where it has one.</summary>
-    private static TexCoverage DbCoverage(int part, int recipe) => TexRegistry.Coverage(DbTexOf(part, recipe, 0));
-
-    /// <summary>The texture sort digit: the recipe's diffuse folded into the key space, graded diffuses in the
-    /// upper half so the fringed cutouts of a run sort together and the fringe key term cuts once, not per texture.</summary>
-    private static int DbTexKey(int recipe, TexCoverage coverage)
-    {
-        uint tex0 = DrawRecipe.Tex(recipe, 0).Value;
-        const int Half = MaxMats / 2;
-        return tex0 == 0 ? 0 : (int)((tex0 * 2654435761u >> 8) % (Half - 1)) + 1 + (coverage == TexCoverage.Blended ? Half : 0);
-    }
-
     /// <summary>The slot's class: <see cref="DbClass"/>'s, except that an opaque PLT on an instance with no env map
     /// is a cutout. <c>Material::GetIsOpaque</c> @0x4c6190 answers opaque for an env-mapped gob without asking the
     /// texture; without one it asks <c>HasAlpha</c>, which every PLT answers yes (alpha mean 0.5), so the palette
@@ -328,13 +316,11 @@ public sealed unsafe partial class AlloyRenderer
             byte decal = lit && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
             byte wash = DbWashMode(washes, cls, decal != 0);
             if (wash != 0) DbNoteWash(recipe, rf, of, lit, cls, decal, wash);
-            TexCoverage cov = DbCoverage(_oDbPart[i], recipe);
             if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
                 && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
-                && slots == _oSlots[i] && _oCov[i] == cov) continue;
+                && slots == _oSlots[i]) continue;
             if (slots != _oSlots[i]) { _oSlots[i] = slots; CasterGen++; }
             _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c; _oDecal[i] = decal; _oWash[i] = wash;
-            _oCov[i] = cov; _oTexKey[i] = DbTexKey(recipe, cov);
             _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
             // The slot moves between passes, so its staged record and batch row are both stale.
             UnstampRecord(i);

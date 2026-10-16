@@ -297,19 +297,17 @@ internal static unsafe class Issue
         // what someone else set.
         int boundCull = -1;
         float boundCut = float.NaN;   // per PROGRAM: reset on every UseProgram below
-        int litBase = -1, litCut = -1, litOitGob = -1, litMip = -1; // the bound lit program's, whichever of the two it is
+        int litBase = -1, litCut = -1, litOitGob = -1; // the bound lit program's, whichever of the two it is
         int litSsaoOn = -1, litAoDirect = -1;
         // CX-273: the decal layer's mode for this loop, and the bound lit program's uDecal (-1 = not yet sent)
         int decalMode = DecalLayer.Mode, litDecal = -1, boundDecal = -1;
         bool decalWrite = decalMode == DecalLayer.ModeWrite;
         int litSolid = -1, boundSolid = -1;
         bool interior = _split.Interior;
-        bool fringePass = _fringe.Pass;
-        bool coreCut = CoreCut;
-        if (boundProg is 1 or 3 or 4 or 5 or 6 or 8 or 9)
+        if (boundProg is 1 or 3 or 4 or 5 or 6 or 8)
         {
             ref LitLoc H = ref LitLocOf(boundProg);
-            litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob; litMip = H.AlphaMip;
+            litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
             litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect; litDecal = H.Decal; litSolid = H.Solid;
         }
         // #379 follow-up: SSAO is per BATCH, not per program bind. The visibility buffer is computed from
@@ -340,19 +338,18 @@ internal static unsafe class Issue
             // a split wash: WashInteriors draws its solid interior with the cutouts, and the blended pass the graded rest
             bool split = _gWash[g] == WashSplit && lit && !oitOut && g >= _gOpaqueEnd;
             if (interior && !split) continue;
-            if (fringePass && !_gFringe[g]) continue;
             bool lists = lit && !water && !hosted && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
             // view -- the only draws whose pixels the deferred compute pass reads. Everything else keeps the
             // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz but the
             // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
             bool deferred = lit && !water && !hosted && !lists && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
-                            && (g < _gOpaqueEnd || interior) && DeferredLights.Active && !_forwardOnly && !fringePass;
+                            && (g < _gOpaqueEnd || interior) && DeferredLights.Active && !_forwardOnly;
             // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
             // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
             // whose coverage comes off its own map still gets a per-primitive sample pattern.
             bool hostMask = hosted && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
-            int wantProg = decalWrite && lit ? 8 : fringePass ? 9 : water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
+            int wantProg = decalWrite && lit ? 8 : water ? 2 : hostMask ? 7 : hosted ? 3 : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)
             {
@@ -387,7 +384,7 @@ internal static unsafe class Issue
                 else if (lit)
                 {
                     ref LitLoc L = ref LitLocOf(wantProg);
-                    Gl.UseProgram(wantProg == 9 ? Programs.ProgFringe : wantProg == 8 ? Programs.ProgDecal : wantProg == 7 ? Programs.ProgLitHostMask : hosted ? Programs._progLitHost
+                    Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal : wantProg == 7 ? Programs.ProgLitHostMask : hosted ? Programs._progLitHost
                                   : lists ? Programs._progLitList
                                   : deferred ? Programs._progLitDef : wantProg == 6 ? Programs._progLitMask : Programs._progLit46);
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
@@ -423,7 +420,7 @@ internal static unsafe class Issue
                     // CX-223: ...and the palette tint's side table, whose binding point is a shared one --
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.TintTerms.Bind();
-                    litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; litMip = L.AlphaMip; boundOitGob = -1;
+                    litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
                     litDecal = L.Decal; boundDecal = -1;
@@ -449,8 +446,7 @@ internal static unsafe class Issue
             // fAlphaDiscardValue, which is a global there and a uniform here.
             if (lit)
             {
-                // a fringe pixel is not in the prepass: its core's depth is, and the AO there is the core's
-                int ssao = SsaoPass.Live && !_capturing ? fringePass ? AoCutout : AoWhy(g) : 0;
+                int ssao = SsaoPass.Live && !_capturing ? AoWhy(g) : 0;
                 if (ssao != boundSsao)
                 {
                     boundSsao = ssao;
@@ -464,18 +460,12 @@ internal static unsafe class Issue
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
-            bool core = coreCut && !fringePass && _gFringe[g] && !_coverPass && !decalWrite;
-            float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f
-                      : core ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
-            if (cut != boundCut)
-            {
-                Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut;
-                // a core is tested on RAW alpha: cutmip's scaling would make a half-covered distant edge texel solid
-                if (lit) Gl.Uniform1f(litMip, core ? 0f : Renderer.CutMip.V);
-            }
-            // ...and the blend state, per batch: off for opaque and cutout (a graded cutout's blend is its fringe's,
-            // drawn in the fringe pass), on with the material's own pair for the sorted classes and the fringe.
-            bool blend = (AlloyClasses.Blends(_gCls[g]) || fringePass) && !interior;
+            float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f : AlloyClasses.Discard(_gCls[g]);
+            if (cut != boundCut) { Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut; }
+            // ...and the blend state, per batch, because the opaque PASS now mixes both: a plain opaque batch
+            // and a cutout batch both draw with GL_BLEND off (AlloyClasses.Blends); a blended batch takes the
+            // material's own pair. Batches are class-grouped, so this toggles about once per pass.
+            bool blend = AlloyClasses.Blends(_gCls[g]) && !interior;
             if (blend != boundBlend)
             {
                 boundBlend = blend;
@@ -487,16 +477,15 @@ internal static unsafe class Issue
                 uint src = BlendGl(_gSrc[g]), dst = BlendGl(_gDst[g]);
                 if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
             }
-            bool equal = _matchDepth && _gPrepassed[g] && !fringePass;
+            bool equal = _matchDepth && _gPrepassed[g];
             // never under EQUAL: a prepassed batch has to reproduce its prepass depth exactly
             bool wash = _gWash[g] != 0 && !equal;
             // A wash takes the pass's own depth rule: a cutout one writes its depth like any cutout, a blended
             // one like any blended draw.
             byte mask = equal ? (byte)0 : _passDepthMask;
             if (mask != boundMask) { Gl.DepthMask(mask); boundMask = mask; }
-            // the edge pass and the fringe pass: an interior or core fragment meets its own depth there, and LESS
-            // drops it before it is shaded
-            uint func = equal ? Gl.EQUAL : split && _split.Ran && !interior || fringePass ? Gl.LESS : Gl.LEQUAL;
+            // the edge pass: an interior fragment meets its own depth there, and LESS drops it before it is shaded
+            uint func = equal ? Gl.EQUAL : split && _split.Ran && !interior ? Gl.LESS : Gl.LEQUAL;
             if (func != boundFunc) { Gl.DepthFunc(func); boundFunc = func; }
             bool test = !(blend && wash && !_washTest);
             if (test != boundTest) { if (test) Gl.Enable(Gl.DEPTH_TEST); else Gl.Disable(Gl.DEPTH_TEST); boundTest = test; }
@@ -543,7 +532,7 @@ internal static unsafe class Issue
                 AlloyRenderer.MultiDrawRange(prim, s, _gLen[g]);
             Counters._batches++;
             Counters._draws += _gLen[g];
-            if (!interior && !fringePass) Counters._drawsByClass[_gCls[g]] += _gLen[g];
+            if (!interior) Counters._drawsByClass[_gCls[g]] += _gLen[g];
             // CX-188: a twin draw went out, so the G-buffer holds pixels and the deferred pass has work
             if (deferred) GBuffer.Written = true;
         }
@@ -558,17 +547,16 @@ internal static unsafe class Issue
         if (boundOffset) Gl.Disable(Gl.POLYGON_OFFSET_FILL);
     }
 
-    /// <summary>The uniform locations of one of the eight lit programs, keyed by the issue loop's
+    /// <summary>The uniform locations of one of the seven lit programs, keyed by the issue loop's
     /// <c>wantProg</c>: 1 plain, 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant,
-    /// 7 the hosted one's, 8 the decal layer's writer, 9 the fringe. One place, because two sites in the loop pick from them.</summary>
+    /// 7 the hosted one's, 8 the decal layer's writer. One place, because two sites in the loop pick from them.</summary>
     private static ref LitLoc LitLocOf(int which)
         => ref (which == 3 ? ref Programs._litH
               : ref (which == 4 ? ref Programs._litL
                    : ref (which == 5 ? ref Programs._litD
                         : ref (which == 6 ? ref Programs._litM
                              : ref (which == 7 ? ref Programs.HostMaskLoc
-                                  : ref (which == 8 ? ref Programs.DecalLoc
-                                       : ref (which == 9 ? ref Programs.FringeLoc : ref Programs._lit)))))));
+                                  : ref (which == 8 ? ref Programs.DecalLoc : ref Programs._lit))))));
 
     /// <summary>The batches being issued are <see cref="CoverageLayer"/>'s, cut at the layer's threshold rather
     /// than the class's (and through the mask variant when it is on). Set around the layer's one issue call.</summary>
@@ -616,29 +604,6 @@ internal static unsafe class Issue
 
     /// <summary>The blended pass is done with this frame's interiors.</summary>
     internal static void WashesDone() => _split.Ran = false;
-
-    /// <summary>The fringe pass is issuing: only fringed batches draw, through the fringe program, blended with the
-    /// material's pair at <c>GL_LESS</c> and no depth write.</summary>
-    private sealed class FringeState { public bool Pass; }
-    private static readonly FringeState _fringe = new();
-
-    /// <summary>Open ADR 0011's <see cref="PassId.FringeOwned"/>: the graded cutouts' band between the 0.2 cut and
-    /// the core cut, unsorted as vanilla's bucket 1, over the core depth the cutout pass laid. GL_BLEND on and the
-    /// depth mask off until <see cref="FringeEnd"/>, which leaves both that way.</summary>
-    internal static void FringeBegin()
-    {
-        _fringe.Pass = true;
-        _passDepthMask = 0;
-        Gl.DepthMask(0);
-        Gl.Enable(Gl.BLEND); _blendOn = true;
-    }
-
-    /// <summary>Close the fringe pass: the next pass sets its own blend and depth mask.</summary>
-    internal static void FringeEnd() { _fringe.Pass = false; _passDepthMask = 1; }
-
-    /// <summary>Do fringed batches cut at the core threshold on this view? Only where the fringe pass draws their
-    /// band: a capture, or a lit build with no fringe program, draws them whole. The prepass and colour pass both ask.</summary>
-    internal static bool CoreCut => !_capturing && Programs.ProgFringe != 0;
 
     /// <summary>Polygon offset for wash batches (see the wash note in the issue loop).</summary>
     private const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;

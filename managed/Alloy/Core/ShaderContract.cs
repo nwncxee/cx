@@ -615,11 +615,6 @@ internal static class ShaderContract
                   && OwnedLitFsMain.Contains("if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)")
                   && OwnedLitFsMain.Contains("{ coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }")
                   && DepthFeatFs.Contains("if (CxAlphaMip(CxDiffuse(uTex, vUV, uLodBias, vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
-                  // CX-294: a fringed cutout's core is both tests above at AlloyClasses.SolidAlpha, the lit stage's own
-                  // solid threshold -- drifted apart, the fringe pass and the core disagree on which texels are whose
-                  && OwnedLitFsHead.Contains("const float CX_SOLID_ALPHA = " + AlloyClasses.SolidAlpha.ToString(System.Globalization.CultureInfo.InvariantCulture) + ";")
-                  // ...and the fringe's slim walk leaves a baked receiver's static lights to its pages, or they light it twice
-                  && AlloyLights.FragmentLib.Contains("if (baked > 0.5 && int(cs.w) >= 128) continue;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
                   // engine spends it once: inc_standard.shd:289 multiplies only .rgb through there. A stage
