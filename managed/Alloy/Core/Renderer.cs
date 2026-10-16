@@ -20,6 +20,8 @@ internal static class Renderer
     internal static readonly Knob<float> Scale, Weld, Lod;
     /// <summary>How strongly the cutout test makes up for the alpha a mip averages away (<c>cx_alphamip.glsl</c>).</summary>
     internal static readonly Knob<float> CutMip;
+    /// <summary>How many layers of itself a see-through creature draws as, under the list resolve that composites it once.</summary>
+    internal static readonly Knob<float> Ghost;
     internal static readonly Knob<string> Highlight, DrawHooks, DumpTex;
     /// <summary>The alpha-to-coverage layer's sample count (<see cref="CoverageLayer"/>), and whether it
     /// shapes the mask itself (per-primitive rotation, so stacked equal-alpha cards both show).</summary>
@@ -116,7 +118,11 @@ internal static class Renderer
         CutMip = G.Slider("cutmip", "Distant cut-out fill", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
                           help: "Leaves, fences and other cut-out textures thin out and shimmer with distance as their alpha "
                               + "averages away. This keeps them as full as they are up close. 0 is the stock test.");
-        TexPreview = G.Toggle("texpreview", "Low-resolution texture previews", true, Tier.Advanced, Effect.Live,
+        Ghost = G.Slider("ghost", "See-through creature thickness", 1f, 3f, 0.1f, 1.2f, "×", Tier.Advanced,
+                         help: "A creature an effect such as Invisibility makes see-through draws as this many layers of "
+                             + "itself, so its shape still shows. 1 is the effect's own transparency. A fully invisible "
+                             + "creature stays invisible.");
+        TexPreview =G.Toggle("texpreview", "Low-resolution texture previews", true, Tier.Advanced, Effect.Live,
                               help: "While an area streams in, every texture first shows a small blurred version of itself, then sharpens when the full one lands. Off: a texture shows white until it has fully loaded.");
 
         G.Section("");

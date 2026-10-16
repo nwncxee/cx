@@ -202,8 +202,8 @@ public sealed unsafe partial class AlloyRenderer
         return ok;
     }
 
-    /// <summary>Off-device: which blended draws carry an OIT object id, and the run's order above distance in both
-    /// modes. Oracle: hand-written rows, and the expected permutation of a run spelled out by hand.</summary>
+    /// <summary>Off-device: which blended draws carry an OIT object id, the run's order above distance in both modes,
+    /// and the ghost curve. Oracle: hand-written rows, and the expected permutation of a run spelled out by hand.</summary>
     private static bool OitOrderSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.OitOrderSelfCheck");
@@ -214,6 +214,10 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(OitGrouped(objAlpha: 1f, decal: true, wash: WashWhole), "a ground decal keeps its object");
         check.Expect(OitGrouped(objAlpha: 1f, decal: false, wash: WashSplit), "a split wash's rest keeps its object");
         check.Expect(!OitGrouped(objAlpha: 1f, decal: false, wash: WashWhole), "a whole wash on a fading tile does not");
+        check.Expect(GhostCurve(0.5f, 2f) == 0.75f && GhostCurve(0.25f, 1f) == 0.25f,
+                     "a ghost draws as n layers of itself: half at two layers is three quarters, one layer is unchanged");
+        check.Expect(GhostCurve(0f, 1.5f) == 0f && GhostCurve(1f, 1.5f) == 1f,
+                     "fully invisible stays invisible and opaque stays opaque, so a fade has no step");
 
         // Positions are the back-to-front order; gob is an object index + 1. Entry 9 holds the widest terms.
         (bool decal, bool oitOut, int gob, bool dis, int rank)[] run =
@@ -344,9 +348,12 @@ public sealed unsafe partial class AlloyRenderer
         int part = _oDbPart[i];
         DbId root = RunRoot(i);
         int gob = SceneDb.Objects.Valid(root) && OitGrouped(DbObjAlpha(part), false, _oWash[i]) ? root.Index + 1 : 0;
-        bool oitOut = Issue.SitsOitOut(Issue.HostedBody(_oLit[i], (int)_oFeat[i * 4]), _oSrc[i], _oDst[i]);
-        return BlendRankOf(_oDecal[i] != 0, free, oitOut, gob, dis, _orderRank[i]);
+        return BlendRankOf(_oDecal[i] != 0, free, SlotSitsOitOut(i), gob, dis, _orderRank[i]);
     }
+
+    /// <summary><see cref="Issue.SitsOitOut"/> off slot <paramref name="i"/>'s columns.</summary>
+    private static bool SlotSitsOitOut(int i)
+        => Issue.SitsOitOut(Issue.HostedBody(_oLit[i], (int)_oFeat[i * 4]), _oSrc[i], _oDst[i]);
 
     /// <summary>One sort word: the rank, then the back-to-front position (unique, so the sort is stable), then the
     /// keyhole bit, which rides below the position and so never orders anything.</summary>
@@ -358,6 +365,16 @@ public sealed unsafe partial class AlloyRenderer
     /// ghosting, the one case where an object must not show its own interior -- and for a ground decal or a split
     /// wash's rest, whose stacked sheets composite as one layer per object.</summary>
     internal static bool OitGrouped(float objAlpha, bool decal, byte wash) => objAlpha < 1f || decal || wash == WashSplit;
+
+    /// <summary>The object alpha slot <paramref name="i"/> draws with. Where the list resolve composites a faded object
+    /// once, its overlapping parts no longer thicken it, so it draws as <c>alloy.ghost</c> layers of itself.</summary>
+    private static float GhostAlpha(int i, int cls, float objAlpha)
+        => objAlpha < 1f && cls == (int)AlloyClass.Blended && OitPass.Dedupes && !SlotSitsOitOut(i)
+           ? GhostCurve(objAlpha, Renderer.Ghost.V) : objAlpha;
+
+    /// <summary><paramref name="a"/> as <paramref name="layers"/> layers of itself, 1 - (1 - a)^layers. 0 and 1 are
+    /// fixed points, so a fade in or out stays continuous and a fully invisible object stays invisible.</summary>
+    internal static float GhostCurve(float a, float layers) => 1f - MathF.Pow(1f - a, layers);
 
     /// <summary>Up to this many blended entries the insertion sort is cheaper than the keyed one; past it the
     /// insertion sort's quadratic walk over an unsorted route order cost milliseconds a frame.</summary>

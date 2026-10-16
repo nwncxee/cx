@@ -262,7 +262,7 @@ public sealed unsafe partial class AlloyRenderer
         f.Model = SceneDb.PartWorld[part];
         f.Dissolve = dis ? 1f : 0f;
         Vector4 tint = SceneDb.ObjTint[o];
-        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * tint.W;
+        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * GhostAlpha(i, cls, tint.W);
         f.Lit = lit;
         if (lit)
         {
