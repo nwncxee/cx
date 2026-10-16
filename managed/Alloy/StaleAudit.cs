@@ -152,7 +152,7 @@ public sealed unsafe partial class AlloyRenderer
             return $"recipe {recipe} is seated but the part's is {live} (the slot was not re-seated)";
         if (recipe >= 0)
         {
-            byte cls = DbClsOf(part, recipe, _oWash[i] != 0);
+            byte cls = DbClsOf(part, recipe, _oWash[i] != 0, _oDecal[i] != 0);
             if (_oCls[i] != cls)
                 return $"class {(AlloyClass)_oCls[i]} is seated, the recipe says {(AlloyClass)cls}";
             // The env bit is the one slot flag StageDbPart re-decides per frame; the rest ride the seat.

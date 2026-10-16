@@ -947,7 +947,7 @@ internal static class DbSelfCheck
         // ...and the fence case: a GRADED diffuse (its alpha is the env reflectivity) under a model that
         // declares transparency. Vanilla draws this content in the opaque bucket -- its gob env map is what
         // GetIsOpaque answers with -- so the only hole in it is its own stage's discard, and the class must
-        // stay the hard cutout. The same pair over any other stage is the blend it has always been.
+        // stay the hard cutout. The same pair over any other stage is a cutout too, carrying the hint for a sheet.
         int hintR = Recipe(hair.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
                            "cx_sc_nrmhint", "cx_sc_nrmhint_mdl", out ModelDef hintMdl, hint: 1);
         int blendR = Recipe(plain.Replace("nrmcov_d", "nrmcov_env", StringComparison.Ordinal),
@@ -956,7 +956,9 @@ internal static class DbSelfCheck
         DrawRecipe.Reclassify();
         ok &= hintR >= 0 && DrawRecipe.Cls(hintR) == (int)AlloyClass.Cutout
                          && (DrawRecipe.Slots(hintR) & AlloyRenderer.CoverNrmBit) != 0;
-        ok &= blendR >= 0 && DrawRecipe.Cls(blendR) == (int)AlloyClass.Blended
+        ok &= blendR >= 0 && DrawRecipe.Cls(blendR) == (int)AlloyClass.Cutout
+                          && (DrawRecipe.Flags(blendR) & RecipeFlag.HintBlended) != 0
+                          && (DrawRecipe.Flags(hintR) & RecipeFlag.HintBlended) == 0
                           && (DrawRecipe.Slots(blendR) & AlloyRenderer.CoverNrmBit) == 0;
         DrawRecipe.Forget(hintMdl);
         DrawRecipe.Forget(blendMdl);

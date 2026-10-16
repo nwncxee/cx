@@ -38,11 +38,11 @@ public sealed unsafe partial class AlloyRenderer
         return SceneDb.Objects.Valid(o) && (SceneDb.ObjFlags[o.Index] & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
     }
 
-    /// <summary>Is this part a ground decal, folded into the surface under it (<see cref="DecalLayer"/>)? A lit,
-    /// plainly alpha-blended sheet facing up, on a static object, with no self-illumination, env map or hosted body,
+    /// <summary>Is this part a ground decal, folded into the surface under it (<see cref="DecalLayer"/>)? A lit
+    /// sheet facing up whose <c>transparencyhint</c> would blend it (<see cref="RecipeFlag.HintBlended"/>), on a static object, with no self-illumination, env map or hosted body,
     /// nothing posed or morphed. Never an alpha-tested cover: it hides its ground, normal and material too.</summary>
     internal static bool DbDecal(int recipe, RecipeFlag rf, ObjFlag of)
-        => DrawRecipe.Cls(recipe) == (int)AlloyClass.Blended
+        => (rf & RecipeFlag.HintBlended) != 0
            && (rf & (RecipeFlag.Lit | RecipeFlag.FacesUp)) == (RecipeFlag.Lit | RecipeFlag.FacesUp)
            && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) == 0
            && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static
@@ -59,12 +59,12 @@ public sealed unsafe partial class AlloyRenderer
            && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage | RecipeFlag.CoverNrm)) == 0
            && (DrawRecipe.Slots(recipe) & EnvSlot) == 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
 
-    /// <summary>The class a slot draws in: the recipe's, except that an alpha-tested wash with a graded edge blends,
-    /// as vanilla draws its alpha-tested bucket (<c>Scene::RenderSinglePass</c> @0x56e5f0: blend and the 0.2 test
-    /// together). Drawn hard, its graded edge showed whatever colour the texture keeps under alpha 0.</summary>
-    internal static byte DbClass(int recipe, bool wash)
-        => wash && DrawRecipe.Cls(recipe) == (int)AlloyClass.Cutout && DrawRecipe.Graded(recipe)
-           ? (byte)AlloyClass.Blended : (byte)DrawRecipe.Cls(recipe);
+    /// <summary>The class a slot draws in (<see cref="AlloyClasses.SlotClass"/>). A graded wash blends as vanilla draws
+    /// its alpha-tested bucket (<c>Scene::RenderSinglePass</c> @0x56e5f0: blend and the 0.2 test together); drawn
+    /// hard, its edge showed whatever colour the texture keeps under alpha 0.</summary>
+    internal static byte DbClass(int recipe, bool wash, bool decal)
+        => AlloyClasses.SlotClass(DrawRecipe.Cls(recipe), (DrawRecipe.Flags(recipe) & RecipeFlag.HintBlended) != 0,
+                                  DrawRecipe.Graded(recipe), wash, decal);
 
     /// <summary>The <c>_oWash</c> value: 0 not a wash; <see cref="WashWhole"/>; or <see cref="WashSplit"/>, a blending
     /// wash that is not a decal.</summary>
@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The first term <see cref="DbDecal"/> refuses a flat see-through sheet on, for the log.</summary>
     private static string DbDecalWhyNot(int recipe, RecipeFlag rf, ObjFlag of, bool lit)
-        => DrawRecipe.Cls(recipe) != (int)AlloyClass.Blended ? $"class {(AlloyClass)DrawRecipe.Cls(recipe)}"
+        => (rf & RecipeFlag.HintBlended) == 0 ? $"class {(AlloyClass)DrawRecipe.Cls(recipe)}, no blending transparencyhint"
          : (rf & RecipeFlag.FacesUp) == 0 ? "its normals do not face up"
          : !lit || (rf & RecipeFlag.Lit) == 0 ? "unlit"
          : (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh)) != 0 ? "posed or morphed"
@@ -186,10 +186,10 @@ public sealed unsafe partial class AlloyRenderer
         if ((rf & RecipeFlag.Lit) != 0 && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static)
             MeshArena.WantBake(DrawRecipe.Range(recipe));
         bool washes = DbWash(recipe, rf, of);
-        _oCls[i] = DbClsOf(part, recipe, washes);
+        _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
+        _oCls[i] = DbClsOf(part, recipe, washes, _oDecal[i] != 0);
         _oA2c[i] = (rf & RecipeFlag.Coverage) != 0;
         _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
-        _oDecal[i] = _oLit[i] && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
         _oWash[i] = DbWashMode(washes, _oCls[i], _oDecal[i] != 0);
         DbNoteWash(recipe, rf, of, _oLit[i], _oCls[i], _oDecal[i], _oWash[i]);
         _oNoCull[i] = (rf & RecipeFlag.TwoSided) != 0;
@@ -275,9 +275,9 @@ public sealed unsafe partial class AlloyRenderer
     /// is a cutout. <c>Material::GetIsOpaque</c> @0x4c6190 answers opaque for an env-mapped gob without asking the
     /// texture; without one it asks <c>HasAlpha</c>, which every PLT answers yes (alpha mean 0.5), so the palette
     /// alpha is coverage there -- palette row 61 is alpha 0 throughout, the "ragged cloak" colour.</summary>
-    private static byte DbClsOf(int part, int recipe, bool wash)
+    private static byte DbClsOf(int part, int recipe, bool wash, bool decal)
     {
-        byte cls = DbClass(recipe, wash);
+        byte cls = DbClass(recipe, wash, decal);
         if (cls != (byte)AlloyClass.Opaque) return cls;
         TexId diffuse = DbTexOf(part, recipe, 0);
         // ponytail: the shadow keeps the solid silhouette -- the caster cut samples the pair texture, whose alpha
@@ -301,19 +301,19 @@ public sealed unsafe partial class AlloyRenderer
             ObjFlag of = (uint)o < (uint)SceneDb.ObjFlags.Length ? SceneDb.ObjFlags[o] : ObjFlag.None;
             // ...and the two routes the class decides: a wash (see-through and flat) and a ground decal (blended)
             bool washes = DbWash(recipe, rf, of);
-            byte cls = DbClsOf(_oDbPart[i], recipe, washes);
+            bool lit = (rf & RecipeFlag.Lit) != 0 && _lighting;
+            byte decal = lit && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
+            byte cls = DbClsOf(_oDbPart[i], recipe, washes, decal != 0);
             // ...and the texture rotation with it: the bumpy-shiny half of RecipeFlag.RotateTexture latches
             // when the diffuse's .txi lands, which is after the slot took its columns.
             float wasCos = _oCos[i], wasSin = _oSin[i];
             DbWriteTexRot(i, o, recipe, rf);
             // ...and the .txi's blend pair and fullbright flag, which an offer that waited reads late.
-            bool lit = (rf & RecipeFlag.Lit) != 0 && _lighting;
             bool a2c = (rf & RecipeFlag.Coverage) != 0;
             // ...and the slot-1 coverage bit, which the same late .mtr can turn on. It rides _oSlots, which
             // nothing re-derives per frame (the env bit is the one exception), so a recipe that gained it
             // after its slots were seated would keep drawing solid.
             int slots = (_oSlots[i] & ~CoverNrmBit) | (DrawRecipe.Slots(recipe) & CoverNrmBit);
-            byte decal = lit && DbDecal(recipe, rf, of) ? (byte)1 : (byte)0;
             byte wash = DbWashMode(washes, cls, decal != 0);
             if (wash != 0) DbNoteWash(recipe, rf, of, lit, cls, decal, wash);
             if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
@@ -442,7 +442,7 @@ public sealed unsafe partial class AlloyRenderer
                 TexId d = DrawRecipe.Tex(rec, 0);
                 tex = $" tex0={(d.IsNull ? "(none)" : TexRegistry.ResrefOf(d))}"
                     + $" {TexRegistry.KindOf(d)}/{TexRegistry.StateOf(d)}"
-                    + $" cls={(AlloyClass)DbClsOf(p, rec, false)} env={(SceneDb.PartEnvMapped(p) ? 1 : 0)} reveal={SceneDb.PartReveal[p]:F2}"
+                    + $" cls={(AlloyClass)DbClsOf(p, rec, false, false)} env={(SceneDb.PartEnvMapped(p) ? 1 : 0)} reveal={SceneDb.PartReveal[p]:F2}"
                     + $" alpha={SceneDb.PartAlpha[p]:F2} fade={SceneDb.PartFade[p]:F2}";
             }
             int rng = DrawRecipe.Range(rec);

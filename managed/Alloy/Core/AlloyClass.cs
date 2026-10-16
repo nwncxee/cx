@@ -67,6 +67,13 @@ internal static class AlloyClasses
     internal static float Discard(int cls) => cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Additive
         || cls == (int)AlloyClass.Water ? -1f : 0.2f;
 
+    /// <summary>A scene-database slot's class from its recipe's. A ground decal, or a wash whose model's
+    /// <c>transparencyhint</c> would blend it, draws blended; so does a graded cutout wash. Anything else, a
+    /// hinted tree included, keeps the recipe's class: vanilla reads the hint only as a child draw order.</summary>
+    internal static byte SlotClass(int recipeCls, bool hintBlended, bool graded, bool wash, bool decal)
+        => decal || wash && (hintBlended || recipeCls == (int)AlloyClass.Cutout && graded)
+           ? (byte)AlloyClass.Blended : (byte)recipeCls;
+
     /// <summary>Off-device: the classifier's precedence, the one thing about it not readable off a single
     /// line. Additive beats opacity (the engine tests the blend factor first), opacity beats both transparency
     /// terms, and a texture-alpha part with nothing declared is a cutout -- the majority of NWN content, and
@@ -124,6 +131,26 @@ internal static class AlloyClasses
         check.Expect((int)AlloyClass.Water > (int)AlloyClass.Blended && (int)AlloyClass.Water < (int)AlloyClass.Additive,
           "water draws after the blended class (fade is in its copy) and before additive (glow is not)");
         check.Expect(Count == System.Enum.GetValues<AlloyClass>().Length, "Count sizes the per-class arrays");
+
+        // The slot rule, rows written out by hand: a transparencyhint blends a flat sheet (decal, wash) and
+        // nothing else; a graded cutout wash blends its edge whatever the hint; every other slot keeps its class.
+        (AlloyClass Cls, bool Hint, bool Graded, bool Wash, bool Decal, AlloyClass Want)[] slots =
+        {
+            (AlloyClass.Cutout, true, true, false, false, AlloyClass.Cutout),
+            (AlloyClass.Cutout, true, false, false, false, AlloyClass.Cutout),
+            (AlloyClass.Cutout, true, true, false, true, AlloyClass.Blended),
+            (AlloyClass.Cutout, true, false, true, false, AlloyClass.Blended),
+            (AlloyClass.Cutout, true, true, true, true, AlloyClass.Blended),
+            (AlloyClass.Cutout, false, true, true, false, AlloyClass.Blended),
+            (AlloyClass.Cutout, false, false, true, false, AlloyClass.Cutout),
+            (AlloyClass.Cutout, false, true, false, false, AlloyClass.Cutout),
+            (AlloyClass.Opaque, false, false, false, false, AlloyClass.Opaque),
+            (AlloyClass.Additive, false, true, true, false, AlloyClass.Additive),
+            (AlloyClass.Water, false, true, false, false, AlloyClass.Water),
+        };
+        foreach (var r in slots)
+            check.Expect(SlotClass((int)r.Cls, r.Hint, r.Graded, r.Wash, r.Decal) == (byte)r.Want,
+              $"a {r.Cls} recipe, hint {r.Hint}, graded {r.Graded}, wash {r.Wash}, decal {r.Decal}: a {r.Want} slot");
 
         log.Info(check.Ok ? "AlloyClasses.SelfCheck: passed" : "AlloyClasses.SelfCheck: FAILED");
     }
