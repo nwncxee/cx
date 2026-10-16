@@ -529,6 +529,9 @@ public sealed unsafe partial class AlloyRenderer
                     // the pass leaves GL_BLEND off; hand the tracked state back as the next pass expects it
                     if (_blendOn) Gl.Enable(Gl.BLEND); else Gl.Disable(Gl.BLEND);
                     break;
+                case PassId.FringeOwned:
+                    if (!_capturing) FringeOwnedPass(&vp, viewport, near, far);
+                    break;
                 case PassId.BlendedOwned:
                     BlendProfile.Poll(_log);   // in the 4.6 bracket: the queries are that context's names
                     Issue.LightRecBegin();
@@ -1058,8 +1061,13 @@ public sealed unsafe partial class AlloyRenderer
                 int s = _gStart[g];
                 _gPrepassed[g] = true;
                 Gl.Uniform1i(Programs._depthFeatBase, s);
-                float cut = AlloyClasses.Discard(_gCls[g]);
-                if (cut != boundCut) { Gl.Uniform1f(Programs._depthFeatCut, cut); boundCut = cut; }
+                // CX-294: a fringed batch lays its core's depth alone, the cut its GL_EQUAL colour draw makes
+                float cut = _gFringe[g] && Issue.CoreCut ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
+                if (cut != boundCut)
+                {
+                    Gl.Uniform1f(Programs._depthFeatCut, cut); boundCut = cut;
+                    Gl.Uniform1f(Programs._depthFeatMip, cut == AlloyClasses.SolidAlpha ? 0f : Renderer.CutMip.V);
+                }
                 if (!_bindless && cut >= 0f && _gTex[g] != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)_gTex[g]); boundTex = _gTex[g]; }
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
@@ -1147,6 +1155,17 @@ public sealed unsafe partial class AlloyRenderer
         Gl.DepthFunc(Gl.LEQUAL);
         Issue.WashInteriors(_gOpaqueEnd, _gBlendEnd, vp, viewport, near, far);
         GpuEnd(GpuTerm.Washes);
+    }
+
+    /// <summary>The graded cutouts' fringes (<see cref="Issue.FringeBegin"/>) over the plain cutout run, on their own
+    /// GPU term with the keyhole tail apart. <c>/alloy bench</c>'s fringe rung opens and closes the term with no draw.</summary>
+    private static void FringeOwnedPass(Matrix4x4* vp, int* viewport, float near, float far)
+    {
+        if (Programs.ProgFringe == 0 || _gA2cStart <= _gCutoutStart) return;
+        Issue.FringeBegin();
+        if (Ablation.FringeSkip) { GpuBegin(GpuTerm.Fringe); GpuEnd(GpuTerm.Fringe); }
+        else IssueClass(_gCutoutStart, _gA2cStart, GpuTerm.Fringe, GpuTerm.FringeKey, vp, viewport, near, far);
+        Issue.FringeEnd();
     }
 
     /// <summary><see cref="CutoutOwnedPass"/> left the <c>NWN_ALPHA_MODE 2</c> tail for the coverage layer.</summary>

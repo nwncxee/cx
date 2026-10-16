@@ -32,7 +32,7 @@ public sealed unsafe partial class AlloyRenderer
     // ---- the ablation ladder ---------------------------------------------------------------------
     /// <summary>Which pass an ablation step rebuilds. The GPU term each one is read off is
     /// <see cref="BenchAblTerm"/>.</summary>
-    private const int AblLights = 0, AblShadows = 1, AblDebt = 2, AblBlended = 3, AblProbe = 4;
+    private const int AblLights = 0, AblShadows = 1, AblDebt = 2, AblBlended = 3, AblProbe = 4, AblFringe = 5;
     /// <summary>The ladder, appended after the knob steps: (label, pass, rung), rung 0 = the shipped program,
     /// which closes each pass's ladder so its top is measured under the same drift as its rungs. The rungs of
     /// one pass must stay contiguous and in ascending order -- <see cref="BenchAblSummary"/> reads the array
@@ -66,6 +66,8 @@ public sealed unsafe partial class AlloyRenderer
         ("deferred probe 3 (probe 1 + one fetch of the STATIC cube array alone, by a single invocation)", AblProbe, 10),
         ("deferred probe 4 (probe 1 + one fetch of the DYNAMIC cube array alone, by a single invocation)", AblProbe, 11),
         ("deferred probe 5 (probe 1 + one fetch of the PAIR atlas alone, by a single invocation)", AblProbe, 12),
+        ("fringe ablate 1 (the fringe pass opened and closed, not one draw)", AblFringe, 1),
+        ("fringe full (the shipped pass: the graded band of every fringed cutout, slim-lit and blended)", AblFringe, 0),
     };
     /// <summary>What each rung of a pass's ladder ADDS, in the ladder's own order, for the summary line. One
     /// name per rung of that pass in <see cref="_benchAbl"/>, the shipped-program rung last.</summary>
@@ -77,6 +79,7 @@ public sealed unsafe partial class AlloyRenderer
         new[] { "depth slab", "pair cull", "gbuf+pair taps+subtract" },
         new[] { "bracket, no draws", "first group", "every group, no shading", "shading+list source", "light bodies", "shadows+mirror", "hot branch" },
         new[] { "walk with no tap", "one tap at one pixel", "static cube fetch vs tap", "dyn cube fetch vs static", "pair fetch vs dyn" },
+        new[] { "bracket, no draws", "fringe draws" },
     };
     /// <summary>Each ablation step's measured GPU term for its own pass, in ms; NaN = the rung was refused.</summary>
     private static double[]? _benchAblMs;
@@ -86,12 +89,13 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The GPU term an ablation step's pass is timed by.</summary>
     private static GpuTerm BenchAblTerm(int pass)
         => pass == AblLights ? GpuTerm.Deferred : pass == AblShadows ? GpuTerm.DeferredShadow
-         : pass == AblDebt ? GpuTerm.PairDebt : pass == AblBlended ? GpuTerm.Blended : GpuTerm.Deferred;
+         : pass == AblDebt ? GpuTerm.PairDebt : pass == AblBlended ? GpuTerm.Blended
+         : pass == AblFringe ? GpuTerm.Fringe : GpuTerm.Deferred;
     /// <summary>The ladder site a step's pass swaps its program at: the probe steps are the deferred walk's
     /// own program, higher up its ladder.</summary>
     private static int AblSite(int pass)
         => pass == AblShadows ? Ablation.Shadows : pass == AblDebt ? Ablation.Debt
-         : pass == AblBlended ? Ablation.Lit : Ablation.Lights;
+         : pass == AblBlended ? Ablation.Lit : pass == AblFringe ? Ablation.Fringe : Ablation.Lights;
     private static string BenchLabel(int step)
         => step < _benchSteps!.Length ? _benchSteps[step].Label : _benchAbl[step - _benchSteps.Length].Label;
 
@@ -235,7 +239,8 @@ public sealed unsafe partial class AlloyRenderer
             || CasterPass.ShadowGpuN < _benchBakeN0) { _benchFrame = BenchSettle - 1; return; }
         double frame = (Stopwatch.GetTimestamp() - _benchT0) * 1000.0 / Stopwatch.Frequency / BenchMeasure;
         double span = _spanN > _benchSpanN0 ? (_spanSum - _benchSpan0) / (_spanN - _benchSpanN0) / 1e6 : 0.0;
-        double lit = BenchTerm(GpuTerm.Opaque) + BenchTerm(GpuTerm.OpaqueKey) + BenchTerm(GpuTerm.Cutout) + BenchTerm(GpuTerm.CutoutKey);
+        double lit = BenchTerm(GpuTerm.Opaque) + BenchTerm(GpuTerm.OpaqueKey) + BenchTerm(GpuTerm.Cutout) + BenchTerm(GpuTerm.CutoutKey)
+                   + BenchTerm(GpuTerm.Fringe) + BenchTerm(GpuTerm.FringeKey);
         double blend = BenchTerm(GpuTerm.Blended);
         double all = 0.0;
         for (int t = 0; t < _qTerm.Length; t++) all += BenchTerm((GpuTerm)t);
@@ -299,7 +304,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             string who = pass == AblLights ? "cx_deferred_cs" : pass == AblShadows ? "cx_defshadow_cs"
                        : pass == AblDebt ? "cx_pairdebt" : pass == AblBlended ? "blended accumulation (lit program)"
-                       : "cx_deferred_cs probe";
+                       : pass == AblFringe ? "fringe pass (slim lit program)" : "cx_deferred_cs probe";
             _log?.Always(top > 0.0
                 ? $"AlloyRenderer: [bench] ablation: {who} {top:F3} ms = {s} (ms, per stage, each measured with the stages above it compiled out)"
                 : $"AlloyRenderer: [bench] ablation: {who} never dispatched in this run -- nothing to price");
