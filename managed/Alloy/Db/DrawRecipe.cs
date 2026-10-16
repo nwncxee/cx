@@ -44,6 +44,27 @@ internal static partial class DrawRecipe
          : s - 1 == FlowSlot && !ShaderFeatures.ReadsAuxSlot(feat) ? 0
          : AlloyRenderer.SlotBit(s - 1);
 
+    /// <summary>The resref recipe slot <paramref name="s"/> binds: the material's <c>textureN</c> where it
+    /// declares one, else the MODEL's own word for that slot -- which past the diffuse only counts on a mesh
+    /// that has a tangent frame (<see cref="ModelMaps"/>).</summary>
+    internal static string SlotName(int s, MtrDef? mtr, MeshDef mesh)
+    {
+        int src = MtrTextureOf(s);
+        string name = mtr != null && mtr.Textures[src].Length > 0 ? mtr.Textures[src]
+                    : s != 0 && !ModelMaps(mesh) ? ""
+                    : src < mesh.Textures.Length ? mesh.Textures[src] : "";
+        // "null" is the MDL's way of writing NO TEXTURE -- the same spelling the supermodel line uses. Taken
+        // literally it becomes a resref nothing can load, the slot fails, the record gets no handle, and the
+        // part draws BLACK: that is the black door-sized quad in the ladder's area 2 (T_Door09, tex0='null').
+        return name.Equals("null", StringComparison.OrdinalIgnoreCase) ? "" : name;
+    }
+
+    /// <summary>Do this mesh's own <c>texture1</c>..<c>texture3</c> reach the map slots? Only with a tangent
+    /// frame: <c>GLRender::GetShaderByAttributes</c> @0x5cfa40 picks a <c>*_nm</c> program only for a vertex
+    /// object carrying both the tangent and bitangent streams, and no other stock program so much as declares
+    /// those sampler units -- so on any other mesh the words name a texture the engine never reads.</summary>
+    private static bool ModelMaps(MeshDef mesh) => mesh.Tangents.Length != 0 || mesh.RenderHintId is 2 or 3;
+
     /// <summary>Palette slot <paramref name="k"/>'s bindless handle on recipe <paramref name="r"/>, for the
     /// one reader that takes them that way (<see cref="TintTerms.Upload"/>). 0 until the texture is resident.</summary>
     internal static ulong PalHandle(int r, int k)
@@ -594,14 +615,7 @@ internal static partial class DrawRecipe
         int mask = 0;
         for (int s = 0; s < TexSlots; s++)
         {
-            int src = MtrTextureOf(s);
-            string name = mtr != null && mtr.Textures[src].Length > 0 ? mtr.Textures[src]
-                        : src < mesh.Textures.Length ? mesh.Textures[src] : "";
-            // "null" is the MDL's way of writing NO TEXTURE -- the same spelling the supermodel line uses,
-            // and the one MdlPost already honours for the lightmap slot. Taken literally it becomes a resref
-            // nothing can load, the slot fails, the record gets no handle, and the part draws BLACK: that is
-            // the black door-sized quad in the ladder's area 2 (T_Door09, tex0='null', state=Failed, h0=NO).
-            if (name.Equals("null", StringComparison.OrdinalIgnoreCase)) name = "";
+            string name = SlotName(s, mtr, mesh);
             _tex[r * TexSlots + s] = name;
             TexId id = string.IsNullOrEmpty(name) ? default : TexRegistry.Acquire(name);
             _texId[r * TexSlots + s] = id.Value;
