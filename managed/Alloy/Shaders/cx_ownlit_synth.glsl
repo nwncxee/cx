@@ -304,6 +304,9 @@ void main()
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
     if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
+    // 54 = the core/fringe split: magenta fringe at its own coverage (blended, so stacking shows), green core, grey other cutouts
+    if (uViz == 54 && uAlphaCut >= 0.0)
+    { frag = uSolid == 2 ? vec4(1.0, 0.0, 1.0, coverage) : vec4(uAlphaCut == CX_SOLID_ALPHA ? vec3(0.0, 1.0, 0.0) : vec3(0.5), 1.0); return; }
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.
