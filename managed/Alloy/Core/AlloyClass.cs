@@ -61,9 +61,27 @@ internal static class AlloyClasses
     /// (<see cref="Fringes"/>), drawn in a pass of its own with no depth write.</summary>
     internal static bool Blends(int cls) => cls != (int)AlloyClass.Opaque && cls != (int)AlloyClass.Cutout;
 
-    /// <summary>A fringed cutout's core cut, on RAW alpha (no <c>alloy.cutmip</c> scaling): only texels above it
-    /// draw solid, and the fringe pass blends the band above <see cref="Discard"/>. The lit stage's <c>CX_SOLID_ALPHA</c>.</summary>
+    /// <summary>The highest core cut, on RAW alpha (no <c>alloy.cutmip</c> scaling): a fringed cutout whose diffuse is not
+    /// measured yet draws only texels above it solid. The lit stage's <c>CX_SOLID_ALPHA</c>, a wash interior's cut.</summary>
     internal const float SolidAlpha = 0.99f;
+
+    /// <summary>The core cuts a fringed texture can take, highest first: bucket 0 is <see cref="SolidAlpha"/> (not yet
+    /// measured), the rest are where a measured interior lands (<see cref="Db.TexCoverageOf.CoreOf"/>). Few, because
+    /// fringed batches split on the bucket.</summary>
+    private static readonly float[] CoreCuts = { SolidAlpha, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f };
+
+    /// <summary>How many core buckets there are: the sort digit's graded half is banded by it.</summary>
+    internal const int CoreBuckets = 6;
+
+    /// <summary>The core cut of bucket <paramref name="b"/>.</summary>
+    internal static float CoreCut(byte b) => CoreCuts[b];
+
+    /// <summary>The highest bucket whose cut sits at or below <paramref name="level"/>; the lowest cut below every one.</summary>
+    internal static byte CoreBucket(float level)
+    {
+        for (byte b = 0; b < CoreCuts.Length; b++) if (CoreCuts[b] <= level) return b;
+        return (byte)(CoreCuts.Length - 1);
+    }
 
     /// <summary>Does this part draw in two pieces -- a depth-writing core above <see cref="SolidAlpha"/> and a
     /// blended fringe below it? A cutout whose diffuse measured graded, and not a wash: a wash has its own
@@ -141,6 +159,8 @@ internal static class AlloyClasses
             check.Expect(Fringes((int)r.Cls, r.Cov, r.Wash) == r.Split,
               $"{r.Cls} over a {r.Cov} diffuse, wash {r.Wash}: should {(r.Split ? "" : "not ")}split into core and fringe");
         check.Expect(SolidAlpha > Discard((int)AlloyClass.Cutout), "the core cut sits above the 0.2 cut, or the fringe band is empty");
+        check.Expect(CoreCut(0) == 0.99f && CoreCut(CoreBucket(0.95f)) == 0.9f && CoreCut(CoreBucket(0.1f)) == 0.5f
+          && CoreCut(CoreBucket(1f)) == 0.99f, "a level takes the highest cut at or below it, and 0.5 under every one");
         check.Expect(Discard((int)AlloyClass.Cutout) == 0.2f && Discard((int)AlloyClass.Blended) == 0.2f,
           "the engine's 0.2 cutout, on the two classes it draws under Enable(1)");
         check.Expect(Discard((int)AlloyClass.Opaque) < 0f && Discard((int)AlloyClass.Additive) < 0f

@@ -689,6 +689,7 @@ public sealed unsafe partial class AlloyRenderer
         int keyVao = -1, keyTex = -1, keyFeat = -1, keyCls = -1, keyBlend = -1;
         uint keyMode = 0;
         bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyCovN = false, keyDecal = false, keyFringe = false;
+        byte keyCore = 0;
         IntPtr keyGob = IntPtr.Zero;
         // #322 step 1: attribute the Build monolith before drawing any phase boundary -- Scan is the
         // routing walk, Restage everything after it. No behaviour change; the [zones] line gains the split.
@@ -810,6 +811,8 @@ public sealed unsafe partial class AlloyRenderer
             bool decal = row.Decal;
             // CX-294: ...and a graded cutout draws again in the fringe pass, which takes its batches alone
             bool fringe = row.Fringe;
+            // ...at its texture's own core cut, a uniform per batch
+            byte core = row.Core;
             // #153: under bindless a LIT batch no longer splits on its textures -- the handles ride the
             // record, so one multidraw spans every texture in the class. Feat/dis stay in the key only for
             // the depth prepass's whole-batch drop; unlit parts keep the bind path and the full key.
@@ -830,7 +833,7 @@ public sealed unsafe partial class AlloyRenderer
             if (!sameSlots || lit != keyLit || vKey != keyVao || tidKey != keyTex || mode != keyMode
                 || feat != keyFeat || dis != keyDis || cls != keyCls || blend != keyBlend
                 || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || covN != keyCovN || decal != keyDecal
-                || fringe != keyFringe)
+                || fringe != keyFringe || core != keyCore)
             {
                 // #292 (AC6): what the cull term cost. Counted as the batches it OPENED on its own -- every
                 // other key term agreed and only the culling state differed -- so the line reports the split
@@ -856,12 +859,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gFeat[groups] = feat; _gDis[groups] = dis;
                 _gCls[groups] = (byte)cls; _gSrc[groups] = row.Src; _gDst[groups] = row.Dst; _gWash[groups] = row.Wash;
                 _gNoCull[groups] = noCull; _gGob[groups] = gobKey; _gA2c[groups] = a2c; _gCovN[groups] = covN;
-                _gDecal[groups] = decal; _gFringe[groups] = fringe;
+                _gDecal[groups] = decal; _gFringe[groups] = fringe; _gCore[groups] = core;
                 if (!merge) for (int s = 0; s < MapSlots; s++) _gTexN[groups * MapSlots + s] = slotTid[s];
                 groups++;
                 keyLit = lit; keyVao = vKey; keyTex = tidKey; keyMode = mode; keyFeat = feat; keyDis = dis;
                 keyCls = cls; keyBlend = blend; keyNoCull = noCull; keyGob = gobKey; keyA2c = a2c; keyCovN = covN;
-                keyDecal = decal; keyFringe = fringe;
+                keyDecal = decal; keyFringe = fringe; keyCore = core;
             }
             
             _dCount[n] = idxCount;
@@ -932,7 +935,7 @@ public sealed unsafe partial class AlloyRenderer
         public nint IdxOff;
         public uint Mode;
         public IntPtr GobKey;
-        public byte Cls, Src, Dst, Wash;
+        public byte Cls, Src, Dst, Wash, Core;
         public bool Lit, Dis, NoCull, HasGob, Moved, Posed, Dangly, Decal, Fringe;
     }
     /// <summary>One row per ROUTED rank, so the ownership table's size is the bound (a pass with no visible set
@@ -963,6 +966,7 @@ public sealed unsafe partial class AlloyRenderer
         // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a
         // wash's polygon offset, in any class. A fringed cutout blends in its fringe pass, so its pair is a term too.
         row.Fringe = db && SlotFringes(i, cls, lit, slots, feat);
+        row.Core = row.Fringe ? _oCore[i] : (byte)0;
         row.Blend = BlendTerm(i, cls, row.Fringe);
         // A blended batch never straddles two creatures: the frame prepasses and colours each run of one gob's
         // batches as a unit, so the gob is a key term and a tag on the batch.

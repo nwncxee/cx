@@ -49,6 +49,8 @@ internal static unsafe partial class TexRegistry
         public uint GlFmt, PixFmt, PixType;
         public bool Compressed, GenMips, Clamp, Nearest, Mip;
         public TexCoverage Cov;
+        /// <summary>A Blended texture's core bucket (<see cref="TexCoverageOf.CoreOf"/>), 0 otherwise.</summary>
+        public byte Core;
         /// <summary>Which decode answered <see cref="Cov"/>, in the words the <c>texcov:</c> line prints -- the
         /// route by which a texture that draws solid can be named out of <c>cx.log</c>. Null until a decode sets it.</summary>
         public string? CovWhy;
@@ -132,7 +134,7 @@ internal static unsafe partial class TexRegistry
     /// it uploaded against, and either a name and handle or the reason there is none.</summary>
     private readonly record struct Landed(int Slot, uint Gen, uint Name, ulong Handle, long Bytes,
                                          TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
-                                         bool Preview = false, string? CovWhy = null);
+                                         bool Preview = false, string? CovWhy = null, byte Core = 0);
 
     private static readonly Queue<Job> _in = new(), _out = new();
     /// <summary>The fast queue: every new load's first pass, ahead of every full one (<see cref="Job.Fast"/>).
@@ -188,7 +190,7 @@ internal static unsafe partial class TexRegistry
         TxiSampler(i, txi);
         j.Pixels = null; j.FullW = 0;
         TxiMaterial(i, txi, j);
-        j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.MeanOk = false;
+        j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.Core = 0; j.MeanOk = false;
         j.Nearest = _nearest[i]; j.Mip = _mipmap[i];
         // The material .txi is its OWN resource for most shipped textures -- ttf01_water01 has one, and the
         // engine's Material::Init @0x5c5b90 reads it by name -- so it is looked up here, on the thread that
@@ -401,6 +403,7 @@ internal static unsafe partial class TexRegistry
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
             j.Cov = TexCoverageOf.OfRaster(new ReadOnlySpan<byte>(px, r.Bytes), r.W, r.H, r.Px);
+            if (j.Cov == TexCoverage.Blended) j.Core = TexCoverageOf.CoreOf(new ReadOnlySpan<byte>(px, r.Bytes), r.W, r.H, r.Px);
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
@@ -417,7 +420,7 @@ internal static unsafe partial class TexRegistry
         j.Bytes = info.ChainBytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
         j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(chain, DdsReader.LevelSize(info.W, info.H, info.Channels)),
-                                    info.W, info.H, info.Format, ref sc);
+                                    info.W, info.H, info.Format, ref sc, out j.Core);
         j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
         _covScratch = sc;
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
@@ -443,7 +446,7 @@ internal static unsafe partial class TexRegistry
         j.Data = data; j.Tail = true; j.Dds = info; j.W = w0; j.H = h0; j.Levels = levels;
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false; j.Bytes = bytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
-        j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(data, DdsReader.LevelSize(w0, h0, info.Channels)), w0, h0, info.Format, ref sc);
+        j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(data, DdsReader.LevelSize(w0, h0, info.Channels)), w0, h0, info.Format, ref sc, out j.Core);
         j.CovWhy = TexCoverageOf.Why($"DDS {info.Format} preview mip {w0}x{h0}", j.Cov);
         _covScratch = sc;
         return true;
@@ -628,7 +631,7 @@ internal static unsafe partial class TexRegistry
         if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
-        Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
+        Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy, j.Core));
     }
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }
@@ -664,8 +667,8 @@ internal static unsafe partial class TexRegistry
             }
             _pend[l.Slot] = PendNone;
             if (l.Why != null) Fail(l.Slot, l.Why);
-            else if (l.Preview) { LandPreview(TexId.Make(l.Slot, l.Gen), l.Name, l.Handle, l.Cov); Enqueue(l.Slot); }
-            else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
+            else if (l.Preview) { LandPreview(TexId.Make(l.Slot, l.Gen), l.Name, l.Handle, l.Cov, l.Core); Enqueue(l.Slot); }
+            else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy, l.Core);
         }
         while (true)
         {
@@ -759,11 +762,13 @@ internal static unsafe partial class TexRegistry
     /// <see cref="TexCoverage.Opaque"/> or <see cref="TexCoverage.Unknown"/> verdict, or an env-mapped one
     /// whose alpha is reflectivity rather than coverage (as in vanilla, whose only <c>AlphaDiscard</c> under
     /// <c>ENVIRONMENT_MAP</c> runs before the diffuse is sampled). Grep it to name a texture drawing solid.</summary>
-    private static void TexNote(TexId id, TexCoverage cov, bool envMap, string? covWhy)
+    private static void TexNote(TexId id, TexCoverage cov, bool envMap, string? covWhy, byte core)
     {
-        if (cov is not (TexCoverage.Opaque or TexCoverage.Unknown) && !envMap) return;
         int i = id.Index;
         if ((uint)i >= MaxSlots) return;
+        if (cov == TexCoverage.Blended && !envMap)
+        { _log?.Info($"texcov: \"{_resref[i] ?? ""}\" graded, core cut {AlloyClasses.CoreCut(core):F2} (bucket {core})"); return; }
+        if (cov is not (TexCoverage.Opaque or TexCoverage.Unknown) && !envMap) return;
         string env = envMap ? " -- env-mapped (.txi envmaptexture): its alpha is REFLECTIVITY, never coverage" : "";
         _log?.Info($"texcov: \"{_resref[i] ?? ""}\" {covWhy ?? $"no route recorded -> {cov}"}{env}");
     }
@@ -773,9 +778,9 @@ internal static unsafe partial class TexRegistry
     /// check drives it with a synthetic name.</summary>
     internal static void Land(TexId id, uint name, long bytes, ulong handle = 0,
                               TexCoverage cov = TexCoverage.Unknown, bool bumpyShiny = false,
-                              bool envMap = false, string? covWhy = null)
+                              bool envMap = false, string? covWhy = null, byte core = 0)
     {
-        TexNote(id, cov, envMap, covWhy);
+        TexNote(id, cov, envMap, covWhy, core);
         lock (_lock)
         {
             if (!Valid(id)) return;
@@ -790,7 +795,7 @@ internal static unsafe partial class TexRegistry
             }
             // Released while it loaded: Release already filed it on the idle list, and filing it twice links it to itself.
             if (_state[i] == TexState.Idle) { IdleUnlink(i); _idleBytes -= _bytes[i]; }
-            _cov[i] = cov;
+            _cov[i] = cov; _core[i] = core;
             _bumpyShiny[i] = bumpyShiny;
             CoverageSerial++; TableSerial++;
             if (bumpyShiny) _bumpyShinySeen++;
@@ -813,7 +818,7 @@ internal static unsafe partial class TexRegistry
     /// leaf is cut out from the first frame -- while it stays <see cref="TexState.Loading"/>, and every part that
     /// was waiting is marked. They register again while it loads, so the full chain's <see cref="Land"/> reaches
     /// them too. Game thread, GL-free.</summary>
-    internal static void LandPreview(TexId id, uint name, ulong handle, TexCoverage cov)
+    internal static void LandPreview(TexId id, uint name, ulong handle, TexCoverage cov, byte core = 0)
     {
         lock (_lock)
         {
@@ -824,7 +829,7 @@ internal static unsafe partial class TexRegistry
             _name[i] = name;
             _handle[i] = handle;
             _preview[i] = true;
-            if (_cov[i] == TexCoverage.Unknown && cov != TexCoverage.Unknown) { _cov[i] = cov; CoverageSerial++; }
+            if (_cov[i] == TexCoverage.Unknown && cov != TexCoverage.Unknown) { _cov[i] = cov; _core[i] = core; CoverageSerial++; }
             TableSerial++;
             if (handle != 0) _mints++;
             _previews++;

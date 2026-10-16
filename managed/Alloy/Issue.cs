@@ -466,7 +466,7 @@ internal static unsafe class Issue
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
             bool core = coreCut && !fringePass && _gFringe[g] && !_coverPass && !decalWrite;
             float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f
-                      : core ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
+                      : core ? AlloyClasses.CoreCut(_gCore[g]) : AlloyClasses.Discard(_gCls[g]);
             if (cut != boundCut)
             {
                 Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut;

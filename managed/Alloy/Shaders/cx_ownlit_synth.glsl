@@ -4,7 +4,7 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
 {
     float s = coverage * alpha;
     // viz 54 draws a fringed part's whole card from its core pass, each texel coloured by the side of the core cut it is on
-    float cut = uViz == 54 && uAlphaCut == CX_SOLID_ALPHA ? 0.2 : uAlphaCut;
+    float cut = uViz == 54 && uAlphaCut > 0.2 ? 0.2 : uAlphaCut;
     return cut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= cut
         || uOit != 0 && s <= 0.0
         || uSolid != 0 && s < CX_SOLID_ALPHA;
@@ -306,7 +306,7 @@ void main()
     if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
     // 54 = the core/fringe split of the nearest card, per texel: green core, magenta fringe, grey other cutouts
     if (uViz == 54 && uAlphaCut >= 0.0)
-    { frag = vec4(uAlphaCut != CX_SOLID_ALPHA ? vec3(0.5) : coverage > CX_SOLID_ALPHA ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 1.0), 1.0); return; }
+    { frag = vec4(uAlphaCut <= 0.2 ? vec3(0.5) : coverage > uAlphaCut ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 1.0), 1.0); return; }
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.

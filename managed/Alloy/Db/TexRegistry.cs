@@ -80,6 +80,8 @@ internal static unsafe partial class TexRegistry
     /// pixels on the worker, once, and kept across a context loss: it is a property of the content, not of a GL
     /// name.</summary>
     private static readonly TexCoverage[] _cov = new TexCoverage[MaxSlots];
+    /// <summary>Each Blended slot's core bucket (<see cref="TexCoverageOf.CoreOf"/>), measured with <see cref="_cov"/>.</summary>
+    private static readonly byte[] _core = new byte[MaxSlots];
     /// <summary>Each slot's mean colour as decoded (its own encoding), and whether one was taken: the sky
     /// texture's average that the sky-matched fog converges on (SceneFog), which is available only here --
     /// no engine upload funnel runs to read it off.</summary>
@@ -299,7 +301,7 @@ internal static unsafe partial class TexRegistry
             _key[i] = key; _state[i] = TexState.Loading; _kind[i] = kind; _refs[i] = 1;
             _name[i] = 0; _handle[i] = 0; _bytes[i] = 0; _preview[i] = false;
             _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _clamp[i] = false;
-            _cov[i] = TexCoverage.Unknown; _bumpyShiny[i] = false; _envMap[i] = false; _meanOk[i] = false;
+            _cov[i] = TexCoverage.Unknown; _core[i] = 0; _bumpyShiny[i] = false; _envMap[i] = false; _meanOk[i] = false;
             _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null;
             CoverageSerial++; TableSerial++;
             _nearest[i] = false; _mipmap[i] = true; _samplerWish[i] = false;
@@ -406,7 +408,7 @@ internal static unsafe partial class TexRegistry
         _gen[i] = (_gen[i] + 1) & 0xFFF;
         if (_gen[i] == 0) _gen[i] = 1;
         _state[i] = TexState.Free;
-        _bytes[i] = 0; _resref[i] = null; _refs[i] = 0; _pend[i] = PendNone; _cov[i] = TexCoverage.Unknown;
+        _bytes[i] = 0; _resref[i] = null; _refs[i] = 0; _pend[i] = PendNone; _cov[i] = TexCoverage.Unknown; _core[i] = 0;
         _bumpyShiny[i] = false;
         _envMap[i] = false;
         _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null;
@@ -568,6 +570,9 @@ internal static unsafe partial class TexRegistry
     /// told again at arrival, when the landing marks every dependent part. Lock-free, like the other draw reads.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static TexCoverage Coverage(TexId id) => Valid(id) ? _cov[id.Index] : TexCoverage.Unknown;
+
+    /// <summary>The slot's core bucket (<see cref="AlloyClasses.CoreBucket"/>): 0, the solid cut, until a graded diffuse is measured.</summary>
+    internal static byte Core(TexId id) => Valid(id) ? _core[id.Index] : (byte)0;
     /// <summary>Did this texture's <c>.txi</c> name a <c>bumpyshinytexture</c>? False until the decode has run,
     /// re-asked at arrival through the same dependent edge as <see cref="Coverage"/>. This is the engine's own
     /// water term: <c>Scene::AddPartsTreeToDrawBuckets</c> @0x460880 tests <c>Material::HasBumpyShinyMap</c>

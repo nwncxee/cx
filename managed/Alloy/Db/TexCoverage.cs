@@ -52,10 +52,50 @@ internal static unsafe class TexCoverageOf
         return anyOut ? TexCoverage.Cutout : TexCoverage.Opaque;
     }
 
+    /// <summary>Texels at or above this are the covered interior a graded texture's core level is read from; the
+    /// ramp below it is edge whatever the texture.</summary>
+    internal const int InteriorFloor = 128;
+
+    /// <summary>The share of interior texels allowed under the core cut: the level is read at this percentile
+    /// from the bottom, so most of a leaf's interior draws solid even where its alpha wanders.</summary>
+    internal const float CorePercentile = 0.25f;
+
+    /// <summary>Taken off the measured level before it is bucketed, so a BCn block's interpolation noise around the
+    /// interior lands above the cut rather than on it.</summary>
+    internal const int CoreMargin = 8;
+
+    /// <summary>A graded texture's core bucket (<see cref="AlloyClasses.CoreBucket"/>): the level its covered interior
+    /// sits at, read off the whole alpha channel. 0 (the solid cut) when nothing reaches <see cref="InteriorFloor"/>.</summary>
+    internal static byte CoreOf(ReadOnlySpan<byte> px, int w, int h, int stride)
+    {
+        long n = (long)w * h;
+        if (stride < 4 || n <= 0 || px.Length < n * stride) return 0;
+        Span<int> hist = stackalloc int[256];
+        long interior = 0;
+        for (long i = 0; i < n; i++)
+        {
+            int a = px[(int)(i * stride + 3)];
+            hist[a]++;
+            if (a >= InteriorFloor) interior++;
+        }
+        if (interior == 0) return 0;
+        long below = (long)(interior * CorePercentile), seen = 0;
+        int level = 255;
+        for (int a = InteriorFloor; a < 256; a++)
+            if ((seen += hist[a]) > below) { level = a; break; }
+        return AlloyClasses.CoreBucket((level - CoreMargin) / 255f);
+    }
+
     /// <summary>The verdict for a BCn level 0. BC1 and the single/two-channel and HDR formats carry no alpha
     /// the sampler will return; BC2, BC3 and BC7 are decoded and read.</summary>
     internal static TexCoverage OfBcn(ReadOnlySpan<byte> blocks, int w, int h, Fmt f, ref byte[] scratch)
+        => OfBcn(blocks, w, h, f, ref scratch, out _);
+
+    /// <summary><see cref="OfBcn(ReadOnlySpan{byte}, int, int, Fmt, ref byte[])"/>, and a Blended texture's
+    /// <see cref="CoreOf"/> off the same decode (0 otherwise).</summary>
+    internal static TexCoverage OfBcn(ReadOnlySpan<byte> blocks, int w, int h, Fmt f, ref byte[] scratch, out byte core)
     {
+        core = 0;
         switch (f)
         {
             // No alpha in what the sampler answers -- see the class remarks for BC1 in particular.
@@ -74,7 +114,9 @@ internal static unsafe class TexCoverageOf
         if (blocks.Length < LevelSize(w, h, Channels(f))) return TexCoverage.Unknown;
         if (scratch.Length < want) scratch = new byte[want];
         BcnDecode.Unpack(blocks, w, h, f, scratch.AsSpan(0, (int)want));
-        return OfRaster(scratch.AsSpan(0, (int)want), w, h, 4);
+        TexCoverage cov = OfRaster(scratch.AsSpan(0, (int)want), w, h, 4);
+        if (cov == TexCoverage.Blended) core = CoreOf(scratch.AsSpan(0, (int)want), w, h, 4);
+        return cov;
     }
 
     /// <summary>The engine's own channel count for a format, which is what <see cref="LevelSize"/> wants.</summary>
@@ -118,6 +160,13 @@ internal static unsafe class TexCoverageOf
         Expect(OfRaster(new byte[4], 2, 2, 1) == TexCoverage.Opaque, "a one-byte raster has no alpha to read");
         Expect(OfRaster(new byte[12], 2, 2, 3) == TexCoverage.Opaque, "a three-byte raster has no alpha to read");
         Expect(OfRaster(Rgba(255), 4, 4, 4) == TexCoverage.Unknown, "a short raster was not refused");
+        // The core level. Oracle: hand-written alpha rows and the buckets they must land in.
+        Expect(CoreOf(Rgba(255, 255, 255, 128, 0, 0, 255, 255), 8, 1, 4) == 1,
+            "a solid interior with a soft edge is not cut at 0.9 (255 less the margin)");
+        Expect(CoreOf(Rgba(230, 228, 232, 235, 140, 60, 0, 231), 8, 1, 4) == 2,
+            "a leaf whose interior sits near 0.9 is not cut at 0.8");
+        Expect(CoreOf(Rgba(100, 60, 20, 0), 2, 2, 4) == 0, "a texture with no interior is not left at the solid cut");
+        Expect(CoreOf(new byte[12], 2, 2, 3) == 0, "a raster with no alpha has no core level");
 
         var scratch = Array.Empty<byte>();
         // A 4x4 BC1 block in punchthrough mode (c0 <= c1) whose indices all name slot 3 -- the one case the

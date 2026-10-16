@@ -176,7 +176,8 @@ public sealed unsafe partial class AlloyRenderer
         // R1-18: the batch sort's texture digit. The recipe's diffuse TexId folded into the key space, so
         // parts sharing a texture sort contiguous exactly as the engine path's interned CAurTexture* did.
         _oCov[i] = DbCoverage(part, recipe);
-        _oTexKey[i] = DbTexKey(recipe, _oCov[i]);
+        _oCore[i] = TexRegistry.Core(DbTexOf(part, recipe, 0));
+        _oTexKey[i] = DbTexKey(recipe, _oCov[i], _oCore[i]);
         DbWriteTexRot(i, o, recipe, rf);
         // Every DB part is matrix-class: its world matrix is composed, never baked into its vertices. The
         // arena holds MODEL-space geometry (that is what makes one range serve every instance), which is
@@ -275,12 +276,15 @@ public sealed unsafe partial class AlloyRenderer
     private static TexCoverage DbCoverage(int part, int recipe) => TexRegistry.Coverage(DbTexOf(part, recipe, 0));
 
     /// <summary>The texture sort digit: the recipe's diffuse folded into the key space, graded diffuses in the
-    /// upper half so the fringed cutouts of a run sort together and the fringe key term cuts once, not per texture.</summary>
-    private static int DbTexKey(int recipe, TexCoverage coverage)
+    /// upper half so the fringed cutouts of a run sort together, and by core bucket inside it, so the fringe and
+    /// core key terms cut once per bucket, not per texture.</summary>
+    private static int DbTexKey(int recipe, TexCoverage coverage, byte core)
     {
         uint tex0 = DrawRecipe.Tex(recipe, 0).Value;
-        const int Half = MaxMats / 2;
-        return tex0 == 0 ? 0 : (int)((tex0 * 2654435761u >> 8) % (Half - 1)) + 1 + (coverage == TexCoverage.Blended ? Half : 0);
+        const int Half = MaxMats / 2, Band = Half / AlloyClasses.CoreBuckets;
+        uint h = tex0 * 2654435761u >> 8;
+        if (tex0 == 0) return 0;
+        return coverage == TexCoverage.Blended ? Half + core * Band + 1 + (int)(h % (Band - 1)) : 1 + (int)(h % (Half - 1));
     }
 
     /// <summary>The slot's class: <see cref="DbClass"/>'s, except that an opaque PLT on an instance with no env map
@@ -329,12 +333,13 @@ public sealed unsafe partial class AlloyRenderer
             byte wash = DbWashMode(washes, cls, decal != 0);
             if (wash != 0) DbNoteWash(recipe, rf, of, lit, cls, decal, wash);
             TexCoverage cov = DbCoverage(_oDbPart[i], recipe);
+            byte core = TexRegistry.Core(DbTexOf(_oDbPart[i], recipe, 0));
             if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
                 && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
-                && slots == _oSlots[i] && _oCov[i] == cov) continue;
+                && slots == _oSlots[i] && _oCov[i] == cov && _oCore[i] == core) continue;
             if (slots != _oSlots[i]) { _oSlots[i] = slots; CasterGen++; }
             _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c; _oDecal[i] = decal; _oWash[i] = wash;
-            _oCov[i] = cov; _oTexKey[i] = DbTexKey(recipe, cov);
+            _oCov[i] = cov; _oCore[i] = core; _oTexKey[i] = DbTexKey(recipe, cov, core);
             _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
             // The slot moves between passes, so its staged record and batch row are both stale.
             UnstampRecord(i);
