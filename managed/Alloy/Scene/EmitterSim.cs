@@ -17,10 +17,10 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe partial class EmitterSim
 {
-    /// <summary>Emitters tracked at once -- the draw table's own cap, so a simulated emitter always has a
-    /// table slot to be drawn through. Past it an emitter is not stepped and draws nothing, which is the
-    /// whole cost of the cap; the engine has none.</summary>
-    private const int MaxEmitters = Particles.MaxEmitters;
+    /// <summary>Emitters tracked at once -- the input table's own cap, since every emitter stepped here came
+    /// from it, so the two cannot disagree about how many an area may hold. Past it an emitter is not stepped
+    /// and draws nothing; the engine has no such cap.</summary>
+    private const int MaxEmitters = DbInputs.MaxEmitters;
     /// <summary>Pool growth, in particles: start here and double until the frame fits. The engine bounds
     /// nothing (<c>operator new</c> on an empty recycle list), so the cap is DERIVED from the draw path --
     /// a particle past <see cref="Particles.MaxRecs"/> has no record to be drawn through.</summary>
