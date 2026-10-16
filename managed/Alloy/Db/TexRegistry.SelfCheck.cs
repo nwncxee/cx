@@ -14,7 +14,8 @@ internal static unsafe partial class TexRegistry
     internal static bool SelfCheck(ExtenderLog log)
     {
         bool ok = PltCheck(log) & PaletteCheck(log) & RegistryCheck(log) & PltColors.SelfCheck(log)
-                & TexCoverageOf.SelfCheck(log) & TxiCheck(log) & TxiSelfCheck(new Checker(log, "TexRegistry.TxiSelfCheck"));
+                & TexCoverageOf.SelfCheck(log) & TxiCheck(log) & TxiSelfCheck(new Checker(log, "TexRegistry.TxiSelfCheck"))
+                & ArturoSelfCheck(new Checker(log, "TexRegistry.ArturoSelfCheck"));
         log.Info(ok ? "TexRegistry.SelfCheck: passed" : "TexRegistry.SelfCheck: FAILED");
         return ok;
     }

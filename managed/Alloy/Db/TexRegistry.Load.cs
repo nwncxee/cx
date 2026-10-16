@@ -75,6 +75,11 @@ internal static unsafe partial class TexRegistry
         public bool Cycle;
         public float Fps = 1f;
         public byte[]? Pixels;
+        /// <summary>The <c>.txi</c> ripple (<see cref="ParseArturo"/>), and the running one the worker built
+        /// from it (<see cref="KeepArturo"/>) for the bracket to file.</summary>
+        public ArturoTxi Arturo;
+        /// <inheritdoc cref="Arturo"/>
+        public Arturo? Ripple;
     }
 
     /// <summary>Does this texture's <c>.txi</c> name a <c>bumpyshinytexture</c>? That is the water class:
@@ -150,14 +155,14 @@ internal static unsafe partial class TexRegistry
         // resource tables, and a hak's .txi beats the base game's by the resman's own order.
         string? txi = ReadResourceText(resref, TextFontLoad.ResTxi);
         TxiSampler(i, txi);
-        j.Pixels = null; j.FullW = 0;
+        j.Pixels = null; j.FullW = 0; j.Ripple = null;
         TxiMaterial(i, txi, j);
         j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.MeanOk = false;
         j.Nearest = _nearest[i]; j.Mip = _mipmap[i];
         j.BumpyShiny = TxiNamesBumpyShiny(txi);
         j.EnvMap = TxiNamesEnvMap(txi);
         uint* resId = stackalloc uint[ResLocate.ResIdWords];
-        if (!LocateFor(resref, j.Kind, resId, out j.Loc, out TexKind found, out string? why))
+        if (!LocateFor(resref, j.Kind, TxiIsProcedural(j.Arturo, j.GridX, j.GridY), resId, out j.Loc, out TexKind found, out string? why))
         { Recycle(j); _pend[i] = PendNone; Fail(i, why ?? "no resource"); return; }
         // Auto resolved to whatever the resource tables hold, and that is the slot's kind from here on: a PLT
         // takes the pair decode and the shader resolve, anything else the ordinary one. The slot KEY does not
@@ -218,8 +223,9 @@ internal static unsafe partial class TexRegistry
 
     /// <summary>Where this resref's bytes live, for the kind asked. A PLT slot takes the PLT restype alone --
     /// a PLT and a DDS of the same name are different images and resolving one as the other is how a head
-    /// ends up wearing a wall. A DDS/TGA pair goes in the engine's race order: a hak's TGA beats a base DDS.</summary>
-    private static bool LocateFor(string resref, TexKind kind, uint* resId, out TexLocation loc, out TexKind found, out string? why)
+    /// ends up wearing a wall. A DDS/TGA pair goes in the engine's race order, except that
+    /// <paramref name="raw"/> puts the TGA first -- <see cref="TxiIsProcedural"/>.</summary>
+    private static bool LocateFor(string resref, TexKind kind, bool raw, uint* resId, out TexLocation loc, out TexKind found, out string? why)
     {
         loc = default; why = null; found = TexKind.Plain;
         Span<byte> name = stackalloc byte[ShaderResource.ResRefBytes + 1];
@@ -231,7 +237,7 @@ internal static unsafe partial class TexRegistry
             if (kind == TexKind.Plt) { types[0] = PltResType; nTypes = 1; }
             else
             {
-                bool tga = TexLoad.Winner(p, out _, out _) == TgaResType;
+                bool tga = raw || TexLoad.Winner(p, out _, out _) == TgaResType;
                 types[0] = tga ? TgaResType : DdsResType; types[1] = tga ? DdsResType : TgaResType; types[2] = PltResType;
                 nTypes = kind == TexKind.Plain ? 2 : 3;
             }
@@ -372,6 +378,7 @@ internal static unsafe partial class TexRegistry
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
+            KeepArturo(j);
             return;
         }
         byte* chain = DdsReader.Prepare(raw, out DdsReader.Info info, out string? dw);
@@ -518,6 +525,7 @@ internal static unsafe partial class TexRegistry
         }
         ApplySamplerWishes();
         StepCycles();
+        StepArturo();
         // ...and AGAIN: ApplySamplerWishes drops and re-mints handles of its own, and leaving those to the
         // next frame's drain is a whole frame of records pointing at a handle this one just retired.
         ZeroDyingHandles();
@@ -596,6 +604,7 @@ internal static unsafe partial class TexRegistry
         if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
+        FileArturo(j);
         Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 

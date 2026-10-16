@@ -549,8 +549,9 @@ internal static partial class DrawRecipe
         bool hinted = mesh.TransparencyHint > 0;
         // R1-8. The engine's own test is Material::GetIsOpaque @0x5c6190, and its terms are: the SharedMaterial's
         // `transparency` keyword, an env map, a non-default destination blend, and -- last -- whether the DIFFUSE
-        // actually carries alpha coverage, which it asks the texture's own vtable. The first three are model
-        // state and are read here. The fourth is a DECODE question (texture-coverage-is-a-decode-question) and
+        // actually carries alpha coverage, which it asks the texture's own vtable -- CAurTexture::HasAlpha
+        // @0x584630, the image's mean alpha under 1, or a `.txi` alphamean line overriding it.
+        // The first three are model state and are read here. The fourth is a DECODE question (texture-coverage-is-a-decode-question) and
         // the texture is not resident when a recipe is interned, so it cannot be answered yet.
         // The fourth term is answerable now (CX-117): the decode decides a texture's coverage and the arrival
         // re-dirties its dependents, so a recipe interned before its diffuse landed is reclassified the frame
