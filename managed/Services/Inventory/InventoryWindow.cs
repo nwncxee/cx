@@ -65,6 +65,11 @@ internal sealed partial class InventoryWindow
     public Action<InvAction>? Act;
     /// <summary>An item's display name, cold (tooltip, search). The service asks the engine.</summary>
     public Func<uint, string>? NameOf;
+    /// <summary>A strref's TLK text, cold (the layout's words). The self-check supplies its own.</summary>
+    public Func<uint, string> Word = Native.TlkText;
+    /// <summary>TLK strrefs: the quickbar's Inventory; the toolset find dialog's Search, the one entry that means a text
+    /// search in every shipped language (284 is the skill); the stock panel's Container.</summary>
+    private const uint InventoryStrRef = 3731, SearchStrRef = 7260, ContainerStrRef = 6685;
 
     public bool Open { get; private set; }
     /// <summary>Set by the owner each frame: the game-art skin drew it, so its scrollbars are laid out and hit-tested as
@@ -135,6 +140,7 @@ internal sealed partial class InventoryWindow
         _policyEpoch = ServerPolicy.Epoch;
         _vw = vw; _vh = vh;
         _lootLabel = ServerPolicy.Str("inventory.loot.label", "");
+        _containerWord = Word(ContainerStrRef);
         int page = Page;
         PageLimit = Math.Clamp((int)ServerPolicy.Float("inventory.backpack.pages", InventoryModel.Pages), 1, InventoryModel.Pages);
         Scrolled = scrolled && PageLimit > 1;
@@ -150,14 +156,14 @@ internal sealed partial class InventoryWindow
         _hDesign = barY + BarH + Pad;
         _lootMaxRows = (int)((_hDesign - LootGridY - Pad) / Cell);
 
-        _title = Comp("title", 0f, 0f, _wDesign, TitleH, "Inventory");
+        _title = Comp("title", 0f, 0f, _wDesign, TitleH, Word(InventoryStrRef));
         _close = Comp("close", _wDesign - Pad - CloseW, 2f, _wDesign - Pad, 2f + CloseW, "");
-        _search = SearchOn ? Comp("search", 120f, 3f, _wDesign - Pad - CloseW - Gap, TitleH - 3f, "Search") : default;
+        _search = SearchOn ? Comp("search", 120f, 3f, _wDesign - Pad - CloseW - Gap, TitleH - 3f, Word(SearchStrRef)) : default;
         _equip = Comp("equip", Pad, TitleH + Pad, Pad + EquipW, TitleH + Pad + EquipH, "");
         for (int i = 0; i < _slots.Length; i++)
         {
             SlotDef d = InventoryModel.Slots[i];
-            Box b = Comp("slot." + d.Id, _equip.X0 + d.X, _equip.Y0 + d.Y, _equip.X0 + d.X + d.W, _equip.Y0 + d.Y + d.H, d.Label);
+            Box b = Comp("slot." + d.Id, _equip.X0 + d.X, _equip.Y0 + d.Y, _equip.X0 + d.X + d.W, _equip.Y0 + d.Y + d.H, d.StrRef != 0 ? Word(d.StrRef) : d.Label);
             b.On &= _equip.On;
             _slots[i] = b;
         }
@@ -501,8 +507,8 @@ internal sealed partial class InventoryWindow
             InvItem held = Model.Equipped[h.Index];
             if (held.Oid != InventoryModel.Invalid && Mergeable(held, it))
                 return new InvAction(InvActKind.Merge, held.Oid, Other: oid);
-            if ((it.SlotMask & d.Mask) == 0) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"That can't be worn in the {d.Label.ToLowerInvariant()} slot." : "");
-            if (held.Oid != InventoryModel.Invalid) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"The {d.Label.ToLowerInvariant()} slot is taken." : "");
+            if ((it.SlotMask & d.Mask) == 0) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"That can't be worn in the {_slots[h.Index].Label.ToLowerInvariant()} slot." : "");
+            if (held.Oid != InventoryModel.Invalid) return new InvAction(InvActKind.Refused, oid, Text: describe ? $"The {_slots[h.Index].Label.ToLowerInvariant()} slot is taken." : "");
             return new InvAction(InvActKind.Equip, oid, d.Mask);
         }
         return null;

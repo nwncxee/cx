@@ -111,12 +111,14 @@ public static unsafe class Native
     public static string EngineTyped(string s) => EngineText(Encoding.Latin1.GetString(EngineBytes(s)));
 
     /// <summary>A strref's text for DISPLAY as <c>CTlkTable::GetSimpleString</c> resolves it -- base TLK, a module's
-    /// custom TLK, a server override -- or null while no TLK is loaded (pre-main, the stub host). COLD paths only.</summary>
-    public static string? TlkText(uint strref)
+    /// custom TLK, a server override. While no TLK is loaded (pre-main, the stub host) the strref's number, so the gap
+    /// shows on screen. COLD paths only.</summary>
+    public static string TlkText(uint strref)
     {
         IntPtr sym = Sym(SymbolMap.TlkTable);
         IntPtr tlk = sym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)sym;
-        if (tlk == IntPtr.Zero || EngineFn.ExoStringDtor == null || Sym(SymbolMap.TlkGetSimpleString) == IntPtr.Zero) return null;
+        if (tlk == IntPtr.Zero || EngineFn.ExoStringDtor == null || Sym(SymbolMap.TlkGetSimpleString) == IntPtr.Zero)
+            return strref.ToString(System.Globalization.CultureInfo.InvariantCulture);
         byte* exo = stackalloc byte[ExoScratch];
         NativeMemory.Clear(exo, ExoScratch);
 #pragma warning disable RS0030 // Native.TlkText is the one reader of a strref
