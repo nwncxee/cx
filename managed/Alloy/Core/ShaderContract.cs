@@ -603,7 +603,7 @@ internal static class ShaderContract
                   // CX-191: through the mip-level compensation, the same call in the feature prepass so its
                   // depth and the GL_EQUAL colour draw keep the same holes
                   && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
-                  && OwnedLitFsMain.Contains("return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut")
+                  && OwnedLitFsMain.Contains("return cut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= cut")
                   && OwnedLitFsMain.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
                   // CX-223: ...and the one feature whose coverage is not the diffuse alpha reads its own map
                   && OwnedLitFsMain.Contains("cxTintRow = CxTintRow(vDraw);")

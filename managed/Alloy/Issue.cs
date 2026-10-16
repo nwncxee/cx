@@ -487,7 +487,7 @@ internal static unsafe class Issue
                 uint src = BlendGl(_gSrc[g]), dst = BlendGl(_gDst[g]);
                 if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
             }
-            bool equal = _matchDepth && _gPrepassed[g] && !fringePass;
+            bool equal = _matchDepth && _gPrepassed[g] && !fringePass && !(core && viz == VizFringe);
             // never under EQUAL: a prepassed batch has to reproduce its prepass depth exactly
             bool wash = _gWash[g] != 0 && !equal;
             // A wash takes the pass's own depth rule: a cutout one writes its depth like any cutout, a blended
@@ -637,6 +637,9 @@ internal static unsafe class Issue
     /// <summary>The lit stage's <c>uSolid</c>: a split wash's interior alone, or a fringe's band alone (raw
     /// coverage at or below <see cref="AlloyClasses.SolidAlpha"/>, the complement of its core's cut).</summary>
     internal const int SolidInterior = 1, SolidFringe = 2;
+
+    /// <summary><c>/alloy viz</c>'s core/fringe split: a core pass draws its whole card at LEQUAL, the fringe pass nothing.</summary>
+    internal const int VizFringe = 54;
 
     /// <summary>Close the fringe pass: the next pass sets its own blend and depth mask.</summary>
     internal static void FringeEnd() { _fringe.Pass = false; _passDepthMask = 1; }

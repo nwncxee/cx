@@ -1172,7 +1172,7 @@ public sealed unsafe partial class AlloyRenderer
     /// fringe rung opens and closes the terms with no draw.</summary>
     private static void FringeOwnedPass(Matrix4x4* vp, int* viewport, float near, float far)
     {
-        if (Programs.ProgFringe == 0 || _gA2cStart <= _gCutoutStart) return;
+        if (Programs.ProgFringe == 0 || _gA2cStart <= _gCutoutStart || _lightViz == Issue.VizFringe) return;
         GpuBegin(GpuTerm.FringeDepth);
         if (!Ablation.FringeSkip) DepthSweep(_gCutoutStart, _gA2cStart, vp, viewport, fringe: true);
         GpuEnd(GpuTerm.FringeDepth);
