@@ -361,7 +361,10 @@ internal static partial class DbInputs
     internal static void Reset()
     {
         for (int k = 0; k < _lightN; k++) _lightDef[k] = null;
-        for (int k = 0; k < _emitN; k++) _emitDef[k] = null;
+        // The emitter's two pieces of per-part state go with the table that names the parts, exactly as
+        // PartDestroyed releases them one at a time -- clearing the table first would strand both.
+        for (int k = 0; k < _emitN; k++) { EmitterSim.ForgetDbPart(_emitPart[k]); _emitDef[k] = null; }
+        DbEmitterChannels.ForgetAll();
         _lightN = 0; _emitN = 0; Spilled = 0; TileLights = 0; ChunkSpawnsRefused = 0;
     }
 

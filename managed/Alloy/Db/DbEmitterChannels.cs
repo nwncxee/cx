@@ -11,9 +11,10 @@ namespace CX.Alloy.Db;
 /// its first write and freed with its part. Writes BLEND: <c>lerp(column, key, weight)</c> off the rest keys.</summary>
 internal static class DbEmitterChannels
 {
-    /// <summary>Emitters that may animate at once. An area's worth of animated emitters is a handful; past
-    /// this the write is refused and counted, never silently dropped.</summary>
-    internal const int MaxBlocks = 256;
+    /// <summary>Emitters that may animate at once, which is every emitter part the input table can hold:
+    /// a city tileset registers thousands, so any lower ceiling is a cliff an effect falls off silently.
+    /// Past it the write is refused and named on the period line, never dropped in silence.</summary>
+    internal const int MaxBlocks = DbInputs.MaxEmitters;
 
     /// <summary>The controller ids this sink accepts, in order. Index into a block is the position here.</summary>
     private static readonly int[] _ids =
@@ -145,16 +146,22 @@ internal static class DbEmitterChannels
         DbAnim.ChannelSink = Write;
     }
 
-    /// <summary>The self-check's teardown. No session edge calls it: a block dies with its part, in <see cref="Forget"/>.</summary>
-    private static void Reset()
+    /// <summary>The session edge <c>DbInputs.Reset</c> is: every block at once, because the part table that
+    /// drives the per-part <see cref="Forget"/> is cleared in the same breath and a block left behind is one
+    /// a re-tenanted part index inherits.</summary>
+    internal static void ForgetAll()
     {
         for (int b = 0; b < _blockN; b++) _blockOf[_partOf[b]] = 0;
         _blockN = 0; _writes = 0; _refused = 0; _unknown = 0;
     }
 
+    /// <summary>For the period line. A refusal is spelt out rather than counted quietly: the emitter it hit
+    /// falls back to its node's rest keys, which for a VFX whose size or alpha is entirely animated is
+    /// nothing drawn at all.</summary>
     internal static string Stats()
         => $"dbemit: {_blockN} animated, {_writes} writes"
-         + (_refused > 0 ? $" REFUSED {_refused} (past {MaxBlocks} blocks)" : "")
+         + (_refused > 0 ? $" REFUSED {_refused} write(s) past {MaxBlocks} blocks -- those emitters are "
+                         + "drawing their REST keys" : "")
          + (_unknown > 0 ? $", {_unknown} non-emitter channel(s)" : "");
 
     /// <summary>Off-device: the sparse mapping, the blend, the rest-key seed and the recycle. An emitter
@@ -163,7 +170,7 @@ internal static class DbEmitterChannels
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DbEmitterChannels.SelfCheck");
-        Reset();
+        ForgetAll();
 
         check.Expect(ChannelOf(Ctl.EmBirthRate) >= 0, "an emitter channel maps");
         check.Expect(ChannelOf(Ctl.LightColor) < 0, "a light channel is not an emitter channel");
@@ -207,6 +214,43 @@ internal static class DbEmitterChannels
         check.Expect(Value(p, Ctl.EmBirthRate, new Vector4(7f, 0f, 0f, 0f)).X == 7f,
                      "...and the part index reads unwritten again, not the dead emitter's rate");
 
+        // The CEILING, over the population a real area has. A refused block is not a dropped diagnostic:
+        // the emitter falls back to its node's REST keys, and a VFX whose size or alpha is entirely
+        // animated (zero size, negative alpha at rest) then draws nothing at all.
+        const int Crowd = 300;
+        var crowd = new DbId[Crowd];
+        for (int k = 0; k < Crowd; k++)
+        {
+            crowd[k] = SceneDb.Parts.Alloc();
+            int c = crowd[k].Index;
+            DbFeed.InitPart(c);
+            SceneDb.PartObj[c] = obj; SceneDb.PartModel[c] = m; SceneDb.PartNode[c] = 1;
+            Write(c, Ctl.EmBirthRate, new Vector4(k + 1f, 0f, 0f, 0f), 1f);
+        }
+        check.Expect(Value(crowd[Crowd - 1].Index, Ctl.EmBirthRate, default).X == 300f,
+                     "the 300th animated emitter of an area keeps its own birth rate rather than falling "
+                     + "back to its node's rest key");
+        check.Expect(!Stats().Contains("REFUSED", StringComparison.Ordinal),
+                     "...with no block refused along the way");
+
+        // The session edge releases every block at once; the per-part path cannot be relied on there,
+        // because the table it walks is cleared in the same breath.
+        ForgetAll();
+        check.Expect(Blocks == 0, "a session edge releases every block");
+        check.Expect(Value(crowd[0].Index, Ctl.EmBirthRate, new Vector4(4f, 0f, 0f, 0f)).X == 4f,
+                     "...and every part reads unwritten again, not the dead area's rates");
+        for (int k = 0; k < Crowd; k++) SceneDb.Parts.Free(crowd[k]);
+        SceneDb.Parts.TakeDirty();
+
+        // A node whose REST alpha is negative is the shape this ceiling bites: the file states -0.4 and the
+        // animation lifts it to 0.5, so reading the rest key is an invisible effect rather than a dim one.
+        Write(p, Ctl.EmAlphaStart, new Vector4(0.5f, 0f, 0f, 0f), 1f);
+        check.Expect(Value(p, Ctl.EmAlphaStart, default).X == 0.5f,
+                     "an animated alpha reads the key, not the node's negative rest value");
+        Forget(p);
+        check.Expect(Value(p, Ctl.EmAlphaStart, new Vector4(-0.4f, 0f, 0f, 0f)).X == -0.4f,
+                     "...and without a block it reads that rest value, which clamps to nothing drawn");
+
         // Two blocks, drop the FIRST: the swap-with-last must keep the survivor addressable.
         DbId h2 = SceneDb.Parts.Alloc();
         int q = h2.Index;
@@ -222,7 +266,7 @@ internal static class DbEmitterChannels
         Forget(q);
         SceneDb.Parts.Free(h); SceneDb.Parts.Free(h2); SceneDb.Objects.Free(obj);
         SceneDb.Parts.TakeDirty(); SceneDb.Objects.TakeDirty();
-        Reset();
+        ForgetAll();
 
         log.Info(check.Ok ? "DbEmitterChannels.SelfCheck: passed"
                           : "DbEmitterChannels.SelfCheck: FAILED -- an emitter would animate with the wrong "
