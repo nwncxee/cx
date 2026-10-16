@@ -31,7 +31,7 @@ public sealed unsafe partial class AlloyRenderer
     /// untimed; the shadow bracket and the light build run their own elapsed queries OUTSIDE every term by
     /// pass order, which is the premise the guard rests on. The <c>*Key</c> terms are the keyhole-dissolving
     /// tails, and the deferred pass is three dispatches timed apart, so each knob behind them has a number.</summary>
-    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Coverage, Decals, Washes, Fringe, FringeKey, FringeDepth, Count }
+    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Coverage, Decals, Washes, Fringe, FringeKey, Count }
     /// <summary>One elapsed query per term. TIME_ELAPSED cannot nest: a colour timer wrapping the grass and
     /// water ones has its inner End close it early, wedging both inner meters on a stale sample.</summary>
     private static readonly GpuQuery[] _qTerm = new GpuQuery[(int)GpuTerm.Count];
@@ -315,8 +315,7 @@ public sealed unsafe partial class AlloyRenderer
                          $" / cutout {GpuMs(GpuTerm.Cutout):F2}" +
                          (_qTerm[(int)GpuTerm.CutoutKey].Measured ? $" (+ keyhole {GpuMs(GpuTerm.CutoutKey):F2})" : "") +
                          (_qTerm[(int)GpuTerm.Fringe].Measured ? $" / fringe {GpuMs(GpuTerm.Fringe):F2}" : "") +
-                         (_qTerm[(int)GpuTerm.FringeKey].Measured ? $" (+ keyhole {GpuMs(GpuTerm.FringeKey):F2})" : "") +
-                         (_qTerm[(int)GpuTerm.FringeDepth].Measured ? $" (+ depth {GpuMs(GpuTerm.FringeDepth):F2})" : "") + " / " +
+                         (_qTerm[(int)GpuTerm.FringeKey].Measured ? $" (+ keyhole {GpuMs(GpuTerm.FringeKey):F2})" : "") + " / " +
                          $"grass {GpuMs(GpuTerm.Grass):F2} (+ depth {GpuMs(GpuTerm.GrassDepth):F2}) / sky {GpuMs(GpuTerm.Sky):F2} / blended {GpuMs(GpuTerm.Blended):F2}" +
                          (_qTerm[(int)GpuTerm.BlendedComposite].Measured
                              ? $" (accumulate" + (_qBlendSamples.Measured && Counters._lastPixels > 0 ? $", overdraw x{_qBlendSamples.Avg / Counters._lastPixels:F2}" : "")

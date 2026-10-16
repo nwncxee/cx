@@ -65,10 +65,6 @@ internal static class AlloyClasses
     /// draw solid, and the fringe pass blends the band above <see cref="Discard"/>. The lit stage's <c>CX_SOLID_ALPHA</c>.</summary>
     internal const float SolidAlpha = 0.99f;
 
-    /// <summary>The fringe's depth sweep cut, on RAW alpha: a fringe texel this opaque hides the fringe behind it,
-    /// which then bleeds through by at most 1 - this. Lighter fringe lays no depth, so thin layers still stack.</summary>
-    internal const float FringeOccluder = 0.9f;
-
     /// <summary>Does this part draw in two pieces -- a depth-writing core above <see cref="SolidAlpha"/> and a
     /// blended fringe below it? A cutout whose diffuse measured graded, and not a wash: a wash has its own
     /// split (<c>WashSplit</c>). A binary or unmeasured diffuse draws whole.</summary>
@@ -145,8 +141,6 @@ internal static class AlloyClasses
             check.Expect(Fringes((int)r.Cls, r.Cov, r.Wash) == r.Split,
               $"{r.Cls} over a {r.Cov} diffuse, wash {r.Wash}: should {(r.Split ? "" : "not ")}split into core and fringe");
         check.Expect(SolidAlpha > Discard((int)AlloyClass.Cutout), "the core cut sits above the 0.2 cut, or the fringe band is empty");
-        check.Expect(FringeOccluder > Discard((int)AlloyClass.Cutout),
-          "a fringe texel that lays depth is one the fringe draws, or it occludes the layers behind and paints nothing");
         check.Expect(Discard((int)AlloyClass.Cutout) == 0.2f && Discard((int)AlloyClass.Blended) == 0.2f,
           "the engine's 0.2 cutout, on the two classes it draws under Enable(1)");
         check.Expect(Discard((int)AlloyClass.Opaque) < 0f && Discard((int)AlloyClass.Additive) < 0f

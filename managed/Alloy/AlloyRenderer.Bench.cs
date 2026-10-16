@@ -240,7 +240,7 @@ public sealed unsafe partial class AlloyRenderer
         double frame = (Stopwatch.GetTimestamp() - _benchT0) * 1000.0 / Stopwatch.Frequency / BenchMeasure;
         double span = _spanN > _benchSpanN0 ? (_spanSum - _benchSpan0) / (_spanN - _benchSpanN0) / 1e6 : 0.0;
         double lit = BenchTerm(GpuTerm.Opaque) + BenchTerm(GpuTerm.OpaqueKey) + BenchTerm(GpuTerm.Cutout) + BenchTerm(GpuTerm.CutoutKey)
-                   + BenchTerm(GpuTerm.Fringe) + BenchTerm(GpuTerm.FringeKey) + BenchTerm(GpuTerm.FringeDepth);
+                   + BenchTerm(GpuTerm.Fringe) + BenchTerm(GpuTerm.FringeKey);
         double blend = BenchTerm(GpuTerm.Blended);
         double all = 0.0;
         for (int t = 0; t < _qTerm.Length; t++) all += BenchTerm((GpuTerm)t);
