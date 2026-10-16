@@ -287,7 +287,7 @@ internal static unsafe partial class EmitterSim
         // A grow ABANDONS the old block (the arena is a bump allocator), so an emitter whose controller ramps
         // birthrate would burn ~N^2/2 of the arena growing by ones and take every other emitter down with it
         // at the reset.
-        check.Expect(Block(1) == 1 && Block(32) == 32 && Block(33) == 64 && Block(MaxPerEmitter) == MaxPerEmitter,
+        check.Expect(Block(1) == 1 && Block(32) == 32 && Block(33) == 64 && Block(MaxSlots) == MaxSlots,
           "a block is a power of two, so a ramping emitter grows O(log N) times, not N");
         check.Expect(Block(0) == 1 && Block(-5) == 1, "...and is never zero or negative, whatever Want returned");
 

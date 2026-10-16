@@ -17,17 +17,14 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe partial class EmitterSim
 {
-    /// <summary>Emitters tracked at once. Past this an emitter is not stepped and draws nothing, which is
-    /// the same cost the draw table's own cap has (<c>Particles</c> MaxEmitters).</summary>
-    private const int MaxEmitters = 4096;
-    /// <summary>Particles one emitter may hold. The engine has NO ceiling: every Update births from the recycle
-    /// list at <c>emitter+0x128</c> and calls <c>operator new</c> when it is empty, so <c>birthRate x life</c>
-    /// is an emergent steady state there, not a bound -- every birth this refuses is a particle vanilla would
-    /// have drawn, so it is loud once and counted. Derived as <see cref="MaxSlots"/>/64, 480KB of 30MB.</summary>
-    private const int MaxPerEmitter = MaxSlots / 64;
-    /// <summary>Pool growth, in particles: start here, double until the frame fits, stop at the cap (0x78
-    /// bytes each, so the cap is 30 MiB) and start the arena over rather than truncating one emitter.</summary>
-    private const int MinSlots = 4096, MaxSlots = 1 << 18;
+    /// <summary>Emitters tracked at once -- the input table's own cap, since every emitter stepped here came
+    /// from it, so the two cannot disagree about how many an area may hold. Past it an emitter is not stepped
+    /// and draws nothing; the engine has no such cap.</summary>
+    private const int MaxEmitters = DbInputs.MaxEmitters;
+    /// <summary>Pool growth, in particles: start here and double until the frame fits. The engine bounds
+    /// nothing (<c>operator new</c> on an empty recycle list), so the cap is DERIVED from the draw path --
+    /// a particle past <see cref="Particles.MaxRecs"/> has no record to be drawn through.</summary>
+    private const int MinSlots = 4096, MaxSlots = Particles.MaxRecs;
 
     /// <summary>Two turns, the wrap every roll and every random angle is taken modulo. <c>6.2831855f</c> is
     /// the engine's own literal, not <c>MathF.Tau</c> rounded differently.</summary>
@@ -149,8 +146,7 @@ internal static unsafe partial class EmitterSim
 
     /// <summary>Births a full block refused. EVERY one of them: the engine has no per-emitter ceiling
     /// (<c>operator new</c> on an empty recycle list, <c>FountainEmitter::Update</c> @0x4b1c70), so a refusal
-    /// here is always a particle vanilla would have drawn, whether the block was sized by the emitter's own
-    /// parameters or clamped by <see cref="MaxPerEmitter"/>. Loud once, counted after.</summary>
+    /// here is always a particle vanilla would have drawn. Loud once, counted after.</summary>
     private static void CapLost(int n)
     {
         if (n <= 0) return;
@@ -158,9 +154,9 @@ internal static unsafe partial class EmitterSim
         if (_capSaid) return;
         _capSaid = true;
         _log?.Always($"EmitterSim: an emitter's block is full and it is losing births -- {n} on this step. Its "
-                   + $"parameters asked for {_capPeak} particles against our {MaxPerEmitter} ceiling; vanilla "
-                   + "has no ceiling at all. Raise MaxPerEmitter to the peak the [emitsim] line reports, or "
-                   + "widen Want if the burst is what overran it. Counted, not repeated, from here on");
+                   + $"parameters asked for {_capPeak} particles against the {MaxSlots}-particle arena; vanilla "
+                   + "has no ceiling at all. Widen Want if the burst is what overran the block it was sized "
+                   + "for. Counted, not repeated, from here on");
     }
 
     /// <summary>Clamp a birth burst to what the block can still hold, counting what that costs.</summary>
@@ -804,12 +800,15 @@ internal static unsafe partial class EmitterSim
         // A trail's population follows how far it moves, not its rate x life: room for this frame's births.
         if (e.Trail && slot.Mode == ModeFountain)
             want = Math.Max(want, slot.Live + 1 + (int)(rate * (e.M.Pos - e.M.PrevPos + e.M.P2pLeftover).Length()));
-        // The peak is the census MaxPerEmitter has to be sized from: nothing else in the client says what an
+        // The peak is the census the arena has to be sized from: nothing else in the client says what an
         // emitter's own parameters ask for, so a clamp reported without it cannot be acted on. Taken before
         // the block is rounded up, so it reports the demand and not our own quantisation.
         if (want > _capPeak) _capPeak = want;
+        // Clamped BEFORE the round-up: an emitter whose parameters ask for more than the whole arena would
+        // overflow the power-of-two step. The arena's own cap is the only ceiling -- there is no per-emitter
+        // share, because the engine has none either.
+        if (want > MaxSlots) { want = MaxSlots; _capped++; }
         want = Block(want);
-        if (want > MaxPerEmitter) { want = MaxPerEmitter; _capped++; }
         if (slot.Cap >= want) return true;
 
         int had = slot.Live, from = slot.Base;
@@ -851,6 +850,8 @@ internal static unsafe partial class EmitterSim
             // rebasing each emitter's pointers, for a path that runs a handful of times per session.
             if (_pool != null) { NativeMemory.Free(_pool); NativeMemory.Free(_ptrs); Empty(); }
             _pool = pool; _ptrs = ptrs; _slotCap = cap; _slotTop = 0;
+            _log?.Info($"EmitterSim: the particle arena grew to {cap} particles "
+                     + $"({(long)cap * EngineLayout.ParticleStride >> 20} MiB) -- one frame of missing particles");
             return want <= cap;
         }
         if (_slotCap == 0) return false;
@@ -860,9 +861,10 @@ internal static unsafe partial class EmitterSim
         if (!_poolWarned)
         {
             _poolWarned = true;
-            _log?.Always($"EmitterSim: the particle pool hit its {MaxSlots}-particle ceiling and started over "
-                       + "-- one frame of missing particles, and it will repeat while the area stays this busy "
-                       + "(pool-reset= on the [emitsim] line counts it)");
+            _log?.Always($"EmitterSim: the particle arena hit its {MaxSlots}-particle ceiling and started over "
+                       + "-- one frame of missing particles, and it will repeat while the area stays this busy. "
+                       + "That ceiling is the draw path's record buffer (Particles.MaxRecs): a particle past it "
+                       + "could be stepped but never drawn (pool-reset= on the [emitsim] line counts it)");
         }
         return want <= _slotCap;
     }
@@ -969,9 +971,9 @@ internal static unsafe partial class EmitterSim
         // kept its old name is a counter that lies.
         if (DbTargets != 0) s += $" p2p-targeted={DbTargets} (in view; the target walk is part of the fill)";
         // Per frame, like em= and parts= beside it: a period total here read as an alarm (523) for what is
-        // half an emitter a frame. The peak is what MaxPerEmitter would have to be raised to; CAP-LOST is
+        // half an emitter a frame. The peak is the demand one emitter's parameters implied; CAP-LOST is
         // births actually dropped, which is the part that is a bug -- vanilla has no ceiling to drop them at.
-        if (_capped != 0) s += $" capped={(float)_capped / f:F2}/frame (wanted up to {_capPeak}, cap {MaxPerEmitter})";
+        if (_capped != 0) s += $" capped={(float)_capped / f:F2}/frame (wanted up to {_capPeak}, arena {MaxSlots})";
         if (_capLost != 0) s += $" CAP-LOST={_capLost} births VANILLA WOULD HAVE DRAWN";
         if (_poolResets != 0) s += $" pool-reset={_poolResets}";
         if (_reclaimed != 0) s += $" reclaimed={_reclaimed}";
