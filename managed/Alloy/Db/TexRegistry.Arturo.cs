@@ -219,7 +219,7 @@ internal static unsafe partial class TexRegistry
     /// <summary>BRACKET, after the upload: file the slot's ripple, or count why it stands out.</summary>
     private static void FileArturo(Job j)
     {
-        if (!j.Arturo.On) return;
+        if (!j.Arturo.On || j.Tail) return;
         // The engine never fills a height map for a controller with no `distort`: Control returns on every
         // sub-step before the rows are written, so there is nothing to reproduce.
         if (j.Arturo.Distort == 0) { _artState.Flat++; return; }
