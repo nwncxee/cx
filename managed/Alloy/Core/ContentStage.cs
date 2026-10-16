@@ -116,7 +116,7 @@ internal static partial class ContentStage
         var fns = FnDef.Matches(Comments.Replace(text, " ")).Select(m => m.Groups[1].Value).Distinct().ToList();
         var envDefs = VanillaShader.OwnDefine.Matches(env).Select(m => m.Groups[1].Value).Distinct().ToList();
         var sb = new StringBuilder(text.Length + env.Length + 2048);
-        sb.Append("// ---- CX-303 content stage ").Append(resref).Append('\n');
+        sb.Append("// ---- content stage ").Append(resref).Append('\n');
         foreach (string p in TintPlaceholders) sb.Append("#undef ").Append(p).Append('\n');
         sb.Append("#define BUILD_VERSION ").Append(buildVersion).Append('\n');
         sb.Append("#define BUILD_REVISION ").Append(buildRevision).Append('\n');

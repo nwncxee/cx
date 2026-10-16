@@ -687,8 +687,8 @@ internal static unsafe class Issue
     /// <summary>Does a lit, non-water batch draw a content fragment stage's body -- through the hosted program, or
     /// through its own once a translated content stage's program is built?</summary>
     internal static bool HostedBody(bool lit, int feat)
-        => lit && (ShaderFeatures.IsContent(feat) ? ContentPrograms.Ready(feat)
-                   : Programs._progLitHost != 0 && ShaderFeatures.Hosted(feat));
+        => lit && (ShaderFeatures.IsContent(feat) ? ContentPrograms.AskReady(feat)
+                   : Programs._progLitHost != 0 && ShaderFeatures.NamedHosted(feat));
 
     /// <summary>Does a blended batch sit the OIT accumulation out and draw after the resolve, the plain-blend way? A
     /// hosted program declares no revealage output (left undefined it resolves as white patches), and weighted

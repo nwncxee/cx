@@ -108,7 +108,7 @@ internal static unsafe class ContentPrograms
 
     /// <summary>Is this content stage's program built and its body running? Render thread. Asking is what queues
     /// the build: a stage nothing draws never compiles.</summary>
-    internal static bool Ready(int feat)
+    internal static bool AskReady(int feat)
     {
         Stage? s = Of(feat);
         if (s == null || s.Failed) return false;
@@ -160,7 +160,7 @@ internal static unsafe class ContentPrograms
         if (s == null) return;
         int loc = IsDeferred(which) ? s.DefNoise : s.FwdNoise;
         if (loc < 0 || Gl.Uniform2ui == null) return;
-        ulong h = AlloyRenderer.Bindless ? AlloyRenderer.HandleFor(FrameSnapshot.ContentNoiseTid()) : 0ul;
+        ulong h = AlloyRenderer.Bindless ? AlloyRenderer.HandleFor(FrameSnapshot.OwnNoise()) : 0ul;
         Gl.Uniform2ui(loc, (uint)h, (uint)(h >> 32));
     }
 
@@ -292,7 +292,7 @@ internal static unsafe class ContentPrograms
                          "a material naming only a fragment stage gets a content id, where the engine builds nothing");
             int a = Register(Mtr("customshadervs vslit\ncustomshaderfs cx_selfcheck_a\n"));
             int b = Register(Mtr("customShaderVS VSLIT_NM\ncustomShaderFS CX_SELFCHECK_A\n"));
-            check.Expect(a == 13 && b == 13, $"the first content stage is id 13 for either case of its name (got {a}, {b})");
+            check.Expect(a == 13 && b == 13, $"the first content stage is not id 13 for both cases of its name (got {a}, {b})");
             check.Expect(Register(Mtr("customshadervs vslit\ncustomshaderfs cx_selfcheck_b\n")) == 14,
                          "a second stage does not take the next id");
             check.Expect(Register(Mtr("customshadervs vslit_nm\ncustomshaderfs fslit_nm\n")) == 0
@@ -302,7 +302,7 @@ internal static unsafe class ContentPrograms
             check.Expect(ProgId(13, false) == 100 && ProgId(13, true) == 101 && ProgId(14, false) == 102
                          && IsDeferred(101) && !IsDeferred(102) && !IsProg(9),
                          "the issue-loop numbering is not 100 + 2 * index, plus one for the twin");
-            check.Expect(!Ready(13) && _reg.ById[0]!.Wanted && !Ready(12),
+            check.Expect(!AskReady(13) && _reg.ById[0]!.Wanted && !AskReady(12),
                          "an unbuilt stage reads ready, does not queue its build, or a named feature reads as content");
             string region = WithRegion("head\n//@cx-lib cx_host_f\nbody\n//@cx-end cx_host_f\ntail\n", "rambo") ?? "";
             check.Expect(region == "head\n// $VANILLA-CONTENT rambo\n" + RegionStub + "// $VANILLA-END\ntail\n",

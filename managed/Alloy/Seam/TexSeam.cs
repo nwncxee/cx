@@ -376,10 +376,13 @@ internal static class MaterialParams
     /// read under the type the material's own <c>.mtr</c> line gives it.</summary>
     internal readonly record struct ContentOverride(string Filter, string Name, string Value)
     {
-        /// <summary>Does it reach material <paramref name="mtr"/>? An empty filter reaches every material; else the
-        /// engine compares the two names case-blind over its 16-character resref field.</summary>
-        public bool Applies(string mtr)
-            => Filter.Length == 0 || string.Compare(Filter, 0, mtr, 0, 16, StringComparison.OrdinalIgnoreCase) == 0;
+        /// <summary>Does it reach material <paramref name="mtr"/>? An empty filter reaches every material.</summary>
+        public bool Applies(string mtr) => Filter.Length == 0 || SameMaterial(Filter, mtr);
+
+        /// <summary>Do two material names name one <c>.mtr</c>, as the engine compares them: case-blind over its
+        /// <see cref="ShaderResource.ResRefBytes"/>-character resref field.</summary>
+        public static bool SameMaterial(string a, string b)
+            => string.Compare(a, 0, b, 0, ShaderResource.ResRefBytes, StringComparison.OrdinalIgnoreCase) == 0;
     }
 
     private static readonly Dictionary<uint, List<Over>> _byObj = new();
@@ -414,7 +417,7 @@ internal static class MaterialParams
         if (!SceneDb.Objects.Valid(obj)) return;
         // Material::SetMaterialParam @0x4c5d70 resets EVERY parameter of the matching materials on an empty value,
         // whatever the name -- the ("", "", "") every replay of an object's list opens with
-        if (string.IsNullOrEmpty(value)) { Reset(obj, materialFilter ?? "", paramName); return; }
+        if (string.IsNullOrEmpty(value)) { Reset(obj, materialFilter ?? ""); return; }
         if (string.IsNullOrEmpty(paramName)) return;
         ParamName lane = ParamOf(paramName!);
         if (lane == ParamName.None)
@@ -426,20 +429,18 @@ internal static class MaterialParams
         // .mtr per part, so the filter picks the parts rather than the materials -- and an override that
         // matches no part is still recorded, because the engine recorded it on the material either way and a
         // later part of the same object may arrive with that .mtr.
+        if (!float.TryParse(FirstWord(value!), NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
         {
-            if (!float.TryParse(FirstWord(value!), NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
-            {
-                _unknown++;
-                if (_unknownOnce.Add(value!))
-                    log?.Always($"MaterialParams: SetMaterialParam(\"{paramName}\") was given \"{value}\", which is "
-                              + "not a number -- IGNORED (the engine's own path sscanf's one token out of it)");
-                return;
-            }
-            _sets++;
-            if (!_byObj.TryGetValue(obj.Value, out List<Over>? list)) _byObj[obj.Value] = list = new List<Over>(4);
-            list.RemoveAll(o => o.Param == lane);
-            list.Add(new Over(lane, v));
+            _unknown++;
+            if (_unknownOnce.Add(value!))
+                log?.Always($"MaterialParams: SetMaterialParam(\"{paramName}\") was given \"{value}\", which is "
+                          + "not a number -- IGNORED (the engine's own path sscanf's one token out of it)");
+            return;
         }
+        _sets++;
+        if (!_byObj.TryGetValue(obj.Value, out List<Over>? list)) _byObj[obj.Value] = list = new List<Over>(4);
+        list.RemoveAll(o => o.Param == lane);
+        list.Add(new Over(lane, v));
         if (!string.IsNullOrEmpty(materialFilter)) _filtered++;
         TouchParts(obj);
     }
@@ -451,8 +452,7 @@ internal static class MaterialParams
     {
         ContentState c = _content;
         if (!c.ByObj.TryGetValue(obj.Value, out List<ContentOverride>? list)) c.ByObj[obj.Value] = list = new List<ContentOverride>(4);
-        list.RemoveAll(o => o.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
-                            && string.Compare(o.Filter, 0, filter, 0, 16, StringComparison.OrdinalIgnoreCase) == 0);
+        list.RemoveAll(o => o.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && ContentOverride.SameMaterial(o.Filter, filter));
         list.Add(new ContentOverride(filter, name, value));
         c.Sets++;
         if (_unknownOnce.Add(name))
@@ -465,14 +465,13 @@ internal static class MaterialParams
     /// <summary>The engine's reset: every parameter of the materials <paramref name="filter"/> names (all of them when
     /// it is empty) back to its <c>.mtr</c> value. The record's own terms carry no filter, so a reset clears them
     /// whatever it names; a content override goes when its filter is the reset's, or the reset names none.</summary>
-    private static void Reset(DbId obj, string filter, string? paramName)
+    private static void Reset(DbId obj, string filter)
     {
         _resets++;
         bool had = _byObj.Remove(obj.Value);
         if (_content.ByObj.TryGetValue(obj.Value, out List<ContentOverride>? list))
         {
-            had |= list.RemoveAll(o => filter.Length == 0
-                                       || string.Compare(o.Filter, 0, filter, 0, 16, StringComparison.OrdinalIgnoreCase) == 0) > 0;
+            had |= list.RemoveAll(o => filter.Length == 0 || ContentOverride.SameMaterial(o.Filter, filter)) > 0;
             if (list.Count == 0) { _content.ByObj.Remove(obj.Value); Db.TintTerms.FreeObject(obj.Value); }
             else Db.TintTerms.TouchObject(obj.Value);
         }

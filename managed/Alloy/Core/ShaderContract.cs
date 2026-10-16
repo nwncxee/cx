@@ -382,6 +382,10 @@ internal static class ShaderContract
                   && ShaderFeatures.Hosted((int)ShaderFeature.Content0)
                   && ShaderFeatures.WithPose((int)ShaderFeature.Content0, posed: true) == (int)ShaderFeature.Content0
                   && !ShaderFeatures.Displaces((int)ShaderFeature.Content0)
+                  && !ShaderFeatures.NamedHosted((int)ShaderFeature.Content0)
+                  // ...and until its stage proves it makes its own coverage, a content part's is the diffuse alpha the
+                  // caster samples too
+                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.Content0)
                   // ...and a content program skips Alloy's own coverage cut for the stand-in's, and takes the body's alpha
                   && OwnedLitFsMain.Contains("#ifndef CX_CONTENT_PROGRAM\n    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
                   && OwnedLitFsMain.Contains("        coverage = FragmentColor.a;\n")

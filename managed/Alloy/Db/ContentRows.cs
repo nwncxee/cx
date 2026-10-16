@@ -27,7 +27,8 @@ internal static class ContentRows
         foreach (ContentStage.Param p in ps)
         {
             if ((uint)p.Lane >= TintTerms.ContentLanes) continue;
-            // the engine binds a parameter to the uniform its .mtr name spells, case for case (glGetUniformLocation)
+            // the engine binds a parameter to the uniform its .mtr name spells, case for case (glGetUniformLocation);
+            // the LAST such line wins, as each one re-uploads over the one before
             int at = -1;
             for (int i = 0; i < mtr.Parameters.Count; i++)
                 if (mtr.Parameters[i].Name == p.Name) at = i;

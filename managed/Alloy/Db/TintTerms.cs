@@ -127,7 +127,9 @@ internal static unsafe class TintTerms
     }
 
     /// <summary>The row carrying object <paramref name="obj"/>'s own uniforms over recipe <paramref name="recipe"/>'s
-    /// material: found, or made. -1 when the table is full -- the record then keeps the material's row.</summary>
+    /// material: found, or made. -1 when the table is full -- the record then keeps the material's row.
+    /// ponytail: a scan of <see cref="MaxRows"/>, only for an object that sets its own uniforms and only when its
+    /// record restages; a (recipe, object) index if such objects ever number in the hundreds.</summary>
     internal static int ObjectRow(int recipe, uint obj)
     {
         lock (_lock)

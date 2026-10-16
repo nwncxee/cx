@@ -71,10 +71,10 @@ internal static class ShaderFeatures
         "", "vs_noirwet", "vs_noirgloss", "td_ground_vs", "vs_plt_wind",
     };
 
-    /// <summary>The <c>customShaderFS</c> resrefs Alloy HOSTS, indexed like <see cref="VsNames"/>. An entry
-    /// here is a <c>// $VANILLA-HOST</c> region in <see cref="AlloyRenderer.HostFs"/> plus an arm of its
-    /// dispatcher, and the file itself comes off the resource chain at program build; empty = a feature whose
-    /// fragment side is Alloy's own switch. ponytail: static, so an unknown FS name draws the plain lit path.</summary>
+    /// <summary>The <c>customShaderFS</c> resrefs Alloy HOSTS BY NAME, indexed like <see cref="VsNames"/>. An entry
+    /// here is a <c>// $VANILLA-HOST</c> region in <see cref="AlloyRenderer.HostFs"/> plus an arm of its dispatcher,
+    /// and the file comes off the resource chain at program build; empty = a feature whose fragment side is Alloy's
+    /// own switch. Any other content stage runs translated, in a program of its own (<see cref="ContentPrograms"/>).</summary>
     internal static readonly string[] FsNames =
     {
         "", "", "", "",
@@ -86,7 +86,11 @@ internal static class ShaderFeatures
     /// the second lit program, the one that carries the bodies -- keeping them out of the program every other
     /// fragment runs, where they cost registers on thousands of draws that never take the branch (measured:
     /// opaque 15,1 -> 5,4 ms with the regions stubbed).</summary>
-    internal static bool Hosted(int feat) => (uint)feat < (uint)FsNames.Length && FsNames[feat].Length > 0 || IsContent(feat);
+    internal static bool Hosted(int feat) => NamedHosted(feat) || IsContent(feat);
+
+    /// <summary>Is this one of the stages Alloy hosts BY NAME (<see cref="FsNames"/>), inside the shared hosted program?
+    /// A content stage is hosted too, but in a program of its own and with the decal layer still open to it.</summary>
+    internal static bool NamedHosted(int feat) => (uint)feat < (uint)FsNames.Length && FsNames[feat].Length > 0;
 
     /// <summary>Content stage ids a session may hand out. The whole corpus measured names 25 distinct non-stock
     /// fragment stages; a stage past the last id draws the plain lit path, said once.</summary>

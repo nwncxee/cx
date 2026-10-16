@@ -231,7 +231,9 @@ upload rules:
 **What it does not do yet.**
 
 - Your vertex stage does not run. A varying it writes reads zero, except `fVertexHeight`, which is the
-  world height.
+  world height. UV sets 1 to 3 are a vertex input, so no fragment stage reaches them yet.
+- A stage that makes its own coverage (a discard, a written alpha, or `ENVIRONMENT_MAP 1`) casts its shadow
+  off the diffuse alpha, and an alpha-to-coverage material on it keeps the plain cut.
 - `texture7`..`texture10` are not bound for a content stage.
 - The engine's per-light arrays are empty (Alloy lights the surface itself), and the module clock reads
   zero.

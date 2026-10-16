@@ -365,7 +365,7 @@ def translate(resref, chain, env, vanilla_defs, vanilla_env_fs, std_text, ahead=
     fns = list(dict.fromkeys(FN_DEF.findall(COMMENTS.sub(" ", text))))
     env_defs = list(dict.fromkeys(OWN_DEFINE.findall(env)))
     undef = lambda names: "".join(f"#undef {n}\n" for n in names)
-    r.host = (f"// ---- CX-303 content stage {resref}\n" + undef(TINT_PLACEHOLDERS)
+    r.host = (f"// ---- content stage {resref}\n" + undef(TINT_PLACEHOLDERS)
               + f"#define BUILD_VERSION {build[0]}\n#define BUILD_REVISION {build[1]}\n"
               + "".join(f"#define CX_CON_HAS_{f}\n" for f in fns)
               + env + ("" if env.endswith("\n") else "\n")

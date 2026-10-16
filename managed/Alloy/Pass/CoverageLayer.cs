@@ -15,11 +15,12 @@ internal static unsafe class CoverageLayer
     internal const float Cut = 0.01f;
 
     /// <summary>Does a coverage part with this shader feature have a coverage source the colour draw and the
-    /// shadow caster can BOTH sample? The diffuse alpha wherever Alloy's own stage shades, and the palette
-    /// tint's own map past that -- which is why a hosted feature is no longer a flat no. A hosted body whose
-    /// coverage lives somewhere neither can read answers false and keeps the engine's cut.</summary>
+    /// shadow caster can BOTH sample? The diffuse alpha wherever Alloy's own stage shades or a content stage leaves
+    /// its coverage alone, and the palette tint's own map past that. A body whose coverage lives somewhere neither
+    /// can read (a content stage that makes its own) answers false and keeps the engine's cut.</summary>
     internal static bool HasCoverageSource(int feat)
-        => !ShaderFeatures.Hosted(feat) || ShaderFeatures.HostedCoverage(feat);
+        => !ShaderFeatures.Hosted(feat) || ShaderFeatures.HostedCoverage(feat)
+           || ShaderFeatures.IsContent(feat) && !ContentPrograms.Cuts(feat);
 
     private static readonly StandDown _down = new("CoverageLayer");
     private static ExtenderLog? _log;

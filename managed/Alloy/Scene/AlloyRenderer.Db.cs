@@ -49,7 +49,7 @@ public sealed unsafe partial class AlloyRenderer
            && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static
            && DrawRecipe.Src(recipe) == DrawRecipe.BlendSrcAlpha && DrawRecipe.Dst(recipe) == DrawRecipe.BlendInvSrcAlpha
            && (DrawRecipe.Slots(recipe) & IllumBit) == 0 && !env
-           && (!ShaderFeatures.Hosted(DrawRecipe.Feat(recipe)) || ShaderFeatures.IsContent(DrawRecipe.Feat(recipe)));
+           && !ShaderFeatures.NamedHosted(DrawRecipe.Feat(recipe));
 
     /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>) on a
     /// static object, under a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque
@@ -95,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
              ? $"blend pair {DrawRecipe.Src(recipe)}/{DrawRecipe.Dst(recipe)}"
          : (DrawRecipe.Slots(recipe) & IllumBit) != 0 ? "self-illumination map"
          : env ? "env map"
-         : ShaderFeatures.Hosted(DrawRecipe.Feat(recipe)) && !ShaderFeatures.IsContent(DrawRecipe.Feat(recipe)) ? "hosted shader body" : "?";
+         : ShaderFeatures.NamedHosted(DrawRecipe.Feat(recipe)) ? "hosted shader body" : "?";
 
     /// <summary>The self-illumination map's mask bit (map slot 4, the stage's <c>CX_SLOT_ILLUM</c>).</summary>
     private const int IllumBit = 1 << 4;
