@@ -297,7 +297,7 @@ internal static unsafe class Issue
         // what someone else set.
         int boundCull = -1;
         float boundCut = float.NaN;   // per PROGRAM: reset on every UseProgram below
-        int litBase = -1, litCut = -1, litOitGob = -1; // the bound lit program's, whichever of the two it is
+        int litBase = -1, litCut = -1, litOitGob = -1, litMip = -1; // the bound lit program's, whichever of the two it is
         int litSsaoOn = -1, litAoDirect = -1;
         // CX-273: the decal layer's mode for this loop, and the bound lit program's uDecal (-1 = not yet sent)
         int decalMode = DecalLayer.Mode, litDecal = -1, boundDecal = -1;
@@ -309,7 +309,7 @@ internal static unsafe class Issue
         if (boundProg is 1 or 3 or 4 or 5 or 6 or 8 or 9)
         {
             ref LitLoc H = ref LitLocOf(boundProg);
-            litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
+            litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob; litMip = H.AlphaMip;
             litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect; litDecal = H.Decal; litSolid = H.Solid;
         }
         // #379 follow-up: SSAO is per BATCH, not per program bind. The visibility buffer is computed from
@@ -423,7 +423,7 @@ internal static unsafe class Issue
                     // CX-223: ...and the palette tint's side table, whose binding point is a shared one --
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.TintTerms.Bind();
-                    litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
+                    litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; litMip = L.AlphaMip; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
                     litDecal = L.Decal; boundDecal = -1;
@@ -464,9 +464,15 @@ internal static unsafe class Issue
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
+            bool core = coreCut && !fringePass && _gFringe[g] && !_coverPass && !decalWrite;
             float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f
-                      : coreCut && !fringePass && _gFringe[g] ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
-            if (cut != boundCut) { Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut; }
+                      : core ? AlloyClasses.SolidAlpha : AlloyClasses.Discard(_gCls[g]);
+            if (cut != boundCut)
+            {
+                Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut;
+                // a core is tested on RAW alpha: cutmip's scaling would make a half-covered distant edge texel solid
+                if (lit) Gl.Uniform1f(litMip, core ? 0f : Renderer.CutMip.V);
+            }
             // ...and the blend state, per batch: off for opaque and cutout (a graded cutout's blend is its fringe's,
             // drawn in the fringe pass), on with the material's own pair for the sorted classes and the fringe.
             bool blend = (AlloyClasses.Blends(_gCls[g]) || fringePass) && !interior;

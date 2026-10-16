@@ -61,8 +61,8 @@ internal static class AlloyClasses
     /// (<see cref="Fringes"/>), drawn in a pass of its own with no depth write.</summary>
     internal static bool Blends(int cls) => cls != (int)AlloyClass.Opaque && cls != (int)AlloyClass.Cutout;
 
-    /// <summary>A fringed cutout's core cut: only texels at or above it draw in the cutout pass, and the
-    /// fringe pass blends the band between <see cref="Discard"/> and it. The lit stage's <c>CX_SOLID_ALPHA</c>.</summary>
+    /// <summary>A fringed cutout's core cut, on RAW alpha (no <c>alloy.cutmip</c> scaling): only texels above it
+    /// draw solid, and the fringe pass blends the band above <see cref="Discard"/>. The lit stage's <c>CX_SOLID_ALPHA</c>.</summary>
     internal const float SolidAlpha = 0.99f;
 
     /// <summary>Does this part draw in two pieces -- a depth-writing core above <see cref="SolidAlpha"/> and a
