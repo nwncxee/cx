@@ -112,6 +112,16 @@ internal static unsafe partial class SkyTwin
         public int FreshFrame = -1, RanFrame = -1;
         /// <summary>Passes dispatched this period, for the <c>[alloy]</c> line.</summary>
         public int Runs;
+        /// <summary>The <c>cx_sky_fog</c> texel -- the image index (-1: none declared) and its coordinates --
+        /// and the last colour read back from it, LINEAR, which the fog converges to.</summary>
+        public int FogImage = -1, FogX, FogY;
+        public string FogRef = "";
+        public GpuReadback FogRead;
+        /// <summary>Why the texel cannot be read on this driver, said once; empty while it can.</summary>
+        public string FogMiss = "";
+        public int FogSeq;
+        public Vector3 Fog;
+        public bool HaveFog;
     }
 
     /// <summary>Everything the GL context owns plus the sky's own frame, in one object: context loss replaces
@@ -166,7 +176,8 @@ internal static unsafe partial class SkyTwin
             im.Tex = 0; im.Prev = 0; im.MadeW = 0; im.MadeH = 0; im.MadeD = 0;
         }
         foreach (Pass p in t.Passes) { if (p.Prog != 0) Gl.DeleteProgram(p.Prog); p.Prog = 0; }
-        t.Made = false;
+        t.FogRead.Release();
+        t.Made = false; t.HaveFog = false;
     }
 
     /// <summary>Is there a live twin at all? The question the frame asks before it walks the staged sky.</summary>
@@ -274,8 +285,22 @@ internal static unsafe partial class SkyTwin
     {
         if (At(id) is not { } t) return "";
         if (t.Failed) return $", twin {t.Ref} FELL BACK: {t.Reason}";
+        string fog = t.FogImage < 0 ? "no fog colour"
+                   : t.FogMiss.Length > 0 ? $"fog colour NOT READ: {t.FogMiss}"
+                   : t.HaveFog ? $"fog colour ({t.Fog.X:F3},{t.Fog.Y:F3},{t.Fog.Z:F3}) from {t.FogRef}({t.FogX},{t.FogY})"
+                   : $"fog colour from {t.FogRef}({t.FogX},{t.FogY}) not read back yet";
         return $", twin {t.Ref} hosted ({t.Passes.Length} pass(es), {t.Runs} ran this period, "
-             + $"{t.Images.Length} image(s), {t.Bytes / (1024.0 * 1024.0):F1} MiB)";
+             + $"{t.Images.Length} image(s), {t.Bytes / (1024.0 * 1024.0):F1} MiB, {fog})";
+    }
+
+    /// <summary>The colour twin <paramref name="id"/> says its horizon shows, LINEAR, once one has been read
+    /// back -- what the fog converges to in place of the author's flat colour. Staging path: no GL call.</summary>
+    internal static bool FogColour(int id, out Vector3 c)
+    {
+        c = default;
+        if (At(id) is not { Failed: false, HaveFog: true } t) return false;
+        c = t.Fog;
+        return true;
     }
 
     /// <summary>Latch a failure: said once with the reason, the GL objects released, and the stage hosted
@@ -332,6 +357,7 @@ internal static unsafe partial class SkyTwin
     {
         var images = new System.Collections.Generic.List<Img>();
         var passes = new System.Collections.Generic.List<Pass>();
+        string fogLine = "";
         why = "";
         foreach (string raw in text.Split('\n'))
         {
@@ -354,6 +380,14 @@ internal static unsafe partial class SkyTwin
             {
                 if (!ParsePass(tok, passes, out why)) return false;
             }
+            else if (tok[1] == "cx_sky_fog")
+            {
+                if (fogLine.Length > 0) { why = $"a second cx_sky_fog, `{line}`: a sky has one horizon"; return false; }
+                if (tok.Length != 5 || !Identifier(tok[2]) || !Coord(tok[3], out t.FogX) || !Coord(tok[4], out t.FogY))
+                { why = $"cx_sky_fog takes an image name and a texel's <x> <y>: `{line}`"; return false; }
+                t.FogRef = tok[2];
+                fogLine = line;
+            }
             else { why = $"unknown declaration `{tok[1]}` on `{line}`"; return false; }
         }
         if (images.Count > MaxImages) { why = $"{images.Count} images declared, past the budget of {MaxImages}"; return false; }
@@ -365,6 +399,7 @@ internal static unsafe partial class SkyTwin
             if (p.Image < 0)
             { why = $"pass {p.Ref} is dispatched over `{p.ImageRef}`, which no cx_sky_image declares"; return false; }
         }
+        if (fogLine.Length > 0 && !FogTexel(t, images, fogLine, out why)) return false;
         t.Images = images.ToArray();
         t.Passes = passes.ToArray();
         return true;
@@ -421,6 +456,20 @@ internal static unsafe partial class SkyTwin
         return true;
     }
 
+    /// <summary>The fog texel has to be one a readback can name: inside a <c>tex2d</c> image the twin declares.
+    /// A view-sized image changes extent under it and a volume has no single horizon texel.</summary>
+    private static bool FogTexel(Twin t, System.Collections.Generic.List<Img> images, string line, out string why)
+    {
+        why = "";
+        t.FogImage = images.FindIndex(im => string.Equals(im.Name, t.FogRef, StringComparison.Ordinal));
+        if (t.FogImage < 0) { why = $"`{line}` names `{t.FogRef}`, which no cx_sky_image declares"; return false; }
+        Img fog = images[t.FogImage];
+        if (fog.Shape != Shape.Tex2d) { why = $"`{line}` names `{fog.Name}`, which is not a tex2d image"; return false; }
+        if (t.FogX >= fog.W || t.FogY >= fog.H)
+        { why = $"`{line}` is outside `{fog.Name}`, which is {fog.W}x{fog.H}"; return false; }
+        return true;
+    }
+
     private static bool ParsePass(string[] tok, System.Collections.Generic.List<Pass> passes, out string why)
     {
         why = "";
@@ -455,6 +504,13 @@ internal static unsafe partial class SkyTwin
     {
         v = 0;
         return PlainToken(s) && char.IsAsciiDigit(s[0]) && int.TryParse(s, out v) && v >= 1 && v <= max;
+    }
+
+    /// <summary>A texel coordinate: <see cref="PlainToken"/>'s integer arm, 0 up to the largest 2d side.</summary>
+    private static bool Coord(string s, out int v)
+    {
+        v = 0;
+        return PlainToken(s) && char.IsAsciiDigit(s[0]) && int.TryParse(s, out v) && v >= 0 && v < Max2dSide;
     }
 
     /// <summary>A GLSL identifier short enough to carry a <c>_prev</c> twin, and not in the reserved

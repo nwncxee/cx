@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
 
@@ -317,6 +318,38 @@ internal static unsafe partial class SkyTwin
         foreach (Img im in t.Images)
             if (im.Swap) (im.Tex, im.Prev) = (im.Prev, im.Tex);
         RunPasses(t, viewport, once: false, main: true);
+        ReadFog(t, log);
+    }
+
+    /// <summary>One RGBA float texel: what a <c>cx_sky_fog</c> readback copies per frame.</summary>
+    private const int FogBytes = 16;
+
+    /// <summary>Read the <c>cx_sky_fog</c> texel back without a stall: this frame's copy goes into one slot, and
+    /// the slot written two frames ago -- its fence long passed -- becomes the fog's sky colour. A sky changes
+    /// over minutes, so two frames late is the colour. Hot: no allocation, no wait.</summary>
+    private static void ReadFog(Twin t, ExtenderLog? log)
+    {
+        if (t.FogImage < 0 || t.FogMiss.Length > 0) return;
+        Img im = t.Images[t.FogImage];
+        if (im.Tex == 0) return;
+        if (!GpuReadback.EntryPoints || Gl.GetTextureSubImage == null || !t.FogRead.Ensure(FogBytes))
+        {
+            t.FogMiss = "the driver gave no mapped readback buffer";
+            log?.Always($"SkyTwin: {t.Ref}'s fog colour cannot be read back ({t.FogMiss}) -- the fog keeps the "
+                      + "area's own colour");
+            return;
+        }
+        int w = t.FogSeq % GpuReadback.Slots, r = (t.FogSeq + 1) % GpuReadback.Slots;
+        float* got = (float*)t.FogRead.Ready(r);
+        if (got != null && float.IsFinite(got[0]) && float.IsFinite(got[1]) && float.IsFinite(got[2]))
+        {
+            t.Fog = new Vector3(MathF.Max(got[0], 0f), MathF.Max(got[1], 0f), MathF.Max(got[2], 0f));
+            t.HaveFog = true;
+        }
+        Gl.MemoryBarrier(Gl.TEXTURE_UPDATE_BARRIER_BIT | Gl.PIXEL_BUFFER_BARRIER_BIT);
+        t.FogRead.ReadTexture(im.Tex, t.FogX, t.FogY, 1, 1, Gl.RGBA, Gl.FLOAT, w, FogBytes);
+        t.FogRead.Fence(w);
+        t.FogSeq++;
     }
 
     /// <summary>Dispatch every pass of one kind, then hand back the image block, the texture units these

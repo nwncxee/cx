@@ -216,7 +216,7 @@ public static unsafe class Gl
     /// <summary>A compute write consumed as a divisor-1 vertex attribute (the grass scatter's stream).</summary>
     public const uint VERTEX_ATTRIB_ARRAY_BARRIER_BIT = 0x0001;
     /// <summary>An image store read back by the next level's dispatch (image) and by the lit stage (fetch).</summary>
-    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, READ_ONLY = 0x88B8, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
+    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, PIXEL_BUFFER_BARRIER_BIT = 0x0080, READ_ONLY = 0x88B8, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
     public const uint ALL_BARRIER_BITS = 0xFFFFFFFF;   // not-an-offset: GL_ALL_BARRIER_BITS
     /// <summary>A compute write to a buffer the lit stage then reads as a uniform block (the probe's SH9).</summary>
     public const uint UNIFORM_BARRIER_BIT = 0x0004;

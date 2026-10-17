@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The scene fog's TARGET COLOUR, and the terms that shape it. The area author still owns the ramp, read
 /// untouched off <c>Scene+0x140..0x14c</c>, so every knob here changes only what a fully-fogged fragment
-/// converges TO: the SKY (a readback of the staged dome's smallest mip, role-weighted), which removes the
+/// converges TO: the SKY (the dome texture's mean or a twin's horizon texel, role-weighted), which removes the
 /// horizon seam vanilla paints over. ponytail: one colour for the whole dome, not a gradient by elevation.
 /// </summary>
 internal static unsafe class SceneFog
@@ -89,6 +89,15 @@ internal static unsafe class SceneFog
     {
         if (alpha <= 0f || !Db.TexRegistry.TryMean(id, out Vector3 m)) return;
         _acc += new Vector3(Lin(m.X), Lin(m.Y), Lin(m.Z)) * alpha; _accW += alpha;
+    }
+
+    /// <summary>A hosted sky's own word for its horizon, LINEAR: a twin's <c>cx_sky_fog</c> texel, read back.
+    /// The content stage's diffuse is no sky colour (a stage may use it for anything), so this is the only way a
+    /// hosted sky arms the term.</summary>
+    internal static void NoteSkyLinear(Vector3 lin, float alpha)
+    {
+        if (alpha <= 0f) return;
+        _acc += lin * alpha; _accW += alpha;
     }
 
     /// <summary>Close the frame's sky accounting. A frame that staged no sky at all (an interior, or a sky

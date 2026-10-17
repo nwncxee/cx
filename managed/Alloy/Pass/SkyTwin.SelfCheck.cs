@@ -51,6 +51,7 @@ internal static unsafe partial class SkyTwin
             #pragma cx_sky_pass once cxdemo_vol cxVolume
             #pragma cx_sky_pass frame cxdemo_hist cxHist
             #pragma cx_sky_pass frame cxdemo_band cxBand
+            #pragma cx_sky_fog cxBand 3 0
             void main() { }
             """;
         var t = new Twin { Ref = "cx_cxdemo_sky" };
@@ -74,7 +75,12 @@ internal static unsafe partial class SkyTwin
               "the first pass is `once cxdemo_vol` over image 0");
             check.Expect(!t.Passes[1].Once && t.Passes[1].Image == 1 && !t.Passes[2].Once && t.Passes[2].Image == 2,
               "the other two are frame passes over images 1 and 2, in declaration order");
+            check.Expect(t.FogImage == 2 && t.FogX == 3 && t.FogY == 0,
+              "`cx_sky_fog cxBand 3 0` reads the horizon colour from texel (3, 0) of image 2");
         }
+        var plain = new Twin { Ref = "cx_cxdemo_sky" };
+        check.Expect(ParseDecls(plain, "#pragma cx_sky_image cxA tex2d 8 8 r8", out _) && plain.FogImage == -1,
+          "a twin that declares no cx_sky_fog leaves the fog its author's colour");
         // The rest of the format table, against the spec's values.
         check.Expect(Fmt("rgba8") == 0x8058 && Fmt("rgba16f") == 0x881A && Fmt("rgba32f") == 0x8814
                   && Fmt("rg16f") == 0x822F && Fmt("rg8") == 0x822B && Fmt("r16f") == 0x822D
@@ -103,6 +109,20 @@ internal static unsafe partial class SkyTwin
             "a pass over an image nothing declares");
         Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_pass once cxdemo_vol",
             "a pass with no image");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_fog cxB 0 0",
+            "a fog texel in an image nothing declares");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_fog cxA 64 0",
+            "a fog texel past the image's width");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_fog cxA 0 32",
+            "a fog texel past the image's height");
+        Bad(check, "#pragma cx_sky_image cxA view 2 rgba16f\n#pragma cx_sky_fog cxA 0 0",
+            "a fog texel in a view-sized image");
+        Bad(check, "#pragma cx_sky_image cxA tex3d 8 8 8 rgba16f\n#pragma cx_sky_fog cxA 0 0",
+            "a fog texel in a volume");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_fog cxA 0",
+            "a fog texel with one coordinate");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_fog cxA 0 0\n#pragma cx_sky_fog cxA 1 0",
+            "two fog texels");
     }
 
     /// <summary>Which images swap halves per frame. Oracle: a hand-built twin -- a history image and a plain one

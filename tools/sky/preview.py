@@ -49,7 +49,7 @@ KINDS = {"tex2d": "2d", "tex3d": "3d", "view": "view"}
 
 def sky_decls(cs, text):
     """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)]) for a twin's declarations."""
-    images, passes = cs.sky_decls(text)
+    images, passes, _ = cs.sky_decls(text)
     out = {}
     for i in images:
         kind = KINDS[i["shape"]]

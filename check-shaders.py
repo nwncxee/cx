@@ -1177,10 +1177,27 @@ def sky_pass(tok):
     return {"once": tok[2] == "once", "ref": tok[3], "image": tok[4]}
 
 
+def sky_fog(tok, images):
+    """A `cx_sky_fog <image> <x> <y>` line: a texel of a declared tex2d image, inside it."""
+    line = " ".join(tok)
+    if len(tok) != 5 or not SKY_NAME.match(tok[2]) or not tok[3].isdigit() or not tok[4].isdigit():
+        raise ValueError(f"cx_sky_fog takes an image name and a texel's <x> <y>: `{line}`")
+    im = next((i for i in images if i["name"] == tok[2]), None)
+    if im is None:
+        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_sky_image declares")
+    if im["shape"] != "tex2d":
+        raise ValueError(f"`{line}` names `{tok[2]}`, which is not a tex2d image")
+    x, y = int(tok[3]), int(tok[4])
+    if x >= im["w"] or y >= im["h"]:
+        raise ValueError(f"`{line}` is outside `{tok[2]}`, which is {im['w']}x{im['h']}")
+    return {"image": tok[2], "x": x, "y": y}
+
+
 def sky_decls(text):
-    """The images and passes a twin's OWN top-level text declares -- its includes are libraries, not a place
-    to declare the sky's resources. Raises ValueError on anything the extender would refuse."""
-    images, passes = [], []
+    """The images, passes and fog texel (None if undeclared) a twin's OWN top-level text declares -- its includes
+    are libraries, not a place to declare the sky's resources. Raises ValueError on anything the extender would
+    refuse."""
+    images, passes, fogs = [], [], []
     for raw in text.split("\n"):
         line = raw.strip()
         if not line.startswith("#pragma"):
@@ -1196,6 +1213,10 @@ def sky_decls(text):
             images.append(sky_image(tok, images))
         elif tok[1] == "cx_sky_pass":
             passes.append(sky_pass(tok))
+        elif tok[1] == "cx_sky_fog":
+            if fogs:
+                raise ValueError(f"a second cx_sky_fog, `{line}`: a sky has one horizon")
+            fogs.append(tok)
         else:
             raise ValueError(f"unknown declaration `{tok[1]}` on `{line}`")
     if len(images) > SKY_MAX_IMAGES:
@@ -1206,13 +1227,14 @@ def sky_decls(text):
     for p in passes:
         if p["image"] not in names:
             raise ValueError(f"pass {p['ref']} is dispatched over `{p['image']}`, which no cx_sky_image declares")
+    fog = sky_fog(fogs[0], images) if fogs else None
     # The memory budget, as far as the declarations themselves say it: every FIXED-size image exactly, mips
     # and history included. A view-sized one is measured at runtime and only the extender can take it.
     fixed = sum(sky_image_bytes(i) for i in images if i["shape"] != "view")
     if fixed > SKY_MAX_BYTES:
         raise ValueError(f"its fixed-size images come to {fixed / (1 << 20):.1f} MiB, past the budget of "
                          f"{SKY_MAX_BYTES >> 20} MiB")
-    return images, passes
+    return images, passes, fog
 
 
 def sky_image_bytes(im):
@@ -1297,7 +1319,7 @@ def sky_programs(raw, g):
     for d, chain, twin, stage in found:
         where = os.path.basename(os.path.normpath(d))
         try:
-            images, passes = sky_decls(chain(twin) or "")
+            images, passes, _ = sky_decls(chain(twin) or "")
         except ValueError as e:
             print(f"sky twin: {twin}.shd ({where}): FAILED -- {e}")
             bad = 1
@@ -1364,7 +1386,7 @@ def check_sky_grammar():
         print(f"sky grammar: FAILED -- no `const string good` block in {os.path.basename(SKY_SELFCHECK_CS)}")
         return 1
     try:
-        images, passes = sky_decls(good.group(1))
+        images, passes, fog = sky_decls(good.group(1))
     except ValueError as e:
         print(f"sky grammar: FAILED -- C# accepts its own good block, this parser does not: {e}")
         return 1
@@ -1372,8 +1394,7 @@ def check_sky_grammar():
     # the gate compiles rather than to nothing.
     fix = os.path.join(SKY_FIXTURE, "cx_cxdemo_sky.shd")
     if os.path.exists(fix):
-        fi, fp = sky_decls(open(fix, encoding="latin1").read())
-        if (fi, fp) != (images, passes):
+        if sky_decls(open(fix, encoding="latin1").read()) != (images, passes, fog):
             print("sky grammar: FAILED -- SkyTwin.SelfCheck.cs's good block is not the fixture's declarations")
             bad = 1
     refused = SKY_CS_BAD.findall(cs)

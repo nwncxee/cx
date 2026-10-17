@@ -300,6 +300,7 @@ A twin differs from the stage in two ways:
 #pragma cx_sky_image <name> tex3d <W> <H> <D> <format> [flag ...]
 #pragma cx_sky_image <name> view <N> <format> [flag ...]
 #pragma cx_sky_pass  <once|frame> <resref> <image>
+#pragma cx_sky_fog   <image> <x> <y>
 ```
 
 Every token is a **GLSL identifier or a decimal integer**, and nothing else: a GLSL preprocessor tokenises the
@@ -325,10 +326,25 @@ fails the twin.
   over the named image's extent divided by the pass's **own** `local_size` (each axis rounded up), so the
   work-group size is declared once, in the GLSL, and read back off the program.
 
+- `cx_sky_fog` names the texel that holds **the colour the sky shows at its horizon**, linear, as the dome
+  draws it: one texel of a `tex2d` image, inside it, at most once per twin. See "The fog colour" below.
+
 Budgets, refused loudly past the edge: 12 images, 10 passes, 2d sides up to 4096, 3d sides up to 256, 10
 sampler units and 8 image units per program, and 256 MiB of image memory in total. The memory budget is taken
 at build time over the fixed-size images, and again with the measured sizes whenever the view-sized ones are
 made. Passes run in **declaration order**.
+
+### The fog colour
+
+A plain dome feeds the fog its texture's mean colour, and `fog.sky` pulls fully fogged geometry, the skyfade
+band and the horizon band (`fog.skyband`) toward it, so the fog meets the sky without a seam. A hosted stage's
+textures say nothing about its colour, so without a `cx_sky_fog` texel the fog keeps the area's flat colour —
+which, against a sky drawn by a shader, is a wall of the wrong colour along the horizon.
+
+With one, the extender copies that texel back every frame without waiting on the GPU: the colour arrives two
+frames late, and stands in for the dome's mean from then on. A frame pass should write it, since a sky changes
+over the day. It is the colour the fog converges to where the fog is total; the area's own colour still owns
+the near and middle of the ramp.
 
 ### Binding, by name
 

@@ -49,6 +49,16 @@ public unsafe struct GpuReadback
     public readonly void Copy(uint src, long srcOff, int slot, long dstOff, long bytes)
         => Gl.CopyNamedBufferSubData(src, _buf, (IntPtr)srcOff, (IntPtr)(slot * _slotBytes + dstOff), (IntPtr)bytes);
 
+    /// <summary>GPU-side copy of one level-0 region of <paramref name="tex"/> into slot <paramref name="slot"/>,
+    /// through the pixel-pack binding (left at 0). A shader-written source needs
+    /// <c>TEXTURE_UPDATE_BARRIER_BIT</c> ahead of it, which is the caller's.</summary>
+    public readonly void ReadTexture(uint tex, int x, int y, int w, int h, uint format, uint type, int slot, int bytes)
+    {
+        Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, _buf);
+        Gl.GetTextureSubImage(tex, 0, x, y, 0, w, h, 1, format, type, bytes, (void*)(slot * _slotBytes));
+        Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, 0);
+    }
+
     /// <summary>Fence slot <paramref name="slot"/> behind the copies just issued into it.</summary>
     public void Fence(int slot)
     {
