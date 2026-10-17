@@ -1693,8 +1693,6 @@ public readonly unsafe partial struct CGuiPanel(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.GuiPanelCloseCallback"/>
     public CGuiCallback CloseCallback => new(Ptr + EngineLayout.GuiPanelCloseCallback);
-    /// <inheritdoc cref="SymbolMap.GuiModalPanelDeactivate"/>
-    public void GuiModalPanelDeactivate(int arg) => EngineFn.GuiModalPanelDeactivate(Ptr, arg);
     /// <inheritdoc cref="SymbolMap.GuiPanelDeactivate"/>
     public void GuiPanelDeactivate(int arg) => EngineFn.GuiPanelDeactivate(Ptr, arg);
     /// <inheritdoc cref="SymbolMap.GuiPanelUnToggleOff"/>

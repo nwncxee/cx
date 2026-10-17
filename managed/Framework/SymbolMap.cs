@@ -74,7 +74,7 @@ internal static unsafe class SymbolMap
     public const string GuiPanelDeactivate = "_ZN9CGuiPanel10DeactivateEi";
     /// <summary>CGuiModalPanel::Deactivate(int) -- the panel's Deactivate plus <c>CGuiMan::UnSetModal</c>; all the in-game
     /// Options panel's Resume button (and its Esc key) runs.</summary>
-    [Fn("void(CGuiPanel this, int arg)")]
+    [Fn("void(IntPtr panel, int arg)")]
     public const string GuiModalPanelDeactivate = "_ZN14CGuiModalPanel10DeactivateEi";
     /// <summary>CGuiInGame::PrepChatPromptForTellToPlayer(CNWCPlayer*) -- (this, player) chat opener; skipped.</summary>
     [Fn("void(CGuiInGame this, IntPtr player)")]

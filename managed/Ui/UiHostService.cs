@@ -102,35 +102,35 @@ public sealed unsafe class UiHostService : IExtenderService
     /// surfaces the settings panel has a door on.</summary>
     private static bool GearSurface => GameGate.AtMainMenu || GameGate.OptionsOpen;
 
-    /// <summary>A press on the gear opens the panel (cold, input thread) -- over the in-game Options panel it first
-    /// resumes the game, since some settings (the quickbar's hotkey editor) only work unpaused. Anything else over
-    /// it, and the release of its press, is swallowed so the background never sees half a click.</summary>
+    /// <summary>A press on the gear opens the panel (cold, input thread). Over the in-game Options panel its release then
+    /// resumes the game, since some settings (the quickbar's hotkey editor) only work unpaused -- on the release, so the
+    /// engine never sees half a click. Anything else over the gear is swallowed.</summary>
     private static bool OnGearButton(bool down, int button, int x, int y)
     {
-        if (!down && button == 1 && _gear.Held) { _gear.Held = false; return true; }
         if (!GearSurface || !_gear.Contains(x, y)) return false;
-        if (down && button == 1)
-        {
-            _gear.Held = true;
-            _log?.Info($"UiHostService: gear pressed ({(GameGate.AtMainMenu ? "main menu" : "Options panel")}) -- opening the settings panel");
-            if (GameGate.OptionsOpen) ResumeFromOptions();
-            KnobPanelService.Open();
-        }
+        if (down && button == 1) { _log?.Info($"UiHostService: gear pressed ({(GameGate.AtMainMenu ? "main menu" : "Options panel")}) -- opening the settings panel"); KnobPanelService.Open(); }
+        else if (!down && button == 1 && GameGate.OptionsOpen && KnobPanelService.IsOpen) ResumeFromOptions();
         return true;
     }
 
+    /// <summary>The <c>Deactivate</c> argument Resume passes: a plain close, none of <c>COptionsPanel::OnDeactivate</c>'s
+    /// special codes.</summary>
+    private const int PlainClose = 0;
+
     /// <summary>Close the in-game Options panel the way its Resume button does: the modal deactivate, whose close
-    /// callback nulls <c>CGuiInGame</c>'s slot and clears the app's options-open flag.</summary>
+    /// callback nulls <c>CGuiInGame</c>'s slot and clears the app's options-open flag. Re-walks the panel at the release.</summary>
     private static void ResumeFromOptions()
     {
-        IntPtr pnl = GameGate.InGameGui != IntPtr.Zero ? new CGuiInGame(GameGate.InGameGui).OptionsPanel : IntPtr.Zero;
+        CClientExoAppInternal intern = LiveInternal();
+        IntPtr pnl = intern.IsNull ? IntPtr.Zero : ShownOptionsPanel(intern.InGameGui);
         if (pnl == IntPtr.Zero) return;
         if (EngineFn.GuiModalPanelDeactivate == null)
         {
-            _log?.Info("UiHostService: !! CGuiModalPanel::Deactivate unresolved -- the game menu stays open under the settings panel");
+            _log?.Always("UiHostService: !! CGuiModalPanel::Deactivate unresolved -- the gear cannot close the game menu");
             return;
         }
-        new CGuiPanel(pnl).GuiModalPanelDeactivate(0);
+        _log?.Info("UiHostService: gear released over the Options panel -- resuming the game");
+        EngineFn.GuiModalPanelDeactivate(pnl, PlainClose);
     }
 
     /// <summary>Hover tracking only; motion is never consumed, so the engine's menu keeps its own pointer state.</summary>
@@ -376,17 +376,14 @@ public sealed unsafe class UiHostService : IExtenderService
     /// scale reaction are the content's to observe (chat resets its session on the InModule true->false edge).</summary>
     private static void RefreshGate()
     {
-        IntPtr mgr = _appMgr != IntPtr.Zero ? *(IntPtr*)_appMgr : IntPtr.Zero;
-        IntPtr app = mgr != IntPtr.Zero ? *(IntPtr*)mgr : IntPtr.Zero;
-        CClientExoAppInternal intern = app != IntPtr.Zero ? new CClientExoApp(app).Internal : default;
+        CClientExoAppInternal intern = LiveInternal();
         CGuiInGame gui = intern.IsNull ? default : intern.InGameGui;
         IntPtr win = gui.IsNull ? IntPtr.Zero : gui.ChatWindow;
         bool opt = !intern.IsNull && intern.OptionsPanelOpen != 0;   // ESC/game menu up
         bool hud = !gui.IsNull && gui.ToggledOff != 0;               // H: HUD toggled off
         bool show = win != IntPtr.Zero && !opt && !hud;
         bool menu = win == IntPtr.Zero && !intern.IsNull && intern.MainMenuPanel != IntPtr.Zero;
-        IntPtr pnl = win != IntPtr.Zero ? gui.OptionsPanel : IntPtr.Zero;
-        bool options = pnl != IntPtr.Zero && new CGuiPanel(pnl).State == GuiPanelShown;
+        bool options = win != IntPtr.Zero && ShownOptionsPanel(gui) != IntPtr.Zero;
 
         GameGate.InGameGui = gui.Ptr;
         GameGate.InModule = win != IntPtr.Zero;
@@ -401,6 +398,21 @@ public sealed unsafe class UiHostService : IExtenderService
             bool reached = !intern.IsNull && intern.ReachedMainMenu != 0;
             _log?.Info($"[uigate] win=0x{win:x} opt={opt} hud={hud} menu={menu} options={options} reached={reached} -> inGame={show} inModule={win != IntPtr.Zero}");
         }
+    }
+
+    /// <summary>The live <c>CClientExoAppInternal</c>, two guarded hops off <c>g_pAppManager</c>, or null.</summary>
+    private static CClientExoAppInternal LiveInternal()
+    {
+        IntPtr mgr = _appMgr != IntPtr.Zero ? *(IntPtr*)_appMgr : IntPtr.Zero;
+        IntPtr app = mgr != IntPtr.Zero ? *(IntPtr*)mgr : IntPtr.Zero;
+        return app != IntPtr.Zero ? new CClientExoApp(app).Internal : default;
+    }
+
+    /// <summary>The in-game <c>COptionsPanel*</c> when it is up and showing (not hidden by a sub-panel), else Zero.</summary>
+    private static IntPtr ShownOptionsPanel(CGuiInGame gui)
+    {
+        IntPtr pnl = gui.IsNull ? IntPtr.Zero : gui.OptionsPanel;
+        return pnl != IntPtr.Zero && new CGuiPanel(pnl).State == GuiPanelShown ? pnl : IntPtr.Zero;
     }
 
     /// <summary>The <c>CGuiPanel</c> state word of a panel that is active and not hidden: the engine's own test in
