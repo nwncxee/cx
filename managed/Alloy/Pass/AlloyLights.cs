@@ -279,6 +279,10 @@ internal static unsafe class AlloyLights
           && AlloyRenderer.MaterialLib.Contains("return lobe / (1.0 + lobe / CX_COAT_LOBE_MAX);")
           && AlloyRenderer.OwnedLitFsMain.Contains("cxCoatRough = sqrt(min(cxCoatRough * cxCoatRough + aaKernel, 1.0));"),
           "the coat's lobe widens with it, its film highlights are firefly-clamped, and it takes the specular-AA kernel");
+        string lit = AlloyRenderer.OwnedLitFsMain;
+        int floorAt = lit.IndexOf("rough = max(rough, CX_ALPHA_MIN);", StringComparison.Ordinal);
+        check.Expect(floorAt >= 0 && floorAt < lit.IndexOf("rough = sqrt(min(rough * rough + aaKernel, 1.0));", StringComparison.Ordinal),
+          "the loop floors roughness at CX_ALPHA_MIN before the AA kernel: a 0 makes the lobe inf x 0 on every flat triangle");
 
         // #140: the engine's attenuation constants, and the property that actually matters -- the curve's
         // peak is the engine's own max-intensity setting in LINEAR space. Get the sign of the exponent
