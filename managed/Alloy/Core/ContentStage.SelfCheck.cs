@@ -28,6 +28,7 @@ internal static partial class ContentStage
                        + "    ApplyStandardShader();\n    FragmentColor.rgb += vec3(glow) * float(numLights);\n"
                        + "    gl_FragColor = FragmentColor;\n}\n",
         ["cx_fixwhole"] = "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
+        ["cx_fixown"] = "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
     };
 
     /// <summary>Off-device. Oracle: the fixtures' own text and the facts written out by hand -- which uniform takes which
@@ -88,6 +89,12 @@ internal static partial class ContentStage
         check.Expect(whole.Refused == null && whole.Post && !whole.Cuts
                      && whole.Host.Contains("void CxContentMain()\n{\n}") && whole.Notes.Any(n => n.Contains("lights itself")),
                      "a stage that never calls ApplyStandardShader is not all post body, or is not noted");
+        Result mine = Translate("cx_fixown", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs,
+                                "vec3 ApplyColorSpace(vec3 c) { return c; }\n", 8193, 37);
+        check.Expect(mine.Refused == null && mine.Host.Contains("vec3 CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }")
+                     && mine.Host.Contains("vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)")
+                     && !mine.Host.Contains("vec3 ApplyColorSpace(vec3 c) { return c * c; }"),
+                     "a function the stage defines over one the program already has is not renamed, with its calls");
         check.Expect(StockShaped(Stock.Vs, false) && StockShaped(Stock.Fs, true) && !StockShaped(Fixture["cx_fixvs"], false)
                      && !StockShaped(Stock.Fs.Replace("#include \"inc_standard\"", "#include \"my_inc\""), true)
                      && !StockShaped(Stock.Fs.Replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), true),

@@ -1,7 +1,7 @@
 """CX-303 content pairs, offline: the translation ContentStage.Translate makes and the engine's own assembly.
 
 check-shaders.py compiles every content stage it can find twice -- once the way GLRender builds it (the engine
-prologue, its includes resolved from the content tree and the game's own base_shaders.bif), and once translated
+prologue, its includes resolved from the content tree and the game's own keys), and once translated
 into an Alloy lit program pair -- and fails when a stage the engine can build is one Alloy cannot. The engine
 build is the independent oracle: it never passes through this file's translation.
 
@@ -12,13 +12,26 @@ import os
 import re
 import struct
 
-# --- the game's own stock shaders, out of data/nwn_base.key -> base_shaders.bif -----------------------------
+# --- the game's own stock shaders, out of its two keys -----------------------------------------------------
 RES_SHD = 2069   # ShaderResource.ResTypeShd: CResHelper<CResSHD, 2069>
+# CExoResMan registers data/nwn_retail.key (ovr.bif, the newer split-include generation) at priority 2000000 over
+# data/nwn_base.key (base_shaders.bif, the monolithic one) at 1000000, and the higher priority answers: what the
+# client compiles is ovr.bif's 33 files over the base's 76.
+KEYS = ("nwn_base.key", "nwn_retail.key")
 
 
 def stock_shaders(nwn_dir):
-    """{resref: text} for every .shd the install's KEY indexes. Empty when the install is not found."""
-    key = os.path.join(nwn_dir or "", "data", "nwn_base.key")
+    """{resref: text} for every .shd the install's keys index, the retail key's over the base's, as the resman
+    answers. Empty when the install is not found."""
+    out = {}
+    for name in KEYS:
+        out.update(key_shaders(nwn_dir, name))
+    return out
+
+
+def key_shaders(nwn_dir, name):
+    """{resref: text} for every .shd one KEY indexes; empty when the key is not there."""
+    key = os.path.join(nwn_dir or "", "data", name)
     if not os.path.isfile(key):
         return {}
     b = open(key, "rb").read()
@@ -50,8 +63,8 @@ def stock_shaders(nwn_dir):
 
 class Chain:
     """The resource chain as check-shaders can see it: a content tree first (a hak beats the base game), then the
-    game's own stock shaders, then `extra` -- the newer generation's headers, which content forks of the lighting
-    files include and the installed base does not carry. Case-blind, like the engine's resman."""
+    game's own stock shaders, then `extra` -- headers neither key carries, which a content fork may include.
+    Case-blind, like the engine's resman."""
     def __init__(self, dirs, stock, extra=None):
         self.files = {}
         for d in dirs:
@@ -532,6 +545,10 @@ VERTEX_WRAPPER = ("bool CxHostVertex(CxDraw d, int id, int bb)\n{\n"
                   "    return true;\n}\n")
 
 
+# Mirrors ContentStage.OwnPrefix: a function the stage defines that the program already defines ahead of the region.
+OWN_PREFIX = "CxConOwn_"
+
+
 def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_text, ahead="", build=(8193, 37), vertex=None):
     r = Result()
     stage = chain(resref)
@@ -578,6 +595,9 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
         text = split_main(text, r)
         if r.refused:
             return r
+    ahead_fns = set(FN_DEF.findall(COMMENTS.sub(" ", ahead)))
+    for f in [f for f in dict.fromkeys(FN_DEF.findall(COMMENTS.sub(" ", text))) if f in ahead_fns]:
+        text = re.sub(rf"\b{f}\b", OWN_PREFIX + f, text)
     guards = set(GUARD.findall(text))
     own = [n for n in dict.fromkeys(OWN_DEFINE.findall(text)) if n not in guards]
     fns = list(dict.fromkeys(FN_DEF.findall(COMMENTS.sub(" ", text))))
@@ -620,6 +640,7 @@ FIXTURE = {
                    "    ApplyStandardShader();\n    FragmentColor.rgb += vec3(glow) * float(numLights);\n"
                    "    gl_FragColor = FragmentColor;\n}\n"),
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
+    "cx_fixown": "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
 }
 STOCK_VS = ('// header\n#define SHADER_TYPE 1\n#define NORMAL_MAP 1\n#include "inc_standard"\n'
             "void main ()\n{\n    ApplyStandardShader();\n}\n")
@@ -672,6 +693,10 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     whole = translate("cx_fixwhole", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if whole.refused or not whole.post or whole.cuts or "void CxContentMain()\n{\n}" not in whole.host:
         bad.append("a whole stage is not all post body")
+    mine = translate("cx_fixown", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "vec3 ApplyColorSpace(vec3 c) { return c; }\n")
+    if mine.refused or "vec3 CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }" not in mine.host \
+       or "vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)" not in mine.host or "{ return c * c; }" in mine.host.replace("CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }", ""):
+        bad.append("a function the stage defines over one the program already has is not renamed, with its calls")
     if not stock_shaped(STOCK_VS, False) or not stock_shaped(STOCK_FS, True) or stock_shaped(FIXTURE["cx_fixvs"], False) \
        or stock_shaped(STOCK_FS.replace('#include "inc_standard"', '#include "my_inc"'), True) \
        or stock_shaped(STOCK_FS.replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), True):

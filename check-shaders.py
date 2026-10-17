@@ -216,7 +216,8 @@ def spliced(g):
 
 # --- #122 material synthesis -------------------------------------------------
 # The stock generators, transcribed from inc_material.shd's SetupSpecularity in the OLD generation
-# (data/base_shaders.bif) -- the one the installed client loads. This is the REFERENCE side of the
+# (data/base_shaders.bif). ponytail: the client compiles ovr.bif's newer inc_material over it (the retail key
+# outranks the base, content_stage.KEYS); re-transcribe from that one. This is the REFERENCE side of the
 # comparison: it is written from the engine's shader, not from ours, so a case where the two agree
 # says the owned synthesis matches stock, and a case where they deliberately differ says so in place.
 SPEC_MIN, ROUGH_MAX, ROUGH_MIN = 0.04, 0.6, 0.125          # fSpecularityMin, fGeneratedRoughness{Max,Min}
@@ -983,7 +984,7 @@ def content_programs(g):
         progs.update(pair_programs(f"content pair stock/{f}", vt, ft, fr, vr))
     stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
     if not stock:
-        print("content pair: no base_shaders.bif under NWN_DIR -- the engine-side oracle is off, fixtures only")
+        print("content pair: no game keys under NWN_DIR -- the engine-side oracle is off, fixtures only")
         return progs, bad
     newer = content_stage.Chain([STOCK_SHD], {})
     checked = vanilla_only = 0

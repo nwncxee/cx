@@ -40,8 +40,7 @@ internal static unsafe class FbPostStage
     {
         public uint Prog, Sampler;
         public AlloyRenderer.FeatLoc Feat;
-        public int LocView, LocPixel, LocClip, LocFrame, LocHour, LocMonth, LocDay, LocTransition, LocPlayer,
-                   LocFbColor, LocFbDepth;
+        public int LocView, LocPixel, LocClip, LocFbColor, LocFbDepth;
         public int BuildMask = -1, BuildQuality = -1;
     }
 
@@ -74,9 +73,9 @@ internal static unsafe class FbPostStage
     }
 
     /// <summary>From <see cref="PostStack.Run"/>, ahead of the stage draw: every engine name the chain reads,
-    /// from Alloy's values, onto this program. <c>sceneCurrentFrame</c> is Alloy's presented-frame counter, not
-    /// the engine's scene counter -- the chain only ever animates on it. Hot. Also binds a LINEAR sampler on
-    /// the source unit (the stack's textures are NEAREST), which Run unbinds after the draw.</summary>
+    /// from Alloy's values, onto this program -- the feature terms and the engine-named ones every Alloy program
+    /// takes, then the post stage's own. Hot. Also binds a LINEAR sampler on the source unit (the stack's
+    /// textures are NEAREST), which Run unbinds after the draw.</summary>
     internal static void Prepare(uint src, uint prog, int* viewport)
     {
         var g = _gl;
@@ -85,28 +84,18 @@ internal static unsafe class FbPostStage
             g.Prog = prog;
             g.Feat = Programs.FeatLocs(prog);
             g.LocView = GlProgram.Loc(prog, "m_view"); g.LocPixel = GlProgram.Loc(prog, "pixelParams");
-            g.LocClip = GlProgram.Loc(prog, "clipParams"); g.LocFrame = GlProgram.Loc(prog, "sceneCurrentFrame");
-            g.LocHour = GlProgram.Loc(prog, "moduleHour"); g.LocMonth = GlProgram.Loc(prog, "moduleMonth");
-            g.LocDay = GlProgram.Loc(prog, "moduleDay"); g.LocTransition = GlProgram.Loc(prog, "moduleTimeIntoTransition");
-            g.LocPlayer = GlProgram.Loc(prog, "uPlayerPos");
+            g.LocClip = GlProgram.Loc(prog, "clipParams");
             g.LocFbColor = GlProgram.Loc(prog, "texFBColor"); g.LocFbDepth = GlProgram.Loc(prog, "texFBDepth");
         }
         Gl.UseProgram(prog);
         Gl.Uniform1i(g.LocFbColor, (int)TextureSlots.PostHdr);
         Gl.Uniform1i(g.LocFbDepth, (int)TextureSlots.PostBloom);
-        AlloyRenderer.UploadVanillaEnv(in g.Feat);
+        AlloyRenderer.UploadFeatureTerms(in g.Feat, viewport);
         fixed (Matrix4x4* v = &_view) Gl.UniformMatrix4fv(g.LocView, 1, 0, (float*)v);
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
         Gl.Uniform3f(g.LocPixel, 1f / w, 1f / h, w / h);
         // clipParams = (near, far, 1 - near/far): inc_common.shd's own triple
         Gl.Uniform3f(g.LocClip, _near, _far, 1f - _near / MathF.Max(_far, 1e-6f));
-        Gl.Uniform1i(g.LocFrame, AlloyRenderer.FrameSeq);
-        Vector3 p = AlloyRenderer.PlayerPos;
-        Gl.Uniform3f(g.LocPlayer, p.X, p.Y, p.Z);
-        Gl.Uniform1i(g.LocHour, AlloyRenderer.ModuleHour);
-        Gl.Uniform1i(g.LocMonth, AlloyRenderer.ModuleMonth);
-        Gl.Uniform1i(g.LocDay, AlloyRenderer.ModuleDay);
-        Gl.Uniform1f(g.LocTransition, AlloyRenderer.ModuleTimeIntoTransition);
         if (g.Sampler == 0) g.Sampler = Gl.LinearClampSampler();
         if (g.Sampler != 0) Gl.BindSampler(TextureSlots.PostHdr, g.Sampler);
     }

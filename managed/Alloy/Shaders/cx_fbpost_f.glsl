@@ -29,12 +29,42 @@ uniform highp vec3 clipParams;
 #define fDepthToLinearModifier (clipParams.z)
 uniform highp mat4 m_view;
 uniform highp mat4 m_proj;
+// inc_uniforms, which the bridge never follows, under the engine's names: the feature terms
+// (AlloyRenderer.UploadFeatureTerms) and the terms the engine hands every program by name (AlloyRenderer.EngineNamed)
+uniform int uTimeOfDay;
+#define worldtimerTimeOfDay uTimeOfDay
 uniform int sceneCurrentFrame;
-uniform int moduleHour;
-uniform int moduleMonth;
-uniform int moduleDay;
-uniform highp vec3 uPlayerPos;
+uniform int moduleYear, moduleMonth, moduleDay, moduleHour, moduleDawnHour, moduleDuskHour, moduleMinutesPerHour;
+uniform highp vec3 uPlayerPos, uCamPos, uCamFocus;
+uniform vec2 uKeyholeCam;
 #define playerPosition uPlayerPos
+#define playerCameraDist (uKeyholeCam.x)
+#define playerInCutscene 0
+#define cameraPosition uCamPos
+#define cameraPitch (uKeyholeCam.y)
+#define cameraYaw 0.0
+#define cameraFocus uCamFocus
+#define cameraViewAngle 0.0
+#define cameraDialogState 0
+const int MAX_WINDS = 128;
+uniform int windPointSourcesCount;
+uniform vec3 windPointSourcesPosition[MAX_WINDS];
+uniform float windPointSourcesRadius[MAX_WINDS], windPointSourcesDuration[MAX_WINDS];
+uniform float windPointSourcesIntensity[MAX_WINDS], windPointSourcesTimeRemaining[MAX_WINDS];
+uniform vec3 uAreaWind;
+#define areaGlobalWind uAreaWind
+uniform float areaWeatherDensity;
+#define NWAREA_FLAG_INTERIOR 1
+#define NWAREA_FLAG_UNDERGROUND 2
+#define NWAREA_FLAG_NATURAL 4
+uniform int uAreaFlags;
+#define areaFlags uAreaFlags
+#define NWAREA_WEATHER_CLEAR 0
+#define NWAREA_WEATHER_RAIN 1
+#define NWAREA_WEATHER_SNOW 2
+uniform int areaWeatherType;
+#define bboxMin (vec3(0.0))
+#define bboxMax (vec3(0.0))
 float sqr(float a) { return a * a; }
 float ColorToLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 float ColorToLuma(vec4 c) { return ColorToLuma(c.rgb); }

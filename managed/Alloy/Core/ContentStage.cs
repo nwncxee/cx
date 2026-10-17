@@ -129,6 +129,7 @@ internal static partial class ContentStage
         if (fragment) text = SplitMain(text, r);
         if (r.Refused != null) return r;
 
+        text = OwnCopies(text, ahead);
         var guards = Guard.Matches(text).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
         var own = VanillaShader.OwnDefine.Matches(text).Select(m => m.Groups[1].Value)
                                .Where(n => !guards.Contains(n)).Distinct().ToList();
@@ -242,6 +243,23 @@ internal static partial class ContentStage
             return null;
         }
         return r.Host;
+    }
+
+    /// <summary>What a function the stage defines is renamed to when the program already defines one by its name ahead
+    /// of the region -- a monolithic fork's own copy of an <c>inc_common</c> helper. The stage keeps its own.</summary>
+    internal const string OwnPrefix = "CxConOwn_";
+
+    /// <summary><paramref name="text"/> with every function it defines that <paramref name="ahead"/> defines too renamed
+    /// under <see cref="OwnPrefix"/>, calls and all: the stage's calls reach its own copy, the program's code its own.
+    /// ponytail: by name, so a stage adding one overload while calling the program's others loses those; rename per
+    /// signature if content ever does that.</summary>
+    private static string OwnCopies(string text, string ahead)
+    {
+        if (ahead.Length == 0) return text;
+        var have = FnDef.Matches(Comments.Replace(ahead, " ")).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        foreach (string f in FnDef.Matches(Comments.Replace(text, " ")).Select(m => m.Groups[1].Value).Distinct().Where(have.Contains).ToList())
+            text = Regex.Replace(text, $@"\b{f}\b", OwnPrefix + f);
+        return text;
     }
 
     /// <summary>A vertex half as its own region translates it, for its fragment half's lanes and varyings: against the

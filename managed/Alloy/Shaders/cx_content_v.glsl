@@ -215,9 +215,17 @@ uniform int areaWeatherType;
 uniform float areaWeatherDensity;
 uniform ivec2 userinputMousePosition;
 uniform int userinputMouseButtons;
+const int MAX_WINDS = 128;
 uniform int windPointSourcesCount;
-uniform vec3 windPointSourcesPosition[128];
-uniform float windPointSourcesRadius[128], windPointSourcesDuration[128], windPointSourcesIntensity[128], windPointSourcesTimeRemaining[128];
+uniform vec3 windPointSourcesPosition[MAX_WINDS];
+uniform float windPointSourcesRadius[MAX_WINDS], windPointSourcesDuration[MAX_WINDS];
+uniform float windPointSourcesIntensity[MAX_WINDS], windPointSourcesTimeRemaining[MAX_WINDS];
+#define NWAREA_FLAG_INTERIOR 1
+#define NWAREA_FLAG_UNDERGROUND 2
+#define NWAREA_FLAG_NATURAL 4
+#define NWAREA_WEATHER_CLEAR 0
+#define NWAREA_WEATHER_RAIN 1
+#define NWAREA_WEATHER_SNOW 2
 #define projectionSource (vec4(0.0))
 #define projectionWorldZClip 0.0
 #define numLights 0

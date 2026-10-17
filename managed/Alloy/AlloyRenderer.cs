@@ -191,13 +191,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// the same value its shaders read as <c>playerPosition</c>. Zero before the struct resolves, which for
     /// the grass displacement window just means it stays at the origin until it does.</summary>
     internal static Vector3 PlayerPos => _runtime == null ? default : Rt.PlayerPos;
-    /// <summary>The module calendar the runtime block carries, what the shaders read as <c>moduleHour</c> and
-    /// friends. Zero before the struct resolves.</summary>
-    internal static int ModuleHour => _runtime == null ? 0 : Rt.ModuleHour;
-    internal static int ModuleDay => _runtime == null ? 0 : Rt.ModuleDay;
-    internal static int ModuleMonth => _runtime == null ? 0 : Rt.ModuleMonth;
-    internal static float ModuleTimeIntoTransition => _runtime == null ? 0f : Rt.ModuleTimeIntoTransition;
-    /// <summary>The presented-frame counter, what a hosted content chain gets as <c>sceneCurrentFrame</c>.</summary>
+    /// <summary>The presented-frame counter, what a content stage gets as <c>sceneCurrentFrame</c>.</summary>
     internal static int FrameSeq => _frameSeq;
     /// <summary>The forward class's light-source view: the one viz mode the deferred pass keeps running for.</summary>
     internal const int VizLightFrom = 52;
