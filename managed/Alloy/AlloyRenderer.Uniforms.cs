@@ -137,6 +137,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void UploadVanillaEnv(in FeatLoc loc)
     {
         fixed (Matrix4x4* m = &_projMtx) Gl.UniformMatrix4fv(loc.ProjL, 1, 0, (float*)m);
+        UploadEngineNamed(loc.Named);
         if (_shaderConstI == null || _shaderConstF == null || _shaderConstV4 == null) return;
         // The whole block, not a selection: a content shader that begins reading a slot nobody thought to
         // wire would otherwise compile, link, and read zero -- working under the engine and silently doing

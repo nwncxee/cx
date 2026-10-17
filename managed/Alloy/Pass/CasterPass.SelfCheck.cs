@@ -29,10 +29,11 @@ public sealed unsafe partial class CasterPass
                   // slot 0, the record index from gl_BaseInstance in both packings.
                   && CastMaskHFs != CastMaskHFsSrc
                   && CastMaskHFs.Contains("CxAlphaMipAt(t, dFdx(vUV), dFdy(vUV), tsize, 0.0, tmip) <= uAlphaCut) discard;")
-                  // CX-223: ...and the handle stage alone asks the palette tint for its own coverage source,
-                  // so a palette caster casts what it draws; the plain one has no record index to ask with.
-                  && CastMaskHFs.Contains("if (ctint.x >= 0.0) { t = ctint.x; tmip = ctint.y; tsize = ctint.zw; }")
+                  // ...the handle stage samples the record's own diffuse; a content pair whose coverage is its own casts
+                  // through the pair's caster twin instead (CasterPass.Content), whose cut is the colour program's
                   && CastMaskHFs.Contains("#define CX_CAST_HANDLE 1")
+                  && AlloyRenderer.OwnedLitVs.Contains("#elif defined(CX_CAST)\n    int id = gl_BaseInstance;")
+                  && AlloyRenderer.OwnedLitVs.Contains($"int vi = gl_BaseInstance >> {CasterGather.ViewShift};\n    int id = gl_BaseInstance & 0x3ffff;")
                   && !CastMaskFs.Contains("#define CX_CAST_HANDLE")
                   && CastMaskFs.Contains("float t = texture(uTex, vUV).a;")
                   // ...and both dither on the colour pass's blend weight, the record alpha included
@@ -139,29 +140,14 @@ public sealed unsafe partial class CasterPass
                   && Threshold(CasterCut.EnvAlpha) == 0.02f
                   && Threshold(CasterCut.Cutout) == 0.2f
                   && Threshold(CasterCut.Coverage) == CoverageLayer.Cut
-                  // CX-218: ...and the fourth, whose source is map slot 1's alpha. It beats the env kind on a
-                  // material that is BOTH -- which every one of these is -- and tests at the content stages'
-                  // own 0.2, the number the bodies ShaderFeatures.CoverNrmFs names discard at.
-                  && CutFor(coverage: false, envAlpha: true, coverNrm: true) == CasterCut.CoverNrm
-                  && CutFor(coverage: true, envAlpha: true, coverNrm: true) == CasterCut.Coverage
-                  && CutFor(coverage: false, envAlpha: true, coverNrm: false) == CasterCut.EnvAlpha
-                  && Threshold(CasterCut.CoverNrm) == 0.2f
-                  && Threshold(CasterCut.CoverNrm) == ShaderFeatures.CoverNrmCut
-                  // ...and only the HANDLE stage can read that source: slot 1 never reaches the bound-texture
-                  // stage, which would test the diffuse alpha -- the env level on these materials.
-                  && CastMaskHFs.Contains("& CX_SLOT_COVERNRM) != 0 && uTexH[(vDraw << 3) + 1] != uvec2(0u))")
-                  && CastMaskHFs.Contains("{ t = texture(uNrmTex, vUV).a; tsize = vec2(textureSize(uNrmTex, 0)); }")
-                  // the kind is a 2-bit key field at 60, so the four must fit under it and leave 62 alone
-                  && (int)CasterCut.Coverage <= 3 && (int)CasterCut.CoverNrm <= 3
+                  // the kind is a 2-bit key field at 60, so the three must fit under it and leave 62 alone
+                  && (int)CasterCut.Coverage <= 3
                   // ...and a coverage batch always dithers: at 0 its cut would stamp a near-solid silhouette
                   && DitherFor(CasterCut.Coverage) >= 1
-                  // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except
-                  // under a hosted fragment stage, which is admitted only where it names a source both can read
+                  // the coverage source is ONE answer for the draw and the caster: the diffuse alpha, except under a
+                  // content pair that makes its own, which casts through its own caster twin instead
                   && CoverageLayer.HasCoverageSource((int)ShaderFeature.None)
                   && CoverageLayer.HasCoverageSource((int)ShaderFeature.Skin)
-                  && !CoverageLayer.HasCoverageSource((int)ShaderFeature.GroundWeather)
-                  // CX-223: ...and the one hosted feature that names its own source IS admitted
-                  && CoverageLayer.HasCoverageSource((int)ShaderFeature.PaletteTint)
                   && ShaderContract.DepthSafe(CastLayerVs) && ShaderContract.DepthSafe(CastLayerMaskVs)
                   && !CastLayerVs.Contains("discard")
                   && CasterGather.LayerSafe()

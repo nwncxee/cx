@@ -349,7 +349,7 @@ internal static unsafe class Issue
         bool decalWrite = decalMode == DecalLayer.ModeWrite;
         int litSolid = -1, boundSolid = -1;
         bool interior = _split.Interior;
-        if (boundProg is 1 or 3 or 4 or 5 or 6 or 8 || ContentPrograms.IsProg(boundProg))
+        if (boundProg is 1 or 4 or 5 or 6 or 8 || ContentPrograms.IsProg(boundProg))
         {
             ref LitLoc H = ref LitLocOf(boundProg);
             litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
@@ -368,12 +368,10 @@ internal static unsafe class Issue
             if (_onlyGobSet && _gGob[g] != _onlyGob) continue;
             bool water = _gCls[g] == (byte)AlloyClass.Water;
             bool lit = _gLit[g];
-            // #350: a hosted feature draws through the second lit program (3); everything else lit through
-            // the first (1). Batches are cut on the feature id, so this is one switch per hosted batch.
-            bool hosted = !water && HostedBody(lit, _gFeat[g]);
-            // CX-303: a content stage draws through a program of its own, deferred twin included
-            bool content = hosted && ShaderFeatures.IsContent(_gFeat[g]);
-            bool oitOut = SitsOitOut(hosted, _gSrc[g], _gDst[g]);
+            // CX-303: a content pair draws through a program of its own, deferred twin included; everything else lit
+            // through the plain one (1). Batches are cut on the feature id, so this is one switch per content batch.
+            bool content = !water && HostedBody(lit, _gFeat[g]);
+            bool oitOut = SitsOitOut(content, _gSrc[g], _gDst[g]);
             if (_oitOn && oitOut) { _oitDeferred++; continue; }
             if (_onlyHosted && !oitOut) continue;
             // a split wash: WashInteriors draws its solid interior with the cutouts, and the blended pass the graded rest
@@ -381,21 +379,18 @@ internal static unsafe class Issue
             bool split = _gWash[g] == WashSplit && lit && g >= _gOpaqueEnd
                          && (!oitOut || content && _gSrc[g] == AuroraSrcAlpha && _gDst[g] == AuroraOneMinusSrcAlpha);
             if (interior && !split) continue;
-            bool lists = lit && !water && !hosted && _oitOn && OitPass.Linked;   // the append twin, bracket only
+            bool lists = lit && !water && !content && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
             // view -- the only draws whose pixels the deferred compute pass reads. Everything else keeps the
             // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz but the
-            // light-source one (so every debug view stays truthful), a hosted body, and the blended range through the OIT twin.
-            bool deferred = lit && !water && (!hosted || content && ContentPrograms.HasDeferred(_gFeat[g])) && !lists
+            // light-source one (so every debug view stays truthful), a content pair with no twin, and the blended range through the OIT twin.
+            bool deferred = lit && !water && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && !lists
                             && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
                             && (g < _gOpaqueEnd || interior) && DeferredLights.Active && !_forwardOnly;
-            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own
-            // samples. CX-223: a hosted batch has one of its own (7), built from the hosted text, so a body
-            // whose coverage comes off its own map still gets a per-primitive sample pattern.
-            bool hostMask = hosted && !content && _coverPass && CoverageLayer.Masked && Programs.ProgLitHostMask != 0;
-            int wantProg = decalWrite && lit ? 8 : water ? 2 : hostMask ? 7
+            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own samples
+            int wantProg = decalWrite && lit ? 8 : water ? 2
                          : content ? ContentPrograms.ProgId(_gFeat[g], deferred)
-                         : hosted ? 3 : lists ? 4 : deferred ? 5
+                         : lists ? 4 : deferred ? 5
                          : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
             if (boundProg != wantProg)
             {
@@ -430,12 +425,11 @@ internal static unsafe class Issue
                 else if (lit)
                 {
                     ref LitLoc L = ref LitLocOf(wantProg);
-                    Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal : wantProg == 7 ? Programs.ProgLitHostMask
-                                  : content ? ContentPrograms.Program(wantProg) : hosted ? Programs._progLitHost
+                    Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal
+                                  : content ? ContentPrograms.Program(wantProg)
                                   : lists ? Programs._progLitList
                                   : deferred ? Programs._progLitDef : wantProg == 6 ? Programs._progLitMask : Programs._progLit46);
                     if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
-                    if (wantProg == 7) Gl.Uniform1i(Programs.HostMaskSamples, CoverageLayer.Samples);
                     Gl.Uniform1i(L.Tex, 0);
                     fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vpm);
                     AlloyLights.BindForDraw();
@@ -466,7 +460,7 @@ internal static unsafe class Issue
                     Db.PltPalettes.Bind();
                     // CX-223: ...and the palette tint's side table, whose binding point is a shared one --
                     // a reader that trusted an earlier bind would read the particle index block.
-                    Db.TintTerms.Bind();
+                    Db.ContentTable.Bind();
                     if (content) ContentPrograms.BindExtras(wantProg);
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
@@ -596,18 +590,16 @@ internal static unsafe class Issue
     }
 
     /// <summary>The uniform locations of one of the lit programs, keyed by the issue loop's <c>wantProg</c>: 1 plain,
-    /// 3 hosted, 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant, 7 the hosted one's, 8 the decal
-    /// layer's writer, <see cref="ContentPrograms.ProgBase"/> and up a content stage's. One place, because two sites in
-    /// the loop pick from them.</summary>
+    /// 4 the OIT-lists twin, 5 the deferred twin, 6 the A2C mask variant, 8 the decal layer's writer,
+    /// <see cref="ContentPrograms.ProgBase"/> and up a content pair's. One place, because two sites in the loop pick
+    /// from them.</summary>
     private static ref LitLoc LitLocOf(int which)
     {
         if (ContentPrograms.IsProg(which)) return ref ContentPrograms.Loc(which);
-        return ref (which == 3 ? ref Programs._litH
-              : ref (which == 4 ? ref Programs._litL
+        return ref (which == 4 ? ref Programs._litL
                    : ref (which == 5 ? ref Programs._litD
                         : ref (which == 6 ? ref Programs._litM
-                             : ref (which == 7 ? ref Programs.HostMaskLoc
-                                  : ref (which == 8 ? ref Programs.DecalLoc : ref Programs._lit))))));
+                             : ref (which == 8 ? ref Programs.DecalLoc : ref Programs._lit))));
     }
 
     /// <summary>The batches being issued are <see cref="CoverageLayer"/>'s, cut at the layer's threshold rather
@@ -674,7 +666,7 @@ internal static unsafe class Issue
     /// <summary>The blended range is being drawn into OitPass's accumulation pair: programs write the pair,
     /// and the per-batch blend pair stays off the state.</summary>
     internal static bool _oitOn;
-    /// <summary>The post-resolve sweep for the batches OIT skipped: hosted programs only.</summary>
+    /// <summary>The post-resolve sweep for the batches OIT skipped: content pairs and the other blend pairs.</summary>
     internal static bool _onlyHosted;
     /// <summary>Batches the accumulation pass stepped over, i.e. exactly what the <see cref="_onlyHosted"/>
     /// sweep has to draw. Zero means that sweep has no work and the whole walk of the blended range can be
@@ -684,17 +676,14 @@ internal static unsafe class Issue
     /// <summary>Aurora blend-mode indices (see <see cref="BlendGl"/>) of the one pair OIT accumulates.</summary>
     private const byte AuroraSrcAlpha = 0, AuroraOneMinusSrcAlpha = 1;
 
-    /// <summary>Does a lit, non-water batch draw a content fragment stage's body -- through the hosted program, or
-    /// through its own once a translated content stage's program is built?</summary>
-    internal static bool HostedBody(bool lit, int feat)
-        => lit && (ShaderFeatures.IsContent(feat) ? ContentPrograms.AskReady(feat)
-                   : Programs._progLitHost != 0 && ShaderFeatures.NamedHosted(feat));
+    /// <summary>Does a lit, non-water batch draw a content pair's program -- built, and so its halves running?</summary>
+    internal static bool HostedBody(bool lit, int feat) => lit && ShaderFeatures.IsContent(feat) && ContentPrograms.AskReady(feat);
 
     /// <summary>Does a blended batch sit the OIT accumulation out and draw after the resolve, the plain-blend way? A
-    /// hosted program declares no revealage output (left undefined it resolves as white patches), and weighted
-    /// blending represents only the SrcAlpha / OneMinusSrcAlpha pair: a modulating veil would paint its colour.</summary>
-    internal static bool SitsOitOut(bool hosted, int src, int dst)
-        => hosted || src != AuroraSrcAlpha || dst != AuroraOneMinusSrcAlpha;
+    /// content pair's program does -- its stage, not Alloy, decides the alpha it blends at -- and weighted blending
+    /// represents only the SrcAlpha / OneMinusSrcAlpha pair: a modulating veil would paint its colour.</summary>
+    internal static bool SitsOitOut(bool content, int src, int dst)
+        => content || src != AuroraSrcAlpha || dst != AuroraOneMinusSrcAlpha;
 
     /// <summary>The blending classes (ADR 0011): blended draws sorted back-to-front, then additive unsorted,
     /// because addition commutes. Depth TESTING stays on against the opaque set's depth, and the per-batch

@@ -19,6 +19,8 @@ internal static unsafe class MtrFeed
     /// <summary>The <c>.mtr</c> restype, measured: scanning <c>nwn_base.key</c> for a resource whose bytes are
     /// <c>.mtr</c> text lands on 2072 and nothing else; 2069 is the neighbouring <c>.shd</c>.</summary>
     private const ushort MtrResType = 2072;   // not-an-offset: a resource type id
+    /// <summary>The <c>.shd</c> restype (<c>CResHelper&lt;CResSHD, 2069&gt;</c>, <see cref="ShaderResource"/>'s own).</summary>
+    private const ushort ShdResType = 2069;   // not-an-offset: a resource type id
     /// <summary>Materials resolved per pump: the game thread is doing a model read anyway, and a
     /// <c>.mtr</c> is a few hundred bytes.</summary>
     private const int Budget = 32;
@@ -30,6 +32,9 @@ internal static unsafe class MtrFeed
     /// <summary>Name -> its bytes, so <see cref="MtrDef.Resolve"/> (the parts stream's own consumer) reads
     /// the same cache instead of asking a resource manager from whatever thread it is on.</summary>
     private static readonly Dictionary<string, byte[]?> _bytes = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Name -> the text of a content shader a read material names (<c>customShaderVS</c>/<c>customShaderFS</c>),
+    /// null when there is no such file: what <see cref="ContentPrograms.Register"/> tells a stock-shaped pair by.</summary>
+    private static readonly Dictionary<string, string?> _shd = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Queue<string> _want = new();
     private static readonly HashSet<string> _queued = new(StringComparer.OrdinalIgnoreCase);
 
@@ -173,7 +178,13 @@ internal static unsafe class MtrFeed
             _log?.Info($"MtrFeed: '{name}' faulted -- {e.Message}");
         }
         int hint = 0;
-        if (data != null) { hint = MtrDef.Parse(data, name).RenderHint; _loaded++; }
+        if (data != null)
+        {
+            MtrDef m = MtrDef.Parse(data, name);
+            hint = m.RenderHint;
+            _loaded++;
+            if (m.ShaderVs.Length > 0 && m.ShaderFs.Length > 0) { ReadShader(m.ShaderVs); ReadShader(m.ShaderFs); }
+        }
         else _absent++;
         lock (Gate)
         {
@@ -183,6 +194,30 @@ internal static unsafe class MtrFeed
         // A recipe interned before this read took its coverage mode and its declared-water term from a
         // material that was not there yet; this is the edge that lets the next reclassify re-ask them.
         if (data != null) DrawRecipe.MaterialLanded();
+    }
+
+    /// <summary>GAME thread: the text of a content shader a material names, once per name.</summary>
+    private static void ReadShader(string name)
+    {
+        lock (Gate) if (_shd.ContainsKey(name)) return;
+        string? text = null;
+        try
+        {
+            byte[]? b = TexRegistry.ReadResourceBytes(name, ShdResType, out _);
+            if (b is { Length: > 0 }) text = System.Text.Encoding.UTF8.GetString(b);
+        }
+        catch (Exception e)
+        {
+            _log?.Info($"MtrFeed: '{name}'.shd faulted -- {e.Message}");
+        }
+        lock (Gate) _shd[name] = text;
+    }
+
+    /// <summary>A content shader's text as the feed read it beside its material, or null when it has not (or there is no
+    /// such file). Never reads.</summary>
+    internal static string? ShaderText(string name)
+    {
+        lock (Gate) return _shd.TryGetValue(name, out string? t) ? t : null;
     }
 
     /// <summary>The world edge: a new area's materials may come from other containers.</summary>
@@ -207,6 +242,7 @@ internal static unsafe class MtrFeed
         {
             _hint.Clear();
             _bytes.Clear();
+            _shd.Clear();
             _want.Clear();
             _queued.Clear();
         }

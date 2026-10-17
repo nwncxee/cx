@@ -59,6 +59,8 @@ public static unsafe class Gl
     public const uint TESS_CONTROL_SHADER = 0x8E88, TESS_EVALUATION_SHADER = 0x8E87;
     public const uint PATCHES = 0x000E, PATCH_VERTICES = 0x8E72, MAX_TESS_GEN_LEVEL = 0x8E7E;
     public const uint COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82;
+    /// <summary>KHR/ARB_parallel_shader_compile: has the driver finished the object's compile or link?</summary>
+    public const uint COMPLETION_STATUS = 0x91B1;
     /// <summary>GL 4.6 SPIR-V: the one binary format a shader blob may be in, and the enumeration that says
     /// whether this driver accepts it at all.</summary>
     public const uint SHADER_BINARY_FORMAT_SPIR_V = 0x9551, NUM_SHADER_BINARY_FORMATS = 0x8DF9,

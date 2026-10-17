@@ -564,11 +564,6 @@ public sealed unsafe partial class AlloyRenderer
     internal static readonly bool[] _gDis = new bool[MaxOwned];
     /// <summary>The batch is an alpha-to-coverage cutout (<see cref="_oA2c"/>); these close the cutout range.</summary>
     internal static readonly bool[] _gA2c = new bool[MaxOwned];
-    /// <summary>The batch's coverage is map slot 1's alpha (<see cref="CoverNrmBit"/>). A key term for the
-    /// same reason <see cref="_gDis"/> is: the feature depth stage tests the DIFFUSE alpha, so such a batch has
-    /// to be droppable whole or the prepass lays solid depth under the holes the colour pass punches.
-    /// ponytail: that stage could sample the slot-1 handle instead and keep its early-Z.</summary>
-    internal static readonly bool[] _gCovN = new bool[MaxOwned];
     /// <summary>Did the depth prepass ACTUALLY draw this batch? Set by
     /// <c>DepthPrepassPass</c> as it walks, not predicted from the class -- the SSAO consumer gate was a
     /// second copy of the prepass's skip conditions and drifted from it (a door read "in the depth" while

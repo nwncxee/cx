@@ -403,7 +403,7 @@ internal static class MaterialParams
     internal static bool Any => _byObj.Count > 0;
 
     /// <summary>Does <paramref name="obj"/> carry a content override? A content part of it then takes a side-table
-    /// row of its own (<see cref="Db.TintTerms.ObjectRow"/>).</summary>
+    /// row of its own (<see cref="Db.ContentTable.ObjectRow"/>).</summary>
     internal static bool HasContent(DbId obj) => _content.ByObj.ContainsKey(obj.Value);
 
     /// <summary>Object <paramref name="obj"/>'s content overrides in the order they were set, or null.</summary>
@@ -458,7 +458,7 @@ internal static class MaterialParams
         if (_unknownOnce.Add(name))
             log?.Info($"MaterialParams: SetMaterialParam names \"{name}\" -- kept for the object's content stages, "
                     + "which read it wherever the material's own .mtr declares it");
-        Db.TintTerms.TouchObject(obj.Value);
+        Db.ContentTable.TouchObject(obj.Value);
         TouchParts(obj);
     }
 
@@ -472,8 +472,8 @@ internal static class MaterialParams
         if (_content.ByObj.TryGetValue(obj.Value, out List<ContentOverride>? list))
         {
             had |= list.RemoveAll(o => filter.Length == 0 || ContentOverride.SameMaterial(o.Filter, filter)) > 0;
-            if (list.Count == 0) { _content.ByObj.Remove(obj.Value); Db.TintTerms.FreeObject(obj.Value); }
-            else Db.TintTerms.TouchObject(obj.Value);
+            if (list.Count == 0) { _content.ByObj.Remove(obj.Value); Db.ContentTable.FreeObject(obj.Value); }
+            else Db.ContentTable.TouchObject(obj.Value);
         }
         if (had) TouchParts(obj);
     }
@@ -489,7 +489,7 @@ internal static class MaterialParams
     internal static int Forget(DbId obj)
     {
         bool had = _byObj.Remove(obj.Value);
-        if (_content.ByObj.Remove(obj.Value)) { had = true; Db.TintTerms.FreeObject(obj.Value); }
+        if (_content.ByObj.Remove(obj.Value)) { had = true; Db.ContentTable.FreeObject(obj.Value); }
         if (!had) return 0;
         if (!SceneDb.Objects.Valid(obj)) return 1;
         TouchParts(obj);

@@ -522,6 +522,12 @@ offset	ShaderExposedRuntimeData	moduleDawnHour	0x1c	0x1c	# RtModuleDawnHour
 offset	ShaderExposedRuntimeData	moduleDuskHour	0x20	0x20	# RtModuleDuskHour
 offset	ShaderExposedRuntimeData	areaWind	0x28	0x28	# RtAreaWind
 offset	ShaderExposedRuntimeData	areaWeatherDensity	0x38	0x38	# RtAreaWeatherDensity
+offset	ShaderExposedRuntimeData	moduleMinutesPerHour	0x24	0x24	# RtModuleMinutesPerHour
+offset	ShaderExposedRuntimeData	moduleTransitionTime	0x14	0x14	# RtModuleTransitionTime
+offset	ShaderExposedRuntimeData	areaWeatherType	0x34	0x34	# RtAreaWeatherType
+offset	ShaderExposedRuntimeData	mouseX	0x40	0x40	# RtMouseX
+offset	ShaderExposedRuntimeData	mouseY	0x44	0x44	# RtMouseY
+offset	ShaderExposedRuntimeData	mouseButtons	0x48	0x48	# RtMouseButtons
 offset	ShaderExposedRuntimeData	areaFlags	0x3c	0x3c	# RtAreaFlags
 offset	ShaderExposedRuntimeData	playerPos	0x4c	0x4c	# RtPlayerPos
 offset	ShaderExposedRuntimeData	camPos	0x64	0x64	# RtCamPos

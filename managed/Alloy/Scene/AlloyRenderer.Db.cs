@@ -49,7 +49,7 @@ public sealed unsafe partial class AlloyRenderer
            && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static
            && DrawRecipe.Src(recipe) == DrawRecipe.BlendSrcAlpha && DrawRecipe.Dst(recipe) == DrawRecipe.BlendInvSrcAlpha
            && (DrawRecipe.Slots(recipe) & IllumBit) == 0 && !env
-           && !ShaderFeatures.NamedHosted(DrawRecipe.Feat(recipe));
+           && !ContentPrograms.MayMove(DrawRecipe.Feat(recipe));
 
     /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>) on a
     /// static object, under a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque
@@ -57,7 +57,7 @@ public sealed unsafe partial class AlloyRenderer
     /// env-mapped material (whose alpha is not a sheet's edge) or a posed mesh. A GUI panel's objects are not static.</summary>
     internal static bool DbWash(int recipe, RecipeFlag rf, ObjFlag of, bool env)
         => (rf & RecipeFlag.Wash) != 0 && DrawRecipe.Cls(recipe) is (int)AlloyClass.Cutout or (int)AlloyClass.Blended
-           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage | RecipeFlag.CoverNrm)) == 0
+           && (rf & (RecipeFlag.Dangly | RecipeFlag.Skinned | RecipeFlag.AnimMesh | RecipeFlag.Coverage)) == 0
            && !env && (of & (ObjFlag.Static | ObjFlag.Sky)) == ObjFlag.Static;
 
     /// <summary>The class a slot draws in (<see cref="AlloyClasses.SlotClass"/>): blended for a ground decal, a wash
@@ -95,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
              ? $"blend pair {DrawRecipe.Src(recipe)}/{DrawRecipe.Dst(recipe)}"
          : (DrawRecipe.Slots(recipe) & IllumBit) != 0 ? "self-illumination map"
          : env ? "env map"
-         : ShaderFeatures.NamedHosted(DrawRecipe.Feat(recipe)) ? "hosted shader body" : "?";
+         : ContentPrograms.MayMove(DrawRecipe.Feat(recipe)) ? "a content vertex half that may move it" : "?";
 
     /// <summary>The self-illumination map's mask bit (map slot 4, the stage's <c>CX_SLOT_ILLUM</c>).</summary>
     private const int IllumBit = 1 << 4;
@@ -221,7 +221,7 @@ public sealed unsafe partial class AlloyRenderer
         // CX-303: ...and an object carrying SetMaterialShaderUniform values reads them from a side-table row of its own
         if (ShaderFeatures.IsContent((int)_oFeat[fo]) && Seam.MaterialParams.HasContent(SceneDb.PartObj[part]))
         {
-            int own = Db.TintTerms.ObjectRow(recipe, SceneDb.PartObj[part].Value);
+            int own = Db.ContentTable.ObjectRow(recipe, SceneDb.PartObj[part].Value);
             if (own >= 0) _oFeat[fo + 2] = own;
         }
         _oSlots[i] = DrawRecipe.Slots(recipe);
@@ -320,16 +320,10 @@ public sealed unsafe partial class AlloyRenderer
             DbWriteTexRot(i, o, recipe, rf);
             // ...and the .txi's blend pair and fullbright flag, which an offer that waited reads late.
             bool a2c = (rf & RecipeFlag.Coverage) != 0;
-            // ...and the slot-1 coverage bit, which the same late .mtr can turn on. It rides _oSlots, which
-            // nothing re-derives per frame (the env bit is the one exception), so a recipe that gained it
-            // after its slots were seated would keep drawing solid.
-            int slots = (_oSlots[i] & ~CoverNrmBit) | (DrawRecipe.Slots(recipe) & CoverNrmBit);
             byte wash = DbWashMode(washes, cls, decal != 0);
             if (wash != 0) DbNoteWash(recipe, rf, of, lit, cls, decal, wash, env);
             if (_oCls[i] == cls && _oDecal[i] == decal && _oWash[i] == wash && _oCos[i] == wasCos && _oSin[i] == wasSin
-                && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c
-                && slots == _oSlots[i]) continue;
-            if (slots != _oSlots[i]) { _oSlots[i] = slots; CasterGen++; }
+                && _oDst[i] == DrawRecipe.Dst(recipe) && _oLit[i] == lit && _oA2c[i] == a2c) continue;
             _oCls[i] = cls; _oLit[i] = lit; _oA2c[i] = a2c; _oDecal[i] = decal; _oWash[i] = wash;
             _oSrc[i] = (byte)DrawRecipe.Src(recipe); _oDst[i] = (byte)DrawRecipe.Dst(recipe);
             // The slot moves between passes, so its staged record and batch row are both stale.
@@ -631,7 +625,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         RecipeFlag rf = DrawRecipe.Flags(_oDbRecipe[i]);
         bool exempt = _oBone[i] >= 0 || (rf & RecipeFlag.Dangly) != 0
-                      || ShaderFeatures.Displaces((int)_oFeat[i * 4]) || !(_oR[i] > 0f);
+                      || ContentPrograms.MayMove((int)_oFeat[i * 4]) || !(_oR[i] > 0f);
         float cx, cy, cz, rad;
         if (exempt) { cx = 0f; cy = 0f; cz = 0f; rad = NeverCull; }
         else

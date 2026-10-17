@@ -176,11 +176,64 @@ internal static unsafe class GlProgram
         public void Dispose() => DropPrefetched(_log);
     }
 
-    /// <summary>The program <see cref="Prefetch"/> issued under <paramref name="key"/>, waited for; 0 when none was
-    /// issued or it did not link, and the caller's own build then repeats it in turn, retries and log lines included.</summary>
+    /// <summary>What <see cref="Start"/> issued that no build has claimed yet: unlike a prefetch it outlives the frame, so
+    /// a program can compile behind several frames of drawing and be claimed once the driver says it is done.</summary>
+    private sealed class BackgroundState
+    {
+        internal readonly System.Collections.Generic.Dictionary<ulong, (uint Prog, uint V, uint F, long T0)> Inflight = new();
+    }
+
+    private static BackgroundState _background = new();
+
+    /// <summary>Start the vertex+fragment program <paramref name="vs"/>/<paramref name="fs"/> in the BACKGROUND -- compile
+    /// and link, no status read -- and hand back its key for <see cref="Done"/>. A program already cached or in flight is
+    /// not issued again. With no parallel compile (or no binary cache to key a claim by) nothing is issued and the key is
+    /// 0, which reads done: the build that follows compiles in turn.</summary>
+    internal static ulong Start(string vs, string fs, bool host)
+    {
+        if (!GlContextService.ParallelCompile || ProgramBinary.Seed == 0) return 0;
+        string tv = Text(Lib(vs, null, ""), null, "", host), tf = Text(Lib(fs, null, ""), null, "", host);
+        ulong key = PairKey(tv, tf);
+        if (key == 0 || ProgramBinary.Has(key)) return 0;
+        if (_background.Inflight.ContainsKey(key) || _prefetch.Inflight.ContainsKey(key)) return key;
+        LightmapBake.CompileNotice();
+        uint v = Issue(Gl.VERTEX_SHADER, tv), f = Issue(Gl.FRAGMENT_SHADER, tf);
+        _background.Inflight[key] = (StartLink(v, f), v, f, Stopwatch.GetTimestamp());
+        return key;
+    }
+
+    /// <summary>Has the driver finished every program <see cref="Start"/> handed back <paramref name="keys"/> for? A key
+    /// nothing is in flight under (0, claimed, dropped) reads done.</summary>
+    internal static bool Done(ReadOnlySpan<ulong> keys)
+    {
+        foreach (ulong k in keys)
+        {
+            if (k == 0 || !_background.Inflight.TryGetValue(k, out var f)) continue;
+            int ok = 0;
+            Gl.GetProgramiv(f.Prog, Gl.COMPLETION_STATUS, &ok);
+            if (ok == 0) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Delete what <see cref="Start"/> issued under <paramref name="keys"/> that no build claimed: a build that
+    /// failed before it reached them leaves them in flight otherwise, holding their GL names for the session.</summary>
+    internal static void Drop(ReadOnlySpan<ulong> keys)
+    {
+        foreach (ulong k in keys)
+            if (k != 0 && _background.Inflight.Remove(k, out var f))
+            { Gl.DeleteProgram(f.Prog); Gl.DeleteShader(f.V); Gl.DeleteShader(f.F); }
+    }
+
+    /// <summary>The context took every name: whatever was in flight is gone with it.</summary>
+    internal static void ForgetBackground() => _background = new BackgroundState();
+
+    /// <summary>The program <see cref="Prefetch"/> or <see cref="Start"/> issued under <paramref name="key"/>, waited for;
+    /// 0 when none was issued or it did not link, and the caller's own build then repeats it in turn, retries and log
+    /// lines included.</summary>
     private static uint Claim(ulong key, ExtenderLog? log, string what)
     {
-        if (!_prefetch.Inflight.Remove(key, out var f)) return 0;
+        if (!_prefetch.Inflight.Remove(key, out var f) && !_background.Inflight.Remove(key, out f)) return 0;
         int ok; Gl.GetProgramiv(f.Prog, Gl.LINK_STATUS, &ok);
         if (ok != 0) { Notes(f.V, true, log, what); Notes(f.F, true, log, what); Notes(f.Prog, false, log, what); }
         Gl.DeleteShader(f.V); Gl.DeleteShader(f.F);
@@ -331,15 +384,6 @@ internal static unsafe class GlProgram
         uint sh = CompileText(type, text, log, what);
         clean = sh != 0;
         if (sh != 0 || !VanillaShader.HasSplice(rawSrc)) return sh;
-        if (host && VanillaShader.HasHost(rawSrc))
-        {
-            // ponytail: every hosted region at once; bisecting to the one that failed is the upgrade
-            log?.Info($"{what}: WARN the spliced text did not compile -- retrying with every hosted content stage "
-                    + "stubbed, so those materials draw the plain lit path and everything else still splices");
-            sh = CompileText(type, ShaderResource.Tokens(VanillaShader.Splice(rawSrc, log, what, host: false)), log, what);
-            LastStubbed = true;
-            if (sh != 0) return sh;
-        }
         // a content .shd that renamed a function the stage calls would otherwise take the WHOLE
         // program down -- and for the lit stage that means the world reverts to engine drawing over one
         // edit in a hak. The stub is what that retry is for: the feature off, the world still rendering.

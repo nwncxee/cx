@@ -34,18 +34,18 @@
 // Material texture slot 6. Stock names it by unit; Alloy binds it as the flow map's sampler, and
 // which of the two a material means is its own business -- the slot is the contract, not the name.
 #define texUnit6 uFlowTex
-// CX-223: the engine's own last four material stages. It pins texUnit7..texUnit10 to GL units 7..10 at link
-// and sets texture7Bound..texture10Bound per draw off its own stage-enabled test. Alloy has no unit left --
-// the lit stage spends 0..30 -- so the samplers come out of the palette row's bindless handles and the flags
-// off the record's slot mask: same names, same meaning, a different place to read them from.
-#define texUnit7  CxTintPal(vDraw, cxTintRow, 0)
-#define texUnit8  CxTintPal(vDraw, cxTintRow, 1)
-#define texUnit9  CxTintPal(vDraw, cxTintRow, 2)
-#define texUnit10 CxTintPal(vDraw, cxTintRow, 3)
-#define texture7Bound  CxTintBound(vDraw, 0)
-#define texture8Bound  CxTintBound(vDraw, 1)
-#define texture9Bound  CxTintBound(vDraw, 2)
-#define texture10Bound CxTintBound(vDraw, 3)
+// The engine's own last four material stages. It pins texUnit7..texUnit10 to GL units 7..10 at link and sets
+// texture7Bound..texture10Bound per draw off its own stage-enabled test. Alloy has no unit left -- the lit stage spends
+// 0..30 -- so the samplers come out of the content row's bindless handles and the flags off the record's slot mask:
+// same names, same meaning, a different place to read them from.
+#define texUnit7  CxConPal(0)
+#define texUnit8  CxConPal(1)
+#define texUnit9  CxConPal(2)
+#define texUnit10 CxConPal(3)
+#define texture7Bound  CxConPalBound(vDraw, 0)
+#define texture8Bound  CxConPalBound(vDraw, 1)
+#define texture9Bound  CxConPalBound(vDraw, 2)
+#define texture10Bound CxConPalBound(vDraw, 3)
 // The area's fog colour as the engine's stages see it: DISPLAY space. Alloy linearises it at upload
 // (#132), so this undoes that rather than carrying the same number twice.
 #define fogColor vec4(pow(max(uFogColor.rgb, vec3(0.0)), vec3(1.0 / $SRGB$)), 1.0)
@@ -60,17 +60,3 @@
 #define MATERIAL_METALLICNESS_VALUE fMetallicness
 #define MATERIAL_SPECULAR_COLOR_VALUE SpecularColor
 
-// ---- PLACEHOLDER: the names fs_plt_tinter's own uniforms go by are NOT KNOWN. The pair is the author's
-// content and is not in this repo. The engine would feed each from a `parameter` line of the same spelling
-// (GetCustomParameterToken queries the .mtr name verbatim, case for case) and Alloy cannot: it draws a
-// multidraw batch, so a per-material uniform has nowhere to come from -- the values ride the side table.
-// The four spellings below are PROVISIONAL, following the convention of the wind and flowmap forks
-// (fSwaySpeed, fSlideSpeed). Confirm them against the author's .mtr, then fix them here and in
-// MtrParams.FoldTint, which is the one other place they are written down.
-#define fAnisotropy        CxTintLobe(cxTintRow).x
-#define fSpecularIntensity CxTintLobe(cxTintRow).y
-// vec4, not vec3: a 2-to-4-component `parameter` line uploads through glUniform4fv, so the engine's own
-// declaration for a colour is a vec4 whose w reads 0 (the material record is zero-initialised).
-#define fIllumColor        vec4(CxTintGlow(cxTintRow), 0.0)
-#define fAlphaMipScale     CxTintMip(cxTintRow)
-// ---- end PLACEHOLDER

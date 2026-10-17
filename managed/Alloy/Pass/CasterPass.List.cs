@@ -97,7 +97,7 @@ public sealed unsafe partial class CasterPass
         _liveIdxCount[live] = idxCount; _liveFirst[live] = first; _liveBaseVert[live] = baseVert;
         _liveVao[live] = f.Vao; _livePrim[live] = f.Prim; _liveItem[live] = f.Item;
         _liveTex[live] = AlloyRenderer.VdoHasUv(f.Vao) ? MaskTid(in f) : 0;
-        _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha, f.CoverNrm); _liveBlend[live] = f.Blended;
+        _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveContent[live] = f.Content;
         _liveDyn[live] = false; _liveVisit[live] = 0;
         _liveOff[live] = true; _liveGenOf[live] = AlloyRenderer.SlotEnrollGen(slot);
         _liveIdx[slot] = live; _liveIdxSeq[slot] = _collectSeq;
@@ -205,6 +205,8 @@ public sealed unsafe partial class CasterPass
     /// <summary>...and which threshold goes with it, as the KIND the staging key groups on rather than the
     /// number the stage tests at (<see cref="Threshold"/>).</summary>
     private static readonly CasterCut[] _liveCut = new CasterCut[MaxCasters];
+    /// <summary>The content pair each caster casts through (<see cref="AlloyRenderer.CasterFacts.Content"/>), or 0.</summary>
+    private static readonly int[] _liveContent = new int[MaxCasters];
     /// <summary>A blended-class caster; routed to the masked stage so its record alpha dithers.</summary>
     private static readonly bool[] _liveBlend = new bool[MaxCasters];
     /// <summary>Coverage casters in the standing list, counted on the period line rather than tallied per
@@ -302,14 +304,13 @@ public sealed unsafe partial class CasterPass
                 // the solid one's skinning branch for coverage parts (CX-227, the hair case -- without it a
                 // card's shadow is its solid silhouette), and nothing else, so a masked skinmesh never
                 // punches holes out of a BIND pose. Same set the capture cast solid.
-                // CX-218: ...and a slot-1 coverage part is posed for the same reason -- it is the wardrobe's
-                // own cutout (a custom chest's cloth fringe), and its holes come from the same stage.
-                bool maskable = !f.Skinned || f.Coverage || f.CoverNrm;
+                // CX-303: ...and a content pair's caster twin poses its parts itself, the colour program's own way.
+                bool maskable = !f.Skinned || f.Coverage || f.Content != 0;
                 _liveTex[live] = maskable && AlloyRenderer.VdoHasUv(f.Vao) ? MaskTid(in f) : 0;
                 // Review: the triage counter lost its writer in the rework -- a masked-eligible caster whose
                 // diffuse did not resolve THIS frame casts solid, and this is the number that says how often.
                 if (_liveTex[live] == 0 && maskable && AlloyRenderer.VdoHasUv(f.Vao)) _maskNoTex++;
-                _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha, f.CoverNrm); _liveBlend[live] = f.Blended;
+                _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveContent[live] = f.Content;
                 // Review: a caster ABSENT last frame is a mover on return, whatever its record says -- a
                 // transient TryRange or VAO failure longer than the one-frame ghost+hadMover cover would
                 // otherwise re-appear into views that never re-bake its shadow back.

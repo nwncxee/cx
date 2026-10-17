@@ -24,7 +24,7 @@ void main()
     // METRES from bind pose, so it stops being a speck: the prepass would keep a fragment the colour
     // pass discards, write cloak depth over it, and LEQUAL would cull the room behind the character.
     // Hence `pos`, which is the skinned position when there is one and aPos when there is not.
-    // The remaining gap is the DISPLACED case (CxFeatPos), and those never reach this stage.
+    // A content vertex half that displaces never reaches this stage: its pair has a depth program of its own.
     vWorld = (d.model * pos).xyz;
     vDepth = gl_Position.w;
     vDraw = id;

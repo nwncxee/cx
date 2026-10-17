@@ -1,4 +1,7 @@
 #version 460 core
+#ifdef CX_CAST_LAYER
+#extension GL_ARB_shader_viewport_layer_array : require
+#endif
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aUV;
 layout(location = 2) in vec3 aNrm;
@@ -20,38 +23,46 @@ out vec3 vWorld;
 out vec3 vNrm;
 out vec4 vTan;                 // CX-221: world tangent xyz, handedness w (0 = the mesh supplied no frame)
 out float vDepth;
-out float vAnchorZ;            // #123: undisplaced world height, for the roof anchor discard
 out vec2 vChart;               // #674
 flat out int vDraw;
-#include "cx_feat_v.glsl"
 #include "cx_bone_v.glsl"
+#ifdef CX_CAST_LAYER
+#include "cx_viewtbl.glsl"
+#endif
+// CX-303: what a content vertex half reads of this stage's own work: the projection the pass draws through (the
+// caster's layered twin takes it per view) and the world tangent before the UV rotation turns it.
+mat4 cxVP;
+vec3 cxTanW;
+#include "cx_host_v.glsl"
 void main()
 {
+    // CX-303: a content pair's caster twins index the record as the caster stages do -- by baseInstance, the layered
+    // one with the view packed above it -- and draw through the view's own projection
+#if defined(CX_CAST_LAYER)
+    int vi = gl_BaseInstance >> 18;
+    int id = gl_BaseInstance & 0x3ffff;
+    gl_Layer = int(uViewTbl[vi].c.w);
+    mat4 uVP = uViewTbl[vi].vp;
+#elif defined(CX_CAST)
+    int id = gl_BaseInstance;
+#else
     int id = CxSlot(uDrawBase + gl_DrawID);
+#endif
+    cxVP = uVP;
     CxDraw d = uDraw[id];
-    vec4 pos = CxFeatPos(d, aPos, vAnchorZ);
-    // #137: a posed skinmesh REPLACES the feature position -- the two never coexist (see
-    // ShaderFeature.Skin) -- and the same blended matrix then carries the normal, so a cloak is lit
-    // off the surface it actually has rather than the one it had in bind pose.
+    vec4 pos = vec4(aPos, 1.0);
+    // #137: a posed skinmesh's blended matrix carries the position and then the normal, so a cloak is lit off the
+    // surface it actually has rather than the one it had in bind pose.
     int bb = CxBoneBase(d);
     mat4 skin = bb >= 0 ? CxSkinMat(bb) : mat4(1.0);
     if (bb >= 0) pos = skin * vec4(aPos, 1.0);
     vec4 world = d.model * pos;
-    // The undisplaced branch is written out in full rather than folded into the line below, because
-    // #119's prepass re-tests this exact expression and `invariant` only holds over an identical
-    // SEQUENCE of operations -- not merely identical values. So the test is "does this part displace",
-    // NOT "does it have a feature": a nokeyhole or flowmap part does not move, therefore stays in the
-    // prepass, and therefore must reach the literal expression the prepass compiled. Only a displacing
-    // part takes the other branch, and the CPU excludes exactly those from the prepass with the same
-    // predicate -- no text check can catch the two disagreeing, so they mirror each other by
-    // construction and SelfCheck holds it.
-    // The skinned arm takes the DISPLACED expression, not a third one, and takes it first -- see
-    // the fullbright stage for why, and ShaderFeatures.OutOfPrepass for the prepass side of it.
+    // Both arms are written out in full rather than folded into one line, because #119's prepass re-tests the rigid
+    // expression and `invariant` only holds over an identical SEQUENCE of operations -- not merely identical
+    // values. The skinned arm is the fullbright and depth stages' own, character for character.
     if (bb >= 0) gl_Position = uVP * d.model * pos;
-    else if (!CxDisplaces(int(d.feat.x))) gl_Position = uVP * d.model * vec4(aPos, 1.0);
-    else gl_Position = uVP * d.model * pos;
+    else gl_Position = uVP * d.model * vec4(aPos, 1.0);
     vDepth = gl_Position.w;
-    // shaded at the DISPLACED position, which is where the vanilla shaders light a swaying plant too
     vWorld = world.xyz;
     vNrm = mat3(d.model) * (bb >= 0 ? mat3(skin) * aNrm : aNrm);
     // The tangent rides the same matrices as the normal -- a posed cloak's frame has to follow its pose --
@@ -60,8 +71,10 @@ void main()
     // own bitangent. A zero word stays zero through all of it, which is the "no frame" signal.
     vec3 aT = bb >= 0 ? mat3(skin) * aTangent.xyz : aTangent.xyz;
     vec3 aB = cross(bb >= 0 ? mat3(skin) * aNrm : aNrm, aT) * aTangent.w;
+    cxTanW = mat3(d.model) * aT;
     vTan = vec4(mat3(d.model) * (d.rot.x * aT - d.rot.y * aB), aTangent.w);
     vUV = vec2(d.rot.x * aUV.x - d.rot.y * aUV.y, d.rot.y * aUV.x + d.rot.x * aUV.y);
     vChart = aChart;
     vDraw = id;
+    CxHostVertex(d, id, bb);
 }

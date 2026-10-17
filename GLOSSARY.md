@@ -476,15 +476,11 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 - **Hold budget** — the `lightmap.hold` seconds after which the hold offers a skip. 0 = no hold.
 - **Hard cap** — the fixed ceiling past which the hold always releases, set by the server's own
   readiness deadline. Not a knob: a safety ceiling nobody tunes.
-- **Content stage** — a fragment stage a server's content brings: the `customShaderFS` a `.mtr`
-  names alongside a `customShaderVS`, that Alloy neither reproduces as a feature nor hosts by name.
-  Alloy translates it and runs it in a lit program of its own as a surface modifier, between the
-  stock setup and Alloy's lighting (CX-303). Contrast a **hosted stage** — one of the four Alloy
-  hosts by name inside its shared hosted program — and a **stock stage** (`fslit_nm` and kin), whose
-  shading Alloy's own stage already is. Contract: `docs/shader-overrides.md`, "Content stages".
-
-## Animation
-
+- **Content pair** — the `customShaderVS`/`customShaderFS` a `.mtr` names, which Alloy runs translated in programs
+  of the pair's own: the vertex half over Alloy's own vertex outputs, the fragment half as a **surface modifier**
+  between the stock setup and Alloy's lighting, its edits after `ApplyStandardShader()` on the lit colour (CX-303).
+  Nothing is recognised by name; a pair whose halves add nothing to stock is Alloy's own lit path. Contract:
+  `docs/shader-overrides.md`, "Content shaders".
 - **Rig map** — `cx_rig.2da`, the content file that tells the pose layer (foot IK, foot lock, upper-body
   follow, the other corrections) which node is which bone on a skeleton whose names are not the stock
   biped's. One row per skeleton model: a `MODEL` column holding its resref, matched against the body's

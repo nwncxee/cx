@@ -18,9 +18,9 @@ internal static partial class DrawRecipe
 
     /// <summary>Texture slots a recipe names: diffuse, the seven map slots (five maps, flow, AO), then the
     /// four PALETTE slots. The palette four are held but never BOUND -- the lit stage spends texture units
-    /// 0..30, so they reach their one reader as handles in <see cref="TintTerms"/>' row.</summary>
+    /// 0..30, so they reach their one reader as handles in <see cref="ContentTable"/>' row.</summary>
     internal const int TexSlots = 1 + AlloyRenderer.MapSlots + AlloyRenderer.PalSlots;
-    /// <summary>The map slot of <c>texture6</c>, the flow map / weather-ground overlay.</summary>
+    /// <summary>The map slot of <c>texture6</c>, which a content pair's stage reads as <c>texUnit6</c>.</summary>
     private const int FlowSlot = 5;
     /// <summary>The recipe slot of the AO map, which reads <c>.mtr</c> <c>texture11</c>, not <c>texture7</c>.</summary>
     private const int AoRecipeSlot = 1 + AlloyRenderer.AoSlot;
@@ -34,14 +34,14 @@ internal static partial class DrawRecipe
         => s == AoRecipeSlot ? AlloyRenderer.AoTexture
          : s >= PalRecipeSlot0 ? AlloyRenderer.PalTexture0 + (s - PalRecipeSlot0) : s;
 
-    /// <summary>The slot-mask bit a bound recipe slot sets: none for the diffuse, the flow slot and the four
-    /// palette slots only for the features that read them (vanilla's own <c>texture6Bound</c> test), and AO on
-    /// its own out-of-line bit.</summary>
+    /// <summary>The slot-mask bit a bound recipe slot sets: none for the diffuse, the slot-6 and the four palette
+    /// slots only for a content pair, the stages that can name them (vanilla's own <c>texture6Bound</c> test), and AO
+    /// on its own out-of-line bit.</summary>
     internal static int MaskBitOf(int s, int feat)
         => s == 0 ? 0
          : s >= PalRecipeSlot0
-             ? (ShaderFeatures.ReadsPaletteSlots(feat) ? AlloyRenderer.PalSlotBit(s - PalRecipeSlot0) : 0)
-         : s - 1 == FlowSlot && !ShaderFeatures.ReadsAuxSlot(feat) ? 0
+             ? (ShaderFeatures.ReadsExtraSlots(feat) ? AlloyRenderer.PalSlotBit(s - PalRecipeSlot0) : 0)
+         : s - 1 == FlowSlot && !ShaderFeatures.ReadsExtraSlots(feat) ? 0
          : AlloyRenderer.SlotBit(s - 1);
 
     /// <summary>The resref recipe slot <paramref name="s"/> binds: the material's <c>textureN</c> where it
@@ -64,7 +64,7 @@ internal static partial class DrawRecipe
     private static bool ModelMaps(MeshDef mesh) => mesh.Tangents.Length != 0 || mesh.RenderHintId is 2 or 3;
 
     /// <summary>Palette slot <paramref name="k"/>'s bindless handle on recipe <paramref name="r"/>, for the
-    /// one reader that takes them that way (<see cref="TintTerms.Upload"/>). 0 until the texture is resident.</summary>
+    /// one reader that takes them that way (<see cref="ContentTable.Upload"/>). 0 until the texture is resident.</summary>
     internal static ulong PalHandle(int r, int k)
         => (uint)r < Max && (uint)k < AlloyRenderer.PalSlots ? TexHandle(r, PalRecipeSlot0 + k) : 0ul;
 
@@ -87,15 +87,15 @@ internal static partial class DrawRecipe
         public readonly bool[] Orphan = new bool[Max];
         /// <summary>Bumped at each hand-out, so a holder of (slot, gen) can tell its recipe from a later tenant's.</summary>
         public readonly uint[] Gen = new uint[Max];
-        /// <summary>Each recipe's row in <see cref="TintTerms"/>' side table, or -1 -- the value a palette-tint
-        /// record carries in <c>feat.z</c>. Seeded -1, because a zero-filled column would hand the untinted
-        /// majority row 0 and retire it out from under whoever owns it.</summary>
-        public readonly int[] TintRow = new int[Max];
-        /// <summary>Each recipe's parsed <c>.mtr</c>, or null: what a content stage's side-table row is filled from
+        /// <summary>Each recipe's row in <see cref="ContentTable"/>, or -1 -- the value a content record carries in
+        /// <c>feat.z</c>. Seeded -1, because a zero-filled column would hand the plain majority row 0 and retire it
+        /// out from under whoever owns it.</summary>
+        public readonly int[] ContentRow = new int[Max];
+        /// <summary>Each recipe's parsed <c>.mtr</c>, or null: what a content pair's row is filled from
         /// (<see cref="ContentRows"/>). Shared and immutable, so the column holds the reference.</summary>
         public readonly MtrDef?[] Mtr = new MtrDef?[Max];
 
-        public SlotState() { System.Array.Fill(TintRow, -1); }
+        public SlotState() { System.Array.Fill(ContentRow, -1); }
         public int RetiredInUse, DoubleRetire;
         /// <summary><c>.mtr</c> reads that landed, against what the last <see cref="Reclassify"/> saw and what
         /// the last part-column re-seed saw. No other serial moves for a material, and the two consumers are
@@ -154,10 +154,6 @@ internal static partial class DrawRecipe
     /// <summary>The material's <c>NWN_ALPHA_MODE 2</c> -- draw this part through alpha-to-coverage
     /// (<see cref="RecipeFlag.Coverage"/>) instead of blending it. Kept per recipe for <see cref="Reclassify"/>.</summary>
     private static readonly bool[] _coverage = new bool[Max];
-    /// <summary>The material's <c>customShaderFS</c> is one of <see cref="ShaderFeatures.CoverNrmFs"/>, so its
-    /// coverage is map slot 1's alpha. Kept per recipe for the same reason as <see cref="_coverage"/>:
-    /// <see cref="Reclassify"/> re-asks the class, and the <c>.mtr</c> may land after the intern.</summary>
-    private static readonly bool[] _coverNrm = new bool[Max];
     /// <summary>The material's content-program key (<see cref="GuiContent.Key"/>; 0 = none), which a GUI part draws
     /// through. Re-read with the other late material terms.</summary>
     private static readonly int[] _content = new int[Max];
@@ -199,7 +195,7 @@ internal static partial class DrawRecipe
         _own.Held[r] = false; _own.Orphan[r] = false;
         if (_range[r] >= 0) MeshArena.Release(_range[r]);
         _range[r] = -1;
-        if (_own.TintRow[r] >= 0) { TintTerms.Free(_own.TintRow[r], r); _own.TintRow[r] = -1; }
+        if (_own.ContentRow[r] >= 0) { ContentTable.Free(_own.ContentRow[r], r); _own.ContentRow[r] = -1; }
         _own.Mtr[r] = null;
         for (int s = 0; s < TexSlots; s++)
         {
@@ -393,10 +389,7 @@ internal static partial class DrawRecipe
     {
         var diffuse = new TexId(_texId[r * TexSlots]);
         TexCoverage cov = TexRegistry.Coverage(diffuse);
-        // CX-218: ...and a measurement of the DIFFUSE says nothing about a material whose coverage is slot 1's
-        // alpha. Such a diffuse measures Opaque (a DXT1 skin) or graded (an env reflectivity mask), and either
-        // reading would take the part out of the cutout class the content's own discard needs.
-        bool opaque = cov == TexCoverage.Opaque && !_coverNrm[r];
+        bool opaque = cov == TexCoverage.Opaque;
         bool water = _declWater[r] || (PartTable.BumpyWaterOn && TexRegistry.BumpyShiny(diffuse));
         // MEASURED alpha decides opaque-or-not and NOTHING else. Blending is a DECLARED thing: the engine's
         // Material::GetIsOpaque @0x4c6190 reads the material's own `transparency`, an env map and a
@@ -411,13 +404,10 @@ internal static partial class DrawRecipe
         // CX-189: NWN_ALPHA_MODE 2 is the author saying "coverage, not blending" -- a declared transparency
         // on the same material is the vanilla fallback for clients without it, so it does not make this
         // blended. CX-224: nor does the measured diffuse make it opaque -- the classifier's own coverage term.
-        // CX-218: a slot-1 coverage material is a hard CUTOUT, so neither opacity term may move it out of the
-        // class -- not the measured diffuse above, and not a transparency the model declares. That is vanilla's
-        // own answer for this content: every gob carrying it is env-mapped, Material::GetIsOpaque @0x4c6190
-        // returns the env-map flag itself, and Scene::RenderSinglePass @0x46e5f0 draws that bucket with
-        // blending OFF -- so the only hole in such a part is the discard its own fragment stage makes.
+        // A content pair that makes its own coverage needs no class of its own: its program runs its discard in
+        // whatever class the material lands in, and its depth twin makes the same one in the prepass.
         return AlloyClasses.Of(water: water, additive: additive, opaque: opaque,
-                               declaredTransparent: declared && !_coverNrm[r],
+                               declaredTransparent: declared,
                                alphaBelowOne: false, coverage: _coverage[r]);
     }
 
@@ -457,7 +447,6 @@ internal static partial class DrawRecipe
             {
                 MtrDef? late = MtrDef.Of(mesh);
                 _coverage[r] = late is { AlphaMode: 2 };
-                _coverNrm[r] = late != null && ShaderFeatures.CoversFromNormalAlpha(late.ShaderFs);
                 _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
             }
@@ -489,13 +478,6 @@ internal static partial class DrawRecipe
         else _flags[r] &= ~RecipeFlag.HintBlended;
         if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
-        // CX-218: and the slot-1 coverage, which only means anything on a part that HAS a slot-1 map and is
-        // alpha-tested at all -- the bit tells the three stages which channel to test, not whether to test.
-        // Set here rather than in Fill alone because a .mtr can land after the intern (Reclassify's edge).
-        bool covNrm = _coverNrm[r] && (_slots[r] & AlloyRenderer.SlotBit(0)) != 0
-                      && _cls[r] == (byte)AlloyClass.Cutout;
-        if (covNrm) { _flags[r] |= RecipeFlag.CoverNrm; _slots[r] |= AlloyRenderer.CoverNrmBit; }
-        else { _flags[r] &= ~RecipeFlag.CoverNrm; _slots[r] &= ~AlloyRenderer.CoverNrmBit; }
     }
 
     private static int _classSerial = -1;
@@ -547,7 +529,6 @@ internal static partial class DrawRecipe
         // Material::GetTexture @0x5c5810: the .mtr's texture wins wherever it states one.
         MtrDef? mtr = MtrDef.Of(mesh);
         _coverage[r] = mtr is { AlphaMode: 2 };
-        _coverNrm[r] = mtr != null && ShaderFeatures.CoversFromNormalAlpha(mtr.ShaderFs);
         _content[r] = GuiContent.Key(mtr);
         // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
         // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
@@ -583,12 +564,11 @@ internal static partial class DrawRecipe
         if (LiesFlat(mesh)) f |= RecipeFlag.Wash;
         _flags[r] = f;
         _prim[r] = 0;
-        int feat = MtrParams.Feature(mtr?.ShaderVs ?? "");
-        // CX-303: no reproduced vertex feature, so any other stage the material names runs translated
-        if (feat == 0) feat = ContentPrograms.Register(mtr);
+        // CX-303: any pair the material names runs translated, unless both its halves add nothing to stock
+        int feat = ContentPrograms.Register(mtr);
         _feat[r] = feat;
         _own.Mtr[r] = mtr;
-        MtrParams.NoteCustomFs(mtr?.ShaderFs ?? "", feat, _coverNrm[r], Log);
+        MtrParams.NoteCustomPair(mtr, feat, Log);
         Span<float> featF = _featF.AsSpan(r * 4, 4);
         featF.Clear();
         featF[0] = feat;
@@ -598,29 +578,13 @@ internal static partial class DrawRecipe
         param = default;
         MtrParams.ResetExt(ref param.Ext);
         MtrParams.Fold(mtr, ref param, featF);
-        // CX-223: a palette-tint material takes a row in the side table and the record carries its INDEX in
-        // the feature's own feat.z lane, so the tint's terms cost the other hundred thousand records nothing.
-        // A table with no row left is the feature OFF for this material -- the plain lit path, which is what
-        // the record says too, since an index nothing backs would read another material's glow.
-        _own.TintRow[r] = -1;
-        if (feat == (int)ShaderFeature.PaletteTint)
+        // ...and its row carries its material's own uniforms and palette maps, the record its INDEX in feat.z; -1 (the
+        // table full) leaves the pair reading every uniform's default, which CxContentRow makes a defined read
+        _own.ContentRow[r] = -1;
+        if (ShaderFeatures.IsContent(feat))
         {
-            _own.TintRow[r] = TintTerms.Alloc(r);
-            if (_own.TintRow[r] < 0) { feat = 0; _feat[r] = 0; featF[0] = 0f; }
-            else
-            {
-                Span<float> tint = stackalloc float[MtrParams.TintTermCount];
-                MtrParams.FoldTint(mtr, tint, Log);
-                TintTerms.SetTerms(_own.TintRow[r], tint);
-                featF[2] = _own.TintRow[r];
-            }
-        }
-        // ...and a content stage's row carries its material's own uniforms the same way; -1 (the table full) leaves
-        // the stage reading every uniform's default, which CxContentRow makes a defined read
-        else if (ShaderFeatures.IsContent(feat))
-        {
-            _own.TintRow[r] = TintTerms.AllocContent(r);
-            featF[2] = _own.TintRow[r];
+            _own.ContentRow[r] = ContentTable.Alloc(r);
+            featF[2] = _own.ContentRow[r];
         }
         int mask = 0;
         for (int s = 0; s < TexSlots; s++)
@@ -768,9 +732,6 @@ internal enum RecipeFlag : ushort
     RotateTexture = 1 << 10,
     /// <summary>A cutout whose material asks for alpha-to-coverage (<c>NWN_ALPHA_MODE 2</c>).</summary>
     Coverage = 1 << 11,
-    /// <summary>A cutout whose coverage is map slot 1's alpha, because its <c>customShaderFS</c> is one of
-    /// <see cref="ShaderFeatures.CoverNrmFs"/> (<see cref="AlloyRenderer.CoverNrmBit"/> on the record).</summary>
-    CoverNrm = 1 << 12,
     /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
     /// can be one of these.</summary>
     FacesUp = 1 << 13,

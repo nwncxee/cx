@@ -8,7 +8,6 @@ in vec3 vWorld;
 in vec3 vNrm;
 in vec4 vTan;                  // CX-221: the supplied world tangent, handedness in w (0 = none supplied)
 in float vDepth;
-in float vAnchorZ;             // #123: undisplaced world height, for the roof anchor discard
 in vec2 vChart;                // #674: chart UV in atlas texels
 flat in int vDraw;             // this fragment's CxDraw record: the material colours live there now
 #include "cx_drawbuf.glsl"
@@ -17,11 +16,11 @@ flat in int vDraw;             // this fragment's CxDraw record: the material co
 #include "cx_chartbuf.glsl"
 #include "cx_plt.glsl"
 #include "cx_alphamip.glsl"
-#include "cx_tintbuf.glsl"
+#include "cx_conbuf.glsl"
 uniform sampler2D uTex;
 #define CX_ARRIVE_SECONDS 0.6   // CX-52: a streamed diffuse's fade-in, see the diffuse sample
 #define CX_ARRIVE_MIPS 6.0      // ...starting this many mips blurred
-uniform sampler2D uFlowTex;    // #123 slot 6: RG flow direction, only ever bound on a flowmap part
+uniform sampler2D uFlowTex;    // #123 slot 6 (texUnit6), only ever bound on a content pair's part
 // #120: the five stock .mtr slots beyond the diffuse, on units 3..7 (1 and 2 are the shadow maps).
 // Sampled only where the record's slot mask says the material actually bound one.
 uniform sampler2D uNrmTex;     // slot 1: tangent-space normal, xy in rg
@@ -111,9 +110,9 @@ const int CX_SLOT_NORMAL = 1, CX_SLOT_SPEC = 2, CX_SLOT_ROUGH = 4,
 const int CX_SLOT_AO = 128;
 // bit 8: no shadow lands on this record (an untextured blended sheet: a door's transition sheen)
 const int CX_SLOT_NOSHADOW = 256;
-// CX-223: bits 9..12, .mtr texture7..texture10 -- the palette tint's own maps. Set only on a material that
-// names the palette tint, which is the same reading the flow slot's bit takes. CX_SLOT_PAL0 is the first,
-// declared in cx_tintbuf.glsl because that library is included ahead of this block.
+// bits 9..12, .mtr texture7..texture10 -- set only on a content pair's material, the stages that can name them, which
+// is the same reading the flow slot's bit takes. CX_SLOT_PAL0 is the first, declared in cx_conbuf.glsl because that
+// library is included ahead of this block.
 const int CX_SLOT_PAL_LAST = CX_SLOT_PAL0 << 3;
 /// the depth encode's own rounding, nothing more: #119 makes a prepassed fragment's depth EQUAL
 const float CX_AO_DEPTH_EPS = 1e-5;
@@ -138,10 +137,8 @@ const float CX_MID_GREY = 0.2176;
 // mat+0x40). NO texture is bound for it: the probe replaces what it held. What survives is the
 // engine's own "this is shiny" flag on 2002 content, which drives the synthesis below.
 const int CX_SLOT_ENV = 64;
-// CX-218's CX_SLOT_COVERNRM (bit 13, the coverage source) is declared in cx_alphamip.glsl, beside the
-// cutout test it steers and where every stage that makes that test can see it.
-// #123: bit 5, texture slot 6 -- the flow map, and the only slot outside the stock five. Enrolled
-// only on a flowmap part, so on everything else this bit is clear and uFlowTex is never sampled.
+// #123: bit 5, texture slot 6 -- the only slot outside the stock five, which a content pair's stage reads as
+// texUnit6. Enrolled only on such a part, so on everything else this bit is clear and uFlowTex is never sampled.
 const int CX_SLOT_FLOW = 32;
 // inc_material.shd:143-144 -- an env-mapped material with no specular map takes its specularity from
 // the diffuse alpha (fEnvMapLevel = 1 - alpha), and its roughness down toward the floor with it.

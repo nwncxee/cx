@@ -6,7 +6,7 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>A content stage's side-table lanes (<see cref="TintTerms.Row.Cp"/>): what each uniform the stage declares
+/// <summary>A content stage's side-table lanes (<see cref="ContentTable.Row.Cp"/>): what each uniform the stage declares
 /// reads, from the material's <c>.mtr</c> <c>parameter</c> lines and the object's own <c>SetMaterialShaderUniform*</c>
 /// values, under the engine's own upload rules. Engine-free, so the self-check drives it on hand-written materials.</summary>
 internal static class ContentRows
@@ -18,7 +18,7 @@ internal static class ContentRows
     /// <summary>Fill <paramref name="row"/>'s content lanes for a stage laid out as <paramref name="ps"/>. A lane the
     /// material does not state -- or states in a shape its uniform cannot take -- stays off, and the stage reads the
     /// uniform's own GLSL default there, as the engine's program would with no upload behind it.</summary>
-    internal static void Fill(ref TintTerms.Row row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
+    internal static void Fill(ref ContentTable.Row row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
                               IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
     {
         row.CpOn = 0;
@@ -26,7 +26,7 @@ internal static class ContentRows
         if (mtr == null) return;
         foreach (ContentStage.Param p in ps)
         {
-            if ((uint)p.Lane >= TintTerms.ContentLanes) continue;
+            if ((uint)p.Lane >= ContentTable.ContentLanes) continue;
             // the engine binds a parameter to the uniform its .mtr name spells, case for case (glGetUniformLocation);
             // the LAST such line wins, as each one re-uploads over the one before
             int at = -1;
@@ -88,7 +88,7 @@ internal static class ContentRows
             new("iMode", ContentStage.ParamKind.Int, 2), new("vMis", ContentStage.ParamKind.Float, 3),
             new("fAbsent", ContentStage.ParamKind.Float, 4),
         ];
-        var row = default(TintTerms.Row);
+        var row = default(ContentTable.Row);
         Fill(ref row, mtr, ps, null);
         check.Expect(row.Cp[0].X == 26f, "fScale is not the value its own-case .mtr line states (a differently cased line won)");
         check.Expect(row.Cp[1] == new Vector4(0.58f, 0.60f, 0.43f, 0f), "a three-value line does not reach a vec4 as (r, g, b, 0)");
