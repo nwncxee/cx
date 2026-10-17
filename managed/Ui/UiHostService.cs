@@ -118,11 +118,13 @@ public sealed unsafe class UiHostService : IExtenderService
     private const int PlainClose = 0;
 
     /// <summary>Close the in-game Options panel the way its Resume button does: the modal deactivate, whose close
-    /// callback nulls <c>CGuiInGame</c>'s slot and clears the app's options-open flag. Re-walks the panel at the release.</summary>
+    /// callback nulls <c>CGuiInGame</c>'s slot and clears the app's options-open flag. Re-walks the panel at the release;
+    /// a no-op with no module loaded (the main menu's Options is a different panel, never this slot).</summary>
     private static void ResumeFromOptions()
     {
         CClientExoAppInternal intern = LiveInternal();
-        IntPtr pnl = intern.IsNull ? IntPtr.Zero : ShownOptionsPanel(intern.InGameGui);
+        CGuiInGame gui = intern.IsNull ? default : intern.InGameGui;
+        IntPtr pnl = !gui.IsNull && gui.ChatWindow != IntPtr.Zero ? ShownOptionsPanel(gui) : IntPtr.Zero;
         if (pnl == IntPtr.Zero) return;
         if (EngineFn.GuiModalPanelDeactivate == null)
         {
