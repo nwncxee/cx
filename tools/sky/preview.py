@@ -42,38 +42,21 @@ def load_check_shaders(content):
 
 
 # --- the declaration grammar (docs/shader-overrides.md, "Sky twins and sky passes") --------------------------------
-FORMATS = {"rgba8": 0x8058, "rgba16f": 0x881A, "rgba32f": 0x8814, "rg16f": 0x822F, "rg8": 0x822B,   # not-an-offset: GL enums
-           "r16f": 0x822D, "r32f": 0x822E, "r8": 0x8229, "r11f_g11f_b10f": 0x8C3A}   # not-an-offset: GL enums
-PRAGMA = re.compile(r"^[ \t]*#[ \t]*pragma[ \t]+(cx_sky_\w+)(.*)$", re.M)
+# One grammar, one parser: check-shaders.py's, which is itself pinned to CX.Alloy.SkyTwin's. This only turns
+# what it returns into the shape this tool indexes by.
+KINDS = {"tex2d": "2d", "tex3d": "3d", "view": "view"}
 
 
-class Decl:
-    def __init__(self, text):
-        self.images, self.passes = {}, []
-        for m in PRAGMA.finditer(text):
-            verb, args = m.group(1), m.group(2).split()
-            if verb == "cx_sky_image":
-                self.image(args)
-            elif verb == "cx_sky_pass":
-                if len(args) != 3 or args[0] not in ("once", "frame") or args[2] not in self.images:
-                    raise ValueError(f"bad cx_sky_pass: {args}")
-                self.passes.append(tuple(args))
-            else:
-                raise ValueError(f"unknown pragma {verb}")
-
-    def image(self, a):
-        """<name> tex2d W H | tex3d W H D | view N, then <format> [flags]: identifiers and integers only."""
-        if len(a) < 3 or not re.fullmatch(r"[A-Za-z_]\w{0,30}", a[0]) or a[1] not in ("tex2d", "tex3d", "view"):
-            raise ValueError(f"bad cx_sky_image: {a}")
-        n = {"tex2d": 2, "tex3d": 3, "view": 1}[a[1]]
-        dims, rest = a[2:2 + n], a[2 + n:]
-        if len(dims) != n or not all(d.isdigit() for d in dims) or not rest or rest[0] not in FORMATS:
-            raise ValueError(f"bad cx_sky_image: {a}")
-        flags = set(rest[1:])
-        if not flags <= {"history", "mips", "clamp"}:
-            raise ValueError(f"bad cx_sky_image flags: {a}")
-        kind = {"tex2d": "2d", "tex3d": "3d", "view": "view"}[a[1]]
-        self.images[a[0]] = dict(kind=kind, size=[int(d) for d in dims], fmt=rest[0], flags=flags)
+def sky_decls(cs, text):
+    """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)]) for a twin's declarations."""
+    images, passes = cs.sky_decls(text)
+    out = {}
+    for i in images:
+        kind = KINDS[i["shape"]]
+        size = [i["div"]] if kind == "view" else ([i["w"], i["h"], i["d"]] if kind == "3d" else [i["w"], i["h"]])
+        out[i["name"]] = dict(kind=kind, size=size, fmt=i["format"],
+                              flags={f for f in ("history", "mips", "clamp") if i[f]})
+    return out, [("once" if p["once"] else "frame", p["ref"], p["image"]) for p in passes]
 
 
 # --- GL through the headless EGL context check-shaders.py makes ----------------------------------------------------
@@ -301,12 +284,12 @@ class Sky:
         self.read = lambda name: self.find(name)
         self.stage = stage
         self.twin = twin
-        self.decl = Decl(self.read(stage) or "") if twin else Decl("")
+        self.images_decl, self.passes_decl = sky_decls(cs, self.read(stage) or "") if twin else ({}, [])
         fs = self.wrap("cx_sky_f", "$SKYFS$", stage, "CX_SKY_LINEAR 1" if twin else None)
         self.prog = gl.program([(0x8B31, VS), (0x8B30, fs)], stage)   # not-an-offset: GL_VERTEX_SHADER, GL_FRAGMENT_SHADER
         self.images = {}
         self.passes = []
-        for when, ref, img in self.decl.passes:
+        for when, ref, img in self.passes_decl:
             src = self.wrap("cx_skypass_cs", "$SKYCS$", ref, None)
             p = gl.program([(0x91B9, src)], ref)   # not-an-offset: GL_COMPUTE_SHADER
             grp = (C.c_int * 3)()
@@ -342,9 +325,13 @@ class Sky:
             src = src.replace(tok, val)
         return src
 
+    def fmt(self, im):
+        """The declared format's GL sized internal format, out of check-shaders' own table."""
+        return self.cs.SKY_FORMAT_ENUM[im["fmt"]][0]
+
     def make_images(self):
         gl = self.gl
-        for name, d in self.decl.images.items():
+        for name, d in self.images_decl.items():
             if d["kind"] == "view":
                 n = d["size"][0]
                 dims = [-(-self.size[0] // n), -(-self.size[1] // n)]
@@ -356,9 +343,9 @@ class Sky:
             for _ in range(2 if "history" in d["flags"] else 1):
                 t = gl.gen(gl.CreateTextures, TEX3D if three else TEX2D)
                 if three:
-                    gl.TextureStorage3D(t, levels, FORMATS[d["fmt"]], *dims)
+                    gl.TextureStorage3D(t, levels, self.fmt(d), *dims)
                 else:
-                    gl.TextureStorage2D(t, levels, FORMATS[d["fmt"]], *dims)
+                    gl.TextureStorage2D(t, levels, self.fmt(d), *dims)
                 wrap = CLAMP if (d["kind"] == "view" or "clamp" in d["flags"]) else REPEAT
                 for w in (WS, WT, WR):
                     gl.TextureParameteri(t, w, wrap)
@@ -380,7 +367,7 @@ class Sky:
                 if t is None:
                     continue
                 if is_image_type(t):
-                    gl.BindImageTexture(iunit, tex, 0, 1 if im["kind"] == "3d" else 0, 0, 0x88BA, FORMATS[im["fmt"]])   # not-an-offset: GL_READ_WRITE
+                    gl.BindImageTexture(iunit, tex, 0, 1 if im["kind"] == "3d" else 0, 0, 0x88BA, self.fmt(im))   # not-an-offset: GL_READ_WRITE
                     gl.Uniform1i(gl.loc(prog, uname), iunit)
                     iunit += 1
                 else:
@@ -510,7 +497,7 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
     eye = np.array([500.0, 500.0, 8.0])
     fwd = body_dir(s, s["aim"]) if s["aim"] in ("sun", "moon") else look(s["yaw"], s["pitch"])
     proj, vp = view_proj(eye, fwd, s["fov"], size[0] / size[1])
-    if not sky.images and sky.decl.images:
+    if not sky.images and sky.images_decl:
         sky.make_images()
     if not sky.once_done:
         once = []

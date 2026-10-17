@@ -1102,11 +1102,22 @@ def post_programs(raw, g):
 # player's first frame; every token is an identifier or a decimal integer, because a GLSL preprocessor
 # tokenises the line (NVIDIA refuses `128x128` as an integer with a type suffix).
 SKY_FIXTURE = os.path.join(ROOT, "tools/sky/fixture")
-SKY_FORMATS = {"rgba8", "rgba16f", "rgba32f", "rg16f", "rg8", "r16f", "r32f", "r8", "r11f_g11f_b10f"}
+# name -> (GL sized internal format, bytes per texel). SkyTwin.SelfCheck.cs asserts the same enums, and
+# check_sky_grammar() reads them out of it, so neither table can drift from the other.
+SKY_FORMAT_ENUM = {"rgba8": (0x8058, 4), "rgba16f": (0x881A, 8), "rgba32f": (0x8814, 16),   # not-an-offset: GL enums
+                   "rg16f": (0x822F, 4), "rg8": (0x822B, 2), "r16f": (0x822D, 2),   # not-an-offset: GL enums
+                   "r32f": (0x822E, 4), "r8": (0x8229, 1), "r11f_g11f_b10f": (0x8C3A, 4)}   # not-an-offset: GL enums
+SKY_FORMATS = set(SKY_FORMAT_ENUM)
 SKY_FLAGS = {"history", "mips", "clamp"}
 SKY_MAX_IMAGES, SKY_MAX_PASSES, SKY_MAX_2D, SKY_MAX_3D, SKY_MAX_VIEWDIV = 12, 10, 4096, 256, 8
-SKY_TOKEN = re.compile(r"^(?:[A-Za-z_]\w*|[0-9]+)$")
-SKY_NAME = re.compile(r"^[A-Za-z_]\w{0,30}$")
+SKY_MAX_BYTES = 256 << 20
+SKY_TOKEN = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)$")
+SKY_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,30}$")
+# An image or sampler uniform as the driver sees it: the format layout qualifier is what a declared image's
+# own format has to agree with, and the 2D/3D-ness with its shape.
+SKY_IMG = re.compile(r"(?:layout\s*\(([^)]*)\)\s*)?uniform\s+"
+                     r"(?:(?:readonly|writeonly|coherent|volatile|restrict)\s+)*(image2D|image3D)\s+(\w+)\s*;")
+SKY_SMP = re.compile(r"uniform\s+(sampler2D|sampler3D)\s+(\w+)\s*;")
 
 
 def sky_side(s, lo, hi, what):
@@ -1191,7 +1202,28 @@ def sky_decls(text):
     for p in passes:
         if p["image"] not in names:
             raise ValueError(f"pass {p['ref']} is dispatched over `{p['image']}`, which no cx_sky_image declares")
+    # The memory budget, as far as the declarations themselves say it: every FIXED-size image exactly, mips
+    # and history included. A view-sized one is measured at runtime and only the extender can take it.
+    fixed = sum(sky_image_bytes(i) for i in images if i["shape"] != "view")
+    if fixed > SKY_MAX_BYTES:
+        raise ValueError(f"its fixed-size images come to {fixed / (1 << 20):.1f} MiB, past the budget of "
+                         f"{SKY_MAX_BYTES >> 20} MiB")
     return images, passes
+
+
+def sky_image_bytes(im):
+    """One image's storage at its declared extent: the mip chain summed, doubled for a history pair."""
+    w, h, d = im["w"], im["h"], im["d"]
+    bpp = SKY_FORMAT_ENUM[im["format"]][1]
+    levels = 1
+    if im["mips"]:
+        side = max(w, h, d if im["shape"] == "tex3d" else 1)
+        while side > 1:
+            side >>= 1
+            levels += 1
+    total = sum(max(w >> l, 1) * max(h >> l, 1) * (max(d >> l, 1) if im["shape"] == "tex3d" else 1) * bpp
+                for l in range(levels))
+    return total * (2 if im["history"] else 1)
 
 
 def sky_twins(g):
@@ -1214,10 +1246,48 @@ def sky_twins(g):
     return out
 
 
+def sky_bindings(text):
+    """{uniform name: (GLSL type, format layout qualifier or None)} for every image and 2D/3D sampler a
+    program declares -- what the driver will bind, as against what the #pragma lines declared."""
+    out = {}
+    for m in SKY_IMG.finditer(text):
+        quals = [q.strip() for q in (m.group(1) or "").split(",")]
+        out[m.group(3)] = (m.group(2), next((q for q in quals if q in SKY_FORMATS), None))
+    for m in SKY_SMP.finditer(text):
+        out.setdefault(m.group(2), (m.group(1), None))
+    return out
+
+
+def sky_check_bindings(images, text):
+    """Reconcile one program's own declarations with the twin's: the GLSL type against the image's shape, and
+    an image uniform's format layout qualifier against the declared format. A format mismatch is undefined
+    loads and stores -- it compiles, links and draws the wrong pixels -- so nothing else would catch it."""
+    byname = {i["name"]: i for i in images}
+    errs, written = [], set()
+    for name, (kind, fmt) in sorted(sky_bindings(text).items()):
+        prev = name.endswith("_prev")
+        im = byname.get(name[:-5] if prev else name)
+        if im is None:
+            continue
+        if prev and not im["history"]:
+            errs.append(f"`{name}` is read but `{im['name']}` is not declared `history`")
+        if (kind in ("image3D", "sampler3D")) != (im["shape"] == "tex3d"):
+            errs.append(f"`{name}` is declared {kind} but its cx_sky_image is {im['shape']}")
+        if not kind.startswith("image"):
+            continue
+        if not prev:
+            written.add(im["name"])
+        if fmt is None:
+            errs.append(f"`{name}` is declared {kind} with no format layout qualifier")
+        elif fmt != im["format"]:
+            errs.append(f"`{name}` is declared layout({fmt}) but its cx_sky_image says {im['format']}")
+    return errs, written
+
+
 def sky_programs(raw, g):
     """Every sky twin hosted in cx_sky_fs under CX_SKY_LINEAR, its fallback stage hosted plainly beside it,
     and each pass it declares hosted in cx_skypass_cs -- the programs the extender builds, by the same
-    substitution and the same splice."""
+    substitution and the same splice, and refused on the same grounds."""
     out, bad = {}, 0
     found = sky_twins(g)
     for d, chain, twin, stage in found:
@@ -1228,15 +1298,41 @@ def sky_programs(raw, g):
             print(f"sky twin: {twin}.shd ({where}): FAILED -- {e}")
             bad = 1
             continue
+        # A pass the chain cannot answer for is what the extender refuses the twin over; the wrapper's STUB
+        # would otherwise compile here and report a pass that dispatches nothing as checked.
+        gone = [p["ref"] for p in passes if chain(p["ref"]) is None]
+        if gone:
+            print(f"sky twin: {twin}.shd ({where}): FAILED -- pass stage(s) NOT FOUND in the chain: "
+                  + ", ".join(sorted(gone)))
+            bad = 1
+            continue
         print(f"sky twin: {twin}.shd ({where}): {len(images)} image(s), {len(passes)} pass(es)")
+        texts, written = {}, set()
         fs = define(raw["cx_sky_fs"].replace("$SKYFS$", twin), "CX_SKY_LINEAR 1")
-        out[f"sky twin {twin} ({where})"] = (g["cx_own_vs"], splice(fs, {}, raw, read=chain))
+        texts[f"sky twin {twin} ({where})"] = (g["cx_own_vs"], splice(fs, {}, raw, read=chain))
         if stage in chain.files:
-            out[f"sky stage {stage} ({where}, the twin's fallback)"] = (
+            texts[f"sky stage {stage} ({where}, the twin's fallback)"] = (
                 g["cx_own_vs"], splice(raw["cx_sky_fs"].replace("$SKYFS$", stage), {}, raw, read=chain))
         for p in passes:
-            out[f"sky pass {p['ref']} ({where})"] = (
-                splice(raw["cx_skypass_cs"].replace("$SKYCS$", p["ref"]), {}, raw, read=chain),)
+            cs = splice(raw["cx_skypass_cs"].replace("$SKYCS$", p["ref"]), {}, raw, read=chain)
+            texts[f"sky pass {p['ref']} ({where})"] = (cs,)
+            errs, wrote = sky_check_bindings(images, chain(p["ref"]) or "")
+            if not p["once"]:
+                written |= wrote
+            for e in errs:
+                print(f"sky pass: {p['ref']}.shd ({where}): FAILED -- {e}")
+                bad = 1
+        for e in sky_check_bindings(images, chain(twin) or "")[0]:
+            print(f"sky twin: {twin}.shd ({where}): FAILED -- {e}")
+            bad = 1
+        # A `history` image no FRAME pass rewrites has no history to keep: its two halves would alternate
+        # between the baked texture and a zeroed one. The extender refuses the flag; so does this.
+        for im in images:
+            if im["history"] and im["name"] not in written:
+                print(f"sky twin: {twin}.shd ({where}): FAILED -- `{im['name']}` is declared `history` but no "
+                      "frame pass writes it as an image")
+                bad = 1
+        out.update(texts)
     if not any(d == SKY_FIXTURE for d, _, _, _ in found):
         print(f"sky twin: the fixture under {os.path.relpath(SKY_FIXTURE, ROOT)} was not found -- "
               "the grammar and the two wrappers are UNCHECKED")
@@ -1244,6 +1340,58 @@ def sky_programs(raw, g):
     elif len(found) == 1:
         print("sky twin: no content tree ships one yet -- the fixture is what is checked")
     return out, bad
+
+
+# The C#<->Python pin. CX.Alloy.SkyTwin.SelfCheck asserts its grammar on literal declaration lines and the GL
+# enum each format maps to; those literals are read back out of that file here and run through THIS parser,
+# which has to reach the same verdicts. Two parsers for one grammar stay one grammar only if something says so.
+SKY_SELFCHECK_CS = os.path.join(MANAGED, "Alloy/Pass/SkyTwin.SelfCheck.cs")
+SKY_CS_GOOD = re.compile(r'const string good = """\n(.*?)\n[ \t]*""";', re.S)
+SKY_CS_BAD = re.compile(r'Bad\(check,\s*"((?:[^"\\]|\\.)*)"')
+SKY_CS_FMT = re.compile(r'Fmt\("(\w+)"\)\s*==\s*(0x[0-9A-Fa-f]+)')
+
+
+def check_sky_grammar():
+    """The accept/refuse lines and the format enums SkyTwin.SelfCheck.cs asserts, run through this parser."""
+    cs = open(SKY_SELFCHECK_CS).read()
+    bad = 0
+    good = SKY_CS_GOOD.search(cs)
+    if good is None:
+        print(f"sky grammar: FAILED -- no `const string good` block in {os.path.basename(SKY_SELFCHECK_CS)}")
+        return 1
+    try:
+        images, passes = sky_decls(good.group(1))
+    except ValueError as e:
+        print(f"sky grammar: FAILED -- C# accepts its own good block, this parser does not: {e}")
+        return 1
+    # ...and that block is the FIXTURE's own declarations, so the hand-written literals are tied to the file
+    # the gate compiles rather than to nothing.
+    fix = os.path.join(SKY_FIXTURE, "cx_cxdemo_sky.shd")
+    if os.path.exists(fix):
+        fi, fp = sky_decls(open(fix, encoding="latin1").read())
+        if (fi, fp) != (images, passes):
+            print("sky grammar: FAILED -- SkyTwin.SelfCheck.cs's good block is not the fixture's declarations")
+            bad = 1
+    refused = SKY_CS_BAD.findall(cs)
+    if not refused:
+        print(f"sky grammar: FAILED -- no Bad(check, ...) lines in {os.path.basename(SKY_SELFCHECK_CS)}")
+        return 1
+    for esc in refused:
+        line = esc.replace("\\n", "\n")
+        try:
+            sky_decls(line)
+        except ValueError:
+            continue
+        print(f"sky grammar: FAILED -- C# refuses `{line}` and this parser accepts it")
+        bad = 1
+    enums = {n: int(v, 16) for n, v in SKY_CS_FMT.findall(cs)}
+    mine = {n: e for n, (e, _) in SKY_FORMAT_ENUM.items()}
+    if enums != mine:
+        print(f"sky grammar: FAILED -- the format enums differ: C# says {enums}, this says {mine}")
+        bad = 1
+    print(f"sky grammar: {'ok' if not bad else 'FAILED'} ({len(images)} image(s) and {len(passes)} pass(es) "
+          f"accepted, {len(refused)} line(s) refused, {len(enums)} format enum(s) pinned)")
+    return bad
 
 
 def main():
@@ -1277,6 +1425,7 @@ def main():
     print(f"{len(progs)} programs from {len(g)} embedded .glsl")
     bad |= bad_content
     bad |= bad_sky
+    bad |= check_sky_grammar()
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)
