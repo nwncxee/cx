@@ -183,6 +183,20 @@ public static unsafe class Gl
     /// <see cref="TexStorage2D"/> will take it, and the unsized enums the engine actually uses
     /// (<c>glTexImage2D</c> @0x4cad3d passes GL_RGB/GL_RGBA/GL_RED verbatim).</summary>
     public const uint RGB8 = 0x8051, RG8 = 0x822B, RG = 0x8227, RGB_ = 0x1907, RGBA_ = 0x1908, RG16F = 0x822F;
+    /// <summary>The rest of the sized colour formats a sky twin may ask its own images for
+    /// (<c>docs/shader-overrides.md</c>, "Sky twins and sky passes"); GL 4.2 image-load-store formats.</summary>
+    public const uint RGBA32F = 0x8814, R16F = 0x822D;
+    /// <summary>A volume texture -- a sky twin's <c>3d:</c> image, and the only target Alloy binds layered.</summary>
+    public const uint TEXTURE_3D = 0x806F;
+    /// <summary>Uniform enumeration (<see cref="GetActiveUniform"/>): how many a program has and the longest
+    /// name, so a caller sizes one buffer instead of guessing.</summary>
+    public const uint ACTIVE_UNIFORMS = 0x8B86, ACTIVE_UNIFORM_MAX_LENGTH = 0x8B87;
+    /// <summary>A compute program's declared <c>local_size</c>, three ints -- what a dispatch divides its
+    /// work extent by, so the group size is read off the program instead of restated in C#.</summary>
+    public const uint COMPUTE_WORK_GROUP_SIZE = 0x8267;
+    /// <summary>The four GLSL uniform types a sky twin's image may be declared as: a sampler binds on a
+    /// TEXTURE unit, an image on an IMAGE unit, and the shape has to agree. Anything else refuses the twin.</summary>
+    public const uint SAMPLER_2D = 0x8B5E, SAMPLER_3D = 0x8B5F, IMAGE_2D = 0x904D, IMAGE_3D = 0x904E;
     /// <summary>Alpha-to-coverage -- the fragment's alpha becomes a COVERAGE MASK over the target's
     /// samples. Each sample is still written whole or not at all, so it is antialiasing without ever
     /// producing a partially transparent depth-writing fragment. Inert where SAMPLES is 1.</summary>

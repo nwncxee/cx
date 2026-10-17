@@ -2,6 +2,8 @@
 // inc_common/inc_uniforms/inc_standard give a sky fragment stage, from Alloy's values, under the ENGINE's
 // names -- so the content's own sky stage (e.g. a ~1900-line cloud, star, sun and moon stage)
 // drops in unedited. Between the markers is that stage, its main() renamed; the stub is a black dome.
+// A content stage's Alloy-native twin (cx_<stage>) runs in the same region, built with CX_SKY_LINEAR: it hands
+// back linear HDR and reads the images and frame its #pragma cx_sky lines declare (docs/shader-overrides.md).
 #version 460 core
 in vec2 vUV;
 flat in float vAlpha;
@@ -15,50 +17,14 @@ uniform sampler2D uTex;          // material texture 0
 uniform vec3 uTint;              // #222: white, or the scene's fog colour for the skyfade gob
 uniform float uSkyFog;           // the horizon band (see cx_owned_f.glsl); 0 = no band
 uniform mat4 uViewInv;           // the camera's world matrix: column 3 is the eye, which is all stock reads
-uniform mat4 m_proj;             // inc_noir's ortho-vs-perspective test reads [3][3]
-
-#define CX_ALLOY 1
-#define GAMMA_CORRECTION 1
-#define texture2D texture
-#define textureCube texture
-#ifndef PI
-#define PI 3.14159265359
-#endif
-#define COLOR_WHITE vec4(1.0, 1.0, 1.0, 1.0)
+// The dome's own varyings and samplers, under the engine's names; the rest of the environment is the sky's shared one.
 #define VertexColor COLOR_WHITE
 #define vTexCoords vUV
 #define vPosWorld vWorld
 #define texUnit0 uTex
 #define m_view_inv uViewInv
-#define playerPosition uPlayerPos
-#define cameraPosition uCamPos
-#define cameraFocus uCamFocus
-#define worldtimerTimeOfDay uTimeOfDay
-#define areaGlobalWind uAreaWind
-#define areaFlags uAreaFlags
-// The area's fog colour as the engine's stages see it: DISPLAY space (Alloy linearises at upload, #132).
-#define fogColor vec4(pow(max(uFogColor.rgb, vec3(0.0)), vec3(1.0 / $SRGB$)), 1.0)
-// The engine's calendar and weather scalars, from m_shaderExposedRuntimeData: the same values
-// GLRender::SetUniforms @0x4ccbf0 feeds the engine's own copy of this stage, under the names
-// GLRender::ConnectShaderData @0x4ce8e0 binds them to. Macros rather than declarations under those names,
-// so a content stage that declares one for itself (inc_sunm does, for moduleTimeIntoTransition) has its
-// line dropped instead of colliding.
-uniform int uModYear, uModMonth, uModDay, uModHour, uModDawn, uModDusk;
-uniform float uModTransition, uWeatherDensity;
-#define moduleYear uModYear
-#define moduleMonth uModMonth
-#define moduleDay uModDay
-#define moduleHour uModHour
-#define moduleDawnHour uModDawn
-#define moduleDuskHour uModDusk
-#define moduleTimeIntoTransition uModTransition
-#define areaWeatherDensity uWeatherDensity
+#include "cx_skyenv.glsl"
 
-// inc_common's colour-space pair and its exact curve: ApplyColorSpace goes display -> WORKING space.
-vec3 ApplyColorSpace(vec3 c)  { return sign(c) * pow(abs(c), vec3($SRGB$)); }
-vec4 ApplyColorSpace(vec4 c)  { return vec4(ApplyColorSpace(c.rgb), c.a); }
-vec3 RevertColorSpace(vec3 c) { return sign(c) * pow(abs(c), vec3(1.0 / $SRGB$)); }
-vec4 RevertColorSpace(vec4 c) { return vec4(RevertColorSpace(c.rgb), c.a); }
 // The stock working colour, and the texel inc_standard's setup call multiplies into it -- sampled by the
 // wrapper before the stage's body runs, in DISPLAY space, which is where the stage expects to find it.
 vec4 FragmentColor;
@@ -78,8 +44,16 @@ void main()
     // the #136 SkyDecodeFs fullscreen pass used to do a pass later over every depth==1.0 pixel.
     // The stage was authored against the engine's UNORM target: [0,1], no NaN. The frame and the probe cube
     // are float, and one NaN texel poisons the probe's whole mip chain and SH (every reflection went white).
+#ifdef CX_SKY_LINEAR
+    // An Alloy-native twin hands back LINEAR HDR (a sun that blooms), so neither the clamp nor the encode applies;
+    // NaN and half-float overflow are still kept out of the frame and the probe cube.
+    vec4 c = mix(vec4(clamp(FragmentColor.rgb, 0.0, 60000.0), clamp(FragmentColor.a, 0.0, 1.0)), vec4(0.0),
+                 isnan(FragmentColor));
+    vec3 rgb = c.rgb;
+#else
     vec4 c = mix(clamp(FragmentColor, 0.0, 1.0), vec4(0.0), isnan(FragmentColor));
     vec3 rgb = pow(c.rgb, vec3($SRGB$));
+#endif
     if (uSkyFog > 0.0 && uFogParams.x != 0.0)
         rgb = CxFogMix(rgb, vWorld, 1.0 - smoothstep(0.0, uSkyFog, normalize(vWorld - uEyePos).z));
     frag = CxOitOut(vec4(rgb, c.a));
