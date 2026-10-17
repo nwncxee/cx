@@ -17,8 +17,8 @@ public static class SpeechNotify
 
     /// <summary>A line notifies when another player's creature spoke it on a speech channel while the game window
     /// is in the background. <paramref name="localId"/> is our own playerId, whose echoes never notify.</summary>
-    public static bool ShouldNotify(uint channel, uint playerId, uint? localId, bool focused)
-        => !focused && (channel & Speech) != 0 && playerId != NoPlayer && playerId != localId;
+    public static bool ShouldNotify(uint channel, uint playerId, uint? localId, bool background)
+        => background && (channel & Speech) != 0 && playerId != NoPlayer && playerId != localId;
 
     /// <summary>The line as it reads in chat, without colours, cut to <see cref="MaxChars"/>.</summary>
     public static string Text(ColorRun[] runs)
@@ -33,21 +33,21 @@ public static class SpeechNotify
     {
         var check = new Checker(log);
 
-        check.Expect(ShouldNotify(0x1, 12, 5, focused: false), "a player's talk in the background notifies");
-        check.Expect(!ShouldNotify(0x1, 12, 5, focused: true), "nothing while the game window has focus");
-        check.Expect(ShouldNotify(0x2, 12, 5, false), "tell");
-        check.Expect(ShouldNotify(0x4, 12, 5, false), "shout");
-        check.Expect(ShouldNotify(0x8, 12, 5, false), "whisper");
-        check.Expect(ShouldNotify(0x40, 12, 5, false), "party");
-        check.Expect(ShouldNotify(0x400, 12, 5, false), "a DM speaking");
-        check.Expect(ShouldNotify(0x1, 12, null, false), "no local id yet still lets another player through");
-        check.Expect(!ShouldNotify(0x1, 0xfffffffe, 5, false), "an NPC or object speaking (no player behind it)");
-        check.Expect(!ShouldNotify(0x4, 0xfffffffe, 5, false), "a scripted DM-channel line from SERVER");
-        check.Expect(!ShouldNotify(0x2, 5, 5, false), "our own echo");
-        check.Expect(!ShouldNotify(0x20, 0, 5, false), "a server message");
-        check.Expect(!ShouldNotify(0x10, 12, 5, false), "a to-hit roll");
-        check.Expect(!ShouldNotify(0x80, 12, 5, false), "combat feedback");
-        check.Expect(!ShouldNotify(0x10000000, 0, 5, false), "a client-local echo");
+        check.Expect(ShouldNotify(0x1, 12, 5, background: true), "a player's talk in the background notifies");
+        check.Expect(!ShouldNotify(0x1, 12, 5, background: false), "nothing while the game window has focus");
+        check.Expect(ShouldNotify(0x2, 12, 5, true), "tell");
+        check.Expect(ShouldNotify(0x4, 12, 5, true), "shout");
+        check.Expect(ShouldNotify(0x8, 12, 5, true), "whisper");
+        check.Expect(ShouldNotify(0x40, 12, 5, true), "party");
+        check.Expect(ShouldNotify(0x400, 12, 5, true), "a DM speaking");
+        check.Expect(ShouldNotify(0x1, 12, null, true), "no local id yet still lets another player through");
+        check.Expect(!ShouldNotify(0x1, 0xfffffffe, 5, true), "an NPC or object speaking (no player behind it)");
+        check.Expect(!ShouldNotify(0x4, 0xfffffffe, 5, true), "SERVER's scripted [DM] line, which ingest carries on the shout bit");
+        check.Expect(!ShouldNotify(0x2, 5, 5, true), "our own echo");
+        check.Expect(!ShouldNotify(0x20, 0, 5, true), "a server message");
+        check.Expect(!ShouldNotify(0x10, 12, 5, true), "a to-hit roll");
+        check.Expect(!ShouldNotify(0x80, 12, 5, true), "combat feedback");
+        check.Expect(!ShouldNotify(0x10000000, 0, 5, true), "a client-local echo");
 
         check.Expect(Text([new ColorRun("Aribeth: ", 1, 1, 1), new ColorRun("Well met! ", 1, 1, 1)])
                      == "Aribeth: Well met!", "runs join into the plain line, trimmed");

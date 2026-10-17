@@ -93,7 +93,7 @@ public sealed unsafe partial class ChatService
             return Encoding.Latin1.GetString(new ReadOnlySpan<byte>((void*)buf, (int)len));
         }
 
-        /// <summary>The local player's ingest-space playerId, from the shared roster walk. Cold (Tell ingest only).</summary>
+        /// <summary>The local player's ingest-space playerId, from the shared roster walk. Cold (ingest: tells and desktop notifications).</summary>
         public uint? LocalIngestId()
         {
             IntPtr player = PlayerIdentity.LocalPlayer();

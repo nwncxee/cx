@@ -5,18 +5,17 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using CX.Engine;
-using CX.Framework;
 
-namespace CX.Services.Chat;
+namespace CX.Framework;
 
 /// <summary>Desktop notifications: an <c>org.freedesktop.Notifications</c> call on the session D-Bus on Linux, a
-/// notification-area balloon on Windows (a toast since Windows 10). Every blocking call runs on one worker thread,
-/// started by the first <see cref="Show"/>; the game's main thread only queues.</summary>
-internal static unsafe class DesktopNotify
+/// notification-area balloon on Windows (a toast since Windows 10). Every blocking OS call runs on one worker thread,
+/// started by the first <see cref="Show"/>; the main thread queues, reads focus, and the worker never calls the engine.</summary>
+public static unsafe class DesktopNotify
 {
     private const string AppName = "Neverwinter Nights";
 
-    /// <summary>The worker's queue and the OS handles it opens on first use.</summary>
+    /// <summary>The worker's queue, the OS handles it opens on first use, and the Windows icon's hand-off flags.</summary>
     private sealed class NotifyState
     {
         public readonly ConcurrentQueue<(string Title, string Body)> Queue = new();
@@ -28,19 +27,22 @@ internal static unsafe class DesktopNotify
         public bool Reported;
         public IntPtr Bus;
         public IntPtr Window, Icon;
-        public bool TrayUp;
+        /// <summary>The Windows icon is up (worker sets, <see cref="Poll"/> clears) / the main thread wants it down.</summary>
+        public volatile bool TrayUp, TrayDown;
+        /// <summary>The worker's own record that the icon is registered with the shell.</summary>
+        public bool Shown;
     }
     private static readonly NotifyState _s = new();
 
-    /// <summary>Is the game window in the background? False when SDL cannot say, so nothing notifies blind.</summary>
-    internal static bool Background
+    /// <summary>Is the game window in the background? False when SDL cannot say, so nothing notifies blind. Main thread.</summary>
+    public static bool Background
     {
         get { SdlGetKeyboardFocusFn focus = EngineFn.SdlGetKeyboardFocus; return focus != null && focus() == IntPtr.Zero; }
     }
 
-    /// <summary>Queue a notification; never blocks. Once the worker has stood down, the next call says why in chat
-    /// and every call drops its notification.</summary>
-    internal static void Show(string title, string body, ExtenderLog? log)
+    /// <summary>Queue a notification; never blocks. Main thread. Once the worker has stood down, the next call says
+    /// why in chat and every call drops its notification.</summary>
+    public static void Show(string title, string body, ExtenderLog? log)
     {
         if (_s.Failed is string why)
         {
@@ -58,6 +60,18 @@ internal static unsafe class DesktopNotify
         _s.Wake.Set();
     }
 
+    /// <summary>Per frame, main thread: once the game has focus again, ask the worker to take the Windows icon (and
+    /// any balloon on it) down. One field read while no icon is up.</summary>
+    public static void Poll()
+    {
+        if (!_s.TrayUp || Background) return;
+        _s.TrayUp = false;
+        _s.TrayDown = true;
+        _s.Wake.Set();
+    }
+
+    // ponytail: an icon still up when the process exits lingers in the tray until hovered; remove it from a
+    // shutdown hook if that shows.
     private static void Run()
     {
         Affinity.ClearThis();
@@ -65,11 +79,12 @@ internal static unsafe class DesktopNotify
         {
             while (_s.Failed == null)
             {
-                _s.Wake.WaitOne(_s.TrayUp ? TrayPollMs : Timeout.Infinite);
+                _s.Wake.WaitOne();
+                if (_s.TrayDown) { _s.TrayDown = false; RemoveBalloon(); }
                 while (_s.Failed == null && _s.Queue.TryDequeue(out var n))
                     _s.Failed = OperatingSystem.IsWindows() ? Balloon(n.Title, n.Body) : DBusNotify(n.Title, n.Body);
-                if (_s.TrayUp && !Background) RemoveBalloon();
             }
+            RemoveBalloon();   // standing down leaves no icon behind
         }
         catch (Exception e) { _s.Failed = e.Message; }   // an escaped exception would abort the game
         _s.Log?.Always($"[notify] desktop notifications stood down: {_s.Failed}");
@@ -162,8 +177,6 @@ internal static unsafe class DesktopNotify
     private const uint NimAdd = 0, NimModify = 1, NimDelete = 2;
     private const uint NifIcon = 0x2, NifTip = 0x4, NifInfo = 0x10, NiifRespectQuietTime = 0x80;  // not-an-offset: shellapi flags
     private const nint HwndMessage = -3, IdiApplication = 32512;
-    /// <summary>How often the worker looks for the game regaining focus while the icon is up.</summary>
-    private const int TrayPollMs = 500;
 
     /// <summary><c>NOTIFYICONDATAW</c> as <c>shellapi.h</c> declares it for Vista and later.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -206,16 +219,17 @@ internal static unsafe class DesktopNotify
         Copy(body, d.Info);
         if (Shell_NotifyIconW(NimModify, &d) == 0 && Shell_NotifyIconW(NimAdd, &d) == 0)
             return "Shell_NotifyIcon refused the notification";
-        _s.TrayUp = true;
+        _s.Shown = _s.TrayUp = true;
         return null;
     }
 
-    /// <summary>Take the icon, and any balloon it still shows, down once the game has focus again.</summary>
+    /// <summary>Take the icon, and any balloon it still shows, down; a no-op while none is registered.</summary>
     private static void RemoveBalloon()
     {
+        if (!_s.Shown) return;
         NotifyIconData d = Tray();
         _ = Shell_NotifyIconW(NimDelete, &d);
-        _s.TrayUp = false;
+        _s.Shown = _s.TrayUp = false;
     }
 
     private static NotifyIconData Tray() => new() { Size = (uint)sizeof(NotifyIconData), Window = _s.Window, Id = 1 };

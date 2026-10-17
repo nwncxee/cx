@@ -171,7 +171,7 @@ public sealed unsafe partial class ChatService : IExtenderService
                 _log?.Info($"[chat] tell ingest: pid={playerId} local={_playerResolver?.LocalIngestId()} recip=\"{tellRecip}\" raw={raw}");
             _store.Append(line);
             if (ChatKnobs.Notify.V
-                && SpeechNotify.ShouldNotify(channel, playerId, _playerResolver?.LocalIngestId(), !DesktopNotify.Background))
+                && SpeechNotify.ShouldNotify(channel, playerId, _playerResolver?.LocalIngestId(), DesktopNotify.Background))
                 DesktopNotify.Show(FilterChannel.Label(channel), SpeechNotify.Text(line.ColorRuns), _log);
 
             long n = ++_ingestCount;
