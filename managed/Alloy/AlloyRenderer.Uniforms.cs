@@ -92,8 +92,8 @@ public sealed unsafe partial class AlloyRenderer
         if (_shaderConstF != null)
         {
             float a = _shaderConstF[KeyholeDiaA], b = _shaderConstF[KeyholeDiaB];
-            px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b);
-            Gl.Uniform2fv(loc.KhDia, 1, px);
+            px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b); px[2] = _shaderConstF[KeyholeMinZ];
+            Gl.Uniform3fv(loc.KhDia, 1, px);
         }
         UploadTargetShape(loc);
         UploadVanillaEnv(loc);
@@ -137,6 +137,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void UploadVanillaEnv(in FeatLoc loc)
     {
         fixed (Matrix4x4* m = &_projMtx) Gl.UniformMatrix4fv(loc.ProjL, 1, 0, (float*)m);
+        UploadEngineNamed(loc.Named);
         if (_shaderConstI == null || _shaderConstF == null || _shaderConstV4 == null) return;
         // The whole block, not a selection: a content shader that begins reading a slot nobody thought to
         // wire would otherwise compile, link, and read zero -- working under the engine and silently doing

@@ -262,7 +262,7 @@ internal static unsafe class Highlight
             Gl.DepthMask(0);
             Gl.Disable(Gl.BLEND);
             Gl.PolygonOffset(MaskOffsetFactor, MaskOffsetUnits);
-            DrawTargets(groups, targets, targetRoot, rootHit, nT, cols);
+            DrawTargets(groups, targets, targetRoot, rootHit, nT, cols, vp, viewport);
             Gl.Disable(Gl.POLYGON_OFFSET_FILL);
             Gl.DepthFunc(Gl.LEQUAL);   // the cutout run leaves EQUAL bound; every later pass assumes LEQUAL
         }
@@ -341,18 +341,23 @@ internal static unsafe class Highlight
 
     /// <summary>One walk over the staged batches, a single-draw multidraw per record whose owning gob is in the
     /// target set, the root's colour bound and the root marked hit. Cutout batches are IN, at <c>GL_EQUAL</c>
-    /// with no bias, so only fragments that survived their colour-pass discard match. Out: displacing batches,
-    /// and everything past <see cref="_gBlendEnd"/>, which writes no depth to match against.</summary>
+    /// with no bias, so only fragments that survived their colour-pass discard match. A content pair whose depth is
+    /// its own draws through its depth twin, as the prepass laid it. Out: everything past <see cref="_gBlendEnd"/>.</summary>
     private static void DrawTargets(int groups, IntPtr* targets, byte* targetRoot, byte* rootHit, int nT,
-                                    float* cols)
+                                    float* cols, Matrix4x4* vp, int* viewport)
     {
         uint boundVao = 0;
         int boundCull = -1, boundColor = -1, boundCut = -1;
+        // the program bound: 0 = the plain mask, else the content feature whose depth twin it is
+        int boundFeat = 0, colorLoc = _hlColor, baseLoc = _hlBase, cutLoc = -1;
+        float boundDiscard = float.NaN;
         // The blended class writes depth too now (Issue.TransparentPass depthWrite), so a translucent creature matches.
         int end = groups < _gBlendEnd ? groups : _gBlendEnd;
         for (int g = 0; g < end; g++)
         {
-            if (ShaderFeatures.OutOfPrepass(_gFeat[g])) continue;
+            // the prepass's own condition for a twin's depth (FeatPrepassable): without it the part has no depth to match
+            int feat = ShaderFeatures.OutOfPrepass(_gFeat[g]) ? _gFeat[g] : 0;
+            if (feat != 0 && (!Bindless || !_gLit[g] || ContentPrograms.DepthProgram(feat) == 0)) continue;
             int s = _gStart[g], len = _gLen[g];
             for (int j = s; j < s + len; j++)
             {
@@ -369,10 +374,33 @@ internal static unsafe class Highlight
                 if (hit < 0) continue;
                 int root = targetRoot[hit];
                 rootHit[root] = 1;
+                if (feat != boundFeat)
+                {
+                    boundFeat = feat;
+                    boundColor = -1;
+                    boundDiscard = float.NaN;
+                    if (feat == 0)
+                    {
+                        Gl.UseProgram(_progHl);
+                        colorLoc = _hlColor; baseLoc = _hlBase; cutLoc = -1;
+                    }
+                    else
+                    {
+                        ref LitLoc L = ref BindDepthTwin(feat, vp, viewport);
+                        Gl.ActiveTexture(Gl.TEXTURE0);
+                        Db.PltPalettes.Bind();
+                        colorLoc = ContentPrograms.DepthHlColor(feat); baseLoc = L.Base; cutLoc = L.Cut;
+                    }
+                }
+                if (cutLoc >= 0 && AlloyClasses.Discard(_gCls[g]) != boundDiscard)
+                {
+                    boundDiscard = AlloyClasses.Discard(_gCls[g]);
+                    Gl.Uniform1f(cutLoc, boundDiscard);
+                }
                 if (root != boundColor)
                 {
                     boundColor = root;
-                    Gl.Uniform3f(_hlColor, cols[root * 3], cols[root * 3 + 1], cols[root * 3 + 2]);
+                    Gl.Uniform3f(colorLoc, cols[root * 3], cols[root * 3 + 1], cols[root * 3 + 2]);
                 }
                 // The two depth regimes: opaque took its depth from the prepass, so the mask is biased toward
                 // the viewer and tested LEQUAL against exact-equality speckle; cutout wrote its own,
@@ -388,7 +416,7 @@ internal static unsafe class Highlight
                     { Gl.Enable(Gl.POLYGON_OFFSET_FILL); Gl.DepthFunc(Gl.LEQUAL); }
                 }
                 BindBatchState(g, ref boundCull, ref boundVao);
-                Gl.Uniform1i(_hlBase, j);
+                Gl.Uniform1i(baseLoc, j);
                 AlloyRenderer.MultiDrawRange(_gMode[g], j, 1);
             }
         }

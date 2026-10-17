@@ -371,72 +371,128 @@ internal static class MaterialParams
     /// engine's name once, here -- there is no second vocabulary.</summary>
     private readonly record struct Over(ParamName Param, float Value);
 
+    /// <summary>An override a CONTENT stage reads (<see cref="Db.ContentRows"/>): any parameter name that is not one
+    /// of the record's own, kept as the engine hands it over -- a material filter, the name, the value string -- and
+    /// read under the type the material's own <c>.mtr</c> line gives it.</summary>
+    internal readonly record struct ContentOverride(string Filter, string Name, string Value)
+    {
+        /// <summary>Does it reach material <paramref name="mtr"/>? An empty filter reaches every material.</summary>
+        public bool Applies(string mtr) => Filter.Length == 0 || SameMaterial(Filter, mtr);
+
+        /// <summary>Do two material names name one <c>.mtr</c>, as the engine compares them: case-blind over its
+        /// <see cref="ShaderResource.ResRefBytes"/>-character resref field.</summary>
+        public static bool SameMaterial(string a, string b)
+            => string.Compare(a, 0, b, 0, ShaderResource.ResRefBytes, StringComparison.OrdinalIgnoreCase) == 0;
+    }
+
     private static readonly Dictionary<uint, List<Over>> _byObj = new();
     private static long _sets, _resets, _unknown, _applied;
     private static readonly HashSet<string> _unknownOnce = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Does any object carry an override? The stage's gate, so a scene that never calls this pays
-    /// one bool.</summary>
+    /// <summary>The content overrides, per object, and their counters: one owner.</summary>
+    private sealed class ContentState
+    {
+        public readonly Dictionary<uint, List<ContentOverride>> ByObj = new();
+        public long Sets;
+    }
+
+    private static ContentState _content = new();
+
+    /// <summary>Does any object carry an override of the record's own terms? The stage's gate, so a scene that never
+    /// calls this pays one bool.</summary>
     internal static bool Any => _byObj.Count > 0;
 
-    /// <summary>Set (or, with an empty <paramref name="value"/>, reset) one material parameter on
-    /// <paramref name="obj"/>. Game thread, cold.</summary>
+    /// <summary>Does <paramref name="obj"/> carry a content override? A content part of it then takes a side-table
+    /// row of its own (<see cref="Db.ContentTable.ObjectRow"/>).</summary>
+    internal static bool HasContent(DbId obj) => _content.ByObj.ContainsKey(obj.Value);
+
+    /// <summary>Object <paramref name="obj"/>'s content overrides in the order they were set, or null.</summary>
+    internal static IReadOnlyList<ContentOverride>? ContentOverrides(uint obj)
+        => obj != 0 && _content.ByObj.TryGetValue(obj, out List<ContentOverride>? l) ? l : null;
+
+    /// <summary>Set one material parameter on <paramref name="obj"/>, or with an empty <paramref name="value"/> reset
+    /// them. Game thread, cold.</summary>
     internal static void Set(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log)
     {
-        if (!SceneDb.Objects.Valid(obj) || string.IsNullOrEmpty(paramName)) return;
+        if (!SceneDb.Objects.Valid(obj)) return;
+        // Material::SetMaterialParam @0x4c5d70 resets EVERY parameter of the matching materials on an empty value,
+        // whatever the name -- the ("", "", "") every replay of an object's list opens with
+        if (string.IsNullOrEmpty(value)) { Reset(obj, materialFilter ?? ""); return; }
+        if (string.IsNullOrEmpty(paramName)) return;
         ParamName lane = ParamOf(paramName!);
         if (lane == ParamName.None)
         {
-            _unknown++;
-            if (_unknownOnce.Add(paramName!))
-                log?.Always($"MaterialParams: SetMaterialParam names \"{paramName}\", which is not a parameter "
-                          + "Alloy's record carries (the stock four and ADR 0026's Cx vocabulary) -- IGNORED");
+            SetContent(obj, paramName!, value!, materialFilter ?? "", log);
             return;
         }
         // The engine's third argument filters on the SharedMaterial's name to 16 characters. CX keeps the
         // .mtr per part, so the filter picks the parts rather than the materials -- and an override that
         // matches no part is still recorded, because the engine recorded it on the material either way and a
         // later part of the same object may arrive with that .mtr.
-        bool reset = string.IsNullOrEmpty(value);
-        if (reset)
+        if (!float.TryParse(FirstWord(value!), NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
         {
-            _resets++;
-            if (_byObj.TryGetValue(obj.Value, out List<Over>? had))
-            {
-                had.RemoveAll(o => o.Param == lane);
-                if (had.Count == 0) _byObj.Remove(obj.Value);
-            }
+            _unknown++;
+            if (_unknownOnce.Add(value!))
+                log?.Always($"MaterialParams: SetMaterialParam(\"{paramName}\") was given \"{value}\", which is "
+                          + "not a number -- IGNORED (the engine's own path sscanf's one token out of it)");
+            return;
         }
-        else
-        {
-            if (!float.TryParse(FirstWord(value!), NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
-            {
-                _unknown++;
-                if (_unknownOnce.Add(value!))
-                    log?.Always($"MaterialParams: SetMaterialParam(\"{paramName}\") was given \"{value}\", which is "
-                              + "not a number -- IGNORED (the engine's own path sscanf's one token out of it)");
-                return;
-            }
-            _sets++;
-            if (!_byObj.TryGetValue(obj.Value, out List<Over>? list)) _byObj[obj.Value] = list = new List<Over>(4);
-            list.RemoveAll(o => o.Param == lane);
-            list.Add(new Over(lane, v));
-        }
+        _sets++;
+        if (!_byObj.TryGetValue(obj.Value, out List<Over>? list)) _byObj[obj.Value] = list = new List<Over>(4);
+        list.RemoveAll(o => o.Param == lane);
+        list.Add(new Over(lane, v));
         if (!string.IsNullOrEmpty(materialFilter)) _filtered++;
+        TouchParts(obj);
+    }
+    private static long _filtered;
+
+    /// <summary>A content stage's parameter: replaces an earlier override of the same name and filter, else joins
+    /// the list. Kept whatever the name -- whether a stage declares it is the material's business, asked at the fill.</summary>
+    private static void SetContent(DbId obj, string name, string value, string filter, ExtenderLog? log)
+    {
+        ContentState c = _content;
+        if (!c.ByObj.TryGetValue(obj.Value, out List<ContentOverride>? list)) c.ByObj[obj.Value] = list = new List<ContentOverride>(4);
+        list.RemoveAll(o => o.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && ContentOverride.SameMaterial(o.Filter, filter));
+        list.Add(new ContentOverride(filter, name, value));
+        c.Sets++;
+        if (_unknownOnce.Add(name))
+            log?.Info($"MaterialParams: SetMaterialParam names \"{name}\" -- kept for the object's content stages, "
+                    + "which read it wherever the material's own .mtr declares it");
+        Db.ContentTable.TouchObject(obj.Value);
+        TouchParts(obj);
+    }
+
+    /// <summary>The engine's reset: every parameter of the materials <paramref name="filter"/> names (all of them when
+    /// it is empty) back to its <c>.mtr</c> value. The record's own terms carry no filter, so a reset clears them
+    /// whatever it names; a content override goes when its filter is the reset's, or the reset names none.</summary>
+    private static void Reset(DbId obj, string filter)
+    {
+        _resets++;
+        bool had = _byObj.Remove(obj.Value);
+        if (_content.ByObj.TryGetValue(obj.Value, out List<ContentOverride>? list))
+        {
+            had |= list.RemoveAll(o => filter.Length == 0 || ContentOverride.SameMaterial(o.Filter, filter)) > 0;
+            if (list.Count == 0) { _content.ByObj.Remove(obj.Value); Db.ContentTable.FreeObject(obj.Value); }
+            else Db.ContentTable.TouchObject(obj.Value);
+        }
+        if (had) TouchParts(obj);
+    }
+
+    private static void TouchParts(DbId obj)
+    {
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
         for (int p = first; p < first + count; p++) SceneDb.TouchPart(p, Dirty.Material);
         SceneDb.Touch(obj, Dirty.Material);
     }
-    private static long _filtered;
 
     /// <summary>Drop every override on an object -- what <c>RestoreTexture</c> and a record's death do.</summary>
     internal static int Forget(DbId obj)
     {
-        if (!_byObj.Remove(obj.Value)) return 0;
+        bool had = _byObj.Remove(obj.Value);
+        if (_content.ByObj.Remove(obj.Value)) { had = true; Db.ContentTable.FreeObject(obj.Value); }
+        if (!had) return 0;
         if (!SceneDb.Objects.Valid(obj)) return 1;
-        int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
-        for (int p = first; p < first + count; p++) SceneDb.TouchPart(p, Dirty.Material);
-        SceneDb.Touch(obj, Dirty.Material);
+        TouchParts(obj);
         return 1;
     }
 
@@ -477,8 +533,9 @@ internal static class MaterialParams
     }
 
     internal static string Note()
-        => _sets + _resets + _unknown == 0 ? ""
+        => _sets + _resets + _unknown + _content.Sets == 0 ? ""
            : $"matparam: {_sets} set, {_resets} reset, {_applied} applied, {_byObj.Count} object(s) hold one"
+             + (_content.Sets == 0 ? "" : $", {_content.Sets} content set(s) on {_content.ByObj.Count} object(s)")
              + (_filtered == 0 ? "" : $", {_filtered} carried a material filter")
              + (_unknown == 0 ? "" : $", {_unknown} IGNORED");
 
@@ -522,8 +579,18 @@ internal static class MaterialParams
 
         Set(obj, "Specularity", "0.9", null, null);
         Expect(Forget(obj) == 1 && !Any, "Forget did not drop the object's overrides");
-        Set(obj, "NotAParam", "1", null, null);
-        Expect(!Any, "an unknown parameter was recorded anyway");
+        Set(obj, "fRamboScale", "12.000000", "", null);
+        Set(obj, "vRamboBase", "0.1 0.2 0.3 1.0", "rambo_mat", null);
+        Expect(!Any && HasContent(obj) && ContentOverrides(obj.Value) is { Count: 2 },
+            "a content stage's parameter was taken for one of the record's own, or not kept for the object");
+        Set(obj, "FRAMBOSCALE", "13.0", "", null);
+        Expect(ContentOverrides(obj.Value) is { Count: 2 } l2 && l2[1].Value == "13.0",
+            "a second set of the same name and filter did not replace the first, case-blind");
+        Set(obj, "", "", "RAMBO_MAT", null);   // a reset naming one material
+        Expect(ContentOverrides(obj.Value) is { Count: 1 } l1 && l1[0].Name == "FRAMBOSCALE",
+            "a filtered reset did not drop exactly that material's override");
+        Set(obj, "", "", "", null);            // the engine's ("", "", "") replay opener
+        Expect(!HasContent(obj), "the engine's reset-all left a content override standing");
         Set(obj, "Roughness", "not-a-number", null, null);
         Expect(!Any, "an unparseable value was recorded anyway");
 
@@ -531,6 +598,7 @@ internal static class MaterialParams
         SceneDb.Objects.TakeDirty();
         (_sets, _resets, _unknown, _applied, _filtered) = (sv_s, sv_r, sv_u, sv_a, sv_f);
         _byObj.Clear();
+        _content = new ContentState();
         return ok;
     }
 }

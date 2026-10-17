@@ -1,5 +1,5 @@
 // The fog's target colour and the lerp, with the FACTOR left to the caller. The sky stage
-// takes this half alone: vanilla compiles every unlit stage FOG 0, so the fullbright stage must never
+// takes this half alone: vanilla compiles its textured unlit stages FOG 0, so the fullbright stage must never
 // fog by distance -- it fogs the dome by ELEVATION, which is the one term the distance ramp cannot
 // reach (SceneFog.SkyBand).
 

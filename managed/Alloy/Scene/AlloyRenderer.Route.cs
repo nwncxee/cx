@@ -195,7 +195,7 @@ public sealed unsafe partial class AlloyRenderer
                 ref Box b = ref _oBox[i];
                 // An unboundable slot has no box to test and is always visible, exactly as its NeverCull
                 // sphere already made it. So is a slot whose SPHERE is NeverCull: that exemption exists
-                // because the geometry leaves its bounds (a wind-swayed plant, a roofknm offset), which is a
+                // because the geometry leaves its bounds (a content pair's vertex half sways or lifts it), which is a
                 // statement about this box too -- the cell union used to give such a part a tile of margin,
                 // and taking that away with a box its vertices do not stay inside is how geometry vanishes at
                 // the screen edge. A MATRIX slot is exempt too -- see BoxBinds for all three.

@@ -37,11 +37,6 @@ public sealed unsafe partial class AlloyRenderer
     /// a std430 <c>mat4</c> array's 64-byte stride IS the engine's <c>m_bones</c>, so the CPU side is a memcpy.</summary>
     internal static string BoneVs => ShaderSource.Get("cx_bone_v.glsl");
 
-    /// <summary>The vertex-side half of the feature switches -- the wind sway and the roof toggles, one stage
-    /// instead of seven forks. The arithmetic is the community shaders' verbatim, constants and quirks
-    /// included (the one-component <c>dot</c>, the 0.356 no-wind floor, the per-foliage divisors and speeds),
-    /// because content is tuned against them. Returns the displaced LOCAL position, undisplaced world Z.</summary>
-    internal static string FeatVs => ShaderSource.Get("cx_feat_v.glsl");
     /// <summary>The fog, split out of the keyhole so a stage can have one without the other (particles fog and
     /// never dissolve; the depth prepass dissolves and never fogs). The ramp is untouched engine --
     /// <c>GetFog</c>'s linear lerp between the area author's start and end, in view depth -- but the target
@@ -64,6 +59,21 @@ public sealed unsafe partial class AlloyRenderer
     /// texel in (<c>FragmentColor *= MainTextureColor</c>), so an empty stand-in hands the body WHITE.</summary>
     internal static string VanillaStandardFs => ShaderSource.Get("cx_vanstd_f.glsl");
 
+    /// <summary>What a CONTENT stage gets in place of <c>inc_standard</c> (<see cref="ContentStage"/>): the hosted
+    /// stand-in plus the stock stage's own coverage cut, which a content program makes instead of Alloy's.</summary>
+    internal static string ContentStandardFs => ShaderSource.Get("cx_constd_f.glsl");
+
+    /// <summary>The environment a content stage compiles in: the engine prologue, its vocabulary mapped onto Alloy's
+    /// values, and the stock helpers (<see cref="ContentStage"/>).</summary>
+    internal static string ContentEnvFs => ShaderSource.Get("cx_content_f.glsl");
+
+    /// <summary>What a content VERTEX half gets in place of <c>inc_standard</c>: the stock transform and the per-vertex
+    /// terms the fragment side reads, over the vertex environment's helpers.</summary>
+    internal static string ContentStandardVs => ShaderSource.Get("cx_constd_v.glsl");
+
+    /// <summary>The environment a content vertex half compiles in, inside the lit vertex stage's host region.</summary>
+    internal static string ContentEnvVs => ShaderSource.Get("cx_content_v.glsl");
+
     /// <summary>What a stage Alloy runs WHOLE gets in place of <c>inc_standard</c> (<c>// $VANILLA-MAIN</c>).
     /// No Alloy shading surrounds it, so both calls carry their stock body: setup takes the display-space
     /// texel into working space and multiplies it in, apply reverts to display space. Its own <c>inc_noir</c>
@@ -79,12 +89,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>cx_lit_hooks</c>, composed by the content out of its own includes; the signature below is the whole
     /// contract and names no feature. It runs after fog, in DISPLAY space, and no-ops where content ships none.</summary>
     internal static string HookFs => ShaderSource.Get("cx_hook_f.glsl");
-
-    /// <summary>The HOSTED content stages -- one region per <see cref="ShaderFeature"/> that names a custom FS
-    /// (<see cref="ShaderFeatures.FsNames"/>), each the material's own <c>customShaderFS</c> run as a function
-    /// of this program. The lit main dispatches where a stock stage runs its body: after the texel is sampled
-    /// and the normal is final, before anything lights either. A missing or broken file leaves an empty stub.</summary>
-    internal static string HostFs => ShaderSource.Get("cx_host_f.glsl");
 
     /// <summary>The SPELL-TARGETING SHAPE -- the circle, cone or rectangle a caster sees on the ground while
     /// picking a target. Vanilla draws it as arithmetic in <c>inc_standard.shd</c>'s tail, not as a draw call,
@@ -141,8 +145,8 @@ public sealed unsafe partial class AlloyRenderer
     internal static string OwnedLitFsHead => ShaderSource.Get("cx_ownlit_head.glsl");
     /// <summary>Material synthesis -- what a part gets for every stock .mtr parameter it does NOT declare. A
     /// pure function of already-sampled values, so <c>check-shaders.py</c> folds it to constants off-device.
-    /// The reference is <c>inc_material.shd</c>'s <c>SetupSpecularity</c> from the OLD generation this client
-    /// loads (<c>data/base_shaders.bif</c>), at the high quality setting the Alloy lobe matches.</summary>
+    /// The reference is the current <c>inc_material.shd</c>'s <c>SetupSpecularity</c> (ovr.bif, the set the
+    /// client runs), at the high quality setting the Alloy lobe matches.</summary>
     internal static string MaterialLib => ShaderSource.Get("cx_material.glsl");
 
     /// <summary>The lit main, with the weather splices folded in at their two seams: the surface rewrite

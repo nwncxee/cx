@@ -323,7 +323,7 @@ public sealed unsafe partial class CasterPass
             fixed (CasterViewRec* vs = _viewStage)
                 ok = CasterGather.DispatchLayer(vs, vn, sets == 1 << CasterGather.SetDynamic);
             if (!ok) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0); return false; }
-            DrawLayered(vn, sets);
+            DrawLayered(vn, sets, size);
             CasterGather.End();
         }
         Gl.BindVertexArray(0);
@@ -351,7 +351,7 @@ public sealed unsafe partial class CasterPass
     /// uniforms, one indirect-count draw per batch for ALL the chunk's views.</summary>
     /// <param name="sets">The union of the chunk's view SETS, a bit per <c>CasterGather.Set*</c>: a batch none
     /// of them can admit a caster from is not issued at all (SL2).</param>
-    private static void DrawLayered(int vn, int sets)
+    private static void DrawLayered(int vn, int sets, int size)
     {
         Gl.ActiveTexture(Gl.TEXTURE0);
         int boundVao = -1, boundMode = -1, boundTex = -1;
@@ -359,15 +359,24 @@ public sealed unsafe partial class CasterPass
         for (int g = 0; g < _gGroups; g++)
         {
             if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
-            int cut0 = _gTex[g], mode = _gH[g] ? 2 : cut0 != 0 ? 1 : 0;
+            int cut0 = _gTex[g], mode = StageOf(g);
             if (mode != boundMode)
             {
                 boundMode = mode;
-                Gl.UseProgram(mode == 0 ? _gl.ProgLayer : mode == 1 ? _gl.ProgLayerMask : _gl.ProgLayerMaskH);
-                if (mode == 1) Gl.Uniform1i(_gl.LocLayerMaskTex, 0);
+                if (mode >= ContentMode) BindContentCaster(mode - ContentMode, layered: true, null, size);
+                else
+                {
+                    Gl.UseProgram(mode == 0 ? _gl.ProgLayer : mode == 1 ? _gl.ProgLayerMask : _gl.ProgLayerMaskH);
+                    if (mode == 1) Gl.Uniform1i(_gl.LocLayerMaskTex, 0);
+                }
                 boundCut = -1;
             }
-            if (mode != 0 && (int)_gCut[g] != boundCut)
+            if (mode >= ContentMode && (int)_gCut[g] != boundCut)
+            {
+                boundCut = (int)_gCut[g];
+                ContentCasterCut(mode - ContentMode, true, _gCut[g]);
+            }
+            else if (mode != 0 && mode < ContentMode && (int)_gCut[g] != boundCut)
             {
                 CasterCut kind = _gCut[g]; boundCut = (int)kind;
                 Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskCut : _gl.LocLayerMaskHCut, Threshold(kind));

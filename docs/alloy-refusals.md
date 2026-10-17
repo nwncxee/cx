@@ -316,7 +316,7 @@ So Alloy draws bucket 5 by classifying each part off its material exactly as it 
 (`AlloyClasses.Of`). For the content above that is the blended class — sorted back to front, which is strictly
 better than vanilla's unsorted late slot. Nothing takes a second framebuffer copy, because nothing would read
 it. *If* a content `.mtr` ever pairs `sample_framebuffer 1` with a custom FS that samples `texFBColor`, the
-place that lands is the hosted-content-stage table (`ShaderFeatures.FsNames`, #350) plus two texture units the
+place that lands is the content pair's own program (`ContentPrograms`, CX-303) plus two texture units the
 lit bracket does not already spend — `TextureSlots.SnapshotColor`/`SnapshotDepth` are shared with the SSAO
 and OIT pairs, so they are not free inside the lit pass. That is a ticket, and it has no content yet.
 

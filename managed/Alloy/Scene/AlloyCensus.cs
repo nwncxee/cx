@@ -64,44 +64,6 @@ internal static unsafe partial class AlloyCensus
            || bucket == 4 || bucket == 7 || bucket == AlphaBucket || bucket == LateBucket
            || (bucket == AlloyRenderer.WaterBucket && FrameSnapshot.Usable);
 
-    /// <summary>Does this material's SharedMaterial name a custom shader the Alloy pass does not implement? World
-    /// geometry is owned anyway and drawn with the plain stage, usually a small difference on one part. The sky is
-    /// where it is not: a dynamic skybox IS its fragment shader, so drawn flat it comes out black.</summary>
-    internal static bool HasUnportedShader(IntPtr mat)
-    {
-        if (mat == IntPtr.Zero) return false;
-        SharedRef s = new MaterialRef(mat).Shared;
-        if (s.IsNull) return false;
-        // An FS with no VS is a custom program by definition: none of the seven features is authored that way.
-        // customShaderFS is +0x199, the resref slot after customShaderVS's +0x188 (SharedMaterial::ParseField
-        // @0x4c6760).
-        byte* vs = s.VsName;
-        if (*vs != 0) return Classify(vs) == 0;
-        return s.HasFs;
-    }
-
-    /// <summary>Match a SharedMaterial's <c>customShaderVS</c> resref against the seven the owned
-    /// program reproduces as feature switches. Case-insensitive over the whole NUL-terminated name, so
-    /// <c>shd_roofkn_vs</c> cannot swallow <c>shd_roofknm_vs</c>. Cold: one call per shared-material part per
-    /// enrollment scan.</summary>
-    internal static int Classify(byte* vs)
-    {
-        var names = ShaderFeatures.VsNames;
-        for (int f = 1; f < names.Length; f++)
-        {
-            string n = names[f];
-            int i = 0;
-            for (; i < n.Length; i++)
-            {
-                byte a = vs[i], b = (byte)n[i];
-                if (a >= 'A' && a <= 'Z') a += 32;
-                if (a != b) break;
-            }
-            if (i == n.Length && vs[i] == 0) return f;
-        }
-        return 0;
-    }
-
     internal static string TexName(IntPtr tex)
     {
         if (tex == IntPtr.Zero) return "-";

@@ -58,9 +58,7 @@ const int CX_DISPLACEMENT_ITERATIONS = 4;
 // inc_material.shd's environment LOD ramp, applied as a texture BIAS exactly as stock does
 // (texture2D's third argument is a bias, not a level).
 const float CX_ENV_LOD_MOD = 30.0, CX_ENV_LOD_OFF = -1.0, CX_ENV_LOD_MAX = 10.0;
-// inc_lighting.shd's fAngleMin, which every N.V here is floored at.
-const float CX_ANGLE_MIN_W = 0.01;
-// LIGHT_SUBSURFACE_SCATTERING_WRAP at this quality mode, and inc_lighting.shd:554's energy
+// LIGHT_SUBSURFACE_SCATTERING_WRAP at this quality mode, and inc_lighting.shd:537's energy
 // preservation for it -- 2*(1+w)/(2+PI*w), which is 0.778 at w=1 and is what stops a wrapped
 // diffuse from adding light the surface never received.
 const float CX_SSS_WRAP = 1.0;

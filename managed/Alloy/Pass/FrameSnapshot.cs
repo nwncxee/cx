@@ -77,11 +77,11 @@ internal static unsafe class FrameSnapshot
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
-    /// <summary>CX's own <c>solid_noise</c>, for the frames the engine's has no id in. The engine never asks
-    /// for it here -- <c>Scene::Render</c> is what loads that resref and this path does not run it -- so the
-    /// registry answers from the resources on CX's own loader rather than creating a <c>CAurTexture</c> left
-    /// queued on the engine's <c>RefreshTextures</c> list. Acquired once per session.</summary>
-    private static int OwnNoise()
+    /// <summary>CX's own <c>solid_noise</c>: for the frames the engine's has no id in, and a content stage's
+    /// <c>texUnitNoise</c> (owned, so it has a bindless handle). CX's own loader answers rather than the engine, which
+    /// loads that resref only in <c>Scene::Render</c> and would leave a <c>CAurTexture</c> queued on its
+    /// <c>RefreshTextures</c> list. Acquired once per session.</summary>
+    internal static int OwnNoise()
     {
         if (!_ownNoiseAsked) { _ownNoiseAsked = true; _ownNoise = Db.TexRegistry.Acquire(NoiseResref); }
         return Db.TexRegistry.TryResident(_ownNoise, out uint name, out _) ? (int)name : 0;

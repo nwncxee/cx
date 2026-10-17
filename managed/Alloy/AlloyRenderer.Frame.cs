@@ -302,7 +302,7 @@ public sealed unsafe partial class AlloyRenderer
         StageSky();
         bool drawsUp = Issue.UploadDraws();
         Db.PltColors.Upload();   // the frame-start push ran before this frame's PLT rows were staged
-        Db.TintTerms.Upload();
+        Db.ContentTable.Upload();
         // CX-120: with the frame's records staged AND pushed, a record that still differs from the mirror is
         // one the dirty list never named -- the change-driven build's own bug class.
         StaleAuditTick();
@@ -917,13 +917,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Does <see cref="BlendedDepthSweep"/> lay this batch's depth? Only through the alpha-testing
     /// feature stage (texture alpha times the per-draw multiplier against the class's 0.2), or a faded-out
     /// surface would stamp solid depth over everything drawn after it. A WASH is in -- vanilla draws that part
-    /// alpha-tested and depth-writing in bucket 1; the roof pair and flowmap are out, their draw slides it.</summary>
+    /// alpha-tested and depth-writing in bucket 1; a content pair whose depth is its own is out, its draw moves it.</summary>
     private static bool BlendLaysDepth(int g)
-    {
-        int f = _gFeat[g];
-        if (f == (int)ShaderFeature.Flowmap || f == (int)ShaderFeature.RoofKn || f == (int)ShaderFeature.RoofKnM) return false;
-        return !_bindless || _gLit[g];
-    }
+        => !ContentPrograms.OwnDepth(_gFeat[g]) && (!_bindless || _gLit[g]);
     /// <summary>The frame's water batches, depth only, under <paramref name="vp"/> into whatever target the
     /// caller attached -- the cover map's roof over a pool's bed. The prepass program on the
     /// staged records; the caster bracket bound the record buffer, this binds the staged slot order it needs.</summary>
@@ -1029,37 +1025,48 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         // The feature sweep: cutout batches (their holes are the colour pass's own discard, made here with the
-        // same texel and threshold) and wind-displaced ones (the lit program's own vertex text displaces them
-        // identically), dissolving or not -- the stage runs CxKeyhole too, off the lit vertex stage's own
-        // vWorld/vDepth, so a keyholed hedge keeps its depth (and its AO) as the camera closes in. Roof features keep their anchor discard and player-relative clip out of it, and
-        // flowmap slides its uv; those three stay excluded. Depth-only LESS writes are order-independent, so
-        // this runs as its own sweep under one program bind.
+        // same texel and threshold), dissolving or not -- the stage runs CxKeyhole too, off the lit vertex stage's
+        // own vWorld/vDepth, so a keyholed hedge keeps its depth (and its AO) as the camera closes in -- and every
+        // content pair whose depth is its own, through its depth twin, whose vertex text and coverage are its colour
+        // program's own. Depth-only LESS writes are order-independent, so this runs as its own sweep.
         GpuEnd(GpuTerm.PrepassKey);
         if (_prepassFeat && Programs.EnsureDepthFeatProgram())
         {
             GpuBegin(GpuTerm.PrepassFeat);
-            bool bound = false; int boundTex = -1; float boundCut = float.NaN;
+            int bound = -1, boundTex = -1; float boundCut = float.NaN;
+            int baseLoc = -1, cutLoc = -1;
             for (int g = 0; g < groups; g++)
             {
                 if (!FeatPrepassable(g) || (_gDis[g] && !_prepassKey)) continue;
                 // #153: only lit records carry handles, and under bindless the stage reads nothing else
                 if (_bindless && !_gLit[g]) continue;
-                if (!bound)
+                int want = ContentPrograms.OwnDepth(_gFeat[g]) ? _gFeat[g] : 0;
+                if (want != bound)
                 {
-                    bound = true;
-                    Gl.UseProgram(Programs._progDepthFeat);
-                    Gl.UniformMatrix4fv(Programs._depthFeatVp, 1, 0, (float*)vp);
-                    Gl.Uniform1f(Programs._depthFeatMip, Renderer.CutMip.V);
-                    Gl.Uniform1i(Programs._depthFeatTex, 0);
+                    bound = want;
+                    boundCut = float.NaN;
+                    if (want == 0)
+                    {
+                        Gl.UseProgram(Programs._progDepthFeat);
+                        Gl.UniformMatrix4fv(Programs._depthFeatVp, 1, 0, (float*)vp);
+                        Gl.Uniform1f(Programs._depthFeatMip, Renderer.CutMip.V);
+                        Gl.Uniform1i(Programs._depthFeatTex, 0);
+                        UploadFeatureTerms(Programs._depthFeatFeat, viewport);
+                        baseLoc = Programs._depthFeatBase; cutLoc = Programs._depthFeatCut;
+                    }
+                    else
+                    {
+                        ref LitLoc L = ref BindDepthTwin(want, vp, viewport);
+                        baseLoc = L.Base; cutLoc = L.Cut;
+                    }
                     Gl.ActiveTexture(Gl.TEXTURE0);
-                    UploadFeatureTerms(Programs._depthFeatFeat, viewport);
                     Db.PltPalettes.Bind();   // a PLT cutout's alpha is its palette's, resolved by the stage
                 }
                 int s = _gStart[g];
                 _gPrepassed[g] = true;
-                Gl.Uniform1i(Programs._depthFeatBase, s);
+                Gl.Uniform1i(baseLoc, s);
                 float cut = AlloyClasses.Discard(_gCls[g]);
-                if (cut != boundCut) { Gl.Uniform1f(Programs._depthFeatCut, cut); boundCut = cut; }
+                if (cut != boundCut) { Gl.Uniform1f(cutLoc, cut); boundCut = cut; }
                 if (!_bindless && cut >= 0f && _gTex[g] != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)_gTex[g]); boundTex = _gTex[g]; }
                 BindBatchState(g, ref boundCull, ref boundVao);
                 if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
@@ -1083,22 +1090,33 @@ public sealed unsafe partial class AlloyRenderer
         DepthResource.Publish((int)Gl.ATTACHMENT_TEXTURE, (int)PostChain.DepthTex, viewport, PassGen);
     }
 
-    /// <summary>Does the feature sweep of the prepass take this batch? The cutout class and every displacing
-    /// feature the plain sweep skipped -- minus the roof pair (anchor discard, player-relative clip) and
-    /// flowmap (a slid diffuse uv would punch holes the colour pass does not).</summary>
+    /// <summary>Bind content pair <paramref name="feat"/>'s depth twin and the terms it reads at <paramref name="vp"/>; the
+    /// caller binds the PLT palettes and sets the per-batch base and cut through the locations returned.</summary>
+    internal static ref LitLoc BindDepthTwin(int feat, Matrix4x4* vp, int* viewport)
+    {
+        ref LitLoc L = ref ContentPrograms.DepthLoc(feat);
+        Gl.UseProgram(ContentPrograms.DepthProgram(feat));
+        Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vp);
+        Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
+        Gl.Uniform1i(L.Tex, 0);
+        UploadFeatureTerms(L.Feat, viewport);
+        Db.ContentTable.Bind();
+        ContentPrograms.BindTwinExtras(feat, cast: false, layered: false);
+        return ref L;
+    }
+
+    /// <summary>Does the feature sweep of the prepass take this batch? The cutout class, and every content pair whose
+    /// depth is its own -- through the pair's depth twin, which runs its vertex half and its coverage, and only where the
+    /// handle table carries its maps to it.</summary>
     private static bool FeatPrepassable(int g)
     {
         int f = _gFeat[g];
-        if (f == (int)ShaderFeature.Flowmap || f == (int)ShaderFeature.RoofKn || f == (int)ShaderFeature.RoofKnM) return false;
         // a blended class must not write depth ahead of the colour pass: it would occlude what it blends over
         if (AlloyClasses.Blends(_gCls[g])) return false;
         // CX-189: nor a coverage cutout -- a 0.2-cut depth laid first would hide the background its fringe blends over
         if (_gA2c[g]) return false;
-        // CX-218: nor a slot-1 coverage batch -- this stage tests the DIFFUSE alpha, which on those materials
-        // is the env level, so it would lay solid depth under the holes the colour pass punches and those
-        // holes would show the clear colour. Slower, never wrong; _gCovN names the upgrade path.
-        if (_gCovN[g]) return false;
-        return _gCls[g] == (byte)AlloyClass.Cutout || ShaderFeatures.OutOfPrepass(f);
+        if (ContentPrograms.OwnDepth(f)) return _bindless && ContentPrograms.DepthProgram(f) != 0;
+        return _gCls[g] == (byte)AlloyClass.Cutout;
     }
 
     /// <summary>ADR 0011 step 2, the Alloy opaque set: submit the staged batches, shaded. LEQUAL rather than

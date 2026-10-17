@@ -448,16 +448,28 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "texreg",
-            Attach = l => { Db.TexRegistry.Attach(l); Db.PltColors.Attach(l); Db.PltVerify.Attach(l); Db.TintTerms.Attach(l); },
-            SelfCheck = l => { Db.TexRegistry.SelfCheck(l); Seam.TexSeam.SelfCheck(l); Db.TintTerms.SelfCheck(l); },
+            Attach = l => { Db.TexRegistry.Attach(l); Db.PltColors.Attach(l); Db.PltVerify.Attach(l); Db.ContentTable.Attach(l); },
+            SelfCheck = l => { Db.TexRegistry.SelfCheck(l); Seam.TexSeam.SelfCheck(l); Db.ContentTable.SelfCheck(l); },
             // No Revoke: every slot is keyed on CONTENT (a resref, a kind, a cell), so a world edge
             // invalidates nothing in it -- which is the whole point of the registry replacing the engine's
             // per-area CAurTexture population.
-            ContextLost = () => { Db.TexRegistry.ContextLost(); Db.PltPalettes.ContextLost(); Db.PltColors.ContextLost(); Db.PltGpuCheck.ContextLost(); Db.TintTerms.ContextLost(); },
+            ContextLost = () => { Db.TexRegistry.ContextLost(); Db.PltPalettes.ContextLost(); Db.PltColors.ContextLost(); Db.PltGpuCheck.ContextLost(); Db.ContentTable.ContextLost(); },
             Stats = _ => Join(Join(Db.TexRegistry.Note() + ", " + Db.PltPalettes.Note() + ", " + Db.PltColors.Note(),
-                       Join(Db.PltImage.Note(), Db.TintTerms.Note())),
+                       Join(Db.PltImage.Note(), Db.ContentTable.Note())),
                        Join(Join(Seam.TexSeam.Note(), Db.PltVerify.Note()),
                        AlloyRenderer.StaleAuditNote())),
+        }, log);
+
+        // CX-303: the content stages -- not a pass either, the programs a material's own fragment stage runs in,
+        // translated (ContentStage). Registered for a log, the off-device checks, the context loss that takes their
+        // program names and a line on the period report; the module edge drops them through Programs.DropSpliced.
+        r.Register(new PassLifecycle
+        {
+            Name = "content",
+            Attach = ContentPrograms.Attach,
+            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
+            ContextLost = ContentPrograms.ContextLost,
+            Stats = _ => ContentPrograms.Note(),
         }, log);
 
         // CX-113: the model cache -- not a pass, the content-keyed table every CX-owned object takes its model

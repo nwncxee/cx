@@ -77,9 +77,6 @@ public sealed unsafe partial class CasterPass
         /// <summary>A declared coverage material: the layer's own cut, so the shadow drops exactly the texels
         /// the draw does rather than cutting a hard 0.2 hole out of geometry that draws nearly solid.</summary>
         Coverage = 2,
-        /// <summary>The coverage is map slot 1's alpha, so the mask samples THAT -- at the engine's own 0.2,
-        /// which is the number the content stages name. Handle stage only (slot 1 is a handle).</summary>
-        CoverNrm = 3,
     }
 
     /// <summary>The threshold each kind tests at -- the one place a kind becomes a number.</summary>
@@ -91,12 +88,9 @@ public sealed unsafe partial class CasterPass
     };
 
     /// <summary>One caster's threshold kind: a declared coverage material first (the author already said its
-    /// alpha is coverage), then the slot-1 coverage, then the env-alpha exception, then the engine's own. The
-    /// slot-1 source beats the env one because such a material is BOTH, and the diffuse alpha the env rule
-    /// protects is exactly the channel it must not test.</summary>
-    internal static CasterCut CutFor(bool coverage, bool envAlpha, bool coverNrm = false)
-        => coverage ? CasterCut.Coverage : coverNrm ? CasterCut.CoverNrm
-         : envAlpha ? CasterCut.EnvAlpha : CasterCut.Cutout;
+    /// alpha is coverage), then the env-alpha exception, then the engine's own.</summary>
+    internal static CasterCut CutFor(bool coverage, bool envAlpha)
+        => coverage ? CasterCut.Coverage : envAlpha ? CasterCut.EnvAlpha : CasterCut.Cutout;
 
     /// <summary>The ordered-dither block for a batch of this kind. A coverage batch always dithers: the
     /// dither IS how the shadow map carries fractional coverage, so at 0 its cut would stamp a near-solid

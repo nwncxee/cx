@@ -74,7 +74,7 @@ you is skipped for a binary stage:
 - **no token expansion** — `$CAP$` and friends are C#-side sizes, and a module baked
   against a different cap misreads the cluster SSBO. Bake today's numbers and re-bake
   when they change.
-- **no vanilla splice and no hosted content stages** — the `#pragma`-driven bridge that
+- **no vanilla splice and no content pairs** — the `#pragma`-driven bridge that
   pulls stock and content shader bodies in (`#346`, `#350`) is text surgery.
 - **none of the guards below run.** They read the compiled source; there is no source.
   Accepting a module is trusting you matched the embedded stage's record layout,
@@ -126,7 +126,7 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_toon_fs` | fragment | The post stack's cel stage: the client's Toon video option and its three sliders -- a plane-fit depth and colour ink, and an opt-in luminance posterise. Display space in and out. |
 | `cx_sharpen_fs` | fragment | CX-93: the post stack's sharpen stage -- the client's Sharpen video option. The stock effect's asymmetric edge darkening plus its global lift, without its own AA (the stack has SMAA/TAA ahead of it). Display space in and out. |
 | `cx_vibrance_fs` | fragment | CX-93: the post stack's vibrance stage -- the client's Vibrance video option at the engine's own amount (`uVibrance`), saturating the greyest pixels hardest and restoring luminance. Display space in and out. |
-| `cx_fbpost_fs` | fragment | #352: the hosted content post chain. Its `// $VANILLA inc_postpr` region is replaced at build by the resource chain's `inc_postpr.shd`, so a hak or NWSync fork of that file is what runs; the stage stands down when nothing supplies it. Display space in and out. |
+| `cx_fbpost_fs` | fragment | #352: the hosted content post chain. Its `// $VANILLA-MAIN fsfbpostpr` region runs the resource chain's `fsfbpostpr.shd` whole, its `main()` and every include it reaches, so a hak or NWSync fork of that file or of `inc_postpr.shd` is what runs: a fork that draws over the frame from its own `main()` (a spell telegraph off the scriptable uniforms, a world position through `m_view_inv` and the depth) runs too. The stage stands down when nothing supplies it. Display space in and out. |
 | `cx_taa_fs` | fragment | #389: the taa stage's copy-out of the history `TaaStage.Prepare` resolved (`uHist`). The accumulator itself is embedded, not overridable. |
 | `cx_ssao_fs` | fragment | Ambient occlusion (#379, ADR 0021): GTAO visibility from the prepass depth, R8, read by the lit stage's ambient term. Not a post stage: runs before the colour pass. |
 | `cx_ssaoblur_fs` | fragment | The depth-aware 4x4 blur that folds the AO pass's dither pattern away. |
@@ -169,6 +169,107 @@ entry can carry. `ShaderSource.SelfCheck` refuses a longer name.
   (`targetShape`, `targetShapeSizeX`, `targetShapeSpellRange`, `targetShapeColour`, …), because the values
   are the engine's own global shader constants; `CxTargetStrength()` and `CxTargetApply()` are what the
   stages call.
+
+## Content shaders
+
+The stages above are Alloy's own. A **content pair** is yours: the `customShaderVS` and `customShaderFS` a
+`.mtr` names, written the way you write them for the stock renderer. Alloy runs any pair, translated into
+its own pipeline. Nothing is recognised by name.
+
+**When it runs.** The `.mtr` names both halves, as the engine requires before it builds a content program at
+all. A pair whose halves both add nothing to their stock counterparts (`#define`s, the engine's own includes,
+and a `main()` that is the stock opener, the two standard calls and the hand-off) is the stock shading
+already, so it draws Alloy's own lit path and builds nothing. Every other pair gets programs of its own, a
+forward one and a deferred twin, plus a depth twin and two caster twins when its parts' depth is its own (see
+below). They compile in the background from the first time a part on the pair draws, and are saved to the
+shader cache. Until then that part draws the plain lit path.
+
+**The vertex half** runs after Alloy's own vertex work. The stock outputs (`gl_Position`, `vPosView`,
+`vPosWorld`, `vVertexNormal`, `vVertexTangent`, `fTextureHandedness`, `vVertexTexCoords`) start out holding
+Alloy's own values, so a half that never touches one hands Alloy's back. Whatever it leaves is what Alloy draws
+and lights: a swaying plant sways, a roof that drops itself under the floor drops. The attributes (`vPos`,
+`vTcIn`, `vNormal`, `vTangent`, `fHandedness`, `vColor`, `vIndex`, `vWeight`), `m_bones` and `skinmesh`, the
+matrices and the stock transform helpers (`TransformMainCoordinates`, `SkinmeshTransformPosition`, …) are
+there under the engine's names. A varying the half declares of its own reaches the fragment half by name, as
+the engine's link does. `cx_content_v.glsl` is the full map and `cx_constd_v.glsl` the `inc_standard` stand-in.
+
+**The fragment half** runs as a **surface modifier**. Alloy has done the stock setup by the time your `main()`
+starts: `FragmentColor` holds the texel in working space, `vFragmentNormal` the shading normal, and
+`fSpecularity`, `fRoughness`, `fMetallicness`, `SpecularColor` the synthesised material. Whatever you write to
+those, Alloy then lights, deferred or forward. Where the engine would light it, at your `ApplyStandardShader()`:
+
+- the statements before the call are the surface body;
+- the statements after it run on the **lit** colour, in display space, as the engine hands it back (a local
+  they read is carried over);
+- a stage that never calls `ApplyStandardShader()` lights itself, so all of it runs on the lit colour and its
+  result is drawn as it leaves it.
+
+A pair with statements after the call, or one that reads the engine's per-light arrays, draws forward only:
+the deferred path has no lit colour to give it. The alpha you leave in `FragmentColor` (or `gl_FragColor`) is
+the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it does in the engine.
+
+**Its own depth.** A pair whose vertex half runs, or whose fragment half makes its own coverage (a discard, a
+written alpha, `ENVIRONMENT_MAP 1` or `NO_TEXTURE 1`), places or cuts its own depth. Its parts go through the
+pair's depth twin in the prepass and cast through its caster twins: the same vertex half and the same cut as
+the colour draw, so a swaying hedge's shadow sways and a hair card's shadow keeps its gaps. The caster twins
+need the bindless handle table; without it such a part casts off its diffuse alpha, unmoved.
+
+**The environment.** The engine's prologue defines are there (`SHADER_QUALITY_MODE 2`, `NO_DISCARD 0`,
+`BUILD_VERSION`/`BUILD_REVISION` of the running client, `varying`, `texture2D`, `gl_FragColor`), and so is
+`CX_ALLOY`, so a stage can specialise for Alloy with `#ifdef CX_ALLOY`. The engine's vocabulary maps onto
+Alloy's values:
+
+- the varyings (`vTexCoords`, `vPosWorld`, `vPosView`, `vVertexNormal`, the tangent pair);
+- `texUnit0`..`texUnit10` with their `textureNBound` flags (`texture7`..`texture10` as bindless handles);
+- `texUnitNoise` (the engine's `solid_noise`), `texUnitEnvCube` (the area probe);
+- the material terms, the fog, camera, player and wind terms;
+- the module calendar (`moduleYear`..`moduleTransitionTime`), `sceneCurrentFrame`, `areaWeatherType`, the
+  mouse, and the wind's point sources (`windPointSourcesCount` and its five arrays), under the engine's names;
+- the per-light arrays (`numLights`, `lightPosition`, `lightColor`), filled per fragment from the lights binned
+  there, for a stage that lights itself;
+- `inc_scriptable`'s block, set by name from the engine's own constants;
+- the stock helpers (`ApplyColorSpace`, `ColorToBrightness`, `AlphaDiscard`, `SetupTSB`, the noise and hash
+  functions and so on).
+
+"View space" is world space with the eye at the origin, so `normalize(vPosView)` is the view direction and
+`m_view_inv * vPosView` is the world position, as they are in the engine. The full map is `cx_content_f.glsl`,
+and like every library it is overridable as `cx_content_f.shd`. `cx_constd_f.glsl` is the stand-in for
+`inc_standard`.
+
+**Parameters.** A uniform either half declares reads its `.mtr` `parameter` line under the engine's own upload
+rules:
+
+- the name is case-sensitive, and a name both halves declare is one parameter;
+- one value feeds a `float`, two to four values feed a `vec4`, and `parameter int` feeds an `int`;
+- a `vec2` or `vec3` is never fed (the engine's `glUniform4fv` does not fit one), so it keeps its GLSL
+  default;
+- a uniform no line states keeps its GLSL initialiser;
+- `SetMaterialShaderUniformInt/Vec4` on an object overrides a parameter its `.mtr` declares, for that
+  object only, and an empty value resets them all;
+- twelve parameters per pair.
+
+**What differs from the engine.**
+
+- UV sets 1 to 3 (`vTcIn1`..`vTcIn3`) read UV set 0: the mesh arena carries one set, and no content in any
+  corpus reads another.
+- A ground decal on a content pair draws in the decal layer off its texel, so its fragment half does not run
+  there; one whose vertex half runs stays out of the layer.
+- The point sources are Alloy's own wind's (`view.wind`), so with Alloy's wind off they read none.
+- With `alloy.a2cmask` on, a part in the antialiased coverage layer still draws its pair's own program, which
+  writes no per-sample mask: its edges cover every sample its cut keeps, rather than the mask's dithered ones.
+- The stock helpers the stand-ins supply (`NoiseSimplex2D`/`3D`, `Random`, …) are Alloy's own, with the same
+  contract but not the same values. A stage that includes the engine's own file gets the engine's. Without the
+  bindless handle table, `texUnitNoise` and `texture7`..`texture10` sample the diffuse.
+- A vertex half reads `texUnit0`..`texUnit10`. The probe and noise units reach the fragment half only.
+
+**Checking it.**
+
+- `grep "mtr shader:" cx.log` lists every pair a material named and what Alloy did with it.
+- `grep "Alloy content pair" cx.log` says, per pair, which halves run, how many parameter lanes it took, which
+  twins it built, and what the translation could only approximate. A pair that cannot run says why, as NOT RUN.
+- Offline, `CX_CONTENT_STAGES=<dir> ./check-shaders.py` builds every material stage under `<dir>` the way the
+  engine does (from the game's own shaders, `ovr.bif` over `base_shaders.bif` as the client resolves them) and as Alloy runs it, paired with its partner by name
+  where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.
 
 ## The guards
 
