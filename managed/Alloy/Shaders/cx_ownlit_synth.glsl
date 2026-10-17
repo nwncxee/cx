@@ -71,11 +71,17 @@ void main()
     // that never declared one.
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
     // A pass that discards on coverage asks it of a plain diffuse (no env, no PLT) here,
-    // ahead of the maps, SSAO and the sun's taps; the full test below stays the authority. Uniform-gated: opaque skips it.
+    // ahead of the maps, SSAO and the sun's taps. Uniform-gated: opaque skips it.
     // CX-303: not in a content stage's program -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
+    // The full test below reuses this alpha: a sample taken after the discard picks its mip from undefined quad
+    // derivatives, drops edge texels the depth prepass kept, and leaves the clear colour in their holes.
+    float earlyA = -1.0;
 #ifndef CX_CONTENT_PROGRAM
-    if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & CX_SLOT_ENV) == 0 && !CxPltOn(vDraw)
-        && CxCoverCut(texture(uTex, vUV, uLodBias).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
+    if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & CX_SLOT_ENV) == 0 && !CxPltOn(vDraw))
+    {
+        earlyA = texture(uTex, vUV, uLodBias).a;
+        if (CxCoverCut(earlyA, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
+    }
 #endif
     vec2 uv = vUV;
     vec3 V = normalize(uEyePos - vWorld);
@@ -236,6 +242,7 @@ void main()
         if (!plt) texel.a = texture(uTex, uv, uLodBias).a;
         texel.rgb = mix(vec3(1.0), texel.rgb, smoothstep(0.0, 0.35, arrive));
     }
+    if (earlyA >= 0.0) texel.a = earlyA;
     // CX-117 PLT forensics: 47 = the resolve forced to level 0 (mips out of the picture), 48 = the pair texel
     // itself (R intensity, G layer x 25), 49 = this texel's master-palette row over 1792, 50 = the PLT flag.
     // Not 40..46: those are the vis-ID, SSR and lightmap views, and this early return hid them.

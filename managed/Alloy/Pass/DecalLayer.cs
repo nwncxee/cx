@@ -183,10 +183,13 @@ internal static unsafe class DecalLayer
         check.Expect(ShaderSource.Get("cx_ownlit_v.glsl").Contains("invariant gl_Position;")
           && synth.Contains("|| uSolid != 0 && s < CX_SOLID_ALPHA;"),
           "a split wash's interior and edge draws lay one depth, so GL_LESS drops exactly what the interior drew");
-        check.Expect(synth.IndexOf("&& CxCoverCut(texture(uTex, vUV, uLodBias).a") is > 0 and var early
+        check.Expect(synth.IndexOf("earlyA = texture(uTex, vUV, uLodBias).a;") is > 0 and var early
           && early < synth.IndexOf("CxSunShadow(") && early < synth.IndexOf("uNrmTex, uv, uLodBias).rg")
           && synth.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;"),
           "a plain-diffuse texel a pass discards on coverage never pays for the normal map or the sun's shadow taps");
+        check.Expect(synth.IndexOf("if (earlyA >= 0.0) texel.a = earlyA;") is > 0 and var reuse
+          && reuse > synth.IndexOf("vec4 texel = ") && reuse < synth.IndexOf("float coverage = "),
+          "the full cut tests the alpha sampled before the early discard, the one the depth prepass tested");
         log.Info(check.Ok ? "DecalLayer.SelfCheck: passed" : "DecalLayer.SelfCheck: FAILED");
     }
 }
