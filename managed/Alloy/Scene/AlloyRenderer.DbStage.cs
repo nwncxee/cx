@@ -178,8 +178,8 @@ public sealed unsafe partial class AlloyRenderer
                     {
                         TexId id = DbTexOf(part, recipe, s);
                         ulong h = TexRegistry.Handle(id);
-                        // 0 is the white stand-in: the record draws it and is told when the real one lands, which
-                        // is what replaces the engine path's per-frame re-resolve of every slot of every part.
+                        // 0 on the diffuse draws the white stand-in, 0 on a map slot draws it unbound; either way the
+                        // record is told when the real one lands, which replaces a per-frame re-resolve of every slot.
                         // ...and a slot still LOADING with a handle is drawing its preview: the full chain is on its way.
                         if (!id.IsNull && (h == 0 || TexRegistry.StateOf(id) == TexState.Loading))
                         {
@@ -198,6 +198,8 @@ public sealed unsafe partial class AlloyRenderer
                             if (h == 0 && !main) { c = snap; return Deferred; }
                             if (h == 0) settled = false;
                         }
+                        // stock's texture{N}Bound is enabled AND bound: a map with no handle (failed, loading) is unbound, not a 0 texel
+                        if (h == 0) slots &= ~DrawRecipe.MaskBitOf(s, (int)DrawRecipe.FeatF(recipe, 0));
                         if (hh[s] != h) { hh[s] = h; moved = true; }
                     }
                     // CX-188: ...and only a handle that actually MOVED dirties the table. The unconditional flag
@@ -238,6 +240,7 @@ public sealed unsafe partial class AlloyRenderer
             // settle stamps 0, i.e. "ask again".
             _recTexStamp[i] = settled ? _stageTexSerial : 0;
         }
+        else slots = _recSlotMask[i];   // the memo holds the mask with its unbound maps dropped; _oSlots names them
         // The PLT resolve is per INSTANCE: the atlas is one RG8 upload shared by every creature wearing it,
         // and the ten palette rows that colour it live on the part (a per-part scheme) or its object's record. Staged per draw slot here;
         // cleared when this slot's diffuse is not a PLT, so a slot that stops being one stops resolving.

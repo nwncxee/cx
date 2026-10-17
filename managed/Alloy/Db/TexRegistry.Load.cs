@@ -833,7 +833,7 @@ internal static unsafe partial class TexRegistry
         }
         if (LoudOnce($"tex:{name}"))
             _log?.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "
-                + "Every part that names it draws the WHITE STAND-IN for the rest of the session");
+                + "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)");
     }
 
     /// <summary>A new immutable texture holding every level of <paramref name="src"/>, its swizzle and MAX_LEVEL
