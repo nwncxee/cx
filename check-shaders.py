@@ -162,6 +162,10 @@ def read_shd(name):
     return open(hit).read() if hit else None
 
 
+# Mirrors VanillaShader.MaxDepth: an include that many files deep is dropped, not followed.
+INCLUDE_DEPTH = int(re.search(r"const int MaxDepth = (\d+)", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/Core/VanillaShader.cs")).read()).group(1))
+
+
 def expand(text, done, g, depth=0, read=read_shd, standard=STANDARD):
     """A content file's own #includes, resolved out of the checkout -- the C# side resolves them through
     the resource chain, and a cx_* hook file is composed OF them. One visit each PER STAGE (`done` is
@@ -175,7 +179,7 @@ def expand(text, done, g, depth=0, read=read_shd, standard=STANDARD):
             out.append(line)
             continue
         m = re.search(r'"([^"]+)"', t)
-        if not m or m.group(1) in done or m.group(1) in SUPPLIED or depth >= 4:
+        if not m or m.group(1) in done or m.group(1) in SUPPLIED or depth >= INCLUDE_DEPTH:
             continue
         done.add(m.group(1))
         if m.group(1) == SUBSTITUTED:
