@@ -152,6 +152,7 @@ deriving anything — required, or the RVAs point into a different build.
 | `CAurora::GetGUIScale()` → float (GUI-scale multiplier) | `?GetGUIScale@CAurora@@SAMXZ` (export ord. 8543) |
 | `SDL_GetKeyName` | `SDL_GetKeyName` |
 | `CGuiPanel::Deactivate(int)` | `?Deactivate@CGuiPanel@@QEAAXH@Z` |
+| `CGuiModalPanel::Deactivate(int)` | `?Deactivate@CGuiModalPanel@@QEAAXH@Z` |
 | `CGuiPanel::UnToggleOff()` | `?UnToggleOff@CGuiPanel@@QEAAXXZ` |
 | `RenderInterface::ResetRenderStates()` / `BindBuffer(uint,uint)` | `?ResetRenderStates@RenderInterface@@SAXXZ` / `?BindBuffer@RenderInterface@@SAXII@Z` |
 | `stbtt_InitFont` … `stbtt_FindGlyphIndex` (7) | same C names |

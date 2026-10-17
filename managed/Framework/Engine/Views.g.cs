@@ -16,6 +16,7 @@ global using unsafe ChatHandleLoseFocusFn = delegate* unmanaged<nint, void>;
 global using unsafe ShowChatPromptFn = delegate* unmanaged<nint, void>;
 global using unsafe ChatPromptCtorFn = delegate* unmanaged<nint, nint>;
 global using unsafe GuiPanelDeactivateFn = delegate* unmanaged<nint, int, void>;
+global using unsafe GuiModalPanelDeactivateFn = delegate* unmanaged<nint, int, void>;
 global using unsafe PrepChatPromptForTellFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe KeyboardModeOnFn = delegate* unmanaged<nint, void>;
 global using unsafe KeyboardModeOffFn = delegate* unmanaged<nint, void>;
@@ -4929,6 +4930,10 @@ public static unsafe class EngineFn
     private static bool _GuiPanelDeactivateDone;
     /// <inheritdoc cref="SymbolMap.GuiPanelDeactivate"/>
     public static GuiPanelDeactivateFn GuiPanelDeactivate => (GuiPanelDeactivateFn)(_GuiPanelDeactivateDone ? _GuiPanelDeactivate : Resolve(ref _GuiPanelDeactivate, ref _GuiPanelDeactivateDone, SymbolMap.GuiPanelDeactivate));
+    private static IntPtr _GuiModalPanelDeactivate;
+    private static bool _GuiModalPanelDeactivateDone;
+    /// <inheritdoc cref="SymbolMap.GuiModalPanelDeactivate"/>
+    public static GuiModalPanelDeactivateFn GuiModalPanelDeactivate => (GuiModalPanelDeactivateFn)(_GuiModalPanelDeactivateDone ? _GuiModalPanelDeactivate : Resolve(ref _GuiModalPanelDeactivate, ref _GuiModalPanelDeactivateDone, SymbolMap.GuiModalPanelDeactivate));
     private static IntPtr _PrepChatPromptForTell;
     private static bool _PrepChatPromptForTellDone;
     /// <inheritdoc cref="SymbolMap.PrepChatPromptForTell"/>
@@ -6975,6 +6980,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.GuiPanelDeactivate"/>; returns the slot holding the next layer, or null.</summary>
     public static GuiPanelDeactivateFn* ChainGuiPanelDeactivate(this HookService h, GuiPanelDeactivateFn handler, int priority) =>
         (GuiPanelDeactivateFn*)h.Chain(SymbolMap.GuiPanelDeactivate, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.GuiModalPanelDeactivate"/>; returns the original, or null.</summary>
+    public static GuiModalPanelDeactivateFn InstallGuiModalPanelDeactivate(this HookService h, GuiModalPanelDeactivateFn handler) =>
+        (GuiModalPanelDeactivateFn)h.Install(SymbolMap.GuiModalPanelDeactivate, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.GuiModalPanelDeactivate"/>; returns the slot holding the next layer, or null.</summary>
+    public static GuiModalPanelDeactivateFn* ChainGuiModalPanelDeactivate(this HookService h, GuiModalPanelDeactivateFn handler, int priority) =>
+        (GuiModalPanelDeactivateFn*)h.Chain(SymbolMap.GuiModalPanelDeactivate, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.PrepChatPromptForTell"/>; returns the original, or null.</summary>
     public static PrepChatPromptForTellFn InstallPrepChatPromptForTell(this HookService h, PrepChatPromptForTellFn handler) =>
         (PrepChatPromptForTellFn)h.Install(SymbolMap.PrepChatPromptForTell, (IntPtr)handler);
