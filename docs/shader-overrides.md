@@ -137,7 +137,8 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_snow_fs` | fragment | The snowflake: a soft disc, the same contact fade. Alpha over the linear frame. |
 | `cx_splash_vs` | vertex | CX-102: rain splashes -- one instanced quad per crown part, the crown's landing point read out of the cover map's own depth (`uCoverDepth`, the plain-depth view of the layer `cx_weather_vs` only compares against), so an impact lands on a roof, a ledge or the ground and never under shelter. A crown stands only on a plane: a landing point off the plane of its four neighbouring cover texels is an edge and draws nothing, nor does a face steeper than about 80 degrees, and the crown's ring and droplets are laid out in that plane, along its normal. A footstep crown takes the plane under the foot the same way, unless the cover map's hit there is a roof over it. A landing point the frame shows nothing at (`uSceneDepth` lies well past it -- a wall the keyhole dissolved) draws nothing either. `gl_InstanceID / CX_SPLASH_PARTS` is the crown, the remainder its part: index 0 the ring, the rest ballistic droplet streaks. The ring is strictly world-sized and fades with its screen size; every part fades out inside the first metre from the lens (`CX_SPLASH_NEAR`), so a camera inside a wall does not smear the crowns landing on it; a sub-pixel droplet widens to about a pixel and gives the area back as scatter. Same per-vertex light rig as the drops. No buffer, no attributes. |
 | `cx_splash_fs` | fragment | One crown part: a thin expanding ring or a droplet streak, as premultiplied scatter over the linear frame. No contact fade -- a splash sits ON the surface, and the depth test is what hides it behind an occluder. |
-| `cx_sky_fs` | fragment | CX-88: the sky, as the ENVIRONMENT a content sky stage runs in -- the names `inc_common`/`inc_uniforms`/`inc_standard` give a sky fragment stage, from Alloy's values and under the engine's own names. The `// $VANILLA-MAIN $SKYFS$` region is replaced at build with the material's own `customShaderFS` (e.g. a content `fst_sky`), main renamed; `$SKYFS$` is expanded by the extender, so leave it a token. The wrapper samples the diffuse, calls the stage, and takes its DISPLAY-space result to linear -- which is why there is no decode pass. The vertex half is `cx_own_vs`. |
+| `cx_sky_fs` | fragment | CX-88: the sky, as the ENVIRONMENT a content sky stage runs in -- the names `inc_common`/`inc_uniforms`/`inc_standard` give a sky fragment stage, from Alloy's values and under the engine's own names. The `// $VANILLA-MAIN $SKYFS$` region is replaced at build with the material's own `customShaderFS` (e.g. a content `fst_sky`), main renamed; `$SKYFS$` is expanded by the extender, so leave it a token. The wrapper samples the diffuse, calls the stage, and takes its DISPLAY-space result to linear -- which is why there is no decode pass. The vertex half is `cx_own_vs`. A **sky twin** (`cx_<stage>`, see "Sky twins and sky passes") is hosted in this same region, built with `CX_SKY_LINEAR`: the clamp and the encode come off and the stage hands back linear HDR. |
+| `cx_skypass_cs` | compute | The wrapper a **sky pass** runs in: the sky's shared environment (`cx_skyenv`, the same one `cx_sky_fs` carries) plus the `// $VANILLA-MAIN $SKYCS$` region, replaced at build with the content compute stage a twin's `#pragma cx_sky_pass` line names, main renamed. `$SKYCS$` is expanded by the extender, so leave it a token. Overriding this replaces the environment a pass runs in, not the pass. |
 
 One more file appears in the dump: `cx_ownlit_bl_ref.shd`. It is **reference
 only** — the lit stage after the extender's own bindless rewrite. The extender never asks
@@ -270,6 +271,131 @@ rules:
 - Offline, `CX_CONTENT_STAGES=<dir> ./check-shaders.py` builds every material stage under `<dir>` the way the
   engine does (from the game's own shaders, `ovr.bif` over `base_shaders.bif` as the client resolves them) and as Alloy runs it, paired with its partner by name
   where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.
+
+## Sky twins and sky passes
+
+A dynamic sky IS its fragment stage: the `customShaderFS` a sky material names, which Alloy hosts whole in
+`cx_sky_fs` (the row above). That stage was written for the engine's UNORM target, so the wrapper clamps it
+to [0,1] and encodes display-to-linear on the way out.
+
+Beside that stage you may ship an **Alloy-native twin**: a file named `cx_` + the stage's resref —
+`cx_fst_sky` for a stage called `fst_sky`. Where the resource chain answers for it, Alloy hosts the twin
+instead of the stage. A vanilla client never asks for that name, so the module keeps one sky that works under
+both renderers, and nothing is recognised by name beyond the `cx_` prefix.
+
+A twin differs from the stage in two ways:
+
+- **It hands back linear HDR.** The wrapper is built with `CX_SKY_LINEAR`, so neither the clamp to one nor the
+  display encode applies: a sun can be 40 and bloom. NaN and half-float overflow are still kept out of the
+  frame and the probe cube.
+- **It may declare GPU images and compute passes of its own**, on `#pragma` lines in its own top-level text.
+  GLSL ignores an unknown pragma, so the lines cost the twin's own compile nothing.
+
+### The declarations
+
+```
+#pragma cx_sky_image <name> tex2d <W> <H> <format> [flag ...]
+#pragma cx_sky_image <name> tex3d <W> <H> <D> <format> [flag ...]
+#pragma cx_sky_image <name> view <N> <format> [flag ...]
+#pragma cx_sky_pass  <once|frame> <resref> <image>
+```
+
+Every token is a **GLSL identifier or a decimal integer**, and nothing else: a GLSL preprocessor tokenises the
+line, and NVIDIA's refuses `3d:128x128x128` and `128x128` outright (`invalid char 'd' in integer constant
+suffix`, `type suffix 'x' on constant literals`) — so a shape written that way would cost the twin its own
+compile. Tokens are whitespace-separated and case-sensitive; a malformed line, or an unknown `cx_sky_*` verb,
+fails the twin.
+
+- `<name>` is the GLSL identifier the twin and its passes read the image by: at most 31 characters, unique
+  among the twin's images, and not in the reserved `gl_` space.
+- `tex2d` / `tex3d` take their extent in texels. `view <N>` is the **main view's render size** divided by `N`
+  (rounded up, `N` in 1..8), so it follows the window and `alloy.scale`; a view image is always
+  `CLAMP_TO_EDGE`.
+- `<format>` is one of `rgba8`, `rgba16f`, `rgba32f`, `rg16f`, `rg8`, `r16f`, `r32f`, `r8`,
+  `r11f_g11f_b10f`.
+- Flags: `history` makes a second image, which a program reads as **last frame's** contents through the
+  uniform `<name>_prev`; `mips` gives a full mip chain, regenerated after every pass that binds the image as
+  an `image2D`/`image3D`; `clamp` is `CLAMP_TO_EDGE` (`tex2d`/`tex3d` default to `REPEAT`).
+- A pass's `<resref>` is a content compute stage in the chain, hosted in `cx_skypass_cs`. It is dispatched
+  over the named image's extent divided by the pass's **own** `local_size` (each axis rounded up), so the
+  work-group size is declared once, in the GLSL, and read back off the program.
+
+Budgets, refused loudly past the edge: 12 images, 10 passes, 2d sides up to 4096, 3d sides up to 256, 10
+sampler units and 8 image units per program, and 256 MiB of image memory in total. Passes run in
+**declaration order**.
+
+### Binding, by name
+
+Every sky program — the twin's fragment program and each pass program — gets each declared image bound to the
+uniform of that name, where it declares one. The uniform's **type** decides how:
+
+- `sampler2D` / `sampler3D` → the texture on a texture unit, `LINEAR` magnification, `LINEAR` or
+  `LINEAR_MIPMAP_LINEAR` minification, wrap per the flags.
+- `image2D` / `image3D` → `glBindImageTexture` with the declared format, `READ_WRITE`, layered for a `tex3d`.
+
+Declare an image whose shape and type disagree (`sampler3D` on a `tex2d`, say), or `<name>_prev` for an image
+with no `history` flag, and the twin is refused by name. Locations, types and units are resolved once when the
+program is built; a frame only binds.
+
+Alloy's own unit map (`managed/Alloy/Core/TextureSlots.cs`) is what leaves room for this: the sky pass binds
+the engine's own material textures on units 0..3, so a twin's samplers take **4..13** and its images take
+image units **0..7**. Those texture units all belong to later passes, and every one of them is rebound by the
+pass that reads it before its next draw — 4..9 are the material map block the colour loop rebinds per batch,
+10 and 11 the dynamic shadow arrays `AlloyRenderer.BindPass` republishes at every program switch, 12 the probe
+`BindProbe` rebinds beside it, 13 the AO/snapshot unit its own pass rebinds. The sky hands them back anyway
+when it is done: texture 0 on each, the image units at 0, and the two shadow units re-published rather than
+left empty, because a shadow sampler validated against an empty unit is undefined even where the stage never
+takes the fetch.
+
+### The frame a twin sees
+
+`cx_skyenv` declares these, and both wrappers carry it, so a pass and the stage it feeds can never disagree:
+
+| uniform | what it carries |
+| --- | --- |
+| `cxSkyFrame` | the frame counter, one per presented frame |
+| `cxSkyMain` | 1 while the dome is drawn into the main view, 0 into an env-probe cube face |
+| `cxSkyFresh` | 1 on the frame any image was (re)made -- its history and view buffers are the zero they were made with |
+| `cxSkyInvVp` | the main view's UNJITTERED inverse view-projection: clip -> world |
+| `cxSkyPrevVp` | that view-projection as the sky recorded it at the previous frame's passes; equal to the current one on the first frame |
+| `cxSkyEye` | the main view's eye, world space |
+| `cxSkyView` | the main view's render size, in pixels |
+
+Every pass of a frame sees the **main view's** camera, whichever view the dome is then drawn into. Beside
+these, a pass gets every engine term the twin's fragment program gets — the calendar and weather scalars
+(`moduleYear`, `moduleTimeIntoTransition`, `areaWeatherDensity`, …), the scriptable block, fog, time of day
+and the camera — because one upload feeds both.
+
+### When things run
+
+- The images are made, and the `once` passes dispatched over them, at the **first point in a frame the twin is
+  about to be used** — the main view or a probe cube face, whichever reaches the dome first — so no draw and no
+  frame pass can read an image that was never made. They re-run on first use, after context loss, after a
+  module change, and whenever a view resize remade any image.
+- The `frame` passes run once per presented frame, for the **main view only** (never inside a probe capture),
+  and only on frames the dome is staged and hosted by that twin. History images swap at the head of that
+  sequence, so `<name>_prev` is last frame's.
+- After every dispatch: an image-access and texture-fetch memory barrier, then a mip regeneration for each
+  image the pass bound as an image and declared `mips`.
+- `/alloy` prints the passes' own GPU time as `sky … (+ twin passes …)`; the sky's stats line names each
+  stage, its twin, how many passes ran this period and how much image memory it holds.
+
+### When it fails
+
+A twin that fails **anywhere** — a malformed declaration, a budget, an image that cannot be made, a pass that
+is not in the chain or will not build, a missing GL entry point, the fragment program itself — is logged once
+by name with the reason, and the sky hosts the **original stage** instead. That fallback is the module's own
+sky: a real picture, not a stub. `grep SkyTwin cx.log` is the whole story, and the sky's clause on the
+`[alloy]` period line says `twin cx_… hosted (…)` or `twin cx_… FELL BACK: …`.
+
+`/effects skytwin 0` is the A/B: it runs the stage the engine runs and drops the sky's programs so the next
+sky frame rebuilds. The twin, its images and its passes have a **module** lifetime — a module change drops
+them, and they die with the GL context.
+
+Offline, `./check-shaders.py` always compiles and driver-links the fixture under `tools/sky/fixture/` — a
+twin, its fallback stage and its three passes — and does the same for every twin it finds under
+`CX_CONTENT_SHD` and `CX_CONTENT_STAGES`. It mirrors the pragma grammar, so a twin whose declarations the
+extender would refuse fails the gate instead of a player's first frame.
 
 ## The guards
 
