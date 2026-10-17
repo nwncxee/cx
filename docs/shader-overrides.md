@@ -281,7 +281,9 @@ to [0,1] and encodes display-to-linear on the way out.
 Beside that stage you may ship an **Alloy-native twin**: a file named `cx_` + the stage's resref —
 `cx_fst_sky` for a stage called `fst_sky`. Where the resource chain answers for it, Alloy hosts the twin
 instead of the stage. A vanilla client never asks for that name, so the module keeps one sky that works under
-both renderers, and nothing is recognised by name beyond the `cx_` prefix.
+both renderers, and nothing is recognised by name beyond the `cx_` prefix. One name is refused: a resref that
+is one of Alloy's OWN stages or libraries. A content stage called `sky_fs` would name `cx_sky_fs` as its twin,
+and hosting a hak's override of that wrapper would splice it into itself.
 
 A twin differs from the stage in two ways:
 
@@ -314,15 +316,19 @@ fails the twin.
 - `<format>` is one of `rgba8`, `rgba16f`, `rgba32f`, `rg16f`, `rg8`, `r16f`, `r32f`, `r8`,
   `r11f_g11f_b10f`.
 - Flags: `history` makes a second image, which a program reads as **last frame's** contents through the
-  uniform `<name>_prev`; `mips` gives a full mip chain, regenerated after every pass that binds the image as
-  an `image2D`/`image3D`; `clamp` is `CLAMP_TO_EDGE` (`tex2d`/`tex3d` default to `REPEAT`).
+  uniform `<name>_prev`; `mips` gives a full mip chain, regenerated after every pass that writes the image
+  through an `image2D`/`image3D` uniform; `clamp` is `CLAMP_TO_EDGE` (`tex2d`/`tex3d` default to `REPEAT`).
+  A `history` image needs a `frame` pass that writes it — only such an image's two halves swap, and a
+  `history` flag on one nothing rewrites each frame is refused, since swapping it would alternate its name
+  between the baked texture and a zeroed one, every frame, with nothing to see but the flicker.
 - A pass's `<resref>` is a content compute stage in the chain, hosted in `cx_skypass_cs`. It is dispatched
   over the named image's extent divided by the pass's **own** `local_size` (each axis rounded up), so the
   work-group size is declared once, in the GLSL, and read back off the program.
 
 Budgets, refused loudly past the edge: 12 images, 10 passes, 2d sides up to 4096, 3d sides up to 256, 10
-sampler units and 8 image units per program, and 256 MiB of image memory in total. Passes run in
-**declaration order**.
+sampler units and 8 image units per program, and 256 MiB of image memory in total. The memory budget is taken
+at build time over the fixed-size images, and again with the measured sizes whenever the view-sized ones are
+made. Passes run in **declaration order**.
 
 ### Binding, by name
 
@@ -332,6 +338,8 @@ uniform of that name, where it declares one. The uniform's **type** decides how:
 - `sampler2D` / `sampler3D` → the texture on a texture unit, `LINEAR` magnification, `LINEAR` or
   `LINEAR_MIPMAP_LINEAR` minification, wrap per the flags.
 - `image2D` / `image3D` → `glBindImageTexture` with the declared format, `READ_WRITE`, layered for a `tex3d`.
+  The GLSL `layout(<format>)` qualifier has to be the format the `#pragma` line declared: a mismatch is
+  undefined loads and stores, so `check-shaders.py` reconciles the two and fails on a disagreement.
 
 Declare an image whose shape and type disagree (`sampler3D` on a `tex2d`, say), or `<name>_prev` for an image
 with no `history` flag, and the twin is refused by name. Locations, types and units are resolved once when the
@@ -355,13 +363,17 @@ takes the fetch.
 | --- | --- |
 | `cxSkyFrame` | the frame counter, one per presented frame |
 | `cxSkyMain` | 1 while the dome is drawn into the main view, 0 into an env-probe cube face |
-| `cxSkyFresh` | 1 on the frame any image was (re)made -- its history and view buffers are the zero they were made with |
+| `cxSkyFresh` | 1 on the frame THIS twin's images were (re)made, and on the first sky frame after a gap -- either way its history is not one frame old |
 | `cxSkyInvVp` | the main view's UNJITTERED inverse view-projection: clip -> world |
 | `cxSkyPrevVp` | that view-projection as the sky recorded it at the previous frame's passes; equal to the current one on the first frame |
 | `cxSkyEye` | the main view's eye, world space |
 | `cxSkyView` | the main view's render size, in pixels |
 
-Every pass of a frame sees the **main view's** camera, whichever view the dome is then drawn into. Beside
+Every pass of a frame sees the **main view's** camera, whichever view the dome is then drawn into, and the
+pair is rolled once per presented frame however many twins or views that frame draws. A frame whose sky did
+not draw on the frame before is a gap — indoors, `effects.sky 0`, a loading screen — and reprojecting against
+a camera from minutes ago is worse than not reprojecting: that frame reads `cxSkyFresh` 1 and the pair reads
+as standing still. Beside
 these, a pass gets every engine term the twin's fragment program gets — the calendar and weather scalars
 (`moduleYear`, `moduleTimeIntoTransition`, `areaWeatherDensity`, …), the scriptable block, fog, time of day
 and the camera — because one upload feeds both.
@@ -373,8 +385,8 @@ and the camera — because one upload feeds both.
   frame pass can read an image that was never made. They re-run on first use, after context loss, after a
   module change, and whenever a view resize remade any image.
 - The `frame` passes run once per presented frame, for the **main view only** (never inside a probe capture),
-  and only on frames the dome is staged and hosted by that twin. History images swap at the head of that
-  sequence, so `<name>_prev` is last frame's.
+  and only on frames the dome is staged and hosted by that twin. The history images a `frame` pass writes
+  swap at the head of that sequence, so `<name>_prev` is last frame's.
 - After every dispatch: an image-access and texture-fetch memory barrier, then a mip regeneration for each
   image the pass bound as an image and declared `mips`.
 - `/alloy` prints the passes' own GPU time as `sky … (+ twin passes …)`; the sky's stats line names each
@@ -385,7 +397,9 @@ and the camera — because one upload feeds both.
 A twin that fails **anywhere** — a malformed declaration, a budget, an image that cannot be made, a pass that
 is not in the chain or will not build, a missing GL entry point, the fragment program itself — is logged once
 by name with the reason, and the sky hosts the **original stage** instead. That fallback is the module's own
-sky: a real picture, not a stub. `grep SkyTwin cx.log` is the whole story, and the sky's clause on the
+sky: a real picture, not a stub. The refusal is a latch: a twin that gives up mid-frame moves that one sky
+stage onto the plain program and stays there, so a failure the frame keeps rediscovering is still said once.
+A module change, a context loss or an `effects.skytwin` edit is what clears it. `grep SkyTwin cx.log` is the whole story, and the sky's clause on the
 `[alloy]` period line says `twin cx_… hosted (…)` or `twin cx_… FELL BACK: …`.
 
 `/effects skytwin 0` is the A/B: it runs the stage the engine runs and drops the sky's programs so the next
@@ -394,8 +408,12 @@ them, and they die with the GL context.
 
 Offline, `./check-shaders.py` always compiles and driver-links the fixture under `tools/sky/fixture/` — a
 twin, its fallback stage and its three passes — and does the same for every twin it finds under
-`CX_CONTENT_SHD` and `CX_CONTENT_STAGES`. It mirrors the pragma grammar, so a twin whose declarations the
-extender would refuse fails the gate instead of a player's first frame.
+`CX_CONTENT_SHD` and `CX_CONTENT_STAGES`. It mirrors the pragma grammar — and pins that mirror to the
+extender's own parser by running the accept/refuse lines out of `SkyTwin.SelfCheck.cs` through it — so a twin
+whose declarations the extender would refuse fails the gate instead of a player's first frame. A pass stage
+missing from the chain, an image uniform whose `layout` format or 2D/3D-ness disagrees with its declaration,
+and a `history` image no frame pass writes all fail there too. `tools/sky/preview.py` reads the declarations
+through that same parser.
 
 ## The guards
 
