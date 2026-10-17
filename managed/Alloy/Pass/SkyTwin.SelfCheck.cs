@@ -16,6 +16,7 @@ internal static unsafe partial class SkyTwin
         Grammar(check);
         Budgets(check);
         Wrappers(check);
+        Swaps(check);
         // 129 texels over a group of 8 is 17 groups: the last one runs for a single column. Hand-written.
         check.Expect(Groups(129, 8) == 17 && Groups(128, 8) == 16 && Groups(1, 64) == 1 && Groups(32, 32) == 1,
           "a dispatch rounds its extent UP to whole work groups");
@@ -102,6 +103,35 @@ internal static unsafe partial class SkyTwin
             "a pass over an image nothing declares");
         Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_pass once cxdemo_vol",
             "a pass with no image");
+    }
+
+    /// <summary>Which images swap halves per frame. Oracle: a hand-built twin -- a history image and a plain one
+    /// a frame pass writes, a volume a once pass writes -- and the expected flags written out by hand.</summary>
+    private static void Swaps(Checker check)
+    {
+        Img hist = new() { Name = "cxHist", History = true }, band = new() { Name = "cxBand" }, vol = new() { Name = "cxVol" };
+        var t = new Twin
+        {
+            Ref = "cx_selfcheck",
+            Images = new[] { hist, band, vol },
+            Passes = new[]
+            {
+                new Pass { Once = true, Binds = new[] { new Bind { Image = 2, IsImage = true } } },
+                new Pass { Binds = new[] { new Bind { Image = 0, IsImage = true }, new Bind { Image = 0, Prev = true } } },
+                new Pass { Binds = new[] { new Bind { Image = 1, IsImage = true }, new Bind { Image = 0 } } },
+            },
+        };
+        check.Expect(MarkSwaps(t, out string why), $"a history image a frame pass writes is accepted -- {why}");
+        check.Expect(hist.Swap, "the history image a frame pass writes swaps halves");
+        check.Expect(!band.Swap, "a plain image a frame pass writes does not swap: it has no second half");
+        check.Expect(!vol.Swap, "an image only a once pass writes does not swap");
+        var idle = new Twin
+        {
+            Ref = "cx_selfcheck",
+            Images = new[] { new Img { Name = "cxHist", History = true } },
+            Passes = new[] { new Pass { Binds = new[] { new Bind { Image = 0 } } } },
+        };
+        check.Expect(!MarkSwaps(idle, out _), "a history image no frame pass writes as an image is refused");
     }
 
     /// <summary>The two declaration budgets, each taken one line past its edge and one line inside it.</summary>

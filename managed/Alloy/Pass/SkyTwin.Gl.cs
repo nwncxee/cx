@@ -61,18 +61,25 @@ internal static unsafe partial class SkyTwin
             if (!Resolve(t, prog, out p.Binds, out string why)) { Fail(id, $"pass {p.Ref}: {why}", log); return false; }
             log?.Info($"{what}: built, {p.Gx}x{p.Gy}x{p.Gz} work group, {p.Binds.Length} image binding(s)");
         }
-        // Which history images a FRAME pass rewrites, now that every pass's bindings are known: only those
-        // swap halves. A `history` image nothing rewrites each frame has no history to keep, and swapping it
-        // would alternate its name between the baked texture and a zeroed one -- so the flag is refused.
+        if (!MarkSwaps(t, out string refused)) { Fail(id, refused, log); return false; }
+        return true;
+    }
+
+    /// <summary>Which images swap halves each frame, once every pass's bindings are known: a <c>history</c>
+    /// image a FRAME pass writes. A <c>history</c> image nothing rewrites each frame has no history to keep,
+    /// and is refused with <paramref name="why"/>.</summary>
+    private static bool MarkSwaps(Twin t, out string why)
+    {
+        why = "";
         foreach (Pass p in t.Passes)
             if (!p.Once)
                 foreach (Bind b in p.Binds)
-                    if (b.IsImage && !b.Prev) t.Images[b.Image].Swap = true;
+                    if (b.IsImage && !b.Prev && t.Images[b.Image].History) t.Images[b.Image].Swap = true;
         foreach (Img im in t.Images)
             if (im.History && !im.Swap)
             {
-                Fail(id, $"image `{im.Name}` is declared `history`, but no frame pass writes it as an image "
-                       + "-- there is no history to keep", log);
+                why = $"image `{im.Name}` is declared `history`, but no frame pass writes it as an image "
+                    + "-- there is no history to keep";
                 return false;
             }
         return true;
