@@ -299,6 +299,9 @@ public sealed unsafe partial class AlloyRenderer
         if (groups <= 0) { DbNoDraw("BuildBatches produced no batch"); Gl.BindVertexArray(0); GlContextService.Leave(); return false; }
         long tUp = FrameZones.Now;
         Step("the record and handle upload");
+        // The MAIN view's render size and unjittered camera, noted before the sky stages: every sky pass of a
+        // frame, and a probe face's own draw, reads this one camera (cx_skyenv.glsl's cxSky* block).
+        if (!_capturing) SkyTwin.NoteView(viewport, &vpClean, _eyePos);
         StageSky();
         bool drawsUp = Issue.UploadDraws();
         Db.PltColors.Upload();   // the frame-start push ran before this frame's PLT rows were staged
@@ -478,6 +481,14 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case PassId.SkyOwned:
                     if (!_capturing) FrameTap.Take("opaque", viewport);
+                    // A sky twin's `frame` passes: main view only, and ahead of the sky's own term because
+                    // TIME_ELAPSED cannot nest. They write the images the dome then samples.
+                    if (!_capturing)
+                    {
+                        GpuBegin(GpuTerm.SkyPass);
+                        SkyTwinFramePasses(viewport);
+                        GpuEnd(GpuTerm.SkyPass);
+                    }
                     GpuBegin(GpuTerm.Sky);
                     if (!_capturing && !Matrix4x4.Invert(vp, out SkyInvVp)) SkyInvVp = default;
                     Ssr.Pause();

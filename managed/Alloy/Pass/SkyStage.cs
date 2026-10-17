@@ -34,8 +34,13 @@ internal static unsafe class SkyStage
         public uint Prog;
         public bool Failed;
         public int Vp, DrawBase, Tex, Tex1, Tint, SkyFog, ViewInv, Global, Oit, OitDepth;
-        public int Year, Month, Day, Hour, Dawn, Dusk, Transition, Weather;
-        public AlloyRenderer.FeatLoc Feat;
+        /// <summary>Every engine term this program shares with the twin's compute passes.</summary>
+        public SkyEnvLoc Env;
+        /// <summary>The <see cref="SkyTwin"/> declared for this stage, or -1 where the module ships none --
+        /// kept even when it stood down, so the stats line can name the reason.</summary>
+        public int Twin;
+        /// <summary>Is that twin what this program hosts? False = the stage the engine runs is hosted plainly.</summary>
+        public bool TwinLive;
     }
 
     /// <summary>Everything the GL context owns, in one object: context loss replaces it, so neither a program
@@ -48,6 +53,10 @@ internal static unsafe class SkyStage
         /// <summary>The program whose per-pass uniforms are already uploaded this pass, so a role's several
         /// parts cost one upload. Cleared by <see cref="BeginPass"/>.</summary>
         public uint Primed;
+        /// <summary>Set OUTSIDE the bracket (the <c>effects.skytwin</c> edit, a twin whose images could not be
+        /// remade) and acted on INSIDE it, at the next <see cref="Program"/>: dropping a GL program is a call,
+        /// and a knob is set from the chat thread.</summary>
+        public bool Stale;
     }
 
     private static SkyState _gl = new();
@@ -57,7 +66,7 @@ internal static unsafe class SkyStage
 
     /// <summary>Context loss: every GL name is gone, and a failure latch taken against the old context is not
     /// evidence about the new one.</summary>
-    internal static void Forget() => _gl = new SkyState();
+    internal static void Forget() { _gl = new SkyState(); SkyTwin.Forget(); }
 
     /// <summary>Module change: the spliced text came off THAT module's resource chain, so it has a module
     /// lifetime (the server-switch trap -- a program built from one server's chain running on another's). Rebuilds
@@ -65,7 +74,23 @@ internal static unsafe class SkyStage
     internal static void DropPrograms()
     {
         for (int i = 0; i < _gl.Count; i++) if (_gl.Progs[i].Prog != 0) Gl.DeleteProgram(_gl.Progs[i].Prog);
-        Forget();
+        SkyTwin.DropAll();
+        _gl = new SkyState();
+    }
+
+    /// <summary>Rebuild the sky's programs at the next sky frame -- the <c>effects.skytwin</c> edit, and a
+    /// twin whose images could not be remade. The flag is set here and acted on inside the bracket, the way
+    /// <see cref="Programs.DropSpliced"/>'s module edge is.</summary>
+    internal static void MarkStale() => _gl.Stale = true;
+
+    /// <summary>The twin one of these programs hosts, or -1 -- what the frame asks of each staged sky draw
+    /// before it runs a twin's passes. Hot, and over at most <see cref="MaxProgs"/> entries.</summary>
+    internal static int TwinOf(uint prog)
+    {
+        var g = _gl;
+        for (int i = 0; i < g.Count; i++)
+            if (g.Progs[i].Prog == prog) return g.Progs[i].TwinLive ? g.Progs[i].Twin : -1;
+        return -1;
     }
 
     /// <summary>The program for a material's custom fragment stage <paramref name="fs"/>, built on first sight
@@ -74,6 +99,7 @@ internal static unsafe class SkyStage
     internal static uint Program(string fs)
     {
         if (fs.Length == 0) return 0;
+        if (_gl.Stale) DropPrograms();
         var g = _gl;
         for (int i = 0; i < g.Count; i++)
             if (string.Equals(fs, g.Progs[i].Ref, StringComparison.OrdinalIgnoreCase)) return g.Progs[i].Prog;
@@ -86,20 +112,49 @@ internal static unsafe class SkyStage
         string resref = fs.ToLowerInvariant();
         ref Entry e = ref g.Progs[g.Count++];
         e.Ref = resref;
-        e.Prog = Build(resref);
+        e.Twin = Twin(resref, ref e);
+        e.TwinLive = e.Prog != 0;
+        if (e.Prog == 0) e.Prog = Build(resref, linear: false);
         if (e.Prog == 0) { e.Failed = true; return 0; }
         Locate(ref e);
-        _log?.Info($"SkyStage: {resref}.shd hosted as the sky's fragment stage");
+        _log?.Info(e.TwinLive
+            ? $"SkyStage: {SkyTwin.Prefix}{resref}.shd hosted as the sky's fragment stage -- the Alloy-native "
+              + $"twin of {resref}.shd, in linear HDR"
+            : $"SkyStage: {resref}.shd hosted as the sky's fragment stage");
         return e.Prog;
+    }
+
+    /// <summary>Try the stage's Alloy-native twin: <c>cx_&lt;stage&gt;</c> in the chain, declarations parsed,
+    /// passes built, and the dome's program linked from it under <c>CX_SKY_LINEAR</c>. Fills <c>e.Prog</c> on
+    /// success, and hands back the twin's id either way (-1 only where the module ships none), so the stats
+    /// line can name a refusal; <see cref="SkyTwin"/> says every refusal out loud, once.</summary>
+    private static int Twin(string resref, ref Entry e)
+    {
+        if (!Effects.SkyTwin.V) return -1;
+        string twinRef = SkyTwin.Prefix + resref;
+        // No log line for "the module ships no twin": that is every module that has not written one.
+        if (!SkyTwin.Fits(resref) || !VanillaShader.InChain(twinRef)) return -1;
+        int id = SkyTwin.Declare(twinRef, _log);
+        if (id < 0) return -1;
+        if (!SkyTwin.Live(id) || !SkyTwin.BuildPasses(id, _log)) return id;
+        uint prog = Build(twinRef, linear: true);
+        if (prog == 0)
+        {
+            SkyTwin.Fail(id, "the sky program for it did not build (see the compile log above)", _log);
+            return id;
+        }
+        if (!SkyTwin.Locate(id, prog, _log)) { Gl.DeleteProgram(prog); return id; }
+        e.Prog = prog;
+        return id;
     }
 
     /// <summary>Link the sky pair: Alloy's own fullbright VERTEX stage (the same text the unlit program
     /// compiles, so the dome's clip position, texture rotation and world position come out identically) and
     /// <see cref="ShdFs"/> with the content stage's resref written into its region.</summary>
-    private static uint Build(string resref)
+    private static uint Build(string resref, bool linear)
     {
         if (resref.Length > ShaderResource.ResRefBytes) return 0;
-        string what = $"AlloyRenderer sky program ({resref})";
+        string what = $"AlloyRenderer sky program ({resref}{(linear ? ", linear HDR twin" : "")})";
         // Refused rather than stubbed: the region's fallback stub is a BLACK DOME, which is a picture, so a
         // program built from it would be a silent fallback in the exact sense CX-45 forbids. No stage in the
         // chain (or the bridge disarmed) means no sky for this area, said out loud.
@@ -115,6 +170,14 @@ internal static unsafe class SkyStage
         string evs = ShaderStages.Source(AlloyRenderer.ShdFullbrightVs), efs = ShaderStages.Source(ShdFs);
         string vs = ShaderResource.Override(AlloyRenderer.ShdFullbrightVs, _log) ?? evs;
         string fs = ShaderResource.Override(ShdFs, _log) ?? efs;
+        // A twin hands back LINEAR HDR, so the wrapper's clamp-and-encode tail is compiled out. Spliced in at
+        // the #version line, which is the one place GLSL takes it, for the override exactly as for the default.
+        if (linear)
+        {
+            bool embedded = ReferenceEquals(fs, efs);
+            efs = ShaderStages.WithDefine(efs, SkyTwin.LinearDefine);
+            fs = embedded ? efs : ShaderStages.WithDefine(fs, SkyTwin.LinearDefine);
+        }
         // The vertex half reads the per-draw record, so it owes the same two contracts the unlit program's
         // build checks -- an override that dropped them would put every dome at its neighbour's matrix.
         if (!ReferenceEquals(vs, evs) && !(ShaderContract.RecordSafe(vs) && ShaderContract.SlotIndexSafe(vs)))
@@ -151,11 +214,7 @@ internal static unsafe class SkyStage
         // seeds FragmentColor from. Declared by the CONTENT stage, so this may be -1.
         e.Global = GlProgram.Loc(p, "globalColor");
         e.Oit = GlProgram.Loc(p, "uOit"); e.OitDepth = GlProgram.Loc(p, "uOitDepth");
-        e.Year = GlProgram.Loc(p, "uModYear"); e.Month = GlProgram.Loc(p, "uModMonth");
-        e.Day = GlProgram.Loc(p, "uModDay"); e.Hour = GlProgram.Loc(p, "uModHour");
-        e.Dawn = GlProgram.Loc(p, "uModDawn"); e.Dusk = GlProgram.Loc(p, "uModDusk");
-        e.Transition = GlProgram.Loc(p, "uModTransition"); e.Weather = GlProgram.Loc(p, "uWeatherDensity");
-        e.Feat = Programs.FeatLocs(p);
+        e.Env = SkyEnvLoc.Locate(p);
     }
 
     /// <summary>A pass is starting: nothing is primed. Cheap, and it is what stops one pass's upload being
@@ -193,14 +252,12 @@ internal static unsafe class SkyStage
         // inverse view threaded through from AlloyRenderer.Frame.
         Matrix4x4 viewInv = Matrix4x4.CreateTranslation(AlloyRenderer.EyePos);
         Gl.UniformMatrix4fv(e.ViewInv, 1, 0, (float*)&viewInv);
-        AlloyRenderer.UploadFeatureTerms(e.Feat, viewport);
-        if (!AlloyRenderer.HasRuntime) return;
-        ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
-        Gl.Uniform1i(e.Year, rt.ModuleYear); Gl.Uniform1i(e.Month, rt.ModuleMonth);
-        Gl.Uniform1i(e.Day, rt.ModuleDay); Gl.Uniform1i(e.Hour, rt.ModuleHour);
-        Gl.Uniform1i(e.Dawn, rt.ModuleDawnHour); Gl.Uniform1i(e.Dusk, rt.ModuleDuskHour);
-        Gl.Uniform1f(e.Transition, rt.ModuleTimeIntoTransition);
-        Gl.Uniform1f(e.Weather, rt.AreaWeatherDensity);
+        // The engine terms, and the sky's own frame beside them -- one upload shared with a twin's compute
+        // passes, so a pass and the stage it feeds never disagree about the calendar or the camera.
+        e.Env.Upload(viewport, !AlloyRenderer.Capturing);
+        // The twin's images are CONTEXT state and the pass before this one owned units 4..13, so they are
+        // bound here, per pass, rather than once at the program's build.
+        if (e.TwinLive) SkyTwin.BindDraw(e.Twin);
     }
 
     /// <summary>The per-draw terms: the record index the vertex stage reads its matrix at, the fog band, and
@@ -221,14 +278,19 @@ internal static unsafe class SkyStage
     }
 
     /// <summary>Diagnostic: the stages built this session and the ones that refused, by name -- "no stage
-    /// named" and "a stage that would not build" are different facts.</summary>
+    /// named", "a stage that would not build", "an Alloy-native twin running" and "a twin that fell back" are
+    /// four different facts and read as four.</summary>
     internal static string Stats()
     {
         var g = _gl;
         if (g.Count == 0) return "none";
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < g.Count; i++)
-            sb.Append(i > 0 ? ", " : "").Append(g.Progs[i].Ref).Append(g.Progs[i].Failed ? " REFUSED" : " hosted");
+        {
+            sb.Append(i > 0 ? "; " : "").Append(g.Progs[i].Ref).Append(g.Progs[i].Failed ? " REFUSED" : " hosted");
+            string note = SkyTwin.Note(g.Progs[i].Twin);
+            if (note.Length > 0) sb.Append(" -- ").Append(note);
+        }
         return sb.ToString();
     }
 

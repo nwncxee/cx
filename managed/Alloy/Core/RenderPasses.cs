@@ -109,7 +109,7 @@ internal static class RenderPasses
             // The sky's GL objects are one program per custom fragment stage the content names; it captures
             // nothing from the world, so it has no Revoke.
             Attach = SkyStage.Attach,
-            SelfCheck = l => SkyStage.SelfCheck(l),
+            SelfCheck = l => { SkyStage.SelfCheck(l); SkyTwin.SelfCheck(l); },
             ContextLost = SkyStage.Forget,
             Stats = _ => SkyBox.Stats(),
         }, log);

@@ -8,7 +8,7 @@ namespace CX.Alloy;
 internal static class Effects
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Sky, Beams;
+    internal static readonly Knob<bool> Sky, Beams, SkyTwin;
     /// <summary>Halo brightness, and the pass's switch: 0 draws none.</summary>
     internal static readonly Knob<float> Halos, HaloSize;
     internal static readonly Knob<int> HaloViz;
@@ -28,6 +28,9 @@ internal static class Effects
         Sky = G.Toggle("sky", "Alloy sky", true, Tier.ChatOnly,
                        help: "The sky dome drawn through CX (fogged horizon, HDR). Off, no sky dome is drawn.");
         Beams = G.Toggle("beams", "Alloy light beams", true, Tier.ChatOnly, help: "Light shafts drawn through CX.");
+        SkyTwin = G.Toggle("skytwin", "Alloy-native sky twin", true, Tier.ChatOnly, changed: SkyStage.MarkStale,
+                           help: "Run a content sky's Alloy-native twin (cx_<stage>) where the module ships one; "
+                               + "off runs the stage the engine runs.");
         HaloSize = G.Slider("halosize", "Halo size", 0f, 2f, 0.1f, 1f, tier: Tier.ChatOnly,
                             help: "Size of the glow as a multiple of vanilla's flare size (1 is vanilla's).");
         HaloViz = G.Slider("haloviz", "haloviz", 0, 1, 1, 0, tier: Tier.ChatOnly);
