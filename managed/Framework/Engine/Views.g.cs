@@ -77,6 +77,7 @@ global using unsafe WalkPlayerToPointFn = delegate* unmanaged<nint, float, float
 global using unsafe FeedbackHitCheckHostileFn = delegate* unmanaged<nint, nint*, nint, int*, int, int>;
 global using unsafe FeedbackHitCheckNonHostileFn = delegate* unmanaged<nint, nint*, nint, int*, int, int>;
 global using unsafe SdlGetModStateFn = delegate* unmanaged<int>;
+global using unsafe SdlGetKeyboardFocusFn = delegate* unmanaged<nint>;
 global using unsafe SdlGetMouseStateFn = delegate* unmanaged<int*, int*, uint>;
 global using unsafe SdlCaptureMouseFn = delegate* unmanaged<int, int>;
 global using unsafe SdlSetWindowSizeFn = delegate* unmanaged<nint, int, int, void>;
@@ -5174,6 +5175,10 @@ public static unsafe class EngineFn
     private static bool _SdlGetModStateDone;
     /// <inheritdoc cref="SymbolMap.SdlGetModState"/>
     public static SdlGetModStateFn SdlGetModState => (SdlGetModStateFn)(_SdlGetModStateDone ? _SdlGetModState : Resolve(ref _SdlGetModState, ref _SdlGetModStateDone, SymbolMap.SdlGetModState));
+    private static IntPtr _SdlGetKeyboardFocus;
+    private static bool _SdlGetKeyboardFocusDone;
+    /// <inheritdoc cref="SymbolMap.SdlGetKeyboardFocus"/>
+    public static SdlGetKeyboardFocusFn SdlGetKeyboardFocus => (SdlGetKeyboardFocusFn)(_SdlGetKeyboardFocusDone ? _SdlGetKeyboardFocus : Resolve(ref _SdlGetKeyboardFocus, ref _SdlGetKeyboardFocusDone, SymbolMap.SdlGetKeyboardFocus));
     private static IntPtr _SdlGetMouseState;
     private static bool _SdlGetMouseStateDone;
     /// <inheritdoc cref="SymbolMap.SdlGetMouseState"/>
@@ -7346,6 +7351,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlGetModState"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlGetModStateFn* ChainSdlGetModState(this HookService h, SdlGetModStateFn handler, int priority) =>
         (SdlGetModStateFn*)h.Chain(SymbolMap.SdlGetModState, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGetKeyboardFocus"/>; returns the original, or null.</summary>
+    public static SdlGetKeyboardFocusFn InstallSdlGetKeyboardFocus(this HookService h, SdlGetKeyboardFocusFn handler) =>
+        (SdlGetKeyboardFocusFn)h.Install(SymbolMap.SdlGetKeyboardFocus, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGetKeyboardFocus"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGetKeyboardFocusFn* ChainSdlGetKeyboardFocus(this HookService h, SdlGetKeyboardFocusFn handler, int priority) =>
+        (SdlGetKeyboardFocusFn*)h.Chain(SymbolMap.SdlGetKeyboardFocus, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SdlGetMouseState"/>; returns the original, or null.</summary>
     public static SdlGetMouseStateFn InstallSdlGetMouseState(this HookService h, SdlGetMouseStateFn handler) =>
         (SdlGetMouseStateFn)h.Install(SymbolMap.SdlGetMouseState, (IntPtr)handler);

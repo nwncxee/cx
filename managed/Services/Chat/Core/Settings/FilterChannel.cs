@@ -22,6 +22,13 @@ public static class FilterChannel
         (0x400u, Word(ChannelWord.DM)),
     };
 
+    /// <summary>The tab editor's word for the first channel <paramref name="channel"/> carries, or "" for none.</summary>
+    public static string Label(uint channel)
+    {
+        foreach (var (bit, label) in Editable()) if ((channel & bit) != 0) return label;
+        return "";
+    }
+
     /// <summary>The TLK's chat channel names: consecutive strrefs, starting at Shout.</summary>
     private enum ChannelWord : uint { Shout = 66751, Whisper, Tell, Talk, Party, DM }
 

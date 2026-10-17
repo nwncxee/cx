@@ -11,6 +11,7 @@ internal static class ChatKnobs
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled;
     internal static readonly Knob<int> TellOpen;
+    internal static readonly Knob<bool> Notify;
     internal static readonly Knob<bool> Pairs, Complete, Markup, Counter;
     internal static readonly Knob<bool> DelWord, Undo, Mouse, Rows, Drafts;
     internal static readonly Knob<bool> HistSearch, HistSave;
@@ -28,6 +29,8 @@ internal static class ChatKnobs
         TellOpen = G.Dropdown("tellopen", "When a tell arrives", new[] { 0, 1, 2 }, 0,
                               new[] { "nothing", "open a tab", "open a window" },
                               help: "Where a tell from someone new lands: nowhere special, a new tab in the main window, or its own window.");
+        Notify = G.Toggle("notify", "Desktop notification when a player speaks", false,
+                          help: "While the game window is in the background, a line another player's character says to you (talk, whisper, shout, party, tell, or a DM speaking) shows as a desktop notification. Server messages, combat and feedback never do.");
 
         G.Section("Typing");
         Pairs = G.Toggle("pairs", "Close brackets and quotes", true, Tier.Advanced,

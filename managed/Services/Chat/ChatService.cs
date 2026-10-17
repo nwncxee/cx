@@ -56,6 +56,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         Snippets.SelfCheck(log);       // chat shortcut rows
         NameCompleter.SelfCheck(log);  // Tab name completion
         HistoryFile.SelfCheck(log);    // saved sent-line history escaping
+        SpeechNotify.SelfCheck(log);   // which lines raise a desktop notification
         string[] names = FontRegistry.Names;   // "default" first: the window's own entry stands in for it
         var faces = new string[names.Length];
         faces[0] = SettingsWindow.FollowUi;
@@ -71,6 +72,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         InitRender(log, hooks);        // own SwapBuffers -> draw the window (bakes the atlas)
         InitSuppression(log, hooks);   // neutralize vanilla chat rendering
         InitEditControl(log, hooks);   // the keyboard side
+        _ = SymbolMap.Require(log, "Chat desktop notifications", SymbolMap.SdlGetKeyboardFocus);   // unresolved: never notifies
     }
 
     /// <summary>The chat unit: every symbol the chatbox cannot run without -- ingest tap, vanilla
@@ -168,6 +170,9 @@ public sealed unsafe partial class ChatService : IExtenderService
             if ((channel & 0x002) != 0)
                 _log?.Info($"[chat] tell ingest: pid={playerId} local={_playerResolver?.LocalIngestId()} recip=\"{tellRecip}\" raw={raw}");
             _store.Append(line);
+            if (ChatKnobs.Notify.V
+                && SpeechNotify.ShouldNotify(channel, playerId, _playerResolver?.LocalIngestId(), !DesktopNotify.Background))
+                DesktopNotify.Show(FilterChannel.Label(channel), SpeechNotify.Text(line.ColorRuns), _log);
 
             long n = ++_ingestCount;
             // One-shot thread-model probe: is ingest really a separate thread from the frame
