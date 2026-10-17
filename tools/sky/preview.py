@@ -151,14 +151,15 @@ def is_image_type(t):
 
 
 # --- scene inputs ---------------------------------------------------------------------------------------------------
-# The scene vocabulary. year..hour, yaw/pitch/fov, t (the client clock, seconds) and main (0 = a probe face) are the
-# engine's and the camera's. cover, storm, tint, phase, moon, armed, flash, flashaz, comet, cometseed and noir are the
-# scriptable slots the REFERENCE content's sky reads (Shadows over Westgate: slots 4, 9, 10, 11, 12, 16 -- see
-# uniforms() below), and aim=sun|moon points the camera along its inc_skymath model. Another sky sets its own
-# uniforms raw: u.<name>=x[,y[,z[,w]]] for a float/vec, i.<name>=n for an int (e.g. u.scriptableVec3=0,0,1,0).
+# The scene vocabulary. year..hour, yaw/pitch/fov, eyez (the eye's height over the dome's centre, metres), t (the
+# client clock, seconds) and main (0 = a probe face) are the engine's and the camera's. cover, storm, tint, phase,
+# moon, armed, flash, flashaz, comet, cometseed and noir are the scriptable slots the REFERENCE content's sky reads
+# (Shadows over Westgate: slots 4, 9, 10, 11, 12, 16 -- see uniforms() below), and aim=sun|moon points the camera
+# along its inc_skymath model. Another sky sets its own uniforms raw: u.<name>=x[,y[,z[,w]]] for a float/vec,
+# i.<name>=n for an int (e.g. u.scriptableVec3=0,0,1,0).
 DEFAULTS = dict(year=1372, month=6, day=15, hour=12.0, cover=0.0, storm=0.0, phase=0.5, tint=(0, 0, 0),
                 flash=0.0, flashaz=0.0, comet=-1.0, cometseed=0.37, noir=0, yaw=180.0, pitch=15.0, fov=70.0,
-                t=3600.0, moon=1, armed=1, aim="", main=1)
+                t=3600.0, moon=1, armed=1, aim="", main=1, eyez=8.0)
 
 
 def parse_scene(text):
@@ -494,7 +495,7 @@ def present(hdr, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
 
 
 def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None):
-    eye = np.array([500.0, 500.0, 8.0])
+    eye = np.array([500.0, 500.0, s["eyez"]])
     fwd = body_dir(s, s["aim"]) if s["aim"] in ("sun", "moon") else look(s["yaw"], s["pitch"])
     proj, vp = view_proj(eye, fwd, s["fov"], size[0] / size[1])
     if not sky.images and sky.images_decl:
