@@ -55,8 +55,8 @@ internal static unsafe class VanillaShader
 
     /// <summary>The SKIP marker. <c>// $VANILLA-SKIP a b c</c> names includes the stage's own environment
     /// stands in for, so the resolver never follows them -- per stage, where <see cref="Supplied"/> is every
-    /// stage's. The hosted post chain is the customer: <c>inc_postpr</c> pulls <c>inc_lighting</c> and
-    /// <c>inc_fog</c> under <c>LIGHTING 1</c>, which are the engine's forward pipeline, not a post term.</summary>
+    /// stage's: <c>inc_postpr</c>'s <c>inc_lighting</c>/<c>inc_fog</c> in the post stage (the forward pipeline,
+    /// not a post term), <c>inc_target</c> in the lit hooks, whose stage declares the shape uniforms itself.</summary>
     private const string Skip = "// $VANILLA-SKIP ";
 
     /// <summary>The common prefix of all three markers -- what the region scan searches for, so a plain and
@@ -278,9 +278,9 @@ internal static unsafe class VanillaShader
 
     /// <summary>Includes the ENVIRONMENT supplies, and which must therefore never be followed.
     /// <c>inc_common</c>/<c>inc_uniforms</c> are the engine's whole uniform and varying interface, so pulling
-    /// them into an Alloy stage would redeclare hundreds of names against a different vertex layout;
-    /// <c>inc_target</c> because Alloy declares the shape uniforms itself. Everything else is followed.</summary>
-    private static readonly string[] Supplied = { "inc_common", "inc_uniforms", "inc_target" };
+    /// them into an Alloy stage would redeclare hundreds of names against a different vertex layout. A stage that
+    /// declares more of it skips that per stage (the lit hooks skip <c>inc_target</c>). Everything else is followed.</summary>
+    private static readonly string[] Supplied = { "inc_common", "inc_uniforms" };
 
     /// <summary>The one include the environment SUBSTITUTES rather than drops. A content stage's
     /// <c>inc_standard</c> is the engine's whole forward pipeline; what a hosted stage needs from it is the

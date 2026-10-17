@@ -7,9 +7,9 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The content's own full-screen post chain -- the engine's <c>fsfbpostpr</c> program, framebuffer effect 2 of
-/// <c>Camera::DoFrameBufferEffects</c> @0x4a8eb0 -- hosted as one stage of the display-space stack, which is
-/// what puts a content repo's grade, noir, sky rays and status overlay back. A <c>// $VANILLA inc_postpr</c>
-/// region takes the resource chain's copy at build; the stub between the markers is a pass-through.
+/// <c>Camera::DoFrameBufferEffects</c> @0x4a8eb0 -- hosted as one stage of the display-space stack: a content repo's
+/// grade, noir, sky rays, status overlay and its own <c>main</c>'s telegraphs. A <c>// $VANILLA-MAIN fsfbpostpr</c>
+/// region runs the resource chain's copy whole; the stub between the markers is a pass-through.
 /// </summary>
 internal static unsafe class FbPostStage
 {
@@ -40,7 +40,7 @@ internal static unsafe class FbPostStage
     {
         public uint Prog, Sampler;
         public AlloyRenderer.FeatLoc Feat;
-        public int LocView, LocPixel, LocClip, LocFbColor, LocFbDepth;
+        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth;
         public int BuildMask = -1, BuildQuality = -1;
     }
 
@@ -65,7 +65,8 @@ internal static unsafe class FbPostStage
     internal static void Arm(int mask, int quality) { BuildMask = HostedMask(mask); BuildQuality = quality; }
 
     /// <summary>From the pass, beside the toon stage's projection: the camera the content's sun and lens
-    /// maths project through (<c>m_view</c>, and the near/far the depth decode needs).</summary>
+    /// maths project through (<c>m_view</c>, its inverse for a world position off the depth, and the near/far the
+    /// depth decode needs).</summary>
     internal static void SetCamera(Matrix4x4* view, Matrix4x4* proj)
     {
         _view = *view;
@@ -83,7 +84,8 @@ internal static unsafe class FbPostStage
         {
             g.Prog = prog;
             g.Feat = Programs.FeatLocs(prog);
-            g.LocView = GlProgram.Loc(prog, "m_view"); g.LocPixel = GlProgram.Loc(prog, "pixelParams");
+            g.LocView = GlProgram.Loc(prog, "m_view"); g.LocViewInv = GlProgram.Loc(prog, "m_view_inv");
+            g.LocPixel = GlProgram.Loc(prog, "pixelParams");
             g.LocClip = GlProgram.Loc(prog, "clipParams");
             g.LocFbColor = GlProgram.Loc(prog, "texFBColor"); g.LocFbDepth = GlProgram.Loc(prog, "texFBDepth");
         }
@@ -92,6 +94,8 @@ internal static unsafe class FbPostStage
         Gl.Uniform1i(g.LocFbDepth, (int)TextureSlots.PostBloom);
         AlloyRenderer.UploadFeatureTerms(in g.Feat, viewport);
         fixed (Matrix4x4* v = &_view) Gl.UniformMatrix4fv(g.LocView, 1, 0, (float*)v);
+        if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
+        Gl.UniformMatrix4fv(g.LocViewInv, 1, 0, (float*)&inv);
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
         Gl.Uniform3f(g.LocPixel, 1f / w, 1f / h, w / h);
         // clipParams = (near, far, 1 - near/far): inc_common.shd's own triple
@@ -118,7 +122,9 @@ internal static unsafe class FbPostStage
           + "pass compiles here");
         check.Expect(!FbPostFs.Contains("#define LIGHTING") && !FbPostFs.Contains("#define FOG") && !FbPostFs.Contains("#define POSTPROCESSING 1"),
           "inc_postpr's own defines are left to it");
-        check.Expect(FbPostFs.Contains("// $VANILLA inc_postpr\n") && FbPostFs.Contains("vec4 FS_PostProcess() {"), "the region and its stub");
+        check.Expect(FbPostFs.Contains("// $VANILLA-MAIN fsfbpostpr\n") && FbPostFs.Contains("void " + VanillaShader.MainEntry + "() {"),
+          "the whole-stage region and its stub, under the name the bridge renames main() to");
+        check.Expect(FbPostFs.Contains("uniform highp mat4 m_view_inv;"), "the inverse view a content main() takes world positions through");
         check.Expect(FbPostFs.Contains("$POSTMASK$") && FbPostFs.Contains("$SQM$"), "the option tokens are in the text");
         check.Expect(!ShaderResource.Tokens("$POSTMASK$ $SQM$").Contains('$'), "the tokens expand");
         check.Expect(!Stale(0, 0), "an unbuilt stage is never stale");

@@ -1056,14 +1056,7 @@ public sealed unsafe partial class AlloyRenderer
                     }
                     else
                     {
-                        ref LitLoc L = ref ContentPrograms.DepthLoc(want);
-                        Gl.UseProgram(ContentPrograms.DepthProgram(want));
-                        Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vp);
-                        Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
-                        Gl.Uniform1i(L.Tex, 0);
-                        UploadFeatureTerms(L.Feat, viewport);
-                        Db.ContentTable.Bind();
-                        ContentPrograms.BindTwinExtras(want, cast: false, layered: false);
+                        ref LitLoc L = ref BindDepthTwin(want, vp, viewport);
                         baseLoc = L.Base; cutLoc = L.Cut;
                     }
                     Gl.ActiveTexture(Gl.TEXTURE0);
@@ -1095,6 +1088,21 @@ public sealed unsafe partial class AlloyRenderer
         // #214: OUR depth attachment, not the engine's -- a texture by construction, so consumers get a
         // sampleable name rather than whatever the engine happened to allocate.
         DepthResource.Publish((int)Gl.ATTACHMENT_TEXTURE, (int)PostChain.DepthTex, viewport, PassGen);
+    }
+
+    /// <summary>Bind content pair <paramref name="feat"/>'s depth twin and the terms it reads at <paramref name="vp"/>; the
+    /// caller binds the PLT palettes and sets the per-batch base and cut through the locations returned.</summary>
+    internal static ref LitLoc BindDepthTwin(int feat, Matrix4x4* vp, int* viewport)
+    {
+        ref LitLoc L = ref ContentPrograms.DepthLoc(feat);
+        Gl.UseProgram(ContentPrograms.DepthProgram(feat));
+        Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vp);
+        Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
+        Gl.Uniform1i(L.Tex, 0);
+        UploadFeatureTerms(L.Feat, viewport);
+        Db.ContentTable.Bind();
+        ContentPrograms.BindTwinExtras(feat, cast: false, layered: false);
+        return ref L;
     }
 
     /// <summary>Does the feature sweep of the prepass take this batch? The cutout class, and every content pair whose

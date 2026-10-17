@@ -132,7 +132,8 @@ def stock_tree():
 # which the runtime resolves off the resource chain and a content checkout never carries. Set CX_STOCK_SHD to
 # resolve them from another tree; missing files drop those includes, as an absent chain file would.
 STOCK_SHD = os.environ.get("CX_STOCK_SHD") or stock_tree()
-VANILLA = re.compile(r"^([ \t]*)// \$VANILLA() (\w+)\n(.*?)^[ \t]*// \$VANILLA-END[ \t]*$",
+# group 2 is the WHOLE-STAGE marker (VanillaShader.Main); a resref spelled as a token ($SKYFS$) is not matched
+VANILLA = re.compile(r"^([ \t]*)// \$VANILLA(-MAIN)? (\w+)\n(.*?)^[ \t]*// \$VANILLA-END[ \t]*$",
                      re.S | re.M)
 # Mirrors VanillaShader.Skip: includes the stage's own environment stands in for, never followed.
 SKIP = re.compile(r"^[ \t]*// \$VANILLA-SKIP (.*)$", re.M)
@@ -141,9 +142,9 @@ SKIP = re.compile(r"^[ \t]*// \$VANILLA-SKIP (.*)$", re.M)
 # Mirrors VanillaShader.Supplied: the engine's uniform/varying interface, which the renderer's own
 # environment block stands in for and which must never be pulled into an Alloy stage.
 SUPPLIED = {"inc_common", "inc_uniforms"}
-# ...and VanillaShader.Substituted: the one include a spliced file gets a stand-in for (#350). The text is the
-# embedded stand-in itself, so the two cannot drift.
-SUBSTITUTED = {"inc_standard": "cx_vanstd_f"}
+# ...and VanillaShader.Substituted: the one include a spliced file gets a stand-in for (#350) -- the lit stand-in, or a
+# whole stage's. The text is the embedded stand-in itself, so the two cannot drift.
+SUBSTITUTED, STANDARD, WHOLE_STANDARD = "inc_standard", "cx_vanstd_f", "cx_vanwhole_f"
 
 
 def find_shd(name):
@@ -156,7 +157,12 @@ def find_shd(name):
     return None
 
 
-def expand(text, done, g, depth=0):
+def read_shd(name):
+    hit = find_shd(name)
+    return open(hit).read() if hit else None
+
+
+def expand(text, done, g, depth=0, read=read_shd, standard=STANDARD):
     """A content file's own #includes, resolved out of the checkout -- the C# side resolves them through
     the resource chain, and a cx_* hook file is composed OF them. One visit each PER STAGE (`done` is
     shared across a stage's regions, as VanillaShader.Splice shares its list): the files carry #ifndef
@@ -172,13 +178,28 @@ def expand(text, done, g, depth=0):
         if not m or m.group(1) in done or m.group(1) in SUPPLIED or depth >= 4:
             continue
         done.add(m.group(1))
-        if m.group(1) in SUBSTITUTED:
-            out += expand(g[SUBSTITUTED[m.group(1)]], done, g, depth + 1)
+        if m.group(1) == SUBSTITUTED:
+            out += expand(g[standard], done, g, depth + 1, read, standard)
             continue
-        hit = find_shd(m.group(1))
-        if hit:
-            out += expand(open(hit).read(), done, g, depth + 1)
+        hit = read(m.group(1))
+        if hit is not None:
+            out += expand(hit, done, g, depth + 1, read, standard)
     return out
+
+
+def main_text(stock, done, g, env, read):
+    """Mirrors VanillaShader.MainText: a stage run WHOLE -- includes resolved against the whole-stage stand-in, main()
+    renamed CxVanMain, gl_FragColor redirected, every uniform the environment ahead supplies as a macro dropped, and the
+    stage's own top-level defines undefined around it. None when it has no main()."""
+    text = "\n".join(expand(stock, done, g, read=read, standard=WHOLE_STANDARD))
+    if not MAIN_FN.search(text):
+        return None
+    text = re.sub(r"\bgl_FragColor\b", "FragmentColor", MAIN_FN.sub("void CxVanMain()", text, 1))
+    names = sorted(set(OWN_DEFINE.findall(env)))
+    if names:
+        text = re.sub(r"(?m)^[ \t]*uniform\b[^;=\n]*\b(?:" + "|".join(names) + r")[ \t]*(?:=[^;\n]*)?;[^\n]*\n?", "", text)
+    undef = "".join(f"#undef {n}\n" for n in dict.fromkeys(OWN_DEFINE.findall(stock)))
+    return undef + text + "\n" + undef
 
 
 MAIN_FN = re.compile(r"\bvoid\s+main\s*\(\s*(?:void)?\s*\)")
@@ -187,15 +208,16 @@ STUB_FN = re.compile(r"^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{", re.M)
 OWN_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)", re.M)
 
 
-def splice(src, seen, g, done=None):
-    """Replace each marked region with the content repo's copy of that .shd, where one exists. `done` collects the
-    files spliced, which a later content region of the same program treats as already included."""
+def splice(src, seen, g, done=None, read=None):
+    """Replace each marked region with the content repo's copy of that .shd, where one exists -- or, given `read`, with
+    that resource chain's. `done` collects the files spliced, which a later content region of the same program treats
+    as already included."""
     done = set() if done is None else done
     for m in SKIP.finditer(src):
         done.update(m.group(1).split())
     def one(m):
         indent, hosted, resref, stub = m.group(1), m.group(2), m.group(3), m.group(4)
-        hit = find_shd(resref)
+        hit = find_shd(resref) if read is None else ("the chain" if read(resref) is not None else None)
         if hit is None:
             seen.setdefault(resref, None)
             return m.group(0)
@@ -203,8 +225,14 @@ def splice(src, seen, g, done=None):
         if resref in done:      # an earlier region already included it: its functions exist
             return indent + f"// $VANILLA{hosted or ''} {resref}"
         done.add(resref)
-        stock = open(hit).read()
-        body = "\n".join(expand(stock, done, g))
+        stock = open(hit).read() if read is None else read(resref)
+        if hosted:
+            body = main_text(stock, done, g, src[:m.start()], read or read_shd)
+            if body is None:
+                print(f"vanilla bridge: {resref}.shd has no main() to run -- the stub stands")
+                return m.group(0)
+            return indent + f"// $VANILLA{hosted} {resref}\n" + body
+        body = "\n".join(expand(stock, done, g, read=read or read_shd))
         # Mirrors VanillaShader.Validate: every function the stub defines must appear in the spliced text,
         # or the runtime compiles the stub for this region -- so the check does the same rather than
         # accepting text the runtime would reject.
@@ -215,7 +243,7 @@ def splice(src, seen, g, done=None):
             return m.group(0)
         return (indent + f"// $VANILLA{hosted or ''} {resref}\n"
                 + "\n".join(indent + l if l.strip() else "" for l in body.split("\n")))
-    return VANILLA.sub(one, src) if os.path.isdir(CONTENT_SHD) else src
+    return VANILLA.sub(one, src) if read is not None or os.path.isdir(CONTENT_SHD) else src
 
 
 def spliced(g):
@@ -1049,14 +1077,30 @@ def content_programs(g):
     return progs, bad
 
 
+def post_programs(raw, g):
+    """The hosted post stage once per corpus of CX_CONTENT_STAGES, over the game's own set: the fsfbpostpr that chain
+    resolves -- a corpus's own, telegraphs and all, or stock's over the corpus's inc_postpr -- run whole."""
+    stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
+    out, texts = {}, {g["cx_fbpost_fs"]}
+    for d in CONTENT_STAGES if stock else []:
+        fs = splice(raw["cx_fbpost_fs"], {}, raw, read=content_stage.Chain([d], stock))
+        if fs not in texts:
+            texts.add(fs)
+            where = os.path.join(*os.path.normpath(d).split(os.sep)[-2:])
+            out[f"post stack fbpost ({where}'s chain, fsfbpostpr whole)"] = (g["cx_post_vs"], fs)
+    return out
+
+
 def main():
-    g = spliced(shaders())
+    raw = shaders()
+    g = spliced(raw)
     try:
         progs = programs(g)
     except KeyError as e:
         sys.exit(f"could not find shader file {e} -- did a stage get renamed?")
     content, bad_content = content_programs(g)
     progs.update(content)
+    progs.update(post_programs(raw, g))
 
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:

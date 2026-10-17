@@ -350,6 +350,9 @@ void main()
     CxHostPost(FragmentColor);
 #endif
     oVisId = CxVisId(vDraw, gl_PrimitiveID);
+#ifndef CX_CAST
+    frag = vec4(uHlColor, 1.0);
+#endif
     return;
 #endif
     if (!physical && CxBareMaterial(d.pbr.xyz, slots)) cxFresnel = 0.0;

@@ -340,6 +340,8 @@ internal static class ShaderContract
                   // ...its depth and caster twins stop right after the body, its post body runs on the composed colour,
                   // and the lit vertex stage hands a content vertex half its own work to start from
                   && OwnedLitFsMain.Contains("#ifdef CX_DEPTH_ONLY\n")
+                  // ...the depth twin, not the casters, doubling as the outline-highlight mask under Highlight's name
+                  && OwnedLitFsMain.Contains("#ifndef CX_CAST\n    frag = vec4(uHlColor, 1.0);\n#endif\n    return;")
                   && OwnedLitFsMain.Contains("outC = CxHostPost(outC);")
                   && OwnedLitVs.Contains("CxHostVertex(d, id, bb);\n}") && OwnedLitVs.Contains("cxTanW = mat3(d.model) * aT;")
                   && ContentStandardVs.Contains("TransformMainCoordinates();")
