@@ -319,6 +319,10 @@ internal static unsafe class SymbolMap
     public const string FeedbackHitCheckNonHostile = "_ZN21CClientExoAppInternal26FeedbackHitCheckNonHostileEPP10CNWCObjectP6VectorPii";
     [Fn("int()")]
     public const string SdlGetModState  = "SDL_GetModState";                            // live Ctrl/Shift/Alt state at capture
+    /// <summary><c>SDL_GetKeyboardFocus()</c>: the window holding keyboard focus, null while the game is in the
+    /// background. What chat reads to notify only when nobody is looking.</summary>
+    [Fn("IntPtr()")]
+    public const string SdlGetKeyboardFocus = "SDL_GetKeyboardFocus";
     [Fn("uint(int* x, int* y)")]
     public const string SdlGetMouseState = "SDL_GetMouseState";
     /// <summary><c>SDL_CaptureMouse(SDL_bool)</c>: while on, SDL keeps reporting the pointer and its buttons outside the window.</summary>
@@ -3124,6 +3128,7 @@ internal static unsafe class SymbolMap
         [FeedbackHitCheckHostile] = At(),    // action camera: the picker with GetHeightTransition (Callees)
         [FeedbackHitCheckNonHostile] = At(), // action camera: the other picker, same caller cluster
         [SdlGetModState]  = Nm("SDL_GetModState"),
+        [SdlGetKeyboardFocus] = Nm("SDL_GetKeyboardFocus"),
         // head tracking: the three Gob/Part/LookAtAnimation symbols are shared-engine exports; only the
         // CNWC* chooser needs an anchor (its Windows caller-of-"HEADTRACK" chain, docs/windows-symbols.md).
         [UpdateLookAt]       = At(),

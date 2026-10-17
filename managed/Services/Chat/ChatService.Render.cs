@@ -130,6 +130,7 @@ public sealed unsafe partial class ChatService
             CloseChat(false);
         }
 
+        DesktopNotify.Poll();   // the Windows notification icon goes once the game has focus again
         if (GameGate.InGame)
         {
             // Look edge: ui.look / ui.palette moved, or the native art's verdict changed -> re-lay every window's

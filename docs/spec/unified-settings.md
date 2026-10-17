@@ -360,6 +360,7 @@ scrollbar, which the text width reserves and the thumb hit-test shares.
 |---|---|---|---|---|---|---|---|
 | chat.enabled | Enable the CX chatbox | T | on | U | **R** | — | CX's own chat: multiple windows, tabs, portraits, tells routing. Off, the stock chat window runs. Takes effect at the next launch. |
 | chat.tellopen | When a tell arrives | D | nothing / open a tab / open a window · nothing | U | L | — | Where a tell from someone new lands: nowhere special, a new tab in the main window, or its own window. |
+| chat.notify | Desktop notification when a player speaks | T | **off** | U | L | — | While the game window is in the background, a line another player's character says to you (talk, whisper, shout, party, tell, or a DM speaking) shows as a desktop notification. Server messages, combat and feedback never do. |
 | chat.complete | Complete names with Tab | T | on | U | L | Typing | Tab finishes the name you started typing: the people and creatures around you, nearest first, then everyone online. Press Tab again for the next match, Shift+Tab for the one before. |
 | chat.markup | Colour emotes, speech and OOC | T | **off** | U | L | Typing | While you type, `*emotes*`, "speech" and ((out of character)) text take their own colours, so a missing closing `*` shows before you send. |
 | chat.mouse | Place the cursor with the mouse | T | on | U | L | Editing | Click in the input bar to move the cursor, drag to select, double-click to select a word, triple-click for the whole line. Shift+click extends the selection. |
