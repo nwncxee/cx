@@ -26,6 +26,7 @@ composes to nothing, on a machine that reaches that feature.
 Needs glslangValidator (Arch: `glslang`); the material pass also needs spirv-opt/spirv-dis
 (Arch: `spirv-tools`), and skips itself with a notice where they are absent.
 """
+import atexit
 import os
 import re
 import shutil
@@ -45,15 +46,18 @@ GET = re.compile(r'ShaderSource\.Get\("([^"]+)"\)')
 RESREF = re.compile(r'"(cx_\w+)"')
 
 
-def expand_includes(name, depth=0):
+def expand_includes(name, depth=0, swap=None):
     """Mirrors ShaderSource.Get: an #include line naming an embedded .glsl is spliced, anything else --
-    the engine's own `#include "inc_scriptable"`, a line inside a comment block -- stands."""
+    the engine's own `#include "inc_scriptable"`, a line inside a comment block -- stands. `swap` replaces a
+    named library's text, as ContentPrograms replaces cx_host_f with a content stage's region."""
     out = []
     lines = open(os.path.join(SHADERS, name)).read().split("\n")
     for i, line in enumerate(lines):
         m = INCLUDE.match(line)
-        if m and depth < 8 and os.path.exists(os.path.join(SHADERS, m.group(1))):
-            body = expand_includes(m.group(1), depth + 1)
+        if m and swap and m.group(1) in swap:
+            out.append(swap[m.group(1)])
+        elif m and depth < 8 and os.path.exists(os.path.join(SHADERS, m.group(1))):
+            body = expand_includes(m.group(1), depth + 1, swap)
             out.append(body if body.endswith("\n") else body + "\n")
         else:
             out.append(line + ("\n" if i < len(lines) - 1 else ""))
@@ -110,11 +114,26 @@ def audit(g):
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
 import paths  # noqa: E402
 CONTENT_SHD = os.environ.get("CX_CONTENT_SHD") or paths.get("CONTENT_SHADERS") or ""
+import content_stage  # noqa: E402
+
+
+def stock_tree():
+    """The game's own .shd as the client resolves them (content_stage.KEYS: ovr.bif's current set over the old
+    base_shaders.bif), written to a temporary tree; empty when the install is not found."""
+    d = tempfile.mkdtemp(prefix="cx-stock-")
+    atexit.register(shutil.rmtree, d, True)
+    for name, text in content_stage.stock_shaders(paths.get("NWN_DIR") or "").items():
+        with open(os.path.join(d, name + ".shd"), "w", encoding="latin1") as f:
+            f.write(text)
+    return d
+
+
 # #352: the ENGINE's own includes a content file reaches (inc_random, inc_framebuffer, inc_postpr_debug),
-# which the runtime resolves off the resource chain and a content checkout never carries. An extracted
-# ovr.bif tree; missing means those includes drop, as an absent chain file would.
-STOCK_SHD = os.environ.get("CX_STOCK_SHD", os.path.expanduser("~/nwnexplorer/shaders"))
-VANILLA = re.compile(r"^([ \t]*)// \$VANILLA(-HOST)? (\w+)\n(.*?)^[ \t]*// \$VANILLA-END[ \t]*$",
+# which the runtime resolves off the resource chain and a content checkout never carries. Set CX_STOCK_SHD to
+# resolve them from another tree; missing files drop those includes, as an absent chain file would.
+STOCK_SHD = os.environ.get("CX_STOCK_SHD") or stock_tree()
+# group 2 is the WHOLE-STAGE marker (VanillaShader.Main); a resref spelled as a token ($SKYFS$) is not matched
+VANILLA = re.compile(r"^([ \t]*)// \$VANILLA(-MAIN)? (\w+)\n(.*?)^[ \t]*// \$VANILLA-END[ \t]*$",
                      re.S | re.M)
 # Mirrors VanillaShader.Skip: includes the stage's own environment stands in for, never followed.
 SKIP = re.compile(r"^[ \t]*// \$VANILLA-SKIP (.*)$", re.M)
@@ -123,9 +142,9 @@ SKIP = re.compile(r"^[ \t]*// \$VANILLA-SKIP (.*)$", re.M)
 # Mirrors VanillaShader.Supplied: the engine's uniform/varying interface, which the renderer's own
 # environment block stands in for and which must never be pulled into an Alloy stage.
 SUPPLIED = {"inc_common", "inc_uniforms"}
-# ...and VanillaShader.Substituted: the one include a HOSTED stage gets a stand-in for (#350). The text is
-# the embedded stand-in itself, so the two cannot drift.
-SUBSTITUTED = {"inc_standard": "cx_vanstd_f"}
+# ...and VanillaShader.Substituted: the one include a spliced file gets a stand-in for (#350) -- the lit stand-in, or a
+# whole stage's. The text is the embedded stand-in itself, so the two cannot drift.
+SUBSTITUTED, STANDARD, WHOLE_STANDARD = "inc_standard", "cx_vanstd_f", "cx_vanwhole_f"
 
 
 def find_shd(name):
@@ -138,7 +157,12 @@ def find_shd(name):
     return None
 
 
-def expand(text, done, g, depth=0):
+def read_shd(name):
+    hit = find_shd(name)
+    return open(hit).read() if hit else None
+
+
+def expand(text, done, g, depth=0, read=read_shd, standard=STANDARD):
     """A content file's own #includes, resolved out of the checkout -- the C# side resolves them through
     the resource chain, and a cx_* hook file is composed OF them. One visit each PER STAGE (`done` is
     shared across a stage's regions, as VanillaShader.Splice shares its list): the files carry #ifndef
@@ -154,13 +178,28 @@ def expand(text, done, g, depth=0):
         if not m or m.group(1) in done or m.group(1) in SUPPLIED or depth >= 4:
             continue
         done.add(m.group(1))
-        if m.group(1) in SUBSTITUTED:
-            out += expand(g[SUBSTITUTED[m.group(1)]], done, g, depth + 1)
+        if m.group(1) == SUBSTITUTED:
+            out += expand(g[standard], done, g, depth + 1, read, standard)
             continue
-        hit = find_shd(m.group(1))
-        if hit:
-            out += expand(open(hit).read(), done, g, depth + 1)
+        hit = read(m.group(1))
+        if hit is not None:
+            out += expand(hit, done, g, depth + 1, read, standard)
     return out
+
+
+def main_text(stock, done, g, env, read):
+    """Mirrors VanillaShader.MainText: a stage run WHOLE -- includes resolved against the whole-stage stand-in, main()
+    renamed CxVanMain, gl_FragColor redirected, every uniform the environment ahead supplies as a macro dropped, and the
+    stage's own top-level defines undefined around it. None when it has no main()."""
+    text = "\n".join(expand(stock, done, g, read=read, standard=WHOLE_STANDARD))
+    if not MAIN_FN.search(text):
+        return None
+    text = re.sub(r"\bgl_FragColor\b", "FragmentColor", MAIN_FN.sub("void CxVanMain()", text, 1))
+    names = sorted(set(OWN_DEFINE.findall(env)))
+    if names:
+        text = re.sub(r"(?m)^[ \t]*uniform\b[^;=\n]*\b(?:" + "|".join(names) + r")[ \t]*(?:=[^;\n]*)?;[^\n]*\n?", "", text)
+    undef = "".join(f"#undef {n}\n" for n in dict.fromkeys(OWN_DEFINE.findall(stock)))
+    return undef + text + "\n" + undef
 
 
 MAIN_FN = re.compile(r"\bvoid\s+main\s*\(\s*(?:void)?\s*\)")
@@ -169,35 +208,16 @@ STUB_FN = re.compile(r"^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{", re.M)
 OWN_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)", re.M)
 
 
-def host(stock, resref, done, g):
-    """Mirrors VanillaShader.HostText (#350): a content FRAGMENT STAGE rewritten to run as a function of the
-    lit program. main() renamed, gl_FragColor redirected into FragmentColor, the stage's OWN #defines scoped
-    to it (undefined before and after, then the environment's macros re-issued), and its declaration of a
-    name the environment supplies dropped. The wrapper reads the MATERIAL_*_VALUE terms back."""
-    text = "\n".join(expand(stock, done, g))
-    if not MAIN_FN.search(text):
-        return None
-    text = MAIN_FN.sub(f"void CxHostMain_{resref}()", text, count=1)
-    text = re.sub(r"\bgl_FragColor\b", "FragmentColor", text)
-    env = OWN_DEFINE.findall(g["cx_vanenv_defs"])
-    text = re.sub(r"^[ \t]*uniform\b[^;\n]*\b(?:" + "|".join(env) + r")[ \t]*;[^\n]*\n?", "", text, flags=re.M)
-    own = list(dict.fromkeys(OWN_DEFINE.findall(stock)))
-    undef = "".join(f"#undef {n}\n" for n in own)
-    return (undef + text + "\n"
-            + f"void CxHost_{resref}()\n{{\n    CxHostMain_{resref}();\n"
-            + "    fSpecularity = MATERIAL_SPECULARITY_VALUE;\n    fRoughness = MATERIAL_ROUGHNESS_VALUE;\n"
-            + "    fMetallicness = MATERIAL_METALLICNESS_VALUE;\n    SpecularColor = MATERIAL_SPECULAR_COLOR_VALUE;\n}\n"
-            + undef + g["cx_vanenv_defs"])
-
-
-def splice(src, seen, g):
-    """Replace each marked region with the content repo's copy of that .shd, where one exists."""
-    done = set()
+def splice(src, seen, g, done=None, read=None):
+    """Replace each marked region with the content repo's copy of that .shd, where one exists -- or, given `read`, with
+    that resource chain's. `done` collects the files spliced, which a later content region of the same program treats
+    as already included."""
+    done = set() if done is None else done
     for m in SKIP.finditer(src):
         done.update(m.group(1).split())
     def one(m):
         indent, hosted, resref, stub = m.group(1), m.group(2), m.group(3), m.group(4)
-        hit = find_shd(resref)
+        hit = find_shd(resref) if read is None else ("the chain" if read(resref) is not None else None)
         if hit is None:
             seen.setdefault(resref, None)
             return m.group(0)
@@ -205,8 +225,14 @@ def splice(src, seen, g):
         if resref in done:      # an earlier region already included it: its functions exist
             return indent + f"// $VANILLA{hosted or ''} {resref}"
         done.add(resref)
-        stock = open(hit).read()
-        body = host(stock, resref, done, g) if hosted else "\n".join(expand(stock, done, g))
+        stock = open(hit).read() if read is None else read(resref)
+        if hosted:
+            body = main_text(stock, done, g, src[:m.start()], read or read_shd)
+            if body is None:
+                print(f"vanilla bridge: {resref}.shd has no main() to run -- the stub stands")
+                return m.group(0)
+            return indent + f"// $VANILLA{hosted} {resref}\n" + body
+        body = "\n".join(expand(stock, done, g, read=read or read_shd))
         # Mirrors VanillaShader.Validate: every function the stub defines must appear in the spliced text,
         # or the runtime compiles the stub for this region -- so the check does the same rather than
         # accepting text the runtime would reject.
@@ -217,7 +243,7 @@ def splice(src, seen, g):
             return m.group(0)
         return (indent + f"// $VANILLA{hosted or ''} {resref}\n"
                 + "\n".join(indent + l if l.strip() else "" for l in body.split("\n")))
-    return VANILLA.sub(one, src) if os.path.isdir(CONTENT_SHD) else src
+    return VANILLA.sub(one, src) if read is not None or os.path.isdir(CONTENT_SHD) else src
 
 
 def spliced(g):
@@ -232,12 +258,12 @@ def spliced(g):
 
 
 # --- #122 material synthesis -------------------------------------------------
-# The stock generators, transcribed from inc_material.shd's SetupSpecularity in the OLD generation
-# (data/base_shaders.bif) -- the one the installed client loads. This is the REFERENCE side of the
+# The stock generators, transcribed from the current inc_material.shd's SetupSpecularity (ovr.bif, the set the
+# client runs over base_shaders.bif -- content_stage.KEYS), at SHADER_QUALITY_MODE 2. This is the REFERENCE side of the
 # comparison: it is written from the engine's shader, not from ours, so a case where the two agree
 # says the owned synthesis matches stock, and a case where they deliberately differ says so in place.
-SPEC_MIN, ROUGH_MAX, ROUGH_MIN = 0.04, 0.6, 0.125          # fSpecularityMin, fGeneratedRoughness{Max,Min}
-ENV_SPEC_MOD, ENV_SPEC_MAX, ENV_ROUGH_MOD = 8.0, 0.98, 3.0  # fLegacyEnvMap{Specularity,Roughness}*
+SPEC_MIN, ROUGH_MAX, ROUGH_MIN = 0.04, 0.55, 0.125         # fGeneratedSpecularityMin, fGeneratedRoughness{Max,Min}
+ENV_SPEC_MOD, ENV_SPEC_MAX, ENV_ROUGH_MOD = 8.0, 0.98, 2.5  # fLegacyEnvMap{Specularity,Roughness}*
 SLOT_SPEC, SLOT_ROUGH, SLOT_HEIGHT, SLOT_ENV = 2, 4, 8, 64   # env moved up past #123's flow-map bit
 
 
@@ -268,8 +294,10 @@ def stock_pbr(declared, slots, env_level, spec_texel, rough_texel):
                 rough = ROUGH_MAX
     metal = declared[2]
     if metal <= 0.0:
-        # fMetallicnessModifier * fSpecularity - fMetallicnessModifier * fGeneratedMetallicnessOffset
-        metal = min(max((3.0 * spec - 0.6) if sm else (10.0 * spec - 0.4), 0.0), 1.0)
+        # with a specular map: m = fSpecularity^2, then 25m / (1 + 24m); without one, fMetallicnessModifier 10 *
+        # fSpecularity - 10 * fGeneratedSpecularityMin
+        m = spec * spec
+        metal = min(max((25.0 * m / (1.0 + 24.0 * m)) if sm else (10.0 * spec - 0.4), 0.0), 1.0)
     return spec, rough, metal
 
 
@@ -292,6 +320,7 @@ def material_cases():
         ("bare material (no maps, no env)", (0.0, 0.0, 0.0), 0, 0.0, 0.0, 0.0),
         ("declared beats the floor", (0.7, 0.3, 0.5), 0, 0.0, 0.0, 0.0),
         ("specular map, nothing declared", (0.0, 0.0, 0.0), SLOT_SPEC, 0.0, 0.25, 0.0),
+        ("faint specular map: metal below the old curve's offset", (0.0, 0.0, 0.0), SLOT_SPEC, 0.0, 0.1, 0.0),
         ("declared beats a specular map", (0.7, 0.0, 0.0), SLOT_SPEC, 0.0, 0.25, 0.0),
         ("roughness map beats the env curve", (0.0, 0.0, 0.0), SLOT_ROUGH | SLOT_ENV, 0.5, 0.0, 0.9),
         ("declared beats a roughness map", (0.0, 0.42, 0.0), SLOT_ROUGH, 0.0, 0.0, 0.9),
@@ -885,12 +914,193 @@ def check_ssbo(progs):
     return bad
 
 
+# --- CX-303: content pairs -----------------------------------------------------------------------------------
+
+# Extra trees of content .shd (a hak or NWSync extraction, a test override folder), colon-separated.
+CONTENT_STAGES = [d for d in os.environ.get("CX_CONTENT_STAGES", "").split(":") if d]
+CONTENT_MARK, CONTENT_VS_MARK = "// $VANILLA-CONTENT ", "// $VANILLA-CONTENT-VS "
+FS_STUB = "bool CxHostSurface(int feat) { return false; }\n"
+VS_STUB = "bool CxHostVertex(CxDraw d, int id, int bb) { return false; }\n"
+COMMENTS_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def with_define(src, define):
+    """Mirrors ShaderStages.WithDefine: one #define after the #version line."""
+    return src.replace("#version 460 core\n", f"#version 460 core\n#define {define}\n", 1)
+
+
+def bindless(fs):
+    names = (("uTex", 0), ("uFlowTex", 6), ("uNrmTex", 1), ("uSpecTex", 2), ("uRoughTex", 3),
+             ("uHeightTex", 4), ("uIllumTex", 5), ("uAoTex", 7))
+    for n, _ in names:
+        fs = re.sub(rf"uniform sampler2D {n};[^\n]*\n", "", fs)
+    head = ("#version 460 core\n#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n"
+            "layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };\n"
+            + "".join(f"#define {n} sampler2D(uTexH[(vDraw << 3) + {k}])\n" for n, k in names))
+    return fs.replace("#version 460 core\n", head, 1)
+
+
+def vs_bindless(vs):
+    """Mirrors ContentPrograms.VsBindless: a content vertex half samples by the record's handles."""
+    return vs.replace("#version 460 core\n", "#version 460 core\n#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n", 1)
+
+
+def content_pair(g, vs, fs, chain):
+    """Mirrors ContentPrograms.Start: the lit stages with each non-stock half's host library replaced by a content
+    region naming both halves, the hook region spliced first, then the halves translated -- the vertex half
+    against the lit vertex stage's own text, the fragment half on top of the vertex half's lanes and varyings.
+    A None half is stock: Alloy's own stage. Returns (vertex text, fragment text, vertex result, fragment result)."""
+    vres = fres = None
+    vtext = expand_includes("cx_ownlit_vs.glsl")
+    if vs is not None:
+        raw = expand_includes("cx_ownlit_vs.glsl", swap={"cx_host_v.glsl": f"{CONTENT_VS_MARK}{vs} {fs or ''}\n{VS_STUB}// $VANILLA-END\n"})
+        at = raw.index(CONTENT_VS_MARK)
+        end = raw.index("// $VANILLA-END", at)
+        vres = content_stage.translate(vs, False, chain, g["cx_content_v"], "", "", g["cx_constd_v"], raw[:at])
+        vtext = raw[:at] + (vres.host if vres.host else VS_STUB) + raw[end:]
+    ftext = g["cx_ownlit_fs"]
+    if fs is not None:
+        raw = expand_includes("cx_ownlit_fs.glsl", swap={"cx_host_f.glsl": f"{CONTENT_MARK}{fs} {vs or ''}\n{FS_STUB}// $VANILLA-END\n"})
+        done = set()
+        src = splice(raw, {}, g, done)
+        at = src.index(CONTENT_MARK)
+        end = src.index("// $VANILLA-END", at)
+        seen = {d.lower() for d in done}
+        fres = content_stage.translate(fs, True, lambda n: "" if n.lower() in seen else chain(n), g["cx_content_f"],
+                                       g["cx_vanenv_defs"], g["cx_vanenv_f"], g["cx_constd_f"], src[:at],
+                                       vertex=vres if vres is not None and not vres.refused else None)
+        ftext = src[:at] + (fres.host if fres.host else FS_STUB) + src[end:]
+    return vtext, ftext, vres, fres
+
+
+def pair_programs(name, vtext, ftext, fres, vres):
+    """The programs ContentPrograms.Twins builds for a pair, by the same facts."""
+    vb = vs_bindless(vtext) if vres is not None else vtext
+    out = {f"{name}": (vtext, ftext), f"{name} (bindless)": (vb, bindless(ftext))}
+    post = fres is not None and fres.post
+    lights = fres is not None and fres.reads_lights
+    if not post and not lights:
+        out[f"{name} (deferred twin)"] = (vtext, with_define(with_define(ftext, "CX_GBUF_OUT 1"), "CX_DEFERRED 1"))
+    if (fres is not None and fres.cuts) or vres is not None:
+        depth = with_define(bindless(ftext), "CX_DEPTH_ONLY 1")
+        cast = with_define(depth, "CX_CAST 1")
+        out[f"{name} (depth twin)"] = (vb, depth)
+        out[f"{name} (caster twin)"] = (with_define(vb, "CX_CAST 1"), cast)
+        out[f"{name} (layered caster twin)"] = (with_define(vb, "CX_CAST_LAYER 1"), cast)
+    return out
+
+
+def is_vertex(text):
+    code = COMMENTS_RE.sub(" ", text)
+    return bool(re.search(r"^[ \t]*#[ \t]*define[ \t]+SHADER_TYPE[ \t]+1\b", code, re.M) or re.search(r"\bgl_Position\b", code))
+
+
+def partner(resref, files, vertex):
+    """The other half a content tree's naming pairs a stage with: x_vs/x_fs, vs_x/fs_x, a_vs_b/a_fs_b."""
+    a, b = ("vs", "fs") if vertex else ("fs", "vs")
+    for cand in (re.sub(rf"_{a}$", f"_{b}", resref), re.sub(rf"^{a}_", f"{b}_", resref), resref.replace(f"_{a}_", f"_{b}_")):
+        if cand != resref and cand in files:
+            return cand
+    return None
+
+
+def engine_builds(text, fragment):
+    with tempfile.TemporaryDirectory() as tmp:
+        p = os.path.join(tmp, "engine." + ("frag" if fragment else "vert"))
+        open(p, "w").write(content_stage.engine_prologue(fragment, fragment) + text)
+        return subprocess.run(["glslangValidator", p], capture_output=True).returncode == 0
+
+
+def content_programs(g):
+    """Every content stage found, built the engine's way (the oracle) and translated into its pair (the subject).
+    Returns the programs to compile and whether the shared fixture held."""
+    bad = 0
+    for why in content_stage.selfcheck(g["cx_content_f"], g["cx_content_v"], g["cx_vanenv_defs"], g["cx_vanenv_f"],
+                                       g["cx_constd_f"], g["cx_constd_v"], g["cx_ownlit_v"]):
+        print(f"content pair: fixture FAILED: {why}")
+        bad = 1
+    progs = {}
+    fix = content_stage.FIXTURE.get
+    vt, ft, vr, fr = content_pair(g, "cx_fixvs", "cx_fixture", fix)
+    progs.update(pair_programs("content pair cx_fixvs/cx_fixture", vt, ft, fr, vr))
+    for f in ("cx_fixpost", "cx_fixwhole"):
+        vt, ft, vr, fr = content_pair(g, None, f, fix)
+        progs.update(pair_programs(f"content pair stock/{f}", vt, ft, fr, vr))
+    stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
+    if not stock:
+        print("content pair: no game keys under NWN_DIR -- the engine-side oracle is off, fixtures only")
+        return progs, bad
+    checked = vanilla_only = 0
+    for d in [CONTENT_SHD] + CONTENT_STAGES:
+        chain = content_stage.Chain([d], stock)
+        files = set(chain.files)
+        for resref in sorted(files):
+            if resref.startswith("inc_") or resref.startswith("cx_"):
+                continue
+            own = chain(resref) or ""
+            whole = content_stage.engine_text(resref, chain)
+            if whole is None or not content_stage.MAIN_FN.search(whole):
+                continue
+            vertex = is_vertex(own)
+            if not vertex and "gl_FragColor" not in whole:
+                continue
+            # a MATERIAL stage: one that runs the stock material skeleton -- its entry points, or (a monolithic fork)
+            # its own copy of them. The engine's own pipeline stages (particles, shadow volumes, the framebuffer
+            # chain) are drawn by the engine's passes, and no .mtr in any corpus names one.
+            body = COMMENTS_RE.sub(" ", whole.split("void main", 1)[-1] if not vertex else whole)
+            if not re.search(r"\b(?:ApplyStandardShader|SetupStandardShaderInputs" + (r"|TransformMainCoordinates" if vertex else "")
+                             + r")\s*\(", body):
+                continue
+            if content_stage.stock_shaped(own, not vertex):
+                continue
+            if not engine_builds(whole, not vertex):
+                vanilla_only += 1
+                print(f"content pair: {resref}: the engine's own build fails too -- not expected to run")
+                continue
+            other = partner(resref, files, vertex)
+            if other is not None and content_stage.stock_shaped(chain(other) or "", vertex):
+                other = None
+            vs, fs = (resref, other) if vertex else (other, resref)
+            if not vertex and other is not None:
+                continue        # the vertex half's turn builds the pair
+            vt, ft, vr, fr = content_pair(g, vs, fs, chain)
+            refused = (vr.refused if vr is not None else None) or (fr.refused if fr is not None else None)
+            if refused:
+                print(f"content pair: {vs or 'stock'}/{fs or 'stock'}: REFUSED though the engine builds it -- {refused}")
+                bad = 1
+                continue
+            checked += 1
+            progs.update(pair_programs(f"content pair {vs or 'stock'}/{fs or 'stock'}", vt, ft, fr, vr))
+            for n in (vr.notes if vr is not None else []) + (fr.notes if fr is not None else []):
+                print(f"content pair: {vs or 'stock'}/{fs or 'stock'}: {n}")
+    print(f"content pair: {checked} pair(s) the engine builds, translated; {vanilla_only} stage(s) the engine cannot build")
+    return progs, bad
+
+
+def post_programs(raw, g):
+    """The hosted post stage once per corpus of CX_CONTENT_STAGES, over the game's own set: the fsfbpostpr that chain
+    resolves -- a corpus's own, telegraphs and all, or stock's over the corpus's inc_postpr -- run whole."""
+    stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
+    out, texts = {}, {g["cx_fbpost_fs"]}
+    for d in CONTENT_STAGES if stock else []:
+        fs = splice(raw["cx_fbpost_fs"], {}, raw, read=content_stage.Chain([d], stock))
+        if fs not in texts:
+            texts.add(fs)
+            where = os.path.join(*os.path.normpath(d).split(os.sep)[-2:])
+            out[f"post stack fbpost ({where}'s chain, fsfbpostpr whole)"] = (g["cx_post_vs"], fs)
+    return out
+
+
 def main():
-    g = spliced(shaders())
+    raw = shaders()
+    g = spliced(raw)
     try:
         progs = programs(g)
     except KeyError as e:
         sys.exit(f"could not find shader file {e} -- did a stage get renamed?")
+    content, bad_content = content_programs(g)
+    progs.update(content)
+    progs.update(post_programs(raw, g))
 
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -899,7 +1109,7 @@ def main():
             for src, ext in zip(stages, EXTS[len(stages)]):
                 for tok, val in TOKENS.items():
                     src = src.replace(tok, val)
-                p = os.path.join(tmp, f"{name.replace(' ', '_')}.{ext}")
+                p = os.path.join(tmp, f"{re.sub(r'[^A-Za-z0-9_.()-]', '_', name)}.{ext}")
                 open(p, "w").write(src)
                 paths.append(p)
             r = subprocess.run(["glslangValidator"] + paths, capture_output=True, text=True)
@@ -908,6 +1118,7 @@ def main():
                 bad = 1
                 print(r.stdout, r.stderr)
     print(f"{len(progs)} programs from {len(g)} embedded .glsl")
+    bad |= bad_content
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)

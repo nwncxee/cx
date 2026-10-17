@@ -7,9 +7,9 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The content's own full-screen post chain -- the engine's <c>fsfbpostpr</c> program, framebuffer effect 2 of
-/// <c>Camera::DoFrameBufferEffects</c> @0x4a8eb0 -- hosted as one stage of the display-space stack, which is
-/// what puts a content repo's grade, noir, sky rays and status overlay back. A <c>// $VANILLA inc_postpr</c>
-/// region takes the resource chain's copy at build; the stub between the markers is a pass-through.
+/// <c>Camera::DoFrameBufferEffects</c> @0x4a8eb0 -- hosted as one stage of the display-space stack: a content repo's
+/// grade, noir, sky rays, status overlay and its own <c>main</c>'s telegraphs. A <c>// $VANILLA-MAIN fsfbpostpr</c>
+/// region runs the resource chain's copy whole; the stub between the markers is a pass-through.
 /// </summary>
 internal static unsafe class FbPostStage
 {
@@ -22,8 +22,8 @@ internal static unsafe class FbPostStage
     internal const uint EffectPost = 1u << 2;
     /// <summary>The option bits stripped from the hosted text -- ALL of them. DOF 0x02 and dynamic contrast
     /// 0x04 have vertex halves this fullscreen triangle does not run; gamma 0x10, toon 0x20, sharpen 0x01 and
-    /// vibrance 0x08 are stages of Alloy's own. With the mask at 0 not one stock <c>inc_postpr_*</c> include
-    /// compiles inside an Alloy program: what is left is whatever the CONTENT put in its <c>inc_postpr</c>.</summary>
+    /// vibrance 0x08 are stages of Alloy's own. With the mask at 0 no option-gated stock pass compiles inside an Alloy
+    /// program; the current <c>inc_postpr</c>'s tonemap and debug pass are unconditional, and both leave display-space input as it is.</summary>
     internal const int MaskStripped = 0x3f;   // not-an-offset: every inc_postpr.shd option bit
     /// <summary><c>GetGlobalShaderParami(7)</c>: the client's shader quality option, the preamble's
     /// <c>SHADER_QUALITY_MODE</c> (the same read <see cref="AlloyLights"/> makes for the subsurface term);
@@ -40,8 +40,7 @@ internal static unsafe class FbPostStage
     {
         public uint Prog, Sampler;
         public AlloyRenderer.FeatLoc Feat;
-        public int LocView, LocPixel, LocClip, LocFrame, LocHour, LocMonth, LocDay, LocTransition, LocPlayer,
-                   LocFbColor, LocFbDepth;
+        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth;
         public int BuildMask = -1, BuildQuality = -1;
     }
 
@@ -66,7 +65,8 @@ internal static unsafe class FbPostStage
     internal static void Arm(int mask, int quality) { BuildMask = HostedMask(mask); BuildQuality = quality; }
 
     /// <summary>From the pass, beside the toon stage's projection: the camera the content's sun and lens
-    /// maths project through (<c>m_view</c>, and the near/far the depth decode needs).</summary>
+    /// maths project through (<c>m_view</c>, its inverse for a world position off the depth, and the near/far the
+    /// depth decode needs).</summary>
     internal static void SetCamera(Matrix4x4* view, Matrix4x4* proj)
     {
         _view = *view;
@@ -74,9 +74,9 @@ internal static unsafe class FbPostStage
     }
 
     /// <summary>From <see cref="PostStack.Run"/>, ahead of the stage draw: every engine name the chain reads,
-    /// from Alloy's values, onto this program. <c>sceneCurrentFrame</c> is Alloy's presented-frame counter, not
-    /// the engine's scene counter -- the chain only ever animates on it. Hot. Also binds a LINEAR sampler on
-    /// the source unit (the stack's textures are NEAREST), which Run unbinds after the draw.</summary>
+    /// from Alloy's values, onto this program -- the feature terms and the engine-named ones every Alloy program
+    /// takes, then the post stage's own. Hot. Also binds a LINEAR sampler on the source unit (the stack's
+    /// textures are NEAREST), which Run unbinds after the draw.</summary>
     internal static void Prepare(uint src, uint prog, int* viewport)
     {
         var g = _gl;
@@ -84,29 +84,22 @@ internal static unsafe class FbPostStage
         {
             g.Prog = prog;
             g.Feat = Programs.FeatLocs(prog);
-            g.LocView = GlProgram.Loc(prog, "m_view"); g.LocPixel = GlProgram.Loc(prog, "pixelParams");
-            g.LocClip = GlProgram.Loc(prog, "clipParams"); g.LocFrame = GlProgram.Loc(prog, "sceneCurrentFrame");
-            g.LocHour = GlProgram.Loc(prog, "moduleHour"); g.LocMonth = GlProgram.Loc(prog, "moduleMonth");
-            g.LocDay = GlProgram.Loc(prog, "moduleDay"); g.LocTransition = GlProgram.Loc(prog, "moduleTimeIntoTransition");
-            g.LocPlayer = GlProgram.Loc(prog, "uPlayerPos");
+            g.LocView = GlProgram.Loc(prog, "m_view"); g.LocViewInv = GlProgram.Loc(prog, "m_view_inv");
+            g.LocPixel = GlProgram.Loc(prog, "pixelParams");
+            g.LocClip = GlProgram.Loc(prog, "clipParams");
             g.LocFbColor = GlProgram.Loc(prog, "texFBColor"); g.LocFbDepth = GlProgram.Loc(prog, "texFBDepth");
         }
         Gl.UseProgram(prog);
         Gl.Uniform1i(g.LocFbColor, (int)TextureSlots.PostHdr);
         Gl.Uniform1i(g.LocFbDepth, (int)TextureSlots.PostBloom);
-        AlloyRenderer.UploadVanillaEnv(in g.Feat);
+        AlloyRenderer.UploadFeatureTerms(in g.Feat, viewport);
         fixed (Matrix4x4* v = &_view) Gl.UniformMatrix4fv(g.LocView, 1, 0, (float*)v);
+        if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
+        Gl.UniformMatrix4fv(g.LocViewInv, 1, 0, (float*)&inv);
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
         Gl.Uniform3f(g.LocPixel, 1f / w, 1f / h, w / h);
         // clipParams = (near, far, 1 - near/far): inc_common.shd's own triple
         Gl.Uniform3f(g.LocClip, _near, _far, 1f - _near / MathF.Max(_far, 1e-6f));
-        Gl.Uniform1i(g.LocFrame, AlloyRenderer.FrameSeq);
-        Vector3 p = AlloyRenderer.PlayerPos;
-        Gl.Uniform3f(g.LocPlayer, p.X, p.Y, p.Z);
-        Gl.Uniform1i(g.LocHour, AlloyRenderer.ModuleHour);
-        Gl.Uniform1i(g.LocMonth, AlloyRenderer.ModuleMonth);
-        Gl.Uniform1i(g.LocDay, AlloyRenderer.ModuleDay);
-        Gl.Uniform1f(g.LocTransition, AlloyRenderer.ModuleTimeIntoTransition);
         if (g.Sampler == 0) g.Sampler = Gl.LinearClampSampler();
         if (g.Sampler != 0) Gl.BindSampler(TextureSlots.PostHdr, g.Sampler);
     }
@@ -125,11 +118,13 @@ internal static unsafe class FbPostStage
         // CX-93: the point of the whole half. Whatever the chain answers with, no option bit reaches it, so
         // every stock inc_postpr_* include preprocesses away and only the content's own passes are compiled.
         check.Expect(HostedMask(0x3f) == 0,
-          "every one of inc_postpr.shd's six option bits is stripped before the hosted text: not one stock post "
-          + "include compiles here");
+          "every one of inc_postpr.shd's six option bits is stripped before the hosted text: no option-gated stock post "
+          + "pass compiles here");
         check.Expect(!FbPostFs.Contains("#define LIGHTING") && !FbPostFs.Contains("#define FOG") && !FbPostFs.Contains("#define POSTPROCESSING 1"),
           "inc_postpr's own defines are left to it");
-        check.Expect(FbPostFs.Contains("// $VANILLA inc_postpr\n") && FbPostFs.Contains("vec4 FS_PostProcess() {"), "the region and its stub");
+        check.Expect(FbPostFs.Contains("// $VANILLA-MAIN fsfbpostpr\n") && FbPostFs.Contains("void " + VanillaShader.MainEntry + "() {"),
+          "the whole-stage region and its stub, under the name the bridge renames main() to");
+        check.Expect(FbPostFs.Contains("uniform highp mat4 m_view_inv;"), "the inverse view a content main() takes world positions through");
         check.Expect(FbPostFs.Contains("$POSTMASK$") && FbPostFs.Contains("$SQM$"), "the option tokens are in the text");
         check.Expect(!ShaderResource.Tokens("$POSTMASK$ $SQM$").Contains('$'), "the tokens expand");
         check.Expect(!Stale(0, 0), "an unbuilt stage is never stale");

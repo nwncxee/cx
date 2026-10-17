@@ -59,6 +59,8 @@ public static unsafe class Gl
     public const uint TESS_CONTROL_SHADER = 0x8E88, TESS_EVALUATION_SHADER = 0x8E87;
     public const uint PATCHES = 0x000E, PATCH_VERTICES = 0x8E72, MAX_TESS_GEN_LEVEL = 0x8E7E;
     public const uint COMPILE_STATUS = 0x8B81, LINK_STATUS = 0x8B82;
+    /// <summary>KHR/ARB_parallel_shader_compile: has the driver finished the object's compile or link?</summary>
+    public const uint COMPLETION_STATUS = 0x91B1;
     /// <summary>GL 4.6 SPIR-V: the one binary format a shader blob may be in, and the enumeration that says
     /// whether this driver accepts it at all.</summary>
     public const uint SHADER_BINARY_FORMAT_SPIR_V = 0x9551, NUM_SHADER_BINARY_FORMATS = 0x8DF9,
@@ -352,6 +354,7 @@ public static unsafe class Gl
     public static delegate* unmanaged<int, float, void> Uniform1f;
     public static delegate* unmanaged<int, float, float, void> Uniform2f;
     public static delegate* unmanaged<int, int, int, void> Uniform2i;
+    public static delegate* unmanaged<int, uint, uint, void> Uniform2ui;
     /// <summary>glBlendColor: the constant the CONSTANT_ALPHA blend factors read (constant-alpha blends).</summary>
     public static delegate* unmanaged<float, float, float, float, void> BlendColor;
     public static delegate* unmanaged<int, float, float, float, void> Uniform3f;
@@ -690,6 +693,7 @@ public static unsafe class Gl
         Uniform1f = (delegate* unmanaged<int, float, void>)P("glUniform1f");
         Uniform2f = (delegate* unmanaged<int, float, float, void>)P("glUniform2f");
         Uniform2i = (delegate* unmanaged<int, int, int, void>)P("glUniform2i");
+        Uniform2ui = (delegate* unmanaged<int, uint, uint, void>)P("glUniform2ui");
         BlendColor = (delegate* unmanaged<float, float, float, float, void>)P("glBlendColor");
         Uniform3f = (delegate* unmanaged<int, float, float, float, void>)P("glUniform3f");
         Uniform4f = (delegate* unmanaged<int, float, float, float, float, void>)P("glUniform4f");

@@ -2,6 +2,10 @@
 // the decal layer's writer: location 1 is its surface pair (prepass depth, decal view depth), never revealage
 layout(location = 1) out vec2 oDecalSurf;
 float oReveal;
+#elif defined(CX_DEPTH_ONLY)
+// CX-303: a content pair's depth twin writes the prepass's vis-ID on location 1, as the plain depth stages do
+#include "cx_idout.glsl"
+float oReveal;
 #else
 layout(location = 1) out float oReveal;
 #endif

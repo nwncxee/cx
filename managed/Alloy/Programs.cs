@@ -31,7 +31,7 @@ internal static unsafe class Programs
     /// A2C mask, and whatever a diagnostic builds).</summary>
     internal static string? _litFsSrc;
     /// <summary>The spliced programs were built against a resource chain that is gone. Every program carrying
-    /// a <c>// $VANILLA</c> region (lit, hosted lit, water, grass) compiles ONCE from whatever the chain held
+    /// a <c>// $VANILLA</c> region (lit, content pairs, water, grass) compiles ONCE from whatever the chain held
     /// then, so without this a session keeps the first server's display hooks running on the next one. Set on
     /// the module-unload edge (outside the bracket), acted on by <see cref="DropSpliced"/> inside it.</summary>
     internal static bool _spliceStale;
@@ -54,7 +54,7 @@ internal static unsafe class Programs
     /// <summary><c>uAlphaMip</c> on the fullbright and feature-depth programs (the lit ones carry it in <see cref="LitLoc"/>).</summary>
     internal static int _locAlphaMip = -1, _depthFeatMip = -1;
 
-    internal static LitLoc _lit, _litH, _litL, _litD;
+    internal static LitLoc _lit, _litL, _litD;
     /// <summary>The lit program WITH the OIT append block (OitPass.WithLists), or 0. Bound only for lit batches inside a
     /// linked-list bracket; every other lit draw keeps early-Z through <see cref="_progLit46"/>.</summary>
     internal static uint _progLitList;
@@ -89,29 +89,6 @@ internal static unsafe class Programs
     internal static int _litMaskSamples = -1;
     private static bool _maskFailed;
 
-    /// <summary>The HOSTED lit program's own A2C mask variant, in one owner: its program, its locations, its
-    /// sample-count uniform, the text it is spliced from and the latched refusal. A hosted body whose coverage
-    /// comes off its own map still gets the layer's per-primitive sample pattern through it.</summary>
-    private sealed class HostMaskState
-    {
-        public uint Prog;
-        public LitLoc Loc;
-        public int Samples = -1;
-        public bool Failed;
-        /// <summary>The hosted program's final fragment text -- what the variant is spliced from.</summary>
-        public string? Fs;
-    }
-    private static HostMaskState _hostMask = new();
-
-    /// <summary>The hosted A2C mask program, or 0.</summary>
-    internal static uint ProgLitHostMask => _hostMask.Prog;
-    /// <summary>Its <c>uA2cSamples</c> location.</summary>
-    internal static int HostMaskSamples => _hostMask.Samples;
-    /// <summary>Its uniform locations, for the issue loop's program table.</summary>
-    internal static ref LitLoc HostMaskLoc => ref _hostMask.Loc;
-    /// <summary>The lit program WITH the hosted content bodies, or 0 (hosting off, no hosted feature, or
-    /// its build failed -- hosted materials then draw the plain lit path through <see cref="_progLit46"/>).</summary>
-    internal static uint _progLitHost;
     internal static int _locViz = -1;
     internal static int _locOit = -1, _locOitDim = -1, _locOitGob = -1;
     /// <summary>The fullbright stage's constant colour. White for every unlit draw but a fog-tinted
@@ -217,22 +194,20 @@ internal static unsafe class Programs
     {
         _spliceStale = false;
         if (_progLit46 != 0) Gl.DeleteProgram(_progLit46);
-        if (_progLitHost != 0) Gl.DeleteProgram(_progLitHost);
         if (_progLitList != 0) Gl.DeleteProgram(_progLitList);
         if (_progLitDef != 0) Gl.DeleteProgram(_progLitDef);
         ForgetDecal(delete: true);
         if (_progLitMask != 0) Gl.DeleteProgram(_progLitMask);
-        if (_hostMask.Prog != 0) Gl.DeleteProgram(_hostMask.Prog);
-        _hostMask = new HostMaskState();
         _progLitMask = 0; _maskFailed = false;
         if (_progWater != 0) Gl.DeleteProgram(_progWater);
-        _progLit46 = 0; _progLitHost = 0; _progLitList = 0; _progLitDef = 0; _progWater = 0; OitPass.ListsArmed = false;
+        _progLit46 = 0; _progLitList = 0; _progLitDef = 0; _progWater = 0; OitPass.ListsArmed = false;
         Ablation.Forget(delete: true);
         _litFailed = false; _waterFailed = false;
         GrassField.DropProgram();
         PostStack.DropSpliced();
         SkyStage.DropPrograms();
-        _log?.Info("AlloyRenderer: module changed -- the spliced programs (lit, hosted lit, water, grass, post, sky) are dropped and rebuild from this module's resource chain");
+        ContentPrograms.DropSpliced();
+        _log?.Info("AlloyRenderer: module changed -- the spliced programs (lit, content pairs, water, grass, post, sky) are dropped and rebuild from this module's resource chain");
     }
 
     internal static bool EnsureProgram()
@@ -269,6 +244,7 @@ internal static unsafe class Programs
         }
         if (_prog46 == 0) return false;
         if (_lighting && _progLit46 == 0 && !_litFailed) EnsureLitProgram();
+        if (_progLit46 != 0) ContentPrograms.EnsureWanted();
         return true;
     }
 
@@ -456,13 +432,12 @@ internal static unsafe class Programs
         // ...and the sky-visibility map is the one unit above those two, by the same rule.
         litFs = WithSkyView(litFs);
         string litVs = ShaderStages.Source(ShdLitVs);
-        bool hosted = VanillaShader.HostArmed && System.Linq.Enumerable.Any(ShaderFeatures.FsNames, n => n.Length > 0);
         GlProgram.Texts(ShdLitVs, litVs, ShdLitFs, litFs, null, "", out string pv, out string pf);
         var guess = Variants(pf);
         using var prefetched = GlProgram.Prefetch([(pv, pf, false), (pv, guess.List, false), (pv, guess.Def, false),
-                                                   (pv, guess.Decal, false), (pv, hosted ? pf : null, true)], _log);
-        // #350: from the hosted regions' STUBS -- the program every lit batch draws with carries no content
-        // body; the second build below carries them for the batches that need them.
+                                                   (pv, guess.Decal, false)], _log);
+        // the content regions' STUBS: the program every lit batch draws with carries no content body; a content
+        // pair's own programs (ContentPrograms) carry them for the batches that need them
         uint prog = GlProgram.Graphics(ShdLitVs, litVs, ShdLitFs, litFs,
                                        _log, "AlloyRenderer lit program",
                                        out string vsSrc, out string fsSrc, host: false);
@@ -527,23 +502,6 @@ internal static unsafe class Programs
         _decal.Prog = GlProgram.Graphics(vsSrc, decalFs, _log, "AlloyRenderer lit program (decal layer)", host: false);
         if (_decal.Prog != 0) _decal.Loc = LitLocs(_decal.Prog);
         else _log?.Info("AlloyRenderer: the decal layer's writer did not build -- ground decals stay in the blended pass");
-        // #350: the SECOND lit program, the one with the content bodies in. Same text, hosted regions spliced
-        // instead of stubbed; same contracts, because it draws the same records. Optional twice over: alloy.hostfs=0,
-        // no hosted feature, or a failed build all leave it 0 and hosted materials on the plain path.
-        _progLitHost = 0;
-        if (hosted)
-        {
-            uint ph = GlProgram.Graphics(ShdLitVs, litVs, ShdLitFs, litFs,
-                                         _log, "AlloyRenderer hosted lit program", out _, out string hfs, host: true);
-            if (ph != 0 && !(ShaderContract.RecordSafe(hfs) && ShaderContract.LinearSafe(hfs)
-                             && (!_bindless || hfs.Contains("CxTexH"))))
-            {
-                Gl.DeleteProgram(ph); ph = 0;
-                _log?.Info("AlloyRenderer: hosted lit program failed its contracts -- hosted materials draw the plain lit path");
-            }
-            if (ph == 0) _log?.Info("AlloyRenderer: hosted lit program unavailable -- hosted materials draw the plain lit path");
-            else { _progLitHost = ph; _litH = LitLocs(ph); _hostMask.Fs = hfs; }
-        }
         _log?.Info("AlloyRenderer: lit program ready (4.6 context) -- forward except the point lights, which the "
                  + "deferred twin and DeferredLights add");
     }
@@ -555,28 +513,6 @@ internal static unsafe class Programs
         string list = OitPass.WithLists(fs), def = WithDeferred(fs);
         return (list.Contains("atomicAdd(uOitCount") ? list : null, def.Contains("CxGbufWrite(g)") ? def : null,
                 ShaderStages.WithDefine(fs, "CX_DECAL_WRITE 1"));
-    }
-
-    /// <summary>Build the hosted A2C mask program from the HOSTED program's own final text. False = no
-    /// hosted program, or the variant refused (latched, logged once): a hosted coverage batch then draws
-    /// through the plain hosted program and takes hardware alpha-to-coverage.</summary>
-    internal static bool EnsureHostMaskProgram()
-    {
-        HostMaskState h = _hostMask;
-        if (h.Prog != 0) return true;
-        if (h.Failed || h.Fs == null || _litVsSrc == null) return false;
-        h.Prog = GlProgram.Graphics(_litVsSrc, ShaderStages.WithDefine(h.Fs, "CX_A2C_MASK 1"),
-                                    _log, "AlloyRenderer hosted lit program (A2C mask)", host: false);
-        if (h.Prog == 0)
-        {
-            h.Failed = true;
-            _log?.Info("AlloyRenderer: the hosted A2C mask variant did not build -- a hosted coverage batch "
-                     + "draws through the plain hosted program and takes hardware coverage");
-            return false;
-        }
-        h.Loc = LitLocs(h.Prog);
-        h.Samples = GlProgram.Loc(h.Prog, "uA2cSamples");
-        return true;
     }
 
     /// <summary>Build <see cref="_progLitMask"/> from the lit program's own final text. False = no lit
@@ -609,7 +545,7 @@ internal static unsafe class Programs
     }
 
     /// <summary>Resolve one lit program's locations and bind its fixed sampler units. Called once per program
-    /// at build, so twice where a hosted twin is built.</summary>
+    /// at build, once per program and twin.</summary>
     internal static LitLoc LitLocs(uint prog)
     {
         var L = new LitLoc();
@@ -709,6 +645,7 @@ internal static unsafe class Programs
             if (loc.SFloat[i] >= 0) loc.SFloatLive |= 1 << i;
             if (loc.SVec[i] >= 0) loc.SVecLive |= 1 << i;
         }
+        loc.Named = EngineNamedLocsOf(prog);
         return loc;
     }
 }

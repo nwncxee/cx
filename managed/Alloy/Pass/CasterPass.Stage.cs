@@ -167,6 +167,9 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>Per batch: the mask is sampled through the record's handle (no texture in the key).</summary>
     private static readonly bool[] _gH = new bool[MaxCasters];
+    /// <summary>Per batch: the content pair whose caster twin draws it, or 0 for the plain stages. In the key's low word,
+    /// which a handle batch leaves free.</summary>
+    private static readonly int[] _gContent = new int[MaxCasters];
     /// <summary>Batches that bind a mask texture (one indirect call per flush each) and batches that sample
     /// it through the handle block (merged per VAO and primitive).</summary>
     private static string MaskedBatches()
@@ -276,7 +279,9 @@ public sealed unsafe partial class CasterPass
             // to vouch for it. Carried on the cut kind, which the collect set from the facts.
             // CX-218: and so is a slot-1 coverage part -- its diffuse measures nothing relevant (a DXT1 skin
             // with no alpha at all, or an env reflectivity mask), so a hole fraction could never vouch for it.
-            bool cover = drawTex != 0 && (_liveCut[i] == CasterCut.Coverage || _liveCut[i] == CasterCut.CoverNrm);
+            // CX-303: ...and so is a content pair's caster, whose twin computes the pair's own coverage.
+            bool content = _liveContent[i] != 0;
+            bool cover = drawTex != 0 && (_liveCut[i] == CasterCut.Coverage || content);
             int masked = drawTex != 0 && _gl.ProgMask != 0 && _maskMode != 0
                          && (cover || glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
             if (masked == 0 && _liveTex[i] != 0 && _gl.ProgMask == 0) _maskNoProg++;
@@ -293,10 +298,9 @@ public sealed unsafe partial class CasterPass
             // leaves the key. Handle 0 is a BLACK texture (every fragment discards), hence the guard: such a
             // record keeps the bound-texture batch.
             bool hmask = masked != 0 && HandleMaskReady && AlloyRenderer.RecordHandle0(_liveSlot[i]) != 0;
-            // CX-218: slot 1 reaches a stage only as a HANDLE, so without the handle stage this caster has no
-            // readable coverage source -- and the bound-texture stage would test its DIFFUSE alpha, which on
-            // these materials is the env level. It casts solid instead of casting a reflectivity mask.
-            if (masked != 0 && !hmask && _liveCut[i] == CasterCut.CoverNrm) { masked = 0; maskedN--; }
+            // CX-303: a content pair's twin reads its maps only as HANDLES, so without the handle stage its caster
+            // falls back to the plain masked one, cutting on the diffuse alpha and unmoved.
+            if (!hmask) content = false;
             _gLive[n] = i;
             // #302: the cutout threshold is a per-BATCH uniform now, exactly as the colour path spells it
             // (uAlphaCut), so it joins the key rather than riding in a per-draw record. The batch takes the
@@ -304,7 +308,7 @@ public sealed unsafe partial class CasterPass
             // the (VAO, prim) pair below, the handle flag at 32 and the texture name in the low 32.
             _gKey[n] = ((masked != 0 ? 1L : 0L) << 62) | ((long)_liveCut[i] << 60)
                        | ((long)_liveVao[i] << 44) | ((long)_livePrim[i] << 36)
-                       | (hmask ? 1L << 32 : 0L) | (hmask ? 0u : (uint)masked);
+                       | (hmask ? 1L << 32 : 0L) | (hmask ? (content ? (uint)_liveContent[i] : 0u) : (uint)masked);
             n++;
             if (i < _liveCreatures) creatures++;
         }
@@ -322,6 +326,7 @@ public sealed unsafe partial class CasterPass
                     _gStart[g] = d; _gVao[g] = _liveVao[i]; _gPrim[g] = _livePrim[i];
                     _gTex[g] = (int)(_gKey[d] & 0xffffffffL);
                     _gH[g] = (_gKey[d] & (1L << 32)) != 0;
+                    _gContent[g] = _gH[g] ? (int)(_gKey[d] & 0xffffffffL) : 0;
                     _gCut[g] = _liveCut[i];
                     _gDynN[g] = 0;
                 }
@@ -365,16 +370,25 @@ public sealed unsafe partial class CasterPass
         for (int g = 0; g < _gGroups; g++)
         {
             if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
-            int cut0 = _gTex[g], mode = _gH[g] ? 2 : cut0 != 0 ? 1 : 0;
+            int cut0 = _gTex[g], mode = StageOf(g);
             if (mode != boundMode)
             {
                 boundMode = mode;
-                Gl.UseProgram(mode == 0 ? _gl.Prog : mode == 1 ? _gl.ProgMask : _gl.ProgMaskH);
-                Gl.UniformMatrix4fv(mode == 0 ? _gl.LocVp : mode == 1 ? _gl.LocMaskVp : _gl.LocMaskHVp, 1, 0, (float*)vp);
-                if (mode == 1) Gl.Uniform1i(_gl.LocMaskTex, 0);
-                boundCut = -1;
+                if (mode >= ContentMode) { BindContentCaster(mode - ContentMode, layered: false, vp, size); boundCut = -1; }
+                else
+                {
+                    Gl.UseProgram(mode == 0 ? _gl.Prog : mode == 1 ? _gl.ProgMask : _gl.ProgMaskH);
+                    Gl.UniformMatrix4fv(mode == 0 ? _gl.LocVp : mode == 1 ? _gl.LocMaskVp : _gl.LocMaskHVp, 1, 0, (float*)vp);
+                    if (mode == 1) Gl.Uniform1i(_gl.LocMaskTex, 0);
+                    boundCut = -1;
+                }
             }
-            if (mode != 0 && (int)_gCut[g] != boundCut)
+            if (mode >= ContentMode && (int)_gCut[g] != boundCut)
+            {
+                boundCut = (int)_gCut[g];
+                ContentCasterCut(mode - ContentMode, false, _gCut[g]);
+            }
+            else if (mode != 0 && mode < ContentMode && (int)_gCut[g] != boundCut)
             {
                 CasterCut kind = _gCut[g]; boundCut = (int)kind;
                 Gl.Uniform1f(mode == 1 ? _gl.LocMaskCut : _gl.LocMaskHCut, Threshold(kind));

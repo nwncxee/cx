@@ -368,7 +368,7 @@ internal static unsafe class PostStack
         string vs = ShaderStages.Source(PostChain.ShdPostVs), fs = ShaderStages.Source(st.Resref);
         if (st == _fbpost)
         {
-            // #352 AC: a chain with no inc_postpr (a module that ships none, or vanillabridge=0) would compile the
+            // #352 AC: a chain with no fsfbpostpr (a module that ships none, or vanillabridge=0) would compile the
             // pass-through stub and run a no-op draw every frame while reporting itself hosted. Splice first;
             // an untouched text means every region missed, and that is a stand-down, not a stage.
             FbPostStage.Arm(Mask(), Quality());
@@ -376,7 +376,7 @@ internal static unsafe class PostStack
             if (spliced == fs)
             {
                 st.Failed = true;
-                _log?.Info("PostStack: the fbpost stage stands DOWN -- inc_postpr is not in this module's resource "
+                _log?.Info("PostStack: the fbpost stage stands DOWN -- fsfbpostpr is not in this module's resource "
                          + "chain (or vanillabridge=0); nothing to host, so the stack runs without it");
                 return;
             }
@@ -494,7 +494,7 @@ internal static unsafe class PostStack
             check.Expect(_fbpost == _stages[4] && _fbpost.Prepare != null, "the hosted chain is stage 4, after the four Alloy-owned effects, with its uploads");
             check.Expect(FbPostStage.SelfCheck(log), "the hosted chain's own checks");
             check.Expect(VanillaShader.Splice(FbPostStage.FbPostFs, null, "x", fromContent: false) == FbPostStage.FbPostFs,
-              "a chain with no inc_postpr leaves the text untouched, which is what Build reads as the stand-down");
+              "a chain with no fsfbpostpr leaves the text untouched, which is what Build reads as the stand-down");
             bool fb = Post.FbPost.V; Post.FbPost.V = false; check.Expect(!FbPostActive(), "post.fbpost off stands the hosted chain down"); Post.FbPost.V = fb;
             check.Expect(SmaaStage.SelfCheck(log), "the aa stage's own checks");
             check.Expect(TaaStage.SelfCheck(log), "the taa stage's own checks");

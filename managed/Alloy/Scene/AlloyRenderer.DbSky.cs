@@ -113,15 +113,11 @@ public sealed unsafe partial class AlloyRenderer
         SceneFog.EndSky();
     }
 
-    /// <summary>The hosted program for a sky part's material: 0 for the plain unlit stage (no custom stage, or
-    /// a vertex stage Alloy ports), <see cref="uint.MaxValue"/> for a custom fragment stage that did not build.
-    /// <c>AlloyCensus.HasUnportedShader</c>'s rule over the parsed <c>.mtr</c>.</summary>
+    /// <summary>The hosted program for a sky part's material: 0 for the plain unlit stage (no custom stage),
+    /// <see cref="uint.MaxValue"/> for a custom fragment stage that did not build.</summary>
     private static uint SkyProgram(MtrDef? mtr)
     {
         if (mtr == null || mtr.ShaderFs.Length == 0) return 0;
-        if (mtr.ShaderVs.Length > 0)
-            foreach (string n in ShaderFeatures.VsNames)
-                if (n.Equals(mtr.ShaderVs, StringComparison.OrdinalIgnoreCase)) return 0;
         uint prog = SkyStage.Program(mtr.ShaderFs);
         return prog != 0 ? prog : uint.MaxValue;
     }

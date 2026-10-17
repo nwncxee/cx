@@ -22,18 +22,18 @@ public sealed unsafe partial class AlloyRenderer
     {
         ShaderExposedRuntimeData rt = Rt;
         if (rt.Ptr == 0 || _shaderConstF == null) { P("keyhole: no runtime block or shader constants"); return; }
-        float diaA = _shaderConstF[KeyholeDiaA], diaB = _shaderConstF[KeyholeDiaB];
+        float diaA = _shaderConstF[KeyholeDiaA], diaB = _shaderConstF[KeyholeDiaB], minZ = _shaderConstF[KeyholeMinZ];
         float camDist = rt.CamDist, camPitch = rt.CamPitch;
         Vector3 player = rt.PlayerPos;
         // off = depth - uKeyholeCam.x + (90 - uKeyholeCam.y) / 45, at a roof texel half the camera range away:
         // a roof between the camera and the player is the case the aperture exists for.
         float depth = camDist * 0.5f;
         float off = depth - camDist + (90f - camPitch) / 45f;
-        // ...and the floor clamp, which multiplies the whole level: clamp(world.z - 1 - uPlayerPos.z, 0, 1).
-        // CX_KH_FLOOR is 1.0. A roof three metres over the player's feet is the generous case.
+        // ...and the floor clamp, which multiplies the whole level: clamp(world.z - keyholeMinZOffset - uPlayerPos.z, 0, 1).
+        // A roof three metres over the player's feet is the generous case.
         float roofZ = player.Z + 3f;
-        float floorTerm = Math.Clamp(roofZ - 1f - player.Z, 0f, 1f);
-        P($"keyhole: dia=({diaA:F3},{diaB:F3}) camDist={camDist:F2} camPitch={camPitch:F2} "
+        float floorTerm = Math.Clamp(roofZ - minZ - player.Z, 0f, 1f);
+        P($"keyhole: dia=({diaA:F3},{diaB:F3}) minZ={minZ:F2} camDist={camDist:F2} camPitch={camPitch:F2} "
         + $"player=({player.X:F2},{player.Y:F2},{player.Z:F2})");
         P($"keyhole: off={off:F3} ({(off >= 0f ? "CUT REFUSED -- off >= 0" : "ok")}) "
         + $"floorTerm={floorTerm:F3} ({(floorTerm <= 0f ? "CUT REFUSED -- level zeroed" : "ok")}) "

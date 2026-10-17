@@ -7,7 +7,7 @@
 const float CX_SSR_MAX = 16.0;
 
 /// The dielectric reflectance at normal incidence a glTF material assumes (IOR 1.5) -- and the stock
-/// fSpecularityMin, so a physical and a legacy dielectric start from the same F0.
+/// fGeneratedSpecularityMin, so a physical and a legacy dielectric start from the same F0.
 const float CX_DIELECTRIC_F0 = 0.04;
 
 /// Karis' analytic fit of the split-sum DFG integral: (scale, bias) on F0 for the directional albedo of a

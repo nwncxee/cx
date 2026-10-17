@@ -318,6 +318,9 @@ The client is already imported and analyzed:
   no `src/`, so decompile what you need with `DecompOne.java` instead. Never committed (Beamdog's code).
   The binary + the Ghidra project stay the source of truth. State uncertainty from decompilation honestly; confirm against
   runtime behavior when it matters.
+- **Stock shaders:** the client runs the CURRENT set, `data/ovr.bif` (`nwn_retail.key`, the same files as
+  github.com/Finaldeath/NWNEEGameData/shaders), over the stale `data/base_shaders.bif` (`nwn_base.key`, which answers
+  only for what ovr.bif lacks). Transcribe and cite the current files; `tools/content_stage.py` reads both in that order.
 
 ## The server side
 

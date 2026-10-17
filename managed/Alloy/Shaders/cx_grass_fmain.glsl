@@ -51,8 +51,9 @@ void main()
     if (uViz == 3) { frag = vec4(vec3(sh), 1.0); return; }
     vec3 sunpoint = uAreaDiffuse * ndl * sh
                   + (uVLit != 0 ? vLight : ((uLit != 0 && near) ? CxClusteredDiffuse(vWorld, N, vDepth) : vec3(0.0)));
-    // vanilla (inc_lighting.shd:411/:520): the ground's vertex colour joins the DIFFUSE sum as
-    // StaticLight, and the ambient term carries no NdotL factor in the forced-vertex-lighting path
+    // vanilla's grass (vsgrass.shd's LIGHT_FORCE_INDIRECTIONAL 1) takes NO N.L at all: every light adds
+    // LightColor * attenuation (inc_lighting.shd:295-298) over PI, with no specular. The blades here are
+    // Alloy's own and keep a directional sun; the ambient carries no NdotL, as stock's does
     vec3 ambient = uAreaAmbient * uMatAmbient * CxSkyView(vWorld, CX_SKY_UP);
     // #478: no screen-space AO on a blade. Blades are not in the depth SsaoPass reads, so the pixel's
     // occlusion is whatever stands behind the blade, and it read as the scene showing through the
@@ -67,11 +68,11 @@ void main()
     lit += uAreaDiffuse * sh * (albedo * uMatDiffuse * back + sheen);
 
     // CX-51: a blade reflects as the ground around it does -- the probe, under the split-sum
-    // weight at the roughness the wet splice gives that ground (the legacy 0.6, wetted toward 0.35). Without
+    // weight at the roughness the wet splice gives that ground (the generated 0.55, wetted toward 0.35). Without
     // it a lit or reflective patch of ground shows around blades that ignore it, as if glued on.
     if (uProbeMips > 0.0)
     {
-        float gRough = mix(0.6, 0.35, gWet);
+        float gRough = mix(0.55, 0.35, gWet);
         vec3 Nv = faceforward(N, -V, N);   // two-sided: the face toward the eye
         vec3 R = reflect(-V, Nv);
         vec2 gAb = CxEnvBrdf(max(dot(Nv, V), 1e-3), sqrt(gRough));

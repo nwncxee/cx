@@ -49,3 +49,12 @@ nui\.cardlate([^fs]|$)	CX-263
 \blight\.skyrange\b	CX-290
 # Graded cutouts draw whole: the blended fringe pass and its per-texture core cut are gone.
 FringeOwned|ProgFringe|CxCutBias|\bCoreCuts?\b|VizFringe	CX-298
+# Content shaders recognised by NAME: any .mtr pair runs translated now, so the reproduced features, the stages hosted by
+# name, the slot-1 coverage list and the palette tint's side table are gone with their names.
+\bPaletteTint\b|CX_FEAT_PALETTETINT|\bTintTerms\b|cx_tintbuf|\bFoldTint\b	CX-303
+\bCoverNrm|CoversFromNormalAlpha|CX_SLOT_COVERNRM	CX-303
+\bNamedHosted\b|\bHostedCoverage\b|ReadsPaletteSlots|ReadsAuxSlot|ShaderFeatures\.Displaces|\bCxDisplaces\b	CX-303
+CxFeatPos|cx_feat_v|CX_FEAT_(WINDGRASS|WINDLEAF|WINDPLANT|ROOFKN|ROOFKNM|FLOWMAP|NOIRWET|NOIRGLOSS|GROUNDWEATHER)	CX-303
+ShaderFeature\.(WindGrass|WindLeaf|WindPlant|RoofKn|RoofKnM|NoKeyhole|Flowmap|NoirWet|NoirGloss|GroundWeather)\b	CX-303
+\$VANILLA-HOST\b|_progLitHost|\bHostText\b|\bHostMaskState\b|ProgLitHostMask	CX-303
+\bVsNames\b|\bFsNames\b|ShaderFeatures\.Hosted\b|ContentPrograms\.StockFs\b	CX-303

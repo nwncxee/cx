@@ -1,5 +1,5 @@
 // The blade vertex main: a quadratic Bezier (root, bend, tip) swept across a tapering width.
-const float CX_KH_FLOOR = 1.0, CX_KH_PUNCH = 0.3, CX_KH_SIZE = 12.5;   // cx_keyhole.glsl's own
+const float CX_KH_PUNCH = 0.3, CX_KH_SIZE = 12.5;   // cx_keyhole.glsl's own
 
 // cx_keyhole.glsl's aperture, asked once per blade at its root: a blade is punched out whole or not at all,
 // which keeps the fragment stage free of discard (and so of the early-Z it would cost).
@@ -13,7 +13,7 @@ bool CxBladeKeyholed(vec3 root, vec4 clip)
     vec2 cv = clip.xy / clip.w;
     if (uPixel.x < uPixel.y) cv.x *= uPixel.z; else cv.y /= uPixel.z;
     float lvl = 1.0 - dot(cv, cv) / (r * r) + 0.5 / off;
-    lvl *= clamp(root.z + 0.5 - CX_KH_FLOOR - uPlayerPos.z, 0.0, 1.0);
+    lvl *= clamp(root.z + 0.5 - uKeyholeDia.z - uPlayerPos.z, 0.0, 1.0);
     return lvl >= CX_KH_PUNCH;
 }
 

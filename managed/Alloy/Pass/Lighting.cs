@@ -50,7 +50,7 @@ internal static class Lighting
         DayHigh = G.Slider("dayhigh", "Full daylight at", 0f, 2f, 0.01f, 0.6f, tier: Tier.ChatOnly,
                            help: "Sun brightness (linear) at which lamps are dimmed the full Daylight amount.");
         Sss = G.Slider("sss", "Soft skin lighting", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
-                       help: "Light wrapping past the shadow line on characters. 0 is flat; the stock game uses 0.38 at shader quality above medium.");
+                       help: "Light wrapping past the shadow line on characters. 0 is flat; stock lighting has none outside water, content lighting forks use 0.38.");
         Wrap = G.Slider("wrap", "Sphere-light wrap", 0f, 4f, 0.05f, 1f, tier: Tier.ChatOnly,
                         help: "Near lights soften the shadow line on low-poly models; 0 = point lights.");
         WrapNdl = G.Slider("wrapndl", "Diffuse wrap", 0f, 2f, 0.05f, 1f, tier: Tier.ChatOnly,

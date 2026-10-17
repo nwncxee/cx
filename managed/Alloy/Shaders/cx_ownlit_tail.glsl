@@ -28,7 +28,7 @@
         {
             vec3 env = CxProbeFetch(uProbe, vWorld, R, sqrt(rough) * (uProbeMips - 1.0));
             // legacy shiny content reflects the LIGHT ARRIVING HERE through its env map's pattern
-            // (inc_lighting.shd:468-512, EnvironmentColor = (Ambient + Diffuse) * envTexel): a torchlit
+            // (inc_lighting.shd:543-582, EnvironmentColor = (Ambient + Diffuse) * envTexel): a torchlit
             // breastplate shines however dark the area probe is. The probe, normalised by its own mean,
             // is the pattern -- its LUMINANCE only: the stock env maps are grey, so the tint is the light's,
             // and the sky's blue carried into the pattern drew silver armour blue.
@@ -57,8 +57,8 @@
     //     either black here (no lobe at all) or washed out by the diffuse, and nothing else tells the
     //     two apart.
     if (uViz == 6) { frag = vec4(specLight, 1.0); return; }
-    // energy split: what the specular lobe reflects, the diffuse does not -- inc_lighting.shd's own
-    // `DiffuseLight * (1.0 - fSpecularity)` and `AmbientLight * (1.0 - fSpecularity)`
+    // energy split: what the specular lobe reflects, the diffuse does not -- inc_lighting.shd:603-609's own
+    // `(1.0 - fEnvironmentSpecularity) * (AmbientLight + DiffuseLight)`
     // ponytail: the sheen takes no ambient term (Filament's needs a DFG table of its own); cloth reads by
     // its direct rim, and a sheen that wants presence in shade is the table's cue.
     vec3 total = (ambient + diffuse * matDiffuse) * (kd * coatT * wxTransmit) + d.emi.rgb;
@@ -67,9 +67,9 @@
     //     from "the surface is dark", which no composite frame can do.
     if (uViz == 9) { frag = vec4(total, 1.0); return; }
     // Specular and self-illumination land AFTER the albedo multiply: a highlight is light off the
-    // surface, not light through it (inc_lighting.shd:615 `ColorIO.rgb += SpecularColor *
-    // SpecularLight`, and the texUnit5 add just above it).
-    // inc_lighting.shd:672-677: "Specularity ignores material transparency" -- vanilla pre-divides the
+    // surface, not light through it (inc_lighting.shd:653 `ColorIO.rgb += MATERIAL_SPECULAR_COLOR_VALUE *
+    // SpecularLight`, and the texUnit5 add at :639).
+    // inc_lighting.shd:647-651: "Specularity ignores material transparency" -- vanilla pre-divides the
     // specular by the alpha it is about to be blended by, so a ghosted creature keeps its highlights.
     // The PART's alpha, not the texture's: texture alpha is coverage -- where the sheet is not, nothing shines --
     // and dividing by it drew every cutout's and decal's graded edge as a rim of highlight up to ten times over.
@@ -163,5 +163,11 @@
     if (uViz == 43) lit = cxLm;
     if (uViz == 52) lit = cxLightFrom * 0.5;   // through the blend/OIT tail, so a decal shows at its own coverage
 #endif
-    frag = CxOitOut(vec4(CxDisplayOverlays(CxFogReveal(lit * kh, vWorld, vDepth, d.ext2.w)), coverage * d.rot.w));
+    vec4 outC = vec4(CxDisplayOverlays(CxFogReveal(lit * kh, vWorld, vDepth, d.ext2.w)), coverage * d.rot.w);
+#ifdef CX_CONTENT_POST
+    // CX-303: what a content stage does after its ApplyStandardShader, on the colour that call hands back in the
+    // engine: lit, dissolved and fogged, in display space (CxHostPost converts both ways)
+    outC = CxHostPost(outC);
+#endif
+    frag = CxOitOut(outC);
 }

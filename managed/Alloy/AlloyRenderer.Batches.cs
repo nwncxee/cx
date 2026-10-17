@@ -259,10 +259,9 @@ public sealed unsafe partial class AlloyRenderer
         int litCulled = SortKeyOf(false, true, 0), litMax = SortKeyOf(true, true, MaxVdos - 1);
         bool ok = litMax == _sortCount.Length - 1 && unlitCulled == 0 && unlitFree < litCulled;
         // #327: the (feature, primitive) digit fills its buckets exactly, and an out-of-table prim clamps.
-        ok &= (int)FeatCeiling == ShaderFeatures.VsNames.Length - 1
-              && FeatPrimKeyOf((int)FeatCeiling, PrimTypes - 1) == _featPrimCount.Length - 1
-              && FeatPrimKeyOf((int)FeatCeiling, PrimTypes + 5) == _featPrimCount.Length - 1
-              && FeatPrimKeyOf((int)FeatCeiling + 3, 0) == _featPrimCount.Length - PrimTypes
+        ok &= FeatPrimKeyOf(FeatCeiling, PrimTypes - 1) == _featPrimCount.Length - 1
+              && FeatPrimKeyOf(FeatCeiling, PrimTypes + 5) == _featPrimCount.Length - 1
+              && FeatPrimKeyOf(FeatCeiling + 3, 0) == _featPrimCount.Length - PrimTypes
               && FeatPrimKeyOf(0, -1) == 0 && FeatPrimKeyOf(0, 0) == 0;
         if (!ok) log.Info("AlloyRenderer.CullSortSelfCheck: FAILED -- a radix digit does not fit its " +
                           "buckets, or the cull bit outranks the lit one");
@@ -280,18 +279,17 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>nm -S</c>, indexed by the mdl node's prim type. The key clamps rather than trusts the index: the
     /// draw path reads the table unguarded, but a sort bucket must not.</summary>
     private const int PrimTypes = 7;
-    /// <summary><see cref="ShaderFeature"/>'s last member, named here because the sort table below is sized
-    /// from it. A feature appended above this ceiling walks <c>_featPrimCount</c> off its end and throws
-    /// mid-frame, so <see cref="CullSortSelfCheck"/> ties it to <see cref="ShaderFeatures.VsNames"/>, which
-    /// any appended feature has to extend anyway.</summary>
-    private const ShaderFeature FeatCeiling = ShaderFeature.PaletteTint;
+    /// <summary>The highest feature id a record carries -- the last content pair's -- named here because the sort table
+    /// below is sized from it. A feature past this ceiling walks <c>_featPrimCount</c> off its end and throws
+    /// mid-frame, so <see cref="CullSortSelfCheck"/> ties the table to it.</summary>
+    private const int FeatCeiling = ShaderFeatures.FeatureCount - 1;
     /// <summary>Buckets for the (feature, primitive) digit.</summary>
-    private const int FeatPrimKeys = ((int)FeatCeiling + 1) * PrimTypes;
+    private const int FeatPrimKeys = (FeatCeiling + 1) * PrimTypes;
     /// <summary>Both indices are CLAMPED, not trusted: this is a sort digit, so a feature past the ceiling
     /// merely shares a bucket (one extra batch cut, never a wrong draw) where an unclamped one takes the
     /// frame down. The self-check is what makes the drift loud; the clamp is what makes it survivable.</summary>
     private static int FeatPrimKeyOf(int feat, int prim)
-        => Math.Clamp(feat, 0, (int)FeatCeiling) * PrimTypes + Math.Clamp(prim, 0, PrimTypes - 1);
+        => Math.Clamp(feat, 0, FeatCeiling) * PrimTypes + Math.Clamp(prim, 0, PrimTypes - 1);
 
     /// <summary>Order the blended run back to front -- the farthest key first, so nearer surfaces composite
     /// over what is already behind them. Stable, which keeps parts at equal distance in their texture-grouped
@@ -511,7 +509,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void WriteSphere(int i, in RecordFrameState f, IntPtr tri, int feat)
     {
         {
-            if (_oBone[i] >= 0 || ShaderFeatures.OutOfPrepass(feat) || PartTable.IsDangly(tri)
+            if (_oBone[i] >= 0 || ContentPrograms.MayMove(feat) || PartTable.IsDangly(tri)
                 || !(_oR[i] > 0f))
             { _dSph[i] = new Sphere { Radius = NeverCull }; return; }
             // The centre is the model TRANSLATION, not _oC* through the matrix: that bbox centre is not
@@ -797,7 +795,7 @@ public sealed unsafe partial class AlloyRenderer
         int groups = 0, n = 0;
         int keyVao = -1, keyTex = -1, keyFeat = -1, keyCls = -1, keyBlend = -1;
         uint keyMode = 0;
-        bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyCovN = false, keyDecal = false;
+        bool keyLit = false, keyDis = false, keyNoCull = false, keyA2c = false, keyDecal = false;
         IntPtr keyGob = IntPtr.Zero;
         // #322 step 1: attribute the Build monolith before drawing any phase boundary -- Scan is the
         // routing walk, Restage everything after it. No behaviour change; the [zones] line gains the split.
@@ -912,8 +910,6 @@ public sealed unsafe partial class AlloyRenderer
             IntPtr gobKey = row.GobKey;
             // CX-189: an alpha-to-coverage cutout draws in its own layer, so it never shares a batch
             bool a2c = cls == (int)AlloyClass.Cutout && _oA2c[i];
-            // CX-218: ...and a slot-1 coverage batch is droppable whole, so it is a key term (see _gCovN)
-            bool covN = (slots & CoverNrmBit) != 0;
             // CX-273: ...and a ground decal draws in the layer's own pass, so it is a key term too
             bool decal = row.Decal;
             // #153: under bindless a LIT batch no longer splits on its textures -- the handles ride the
@@ -935,7 +931,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             if (!sameSlots || lit != keyLit || vKey != keyVao || tidKey != keyTex || mode != keyMode
                 || feat != keyFeat || dis != keyDis || cls != keyCls || blend != keyBlend
-                || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || covN != keyCovN || decal != keyDecal)
+                || noCull != keyNoCull || gobKey != keyGob || a2c != keyA2c || decal != keyDecal)
             {
                 // #292 (AC6): what the cull term cost. Counted as the batches it OPENED on its own -- every
                 // other key term agreed and only the culling state differed -- so the line reports the split
@@ -960,12 +956,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gLit[groups] = lit; _gVao[groups] = vKey; _gTex[groups] = tid; _gMode[groups] = mode;
                 _gFeat[groups] = feat; _gDis[groups] = dis;
                 _gCls[groups] = (byte)cls; _gSrc[groups] = row.Src; _gDst[groups] = row.Dst; _gWash[groups] = row.Wash;
-                _gNoCull[groups] = noCull; _gGob[groups] = gobKey; _gA2c[groups] = a2c; _gCovN[groups] = covN;
+                _gNoCull[groups] = noCull; _gGob[groups] = gobKey; _gA2c[groups] = a2c;
                 _gDecal[groups] = decal;
                 if (!merge) for (int s = 0; s < MapSlots; s++) _gTexN[groups * MapSlots + s] = slotTid[s];
                 groups++;
                 keyLit = lit; keyVao = vKey; keyTex = tidKey; keyMode = mode; keyFeat = feat; keyDis = dis;
-                keyCls = cls; keyBlend = blend; keyNoCull = noCull; keyGob = gobKey; keyA2c = a2c; keyCovN = covN;
+                keyCls = cls; keyBlend = blend; keyNoCull = noCull; keyGob = gobKey; keyA2c = a2c;
                 keyDecal = decal;
             }
             

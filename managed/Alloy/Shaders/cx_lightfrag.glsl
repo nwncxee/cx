@@ -199,11 +199,7 @@ uint CxCluster(float viewDepth)
     return uint(gx + uGrid.x * (gy + uGrid.y * gz));
 }
 
-// fAngleMin (inc_lighting.shd:88): the floor the engine clamps N.V to before the view-side
-// normalisation divides by it.
-const float CX_ANGLE_MIN = 0.01;
-
-// Schlick's Fresnel, the pow-5 form the ship quality mode takes (inc_lighting.shd GetFresnel,
+// Schlick's Fresnel, the pow-5 form the ship quality mode takes (inc_lighting.shd:247-262 GetFresnel,
 // SHADER_QUALITY_MODE > 1; the lower modes use pow 4).
 float CxFresnel(float c)
 {
@@ -245,7 +241,7 @@ vec3 CxLoopSpec(float lobe, vec3 N, vec3 V, vec3 L, float spread);
 float CxSrcSpread(float dist) { return uWrap <= 0.0 ? 0.0 : uWrap * uFalloff.y * 0.5 / max(dist, 1e-3); }
 
 // #120, corrected by the live A/B on #121: the specular lobe every lit term goes through, as the
-// ENGINE computes it (inc_lighting.shd:150-265 at the ship quality mode -- inc_config.shd's
+// ENGINE computes it (inc_lighting.shd:174-284 at the ship quality mode -- inc_config.shd's
 // SPECULAR_DISTRIBUTION_MODEL 1 = GGX, SPECULAR_GEOMETRIC_SHADOWING 2 = Schlick, SPECULAR_FRESNEL 1
 // = full). This replaced a textbook GGX, which differed in the one place that decides how a surface
 // reads: it remapped alpha = rough^2, while the engine feeds fRoughness_sq = rough^2 as alpha^2 --
@@ -255,7 +251,7 @@ float CxSrcSpread(float dist) { return uWrap <= 0.0 ? 0.0 : uWrap * uFalloff.y *
 // <para>Two halves, split the way the engine splits them: this per-LIGHT one, and the view-side
 // normalisation in CxSpecBase, which is common to every light and applied once (the engine's
 // fSpecularBaseModifier). fSpecularity rides in through the Fresnel term and must NOT be multiplied
-// in again -- inc_lighting.shd:600-602 scales by it only when SPECULAR_FRESNEL != 1.</para>
+// in again -- inc_lighting.shd:554-557 scales by fEnvironmentSpecularity only when SPECULAR_FRESNEL != 1.</para>
 // Returns the lobe per unit IRRADIANCE -- the caller has already folded N.L and attenuation into the
 // light term it multiplies this by.
 // ponytail: the low-quality branches (Blinn-Phong, no shadowing, the simplified Fresnel) are not
@@ -286,10 +282,13 @@ float CxSpecLobe(vec3 N, vec3 V, vec3 L, float rough, float spec, float spread)
 }
 float CxSpecLobe(vec3 N, vec3 V, vec3 L, float rough, float spec) { return CxSpecLobe(N, V, L, rough, spec, 0.0); }
 
-// The half that does not vary per light: alpha^2/4 and the view-side shadowing term.
+// The half that does not vary per light: alpha^2/4 and the view-side shadowing term. N.V floors at 0, as
+// inc_lighting.shd:436-441 leaves it; the shadowing term's k keeps the divisor off zero.
+// ponytail: stock also bends a shading normal that faces away from the eye into the view plane before any
+// light reads it; this only floors the dot. Bend N in the lit main ahead of the sun terms if it shows.
 float CxSpecBase(float NdotV, float rough)
 {
-    return rough * rough * 0.25 / mix(max(NdotV, CX_ANGLE_MIN), 1.0, CxSmithK(rough));
+    return rough * rough * 0.25 / mix(max(NdotV, 0.0), 1.0, CxSmithK(rough));
 }
 
 // CX-188 budget (light.floor): where a light stops being SEEN, as against where its authored radius ends. The

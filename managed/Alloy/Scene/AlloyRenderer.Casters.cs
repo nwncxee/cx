@@ -230,10 +230,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>A declared coverage part whose coverage the mask stage can READ (the diffuse alpha): it
         /// casts at the layer's own cut, dithered, so the shadow follows the coverage the draw uses.</summary>
         public bool Coverage;
-        /// <summary>The coverage is map slot 1's alpha (<see cref="CoverNrmBit"/>), so the mask has to sample
-        /// slot 1 -- which only the HANDLE stage can. Without that stage the caster casts solid rather than
-        /// cutting a shadow out of a reflectivity mask.</summary>
-        public bool CoverNrm;
+        /// <summary>The content pair whose caster twin this part casts through (its depth is its own: the pair moves
+        /// it or cuts it), or 0 for the plain caster stages.</summary>
+        public int Content;
         /// <summary>The record changed on its last build -- the matrix, the fade, a material colour.</summary>
         public bool RecMoved;
         /// <summary>A <c>PartDanglyMesh</c> the solve displaced this frame or last -- a mover no record compare
@@ -275,7 +274,10 @@ public sealed unsafe partial class AlloyRenderer
         // range-tests it first.
         f.Item = _oItem[slot]; f.Prim = _oPrim[slot]; f.Vao = CasterVaoId(slot);
         f.EnvAlpha = (_oSlots[slot] & EnvSlot) != 0;
-        f.CoverNrm = (_oSlots[slot] & CoverNrmBit) != 0;
+        int feat = ShaderFeatures.WithPose((int)_oFeat[slot * 4], _oBone[slot] >= 0);
+        // both caster twins, because one list stages for the single views and the layered ones alike
+        f.Content = ContentPrograms.OwnDepth(feat) && ContentPrograms.CastProgram(feat, false) != 0
+                    && ContentPrograms.CastProgram(feat, true) != 0 ? feat : 0;
         f.Skinned = _oBone[slot] >= 0;
         // CX-227: a part whose coverage source the depth stage can also sample; one whose cannot keeps the
         // engine cut rather than casting a 0.01 silhouette off a texture it does not read. Under the POSE

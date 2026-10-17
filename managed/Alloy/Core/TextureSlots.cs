@@ -335,8 +335,8 @@ internal static class TextureSlots
         check.Expect(ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_HEIGHT {PltPalettes.Height}.0")
           && ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_ROWS     {PltColors.FlagRows}u"),
           $"cx_plt.glsl's scheme divisor is not the master palette's {PltPalettes.Height} rows, or its rows-only flag is not {PltColors.FlagRows}");
-        check.Expect(ShaderSource.Get("cx_tintbuf.glsl").Contains($"#define CX_SLOT_PAL0 {AlloyRenderer.PalBit0}"),
-          $"cx_tintbuf.glsl's first palette mask bit is not {AlloyRenderer.PalBit0}");
+        check.Expect(ShaderSource.Get("cx_conbuf.glsl").Contains($"#define CX_SLOT_PAL0 {AlloyRenderer.PalBit0}"),
+          $"cx_conbuf.glsl's first palette mask bit is not {AlloyRenderer.PalBit0}");
         check.Expect(ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_WORDS    {PltColors.WordsPerRecord}")
           && ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_ROWWORDS {PltColors.RowWords}")
           && ShaderSource.Get("cx_plt.glsl").Contains($"#define CX_PLT_LAYERS   {SceneDb.PltLayers}"),

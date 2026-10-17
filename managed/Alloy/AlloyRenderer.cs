@@ -92,18 +92,14 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal const int NoShadowBit = 1 << 8;
     /// <summary>The four PALETTE slots: <c>.mtr</c> <see cref="PalTexture0"/>..<c>texture10</c>, the engine's
     /// own last four material stages (it pins <c>texUnit7</c>..<c>texUnit10</c> to units 7..10 at link). Alloy
-    /// has no unit left for them -- the lit stage spends 0..30 -- so they reach their one reader, the palette
-    /// tint's hosted stage, as bindless handles in <see cref="Db.TintTerms"/>' row.</summary>
+    /// has no unit left for them -- the lit stage spends 0..30 -- so they reach their readers, the content pairs,
+    /// as bindless handles in <see cref="Db.ContentTable"/>' row.</summary>
     internal const int PalSlots = 4, PalTexture0 = 7;
     /// <summary>The first palette slot's MASK bit; the other three follow it. Above
     /// <see cref="NoShadowBit"/>, and nowhere near <see cref="EnvSlot"/>'s frozen 64.</summary>
     internal const int PalBit0 = 1 << 9;
     /// <summary>Mask bit of palette slot <paramref name="k"/> (<c>texture7</c> is 0).</summary>
     internal static int PalSlotBit(int k) => PalBit0 << k;
-    /// <summary>This material's COVERAGE is map slot 1's alpha, never the diffuse's -- what the content
-    /// fragment stages <see cref="ShaderFeatures.CoverNrmFs"/> names discard on. Binds nothing: the bit only
-    /// says which channel the cutout test reads, and slot 1 is bound already for its normal.</summary>
-    internal const int CoverNrmBit = 1 << 13;
     /// <summary>Texture unit slot 1 binds on; the rest follow it. Units 0/1/2 are diffuse, sun cascades and
     /// the local cube array, and <see cref="EnvProbe.ProbeUnit"/> sits above all of them -- SelfCheck holds
     /// that ordering, because a samplerCube sharing a unit with a sampler2D kills every lit draw in silence.</summary>
@@ -156,10 +152,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary><c>/alloy depthequal 0</c>: prepassed opaque/cutout batches draw LEQUAL with depth writes, as
     /// before -- the A/B for <see cref="Issue._matchDepth"/>.</summary>
     private static bool _depthEqual => Renderer.DepthEqual.V;
-    /// <summary>The lit program's uniform locations, ONE struct per program: the lit stage is built twice --
-    /// <see cref="Programs._progLit46"/> from the hosted regions' stubs, which every ordinary lit batch draws
-    /// with, and <see cref="Programs._progLitHost"/> with the content bodies in, bound only for a batch whose
-    /// feature <see cref="ShaderFeatures.Hosted"/> names. A content override leaves newer terms at -1.</summary>
+    /// <summary>The lit program's uniform locations, ONE struct per program: the lit stage is built several times --
+    /// <see cref="Programs._progLit46"/> from the content regions' stubs, which every ordinary lit batch draws with,
+    /// its twins, and each content pair's own programs (<see cref="ContentPrograms"/>). A content override leaves
+    /// newer terms at -1.</summary>
     internal struct LitLoc
     {
         public int Oit, OitDim, OitGob, LightRecOn;
@@ -195,13 +191,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// the same value its shaders read as <c>playerPosition</c>. Zero before the struct resolves, which for
     /// the grass displacement window just means it stays at the origin until it does.</summary>
     internal static Vector3 PlayerPos => _runtime == null ? default : Rt.PlayerPos;
-    /// <summary>The module calendar the runtime block carries, what the shaders read as <c>moduleHour</c> and
-    /// friends. Zero before the struct resolves.</summary>
-    internal static int ModuleHour => _runtime == null ? 0 : Rt.ModuleHour;
-    internal static int ModuleDay => _runtime == null ? 0 : Rt.ModuleDay;
-    internal static int ModuleMonth => _runtime == null ? 0 : Rt.ModuleMonth;
-    internal static float ModuleTimeIntoTransition => _runtime == null ? 0f : Rt.ModuleTimeIntoTransition;
-    /// <summary>The presented-frame counter, what a hosted content chain gets as <c>sceneCurrentFrame</c>.</summary>
+    /// <summary>The presented-frame counter, what a content stage gets as <c>sceneCurrentFrame</c>.</summary>
     internal static int FrameSeq => _frameSeq;
     /// <summary>The forward class's light-source view: the one viz mode the deferred pass keeps running for.</summary>
     internal const int VizLightFrom = 52;
@@ -340,7 +330,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
             // has loaded a slot. Each is two queue tests when there is nothing to do.
             Db.TexRegistry.Drain();
             Db.PltColors.Upload();
-            Db.TintTerms.Upload();
+            Db.ContentTable.Upload();
             Db.PltPalettes.Create();
             // CX-117's GPU check: idle unless alloy.pltverify armed it, and it runs in BOTH modes -- what it
             // measures is the shipped GLSL, which does not care which scene layer produced the record.
@@ -404,9 +394,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);
         if (_runtime == null)
-            log.Info("AlloyRenderer: GLRender::m_shaderExposedRuntimeData unresolved -- #123's feature " +
-                     "switches stay inert (no wind sway, roofs where authored), and #124's camera dissolve " +
-                     "with them -- uKeyholeCam reads this struct too");
+            log.Info("AlloyRenderer: GLRender::m_shaderExposedRuntimeData unresolved -- the clock, the area wind and "
+                     + "the module calendar read zero (no sway in a content pair, roofs where authored), and #124's "
+                     + "camera dissolve with them -- uKeyholeCam reads this struct too");
         _shaderConstF = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsF);
         _shaderConstI = (int*)Native.Sym(SymbolMap.GlGlobalShaderConstantsI);
         _shaderConstV = (float*)Native.Sym(SymbolMap.GlGlobalShaderConstantsV);
@@ -523,7 +513,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <c>_litFailed</c> are NOT cleared: a stage that could not build is a fact about the source.</summary>
     internal static void ContextLost()
     {
-        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitHost = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
+        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
         Ablation.Forget(delete: false);
         Highlight.HighlightContextLost();
         TriggerHighlight.ContextLost();
@@ -665,6 +655,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         /// <summary>Bit i set when slot i of that kind resolved to a live location, so the upload walks only
         /// what the program declares instead of 48 calls, nearly all of them to -1.</summary>
         internal int SIntLive, SFloatLive, SVecLive;
+        /// <summary>The engine-named scene terms a content pair's stage reads (<see cref="EngineNamedLocs"/>).</summary>
+        internal EngineNamedLocs Named;
     }
     /// <summary><c>GLRender::m_shaderExposedRuntimeData</c>, the struct the engine's own SetUniforms uploads
     /// these five from. Null (symbol unresolved) leaves the wind still and the roofs wherever they were
@@ -679,10 +671,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>Is <see cref="Rt"/> readable at all? The null check every reader of it owes, for a caller
     /// outside this class (the sky stage uploads eight of the struct's scalars).</summary>
     internal static bool HasRuntime => _runtime != null;
-    /// <summary>The keyhole diameter pair inside <see cref="SymbolMap.GlGlobalShaderConstantsF"/>. Stored
-    /// unordered -- SetUniforms uploads min as <c>keyholeDiameterMin</c> and max as
-    /// <c>keyholeDiameterMax</c>, so the ordering happens here too.</summary>
-    internal const int KeyholeDiaA = 21, KeyholeDiaB = 22;
+    /// <summary>The keyhole terms inside <see cref="SymbolMap.GlGlobalShaderConstantsF"/>: the diameter pair, stored
+    /// unordered (SetUniforms uploads min as <c>keyholeDiameterMin</c> and max as <c>keyholeDiameterMax</c>, so the
+    /// ordering happens here too), then <c>keyholeMinZOffset</c>, the height over the player nothing below dissolves.</summary>
+    internal const int KeyholeDiaA = 21, KeyholeDiaB = 22, KeyholeMinZ = 23;
     private static float* _shaderConstF;
 
     /// <summary>The spell-targeting shape's own slice of the same three tables, indices read off the

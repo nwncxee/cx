@@ -36,13 +36,13 @@ internal static unsafe class AlloyWind
     /// returns NaN; Alloy skips the source (listed as a deliberate difference).</summary>
     private const float MinDist = 1e-4f;
 
-    /// <summary>One live gust. Same five fields as the engine's <c>PointSourceWind</c> (stride 0x1c: pos,
-    /// radius at +0x0c, original life at +0x10, remaining life at +0x14, strength at +0x18), minus the
-    /// original life, which nothing reads.</summary>
+    /// <summary>One live gust. The five fields of the engine's <c>PointSourceWind</c> (stride 0x1c: pos, radius at
+    /// +0x0c, original life at +0x10, remaining life at +0x14, strength at +0x18) -- the original life is what a
+    /// content stage reads as <c>windPointSourcesDuration</c>.</summary>
     private struct Source
     {
         internal Vector3 Pos;
-        internal float Radius, Life, Strength;
+        internal float Radius, Life, Strength, Duration;
     }
 
     private static ExtenderLog? _log;
@@ -149,8 +149,24 @@ internal static unsafe class AlloyWind
             return;
         }
         ref Source s = ref _src[_count++];
-        s.Pos = pos; s.Radius = radius; s.Life = life; s.Strength = strength;
+        s.Pos = pos; s.Radius = radius; s.Life = life; s.Strength = strength; s.Duration = life;
         _added++;
+    }
+
+    /// <summary>The live gusts as the engine's <c>SetUniforms</c> hands them to a stage under the
+    /// <c>windPointSources*</c> names: at most <paramref name="pos"/>'s length, in list order, the remaining life
+    /// floored at 0. Returns how many were written.</summary>
+    internal static int PointSources(Span<Vector3> pos, Span<float> radius, Span<float> duration, Span<float> intensity,
+                                     Span<float> remaining)
+    {
+        int n = Math.Min(_count, pos.Length);
+        for (int i = 0; i < n; i++)
+        {
+            ref Source s = ref _src[i];
+            pos[i] = s.Pos; radius[i] = s.Radius; duration[i] = s.Duration; intensity[i] = s.Strength;
+            remaining[i] = Math.Max(s.Life, 0f);
+        }
+        return n;
     }
 
     // ---- the clock --------------------------------------------------------------------------------------

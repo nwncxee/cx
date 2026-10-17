@@ -135,11 +135,15 @@ internal static class ShaderStages
     /// <summary><paramref name="src"/> with <c>#define <paramref name="define"/></c> spliced immediately after
     /// its <c>#version</c> line -- the one place GLSL takes it, and the same splice
     /// <c>check-shaders.py</c> makes, so a variant the gate compiles is the text the extender builds.</summary>
-    internal static string WithDefine(string src, string define)
+    internal static string WithDefine(string src, string define) => AfterVersion(src, $"#define {define}\n");
+
+    /// <summary><paramref name="src"/> with <paramref name="lines"/> right after its <c>#version</c> line, ahead of every
+    /// other token -- where an <c>#extension</c> must sit. Unchanged when it has no <c>#version</c>.</summary>
+    internal static string AfterVersion(string src, string lines)
     {
         int v = src.IndexOf("#version", StringComparison.Ordinal);
         int e = v < 0 ? -1 : src.IndexOf('\n', v);
-        return e < 0 ? src : src[..(e + 1)] + $"#define {define}\n" + src[(e + 1)..];
+        return e < 0 ? src : src[..(e + 1)] + lines + src[(e + 1)..];
     }
 
     /// <summary>Write every overridable stage into <paramref name="dir"/> as an editable

@@ -242,10 +242,10 @@ public sealed unsafe partial class AlloyRenderer
         // and the ten palette rows that colour it live on the part (a per-part scheme) or its object's record. Staged per draw slot here;
         // cleared when this slot's diffuse is not a PLT, so a slot that stops being one stops resolving.
         if (TexRegistry.KindOf(diffuse) == TexKind.Plt) PltColors.Stage(i, SceneDb.PartObj[part], part);
-        // CX-223: ...and for a palette-tint material the rows go up off an ORDINARY diffuse too -- its hosted
-        // stage reads the wearer's scheme (the engine's PLTscheme feed) while its diffuse carries palette
-        // intensity rather than a composite. The flag says "rows, not a resolve", so nothing starts resolving.
-        else if (ShaderFeatures.ReadsPaletteSlots((int)_oFeat[i * 4]))
+        // ...and for a content pair that reads the engine's PLTscheme feed the rows go up off an ORDINARY diffuse
+        // too: its stage reads the wearer's scheme while its diffuse may carry palette intensity rather than a
+        // composite. The flag says "rows, not a resolve", so nothing starts resolving.
+        else if (ContentPrograms.ReadsPlt((int)_oFeat[i * 4]))
             PltColors.Stage(i, SceneDb.PartObj[part], part, rowsOnly: true);
         else PltColors.Clear(i);
         if (StaleAuditArmed(i)) _saPltAt[i] = _frameSeq;

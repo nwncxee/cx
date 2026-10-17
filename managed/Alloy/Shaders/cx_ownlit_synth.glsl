@@ -51,15 +51,16 @@ void main()
     vec2 du1 = dFdx(vUV), du2 = dFdy(vUV);
     CxDraw d = uDraw[vDraw];
     int feat = int(d.feat.x);
-    // #123, shd_roofkn's fragment half: the toolset "vertex anchor" is a scrap of mesh authored high
-    // above the walkmesh with its normals pointing down, so the toolset can transform the roof
-    // without letting the builder collide with it. It must never be seen in game. roofknm dropped it.
-    if (feat == CX_FEAT_ROOFKN && vAnchorZ > 100.0) discard;
     // #330: the keyhole verdict FIRST. It used to sit at the very end, so every fragment inside the
     // aperture paid the whole lit stage -- the cluster loop and the cube taps -- and then discarded;
     // under a keyhole through stacked roofs that was every layer at every pixel of the hole. The
-    // probe capture never dissolves (a hole baked into the cube is permanent in every reflection).
+    // probe capture never dissolves (a hole baked into the cube is permanent in every reflection),
+    // and nor does a content pair's shadow caster, which bakes from the light, not the camera.
+#ifdef CX_CAST
+    float kh = 1.0;
+#else
     float kh = uCapture != 0 ? 1.0 : CxKeyhole(d.rot.z, vWorld, vDepth);
+#endif
     if (kh < 0.0) discard;
     // CX-273: a decal fragment the layer already folded into the surface under it draws nothing here
     if (uDecal == 2 && CxDecalOn(imageLoad(uDecalSurf, ivec2(gl_FragCoord.xy)).r, vDepth)) discard;
@@ -69,33 +70,14 @@ void main()
     // way there -- and a map that dropped out at the per-slot re-fetch looks exactly like content
     // that never declared one.
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
-    // A pass that discards on coverage asks it of a plain diffuse (no env, normal-map coverage, flow, PLT or tint) here,
+    // A pass that discards on coverage asks it of a plain diffuse (no env, no PLT) here,
     // ahead of the maps, SSAO and the sun's taps; the full test below stays the authority. Uniform-gated: opaque skips it.
-    if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & (CX_SLOT_ENV | CX_SLOT_COVERNRM)) == 0
-        && feat != CX_FEAT_FLOWMAP && !CxPltOn(vDraw) && CxTintRow(vDraw) < 0
+    // CX-303: not in a content stage's program -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
+#ifndef CX_CONTENT_PROGRAM
+    if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & CX_SLOT_ENV) == 0 && !CxPltOn(vDraw)
         && CxCoverCut(texture(uTex, vUV, uLodBias).a, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
+#endif
     vec2 uv = vUV;
-    // #123, shd_flowmap: the RG map is a per-texel flow DIRECTION, and the diffuse slides along it in
-    // two half-offset phases blended by their own distance from the midpoint -- the blend is what
-    // stops each phase's wrap showing as a flash. fMixingTime 5.0 and fFlowMapMod 1.0 are the
-    // shader's own hardcoded constants; only fSlideSpeed comes from the .mtr.
-    // These are DIFFUSE-only coordinates, deliberately kept off `uv`: the ticket scopes the feature
-    // to "offsets diffuse UVs", and the maps below must go on sampling the unslid vUV. Sliding them
-    // to phase 1 alone -- which is what reassigning `uv` here would do -- is worse than not sliding
-    // them at all, because an unblended phase SNAPS at every wrap while the diffuse over it does not.
-    // ponytail: vanilla slides the normal and height maps too, blending both phases the same way.
-    // That is two more taps on flowmap fragments; do it here if static ripples ever read wrong.
-    vec2 uvA = uv, uvB = uv;
-    float flowMix = 0.0;
-    if (feat == CX_FEAT_FLOWMAP && (slots & CX_SLOT_FLOW) != 0)
-    {
-        vec2 flow = texture(uFlowTex, uv, uLodBias).rg * 2.0 - 1.0;
-        float t1 = (CxClock() / 1000.0) / 5.0;
-        float c1 = fract(t1), c2 = fract(t1 + 2.5);
-        uvA = uv - d.feat.y * flow * c1;
-        uvB = uv - d.feat.y * flow * c2;
-        flowMix = abs(c1 - 0.5) * 2.0;
-    }
     vec3 V = normalize(uEyePos - vWorld);
     float occl = 1.0;
     // #146: outside the normal/height branch below -- a material may declare an AO map and nothing
@@ -127,9 +109,9 @@ void main()
         float inv;
         if (vTan.w != 0.0)
         {
-            // Gram-Schmidt against the shading normal, then the handedness on the BITANGENT alone --
-            // which is what SetupTSB spends it on, and it works out to +dP/dv, the same axis the
-            // derivative frame below builds.
+            // Gram-Schmidt against the shading normal (Alloy's: the current SetupTSB, inc_transform.shd:206-217,
+            // only normalises the tangent), then the handedness on the BITANGENT alone -- which is what SetupTSB
+            // spends it on, and it works out to +dP/dv, the same axis the derivative frame below builds.
             T = vTan.xyz - N * dot(vTan.xyz, N);
             B = cross(N, T) * vTan.w;
             inv = inversesqrt(max(dot(T, T), 1e-12));
@@ -150,12 +132,15 @@ void main()
         }
         if ((slots & CX_SLOT_HEIGHT) != 0)
         {
-            // inc_material.shd's SetupOcclusion: the height against a blurrier tap of itself IS the
-            // local self-occlusion (fOcclusionVicinityRange 2.0, base 1.0, modifier 0.0).
+            // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
+            // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
+            // - log2 of the view depth), clamped to 0.9 and squared.
             // ponytail: no parallax displacement of the UVs -- that is the same map read again, per
             // fragment, in a loop. #122 owns what else the height map is worth.
-            float o = texture(uHeightTex, uv, 2.0 + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
-            occl *= 1.0 - clamp(o, 0.0, 0.99);
+            float far = max(0.0, CX_OCCL_VICINITY - log2(max(vDepth, 1e-4)));
+            float o = texture(uHeightTex, uv, far + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
+            float a = 1.0 - clamp(o, 0.0, 0.9);
+            occl *= a * a;
         }
         if ((slots & CX_SLOT_NORMAL) != 0)
         {
@@ -229,9 +214,9 @@ void main()
     // 3 = sun visibility alone: white lit, black shadowed. A frame that looks unshadowed reads here
     //     as "the cascades are empty" or "nothing selected a cascade", which the composite cannot say.
     if (uViz == 3) { frag = vec4(vec3(sunVis), 1.0); return; }
-    // Material colours go in RAW: inc_lighting.shd uses materialFrontAmbient (517), materialFrontDiffuse
-    // (529) and materialFrontEmissive (625) with no ApplyColorSpace. Only the TEXTURE is linearised
-    // (inc_standard.shd:253). Linearising the material terms too double-darkened every non-white material.
+    // Material colours go in RAW: inc_lighting.shd uses materialFrontAmbient (512), materialFrontDiffuse
+    // (524) and materialFrontEmissive (603) with no ApplyColorSpace. Only the TEXTURE is linearised
+    // (inc_standard.shd:256). Linearising the material terms too double-darkened every non-white material.
     vec3 matAmbient = d.amb.rgb;
     vec3 matDiffuse = d.dif.rgb;
     // CX-52: a diffuse that streamed in over the white stand-in fades in rather than cutting: from the
@@ -243,65 +228,43 @@ void main()
     // three samples.
     bool plt = CxPltOn(vDraw);
     float arriveBias = uLodBias + (1.0 - arrive) * (1.0 - arrive) * CX_ARRIVE_MIPS;
-    vec4 texel = plt ? CxPltResolve(uTex, uvA, arriveBias, vDraw) : texture(uTex, uvA, arriveBias);
+    vec4 texel = plt ? CxPltResolve(uTex, uv, arriveBias, vDraw) : texture(uTex, uv, arriveBias);
     if (arrive < 1.0)
     {
         // A PLT's alpha comes out of the palette, not out of a mip of the pair texture, so the sharp-alpha
         // re-read the stand-in fade wants is already in `texel` -- one resolve, not two.
-        if (!plt) texel.a = texture(uTex, uvA, uLodBias).a;
+        if (!plt) texel.a = texture(uTex, uv, uLodBias).a;
         texel.rgb = mix(vec3(1.0), texel.rgb, smoothstep(0.0, 0.35, arrive));
     }
-    // A flow map on a PLT part does not occur in any shipped content (flowmaps are .mtr, PLTs are creature
-    // skins), so the second resolve stays behind the same branch rather than being hoisted.
-    if (flowMix > 0.0)
-        texel = mix(texel, plt ? CxPltResolve(uTex, uvB, uLodBias, vDraw) : texture(uTex, uvB, uLodBias), flowMix);
     // CX-117 PLT forensics: 47 = the resolve forced to level 0 (mips out of the picture), 48 = the pair texel
     // itself (R intensity, G layer x 25), 49 = this texel's master-palette row over 1792, 50 = the PLT flag.
     // Not 40..46: those are the vis-ID, SSR and lightmap views, and this early return hid them.
-    if (uViz == 47) { frag = vec4(plt ? CxPltBilinear(uTex, uvA, 0, vDraw, CxPltClamps(vDraw)).rgb : vec3(0.0), 1.0); return; }
-    if (uViz == 48) { vec2 rg = texture(uTex, uvA).rg; frag = vec4(rg.r, rg.g * 25.5, 0.0, 1.0); return; }
+    if (uViz == 47) { frag = vec4(plt ? CxPltBilinear(uTex, uv, 0, vDraw, CxPltClamps(vDraw)).rgb : vec3(0.0), 1.0); return; }
+    if (uViz == 48) { vec2 rg = texture(uTex, uv).rg; frag = vec4(rg.r, rg.g * 25.5, 0.0, 1.0); return; }
     if (uViz == 49)
     {
-        float row = plt ? float(CxPltRow(vDraw, min(int(texture(uTex, uvA).g * 255.0 + 0.5), 9))) / 1792.0 : 0.0;
+        float row = plt ? float(CxPltRow(vDraw, min(int(texture(uTex, uv).g * 255.0 + 0.5), 9))) / 1792.0 : 0.0;
         frag = vec4(vec3(row), 1.0); return;
     }
     if (uViz == 50) { frag = vec4(plt ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), 1.0); return; }
     // #294: what the diffuse alpha MEANS here, asked once and spent once. On an env-mapped material
     // it is REFLECTIVITY, not coverage -- it becomes envLevel four lines down -- and the engine is
-    // explicit about not spending it twice: inc_standard.shd:289 multiplies only `.rgb` through on
-    // the ENVIRONMENT_MAP branch where :293 multiplies all four components on the other, and its
-    // AlphaDiscard (:175) tests the MATERIAL alpha there, never the texel's. Alloy spent it as
+    // explicit about not spending it twice: inc_standard.shd:290 multiplies only `.rgb` through on
+    // the ENVIRONMENT_MAP branch where :294 multiplies all four components on the other, and its
+    // AlphaDiscard (:176) tests the MATERIAL alpha there, never the texel's. Alloy spent it as
     // reflectivity AND again as opacity, so the more reflective a surface was authored the more
     // invisible it drew -- the #294 crystal reads bright and solid in vanilla and as a ghost here.
     // CasterPass already knew this and lowered its own env threshold for the same reason; the
     // colour path's turn.
     float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;
-    // CX-223: a palette-tint part's coverage is NOT its diffuse alpha -- the diffuse carries palette
-    // intensity, and the authored coverage is the third palette map's blue channel. The compensation below
-    // then runs at the MATERIAL's own scale over that map's extent, not the knob's over the diffuse's:
-    // compensating twice over one channel fills a distant silhouette solid.
-    cxTintRow = CxTintRow(vDraw);
-    vec4 tintCov = cxTintRow >= 0 ? CxTintCoverage(vDraw, cxTintRow, uv) : vec4(-1.0);
     float cutMip = uAlphaMip;
     vec2 cutSize = vec2(textureSize(uTex, 0));
-    if (tintCov.x >= 0.0) { coverage = tintCov.x; cutMip = tintCov.y; cutSize = tintCov.zw; }
-    // CX-218: ...and neither is a hair/cloth material's -- its customShaderFS discards on the NORMAL map's
-    // alpha (`texUnit1.a < 0.2`) and spends the diffuse alpha on the env level, which is why the env rule
-    // above is right for it and why its cutout has to read slot 1. The test below runs at the cutout class's
-    // own 0.2, which is the number those stages name (ShaderFeatures.CoverNrmCut).
-    // ...and only once slot 1's own handle is resident: a map still loading reads handle 0, whose alpha is 0,
-    // which would discard the whole part rather than draw it with the coverage it is about to get.
-#ifdef CX_BINDLESS
-    bool cxNrmReady = uTexH[(vDraw << 3) + 1] != uvec2(0u);
-#else
-    bool cxNrmReady = true;
-#endif
-    if ((slots & CX_SLOT_COVERNRM) != 0 && cxNrmReady)
-    { coverage = texture(uNrmTex, uv, uLodBias).a; cutSize = vec2(textureSize(uNrmTex, 0)); }
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
+#ifndef CX_CONTENT_PROGRAM
     if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
+#endif
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.
@@ -339,12 +302,15 @@ void main()
     float specTexel = (slots & CX_SLOT_SPEC) != 0 ? texture(uSpecTex, uv, uLodBias).r : 0.0;
     float roughTexel = (slots & CX_SLOT_ROUGH) != 0 ? texture(uRoughTex, uv, uLodBias).r : 0.0;
     vec3 pbr = CxSynthPbr(d.pbr.xyz, slots, envLevel, specTexel, roughTexel);
-    // #350: the material's own custom FS, hosted, AFTER synthesis -- the point its stock body runs,
-    // with SetupStandardShaderInputs's outputs in the engine's own names. The material globals are
-    // filled first because the weather ground READS them before it writes them
-    // (`min(MATERIAL_ROUGHNESS_VALUE, WET_ROUGHNESS)` is a comparison); the specular colour is
-    // synthesised from the PRE-body albedo because SetupSpecularity runs before the body in stock.
+    // #350/CX-303: a content pair's fragment half, AFTER synthesis -- the point its stock body runs, with
+    // SetupStandardShaderInputs's outputs in the engine's own names. The material globals are filled first
+    // because a body may READ them before it writes them (`min(MATERIAL_ROUGHNESS_VALUE, WET_ROUGHNESS)` is a
+    // comparison); the specular colour is synthesised from the PRE-body albedo because SetupSpecularity runs
+    // before the body in stock.
     CxHostTexel = vec4(albedo, coverage);
+    CxHostUV = uv;
+    CxHostDu = vec4(du1, du2);
+    CxHostCutAt = vec3(cutSize, cutMip);
     FragmentColor = vec4(1.0);      // stock main's own opener, for a body that skips it
     vFragmentNormal = N;
     vSurfaceNormal = normalize(vNrm);
@@ -369,7 +335,26 @@ void main()
         albedo = FragmentColor.rgb;
         N = normalize(vFragmentNormal);
         pbr = vec3(fSpecularity, fRoughness, fMetallicness);
+#ifdef CX_CONTENT_PROGRAM
+        // CX-303: a content stage's alpha IS its coverage -- a stage that cuts on another map hands that map back --
+        // and it made its own cut; what is left is the OIT pass's zero-coverage drop
+        coverage = FragmentColor.a;
+        if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
+#endif
     }
+#ifdef CX_DEPTH_ONLY
+    // CX-303: a content pair's depth and caster twins stop here, with every discard the colour pass makes made --
+    // the stage's own, the stand-in's stock cut, the keyhole -- and nothing lit. A post body cuts too, on the
+    // surface colour standing in for the lit one it reads in the colour pass: its alpha, the coverage, is the same.
+#ifdef CX_CONTENT_POST
+    CxHostPost(FragmentColor);
+#endif
+    oVisId = CxVisId(vDraw, gl_PrimitiveID);
+#ifndef CX_CAST
+    frag = vec4(uHlColor, 1.0);
+#endif
+    return;
+#endif
     if (!physical && CxBareMaterial(d.pbr.xyz, slots)) cxFresnel = 0.0;
     // 31/32/33 = the surface this fragment shades with -- albedo, shading normal,
     // (spec, rough, metal) -- against 7 (the normal before any body). Emitted AFTER the branch so
