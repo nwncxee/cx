@@ -4,6 +4,23 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
+/// <summary>The sky's own frame, as one record handed to every sky program of that frame: the MAIN view's
+/// camera and size whichever view the dome is drawn into, and whether the twin reading it may trust its
+/// history. The GLSL side is <c>cx_skyenv.glsl</c>'s <c>cxSky*</c> block.</summary>
+internal readonly struct SkyFrame
+{
+    internal readonly Matrix4x4 InvVp, PrevVp;
+    internal readonly Vector3 Eye;
+    internal readonly int W, H, Seq;
+    /// <summary>Is this frame's history garbage -- images just (re)made, or the first sky frame after a gap?</summary>
+    internal readonly bool Fresh;
+
+    internal SkyFrame(Matrix4x4 invVp, Matrix4x4 prevVp, Vector3 eye, int w, int h, int seq, bool fresh)
+    {
+        InvVp = invVp; PrevVp = prevVp; Eye = eye; W = w; H = h; Seq = seq; Fresh = fresh;
+    }
+}
+
 /// <summary>Every engine term a SKY program takes, located once and uploaded in one call: the scriptable, fog
 /// and camera block every Alloy stage gets, the calendar and weather scalars from
 /// <c>m_shaderExposedRuntimeData</c>, and the sky's own frame. The dome's fragment program and a twin's
@@ -34,20 +51,20 @@ internal unsafe struct SkyEnvLoc
     /// <summary>Upload the whole block into the program currently bound. <paramref name="main"/> is what the
     /// stage reads as <c>cxSkyMain</c>: 1 for the on-screen view, 0 for a probe cube face. Hot -- one call per
     /// sky program per pass, and it allocates nothing.</summary>
-    internal void Upload(int* viewport, bool main)
+    internal void Upload(int* viewport, bool main, in SkyFrame f)
     {
         AlloyRenderer.UploadFeatureTerms(Feat, viewport);
-        Gl.Uniform1i(Frame, AlloyRenderer.FrameSeq);
+        Gl.Uniform1i(Frame, f.Seq);
         Gl.Uniform1i(Main, main ? 1 : 0);
-        Gl.Uniform1i(Fresh, SkyTwin.FreshNow ? 1 : 0);
+        Gl.Uniform1i(Fresh, f.Fresh ? 1 : 0);
         // raw row-major bytes, read column-major by GLSL: the transpose, so `M * v` in the stage is exact
         // (the convention MotionVectors' uInvVP/uPrevVP upload takes).
-        Matrix4x4 inv = SkyTwin.InvVp, prev = SkyTwin.PrevVp;
+        Matrix4x4 inv = f.InvVp, prev = f.PrevVp;
         Gl.UniformMatrix4fv(InvVp, 1, 0, (float*)&inv);
         Gl.UniformMatrix4fv(PrevVp, 1, 0, (float*)&prev);
-        Vector3 eye = SkyTwin.Eye;
+        Vector3 eye = f.Eye;
         Gl.Uniform3fv(Eye, 1, (float*)&eye);
-        Gl.Uniform2i(View, SkyTwin.ViewW, SkyTwin.ViewH);
+        Gl.Uniform2i(View, f.W, f.H);
         if (!AlloyRenderer.HasRuntime) return;
         ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
         Gl.Uniform1i(Year, rt.ModuleYear); Gl.Uniform1i(Month, rt.ModuleMonth);

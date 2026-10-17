@@ -58,6 +58,10 @@ internal static unsafe partial class SkyTwin
         public uint Format;
         public int Bpp;
         public bool History, Mips, Clamp;
+        /// <summary>Does a <c>frame</c> pass write this image's CURRENT half? Only such a history image's two
+        /// halves swap: swapping one that nothing rewrites would alternate its name between the baked
+        /// texture and a zeroed one, every frame, with nothing to see but the flicker.</summary>
+        public bool Swap;
         public uint Tex, Prev;
         /// <summary>The extent the live texture was made at, so a view resize is a fact and not a guess.</summary>
         public int MadeW, MadeH, MadeD;
@@ -121,13 +125,15 @@ internal static unsafe partial class SkyTwin
         public int ViewW = 1, ViewH = 1;
         public bool HaveView;
         public Matrix4x4 InvVp = Matrix4x4.Identity, CurVp = Matrix4x4.Identity;
-        /// <summary>What the stage reads as <c>cxSkyPrevVp</c>, and the camera recorded at the LAST frame's
-        /// pass sequence that it is rolled from -- so a frame's passes and its draws read one pair.</summary>
+        /// <summary>What the stage reads as <c>cxSkyPrevVp</c>, and the camera recorded at the last pass
+        /// sequence that it is rolled from -- so a frame's passes and its draws read one pair.</summary>
         public Matrix4x4 PrevVp = Matrix4x4.Identity, PassVp = Matrix4x4.Identity;
         public bool HaveVp;
         public Vector3 Eye;
-        /// <summary>1 on the frame any image was remade: a twin's history and view buffers hold garbage then.</summary>
-        public int FreshFrame = -1;
+        /// <summary>The frame the camera pair was last rolled -- ONCE per presented frame, however many twins
+        /// or views the frame draws -- and the frame whose history is invalid because the roll before it was
+        /// not the frame before (a gap: indoors, <c>effects.sky 0</c>, a loading screen).</summary>
+        public int RollSeq = -1, GapSeq = -1;
         /// <summary>Which units the sky's programs have bound since the last <see cref="Unbind"/>, so the
         /// restore touches exactly those and nothing else.</summary>
         public uint TexMask, ImgMask;
@@ -139,8 +145,9 @@ internal static unsafe partial class SkyTwin
     /// evidence about the new one.</summary>
     internal static void Forget() => _gl = new SkyTwinState();
 
-    /// <summary>Module change: the declarations and the pass text came off THAT module's chain, so the images
-    /// and programs have a module lifetime. Deletes the live names, then forgets.</summary>
+    /// <summary>Module change (and the <c>effects.skytwin</c> edit): the declarations and the pass text came
+    /// off THAT module's chain, so the images and programs have a module lifetime. Deletes the live names,
+    /// then forgets -- which is also the one place a refusal latch is cleared.</summary>
     internal static void DropAll()
     {
         var g = _gl;
@@ -177,6 +184,18 @@ internal static unsafe partial class SkyTwin
     /// since the twin is a file in a hak like any other.</summary>
     internal static bool Fits(string stage) => Prefix.Length + stage.Length <= ShaderResource.ResRefBytes;
 
+    /// <summary>Is <paramref name="twinRef"/> one of ALLOY's own resrefs -- a stage or a library? A content
+    /// stage called <c>sky_fs</c> would name <c>cx_sky_fs</c> as its twin, and hosting a hak's override of
+    /// that stage would splice the wrapper into itself. Cold: once per stage per module.</summary>
+    internal static bool Reserved(string twinRef)
+    {
+        foreach ((string r, _) in ShaderStages.All)
+            if (string.Equals(r, twinRef, StringComparison.OrdinalIgnoreCase)) return true;
+        foreach ((string r, _) in ShaderSource.Libraries())
+            if (string.Equals(r, twinRef, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     /// <summary>Is this id a twin that may run? A failed one is a twin whose stage is hosted plainly.</summary>
     internal static bool Live(int id) => At(id) is { Failed: false };
 
@@ -190,14 +209,6 @@ internal static unsafe partial class SkyTwin
         var g = _gl;
         return (uint)id < (uint)g.Count ? g.Twins[id] : null;
     }
-
-    /// <summary>The sky's frame, as every sky program reads it (<c>cx_skyenv.glsl</c>).</summary>
-    internal static Matrix4x4 InvVp => _gl.InvVp;
-    internal static Matrix4x4 PrevVp => _gl.PrevVp;
-    internal static Vector3 Eye => _gl.Eye;
-    internal static int ViewW => _gl.ViewW;
-    internal static int ViewH => _gl.ViewH;
-    internal static bool FreshNow => _gl.FreshFrame == AlloyRenderer.FrameSeq;
 
     /// <summary>The MAIN view's render size and unjittered camera, noted once per frame before the sky is
     /// staged, so a probe face and every compute pass see the camera the player is looking through.</summary>
@@ -213,6 +224,40 @@ internal static unsafe partial class SkyTwin
         // The first frame has no history: a stage differencing the two cameras must see no motion, not a
         // step from the identity.
         if (!g.HaveVp) { g.PrevVp = g.PassVp = *vpClean; g.HaveVp = true; }
+    }
+
+    /// <summary>Roll the camera pair, once per presented frame however many twins or views the frame draws.
+    /// A roll that does not follow the previous frame's is a GAP -- the sky did not draw for a while -- and
+    /// reprojecting against a camera from minutes ago is worse than not reprojecting, so that frame's history
+    /// reads invalid and the pair reads as standing still.</summary>
+    private static void Roll()
+    {
+        var g = _gl;
+        int f = AlloyRenderer.FrameSeq;
+        if (g.RollSeq == f) return;
+        bool gap = Gap(g.RollSeq, f);
+        g.PrevVp = gap ? g.CurVp : g.PassVp;
+        g.PassVp = g.CurVp;
+        g.GapSeq = gap ? f : -1;
+        g.RollSeq = f;
+    }
+
+    /// <summary>Is frame <paramref name="now"/> the one after the frame <paramref name="last"/> the camera
+    /// pair was rolled at? Anything else -- including the first ever -- is a gap, and a gap's history is not
+    /// one frame old.</summary>
+    private static bool Gap(int last, int now) => last < 0 || last != now - 1;
+
+    /// <summary>The sky's own frame as one record, for the program <paramref name="id"/> hosts: -1 is a stage
+    /// run plainly, whose <c>cxSky*</c> locations are all -1 anyway. <c>Fresh</c> is THIS twin's -- a remake
+    /// of one twin's images says nothing about another's -- or the whole frame's, after a gap.</summary>
+    internal static SkyFrame FrameFor(int id) => FrameFor(At(id));
+
+    private static SkyFrame FrameFor(Twin? t)
+    {
+        var g = _gl;
+        int f = AlloyRenderer.FrameSeq;
+        bool fresh = g.GapSeq == f || (t != null && t.FreshFrame == f);
+        return new SkyFrame(g.InvVp, g.PrevVp, g.Eye, g.ViewW, g.ViewH, f, fresh);
     }
 
     /// <summary>Zeroed with the rest of the period report's counters.</summary>
@@ -234,7 +279,9 @@ internal static unsafe partial class SkyTwin
     }
 
     /// <summary>Latch a failure: said once with the reason, the GL objects released, and the stage hosted
-    /// plainly from here on. Cold by construction -- a twin is built once per module.</summary>
+    /// plainly from here on. The latch lives as long as this state object does, so a refusal the frame
+    /// discovers is taken ONCE -- a module change, a context loss or an <c>effects.skytwin</c> edit is what
+    /// clears it.</summary>
     internal static void Fail(int id, string reason, ExtenderLog? log)
     {
         if (At(id) is not { } t) return;
@@ -265,9 +312,16 @@ internal static unsafe partial class SkyTwin
         int id = g.Count++;
         var t = new Twin { Ref = twinRef };
         g.Twins[id] = t;
+        if (Reserved(twinRef))
+        { Fail(id, $"{twinRef} is one of Alloy's own resrefs, not a content stage's twin", log); return id; }
         string? text = VanillaShader.ChainText(twinRef);
         if (text == null) { Fail(id, "the resource chain has no such file (or alloy.vanillabridge=0)", log); return id; }
         if (!ParseDecls(t, text, out string why)) { Fail(id, why, log); return id; }
+        // The memory budget, as far as the declarations themselves say: every fixed-size image exactly, and
+        // the view-sized ones against whatever main view has been seen so far. Remake re-takes it with the
+        // measured sizes, but a declaration that cannot fit is a build-time fact and is refused as one.
+        if (!Budget(t, g.HaveView ? g.ViewW : 0, g.HaveView ? g.ViewH : 0, out _, out why))
+        { Fail(id, why, log); return id; }
         log?.Info($"SkyTwin: {twinRef}.shd declares {t.Images.Length} image(s) and {t.Passes.Length} pass(es)");
         return id;
     }
@@ -327,7 +381,7 @@ internal static unsafe partial class SkyTwin
         foreach (Img other in images)
             if (string.Equals(other.Name, im.Name, StringComparison.Ordinal))
             { why = $"two images are named `{im.Name}`"; return false; }
-        // The shape's extent is separate DECIMAL tokens, never `3d:128x128x128`: a GLSL preprocessor
+        // The shape's extent is separate DECIMAL tokens, never `tex3d:128x128x128`: a GLSL preprocessor
         // tokenises a #pragma line, and NVIDIA's refuses `128x128` as an integer with a type suffix -- the
         // declaration would cost the twin its own compile.
         int at;
@@ -367,28 +421,47 @@ internal static unsafe partial class SkyTwin
         return true;
     }
 
-    private static bool Side(string s, int max, out int v)
+    private static bool ParsePass(string[] tok, System.Collections.Generic.List<Pass> passes, out string why)
     {
-        v = 0;
-        foreach (char c in s) if (!char.IsAsciiDigit(c)) return false;
-        return s.Length > 0 && int.TryParse(s, out v) && v >= 1 && v <= max;
+        why = "";
+        if (tok.Length != 5)
+        { why = $"cx_sky_pass needs once|frame, a resref and an image: `{string.Join(' ', tok)}`"; return false; }
+        bool once = tok[2] == "once";
+        if (!once && tok[2] != "frame") { why = $"`{tok[2]}` is neither once nor frame"; return false; }
+        if (tok[3].Length == 0 || tok[3].Length > ShaderResource.ResRefBytes)
+        { why = $"`{tok[3]}` is not a resref of at most {ShaderResource.ResRefBytes} characters"; return false; }
+        if (!Identifier(tok[4])) { why = $"`{tok[4]}` is not an image name"; return false; }
+        passes.Add(new Pass { Once = once, Ref = tok[3], ImageRef = tok[4] });
+        return true;
     }
 
     /// <summary>A declaration token the GLSL preprocessor will not choke on: an identifier or a decimal
-    /// integer, and nothing else. NVIDIA tokenises the <c>#pragma</c> line, so `3d:128x128x128` is a compile
-    /// error in the twin itself -- a declaration that costs the sky its program is refused here, by name.</summary>
+    /// integer, and nothing else. NVIDIA tokenises the <c>#pragma</c> line, so `tex3d:128x128x128` is a
+    /// compile error in the twin itself, which is why the grammar spends a token per number.</summary>
     private static bool PlainToken(string s)
     {
         if (s.Length == 0) return false;
-        if (char.IsAsciiDigit(s[0]))
+        bool digits = char.IsAsciiDigit(s[0]);
+        if (!digits && !char.IsAsciiLetter(s[0]) && s[0] != '_') return false;
+        foreach (char c in s)
         {
-            foreach (char c in s) if (!char.IsAsciiDigit(c)) return false;
-            return true;
+            if (digits ? !char.IsAsciiDigit(c) : !char.IsAsciiLetterOrDigit(c) && c != '_') return false;
         }
-        if (!char.IsAsciiLetter(s[0]) && s[0] != '_') return false;
-        foreach (char c in s) if (!char.IsAsciiLetterOrDigit(c) && c != '_') return false;
         return true;
     }
+
+    /// <summary>A decimal extent inside its budget -- <see cref="PlainToken"/>'s integer arm, bounded.</summary>
+    private static bool Side(string s, int max, out int v)
+    {
+        v = 0;
+        return PlainToken(s) && char.IsAsciiDigit(s[0]) && int.TryParse(s, out v) && v >= 1 && v <= max;
+    }
+
+    /// <summary>A GLSL identifier short enough to carry a <c>_prev</c> twin, and not in the reserved
+    /// <c>gl_</c> space -- <see cref="PlainToken"/>'s identifier arm, bounded.</summary>
+    private static bool Identifier(string s)
+        => PlainToken(s) && !char.IsAsciiDigit(s[0]) && s.Length <= MaxNameChars
+        && !s.StartsWith("gl_", StringComparison.Ordinal);
 
     private static bool ParseFormat(string s, out uint fmt, out int bpp)
     {
@@ -406,30 +479,5 @@ internal static unsafe partial class SkyTwin
             _ => (0u, 0),
         };
         return bpp != 0;
-    }
-
-    private static bool ParsePass(string[] tok, System.Collections.Generic.List<Pass> passes, out string why)
-    {
-        why = "";
-        if (tok.Length != 5)
-        { why = $"cx_sky_pass needs once|frame, a resref and an image: `{string.Join(' ', tok)}`"; return false; }
-        bool once = tok[2] == "once";
-        if (!once && tok[2] != "frame") { why = $"`{tok[2]}` is neither once nor frame"; return false; }
-        if (tok[3].Length == 0 || tok[3].Length > ShaderResource.ResRefBytes)
-        { why = $"`{tok[3]}` is not a resref of at most {ShaderResource.ResRefBytes} characters"; return false; }
-        if (!Identifier(tok[4])) { why = $"`{tok[4]}` is not an image name"; return false; }
-        passes.Add(new Pass { Once = once, Ref = tok[3], ImageRef = tok[4] });
-        return true;
-    }
-
-    /// <summary>A GLSL identifier short enough to carry a <c>_prev</c> twin, and not in the reserved
-    /// <c>gl_</c> space.</summary>
-    private static bool Identifier(string s)
-    {
-        if (s.Length == 0 || s.Length > MaxNameChars) return false;
-        if (s.StartsWith("gl_", StringComparison.Ordinal)) return false;
-        if (!char.IsAsciiLetter(s[0]) && s[0] != '_') return false;
-        foreach (char c in s) if (!char.IsAsciiLetterOrDigit(c) && c != '_') return false;
-        return true;
     }
 }

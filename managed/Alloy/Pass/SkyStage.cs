@@ -87,9 +87,16 @@ internal static unsafe class SkyStage
     /// before it runs a twin's passes. Hot, and over at most <see cref="MaxProgs"/> entries.</summary>
     internal static int TwinOf(uint prog)
     {
+        int at = IndexOf(prog);
+        return at >= 0 && _gl.Progs[at].TwinLive ? _gl.Progs[at].Twin : -1;
+    }
+
+    /// <summary>The entry a program name belongs to, or -1 -- the one lookup the three per-pass and per-draw
+    /// calls share. Hot, and over at most <see cref="MaxProgs"/> entries.</summary>
+    private static int IndexOf(uint prog)
+    {
         var g = _gl;
-        for (int i = 0; i < g.Count; i++)
-            if (g.Progs[i].Prog == prog) return g.Progs[i].TwinLive ? g.Progs[i].Twin : -1;
+        for (int i = 0; i < g.Count; i++) if (g.Progs[i].Prog == prog) return i;
         return -1;
     }
 
@@ -102,7 +109,15 @@ internal static unsafe class SkyStage
         if (_gl.Stale) DropPrograms();
         var g = _gl;
         for (int i = 0; i < g.Count; i++)
-            if (string.Equals(fs, g.Progs[i].Ref, StringComparison.OrdinalIgnoreCase)) return g.Progs[i].Prog;
+            if (string.Equals(fs, g.Progs[i].Ref, StringComparison.OrdinalIgnoreCase))
+            {
+                ref Entry hit = ref g.Progs[i];
+                // The twin this entry hosts gave up while the frame was running (its images could not be
+                // remade). Replant THIS entry on the stage the engine runs -- once -- rather than rebuild
+                // every sky program, which would also throw away the refusal that caused it.
+                if (hit.TwinLive && !SkyTwin.Live(hit.Twin)) Replant(ref hit);
+                return hit.Prog;
+            }
         if (g.Count >= MaxProgs)
         {
             _log?.Always($"SkyStage: more than {MaxProgs} distinct sky fragment stages in one session -- the sky "
@@ -112,9 +127,8 @@ internal static unsafe class SkyStage
         string resref = fs.ToLowerInvariant();
         ref Entry e = ref g.Progs[g.Count++];
         e.Ref = resref;
-        e.Twin = Twin(resref, ref e);
-        e.TwinLive = e.Prog != 0;
-        if (e.Prog == 0) e.Prog = Build(resref, linear: false);
+        e.TwinLive = TryTwin(resref, out e.Twin, out uint prog);
+        e.Prog = e.TwinLive ? prog : Build(resref, linear: false);
         if (e.Prog == 0) { e.Failed = true; return 0; }
         Locate(ref e);
         _log?.Info(e.TwinLive
@@ -124,28 +138,44 @@ internal static unsafe class SkyStage
         return e.Prog;
     }
 
-    /// <summary>Try the stage's Alloy-native twin: <c>cx_&lt;stage&gt;</c> in the chain, declarations parsed,
-    /// passes built, and the dome's program linked from it under <c>CX_SKY_LINEAR</c>. Fills <c>e.Prog</c> on
-    /// success, and hands back the twin's id either way (-1 only where the module ships none), so the stats
-    /// line can name a refusal; <see cref="SkyTwin"/> says every refusal out loud, once.</summary>
-    private static int Twin(string resref, ref Entry e)
+    /// <summary>Move one entry off its twin and onto the stage the engine runs, keeping its cached slot: the
+    /// twin's program goes, the plain one is built, and the entry stops being a twin. Said by
+    /// <see cref="SkyTwin.Fail"/>; a plain stage that will not build leaves the sky undrawn, as ever.</summary>
+    private static void Replant(ref Entry e)
     {
-        if (!Effects.SkyTwin.V) return -1;
+        if (e.Prog != 0) Gl.DeleteProgram(e.Prog);
+        e.TwinLive = false;
+        e.Prog = Build(e.Ref, linear: false);
+        if (e.Prog == 0) { e.Failed = true; return; }
+        Locate(ref e);
+        _log?.Info($"SkyStage: {e.Ref}.shd is hosted plainly from here on -- its twin stood down");
+    }
+
+    /// <summary>Try the stage's Alloy-native twin: <c>cx_&lt;stage&gt;</c> in the chain, declarations parsed,
+    /// passes built, and the dome's program linked from it under <c>CX_SKY_LINEAR</c>. True with
+    /// <paramref name="prog"/> when that is what the sky will host; <paramref name="id"/> comes back set
+    /// either way (-1 only where the module ships no twin), so the stats line can name a refusal.</summary>
+    private static bool TryTwin(string resref, out int id, out uint prog)
+    {
+        id = -1;
+        prog = 0;
+        if (!Effects.SkyTwin.V) return false;
         string twinRef = SkyTwin.Prefix + resref;
         // No log line for "the module ships no twin": that is every module that has not written one.
-        if (!SkyTwin.Fits(resref) || !VanillaShader.InChain(twinRef)) return -1;
-        int id = SkyTwin.Declare(twinRef, _log);
-        if (id < 0) return -1;
-        if (!SkyTwin.Live(id) || !SkyTwin.BuildPasses(id, _log)) return id;
-        uint prog = Build(twinRef, linear: true);
+        if (!SkyTwin.Fits(resref) || !VanillaShader.InChain(twinRef)) return false;
+        id = SkyTwin.Declare(twinRef, _log);
+        if (id < 0) return false;
+        if (!SkyTwin.Live(id) || !SkyTwin.BuildPasses(id, _log)) return false;
+        prog = Build(twinRef, linear: true);
         if (prog == 0)
         {
             SkyTwin.Fail(id, "the sky program for it did not build (see the compile log above)", _log);
-            return id;
+            return false;
         }
-        if (!SkyTwin.Locate(id, prog, _log)) { Gl.DeleteProgram(prog); return id; }
-        e.Prog = prog;
-        return id;
+        if (SkyTwin.Locate(id, prog, _log)) return true;
+        Gl.DeleteProgram(prog);
+        prog = 0;
+        return false;
     }
 
     /// <summary>Link the sky pair: Alloy's own fullbright VERTEX stage (the same text the unlit program
@@ -197,7 +227,10 @@ internal static unsafe class SkyStage
             Gl.DeleteProgram(prog);
             prog = 0;
         }
-        if (prog == 0)
+        // "NOT DRAWN" belongs to the PLAIN arm alone: a twin that will not build is followed by this same
+        // method on the stage the engine runs, and SkyTwin.Fail is what says so. Claiming no sky here would
+        // be a line about something that is not happening.
+        if (prog == 0 && !linear)
             _log?.Always($"SkyStage: the sky program for {resref}.shd did not build (a stubbed stage is a black "
                        + "dome, so it is refused too) -- the sky is NOT DRAWN; see the compile log above");
         return prog;
@@ -227,10 +260,9 @@ internal static unsafe class SkyStage
     /// <c>m_shaderExposedRuntimeData</c> -- the same values the engine feeds its own copy. Hot.</summary>
     internal static void Prepare(uint prog, Matrix4x4* vp, int* viewport)
     {
-        var g = _gl;
-        int at = -1;
-        for (int i = 0; i < g.Count; i++) if (g.Progs[i].Prog == prog) { at = i; break; }
+        int at = IndexOf(prog);
         if (at < 0) return;
+        var g = _gl;
         ref Entry e = ref g.Progs[at];
         Gl.UseProgram(prog);
         if (g.Primed == prog)
@@ -254,7 +286,7 @@ internal static unsafe class SkyStage
         Gl.UniformMatrix4fv(e.ViewInv, 1, 0, (float*)&viewInv);
         // The engine terms, and the sky's own frame beside them -- one upload shared with a twin's compute
         // passes, so a pass and the stage it feeds never disagree about the calendar or the camera.
-        e.Env.Upload(viewport, !AlloyRenderer.Capturing);
+        e.Env.Upload(viewport, !AlloyRenderer.Capturing, SkyTwin.FrameFor(e.TwinLive ? e.Twin : -1));
         // The twin's images are CONTEXT state and the pass before this one owned units 4..13, so they are
         // bound here, per pass, rather than once at the program's build.
         if (e.TwinLive) SkyTwin.BindDraw(e.Twin);
@@ -266,11 +298,9 @@ internal static unsafe class SkyStage
     /// gob).</summary>
     internal static void Draw(uint prog, int slot, float* tint, float alpha, float skyFog)
     {
-        var g = _gl;
-        int at = -1;
-        for (int i = 0; i < g.Count; i++) if (g.Progs[i].Prog == prog) { at = i; break; }
+        int at = IndexOf(prog);
         if (at < 0) return;
-        ref Entry e = ref g.Progs[at];
+        ref Entry e = ref _gl.Progs[at];
         Gl.Uniform1i(e.DrawBase, slot);
         Gl.Uniform3fv(e.Tint, 1, tint);
         Gl.Uniform4f(e.Global, tint[0], tint[1], tint[2], alpha);

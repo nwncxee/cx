@@ -61,6 +61,20 @@ internal static unsafe partial class SkyTwin
             if (!Resolve(t, prog, out p.Binds, out string why)) { Fail(id, $"pass {p.Ref}: {why}", log); return false; }
             log?.Info($"{what}: built, {p.Gx}x{p.Gy}x{p.Gz} work group, {p.Binds.Length} image binding(s)");
         }
+        // Which history images a FRAME pass rewrites, now that every pass's bindings are known: only those
+        // swap halves. A `history` image nothing rewrites each frame has no history to keep, and swapping it
+        // would alternate its name between the baked texture and a zeroed one -- so the flag is refused.
+        foreach (Pass p in t.Passes)
+            if (!p.Once)
+                foreach (Bind b in p.Binds)
+                    if (b.IsImage && !b.Prev) t.Images[b.Image].Swap = true;
+        foreach (Img im in t.Images)
+            if (im.History && !im.Swap)
+            {
+                Fail(id, $"image `{im.Name}` is declared `history`, but no frame pass writes it as an image "
+                       + "-- there is no history to keep", log);
+                return false;
+            }
         return true;
     }
 
@@ -126,6 +140,10 @@ internal static unsafe partial class SkyTwin
                 { why = $"`{name}` is declared as uniform type 0x{type:x}, not a sampler2D/sampler3D/image2D/image3D"; return false; }
                 if (wants3d != (im.Shape == Shape.Tex3d))
                 { why = $"`{name}` is declared {(wants3d ? "3D" : "2D")} but its cx_sky_image is {(im.Shape == Shape.Tex3d ? "3d" : "2d")}"; return false; }
+                // The location first: an enumerated uniform with none is nothing to bind, and taking a unit
+                // for it would spend the budget on a name no frame ever writes.
+                int loc = GlProgram.Loc(prog, name);
+                if (loc < 0) continue;
                 uint unit;
                 if (isImage)
                 {
@@ -137,8 +155,6 @@ internal static unsafe partial class SkyTwin
                     if (tex >= TexUnitCount) { why = $"more than {TexUnitCount} texture units are needed"; return false; }
                     unit = TexUnit0 + tex++;
                 }
-                int loc = GlProgram.Loc(prog, name);
-                if (loc < 0) continue;                // enumerated but not addressable: nothing to bind
                 list.Add(new Bind { Loc = loc, Image = i, Prev = prev, IsImage = isImage, Unit = unit });
             }
         }
@@ -159,9 +175,12 @@ internal static unsafe partial class SkyTwin
         int vw = g.HaveView ? g.ViewW : Math.Max(viewport[2], 1);
         int vh = g.HaveView ? g.ViewH : Math.Max(viewport[3], 1);
         if (t.Made && !Stale(t, vw, vh)) return true;
-        if (!Remake(t, vw, vh, out string why)) { Fail(id, why, log); SkyStage.MarkStale(); return false; }
+        // No MarkStale here: the latch has to outlive the rebuild it would trigger, or a deterministic
+        // refusal (an extent past the byte budget, a texture the driver will not make) re-parses, recompiles
+        // and says so again every single frame. SkyStage replants this one entry on the plain stage instead.
+        if (!Remake(t, vw, vh, out string why)) { Fail(id, why, log); return false; }
         t.Made = true; t.MadeW = vw; t.MadeH = vh;
-        t.FreshFrame = g.FreshFrame = AlloyRenderer.FrameSeq;
+        t.FreshFrame = AlloyRenderer.FrameSeq;
         log?.Info($"SkyTwin: {t.Ref} made {t.Images.Length} image(s), {t.Bytes / (1024.0 * 1024.0):F1} MiB "
                 + $"(main view {vw}x{vh})");
         // Every once-pass re-runs whenever ANY image was remade: a once-pass that writes a view-sized image
@@ -193,21 +212,28 @@ internal static unsafe partial class SkyTwin
         if (d < 1) d = 1;
     }
 
-    private static bool Remake(Twin t, int vw, int vh, out string why)
+    /// <summary>What the twin's images come to at this view, against <see cref="MaxImageBytes"/>. A view
+    /// extent of 0 means "no main view measured yet", and the view-sized images are left out of the sum --
+    /// the declaration's own fixed-size images are still a build-time fact and are taken as one.</summary>
+    private static bool Budget(Twin t, int vw, int vh, out long bytes, out string why)
     {
         why = "";
-        long bytes = 0;
+        bytes = 0;
         foreach (Img im in t.Images)
         {
+            if (im.Shape == Shape.View && (vw <= 0 || vh <= 0)) continue;
             Extent(im, vw, vh, out int w, out int h, out int d);
-            bytes += (long)Bytes(im, w, h, d) * (im.History ? 2 : 1);
+            bytes += Bytes(im, w, h, d) * (im.History ? 2 : 1);
         }
-        if (bytes > MaxImageBytes)
-        {
-            why = $"its images come to {bytes / (1024.0 * 1024.0):F1} MiB, past the budget of "
-                + $"{MaxImageBytes / (1024 * 1024)} MiB";
-            return false;
-        }
+        if (bytes <= MaxImageBytes) return true;
+        why = $"its images come to {bytes / (1024.0 * 1024.0):F1} MiB, past the budget of "
+            + $"{MaxImageBytes / (1024 * 1024)} MiB";
+        return false;
+    }
+
+    private static bool Remake(Twin t, int vw, int vh, out string why)
+    {
+        if (!Budget(t, vw, vh, out long bytes, out why)) return false;
         t.Bytes = bytes;
         foreach (Img im in t.Images)
         {
@@ -277,29 +303,31 @@ internal static unsafe partial class SkyTwin
     {
         if (At(id) is not { } t || t.Failed) return;
         if (t.RanFrame == AlloyRenderer.FrameSeq) return;
+        // Once per presented frame, before any twin's passes: the camera pair the whole frame reads.
+        Roll();
         if (!Ensure(id, viewport, log)) return;
         t.RanFrame = AlloyRenderer.FrameSeq;
-        var g = _gl;
-        // The camera the stage differences against: the one recorded at the LAST frame's pass sequence, held
-        // for this whole frame so the dome's own draw and its passes read the same pair.
-        g.PrevVp = g.PassVp;
-        g.PassVp = g.CurVp;
         foreach (Img im in t.Images)
-            if (im.History) (im.Tex, im.Prev) = (im.Prev, im.Tex);
+            if (im.Swap) (im.Tex, im.Prev) = (im.Prev, im.Tex);
         RunPasses(t, viewport, once: false, main: true);
     }
 
-    /// <summary>Dispatch every pass of one kind, then hand the image block and the bound program back. Hot
-    /// (once per frame): no allocation, and the restore is the one every Alloy dispatch makes.</summary>
+    /// <summary>Dispatch every pass of one kind, then hand back the image block, the texture units these
+    /// passes themselves bound and the program that was current. Symmetric on its own, so a caller that
+    /// returns before the sky draws anything leaves nothing of ours bound. Hot: no allocation.</summary>
     private static void RunPasses(Twin t, int* viewport, bool once, bool main)
     {
         bool any = false;
         foreach (Pass p in t.Passes) if (p.Once == once && p.Prog != 0) { any = true; break; }
         if (!any) return;
+        var g = _gl;
+        uint held = g.TexMask;
         int prev = 0;
         Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prev);
         foreach (Pass p in t.Passes) if (p.Once == once && p.Prog != 0) Dispatch(t, p, viewport, main);
         UnbindImages();
+        UnbindTex(g.TexMask & ~held);
+        g.TexMask = held;
         Gl.UseProgram((uint)prev);
     }
 
@@ -311,16 +339,16 @@ internal static unsafe partial class SkyTwin
     {
         Img over = t.Images[p.Image];
         Gl.UseProgram(p.Prog);
-        p.Env.Upload(viewport, main);
+        p.Env.Upload(viewport, main, FrameFor(t));
         BindUnits(t, p.Binds);
         Gl.DispatchCompute(Groups(over.MadeW, p.Gx), Groups(over.MadeH, p.Gy), Groups(over.MadeD, p.Gz));
         Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.TEXTURE_FETCH_BARRIER_BIT);
         foreach (Bind b in p.Binds)
         {
+            // The CURRENT half only: a `_prev` bound as an image is last frame's picture, and regenerating
+            // its chain would filter a texture this pass did not write.
             Img im = t.Images[b.Image];
-            if (!b.IsImage || !im.Mips) continue;
-            uint tex = b.Prev ? im.Prev : im.Tex;
-            if (tex != 0) Gl.GenerateTextureMipmap(tex);
+            if (b.IsImage && !b.Prev && im.Mips && im.Tex != 0) Gl.GenerateTextureMipmap(im.Tex);
         }
         t.Runs++;
     }
@@ -372,12 +400,17 @@ internal static unsafe partial class SkyTwin
     {
         var g = _gl;
         UnbindImages();
-        if (g.TexMask == 0) return;
-        bool shadow = (g.TexMask & ((1u << (int)TextureSlots.SunShadowDyn)
-                                  | (1u << (int)TextureSlots.LocalShadowDyn))) != 0;
-        for (uint u = TexUnit0; u < TexUnit0 + TexUnitCount; u++)
-            if ((g.TexMask & (1u << (int)u)) != 0) Gl.BindTextureUnit(u, 0);
+        UnbindTex(g.TexMask);
         g.TexMask = 0;
+    }
+
+    private static void UnbindTex(uint mask)
+    {
+        if (mask == 0) return;
+        bool shadow = (mask & ((1u << (int)TextureSlots.SunShadowDyn)
+                            | (1u << (int)TextureSlots.LocalShadowDyn))) != 0;
+        for (uint u = TexUnit0; u < TexUnit0 + TexUnitCount; u++)
+            if ((mask & (1u << (int)u)) != 0) Gl.BindTextureUnit(u, 0);
         if (shadow) { AlloyRenderer.BindSunMaps(); AlloyRenderer.BindCubeMaps(); }
         Gl.ActiveTexture(Gl.TEXTURE0);   // the unit every pass leaves current
     }

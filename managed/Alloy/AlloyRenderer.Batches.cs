@@ -1244,7 +1244,7 @@ public sealed unsafe partial class AlloyRenderer
         SkyStage.BeginPass();
         // Whichever view reaches the dome first this frame -- the main one or a probe cube face -- is where a
         // twin's images are made and its `once` passes run, so no draw samples an image that was never made.
-        SkyTwinsEnsure(viewport);
+        SkyTwinsRun(viewport, framePasses: false);
         // DEPTH_CLAMP because the composed matrices sit under the ENGINE's sky projection (RenderSkyBoxes
         // replaced it with its own near/far) and are drawn under the world's: the dome can cross the world
         // far plane, and clipped it reads as a hole at the horizon with nothing in the log.
@@ -1319,30 +1319,20 @@ public sealed unsafe partial class AlloyRenderer
         Gl.DepthRange(0.0, 1.0);
     }
 
-    /// <summary>Make every staged sky twin's images and run its <c>once</c> passes. Called at the head of the
-    /// sky pass, so the first view of a frame to draw the dome -- the main one, or a probe cube face in a
-    /// session whose first main-view sky frame has not happened yet -- is the one that makes them.</summary>
-    private static void SkyTwinsEnsure(int* viewport)
-    {
-        if (!SkyTwin.Any) return;
-        for (int i = 0; i < _skyN; i++)
-        {
-            if (_skProg[i] == 0) continue;
-            int id = SkyStage.TwinOf(_skProg[i]);
-            if (id >= 0) SkyTwin.Ensure(id, viewport, _log);
-        }
-    }
-
-    /// <summary>Every staged sky twin's <c>frame</c> passes, for the MAIN view only and once per presented
-    /// frame. Dispatched ahead of the sky's own GPU term, because TIME_ELAPSED cannot nest.</summary>
-    private static void SkyTwinFramePasses(int* viewport)
+    /// <summary>Every sky twin this frame staged, once each. <paramref name="framePasses"/> false only makes
+    /// its images and runs its <c>once</c> passes -- the head of the sky pass, so the first view of a frame to
+    /// draw the dome makes them; true runs its <c>frame</c> passes too, for the main view before the sky's own
+    /// GPU term opens (TIME_ELAPSED cannot nest).</summary>
+    private static void SkyTwinsRun(int* viewport, bool framePasses)
     {
         if (_skyN == 0 || !SkyTwin.Any) return;
         for (int i = 0; i < _skyN; i++)
         {
             if (_skProg[i] == 0) continue;
             int id = SkyStage.TwinOf(_skProg[i]);
-            if (id >= 0) SkyTwin.RunFrame(id, viewport, _log);
+            if (id < 0) continue;
+            if (framePasses) SkyTwin.RunFrame(id, viewport, _log);
+            else SkyTwin.Ensure(id, viewport, _log);
         }
     }
 

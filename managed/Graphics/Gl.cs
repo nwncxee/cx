@@ -186,7 +186,7 @@ public static unsafe class Gl
     /// <summary>The rest of the sized colour formats a sky twin may ask its own images for
     /// (<c>docs/shader-overrides.md</c>, "Sky twins and sky passes"); GL 4.2 image-load-store formats.</summary>
     public const uint RGBA32F = 0x8814, R16F = 0x822D;
-    /// <summary>A volume texture -- a sky twin's <c>3d:</c> image, and the only target Alloy binds layered.</summary>
+    /// <summary>A volume texture -- a sky twin's <c>tex3d</c> image, and the only target Alloy binds layered.</summary>
     public const uint TEXTURE_3D = 0x806F;
     /// <summary>Uniform enumeration (<see cref="GetActiveUniform"/>): how many a program has and the longest
     /// name, so a caller sizes one buffer instead of guessing.</summary>

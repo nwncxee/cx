@@ -6,9 +6,10 @@ namespace CX.Alloy;
 
 internal static unsafe partial class SkyTwin
 {
-    /// <summary>Off-device: the declaration grammar, the dispatch arithmetic, the resref rule and the two
-    /// wrapper texts. Oracle: hand-written declaration lines and GL enum literals written from the GL spec,
-    /// plus the embedded GLSL as a second artifact -- nothing here asks the parser what it thinks.</summary>
+    /// <summary>Off-device: the declaration grammar, the dispatch and roll arithmetic, the resref rules and
+    /// the two wrapper texts. Oracle: the declaration lines and GL enum literals written out below by hand,
+    /// and the embedded GLSL as a second artifact. <c>check-shaders.py</c> reads these same literals out of
+    /// this file and runs its own parser over them, so the two implementations cannot drift.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "SkyTwin.SelfCheck");
@@ -21,6 +22,14 @@ internal static unsafe partial class SkyTwin
         // "cx_" + a 13-character stage is exactly a 16-byte resref; one character more cannot be a file.
         check.Expect(Fits("cxdemo_sky") && Fits("thirteenchars") && !Fits("fourteenchars_"),
           "a twin's resref is cx_ + the stage, and it has to fit a resref");
+        // A stage called sky_fs would name cx_sky_fs as its twin -- Alloy's OWN sky wrapper -- and hosting a
+        // hak's override of it would splice the wrapper into itself. Same for a library name.
+        check.Expect(Reserved(SkyStage.ShdFs) && Reserved(ShdPassCs) && Reserved("cx_skyenv")
+                  && !Reserved("cx_cxdemo_sky") && !Reserved("cx_fst_sky"),
+          "an Alloy stage or library resref is refused as a twin, and a content twin's is not");
+        // A roll that does not follow the previous frame is a gap, including the first ever (-1).
+        check.Expect(Gap(-1, 0) && Gap(7, 20) && !Gap(7, 8),
+          "the camera pair rolls as history only when the last roll was the frame before");
         // The sky pass binds the engine's material textures on 0..MaxEngTex-1 and uOitDepth lives on
         // TextureSlots.OitDepth, so a twin's samplers have to sit between the two.
         check.Expect(TexUnit0 >= AlloyRenderer.MaxEngTex && TexUnit0 + TexUnitCount <= TextureSlots.OitDepth,
@@ -66,9 +75,9 @@ internal static unsafe partial class SkyTwin
               "the other two are frame passes over images 1 and 2, in declaration order");
         }
         // The rest of the format table, against the spec's values.
-        check.Expect(Fmt("rgba32f") == 0x8814 && Fmt("rg16f") == 0x822F && Fmt("rg8") == 0x822B
-                  && Fmt("r16f") == 0x822D && Fmt("r32f") == 0x822E && Fmt("r8") == 0x8229
-                  && Fmt("r11f_g11f_b10f") == 0x8C3A,
+        check.Expect(Fmt("rgba8") == 0x8058 && Fmt("rgba16f") == 0x881A && Fmt("rgba32f") == 0x8814
+                  && Fmt("rg16f") == 0x822F && Fmt("rg8") == 0x822B && Fmt("r16f") == 0x822D
+                  && Fmt("r32f") == 0x822E && Fmt("r8") == 0x8229 && Fmt("r11f_g11f_b10f") == 0x8C3A,
           "every declared format maps to its GL sized internal format");
         check.Expect(Fmt("rgba12f") == 0 && Fmt("RGBA8") == 0 && Fmt("") == 0,
           "an unknown format, and a known one in the wrong case, are refused");

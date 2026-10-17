@@ -486,7 +486,7 @@ public sealed unsafe partial class AlloyRenderer
                     if (!_capturing)
                     {
                         GpuBegin(GpuTerm.SkyPass);
-                        SkyTwinFramePasses(viewport);
+                        SkyTwinsRun(viewport, framePasses: true);
                         GpuEnd(GpuTerm.SkyPass);
                     }
                     GpuBegin(GpuTerm.Sky);
