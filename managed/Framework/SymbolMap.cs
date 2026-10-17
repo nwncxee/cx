@@ -1576,8 +1576,8 @@ internal static unsafe class SymbolMap
     public const string GlShaderRuntimeData = "_ZN8GLRender26m_shaderExposedRuntimeDataE";
     /// <summary>GLRender::m_globalShaderConstantsf @0x19af8a0 -- the float side of the engine's global shader
     /// constants. [21] and [22] are the two keyhole diameters, unordered in storage: SetUniforms uploads the MIN as
-    /// <c>keyholeDiameterMin</c> and the MAX as <c>keyholeDiameterMax</c>. [23] is <c>keyholeMinZOffset</c>, which
-    /// the <c>inc_keyhole.shd</c> generation this client runs never reads.</summary>
+    /// <c>keyholeDiameterMin</c> and the MAX as <c>keyholeDiameterMax</c>. [23] is <c>keyholeMinZOffset</c>, the
+    /// current <c>inc_keyhole.shd</c>'s floor offset.</summary>
     public const string GlGlobalShaderConstantsF = "_ZN8GLRender24m_globalShaderConstantsfE";
     /// <summary>GLRender::m_globalShaderConstantsi @0x19af6e0 (B) -- the INTEGER side of the same table.
     /// [27] is <c>targetShape</c>, [32] <c>targetShapeOriginOnSelf</c>, [35] <c>targetObjectType</c>; the

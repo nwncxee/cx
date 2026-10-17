@@ -268,7 +268,7 @@ rules:
 - `grep "Alloy content pair" cx.log` says, per pair, which halves run, how many parameter lanes it took, which
   twins it built, and what the translation could only approximate. A pair that cannot run says why, as NOT RUN.
 - Offline, `CX_CONTENT_STAGES=<dir> ./check-shaders.py` builds every material stage under `<dir>` the way the
-  engine does (from the game's own `base_shaders.bif`) and as Alloy runs it, paired with its partner by name
+  engine does (from the game's own shaders, `ovr.bif` over `base_shaders.bif` as the client resolves them) and as Alloy runs it, paired with its partner by name
   where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.
 
 ## The guards

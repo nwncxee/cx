@@ -126,7 +126,7 @@ uniform uvec2 uConNoise;
 #define keyholeCanDissolve (int(uDraw[vDraw].rot.z))
 #define keyholeDiameterMin (uKeyholeDia.x)
 #define keyholeDiameterMax (uKeyholeDia.y)
-#define keyholeMinZOffset 0.0
+#define keyholeMinZOffset (uKeyholeDia.z)
 #define bboxMin (vec3(0.0))
 #define bboxMax (vec3(0.0))
 #define DisplacementOffset 0.0

@@ -58,8 +58,8 @@ void main()
         float ndl = clamp(dot(vNrm, uAreaDir), 0.0, 1.0);
         vec3 sun = uAreaDiffuse * (ndl * CxSunShadow(world, vNrm, ndl, ndl));
         vec3 point = CxClusteredDiffuse(world, vNrm, max(-cv.z, 1e-3));
-        // the 0.15 floor and the sun-facing wrap are inc_lighting.shd:679, as every other owned
-        // stage runs them
+        // the 0.15 floor and the sun-facing wrap, as every other owned stage runs them (a content
+        // lighting fork's term; stock's ambient is flat)
         vLight = uAreaAmbient * mix(0.15, 1.0, ndl) + sun + point;
     }
 }

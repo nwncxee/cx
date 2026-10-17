@@ -129,7 +129,7 @@ vec3 CxConClipV()
 #define keyholeCanDissolve (int(cxConD.rot.z))
 #define keyholeDiameterMin (uKeyholeDia.x)
 #define keyholeDiameterMax (uKeyholeDia.y)
-#define keyholeMinZOffset 0.0
+#define keyholeMinZOffset (uKeyholeDia.z)
 #define bboxMin (vec3(0.0))
 #define bboxMax (vec3(0.0))
 // the material units: GLRender::ConnectShaderData @0x4ce8e0 pins texUnitN to unit N for the PROGRAM, so a vertex

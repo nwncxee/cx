@@ -92,8 +92,8 @@ public sealed unsafe partial class AlloyRenderer
         if (_shaderConstF != null)
         {
             float a = _shaderConstF[KeyholeDiaA], b = _shaderConstF[KeyholeDiaB];
-            px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b);
-            Gl.Uniform2fv(loc.KhDia, 1, px);
+            px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b); px[2] = _shaderConstF[KeyholeMinZ];
+            Gl.Uniform3fv(loc.KhDia, 1, px);
         }
         UploadTargetShape(loc);
         UploadVanillaEnv(loc);

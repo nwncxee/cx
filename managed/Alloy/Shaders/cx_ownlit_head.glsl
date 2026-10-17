@@ -119,17 +119,13 @@ const float CX_AO_DEPTH_EPS = 1e-5;
 /// The half-res upsample's depth tolerance, in fragment depth SLOPES: a neighbour more than this
 /// many pixels' worth of the surface's own slope away is another surface, not this one.
 const float CX_AO_UP_SLOPES = 8.0;
-// Synthesis floors for a material that declares nothing, read straight off the OLD-generation
-// inc_material.shd the installed client actually runs (#107 §11): fSpecularityMin 0.04 (the old gen's
-// name -- the split-include fork calls it fGeneratedSpecularityMin), fGeneratedRoughnessMin 0.125
-// unconditionally, fGeneratedRoughnessMax 0.6 at SHADER_QUALITY_MODE > 1 (0.65 below it, and the
-// Alloy lobe is GGX + Schlick geometric shadowing unconditionally, which IS that setting), and the
-// specular-map metallicness curve (fMetallicnessModifier 3.0 * fGeneratedMetallicnessOffset 0.2 = 0.6).
-const float CX_SPEC_MIN = 0.04, CX_ROUGH_MAX = 0.6, CX_ROUGH_MIN = 0.125;
-// metallicness curve, both of the old gen's branches: scale * specularity - scale * offset, where the
-// offset is 0.2 with a specular map and fGeneratedSpecularityMin without one.
-const float CX_METAL_SCALE_MAP = 3.0, CX_METAL_BIAS_MAP = 0.6,
-            CX_METAL_SCALE_BARE = 10.0, CX_METAL_BIAS_BARE = 0.4;
+// Synthesis floors for a material that declares nothing, off the CURRENT inc_material.shd (ovr.bif, the set
+// the client runs): fGeneratedSpecularityMin 0.04 (:68), fGeneratedRoughnessMin 0.125 under the GGX
+// distribution (:46-50, the Alloy lobe's), fGeneratedRoughnessMax 0.55 in both branches (:40-44).
+const float CX_SPEC_MIN = 0.04, CX_ROUGH_MAX = 0.55, CX_ROUGH_MIN = 0.125;
+// metallicness, :216-227. With a specular map: m = specularity^2, then G*m / (1 + (G-1)*m) with G 25. Without
+// one: fMetallicnessModifier 10 * specularity - 10 * fGeneratedSpecularityMin.
+const float CX_METAL_GAIN_MAP = 25.0, CX_METAL_SCALE_BARE = 10.0, CX_METAL_BIAS_BARE = 0.4;
 // ApplyColorSpace(0.5) at the engine's 2.2 gamma -- the mid-grey inc_material.shd divides the
 // albedo's peak channel by when it synthesises a specular colour.
 const float CX_MID_GREY = 0.2176;
@@ -140,17 +136,18 @@ const int CX_SLOT_ENV = 64;
 // #123: bit 5, texture slot 6 -- the only slot outside the stock five, which a content pair's stage reads as
 // texUnit6. Enrolled only on such a part, so on everything else this bit is clear and uFlowTex is never sampled.
 const int CX_SLOT_FLOW = 32;
-// inc_material.shd:143-144 -- an env-mapped material with no specular map takes its specularity from
+// inc_material.shd:141-142 -- an env-mapped material with no specular map takes its specularity from
 // the diffuse alpha (fEnvMapLevel = 1 - alpha), and its roughness down toward the floor with it.
 // TWO modifiers, not one: fLegacyEnvMapSpecularityModifier 8.0 and fLegacyEnvMapRoughnessModifier
-// 3.0 (:60-62). Sharing 8.0 would saturate the roughness curve at envLevel 0.125 and render every
-// legacy shiny surface at the floor. 3.0 is the OLD generation's value, which is the one this client
-// runs (#107 s11); the newer split-include generation says 2.5.
-const float CX_ENV_SPEC_MAX = 0.98, CX_ENV_SPEC_SCALE = 8.0, CX_ENV_ROUGH_SCALE = 3.0;
+// 2.5 (:55-57). Sharing 8.0 would saturate the roughness curve at envLevel 0.125 and render every
+// legacy shiny surface at the floor.
+const float CX_ENV_SPEC_MAX = 0.98, CX_ENV_SPEC_SCALE = 8.0, CX_ENV_ROUGH_SCALE = 2.5;
+// inc_material.shd:301's OCCLUSION_VICINITT_RANGE: the height-occlusion tap's mip bias at a view depth of 1.
+const float CX_OCCL_VICINITY = 7.0;
 // inc_standard.shd:250-252: the albedo is desaturated toward this grey in proportion to reflectivity,
 // so the reflection is not counted twice. DISPLAY space -- the engine does it before the :253 linearise.
 const vec3 CX_ENV_GREY = vec3(0.666667);
-// inc_lighting.shd:504: CX_ENV_GREY linearised, the env map's mean level -- vanilla's own constant where no env
+// inc_lighting.shd:586-588: CX_ENV_GREY linearised, the env map's mean level -- vanilla's own constant where no env
 // texture is bound. Scales the lit legacy reflection (cx_ownlit_tail).
 const vec3 CX_ENV_GREY_LIN = vec3(0.4098);
 // the ceiling on the probe pattern over its mean: a torch in an otherwise black night probe is a spike, not a mirror

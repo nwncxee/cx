@@ -16,11 +16,11 @@ drops. Rough highlights keep their energy, reflections brighten at grazing angle
 crevices, shading takes its direction from the surroundings, and highlights no longer sparkle at a
 distance.
 
-Metal reflects the scene. The engine treats a spec-map pixel as metal from about s = 0.2 up, fully
-metal from s = 0.53 (`metal = 3s - 0.6`), and Alloy reflects its surroundings on those pixels in
-proportion, whether or not the material names an environment map. Keep matte surfaces at or below
-s = 0.2 and they stay matte. To make metal shinier without making it a mirror, raise its spec value
-and control the blur with a roughness map.
+Metal reflects the scene. The engine reads a spec-map pixel as partly metal at any value, on the curve
+`metal = 25s² / (1 + 24s²)`: s = 0.05 is about 6 % metal, s = 0.1 a fifth, s = 0.2 half and s = 0.5 nine
+tenths. Alloy reflects its surroundings on those pixels in proportion, whether or not the material names an
+environment map. Keep matte surfaces near s = 0 and they stay matte. To make metal shinier without making it
+a mirror, raise its spec value and control the blur with a roughness map.
 
 A model with no `.mtr`, or one that sets no `Specularity` and binds no spec or roughness map, keeps
 vanilla's generated look head-on but gets no brighter at low angles. To give it a grazing sheen, give it a

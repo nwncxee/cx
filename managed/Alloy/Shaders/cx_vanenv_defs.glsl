@@ -5,7 +5,7 @@
 #define LIGHTING 0
 #define PI 3.14159265359
 #define COLOR_WHITE vec4(1.0, 1.0, 1.0, 1.0)
-// inc_standard.shd:64's own value under VERTEX_COLOR 0, inc_common's default; Alloy carries no
+// inc_standard.shd:62's own value under VERTEX_COLOR 0, inc_common's default; Alloy carries no
 // per-vertex colour into the lit path.
 #define VertexColor COLOR_WHITE
 #define vPosWorld vWorld

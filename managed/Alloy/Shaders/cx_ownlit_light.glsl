@@ -43,9 +43,11 @@
     if (cxCoat > 0.0) coatT = 1.0 - cxCoat * mix(CX_DIELECTRIC_F0, 1.0, CxFresnel(NoV));
     cxF0 = F0; cxSpec = spec;
     cxSpecScale = (uMaterial.x > 0.5 ? vec3(1.0) : specColor) * CxSpecBase(NoV, rough) * msc * coatT;
-    // the diffuse share: the engine's (1 - fSpecularity); a physical metal has none at all. The max()
-    // keeps a dielectric at 0.96 and still lets the wet splice's raised specularity take its share.
-    float kd = physical ? (1.0 - metal) * (1.0 - max(spec * (1.0 - metal), CX_DIELECTRIC_F0)) : 1.0 - spec;
+    // the diffuse share: the engine's 1 - fEnvironmentSpecularity (inc_lighting.shd:549, :603-609), the
+    // specularity raised toward 1 by the view Fresnel and pulled back by sqrt(roughness); a physical metal has
+    // none at all. The max() keeps a dielectric at 0.96 and still lets the wet splice's specularity take its share.
+    float kd = physical ? (1.0 - metal) * (1.0 - max(spec * (1.0 - metal), CX_DIELECTRIC_F0))
+                        : 1.0 - mix(mix(spec, 1.0, CxFresnel(NoV) * cxFresnel), spec, sqrt(rough));
 
     vec3 sun = uAreaDiffuse * (sunNdl * sunVis);
     // #143's wrap is a DIFFUSE fix -- it stands in for light bleeding across a low-poly terminator,
@@ -135,7 +137,7 @@
     }
     // The engine's split: every light accumulates its own lobe, then ONE view-side normalisation
     // (fSpecularBaseModifier) and the material's specular colour scale the sum
-    // (inc_lighting.shd:456 and :615). fSpecularity is already inside the lobe via the Fresnel term.
+    // (inc_lighting.shd:545 and :653). fSpecularity is already inside the lobe via the Fresnel term.
     // ADR 0021 gives occlusion to the ambient term alone, which is right and is invisible wherever
     // the area ambient is dark -- every interior, where the light is lamps and the corners are
     // exactly what wants occluding. /ao direct is the dial back toward vanilla's post-multiply:
@@ -154,8 +156,9 @@
         specLight += CxFilmStatics(vWorld, N, V, vDepth, cxCoat, cxCoatRough, onMover) * dirOcc;
 #endif
     vec3 diffuse = (sun + sunSss + point) * dirOcc;
-    // the 0.15 ambient floor and the sun-facing wrap are inc_lighting.shd:679 verbatim; the height
-    // map's occlusion scales the AMBIENT, which is the term it is actually occluding
+    // the 0.15 ambient floor and the sun-facing wrap are a content lighting fork's term, NOT stock: stock's
+    // ambient is flat, AmbientLight *= materialFrontAmbient (inc_lighting.shd:512). The height map's
+    // occlusion scales the AMBIENT, which is the term it is actually occluding
     // ADR 0026 (light.ambientdir): the probe gives that ambient a direction -- sky above, ground below --
     // at the authored level; the stock wrap's 0.15 stays the floor. Never during the capture itself.
     float ambDir = mix(0.15, 1.0, sunRaw);

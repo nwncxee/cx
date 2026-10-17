@@ -26,6 +26,7 @@ composes to nothing, on a machine that reaches that feature.
 Needs glslangValidator (Arch: `glslang`); the material pass also needs spirv-opt/spirv-dis
 (Arch: `spirv-tools`), and skips itself with a notice where they are absent.
 """
+import atexit
 import os
 import re
 import shutil
@@ -113,10 +114,24 @@ def audit(g):
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
 import paths  # noqa: E402
 CONTENT_SHD = os.environ.get("CX_CONTENT_SHD") or paths.get("CONTENT_SHADERS") or ""
+import content_stage  # noqa: E402
+
+
+def stock_tree():
+    """The game's own .shd as the client resolves them (content_stage.KEYS: ovr.bif's current set over the old
+    base_shaders.bif), written to a temporary tree; empty when the install is not found."""
+    d = tempfile.mkdtemp(prefix="cx-stock-")
+    atexit.register(shutil.rmtree, d, True)
+    for name, text in content_stage.stock_shaders(paths.get("NWN_DIR") or "").items():
+        with open(os.path.join(d, name + ".shd"), "w", encoding="latin1") as f:
+            f.write(text)
+    return d
+
+
 # #352: the ENGINE's own includes a content file reaches (inc_random, inc_framebuffer, inc_postpr_debug),
-# which the runtime resolves off the resource chain and a content checkout never carries. An extracted
-# ovr.bif tree; missing means those includes drop, as an absent chain file would.
-STOCK_SHD = os.environ.get("CX_STOCK_SHD", os.path.expanduser("~/nwnexplorer/shaders"))
+# which the runtime resolves off the resource chain and a content checkout never carries. Set CX_STOCK_SHD to
+# resolve them from another tree; missing files drop those includes, as an absent chain file would.
+STOCK_SHD = os.environ.get("CX_STOCK_SHD") or stock_tree()
 VANILLA = re.compile(r"^([ \t]*)// \$VANILLA() (\w+)\n(.*?)^[ \t]*// \$VANILLA-END[ \t]*$",
                      re.S | re.M)
 # Mirrors VanillaShader.Skip: includes the stage's own environment stands in for, never followed.
@@ -215,13 +230,12 @@ def spliced(g):
 
 
 # --- #122 material synthesis -------------------------------------------------
-# The stock generators, transcribed from inc_material.shd's SetupSpecularity in the OLD generation
-# (data/base_shaders.bif). ponytail: the client compiles ovr.bif's newer inc_material over it (the retail key
-# outranks the base, content_stage.KEYS); re-transcribe from that one. This is the REFERENCE side of the
+# The stock generators, transcribed from the current inc_material.shd's SetupSpecularity (ovr.bif, the set the
+# client runs over base_shaders.bif -- content_stage.KEYS), at SHADER_QUALITY_MODE 2. This is the REFERENCE side of the
 # comparison: it is written from the engine's shader, not from ours, so a case where the two agree
 # says the owned synthesis matches stock, and a case where they deliberately differ says so in place.
-SPEC_MIN, ROUGH_MAX, ROUGH_MIN = 0.04, 0.6, 0.125          # fSpecularityMin, fGeneratedRoughness{Max,Min}
-ENV_SPEC_MOD, ENV_SPEC_MAX, ENV_ROUGH_MOD = 8.0, 0.98, 3.0  # fLegacyEnvMap{Specularity,Roughness}*
+SPEC_MIN, ROUGH_MAX, ROUGH_MIN = 0.04, 0.55, 0.125         # fGeneratedSpecularityMin, fGeneratedRoughness{Max,Min}
+ENV_SPEC_MOD, ENV_SPEC_MAX, ENV_ROUGH_MOD = 8.0, 0.98, 2.5  # fLegacyEnvMap{Specularity,Roughness}*
 SLOT_SPEC, SLOT_ROUGH, SLOT_HEIGHT, SLOT_ENV = 2, 4, 8, 64   # env moved up past #123's flow-map bit
 
 
@@ -252,8 +266,10 @@ def stock_pbr(declared, slots, env_level, spec_texel, rough_texel):
                 rough = ROUGH_MAX
     metal = declared[2]
     if metal <= 0.0:
-        # fMetallicnessModifier * fSpecularity - fMetallicnessModifier * fGeneratedMetallicnessOffset
-        metal = min(max((3.0 * spec - 0.6) if sm else (10.0 * spec - 0.4), 0.0), 1.0)
+        # with a specular map: m = fSpecularity^2, then 25m / (1 + 24m); without one, fMetallicnessModifier 10 *
+        # fSpecularity - 10 * fGeneratedSpecularityMin
+        m = spec * spec
+        metal = min(max((25.0 * m / (1.0 + 24.0 * m)) if sm else (10.0 * spec - 0.4), 0.0), 1.0)
     return spec, rough, metal
 
 
@@ -276,6 +292,7 @@ def material_cases():
         ("bare material (no maps, no env)", (0.0, 0.0, 0.0), 0, 0.0, 0.0, 0.0),
         ("declared beats the floor", (0.7, 0.3, 0.5), 0, 0.0, 0.0, 0.0),
         ("specular map, nothing declared", (0.0, 0.0, 0.0), SLOT_SPEC, 0.0, 0.25, 0.0),
+        ("faint specular map: metal below the old curve's offset", (0.0, 0.0, 0.0), SLOT_SPEC, 0.0, 0.1, 0.0),
         ("declared beats a specular map", (0.7, 0.0, 0.0), SLOT_SPEC, 0.0, 0.25, 0.0),
         ("roughness map beats the env curve", (0.0, 0.0, 0.0), SLOT_ROUGH | SLOT_ENV, 0.5, 0.0, 0.9),
         ("declared beats a roughness map", (0.0, 0.42, 0.0), SLOT_ROUGH, 0.0, 0.0, 0.9),
@@ -870,7 +887,6 @@ def check_ssbo(progs):
 
 
 # --- CX-303: content pairs -----------------------------------------------------------------------------------
-import content_stage  # noqa: E402
 
 # Extra trees of content .shd (a hak or NWSync extraction, a test override folder), colon-separated.
 CONTENT_STAGES = [d for d in os.environ.get("CX_CONTENT_STAGES", "").split(":") if d]
@@ -986,10 +1002,9 @@ def content_programs(g):
     if not stock:
         print("content pair: no game keys under NWN_DIR -- the engine-side oracle is off, fixtures only")
         return progs, bad
-    newer = content_stage.Chain([STOCK_SHD], {})
     checked = vanilla_only = 0
     for d in [CONTENT_SHD] + CONTENT_STAGES:
-        chain = content_stage.Chain([d], stock, newer)
+        chain = content_stage.Chain([d], stock)
         files = set(chain.files)
         for resref in sorted(files):
             if resref.startswith("inc_") or resref.startswith("cx_"):

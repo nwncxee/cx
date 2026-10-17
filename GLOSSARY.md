@@ -341,9 +341,11 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   shades it, metal with no diffuse.
 - **Shader generation** — which vintage of the engine's stock shader set a `.shd` belongs to.
   Two exist and they are not interchangeable: an older set where the transform and fog live
-  inline, and a newer split-include set where they are separate headers. A shader claim is
-  meaningless without naming the generation it was read from, and the generation the running
-  client loads is the one that counts.
+  inline (`data/base_shaders.bif`), and the **current** split-include set where they are separate
+  headers (`data/ovr.bif`, the same files as github.com/Finaldeath/NWNEEGameData/shaders). The
+  client runs the current set: `nwn_retail.key` (ovr.bif) outranks `nwn_base.key`, so the old
+  bif answers only for the files ovr.bif lacks (the `fslit*`/`vslit*` entry points). A stock
+  claim names the current file and its line numbers.
 - **Pass slot** — the fixed, unconditional point in the engine's frame where extender passes that
   must run *before* anything is drawn fire: after `Scene::AddPartsToDrawBuckets`, buckets complete,
   nothing drawn. Chosen because it executes every frame in every zone, unlike the engine's own

@@ -22,7 +22,7 @@ vec3 CxSynthPbr(vec3 declared, int slots, float envLevel, float specTexel, float
     {
         if (sm) spec = specTexel;
         // #121: env map + no specular map = legacy "shiny" content, and this is the engine's own
-        // translation of it (inc_material.shd, "mainly for the sake of enabling specularity on
+        // translation of it (inc_material.shd:141-142, "mainly for the sake of enabling specularity on
         // legacy content").
         else if (envShiny > 0.0) spec = mix(CX_SPEC_MIN, CX_ENV_SPEC_MAX, envShiny);
         else spec = CX_SPEC_MIN;
@@ -32,7 +32,7 @@ vec3 CxSynthPbr(vec3 declared, int slots, float envLevel, float specTexel, float
     {
         // A ROUGHNESS MAP IS DECLARED CONTENT: it is taken whole, and the env curve below never
         // touches it -- stock applies that curve only where the roughness was generated
-        // (inc_material.shd puts the min() inside the specular-map branch, not after it).
+        // (inc_material.shd:186 puts the min() inside the specular-map branch, not after it).
         if ((slots & CX_SLOT_ROUGH) != 0) rough = roughTexel;
         else
         {
@@ -46,12 +46,14 @@ vec3 CxSynthPbr(vec3 declared, int slots, float envLevel, float specTexel, float
         }
     }
     float metal = declared.z;
-    // the old gen keys this curve on whether a SPECULAR map is present -- 3.0/0.2 with one, 10.0/0.04
-    // without (fMetallicnessModifier * fGeneratedMetallicnessOffset). Collapsing them to one branch
-    // would generate visibly different metal for content that declares Specularity but ships no map.
+    // stock keys this curve on whether a SPECULAR map is present (inc_material.shd:216-227). Collapsing the
+    // two branches would generate visibly different metal for content that declares Specularity but ships no map.
     if (metal <= 0.0)
-        metal = clamp((sm ? CX_METAL_SCALE_MAP : CX_METAL_SCALE_BARE) * spec
-                      - (sm ? CX_METAL_BIAS_MAP : CX_METAL_BIAS_BARE), 0.0, 1.0);
+    {
+        float m = spec * spec;
+        metal = sm ? clamp(CX_METAL_GAIN_MAP * m / (1.0 + (CX_METAL_GAIN_MAP - 1.0) * m), 0.0, 1.0)
+                   : clamp(CX_METAL_SCALE_BARE * spec - CX_METAL_BIAS_BARE, 0.0, 1.0);
+    }
     return vec3(spec, rough, metal);
 }
 
@@ -64,7 +66,7 @@ vec3 CxSpecColor(vec4 declared, vec3 base, float metal, int slots)
     // rescue below is for flat content, and a height-mapped material already carries its crevices
     if ((slots & CX_SLOT_HEIGHT) != 0) return mix(vec3(1.0), base, metal);
     // non-metals should be white, but dark diffuse texels stand in for crevices, so the peak channel
-    // scales it -- inc_material.shd's own reasoning, in its own words
+    // scales it -- inc_material.shd:242-251's own reasoning, in its own words
     return mix(vec3(min(1.0, max(base.r, max(base.g, base.b)) / CX_MID_GREY)), base, metal);
 }
 #endif

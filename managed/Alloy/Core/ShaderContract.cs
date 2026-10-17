@@ -420,8 +420,8 @@ internal static class ShaderContract
                   && AlloyLights.FragmentLib.Contains("float CxWrap(float ndl, float w)")
                   && AlloyLights.FragmentLib.Contains("max(s, uWrapN)")
                   && OwnedLitFsMain.Contains("CxWrap(dot(N, uAreaDir), uWrapN)")
-                  // ...while the ambient hemisphere keeps the RAW dot -- that line is inc_lighting.shd:679
-                  // verbatim and wrapping it would drift the Alloy pass off the engine's own ambient.
+                  // ...while the ambient hemisphere keeps the RAW dot -- the hemisphere is Alloy's (stock's
+                  // ambient is flat), and wrapping it would move every surface's shade side.
                   && OwnedLitFsMain.Contains("mix(0.15, 1.0, sunRaw)")
                   // ...and the fullbright stage must DECODE, unconditionally: #132 made the target linear,
                   // so a stage that passed its display-space texel through would be wrong by a gamma
@@ -529,10 +529,10 @@ internal static class ShaderContract
                   // ...and the dissolve has to reach the fragment stage at all: it rides in rot.z, which was
                   // a dead float, so a stage reading the wrong lane dissolves nothing and says nothing.
                   && OwnedLitFsMain.Contains("CxKeyhole(d.rot.z, vWorld, vDepth)")
-                  // ...and the FULLBRIGHT stage must have NEITHER. Every unlit fragment stage in
-                  // base_shaders.bif compiles FOG 0 and KEYHOLING 0 -- fst/fst_sm/fsglu (textured) and
-                  // fs/fstc (untextured) alike -- so an unlit part that fogged or dissolved here would be
-                  // doing to a part something vanilla never does to it. Asserted rather than commented:
+                  // ...and the FULLBRIGHT stage must have NEITHER. The textured unlit stages the client runs
+                  // (fst/fst_sm/fstc/fsglu) compile FOG 0 and KEYHOLING 0, and the untextured fs/fsc KEYHOLING 0
+                  // (they keep FOG 1, which this stage does not reproduce) -- so an unlit part that fogged or
+                  // dissolved here would mostly be doing to a part something vanilla never does to it. Asserted rather than commented:
                   // both are one line to add back and neither would look obviously wrong. What it DOES
                   // carry is the fog's mix alone, for the sky's horizon band (SceneFog.SkyBand) -- an
                   // elevation term, never the distance ramp.
@@ -556,12 +556,12 @@ internal static class ShaderContract
                   && DepthFeatFs.Contains("if (CxAlphaMip(CxDiffuse(uTex, vUV, uLodBias, vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
-                  // engine spends it once: inc_standard.shd:289 multiplies only .rgb through there. A stage
+                  // engine spends it once: inc_standard.shd:290 multiplies only .rgb through there. A stage
                   // that loses this line spends it twice and every reflective surface draws as a ghost --
                   // which is invisible in a screenshot of anything that is not shiny, hence the guard.
                   && OwnedLitFsMain.Contains("float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;")
                   // ...the other half of that one spend, and the reason the coverage arm above is 1.0: the
-                  // channel becomes the reflectivity level, inc_standard.shd:235's own expression. The two
+                  // channel becomes the reflectivity level, inc_standard.shd:248's own expression. The two
                   // lines are a pair -- a stage that kept one and lost the other either cuts a reflective
                   // texel away or draws it flat.
                   && OwnedLitFsMain.Contains("float envLevel = (slots & CX_SLOT_ENV) != 0 ? 1.0 - texel.a : 0.0;")

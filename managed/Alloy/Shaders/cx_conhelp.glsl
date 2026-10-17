@@ -24,9 +24,37 @@ float ColorToBrightness(vec4 c) { return max(c.r, max(c.g, c.b)); }
 float ColorToLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 float ColorToLuma(vec4 c) { return dot(c.rgb, vec3(0.299, 0.587, 0.114)); }
 #endif
+// inc_tonemap's colour clamp and tonemap at the current inc_config's COLOR_CORRECTION_TYPE 4: an overflow past 1
+// folds back toward the peak channel, which keeps its value and its hue; an alpha below 1 takes up what it can first.
+// ponytail: type 4 only -- a stage whose own inc_config picks another type gets this one.
+vec4 CxConColorClamp(vec4 c)
+{
+    float m = max(c.r, max(c.g, c.b));
+    if (m <= 1.0) return c;
+    if (c.a < 1.0)
+    {
+        c.a *= m;
+        float k = 1.0 / m;
+        if (c.a > 1.0) { k *= c.a; c.a = 1.0; }
+        c.rgb *= k;
+        m *= k;
+    }
+    float f = (m - 1.0) / m;
+    c.rgb = m - (m - c.rgb) * (1.0 - f * f);
+    return c;
+}
 #ifndef CX_CON_HAS_ColorClamp
-vec3 ColorClamp(vec3 c) { return clamp(c, 0.0, 1.0); }
-vec4 ColorClamp(vec4 c) { return clamp(c, 0.0, 1.0); }
+vec4 ColorClamp(vec4 c) { return CxConColorClamp(c); }
+vec3 ColorClamp(vec3 c) { return CxConColorClamp(vec4(c, 1.0)).rgb; }
+#endif
+#ifndef CX_CON_HAS_ACESFilm
+vec3 ACESFilm(vec3 c) { return clamp(c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0); }
+vec4 ACESFilm(vec4 c) { return vec4(ACESFilm(c.rgb), c.a); }
+#endif
+#ifndef CX_CON_HAS_ApplyColorTonemap
+// the clamp of its own, not ColorClamp: a monolithic stage that defines that one does so after this
+void ApplyColorTonemap(inout vec4 c) { c.rgb = CxConColorClamp(vec4(c.rgb, 1.0)).rgb; }
+void ApplyColorTonemap(inout vec3 c) { c = CxConColorClamp(vec4(c, 1.0)).rgb; }
 #endif
 #ifndef CX_CON_HAS_sqr
 float sqr(float a) { return a * a; }

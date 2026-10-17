@@ -109,9 +109,9 @@ void main()
         float inv;
         if (vTan.w != 0.0)
         {
-            // Gram-Schmidt against the shading normal, then the handedness on the BITANGENT alone --
-            // which is what SetupTSB spends it on, and it works out to +dP/dv, the same axis the
-            // derivative frame below builds.
+            // Gram-Schmidt against the shading normal (Alloy's: the current SetupTSB, inc_transform.shd:206-217,
+            // only normalises the tangent), then the handedness on the BITANGENT alone -- which is what SetupTSB
+            // spends it on, and it works out to +dP/dv, the same axis the derivative frame below builds.
             T = vTan.xyz - N * dot(vTan.xyz, N);
             B = cross(N, T) * vTan.w;
             inv = inversesqrt(max(dot(T, T), 1e-12));
@@ -132,12 +132,15 @@ void main()
         }
         if ((slots & CX_SLOT_HEIGHT) != 0)
         {
-            // inc_material.shd's SetupOcclusion: the height against a blurrier tap of itself IS the
-            // local self-occlusion (fOcclusionVicinityRange 2.0, base 1.0, modifier 0.0).
+            // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
+            // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
+            // - log2 of the view depth), clamped to 0.9 and squared.
             // ponytail: no parallax displacement of the UVs -- that is the same map read again, per
             // fragment, in a loop. #122 owns what else the height map is worth.
-            float o = texture(uHeightTex, uv, 2.0 + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
-            occl *= 1.0 - clamp(o, 0.0, 0.99);
+            float far = max(0.0, CX_OCCL_VICINITY - log2(max(vDepth, 1e-4)));
+            float o = texture(uHeightTex, uv, far + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
+            float a = 1.0 - clamp(o, 0.0, 0.9);
+            occl *= a * a;
         }
         if ((slots & CX_SLOT_NORMAL) != 0)
         {
@@ -211,9 +214,9 @@ void main()
     // 3 = sun visibility alone: white lit, black shadowed. A frame that looks unshadowed reads here
     //     as "the cascades are empty" or "nothing selected a cascade", which the composite cannot say.
     if (uViz == 3) { frag = vec4(vec3(sunVis), 1.0); return; }
-    // Material colours go in RAW: inc_lighting.shd uses materialFrontAmbient (517), materialFrontDiffuse
-    // (529) and materialFrontEmissive (625) with no ApplyColorSpace. Only the TEXTURE is linearised
-    // (inc_standard.shd:253). Linearising the material terms too double-darkened every non-white material.
+    // Material colours go in RAW: inc_lighting.shd uses materialFrontAmbient (512), materialFrontDiffuse
+    // (524) and materialFrontEmissive (603) with no ApplyColorSpace. Only the TEXTURE is linearised
+    // (inc_standard.shd:256). Linearising the material terms too double-darkened every non-white material.
     vec3 matAmbient = d.amb.rgb;
     vec3 matDiffuse = d.dif.rgb;
     // CX-52: a diffuse that streamed in over the white stand-in fades in rather than cutting: from the
@@ -246,9 +249,9 @@ void main()
     if (uViz == 50) { frag = vec4(plt ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0), 1.0); return; }
     // #294: what the diffuse alpha MEANS here, asked once and spent once. On an env-mapped material
     // it is REFLECTIVITY, not coverage -- it becomes envLevel four lines down -- and the engine is
-    // explicit about not spending it twice: inc_standard.shd:289 multiplies only `.rgb` through on
-    // the ENVIRONMENT_MAP branch where :293 multiplies all four components on the other, and its
-    // AlphaDiscard (:175) tests the MATERIAL alpha there, never the texel's. Alloy spent it as
+    // explicit about not spending it twice: inc_standard.shd:290 multiplies only `.rgb` through on
+    // the ENVIRONMENT_MAP branch where :294 multiplies all four components on the other, and its
+    // AlphaDiscard (:176) tests the MATERIAL alpha there, never the texel's. Alloy spent it as
     // reflectivity AND again as opacity, so the more reflective a surface was authored the more
     // invisible it drew -- the #294 crystal reads bright and solid in vanilla and as a ghost here.
     // CasterPass already knew this and lowered its own env threshold for the same reason; the

@@ -38,11 +38,11 @@ void main()
                         + (sun * ao + uAreaDiffuse * sh * back) * vMatDif)
              + uAreaDiffuse * sh * sheen;
     // CX-51: a blade reflects as the ground around it does -- the probe, under the split-sum
-    // weight at the roughness the wet splice gives that ground (the legacy 0.6, wetted toward 0.35). Without
+    // weight at the roughness the wet splice gives that ground (the generated 0.55, wetted toward 0.35). Without
     // it a lit or reflective patch of ground shows around blades that ignore it, as if glued on.
     if (uProbeMips > 0.0)
     {
-        float gRough = mix(0.6, 0.35, bWet);
+        float gRough = mix(0.55, 0.35, bWet);
         vec3 Nv = faceforward(N, -V, N);   // two-sided: the face toward the eye
         vec3 R = reflect(-V, Nv);
         vec2 gAb = CxEnvBrdf(max(dot(Nv, V), 1e-3), sqrt(gRough));

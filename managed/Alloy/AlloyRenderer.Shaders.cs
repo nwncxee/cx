@@ -145,8 +145,8 @@ public sealed unsafe partial class AlloyRenderer
     internal static string OwnedLitFsHead => ShaderSource.Get("cx_ownlit_head.glsl");
     /// <summary>Material synthesis -- what a part gets for every stock .mtr parameter it does NOT declare. A
     /// pure function of already-sampled values, so <c>check-shaders.py</c> folds it to constants off-device.
-    /// The reference is <c>inc_material.shd</c>'s <c>SetupSpecularity</c> from the OLD generation this client
-    /// loads (<c>data/base_shaders.bif</c>), at the high quality setting the Alloy lobe matches.</summary>
+    /// The reference is the current <c>inc_material.shd</c>'s <c>SetupSpecularity</c> (ovr.bif, the set the
+    /// client runs), at the high quality setting the Alloy lobe matches.</summary>
     internal static string MaterialLib => ShaderSource.Get("cx_material.glsl");
 
     /// <summary>The lit main, with the weather splices folded in at their two seams: the surface rewrite

@@ -65,6 +65,24 @@ uniform int uAreaFlags;
 uniform int areaWeatherType;
 #define bboxMin (vec3(0.0))
 #define bboxMax (vec3(0.0))
+// inc_common's colour constants and inc_fog's terms, which the bridge never follows either -- the current
+// inc_postpr's passes read both. fogColor is display space in stock; Alloy uploads it linear.
+#define COLOR_BLACK vec4(0.0, 0.0, 0.0, 1.0)
+#define COLOR_WHITE vec4(1.0, 1.0, 1.0, 1.0)
+#define COLOR_GREY vec4(0.5, 0.5, 0.5, 1.0)
+#define COLOR_RED vec4(1.0, 0.0, 0.0, 1.0)
+#define COLOR_GREEN vec4(0.0, 1.0, 0.0, 1.0)
+#define COLOR_BLUE vec4(0.0, 0.0, 1.0, 1.0)
+#define COLOR_MAGENTA vec4(1.0, 0.0, 1.0, 1.0)
+#define COLOR_YELLOW vec4(1.0, 1.0, 0.0, 1.0)
+#define COLOR_CYAN vec4(0.0, 1.0, 1.0, 1.0)
+uniform vec4 uFogParams, uFogColor;
+#define fogParams uFogParams
+#define fogEnabled (uFogParams.x)
+#define fogStart (uFogParams.y)
+#define fogEnd (uFogParams.z)
+#define fogInvEndMinusStart (uFogParams.w)
+#define fogColor (vec4(pow(max(uFogColor.rgb, vec3(0.0)), vec3(1.0 / $SRGB$)), uFogColor.a))
 float sqr(float a) { return a * a; }
 float ColorToLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 float ColorToLuma(vec4 c) { return ColorToLuma(c.rgb); }

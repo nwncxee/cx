@@ -22,8 +22,8 @@ internal static unsafe class FbPostStage
     internal const uint EffectPost = 1u << 2;
     /// <summary>The option bits stripped from the hosted text -- ALL of them. DOF 0x02 and dynamic contrast
     /// 0x04 have vertex halves this fullscreen triangle does not run; gamma 0x10, toon 0x20, sharpen 0x01 and
-    /// vibrance 0x08 are stages of Alloy's own. With the mask at 0 not one stock <c>inc_postpr_*</c> include
-    /// compiles inside an Alloy program: what is left is whatever the CONTENT put in its <c>inc_postpr</c>.</summary>
+    /// vibrance 0x08 are stages of Alloy's own. With the mask at 0 no option-gated stock pass compiles inside an Alloy
+    /// program; the current <c>inc_postpr</c>'s tonemap and debug pass are unconditional, and both leave display-space input as it is.</summary>
     internal const int MaskStripped = 0x3f;   // not-an-offset: every inc_postpr.shd option bit
     /// <summary><c>GetGlobalShaderParami(7)</c>: the client's shader quality option, the preamble's
     /// <c>SHADER_QUALITY_MODE</c> (the same read <see cref="AlloyLights"/> makes for the subsurface term);
@@ -114,8 +114,8 @@ internal static unsafe class FbPostStage
         // CX-93: the point of the whole half. Whatever the chain answers with, no option bit reaches it, so
         // every stock inc_postpr_* include preprocesses away and only the content's own passes are compiled.
         check.Expect(HostedMask(0x3f) == 0,
-          "every one of inc_postpr.shd's six option bits is stripped before the hosted text: not one stock post "
-          + "include compiles here");
+          "every one of inc_postpr.shd's six option bits is stripped before the hosted text: no option-gated stock post "
+          + "pass compiles here");
         check.Expect(!FbPostFs.Contains("#define LIGHTING") && !FbPostFs.Contains("#define FOG") && !FbPostFs.Contains("#define POSTPROCESSING 1"),
           "inc_postpr's own defines are left to it");
         check.Expect(FbPostFs.Contains("// $VANILLA inc_postpr\n") && FbPostFs.Contains("vec4 FS_PostProcess() {"), "the region and its stub");

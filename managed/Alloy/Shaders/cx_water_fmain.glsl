@@ -4,11 +4,11 @@
 // (GetRayIntersectCoords/GetReflectionCoords), and the composite -- liquid body times the
 // subsurface light, Beer-Lambert refraction through the copy, a screen-space reflection scaled by
 // Schlick at water's own F0, and the lit surface standing in wherever the reflection ray misses. Line
-// for line from base_shaders.bif, with the engine's names swapped for this pass's.
+// for line from the current fswater.shd (ovr.bif), with the engine's names swapped for this pass's.
 // What is Alloy. Where stock calls ComputeLighting it gets the engine's forward
 // light loop; here it gets the froxel walk, the sun cascades and the local cubes -- which is the whole
 // point of drawing water in the owned pass at all. SubsurfaceLight is inc_lighting's wrapped
-// diffuse accumulator (inc_lighting.shd:275): the sun gets the wrap term exactly, and the
+// diffuse accumulator (inc_lighting.shd:301, :322): the sun gets the wrap term exactly, and the
 // clustered lights get plain Lambert, because the cluster walk has no wrap parameter and adding one
 // would fork a lib four other programs share.
 // What is dropped, and it is visible. SetupLocalWind and the
@@ -60,9 +60,9 @@ void CxSetupVertexWind()
 void CxSetupWind(float fFragmentDepthOffset)
 {
     fMainWaveAmplitude = 0.4 * fAreaWindForce;
-    fMainWavePeriod = 2.0 / (fAreaWindForce + 1.0);
+    fMainWavePeriod = 1.5 / (fAreaWindForce + 1.0);
     fMainWaveSpeed = 0.6 + 0.05 / fAreaWindForce;
-    fMainWaveNoiseModifier = 0.1;
+    fMainWaveNoiseModifier = 0.4 / (0.4 + fAreaWindForce);
     fMainWaveNoiseFrequency = 0.1;
     fMainWaveNoiseDisplacement = 0.25 + 0.5 * fAreaWindForce;
 
@@ -91,8 +91,8 @@ float CxMainWaveOffset(inout vec3 vPos)
 
     float fMainWaveNoise = 1.0 - texture(uNoise, fMainWavePeriod * 0.04 * vPos.xy
                                                - 0.01 * fTick * fMainWaveSpeed * vAreaWindDirection.xy).r;
-    vPos.xy -= vAreaWindDirection.xy * (fMainWaveNoise * fMainWaveAmplitude * 2.0 - 5.0 * fArealVariation);
-    float fNoise = texture(uNoise, vPos.xy * fMainWaveNoiseFrequency).r * fMainWaveNoiseModifier;
+    vPos -= vAreaWindDirection * (fMainWaveNoise * fMainWaveAmplitude * 2.0 - 5.0 * fArealVariation);
+    float fNoise = texture(uNoise, -vPos.xy * fMainWaveNoiseFrequency).r * fMainWaveNoiseModifier;
 
     float fWave = abs(mod(fTick * fMainWaveSpeed
                           - dot(vPos.xy - fNoise * vAreaWindDirectionDistorted.xy * fMainWaveNoiseDisplacement,
@@ -100,7 +100,8 @@ float CxMainWaveOffset(inout vec3 vPos)
                           2.0) - 1.0);
     fWave *= fWave;
     fWave = 2.0 * fWave - CxSqr(fWave);
-    fWaveOffset += fMainWaveAmplitude * CxSqr(fMainWaveNoise) * (fWave - 0.5);
+    fWave += CxSqr(fWave);
+    fWaveOffset += fMainWaveAmplitude * CxSqr(fMainWaveNoise) * (fWave - 1.0);
     return fWaveOffset;
 }
 
@@ -196,7 +197,7 @@ void main()
     vec4 WaterBaseColor = vec4(CxLinear(baseTexel.rgb), baseTexel.a);
 
     float fScreenFBDepth = CxSceneZ(vScreenCoords);
-    fSurfaceNdotV = max(dot(vSurfaceNormalWorld, V), CX_ANGLE_MIN_W);
+    fSurfaceNdotV = dot(vSurfaceNormalWorld, V);
     CxSetupWind(fScreenFBDepth + vPosView.z);
 
     // The displacement search: where on the (raised) wave surface this pixel's ray actually lands.
@@ -221,7 +222,7 @@ void main()
 
     vec3 vPosViewThis = (uView * vec4(vWorld + fDisplaceFactor * vCameraToWorld_n * fDistance, 1.0)).xyz;
     vViewToSurface_n = normalize(vPosViewThis);
-    float fDepthOffset = fScreenFBDepth + vPosViewThis.z;
+    float fDepthOffset = max(fScreenFBDepth + vPosViewThis.z, 0.0);
 
     vec3 N = CxWaterNormal(vWaterSurfaceCoords);
     // rain rings the surface too (weather.splash), on a level one; the same world-sized rings the puddles carry
@@ -236,7 +237,7 @@ void main()
     // composite, through the Fresnel term. Doing it in both places is the double-count to avoid.
     float fRoughness = 0.00025 + 0.00025 * -vPosView.z;
     if (uSplash > 0.0 && vSurfaceNormalWorld.z > 0.9) fRoughness = CxWeatherRippleRough(fRoughness, fSplashFade, 1.0, uSplash);
-    float NdotV = max(dot(N, V), CX_ANGLE_MIN_W);
+    float NdotV = dot(N, V);
     float sunRaw = clamp(dot(N, uAreaDir), 0.0, 1.0);
     float sunVis = CxSunShadow(vWorld, N, sunRaw, sunRaw);
 
@@ -246,10 +247,10 @@ void main()
     vec3 ShadedColor = (uAreaDiffuse * (sunRaw * sunVis) * CxSpecLobe(N, V, uAreaDir, fRoughness, 1.0)
                         + pointSpec) * CxSpecBase(NdotV, fRoughness);
     // ...plus the ENVIRONMENT term, which is the largest single thing the first cut of this port was
-    // missing (inc_lighting.shd:454-513). Stock adds `(AmbientLight + DiffuseLight) * envTexel *
+    // missing (inc_lighting.shd:542-596). Stock adds `(AmbientLight + DiffuseLight) * envTexel *
     // fEnvironmentSpecularity` into the specular light, and for water that last factor is exactly
-    // ONE: fSpecularity is 1.0 on this path, and SPECULAR_FRESNEL 1 makes it
-    // mix(GetFresnelSpecularity(1.0, NdotV), 1.0, rough), every term of which is 1. So the scene's
+    // ONE: the specularity is 1.0 on this path, and SPECULAR_FRESNEL 1 makes it (:549)
+    // mix(GetFresnelSpecularity(1.0, NdotV), 1.0, sqrt(rough)), every term of which is 1. So the scene's
     // environment map arrives at full strength, sampled through the WAVE-perturbed normal -- which is
     // what makes a ripple legible at all. Without it the surface is body colour plus a 2%-Fresnel
     // reflection, i.e. flat paint, however correct the wave field underneath is.
@@ -260,14 +261,15 @@ void main()
         vec3 envTexel = CxLinear(texture(uEnvMap, CxEnvCoords(vFragmentNormal, vPosViewThis), envLod).rgb);
         ShadedColor += (uAreaAmbient + DiffuseLight) * envTexel;
     }
-    // inc_lighting's SubsurfaceLight (its assembly at :545-555): the wrapped per-light sum, plus
+    // inc_lighting's SubsurfaceLight (its assembly at :526-539): the wrapped per-light sum, plus
     // the area ambient OUTSIDE that sum, all scaled by the wrap's energy preservation. The sun gets
-    // the wrap exactly (:275 with LIGHT_SUBSURFACE_SCATTERING_WRAP 1.0); the clustered lights get
-    // plain Lambert, because the cluster walk has no wrap parameter and four other programs share it.
+    // the wrap exactly -- off the flat SURFACE normal, max(0, N.L + wrap) (:300-301, LIGHT_SUBSURFACE_SCATTERING_WRAP
+    // 1.0); the clustered lights get plain Lambert, because the cluster walk has no wrap parameter and four
+    // other programs share it.
     // ponytail: no materialFrontDiffuse tint on the sum, which stock applies. The record carries that
     // colour in d.dif -- but only on a LIT batch, and an unlit water batch would read a stale slot of
     // any magnitude. Stock water materials are white there; tint it from d.dif if one ever is not.
-    float sunWrap = (sunRaw + CX_SSS_WRAP) / (1.0 + CX_SSS_WRAP);
+    float sunWrap = max(dot(vSurfaceNormalWorld, uAreaDir) + CX_SSS_WRAP, 0.0) / (1.0 + CX_SSS_WRAP);
     vec3 SubsurfaceLight = (uAreaDiffuse * (sunWrap * sunVis) + pointDiffuse + uAreaAmbient)
                          * CX_SSS_ENERGY;
 
@@ -299,21 +301,16 @@ void main()
     vec3 vReflect = reflect(vViewToSurface_n, vFragmentNormal);
     vec4 vReflectedCoords = CxReflectionCoords(uFbDepth, uProj, uNearFar, vPosViewThis, vReflect, fDepthOffset);
     float fReflectionMod = clamp(1.0 - vReflectedCoords.w, 0.0, 1.0);
-    if (vReflectedCoords.x >= 0.0)
-    {
-        ColorReflection = CxFbColor(clamp(vReflectedCoords.xy, vec2(0.001), vec2(0.999)));
-        vec3 vReflectedNormal = CxCopyNormal(clamp(vReflectedCoords.xy, vec2(0.001), vec2(0.999)));
-        fReflectionMod *= 1.0 - CxFogAlpha(-vReflectedCoords.z);
-        ColorReflection = mix(vec3(0.0), ColorReflection,
-                              clamp(0.1 - 4.0 * dot(vReflectedNormal, vReflect), 0.0, 1.0));
-        // The miss and the reject both land on the SHADED surface, which is vanilla's flat-horizon
-        // look. #129's probe fallback is exactly the custom shading this ticket removes.
-        ColorReflection = mix(ShadedColor, ColorReflection, fReflectionMod);
-    }
-    else
-    {
-        ColorReflection = ShadedColor;
-    }
+    // stock's own test is on fReflectionMod >= 0 after its clamp, so the branch always runs: a ray that leaves
+    // the screen samples the clamped edge, weighted down by the march's own miss measure (fswater.shd:472-482)
+    ColorReflection = CxFbColor(clamp(vReflectedCoords.xy, vec2(0.001), vec2(0.999)));
+    vec3 vReflectedNormal = CxCopyNormal(clamp(vReflectedCoords.xy, vec2(0.001), vec2(0.999)));
+    fReflectionMod *= 1.0 - CxFogAlpha(-vReflectedCoords.z);
+    ColorReflection = mix(vec3(0.0), ColorReflection,
+                          clamp(0.1 - 4.0 * dot(vReflectedNormal, vReflect), 0.0, 1.0));
+    // The miss and the reject both land on the SHADED surface, which is vanilla's flat-horizon
+    // look. #129's probe fallback is exactly the custom shading this ticket removes.
+    ColorReflection = mix(ShadedColor, ColorReflection, fReflectionMod);
 
     // ---- composite ---------------------------------------------------------------------------
     ColorLiquid = mix(ColorLiquid, ColorRefraction, fRefractionTransparency);
@@ -370,7 +367,7 @@ void main()
     if (uViz == 24)
     {
         vec3 p = vWorld;
-        float fNoise = texture(uNoise, p.xy * fMainWaveNoiseFrequency).r * fMainWaveNoiseModifier;
+        float fNoise = texture(uNoise, -p.xy * fMainWaveNoiseFrequency).r * fMainWaveNoiseModifier;
         float phase = fTick * fMainWaveSpeed
                     - dot(p.xy - fNoise * vAreaWindDirectionDistorted.xy * fMainWaveNoiseDisplacement,
                           vAreaWindDirectionDistorted.xy) * fMainWavePeriod;

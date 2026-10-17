@@ -671,10 +671,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>Is <see cref="Rt"/> readable at all? The null check every reader of it owes, for a caller
     /// outside this class (the sky stage uploads eight of the struct's scalars).</summary>
     internal static bool HasRuntime => _runtime != null;
-    /// <summary>The keyhole diameter pair inside <see cref="SymbolMap.GlGlobalShaderConstantsF"/>. Stored
-    /// unordered -- SetUniforms uploads min as <c>keyholeDiameterMin</c> and max as
-    /// <c>keyholeDiameterMax</c>, so the ordering happens here too.</summary>
-    internal const int KeyholeDiaA = 21, KeyholeDiaB = 22;
+    /// <summary>The keyhole terms inside <see cref="SymbolMap.GlGlobalShaderConstantsF"/>: the diameter pair, stored
+    /// unordered (SetUniforms uploads min as <c>keyholeDiameterMin</c> and max as <c>keyholeDiameterMax</c>, so the
+    /// ordering happens here too), then <c>keyholeMinZOffset</c>, the height over the player nothing below dissolves.</summary>
+    internal const int KeyholeDiaA = 21, KeyholeDiaB = 22, KeyholeMinZ = 23;
     private static float* _shaderConstF;
 
     /// <summary>The spell-targeting shape's own slice of the same three tables, indices read off the
