@@ -102,13 +102,35 @@ public sealed unsafe class UiHostService : IExtenderService
     /// surfaces the settings panel has a door on.</summary>
     private static bool GearSurface => GameGate.AtMainMenu || GameGate.OptionsOpen;
 
-    /// <summary>A press on the gear opens the panel (cold, input thread); anything else over it is swallowed so
-    /// the viewport-filling background never sees a press that started on the gear.</summary>
+    /// <summary>A press on the gear opens the panel (cold, input thread) -- over the in-game Options panel it first
+    /// resumes the game, since some settings (the quickbar's hotkey editor) only work unpaused. Anything else over
+    /// it, and the release of its press, is swallowed so the background never sees half a click.</summary>
     private static bool OnGearButton(bool down, int button, int x, int y)
     {
+        if (!down && button == 1 && _gear.Held) { _gear.Held = false; return true; }
         if (!GearSurface || !_gear.Contains(x, y)) return false;
-        if (down && button == 1) { _log?.Info($"UiHostService: gear pressed ({(GameGate.AtMainMenu ? "main menu" : "Options panel")}) -- opening the settings panel"); KnobPanelService.Open(); }
+        if (down && button == 1)
+        {
+            _gear.Held = true;
+            _log?.Info($"UiHostService: gear pressed ({(GameGate.AtMainMenu ? "main menu" : "Options panel")}) -- opening the settings panel");
+            if (GameGate.OptionsOpen) ResumeFromOptions();
+            KnobPanelService.Open();
+        }
         return true;
+    }
+
+    /// <summary>Close the in-game Options panel the way its Resume button does: the modal deactivate, whose close
+    /// callback nulls <c>CGuiInGame</c>'s slot and clears the app's options-open flag.</summary>
+    private static void ResumeFromOptions()
+    {
+        IntPtr pnl = GameGate.InGameGui != IntPtr.Zero ? new CGuiInGame(GameGate.InGameGui).OptionsPanel : IntPtr.Zero;
+        if (pnl == IntPtr.Zero) return;
+        if (EngineFn.GuiModalPanelDeactivate == null)
+        {
+            _log?.Info("UiHostService: !! CGuiModalPanel::Deactivate unresolved -- the game menu stays open under the settings panel");
+            return;
+        }
+        new CGuiPanel(pnl).GuiModalPanelDeactivate(0);
     }
 
     /// <summary>Hover tracking only; motion is never consumed, so the engine's menu keeps its own pointer state.</summary>

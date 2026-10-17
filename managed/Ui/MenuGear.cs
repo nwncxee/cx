@@ -26,6 +26,9 @@ public sealed class MenuGear
     public float X, Y, W, H;
     /// <summary>Set by the input thread from pointer motion; read by the animation on the render thread.</summary>
     public volatile bool Hovered;
+    /// <summary>A left press began on the gear and its release is still owed: the gear swallows that release
+    /// wherever it lands, since the press may have closed the menu under it.</summary>
+    public bool Held;
     public float Angle, Spin, Bright;
 
     /// <summary>Pin the glyph's box <paramref name="scale"/>-scaled inset into the lower-left of a

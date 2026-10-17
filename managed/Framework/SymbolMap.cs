@@ -72,6 +72,10 @@ internal static unsafe class SymbolMap
     /// <summary>CGuiPanel::Deactivate(int) -- what vanilla Hide pairs with Activate; undoes the ctor-inlined Show.</summary>
     [Fn("void(CGuiPanel this, int arg)")]
     public const string GuiPanelDeactivate = "_ZN9CGuiPanel10DeactivateEi";
+    /// <summary>CGuiModalPanel::Deactivate(int) -- the panel's Deactivate plus <c>CGuiMan::UnSetModal</c>; all the in-game
+    /// Options panel's Resume button (and its Esc key) runs.</summary>
+    [Fn("void(CGuiPanel this, int arg)")]
+    public const string GuiModalPanelDeactivate = "_ZN14CGuiModalPanel10DeactivateEi";
     /// <summary>CGuiInGame::PrepChatPromptForTellToPlayer(CNWCPlayer*) -- (this, player) chat opener; skipped.</summary>
     [Fn("void(CGuiInGame this, IntPtr player)")]
     public const string PrepChatPromptForTell = "_ZN10CGuiInGame29PrepChatPromptForTellToPlayerEP10CNWCPlayer";
@@ -3209,6 +3213,7 @@ internal static unsafe class SymbolMap
         [RiCheckUniformData]         = Nm("?CheckAndUpdateUniformDirtyDataForFrame@RenderInterface@@SAXM@Z"),
         [RiBindBuffer]               = Nm("?BindBuffer@RenderInterface@@SAXII@Z"),
         [GuiPanelDeactivate]         = Nm("?Deactivate@CGuiPanel@@QEAAXH@Z"),
+        [GuiModalPanelDeactivate]    = Nm("?Deactivate@CGuiModalPanel@@QEAAXH@Z"),
         [GuiPanelUnToggleOff]        = Nm("?UnToggleOff@CGuiPanel@@QEAAXXZ"),
         // Portraits: the texture guard keys on the two vftables. Not exported; RVAs from the RTTI type descriptors
         // (`.?AVCAurTexture@@` / `.?AVCAurTextureBasic@@` -> complete-object locator -> vftable). MSVC's symbol
