@@ -1,0 +1,14 @@
+// A sky twin's `once` pass: fills the 32-cube volume cx_cxdemo_sky declares -- once per module, and again
+// after a context loss or a view resize. Hosted in cx_skypass_cs, so the sky's shared environment and the
+// engine's own terms are already in scope. A fixture for check-shaders.py; it ships nowhere.
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+layout(rgba8) uniform image3D cxVolume;
+void main()
+{
+    ivec3 at = ivec3(gl_GlobalInvocationID);
+    ivec3 size = imageSize(cxVolume);
+    if (any(greaterThanEqual(at, size))) return;
+    vec3 p = (vec3(at) + 0.5) / vec3(size);
+    float cloud = fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    imageStore(cxVolume, at, vec4(vec3(cloud), 1.0));
+}

@@ -1,0 +1,16 @@
+// A sky twin's second `frame` pass: a 64x32 band table built from the volume the `once` pass filled -- read
+// as a SAMPLER through its mip chain, which is the other half of the binding-by-name contract -- and the
+// calendar term the engine hands every sky program. A fixture for check-shaders.py; it ships nowhere.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(rgba16f) uniform image2D cxBand;
+uniform sampler3D cxVolume;
+void main()
+{
+    ivec2 at = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(cxBand);
+    if (any(greaterThanEqual(at, size))) return;
+    float up = (float(at.x) + 0.5) / float(size.x);
+    float haze = textureLod(cxVolume, vec3(up, 0.5, 0.5), 2.0).r;
+    vec3 c = mix(vec3(0.62, 0.70, 0.86), vec3(0.08, 0.22, 0.58), up);
+    imageStore(cxBand, at, vec4(c * (0.75 + 0.5 * haze) * (0.5 + 0.5 * moduleTimeIntoTransition), 1.0));
+}

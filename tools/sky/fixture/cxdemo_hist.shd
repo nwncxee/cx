@@ -1,0 +1,16 @@
+// A sky twin's `frame` pass over a half-render-size HISTORY image: it reads last frame's contents through
+// cxHist_prev, and cxSkyFresh is what tells it that history is the zero a fresh image was made with.
+// A fixture for check-shaders.py; it ships nowhere.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(rgba16f) uniform image2D cxHist;
+uniform sampler2D cxHist_prev;
+void main()
+{
+    ivec2 at = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(cxHist);
+    if (any(greaterThanEqual(at, size))) return;
+    vec2 uv = (vec2(at) + 0.5) / vec2(size);
+    vec3 now = vec3(uv, 0.5 + 0.5 * sin(float(cxSkyFrame) * 0.01));
+    vec3 was = cxSkyFresh != 0 ? now : texture(cxHist_prev, uv).rgb;
+    imageStore(cxHist, at, vec4(mix(was, now, 0.08), 1.0));
+}

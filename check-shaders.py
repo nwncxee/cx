@@ -609,6 +609,10 @@ def programs(g):
         "weather map integrate": (g["cx_wx_int_c"],),
         "weather shelter cache": (g["cx_wx_shel_c"],),
         "sky visibility bake": (g["cx_skybake"],),
+        # The two sky wrappers at their STUBS -- what the retry compiles when a stage or a declared pass is
+        # not spliced. The real ones go through sky_programs() with the fixture's twin hosted.
+        "sky (stub)": (g["cx_own_vs"], g["cx_sky_fs"]),
+        "sky pass wrapper (stub)": (g["cx_skypass_cs"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
     }
@@ -1091,6 +1095,157 @@ def post_programs(raw, g):
     return out
 
 
+# --- sky twins (docs/shader-overrides.md, "Sky twins and sky passes") -------------------------------------
+# A content sky stage may ship an Alloy-native twin, cx_<stage>, which Alloy hosts in cx_sky_fs under
+# CX_SKY_LINEAR and which declares its own GPU images and compute passes on #pragma lines of its own. This
+# mirrors CX.Alloy.SkyTwin's parser, so a declaration the extender would refuse fails here instead of at a
+# player's first frame; every token is an identifier or a decimal integer, because a GLSL preprocessor
+# tokenises the line (NVIDIA refuses `128x128` as an integer with a type suffix).
+SKY_FIXTURE = os.path.join(ROOT, "tools/sky/fixture")
+SKY_FORMATS = {"rgba8", "rgba16f", "rgba32f", "rg16f", "rg8", "r16f", "r32f", "r8", "r11f_g11f_b10f"}
+SKY_FLAGS = {"history", "mips", "clamp"}
+SKY_MAX_IMAGES, SKY_MAX_PASSES, SKY_MAX_2D, SKY_MAX_3D, SKY_MAX_VIEWDIV = 12, 10, 4096, 256, 8
+SKY_TOKEN = re.compile(r"^(?:[A-Za-z_]\w*|[0-9]+)$")
+SKY_NAME = re.compile(r"^[A-Za-z_]\w{0,30}$")
+
+
+def sky_side(s, lo, hi, what):
+    if not s.isdigit() or not lo <= int(s) <= hi:
+        raise ValueError(f"{what} `{s}` is not a decimal {lo}..{hi}")
+    return int(s)
+
+
+def sky_image(tok, images):
+    if len(tok) < 5:
+        raise ValueError(f"cx_sky_image needs a name, a shape and a format: `{' '.join(tok)}`")
+    name = tok[2]
+    if not SKY_NAME.match(name) or name.startswith("gl_"):
+        raise ValueError(f"`{name}` is not a GLSL identifier of at most 31 characters")
+    if any(i["name"] == name for i in images):
+        raise ValueError(f"two images are named `{name}`")
+    im = {"name": name, "history": False, "mips": False, "clamp": False}
+    if tok[3] == "tex2d":
+        if len(tok) < 7:
+            raise ValueError(f"`tex2d` takes <W> <H>: `{' '.join(tok)}`")
+        im["shape"], im["w"], im["h"], im["d"] = "tex2d", sky_side(tok[4], 1, SKY_MAX_2D, "a 2d width"), \
+            sky_side(tok[5], 1, SKY_MAX_2D, "a 2d height"), 1
+        at = 6
+    elif tok[3] == "tex3d":
+        if len(tok) < 8:
+            raise ValueError(f"`tex3d` takes <W> <H> <D>: `{' '.join(tok)}`")
+        im["shape"] = "tex3d"
+        im["w"], im["h"], im["d"] = (sky_side(tok[4 + k], 1, SKY_MAX_3D, "a 3d side") for k in range(3))
+        at = 7
+    elif tok[3] == "view":
+        im["shape"], im["div"], im["d"], im["clamp"] = "view", \
+            sky_side(tok[4], 1, SKY_MAX_VIEWDIV, "a view divisor"), 1, True
+        at = 5
+    else:
+        raise ValueError(f"`{tok[3]}` is not tex2d, tex3d or view")
+    if at >= len(tok) or tok[at] not in SKY_FORMATS:
+        raise ValueError(f"`{tok[at] if at < len(tok) else ''}` is not one of {', '.join(sorted(SKY_FORMATS))}")
+    im["format"] = tok[at]
+    for f in tok[at + 1:]:
+        if f not in SKY_FLAGS:
+            raise ValueError(f"`{f}` is not one of {', '.join(sorted(SKY_FLAGS))}")
+        im[f] = True
+    return im
+
+
+def sky_pass(tok):
+    if len(tok) != 5:
+        raise ValueError(f"cx_sky_pass needs once|frame, a resref and an image: `{' '.join(tok)}`")
+    if tok[2] not in ("once", "frame"):
+        raise ValueError(f"`{tok[2]}` is neither once nor frame")
+    if not 0 < len(tok[3]) <= 16:
+        raise ValueError(f"`{tok[3]}` is not a resref of at most 16 characters")
+    return {"once": tok[2] == "once", "ref": tok[3], "image": tok[4]}
+
+
+def sky_decls(text):
+    """The images and passes a twin's OWN top-level text declares -- its includes are libraries, not a place
+    to declare the sky's resources. Raises ValueError on anything the extender would refuse."""
+    images, passes = [], []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line.startswith("#pragma"):
+            continue
+        tok = line.split()
+        if len(tok) < 2 or not tok[1].startswith("cx_sky"):
+            continue
+        for t in tok[2:]:
+            if not SKY_TOKEN.match(t):
+                raise ValueError(f"`{t}` on `{line}` is neither an identifier nor a decimal integer, and a "
+                                 "GLSL preprocessor would refuse the line")
+        if tok[1] == "cx_sky_image":
+            images.append(sky_image(tok, images))
+        elif tok[1] == "cx_sky_pass":
+            passes.append(sky_pass(tok))
+        else:
+            raise ValueError(f"unknown declaration `{tok[1]}` on `{line}`")
+    if len(images) > SKY_MAX_IMAGES:
+        raise ValueError(f"{len(images)} images declared, past the budget of {SKY_MAX_IMAGES}")
+    if len(passes) > SKY_MAX_PASSES:
+        raise ValueError(f"{len(passes)} passes declared, past the budget of {SKY_MAX_PASSES}")
+    names = {i["name"] for i in images}
+    for p in passes:
+        if p["image"] not in names:
+            raise ValueError(f"pass {p['ref']} is dispatched over `{p['image']}`, which no cx_sky_image declares")
+    return images, passes
+
+
+def sky_twins(g):
+    """(tree, chain, twin resref, stage resref) for the fixture and for every twin a content tree ships. A
+    `cx_*.shd` that overrides one of Alloy's OWN stages or libraries is not a twin and is skipped."""
+    stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
+    out = []
+    for d in [SKY_FIXTURE, CONTENT_SHD] + CONTENT_STAGES:
+        if not os.path.isdir(d):
+            continue
+        chain = content_stage.Chain([d], stock)
+        for resref in sorted(chain.files):
+            if not resref.startswith("cx_") or resref in g:
+                continue
+            text = chain(resref) or ""
+            stage = resref[3:]
+            if "cx_sky_image" not in text and "cx_sky_pass" not in text and stage not in chain.files:
+                continue
+            out.append((d, chain, resref, stage))
+    return out
+
+
+def sky_programs(raw, g):
+    """Every sky twin hosted in cx_sky_fs under CX_SKY_LINEAR, its fallback stage hosted plainly beside it,
+    and each pass it declares hosted in cx_skypass_cs -- the programs the extender builds, by the same
+    substitution and the same splice."""
+    out, bad = {}, 0
+    found = sky_twins(g)
+    for d, chain, twin, stage in found:
+        where = os.path.basename(os.path.normpath(d))
+        try:
+            images, passes = sky_decls(chain(twin) or "")
+        except ValueError as e:
+            print(f"sky twin: {twin}.shd ({where}): FAILED -- {e}")
+            bad = 1
+            continue
+        print(f"sky twin: {twin}.shd ({where}): {len(images)} image(s), {len(passes)} pass(es)")
+        fs = define(raw["cx_sky_fs"].replace("$SKYFS$", twin), "CX_SKY_LINEAR 1")
+        out[f"sky twin {twin} ({where})"] = (g["cx_own_vs"], splice(fs, {}, raw, read=chain))
+        if stage in chain.files:
+            out[f"sky stage {stage} ({where}, the twin's fallback)"] = (
+                g["cx_own_vs"], splice(raw["cx_sky_fs"].replace("$SKYFS$", stage), {}, raw, read=chain))
+        for p in passes:
+            out[f"sky pass {p['ref']} ({where})"] = (
+                splice(raw["cx_skypass_cs"].replace("$SKYCS$", p["ref"]), {}, raw, read=chain),)
+    if not any(d == SKY_FIXTURE for d, _, _, _ in found):
+        print(f"sky twin: the fixture under {os.path.relpath(SKY_FIXTURE, ROOT)} was not found -- "
+              "the grammar and the two wrappers are UNCHECKED")
+        bad = 1
+    elif len(found) == 1:
+        print("sky twin: no content tree ships one yet -- the fixture is what is checked")
+    return out, bad
+
+
 def main():
     raw = shaders()
     g = spliced(raw)
@@ -1101,6 +1256,8 @@ def main():
     content, bad_content = content_programs(g)
     progs.update(content)
     progs.update(post_programs(raw, g))
+    sky, bad_sky = sky_programs(raw, g)
+    progs.update(sky)
 
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -1119,6 +1276,7 @@ def main():
                 print(r.stdout, r.stderr)
     print(f"{len(progs)} programs from {len(g)} embedded .glsl")
     bad |= bad_content
+    bad |= bad_sky
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)
