@@ -6,6 +6,8 @@
     // exactly -- the view-side normalisation and the specular colour, applied per light instead of once
     // over the sum, which is the same product. Under 1 it adds multiple scattering and the two layers.
     float NoV = max(dot(N, V), 0.0);
+    // at 0 the lobe is inf x 0 (Smith k 0, CxSpecBase 0): NaN over every flat triangle, where aaKernel is 0 too
+    rough = max(rough, CX_ALPHA_MIN);
     // after the weather splice, so a puddle's 0.03 is widened too
     if (uMaterial.z > 0.5) rough = sqrt(min(rough * rough + aaKernel, 1.0));
     cxCoat = 0.0; cxCoatRough = 0.0; cxSheen = vec3(0.0); cxSheenRough = 0.0;
