@@ -62,8 +62,22 @@ internal static unsafe partial class SkyTwin
             if (!Resolve(t, prog, out p.Binds, out string why)) { Fail(id, $"pass {p.Ref}: {why}", log); return false; }
             log?.Info($"{what}: built, {p.Gx}x{p.Gy}x{p.Gz} work group, {p.Binds.Length} image binding(s)");
         }
-        if (!MarkSwaps(t, out string refused)) { Fail(id, refused, log); return false; }
+        if (!MarkSwaps(t, out string refused) || !LensWritten(t, out refused)) { Fail(id, refused, log); return false; }
         return true;
+    }
+
+    /// <summary>A <c>cx_sky_lens</c> image has to be one a FRAME pass writes as an image: the resolve adds it to
+    /// every frame, and one nothing rewrites is the same flare whichever way the camera turns.</summary>
+    private static bool LensWritten(Twin t, out string why)
+    {
+        why = "";
+        if (t.LensImage < 0) return true;
+        foreach (Pass p in t.Passes)
+            if (!p.Once)
+                foreach (Bind b in p.Binds)
+                    if (b.IsImage && !b.Prev && b.Image == t.LensImage) return true;
+        why = $"the lens image `{t.LensRef}` is not written as an image by any frame pass";
+        return false;
     }
 
     /// <summary>Which images swap halves each frame, once every pass's bindings are known: a <c>history</c>
@@ -317,6 +331,8 @@ internal static unsafe partial class SkyTwin
         t.RanFrame = AlloyRenderer.FrameSeq;
         foreach (Img im in t.Images)
             if (im.Swap) (im.Tex, im.Prev) = (im.Prev, im.Tex);
+        // A dome that stores into an image (what of the sun it showed) is read back by this frame's passes.
+        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT);
         RunPasses(t, viewport, once: false, main: true);
         ReadFog(t, log);
     }

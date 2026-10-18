@@ -1,7 +1,8 @@
 // The ALLOY-NATIVE TWIN of cxdemo_sky: linear HDR out, and it reads the three images its own #pragma lines
 // declare -- a 32-cube volume a `once` pass fills, a half-render-size history pair and a 64x32 band table
-// two `frame` passes write, whose texel (3, 0) the fog takes as the horizon's colour. A vanilla client never
-// reads this file, so the module keeps one working sky.
+// two `frame` passes write, whose texel (3, 0) the fog takes as the horizon's colour; the history pair is also
+// the lens the resolve adds over the frame. A vanilla client never reads this file, so the module keeps one
+// working sky.
 // A fixture for check-shaders.py and the sky-twin self-checks: it ships in no hak and no module.
 #pragma cx_sky_image cxVolume tex3d 32 32 32 rgba8 mips
 #pragma cx_sky_image cxHist view 2 rgba16f history
@@ -10,6 +11,7 @@
 #pragma cx_sky_pass frame cxdemo_hist cxHist
 #pragma cx_sky_pass frame cxdemo_band cxBand
 #pragma cx_sky_fog cxBand 3 0
+#pragma cx_sky_lens cxHist
 uniform sampler3D cxVolume;
 uniform sampler2D cxHist;
 uniform sampler2D cxBand;

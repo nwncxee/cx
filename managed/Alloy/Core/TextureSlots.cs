@@ -40,6 +40,9 @@ internal static class TextureSlots
     /// <summary>The owned depth at the resolve, which reads it to exempt the sky. <see cref="Probe"/>'s
     /// unit on <see cref="PostHdr"/>'s argument: the resolve is its own program and the probe is not bound there.</summary>
     internal const uint PostDepth = Probe;
+    /// <summary>A sky twin's lens at the resolve (<c>cx_sky_lens</c>). <see cref="SnapshotColor"/>'s unit on
+    /// <see cref="PostDepth"/>'s argument: the resolve is its own program, and the snapshot is not bound there.</summary>
+    internal const uint PostLens = SnapshotColor;
     /// <summary>The aa stage's own passes, post stack only -- after the world pass, so the probe and snapshot
     /// units are free on the same argument as <see cref="PostHdr"/>: edges then weights on 12, the area
     /// table on 13, the search table on 14.</summary>
@@ -267,6 +270,7 @@ internal static class TextureSlots
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uHdr;"), $"{PostHdr} uHdr");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uBloom;"), $"{PostBloom} uBloom");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uDepth;"), $"{PostDepth} uDepth");
+        check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uLens;"), $"{PostLens} uLens");
         // #375: the post stack reuses the resolve's two units, after it and in the same bracket.
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uSrc;"), $"{PostHdr} uSrc (post stack)");
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uDepth;"), $"{PostBloom} uDepth (post stack)");

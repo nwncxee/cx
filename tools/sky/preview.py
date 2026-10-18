@@ -48,15 +48,16 @@ KINDS = {"tex2d": "2d", "tex3d": "3d", "view": "view"}
 
 
 def sky_decls(cs, text):
-    """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)]) for a twin's declarations."""
-    images, passes, _ = cs.sky_decls(text)
+    """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)], lens image or None) for a twin's
+    declarations."""
+    images, passes, _, lens = cs.sky_decls(text)
     out = {}
     for i in images:
         kind = KINDS[i["shape"]]
         size = [i["div"]] if kind == "view" else ([i["w"], i["h"], i["d"]] if kind == "3d" else [i["w"], i["h"]])
         out[i["name"]] = dict(kind=kind, size=size, fmt=i["format"],
                               flags={f for f in ("history", "mips", "clamp") if i[f]})
-    return out, [("once" if p["once"] else "frame", p["ref"], p["image"]) for p in passes]
+    return out, [("once" if p["once"] else "frame", p["ref"], p["image"]) for p in passes], lens
 
 
 # --- GL through the headless EGL context check-shaders.py makes ----------------------------------------------------
@@ -153,13 +154,13 @@ def is_image_type(t):
 # --- scene inputs ---------------------------------------------------------------------------------------------------
 # The scene vocabulary. year..hour, yaw/pitch/fov, eyez (the eye's height over the dome's centre, metres), t (the
 # client clock, seconds) and main (0 = a probe face) are the engine's and the camera's. cover, storm, tint, phase,
-# moon, armed, flash, flashaz, comet, cometseed and noir are the scriptable slots the REFERENCE content's sky reads
-# (Shadows over Westgate: slots 4, 9, 10, 11, 12, 16 -- see uniforms() below), and aim=sun|moon points the camera
-# along its inc_skymath model. Another sky sets its own uniforms raw: u.<name>=x[,y[,z[,w]]] for a float/vec,
+# moon, armed, flash, flashaz, comet, cometseed, noir and flare are the scriptable slots the REFERENCE content's sky
+# reads (Shadows over Westgate: slots 4, 9, 10, 11, 12, 13, 16 -- see uniforms() below), and aim=sun|moon points
+# the camera along its inc_skymath model. Another sky sets its own uniforms raw: u.<name>=x[,y[,z[,w]]] for a float/vec,
 # i.<name>=n for an int (e.g. u.scriptableVec3=0,0,1,0).
 DEFAULTS = dict(year=1372, month=6, day=15, hour=12.0, cover=0.0, storm=0.0, phase=0.5, tint=(0, 0, 0),
                 flash=0.0, flashaz=0.0, comet=-1.0, cometseed=0.37, noir=0, yaw=180.0, pitch=15.0, fov=70.0,
-                t=3600.0, moon=1, armed=1, aim="", main=1, eyez=8.0)
+                t=3600.0, moon=1, armed=1, aim="", main=1, eyez=8.0, flare=1)
 
 
 def parse_scene(text):
@@ -285,7 +286,8 @@ class Sky:
         self.read = lambda name: self.find(name)
         self.stage = stage
         self.twin = twin
-        self.images_decl, self.passes_decl = sky_decls(cs, self.read(stage) or "") if twin else ({}, [])
+        self.images_decl, self.passes_decl, self.lens = sky_decls(cs, self.read(stage) or "") if twin else ({}, [], None)
+        self.last_lens = None
         fs = self.wrap("cx_sky_f", "$SKYFS$", stage, "CX_SKY_LINEAR 1" if twin else None)
         self.prog = gl.program([(0x8B31, VS), (0x8B30, fs)], stage)   # not-an-offset: GL_VERTEX_SHADER, GL_FRAGMENT_SHADER
         self.images = {}
@@ -399,7 +401,7 @@ class Sky:
         v4("scriptableVec16", s["flash"], s["flashaz"], 0, 0)
         i1("scriptableInt9", 1 if s["comet"] >= 0 else 0)
         v4("scriptableVec9", max(s["comet"], 0.0), s["cometseed"], 0, 1.0)
-        i1("scriptableInt4", s["noir"])
+        i1("scriptableInt4", s["noir"]); i1("scriptableInt13", s["flare"])
         gl.UniformMatrix4fv(L("uVP"), 1, 0, mat(vp))
         gl.UniformMatrix4fv(L("m_proj"), 1, 0, mat(proj))
         vi = np.identity(4); vi[:3, 3] = eye
@@ -472,9 +474,10 @@ def find_asset(name, roots):
 
 
 # --- the resolve, for a sky pixel --------------------------------------------------------------------------------------
-def present(hdr, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
-    """CX's sky-pixel resolve: own value + bloom bleed, encoded, no exposure/tonemap (cx_resolve_f's uSkyRaw arm).
-    The bloom is the usual soft-knee bright pass over a Gaussian pyramid, close enough to judge a glow by."""
+def present(hdr, lens=None, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
+    """CX's sky-pixel resolve: own value + bloom bleed + the twin's lens, encoded, no exposure/tonemap
+    (cx_resolve_f's uSkyRaw arm). The bloom is the usual soft-knee bright pass over a Gaussian pyramid, close
+    enough to judge a glow by."""
     c = np.nan_to_num(hdr[..., :3].astype(np.float32))
     br = c.max(axis=2, keepdims=True)
     soft = np.clip(br - thresh + knee, 0, 2 * knee) ** 2 / (4 * knee)
@@ -490,7 +493,10 @@ def present(hdr, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
                         for i in range(3)], axis=2)
         up = np.stack([np.asarray(Image.fromarray(lvl[..., i], "F").resize((w, h), Image.BICUBIC)) for i in range(3)], axis=2)
         acc += up
-    out = np.clip(c + acc / 6.0 * bloom * 6.0, 0, 1) ** (1.0 / gamma)
+    out = c + acc / 6.0 * bloom * 6.0
+    if lens is not None:
+        out += np.maximum(lens, 0)
+    out = np.clip(out, 0, 1) ** (1.0 / gamma)
     return (out * 255 + 0.5).astype(np.uint8)
 
 
@@ -518,7 +524,6 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
             gl.BeginQuery(0x88BF, q)   # not-an-offset: GL_TIME_ELAPSED
         sky.prev_vp = vp
         sky.fresh = False
-        sky.frame += 1
         gl.BindFramebuffer(0x8D40, fbo)   # not-an-offset: GL_FRAMEBUFFER
         gl.Viewport(0, 0, *size)
         gl.ClearColor(0.035, 0.04, 0.03, 1.0)   # where the world would be
@@ -530,6 +535,8 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
         sky.bind(sky.prog)
         gl.BindVertexArray(vao)
         gl.DrawArrays(0x0004, 0, count)   # not-an-offset: GL_TRIANGLES
+        # one cxSkyFrame for a frame's passes and its dome, as in the extender
+        sky.frame += 1
         if k == frames - 1:
             gl.EndQuery(0x88BF)   # not-an-offset: GL_TIME_ELAPSED
     gl.Finish()
@@ -544,6 +551,15 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
     buf = (C.c_float * (size[0] * size[1] * 4))()
     gl.GetTextureImage(color, 0, 0x1908, 0x1406, C.sizeof(buf), buf)   # not-an-offset: GL_RGBA, GL_FLOAT
     img = np.frombuffer(buf, dtype=np.float32).reshape(size[1], size[0], 4)[::-1]
+    sky.last_lens = None
+    if sky.lens:
+        im = sky.images[sky.lens]
+        w, h = im["dims"][:2]
+        lb = (C.c_float * (w * h * 4))()
+        gl.GetTextureImage(im["tex"][0], 0, 0x1908, 0x1406, C.sizeof(lb), lb)   # not-an-offset: GL_RGBA, GL_FLOAT
+        arr = np.frombuffer(lb, dtype=np.float32).reshape(h, w, 4)[::-1, :, :3]
+        sky.last_lens = np.stack([np.asarray(Image.fromarray(np.ascontiguousarray(arr[..., i]), "F")
+                                             .resize(tuple(size), Image.BILINEAR)) for i in range(3)], axis=2)
     return img
 
 
@@ -659,7 +675,8 @@ def main():
                                      re.sub(r"\W+", "_", name) + "_" + sky.stage + "_hdr.npy"), img)
             passes = ms[1:]
             total = ms[0] + sum(t for _, t in passes)
-            png = present(img) if a.nolabel else label(present(img), f"{name} [{sky.stage}] {total:.2f} ms")
+            shown = present(img, sky.last_lens)
+            png = shown if a.nolabel else label(shown, f"{name} [{sky.stage}] {total:.2f} ms")
             row.append(png)
             detail = "  ".join(f"{r.replace('sowsky_', '')} {t:.2f}" for r, t in passes)
             print(f"{name:20s} {sky.stage:11s} total {total:.2f} ms (dome {ms[0]:.2f}; {detail})  max {np.nanmax(img[..., :3]):.2f}")

@@ -17,6 +17,7 @@ internal static unsafe partial class SkyTwin
         Budgets(check);
         Wrappers(check);
         Swaps(check);
+        Lens(check);
         // 129 texels over a group of 8 is 17 groups: the last one runs for a single column. Hand-written.
         check.Expect(Groups(129, 8) == 17 && Groups(128, 8) == 16 && Groups(1, 64) == 1 && Groups(32, 32) == 1,
           "a dispatch rounds its extent UP to whole work groups");
@@ -52,6 +53,7 @@ internal static unsafe partial class SkyTwin
             #pragma cx_sky_pass frame cxdemo_hist cxHist
             #pragma cx_sky_pass frame cxdemo_band cxBand
             #pragma cx_sky_fog cxBand 3 0
+            #pragma cx_sky_lens cxHist
             void main() { }
             """;
         var t = new Twin { Ref = "cx_cxdemo_sky" };
@@ -77,10 +79,12 @@ internal static unsafe partial class SkyTwin
               "the other two are frame passes over images 1 and 2, in declaration order");
             check.Expect(t.FogImage == 2 && t.FogX == 3 && t.FogY == 0,
               "`cx_sky_fog cxBand 3 0` reads the horizon colour from texel (3, 0) of image 2");
+            check.Expect(t.LensImage == 1 && t.LensRef == "cxHist", "`cx_sky_lens cxHist` adds image 1 over the frame");
         }
         var plain = new Twin { Ref = "cx_cxdemo_sky" };
-        check.Expect(ParseDecls(plain, "#pragma cx_sky_image cxA tex2d 8 8 r8", out _) && plain.FogImage == -1,
-          "a twin that declares no cx_sky_fog leaves the fog its author's colour");
+        check.Expect(ParseDecls(plain, "#pragma cx_sky_image cxA tex2d 8 8 r8", out _) && plain.FogImage == -1
+                  && plain.LensImage == -1,
+          "a twin that declares no cx_sky_fog leaves the fog its author's colour, and one with no cx_sky_lens adds nothing");
         // The rest of the format table, against the spec's values.
         check.Expect(Fmt("rgba8") == 0x8058 && Fmt("rgba16f") == 0x881A && Fmt("rgba32f") == 0x8814
                   && Fmt("rg16f") == 0x822F && Fmt("rg8") == 0x822B && Fmt("r16f") == 0x822D
@@ -123,6 +127,12 @@ internal static unsafe partial class SkyTwin
             "a fog texel with one coordinate");
         Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_fog cxA 0 0\n#pragma cx_sky_fog cxA 1 0",
             "two fog texels");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_lens cxB", "a lens nothing declares");
+        Bad(check, "#pragma cx_sky_image cxA tex3d 8 8 8 rgba16f\n#pragma cx_sky_lens cxA", "a lens that is a volume");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_lens", "a lens with no image");
+        Bad(check, "#pragma cx_sky_image cxA tex2d 64 32 rgba8\n#pragma cx_sky_lens cxA 0 0", "a lens with a texel");
+        Bad(check, "#pragma cx_sky_image cxA view 2 rgba16f\n#pragma cx_sky_lens cxA\n#pragma cx_sky_lens cxA",
+            "two lenses");
     }
 
     /// <summary>Which images swap halves per frame. Oracle: a hand-built twin -- a history image and a plain one
@@ -152,6 +162,24 @@ internal static unsafe partial class SkyTwin
             Passes = new[] { new Pass { Binds = new[] { new Bind { Image = 0 } } } },
         };
         check.Expect(!MarkSwaps(idle, out _), "a history image no frame pass writes as an image is refused");
+    }
+
+    /// <summary>A lens has to be an image a FRAME pass writes. Oracle: hand-built twins -- one per way of touching
+    /// the lens image -- and the verdicts written out by hand.</summary>
+    private static void Lens(Checker check)
+    {
+        static Twin With(bool once, bool isImage) => new()
+        {
+            Ref = "cx_selfcheck",
+            LensImage = 0,
+            LensRef = "cxLens",
+            Images = new[] { new Img { Name = "cxLens", Shape = Shape.View } },
+            Passes = new[] { new Pass { Once = once, Binds = new[] { new Bind { Image = 0, IsImage = isImage } } } },
+        };
+        check.Expect(LensWritten(With(once: false, isImage: true), out string why), $"a lens a frame pass writes is accepted -- {why}");
+        check.Expect(!LensWritten(With(once: true, isImage: true), out _), "a lens only a once pass writes is refused");
+        check.Expect(!LensWritten(With(once: false, isImage: false), out _), "a lens a frame pass only samples is refused");
+        check.Expect(LensWritten(new Twin { Ref = "cx_selfcheck" }, out _), "a twin with no lens has nothing to check");
     }
 
     /// <summary>The two declaration budgets, each taken one line past its edge and one line inside it.</summary>

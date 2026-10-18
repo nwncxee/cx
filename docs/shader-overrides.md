@@ -301,6 +301,7 @@ A twin differs from the stage in two ways:
 #pragma cx_sky_image <name> view <N> <format> [flag ...]
 #pragma cx_sky_pass  <once|frame> <resref> <image>
 #pragma cx_sky_fog   <image> <x> <y>
+#pragma cx_sky_lens  <image>
 ```
 
 Every token is a **GLSL identifier or a decimal integer**, and nothing else: a GLSL preprocessor tokenises the
@@ -328,6 +329,9 @@ fails the twin.
 
 - `cx_sky_fog` names the texel that holds **the colour the sky shows at its horizon**, linear, as the dome
   draws it: one texel of a `tex2d` image, inside it, at most once per twin. See "The fog colour" below.
+- `cx_sky_lens` names an image the resolve adds **over the whole frame**, sky and scene alike: light the
+  camera's glass adds, such as a sun's flare. A `tex2d` or `view` image, at most once per twin, that a `frame`
+  pass writes as an image. See "The lens" below.
 
 Budgets, refused loudly past the edge: 12 images, 10 passes, 2d sides up to 4096, 3d sides up to 256, 10
 sampler units and 8 image units per program, and 256 MiB of image memory in total. The memory budget is taken
@@ -345,6 +349,24 @@ With one, the extender copies that texel back every frame without waiting on the
 frames late, and stands in for the dome's mean from then on. A frame pass should write it, since a sky changes
 over the day. It is the colour the fog converges to where the fog is total; the area's own colour still owns
 the near and middle of the ramp.
+
+### The lens
+
+The resolve samples the `cx_sky_lens` image across the frame (bilinear, so a `view 2` image is upsampled) and
+adds it, as display-linear light, **after** the tone curve and before the encode — over a sky pixel, which the
+resolve does not tone-map (`post.skyraw`), and over the scene, which it does, alike, so a ghost that crosses a
+ridgeline stays one ghost. It is added only on frames that twin's `frame` passes ran, which is the main view
+of an outdoor frame; indoors, in a probe face or after a gap there is no lens.
+
+A content post chain with a flare of its own can stand aside for it: the hosted `fsfbpostpr` (`cx_fbpost_fs`)
+reads `cxSkyLens`, 1 on a frame a twin's lens is added and 0 otherwise. A chain that also runs on the stock
+client tests it under `#ifdef CX_ALLOY`.
+
+What hides the sun is the dome's own business: only the dome knows its silhouette, its clouds and what the
+scene covers. A twin's fragment program may store into a declared image (`image2D` binds there as it does in a
+pass), and with `layout(early_fragment_tests) in;` it runs only where the scene leaves sky, so a store it makes
+says "this pixel was sky". The next frame's passes read it: before them, the extender issues an image-access
+barrier.
 
 ### Binding, by name
 
@@ -428,7 +450,7 @@ twin, its fallback stage and its three passes — and does the same for every tw
 extender's own parser by running the accept/refuse lines out of `SkyTwin.SelfCheck.cs` through it — so a twin
 whose declarations the extender would refuse fails the gate instead of a player's first frame. A pass stage
 missing from the chain, an image uniform whose `layout` format or 2D/3D-ness disagrees with its declaration,
-and a `history` image no frame pass writes all fail there too. `tools/sky/preview.py` reads the declarations
+and a `history` image or a lens no frame pass writes all fail there too. `tools/sky/preview.py` reads the declarations
 through that same parser.
 
 ## The guards

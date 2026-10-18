@@ -122,6 +122,10 @@ internal static unsafe partial class SkyTwin
         public int FogSeq;
         public Vector3 Fog;
         public bool HaveFog;
+        /// <summary>The <c>cx_sky_lens</c> image -- what the resolve adds over the main view's frame -- and its
+        /// name as declared; -1: no lens.</summary>
+        public int LensImage = -1;
+        public string LensRef = "";
     }
 
     /// <summary>Everything the GL context owns plus the sky's own frame, in one object: context loss replaces
@@ -289,8 +293,9 @@ internal static unsafe partial class SkyTwin
                    : t.FogMiss.Length > 0 ? $"fog colour NOT READ: {t.FogMiss}"
                    : t.HaveFog ? $"fog colour ({t.Fog.X:F3},{t.Fog.Y:F3},{t.Fog.Z:F3}) from {t.FogRef}({t.FogX},{t.FogY})"
                    : $"fog colour from {t.FogRef}({t.FogX},{t.FogY}) not read back yet";
+        string lens = t.LensImage < 0 ? "" : $", lens {t.LensRef}";
         return $", twin {t.Ref} hosted ({t.Passes.Length} pass(es), {t.Runs} ran this period, "
-             + $"{t.Images.Length} image(s), {t.Bytes / (1024.0 * 1024.0):F1} MiB, {fog})";
+             + $"{t.Images.Length} image(s), {t.Bytes / (1024.0 * 1024.0):F1} MiB, {fog}{lens})";
     }
 
     /// <summary>The colour twin <paramref name="id"/> says its horizon shows, LINEAR, once one has been read
@@ -301,6 +306,17 @@ internal static unsafe partial class SkyTwin
         if (At(id) is not { Failed: false, HaveFog: true } t) return false;
         c = t.Fog;
         return true;
+    }
+
+    /// <summary>The lens a twin drew THIS frame, for the resolve to add: its image's texture, or 0 when no live
+    /// twin declares one or none ran its frame passes this frame (indoors, a probe face, a gap). Hot, no GL.</summary>
+    internal static uint LensTex()
+    {
+        var g = _gl;
+        for (int i = 0; i < g.Count; i++)
+            if (g.Twins[i] is { Failed: false, Made: true, LensImage: >= 0 } t && t.RanFrame == AlloyRenderer.FrameSeq)
+                return t.Images[t.LensImage].Tex;
+        return 0;
     }
 
     /// <summary>Latch a failure: said once with the reason, the GL objects released, and the stage hosted
@@ -357,7 +373,7 @@ internal static unsafe partial class SkyTwin
     {
         var images = new System.Collections.Generic.List<Img>();
         var passes = new System.Collections.Generic.List<Pass>();
-        string fogLine = "";
+        string fogLine = "", lensLine = "";
         why = "";
         foreach (string raw in text.Split('\n'))
         {
@@ -388,6 +404,13 @@ internal static unsafe partial class SkyTwin
                 t.FogRef = tok[2];
                 fogLine = line;
             }
+            else if (tok[1] == "cx_sky_lens")
+            {
+                if (lensLine.Length > 0) { why = $"a second cx_sky_lens, `{line}`: a frame has one lens"; return false; }
+                if (tok.Length != 3 || !Identifier(tok[2])) { why = $"cx_sky_lens takes one image name: `{line}`"; return false; }
+                t.LensRef = tok[2];
+                lensLine = line;
+            }
             else { why = $"unknown declaration `{tok[1]}` on `{line}`"; return false; }
         }
         if (images.Count > MaxImages) { why = $"{images.Count} images declared, past the budget of {MaxImages}"; return false; }
@@ -400,6 +423,13 @@ internal static unsafe partial class SkyTwin
             { why = $"pass {p.Ref} is dispatched over `{p.ImageRef}`, which no cx_sky_image declares"; return false; }
         }
         if (fogLine.Length > 0 && !FogTexel(t, images, fogLine, out why)) return false;
+        if (lensLine.Length > 0)
+        {
+            t.LensImage = images.FindIndex(im => string.Equals(im.Name, t.LensRef, StringComparison.Ordinal));
+            if (t.LensImage < 0) { why = $"`{lensLine}` names `{t.LensRef}`, which no cx_sky_image declares"; return false; }
+            if (images[t.LensImage].Shape == Shape.Tex3d)
+            { why = $"`{lensLine}` names `{t.LensRef}`, a volume: the frame takes a 2d image"; return false; }
+        }
         t.Images = images.ToArray();
         t.Passes = passes.ToArray();
         return true;
