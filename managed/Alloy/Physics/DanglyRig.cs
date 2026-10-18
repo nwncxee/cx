@@ -12,8 +12,15 @@ public enum DanglyClass : byte { Static, Sway, Jiggle, Swing }
 /// <summary>A dangly node's generated rig: its class, vanilla's frequency, damping and wind gain carried over,
 /// the joints the solver moves and the skin weights that bind the mesh to them. Built once per node at load,
 /// immutable and shared by every instance, like the <see cref="NodeDef"/> it hangs off.</summary>
-public sealed class DanglyRig
+public sealed partial class DanglyRig
 {
+    /// <summary>Joints one rig may carry: the largest grid the spec allows, four columns of four segments
+    /// plus each column's kinematic root.</summary>
+    public const int MaxJoints = 20;
+
+    /// <summary>Bones one rig may name: those sixteen segments plus the part's own.</summary>
+    public const int MaxBones = 17;
+
     public DanglyClass Class;
     /// <summary>Per render vertex: 0 for an anchor (constraint 0 or 255+), else <c>1 - c/255</c>.</summary>
     public float[] Mobility = Array.Empty<float>();
@@ -47,6 +54,4 @@ public sealed class DanglyRig
             if (n.Kind == NodeKind.Dangly && n.Mesh != null && n.Dangly != null) n.Rig = Build(m, n);
     }
 
-    /// <summary>The rig for one dangly node, or null when it has nothing the joints can move.</summary>
-    public static DanglyRig? Build(ModelDef m, NodeDef n) => null;
 }
