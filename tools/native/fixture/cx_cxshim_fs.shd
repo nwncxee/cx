@@ -1,0 +1,12 @@
+// The NATIVE SHIM of cxshim_fs: the stage itself, included whole, with the one function it marks replaced -- by one
+// that reads a ripple field a `frame` pass writes. Its only main() is the stage's own. A fixture for check-shaders.py:
+// it ships in no hak and no module.
+#pragma cx_image cxRipple tex2d 64 64 rg16f
+#pragma cx_pass frame cxdemo_rip cxRipple
+#define CXSHIM_TINT_ELSEWHERE
+#include "cxshim_fs"
+uniform sampler2D cxRipple;
+vec3 Tint()
+{
+    return vTint.rgb * (0.8 + 0.4 * texture(cxRipple, vPosWorld.xy * 0.1).r);
+}
