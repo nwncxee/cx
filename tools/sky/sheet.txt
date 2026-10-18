@@ -1,0 +1,19 @@
+# One scene per line: "label: key=value ...". Equinox calendar: the sun rises east ~06:00 and sets west ~18:00.
+noon clear:        month=3 day=20 hour=12   cover=0    yaw=180 pitch=30
+noon fair:         month=3 day=20 hour=12   cover=0.3  yaw=180 pitch=25
+morning half:      month=3 day=20 hour=8.5  cover=0.5  yaw=110 pitch=12
+afternoon sun:     month=3 day=20 hour=15.5 cover=0.25 yaw=235 pitch=15
+golden hour:       month=3 day=20 hour=17.4 cover=0.35 yaw=262 pitch=6
+sunset:            month=3 day=20 hour=17.9 cover=0.3  yaw=268 pitch=6
+civil twilight:    month=3 day=20 hour=18.25 cover=0.2 yaw=272 pitch=8
+blue hour east:    month=3 day=20 hour=18.25 cover=0.2 yaw=90  pitch=12
+night full moon:   month=3 day=20 hour=23   cover=0.2  phase=0.5  yaw=180 pitch=30
+night new moon:    month=3 day=20 hour=23   cover=0    phase=0.02 yaw=20  pitch=35
+crescent dusk:     month=3 day=20 hour=18.6 cover=0    phase=0.12 yaw=268 pitch=10
+overcast day:      month=3 day=20 hour=13   cover=0.85 yaw=200 pitch=20
+rain day:          month=3 day=20 hour=13   cover=0.95 storm=0.5 yaw=200 pitch=20
+storm day:         month=3 day=20 hour=13   cover=1    storm=0.85 yaw=200 pitch=20
+storm flash:       month=3 day=20 hour=22   cover=1    storm=0.85 flash=1 yaw=200 pitch=20
+night overcast:    month=3 day=20 hour=23   cover=0.8  phase=0.5 yaw=180 pitch=25
+comet:             month=3 day=20 hour=23   cover=0    phase=0.02 comet=0.25 cometseed=0.41 yaw=40 pitch=30
+zenith:            month=3 day=20 hour=10   cover=0.45 yaw=180 pitch=85 fov=90

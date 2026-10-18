@@ -162,6 +162,10 @@ def read_shd(name):
     return open(hit).read() if hit else None
 
 
+# Mirrors VanillaShader.MaxDepth: an include that many files deep is dropped, not followed.
+INCLUDE_DEPTH = int(re.search(r"const int MaxDepth = (\d+)", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/Core/VanillaShader.cs")).read()).group(1))
+
+
 def expand(text, done, g, depth=0, read=read_shd, standard=STANDARD):
     """A content file's own #includes, resolved out of the checkout -- the C# side resolves them through
     the resource chain, and a cx_* hook file is composed OF them. One visit each PER STAGE (`done` is
@@ -175,7 +179,7 @@ def expand(text, done, g, depth=0, read=read_shd, standard=STANDARD):
             out.append(line)
             continue
         m = re.search(r'"([^"]+)"', t)
-        if not m or m.group(1) in done or m.group(1) in SUPPLIED or depth >= 4:
+        if not m or m.group(1) in done or m.group(1) in SUPPLIED or depth >= INCLUDE_DEPTH:
             continue
         done.add(m.group(1))
         if m.group(1) == SUBSTITUTED:
@@ -609,6 +613,10 @@ def programs(g):
         "weather map integrate": (g["cx_wx_int_c"],),
         "weather shelter cache": (g["cx_wx_shel_c"],),
         "sky visibility bake": (g["cx_skybake"],),
+        # The two sky wrappers at their STUBS -- what the retry compiles when a stage or a declared pass is
+        # not spliced. The real ones go through native_programs() with the fixture's native stages hosted.
+        "sky (stub)": (g["cx_own_vs"], g["cx_sky_fs"]),
+        "pass wrapper (stub)": (g["cx_pass_cs"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
     }
@@ -956,7 +964,7 @@ def content_pair(g, vs, fs, chain):
         raw = expand_includes("cx_ownlit_vs.glsl", swap={"cx_host_v.glsl": f"{CONTENT_VS_MARK}{vs} {fs or ''}\n{VS_STUB}// $VANILLA-END\n"})
         at = raw.index(CONTENT_VS_MARK)
         end = raw.index("// $VANILLA-END", at)
-        vres = content_stage.translate(vs, False, chain, g["cx_content_v"], "", "", g["cx_constd_v"], raw[:at])
+        vres = content_stage.translate(vs, False, chain, g["cx_content_v"], "", "", g["cx_constd_v"], raw[:at], partner=fs or "")
         vtext = raw[:at] + (vres.host if vres.host else VS_STUB) + raw[end:]
     ftext = g["cx_ownlit_fs"]
     if fs is not None:
@@ -968,7 +976,7 @@ def content_pair(g, vs, fs, chain):
         seen = {d.lower() for d in done}
         fres = content_stage.translate(fs, True, lambda n: "" if n.lower() in seen else chain(n), g["cx_content_f"],
                                        g["cx_vanenv_defs"], g["cx_vanenv_f"], g["cx_constd_f"], src[:at],
-                                       vertex=vres if vres is not None and not vres.refused else None)
+                                       vertex=vres if vres is not None and not vres.refused else None, partner=vs or "")
         ftext = src[:at] + (fres.host if fres.host else FS_STUB) + src[end:]
     return vtext, ftext, vres, fres
 
@@ -1091,6 +1099,412 @@ def post_programs(raw, g):
     return out
 
 
+# --- native stages, images and passes (docs/shader-overrides.md, "Native stages, images and passes") ---------
+# Wherever Alloy hosts a content stage X -- a sky's fragment stage, either half of a material pair -- the chain's
+# cx_X runs in its place under CX_NATIVE, and may declare GPU images and compute passes on #pragma lines of its own.
+# This mirrors CX.Alloy.StageResources' parser, so a declaration the extender would refuse fails here instead of at a
+# player's first frame; every token is an identifier or a decimal integer, because a GLSL preprocessor tokenises the
+# line (NVIDIA refuses `128x128` as an integer with a type suffix).
+NATIVE_FIXTURE = os.path.join(ROOT, "tools/native/fixture")
+NATIVE_CS = os.path.join(MANAGED, "Alloy/Pass/StageResources.cs")
+_NATIVE_SRC = open(NATIVE_CS).read()
+# The budgets, read off the C# declaration so the two can only agree.
+NATIVE_MAX_IMAGES, NATIVE_MAX_PASSES, NATIVE_MAX_2D, NATIVE_MAX_3D, NATIVE_MAX_VIEWDIV = map(int, re.search(
+    r"MaxImages = (\d+), MaxPasses = (\d+), Max2dSide = (\d+), Max3dSide = (\d+), MaxViewDiv = (\d+);", _NATIVE_SRC).groups())
+NATIVE_MAX_BYTES = (lambda m: int(m.group(1)) << int(m.group(2)))(re.search(r"MaxImageBytes = (\d+)L << (\d+);", _NATIVE_SRC))
+NATIVE_MAX_NAME = int(re.search(r"MaxNameChars = (\d+);", _NATIVE_SRC).group(1))
+# name -> (GL sized internal format, bytes per texel). StageResources.SelfCheck.cs asserts the same enums, and
+# check_native_grammar() reads them out of it, so neither table can drift from the other.
+NATIVE_FORMAT_ENUM = {"rgba8": (0x8058, 4), "rgba16f": (0x881A, 8), "rgba32f": (0x8814, 16),   # not-an-offset: GL enums
+                      "rg16f": (0x822F, 4), "rg8": (0x822B, 2), "r16f": (0x822D, 2),   # not-an-offset: GL enums
+                      "r32f": (0x822E, 4), "r8": (0x8229, 1), "r11f_g11f_b10f": (0x8C3A, 4)}   # not-an-offset: GL enums
+NATIVE_FORMATS = set(NATIVE_FORMAT_ENUM)
+NATIVE_FLAGS = {"history", "mips", "clamp"}
+NATIVE_TOKEN = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)$")
+NATIVE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,%d}$" % (NATIVE_MAX_NAME - 1))
+# An image or sampler uniform as the driver sees it: the format layout qualifier is what a declared image's
+# own format has to agree with, and the 2D/3D-ness with its shape.
+NATIVE_IMG = re.compile(r"(?:layout\s*\(([^)]*)\)\s*)?uniform\s+"
+                        r"(?:(?:readonly|writeonly|coherent|volatile|restrict)\s+)*(image2D|image3D)\s+(\w+)\s*;")
+NATIVE_SMP = re.compile(r"uniform\s+(sampler2D|sampler3D)\s+(\w+)\s*;")
+
+
+def native_side(s, lo, hi, what):
+    if not s.isdigit() or not lo <= int(s) <= hi:
+        raise ValueError(f"{what} `{s}` is not a decimal {lo}..{hi}")
+    return int(s)
+
+
+def native_image(tok, images):
+    if len(tok) < 5:
+        raise ValueError(f"cx_image needs a name, a shape and a format: `{' '.join(tok)}`")
+    name = tok[2]
+    if not NATIVE_NAME.match(name) or name.startswith("gl_"):
+        raise ValueError(f"`{name}` is not a GLSL identifier of at most {NATIVE_MAX_NAME} characters")
+    if any(i["name"] == name for i in images):
+        raise ValueError(f"two images are named `{name}`")
+    im = {"name": name, "history": False, "mips": False, "clamp": False}
+    if tok[3] == "tex2d":
+        if len(tok) < 7:
+            raise ValueError(f"`tex2d` takes <W> <H>: `{' '.join(tok)}`")
+        im["shape"], im["w"], im["h"], im["d"] = "tex2d", native_side(tok[4], 1, NATIVE_MAX_2D, "a 2d width"), \
+            native_side(tok[5], 1, NATIVE_MAX_2D, "a 2d height"), 1
+        at = 6
+    elif tok[3] == "tex3d":
+        if len(tok) < 8:
+            raise ValueError(f"`tex3d` takes <W> <H> <D>: `{' '.join(tok)}`")
+        im["shape"] = "tex3d"
+        im["w"], im["h"], im["d"] = (native_side(tok[4 + k], 1, NATIVE_MAX_3D, "a 3d side") for k in range(3))
+        at = 7
+    elif tok[3] == "view":
+        im["shape"], im["div"], im["d"], im["clamp"] = "view", \
+            native_side(tok[4], 1, NATIVE_MAX_VIEWDIV, "a view divisor"), 1, True
+        at = 5
+    else:
+        raise ValueError(f"`{tok[3]}` is not tex2d, tex3d or view")
+    if at >= len(tok) or tok[at] not in NATIVE_FORMATS:
+        raise ValueError(f"`{tok[at] if at < len(tok) else ''}` is not one of {', '.join(sorted(NATIVE_FORMATS))}")
+    im["format"] = tok[at]
+    for f in tok[at + 1:]:
+        if f not in NATIVE_FLAGS:
+            raise ValueError(f"`{f}` is not one of {', '.join(sorted(NATIVE_FLAGS))}")
+        im[f] = True
+    return im
+
+
+def native_pass(tok):
+    if len(tok) != 5:
+        raise ValueError(f"cx_pass needs once|frame, a resref and an image: `{' '.join(tok)}`")
+    if tok[2] not in ("once", "frame"):
+        raise ValueError(f"`{tok[2]}` is neither once nor frame")
+    if not 0 < len(tok[3]) <= 16:
+        raise ValueError(f"`{tok[3]}` is not a resref of at most 16 characters")
+    return {"once": tok[2] == "once", "ref": tok[3], "image": tok[4]}
+
+
+def native_fog(tok, images):
+    """A `cx_fog <image> <x> <y>` line: a texel of a declared tex2d image, inside it."""
+    line = " ".join(tok)
+    if len(tok) != 5 or not NATIVE_NAME.match(tok[2]) or not tok[3].isdigit() or not tok[4].isdigit():
+        raise ValueError(f"cx_fog takes an image name and a texel's <x> <y>: `{line}`")
+    im = next((i for i in images if i["name"] == tok[2]), None)
+    if im is None:
+        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_image declares")
+    if im["shape"] != "tex2d":
+        raise ValueError(f"`{line}` names `{tok[2]}`, which is not a tex2d image")
+    x, y = int(tok[3]), int(tok[4])
+    if x >= im["w"] or y >= im["h"]:
+        raise ValueError(f"`{line}` is outside `{tok[2]}`, which is {im['w']}x{im['h']}")
+    return {"image": tok[2], "x": x, "y": y}
+
+
+def native_overlay(tok, images):
+    """A `cx_overlay <image>` line: a declared 2d image (tex2d or view), which the resolve adds over the frame."""
+    line = " ".join(tok)
+    if len(tok) != 3 or not NATIVE_NAME.match(tok[2]):
+        raise ValueError(f"cx_overlay takes one image name: `{line}`")
+    im = next((i for i in images if i["name"] == tok[2]), None)
+    if im is None:
+        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_image declares")
+    if im["shape"] == "tex3d":
+        raise ValueError(f"`{line}` names `{tok[2]}`, a volume: the frame takes a 2d image")
+    return tok[2]
+
+
+def native_decls(text):
+    """The images, passes, fog texel and overlay image (None if undeclared) a native stage's OWN top-level text
+    declares -- its includes are libraries, not a place to declare resources. Raises ValueError on anything the
+    extender would refuse."""
+    images, passes, fogs, overlays = [], [], [], []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line.startswith("#pragma"):
+            continue
+        tok = line.split()
+        if len(tok) < 2 or not tok[1].startswith("cx_"):
+            continue
+        for t in tok[2:]:
+            if not NATIVE_TOKEN.match(t):
+                raise ValueError(f"`{t}` on `{line}` is neither an identifier nor a decimal integer, and a "
+                                 "GLSL preprocessor would refuse the line")
+        if tok[1] == "cx_image":
+            images.append(native_image(tok, images))
+        elif tok[1] == "cx_pass":
+            passes.append(native_pass(tok))
+        elif tok[1] == "cx_fog":
+            if fogs:
+                raise ValueError(f"a second cx_fog, `{line}`: a stage names one fog colour")
+            fogs.append(tok)
+        elif tok[1] == "cx_overlay":
+            if overlays:
+                raise ValueError(f"a second cx_overlay, `{line}`: a frame has one overlay")
+            overlays.append(tok)
+        else:
+            raise ValueError(f"unknown declaration `{tok[1]}` on `{line}`")
+    if len(images) > NATIVE_MAX_IMAGES:
+        raise ValueError(f"{len(images)} images declared, past the budget of {NATIVE_MAX_IMAGES}")
+    if len(passes) > NATIVE_MAX_PASSES:
+        raise ValueError(f"{len(passes)} passes declared, past the budget of {NATIVE_MAX_PASSES}")
+    names = {i["name"] for i in images}
+    for p in passes:
+        if p["image"] not in names:
+            raise ValueError(f"pass {p['ref']} is dispatched over `{p['image']}`, which no cx_image declares")
+    fog = native_fog(fogs[0], images) if fogs else None
+    overlay = native_overlay(overlays[0], images) if overlays else None
+    # The memory budget, as far as the declarations themselves say it: every FIXED-size image exactly, mips
+    # and history included. A view-sized one is measured at runtime and only the extender can take it.
+    fixed = sum(native_image_bytes(i) for i in images if i["shape"] != "view")
+    if fixed > NATIVE_MAX_BYTES:
+        raise ValueError(f"its fixed-size images come to {fixed / (1 << 20):.1f} MiB, past the budget of "
+                         f"{NATIVE_MAX_BYTES >> 20} MiB")
+    return images, passes, fog, overlay
+
+
+def native_image_bytes(im):
+    """One image's storage at its declared extent: the mip chain summed, doubled for a history pair."""
+    w, h, d = im["w"], im["h"], im["d"]
+    bpp = NATIVE_FORMAT_ENUM[im["format"]][1]
+    levels = 1
+    if im["mips"]:
+        side = max(w, h, d if im["shape"] == "tex3d" else 1)
+        while side > 1:
+            side >>= 1
+            levels += 1
+    total = sum(max(w >> l, 1) * max(h >> l, 1) * (max(d >> l, 1) if im["shape"] == "tex3d" else 1) * bpp
+                for l in range(levels))
+    return total * (2 if im["history"] else 1)
+
+
+def native_stages(g):
+    """(tree, chain, native resref, stage resref) for the fixture and for every native stage a content tree ships. A
+    `cx_*.shd` that overrides one of Alloy's OWN stages or libraries is not a native stage, and neither is one whose
+    plain stage the tree does not ship and which declares nothing (a library, say)."""
+    stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
+    out = []
+    for d in [NATIVE_FIXTURE, CONTENT_SHD] + CONTENT_STAGES:
+        if not os.path.isdir(d):
+            continue
+        chain = content_stage.Chain([d], stock)
+        for resref in sorted(chain.files):
+            if not resref.startswith("cx_") or resref in g or len(resref) > 16:
+                continue
+            text = chain(resref) or ""
+            stage = resref[3:]
+            if "#pragma cx_" not in text and stage not in chain.files:
+                continue
+            out.append((d, chain, resref, stage))
+    return out
+
+
+def native_bindings(text):
+    """{uniform name: (GLSL type, format layout qualifier or None)} for every image and 2D/3D sampler a
+    program declares -- what the driver will bind, as against what the #pragma lines declared."""
+    out = {}
+    for m in NATIVE_IMG.finditer(text):
+        quals = [q.strip() for q in (m.group(1) or "").split(",")]
+        out[m.group(3)] = (m.group(2), next((q for q in quals if q in NATIVE_FORMATS), None))
+    for m in NATIVE_SMP.finditer(text):
+        out.setdefault(m.group(2), (m.group(1), None))
+    return out
+
+
+def native_check_bindings(images, text):
+    """Reconcile one program's own declarations with the stage's: the GLSL type against the image's shape, and
+    an image uniform's format layout qualifier against the declared format. A format mismatch is undefined
+    loads and stores -- it compiles, links and draws the wrong pixels -- so nothing else would catch it."""
+    byname = {i["name"]: i for i in images}
+    errs, written = [], set()
+    for name, (kind, fmt) in sorted(native_bindings(text).items()):
+        prev = name.endswith("_prev")
+        im = byname.get(name[:-5] if prev else name)
+        if im is None:
+            continue
+        if prev and not im["history"]:
+            errs.append(f"`{name}` is read but `{im['name']}` is not declared `history`")
+        if (kind in ("image3D", "sampler3D")) != (im["shape"] == "tex3d"):
+            errs.append(f"`{name}` is declared {kind} but its cx_image is {im['shape']}")
+        if not kind.startswith("image"):
+            continue
+        if not prev:
+            written.add(im["name"])
+        if fmt is None:
+            errs.append(f"`{name}` is declared {kind} with no format layout qualifier")
+        elif fmt != im["format"]:
+            errs.append(f"`{name}` is declared layout({fmt}) but its cx_image says {im['format']}")
+    return errs, written
+
+
+# Mirrors FbPostStage: the engine's post program the wrapper's whole-stage region names.
+POST_STAGE, POST_REGION = "fsfbpostpr", "// $VANILLA-MAIN "
+
+
+def native_host(native, text):
+    """Which host runs a native stage: the post chain's, by name; a MATERIAL half, one that runs the stock material
+    skeleton; else the sky, whose fragment stage runs whole."""
+    if native[3:] == POST_STAGE:
+        return "post"
+    body = COMMENTS_RE.sub(" ", text)
+    if re.search(r"\b(?:ApplyStandardShader|SetupStandardShaderInputs|TransformMainCoordinates)\s*\(", body):
+        return "material"
+    return "sky"
+
+
+def native_programs(raw, g):
+    """Every native stage, built the way its host builds it -- a sky stage in cx_sky_fs under CX_NATIVE with its
+    fallback stage beside it, a material half as its content pair with the other half by name or stock, the post chain
+    in cx_fbpost_fs's retargeted region -- and each pass it declares hosted in cx_pass_cs, by the same substitution and
+    the same splice, refused on the same grounds."""
+    out, bad = {}, 0
+    found = native_stages(g)
+    for d, chain, native, stage in found:
+        where = os.path.basename(os.path.normpath(d))
+        text = chain(native) or ""
+        try:
+            images, passes, _, overlay = native_decls(text)
+        except ValueError as e:
+            print(f"native stage: {native}.shd ({where}): FAILED -- {e}")
+            bad = 1
+            continue
+        # A pass the chain cannot answer for is what the extender refuses the stage over; the wrapper's STUB
+        # would otherwise compile here and report a pass that dispatches nothing as checked.
+        gone = [p["ref"] for p in passes if chain(p["ref"]) is None]
+        if gone:
+            print(f"native stage: {native}.shd ({where}): FAILED -- pass stage(s) NOT FOUND in the chain: "
+                  + ", ".join(sorted(gone)))
+            bad = 1
+            continue
+        host = native_host(native, text)
+        print(f"native stage: {native}.shd ({where}): {host}, {len(images)} image(s), {len(passes)} pass(es)")
+        texts, written = {}, set()
+        if host == "post":
+            fs = raw["cx_fbpost_fs"].replace(f"{POST_REGION}{POST_STAGE}\n", f"{POST_REGION}{native}\n")
+            texts[f"native post chain {native} ({where})"] = (g["cx_post_vs"], splice(define(fs, "CX_NATIVE 1"), {}, raw, read=chain))
+        elif host == "material":
+            vertex = is_vertex(text)
+            files = set(chain.files)
+            other = partner(stage, files, vertex)
+            if other is not None and "cx_" + other in files:
+                other = "cx_" + other
+            vs, fs = (native, other) if vertex else (other, native)
+            vt, ft, vr, fr = content_pair(g, vs, fs, chain)
+            refused = (vr.refused if vr is not None else None) or (fr.refused if fr is not None else None)
+            if refused:
+                print(f"native stage: {native}.shd ({where}): FAILED -- the content pair {vs or 'stock'}/{fs or 'stock'} "
+                      f"is refused: {refused}")
+                bad = 1
+                continue
+            # the two halves link into one program: an image either native half declares binds in both
+            if other is not None and other.startswith("cx_"):
+                try:
+                    images = images + [i for i in native_decls(chain(other) or "")[0] if i["name"] not in {j["name"] for j in images}]
+                except ValueError:
+                    pass        # the other half's own entry reports it
+            for half, name, out_text in ((vs, "vertex", vt), (fs, "fragment", ft)):
+                own = native_bindings(chain(half) or "") if half else {}
+                for im in images:
+                    for n in (im["name"], im["name"] + "_prev"):
+                        # the translator keeps an image's uniform as written; a macro in its place is the material's
+                        # texture 0 read where the image should be -- a wrong picture with no log line
+                        if n in own and re.search(rf"^\s*#\s*define\s+{n}\b", out_text, re.M):
+                            print(f"native stage: {native}.shd ({where}): FAILED -- the {name} half's `{n}` was "
+                                  "translated away from the image it names")
+                            bad = 1
+            if vs is not None and vs.startswith("cx_"):
+                vt = define(vt, "CX_NATIVE 1")
+            if fs is not None and fs.startswith("cx_"):
+                ft = define(ft, "CX_NATIVE 1")
+            texts.update(pair_programs(f"native content pair {vs or 'stock'}/{fs or 'stock'} ({where})", vt, ft, fr, vr))
+        else:
+            fs = define(raw["cx_sky_fs"].replace("$SKYFS$", native), "CX_NATIVE 1")
+            texts[f"native sky {native} ({where})"] = (g["cx_own_vs"], splice(fs, {}, raw, read=chain))
+            if stage in chain.files:
+                texts[f"sky stage {stage} ({where}, the native stage's fallback)"] = (
+                    g["cx_own_vs"], splice(raw["cx_sky_fs"].replace("$SKYFS$", stage), {}, raw, read=chain))
+        for p in passes:
+            cs = splice(raw["cx_pass_cs"].replace("$PASSCS$", p["ref"]), {}, raw, read=chain)
+            texts[f"pass {p['ref']} ({native}, {where})"] = (cs,)
+            errs, wrote = native_check_bindings(images, chain(p["ref"]) or "")
+            if not p["once"]:
+                written |= wrote
+            for e in errs:
+                print(f"pass: {p['ref']}.shd ({where}): FAILED -- {e}")
+                bad = 1
+        for e in native_check_bindings(images, text)[0]:
+            print(f"native stage: {native}.shd ({where}): FAILED -- {e}")
+            bad = 1
+        # A `history` image no FRAME pass rewrites has no history to keep: its two halves would alternate
+        # between the baked texture and a zeroed one. The extender refuses the flag; so does this.
+        for im in images:
+            if im["history"] and im["name"] not in written:
+                print(f"native stage: {native}.shd ({where}): FAILED -- `{im['name']}` is declared `history` but no "
+                      "frame pass writes it as an image")
+                bad = 1
+        if overlay is not None and overlay not in written:
+            print(f"native stage: {native}.shd ({where}): FAILED -- the overlay image `{overlay}` is not written as an "
+                  "image by any frame pass")
+            bad = 1
+        out.update(texts)
+    hosts = {native_host(n, chain(n) or "") for d, chain, n, _ in found if d == NATIVE_FIXTURE}
+    if hosts != {"sky", "material", "post"}:
+        print(f"native stage: the fixture under {os.path.relpath(NATIVE_FIXTURE, ROOT)} was not found whole (a sky, a "
+              "material half and a post chain) -- the grammar and the wrappers are UNCHECKED")
+        bad = 1
+    elif all(d == NATIVE_FIXTURE for d, _, _, _ in found):
+        print("native stage: no content tree ships one -- the fixture is what is checked")
+    return out, bad
+
+
+# The C#<->Python pin. CX.Alloy.StageResources.SelfCheck asserts its grammar on literal declaration lines and the GL
+# enum each format maps to; those literals are read back out of that file here and run through THIS parser,
+# which has to reach the same verdicts. Two parsers for one grammar stay one grammar only if something says so.
+NATIVE_SELFCHECK_CS = os.path.join(MANAGED, "Alloy/Pass/StageResources.SelfCheck.cs")
+NATIVE_CS_GOOD = re.compile(r'const string good = """\n(.*?)\n[ \t]*""";', re.S)
+NATIVE_CS_BAD = re.compile(r'Bad\(check,\s*"((?:[^"\\]|\\.)*)"')
+NATIVE_CS_FMT = re.compile(r'Fmt\("(\w+)"\)\s*==\s*(0x[0-9A-Fa-f]+)')
+
+
+def check_native_grammar():
+    """The accept/refuse lines and the format enums StageResources.SelfCheck.cs asserts, run through this parser."""
+    cs = open(NATIVE_SELFCHECK_CS).read()
+    bad = 0
+    good = NATIVE_CS_GOOD.search(cs)
+    if good is None:
+        print(f"native grammar: FAILED -- no `const string good` block in {os.path.basename(NATIVE_SELFCHECK_CS)}")
+        return 1
+    try:
+        images, passes, fog, overlay = native_decls(good.group(1))
+    except ValueError as e:
+        print(f"native grammar: FAILED -- C# accepts its own good block, this parser does not: {e}")
+        return 1
+    # ...and that block is the FIXTURE's own declarations, so the hand-written literals are tied to the file
+    # the gate compiles rather than to nothing.
+    fix = os.path.join(NATIVE_FIXTURE, "cx_cxdemo_sky.shd")
+    if os.path.exists(fix):
+        if native_decls(open(fix, encoding="latin1").read()) != (images, passes, fog, overlay):
+            print("native grammar: FAILED -- StageResources.SelfCheck.cs's good block is not the fixture's declarations")
+            bad = 1
+    refused = NATIVE_CS_BAD.findall(cs)
+    if not refused:
+        print(f"native grammar: FAILED -- no Bad(check, ...) lines in {os.path.basename(NATIVE_SELFCHECK_CS)}")
+        return 1
+    for esc in refused:
+        line = esc.replace("\\n", "\n")
+        try:
+            native_decls(line)
+        except ValueError:
+            continue
+        print(f"native grammar: FAILED -- C# refuses `{line}` and this parser accepts it")
+        bad = 1
+    enums = {n: int(v, 16) for n, v in NATIVE_CS_FMT.findall(cs)}
+    mine = {n: e for n, (e, _) in NATIVE_FORMAT_ENUM.items()}
+    if enums != mine:
+        print(f"native grammar: FAILED -- the format enums differ: C# says {enums}, this says {mine}")
+        bad = 1
+    print(f"native grammar: {'ok' if not bad else 'FAILED'} ({len(images)} image(s) and {len(passes)} pass(es) "
+          f"accepted, {len(refused)} line(s) refused, {len(enums)} format enum(s) pinned)")
+    return bad
+
+
 def main():
     raw = shaders()
     g = spliced(raw)
@@ -1101,6 +1515,8 @@ def main():
     content, bad_content = content_programs(g)
     progs.update(content)
     progs.update(post_programs(raw, g))
+    native, bad_native = native_programs(raw, g)
+    progs.update(native)
 
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -1119,6 +1535,8 @@ def main():
                 print(r.stdout, r.stderr)
     print(f"{len(progs)} programs from {len(g)} embedded .glsl")
     bad |= bad_content
+    bad |= bad_native
+    bad |= check_native_grammar()
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)

@@ -299,6 +299,9 @@ public sealed unsafe partial class AlloyRenderer
         if (groups <= 0) { DbNoDraw("BuildBatches produced no batch"); Gl.BindVertexArray(0); GlContextService.Leave(); return false; }
         long tUp = FrameZones.Now;
         Step("the record and handle upload");
+        // The MAIN view's render size and unjittered camera, noted before anything stages: every native stage's pass,
+        // and every program a probe face or a reflection draws, reads this one camera (the cx* frame uniforms).
+        if (!_capturing) StageResources.NoteView(viewport, &vpClean, _eyePos);
         StageSky();
         bool drawsUp = Issue.UploadDraws();
         Db.PltColors.Upload();   // the frame-start push ran before this frame's PLT rows were staged
@@ -315,6 +318,15 @@ public sealed unsafe partial class AlloyRenderer
         // here would throw away the very pose the bake just sampled from.
         if (!posedByShadow) Issue.UploadBones();
         FrameZones.Add(FrameZones.Zone.Upload, tUp);
+        // The frame's head for native stages: every stage a host staged above or drew last frame gets its images
+        // (re)made and its passes run here, before the first draw pass and outside every other GPU term.
+        if (!_capturing)
+        {
+            Step("the native stages' passes");
+            GpuBegin(GpuTerm.Passes);
+            StageResources.RunFrame(viewport, _log);
+            GpuEnd(GpuTerm.Passes);
+        }
         // #243: Alloy's own visibility, dispatched twice -- frustum-only for the depth prepass, then
         // frustum + hi-Z for the colour pass once the prepass has filled the depth the pyramid is
         // built from.
@@ -485,6 +497,7 @@ public sealed unsafe partial class AlloyRenderer
                     Ssr.Resume();
                     GpuEnd(GpuTerm.Sky);
                     if (!_capturing) FrameTap.Take("sky", viewport);
+                    if (!_capturing && FrameTap.Armed) StageResources.Snap(FrameTap.Dir, FrameTap.Seq, _log);
                     break;
                 case PassId.CutoutOwned:
                     // CX-188: the cutout class is the last G-buffer writer; close the attachment after it

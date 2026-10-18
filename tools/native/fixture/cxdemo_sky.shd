@@ -1,0 +1,12 @@
+// A stand-in for a module's OWN sky fragment stage: a plain gradient dome written the way a stock sky stage
+// is -- the engine's uniform names, display-space colour out through gl_FragColor. The native stage beside it
+// (cx_cxdemo_sky.shd) is what Alloy runs instead; this is the fallback, and a vanilla client's only sky.
+// A fixture for check-shaders.py: it ships in no hak and no module.
+#include "inc_common"
+void main()
+{
+    vec3 dir = normalize(vPosWorld - m_view_inv[3].xyz);
+    float up = clamp(dir.z * 0.5 + 0.5, 0.0, 1.0);
+    vec3 sky = mix(vec3(0.70, 0.74, 0.80), vec3(0.18, 0.36, 0.72), up);
+    gl_FragColor = vec4(sky * texture2D(texUnit0, vTexCoords).rgb, 1.0);
+}

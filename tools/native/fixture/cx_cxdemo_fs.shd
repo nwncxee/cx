@@ -1,0 +1,19 @@
+// The NATIVE version of cxdemo_fs: the same material skeleton, and a 64x64 ripple field a `frame` pass writes,
+// which it samples through its own world position -- a material that moves with a simulation the GPU keeps.
+// A fixture for check-shaders.py: it ships in no hak and no module.
+#pragma cx_image cxRipple tex2d 64 64 rg16f
+#pragma cx_pass frame cxdemo_rip cxRipple
+#define SHADER_TYPE 2
+#define LIGHTING 1
+#include "inc_standard"
+uniform vec4 vTint;
+uniform sampler2D cxRipple;
+void main()
+{
+    FragmentColor = vec4(1.0);
+    SetupStandardShaderInputs();
+    vec2 ripple = texture(cxRipple, vPosWorld.xy * 0.1).rg;
+    FragmentColor.rgb *= vTint.rgb * (0.8 + 0.4 * ripple.r);
+    ApplyStandardShader();
+    gl_FragColor = FragmentColor;
+}

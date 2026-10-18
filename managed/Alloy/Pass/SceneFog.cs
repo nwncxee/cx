@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The scene fog's TARGET COLOUR, and the terms that shape it. The area author still owns the ramp, read
 /// untouched off <c>Scene+0x140..0x14c</c>, so every knob here changes only what a fully-fogged fragment
-/// converges TO: the SKY (a readback of the staged dome's smallest mip, role-weighted), which removes the
+/// converges TO: the SKY (the dome texture's mean, role-weighted, or a native stage's cx_fog texel), which removes the
 /// horizon seam vanilla paints over. ponytail: one colour for the whole dome, not a gradient by elevation.
 /// </summary>
 internal static unsafe class SceneFog
@@ -97,6 +97,9 @@ internal static unsafe class SceneFog
     internal static void EndSky()
     {
         _lastTid = 0;
+        // A native stage's cx_fog texel, read back, is the colour outright while its stage runs: a hosted stage's
+        // textures say nothing about its colour, and a texel a shader names for the purpose says exactly that.
+        if (StageResources.FogColour(out Vector3 named)) { _sky = named; _haveSky = true; _acc = default; _accW = 0f; return; }
         if (_accW <= 0f) { _acc = default; return; }
         _sky = _acc / _accW; _haveSky = true;
         _acc = default; _accW = 0f;
@@ -197,7 +200,7 @@ internal static unsafe class SceneFog
     internal static string Describe()
     {
         float opaque = OpaqueDistance();
-        return (Fog.Enabled.V ? "" : "OFF (author's flat fog; every dial reads 0)  ") + $"sky {SkyMix:F2} ({(_haveSky ? "dome texture" : "NO SKY STAGED -- author colour only")} " +
+        return (Fog.Enabled.V ? "" : "OFF (author's flat fog; every dial reads 0)  ") + $"sky {SkyMix:F2} ({(_haveSky ? "sky colour" : "NO SKY COLOUR -- author colour only")} " +
                $"{_sky.X:F2},{_sky.Y:F2},{_sky.Z:F2})  sun {SunAmount:F2} exp {SunExp:F1}  " +
                $"height {HeightK:F3}/unit floor {FloorOffset:F1}  " +
                $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} " +

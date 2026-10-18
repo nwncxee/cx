@@ -1,0 +1,29 @@
+// The NATIVE version of cxdemo_sky: linear HDR out, and it reads the three images its own #pragma lines declare
+// -- a 32-cube volume a `once` pass fills, a half-render-size history pair and a 64x32 band table two `frame`
+// passes write, whose texel (3, 0) the fog takes as its colour; the history pair is also the overlay the resolve
+// adds over the frame. A vanilla client never reads this file, so the module keeps one working sky.
+// A fixture for check-shaders.py and the StageResources self-check: it ships in no hak and no module.
+#pragma cx_image cxVolume tex3d 32 32 32 rgba8 mips
+#pragma cx_image cxHist view 2 rgba16f history
+#pragma cx_image cxBand tex2d 64 32 rgba16f clamp
+#pragma cx_pass once cxdemo_vol cxVolume
+#pragma cx_pass frame cxdemo_hist cxHist
+#pragma cx_pass frame cxdemo_band cxBand
+#pragma cx_fog cxBand 3 0
+#pragma cx_overlay cxHist
+uniform sampler3D cxVolume;
+uniform sampler2D cxHist;
+uniform sampler2D cxBand;
+uniform vec3 cxEye;
+uniform ivec2 cxView;
+void main()
+{
+    vec3 dir = normalize(vPosWorld - cxEye);
+    float up = clamp(dir.z * 0.5 + 0.5, 0.0, 1.0);
+    vec3 band = texture(cxBand, vec2(up, 0.5)).rgb;
+    vec3 vol = texture(cxVolume, dir * 0.5 + 0.5).rgb;
+    vec3 hist = texture(cxHist, gl_FragCoord.xy / vec2(max(cxView, ivec2(1)))).rgb;
+    // One HDR highlight, well above 1: a sun that blooms is the whole reason a native sky hands back linear.
+    float sun = pow(clamp(dot(dir, normalize(vec3(0.3, 0.4, 0.6))), 0.0, 1.0), 512.0);
+    gl_FragColor = vec4(band + 0.25 * vol + 0.25 * hist + vec3(48.0, 44.0, 36.0) * sun, 1.0);
+}

@@ -7,14 +7,16 @@ namespace CX.Alloy;
 
 /// <summary>Diagnostic: <c>/alloy snap</c> writes one frame at three points -- the linear HDR target before
 /// and after the sky pass (<c>.pfm</c>, float RGB; Alloy sessions only) and the default framebuffer at
-/// present (<c>.ppm</c>, 8-bit; vanilla sessions too). One frame, then disarmed; stalls that frame. A matched
-/// set from ONE camera, so a sub-code-value fault can be bisected by pass; <c>tools/snap/</c> reads them.</summary>
+/// present (<c>.ppm</c>, 8-bit; vanilla sessions too) -- and every native stage's images after the sky. One frame,
+/// then disarmed; stalls that frame. A matched set from ONE camera, so a fault can be bisected by pass.</summary>
 internal static unsafe class FrameTap
 {
     internal static bool Armed;
     private static string _seq = "";
     private static ExtenderLog? _log;
     internal static string Dir => Native.ConfigPath("cx_snap");
+    /// <summary>The armed set's name, which every file of it starts with.</summary>
+    internal static string Seq => _seq;
 
     internal static void Install(ExtenderLog log)
     {

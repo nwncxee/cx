@@ -58,3 +58,8 @@ CxFeatPos|cx_feat_v|CX_FEAT_(WINDGRASS|WINDLEAF|WINDPLANT|ROOFKN|ROOFKNM|FLOWMAP
 ShaderFeature\.(WindGrass|WindLeaf|WindPlant|RoofKn|RoofKnM|NoKeyhole|Flowmap|NoirWet|NoirGloss|GroundWeather)\b	CX-303
 \$VANILLA-HOST\b|_progLitHost|\bHostText\b|\bHostMaskState\b|ProgLitHostMask	CX-303
 \bVsNames\b|\bFsNames\b|ShaderFeatures\.Hosted\b|ContentPrograms\.StockFs\b	CX-303
+# The sky-only twin, made generic: any hosted content stage may have a native version (StageResources), whose
+# declarations, frame uniforms, wrappers and knob dropped the sky from their names.
+\bSkyTwin\b|\bsky twins?\b	native-stages
+cx_sky_(image|pass|fog|lens)\b	native-stages	old sky-only grammar
+cx_skyenv|cx_skypass_cs|\$SKYCS\$|CX_SKY_LINEAR|cxSkyLens|effects\.skytwin	native-stages

@@ -1,0 +1,14 @@
+// cx_cxdemo_fs's `frame` pass: a 64x64 ripple field that rolls with the frame counter. Hosted in cx_pass_cs.
+// A fixture for check-shaders.py; it ships nowhere.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(rg16f) uniform image2D cxRipple;
+uniform int cxFrame;
+void main()
+{
+    ivec2 at = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(cxRipple);
+    if (any(greaterThanEqual(at, size))) return;
+    vec2 uv = (vec2(at) + 0.5) / vec2(size);
+    float w = sin(6.2831853 * (uv.x + uv.y) + float(cxFrame) * 0.05);
+    imageStore(cxRipple, at, vec4(0.5 + 0.5 * w, w, 0.0, 0.0));
+}

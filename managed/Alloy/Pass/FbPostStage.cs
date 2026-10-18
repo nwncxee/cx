@@ -40,7 +40,9 @@ internal static unsafe class FbPostStage
     {
         public uint Prog, Sampler;
         public AlloyRenderer.FeatLoc Feat;
-        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth;
+        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth, Rec = -1;
+        /// <summary>The chain's native stage the program was built from (<see cref="StageResources"/>), -1 for the chain.</summary>
+        public int Native = -1;
         public int BuildMask = -1, BuildQuality = -1;
     }
 
@@ -59,8 +61,39 @@ internal static unsafe class FbPostStage
 
     /// <summary>The bits the hosted text carries, of the engine's mask.</summary>
     internal static int HostedMask(int mask) => mask & ~MaskStripped;
-    /// <summary>Does the built program disagree with the options now? The stack drops and rebuilds it.</summary>
-    internal static bool Stale(int mask, int quality) => BuildMask >= 0 && (HostedMask(mask) != BuildMask || quality != BuildQuality);
+    /// <summary>Does the built program disagree with the options now, or did the native stage it runs stand down? The
+    /// stack drops and rebuilds it -- from the chain itself, once the refusal is latched.</summary>
+    internal static bool Stale(int mask, int quality) => BuildMask >= 0 && (HostedMask(mask) != BuildMask || quality != BuildQuality
+                                                         || (_gl.Native >= 0 && !StageResources.Live(_gl.Native)));
+
+    /// <summary>The engine's post program: the stage the wrapper's region hosts, and the marker that names it.</summary>
+    internal const string ChainStage = "fsfbpostpr";
+    private const string Region = "// $VANILLA-MAIN ";
+
+    /// <summary>The wrapper text a build compiles: the region retargeted at the chain's native stage (<c>cx_fsfbpostpr</c>)
+    /// and built with <c>CX_NATIVE</c> where one is declared and live, else <paramref name="fs"/> as it is. Cold.</summary>
+    internal static string Hosting(string fs, ExtenderLog? log)
+    {
+        _gl.Native = -1;
+        string? native = StageResources.NativeOf(ChainStage);
+        if (native == null) return fs;
+        int id = StageResources.Declare(native, log);
+        if (!StageResources.Live(id)) return fs;
+        _gl.Native = id;
+        return ShaderStages.WithDefine(fs.Replace(Region + ChainStage + "\n", Region + native + "\n", StringComparison.Ordinal),
+                                       StageResources.NativeDefine);
+    }
+
+    /// <summary>Is the program being built from the chain's native stage? Its host then builds the wrapper as given.</summary>
+    internal static bool HostsNative => _gl.Native >= 0;
+
+    /// <summary>The native stage's program would not do: latched (said by <see cref="StageResources.Fail"/>), so the
+    /// next <see cref="Hosting"/> hands back the chain itself.</summary>
+    internal static void RefuseNative(string why, ExtenderLog? log)
+    {
+        StageResources.Fail(_gl.Native, why, log);
+        _gl.Native = -1;
+    }
     /// <summary>Pin the tokens ahead of a build.</summary>
     internal static void Arm(int mask, int quality) { BuildMask = HostedMask(mask); BuildQuality = quality; }
 
@@ -88,11 +121,17 @@ internal static unsafe class FbPostStage
             g.LocPixel = GlProgram.Loc(prog, "pixelParams");
             g.LocClip = GlProgram.Loc(prog, "clipParams");
             g.LocFbColor = GlProgram.Loc(prog, "texFBColor"); g.LocFbDepth = GlProgram.Loc(prog, "texFBDepth");
+            // the cx frame uniforms the chain declares, cxOverlay among them (a flare of its own stands aside for one), and
+            // a native stage's images; one its images refuse is latched, and Stale rebuilds the stage from the chain
+            g.Rec = StageResources.Attach(prog, g.Native, -1, _log);
+            if (g.Rec == -2) g.Rec = -1;
         }
         Gl.UseProgram(prog);
         Gl.Uniform1i(g.LocFbColor, (int)TextureSlots.PostHdr);
         Gl.Uniform1i(g.LocFbDepth, (int)TextureSlots.PostBloom);
         AlloyRenderer.UploadFeatureTerms(in g.Feat, viewport);
+        StageResources.Use(g.Native);
+        StageResources.Bind(g.Rec);
         fixed (Matrix4x4* v = &_view) Gl.UniformMatrix4fv(g.LocView, 1, 0, (float*)v);
         if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
         Gl.UniformMatrix4fv(g.LocViewInv, 1, 0, (float*)&inv);
@@ -125,6 +164,8 @@ internal static unsafe class FbPostStage
         check.Expect(FbPostFs.Contains("// $VANILLA-MAIN fsfbpostpr\n") && FbPostFs.Contains("void " + VanillaShader.MainEntry + "() {"),
           "the whole-stage region and its stub, under the name the bridge renames main() to");
         check.Expect(FbPostFs.Contains("uniform highp mat4 m_view_inv;"), "the inverse view a content main() takes world positions through");
+        // The chain declares the cx frame uniforms itself, so a chain written for this build still compiles on one that sets nothing.
+        check.Expect(!FbPostFs.Contains("cxOverlay") && !FbPostFs.Contains("cxFrame"), "the environment leaves the cx frame uniforms to the chain that reads them");
         check.Expect(FbPostFs.Contains("$POSTMASK$") && FbPostFs.Contains("$SQM$"), "the option tokens are in the text");
         check.Expect(!ShaderResource.Tokens("$POSTMASK$ $SQM$").Contains('$'), "the tokens expand");
         check.Expect(!Stale(0, 0), "an unbuilt stage is never stale");

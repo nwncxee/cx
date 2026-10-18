@@ -1,0 +1,12 @@
+// The NATIVE version of cxdemo_vs: it samples the ripple field its FRAGMENT half declares (cx_cxdemo_fs.shd) --
+// one program, so an image either half declares reads in both, and the vertex half declares no pragma of its own.
+// A fixture for check-shaders.py: it ships in no hak and no module.
+#define SHADER_TYPE 1
+#include "inc_standard"
+uniform sampler2D cxRipple;
+out float vRipple;
+void main()
+{
+    ApplyStandardShader();
+    vRipple = textureLod(cxRipple, (m_m * vPos).xy * 0.1, 0.0).r;
+}

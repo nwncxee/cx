@@ -272,9 +272,9 @@ internal static unsafe class VanillaShader
 
     /// <summary>Resolve the file's own <c>#include</c> lines against the resource chain, once each. An include
     /// is followed when the chain answers for it and dropped when it does not: a CONTENT file exists to compose
-    /// its own includes, while an environment-supplied one is never in the chain. Guarded by
-    /// <see cref="MaxDepth"/> and a visited list -- a cycle would be an infinite loop inside a compile.</summary>
-    private const int MaxDepth = 4, MaxIncludes = 64;
+    /// its own includes, while an environment-supplied one is never in the chain. The visited list stops a
+    /// cycle; <see cref="MaxDepth"/> (the content stages' own nesting limit) drops a deeper include out loud.</summary>
+    private const int MaxDepth = 8, MaxIncludes = 64;
 
     /// <summary>Includes the ENVIRONMENT supplies, and which must therefore never be followed.
     /// <c>inc_common</c>/<c>inc_uniforms</c> are the engine's whole uniform and varying interface, so pulling
@@ -301,7 +301,7 @@ internal static unsafe class VanillaShader
     private static string Includes(string text, ExtenderLog? log, string what, List<string> seen, int depth,
                                   string? standard)
     {
-        if (depth >= MaxDepth || !text.Contains("#include", StringComparison.Ordinal)) return text;
+        if (!text.Contains("#include", StringComparison.Ordinal)) return text;
         var sb = new StringBuilder(text.Length);
         foreach (var line in text.Split('\n'))
         {
@@ -311,6 +311,7 @@ internal static unsafe class VanillaShader
             string? name = a >= 0 && b > a ? t[(a + 1)..b] : null;
             if (name == null || seen.Contains(name)) continue;
             if (seen.Count >= MaxIncludes) { log?.Info($"{what}: include cap {MaxIncludes} reached -- {name} dropped"); continue; }
+            if (depth >= MaxDepth) { log?.Info($"{what}: {name} is included {MaxDepth} deep -- dropped"); continue; }
             if (standard != null && Array.IndexOf(Supplied, name) >= 0) continue;
             seen.Add(name);
             string? body = standard != null && name == Substituted ? standard

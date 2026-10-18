@@ -40,6 +40,9 @@ internal static class TextureSlots
     /// <summary>The owned depth at the resolve, which reads it to exempt the sky. <see cref="Probe"/>'s
     /// unit on <see cref="PostHdr"/>'s argument: the resolve is its own program and the probe is not bound there.</summary>
     internal const uint PostDepth = Probe;
+    /// <summary>A native stage's overlay at the resolve (<c>cx_overlay</c>). <see cref="SnapshotColor"/>'s unit on
+    /// <see cref="PostDepth"/>'s argument: the resolve is its own program, and the snapshot is not bound there.</summary>
+    internal const uint PostOverlay = SnapshotColor;
     /// <summary>The aa stage's own passes, post stack only -- after the world pass, so the probe and snapshot
     /// units are free on the same argument as <see cref="PostHdr"/>: edges then weights on 12, the area
     /// table on 13, the search table on 14.</summary>
@@ -140,6 +143,11 @@ internal static class TextureSlots
     /// so no bind-time <c>glUniform1i</c> can miss it.</summary>
     internal const uint PltPalette = 19;
 
+    /// <summary>The images native stages declare (<see cref="StageResources"/>): every half on a unit of its own from
+    /// here, past the per-stage budget of 32 every driver Alloy has met reports. A sampler's unit may run up to the
+    /// driver's combined count; only the samplers one stage ACTIVELY reads count against its own 32.</summary>
+    internal const uint ResourceBase = 32;
+
     /// <summary>The sky-visibility map (<see cref="SkyView"/>), read by the lit stage: the HIGHEST unit
     /// Alloy claims. Declared behind <c>CX_SKY_VIEW</c>, which <see cref="Programs.WithoutSkyView"/> takes
     /// out of the stage on a driver reporting fewer than <see cref="Programs.SkyViewUnitsNeed"/> fragment
@@ -239,6 +247,9 @@ internal static class TextureSlots
             check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap
                       || u == SkyMap,
               $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} but sits above Programs.LitUnitsNeed ({Programs.LitUnitsNeed})");
+        // ...and every one of them under the units native stages' images stay bound on, for the whole frame.
+        foreach (uint u in Claimed(litDecls))
+            check.Expect(u < ResourceBase, $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} at or past {ResourceBase}, where native stages' images sit");
         check.Expect(SkyView.Lib.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;")
           && litDecls.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;"), $"{SkyMap} uSkyMap (lit program)");
         check.Expect(litDecls.Contains(Programs.SkyViewDefine)
@@ -267,6 +278,7 @@ internal static class TextureSlots
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uHdr;"), $"{PostHdr} uHdr");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uBloom;"), $"{PostBloom} uBloom");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uDepth;"), $"{PostDepth} uDepth");
+        check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uOverlay;"), $"{PostOverlay} uOverlay");
         // #375: the post stack reuses the resolve's two units, after it and in the same bracket.
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uSrc;"), $"{PostHdr} uSrc (post stack)");
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uDepth;"), $"{PostBloom} uDepth (post stack)");
