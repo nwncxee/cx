@@ -53,7 +53,7 @@ public static class DanglyJoints
     /// little under 2 tall), so the figure needs no conversion.</summary>
     private const float Gravity = 9.81f;
 
-    /// <summary>Settled: every joint this close to its target and this slow.</summary>
+    /// <summary>Settled: no joint moved further than this in the frame, and none is faster than this.</summary>
     private const float QuietPos = 1e-4f, QuietVel = 1e-3f;
 
     /// <summary>Length-constraint iterations, and the strength a neighbouring column pulls at.</summary>
@@ -107,14 +107,17 @@ public static class DanglyJoints
         for (int j = 0; j < nj; j++)
             drift[j] = dt > 0f ? (target[j] - Vector3.Transform(rig.JointRest[j], before)) / dt : Vector3.Zero;
 
-        // The solve runs before the settled test, never instead of it: a part standing in a steady wind is
-        // not moving, and a frame skipped on that reading would be a part the wind never reached.
+        Span<Vector3> was = stackalloc Vector3[DanglyRig.MaxJoints];
+        for (int j = 0; j < nj; j++) was[j] = s.X[j];
+        // The solve runs before the settled test, never instead of it: a frame skipped on a stale reading
+        // would be a part the wind never reached. Settled is "did not move", not "back at rest": a part
+        // leaning still in a steady wind has nothing new to publish.
         Integrate(rig, s, inp, nj, dt, scale, rot, rotT, target, drift);
         bool quiet = true;
         for (int j = 0; j < nj && quiet; j++)
         {
             if (rig.JointParent[j] < 0) continue;
-            quiet = (s.X[j] - target[j]).LengthSquared() <= QuietPos * QuietPos
+            quiet = (s.X[j] - was[j]).LengthSquared() <= QuietPos * QuietPos
                  && s.V[j].LengthSquared() <= QuietVel * QuietVel;
         }
         s.Settled = quiet && same;

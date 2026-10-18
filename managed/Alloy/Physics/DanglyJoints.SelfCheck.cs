@@ -50,7 +50,7 @@ internal static class DanglyJointsCheck
 
     /// <summary>Oracle: the force law's own fixed point. The card's drag tensor is diag(0, 1, 0) and its wind
     /// gain 25.714286, so a wind of atanh(0.5)/25.714286 along y leans the joint by exactly half its cap --
-    /// 0.5 * 0.3 * 0.560784 = 0.0841176 node units.</summary>
+    /// 0.5 * 0.3 * 0.560784 = 0.0841176 node units -- and a lean that has stopped moving publishes nothing.</summary>
     private static void SteadyWind(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
@@ -65,6 +65,8 @@ internal static class DanglyJointsCheck
                      "a steady wind leans the joint to half its cap");
         check.Expect(MathF.Abs(off.X) + MathF.Abs(off.Z) < 1e-3f,
                      "a y wind on a card leans it along y alone");
+        check.Expect(!DanglyJoints.Step(r, s, inp, bones),
+                     "a card leaning still in a steady wind is settled: there is nothing new to publish");
     }
 
     /// <summary>Oracle: the damped period of the blob's own spring, 2 pi / (15 * sqrt(1 - 0.16)) = 0.457035 s,
