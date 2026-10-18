@@ -302,6 +302,13 @@ A native stage differs from the stage it replaces in three ways:
 
 The `#pragma cx_` lines of a plain stage, one the engine also compiles, are not read.
 
+A native stage may be a **shim**: it `#include`s the stage it stands in for and replaces one part of it. The stage
+marks the part with a hook, its stock code under `#ifdef <macro>`'s `#else` and a prototype under the `#ifdef`; the
+shim declares its images and passes, defines the macro, includes the stage and defines the replacement after the
+include, where everything the stage declares is in scope. The stage's `main()` is the program's, so the shim declares
+none: each host renames the `main()` of the text with its includes in place. A sky shim still hands back linear
+light, so the stage converts its display colour under `#ifdef CX_NATIVE`, `pow(c, 2.2)` as the plain sky host does.
+
 ### The declarations
 
 ```
@@ -459,9 +466,10 @@ they die with the GL context.
 
 Offline, `./check-shaders.py` always compiles and driver-links the fixture under `tools/native/fixture/` — a
 native sky, its fallback stage and its three passes; a native material pair whose vertex half reads the image its
-fragment half declares, with its pass; and a native post chain with its pass — and does the
+fragment half declares, with its pass; a shim of a material half; and a native post chain with its pass — and does the
 same for every native stage it finds under `CX_CONTENT_SHD` and `CX_CONTENT_STAGES`, each the way its host
-builds it, and fails a material half whose image uniform the translation turned into anything else. It mirrors
+builds it, and fails a material half whose image uniform the translation turned into anything else. It reads a stage's
+host and half off its text with its includes in place, so a shim checks as the material half it is. It mirrors
 the pragma grammar — and pins that mirror to the extender's own parser by running the
 accept/refuse lines out of `StageResources.SelfCheck.cs` through it — so a stage whose declarations the extender
 would refuse fails the gate instead of a player's first frame. A pass stage missing from the chain, an image
