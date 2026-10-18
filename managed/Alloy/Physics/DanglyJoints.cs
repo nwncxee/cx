@@ -5,18 +5,20 @@ namespace CX.Alloy.Physics;
 
 /// <summary>What one frame of <see cref="DanglyJoints.Step"/> is driven by: the part's world transform, the
 /// air (the mean wind and the point-source push at the part, world metres per second; the air clock; how much
-/// of the gust and turbulence field to apply), the frame time and the knobs, already read.</summary>
+/// of the gust and turbulence field to apply), the frame time, the knobs, already read, and the static faces a
+/// Swing part keeps clear of, if it has any.</summary>
 public readonly struct DanglyInputs
 {
     public readonly Matrix4x4 PartWorld;
     public readonly Vector3 Mean, Point;
     public readonly float Time, Field, Dt, WindGain, Tilt, Cage;
+    public readonly DanglyColliders? Walls;
 
     public DanglyInputs(Matrix4x4 partWorld, Vector3 mean, Vector3 point, float time, float field, float dt,
-                        float windGain, float tilt, float cage)
+                        float windGain, float tilt, float cage, DanglyColliders? walls = null)
     {
         PartWorld = partWorld; Mean = mean; Point = point; Time = time; Field = field; Dt = dt;
-        WindGain = windGain; Tilt = tilt; Cage = cage;
+        WindGain = windGain; Tilt = tilt; Cage = cage; Walls = walls;
     }
 }
 
@@ -220,7 +222,7 @@ public static class DanglyJoints
                 // A NaN passes the limits as "inside" and would reach the bone palette.
                 if (!IsFinite(s.X[j]) || !IsFinite(s.V[j])) { s.X[j] = now[j]; s.V[j] = default; }
             }
-            if (pendulum) Constrain(rig, s, scale, now);
+            if (pendulum) Constrain(rig, s, scale, now, inp.Walls, was, nj);
             else if (rig.Shear) Cage(rig, s, inp.Cage, scale, nj, now);
             else Cone(rig, s, nj, now);
             if (h > 0f)
@@ -252,8 +254,9 @@ public static class DanglyJoints
 
     /// <summary>Swing's constraints: every segment turned back inside its cone and put onto its parent at its
     /// rest length, which one top-down sweep settles exactly for a single column, then the neighbouring columns
-    /// back to their rest spacing at half strength.</summary>
-    private static void Constrain(DanglyRig rig, DanglyJointsState s, float scale, ReadOnlySpan<Vector3> target)
+    /// back to their rest spacing at half strength, then every joint back out of the faces it keeps clear of.</summary>
+    private static void Constrain(DanglyRig rig, DanglyJointsState s, float scale, ReadOnlySpan<Vector3> target,
+                                  DanglyColliders? walls, ReadOnlySpan<Vector3> was, int nj)
     {
         int k = rig.Columns, j = rig.Segments;
         float limit = MathF.Cos(rig.Cone);
@@ -280,6 +283,7 @@ public static class DanglyJoints
                     s.X[a] -= fix;
                     s.X[b] += fix;
                 }
+            walls?.Push(s.X, was, nj);
         }
     }
 

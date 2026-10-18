@@ -12,7 +12,7 @@ internal static class Dangly
     internal const string MotionAuto = "auto", MotionVanilla = "vanilla";
 
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Sway, Swing, Jiggle;
+    internal static readonly Knob<bool> Enabled, Sway, Swing, Jiggle, Collide;
     internal static readonly Knob<string> Motion;
     internal static readonly Knob<float> WindGain, Tilt, Breeze, Cage, Still;
 
@@ -55,6 +55,9 @@ internal static class Dangly
                          help: "Off, cloth and rigging move the stock way.");
         Jiggle = G.Toggle("jiggle", "jiggle", true, tier: Tier.ChatOnly,
                           help: "Off, body parts and creature appendages move the stock way.");
+        Collide = G.Toggle("collide", "collide", true, tier: Tier.ChatOnly,
+                           help: "Off, banners and other hanging cloth swing through the walls and floors they "
+                               + "hang beside. Automatic motion only.");
         Still = G.Slider("still", "still", 0f, 1f, 0.001f, 0.01f, tier: Tier.ChatOnly);
     }
 }

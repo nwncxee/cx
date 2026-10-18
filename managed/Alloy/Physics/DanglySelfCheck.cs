@@ -15,6 +15,7 @@ internal static class DanglySelfCheck
         var check = new Checker(log, "DanglySelfCheck");
         DanglyRigCheck.Cases(check);
         DanglyJointsCheck.Cases(check);
+        DanglyCollidersCheck.Cases(check);
         VanillaDanglyCheck.Cases(check);
         log.Info(check.Ok ? "DanglySelfCheck: passed"
                           : "DanglySelfCheck: FAILED -- a dangly node would be classed, rigged, solved or "

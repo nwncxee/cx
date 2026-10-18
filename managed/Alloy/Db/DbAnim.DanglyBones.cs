@@ -136,6 +136,7 @@ public static unsafe partial class DbAnim
         {
             DanglyBoneFree(p);
             _dangly.Joints[p] = null;
+            _dangly.Walls[p] = null;
             _dangly.Stock[p] = null;
         }
     }
@@ -153,9 +154,10 @@ public static unsafe partial class DbAnim
     /// for every part on the other path.</summary>
     private static void DanglyDropRig(int part)
     {
-        if (_danglyBones.Cell[part] == 0 && _dangly.Joints[part] == null) return;
+        if (_danglyBones.Cell[part] == 0 && _dangly.Joints[part] == null && _dangly.Walls[part] == null) return;
         DanglyBoneFree(part);
         _dangly.Joints[part] = null;
+        _dangly.Walls[part] = null;
     }
 
     /// <summary>...and one part's stock state: its dynamic vertex buffer, its private arena range and the

@@ -123,7 +123,7 @@ current one), so a banner that lifts edge-on to the wind catches less of it and 
 pumps energy into the chain's sideways modes, and an edge-on strip with no air across it flails; damping
 each joint against its parent drains those modes and hardly touches the whole chain's swing. After each substep: Swing's constraints (every segment turned back inside its cone
 and set to its rest length, one top-down sweep; neighbouring columns to their rest spacing at half
-strength, two iterations), a bending Sway's cone, or the cage; then each joint's velocity is taken from
+strength; the walls of section 5b; two iterations), a bending Sway's cone, or the cage; then each joint's velocity is taken from
 where they left it, so a joint on a limit stops instead of storing the motion it was refused. A part that
 moved more than 1 unit in a frame resets to its rest pose. Bone matrices (node space, System.Numerics
 row-vector, mapping a rest vertex to its current place): a turning bone is the shortest-arc rotation from
@@ -149,6 +149,32 @@ is still published once it adds up; measured in the part's own frame, so a cloak
 walking creature settles, and a part leaning still in a steady wind is settled. A publishing frame reports
 its largest node-space joint move to the shadow-caster verdict, which `dangly.still` thresholds.
 
+## 5b. Walls (`DanglyColliders`, `DbAnim.DanglyWalls`)
+
+A Swing part keeps clear of the static geometry it hangs beside, read from what the scene draws: every visible
+model's drawn trimesh in the part's scene (tiles as merged and drawn, placeables static or not) at its placed
+pose. Never a creature or anything it wears or holds, anything riding another object, a door, an effect, or
+another dangly mesh: those move, and a snapshot of them would be a ghost.
+
+- **When.** A part gathers its faces once it has held its pose for 0.5 s, and again every 10 s so a placeable
+  that arrives or goes later is seen; no gather starts once 0.5 ms of gathering has been spent in the current
+  1/60 s of wall clock. The frame its pose changes it drops them and waits again, so a cloak on a creature
+  never collides and a banner on a tile or a placeable always does. A gather never builds a mesh tree: it
+  reads a mesh through the tree the hit test already built for it, or walks its faces.
+- **Gather.** A moving joint's reach is a sphere about its column's pinned root, as wide as the chain to it.
+  A face (front counter-clockwise) is kept for the joint when it is in that reach and the joint rests in front
+  of it -- so a face the cloth hangs behind, the back of the wall it hangs on included, is never a wall for it.
+  The joint keeps its rest distance from the face less the room its nearest vertex had beyond a 1 cm skin: that
+  vertex stops 1 cm from the face, or where it was authored if nearer. A vertex resting more than 2 cm behind
+  the face was authored inside it (a strand whose far edge is sunk in its wall) and does not count. At most 64
+  faces and 256 joint-face pairs a part, the nearest kept.
+- **Solve.** After each constraint iteration of every substep, a joint the substep carried from in front of a
+  face's clearance to behind it, crossing inside the face (2 cm slack at its edges, so a seam is not a gap), is
+  put back on the clearance along the face normal, and its slide along the face is cut by half the push
+  (friction). A joint already behind at the substep's start came round an edge and is left there. Its velocity
+  is then taken from where it was left, so the contact is inelastic and a banner the wind presses to its wall
+  settles there.
+
 ## 6. Sway
 
 A one-joint rig with the tip at the moving set's mobility-weighted centroid. A card tall enough to bend
@@ -163,6 +189,7 @@ joint a frame.
 | `dangly.enabled` | master | on | off: every dangly part is drawn at rest |
 | `dangly.motion` | `auto` / `vanilla` (labelled automatic / stock) | `auto` | stock moves every part the stock way |
 | `dangly.sway`, `dangly.swing`, `dangly.jiggle` | toggle, ChatOnly | on | off runs that kind the stock way |
+| `dangly.collide` | toggle, ChatOnly | on | off: hanging cloth swings through the walls and floors beside it |
 | `dangly.windgain` | 0–3 · 1 | ×`K`: how hard moving air pushes a part, the wind and the owner's own motion alike |
 | `dangly.tilt` | 0–1 · 1 | how fully a tipped part falls toward the ground |
 | `dangly.breeze` | 0–2 · 0.5 | the least wind an outdoor area blows, in area units (automatic motion only) |

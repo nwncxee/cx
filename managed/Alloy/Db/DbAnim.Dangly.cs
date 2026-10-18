@@ -29,6 +29,13 @@ public static unsafe partial class DbAnim
         internal int NoSkinRange, NoBoneRange;
         internal bool SaidNoSkinRange, SaidNoBoneRange;
         internal long Ticks;
+        /// <summary>Per rigged Swing part, the static faces it keeps clear of; the one gather's scratch; the
+        /// gather budget's window; and the period's collision counters.</summary>
+        internal readonly DanglyWall?[] Walls = new DanglyWall?[SceneDb.MaxParts];
+        internal readonly DanglyGather Gather = new();
+        internal readonly int[] WallScratch = new int[WallMeshFaces];
+        internal long WallWindowAt, WallSpent, GatherTicks;
+        internal int WallParts, Gathers, GatheredFaces, WallDropped, WallTruncated;
     }
 
     private static DanglyState _dangly = new();
@@ -55,7 +62,7 @@ public static unsafe partial class DbAnim
             _dangly.Resting++;
             return;
         }
-        if (path == DanglyPath.Rigged && DanglyRigged(part, rig!, dt, windy)) return;
+        if (path == DanglyPath.Rigged && DanglyRigged(part, rig!, mesh, dt, windy)) return;
         DanglyStock(part, dn, mesh, dt, windy);
     }
 
@@ -81,7 +88,7 @@ public static unsafe partial class DbAnim
     /// <summary>Solve and publish one rigged part (spec section 4a): the joint solver's node-space bones into
     /// the part's own cell of the bone palette, and the part named as a skinned draw. False = this part cannot
     /// take the skinning path, which is counted and said once -- the caller then runs the stock solve.</summary>
-    private static bool DanglyRigged(int part, DanglyRig rig, float dt, bool windy)
+    private static bool DanglyRigged(int part, DanglyRig rig, MeshDef mesh, float dt, bool windy)
     {
         int shared = SceneDb.PartMesh[part];
         if (rig.Skin == null || rig.BoneCount <= 0 || shared < 0 || !MeshArena.SkinnedRange(shared))
@@ -119,7 +126,8 @@ public static unsafe partial class DbAnim
 
         Matrix4x4 world = SceneDb.PartWorld[part];
         var inp = new DanglyInputs(world, DanglyMean(windy), DanglyPoint(in world, windy), DanglyClock(),
-                                   windy ? 1f : 0f, dt, Dangly.WindGain.V, Dangly.Tilt.V, Dangly.Cage.V);
+                                   windy ? 1f : 0f, dt, Dangly.WindGain.V, Dangly.Tilt.V, Dangly.Cage.V,
+                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V));
         int cell = _danglyBones.Cell[part];
         Span<Matrix4x4> bones = _danglyBones.Scratch.AsSpan(0, Math.Min(rig.BoneCount, cell));
         bool moved = DanglyJoints.Step(rig, js, inp, bones);
@@ -241,6 +249,7 @@ public static unsafe partial class DbAnim
                  + $"settled {d.Settled} | {_danglyBones.Live} bone range(s), {_danglyBones.High} peak";
         if (d.NoSkinRange != 0) s += $", {d.NoSkinRange} dangly-noskinrange (moving the STOCK way)";
         if (d.NoBoneRange != 0) s += $", {d.NoBoneRange} dangly-nobonerange (moving the STOCK way)";
+        s += DanglyWallPeriod(frames);
         d.Parts = d.Verts = d.Sway = d.Jiggle = d.Swing = 0;
         d.Stocked = d.Resting = d.Settled = 0;
         d.NoSkinRange = d.NoBoneRange = 0;
