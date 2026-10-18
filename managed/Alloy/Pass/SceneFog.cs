@@ -206,7 +206,7 @@ internal static unsafe class SceneFog
     internal static string Describe()
     {
         float opaque = OpaqueDistance();
-        return (Fog.Enabled.V ? "" : "OFF (author's flat fog; every dial reads 0)  ") + $"sky {SkyMix:F2} ({(_haveSky ? "dome texture" : "NO SKY STAGED -- author colour only")} " +
+        return (Fog.Enabled.V ? "" : "OFF (author's flat fog; every dial reads 0)  ") + $"sky {SkyMix:F2} ({(_haveSky ? "sky colour" : "NO SKY COLOUR -- author colour only")} " +
                $"{_sky.X:F2},{_sky.Y:F2},{_sky.Z:F2})  sun {SunAmount:F2} exp {SunExp:F1}  " +
                $"height {HeightK:F3}/unit floor {FloorOffset:F1}  " +
                $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} " +
