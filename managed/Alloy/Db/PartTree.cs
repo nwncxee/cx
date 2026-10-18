@@ -324,8 +324,10 @@ public static partial class PartTree
         bool folded = swallowed != null && ReferenceEquals(plan.Model, primary)
                       && (uint)plan.Index < (uint)swallowed.Length && swallowed[plan.Index];
         SceneDb.PartMeshDef[p] = folded ? null : n.Mesh;
-        // a skin node's bone slots and weights put the mesh in the arena's Skinned format (finding 10)
-        SceneDb.PartMesh[p] = !folded && n.Mesh != null ? MeshArena.Acquire(n.Mesh, n.Skin) : -1;
+        // a skin node's bone slots and weights put the mesh in the arena's Skinned format (finding 10), and a
+        // rigged dangly node's generated ones do the same -- one range for every instance, since the weights
+        // depend on the rest mesh alone. Whichever Acquire runs FIRST decides the format, so it is this one.
+        SceneDb.PartMesh[p] = !folded && n.Mesh != null ? MeshArena.Acquire(n.Mesh, n.Skin ?? n.Rig?.Skin) : -1;
         if (!folded && n.Mesh != null) ModelCache.NotePlacement(n.Mesh);   // CX-113's meshes-vs-placements census
         if (folded) { SceneDb.PartMerged[p] = true; SceneDb.PartKindOf[p] = PartKind.Merged; }
         InitMaterial(p, n.Mesh);

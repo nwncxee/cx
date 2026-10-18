@@ -1,6 +1,6 @@
 ---
 name: standards-reviewer
-description: Reviews a diff against cx law -- CODING_STANDARDS.md, CLAUDE.md, managed/BannedSymbols.txt and docs/adr/. Use for the standards axis of any code review of this repository: a branch, a PR, uncommitted work, or a pre-merge check.
+description: "Reviews a diff against cx law -- CODING_STANDARDS.md, CLAUDE.md, managed/BannedSymbols.txt and docs/adr/. Use for the standards axis of any code review of this repository: a branch, a PR, uncommitted work, or a pre-merge check."
 tools: Read, Grep, Glob, Bash
 ---
 

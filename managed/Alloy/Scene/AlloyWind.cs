@@ -282,6 +282,14 @@ internal static unsafe class AlloyWind
         return (1f - _t) * _fieldA[i] + _t * _fieldB[i];
     }
 
+    /// <summary>The area's base wind as the game tuned it, engine units: an area set to weak wind blows 1, a
+    /// strong one 2, along the engine's fixed (1, 1, 0) diagonal.</summary>
+    internal static Vector3 Base => _base;
+
+    /// <summary>The point sources alone at <paramref name="at"/>: the push moving creatures and detonations give
+    /// the air there, engine units.</summary>
+    internal static Vector3 Point(Vector3 at) => PointWind(at);
+
     /// <summary>The cell a coordinate falls in: <c>abs((int)v * 4) &amp; 15</c>, truncating toward zero the
     /// way the engine's cvttss2si does. The <c>abs</c> means a position and its mirror share a cell.</summary>
     private static int Cell(float v)

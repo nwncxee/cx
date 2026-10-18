@@ -339,8 +339,8 @@ public static unsafe partial class DbAnim
             Moved(body.Index); Finish(body);
             SceneDb.PartPos[bodyFirst + 1] = new Vector3(1f, 2f, 1f);
             Moved(body.Index); Finish(body);
-            int slot = SceneDb.PartBoneBase[mesh];
-            float* st = slot < 0 ? null : (float*)Unsafe.AsPointer(ref AlloyRenderer.DbBoneStage(slot));
+            int at = SceneDb.PartBoneBase[mesh];
+            float* st = at < 0 ? null : (float*)Unsafe.AsPointer(ref AlloyRenderer.DbBoneStage(at / BoneCount));
             want = Want(bodyFirst + 2);
             check.Expect(st != null && NearV(new Vector3(st[12], st[13], st[14]), want),
                          "a riding piece's palette follows the BODY's pose, not frozen at its first solve "

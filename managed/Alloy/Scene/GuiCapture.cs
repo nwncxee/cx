@@ -385,12 +385,14 @@ internal static unsafe class GuiCapture
 
     /// <summary>Copy a DB part's solved palette beside the record, as <see cref="Skin"/> copies the engine's.
     /// The source is the renderer's own DB bone stage -- the block the pose step wrote, not
-    /// <c>GLRender::m_bones</c>, which nothing fills.</summary>
-    private static int DbSkin(int slot, int flags)
+    /// <c>GLRender::m_bones</c>, which nothing fills. <paramref name="at"/> is the part's absolute bone index.</summary>
+    private static int DbSkin(int at, int flags)
     {
         if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
-        Bones[SkinN] = AlloyRenderer.DbBoneStage(slot);
-        Records[DrawN].BoneBase = SkinN * BoneFloats / 4;
+        Bones[SkinN] = AlloyRenderer.DbBoneStage(at / AlloyRenderer.BoneCount);
+        // The base is an ABSOLUTE bone index, so a part holding a CELL of a slot (a rigged dangly) starts that
+        // many matrices -- four vec4 each -- into the copy.
+        Records[DrawN].BoneBase = SkinN * BoneFloats / 4 + at % AlloyRenderer.BoneCount * 4;
         SkinN++;
         return flags | FlagSkin;
     }

@@ -385,6 +385,7 @@ public static unsafe partial class DbFeed
         DrawRecipe.Assign(p, -1);
         SceneDb.PartFade[p] = 1f;
         SceneDb.PartDissolve[p] = 1f;
+        DbAnim.DanglyPartRecycled(p);
         SceneDb.PartBoneBase[p] = -1;
         SceneDb.PartAlpha[p] = 1f;
         // EXPLORED. The fog-of-war reveal belongs to a TILE and to nothing else -- vanilla fogs an unexplored

@@ -2,52 +2,62 @@ using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>The <c>dangly</c> group (spec §4.3): the storage <see cref="DanglyPhysics"/> reads once per dangly
-/// part per frame. <see cref="Cage"/> is load-bearing -- it widens vanilla's per-axis clamp, the only thing
-/// keeping cloaks out of the wearer's legs, trading sway for clipping; the master is ChatOnly (ADR 0030), off
-/// means rigid cloaks. Touched from <see cref="RenderCommands.Register"/> so it declares on the main thread.</summary>
+/// <summary>The <c>dangly</c> group (docs/spec/dangly-motions.md section 7): what the dangly dispatch reads
+/// once per part per frame. <see cref="Motion"/> chooses between each node's generated rig and the stock
+/// solve; a kind toggle stands one class down to stock. The master is ChatOnly (ADR 0030) and off means rigid
+/// parts. Touched from <see cref="RenderCommands.Register"/> so it declares on the main thread.</summary>
 internal static class Dangly
 {
+    /// <summary>The two <see cref="Motion"/> values: each node's own class, or the stock solve for every part.</summary>
+    internal const string MotionAuto = "auto", MotionVanilla = "vanilla";
+
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled;
-    internal static readonly Knob<float> Gravity, Wind, Breeze, Turb, TurbFreq, TurbSpeed, Vary, Body, Cage, Hz, Still;
-    internal static readonly Knob<int> Steps;
-    /// <summary>AN2: solve the queued dangly parts on the StagePool workers. Off (and with
-    /// <c>/alloy threads 0</c>) the solve is serial on the main thread -- the two paths are asserted
-    /// bit-for-bit identical off-device.</summary>
-    internal static readonly Knob<bool> Parallel;
+    internal static readonly Knob<bool> Enabled, Sway, Swing, Jiggle, Collide;
+    internal static readonly Knob<string> Motion;
+    internal static readonly Knob<float> WindGain, Tilt, Breeze, Cage, Still;
 
     static Dangly()
     {
         G = KnobGroup.Declare("dangly", "Graphics", "Motion", master: "Swaying cloaks and hair",
-            masterHelp: "Cloaks, hair, banners and other swaying parts move with gravity and wind. Off, they go "
-                      + "rigid: nothing else sways them, so this is a cfg-only switch.",
+            masterHelp: "Cloaks, hair, banners and other swaying parts move with wind and their own weight. Off, "
+                      + "they go rigid: nothing else sways them, so this is a cfg-only switch.",
             masterTier: Tier.ChatOnly, order: 352, title: "Cloaks and hair");
         Enabled = G.Master!;
 
+        Motion = G.Dropdown("motion", "Motion", new[] { MotionAuto, MotionVanilla }, MotionAuto,
+                            new[] { "automatic", "stock" },
+                            help: "Automatic moves each part the way its own model asks to be moved -- leaves and "
+                                + "cloth sway and ring, cloaks swing, hair jiggles. Stock moves every part the "
+                                + "way the unmodified game does.");
+
         G.Section("Forces");
-        Gravity = G.Slider("gravity", "Gravity", 0f, 20f, 0.5f, 3f,
-                           help: "How much cloth sags. Low by default: rest poses already hang.");
-        Wind = G.Slider("wind", "Wind response", 0f, 40f, 1f, 14f, help: "How hard the area's wind pushes the cloth.");
-        Breeze = G.Slider("breeze", "Base breeze", 0f, 2f, 0.05f, 0.35f,
-                          help: "Wind when the area sets none. 0 = only what the game reports.");
-        Turb = G.Slider("turb", "Gustiness", 0f, 1f, 0.05f, 0.7f, tier: Tier.Advanced,
-                        help: "How much the wind comes in gusts rather than steadily. 0 = an even push.");
-        Vary = G.Slider("vary", "Per-object variation", 0f, 1f, 0.05f, 0.15f, tier: Tier.Advanced,
-                        help: "How differently two characters in the same wind sway. 0 moves every cloak alike.");
-        G.Section("Collision");
-        Body = G.Slider("body", "Body collision", 0f, 1f, 0.05f, 0.95f, tier: Tier.Advanced,
-                        help: "How firmly cloth is kept out of the wearer's body. 0 = off.");
-        Cage = G.Slider("cage", "Freedom of movement", 0.5f, 8f, 0.1f, 3.5f, tier: Tier.Advanced,
-                        help: "How far a part may swing from where the model puts it: ×the stock limit, and past ~4 cloaks reach the legs.");
+        WindGain = G.Slider("windgain", "Wind response", 0f, 3f, 0.05f, 1f,
+                            help: "How hard moving air pushes a part -- the wind, and the air a moving character "
+                                + "runs through. 0 = none.");
+        Tilt = G.Slider("tilt", "Gravity", 0f, 1f, 0.05f, 1f,
+                        help: "How fully a part on a tipped-over object falls toward the ground. 0 = it keeps "
+                            + "hanging the way its model authored it.");
+        Breeze = G.Slider("breeze", "Base breeze", 0f, 2f, 0.05f, 0.5f,
+                          help: "The least wind an outdoor area blows, so a still one is not frozen: 1 = an "
+                              + "area set to weak wind, 2 = strong. 0 = only what the area sets. Automatic motion "
+                              + "only.");
+
+        G.Section("Movement");
+        Cage = G.Slider("cage", "Freedom of movement", 0.5f, 4f, 0.1f, 1.5f, tier: Tier.Advanced,
+                        help: "How far hair, body parts and short plants may move from where the model puts "
+                            + "them: x the authored limit. Cloth and tall plants swing freely. Automatic motion "
+                            + "only.");
+
         G.Section("");
-        TurbFreq = G.Slider("turbfreq", "Gust size", 0f, 4f, 0.1f, 0.9f, tier: Tier.ChatOnly);
-        TurbSpeed = G.Slider("turbspeed", "Gust speed", 0f, 8f, 0.1f, 2.6f, tier: Tier.ChatOnly);
-        Hz = G.Slider("hz", "hz", 30f, 480f, 10f, 120f, tier: Tier.ChatOnly);
-        Steps = G.Slider("steps", "steps", 1, 16, 1, 4, tier: Tier.ChatOnly);
+        Sway = G.Toggle("sway", "sway", true, tier: Tier.ChatOnly,
+                        help: "Off, vegetation and other parts free at the top move the stock way.");
+        Swing = G.Toggle("swing", "swing", true, tier: Tier.ChatOnly,
+                         help: "Off, cloth and rigging move the stock way.");
+        Jiggle = G.Toggle("jiggle", "jiggle", true, tier: Tier.ChatOnly,
+                          help: "Off, body parts and creature appendages move the stock way.");
+        Collide = G.Toggle("collide", "collide", true, tier: Tier.ChatOnly,
+                           help: "Off, banners and other hanging cloth swing through the walls and floors they "
+                               + "hang beside. Automatic motion only.");
         Still = G.Slider("still", "still", 0f, 1f, 0.001f, 0.01f, tier: Tier.ChatOnly);
-        Parallel = G.Toggle("parallel", "parallel", true, tier: Tier.ChatOnly,
-            help: "Solve the frame's swaying parts on CX's worker threads instead of one after another on the "
-                + "main thread. The answer is the same either way.");
     }
 }

@@ -86,8 +86,10 @@ public sealed unsafe partial class AlloyRenderer
             // chain to chase -- the slot carries the bone base it was given. A part whose pose step has not run
             // yet draws rigid, which is its rest pose, and `skin-nopose` on the period line says how often.
             int given = SceneDb.PartBoneBase[_oDbPart[i]];
-            if (given < 0) { Counters._skinNoPose++; FreeBoneSlot(prev); continue; }
-            if (prev >= 0 && prev != given) FreeBoneSlot(prev);
+            // Both are ABSOLUTE bone indices: the slot they name is what a reclaim could free, and a DB slot
+            // refuses that by owner anyway (it is seam-anim's to release).
+            if (given < 0) { Counters._skinNoPose++; if (prev >= 0) FreeBoneSlot(prev / BoneCount); continue; }
+            if (prev >= 0 && prev != given) FreeBoneSlot(prev / BoneCount);
             _oBone[i] = given;
             Counters._skinDrawn++;
         }
@@ -95,7 +97,8 @@ public sealed unsafe partial class AlloyRenderer
         // (a fresh tenant starts at _oBone -1), leaving a bone slot whose owner no longer
         // points back. _boneTop is the peak skinned population -- tiny -- so the sweep is a few compares.
         for (int s = 0; s < _boneTop; s++)
-            if (_boneOwner[s] >= 0 && _oBone[_boneOwner[s]] != s) FreeBoneSlot(s);
+            if (_boneOwner[s] >= 0 && (_oBone[_boneOwner[s]] < 0 || _oBone[_boneOwner[s]] / BoneCount != s))
+                FreeBoneSlot(s);
         // The block uploads the whole (holey) high water: stale floats in freed slots are never indexed,
         // and a contiguous re-pack is exactly the layout shift stickiness exists to prevent.
         _boneSlots = _boneTop;

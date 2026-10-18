@@ -206,6 +206,57 @@ public sealed class MeshBvh
         return best;
     }
 
+    /// <summary>Faces of <paramref name="mesh"/> whose boxes touch the mesh-space box <paramref name="lo"/>..
+    /// <paramref name="hi"/>, into <paramref name="faces"/>: through its tree if one is already built, else by a walk
+    /// over every face. Never builds one, so it is safe inside a frame. <paramref name="full"/> says faces were lost.</summary>
+    public static int Overlap(MeshDef mesh, Vector3 lo, Vector3 hi, Span<int> faces, out bool full)
+    {
+        MeshBvh? tree;
+        lock (_cache) _cache.TryGetValue(mesh, out tree);
+        if (tree != null && tree.Usable) return tree.Overlap(lo, hi, faces, out full);
+        int n = 0;
+        full = false;
+        for (int i = 0; i < mesh.Faces.Length; i++)
+        {
+            ref FaceDef f = ref mesh.Faces[i];
+            if ((uint)f.V0 >= (uint)mesh.Positions.Length || (uint)f.V1 >= (uint)mesh.Positions.Length
+                || (uint)f.V2 >= (uint)mesh.Positions.Length) continue;
+            Vector3 a = mesh.Positions[f.V0], b = mesh.Positions[f.V1], c = mesh.Positions[f.V2];
+            if (!Touch(Vector3.Min(a, Vector3.Min(b, c)), Vector3.Max(a, Vector3.Max(b, c)), lo, hi)) continue;
+            if (n == faces.Length) { full = true; break; }
+            faces[n++] = i;
+        }
+        return n;
+    }
+
+    /// <summary>The tree's half of <see cref="Overlap(MeshDef, Vector3, Vector3, Span{int}, out bool)"/>: the faces
+    /// of every leaf whose box touches the box, unfiltered.</summary>
+    private int Overlap(Vector3 lo, Vector3 hi, Span<int> faces, out bool full)
+    {
+        int n = 0;
+        full = false;
+        Span<int> stack = stackalloc int[MaxDepth];
+        int sp = 0;
+        stack[sp++] = 0;
+        while (sp > 0)
+        {
+            int node = stack[--sp];
+            if (!Touch(_bmin[node], _bmax[node], lo, hi)) continue;
+            if (_left[node] >= 0)
+            {
+                if (sp + 2 <= stack.Length) { stack[sp++] = _left[node]; stack[sp++] = _left[node] + 1; }
+                else { StackFull++; full = true; }
+                continue;
+            }
+            if (n + _count[node] > faces.Length) { full = true; break; }
+            for (int k = _start[node]; k < _start[node] + _count[node]; k++) faces[n++] = _order[k];
+        }
+        return n;
+    }
+
+    private static bool Touch(Vector3 alo, Vector3 ahi, Vector3 blo, Vector3 bhi)
+        => alo.X <= bhi.X && ahi.X >= blo.X && alo.Y <= bhi.Y && ahi.Y >= blo.Y && alo.Z <= bhi.Z && ahi.Z >= blo.Z;
+
     /// <summary>Which child of <paramref name="node"/> the segment reaches first, by the squared distance
     /// from its origin to each child's box.</summary>
     private int Near(int node, Vector3 from, Vector3 to)

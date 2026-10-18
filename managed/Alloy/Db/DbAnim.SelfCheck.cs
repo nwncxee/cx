@@ -41,10 +41,12 @@ public static unsafe partial class DbAnim
             Still(check);
             SkinTail(check);
             Skin(check);
+            DanglyMotions(check);
             LookAtEase(check);
             Lights(check);
             ControllerKinds(check);
             LodBands(check);
+            check.Expect(Physics.DanglySelfCheck.Run(log), "the dangly motion suite (rig, joints, the stock solve) passes");
         }
         finally { _evN = 0; }
         log.Info(check.Ok ? "DbAnim.SelfCheck: passed"

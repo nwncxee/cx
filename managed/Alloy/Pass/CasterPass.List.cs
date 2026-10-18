@@ -305,7 +305,8 @@ public sealed unsafe partial class CasterPass
                 // card's shadow is its solid silhouette), and nothing else, so a masked skinmesh never
                 // punches holes out of a BIND pose. Same set the capture cast solid.
                 // CX-303: ...and a content pair's caster twin poses its parts itself, the colour program's own way.
-                bool maskable = !f.Skinned || f.Coverage || f.Content != 0;
+                // ...and a rigged dangly, whose palette the mask stages pose with the same arm.
+                bool maskable = !f.Skinned || f.Coverage || f.Content != 0 || AlloyRenderer.SlotIsDangly(slot);
                 _liveTex[live] = maskable && AlloyRenderer.VdoHasUv(f.Vao) ? MaskTid(in f) : 0;
                 // Review: the triage counter lost its writer in the rework -- a masked-eligible caster whose
                 // diffuse did not resolve THIS frame casts solid, and this is the number that says how often.
@@ -395,9 +396,10 @@ public sealed unsafe partial class CasterPass
     private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly,
                               bool vDirty, bool creature)
     {
-        // A dangly's VDO is committed every frame the solve runs, so vertex-dirty says nothing about it;
-        // its own measured verdict (dangly) does. Here, so both Collect and Refresh agree.
-        if (AlloyRenderer.SlotIsDangly(slot)) vDirty = false;
+        // A dangly's VDO is committed every frame the solve runs, so vertex-dirty says nothing about it, and
+        // one POSED by a rig is not a creature's skin either: its own measured verdict (dangly) decides. Here,
+        // so both Collect and Refresh agree.
+        if (AlloyRenderer.SlotIsDangly(slot)) { vDirty = false; skinned = false; }
         bool mover = true;
         if (skinned) _mvBone++;
         else if (appeared) { _mvAppear++; FrameZones.Count(FrameZones.Ev.Appeared); }

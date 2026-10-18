@@ -58,6 +58,10 @@ CxFeatPos|cx_feat_v|CX_FEAT_(WINDGRASS|WINDLEAF|WINDPLANT|ROOFKN|ROOFKNM|FLOWMAP
 ShaderFeature\.(WindGrass|WindLeaf|WindPlant|RoofKn|RoofKnM|NoKeyhole|Flowmap|NoirWet|NoirGloss|GroundWeather)\b	CX-303
 \$VANILLA-HOST\b|_progLitHost|\bHostText\b|\bHostMaskState\b|ProgLitHostMask	CX-303
 \bVsNames\b|\bFsNames\b|ShaderFeatures\.Hosted\b|ContentPrograms\.StockFs\b	CX-303
+# The old per-vertex dangly integrator's force knobs: the motions are generated per node now, so gravity,
+# wind, the turbulence field, the per-object variation, the body proxy and the solver's rate are all gone.
+# (dangly.windgain, the one that replaced dangly.wind, is a different key and the word boundary keeps it.)
+dangly\.(gravity|wind|turb|turbfreq|turbspeed|vary|body|hz|steps|parallel)\b	dangly-motions
 # The sky-only twin, made generic: any hosted content stage may have a native version (StageResources), whose
 # declarations, frame uniforms, wrappers and knob dropped the sky from their names.
 \bSkyTwin\b|\bsky twins?\b	native-stages

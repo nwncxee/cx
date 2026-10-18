@@ -94,57 +94,17 @@ Load path (the "hard work", you never touch it):
                            - construct each + Initialize(log, hooks)
                            - HookService.Commit() installs all hooks at once
 
-Navigation:
-
-    managed/
-      Entry.cs                 [UnmanagedCallersOnly] CxInit -> ServiceHost.Run()
-      Framework/               the plumbing -- rarely edited
-        IExtenderService.cs      the one contract you implement
-        ServiceHost.cs           discovery + lifecycle
-        HookService.cs           funchook wrapper: Install(symbol, handler) / Commit();
-                                 Chain(symbol, handler, priority) for shared symbols (#88)
-        ExtenderLog.cs           inject this for logging
-      Services/                business logic -- this is where you work
-        Panels/                  the styled-panel renderer (blocks, markup, faces, layout): general NUI styling,
-                                 no tooltip knowledge
-        Cards/                   rich tooltips: panels shown beside a NUI element, keyed by card.* policy lines
-      Alloy/                   the renderer (#198). Core/ Scene/ Pass/ under namespace CX.Alloy
-        Shaders/                 the pipeline's GLSL, one .glsl per stage or library (embedded
-                                 resources; a stage names its libraries with #include). Every
-                                 file is a cx_* resref <= 16 chars: the hak limit, so each is
-                                 overridable as <resref>.shd
-    docs/hook-pattern.md       example: a real hook + trampoline
-    docs/owned-resource-lifetimes.md  what creates and kills each owned table, per scene layer:
-                                      DB mode's four edges (ADR 0028) and mode 0's Revoke vs ContextLost
-    docs/alloy-refusals.md     why a frame is the engine's: the frame-start verdict and its reason set
-    docs/audio.md              CX-57: Steam Audio behind the engine's OpenAL -- the path, threads, what is verified
-    native/bootstrap.c         the load path (+ bootstrap_win.c: the version.dll proxy, the OpenAL redirect)
-    native/cxaudio.cpp         the audio core: the Steam Audio mixer, OpenAL shims, simulation (C-style C++)
-    third_party/funchook       hooking engine (git submodule)
+Read before working in the area: `docs/hook-pattern.md` (a real hook + trampoline),
+`docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
+`docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
+Every file under `managed/Alloy/Shaders/` is a `cx_*` resref <= 16 chars -- the hak limit, so each is
+overridable as `<resref>.shd`.
 
 ## Adding a service (the whole contributor workflow)
 
-Drop a class in `managed/Services/`. It is discovered and wired automatically --
-no registration:
-
-    public sealed class MyService : IExtenderService
-    {
-        // [UnmanagedCallersOnly] handlers must be static, so hooked services keep
-        // their state static and stash `log` in a static field in Initialize.
-        private static ExtenderLog? _log;
-
-        public void Initialize(ExtenderLog log, HookService hooks)
-        {
-            _log = log;
-            // find the symbol:  ./sym.sh -m CNWSMessage::Handle...
-            // handler is a pointer to an [UnmanagedCallersOnly] static whose
-            // signature matches the target's ABI (member fns take `this` first).
-            hooks.Install(SymbolMap.Something, /* &OnSomething */ default);
-        }
-    }
-
-See `docs/hook-pattern.md` for the hook + trampoline mechanics. Everything else --
-loading, discovery, install ordering -- is done for you.
+Drop a class implementing `IExtenderService` in `managed/Services/`; it is discovered and wired
+automatically, no registration. Hook handlers are `[UnmanagedCallersOnly]` statics; `docs/hook-pattern.md`
+has the hook + trampoline mechanics.
 
 Trampolines must be static; mutable state must not be loose. New state goes in the one **lifetime owner**
 for its lifetime -- a `static` field holding a `...State` class -- so a reset (context loss, stand-down,
@@ -287,12 +247,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 
 The client binary (`python3 tools/paths.py NWN_BIN`) is an
 **unstripped** ELF (~24k dynamically-exported functions). You hook by name, no
-offset hunting. Known hook points:
-
-- `CNWSMessage::HandlePlayerToServerMessage(unsigned int, uchar*, uint)` -- client->server
-  send path (packet feature). `HandlePlayerToServerDevice` is the device/metrics channel.
-- `GLRender::SwapBuffers(SDL_Window*)` -- the frame present (rendering/shadow work).
-- `./sym.sh CNWS...` / `./sym.sh Render` to find more.
+offset hunting.
 
 Renders via OpenGL/GLX/X11 (SDL is static -- symbols appear, no `libSDL` in ldd).
 
@@ -332,15 +287,6 @@ hotkey, UI-policy and nameplate packets (`docs/hotkeys-server-contract.md`, `doc
 
 ## Status
 
-Framework works end-to-end under NativeAOT (DI + discovery + funchook install
-all verified via `run-demo.sh`). A live hook proves out via `cx-launch` --
-watch for "first frame presented -- hook is LIVE" (now emitted by `UiHostService`
-in `managed/Ui/`, the frame host that owns the `SwapBuffers` present, computes the
-in-game gate + UI-scale sync, and drives the `UiHost` window registry's draw
-roll-call each frame; #62). Chat renders as one registered `Window` whose
-content-draw slot runs the chatbox. The minimal hook-pattern example now lives in
-`docs/hook-pattern.md` (#158). There is no whole-extender opt-out (ADR 0025): every
-feature has a master toggle, and "no CX" is an uninstall.
-
-Linux only. Windows = proxy DLL or rename-launcher; macOS = `DYLD_INSERT_LIBRARIES`,
-blocked by the notarized app's hardened runtime until re-signed (do last).
+A live hook proves out via `cx-launch`: watch for "first frame presented -- hook is LIVE". There is no
+whole-extender opt-out (ADR 0025): every feature has a master toggle, and "no CX" is an uninstall.
+macOS (`DYLD_INSERT_LIBRARIES`) is blocked by the notarized app's hardened runtime until re-signed (do last).
