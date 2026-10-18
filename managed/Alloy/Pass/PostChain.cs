@@ -22,7 +22,7 @@ internal static unsafe class PostChain
     /// unit the Alloy lit stage binds, because the resolve runs in the same bracket and leaving a unit shared
     /// with a live sampler of a different type is INVALID_OPERATION. See <see cref="TextureSlots"/>.</summary>
     private const uint HdrUnit = TextureSlots.PostHdr, BloomUnit = TextureSlots.PostBloom, DepthUnit = TextureSlots.PostDepth,
-                       LensUnit = TextureSlots.PostLens;
+                       OverlayUnit = TextureSlots.PostOverlay;
 
     /// <summary>Tonemap operators, <c>post.tonemap</c>'s stored value; the cfg and chat form is the name
     /// (<c>post.tonemap=aces</c>). There is no off: the shoulder is the identity below its knee and differs
@@ -93,7 +93,7 @@ internal static unsafe class PostChain
         public int DSrc, DLod, DTexel, DFirst, DThresh, DExposure;
         public int USrc, ULod, UTexel;
         public int CHdr, CBloom, CDepth, CStrength, CMode, CKnee, CDither, CViz, CExposure, CAcesMix, CSkyRaw,
-                   CSkyBand, CInvVp, CEye, CLens, CLensOn;
+                   CSkyBand, CInvVp, CEye, COverlay, COverlayOn;
     }
 
     private static PostChainState _gl = new();
@@ -519,15 +519,15 @@ internal static unsafe class PostChain
         Gl.BindTexture(Gl.TEXTURE_2D, Post.Viz.V == VizMotion ? MotionVectors.Tex : g.BloomOk ? g.BloomTex : 0);
         Gl.ActiveTexture(Gl.TEXTURE0 + DepthUnit);
         Gl.BindTexture(Gl.TEXTURE_2D, g.DepthTex);
-        uint lens = SkyTwin.LensTex();
-        Gl.ActiveTexture(Gl.TEXTURE0 + LensUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D, lens);
+        uint overlay = StageResources.OverlayTex();
+        Gl.ActiveTexture(Gl.TEXTURE0 + OverlayUnit);
+        Gl.BindTexture(Gl.TEXTURE_2D, overlay);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.Uniform1i(g.CHdr, (int)HdrUnit);
         Gl.Uniform1i(g.CBloom, (int)BloomUnit);
         Gl.Uniform1i(g.CDepth, (int)DepthUnit);
-        Gl.Uniform1i(g.CLens, (int)LensUnit);
-        Gl.Uniform1i(g.CLensOn, lens != 0 ? 1 : 0);
+        Gl.Uniform1i(g.COverlay, (int)OverlayUnit);
+        Gl.Uniform1i(g.COverlayOn, overlay != 0 ? 1 : 0);
         Gl.Uniform1i(g.CSkyRaw, Post.SkyRaw.V ? 1 : 0);
         Matrix4x4 invVp = AlloyRenderer.SkyInvVp;
         Vector3 eye = AlloyRenderer.EyePos;
@@ -670,7 +670,7 @@ internal static unsafe class PostChain
         _gl.CDepth = GlProgram.Loc(_gl.ProgComposite, "uDepth"); _gl.CSkyRaw = GlProgram.Loc(_gl.ProgComposite, "uSkyRaw");
         _gl.CSkyBand = GlProgram.Loc(_gl.ProgComposite, "uSkyBand"); _gl.CInvVp = GlProgram.Loc(_gl.ProgComposite, "uInvVP");
         _gl.CEye = GlProgram.Loc(_gl.ProgComposite, "uEyePos");
-        _gl.CLens = GlProgram.Loc(_gl.ProgComposite, "uLens"); _gl.CLensOn = GlProgram.Loc(_gl.ProgComposite, "uLensOn");
+        _gl.COverlay = GlProgram.Loc(_gl.ProgComposite, "uOverlay"); _gl.COverlayOn = GlProgram.Loc(_gl.ProgComposite, "uOverlayOn");
         _gl.CStrength = GlProgram.Loc(_gl.ProgComposite, "uStrength"); _gl.CMode = GlProgram.Loc(_gl.ProgComposite, "uMode");
         _gl.CKnee = GlProgram.Loc(_gl.ProgComposite, "uKnee");
         _gl.CExposure = GlProgram.Loc(_gl.ProgComposite, "uExposure");
@@ -793,12 +793,12 @@ internal static unsafe class PostChain
               && ResolveFs.IndexOf("else if (uMode == 3) c = CxNeutral(c);", StringComparison.Ordinal)
               < ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal),
               "mode 3 is PBR Neutral, in the tonemap block before the encode");
-            check.Expect(ResolveFs.IndexOf("c += lens;", StringComparison.Ordinal)
+            check.Expect(ResolveFs.IndexOf("c += overlay;", StringComparison.Ordinal)
                          > ResolveFs.IndexOf("else if (uMode == 3) c = CxNeutral(c);", StringComparison.Ordinal)
-              && ResolveFs.IndexOf("c += lens;", StringComparison.Ordinal)
+              && ResolveFs.IndexOf("c += overlay;", StringComparison.Ordinal)
                  < ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal)
-              && ResolveFs.Contains("raw = CxEncode(c + g + lens);"),
-              "a sky twin's lens is added after the tone curve on both arms, so a ghost over a ridgeline is one ghost");
+              && ResolveFs.Contains("raw = CxEncode(c + g + overlay);"),
+              "a native stage's overlay is added after the tone curve on both arms, so a lens ghost over a ridgeline is one ghost");
             // The resolve is the ONLY place the Alloy frame meets 8-bit, so it is the only place a dither
             // can go. A resolve that lost it would band again, and the symptom (faint contour stripes over
             // smooth gradients) reads as a lighting bug rather than as a missing line here.

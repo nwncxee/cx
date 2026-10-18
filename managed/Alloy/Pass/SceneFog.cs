@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The scene fog's TARGET COLOUR, and the terms that shape it. The area author still owns the ramp, read
 /// untouched off <c>Scene+0x140..0x14c</c>, so every knob here changes only what a fully-fogged fragment
-/// converges TO: the SKY (the dome texture's mean or a twin's horizon texel, role-weighted), which removes the
+/// converges TO: the SKY (the dome texture's mean, role-weighted, or a native stage's cx_fog texel), which removes the
 /// horizon seam vanilla paints over. ponytail: one colour for the whole dome, not a gradient by elevation.
 /// </summary>
 internal static unsafe class SceneFog
@@ -91,21 +91,15 @@ internal static unsafe class SceneFog
         _acc += new Vector3(Lin(m.X), Lin(m.Y), Lin(m.Z)) * alpha; _accW += alpha;
     }
 
-    /// <summary>A hosted sky's own word for its horizon, LINEAR: a twin's <c>cx_sky_fog</c> texel, read back.
-    /// The content stage's diffuse is no sky colour (a stage may use it for anything), so this is the only way a
-    /// hosted sky arms the term.</summary>
-    internal static void NoteSkyLinear(Vector3 lin, float alpha)
-    {
-        if (alpha <= 0f) return;
-        _acc += lin * alpha; _accW += alpha;
-    }
-
     /// <summary>Close the frame's sky accounting. A frame that staged no sky at all (an interior, or a sky
     /// pass standing down) leaves the last known colour in place rather than snapping the fog: the roles are
     /// re-staged every pass and one refused frame is not a new sky.</summary>
     internal static void EndSky()
     {
         _lastTid = 0;
+        // A native stage's cx_fog texel, read back, is the colour outright while its stage runs: a hosted stage's
+        // textures say nothing about its colour, and a texel a shader names for the purpose says exactly that.
+        if (StageResources.FogColour(out Vector3 named)) { _sky = named; _haveSky = true; _acc = default; _accW = 0f; return; }
         if (_accW <= 0f) { _acc = default; return; }
         _sky = _acc / _accW; _haveSky = true;
         _acc = default; _accW = 0f;

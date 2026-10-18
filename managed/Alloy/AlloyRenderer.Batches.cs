@@ -1242,9 +1242,6 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_skyN == 0 || Gl.DepthRange == null) return;
         SkyStage.BeginPass();
-        // Whichever view reaches the dome first this frame -- the main one or a probe cube face -- is where a
-        // twin's images are made and its `once` passes run, so no draw samples an image that was never made.
-        SkyTwinsRun(viewport, framePasses: false);
         // DEPTH_CLAMP because the composed matrices sit under the ENGINE's sky projection (RenderSkyBoxes
         // replaced it with its own near/far) and are drawn under the world's: the dome can cross the world
         // far plane, and clipped it reads as a hole at the horizon with nothing in the log.
@@ -1274,13 +1271,7 @@ public sealed unsafe partial class AlloyRenderer
             if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
             if (prog != boundProg)
             {
-                if (_skProg[i] != 0)
-                {
-                    // A twin whose images could not be remade this frame has none to sample: the dome sits
-                    // the frame out (said out loud by SkyTwin.Fail) and the next frame rebuilds it plainly.
-                    if (!SkyTwin.Usable(SkyStage.TwinOf(prog))) { boundProg = 0; continue; }
-                    SkyStage.Prepare(prog, vp, viewport);
-                }
+                if (_skProg[i] != 0) SkyStage.Prepare(prog, vp, viewport);
                 else { PrimeSkyPlain(vp, viewport); usedPlain = true; }
                 boundProg = prog;
                 // sampler units are per PROGRAM state but the bindings are the CONTEXT's, so only the
@@ -1313,27 +1304,8 @@ public sealed unsafe partial class AlloyRenderer
             Gl.UseProgram(Programs._prog46);
             Gl.Uniform1f(Programs._locSkyFog, 0f);
         }
-        // A twin's images sat on texture units 4..13 and the image block; both go back before the next pass.
-        SkyTwin.Unbind();
         Gl.Disable(Gl.DEPTH_CLAMP);
         Gl.DepthRange(0.0, 1.0);
-    }
-
-    /// <summary>Every sky twin this frame staged, once each. <paramref name="framePasses"/> false only makes
-    /// its images and runs its <c>once</c> passes -- the head of the sky pass, so the first view of a frame to
-    /// draw the dome makes them; true runs its <c>frame</c> passes too, for the main view before the sky's own
-    /// GPU term opens (TIME_ELAPSED cannot nest).</summary>
-    private static void SkyTwinsRun(int* viewport, bool framePasses)
-    {
-        if (_skyN == 0 || !SkyTwin.Any) return;
-        for (int i = 0; i < _skyN; i++)
-        {
-            if (_skProg[i] == 0) continue;
-            int id = SkyStage.TwinOf(_skProg[i]);
-            if (id < 0) continue;
-            if (framePasses) SkyTwin.RunFrame(id, viewport, _log);
-            else SkyTwin.Ensure(id, viewport, _log);
-        }
     }
 
     /// <summary>The plain unlit stage, set up for a sky draw: the pass terms it shares with every other unlit

@@ -78,11 +78,8 @@ public sealed unsafe partial class AlloyRenderer
                 {
                     tint = Vector3.One;
                     // the dome feeds the fog its sky colour; the fog-tinted band must not (it is the fog), and
-                    // neither may a hosted stage's diffuse -- fst_sky's is a night moon mask. A twin that names
-                    // its horizon texel feeds that instead.
+                    // neither may a hosted stage's diffuse -- fst_sky's is a night moon mask
                     if (prog == 0) SceneFog.NoteSkyDb(DbTexOf(p, recipe, 0), roles[r].Alpha);
-                    else if (SkyTwin.FogColour(SkyStage.TwinOf(prog), out Vector3 fog))
-                        SceneFog.NoteSkyLinear(fog, roles[r].Alpha);
                 }
                 rec.Cos = 1f; rec.Sin = 0f; rec.Dissolve = 0f;
                 rec.Alpha = tinted ? 1f : roles[r].Alpha;

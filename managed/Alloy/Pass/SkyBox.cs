@@ -16,7 +16,7 @@ internal static class SkyBox
 
     /// <summary>Zeroed with the rest of the period report's counters: a cumulative one would keep printing
     /// a healthy number long after the sky stopped being drawn, which is the opposite of the question.</summary>
-    internal static void ResetPeriod() { _hosted = 0; SkyTwin.ResetPeriod(); }
+    internal static void ResetPeriod() => _hosted = 0;
 
     /// <summary>One part's sky program was bound this period.</summary>
     internal static void NoteHosted() => _hosted++;

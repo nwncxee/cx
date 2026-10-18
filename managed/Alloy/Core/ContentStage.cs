@@ -123,7 +123,7 @@ internal static partial class ContentStage
         text = Indexed(text, BonesUse, "CxConBoneAt(");
         var paramList = new List<Param>(vertex?.Params ?? []);
         var macros = new List<string>();
-        text = Declarations(text, fragment, supplied, vertex?.Outputs, paramList, macros, r);
+        text = Declarations(text, fragment, supplied, vertex?.Outputs, OwnNames(resref, stage), paramList, macros, r);
         if (r.Refused != null) return r;
         r.Params = paramList.ToArray();
         if (fragment) text = SplitMain(text, r);

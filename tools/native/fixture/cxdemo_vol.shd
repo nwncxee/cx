@@ -1,5 +1,5 @@
-// A sky twin's `once` pass: fills the 32-cube volume cx_cxdemo_sky declares -- once per module, and again
-// after a context loss or a view resize. Hosted in cx_skypass_cs, so the sky's shared environment and the
+// A native stage's `once` pass: fills the 32-cube volume cx_cxdemo_sky declares -- once per module, and again
+// after a context loss or a view resize. Hosted in cx_pass_cs, so the whole-stage environment and the
 // engine's own terms are already in scope. A fixture for check-shaders.py; it ships nowhere.
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 layout(rgba8) uniform image3D cxVolume;

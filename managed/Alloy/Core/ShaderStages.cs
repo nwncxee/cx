@@ -19,7 +19,7 @@ internal static class ShaderStages
         // compiles, so it is current by construction. Drop it in a hak or override as <resref>.shd to
         // replace that stage (a hak reaches every player); the extender falls back to the embedded default if
         // it fails to build. Re-dump and diff after each extender update: that diff is your drift.
-        // $CAP$ / $SORT$ / $GROUP$ / $SRGB$ / $BAND$ / $AA$ / $SKYFS$ / $SKYCS$ are expanded by the extender on load -- leave them as tokens.
+        // $CAP$ / $SORT$ / $GROUP$ / $SRGB$ / $BAND$ / $AA$ / $SKYFS$ / $PASSCS$ are expanded by the extender on load -- leave them as tokens.
         // `//@cx-lib <resref>` .. `//@cx-end <resref>` bracket each library this stage includes; keep them and a
         // <resref>.shd library override still reaches this copy. The contract an override has to keep:
         // docs/shader-overrides.md.
@@ -115,7 +115,7 @@ internal static class ShaderStages
         (PostStack.ShdVibranceFs,          Banner),
         (FbPostStage.ShdFs,                Banner),
         (SkyStage.ShdFs,                   Banner),
-        (SkyTwin.ShdPassCs,                Banner),
+        (StageResources.ShdPassCs,         Banner),
         (SsaoPass.ShdSsaoFs,               Banner),
         (SsaoPass.ShdSsaoBlurFs,           Banner),
         (Halos.ShdHaloVs,                  Banner),

@@ -109,9 +109,18 @@ internal static class RenderPasses
             // The sky's GL objects are one program per custom fragment stage the content names; it captures
             // nothing from the world, so it has no Revoke.
             Attach = SkyStage.Attach,
-            SelfCheck = l => { SkyStage.SelfCheck(l); SkyTwin.SelfCheck(l); },
+            SelfCheck = l => SkyStage.SelfCheck(l),
             ContextLost = SkyStage.Forget,
             Stats = _ => SkyBox.Stats(),
+        }, log);
+        r.Register(new PassLifecycle
+        {
+            Name = "native",
+            // Content stages' native versions and the images and passes they declare, for every host (sky, material
+            // pairs, post): GL objects only, dropped at the module edge with the programs that read them.
+            SelfCheck = StageResources.SelfCheck,
+            ContextLost = StageResources.Forget,
+            Stats = _ => StageResources.Stats(),
         }, log);
         r.Register(new PassLifecycle
         {

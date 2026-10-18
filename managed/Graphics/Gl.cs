@@ -183,10 +183,10 @@ public static unsafe class Gl
     /// <see cref="TexStorage2D"/> will take it, and the unsized enums the engine actually uses
     /// (<c>glTexImage2D</c> @0x4cad3d passes GL_RGB/GL_RGBA/GL_RED verbatim).</summary>
     public const uint RGB8 = 0x8051, RG8 = 0x822B, RG = 0x8227, RGB_ = 0x1907, RGBA_ = 0x1908, RG16F = 0x822F;
-    /// <summary>The rest of the sized colour formats a sky twin may ask its own images for
-    /// (<c>docs/shader-overrides.md</c>, "Sky twins and sky passes"); GL 4.2 image-load-store formats.</summary>
+    /// <summary>The rest of the sized colour formats a native stage may ask its own images for
+    /// (<c>docs/shader-overrides.md</c>, "Native stages, images and passes"); GL 4.2 image-load-store formats.</summary>
     public const uint RGBA32F = 0x8814, R16F = 0x822D;
-    /// <summary>A volume texture -- a sky twin's <c>tex3d</c> image, and the only target Alloy binds layered.</summary>
+    /// <summary>A volume texture -- a native stage's <c>tex3d</c> image, and the only target Alloy binds layered.</summary>
     public const uint TEXTURE_3D = 0x806F;
     /// <summary>Uniform enumeration (<see cref="GetActiveUniform"/>): how many a program has and the longest
     /// name, so a caller sizes one buffer instead of guessing.</summary>
@@ -194,8 +194,8 @@ public static unsafe class Gl
     /// <summary>A compute program's declared <c>local_size</c>, three ints -- what a dispatch divides its
     /// work extent by, so the group size is read off the program instead of restated in C#.</summary>
     public const uint COMPUTE_WORK_GROUP_SIZE = 0x8267;
-    /// <summary>The four GLSL uniform types a sky twin's image may be declared as: a sampler binds on a
-    /// TEXTURE unit, an image on an IMAGE unit, and the shape has to agree. Anything else refuses the twin.</summary>
+    /// <summary>The four GLSL uniform types a native stage's image may be declared as: a sampler binds on a
+    /// TEXTURE unit, an image on an IMAGE unit, and the shape has to agree. Anything else refuses the stage.</summary>
     public const uint SAMPLER_2D = 0x8B5E, SAMPLER_3D = 0x8B5F, IMAGE_2D = 0x904D, IMAGE_3D = 0x904E;
     /// <summary>Alpha-to-coverage -- the fragment's alpha becomes a COVERAGE MASK over the target's
     /// samples. Each sample is still written whole or not at all, so it is antialiasing without ever
@@ -228,7 +228,7 @@ public static unsafe class Gl
     public const uint NUM_EXTENSIONS = 0x821D, EXTENSIONS = 0x1F03;
     /// <summary>The implementation limits Alloy's stages exceed the GL 4.6 floor on (queried once, logged by name).</summary>
     public const uint MAX_VERTEX_SHADER_STORAGE_BLOCKS = 0x90D6, MAX_SHADER_STORAGE_BUFFER_BINDINGS = 0x90DD,
-                      MAX_TEXTURE_IMAGE_UNITS = 0x8872;
+                      MAX_TEXTURE_IMAGE_UNITS = 0x8872, MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
     public const uint RENDERBUFFER_SAMPLES = 0x8CAB, TEXTURE_SAMPLES = 0x9106, TEXTURE_2D_MULTISAMPLE = 0x9100, RENDERBUFFER_BINDING = 0x8CA7;
     public const uint TIME_ELAPSED = 0x88BF, QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867, TIMESTAMP = 0x8E28;
     /// <summary>glBeginQuery target counting fragments that passed depth+stencil: the overdraw meter

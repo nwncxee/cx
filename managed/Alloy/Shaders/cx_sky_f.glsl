@@ -2,8 +2,8 @@
 // inc_common/inc_uniforms/inc_standard give a sky fragment stage, from Alloy's values, under the ENGINE's
 // names -- so the content's own sky stage (e.g. a ~1900-line cloud, star, sun and moon stage)
 // drops in unedited. Between the markers is that stage, its main() renamed; the stub is a black dome.
-// A content stage's Alloy-native twin (cx_<stage>) runs in the same region, built with CX_SKY_LINEAR: it hands
-// back linear HDR and reads the images and frame its #pragma cx_sky lines declare (docs/shader-overrides.md).
+// A stage's native version (cx_<stage>) runs in the same region, built with CX_NATIVE: it hands back linear HDR
+// and may read the images its #pragma cx_ lines declare (docs/shader-overrides.md, "Native stages").
 #version 460 core
 in vec2 vUV;
 flat in float vAlpha;
@@ -17,13 +17,13 @@ uniform sampler2D uTex;          // material texture 0
 uniform vec3 uTint;              // #222: white, or the scene's fog colour for the skyfade gob
 uniform float uSkyFog;           // the horizon band (see cx_owned_f.glsl); 0 = no band
 uniform mat4 uViewInv;           // the camera's world matrix: column 3 is the eye, which is all stock reads
-// The dome's own varyings and samplers, under the engine's names; the rest of the environment is the sky's shared one.
+// The dome's own varyings and samplers, under the engine's names; the rest is the whole-stage environment.
 #define VertexColor COLOR_WHITE
 #define vTexCoords vUV
 #define vPosWorld vWorld
 #define texUnit0 uTex
 #define m_view_inv uViewInv
-#include "cx_skyenv.glsl"
+#include "cx_stageenv.glsl"
 
 // The stock working colour, and the texel inc_standard's setup call multiplies into it -- sampled by the
 // wrapper before the stage's body runs, in DISPLAY space, which is where the stage expects to find it.
@@ -44,8 +44,8 @@ void main()
     // the #136 SkyDecodeFs fullscreen pass used to do a pass later over every depth==1.0 pixel.
     // The stage was authored against the engine's UNORM target: [0,1], no NaN. The frame and the probe cube
     // are float, and one NaN texel poisons the probe's whole mip chain and SH (every reflection went white).
-#ifdef CX_SKY_LINEAR
-    // An Alloy-native twin hands back LINEAR HDR (a sun that blooms), so neither the clamp nor the encode applies;
+#ifdef CX_NATIVE
+    // A native stage hands back LINEAR HDR (a sun that blooms), so neither the clamp nor the encode applies;
     // NaN and half-float overflow are still kept out of the frame and the probe cube.
     vec4 c = mix(vec4(clamp(FragmentColor.rgb, 0.0, 60000.0), clamp(FragmentColor.a, 0.0, 1.0)), vec4(0.0),
                  isnan(FragmentColor));

@@ -61,7 +61,7 @@ internal static partial class ContentStage
     /// names a supplied one. A brace counter over comment-stripped lines keeps the scan out of function bodies, whose
     /// <c>in</c> parameters are not declarations. <paramref name="vsOut"/> is a fragment half's vertex half's varyings.</summary>
     private static string Declarations(string text, bool fragment, HashSet<string> supplied, HashSet<string>? vsOut,
-                                       List<Param> ps, List<string> macros, Result r)
+                                       HashSet<string> own, List<Param> ps, List<string> macros, Result r)
     {
         var sb = new StringBuilder(text.Length + 1024);
         var zeroed = new List<string>();
@@ -72,7 +72,7 @@ internal static partial class ContentStage
             string code = StripLine(line, ref block);
             if (depth == 0 && !code.TrimStart().StartsWith('#'))
             {
-                string? rewritten = Rewrite(code, line, fragment, supplied, vsOut, ps, macros, zeroed, r);
+                string? rewritten = Kept(code, own) ? null : Rewrite(code, line, fragment, supplied, vsOut, ps, macros, zeroed, r);
                 if (r.Refused != null) return text;
                 if (rewritten != null) { sb.Append(rewritten).Append('\n'); depth += Braces(code); continue; }
             }
@@ -85,6 +85,33 @@ internal static partial class ContentStage
                                  : $"reads the attribute(s) {string.Join(", ", zeroed)}, which no arena stream carries -- held at zero");
         return sb.ToString();
     }
+
+    /// <summary>The uniforms a stage keeps as it wrote them, because Alloy sets them by name: the cx frame uniforms in
+    /// any stage, and -- in a native one (<see cref="StageResources"/>) -- the images its own <c>#pragma cx_image</c>
+    /// lines declare and their <c>_prev</c> halves.</summary>
+    private static HashSet<string> OwnNames(string resref, string stage)
+    {
+        var own = new HashSet<string>(FrameNames, StringComparer.Ordinal);
+        if (!resref.StartsWith(StageResources.Prefix, StringComparison.OrdinalIgnoreCase)) return own;
+        foreach (Match m in ImagePragma.Matches(stage)) { own.Add(m.Groups[1].Value); own.Add(m.Groups[1].Value + "_prev"); }
+        return own;
+    }
+
+    /// <summary>The cx frame uniforms (<see cref="FrameLoc"/>), which every host sets on a program that declares one.</summary>
+    private static readonly string[] FrameNames = ["cxFrame", "cxMain", "cxFresh", "cxInvVp", "cxPrevVp", "cxEye", "cxView", "cxOverlay"];
+    private static readonly Regex ImagePragma = new(@"(?m)^[ \t]*#[ \t]*pragma[ \t]+cx_image[ \t]+(\w+)", RegexOptions.Compiled);
+
+    /// <summary>Is this file-scope line a uniform declaration naming one of <paramref name="own"/>? It stays as written --
+    /// its type may be an image with qualifiers the rewrite does not parse.</summary>
+    private static bool Kept(string code, HashSet<string> own)
+    {
+        if (!UniformWord.IsMatch(code)) return false;
+        foreach (Match w in Word.Matches(code)) if (own.Contains(w.Value)) return true;
+        return false;
+    }
+
+    private static readonly Regex UniformWord = new(@"^\s*(?:layout\s*\([^)]*\)\s*)?uniform\b", RegexOptions.Compiled);
+    private static readonly Regex Word = new(@"\w+", RegexOptions.Compiled);
 
     /// <summary>One file-scope line: its replacement, or null to keep it as written.</summary>
     private static string? Rewrite(string code, string line, bool fragment, HashSet<string> supplied, HashSet<string>? vsOut,

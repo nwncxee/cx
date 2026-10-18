@@ -1,5 +1,5 @@
 // A stand-in for a module's OWN sky fragment stage: a plain gradient dome written the way a stock sky stage
-// is -- the engine's uniform names, display-space colour out through gl_FragColor. The twin beside it
+// is -- the engine's uniform names, display-space colour out through gl_FragColor. The native stage beside it
 // (cx_cxdemo_sky.shd) is what Alloy runs instead; this is the fallback, and a vanilla client's only sky.
 // A fixture for check-shaders.py: it ships in no hak and no module.
 #include "inc_common"

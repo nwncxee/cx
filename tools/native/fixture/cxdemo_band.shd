@@ -1,6 +1,6 @@
-// A sky twin's second `frame` pass: a 64x32 band table built from the volume the `once` pass filled -- read
+// A native stage's second `frame` pass: a 64x32 band table built from the volume the `once` pass filled -- read
 // as a SAMPLER through its mip chain, which is the other half of the binding-by-name contract -- and the
-// calendar term the engine hands every sky program. A fixture for check-shaders.py; it ships nowhere.
+// calendar term the engine hands every whole stage. A fixture for check-shaders.py; it ships nowhere.
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(rgba16f) uniform image2D cxBand;
 uniform sampler3D cxVolume;

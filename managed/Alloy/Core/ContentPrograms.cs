@@ -23,6 +23,8 @@ internal static unsafe class ContentPrograms
         public uint Fwd, Def, Depth, Cast, CastLayer;
         public AlloyRenderer.LitLoc FwdLoc, DefLoc, DepthLoc, CastLoc, CastLayerLoc;
         public int FwdNoise = -1, DefNoise = -1, DepthNoise = -1, CastNoise = -1, CastLayerNoise = -1;
+        /// <summary>What each program was attached as (<see cref="StageResources.Attach"/>): -1 is nothing per bind.</summary>
+        public int FwdRec = -1, DefRec = -1, DepthRec = -1, CastRec = -1, CastLayerRec = -1;
         /// <summary>The depth twin's <c>uHlColor</c>: the outline-highlight mask draws through it.</summary>
         public int DepthHl = -1;
     }
@@ -31,6 +33,12 @@ internal static unsafe class ContentPrograms
     private sealed class Stage
     {
         public string Vs = "", Fs = "";
+        /// <summary>What each half runs as: the native stage (<c>cx_</c> + the half, <see cref="StageResources"/>) where
+        /// the chain has one, else the half itself -- and the native stage's id, -1 for a half hosted plainly.</summary>
+        public string HostVs = "", HostFs = "";
+        public int NatVs = -1, NatFs = -1;
+        /// <summary>A native half stood down: the pair rebuilds from its plain halves until the module changes.</summary>
+        public bool NoNative;
         public ProgramSet P = new();
         /// <summary>A batch asked for the pair and its programs are not built: the next frame starts them.</summary>
         public bool Wanted;
@@ -87,7 +95,10 @@ internal static unsafe class ContentPrograms
             RegistryState s = _reg;
             if (s.ByName.TryGetValue(key, out int have)) return have;
             bool vsStock = Stock(MtrFeed.ShaderText(vs), false);
-            if (vsStock && Stock(MtrFeed.ShaderText(fs), true))
+            // A half with a native stage beside it is never stock: the feed reads the native text first, so by the
+            // time both plain halves are known, so is whether either has one.
+            bool native = MtrFeed.ShaderText(StageResources.Prefix + vs) != null || MtrFeed.ShaderText(StageResources.Prefix + fs) != null;
+            if (vsStock && !native && Stock(MtrFeed.ShaderText(fs), true))
             {
                 s.ByName[key] = 0;
                 s.StockPairs++;
@@ -122,6 +133,11 @@ internal static unsafe class ContentPrograms
     {
         Stage? s = Of(feat);
         if (s == null || s.Failed || s.Plain) return false;
+        // Staged ahead of the frame's head, so a native half's passes run before its parts draw.
+        StageResources.Use(s.NatVs);
+        StageResources.Use(s.NatFs);
+        if ((s.NatVs >= 0 && !StageResources.Live(s.NatVs)) || (s.NatFs >= 0 && !StageResources.Live(s.NatFs)))
+            Renew(s, "a native half stood down");
         if (s.P.Fwd != 0) return true;
         s.Wanted = true;
         return false;
@@ -206,7 +222,10 @@ internal static unsafe class ContentPrograms
     internal static void BindExtras(int which)
     {
         Stage? s = OfProg(which);
-        if (s != null) BindNoise(IsDeferred(which) ? s.P.DefNoise : s.P.FwdNoise);
+        if (s == null) return;
+        bool def = IsDeferred(which);
+        BindNoise(def ? s.P.DefNoise : s.P.FwdNoise);
+        StageResources.Bind(def ? s.P.DefRec : s.P.FwdRec);
     }
 
     /// <summary><see cref="BindExtras"/> for a pair's depth twin (<paramref name="cast"/> false) or caster twin, the
@@ -214,7 +233,9 @@ internal static unsafe class ContentPrograms
     internal static void BindTwinExtras(int feat, bool cast, bool layered)
     {
         Stage? s = Of(feat);
-        if (s != null) BindNoise(!cast ? s.P.DepthNoise : layered ? s.P.CastLayerNoise : s.P.CastNoise);
+        if (s == null) return;
+        BindNoise(!cast ? s.P.DepthNoise : layered ? s.P.CastLayerNoise : s.P.CastNoise);
+        StageResources.Bind(!cast ? s.P.DepthRec : layered ? s.P.CastLayerRec : s.P.CastRec);
     }
 
     private static void BindNoise(int loc)
@@ -244,10 +265,12 @@ internal static unsafe class ContentPrograms
     private static void Start(Stage s)
     {
         s.Wanted = false;
-        string? vsText = VanillaShader.ChainText(s.Vs), fsText = VanillaShader.ChainText(s.Fs);
+        s.HostVs = Host(s.Vs, s.NoNative, out s.NatVs);
+        s.HostFs = Host(s.Fs, s.NoNative, out s.NatFs);
+        string? vsText = VanillaShader.ChainText(s.HostVs), fsText = VanillaShader.ChainText(s.HostFs);
         if (vsText == null || fsText == null)
         {
-            Fail(s, $"{(vsText == null ? s.Vs : s.Fs)}.shd is not in the resource chain");
+            Fail(s, $"{(vsText == null ? s.HostVs : s.HostFs)}.shd is not in the resource chain");
             return;
         }
         bool vsStock = ContentStage.StockShaped(vsText, false), fsStock = ContentStage.StockShaped(fsText, true);
@@ -258,9 +281,11 @@ internal static unsafe class ContentPrograms
             _reg.Log?.Info($"{What(s)}: adds nothing to the stock pair -- Alloy's own lit stage is its shading");
             return;
         }
-        string? vs = vsStock ? CX.Alloy.Programs._litVsSrc : WithRegion(CX.Alloy.Programs._litVsSrc!, VsLib, VanillaShader.ContentVsMark, s.Vs, s.Fs, VsStub);
-        string? fs = fsStock ? CX.Alloy.Programs._litFsSrc : WithRegion(CX.Alloy.Programs._litFsSrc!, FsLib, VanillaShader.ContentMark, s.Fs, s.Vs, RegionStub);
+        string? vs = vsStock ? CX.Alloy.Programs._litVsSrc : WithRegion(CX.Alloy.Programs._litVsSrc!, VsLib, VanillaShader.ContentVsMark, s.HostVs, s.HostFs, VsStub);
+        string? fs = fsStock ? CX.Alloy.Programs._litFsSrc : WithRegion(CX.Alloy.Programs._litFsSrc!, FsLib, VanillaShader.ContentMark, s.HostFs, s.HostVs, RegionStub);
         if (vs != null && !vsStock && AlloyRenderer.Bindless) vs = ShaderStages.AfterVersion(vs, VsBindless);
+        if (vs != null && s.NatVs >= 0) vs = ShaderStages.WithDefine(vs, StageResources.NativeDefine);
+        if (fs != null && s.NatFs >= 0) fs = ShaderStages.WithDefine(fs, StageResources.NativeDefine);
         if (vs == null || fs == null)
         {
             Fail(s, $"the lit stage in use carries no {(vs == null ? VsLib : FsLib)} region to host it in (a content override "
@@ -280,8 +305,8 @@ internal static unsafe class ContentPrograms
     {
         refused = null;
         bool vsStock = s.VsStock, fsStock = s.FsStock;
-        ContentStage.Result? v = vsStock ? null : ContentStage.Last(false, s.Vs, s.Fs);
-        ContentStage.Result? f = fsStock ? null : ContentStage.Last(true, s.Vs, s.Fs);
+        ContentStage.Result? v = vsStock ? null : ContentStage.Last(false, s.HostVs, s.HostFs);
+        ContentStage.Result? f = fsStock ? null : ContentStage.Last(true, s.HostVs, s.HostFs);
         if ((!vsStock && v == null) || (!fsStock && f == null)) return false;
         refused = v?.Refused ?? f?.Refused;
         if (refused != null) return false;
@@ -334,28 +359,39 @@ internal static unsafe class ContentPrograms
             return;
         }
         var p = new ProgramSet { Fwd = fwd, FwdLoc = CX.Alloy.Programs.LitLocs(fwd), FwdNoise = GlProgram.Loc(fwd, "uConNoise") };
+        p.FwdRec = StageResources.Attach(fwd, s.NatVs, s.NatFs, _reg.Log);
+        if (p.FwdRec == -2)
+        {
+            Gl.DeleteProgram(fwd);
+            GlProgram.Drop(issued);
+            Gl.UseProgram((uint)prev);
+            Renew(s, "its native half refused the program");
+            return;
+        }
         var built = new List<string>();
         foreach (var (twin, vs, fs, slot) in Twins(s))
         {
             uint t = GlProgram.Graphics(vs, fs, _reg.Log, $"{what} ({twin})", host: true);
             if (t != 0 && GlProgram.LastStubbed) { Gl.DeleteProgram(t); t = 0; }
             if (t == 0) continue;
+            int rec = StageResources.Attach(t, s.NatVs, s.NatFs, _reg.Log);
+            if (rec == -2) { Gl.DeleteProgram(t); continue; }
             built.Add(twin);
             var loc = CX.Alloy.Programs.LitLocs(t);
             int noise = GlProgram.Loc(t, "uConNoise");
             switch (slot)
             {
-                case 1: p.Def = t; p.DefLoc = loc; p.DefNoise = noise; break;
-                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthNoise = noise; p.DepthHl = GlProgram.Loc(t, "uHlColor"); break;
-                case 3: p.Cast = t; p.CastLoc = loc; p.CastNoise = noise; break;
-                default: p.CastLayer = t; p.CastLayerLoc = loc; p.CastLayerNoise = noise; break;
+                case 1: p.Def = t; p.DefLoc = loc; p.DefNoise = noise; p.DefRec = rec; break;
+                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthNoise = noise; p.DepthHl = GlProgram.Loc(t, "uHlColor"); p.DepthRec = rec; break;
+                case 3: p.Cast = t; p.CastLoc = loc; p.CastNoise = noise; p.CastRec = rec; break;
+                default: p.CastLayer = t; p.CastLayerLoc = loc; p.CastLayerNoise = noise; p.CastLayerRec = rec; break;
             }
         }
         s.P = p;
         s.Epoch++;
         _reg.Builds++;
-        ContentStage.Result? f = s.FsStock ? null : ContentStage.Last(true, s.Vs, s.Fs);
-        ContentStage.Result? v = s.VsStock ? null : ContentStage.Last(false, s.Vs, s.Fs);
+        ContentStage.Result? f = s.FsStock ? null : ContentStage.Last(true, s.HostVs, s.HostFs);
+        ContentStage.Result? v = s.VsStock ? null : ContentStage.Last(false, s.HostVs, s.HostFs);
         var notes = new List<string>();
         if (v != null) notes.AddRange(v.Notes);
         if (f != null) notes.AddRange(f.Notes);
@@ -371,7 +407,39 @@ internal static unsafe class ContentPrograms
         Gl.UseProgram((uint)prev);
     }
 
-    private static string What(Stage s) => $"Alloy content pair {s.Vs}/{s.Fs}";
+    private static string What(Stage s) => $"Alloy content pair {(s.HostVs.Length > 0 ? s.HostVs : s.Vs)}/{(s.HostFs.Length > 0 ? s.HostFs : s.Fs)}";
+
+    /// <summary>What a half runs as: its native stage, declared, where the chain has one that may run and the pair has
+    /// not been told to stand its native halves down -- else the half itself, with <paramref name="id"/> -1.</summary>
+    private static string Host(string half, bool noNative, out int id)
+    {
+        id = -1;
+        string? native = noNative ? null : StageResources.NativeOf(half);
+        if (native == null) return half;
+        int got = StageResources.Declare(native, _reg.Log);
+        if (!StageResources.Live(got)) return half;
+        id = got;
+        return native;
+    }
+
+    /// <summary>A native half stood down (said by <see cref="StageResources.Fail"/>): the pair's programs go, and it
+    /// rebuilds from its plain halves at the next frame that asks -- once, since the latch stays until the module changes.</summary>
+    private static void Renew(Stage s, string why)
+    {
+        Drop(s);
+        s.NoNative = true;
+        s.Wanted = true;
+        _reg.Log?.Info($"{What(s)}: {why} -- the pair rebuilds from {s.Vs}/{s.Fs}");
+    }
+
+    private static void Drop(Stage s)
+    {
+        foreach (uint p in new[] { s.P.Fwd, s.P.Def, s.P.Depth, s.P.Cast, s.P.CastLayer }) if (p != 0) Gl.DeleteProgram(p);
+        if (s.Keys != null) GlProgram.Drop(s.Keys);
+        s.P = new ProgramSet();
+        s.Failed = false; s.Plain = false; s.Cuts = false; s.Moves = false; s.Wanted = false; s.Keys = null;
+        s.NatVs = -1; s.NatFs = -1;
+    }
 
     private static void Fail(Stage s, string why)
     {
@@ -411,9 +479,8 @@ internal static unsafe class ContentPrograms
         for (int i = 0; i < r.Count; i++)
         {
             if (r.ById[i] is not { } s) continue;
-            foreach (uint p in new[] { s.P.Fwd, s.P.Def, s.P.Depth, s.P.Cast, s.P.CastLayer }) if (p != 0) Gl.DeleteProgram(p);
-            s.P = new ProgramSet();
-            s.Failed = false; s.Plain = false; s.Cuts = false; s.Moves = false; s.Wanted = false; s.Keys = null;
+            Drop(s);
+            s.NoNative = false;
         }
         ContentStage.Forget();
     }

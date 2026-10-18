@@ -1,9 +1,9 @@
-// The environment a sky stage runs in, shared by the dome's fragment wrapper (cx_sky_fs) and the compute wrapper a
-// sky twin's passes run in (cx_skypass_cs): the names inc_common/inc_uniforms give a stock stage, from Alloy's values
-// under the ENGINE's names, so stock text drops in unedited -- plus the sky's own frame, which an Alloy-native twin
-// and its passes read. Needs cx_featdecl and cx_fogdecl ahead of it.
-#ifndef CX_SKYENV_LIB
-#define CX_SKYENV_LIB
+// The environment a WHOLE content stage runs in -- the sky's fragment stage (cx_sky_fs) and a native stage's compute
+// passes (cx_pass_cs): the names inc_common/inc_uniforms give a stock stage, from Alloy's values under the ENGINE's
+// names, so stock text drops in unedited. The cx frame uniforms are not here: a stage declares the ones it reads
+// (docs/shader-overrides.md, "The frame"). Needs cx_featdecl and cx_fogdecl ahead of it.
+#ifndef CX_STAGEENV_LIB
+#define CX_STAGEENV_LIB
 #define CX_ALLOY 1
 #define GAMMA_CORRECTION 1
 #define texture2D texture
@@ -43,13 +43,4 @@ vec4 ApplyColorSpace(vec4 c)  { return vec4(ApplyColorSpace(c.rgb), c.a); }
 vec3 RevertColorSpace(vec3 c) { return sign(c) * pow(abs(c), vec3(1.0 / $SRGB$)); }
 vec4 RevertColorSpace(vec4 c) { return vec4(RevertColorSpace(c.rgb), c.a); }
 
-// The sky's own frame, for an Alloy-native twin and the passes it declares (docs/shader-overrides.md, "Sky twins").
-// Every pass of a frame sees the MAIN view's camera, whichever view the dome is then drawn into.
-uniform int cxSkyFrame;          // the frame counter: advances by one per presented frame
-uniform int cxSkyMain;           // 1 while the dome is drawn into the main view, 0 into a probe face
-uniform int cxSkyFresh;          // 1 on the frame a view-sized or history image was (re)made: its history is garbage
-uniform mat4 cxSkyInvVp;         // the main view's UNJITTERED inverse view-projection: clip -> world
-uniform mat4 cxSkyPrevVp;        // the main view's unjittered view-projection one frame ago
-uniform vec3 cxSkyEye;           // the main view's eye, world space
-uniform ivec2 cxSkyView;         // the main view's render size, pixels
 #endif

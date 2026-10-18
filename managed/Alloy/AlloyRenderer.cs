@@ -601,6 +601,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._nullTexDraws = 0;
         Counters._skinDrawn = 0; Counters._skinNoPose = 0; Counters._boneHigh = 0;
         SkyBox.ResetPeriod();
+        StageResources.ResetPeriod();
         GrassField.ResetPeriod();
         Beams.ResetPeriod();
         Halos.ResetPeriod();

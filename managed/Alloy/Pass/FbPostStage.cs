@@ -40,7 +40,7 @@ internal static unsafe class FbPostStage
     {
         public uint Prog, Sampler;
         public AlloyRenderer.FeatLoc Feat;
-        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth, LocLens;
+        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth, Rec = -1;
         public int BuildMask = -1, BuildQuality = -1;
     }
 
@@ -88,13 +88,14 @@ internal static unsafe class FbPostStage
             g.LocPixel = GlProgram.Loc(prog, "pixelParams");
             g.LocClip = GlProgram.Loc(prog, "clipParams");
             g.LocFbColor = GlProgram.Loc(prog, "texFBColor"); g.LocFbDepth = GlProgram.Loc(prog, "texFBDepth");
-            g.LocLens = GlProgram.Loc(prog, "cxSkyLens");
+            // the cx frame uniforms the chain declares, cxOverlay among them (a flare of its own stands aside for one)
+            g.Rec = StageResources.Attach(prog, -1, -1, _log);
         }
         Gl.UseProgram(prog);
         Gl.Uniform1i(g.LocFbColor, (int)TextureSlots.PostHdr);
         Gl.Uniform1i(g.LocFbDepth, (int)TextureSlots.PostBloom);
         AlloyRenderer.UploadFeatureTerms(in g.Feat, viewport);
-        Gl.Uniform1i(g.LocLens, SkyTwin.LensTex() != 0 ? 1 : 0);
+        StageResources.Bind(g.Rec);
         fixed (Matrix4x4* v = &_view) Gl.UniformMatrix4fv(g.LocView, 1, 0, (float*)v);
         if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
         Gl.UniformMatrix4fv(g.LocViewInv, 1, 0, (float*)&inv);
@@ -127,8 +128,8 @@ internal static unsafe class FbPostStage
         check.Expect(FbPostFs.Contains("// $VANILLA-MAIN fsfbpostpr\n") && FbPostFs.Contains("void " + VanillaShader.MainEntry + "() {"),
           "the whole-stage region and its stub, under the name the bridge renames main() to");
         check.Expect(FbPostFs.Contains("uniform highp mat4 m_view_inv;"), "the inverse view a content main() takes world positions through");
-        // The chain declares cxSkyLens itself, so a chain written for this build still compiles on one that sets nothing.
-        check.Expect(!FbPostFs.Contains("cxSkyLens"), "the environment leaves cxSkyLens to the chain that reads it");
+        // The chain declares the cx frame uniforms itself, so a chain written for this build still compiles on one that sets nothing.
+        check.Expect(!FbPostFs.Contains("cxOverlay") && !FbPostFs.Contains("cxFrame"), "the environment leaves the cx frame uniforms to the chain that reads them");
         check.Expect(FbPostFs.Contains("$POSTMASK$") && FbPostFs.Contains("$SQM$"), "the option tokens are in the text");
         check.Expect(!ShaderResource.Tokens("$POSTMASK$ $SQM$").Contains('$'), "the tokens expand");
         check.Expect(!Stale(0, 0), "an unbuilt stage is never stale");

@@ -183,7 +183,13 @@ internal static unsafe class MtrFeed
             MtrDef m = MtrDef.Parse(data, name);
             hint = m.RenderHint;
             _loaded++;
-            if (m.ShaderVs.Length > 0 && m.ShaderFs.Length > 0) { ReadShader(m.ShaderVs); ReadShader(m.ShaderFs); }
+            if (m.ShaderVs.Length > 0 && m.ShaderFs.Length > 0)
+            {
+                // Each half's native stage FIRST: once the plain halves are known, whether either has one is too, and the
+                // pair's stock test (ContentPrograms.Register, on another thread) can trust a missing native text.
+                ReadNative(m.ShaderVs); ReadNative(m.ShaderFs);
+                ReadShader(m.ShaderVs); ReadShader(m.ShaderFs);
+            }
         }
         else _absent++;
         lock (Gate)
@@ -194,6 +200,11 @@ internal static unsafe class MtrFeed
         // A recipe interned before this read took its coverage mode and its declared-water term from a
         // material that was not there yet; this is the edge that lets the next reclassify re-ask them.
         if (data != null) DrawRecipe.MaterialLanded();
+    }
+
+    private static void ReadNative(string half)
+    {
+        if (StageResources.Fits(half)) ReadShader(StageResources.Prefix + half);
     }
 
     /// <summary>GAME thread: the text of a content shader a material names, once per name.</summary>

@@ -3,14 +3,14 @@
 
     tools/sky/preview.py --scene 'month=3 day=20 hour=17.9 cover=0.3 yaw=268 pitch=6' -o dusk.png
     tools/sky/preview.py --sheet tools/sky/sheet.txt -o out/              # one PNG per line + a contact sheet
-    tools/sky/preview.py --compare --sheet tools/sky/sheet.txt -o out/    # the stage beside its cx_ twin
+    tools/sky/preview.py --compare --sheet tools/sky/sheet.txt -o out/    # the stage beside its native cx_ stage
     tools/sky/preview.py --bench 30 --size 2560x1440 --sheet ... -o out/  # median GPU time per pass
     tools/sky/preview.py --coverage skyPano --scene 'hour=12'              # cloud share overhead per cover
 
 The sky is drawn from the real pieces: the dome mesh out of the material's ASCII .mdl, its textures, the embedded
-cx_sky_fs wrapper with the content stage spliced into its region (check-shaders.py's own splice), and -- for an
-Alloy-native twin (cx_<stage>) -- the images and compute passes its `#pragma cx_sky_*` lines declare, run through
-cx_skypass_cs. Frame passes run --frames times per scene with the camera held still, so temporal accumulation has
+cx_sky_fs wrapper with the content stage spliced into its region (check-shaders.py's own splice), and -- for a
+native stage (cx_<stage>) -- the images and compute passes its `#pragma cx_image`/`cx_pass` lines declare, run through
+cx_pass_cs. Frame passes run --frames times per scene with the camera held still, so temporal accumulation has
 converged the way it would in a held view. The frame is then presented the way the resolve presents a sky pixel:
 its own value plus the bloom bleed, encoded, no exposure and no tonemap.
 
@@ -41,16 +41,16 @@ def load_check_shaders(content):
     return mod
 
 
-# --- the declaration grammar (docs/shader-overrides.md, "Sky twins and sky passes") --------------------------------
-# One grammar, one parser: check-shaders.py's, which is itself pinned to CX.Alloy.SkyTwin's. This only turns
+# --- the declaration grammar (docs/shader-overrides.md, "Native stages, images and passes") -----------------------
+# One grammar, one parser: check-shaders.py's, which is itself pinned to CX.Alloy.StageResources'. This only turns
 # what it returns into the shape this tool indexes by.
 KINDS = {"tex2d": "2d", "tex3d": "3d", "view": "view"}
 
 
 def sky_decls(cs, text):
-    """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)], lens image or None) for a twin's
-    declarations."""
-    images, passes, _, lens = cs.sky_decls(text)
+    """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)], overlay image or None) for a native
+    stage's declarations."""
+    images, passes, _, lens = cs.native_decls(text)
     out = {}
     for i in images:
         kind = KINDS[i["shape"]]
@@ -294,12 +294,12 @@ class Sky:
         self.twin = twin
         self.images_decl, self.passes_decl, self.lens = sky_decls(cs, self.read(stage) or "") if twin else ({}, [], None)
         self.last_lens = None
-        fs = self.wrap("cx_sky_f", "$SKYFS$", stage, "CX_SKY_LINEAR 1" if twin else None)
+        fs = self.wrap("cx_sky_f", "$SKYFS$", stage, "CX_NATIVE 1" if twin else None)
         self.prog = gl.program([(0x8B31, VS), (0x8B30, fs)], stage)   # not-an-offset: GL_VERTEX_SHADER, GL_FRAGMENT_SHADER
         self.images = {}
         self.passes = []
         for when, ref, img in self.passes_decl:
-            src = self.wrap("cx_skypass_cs", "$SKYCS$", ref, None)
+            src = self.wrap("cx_pass_cs", "$PASSCS$", ref, None)
             p = gl.program([(0x91B9, src)], ref)   # not-an-offset: GL_COMPUTE_SHADER
             grp = (C.c_int * 3)()
             gl.GetProgramiv(p, 0x8267, grp)   # not-an-offset: GL_COMPUTE_WORK_GROUP_SIZE
@@ -336,7 +336,7 @@ class Sky:
 
     def fmt(self, im):
         """The declared format's GL sized internal format, out of check-shaders' own table."""
-        return self.cs.SKY_FORMAT_ENUM[im["fmt"]][0]
+        return self.cs.NATIVE_FORMAT_ENUM[im["fmt"]][0]
 
     def make_images(self):
         gl = self.gl
@@ -415,10 +415,11 @@ class Sky:
         v3("uEyePos", *eye); v3("uCamPos", *eye); v3("uPlayerPos", *(eye - [0, 0, 8])); v3("uCamFocus", *(eye - [0, 0, 8]))
         i1("uTex", 0); i1("texUnit1", 1); v3("uTint", 1, 1, 1); f1("uSkyFog", 0.0); v4("globalColor", 1, 1, 1, 1)
         i1("uOit", 0); f1("uLodBias", 0.0); v4("uFogParams", 0, 0, 0, 0)
-        i1("cxSkyFrame", self.frame); i1("cxSkyMain", 1 if main else 0); i1("cxSkyFresh", 1 if self.fresh else 0)
-        gl.UniformMatrix4fv(L("cxSkyInvVp"), 1, 0, mat(inv_clean))
-        gl.UniformMatrix4fv(L("cxSkyPrevVp"), 1, 0, mat(self.prev_vp if self.prev_vp is not None else np.linalg.inv(inv_clean)))
-        v3("cxSkyEye", *eye); gl.Uniform2i(L("cxSkyView"), *self.size)
+        i1("cxFrame", self.frame); i1("cxMain", 1 if main else 0); i1("cxFresh", 1 if self.fresh else 0)
+        gl.UniformMatrix4fv(L("cxInvVp"), 1, 0, mat(inv_clean))
+        gl.UniformMatrix4fv(L("cxPrevVp"), 1, 0, mat(self.prev_vp if self.prev_vp is not None else np.linalg.inv(inv_clean)))
+        v3("cxEye", *eye); gl.Uniform2i(L("cxView"), *self.size)
+        i1("cxOverlay", 1 if self.lens else 0)
         for kind, name, vals in s["raw"]:
             if kind == "i":
                 i1(name, vals[0])
@@ -482,7 +483,7 @@ def find_asset(name, roots):
 
 # --- the resolve, for a sky pixel --------------------------------------------------------------------------------------
 def present(hdr, lens=None, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
-    """CX's sky-pixel resolve: own value + bloom bleed + the twin's lens, encoded, no exposure/tonemap
+    """CX's sky-pixel resolve: own value + bloom bleed + the native stage's overlay, encoded, no exposure/tonemap
     (cx_resolve_f's uSkyRaw arm). The bloom is the usual soft-knee bright pass over a Gaussian pyramid, close
     enough to judge a glow by."""
     c = np.nan_to_num(hdr[..., :3].astype(np.float32))
@@ -564,7 +565,7 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
         gl.BindVertexArray(vao)
         gl.DrawArrays(0x0004, 0, count)   # not-an-offset: GL_TRIANGLES
         gl.DepthRange(0.0, 1.0); gl.Disable(0x864F); gl.Disable(0x0B71)   # not-an-offset: GL_DEPTH_CLAMP, GL_DEPTH_TEST
-        # one cxSkyFrame for a frame's passes and its dome, as in the extender
+        # one cxFrame for a frame's passes and its dome, as in the extender
         sky.frame += 1
         if k == frames - 1:
             gl.EndQuery(0x88BF)   # not-an-offset: GL_TIME_ELAPSED
@@ -609,8 +610,8 @@ def main():
     ap.add_argument("--assets", default="", help="where the .mdl/.mtr/.dds live (default: <content>/../skyboxes)")
     ap.add_argument("--scene", default="", help="space-separated key=value overrides of " + ", ".join(DEFAULTS))
     ap.add_argument("--sheet", help="a file of scenes, one per line ('label: key=value ...')")
-    ap.add_argument("--compare", action="store_true", help="the stage itself beside its cx_ twin")
-    ap.add_argument("--vanilla", action="store_true", help="render the stage itself, not its twin")
+    ap.add_argument("--compare", action="store_true", help="the stage itself beside its native cx_ stage")
+    ap.add_argument("--vanilla", action="store_true", help="render the stage itself, not its native stage")
     ap.add_argument("--size", default="960x540")
     ap.add_argument("--frames", type=int, default=24, help="frames of temporal accumulation per scene")
     ap.add_argument("--bench", type=int, default=0, help="time this many frames per scene and report medians")

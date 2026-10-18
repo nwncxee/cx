@@ -1,0 +1,15 @@
+// A stand-in for a module's OWN material fragment stage, written the stock way: the material skeleton and a tint.
+// The native stage beside it (cx_cxdemo_mat.shd) is what Alloy runs instead; this is the fallback, and a vanilla
+// client's only version. A fixture for check-shaders.py: it ships in no hak and no module.
+#define SHADER_TYPE 2
+#define LIGHTING 1
+#include "inc_standard"
+uniform vec4 vTint;
+void main()
+{
+    FragmentColor = vec4(1.0);
+    SetupStandardShaderInputs();
+    FragmentColor.rgb *= vTint.rgb;
+    ApplyStandardShader();
+    gl_FragColor = FragmentColor;
+}

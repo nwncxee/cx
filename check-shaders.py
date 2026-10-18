@@ -614,9 +614,9 @@ def programs(g):
         "weather shelter cache": (g["cx_wx_shel_c"],),
         "sky visibility bake": (g["cx_skybake"],),
         # The two sky wrappers at their STUBS -- what the retry compiles when a stage or a declared pass is
-        # not spliced. The real ones go through sky_programs() with the fixture's twin hosted.
+        # not spliced. The real ones go through native_programs() with the fixture's native stages hosted.
         "sky (stub)": (g["cx_own_vs"], g["cx_sky_fs"]),
-        "sky pass wrapper (stub)": (g["cx_skypass_cs"],),
+        "pass wrapper (stub)": (g["cx_pass_cs"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
     }
@@ -1099,77 +1099,82 @@ def post_programs(raw, g):
     return out
 
 
-# --- sky twins (docs/shader-overrides.md, "Sky twins and sky passes") -------------------------------------
-# A content sky stage may ship an Alloy-native twin, cx_<stage>, which Alloy hosts in cx_sky_fs under
-# CX_SKY_LINEAR and which declares its own GPU images and compute passes on #pragma lines of its own. This
-# mirrors CX.Alloy.SkyTwin's parser, so a declaration the extender would refuse fails here instead of at a
-# player's first frame; every token is an identifier or a decimal integer, because a GLSL preprocessor
-# tokenises the line (NVIDIA refuses `128x128` as an integer with a type suffix).
-SKY_FIXTURE = os.path.join(ROOT, "tools/sky/fixture")
-# name -> (GL sized internal format, bytes per texel). SkyTwin.SelfCheck.cs asserts the same enums, and
-# check_sky_grammar() reads them out of it, so neither table can drift from the other.
-SKY_FORMAT_ENUM = {"rgba8": (0x8058, 4), "rgba16f": (0x881A, 8), "rgba32f": (0x8814, 16),   # not-an-offset: GL enums
-                   "rg16f": (0x822F, 4), "rg8": (0x822B, 2), "r16f": (0x822D, 2),   # not-an-offset: GL enums
-                   "r32f": (0x822E, 4), "r8": (0x8229, 1), "r11f_g11f_b10f": (0x8C3A, 4)}   # not-an-offset: GL enums
-SKY_FORMATS = set(SKY_FORMAT_ENUM)
-SKY_FLAGS = {"history", "mips", "clamp"}
-SKY_MAX_IMAGES, SKY_MAX_PASSES, SKY_MAX_2D, SKY_MAX_3D, SKY_MAX_VIEWDIV = 12, 10, 4096, 256, 8
-SKY_MAX_BYTES = 256 << 20
-SKY_TOKEN = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)$")
-SKY_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,30}$")
+# --- native stages, images and passes (docs/shader-overrides.md, "Native stages, images and passes") ---------
+# Wherever Alloy hosts a content stage X -- a sky's fragment stage, either half of a material pair -- the chain's
+# cx_X runs in its place under CX_NATIVE, and may declare GPU images and compute passes on #pragma lines of its own.
+# This mirrors CX.Alloy.StageResources' parser, so a declaration the extender would refuse fails here instead of at a
+# player's first frame; every token is an identifier or a decimal integer, because a GLSL preprocessor tokenises the
+# line (NVIDIA refuses `128x128` as an integer with a type suffix).
+NATIVE_FIXTURE = os.path.join(ROOT, "tools/native/fixture")
+NATIVE_CS = os.path.join(MANAGED, "Alloy/Pass/StageResources.cs")
+_NATIVE_SRC = open(NATIVE_CS).read()
+# The budgets, read off the C# declaration so the two can only agree.
+NATIVE_MAX_IMAGES, NATIVE_MAX_PASSES, NATIVE_MAX_2D, NATIVE_MAX_3D, NATIVE_MAX_VIEWDIV = map(int, re.search(
+    r"MaxImages = (\d+), MaxPasses = (\d+), Max2dSide = (\d+), Max3dSide = (\d+), MaxViewDiv = (\d+);", _NATIVE_SRC).groups())
+NATIVE_MAX_BYTES = (lambda m: int(m.group(1)) << int(m.group(2)))(re.search(r"MaxImageBytes = (\d+)L << (\d+);", _NATIVE_SRC))
+NATIVE_MAX_NAME = int(re.search(r"MaxNameChars = (\d+);", _NATIVE_SRC).group(1))
+# name -> (GL sized internal format, bytes per texel). StageResources.SelfCheck.cs asserts the same enums, and
+# check_native_grammar() reads them out of it, so neither table can drift from the other.
+NATIVE_FORMAT_ENUM = {"rgba8": (0x8058, 4), "rgba16f": (0x881A, 8), "rgba32f": (0x8814, 16),   # not-an-offset: GL enums
+                      "rg16f": (0x822F, 4), "rg8": (0x822B, 2), "r16f": (0x822D, 2),   # not-an-offset: GL enums
+                      "r32f": (0x822E, 4), "r8": (0x8229, 1), "r11f_g11f_b10f": (0x8C3A, 4)}   # not-an-offset: GL enums
+NATIVE_FORMATS = set(NATIVE_FORMAT_ENUM)
+NATIVE_FLAGS = {"history", "mips", "clamp"}
+NATIVE_TOKEN = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)$")
+NATIVE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,%d}$" % (NATIVE_MAX_NAME - 1))
 # An image or sampler uniform as the driver sees it: the format layout qualifier is what a declared image's
 # own format has to agree with, and the 2D/3D-ness with its shape.
-SKY_IMG = re.compile(r"(?:layout\s*\(([^)]*)\)\s*)?uniform\s+"
-                     r"(?:(?:readonly|writeonly|coherent|volatile|restrict)\s+)*(image2D|image3D)\s+(\w+)\s*;")
-SKY_SMP = re.compile(r"uniform\s+(sampler2D|sampler3D)\s+(\w+)\s*;")
+NATIVE_IMG = re.compile(r"(?:layout\s*\(([^)]*)\)\s*)?uniform\s+"
+                        r"(?:(?:readonly|writeonly|coherent|volatile|restrict)\s+)*(image2D|image3D)\s+(\w+)\s*;")
+NATIVE_SMP = re.compile(r"uniform\s+(sampler2D|sampler3D)\s+(\w+)\s*;")
 
 
-def sky_side(s, lo, hi, what):
+def native_side(s, lo, hi, what):
     if not s.isdigit() or not lo <= int(s) <= hi:
         raise ValueError(f"{what} `{s}` is not a decimal {lo}..{hi}")
     return int(s)
 
 
-def sky_image(tok, images):
+def native_image(tok, images):
     if len(tok) < 5:
-        raise ValueError(f"cx_sky_image needs a name, a shape and a format: `{' '.join(tok)}`")
+        raise ValueError(f"cx_image needs a name, a shape and a format: `{' '.join(tok)}`")
     name = tok[2]
-    if not SKY_NAME.match(name) or name.startswith("gl_"):
-        raise ValueError(f"`{name}` is not a GLSL identifier of at most 31 characters")
+    if not NATIVE_NAME.match(name) or name.startswith("gl_"):
+        raise ValueError(f"`{name}` is not a GLSL identifier of at most {NATIVE_MAX_NAME} characters")
     if any(i["name"] == name for i in images):
         raise ValueError(f"two images are named `{name}`")
     im = {"name": name, "history": False, "mips": False, "clamp": False}
     if tok[3] == "tex2d":
         if len(tok) < 7:
             raise ValueError(f"`tex2d` takes <W> <H>: `{' '.join(tok)}`")
-        im["shape"], im["w"], im["h"], im["d"] = "tex2d", sky_side(tok[4], 1, SKY_MAX_2D, "a 2d width"), \
-            sky_side(tok[5], 1, SKY_MAX_2D, "a 2d height"), 1
+        im["shape"], im["w"], im["h"], im["d"] = "tex2d", native_side(tok[4], 1, NATIVE_MAX_2D, "a 2d width"), \
+            native_side(tok[5], 1, NATIVE_MAX_2D, "a 2d height"), 1
         at = 6
     elif tok[3] == "tex3d":
         if len(tok) < 8:
             raise ValueError(f"`tex3d` takes <W> <H> <D>: `{' '.join(tok)}`")
         im["shape"] = "tex3d"
-        im["w"], im["h"], im["d"] = (sky_side(tok[4 + k], 1, SKY_MAX_3D, "a 3d side") for k in range(3))
+        im["w"], im["h"], im["d"] = (native_side(tok[4 + k], 1, NATIVE_MAX_3D, "a 3d side") for k in range(3))
         at = 7
     elif tok[3] == "view":
         im["shape"], im["div"], im["d"], im["clamp"] = "view", \
-            sky_side(tok[4], 1, SKY_MAX_VIEWDIV, "a view divisor"), 1, True
+            native_side(tok[4], 1, NATIVE_MAX_VIEWDIV, "a view divisor"), 1, True
         at = 5
     else:
         raise ValueError(f"`{tok[3]}` is not tex2d, tex3d or view")
-    if at >= len(tok) or tok[at] not in SKY_FORMATS:
-        raise ValueError(f"`{tok[at] if at < len(tok) else ''}` is not one of {', '.join(sorted(SKY_FORMATS))}")
+    if at >= len(tok) or tok[at] not in NATIVE_FORMATS:
+        raise ValueError(f"`{tok[at] if at < len(tok) else ''}` is not one of {', '.join(sorted(NATIVE_FORMATS))}")
     im["format"] = tok[at]
     for f in tok[at + 1:]:
-        if f not in SKY_FLAGS:
-            raise ValueError(f"`{f}` is not one of {', '.join(sorted(SKY_FLAGS))}")
+        if f not in NATIVE_FLAGS:
+            raise ValueError(f"`{f}` is not one of {', '.join(sorted(NATIVE_FLAGS))}")
         im[f] = True
     return im
 
 
-def sky_pass(tok):
+def native_pass(tok):
     if len(tok) != 5:
-        raise ValueError(f"cx_sky_pass needs once|frame, a resref and an image: `{' '.join(tok)}`")
+        raise ValueError(f"cx_pass needs once|frame, a resref and an image: `{' '.join(tok)}`")
     if tok[2] not in ("once", "frame"):
         raise ValueError(f"`{tok[2]}` is neither once nor frame")
     if not 0 < len(tok[3]) <= 16:
@@ -1177,14 +1182,14 @@ def sky_pass(tok):
     return {"once": tok[2] == "once", "ref": tok[3], "image": tok[4]}
 
 
-def sky_fog(tok, images):
-    """A `cx_sky_fog <image> <x> <y>` line: a texel of a declared tex2d image, inside it."""
+def native_fog(tok, images):
+    """A `cx_fog <image> <x> <y>` line: a texel of a declared tex2d image, inside it."""
     line = " ".join(tok)
-    if len(tok) != 5 or not SKY_NAME.match(tok[2]) or not tok[3].isdigit() or not tok[4].isdigit():
-        raise ValueError(f"cx_sky_fog takes an image name and a texel's <x> <y>: `{line}`")
+    if len(tok) != 5 or not NATIVE_NAME.match(tok[2]) or not tok[3].isdigit() or not tok[4].isdigit():
+        raise ValueError(f"cx_fog takes an image name and a texel's <x> <y>: `{line}`")
     im = next((i for i in images if i["name"] == tok[2]), None)
     if im is None:
-        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_sky_image declares")
+        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_image declares")
     if im["shape"] != "tex2d":
         raise ValueError(f"`{line}` names `{tok[2]}`, which is not a tex2d image")
     x, y = int(tok[3]), int(tok[4])
@@ -1193,72 +1198,72 @@ def sky_fog(tok, images):
     return {"image": tok[2], "x": x, "y": y}
 
 
-def sky_lens(tok, images):
-    """A `cx_sky_lens <image>` line: a declared 2d image (tex2d or view), which the resolve adds over the frame."""
+def native_overlay(tok, images):
+    """A `cx_overlay <image>` line: a declared 2d image (tex2d or view), which the resolve adds over the frame."""
     line = " ".join(tok)
-    if len(tok) != 3 or not SKY_NAME.match(tok[2]):
-        raise ValueError(f"cx_sky_lens takes one image name: `{line}`")
+    if len(tok) != 3 or not NATIVE_NAME.match(tok[2]):
+        raise ValueError(f"cx_overlay takes one image name: `{line}`")
     im = next((i for i in images if i["name"] == tok[2]), None)
     if im is None:
-        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_sky_image declares")
+        raise ValueError(f"`{line}` names `{tok[2]}`, which no cx_image declares")
     if im["shape"] == "tex3d":
         raise ValueError(f"`{line}` names `{tok[2]}`, a volume: the frame takes a 2d image")
     return tok[2]
 
 
-def sky_decls(text):
-    """The images, passes, fog texel and lens image (None if undeclared) a twin's OWN top-level text declares --
-    its includes are libraries, not a place to declare the sky's resources. Raises ValueError on anything the
+def native_decls(text):
+    """The images, passes, fog texel and overlay image (None if undeclared) a native stage's OWN top-level text
+    declares -- its includes are libraries, not a place to declare resources. Raises ValueError on anything the
     extender would refuse."""
-    images, passes, fogs, lenses = [], [], [], []
+    images, passes, fogs, overlays = [], [], [], []
     for raw in text.split("\n"):
         line = raw.strip()
         if not line.startswith("#pragma"):
             continue
         tok = line.split()
-        if len(tok) < 2 or not tok[1].startswith("cx_sky"):
+        if len(tok) < 2 or not tok[1].startswith("cx_"):
             continue
         for t in tok[2:]:
-            if not SKY_TOKEN.match(t):
+            if not NATIVE_TOKEN.match(t):
                 raise ValueError(f"`{t}` on `{line}` is neither an identifier nor a decimal integer, and a "
                                  "GLSL preprocessor would refuse the line")
-        if tok[1] == "cx_sky_image":
-            images.append(sky_image(tok, images))
-        elif tok[1] == "cx_sky_pass":
-            passes.append(sky_pass(tok))
-        elif tok[1] == "cx_sky_fog":
+        if tok[1] == "cx_image":
+            images.append(native_image(tok, images))
+        elif tok[1] == "cx_pass":
+            passes.append(native_pass(tok))
+        elif tok[1] == "cx_fog":
             if fogs:
-                raise ValueError(f"a second cx_sky_fog, `{line}`: a sky has one horizon")
+                raise ValueError(f"a second cx_fog, `{line}`: a stage names one fog colour")
             fogs.append(tok)
-        elif tok[1] == "cx_sky_lens":
-            if lenses:
-                raise ValueError(f"a second cx_sky_lens, `{line}`: a frame has one lens")
-            lenses.append(tok)
+        elif tok[1] == "cx_overlay":
+            if overlays:
+                raise ValueError(f"a second cx_overlay, `{line}`: a frame has one overlay")
+            overlays.append(tok)
         else:
             raise ValueError(f"unknown declaration `{tok[1]}` on `{line}`")
-    if len(images) > SKY_MAX_IMAGES:
-        raise ValueError(f"{len(images)} images declared, past the budget of {SKY_MAX_IMAGES}")
-    if len(passes) > SKY_MAX_PASSES:
-        raise ValueError(f"{len(passes)} passes declared, past the budget of {SKY_MAX_PASSES}")
+    if len(images) > NATIVE_MAX_IMAGES:
+        raise ValueError(f"{len(images)} images declared, past the budget of {NATIVE_MAX_IMAGES}")
+    if len(passes) > NATIVE_MAX_PASSES:
+        raise ValueError(f"{len(passes)} passes declared, past the budget of {NATIVE_MAX_PASSES}")
     names = {i["name"] for i in images}
     for p in passes:
         if p["image"] not in names:
-            raise ValueError(f"pass {p['ref']} is dispatched over `{p['image']}`, which no cx_sky_image declares")
-    fog = sky_fog(fogs[0], images) if fogs else None
-    lens = sky_lens(lenses[0], images) if lenses else None
+            raise ValueError(f"pass {p['ref']} is dispatched over `{p['image']}`, which no cx_image declares")
+    fog = native_fog(fogs[0], images) if fogs else None
+    overlay = native_overlay(overlays[0], images) if overlays else None
     # The memory budget, as far as the declarations themselves say it: every FIXED-size image exactly, mips
     # and history included. A view-sized one is measured at runtime and only the extender can take it.
-    fixed = sum(sky_image_bytes(i) for i in images if i["shape"] != "view")
-    if fixed > SKY_MAX_BYTES:
+    fixed = sum(native_image_bytes(i) for i in images if i["shape"] != "view")
+    if fixed > NATIVE_MAX_BYTES:
         raise ValueError(f"its fixed-size images come to {fixed / (1 << 20):.1f} MiB, past the budget of "
-                         f"{SKY_MAX_BYTES >> 20} MiB")
-    return images, passes, fog, lens
+                         f"{NATIVE_MAX_BYTES >> 20} MiB")
+    return images, passes, fog, overlay
 
 
-def sky_image_bytes(im):
+def native_image_bytes(im):
     """One image's storage at its declared extent: the mip chain summed, doubled for a history pair."""
     w, h, d = im["w"], im["h"], im["d"]
-    bpp = SKY_FORMAT_ENUM[im["format"]][1]
+    bpp = NATIVE_FORMAT_ENUM[im["format"]][1]
     levels = 1
     if im["mips"]:
         side = max(w, h, d if im["shape"] == "tex3d" else 1)
@@ -1270,45 +1275,46 @@ def sky_image_bytes(im):
     return total * (2 if im["history"] else 1)
 
 
-def sky_twins(g):
-    """(tree, chain, twin resref, stage resref) for the fixture and for every twin a content tree ships. A
-    `cx_*.shd` that overrides one of Alloy's OWN stages or libraries is not a twin and is skipped."""
+def native_stages(g):
+    """(tree, chain, native resref, stage resref) for the fixture and for every native stage a content tree ships. A
+    `cx_*.shd` that overrides one of Alloy's OWN stages or libraries is not a native stage, and neither is one whose
+    plain stage the tree does not ship and which declares nothing (a library, say)."""
     stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
     out = []
-    for d in [SKY_FIXTURE, CONTENT_SHD] + CONTENT_STAGES:
+    for d in [NATIVE_FIXTURE, CONTENT_SHD] + CONTENT_STAGES:
         if not os.path.isdir(d):
             continue
         chain = content_stage.Chain([d], stock)
         for resref in sorted(chain.files):
-            if not resref.startswith("cx_") or resref in g:
+            if not resref.startswith("cx_") or resref in g or len(resref) > 16:
                 continue
             text = chain(resref) or ""
             stage = resref[3:]
-            if "cx_sky_image" not in text and "cx_sky_pass" not in text and stage not in chain.files:
+            if "#pragma cx_" not in text and stage not in chain.files:
                 continue
             out.append((d, chain, resref, stage))
     return out
 
 
-def sky_bindings(text):
+def native_bindings(text):
     """{uniform name: (GLSL type, format layout qualifier or None)} for every image and 2D/3D sampler a
     program declares -- what the driver will bind, as against what the #pragma lines declared."""
     out = {}
-    for m in SKY_IMG.finditer(text):
+    for m in NATIVE_IMG.finditer(text):
         quals = [q.strip() for q in (m.group(1) or "").split(",")]
-        out[m.group(3)] = (m.group(2), next((q for q in quals if q in SKY_FORMATS), None))
-    for m in SKY_SMP.finditer(text):
+        out[m.group(3)] = (m.group(2), next((q for q in quals if q in NATIVE_FORMATS), None))
+    for m in NATIVE_SMP.finditer(text):
         out.setdefault(m.group(2), (m.group(1), None))
     return out
 
 
-def sky_check_bindings(images, text):
-    """Reconcile one program's own declarations with the twin's: the GLSL type against the image's shape, and
+def native_check_bindings(images, text):
+    """Reconcile one program's own declarations with the stage's: the GLSL type against the image's shape, and
     an image uniform's format layout qualifier against the declared format. A format mismatch is undefined
     loads and stores -- it compiles, links and draws the wrong pixels -- so nothing else would catch it."""
     byname = {i["name"]: i for i in images}
     errs, written = [], set()
-    for name, (kind, fmt) in sorted(sky_bindings(text).items()):
+    for name, (kind, fmt) in sorted(native_bindings(text).items()):
         prev = name.endswith("_prev")
         im = byname.get(name[:-5] if prev else name)
         if im is None:
@@ -1316,7 +1322,7 @@ def sky_check_bindings(images, text):
         if prev and not im["history"]:
             errs.append(f"`{name}` is read but `{im['name']}` is not declared `history`")
         if (kind in ("image3D", "sampler3D")) != (im["shape"] == "tex3d"):
-            errs.append(f"`{name}` is declared {kind} but its cx_sky_image is {im['shape']}")
+            errs.append(f"`{name}` is declared {kind} but its cx_image is {im['shape']}")
         if not kind.startswith("image"):
             continue
         if not prev:
@@ -1324,119 +1330,150 @@ def sky_check_bindings(images, text):
         if fmt is None:
             errs.append(f"`{name}` is declared {kind} with no format layout qualifier")
         elif fmt != im["format"]:
-            errs.append(f"`{name}` is declared layout({fmt}) but its cx_sky_image says {im['format']}")
+            errs.append(f"`{name}` is declared layout({fmt}) but its cx_image says {im['format']}")
     return errs, written
 
 
-def sky_programs(raw, g):
-    """Every sky twin hosted in cx_sky_fs under CX_SKY_LINEAR, its fallback stage hosted plainly beside it,
-    and each pass it declares hosted in cx_skypass_cs -- the programs the extender builds, by the same
-    substitution and the same splice, and refused on the same grounds."""
+def material_half(text):
+    """Is this a MATERIAL stage -- one that runs the stock material skeleton? The other host a native fragment stage
+    has is the sky, which runs whole."""
+    body = COMMENTS_RE.sub(" ", text)
+    return bool(re.search(r"\b(?:ApplyStandardShader|SetupStandardShaderInputs|TransformMainCoordinates)\s*\(", body))
+
+
+def native_programs(raw, g):
+    """Every native stage, built the way its host builds it -- a sky stage in cx_sky_fs under CX_NATIVE with its
+    fallback stage beside it, a material half as its content pair with the other half by name or stock -- and each
+    pass it declares hosted in cx_pass_cs, by the same substitution and the same splice, refused on the same grounds."""
     out, bad = {}, 0
-    found = sky_twins(g)
-    for d, chain, twin, stage in found:
+    found = native_stages(g)
+    for d, chain, native, stage in found:
         where = os.path.basename(os.path.normpath(d))
+        text = chain(native) or ""
         try:
-            images, passes, _, lens = sky_decls(chain(twin) or "")
+            images, passes, _, overlay = native_decls(text)
         except ValueError as e:
-            print(f"sky twin: {twin}.shd ({where}): FAILED -- {e}")
+            print(f"native stage: {native}.shd ({where}): FAILED -- {e}")
             bad = 1
             continue
-        # A pass the chain cannot answer for is what the extender refuses the twin over; the wrapper's STUB
+        # A pass the chain cannot answer for is what the extender refuses the stage over; the wrapper's STUB
         # would otherwise compile here and report a pass that dispatches nothing as checked.
         gone = [p["ref"] for p in passes if chain(p["ref"]) is None]
         if gone:
-            print(f"sky twin: {twin}.shd ({where}): FAILED -- pass stage(s) NOT FOUND in the chain: "
+            print(f"native stage: {native}.shd ({where}): FAILED -- pass stage(s) NOT FOUND in the chain: "
                   + ", ".join(sorted(gone)))
             bad = 1
             continue
-        print(f"sky twin: {twin}.shd ({where}): {len(images)} image(s), {len(passes)} pass(es)")
+        material = material_half(text)
+        print(f"native stage: {native}.shd ({where}): {'material' if material else 'sky'}, {len(images)} image(s), "
+              f"{len(passes)} pass(es)")
         texts, written = {}, set()
-        fs = define(raw["cx_sky_fs"].replace("$SKYFS$", twin), "CX_SKY_LINEAR 1")
-        texts[f"sky twin {twin} ({where})"] = (g["cx_own_vs"], splice(fs, {}, raw, read=chain))
-        if stage in chain.files:
-            texts[f"sky stage {stage} ({where}, the twin's fallback)"] = (
-                g["cx_own_vs"], splice(raw["cx_sky_fs"].replace("$SKYFS$", stage), {}, raw, read=chain))
+        if material:
+            vertex = is_vertex(text)
+            files = set(chain.files)
+            other = partner(stage, files, vertex)
+            if other is not None and "cx_" + other in files:
+                other = "cx_" + other
+            vs, fs = (native, other) if vertex else (other, native)
+            vt, ft, vr, fr = content_pair(g, vs, fs, chain)
+            refused = (vr.refused if vr is not None else None) or (fr.refused if fr is not None else None)
+            if refused:
+                print(f"native stage: {native}.shd ({where}): FAILED -- the content pair {vs or 'stock'}/{fs or 'stock'} "
+                      f"is refused: {refused}")
+                bad = 1
+                continue
+            if vertex:
+                vt = define(vt, "CX_NATIVE 1")
+            else:
+                ft = define(ft, "CX_NATIVE 1")
+            texts.update(pair_programs(f"native content pair {vs or 'stock'}/{fs or 'stock'} ({where})", vt, ft, fr, vr))
+        else:
+            fs = define(raw["cx_sky_fs"].replace("$SKYFS$", native), "CX_NATIVE 1")
+            texts[f"native sky {native} ({where})"] = (g["cx_own_vs"], splice(fs, {}, raw, read=chain))
+            if stage in chain.files:
+                texts[f"sky stage {stage} ({where}, the native stage's fallback)"] = (
+                    g["cx_own_vs"], splice(raw["cx_sky_fs"].replace("$SKYFS$", stage), {}, raw, read=chain))
         for p in passes:
-            cs = splice(raw["cx_skypass_cs"].replace("$SKYCS$", p["ref"]), {}, raw, read=chain)
-            texts[f"sky pass {p['ref']} ({where})"] = (cs,)
-            errs, wrote = sky_check_bindings(images, chain(p["ref"]) or "")
+            cs = splice(raw["cx_pass_cs"].replace("$PASSCS$", p["ref"]), {}, raw, read=chain)
+            texts[f"pass {p['ref']} ({native}, {where})"] = (cs,)
+            errs, wrote = native_check_bindings(images, chain(p["ref"]) or "")
             if not p["once"]:
                 written |= wrote
             for e in errs:
-                print(f"sky pass: {p['ref']}.shd ({where}): FAILED -- {e}")
+                print(f"pass: {p['ref']}.shd ({where}): FAILED -- {e}")
                 bad = 1
-        for e in sky_check_bindings(images, chain(twin) or "")[0]:
-            print(f"sky twin: {twin}.shd ({where}): FAILED -- {e}")
+        for e in native_check_bindings(images, text)[0]:
+            print(f"native stage: {native}.shd ({where}): FAILED -- {e}")
             bad = 1
         # A `history` image no FRAME pass rewrites has no history to keep: its two halves would alternate
         # between the baked texture and a zeroed one. The extender refuses the flag; so does this.
         for im in images:
             if im["history"] and im["name"] not in written:
-                print(f"sky twin: {twin}.shd ({where}): FAILED -- `{im['name']}` is declared `history` but no "
+                print(f"native stage: {native}.shd ({where}): FAILED -- `{im['name']}` is declared `history` but no "
                       "frame pass writes it as an image")
                 bad = 1
-        if lens is not None and lens not in written:
-            print(f"sky twin: {twin}.shd ({where}): FAILED -- the lens image `{lens}` is not written as an image "
-                  "by any frame pass")
+        if overlay is not None and overlay not in written:
+            print(f"native stage: {native}.shd ({where}): FAILED -- the overlay image `{overlay}` is not written as an "
+                  "image by any frame pass")
             bad = 1
         out.update(texts)
-    if not any(d == SKY_FIXTURE for d, _, _, _ in found):
-        print(f"sky twin: the fixture under {os.path.relpath(SKY_FIXTURE, ROOT)} was not found -- "
-              "the grammar and the two wrappers are UNCHECKED")
+    hosts = {(d, material_half(chain(n) or "")) for d, chain, n, _ in found if d == NATIVE_FIXTURE}
+    if (NATIVE_FIXTURE, True) not in hosts or (NATIVE_FIXTURE, False) not in hosts:
+        print(f"native stage: the fixture under {os.path.relpath(NATIVE_FIXTURE, ROOT)} was not found whole (a sky and a "
+              "material stage) -- the grammar and the wrappers are UNCHECKED")
         bad = 1
-    elif len(found) == 1:
-        print("sky twin: no content tree ships one yet -- the fixture is what is checked")
+    elif all(d == NATIVE_FIXTURE for d, _, _, _ in found):
+        print("native stage: no content tree ships one -- the fixture is what is checked")
     return out, bad
 
 
-# The C#<->Python pin. CX.Alloy.SkyTwin.SelfCheck asserts its grammar on literal declaration lines and the GL
+# The C#<->Python pin. CX.Alloy.StageResources.SelfCheck asserts its grammar on literal declaration lines and the GL
 # enum each format maps to; those literals are read back out of that file here and run through THIS parser,
 # which has to reach the same verdicts. Two parsers for one grammar stay one grammar only if something says so.
-SKY_SELFCHECK_CS = os.path.join(MANAGED, "Alloy/Pass/SkyTwin.SelfCheck.cs")
-SKY_CS_GOOD = re.compile(r'const string good = """\n(.*?)\n[ \t]*""";', re.S)
-SKY_CS_BAD = re.compile(r'Bad\(check,\s*"((?:[^"\\]|\\.)*)"')
-SKY_CS_FMT = re.compile(r'Fmt\("(\w+)"\)\s*==\s*(0x[0-9A-Fa-f]+)')
+NATIVE_SELFCHECK_CS = os.path.join(MANAGED, "Alloy/Pass/StageResources.SelfCheck.cs")
+NATIVE_CS_GOOD = re.compile(r'const string good = """\n(.*?)\n[ \t]*""";', re.S)
+NATIVE_CS_BAD = re.compile(r'Bad\(check,\s*"((?:[^"\\]|\\.)*)"')
+NATIVE_CS_FMT = re.compile(r'Fmt\("(\w+)"\)\s*==\s*(0x[0-9A-Fa-f]+)')
 
 
-def check_sky_grammar():
-    """The accept/refuse lines and the format enums SkyTwin.SelfCheck.cs asserts, run through this parser."""
-    cs = open(SKY_SELFCHECK_CS).read()
+def check_native_grammar():
+    """The accept/refuse lines and the format enums StageResources.SelfCheck.cs asserts, run through this parser."""
+    cs = open(NATIVE_SELFCHECK_CS).read()
     bad = 0
-    good = SKY_CS_GOOD.search(cs)
+    good = NATIVE_CS_GOOD.search(cs)
     if good is None:
-        print(f"sky grammar: FAILED -- no `const string good` block in {os.path.basename(SKY_SELFCHECK_CS)}")
+        print(f"native grammar: FAILED -- no `const string good` block in {os.path.basename(NATIVE_SELFCHECK_CS)}")
         return 1
     try:
-        images, passes, fog, lens = sky_decls(good.group(1))
+        images, passes, fog, overlay = native_decls(good.group(1))
     except ValueError as e:
-        print(f"sky grammar: FAILED -- C# accepts its own good block, this parser does not: {e}")
+        print(f"native grammar: FAILED -- C# accepts its own good block, this parser does not: {e}")
         return 1
     # ...and that block is the FIXTURE's own declarations, so the hand-written literals are tied to the file
     # the gate compiles rather than to nothing.
-    fix = os.path.join(SKY_FIXTURE, "cx_cxdemo_sky.shd")
+    fix = os.path.join(NATIVE_FIXTURE, "cx_cxdemo_sky.shd")
     if os.path.exists(fix):
-        if sky_decls(open(fix, encoding="latin1").read()) != (images, passes, fog, lens):
-            print("sky grammar: FAILED -- SkyTwin.SelfCheck.cs's good block is not the fixture's declarations")
+        if native_decls(open(fix, encoding="latin1").read()) != (images, passes, fog, overlay):
+            print("native grammar: FAILED -- StageResources.SelfCheck.cs's good block is not the fixture's declarations")
             bad = 1
-    refused = SKY_CS_BAD.findall(cs)
+    refused = NATIVE_CS_BAD.findall(cs)
     if not refused:
-        print(f"sky grammar: FAILED -- no Bad(check, ...) lines in {os.path.basename(SKY_SELFCHECK_CS)}")
+        print(f"native grammar: FAILED -- no Bad(check, ...) lines in {os.path.basename(NATIVE_SELFCHECK_CS)}")
         return 1
     for esc in refused:
         line = esc.replace("\\n", "\n")
         try:
-            sky_decls(line)
+            native_decls(line)
         except ValueError:
             continue
-        print(f"sky grammar: FAILED -- C# refuses `{line}` and this parser accepts it")
+        print(f"native grammar: FAILED -- C# refuses `{line}` and this parser accepts it")
         bad = 1
-    enums = {n: int(v, 16) for n, v in SKY_CS_FMT.findall(cs)}
-    mine = {n: e for n, (e, _) in SKY_FORMAT_ENUM.items()}
+    enums = {n: int(v, 16) for n, v in NATIVE_CS_FMT.findall(cs)}
+    mine = {n: e for n, (e, _) in NATIVE_FORMAT_ENUM.items()}
     if enums != mine:
-        print(f"sky grammar: FAILED -- the format enums differ: C# says {enums}, this says {mine}")
+        print(f"native grammar: FAILED -- the format enums differ: C# says {enums}, this says {mine}")
         bad = 1
-    print(f"sky grammar: {'ok' if not bad else 'FAILED'} ({len(images)} image(s) and {len(passes)} pass(es) "
+    print(f"native grammar: {'ok' if not bad else 'FAILED'} ({len(images)} image(s) and {len(passes)} pass(es) "
           f"accepted, {len(refused)} line(s) refused, {len(enums)} format enum(s) pinned)")
     return bad
 
@@ -1451,8 +1488,8 @@ def main():
     content, bad_content = content_programs(g)
     progs.update(content)
     progs.update(post_programs(raw, g))
-    sky, bad_sky = sky_programs(raw, g)
-    progs.update(sky)
+    native, bad_native = native_programs(raw, g)
+    progs.update(native)
 
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -1471,8 +1508,8 @@ def main():
                 print(r.stdout, r.stderr)
     print(f"{len(progs)} programs from {len(g)} embedded .glsl")
     bad |= bad_content
-    bad |= bad_sky
-    bad |= check_sky_grammar()
+    bad |= bad_native
+    bad |= check_native_grammar()
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)
