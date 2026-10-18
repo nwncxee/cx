@@ -132,9 +132,7 @@ public static unsafe partial class DbAnim
         if (!moved && !fresh) { _dangly.Settled++; return true; }
         DanglyWriteBones(at, cell, bones);
         if (fresh) AlloyRenderer.DbBoneSeedPrev(at, cell);
-        // The solver's own settle test is the de-noised verdict, so a frame it reports IS a mover; the still
-        // knob belongs to the stock path, whose solve reports a displacement instead.
-        AlloyRenderer.NoteDanglyMoved(part, float.PositiveInfinity, Dangly.Still.V);
+        AlloyRenderer.NoteDanglyMoved(part, fresh ? float.PositiveInfinity : js.Moved, Dangly.Still.V);
         SceneDb.TouchPart(part, Dirty.Anim);
         return true;
     }

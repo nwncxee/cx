@@ -21,6 +21,8 @@ internal static class DanglyJointsCheck
         Jump(check);
         FrameRate(check);
         BoneMapping(check);
+        Creep(check);
+        Carried(check);
     }
 
     private static DanglyInputs In(Matrix4x4 world, Vector3 wind, float dt,
@@ -220,5 +222,40 @@ internal static class DanglyJointsCheck
         check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, sb[1]),
                                           swant - sway.JointRest[1], 1e-4f),
                      "and it is a pure translation: every vertex it reaches moves by the same offset");
+    }
+
+    /// <summary>Oracle: the settled threshold, 1e-4. A wind that grows by a hair each frame moves the card's lean
+    /// by far less than that per frame, yet the published bones must never trail the solved joint by more.</summary>
+    private static void Creep(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
+        if (r == null) { check.Expect(false, "the card rigs for the creep check"); return; }
+        var s = new DanglyJointsState(r.JointRest.Length);
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        for (int f = 0; f < 600; f++) DanglyJoints.Step(r, s, In(Matrix4x4.Identity, Vector3.Zero, 1f / 60f), bones);
+        int published = 0;
+        float worst = 0f;
+        for (int f = 0; f < 1200; f++)
+        {
+            var wind = new Vector3(0f, 2e-6f * f, 0f);
+            if (DanglyJoints.Step(r, s, In(Matrix4x4.Identity, wind, 1f / 60f), bones)) published++;
+            worst = MathF.Max(worst, (s.X[1] - s.Published[1]).Length());
+        }
+        check.Expect(published > 0, "a lean that creeps below the threshold every frame is still published");
+        check.Expect(worst <= 1.0001e-4f, $"the published bones never trail the joint by more than 1e-4 (worst {worst})");
+    }
+
+    /// <summary>Oracle: the literal false. A part carried at a steady 1.5 m/s has no acceleration to answer once
+    /// its start-up swing has rung out, so its node-space shape is still and there is nothing to publish.</summary>
+    private static void Carried(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Blob());
+        if (r == null) { check.Expect(false, "the blob rigs for the carried check"); return; }
+        var s = new DanglyJointsState(r.JointRest.Length);
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        bool last = true;
+        for (int f = 0; f < 900; f++)
+            last = DanglyJoints.Step(r, s, In(Matrix4x4.CreateTranslation(f * 0.025f, 0f, 0f), Vector3.Zero, 1f / 60f), bones);
+        check.Expect(!last, "a part carried at a steady speed settles: its shape in its own frame stopped changing");
     }
 }
