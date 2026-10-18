@@ -112,13 +112,16 @@ part would chase a staircase and never settle). Per moving joint `x` (velocity `
 
     a = ω² (T - x)                       Sway and Jiggle only: the node's own spring
       - 2ζω (v - vT)                     the node's own damping
+      - 2 (v - v_parent)                 Swing only: the chain's own friction, per second
       + g * tilt * (down_world - R_part down_model)      gravity relative to the authored pose
       + g * R_part u                     Swing only: the chain hangs along its authored line
       + K * windgain * |N'_j (w - v)| N'_j (w - v)        moving air on the faces
 
 `N'_j` is the joint's drag tensor turned with its segment (the shortest arc from the rest segment to the
 current one), so a banner that lifts edge-on to the wind catches less of it and settles where
-`K U² cos² θ = g sin θ`. After each substep: Swing's constraints (every segment turned back inside its cone
+`K U² cos² θ = g sin θ`. The chain's friction is what the top-down sweep needs: moving only the child, it
+pumps energy into the chain's sideways modes, and an edge-on strip with no air across it flails; damping
+each joint against its parent drains those modes and hardly touches the whole chain's swing. After each substep: Swing's constraints (every segment turned back inside its cone
 and set to its rest length, one top-down sweep; neighbouring columns to their rest spacing at half
 strength, two iterations), a bending Sway's cone, or the cage; then each joint's velocity is taken from
 where they left it, so a joint on a limit stops instead of storing the motion it was refused. A part that

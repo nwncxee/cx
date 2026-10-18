@@ -113,6 +113,21 @@ internal static class DanglySelfCheck
         return Node(pos, cons, tris, 0.1f, 0.1f, 0.1f);
     }
 
+    /// <summary>A hanging vine strand as the city tilesets ship it (<c>tcm02_c01_04</c>, <c>hanger_03</c>): one
+    /// two-sided quad 0.41 wide and 2.07 long, its top edge pinned and its bottom corners at <c>c = 190</c>,
+    /// turned off the axes so its face normal is (0.828, 0.560, 0). Authored 0.3 / 0.1 / 0.2.</summary>
+    internal static ModelDef Strip() => Node(
+        new[]
+        {
+            new Vector3(0.11f, -0.17f, 1.03f), new Vector3(0.12f, -0.17f, -1.04f),
+            new Vector3(-0.11f, 0.17f, -1.04f), new Vector3(-0.12f, 0.17f, 1.03f),
+            new Vector3(-0.11f, 0.17f, -1.04f), new Vector3(0.12f, -0.17f, -1.04f),
+            new Vector3(0.11f, -0.17f, 1.03f), new Vector3(-0.12f, 0.17f, 1.03f),
+        },
+        new[] { 0f, 190f, 190f, 0f, 190f, 190f, 0f, 0f },
+        new[] { 0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4 },
+        0.3f, 0.1f, 0.2f);
+
     /// <summary>A blob: four anchors round the equator and two vertices at <c>c = 150</c>, one above and one
     /// below, so mobility does not correlate with height. Authored stiff and slack: 0.3 / 3 / 8.</summary>
     internal static ModelDef Blob() => Node(

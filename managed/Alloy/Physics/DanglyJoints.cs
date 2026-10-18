@@ -66,6 +66,11 @@ public static class DanglyJoints
     private const int Iterations = 2;
     private const float NeighbourStrength = 0.5f;
 
+    /// <summary>A Swing chain's own friction (1/s), on each joint's velocity relative to its parent's. The
+    /// top-down length sweep moves only the child, which pumps energy into the chain's sideways modes until an
+    /// edge-on strip flails; this drains them while hardly touching the whole chain's swing.</summary>
+    private const float ChainFriction = 2f;
+
     private const float Tiny = 1e-6f;
 
     private static readonly Vector3 DownWorld = -Vector3.UnitZ;
@@ -184,6 +189,7 @@ public static class DanglyJoints
     {
         bool pendulum = rig.Class == DanglyClass.Swing;
         float om2 = pendulum ? 0f : rig.Omega * rig.Omega, damp = 2f * rig.Zeta * rig.Omega;
+        float friction = pendulum ? ChainFriction : 0f;
         Vector3 fall = Gravity * inp.Tilt * (DownWorld - Vector3.TransformNormal(rig.RestDown, rot));
         if (pendulum) fall += Gravity * Vector3.TransformNormal(rig.Hang, rot);
         float k = rig.Air * inp.WindGain;
@@ -200,7 +206,8 @@ public static class DanglyJoints
             {
                 int up = rig.JointParent[j];
                 if (up < 0) { s.X[j] = now[j]; s.V[j] = drift[j]; continue; }
-                Vector3 a = om2 * (now[j] - s.X[j]) - damp * (s.V[j] - drift[j]) + fall;
+                Vector3 a = om2 * (now[j] - s.X[j]) - damp * (s.V[j] - drift[j]) - friction * (s.V[j] - s.V[up])
+                          + fall;
                 if (k > 0f)
                 {
                     Quaternion turn = rig.Shear ? Quaternion.Identity

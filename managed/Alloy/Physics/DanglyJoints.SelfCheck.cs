@@ -14,6 +14,7 @@ internal static class DanglyJointsCheck
         SteadyWind(check);
         Bend(check);
         Pendulum(check);
+        Strip(check);
         Air(check);
         Ringing(check);
         Tilt(check);
@@ -103,6 +104,33 @@ internal static class DanglyJointsCheck
         for (int f = 0; f < 3000; f++) DanglyJoints.Step(r, s, inp, bones);
         check.Expect(DanglySelfCheck.Near(s.X[tip], new Vector3(0f, 1.236068f, -1.572302f), 0.02f),
                      $"a wind of K U^2 = g blows the rope out to sin 0.618034 ({s.X[tip]})");
+    }
+
+    /// <summary>Oracle: work and energy. Steady air pushes the vine strip only along its face normal, so nothing
+    /// drives it along its own width (0.23, -0.34, 0), and a passive part in steady air comes to rest: 15 s into
+    /// a 3.5 m/s wind 4 degrees off edge-on, its tip is within 5 cm of that line and slower than 5 cm/s.</summary>
+    private static void Strip(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Strip());
+        if (r == null) { check.Expect(false, "the vine strip rigs for the flutter check"); return; }
+        check.Expect(r.Class == DanglyClass.Swing && r.Columns == 1, "the vine strip is a one-column Swing");
+        int tip = r.JointRest.Length - 1;
+        var s = new DanglyJointsState(r.JointRest.Length);
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        Vector3 width = Vector3.Normalize(new Vector3(0.23f, -0.34f, 0f));
+        Matrix4x4 world = Matrix4x4.CreateTranslation(10f, 10f, 5f);
+        DanglyInputs inp = In(world, new Vector3(-1.75f, 3.0310889f, 0f), 1f / 60f);
+        float side = 0f, speed = 0f;
+        for (int f = 0; f < 1200; f++)
+        {
+            DanglyJoints.Step(r, s, inp, bones);
+            if (f < 900) continue;
+            Vector3 off = s.X[tip] - Vector3.Transform(r.JointRest[tip], world);
+            side = MathF.Max(side, MathF.Abs(Vector3.Dot(off, width)));
+            speed = MathF.Max(speed, s.V[tip].Length());
+        }
+        check.Expect(side < 0.05f, $"steady air does not swing a strip along its own width ({side})");
+        check.Expect(speed < 0.05f, $"a strip in steady air comes to rest ({speed} m/s)");
     }
 
     /// <summary>Oracle: the field's own definition. With the field off the air IS the mean; on, its gusts and
