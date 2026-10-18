@@ -25,6 +25,7 @@ internal static unsafe partial class StageResources
                 : Gl.DispatchCompute == null ? "glDispatchCompute"
                 : Gl.MemoryBarrier == null ? "glMemoryBarrier"
                 : Gl.GetActiveUniform == null ? "glGetActiveUniform"
+                : Gl.GetUniformiv == null ? "glGetUniformiv"
                 : Gl.GetProgramiv == null ? "glGetProgramiv"
                 : Gl.GetIntegerv == null ? "glGetIntegerv"
                 : Gl.DeleteTextures == null ? "glDeleteTextures" : "";
@@ -58,9 +59,9 @@ internal static unsafe partial class StageResources
             p.Gx = Math.Max(gs[0], 1); p.Gy = Math.Max(gs[1], 1); p.Gz = Math.Max(gs[2], 1);
             p.Env = StageEnvLoc.Locate(prog);
             p.Frame = FrameLoc.Locate(prog);
-            if (!Resolve(prog, id, -1, PassImgUnits, out p.Binds, out var samplers, out string why))
+            if (!Resolve(prog, id, -1, PassImgUnits, out p.Binds, out var samplers, out string why)
+                || !Point(prog, samplers, p.Binds, out why))
             { Fail(id, $"pass {p.Ref}: {why}", log); return false; }
-            PointSamplers(prog, samplers);
             log?.Info($"{what}: built, {p.Gx}x{p.Gy}x{p.Gz} work group, {p.Binds.Length} image unit(s), "
                     + $"{samplers.Count} sampler(s)");
         }
@@ -116,35 +117,51 @@ internal static unsafe partial class StageResources
     }
 
     /// <summary>A program a host built and is about to draw with, from native stages <paramref name="a"/> and
-    /// <paramref name="b"/> (-1: none) or from none: its samplers pointed at the images' own units for good, and what
+    /// <paramref name="b"/> (-1: none) or from none: its samplers and images pointed at their units for good, and what
     /// its every bind has to do. -1 = nothing to do at a bind; -2 = refused, and the native stages failed with it.</summary>
     internal static int Attach(uint prog, int a, int b, ExtenderLog? log)
     {
         if (prog == 0) return -1;
         var frame = FrameLoc.Locate(prog);
-        if (!Resolve(prog, a, b, DrawImgUnits, out ImageBind[] binds, out var samplers, out string why))
+        if (!Resolve(prog, a, b, DrawImgUnits, out ImageBind[] binds, out var samplers, out string why)
+            || !Point(prog, samplers, binds, out why))
         {
             Fail(a, why, log);
             Fail(b, why, log);
             return -2;
         }
-        PointSamplers(prog, samplers);
         if (binds.Length == 0 && !frame.Any) return -1;
         var g = _gl;
         g.Recs.Add(new Rec { Prog = prog, A = a, B = b, Binds = binds, Frame = frame });
         return g.Recs.Count - 1;
     }
 
-    /// <summary>A sampler is program state: set once, it reads its image's unit from every pass that draws the
-    /// program. Cold -- at a program's build -- and it hands back the program that was current.</summary>
-    private static void PointSamplers(uint prog, List<(int Loc, uint Unit)> samplers)
+    /// <summary>Samplers and images are program state: set once, a sampler reads its image's texture unit and an image
+    /// its image unit from every pass that draws the program. Each is read back, because one left at its default of 0
+    /// reads whatever unit 0 holds with no error at all. Cold -- at a program's build; hands back the current program.</summary>
+    private static bool Point(uint prog, List<(int Loc, uint Unit)> samplers, ImageBind[] images, out string why)
     {
-        if (samplers.Count == 0) return;
+        why = "";
+        if (samplers.Count == 0 && images.Length == 0) return true;
         int prev = 0;
         Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prev);
         Gl.UseProgram(prog);
         foreach ((int loc, uint unit) in samplers) Gl.Uniform1i(loc, (int)unit);
+        foreach (ImageBind b in images) Gl.Uniform1i(b.Loc, (int)b.Unit);
         Gl.UseProgram((uint)prev);
+        foreach ((int loc, uint unit) in samplers)
+            if (!Pointed(prog, loc, unit, out why)) return false;
+        foreach (ImageBind b in images)
+            if (!Pointed(prog, b.Loc, b.Unit, out why)) return false;
+        return true;
+    }
+
+    private static bool Pointed(uint prog, int loc, uint unit, out string why)
+    {
+        int got = -1;
+        Gl.GetUniformiv(prog, loc, &got);
+        why = got == (int)unit ? "" : $"the uniform at location {loc} reads unit {got} after it was pointed at {unit}";
+        return why.Length == 0;
     }
 
     /// <summary>Resolve stages <paramref name="a"/> and <paramref name="b"/>'s images against one program's ACTIVE

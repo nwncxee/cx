@@ -357,14 +357,16 @@ images where it declares a uniform of that name. The uniform's **type** decides 
   it once, when its program is built. So an image reads the same from every pass that draws the program: the
   colour pass, the depth prepass, a shadow caster, a probe face, a reflection. `LINEAR` magnification, `LINEAR`
   or `LINEAR_MIPMAP_LINEAR` minification, wrap per the flags.
-- `image2D` / `image3D` → `glBindImageTexture` with the declared format, `READ_WRITE`, layered for a `tex3d`,
-  each time the host binds the program: units 0..5 in a drawing program (the lit stage's decal images hold 6 and
-  7), 0..7 in a pass. The GLSL `layout(<format>)` qualifier has to be the format the `#pragma` line declared: a
+- `image2D` / `image3D` → an image unit of the program's own, the uniform pointed at it once when its program is
+  built, and the image put there with `glBindImageTexture` (the declared format, `READ_WRITE`, layered for a
+  `tex3d`) each time the host binds the program: units 0..5 in a drawing program (the lit stage's decal images
+  hold 6 and 7), 0..7 in a pass. The GLSL `layout(<format>)` qualifier has to be the format the `#pragma` line declared: a
   mismatch is undefined loads and stores, so `check-shaders.py` reconciles the two and fails on a disagreement.
 
 A material pair's two halves link into one program, so an image either half declares reads in both; a name
 both halves declare is refused. Declare an image whose shape and type disagree (`sampler3D` on a `tex2d`, say),
-or `<name>_prev` for an image with no `history` flag, and the stage is refused by name. A stage's samplers count
+or `<name>_prev` for an image with no `history` flag, and the stage is refused by name. Every pointed uniform is
+read back once it is set, and one the driver did not take refuses the stage too. A stage's samplers count
 against the driver's per-stage limit (32 on every driver Alloy has met) only where it actively reads them; a
 material half sits beside the lit stage's own samplers and has few to spare, and a link that runs out says so.
 
