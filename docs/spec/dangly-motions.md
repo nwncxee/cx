@@ -131,5 +131,6 @@ overshoots and rings at its authored 1.2 Hz when a creature walks past, and cost
 | `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit (new motions only) |
 | `dangly.still` | as before | |
 
-Retired: `dangly.gravity`, `dangly.wind`, `dangly.turb`, `dangly.turbfreq`, `dangly.turbspeed`,
-`dangly.vary`, `dangly.body`, `dangly.hz`, `dangly.steps`, `dangly.parallel` (it never dispatched anything).
+Every force knob of the per-vertex integrator this replaces is retired -- the gravity, wind, turbulence,
+variation, body-proxy and solver-rate keys, and the worker-thread toggle that never dispatched anything.
+`tools/gates/retired-terms.txt` names them, and refuses them anywhere under `managed/` or `docs/`.

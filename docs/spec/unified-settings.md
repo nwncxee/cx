@@ -749,15 +749,14 @@ ChatOnly master alone, so it has no submenu.
 |---|---|---|---|---|---|---|---|
 | anim.enabled | Procedural animations | T | on | U | L | — | Corrections on top of the game's own animation: feet that stand on the floor that is drawn, strides that match the pace, leaning, body weight and hit reactions. Off, every correction below reads off and characters animate exactly as the stock game plays them. |
 | anim.distance / footik / footik_max / footik_tilt / footik_lift / stride / footlock / settle / footsteps / syncattach / lookbody / diagonal / pivot / blend / crossfade / curves / lean / mass / drive / follow / aim / hitreact / staticlight | — | T, S | each defaults on / at its tuned value | C | L | Feet, Body | the individual corrections; one reads on only while both it and the master are |
-| dangly.enabled | Swaying cloaks and hair | T | on | **C** | L | — | cfg-only: cloaks, hair, banners and other swaying parts move with gravity and wind. Off, they go rigid -- nothing else sways them. |
-| dangly.gravity | Gravity | S | 0–20 step 0.5 · 3 | U | L | Forces | How much cloth sags. Low by default: rest poses already hang. |
-| dangly.wind | Wind response | S | 0–40 step 1 · 14 | U | L | Forces | How hard the area's wind pushes the cloth. |
-| dangly.breeze | Base breeze | S | 0–2 step 0.05 · 0.35 | U | L | Forces | Wind when the area sets none. 0 = only what the game reports. |
-| dangly.turb | Gustiness | S | 0–1 step 0.05 · 0.7 | A | L | Forces | How much the wind comes in gusts rather than steadily. 0 = an even push. |
-| dangly.vary | Per-object variation | S | 0–1 step 0.05 · 0.15 | A | L | Forces | How differently two characters in the same wind sway. 0 moves every cloak alike. |
-| dangly.body | Body collision | S | 0–1 step 0.05 · 0.95 | A | L | Collision | How firmly cloth is kept out of the wearer's body. 0 = off. |
-| dangly.cage | Freedom of movement | S | 0.5–8 step 0.1 · 3.5 | A | L | Collision | How far a part may swing from where the model puts it: ×the stock limit, and past ~4 cloaks reach the legs. |
-| dangly.turbfreq / turbspeed / hz / steps / still / parallel | — | T, S | as declared | C | L | — | the gust field, the solver rate and its worker-thread path |
+| dangly.enabled | Swaying cloaks and hair | T | on | **C** | L | — | cfg-only: cloaks, hair, banners and other swaying parts move with wind and their own weight. Off, they go rigid -- nothing else sways them. |
+| dangly.motion | Motion | D | automatic / stock · automatic | U | L | — | Automatic moves each part the way its own model asks to be moved -- leaves and cloth sway and ring, cloaks swing, hair jiggles. Stock moves every part the way the unmodified game does. |
+| dangly.windgain | Wind response | S | 0–3 step 0.05 · 1 | U | L | Forces | How far the wind leans a part, against the lean the game's own wind gives it. 1 = the same lean. |
+| dangly.tilt | Gravity | S | 0–1 step 0.05 · 1 | U | L | Forces | How fully a part on a tipped-over object falls toward the ground. 0 = it keeps hanging the way its model authored it. |
+| dangly.drag | Air drag | S | 0–3 step 0.05 · 1 | U | L | Forces | How much a moving character's own cloak and hair are dragged back by the air. 0 = none. |
+| dangly.breeze | Base breeze | S | 0–2 step 0.05 · 0 | U | L | Forces | Wind where the area sets none. 0 = only what the game reports. |
+| dangly.cage | Freedom of movement | S | 0.5–4 step 0.1 · 1.5 | A | L | Movement | How far a part may swing from where the model puts it: ×the authored limit. Past about 2 cloaks reach the legs. Automatic motion only. |
+| dangly.sway / swing / jiggle / still | — | T, S | each on / as declared | C | L | — | one kind stood down to stock motion, and the displacement a part has to cross to count as a shadow mover |
 | particles.enabled | Particles | T | on | **C** | L | — | cfg-only: draw spell effects, smoke and fire. Off, no particles are drawn at all -- nothing else draws them any more. |
 | particles.soft | Soft edges | T | on | U | L | — | Particles fade where they meet geometry instead of cutting through it. Ladders on `quality.effects`. |
 | particles.lit | Lit particles | T | on | U | L | — | Smoke and dust take the scene's light. Ladders on `quality.effects`. |
