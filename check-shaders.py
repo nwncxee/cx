@@ -1338,9 +1338,16 @@ def native_check_bindings(images, text):
 POST_STAGE, POST_REGION = "fsfbpostpr", "// $VANILLA-MAIN "
 
 
+def native_flat(native, chain):
+    """A native stage's text with its includes in place, the engine's `inc_standard` left out: what its host and half
+    are read off, since a SHIM (`#include "<stage>"` and one replaced function) runs the stage's skeleton from there."""
+    text = chain(native) or ""
+    return content_stage.resolve(text, chain, "", [native.lower()], 0, [0], optional=True)[0] or text
+
+
 def native_host(native, text):
     """Which host runs a native stage: the post chain's, by name; a MATERIAL half, one that runs the stock material
-    skeleton; else the sky, whose fragment stage runs whole."""
+    skeleton; else the sky, whose fragment stage runs whole. `text` is the stage with its includes in place."""
     if native[3:] == POST_STAGE:
         return "post"
     body = COMMENTS_RE.sub(" ", text)
@@ -1373,14 +1380,15 @@ def native_programs(raw, g):
                   + ", ".join(sorted(gone)))
             bad = 1
             continue
-        host = native_host(native, text)
+        flat = native_flat(native, chain)
+        host = native_host(native, flat)
         print(f"native stage: {native}.shd ({where}): {host}, {len(images)} image(s), {len(passes)} pass(es)")
         texts, written = {}, set()
         if host == "post":
             fs = raw["cx_fbpost_fs"].replace(f"{POST_REGION}{POST_STAGE}\n", f"{POST_REGION}{native}\n")
             texts[f"native post chain {native} ({where})"] = (g["cx_post_vs"], splice(define(fs, "CX_NATIVE 1"), {}, raw, read=chain))
         elif host == "material":
-            vertex = is_vertex(text)
+            vertex = is_vertex(flat)
             files = set(chain.files)
             other = partner(stage, files, vertex)
             if other is not None and "cx_" + other in files:
@@ -1444,7 +1452,7 @@ def native_programs(raw, g):
                   "image by any frame pass")
             bad = 1
         out.update(texts)
-    hosts = {native_host(n, chain(n) or "") for d, chain, n, _ in found if d == NATIVE_FIXTURE}
+    hosts = {native_host(n, native_flat(n, chain)) for d, chain, n, _ in found if d == NATIVE_FIXTURE}
     if hosts != {"sky", "material", "post"}:
         print(f"native stage: the fixture under {os.path.relpath(NATIVE_FIXTURE, ROOT)} was not found whole (a sky, a "
               "material half and a post chain) -- the grammar and the wrappers are UNCHECKED")

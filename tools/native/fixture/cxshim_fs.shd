@@ -1,0 +1,23 @@
+// A stand-in for a module's OWN material fragment stage, written with a hook: the part a native version may replace
+// sits under #ifdef, a prototype in its place. The shim beside it (cx_cxshim_fs.shd) includes this file whole and
+// supplies only that part. A fixture for check-shaders.py: it ships in no hak and no module.
+#define SHADER_TYPE 2
+#define LIGHTING 1
+#include "inc_standard"
+uniform vec4 vTint;
+#ifdef CXSHIM_TINT_ELSEWHERE
+vec3 Tint();
+#else
+vec3 Tint()
+{
+    return vTint.rgb;
+}
+#endif
+void main()
+{
+    FragmentColor = vec4(1.0);
+    SetupStandardShaderInputs();
+    FragmentColor.rgb *= Tint();
+    ApplyStandardShader();
+    gl_FragColor = FragmentColor;
+}
