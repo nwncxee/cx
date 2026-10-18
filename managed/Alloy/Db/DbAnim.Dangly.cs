@@ -118,7 +118,7 @@ public static unsafe partial class DbAnim
         if (js == null || js.X.Length != joints) _dangly.Joints[part] = js = new DanglyJointsState(joints);
 
         Matrix4x4 world = SceneDb.PartWorld[part];
-        var inp = new DanglyInputs(world, DanglyWind(in world, dt, windy), dt, Dangly.WindGain.V,
+        var inp = new DanglyInputs(world, DanglyWind(in world, VanillaDangly.StepDt, windy), dt, Dangly.WindGain.V,
                                    Dangly.Tilt.V, Dangly.Drag.V, Dangly.Cage.V);
         int cell = _danglyBones.Cell[part];
         Span<Matrix4x4> bones = _danglyBones.Scratch.AsSpan(0, Math.Min(rig.BoneCount, cell));
@@ -181,18 +181,22 @@ public static unsafe partial class DbAnim
         SceneDb.TouchPart(part, Dirty.Anim);
     }
 
-    /// <summary>The wind at a part, world space: what the area reports (finite-checked) plus the ambient
-    /// breeze as a slowly turning horizontal vector. Zero in a GUI scene, which has no wind at all.</summary>
+    /// <summary>The wind at a part over a step of <paramref name="dt"/>, world space: what the area reports
+    /// (finite-checked) plus the breeze: a slowly turning horizontal wind in the area's own units (a weak area's
+    /// base wind is 1, a strong one's 2), gusting with its noise field, under automatic motion only -- stock is the
+    /// unmodified game. Zero in a GUI scene, which has no wind at all.</summary>
     private static Vector3 DanglyWind(in Matrix4x4 world, float dt, bool windy)
     {
         if (!windy) return Vector3.Zero;
         var at = new Vector3(world.M41, world.M42, world.M43);
-        Vector3 w = AlloyWind.Owned ? AlloyWind.Wind(at, Math.Clamp(dt, MinDt, MaxDt)) : Vector3.Zero;
+        float step = Math.Clamp(dt, MinDt, MaxDt);
+        Vector3 w = AlloyWind.Owned ? AlloyWind.Wind(at, step) : Vector3.Zero;
         if (!float.IsFinite(w.X) || !float.IsFinite(w.Y) || !float.IsFinite(w.Z)) w = Vector3.Zero;
-        float breeze = Dangly.Breeze.V;
+        float breeze = Dangly.Motion.V == Dangly.MotionAuto ? Dangly.Breeze.V : 0f;
         if (breeze <= 0f) return w;
         float t = DanglyClock() * BreezeTurn;
-        return w + new Vector3(MathF.Cos(t), MathF.Sin(t), 0f) * breeze;
+        return w + new Vector3(MathF.Cos(t), MathF.Sin(t), 0f)
+                 * (breeze * step * AlloyWind.Noise(at));
     }
 
     /// <summary>The breeze clock: wall seconds, wrapped at 1024 to keep float precision. Not a sum of animate

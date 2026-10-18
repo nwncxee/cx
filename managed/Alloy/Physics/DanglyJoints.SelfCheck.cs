@@ -12,6 +12,7 @@ internal static class DanglyJointsCheck
     {
         AtRest(check);
         SteadyWind(check);
+        Flutter(check);
         Ringing(check);
         Tilt(check);
         RestLengths(check);
@@ -47,16 +48,17 @@ internal static class DanglyJointsCheck
         check.Expect(s.V[1] == Vector3.Zero, "seeding leaves no velocity");
     }
 
-    /// <summary>Oracle: the force law's own fixed point. The card's drag tensor is diag(0, 1, 0) and its wind
-    /// gain 25.714286, so a wind of atanh(0.5)/25.714286 along y leans the joint by exactly half its cap --
-    /// 0.5 * 0.3 * 0.560784 = 0.0841176 node units -- and a lean that has stopped moving publishes nothing.</summary>
+    /// <summary>Oracle: vanilla's drift equilibrium by hand. The stock step drifts a vertex 20 w cap per 1/60 s,
+    /// and its damping holds that at 3 period / (c t) times the drift rate: 25.714286 w cap for the card (c 112,
+    /// t 1, period 0.8). A wind of 0.5 / 25.714286 along y leans it by half its cap, 0.5 * 0.3 * 0.560784 =
+    /// 0.0841176 node units, and a lean that has stopped moving publishes nothing.</summary>
     private static void SteadyWind(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
         if (r == null) { check.Expect(false, "the card rigs for the wind check"); return; }
         var s = new DanglyJointsState(r.JointRest.Length);
         Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
-        var wind = new Vector3(0f, 0.021361906f, 0f);
+        var wind = new Vector3(0f, 0.019444444f, 0f);
         DanglyInputs inp = In(Matrix4x4.Identity, wind, 1f / 60f);
         for (int f = 0; f < 1500; f++) DanglyJoints.Step(r, s, inp, bones);
         Vector3 off = s.X[1] - r.JointRest[1];
@@ -66,6 +68,31 @@ internal static class DanglyJointsCheck
                      "a y wind on a card leans it along y alone");
         check.Expect(!DanglyJoints.Step(r, s, inp, bones),
                      "a card leaning still in a steady wind is settled: there is nothing new to publish");
+    }
+
+    /// <summary>Oracle: the spring's response to its own drift, by hand. A wind of 0.02 turning at 5 Hz drifts
+    /// the card's joint at U = 1200 * 0.02 * 0.1682353 = 4.037647 units/s; with w^2 = 56 and 2zw = 1.2 it traces
+    /// a circle of radius U sqrt(W^2 + 1.44) / sqrt((56 - W^2)^2 + 1.44 W^2) = 0.136243 at W = 10 pi. A wind
+    /// too quick for the spring still moves the part, as the stock solve's does.</summary>
+    private static void Flutter(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
+        if (r == null) { check.Expect(false, "the card rigs for the flutter check"); return; }
+        var s = new DanglyJointsState(r.JointRest.Length);
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        const float Dt = 1f / 240f, Spin = 10f * MathF.PI;
+        float lo = float.MaxValue, hi = 0f;
+        for (int f = 0; f < 5040; f++)
+        {
+            float t = f * Dt;
+            var wind = new Vector3(MathF.Cos(Spin * t), MathF.Sin(Spin * t), 0f) * 0.02f;
+            DanglyJoints.Step(r, s, In(Matrix4x4.Identity, wind, Dt), bones);
+            if (f < 4800) continue;
+            float d = (s.X[1] - r.JointRest[1]).Length();
+            lo = MathF.Min(lo, d); hi = MathF.Max(hi, d);
+        }
+        check.Expect(DanglySelfCheck.Rel(lo, 0.136243f, 0.03f) && DanglySelfCheck.Rel(hi, 0.136243f, 0.03f),
+                     $"a wind turning at 5 Hz sweeps the card round a circle of radius 0.136243 ({lo}..{hi})");
     }
 
     /// <summary>Oracle: the damped period of the blob's own spring, 2 pi / (15 * sqrt(1 - 0.16)) = 0.457035 s,
@@ -188,42 +215,50 @@ internal static class DanglyJointsCheck
                      "at 144 fps the lean is the same 0.0616598");
     }
 
-    /// <summary>Oracle: a hand-placed joint. The joint is put at rest + (0.05, -0.02, 0.03) in node space and the
-    /// frame given no time to integrate, so each bone must carry the rest tip exactly there: a Jiggle bone by
-    /// a pure rotation (R Rt = the identity) plus stretch, a Sway bone by that literal offset alone.</summary>
+    /// <summary>Oracle: hand-placed joints, the frame given no time to integrate. A Sway or Jiggle joint put at
+    /// rest + (0.05, -0.02, 0.03) must give a bone that is that literal translation; the rope's first joint
+    /// swung 0.6 rad about y keeps its 0.5 length, at (0.5 sin 0.6, 0, -0.5 cos 0.6) = (0.2823212, 0,
+    /// -0.4126678), and its bone must turn the rest joint there about the root by a pure rotation.</summary>
     private static void BoneMapping(Checker check)
     {
-        DanglyRig? jiggle = DanglySelfCheck.Rig(DanglySelfCheck.Blob());
-        DanglyRig? sway = DanglySelfCheck.Rig(DanglySelfCheck.Card());
-        if (jiggle == null || sway == null) { check.Expect(false, "both rigs build for the bone check"); return; }
-
         Matrix4x4 world = Matrix4x4.CreateRotationX(MathF.PI / 2f)
                         * Matrix4x4.CreateTranslation(new Vector3(3f, -2f, 1f));
         var offset = new Vector3(0.05f, -0.02f, 0.03f);
+        foreach (DanglyRig? r in new[] { DanglySelfCheck.Rig(DanglySelfCheck.Blob()),
+                                         DanglySelfCheck.Rig(DanglySelfCheck.Card()) })
+        {
+            if (r == null) { check.Expect(false, "the blob and the card rig for the bone check"); return; }
+            Matrix4x4 b = Placed(r, world, 1, r.JointRest[1] + offset);
+            check.Expect(DanglySelfCheck.Near(Vector3.Transform(r.JointRest[1], b), r.JointRest[1] + offset, 1e-4f),
+                         $"a {r.Class} bone carries the rest tip onto the joint");
+            check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, b), offset, 1e-4f),
+                         $"...as a pure translation: every vertex a {r.Class} bone reaches moves by the same offset");
+        }
 
-        var js = new DanglyJointsState(jiggle.JointRest.Length);
-        Span<Matrix4x4> jb = stackalloc Matrix4x4[jiggle.BoneCount];
-        DanglyJoints.Step(jiggle, js, In(world, Vector3.Zero, 1f / 60f, cage: 100f), jb);
-        js.X[1] = Vector3.Transform(jiggle.JointRest[1] + offset, world);
-        DanglyJoints.Step(jiggle, js, In(world, Vector3.Zero, 0f, cage: 100f), jb);
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(jiggle.JointRest[1], jb[1]),
-                                          jiggle.JointRest[1] + offset, 1e-4f),
-                     "a stretchy Jiggle bone lands the rest tip exactly on the joint");
-        Matrix4x4 rr = jb[1] * Matrix4x4.Transpose(jb[1]);
+        DanglyRig? rope = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
+        if (rope == null) { check.Expect(false, "the rope rigs for the bone check"); return; }
+        var swung = new Vector3(0.2823212f, 0f, -0.4126678f);
+        Matrix4x4 m = Placed(rope, world, 1, swung);
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(rope.JointRest[1], m), swung, 1e-4f),
+                     "a Swing bone turns its rest joint onto the swung one");
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(rope.JointRest[0], m), rope.JointRest[0], 1e-4f),
+                     "...about the segment's root, which stays put");
+        Matrix4x4 rr = m * Matrix4x4.Transpose(m);
         check.Expect(MathF.Abs(rr.M11 - 1f) + MathF.Abs(rr.M22 - 1f) + MathF.Abs(rr.M33 - 1f)
                      + MathF.Abs(rr.M12) + MathF.Abs(rr.M13) + MathF.Abs(rr.M23) < 1e-4f,
                      "...and its linear part is a pure rotation (R Rt = I): no scale or shear reaches the normals");
+    }
 
-        var ss = new DanglyJointsState(sway.JointRest.Length);
-        Span<Matrix4x4> sb = stackalloc Matrix4x4[sway.BoneCount];
-        DanglyJoints.Step(sway, ss, In(world, Vector3.Zero, 1f / 60f, cage: 100f), sb);
-        ss.X[1] = Vector3.Transform(sway.JointRest[1] + offset, world);
-        DanglyJoints.Step(sway, ss, In(world, Vector3.Zero, 0f, cage: 100f), sb);
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(sway.JointRest[1], sb[1]),
-                                          sway.JointRest[1] + offset, 1e-4f),
-                     "a Sway shear bone translates the rest tip onto the joint");
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, sb[1]), offset, 1e-4f),
-                     "and it is a pure translation: every vertex it reaches moves by the same offset");
+    /// <summary>Seed <paramref name="r"/> at <paramref name="world"/>, put joint <paramref name="j"/> at the
+    /// node-space point <paramref name="at"/> and solve a frame of no time: the bone over that joint.</summary>
+    private static Matrix4x4 Placed(DanglyRig r, Matrix4x4 world, int j, Vector3 at)
+    {
+        var s = new DanglyJointsState(r.JointRest.Length);
+        var bones = new Matrix4x4[r.BoneCount];
+        DanglyJoints.Step(r, s, In(world, Vector3.Zero, 1f / 60f, cage: 100f), bones);
+        s.X[j] = Vector3.Transform(at, world);
+        DanglyJoints.Step(r, s, In(world, Vector3.Zero, 0f, cage: 100f), bones);
+        return bones[j];
     }
 
     /// <summary>Oracle: the settled threshold, 1e-4. A wind that grows by a hair each frame moves the card's lean

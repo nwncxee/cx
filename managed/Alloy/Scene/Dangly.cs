@@ -40,8 +40,10 @@ internal static class Dangly
         Drag = G.Slider("drag", "Air drag", 0f, 3f, 0.05f, 1f,
                         help: "How much a moving character's own cloak and hair are dragged back by the air. "
                             + "0 = none.");
-        Breeze = G.Slider("breeze", "Base breeze", 0f, 2f, 0.05f, 0f,
-                          help: "Wind where the area sets none. 0 = only what the game reports.");
+        Breeze = G.Slider("breeze", "Base breeze", 0f, 2f, 0.05f, 0.5f,
+                          help: "A light wind added everywhere, gusting the way the area's own does, so a still "
+                              + "area is not frozen. 1 = a weak area's wind, 2 = a strong one's. 0 = only what "
+                              + "the game reports. Automatic motion only.");
 
         G.Section("Movement");
         Cage = G.Slider("cage", "Freedom of movement", 0.5f, 4f, 0.1f, 1.5f, tier: Tier.Advanced,

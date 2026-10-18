@@ -4,7 +4,8 @@ using System.Numerics;
 namespace CX.Alloy.Physics;
 
 /// <summary>What one frame of <see cref="DanglyJoints.Step"/> is driven by: the part's world transform, the
-/// wind at the part (world, the engine's units), the frame time and the knobs, already read.</summary>
+/// wind at the part as the stock solve samples it for one 1/60 s step (world, the engine's units), the frame
+/// time and the knobs, already read.</summary>
 public readonly struct DanglyInputs
 {
     public readonly Matrix4x4 PartWorld;
@@ -65,6 +66,10 @@ public static class DanglyJoints
 
     private const float Tiny = 1e-6f;
 
+    /// <summary>The stock wind drift as a rate: each 1/60 s step shifts a vertex by 20 * wind * its cap, so a
+    /// joint drifts at this times wind times its cap per second.</summary>
+    private const float WindRate = VanillaDangly.WindScale / VanillaDangly.StepDt;
+
     private static readonly Vector3 DownWorld = -Vector3.UnitZ;
 
     /// <summary>Advance <paramref name="s"/> by one frame and write <see cref="DanglyRig.BoneCount"/> node-space
@@ -109,16 +114,19 @@ public static class DanglyJoints
         Matrix4x4 before = Matrix4x4.CreateScale(s.PrevScale) * Matrix4x4.CreateFromQuaternion(s.PrevRot)
                          * Matrix4x4.CreateTranslation(s.PrevPos);
         Remember(s, pos, scale, world);
+        Vector3 gust = inp.Wind * (WindRate * scale * inp.WindGain);
+        Span<Vector3> push = stackalloc Vector3[DanglyRig.MaxJoints];
         for (int j = 0; j < nj; j++)
         {
             from[j] = dt > 0f ? Vector3.Transform(rig.JointRest[j], before) : target[j];
             drift[j] = dt > 0f ? (target[j] - from[j]) / dt : Vector3.Zero;
+            push[j] = rig.JointParent[j] < 0 ? Vector3.Zero : gust * rig.JointCap[j];
         }
 
         // The solve runs before the settled test, never instead of it: a frame skipped on a stale reading
         // would be a part the wind never reached. Settled is "nothing new to publish", not "back at rest": a
         // part leaning still in a steady wind is settled.
-        Integrate(rig, s, inp, nj, dt, scale, rot, rotT, from, target, drift);
+        Integrate(rig, s, inp, nj, dt, scale, rot, rotT, from, target, drift, push);
         Span<Vector3> local = stackalloc Vector3[DanglyRig.MaxJoints];
         Local(s, world, nj, local);
         bool quiet = true;
@@ -128,7 +136,8 @@ public static class DanglyJoints
             if (rig.JointParent[j] < 0) continue;
             float d = (local[j] - s.Published[j]).LengthSquared();
             moveSq = MathF.Max(moveSq, d);
-            quiet &= d <= QuietPos * QuietPos && (s.V[j] - drift[j]).LengthSquared() <= QuietVel * QuietVel;
+            quiet &= d <= QuietPos * QuietPos
+                  && (s.V[j] + push[j] - drift[j]).LengthSquared() <= QuietVel * QuietVel;
         }
         s.Settled = quiet;
         WriteBones(rig, local, nb, nj, bones);
@@ -169,14 +178,15 @@ public static class DanglyJoints
 
     /// <summary>The spec's force law over substeps of at most 1/120 s, each followed by the length constraints
     /// and the cage. The targets travel from last frame's pose to this one's across the substeps: held still
-    /// and jumped once a frame, a joint on a part moving steadily would chase a staircase and never settle.</summary>
+    /// and jumped once a frame, a joint on a part moving steadily would chase a staircase and never settle.
+    /// The wind is the stock drift, <paramref name="push"/>, carried on the position as vanilla's is.</summary>
     private static void Integrate(DanglyRig rig, DanglyJointsState s, in DanglyInputs inp, int nj, float dt,
                                   float scale, in Matrix4x4 rot, in Matrix4x4 rotT, ReadOnlySpan<Vector3> from,
-                                  ReadOnlySpan<Vector3> target, ReadOnlySpan<Vector3> drift)
+                                  ReadOnlySpan<Vector3> target, ReadOnlySpan<Vector3> drift,
+                                  ReadOnlySpan<Vector3> push)
     {
         float om2 = rig.Omega * rig.Omega, damp = 2f * rig.Zeta * rig.Omega;
         Vector3 fall = Gravity * inp.Tilt * (DownWorld - Vector3.TransformNormal(rig.RestDown, rot));
-        bool windy = inp.WindGain > 0f && inp.Wind != Vector3.Zero;
         int steps = Math.Max(1, (int)MathF.Ceiling(dt / SubDt));
         float h = dt / steps;
 
@@ -189,17 +199,9 @@ public static class DanglyJoints
             {
                 if (rig.JointParent[j] < 0) { s.X[j] = now[j]; s.V[j] = drift[j]; continue; }
                 Vector3 a = om2 * (now[j] - s.X[j]) - damp * (s.V[j] - drift[j]) + fall;
-                if (windy)
-                {
-                    Vector3 lean = Tensor(rig, j, inp.Wind, rot, rotT);
-                    float mag = lean.Length();
-                    if (mag > Tiny)
-                        a += lean * (om2 * rig.JointCap[j] * scale * inp.WindGain
-                                     * MathF.Tanh(rig.WindGain * mag) / mag);
-                }
                 if (inp.Drag > 0f) a -= inp.Drag * Tensor(rig, j, s.V[j], rot, rotT);
                 s.V[j] += a * h;
-                s.X[j] += s.V[j] * h;
+                s.X[j] += (s.V[j] + push[j]) * h;
                 // A NaN passes the cage as "inside" and would reach the bone palette.
                 if (!IsFinite(s.X[j]) || !IsFinite(s.V[j])) { s.X[j] = now[j]; s.V[j] = default; }
             }
@@ -272,7 +274,7 @@ public static class DanglyJoints
 
     /// <summary>The bone matrices: node space, row-vector, each mapping its vertices' REST positions to where
     /// the joints have taken them. A shear is a pure translation; a segment turns the rest segment onto the
-    /// current one about its root, and a stretchy one then lands its tip exactly.</summary>
+    /// current one about its root.</summary>
     private static void WriteBones(DanglyRig rig, ReadOnlySpan<Vector3> local, int nb, int nj, Span<Matrix4x4> bones)
     {
         if (nb <= 0) return;
@@ -290,15 +292,9 @@ public static class DanglyJoints
             int up = rig.JointParent[j];
             if ((uint)up >= (uint)nj) { bones[b] = Matrix4x4.Identity; continue; }
             Vector3 was = rig.JointRest[j] - rig.JointRest[up], now = local[j] - local[up];
-            Matrix4x4 m = Matrix4x4.CreateTranslation(-rig.JointRest[up])
-                        * Matrix4x4.CreateFromQuaternion(Arc(was, now))
-                        * Matrix4x4.CreateTranslation(local[up]);
-            if (rig.Stretch)
-            {
-                Vector3 slack = local[j] - Vector3.Transform(rig.JointRest[j], m);
-                m.M41 += slack.X; m.M42 += slack.Y; m.M43 += slack.Z;
-            }
-            bones[b] = m;
+            bones[b] = Matrix4x4.CreateTranslation(-rig.JointRest[up])
+                     * Matrix4x4.CreateFromQuaternion(Arc(was, now))
+                     * Matrix4x4.CreateTranslation(local[up]);
         }
     }
 

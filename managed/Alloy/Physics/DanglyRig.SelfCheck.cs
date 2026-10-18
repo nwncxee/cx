@@ -32,10 +32,9 @@ internal static class DanglyRigCheck
         check.Expect(r.Mobility[0] == 0f, "constraint 0 pins: mobility 0, not 1");
         check.Expect(DanglySelfCheck.Near(r.Omega, 7.483315f, 1e-4f), "the card's spring rate is 7.48331 rad/s");
         check.Expect(DanglySelfCheck.Near(r.Zeta, 0.0801784f, 1e-5f), "the card's damping ratio is 0.0801784");
-        check.Expect(DanglySelfCheck.Near(r.WindGain, 25.714286f, 1e-3f), "the card's wind gain is 25.714286");
         check.Expect(r.Columns == 1 && r.Segments == 1, "Sway is one joint on one column");
         check.Expect(r.BoneCount == 2, "Sway has the part's bone and one more");
-        check.Expect(r.Shear && !r.Stretch, "a Sway bone is a shear, not a stretch");
+        check.Expect(r.Shear, "a Sway bone is a shear");
         check.Expect(r.BoneJoint[0] == -1, "bone 0 is the part itself");
         check.Expect(r.JointParent.Length == 2 && r.JointParent[0] == -1 && r.JointParent[1] == 0,
                      "the tip hangs off a kinematic root");
@@ -64,7 +63,7 @@ internal static class DanglyRigCheck
         check.Expect(r.Columns == 2, "1.2 wide over 1.5 deep is two columns");
         check.Expect(r.Segments == 3, "1.5 deep is three half-metre segments");
         check.Expect(r.BoneCount == 7, "two columns of three segments, plus the part");
-        check.Expect(!r.Shear && !r.Stretch, "a Swing segment keeps its length");
+        check.Expect(!r.Shear, "a Swing segment turns, keeping its length");
         check.Expect(DanglySelfCheck.Near(r.Omega, 2.366432f, 1e-4f), "the banner's spring rate is 2.36643 rad/s");
         check.Expect(DanglySelfCheck.Near(r.Zeta, 0.0633875f, 1e-5f), "the banner's damping ratio is 0.0633875");
 
@@ -79,8 +78,7 @@ internal static class DanglyRigCheck
     }
 
     /// <summary>Oracle: hand arithmetic on the blob's authored numbers -- <c>w = sqrt(0.5 * 150 * 3) = 15</c>,
-    /// <c>z = 1.5 * 8 / 30 = 0.4</c>, <c>G = 3 * 8 * 20 / ((1/60) * 150 * 3) = 64</c> -- and the fixture's
-    /// deliberately uncorrelated heights.</summary>
+    /// <c>z = 1.5 * 8 / 30 = 0.4</c> -- and the fixture's deliberately uncorrelated heights.</summary>
     private static void Blob(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Blob());
@@ -88,8 +86,7 @@ internal static class DanglyRigCheck
         check.Expect(r.Class == DanglyClass.Jiggle, "a well-damped blob with no height trend is Jiggle");
         check.Expect(DanglySelfCheck.Near(r.Omega, 15f, 1e-4f), "the blob's spring rate is 15 rad/s");
         check.Expect(DanglySelfCheck.Near(r.Zeta, 0.4f, 1e-5f), "the blob's damping ratio is 0.4");
-        check.Expect(DanglySelfCheck.Near(r.WindGain, 64f, 1e-3f), "the blob's wind gain is 64");
-        check.Expect(r.BoneCount == 2 && r.Stretch && !r.Shear, "Jiggle is one stretchy segment");
+        check.Expect(r.BoneCount == 2 && r.Shear, "Jiggle is one joint whose bone translates, as vanilla's vertices do");
         check.Expect(DanglySelfCheck.Near(r.JointRest[1], new Vector3(0f, 0f, 0.1f), 1e-5f),
                      "the tip sits at the mobility-weighted centroid (0, 0, 0.1)");
         check.Expect(DanglySelfCheck.Near(r.JointCap[1], 0.1235294f, 1e-5f),

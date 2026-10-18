@@ -21,8 +21,8 @@ public sealed partial class DanglyRig
     public DanglyClass Class;
     /// <summary>Per render vertex: 0 for an anchor (constraint 0 or 255+), else <c>1 - c/255</c>.</summary>
     public float[] Mobility = Array.Empty<float>();
-    /// <summary>Vanilla's spring as a rate (rad/s), its damping ratio, and its steady wind gain per unit wind.</summary>
-    public float Omega, Zeta, WindGain;
+    /// <summary>Vanilla's spring as a rate (rad/s) and its damping ratio.</summary>
+    public float Omega, Zeta;
     /// <summary>Model-down in this node's rest frame: where gravity pointed when the node was authored.</summary>
     public Vector3 RestDown = -Vector3.UnitZ;
     /// <summary>Swing's grid; 1 x 1 for Sway and Jiggle.</summary>
@@ -39,8 +39,9 @@ public sealed partial class DanglyRig
     public int[] BoneJoint = Array.Empty<int>();
     /// <summary>The weights <c>MeshArena.Acquire</c> lays into the skinned lanes; slots index bones.</summary>
     public SkinDef? Skin;
-    /// <summary>Jiggle: the tip may leave its rest distance. Sway: the bone is a pure translation (a shear).</summary>
-    public bool Stretch, Shear;
+    /// <summary>Sway and Jiggle: the bone is a pure translation (a shear), the way vanilla moves every vertex.
+    /// Swing's segments turn instead, because their length is kept.</summary>
+    public bool Shear;
 
     public int BoneCount => BoneJoint.Length;
 

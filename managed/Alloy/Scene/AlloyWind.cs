@@ -282,6 +282,10 @@ internal static unsafe class AlloyWind
         return (1f - _t) * _fieldA[i] + _t * _fieldB[i];
     }
 
+    /// <summary>The blended noise field at <paramref name="at"/>, in [0, 0.97]: what scales the base wind
+    /// there, so a wind CX adds can gust with the area's own.</summary>
+    internal static float Noise(Vector3 at) => N(Cell(at.X), Cell(at.Y));
+
     /// <summary>The cell a coordinate falls in: <c>abs((int)v * 4) &amp; 15</c>, truncating toward zero the
     /// way the engine's cvttss2si does. The <c>abs</c> means a position and its mirror share a cell.</summary>
     private static int Cell(float v)

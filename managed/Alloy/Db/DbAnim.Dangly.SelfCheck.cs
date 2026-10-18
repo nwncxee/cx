@@ -248,7 +248,7 @@ public static unsafe partial class DbAnim
         {
             Class = DanglyClass.Sway,
             Mobility = new[] { 0f, 0f, 1f - 60f / 255f, 1f - 60f / 255f },
-            Omega = 8f, Zeta = 0.1f, WindGain = 1f,
+            Omega = 8f, Zeta = 0.1f,
             JointRest = new[] { Vector3.Zero, new Vector3(0f, 0f, 2f) },
             JointParent = new[] { -1, 0 },
             JointCap = new[] { 0f, 0.25f },

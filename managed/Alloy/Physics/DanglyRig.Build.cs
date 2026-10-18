@@ -57,8 +57,6 @@ public sealed partial class DanglyRig
         rig.Omega = MathF.Min(MathF.Sqrt(VanillaDangly.StiffnessGain * ct), MaxOmega);
         rig.Zeta = MathF.Min(MathF.Min(VanillaDangly.DampingGain * period / (2f * rig.Omega), MaxZeta),
                              0.5f / (DanglyJoints.SubDt * rig.Omega));
-        rig.WindGain = 2f * VanillaDangly.DampingGain * VanillaDangly.WindScale * period
-                     / (VanillaDangly.StepDt * ct);
         if (moving == 0)
         {
             rig.Class = DanglyClass.Static;
@@ -88,8 +86,7 @@ public sealed partial class DanglyRig
         rig.Columns = grid.Columns;
         rig.Segments = grid.Segments;
         Joints(rig, grid, anchorAt, tipAt, hang);
-        rig.Stretch = rig.Class == DanglyClass.Jiggle;
-        rig.Shear = rig.Class == DanglyClass.Sway;
+        rig.Shear = rig.Class != DanglyClass.Swing;
         Weights(rig, grid, mob, pos, anchorAt, hang, disp, msum / moving);
         Drag(rig, mesh, pos);
         return rig;
