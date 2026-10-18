@@ -63,9 +63,10 @@ without the sync those columns never learn about it.
 - `SceneDb.PartWorld`, `PartPos/Rot/Scale`, `PartAlpha`, `PartSelfIllum` — written by the pose and transform
   steps, with the part marked `Dirty.Anim` / `Dirty.Material`.
 - `SceneDb.ObjWorld` **and `ObjSphere`** — written together by the transform step.
-- `SceneDb.PartBoneBase` — the renderer bone-stage slot this part's palette was written into, or -1.
+- `SceneDb.PartBoneBase` — the ABSOLUTE first bone of this part's palette in the renderer's bone stage, or -1:
+  `slot * 64` for a skin, which owns its slot; a cell inside a shared slot for a rigged dangly part.
 - `SceneDb.ObjLodShown` — the part-tree alternate the LOD choice picked.
-- Nothing for dangly/animmesh: such a part carries its own arena range and its own interned recipe in
+- Nothing more for a STOCK-solved dangly part or an animmesh: such a part carries its own arena range and its own interned recipe in
   `SceneDb.PartRecipe`, so the existing record path draws the solved vertices. `DbAnim.DanglyPositions(part,
   out count)` + `DbAnim.DynGeneration(part)` expose the host copy for a consumer that wants the positions
   themselves. Layout and ownership: `Db/DbPose.LAYOUT.md`.
