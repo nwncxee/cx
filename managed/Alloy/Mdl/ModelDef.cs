@@ -94,6 +94,8 @@ public sealed class NodeDef
     public MeshDef? Mesh;
     public SkinDef? Skin;
     public DanglyDef? Dangly;
+    /// <summary>A dangly node's generated rig (<see cref="CX.Alloy.Physics.DanglyRig"/>), built once at load.</summary>
+    public CX.Alloy.Physics.DanglyRig? Rig;
     public AnimMeshDef? AnimMesh;
     public AabbDef? Aabb;
     public LightDef? Light;

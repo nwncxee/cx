@@ -34,6 +34,7 @@ internal static class MdlPost
         // MdlNodeEmitter::InternalPostProcess raises the owning model's radius to 40 so a particle system is
         // not culled by the geometry it is attached to. It runs per emitter node, at its `endnode`.
         if (emitter && m.FromAscii && m.Radius < 40f) m.Radius = 40f;
+        CX.Alloy.Physics.DanglyRig.BuildAll(m);
     }
 
     /// <summary>An ASCII animation's animmesh node: it restates the node's <c>verts</c>/<c>tverts</c>/<c>faces</c>,
