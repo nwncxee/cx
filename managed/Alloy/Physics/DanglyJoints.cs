@@ -23,7 +23,7 @@ public sealed class DanglyJointsState
 {
     public readonly Vector3[] X, V, Published;
     /// <summary>The largest node-space joint move the last publishing <see cref="DanglyJoints.Step"/> carried,
-    /// in world units; infinite on a seed or a teleport.</summary>
+    /// in node units like the stock solve's vertex move; infinite on a seed or a teleport.</summary>
     public float Moved;
     public Vector3 PrevPos;
     public Quaternion PrevRot;
@@ -55,8 +55,8 @@ public static class DanglyJoints
     /// little under 2 tall), so the figure needs no conversion.</summary>
     private const float Gravity = 9.81f;
 
-    /// <summary>Settled: no joint is further than this (world units, in the part's own frame) from where its
-    /// bones were last published, and none is faster. Against the publish, so a creep cannot drift unseen.</summary>
+    /// <summary>Settled: no joint is further than this (node units) from where its bones were last published,
+    /// and none is faster relative to the part. Against the publish, so a creep cannot drift unseen.</summary>
     private const float QuietPos = 1e-4f, QuietVel = 1e-3f;
 
     /// <summary>Length-constraint iterations, and the strength a neighbouring column pulls at.</summary>
@@ -126,7 +126,7 @@ public static class DanglyJoints
         for (int j = 0; j < nj; j++)
         {
             if (rig.JointParent[j] < 0) continue;
-            float d = (local[j] - s.Published[j]).LengthSquared() * scale * scale;
+            float d = (local[j] - s.Published[j]).LengthSquared();
             moveSq = MathF.Max(moveSq, d);
             quiet &= d <= QuietPos * QuietPos && (s.V[j] - drift[j]).LengthSquared() <= QuietVel * QuietVel;
         }

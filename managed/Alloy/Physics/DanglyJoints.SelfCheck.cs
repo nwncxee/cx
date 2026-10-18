@@ -8,9 +8,6 @@ namespace CX.Alloy.Physics;
 /// hand from the spec's force law and the fixture's authored numbers.</summary>
 internal static class DanglyJointsCheck
 {
-    /// <summary>Gravity, as the spec's force law states it.</summary>
-    private const float G = 9.81f;
-
     internal static void Cases(Checker check)
     {
         AtRest(check);
@@ -191,9 +188,9 @@ internal static class DanglyJointsCheck
                      "at 144 fps the lean is the same 0.0616598");
     }
 
-    /// <summary>Oracle: the solver's own joint positions, carried into node space by the part matrix the test
-    /// supplies -- a second artifact from the bone matrices, which must land the rest tip on exactly that
-    /// point for both bone shapes (a Jiggle stretch and a Sway shear).</summary>
+    /// <summary>Oracle: a hand-placed joint. The joint is put at rest + (0.05, -0.02, 0.03) in node space and the
+    /// frame given no time to integrate, so each bone must carry the rest tip exactly there: a Jiggle bone by
+    /// a pure rotation (R Rt = the identity) plus stretch, a Sway bone by that literal offset alone.</summary>
     private static void BoneMapping(Checker check)
     {
         DanglyRig? jiggle = DanglySelfCheck.Rig(DanglySelfCheck.Blob());
@@ -202,25 +199,30 @@ internal static class DanglyJointsCheck
 
         Matrix4x4 world = Matrix4x4.CreateRotationX(MathF.PI / 2f)
                         * Matrix4x4.CreateTranslation(new Vector3(3f, -2f, 1f));
-        Matrix4x4.Invert(world, out Matrix4x4 inv);
+        var offset = new Vector3(0.05f, -0.02f, 0.03f);
 
         var js = new DanglyJointsState(jiggle.JointRest.Length);
         Span<Matrix4x4> jb = stackalloc Matrix4x4[jiggle.BoneCount];
-        for (int f = 0; f < 120; f++)
-            DanglyJoints.Step(jiggle, js, In(world, Vector3.Zero, 1f / 60f, tilt: 1f), jb);
-        Vector3 want = Vector3.Transform(js.X[1], inv);
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(jiggle.JointRest[1], jb[1]), want, 1e-4f),
+        DanglyJoints.Step(jiggle, js, In(world, Vector3.Zero, 1f / 60f, cage: 100f), jb);
+        js.X[1] = Vector3.Transform(jiggle.JointRest[1] + offset, world);
+        DanglyJoints.Step(jiggle, js, In(world, Vector3.Zero, 0f, cage: 100f), jb);
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(jiggle.JointRest[1], jb[1]),
+                                          jiggle.JointRest[1] + offset, 1e-4f),
                      "a stretchy Jiggle bone lands the rest tip exactly on the joint");
+        Matrix4x4 rr = jb[1] * Matrix4x4.Transpose(jb[1]);
+        check.Expect(MathF.Abs(rr.M11 - 1f) + MathF.Abs(rr.M22 - 1f) + MathF.Abs(rr.M33 - 1f)
+                     + MathF.Abs(rr.M12) + MathF.Abs(rr.M13) + MathF.Abs(rr.M23) < 1e-4f,
+                     "...and its linear part is a pure rotation (R Rt = I): no scale or shear reaches the normals");
 
         var ss = new DanglyJointsState(sway.JointRest.Length);
         Span<Matrix4x4> sb = stackalloc Matrix4x4[sway.BoneCount];
-        for (int f = 0; f < 300; f++)
-            DanglyJoints.Step(sway, ss, In(world, new Vector3(0f, 0f, 0.05f), 1f / 60f), sb);
-        Vector3 swant = Vector3.Transform(ss.X[1], inv);
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(sway.JointRest[1], sb[1]), swant, 1e-4f),
+        DanglyJoints.Step(sway, ss, In(world, Vector3.Zero, 1f / 60f, cage: 100f), sb);
+        ss.X[1] = Vector3.Transform(sway.JointRest[1] + offset, world);
+        DanglyJoints.Step(sway, ss, In(world, Vector3.Zero, 0f, cage: 100f), sb);
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(sway.JointRest[1], sb[1]),
+                                          sway.JointRest[1] + offset, 1e-4f),
                      "a Sway shear bone translates the rest tip onto the joint");
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, sb[1]),
-                                          swant - sway.JointRest[1], 1e-4f),
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, sb[1]), offset, 1e-4f),
                      "and it is a pure translation: every vertex it reaches moves by the same offset");
     }
 

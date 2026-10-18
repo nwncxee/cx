@@ -18,9 +18,6 @@ public sealed partial class DanglyRig
     /// plus each column's kinematic root.</summary>
     public const int MaxJoints = 20;
 
-    /// <summary>Bones one rig may name: those sixteen segments plus the part's own.</summary>
-    public const int MaxBones = 17;
-
     public DanglyClass Class;
     /// <summary>Per render vertex: 0 for an anchor (constraint 0 or 255+), else <c>1 - c/255</c>.</summary>
     public float[] Mobility = Array.Empty<float>();

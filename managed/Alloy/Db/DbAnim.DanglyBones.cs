@@ -138,6 +138,15 @@ public static unsafe partial class DbAnim
         }
     }
 
+    /// <summary>A part record is being re-tenanted (<c>DbFeed.InitPart</c>), possibly while still seated: the bone
+    /// cell, the dynamic buffer and the solver state it held were the old tenant's.</summary>
+    internal static void DanglyPartRecycled(int p)
+    {
+        if ((uint)p >= (uint)SceneDb.MaxParts) return;
+        DanglyDropRig(p);
+        DanglyDropStock(p);
+    }
+
     /// <summary>Drop one part's rigged state, if it has any. Guarded, because the dispatch asks every frame
     /// for every part on the other path.</summary>
     private static void DanglyDropRig(int part)

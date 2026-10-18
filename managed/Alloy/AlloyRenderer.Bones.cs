@@ -97,7 +97,8 @@ public sealed unsafe partial class AlloyRenderer
         // (a fresh tenant starts at _oBone -1), leaving a bone slot whose owner no longer
         // points back. _boneTop is the peak skinned population -- tiny -- so the sweep is a few compares.
         for (int s = 0; s < _boneTop; s++)
-            if (_boneOwner[s] >= 0 && _oBone[_boneOwner[s]] != s) FreeBoneSlot(s);
+            if (_boneOwner[s] >= 0 && (_oBone[_boneOwner[s]] < 0 || _oBone[_boneOwner[s]] / BoneCount != s))
+                FreeBoneSlot(s);
         // The block uploads the whole (holey) high water: stale floats in freed slots are never indexed,
         // and a contiguous re-pack is exactly the layout shift stickiness exists to prevent.
         _boneSlots = _boneTop;

@@ -20,6 +20,7 @@ public static unsafe partial class DbAnim
         DanglyBoneStore(check);
         DanglyPrevHandover(check);
         DanglySwitch(check);
+        DanglyRecycle(check);
     }
 
     // ================= the motion table =================
@@ -112,18 +113,15 @@ public static unsafe partial class DbAnim
                             AlloyRenderer.DbBoneCell(at, 2));
         check.Expect(f.Length == 32, "the published cell is readable in the DB bone stage");
         if (f.Length != 32) { DanglyBoneFree(SelfCheckPart); return; }
-        check.Expect(Same16(f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f),
+        check.Expect(Same16(f, stackalloc float[] { 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f }),
                      "bone 0 is the identity, the part's own place");
-        check.Expect(Same16(f[16..], 0f, 1f, 0f, 0f, -1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 1f, 2f, 3f, 1f),
+        check.Expect(Same16(f[16..], stackalloc float[] { 0f, 1f, 0f, 0f, -1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, 1f, 2f, 3f, 1f }),
                      "bone 1 is stored column-major: the quarter turn's columns, the translation in 12..14");
         DanglyBoneFree(SelfCheckPart);
     }
 
-    private static bool Same16(ReadOnlySpan<float> f, float a, float b, float c, float d, float e, float g,
-                               float h, float i, float j, float k, float l, float m, float n, float o, float p,
-                               float q)
+    private static bool Same16(ReadOnlySpan<float> f, ReadOnlySpan<float> want)
     {
-        Span<float> want = stackalloc float[] { a, b, c, d, e, g, h, i, j, k, l, m, n, o, p, q };
         for (int z = 0; z < 16; z++) if (MathF.Abs(f[z] - want[z]) > 1e-5f) return false;
         return true;
     }
@@ -156,6 +154,24 @@ public static unsafe partial class DbAnim
         check.Expect(StagedX(slot, off + 1) == 4f && PrevX(slot, off + 1) == 4f,
                      "a settled part publishes nothing, so its history catches up and its motion vector is zero");
         DanglyBoneFree(SelfCheckPart);
+    }
+
+    /// <summary>Oracle: the cell count, by hand -- one cell taken is one live, and a record re-tenanted while it
+    /// still holds its cell (what <c>DbFeed.InitPart</c> reports) hands it back: none live, base -1, and the
+    /// next rig of that size is given that same absolute index again.</summary>
+    private static void DanglyRecycle(Checker check)
+    {
+        int live = _danglyBones.Live;
+        int at = DanglyBoneAlloc(SelfCheckPart, 2, 0f);
+        if (at < 0) { check.Expect(false, "the bone stage hands out a two-bone cell for the recycle check"); return; }
+        SceneDb.PartBoneBase[SelfCheckPart] = at;
+        check.Expect(_danglyBones.Live == live + 1, "a taken cell counts as live");
+        DanglyPartRecycled(SelfCheckPart);
+        check.Expect(_danglyBones.Live == live && _danglyBones.Cell[SelfCheckPart] == 0
+                     && SceneDb.PartBoneBase[SelfCheckPart] == -1,
+                     "a re-tenanted record gives its cell back rather than leaking it to the new tenant");
+        check.Expect(DanglyBoneAlloc(SelfCheckPart + 1, 2, 0f) == at, "...and the next two-bone rig is handed that cell");
+        DanglyBoneFree(SelfCheckPart + 1);
     }
 
     private static float StagedX(int slot, int bone)

@@ -82,7 +82,9 @@ public sealed partial class DanglyRig
                   : rig.Zeta > JiggleZeta ? DanglyClass.Jiggle
                   : DanglyClass.Swing;
 
-        var grid = new SwingGrid(rig, mob, pos, anchorAt, hang);
+        var grid = new SwingGrid(rig.Class, mob, pos, anchorAt, hang);
+        // Nothing to chain down: a moving set on the anchor plane jiggles in place.
+        if (rig.Class == DanglyClass.Swing && grid.Length <= 0f) rig.Class = DanglyClass.Jiggle;
         rig.Columns = grid.Columns;
         rig.Segments = grid.Segments;
         Joints(rig, grid, anchorAt, tipAt, hang);
@@ -161,22 +163,16 @@ public sealed partial class DanglyRig
         public readonly Vector3 Lateral;
         public readonly float Width, Length, LateralMin;
 
-        public SwingGrid(DanglyRig rig, float[] mob, Vector3[] pos, Vector3 anchorAt, Vector3 hang)
+        public SwingGrid(DanglyClass cls, float[] mob, Vector3[] pos, Vector3 anchorAt, Vector3 hang)
         {
             Columns = 1; Segments = 1;
             Lateral = Vector3.Zero; Width = 0f; Length = 0f; LateralMin = 0f;
-            if (rig.Class != DanglyClass.Swing) return;
+            if (cls != DanglyClass.Swing) return;
 
             int nv = mob.Length;
             for (int i = 0; i < nv; i++)
                 if (mob[i] > 0f) Length = MathF.Max(Length, Vector3.Dot(pos[i] - anchorAt, hang));
-            if (Length < 1e-3f)
-            {
-                // Nothing to chain down: the moving set sits on the anchor plane, so it jiggles in place.
-                rig.Class = DanglyClass.Jiggle;
-                Length = 0f;
-                return;
-            }
+            if (Length < 1e-3f) { Length = 0f; return; }
             Lateral = Principal(mob, pos, anchorAt, hang);
             float lo = float.MaxValue, hi = float.MinValue;
             for (int i = 0; i < nv; i++)

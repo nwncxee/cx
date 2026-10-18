@@ -396,12 +396,10 @@ public sealed unsafe partial class CasterPass
     private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly,
                               bool vDirty, bool creature)
     {
-        // A dangly's VDO is committed every frame the solve runs, so vertex-dirty says nothing about it;
-        // its own measured verdict (dangly) does. Here, so both Collect and Refresh agree.
-        if (AlloyRenderer.SlotIsDangly(slot)) vDirty = false;
-        // ...and a dangly part POSED by a rig is not a creature's skin: it moves on the frames its solve says
-        // it did (dangly), never unconditionally. Here, so both Collect and Refresh agree.
-        if (AlloyRenderer.SlotIsDangly(slot)) skinned = false;
+        // A dangly's VDO is committed every frame the solve runs, so vertex-dirty says nothing about it, and
+        // one POSED by a rig is not a creature's skin either: its own measured verdict (dangly) decides. Here,
+        // so both Collect and Refresh agree.
+        if (AlloyRenderer.SlotIsDangly(slot)) { vDirty = false; skinned = false; }
         bool mover = true;
         if (skinned) _mvBone++;
         else if (appeared) { _mvAppear++; FrameZones.Count(FrameZones.Ev.Appeared); }

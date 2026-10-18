@@ -15,8 +15,16 @@ public static unsafe partial class DbAnim
     {
         int i = obj.Index;
         // The tree fact, scanned once per part range instead of per step.
-        if (!_hasDangly[i] || !Dangly.Enabled.V) return;
+        if (!_hasDangly[i]) return;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
+        if (!Dangly.Enabled.V)
+        {
+            // Off is rigid: every dangly part goes back to its rest pose, not frozen in its last swing. Only
+            // dangly ones -- an animmesh rides the same dynamic buffers and is not this switch's.
+            for (int k = 0; k < n; k++)
+                if (IsDanglyPart(first + k)) { DanglyDropRig(first + k); DanglyDropStock(first + k); }
+            return;
+        }
         if (n <= 0 || _danglyDt <= 0f) return;
         DbId sc = SceneDb.ObjScene[i];
         bool windy = SceneDb.Scenes.Valid(sc) && SceneDb.SceneIsWorld[sc.Index];
@@ -24,15 +32,18 @@ public static unsafe partial class DbAnim
         for (int k = 0; k < n; k++)
         {
             int p = first + k;
-            if (!SceneDb.PartEnabled[p] || SceneDb.PartMerged[p]) continue;
-            ModelDef? m = SceneDb.PartModel[p];
-            if (m == null) continue;
-            int node = SceneDb.PartNode[p];
-            if ((uint)node >= (uint)m.Nodes.Length) continue;
-            if (m.Nodes[node].Kind != NodeKind.Dangly) continue;
+            if (!SceneDb.PartEnabled[p] || SceneDb.PartMerged[p] || !IsDanglyPart(p)) continue;
             DanglyPart(p, _danglyDt, windy);
         }
         _dangly.Ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+    }
+
+    /// <summary>Is part <paramref name="p"/> a danglymesh node's?</summary>
+    private static bool IsDanglyPart(int p)
+    {
+        ModelDef? m = SceneDb.PartModel[p];
+        int node = SceneDb.PartNode[p];
+        return m != null && (uint)node < (uint)m.Nodes.Length && m.Nodes[node].Kind == NodeKind.Dangly;
     }
 
     /// <summary>The frame time the part walk hands the dangly solve. Latched per scene animate, because the
