@@ -19,7 +19,6 @@
 3 managed/Alloy/CreatureParity.cs
 20 managed/Alloy/Db/DbAnim.Behavior.cs
 27 managed/Alloy/Db/DbAnim.cs
-2 managed/Alloy/Db/DbAnim.Dangly.cs
 8 managed/Alloy/Db/DbAnim.Dyn.cs
 11 managed/Alloy/Db/DbAnim.Events.cs
 9 managed/Alloy/Db/DbAnim.Lod.cs

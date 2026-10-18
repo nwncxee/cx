@@ -521,6 +521,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
         MotionContextLost();
         DbFeed.ContextLost();   // R1-30: the feed's own GL-backed tables
+        CX.Alloy.Db.DbAnim.DanglyBonesContextLost();
         // #242: ...and the persistent records went with the buffers that held them. Both halves matter -- the
         // capacity so the next upload reallocates rather than writing into a dead name, and the epoch so
         // every record is rebuilt rather than assumed still on the GPU.

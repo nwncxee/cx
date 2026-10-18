@@ -555,6 +555,9 @@ internal static partial class DrawRecipe
         // no env-map term: Material::HasEnvMap is per instance, asked per part by AlloyRenderer.DbEnvMapped
         if (mesh.RotateTexture) f |= RecipeFlag.RotateTexture;
         if (nd.Kind == NodeKind.Dangly) f |= RecipeFlag.Dangly;
+        // A rigged dangly node draws as a skinned part (docs/spec/dangly-motions.md section 4a): the flag is
+        // what enrols its slot for a bone base. With no palette at all there is nothing to enrol it for.
+        if (nd.Kind == NodeKind.Dangly && nd.Rig?.Skin != null && AlloyRenderer.Skinning) f |= RecipeFlag.Skinned;
         if (nd.Kind == NodeKind.Skin) f |= RecipeFlag.Skinned;
         if (nd.Kind == NodeKind.AnimMesh) f |= RecipeFlag.AnimMesh;
         if (!mesh.Shadow) f |= RecipeFlag.NoShadow;

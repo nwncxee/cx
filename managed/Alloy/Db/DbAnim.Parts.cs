@@ -20,6 +20,7 @@ public static unsafe partial class DbAnim
         if (n <= 0 || _danglyDt <= 0f) return;
         DbId sc = SceneDb.ObjScene[i];
         bool windy = SceneDb.Scenes.Valid(sc) && SceneDb.SceneIsWorld[sc.Index];
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         for (int k = 0; k < n; k++)
         {
             int p = first + k;
@@ -29,8 +30,9 @@ public static unsafe partial class DbAnim
             int node = SceneDb.PartNode[p];
             if ((uint)node >= (uint)m.Nodes.Length) continue;
             if (m.Nodes[node].Kind != NodeKind.Dangly) continue;
-            DanglySolve(p, _danglyDt, windy);
+            DanglyPart(p, _danglyDt, windy);
         }
+        _dangly.Ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
     }
 
     /// <summary>The frame time the part walk hands the dangly solve. Latched per scene animate, because the

@@ -181,6 +181,7 @@ public static unsafe partial class DbAnim
             if (p < first || p >= first + n) continue;
             DynDropAt(p, k);
         }
+        DanglyBonesForget(first, n);
     }
 
     /// <summary>Release one part's dynamic state, wherever it sits in the live list.</summary>
@@ -197,7 +198,6 @@ public static unsafe partial class DbAnim
     {
         if (_dyn[part] != 0) NativeMemory.Free((void*)_dyn[part]);
         if (_dynUv[part] != 0) NativeMemory.Free((void*)_dynUv[part]);
-        if (_velo[part] != 0) NativeMemory.Free((void*)_velo[part]);
         if (_dynRecipe.Recipe[part] > 0)
         {
             int r = _dynRecipe.Recipe[part] - 1;
@@ -205,7 +205,7 @@ public static unsafe partial class DbAnim
             DrawRecipe.RetireDynamic(r, _dynRecipe.Gen[part]);
         }
         _dynRecipe.Recipe[part] = 0;
-        _dyn[part] = 0; _dynUv[part] = 0; _dynN[part] = 0; _dynGen[part] = 0; _velo[part] = 0;
+        _dyn[part] = 0; _dynUv[part] = 0; _dynN[part] = 0; _dynGen[part] = 0;
         _dynRange[part] = 0;
         SceneDb.PartLitAnim[part] = 0;
         _dynList[k] = _dynList[--_dynCount];
@@ -322,6 +322,14 @@ public static unsafe partial class DbAnim
         _log?.Always("DbAnim: dynamic vertex buffers (dangly/animmesh) are being produced but seam-feed has "
                    + "never read one -- those parts are drawing their REST geometry. The accessor is "
                    + "DbAnim.DanglyPositions / DbAnim.DynGeneration (Db/DbPose.LAYOUT.md).");
+    }
+
+    /// <summary>splitmix64's finalizer: turns an index into well-spread bits.</summary>
+    private static ulong Mix(ulong z)
+    {
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9UL;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebUL;
+        return z ^ (z >> 31);
     }
 
     /// <summary>True once a part got its own arena range, which is the OTHER way the solved vertices
