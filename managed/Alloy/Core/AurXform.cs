@@ -37,7 +37,7 @@ internal static unsafe class AurXform
     /// <summary>The wind displacement to add to a particle stepped over <paramref name="dt"/>, sampled at
     /// <paramref name="pos"/>: <see cref="CX.Alloy.AlloyWind"/> answers it off its own clock and noise field,
     /// and <c>view.wind 0</c> sends it back to <c>Scene::GetWindVector</c> -- what the two per-OS declarations
-    /// are for. <c>DanglyPhysics</c> holds the same pair for the same symbol and resolves it itself.</summary>
+    /// are for; the dangly dispatch samples the same field through the same pair.</summary>
     internal static V3 Wind(IntPtr scene, V3 pos, float dt)
     {
         if (CX.Alloy.AlloyWind.Owned)

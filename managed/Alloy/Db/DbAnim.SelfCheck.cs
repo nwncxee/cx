@@ -41,6 +41,7 @@ public static unsafe partial class DbAnim
             Still(check);
             SkinTail(check);
             Skin(check);
+            DanglyMotions(check);
             LookAtEase(check);
             Lights(check);
             ControllerKinds(check);

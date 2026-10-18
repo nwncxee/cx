@@ -278,7 +278,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         int feat = (int)_oFeat[i * 4];
         f.FeatX = ShaderFeatures.WithPose(feat, _oBone[i] >= 0);
-        f.FeatY = _oBone[i] >= 0 ? _oBone[i] * (float)BoneCount : _oFeat[i * 4 + 1];
+        f.FeatY = _oBone[i] >= 0 ? _oBone[i] : _oFeat[i * 4 + 1];
 
         // CX-120 (integration 4): the tile's fog-of-war REVEAL, in the record's one spare lane. Vanilla fogs
         // an unexplored interior tile toward black (RenderDrawBucket @0x46d060: fog colour x f^2, fog end x f)

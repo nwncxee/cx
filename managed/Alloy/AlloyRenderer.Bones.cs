@@ -86,8 +86,10 @@ public sealed unsafe partial class AlloyRenderer
             // chain to chase -- the slot carries the bone base it was given. A part whose pose step has not run
             // yet draws rigid, which is its rest pose, and `skin-nopose` on the period line says how often.
             int given = SceneDb.PartBoneBase[_oDbPart[i]];
-            if (given < 0) { Counters._skinNoPose++; FreeBoneSlot(prev); continue; }
-            if (prev >= 0 && prev != given) FreeBoneSlot(prev);
+            // Both are ABSOLUTE bone indices: the slot they name is what a reclaim could free, and a DB slot
+            // refuses that by owner anyway (it is seam-anim's to release).
+            if (given < 0) { Counters._skinNoPose++; if (prev >= 0) FreeBoneSlot(prev / BoneCount); continue; }
+            if (prev >= 0 && prev != given) FreeBoneSlot(prev / BoneCount);
             _oBone[i] = given;
             Counters._skinDrawn++;
         }

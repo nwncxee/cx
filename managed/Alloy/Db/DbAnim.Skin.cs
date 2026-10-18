@@ -40,7 +40,9 @@ public static unsafe partial class DbAnim
             SkinDef? skin = StitchSkin(p) ?? m.Nodes[node].Skin;
             if (skin == null) continue;
             if (!SceneDb.PartEnabled[p] || SceneDb.PartMerged[p]) { Unskin(p); continue; }
-            int slot = SceneDb.PartBoneBase[p];
+            // PartBoneBase is an ABSOLUTE bone index: a whole skin owns a slot, so its base is slot * 64.
+            int at = SceneDb.PartBoneBase[p];
+            int slot = at < 0 ? -1 : at / BoneCount;
             if (slot < 0)
             {
                 slot = AlloyRenderer.DbAllocBone();
@@ -63,7 +65,7 @@ public static unsafe partial class DbAnim
                 _skinNoBind++;
                 continue;
             }
-            SceneDb.PartBoneBase[p] = slot;
+            SceneDb.PartBoneBase[p] = slot * BoneCount;
             _skinned++;
             SceneDb.TouchPart(p, Dirty.Anim);
         }
@@ -74,9 +76,11 @@ public static unsafe partial class DbAnim
     private static void Unskin(int p)
     {
         _named.Bind[p] = null;
-        int slot = SceneDb.PartBoneBase[p];
-        if (slot < 0) return;
-        AlloyRenderer.DbFreeBone(slot);
+        int at = SceneDb.PartBoneBase[p];
+        if (at < 0) return;
+        // A rigged dangly part's base names a CELL inside a slot other parts share; DanglyBonesForget owns it.
+        if (_danglyBones.Cell[p] != 0) return;
+        AlloyRenderer.DbFreeBone(at / BoneCount);
         SceneDb.PartBoneBase[p] = -1;
     }
 

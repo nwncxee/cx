@@ -644,4 +644,15 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary><c>ownskin</c> not 0. False refuses the skinmesh class at enrollment, which means every
     /// cloak, robe and tail is NOT DRAWN -- not drawn by the engine either.</summary>
     internal static bool _skinning;
+    /// <summary>Is the skinning path armed at all? A feature that needs a bone palette asks this and stands
+    /// itself down loudly when it is off, rather than publishing into a block nothing uploads.</summary>
+    internal static bool Skinning => _skinning;
+    /// <summary>Off-device only: a self-check that exercises a palette path arms it, since no renderer
+    /// Initialize has run to read <c>ownskin</c>. Returns what it was, for the restore.</summary>
+    internal static bool SelfCheckSkinning(bool on)
+    {
+        bool was = _skinning;
+        _skinning = on;
+        return was;
+    }
 }

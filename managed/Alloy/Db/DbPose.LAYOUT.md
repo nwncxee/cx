@@ -5,7 +5,8 @@ Two things a pose cannot express as a matrix, and the exact shape in which seam-
 ## 1. Bone palettes (skinned parts)
 
 - **Where:** the renderer's own bone stage, `AlloyRenderer.DbBoneStage(slot)`. It has to be that block, because
-  that is what `Issue.UploadBones` sends and what `feat.y = slot * BoneCount` indexes.
+  that is what `Issue.UploadBones` sends and what `feat.y` indexes. `feat.y` is an ABSOLUTE bone index into one
+  flat palette (`cx_bone_v.glsl` reads it as exactly that), so a part need not own a whole slot.
 - **Who claims a slot:** seam-anim, through `AlloyRenderer.DbAllocBone()` / `DbFreeBone(slot)`
   (`Scene/AlloyRenderer.DbBones.cs`). A DB slot carries owner `-2`, which both engine-path reclaimers skip by
   construction, so it is **sticky** for as long as the part holds it — which is what #308 needs, since the
@@ -14,11 +15,32 @@ Two things a pose cannot express as a matrix, and the exact shape in which seam-
   `m[4..6]`, `m[8..10]` and the translation in `m[12..14]`, `m[15] = 1`. An unused slot is the identity, never
   the previous part's matrices. (`SkinPose.Compose`'s two-transpose derivation is where this layout comes from;
   `DbAnim.SelfCheck`'s skin case pins it — a transposed store passes every diagonal test and fails that one.)
-- **The handshake:** `SceneDb.PartBoneBase[p]` is the slot number, or -1 for a rigid part. seam-feed reads it
-  and names it in the record (`AlloyRenderer.Db.cs` already does). seam-anim writes it at the end of the
-  object's animate step, after the compose.
-- **Not done here:** the previous-frame palette (`_bonePrevStage`) is not written for a DB part, so a skinned
-  DB part's motion vectors are its rigid ones. seam-feed's call if that matters for TAA.
+- **The handshake:** `SceneDb.PartBoneBase[p]` is the part's ABSOLUTE first bone, or -1 for a rigid part — a
+  whole skin's is `slot * 64`, a rigged dangly part's is its cell's own index. seam-feed reads it and names it
+  in the record (`AlloyRenderer.Db.cs` already does). seam-anim writes it at the end of the object's animate
+  step, after the compose.
+- **The previous-frame palette IS written.** `DbBonePublish` copies each live slot's stage into the frame's
+  upload buffer and last frame's into the history one, so a DB part's motion vectors are its posed ones. A
+  slot's first published frame is its own history (`_dbFresh`); a single CELL's first frame is seeded with
+  `DbBoneSeedPrev`, because freshness per slot cannot speak for one of its tenants.
+
+### Rigged dangly parts (bone CELLS)
+
+A dangly node whose rig the builder accepted draws as a skinned part (`docs/spec/dangly-motions.md` section
+4a), and its rig is a handful of bones rather than a creature's sixty-four:
+
+- **The cell.** `DbAnim.DanglyBoneAlloc` cuts each claimed slot into power-of-two cells of 2 to 64 bones and
+  hands one out; the part's base is `slot * 64 + offset`. Freed cells come back before a new slot is claimed,
+  and a slot, once claimed, stays claimed — a DB bone slot is sticky by design.
+- **What is published.** The joint solver's node-space bones, in `Store()` form, bone 0 the identity (the part
+  itself). A settled part publishes nothing at all, so its history catches up to its own pose and its motion
+  vector goes to zero.
+- **The motion split.** One part is on exactly one path: a rigged part holds a bone cell and no dynamic vertex
+  range, a stock one the reverse, and switching between them (a `dangly.motion` flip) hands the resources over
+  in the same frame. A `Static` node holds neither and draws at rest.
+- **Lifetime.** `DanglyBonesForget` releases a part range's cells on the same three edges the dynamic buffers
+  go on (object retirement, a tree change, an LOD swap); a lost context asks for all of them back through
+  `DanglyBonesContextLost`, which the game thread acts on at the end of its next dangly walk.
 
 ## 2. Dynamic vertex positions (dangly and animmesh)
 

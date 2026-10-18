@@ -164,6 +164,9 @@ internal static partial class DrawRecipe
         // Deliberately NOT filed in _byNode: another instance of this model must get its own.
         _model[r] = model; _node[r] = node; _mesh[r] = mesh;
         Fill(r, nd, mesh);
+        // A dangly part on a range of its own is the one drawing SOLVED vertices, which is the stock path: it
+        // has no palette, whatever its node's rig would have given the shared recipe.
+        if (nd.Kind == NodeKind.Dangly) _flags[r] &= ~RecipeFlag.Skinned;
         // Fill took a reference on the SHARED range; hand it back and take the private one instead.
         if (_range[r] >= 0 && _range[r] != range) MeshArena.Release(_range[r]);
         _range[r] = range;

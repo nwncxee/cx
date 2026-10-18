@@ -319,6 +319,13 @@ public static unsafe partial class MeshArena
         }
     }
 
+    /// <summary>Does <paramref name="range"/> live in one of the skinned layouts -- the bone slots and weights
+    /// a palette draw reads at locations 8 and 9? False for a range that is gone.</summary>
+    internal static bool SkinnedRange(int range)
+    {
+        lock (_gate) return Alive(range) && IsSkinned(_ranges[range].Format);
+    }
+
     /// <summary>One more holder, and <paramref name="mesh"/> becomes one of the keys the free takes back.</summary>
     private static void Take(int range, MeshDef mesh)
     {

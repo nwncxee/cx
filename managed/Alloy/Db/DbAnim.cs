@@ -635,7 +635,7 @@ public static unsafe partial class DbAnim
                  + $" | events: {EventPeriod()} | behaviours: {BehaviorPeriod()} | skin: {SkinPeriod()}"
                  + $" | {LodPeriod()}, {_litWrites} light track write(s)"
                  + (_litUncarried != 0 ? $" ({_litUncarried} with no column)" : "")
-                 + $" | dangly {_danglyParts} part(s)/{_danglyVerts} vert(s)"
+                 + $" | {DanglyPeriod(frames)}"
                  + $" | {_gusts} moved-object gust(s)";
         if (_unbound != 0) s += $", {_unbound} UNBOUND animation node(s) -- no part of that name";
         if (_queueFull != 0) s += $", {_queueFull} queue overflow(s) -- oldest run dropped";
@@ -652,7 +652,6 @@ public static unsafe partial class DbAnim
         _objects = _skipped = _runs = _crossfades = _dropped = _lookAts = _posed = _controllers = 0;
         _unbound = _queueFull = _noBlock = _bezier = _morphs = _traced = 0;
         _uvMorphs = _offChannel = _dynFull = _lookAtNoHead = _idle = _foldSkipped = _reanchored = _skinOnly = 0;
-        _danglyParts = _danglyVerts = 0;
         _periodDt = 0f; _periodCalls = 0;
         _fired = _starts = _loops = _dones = _cbFull = 0;
         _solved = _dispatched = _unresolvedPart = _noSync = _noDestroy = 0;
