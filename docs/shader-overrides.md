@@ -358,9 +358,10 @@ resolve does not tone-map (`post.skyraw`), and over the scene, which it does, al
 ridgeline stays one ghost. It is added only on frames that twin's `frame` passes ran, which is the main view
 of an outdoor frame; indoors, in a probe face or after a gap there is no lens.
 
-A content post chain with a flare of its own can stand aside for it: the hosted `fsfbpostpr` (`cx_fbpost_fs`)
-reads `cxSkyLens`, 1 on a frame a twin's lens is added and 0 otherwise. A chain that also runs on the stock
-client tests it under `#ifdef CX_ALLOY`.
+A content post chain with a flare of its own can stand aside for it: where the hosted `fsfbpostpr`
+(`cx_fbpost_fs`) declares `uniform int cxSkyLens;`, the extender sets it to 1 on a frame a twin's lens is added
+and 0 otherwise. The chain declares it, under `#ifdef CX_ALLOY` so the stock client never sees it, and an
+extender build that predates the lens leaves it 0 -- the chain's own flare draws, as it should.
 
 What hides the sun is the dome's own business: only the dome knows its silhouette, its clouds and what the
 scene covers. A twin's fragment program may store into a declared image (`image2D` binds there as it does in a

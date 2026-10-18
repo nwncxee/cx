@@ -30,8 +30,6 @@ uniform highp vec3 clipParams;
 #define fDepthToLinearModifier (clipParams.z)
 uniform highp mat4 m_view;
 uniform highp mat4 m_view_inv;
-// 1 while a sky twin's lens (cx_sky_lens) is in this frame: a content flare of its own can stand aside for it.
-uniform int cxSkyLens;
 uniform highp mat4 m_proj;
 // inc_uniforms, which the bridge never follows, under the engine's names: the feature terms
 // (AlloyRenderer.UploadFeatureTerms) and the terms the engine hands every program by name (AlloyRenderer.EngineNamed)

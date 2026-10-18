@@ -127,7 +127,8 @@ internal static unsafe class FbPostStage
         check.Expect(FbPostFs.Contains("// $VANILLA-MAIN fsfbpostpr\n") && FbPostFs.Contains("void " + VanillaShader.MainEntry + "() {"),
           "the whole-stage region and its stub, under the name the bridge renames main() to");
         check.Expect(FbPostFs.Contains("uniform highp mat4 m_view_inv;"), "the inverse view a content main() takes world positions through");
-        check.Expect(FbPostFs.Contains("uniform int cxSkyLens;"), "the flag a content flare stands aside for a sky twin's lens by");
+        // The chain declares cxSkyLens itself, so a chain written for this build still compiles on one that sets nothing.
+        check.Expect(!FbPostFs.Contains("cxSkyLens"), "the environment leaves cxSkyLens to the chain that reads it");
         check.Expect(FbPostFs.Contains("$POSTMASK$") && FbPostFs.Contains("$SQM$"), "the option tokens are in the text");
         check.Expect(!ShaderResource.Tokens("$POSTMASK$ $SQM$").Contains('$'), "the tokens expand");
         check.Expect(!Stale(0, 0), "an unbuilt stage is never stale");
