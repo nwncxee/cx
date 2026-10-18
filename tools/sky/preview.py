@@ -83,6 +83,8 @@ class GL:
             "glCreateFramebuffers": (None, i, C.POINTER(u)), "glNamedFramebufferTexture": (None, u, u, u, i),
             "glBindFramebuffer": (None, u, u), "glViewport": (None, i, i, i, i),
             "glClearColor": (None, f, f, f, f), "glClear": (None, u), "glEnable": (None, u), "glDisable": (None, u),
+            "glClearDepth": (None, C.c_double), "glDepthRange": (None, C.c_double, C.c_double),
+            "glDepthFunc": (None, u), "glDepthMask": (None, C.c_ubyte), "glScissor": (None, i, i, i, i),
             "glCreateVertexArrays": (None, i, C.POINTER(u)), "glCreateBuffers": (None, i, C.POINTER(u)),
             "glNamedBufferData": (None, u, C.c_ssize_t, vp, u),
             "glVertexArrayVertexBuffer": (None, u, u, u, C.c_ssize_t, i),
@@ -156,11 +158,12 @@ def is_image_type(t):
 # client clock, seconds) and main (0 = a probe face) are the engine's and the camera's. cover, storm, tint, phase,
 # moon, armed, flash, flashaz, comet, cometseed, noir and flare are the scriptable slots the REFERENCE content's sky
 # reads (Shadows over Westgate: slots 4, 9, 10, 11, 12, 13, 16 -- see uniforms() below), and aim=sun|moon points
-# the camera along its inc_skymath model. Another sky sets its own uniforms raw: u.<name>=x[,y[,z[,w]]] for a float/vec,
+# the camera along its inc_skymath model. occlude=x0,y0,x1,y1[,...] stands scene geometry in front of the dome:
+# rectangles in screen fractions from the top left, at a depth the dome fails, as an area's opaque set does. Another sky sets its own uniforms raw: u.<name>=x[,y[,z[,w]]] for a float/vec,
 # i.<name>=n for an int (e.g. u.scriptableVec3=0,0,1,0).
 DEFAULTS = dict(year=1372, month=6, day=15, hour=12.0, cover=0.0, storm=0.0, phase=0.5, tint=(0, 0, 0),
                 flash=0.0, flashaz=0.0, comet=-1.0, cometseed=0.37, noir=0, yaw=180.0, pitch=15.0, fov=70.0,
-                t=3600.0, moon=1, armed=1, aim="", main=1, eyez=8.0, flare=1)
+                t=3600.0, moon=1, armed=1, aim="", main=1, eyez=8.0, flare=1, occlude=())
 
 
 def parse_scene(text):
@@ -172,7 +175,7 @@ def parse_scene(text):
             continue
         if k not in s:
             sys.exit(f"unknown scene key {k} (have: {', '.join(s)})")
-        s[k] = (tuple(float(x) for x in v.split(",")) if k == "tint" else v if k == "aim"
+        s[k] = (tuple(float(x) for x in v.split(",")) if k in ("tint", "occlude") else v if k == "aim"
                 else int(v) if isinstance(s[k], int) else float(v))
     return s
 
@@ -424,6 +427,7 @@ class Sky:
     def run(self, when, s, eye, vp, proj, timings=None):
         gl = self.gl
         inv = np.linalg.inv(vp)
+        gl.MemoryBarrier(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS -- the dome's image stores, as the extender's
         for w, ref, img, p, grp in self.passes:
             if w != when:
                 continue
@@ -527,7 +531,20 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
         gl.BindFramebuffer(0x8D40, fbo)   # not-an-offset: GL_FRAMEBUFFER
         gl.Viewport(0, 0, *size)
         gl.ClearColor(0.035, 0.04, 0.03, 1.0)   # where the world would be
-        gl.Clear(0x4000)   # not-an-offset: GL_COLOR_BUFFER_BIT
+        gl.ClearDepth(1.0)
+        gl.Clear(0x4100)   # not-an-offset: GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT
+        occ = s["occlude"]
+        if occ:
+            gl.Enable(0x0C11)   # not-an-offset: GL_SCISSOR_TEST
+            gl.ClearDepth(0.5)
+            for r in range(0, len(occ) - 3, 4):
+                x0, y0, x1, y1 = occ[r:r + 4]
+                gl.Scissor(int(x0 * size[0]), int((1 - y1) * size[1]), int((x1 - x0) * size[0]), int((y1 - y0) * size[1]))
+                gl.Clear(0x0100)   # not-an-offset: GL_DEPTH_BUFFER_BIT
+            gl.Disable(0x0C11)   # not-an-offset: GL_SCISSOR_TEST
+        # the extender's dome state: at the far plane, after the opaque set, tested LEQUAL and writing no depth
+        gl.Enable(0x0B71); gl.DepthFunc(0x0203); gl.DepthMask(0)   # not-an-offset: GL_DEPTH_TEST, GL_LEQUAL
+        gl.DepthRange(1.0, 1.0); gl.Enable(0x864F)   # not-an-offset: GL_DEPTH_CLAMP
         gl.UseProgram(sky.prog)
         sky.uniforms(sky.prog, s, eye, vp, np.linalg.inv(vp), proj, s["main"] == 1)
         gl.UniformMatrix4fv(gl.loc(sky.prog, "uModel"), 1, 0, mat(model))
@@ -535,6 +552,7 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
         sky.bind(sky.prog)
         gl.BindVertexArray(vao)
         gl.DrawArrays(0x0004, 0, count)   # not-an-offset: GL_TRIANGLES
+        gl.DepthRange(0.0, 1.0); gl.Disable(0x864F); gl.Disable(0x0B71)   # not-an-offset: GL_DEPTH_CLAMP, GL_DEPTH_TEST
         # one cxSkyFrame for a frame's passes and its dome, as in the extender
         sky.frame += 1
         if k == frames - 1:
@@ -616,6 +634,9 @@ def main():
     gl.TextureStorage2D(color, 1, 0x881A, *size)   # not-an-offset: GL_RGBA16F
     fbo = gl.gen(gl.CreateFramebuffers)
     gl.NamedFramebufferTexture(fbo, 0x8CE0, color, 0)   # not-an-offset: GL_COLOR_ATTACHMENT0
+    depth = gl.gen(gl.CreateTextures, TEX2D)
+    gl.TextureStorage2D(depth, 1, 0x8CAC, *size)   # not-an-offset: GL_DEPTH_COMPONENT32F
+    gl.NamedFramebufferTexture(fbo, 0x8D00, depth, 0)   # not-an-offset: GL_DEPTH_ATTACHMENT
     focus = np.array([500.0, 500.0, 0.0])
     model = np.identity(4); model[:3, 3] = focus
     twin = "cx_" + a.stage
