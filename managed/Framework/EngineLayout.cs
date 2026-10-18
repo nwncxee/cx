@@ -2531,7 +2531,7 @@ public static unsafe partial class EngineLayout
     /// <c>XXZ</c>), called purely to refresh the cached sphere.</summary>
     public static readonly int GobMinSphereSlot = Field("Gob", "vtbl.GetMinimumSphere", Expect.VtblSlot, sig: "void()");
     /// <summary>Virtual slot of <c>Part::Animate(float)</c> -- the per-part tick, virtual so that
-    /// <c>PartDanglyMesh::Animate</c> (and through it <see cref="CX.Alloy.DanglyPhysics"/>) is reached.</summary>
+    /// <c>PartDanglyMesh::Animate</c>, the one override with a body, is reached.</summary>
     public static readonly int PartAnimateSlot = Field("Part", "vtbl.Animate", Expect.VtblSlot, sig: "void(float dt)");
     /// <summary>Virtual slot of <c>Part::AsPartAnimMesh()</c>.</summary>
     public static readonly int PartAsAnimMeshSlot = Field("Part", "vtbl.AsPartAnimMesh", Expect.VtblSlot, sig: "IntPtr()");

@@ -1,5 +1,6 @@
 using CX.Engine;
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 
 namespace CX.Alloy;
@@ -37,6 +38,36 @@ public sealed unsafe partial class AlloyRenderer
     {
         EnsureDbStage(slot + 1);
         return ref _dbStage[slot];
+    }
+
+    /// <summary>The <paramref name="count"/> matrices at ABSOLUTE bone index <paramref name="at"/> in the DB
+    /// stage, empty when the stage will not grow that far. A rigged dangly part's cell is one run inside a
+    /// slot; a whole skin's base is its slot's bone 0.</summary>
+    internal static Span<Matrix4x4> DbBoneCell(int at, int count)
+    {
+        if (at < 0 || count <= 0) return default;
+        EnsureDbStage(at / BoneCount + 1);
+        return Cell(_dbStage, at, count);
+    }
+
+    /// <summary>Make the <paramref name="count"/> bones at <paramref name="at"/> their own history. The first
+    /// frame a part publishes into a slot already in use must not smear from whatever that cell last held, and
+    /// <see cref="_dbFresh"/> can only say that about a whole slot.</summary>
+    internal static void DbBoneSeedPrev(int at, int count)
+    {
+        Span<Matrix4x4> now = DbBoneCell(at, count);
+        Span<Matrix4x4> prev = Cell(_dbPrev, at, count);
+        if (!now.IsEmpty && prev.Length == now.Length) now.CopyTo(prev);
+    }
+
+    /// <summary>One run of matrices inside <paramref name="stage"/>, bounded by the slot it starts in.</summary>
+    private static Span<Matrix4x4> Cell(BonePalette* stage, int at, int count)
+    {
+        if (stage == null || at < 0 || count <= 0) return default;
+        ref BonePalette p = ref stage[at / BoneCount];
+        Span<Matrix4x4> all = p;
+        int off = at % BoneCount;
+        return all.Slice(off, Math.Min(count, BoneCount - off));
     }
 
     private static BonePalette* _dbStage, _dbPrev;

@@ -577,7 +577,7 @@ public sealed unsafe partial class AlloyRenderer
             f.Slots = _oSlots[i];
         }
         f.FeatX = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
-        f.FeatY = _oBone[i] >= 0 ? _oBone[i] * (float)BoneCount : _oFeat[i * 4 + 1];
+        f.FeatY = _oBone[i] >= 0 ? _oBone[i] : _oFeat[i * 4 + 1];
 
         if (fresh) DbWriteStable(ref r, i);
         // #302's mover level, stamped HERE as well as in StageDbPart: this fold write consumes the move, so the
@@ -640,7 +640,11 @@ public sealed unsafe partial class AlloyRenderer
         Vector3 gc = Vector3.Transform(new Vector3(_oBx[i], _oBy[i], _oBz[i]), f.Model);
         float gr = _oBr[i] * DbScaleOf(in f.Model);
         float bare = gr;
-        if ((rf & RecipeFlag.Skinned) != 0) gr = MathF.Max(gr + 2f, 3f);
+        // A rigged dangly part leaves its rest pose by its own authored cage, not by a creature's reach, and
+        // its recipe carries BOTH flags -- so this branch has to come first.
+        if ((rf & RecipeFlag.Dangly) != 0 && _oBone[i] >= 0)
+            gr += DbAnim.DanglyCasterSlack(_oDbPart[i]) * DbScaleOf(in f.Model);
+        else if ((rf & RecipeFlag.Skinned) != 0) gr = MathF.Max(gr + 2f, 3f);
         if (!(gr > 0f)) gr = DegenerateCasterRadius;
         _dCastSlack[i] = bare > 0f ? gr - bare : 0f;
         _dCastSph[i] = new Sphere { Center = gc, Radius = gr };

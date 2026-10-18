@@ -324,8 +324,9 @@ internal static unsafe class DbGui
             {
                 bones = SceneDb.PartBoneBase[p];
                 // A skinmesh's arena vertices are in BIND space: drawn without its palette it collapses onto
-                // the origin, which reads as a missing control rather than as a missing pose.
-                if (bones < 0) { _noPalette++; _lNoPalette++; continue; }
+                // the origin, which reads as a missing control rather than as a missing pose. A rigged dangly
+                // part's are in NODE space, so no palette is its rest pose, which is a drawable thing.
+                if (bones < 0 && (fl & RecipeFlag.Dangly) == 0) { _noPalette++; _lNoPalette++; continue; }
             }
 
             Matrix4x4 world = hasOver ? SceneDb.PartWorld[p] * over : SceneDb.PartWorld[p];
