@@ -50,14 +50,14 @@ KINDS = {"tex2d": "2d", "tex3d": "3d", "view": "view"}
 def sky_decls(cs, text):
     """({name: {kind, size, fmt, flags}}, [(once|frame, resref, image)], overlay image or None) for a native
     stage's declarations."""
-    images, passes, _, lens = cs.native_decls(text)
+    images, passes, _, overlay = cs.native_decls(text)
     out = {}
     for i in images:
         kind = KINDS[i["shape"]]
         size = [i["div"]] if kind == "view" else ([i["w"], i["h"], i["d"]] if kind == "3d" else [i["w"], i["h"]])
         out[i["name"]] = dict(kind=kind, size=size, fmt=i["format"],
                               flags={f for f in ("history", "mips", "clamp") if i[f]})
-    return out, [("once" if p["once"] else "frame", p["ref"], p["image"]) for p in passes], lens
+    return out, [("once" if p["once"] else "frame", p["ref"], p["image"]) for p in passes], overlay
 
 
 # --- GL through the headless EGL context check-shaders.py makes ----------------------------------------------------
@@ -286,15 +286,15 @@ void main()
 
 
 class Sky:
-    def __init__(self, gl, cs, content, stage, twin, size, assets):
+    def __init__(self, gl, cs, content, stage, native, size, assets):
         self.gl, self.cs, self.content, self.size = gl, cs, content, size
         self.g = cs.shaders()
         self.read = lambda name: self.find(name)
         self.stage = stage
-        self.twin = twin
-        self.images_decl, self.passes_decl, self.lens = sky_decls(cs, self.read(stage) or "") if twin else ({}, [], None)
-        self.last_lens = None
-        fs = self.wrap("cx_sky_f", "$SKYFS$", stage, "CX_NATIVE 1" if twin else None)
+        self.native = native
+        self.images_decl, self.passes_decl, self.overlay = sky_decls(cs, self.read(stage) or "") if native else ({}, [], None)
+        self.last_overlay = None
+        fs = self.wrap("cx_sky_f", "$SKYFS$", stage, "CX_NATIVE 1" if native else None)
         self.prog = gl.program([(0x8B31, VS), (0x8B30, fs)], stage)   # not-an-offset: GL_VERTEX_SHADER, GL_FRAGMENT_SHADER
         self.images = {}
         self.passes = []
@@ -419,7 +419,7 @@ class Sky:
         gl.UniformMatrix4fv(L("cxInvVp"), 1, 0, mat(inv_clean))
         gl.UniformMatrix4fv(L("cxPrevVp"), 1, 0, mat(self.prev_vp if self.prev_vp is not None else np.linalg.inv(inv_clean)))
         v3("cxEye", *eye); gl.Uniform2i(L("cxView"), *self.size)
-        i1("cxOverlay", 1 if self.lens else 0)
+        i1("cxOverlay", 1 if self.overlay else 0)
         for kind, name, vals in s["raw"]:
             if kind == "i":
                 i1(name, vals[0])
@@ -482,7 +482,7 @@ def find_asset(name, roots):
 
 
 # --- the resolve, for a sky pixel --------------------------------------------------------------------------------------
-def present(hdr, lens=None, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
+def present(hdr, overlay=None, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
     """CX's sky-pixel resolve: own value + bloom bleed + the native stage's overlay, encoded, no exposure/tonemap
     (cx_resolve_f's uSkyRaw arm). The bloom is the usual soft-knee bright pass over a Gaussian pyramid, close
     enough to judge a glow by."""
@@ -502,8 +502,8 @@ def present(hdr, lens=None, bloom=0.06, thresh=1.0, knee=0.5, gamma=2.2):
         up = np.stack([np.asarray(Image.fromarray(lvl[..., i], "F").resize((w, h), Image.BICUBIC)) for i in range(3)], axis=2)
         acc += up
     out = c + acc / 6.0 * bloom * 6.0
-    if lens is not None:
-        out += np.maximum(lens, 0)
+    if overlay is not None:
+        out += np.maximum(overlay, 0)
     out = np.clip(out, 0, 1) ** (1.0 / gamma)
     return (out * 255 + 0.5).astype(np.uint8)
 
@@ -581,14 +581,14 @@ def render(gl, sky, s, size, fbo, color, vao, count, model, frames, ms_out=None)
     buf = (C.c_float * (size[0] * size[1] * 4))()
     gl.GetTextureImage(color, 0, 0x1908, 0x1406, C.sizeof(buf), buf)   # not-an-offset: GL_RGBA, GL_FLOAT
     img = np.frombuffer(buf, dtype=np.float32).reshape(size[1], size[0], 4)[::-1]
-    sky.last_lens = None
-    if sky.lens:
-        im = sky.images[sky.lens]
+    sky.last_overlay = None
+    if sky.overlay:
+        im = sky.images[sky.overlay]
         w, h = im["dims"][:2]
         lb = (C.c_float * (w * h * 4))()
         gl.GetTextureImage(im["tex"][0], 0, 0x1908, 0x1406, C.sizeof(lb), lb)   # not-an-offset: GL_RGBA, GL_FLOAT
         arr = np.frombuffer(lb, dtype=np.float32).reshape(h, w, 4)[::-1, :, :3]
-        sky.last_lens = np.stack([np.asarray(Image.fromarray(np.ascontiguousarray(arr[..., i]), "F")
+        sky.last_overlay = np.stack([np.asarray(Image.fromarray(np.ascontiguousarray(arr[..., i]), "F")
                                              .resize(tuple(size), Image.BILINEAR)) for i in range(3)], axis=2)
     return img
 
@@ -651,8 +651,8 @@ def main():
     gl.NamedFramebufferTexture(fbo, 0x8D00, depth, 0)   # not-an-offset: GL_DEPTH_ATTACHMENT
     focus = np.array([500.0, 500.0, 0.0])
     model = np.identity(4); model[:3, 3] = focus
-    twin = "cx_" + a.stage
-    variants = [(a.stage, False), (twin, True)] if a.compare else [((a.stage, False) if a.vanilla else (twin, True))]
+    native = "cx_" + a.stage
+    variants = [(a.stage, False), (native, True)] if a.compare else [((a.stage, False) if a.vanilla else (native, True))]
     skies = [Sky(gl, cs, a.content, st, tw, size, tex) for st, tw in variants]
     scenes = []
     if a.sheet:
@@ -691,7 +691,7 @@ def main():
         for sky in skies:
             ms = []
             sky.fresh = True
-            img = render(gl, sky, s, size, fbo, color, vao, len(pos), model, a.frames if sky.twin else 1, ms)
+            img = render(gl, sky, s, size, fbo, color, vao, len(pos), model, a.frames if sky.native else 1, ms)
             if a.bench:
                 runs = []
                 for _ in range(a.bench):
@@ -708,7 +708,7 @@ def main():
                                      re.sub(r"\W+", "_", name) + "_" + sky.stage + "_hdr.npy"), img)
             passes = ms[1:]
             total = ms[0] + sum(t for _, t in passes)
-            shown = present(img, sky.last_lens)
+            shown = present(img, sky.last_overlay)
             png = shown if a.nolabel else label(shown, f"{name} [{sky.stage}] {total:.2f} ms")
             row.append(png)
             detail = "  ".join(f"{r.replace('sowsky_', '')} {t:.2f}" for r, t in passes)
