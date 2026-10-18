@@ -411,7 +411,12 @@ fog, time of day and the camera — from the whole-stage environment `cx_stageen
 - After every dispatch: an image-access and texture-fetch memory barrier, then a mip regeneration for each
   image the pass bound as an image and declared `mips`.
 - `/alloy` prints the passes' GPU time as `native passes …`, and the `native stages:` clause of the `[alloy]`
-  period line names each stage, how many passes ran this period and how much image memory it holds.
+  period line names each stage, how many passes ran this period, how many frames ran with no history (`cxFresh`
+  1; a steady view has none) and how much image memory it holds.
+- `/alloy snap` writes every live stage's images, level 0, into `cx_snap/` beside the frame it snaps, as
+  `<set>_native_<image>.cxi`: a `CXI <w> <h> <d>` line, then float RGBA, rows bottom-up. `cx.log` gets a
+  `[snap]` line per pass and per program a host draws, with what its frame uniforms, samplers and images hold at
+  that moment beside what they should.
 
 ### The fog colour
 

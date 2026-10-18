@@ -97,6 +97,8 @@ public static unsafe class Gl
     // glGetIntegerv pnames for save/restore.
     public const uint VIEWPORT = 0x0BA2, CURRENT_PROGRAM = 0x8B8D, VERTEX_ARRAY_BINDING = 0x85B5;
     public const uint ACTIVE_TEXTURE = 0x84E0, TEXTURE_BINDING_2D = 0x8069, ARRAY_BUFFER_BINDING = 0x8894;
+    /// <summary>What a texture unit's 3D target and an image unit hold (the latter by glGetIntegeri_v).</summary>
+    public const uint TEXTURE_BINDING_3D = 0x806A, IMAGE_BINDING_NAME = 0x8F3A;
     public const uint SCISSOR_BOX = 0x0C10;
     public const uint FRAMEBUFFER_BINDING = 0x8CA6, DEPTH_WRITEMASK = 0x0B72, DEPTH_FUNC = 0x0B74, DEPTH_RANGE = 0x0B70;
     // FBO / depth-pass (shadow map).
@@ -251,6 +253,7 @@ public static unsafe class Gl
     public const uint ALREADY_SIGNALED = 0x911A, CONDITION_SATISFIED = 0x911C;
 
     public static delegate* unmanaged<uint, int*, void> GetIntegerv;
+    public static delegate* unmanaged<uint, uint, int*, void> GetIntegeri_v;
     public static delegate* unmanaged<uint, byte> IsEnabled;   // GLboolean glIsEnabled(GLenum)
     public static delegate* unmanaged<uint> GetError;          // GLenum glGetError(void)
     public static delegate* unmanaged<void> Finish;            // void glFinish(void)
@@ -619,6 +622,7 @@ public static unsafe class Gl
         if (_getProc == null) { log.Info("Gl: SDL_GL_GetProcAddress unresolved"); _failed = true; return false; }
 
         GetIntegerv = (delegate* unmanaged<uint, int*, void>)P("glGetIntegerv");
+        GetIntegeri_v = (delegate* unmanaged<uint, uint, int*, void>)P("glGetIntegeri_v");
         GetTexLevelParameteriv = (delegate* unmanaged<uint, int, uint, int*, void>)P("glGetTexLevelParameteriv");
         GetRenderbufferParameteriv =
             (delegate* unmanaged<uint, uint, int*, void>)P("glGetRenderbufferParameteriv");

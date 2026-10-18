@@ -497,6 +497,7 @@ public sealed unsafe partial class AlloyRenderer
                     Ssr.Resume();
                     GpuEnd(GpuTerm.Sky);
                     if (!_capturing) FrameTap.Take("sky", viewport);
+                    if (!_capturing && FrameTap.Armed) StageResources.Snap(FrameTap.Dir, FrameTap.Seq, _log);
                     break;
                 case PassId.CutoutOwned:
                     // CX-188: the cutout class is the last G-buffer writer; close the attachment after it

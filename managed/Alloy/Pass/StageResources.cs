@@ -80,12 +80,12 @@ internal static unsafe partial class StageResources
         public int Gx = 1, Gy = 1, Gz = 1;
         public StageEnvLoc Env;
         public FrameLoc Frame;
-        public ImageBind[] Binds = [];
+        public ImageBind[] Binds = [], Samplers = [];
     }
 
-    /// <summary>One image a program takes through an IMAGE unit, resolved at build: where its uniform is, which stage
-    /// and image it names, and the unit it was given. A sampler needs no entry: it points at the image's own
-    /// texture unit for the program's life.</summary>
+    /// <summary>One image a program reads or writes, resolved at build: where its uniform is, which stage and image it
+    /// names, and its unit -- an image unit of the program's own for an image, the image's own texture unit for a
+    /// sampler, which it points at for the program's life.</summary>
     private struct ImageBind
     {
         public int Loc;
@@ -100,7 +100,7 @@ internal static unsafe partial class StageResources
     {
         public uint Prog;
         public int A = -1, B = -1;
-        public ImageBind[] Binds = [];
+        public ImageBind[] Binds = [], Samplers = [];
         public FrameLoc Frame;
     }
 
@@ -119,8 +119,8 @@ internal static unsafe partial class StageResources
         /// <summary>The last frame a host drew or staged it, the last frame its frame passes ran, and the last frame
         /// its history was garbage -- images (re)made, or its passes resumed after a gap.</summary>
         public int LastUse = int.MinValue, RanFrame = int.MinValue, FreshFrame = -1;
-        /// <summary>Passes dispatched this period, for the <c>[alloy]</c> line.</summary>
-        public int Runs;
+        /// <summary>Passes dispatched this period, and frames its passes ran with no history, for the <c>[alloy]</c> line.</summary>
+        public int Runs, FreshRuns;
         /// <summary>The <c>cx_fog</c> texel -- the image index (-1: none declared) and its coordinates.</summary>
         public int FogImage = -1, FogX, FogY;
         public string FogRef = "";
@@ -268,7 +268,7 @@ internal static unsafe partial class StageResources
     internal static void ResetPeriod()
     {
         var g = _gl;
-        for (int i = 0; i < g.Count; i++) if (g.Stages[i] is { } s) s.Runs = 0;
+        for (int i = 0; i < g.Count; i++) if (g.Stages[i] is { } s) { s.Runs = 0; s.FreshRuns = 0; }
     }
 
     /// <summary>Every native stage's clause on the period line: what it runs, or the reason it stood down -- "none
@@ -283,7 +283,8 @@ internal static unsafe partial class StageResources
             if (g.Stages[i] is not { } s) continue;
             if (i > 0) sb.Append("; ");
             if (s.Failed) { sb.Append(s.Ref).Append(" FELL BACK: ").Append(s.Reason); continue; }
-            sb.Append(s.Ref).Append($" ({s.Passes.Length} pass(es), {s.Runs} ran this period, {s.Images.Length} image(s), ")
+            sb.Append(s.Ref).Append($" ({s.Passes.Length} pass(es), {s.Runs} ran this period, {s.FreshRuns} frame(s) with no history, "
+                                     + $"{s.Images.Length} image(s), ")
               .Append($"{s.Bytes / (1024.0 * 1024.0):F1} MiB");
             if (g.FogStage == i)
                 sb.Append(g.FogMiss.Length > 0 ? $", fog colour NOT READ: {g.FogMiss}"

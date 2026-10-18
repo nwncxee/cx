@@ -59,11 +59,11 @@ internal static unsafe partial class StageResources
             p.Gx = Math.Max(gs[0], 1); p.Gy = Math.Max(gs[1], 1); p.Gz = Math.Max(gs[2], 1);
             p.Env = StageEnvLoc.Locate(prog);
             p.Frame = FrameLoc.Locate(prog);
-            if (!Resolve(prog, id, -1, PassImgUnits, out p.Binds, out var samplers, out string why)
-                || !Point(prog, samplers, p.Binds, out why))
+            if (!Resolve(prog, id, -1, PassImgUnits, out p.Binds, out p.Samplers, out string why)
+                || !Point(prog, p.Samplers, p.Binds, out why))
             { Fail(id, $"pass {p.Ref}: {why}", log); return false; }
             log?.Info($"{what}: built, {p.Gx}x{p.Gy}x{p.Gz} work group, {p.Binds.Length} image unit(s), "
-                    + $"{samplers.Count} sampler(s)");
+                    + $"{p.Samplers.Length} sampler(s)");
         }
         if (!MarkSwaps(s, out string refused) || !OverlayWritten(s, out refused)) { Fail(id, refused, log); return false; }
         return true;
@@ -123,7 +123,7 @@ internal static unsafe partial class StageResources
     {
         if (prog == 0) return -1;
         var frame = FrameLoc.Locate(prog);
-        if (!Resolve(prog, a, b, DrawImgUnits, out ImageBind[] binds, out var samplers, out string why)
+        if (!Resolve(prog, a, b, DrawImgUnits, out ImageBind[] binds, out ImageBind[] samplers, out string why)
             || !Point(prog, samplers, binds, out why))
         {
             Fail(a, why, log);
@@ -132,25 +132,25 @@ internal static unsafe partial class StageResources
         }
         if (binds.Length == 0 && !frame.Any) return -1;
         var g = _gl;
-        g.Recs.Add(new Rec { Prog = prog, A = a, B = b, Binds = binds, Frame = frame });
+        g.Recs.Add(new Rec { Prog = prog, A = a, B = b, Binds = binds, Samplers = samplers, Frame = frame });
         return g.Recs.Count - 1;
     }
 
     /// <summary>Samplers and images are program state: set once, a sampler reads its image's texture unit and an image
     /// its image unit from every pass that draws the program. Each is read back, because one left at its default of 0
     /// reads whatever unit 0 holds with no error at all. Cold -- at a program's build; hands back the current program.</summary>
-    private static bool Point(uint prog, List<(int Loc, uint Unit)> samplers, ImageBind[] images, out string why)
+    private static bool Point(uint prog, ImageBind[] samplers, ImageBind[] images, out string why)
     {
         why = "";
-        if (samplers.Count == 0 && images.Length == 0) return true;
+        if (samplers.Length == 0 && images.Length == 0) return true;
         int prev = 0;
         Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prev);
         Gl.UseProgram(prog);
-        foreach ((int loc, uint unit) in samplers) Gl.Uniform1i(loc, (int)unit);
+        foreach (ImageBind b in samplers) Gl.Uniform1i(b.Loc, (int)b.Unit);
         foreach (ImageBind b in images) Gl.Uniform1i(b.Loc, (int)b.Unit);
         Gl.UseProgram((uint)prev);
-        foreach ((int loc, uint unit) in samplers)
-            if (!Pointed(prog, loc, unit, out why)) return false;
+        foreach (ImageBind b in samplers)
+            if (!Pointed(prog, b.Loc, b.Unit, out why)) return false;
         foreach (ImageBind b in images)
             if (!Pointed(prog, b.Loc, b.Unit, out why)) return false;
         return true;
@@ -168,7 +168,7 @@ internal static unsafe partial class StageResources
     /// uniforms: by name, and by the type the program declared them with -- a sampler reads the image's own texture
     /// unit, an image takes an image unit below <paramref name="imgUnits"/>, and the shape has to agree. Build time.</summary>
     private static bool Resolve(uint prog, int a, int b, uint imgUnits, out ImageBind[] binds,
-                                out List<(int Loc, uint Unit)> samplers, out string why)
+                                out ImageBind[] samplers, out string why)
     {
         binds = [];
         samplers = [];
@@ -191,6 +191,7 @@ internal static unsafe partial class StageResources
             active[name] = type;
         }
         var list = new List<ImageBind>();
+        var read = new List<ImageBind>();
         var from = new Dictionary<string, string>(StringComparer.Ordinal);
         uint img = 0;
         foreach (int id in new[] { a, b })
@@ -219,13 +220,15 @@ internal static unsafe partial class StageResources
                     // for it would spend the budget on a name no frame ever writes.
                     int loc = GlProgram.Loc(prog, name);
                     if (loc < 0) continue;
-                    if (!isImage) { samplers.Add((loc, prev ? im.UnitPrev : im.Unit)); continue; }
+                    if (!isImage)
+                    { read.Add(new ImageBind { Loc = loc, Stage = id, Image = i, Prev = prev, Unit = prev ? im.UnitPrev : im.Unit }); continue; }
                     if (img >= imgUnits) { why = $"more than {imgUnits} image units are needed"; return false; }
                     list.Add(new ImageBind { Loc = loc, Stage = id, Image = i, Prev = prev, Unit = img++ });
                 }
             }
         }
         binds = list.ToArray();
+        samplers = read.ToArray();
         return true;
     }
 
@@ -290,6 +293,7 @@ internal static unsafe partial class StageResources
         for (int i = 0; i < g.Count; i++)
         {
             if (g.Stages[i] is not { Failed: false } s || s.RanFrame != f) continue;
+            if (s.FreshFrame == f) s.FreshRuns++;
             RunPasses(i, s, viewport, once: false);
             if (g.FogStage == i) ReadFog(s, log);
         }
