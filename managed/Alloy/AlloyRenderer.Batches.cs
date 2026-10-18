@@ -1271,7 +1271,11 @@ public sealed unsafe partial class AlloyRenderer
             if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
             if (prog != boundProg)
             {
-                if (_skProg[i] != 0) SkyStage.Prepare(prog, vp, viewport);
+                if (_skProg[i] != 0)
+                {
+                    // a native stage that stood down at this frame's head has no images: the dome sits the frame out
+                    if (!SkyStage.Prepare(prog, vp, viewport)) { boundProg = 0; continue; }
+                }
                 else { PrimeSkyPlain(vp, viewport); usedPlain = true; }
                 boundProg = prog;
                 // sampler units are per PROGRAM state but the bindings are the CONTEXT's, so only the

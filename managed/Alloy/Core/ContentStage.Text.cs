@@ -87,14 +87,20 @@ internal static partial class ContentStage
     }
 
     /// <summary>The uniforms a stage keeps as it wrote them, because Alloy sets them by name: the cx frame uniforms in
-    /// any stage, and -- in a native one (<see cref="StageResources"/>) -- the images its own <c>#pragma cx_image</c>
-    /// lines declare and their <c>_prev</c> halves.</summary>
-    private static HashSet<string> OwnNames(string resref, string stage)
+    /// any stage, and the images a native half (<see cref="StageResources"/>) of the pair declares on its own
+    /// <c>#pragma cx_image</c> lines, with their <c>_prev</c> halves -- the two halves link into one program.</summary>
+    private static HashSet<string> OwnNames(string resref, string stage, string partner, Func<string, string?> chain)
     {
         var own = new HashSet<string>(FrameNames, StringComparer.Ordinal);
-        if (!resref.StartsWith(StageResources.Prefix, StringComparison.OrdinalIgnoreCase)) return own;
-        foreach (Match m in ImagePragma.Matches(stage)) { own.Add(m.Groups[1].Value); own.Add(m.Groups[1].Value + "_prev"); }
+        Images(own, resref, stage);
+        if (partner.Length > 0) Images(own, partner, chain(partner) ?? "");
         return own;
+    }
+
+    private static void Images(HashSet<string> own, string resref, string text)
+    {
+        if (!resref.StartsWith(StageResources.Prefix, StringComparison.OrdinalIgnoreCase)) return;
+        foreach (Match m in ImagePragma.Matches(text)) { own.Add(m.Groups[1].Value); own.Add(m.Groups[1].Value + "_prev"); }
     }
 
     /// <summary>The cx frame uniforms (<see cref="FrameLoc"/>), which every host sets on a program that declares one.</summary>

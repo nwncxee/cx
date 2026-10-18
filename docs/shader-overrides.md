@@ -126,7 +126,7 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_toon_fs` | fragment | The post stack's cel stage: the client's Toon video option and its three sliders -- a plane-fit depth and colour ink, and an opt-in luminance posterise. Display space in and out. |
 | `cx_sharpen_fs` | fragment | CX-93: the post stack's sharpen stage -- the client's Sharpen video option. The stock effect's asymmetric edge darkening plus its global lift, without its own AA (the stack has SMAA/TAA ahead of it). Display space in and out. |
 | `cx_vibrance_fs` | fragment | CX-93: the post stack's vibrance stage -- the client's Vibrance video option at the engine's own amount (`uVibrance`), saturating the greyest pixels hardest and restoring luminance. Display space in and out. |
-| `cx_fbpost_fs` | fragment | #352: the hosted content post chain. Its `// $VANILLA-MAIN fsfbpostpr` region runs the resource chain's `fsfbpostpr.shd` whole, its `main()` and every include it reaches, so a hak or NWSync fork of that file or of `inc_postpr.shd` is what runs: a fork that draws over the frame from its own `main()` (a spell telegraph off the scriptable uniforms, a world position through `m_view_inv` and the depth) runs too. The stage stands down when nothing supplies it. Display space in and out. |
+| `cx_fbpost_fs` | fragment | #352: the hosted content post chain. Its `// $VANILLA-MAIN fsfbpostpr` region runs the resource chain's `fsfbpostpr.shd` whole, its `main()` and every include it reaches, so a hak or NWSync fork of that file or of `inc_postpr.shd` is what runs: a fork that draws over the frame from its own `main()` (a spell telegraph off the scriptable uniforms, a world position through `m_view_inv` and the depth) runs too. The stage stands down when nothing supplies it. Display space in and out. A native version of the chain (`cx_fsfbpostpr`, see "Native stages, images and passes") runs in this region in its place, built with `CX_NATIVE`. |
 | `cx_taa_fs` | fragment | #389: the taa stage's copy-out of the history `TaaStage.Prepare` resolved (`uHist`). The accumulator itself is embedded, not overridable. |
 | `cx_ssao_fs` | fragment | Ambient occlusion (#379, ADR 0021): GTAO visibility from the prepass depth, R8, read by the lit stage's ambient term. Not a post stage: runs before the colour pass. |
 | `cx_ssaoblur_fs` | fragment | The depth-aware 4x4 blur that folds the AO pass's dither pattern away. |
@@ -283,7 +283,7 @@ renderers. The hosts:
 | --- | --- | --- |
 | the sky | the `customShaderFS` a sky material names | runs in `cx_sky_fs`, in linear HDR |
 | a material pair | either half of the `customShaderVS`/`customShaderFS` pair a `.mtr` names | runs in the lit stages' content region, translated like any half (above); the other half is its own native version, the plain half, or stock |
-| the post chain | `fsfbpostpr` | none yet: the chain runs as the module ships it, and gets the frame uniforms below |
+| the post chain | `fsfbpostpr` | runs in the region of the EMBEDDED `cx_fbpost_fs` (an override of that wrapper names the chain's own stage); display space, as the chain is |
 
 Nothing is recognised by name beyond the `cx_` prefix. A resref that is one of Alloy's own stages or libraries
 (`cx_sky_fs`, for a content stage called `sky_fs`) is an override of Alloy, never a native stage. `alloy.native 0`
@@ -341,7 +341,8 @@ the stage.
   frost on the glass, a vignette. A `tex2d` or `view` image that a `frame` pass writes as an image. See "The
   overlay" below.
 
-Budgets, refused loudly past the edge: per stage, 32 images, 32 passes, 2d sides up to 4096, 3d sides up to 256;
+Budgets, refused loudly past the edge: 32 native stages a module; per stage, 32 images, 32 passes, 2d sides up to
+4096, 3d sides up to 256;
 512 MiB of image memory across every native stage, taken at build over the fixed-size images and again with the
 measured sizes whenever the view-sized ones are made. A module has **one** fog colour and **one** overlay: a stage
 naming either while another live stage holds it is refused. Passes run in **declaration order**.
@@ -450,9 +451,11 @@ The native stages, their images and their passes have a **module** lifetime — 
 they die with the GL context.
 
 Offline, `./check-shaders.py` always compiles and driver-links the fixture under `tools/native/fixture/` — a
-native sky, its fallback stage and its three passes, and a native material half with its pass — and does the
+native sky, its fallback stage and its three passes; a native material pair whose vertex half reads the image its
+fragment half declares, with its pass; and a native post chain with its pass — and does the
 same for every native stage it finds under `CX_CONTENT_SHD` and `CX_CONTENT_STAGES`, each the way its host
-builds it. It mirrors the pragma grammar — and pins that mirror to the extender's own parser by running the
+builds it, and fails a material half whose image uniform the translation turned into anything else. It mirrors
+the pragma grammar — and pins that mirror to the extender's own parser by running the
 accept/refuse lines out of `StageResources.SelfCheck.cs` through it — so a stage whose declarations the extender
 would refuse fails the gate instead of a player's first frame. A pass stage missing from the chain, an image
 uniform whose `layout` format or 2D/3D-ness disagrees with its declaration, and a `history` image or an overlay

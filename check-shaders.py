@@ -964,7 +964,7 @@ def content_pair(g, vs, fs, chain):
         raw = expand_includes("cx_ownlit_vs.glsl", swap={"cx_host_v.glsl": f"{CONTENT_VS_MARK}{vs} {fs or ''}\n{VS_STUB}// $VANILLA-END\n"})
         at = raw.index(CONTENT_VS_MARK)
         end = raw.index("// $VANILLA-END", at)
-        vres = content_stage.translate(vs, False, chain, g["cx_content_v"], "", "", g["cx_constd_v"], raw[:at])
+        vres = content_stage.translate(vs, False, chain, g["cx_content_v"], "", "", g["cx_constd_v"], raw[:at], partner=fs or "")
         vtext = raw[:at] + (vres.host if vres.host else VS_STUB) + raw[end:]
     ftext = g["cx_ownlit_fs"]
     if fs is not None:
@@ -976,7 +976,7 @@ def content_pair(g, vs, fs, chain):
         seen = {d.lower() for d in done}
         fres = content_stage.translate(fs, True, lambda n: "" if n.lower() in seen else chain(n), g["cx_content_f"],
                                        g["cx_vanenv_defs"], g["cx_vanenv_f"], g["cx_constd_f"], src[:at],
-                                       vertex=vres if vres is not None and not vres.refused else None)
+                                       vertex=vres if vres is not None and not vres.refused else None, partner=vs or "")
         ftext = src[:at] + (fres.host if fres.host else FS_STUB) + src[end:]
     return vtext, ftext, vres, fres
 
@@ -1334,17 +1334,26 @@ def native_check_bindings(images, text):
     return errs, written
 
 
-def material_half(text):
-    """Is this a MATERIAL stage -- one that runs the stock material skeleton? The other host a native fragment stage
-    has is the sky, which runs whole."""
+# Mirrors FbPostStage: the engine's post program the wrapper's whole-stage region names.
+POST_STAGE, POST_REGION = "fsfbpostpr", "// $VANILLA-MAIN "
+
+
+def native_host(native, text):
+    """Which host runs a native stage: the post chain's, by name; a MATERIAL half, one that runs the stock material
+    skeleton; else the sky, whose fragment stage runs whole."""
+    if native[3:] == POST_STAGE:
+        return "post"
     body = COMMENTS_RE.sub(" ", text)
-    return bool(re.search(r"\b(?:ApplyStandardShader|SetupStandardShaderInputs|TransformMainCoordinates)\s*\(", body))
+    if re.search(r"\b(?:ApplyStandardShader|SetupStandardShaderInputs|TransformMainCoordinates)\s*\(", body):
+        return "material"
+    return "sky"
 
 
 def native_programs(raw, g):
     """Every native stage, built the way its host builds it -- a sky stage in cx_sky_fs under CX_NATIVE with its
-    fallback stage beside it, a material half as its content pair with the other half by name or stock -- and each
-    pass it declares hosted in cx_pass_cs, by the same substitution and the same splice, refused on the same grounds."""
+    fallback stage beside it, a material half as its content pair with the other half by name or stock, the post chain
+    in cx_fbpost_fs's retargeted region -- and each pass it declares hosted in cx_pass_cs, by the same substitution and
+    the same splice, refused on the same grounds."""
     out, bad = {}, 0
     found = native_stages(g)
     for d, chain, native, stage in found:
@@ -1364,11 +1373,13 @@ def native_programs(raw, g):
                   + ", ".join(sorted(gone)))
             bad = 1
             continue
-        material = material_half(text)
-        print(f"native stage: {native}.shd ({where}): {'material' if material else 'sky'}, {len(images)} image(s), "
-              f"{len(passes)} pass(es)")
+        host = native_host(native, text)
+        print(f"native stage: {native}.shd ({where}): {host}, {len(images)} image(s), {len(passes)} pass(es)")
         texts, written = {}, set()
-        if material:
+        if host == "post":
+            fs = raw["cx_fbpost_fs"].replace(f"{POST_REGION}{POST_STAGE}\n", f"{POST_REGION}{native}\n")
+            texts[f"native post chain {native} ({where})"] = (g["cx_post_vs"], splice(define(fs, "CX_NATIVE 1"), {}, raw, read=chain))
+        elif host == "material":
             vertex = is_vertex(text)
             files = set(chain.files)
             other = partner(stage, files, vertex)
@@ -1382,9 +1393,25 @@ def native_programs(raw, g):
                       f"is refused: {refused}")
                 bad = 1
                 continue
-            if vertex:
+            # the two halves link into one program: an image either native half declares binds in both
+            if other is not None and other.startswith("cx_"):
+                try:
+                    images = images + [i for i in native_decls(chain(other) or "")[0] if i["name"] not in {j["name"] for j in images}]
+                except ValueError:
+                    pass        # the other half's own entry reports it
+            for half, name, out_text in ((vs, "vertex", vt), (fs, "fragment", ft)):
+                own = native_bindings(chain(half) or "") if half else {}
+                for im in images:
+                    for n in (im["name"], im["name"] + "_prev"):
+                        # the translator keeps an image's uniform as written; a macro in its place is the material's
+                        # texture 0 read where the image should be -- a wrong picture with no log line
+                        if n in own and re.search(rf"^\s*#\s*define\s+{n}\b", out_text, re.M):
+                            print(f"native stage: {native}.shd ({where}): FAILED -- the {name} half's `{n}` was "
+                                  "translated away from the image it names")
+                            bad = 1
+            if vs is not None and vs.startswith("cx_"):
                 vt = define(vt, "CX_NATIVE 1")
-            else:
+            if fs is not None and fs.startswith("cx_"):
                 ft = define(ft, "CX_NATIVE 1")
             texts.update(pair_programs(f"native content pair {vs or 'stock'}/{fs or 'stock'} ({where})", vt, ft, fr, vr))
         else:
@@ -1417,10 +1444,10 @@ def native_programs(raw, g):
                   "image by any frame pass")
             bad = 1
         out.update(texts)
-    hosts = {(d, material_half(chain(n) or "")) for d, chain, n, _ in found if d == NATIVE_FIXTURE}
-    if (NATIVE_FIXTURE, True) not in hosts or (NATIVE_FIXTURE, False) not in hosts:
-        print(f"native stage: the fixture under {os.path.relpath(NATIVE_FIXTURE, ROOT)} was not found whole (a sky and a "
-              "material stage) -- the grammar and the wrappers are UNCHECKED")
+    hosts = {native_host(n, chain(n) or "") for d, chain, n, _ in found if d == NATIVE_FIXTURE}
+    if hosts != {"sky", "material", "post"}:
+        print(f"native stage: the fixture under {os.path.relpath(NATIVE_FIXTURE, ROOT)} was not found whole (a sky, a "
+              "material half and a post chain) -- the grammar and the wrappers are UNCHECKED")
         bad = 1
     elif all(d == NATIVE_FIXTURE for d, _, _, _ in found):
         print("native stage: no content tree ships one -- the fixture is what is checked")

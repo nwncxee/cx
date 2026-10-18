@@ -236,21 +236,22 @@ internal static unsafe class SkyStage
     /// credited to the next (the probe's six faces each have their own view-projection).</summary>
     internal static void BeginPass() => _gl.Primed = 0;
 
-    /// <summary>Everything a sky program needs that does not vary per draw, uploaded once per program per
-    /// pass: the view-projection, the sampler units, the camera's world matrix (stock reads its translation
-    /// column as the eye) and the engine's calendar and weather scalars from
-    /// <c>m_shaderExposedRuntimeData</c> -- the same values the engine feeds its own copy. Hot.</summary>
-    internal static void Prepare(uint prog, Matrix4x4* vp, int* viewport)
+    /// <summary>Everything a sky program needs that does not vary per draw, once per program per pass: the view-projection,
+    /// the sampler units, the camera's world matrix (stock reads its translation column as the eye) and the engine's
+    /// calendar and weather scalars. False: its native stage stood down at this frame's head, its images are gone, and
+    /// the dome sits the frame out (said by <see cref="StageResources.Fail"/>) until the next staging replants it. Hot.</summary>
+    internal static bool Prepare(uint prog, Matrix4x4* vp, int* viewport)
     {
         int at = IndexOf(prog);
-        if (at < 0) return;
+        if (at < 0) return true;
         var g = _gl;
         ref Entry e = ref g.Progs[at];
+        if (e.NativeLive && !StageResources.Live(e.Native)) return false;
         Gl.UseProgram(prog);
         if (g.Primed == prog)
         {
             Gl.UniformMatrix4fv(e.Vp, 1, 0, (float*)vp);
-            return;
+            return true;
         }
         g.Primed = prog;
         Gl.UniformMatrix4fv(e.Vp, 1, 0, (float*)vp);
@@ -270,6 +271,7 @@ internal static unsafe class SkyStage
         // never disagree about the calendar -- then its image units and frame uniforms, per pass.
         e.Env.Upload(viewport);
         StageResources.Bind(e.Rec);
+        return true;
     }
 
     /// <summary>The per-draw terms: the record index the vertex stage reads its matrix at, the fog band, and

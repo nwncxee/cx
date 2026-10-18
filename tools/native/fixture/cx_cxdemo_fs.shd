@@ -1,4 +1,4 @@
-// The NATIVE version of cxdemo_mat: the same material skeleton, and a 64x64 ripple field a `frame` pass writes,
+// The NATIVE version of cxdemo_fs: the same material skeleton, and a 64x64 ripple field a `frame` pass writes,
 // which it samples through its own world position -- a material that moves with a simulation the GPU keeps.
 // A fixture for check-shaders.py: it ships in no hak and no module.
 #pragma cx_image cxRipple tex2d 64 64 rg16f

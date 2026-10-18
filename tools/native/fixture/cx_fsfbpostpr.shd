@@ -1,0 +1,11 @@
+// The NATIVE version of the post chain: the frame as it reaches the chain, with a film grain a `frame` pass rolls
+// into a 64x64 image each frame. A fixture for check-shaders.py: it ships in no hak and no module.
+#pragma cx_image cxGrain tex2d 64 64 r8
+#pragma cx_pass frame cxdemo_grain cxGrain
+uniform sampler2D cxGrain;
+void main()
+{
+    vec4 c = texture(uSrc, vUV);
+    float grain = texture(cxGrain, gl_FragCoord.xy / 64.0).r;
+    gl_FragColor = vec4(c.rgb * (0.96 + 0.08 * grain), c.a);
+}

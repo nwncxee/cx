@@ -356,6 +356,7 @@ internal static unsafe partial class StageResources
         { Fail(id, $"{nativeRef} is one of Alloy's own resrefs, not a native stage", log); return id; }
         string? text = VanillaShader.ChainText(nativeRef);
         if (text == null) { Fail(id, "the resource chain has no such file (or alloy.vanillabridge=0)", log); return id; }
+        if (!EntryPoints(out string missing)) { Fail(id, $"the driver exposes no {missing}", log); return id; }
         if (!ParseDecls(s, text, out string why) || !Claim(id, s, out why) || !Units(s, out why)) { Fail(id, why, log); return id; }
         // The fixed-size images are a build-time fact and are budgeted as one; the view-sized ones join at the make.
         if (!Budget(s, 0, 0, out _, out why)) { Fail(id, why, log); return id; }
@@ -402,7 +403,8 @@ internal static unsafe partial class StageResources
         }
         if (next > (uint)g.UnitLimit)
         {
-            why = $"its images would need texture units up to {next - 1}, past the {g.UnitLimit} this driver combines";
+            why = $"its images would need texture units up to {next - 1}, past the {g.UnitLimit} this driver combines "
+                + "(every native stage declared this module holds its own, a refused one included)";
             return false;
         }
         g.NextUnit = next;

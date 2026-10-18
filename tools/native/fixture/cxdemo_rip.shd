@@ -1,4 +1,4 @@
-// cx_cxdemo_mat's `frame` pass: a 64x64 ripple field that rolls with the frame counter. Hosted in cx_pass_cs.
+// cx_cxdemo_fs's `frame` pass: a 64x64 ripple field that rolls with the frame counter. Hosted in cx_pass_cs.
 // A fixture for check-shaders.py; it ships nowhere.
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(rg16f) uniform image2D cxRipple;

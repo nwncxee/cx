@@ -259,7 +259,7 @@ internal static unsafe class PostStack
     {
         _pending = 0; Upsampling = false;
         if (!Post.Stack.V || _targetBad || _gspI == null) return 0;
-        if (FbPostStage.Stale(Mask(), Quality())) Drop(_fbpost, "the client's post options changed");
+        if (FbPostStage.Stale(Mask(), Quality())) Drop(_fbpost, "the client's post options changed, or its native stage stood down");
         bool taaLive = false;
         foreach (Stage st in _stages)
         {
@@ -372,6 +372,7 @@ internal static unsafe class PostStack
             // pass-through stub and run a no-op draw every frame while reporting itself hosted. Splice first;
             // an untouched text means every region missed, and that is a stand-down, not a stage.
             FbPostStage.Arm(Mask(), Quality());
+            fs = FbPostStage.Hosting(fs, _log);
             string spliced = VanillaShader.Splice(fs, _log, "PostStack fbpost");
             if (spliced == fs)
             {
@@ -382,9 +383,26 @@ internal static unsafe class PostStack
             }
             fs = spliced;
         }
-        st.Prog = GlProgram.Graphics(PostChain.ShdPostVs, vs, st.Resref, fs,
-                                     _log, $"PostStack {st.Name}", out _, out string src);
-        if (st.Prog != 0 && !(ShaderContract.DisplaySafe(src) && ShaderContract.SlotSafe(src, "uSrc")))
+        string src = fs;
+        // A native post stage runs in the EMBEDDED wrapper, retargeted above: an override of the wrapper names the chain's
+        // own stage, and the overridable build would put it back.
+        if (st == _fbpost && FbPostStage.HostsNative)
+            st.Prog = GlProgram.Graphics(vs, fs, _log, $"PostStack {st.Name} (native {StageResources.Prefix}{FbPostStage.ChainStage})");
+        else
+            st.Prog = GlProgram.Graphics(PostChain.ShdPostVs, vs, st.Resref, fs, _log, $"PostStack {st.Name}", out _, out src);
+        bool safe = ShaderContract.DisplaySafe(src) && ShaderContract.SlotSafe(src, "uSrc");
+        if (st == _fbpost && FbPostStage.HostsNative && (st.Prog == 0 || !safe))
+        {
+            // the native stage is refused, out loud, and the chain the engine runs is built in its place
+            string why = st.Prog == 0 ? "its post program did not build (see the compile log above)"
+                                      : "its post program converts colour space or dropped uSrc";
+            if (st.Prog != 0) Gl.DeleteProgram(st.Prog);
+            st.Prog = 0;
+            FbPostStage.RefuseNative(why, _log);
+            Build(st);
+            return;
+        }
+        if (st.Prog != 0 && !safe)
         {
             Gl.DeleteProgram(st.Prog);
             _log?.Info($"PostStack: the {st.Name} override is refused -- it converts colour space (the stack "

@@ -37,7 +37,6 @@ internal static unsafe partial class StageResources
     private static bool BuildPasses(int id, ExtenderLog? log)
     {
         if (At(id) is not { } s || s.Failed) return false;
-        if (!EntryPoints(out string missing)) { Fail(id, $"the driver exposes no {missing}", log); return false; }
         string embedded = ShaderStages.Source(ShdPassCs);
         string over = ShaderResource.Override(ShdPassCs, log) ?? embedded;
         foreach (Pass p in s.Passes)
@@ -213,14 +212,17 @@ internal static unsafe partial class StageResources
         return true;
     }
 
-    /// <summary>A host bound an attached program: its image units and the frame uniforms, onto the program now
-    /// current. An image unit a draw program takes is left bound -- every Alloy compute pass binds its own before it
-    /// dispatches. Hot: once per program per pass, no allocation.</summary>
+    /// <summary>A host bound an attached program: its stages are drawn this frame, and its image units and the frame
+    /// uniforms go onto the program now current. An image unit a draw program takes is left bound -- every Alloy compute
+    /// pass binds its own before it dispatches. A bind ahead of the frame's head (the shadow bracket) reads the frame
+    /// before's camera and images. Hot: once per program per pass, no allocation.</summary>
     internal static void Bind(int rec)
     {
         var g = _gl;
         if ((uint)rec >= (uint)g.Recs.Count) return;
         Rec r = g.Recs[rec];
+        Use(r.A);
+        Use(r.B);
         BindImages(r.Binds);
         if (r.Frame.Any) r.Frame.Upload(FrameFor(r.A, r.B), !AlloyRenderer.Capturing, OverlayTex() != 0);
     }
@@ -261,7 +263,8 @@ internal static unsafe partial class StageResources
                     if (im.Swap) (im.Tex, im.Prev) = (im.Prev, im.Tex);
                 any = true;
             }
-            // every frame, not only after a make or a swap: nothing else binds these units, and it costs a call each
+            // ponytail: every frame, two calls per image -- nothing else binds these units; bind only on a make or a
+            // swap if a profile ever shows the calls
             BindUnits(s);
         }
         if (!any) return;

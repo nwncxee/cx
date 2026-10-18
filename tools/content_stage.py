@@ -319,11 +319,12 @@ IMAGE_PRAGMA = re.compile(r"^[ \t]*#[ \t]*pragma[ \t]+cx_image[ \t]+(\w+)", re.M
 UNIFORM_WORD = re.compile(r"^\s*(?:layout\s*\([^)]*\)\s*)?uniform\b")
 
 
-def own_names(resref, stage):
+def own_names(resref, stage, partner="", chain=None):
     own = set(FRAME_NAMES)
-    if resref.lower().startswith("cx_"):
-        for n in IMAGE_PRAGMA.findall(stage):
-            own |= {n, n + "_prev"}
+    for name, text in ((resref, stage), (partner, (chain(partner) or "") if partner and chain else "")):
+        if name and name.lower().startswith("cx_"):
+            for n in IMAGE_PRAGMA.findall(text):
+                own |= {n, n + "_prev"}
     return own
 
 
@@ -568,7 +569,8 @@ VERTEX_WRAPPER = ("bool CxHostVertex(CxDraw d, int id, int bb)\n{\n"
 OWN_PREFIX = "CxConOwn_"
 
 
-def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_text, ahead="", build=(8193, 37), vertex=None):
+def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_text, ahead="", build=(8193, 37), vertex=None,
+              partner=""):
     r = Result()
     stage = chain(resref)
     if stage is None:
@@ -607,7 +609,7 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
     ps = list(vertex.params) if vertex is not None else []
     macros = []
     text = declarations(text, fragment, supplied, vertex.outputs if vertex is not None else None, ps, macros, r,
-                        own_names(resref, stage))
+                        own_names(resref, stage, partner, chain))
     if r.refused:
         return r
     r.params = ps
