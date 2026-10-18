@@ -4,17 +4,19 @@ using System.Numerics;
 namespace CX.Alloy.Physics;
 
 /// <summary>What one frame of <see cref="DanglyJoints.Step"/> is driven by: the part's world transform, the
-/// wind at the part as the stock solve samples it for one 1/60 s step (world, the engine's units), the frame
-/// time and the knobs, already read.</summary>
+/// air (the mean wind and the point-source push at the part, world metres per second; the air clock; how much
+/// of the gust and turbulence field to apply), the frame time and the knobs, already read.</summary>
 public readonly struct DanglyInputs
 {
     public readonly Matrix4x4 PartWorld;
-    public readonly Vector3 Wind;
-    public readonly float Dt, WindGain, Tilt, Drag, Cage;
+    public readonly Vector3 Mean, Point;
+    public readonly float Time, Field, Dt, WindGain, Tilt, Cage;
 
-    public DanglyInputs(Matrix4x4 partWorld, Vector3 wind, float dt, float windGain, float tilt, float drag, float cage)
+    public DanglyInputs(Matrix4x4 partWorld, Vector3 mean, Vector3 point, float time, float field, float dt,
+                        float windGain, float tilt, float cage)
     {
-        PartWorld = partWorld; Wind = wind; Dt = dt; WindGain = windGain; Tilt = tilt; Drag = drag; Cage = cage;
+        PartWorld = partWorld; Mean = mean; Point = point; Time = time; Field = field; Dt = dt;
+        WindGain = windGain; Tilt = tilt; Cage = cage;
     }
 }
 
@@ -66,10 +68,6 @@ public static class DanglyJoints
 
     private const float Tiny = 1e-6f;
 
-    /// <summary>The stock wind drift as a rate: each 1/60 s step shifts a vertex by 20 * wind * its cap, so a
-    /// joint drifts at this times wind times its cap per second.</summary>
-    private const float WindRate = VanillaDangly.WindScale / VanillaDangly.StepDt;
-
     private static readonly Vector3 DownWorld = -Vector3.UnitZ;
 
     /// <summary>Advance <paramref name="s"/> by one frame and write <see cref="DanglyRig.BoneCount"/> node-space
@@ -114,19 +112,19 @@ public static class DanglyJoints
         Matrix4x4 before = Matrix4x4.CreateScale(s.PrevScale) * Matrix4x4.CreateFromQuaternion(s.PrevRot)
                          * Matrix4x4.CreateTranslation(s.PrevPos);
         Remember(s, pos, scale, world);
-        Vector3 gust = inp.Wind * (WindRate * scale * inp.WindGain);
-        Span<Vector3> push = stackalloc Vector3[DanglyRig.MaxJoints];
+        Span<Vector3> air = stackalloc Vector3[DanglyRig.MaxJoints];
         for (int j = 0; j < nj; j++)
         {
             from[j] = dt > 0f ? Vector3.Transform(rig.JointRest[j], before) : target[j];
             drift[j] = dt > 0f ? (target[j] - from[j]) / dt : Vector3.Zero;
-            push[j] = rig.JointParent[j] < 0 ? Vector3.Zero : gust * rig.JointCap[j];
+            air[j] = rig.JointParent[j] < 0 ? Vector3.Zero
+                   : DanglyAir.At(target[j], inp.Time, inp.Mean, inp.Field) + inp.Point;
         }
 
         // The solve runs before the settled test, never instead of it: a frame skipped on a stale reading
         // would be a part the wind never reached. Settled is "nothing new to publish", not "back at rest": a
         // part leaning still in a steady wind is settled.
-        Integrate(rig, s, inp, nj, dt, scale, rot, rotT, from, target, drift, push);
+        Integrate(rig, s, inp, nj, dt, scale, rot, rotT, from, target, drift, air);
         Span<Vector3> local = stackalloc Vector3[DanglyRig.MaxJoints];
         Local(s, world, nj, local);
         bool quiet = true;
@@ -136,8 +134,7 @@ public static class DanglyJoints
             if (rig.JointParent[j] < 0) continue;
             float d = (local[j] - s.Published[j]).LengthSquared();
             moveSq = MathF.Max(moveSq, d);
-            quiet &= d <= QuietPos * QuietPos
-                  && (s.V[j] + push[j] - drift[j]).LengthSquared() <= QuietVel * QuietVel;
+            quiet &= d <= QuietPos * QuietPos && (s.V[j] - drift[j]).LengthSquared() <= QuietVel * QuietVel;
         }
         s.Settled = quiet;
         WriteBones(rig, local, nb, nj, bones);
@@ -177,40 +174,61 @@ public static class DanglyJoints
     }
 
     /// <summary>The spec's force law over substeps of at most 1/120 s, each followed by the length constraints
-    /// and the cage. The targets travel from last frame's pose to this one's across the substeps: held still
-    /// and jumped once a frame, a joint on a part moving steadily would chase a staircase and never settle.
-    /// The wind is the stock drift, <paramref name="push"/>, carried on the position as vanilla's is.</summary>
+    /// and the limits, and the velocity then taken from where they left each joint -- so a chain at full length
+    /// or a joint on its limit stops there instead of storing the motion they refused. The targets travel from
+    /// last frame's pose to this one's across the substeps, or a part moving steadily never settles.</summary>
     private static void Integrate(DanglyRig rig, DanglyJointsState s, in DanglyInputs inp, int nj, float dt,
                                   float scale, in Matrix4x4 rot, in Matrix4x4 rotT, ReadOnlySpan<Vector3> from,
                                   ReadOnlySpan<Vector3> target, ReadOnlySpan<Vector3> drift,
-                                  ReadOnlySpan<Vector3> push)
+                                  ReadOnlySpan<Vector3> air)
     {
-        float om2 = rig.Omega * rig.Omega, damp = 2f * rig.Zeta * rig.Omega;
+        bool pendulum = rig.Class == DanglyClass.Swing;
+        float om2 = pendulum ? 0f : rig.Omega * rig.Omega, damp = 2f * rig.Zeta * rig.Omega;
         Vector3 fall = Gravity * inp.Tilt * (DownWorld - Vector3.TransformNormal(rig.RestDown, rot));
+        if (pendulum) fall += Gravity * Vector3.TransformNormal(rig.Hang, rot);
+        float k = rig.Air * inp.WindGain;
         int steps = Math.Max(1, (int)MathF.Ceiling(dt / SubDt));
         float h = dt / steps;
 
         Span<Vector3> now = stackalloc Vector3[DanglyRig.MaxJoints];
+        Span<Vector3> was = stackalloc Vector3[DanglyRig.MaxJoints];
         for (int step = 0; step < steps; step++)
         {
             float frac = (step + 1f) / steps;
-            for (int j = 0; j < nj; j++) now[j] = Vector3.Lerp(from[j], target[j], frac);
+            for (int j = 0; j < nj; j++) { now[j] = Vector3.Lerp(from[j], target[j], frac); was[j] = s.X[j]; }
             for (int j = 0; j < nj; j++)
             {
-                if (rig.JointParent[j] < 0) { s.X[j] = now[j]; s.V[j] = drift[j]; continue; }
+                int up = rig.JointParent[j];
+                if (up < 0) { s.X[j] = now[j]; s.V[j] = drift[j]; continue; }
                 Vector3 a = om2 * (now[j] - s.X[j]) - damp * (s.V[j] - drift[j]) + fall;
-                if (inp.Drag > 0f) a -= inp.Drag * Tensor(rig, j, s.V[j], rot, rotT);
+                if (k > 0f)
+                {
+                    Quaternion turn = rig.Shear ? Quaternion.Identity
+                                    : Arc(now[j] - now[up], s.X[j] - s.X[up]);
+                    Vector3 face = Facing(rig, j, air[j] - s.V[j], turn, rot, rotT);
+                    a += k * face.Length() * face;
+                }
                 s.V[j] += a * h;
-                s.X[j] += (s.V[j] + push[j]) * h;
-                // A NaN passes the cage as "inside" and would reach the bone palette.
+                s.X[j] += s.V[j] * h;
+                // A NaN passes the limits as "inside" and would reach the bone palette.
                 if (!IsFinite(s.X[j]) || !IsFinite(s.V[j])) { s.X[j] = now[j]; s.V[j] = default; }
             }
-            if (rig.Class == DanglyClass.Swing) Constrain(rig, s, scale);
-            Cage(rig, s, inp.Cage, scale, nj, now);
+            if (pendulum) Constrain(rig, s, scale, now);
+            else if (rig.Shear) Cage(rig, s, inp.Cage, scale, nj, now);
+            else Cone(rig, s, nj, now);
+            if (h > 0f)
+                for (int j = 0; j < nj; j++)
+                    if (rig.JointParent[j] >= 0) s.V[j] = (s.X[j] - was[j]) / h;
         }
     }
 
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
+
+    /// <summary>The air speed a joint's faces catch: <paramref name="wind"/> (world) through its drag tensor, the
+    /// tensor turned with the segment by <paramref name="turn"/>, so a banner lifting edge-on catches less.</summary>
+    private static Vector3 Facing(DanglyRig rig, int j, Vector3 wind, Quaternion turn, in Matrix4x4 rot,
+                                  in Matrix4x4 rotT)
+        => Vector3.Transform(Tensor(rig, j, Vector3.Transform(wind, Quaternion.Conjugate(turn)), rot, rotT), turn);
 
     /// <summary>The joint's drag tensor applied to a world vector: into the node frame the tensor was measured
     /// in, through it, and back.</summary>
@@ -225,12 +243,13 @@ public static class DanglyJoints
         return Vector3.TransformNormal(n, rot);
     }
 
-    /// <summary>Swing's length constraints: every segment back onto its parent at its rest length, which one
-    /// top-down sweep settles exactly for a single column, then the neighbouring columns back to their rest
-    /// spacing at half strength.</summary>
-    private static void Constrain(DanglyRig rig, DanglyJointsState s, float scale)
+    /// <summary>Swing's constraints: every segment turned back inside its cone and put onto its parent at its
+    /// rest length, which one top-down sweep settles exactly for a single column, then the neighbouring columns
+    /// back to their rest spacing at half strength.</summary>
+    private static void Constrain(DanglyRig rig, DanglyJointsState s, float scale, ReadOnlySpan<Vector3> target)
     {
         int k = rig.Columns, j = rig.Segments;
+        float limit = MathF.Cos(rig.Cone);
         for (int it = 0; it < Iterations; it++)
         {
             for (int c = 0; c < k; c++)
@@ -238,7 +257,7 @@ public static class DanglyJoints
                 {
                     int at = c * (j + 1) + seg, up = at - 1;
                     float rest = (rig.JointRest[at] - rig.JointRest[up]).Length() * scale;
-                    Vector3 d = s.X[at] - s.X[up];
+                    Vector3 d = Within(s.X[at] - s.X[up], target[at] - target[up], limit);
                     float len = d.Length();
                     if (len > Tiny && rest > Tiny) s.X[at] = s.X[up] + d * (rest / len);
                 }
@@ -270,6 +289,32 @@ public static class DanglyJoints
             float len = off.Length();
             if (len > cap && len > Tiny) s.X[j] = target[j] + off * (cap / len);
         }
+    }
+
+    /// <summary>The bend limit for a turning Sway: its segment turned back inside the cone, at its own length.</summary>
+    private static void Cone(DanglyRig rig, DanglyJointsState s, int nj, ReadOnlySpan<Vector3> target)
+    {
+        float limit = MathF.Cos(rig.Cone);
+        for (int j = 0; j < nj; j++)
+        {
+            int up = rig.JointParent[j];
+            if (up >= 0) s.X[j] = s.X[up] + Within(s.X[j] - s.X[up], target[j] - target[up], limit);
+        }
+    }
+
+    /// <summary><paramref name="cur"/>, turned toward <paramref name="rest"/> just far enough to sit inside the
+    /// cone of half-angle <c>acos(<paramref name="cosLimit"/>)</c> about it; its length is kept.</summary>
+    private static Vector3 Within(Vector3 cur, Vector3 rest, float cosLimit)
+    {
+        float lr = rest.Length(), lc = cur.Length();
+        if (lr < Tiny || lc < Tiny) return cur;
+        Vector3 a = rest / lr, b = cur / lc;
+        float cos = Vector3.Dot(a, b);
+        if (cos >= cosLimit) return cur;
+        Vector3 side = b - a * cos;
+        float ls = side.Length();
+        if (ls < Tiny) return cur;
+        return (a * cosLimit + side * (MathF.Sqrt(1f - cosLimit * cosLimit) / ls)) * lc;
     }
 
     /// <summary>The bone matrices: node space, row-vector, each mapping its vertices' REST positions to where

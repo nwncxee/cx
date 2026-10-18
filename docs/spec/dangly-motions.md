@@ -9,15 +9,18 @@ lock and a 12 m ship rope by amounts 40x apart.
 
 ## 1. Principles
 
-1. **The authored rest pose is the equilibrium.** No constant force may move it. Gravity acts only through
-   a change of the part's orientation from the authored upright pose (zero for every tile and unrotated
-   placeable); wind drifts a part exactly as the stock solve's does, within its own authored range.
-2. **Every number is in the asset's own units.** A node's natural frequency, damping, wind response and
-   excursion limit are derived from its own `constraints`, `displacement`, `tightness` and `period`, so the
-   authored character of every asset is kept and only what vanilla gets wrong changes: vertices moving
-   independently (jelly, stretch), frame-rate dependence, normals that never follow, a still area frozen
-   solid, and no air drag from the owner's own motion.
-3. **The motion is chosen per node from its data, then per object.** No resref or node names.
+1. **The authored rest pose is the equilibrium in still air.** Gravity acts on a plant or a body part only
+   through a change of the part's orientation from its authored upright pose; a chain hangs under it along
+   the line it was authored on, so it swings as a pendulum about that line and still rests on it.
+2. **The authored numbers say what kind of thing a node is, not how far it may move.** Vanilla's
+   `displacement` is a clamp sized for a solver whose vertices move independently: a banner authored at
+   0.15 m on a 1.9 m drop could swing 7 degrees. A rigged mesh moves as one, so cloth and tall plants are
+   bounded by angles instead, and only what would push through a body (hair, body parts, short plants)
+   keeps its authored range. The spring frequency and damping are still the node's own.
+3. **The air is real.** Wind is a velocity in metres per second with gust fronts the wind carries across
+   the area, and it pushes a part as moving air does: by the square of the speed across its faces, the
+   faces turning with the part. The same law drags a moving character's cloth and hair back.
+4. **The motion is chosen per node from its data, then per object.** No resref or node names.
 
 ## 2. Vanilla, exactly (`VanillaDangly`)
 
@@ -58,6 +61,10 @@ graded against.
   set sits on its own anchor plane has no length to chain down and is rigged as Jiggle. On the census this
   matches the name families 92% (vegetation), 97% (body parts), 82% (creatures), 83% (cloth), 93% (rigging).
 - **Joints and skin weights** for Jiggle and Swing (section 5), and per-joint drag tensors.
+- **Bone shape and limits.** Jiggle, and a Sway whose `|C - P|` is under 0.25, translate and keep the cage
+  `cage * cap_j`. A taller Sway bends about `P` within 40 degrees; a Swing segment turns within 80.
+- **Air response** `K` per metre: cloth 1 (times `min(1, W / 0.5)`: a narrower strip is cord, heavy for its
+  area), foliage 0.4, a body part 0.1.
 
 ## 4. Choosing the motion at run time
 
@@ -78,7 +85,7 @@ depth, shadow and highlight stage then follow from the existing skinning path. A
 moving shadow caster only on frames its bones moved (`NoteDanglyMoved`), not on every frame the way a
 creature's skin does, and a settled part publishes nothing.
 
-## 5. Joints (`DanglyJoints`: Jiggle and Swing share one solver)
+## 5. Joints (`DanglyJoints`: one solver for Sway, Jiggle and Swing)
 
 **Rig.** Anchors = vertices with `m_i = 0`; when there are none, the lowest-mobility tenth. `P` = anchor
 centroid, `C` = mobility-weighted centroid of the moving set, hang axis `u = normalize(C - P)`.
@@ -89,7 +96,7 @@ centroid, `C` = mobility-weighted centroid of the moving set, hang axis `u = nor
   Vertex weight on the segment bone `w_i = min(1, m_i / m90)` (`m90` = 90th-percentile mobility), the rest
   on the root (the part itself).
 - **Swing**: the moving set's extent along `u` is the length `L`; across `u` (its principal axis) the width
-  `W`. `K = clamp(round(2W / L), 1, 4)` columns, `J = clamp(round(L / 0.5 m), 2, 4)` segments each; joint
+  `W`. `K = clamp(round(2W / L), 1, 4)` columns, `J = clamp(round(L / 0.35 m), 2, 6)` segments each; joint
   `(k, j)` at the column's centre line, `j * L / J` down the axis from the anchor plane; joint 0 of every
   column is kinematic. A vertex's chain coordinate `s` (in segments) gives hat weights
   `max(0, 1 - |s - (j + 0.5)|)` over its two nearest segment bones, normalised over them (a vertex at a chain
@@ -101,29 +108,39 @@ centroid, `C` = mobility-weighted centroid of the moving set, hang axis `u = nor
 **Step.** World space, semi-implicit Euler, substeps of at most 1/120 s, the targets travelling from last
 frame's pose to this one's across them (held still and jumped once a frame, a joint on a steadily moving
 part would chase a staircase and never settle). Per moving joint `x` (velocity `v`, rest-pose world target
-`T`, the target's velocity `vT`, cap `cap_j = displacement * mean m over the vertices it weighs most`):
+`T`, the target's velocity `vT`, air velocity `w` at `T`):
 
-    a = ω² (T - x) - 2ζω (v - vT)                               vanilla's spring and damping
-      + g * tilt * (down_world - R_part down_model)              gravity relative to the authored pose
-      - drag * N_j v                                             air drag from the owner's own motion
-    v += a h;  x += (v + p_j) h,   p_j = 20 w cap_j windgain / H   the stock wind drift, as a rate
+    a = ω² (T - x)                       Sway and Jiggle only: the node's own spring
+      - 2ζω (v - vT)                     the node's own damping
+      + g * tilt * (down_world - R_part down_model)      gravity relative to the authored pose
+      + g * R_part u                     Swing only: the chain hangs along its authored line
+      + K * windgain * |N'_j (w - v)| N'_j (w - v)        moving air on the faces
 
-where `w` is the wind sampled as the stock solve samples it for one `H` step. The drift rides on the
-position the way vanilla's does, so the spring and damping answer it exactly as vanilla's: a steady wind
-leans a joint by vanilla's own `3 period / (c̄ tightness)` times the drift rate, and the area's wind -- whose
-direction the engine turns by its unhalved yaw and pitch deviation many times a second -- makes a part
-flutter even where it is far quicker than the part's own spring.
+`N'_j` is the joint's drag tensor turned with its segment (the shortest arc from the rest segment to the
+current one), so a banner that lifts edge-on to the wind catches less of it and settles where
+`K U² cos² θ = g sin θ`. After each substep: Swing's constraints (every segment turned back inside its cone
+and set to its rest length, one top-down sweep; neighbouring columns to their rest spacing at half
+strength, two iterations), a bending Sway's cone, or the cage; then each joint's velocity is taken from
+where they left it, so a joint on a limit stops instead of storing the motion it was refused. A part that
+moved more than 1 unit in a frame resets to its rest pose. Bone matrices (node space, System.Numerics
+row-vector, mapping a rest vertex to its current place): a turning bone is the shortest-arc rotation from
+the rest segment to the current one about the rest root, translated onto the current root; a translating
+one is the pure translation of its joint.
 
-then two iterations of length constraints (Swing: parent-child at rest length, neighbouring columns at rest
-spacing at half strength), then the cage `|x - T| <= cage * cap_j`. A part that moved more than 1 unit in a
-frame resets to its rest pose. Bone matrices (node space, System.Numerics row-vector, mapping a rest vertex
-to its current place): segment bone `(k, j)` = the shortest-arc rotation from the rest segment to the
-current one, about the rest joint, translated onto the current joint; Sway's and Jiggle's is the pure
-translation of the joint.
+## 5a. The air (`DanglyAir`)
+
+The mean wind is the area's base wind at 3.5 m/s per unit (an area set to weak wind blows 1, strong 2,
+along the engine's fixed diagonal), raised to `dangly.breeze` units outdoors; a breeze with no area
+direction turns slowly (0.05 rad/s). Gust fronts are three sines of the distance down the wind *less
+the distance the wind has carried them*, 30, 13 and 6 m apart, swinging the speed by ±60%, so a gust
+crosses a field as a wave at the wind's own speed. Turbulence is three plane waves per axis from 0.4 to
+2.2 Hz, 35% of the gusting speed, so neighbouring cards do not move as one. The engine's point sources
+(a moving creature, a detonation) add 6 m/s per unit, sampled at the part's origin as the stock solve
+samples. The engine's per-sample yaw and pitch deviation -- radians fed to `sincos` unhalved, which turns
+the stock wind several times a second -- is the stock solve's alone.
 
 **Settled.** When no moving joint is further than 1e-4 (node units) from where its bones were last
-published, and none moves faster than 1e-3 relative to the part (its wind drift included), the part
-publishes nothing (no palette
+published, and none moves faster than 1e-3 relative to the part, the part publishes nothing (no palette
 upload, the caster cache may keep it). Measured against the last publish, not last frame, so a slow creep
 is still published once it adds up; measured in the part's own frame, so a cloak carried by a steadily
 walking creature settles, and a part leaning still in a steady wind is settled. A publishing frame reports
@@ -131,10 +148,10 @@ its largest node-space joint move to the shadow-caster verdict, which `dangly.st
 
 ## 6. Sway
 
-A one-joint rig like Jiggle, with the tip at the moving set's mobility-weighted centroid and a pure
-translation for a bone: the moving vertices shift together by their weight, the shear vanilla's own
-vegetation motion amounts to. The same step drives it, so a card leans with the wind in its own range,
-overshoots and rings at its authored 1.2 Hz when a creature walks past, and costs one joint a frame.
+A one-joint rig with the tip at the moving set's mobility-weighted centroid. A card tall enough to bend
+turns about its anchors, so it keeps its length at any lean, and a gust front bends a field of them in
+turn; it overshoots and rings at its authored frequency when a creature walks through it, and costs one
+joint a frame.
 
 ## 7. Knobs (`dangly` group)
 
@@ -143,11 +160,10 @@ overshoots and rings at its authored 1.2 Hz when a creature walks past, and cost
 | `dangly.enabled` | master | on | off: every dangly part is drawn at rest |
 | `dangly.motion` | `auto` / `vanilla` (labelled automatic / stock) | `auto` | stock moves every part the stock way |
 | `dangly.sway`, `dangly.swing`, `dangly.jiggle` | toggle, ChatOnly | on | off runs that kind the stock way |
-| `dangly.windgain` | 0–3 · 1 | ×vanilla's wind response |
+| `dangly.windgain` | 0–3 · 1 | ×`K`: how hard moving air pushes a part, the wind and the owner's own motion alike |
 | `dangly.tilt` | 0–1 · 1 | how fully a tipped part falls toward the ground |
-| `dangly.drag` | 0–3 · 1 | air drag from the owner's motion, 1/s |
-| `dangly.breeze` | 0–2 · 0.5 | a horizontal wind turning at 0.05 rad/s, added everywhere in the area's own units (a weak area's base wind is 1, a strong one's 2) and gusting with its noise field (automatic motion only) |
-| `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit (new motions only) |
+| `dangly.breeze` | 0–2 · 0.5 | the least wind an outdoor area blows, in area units (automatic motion only) |
+| `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit of a translating rig (automatic motion only) |
 | `dangly.still` | as before | |
 
 Every force knob of the per-vertex integrator this replaces is retired -- the gravity, wind, turbulence,

@@ -12,7 +12,9 @@ internal static class DanglyJointsCheck
     {
         AtRest(check);
         SteadyWind(check);
-        Flutter(check);
+        Bend(check);
+        Pendulum(check);
+        Air(check);
         Ringing(check);
         Tilt(check);
         RestLengths(check);
@@ -23,9 +25,10 @@ internal static class DanglyJointsCheck
         Carried(check);
     }
 
-    private static DanglyInputs In(Matrix4x4 world, Vector3 wind, float dt,
-                                  float gain = 1f, float tilt = 0f, float drag = 0f, float cage = 1.5f)
-        => new(world, wind, dt, gain, tilt, drag, cage);
+    /// <summary>A steady <paramref name="mean"/> wind (metres per second), no gusts or turbulence.</summary>
+    private static DanglyInputs In(Matrix4x4 world, Vector3 mean, float dt,
+                                  float gain = 1f, float tilt = 0f, float cage = 1.5f)
+        => new(world, mean, Vector3.Zero, 0f, 0f, dt, gain, tilt, cage);
 
     /// <summary>Oracle: the identity matrix. A seeded rig sits on its rest pose, so every bone maps a rest
     /// vertex to itself and the second frame has nothing to publish.</summary>
@@ -48,51 +51,84 @@ internal static class DanglyJointsCheck
         check.Expect(s.V[1] == Vector3.Zero, "seeding leaves no velocity");
     }
 
-    /// <summary>Oracle: vanilla's drift equilibrium by hand. The stock step drifts a vertex 20 w cap per 1/60 s,
-    /// and its damping holds that at 3 period / (c t) times the drift rate: 25.714286 w cap for the card (c 112,
-    /// t 1, period 0.8). A wind of 0.5 / 25.714286 along y leans it by half its cap, 0.5 * 0.3 * 0.560784 =
-    /// 0.0841176 node units, and a lean that has stopped moving publishes nothing.</summary>
+    /// <summary>Oracle: the force balance by hand. Air on the card's broadside (tensor diag(0, 1, 0)) pulls
+    /// 0.4 * U^2 per second squared, the face turning by the bend, against w^2 = 56: U = sqrt(7) leans the tip
+    /// 1.5 up by 0.05 cos^3(1.909 deg) = 0.0499168 along y. A lean that has stopped moving publishes nothing.</summary>
     private static void SteadyWind(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
         if (r == null) { check.Expect(false, "the card rigs for the wind check"); return; }
         var s = new DanglyJointsState(r.JointRest.Length);
         Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
-        var wind = new Vector3(0f, 0.019444444f, 0f);
-        DanglyInputs inp = In(Matrix4x4.Identity, wind, 1f / 60f);
+        DanglyInputs inp = In(Matrix4x4.Identity, new Vector3(0f, 2.6457513f, 0f), 1f / 60f);
         for (int f = 0; f < 1500; f++) DanglyJoints.Step(r, s, inp, bones);
         Vector3 off = s.X[1] - r.JointRest[1];
-        check.Expect(DanglySelfCheck.Rel(off.Y, 0.0841176f, 0.02f),
-                     "a steady wind leans the joint to half its cap");
-        check.Expect(MathF.Abs(off.X) + MathF.Abs(off.Z) < 1e-3f,
-                     "a y wind on a card leans it along y alone");
+        check.Expect(DanglySelfCheck.Rel(off.Y, 0.0499168f, 0.02f),
+                     $"a steady wind leans the card by K U^2 cos^3 / w^2 = 0.0499168 ({off.Y})");
+        check.Expect(MathF.Abs(off.X) < 1e-4f, "a y wind on a card leans it along y alone");
         check.Expect(!DanglyJoints.Step(r, s, inp, bones),
                      "a card leaning still in a steady wind is settled: there is nothing new to publish");
     }
 
-    /// <summary>Oracle: the spring's response to its own drift, by hand. A wind of 0.02 turning at 5 Hz drifts
-    /// the card's joint at U = 1200 * 0.02 * 0.1682353 = 4.037647 units/s; with w^2 = 56 and 2zw = 1.2 it traces
-    /// a circle of radius U sqrt(W^2 + 1.44) / sqrt((56 - W^2)^2 + 1.44 W^2) = 0.136243 at W = 10 pi. A wind
-    /// too quick for the spring still moves the part, as the stock solve's does.</summary>
-    private static void Flutter(Checker check)
+    /// <summary>Oracle: the bend limit, 40 degrees. A 30 m/s gale on the card asks for a lean several metres
+    /// long, so the tip must stop on the cone -- not short of it, not past it -- and still be 1.5 from its root.</summary>
+    private static void Bend(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
-        if (r == null) { check.Expect(false, "the card rigs for the flutter check"); return; }
+        if (r == null) { check.Expect(false, "the card rigs for the bend check"); return; }
         var s = new DanglyJointsState(r.JointRest.Length);
         Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
-        const float Dt = 1f / 240f, Spin = 10f * MathF.PI;
-        float lo = float.MaxValue, hi = 0f;
-        for (int f = 0; f < 5040; f++)
+        DanglyInputs inp = In(Matrix4x4.Identity, new Vector3(0f, 30f, 0f), 1f / 60f);
+        for (int f = 0; f < 600; f++) DanglyJoints.Step(r, s, inp, bones);
+        Vector3 arm = s.X[1] - s.X[0];
+        float deg = MathF.Acos(Math.Clamp(arm.Z / arm.Length(), -1f, 1f)) * 180f / MathF.PI;
+        check.Expect(deg <= 40.05f && deg >= 39.5f, $"a gale bends a card to its 40 degree limit and no further ({deg})");
+    }
+
+    /// <summary>Oracle: a hanging chain's balance by hand. Broadside air on a face turned by the swing gives
+    /// K U^2 cos^2 = g sin, so K U^2 = g (U = sqrt(9.81 / 0.08) on the 0.04-wide cord) hangs the rope at
+    /// sin = 0.618034 -- its tip, 2 down the chain, at (0, 1.236068, -1.572302). Still air hangs it at rest.</summary>
+    private static void Pendulum(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
+        if (r == null) { check.Expect(false, "the rope rigs for the pendulum check"); return; }
+        int tip = r.JointRest.Length - 1;
+        var s = new DanglyJointsState(r.JointRest.Length);
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        for (int f = 0; f < 300; f++) DanglyJoints.Step(r, s, In(Matrix4x4.Identity, Vector3.Zero, 1f / 60f), bones);
+        check.Expect(DanglySelfCheck.Near(s.X[tip], new Vector3(0f, 0f, -2f), 1e-4f),
+                     "a chain in still air hangs straight down its authored line");
+
+        DanglyInputs inp = In(Matrix4x4.Identity, new Vector3(0f, 11.073617f, 0f), 1f / 60f);
+        for (int f = 0; f < 3000; f++) DanglyJoints.Step(r, s, inp, bones);
+        check.Expect(DanglySelfCheck.Near(s.X[tip], new Vector3(0f, 1.236068f, -1.572302f), 0.02f),
+                     $"a wind of K U^2 = g blows the rope out to sin 0.618034 ({s.X[tip]})");
+    }
+
+    /// <summary>Oracle: the field's own definition. With the field off the air IS the mean; on, its gusts and
+    /// eddies are sines, so a minute's average comes back to the mean, and the gusts (depth 0.6) carry the
+    /// downwind speed well past 40% either side of it.</summary>
+    private static void Air(Checker check)
+    {
+        var mean = new Vector3(2f, 2f, 0f);
+        check.Expect(DanglySelfCheck.Near(DanglyAir.At(new Vector3(3f, -7f, 1f), 12.5f, mean, 0f), mean, 1e-5f),
+                     "with the field off the air is the steady mean");
+        check.Expect(DanglyAir.At(new Vector3(3f, -7f, 1f), 12.5f, Vector3.Zero, 1f) == Vector3.Zero,
+                     "no mean wind, no air");
+        Vector3 sum = Vector3.Zero;
+        float lo = float.MaxValue, hi = 0f, s = mean.Length();
+        Vector3 down = mean / s;
+        const int N = 36000;
+        for (int i = 0; i < N; i++)
         {
-            float t = f * Dt;
-            var wind = new Vector3(MathF.Cos(Spin * t), MathF.Sin(Spin * t), 0f) * 0.02f;
-            DanglyJoints.Step(r, s, In(Matrix4x4.Identity, wind, Dt), bones);
-            if (f < 4800) continue;
-            float d = (s.X[1] - r.JointRest[1]).Length();
+            Vector3 a = DanglyAir.At(new Vector3(3f, -7f, 1f), i / 60f, mean, 1f);
+            sum += a;
+            float d = Vector3.Dot(a, down);
             lo = MathF.Min(lo, d); hi = MathF.Max(hi, d);
         }
-        check.Expect(DanglySelfCheck.Rel(lo, 0.136243f, 0.03f) && DanglySelfCheck.Rel(hi, 0.136243f, 0.03f),
-                     $"a wind turning at 5 Hz sweeps the card round a circle of radius 0.136243 ({lo}..{hi})");
+        Vector3 avg = sum / N;
+        check.Expect((avg - mean).Length() < 0.1f * s, $"the gusting air averages to its mean ({avg})");
+        check.Expect(lo < 0.6f * s && hi > 1.4f * s, $"the gusts swing the speed past 40% either side ({lo}..{hi})");
     }
 
     /// <summary>Oracle: the damped period of the blob's own spring, 2 pi / (15 * sqrt(1 - 0.16)) = 0.457035 s,
@@ -160,8 +196,8 @@ internal static class DanglyJointsCheck
         return (s.X[1] - Vector3.Transform(r.JointRest[1], world)).Length();
     }
 
-    /// <summary>Oracle: the rope's own authored geometry -- five levels half a unit apart, so every segment
-    /// is 0.5 long and stays so however hard the part is yanked.</summary>
+    /// <summary>Oracle: the rope's own authored geometry -- 2 long in six segments, so every segment is
+    /// 0.333333 long and stays so however hard the part is yanked.</summary>
     private static void RestLengths(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
@@ -176,8 +212,9 @@ internal static class DanglyJointsCheck
             DanglyJoints.Step(r, s, In(Matrix4x4.CreateTranslation(at), Vector3.Zero, 1f / 60f, cage: 100f), bones);
         }
         bool kept = true;
-        for (int j = 1; j < r.JointRest.Length; j++) kept &= DanglySelfCheck.Near((s.X[j] - s.X[j - 1]).Length(), 0.5f, 1e-3f);
-        check.Expect(kept, "a yanked Swing chain still measures 0.5 a segment");
+        for (int j = 1; j < r.JointRest.Length; j++)
+            kept &= DanglySelfCheck.Near((s.X[j] - s.X[j - 1]).Length(), 0.333333f, 1e-3f);
+        check.Expect(kept, "a yanked Swing chain still measures 0.333333 a segment");
         check.Expect(DanglySelfCheck.Near(s.X[0], at, 1e-5f), "the chain's root is kinematic: it rides the part");
     }
 
@@ -189,7 +226,7 @@ internal static class DanglyJointsCheck
         if (r == null) { check.Expect(false, "the card rigs for the jump check"); return; }
         var s = new DanglyJointsState(r.JointRest.Length);
         Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
-        var wind = new Vector3(0f, 0.05f, 0f);
+        var wind = new Vector3(0f, 5f, 0f);
         for (int f = 0; f < 300; f++)
             DanglyJoints.Step(r, s, In(Matrix4x4.Identity, wind, 1f / 60f), bones);
         bool leaning = (s.X[1] - r.JointRest[1]).Length() > 1e-3f;
@@ -215,38 +252,43 @@ internal static class DanglyJointsCheck
                      "at 144 fps the lean is the same 0.0616598");
     }
 
-    /// <summary>Oracle: hand-placed joints, the frame given no time to integrate. A Sway or Jiggle joint put at
-    /// rest + (0.05, -0.02, 0.03) must give a bone that is that literal translation; the rope's first joint
-    /// swung 0.6 rad about y keeps its 0.5 length, at (0.5 sin 0.6, 0, -0.5 cos 0.6) = (0.2823212, 0,
-    /// -0.4126678), and its bone must turn the rest joint there about the root by a pure rotation.</summary>
+    /// <summary>Oracle: hand-placed joints, no time to integrate. A Jiggle joint at rest + (0.05, -0.02, 0.03)
+    /// gives that literal translation. The card's tip swung 0.3 rad about x, 1.5 * (0, sin, cos) = (0, 0.4432803,
+    /// 1.4330047), and the rope's first joint 0.6 rad about y, (sin, 0, -cos) / 3 = (0.1882142, 0, -0.2751119),
+    /// are each reached by a pure rotation about the root.</summary>
     private static void BoneMapping(Checker check)
     {
         Matrix4x4 world = Matrix4x4.CreateRotationX(MathF.PI / 2f)
                         * Matrix4x4.CreateTranslation(new Vector3(3f, -2f, 1f));
         var offset = new Vector3(0.05f, -0.02f, 0.03f);
-        foreach (DanglyRig? r in new[] { DanglySelfCheck.Rig(DanglySelfCheck.Blob()),
-                                         DanglySelfCheck.Rig(DanglySelfCheck.Card()) })
-        {
-            if (r == null) { check.Expect(false, "the blob and the card rig for the bone check"); return; }
-            Matrix4x4 b = Placed(r, world, 1, r.JointRest[1] + offset);
-            check.Expect(DanglySelfCheck.Near(Vector3.Transform(r.JointRest[1], b), r.JointRest[1] + offset, 1e-4f),
-                         $"a {r.Class} bone carries the rest tip onto the joint");
-            check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, b), offset, 1e-4f),
-                         $"...as a pure translation: every vertex a {r.Class} bone reaches moves by the same offset");
-        }
+        DanglyRig? blob = DanglySelfCheck.Rig(DanglySelfCheck.Blob());
+        if (blob == null) { check.Expect(false, "the blob rigs for the bone check"); return; }
+        Matrix4x4 b = Placed(blob, world, 1, blob.JointRest[1] + offset);
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(blob.JointRest[1], b), blob.JointRest[1] + offset, 1e-4f),
+                     "a Jiggle bone carries the rest tip onto the joint");
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(Vector3.Zero, b), offset, 1e-4f),
+                     "...as a pure translation: every vertex it reaches moves by the same offset");
 
+        DanglyRig? card = DanglySelfCheck.Rig(DanglySelfCheck.Card());
         DanglyRig? rope = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
-        if (rope == null) { check.Expect(false, "the rope rigs for the bone check"); return; }
-        var swung = new Vector3(0.2823212f, 0f, -0.4126678f);
-        Matrix4x4 m = Placed(rope, world, 1, swung);
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(rope.JointRest[1], m), swung, 1e-4f),
-                     "a Swing bone turns its rest joint onto the swung one");
-        check.Expect(DanglySelfCheck.Near(Vector3.Transform(rope.JointRest[0], m), rope.JointRest[0], 1e-4f),
-                     "...about the segment's root, which stays put");
+        if (card == null || rope == null) { check.Expect(false, "the card and the rope rig for the bone check"); return; }
+        Turned(check, card, world, new Vector3(0f, 0.4432803f, 1.4330047f), "a tall Sway");
+        Turned(check, rope, world, new Vector3(0.1882142f, 0f, -0.2751119f), "a Swing");
+    }
+
+    /// <summary>The checks a turning bone owes: joint 1 placed at <paramref name="swung"/>, its bone carries the
+    /// rest joint there, keeps the root put, and is a pure rotation.</summary>
+    private static void Turned(Checker check, DanglyRig r, Matrix4x4 world, Vector3 swung, string what)
+    {
+        Matrix4x4 m = Placed(r, world, 1, swung);
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(r.JointRest[1], m), swung, 1e-4f),
+                     $"{what} bone turns its rest joint onto the swung one");
+        check.Expect(DanglySelfCheck.Near(Vector3.Transform(r.JointRest[0], m), r.JointRest[0], 1e-4f),
+                     $"...about {what}'s root, which stays put");
         Matrix4x4 rr = m * Matrix4x4.Transpose(m);
         check.Expect(MathF.Abs(rr.M11 - 1f) + MathF.Abs(rr.M22 - 1f) + MathF.Abs(rr.M33 - 1f)
                      + MathF.Abs(rr.M12) + MathF.Abs(rr.M13) + MathF.Abs(rr.M23) < 1e-4f,
-                     "...and its linear part is a pure rotation (R Rt = I): no scale or shear reaches the normals");
+                     $"...by a pure rotation (R Rt = I): no scale or shear reaches {what}'s normals");
     }
 
     /// <summary>Seed <paramref name="r"/> at <paramref name="world"/>, put joint <paramref name="j"/> at the
@@ -261,8 +303,8 @@ internal static class DanglyJointsCheck
         return bones[j];
     }
 
-    /// <summary>Oracle: the settled threshold, 1e-4. A wind that grows by a hair each frame moves the card's lean
-    /// by far less than that per frame, yet the published bones must never trail the solved joint by more.</summary>
+    /// <summary>Oracle: the settled threshold, 1e-4. A wind whose square grows by a hair each frame moves the
+    /// card's lean by about 1e-6 a frame, yet the published bones must never trail the solved joint by more.</summary>
     private static void Creep(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
@@ -274,7 +316,7 @@ internal static class DanglyJointsCheck
         float worst = 0f;
         for (int f = 0; f < 1200; f++)
         {
-            var wind = new Vector3(0f, 2e-6f * f, 0f);
+            var wind = new Vector3(0f, MathF.Sqrt(1.4e-4f * f), 0f);
             if (DanglyJoints.Step(r, s, In(Matrix4x4.Identity, wind, 1f / 60f), bones)) published++;
             worst = MathF.Max(worst, (s.X[1] - s.Published[1]).Length());
         }

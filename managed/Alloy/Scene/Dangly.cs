@@ -14,7 +14,7 @@ internal static class Dangly
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Sway, Swing, Jiggle;
     internal static readonly Knob<string> Motion;
-    internal static readonly Knob<float> WindGain, Tilt, Drag, Breeze, Cage, Still;
+    internal static readonly Knob<float> WindGain, Tilt, Breeze, Cage, Still;
 
     static Dangly()
     {
@@ -32,23 +32,21 @@ internal static class Dangly
 
         G.Section("Forces");
         WindGain = G.Slider("windgain", "Wind response", 0f, 3f, 0.05f, 1f,
-                            help: "How far the wind leans a part, against the lean the game's own wind gives it. "
-                                + "1 = the same lean.");
+                            help: "How hard moving air pushes a part -- the wind, and the air a moving character "
+                                + "runs through. 0 = none.");
         Tilt = G.Slider("tilt", "Gravity", 0f, 1f, 0.05f, 1f,
                         help: "How fully a part on a tipped-over object falls toward the ground. 0 = it keeps "
                             + "hanging the way its model authored it.");
-        Drag = G.Slider("drag", "Air drag", 0f, 3f, 0.05f, 1f,
-                        help: "How much a moving character's own cloak and hair are dragged back by the air. "
-                            + "0 = none.");
         Breeze = G.Slider("breeze", "Base breeze", 0f, 2f, 0.05f, 0.5f,
-                          help: "A light wind added everywhere, gusting the way the area's own does, so a still "
-                              + "area is not frozen. 1 = a weak area's wind, 2 = a strong one's. 0 = only what "
-                              + "the game reports. Automatic motion only.");
+                          help: "The least wind an outdoor area blows, so a still one is not frozen: 1 = an "
+                              + "area set to weak wind, 2 = strong. 0 = only what the area sets. Automatic motion "
+                              + "only.");
 
         G.Section("Movement");
         Cage = G.Slider("cage", "Freedom of movement", 0.5f, 4f, 0.1f, 1.5f, tier: Tier.Advanced,
-                        help: "How far a part may swing from where the model puts it: x the authored limit. Past "
-                            + "about 2 cloaks reach the legs. Automatic motion only.");
+                        help: "How far hair, body parts and short plants may move from where the model puts "
+                            + "them: x the authored limit. Cloth and tall plants swing freely. Automatic motion "
+                            + "only.");
 
         G.Section("");
         Sway = G.Toggle("sway", "sway", true, tier: Tier.ChatOnly,

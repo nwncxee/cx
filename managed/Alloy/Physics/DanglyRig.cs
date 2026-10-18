@@ -14,9 +14,9 @@ public enum DanglyClass : byte { Static, Sway, Jiggle, Swing }
 /// immutable and shared by every instance, like the <see cref="NodeDef"/> it hangs off.</summary>
 public sealed partial class DanglyRig
 {
-    /// <summary>Joints one rig may carry: the largest grid the spec allows, four columns of four segments
+    /// <summary>Joints one rig may carry: the largest grid the spec allows, four columns of six segments
     /// plus each column's kinematic root.</summary>
-    public const int MaxJoints = 20;
+    public const int MaxJoints = 28;
 
     public DanglyClass Class;
     /// <summary>Per render vertex: 0 for an anchor (constraint 0 or 255+), else <c>1 - c/255</c>.</summary>
@@ -25,6 +25,16 @@ public sealed partial class DanglyRig
     public float Omega, Zeta;
     /// <summary>Model-down in this node's rest frame: where gravity pointed when the node was authored.</summary>
     public Vector3 RestDown = -Vector3.UnitZ;
+    /// <summary>Node-space unit axis from the anchors to the moving set: what a Swing chain hangs along.</summary>
+    public Vector3 Hang = -Vector3.UnitZ;
+    /// <summary>How hard moving air pulls on the part, per metre: acceleration = <c>Air * |u| * u</c> for an
+    /// air speed <c>u</c> across its faces. Light cloth most, foliage less, a body part hardly.</summary>
+    public float Air;
+    /// <summary>The widest angle (radians) a turning segment may swing from its rest direction; 0 for a rig
+    /// whose bones translate, which the cage bounds instead.</summary>
+    public float Cone;
+    /// <summary>The longest root-to-joint distance at rest, node units: how far a turning segment reaches.</summary>
+    public float Arm;
     /// <summary>Swing's grid; 1 x 1 for Sway and Jiggle.</summary>
     public int Columns = 1, Segments = 1;
     /// <summary>Per joint, node-space rest position, parent joint (-1 = kinematic root, moves with the part)
@@ -39,8 +49,8 @@ public sealed partial class DanglyRig
     public int[] BoneJoint = Array.Empty<int>();
     /// <summary>The weights <c>MeshArena.Acquire</c> lays into the skinned lanes; slots index bones.</summary>
     public SkinDef? Skin;
-    /// <summary>Sway and Jiggle: the bone is a pure translation (a shear), the way vanilla moves every vertex.
-    /// Swing's segments turn instead, because their length is kept.</summary>
+    /// <summary>The bone is a pure translation (a shear): Jiggle, and a Sway too short to bend. A Swing segment
+    /// and a tall Sway turn about their root instead, which keeps their length at any angle.</summary>
     public bool Shear;
 
     public int BoneCount => BoneJoint.Length;

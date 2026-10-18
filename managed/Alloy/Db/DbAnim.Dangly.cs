@@ -118,8 +118,8 @@ public static unsafe partial class DbAnim
         if (js == null || js.X.Length != joints) _dangly.Joints[part] = js = new DanglyJointsState(joints);
 
         Matrix4x4 world = SceneDb.PartWorld[part];
-        var inp = new DanglyInputs(world, DanglyWind(in world, VanillaDangly.StepDt, windy), dt, Dangly.WindGain.V,
-                                   Dangly.Tilt.V, Dangly.Drag.V, Dangly.Cage.V);
+        var inp = new DanglyInputs(world, DanglyMean(windy), DanglyPoint(in world, windy), DanglyClock(),
+                                   windy ? 1f : 0f, dt, Dangly.WindGain.V, Dangly.Tilt.V, Dangly.Cage.V);
         int cell = _danglyBones.Cell[part];
         Span<Matrix4x4> bones = _danglyBones.Scratch.AsSpan(0, Math.Min(rig.BoneCount, cell));
         bool moved = DanglyJoints.Step(rig, js, inp, bones);
@@ -181,29 +181,45 @@ public static unsafe partial class DbAnim
         SceneDb.TouchPart(part, Dirty.Anim);
     }
 
-    /// <summary>The wind at a part over a step of <paramref name="dt"/>, world space: what the area reports
-    /// (finite-checked) plus the breeze: a slowly turning horizontal wind in the area's own units (a weak area's
-    /// base wind is 1, a strong one's 2), gusting with its noise field, under automatic motion only -- stock is the
-    /// unmodified game. Zero in a GUI scene, which has no wind at all.</summary>
+    /// <summary>The wind the stock solve reads at a part: the engine's own, finite-checked. Zero in a GUI scene,
+    /// which has no wind at all.</summary>
     private static Vector3 DanglyWind(in Matrix4x4 world, float dt, bool windy)
     {
-        if (!windy) return Vector3.Zero;
-        var at = new Vector3(world.M41, world.M42, world.M43);
-        float step = Math.Clamp(dt, MinDt, MaxDt);
-        Vector3 w = AlloyWind.Owned ? AlloyWind.Wind(at, step) : Vector3.Zero;
-        if (!float.IsFinite(w.X) || !float.IsFinite(w.Y) || !float.IsFinite(w.Z)) w = Vector3.Zero;
-        float breeze = Dangly.Motion.V == Dangly.MotionAuto ? Dangly.Breeze.V : 0f;
-        if (breeze <= 0f) return w;
-        float t = DanglyClock() * BreezeTurn;
-        return w + new Vector3(MathF.Cos(t), MathF.Sin(t), 0f)
-                 * (breeze * step * AlloyWind.Noise(at));
+        if (!windy || !AlloyWind.Owned) return Vector3.Zero;
+        Vector3 w = AlloyWind.Wind(new Vector3(world.M41, world.M42, world.M43), Math.Clamp(dt, MinDt, MaxDt));
+        return float.IsFinite(w.X) && float.IsFinite(w.Y) && float.IsFinite(w.Z) ? w : Vector3.Zero;
     }
 
-    /// <summary>The breeze clock: wall seconds, wrapped at 1024 to keep float precision. Not a sum of animate
+    /// <summary>The mean wind the automatic motions move in, world metres per second: the area's base wind,
+    /// raised to <c>dangly.breeze</c> outdoors where the area sets less. A breeze with no area direction to
+    /// follow turns slowly. Zero in a GUI scene.</summary>
+    private static Vector3 DanglyMean(bool windy)
+    {
+        if (!windy) return Vector3.Zero;
+        Vector3 b = AlloyWind.Owned ? AlloyWind.Base : Vector3.Zero;
+        var flat = new Vector2(b.X, b.Y);
+        float area = float.IsFinite(flat.X) && float.IsFinite(flat.Y) ? flat.Length() : 0f;
+        float units = MathF.Max(area, FrameInputs.Interior ? 0f : Dangly.Breeze.V);
+        if (!(units > 0f)) return Vector3.Zero;
+        float t = DanglyClock() * BreezeTurn;
+        Vector2 dir = area > 1e-4f ? flat / area : new Vector2(MathF.Cos(t), MathF.Sin(t));
+        return new Vector3(dir * (units * DanglyAir.SpeedPerUnit), 0f);
+    }
+
+    /// <summary>The point-source push at the part's origin, world metres per second -- sampled where the stock
+    /// solve samples, so a bush feels the creature walking through its base.</summary>
+    private static Vector3 DanglyPoint(in Matrix4x4 world, bool windy)
+    {
+        if (!windy || !AlloyWind.Owned) return Vector3.Zero;
+        Vector3 p = AlloyWind.Point(new Vector3(world.M41, world.M42, world.M43)) * DanglyAir.PointSpeed;
+        return float.IsFinite(p.X) && float.IsFinite(p.Y) && float.IsFinite(p.Z) ? p : Vector3.Zero;
+    }
+
+    /// <summary>The air clock: wall seconds, wrapped at an hour as the shaders' clock is. Not a sum of animate
     /// dt -- <see cref="Animate"/> runs once per SCENE, several a frame, and a sum turned the breeze that many
     /// times too fast for the spring to follow.</summary>
     private static float DanglyClock()
-        => (float)(System.Diagnostics.Stopwatch.GetTimestamp() % (System.Diagnostics.Stopwatch.Frequency * 1024L)
+        => (float)(System.Diagnostics.Stopwatch.GetTimestamp() % (System.Diagnostics.Stopwatch.Frequency * 3600L)
                    / (double)System.Diagnostics.Stopwatch.Frequency);
 
     /// <summary>End of the scene walk: nothing is queued (the dispatch is inline, on the part walk, as the

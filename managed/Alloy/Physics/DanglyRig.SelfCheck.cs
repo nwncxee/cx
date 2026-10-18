@@ -20,8 +20,8 @@ internal static class DanglyRigCheck
     }
 
     /// <summary>Oracle: hand arithmetic on the card's authored numbers -- <c>m = 1 - 112/255</c>,
-    /// <c>w = sqrt(0.5 * 112 * 1)</c>, <c>z = 1.5 * 0.8 / (2w)</c>, <c>G = 3 * 0.8 * 20 / ((1/60) * 112)</c>,
-    /// and a cap of <c>0.3 * m</c>; the joint points sit at the fixture's own anchor and tip centroids.</summary>
+    /// <c>w = sqrt(0.5 * 112 * 1)</c>, <c>z = 1.5 * 0.8 / (2w)</c>, a cap of <c>0.3 * m</c>, and the spec's
+    /// foliage air (0.4) and bend limit (40 degrees); the joints sit at the fixture's anchor and tip centroids.</summary>
     private static void Card(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Card());
@@ -34,7 +34,10 @@ internal static class DanglyRigCheck
         check.Expect(DanglySelfCheck.Near(r.Zeta, 0.0801784f, 1e-5f), "the card's damping ratio is 0.0801784");
         check.Expect(r.Columns == 1 && r.Segments == 1, "Sway is one joint on one column");
         check.Expect(r.BoneCount == 2, "Sway has the part's bone and one more");
-        check.Expect(r.Shear, "a Sway bone is a shear");
+        check.Expect(!r.Shear, "a Sway 1.5 tall bends: its bone turns about the root");
+        check.Expect(DanglySelfCheck.Near(r.Cone, 0.6981317f, 1e-6f), "a plant bends 40 degrees at most");
+        check.Expect(DanglySelfCheck.Near(r.Air, 0.4f, 1e-6f), "foliage takes the air at 0.4 per metre");
+        check.Expect(DanglySelfCheck.Near(r.Arm, 1.5f, 1e-5f), "the card's arm is its 1.5 height");
         check.Expect(r.BoneJoint[0] == -1, "bone 0 is the part itself");
         check.Expect(r.JointParent.Length == 2 && r.JointParent[0] == -1 && r.JointParent[1] == 0,
                      "the tip hangs off a kinematic root");
@@ -52,8 +55,8 @@ internal static class DanglyRigCheck
     }
 
     /// <summary>Oracle: the spec's counts over the banner's own extents -- 1.2 wide, 1.5 deep, so
-    /// <c>K = round(2 * 1.2 / 1.5) = 2</c> and <c>J = round(1.5 / 0.5) = 3</c>, six segment bones plus the
-    /// part; the rope gives <c>K = 1</c>, <c>J = 4</c>.</summary>
+    /// <c>K = round(2 * 1.2 / 1.5) = 2</c> and <c>J = round(1.5 / 0.35) = 4</c>, eight segment bones plus the
+    /// part; the rope gives <c>K = 1</c>, <c>J = 6</c>, and its 0.04 width takes 0.04 / 0.5 of cloth's air.</summary>
     private static void Banner(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Banner());
@@ -61,20 +64,24 @@ internal static class DanglyRigCheck
         check.Expect(r.Class == DanglyClass.Swing, "a banner pinned on its top row is Swing");
         check.Expect(r.Mobility[2] == 0f, "constraint 255 pins as hard as 0");
         check.Expect(r.Columns == 2, "1.2 wide over 1.5 deep is two columns");
-        check.Expect(r.Segments == 3, "1.5 deep is three half-metre segments");
-        check.Expect(r.BoneCount == 7, "two columns of three segments, plus the part");
+        check.Expect(r.Segments == 4, "1.5 deep is four 0.35 segments");
+        check.Expect(r.BoneCount == 9, "two columns of four segments, plus the part");
         check.Expect(!r.Shear, "a Swing segment turns, keeping its length");
+        check.Expect(DanglySelfCheck.Near(r.Cone, 1.3962634f, 1e-6f), "cloth swings 80 degrees at most");
+        check.Expect(DanglySelfCheck.Near(r.Air, 1f, 1e-6f), "cloth 1.2 wide takes the full air, 1 per metre");
+        check.Expect(DanglySelfCheck.Near(r.Hang, new Vector3(0f, 0f, -1f), 1e-5f), "the banner hangs straight down");
         check.Expect(DanglySelfCheck.Near(r.Omega, 2.366432f, 1e-4f), "the banner's spring rate is 2.36643 rad/s");
         check.Expect(DanglySelfCheck.Near(r.Zeta, 0.0633875f, 1e-5f), "the banner's damping ratio is 0.0633875");
 
         DanglyRig? rope = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
         if (rope == null) { check.Expect(false, "the rope builds a rig"); return; }
         check.Expect(rope.Columns == 1, "a rope 0.04 wide over 2 long is one column");
-        check.Expect(rope.Segments == 4, "2 long is four half-metre segments");
-        check.Expect(rope.BoneCount == 5, "one column of four segments, plus the part");
-        for (int j = 1; j <= 4; j++)
-            check.Expect(DanglySelfCheck.Near((rope.JointRest[j] - rope.JointRest[j - 1]).Length(), 0.5f, 1e-5f),
-                         "every rope segment is 0.5 long at rest");
+        check.Expect(rope.Segments == 6, "2 long is six 0.35 segments, rounded");
+        check.Expect(rope.BoneCount == 7, "one column of six segments, plus the part");
+        check.Expect(DanglySelfCheck.Near(rope.Air, 0.08f, 1e-6f), "a 0.04 cord takes 0.08 per metre: cord, not cloth");
+        for (int j = 1; j <= 6; j++)
+            check.Expect(DanglySelfCheck.Near((rope.JointRest[j] - rope.JointRest[j - 1]).Length(), 0.333333f, 1e-5f),
+                         "every rope segment is 2/6 long at rest");
     }
 
     /// <summary>Oracle: hand arithmetic on the blob's authored numbers -- <c>w = sqrt(0.5 * 150 * 3) = 15</c>,
@@ -87,6 +94,8 @@ internal static class DanglyRigCheck
         check.Expect(DanglySelfCheck.Near(r.Omega, 15f, 1e-4f), "the blob's spring rate is 15 rad/s");
         check.Expect(DanglySelfCheck.Near(r.Zeta, 0.4f, 1e-5f), "the blob's damping ratio is 0.4");
         check.Expect(r.BoneCount == 2 && r.Shear, "Jiggle is one joint whose bone translates, as vanilla's vertices do");
+        check.Expect(r.Cone == 0f, "a translating rig has no cone: the cage bounds it");
+        check.Expect(DanglySelfCheck.Near(r.Air, 0.1f, 1e-6f), "a body part takes the air at 0.1 per metre");
         check.Expect(DanglySelfCheck.Near(r.JointRest[1], new Vector3(0f, 0f, 0.1f), 1e-5f),
                      "the tip sits at the mobility-weighted centroid (0, 0, 0.1)");
         check.Expect(DanglySelfCheck.Near(r.JointCap[1], 0.1235294f, 1e-5f),

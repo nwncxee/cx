@@ -16,8 +16,19 @@ public sealed partial class DanglyRig
     private const float MaxOmega = 120f, MaxZeta = 4f;
 
     /// <summary>Node units of chain per Swing segment, and the grid the spec bounds it by.</summary>
-    private const float SegmentLength = 0.5f;
-    private const int MaxColumns = 4, MaxSegments = 4, MinSegments = 2;
+    private const float SegmentLength = 0.35f;
+    private const int MaxColumns = 4, MaxSegments = 6, MinSegments = 2;
+
+    /// <summary>A Sway shorter than this (node units, anchors to moving centroid) translates: turned, a short
+    /// lever amplifies a small tip offset into a large swing of the whole set.</summary>
+    private const float MinBendLength = 0.25f;
+
+    /// <summary>The swing limits (radians): a plant bends 40 degrees at most, cloth swings 80.</summary>
+    private const float MaxBend = 0.6981317f, MaxSwing = 1.3962634f;
+
+    /// <summary>Air response per metre (section 5a): cloth, foliage, a body part. Cloth narrower than
+    /// <see cref="ClothWidth"/> is cord, heavy for its area, and takes the response in proportion.</summary>
+    private const float AirSwing = 1f, AirSway = 0.4f, AirJiggle = 0.1f, ClothWidth = 0.5f;
 
     /// <summary>The class thresholds: mobility that tracks height is Sway, and what is left is Jiggle when it
     /// is this well damped.</summary>
@@ -86,10 +97,32 @@ public sealed partial class DanglyRig
         rig.Columns = grid.Columns;
         rig.Segments = grid.Segments;
         Joints(rig, grid, anchorAt, tipAt, hang);
-        rig.Shear = rig.Class != DanglyClass.Swing;
+        rig.Hang = hang;
+        rig.Shear = rig.Class == DanglyClass.Jiggle || rig.Class == DanglyClass.Sway && hangLen < MinBendLength;
+        rig.Cone = rig.Shear ? 0f : rig.Class == DanglyClass.Swing ? MaxSwing : MaxBend;
+        rig.Air = rig.Class switch
+        {
+            DanglyClass.Swing => AirSwing * MathF.Min(1f, grid.Width / ClothWidth),
+            DanglyClass.Sway => AirSway,
+            _ => AirJiggle,
+        };
+        rig.Arm = LongestArm(rig);
         Weights(rig, grid, mob, pos, anchorAt, hang, disp, msum / moving);
         Drag(rig, mesh, pos);
         return rig;
+    }
+
+    /// <summary>The longest distance from a column's kinematic root to one of its joints, at rest.</summary>
+    private static float LongestArm(DanglyRig rig)
+    {
+        float arm = 0f;
+        int root = 0;
+        for (int j = 0; j < rig.JointRest.Length; j++)
+        {
+            if (rig.JointParent[j] < 0) { root = j; continue; }
+            arm = MathF.Max(arm, (rig.JointRest[j] - rig.JointRest[root]).Length());
+        }
+        return arm;
     }
 
     /// <summary>Model-down in the node's authored frame: the node's rest orientation composed up its parent

@@ -22,7 +22,8 @@ public static unsafe partial class DbAnim
         internal readonly int[] At = new int[SceneDb.MaxParts];
         /// <summary>Bones the part's cell holds, 0 = none.</summary>
         internal readonly int[] Cell = new int[SceneDb.MaxParts];
-        /// <summary>The part's largest authored excursion, which the caster sphere's pose slack comes from.</summary>
+        /// <summary>The part's largest excursion (<see cref="DanglyReach"/>), which the caster sphere's pose slack
+        /// comes from.</summary>
         internal readonly float[] Reach = new float[SceneDb.MaxParts];
         /// <summary>Free cells, one list per size class.</summary>
         internal readonly List<int>[] Free = NewFree();
@@ -55,14 +56,15 @@ public static unsafe partial class DbAnim
         return cell;
     }
 
-    /// <summary>The rig's largest excursion in node units: how far from its rest pose the cage lets the solver
-    /// take it, before <c>dangly.cage</c> widens it.</summary>
+    /// <summary>The rig's largest excursion in node units: the cage times <c>dangly.cage</c> for a rig whose
+    /// bones translate, the chord its longest arm sweeps through the cone for one whose segments turn.</summary>
     private static float DanglyReach(DanglyRig rig)
     {
+        if (!rig.Shear) return 2f * rig.Arm * MathF.Sin(0.5f * rig.Cone);
         float r = 0f;
         float[] cap = rig.JointCap;
         for (int j = 0; j < cap.Length; j++) if (cap[j] > r) r = cap[j];
-        return r;
+        return r * Dangly.Cage.V;
     }
 
     /// <summary>The absolute bone index of <paramref name="part"/>'s cell, or -1 when the rig is bigger than a
@@ -165,11 +167,11 @@ public static unsafe partial class DbAnim
         _dangly.Stock[part] = null;
     }
 
-    /// <summary>The pose slack a rigged dangly part's caster sphere needs: its rig's largest cage reach, which
-    /// is how far from the rest pose the solver may take it. 0 for a part with no bone range.</summary>
+    /// <summary>The pose slack a rigged dangly part's caster sphere needs: its rig's reach, which is how far
+    /// from the rest pose the solver may take it. 0 for a part with no bone range.</summary>
     internal static float DanglyCasterSlack(int part)
         => (uint)part < (uint)SceneDb.MaxParts && _danglyBones.Cell[part] != 0
-         ? _danglyBones.Reach[part] * Dangly.Cage.V : 0f;
+         ? _danglyBones.Reach[part] : 0f;
 
     /// <summary>The renderer's context-loss slot: ask for every range back. Nothing is freed here -- this runs
     /// on the render thread and the ranges are the game thread's.</summary>
