@@ -87,7 +87,7 @@ internal static partial class ContentStage
     /// stage's own vanilla macros (a fragment half; empty for a vertex one) and <paramref name="ahead"/> the program's
     /// text ahead of the region. A fragment half takes its vertex half's translation as <paramref name="vertex"/>.</summary>
     internal static Result Translate(string resref, bool fragment, Func<string, string?> chain, string env, string vanillaDefs,
-                                     string ahead, int buildVersion, int buildRevision, Result? vertex = null)
+                                     string ahead, int buildVersion, int buildRevision, Result? vertex = null, string partner = "")
     {
         var r = new Result();
         string? stage = chain(resref);
@@ -123,7 +123,7 @@ internal static partial class ContentStage
         text = Indexed(text, BonesUse, "CxConBoneAt(");
         var paramList = new List<Param>(vertex?.Params ?? []);
         var macros = new List<string>();
-        text = Declarations(text, fragment, supplied, vertex?.Outputs, paramList, macros, r);
+        text = Declarations(text, fragment, supplied, vertex?.Outputs, OwnNames(resref, stage, partner, chain), paramList, macros, r);
         if (r.Refused != null) return r;
         r.Params = paramList.ToArray();
         if (fragment) text = SplitMain(text, r);
@@ -235,7 +235,7 @@ internal static partial class ContentStage
         Result? vertex = fragment && vs.Length > 0 ? VertexHalf(vs, log, v, rev) : null;
         string resref = fragment ? fs : vs;
         Result r = Translate(resref, fragment, chain, Env(fragment, log), fragment ? AlloyRenderer.VanillaEnvDefs : "",
-                             ahead, v, rev, vertex is { Refused: null } ? vertex : null);
+                             ahead, v, rev, vertex is { Refused: null } ? vertex : null, fragment ? vs : fs);
         _regions.Last[Key(fragment, vs, fs)] = r;
         if (r.Refused != null)
         {

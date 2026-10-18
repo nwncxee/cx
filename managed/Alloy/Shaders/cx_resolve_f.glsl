@@ -17,6 +17,10 @@ uniform float uExposure;  // scene-referred gain before the tonemap; 1 = identit
 uniform float uAcesMix;   // mode 2 only: ACES mixed against the shoulder, in linear; 1 = full ACES
 uniform float uDither;   // one LSB of the output target, or 0
 uniform int uViz;        // 0 = the frame; 1 = bloom only; 2 = HDR only; 3 = bloom x20; 4 = motion vectors
+// A native stage's overlay (cx_overlay): display-linear light added over sky and scene alike -- after the grade,
+// so a lens ghost crossing a ridgeline is one ghost and not two exposures of it.
+uniform sampler2D uOverlay;
+uniform int uOverlayOn;
 #include "cx_postcolor.glsl"
 #include "cx_postdither.glsl"
 vec3 CxShoulder(vec3 c, float k)
@@ -77,6 +81,7 @@ void main()
     // takes only the EXPOSED bleed on top, so bright things still glow onto it.
     float graded = 1.0;
     vec3 raw = vec3(0.0);
+    vec3 overlay = uOverlayOn != 0 ? max(textureLod(uOverlay, vUV, 0.0).rgb, vec3(0.0)) : vec3(0.0);
     if (uSkyRaw != 0 && texture(uDepth, vUV).r >= 1.0)
     {
         if (uSkyBand > 0.0)
@@ -86,7 +91,7 @@ void main()
         }
         else graded = 0.0;
         vec3 g = b * uExposure;
-        raw = CxEncode(c + g);
+        raw = CxEncode(c + g + overlay);
         if (graded <= 0.0)
         {
             frag = vec4(CxDither(raw, gl_FragCoord.xy, uDither), texture(uHdr, vUV).a);
@@ -100,6 +105,7 @@ void main()
     // the mix keeps the darks the ACES toe would crush and takes only the roll-off and colour.
     else if (uMode == 2) c = mix(CxShoulder(c, uKnee), CxAces(c), uAcesMix);
     else if (uMode == 3) c = CxNeutral(c);
+    c += overlay;
     vec3 outc = CxEncode(c);
     if (graded < 1.0) outc = mix(raw, outc, graded);
     // Dithered in DISPLAY space, after the encode: this is where the frame meets 8 bits (or, when

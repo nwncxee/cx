@@ -97,6 +97,8 @@ public static unsafe class Gl
     // glGetIntegerv pnames for save/restore.
     public const uint VIEWPORT = 0x0BA2, CURRENT_PROGRAM = 0x8B8D, VERTEX_ARRAY_BINDING = 0x85B5;
     public const uint ACTIVE_TEXTURE = 0x84E0, TEXTURE_BINDING_2D = 0x8069, ARRAY_BUFFER_BINDING = 0x8894;
+    /// <summary>What a texture unit's 3D target and an image unit hold (the latter by glGetIntegeri_v).</summary>
+    public const uint TEXTURE_BINDING_3D = 0x806A, IMAGE_BINDING_NAME = 0x8F3A;
     public const uint SCISSOR_BOX = 0x0C10;
     public const uint FRAMEBUFFER_BINDING = 0x8CA6, DEPTH_WRITEMASK = 0x0B72, DEPTH_FUNC = 0x0B74, DEPTH_RANGE = 0x0B70;
     // FBO / depth-pass (shadow map).
@@ -183,6 +185,20 @@ public static unsafe class Gl
     /// <see cref="TexStorage2D"/> will take it, and the unsized enums the engine actually uses
     /// (<c>glTexImage2D</c> @0x4cad3d passes GL_RGB/GL_RGBA/GL_RED verbatim).</summary>
     public const uint RGB8 = 0x8051, RG8 = 0x822B, RG = 0x8227, RGB_ = 0x1907, RGBA_ = 0x1908, RG16F = 0x822F;
+    /// <summary>The rest of the sized colour formats a native stage may ask its own images for
+    /// (<c>docs/shader-overrides.md</c>, "Native stages, images and passes"); GL 4.2 image-load-store formats.</summary>
+    public const uint RGBA32F = 0x8814, R16F = 0x822D;
+    /// <summary>A volume texture -- a native stage's <c>tex3d</c> image, and the only target Alloy binds layered.</summary>
+    public const uint TEXTURE_3D = 0x806F;
+    /// <summary>Uniform enumeration (<see cref="GetActiveUniform"/>): how many a program has and the longest
+    /// name, so a caller sizes one buffer instead of guessing.</summary>
+    public const uint ACTIVE_UNIFORMS = 0x8B86, ACTIVE_UNIFORM_MAX_LENGTH = 0x8B87;
+    /// <summary>A compute program's declared <c>local_size</c>, three ints -- what a dispatch divides its
+    /// work extent by, so the group size is read off the program instead of restated in C#.</summary>
+    public const uint COMPUTE_WORK_GROUP_SIZE = 0x8267;
+    /// <summary>The four GLSL uniform types a native stage's image may be declared as: a sampler binds on a
+    /// TEXTURE unit, an image on an IMAGE unit, and the shape has to agree. Anything else refuses the stage.</summary>
+    public const uint SAMPLER_2D = 0x8B5E, SAMPLER_3D = 0x8B5F, IMAGE_2D = 0x904D, IMAGE_3D = 0x904E;
     /// <summary>Alpha-to-coverage -- the fragment's alpha becomes a COVERAGE MASK over the target's
     /// samples. Each sample is still written whole or not at all, so it is antialiasing without ever
     /// producing a partially transparent depth-writing fragment. Inert where SAMPLES is 1.</summary>
@@ -202,7 +218,7 @@ public static unsafe class Gl
     /// <summary>A compute write consumed as a divisor-1 vertex attribute (the grass scatter's stream).</summary>
     public const uint VERTEX_ATTRIB_ARRAY_BARRIER_BIT = 0x0001;
     /// <summary>An image store read back by the next level's dispatch (image) and by the lit stage (fetch).</summary>
-    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, READ_ONLY = 0x88B8, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
+    public const uint SHADER_IMAGE_ACCESS_BARRIER_BIT = 0x0020, TEXTURE_FETCH_BARRIER_BIT = 0x0008, TEXTURE_UPDATE_BARRIER_BIT = 0x0100, PIXEL_BUFFER_BARRIER_BIT = 0x0080, READ_ONLY = 0x88B8, WRITE_ONLY = 0x88B9, READ_WRITE = 0x88BA;
     public const uint ALL_BARRIER_BITS = 0xFFFFFFFF;   // not-an-offset: GL_ALL_BARRIER_BITS
     /// <summary>A compute write to a buffer the lit stage then reads as a uniform block (the probe's SH9).</summary>
     public const uint UNIFORM_BARRIER_BIT = 0x0004;
@@ -214,7 +230,7 @@ public static unsafe class Gl
     public const uint NUM_EXTENSIONS = 0x821D, EXTENSIONS = 0x1F03;
     /// <summary>The implementation limits Alloy's stages exceed the GL 4.6 floor on (queried once, logged by name).</summary>
     public const uint MAX_VERTEX_SHADER_STORAGE_BLOCKS = 0x90D6, MAX_SHADER_STORAGE_BUFFER_BINDINGS = 0x90DD,
-                      MAX_TEXTURE_IMAGE_UNITS = 0x8872;
+                      MAX_TEXTURE_IMAGE_UNITS = 0x8872, MAX_COMBINED_TEXTURE_IMAGE_UNITS = 0x8B4D;
     public const uint RENDERBUFFER_SAMPLES = 0x8CAB, TEXTURE_SAMPLES = 0x9106, TEXTURE_2D_MULTISAMPLE = 0x9100, RENDERBUFFER_BINDING = 0x8CA7;
     public const uint TIME_ELAPSED = 0x88BF, QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867, TIMESTAMP = 0x8E28;
     /// <summary>glBeginQuery target counting fragments that passed depth+stencil: the overdraw meter
@@ -237,6 +253,7 @@ public static unsafe class Gl
     public const uint ALREADY_SIGNALED = 0x911A, CONDITION_SATISFIED = 0x911C;
 
     public static delegate* unmanaged<uint, int*, void> GetIntegerv;
+    public static delegate* unmanaged<uint, uint, int*, void> GetIntegeri_v;
     public static delegate* unmanaged<uint, byte> IsEnabled;   // GLboolean glIsEnabled(GLenum)
     public static delegate* unmanaged<uint> GetError;          // GLenum glGetError(void)
     public static delegate* unmanaged<void> Finish;            // void glFinish(void)
@@ -605,6 +622,7 @@ public static unsafe class Gl
         if (_getProc == null) { log.Info("Gl: SDL_GL_GetProcAddress unresolved"); _failed = true; return false; }
 
         GetIntegerv = (delegate* unmanaged<uint, int*, void>)P("glGetIntegerv");
+        GetIntegeri_v = (delegate* unmanaged<uint, uint, int*, void>)P("glGetIntegeri_v");
         GetTexLevelParameteriv = (delegate* unmanaged<uint, int, uint, int*, void>)P("glGetTexLevelParameteriv");
         GetRenderbufferParameteriv =
             (delegate* unmanaged<uint, uint, int*, void>)P("glGetRenderbufferParameteriv");

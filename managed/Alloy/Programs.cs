@@ -204,10 +204,14 @@ internal static unsafe class Programs
         Ablation.Forget(delete: true);
         _litFailed = false; _waterFailed = false;
         GrassField.DropProgram();
+        // the native stages' images and passes first: the hosts below re-attach their programs to them as they rebuild
+        StageResources.DropAll();
         PostStack.DropSpliced();
         SkyStage.DropPrograms();
         ContentPrograms.DropSpliced();
-        _log?.Info("AlloyRenderer: module changed -- the spliced programs (lit, content pairs, water, grass, post, sky) are dropped and rebuild from this module's resource chain");
+        _log?.Info("AlloyRenderer: module changed (or alloy.native was edited) -- the spliced programs (lit, content pairs, "
+                 + "water, grass, post, sky) and the native stages' images and passes are dropped and rebuild from this "
+                 + "module's resource chain");
     }
 
     internal static bool EnsureProgram()

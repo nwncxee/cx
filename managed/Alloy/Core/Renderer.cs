@@ -28,6 +28,8 @@ internal static class Renderer
     internal static readonly Knob<int> A2c;
     internal static readonly Knob<bool> A2cMask;
     internal static readonly Knob<bool> PltVerify;
+    /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
+    internal static readonly Knob<bool> Native;
     internal static readonly Knob<bool> TexPreview;
     internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, PltCpu, TexSingle, DdsRead, HandleDrop, OwnedGeom,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
@@ -142,6 +144,9 @@ internal static class Renderer
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
         Bindless = G.Dropdown("bindless", "Bindless textures", new[] { -1, 1, 0 }, -1, tier: Tier.ChatOnly, effect: Effect.Restart,
                               help: "Auto turns them off on Zink.", format: AutoOnOff, parse: ParseAutoOnOff);
+        Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs._spliceStale = true,
+                          help: "Run a content shader's native version (cx_<stage>) where the module ships one; off runs the "
+                              + "stage the engine runs.");
         Bcn = G.Toggle("bcn", "Compress textures on load", true, Tier.ChatOnly, Effect.Restart,
                        help: "Re-encodes uncompressed textures as BC1/BC3: 3–4× less VRAM, a little load-time CPU.");
 

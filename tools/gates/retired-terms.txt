@@ -62,3 +62,8 @@ ShaderFeature\.(WindGrass|WindLeaf|WindPlant|RoofKn|RoofKnM|NoKeyhole|Flowmap|No
 # wind, the turbulence field, the per-object variation, the body proxy and the solver's rate are all gone.
 # (dangly.windgain, the one that replaced dangly.wind, is a different key and the word boundary keeps it.)
 dangly\.(gravity|wind|turb|turbfreq|turbspeed|vary|body|hz|steps|parallel)\b	dangly-motions
+# The sky-only twin, made generic: any hosted content stage may have a native version (StageResources), whose
+# declarations, frame uniforms, wrappers and knob dropped the sky from their names.
+\bSkyTwin\b|\bsky twins?\b	native-stages
+cx_sky_(image|pass|fog|lens)\b	native-stages	old sky-only grammar
+cx_skyenv|cx_skypass_cs|\$SKYCS\$|CX_SKY_LINEAR|cxSkyLens|effects\.skytwin	native-stages

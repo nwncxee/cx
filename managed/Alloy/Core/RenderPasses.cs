@@ -115,6 +115,15 @@ internal static class RenderPasses
         }, log);
         r.Register(new PassLifecycle
         {
+            Name = "native",
+            // Content stages' native versions and the images and passes they declare, for every host (sky, material
+            // pairs, post): GL objects only, dropped at the module edge with the programs that read them.
+            SelfCheck = StageResources.SelfCheck,
+            ContextLost = StageResources.Forget,
+            Stats = _ => StageResources.Stats(),
+        }, log);
+        r.Register(new PassLifecycle
+        {
             // Not a pass: the second-story fade's arithmetic, which the tile stream runs, checked first in the log.
             Name = "tilefade",
             SelfCheck = l => TileFadeRamp.SelfCheck(l),

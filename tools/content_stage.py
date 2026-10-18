@@ -312,13 +312,33 @@ def rewrite(code, line, fragment, supplied, vs_out, ps, macros, zeroed, r):
     return "".join(res)
 
 
-def declarations(text, fragment, supplied, vs_out, ps, macros, r):
+# Mirrors ContentStage.OwnNames/Kept: the uniforms a stage keeps as written because Alloy sets them by name -- the cx
+# frame uniforms anywhere, and in a native (cx_) stage the images its own #pragma cx_image lines declare.
+FRAME_NAMES = {"cxFrame", "cxMain", "cxFresh", "cxInvVp", "cxPrevVp", "cxEye", "cxView", "cxOverlay"}
+IMAGE_PRAGMA = re.compile(r"^[ \t]*#[ \t]*pragma[ \t]+cx_image[ \t]+(\w+)", re.M)
+UNIFORM_WORD = re.compile(r"^\s*(?:layout\s*\([^)]*\)\s*)?uniform\b")
+
+
+def own_names(resref, stage, partner="", chain=None):
+    own = set(FRAME_NAMES)
+    for name, text in ((resref, stage), (partner, (chain(partner) or "") if partner and chain else "")):
+        if name and name.lower().startswith("cx_"):
+            for n in IMAGE_PRAGMA.findall(text):
+                own |= {n, n + "_prev"}
+    return own
+
+
+def kept(code, own):
+    return bool(UNIFORM_WORD.match(code)) and any(w in own for w in re.findall(r"\w+", code))
+
+
+def declarations(text, fragment, supplied, vs_out, ps, macros, r, own=frozenset()):
     out, zeroed, depth, block = [], [], 0, [False]
     for line in text.split("\n"):
         code = strip_line(line, block)
         braces = code.count("{") - code.count("}")
         if depth == 0 and not code.lstrip().startswith("#"):
-            new = rewrite(code, line, fragment, supplied, vs_out, ps, macros, zeroed, r)
+            new = None if kept(code, own) else rewrite(code, line, fragment, supplied, vs_out, ps, macros, zeroed, r)
             if r.refused:
                 return text
             if new is not None:
@@ -549,7 +569,8 @@ VERTEX_WRAPPER = ("bool CxHostVertex(CxDraw d, int id, int bb)\n{\n"
 OWN_PREFIX = "CxConOwn_"
 
 
-def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_text, ahead="", build=(8193, 37), vertex=None):
+def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_text, ahead="", build=(8193, 37), vertex=None,
+              partner=""):
     r = Result()
     stage = chain(resref)
     if stage is None:
@@ -587,7 +608,8 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
     text = indexed(text, BONES_OPEN, "CxConBoneAt(")
     ps = list(vertex.params) if vertex is not None else []
     macros = []
-    text = declarations(text, fragment, supplied, vertex.outputs if vertex is not None else None, ps, macros, r)
+    text = declarations(text, fragment, supplied, vertex.outputs if vertex is not None else None, ps, macros, r,
+                        own_names(resref, stage, partner, chain))
     if r.refused:
         return r
     r.params = ps

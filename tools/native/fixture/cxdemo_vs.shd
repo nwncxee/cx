@@ -1,0 +1,10 @@
+// A stand-in for a module's OWN material vertex stage, written the stock way. Its native version beside it
+// (cx_cxdemo_vs.shd) is what Alloy runs instead. A fixture for check-shaders.py: it ships in no hak and no module.
+#define SHADER_TYPE 1
+#include "inc_standard"
+out float vRipple;
+void main()
+{
+    ApplyStandardShader();
+    vRipple = 0.0;
+}
