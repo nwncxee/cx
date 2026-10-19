@@ -785,7 +785,7 @@ internal static unsafe class AlloyLights
     /// Every light past the budget lights the pixel unshadowed; 0 = no budget.</summary>
     internal static float ShadowPerPixel => Shadows.PerPixel.V;
     /// <summary><c>light.floor</c> -- the absolute display-linear brightness a light's reach ends at
-    /// (uLightFloor), as against <see cref="BinReach"/>'s share of its authored radius. 0 = no cut.</summary>
+    /// (uLightFloor), as against <c>light.binreach</c>'s share of its authored radius. 0 = no cut.</summary>
     internal static float LightFloor => Lighting.Floor.V;
     /// <summary><c>light.fullmodel</c> -- the share of a pixel's brightest light above which a light keeps the
     /// near-field core, the source-sized lobe and the subsurface leak (uFullModel). 0 = every light keeps all

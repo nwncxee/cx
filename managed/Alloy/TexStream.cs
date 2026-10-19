@@ -325,8 +325,8 @@ internal static unsafe class TexStream
     // ---- parts enrolled against an unbuilt diffuse ----
 
     private static readonly long _epoch = Stopwatch.GetTimestamp();
-    /// <summary>Seconds since load, from 1 so that 0 can mean "never arrived": the clock a record's arrival time
-    /// (<see cref="AlloyRenderer.ArriveFloat"/>) is stamped on and the colour pass's <c>uNow</c> reads.</summary>
+    /// <summary>Seconds since load, from 1 so that 0 can mean "never arrived": the clock the colour pass's
+    /// <c>uNow</c> reads.</summary>
     internal static float Clock => 1f + (float)((double)(Stopwatch.GetTimestamp() - _epoch) / Stopwatch.Frequency);
 
     private const int LandedCap = 4096;
