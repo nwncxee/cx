@@ -210,6 +210,28 @@ internal static partial class DrawRecipe
         Retired++;
     }
 
+    /// <summary>Off-device: a held slot carrying exactly <paramref name="flags"/> and no model, mesh, range or
+    /// texture, for a check that drives a path keyed on the flags; -1 when the table is full.
+    /// <see cref="ReleaseForCheck"/> hands it back.</summary>
+    internal static int FlagsForCheck(RecipeFlag flags)
+    {
+        int r = Take();
+        if (r < 0) return -1;
+        // Take() leaves the columns as the last tenant left them, and a fresh slot's _range reads 0 --
+        // a real range index, which Retire would hand back out from under its owner.
+        _range[r] = -1;
+        _flags[r] = flags;
+        return r;
+    }
+
+    /// <summary>Give back a slot <see cref="FlagsForCheck"/> handed out.</summary>
+    internal static void ReleaseForCheck(int r)
+    {
+        if (r < 0) return;
+        _flags[r] = 0;
+        Retire(r);
+    }
+
     /// <summary>A retire refused because the slot was not held: it would have reached the free list twice.</summary>
     internal static int DoubleRetire => _own.DoubleRetire;
     /// <summary>Recipes whose model was evicted while a part still named them: kept until that part lets go.</summary>
