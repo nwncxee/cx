@@ -40,7 +40,7 @@ internal static unsafe partial class ModelLoad
     /// then cost neither a <c>GetTileData</c> nor a resref read.</summary>
     private static readonly HashSet<int> _tileKinds = new();
     /// <summary>What the last block read ahead, for the <c>[load]</c> line.</summary>
-    internal static int TileRecords, TileOffers;
+    internal static int TileOffers;
 
     /// <summary>The hook install. Refuses loudly and installs nothing when the symbol or an offset is missing:
     /// the engine then reads every tile model on the main thread, as it does without CX.</summary>
@@ -136,7 +136,6 @@ internal static unsafe partial class ModelLoad
         _tileSeen = 0;
         _tileTotal = n;
         _tilesPeeked += n;
-        TileRecords = n;
         TileOffers = 0;
         byte* resref = stackalloc byte[ResRefChars + 2];   // GetModelResRef writes all 17 bytes of the CResRef
         for (int k = 0; k < n; k++) OfferTileModel(_tileIds[k], resref);

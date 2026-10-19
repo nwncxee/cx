@@ -50,7 +50,7 @@ internal static unsafe partial class ModelLoad
     /// repeats, which on a heavy area are most of the records.</summary>
     private static readonly System.Collections.Generic.HashSet<ushort> _kinds = new();
     /// <summary>What the last block offered, for step 1's <c>[load]</c> line.</summary>
-    internal static int ObjectOffers, ObjectRecords;
+    internal static int ObjectOffers;
 
     /// <summary>The hook install. Refuses loudly and installs nothing when a symbol or an offset is missing:
     /// the engine then reads every static placeable's model on the main thread, as it does without CX.</summary>
@@ -143,7 +143,6 @@ internal static unsafe partial class ModelLoad
         _kinds.Add(appearance);
         uint count = _count, rec0 = _rec0;
         int stride = _stride, at = _appearanceAt;
-        ObjectRecords = (int)count;
         ObjectOffers = 0;
         AreaKeyObjects(FoldPlaceables(buf, rec0, count, (uint)stride, (uint)at), (int)count);
         var b = new ReadOnlySpan<byte>(buf, (int)len);

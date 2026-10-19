@@ -341,7 +341,7 @@ internal static unsafe partial class OwnedTextures
         Replace(key, etid, dst, bytes);
         Census(tex, bytes, 0, n, cell);
         HighWater();
-        if (scanned) _stats[dst] = new Stat { Holes = scan.Holes, Graded = scan.Graded, Mean = scan.Mean, MeanOk = scan.MeanOk };
+        if (scanned) _stats[dst] = new Stat { Holes = scan.Holes, Graded = scan.Graded };
         else _stats.Remove(dst);
         if (AlloyCensus._dumpTex != null && AlloyCensus.TexName(tex).Contains(AlloyCensus._dumpTex, StringComparison.OrdinalIgnoreCase))
             _log?.Info($"[dumpframe] SCAN tex={AlloyCensus.TexName(tex)} cell={cell} scanned={scanned} compressed={b.CompressedSize != 0} refusedFmt={TexScan.LastRefusedFormat} holes={scan.Holes:F2} graded={scan.Graded:F2} {scan.W}x{scan.H} owned={dst}");
@@ -366,9 +366,9 @@ internal static unsafe partial class OwnedTextures
     private static readonly HashSet<uint> _engineHeld = new();
 
     /// <summary>What the funnel-side scan (<see cref="TexScan"/>) learned about each owned name: the cutout
-    /// hole fraction and the mean colour. Replaces every GPU readback the consumers used to make. Keyed by
+    /// hole and graded-alpha fractions. Replaces every GPU readback the consumers used to make. Keyed by
     /// the owned name; removed with the name.</summary>
-    private struct Stat { public float Holes; public float Graded; public Vector3 Mean; public bool MeanOk; }
+    private struct Stat { public float Holes; public float Graded; }
     private static readonly Dictionary<uint, Stat> _stats = new();
     /// <summary>The hole and graded-alpha fractions of an owned name (or of the owned copy behind an engine
     /// tid). False = the name never came through the funnel; the caller tests rather than casts a possible slab.</summary>
@@ -377,14 +377,6 @@ internal static unsafe partial class OwnedTextures
         holes = 1f; graded = 0f;
         if (!TryStat(tid, out Stat st)) return false;
         holes = st.Holes; graded = st.Graded;
-        return true;
-    }
-    /// <summary>The mean colour of an owned name, 0..1 in the texture's own encoding.</summary>
-    internal static bool TryMean(int tid, out Vector3 mean)
-    {
-        mean = default;
-        if (!TryStat(tid, out Stat st) || !st.MeanOk) return false;
-        mean = st.Mean;
         return true;
     }
     private static bool TryStat(int tid, out Stat st)
