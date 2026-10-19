@@ -211,24 +211,39 @@ public static partial class UiHost
     /// <summary>Route a mouse button (press/release) to window content, true at the first window that consumes it.
     /// <paramref name="captureOnly"/> visits only <see cref="Window.CapturesPointer"/> windows: the pump's extra pass BEFORE the engine-GUI yield.</summary>
     public static bool DispatchMouseButton(bool down, int button, int x, int y, bool captureOnly = false)
-        => Route(w => w.OnMouseButton != null && w.OnMouseButton(down, button, x, y), captureOnly, x, y);
+        => Route(new ButtonOffer(down, button, x, y), captureOnly, x, y);
+
+    /// <summary>What <see cref="Route"/> hands each window it visits. Implemented by readonly structs so the
+    /// routing call is constrained to one and a pointer event allocates nothing.</summary>
+    private interface IOffer { bool Offer(Window w); }
+
+    private readonly struct ButtonOffer(bool down, int button, int x, int y) : IOffer
+    {
+        public bool Offer(Window w) => w.OnMouseButton != null && w.OnMouseButton(down, button, x, y);
+    }
+
+    private readonly struct WheelOffer(int dy) : IOffer
+    {
+        public bool Offer(Window w) => w.OnMouseWheel != null && w.OnMouseWheel(dy);
+    }
 
     /// <summary>The modal routing both pointer events take: topmost-first, and when not
     /// <paramref name="captureOnly"/> two passes -- modal (<see cref="Window.SuppressChords"/>) windows win the
-    /// event, then the rest -- each window visited exactly once, so no double-invoke. Cold: input, not a frame.</summary>
-    private static bool Route(Func<Window, bool> offer, bool captureOnly, float x, float y)
+    /// event, then the rest -- each window visited exactly once, so no double-invoke. Allocation-free, which
+    /// is why the offer is a struct: input runs on the pump, and every click would pay for a closure.</summary>
+    private static bool Route<T>(in T offer, bool captureOnly, float x, float y) where T : struct, IOffer
     {
         if (captureOnly)
         {
             foreach (Window next in TopmostFirst())
-                if (TakesBeforeNui(next, x, y) && offer(next)) return true;
+                if (TakesBeforeNui(next, x, y) && offer.Offer(next)) return true;
             return false;
         }
         for (int pass = 0; pass < 2; pass++)
         {
             bool modal = pass == 0;
             foreach (Window next in TopmostFirst())
-                if (next.SuppressChords == modal && offer(next)) return true;
+                if (next.SuppressChords == modal && offer.Offer(next)) return true;
         }
         return false;
     }
@@ -252,7 +267,7 @@ public static partial class UiHost
     /// <summary>Route a wheel notch to window content, as <see cref="DispatchMouseButton"/> routes a press; the
     /// wheel event has no position, so the caller supplies the pointer's.</summary>
     public static bool DispatchMouseWheel(int dy, bool captureOnly = false, float px = float.NaN, float py = float.NaN)
-        => Route(w => w.OnMouseWheel != null && w.OnMouseWheel(dy), captureOnly, px, py);
+        => Route(new WheelOffer(dy), captureOnly, px, py);
 
     /// <summary>Every registered window, topmost-first. Zero-alloc: a struct enumerator over the O(n^2)
     /// descending-z scan (z values are unique, from the monotonic counter, so the walk terminates even when a
