@@ -208,8 +208,7 @@ public static class SceneFeed
     {
         _fogPath = v.Fog.Path;
         FrameInputs.FogOn = v.Fog.On;
-        // the area's range outlives its fog: fog of war ramps on it with the fog itself off
-        if (v.Fog.On || v.Fog.Path == FrameHoist.ViewFog.AreaPath)
+        if (v.Fog.On)
         {
             FrameInputs.FogStart = v.Fog.Start;
             FrameInputs.FogEnd = v.Fog.End;

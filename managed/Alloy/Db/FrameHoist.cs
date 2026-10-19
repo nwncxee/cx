@@ -28,9 +28,9 @@ public struct FrameHoist
     /// area light pair takes its colour from, and the fog colour the area would fog with. Resolved here so
     /// the renderer carries one triple each instead of a pair plus the switch.</summary>
     public Vector3 Ambient, Diffuse, FogColour;
-    /// <summary>The fog AMOUNT the area last applied, the number the engine places the fog start with. 0 is no
-    /// fog at all: the area's fog is switched off rather than drawn as the thin ramp vanilla leaves at its clip
-    /// distance.</summary>
+    /// <summary>The fog AMOUNT the area last applied, the number the engine places the fog start with -- for the
+    /// cx.log fog line. 0 still fogs: <c>CNWCModule::Update</c> clamps the start to the clip distance less 1.01,
+    /// a thin ramp that hides everything past it.</summary>
     public float FogAmount;
     /// <summary>The area has its own <c>Scene</c> (<c>CNWCArea+0x248</c>) -- the object the game writes every
     /// area-wide render setting into, and what <c>SetFog</c>/<c>SetFogAmount</c> refuse without.</summary>
@@ -112,7 +112,7 @@ public struct FrameHoist
         if (h.HaveArea && h.HaveAreaScene)
         {
             fog.Path = ViewFog.AreaPath;
-            fog.On = h.FogAmount != 0;
+            fog.On = true;   // amount 0 included: the engine still fogs past its clip distance
             fog.Start = h.AreaFogStart;
             fog.End = h.AreaFogEnd;
             fog.Colour = h.FogColour;
@@ -157,8 +157,8 @@ public struct FrameHoist
                      "an area with its own scene fogs from the area's palette and its own range");
         h.FogAmount = 0;
         FoldFog(default, in h, out f);
-        check.Expect(f.Path == 1 && !f.On && f.Start == 30f && f.End == 45f && f.Colour == new Vector3(0.2f, 0.3f, 0.4f),
-                     "fog amount 0 turns the area's fog off and still hands over its range, which fog of war ramps on");
+        check.Expect(f.Path == 1 && f.On && f.Start == 30f && f.End == 45f && f.Colour == new Vector3(0.2f, 0.3f, 0.4f),
+                     "fog amount 0 still fogs over the area's own range, as the engine's clamped ramp does");
         h.FogAmount = 10;
         h.HaveAreaScene = false;
         FoldFog(default, in h, out f);
