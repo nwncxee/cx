@@ -55,7 +55,6 @@ void main()
     vec4 c = mix(clamp(FragmentColor, 0.0, 1.0), vec4(0.0), isnan(FragmentColor));
     vec3 rgb = pow(c.rgb, vec3($SRGB$));
 #endif
-    if (uSkyFog > 0.0 && uFogParams.x != 0.0)
-        rgb = CxFogMix(rgb, vWorld, 1.0 - smoothstep(0.0, uSkyFog, normalize(vWorld - uEyePos).z));
+    if (uSkyFog > 0.0) rgb = CxFogSky(rgb, vWorld, uSkyFog);
     frag = CxOitOut(vec4(rgb, c.a));
 }

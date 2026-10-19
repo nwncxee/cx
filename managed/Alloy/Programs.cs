@@ -621,6 +621,8 @@ internal static unsafe class Programs
         FogSun = GlProgram.Loc(prog, "uFogSun"),
         FogSunColor = GlProgram.Loc(prog, "uFogSunColor"),
         FogOrigin = GlProgram.Loc(prog, "uFogOrigin"),
+        VFog = GlProgram.Loc(prog, "uVFog"),
+        VFogVp = GlProgram.Loc(prog, "uVFogVp"),
         // #346: the ENGINE's own uniform names, because the stage compiles the engine's own file. Renaming
         // any of these means editing spliced content, which is the drift the bridge exists to end.
         TgtShapeL = GlProgram.Loc(prog, "targetShape"),

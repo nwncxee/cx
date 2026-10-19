@@ -143,13 +143,19 @@ internal static class TextureSlots
     /// so no bind-time <c>glUniform1i</c> can miss it.</summary>
     internal const uint PltPalette = 19;
 
+    /// <summary>The volumetric fog's integrated volume (<see cref="FogVolume"/>), read by every stage that fogs, and its
+    /// lighting pass's history between the two dispatches. Past the per-stage budget's indices on purpose: every unit
+    /// below is claimed in the lit stage, and an index may run to the combined count -- only the samplers a stage
+    /// actively reads count against its 32, and this is the lit stage's 32nd. Declared with <c>layout(binding)</c>.</summary>
+    internal const uint VFog = 32;
+
     /// <summary>The images native stages declare (<see cref="StageResources"/>): every half on a unit of its own from
     /// here, past the per-stage budget of 32 every driver Alloy has met reports. A sampler's unit may run up to the
     /// driver's combined count; only the samplers one stage ACTIVELY reads count against its own 32.</summary>
-    internal const uint ResourceBase = 32;
+    internal const uint ResourceBase = VFog + 1;
 
-    /// <summary>The sky-visibility map (<see cref="SkyView"/>), read by the lit stage: the HIGHEST unit
-    /// Alloy claims. Declared behind <c>CX_SKY_VIEW</c>, which <see cref="Programs.WithoutSkyView"/> takes
+    /// <summary>The sky-visibility map (<see cref="SkyView"/>), read by the lit stage: the highest unit under the
+    /// per-stage budget (<see cref="VFog"/> sits past it). Declared behind <c>CX_SKY_VIEW</c>, which <see cref="Programs.WithoutSkyView"/> takes
     /// out of the stage on a driver reporting fewer than <see cref="Programs.SkyViewUnitsNeed"/> fragment
     /// units, exactly as the soft sun's two raw views are.</summary>
     internal const uint SkyMap = 31;
@@ -245,11 +251,13 @@ internal static class TextureSlots
         check.Expect(!litDecls.Contains("#define CX_PAIR_RECV"), $"{PairMap} uPairMap is exempt only while the lit stage never defines CX_PAIR_RECV");
         foreach (uint u in Claimed(litDecls))
             check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap
-                      || u == SkyMap,
+                      || u == SkyMap || u == VFog,
               $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} but sits above Programs.LitUnitsNeed ({Programs.LitUnitsNeed})");
         // ...and every one of them under the units native stages' images stay bound on, for the whole frame.
         foreach (uint u in Claimed(litDecls))
             check.Expect(u < ResourceBase, $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} at or past {ResourceBase}, where native stages' images sit");
+        check.Expect(ShaderSource.Get("cx_fogdecl.glsl").Contains($"layout(binding = {VFog}) uniform sampler3D uVFogVol;")
+          && litDecls.Contains($"layout(binding = {VFog}) uniform sampler3D uVFogVol;"), $"{VFog} uVFogVol (every stage that fogs)");
         check.Expect(SkyView.Lib.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;")
           && litDecls.Contains($"layout(binding = {SkyMap}) uniform sampler2D uSkyMap;"), $"{SkyMap} uSkyMap (lit program)");
         check.Expect(litDecls.Contains(Programs.SkyViewDefine)

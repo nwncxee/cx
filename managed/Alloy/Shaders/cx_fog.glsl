@@ -2,6 +2,8 @@
 /// How fogged this fragment is, 0..1. The area author's ramp, times the height layer.
 float CxFogFactor(vec3 world, float depth)
 {
+    // the volume's transmittance, where this pass reads it: the share of the surface the fog takes
+    if (uVFog.x > 0.0) return 1.0 - CxVFogAt(world).a;
     if (uFogParams.x == 0.0) return 0.0;
     // radial from the player (uFogOrigin.w == 1), so zooming the camera out does not move the fog;
     // else the engine's own view depth. CullPass measures the same way, or the cut shows.
@@ -13,7 +15,11 @@ float CxFogFactor(vec3 world, float depth)
     if (uFogSky.y > 0.0) f *= exp(-max(world.z - uFogSky.z, 0.0) * uFogSky.y);
     return min(f, 1.0);
 }
-vec3 CxFog(vec3 lin, vec3 world, float depth) { return CxFogMix(lin, world, CxFogFactor(world, depth)); }
+vec3 CxFog(vec3 lin, vec3 world, float depth)
+{
+    if (uVFog.x > 0.0) { vec4 v = CxVFogAt(world); return lin * v.a + v.rgb; }
+    return CxFogMix(lin, world, CxFogFactor(world, depth));
+}
 
 /// CX-120: the same ramp under FOG OF WAR. An unexplored tile is fogged toward black rather than
 /// faded out -- vanilla's own treatment (RenderDrawBucket @0x46d060 scales the fog colour by f^2 and
@@ -40,6 +46,7 @@ float CxFogRevealFactor(vec3 world, float depth, float hidden)
 
 vec3 CxFogReveal(vec3 lin, vec3 world, float depth, float hidden)
 {
+    if (hidden <= 0.0 && uVFog.x > 0.0) return CxFog(lin, world, depth);
     float reveal = 1.0 - hidden;
     float f = CxFogRevealFactor(world, depth, hidden);
     if (f <= 0.0) return lin;

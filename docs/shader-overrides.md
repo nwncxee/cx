@@ -113,6 +113,8 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_deferred_cs` | compute | CX-188 (ADR 0029): the deferred point-light pass. One invocation per render pixel: reads the G-buffer the lit stage's `CX_DEFERRED` twin wrote (`cx_gbuf`), reconstructs the pixel's world position from the frame depth, walks the lights through the SAME `cx_lightfrag` the forward loop is, and adds the result into the HDR target. 16x16 groups, and `light.deferredtiles` picks its light list: the froxel table every forward stage reads (the default), or this group's own depth-bounded cull. |
 | `cx_defshadow_cs` | compute | CX-188 step 3 (ADR 0029): the shadow record. Per pixel of the G-buffer (half resolution under `shadow.deferredres`), the four strongest shadowed lights' visibility, filtered once, which `cx_deferred_cs` reads back instead of tapping a cube per light. A record that fails to link stands `light.deferred` down for the session. |
 | `cx_pairdebt` | compute | CX-188 step 4 (ADR 0029): the hot-light debt. The deferred stage has the walk's hot branch compiled out, so this dispatch is where a creature's shadow comes back out of the baked term: each 16x16 tile culls this frame's (static light, creature) pair tiles against its own view-space box, and the pixels of a tile that holds one evaluate the tile and subtract `lmShare * min(lmSub.x / lmLum + lmSub.y, 1)`. `lightmap.moverlights 0` is its A/B. |
+| `cx_vfog_cs` | compute | The volumetric fog's lighting pass (`vfog.enabled`): one invocation per froxel of the main view's grid (`cx_vfogmed`). Writes the light the medium scatters toward the eye per unit of extinction (rgb, linear) and the haze's own extinction (a), at a point jittered inside the froxel and blended with last frame's answer re-projected onto it. The sun comes through `cx_sunshadow`, the lamps through `cx_lightfrag`'s cluster table: a lamp's curve sharpened toward an inverse square whose strength grows with its reach (`vfog.reach`), an ambient-class light (a tile's own) its surface curve with no direction or shadow. 8x8x1 groups. |
+| `cx_vfogsum_cs` | compute | The volumetric fog's integration: one invocation per froxel column, marching the slices from the eye, adding the area's fog wall to the haze and storing the in-scattered light and transmittance to each slice's far edge. The wall thins away across the fog bank's top (`vfog.top` above the eye), and the sky reads the last slice: the same air as the geometry in front of it. Every stage that fogs reads the result through `cx_vfog`. 8x8 groups. |
 | `cx_cast_vs` | vertex | Shadow-map depth bake: projects casters into a cascade or cube face. |
 | `cx_cast_fs` | fragment | The caster pass's fragment stage. Depth-only, and deliberately inert. |
 | `cx_post_vs` | vertex | Fullscreen triangle shared by the whole post chain. |
@@ -437,6 +439,19 @@ colour arrives two frames late and is the colour total fog converges to from the
 mean. A frame pass should write it, since a sky changes over the day; any native stage may name it, a sky's being
 the usual one. The area's own colour still owns the near and middle of the ramp.
 
+### The volumetric fog
+
+With `vfog.enabled` on, the fog a stage takes through `CxFog`, `CxFogFactor` and `CxFogReveal` (`cx_fog`), and the
+sky's through `CxFogSky` (`cx_fogmix`), is the volume's: in-scattered light and transmittance between the main
+view's eye and the fragment, `lin * T + S`, out of the 3D texture `uVFogVol` on unit 32. `CxVFogAt(world)` and
+`CxVFogSkyAt(world)` (`cx_vfog`) are the lookups themselves, for a stage that fogs by its own expression. `uVFog.x`
+is 1 while the pass reads the volume -- the main view only; a probe face or a reflection reads the ramp -- and a
+stage that branches on it keeps both paths, since the switch is the player's (or the server's) and moves live.
+The volume is built from the area's fog colour, start and end; a native stage's `cx_fog` texel still feeds the
+sky colour it is pulled toward (`vfog.sky`). The resolve grades the share of a sky pixel's light the volume put there
+(`S` over the pixel) the way it grades the fogged geometry beside it, so the two meet without a seam whatever the exposure;
+with no dome at all, it covers the bare clear colour with the volume's whole ray (`CxVFogSkyUv`) itself.
+
 ### The overlay
 
 The resolve samples the `cx_overlay` image across the frame (bilinear, so a `view 2` image is upsampled) and adds
@@ -650,7 +665,7 @@ zero has to mean "as before" in each of them.
 
 ### Not guarded
 
-`cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_deferred_cs`, `cx_defshadow_cs` and `cx_pairdebt` carry no guard.
+`cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_deferred_cs`, `cx_defshadow_cs`, `cx_pairdebt`, `cx_vfog_cs` and `cx_vfogsum_cs` carry no guard.
 
 The first two read no per-draw record and write no colour; an interface break in them
 fails the **link**, which the build-failure fallback already refuses with a log line.
@@ -673,6 +688,9 @@ and `light.deferred 0` puts the hot-light debt back inside the forward light loo
 is computed per fragment per light instead. An override that gets the subtraction wrong
 shows as creature shadows that are too dark, too light or in the wrong place on baked ground
 -- never as a missing draw.
+
+`cx_vfog_cs` and `cx_vfogsum_cs` write only the fog volume, so an override that gets them wrong shows as wrong fog and
+nothing else, and `vfog.enabled 0` is the A/B: the fog group's ramp draws the fog again.
 
 `cx_defshadow_cs` is bounded by the same knob: an override that writes a wrong record shows as
 point-light shadows in the wrong place on deferred pixels only, and `light.deferred 0` takes the

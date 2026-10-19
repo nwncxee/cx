@@ -699,7 +699,7 @@ so it adds no submenu content.
 | post.taasharp | TAA sharpness | S | 0–1 step 0.05 · 0.3 | A | L | Anti-aliasing | Undoes the softness the history blend leaves. 0 = the raw resolve. |
 | post.acesmix / tmknee / dither / taablend / taau / halfres / stack / fbpost / toonbands / toonink / toonedge / motion / viz / clearviz / skyraw | — | T, S | as declared | C | L | — | tone-curve details, the TAA history weight and upsample, half-resolution AO, the stock framebuffer effects (gamma, sharpen, vibrance, SMAA, toon) and the visualisers |
 
-**World** — groups `grass` (340), `weather` (342), `fog` (344). `water` (346) declares a
+**World** — groups `grass` (340), `weather` (342), `fog` (344), `vfog` (345, *Volumetric fog*). `water` (346) declares a
 ChatOnly master and two diagnostics, so it has no submenu.
 
 | key | label | kind | range · default | tier | eff | section | help |
@@ -738,6 +738,21 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | fog.height | Height falloff | S | 0–1 step 0.005 · 0 | A | L | Density | Fog thins with height above the floor; 0 = off. |
 | fog.floor | Layer floor | S | 0–50 m step 1 · 0 | A | L | Density | Offset above your feet where thinning starts. |
 | fog.origin / cull / cullz | — | T, S | as declared | C | L | — | player-origin fog, the fully-fogged geometry cull and its depth |
+| vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. |
+| vfog.quality | Fog detail | D | Low / Medium / High / Ultra · Medium | A | L | — | How finely the fog volume is divided. Higher shows sharper light shafts and costs more. Ladders on `quality.effects`, a step below it. |
+| vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
+| vfog.sun | Sun shafts | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog. |
+| vfog.lights | Lamp glow | S | 0–4 step 0.05 · 0.15 | A | L | Look | How brightly torches and lamps glow in the fog. |
+| vfog.reach | Lamp strength by reach | S | 0–1 step 0.05 · 0.1 | A | L | Look | How much brighter a lamp that reaches further glows, with a hotter core: 0 makes every lamp glow alike, 1 is twice the reach for four times the light. |
+| vfog.sky | Fog takes the sky colour | S | 0–1 step 0.05 · 0.5 | A | L | Look | How far the fog's own light moves from the area's fog colour toward the sky's. 0 is the area's colour. |
+| vfog.aniso | Forward scattering | S | 0–0.9 step 0.05 · 0.4 | A | L | Shape | How much brighter the fog looks toward a light than away from it. |
+| vfog.height | Haze height falloff | S | 0–0.2 /m step 0.005 · 0.08 | A | L | Shape | How fast the haze thins above the ground you stand on; 0 = the same at every height. |
+| vfog.floor | Haze floor | S | −20–50 m step 1 · 0 | A | L | Shape | Height above your feet where the haze starts to thin. |
+| vfog.noise | Patchiness | S | 0–1 step 0.05 · 0.6 | A | L | Shape | How uneven the haze is; 0 is even haze. |
+| vfog.noisesize | Patch size | S | 2–64 m step 1 · 16 | A | L | Shape | Size of the haze's patches. |
+| vfog.wind | Drift speed | S | 0–8 m/s step 0.1 · 1.5 | A | L | Shape | How fast the patches drift, along the area's wind. |
+| vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
+| vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
 | water.rect / diag | — | T, S | as declared | C | L | — | |
 
@@ -954,6 +969,7 @@ is not "the stock one draws", it is "nothing draws". The caveat is what the buil
 | Baked lighting | lightmap.enabled | C · live | off is the live light loop (the four DB-mode edges, ADR 0028, still own the tables). |
 | Model detail | lod.enabled | C · live | off draws every model at full detail at every distance. |
 | Fog | fog.enabled | U · live | every dial reads 0 and the area author's flat fog colour draws. |
+| Volumetric fog | vfog.enabled | U · live | off (the default): no volume is built or bound and the `fog` group draws the fog; its textures are freed. Server-holdable. |
 | Grass | grass.enabled | U · live | off draws no grass; the game's own Grass option gates both ways. |
 | Weather | weather.enabled | U · live | `MasterChanged` hands precipitation back: the game's own rain and snow sheets fall. |
 | Procedural animations | anim.enabled | U · live | every `anim.*` correction reads off; the engine's animation plays untouched. |

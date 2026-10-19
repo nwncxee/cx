@@ -536,10 +536,11 @@ internal static class ShaderContract
                   // (they keep FOG 1, which this stage does not reproduce) -- so an unlit part that fogged or
                   // dissolved here would mostly be doing to a part something vanilla never does to it. Asserted rather than commented:
                   // both are one line to add back and neither would look obviously wrong. What it DOES
-                  // carry is the fog's mix alone, for the sky's horizon band (SceneFog.SkyBand) -- an
-                  // elevation term, never the distance ramp.
+                  // carry is the SKY's fog alone, on sky draws (SceneFog.SkyBand > 0): the ramp's horizon band --
+                  // an elevation term, never the distance ramp -- or the volume's whole ray where the pass reads it.
                   && !OwnedFs.Contains("CxKeyhole") && !OwnedFs.Contains("CxFogFactor") && !OwnedFs.Contains("CxFog(")
-                  && OwnedFs.Contains("if (uSkyFog > 0.0 && uFogParams.x != 0.0)")
+                  && OwnedFs.Contains("if (uSkyFog > 0.0) rgb = CxFogSky(rgb, vWorld, uSkyFog);")
+                  && OwnedFs.Contains("return CxFogMix(rgb, world, 1.0 - smoothstep(0.0, band, normalize(world - uEyePos).z));")
                   // ...and the prepass punches the SAME aperture the colour pass will. Both stages call the
                   // one CxKeyhole out of KeyFogFs, so they cannot drift by a constant -- but a stage that
                   // lost the call writes depth over fragments the colour pass then discards, and the room

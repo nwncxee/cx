@@ -238,6 +238,17 @@ internal static class RenderPasses
             SelfCheck = SceneFog.SelfCheck,
             Revoke = SceneFog.Revoke,
         }, log);
+        // The volumetric fog's volume: three frame-independent 3D textures and two programs, so the context takes them;
+        // a new area leaves last frame's medium describing another place.
+        r.Register(new PassLifecycle
+        {
+            Name = "vfog",
+            Attach = FogVolume.Attach,
+            SelfCheck = FogVolume.SelfCheck,
+            Revoke = FogVolume.Revoke,
+            ContextLost = FogVolume.Forget,
+            Stats = FogVolume.Stats,
+        }, log);
         r.Register(new PassLifecycle
         {
             Name = "post",

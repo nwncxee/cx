@@ -32,6 +32,9 @@ internal enum PassId
     /// stage reads it as a lighting input (its ambient term) rather than a post stage darkening the finished
     /// frame the way vanilla's FB effect does (ADR 0021).</summary>
     AmbientOcclusion,
+    /// <summary>The volumetric fog's volume (<see cref="FogVolume"/>): lit off this frame's light rig and sun
+    /// cascades, and built BEFORE the first stage that fogs -- every colour pass from here reads it.</summary>
+    FogVolume,
     OpaqueOwned,
     /// <summary>The per-area skybox, replayed from <see cref="SkyBox"/>'s capture of the engine's own draw.
     /// AFTER the opaque set, so the prepass depth rejects every sky pixel the world covered before it shades,
@@ -128,6 +131,7 @@ internal static class FrameGraph
         (PassId.SkyMap,          Bracket.Shadow),
         (PassId.DepthPrepass,    Bracket.Colour),
         (PassId.AmbientOcclusion, Bracket.Colour),
+        (PassId.FogVolume,       Bracket.Colour),
         (PassId.OpaqueOwned,     Bracket.Colour),
         (PassId.SkyOwned,        Bracket.Colour),
         (PassId.CutoutOwned,     Bracket.Colour),

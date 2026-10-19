@@ -293,7 +293,8 @@ void main()
                * CX_WATER_TRANSPARENCY_FACTOR * WaterBaseColor.a / (1.0 - WaterBaseColor.a))
         : 0.0;
     ColorRefraction *= pow(fRefractionTransparency, fSurfaceNdotV);
-    fRefractionTransparency *= 1.0 - CxFogAlpha(vDepth);
+    // under the volumetric fog the bed fades with the surface's own transmittance, as the colour does
+    fRefractionTransparency *= 1.0 - (uVFog.x > 0.0 ? CxFogFactor(vWorld, vDepth) : CxFogAlpha(vDepth));
 
     // ---- reflection: the same march, out to the horizon --------------------------------------
     vec3 ColorReflection;

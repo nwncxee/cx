@@ -93,7 +93,7 @@ internal static unsafe class PostChain
         public int DSrc, DLod, DTexel, DFirst, DThresh, DExposure;
         public int USrc, ULod, UTexel;
         public int CHdr, CBloom, CDepth, CStrength, CMode, CKnee, CDither, CViz, CExposure, CAcesMix, CSkyRaw,
-                   CSkyBand, CInvVp, CEye, COverlay, COverlayOn;
+                   CSkyBand, CInvVp, CEye, COverlay, COverlayOn, CVFog, CVFogVp, CSkyBare;
     }
 
     private static PostChainState _gl = new();
@@ -535,6 +535,9 @@ internal static unsafe class PostChain
         Gl.Uniform1f(g.CSkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
         Gl.UniformMatrix4fv(g.CInvVp, 1, 0, (float*)&invVp);
         Gl.Uniform3f(g.CEye, eye.X, eye.Y, eye.Z);
+        // the volume is built only for the main view, so a capture's frame finds it stood down on its own
+        FogVolume.Upload(g.CVFog, g.CVFogVp, capture: false);
+        Gl.Uniform1i(g.CSkyBare, invVp == default ? 1 : 0);
         Gl.Uniform1f(g.CStrength, g.BloomOk ? Post.Bloom.V : 0f);
         Gl.Uniform1i(g.CMode, Post.Tonemap.V);
         Gl.Uniform1f(g.CKnee, Post.TmKnee.V);
@@ -671,6 +674,8 @@ internal static unsafe class PostChain
         _gl.CDepth = GlProgram.Loc(_gl.ProgComposite, "uDepth"); _gl.CSkyRaw = GlProgram.Loc(_gl.ProgComposite, "uSkyRaw");
         _gl.CSkyBand = GlProgram.Loc(_gl.ProgComposite, "uSkyBand"); _gl.CInvVp = GlProgram.Loc(_gl.ProgComposite, "uInvVP");
         _gl.CEye = GlProgram.Loc(_gl.ProgComposite, "uEyePos");
+        _gl.CVFog = GlProgram.Loc(_gl.ProgComposite, "uVFog"); _gl.CVFogVp = GlProgram.Loc(_gl.ProgComposite, "uVFogVp");
+        _gl.CSkyBare = GlProgram.Loc(_gl.ProgComposite, "uSkyBare");
         _gl.COverlay = GlProgram.Loc(_gl.ProgComposite, "uOverlay"); _gl.COverlayOn = GlProgram.Loc(_gl.ProgComposite, "uOverlayOn");
         _gl.CStrength = GlProgram.Loc(_gl.ProgComposite, "uStrength"); _gl.CMode = GlProgram.Loc(_gl.ProgComposite, "uMode");
         _gl.CKnee = GlProgram.Loc(_gl.ProgComposite, "uKnee");

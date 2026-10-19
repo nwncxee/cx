@@ -29,7 +29,7 @@ public sealed unsafe partial class AlloyRenderer
     /// an owned stage derives from this int, so a frozen value is a frozen world.</summary>
     internal static int TimeOfDay => _runtime == null ? 0 : Rt.TimeOfDay;
 
-    private static Vector2 AreaWind()
+    internal static Vector2 AreaWind()
         => _runtime == null ? default : new Vector2(Rt.AreaWind.X, Rt.AreaWind.Y);
 
     /// <summary>The scene's fog colour, linearised. The block stores it display-space -- the stock shaders
@@ -57,9 +57,9 @@ public sealed unsafe partial class AlloyRenderer
         px[3] = span != 0f ? 1f / span : 0f;
     }
 
-    /// <summary>Just the scene fog -- five uniforms and an eye position, since the target colour is built per
-    /// ray -- for a program that wants it and none of the rest of <see cref="UploadFeatureTerms"/>. Every
-    /// stage that fogs takes all of them from here, or two stages fog the same fragment differently.</summary>
+    /// <summary>Just the scene fog -- the ramp's terms, an eye position and the volume's two (<see cref="FogVolume"/>) --
+    /// for a program that wants it and none of the rest of <see cref="UploadFeatureTerms"/>. Every stage that fogs
+    /// takes all of them from here, or two stages fog the same fragment differently.</summary>
     internal static void UploadFog(in FeatLoc loc)
     {
         float* px = stackalloc float[4];
@@ -73,6 +73,7 @@ public sealed unsafe partial class AlloyRenderer
         // the runtime block is where the engine keeps the one position that tracks them.
         float playerZ = _runtime == null ? 0f : Rt.PlayerPos.Z;
         SceneFog.Upload(loc, playerZ, _capturing);
+        FogVolume.Upload(loc.VFog, loc.VFogVp, _capturing);
     }
 
     /// <summary>Feed one program the engine's own live world state -- the same five values its own shaders
