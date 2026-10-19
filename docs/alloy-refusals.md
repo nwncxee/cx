@@ -177,8 +177,8 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
 - **The per-gob env override** (`gob+0x480`) was already owned by #121 and is *not* a flag:
   `RenderEnvironmentMapped` @0x451040 reads it as a `CAurTexture*` that REPLACES the material's env map
   (falling back to `mat+0x40`, then to `currentscene+0x1e8`), then calls `RenderFlat` anyway. Alloy's IBL
-  probe supplies the texture. `AlloyCensus.GobHasEnvMap` sets `AlloyCandidate.Env`, exactly as a material
-  env map does.
+  probe supplies the texture. A gob's own override sets the record's env bit, exactly as a material env map
+  does (`AlloyRenderer.DbEnvMapped`).
   *Known approximation, unowned*: that function also passes `part+0xa0 * gob+0x108` to
   `SetPixelShaderAmbientColor` — the reflection's strength. Alloy stages ambient.w as 1.
 
