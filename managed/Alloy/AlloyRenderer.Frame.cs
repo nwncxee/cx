@@ -220,7 +220,6 @@ public sealed unsafe partial class AlloyRenderer
         // that does it, and GlContextService's health bracket then stands down for the frame -- its own, the
         // GUI flush's and the render thread's all route through the one entry point for that reason.
         GlContextService.RunInBracketHere();
-        OwnedBuffers.ClearDirty();   // #260: geometry uploaded itself at the engine's commit; close the window
         Step("ApplySwaps");
         ApplySwaps();   // #386: swapped texture names take their new handles here, in the context that owns residency
         OwnedBuffers.HighWater();    // ...and report the mark the funnel recorded, where a string is affordable
@@ -279,7 +278,6 @@ public sealed unsafe partial class AlloyRenderer
         long tPump = FrameZones.Now;
         Step("the arena pumps");
         GpuFrameStart();
-        TickCycleTextures();
         // #287's scale, hoisted ahead of the staging walk: the automatic-LOD pick reads it there, and the
         // cull dispatch below is handed the same figure.
         _lodScale = perspective ? p11 * viewport[3] * 0.5f : 0f;

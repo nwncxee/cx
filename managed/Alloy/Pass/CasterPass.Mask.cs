@@ -138,13 +138,7 @@ public sealed unsafe partial class CasterPass
     private static int _texQueried, _texWithAlpha;
 
     /// <summary>The caster's alpha-mask texture id, 0 if it does not resolve; cold relative to the draw (once
-    /// per masked caster per collect) and never cached. A DB caster has no engine material at all
-    /// (<c>_oMat</c> is <c>IntPtr.Zero</c>), so its id comes off the draw recipe instead -- calling the
-    /// engine's GetTexture on a null material took the client down.</summary>
-    private static int MaskTid(in AlloyRenderer.CasterFacts f)
-    {
-        if (AlloyRenderer.IsArenaVao(f.Vao)) return AlloyRenderer.DbCasterTid(f.Slot);
-        if (_getTexture == null || f.Mat == IntPtr.Zero) return 0;
-        return AurTex.Tid((IntPtr)_getTexture(f.Mat, 0));
-    }
+    /// per masked caster per collect) and never cached. Every caster draws out of the mesh arena, so the id
+    /// comes off the draw recipe.</summary>
+    private static int MaskTid(in AlloyRenderer.CasterFacts f) => AlloyRenderer.DbCasterTid(f.Slot);
 }

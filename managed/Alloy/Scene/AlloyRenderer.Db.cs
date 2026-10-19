@@ -654,6 +654,81 @@ public sealed unsafe partial class AlloyRenderer
         return MathF.Max(a, MathF.Max(b, c));
     }
 
+    /// <summary>Off-device: <see cref="DbWriteSphere"/>'s caster bound over the harbour ship's mast, whose box
+    /// and placement are hand-written here and whose three expected radii were worked out by hand from them --
+    /// the box bound through the model, the skinned part's pose slack, and the stand-in a degenerate box takes.
+    /// Scratch slot 0, restored.</summary>
+    private static bool CasterBoundSelfCheck(ExtenderLog log)
+    {
+        const int i = 0;
+        int plain = DrawRecipe.FlagsForCheck(0);
+        int skinned = DrawRecipe.FlagsForCheck(RecipeFlag.Skinned);
+        if (plain < 0 || skinned < 0)
+        {
+            DrawRecipe.ReleaseForCheck(plain); DrawRecipe.ReleaseForCheck(skinned);
+            log.Info("AlloyRenderer.CasterBoundSelfCheck: FAILED -- the recipe table had no free slot to drive the bound with");
+            return false;
+        }
+        int wasRecipe = _oDbRecipe[i], wasBone = _oBone[i];
+        float wasFeat = _oFeat[i * 4];
+        float bx = _oBx[i], by = _oBy[i], bz = _oBz[i], br = _oBr[i];
+        float ccx = _oCx[i], ccy = _oCy[i], ccz = _oCz[i], cr = _oR[i];
+        Sphere wasCull = _dSph[i], wasCast = _dCastSph[i];
+        float wasSlack = _dCastSlack[i];
+
+        var lo = new Vector3(-0.5f, -2.5f, 3.2f); var hi = new Vector3(0.5f, -1.7f, 12.3f);   // the harbour ship's mast
+        Vector3 c = 0.5f * (lo + hi);
+        _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = 0.5f * Vector3.Distance(lo, hi);
+        _oCx[i] = 0f; _oCy[i] = 0f; _oCz[i] = 0f; _oR[i] = 12.21f;
+        _oBone[i] = -1; _oFeat[i * 4] = 0f;
+        var f = default(RecordFrameState);
+        f.HasModel = true;
+        f.Model = Matrix4x4.CreateScale(1.5f) * Matrix4x4.CreateFromYawPitchRoll(0.7f, 0.2f, 0.4f) * Matrix4x4.CreateTranslation(40f, 7f, -3f);
+
+        _oDbRecipe[i] = plain;
+        DbWriteSphere(i, in f);
+        CasterSphere(i, out float sx, out float sy, out float sz, out float sr);
+        bool inside = true;
+        for (int k = 0; k < 8; k++)
+        {
+            var p = new Vector3((k & 1) != 0 ? hi.X : lo.X, (k & 2) != 0 ? hi.Y : lo.Y, (k & 4) != 0 ? hi.Z : lo.Z);
+            inside &= Vector3.Distance(Vector3.Transform(p, f.Model), new Vector3(sx, sy, sz)) <= sr * 1.0001f;
+        }
+        // hand-worked: the box diagonal is sqrt(1 + 0.64 + 82.81) = 9.1897, so its half-diagonal through a
+        // uniform 1.5 scale is 6.892 -- against 18.315 for the node-origin radius the cull sphere carries.
+        float cullR = _dSph[i].Radius;
+        bool tight = MathF.Abs(sr - 6.892f) < 1e-2f && MathF.Abs(cullR - 18.315f) < 1e-2f;
+
+        _oDbRecipe[i] = skinned;
+        DbWriteSphere(i, in f);
+        CasterSphere(i, out _, out _, out _, out float skinR);
+        // ...and a skinned part culls at that bound plus 2 m of pose slack, while FRAMING on the bare bound
+        float frameR = CasterFrameRadius(i);
+        bool framed = MathF.Abs(skinR - 8.892f) < 1e-2f && MathF.Abs(frameR - 6.892f) < 1e-2f;
+
+        _oDbRecipe[i] = plain; _oBr[i] = 0f;
+        DbWriteSphere(i, in f);
+        CasterSphere(i, out _, out _, out _, out float degenR);
+        bool degen = MathF.Abs(degenR - DegenerateCasterRadius) < 1e-4f;
+
+        _oDbRecipe[i] = wasRecipe; _oBone[i] = wasBone; _oFeat[i * 4] = wasFeat;
+        _oBx[i] = bx; _oBy[i] = by; _oBz[i] = bz; _oBr[i] = br;
+        _oCx[i] = ccx; _oCy[i] = ccy; _oCz[i] = ccz; _oR[i] = cr;
+        _dSph[i] = wasCull; _dCastSph[i] = wasCast; _dCastSlack[i] = wasSlack;
+        DrawRecipe.ReleaseForCheck(plain); DrawRecipe.ReleaseForCheck(skinned);
+
+        if (!inside || !tight)
+            log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- the caster sphere (r={sr:F3}, want 6.892) does not hold its "
+                   + $"own vertex box through the model, or still sits about the node origin (cull r={cullR:F3}, want 18.315)");
+        if (!framed)
+            log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- a skinned part culls at {skinR:F3} (want 8.892) and frames "
+                   + $"at {frameR:F3} (want 6.892): the pose slack is missing, or it leaks into the framing");
+        if (!degen)
+            log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- a part with a degenerate box takes radius {degenR:F3} "
+                   + $"instead of the one-tile stand-in {DegenerateCasterRadius:F3}, so it admits at infinite reach");
+        return inside && tight && framed && degen;
+    }
+
     /// <summary>The slot-table bookkeeping a self-check has to put back, so exercising the DB path at
     /// Initialize cannot leave the live table holding scratch tenants.</summary>
     internal readonly record struct DbSnapshot(int OwnCount, int OwnLive, int FreeCount, int FreeAvail);

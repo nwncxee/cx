@@ -16,6 +16,7 @@ public static unsafe partial class DbAnim
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DbAnim.SelfCheck");
+        _log ??= log;   // off-device there is no pass attach, and a refusal this suite provokes must be said
         try
         {
             Sampling(check);
@@ -283,7 +284,9 @@ public static unsafe partial class DbAnim
         any[0] = (byte)'*'; any[1] = 0;
         nint shell = EventShell(check, log, obj, out bool freshTables);
         nint cb = Listen(shell, TestEvent, any);
-        check.Expect(new CallBack(cb).SeamName.Length == 32, "a callback block's name holds the engine's 32 bytes");
+        check.Expect(cb != 0, "a callback registers on the live list");
+        check.Expect(cb != 0 && new CallBack(cb).SeamName.Length == 32,
+                     "a callback block's name holds the engine's 32 bytes");
         PlayAnimation(obj, "wave", 1f, RunFlags.NoReuse, 0f);
         check.Expect(_runN[obj.Index] == 1, "a new run evicts the runs below it, as the engine's does");
         check.Expect(_evN >= 1 && _ev[0] == "donewave", "...announcing each evicted run first");

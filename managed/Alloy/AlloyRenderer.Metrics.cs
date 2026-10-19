@@ -287,7 +287,7 @@ public sealed unsafe partial class AlloyRenderer
                    // while the world renders is the whole reason this is a roll-call and not a fixed list --
                    // the frame looks fine, just 8-bit and un-bloomed, and only the clause says so.
                    PassRegistry.Global.Stats(Counters._frames) + ", " +
-                   $"enrolls={Counters._enrolls} revokes={Counters._revokes}; cycle={CycleTextures.Count} steps={CycleTextures.Steps}" + (CycleTextures.Overflow == 0 ? "" : $" overflow={CycleTextures.Overflow}") + (CycleTextures.OtherClass == 0 ? "" : $" otherctl={CycleTextures.OtherClass}") + "; " +
+                   $"enrolls={Counters._enrolls} revokes={Counters._revokes}; " +
                    // #119: the prepass's own cost, and what it bought. samples/px is the overdraw figure --
                    // run the same scene with /alloy prepass 0 and the difference IS the pass's worth.
                    (!_depthPrepass ? "prepass OFF (/alloy prepass 1 restores it)"

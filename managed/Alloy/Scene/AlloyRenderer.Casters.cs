@@ -314,7 +314,7 @@ public sealed unsafe partial class AlloyRenderer
             : SlotTexName(slot);
 
     internal static string SlotTexName(int slot)
-        => _oTri[slot] == IntPtr.Zero ? "-" : AlloyCensus.TexName(MatTextures.At(_oMat[slot], 0));
+        => _oTri[slot] == IntPtr.Zero ? "-" : AlloyCensus.TexName(new Material(_oMat[slot]).TextureAt(0).Ptr);
 
     /// <summary>Is this ownership slot posed by bones? The cheap gate the caster walk uses to put the
     /// skinned casters at the head of its list without resolving every slot twice.</summary>

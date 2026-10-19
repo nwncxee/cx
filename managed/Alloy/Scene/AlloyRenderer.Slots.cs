@@ -80,7 +80,6 @@ public sealed unsafe partial class AlloyRenderer
         // objects can only be deleted inside the bracket, so the rebuild happens there (EnsureVao).
         PassRegistry.Global.Revoke();
         CullPass.Revoke();
-        CycleTextures.Clear();
         // The slot space belongs to the FEED: every slot is joined to a live part through SceneDb.PartSlot and is
         // released when the game destroys the part, never here. The GL-side teardown above is all a revoke is.
         if (_ownCount > 0) _dbRevokeAll++;

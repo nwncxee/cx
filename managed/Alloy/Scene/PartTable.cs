@@ -11,7 +11,6 @@ internal static unsafe class PartTable
 {
     internal static PartGetIsOpaqueFn _isOpaque;
     internal static MatHasBumpyShinyMapFn _hasBumpyShiny;
-    internal static MatGetTextureFn _getTexture;
     internal static uint* _primTable;
     /// <summary><c>g_nEnableBumpyWater</c>: null (Windows, or a build without the symbol) leaves the
     /// bumpy-shiny route to water unrecognised, so only .mtr-declared water is owned. Never a misrender:
@@ -30,10 +29,9 @@ internal static unsafe class PartTable
         // per part per frame, and a lazy compare in that loop is the cost the declaration removes.
         _isOpaque = EngineFn.PartGetIsOpaque;
         _hasBumpyShiny = EngineFn.MatHasBumpyShinyMap;
-        _getTexture = EngineFn.MatGetTexture;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         _bumpyWater = (int*)Native.Sym(SymbolMap.EnableBumpyWater);
-        return _isOpaque != null && _hasBumpyShiny != null && _getTexture != null && _primTable != null;
+        return _isOpaque != null && _hasBumpyShiny != null && _primTable != null;
     }
     /// <summary>The engine's verdict reproduced from a cached box. <c>Camera::GetCanKeyholeDissolve</c>
     /// @0x4a6f70 requires a gobless part above the cut and <c>BoxAbovePlane</c> @0x5b32d0 negative;

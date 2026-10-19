@@ -566,6 +566,7 @@ public sealed unsafe partial class AlloyRenderer
                  + $"; texture memo: the registry serial moved on {_texSerialMoves} of {frames} frames"
                  + (_visList ? $", visible set rebuilt {_visRebuilds} of {frames} frames from "
                              + $"{AreaGrid.Occupied} cells ({AreaGrid.Filed} indexed, {AreaGrid.Unboxed} unboxed ({_unboxedEmpty} never filled), "
+                             + (AreaGrid.Refused > 0 ? $"{AreaGrid.Refused} REFUSED, " : "")
                              + $"{_dynN} on gobs, {_visIndexed / Math.Max(1, _visRebuilds)}/rebuild, {_visTrimmed / Math.Max(1, _visRebuilds)} cell-only candidates trimmed/rebuild)"
                              : ", visible set OFF") + VisAuditNote()
                  // CX-188: "asked" was the ENGINE ask, from a path that no longer exists. In DB mode the

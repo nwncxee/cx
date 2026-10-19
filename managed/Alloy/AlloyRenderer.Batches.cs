@@ -640,20 +640,6 @@ public sealed unsafe partial class AlloyRenderer
     /// the frame to a wholesale upload, which is correct and merely more expensive.</summary>
     private static void MarkRecordDirty(int slot) => MarkRecordDirty(slot, ref _stageCounters[0]);
 
-    /// <summary>Advance every cycle texture the engine is animating. Main thread, before the batch build. No
-    /// record holds a controller any more -- a part resolves its textures through <see cref="TexRegistry"/> --
-    /// so a dropped one is said out loud rather than swallowed.</summary>
-    private static void TickCycleTextures()
-    {
-        CycleTextures.Tick();
-        if (CycleTextures.Dropped.Length == 0 || _cycleDropSaid) return;
-        _cycleDropSaid = true;
-        _log?.Always("AlloyRenderer: CycleTextures dropped a controller, but no record holds one -- the "
-                   + "per-record controller column went with the engine-path stage (CX-188), so nothing "
-                   + "re-resolved, and the textures behind it freeze");
-    }
-    /// <summary>Said once: a dropped cycle controller with no record column to act on.</summary>
-    private static bool _cycleDropSaid;
     private static void MarkRecordDirty(int slot, ref StageCounters c)
     {
         c.RecWritten++;

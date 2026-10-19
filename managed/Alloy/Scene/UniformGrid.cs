@@ -1,6 +1,7 @@
 using CX.Engine;
 using System;
 using System.Numerics;
+using CX.Framework;
 
 namespace CX.Alloy;
 
@@ -30,13 +31,21 @@ internal sealed class UniformGrid
     /// describing where the entry WAS, and a cell whose union no longer covers it drops it from every query.</summary>
     private readonly int[] _next, _cellOf, _unboxed, _movers;
     private int _unboxedN, _moverN, _filed, _occupied;
+    /// <summary>Filings REFUSED: an id past the table, or a mover on a grid that keeps no mover list. Each is
+    /// a caller holding an index the grid was not sized for, which is an entry missing from every query --
+    /// said loudly the first few times, counted for ever.</summary>
+    private int _refused;
+    private readonly string _owner;
 
-    internal UniformGrid(int capacity)
+    /// <summary><paramref name="movers"/> sizes the mover list, which only a grid whose entries can MOVE
+    /// needs -- the area grid's are static by definition, and the list is one int per id.</summary>
+    internal UniformGrid(string owner, int capacity, bool movers = false)
     {
+        _owner = owner;
         _next = new int[capacity];
         _cellOf = new int[capacity];
         _unboxed = new int[capacity];
-        _movers = new int[capacity];
+        _movers = movers ? new int[capacity] : Array.Empty<int>();
         Begin();
     }
 
@@ -56,14 +65,14 @@ internal sealed class UniformGrid
     /// <summary>File <paramref name="id"/> under its world AABB, at the cell its MIN corner falls in.</summary>
     internal void Add(int id, in Box box)
     {
-        if ((uint)id >= (uint)_cellOf.Length) return;
+        if (!Holds(id)) return;
         Link(id, Cell(box.Min.X, box.Min.Y), in box);
     }
 
     /// <summary>File <paramref name="id"/> as unboundable: no world box, so every query yields it.</summary>
     internal void AddUnboxed(int id)
     {
-        if ((uint)id >= (uint)_cellOf.Length || _cellOf[id] == CellUnboxed) return;
+        if (!Holds(id) || _cellOf[id] == CellUnboxed) return;
         Remove(id);
         if (_unboxedN < _unboxed.Length) { _unboxed[_unboxedN++] = id; _cellOf[id] = CellUnboxed; }
     }
@@ -73,12 +82,13 @@ internal sealed class UniformGrid
     /// unbounded list; both are in every query. Idempotent: the same placement twice is one filing.</summary>
     internal void File(int id, float cx, float cy, float cz, float r, bool stat)
     {
-        if ((uint)id >= (uint)_cellOf.Length) return;
+        if (!Holds(id)) return;
         if (!stat)
         {
             if (_cellOf[id] == CellMover) return;
             Remove(id);
-            if (_moverN < _movers.Length) { _movers[_moverN++] = id; _cellOf[id] = CellMover; }
+            if (_moverN >= _movers.Length) { Refuse($"mover {id} has no slot ({_movers.Length} mover slots)"); return; }
+            _movers[_moverN++] = id; _cellOf[id] = CellMover;
             return;
         }
         if (!(r > 0f)) { AddUnboxed(id); return; }
@@ -89,7 +99,7 @@ internal sealed class UniformGrid
     /// <summary>Unfile <paramref name="id"/>: its record was destroyed, or it stopped being static.</summary>
     internal void Remove(int id)
     {
-        if ((uint)id >= (uint)_cellOf.Length) return;
+        if ((uint)id >= (uint)_cellOf.Length) return;   // not a refusal: unfiling what was never filed is a no-op
         int c = _cellOf[id];
         if (c == CellNone) return;
         if (c == CellUnboxed)
@@ -175,6 +185,30 @@ internal sealed class UniformGrid
         }
         return true;
     }
+
+    /// <summary>Entries refused, for the owner's period line.</summary>
+    internal int Refused => _refused;
+
+    /// <summary>Is <paramref name="id"/> one this grid can hold? A larger one is REFUSED, loudly: the entry
+    /// would be missing from every query, which reads as geometry that is simply not there.</summary>
+    private bool Holds(int id)
+    {
+        if ((uint)id < (uint)_cellOf.Length) return true;
+        Refuse($"id {id} is past the {_cellOf.Length} it was sized for");
+        return false;
+    }
+
+    /// <summary>Said for the first few, counted for ever.</summary>
+    private void Refuse(string why)
+    {
+        _refused++;
+        if (_refused <= RefusalLines)
+            KnobGroup.Log?.Always($"{_owner}: REFUSED a filing -- {why}. It is in NO query, so what it holds "
+                                + $"draws nothing ({_refused} so far)");
+    }
+
+    /// <summary>Refusals named in the log; the count goes on past it.</summary>
+    private const int RefusalLines = 4;
 
     /// <summary>Link <paramref name="id"/> into <paramref name="cell"/>, growing that cell's union. An entry
     /// already in this cell only grows it; one in another cell is unfiled first, so an id is in exactly one.</summary>

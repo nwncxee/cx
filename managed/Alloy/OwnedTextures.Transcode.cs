@@ -76,10 +76,11 @@ internal static unsafe partial class OwnedTextures
         _encodeWake.Release();
     }
 
-    /// <summary>One frame's uploads of finished jobs, from inside the 4.6 bracket beside <see cref="Drain"/> --
-    /// the two share a batch of retired names. Every edit is by name, so neither context's bind cache is
-    /// touched, and whichever unpack-buffer binding was current is restored.</summary>
-    internal static void DripTranscodes()
+    /// <summary>One frame's uploads of finished jobs, on <see cref="Maintain"/>'s anchor: main thread, with
+    /// the ENGINE's context current -- the context the funnel minted the source in, and the only thread that
+    /// writes these tables. Every edit is by name, so the engine's bind cache is never touched, and its
+    /// unpack-buffer binding is restored.</summary>
+    private static void DripTranscodes()
     {
         if (!GlContextService.Available || _transN == 0) return;
         long t0 = FrameZones.Now;
@@ -128,19 +129,32 @@ internal static unsafe partial class OwnedTextures
         }
     }
 
-    /// <summary>A new name, the source's sampler state, the compressed levels, and the swap; the job's buffers go
-    /// back to the pool whatever happens.</summary>
+    /// <summary>A new name, the source's sampler state, the compressed levels, and the swap; the job leaves the
+    /// books and its buffers go back to the pool whatever happens.</summary>
     private static void UploadJob(TransJob job)
+    {
+        try { Upload(job); }
+        finally { Release(job); }
+    }
+
+    /// <summary>One job off the books: the counters, the warm-cache hold and both rented buffers. The one
+    /// exit every outcome goes through -- upload, stale context, driver refusal, context loss.</summary>
+    private static void Release(TransJob job)
     {
         _transN--;
         _transPixelBytes -= job.Pixels.Length;
         _inFlight.Remove(job.Key);
-        try { Upload(job); }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(job.Pixels);
-            ArrayPool<byte>.Shared.Return(job.Blocks);
-        }
+        ArrayPool<byte>.Shared.Return(job.Pixels);
+        if (job.Blocks.Length > 0) ArrayPool<byte>.Shared.Return(job.Blocks);
+    }
+
+    /// <summary>The GL-NAME edge: every queued job names a source texture of the dead context, so the work is
+    /// worthless and the memory is not. What the encoder thread is holding right now cannot be taken back --
+    /// at most one job, whose buffers stay its own.</summary>
+    private static void DropTranscodes()
+    {
+        while (_encodeQ.TryDequeue(out TransJob? job)) { _transStale++; Release(job); }
+        while (_encodedQ.TryDequeue(out TransJob? job)) { _transStale++; Release(job); }
     }
 
     private static void Upload(TransJob job)
@@ -182,7 +196,7 @@ internal static unsafe partial class OwnedTextures
         // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
         bool scanned = _stats.TryGetValue(job.Src, out Stat st);
         Replace(job.Key, job.Etid, dst, job.Compressed);
-        if (scanned) _stats[dst] = st;
+        if (scanned) _stats[dst] = st; else _stats.Remove(dst);
         FrameZones.Count(FrameZones.Ev.Transcode);
         _transDone++;
         _censusTrans++; _censusSaved += job.Bytes > job.Compressed ? job.Bytes - job.Compressed : 0;

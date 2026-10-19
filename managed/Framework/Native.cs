@@ -133,11 +133,16 @@ public static unsafe class Native
     private static readonly IntPtr AppMgrSym = Sym(SymbolMap.AppManager), GuiManSym = Sym(SymbolMap.GuiMan);
 
     /// <summary>An engine modal panel is up -- the gold or split-amount prompt, a confirm. It draws over every CX
-    /// window, so a CX panel steps aside while one is open. Read from the engine per ask, never latched.</summary>
+    /// window, so a CX panel steps aside while one is open. Read from the engine per ask, never latched. An
+    /// unresolved <c>CGuiMan</c> row reads as no modal rather than as the vtable word: a caller gates the class
+    /// with <c>EngineLayout.Require</c>, which is where the stand-down is announced.</summary>
     public static bool ModalPanelUp()
     {
         IntPtr gm = GuiManSym;
-        return gm != IntPtr.Zero && *(IntPtr*)gm != IntPtr.Zero && new CGuiMan(*(IntPtr*)gm).ModalCount > 0;
+        if (gm == IntPtr.Zero || EngineLayout.GuiManModalCount == 0) return false;
+#pragma warning disable RS0030 // Native.ModalPanelUp is the one reader of the modal stack's depth
+        return *(IntPtr*)gm != IntPtr.Zero && new CGuiMan(*(IntPtr*)gm).ModalCount > 0;
+#pragma warning restore RS0030
     }
 
     /// <summary>An object's display name as the engine shows it (a creature's full name, an item's name, a

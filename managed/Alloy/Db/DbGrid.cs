@@ -15,12 +15,14 @@ internal static unsafe class DbGrid
     /// <inheritdoc cref="UniformGrid.CellSize"/>
     internal const int Dim = UniformGrid.Dim;
 
-    private static readonly UniformGrid G = new(SceneDb.MaxObjects);
+    private static readonly UniformGrid G = new("DbGrid", SceneDb.MaxObjects, movers: true);
 
     internal static int Filed => G.Filed;
     internal static int Unboxed => G.Unboxed;
     internal static int Movers => G.Movers;
     internal static int Occupied => G.Occupied;
+    /// <inheritdoc cref="UniformGrid.Refused"/>
+    internal static int Refused => G.Refused;
 
     /// <summary>Empty the index. A scene destroy, a session edge, or a self-check.</summary>
     internal static void Reset() => G.Begin();

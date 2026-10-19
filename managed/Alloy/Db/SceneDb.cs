@@ -1104,7 +1104,7 @@ public enum ObjFlag : ushort
     /// <summary>A creature, or a part of one (a head, a held weapon, a hat). The receiver class the record's
     /// <c>emi.w</c> carries, and what the engine path answered by climbing the attachment chain per part.</summary>
     Creature = 1 << 0,
-    /// <summary>Tile geometry: receiver class 1, and the population the automatic LOD and the normal weld skip.</summary>
+    /// <summary>Tile geometry: receiver class 1, and the population the automatic mesh LOD skips.</summary>
     Tile = 1 << 1,
     /// <summary>Never moves once placed, so its records are filed in the visible-set index rather than routed
     /// every frame.</summary>
