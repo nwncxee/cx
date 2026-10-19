@@ -129,7 +129,7 @@ internal static unsafe partial class Beams
         return true;
     }
 
-    /// <summary>The DB-mode vertex stage: <c>cx_beam_v</c> with the baked <c>fProjectionFrontal</c> attribute
-    /// replaced by the mesh normal, which the arena's static format already carries at location 2.</summary>
+    /// <summary>The beam vertex stage: the frontal projection is the mesh normal, which the arena's static
+    /// format carries at location 2.</summary>
     private static string BeamDbVs => ShaderSource.Get("cx_beamdb_v.glsl");
 }
