@@ -67,3 +67,6 @@ dangly\.(gravity|wind|turb|turbfreq|turbspeed|vary|body|hz|steps|parallel)\b	dan
 \bSkyTwin\b|\bsky twins?\b	native-stages
 cx_sky_(image|pass|fog|lens)\b	native-stages	old sky-only grammar
 cx_skyenv|cx_skypass_cs|\$SKYCS\$|CX_SKY_LINEAR|cxSkyLens|effects\.skytwin	native-stages
+
+# Dead-code cleanup: a knob whose last reader was removed with the deferred lighting rewrite.
+anim\.staticlight	dead-code-cleanup
