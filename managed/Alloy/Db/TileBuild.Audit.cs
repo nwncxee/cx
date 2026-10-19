@@ -12,7 +12,7 @@ public static partial class TileBuild
     internal sealed class TileAuditState
     {
         internal readonly HashSet<(int Tile, uint Obj)> Named = new();
-        internal int OutOfScene, NotJoined, Refused, LinesLeft = AuditLines;
+        internal int NotJoined, Refused, LinesLeft = AuditLines;
     }
 
     /// <summary>Lines the audit writes per session; the counts go on past it.</summary>
@@ -47,7 +47,6 @@ public static partial class TileBuild
                          + $"{obj.Value} valid={objOk}, stamped scene {stamped.Value} (valid={SceneDb.Scenes.Valid(stamped)}), "
                          + $"member={member} -- it draws nothing and has no floor");
         }
-        st.OutOfScene = bad;
         return bad;
     }
 

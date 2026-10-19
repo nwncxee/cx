@@ -519,11 +519,6 @@ public static class SceneDb
     public static readonly float[] ObjSeamWind = new float[MaxObjects];
     /// <summary><c>Gob::SetLightPriority(int)</c>.</summary>
     public static readonly int[] ObjSeamLightPri = new int[MaxObjects];
-    /// <summary><c>Gob::SetColorShifting(Vector, float, int)</c>: the colour in xyz, the amount in w.</summary>
-    public static readonly Vector4[] ObjSeamColourShift = new Vector4[MaxObjects];
-    /// <summary>The <c>int</c> third argument of <c>SetColorShifting</c> and the second of
-    /// <c>SetIllumination</c> -- which part set the shift applies to.</summary>
-    public static readonly int[] ObjSeamColourShiftMode = new int[MaxObjects], ObjSeamIllumMode = new int[MaxObjects];
     /// <summary><c>Gob::ScaleObject</c>'s <c>AUR_OBJECTSCALE_TYPE</c>.</summary>
     public static readonly byte[] ObjSeamScaleMode = new byte[MaxObjects];
     /// <summary>The LOD block <c>NewCAurObject</c> fills: the level in use and the two switch distances
@@ -538,16 +533,14 @@ public static class SceneDb
     /// <c>Gob::Animate</c>'s gust test compares against.</summary>
     public const float NoPrevPos = -1e7f;
     /// <summary>Head of the object's intrusive list of Part shells (the <c>CAurPart*</c> values handed to the
-    /// game) and of its registered animation callbacks; both freed when the object retires.</summary>
-    public static readonly nint[] ObjSeamPartShells = new nint[MaxObjects], ObjSeamCallbacks = new nint[MaxObjects];
+    /// game), freed when the object retires.</summary>
+    public static readonly nint[] ObjSeamPartShells = new nint[MaxObjects];
     /// <summary>The objects this one OWNS, as an intrusive list: the head is here and each member's next is
     /// in <see cref="ObjSeamAppendNext"/>. Two kinds, one lifetime rule -- they die with their parent: what
     /// <c>Gob::Append</c> composed onto it (CX composes child records where the engine grew one part tree),
     /// and what a reference node instanced (<c>CreateReferenceObjects</c> @0x5421e0).</summary>
     public static readonly DbId[] ObjSeamAppendHead = new DbId[MaxObjects], ObjSeamAppendNext = new DbId[MaxObjects];
 
-    /// <summary>Index into the visual-transform pool, -1 for an object that has none.</summary>
-    public static readonly int[] ObjSeamVisualXform = new int[MaxObjects];
     /// <summary>The engine's model name is the MODEL's, not the object's (<c>Gob::GetModelName</c> is
     /// <c>model + 0x10</c>), so a text or empty object has none; this is the resref the object was asked for,
     /// which is what every caller actually wants.</summary>
@@ -781,20 +774,11 @@ public static class SceneDb
     public static readonly int[] TileGridX = new int[MaxTiles], TileGridY = new int[MaxTiles], TileHeight = new int[MaxTiles];
     /// <summary>Quarter turns about +Z (<c>CNWCTile::SetOrientation</c> @0x90c9b0: <c>orient * 90</c> degrees).</summary>
     public static readonly int[] TileOrient = new int[MaxTiles];
-    /// <summary>The tileset row the area message named, or -1 for a ring tile.</summary>
-    public static readonly int[] TileSetId = new int[MaxTiles];
     /// <summary>World placement: <c>(gx*10+5, gy*10+5, heightTransition*height)</c>.</summary>
     public static readonly Vector3[] TilePos = new Vector3[MaxTiles];
     /// <summary>World bounds of the placement, the model-space merged bounds placed by the transform --
     /// the engine's <c>TileData+0x58</c>/<c>+0x64</c> union over its trimesh parts' world boxes.</summary>
     public static readonly Vector3[] TileBmin = new Vector3[MaxTiles], TileBmax = new Vector3[MaxTiles];
-    /// <summary>The <c>lightcolor.2da</c> palette rows the area message names for the two main lights and the
-    /// two source lights (0 = none; the source-light wire byte is stored +1, as the loop reads it).</summary>
-    public static readonly byte[] TileMain1 = new byte[MaxTiles], TileMain2 = new byte[MaxTiles];
-    public static readonly byte[] TileSrc1 = new byte[MaxTiles], TileSrc2 = new byte[MaxTiles];
-    /// <summary>The three <c>AnimLoop01..03</c> enables and the texture-replacement palette row.</summary>
-    public static readonly byte[] TileAnim1 = new byte[MaxTiles], TileAnim2 = new byte[MaxTiles], TileAnim3 = new byte[MaxTiles];
-    public static readonly byte[] TileReplaceRow = new byte[MaxTiles];
     /// <summary>The texture the swap put in place of <c>replace_tex</c>, or null.</summary>
     public static readonly string?[] TileReplaceTex = new string?[MaxTiles];
     /// <summary>A ring tile (the engine's <c>border</c> argument to <c>SpawnTile</c> was non-zero).</summary>

@@ -277,7 +277,6 @@ internal static partial class DrawRecipe
 
     internal static MeshDef? Mesh(int r) => _mesh[r];
     internal static ModelDef? Model(int r) => _model[r];
-    internal static int Node(int r) => _node[r];
     internal static int Cls(int r) => _cls[r];
     /// <summary>The diffuse measured GRADED alpha (<see cref="TexCoverage.Blended"/>): a soft edge, not a punch-through.</summary>
     internal static bool Graded(int r) => TexRegistry.Coverage(new TexId(_texId[r * TexSlots])) == TexCoverage.Blended;

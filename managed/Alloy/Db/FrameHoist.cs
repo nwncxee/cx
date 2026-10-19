@@ -86,8 +86,8 @@ public struct FrameHoist
 
     private static Vector3 Triple(Span<float> c) => new(c[0], c[1], c[2]);
 
-    /// <summary>One view's fog, resolved on the GAME thread against the same two sources
-    /// <c>SceneFeed.FogRead</c> consulted inside the draw: the AREA's own palette first (the game writes the
+    /// <summary>One view's fog, resolved on the GAME thread against the two sources the draw's own
+    /// <c>SceneFeed.FogTerms</c> copies from: the AREA's own palette first (the game writes the
     /// fog words through <c>CNWCArea::SetFog</c>, which emits <c>FuncInterp("mainscene.fog*")</c> TEXT and so
     /// never reaches a DB column), then the scene SHELL's words, then the scene columns.</summary>
     public struct ViewFog
@@ -107,8 +107,8 @@ public struct FrameHoist
     internal static void FoldFog(DbId scene, in FrameHoist h, out ViewFog fog)
     {
         fog = default;
-        // The AREA's own scene first, for the reason SceneFeed.FogRead gives: the fog words land in whatever
-        // object sits at CNWCArea+0x248, so reading them there needs no FindScene lookup by name.
+        // The AREA's own scene first: the fog words land in whatever object sits at CNWCArea+0x248, so
+        // reading them there needs no FindScene lookup by name.
         if (h.HaveArea && h.HaveAreaScene)
         {
             fog.Path = ViewFog.AreaPath;

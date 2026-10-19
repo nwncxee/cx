@@ -14,8 +14,8 @@ Declared in `Db/DbAnim.Api.cs` (the surface), implemented across `Db/DbAnim.*.cs
   (`tools/seam/aurora-seam-vtables.tsv`), with a `DbId` where the engine passes `this` and a `ModelDef`
   where it passes a `Model*`.
 - **Setters mark their own records.** A caller never has to `Touch`.
-- **Allocation-free on the steady path.** The run queue, the callbacks and the dynamic vertex buffers are
-  pre-sized pools; a refusal is logged once and counted on `[dbanim]`, never silent.
+- **Allocation-free on the steady path.** The run queue and the dynamic vertex buffers are pre-sized pools;
+  a refusal is logged once and counted on `[dbanim]`, never silent.
 
 ## What seam-obj calls, per slot
 
@@ -25,8 +25,7 @@ Declared in `Db/DbAnim.Api.cs` (the surface), implemented across `Db/DbAnim.*.cs
 | 7 `PlayAnimation(name, speed, flags, fade)` | `PlayAnimation(obj, name, speed, flags, fade)` → the engine's int |
 | 8 `GetAnimation(name, &len, &trans)` | `GetAnimation(obj, name, out len, out trans)` → an opaque non-null token (zeroed; never dereference it as an `Animation*`) |
 | 9 / 10 add-in animations | `LoadAddInAnimations(obj, resref)` / `RemoveAddInAnimations(obj)` |
-| 11 / 83 / 84 the event path | `RegisterCallBack(obj, fn, name, data)` → a real engine-layout `CallBack*`; `DeregisterCallback(obj, cb)`; `DoEvent(obj, name, data)` |
-| 57–60 / 85 the gates | `EnableForceAnimations` / `DisableForceAnimations` / `EnableAnimations` / `DisableAnimations` / `IsAnimating` / `IsForceAnimated` |
+| 57–60 / 85 the gates | `SetAnimationsEnabled(obj, on, force)` behind all four, `IsAnimating` |
 | 74 / 75 look-at | `BeginLookAtAnimate(obj, target, headPart, targetPart, rate, yawLimit, pitchLimit, weight)` / `EndLookAtAnimate(obj)` |
 | 78 synchronise | `SetSynchronizeAnimations(obj, on)` |
 | `Gob::SetBehavior` / `GetBehavior` | `SetBehavior(obj, beh)` / `Behavior(obj)` (the **type test** stays in the slot: it runs through the behaviour's own `AsBehavior*` virtuals) |
@@ -35,12 +34,11 @@ Declared in `Db/DbAnim.Api.cs` (the surface), implemented across `Db/DbAnim.*.cs
 | `GetPosition` / `GetOrientation` and the other by-value getters | `ObjectWorld(obj)` / `PartWorld(part)` — both **compose on demand**, so a getter straight after a setter answers the new value |
 | object creation / retirement / tree change | `ObjectCreated(obj)` / `ObjectRetired(obj)` / `TreeChanged(obj)` |
 | LOD | `SetLodModels(obj, l1, l2)` / `SetLodDistances(obj, near, far)` |
-| `Gob::AnimateOffScreen` | `SetAnimateOffScreen(obj, on)` |
-| animation speed / visual scale (`Gob+0x400` / `+0x1c0`) | `SetAnimationSpeed(obj, speed, overSeconds)` / `SetVisualScale(obj, scale, overSeconds)` |
+| visual scale (`Gob+0x1c0`) | `SetVisualScale(obj, scale, overSeconds)` |
 
 seam-scene calls `DbAnimCamera.Animate(cam, dt)` from the camera's `Animate` slot (its stub is folded in and
-deleted), `EnableSceneAnimations` / `DisableSceneAnimations` / `IsSceneAnimating`, `SetEye(eye)` once
-per view request, and `Animate(scene, dt)` from the `CAurScene::Animate` slot.
+deleted), `IsSceneAnimating`, and `Animate(scene, dt)` from the `CAurScene::Animate` slot. The LOD bands take
+the eye from `FrameInputs.CameraPos`, which `SceneFeed` fills per view.
 
 ## Four hooks seam-obj MUST install at boot
 
@@ -67,8 +65,7 @@ without the sync those columns never learn about it.
   `slot * 64` for a skin, which owns its slot; a cell inside a shared slot for a rigged dangly part.
 - `SceneDb.ObjLodShown` — the part-tree alternate the LOD choice picked.
 - Nothing more for a STOCK-solved dangly part or an animmesh: such a part carries its own arena range and its own interned recipe in
-  `SceneDb.PartRecipe`, so the existing record path draws the solved vertices. `DbAnim.DanglyPositions(part,
-  out count)` + `DbAnim.DynGeneration(part)` expose the host copy for a consumer that wants the positions
-  themselves. Layout and ownership: `Db/DbPose.LAYOUT.md`.
+  `SceneDb.PartRecipe`, so the existing record path draws the solved vertices. Layout and ownership:
+  `Db/DbPose.LAYOUT.md`.
 - `DbAnim.ChannelSink` — set it to receive the controller tracks the pose columns do not carry (light colour,
   radius, multiplier; emitter rates). Unset, those tracks are sampled by nobody and counted.

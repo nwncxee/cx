@@ -183,7 +183,6 @@ public static unsafe partial class DbAnim
         _dangly.Parts++; _dangly.Stocked++; _dangly.Verts += n;
         AlloyRenderer.NoteDanglyMoved(part, move, Dangly.Still.V);
         if (!(move > 0f)) return;
-        _dynGen[part]++;
         _dynProduced++;
         DynPublish(part);
         SceneDb.TouchPart(part, Dirty.Anim);

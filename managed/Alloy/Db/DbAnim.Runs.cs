@@ -9,9 +9,6 @@ namespace CX.Alloy.Db;
 /// dominates: <see cref="DbAnim.Control"/> lerps into the column the previous run left, with no pose buffer.</para></summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>The engine's "no previous time" sentinel for a run that has not been stepped.</summary>
-    private const float NoPrev = -1e7f;
-
     private static int Slot(int i, int k) => _block[i] * MaxRuns + k;
 
     /// <summary>Has every run on <paramref name="obj"/> finished blending in, so its light values are the

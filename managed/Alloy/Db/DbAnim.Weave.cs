@@ -14,7 +14,6 @@ public static unsafe partial class DbAnim
     {
         private const float Degree = MathF.PI / 180f;
 
-        private readonly int _np;
         private readonly Matrix4x4[] _rest, _restInv;
         private readonly MeshDef[] _mesh;
         private readonly SkinDef[] _skin;
@@ -38,7 +37,6 @@ public static unsafe partial class DbAnim
 
         internal Weave(int parts)
         {
-            _np = parts;
             _rest = new Matrix4x4[parts];
             _restInv = new Matrix4x4[parts];
             _mesh = new MeshDef[parts];

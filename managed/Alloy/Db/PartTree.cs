@@ -43,9 +43,6 @@ public static partial class PartTree
     /// <summary>The log this builder names its refusals on; settable so the off-device suite can silence it.</summary>
     internal static ExtenderLog? Log { get => _log; set => _log = value; }
 
-    /// <summary>Highest part index ever handed out, plus one: a dense column walk's bound.</summary>
-    public static int High => SceneDb.Parts.High;
-
     /// <summary>Part slots held by live chunks, straight off the ONE allocator that hands them out.
     /// ponytail: a chunk is rounded up to a power of two (at most 2x waste) and there is no compaction; at
     /// <see cref="SceneDb.MaxParts"/> = 512k slots that covers an area of 3k objects at ~170 parts each, and
@@ -874,10 +871,6 @@ public static partial class PartTree
                + (PartGate.Stats() is { Length: > 0 } gate ? ", " + gate : "")
                + (MaterialNote() is { Length: > 0 } mtr ? ", " + mtr : "");
     }
-
-    internal static string Describe()
-        => _built == 0 ? "no trees built"
-         : $"{_built} trees, {HeldSlots} parts, {_merged} merged away, high water {SceneDb.Parts.High}";
 
     /// <summary>Off-device reset, for the self-check suite.</summary>
     internal static void ResetForCheck()

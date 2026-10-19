@@ -369,7 +369,6 @@ internal static unsafe class SceneSlots
         DbId s = Id(self);
         if (s.IsNull) return;
         TileBuild.ResetFading(s);
-        SceneFeed.FadeReset(s);
     }
 
     // ---- hit tests: the hit stream's HitTest ---------------------------------------------------------
@@ -459,7 +458,6 @@ internal static unsafe class SceneSlots
         Id(self);
         if (props != 1 && props != 2 && props != 4) return 0;
         SceneDb.GeomFade = props;
-        SceneFeed.GeomFadeChanged();
         return 1;
     }
 
@@ -480,35 +478,23 @@ internal static unsafe class SceneSlots
         SceneDb.SceneWindDir[s.Index] = V(dir);
         SceneDb.SceneWindMag[s.Index] = magnitude;
         SceneDb.SceneWindGust[s.Index] = gustiness;
-        SceneFeed.WindChanged(s);
     }
 
     /// <summary>Slot 15, <c>CAurScene::ReloadAreaGrass</c>: the area's grass info changed
-    /// (<c>AurGrassAddInfo</c>/<c>AurGrassClearInfo</c> have been called), so the grass field rebuilds.</summary>
+    /// (<c>AurGrassAddInfo</c>/<c>AurGrassClearInfo</c> have been called). Alloy's grass field rebuilds from
+    /// the area's own assets at its world edge, so the slot resolves the scene and answers.</summary>
     [UnmanagedCallersOnly]
-    private static void ReloadAreaGrass(nint self)
-    {
-        DbId s = Id(self);
-        if (!s.IsNull) SceneFeed.GrassChanged(s);
-    }
+    private static void ReloadAreaGrass(nint self) { Id(self); }
 
     /// <summary>Slots 13/14, <c>CAurScene::ComputeStaticLighting</c> / <c>ComputeStaticProjections</c>: the
-    /// engine's own static-light and decal bake. Alloy owns both (the lightmap bake, keyed on CONTENT), so
-    /// these mark the scene's static set stale and the bake picks it up at its own edge -- the
-    /// one thing they must not do is run a bake synchronously inside a seam call.</summary>
+    /// engine's own static-light and decal bake. Alloy owns both (the lightmap bake, keyed on CONTENT) and
+    /// runs them at its own edge, so the one thing these must not do is run a bake inside a seam call.</summary>
     [UnmanagedCallersOnly]
-    private static void ComputeStaticLighting(nint self)
-    {
-        DbId s = Id(self);
-        if (!s.IsNull) SceneFeed.StaticLightingStale(s);
-    }
+    private static void ComputeStaticLighting(nint self) { Id(self); }
 
+    /// <inheritdoc cref="ComputeStaticLighting"/>
     [UnmanagedCallersOnly]
-    private static void ComputeStaticProjections(nint self)
-    {
-        DbId s = Id(self);
-        if (!s.IsNull) SceneFeed.StaticProjectionsStale(s);
-    }
+    private static void ComputeStaticProjections(nint self) { Id(self); }
 
     /// <summary><c>Scene::SetBlindLights</c> @0x45e010: from now on only <paramref name="obj"/>'s lights light the
     /// scene (null = every light again). Cold -- an effect's apply and remove -- so each change is a log line.</summary>
@@ -520,7 +506,6 @@ internal static unsafe class SceneSlots
         DbId o = Facade.ObjectId(obj);
         if (SceneDb.SceneBlindLights[s.Index] == o) return;
         SceneDb.SceneBlindLights[s.Index] = o;
-        SceneFeed.LightsChanged(s);
         _log?.Info(o.IsNull
             ? $"SceneSlots: blind lights OFF on scene {s.Index} -- every light lights it again"
             : $"SceneSlots: blind lights ON on scene {s.Index} -- only '{SceneDb.ObjModel[o.Index]?.Name ?? "?"}' (object {o.Index}) lights it: no other light, no area ambient or sun, no baked pages, black fog");

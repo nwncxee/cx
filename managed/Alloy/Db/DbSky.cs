@@ -29,15 +29,11 @@ internal static class DbSky
     /// object.</summary>
     internal const int MaxRoles = 3;
 
-    private static int _lastRoles;
-    internal static int LastRoles => _lastRoles;
-
     /// <summary>This scene's sky roles, in draw order. Returns the count written into
     /// <paramref name="into"/>; 0 means the scene draws no sky at all, which is an interior and not a
     /// failure.</summary>
     internal static int Roles(DbId scene, Span<Role> into)
     {
-        _lastRoles = 0;
         if (!SceneDb.Scenes.Valid(scene)) return 0;
         int s = scene.Index;
         // The engine's own off byte -- note the polarity: SceneSkyOff set means the sky is NOT drawn.
@@ -62,30 +58,8 @@ internal static class DbSky
         if (SceneDb.Objects.Valid(fade) && n < into.Length)
             into[n++] = new Role { Obj = fade, Alpha = SceneDb.ObjTint[fade.Index].W,
                                    Src = BlendSrcAlpha, Dst = BlendOverAlpha };
-        _lastRoles = n;
         return n;
     }
-
-    /// <summary>Apply this frame's roles to the sky objects' records: each role's alpha becomes its object's
-    /// per-draw alpha multiplier, and its blend pair the pair its parts batch under. Marking the object
-    /// <see cref="Dirty.Material"/> is what makes the feed rewrite those records -- so a sky that is not
-    /// crossing writes nothing, exactly like every other still record.</summary>
-    internal static int Apply(DbId scene)
-    {
-        Span<Role> roles = stackalloc Role[MaxRoles];
-        int n = Roles(scene, roles);
-        for (int r = 0; r < n; r++)
-        {
-            int o = roles[r].Obj.Index;
-            Vector4 tint = SceneDb.ObjTint[o];
-            if (tint.W == roles[r].Alpha) continue;         // not crossing: nothing to rewrite
-            SceneDb.ObjTint[o] = new Vector4(tint.X, tint.Y, tint.Z, roles[r].Alpha);
-            SceneDb.Touch(roles[r].Obj, Dirty.Material);
-        }
-        return n;
-    }
-
-    internal static string Stats() => $"dbsky: {_lastRoles} role(s)";
 
     /// <summary>Off-device: the engine's four gates, which is the whole of what this owns. Each one wrong is
     /// a specific, silent misrender -- a sky in an interior, a missing dome, a cross-fade that brightens, or

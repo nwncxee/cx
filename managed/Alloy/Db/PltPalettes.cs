@@ -19,9 +19,6 @@ internal static unsafe class PltPalettes
     /// <c>ReplaceTexturePLT</c> divides by.</summary>
     internal const int Height = Slots * RowsPerSlot;
     internal const int RowBytes = Width * Bpp;
-    /// <summary>Layer count a <see cref="PltColors"/> row block carries.</summary>
-    internal const int Layers = SceneDb.PltLayers;
-
     /// <summary>The engine's own seven, in slot order. Only the names: whether a layer uses slot 2 or 3 is the
     /// game layer's business, and it tells us by the row it sets.</summary>
     internal static readonly string[] Default =
@@ -184,9 +181,6 @@ internal static unsafe class PltPalettes
     }
 
     internal static void ContextLost() { _tex = 0; _dirty = true; }
-
-    /// <summary>Off-device: the palette buffer, for a self-check that composes into it by hand.</summary>
-    internal static Span<byte> MasterForCheck => _master;
 
     /// <summary>One palette TGA, decoded to RGBA8 in memory order (the engine's own TGA read swaps R and B,
     /// which <see cref="RasterReader.PrepareTga"/> reproduces). Game thread.</summary>

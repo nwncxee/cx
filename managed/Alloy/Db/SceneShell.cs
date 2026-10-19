@@ -11,7 +11,6 @@ namespace CX.Alloy.Db;
 public static unsafe class SceneShell
 {
     private static ExtenderLog? _log;
-    private static long _rebuilds, _mirrorBytes;
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
@@ -58,7 +57,6 @@ public static unsafe class SceneShell
                 return;
             }
             _mirror[i] = grown;
-            _mirrorBytes += (want - _mirrorCap[i]) * (long)sizeof(nint);
             _mirrorCap[i] = want;
         }
         nint* a = (nint*)_mirror[i];
@@ -67,7 +65,6 @@ public static unsafe class SceneShell
             DbId o = m![k];
             a[k] = SceneDb.Objects.Valid(o) ? SceneDb.ObjFacade[o.Index] : 0;
         }
-        _rebuilds++;
         nint shell = SceneDb.SceneFacade[i];
         if (shell == 0) return;
         new CX.Engine.Scene(shell).Gobs = _mirror[i];
@@ -92,10 +89,7 @@ public static unsafe class SceneShell
             new CX.Engine.Scene(shell).GobCount = 0;
         }
         NativeMemory.Free((void*)_mirror[i]);
-        _mirrorBytes -= _mirrorCap[i] * (long)sizeof(nint);
         _mirror[i] = 0;
         _mirrorCap[i] = 0;
     }
-
-    internal static string Stats(int _) => $"scene shells: {_rebuilds} list rebuilds, {_mirrorBytes / 1024} KiB mirrors";
 }

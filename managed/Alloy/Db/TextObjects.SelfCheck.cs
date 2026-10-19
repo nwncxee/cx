@@ -98,7 +98,7 @@ public static class TextObjectsSelfCheck
         TextObjects.SetGuiToPixel(grid);
         TextMarkup.ResetStack();
         // The suite is not a workload: leave the session counters where it found them.
-        TextObjects.Layouts = 0; TextObjects.Builds = 0; TextObjects.CacheHits = 0; TextQuads.Stale = 0;
+        TextObjects.Builds = 0; TextObjects.CacheHits = 0; TextQuads.Stale = 0;
         log.Info(check.Ok ? "TextObjects.SelfCheck: passed" : "TextObjects.SelfCheck: FAILED");
     }
 

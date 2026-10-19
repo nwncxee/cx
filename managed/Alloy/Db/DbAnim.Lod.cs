@@ -90,10 +90,15 @@ public static unsafe partial class DbAnim
     private static void LodChoose(int sceneIndex)
     {
         if (_lodWanted <= 0) return;
+        // The eye of the view the frame is being built for -- SceneFeed's camera terms, the one place the
+        // placement of the player's view reaches this side. No camera yet: the bands cannot be measured, so
+        // every object holds the level it has, and the period line says so.
+        if (!FrameInputs.HasCamera) return;
+        Vector3 eye = FrameInputs.CameraPos;
         long dirty = SceneDb.Objects.DirtyMark;
-        bool eyeMoved = !((_lodEye - _eye).LengthSquared() <= LodEyeEpsilon * LodEyeEpsilon);
+        bool eyeMoved = !((_lodEye - eye).LengthSquared() <= LodEyeEpsilon * LodEyeEpsilon);
         if (!eyeMoved && dirty == _lodDirtyAt) { _lodSettled++; return; }
-        _lodEye = _eye;
+        _lodEye = eye;
         _lodDirtyAt = dirty;
         LodResolve();
         bool enabled = LodEnabled;
@@ -107,7 +112,7 @@ public static unsafe partial class DbAnim
             if (_lodLevels[i] < 2) continue;
             if (SceneDb.ObjScene[i].Index != sceneIndex) continue;
             Vector4 s = SceneDb.ObjSphere[i];
-            float d2 = (new Vector3(s.X, s.Y, s.Z) - _eye).LengthSquared();
+            float d2 = (new Vector3(s.X, s.Y, s.Z) - eye).LengthSquared();
             int cur = SceneDb.ObjLodShown[i];
             int want = ChooseLod(d2, _lodNear[i], _lodFar[i], cur, enabled, scale, hyst,
                                      hasAlternate: true);
@@ -126,7 +131,8 @@ public static unsafe partial class DbAnim
     /// dominates it is the hysteresis working.</summary>
     internal static string LodPeriod()
     {
-        string s = $"{_lodSwaps} LOD swap(s), {_lodHeld} held, {_lodSettled} frame(s) skipped (nothing moved), {_lodWanted} object(s) with .lod alternates";
+        string s = $"{_lodSwaps} LOD swap(s), {_lodHeld} held, {_lodSettled} frame(s) skipped (nothing moved), {_lodWanted} object(s) with .lod alternates"
+                 + (FrameInputs.HasCamera ? "" : ", NO CAMERA -- every band is holding");
         _lodSwaps = 0; _lodHeld = 0; _lodSettled = 0;
         return s;
     }

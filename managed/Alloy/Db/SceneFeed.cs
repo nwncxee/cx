@@ -5,102 +5,27 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>The SOURCE for every area setting Alloy reads -- fog, ambient, sky, wind, grass, highlights, blind
-/// lights, shadow gob, draw order, geometry and tile fade, the bake stamps, lines -- one accessor per input
-/// over <see cref="SceneDb"/>'s scene columns, plus the <see cref="Tick"/> that fills
-/// <see cref="FrameInputs"/>. Nothing here reads engine memory.</summary>
+/// <summary>The SOURCE for the area settings Alloy reads -- fog, the blind lights, the highlight list and the
+/// area wind -- over <see cref="SceneDb"/>'s scene columns, plus the <see cref="TickFromView"/> that fills
+/// <see cref="FrameInputs"/> from a published view. Nothing here reads engine memory.</summary>
 public static class SceneFeed
 {
     private static ExtenderLog? _log;
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
-    /// <summary>Monotonic stamps a consumer compares against its own last-seen value: a change is one
-    /// increment on the game thread, and the consumer rebuilds on its own schedule rather than inside the
-    /// seam call. Scene-major, one per kind -- the cheapest change notice that cannot be missed.</summary>
-    private static readonly int[] _sky = new int[SceneDb.MaxScenes], _grass = new int[SceneDb.MaxScenes],
-                                  _wind = new int[SceneDb.MaxScenes], _hl = new int[SceneDb.MaxScenes],
-                                  _fade = new int[SceneDb.MaxScenes], _bake = new int[SceneDb.MaxScenes],
-                                  _proj = new int[SceneDb.MaxScenes], _lights = new int[SceneDb.MaxScenes];
-
     // ---- change notices (called from the slots) ------------------------------------------------------
 
     internal static void FogChanged(DbId s) => SceneDb.TouchScene(s, Dirty.Material);
-    internal static void SkyChanged(DbId s) { if (Ok(s)) { _sky[s.Index]++; SceneDb.TouchScene(s, Dirty.Visible); } }
-    internal static void GrassChanged(DbId s) { if (Ok(s)) _grass[s.Index]++; }
-    internal static void WindChanged(DbId s) { if (Ok(s)) _wind[s.Index]++; }
-    internal static void HighlightChanged(DbId s) { if (Ok(s)) { _hl[s.Index]++; SceneDb.TouchScene(s, Dirty.Material); } }
-    internal static void GeomFadeChanged() { _geomFade++; }
-    internal static void FadeReset(DbId s) { if (Ok(s)) _fade[s.Index]++; }
-    internal static void LightsChanged(DbId s) { if (Ok(s)) _lights[s.Index]++; }
-    internal static void StaticLightingStale(DbId s) { if (Ok(s)) _bake[s.Index]++; }
-    internal static void StaticProjectionsStale(DbId s) { if (Ok(s)) _proj[s.Index]++; }
+    internal static void SkyChanged(DbId s) => SceneDb.TouchScene(s, Dirty.Visible);
+    internal static void HighlightChanged(DbId s) => SceneDb.TouchScene(s, Dirty.Material);
 
     private static bool Ok(DbId s) => SceneDb.Scenes.Valid(s);
 
-    // ---- the stamps a consumer polls ----------------------------------------------------------------
-
-    public static int SkyStamp(DbId s) => Ok(s) ? _sky[s.Index] : 0;
-    public static int GrassStamp(DbId s) => Ok(s) ? _grass[s.Index] : 0;
-    public static int WindStamp(DbId s) => Ok(s) ? _wind[s.Index] : 0;
-    public static int HighlightStamp(DbId s) => Ok(s) ? _hl[s.Index] : 0;
-    public static int FadeStamp(DbId s) => Ok(s) ? _fade[s.Index] : 0;
-    public static int BakeStamp(DbId s) => Ok(s) ? _bake[s.Index] : 0;
-    public static int ProjStamp(DbId s) => Ok(s) ? _proj[s.Index] : 0;
-    public static int LightStamp(DbId s) => Ok(s) ? _lights[s.Index] : 0;
-
     // ---- the inputs themselves ----------------------------------------------------------------------
 
-    public static Vector3 Ambient(DbId s) => Ok(s) ? SceneDb.SceneAmbient[s.Index] : Vector3.Zero;
     public static DbId BlindLights(DbId s) => Ok(s) ? SceneDb.SceneBlindLights[s.Index] : default;
-    public static DbId ShadowGob(DbId s) => Ok(s) ? SceneDb.SceneShadowGob[s.Index] : default;
-    /// <summary>The GLOBAL geometry-fade mode (1, 2 or 4; 0 = never set). Not per scene -- the engine's
-    /// setter and getter are both static over one int.</summary>
-    public static int GeomFade => SceneDb.GeomFade;
-    /// <summary>Bumped when the global mode changes.</summary>
-    public static int GeomFadeStamp => _geomFade;
-    private static int _geomFade;
-    /// <summary>Is the sky drawn? The engine keeps the OFF byte, so this is its negation -- and note that a
-    /// scene with the sky off still REMEMBERS its four objects.</summary>
-    public static bool SkyEnabled(DbId s) => Ok(s) && !SceneDb.SceneSkyOff[s.Index];
-    /// <summary>The cross-fade: the blend 0..1, the mode being shown, and the one being faded to.</summary>
-    public static void SkyBlend(DbId s, out float t, out int cur, out int desired)
-    {
-        if (!Ok(s)) { t = 0f; cur = 0; desired = 0; return; }
-        t = SceneDb.SceneSkyT[s.Index];
-        cur = SceneDb.SceneSkyCur[s.Index];
-        desired = SceneDb.SceneSkyDesired[s.Index];
-    }
-    public static DbId SkyFade(DbId s) => Ok(s) ? SceneDb.SceneSkyFade[s.Index] : default;
     public static string HighlightTexture(DbId s) => Ok(s) ? SceneDb.SceneHighlightTex[s.Index] : "";
-    public static bool RenderAabb(DbId s) => Ok(s) && SceneDb.SceneRenderAabb[s.Index];
-    /// <summary>Recorded from the game's <c>AddLinesToRender</c>; no Alloy pass draws them.</summary>
-    public static DbLines? Lines(DbId s) => Ok(s) ? SceneDb.SceneLines[s.Index] : null;
-
-    /// <summary>One of the four skybox objects (<c>Scene::SetSkyBox</c>'s argument order).</summary>
-    public static DbId SkyBoxSlot(DbId s, int slot) => Ok(s) ? SceneDb.SceneSky(s, slot) : default;
-
-    /// <summary>The area's global wind: direction, magnitude, gustiness and the update timeout, as
-    /// <c>Scene::SetGlobalWind</c> and <c>SetWindUpdateTimeout</c> left them. <c>AlloyWind</c>'s own noise
-    /// field runs off these instead of <c>WindManager::GetGlobalWind</c>.</summary>
-    public static void GlobalWind(DbId s, out Vector3 dir, out float magnitude, out float gustiness, out float timeout)
-    {
-        if (!Ok(s)) { dir = Vector3.Zero; magnitude = 0f; gustiness = 0f; timeout = 0f; return; }
-        int i = s.Index;
-        dir = SceneDb.SceneWindDir[i];
-        magnitude = SceneDb.SceneWindMag[i];
-        gustiness = SceneDb.SceneWindGust[i];
-        timeout = SceneDb.SceneWindTimeout[i];
-    }
-
-    /// <summary>Whether grass may draw in this scene. The engine asks <c>GrassIsEnabled</c> and whether its
-    /// info list is non-empty; here the list is the object-free <c>AurGrassAddInfo</c> setters' and a world
-    /// scene with no tiles cannot have grass, so the scene's world flag answers it.</summary>
-    public static bool GrassEnabled(DbId s) => Ok(s) && SceneDb.SceneIsWorld[s.Index];
-
-    /// <summary>The scene's members in DRAW ORDER -- what the renderer walks in place of the engine's gob
-    /// list, and what the four <c>RenderGob*</c> slots reorder. Null when the scene has no members.</summary>
-    public static DbList? DrawOrder(DbId s) => Ok(s) ? SceneDb.SceneObjects[s.Index] : null;
 
     public static int HighlightCount(DbId s) => Ok(s) ? SceneDb.SceneHighlights[s.Index]?.Count ?? 0 : 0;
 

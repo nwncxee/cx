@@ -44,8 +44,6 @@ public static class RenderSnapshot
         /// <summary>Monotonic frame number, so a consumer can say WHICH frame it drew and a late one is
         /// visible rather than merely wrong.</summary>
         public long Index;
-        /// <summary>Dirty object/part/scene/camera counts this frame folded, for the period line.</summary>
-        public int DirtyObjects, DirtyParts, DirtyScenes, DirtyCameras;
         /// <summary>Every ENGINE read the draw would do, done once on the game thread at the fold and carried
         /// across by value. See <see cref="FrameHoist"/>.</summary>
         public FrameHoist Hoist;
@@ -54,7 +52,6 @@ public static class RenderSnapshot
         {
             ViewCount = 0;
             Index = index;
-            DirtyObjects = 0; DirtyParts = 0; DirtyScenes = 0; DirtyCameras = 0;
         }
     }
 
@@ -140,10 +137,6 @@ public static class RenderSnapshot
     public static Frame Publish()
     {
         Frame f = _building;
-        f.DirtyObjects = SceneDb.Objects.DirtyCount;
-        f.DirtyParts = SceneDb.Parts.DirtyCount;
-        f.DirtyScenes = SceneDb.Scenes.DirtyCount;
-        f.DirtyCameras = SceneDb.Cameras.DirtyCount;
         // CX-188: the frame's ENGINE reads, FIRST -- before seam-feed's fold, which is where the records the
         // renderer draws are written, and before anything hands the frame across. Every read below is of
         // memory the game thread owns, so this is the only moment in the frame at which it may happen.

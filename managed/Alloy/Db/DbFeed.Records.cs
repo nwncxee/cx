@@ -103,24 +103,18 @@ public static unsafe partial class DbFeed
             {
                 StaticFolds++;
                 StaticFoldBits |= pass & ~Dirty.Created;
-                _staticFoldFrame++;
             }
             for (int p = first; p < first + count; p++)
                 if (SceneDb.Parts.LiveAt(p)) SceneDb.Parts.Mark(p, pass);
         }
         t.TakeDirty();
-        CloseStaticFolds();
     }
 
-    /// <summary>Static objects folded since boot, the bits they carried, and the count in the LAST frame. A
-    /// settled area restages no static record, so <see cref="StaticFoldsLastFrame"/> is 0 there and the bits name
-    /// the cause when it is not.</summary>
+    /// <summary>Static objects folded since boot and the bits they carried. A settled area restages no
+    /// static record, so the bits name the cause when one is.</summary>
     internal static long StaticFolds { get; private set; }
     /// <inheritdoc cref="StaticFolds"/>
     internal static Dirty StaticFoldBits { get; private set; }
-    /// <inheritdoc cref="StaticFolds"/>
-    internal static int StaticFoldsLastFrame { get; private set; }
-    private static int _staticFoldFrame;
 
     /// <inheritdoc cref="StaticFolds"/>
     internal static long StaticParts { get; private set; }
@@ -130,15 +124,8 @@ public static unsafe partial class DbFeed
     internal static int StaticPartsLastFrame { get; private set; }
     private static int _staticPartFrame;
 
-    /// <summary>Close the frame's static-fold tally (called by the fold, after the object pass).</summary>
-    private static void CloseStaticFolds() { StaticFoldsLastFrame = _staticFoldFrame; _staticFoldFrame = 0; }
-
     /// <summary>Close the frame's static-PART tally (after the part pass).</summary>
     private static void CloseStaticParts() { StaticPartsLastFrame = _staticPartFrame; _staticPartFrame = 0; }
-
-    /// <summary>For the self-check and the period line: how many records of static objects the last frame
-    /// rewrote. A settled area answers 0.</summary>
-    internal static int SettledStaticRestages => StaticPartsLastFrame;
 
     private static void FoldParts()
     {

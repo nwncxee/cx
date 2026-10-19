@@ -7,11 +7,11 @@ namespace CX.Alloy.Db;
 /// <summary>The bounds columns the hit test reads, kept current from the dirty list -- part-space boxes from
 /// each part's <see cref="MeshDef"/>, and per object the world box and world sphere. Change-driven, not per
 /// frame: <see cref="Refresh"/> runs for one object whose transform, tree or visibility changed and re-files it
-/// in <see cref="HitGrid"/>; <see cref="Consume"/> folds that over the objects table's dirty list.</summary>
+/// in <see cref="HitGrid"/>, and <c>HitFeed.Fold</c> runs it over the objects table's dirty list.</summary>
 public static class HitBounds
 {
-    /// <summary>Objects refreshed, and parts whose box was derived -- the counters the self-check reads.</summary>
-    public static long Refreshed, PartBoxes;
+    /// <summary>Objects refreshed -- what the self-check and the fold's own line read.</summary>
+    public static long Refreshed;
 
     /// <summary>Recompute object <paramref name="o"/>'s bounds from its parts and re-file it in the grid.</summary>
     public static void Refresh(int o)
@@ -80,7 +80,6 @@ public static class HitBounds
     /// <c>Part::HitCheckGeom</c> answers 0 for).</summary>
     public static void PartBox(int p)
     {
-        PartBoxes++;
         SceneDb.HitPartBMin[p] = new Vector3(1f);
         SceneDb.HitPartBMax[p] = new Vector3(-1f);
         ModelDef? m = SceneDb.PartModel[p];
@@ -114,8 +113,4 @@ public static class HitBounds
                     foreach (Vector3 v in frame) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
             }
     }
-
-    /// <summary>The per-frame fold lives in <see cref="HitFeed.Fold"/>, which also re-seeds a changed tree's
-    /// part boxes and says so when nothing ever produced the columns.</summary>
-    public static void Consume() => HitFeed.Fold();
 }

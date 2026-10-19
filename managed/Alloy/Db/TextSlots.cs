@@ -120,7 +120,6 @@ public static partial class TextSlots
         SceneDb.TextOffsetBehavior[id.Index] = 0;
         SceneDb.TextPosOffset[id.Index] = default;
         TextObjects.MarkText(id, d);
-        Destructed++;
     }
 
     /// <summary>Slot 1, <c>StringGob::~StringGob</c> @0x494c70 -- the DELETING destructor: the body above, then
@@ -133,10 +132,6 @@ public static partial class TextSlots
         Seam.ObjectSlots.FreeShellLists(Seam.Facade.ObjectShell(id));
         TextObjects.Destroy(id);
     }
-
-    /// <summary>Complete-object destructor calls -- the ones that must NOT free. Counted because a build that
-    /// got the pair the wrong way round looks healthy until a panel reopens.</summary>
-    public static long Destructed;
 
     // ---- 2..10: attachment, position, external data (the Gob half of the interface) ----
 

@@ -44,7 +44,7 @@ texture release  the same eviction, one hop further: DrawRecipe.Forget -> TexReg
                      -> the GL name goes to _graveyard -> deleted in TexRegistry.Drain (bracket)
 world edge       AlloyRenderer.EndFrame: module unload / 4.6 context lost / part table wiped
                      -> AlloyRenderer.RevokeAll -> PassRegistry.Global.Revoke()
-                     -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge, TileCompare.Revoke
+                     -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge
 context loss     AlloyRenderer.EndFrame -> PassRegistry.Global.ContextLost()
                      -> RenderThread.Shutdown (joined), MeshArena.ContextLost, TexRegistry.ContextLost,
                         PltPalettes/PltColors/PltGpuCheck.ContextLost, DbFeed.ContextLost
@@ -342,9 +342,8 @@ now has its producer:
 3. **A camera's `CAurObject` sub-record is never freed.** `FacadeParts.NewCameraObject` allocates an objects
    row; `DbCamera.Destroy` frees only the camera row and says the sub-object is seam-obj's to free, and
    `CameraSlots.Die` does not. Bounded by `MaxCameras`.
-4. **A text-object destroy leaves two loose ends.** `StringSlots.Destruct` → `TextSlots.Destruct` frees the
-   shell's lists and the record; it leaves `ObjKindOf[i]` reading `Text` over a freed slot and does not
-   decrement `TextObjects.Alive`. A wrong counter, not a fault.
+4. **A text-object destroy leaves one loose end.** `StringSlots.Destruct` → `TextSlots.Destruct` frees the
+   shell's lists and the record, and leaves `ObjKindOf[i]` reading `Text` over a freed slot.
 5. **Font atlases have no replace or re-bake edge.** `TextFonts.Register` replaces a font by name without
    deleting the replaced atlas's GL texture, and `TextAtlas`'s per-bitmap-font registry references are never
    released, so those slots can never go idle or be evicted. `TextFontBake.GuiScale` is the only publisher of

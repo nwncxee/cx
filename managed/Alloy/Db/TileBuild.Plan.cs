@@ -49,15 +49,11 @@ public static partial class TileBuild
         /// <summary>Model-space box of each <c>tilefade 1</c> node, in node order: what
         /// <c>CheckFadePlane</c> tests ONE AT A TIME.</summary>
         public Vector3[] FadeLo = Array.Empty<Vector3>(), FadeHi = Array.Empty<Vector3>();
-        /// <summary>Nodes that did NOT merge (animated, or a kind that never merges): they stay their own parts.</summary>
-        public int Unmerged;
-        /// <summary>Renderable mesh nodes the model has, merged or not.</summary>
-        public int MeshNodes;
         /// <summary>Mesh nodes that land in <c>TileData+0x30</c>: the count a live comparison uses.</summary>
         public int FiledNodes;
-        /// <summary>The model's <c>aabb</c> nodes, and how many carry a built tree: the walkmesh vanilla's
-        /// floor cast hits (<c>SceneBSPAddPart</c> stores it at the BSP leaf's +0x90).</summary>
-        public int AabbNodes, AabbTrees;
+        /// <summary>The model's <c>aabb</c> nodes: the walkmesh vanilla's floor cast hits
+        /// (<c>SceneBSPAddPart</c> stores it at the BSP leaf's +0x90).</summary>
+        public int AabbNodes;
     }
 
     /// <summary>One light node of a tile model, resolved to model space with its rest controller values.</summary>
@@ -106,7 +102,6 @@ public static partial class TileBuild
         if (_plans.TryGetValue(def, out MergePlan? have)) return have;
         MergePlan plan = BuildPlan(def);
         _plans[def] = plan;
-        _planBuilds++;
         return plan;
     }
 
@@ -122,7 +117,6 @@ public static partial class TileBuild
         // The fields behind each bucket key, so a 64-bit hash collision cannot merge unlike meshes. Per
         // PLAN: two different models' buckets may hash alike, which is not a collision.
         var keyFields = new Dictionary<long, MeshFields>();
-        int unmerged = 0, meshNodes = 0;
 
         Matrix4x4[] toModel = NodeMatrices(def);
         bool[] animatedHalf = AnimatedHalf(def);
@@ -151,14 +145,13 @@ public static partial class TileBuild
                 plan.HasFade = true;
             }
 
-            if (n.Kind != NodeKind.TriMesh || n.Mesh == null || !n.Mesh.Render) { unmerged++; continue; }
-            meshNodes++;
-            if (animatedHalf[i] || Animated(def, n)) { unmerged++; continue; }
+            if (n.Kind != NodeKind.TriMesh || n.Mesh == null || !n.Mesh.Render) continue;
+            if (animatedHalf[i] || Animated(def, n)) continue;
             // The engine's own ceiling: CreatePartBuckets requires the bucket's total to stay BELOW 0xffff,
             // because the merged primitive is indexed as 16 bits -- and so is every Alloy draw
             // (GL_UNSIGNED_SHORT throughout). A full bucket is left alone and another opened. A single node
             // that cannot fit one on its own is refused here rather than silently overflowing an index.
-            if (n.Mesh.Positions.Length > MaxBucketVerts) { unmerged++; _refusedBig++; Refuse($"{def.Name}: node '{n.Name}' has {n.Mesh.Positions.Length} vertices, past the 16-bit index -- it is not merged"); continue; }
+            if (n.Mesh.Positions.Length > MaxBucketVerts) { _refusedBig++; Refuse($"{def.Name}: node '{n.Name}' has {n.Mesh.Positions.Length} vertices, past the 16-bit index -- it is not merged"); continue; }
             long key = BucketKey(n.Mesh);
             while (buckets.ContainsKey(key) && verts[key] + n.Mesh.Positions.Length > MaxBucketVerts)
                 key = (long)Mix((ulong)key, 1);
@@ -189,10 +182,8 @@ public static partial class TileBuild
         // @0x47ca10 fills from the tile part whose AsPartAABB is non-null -- i.e. from the tile model's own
         // aabb node. Counted per model so "the cast misses" can be told apart from "the model has none".
         foreach (NodeDef nd2 in def.Nodes)
-            if (nd2.Kind == NodeKind.Aabb) { plan.AabbNodes++; if (nd2.Aabb != null && nd2.Aabb.Tree.Length > 0) plan.AabbTrees++; }
+            if (nd2.Kind == NodeKind.Aabb) plan.AabbNodes++;
         if (plan.AabbNodes > 0) _modelsWithAabb++; else _modelsNoAabb++;
-        plan.Unmerged = unmerged;
-        plan.MeshNodes = meshNodes;
         int nb = order.Count;
         plan.Meshes = new MeshDef[nb];
         plan.Ranges = new int[nb];
@@ -349,14 +340,9 @@ public static partial class TileBuild
     }
 
     /// <summary>Members whose node transform mirrors (det &lt; 0) and whose winding the merge therefore had to
-    /// reverse. Reported, because "the tileset mirrors tiles" is a fact about content that should be visible.</summary>
-    internal static int MirroredMembers => _mirroredMembers;
-    private static int _mirroredMembers;
-
-    /// <summary>Merged members whose face table and triangle list disagree, so their per-face material ids
-    /// could not be carried. Counted because the grass source reads those ids.</summary>
-    internal static int UnalignedMembers => _unalignedMembers;
-    private static int _unalignedMembers;
+    /// reverse, and merged members whose face table and triangle list disagree, so their per-face material ids
+    /// could not be carried -- which the grass source reads. Both on the tile build's period line.</summary>
+    private static int _mirroredMembers, _unalignedMembers;
 
     /// <summary>Concatenate one bucket's meshes into a single model-space <see cref="MeshDef"/>: positions by
     /// the node's rest matrix, normals and tangents by its rotation, indices offset. The merge the engine does

@@ -88,9 +88,6 @@ internal static unsafe class ContentTable
 
     internal static void Attach(ExtenderLog log) => _st.Log = log;
 
-    /// <summary>Rows in use, for the period line and the self-check.</summary>
-    internal static int Rows => _st.Used;
-
     /// <summary>A content pair's row for recipe <paramref name="recipe"/>'s material, or -1 when the table is full (the
     /// pair then reads every uniform's own default). Its lanes are filled at the next <see cref="Upload"/>.</summary>
     internal static int Alloc(int recipe)

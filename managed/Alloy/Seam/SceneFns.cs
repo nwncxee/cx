@@ -165,7 +165,6 @@ internal static unsafe class SceneFns
         if (!SceneDb.Scenes.Valid(s)) return;
         Vec3 c = colour.Value;
         SceneDb.SceneAmbient[s.Index] = new Vector3(c.X, c.Y, c.Z);
-        SceneFeed.LightsChanged(s);
     }
 
     /// <summary><c>AuroraSetTileFoggedByWar(Vector&amp;, bool)</c> @0x453320: the fog of war, and the only tile
