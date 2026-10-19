@@ -59,7 +59,7 @@ internal static unsafe class QuickbarNative
         if (!SymbolMap.Require(log, "CX quickbar", SymbolMap.QuickButtonSetIcon, SymbolMap.QuickButtonSetCountText, SymbolMap.QuickbarClickButton,
                                SymbolMap.QuickButtonHandleLeftButton, SymbolMap.GuiObjectHitCheck, SymbolMap.GuiMan,
                                SymbolMap.GuiManShowTooltipText)) return false;
-        if (!EngineLayout.Require(log, "CX quickbar", "CGuiQuickButton", "CGuiButton", "CGuiObject", "CGuiIcon", "CPanelQuickBar", "CGuiInGame", "CGuiDragSource")) return false;
+        if (!EngineLayout.Require(log, "CX quickbar", "CGuiQuickButton", "CGuiButton", "CGuiObject", "CGuiIcon", "CPanelQuickBar", "CGuiInGame", "CGuiDragSource", "CGuiMan")) return false;
         if (DragMove == IntPtr.Zero) log.Always("QuickbarService: no CGuiDragSource::HandleMouseMoveCaptured -- a drop on the CX bar's grip falls through and a dragged icon draws under the bar");
         _s.SwapReady = SymbolMap.Require(log, "CX quickbar slot drag", SymbolMap.QuickbarSendButton, SymbolMap.QuickbarSetEmpty, SymbolMap.QuickbarSetItem,
             SymbolMap.QuickbarSetSkill, SymbolMap.QuickbarSetFeat, SymbolMap.QuickbarSetDialog, SymbolMap.QuickbarSetAttack, SymbolMap.QuickbarSetEmote,
