@@ -766,10 +766,10 @@ public static unsafe partial class TextRig
         "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\nuniform sampler2D uTex;\nout vec4 o;\n" +
         "void main(){ o = texture(uTex, vUV) * vec4(1.0, 1.0, 1.0, vA); }\n";
 
-    /// <summary>The same icon quad for a PLT layer. An item's PLT icon is a PAIR texture (intensity R, layer G) and
-    /// its colour is <c>master[rows[layer]][intensity]</c> -- the lookup the engine performs when it composites a
-    /// (resref, scheme) texture, which Alloy never builds. texelFetch, because the pair texture must never be
-    /// filtered: the mean of two layer indices is a third layer. Bilinear runs over the RESOLVED colours.</summary>
+    /// <summary>The same icon quad for a PLT layer: a PAIR texture (intensity R, layer G) resolved to
+    /// <c>master[rows[layer]][intensity]</c>, the engine's composite lookup. texelFetch, because the mean of two layer
+    /// indices is a third layer; bilinear runs over the RESOLVED colours, premultiplied, and taps clamp to the art
+    /// <c>uCrop</c> (u1, v0) leaves, so the sheet's transparent padding never bleeds a dark fringe into the edge.</summary>
     private const string FSrcIconPlt =
         "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\n" +
         "uniform sampler2D uTex;\nuniform sampler2D uPal;\nuniform int uRows[10];\nuniform vec2 uCrop;\nout vec4 o;\n" +

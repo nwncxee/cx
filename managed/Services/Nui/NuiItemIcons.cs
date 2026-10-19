@@ -680,8 +680,9 @@ internal static unsafe class NuiItemIcons
         if (_logged++ < LogCap) _log?.Always("NuiItemIcons: " + line);
     }
 
-    /// <summary>Off-device: the parser, the palette choice and lookup against hand-written rows (oracle: the engine's row layout), the blend and the
-    /// emitted TGA's header, crop and byte order, and that the base64 round-trips. The two hooks and the icon walk are engine calls -- live-unverified here.</summary>
+    /// <summary>Off-device: the parser, the palette choice and lookup, the blend and the emitted TGA's header, crop and byte order, and that
+    /// the base64 round-trips. Palette oracle: hand-written RGBA bytes in the engine's layout, a row of 256 entries and a scheme entry of
+    /// slot * 256 + colour, with a stale buffer grown only to its highest set slot. The two hooks and the icon walk are live-unverified here.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -708,17 +709,18 @@ internal static unsafe class NuiItemIcons
         PutLook("@look:0010"); check.Expect(!ParseLook(l, &look), "@look: a truncated string is refused");
         PutLook("@item:0010"); check.Expect(!ParseLook(l, &look), "@look: another prefix is not ours");
 
-        // Oracle: the engine's layout, written by hand -- a row is 256 RGBA entries, a scheme entry is slot * 256 + colour (the
-        // metal slot is 3), and AurSetPalette grows its buffer only to the highest slot it was asked to set.
         const int MetalRow = 3 * 256 + 5, MasterRows = 7 * 256, StaleRows = 2 * 256;
-        uint[] master = new uint[MasterRows * 256], stale = new uint[StaleRows * 256];
-        master[(MetalRow << 8) + 7] = 0xff332211;
+        byte[] master = new byte[MasterRows * 256 * 4];
+        uint[] stale = new uint[StaleRows * 256];
+        int at = ((MetalRow << 8) + 7) * 4;
+        master[at] = 0x11; master[at + 1] = 0x22; master[at + 2] = 0x33; master[at + 3] = 0xff;
         ushort* scheme = stackalloc ushort[10];
         scheme[2] = MetalRow;
-        fixed (uint* mp = master)
+        fixed (byte* mb = master)
         fixed (uint* sp = stale)
         {
-            uint* pal = PaletteFor((byte*)mp, sp, StaleRows, out int rows);
+            uint* mp = (uint*)mb;
+            uint* pal = PaletteFor(mb, sp, StaleRows, out int rows);
             check.Expect(rows == MasterRows && Texel(pal, rows, scheme, 0, 10, 7, 2) == 0xff332211, "the master wins over a stale engine buffer: the metal layer keeps its colour, R in the low byte");
             pal = PaletteFor(null, sp, StaleRows, out rows);
             check.Expect(rows == StaleRows && pal == sp && Texel(pal, rows, scheme, 0, 10, 7, 2) == 0, "no master (Alloy off): the engine's own buffer, and a row past it is left transparent");
