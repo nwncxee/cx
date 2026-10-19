@@ -148,7 +148,7 @@ public sealed unsafe class EngineZonesService : IExtenderService
     private static long OnDemand(IntPtr self, IntPtr res)
     {
         ushort type = ResType(res);
-        bool tex = type == ResDds || type == ResTga || type == ResPlt;
+        bool tex = type == ResTypes.Dds || type == ResTypes.Tga || type == ResTypes.Plt;
         long tr = tex ? FrameZones.Now : 0;
         long dec0 = tex ? FrameZones.Ticks(FrameZones.Zone.TexDecode) : 0;
         long t = _demandDepth++ == 0 ? FrameZones.Now : 0;
@@ -163,24 +163,21 @@ public sealed unsafe class EngineZonesService : IExtenderService
         {
             long dt = FrameZones.Now - t;
             DemandTicks += dt; DemandCalls++;
-            if (type == ResMdl) DemandMdlTicks += dt;
+            if (type == ResTypes.Mdl) DemandMdlTicks += dt;
             else if (!tex) DemandOtherTicks += dt;
             FrameZones.Add(FrameZones.Zone.Demand, t);
             FrameZones.Count(FrameZones.Ev.Demands);
             switch (type)
             {
-                case ResDds: FrameZones.Add(FrameZones.Zone.DemDds, t); FrameZones.Count(FrameZones.Ev.DdsDemands); break;
-                case ResTga: FrameZones.Add(FrameZones.Zone.DemTga, t); FrameZones.Count(FrameZones.Ev.TgaDemands); break;
-                case ResPlt: FrameZones.Add(FrameZones.Zone.DemPlt, t); FrameZones.Count(FrameZones.Ev.PltDemands); break;
-                case ResMdl: FrameZones.Add(FrameZones.Zone.DemMdl, t); FrameZones.Count(FrameZones.Ev.MdlDemands); break;
+                case ResTypes.Dds: FrameZones.Add(FrameZones.Zone.DemDds, t); FrameZones.Count(FrameZones.Ev.DdsDemands); break;
+                case ResTypes.Tga: FrameZones.Add(FrameZones.Zone.DemTga, t); FrameZones.Count(FrameZones.Ev.TgaDemands); break;
+                case ResTypes.Plt: FrameZones.Add(FrameZones.Zone.DemPlt, t); FrameZones.Count(FrameZones.Ev.PltDemands); break;
+                case ResTypes.Mdl: FrameZones.Add(FrameZones.Zone.DemMdl, t); FrameZones.Count(FrameZones.Ev.MdlDemands); break;
                 default: FrameZones.Add(FrameZones.Zone.DemOther, t); break;
             }
         }
         return r;
     }
-
-    /// <summary>The engine restypes step 0 names (confirmed from the <c>CResHelper&lt;T, n&gt;</c> instantiations).</summary>
-    private const ushort ResTga = 3, ResPlt = 6, ResMdl = 2002, ResDds = 2033;
 
     /// <summary>A resource's restype, through its key-table entry; 0 when it has none.</summary>
     private static ushort ResType(IntPtr res)
