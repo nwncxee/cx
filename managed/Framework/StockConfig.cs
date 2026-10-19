@@ -20,10 +20,6 @@ public static unsafe class StockConfig
     /// <summary>Longest key this reader forges; every stock key is far shorter.</summary>
     private const int MaxKey = 96;
 
-    /// <summary>Did the three <c>Get</c> instantiations resolve? False = every read answers "unknown".</summary>
-    public static bool Resolved => EngineFn.ExoConfigGetBool != null && EngineFn.ExoConfigGetLong != null
-                                  && EngineFn.ExoConfigGetDouble != null;
-
     /// <summary>The live <c>CExoConfig*</c>, or Zero before the engine has one that can answer: pre-main
     /// (<c>g_pExoBase</c> null), or between the config's ctor and its <c>Initialize</c>, when the working
     /// table is still null and a <c>Get(key, false)</c> would dereference it.</summary>
@@ -126,9 +122,6 @@ public static unsafe class StockConfig
     /// zero: nothing gates on them, and a default nobody measured is a guess.</summary>
     private static Snapshot Defaults => new()
     { GrassMode = 2, EnhancedLighting = true, HdrBloom = true, Keyholing = true };
-
-    /// <summary>The last snapshot. Read from the frame; a plain field copy.</summary>
-    public static Snapshot Graphics => _snap;
 
     /// <summary>The stock "Enhanced Lighting" toggle, taken now if it never was -- the Alloy verdict asks
     /// before the first world scene reaches <see cref="OnScene"/>.</summary>

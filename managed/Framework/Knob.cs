@@ -337,28 +337,16 @@ public sealed class Knob<T> : Knob
     };
 }
 
-/// <summary>A valueless knob: pressing it runs <see cref="Knob.Changed"/>. Never persisted; tier decides row
-/// vs command.</summary>
-public sealed class KnobButton : Knob
+/// <summary>A knob with no value: nothing to persist, no default to drift from, no range and no boot to
+/// move. A subclass says only what <see cref="Knob.Format"/> shows.</summary>
+public abstract class ValuelessKnob : Knob
 {
-    /// <summary>The panel asks for a second press within <see cref="ConfirmSec"/> before it fires (the revoke
-    /// rows, spec §4.5); chat presses straight away.</summary>
-    public readonly bool Confirm;
-    /// <summary>The window a confirming button's first press stays armed for.</summary>
-    public const float ConfirmSec = 3f;
-    /// <summary>When set and false, the panel greys the row and ignores its press (spec §4.5's Bind row outside a
-    /// session); chat still presses, so the action guards itself. Read per frame: must not allocate.</summary>
-    public Func<bool>? Enabled;
+    private protected ValuelessKnob(KnobGroup group, string name, string label, KnobKind kind, Tier tier,
+                                    string section, string help)
+        : base(group, name, label, kind, tier, Effect.Live, section, help, layout: false) { }
 
-    internal KnobButton(KnobGroup group, string name, string label, Tier tier, string section, string help, Action press, bool confirm)
-        : base(group, name, label, KnobKind.Button, tier, Effect.Live, section, help, layout: false)
-    { Changed = press; Confirm = confirm; }
-
-    public void Press() => Changed?.Invoke();
-
-    public override string Format() => "";
-    public override string FormatDefault() => "";
-    public override string FormatBoot() => "";
+    public override string FormatDefault() => Format();
+    public override string FormatBoot() => Format();
     public override bool Parse(string s) => false;
     public override bool IsDefault => true;
     public override bool BootMoved => false;
@@ -372,31 +360,40 @@ public sealed class KnobButton : Knob
     public override bool StoredIsDefault => true;
 }
 
+/// <summary>A valueless knob: pressing it runs <see cref="Knob.Changed"/>. Never persisted; tier decides row
+/// vs command.</summary>
+public sealed class KnobButton : ValuelessKnob
+{
+    /// <summary>The panel asks for a second press within <see cref="ConfirmSec"/> before it fires (the revoke
+    /// rows, spec §4.5); chat presses straight away.</summary>
+    public readonly bool Confirm;
+    /// <summary>The window a confirming button's first press stays armed for.</summary>
+    public const float ConfirmSec = 3f;
+    /// <summary>When set and false, the panel greys the row and ignores its press (spec §4.5's Bind row outside a
+    /// session); chat still presses, so the action guards itself. Read per frame: must not allocate.</summary>
+    public Func<bool>? Enabled;
+
+    internal KnobButton(KnobGroup group, string name, string label, Tier tier, string section, string help, Action press, bool confirm)
+        : base(group, name, label, KnobKind.Button, tier, section, help)
+    { Changed = press; Confirm = confirm; }
+
+    public void Press() => Changed?.Invoke();
+
+    public override string Format() => "";
+}
+
 /// <summary>A knob-less element with a knob's place in the row order (spec §3 link row): an address the panel
 /// shows under its label and copies to the clipboard on press; bare <c>/&lt;group&gt;</c> prints it after the
 /// status line. No value, no default, never persisted; stays live under an off master like a Button.</summary>
-public sealed class KnobLink : Knob
+public sealed class KnobLink : ValuelessKnob
 {
     public readonly string Url;
 
     internal KnobLink(KnobGroup group, string name, string label, string url, Tier tier, string section)
-        : base(group, name, label, KnobKind.Link, tier, Effect.Live, section, "", layout: false)
+        : base(group, name, label, KnobKind.Link, tier, section, "")
         => Url = url;
 
     public override string Format() => Url;
-    public override string FormatDefault() => Url;
-    public override string FormatBoot() => Url;
-    public override bool Parse(string s) => false;
-    public override bool IsDefault => true;
-    public override bool BootMoved => false;
-    public override void Reset() { }
-    public override string RangeText() => "";
-    public override int ChoiceIndex => -1;
-    internal override bool BootIntact => true;
-    public override bool Enforce(string raw) => false;
-    public override void Release() { }
-    public override string FormatStored() => Format();
-    public override bool StoredIsDefault => true;
 }
 
 /// <summary>The built-in Format/Parse per <typeparamref name="T"/> (spec §1 cx.cfg): Toggle <c>0/1</c>,

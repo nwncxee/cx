@@ -11,9 +11,9 @@ namespace CX.Ui;
 /// </summary>
 public sealed class MenuGear
 {
-    /// <summary>Sprite height and corner inset in design px (GUI scale 1), per spec §3 Doors 2.</summary>
-    public const float SizePx = 64f, InsetPx = 24f;
-    /// <summary>The face that makes the sprite <see cref="SizePx"/> tall: DejaVu's ⚙ box is 1523 of the font's 2384
+    /// <summary>Corner inset in design px (GUI scale 1), per spec §3 Doors 2.</summary>
+    public const float InsetPx = 24f;
+    /// <summary>The face that makes the sprite 64 design px tall: DejaVu's ⚙ box is 1523 of the font's 2384
     /// stbtt height units, 0.639 em, so 64 px of gear is a 100 px face.</summary>
     public const float FacePx = 100f;
     public const int Codepoint = 0x2699;  // not-an-offset: a Unicode codepoint

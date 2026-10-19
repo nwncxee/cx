@@ -142,8 +142,7 @@ public sealed unsafe class GlContextService : IExtenderService
     {
         if (Win) return Gl.P(name);
         Span<byte> b = stackalloc byte[name.Length + 1];
-        for (int i = 0; i < name.Length; i++) b[i] = (byte)name[i];
-        b[name.Length] = 0;
+        Gl.AsciiZ(name, b);
         fixed (byte* p = b) return _glxGetProc(p);
     }
 
@@ -638,10 +637,6 @@ public sealed unsafe class GlContextService : IExtenderService
     /// <para>Volatile: it is written on the render thread at start and stand-down and read on the game thread
     /// every frame, and a stale read either way is the BadAccess this flag exists to prevent.</para></summary>
     private static volatile bool _heldElsewhere;
-
-    /// <summary>True while another thread owns the 4.6 context. The frame owner asks before it assumes the
-    /// bracket ran.</summary>
-    public static bool HeldElsewhere => _heldElsewhere;
 
     /// <summary>The managed thread id of the thread the 4.6 context is current on, or 0 while the game
     /// thread's per-frame bracket owns it. Written by that thread in <see cref="MakeCurrentHere"/> and

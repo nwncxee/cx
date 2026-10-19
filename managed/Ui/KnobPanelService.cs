@@ -24,8 +24,6 @@ public sealed unsafe class KnobPanelService : IExtenderService
     private static float _facePx, _smallPx;
     private static GlyphAtlas? _body, _small;
 
-    /// <summary>The live panel, for the gear and any other caller that drives it.</summary>
-    public static KnobPanel Panel => _panel;
     public static bool IsOpen => _panel.Open;
 
     /// <summary>Where the panel draws and takes input: in game, at the main menu, or over the in-game Options
