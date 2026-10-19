@@ -36,7 +36,7 @@ internal static class Renderer
                                         Gui, Movie;
     internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexPrefetch, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SwapProbe, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
-    internal static readonly Knob<bool> Light, Prepass, AoTest, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
+    internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
     internal static readonly Knob<bool> CullWatch;
@@ -204,7 +204,6 @@ internal static class Renderer
         Viz = G.Slider("viz", "viz", 0, AlloyRenderer.LightVizMax, 1, 0, tier: Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         Threads = G.Slider("threads", "threads", 0, StagePool.MaxChunks - 1, 1, AlloyRenderer.DefThreads, tier: Tier.ChatOnly,
                            changed: () => { StagePool.Rearm(); AlloyRenderer.InvalidateRecords(); });
-        AoTest = G.Toggle("aotest", "aotest", false, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         Cull = G.Slider("cull", "cull", CullPass.ModeOff, CullPass.ModeHiZ, 1, CullPass.ModeHiZ, tier: Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         Retest = G.Toggle("retest", "retest", CullPass.DefRetest, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         HlDiag = G.Toggle("hldiag", "hldiag", false, Tier.ChatOnly);
