@@ -129,11 +129,14 @@ public static unsafe class Native
         return EngineText(text);
     }
 
+    /// <summary>The two globals the asks below walk, resolved once each: both are read per call.</summary>
+    private static readonly IntPtr AppMgrSym = Sym(SymbolMap.AppManager), GuiManSym = Sym(SymbolMap.GuiMan);
+
     /// <summary>An engine modal panel is up -- the gold or split-amount prompt, a confirm. It draws over every CX
     /// window, so a CX panel steps aside while one is open. Read from the engine per ask, never latched.</summary>
     public static bool ModalPanelUp()
     {
-        IntPtr gm = Sym(SymbolMap.GuiMan);
+        IntPtr gm = GuiManSym;
         return gm != IntPtr.Zero && *(IntPtr*)gm != IntPtr.Zero && new CGuiMan(*(IntPtr*)gm).ModalCount > 0;
     }
 
@@ -143,8 +146,7 @@ public static unsafe class Native
     /// every call leaks a heap block. COLD.</summary>
     public static string ObjectName(uint id)
     {
-        IntPtr sym = Sym(SymbolMap.AppManager);
-        IntPtr mgr = sym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)sym;
+        IntPtr mgr = AppMgrSym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)AppMgrSym;
         IntPtr app = mgr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)mgr;
         if (app == IntPtr.Zero || EngineFn.GetObjectName == null || EngineFn.ExoStringDtor == null) return "";
         byte* exo = stackalloc byte[ExoScratch];
