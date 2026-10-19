@@ -176,7 +176,6 @@ internal static unsafe class SceneFns
         if (!SceneDb.Scenes.Valid(s)) return;
         Vec3 c = colour.Value;
         SceneDb.SceneAmbient[s.Index] = new Vector3(c.X, c.Y, c.Z);
-        SceneFeed.LightsChanged(s);
         _ambientWrites++;
     }
 

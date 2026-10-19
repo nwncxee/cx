@@ -6,8 +6,8 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>The two camera derivations the scene feed and the shadow fit share, plus the engine's own
-/// area-light uniforms for the frame diff. <c>SceneFeed.Tick</c> fills the rest of <c>FrameInputs</c> from
-/// the scene database.</summary>
+/// area-light uniforms for the frame diff. <c>SceneFeed.TickFromView</c> fills the rest of
+/// <c>FrameInputs</c> from the scene database.</summary>
 internal static unsafe class FrameRead
 {
     /// <summary>Accept only clearly downward-travelling light as the sun (NWN is Z-up). A horizontal or
