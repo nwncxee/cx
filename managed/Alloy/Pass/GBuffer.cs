@@ -63,6 +63,36 @@ internal static unsafe class GBuffer
     /// <summary>Allocated at the current render size.</summary>
     internal static bool Ready => _gl.Tex0 != 0 && !_down.Failed;
 
+    /// <summary>Bind texture <paramref name="tex"/> on <paramref name="unit"/>, leaving it the active unit.</summary>
+    internal static void BindUnit(uint unit, uint tex)
+    {
+        Gl.ActiveTexture(Gl.TEXTURE0 + unit);
+        Gl.BindTexture(Gl.TEXTURE_2D, tex);
+    }
+
+    /// <summary>Bind the four G-buffer targets and the frame's depth for a compute pass to read, in slot
+    /// order. The depth attachment is read while it is attached: a compute dispatch touches no framebuffer,
+    /// so there is no feedback loop to have, and the lit stage samples the same texture at the same time
+    /// (<c>SsaoPass.BindForDraw</c>'s <c>uSceneDepth</c>).</summary>
+    internal static void BindForCompute()
+    {
+        BindUnit(TextureSlots.Gbuf0, _gl.Tex0);
+        BindUnit(TextureSlots.Gbuf1, _gl.Tex1);
+        BindUnit(TextureSlots.Gbuf2, _gl.Tex2);
+        BindUnit(TextureSlots.Gbuf3, _gl.Tex3);
+        BindUnit(TextureSlots.GbufDepth, PostChain.DepthTex);
+    }
+
+    /// <summary>Unbind what <see cref="BindForCompute"/> bound, same order.</summary>
+    internal static void UnbindCompute()
+    {
+        BindUnit(TextureSlots.Gbuf0, 0);
+        BindUnit(TextureSlots.Gbuf1, 0);
+        BindUnit(TextureSlots.Gbuf2, 0);
+        BindUnit(TextureSlots.Gbuf3, 0);
+        BindUnit(TextureSlots.GbufDepth, 0);
+    }
+
     /// <summary>Attached to the frame FBO right now -- the opaque and cutout passes. Read by <see cref="Issue"/>,
     /// which masks the four draw buffers per program while it is true.</summary>
     internal static bool Armed => _gl.Armed;
