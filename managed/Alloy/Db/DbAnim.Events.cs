@@ -23,10 +23,10 @@ public static unsafe partial class DbAnim
         // the better answer, and 16 is far past anything content does on purpose.
         if (_eventDepth >= MaxEventDepth)
         {
-            _eventStorms++;
-            if (!_eventStormSaid)
+            _events.Storms++;
+            if (!_events.StormSaid)
             {
-                _eventStormSaid = true;
+                _events.StormSaid = true;
                 _log?.Always($"DbAnim: an animation event handler re-entered the event path {MaxEventDepth} "
                            + "deep (a handler that plays an animation whose own events it hears) -- the chain "
                            + "is REFUSED here rather than overflowing the stack. Counted on [dbanim].");
@@ -41,19 +41,49 @@ public static unsafe partial class DbAnim
             // the engine's own CExoArrayList<CallBack*> at the shell's +0x460. An event delivered to a list of
             // ours would reach nobody.
             nint shell = SceneDb.ObjFacade[i];
-            if (shell == 0) { _noFacade++; return; }
-            _fired++;
+            if (shell == 0)
+            {
+                _events.NoFacade++;
+                if (!_events.NoFacadeSaid)
+                {
+                    _events.NoFacadeSaid = true;
+                    _log?.Always($"DbAnim: \"{Str(name)}\" was raised at object {i} (\"{SceneDb.ObjModel[i]?.Name ?? "-"}\"), "
+                               + "which the game holds no facade for: it carries no callback list, so the event reaches "
+                               + "nobody -- as vanilla's own empty list does for an object the game never asked for (a "
+                               + "tile the scene database spawned, a grafted piece). Said once; counted on [dbanim], "
+                               + "where a CREATURE or a placeable in that count is the real thing to chase -- its "
+                               + "footsteps, hit sounds and weapon swaps ride this path.");
+                }
+                return;
+            }
+            _events.Fired++;
             CX.Alloy.Seam.ObjectSlots.FireEvent(shell, (nint)name, data);
         }
         finally { _eventDepth--; }
     }
 
-    /// <summary>How deep a handler may re-enter the event path, and how often it has been refused.</summary>
+    /// <summary>How deep a handler may re-enter the event path.</summary>
     private const int MaxEventDepth = 16;
-    private static int _eventDepth, _eventStorms, _noFacade;
-    /// <summary>Events handed to a callback list this period, and ones whose object had no facade.</summary>
-    private static int _fired;
-    private static bool _eventStormSaid;
+    private static int _eventDepth;
+
+    /// <summary>The event path's period numbers and its said-once flags. <c>Fired</c> is events RAISED at a
+    /// callback list, not deliveries: the list's own dispatch refuses a retired shell, and an empty list is
+    /// the ordinary case.</summary>
+    private sealed class EventPathState
+    {
+        internal int Fired, Starts, Loops, Dones, NoFacade, Storms, NamesRefused;
+        internal bool StormSaid, NoFacadeSaid, NamesFullSaid;
+    }
+    private static EventPathState _events = new();
+
+    /// <summary>One native event name as a managed string, for a log line only (the client's text codepage is
+    /// single-byte).</summary>
+    private static string Str(byte* name)
+    {
+        int n = 0;
+        while (n < NameMax && name[n] != 0) n++;
+        return System.Text.Encoding.Latin1.GetString(name, n);
+    }
 
     // ================= the animation's own events =================
 
@@ -117,7 +147,6 @@ public static unsafe partial class DbAnim
     // ================= the three lifecycle events =================
 
     private const int StartPrefix = 0, LoopPrefix = 1, DonePrefix = 2;
-    private static int _starts, _loops, _dones;
 
     /// <summary>One lifecycle event: <c>"start"</c>, <c>"loop"</c> or <c>"done"</c> followed by the animation's
     /// name, as the engine's <c>sprintf</c> builds it. The three names are built once per animation and kept
@@ -127,9 +156,9 @@ public static unsafe partial class DbAnim
         if (anim == null || !SceneDb.Objects.Valid(obj)) return;
         switch (which)
         {
-            case StartPrefix: _starts++; break;
-            case LoopPrefix: _loops++; break;
-            default: _dones++; break;
+            case StartPrefix: _events.Starts++; break;
+            case LoopPrefix: _events.Loops++; break;
+            default: _events.Dones++; break;
         }
         AnimNames? names = Names(anim);
         if (names == null) return;
@@ -192,18 +221,16 @@ public static unsafe partial class DbAnim
     /// of a new animation cannot be named, so they do not fire -- said once, counted, never silent. A long
     /// session plays a few hundred.</summary>
     private const int MaxAnimNames = 8192;
-    private static bool _namesFullSaid;
-    private static int _namesRefused;
 
     private static AnimNames? Names(AnimDef anim)
     {
         if (_names.TryGetValue(anim, out AnimNames? got)) return got;
         if (_names.Count >= MaxAnimNames)
         {
-            _namesRefused++;
-            if (!_namesFullSaid)
+            _events.NamesRefused++;
+            if (!_events.NamesFullSaid)
             {
-                _namesFullSaid = true;
+                _events.NamesFullSaid = true;
                 _log?.Always($"DbAnim: {MaxAnimNames} distinct animations have interned their event names -- "
                            + "a further animation's events and start/loop/done will NOT fire. Raise "
                            + "DbAnim.MaxAnimNames; counted on [dbanim].");
@@ -220,8 +247,11 @@ public static unsafe partial class DbAnim
 
     /// <summary>The event path's period numbers.</summary>
     internal static string EventPeriod()
-        => $"{_fired} callback(s) fired, {_starts} start, {_loops} loop, {_dones} done"
-         + (_noFacade == 0 ? "" : $", {_noFacade} raised at an object with no facade (no listener)")
-         + (_namesRefused == 0 ? "" : $", {_namesRefused} animation(s) past the name-intern ceiling (events NOT FIRED)")
-         + (_eventStorms == 0 ? "" : $", {_eventStorms} event chain(s) REFUSED past depth {MaxEventDepth}");
+    {
+        EventPathState e = _events;
+        return $"{e.Fired} event(s) raised at a callback list, {e.Starts} start, {e.Loops} loop, {e.Dones} done"
+             + (e.NoFacade == 0 ? "" : $", {e.NoFacade} raised at an object with NO FACADE (no listener)")
+             + (e.NamesRefused == 0 ? "" : $", {e.NamesRefused} animation(s) past the name-intern ceiling (events NOT FIRED)")
+             + (e.Storms == 0 ? "" : $", {e.Storms} event chain(s) REFUSED past depth {MaxEventDepth}");
+    }
 }
