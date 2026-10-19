@@ -140,9 +140,6 @@ internal static unsafe class RadialIcons
         for (int i = 0; i < n; i++) DrawLayer(i, tids[i], x, y, w, h, alpha, u1, v0, clip, cx, cy, cw, ch);
     }
 
-    /// <summary>The art's own frame for an item's icon, or unknown when the item or its icon is gone.</summary>
-    internal static IconFrames.Frame FrameOf(IntPtr handle) => _ready && handle != IntPtr.Zero ? IconFrames.Of(ItemIcon(handle)) : default;
-
     /// <summary>Texels of one inventory cell on a stock icon sheet.</summary>
     private const int IconCellPx = 32;
 

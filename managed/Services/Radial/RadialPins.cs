@@ -77,7 +77,6 @@ internal static unsafe partial class RadialPins
     private static bool _nameWarned;
     private static readonly IntPtr Base = NativeLibrary.GetMainProgramHandle();
 
-    public static IReadOnlyList<RadialPin> Rows => _rows;
     /// <summary>The key a new row is stamped with.</summary>
     private static string Who => _who ?? "";
 

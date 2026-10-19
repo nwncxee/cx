@@ -27,8 +27,8 @@ public sealed unsafe class DialogService : IExtenderService
 
     // ---- captured content (written cold in the hooks, read cold in Rebuild) ----
     private static volatile bool _open;                 // input-modal: keys/clicks captured while true
-    private static uint _dialogId, _speakerId, _pageId;
-    private static bool _continueFlag, _isEndDialog;
+    private static uint _dialogId, _pageId;
+    private static bool _isEndDialog;
     private static string _npcText = "";
     private static string _speakerName = "";            // creature/object name for the title band ("" = none)
     private static string _portraitResref = "";
@@ -92,12 +92,6 @@ public sealed unsafe class DialogService : IExtenderService
     }
     private readonly record struct HitRect(float X, float Y, float W, float H, int Index);
     private static volatile DialogFrame? _frame;
-
-    /// <summary>The MODAL gate: true while an NPC conversation window is on screen and interactive, including the
-    /// await-node gap after a reply is picked, so digit-spam / clicks in that gap don't leak to the world
-    /// (HotkeyInputService reads it to route keys here). Distinct from <c>_open</c>, the SELECTION gate, which
-    /// drops the instant a reply is chosen. False during the fade-out, so a closing window lets clicks through.</summary>
-    public static bool IsOpen => _visible;
 
     /// <summary>The window's art for the native look; one window, one skin.</summary>
     private static readonly Skin _skin = NativeChrome.NewSkin();
@@ -179,7 +173,6 @@ public sealed unsafe class DialogService : IExtenderService
         {
             _npcText = Native.ReadExo(text);
             _dialogId = dialogId;
-            _speakerId = speakerId;
             _portraitResref = ResolvePortrait(speakerId);   // same thread ShowDialogEntry ran on -> safe
             _speakerName = Native.EngineText(Native.ObjectName(speakerId));   // message thread, as the hook ran on
             _replies = System.Array.Empty<Reply>();
@@ -223,7 +216,6 @@ public sealed unsafe class DialogService : IExtenderService
             _replies = MakeReplies(texts, idx, numOldReplies);
             _isEndDialog = n == 0;
             _pageId = pageId;
-            _continueFlag = continueFlag != 0;
             _hover = -1;
             _open = true;
             _contentAlphaTarget = 1f;   // defensive: a replies-only refresh mustn't leave content faded to 0

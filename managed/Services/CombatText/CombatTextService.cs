@@ -128,10 +128,9 @@ public sealed unsafe class CombatTextService : IExtenderService
             if (OperatingSystem.IsWindows()) { Native.DestroyExoString(text); Native.DestroyExoString(font); }   // Win64: the swallowed callee owned both copies
             if (body.Length == 0) return;                 // an empty floaty draws nothing in either renderer
 
-            long now = Environment.TickCount64;
             FloatyKind kind = CombatTextNative.IsDamageFont(fontName) ? FloatyKind.Damage : FloatyKind.Banner;
             _table.Note(NameplateNative.IdOf(self), kind, ColorRunParser.Parse(body),
-                        colour.X, colour.Y, colour.Z, now);
+                        colour.X, colour.Y, colour.Z);
         }
         catch (Exception e)
         {

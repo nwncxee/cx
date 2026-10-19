@@ -29,9 +29,6 @@ internal static class CardLooks
     /// <summary>The minted item for <paramref name="look"/>, or zero when none was made. Allocation-free.</summary>
     public static IntPtr Item(string look) => _s.Minted.TryGetValue(look, out IntPtr item) ? item : IntPtr.Zero;
 
-    /// <summary>How many looks have an item right now.</summary>
-    public static int Count => _s.Minted.Count;
-
     /// <summary>Brings the minted items in line with the declared cards when the registry has changed.</summary>
     public static void Sync(ExtenderLog? log)
     {

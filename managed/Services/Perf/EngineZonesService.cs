@@ -66,8 +66,7 @@ public sealed unsafe class EngineZonesService : IExtenderService
     private static long OnBsp(IntPtr scene)
     {
         bool world = new CX.Engine.Scene(scene).BspRoot != IntPtr.Zero;
-        if (world && _skipBsp && CX.Alloy.AlloyGate.Alloy)
-        { _bspSkipped++; return 0; }
+        if (world && _skipBsp && CX.Alloy.AlloyGate.Alloy) return 0;
         long t = world ? FrameZones.Now : 0;
         long r = _bsp != null ? _bsp(scene) : 0;
         if (world) FrameZones.Add(FrameZones.Zone.Bsp, t);
@@ -79,13 +78,11 @@ public sealed unsafe class EngineZonesService : IExtenderService
     /// draws with), which is the measurement: Ai drops by the Buckets figure, and what breaks names the load-bearing
     /// half. Never on a GUI panel's scene and never while the engine renders (<c>alloy.enabled=0</c>).</summary>
     private static bool _skipBuckets;
-    private static long _bucketsSkipped;
     /// <summary><c>alloy.skipbuckets=3</c> -- the whole BSP walk stands down on an Alloy world frame. What it produced
     /// is Alloy's: the tile fade ramp, the grass bins, the emitter, trigger and beam lists, the visible-gob list, the
     /// per-gob LOD call and <c>Gob::ProcessGob</c>. Its side effects left with no owner are the BSP RE-FILING of moved
     /// parts and gobs (<c>SceneBSPUpdatePart</c>/<c>Gob</c>, which hit testing walks), the fade planes and <c>gob+0x1b</c>.</summary>
     private static bool _skipBsp;
-    private static long _bspSkipped;
     /// <summary><c>alloy.skipbuckets=2</c>: the six flat loops over the BSP walk's tile-part lists (matrix rewrite of
     /// STATIC parts plus the filing of buckets nothing reads) run every <see cref="BucketsEvery"/>th frame, the gob and
     /// beam loops every frame, done by zeroing the lists' counts ahead of the call; a freshly spawned tile's parts
@@ -123,7 +120,7 @@ public sealed unsafe class EngineZonesService : IExtenderService
         bool world = new CX.Engine.Scene(scene).BspRoot != IntPtr.Zero;
         // Under 3 the two skips travel together: the bucket build's inputs are the lists the BSP visitor
         // fills, so re-arming the walk without re-arming this would leave an A/B reading half a frame.
-        if (world && _skipBuckets && CX.Alloy.AlloyGate.Alloy) { _bucketsSkipped++; return 0; }
+        if (world && _skipBuckets && CX.Alloy.AlloyGate.Alloy) return 0;
         if (world && _bucketsCadence && CX.Alloy.AlloyGate.Alloy && (++_bucketsFrame % BucketsEvery) != 0) ThinTileLists();
         long t = world ? FrameZones.Now : 0;
         long r = _buckets != null ? _buckets(scene) : 0;

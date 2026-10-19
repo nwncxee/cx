@@ -29,8 +29,6 @@ internal struct NuiHit
     internal NuiTokenBuf TokenBytes;
     internal NuiImageBuf ImageBytes;
 
-    /// <summary>True when nothing was under the pointer.</summary>
-    public readonly bool IsEmpty => Element == IntPtr.Zero;
     /// <summary>True when the pointer at (<paramref name="px"/>, <paramref name="py"/>) lies inside <see cref="X"/>..<see cref="H"/>.</summary>
     public readonly bool Contains(float px, float py) => NuiHitTest.Contains(X, Y, W, H, px, py);
 }
