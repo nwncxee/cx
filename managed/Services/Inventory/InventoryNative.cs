@@ -214,14 +214,6 @@ internal static unsafe class InventoryNative
         return new CGameObject(go).AsNWCItem();
     }
 
-    /// <summary>An engine modal panel (the gold / split amount prompt, a confirm) is up: it draws under every CX window, so
-    /// the inventory steps aside until it closes.</summary>
-    public static bool EngineModal()
-    {
-        IntPtr gm = Native.Sym(SymbolMap.GuiMan);
-        return gm != IntPtr.Zero && *(IntPtr*)gm != IntPtr.Zero && new CGuiMan(*(IntPtr*)gm).ModalCount > 0;
-    }
-
     public static int Mods() => EngineFn.SdlGetModState != null ? EngineFn.SdlGetModState() : 0;
 
     // ---- the per-frame copy ----
