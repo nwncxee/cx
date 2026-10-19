@@ -9,7 +9,10 @@ uniform int uSkyRaw;      // CX-374: 1 = a sky pixel skips exposure and the tone
 // over culled ground, not sky, and is graded like the fogged geometry beside it -- raw, it read as a hole.
 uniform float uSkyBand;
 uniform mat4 uInvVP;      // the main view's inverse view-projection: this pixel's world ray
-uniform vec3 uEyePos;
+// uEyePos, and the volumetric fog's volume: with it, the share of a sky pixel's light the fog put there is graded
+// like the fogged geometry beside it, and the band stands down
+#include "cx_fogdecl.glsl"
+#include "cx_vfog.glsl"
 uniform float uStrength;
 uniform int uMode;
 uniform float uKnee;
@@ -84,11 +87,10 @@ void main()
     vec3 overlay = uOverlayOn != 0 ? max(textureLod(uOverlay, vUV, 0.0).rgb, vec3(0.0)) : vec3(0.0);
     if (uSkyRaw != 0 && texture(uDepth, vUV).r >= 1.0)
     {
-        if (uSkyBand > 0.0)
-        {
-            vec4 p = uInvVP * vec4(vUV * 2.0 - 1.0, 0.0, 1.0);
-            graded = 1.0 - smoothstep(0.0, uSkyBand, normalize(p.xyz / p.w - uEyePos).z);
-        }
+        vec4 p = uInvVP * vec4(vUV * 2.0 - 1.0, 0.0, 1.0);
+        const vec3 lum = vec3(0.2126, 0.7152, 0.0722);
+        if (uVFog.x > 0.0) graded = clamp(dot(CxVFogSkyAt(p.xyz / p.w).rgb, lum) / max(dot(c, lum), 1e-6), 0.0, 1.0);
+        else if (uSkyBand > 0.0) graded = 1.0 - smoothstep(0.0, uSkyBand, normalize(p.xyz / p.w - uEyePos).z);
         else graded = 0.0;
         vec3 g = b * uExposure;
         raw = CxEncode(c + g + overlay);

@@ -740,9 +740,9 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | fog.origin / cull / cullz | — | T, S | as declared | C | L | — | player-origin fog, the fully-fogged geometry cull and its depth |
 | vfog.enabled | Volumetric fog | T | off | U | L | — | Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. |
 | vfog.quality | Fog detail | D | Low / Medium / High / Ultra · Medium | A | L | — | How finely the fog volume is divided. Higher shows sharper light shafts and costs more. Ladders on `quality.effects`, a step below it. |
-| vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0.1 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
+| vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
 | vfog.sun | Sun shafts | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog. |
-| vfog.lights | Lamp glow | S | 0–4 step 0.05 · 1.5 | A | L | Look | How brightly torches and lamps glow in the fog. |
+| vfog.lights | Lamp glow | S | 0–4 step 0.05 · 0.15 | A | L | Look | How brightly torches and lamps glow in the fog; a lamp that reaches further glows brighter. |
 | vfog.sky | Fog takes the sky colour | S | 0–1 step 0.05 · 0.5 | A | L | Look | How far the fog's own light moves from the area's fog colour toward the sky's. 0 is the area's colour. |
 | vfog.aniso | Forward scattering | S | 0–0.9 step 0.05 · 0.4 | A | L | Shape | How much brighter the fog looks toward a light than away from it. |
 | vfog.height | Haze height falloff | S | 0–0.2 /m step 0.005 · 0.08 | A | L | Shape | How fast the haze thins above the ground you stand on; 0 = the same at every height. |
@@ -750,7 +750,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | vfog.noise | Patchiness | S | 0–1 step 0.05 · 0.6 | A | L | Shape | How uneven the haze is; 0 is even haze. |
 | vfog.noisesize | Patch size | S | 2–64 m step 1 · 16 | A | L | Shape | Size of the haze's patches. |
 | vfog.wind | Drift speed | S | 0–8 m/s step 0.1 · 1.5 | A | L | Shape | How fast the patches drift, along the area's wind. |
-| vfog.band | Horizon band | S | 0.01–1 step 0.01 · 0.15 | A | L | Shape | How far above the horizon the far fog covers the sky. |
+| vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
 | water.rect / diag | — | T, S | as declared | C | L | — | |

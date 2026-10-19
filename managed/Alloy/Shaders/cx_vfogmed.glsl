@@ -12,6 +12,7 @@ uniform vec3 uVfFwd;        // the view direction, unit length: view depth is di
 // the area's fog ramp, radial from uVfOrigin, and reaches its full extinction at the end distance
 uniform vec4 uVfMed;
 uniform vec3 uVfOrigin;     // where the area's fog is measured from: the player's feet
+uniform float uVfTop;       // the fog bank's top: metres above the eye where the wall has thinned to half
 
 /// View depth at slice coordinate `k` (0 = the near edge, uVfGrid.z = the far edge).
 float CxVfDepth(float k) { return uVfZ.x * exp(uVfZ.z * k / float(uVfGrid.z)); }
@@ -24,6 +25,11 @@ vec3 CxVfRay(vec2 uv)
     return d / dot(d, uVfFwd);
 }
 
-/// The area fog's own extinction at `world`: nothing inside its start, rising to uVfMed.y at its end and on.
-float CxVfWall(vec3 world) { return uVfMed.y * smoothstep(uVfMed.z, uVfMed.w, distance(world, uVfOrigin)); }
+/// The area fog's own extinction at `world`: nothing inside its start, rising to uVfMed.y at its end and on, and
+/// thinning away across the bank's top, so a ray climbing out of it reaches a clear sky and the sky takes the same air.
+float CxVfWall(vec3 world)
+{
+    float bank = 1.0 - smoothstep(0.5 * uVfTop, 1.5 * uVfTop, world.z - uVfEye.z);
+    return uVfMed.y * smoothstep(uVfMed.z, uVfMed.w, distance(world, uVfOrigin)) * bank;
+}
 #endif

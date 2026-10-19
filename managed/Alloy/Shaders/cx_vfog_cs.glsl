@@ -36,6 +36,11 @@ uniform vec4 uVfPrevZ;      // (last near, 1 / last log(far / near), history wei
 // forward lobe alone leaves almost black.
 const float CX_VF_BACK_G = -0.3;
 const float CX_VF_BACK_W = 0.3;
+// A lamp's core in the air, metres: inside it the inverse square stops climbing, so a sample landing on the lamp
+// itself stays finite and the temporal filter has nothing to flicker on.
+const float CX_VF_CORE = 1.0;
+// The share of its reach at which a lamp lights the air exactly as the surface curve says: brighter inside, dimmer out.
+const float CX_VF_PIVOT = 0.5;
 
 /// Henyey-Greenstein, scaled so the isotropic medium (g = 0) is 1 everywhere: its mean over the sphere is 1.
 float CxVfHg(float c, float g)
@@ -64,7 +69,10 @@ float CxVfHaze(vec3 world)
     return h;
 }
 
-/// Every clustered point light's light at `world`, phase applied: the lit stage's own curve, colour and day scale.
+/// Every clustered point light's light at `world`. A lamp is a SOURCE: the lit stage's curve sharpened into an
+/// inverse square whose intensity grows with the square of its reach -- one reaching twice as far is four times as
+/// bright at the same distance (CX_VF_PIVOT sets the scale) -- then shadowed and phased.
+/// An ambient-class light (a tile's own) adds the surface curve as it is, with no direction and no shadow.
 vec3 CxVfLamps(vec3 world, vec3 V, float depth)
 {
     uint cl = CxCluster(depth);
@@ -80,6 +88,9 @@ vec3 CxVfLamps(vec3 world, vec3 V, float depth)
         vec3 c, L; float att, f2, ndlRaw, ndl;
         if (!CxPointLight(pr, cs.rgb, world, V, c, L, att, f2, ndlRaw, ndl)) continue;
         int slot = CxLightSlot(int(cs.w));
+        if (slot == -2) { acc += c * att; continue; }
+        float rr = pr.w * pr.w;
+        att *= CX_VF_PIVOT * CX_VF_PIVOT * rr / (f2 * rr + CX_VF_CORE * CX_VF_CORE);
         float sh = 1.0;
         // `false` is a literal, so the blocker search and both discs fold out of the inlined body
         if (uVfLocal.y > 0.0 && slot >= 0 && dfade > 0.0)

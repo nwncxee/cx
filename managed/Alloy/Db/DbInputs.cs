@@ -156,6 +156,10 @@ internal static partial class DbInputs
     internal static bool AmbientOnly(in DbLight l)
         => l.Lit >= 0 ? SceneDb.LitAmbientOnly[l.Lit] : l.Def is { AmbientOnly: true };
 
+    /// <summary>Is this one of a tile model's own lights (its main lights, its night windows)? Those light
+    /// their surroundings as a local ambient, never as a source: no direction, no shadow, no highlight.</summary>
+    internal static bool TileLight(in DbLight l) => l.Lit >= 0 && !SceneDb.LitTile[l.Lit].IsNull;
+
     /// <summary>Emitter <paramref name="k"/>: its part, its model-declared parameters and its world placement.
     /// A CHUNK emitter spawns objects rather than particles, which is why its spawn goes back through the
     /// object seam (<see cref="ChunkSpawn"/>) instead of into the particle arrays.</summary>

@@ -811,8 +811,9 @@ vfog.haze=0.1
 
 `vfog.enabled=1` replaces the fog with a lit volume: sunlight falls through it in shafts, lamps glow in it and its
 haze drifts on the area's wind. It is built from what the area already sends -- the fog colour, start and end, the
-day/night state, the sun and the lights -- so no content changes with it. The far fog still hides everything past the
-area's fog end, as the stock fog does, so a module's clip distance means what it did. `vfog.*=` hands every key
+day/night state, the sun and the lights -- so no content changes with it. The far fog still hides everything at eye
+level past the area's fog end, as the stock fog does, so a module's clip distance means what it did; above the camera it
+thins away (`vfog.top`) and the sky shows through it. `vfog.*=` hands every key
 back to the player, and a server that sends nothing leaves the player's own choice; the switch is off by default.
 
 The volume costs GPU time, and how much is the player's call through their effects quality (`vfog.quality` ladders on

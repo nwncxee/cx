@@ -24,9 +24,9 @@ internal static unsafe class SceneFog
     internal static float FloorOffset => Fog.Floor.V;
     internal static float CullZ => Fog.CullZ.V;
     /// <summary>The volumetric fog's wall is radial from the player by construction, so it measures from there whatever
-    /// <c>fog.origin</c> says; and its sky band is its own.</summary>
+    /// <c>fog.origin</c> says; its sky is the volume's, so the band is only what a capture's ramp falls back to.</summary>
     internal static bool OriginPlayer => FogVolume.On || (Fog.Enabled.V && Fog.Origin.V);
-    internal static float SkyBand => FogVolume.On ? VolumetricFog.Band.V : Fog.Enabled.V ? Fog.SkyBand.V : 0f;
+    internal static float SkyBand => FogVolume.On ? FogVolume.CaptureBand : Fog.Enabled.V ? Fog.SkyBand.V : 0f;
     /// <summary>The cull's fog gate (<see cref="CullPass.FogCull"/>): <c>fog.cull</c> while either fog draws, off with
     /// both masters. The volume hides the far plane past <see cref="OpaqueDistance()"/> as the ramp does.</summary>
     internal static bool Cull => (FogVolume.On || Fog.Enabled.V) && Fog.Cull.V;

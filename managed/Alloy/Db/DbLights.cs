@@ -172,7 +172,7 @@ internal static class DbLights
             return;
         }
 
-        bool ambient = DbInputs.AmbientOnly(in l);
+        bool ambient = DbInputs.AmbientOnly(in l) || DbInputs.TileLight(in l);
         Adjust(range, inten, radiusMult, ref rgb, out float adjR);
         Vector3 pos = l.Position;
         // The bake's verdict, asked the way the engine walk asks it -- except that the database, not a walk of
@@ -183,8 +183,8 @@ internal static class DbLights
         FrameInputs.RecordAreaLight(l.Id, pos, adjR, rgb, ambient, isStatic, setIndex);
         _admitted++;
         if (isStatic) _static++;
-        // A local (shadow-casting) light is a non-ambient one that asked to cast. A tile light says so in its
-        // own record; an object light says so through its LightDef.
+        // A local (shadow-casting) light is a non-ambient one that asked to cast: a static placeable's says so in
+        // its Lit record, an object light through its LightDef. A tile's own light is ambient, so never casts.
         bool casts = l.Lit >= 0 ? SceneDb.LitShadow[l.Lit] : l.Def is { Shadow: true };
         if (ambient || !casts) return;
         FrameInputs.RecordLocalLight(l.Id, pos, adjR, rgb);
@@ -406,6 +406,20 @@ internal static class DbLights
         check.Expect(FrameInputs.AreaLightStatic[at] == LightmapBake.Produces,
                      $"LitDynamic=false reaches the bake as static, and the bake answers for its own ability to "
                    + $"produce a page (Produces={LightmapBake.Produces}, static={FrameInputs.AreaLightStatic[at]})");
+
+        // ...but a TILE's own light is the ambient class whatever its record asks (LitShadow is true above).
+        DbId tileId = SceneDb.Tiles.Alloc();
+        SceneDb.LitTile[lk] = tileId;
+        _sigValid = false;   // the rig's signature leaves out a light's tile, which never changes in its life
+        Walk(scene, in noArea);
+        at = FrameInputs.AreaLightId[0] == DbInputs.LitId(lk) ? 0 : 1;
+        bool casting = false;
+        for (int i = 0; i < FrameInputs.LocalLightCount; i++) casting |= FrameInputs.LocalLightId[i] == DbInputs.LitId(lk);
+        check.Expect(FrameInputs.AreaLightId[at] == DbInputs.LitId(lk) && FrameInputs.AreaLightAmbient[at]
+                     && !FrameInputs.AreaLightStatic[at] && !casting,
+                     "a tile's own light lights as a local ambient: no shadow, and nothing for the bake");
+        SceneDb.LitTile[lk] = default;
+        SceneDb.Tiles.Free(tileId);
 
         // ...and the same light reached through a part is ONE light, not two.
         SceneDb.LitPart[lk] = p;

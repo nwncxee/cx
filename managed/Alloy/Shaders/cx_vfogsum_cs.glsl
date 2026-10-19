@@ -1,14 +1,13 @@
 // The volumetric fog's second pass (FogVolume): one invocation per froxel COLUMN, marching its slices from the eye.
 // Each slice adds the area's fog wall to cx_vfog_cs's haze and integrates both over the slice's length, storing the
-// light scattered toward the eye (rgb) and the transmittance (a) up to its far edge. Slice uVfGrid.z, one past the
-// last, holds the same march for the SKY: there the wall stands down above the horizon band, as the ramp's sky does.
+// light scattered toward the eye (rgb) and the transmittance (a) up to its far edge. The sky reads the last slice: it
+// sees the same air as the geometry in front of it, so the two cannot part along a silhouette.
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 #include "cx_vfogmed.glsl"
 
 layout(rgba16f, binding = 0) uniform readonly image3D uVfMedium;
 layout(rgba16f, binding = 1) uniform writeonly image3D uVfSum;
-uniform float uVfBand;      // ray elevation (dir.z) above the horizon at which the sky has left the wall
 
 // Points the wall is averaged over per slice: a thin ramp (an area whose fog starts a metre short of its end) falls
 // inside one slice, and one point would put the whole slice on one side of it.
@@ -28,9 +27,8 @@ void main()
     if (any(greaterThanEqual(id, uVfGrid.xy))) return;
     vec3 ray = CxVfRay((vec2(id) + 0.5) / vec2(uVfGrid.xy));
     float len = length(ray);
-    float sky = 1.0 - smoothstep(0.0, uVfBand, ray.z / len);
-    vec3 s = vec3(0.0), sSky = vec3(0.0);
-    float t = 1.0, tSky = 1.0;
+    vec3 s = vec3(0.0);
+    float t = 1.0;
     float d0 = uVfZ.x;
     for (int k = 0; k < uVfGrid.z; k++)
     {
@@ -42,9 +40,7 @@ void main()
         wall /= float(CX_VF_WALL_TAPS);
         float dl = (d1 - d0) * len;
         CxVfStep(s, t, m.rgb, m.a + wall, dl);
-        CxVfStep(sSky, tSky, m.rgb, m.a + wall * sky, dl);
         imageStore(uVfSum, ivec3(id, k), vec4(s, t));
         d0 = d1;
     }
-    imageStore(uVfSum, ivec3(id, uVfGrid.z), vec4(sSky, tSky));
 }

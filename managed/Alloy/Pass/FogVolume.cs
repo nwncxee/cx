@@ -31,6 +31,8 @@ internal static unsafe class FogVolume
     private const float MaxHue = 2f;
     /// <summary>The haze's patches rise this fraction of their drift speed, so the air churns on a still day too.</summary>
     private const float Rise = 0.1f;
+    /// <summary>The ramp's horizon band a pass that cannot read the volume (a probe face, a reflection) fogs its sky with.</summary>
+    internal const float CaptureBand = 0.15f;
 
     /// <summary>The medium's extinction, per metre: <see cref="Haze"/> at the haze floor, <see cref="Wall"/> from
     /// <see cref="End"/> on, rising from nothing at <see cref="Start"/>; both distances from the player.</summary>
@@ -44,7 +46,7 @@ internal static unsafe class FogVolume
     }
 
     /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
-    private struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin; }
+    private struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin, Top; }
 
     /// <summary>Everything the GL context owns: context loss replaces it whole.</summary>
     private sealed class FogVolumeGlState
@@ -52,9 +54,8 @@ internal static unsafe class FogVolume
         public uint ProgLight, ProgSum;
         public LightLocs L;
         public GridLocs S;
-        public int SumBand;
         /// <summary>The lighting pass's two outputs (this frame's and last frame's, swapped each frame) and the
-        /// integrated volume, one slice deeper for the sky.</summary>
+        /// integrated volume, whose last slice is also the sky's.</summary>
         public uint MedA, MedB, Sum;
         public int W, H, D;
         public bool CurA, History;
@@ -103,8 +104,9 @@ internal static unsafe class FogVolume
         return new Medium(h * tau / e, 2f * (1f - h) * tau / (e - s), s, e);
     }
 
-    /// <summary>The distance from the player past which the fog hides everything at any height: where the wall alone
-    /// spends the whole opacity, since the haze thins with height. Infinity with no area fog.</summary>
+    /// <summary>The distance from the player past which the fog hides everything below the eye: where the wall alone
+    /// spends the whole opacity, since the haze thins with height and the bank is whole below the eye. Infinity with
+    /// no area fog.</summary>
     internal static float OpaqueDistance(bool on, float start, float end, float haze)
     {
         Medium m = MediumFor(on, start, end, 0f, haze);
@@ -195,7 +197,6 @@ internal static unsafe class FogVolume
 
         Gl.UseProgram(_gl.ProgSum);
         PushGrid(in _gl.S, w, h, d, logZ, vfar, &invVp, eye, fwd, m, origin);
-        Gl.Uniform1f(_gl.SumBand, VolumetricFog.Band.V);
         Gl.BindImageTexture(0, cur, 0, 1, 0, Gl.READ_ONLY, Gl.RGBA16F);
         Gl.BindImageTexture(1, _gl.Sum, 0, 1, 0, Gl.WRITE_ONLY, Gl.RGBA16F);
         Gl.DispatchCompute((uint)((w + Group - 1) / Group), (uint)((h + Group - 1) / Group), 1);
@@ -223,6 +224,7 @@ internal static unsafe class FogVolume
         Gl.Uniform3f(g.Fwd, fwd.X, fwd.Y, fwd.Z);
         Gl.Uniform4f(g.Med, m.Haze, m.Wall, m.Start, m.End);
         Gl.Uniform3f(g.Origin, origin.X, origin.Y, origin.Z);
+        Gl.Uniform1f(g.Top, VolumetricFog.Top.V);
     }
 
     /// <summary>Seconds since the last build, at most a tenth: a hitch does not throw the drift or the dawn ahead.</summary>
@@ -250,13 +252,13 @@ internal static unsafe class FogVolume
         return _gl.Built;
     }
 
-    /// <summary>Push this frame's volume at one program, or stand it down (<c>uVFog.x</c> 0) where none was built or
-    /// <paramref name="capture"/> says the pass is another camera's, which a main-view volume does not describe.</summary>
-    internal static void Upload(in AlloyRenderer.FeatLoc loc, bool capture)
+    /// <summary>Push this frame's volume at one program (its <c>uVFog</c> and <c>uVFogVp</c>), or stand it down
+    /// (<c>uVFog.x</c> 0) where none was built or <paramref name="capture"/> says the pass is another camera's.</summary>
+    internal static void Upload(int vfog, int vfogVp, bool capture)
     {
         bool on = _gl.Built && !capture;
-        Gl.Uniform4f(loc.VFog, on ? 1f : 0f, _gl.D, Near, _gl.InvLog);
-        if (on) fixed (Matrix4x4* m = &_gl.Vp) Gl.UniformMatrix4fv(loc.VFogVp, 1, 0, (float*)m);
+        Gl.Uniform4f(vfog, on ? 1f : 0f, _gl.D, Near, _gl.InvLog);
+        if (on) fixed (Matrix4x4* m = &_gl.Vp) Gl.UniformMatrix4fv(vfogVp, 1, 0, (float*)m);
     }
 
     /// <summary>Build both programs on the first frame that wants them, once; a failure is loud and latched, and the ramp
@@ -291,7 +293,6 @@ internal static unsafe class FogVolume
         _gl.L.PrevZ = GlProgram.Loc(light, "uVfPrevZ");
         _gl.L.Cubes = GlProgram.Loc(light, "uLocalCubes");
         _gl.S = TakeGrid(sum);
-        _gl.SumBand = GlProgram.Loc(sum, "uVfBand");
         Gl.UseProgram(light);
         Gl.Uniform1i(GlProgram.Loc(light, "uSunShadow"), (int)TextureSlots.SunShadow);
         Gl.Uniform1i(GlProgram.Loc(light, "uSunDynShadow"), (int)TextureSlots.SunShadowDyn);
@@ -309,7 +310,7 @@ internal static unsafe class FogVolume
     {
         Size = GlProgram.Loc(prog, "uVfGrid"), Z = GlProgram.Loc(prog, "uVfZ"), InvVp = GlProgram.Loc(prog, "uVfInvVp"),
         Eye = GlProgram.Loc(prog, "uVfEye"), Fwd = GlProgram.Loc(prog, "uVfFwd"), Med = GlProgram.Loc(prog, "uVfMed"),
-        Origin = GlProgram.Loc(prog, "uVfOrigin"),
+        Origin = GlProgram.Loc(prog, "uVfOrigin"), Top = GlProgram.Loc(prog, "uVfTop"),
     };
 
     /// <summary>The three volumes at this grid; a new grid is new storage and starts without history.</summary>
@@ -317,9 +318,9 @@ internal static unsafe class FogVolume
     {
         if (_gl.Sum != 0 && _gl.W == w && _gl.H == h && _gl.D == d) return;
         Release();
-        _gl.MedA = Volume(w, h, d); _gl.MedB = Volume(w, h, d); _gl.Sum = Volume(w, h, d + 1);
+        _gl.MedA = Volume(w, h, d); _gl.MedB = Volume(w, h, d); _gl.Sum = Volume(w, h, d);
         _gl.W = w; _gl.H = h; _gl.D = d;
-        _s.Log?.Info($"FogVolume: {w}x{h}x{d} froxels ({3L * w * h * (d + 1) * 8 >> 20} MiB)");
+        _s.Log?.Info($"FogVolume: {w}x{h}x{d} froxels ({3L * w * h * d * 8 >> 20} MiB)");
     }
 
     private static uint Volume(int w, int h, int d)
@@ -428,13 +429,14 @@ internal static unsafe class FogVolume
         check.Expect(!VolumetricFog.Enabled.Enforced && !VolumetricFog.Haze.Enforced && VolumetricFog.Enabled.V == enWas,
                      "releasing hands both back to the player");
 
-        bool fogWas = Fog.Enabled.V, originWas = Fog.Origin.V; float bandWas = VolumetricFog.Band.V;
-        Fog.Enabled.V = false; Fog.Origin.V = false; VolumetricFog.Band.V = 0.2f;
+        bool fogWas = Fog.Enabled.V, originWas = Fog.Origin.V;
+        Fog.Enabled.V = false; Fog.Origin.V = false;
         VolumetricFog.Enabled.V = true;
-        check.Expect(SceneFog.SkyBand == 0.2f && SceneFog.OriginPlayer, "on: the sky band is vfog.band and the fog is measured from the player");
+        check.Expect(SceneFog.SkyBand == 0.15f && SceneFog.OriginPlayer,
+                     "on: a capture's sky keeps a band with the fog group off, and the fog is measured from the player");
         VolumetricFog.Enabled.V = false;
         check.Expect(SceneFog.SkyBand == 0f && !SceneFog.OriginPlayer, "off: both are the fog group's again");
-        Fog.Enabled.V = fogWas; Fog.Origin.V = originWas; VolumetricFog.Band.V = bandWas; VolumetricFog.Enabled.V = enWas;
+        Fog.Enabled.V = fogWas; Fog.Origin.V = originWas; VolumetricFog.Enabled.V = enWas;
         log.Info(check.Ok ? "FogVolume.SelfCheck: passed" : "FogVolume.SelfCheck: FAILED");
     }
 
@@ -460,7 +462,7 @@ internal static unsafe class FogVolume
         if (_down.Failed) return "FAILED -- " + _down.Reason + "; the fog group draws the fog";
         Medium m = _s.Last;
         float opaque = OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, VolumetricFog.Haze.V);
-        return $"{_gl.W}x{_gl.H}x{_gl.D}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m  "
+        return $"{_gl.W}x{_gl.H}x{_gl.D}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m, bank top {VolumetricFog.Top.V:F0} m  "
              + $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} m]  "
              + $"ambient {_s.LastAmbient.X:F2},{_s.LastAmbient.Y:F2},{_s.LastAmbient.Z:F2}  "
              + $"sun share {_s.LastSun.W:F2} hue {_s.LastSun.X:F2},{_s.LastSun.Y:F2},{_s.LastSun.Z:F2} (day {_s.Day:F2})";

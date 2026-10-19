@@ -10,7 +10,7 @@ internal static class VolumetricFog
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, LightShadows;
     internal static readonly Knob<string> Quality;
-    internal static readonly Knob<float> Haze, Sun, Lights, Sky, Aniso, Height, Floor, Noise, NoiseSize, Wind, Band, Temporal;
+    internal static readonly Knob<float> Haze, Sun, Lights, Sky, Aniso, Height, Floor, Noise, NoiseSize, Wind, Top, Temporal;
 
     /// <summary>The <see cref="Quality"/> values, index-aligned with <see cref="Grids"/>.</summary>
     internal static readonly string[] Levels = { "low", "medium", "high", "ultra" };
@@ -30,11 +30,12 @@ internal static class VolumetricFog
                    .Ladder(CX.Alloy.Quality.Effects, "low", "low", "medium", "high");
 
         G.Section("Look");
-        Haze = G.Slider("haze", "Haze in the air", 0f, 0.9f, 0.01f, 0.1f, tier: Tier.Advanced,
+        Haze = G.Slider("haze", "Haze in the air", 0f, 0.9f, 0.01f, 0f, tier: Tier.Advanced,
                         help: "How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear.");
         Sun = G.Slider("sun", "Sun shafts", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                        help: "How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog.");
-        Lights = G.Slider("lights", "Lamp glow", 0f, 4f, 0.05f, 1.5f, tier: Tier.Advanced, help: "How brightly torches and lamps glow in the fog.");
+        Lights = G.Slider("lights", "Lamp glow", 0f, 4f, 0.05f, 0.15f, tier: Tier.Advanced,
+                         help: "How brightly torches and lamps glow in the fog; a lamp that reaches further glows brighter.");
         Sky = G.Slider("sky", "Fog takes the sky colour", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                        help: "How far the fog's own light moves from the area's fog colour toward the sky's. 0 is the area's colour.");
 
@@ -50,8 +51,8 @@ internal static class VolumetricFog
         NoiseSize = G.Slider("noisesize", "Patch size", 2f, 64f, 1f, 16f, "m", Tier.Advanced, help: "Size of the haze's patches.");
         Wind = G.Slider("wind", "Drift speed", 0f, 8f, 0.1f, 1.5f, "m/s", Tier.Advanced,
                         help: "How fast the patches drift, along the area's wind.");
-        Band = G.Slider("band", "Horizon band", 0.01f, 1f, 0.01f, 0.15f, tier: Tier.Advanced,
-                        help: "How far above the horizon the far fog covers the sky.");
+        Top = G.Slider("top", "Fog bank height", 2f, 100f, 1f, 15f, "m", Tier.Advanced,
+                       help: "How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it.");
 
         G.Section("");
         Temporal = G.Slider("temporal", "temporal", 0f, 0.98f, 0.01f, 0.9f, tier: Tier.ChatOnly,
