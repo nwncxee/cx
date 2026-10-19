@@ -37,8 +37,12 @@ Declared in `Db/DbAnim.Api.cs` (the surface), implemented across `Db/DbAnim.*.cs
 | visual scale (`Gob+0x1c0`) | `SetVisualScale(obj, scale, overSeconds)` |
 
 seam-scene calls `DbAnimCamera.Animate(cam, dt)` from the camera's `Animate` slot (its stub is folded in and
-deleted), `IsSceneAnimating`, and `Animate(scene, dt)` from the `CAurScene::Animate` slot. The LOD bands take
-the eye from `FrameInputs.CameraPos`, which `SceneFeed` fills per view.
+deleted), `IsSceneAnimating`, and `Animate(scene, dt)` from the `CAurScene::Animate` slot.
+
+`Animate` is the UPDATE phase: it runs before any of the frame's views draw. So the `.lod` band choice inside
+it measures from `AlloyCamera.WorldView`, the last **world** view measured — never a per-view camera, which at
+that point is whichever view drew last (with a 3D panel open, the panel's). A non-world scene is not banded:
+its models sit at the lens and keep level 0.
 
 ## Four hooks seam-obj MUST install at boot
 

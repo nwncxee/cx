@@ -625,7 +625,8 @@ public static unsafe partial class DbAnim
         _unbound = _queueFull = _noBlock = _bezier = _morphs = _traced = 0;
         _uvMorphs = _offChannel = _dynFull = _lookAtNoHead = _idle = _foldSkipped = _reanchored = _skinOnly = 0;
         _periodDt = 0f; _periodCalls = 0;
-        _fired = _starts = _loops = _dones = _noFacade = 0;
+        // The said-once flags go with them: a session that fixed the cause should be able to say so again.
+        _events = new();
         _solved = _dispatched = _unresolvedPart = _noSync = _noDestroy = 0;
         _skinned = _skinNoBind = _skinNoSlot = _litWrites = _litUncarried = 0;
         return s;
