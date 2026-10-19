@@ -886,7 +886,7 @@ public static class SceneDb
 
     /// <summary>The interned stable half of this part's draw (<see cref="DrawRecipe"/>), -1 for a part that
     /// draws nothing. Replaces the per-frame pointer chase: the part's material node and its ambient and
-    /// diffuse, <c>Material::GetTexture</c>, the VDO index range and the <c>IsDangly</c> vtable probe.</summary>
+    /// diffuse, <c>Material::GetTexture</c> and the VDO index range.</summary>
     public static readonly int[] PartRecipe = Fill(new int[MaxParts], -1);
     /// <summary>The part-tree alternate this part belongs to: 0 = in every alternate, else LOD level + 1 (the
     /// level-0 tree of an object that HAS alternates is 1, so it can hide). Read through <see cref="LodHidden"/>.</summary>

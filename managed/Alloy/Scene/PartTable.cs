@@ -10,7 +10,6 @@ namespace CX.Alloy;
 internal static unsafe class PartTable
 {
     internal static PartGetIsOpaqueFn _isOpaque;
-    internal static MatHasEnvMapFn _hasEnvMap;
     internal static MatHasBumpyShinyMapFn _hasBumpyShiny;
     internal static MatGetTextureFn _getTexture;
     internal static uint* _primTable;
@@ -22,34 +21,19 @@ internal static unsafe class PartTable
     /// <c>Scene::AddPartsTreeToDrawBuckets</c> @0x460880 reads, so both scene paths classify water on one
     /// term; false where the symbol did not resolve, which leaves only <c>.mtr</c>-declared water.</summary>
     internal static bool BumpyWaterOn => _bumpyWater != null && *_bumpyWater != 0;
-    /// <summary><c>_ZTV14PartDanglyMesh</c> + 0x10 -- the value a PartDanglyMesh's vtable slot holds (the
-    /// Itanium ABI puts the function pointers two words in).</summary>
-    internal static IntPtr _danglyVtbl;
     /// <summary>Resolve every engine read the three modules make off a part, a node or a material. One
     /// place, because all three call them and none may resolve a symbol of its own. False = a required one
     /// is missing (headless, or Windows), and nothing above may arm.</summary>
     internal static bool Resolve()
     {
-        // Resolved ONCE into a static here rather than through EngineFn at the use site: these three are
-        // asked per part per frame, and a lazy compare in that loop is the cost the declaration removes.
+        // Resolved ONCE into a static here rather than through EngineFn at the use site: these are asked
+        // per part per frame, and a lazy compare in that loop is the cost the declaration removes.
         _isOpaque = EngineFn.PartGetIsOpaque;
-        _hasEnvMap = EngineFn.MatHasEnvMap;
         _hasBumpyShiny = EngineFn.MatHasBumpyShinyMap;
-        IntPtr dv = Native.Sym(SymbolMap.PartDanglyMeshVtbl);
-        _danglyVtbl = EngineAbi.Vtbl(dv);
         _getTexture = EngineFn.MatGetTexture;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         _bumpyWater = (int*)Native.Sym(SymbolMap.EnableBumpyWater);
-        return _isOpaque != null && _hasEnvMap != null && _hasBumpyShiny != null && _getTexture != null && _primTable != null;
-    }
-    /// <summary>A <c>PartDanglyMesh</c>, which reaches this hook because <c>PartDanglyMesh::Draw</c> @0x451b60
-    /// calls <c>PartTriMesh::Draw</c> outright. Not a reason to refuse the part: the CPU re-solve is
-    /// <c>PartDanglyMesh::Animate(float)</c> @0x49bbb0, a separate pass that writes the part's own DYNAMIC
-    /// vertex pool, so a harvest off the engine's VAO inherits whichever pool it bound. Tested by vtable.</summary>
-    internal static bool IsDangly(IntPtr part)
-    {
-        if (_danglyVtbl == IntPtr.Zero || part == IntPtr.Zero) return false;
-        return *(IntPtr*)part == _danglyVtbl;
+        return _isOpaque != null && _hasBumpyShiny != null && _getTexture != null && _primTable != null;
     }
     /// <summary>The engine's verdict reproduced from a cached box. <c>Camera::GetCanKeyholeDissolve</c>
     /// @0x4a6f70 requires a gobless part above the cut and <c>BoxAbovePlane</c> @0x5b32d0 negative;

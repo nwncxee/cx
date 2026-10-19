@@ -209,8 +209,6 @@ global using unsafe AreaUpdateFn = delegate* unmanaged<nint, float, void>;
 global using unsafe HandleServerToPlayerAreaFn = delegate* unmanaged<nint, byte, int>;
 global using unsafe SceneHitCheckFn = delegate* unmanaged<nint, CX.Engine.VectorArg, CX.Engine.VectorArg, CX.Engine.Vec3*, nint, int>;
 global using unsafe HitInfoResetFn = delegate* unmanaged<nint, int, long, int, void>;
-global using unsafe VdoCommitItemDynamicDataFn = delegate* unmanaged<nint, uint, uint, void>;
-global using unsafe MatHasEnvMapFn = delegate* unmanaged<nint, byte>;
 global using unsafe MatHasBumpyShinyMapFn = delegate* unmanaged<nint, byte>;
 global using unsafe MatGetTextureFn = delegate* unmanaged<nint, int, long>;
 global using unsafe SharedMaterialParseFieldFn = delegate* unmanaged<nint, byte*, void>;
@@ -252,7 +250,6 @@ global using unsafe AurTextureGetFn = delegate* unmanaged<byte*, nint, byte*, in
 global using unsafe AurTextureGetTIDFn = delegate* unmanaged<nint, int>;
 global using unsafe AurTextureGetControllerFn = delegate* unmanaged<nint, nint>;
 global using unsafe AurTextureDtorFn = delegate* unmanaged<nint, void>;
-global using unsafe AurTextureBuildAndStoreFn = delegate* unmanaged<nint, void>;
 global using unsafe ResManExistsFn = delegate* unmanaged<nint, byte*, ushort, uint*, int>;
 global using unsafe ResManGetResObjectFn = delegate* unmanaged<nint, byte*, ushort, nint>;
 global using unsafe ResManSetResObjectFn = delegate* unmanaged<nint, byte*, ushort, nint, void>;
@@ -4764,14 +4761,6 @@ public static unsafe class EngineFn
     private static bool _HitInfoResetDone;
     /// <inheritdoc cref="SymbolMap.HitInfoReset"/>
     public static HitInfoResetFn HitInfoReset => (HitInfoResetFn)(_HitInfoResetDone ? _HitInfoReset : Resolve(ref _HitInfoReset, ref _HitInfoResetDone, SymbolMap.HitInfoReset));
-    private static IntPtr _VdoCommitItemDynamicData;
-    private static bool _VdoCommitItemDynamicDataDone;
-    /// <inheritdoc cref="SymbolMap.VdoCommitItemDynamicData"/>
-    public static VdoCommitItemDynamicDataFn VdoCommitItemDynamicData => (VdoCommitItemDynamicDataFn)(_VdoCommitItemDynamicDataDone ? _VdoCommitItemDynamicData : Resolve(ref _VdoCommitItemDynamicData, ref _VdoCommitItemDynamicDataDone, SymbolMap.VdoCommitItemDynamicData));
-    private static IntPtr _MatHasEnvMap;
-    private static bool _MatHasEnvMapDone;
-    /// <inheritdoc cref="SymbolMap.MatHasEnvMap"/>
-    public static MatHasEnvMapFn MatHasEnvMap => (MatHasEnvMapFn)(_MatHasEnvMapDone ? _MatHasEnvMap : Resolve(ref _MatHasEnvMap, ref _MatHasEnvMapDone, SymbolMap.MatHasEnvMap));
     private static IntPtr _MatHasBumpyShinyMap;
     private static bool _MatHasBumpyShinyMapDone;
     /// <inheritdoc cref="SymbolMap.MatHasBumpyShinyMap"/>
@@ -4936,10 +4925,6 @@ public static unsafe class EngineFn
     private static bool _AurTextureDtorDone;
     /// <inheritdoc cref="SymbolMap.AurTextureDtor"/>
     public static AurTextureDtorFn AurTextureDtor => (AurTextureDtorFn)(_AurTextureDtorDone ? _AurTextureDtor : Resolve(ref _AurTextureDtor, ref _AurTextureDtorDone, SymbolMap.AurTextureDtor));
-    private static IntPtr _AurTextureBuildAndStore;
-    private static bool _AurTextureBuildAndStoreDone;
-    /// <inheritdoc cref="SymbolMap.AurTextureBuildAndStore"/>
-    public static AurTextureBuildAndStoreFn AurTextureBuildAndStore => (AurTextureBuildAndStoreFn)(_AurTextureBuildAndStoreDone ? _AurTextureBuildAndStore : Resolve(ref _AurTextureBuildAndStore, ref _AurTextureBuildAndStoreDone, SymbolMap.AurTextureBuildAndStore));
     private static IntPtr _ResManExists;
     private static bool _ResManExistsDone;
     /// <inheritdoc cref="SymbolMap.ResManExists"/>
@@ -6983,18 +6968,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.HitInfoReset"/>; returns the slot holding the next layer, or null.</summary>
     public static HitInfoResetFn* ChainHitInfoReset(this HookService h, HitInfoResetFn handler, int priority) =>
         (HitInfoResetFn*)h.Chain(SymbolMap.HitInfoReset, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.VdoCommitItemDynamicData"/>; returns the original, or null.</summary>
-    public static VdoCommitItemDynamicDataFn InstallVdoCommitItemDynamicData(this HookService h, VdoCommitItemDynamicDataFn handler) =>
-        (VdoCommitItemDynamicDataFn)h.Install(SymbolMap.VdoCommitItemDynamicData, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.VdoCommitItemDynamicData"/>; returns the slot holding the next layer, or null.</summary>
-    public static VdoCommitItemDynamicDataFn* ChainVdoCommitItemDynamicData(this HookService h, VdoCommitItemDynamicDataFn handler, int priority) =>
-        (VdoCommitItemDynamicDataFn*)h.Chain(SymbolMap.VdoCommitItemDynamicData, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.MatHasEnvMap"/>; returns the original, or null.</summary>
-    public static MatHasEnvMapFn InstallMatHasEnvMap(this HookService h, MatHasEnvMapFn handler) =>
-        (MatHasEnvMapFn)h.Install(SymbolMap.MatHasEnvMap, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.MatHasEnvMap"/>; returns the slot holding the next layer, or null.</summary>
-    public static MatHasEnvMapFn* ChainMatHasEnvMap(this HookService h, MatHasEnvMapFn handler, int priority) =>
-        (MatHasEnvMapFn*)h.Chain(SymbolMap.MatHasEnvMap, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.MatHasBumpyShinyMap"/>; returns the original, or null.</summary>
     public static MatHasBumpyShinyMapFn InstallMatHasBumpyShinyMap(this HookService h, MatHasBumpyShinyMapFn handler) =>
         (MatHasBumpyShinyMapFn)h.Install(SymbolMap.MatHasBumpyShinyMap, (IntPtr)handler);
@@ -7241,12 +7214,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.AurTextureDtor"/>; returns the slot holding the next layer, or null.</summary>
     public static AurTextureDtorFn* ChainAurTextureDtor(this HookService h, AurTextureDtorFn handler, int priority) =>
         (AurTextureDtorFn*)h.Chain(SymbolMap.AurTextureDtor, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.AurTextureBuildAndStore"/>; returns the original, or null.</summary>
-    public static AurTextureBuildAndStoreFn InstallAurTextureBuildAndStore(this HookService h, AurTextureBuildAndStoreFn handler) =>
-        (AurTextureBuildAndStoreFn)h.Install(SymbolMap.AurTextureBuildAndStore, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.AurTextureBuildAndStore"/>; returns the slot holding the next layer, or null.</summary>
-    public static AurTextureBuildAndStoreFn* ChainAurTextureBuildAndStore(this HookService h, AurTextureBuildAndStoreFn handler, int priority) =>
-        (AurTextureBuildAndStoreFn*)h.Chain(SymbolMap.AurTextureBuildAndStore, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ResManExists"/>; returns the original, or null.</summary>
     public static ResManExistsFn InstallResManExists(this HookService h, ResManExistsFn handler) =>
         (ResManExistsFn)h.Install(SymbolMap.ResManExists, (IntPtr)handler);

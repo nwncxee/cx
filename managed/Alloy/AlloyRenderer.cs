@@ -59,9 +59,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// reads. Must match <c>DrawBufDecl</c>'s literal.</summary>
     internal const uint BindDrawIdx = SsboSlots.DrawIdx;
     /// <summary>Bones per skinned part, fixed by the engine: <c>GLRender::m_bones</c> is a 64 x mat4 static
-    /// array and the vertex stream's indices address it directly. The matrices already sit in GLSL's
-    /// column-major order (see <see cref="SymbolMap.GlRenderBones"/>), so a snapshot is a straight memcpy.
-    /// </summary>
+    /// array and the vertex stream's indices address it directly. <c>SetBoneMatrix</c> stores each matrix
+    /// transposed and <c>SetUniforms</c> uploads it with <c>transpose=0</c>, so the matrices already sit in
+    /// GLSL's column-major order and a snapshot is a straight memcpy.</summary>
     internal const int BoneCount = 64, BoneFloats = BoneCount * 16;
     /// <summary>Skinned parts posed per frame, INITIAL capacity: 4KB each, so 512 slots is 2MB and covers a
     /// crowd. Not a ceiling -- the stage doubles rather than drop a creature, and the high-water mark is

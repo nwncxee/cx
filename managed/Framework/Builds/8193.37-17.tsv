@@ -838,7 +838,6 @@ rva	_ZN10CGuiInGame11UnToggleOffEv	0x6fc900	# GuiInGameUnToggleOff
 rva	_ZTV25CycleTIDTextureController	0xd905c0	# CycleTidControllerVtbl
 rva	noemittervar	0x128ead8	# GlPoolTableAnchor
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
-rva	_ZTV14PartDanglyMesh	0xd88698	# PartDanglyMeshVtbl
 rva	_ZN14SharedMaterialD2Ev	0x81f80	# SharedMaterialDtor
 rva	primTypeTranslationTable	0xd8ad20	# PrimTypeTranslationTable
 rva	_ZN14CPanelQuickBar10RepositionEv	0x860010	# QuickbarReposition
