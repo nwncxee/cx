@@ -51,7 +51,7 @@ public static class TextWrapper
         return spans;
     }
 
-    /// <summary>String convenience over <see cref="WrapRunes"/>; used by the self-check.</summary>
+    /// <summary>String convenience over <see cref="WrapRunes"/>; the self-check's plumbing.</summary>
     public static List<string> Wrap(string text, float maxWidth, Func<Rune, float> advanceOf)
     {
         var runes = new List<Rune>();
@@ -66,25 +66,22 @@ public static class TextWrapper
         return lines;
     }
 
-    /// <summary>
-    /// Runnable proof (run-demo prints it to /tmp/cx.log): a fixed 10px/rune advance must
-    /// word-wrap, hard-break an over-long word, and count a Cyrillic rune as one advance.
-    /// </summary>
+    /// <summary>Runnable proof: at a fixed 10px per rune the wrapper must break at the space, hard-break a
+    /// word too long to fit, and count a Cyrillic rune as one advance. Oracle: the three expected line lists
+    /// are written out here by hand, not taken from the wrapper.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         static float A(Rune _) => 10f;   // every rune 10px -> width 60 fits 6, 45 fits 4
-        bool ok = true;
-        ok &= Expect(log, "word-wrap", Wrap("hello world foo", 60f, A), new[] { "hello", "world", "foo" });
-        ok &= Expect(log, "hard-break", Wrap("abcdefgh", 60f, A), new[] { "abcdef", "gh" });
-        ok &= Expect(log, "cyrillic-rune", Wrap("аб вг", 45f, A), new[] { "аб", "вг" });
-        log.Info(ok ? "TextWrapper.SelfCheck: PASS" : "TextWrapper.SelfCheck: FAIL");
+        var check = new Checker(log);
+        Same(check, "word-wrap", Wrap("hello world foo", 60f, A), ["hello", "world", "foo"]);
+        Same(check, "hard-break", Wrap("abcdefgh", 60f, A), ["abcdef", "gh"]);
+        Same(check, "cyrillic-rune", Wrap("аб вг", 45f, A), ["аб", "вг"]);
+        log.Info(check.Ok ? "TextWrapper.SelfCheck: passed" : "TextWrapper.SelfCheck: FAILED");
     }
 
-    private static bool Expect(ExtenderLog log, string name, List<string> got, string[] want)
+    private static void Same(Checker check, string name, List<string> got, string[] want)
     {
-        bool eq = got.Count == want.Length;
-        for (int i = 0; eq && i < want.Length; i++) eq &= got[i] == want[i];
-        if (!eq) log.Info($"TextWrapper.SelfCheck[{name}]: got [{string.Join('|', got)}] want [{string.Join('|', want)}]");
-        return eq;
+        string g = string.Join('|', got), w = string.Join('|', want);
+        check.Expect(g == w, $"{name}: got [{g}] want [{w}]");
     }
 }

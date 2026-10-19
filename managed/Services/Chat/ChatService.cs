@@ -46,6 +46,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         InputMarkup.SelfCheck(log);      // emote/speech/OOC classification of the line being typed (off-device)
         InputStripLayout.SelfCheck(log); // the input strip's one geometry: hit-test, rows, counter reserve (off-device)
         RowAlign.SelfCheck(log);       // shared row alignment/justify primitive proof (off-device)
+        TextWrapper.SelfCheck(log);    // pixel-width word wrap, hard break, one advance per rune (off-device)
         ChatAnim.SelfCheck(log);       // fade/slide/scroll math proof (off-device)
         ChatConfig.SelfCheck(log);     // per-window pair round-trip proof (off-device)
         TextRig.SelfCheck(log);   // session-clear drops cached engine texture pointers (off-device)
