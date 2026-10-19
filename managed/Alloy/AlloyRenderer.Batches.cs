@@ -383,7 +383,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The part's own alpha multiplier (part+0xa0), live: it is animated state, not enrollment
     /// state.</summary>
-    private static float PartAlpha(IntPtr tri) => new PartRef(tri).Alpha;
+    private static float PartAlpha(IntPtr tri) => new PartTriMesh(tri).Alpha;
 
     /// <summary>The scene this pass is drawing. Set by the world pass before the route walk; a slot of any
     /// other scene is skipped, which is what keeps one view from drawing another's objects.</summary>

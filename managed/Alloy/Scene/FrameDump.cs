@@ -273,8 +273,8 @@ internal static unsafe class FrameDump
             return n.Length == 0 ? "-" : n;
         }
         int slot = s < 0 ? 0 : s == AlloyRenderer.AoSlot ? AlloyRenderer.AoTexture : s + 1;
-        TextureRef t = new MaterialRef(mat).TextureAt(slot);
-        return t.IsNull ? "-" : t.ResolveName();
+        IntPtr t = MatTextures.Declared(mat, slot);
+        return t == IntPtr.Zero ? "-" : AlloyCensus.TexName(t);
     }
 
     /// <summary>Close the capture: canonicalise, count the distinct full keys against the groups the

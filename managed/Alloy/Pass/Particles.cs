@@ -1064,10 +1064,9 @@ internal static unsafe partial class Particles
     {
         if (mat.IsNull) return 1f;
         float v = 1f;
-        var mr = new MaterialRef(mat.Ptr);
-        SharedRef shared = mr.Shared;
+        SharedMaterial shared = mat.Shared;
         if (!shared.IsNull) Scan(shared.Params, shared.ParamCount, ref v);
-        Scan(mr.Params, mr.ParamCount, ref v);
+        Scan(mat.Params, mat.ParamCount, ref v);
         return v <= 0f ? 1f : MathF.Min(v, MaxEmissive);
     }
 

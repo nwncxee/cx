@@ -76,12 +76,12 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
 
     /// <summary>The extra slot's texture, or null. <paramref name="n"/> is the <c>.mtr</c> index
     /// (<c>texture11</c> = 11). Borrowed like every material texture: guard before dereferencing.</summary>
-    internal static TextureRef Texture(IntPtr shared, int n)
+    internal static IntPtr Texture(IntPtr shared, int n)
     {
         int s = n - First;
-        if (shared == IntPtr.Zero || (uint)s >= Count) return new(IntPtr.Zero);
+        if (shared == IntPtr.Zero || (uint)s >= Count) return IntPtr.Zero;
         lock (_lock)
-            return _table.TryGetValue(shared, out var e) ? new(((Entry*)e)->Tex[s]) : new(IntPtr.Zero);
+            return _table.TryGetValue(shared, out var e) ? ((Entry*)e)->Tex[s] : IntPtr.Zero;
     }
 
     [UnmanagedCallersOnly]
@@ -230,7 +230,7 @@ public sealed unsafe class MaterialExtraSlots : IExtenderService
         check.Expect(Name(a, 13) == "", "unset slot empty");
         check.Expect(Name(a, 14) == "0123456789abcdef", "resref clipped to 16");
         check.Expect(Name(a, 9) == "" && Name(a, 15) == "", "out-of-range reads empty");
-        check.Expect(Texture(a, 11).IsNull, "unloaded slot reads null");
+        check.Expect(Texture(a, 11) == IntPtr.Zero, "unloaded slot reads null");
         check.Expect(!Forget(b), "no entry for a material with no extra lines");
         check.Expect(Forget(a) && !Forget(a) && Name(a, 11) == "", "evicted once");
         log.Info(check.Ok ? "MaterialExtraSlots.SelfCheck: passed" : "MaterialExtraSlots.SelfCheck: FAILED");

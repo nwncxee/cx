@@ -257,10 +257,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         return sb.ToString();
     }
     /// <summary>Name a diffuse the bindless guard turned away, once per distinct resref.</summary>
-    private static void TexSkipDiag(bool owned, int tid, TextureRef aur)
+    private static void TexSkipDiag(bool owned, int tid, IntPtr aur)
     {
         if (Diag._texSkipDiagLeft <= 0) return;
-        string nm = aur.ResolveName();
+        string nm = AlloyCensus.TexName(aur);
         if (!Diag._texSkipSeen.Add(nm)) return;
         Diag._texSkipDiagLeft--;
         _log?.Info($"AlloyRenderer: [texskip] \"{nm}\" tid={tid} owned={owned} -- "

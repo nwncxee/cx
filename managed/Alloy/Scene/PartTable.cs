@@ -49,7 +49,7 @@ internal static unsafe class PartTable
     internal static bool IsDangly(IntPtr part)
     {
         if (_danglyVtbl == IntPtr.Zero || part == IntPtr.Zero) return false;
-        return new PartRef(part).Vtbl == _danglyVtbl;
+        return *(IntPtr*)part == _danglyVtbl;
     }
     /// <summary>The engine's verdict reproduced from a cached box. <c>Camera::GetCanKeyholeDissolve</c>
     /// @0x4a6f70 requires a gobless part above the cut and <c>BoxAbovePlane</c> @0x5b32d0 negative;
