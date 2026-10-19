@@ -10,9 +10,9 @@ public sealed unsafe partial class MovieService
     /// all, so <see cref="MoviePlate.Fit"/> is checked against the engine rather than against itself. The
     /// engine's fixed [-1,1] quad inside <c>SetOrthoTransform(-right, right, -top, top, -1, 1)</c> has
     /// clip-space half-extent <c>1/right</c> by <c>1/top</c>.</summary>
-    private static void EngineOrtho(int w, int h, int vpW, int vpH, float guiScale, out float right, out float top)
+    private static void EngineOrtho(int w, int h, int screenW, int screenH, float guiScale, out float right, out float top)
     {
-        float sw = vpW, sh = vpH;
+        float sw = screenW, sh = screenH;
         float m = MathF.Max(w / sw * guiScale, h / sh * guiScale);
         top = sh / guiScale * m / h;
         right = m * (sw / guiScale) / w;
@@ -27,7 +27,7 @@ public sealed unsafe partial class MovieService
 
         // 1. Against the engine's own expression, at three GUI scales: the scale cancels, which is why it is
         //    not a term in Fit (and why Fit needs no engine call at all).
-        (int w, int h, int vw, int vh)[] cases =
+        (int w, int h, int sw, int sh)[] cases =
         [
             (1920, 1080, 1920, 1080),   // exact fit
             (640, 480, 1920, 1080),     // 4:3 in 16:9 -> pillarbox
@@ -37,29 +37,29 @@ public sealed unsafe partial class MovieService
         foreach (var c in cases)
             foreach (float scale in new[] { 1f, 1.5f, 2.5f })
             {
-                EngineOrtho(c.w, c.h, c.vw, c.vh, scale, out float right, out float top);
-                MoviePlate p = MoviePlate.Fit(c.w, c.h, c.w, c.h, c.vw, c.vh);
+                EngineOrtho(c.w, c.h, c.sw, c.sh, scale, out float right, out float top);
+                MoviePlate p = MoviePlate.Fit(c.w, c.h, c.w, c.h, c.sw, c.sh);
                 check.Expect(MathF.Abs(1f / right - p.Sx) < Eps && MathF.Abs(1f / top - p.Sy) < Eps,
-                             $"the {c.w}x{c.h} plate in {c.vw}x{c.vh} matches the engine's ortho at GUI scale {scale} "
+                             $"the {c.w}x{c.h} plate in {c.sw}x{c.sh} matches the engine's ortho at GUI scale {scale} "
                            + $"(engine {1f / right:F4}x{1f / top:F4}, ours {p.Sx:F4}x{p.Sy:F4})");
             }
 
         // 2. The invariants the shape has to have whatever the numbers are.
         foreach (var c in cases)
         {
-            MoviePlate p = MoviePlate.Fit(c.w, c.h, c.w, c.h, c.vw, c.vh);
-            check.Expect(p.Sx > 0f && p.Sx <= 1f && p.Sy > 0f && p.Sy <= 1f, $"the {c.w}x{c.h} plate stays inside the viewport");
-            check.Expect(MathF.Abs(MathF.Max(p.Sx, p.Sy) - 1f) < Eps, $"the {c.w}x{c.h} plate touches the viewport on its long axis");
-            float drawn = p.Sx * c.vw / (p.Sy * c.vh);
+            MoviePlate p = MoviePlate.Fit(c.w, c.h, c.w, c.h, c.sw, c.sh);
+            check.Expect(p.Sx > 0f && p.Sx <= 1f && p.Sy > 0f && p.Sy <= 1f, $"the {c.w}x{c.h} plate stays inside the screen");
+            check.Expect(MathF.Abs(MathF.Max(p.Sx, p.Sy) - 1f) < Eps, $"the {c.w}x{c.h} plate touches the screen on its long axis");
+            float drawn = p.Sx * c.sw / (p.Sy * c.sh);
             check.Expect(MathF.Abs(drawn - (float)c.w / c.h) < 1e-3f,
-                         $"the {c.w}x{c.h} plate keeps its aspect on a {c.vw}x{c.vh} viewport (drawn {drawn:F4})");
+                         $"the {c.w}x{c.h} plate keeps its aspect on a {c.sw}x{c.sh} screen (drawn {drawn:F4})");
         }
 
         // 3. Which way round the bars go: 4:3 in 16:9 is pillarboxed (narrower), 16:9 in 5:4 letterboxed.
         MoviePlate pillar = MoviePlate.Fit(640, 480, 640, 480, 1920, 1080);
-        check.Expect(pillar.Sx < 1f && MathF.Abs(pillar.Sy - 1f) < Eps, "a 4:3 movie on a 16:9 viewport gets bars at the SIDES");
+        check.Expect(pillar.Sx < 1f && MathF.Abs(pillar.Sy - 1f) < Eps, "a 4:3 movie on a 16:9 screen gets bars at the SIDES");
         MoviePlate letter = MoviePlate.Fit(854, 480, 854, 480, 1280, 1024);
-        check.Expect(letter.Sy < 1f && MathF.Abs(letter.Sx - 1f) < Eps, "a 16:9 movie on a 5:4 viewport gets bars top and bottom");
+        check.Expect(letter.Sy < 1f && MathF.Abs(letter.Sx - 1f) < Eps, "a 16:9 movie on a 5:4 screen gets bars top and bottom");
 
         // 4. The texture window: the decoded frame is the top-left corner of a padded texture, inset half a
         //    texel so the LINEAR fetch this port uses never reaches the pad (the engine's NEAREST could).

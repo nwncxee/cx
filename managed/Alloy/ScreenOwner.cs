@@ -22,8 +22,12 @@ internal static unsafe class ScreenOwner
     private static bool _said;
 
     /// <summary>An engine draw that owns the whole screen is running (a movie frame handed back to the engine's quad):
-    /// its clears are its own.</summary>
+    /// its clears are its own, and so is its draw -- <see cref="RspShim"/> lets that one through.</summary>
     internal static bool EngineFrame;
+
+    /// <summary>What <c>GLRender::BindDefaultFramebuffer</c> binds -- the screen; 0 unless the engine renders
+    /// through one of its own, and 0 before the caches resolve, which is what it would have bound anyway.</summary>
+    internal static uint DefaultFbo => _defaultFbo != null ? *_defaultFbo : 0u;
 
     /// <summary>The engine's last <c>glClearColor</c>: the fog colour in an area, black at the menus.</summary>
     internal static readonly float[] ClearRgba = { 0f, 0f, 0f, 1f };
