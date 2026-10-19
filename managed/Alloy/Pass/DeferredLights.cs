@@ -128,16 +128,9 @@ internal static unsafe class DeferredLights
         SetUniforms(in _gl.L, viewport, near, far, &invVp, view, proj, &eye);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindStats, _gl.BufStats);
 
-        BindUnit(TextureSlots.ShadowVis, DeferredShadows.TexVis);
-        BindUnit(TextureSlots.ShadowKey, DeferredShadows.TexKey);
-        BindUnit(TextureSlots.Gbuf0, GBuffer.Tex0);
-        BindUnit(TextureSlots.Gbuf1, GBuffer.Tex1);
-        BindUnit(TextureSlots.Gbuf2, GBuffer.Tex2);
-        BindUnit(TextureSlots.Gbuf3, GBuffer.Tex3);
-        // The frame's own depth attachment, read while it is attached: a compute dispatch touches no
-        // framebuffer, so there is no feedback loop to have. The lit stage samples the same texture at the same
-        // time for the same reason (SsaoPass.BindForDraw's uSceneDepth).
-        BindUnit(TextureSlots.GbufDepth, PostChain.DepthTex);
+        GBuffer.BindUnit(TextureSlots.ShadowVis, DeferredShadows.TexVis);
+        GBuffer.BindUnit(TextureSlots.ShadowKey, DeferredShadows.TexKey);
+        GBuffer.BindForCompute();
         Gl.BindImageTexture(0, PostChain.HdrTex, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA16F);
         Gl.BindImageTexture(1, GBuffer.TexLight, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
 
@@ -159,10 +152,8 @@ internal static unsafe class DeferredLights
 
         Gl.BindImageTexture(0, 0, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA16F);
         Gl.BindImageTexture(1, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
-        BindUnit(TextureSlots.Gbuf0, 0); BindUnit(TextureSlots.Gbuf1, 0);
-        BindUnit(TextureSlots.Gbuf2, 0); BindUnit(TextureSlots.Gbuf3, 0);
-        BindUnit(TextureSlots.GbufDepth, 0);
-        BindUnit(TextureSlots.ShadowVis, 0); BindUnit(TextureSlots.ShadowKey, 0);
+        GBuffer.UnbindCompute();
+        GBuffer.BindUnit(TextureSlots.ShadowVis, 0); GBuffer.BindUnit(TextureSlots.ShadowKey, 0);
         Gl.ActiveTexture(Gl.TEXTURE0);   // the unit every pass leaves current: the colour loop rebinds diffuse there
         Gl.UseProgram(0);
         _runs++;
@@ -192,12 +183,6 @@ internal static unsafe class DeferredLights
         _entries += v[7] - _gl.LastEnt;
         _gl.LastTiles = v[0]; _gl.LastLights = v[1]; _gl.LastMiss = v[2]; _gl.LastDrop = v[3];
         _gl.LastWalk = v[4]; _gl.LastTaps = v[5]; _gl.LastPix = v[6]; _gl.LastEnt = v[7];
-    }
-
-    private static void BindUnit(uint unit, uint tex)
-    {
-        Gl.ActiveTexture(Gl.TEXTURE0 + unit);
-        Gl.BindTexture(Gl.TEXTURE_2D, tex);
     }
 
     /// <summary>Every uniform the walk and the film pass both take, through <paramref name="l"/>, the bound

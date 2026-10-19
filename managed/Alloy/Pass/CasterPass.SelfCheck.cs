@@ -215,10 +215,10 @@ public sealed unsafe partial class CasterPass
             int hold = _dynHold; Shadows.DynHold.V = 0;   // plain knob writes: nothing runs, nothing is written
             _frameSeq = 9; _moverCount = _dMoverCount = _sMoverCount = 0;
             _dynStamp[5] = 0; _dynStamp[6] = 0; _dynStamp[7] = 8;
-            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false, vDirty: false);
-            Admit(1, 6, skinned: false, appeared: false, recMoved: true, dangly: false, vDirty: false);
-            Admit(2, 7, skinned: false, appeared: false, recMoved: true, dangly: false, vDirty: false);
-            Admit(3, 8, skinned: false, appeared: true, recMoved: false, dangly: false, vDirty: false);
+            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false);
+            Admit(1, 6, skinned: false, appeared: false, recMoved: true, dangly: false);
+            Admit(2, 7, skinned: false, appeared: false, recMoved: true, dangly: false);
+            Admit(3, 8, skinned: false, appeared: true, recMoved: false, dangly: false);
             bool pred = _moverCount == 3 && _moverIdx[0] == 1 && _moverIdx[1] == 2 && _moverIdx[2] == 3
                         && _dMoverCount == 2 && _dMoverIdx[0] == 1 && _dMoverIdx[1] == 2
                         && _sMoverCount == 2 && _sMoverIdx[0] == 1 && _sMoverIdx[1] == 3
@@ -228,8 +228,8 @@ public sealed unsafe partial class CasterPass
             // repeat every frame under vertex-dirty flapping is the churn this exists to stop.
             Shadows.DynHold.V = 4; _moverCount = _dMoverCount = _sMoverCount = 0;
             _dynStamp[5] = 6; _dynStamp[6] = 4;
-            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false, vDirty: false);
-            Admit(1, 6, skinned: false, appeared: false, recMoved: false, dangly: false, vDirty: false);
+            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false);
+            Admit(1, 6, skinned: false, appeared: false, recMoved: false, dangly: false);
             pred &= _moverCount == 0 && _dMoverCount == 1 && _dMoverIdx[0] == 0 && _sMoverCount == 1 && _sMoverIdx[0] == 1
                     && _liveDyn[0] && !_liveDyn[1];
             Shadows.DynHold.V = hold;
@@ -240,7 +240,7 @@ public sealed unsafe partial class CasterPass
             { ok = false; log.Info("CasterPass.SelfCheck FAIL: the mover predicate misclassifies a caster (a shadow that stops tracking, or a static page that never re-bakes)"); }
         }
         if (ok)
-        {   // #336: the refresh's visit set. Three still casters on one clean VDO; slot 21's record changed
+        {   // #336: the refresh's visit set. Three still casters; slot 21's record changed
             // in the colour build, slot 22 was dynamic last frame, slot 20 nothing named -- so exactly two are
             // visited and the third keeps its verdict, and the refreshall A/B visits all three.
             // Off-device every ownership slot reads skinned (an unenrolled bone slot is 0), so the three
@@ -248,7 +248,6 @@ public sealed unsafe partial class CasterPass
             _frameSeq = 12; _collectSeq = 3; _liveCount = 3; _liveCreatures = 3;
             for (int q = 0; q < 3; q++)
             { _liveSlot[q] = 20 + q; _liveVao[q] = 0; _liveIdx[20 + q] = q; _liveIdxSeq[20 + q] = 3; _liveVisit[q] = 0; _liveDyn[q] = false; _liveOff[q] = false; _liveCreature[q] = true; AlloyRenderer.SelfCheckCastOk(20 + q, true); }
-            BucketByVao();
             AlloyRenderer.ResetCasterTouched(); AlloyRenderer.NoteCasterTouched(21);
             _dPrevIdx[0] = 2; _dPrevCount = 1; _dynStamp[22] = 11;
             long visits = _visitSum, touched = _touchedSum; _visitSum = 0;

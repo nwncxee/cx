@@ -15,7 +15,7 @@ internal static unsafe class AreaBorder
     /// <summary>The engine's own ring: LoadBorder walks <c>-5..-1</c> past each near edge and <c>dim..dim+4</c>
     /// past each far one, and LoadArea sizes the BSP with <c>InitBSP(w, h, 5)</c>.</summary>
     internal const int EngineRing = 5;
-    internal const int DefaultRing = 15, MaxRing = 40;
+    internal const int DefaultRing = 15;
     /// <summary><c>CNWTile::TILE_WIDTH</c> / <c>TILE_LENGTH</c> @0x1311850 = 10.0, and the half-tile the border
     /// loop adds (DAT_013ee9e8 = 5.0): grid <c>(i, j)</c> spawns at <c>(i*10+5, j*10+5)</c>.</summary>
     internal const float TileSize = 10f, TileHalf = 5f;

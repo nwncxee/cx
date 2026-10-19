@@ -33,29 +33,17 @@ internal static unsafe partial class Beams
     /// store 0, so a larger fallback draws every shaft proud of vanilla's -- and draws them at night.</summary>
     private const float DefaultAlpha = 0.05f;
     private const uint GlUnsignedShort = 0x1403;   // not-an-offset: GL enum
-    /// <summary>The engine attribute locations a beam VDO carries, from <c>GLRender::ConnectShaderData</c>'s
-    /// bind table @0x4ce8e0: <c>vPos</c> at 0 and <c>fProjectionFrontal</c> at 10. That pair is why beams
-    /// cannot ride <c>AlloyRenderer</c>'s VAO cache -- it harvests position/UV/normal and refuses a VDO
-    /// with no UV stream, which is every beam.</summary>
-    private const uint EngPos = 0, EngFrontal = 10;
-    /// <summary>...and ours, which the Alloy VAO binds them at.</summary>
-    private const uint LocPos = 0, LocFrontal = 1;
     /// <summary>Aurora blend factors <c>RenderBeams</c> sets: <c>SetBlendFunc(0, 2)</c> =
     /// (GL_SRC_ALPHA, GL_ONE).</summary>
     private const uint GlSrcAlpha = 0x0302, GlOne = 1;   // not-an-offset: GL blend-factor enums
-    /// <summary>A handful of static volumes per area; past this a beam is left to the engine.</summary>
-    private const int MaxBeams = 2048, MaxVdos = 512;
-    /// <summary>The bucket <c>RenderBeams</c> asks the scene's <c>DrawBucketManager</c> for.</summary>
-    private const int BeamBucket = 0xf;   // not-an-offset: a draw-bucket index, not a place in memory
+    /// <summary>A handful of static volumes per area; past this a beam is not drawn.</summary>
+    private const int MaxBeams = 2048;
 
-    /// <summary>One enrolled beam. Rebuilt from the bucket every frame, so there is no liveness field: an
-    /// entry exists exactly while the engine's own classification holds it.</summary>
+    /// <summary>One enrolled beam. Rebuilt from the part table whenever the set moves, so there is no
+    /// liveness field: an entry exists exactly while the classification holds it.</summary>
     internal struct Beam
     {
-        public IntPtr Vdo;
-        public int Item, Vao;
-        /// <summary>The database part this beam is, and its mesh-arena range. Both -1 on the
-        /// engine path, where the geometry is a baked projection VDO instead.</summary>
+        /// <summary>The database part this beam is, and its mesh-arena range.</summary>
         public int Part, Range;
     }
 
@@ -67,17 +55,11 @@ internal static unsafe partial class Beams
     private static readonly int[] _sBeam = new int[MaxBeams], _sCount = new int[MaxBeams], _sBase = new int[MaxBeams];
     private static readonly nint[] _sOff = new nint[MaxBeams];
 
-    // per-VDO VAO cache, ours alone: two attributes, harvested in the ENGINE context at capture and built in
-    // the 4.6 one at draw (VAOs do not share across contexts; buffers do -- #70).
-
     private static ExtenderLog? _log;
-    /// <summary>The model base, taken once per enrollment. Every beam shares it: the bucket-15 volumes are
-    /// baked in one space and <c>RenderBeams</c> sets no per-part transform.</summary>
-    private static Matrix4x4 _model = Matrix4x4.Identity;
     private static int* _enable;
     private static float* _alpha;
     private static uint* _primTable;
-    private static bool _off, _failed;
+    private static bool _off;
     /// <summary>The player's own switch (<c>effects.beams</c>). Distinct from <see cref="_off"/>, which means
     /// the session cannot own beams at all: the hooks arm either way, so the toggle is live.</summary>
     private static bool Disabled => !Effects.Beams.V;
@@ -226,7 +208,7 @@ internal static unsafe partial class Beams
         // offset and a back-facing vertex extrudes until world z reaches the clip plane, with the minimum
         // as a floor. Getting the max() backwards inverts the shaft above the clip height, which is most of
         // an outdoor scene; losing the floor collapses the frontal cap onto the geometry it came from.
-        foreach (string stage in new[] { "cx_beam_v.glsl", "cx_beamdb_v.glsl" })
+        foreach (string stage in new[] { "cx_beamdb_v.glsl" })
         {
             string src = ShaderSource.Get(stage);
             check.Expect(src.Contains("const float CX_BEAM_MIN_OFFSET = 0.1;"),
@@ -243,12 +225,6 @@ internal static unsafe partial class Beams
     }
 
     // ---- shaders -----------------------------------------------------------------------------
-
-    /// <summary>The vertex stage, ported from the client's own <c>vs_beamvol.shd</c>. Only the DIRECTIONAL
-    /// branch survives: <c>RenderBeams</c> pushes <c>projectionSource.w = -1</c> unconditionally, so the
-    /// point-light path is dead code at this call site. The fog term is dropped (ponytail: add it if a foggy
-    /// exterior shows a shaft standing proud), and the stage carries no invariant clip expression.</summary>
-    private static string BeamVs => ShaderSource.Get("cx_beam_v.glsl");
 
     /// <summary>The fragment stage: a flat tint, exactly as <c>fs_beamvol.shd</c> is once its fog term goes.
     /// No encode -- the Alloy colour target is LINEAR and the one whole-frame encode happens at the resolve;

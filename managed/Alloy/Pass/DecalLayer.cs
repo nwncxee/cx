@@ -24,7 +24,7 @@ internal static unsafe class DecalLayer
         public ExtenderLog? Log;
         public uint Fbo, Layer, Surf;
         public int W, H;
-        public bool Checked, Failed;
+        public bool Failed;
         /// <summary>The layer holds this frame's decals, bound for reading: the opaque pass folds it and the
         /// blended pass drops what it took.</summary>
         public bool Live;

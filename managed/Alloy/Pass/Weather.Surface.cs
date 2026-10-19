@@ -37,9 +37,7 @@ internal static unsafe partial class Weather
     private static float _wet, _snow, _puddle;
     private static long _surfTicks, _enterTicks;
 
-    internal static float Wet => _wet;
     internal static float Snow => _snow;
-    internal static float Puddle => _puddle;
 
     /// <summary>The wetness the lit stage's splice is handed (0 while the weather is off), for ground the
     /// wetness map has not reached and for stages that read neither map nor cover.</summary>

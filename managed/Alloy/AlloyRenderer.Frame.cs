@@ -221,7 +221,6 @@ public sealed unsafe partial class AlloyRenderer
         // GUI flush's and the render thread's all route through the one entry point for that reason.
         GlContextService.RunInBracketHere();
         OwnedBuffers.ClearDirty();   // #260: geometry uploaded itself at the engine's commit; close the window
-        ClearItemCommits();
         Step("ApplySwaps");
         ApplySwaps();   // #386: swapped texture names take their new handles here, in the context that owns residency
         OwnedBuffers.HighWater();    // ...and report the mark the funnel recorded, where a string is affordable
@@ -284,7 +283,6 @@ public sealed unsafe partial class AlloyRenderer
         // #287's scale, hoisted ahead of the staging walk: the automatic-LOD pick reads it there, and the
         // cull dispatch below is handed the same figure.
         _lodScale = perspective ? p11 * viewport[3] * 0.5f : 0f;
-        MeshLod.Pump();   // the one GL edge of the LOD arena: collect what the worker finished
         MeshChart.Pump(); // ...and of the chart arenas (#673)
         CX.Alloy.Db.MeshArena.Pump();   // CX-114: the one model-space arena -- frees land and both mirrors go up
         FrameZones.Add(FrameZones.Zone.Pump, tPump);
@@ -1103,9 +1101,7 @@ public sealed unsafe partial class AlloyRenderer
         // the parameter buffer and does not come back. The period line's cull clause carries the kept figure;
         // this one is the ceiling it culls from, and reading it as "draws" would overstate the pass.
         if (!retest) { Counters._prepassDraws += drawn; Counters._prepassSkipped += skipped; }
-        // #214: OUR depth attachment, not the engine's -- a texture by construction, so consumers get a
-        // sampleable name rather than whatever the engine happened to allocate.
-        DepthResource.Publish((int)Gl.ATTACHMENT_TEXTURE, (int)PostChain.DepthTex, viewport, PassGen);
+        DepthResource.Publish(PassGen);
     }
 
     /// <summary>Bind content pair <paramref name="feat"/>'s depth twin and the terms it reads at <paramref name="vp"/>; the

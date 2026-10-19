@@ -304,10 +304,6 @@ internal static unsafe class FrameDump
             w.WriteLine("# a residual of moving rows as the scene, not as the renderer.");
             w.WriteLine($"# draws={_rows.Count} distinct-keys={distinct} groups-minted={groups} " +
                         $"fragmentation={groups - distinct}");
-            // #294: a G line's vao= naming one of these is a part sampling every map at the constant (0,0).
-            // The harvest counts come with it because there is no log file to read them off -- a part that
-            // is MISSING from the dump entirely is a refusal, and these say which of the three it was.
-            w.WriteLine($"# uvless-vaos={AlloyRenderer.UvlessSlots()}");
             for (int i = 0; i < _rows.Count; i++)
             {
                 if (i == 0 || _rows[i].Key != _rows[i - 1].Key)

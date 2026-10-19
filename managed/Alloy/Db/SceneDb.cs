@@ -758,9 +758,9 @@ public static class SceneDb
 
     // ---- CX-116 tiles: one record per tile PLACEMENT, written by TileBuild ----
 
-    /// <summary>Tile placements held at once. The engine's largest grid is 32x32 and
-    /// <c>AreaBorder.MaxRing</c> is 40 tiles of ring on each side, so the worst case is
-    /// <c>(32 + 80)^2 = 12544</c>; 16384 covers it with the occupancy on the period line.</summary>
+    /// <summary>Tile placements held at once. The engine's largest grid is 32x32 and <c>alloy.border</c>
+    /// tops out at 40 tiles of ring on each side, so the worst case is <c>(32 + 80)^2 = 12544</c>; 16384
+    /// covers it with the occupancy on the period line.</summary>
     public const int MaxTiles = 1 << 14;
     public static readonly DbTable Tiles = new(MaxTiles);
 

@@ -56,7 +56,7 @@ internal static unsafe partial class Weather
     private static int _drawn, _count, _drips;
     private static Vector3 _fall;
 
-    private struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Speed, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back; }
+    private struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back; }
 
     private static void DeclareKnobs()
     {
@@ -90,10 +90,6 @@ internal static unsafe partial class Weather
     }
 
     private static void InstallDraw(ExtenderLog log) => InstallCover(log);
-
-    /// <summary>The fall vector this frame: gravity leaning into the area wind (a raw engine vector, see
-    /// <see cref="AlloyRenderer.DescribeWind"/>), normalised. Shared with the occlusion map.</summary>
-    internal static Vector3 Fall => _fall;
 
     /// <summary>The cover map's bake direction: rain's wind-leaning fall vector, but a fixed small tilt into
     /// the wind while snow falls or lies -- the leaning vector snowed the lee side of every wall and left the

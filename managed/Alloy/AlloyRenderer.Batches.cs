@@ -381,10 +381,6 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly int[] _sortIdx = new int[MaxOwned];
     private static readonly float[] _sortKey = new float[MaxOwned], _sortAlpha = new float[MaxOwned];
 
-    /// <summary>The part's own alpha multiplier (part+0xa0), live: it is animated state, not enrollment
-    /// state.</summary>
-    private static float PartAlpha(IntPtr tri) => new PartTriMesh(tri).Alpha;
-
     /// <summary>The scene this pass is drawing. Set by the world pass before the route walk; a slot of any
     /// other scene is skipped, which is what keeps one view from drawing another's objects.</summary>
     internal static DbId _dbPassScene;
@@ -393,10 +389,8 @@ public sealed unsafe partial class AlloyRenderer
     /// One column load: the tint's w.</summary>
     private static float DbObjAlpha(int part) => SceneDb.ObjTint[SceneDb.PartObj[part].Index].W;
 
-    /// <summary>The part's own alpha, read off the part every frame for a gob or matrix-class part (the
-    /// animated ones) and every <see cref="ColourCadence"/> frames for a still gobless part -- the tile
-    /// geometry that is the routed majority, whose <c>+0xa0</c> only an MDL alpha controller writes.
-    /// <c>/alloy poll 1</c> reads and audits the cache every frame.</summary>
+    /// <summary>The part's own alpha, off the scene DB's column: the part's <c>+0xa0</c>, which only an MDL
+    /// alpha controller writes.</summary>
     private static float PartAlphaCached(int i, IntPtr tri) => SceneDb.PartAlpha[_oDbPart[i]];
 
     /// <summary>This frame's whole alpha multiplier for a part -- its own animated alpha, the fade factor of
@@ -428,10 +422,6 @@ public sealed unsafe partial class AlloyRenderer
     /// rider outlives its creature, so a reader that dereferences it checks it first.</summary>
     private static DbId RunRoot(int i) => SceneDb.ObjRunRoot[SceneDb.PartObj[_oDbPart[i]].Index];
 
-    /// <summary>Is this part a creature's? Its own object, or any object up its attachment chain, carries the
-    /// creature flag -- a hat or a held weapon is its own object hanging off the body's. A player character is
-    /// RIGID parts under bone-driven nodes, not a skinmesh, so nothing else names it a creature.</summary>
-    internal static bool SlotCreature(int i) => SlotCreatureObj(i) >= 0;
     private static bool CreaturePart(int i) => CreatureObj(i) >= 0;
     /// <summary>The creature object slot <paramref name="i"/> is a part of (its <see cref="SceneDb"/> index), or
     /// -1 when it is no creature's: what lets every part of one body be treated as one caster.</summary>
@@ -502,57 +492,9 @@ public sealed unsafe partial class AlloyRenderer
         internal float FeatX, FeatY;
     }
 
-    /// <summary>This record's world bounding sphere, for the cull. The local radius is enrolment-stable; what
-    /// moves is the model matrix, so a matrix-class sphere is centred on its translation and its radius scaled
-    /// by the WHOLE scale chain, or a placeable scaled k times culls as one k times smaller about its pivot.
-    /// A posed skinmesh, a dangly mesh and a displacing feature are <see cref="NeverCull"/>: they leave it.</summary>
-    private static void WriteSphere(int i, in RecordFrameState f, IntPtr tri, int feat)
-    {
-        {
-            if (_oBone[i] >= 0 || ContentPrograms.MayMove(feat) || PartTable.IsDangly(tri)
-                || !(_oR[i] > 0f))
-            { _dSph[i] = new Sphere { Radius = NeverCull }; return; }
-            // The centre is the model TRANSLATION, not _oC* through the matrix: that bbox centre is not
-            // object-space (EyeDist2, CasterPass), and transforming it would add the node translation twice.
-            float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
-            if (f.HasModel) { cx = f.Model.M41; cy = f.Model.M42; cz = f.Model.M43; r *= DbAnim.ScaleOf(f.Model); }
-            _dSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
-        }
-    }
-
     /// <summary>Stand-in radius for a caster whose engine bbox is degenerate: one NWN tile's horizontal
     /// diagonal (tiles are 10u square; WaterBodies.TileHalf is the same convention's other half).</summary>
     private const float DegenerateCasterRadius = 7.1f;
-
-    /// <summary>The same sphere, GEOMETRIC even for the three exempted kinds, and scaled the same way.
-    /// See <c>_dCastSph</c> for why the shadow pass cannot use a <see cref="NeverCull"/> one.</summary>
-    private static void WriteCasterSphere(int i, in RecordFrameState f)
-    {
-        {
-            float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
-            // a posed skin and a dangly move their vertices off the bind box; the origin bound is the looser fit for them
-            if (f.HasModel && _oBr[i] > 0f && !_vSkin[_oVao[i]] && !_oDangly[i])
-            {
-                var c = Vector3.Transform(new Vector3(_oBx[i], _oBy[i], _oBz[i]), f.Model);
-                cx = c.X; cy = c.Y; cz = c.Z; r = _oBr[i] * DbAnim.ScaleOf(f.Model);
-            }
-            else if (f.HasModel) { cx = f.Model.M41; cy = f.Model.M42; cz = f.Model.M43; r *= DbAnim.ScaleOf(f.Model); }
-            // Review, restoring the deleted MinSkinRadius insurance: a skinmesh's bbox is its BIND pose,
-            // and an animated pose (an extended arm, a swinging cloak) reaches past it. The slack keeps the
-            // reach culls and the staleness volumes honest about where the pose can actually be; keyed on
-            // the VDO's bone streams because that is enrollment-stable where the per-frame bone slot is not.
-            float bare = r;
-            if (_vSkin[_oVao[i]]) r = MathF.Max(r + 2f, 3f);
-            // A part with an unpopulated engine bbox (min == max -- measured live on tile parts, the same
-            // defect WaterBodies stands in for with TileHalf) must NOT store radius 0: a zero sphere makes
-            // TryCaster admit it at infinite reach (defeating every view's re-bake predicate) and makes the
-            // vanish sweep take the whole-frame blanket when it blinks out. One tile's diagonal is the
-            // honest bound for the population this actually is.
-            if (!(r > 0f)) r = DegenerateCasterRadius;
-            _dCastSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
-            _dCastSlack[i] = bare > 0f ? r - bare : 0f;
-        }
-    }
 
     /// <summary>Did a model matrix move, to a tenth of a millimetre? The engine rebuilds a placed gob's matrix
     /// from its quaternion, so bit-exact inequality reports a static area's parts as movers every frame --
@@ -606,53 +548,6 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line.</summary>
     internal static int RecCreature, RecObject, RecTile;
-
-    /// <summary>The caster sphere off a part's own-space box: every box corner through a rotated, scaled, translated
-    /// model lands inside it, and the centre follows the box rather than the node origin. Scratch slot 0, restored.</summary>
-    private static bool CasterBoundSelfCheck(ExtenderLog log)
-    {
-        const int i = 0;
-        // CX-120 (R1-35): scratch slot 0 must not be a live DB tenant while this forges a box into it.
-        int wasDb = _oDbPart[i]; _oDbPart[i] = -1;
-        float bx = _oBx[i], by = _oBy[i], bz = _oBz[i], br = _oBr[i], ccx = _oCx[i], ccy = _oCy[i], ccz = _oCz[i], cr = _oR[i];
-        int vao = _oVao[i];
-        Sphere was = _dCastSph[0];
-        float wasSlack = _dCastSlack[i];
-        var lo = new Vector3(-0.5f, -2.5f, 3.2f); var hi = new Vector3(0.5f, -1.7f, 12.3f);   // the harbour ship's mast
-        Vector3 c = 0.5f * (lo + hi);
-        _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = 0.5f * Vector3.Distance(lo, hi);
-        _oCx[i] = 0f; _oCy[i] = 0f; _oCz[i] = 0f; _oR[i] = 12.21f; _oVao[i] = 0;
-        var f = default(RecordFrameState);
-        f.HasModel = true;
-        f.Model = Matrix4x4.CreateScale(1.5f) * Matrix4x4.CreateFromYawPitchRoll(0.7f, 0.2f, 0.4f) * Matrix4x4.CreateTranslation(40f, 7f, -3f);
-        bool skin = _vSkin[0], dangly = _oDangly[i];
-        _vSkin[0] = false; _oDangly[i] = false;
-        WriteCasterSphere(i, in f);
-        CasterSphere(i, out float sx, out float sy, out float sz, out float sr);
-        bool inside = true;
-        for (int k = 0; k < 8; k++)
-        {
-            var p = new Vector3((k & 1) != 0 ? hi.X : lo.X, (k & 2) != 0 ? hi.Y : lo.Y, (k & 4) != 0 ? hi.Z : lo.Z);
-            inside &= Vector3.Distance(Vector3.Transform(p, f.Model), new Vector3(sx, sy, sz)) <= sr * 1.0001f;
-        }
-        bool tight = sr < 12.21f * 1.5f * 0.5f;
-        // hand-worked: a skinned part takes the origin bound, 12.21 x 1.5 = 18.315, culled at +2 and framed at it
-        _vSkin[0] = true;
-        WriteCasterSphere(i, in f);
-        CasterSphere(i, out _, out _, out _, out float skinR);
-        bool framed = MathF.Abs(skinR - 20.315f) < 1e-3f && MathF.Abs(CasterFrameRadius(i) - 18.315f) < 1e-3f;
-        _vSkin[0] = skin; _oDangly[i] = dangly;
-        _oDbPart[i] = wasDb;
-        _oBx[i] = bx; _oBy[i] = by; _oBz[i] = bz; _oBr[i] = br; _oCx[i] = ccx; _oCy[i] = ccy; _oCz[i] = ccz; _oR[i] = cr; _oVao[i] = vao;
-        _dCastSph[0] = was;
-        _dCastSlack[i] = wasSlack;
-        if (!framed) log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- a skinned part culls at {skinR:F3} (want 20.315) "
-                            + $"and frames at {CasterFrameRadius(i):F3} (want 18.315): the pose slack leaks into the framing");
-        if (!framed) return false;
-        if (!(inside && tight)) log.Info("AlloyRenderer.CasterBoundSelfCheck: FAILED -- the caster sphere does not hold its own vertex box "
-                                       + "through the model, or still sits about the node origin");
-        return inside && tight;
-    }
 
     /// <summary>Off-device, the split itself: every field of <see cref="RecordFrameState"/> is perturbed on
     /// its own and must make the record a mover, and a record re-written with the values it already holds must
@@ -747,8 +642,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Advance every cycle texture the engine is animating. Main thread, before the batch build. No
     /// record holds a controller any more -- a part resolves its textures through <see cref="TexRegistry"/> --
-    /// so a dropped one is said out loud rather than swallowed: whatever re-arms
-    /// <c>CycleTextures.Register</c> must restore the re-resolve funnel, or the textures behind it freeze.</summary>
+    /// so a dropped one is said out loud rather than swallowed.</summary>
     private static void TickCycleTextures()
     {
         CycleTextures.Tick();
@@ -756,8 +650,7 @@ public sealed unsafe partial class AlloyRenderer
         _cycleDropSaid = true;
         _log?.Always("AlloyRenderer: CycleTextures dropped a controller, but no record holds one -- the "
                    + "per-record controller column went with the engine-path stage (CX-188), so nothing "
-                   + "re-resolved. Whatever re-armed CycleTextures.Register must restore that funnel, or the "
-                   + "textures behind it freeze");
+                   + "re-resolved, and the textures behind it freeze");
     }
     /// <summary>Said once: a dropped cycle controller with no record column to act on.</summary>
     private static bool _cycleDropSaid;
@@ -776,12 +669,6 @@ public sealed unsafe partial class AlloyRenderer
     /// means. Enrolment is NOT one of them: <see cref="UnstampRecord"/> invalidates a re-tenanted slot.</summary>
     internal static void InvalidateRecords() => System.Threading.Interlocked.Increment(ref _recEpoch);
                                               // Interlocked: /alloy runs on the input thread
-
-    /// <summary>How many frames apart each slot re-reads its slow-drift colour state (mdl colour triples,
-    /// self-illum, gob colour folds, non-animated slot-map pointers). Power of two; the stagger by slot index
-    /// spreads the reads evenly, so the per-frame cost is 1/N of the population and the worst staleness is N
-    /// frames of a drift that moves over seconds. Fast-visible state never rides this.</summary>
-    private const int ColourCadence = 8;
 
     /// <summary>One routed part in this many carries the <c>Zone.Chase</c> timestamps. Power of two.</summary>
     internal const int ChaseEvery = 16;
@@ -831,7 +718,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 for (int k = 0; k < routed; k++)
                     if (_pkVerdict[k] == Deferred)
-                    { _stageDeferred++; FrameZones.Count(FrameZones.Ev.Deferred); _pkVerdict[k] = StagePart(k, slotTid, lightingOn, ref _stageCounters[0], main: true); }
+                    { FrameZones.Count(FrameZones.Ev.Deferred); _pkVerdict[k] = StagePart(k, slotTid, lightingOn, ref _stageCounters[0], main: true); }
             }
             else
             {
@@ -840,7 +727,6 @@ public sealed unsafe partial class AlloyRenderer
                 for (int k = 0; k < routed; k++) _pkVerdict[k] = StagePart(k, slotTid, lightingOn, ref _stageCounters[0], main: true);
             }
         }
-        _stageFrames++;
         for (int w = 0; w < _stageCounters.Length; w++) FoldCounters(ref _stageCounters[w]);
         if (chunks > 1) FrameZones.Add(FrameZones.Zone.Chase, tStage);   // threaded: the whole stage phase stands in for the sampled chase
         // BW2: on a cadence (and every frame under /alloy poll 1), rebuild every staged row the way the cut
@@ -1182,7 +1068,7 @@ public sealed unsafe partial class AlloyRenderer
     internal struct StageCounters
     {
         public long OwnDissolve, NrmDeclared, NrmBound, RecStable, RecWritten;
-        public long MxChased, MxCached, DisAsked, DisNoFeat, DisNoLit;
+        public long DisAsked, DisNoFeat, DisNoLit;
         public bool CastChanged;
     }
     private static readonly StageCounters[] _stageCounters = new StageCounters[StagePool.MaxChunks];
@@ -1190,7 +1076,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         Counters._ownDissolve += c.OwnDissolve; Counters._nrmDeclared += c.NrmDeclared; Counters._nrmBound += c.NrmBound;
         Counters._recStable += c.RecStable; Counters._recWritten += c.RecWritten;
-        _mxChased += c.MxChased; _mxCached += c.MxCached; _disAsked += c.DisAsked;
+        _disAsked += c.DisAsked;
         _disNoFeat += c.DisNoFeat; _disNoLit += c.DisNoLit;
         if (c.CastChanged) CasterGen++;
         c = default;
@@ -1211,7 +1097,6 @@ public sealed unsafe partial class AlloyRenderer
     private static bool _stageLighting;
     /// <summary><c>/alloy threads N</c>: worker threads beside the main thread for the stage. 0 = serial.</summary>
     private static int _stageThreads => Renderer.Threads.V;
-    private static long _stageDeferred, _stageFrames;
     private static readonly byte[] _pkVerdict = new byte[MaxOwned], _pkDis = new byte[MaxOwned];
     /// <summary>The per-part half of <see cref="BuildBatches"/>: chase the state a routed part depends on and
     /// write its record, sphere and cast admission -- everything that touches ONLY this slot's arrays, so it

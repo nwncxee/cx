@@ -117,62 +117,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Entries in <see cref="_order"/>: <see cref="_ownCount"/> minus whatever the all-owned-or-none
     /// sweep dropped. The draw walks this, never the slot count.</summary>
     private static int _orderCount;
-    /// <summary>How many ownership slots hang off this gob, and how many of those read as tile gobs.</summary>
-    internal static (int slots, int tile) SlotsOnGob(IntPtr gob)
-    {
-        int n = 0, t = 0;
-        if (gob == IntPtr.Zero) return (0, 0);
-        for (int i = 0; i < _ownCount; i++) if (_oGob[i] == gob) { n++; if (_oTileGob[i]) t++; }
-        return (n, t);
-    }
-    // per-VDO VAO cache: attribute formats harvested in the ENGINE context at enrollment, the 4.6-side VAO
-    // built lazily inside the bracket (VAOs don't share across contexts; the buffers they reference do)
-    private static readonly IntPtr[] _vVdo = new IntPtr[MaxVdos];
-    private static readonly uint[] _vVao46 = new uint[MaxVdos];
-    /// <summary>Does Alloy own the pools this slot's VAO pulls from? There is only one VAO now -- the
-    /// takeover uploads into the pool's OWN buffer, so "Alloy's copy" and "the engine's buffer" are the same
-    /// name -- and this is what is left of the distinction: the acceptance signal
-    /// (<see cref="AlloyRenderer.VaoName"/>), stamped once per slot build rather than probed per draw.</summary>
-    private static readonly bool[] _vOwned = new bool[MaxVdos];
-    private static readonly uint[] _vElemBuf = new uint[MaxVdos];
-    private static readonly VertexStream[] _vPos = new VertexStream[MaxVdos];
-    private static readonly VertexStream[] _vUv = new VertexStream[MaxVdos];
-    /// <summary>The engine's UV location was DISABLED on this VDO's VAO, as opposed to enabled over no
-    /// buffer. Both leave <c>_vUv</c> absent and both are owned, but only the first proves the engine's
-    /// vertex stage reads the same generic (0,0,0,1) constant Alloy's does -- so this is a report, not a
-    /// gate.</summary>
-    private static readonly bool[] _vUvDisabled = new bool[MaxVdos];
-    private static readonly VertexStream[] _vNrm = new VertexStream[MaxVdos];
-    private static readonly bool[] _vLit = new bool[MaxVdos];       // #83: has a usable 3-float normal stream
-    /// <summary>The VDO carries the BONE streams, i.e. it belongs to a true skinmesh (a cloak, a robe, a
-    /// tail). The flag SELECTS the skinning branch: bone attributes bound in the Alloy VAO, a per-frame pose
-    /// forced out of the engine, a bone slot in the record. Both streams or neither -- a half-skinned VAO
-    /// would skin some vertices and leave the rest at the origin.</summary>
-    private static readonly bool[] _vSkin = new bool[MaxVdos];
-    /// <summary>The two bone streams' formats, harvested from the same engine VAO as position and UV.
-    /// Normalisation is carried (the weights ship as normalised shorts on some content) because
-    /// <c>VertexAttribPointer</c> silently means something else without it.</summary>
-    private static readonly VertexStream[] _vBi = new VertexStream[MaxVdos], _vBw = new VertexStream[MaxVdos];
-    private static readonly bool[] _vStale = new bool[MaxVdos];     // slot recycled: rebuild the 4.6 VAO
-    private static int _vdoCount;
-
-    /// <summary>Which live VDO slots carry NO UV stream, for the frame dump's header. A part on one of these
-    /// samples every texture at the generic constant (0,0), so its whole material is one sample stretched over
-    /// the mesh -- the first thing to suspect when an owned part draws in the wrong COLOUR rather than not at
-    /// all. Slot indices, matching the <c>vao=</c> field on the G lines.</summary>
-    internal static string UvlessSlots()
-    {
-        string s = "";
-        for (int v = 0; v < _vdoCount; v++)
-        {
-            if (_vVdo[v] == IntPtr.Zero || _vUv[v].Present) continue;
-            // disabled = the engine's own vertex stage reads the same constant, so Alloy matches it.
-            // unbacked = the location is ENABLED over no buffer, and then it does not: the engine may be
-            // pulling real UVs where Alloy feeds (0,0), which is a silent misrender rather than parity.
-            s += (s.Length == 0 ? "" : ",") + v + (_vUvDisabled[v] ? "(disabled)" : "(unbacked)");
-        }
-        return s.Length == 0 ? "none" : s;
-    }
     /// <summary>Counting-sort buckets. The draw order groups by (lit, no-cull, VDO) so the VAO, the PROGRAM
     /// and the face-culling state each settle once per group -- lit slots are the upper half, and the
     /// two-sided slots the upper half of each of those. <see cref="SortKeyOf"/> says why lit outranks cull.
@@ -186,35 +130,6 @@ public sealed unsafe partial class AlloyRenderer
     /// primitive mode are both cut-key terms and neither was sorted, so a VDO's run cut on every interleave
     /// of them -- under bindless, most of what a lit batch could still cut on.</summary>
     private static readonly int[] _featPrimCount = new int[FeatPrimKeys];
-    private static readonly IntPtr[] _mKey = new IntPtr[MatHash];
-    private static readonly int[] _mVal = new int[MatHash];
-    private static int _matCount;
-
-    /// <summary>The mesh-sharing census's scratch. One packed (VDO slot, matrix-class, item) key
-    /// per live owned part, sorted in place at enrollment so equal meshes come out adjacent. Cold -- it runs
-    /// on the enrollment cadence, never per frame.</summary>
-    private static readonly long[] _msKey = new long[MaxOwned];
-    /// <summary>The census key: VDO slot, then the matrix-class bit, then the item's INDEX RANGE (first index, element count), so a sort
-    /// groups equal meshes and the bit reads back off the run's key. The range rather than the item index -- two placements with distinct
-    /// item entries naming the same (offset, count) are one mesh. 63 bits, positive: 12 VDO slot, 1 matrix-class, 32 first index, 18 count.
-    /// ponytail: a count past <see cref="MsCountMax"/> saturates rather than carrying into the offset field, which over-reports sharing.</summary>
-    private const int MsVaoShift = 51, MsFirstShift = 18;
-    private const long MsMxBit = 1L << 50;
-    private const int MsCountMax = (1 << 18) - 1;
-    /// <summary>The SHAPE key's layout -- element count in the low bits under the interned diffuse
-    /// texture, the primitive mode and the gob bit. Same count field as the range key, so the clamp is
-    /// shared. <see cref="MaxMats"/> is 2^14, which is the width reserved for the texture.</summary>
-    private const int MsTexShift = 18, MsPrimShift = 32;
-    private const long MsGobBit = 1L << 35;
-    /// <summary>Matrix-class, in the SHAPE key too: it is the collapsibility discriminator. An object-space
-    /// part's vertices are the model's own, so two placements of one model hash identically and could share
-    /// them; a world-space part has its placement baked into those vertices, so two placements differ by
-    /// construction and nothing can collapse them without un-baking the transform first.</summary>
-    private const long MsShapeMxBit = 1L << 34;
-    /// <summary>The shape census's scratch, parallel to <see cref="_msKey"/> and sorted the same way.
-    /// A second array rather than a second walk: the guarded element-pool read that both keys need is the
-    /// expensive half, and doing it once is what keeps this on the enrollment cadence.</summary>
-    private static readonly long[] _msShape = new long[MaxOwned];
     /// <summary>The slot draws a part of a tile, not a placeable.</summary>
     internal static bool TileSlot(int i) => (uint)i < (uint)MaxOwned && _oTileGob[i];
 
@@ -270,15 +185,8 @@ public sealed unsafe partial class AlloyRenderer
     /// record wrong at once -- an enrollment (the slots reshuffle), a bindless handle wipe, a lost context,
     /// a debug toggle, an armed frame dump. See ADR 0017's "Step 2, as built".</summary>
     private static int _recEpoch = 1;
-    /// <summary>The borrowed <c>CAurTexture*</c> this slot's record resolved its diffuse (and each declared
-    /// map slot) from, last rebuild. The pointer is the CHEAP half -- a plain field read off the material --
-    /// and the tid and bindless handle behind it the expensive half, so an unchanged pointer is what buys
-    /// skipping the re-fetch. An animated texture cycles engine names, so it is a permanent mover.</summary>
-    private static readonly IntPtr[] _recAur = new IntPtr[MaxOwned];
-    private static readonly IntPtr[] _recAurS = new IntPtr[MaxOwned * MapSlots];
-    /// <summary>The resolved tids and live slot mask behind <see cref="_recAur"/> -- still needed
-    /// every frame by the batch key (a bind-path batch cuts on its textures) even when the record itself
-    /// does not move.</summary>
+    /// <summary>The resolved diffuse tid per slot -- still needed every frame by the batch key (a
+    /// bind-path batch cuts on its textures) even when the record itself does not move.</summary>
     private static readonly int[] _recTid = new int[MaxOwned];
     /// <summary>The <see cref="TexRegistry.TableSerial"/> this slot's textures were last resolved under; 0 is
     /// "never, or ask again", which an unsettled resolve (a white stand-in, a slot still loading) stamps. While
@@ -301,15 +209,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>Dirty.Texture</c> (or a create/tree/material mark, which can re-point the recipe under it).</summary>
     internal static void DbTexDirty(int slot)
     { if ((uint)slot < (uint)_recTexStamp.Length) _recTexStamp[slot] = 0; }
-    /// <summary>This slot has a map slot whose texture had no GL id at its last resolve. NOT stale: the
-    /// texture is re-asked on the slot's colour cadence and the record rewritten only once it has an id.
-    /// Riding <see cref="RouteGate.TexStale"/> instead would force-route the record EVERY frame for a map the
-    /// engine never queues -- 7,000 records a frame in an area with .mtr normal maps.</summary>
-    private static readonly bool[] _recSlotQueued = new bool[MaxOwned];
-    /// <summary>When this slot's diffuse replaced the white stand-in, on <see cref="TexStream.Clock"/>; 0 = it
-    /// never drew the stand-in. Staged into the record's <see cref="ArriveFloat"/> for the colour pass's fade.</summary>
-    private static readonly float[] _recArrive = new float[MaxOwned];
-
     /// <summary>Only the records that minted on the retired name go stale -- the global generation this
     /// replaced re-staged the whole world per drip frame.</summary>
     internal static void SelfCheckNameRetired(ExtenderLog log)

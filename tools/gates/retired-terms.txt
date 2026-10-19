@@ -73,3 +73,6 @@ anim\.staticlight	dead-code-cleanup
 # The engine-texture read-ahead went with the engine draw path: TexRegistry decodes its own textures, so
 # there is no CAurTexture build to run ahead of.
 \btexprefetch\b	dead-code-cleanup
+shadow\.itemdirty	dead-code-cleanup
+alloy\.weld	dead-code-cleanup
+alloy\.aotest	dead-code-cleanup

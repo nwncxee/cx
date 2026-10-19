@@ -39,14 +39,9 @@ internal static unsafe class AlloyCamera
     /// <summary>The depth slices <c>Camera::RenderScene</c> @0x4a82e9 hands a view: five named overlay scenes
     /// in front, every other <c>sceneGUI</c> view behind them, a non-GUI view the whole range.</summary>
     private const float GuiFrontNear = 0f, GuiFrontFar = 0.02f, GuiBackNear = 0.021f, GuiBackFar = 0.1f;
-    /// <summary>Frames a world-camera sighting stays valid. One, so the answer survives a reader that runs
-    /// after the view has closed (which the engine's latch did not) and still goes null within two frames of
-    /// the last world view -- a freed camera cannot be sighted again.</summary>
-    private const int WorldGrace = 1;
-
-    /// <summary>The <c>m_aurMtxStack</c> entries by <c>Aurora::AuroraTransStates</c>: PROJECTION 0, VIEW 1,
-    /// MODEL 2, TEXTURE 3. An INDEX into the global array of stacks, which the view's indexer steps by.</summary>
-    internal const int ModeProjection = 0, ModeView = 1, ModeModel = 2, ModeTexture = 3;
+    /// <summary>The <c>m_aurMtxStack</c> entries by <c>Aurora::AuroraTransStates</c>: PROJECTION 0, VIEW 1.
+    /// An INDEX into the global array of stacks, which the view's indexer steps by.</summary>
+    internal const int ModeProjection = 0, ModeView = 1;
 
     private static ExtenderLog? _log;
     private static CameraRenderSceneFn _orig;
@@ -55,8 +50,7 @@ internal static unsafe class AlloyCamera
     private static CameraUpscaleViewportFn _upscale;
     private static GetGuiScaleFn _guiScale;
     private static long _upscaled, _upscaleRefused;
-    private static int _frame, _worldFrame = int.MinValue;
-    private static IntPtr _world, _active;
+    private static int _frame;
     private static AlloyView _worldView, _activeView;
     private static long _worldViews, _guiViews;
 
@@ -64,16 +58,6 @@ internal static unsafe class AlloyCamera
     /// <c>m_aurMtxStack</c> and the world camera off <c>CurrentCamera</c>, which is the A/B for anything that
     /// looks wrong in Alloy's arithmetic.</summary>
     internal static bool Owned => ViewKnobs.CameraLoop.V && _orig != null;
-
-    /// <summary>The world view's <c>Camera*</c>, or zero when there is none -- Alloy's own latch, set at the
-    /// world view's <c>Camera::RenderScene</c> and good for this frame and the next.
-    /// <para>With <c>view.cameraloop 0</c> this falls back to the engine's <c>CurrentCamera</c> global, which
-    /// is null outside a scene render: that is one of the two differences the A/B changes.</para></summary>
-    internal static IntPtr World
-        => !Owned ? EngineLatch : _frame - _worldFrame <= WorldGrace ? _world : IntPtr.Zero;
-
-    /// <summary>The camera whose view is rendering right now (world or GUI panel), or zero outside a view.</summary>
-    internal static IntPtr Active => _active;
 
     /// <summary>The world view's measured state -- what the Alloy frame takes its view and projection from.</summary>
     internal static ref readonly AlloyView WorldView => ref _worldView;
@@ -85,7 +69,7 @@ internal static unsafe class AlloyCamera
     internal static void NoteDbView(in AlloyView v, bool world)
     {
         _activeView = v;
-        if (world) { _worldViews++; _worldView = v; _worldFrame = _frame; }
+        if (world) { _worldViews++; _worldView = v; }
         else _guiViews++;
     }
 
@@ -99,12 +83,6 @@ internal static unsafe class AlloyCamera
     /// <c>AurRenderStrings</c> @0x436480 loads identity once a frame in the mode the frame leaves selected.</summary>
     internal static Matrix4x4 ModelBase => Matrix4x4.Identity;
 
-    /// <summary>The engine's own latch, for the <c>view.cameraloop 0</c> A/B ONLY.</summary>
-    private static IntPtr EngineLatch => _latch == null ? IntPtr.Zero : *_latch;
-    /// <summary><c>&amp;CurrentCamera</c>, resolved once at <see cref="Attach"/>: read only on the
-    /// <c>view.cameraloop 0</c> A/B, which is still a frame path.</summary>
-    private static IntPtr* _latch;
-
     internal static void Attach(ExtenderLog log)
     {
         _log = log;
@@ -113,7 +91,6 @@ internal static unsafe class AlloyCamera
         _screenH = (int*)Native.Sym(SymbolMap.ScreenHeight);
         _glViewport = (int*)Native.Sym(SymbolMap.GlViewport);
         _stacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
-        _latch = (IntPtr*)Native.Sym(SymbolMap.CurrentCamera);
         _upscale = EngineFn.CameraUpscaleViewport;
         _guiScale = EngineFn.GetGuiScale;
         if (_upscale == null || _guiScale == null || _glViewport == null)
@@ -150,23 +127,20 @@ internal static unsafe class AlloyCamera
 
     /// <summary>One view. Cold: once per view per frame, a couple of dozen times at most; allocates nothing.
     /// <para>The original ALWAYS runs -- see the class remarks for the four scene-side outputs that are still
-    /// the engine's, and because <c>Scene::Render</c> (and so the shim) is reached through it. The active-view
-    /// pair is saved and restored rather than cleared, so a nested view could not blank its parent's.</para></summary>
+    /// the engine's, and because <c>Scene::Render</c> (and so the shim) is reached through it. The active view
+    /// is saved and restored rather than cleared, so a nested view could not blank its parent's.</para></summary>
     [UnmanagedCallersOnly]
     private static void OnRenderScene(IntPtr cam)
     {
-        IntPtr savedActive = _active;
         AlloyView savedView = _activeView;
         Measure(cam);
         _orig(cam);
-        _active = savedActive;
         _activeView = savedView;
     }
 
     /// <summary>Compute this view's state and latch it.</summary>
     private static void Measure(IntPtr cam)
     {
-        _active = cam;
         _activeView = default;
         if (cam == IntPtr.Zero) return;
         IntPtr scene = new Camera(cam).Scene.Ptr;
@@ -180,8 +154,6 @@ internal static unsafe class AlloyCamera
         {
             _worldViews++;
             _worldView = _activeView;
-            _world = cam;
-            _worldFrame = _frame;
         }
         else _guiViews++;
     }

@@ -49,13 +49,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// so it bakes on a later frame, nearest rank first. Re-keys and blanket invalidates never hold: six
     /// 512px faces of the whole static world per slot is the single biggest hitch term the ledger read.</summary>
     private static int _staticCap => Shadows.StaticCap.V;
-    /// <summary><c>/shadow itemdirty 0</c>: the A/B back to the per-pool-buffer vertex-dirty signal. See
-    /// <c>AlloyRenderer.ItemDirty</c> for what the item-level one fixes.</summary>
-    private static bool _itemDirty => Shadows.ItemDirty.V;
-    /// <summary>An arena caster has no VDO buffer to be dirty: the arena republishes a moved range through
-    /// <c>AlloyRenderer.DbRangesMoved</c> instead, so the per-vertex signal does not apply to it.</summary>
-    private static bool VertexDirty(int vao, int item)
-        => !AlloyRenderer.IsArenaVao(vao) && _vDirty[vao] && (!_itemDirty || AlloyRenderer.ItemMoved(vao, item));
     private static long _cubeDynSkipped, _sunDynSkipped;
     private const int AllFaces = (1 << CubeFaces) - 1;
     /// <summary>The sun's dynamic layer holds a bake for the fit matrix beside it, so a frame with
@@ -109,7 +102,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     // --- lifecycle + diagnostics
     private static readonly EdgeState _was = new();
     private static bool _loggedOnce, _noSunLogged;
-    private static int _tableGen = -1;
     private static int _frames;
     private static long _mdiCalls;
     /// <summary>CPU ticks the bake's own 4.6 context bracket costs -- both switches, each a fence +
@@ -516,7 +508,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    $"(predicate {(_rebake ? "on" : "OFF -- /shadow rebake 1")}, " +
                    $"{(float)_moverSum / _frames:F1} movers/frame -- matrix {(float)_mvMatrix / _frames:F1} (r mean {(_mvMatrix > 0 ? _mvMatrixR / _mvMatrix : 0f):F2} max {_mvMatrixRMax:F2} m = '{(_mvMatrixRMaxSlot >= 0 ? AlloyRenderer.SlotTexNameDb(_mvMatrixRMaxSlot) : "")}', dynmin {Shadows.DynMin.V:F1}), " +
                    $"bones {(float)_mvBone / _frames:F1}, dangly {(float)_mvDangly / _frames:F1}, " +
-                   $"vertex-dirty {(float)_mvVertex / _frames:F1}, appeared {(float)_mvAppear / _frames:F1}, " +
+                   $"appeared {(float)_mvAppear / _frames:F1}, " +
                    $"{(float)_ghostSum / _frames:F1} vanished, " +
                    $"{(float)_noRecordSum / _frames:F1} refused for want of a record" +
                    (_degenSum > 0 ? $", {(float)_degenSum / _frames:F1} DEGENERATE-admitted movers defeating the predicate" : "") +
@@ -611,7 +603,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         Array.Clear(_sunStaticL); _sunDynBakedViews = 0; _sunDynSkipped = 0; _cubeDynSkipped = 0;
         CasterGather.LayerDispatches = 0; CasterGather.LayerViews = 0;
         Array.Clear(_bakeWhy);
-        _mvMatrix = 0; _mvMatrixR = 0; _mvMatrixRMax = 0; _mvMatrixRMaxSlot = -1; _mvDangly = 0; _mvVertex = 0; _mvBone = 0; _mvAppear = 0; _degenSum = 0; _nanMovers = 0; _noRecordSum = 0;
+        _mvMatrix = 0; _mvMatrixR = 0; _mvMatrixRMax = 0; _mvMatrixRMaxSlot = -1; _mvDangly = 0; _mvBone = 0; _mvAppear = 0; _degenSum = 0; _nanMovers = 0; _noRecordSum = 0;
         _submitMasked = 0; _maskNoTex = 0; _maskNoProg = 0; _collects = 0;
         CasterGather.Views = 0; CasterGather.Batches = 0;
         CasterGather.SampledKeptDyn = 0; CasterGather.SampledStagedDyn = 0;

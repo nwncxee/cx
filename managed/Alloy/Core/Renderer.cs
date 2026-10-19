@@ -17,7 +17,7 @@ internal static class Renderer
     /// and no engine <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla. <c>alloy.enabled</c>'s Boot value,
     /// frozen for the session.</summary>
     internal static bool On => Enabled.Boot;
-    internal static readonly Knob<float> Scale, Weld, Lod;
+    internal static readonly Knob<float> Scale, Lod;
     /// <summary>How strongly the cutout test makes up for the alpha a mip averages away (<c>cx_alphamip.glsl</c>).</summary>
     internal static readonly Knob<float> CutMip;
     /// <summary>How many layers of itself a see-through creature draws as, under the list resolve that composites it once.</summary>
@@ -36,7 +36,7 @@ internal static class Renderer
                                         Gui, Movie;
     internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SwapProbe, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
-    internal static readonly Knob<bool> Light, Prepass, AoTest, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
+    internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
     internal static readonly Knob<bool> CullWatch;
@@ -131,9 +131,6 @@ internal static class Renderer
         Gui = G.Toggle("gui", "Draw the interface with Alloy", true, Tier.ChatOnly,
                        help: "Menus, panels, text, the minimap and the cursor are drawn by CX's renderer from what the game "
                            + "lays out. Off, the game's own renderer draws them again.");
-        Weld = G.Slider("weld", "Smooth-shading crease angle", 0f, 180f, 5f, 60f, "°", Tier.ChatOnly,
-                        help: "Faces meeting at a sharper angle than this keep a hard edge. 0 keeps every model's own normals. "
-                            + "Applies to models loaded after the change.");
         Border = G.Slider("border", "Neighbouring-area ring", 5, 40, 5, 15, "tiles", Tier.ChatOnly, Effect.Restart,
                           help: "Tiles drawn past the area edge so the horizon is not empty; the stock game draws 5.");
         Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1, 2 }, 2, new[] { "sorted", "weighted", "linked lists" }, tier: Tier.ChatOnly,
@@ -206,7 +203,6 @@ internal static class Renderer
         Viz = G.Slider("viz", "viz", 0, AlloyRenderer.LightVizMax, 1, 0, tier: Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         Threads = G.Slider("threads", "threads", 0, StagePool.MaxChunks - 1, 1, AlloyRenderer.DefThreads, tier: Tier.ChatOnly,
                            changed: () => { StagePool.Rearm(); AlloyRenderer.InvalidateRecords(); });
-        AoTest = G.Toggle("aotest", "aotest", false, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         Cull = G.Slider("cull", "cull", CullPass.ModeOff, CullPass.ModeHiZ, 1, CullPass.ModeHiZ, tier: Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         Retest = G.Toggle("retest", "retest", CullPass.DefRetest, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         HlDiag = G.Toggle("hldiag", "hldiag", false, Tier.ChatOnly);

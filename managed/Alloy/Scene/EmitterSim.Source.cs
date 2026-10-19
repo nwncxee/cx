@@ -411,12 +411,4 @@ internal static unsafe partial class EmitterSim
 
     private static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The engine's own <c>update</c> literal, compared the same way.</summary>
-    private static int ModeOf(Span<byte> update)
-    {
-        if (Is(update, "Fountain")) return ModeFountain;
-        if (Is(update, "Explosion")) return ModeExplosion;
-        if (Is(update, "Lightning")) return ModeLightning;
-        return ModeSingle;
-    }
 }

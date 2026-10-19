@@ -50,12 +50,8 @@ internal static unsafe partial class LightmapBake
     private static Vector4[] _stPosR = new Vector4[256];
     private static Vector3[] _stCol = new Vector3[256];
     private static int _stN;
-    /// <summary>The walk's census: static / animated (>1-key radius, colour or multiplier track) / dynamic,
-    /// per frame.</summary>
-    internal static int CensusStatic, CensusAnimated, CensusDynamic, CensusTile, CensusPlaceable;
-    /// <summary>The part of <see cref="CensusAnimated"/> that the gob's RUNNING animation drives rather than
-    /// its model node (<see cref="AnimationDrives"/>) -- the flickering torches.</summary>
-    internal static int CensusAnimRun;
+    /// <summary>The walk's census: static / dynamic lights, per frame.</summary>
+    internal static int CensusStatic, CensusDynamic;
     /// <summary>Static lights this walk refused because their gob is still blending: the close waits on it.</summary>
     internal static int CensusUnsettled;
     /// <summary>The census of the closing walk: after the close the walk counts only static / dynamic.</summary>

@@ -87,11 +87,7 @@ internal static unsafe class DeferredShadows
         Gl.Uniform1i(_gl.LocShRes, div);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, DeferredLights.BindStats, DeferredLights.StatsBuf);
 
-        BindUnit(TextureSlots.Gbuf0, GBuffer.Tex0);
-        BindUnit(TextureSlots.Gbuf1, GBuffer.Tex1);
-        BindUnit(TextureSlots.Gbuf2, GBuffer.Tex2);
-        BindUnit(TextureSlots.Gbuf3, GBuffer.Tex3);
-        BindUnit(TextureSlots.GbufDepth, PostChain.DepthTex);
+        GBuffer.BindForCompute();
         Gl.BindImageTexture(0, _gl.TexVis, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA8);
         Gl.BindImageTexture(1, _gl.TexKey, 0, 0, 0, Gl.WRITE_ONLY, Gl.RG32UI);
 
@@ -102,9 +98,7 @@ internal static unsafe class DeferredShadows
 
         Gl.BindImageTexture(0, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA8);
         Gl.BindImageTexture(1, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RG32UI);
-        BindUnit(TextureSlots.Gbuf0, 0); BindUnit(TextureSlots.Gbuf1, 0);
-        BindUnit(TextureSlots.Gbuf2, 0); BindUnit(TextureSlots.Gbuf3, 0);
-        BindUnit(TextureSlots.GbufDepth, 0);
+        GBuffer.UnbindCompute();
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.UseProgram(0);
         _runs++;
@@ -126,12 +120,6 @@ internal static unsafe class DeferredShadows
         _gl.W = w; _gl.H = h;
         _log?.Info($"DeferredShadows: visibility record {w}x{h} ({(long)w * h * BytesPerTexel >> 20} MiB)");
         return true;
-    }
-
-    private static void BindUnit(uint unit, uint tex)
-    {
-        Gl.ActiveTexture(Gl.TEXTURE0 + unit);
-        Gl.BindTexture(Gl.TEXTURE_2D, tex);
     }
 
     /// <summary>Build the program on the first frame that wants it, once. False is latched and LOUD: the

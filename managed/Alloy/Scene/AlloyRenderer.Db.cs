@@ -275,7 +275,6 @@ public sealed unsafe partial class AlloyRenderer
             if (!hit) continue;
             fixedUp++;
         }
-        _dbRangeRefresh += fixedUp;
         // A moved range is new geometry under the published cascades, and no mover event describes it.
         if (fixedUp > 0) CasterPass.ShadowInvalidate();
     }
@@ -534,10 +533,6 @@ public sealed unsafe partial class AlloyRenderer
         }
         return true;
     }
-
-    /// <summary>Draw arguments rewritten after a compaction moved their range.</summary>
-    private static long _dbRangeRefresh;
-    internal static long DbRangeRefresh => _dbRangeRefresh;
 
     /// <summary>Write slot <paramref name="i"/>'s per-draw record from the database columns -- the DB-mode
     /// counterpart of <c>StagePart</c>'s record half, with every term a column read instead of a pointer

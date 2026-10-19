@@ -36,7 +36,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool _fullPoll => Renderer.Poll.V;
     /// <summary>Period counters: matrices recomposed vs served from their own record, the keyhole cache's two
     /// halves, and the route gate's two.</summary>
-    private static long _mxChased, _mxCached, _disAsked;
+    private static long _disAsked;
     private static long _routeIn, _routeOut, _pollMissAlpha;
     /// <summary>Route verdicts forced open by <see cref="RouteGate.TexStale"/> this period -- the population
     /// that bypasses the frustum gate because a retired owned texture name has to be re-resolved. One per
@@ -553,17 +553,6 @@ public sealed unsafe partial class AlloyRenderer
     /// 4/s rate. ponytail: alpha, not fog-to-black -- a per-draw fog scale in the record is the upgrade.</summary>
     private static float TileFade(int i, IntPtr tri) => SceneDb.PartFade[_oDbPart[i]];
 
-    /// <summary>The slot's model matrix: the column the transform step composed on the game thread, which the
-    /// feed rewrote the record from when it changed. Read, never recomposed here, and the engine is asked
-    /// nothing.</summary>
-    private static Matrix4x4 ChaseModel(int i, bool stale, bool newTenant, ref StageCounters c)
-    {
-        // Nothing to chase: the transform step composed this matrix on the game thread and the feed rewrote the
-        // record when it did, so the draw reads the column and asks the engine nothing.
-        c.MxCached++;
-        return SceneDb.PartWorld[_oDbPart[i]];
-    }
-
     /// <summary>A re-tenanted slot's caches describe the previous tenant.</summary>
     private static void UnstampChase(int i)
     { _gate[i].OccFade = 0f; _gate[i].OccHeld = 0f; }
@@ -571,7 +560,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The [alloy] line's clause.</summary>
     private static string ChaseNote()
     {
-        long mxAll = _mxChased + _mxCached;
         long frames = Math.Max(1, Counters._frames);
         string s = $"route {(float)_routeIn / frames:F0}/frame, {(float)_routeOut / frames:F0} off-frustum untouched"
                  + $" ({(float)_routeStale / frames:F1}/frame forced by a retired texture name)"
@@ -580,11 +568,10 @@ public sealed unsafe partial class AlloyRenderer
                              + $"{AreaGrid.Occupied} cells ({AreaGrid.Filed} indexed, {AreaGrid.Unboxed} unboxed ({_unboxedEmpty} never filled), "
                              + $"{_dynN} on gobs, {_visIndexed / Math.Max(1, _visRebuilds)}/rebuild, {_visTrimmed / Math.Max(1, _visRebuilds)} cell-only candidates trimmed/rebuild)"
                              : ", visible set OFF") + VisAuditNote()
-                 + $"; matrices {(float)_mxChased / frames:F0}/frame composed of {(float)mxAll / frames:F0}"
                  // CX-188: "asked" was the ENGINE ask, from a path that no longer exists. In DB mode the
                  // verdict is a column (SceneDb.PartDissolve, written by the dissolve step), so this counts
                  // the parts whose verdict was READ.
-                 + $", keyhole {(float)_disAsked / frames:F0}/frame read from the dissolve column"
+                 + $"; keyhole {(float)_disAsked / frames:F0}/frame read from the dissolve column"
                  // CX-188: the counts below are of the slots this pass ROUTED -- the gate rejects the rest
                  // before any of these questions is asked, and `route N/frame` above is that population.
                  // ("replayed frozen", which this used to point at, went with the static freeze.)
@@ -597,7 +584,7 @@ public sealed unsafe partial class AlloyRenderer
 
     private static void ResetChasePeriod()
     {
-        _mxChased = _mxCached = _disAsked = 0;
+        _disAsked = 0;
         _routeIn = _routeOut = 0; _routeStale = 0; _texSerialMoves = 0; _visRebuilds = 0; _visIndexed = 0;
         _pollMissAlpha = 0;
         _visTrimmed = 0; _visBoxOnly = 0; _visSlices = 0;

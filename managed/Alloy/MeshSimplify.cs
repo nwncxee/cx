@@ -13,7 +13,7 @@ internal static class MeshSimplify
 {
     /// <summary>Indices are <c>GL_UNSIGNED_SHORT</c> everywhere in Alloy, so one part cannot address more.</summary>
     internal const int MaxVerts = 1 << 16;
-    /// <summary>Corner ceiling per part, <c>NormalWeld</c>'s reasoning: a part past it is left alone rather
+    /// <summary>Corner ceiling per part: a part past it is left alone rather
     /// than given a scratch allocation sized by content.</summary>
     internal const int MaxCorners = 1 << 18;
 
@@ -21,7 +21,7 @@ internal static class MeshSimplify
     /// fraction of the mesh (collapses are applied in one sweep), so the target is normally hit in a few.</summary>
     private const int MaxPasses = 24;
 
-    /// <summary>Position-hash mixers, <c>NormalWeld</c>'s.</summary>
+    /// <summary>Position-hash mixers.</summary>
     private const long MixX = 0x9E3779B1L, MixY = 0x85EBCA77L, MixZ = 0xC2B2AE3DL;   // not-an-offset: hash mixers
     private const long Mix = unchecked((long)0x9E3779B97F4A7C15UL);   // not-an-offset: Knuth's multiplicative hash constant
 

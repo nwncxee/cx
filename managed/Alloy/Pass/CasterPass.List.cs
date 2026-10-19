@@ -72,39 +72,9 @@ public sealed unsafe partial class CasterPass
         if (_liveIdxSeq[slot] != _collectSeq) return;
         if (_offN < _offQ.Length) _offQ[_offN++] = _liveIdx[slot]; else _offOverflow = true;
     }
-    /// <summary>Entries appended since the collect. They are outside the per-VAO buckets, so the refresh
-    /// visits them every frame until the next collect folds them in.</summary>
-    private static readonly int[] _appended = new int[4096];
-    private static int _appN;
     /// <summary>Bumped by an append: the gather's staging must be rebuilt even though the collect stood.</summary>
     private static int _listVer, _gListVer;
 
-    /// <summary>Take a freshly seated slot into the standing list without a re-collect: an OFF entry (its
-    /// record, and so its admission, has not landed) that the stage's on-flip turns into an appearance.
-    /// False = the list cannot take it (no list standing, skinned -- the creature half is contiguous --, out
-    /// of room, or no geometry), and the caller re-collects.</summary>
-    internal static bool Append(int slot)
-    {
-        if (_collectedAt < 0 || _liveCount == 0 || AlloyRenderer.SlotSkinned(slot)) return false;
-        if (_liveCount >= MaxCasters || _appN >= _appended.Length) return false;
-        if (!AlloyRenderer.TryCasterGeom(slot, out var f)) return false;
-        if (!CasterRange(in f, out int idxCount, out uint first, out uint baseVert)) return false;
-        int live = _liveCount++;
-        _liveSlot[live] = slot;
-        _liveCx[live] = f.Cx; _liveCy[live] = f.Cy; _liveCz[live] = f.Cz; _liveR[live] = f.R;
-        _liveObj[live] = AlloyRenderer.SlotCreatureObj(slot);
-        _liveCreature[live] = _liveObj[live] >= 0;
-        _liveIdxCount[live] = idxCount; _liveFirst[live] = first; _liveBaseVert[live] = baseVert;
-        _liveVao[live] = f.Vao; _livePrim[live] = f.Prim; _liveItem[live] = f.Item;
-        _liveTex[live] = AlloyRenderer.VdoHasUv(f.Vao) ? MaskTid(in f) : 0;
-        _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveContent[live] = f.Content;
-        _liveDyn[live] = false; _liveVisit[live] = 0;
-        _liveOff[live] = true; _liveGenOf[live] = AlloyRenderer.SlotEnrollGen(slot);
-        _liveIdx[slot] = live; _liveIdxSeq[slot] = _collectSeq;
-        _appended[_appN++] = live; _listVer++;
-        FrameZones.Count(FrameZones.Ev.CasterAppend);
-        return true;
-    }
     /// <summary>Spheres of the casters that were live last frame and are not live now -- a part that died, a
     /// creature that walked out of the capture, a VDO item range that stopped resolving. A vanished caster
     /// leaves no live mover to name the slot it was standing in, so its LAST KNOWN sphere is the mover.
@@ -113,9 +83,6 @@ public sealed unsafe partial class CasterPass
     private static readonly float[] _ghostCx = new float[MaxGhosts], _ghostCy = new float[MaxGhosts],
                                     _ghostCz = new float[MaxGhosts], _ghostR = new float[MaxGhosts];
     private static int _ghostCount;
-    /// <summary>Per VDO slot: the engine wrote into its position buffer this frame, so every caster on it has
-    /// moved without its matrix moving. Resolved once per slot per frame rather than per caster.</summary>
-    private static readonly bool[] _vDirty = new bool[MaxVdos];
     /// <summary><c>/shadow rebake 0</c> turns the predicate off and bakes every slot every frame. The live
     /// half of the self-check -- and the escape hatch if a shadow is ever seen to freeze.</summary>
     private static bool _rebake => Shadows.Rebake.V;
@@ -136,7 +103,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>Movers BY REASON. A skip count that stays at zero says the predicate is not paying; only this
     /// says why -- a world whose matrices all jitter, a shared vertex pool marked dirty by one dangly mesh,
     /// or simply a scene full of creatures. Each is a different fix.</summary>
-    private static long _mvMatrix, _mvDangly, _mvVertex, _mvBone, _mvAppear;
+    private static long _mvMatrix, _mvDangly, _mvBone, _mvAppear;
     /// <summary>Matrix movers' sphere radii this period (sum, largest): what the still scene's movers ARE.</summary>
     private static float _mvMatrixR, _mvMatrixRMax;
     private static int _mvMatrixRMaxSlot = -1;
@@ -173,12 +140,8 @@ public sealed unsafe partial class CasterPass
     /// <summary>Ownership slot -&gt; live index, valid while its seq is the current collect's. The refresh
     /// resolves the colour build's touched slots through it without a walk.</summary>
     private static readonly int[] _liveIdx = new int[MaxCasters], _liveIdxSeq = new int[MaxCasters];
-    /// <summary>The live list bucketed by VAO (CSR built at collect), so a dirty VDO names its casters
-    /// without a walk over the rest. Indexed by the DENSE caster VAO id, so it spans the arena sections past
-    /// <c>AlloyRenderer.DbVaoBase</c> as well as the VDO slots.</summary>
-    private static readonly int[] _vaoStart = new int[AlloyRenderer.CasterVaoIds + 1], _vaoMembers = new int[MaxCasters];
-    /// <summary>The frame each live index was visited by the refresh, so the three visit sources
-    /// (dirty VDO, touched record, dynamic last frame) admit a caster once.</summary>
+    /// <summary>The frame each live index was visited by the refresh, so the two visit sources
+    /// (touched record, dynamic last frame) admit a caster once.</summary>
     private static readonly int[] _liveVisit = new int[MaxCasters];
     /// <summary>The frame's visit list, gathered (and bone-checked) BEFORE any admission so a refresh
     /// that has to bail leaves no half-written stamps for the same-frame collect to misread.</summary>
@@ -278,9 +241,6 @@ public sealed unsafe partial class CasterPass
     {
         int live = 0;
         _moverCount = 0; _ghostCount = 0; _dMoverCount = 0; _sMoverCount = 0;
-        // Read BEFORE OwnedBuffers.ClearDirty: dangly and morph-animated nodes both commit through
-        // CommitItemDynamicData, so both land in the owned-buffer dirty set. Per VDO slot, not per caster.
-        for (int v = 0; v < MaxVdos; v++) _vDirty[v] = AlloyRenderer.VdoDirty(v);
         int n = AlloyRenderer.OrderCount;
         for (int pass = 0; pass < 2; pass++)
         {
@@ -317,7 +277,7 @@ public sealed unsafe partial class CasterPass
                 // otherwise re-appear into views that never re-bake its shadow back.
                 // #336: present last frame = in a list that stood through last frame (see _listFrame).
                 bool appeared = _collectedAt != _frameSeq - 1 || _liveStamp[slot] < _lastCollectFrame;
-                Admit(live, slot, f.Skinned, appeared, f.RecMoved, f.Dangly, VertexDirty(f.Vao, f.Item), _liveCreature[live]);
+                Admit(live, slot, f.Skinned, appeared, f.RecMoved, f.Dangly, _liveCreature[live]);
                 _liveIdx[slot] = live; _liveIdxSeq[slot] = _collectSeq + 1;
                 _liveOff[live] = false; _liveGenOf[live] = AlloyRenderer.SlotEnrollGen(slot);
                 live++;
@@ -327,8 +287,7 @@ public sealed unsafe partial class CasterPass
         }
         _liveCount = live;
         _visitSum += live;
-        _appN = 0; _offN = 0; _offOverflow = false; _listVer++;
-        BucketByVao();
+        _offN = 0; _offOverflow = false; _listVer++;
         VanishSweep();
         _noRecordSum += AlloyRenderer.CasterNoRecord;
         AlloyRenderer.CasterNoRecord = 0;
@@ -370,46 +329,31 @@ public sealed unsafe partial class CasterPass
         _ghostCount++;
     }
 
-    /// <summary>Counting sort of the live indices by VAO -- three passes over the list, paid once per
-    /// collect so a dirty VDO's casters are a range rather than a walk.</summary>
-    private static void BucketByVao()
-    {
-        Array.Clear(_vaoStart, 0, _vaoStart.Length);
-        for (int i = 0; i < _liveCount; i++) _vaoStart[_liveVao[i] + 1]++;
-        for (int v = 0; v < MaxVdos; v++) _vaoStart[v + 1] += _vaoStart[v];
-        for (int i = 0; i < _liveCount; i++) _vaoMembers[_vaoStart[_liveVao[i]]++] = i;
-        for (int v = MaxVdos; v > 0; v--) _vaoStart[v] = _vaoStart[v - 1];
-        _vaoStart[0] = 0;
-    }
-
     /// <summary>The per-caster predicate, ONE function for the full collect and the standing-list refresh so
     /// the two cannot classify a caster differently, counted by REASON because which term saturates decides
     /// where the next fix goes. A still caster is STILL A CASTER: it stays in the list and bakes, it merely
     /// does not invalidate the views it stands in, and <paramref name="appeared"/> errs toward stale.</summary>
-    private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly,
-                              bool vDirty)
-        => Admit(live, slot, skinned, appeared, recMoved, dangly, vDirty, creature: skinned);
+    private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly)
+        => Admit(live, slot, skinned, appeared, recMoved, dangly, creature: skinned);
     /// <summary><paramref name="creature"/>: in the dynamic set whether or not it moved this frame (its page
     /// stays claimed, so a still character keeps its shadow on a baked floor), but a mover -- a face
     /// re-bake -- only on real motion: run 18 admitted every creature part as a mover every frame and the
     /// pool re-baked 20-40 faces a frame with nothing moving (shadows GPU 1.1-1.8 ms, 60 fps).</summary>
     private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly,
-                              bool vDirty, bool creature)
+                              bool creature)
     {
-        // A dangly's VDO is committed every frame the solve runs, so vertex-dirty says nothing about it, and
-        // one POSED by a rig is not a creature's skin either: its own measured verdict (dangly) decides. Here,
-        // so both Collect and Refresh agree.
-        if (AlloyRenderer.SlotIsDangly(slot)) { vDirty = false; skinned = false; }
+        // A rig-POSED dangly is not a creature's skin: its own measured verdict (dangly) decides. Here, so
+        // both Collect and Refresh agree.
+        if (AlloyRenderer.SlotIsDangly(slot)) skinned = false;
         bool mover = true;
         if (skinned) _mvBone++;
         else if (appeared) { _mvAppear++; FrameZones.Count(FrameZones.Ev.Appeared); }
         else if (recMoved) { _mvMatrix++; _mvMatrixR += _liveR[live]; if (_liveR[live] > _mvMatrixRMax) { _mvMatrixRMax = _liveR[live]; _mvMatrixRMaxSlot = slot; } }
         else if (dangly) _mvDangly++;
-        else if (vDirty) _mvVertex++;
         else mover = false;
         if (mover) { _moverIdx[_moverCount++] = live; MoverFrames++; }
         // #336: _dynStamp is the frame the caster last MOVED; it stays dynamic for _dynHold frames after.
-        bool moving = skinned || dangly || recMoved || vDirty;
+        bool moving = skinned || dangly || recMoved;
         int last = _dynStamp[slot];
         // the same rule as dyn below, or a creature part with a stale stamp reads as a set flip EVERY frame:
         // run 19 re-baked 4.8 static cube slots a frame off those events (shadows GPU 7.9 ms, 47 fps)
@@ -433,7 +377,7 @@ public sealed unsafe partial class CasterPass
         {
             int m = _moverIdx[q], slot = _liveSlot[m];
             string why = m < _liveCreatures ? "bones" : AlloyRenderer.SlotRecMoved(slot) ? "matrix"
-                         : AlloyRenderer.SlotDangly(slot) ? "dangly" : AlloyRenderer.VdoDirty(_liveVao[m]) ? "vertex-dirty" : "appeared";
+                         : AlloyRenderer.SlotDangly(slot) ? "dangly" : "appeared";
             Count($"{why} {AlloyRenderer.SlotTexNameDb(slot)}");
         }
         for (int q = 0; q < _sMoverCount; q++) Count($"STATIC-EVENT {AlloyRenderer.SlotTexNameDb(_liveSlot[_sMoverIdx[q]])}");
@@ -447,9 +391,9 @@ public sealed unsafe partial class CasterPass
     }
 
     /// <summary>The frame's collect when the world did not change -- the list stands, and only what can move
-    /// WITHOUT a <see cref="AlloyRenderer.CasterGen"/> edge is re-read: the mover levels, the per-VDO dirty
-    /// set and the spheres, over the casters whose answer CAN differ. False = a bone slot was assigned or
-    /// reclaimed, which moves a caster between the halves of the list, so the caller re-collects.</summary>
+    /// WITHOUT a <see cref="AlloyRenderer.CasterGen"/> edge is re-read: the mover levels and the spheres, over
+    /// the casters whose answer CAN differ. False = a bone slot was assigned or reclaimed, which moves a
+    /// caster between the halves of the list, so the caller re-collects.</summary>
     private static bool Refresh()
     {
         _visitN = 0;
@@ -459,9 +403,6 @@ public sealed unsafe partial class CasterPass
         }
         else
         {
-            for (int v = 0; v < MaxVdos; v++)
-                if (AlloyRenderer.VdoDirty(v))
-                    for (int m = _vaoStart[v]; m < _vaoStart[v + 1]; m++) if (!Mark(_vaoMembers[m])) return false;
             for (int k = 0, n = AlloyRenderer.CasterTouchedCount; k < n; k++)
             {
                 int slot = AlloyRenderer.CasterTouchedSlot(k);
@@ -472,11 +413,7 @@ public sealed unsafe partial class CasterPass
         if (_offOverflow) return false;
         for (int q = 0; q < _offN; q++) if (!Mark(_offQ[q])) return false;
         _offN = 0;
-        // An appended entry is outside the VAO buckets, so the vertex-dirty visit is the one it would miss;
-        // its on-flip and its dynamic set reach it through the touched list and last frame's set like any other.
-        for (int q = 0; q < _appN; q++) { int i = _appended[q]; if (AlloyRenderer.VdoDirty(_liveVao[i]) && !Mark(i)) return false; }
         _moverCount = 0; _ghostCount = 0; _dMoverCount = 0; _sMoverCount = 0;
-        for (int v = 0; v < MaxVdos; v++) _vDirty[v] = AlloyRenderer.VdoDirty(v);
         _visitSum += _visitN; _touchedSum += AlloyRenderer.CasterTouchedCount;
         for (int k = 0; k < _visitN; k++)
         {
@@ -495,7 +432,7 @@ public sealed unsafe partial class CasterPass
             // kept enrollment may rewrite without a generation bump.
             AlloyRenderer.MoverSphere(slot, out _liveCx[i], out _liveCy[i], out _liveCz[i], out _liveR[i]);
             Admit(i, slot, i < _liveCreatures, appeared: back, AlloyRenderer.SlotRecMoved(slot),
-                  AlloyRenderer.SlotDangly(slot), VertexDirty(_liveVao[i], _liveItem[i]), _liveCreature[i]);
+                  AlloyRenderer.SlotDangly(slot), _liveCreature[i]);
         }
         Account();
         return true;
