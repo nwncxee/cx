@@ -239,7 +239,8 @@ internal static unsafe partial class Particles
         /// <summary>The velocity arm: the same two stages with CX_MOTION compiled in. 0 = the class keeps
         /// the camera's own vectors.</summary>
         public uint MotionProg;
-        public int MLocView = -1, MLocProj = -1, MLocPrevVp = -1, MLocJitter = -1, MLocSize = -1, MLocTex = -1;
+        public int MLocView = -1, MLocProj = -1, MLocPrevVp = -1, MLocJitter = -1, MLocSize = -1, MLocTex = -1,
+                   MLocAdditive = -1;
         /// <summary>The light rig's own uniform locations, in the order <see cref="AlloyLights"/> and
         /// <see cref="AlloyRenderer"/> want them handed back.</summary>
         public int LSunTex = -1, LSunDynTex = -1, LCubeTex = -1, LCubeCount = -1, LCubeDynTex = -1,

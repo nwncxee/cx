@@ -2,10 +2,12 @@ void main()
 {
     vec4 c = vColor * texture(uTex, vUv);
 #ifdef CX_MOTION
-    // CX-48: the velocity FIELD, not the colour. Written only where the sprite is mostly opaque: a faint
-    // edge texel is mostly the background, and it must keep the background's own vector. Alpha is the
-    // weight in all three blend classes (additive blends SRC_ALPHA, ONE), so one threshold serves them.
-    if (c.a < CX_MOTION_CUT) discard;
+    // CX-48: the velocity FIELD, not the colour. Written only where the sprite is most of the pixel: anywhere
+    // else the pixel is mostly the background, which must keep its own vector or TAA drags it along with the
+    // sprite. Over alpha-over that share is alpha; an additive sprite leaves the background whole under it,
+    // so its share is what it ADDS -- alpha alone painted a black-backed glow's whole quad.
+    float share = uAdditive != 0 ? max(max(c.r, c.g), c.b) * c.a : c.a;
+    if (share < CX_MOTION_CUT) discard;
     frag = vec4(CxMotionVec(vCur, vPrev), 0.0, 0.0);
     return;
 #endif

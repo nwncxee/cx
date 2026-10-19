@@ -253,6 +253,11 @@ internal static unsafe partial class Particles
         check.Expect(MotionVmain.Contains("vPrev = uPrevVP * vec4(world - (p.centre.xyz - p.prev.xyz), 1.0);")
           && MotionFmain.Contains("frag = vec4(CxMotionVec(vCur, vPrev), 0.0, 0.0);"),
           "the velocity arm moves the whole quad by the centre's own step and writes the shared convention");
+        // An additive glow's texture is alpha 1 over a black quad: cut on alpha, its whole quad took the sprite's
+        // vector and TAA dragged the scene behind it along -- the haze round every effect.
+        check.Expect(MotionFmain.Contains("float share = uAdditive != 0 ? max(max(c.r, c.g), c.b) * c.a : c.a;")
+          && MotionFmain.Contains("if (share < CX_MOTION_CUT) discard;") && !MotionFmain.Contains("if (c.a < CX_MOTION_CUT)"),
+          "an additive sprite claims the velocity field by what it adds, not by its alpha");
         // Last frame's centre, off hand-written positions: a slot with no previous frame behind it, a step,
         // and a step too large to be one particle's own movement (a recycled pool slot).
         check.Expect(PrevCentre(true, new Vector3(0f), new Vector3(5f, 6f, 7f)) == new Vector3(5f, 6f, 7f),
