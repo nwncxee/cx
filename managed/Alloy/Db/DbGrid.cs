@@ -1,158 +1,43 @@
-using CX.Engine;
 using System;
 using System.Numerics;
 using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary><b>The visible set, as an index over the scene database</b>, in the engine's <c>AreaGrid</c> shape:
-/// one NWN tile per cell, a wrapping 64 x 64 grid, a cell carrying the real AABB of what it holds, keyed on the
-/// OBJECT not the part. INCREMENTAL: a <see cref="ObjFlag.Static"/> object is filed once and never re-examined,
-/// everything else walks the MOVER list whole, and a static with unknown bounds is UNBOUNDED -- in every query.</summary>
+/// <summary><b>The visible set, as an index over the scene database</b>: one <see cref="UniformGrid"/> keyed on
+/// the OBJECT, not the part. INCREMENTAL -- a <see cref="ObjFlag.Static"/> object is filed once and never
+/// re-examined, everything else goes on the MOVER list, and a static with unknown bounds is UNBOUNDED; the last
+/// two are in every query.</summary>
 internal static unsafe class DbGrid
 {
-    internal const float CellSize = 10f;
-    internal const int Bits = 6, Dim = 1 << Bits, Mask = Dim - 1, Cells = Dim * Dim;
+    /// <inheritdoc cref="UniformGrid.CellSize"/>
+    internal const float CellSize = UniformGrid.CellSize;
+    /// <inheritdoc cref="UniformGrid.CellSize"/>
+    internal const int Dim = UniformGrid.Dim;
 
-    /// <summary>Per cell: the head of its object list (-1 empty) and the real world AABB of everything in it.
-    /// The box only ever GROWS, which costs a candidate when a static leaves and never a miss.</summary>
-    private static readonly int[] _head = new int[Cells];
-    private static readonly Box[] _box = new Box[Cells];
-    /// <summary>Per object: the next object in its cell's list, and which cell it is in (-1 not filed,
-    /// <see cref="CellUnboxed"/> unbounded, <see cref="CellMover"/> on the mover list).</summary>
-    private static readonly int[] _next = new int[SceneDb.MaxObjects];
-    private static readonly int[] _cell = new int[SceneDb.MaxObjects];
-    private static readonly int[] _unboxed = new int[SceneDb.MaxObjects];
-    private static readonly int[] _movers = new int[SceneDb.MaxObjects];
-    private static int _unboxedN, _moverN, _filed, _occupied;
-    private static bool _ready;
+    private static readonly UniformGrid G = new(SceneDb.MaxObjects);
 
-    private const int CellNone = -1, CellUnboxed = -2, CellMover = -3;
-
-    internal static int Filed => _filed;
-    internal static int Unboxed => _unboxedN;
-    internal static int Movers => _moverN;
-    internal static int Occupied => _occupied;
+    internal static int Filed => G.Filed;
+    internal static int Unboxed => G.Unboxed;
+    internal static int Movers => G.Movers;
+    internal static int Occupied => G.Occupied;
 
     /// <summary>Empty the index. A scene destroy, a session edge, or a self-check.</summary>
-    internal static void Reset()
-    {
-        for (int c = 0; c < Cells; c++) _head[c] = CellNone;
-        Array.Fill(_cell, CellNone);
-        _unboxedN = 0; _moverN = 0; _filed = 0; _occupied = 0;
-        _ready = true;
-    }
+    internal static void Reset() => G.Begin();
 
-    /// <summary>File object <paramref name="o"/>, or re-file it if its placement changed. Idempotent: calling
-    /// it twice with the same sphere is one filing. Allocation-free.</summary>
+    /// <inheritdoc cref="UniformGrid.File"/>
     internal static void File(int o, float cx, float cy, float cz, float r, bool stat)
-    {
-        if (!_ready) Reset();
-        if ((uint)o >= (uint)_cell.Length) return;
-        if (!stat)
-        {
-            if (_cell[o] == CellMover) return;
-            Remove(o);
-            if (_moverN < _movers.Length) { _movers[_moverN++] = o; _cell[o] = CellMover; }
-            return;
-        }
-        if (!(r > 0f))
-        {
-            if (_cell[o] == CellUnboxed) return;
-            Remove(o);
-            if (_unboxedN < _unboxed.Length) { _unboxed[_unboxedN++] = o; _cell[o] = CellUnboxed; }
-            return;
-        }
-        int cell = Cell(cx, cy);
-        if (_cell[o] == cell) { Grow(cell, cx, cy, cz, r); return; }
-        Remove(o);
-        Grow(cell, cx, cy, cz, r);
-        _next[o] = _head[cell];
-        _head[cell] = o;
-        _cell[o] = cell;
-        _filed++;
-    }
+        => G.File(o, cx, cy, cz, r, stat);
 
-    /// <summary>Unfile object <paramref name="o"/> (its record was destroyed, or it stopped being static).</summary>
-    internal static void Remove(int o)
-    {
-        if (!_ready || (uint)o >= (uint)_cell.Length) return;
-        int c = _cell[o];
-        if (c == CellNone) return;
-        if (c == CellUnboxed)
-        {
-            for (int k = 0; k < _unboxedN; k++)
-                if (_unboxed[k] == o) { _unboxed[k] = _unboxed[--_unboxedN]; break; }
-        }
-        else if (c == CellMover)
-        {
-            for (int k = 0; k < _moverN; k++)
-                if (_movers[k] == o) { _movers[k] = _movers[--_moverN]; break; }
-        }
-        else
-        {
-            int prev = -1;
-            for (int i = _head[c]; i >= 0; i = _next[i])
-            {
-                if (i == o)
-                {
-                    if (prev < 0) _head[c] = _next[i]; else _next[prev] = _next[i];
-                    _filed--;
-                    if (_head[c] < 0) _occupied--;
-                    break;
-                }
-                prev = i;
-            }
-        }
-        _cell[o] = CellNone;
-    }
+    /// <inheritdoc cref="UniformGrid.Remove"/>
+    internal static void Remove(int o) => G.Remove(o);
 
-    private static void Grow(int cell, float cx, float cy, float cz, float r)
-    {
-        ref Box b = ref _box[cell];
-        // The first entry SETS the box; every later one only grows it. An empty cell's stale box would
-        // otherwise swallow the whole area once anything was filed back into it.
-        if (_head[cell] < 0)
-        {
-            _occupied++;
-            b.Min = new Vector3(cx - r, cy - r, cz - r);
-            b.Max = new Vector3(cx + r, cy + r, cz + r);
-            return;
-        }
-        if (cx - r < b.Min.X) b.Min.X = cx - r;
-        if (cy - r < b.Min.Y) b.Min.Y = cy - r;
-        if (cz - r < b.Min.Z) b.Min.Z = cz - r;
-        if (cx + r > b.Max.X) b.Max.X = cx + r;
-        if (cy + r > b.Max.Y) b.Max.Y = cy + r;
-        if (cz + r > b.Max.Z) b.Max.Z = cz + r;
-    }
+    /// <inheritdoc cref="UniformGrid.Cell"/>
+    internal static int Cell(float x, float y) => UniformGrid.Cell(x, y);
 
-    /// <summary>The cell a world XY falls in. Wraps, so any coordinate is a valid cell.</summary>
-    internal static int Cell(float x, float y)
-    {
-        int ix = (int)MathF.Floor(x / CellSize) & Mask;
-        int iy = (int)MathF.Floor(y / CellSize) & Mask;
-        return (iy << Bits) | ix;
-    }
-
-    /// <summary>Append every object whose cell survives <paramref name="planes"/> (six vec4s, the
-    /// <c>CullPass.Planes</c> convention: inside when <c>dot(n, p) + d &gt;= 0</c>), plus every mover and every
-    /// unbounded object, into <paramref name="into"/> from <paramref name="n"/>; <paramref name="slack"/> grows
-    /// each cell box so a cell about to enter view is yielded a frame early. Returns the new count, allocation-free.</summary>
+    /// <inheritdoc cref="UniformGrid.Query"/>
     internal static int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
-    {
-        if (!_ready) return n;
-        for (int k = 0; k < _unboxedN && n < into.Length; k++) into[n++] = _unboxed[k];
-        for (int k = 0; k < _moverN && n < into.Length; k++) into[n++] = _movers[k];
-        for (int c = 0; c < Cells; c++)
-        {
-            int head = _head[c];
-            if (head < 0) continue;
-            if (!AreaGrid.BoxInFrustum(planes, in _box[c], slack)) continue;
-            for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
-        }
-        return n;
-    }
+        => G.Query(planes, slack, into, n);
 
     /// <summary>Off-device: a static comes back from a query containing its cell and not from one that does
     /// not; a mover and an unbounded object come back from every query; an unfiled object comes back from
