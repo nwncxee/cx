@@ -115,13 +115,15 @@ internal static unsafe partial class OwnedTextures
         FrameRegistry.Global.Register(FramePhase.Start, 20, Maintain, "OwnedTextures.maintain", log);
     }
 
-    /// <summary>The drip clock the cache's idle stamps and the census window are measured in, and the
-    /// once-a-frame maintenance of the read-ahead tables. Game thread, no GL: the decoder slots are engine
-    /// memory and the publishes and sweeps are main-thread tables. The GL half rides the 4.6 bracket.</summary>
+    /// <summary>Once a frame inside the engine's present, where the engine's context is current and this is
+    /// the only thread that writes these tables: the drip clock, the census line, the finished transcodes'
+    /// uploads, and the read-ahead tables' publishes and sweeps. Deliberately not gated on a world frame --
+    /// the decoder slots serve the ENGINE's own reads, which is what an area load is made of.</summary>
     private static void Maintain()
     {
         _dripFrame++;
         CensusSettleCheck();
+        DripTranscodes();
         DdsReader.Tick();
         TexLoad.Drip();
         ModelLoad.Drip();
@@ -366,8 +368,8 @@ internal static unsafe partial class OwnedTextures
     private static readonly HashSet<uint> _engineHeld = new();
 
     /// <summary>What the funnel-side scan (<see cref="TexScan"/>) learned about each owned name: the cutout
-    /// hole and graded-alpha fractions. Replaces every GPU readback the consumers used to make. Keyed by
-    /// the owned name; removed with the name.</summary>
+    /// hole and graded-alpha fractions, taken off the decoded pixels rather than read back from the GPU.
+    /// Keyed by the owned name; removed with the name.</summary>
     private struct Stat { public float Holes; public float Graded; }
     private static readonly Dictionary<uint, Stat> _stats = new();
     /// <summary>The hole and graded-alpha fractions of an owned name (or of the owned copy behind an engine
@@ -557,7 +559,8 @@ internal static unsafe partial class OwnedTextures
         _borrowed.Clear();
         _pending.Clear(); _pendingForget.Clear(); foreach (var d in _deferred) d.Clear();   // the names died with the context
         _pltQ.Clear();   // #360: queued sources are names in a context that no longer exists
-        _transCtx++;   // jobs in flight name owned textures of the dead context; each drops out at its upload
+        _transCtx++;   // a job the encoder still holds names a texture of the dead context: it drops at its upload
+        DropTranscodes();
         _stats.Clear();
         _meta.Clear(); _inFlight.Clear(); _pendingHandles.Clear(); _idleBytes = 0; _evictDue = false;
         _engineHeld.Clear();

@@ -281,8 +281,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // Drain never runs in those states, so a revoke there would hold the whole owned set for the session.
         GlContextService.InBracket = static () =>
         {
-            // The finished BCn transcodes first: the names their swap retires join THIS drain's batch.
-            OwnedTextures.DripTranscodes();
             OwnedTextures.Drain(); SampleVram();
             LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the
