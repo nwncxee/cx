@@ -12,7 +12,9 @@ B="$PWD/cx-linux-x64"
 [ -f "$B/libcx.so" ] || { echo "run ./build.sh first"; exit 1; }
 # ExtenderLog writes to $HOME/cx.log, which is where a real SESSION's log lives too -- a headless run
 # here would truncate the log the last game session left behind, which is the only evidence a live-verified
-# ticket has. Give the demo its own HOME so the two can never collide.
+# ticket has. Give the demo its own HOME so the two can never collide, and its own XDG_DATA_HOME: the
+# settings file sits in the client's user directory under it, and a player's cx.cfg moves the defaults
+# the SelfCheck suites assert.
 DEMOHOME="${TMPDIR:-/tmp}/cx-demo"
 mkdir -p "$DEMOHOME"
 LOG="$DEMOHOME/cx.log"
@@ -39,7 +41,7 @@ if ! echo 'int main(void){return 0;}' | cc -x c - -o "$STUB" -Wl,--build-id=0x"$
 fi
 
 echo ">> launching the demo host with the extender preloaded..."
-HOME="$DEMOHOME" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
+HOME="$DEMOHOME" XDG_DATA_HOME="$DEMOHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 
 echo
 echo ">> $LOG (written from C#):"
@@ -72,7 +74,7 @@ grep -E 'SelfCheck.*SKIPPED' "$LOG" | sed 's/^/>>   /' || true
 ROTHOME="${TMPDIR:-/tmp}/cx-demo-rot"
 rm -rf "$ROTHOME"; mkdir -p "$ROTHOME"
 cp "$(readlink -f "$(command -v sh)")" "$ROTHOME/nwmain-rot"
-HOME="$ROTHOME" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$ROTHOME/nwmain-rot" -c true >/dev/null
+HOME="$ROTHOME" XDG_DATA_HOME="$ROTHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$ROTHOME/nwmain-rot" -c true >/dev/null
 echo
 echo ">> rot case ($ROTHOME/cx.log):"
 grep 'host:' "$ROTHOME/cx.log" || true
