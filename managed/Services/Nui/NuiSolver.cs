@@ -356,68 +356,53 @@ internal static unsafe class NuiSolver
     {
         var check = new Checker(log);
         int stride = EngineLayout.KiwiPairStride;
-        if (stride == 0) { log.Info("NuiSolver.SelfCheck: skipped (no kiwi layout rows for this build)"); return; }
+        if (stride == 0) { check.Skip("no kiwi layout rows for this build"); return; }
         var ix = new Index();
-        var mem = (byte*)NativeMemory.AllocZeroed(4096);
-        var blocks = new System.Collections.Generic.List<IntPtr>();
-        IntPtr Block(int n)
-        {
-            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
-            blocks.Add(p);
-            return p;
-        }
+        using var scratch = new NuiScratch();
         var rowBlocks = new IntPtr[4];
-        try
+        IntPtr rows = scratch.Block(4096), cellArea = scratch.Block(1024);
+        for (int b = 0; b < rowBlocks.Length; b++) rowBlocks[b] = scratch.Block(64);
+        int cellAt = 0;
+        IntPtr MakeRow(int slot, params ulong[] ids)
         {
-            IntPtr rows = (IntPtr)mem, cellArea = Block(1024);
-            for (int b = 0; b < rowBlocks.Length; b++) rowBlocks[b] = Block(64);
-            int cellAt = 0;
-            IntPtr MakeRow(int slot, params ulong[] ids)
-            {
-                IntPtr row = rowBlocks[slot];
-                IntPtr c0 = new kiwi__impl__SymbolPair(cellArea)[cellAt].Ptr;
-                for (int i = 0; i < ids.Length; i++) new kiwi__impl__SymbolPair(c0)[i].Id = ids[i];
-                cellAt += ids.Length;
-                var r = new kiwi__impl__Row(row);
-                r.Cells = c0;
-                r.CellsEnd = new kiwi__impl__SymbolPair(c0)[ids.Length].Ptr;
-                return row;
-            }
-            void Entry(int i, ulong key, IntPtr row)
-            {
-                var e = new kiwi__impl__SymbolPair(rows)[i];
-                e.Id = key;
-                e.Value = row;
-            }
-            Entry(0, 5, MakeRow(0, 1, 3));
-            Entry(1, 7, MakeRow(1, 3, 4));
-            Entry(2, 9, MakeRow(2, 2));
-            Rebuild(ix, rows, new kiwi__impl__SymbolPair(rows)[3].Ptr);
-            check.Expect(Collect(ix, 3, rows, 3, 0) == 2 && _cand[0] == 0 && _cand[1] == 1, "symbol 3 is in the rows keyed 5 and 7");
-            check.Expect(Collect(ix, 2, rows, 3, 0) == 1 && _cand[0] == 2, "symbol 2 only in row 9");
-            check.Expect(Collect(ix, 8, rows, 3, 0) == 0, "symbol 8 is nowhere");
-            check.Expect(Collect(ix, 2, rows, 2, 0) == 0, "a row the tableau lost is not a candidate");
+            IntPtr row = rowBlocks[slot];
+            IntPtr c0 = new kiwi__impl__SymbolPair(cellArea)[cellAt].Ptr;
+            for (int i = 0; i < ids.Length; i++) new kiwi__impl__SymbolPair(c0)[i].Id = ids[i];
+            cellAt += ids.Length;
+            var r = new kiwi__impl__Row(row);
+            r.Cells = c0;
+            r.CellsEnd = new kiwi__impl__SymbolPair(c0)[ids.Length].Ptr;
+            return row;
+        }
+        void Entry(int i, ulong key, IntPtr row)
+        {
+            var e = new kiwi__impl__SymbolPair(rows)[i];
+            e.Id = key;
+            e.Value = row;
+        }
+        Entry(0, 5, MakeRow(0, 1, 3));
+        Entry(1, 7, MakeRow(1, 3, 4));
+        Entry(2, 9, MakeRow(2, 2));
+        Rebuild(ix, rows, new kiwi__impl__SymbolPair(rows)[3].Ptr);
+        check.Expect(Collect(ix, 3, rows, 3, 0) == 2 && _cand[0] == 0 && _cand[1] == 1, "symbol 3 is in the rows keyed 5 and 7");
+        check.Expect(Collect(ix, 2, rows, 3, 0) == 1 && _cand[0] == 2, "symbol 2 only in row 9");
+        check.Expect(Collect(ix, 8, rows, 3, 0) == 0, "symbol 8 is nowhere");
+        check.Expect(Collect(ix, 2, rows, 2, 0) == 0, "a row the tableau lost is not a candidate");
 
-            // substitute(3, {4, 6}): rows 5 and 7 trade 3 for 4 and 6; the row joins under key 3.
-            ix.Head[3] = -1;
-            foreach (ulong key in new ulong[] { 5, 7 }) { Add(ix, 4, key); Add(ix, 6, key); }
-            Add(ix, 4, 3);
-            Add(ix, 6, 3);
-            cellAt = 0;
-            Entry(0, 3, MakeRow(3, 4, 6));
-            Entry(1, 5, MakeRow(0, 1, 4, 6));
-            Entry(2, 7, MakeRow(1, 4, 6));
-            Entry(3, 9, MakeRow(2, 2));
-            check.Expect(Collect(ix, 6, rows, 4, 0) == 3 && _cand[0] == 0 && _cand[2] == 2, "symbol 6 is now in rows 3, 5, 7");
-            check.Expect(Collect(ix, 3, rows, 4, 0) == 0, "symbol 3 left every row");
-            check.Expect(Collect(ix, 2, rows, 4, 9) == 1 && _cand[0] == 3, "the artificial key is checked directly, once");
-            check.Expect(Covered(6, rows, 4, Collect(ix, 6, rows, 4, 0)) && !_broken, "the full walk agrees");
-        }
-        finally
-        {
-            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
-            NativeMemory.Free(mem);
-        }
+        // substitute(3, {4, 6}): rows 5 and 7 trade 3 for 4 and 6; the row joins under key 3.
+        ix.Head[3] = -1;
+        foreach (ulong key in new ulong[] { 5, 7 }) { Add(ix, 4, key); Add(ix, 6, key); }
+        Add(ix, 4, 3);
+        Add(ix, 6, 3);
+        cellAt = 0;
+        Entry(0, 3, MakeRow(3, 4, 6));
+        Entry(1, 5, MakeRow(0, 1, 4, 6));
+        Entry(2, 7, MakeRow(1, 4, 6));
+        Entry(3, 9, MakeRow(2, 2));
+        check.Expect(Collect(ix, 6, rows, 4, 0) == 3 && _cand[0] == 0 && _cand[2] == 2, "symbol 6 is now in rows 3, 5, 7");
+        check.Expect(Collect(ix, 3, rows, 4, 0) == 0, "symbol 3 left every row");
+        check.Expect(Collect(ix, 2, rows, 4, 9) == 1 && _cand[0] == 3, "the artificial key is checked directly, once");
+        check.Expect(Covered(6, rows, 4, Collect(ix, 6, rows, 4, 0)) && !_broken, "the full walk agrees");
         log.Info(check.Ok ? "NuiSolver.SelfCheck: passed" : "NuiSolver.SelfCheck: FAILED");
     }
 }
