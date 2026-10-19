@@ -51,3 +51,5 @@ M:CX.Engine.CClientExoApp.GetObjectName(System.UInt32,System.IntPtr);Read an obj
 F:CX.Graphics.Gl.GetBufferSubData;A GPU readback stalls the frame whatever the fence; read through GpuReadback
 F:CX.Graphics.Gl.GetNamedBufferSubData;A GPU readback stalls the frame whatever the fence; read through GpuReadback
 F:CX.Graphics.Gl.GetTexImage;A GPU readback stalls the frame whatever the fence; read through GpuReadback
+M:CX.Engine.Material.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
+M:CX.Engine.SharedMaterial.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
