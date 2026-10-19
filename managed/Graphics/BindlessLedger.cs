@@ -45,12 +45,6 @@ internal static unsafe class BindlessLedger
     /// <summary>Lines logged per rule; the count keeps going past it.</summary>
     private const int LoudPerRule = 4;
 
-    /// <summary>Breaches since boot, every rule.</summary>
-    internal static long Total
-    {
-        get { long n = 0; foreach (long h in _s.Hits) n += h; return n; }
-    }
-
     /// <summary>Handles resident in Alloy's context now, and the most there have been at once.</summary>
     internal static (int Now, int Peak) ResidentCount
     {
