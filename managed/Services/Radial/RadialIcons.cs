@@ -42,8 +42,6 @@ internal static unsafe class RadialIcons
     private static AurTextureGetFn _get;
     private static GuiIconGetIconModelFn _getIconModel;
     private static GetGameObjectFn _getGameObject;
-    private static GetObjectNameFn _getObjectName;
-    private static ExoStringDtorFn _exoDtor;
     private static IntPtr _appMgr, _vtLayered, _vtComposite, _vtArmor;
     private static bool _ready, _initTried, _firstDrawLogged;
     private static ExtenderLog? _log;
@@ -66,8 +64,6 @@ internal static unsafe class RadialIcons
         _get = (AurTextureGetFn)SymbolMap.Resolve(SymbolMap.AurTextureGet, log);
         _getIconModel = (GuiIconGetIconModelFn)SymbolMap.Resolve(SymbolMap.GuiIconGetIconModel, log);
         _getGameObject = (GetGameObjectFn)SymbolMap.Resolve(SymbolMap.GetGameObject, log);
-        _getObjectName = (GetObjectNameFn)SymbolMap.Resolve(SymbolMap.GetObjectName, log);
-        _exoDtor = (ExoStringDtorFn)SymbolMap.Resolve(SymbolMap.ExoStringDtor, log);
         _appMgr = SymbolMap.Resolve(SymbolMap.AppManager, log);
         _vtLayered = EngineAbi.Vtbl(SymbolMap.Resolve(SymbolMap.VtCLayeredIcon, log));
         _vtComposite = EngineAbi.Vtbl(SymbolMap.Resolve(SymbolMap.VtCCompositeIcon, log));
@@ -103,7 +99,7 @@ internal static unsafe class RadialIcons
             int n = Layers(icon, tids);
             log.Info($"[radial] icon slot=c kind={Classify(icon)} tid={(n > 0 ? tids[0] : 0)} layers={n} icon=0x{(long)icon:x} (0 = built on the next frame)");
         }
-        return new CascadeItem(Native.EngineText(ObjectName(id))) { IconHandle = (IntPtr)id };
+        return new CascadeItem(Native.EngineText(Native.ObjectName(id))) { IconHandle = (IntPtr)id };
     }
 
     /// <summary>Have the engine build the item's own icon model when the icon is PLT-tinted (layered or armour), so its
@@ -314,21 +310,6 @@ internal static unsafe class RadialIcons
         while (n < ResRefLen && resref[n] != 0) { dst[n] = resref[n]; n++; }
         dst[n] = 0;
         return n;
-    }
-
-    /// <summary>The item's display name through <c>GetObjectName</c> (cold; the DialogService contract: zeroed
-    /// CExoString in, its buffer freed by the CExoString dtor after the copy).</summary>
-    internal static string ObjectName(uint id)
-    {
-        if (_getObjectName == null || _exoDtor == null) return "";
-        IntPtr mgr = *(IntPtr*)_appMgr; if (mgr == IntPtr.Zero) return "";
-        IntPtr app = *(IntPtr*)mgr; if (app == IntPtr.Zero) return "";
-        byte* exo = stackalloc byte[16];
-        for (int i = 0; i < 16; i++) exo[i] = 0;
-        _getObjectName(app, id, (IntPtr)exo);
-        string name = Native.ReadExo((IntPtr)exo);
-        _exoDtor((IntPtr)exo);
-        return name.Trim();
     }
 
     // ---- self-check ----------------------------------------------------------------------------

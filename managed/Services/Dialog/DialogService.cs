@@ -181,7 +181,7 @@ public sealed unsafe class DialogService : IExtenderService
             _dialogId = dialogId;
             _speakerId = speakerId;
             _portraitResref = ResolvePortrait(speakerId);   // same thread ShowDialogEntry ran on -> safe
-            _speakerName = Native.EngineText(ResolveName(speakerId));
+            _speakerName = Native.EngineText(Native.ObjectName(speakerId));   // message thread, as the hook ran on
             _replies = System.Array.Empty<Reply>();
             _isEndDialog = false;
             _hover = -1;
@@ -1110,10 +1110,6 @@ public sealed unsafe class DialogService : IExtenderService
 
     private static readonly IntPtr _appMgr = Native.Sym(SymbolMap.AppManager);
     private static readonly GetGameObjectFn _getGameObject = EngineFn.GetGameObject;
-    /// <summary>CClientExoApp::GetObjectName(this, objId, CExoString* out) -- fills a caller-owned CExoString.</summary>
-    private static readonly GetObjectNameFn _getObjectName = EngineFn.GetObjectName;
-    /// <summary>CExoString::~CExoString(this) -- frees the buffer GetObjectName allocated into our stack CExoString.</summary>
-    private static readonly ExoStringDtorFn _exoDtor = EngineFn.ExoStringDtor;
 
     private const byte PortraitSizeMedium = 3;
 
@@ -1139,24 +1135,6 @@ public sealed unsafe class DialogService : IExtenderService
         o.GetPortrait(buf, PortraitSizeMedium);
         int n = 0; while (n < 16 && buf[n] != 0) n++;
         return n == 0 ? "" : Encoding.ASCII.GetString(buf, n);
-    }
-
-    /// <summary>Resolve a speaker object id to its display name for the title band ("" = unnamed). Message
-    /// thread, inside the ShowDialogEntry hook; a stale or arbitrary id is safe (the engine null-checks it).
-    /// GetObjectName takes a caller-owned CExoString {char* buf@0; uint len@8; uint cap@0xc} that MUST be zeroed
-    /// first (the engine frees a non-null buf) and dtor'd after copying out, or a node leaks a heap block.</summary>
-    private static string ResolveName(uint speakerId)
-    {
-        if (_appMgr == IntPtr.Zero || _getObjectName == null || _exoDtor == null) return "";
-        IntPtr mgr = *(IntPtr*)_appMgr; if (mgr == IntPtr.Zero) return "";
-        IntPtr app = *(IntPtr*)mgr;     if (app == IntPtr.Zero) return "";
-        // app is the CClientExoApp*: GetObjectName does the +8 to the internal itself.
-        byte* exo = stackalloc byte[16];
-        for (int i = 0; i < 16; i++) exo[i] = 0;   // MANDATORY: the engine frees a non-null buf before writing
-        _getObjectName(app, speakerId, (IntPtr)exo);
-        string name = Native.ReadExo((IntPtr)exo);        // copies out (Latin1); "" when len==0
-        _exoDtor((IntPtr)exo);                      // free the engine-allocated buffer (null-safe)
-        return name.Trim();
     }
 
     /// <summary>Off-device proof: reply gating (from the MVP), the animation scalars -- window fade open/close,

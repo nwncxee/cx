@@ -290,7 +290,7 @@ public sealed partial class PlateTable
     private static string ResolveName(IntPtr obj, byte type, uint id, out uint[]? colours)
     {
         string n = NameplateNative.CreatureName(obj, type);
-        if (n.Length == 0) n = NameplateNative.ObjectName(id);
+        if (n.Length == 0) n = Native.ObjectName(id);
         // COLD, and the only place a name acquires either its colours or its line breaks. Strip first: the
         // break rules count spaces, and a `<cRGB>` tag's raw bytes can BE spaces.
         n = PlateLayout.StripColours(n, out uint[]? cols);
