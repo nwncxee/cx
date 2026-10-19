@@ -16,11 +16,13 @@ internal static unsafe class AreaGrid
     /// <inheritdoc cref="UniformGrid.CellSize"/>
     internal const int Dim = UniformGrid.Dim;
 
-    private static readonly UniformGrid G = new(AlloyRenderer.MaxOwned);
+    private static readonly UniformGrid G = new("AreaGrid", AlloyRenderer.MaxOwned);
 
     internal static int Filed => G.Filed;
     internal static int Unboxed => G.Unboxed;
     internal static int Occupied => G.Occupied;
+    /// <inheritdoc cref="UniformGrid.Refused"/>
+    internal static int Refused => G.Refused;
 
     /// <summary>Start a fresh index. Called once per enrolment, which is the only edge that can change which
     /// slot holds which part.</summary>

@@ -208,6 +208,7 @@ public static partial class DbFeed
     internal static string Stats()
         => $"dbfeed: frames {_frames} rec-writes {_lastRecWrites} visible {LastVisible} retry {Retrying} "
          + $"recipes {DrawRecipe.Count} (diffuse {DrawRecipe.DiffuseCensus().resolved}/{DrawRecipe.DiffuseCensus().named} resolved, {DrawRecipe.DiffuseCensus().standIn} stand-in) grid {DbGrid.Filed}/{DbGrid.Movers}/{DbGrid.Unboxed} {DrawRecipe.WaterNote()}"
+         + (DbGrid.Refused > 0 ? $" GRID REFUSED {DbGrid.Refused}" : "")
          + (DrawRecipe.Spilled > 0 ? $" RECIPES SPILLED {DrawRecipe.Spilled}" : "")
          + (DrawRecipe.RetiredInUse > 0 ? $" RECIPES EVICTED IN USE {DrawRecipe.RetiredInUse}" : "")
          + (DrawRecipe.DoubleRetire > 0 ? $" RECIPES RETIRED TWICE {DrawRecipe.DoubleRetire}" : "")
