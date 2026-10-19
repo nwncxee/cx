@@ -149,7 +149,10 @@ public static class RenderSnapshot
         // memory the game thread owns, so this is the only moment in the frame at which it may happen.
         FrameHoist.Fold(ref f.Hoist);
         for (int k = 0; k < f.ViewCount; k++)
+        {
             FrameHoist.FoldFog(f.Views[k].Scene, in f.Hoist, out f.Views[k].Fog);
+            if (f.Views[k].World && f.Views[k].Perspective) ReachFog(ref f.Views[k]);
+        }
         Fold?.Invoke(f);
         SceneDb.Objects.TakeDirty();
         SceneDb.Parts.TakeDirty();
@@ -183,6 +186,18 @@ public static class RenderSnapshot
         _frames++;
         _building.Reset(_frames);
         return f;
+    }
+
+    /// <summary>A world view's far plane out to where its fog is opaque (<see cref="SceneFog.FarForFog"/>), the
+    /// projection rebuilt to match. The player is the camera's follow object, which is what the fog is measured from.</summary>
+    private static void ReachFog(ref ViewRec r)
+    {
+        DbId follow = SceneDb.Cameras.Valid(r.Camera) ? SceneDb.CamFollow[r.Camera.Index] : default;
+        float toPlayer = SceneDb.Objects.Valid(follow) ? Vector3.Distance(r.CamPos, SceneDb.ObjPos[follow.Index]) : -1f;
+        float far = SceneFog.FarForFog(r.Far, r.Fog.On, r.Fog.Start, r.Fog.End, toPlayer);
+        if (far <= r.Far) return;
+        r.Far = far;
+        r.Proj = AlloyCamera.Perspective(r.Fovy, r.Aspect, r.Near, far);
     }
 
     /// <summary>seam-feed's fold: rewrite the renderer's persistent records for the frame's dirty parts. Set
