@@ -24,7 +24,6 @@ internal static unsafe class VanillaShader
     /// region from its stub while the plain splices stay, so every content pair draws the plain lit path -- the A/B for
     /// "a content stage looks wrong" against "Alloy's own shading looks wrong".</summary>
     private static readonly bool _hostArmed = Renderer.HostFs.Boot;
-    internal static bool HostArmed => _hostArmed;
 
     /// <summary>The marker pair. Everything between them is REPLACED by the engine's copy of the named resref
     /// when there is one; what a stage writes there is a STUB -- the feature off -- never a copy of the file,
@@ -168,10 +167,6 @@ internal static unsafe class VanillaShader
     /// row block as a function, so the declaration goes and every index becomes that call.</summary>
     internal static readonly Regex PltSchemeDecl =
         new(@"(?m)^[ \t]*uniform\b[^;\n]*\bPLTscheme\b[^;\n]*;[^\n]*\n?", RegexOptions.Compiled);
-    /// <summary>One <c>PLTscheme[...]</c> read. The index may be any expression without a bracket of its own,
-    /// which is what every stock use is (<c>int(ColorPLT.g * 255.0 + 0.5)</c>).</summary>
-    internal static readonly Regex PltSchemeUse =
-        new(@"\bPLTscheme\s*\[([^\]\[]*)\]", RegexOptions.Compiled);
 
     /// <summary>The declaration strip for one environment: every <c>uniform</c> line naming a macro
     /// <paramref name="defs"/> supplies, initialiser and all (legal GLSL, and what a stage written for both

@@ -14,14 +14,10 @@ namespace CX.Alloy.Seam;
 /// CX keeps current (<c>GetAurSceneObjectCount</c>'s <c>scene+0x138</c>), so the engine's own body works.</summary>
 internal static unsafe class SceneFns
 {
-    private static ExtenderLog? _log;
-    private static long _newScene, _newCamera, _ambientWrites, _findHits, _findMisses;
-
     /// <summary>Install the three hooks. False = one did not take, which is a seam that cannot be armed: the
     /// caller stands DB mode down rather than letting the engine's own factory build an object nothing owns.</summary>
     internal static bool Install(ExtenderLog log, HookService hooks)
     {
-        _log = log;
         bool ok = true;
         ok &= Hook(log, hooks, SymbolMap.NewCAurScene, (IntPtr)(delegate* unmanaged<byte*, nint>)&OnNewCAurScene);
         ok &= Hook(log, hooks, SymbolMap.NewCAurCamera, (IntPtr)(delegate* unmanaged<byte*, nint>)&OnNewCAurCamera);
@@ -63,7 +59,6 @@ internal static unsafe class SceneFns
         SeedFog(shell);
         SeedWind(shell);
         SceneShell.Refresh(id);
-        _newScene++;
         return shell;
     }
 
@@ -80,10 +75,8 @@ internal static unsafe class SceneFns
         {
             if (!SceneDb.Scenes.LiveAt(i)) continue;
             if (!string.Equals(SceneDb.SceneName[i], n, StringComparison.OrdinalIgnoreCase)) continue;
-            _findHits++;
             return SceneDb.SceneFacade[i];
         }
-        _findMisses++;
         return 0;
     }
 
@@ -101,7 +94,6 @@ internal static unsafe class SceneFns
         nint block = (nint)NativeMemory.AllocZeroed((nuint)size);
         ctor(block);
         sc.WindManager = block;
-        _windBlocks++;
     }
 
     /// <summary>Free the scene's <c>WindManager</c> block. Called from the scene's destroy, so the block's
@@ -114,10 +106,8 @@ internal static unsafe class SceneFns
         if (block == 0) return;
         sc.WindManager = 0;
         NativeMemory.Free((void*)block);
-        _windBlocks--;
     }
 
-    private static long _windBlocks;
 
     /// <summary>The fog words <c>Scene::Scene</c> @0x4724f0 leaves behind, written into a fresh shell. A CX
     /// shell is zero-filled and zero is not the engine's "no fog yet" -- the ctor leaves fog off, near 5, far
@@ -162,7 +152,6 @@ internal static unsafe class SceneFns
         // engine's own CAurBehaviorSubwindow::Control failed its "am I still the owner's behaviour" test and
         // returned before Camera::SetViewPort -- every GUI viewport camera kept an empty rect.
         if (SceneDb.Objects.Valid(obj)) SceneDb.ObjFacade[obj.Index] = new CX.Engine.Camera(shell).GobSub;
-        _newCamera++;
         return shell;
     }
 
@@ -177,7 +166,6 @@ internal static unsafe class SceneFns
         Vec3 c = colour.Value;
         SceneDb.SceneAmbient[s.Index] = new Vector3(c.X, c.Y, c.Z);
         SceneFeed.LightsChanged(s);
-        _ambientWrites++;
     }
 
     /// <summary><c>AuroraSetTileFoggedByWar(Vector&amp;, bool)</c> @0x453320: the fog of war, and the only tile
@@ -190,7 +178,6 @@ internal static unsafe class SceneFns
         DbId world = WorldScene();
         if (world.IsNull) return;
         TileBuild.SetFoggedByWar(world, new Vector3(pos->X, pos->Y, pos->Z), fogged != 0);
-        _fogOfWar++;
     }
 
     /// <summary>The session's one world scene, cached. <c>AuroraSetTileFoggedByWar</c> is called per TILE as
@@ -207,7 +194,6 @@ internal static unsafe class SceneFns
 
     private static DbId _world;
 
-    private static long _fogOfWar;
 
     /// <summary><c>setalpha(CAurObject*, float)</c> @0x4524d0 -- glue the game links non-virtually whose body
     /// reads <c>Gob+0x90</c> and RECURSES the part tree, writing each part's alpha. No vtable slot, so a facade
@@ -224,13 +210,6 @@ internal static unsafe class SceneFns
             SceneDb.PartAlpha[first + i] = alpha;
             SceneDb.TouchPart(first + i, Dirty.Material);
         }
-        _alphaWrites++;
     }
 
-    private static long _alphaWrites;
-
-    internal static string Stats(int _)
-        => $"scene fns: {_newScene} scenes, {_newCamera} cameras, {_ambientWrites} ambient writes, "
-         + $"{_fogOfWar} fog-of-war cells, {_alphaWrites} setalpha walks, "
-         + $"FindScene {_findHits} found / {_findMisses} MISSED";
 }

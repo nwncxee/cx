@@ -17,42 +17,35 @@ internal static class ObjectTex
     internal static int Replace(DbId obj, string? from, string? to, int slot = 0, bool subtree = false,
                                 ReadOnlySpan<int> rows = default, TexKind kind = TexKind.Auto)
     {
-        if (string.IsNullOrEmpty(to) || (uint)slot >= 4) return 0;
-        return ReplaceIn(obj, from, to, slot, 0, rows, kind);
+        if (string.IsNullOrEmpty(to) || (uint)slot >= PartSlots.Slots) return 0;
+        // `subtree` changes nothing: CX's part range already IS the object root's subtree, and the only caller
+        // that passes it is the whole-object case -- accepted rather than ignored silently.
+        var v = new Replacer { From = from, To = to, Rows = rows, Kind = kind };
+        return PartSlots.ForEach(obj, slot, grafts: true, ref v);
     }
 
-    /// <summary>How deep a composition may be grafted before the walk gives up. A creature is one hop; the
-    /// bound is a cycle guard, not a budget.</summary>
-    private const int MaxGraft = 8;
-
-    /// <summary>The object's own parts, then every piece <c>Gob::Append</c> grafted onto it. A creature's torso,
-    /// arms and cloak are each a child object, so the base range alone is not the whole wardrobe.</summary>
-    private static int ReplaceIn(DbId obj, string? from, string? to, int slot, int depth, ReadOnlySpan<int> rows, TexKind kind)
+    /// <summary>One slot of one part taken by <see cref="Replace"/>: the PLT layer rows go on with the
+    /// texture, since they are the matched part's (<c>CNWCAnimBaseParts::ReplaceTexture</c> @0xad8b10).</summary>
+    private ref struct Replacer : IPartSlots
     {
-        if (depth > MaxGraft || !SceneDb.Objects.Valid(obj)) return 0;
-        int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
-        int hits = 0;
-        for (int p = first; p < first + count; p++)
+        internal string? From;
+        internal string To;
+        internal ReadOnlySpan<int> Rows;
+        internal TexKind Kind;
+
+        public int At(int p, int slot)
         {
-            // `subtree` was the engine's "only this part's descendants" form. CX's range IS the subtree of
-            // the object's root, and the only caller that passes it is the whole-object case, so the flag
-            // changes nothing here; it is accepted rather than ignored silently.
-            if (ShowsOverride(p, slot, to!)) Refresh(p, slot);
-            Match m = Matches(p, slot, from);
-            if (m != Match.Takes) { if (m == Match.MtrKept) NoteMtrKept(p, slot, from); continue; }
-            int at = p * 4 + slot;
+            if (ShowsOverride(p, slot, To)) Refresh(p, slot);
+            Match m = Matches(p, slot, From);
+            if (m != Match.Takes) { if (m == Match.MtrKept) NoteMtrKept(p, slot, From); return 0; }
+            int at = p * PartSlots.Slots + slot;
             var old = new TexId((uint)SceneDb.PartTexId[at]);
-            SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, to!, kind).Value;
-            if (!rows.IsEmpty) PltColors.SetPartRows(p, rows);
-            hits++;
+            SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, To, Kind).Value;
+            if (!Rows.IsEmpty) PltColors.SetPartRows(p, Rows);
+            return 1;
         }
-        if (hits > 0) SceneDb.Touch(obj, Dirty.Texture);
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            hits += ReplaceIn(c, from, to, slot, depth + 1, rows, kind);
-        }
-        return hits;
+
+        public void Done(DbId obj, int changed) { if (changed > 0) SceneDb.Touch(obj, Dirty.Texture); }
     }
 
     /// <summary>The step <c>Gob::ReplaceTexture</c> @0x43eb30 runs on a part that ALREADY shows the texture being
@@ -61,7 +54,7 @@ internal static class ObjectTex
     /// swapping the file behind <c>to</c>. The texture is also FORGOTTEN, or the registry re-serves its pixels.</summary>
     private static void Refresh(int p, int slot)
     {
-        int at = p * 4 + slot;
+        int at = p * PartSlots.Slots + slot;
         if (SceneDb.PartTexId[at] == 0) return;              // already the model's own texture
         var had = new TexId((uint)SceneDb.PartTexId[at]);
         string resref = TexRegistry.ResrefOf(had);
@@ -73,37 +66,33 @@ internal static class ObjectTex
     /// <summary>Does part <paramref name="p"/>'s slot already carry an override named <paramref name="name"/>?</summary>
     private static bool ShowsOverride(int p, int slot, string name)
     {
-        int ov = SceneDb.PartTexId[p * 4 + slot];
+        int ov = SceneDb.PartTexId[p * PartSlots.Slots + slot];
         return ov != 0 && string.Equals(TexRegistry.ResrefOf(new TexId((uint)ov)), name, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Drop every override on <paramref name="obj"/> so each part falls back to its recipe's own
     /// texture -- <c>Gob::RestoreTexture</c>.</summary>
-    internal static int Restore(DbId obj) => RestoreIn(obj, 0);
-
-    /// <inheritdoc cref="ReplaceIn"/>
-    private static int RestoreIn(DbId obj, int depth)
+    internal static int Restore(DbId obj)
     {
-        if (depth > MaxGraft || !SceneDb.Objects.Valid(obj)) return 0;
-        int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
-        int hits = 0;
-        for (int p = first; p < first + count; p++)
-            for (int slot = 0; slot < 4; slot++)
-            {
-                int at = p * 4 + slot;
-                if (SceneDb.PartTexId[at] == 0) continue;
-                if (slot == 0) PltColors.ClearPart(p);
-                TexRegistry.Release(new TexId((uint)SceneDb.PartTexId[at]));
-                SceneDb.PartTexId[at] = 0;
-                hits++;
-            }
-        if (hits > 0) SceneDb.Touch(obj, Dirty.Texture);
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        var v = default(Restorer);
+        return PartSlots.ForEach(obj, -1, grafts: true, ref v);
+    }
+
+    /// <summary>One slot of one part dropped back to the recipe's texture; slot 0 takes the part's PLT layer
+    /// rows with it, those having been set alongside the diffuse override.</summary>
+    private struct Restorer : IPartSlots
+    {
+        public int At(int p, int slot)
         {
-            if (!SceneDb.Objects.Valid(c)) break;
-            hits += RestoreIn(c, depth + 1);
+            int at = p * PartSlots.Slots + slot;
+            if (SceneDb.PartTexId[at] == 0) return 0;
+            if (slot == 0) PltColors.ClearPart(p);
+            TexRegistry.Release(new TexId((uint)SceneDb.PartTexId[at]));
+            SceneDb.PartTexId[at] = 0;
+            return 1;
         }
-        return hits;
+
+        public void Done(DbId obj, int changed) { if (changed > 0) SceneDb.Touch(obj, Dirty.Texture); }
     }
 
     /// <summary>Release the overrides a dying record holds; nothing else owns those texture references.</summary>
@@ -134,7 +123,7 @@ internal static class ObjectTex
     /// creature's torso, arms and cloak, each of which is a child object here.</summary>
     private static void SetEnvMapIn(DbId obj, string? name, int depth)
     {
-        if (depth > MaxGraft || !SceneDb.Objects.Valid(obj)) return;
+        if (depth > PartSlots.MaxGraft || !SceneDb.Objects.Valid(obj)) return;
         int i = obj.Index;
         if (!string.Equals(SceneDb.ObjEnvMap[i], name, StringComparison.Ordinal))
         {
@@ -157,25 +146,33 @@ internal static class ObjectTex
     /// <see cref="SceneDb.PartTexName"/>, not <see cref="Matches"/>, whose model-node mesh a tile merges away.</summary>
     internal static int ReplaceByTexName(DbId obj, string from, string? to, int slot = 0)
     {
-        if (string.IsNullOrEmpty(from) || (uint)slot >= 4 || !SceneDb.Objects.Valid(obj)) return 0;
-        int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
-        int hits = 0;
-        for (int p = first; p < first + count; p++)
+        if (string.IsNullOrEmpty(from) || (uint)slot >= PartSlots.Slots) return 0;
+        var v = new TexNameReplacer { From = from, To = to };
+        return PartSlots.ForEach(obj, slot, grafts: false, ref v);
+    }
+
+    /// <inheritdoc cref="ReplaceByTexName"/>
+    private struct TexNameReplacer : IPartSlots
+    {
+        internal string From;
+        internal string? To;
+
+        public int At(int p, int slot)
         {
-            if (!string.Equals(SceneDb.PartTexName(p, slot), from, StringComparison.OrdinalIgnoreCase)) continue;
-            int at = p * 4 + slot;
+            if (!string.Equals(SceneDb.PartTexName(p, slot), From, StringComparison.OrdinalIgnoreCase)) return 0;
+            int at = p * PartSlots.Slots + slot;
             var old = new TexId((uint)SceneDb.PartTexId[at]);
-            if (string.IsNullOrEmpty(to))
+            if (string.IsNullOrEmpty(To))
             {
-                if (SceneDb.PartTexId[at] == 0) continue;   // already its own texture
+                if (SceneDb.PartTexId[at] == 0) return 0;   // already its own texture
                 TexRegistry.Release(old);
                 SceneDb.PartTexId[at] = 0;
             }
-            else SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, to).Value;
-            hits++;
+            else SceneDb.PartTexId[at] = (int)TexRegistry.Swap(old, To).Value;
+            return 1;
         }
-        if (hits > 0) SceneDb.Touch(obj, Dirty.Texture);
-        return hits;
+
+        public void Done(DbId obj, int changed) { if (changed > 0) SceneDb.Touch(obj, Dirty.Texture); }
     }
 
     /// <summary>Is part <paramref name="p"/> a mesh of the graft MODEL named <paramref name="from"/>?

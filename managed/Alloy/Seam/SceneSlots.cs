@@ -17,7 +17,7 @@ internal static unsafe class SceneSlots
     internal const int Count = 51;
 
     private static ExtenderLog? _log;
-    private static long _calls, _nullScene;
+    private static long _nullScene;
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
@@ -91,7 +91,6 @@ internal static unsafe class SceneSlots
     /// generation check answers without a death notice). A null one is counted, not silently ignored.</summary>
     private static DbId Id(nint self)
     {
-        _calls++;
         DbId id = Facade.SceneId(self);
         if (!SceneDb.Scenes.Valid(id)) { _nullScene++; return default; }
         return id;
@@ -763,8 +762,8 @@ internal static unsafe class SceneSlots
 
     private static Vector3 V(Vec3* p) => p == null ? Vector3.Zero : new Vector3(p->X, p->Y, p->Z);
 
-    internal static string Stats(int _)
-        => $"scene slots: {_calls} calls" + (_nullScene > 0 ? $", {_nullScene} on a DEAD scene handle" : "");
+    /// <summary>Slot calls that arrived on a DEAD scene handle and were refused, for the period line.</summary>
+    internal static long NullScene => _nullScene;
 }
 
 /// <summary>The engine's <c>List&lt;T&gt;</c> as the three <c>AddLinesToRender</c> arguments carry it: an array

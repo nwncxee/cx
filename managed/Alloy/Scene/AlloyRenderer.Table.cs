@@ -41,7 +41,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is this part's gob a TILE gob (<see cref="EngineLayout.GobTileData"/>)? Sampled at
     /// enrolment because that is the one place the gob is known live. See <c>Dissolves</c>.</summary>
     private static readonly bool[] _oTileGob = new bool[MaxOwned];
-    /// <summary>See <c>AlloyCandidate.LodRoot</c>.</summary>
+    /// <summary>The root <c>Part*</c> of the LOD level this slot was enrolled from, zero for a slot with
+    /// none. Only compared, never dereferenced.</summary>
     private static readonly IntPtr[] _oLodRoot = new IntPtr[MaxOwned];
     /// <summary>This enrolled part's bone slot for THIS pass, or -1 for a rigid one. Rewritten every
     /// frame in <c>PoseSkinned</c>, never carried across one -- a pose is per-frame by definition.</summary>

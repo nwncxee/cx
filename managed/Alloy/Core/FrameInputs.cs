@@ -12,64 +12,64 @@ namespace CX.Alloy;
 public static class FrameInputs
 {
     /// <summary>True once the directional sun light has been seen this session.</summary>
-    public static bool HasSun { get => Read.HasSun; set => _cur.HasSun = value; }
+    public static bool HasSun { get => _cur.HasSun; set => _cur.HasSun = value; }
     /// <summary>Normalized world-space (Z-up) direction the sunlight travels (from <c>PartLight+0xac</c>).</summary>
-    public static Vector3 SunDir { get => Read.SunDir; set => _cur.SunDir = value; }
+    public static Vector3 SunDir { get => _cur.SunDir; set => _cur.SunDir = value; }
     /// <summary>True once a camera has been read this session.</summary>
-    public static bool HasCamera { get => Read.HasCamera; set => _cur.HasCamera = value; }
+    public static bool HasCamera { get => _cur.HasCamera; set => _cur.HasCamera = value; }
     /// <summary>World-space camera position (<c>*CurrentCamera + 0xb0</c>).</summary>
-    public static Vector3 CameraPos { get => Read.CameraPos; set => _cur.CameraPos = value; }
+    public static Vector3 CameraPos { get => _cur.CameraPos; set => _cur.CameraPos = value; }
     /// <summary>Camera orientation (<c>*CurrentCamera + 0xbc</c>, re-ordered to Numerics' (x, y, z, w)).</summary>
-    public static Quaternion CameraRot { get => Read.CameraRot; set => _cur.CameraRot = value; }
+    public static Quaternion CameraRot { get => _cur.CameraRot; set => _cur.CameraRot = value; }
     /// <summary>True once the scene camera has been read this session.</summary>
-    public static bool HasSceneCam { get => Read.HasSceneCam; set => _cur.HasSceneCam = value; }
+    public static bool HasSceneCam { get => _cur.HasSceneCam; set => _cur.HasSceneCam = value; }
     /// <summary>World-space position and forward of the camera the SCENE is drawn with -- the SAME read as
     /// <see cref="CameraPos"/>/<see cref="CameraRot"/>, since <c>CurrentCamera</c> inside the world scene's
     /// render IS the scene camera. The pair survives because the shadow path names it, not because the two
     /// can disagree.</summary>
-    public static Vector3 SceneCamPos { get => Read.SceneCamPos; set => _cur.SceneCamPos = value; }
-    public static Vector3 SceneCamFwd { get => Read.SceneCamFwd; set => _cur.SceneCamFwd = value; }
+    public static Vector3 SceneCamPos { get => _cur.SceneCamPos; set => _cur.SceneCamPos = value; }
+    public static Vector3 SceneCamFwd { get => _cur.SceneCamFwd; set => _cur.SceneCamFwd = value; }
     /// <summary>The scene projection's <c>p11</c> (<c>1 / tan(fovy/2)</c>), from <see cref="CamFovy"/>.</summary>
-    public static float SceneCamP11 { get => Read.SceneCamP11; set => _cur.SceneCamP11 = value; }
+    public static float SceneCamP11 { get => _cur.SceneCamP11; set => _cur.SceneCamP11 = value; }
     /// <summary>True once a camera with a real view angle has been read.</summary>
-    public static bool HasPerspective { get => Read.HasPerspective; set => _cur.HasPerspective = value; }
+    public static bool HasPerspective { get => _cur.HasPerspective; set => _cur.HasPerspective = value; }
     /// <summary>Camera perspective params, the same four the engine hands SetPerspectiveTransform: view
     /// angle in degrees (<c>+0x4c4</c>), viewport aspect (<c>+0x4dc / +0x4e0</c>), near and far
     /// (<c>+0x4cc</c>/<c>+0x4d0</c>).</summary>
-    public static float CamFovy { get => Read.CamFovy; set => _cur.CamFovy = value; }
-    public static float CamAspect { get => Read.CamAspect; set => _cur.CamAspect = value; }
-    public static float CamNear { get => Read.CamNear; set => _cur.CamNear = value; }
-    public static float CamFar { get => Read.CamFar; set => _cur.CamFar = value; }
+    public static float CamFovy { get => _cur.CamFovy; set => _cur.CamFovy = value; }
+    public static float CamAspect { get => _cur.CamAspect; set => _cur.CamAspect = value; }
+    public static float CamNear { get => _cur.CamNear; set => _cur.CamNear = value; }
+    public static float CamFar { get => _cur.CamFar; set => _cur.CamFar = value; }
     /// <summary>The camera's own viewport width and height (<c>+0x4dc</c>/<c>+0x4e0</c>). Not a GL
     /// viewport -- the engine upscales both by the same factor before glViewport -- but it moves exactly
     /// when the GL one does, which is what makes it a usable generation key for the frame's target.</summary>
-    public static float CamViewW { get => Read.CamViewW; set => _cur.CamViewW = value; }
-    public static float CamViewH { get => Read.CamViewH; set => _cur.CamViewH = value; }
+    public static float CamViewW { get => _cur.CamViewW; set => _cur.CamViewW = value; }
+    public static float CamViewH { get => _cur.CamViewH; set => _cur.CamViewH = value; }
     /// <summary>Scene fog, read straight off <c>Scene+0x140..0x14c</c> rather than out of
     /// <c>GLRender::m_fog</c> after asking the engine to fill it. The colour is DISPLAY space, as the block
     /// stores it -- the stages that fog linearise it themselves.</summary>
-    public static bool FogOn { get => Read.FogOn; set => _cur.FogOn = value; }
+    public static bool FogOn { get => _cur.FogOn; set => _cur.FogOn = value; }
     /// <summary>Fog start and end distance, and its display-space colour. Meaningful only while
     /// <see cref="FogOn"/>.</summary>
-    public static float FogStart { get => Read.FogStart; set => _cur.FogStart = value; }
-    public static float FogEnd { get => Read.FogEnd; set => _cur.FogEnd = value; }
+    public static float FogStart { get => _cur.FogStart; set => _cur.FogStart = value; }
+    public static float FogEnd { get => _cur.FogEnd; set => _cur.FogEnd = value; }
     /// <summary>Fog colour, display space (see <see cref="FogOn"/>).</summary>
-    public static Vector3 FogColor { get => Read.FogColor; set => _cur.FogColor = value; }
+    public static Vector3 FogColor { get => _cur.FogColor; set => _cur.FogColor = value; }
     // --- Area ambient / directional diffuse (#83): the engine's own area terms, the two index -1 lights
     // LightManager::ControlLightsFade pushes -- read since #257 where they live (LightManager +0xa0 / +0x98)
     // rather than intercepted at SetLightGL. Colours are stored LINEAR (the engine runs them through
     // GetColorSpaceFromSRGB before its own uniform); the direction is world-space surface->light.
 
     /// <summary>True once each area term has been read this session.</summary>
-    public static bool HasAreaAmbient { get => Read.HasAreaAmbient; set => _cur.HasAreaAmbient = value; }
-    public static bool HasAreaDiffuse { get => Read.HasAreaDiffuse; set => _cur.HasAreaDiffuse = value; }
+    public static bool HasAreaAmbient { get => _cur.HasAreaAmbient; set => _cur.HasAreaAmbient = value; }
+    public static bool HasAreaDiffuse { get => _cur.HasAreaDiffuse; set => _cur.HasAreaDiffuse = value; }
     /// <summary>Linear area ambient / directional diffuse colour, and the world-space surface-&gt;light dir.</summary>
-    public static Vector3 AreaAmbient { get => Read.AreaAmbient; set => _cur.AreaAmbient = value; }
-    public static Vector3 AreaDiffuse { get => Read.AreaDiffuse; set => _cur.AreaDiffuse = value; }
-    public static Vector3 AreaDiffuseDir { get => Read.AreaDiffuseDir; set => _cur.AreaDiffuseDir = value; }
+    public static Vector3 AreaAmbient { get => _cur.AreaAmbient; set => _cur.AreaAmbient = value; }
+    public static Vector3 AreaDiffuse { get => _cur.AreaDiffuse; set => _cur.AreaDiffuse = value; }
+    public static Vector3 AreaDiffuseDir { get => _cur.AreaDiffuseDir; set => _cur.AreaDiffuseDir = value; }
     /// <summary><c>Scene::SetBlindLights</c> is up for the walked scene: one object's lights alone light it, so
     /// the baked pages (every static light) and the fog's sky term stand down with the area pair.</summary>
-    public static bool Blind { get => Read.Blind; set => _cur.Blind = value; }
+    public static bool Blind { get => _cur.Blind; set => _cur.Blind = value; }
     // --- The light snapshot: every active point light in the area, read from the LightManager MASTER list
     // once per world frame by SceneInputs. Values are COPIED, never the PartLight* (the engine frees it on
     // area/module boundaries -- the AurTexture lifetime lesson); the id is kept for equality only.
@@ -80,39 +80,39 @@ public static class FrameInputs
     // selection that was ever load-bearing.
 
     /// <summary>Shadow-worthy point lights recorded this frame.</summary>
-    public static int LocalLightCount { get => Read.LocalLightCount; set => _cur.LocalLightCount = value; }
+    public static int LocalLightCount { get => _cur.LocalLightCount; set => _cur.LocalLightCount = value; }
     /// <summary>Engine light identity (the <c>PartLight*</c> from the master-list walk) -- the slot-binding
     /// key. NEVER dereferenced outside the walk; used only for equality, where a recycled pointer simply
     /// reads as a new light.</summary>
-    public static IntPtr[] LocalLightId { get => Read.LocalLightId; set => _cur.LocalLightId = value; }
+    public static IntPtr[] LocalLightId { get => _cur.LocalLightId; set => _cur.LocalLightId = value; }
     /// <summary>World-space light position (<c>PlPos</c>, +0xac) -- the cube's bake origin. It is the SAME
     /// value <see cref="AreaLightPosRange"/> shades from, deliberately: a cube baked from anywhere else
     /// computes occlusion for a light that is not where the BRDF thinks it is.</summary>
-    public static Vector3[] LocalLightPos { get => Read.LocalLightPos; set => _cur.LocalLightPos = value; }
+    public static Vector3[] LocalLightPos { get => _cur.LocalLightPos; set => _cur.LocalLightPos = value; }
     /// <summary>Light reach (cube far plane) = <c>GetLightAdjustedRadius</c>, the engine's own lit radius off
     /// <c>PartLight+0x70</c>: exactly the sphere the receiver's attenuation has support over, so nothing
     /// outside it is worth baking.</summary>
-    public static float[] LocalLightRange { get => Read.LocalLightRange; set => _cur.LocalLightRange = value; }
+    public static float[] LocalLightRange { get => _cur.LocalLightRange; set => _cur.LocalLightRange = value; }
     /// <summary>Light RGB (<c>+0x64</c>) -- for light-&gt;slot matching / debug, not the cube itself.</summary>
-    public static Vector3[] LocalLightColor { get => Read.LocalLightColor; set => _cur.LocalLightColor = value; }
+    public static Vector3[] LocalLightColor { get => _cur.LocalLightColor; set => _cur.LocalLightColor = value; }
     /// <summary>Current area carries the ARE interior flag -- no sun, so nothing directional is worth
     /// rendering there. Recomputed once per frame by <see cref="SceneInputs"/> (which walks the engine's
     /// own area chain); false until an area is known, which is the exterior-shaped default.</summary>
-    public static bool Interior { get => Read.Interior; set => _cur.Interior = value; }
+    public static bool Interior { get => _cur.Interior; set => _cur.Interior = value; }
     /// <summary>The area is on its night palette: the area directional is the moon. False until an area is known.</summary>
-    public static bool Night { get => Read.Night; set => _cur.Night = value; }
+    public static bool Night { get => _cur.Night; set => _cur.Night = value; }
     /// <summary>The current area's world XY extent in metres -- its tile grid times
     /// <see cref="AreaBorder.TileSize"/>, so tile (0,0) spans [0,10) and the area runs to
     /// (TileWidth, TileHeight) * 10. Zero until an area is known. Read once per frame beside
     /// <see cref="Interior"/>; R2's wetness map is fitted to it.</summary>
-    public static Vector2 AreaExtent { get => Read.AreaExtent; set => _cur.AreaExtent = value; }
+    public static Vector2 AreaExtent { get => _cur.AreaExtent; set => _cur.AreaExtent = value; }
     /// <summary>The <c>CNWCArea*</c> <see cref="AreaExtent"/> and <see cref="Interior"/> were read from:
     /// compared for the area edge, never dereferenced by a consumer.</summary>
-    public static IntPtr AreaPtr { get => Read.AreaPtr; set => _cur.AreaPtr = value; }
+    public static IntPtr AreaPtr { get => _cur.AreaPtr; set => _cur.AreaPtr = value; }
     /// <summary>True once <see cref="Focus"/> holds this frame's shadow focus (the player anchor).</summary>
-    public static bool HasFocus { get => Read.HasFocus; set => _cur.HasFocus = value; }
+    public static bool HasFocus { get => _cur.HasFocus; set => _cur.HasFocus = value; }
     /// <summary>The shadow focus (player position) -- the nearest-K key for overflow areas.</summary>
-    public static Vector3 Focus { get => Read.Focus; set => _cur.Focus = value; }
+    public static Vector3 Focus { get => _cur.Focus; set => _cur.Focus = value; }
     /// <summary>Starting capacity of both snapshots. Not a ceiling: a denser area grows them once and keeps
     /// the larger arrays for the session. A dense live area runs ~120 lights.</summary>
     private const int InitialLights = 256;
@@ -152,33 +152,33 @@ public static class FrameInputs
 
     /// <summary>Point lights snapshotted this walk -- the Alloy path's set. The deferred path has no light
     /// ceiling by design, and neither has the snapshot that feeds it.</summary>
-    public static int LightCount { get => Read.LightCount; set => _cur.LightCount = value; }
+    public static int LightCount { get => _cur.LightCount; set => _cur.LightCount = value; }
     /// <summary>World pos (xyz) + lit range (w), packed for a single glUniform4fv.</summary>
-    public static Vector4[] AreaLightPosRange { get => Read.AreaLightPosRange; set => _cur.AreaLightPosRange = value; }
+    public static Vector4[] AreaLightPosRange { get => _cur.AreaLightPosRange; set => _cur.AreaLightPosRange = value; }
     /// <summary>Light RGB (sRGB as stored in PartLight; the shader linearizes).</summary>
-    public static Vector3[] AreaLightColor { get => Read.AreaLightColor; set => _cur.AreaLightColor = value; }
+    public static Vector3[] AreaLightColor { get => _cur.AreaLightColor; set => _cur.AreaLightColor = value; }
     /// <summary>PartLight identity per area light (equality only) -- keys the CPU-side light-&gt;cube-slot
     /// bind.</summary>
-    public static IntPtr[] AreaLightId { get => Read.AreaLightId; set => _cur.AreaLightId = value; }
+    public static IntPtr[] AreaLightId { get => _cur.AreaLightId; set => _cur.AreaLightId = value; }
     /// <summary>Cube slot per area light (-1 = casts no shadow / no cube) -- resolved at the pass slot right
     /// after the bake, so the mapping and the cube contents are the same frame's, and read by the owned
     /// lit stage.</summary>
-    public static int[] AreaLightSlot { get => Read.AreaLightSlot; set => _cur.AreaLightSlot = value; }
+    public static int[] AreaLightSlot { get => _cur.AreaLightSlot; set => _cur.AreaLightSlot = value; }
     /// <summary>Ambient-class light (PartLight type@0x80 != 0): vanilla adds <c>c * att</c> straight to the
     /// ambient term, no N.L and no shadow. Uploaded as cube slot <see cref="AmbientSlot"/>.</summary>
-    public static bool[] AreaLightAmbient { get => Read.AreaLightAmbient; set => _cur.AreaLightAmbient = value; }
+    public static bool[] AreaLightAmbient { get => _cur.AreaLightAmbient; set => _cur.AreaLightAmbient = value; }
     /// <summary>The slot value the lit stage reads as "ambient class"; -1 stays "no cube".</summary>
     public const int AmbientSlot = -2;
     /// <summary>This light is in the lightmap pages (the three-branch static rule, classified at the walk).
     /// A baked surface skips it in the real-time loop; uploaded as the static bit in the record's w.</summary>
-    public static bool[] AreaLightStatic { get => Read.AreaLightStatic; set => _cur.AreaLightStatic = value; }
+    public static bool[] AreaLightStatic { get => _cur.AreaLightStatic; set => _cur.AreaLightStatic = value; }
     /// <summary>A static light's index in the bake's set (-1 = none), uploaded above the static bit: what a
     /// baked surface's pick names its mover shares by.</summary>
-    public static int[] AreaLightSetIndex { get => Read.AreaLightSetIndex; set => _cur.AreaLightSetIndex = value; }
+    public static int[] AreaLightSetIndex { get => _cur.AreaLightSetIndex; set => _cur.AreaLightSetIndex = value; }
     /// <summary>Area lights that resolved to a real cube slot on the last walk. Zero while cubes render is
     /// exactly the "shadows are on but invisible" state -- the receiver's no-slot path returns full light
     /// and says nothing.</summary>
-    public static int LightsWithCube { get => Read.LightsWithCube; set => _cur.LightsWithCube = value; }
+    public static int LightsWithCube { get => _cur.LightsWithCube; set => _cur.LightsWithCube = value; }
     /// <summary>Restart the snapshot (top of each master-list walk -- the walk is idempotent, so the latest
     /// walk simply wins). <paramref name="expect"/> is the master list's own count: sizing off it means a
     /// dense area grows the arrays once, at the top of its first walk, instead of doubling mid-walk.</summary>
@@ -207,10 +207,8 @@ public static class FrameInputs
         AreaLightSlot[LightCount++] = -1;
     }
 
-    /// <summary>The frame's inputs as a VALUE the frame owns, in two instances: <see cref="_cur"/> is the game
-    /// thread's, written by the walks, and <see cref="_pub"/> is what the render side reads once
-    /// <see cref="Publish"/> copies one into the other at the frame boundary. Not armed: nothing publishes, and
-    /// the array properties return the READER's array, so a writer of ELEMENTS goes through <see cref="Cur"/>.</summary>
+    /// <summary>The frame's inputs as a VALUE the frame owns, in the one instance <see cref="_cur"/> that the
+    /// walks write and every pass reads. Every property above is a view on it.</summary>
     public sealed class Frame
     {
         public bool HasSun;
@@ -262,92 +260,4 @@ public static class FrameInputs
     }
 
     private static readonly Frame _cur = new();
-    private static Frame? _pub;
-
-    /// <summary>What a READER sees: the published frame once one exists, else the live one. Every property
-    /// above reads through this and writes to <see cref="_cur"/>, which is what makes the switch a single
-    /// assignment rather than 26 files of edits.</summary>
-    private static Frame Read => _pub ?? _cur;
-
-    /// <summary>The game thread's own copy -- what the walks write, and what a producer must use when it
-    /// needs the array objects themselves (growth, <c>Array.Resize</c>).</summary>
-    internal static Frame Cur => _cur;
-
-    /// <summary>Publish this frame's inputs for the render side: on the GAME thread at the frame boundary,
-    /// after the walks and before the draw is handed over, allocation-free in the steady state. The renderer
-    /// is single-threaded today, so this has no caller at all; the <see cref="Frame"/> header says what the
-    /// first one owes.</summary>
-    public static void Publish()
-    {
-        Frame dst = _pub ??= new Frame();
-        Copy(_cur, dst);
-    }
-
-    /// <summary>Stop publishing: the render thread stood down, so readers go back to the live frame. The
-    /// published copy is kept rather than dropped -- re-arming reuses its arrays.</summary>
-    public static void Unpublish() => _pub = null;
-
-    private static void Copy(Frame src, Frame dst)
-    {
-            dst.HasSun = src.HasSun;
-            dst.SunDir = src.SunDir;
-            dst.HasCamera = src.HasCamera;
-            dst.CameraPos = src.CameraPos;
-            dst.CameraRot = src.CameraRot;
-            dst.HasSceneCam = src.HasSceneCam;
-            dst.SceneCamPos = src.SceneCamPos;
-            dst.SceneCamFwd = src.SceneCamFwd;
-            dst.SceneCamP11 = src.SceneCamP11;
-            dst.HasPerspective = src.HasPerspective;
-            dst.CamFovy = src.CamFovy;
-            dst.CamAspect = src.CamAspect;
-            dst.CamNear = src.CamNear;
-            dst.CamFar = src.CamFar;
-            dst.CamViewW = src.CamViewW;
-            dst.CamViewH = src.CamViewH;
-            dst.FogOn = src.FogOn;
-            dst.FogStart = src.FogStart;
-            dst.FogEnd = src.FogEnd;
-            dst.FogColor = src.FogColor;
-            dst.HasAreaAmbient = src.HasAreaAmbient;
-            dst.HasAreaDiffuse = src.HasAreaDiffuse;
-            dst.AreaAmbient = src.AreaAmbient;
-            dst.AreaDiffuse = src.AreaDiffuse;
-            dst.AreaDiffuseDir = src.AreaDiffuseDir;
-            dst.Blind = src.Blind;
-            dst.LocalLightCount = src.LocalLightCount;
-            dst.Interior = src.Interior;
-            dst.Night = src.Night;
-            dst.AreaExtent = src.AreaExtent;
-            dst.AreaPtr = src.AreaPtr;
-            dst.HasFocus = src.HasFocus;
-            dst.Focus = src.Focus;
-            dst.LightCount = src.LightCount;
-            dst.LightsWithCube = src.LightsWithCube;
-            Grow(ref dst.LocalLightId, src.LocalLightId.Length);
-            Array.Copy(src.LocalLightId, dst.LocalLightId, src.LocalLightId.Length);
-            Grow(ref dst.LocalLightPos, src.LocalLightPos.Length);
-            Array.Copy(src.LocalLightPos, dst.LocalLightPos, src.LocalLightPos.Length);
-            Grow(ref dst.LocalLightRange, src.LocalLightRange.Length);
-            Array.Copy(src.LocalLightRange, dst.LocalLightRange, src.LocalLightRange.Length);
-            Grow(ref dst.LocalLightColor, src.LocalLightColor.Length);
-            Array.Copy(src.LocalLightColor, dst.LocalLightColor, src.LocalLightColor.Length);
-            Grow(ref dst.AreaLightPosRange, src.AreaLightPosRange.Length);
-            Array.Copy(src.AreaLightPosRange, dst.AreaLightPosRange, src.AreaLightPosRange.Length);
-            Grow(ref dst.AreaLightColor, src.AreaLightColor.Length);
-            Array.Copy(src.AreaLightColor, dst.AreaLightColor, src.AreaLightColor.Length);
-            Grow(ref dst.AreaLightId, src.AreaLightId.Length);
-            Array.Copy(src.AreaLightId, dst.AreaLightId, src.AreaLightId.Length);
-            Grow(ref dst.AreaLightSlot, src.AreaLightSlot.Length);
-            Array.Copy(src.AreaLightSlot, dst.AreaLightSlot, src.AreaLightSlot.Length);
-            Grow(ref dst.AreaLightAmbient, src.AreaLightAmbient.Length);
-            Array.Copy(src.AreaLightAmbient, dst.AreaLightAmbient, src.AreaLightAmbient.Length);
-            Grow(ref dst.AreaLightStatic, src.AreaLightStatic.Length);
-            Array.Copy(src.AreaLightStatic, dst.AreaLightStatic, src.AreaLightStatic.Length);
-            Grow(ref dst.AreaLightSetIndex, src.AreaLightSetIndex.Length);
-            Array.Copy(src.AreaLightSetIndex, dst.AreaLightSetIndex, src.AreaLightSetIndex.Length);
-    }
-
-    private static void Grow<T>(ref T[] a, int n) { if (a.Length < n) a = new T[n]; }
-
 }

@@ -241,12 +241,12 @@ public sealed unsafe partial class CasterPass : IExtenderService
     {
         idxCount = 0; first = 0; baseVert = 0;
         // CX-120: a DB slot has no VDO at all -- its geometry is the mesh arena's, and the columns carry
-        // IntPtr.Zero / item -1. Constructing a VdoRef over that read a null pointer and took the client
-        // down on the first DB frame that reached the bake.
+        // IntPtr.Zero / item -1. Reading the VDO's item tables off that read a null pointer and took the
+        // client down on the first DB frame that reached the bake.
         if (vdo == IntPtr.Zero || item < 0) return false;
-        VdoRef v = new(vdo);
-        long elem = v.ElemItems;
-        long vert = v.VertItems;
+        var v = new VertexDataObject(vdo);
+        long elem = (long)v.ElemItems;
+        long vert = (long)v.VertItems;
         if (elem == 0 || vert == 0 || item < 0
             || item >= v.ElemCount || item >= v.VertCount) return false;
         int n = *(int*)(elem + item * 8 + 4);

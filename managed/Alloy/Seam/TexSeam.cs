@@ -63,23 +63,32 @@ internal static class TexSeam
                            + "Nothing else about the texture changes");
             }
         }
-        int hits = 0, changed = 0;
-        int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
-        for (int p = first; p < first + count; p++)
-            for (int slot = 0; slot < 4; slot++)
-            {
-                TexId id = SceneDb.PartTex(p, slot);
-                if (id.IsNull) continue;
-                if (!string.IsNullOrEmpty(texName)
-                    && !string.Equals(TexRegistry.ResrefOf(id), texName, StringComparison.OrdinalIgnoreCase)) continue;
-                hits++;
-                if (!TexRegistry.RequestSampler(id, clamp, nearest, mipmap)) continue;
-                SceneDb.TouchPart(p, Dirty.Texture);
-                changed++;
-            }
-        if (changed > 0) SceneDb.Touch(obj, Dirty.Texture);
-        _txiApplied += changed;
-        return hits > 0 ? 1 : 0;   // the engine's own answer: it found textures, not that a field took
+        var v = new SamplerApply { TexName = texName, Clamp = clamp, Nearest = nearest, Mipmap = mipmap };
+        _txiApplied += PartSlots.ForEach(obj, -1, grafts: false, ref v);
+        return v.Hits > 0 ? 1 : 0;   // the engine's own answer: it found textures, not that a field took
+    }
+
+    /// <summary>One slot's sampler state, from the <c>.txi</c>. <see cref="Hits"/> counts the textures the
+    /// name matched, which is what the engine answers on; the return counts the ones that took.</summary>
+    private struct SamplerApply : IPartSlots
+    {
+        internal string? TexName;
+        internal bool? Clamp, Nearest, Mipmap;
+        internal int Hits;
+
+        public int At(int p, int slot)
+        {
+            TexId id = SceneDb.PartTex(p, slot);
+            if (id.IsNull) return 0;
+            if (!string.IsNullOrEmpty(TexName)
+                && !string.Equals(TexRegistry.ResrefOf(id), TexName, StringComparison.OrdinalIgnoreCase)) return 0;
+            Hits++;
+            if (!TexRegistry.RequestSampler(id, Clamp, Nearest, Mipmap)) return 0;
+            SceneDb.TouchPart(p, Dirty.Texture);
+            return 1;
+        }
+
+        public void Done(DbId obj, int changed) { if (changed > 0) SceneDb.Touch(obj, Dirty.Texture); }
     }
 
     /// <summary>The text of the <c>.txi</c> resource named <paramref name="name"/>, or null. Game thread: it
@@ -106,14 +115,25 @@ internal static class TexSeam
         if (_unhandledOnce.Add("SetOverrideTextureFilter"))
             _log?.Always($"TexSeam: SetOverrideTextureFilter({on}) reached on o={obj.Value} model='{SceneDb.ObjSeamModelName[obj.Index]}' "
                        + $"by {SeamCallers.Chain(4)} -- applied to the SHARED texture, so every GUI and world user of it changes");
-        int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
-        for (int p = first; p < first + count; p++)
-            for (int slot = 0; slot < 4; slot++)
-            {
-                TexId id = SceneDb.PartTex(p, slot);
-                if (id.IsNull || !TexRegistry.RequestSampler(id, null, on, null)) continue;
-                SceneDb.TouchPart(p, Dirty.Texture);
-            }
+        var v = new FilterApply { On = on };
+        PartSlots.ForEach(obj, -1, grafts: false, ref v);
+    }
+
+    /// <summary>The nearest/linear override on one slot. Only the PART is marked: the sampler lives on the
+    /// shared registry slot, so no record of the object has to be re-derived for it.</summary>
+    private struct FilterApply : IPartSlots
+    {
+        internal bool On;
+
+        public int At(int p, int slot)
+        {
+            TexId id = SceneDb.PartTex(p, slot);
+            if (id.IsNull || !TexRegistry.RequestSampler(id, null, On, null)) return 0;
+            SceneDb.TouchPart(p, Dirty.Texture);
+            return 1;
+        }
+
+        public void Done(DbId obj, int changed) { }
     }
 
     /// <summary>The object record is going: drop the state kept beside it. A <see cref="DbId"/> index is

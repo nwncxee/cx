@@ -85,7 +85,7 @@ allocator with no generation beside them:
 | `TexRegistry._depPart` (the dependents list) | bare `int part` | `MarkDependents` tests `part < MaxParts && Parts.LiveAt(part)` | a recycled index gets a spurious `Dirty.Texture` — one extra restage, benign |
 | `DbInputs._lightPart` / `_emitPart` | bare `int part` | `Light`/`Emitter` test `Parts.LiveAt(p)`; `PartDestroyed` is called from both folds | told, so closed (R1-11 fixed exactly this: "a reused part index revived a dead light") |
 | `PltColors._words` | ownership-slot number | `Stage` validates the **object** handle and `Clear`s the slot on a dead one | the flag word persists on a slot until something restages or clears it |
-| `MeshArena._ranges` range ids | recycled slot number, no generation | `Alive(r)` tests `Live`; `DrainFrees` only unmaps `_byContent` "when the key still names THIS range" | the holders (`SceneDb.PartMesh`, `DrawRecipe._range`) release before the free, so closed — but this is `VdoSig`'s shape with no sig |
+| `MeshArena._ranges` range ids | recycled slot number, no generation | `Alive(r)` tests `Live`; `DrainFrees` only unmaps `_byContent` "when the key still names THIS range" | the holders (`SceneDb.PartMesh`, `DrawRecipe._range`) release before the free, so closed — but this is the recycled-address shape with no fingerprint |
 
 The draw path keeps one generation check as a net rather than as the mechanism:
 `AlloyRenderer.DbStage` (`Scene/AlloyRenderer.DbStage.cs`) tests `SceneDb.Objects.Valid(obj)` before it reads
@@ -352,10 +352,9 @@ now has its producer:
    neither re-bakes the atlas nor moves `GridGen`.
 6. **`AurClearPalette` orphans a live GL texture.** `PaletteFns.AurClearPalette` implements "drop the palette
    texture" by calling `PltPalettes.ContextLost`, which zeroes `_tex` **without** deleting it — correct for a
-   dead context, a leak for a live one, because the next `Create` then has nothing to delete. Separately,
-   `PaletteFns.Pump`/`CreatePending` have no caller; the deferral works anyway because `PltPalettes.Create` is
-   called unconditionally from both bracket sites and early-returns on `!_dirty && _tex != 0`. The live
-   mechanism is not the documented one.
+   dead context, a leak for a live one, because the next `Create` then has nothing to delete. The deferral
+   `AurCreatePaletteTexture` used to record is gone with its pending flag: `PltPalettes.Create` is called
+   unconditionally from both bracket sites and early-returns on `!_dirty && _tex != 0`.
 7. **`DrawRecipe.Forget` does not reset `SceneDb.PartRecipe[p]`.** A part still naming a retired recipe gets
    `Range(r) == -1`, counts `_dbNoRange` and goes back on the retry list every frame, for ever. Latent while a
    part's range outlives its recipe only across a model eviction.
@@ -401,7 +400,7 @@ engine-scene path; the table stays as the record of what went and why.
 |---|---|---|
 | The `Part::~Part` death notice and its cascade | `DrawFunnelService.OnPartDtor` (`managed/Alloy/DrawFunnelService.cs`), installed by `hooks.InstallPartDtor` in `DrawFunnelService.Initialize`; it drives `SkyBox.Revoke`, `PartTable.MarkFreed`/`Die`, `NonMeshParts.Died` | A part record is a `DbTable` slot. `DbTable.Free` bumps the generation, so every outstanding `DbId` is dead at the free. There is no borrowed pointer to be told about. |
 | The #221 tombstone | `PartEntry.Freed` + `PartTable.MarkFreed`, `PartTable.EntryLive` (`managed/Alloy/Scene/PartTable.cs`); the same shape in `AlloyCensus.Find`, `GobLod.Insert`'s stamp | A tombstone exists to stop a **recycled address** reviving a record. A `DbId` carries a generation, so the recycled-identity class of bug cannot be expressed (`DbId`'s own summary says so). |
-| `VdoSig` and the recycled-address re-harvest | `VdoSig` (`managed/Alloy/Core/EngineRefs.cs`), `_vSig` + `SlotHolds` (`managed/Alloy/AlloyRenderer.Vao.cs`), the re-fingerprint in `VdoSlot` (`managed/Alloy/Scene/AlloyRenderer.Enroll.cs`), and `Beams`' copy of all three | There is no VDO. Geometry is a `MeshArena` range keyed on `MeshArena.ContentKey(MeshDef)` — content, not an address — and a range is handed back by `MeshArena.Release`, told. |
+| The VDO fingerprint and the recycled-address re-harvest | `VdoSig` (`managed/Alloy/Core/EngineRefs.cs`), `_vSig` + `SlotHolds` (`managed/Alloy/AlloyRenderer.Vao.cs`), the re-fingerprint in `VdoSlot` (`managed/Alloy/Scene/AlloyRenderer.Enroll.cs`), and `Beams`' copy of all three | There is no VDO. Geometry is a `MeshArena` range keyed on `MeshArena.ContentKey(MeshDef)` — content, not an address — and a range is handed back by `MeshArena.Release`, told. |
 | The VAO drip and the per-VDO VAOs | `AlloyRenderer.Vao.cs` in its entirety bar `BindBatchState`/`VaoName`: `Harvest`, `HarvestFailed`, `DripVao`/`DripArm`/`DripForget`/`DripRearm`, `EnsureVao`, `_vVao46`/`_vOwned`/`_vStale`, `ForgetLodVao`/`ForgetLodSlot`; `Beams._vVao` | Every DB draw comes out of the one arena: `AlloyRenderer.DbWriteColumns` writes `_oVao[i] = 0` and `_oLodBit[i] = DbArenaVaoBit`, so there is no per-record VAO to mint, retire or wait for. |
 | The enrolment walk | `EnrollBegin`/`EnrollStep`/`EnrollOne`/`EnrollFinish`/`TryEnrollDelta`/`RebuildOrder`/`VdoSlot`/`MeshCensus` and the walk-budget state (`managed/Alloy/Scene/AlloyRenderer.Enroll.cs`), driven from `OnRenderSinglePass` | `AlloyRenderer.DbSeat`/`DbRelease` write a slot's stable columns from a `(DbId part, int recipe)` pair on a dirty bit. The order is rebuilt only when `DbSetGen` moves (`AlloyRenderer.DbOrder`), which only a seat or a release bumps. |
 | `SceneWalk`'s sweep and its audit | `SceneWalk.Sweep`, `SceneWalk.Tick`, `SceneWalk.Enrol`, `SceneWalk.TryBind`, `SceneWalk.Rebind`, the `alloy.walkaudit` cadence and the `[enum] audit misses=` line (`managed/Alloy/Scene/SceneWalk.cs`) | A sweep answers "is this part still reachable?". The game says when a part dies; `DbFeed`'s `ObjectDied` releases the whole part range on that one edge. |

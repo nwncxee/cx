@@ -43,8 +43,6 @@ internal static unsafe class SeamFrame
         GuiUpscale.Announce(log);
     }
 
-    /// <summary>True when the one load-bearing read resolved. The boot switch gates on this.</summary>
-    internal static bool Ready => _resolved;
 
     /// <summary>Latch the frame's rect and UI scale. Called once per present, from the frame boundary.</summary>
     internal static void Latch()

@@ -9,8 +9,8 @@ namespace CX.Alloy;
 
 /// <summary><b><c>StagePart</c> for a database slot:</b> resolve this part's textures and draw arguments,
 /// write its persistent record, its two spheres and its batch row, with every term a column or an interned
-/// recipe read instead of a pointer chase. No <c>PartRef</c>, no <c>MaterialRef</c>, no <c>VdoRef</c>, no
-/// texture poll -- a texture is a <see cref="TexId"/> and geometry an arena range of three draw integers.</summary>
+/// recipe read instead of a pointer chase. No part, material or VDO pointer is walked and no texture is
+/// polled -- a texture is a <see cref="TexId"/> and geometry an arena range of three draw integers.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
     private const int RecWhyModel = 0, RecWhyPrev = 1, RecWhyDissolve = 2, RecWhyAlpha = 3, RecWhyAmb = 4, RecWhyDif = 5,
@@ -454,7 +454,7 @@ public sealed unsafe partial class AlloyRenderer
     private static TexId DbTexOf(int part, int recipe, int slot) => SceneDb.PartTex(part, recipe, slot);
 
     /// <summary>Is this part environment-mapped? The engine's own routing condition,
-    /// <c>Engine.HasEnvMap(material) || GobHasEnvMap(gob)</c>: the INSTANCE was given one
+    /// <c>Material::HasEnvMap(material) || GobHasEnvMap(gob)</c>: the INSTANCE was given one
     /// (<see cref="SceneDb.PartEnvMapped"/>) or the DIFFUSE declares one in its <c>.txi</c>
     /// (<c>envmaptexture</c>, <c>Material::ParseField</c> @0x5c5850).</summary>
     internal static bool DbEnvMapped(int part, TexId diffuse)

@@ -5,15 +5,6 @@ using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>Which solver ran, for the period line and the <c>/knobs</c> note. Index order is the hook
-/// table's.</summary>
-internal enum BehaviorKind
-{
-    Base, Attach, AttachTranslate, AttachRotate, AttachNoOrientation, AttachGuiScale,
-    CrossSceneAttach, CrossSceneAttachOffset, Subwindow, Navigate, CameraFollow,
-    CameraLooseFollow, CameraOnAStick,
-}
-
 /// <summary>The arithmetic every behaviour solve derives from -- the zoom curve, the shared lag factor, the
 /// rig offset, the GUI-scale division, the viewport rounding, the navigate basis -- transcribed from the
 /// engine. <see cref="Db.DbAnim"/> solves the engine's behaviour classes over database columns with it.</summary>

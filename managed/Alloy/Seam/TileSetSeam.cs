@@ -12,16 +12,13 @@ namespace CX.Alloy.Seam;
 /// <c>Scene::SpawnTile</c> names no tileset. Chained read-only: <c>ModelLoad</c> owns the symbol.</summary>
 internal static unsafe class TileSetSeam
 {
-    private static ExtenderLog? _log;
     private static TileSetGetFn* _slot;
-    private static long _resolved;
     private static float _last;
 
     /// <summary>Chain the tileset resolve. False = the symbol or the layout row is missing, which stands DB
     /// mode's tile build down rather than letting every tile refuse one at a time with no cause named.</summary>
     internal static bool Install(ExtenderLog log, HookService hooks)
     {
-        _log = log;
         if (!EngineLayout.Require(log, "TileSetSeam", "CNWTileSet")) return false;
         _slot = hooks.ChainTileSetGet(&OnGetTileSet, Priority);
         if (_slot == null)
@@ -46,13 +43,9 @@ internal static unsafe class TileSetSeam
             if (step != _last)
             {
                 _last = step;
-                _resolved++;
                 TileBuild.SetTileset(step);
             }
         }
         return tileset;
     }
-
-    internal static string Stats() => _slot == null ? "tileset: NOT CHAINED"
-        : $"tileset: height step {TileBuild.HeightTransition} ({_resolved} resolves)";
 }

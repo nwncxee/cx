@@ -31,121 +31,6 @@ public static class SeamLayout
     /// The GAME mutates these in place (`SafePointer::operator=` @0x477d70 inlined in
     /// `CGuiDragSource::HandleMouseMoveCaptured` and friends), including the `realloc`.</summary>
     public static readonly int GobSafeList = EngineLayout.GobSafePointers;
-    public static readonly int GobSafeCount = EngineLayout.GobSafePointerCount;
-    public static readonly int GobSafeCap = EngineLayout.SeamGobSafeCap;
-    /// <summary>Inline name array; `Gob::GetName` @0x444660 is `return this + 0x24`, and `Gob::~Gob` copies it
-    /// with a 0x100 bound, so 0x24..0x87 is the name's room.</summary>
-    public static readonly int GobName = EngineLayout.SeamGobName;
-    /// <summary>`Gob::GetScene` @0x4447b0 `return *(Scene**)(this+0x88)`; read raw by `GuiAurAttachToObject`.</summary>
-    public static readonly int GobScene = EngineLayout.GobScene;
-    /// <summary>Root `Part*` of LOD 0; `AurEnableShadowing` @0x461ad0 reads it raw. `NewCAurObject` fills
-    /// +0x90/+0x98/+0xa0 with one instance tree per LOD model.</summary>
-    public static readonly int GobRoot = EngineLayout.GobPartTree;
-    public static readonly int GobRootLod1 = EngineLayout.GobLodRoot1;
-    public static readonly int GobRootLod2 = EngineLayout.GobLodRoot2;
-    /// <summary>Position `Vector` (3 floats) and orientation `Quaternion` (4 floats); the game hands their
-    /// INTERIOR ADDRESSES to `Part::GetWorld` for the engine to fill, so they must be real storage.</summary>
-    public static readonly int GobPos = EngineLayout.GobPosition;
-    public static readonly int GobRot = EngineLayout.GobRot;
-    /// <summary>`Gob::GetBehavior` @0x5371e0 / `Gob::SetScene` @0x43e020; compared against `this` by the
-    /// game's own `CAurBehavior*::Control` bodies.</summary>
-    public static readonly int GobBehavior = EngineLayout.GobAttach;
-    /// <summary>`Gob::GetExternalData` @0x444700 -- the owning `CNWC*`/`CGui*`; `CGuiMan::GuiObjectHitCheck`
-    /// inlines the read behind a devirtualisation guard.</summary>
-    public static readonly int GobExternal = EngineLayout.GobExternalData;
-    /// <summary>`Gob::GetExternalDataType` @0x444720: the int beside it.</summary>
-    public static readonly int GobExternalType = EngineLayout.GobExternalType;
-    /// <summary>LOD switch distances `NewCAurObject` parses out of the model's LOD resource and stores at
-    /// +0x444/+0x448, with +0x440 the selected level.</summary>
-    public static readonly int GobLodLevel = EngineLayout.GobLodLevel;
-    public static readonly int GobLodDist1 = EngineLayout.GobLodNear;
-    public static readonly int GobLodDist2 = EngineLayout.GobLodFar;
-    /// <summary>`Gob::IsInViewVolume` @0x444780 is one byte at +0x1b; `EnableInViewVolume` @0x436f10 sets it
-    /// AND fires `DoEvent("propagateviewvolume")`, `Disable` @0x436f30 only clears it. The ctor leaves it 1, so
-    /// a new object claims to be in view until the first cull says otherwise.</summary>
-    public static readonly int GobInView = EngineLayout.GobInView;
-    /// <summary>`Gob::SetPropagateHighlightEffects` @0x444770, one byte; the ctor leaves it 1.</summary>
-    public static readonly int GobPropagateHighlight = EngineLayout.GobPropagateHilite;
-    /// <summary>The shadow flag `TurnOnShadows`/`TurnOffShadows` @0x444750/@0x444740 write as a 16-bit unit,
-    /// so the byte at +0xf5 is cleared with it. On by default.</summary>
-    public static readonly int GobShadows = EngineLayout.SeamGobShadows;
-    /// <summary>`Gob::SetColorShifting` @0x439040: a 16-bit enable at +0xf6, the colour at +0xfc (x, y) and
-    /// +0x104 (z), and the alpha at +0x108. The trimesh draw multiplies the colour into the material diffuse
-    /// and the alpha into the vertex alpha, and the opacity classification and the shadow-alpha cutoff both
-    /// read the same two words.</summary>
-    public static readonly int GobColourShiftFlag = EngineLayout.GobColourMul;
-    public static readonly int GobColourShift = EngineLayout.GobColour;
-    public static readonly int GobColourAlpha = EngineLayout.GobAlpha;
-    /// <summary>`Gob::SetIllumination` @0x4390a0: a 16-bit enable at +0xf8 and the colour at +0x110 (x, y) /
-    /// +0x118 (z). The draw ADDS it into the ambient terms rather than multiplying.</summary>
-    public static readonly int GobIllumFlag = EngineLayout.GobSelfIllum;
-    public static readonly int GobIllum = EngineLayout.GobEmissive;
-    /// <summary>The cached bounds the five bounding slots read: box min at +0x160, max at +0x16c, sphere
-    /// radius at +0x178 and centre at +0x17c. Only the two void `Recompute` slots write them, which is why
-    /// `NewCAurObject` calls both at construction.</summary>
-    public static readonly int GobBoundsMin = EngineLayout.GobBoundsMin;
-    public static readonly int GobBoundsMax = EngineLayout.GobBoundsMax;
-    public static readonly int GobSphereRadius = EngineLayout.GobRadius;
-    public static readonly int GobSphereCentre = EngineLayout.GobCentre;
-    /// <summary>`Gob::SetRenderPersonalSpace` @0x4447c0 (+0x198) and `Gob::SetWind` @0x436f40 (+0x199 flag,
-    /// +0x1a0 strength) -- two independent stores, nothing else.</summary>
-    public static readonly int GobPersonalSpace = EngineLayout.SeamGobPersonalSpace;
-    public static readonly int GobWindFlag = EngineLayout.GobWindSource;
-    public static readonly int GobWindStrength = EngineLayout.GobWindStrength;
-    /// <summary>`Gob::ProcessGob` @0x43e920 recomputes "the tree has geometry" into +0x1a4 when the dirty bit
-    /// at +0x1a5 (`Gob::SetProcessFlag` @0x43e970) is set; `Gob::Render` gates on +0x1a4.</summary>
-    public static readonly int GobHasGeometry = EngineLayout.GobVisible;
-    public static readonly int GobProcessFlag = EngineLayout.GobGeomDirty;
-    /// <summary>The `CExoArrayList&lt;CallBack*&gt;` behind `Gob::RegisterCallBack` @0x497db0: ptr at +0x460,
-    /// count at +0x468, capacity at +0x46c. A `CallBack` is 0x30 bytes -- `char name[0x20]`, the function
-    /// pointer at +0x20, the user data at +0x28.</summary>
-    public static readonly int GobCallbackList = EngineLayout.GobCallbacks;
-    public static readonly int GobCallbackCount = EngineLayout.GobCallbackCount;
-    public static readonly int GobCallbackCap = EngineLayout.SeamGobCallbackCap;
-    /// <summary>The embedded `CAurObjectVisualTransformData`: ten `LerpFloat`s of 0x40 bytes
-    /// (`Gob::GetVisualTransformData` @0x436e70 is `return this + 0x1c0`).</summary>
-    public static readonly int GobVisualXform = EngineLayout.GobScaleLerp;
-    public const int GobVisualXformSize = 0x280;   // not-an-offset: sizeof(CAurObjectVisualTransformData), ten LerpFloats
-
-    /// <summary>`EnableForceAnimations` @0x436e80 / `IsForceAnimated` @0x436ea0 -- one byte.</summary>
-    public static readonly int GobForceAnim = EngineLayout.SeamGobForceAnim;
-    /// <summary>`EnableAnimations` @0x436eb0 / `IsAnimating` @0x436ed0 -- the SAME byte, so "is animating" is
-    /// the engine's name for "animations are enabled".</summary>
-    public static readonly int GobAnimEnabled = EngineLayout.SeamGobAnimEnabled;
-    /// <summary>`SetSynchronizeAnimations` @0x4447d0.</summary>
-    public static readonly int GobSyncAnim = EngineLayout.GobSyncHier;
-
-    /// <summary>The attachment `CExoArrayList&lt;Gob*&gt;`: `Gob::AddAttachment` @0x5424a0 and
-    /// `Gob::GetAttachedGobs` @0x539350 read and REALLOC it in place without a vtable, so it has to be real
-    /// storage at the engine's offsets. The engine stops adding past 16 entries.</summary>
-    public static readonly int GobAttachList = EngineLayout.SeamGobAttachList;
-    public static readonly int GobAttachCount = EngineLayout.SeamGobAttachCount;
-    public static readonly int GobAttachCap = EngineLayout.SeamGobAttachCap;
-    /// <summary>The two scale channels `Gob::ScaleObject` @0x53efd0 writes (`type` 0 or 1 only) and the final
-    /// product `CalculateFinalScale` leaves at +0x49c, which `Gob::GetAdjustedScale` @0x537cf0 reads.</summary>
-    public static readonly int GobScaleFinal = EngineLayout.GobScaleBase;
-    public static readonly int GobScaleChannel = EngineLayout.SeamGobScaleChannel;
-    /// <summary>Total tri-mesh area; `Gob::GetRandomPart` @0x53d4c0 treats -1 as "not computed yet".</summary>
-    public static readonly int GobTriMeshArea = EngineLayout.SeamGobTriMeshArea;
-    /// <summary>The `CAurString` sub-object's vptr inside a `StringGob`: `RemoveAuroraString` @0x58b2b0
-    /// recovers the `Gob` by subtracting 0x4c0 from its argument.</summary>
-    public static readonly int StringGobString = EngineLayout.SeamStringGobStringSub;
-
-    // ---- Scene words (seam-scene's columns; the offsets are the machinery's) ----
-    public static readonly int SceneSafeList = EngineLayout.SeamSceneSafeList;
-    /// <summary>The SCENE's own measured row, not the <c>Gob</c>'s: both are 0x10 on this build, and a row
-    /// that happens to be equal is still the wrong row to read.</summary>
-    public static readonly int SceneSafeCount = EngineLayout.SeamSceneSafeCount;
-    public static readonly int SceneSafeCap = EngineLayout.SeamSceneSafeCap;
-    /// <summary>`GetAurSceneObjectCount` @0x58b380 is `return *(u32*)(scene + 0x138)` -- there is no vtable
-    /// getter, so the count must be a live word.</summary>
-    public static readonly int SceneObjList = EngineLayout.SceneGobs;
-    public static readonly int SceneObjCount = EngineLayout.SceneGobCount;
-    /// <summary>`CAurScene::SetAmbient` @0x461ab0 writes +0x168/+0x170 non-virtually.</summary>
-    public static readonly int SceneAmbient = EngineLayout.SeamSceneAmbient;
-    public static readonly int SceneAmbient2 = EngineLayout.SeamSceneAmbient2;
-    /// <summary>`CAurObject::AnimateExternal` @0x43a560 increments it before and after the `Animate` vcall.</summary>
-    public static readonly int SceneExternalAnimate = EngineLayout.SceneAnimFrame;
 
     // ---- Camera: the CAurCamera vptr at +0, the Gob sub-object at +8 ----
     /// <summary>`GuiAttachViewport` @0x58bda0 adjusts a `CAurCamera*` to its `CAurObject*` with a literal +8.</summary>
@@ -200,8 +85,6 @@ internal struct SeamHeader
     /// <summary>Bit per logical slot group already named in a use-after-free line, so the poison path logs
     /// once per slot and not once per call.</summary>
     public uint Reported;
-    /// <summary>The SafePointer array pointer we last saw, to tell our allocation from a game `realloc`.</summary>
-    public nint SafeArray;
     /// <summary>The interned <see cref="SeamCallers"/> id of the game function that destroyed this shell, so a
     /// later call on it can name BOTH ends of the dangle.</summary>
     public int RetiredBy;

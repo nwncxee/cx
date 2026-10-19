@@ -26,7 +26,7 @@ internal static unsafe class CameraSlots
     internal const int Count = 33, PrimaryCount = 41;
 
     private static ExtenderLog? _log;
-    private static long _calls, _nullCam, _views;
+    private static long _nullCam;
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
@@ -114,7 +114,6 @@ internal static unsafe class CameraSlots
 
     private static DbId Id(nint self)
     {
-        _calls++;
         DbId id = Facade.CameraId(self);
         if (!SceneDb.Cameras.Valid(id)) { _nullCam++; return default; }
         return id;
@@ -183,7 +182,6 @@ internal static unsafe class CameraSlots
         if (cam.IsNull) return;
         DbId scene = SceneDb.CamScene[cam.Index];
         if (!SceneDb.Scenes.Valid(scene)) return;   // the engine's own first test: no scene, no view
-        _views++;
         // The engine's body calls Scene::Render, which is the ONLY caller of the frame's shader-runtime
         // refresh -- the world clock every owned stage animates on. This slot replaces that body, so the
         // refresh happens here or nowhere (see SceneSlots.UniformsForFrame).
@@ -748,7 +746,6 @@ internal static unsafe class CameraSlots
         return DbCamera.MouseDir(cam, px, py, vx, vy, vw, vh);
     }
 
-    internal static string Stats(int _)
-        => $"camera slots: {_calls} calls, {_views} views requested"
-         + (_nullCam > 0 ? $", {_nullCam} on a DEAD camera handle" : "");
+    /// <summary>Slot calls that arrived on a DEAD camera handle and were refused, for the period line.</summary>
+    internal static long NullCamera => _nullCam;
 }
