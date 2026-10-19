@@ -59,20 +59,6 @@ public static unsafe partial class DbAnim
         Moved(obj.Index);
     }
 
-    // ---- CAurObject slots 74/75: the look-at run ----
-
-    // ---- the event path (Gob-only slots 11 / 83 / 84) ----
-
-    /// <summary><c>Gob::RegisterCallBack</c> @0x497db0 (slot 11). seam-obj's slot 11 owns the LIVE list
-    /// (<c>CallbackList</c>, the engine's own array at the shell's +0x460); this entry is the off-device one
-    /// the self-checks use. <paramref name="fn"/> is a <c>void (*)(CAurObject*, char const*, void*)</c>, and
-    /// the returned <c>CallBack*</c> is a real 0x30-byte block laid out as the engine's. Null when full.</summary>
-    public static nint RegisterCallBack(DbId obj, nint fn, byte* name, nint data)
-        => CbRegister(obj, fn, name, data);
-
-    /// <summary><c>Gob::DeregisterCallback</c> @0x497e80 (slot 83).</summary>
-    public static void DeregisterCallback(DbId obj, nint cb) => CbDeregister(obj, cb);
-
     // ---- CAurScene: the drive points ----
 
     /// <summary><c>Scene::IsAnimating</c> (Scene-only slot 81).</summary>
@@ -83,8 +69,8 @@ public static unsafe partial class DbAnim
     /// <summary>The object record exists and has its part range: seat its animation state. Idempotent.</summary>
     public static void ObjectCreated(DbId obj) => OnCreate(obj);
 
-    /// <summary>The game destroyed the object: drop its run queue, its callbacks, its look-at and its pose
-    /// scratch. Called BEFORE the record's slot is freed, so the columns are still readable.</summary>
+    /// <summary>The game destroyed the object: drop its run queue, its look-at and its pose scratch. Called
+    /// BEFORE the record's slot is freed, so the columns are still readable.</summary>
     public static void ObjectRetired(DbId obj) => OnRetire(obj);
 
     /// <summary>The object's part tree was replaced (a model or LOD change): every cached per-animation node

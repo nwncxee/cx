@@ -28,10 +28,10 @@ public static unsafe partial class DbAnim
             Composition(check);
             PoseWrite(check);
             Amputation(check);
-            Crossfade(check);
+            Crossfade(check, log);
             StateReplay(check);
-            Events(check);
-            Reentrancy(check);
+            Events(check, log);
+            Reentrancy(check, log);
             Attach(check);
             NoOrientation(check);
             Scaled(check);
@@ -165,6 +165,46 @@ public static unsafe partial class DbAnim
         SceneDb.Objects.Free(obj);
     }
 
+    /// <summary>Give <paramref name="obj"/> a FACADE, so the event path runs through the live callback list
+    /// (the engine-layout array on the shell that <c>CallbackList</c> owns) rather than a second list kept for
+    /// tests. The seam's vtable block is built here only when nothing has built it yet -- which is run-demo,
+    /// where the seam stands down before building it -- and handed back by <see cref="DropEventShell"/>.</summary>
+    private static nint EventShell(Checker check, ExtenderLog log, DbId obj, out bool freshTables)
+    {
+        freshTables = !Seam.Facade.Built;
+        if (freshTables && Seam.Facade.Build(new Seam.SeamRegistry(), log, census: false) < 0)
+        {
+            check.Expect(false, "the seam's vtable block could not be built, so the event order cannot be checked");
+            return 0;
+        }
+        nint shell = Seam.Facade.Mint(Seam.FacadeKind.Object, obj);
+        check.Expect(shell != 0, "the fixture object takes a facade, which is what carries its callback list");
+        // The fixture's objects live in a world scene, which is what keeps the retired shell on the reuse
+        // ring instead of the held list.
+        Seam.SeamShell.NoteScene(shell, world: true);
+        return shell;
+    }
+
+    /// <summary>Hand back what <see cref="EventShell"/> took: the callbacks, the shell, and the vtable block
+    /// when this suite was the one that built it.</summary>
+    private static void DropEventShell(int o, nint shell, bool freshTables)
+    {
+        if (shell != 0)
+        {
+            Seam.CallbackList.FreeAll(shell);
+            Seam.Facade.Retire(shell);
+            SceneDb.ObjFacade[o] = 0;
+        }
+        if (freshTables) Seam.Facade.DropTables();
+    }
+
+    /// <summary>Register one test handler on <paramref name="shell"/>'s live list, as
+    /// <c>Gob::RegisterCallBack</c> does.</summary>
+    private static nint Listen(nint shell, nint fn, byte* name) => Seam.CallbackList.Add(shell, fn, (nint)name, 0);
+
+    /// <summary>The one test handler, as a function pointer the engine's list can hold.</summary>
+    private static nint TestEvent => (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent;
+
     // ================= 1: the sampler =================
 
     /// <summary>The pose at known times: an exact key, a midpoint, and past the end -- the three branches
@@ -212,7 +252,7 @@ public static unsafe partial class DbAnim
     /// <summary>The weight ladder: a run that starts faded in reaches full weight in its fade time and no
     /// sooner, and a run with NO fade time is at full weight on its first frame. Both matter because the blend
     /// IS the crossfade -- there is no separate pose buffer, so a weight that jumps is a pose that snaps.</summary>
-    private static void Crossfade(Checker check)
+    private static void Crossfade(Checker check, ExtenderLog log)
     {
         ModelDef m = Chain();
         DbId scene = SceneDb.Scenes.Alloc();
@@ -241,12 +281,13 @@ public static unsafe partial class DbAnim
         _evN = 0;
         byte* any = stackalloc byte[2];
         any[0] = (byte)'*'; any[1] = 0;
-        nint cb = RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent, any, 0);
+        nint shell = EventShell(check, log, obj, out bool freshTables);
+        nint cb = Listen(shell, TestEvent, any);
         check.Expect(new CallBack(cb).SeamName.Length == 32, "a callback block's name holds the engine's 32 bytes");
         PlayAnimation(obj, "wave", 1f, RunFlags.NoReuse, 0f);
         check.Expect(_runN[obj.Index] == 1, "a new run evicts the runs below it, as the engine's does");
         check.Expect(_evN >= 1 && _ev[0] == "donewave", "...announcing each evicted run first");
-        DeregisterCallback(obj, cb);
+        DropEventShell(obj.Index, shell, freshTables);
 
         // An add-in run does NOT evict, which is what layers a gesture over a walk.
         PlayAnimation(obj, "wave", 1f, RunFlags.NoReuse | RunFlags.AddIn, 0f);
@@ -315,7 +356,7 @@ public static unsafe partial class DbAnim
     /// previous time does NOT fire again -- which is what keeps a looping footstep from double-firing every
     /// cycle -- and a frame that wraps fires the tail of the cycle before its head, so the sounds stay in time
     /// order across the seam.</summary>
-    private static void Events(Checker check)
+    private static void Events(Checker check, ExtenderLog log)
     {
         ModelDef m = Chain();
         DbId scene = SceneDb.Scenes.Alloc();
@@ -323,7 +364,8 @@ public static unsafe partial class DbAnim
         AnimDef anim = m.Anims[0];
         byte* any = stackalloc byte[2];
         any[0] = (byte)'*'; any[1] = 0;
-        nint cb = RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent, any, 0);
+        nint shell = EventShell(check, log, obj, out bool freshTables);
+        nint cb = Listen(shell, TestEvent, any);
         check.Expect(cb != 0, "a callback registers");
 
         _evN = 0;
@@ -356,22 +398,22 @@ public static unsafe partial class DbAnim
         byte* named = stackalloc byte[8];
         named[0] = (byte)'s'; named[1] = (byte)'n'; named[2] = (byte)'d'; named[3] = (byte)'_';
         named[4] = (byte)'t'; named[5] = (byte)'w'; named[6] = (byte)'o'; named[7] = 0;
-        DeregisterCallback(obj, cb);
-        nint only = RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent, named, 0);
+        Seam.CallbackList.Remove(shell, cb);
+        nint only = Listen(shell, TestEvent, named);
         FireEvents(obj, anim, 0f, 2f, false);
         check.Expect(_evN == 1 && _ev[0] == "snd_two", "a named callback hears only its own event");
-        DeregisterCallback(obj, only);
+        Seam.CallbackList.Remove(shell, only);
 
         // The three lifecycle names, as the engine's sprintf builds them.
         _evN = 0;
-        nint all = RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent, any, 0);
+        Listen(shell, TestEvent, any);
         Lifecycle(obj, StartPrefix, anim);
         Lifecycle(obj, LoopPrefix, anim);
         Lifecycle(obj, DonePrefix, anim);
         check.Expect(_evN == 3 && _ev[0] == "startwave" && _ev[1] == "loopwave" && _ev[2] == "donewave",
                      "the lifecycle events are start/loop/done + the animation's name");
-        DeregisterCallback(obj, all);
 
+        DropEventShell(obj.Index, shell, freshTables);
         Drop(obj);
         SceneDb.Scenes.Free(scene);
     }
@@ -700,7 +742,7 @@ public static unsafe partial class DbAnim
     /// called from: destroy its own object, play another animation (which inserts at or below the running
     /// index and SHIFTS the queue), and deregister a callback mid-walk. The engine survives by re-reading its
     /// list and testing a SafePointer; CX re-derives a positional slot instead, and only a test says it does.</summary>
-    private static void Reentrancy(Checker check)
+    private static void Reentrancy(Checker check, ExtenderLog log)
     {
         ModelDef m = Chain();
         DbId scene = SceneDb.Scenes.Alloc();
@@ -712,24 +754,29 @@ public static unsafe partial class DbAnim
         _reentry = Reentry.Play; _reentryFired = false;
         byte* any = stackalloc byte[2];
         any[0] = (byte)'*'; any[1] = 0;
-        RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnReentry, any, 0);
+        nint reentry = (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnReentry;
+        nint shell = EventShell(check, log, obj, out bool freshTables);
+        Listen(shell, reentry, any);
         PlayAnimation(obj, "wave", 1f, RunFlags.NoFadeIn | RunFlags.Loop, 0f);
         for (int i = 0; i < 30; i++) Advance(obj, 0.2f, _runN[obj.Index]);
         check.Expect(SceneDb.Objects.Valid(obj) && _runN[obj.Index] >= 1,
                      "a handler may play an animation from inside the advance");
         _reentry = Reentry.None;
+        DropEventShell(obj.Index, shell, freshTables);
         Drop(obj);
 
         // (b) a handler that clears the queue -- which gives the run block back under the iteration.
         obj = Subject(m, scene, out _);
         _reentryObj = obj;
         _reentry = Reentry.Clear; _reentryFired = false;
-        RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnReentry, any, 0);
+        shell = EventShell(check, log, obj, out freshTables);
+        Listen(shell, reentry, any);
         PlayAnimation(obj, "wave", 1f, RunFlags.NoFadeIn | RunFlags.Loop, 0f);
         for (int i = 0; i < 10; i++) Advance(obj, 0.5f, _runN[obj.Index]);
         check.Expect(_runN[obj.Index] == 0 && _block[obj.Index] < 0,
                      "a handler may clear the queue from inside the advance");
         _reentry = Reentry.None;
+        DropEventShell(obj.Index, shell, freshTables);
         Drop(obj);
 
         // (c) a handler that destroys its own object: nothing after it may touch the record, and the engine's
@@ -737,7 +784,9 @@ public static unsafe partial class DbAnim
         obj = Subject(m, scene, out _);
         _reentryObj = obj;
         _reentry = Reentry.Destroy; _reentryFired = false;
-        RegisterCallBack(obj, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnReentry, any, 0);
+        int destroyed = obj.Index;
+        shell = EventShell(check, log, obj, out freshTables);
+        Listen(shell, reentry, any);
         _evN = 0;
         bool survived = FireEvents(obj, anim, 0f, 2f, false);
         check.Expect(!survived, "an event that destroys the object stops the walk");
@@ -750,15 +799,17 @@ public static unsafe partial class DbAnim
         for (int k = 0; k < _evN; k++) if (_ev[k] == "Dying") dying = true;
         check.Expect(dying, "retiring an object raises \"Dying\" at its own callbacks");
         _reentry = Reentry.None;
+        DropEventShell(destroyed, shell, freshTables);
 
         // (d) the callback-list hazard, kept as the engine has it: deregistering a LOWER index mid-walk
         // shifts the array and the entry that moves into the current index fires again.
         DbId o2 = Subject(m, scene, out _);
         _evN = 0;
-        nint low = RegisterCallBack(o2, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnTestEvent, any, 0);
+        nint shell2 = EventShell(check, log, o2, out bool freshTables2);
+        nint low = Listen(shell2, TestEvent, any);
         _dropTarget = low;
-        _dropOwner = o2;
-        RegisterCallBack(o2, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnDropLower, any, 0);
+        _dropShell = shell2;
+        Listen(shell2, (nint)(delegate* unmanaged<nint, byte*, nint, void>)&OnDropLower, any);
         EventFire(o2, Names(anim)!.Life(StartPrefix), 0);
         // The walk runs newest-first: the dropper fires, removes the entry BELOW it, and the shift moves the
         // dropper itself into the index the walk steps to next -- so it fires twice and the entry it removed
@@ -767,6 +818,7 @@ public static unsafe partial class DbAnim
                      "deregistering a lower callback mid-walk re-fires the one that moves down "
                    + "(the engine's own hazard, kept)");
         _dropTarget = 0;
+        DropEventShell(o2.Index, shell2, freshTables2);
         Drop(o2);
         SceneDb.Scenes.Free(scene);
     }
@@ -775,8 +827,7 @@ public static unsafe partial class DbAnim
     private static Reentry _reentry;
     private static bool _reentryFired;
     private static DbId _reentryObj;
-    private static nint _dropTarget;
-    private static DbId _dropOwner;
+    private static nint _dropTarget, _dropShell;
 
     [UnmanagedCallersOnly]
     private static void OnReentry(nint self, byte* name, nint data)
@@ -804,7 +855,7 @@ public static unsafe partial class DbAnim
         if (_dropTarget == 0) return;
         nint t = _dropTarget;
         _dropTarget = 0;
-        DeregisterCallback(_dropOwner, t);
+        Seam.CallbackList.Remove(_dropShell, t);
     }
 
     // ================= 8: scale =================

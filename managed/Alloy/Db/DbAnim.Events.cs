@@ -6,81 +6,15 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>The event path: <c>Gob::RegisterCallBack</c> @0x497db0, <c>Gob::DeregisterCallback</c> @0x497e80,
-/// <c>Gob::DoEvent</c> @0x49d760 and <c>AnimateEvents</c> @0x497f30, delivered exactly as the engine does --
-/// footsteps, hit sounds, weapon swaps, detonation and the blur all ride on it, and
-/// <c>GetPersonalRadius</c>/<c>GetPath</c> are QUERIES the handler answers through the data pointer.</summary>
+/// <summary>The event path: <c>AnimateEvents</c> @0x497f30's window and the three lifecycle names, raised at
+/// the object's own callback list through <c>Gob::DoEvent</c> @0x49d760 exactly as the engine does -- footsteps,
+/// hit sounds, weapon swaps, detonation and the blur all ride on it.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Callbacks one object may hold. The engine's array grows without bound; a creature registers
-    /// twelve and the attach behaviour six more on its parent.</summary>
-    private const int MaxCallbacks = 32;
-
-    private static readonly nint[] _cb = new nint[SceneDb.MaxObjects * MaxCallbacks];
-    private static readonly byte[] _cbN = new byte[SceneDb.MaxObjects];
-    private static int _cbFull, _fired;
-    private static bool _cbFullSaid;
-
-    private static nint CbRegister(DbId obj, nint fn, byte* name, nint data)
-    {
-        if (!SceneDb.Objects.Valid(obj) || fn == 0) return 0;
-        int i = obj.Index;
-        if (_cbN[i] >= MaxCallbacks)
-        {
-            _cbFull++;
-            if (!_cbFullSaid)
-            {
-                _cbFullSaid = true;
-                _log?.Always($"DbAnim: an object wants more than {MaxCallbacks} event callbacks -- this one is "
-                           + "REFUSED, so the event it listens for will not reach it. Raise MaxCallbacks.");
-            }
-            return 0;
-        }
-        nint block = (nint)NativeMemory.AllocZeroed((nuint)EngineLayout.SeamCallBackSizeof);
-        var b = new CallBack(block);
-        if (name != null)
-        {
-            Span<byte> dst = b.SeamName;
-            for (int k = 0; k < dst.Length - 1 && name[k] != 0; k++) dst[k] = name[k];
-        }
-        b.SeamFn = fn;
-        b.SeamData = data;
-        _cb[i * MaxCallbacks + _cbN[i]++] = block;
-        return block;
-    }
-
-    private static void CbDeregister(DbId obj, nint cb)
-    {
-        if (!SceneDb.Objects.Valid(obj) || cb == 0) return;
-        int i = obj.Index, n = _cbN[i], b = i * MaxCallbacks;
-        for (int k = 0; k < n; k++)
-        {
-            if (_cb[b + k] != cb) continue;
-            for (int j = k; j < n - 1; j++) _cb[b + j] = _cb[b + j + 1];
-            _cb[b + n - 1] = 0;
-            _cbN[i] = (byte)(n - 1);
-            NativeMemory.Free((void*)cb);
-            return;
-        }
-    }
-
-    private static void CbClear(int i)
-    {
-        int n = _cbN[i], b = i * MaxCallbacks;
-        for (int k = 0; k < n; k++)
-        {
-            if (_cb[b + k] != 0) NativeMemory.Free((void*)_cb[b + k]);
-            _cb[b + k] = 0;
-        }
-        _cbN[i] = 0;
-    }
-
-    /// <summary>
-    /// <c>Gob::DoEvent</c> @0x49d760, transcribed. The count is snapshotted before the walk, the walk runs
-    /// BACKWARDS (newest registration first), an entry whose name is empty or starts with <c>*</c> is a
-    /// wildcard that hears every event, anything else is a case-insensitive full match, and the walk stops the
-    /// moment a handler destroys the object.
-    /// </summary>
+    /// <summary>Raise <paramref name="name"/> at the object's callbacks. The list is the ENGINE's own, on the
+    /// object's facade, so this hands the event to seam-obj's <c>Gob::DoEvent</c> entry -- which carries the
+    /// <c>UpdateScenes</c> propagation as well as the dispatch. An object the game holds no facade for has no
+    /// callbacks either, so the event reaches nobody, counted on <c>[dbanim]</c>.</summary>
     private static void EventFire(DbId obj, byte* name, nint data)
     {
         if (!SceneDb.Objects.Valid(obj) || name == null) return;
@@ -103,60 +37,23 @@ public static unsafe partial class DbAnim
         _eventDepth++;
         try
         {
-            // THE one list. The game registers through Gob::RegisterCallBack, which is seam-obj's vtable slot
-            // 11 and keeps the engine's own CExoArrayList<CallBack*> at the shell's +0x460 -- so an event
-            // delivered to a list of ours would reach nobody, which is exactly what it did: every footstep,
-            // hit, weapon swap and start/done this runtime raised was counted and dropped
-            // (`events: 0 callback(s) fired` with thousands raised). seam-obj's DoEvent also carries the
-            // UpdateScenes propagation, so this is its entry and not the raw dispatch.
+            // THE one list: the game registers through Gob::RegisterCallBack, seam-obj's slot 11, which keeps
+            // the engine's own CExoArrayList<CallBack*> at the shell's +0x460. An event delivered to a list of
+            // ours would reach nobody.
             nint shell = SceneDb.ObjFacade[i];
-            if (shell != 0) { _fired++; CX.Alloy.Seam.ObjectSlots.FireEvent(shell, (nint)name, data); }
-            else EventWalk(obj, i, name, data);
+            if (shell == 0) { _noFacade++; return; }
+            _fired++;
+            CX.Alloy.Seam.ObjectSlots.FireEvent(shell, (nint)name, data);
         }
         finally { _eventDepth--; }
     }
 
     /// <summary>How deep a handler may re-enter the event path, and how often it has been refused.</summary>
     private const int MaxEventDepth = 16;
-    private static int _eventDepth, _eventStorms;
+    private static int _eventDepth, _eventStorms, _noFacade;
+    /// <summary>Events handed to a callback list this period, and ones whose object had no facade.</summary>
+    private static int _fired;
     private static bool _eventStormSaid;
-
-    /// <summary>The OFF-DEVICE walk, over this file's own list: the same semantics as the seam's (newest
-    /// first over a snapshotted count, wildcard or case-insensitive name, stop when the object dies), kept so
-    /// <see cref="DbAnim.SelfCheck"/> can drive the event window with no facade and no engine. A live object
-    /// always has a facade and never takes this path.</summary>
-    private static void EventWalk(DbId obj, int i, byte* name, nint data)
-    {
-        int n = _cbN[i], b = i * MaxCallbacks;
-        for (int k = n - 1; k >= 0; k--)
-        {
-            byte* cb = (byte*)_cb[b + k];
-            if (cb == null) continue;
-            if (!(cb[0] == 0 || cb[0] == (byte)'*') && !Named(cb, name)) continue;
-            nint fn = new CallBack((nint)cb).SeamFn;
-            if (fn == 0) continue;
-            // The caller's data overrides the entry's own when it is non-null -- which is how the engine's two
-            // QUERY events (GetPersonalRadius, GetPath) hand the handler a buffer to write into.
-            nint arg = data != 0 ? data : new CallBack((nint)cb).SeamData;
-            ((delegate* unmanaged<nint, byte*, nint, void>)fn)(SceneDb.ObjFacade[i], name, arg);
-            // A handler can destroy the object; the engine's own SafePointer check is this generation test,
-            // and it needs no registration because a freed record's generation has already moved on.
-            if (!SceneDb.Objects.Valid(obj)) return;
-        }
-    }
-
-    /// <summary>Does this entry's name match the event, as <c>strcasecmp</c> would?</summary>
-    private static bool Named(byte* a, byte* b)
-    {
-        for (int k = 0; ; k++)
-        {
-            byte x = a[k], y = b[k];
-            if (x >= (byte)'A' && x <= (byte)'Z') x += 32;
-            if (y >= (byte)'A' && y <= (byte)'Z') y += 32;
-            if (x != y) return false;
-            if (x == 0) return true;
-        }
-    }
 
     // ================= the animation's own events =================
 
@@ -324,7 +221,7 @@ public static unsafe partial class DbAnim
     /// <summary>The event path's period numbers.</summary>
     internal static string EventPeriod()
         => $"{_fired} callback(s) fired, {_starts} start, {_loops} loop, {_dones} done"
-         + (_cbFull == 0 ? "" : $", {_cbFull} REFUSED registration(s)")
+         + (_noFacade == 0 ? "" : $", {_noFacade} raised at an object with no facade (no listener)")
          + (_namesRefused == 0 ? "" : $", {_namesRefused} animation(s) past the name-intern ceiling (events NOT FIRED)")
          + (_eventStorms == 0 ? "" : $", {_eventStorms} event chain(s) REFUSED past depth {MaxEventDepth}");
 }

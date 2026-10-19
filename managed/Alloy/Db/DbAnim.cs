@@ -475,7 +475,6 @@ public static unsafe partial class DbAnim
         _fromRot[i] = default;
         _fromScale[i] = float.NaN;
         LookAtClear(i);
-        CbClear(i);
         ScanTree(i);
         Moved(i);
     }
@@ -489,7 +488,6 @@ public static unsafe partial class DbAnim
         ObjectDying(obj);
         if (!SceneDb.Objects.Valid(obj)) return;
         ClearQueue(i);
-        CbClear(i);
         LookAtClear(i);
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++) Unskin(first + k);
@@ -627,7 +625,7 @@ public static unsafe partial class DbAnim
         _unbound = _queueFull = _noBlock = _bezier = _morphs = _traced = 0;
         _uvMorphs = _offChannel = _dynFull = _lookAtNoHead = _idle = _foldSkipped = _reanchored = _skinOnly = 0;
         _periodDt = 0f; _periodCalls = 0;
-        _fired = _starts = _loops = _dones = _cbFull = 0;
+        _fired = _starts = _loops = _dones = _noFacade = 0;
         _solved = _dispatched = _unresolvedPart = _noSync = _noDestroy = 0;
         _skinned = _skinNoBind = _skinNoSlot = _litWrites = _litUncarried = 0;
         return s;
