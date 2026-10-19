@@ -27,7 +27,8 @@ internal static unsafe class SceneFog
     /// <c>fog.origin</c> says; and its sky band is its own.</summary>
     internal static bool OriginPlayer => FogVolume.On || (Fog.Enabled.V && Fog.Origin.V);
     internal static float SkyBand => FogVolume.On ? VolumetricFog.Band.V : Fog.Enabled.V ? Fog.SkyBand.V : 0f;
-    /// <summary>The cull's fog gate (<see cref="CullPass.FogCull"/>): off with the master, like every dial.</summary>
+    /// <summary>The cull's fog gate (<see cref="CullPass.FogCull"/>): <c>fog.cull</c> while either fog draws, off with
+    /// both masters. The volume hides the far plane past <see cref="OpaqueDistance()"/> as the ramp does.</summary>
     internal static bool Cull => (FogVolume.On || Fog.Enabled.V) && Fog.Cull.V;
 
     /// <summary>The sky colour the fog converges to, LINEAR. Zero until a sky texture has been read, which
@@ -157,14 +158,15 @@ internal static unsafe class SceneFog
         Gl.Uniform3fv(loc.FogSunColor, 1, v);
     }
 
-    /// <summary>The display-space colour the skyfade gob is painted in. Vanilla uses the raw fog colour; under
-    /// a sky-matched fog that band is the seam it was invented to hide, so it takes the same fully-fogged
-    /// colour the geometry under it converges to, evaluated looking at the HORIZON. ponytail: elevation only,
-    /// so at a low sun the band matches the fog on the sun's side and is a little flat on the other.</summary>
+    /// <summary>The display-space colour the skyfade gob is painted in: what fully fogged geometry converges to at the
+    /// HORIZON -- the volume's direction-averaged light while it draws, else the ramp's target (vanilla's raw fog colour
+    /// at sky 0), since a band in any other colour is the seam it was invented to hide. ponytail: elevation only, so
+    /// at a low sun the band is a little flat on the side away from it.</summary>
     internal static void SkyfadeTint(float* rgb)
     {
         Vector3 c = FrameInputs.FogColor;   // display space, as the Scene block stores it
-        if (SkyMix > 0f && _haveSky && !FrameInputs.Blind)
+        if (FogVolume.Horizon(out Vector3 v)) c = new Vector3(Disp(v.X), Disp(v.Y), Disp(v.Z));
+        else if (SkyMix > 0f && _haveSky && !FrameInputs.Blind)
         {
             Vector3 lin = new Vector3(Lin(c.X), Lin(c.Y), Lin(c.Z));
             // The shader's own horizon weight at dir.z == 0 is 1.0 (smoothstep(-0.35, 0.0, 0.0)), and the
@@ -183,7 +185,7 @@ internal static unsafe class SceneFog
 
     private static float OpaqueDistance(bool on, float start, float end)
     {
-        if (FogVolume.On) return FogVolume.OpaqueDistance(on, start, end);
+        if (FogVolume.On) return FogVolume.OpaqueDistance(on, start, end, VolumetricFog.Haze.V);
         if (!on || end <= 0f) return float.PositiveInfinity;
         if (HeightK <= 0f) return end;
         float span = end - start;

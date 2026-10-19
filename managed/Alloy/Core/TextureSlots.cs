@@ -154,8 +154,8 @@ internal static class TextureSlots
     /// driver's combined count; only the samplers one stage ACTIVELY reads count against its own 32.</summary>
     internal const uint ResourceBase = VFog + 1;
 
-    /// <summary>The sky-visibility map (<see cref="SkyView"/>), read by the lit stage: the HIGHEST unit
-    /// Alloy claims. Declared behind <c>CX_SKY_VIEW</c>, which <see cref="Programs.WithoutSkyView"/> takes
+    /// <summary>The sky-visibility map (<see cref="SkyView"/>), read by the lit stage: the highest unit under the
+    /// per-stage budget (<see cref="VFog"/> sits past it). Declared behind <c>CX_SKY_VIEW</c>, which <see cref="Programs.WithoutSkyView"/> takes
     /// out of the stage on a driver reporting fewer than <see cref="Programs.SkyViewUnitsNeed"/> fragment
     /// units, exactly as the soft sun's two raw views are.</summary>
     internal const uint SkyMap = 31;

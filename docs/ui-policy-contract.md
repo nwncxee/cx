@@ -746,7 +746,8 @@ transition done its way:
 daynight.server=1
 ```
 
-A component property, not a knob: the renderer's knobs stay the player's. Send nothing and the client keeps
+A component property, not a knob: the day/night renderer knobs stay the player's (only `vfog.*` is holdable, see
+[Volumetric fog](#volumetric-fog)). Send nothing and the client keeps
 vanilla's shaping exactly, which is what vanilla content is built against.
 
 Vanilla crossfades the area's two palettes -- ambient, diffuse, fog colour, fog amount -- over the module's

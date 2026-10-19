@@ -39,19 +39,19 @@ internal static unsafe class FogVolume
     /// <summary>Uniform locations of the lighting pass.</summary>
     private struct LightLocs
     {
-        internal Grid Grid;
+        internal GridLocs Grid;
         internal int Height, Noise, Drift, Ambient, Sun, Local, Phase, Jitter, PrevVp, PrevZ, Cubes;
     }
 
-    /// <summary>The grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
-    private struct Grid { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin; }
+    /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
+    private struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin; }
 
     /// <summary>Everything the GL context owns: context loss replaces it whole.</summary>
     private sealed class FogVolumeGlState
     {
         public uint ProgLight, ProgSum;
         public LightLocs L;
-        public Grid S;
+        public GridLocs S;
         public int SumBand;
         /// <summary>The lighting pass's two outputs (this frame's and last frame's, swapped each frame) and the
         /// integrated volume, one slice deeper for the sky.</summary>
@@ -105,9 +105,9 @@ internal static unsafe class FogVolume
 
     /// <summary>The distance from the player past which the fog hides everything at any height: where the wall alone
     /// spends the whole opacity, since the haze thins with height. Infinity with no area fog.</summary>
-    internal static float OpaqueDistance(bool on, float start, float end)
+    internal static float OpaqueDistance(bool on, float start, float end, float haze)
     {
-        Medium m = MediumFor(on, start, end, 0f, VolumetricFog.Haze.V);
+        Medium m = MediumFor(on, start, end, 0f, haze);
         if (m.Wall <= 0f) return float.PositiveInfinity;
         float tau = -MathF.Log(EndTransmittance);
         return m.End + (tau - m.Wall * (m.End - m.Start) * 0.5f) / m.Wall;
@@ -123,7 +123,7 @@ internal static unsafe class FogVolume
     }
 
     /// <summary>The share (w) of the medium's light that arrives as the sun's beam, and the sun's hue times it (xyz): the
-    /// fog colour is the AVERAGE lit fog, so a beam gains what its shade loses. Scales with <paramref name="day"/> (0 = the
+    /// fog colour is the lit fog averaged over view directions, so a beam gains what its shade loses. Scales with <paramref name="day"/> (0 = the
     /// moon, which lights no air) and the sun's luminance up to 1; nothing indoors, under blind lights or unread.</summary>
     internal static Vector4 SunShare(bool interior, bool blind, bool haveDiffuse, Vector3 diffuse, float day, float strength)
     {
@@ -144,8 +144,9 @@ internal static unsafe class FogVolume
         _gl.Built = false;
         if (!VolumetricFog.Enabled.V) { Release(); return; }
         // a frame without a volume leaves last frame's medium describing a camera from frames ago
-        if (!main || viewport[2] <= 0 || viewport[3] <= 0 || !Ready()) { _gl.History = false; return; }
-        if (!Matrix4x4.Invert(vpClean, out Matrix4x4 invVp) || !Matrix4x4.Invert(view, out Matrix4x4 camToWorld)) return;
+        if (!main || viewport[2] <= 0 || viewport[3] <= 0 || !Ready()
+            || !Matrix4x4.Invert(vpClean, out Matrix4x4 invVp) || !Matrix4x4.Invert(view, out Matrix4x4 camToWorld))
+        { _gl.History = false; return; }
         (int w, int h, int d) = VolumetricFog.Grid;
         Ensure(w, h, d);
         float dt = Tick();
@@ -212,7 +213,7 @@ internal static unsafe class FogVolume
     }
 
     /// <summary>The grid and medium uniforms, into whichever pass is bound.</summary>
-    private static void PushGrid(in Grid g, int w, int h, int d, float logZ, float far, Matrix4x4* invVp, Vector3 eye,
+    private static void PushGrid(in GridLocs g, int w, int h, int d, float logZ, float far, Matrix4x4* invVp, Vector3 eye,
                                  Vector3 fwd, Medium m, Vector3 origin)
     {
         Gl.Uniform3i(g.Size, w, h, d);
@@ -241,6 +242,14 @@ internal static unsafe class FogVolume
         return new Vector3((float)(x - Math.Floor(x)) - 0.5f, (float)(y - Math.Floor(y)) - 0.5f, (float)(z - Math.Floor(z)));
     }
 
+    /// <summary>The LINEAR light fully fogged geometry converges to, averaged over view directions, while this frame's
+    /// volume is built: the area's fog colour as the medium scatters it.</summary>
+    internal static bool Horizon(out Vector3 lin)
+    {
+        lin = _s.LastAmbient;
+        return _gl.Built;
+    }
+
     /// <summary>Push this frame's volume at one program, or stand it down (<c>uVFog.x</c> 0) where none was built or
     /// <paramref name="capture"/> says the pass is another camera's, which a main-view volume does not describe.</summary>
     internal static void Upload(in AlloyRenderer.FeatLoc loc, bool capture)
@@ -250,8 +259,9 @@ internal static unsafe class FogVolume
         if (on) fixed (Matrix4x4* m = &_gl.Vp) Gl.UniformMatrix4fv(loc.VFogVp, 1, 0, (float*)m);
     }
 
-    /// <summary>Build both programs on the first frame that wants them, once. A failure is loud and latched, and the
-    /// ramp keeps drawing the fog.</summary>
+    /// <summary>Build both programs on the first frame that wants them, once; a failure is loud and latched, and the ramp
+    /// keeps drawing the fog. The shadow libraries' samplers take the units the frame binds the arrays on, and both
+    /// receivers are told each sample is a point in a volume, not a surface to lift off.</summary>
     private static bool Ready()
     {
         if (_gl.ProgLight != 0) return true;
@@ -268,7 +278,7 @@ internal static unsafe class FogVolume
             return _down.Fail(_s.Log, "a compute program did not link", "the fog stays the ramp for the session");
         }
         _gl.ProgLight = light; _gl.ProgSum = sum;
-        _gl.L.Grid = GridLocs(light);
+        _gl.L.Grid = TakeGrid(light);
         _gl.L.Height = GlProgram.Loc(light, "uVfHeight");
         _gl.L.Noise = GlProgram.Loc(light, "uVfNoise");
         _gl.L.Drift = GlProgram.Loc(light, "uVfDrift");
@@ -280,10 +290,8 @@ internal static unsafe class FogVolume
         _gl.L.PrevVp = GlProgram.Loc(light, "uVfPrevVp");
         _gl.L.PrevZ = GlProgram.Loc(light, "uVfPrevZ");
         _gl.L.Cubes = GlProgram.Loc(light, "uLocalCubes");
-        _gl.S = GridLocs(sum);
+        _gl.S = TakeGrid(sum);
         _gl.SumBand = GlProgram.Loc(sum, "uVfBand");
-        // The shadow libraries' samplers carry no layout(binding): point them at the units the frame binds the
-        // arrays on, and tell both receivers each sample is a point in a volume, not a surface to lift off.
         Gl.UseProgram(light);
         Gl.Uniform1i(GlProgram.Loc(light, "uSunShadow"), (int)TextureSlots.SunShadow);
         Gl.Uniform1i(GlProgram.Loc(light, "uSunDynShadow"), (int)TextureSlots.SunShadowDyn);
@@ -297,7 +305,7 @@ internal static unsafe class FogVolume
         return true;
     }
 
-    private static Grid GridLocs(uint prog) => new()
+    private static GridLocs TakeGrid(uint prog) => new()
     {
         Size = GlProgram.Loc(prog, "uVfGrid"), Z = GlProgram.Loc(prog, "uVfZ"), InvVp = GlProgram.Loc(prog, "uVfInvVp"),
         Eye = GlProgram.Loc(prog, "uVfEye"), Fwd = GlProgram.Loc(prog, "uVfFwd"), Med = GlProgram.Loc(prog, "uVfMed"),
@@ -354,10 +362,10 @@ internal static unsafe class FogVolume
         return s;
     }
 
-    /// <summary>Off-device: the medium's opacity budget, the far distance it implies, both colours, the grid and its
-    /// ladder, the server's hold and SceneFog's arms with the mode on. Oracle: the 1% target integrated numerically
-    /// over the wall's smoothstep ramp (<see cref="WallDepth"/>), hand-worked figures off ln 100 = 4.60517, the
-    /// sRGB 2.2 curve at 0.5 (0.217638), and the rungs and grid sizes as declared literals.</summary>
+    /// <summary>Off-device: the medium's opacity budget, the far distance it implies, both colours, the grid ladder, the
+    /// server's hold and SceneFog's arms. Oracle: the 1% target integrated numerically over the wall's smoothstep ramp
+    /// (<see cref="WallDepth"/>), figures hand-worked off ln 100 = 4.60517 and the 2.2 curve at 0.5 (0.217638), and the
+    /// ladder's one promise, that more effects quality never means fewer froxels.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -374,14 +382,11 @@ internal static unsafe class FogVolume
         check.Expect(MathF.Abs(MediumFor(false, 0f, 0f, 20f, 0.12f).Haze - 0.00368413f) < 1e-7f, "...but never over less than 150 m");
         check.Expect(MediumFor(true, 15f, 60f, 0f, 1f).Wall > 0f, "the haze never takes the whole budget: the wall always stands");
 
-        float hazeWas = VolumetricFog.Haze.V;
-        VolumetricFog.Haze.V = 0.12f;
-        float opaque = OpaqueDistance(true, 15f, 60f);
+        float opaque = OpaqueDistance(true, 15f, 60f, 0.12f);
         // the wall ALONE spends ln 100 at e + h * tau / wall = 60 + 0.552620 / 0.180113
         check.Expect(MathF.Abs(opaque - 63.068f) < 0.01f, $"the opaque distance is where the wall alone keeps 1% ({opaque:F3})");
         check.Expect(MathF.Abs(MathF.Exp(-WallDepth(m, opaque)) - 0.01f) < 2e-4f, "...which the wall's own ramp, integrated, agrees with");
-        check.Expect(float.IsPositiveInfinity(OpaqueDistance(false, 15f, 60f)), "no area fog, no opaque distance");
-        VolumetricFog.Haze.V = hazeWas;
+        check.Expect(float.IsPositiveInfinity(OpaqueDistance(false, 15f, 60f, 0.12f)), "no area fog, no opaque distance");
 
         Vector3 red = new(1f, 0f, 0f), half = new(0.5f);
         Vector3 a0 = Ambient(true, half, true, red, new Vector3(0.3f), 0f);
@@ -404,12 +409,16 @@ internal static unsafe class FogVolume
                      && SunShare(false, true, true, new Vector3(0.8f), 1f, 0.5f) == Vector4.Zero, "nor does anything indoors or under blind lights");
         Lighting.Sun.V = sunWas;
 
-        string qWas = VolumetricFog.Quality.V;
-        VolumetricFog.Quality.V = "low";
-        check.Expect(VolumetricFog.Grid == (96, 54, 48), "low is a 96x54x48 grid");
-        VolumetricFog.Quality.V = qWas;
-        check.Expect(VolumetricFog.Quality.RungValue(0) == "low" && VolumetricFog.Quality.RungValue(2) == "medium"
-                     && VolumetricFog.Quality.RungValue(3) == "high", "the detail ladders on the effects area, a step below it");
+        check.Expect(VolumetricFog.Grids.Length == VolumetricFog.Levels.Length, "every detail level names a grid");
+        long cost = 0;
+        bool rising = true;
+        for (int i = 0; i < Quality.Levels.Length; i++)
+        {
+            (int gw, int gh, int gd) = VolumetricFog.Grids[Math.Max(Array.IndexOf(VolumetricFog.Levels, VolumetricFog.Quality.RungValue(i)), 0)];
+            rising &= Array.IndexOf(VolumetricFog.Levels, VolumetricFog.Quality.RungValue(i)) >= 0 && (long)gw * gh * gd >= cost;
+            cost = (long)gw * gh * gd;
+        }
+        check.Expect(rising, "raising the effects area never makes the fog volume coarser");
 
         bool enWas = VolumetricFog.Enabled.V;
         check.Expect(ServerPolicy.Set("vfog.enabled", enWas ? "0" : "1") && VolumetricFog.Enabled.Enforced && VolumetricFog.Enabled.V != enWas,
@@ -450,7 +459,7 @@ internal static unsafe class FogVolume
         if (!VolumetricFog.Enabled.V) return "OFF -- the fog group draws the fog";
         if (_down.Failed) return "FAILED -- " + _down.Reason + "; the fog group draws the fog";
         Medium m = _s.Last;
-        float opaque = OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd);
+        float opaque = OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, VolumetricFog.Haze.V);
         return $"{_gl.W}x{_gl.H}x{_gl.D}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m  "
              + $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} m]  "
              + $"ambient {_s.LastAmbient.X:F2},{_s.LastAmbient.Y:F2},{_s.LastAmbient.Z:F2}  "
