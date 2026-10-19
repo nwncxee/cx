@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CX.Alloy;
 using CX.Alloy.Db;
 using CX.Framework;
 
@@ -11,16 +12,15 @@ namespace CX.Services.Radial;
 /// for a PLT creature: the PAIR texture from the registry once per resref, the palette lookup in the fragment stage.</summary>
 internal static partial class RadialIconsPlt
 {
-    /// <summary>Pair textures acquired for an icon resref. One reference each, for the session: an item icon
-    /// is a handful of resrefs and the table is capped, so this is a cache and never a leak that grows with
-    /// play.</summary>
+    /// <summary>Pair textures acquired for an icon resref, one reference each, handed back at the content edge
+    /// (<see cref="Forget"/>). An item icon is a handful of resrefs and the table is capped, so this is a cache
+    /// and never a leak that grows with play.</summary>
     private static readonly Dictionary<string, TexId> _byResref = new(16, StringComparer.OrdinalIgnoreCase);
     private const int MaxCached = 256;
     private static int _said;
     private static ExtenderLog? _log;
-
-    /// <summary>Layers CX resolved this session, and asks the registry for that are not resident yet.</summary>
-    internal static long Resolved, Pending;
+    /// <summary>The content edge the cache was filled against (<see cref="NwSyncReader.ContentEdge"/>).</summary>
+    private static long _edge;
 
     internal static void Install(ExtenderLog log) => _log = log;
 
@@ -29,6 +29,8 @@ internal static partial class RadialIconsPlt
     internal static uint Pair(string resref)
     {
         if (string.IsNullOrEmpty(resref)) return 0;
+        long edge = NwSyncReader.ContentEdge;
+        if (edge != _edge) { Forget(); _edge = edge; }
         if (!_byResref.TryGetValue(resref, out TexId id))
         {
             if (_byResref.Count >= MaxCached)
@@ -42,18 +44,18 @@ internal static partial class RadialIconsPlt
             if (id.IsNull) return 0;
             _byResref[resref] = id;
         }
-        if (TexRegistry.TryResident(id, out uint name, out _)) { Resolved++; return name; }
-        Pending++;
-        return 0;
+        return TexRegistry.TryResident(id, out uint name, out _) ? name : 0;
     }
 
     /// <summary>The master palette, 0 before it exists.</summary>
     internal static uint Palette => PltPalettes.Texture;
 
-    /// <summary>Every texture this holds goes back; the registry's references are ours.</summary>
-    internal static void Forget()
+    /// <summary>Content edge: every texture this holds goes back (the registry's references are ours) and the
+    /// ceiling's one-shot line re-arms, because the next session's icons are a different set of resrefs.</summary>
+    private static void Forget()
     {
         foreach (TexId id in _byResref.Values) TexRegistry.Release(id);
         _byResref.Clear();
+        _said = 0;
     }
 }
