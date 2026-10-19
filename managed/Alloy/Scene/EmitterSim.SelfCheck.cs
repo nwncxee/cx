@@ -13,8 +13,8 @@ internal static unsafe partial class EmitterSim
     /// <summary>
     /// Off-device: every part of the simulation that is a DECISION rather than a read. The step is driven
     /// through an <see cref="Emitter"/> snapshot and the pool is the real one, so it all runs with no client
-    /// and no GL. NOT covered, and cannot be: <c>Part::GetWorld</c>, <c>Gob::GetAdjustedScale</c>, the wind
-    /// call and the p2p target's position virtual are engine calls with no seam, left to the live check.
+    /// and no GL. NOT covered, and cannot be: <c>Part::GetWorld</c>, <c>Gob::GetAdjustedScale</c> and the
+    /// wind call are engine calls with no seam, left to the live check.
     /// </summary>
     internal static void SelfCheck(ExtenderLog log)
     {

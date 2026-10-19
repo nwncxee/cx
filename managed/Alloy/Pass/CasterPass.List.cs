@@ -24,7 +24,7 @@ public sealed unsafe partial class CasterPass
     /// construction in a still area, which is the whole point.</summary>
     private static readonly int[] _moverIdx = new int[MaxCasters];
     private static int _moverCount;
-    /// <summary>The frame's DYNAMIC casters (live indices) -- skinned, matrix-moved, dangly, vertex-dirty.
+    /// <summary>The frame's DYNAMIC casters (live indices) -- skinned, matrix-moved or dangly.
     /// What the dynamic pool bakes, and what marks a light mover-bearing. A subset of
     /// <see cref="_moverIdx"/>, which adds appearances for the sun's unsplit predicate.</summary>
     private static readonly int[] _dMoverIdx = new int[MaxCasters];
@@ -72,7 +72,8 @@ public sealed unsafe partial class CasterPass
         if (_liveIdxSeq[slot] != _collectSeq) return;
         if (_offN < _offQ.Length) _offQ[_offN++] = _liveIdx[slot]; else _offOverflow = true;
     }
-    /// <summary>Bumped by an append: the gather's staging must be rebuilt even though the collect stood.</summary>
+    /// <summary>Bumped by a collect and by a mask dial (<see cref="ListChanged"/>): the gather's staging
+    /// must be rebuilt even where the collect itself stood.</summary>
     private static int _listVer, _gListVer;
 
     /// <summary>Spheres of the casters that were live last frame and are not live now -- a part that died, a
@@ -155,11 +156,10 @@ public sealed unsafe partial class CasterPass
     private static bool _refreshAll => Shadows.RefreshAll.V;
     /// <summary>Casters the refresh visited, and records the colour build changed, summed over the period.</summary>
     private static long _visitSum, _touchedSum;
-    /// <summary>Frames a caster stays in the DYNAMIC set after it last moved. The live read that named it:
-    /// about 20 static cube bakes a frame charged to "mover", with vertex-dirty flapping hundreds of casters
-    /// between the two sets each frame, every flip a static-set event re-baking the cube it stood in. A held
-    /// caster costs nothing extra -- the dynamic layer re-bakes every frame anyway.</summary>
-    private static int _dynHold => Shadows.DynHold.V;   // default 30, was 8: vertex-dirty items committing intermittently flipped sets and re-baked static cubes 15/frame
+    /// <summary>Frames a caster stays in the DYNAMIC set after it last moved. A caster that flips between the
+    /// two sets costs a static-set event, and so a re-bake of every cube it stood in; holding it costs nothing
+    /// extra, because the dynamic layer re-bakes every frame anyway.</summary>
+    private static int _dynHold => Shadows.DynHold.V;
     /// <summary>This frame's diffuse texture id for a MASKED caster (0 = not masked, or the texture did not
     /// resolve). Re-fetched every collect: a <c>CAurTexture*</c> is borrowed and freed on area transitions,
     /// so it is never cached -- and the per-frame fetch is what keeps an animated diffuse cutting the right

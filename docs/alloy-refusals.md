@@ -343,7 +343,7 @@ A second, smaller verdict sits beside the world's, because the GUI has no world 
 | Term | Where | If it fails |
 | --- | --- | --- |
 | Alloy requested at boot (`alloy.enabled`, `alloy.drawhooks=batch`) and the `RenderSinglePass` shim armed (its two funnel hooks are where GUI draws are captured) | `AlloyRenderer.Initialize` → `GuiPass.Install` | nothing installs; the engine draws its GUI |
-| the state caches, `Scene::RenderOnlyGobs` and the screen size resolved | `GuiCapture.Install` | `_log.Always`, the engine draws its GUI |
+| the `GLRender` state caches and the screen size resolved | `GuiCapture.Install` | `_log.Always`, the engine draws its GUI |
 | the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | before the first present: the engine's GUI (one or two frames at boot); a build failure is a loud `Fail` and the engine draws the GUI for the session |
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
