@@ -35,7 +35,7 @@ public static unsafe class PartShell
     }
 
     private static nint _table;
-    private static long _alive, _made;
+    private static long _alive;
 
     /// <summary>Part shells alive, for the period line.</summary>
     public static long Alive => _alive;
@@ -85,7 +85,7 @@ public static unsafe class PartShell
         h->RetiredAt = 0;
         *(nint*)shell = _table;
         SceneDb.ObjSeamPartShells[obj.Index] = shell;
-        _alive++; _made++;
+        _alive++;
         return shell;
     }
 
@@ -189,7 +189,6 @@ public static unsafe class PartShell
             return;
         }
         DbAnim.ComposeFor(obj);
-        _served++;
         Matrix4x4 m = SceneDb.PartWorld[part];
         if (outPos != 0) { float* p = (float*)outPos; p[0] = m.M41; p[1] = m.M42; p[2] = m.M43; }
         if (outRot == 0) return;
@@ -204,15 +203,10 @@ public static unsafe class PartShell
         o[0] = r.W; o[1] = r.X; o[2] = r.Y; o[3] = r.Z;
     }
 
-    private static long _afterDeath, _served;
+    private static long _afterDeath;
 
     /// <summary><c>Part::GetWorld</c> calls that arrived on a retired shell.</summary>
     public static long AfterDeath => _afterDeath;
-
-    /// <summary><c>Part::GetWorld</c> calls ANSWERED from the database -- the number that says the one Part
-    /// member the game calls is actually reaching this vtable. Zero while anything is attached means the
-    /// shells are not being handed out, or a hook is swallowing the call before it dispatches.</summary>
-    public static long Served => _served;
 
     [UnmanagedCallersOnly]
     private static nint Refuse(nint self)
