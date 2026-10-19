@@ -124,8 +124,6 @@ public sealed unsafe partial class CasterPass
     internal static readonly float[] CubeDynSphere = new float[MaxCubes * DynSpheres * 4];
     /// <summary>Bumped whenever <see cref="CubeDynSphere"/> is rewritten, so the upload runs once per frame.</summary>
     internal static int CubeDynSphereGen;
-    /// <summary>Face size of the dynamic pool as rendered.</summary>
-    internal static int CubeDynFaceSize => _cubeDynSize;
     /// <summary>Slot -&gt; claimed pool page (-1 none) and page -&gt; owning slot (-1 free). Sticky, like the
     /// slots themselves: a page churn would be invisible in the depth (it re-bakes every frame) but wastes
     /// nothing to avoid.</summary>

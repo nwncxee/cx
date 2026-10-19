@@ -102,7 +102,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     // --- lifecycle + diagnostics
     private static readonly EdgeState _was = new();
     private static bool _loggedOnce, _noSunLogged;
-    private static int _tableGen = -1;
     private static int _frames;
     private static long _mdiCalls;
     /// <summary>CPU ticks the bake's own 4.6 context bracket costs -- both switches, each a fence +

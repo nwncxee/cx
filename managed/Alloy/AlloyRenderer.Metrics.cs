@@ -451,11 +451,6 @@ public sealed unsafe partial class AlloyRenderer
         internal static long _nrmDeclared, _nrmBound;
         /// <summary>Lit parts refused at enrollment (no normal stream / lit program down) -- they stay vanilla.</summary>
         internal static int _litUnownable;
-        /// <summary>Parts refused for carrying bone streams, and what the per-instance sweep then cost --
-        /// already-accepted parts revoked because a SIBLING on the same instance was refused. With
-        /// <c>AlloyCensus.RefusedGobs</c> on the same line, the honest answer to "why is that creature still
-        /// vanilla". Counted as PARTS, which is the figure the sweep actually produces.</summary>
-        internal static int _skinUnownable, _gobParts;
         /// <summary>Blended parts dropped from this enrollment because the class could not be Alloy whole --
         /// dropped means NOT DRAWN, there being no engine walk behind the class. Reported: a class that never
         /// lands is the one number separating "no transparent content here" from "one part keeps refusing and
@@ -505,25 +500,10 @@ public sealed unsafe partial class AlloyRenderer
     /// same reason as <see cref="Counters"/>.</summary>
     internal static class Diag
     {
-        /// <summary>A small budget of NAMED failures. The counters say which fault; only the resref says which
-        /// CONTENT, and that is what separates "one model's texture" from "a whole class of them". Budgeted
-        /// rather than rate-limited: the population is what matters and it is small, so a handful of distinct
-        /// names is the whole answer.</summary>
-        internal static int _texSkipDiagLeft = 12;
-        internal static readonly System.Collections.Generic.HashSet<string> _texSkipSeen = new();
         /// <summary>Diagnostic budget for <see cref="HandleDiag"/>. Cold by construction -- the miss path runs
         /// about once per distinct texture per enrollment, not per draw -- and it stops speaking after this many
         /// reports, so it costs one branch on a warm cache.</summary>
         internal static int _handleDiagLeft = HandleDiagBudget;
         internal static bool _ambientFallbackLogged, _loggedOnce;
-    }
-
-    /// <summary>A per-bucket counter as "bucket:per-frame", only the buckets that contributed.</summary>
-    internal static string ByBucket(long[] counts)
-    {
-        string s = "";
-        for (int b = 0; b < counts.Length; b++)
-            if (counts[b] != 0) s += $" {b}:{(float)counts[b] / Counters._frames:F0}";
-        return s.Length == 0 ? " none" : s;
     }
 }

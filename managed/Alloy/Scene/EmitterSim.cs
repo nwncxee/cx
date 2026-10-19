@@ -232,7 +232,7 @@ internal static unsafe partial class EmitterSim
         bool cull = BuildViewPlanes();
 
         _orderN = 0;
-        _inView = 0; _outOfView = 0; _selN = 0;
+        _inView = 0; _outOfView = 0;
         _dbAnim = animating; _dbScene = scene.Value;
         _dbDead = 0; _dbDisabled = 0; _dbOtherScene = 0; _dbNoScene = 0; _dbNoDef = 0;
         _dbRMin = float.MaxValue; _dbRMax = 0f;
@@ -562,11 +562,6 @@ internal static unsafe partial class EmitterSim
 
     private static int _chunkSpawned, _chunkRefused;
 
-    /// <summary>The in-view set this frame, for the validator alone -- the walk above cannot hand the
-    /// validator a span of what it kept without recording it, and recording it is one store per emitter.
-    /// </summary>
-    private static readonly IntPtr[] _selected = new IntPtr[MaxEmitters];
-    private static int _selN;
     private static int _inView, _outOfView;
     /// <summary>The silent exits, period totals, disjoint: the tile-fade exit, a fountain whose birth rate truncates
     /// to 0, and a stepped emitter left empty for neither reason; beside them the emitters held (in view, the scene

@@ -801,7 +801,6 @@ internal static unsafe class AlloyLights
     /// <summary><c>/light reachfade</c>: 1 = the lit stage windows every light to its binned reach (see
     /// <c>uReach</c>), 0 = the bin cut alone.</summary>
     internal static float ReachUniform => Lighting.ReachFade.V ? _binReach : 0f;
-    internal static float BinReach => _binReach;
     /// <summary>EXPERIMENT: the most lights a froxel keeps -- the K strongest by the engine's curve at the
     /// froxel's nearest point times the colour's luma, vanilla's per-object list made per froxel. 0 = all.
     /// The seam risk is a light dropped in one froxel and kept in its neighbour, which draws a grid edge: the

@@ -117,15 +117,13 @@ internal static unsafe class CullPass
     /// every frame, with no cull anywhere, slow and correct, which is what makes it the A/B for "is the cull
     /// eating this?"; <b>1</b> is the frustum test alone; <b>2</b> adds the hi-Z occlusion test.</summary>
     internal static int Mode => Renderer.Cull.V;
-    internal const int ModeOff = 0, ModeFrustum = 1, ModeHiZ = 2;
+    internal const int ModeOff = 0, ModeHiZ = 2;
 
     /// <summary>LOD selection, in pixels: a draw whose bounding sphere projects to a screen radius smaller
     /// than this is dropped by the same dispatch that culls it. 0 disables it and <c>/alloy cull 0</c> stands
     /// it down with everything else, because it IS the cull shader. No tile exemption -- the hole it can
     /// leave is by construction under <see cref="LodPx"/> pixels wide.</summary>
     internal static float LodPx => Renderer.Lod.V;
-    /// <summary>The boot threshold: one pixel of projected radius.</summary>
-    internal const float DefLodPx = 1.0f;
 
     /// <summary>Drop geometry the fog has already painted over: a fragment past
     /// <see cref="SceneFog.OpaqueDistance"/> is EXACTLY the fully-fogged colour. Opaque is not enough, though

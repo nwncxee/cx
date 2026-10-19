@@ -13,7 +13,6 @@ namespace CX.Alloy;
 internal static unsafe class TextAtlas
 {
     private static ExtenderLog? _log;
-    private static int _said;
     /// <summary>One registry reference per bitmap-font texture, held for the session like the font itself.</summary>
     private static readonly System.Collections.Generic.Dictionary<string, TexId> _tex = new(StringComparer.OrdinalIgnoreCase);
 

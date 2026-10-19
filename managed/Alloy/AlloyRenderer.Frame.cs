@@ -1101,9 +1101,7 @@ public sealed unsafe partial class AlloyRenderer
         // the parameter buffer and does not come back. The period line's cull clause carries the kept figure;
         // this one is the ceiling it culls from, and reading it as "draws" would overstate the pass.
         if (!retest) { Counters._prepassDraws += drawn; Counters._prepassSkipped += skipped; }
-        // #214: OUR depth attachment, not the engine's -- a texture by construction, so consumers get a
-        // sampleable name rather than whatever the engine happened to allocate.
-        DepthResource.Publish((int)Gl.ATTACHMENT_TEXTURE, (int)PostChain.DepthTex, viewport, PassGen);
+        DepthResource.Publish(PassGen);
     }
 
     /// <summary>Bind content pair <paramref name="feat"/>'s depth twin and the terms it reads at <paramref name="vp"/>; the

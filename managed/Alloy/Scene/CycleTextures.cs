@@ -64,24 +64,6 @@ internal static unsafe class CycleTextures
                 if (_ref[i] == tex) _ref[i] = IntPtr.Zero;
     }
 
-    /// <summary>The CycleTID controller behind this texture ref, registered for ticking, or zero when it has
-    /// none. Cold: called from the record's texture re-resolve only. Any thread.</summary>
-    internal static IntPtr Register(IntPtr texRef)
-    {
-        if (!Ready || !AurTex.IsLive(texRef)) return IntPtr.Zero;
-        IntPtr ctl = _getController(texRef);
-        if (ctl == IntPtr.Zero) return IntPtr.Zero;
-        if (*(IntPtr*)ctl != _vtbl) { OtherClass++; return IntPtr.Zero; }
-        lock (_lock)
-        {
-            // a dedup hit refreshes the ref: the one on file may die (a re-skin) while the basic lives on
-            for (int i = 0; i < _n; i++) if (_ctl[i] == ctl) { _ref[i] = texRef; return ctl; }
-            if (_n == Cap) { Overflow++; return IntPtr.Zero; }
-            _ctl[_n] = ctl; _ref[_n] = texRef; _n++;
-        }
-        return ctl;
-    }
-
     /// <summary>Once per frame, main thread, inside the bracket: tick every controller and collect the ones
     /// whose name stepped. An entry whose ref died is dropped and reported through <see cref="Dropped"/>, so
     /// the records behind it re-resolve and re-register with a live ref. Honours

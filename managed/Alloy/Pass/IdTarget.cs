@@ -32,11 +32,6 @@ internal static unsafe class IdTarget
     private static IdTargetState _gl = new();
     private static int _writes;
 
-    /// <summary>The vis-ID texture, 0 until the first prepass has written it at this size.</summary>
-    internal static uint Tex => _gl.Tex;
-    /// <summary>Attached and cleared this pass: the retest call and the viz may rely on it.</summary>
-    internal static bool Armed => _gl.Armed;
-
     internal static void Attach(ExtenderLog log) => _log = log;
 
     /// <summary>Context loss: the names are gone.</summary>

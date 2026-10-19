@@ -40,11 +40,6 @@ internal static unsafe partial class GrassField
     /// the materials it has room for and is counted.</summary>
     private const int MaxPartMats = 8;
 
-    /// <summary>A DB patch's identity in the intern table: negative and non-canonical, so it can never
-    /// collide with a <c>CAurTriangleList*</c> and an unbranched dereference of one faults with a name on it
-    /// rather than reading the heap.</summary>
-    private static IntPtr DbKey(int part, int mat) => (IntPtr)(-((long)part * MaxGrassMaterials + mat) - 2);
-
     /// <summary>The database's grass, for this frame: enrol what the area has added, bake what the budget
     /// allows, and mark every patch that is still live. Returns the patches sighted, as
     /// <see cref="Collect"/> does.</summary>
@@ -192,7 +187,7 @@ internal static unsafe partial class GrassField
                     n++;
                 }
                 if (n == 0) continue;
-                if (BakeFaces(DbKey(part, mat), verts, blades, n, mat) < 0) break;
+                if (BakeFaces(verts, blades, n, mat) < 0) break;
             }
             _dbGrassFaces += n;
         }

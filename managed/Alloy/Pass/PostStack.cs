@@ -239,12 +239,6 @@ internal static unsafe class PostStack
         ToonStage.Forget();
     }
 
-    /// <summary>Decide this frame's stack and, if any stage is live, hand back the framebuffer the resolve's
-    /// colour should go into (its first ping-pong texture attached). 0 = no stage: the resolve draws into the
-    /// engine's target as before. Binds its own framebuffer to attach, so the caller rebinds the engine's
-    /// target after it -- which the depth hand-back needs anyway.</summary>
-    internal static uint Begin(int w, int h) => Begin(w, h, w, h);
-
     /// <summary>Is this frame's stack upsampling: the resolve and every stage but the last at render size,
     /// the taa stage's history and its write at display size. Decided in <see cref="Begin"/>.</summary>
     internal static bool Upsampling { get; private set; }
@@ -282,13 +276,10 @@ internal static unsafe class PostStack
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
     }
 
-    /// <summary>Run the live stages in order over the resolved frame. Every stage but the last draws into
-    /// the other ping-pong texture; the last rebinds the engine's target (which the resolve would have
-    /// written into) and carries the resolve's dither, so the frame is quantised exactly once.</summary>
-    internal static void Run(int* viewport) => Run(viewport, viewport);
-
-    /// <summary>...with every stage but the last drawing at <paramref name="stageVp"/> (the render viewport
-    /// when upsampling) and the last at <paramref name="viewport"/>, the display.</summary>
+    /// <summary>Run the live stages in order over the resolved frame, every stage but the last at
+    /// <paramref name="stageVp"/> (the render viewport when upsampling) and the last at
+    /// <paramref name="viewport"/>, the display. The last rebinds the engine's target (which the resolve
+    /// would have written into) and carries the resolve's dither, so the frame is quantised exactly once.</summary>
     internal static void Run(int* viewport, int* stageVp)
     {
         if (_pending == 0) return;
