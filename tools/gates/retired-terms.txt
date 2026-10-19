@@ -70,3 +70,6 @@ cx_skyenv|cx_skypass_cs|\$SKYCS\$|CX_SKY_LINEAR|cxSkyLens|effects\.skytwin	nativ
 
 # Dead-code cleanup: a knob whose last reader was removed with the deferred lighting rewrite.
 anim\.staticlight	dead-code-cleanup
+# The engine-texture read-ahead went with the engine draw path: TexRegistry decodes its own textures, so
+# there is no CAurTexture build to run ahead of.
+\btexprefetch\b	dead-code-cleanup

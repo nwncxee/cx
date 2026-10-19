@@ -234,7 +234,6 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "fog",
-            Attach = SceneFog.Attach,
             SelfCheck = SceneFog.SelfCheck,
             Revoke = SceneFog.Revoke,
         }, log);

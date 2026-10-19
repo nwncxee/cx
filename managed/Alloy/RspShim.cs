@@ -243,9 +243,6 @@ internal static unsafe class RspShim
                  + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), {ms:F2}ms/frame in the shim ({StepLine()}), "
                  + $"borrowed {OwnedBuffers.Borrowed - _lastRefBuf} buffers / "
                  + $"{OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0/0)"
-                 // Lifetime, not a delta -- one attempt per texture makes it a POPULATION (how much of the
-                 // world lost its build race) and never a rate. Empty when nothing has ever been unbuilt.
-                 + OwnedTextures.RebuildNote()
                  // The ported light tick has no other visible surface: `moved` counting down to a handful
                  // once an area settles, and `focus` tracking day/night, is what says it is running.
                  + $"; {FrameDelta.Describe()}");

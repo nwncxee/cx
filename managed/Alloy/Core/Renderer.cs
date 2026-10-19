@@ -34,7 +34,7 @@ internal static class Renderer
     internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, PltCpu, TexSingle, DdsRead, HandleDrop, OwnedGeom,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
                                         Gui, Movie;
-    internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexPrefetch, TexDelete, MaxElements, RasterRead,
+    internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SwapProbe, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, AoTest, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
@@ -161,7 +161,6 @@ internal static class Renderer
         // off by default: it reads every PLT file a second time.
         PltVerify = G.Toggle("pltverify", "pltverify", false, Tier.ChatOnly, Effect.Restart);
         BcnDrip = G.Slider("bcndrip", "bcndrip", 1, 64, 1, 1, tier: Tier.ChatOnly, effect: Effect.Restart);
-        TexPrefetch = G.Slider("texprefetch", "texprefetch", 0, 64, 1, 2, tier: Tier.ChatOnly, effect: Effect.Restart);
         TexSingle = G.Toggle("texsingle", "texsingle", true, Tier.ChatOnly, Effect.Restart);
         // CX-52 step 1: off until a live session reads zero MISMATCHED on the dds: note (the ticket's acceptance).
         DdsRead = G.Toggle("ddsread", "ddsread", true, Tier.ChatOnly, Effect.Restart);

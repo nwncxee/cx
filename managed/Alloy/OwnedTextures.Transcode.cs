@@ -76,9 +76,10 @@ internal static unsafe partial class OwnedTextures
         _encodeWake.Release();
     }
 
-    /// <summary>One frame's uploads of finished jobs. Engine context, on the <see cref="DripRebuilds"/> anchor;
-    /// every edit is by name, so the engine's bind cache is never touched, and its unpack-buffer binding is restored.</summary>
-    private static void DripTranscodes()
+    /// <summary>One frame's uploads of finished jobs, from inside the 4.6 bracket beside <see cref="Drain"/> --
+    /// the two share a batch of retired names. Every edit is by name, so neither context's bind cache is
+    /// touched, and whichever unpack-buffer binding was current is restored.</summary>
+    internal static void DripTranscodes()
     {
         if (!GlContextService.Available || _transN == 0) return;
         long t0 = FrameZones.Now;
@@ -177,7 +178,11 @@ internal static unsafe partial class OwnedTextures
             }
             return;
         }
+        // The funnel's scan belongs to the RESOURCE, not to the name: the swap retires the scanned name, so
+        // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
+        bool scanned = _stats.TryGetValue(job.Src, out Stat st);
         Replace(job.Key, job.Etid, dst, job.Compressed);
+        if (scanned) _stats[dst] = st;
         FrameZones.Count(FrameZones.Ev.Transcode);
         _transDone++;
         _censusTrans++; _censusSaved += job.Bytes > job.Compressed ? job.Bytes - job.Compressed : 0;
@@ -209,8 +214,7 @@ internal static unsafe partial class OwnedTextures
     private static long _censusGridBytes;
     private static int _censusLastUpload;
     private static bool _censusReported;
-    /// <summary>Frames of upload silence that count as "the area settled" -- ~5s at 60fps, same reasoning as
-    /// <see cref="RebuildRearm"/>.</summary>
+    /// <summary>Frames of upload silence that count as "the area settled" -- about five seconds at 60fps.</summary>
     private const int CensusSettle = 300;
 
     private static void Census(IntPtr tex, long bytes, long transSaved, int gridN, int cell)
@@ -241,16 +245,13 @@ internal static unsafe partial class OwnedTextures
         _censusLastUpload = _dripFrame;
     }
 
-    /// <summary>Emit the settle line once per upload window. Rides the <see cref="DripRebuilds"/> anchor:
-    /// once a frame, engine context, no GL.</summary>
+    /// <summary>Emit the settle line once per upload window. Rides the <see cref="Maintain"/> anchor:
+    /// once a frame, game thread, no GL.</summary>
     private static void CensusSettleCheck()
     {
         if (_censusReported || _censusRaw + _censusBcn == 0 || _dripFrame - _censusLastUpload < CensusSettle)
             return;
         _censusReported = true;
-        // #284 ledger keyed on raw CAurTexture*: the area edge recycles addresses, so a fresh texture
-        // inherited a dead one's Never/spent verdict and was never re-asked for the session (no-gl-id 31/frame).
-        _rebuildTried.Clear();
         int total = _censusRaw + _censusBcn;
         long totalBytes = _censusRawBytes + _censusBcnBytes;
         _log?.Info($"OwnedTextures: [census] area settled -- {_censusRaw}/{total} textures "

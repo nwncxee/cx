@@ -290,8 +290,8 @@ internal static unsafe partial class ModelLoad
 
     // ---- the publish, main thread ----
 
-    /// <summary>Once a frame on the texture drip's anchor: file what the worker finished, offer the
-    /// supermodels it found, and sweep what nothing ever asked for.</summary>
+    /// <summary>Once a frame on the frame anchor (<c>OwnedTextures.maintain</c>): file what the worker
+    /// finished, offer the supermodels it found, and sweep what nothing ever asked for.</summary>
     internal static void Drip()
     {
         if (!_armed) return;

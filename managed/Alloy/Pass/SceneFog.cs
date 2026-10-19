@@ -42,52 +42,18 @@ internal static unsafe class SceneFog
     /// <summary>The sky average, LINEAR, once one has been read: <see cref="EnvProbe"/>'s clear where the capture
     /// draws no dome -- a hosted content sky (a cloud stage) is never in it.</summary>
     internal static bool TrySky(out Vector3 sky) { sky = _sky; return _haveSky; }
-    private static uint _lastTid;
 
-    /// <summary>The texture-average cache: a GL readback per sky texture, once. Sixteen slots is far more
-    /// than the four dome slots plus a cross-fade partner, and a linear scan of sixteen is cheaper on the
-    /// staging path than anything with a hash.</summary>
-    private const int CacheN = 16;
-    private static readonly uint[] _cacheTid = new uint[CacheN];
-    private static readonly Vector3[] _cacheCol = new Vector3[CacheN];
-    /// <summary>...and a REFUSAL is cached too. A texture with no small mip fails the walk below every time,
-    /// and this runs on the staging path once per part -- an uncached miss is a bind plus twenty level
-    /// queries per frame, forever, with nothing in the log to say so.</summary>
-    private static readonly bool[] _cacheOk = new bool[CacheN];
-    private static int _cacheUsed;
-
-    private static ExtenderLog? _log;
-
-    internal static void Attach(ExtenderLog log) => _log = log;
-
-    /// <summary>A new area, or a wiped part table: the cached sky averages belong to textures that may not
-    /// exist any more. The GL names are the engine's, so this is a Revoke and not a ContextLost.</summary>
+    /// <summary>A new area, or a wiped part table: the sky colour belongs to a dome that may not be in the
+    /// next one. The GL names are the engine's, so this is a Revoke and not a ContextLost.</summary>
     internal static void Revoke()
     {
-        _cacheUsed = 0; _haveSky = false; _sky = default; _lastTid = 0;
+        _haveSky = false; _sky = default;
     }
 
-    /// <summary>Fold one staged sky part into this frame's average. Called from the sky staging loop for
-    /// every part that is NOT the fog-tinted fade band -- the band is painted in the fog colour, so counting
-    /// it would feed the fog its own output.</summary>
-    internal static void NoteSky(uint tid, float alpha)
-    {
-        if (tid == 0 || alpha <= 0f) return;
-        // Every part of one role shares a texture; skip the cache scan for the run of them.
-        if (tid != _lastTid)
-        {
-            _lastTid = tid;
-            _noteCol = Average(tid, out _noteOk);
-        }
-        if (!_noteOk) return;
-        _acc += _noteCol * alpha; _accW += alpha;
-    }
-
-    private static Vector3 _noteCol; private static bool _noteOk;
-
-    /// <summary>DB mode's <see cref="NoteSky"/>: the dome part's texture is a registry slot, whose mean the
-    /// loader took off the decoded image -- the engine funnel <see cref="Average"/> reads never saw it.
-    /// Without this the sky term never arms and the fog stands on the author's colour alone.</summary>
+    /// <summary>Fold one staged sky part into this frame's average: the dome part's texture is a registry
+    /// slot, whose mean the loader took off the decoded image. Called for every part that is NOT the
+    /// fog-tinted fade band -- the band is painted in the fog colour, so counting it would feed the fog its
+    /// own output, and without the rest the sky term never arms at all.</summary>
     internal static void NoteSkyDb(Db.TexId id, float alpha)
     {
         if (alpha <= 0f || !Db.TexRegistry.TryMean(id, out Vector3 m)) return;
@@ -99,31 +65,12 @@ internal static unsafe class SceneFog
     /// re-staged every pass and one refused frame is not a new sky.</summary>
     internal static void EndSky()
     {
-        _lastTid = 0;
         // A native stage's cx_fog texel, read back, is the colour outright while its stage runs: a hosted stage's
         // textures say nothing about its colour, and a texel a shader names for the purpose says exactly that.
         if (StageResources.FogColour(out Vector3 named)) { _sky = named; _haveSky = true; _acc = default; _accW = 0f; return; }
         if (_accW <= 0f) { _acc = default; return; }
         _sky = _acc / _accW; _haveSky = true;
         _acc = default; _accW = 0f;
-    }
-
-    /// <summary>The sky texture's own average, LINEAR -- <c>glGetTexImage</c> of the smallest mip that has
-    /// storage, which is the value <c>textureLod(sky, uv, 20)</c> would return; cached per texture name.
-    /// TEXTURE_MAX_LEVEL is a cap, not a promise, so the chain is walked down to a level that exists, and a
-    /// texture with no usable small level is refused rather than read at level 0 (a mid-frame stall).</summary>
-    private static Vector3 Average(uint tid, out bool ok)
-    {
-        ok = false;
-        for (int i = 0; i < _cacheUsed; i++)
-            if (_cacheTid[i] == tid) { ok = _cacheOk[i]; return _cacheCol[i]; }
-        // no readback: the mean was taken from the decoded image at the upload funnel (TexScan)
-        Vector3 c = default;
-        if (OwnedTextures.TryMean((int)tid, out Vector3 m))
-        { c = new Vector3(Lin(m.X), Lin(m.Y), Lin(m.Z)); ok = true; }
-        if (_cacheUsed < CacheN)
-        { _cacheTid[_cacheUsed] = tid; _cacheCol[_cacheUsed] = c; _cacheOk[_cacheUsed] = ok; _cacheUsed++; }
-        return c;
     }
 
     private static float Lin(float v) => MathF.Pow(MathF.Max(v, 0f), AlloyLights.SrgbGamma);
