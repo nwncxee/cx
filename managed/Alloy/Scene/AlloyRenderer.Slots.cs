@@ -103,7 +103,7 @@ public sealed unsafe partial class AlloyRenderer
             _featPrimCount[FeatPrimKey(i)]++;
             _clsCount[_oCls[i]]++;
             if (_oLit[i]) _litCount++;
-            if (DbSlot(i) ? (DrawRecipe.Flags(_oDbRecipe[i]) & RecipeFlag.Skinned) != 0 : _vSkin[_oVao[i]])
+            if (DbSlot(i) && (DrawRecipe.Flags(_oDbRecipe[i]) & RecipeFlag.Skinned) != 0)
                 _skinOrder[_skinCount++] = i;
         }
         // Four-digit LSD radix into _order, every digit counting-sorted (stable): texture, then

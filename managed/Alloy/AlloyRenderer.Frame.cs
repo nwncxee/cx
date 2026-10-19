@@ -221,7 +221,6 @@ public sealed unsafe partial class AlloyRenderer
         // GUI flush's and the render thread's all route through the one entry point for that reason.
         GlContextService.RunInBracketHere();
         OwnedBuffers.ClearDirty();   // #260: geometry uploaded itself at the engine's commit; close the window
-        ClearItemCommits();
         Step("ApplySwaps");
         ApplySwaps();   // #386: swapped texture names take their new handles here, in the context that owns residency
         OwnedBuffers.HighWater();    // ...and report the mark the funnel recorded, where a string is affordable

@@ -38,7 +38,7 @@ internal static class RenderPasses
             Name = "ownedgeom",
             Attach = l => { OwnedBuffers.Attach(l); NormalWeld.Attach(l); },
             Install = OwnedBuffers.Install,
-            SelfCheck = l => { OwnedBuffers.SelfCheck(l); NormalWeld.SelfCheck(l); StagePool.SelfCheck(l); AlloyRenderer.SelfCheckItemDirty(l); },
+            SelfCheck = l => { OwnedBuffers.SelfCheck(l); NormalWeld.SelfCheck(l); StagePool.SelfCheck(l); },
             Revoke = OwnedBuffers.Revoke,
             ContextLost = OwnedBuffers.ContextLost,
             Stats = OwnedBuffers.Stats,

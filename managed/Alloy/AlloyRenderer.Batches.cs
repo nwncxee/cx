@@ -502,57 +502,9 @@ public sealed unsafe partial class AlloyRenderer
         internal float FeatX, FeatY;
     }
 
-    /// <summary>This record's world bounding sphere, for the cull. The local radius is enrolment-stable; what
-    /// moves is the model matrix, so a matrix-class sphere is centred on its translation and its radius scaled
-    /// by the WHOLE scale chain, or a placeable scaled k times culls as one k times smaller about its pivot.
-    /// A posed skinmesh, a dangly mesh and a displacing feature are <see cref="NeverCull"/>: they leave it.</summary>
-    private static void WriteSphere(int i, in RecordFrameState f, IntPtr tri, int feat)
-    {
-        {
-            if (_oBone[i] >= 0 || ContentPrograms.MayMove(feat) || PartTable.IsDangly(tri)
-                || !(_oR[i] > 0f))
-            { _dSph[i] = new Sphere { Radius = NeverCull }; return; }
-            // The centre is the model TRANSLATION, not _oC* through the matrix: that bbox centre is not
-            // object-space (EyeDist2, CasterPass), and transforming it would add the node translation twice.
-            float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
-            if (f.HasModel) { cx = f.Model.M41; cy = f.Model.M42; cz = f.Model.M43; r *= DbAnim.ScaleOf(f.Model); }
-            _dSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
-        }
-    }
-
     /// <summary>Stand-in radius for a caster whose engine bbox is degenerate: one NWN tile's horizontal
     /// diagonal (tiles are 10u square; WaterBodies.TileHalf is the same convention's other half).</summary>
     private const float DegenerateCasterRadius = 7.1f;
-
-    /// <summary>The same sphere, GEOMETRIC even for the three exempted kinds, and scaled the same way.
-    /// See <c>_dCastSph</c> for why the shadow pass cannot use a <see cref="NeverCull"/> one.</summary>
-    private static void WriteCasterSphere(int i, in RecordFrameState f)
-    {
-        {
-            float cx = _oCx[i], cy = _oCy[i], cz = _oCz[i], r = _oR[i];
-            // a posed skin and a dangly move their vertices off the bind box; the origin bound is the looser fit for them
-            if (f.HasModel && _oBr[i] > 0f && !_vSkin[_oVao[i]] && !_oDangly[i])
-            {
-                var c = Vector3.Transform(new Vector3(_oBx[i], _oBy[i], _oBz[i]), f.Model);
-                cx = c.X; cy = c.Y; cz = c.Z; r = _oBr[i] * DbAnim.ScaleOf(f.Model);
-            }
-            else if (f.HasModel) { cx = f.Model.M41; cy = f.Model.M42; cz = f.Model.M43; r *= DbAnim.ScaleOf(f.Model); }
-            // Review, restoring the deleted MinSkinRadius insurance: a skinmesh's bbox is its BIND pose,
-            // and an animated pose (an extended arm, a swinging cloak) reaches past it. The slack keeps the
-            // reach culls and the staleness volumes honest about where the pose can actually be; keyed on
-            // the VDO's bone streams because that is enrollment-stable where the per-frame bone slot is not.
-            float bare = r;
-            if (_vSkin[_oVao[i]]) r = MathF.Max(r + 2f, 3f);
-            // A part with an unpopulated engine bbox (min == max -- measured live on tile parts, the same
-            // defect WaterBodies stands in for with TileHalf) must NOT store radius 0: a zero sphere makes
-            // TryCaster admit it at infinite reach (defeating every view's re-bake predicate) and makes the
-            // vanish sweep take the whole-frame blanket when it blinks out. One tile's diagonal is the
-            // honest bound for the population this actually is.
-            if (!(r > 0f)) r = DegenerateCasterRadius;
-            _dCastSph[i] = new Sphere { Center = new Vector3(cx, cy, cz), Radius = r };
-            _dCastSlack[i] = bare > 0f ? r - bare : 0f;
-        }
-    }
 
     /// <summary>Did a model matrix move, to a tenth of a millimetre? The engine rebuilds a placed gob's matrix
     /// from its quaternion, so bit-exact inequality reports a static area's parts as movers every frame --
@@ -606,53 +558,6 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line.</summary>
     internal static int RecCreature, RecObject, RecTile;
-
-    /// <summary>The caster sphere off a part's own-space box: every box corner through a rotated, scaled, translated
-    /// model lands inside it, and the centre follows the box rather than the node origin. Scratch slot 0, restored.</summary>
-    private static bool CasterBoundSelfCheck(ExtenderLog log)
-    {
-        const int i = 0;
-        // CX-120 (R1-35): scratch slot 0 must not be a live DB tenant while this forges a box into it.
-        int wasDb = _oDbPart[i]; _oDbPart[i] = -1;
-        float bx = _oBx[i], by = _oBy[i], bz = _oBz[i], br = _oBr[i], ccx = _oCx[i], ccy = _oCy[i], ccz = _oCz[i], cr = _oR[i];
-        int vao = _oVao[i];
-        Sphere was = _dCastSph[0];
-        float wasSlack = _dCastSlack[i];
-        var lo = new Vector3(-0.5f, -2.5f, 3.2f); var hi = new Vector3(0.5f, -1.7f, 12.3f);   // the harbour ship's mast
-        Vector3 c = 0.5f * (lo + hi);
-        _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = 0.5f * Vector3.Distance(lo, hi);
-        _oCx[i] = 0f; _oCy[i] = 0f; _oCz[i] = 0f; _oR[i] = 12.21f; _oVao[i] = 0;
-        var f = default(RecordFrameState);
-        f.HasModel = true;
-        f.Model = Matrix4x4.CreateScale(1.5f) * Matrix4x4.CreateFromYawPitchRoll(0.7f, 0.2f, 0.4f) * Matrix4x4.CreateTranslation(40f, 7f, -3f);
-        bool skin = _vSkin[0], dangly = _oDangly[i];
-        _vSkin[0] = false; _oDangly[i] = false;
-        WriteCasterSphere(i, in f);
-        CasterSphere(i, out float sx, out float sy, out float sz, out float sr);
-        bool inside = true;
-        for (int k = 0; k < 8; k++)
-        {
-            var p = new Vector3((k & 1) != 0 ? hi.X : lo.X, (k & 2) != 0 ? hi.Y : lo.Y, (k & 4) != 0 ? hi.Z : lo.Z);
-            inside &= Vector3.Distance(Vector3.Transform(p, f.Model), new Vector3(sx, sy, sz)) <= sr * 1.0001f;
-        }
-        bool tight = sr < 12.21f * 1.5f * 0.5f;
-        // hand-worked: a skinned part takes the origin bound, 12.21 x 1.5 = 18.315, culled at +2 and framed at it
-        _vSkin[0] = true;
-        WriteCasterSphere(i, in f);
-        CasterSphere(i, out _, out _, out _, out float skinR);
-        bool framed = MathF.Abs(skinR - 20.315f) < 1e-3f && MathF.Abs(CasterFrameRadius(i) - 18.315f) < 1e-3f;
-        _vSkin[0] = skin; _oDangly[i] = dangly;
-        _oDbPart[i] = wasDb;
-        _oBx[i] = bx; _oBy[i] = by; _oBz[i] = bz; _oBr[i] = br; _oCx[i] = ccx; _oCy[i] = ccy; _oCz[i] = ccz; _oR[i] = cr; _oVao[i] = vao;
-        _dCastSph[0] = was;
-        _dCastSlack[i] = wasSlack;
-        if (!framed) log.Info($"AlloyRenderer.CasterBoundSelfCheck: FAILED -- a skinned part culls at {skinR:F3} (want 20.315) "
-                            + $"and frames at {CasterFrameRadius(i):F3} (want 18.315): the pose slack leaks into the framing");
-        if (!framed) return false;
-        if (!(inside && tight)) log.Info("AlloyRenderer.CasterBoundSelfCheck: FAILED -- the caster sphere does not hold its own vertex box "
-                                       + "through the model, or still sits about the node origin");
-        return inside && tight;
-    }
 
     /// <summary>Off-device, the split itself: every field of <see cref="RecordFrameState"/> is perturbed on
     /// its own and must make the record a mover, and a record re-written with the values it already holds must

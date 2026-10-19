@@ -370,7 +370,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !CasterBoundSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
             || !Issue.RunsSelfCheck(log) || !StreamRing.SelfCheck(log)
@@ -425,9 +425,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (Highlight._origRefreshHilite == null)
             log.Info("AlloyRenderer: RefreshHilite unhooked -- no highlight claims a source, so every"
                      + " highlight keeps the engine glow and the owned outline draws nothing");
-        // the item-level vertex-dirty signal
-        _commitSlot = hooks.ChainVdoCommitItemDynamicData(&OnCommitItemDynamicData, CommitPriority);
-        if (_commitSlot == null) log.Info("AlloyRenderer: CommitItemDynamicData unhooked -- vertex-dirty stays per pool buffer");
         // #137: the skinmesh class. Config bucket (ADR 0013): a capability gate that decides what the vertex
         // stages are BUILT from, so it cannot move mid-session and is not a command. The pose math is
         // DbAnim's, checked by its own self-check.
