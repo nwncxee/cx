@@ -12,7 +12,6 @@ internal static unsafe class PartTable
     internal static PartGetIsOpaqueFn _isOpaque;
     internal static MatHasEnvMapFn _hasEnvMap;
     internal static MatHasBumpyShinyMapFn _hasBumpyShiny;
-    internal static MatGetTextureFn _getTexture;
     internal static uint* _primTable;
     /// <summary><c>g_nEnableBumpyWater</c>: null (Windows, or a build without the symbol) leaves the
     /// bumpy-shiny route to water unrecognised, so only .mtr-declared water is owned. Never a misrender:
@@ -37,10 +36,9 @@ internal static unsafe class PartTable
         _hasBumpyShiny = EngineFn.MatHasBumpyShinyMap;
         IntPtr dv = Native.Sym(SymbolMap.PartDanglyMeshVtbl);
         _danglyVtbl = EngineAbi.Vtbl(dv);
-        _getTexture = EngineFn.MatGetTexture;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
         _bumpyWater = (int*)Native.Sym(SymbolMap.EnableBumpyWater);
-        return _isOpaque != null && _hasEnvMap != null && _hasBumpyShiny != null && _getTexture != null && _primTable != null;
+        return _isOpaque != null && _hasEnvMap != null && _hasBumpyShiny != null && _primTable != null;
     }
     /// <summary>A <c>PartDanglyMesh</c>, which reaches this hook because <c>PartDanglyMesh::Draw</c> @0x451b60
     /// calls <c>PartTriMesh::Draw</c> outright. Not a reason to refuse the part: the CPU re-solve is

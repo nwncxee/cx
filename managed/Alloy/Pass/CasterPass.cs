@@ -94,10 +94,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static ExtenderLog? _log;
     private static bool _armed, _disarmed;
     private static uint* _primTable;
-    /// <summary>The diffuse lookup for masked casters: <c>Material::GetTexture(mat, 0)</c> then the Aurora
-    /// texture's live GL id. Both re-read per frame -- a CAurTexture* is BORROWED and freed on area
-    /// transitions, so it is never cached.</summary>
-    private static MatGetTextureFn _getTexture;
 
     // --- lifecycle + diagnostics
     private static readonly EdgeState _was = new();
@@ -155,7 +151,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
         Array.Fill(_dynPageOf, -1);
 
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        _getTexture = EngineFn.MatGetTexture;
         if (_primTable == null)
         { log.Info("CasterPass: primitive-type table unresolved -- Alloy caster submission unavailable"); return; }
 
@@ -331,10 +326,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
         AlloyRenderer.Step("shadow bracket: dead handles and the bake's handle upload");
         OwnedTextures.DropDeadHandles();        // the colour drain is AFTER this bracket; textures die on area load before both
         Issue.UploadHandlesForBake();   // a handle dropped since the last colour upload must not be sampled below
-        // #260: the bake and the colour pass read the SAME buffer -- the pool's, which Alloy uploaded at the
-        // engine's own commit -- so there is nothing to bring into agreement here any more. What closes is
-        // the dirty window, and this bracket runs after the sweep has already read _vDirty off it.
-        OwnedBuffers.ClearDirty();
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _gl.QShadowOn = _gl.QShadow.Begin(Gl.TIME_ELAPSED);
         // #286: ONE staging for the whole frame, after the bones (the skin drop is a per-frame fact) and

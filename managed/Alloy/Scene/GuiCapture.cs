@@ -9,10 +9,10 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>
-/// The engine side of Alloy's GUI path: <c>Scene::RenderOnlyGobs</c> @0x4682e0 -- the draw of every scene with
-/// no tile BSP (panels, menus, minimap, compass, cursor overlay, previews) -- is replaced by the same loop over
-/// the same gobs with both draw funnels in CAPTURE mode, so every engine draw below it lands as a record of its
-/// geometry and <c>GLRender</c> state, nothing reaches GL, and <see cref="GuiPass"/> issues it from the 4.6 context.
+/// The engine side of Alloy's GUI path. Every scene with no tile BSP (panels, menus, minimap, compass, cursor
+/// overlay, previews) is walked from the scene database, and both draw funnels run in CAPTURE mode: an engine
+/// draw that reaches one lands as a record of its geometry and <c>GLRender</c> state, nothing reaches GL, and
+/// <see cref="GuiPass"/> issues the list from the 4.6 context.
 /// </summary>
 internal static unsafe class GuiCapture
 {

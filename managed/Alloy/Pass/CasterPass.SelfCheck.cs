@@ -224,8 +224,7 @@ public sealed unsafe partial class CasterPass
                         && _sMoverCount == 2 && _sMoverIdx[0] == 1 && _sMoverIdx[1] == 3
                         && !_liveDyn[0] && _liveDyn[1] && _liveStamp[8] == 9;
             // #336: the hold. At 4 frames a caster last moved 3 frames ago is still dynamic and no event;
-            // one that last moved 5 frames ago flips back -- once -- and is a static event; a flip that would
-            // repeat every frame under vertex-dirty flapping is the churn this exists to stop.
+            // one that last moved 5 frames ago flips back -- once -- and is a static event.
             Shadows.DynHold.V = 4; _moverCount = _dMoverCount = _sMoverCount = 0;
             _dynStamp[5] = 6; _dynStamp[6] = 4;
             Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false);
