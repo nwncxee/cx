@@ -262,6 +262,7 @@ public static class SceneFeed
             _log?.Info($"SceneFeed: area is {(_interior ? "INTERIOR -- no sun shadows" : "exterior -- sun shadows on")}");
         }
         FrameInputs.Interior = h.Interior;
+        FrameInputs.Night = h.Night;
         FrameInputs.AreaPtr = h.Area;
         FrameInputs.AreaExtent = h.Extent;
     }

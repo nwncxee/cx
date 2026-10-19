@@ -99,6 +99,8 @@ public static class FrameInputs
     /// rendering there. Recomputed once per frame by <see cref="SceneInputs"/> (which walks the engine's
     /// own area chain); false until an area is known, which is the exterior-shaped default.</summary>
     public static bool Interior { get => Read.Interior; set => _cur.Interior = value; }
+    /// <summary>The area is on its night palette: the area directional is the moon. False until an area is known.</summary>
+    public static bool Night { get => Read.Night; set => _cur.Night = value; }
     /// <summary>The current area's world XY extent in metres -- its tile grid times
     /// <see cref="AreaBorder.TileSize"/>, so tile (0,0) spans [0,10) and the area runs to
     /// (TileWidth, TileHeight) * 10. Zero until an area is known. Read once per frame beside
@@ -243,6 +245,7 @@ public static class FrameInputs
         public float[] LocalLightRange = new float[InitialLights];
         public Vector3[] LocalLightColor = new Vector3[InitialLights];
         public bool Interior;
+        public bool Night;
         public Vector2 AreaExtent;
         public IntPtr AreaPtr;
         public bool HasFocus;
@@ -314,6 +317,7 @@ public static class FrameInputs
             dst.Blind = src.Blind;
             dst.LocalLightCount = src.LocalLightCount;
             dst.Interior = src.Interior;
+            dst.Night = src.Night;
             dst.AreaExtent = src.AreaExtent;
             dst.AreaPtr = src.AreaPtr;
             dst.HasFocus = src.HasFocus;

@@ -132,7 +132,7 @@ A client that sends an older value reads less. Each line says what that value la
 
 | line | meaning |
 |---|---|
-| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look` and `ui.palette`) can be held -- the renderer, audio and the hotkeys consent stay the player's |
+| `inventory.mode=tabbed` | a key naming a declared knob **holds** it at that value (validated as the knob would validate chat input; a bad value is refused and logged). Only knobs of a feature that opted in (`ServerPolicy.AllowKnobs`; today `inventory.*`, `ui.look`, `ui.palette` and `vfog.*`) can be held -- the rest of the renderer, audio and the hotkeys consent stay the player's |
 | `inventory.gold.visible=0` | any other key is a component property |
 | `inventory.gold.visible=` | an empty value releases the key |
 | `inventory.*=` | releases every key under the prefix |
@@ -798,6 +798,24 @@ whole of the above. Outside a transition and outside a cut crossfade nothing is 
 
 The server end of the same problem is running one day/night clock instead of two. Nothing here replaces that;
 it stops the client fighting a server that has its own.
+
+## Volumetric fog
+
+A server can pick the fog its players see. The `vfog` group is holdable whole:
+
+```
+vfog.enabled=1
+vfog.haze=0.1
+```
+
+`vfog.enabled=1` replaces the fog with a lit volume: sunlight falls through it in shafts, lamps glow in it and its
+haze drifts on the area's wind. It is built from what the area already sends -- the fog colour, start and end, the
+day/night state, the sun and the lights -- so no content changes with it. The far fog still hides everything past the
+area's fog end, as the stock fog does, so a module's clip distance means what it did. `vfog.*=` hands every key
+back to the player, and a server that sends nothing leaves the player's own choice; the switch is off by default.
+
+The volume costs GPU time, and how much is the player's call through their effects quality (`vfog.quality` ladders on
+it). Holding `vfog.quality` overrides that call; hold the switch and the look, and leave the detail to the player.
 
 ## Example
 

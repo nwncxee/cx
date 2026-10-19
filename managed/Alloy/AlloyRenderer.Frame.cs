@@ -441,6 +441,11 @@ public sealed unsafe partial class AlloyRenderer
                     SsaoPass.Run(PostChain.DepthTex, DepthResource.Filled(PassGen), &proj, viewport, PostChain.Fbo, _frameSeq);
                     GpuEnd(GpuTerm.Ao);
                     break;
+                case PassId.FogVolume:
+                    if (VolumetricFog.Enabled.V) GpuBegin(GpuTerm.Fog);
+                    FogVolume.Run(in view, in vpClean, viewport, near, far, perspective && !_capturing, lightingOn);
+                    GpuEnd(GpuTerm.Fog);
+                    break;
                 case PassId.OpaqueOwned:
                     // Second dispatch, and it is unconditional rather than folded into the prepass
                     // case: a frame graph without a prepass in it must still leave the colour pass a

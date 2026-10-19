@@ -23,10 +23,12 @@ internal static unsafe class SceneFog
     internal static float HeightK => Fog.Enabled.V ? Fog.Height.V : 0f;
     internal static float FloorOffset => Fog.Floor.V;
     internal static float CullZ => Fog.CullZ.V;
-    internal static bool OriginPlayer => Fog.Enabled.V && Fog.Origin.V;
-    internal static float SkyBand => Fog.Enabled.V ? Fog.SkyBand.V : 0f;
+    /// <summary>The volumetric fog's wall is radial from the player by construction, so it measures from there whatever
+    /// <c>fog.origin</c> says; and its sky band is its own.</summary>
+    internal static bool OriginPlayer => FogVolume.On || (Fog.Enabled.V && Fog.Origin.V);
+    internal static float SkyBand => FogVolume.On ? VolumetricFog.Band.V : Fog.Enabled.V ? Fog.SkyBand.V : 0f;
     /// <summary>The cull's fog gate (<see cref="CullPass.FogCull"/>): off with the master, like every dial.</summary>
-    internal static bool Cull => Fog.Enabled.V && Fog.Cull.V;
+    internal static bool Cull => (FogVolume.On || Fog.Enabled.V) && Fog.Cull.V;
 
     /// <summary>The sky colour the fog converges to, LINEAR. Zero until a sky texture has been read, which
     /// is what <see cref="_haveSky"/> reports and what makes the term stand down to the author's colour.
@@ -181,6 +183,7 @@ internal static unsafe class SceneFog
 
     private static float OpaqueDistance(bool on, float start, float end)
     {
+        if (FogVolume.On) return FogVolume.OpaqueDistance(on, start, end);
         if (!on || end <= 0f) return float.PositiveInfinity;
         if (HeightK <= 0f) return end;
         float span = end - start;
@@ -212,7 +215,8 @@ internal static unsafe class SceneFog
     internal static string Describe()
     {
         float opaque = OpaqueDistance();
-        return (Fog.Enabled.V ? "" : "OFF (author's flat fog; every dial reads 0)  ") + $"sky {SkyMix:F2} ({(_haveSky ? "sky colour" : "NO SKY COLOUR -- author colour only")} " +
+        return (FogVolume.On ? "SUPERSEDED: the volumetric fog draws (vfog.enabled)  " : "")
+             + (Fog.Enabled.V ? "" : "OFF (author's flat fog; every dial reads 0)  ") + $"sky {SkyMix:F2} ({(_haveSky ? "sky colour" : "NO SKY COLOUR -- author colour only")} " +
                $"{_sky.X:F2},{_sky.Y:F2},{_sky.Z:F2})  sun {SunAmount:F2} exp {SunExp:F1}  " +
                $"height {HeightK:F3}/unit floor {FloorOffset:F1}  " +
                $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} " +
@@ -229,8 +233,8 @@ internal static unsafe class SceneFog
         bool onWas = FrameInputs.FogOn; float sWas = FrameInputs.FogStart, eWas = FrameInputs.FogEnd;
         Vector3 cWas = FrameInputs.FogColor;
         float kWas = Fog.Height.V, mixWas = Fog.Sky.V, zWas = Fog.CullZ.V, sunWas = Fog.Sun.V, bandWas = Fog.SkyBand.V;
-        bool haveWas = _haveSky, enWas = Fog.Enabled.V, cullWas = Fog.Cull.V; Vector3 skyWas = _sky;
-        Fog.Enabled.V = true;
+        bool haveWas = _haveSky, enWas = Fog.Enabled.V, cullWas = Fog.Cull.V, volWas = VolumetricFog.Enabled.V; Vector3 skyWas = _sky;
+        Fog.Enabled.V = true; VolumetricFog.Enabled.V = false;
 
         FrameInputs.FogOn = false;
         check.Expect(float.IsPositiveInfinity(OpaqueDistance()), "fog off means no cull distance at all");
@@ -298,6 +302,7 @@ internal static unsafe class SceneFog
         FrameInputs.FogOn = onWas; FrameInputs.FogStart = sWas; FrameInputs.FogEnd = eWas;
         FrameInputs.FogColor = cWas;
         Fog.Height.V = kWas; Fog.Sky.V = mixWas; Fog.CullZ.V = zWas; Fog.Enabled.V = enWas; _haveSky = haveWas; _sky = skyWas;
+        VolumetricFog.Enabled.V = volWas;
         log.Info(check.Ok ? "SceneFog.SelfCheck: passed" : "SceneFog.SelfCheck: FAILED");
     }
 }

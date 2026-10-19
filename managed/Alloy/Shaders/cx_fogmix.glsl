@@ -2,6 +2,7 @@
 // takes this half alone: vanilla compiles its textured unlit stages FOG 0, so the fullbright stage must never
 // fog by distance -- it fogs the dome by ELEVATION, which is the one term the distance ramp cannot
 // reach (SceneFog.SkyBand).
+#include "cx_vfog.glsl"
 
 /// The LINEAR colour a fogged fragment mixes toward along this ray. Three weights, all of them
 /// direction or depth -- none touches the ramp:
@@ -33,4 +34,14 @@ vec3 CxFogMix(vec3 lin, vec3 world, float f)
     vec3 disp = mix(pow(max(lin, vec3(0.0)), g),
                     pow(max(CxFogColourLin(world, f), vec3(0.0)), g), f);
     return pow(max(disp, vec3(0.0)), vec3($SRGB$));
+}
+
+/// The sky dome's fog, for a stage drawing the sky (`band` > 0, SceneFog.SkyBand): the volume's whole ray where
+/// this pass reads it, else the ramp's horizon band -- every ray at or below the horizon fully fogged, fading to
+/// the raw dome `band` of ray elevation above it.
+vec3 CxFogSky(vec3 rgb, vec3 world, float band)
+{
+    if (uVFog.x > 0.0) { vec4 v = CxVFogSkyAt(world); return rgb * v.a + v.rgb; }
+    if (uFogParams.x == 0.0) return rgb;
+    return CxFogMix(rgb, world, 1.0 - smoothstep(0.0, band, normalize(world - uEyePos).z));
 }

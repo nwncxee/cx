@@ -35,7 +35,6 @@ void main()
     vec3 tinted = t.rgb * uTint;
     vec3 rgb = pow(max(tinted, vec3(0.0)), vec3($SRGB$));
     // the sky's horizon band only -- an unlit PART is never fogged (vanilla compiles it FOG 0)
-    if (uSkyFog > 0.0 && uFogParams.x != 0.0)
-        rgb = CxFogMix(rgb, vWorld, 1.0 - smoothstep(0.0, uSkyFog, normalize(vWorld - uEyePos).z));
+    if (uSkyFog > 0.0) rgb = CxFogSky(rgb, vWorld, uSkyFog);
     frag = CxOitOut(vec4(rgb, t.a * vAlpha));
 }
