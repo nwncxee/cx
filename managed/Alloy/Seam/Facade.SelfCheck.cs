@@ -370,18 +370,21 @@ internal static unsafe class FacadeSelfCheck
         check.Expect(SeamLayout.GobSize == 0x4c0, "sizeof(Gob) is NewCAurObject's operator_new(0x4c0)");
         check.Expect(SeamLayout.SceneSize == 0x518, "sizeof(Scene) is NewCAurScene's operator_new(0x518)");
         check.Expect(SeamLayout.StringGobSize == 0x558, "sizeof(StringGob) is NewCAurString's operator_new(0x558)");
-        check.Expect(SeamLayout.StringGobString == SeamLayout.GobSize,
+        check.Expect(EngineLayout.SeamStringGobStringSub == SeamLayout.GobSize,
             "the CAurString sub-object starts exactly at sizeof(Gob); RemoveAuroraString's -0x4c0 depends on it");
         check.Expect(SeamLayout.CameraSize >= 0xe68, "sizeof(Camera) is 0xe68 on Linux and 0xe70 on Windows");
-        check.Expect(SeamLayout.GobVisualXform + SeamLayout.GobVisualXformSize <= SeamLayout.GobSize,
+        const int visualXformSize = 0x280;   // not-an-offset: sizeof(CAurObjectVisualTransformData), ten LerpFloats
+        check.Expect(EngineLayout.GobScaleLerp + visualXformSize <= SeamLayout.GobSize,
             "the embedded CAurObjectVisualTransformData must fit inside the shell");
-        check.Expect(SeamLayout.GobAttachList + 16 <= SeamLayout.GobSize,
+        check.Expect(EngineLayout.SeamGobAttachList + 16 <= SeamLayout.GobSize,
             "the attachment list the engine reallocs in place must fit inside the shell");
+        // the words game code reads off a shell without a vtable: every one has to land inside it
         foreach (int off in new[]
         {
-            SeamLayout.GobSafeList, SeamLayout.GobName, SeamLayout.GobScene, SeamLayout.GobRoot,
-            SeamLayout.GobPos, SeamLayout.GobRot, SeamLayout.GobBehavior, SeamLayout.GobExternal,
-            SeamLayout.GobCallbackList, SeamLayout.GobScaleFinal, SeamLayout.GobTriMeshArea,
+            EngineLayout.GobSafePointers, EngineLayout.SeamGobName, EngineLayout.GobScene,
+            EngineLayout.GobPartTree, EngineLayout.GobPosition, EngineLayout.GobRot, EngineLayout.GobAttach,
+            EngineLayout.GobExternalData, EngineLayout.GobCallbacks, EngineLayout.GobScaleBase,
+            EngineLayout.SeamGobTriMeshArea,
         })
             check.Expect(off > 0 && off < SeamLayout.GobSize, $"the mirrored word at 0x{off:x} falls outside the shell");
         check.Expect(SeamLayout.SafeListAt(FacadeKind.Camera) == SeamLayout.CameraGobSub + SeamLayout.GobSafeList,
