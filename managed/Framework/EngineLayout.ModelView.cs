@@ -39,10 +39,6 @@ public static unsafe partial class EngineLayout
     public static readonly int ItemColors = Field<byte>("CNWCItem", "colors", count: 6);
     public static readonly int ItemGender = Field<byte>("CNWCItem", "gender");
 
-    /// <summary>CCAppearanceInfo, the record a creature's body is built from: two sets of 19 model parts, the one at 0 read while
-    /// <c>armorWorn</c> is nonzero and the one at 0x26 while it is zero, the six armour colours and a per-part override for each
-    /// (0xff keeps the base).</summary>
-    public static readonly int AppearArmorParts = Field<ushort>("CCAppearanceInfo", "armorParts", count: 19);
     public static readonly int AppearBodyParts = Field<ushort>("CCAppearanceInfo", "bodyParts", count: 19);
     public static readonly int AppearColors = Field<byte>("CCAppearanceInfo", "colors", count: 6);
     public static readonly int AppearPartColors = Field<byte>("CCAppearanceInfo", "partColors", count: 114);

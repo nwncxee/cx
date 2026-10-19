@@ -38,7 +38,6 @@ deriving anything — required, or the RVAs point into a different build.
 | `WinMessageHandler(SDL_Event*)` | `?WinMessageHandler@@YAHPEATSDL_Event@@@Z` |
 | `GLRender::SwapBuffers(SDL_Window*)` | `?SwapBuffers@GLRender@@CAXPEAUSDL_Window@@@Z` |
 | `CAurBehaviorCameraFollow::Control(float)` | `?Control@CAurBehaviorCameraFollow@@UEAAHM@Z` (#536; returns `int`, no by-value crossing) |
-| `CAuroraStringWrapper::SetText(uint)` | `?SetText@CAuroraStringWrapper@@QEAAXI@Z` |
 | `CExoString::InitFromCharArray` | `?InitFromCharArray@CExoString@@AEAAAEAV1@PEBDI@Z` |
 | `CExoString::~CExoString` | `??1CExoString@@QEAA@XZ` |
 | `g_pAppManager` (data) | `?g_pAppManager@@3PEAVCAppManager@@EA` |
@@ -132,11 +131,8 @@ deriving anything — required, or the RVAs point into a different build.
 | `CClientExoAppInternal::UpdateMouseCursorAppearance(int)` | `0x6f2830` | `At()`, hooked by the cursor fold: anchored by the unique string `"UpdateMouseCursorAppearance"` in its own ExoLog warning. The one writer of `CreatureHoveredOid` (Linux `+0x448`, Windows `+0x428`) and the caller that passes `internal+0xc8` (`InternalCursorManager`) to every `SetMouseCursor` |
 | `CCachedMouseCursorManager::SetMouseCursor(int,int,int,int,int)` | `0x83b3e0` | `At()`, hooked by the cursor fold: the `0x125` id ceiling plus the `+0x1cb0` early-out-then-store, identical to Linux `0x6b72a0`; that store is `CursorCurrentId` |
 | `CNWCMessage::SendPlayerToServerArea_AreaLoaded()` | `0x7ba050` | #672: body is exactly `SendPlayerToServerMessage(this, 4, 3, 0, 0)` = `FUN_1407c25c0(...)`, the already-mapped `0x7c25c0`. `(this) -> void`. Full walk: the research on CX-132 §3 |
-| `CNWCMessage::HandleServerToPlayerUpdate_WorkRemaining()` | `0x7b85a0` | #672: the only function referencing the tracy label `"nWorkDone"` (`0xe3f1b8`), twice, as on Linux `0x781a30`; same tail (fade + `SetSendAreaLoadedMessageAfterMovie` `0x6acc90` + the send). `(this) -> int` |
 | `CClientExoApp::StartLoadBar(int, char const*, int)` | `0x6acd20` | #672: one-line forwarder to the internal `0x6e37f0`, itself the only user of both `"ls_save"` and `"ls_load"`; stores arg1 at `internal+0x450` (Same). `-> void` |
-| `CClientExoApp::EndLoadBar()` | `0x6ab770` | #672: forwarder to `0x6d7650` (dtor through `+0x448`, zero `+0x450`, `CExoInput::SetActive(1)` -- identical body); called on `HandleServerToPlayerArea`'s load-failure path on both builds. `-> void` |
 | `CNWCArea::SetTile(CNWCTile*, int, int, int)` | `0x7e6040` | lightmap static-set reopen: the (ReadWORD, ReadINT, ReadBYTE, ReadBYTE) callee of `HandleServerToPlayerArea` case 0x14 on both builds; body identical to Linux `0x708e60` (GetTileData, GetLocation, ignore-list drop, UnloadModel, SetID, SetTileData, GetHeightTransition, SetPosition, SetOrientation, LoadModel, main/source light colour, PlayAnimation 7/8, RespawnStaticPlaceablesForTile). `(this, tile, int, int, int) -> void`, no sret |
-| `CClientExoApp::GetLoadBarState()` | `0x6abe20` | #672: `return *(int *)(*(longlong *)(this + 8) + 0x450)`, shape-identical to Linux `0x638240`. `-> int` |
 | `CNWCArea::LoadArea(CAurCamera*, CGuiAreaLoadscreen*)` | `0x7dba70` | CX-52 step 5: the function carrying `"CNWCArea::LoadArea() failed: message overflow or underflow."` and the `"LoadArea"`/`nwcarea.cpp` ExoLog sites; its one caller (`0x76d910`, the area packet handler) tests the int, as Linux `0x8a9426` does. `(this, camera, loadscreen) -> int` |
 | `CNWCArea::AddPlaceableObjectStatic(uint, ushort, Vector, Vector)` | `0x7d95a0` | #672/research #663 found it as evidence; CX-55 step 2 promoted it to an `At()` row. The call inside `LoadArea`'s `"Static Placeables"` tracy zone; `CExoArrayList<unsigned int>::Add((… *)(area + 0x338), id)` on both builds. The list's count at `+0x340` is read off the exported `?Add@?$CExoArrayList@I@@QEAAXI@Z` (rva `0x8ae10`): data `+0`, count `+8`, alloc `+0xc`, same as Linux. Decompiled whole for CX-55: body matches Linux `0x7091c0` line for line (`GetPlaceableByGameObjectID`, the `LowGore`/`ModelName` pair off `*(C2DA**)(*(g_pRules+0x130)+0x140)`, `new CNWCPlaceable`, appearance stored at object `+0x190`/Linux `+0x1b0`, `AddExternalObject`, the scene's add-static-object slot, the `+0x338` Add). **Win64 ABI: both `Vector`s are pointers to caller copies** (`VectorArg`); `(this, uint, ushort, Vector, Vector) -> int` |
 | `CNWCObject::SetPosition(Vector)` / `CNWCAnimBase::SetPosition(Vector)` | `0x766760` / `0x9680a0` | **evidence only** (#672, research #663): `CNWCPlaceable::vftable + 0x128` and `CNWCAnimBase::vftable + 0xa0` (RTTI `0xe53950` / `0xe6e978`). The first reads `CNWCObject+0x78` (the object's word `0xf`) before its anim-base vcall, the second the pointer at `+200` = `CNWCAnimBase+0xc8`; both identical to Linux `0x7e9180` / `0x9c9d60` |
@@ -198,7 +194,6 @@ nothing exercises an Alloy `Nm` row at runtime yet; this is the only instrument 
 
 | Symbol | Windows | How |
 |---|---|---|
-| `PartSkin::vftable` | `0xd88438` | RTTI type descriptor → complete-object locator → vftable, via `tools/abi/vtable-slots.py` (which re-derives the checked-in `CAurTexture` `0xd90c70` independently) |
 | `PartDanglyMesh::vftable` | `0xd88698` | same |
 | `CycleTIDTextureController::vftable` | `0xd905c0` | same |
 | `primTypeTranslationTable` | `0xd8ad20` | the `{0,1,3,4,5,6,2}` dword run in `.rdata`, one hit in the image; `GLRender::RenderVertexData` @`0xb59b0` `lea`s it three times |

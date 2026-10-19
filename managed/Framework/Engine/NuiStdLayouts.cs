@@ -133,8 +133,6 @@ public readonly unsafe struct NuiJsonValue
     public ref ulong Uint => ref *(ulong*)(Ptr + PayloadAt);
     /// <summary>The payload read as a double.</summary>
     public ref double Float => ref *(double*)(Ptr + PayloadAt);
-    /// <summary>The payload's address.</summary>
-    public byte* PayloadPtr => Ptr + PayloadAt;
     /// <summary>The value <paramref name="i"/> places after this one in an array.</summary>
     public NuiJsonValue At(int i) => new(Ptr + i * Bytes, _abi);
     /// <summary>The value at <paramref name="first"/>, an element of this value's array, in the same containers.</summary>

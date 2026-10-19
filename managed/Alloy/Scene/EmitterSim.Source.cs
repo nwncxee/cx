@@ -111,7 +111,7 @@ internal struct Emitter
 
 internal static unsafe partial class EmitterSim
 {
-    /// <summary>Flag bits 3 and 9 of <see cref="EngineLayout.EmitterFlags"/>: <c>MdlNodeEmitter::IsTinted</c>
+    /// <summary>Flag bits 3 and 9 of the <c>MdlNodeEmitter</c> flag word: <c>MdlNodeEmitter::IsTinted</c>
     /// @0x4aafc0 is <c>flags &gt;&gt; 3 &amp; 1</c> and <c>IsSplat</c> @0x4ab070 is <c>flags &gt;&gt; 9 &amp;
     /// 1</c> -- read off the word with the other nine rather than through two more calls.</summary>
     private const int FTinted = 1 << 3, FSplat = 1 << 9;

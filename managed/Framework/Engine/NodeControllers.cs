@@ -17,10 +17,3 @@ public readonly unsafe partial struct NewController
     /// against a layout row (<see cref="EngineLayout.LightRange"/> is the <c>radius</c> track).</summary>
     public ref int Id => ref *(int*)Ptr;
 }
-
-/// <inheritdoc cref="NewController"/>
-public readonly unsafe ref partial struct MdlNode
-{
-    /// <summary>The node's controller array as its first record, or the null view when it has none.</summary>
-    public NewController Controller => new(Controllers);
-}

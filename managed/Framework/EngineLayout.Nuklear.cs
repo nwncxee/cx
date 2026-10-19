@@ -113,12 +113,6 @@ public static unsafe partial class EngineLayout
     public static readonly int NkCmdRectFilledColor = Field<CX.Engine.NkColor>("NkCommandRectFilled", "color");
     /// <summary><c>NkCommandRectMultiColor</c>: its colours.</summary>
     public static readonly int NkCmdRectMultiLeft = Field<CX.Engine.NkColor>("NkCommandRectMultiColor", "left");
-    /// <inheritdoc cref="NkCmdRectMultiLeft"/>
-    public static readonly int NkCmdRectMultiTop = Field<CX.Engine.NkColor>("NkCommandRectMultiColor", "top");
-    /// <inheritdoc cref="NkCmdRectMultiLeft"/>
-    public static readonly int NkCmdRectMultiBottom = Field<CX.Engine.NkColor>("NkCommandRectMultiColor", "bottom");
-    /// <inheritdoc cref="NkCmdRectMultiLeft"/>
-    public static readonly int NkCmdRectMultiRight = Field<CX.Engine.NkColor>("NkCommandRectMultiColor", "right");
     /// <summary><c>NkCommandCircle</c>: its colour.</summary>
     public static readonly int NkCmdCircleColor = Field<CX.Engine.NkColor>("NkCommandCircle", "color");
     /// <summary><c>NkCommandCircleFilled</c>: its colour.</summary>
@@ -139,8 +133,6 @@ public static unsafe partial class EngineLayout
     public static readonly int NkCmdPolylineColor = Field<CX.Engine.NkColor>("NkCommandPolyline", "color");
     /// <summary><c>NkCommandText</c>: its colours.</summary>
     public static readonly int NkCmdTextBackground = Field<CX.Engine.NkColor>("NkCommandText", "background");
-    /// <inheritdoc cref="NkCmdTextBackground"/>
-    public static readonly int NkCmdTextForeground = Field<CX.Engine.NkColor>("NkCommandText", "foreground");
     /// <summary><c>NkCommandImage</c>: its colour.</summary>
     public static readonly int NkCmdImageColor = Field<CX.Engine.NkColor>("NkCommandImage", "color");
 }
