@@ -314,16 +314,6 @@ public static unsafe partial class Facade
         dst[n] = 0;
     }
 
-    /// <summary>Copy a NUL-terminated engine string into the shell's name array, byte for byte: no transcode,
-    /// because the engine's text is a single-byte codepage and this storage is handed straight back to it.</summary>
-    public static void SetName(nint shell, byte* name)
-    {
-        Span<byte> dst = new Gob(shell).SeamName;
-        int n = 0;
-        if (name != null)
-            while (n < dst.Length - 1 && name[n] != 0) { dst[n] = name[n]; n++; }
-        dst[n] = 0;
-    }
 
     /// <summary>The shell's name as the game would read it.</summary>
     public static string NameOf(nint shell)

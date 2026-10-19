@@ -1,15 +1,14 @@
 using System;
 using System.Runtime.InteropServices;
-using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// The Aurora calls that pass or return a <c>Vector</c> or <c>Quaternion</c> BY VALUE, and the two argument
-/// lists each of them needs: SysV classifies a 12-byte three-float struct into xmm0 (x, y) + xmm1 (z) with no
-/// hidden buffer, while Win64 passes and returns one through a pointer. No single declared signature covers
-/// that, and the generator's <c>sret</c> ordering does not either -- it assumes both platforms use a buffer.
+/// The Aurora calls that pass or return a <c>Vector</c> BY VALUE, and the two argument lists each of them
+/// needs: SysV classifies a 12-byte three-float struct into xmm0 (x, y) + xmm1 (z) with no hidden buffer,
+/// while Win64 passes and returns one through a pointer. No single declared signature covers that, and the
+/// generator's <c>sret</c> ordering does not either -- it assumes both platforms use a buffer.
 /// </summary>
 internal static unsafe class AurXform
 {
@@ -21,8 +20,7 @@ internal static unsafe class AurXform
     private static IntPtr _wind, _gust;
 
     /// <summary>Both symbols resolved on this client? A caller gates on this the way it gates on any other
-    /// engine pointer; the vtable slots behind <see cref="Position"/> are <c>EngineLayout</c>'s own and are
-    /// covered by <c>EngineLayout.Require</c>.</summary>
+    /// engine pointer.</summary>
     internal static bool Ready => _wind != IntPtr.Zero && _gust != IntPtr.Zero;
 
     internal static void Resolve()
@@ -65,34 +63,4 @@ internal static unsafe class AurXform
         else
             ((delegate* unmanaged<V3, IntPtr, float, float, float, void>)_gust)(pos, windManager, radius, life, strength);
     }
-
-    /// <summary>A <c>CAurObject</c>'s rotation through its own virtual: <see cref="EngineLayout.GobGetOrientationSlot"/>.</summary>
-    internal static Quat Orientation(IntPtr obj) => CallQuat(new CX.Engine.Gob(obj).GetOrientationFn, obj);
-
-    private static Quat CallQuat(IntPtr fn, IntPtr obj)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            Quat r = default;
-            ((delegate* unmanaged<IntPtr, Quat*, void>)fn)(obj, &r);
-            return r;
-        }
-        return ((delegate* unmanaged<IntPtr, Quat>)fn)(obj);
-    }
-
-    private static V3 CallV3(IntPtr fn, IntPtr obj)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            V3 r = default;
-            ((delegate* unmanaged<IntPtr, V3*, void>)fn)(obj, &r);
-            return r;
-        }
-        return ((delegate* unmanaged<IntPtr, V3>)fn)(obj);
-    }
-
-    /// <summary>A <c>CAurObject</c>'s world position through its own virtual -- the p2p target's, which is
-    /// not necessarily a <c>Gob</c> and so is not read as a field. The slot is
-    /// <see cref="EngineLayout.GobGetPositionSlot"/>, measured on both images.</summary>
-    internal static V3 Position(IntPtr obj) => CallV3(new CX.Engine.Gob(obj).GetPositionFn, obj);
 }

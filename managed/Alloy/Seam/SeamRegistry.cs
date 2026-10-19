@@ -56,7 +56,6 @@ public sealed unsafe class SeamRegistry
     internal string Owner = "?";
 
     internal IntPtr[] Impls => _impl;
-    internal string?[] ImplOwners => _implOwner;
     internal IReadOnlyList<Replacement> Replacements => _replacements;
     internal IReadOnlyList<Action> AfterBuild => _afterBuild;
     /// <summary>Every refusal this registration pass produced, logged by <see cref="SeamService"/>.</summary>
@@ -81,18 +80,10 @@ public sealed unsafe class SeamRegistry
         _implOwner[id] ??= Owner;
     }
 
-    /// <summary>Claim every slot of <paramref name="table"/> from <paramref name="first"/> to
-    /// <paramref name="last"/> inclusive for one implementation -- the form a stream uses for a run it answers
-    /// uniformly (a shared refusal, a shared forward).</summary>
-    public void SlotRange(SeamTable table, int first, int last, void* impl)
-    {
-        for (int s = first; s <= last; s++) Slot(table, s, impl);
-    }
-
     /// <summary>Replace engine function <paramref name="symbol"/> with <paramref name="handler"/> for the
     /// session; <see cref="SeamService"/> installs the batch once every provider has registered. No trampoline
     /// comes back -- the handler never calls the original, there being no engine scene graph. Two streams
-    /// claiming one symbol is a refusal, not last-wins; share one deliberately via <see cref="ChainEngine"/>.</summary>
+    /// claiming one symbol is a refusal, not last-wins.</summary>
     public void ReplaceEngine(string symbol, void* handler)
     {
         foreach (Replacement r in _replacements)
@@ -100,11 +91,6 @@ public sealed unsafe class SeamRegistry
             { Refusals.Add($"{Owner}: {symbol} already replaced by {r.Owner}"); return; }
         _replacements.Add(new Replacement(symbol, (IntPtr)handler, int.MinValue, Owner));
     }
-
-    /// <summary>Share <paramref name="symbol"/> with another handler at <paramref name="priority"/>
-    /// (<c>HookService.Chain</c>): the seam's stacked form, for a symbol a non-seam service also hooks.</summary>
-    public void ChainEngine(string symbol, void* handler, int priority)
-        => _replacements.Add(new Replacement(symbol, (IntPtr)handler, priority, Owner));
 
     /// <summary>Run <paramref name="a"/> once, after every table is built and before the hooks commit -- where
     /// a stream caches a built table's address or resolves an engine pointer it needs at the first call.</summary>

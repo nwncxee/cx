@@ -12,8 +12,6 @@ namespace CX.Alloy.Seam;
 /// layer reads ScaleY/ScaleZ off it directly, and the seam samples it with the engine's <c>LerpFloat::Lerped</c>.</summary>
 public static unsafe class VisualXform
 {
-    /// <summary>Offset of the record inside the shell, and the stride and count of its <c>LerpFloat</c>s.</summary>
-    public static readonly int At = EngineLayout.GobScaleLerp;
     /// <summary>One <c>LerpFloat</c>'s size, and how many the record holds.</summary>
     public static readonly int Stride = EngineLayout.SeamLerpFloatSizeof;
     public const int Count = 10;   // not-an-offset: how many LerpFloats the record holds

@@ -37,14 +37,12 @@ internal static class StagePool
     private static ExtenderLog? _log;
     private static bool _faultLogged, _rearmRefused;
     private static Action<int, int> _job = AlloyRenderer.StageRange;
-    // the instrument: per-frame max wake (release -> job start) and max job time, summed for the period
-    private static long _tRelease;
+    /// <summary>When a chunk entered and left its job body, which is how <see cref="Busy"/> tells a worker
+    /// still inside one from a worker that has come back.</summary>
     private static readonly long[] _tStart = new long[MaxChunks], _tEnd = new long[MaxChunks];
     /// <summary>The generation a worker starts from, captured by its CREATOR before Start: a thread that reads
     /// it itself can come up after Run has already published the next job and mistake it for seen.</summary>
     private static readonly int[] _seenAtStart = new int[MaxChunks];
-    private static double _runMsSum, _wakeMsSum, _jobMsSum;
-    private static int _runs;
 
     /// <summary>Clear a fault so the knob can bring the pool back; the next Run starts fresh. A worker that
     /// timed out may still be running its old chunk, so a generation it missed is simply the one it skips.</summary>
@@ -67,8 +65,8 @@ internal static class StagePool
             return;
         }
         _fault = null; _faultLogged = false; _rearmRefused = false;
-        // The stage job again: a fault may have left the field on Idle so a straggler could not run the wrong
-        // one (see the job overload). Nothing has published a generation since, so no worker is inside a call.
+        // The stage job again: the self-check swaps its own in, and nothing has published a generation since,
+        // so no worker is inside a call.
         _job = AlloyRenderer.StageRange;
         Volatile.Write(ref _pending, 0);
     }
@@ -98,13 +96,6 @@ internal static class StagePool
     /// <summary>Run the job over <paramref name="chunks"/> chunks, chunk 0 on the caller. False after a
     /// worker fault: the caller must redo the work serially, and the pool stays down.</summary>
     internal static bool Run(int chunks, ExtenderLog? log, int testGapMs = 0)
-        => Run(chunks, log, testGapMs, instrument: true);
-
-    /// <summary><paramref name="instrument"/>: whether this run feeds <see cref="Stats"/>. Only the STAGE job
-    /// does. Blending a second job's wake and job times into one average hid a regression in either behind the
-    /// other, and a caller that brings its own job reports its own time (the dangly drain does, on the dangly
-    /// clause), so the line stays one job's.</summary>
-    private static bool Run(int chunks, ExtenderLog? log, int testGapMs, bool instrument)
     {
         _log ??= log;
         if (_fault != null) return false;
@@ -114,7 +105,6 @@ internal static class StagePool
         Prewake(chunks);
         if (testGapMs > 0) BlockingWait.Sleep(testGapMs, "self-check only: outlive the workers' spin window");
         _chunks = chunks;
-        _tRelease = Stopwatch.GetTimestamp();
         // Both BEFORE the publish. A spinning worker can see the new generation, run a tiny chunk and reach its
         // decrement in less time than a store takes to land, so the generation the count belongs to has to be
         // there already or that worker would decline to report and the join would sit out its whole deadline.
@@ -135,49 +125,9 @@ internal static class StagePool
             if (spins < 64) Thread.SpinWait(32); else Thread.Yield();
             if (Stopwatch.GetTimestamp() > deadline) { _fault ??= new TimeoutException($"stage join past {JoinLimitMs}ms"); break; }
         }
-        long end = Stopwatch.GetTimestamp();
-        double wake = 0, job = 0;
-        for (int w = 1; w < chunks; w++)
-        {
-            wake = Math.Max(wake, Ms(_tStart[w] - _tRelease));
-            job = Math.Max(job, Ms(_tEnd[w] - _tStart[w]));
-        }
-        if (instrument) { _runMsSum += Ms(end - _tRelease); _wakeMsSum += wake; _jobMsSum += job; _runs++; }
         if (_fault == null) return true;
         if (!_faultLogged) { _faultLogged = true; log?.Info($"StagePool: worker fault, threading stood down -- {_fault}"); }
         return false;
-    }
-
-    /// <summary>
-    /// Run a job other than the stage over the same workers. The pool holds ONE job at a time, so this swaps
-    /// it in; a caller must not nest one inside <see cref="AlloyRenderer.StageRange"/>. The field is put back
-    /// only when the pool is known idle (a true return) -- a worker reads <see cref="_job"/> after it has
-    /// observed the generation, so a false return leaves a no-op there until <see cref="Rearm"/>.
-    /// </summary>
-    internal static bool Run(int chunks, ExtenderLog? log, Action<int, int> job)
-    {
-        var saved = _job;
-        _job = job;
-        bool ok;
-        try { ok = Run(chunks, log, 0, instrument: false); }
-        catch { _job = Idle; throw; }
-        _job = ok ? saved : Idle;
-        return ok;
-    }
-
-    /// <summary>What a faulted pool is left holding: the one job a straggler can run without touching
-    /// anything.</summary>
-    private static readonly Action<int, int> Idle = (w, chunks) => { };
-
-    private static double Ms(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
-
-    /// <summary>Period averages for the describe line; resets.</summary>
-    internal static string Stats()
-    {
-        if (_runs == 0) return "stage: no threaded runs";
-        string s = $"stage run {_runMsSum / _runs:F2}ms (worker wake max {_wakeMsSum / _runs:F2}, job max {_jobMsSum / _runs:F2}) over {_runs} runs";
-        _runMsSum = _wakeMsSum = _jobMsSum = 0; _runs = 0;
-        return s;
     }
 
     private static void Ensure(int w)
@@ -249,7 +199,6 @@ internal static class StagePool
         _job = saved;
         long total = 0; foreach (long v in part) total += v;
         ok &= total == 500500;
-        _runMsSum = _wakeMsSum = _jobMsSum = 0; _runs = 0;
         log.Info(ok ? "StagePool.SelfCheck: passed (4 chunks, three runs)" : $"StagePool.SelfCheck: FAILED -- sum {total}, fault {_fault}");
         return ok;
     }

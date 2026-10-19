@@ -200,8 +200,6 @@ internal struct SeamHeader
     /// <summary>Bit per logical slot group already named in a use-after-free line, so the poison path logs
     /// once per slot and not once per call.</summary>
     public uint Reported;
-    /// <summary>The SafePointer array pointer we last saw, to tell our allocation from a game `realloc`.</summary>
-    public nint SafeArray;
     /// <summary>The interned <see cref="SeamCallers"/> id of the game function that destroyed this shell, so a
     /// later call on it can name BOTH ends of the dangle.</summary>
     public int RetiredBy;

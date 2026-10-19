@@ -23,7 +23,7 @@ public readonly struct DanglyInputs
 }
 
 /// <summary>One part's joint state: world positions and velocities of every joint, the node-space positions
-/// its bones were last published at, the previous pose the teleport test reads, and whether it has settled.</summary>
+/// its bones were last published at, and the previous pose the teleport test reads.</summary>
 public sealed class DanglyJointsState
 {
     public readonly Vector3[] X, V, Published;
@@ -32,7 +32,7 @@ public sealed class DanglyJointsState
     public float Moved;
     public Vector3 PrevPos;
     public Quaternion PrevRot;
-    public bool Seeded, Settled;
+    public bool Seeded;
     /// <summary>The uniform scale the previous pose carried: a target's own velocity is taken against the
     /// whole previous transform, scale included.</summary>
     public float PrevScale = 1f;
@@ -107,7 +107,6 @@ public static class DanglyJoints
         {
             for (int j = 0; j < nj; j++) { s.X[j] = target[j]; s.V[j] = default; }
             s.Seeded = true;
-            s.Settled = false;
             Remember(s, pos, scale, world);
             Span<Vector3> seed = stackalloc Vector3[DanglyRig.MaxJoints];
             Local(s, world, nj, seed);
@@ -143,7 +142,6 @@ public static class DanglyJoints
             moveSq = MathF.Max(moveSq, d);
             quiet &= d <= QuietPos * QuietPos && (s.V[j] - drift[j]).LengthSquared() <= QuietVel * QuietVel;
         }
-        s.Settled = quiet;
         WriteBones(rig, local, nb, nj, bones);
         if (quiet) return false;
         Publish(s, nj, local, MathF.Sqrt(moveSq));
