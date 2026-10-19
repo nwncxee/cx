@@ -47,3 +47,6 @@ T:System.Threading.Tasks.Task`1;The extender has no async path: a task blocked o
 T:System.Threading.Tasks.ValueTask;The extender has no async path: a task blocked on in a frame hook stalls the game; use a thread and BlockingWait
 T:System.Threading.Tasks.ValueTask`1;The extender has no async path: a task blocked on in a frame hook stalls the game; use a thread and BlockingWait
 M:CX.Engine.CTlkTable.TlkGetSimpleString(System.Void*,System.UInt32);Resolve a strref through Native.TlkText
+F:CX.Graphics.Gl.GetBufferSubData;A GPU readback stalls the frame whatever the fence; read through GpuReadback
+F:CX.Graphics.Gl.GetNamedBufferSubData;A GPU readback stalls the frame whatever the fence; read through GpuReadback
+F:CX.Graphics.Gl.GetTexImage;A GPU readback stalls the frame whatever the fence; read through GpuReadback

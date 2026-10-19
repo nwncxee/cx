@@ -358,8 +358,7 @@ internal static unsafe class GlProgram
             foreach (var (name, loc) in attribs)
             {
                 Span<byte> n = stackalloc byte[name.Length + 1];
-                for (int i = 0; i < name.Length; i++) n[i] = (byte)name[i];
-                n[name.Length] = 0;
+                Gl.AsciiZ(name, n);
                 fixed (byte* np = n) Gl.BindAttribLocation(prog, loc, np);
             }
         Gl.LinkProgram(prog);
@@ -478,8 +477,7 @@ internal static unsafe class GlProgram
     internal static int Loc(uint prog, string name)
     {
         Span<byte> b = stackalloc byte[name.Length + 1];
-        for (int i = 0; i < name.Length; i++) b[i] = (byte)name[i];
-        b[name.Length] = 0;
+        Gl.AsciiZ(name, b);
         fixed (byte* p = b) return Gl.GetUniformLocation(prog, p);
     }
 }
