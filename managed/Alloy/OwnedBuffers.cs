@@ -42,9 +42,6 @@ internal static unsafe class OwnedBuffers
 
     private static ExtenderLog? _log;
     private static bool _armed;
-    /// <summary>Is the geometry takeover live? False leaves every upload to the engine, which is vanilla
-    /// residency -- the stand-down, not a second code path.</summary>
-    internal static bool Armed => _armed;
     /// <summary>Buffers Alloy DRAWS from and did not upload -- asked at every VAO build, the geometry twin of
     /// <c>OwnedTextures.Borrowed</c> and what the exit bar reads. Distinct from <see cref="_refused"/>, which
     /// counts pools handed back whether or not Alloy ever draws them: the menu's pools are resident before
@@ -250,22 +247,12 @@ internal static unsafe class OwnedBuffers
         return table[(int)token];
     }
 
-    /// <summary>The host shadow of the pool this token names, or null. The normal weld reads and rewrites
-    /// vertex bytes here, the same block <see cref="Upload"/> pushes, so nothing is read back.</summary>
+    /// <summary>The host shadow of the pool this token names, or null -- the same block
+    /// <see cref="Upload"/> pushes, so nothing is ever read back off GL.</summary>
     internal static byte* PoolHost(uint token)
     {
         GlPool p = Pool(token);
         return p.IsNull ? null : (byte*)p.Host;
-    }
-
-    /// <summary>The host shadow behind a GL buffer name, looked up among a VDO's two vertex pools -- a
-    /// stream's <c>Buf</c> is a pool NAME, and which pool holds it is the descriptor's to say.</summary>
-    internal static byte* PoolHostByName(uint name, uint tokA, uint tokB)
-    {
-        GlPool a = Pool(tokA), b = Pool(tokB);
-        if (!a.IsNull && a.Name == name) return (byte*)a.Host;
-        if (!b.IsNull && b.Name == name) return (byte*)b.Host;
-        return null;
     }
 
     /// <summary>The engine is deleting this GL buffer name -- <c>DeletePool</c> @0x4d1d80 routes here for

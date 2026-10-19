@@ -94,5 +94,5 @@ internal static unsafe class ScreenOwner
         // The clear colour is on the line because it IS the void: every pixel the world does not cover ends up
         // this colour, and nothing else in a session reports it.
         : $"screen: {(Owned ? "Alloy" : "engine")} -- {_presents} Alloy presents, {_swallowed} engine clears swallowed, "
-        + $"{_passed} passed, clear=({ClearRgba[0]:F3},{ClearRgba[1]:F3},{ClearRgba[2]:F3}), {RspShim.StrayDraws} stray engine draws";
+        + $"{_passed} passed, clear=({ClearRgba[0]:F3},{ClearRgba[1]:F3},{ClearRgba[2]:F3})";
 }
