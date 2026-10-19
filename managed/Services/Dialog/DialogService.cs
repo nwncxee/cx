@@ -154,14 +154,18 @@ public sealed unsafe class DialogService : IExtenderService
 
     // ---- hooks (cold: the message thread) -----------------------------------------------------
 
-    /// <summary>The ownership boundary. Off: the node is the stock panel's -- CX's window fades if it was
-    /// up and the engine call runs, making its panel at <c>+0x70</c> if it has none. On: CX's; a stock panel still
-    /// up from an off interlude is torn down first through the engine's own <c>CloseDialog</c>.</summary>
+    /// <summary>The ownership boundary. Off, or CX's window cannot paint this node: the node is the stock panel's
+    /// -- CX's window fades if it was up and the engine call runs, making its panel at <c>+0x70</c> if it has none.
+    /// On: CX's; a stock panel still up from an off interlude is torn down first through the engine's own
+    /// <c>CloseDialog</c>.</summary>
     [UnmanagedCallersOnly]
     private static long OnShowEntry(IntPtr self, IntPtr text, uint dialogId, uint speakerId)
     {
-        if (!DialogKnobs.Enabled.V)
+        string? blocked = DialogKnobs.Enabled.V ? PaintBlocked(self) : null;
+        if (!DialogKnobs.Enabled.V || blocked != null)
         {
+            if (blocked != null)
+                _log?.Info($"[dialog] stock panel takes this node -- {blocked} (dlg={dialogId} spk={speakerId})");
             _engineOwns = true;
             if (_visible) SoftClose();
             return _entryOrig != null ? _entryOrig(self, text, dialogId, speakerId) : 0;
@@ -259,6 +263,20 @@ public sealed unsafe class DialogService : IExtenderService
     {
         SoftClose();
         if (_closeOrig != null) _closeOrig(self);
+    }
+
+    /// <summary>Why CX's window would draw nothing for the node arriving, or null when it can draw it. Cutscene
+    /// mode, the server's cutscene GUI message and the H key all run <c>CGuiInGame::ToggleOff</c>, after which the
+    /// frame host's in-game gate stands every CX window down -- while the engine's own panel, activated after the
+    /// toggle, still shows. Read live off the panel's <c>CGuiInGame</c>: the gate is a frame behind.</summary>
+    private static string? PaintBlocked(IntPtr self)
+    {
+        var gui = new CGuiInGame(self);
+        if (gui.IsNull) return "no in-game GUI";
+        if (gui.ToggledOff != 0) return "HUD hidden (cutscene mode, free camera or the H key)";
+        if (gui.ChatWindow == IntPtr.Zero) return "no module loaded";
+        if (TextRig.Atlas == null) return "no glyph sheet baked";
+        return null;
     }
 
     private static Reply[] MakeReplies(string[] texts, uint[] indices, int numOld)
@@ -1141,11 +1159,34 @@ public sealed unsafe class DialogService : IExtenderService
         return name.Trim();
     }
 
-    /// <summary>Off-device proof: reply gating (from the MVP) plus the animation scalars -- window fade
-    /// open/close, per-node content cross-fade restart, body-height ease + snap, and the disabled snap.</summary>
+    /// <summary>Off-device proof: reply gating (from the MVP), the animation scalars -- window fade open/close,
+    /// per-node content cross-fade restart, body-height ease + snap -- and the stock-panel handover over a
+    /// hand-built <c>CGuiInGame</c>. Oracles: hand-written expectations, and for the handover the two
+    /// <see cref="EngineLayout"/> rows the hook reads.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
+
+        // The handover: a reason string is what OnShowEntry turns into the stock-panel call.
+        check.Expect(EngineLayout.GuiInGameToggledOff > 0 && EngineLayout.InGameGuiChatWindow > 0,
+          "the two CGuiInGame rows the handover reads have values on this build");
+        byte[] fake = new byte[System.Math.Max(EngineLayout.GuiInGameToggledOff, EngineLayout.InGameGuiChatWindow) + sizeof(long)];
+        fixed (byte* fp = fake)
+        {
+            var gui = new CGuiInGame((IntPtr)fp);
+            // Each signal is read against the SAME fake with that one word cleared: what this host lacks
+            // anyway (a glyph sheet) must not stand in for the signal under test.
+            gui.ChatWindow = (IntPtr)1;
+            gui.ToggledOff = 1;
+            string? hudOff = PaintBlocked((IntPtr)fp);
+            gui.ToggledOff = 0;
+            string? clear = PaintBlocked((IntPtr)fp);
+            check.Expect(hudOff != null && hudOff != clear, "the HUD-hidden word alone sends the node to the stock panel");
+            gui.ChatWindow = IntPtr.Zero;
+            string? noModule = PaintBlocked((IntPtr)fp);
+            check.Expect(noModule != null && noModule != clear, "a null chat window alone sends the node to the stock panel");
+        }
+        check.Expect(PaintBlocked(IntPtr.Zero) != null, "a node arriving with no in-game GUI goes to the stock panel");
 
         Reply[] end = MakeReplies(System.Array.Empty<string>(), System.Array.Empty<uint>(), 0);
         check.Expect(end.Length == 1 && end[0].Selectable && end[0].Text == EndDialogLabel && end[0].ServerIndex == 0xffffffff,

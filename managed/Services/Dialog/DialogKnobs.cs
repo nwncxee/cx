@@ -23,7 +23,7 @@ internal static class DialogKnobs
     static DialogKnobs()
     {
         G = KnobGroup.Declare("dialog", "Interface", "Game windows", master: "Enable the CX dialog window",
-            masterHelp: "Conversations in CX's own window: resizable, scrollable, portrait, animated. Off, the stock dialog panel runs.",
+            masterHelp: "Conversations in CX's own window: resizable, scrollable, portrait, animated. Off -- or while the HUD is hidden, as in a cutscene -- the stock dialog panel runs.",
             order: 240, title: "Dialog");
         Enabled = G.Master!;
         Lock = G.Toggle("lock", "Lock position and size", false, help: "The window can't be dragged or resized.");

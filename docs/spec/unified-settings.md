@@ -556,7 +556,7 @@ flow in slot order; no rows is vanilla order, *Reset layout* drops the root kind
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
-| dialog.enabled | Enable the CX dialog window | T | on | U | L | — | Conversations in CX's own window: resizable, scrollable, portrait, animated. Off, the stock dialog panel runs. |
+| dialog.enabled | Enable the CX dialog window | T | on | U | L | — | Conversations in CX's own window: resizable, scrollable, portrait, animated. Off -- or while the HUD is hidden, as in a cutscene -- the stock dialog panel runs. |
 | dialog.lock | Lock position and size | T | off | U | L | — | The window can't be dragged or resized. |
 | dialog.maxheight | Height before scrolling | S | 120–800 px step 10 · 320 | U | L | — | The window grows with the text up to this height, then scrolls. The resize grip sets it too. |
 | dialog.justify | Justify text | T | off | U | L | — | Stretch lines to the window width. Off is ragged right. |
