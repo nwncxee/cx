@@ -122,7 +122,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
 
     internal static ExtenderLog? _log;
     private static bool _armed;
-    internal static MatGetTextureFn _getTexture;
     private static uint* _primTable;
     private static byte* _mtxStacks;
 
@@ -351,9 +350,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // whole Alloy path down.
         if (!DoorFade.SelfCheck(log)) return;
         if (PlaceableHold.SelfCheck(log)) PlaceableHold.Install(log, hooks);   // failed: placeables fade as vanilla
-        _getTexture = EngineFn.MatGetTexture;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        if (CycleTextures.SelfCheck(log)) CycleTextures.Attach(log, hooks);   // #331; a failed check freezes cycles, not Alloy
         Db.SunGlide.Install(log, hooks);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);
@@ -380,7 +377,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
             log.Info("AlloyRenderer: " +
                      (_shaderConstF == null ? "GLRender::m_globalShaderConstantsf" : "GLRender::m_shaderExposedRuntimeData") +
                      " unresolved -- #124's camera dissolve stays off on Alloy parts");
-        if (_getTexture == null || !AurTex.Ready || _primTable == null || _mtxStacks == null)
+        if (!AurTex.Ready || _primTable == null || _mtxStacks == null)
         { log.Info("AlloyRenderer: engine symbols unresolved -- Alloy world pass unavailable"); return; }
 
         // #336: the highlight SOURCE. Cold -- it fires on a mouseover edge or a VFX starting, never per

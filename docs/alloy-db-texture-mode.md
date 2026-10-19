@@ -84,12 +84,10 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
   DB mode.
 
 **Texture identity and the per-frame re-resolve, which the registry replaces:**
-- `AlloyRenderer.Table.cs`'s `_recAur` / `_recAurS` / `_recTid` / `_recTidS` / `_recCtl` / `_recSlotMask` /
-  `_recSlotQueued` columns and `_recArrive`, and `AlloyRenderer.Batches.cs`'s texture block around
-  `StagePart` (the `was.Tid != _recTid[i]` compare at :1104, the `verified` fast path at :1291, the slot
-  re-ask at :1329-1332, the white stand-in branches at :1361-1369, the `TexStale` re-resolve at :1442-1452).
-  `DrawRecipe.TexHandle` + the dependents index are the replacement, and this block is what the ticket's
-  second perf bullet names.
+- `AlloyRenderer.Table.cs`'s `_recTid` / `_recTidS` / `_recSlotMask` columns and `AlloyRenderer.Batches.cs`'s
+  texture block around `StagePart`. `DrawRecipe.TexHandle` + the dependents index are the replacement, and
+  this block is what the ticket's second perf bullet names. (`_recAur` / `_recAurS` / `_recCtl` /
+  `_recSlotQueued` / `_recArrive` are already gone.)
 - `OwnedTextures`' borrowed-pointer verdicts: `_borrowed`, `NoteBorrowedName`, `IsOwned`, `TryDraw`/`Draw`,
   and the `AurTex` vtable guard on every material-derived texture read (ADR 0015). A `TexId` cannot dangle.
 - `OwnedTextures`' warm path (`Plain`, `Capture`, `TryWarm`, `_meta`, `_index`, `OnDeleteTextures`,
@@ -97,9 +95,10 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
 - `TexLoad`, `TexStream`, `TexProbe` and the `alloy.texsingle`
   knob -- the registry's own loader is the only reader path left. `TexLoadRead` (the location record and the
   worker's file handles) STAYS: the registry uses it.
-- `CycleTextures` (the `CycleTIDTextureController` tick and its `~CAurTexture` death notice): a cycle becomes
-  `TexRegistry.Swap(id, resref, cell: next)`, so the table, the vtable probe and the death notice all go.
-  The `.txi` cell count comes from the parser (CX-112), which is the one piece this stream did not build.
+- `CycleTextures` (the `CycleTIDTextureController` tick and its `~CAurTexture` death notice): **done.**
+  `TexRegistry.Cycle` keeps the decoded grid and re-uploads one cell per slot on the registry's own clock, so
+  the handle never moves; the table, the vtable probe and the death notice are gone. The `.txi` cell count
+  comes from the parser.
 - `TexScan` stays: the caster hole fraction and the fog mean are reads of a decoded image, and the registry
   has the decoded image. Its CAurTexture virtuals are what change.
 

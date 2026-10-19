@@ -164,7 +164,7 @@ what "`CPanelQuickBar` overrides it and they do not" looks like.
 | `CAurTexture` | `GetReferencedTexture()` | `0x18` | `0x10` | `AlloyCensus`, `OwnedTextures` |
 | `VertexPrimitive` | `SetupArrays()` | `0x38` | `0x30` | `SceneWalk` |
 | `CAurBehavior` | `AsBehaviorCameraFollow()` | `0x48` | `0x40` | `SceneInputs` |
-| `CycleTIDTextureController` | `Control()` | `0x10` | `0x08` | `CycleTextures` |
+| `CycleTIDTextureController` | `Control()` | `0x10` | `0x08` | nothing -- `TexRegistry.Cycle` steps a cell itself |
 | `CNWCObject` | `GetPortrait(uchar)` | `0x1d8` | `0x1d0` | `NameplateNative`, `DialogService` (#420) |
 
 All eight Alloy slots are now `Field(..., Expect.VtblSlot)` rows in `EngineLayout` (values diverging per OS in the build file), and
