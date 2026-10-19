@@ -53,15 +53,11 @@ The patch reaches the GPU from `Pump`, on the render thread, inside the same bra
 every other arena upload. The range's bound moves with the vertices, so a flapping cloak is not culled against
 a pose it no longer holds.
 
-The host-side buffer below is still the producer's own copy and is still readable, for a consumer that wants
-the positions rather than the draw.
+The host-side buffer below is the producer's own copy, which the publish above uploads from.
 
-
-- **Where:** seam-anim's own per-part arena. `DbAnim.DanglyPositions(part, out count)` returns a
-  `float*` of `3 * count` **model-space** positions, or null for a part with no dynamic state.
-- **Generation:** `DbAnim.DynGeneration(part)` changes only on a frame that actually moved a vertex, so a
-  consumer that remembers the number uploads nothing for a settled cloak. A part with dynamic positions is also
-  marked `Dirty.Anim` on such a frame.
+- **Where:** seam-anim's own per-part arena: `3 * count` **model-space** positions per part with dynamic
+  state, in the `MeshDef`'s vertex order.
+- **Change:** a part whose vertices moved is marked `Dirty.Anim` on that frame, and only then.
 - **Semantics:** the buffer **replaces** the mesh's rest positions for that part; everything else (normals,
   indices, tangents) stays the arena's. Vertex order and count are the `MeshDef`'s.
 - **Lifetime:** the buffer belongs to the part record and is freed when the object retires or its tree is

@@ -11,15 +11,14 @@ namespace CX.Alloy.Db;
 /// own, so the arena never holds rest data for it. Layout and ownership: <c>Db/DbPose.LAYOUT.md</c>.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Per part: the dynamic position buffer (<c>3 * Count</c> floats, model space), its vertex count,
-    /// and the generation the consumer compares to know whether to re-upload.</summary>
+    /// <summary>Per part: the dynamic position buffer (<c>3 * Count</c> floats, model space) and its vertex
+    /// count.</summary>
     private static readonly nint[] _dyn = new nint[SceneDb.MaxParts];
     /// <summary>The same part's dynamic UV buffer (<c>2 * Count</c> floats), or 0 when nothing animates its
     /// UVs. It hangs off the position buffer -- same vertex count, same list slot, same arena range -- so only
     /// <see cref="DynTakeUv"/> and <see cref="DynDropAt"/> know it exists.</summary>
     private static readonly nint[] _dynUv = new nint[SceneDb.MaxParts];
     private static readonly int[] _dynN = new int[SceneDb.MaxParts];
-    private static readonly int[] _dynGen = new int[SceneDb.MaxParts];
     /// <summary>Parts holding a dynamic buffer, so a wipe does not walk the whole part table.</summary>
     private static readonly int[] _dynList = new int[MaxDynParts];
     private static int _dynCount;
@@ -28,28 +27,7 @@ public static unsafe partial class DbAnim
     private const int MaxDynParts = 2048;
     private static int _dynFull;
 
-    /// <summary>True once seam-feed has read a dynamic buffer, so "we morphed and nobody looked" can be said
-    /// rather than guessed at.</summary>
-    private static bool _dynClaimed;
     private static int _dynProduced;
-
-    /// <summary>The dynamic positions of <paramref name="part"/>, or null. seam-feed calls this per part per
-    /// frame; <paramref name="count"/> is the vertex count and the buffer is <c>3 * count</c> floats.</summary>
-    private static float* DanglyBuffer(int part, out int count)
-    {
-        count = 0;
-        if ((uint)part >= (uint)SceneDb.MaxParts) return null;
-        nint p = _dyn[part];
-        if (p == 0) return null;
-        _dynClaimed = true;
-        count = _dynN[part];
-        return (float*)p;
-    }
-
-    /// <summary>The generation of <paramref name="part"/>'s dynamic buffer: it changes only on a frame that
-    /// moved a vertex, so a consumer that remembers it uploads nothing for a settled cloak.</summary>
-    public static int DynGeneration(int part)
-        => (uint)part < (uint)SceneDb.MaxParts ? _dynGen[part] : 0;
 
     /// <summary>Per part: its PRIVATE mesh-arena range, so the solved vertices are what the draw reads. -1
     /// until the first solve asks for one.</summary>
@@ -97,7 +75,6 @@ public static unsafe partial class DbAnim
         fixed (Vector3* src = rest) Buffer.MemoryCopy(src, buf, (long)bytes, (long)bytes);
         _dyn[part] = (nint)buf;
         _dynN[part] = rest.Length;
-        _dynGen[part] = 1;
         _dynList[_dynCount++] = part;
         TakeRange(part);
         return buf;
@@ -205,7 +182,7 @@ public static unsafe partial class DbAnim
             DrawRecipe.RetireDynamic(r, _dynRecipe.Gen[part]);
         }
         _dynRecipe.Recipe[part] = 0;
-        _dyn[part] = 0; _dynUv[part] = 0; _dynN[part] = 0; _dynGen[part] = 0;
+        _dyn[part] = 0; _dynUv[part] = 0; _dynN[part] = 0;
         _dynRange[part] = 0;
         SceneDb.PartLitAnim[part] = 0;
         _dynList[k] = _dynList[--_dynCount];
@@ -288,7 +265,6 @@ public static unsafe partial class DbAnim
         }
 
         if (!moved) return;
-        _dynGen[part]++;
         _morphs++;
         _dynProduced++;
         DynPublish(part);
@@ -312,16 +288,16 @@ public static unsafe partial class DbAnim
     private static Vector3 Vert(float* d, MeshDef mesh, int i)
         => d == null ? mesh.Positions[i] : new Vector3(d[i * 3], d[i * 3 + 1], d[i * 3 + 2]);
 
-    /// <summary>Said once, at the end of the first period that produced dynamic vertices nobody read: the
-    /// buffers are computed and the parts draw their rest geometry, which is a visible difference and not an
-    /// error this code can fix on its own.</summary>
+    /// <summary>Said once, at the end of the first period that produced dynamic vertices no part ever drew:
+    /// the buffers are computed and the parts draw their rest geometry, which is a visible difference and not
+    /// an error this code can fix on its own.</summary>
     private static void DynAudit()
     {
-        if (_dynProduced == 0 || _dynClaimed || _dynRangeTaken || _dynAudited) return;
+        if (_dynProduced == 0 || _dynRangeTaken || _dynAudited) return;
         _dynAudited = true;
-        _log?.Always("DbAnim: dynamic vertex buffers (dangly/animmesh) are being produced but seam-feed has "
-                   + "never read one -- those parts are drawing their REST geometry. The accessor is "
-                   + "DbAnim.DanglyPositions / DbAnim.DynGeneration (Db/DbPose.LAYOUT.md).");
+        _log?.Always("DbAnim: dynamic vertex buffers (dangly/animmesh) are being produced but no part ever took "
+                   + "a private arena range for them -- those parts are drawing their REST geometry "
+                   + "(Db/DbPose.LAYOUT.md).");
     }
 
     /// <summary>splitmix64's finalizer: turns an index into well-spread bits.</summary>

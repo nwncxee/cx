@@ -513,6 +513,7 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "dbanim",
+            Attach = CX.Alloy.Db.DbAnim.Bind,
             SelfCheck = l => CX.Alloy.Db.DbAnim.SelfCheck(l),
             Stats = CX.Alloy.Db.DbAnim.Period,
         }, log);

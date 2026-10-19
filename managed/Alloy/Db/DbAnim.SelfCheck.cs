@@ -16,7 +16,6 @@ public static unsafe partial class DbAnim
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DbAnim.SelfCheck");
-        _log ??= log;
         try
         {
             Sampling(check);
