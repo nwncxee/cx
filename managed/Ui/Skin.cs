@@ -130,9 +130,6 @@ public sealed class Skin
     /// <summary>The part's texture width over height this frame, 0 when unresolved.</summary>
     public float Aspect(int part) => (uint)part < (uint)_parts.Length && _h[part] > 0 ? (float)_w[part] / _h[part] : 0f;
 
-    /// <summary>Did the part's texture resolve this frame (a still-uploading texture reads 0 for a frame).</summary>
-    public bool Live(int part) => (uint)part < (uint)_parts.Length && _tid[part] != 0;
-
     /// <summary>One draw per part holding geometry, in declaration order (declare backgrounds first); <paramref name="skip"/>
     /// and <paramref name="skip2"/> are left for <see cref="FlushClipped"/>.</summary>
     public void Flush(float alpha = 1f, int skip = -1, int skip2 = -1)

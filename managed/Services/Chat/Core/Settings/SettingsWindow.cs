@@ -425,9 +425,6 @@ public sealed partial class SettingsWindow
     /// <summary>Wheel notch while open: the open dropdown list, else the column under the pointer.</summary>
     public bool MouseWheel(int dy) => Panel.MouseWheel(dy);
 
-    /// <summary>True while a slider or the panel itself is being dragged.</summary>
-    public bool Dragging => Panel.Dragging;
-
     /// <summary>Force-close at a session boundary, clearing any half-owned press, drag, or field edit.</summary>
     public void Reset() { Panel.Close(); TellsHereChanged = false; FontChanged = false; CopyWindowRequested = false; CloseWindowRequested = false; CloseArmed = false; }
 

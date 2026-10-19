@@ -16,7 +16,7 @@ public static class ClientBuilds
     /// <summary>One measured client build.</summary>
     public sealed class Build
     {
-        public string Name = "", LinuxKey = "", WindowsKey = "", Resource = "";
+        public string Name = "", LinuxKey = "", WindowsKey = "";
         public uint Stamp;
         /// <summary>"Class.field" -> (linux, windows); null where the file says <c>-</c>.</summary>
         public readonly Dictionary<string, (int? Linux, int? Windows)> Offsets = new();
@@ -103,7 +103,7 @@ public static class ClientBuilds
     /// this runs inside <see cref="EngineLayout"/>'s type initializer.</summary>
     public static Build Parse(string text, string resource)
     {
-        var b = new Build { Resource = resource };
+        var b = new Build();
         int n = 0;
         foreach (string raw in text.Split('\n'))
         {

@@ -9,5 +9,4 @@ public enum CursorKind
     Move,
     Resize,
     Link,
-    Text,
 }

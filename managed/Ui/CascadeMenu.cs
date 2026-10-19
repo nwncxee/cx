@@ -188,7 +188,6 @@ public sealed partial class CascadeMenu
     public CascadeLevel Level(int i) => _lv[i];
     /// <summary>Icon squares fully inside their level band as of the last <see cref="Draw"/>.</summary>
     public ReadOnlySpan<IconQuad> Icons => new(_icons, 0, _iconN);
-    public bool Dragging { get { for (int i = 0; i < Depth; i++) if (_lv[i].List.Dragging) return true; return false; } }
 
     /// <summary>Open the root at a point (the cursor), clamped into the viewport; the face sizes every level.</summary>
     public void OpenAt(CascadeItem[] items, float x, float y, GlyphAtlas atlas, float viewportW, float viewportH)
