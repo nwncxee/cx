@@ -52,3 +52,5 @@ F:CX.Graphics.Gl.GetBufferSubData;Deleted entry point, kept as a tripwire: re-de
 F:CX.Graphics.Gl.GetNamedBufferSubData;Deleted entry point, kept as a tripwire: re-declaring it fails this rule. A GPU readback stalls the frame whatever the fence -- read through GpuReadback
 F:CX.Graphics.Gl.GetTexImage;Deleted entry point, kept as a tripwire: re-declaring it fails this rule. A GPU readback stalls the frame whatever the fence -- read through GpuReadback
 P:CX.Engine.CGuiMan.ModalCount;Ask Native.ModalPanelUp whether a stock modal is up
+M:CX.Engine.Material.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
+M:CX.Engine.SharedMaterial.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
