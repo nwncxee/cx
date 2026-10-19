@@ -198,9 +198,8 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
   any more: `AurTextureGetTID` @0x48e080 returns 0 for the engine's shared `m_pNullTexture`, `CAurTexture::Bind`'s
   IsNull branch binds 0 and the draw is still issued, so vanilla renders such a part blank white. Alloy now
   draws it on a 1x1 white owned texture (`OwnedTextures.WhiteTid`) instead of deleting it from the frame, and
-  the record stays stale so a late GL id is picked up the frame it arrives. The retry drip (#284, see
-  `docs/owned-resource-lifetimes.md`) is unchanged and still the repair. `no-gl-id` survives for the one case
-  that is still a hole — the stand-in itself could not be minted.
+  the record stays stale so a late GL id is picked up the frame it arrives. `no-gl-id` survives for the one
+  case that is still a hole -- the stand-in itself could not be minted.
 
 ## The census holes, closed (CX-91)
 

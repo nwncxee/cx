@@ -113,12 +113,11 @@
 19 managed/Alloy/NormalWeld.cs
 20 managed/Alloy/NwSyncReader.cs
 23 managed/Alloy/OwnedBuffers.cs
-20 managed/Alloy/OwnedTextures.Cache.cs
-16 managed/Alloy/OwnedTextures.cs
+15 managed/Alloy/OwnedTextures.Cache.cs
+15 managed/Alloy/OwnedTextures.cs
 3 managed/Alloy/OwnedTextures.Cube.cs
 2 managed/Alloy/OwnedTextures.Dds.cs
 9 managed/Alloy/OwnedTextures.Plt.cs
-14 managed/Alloy/OwnedTextures.Rebuild.cs
 5 managed/Alloy/OwnedTextures.Retire.cs
 25 managed/Alloy/OwnedTextures.Transcode.cs
 23 managed/Alloy/Pass/AlloyLights.cs
@@ -250,7 +249,7 @@
 22 managed/Alloy/TexLoad.cs
 4 managed/Alloy/TexLoad.Raster.cs
 1 managed/Alloy/TexScan.cs
-18 managed/Alloy/TexStream.cs
+15 managed/Alloy/TexStream.cs
 2 managed/Services/Anim/CrossfadeService.cs
 2 managed/Services/Anim/Diagonal.cs
 8 managed/Services/Anim/DriveEase.cs

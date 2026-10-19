@@ -94,8 +94,8 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
   and the `AurTex` vtable guard on every material-derived texture read (ADR 0015). A `TexId` cannot dangle.
 - `OwnedTextures`' warm path (`Plain`, `Capture`, `TryWarm`, `_meta`, `_index`, `OnDeleteTextures`,
   `OnBuildAndStoreTexture`) and ADR 0023's hand-back: the registry has no engine delete funnel to survive.
-- `TexLoad`, `TexStream`, `TexProbe` and the `alloy.texprefetch` / `texsingle`
-  knobs -- the registry's own loader is the only reader path left. `TexLoadRead` (the location record and the
+- `TexLoad`, `TexStream`, `TexProbe` and the `alloy.texsingle`
+  knob -- the registry's own loader is the only reader path left. `TexLoadRead` (the location record and the
   worker's file handles) STAYS: the registry uses it.
 - `CycleTextures` (the `CycleTIDTextureController` tick and its `~CAurTexture` death notice): a cycle becomes
   `TexRegistry.Swap(id, resref, cell: next)`, so the table, the vtable probe and the death notice all go.

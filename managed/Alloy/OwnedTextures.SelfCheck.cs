@@ -70,30 +70,6 @@ internal static unsafe partial class OwnedTextures
         ok &= !_index.ContainsKey(100) && Draw(100) == 100 && Borrowed == 3 && Draw(101) == 101;
         _pending.RemoveRange(savedPending, _pending.Count - savedPending);
 
-        // #284: the re-arm ledger, which is pure bookkeeping and therefore the half of the retry that CAN be
-        // asserted without a client -- the build itself needs one. What it pins is the correction the live run
-        // forced: a texture gets another attempt after waiting, and stops getting them at the cap.
-        var savedTried = new Dictionary<IntPtr, Try>(_rebuildTried);
-        int savedFrame = _dripFrame, savedQ = _rebuildN;
-        var savedQArr = (IntPtr[])_rebuildQ.Clone();
-        var savedBuild = _buildAndStore;
-        _rebuildTried.Clear(); _rebuildN = 0; _dripFrame = 0;
-        _buildAndStore = (AurTextureBuildAndStoreFn)1;   // armed, never called: nothing here drains
-        IntPtr probe = (IntPtr)0x5A1;
-        NoteUnbuilt(probe);
-        ok &= _rebuildN == 1;
-        NoteUnbuilt(probe); ok &= _rebuildN == 1;                 // already queued: one entry, not two
-        _rebuildN = 0; Give(probe, false);
-        NoteUnbuilt(probe); ok &= _rebuildN == 0;                 // just tried -- waits out the re-arm
-        _dripFrame += RebuildRearm;
-        NoteUnbuilt(probe); ok &= _rebuildN == 1;                 // ...and comes back when the wait is over
-        _rebuildN = 0;
-        while (!Give(probe, false)) { }
-        _dripFrame += RebuildRearm;
-        NoteUnbuilt(probe); ok &= _rebuildN == 0;                 // out of attempts: never again
-        _rebuildTried.Clear(); _rebuildN = 0;
-        Give(probe, true); _dripFrame += RebuildRearm;
-        NoteUnbuilt(probe); ok &= _rebuildN == 0;                 // written off outright: same, on one attempt
         // #265: the census window -- tallies split by path, silence settles into ONE report, and the next
         // upload opens a fresh window. The +0x70 read itself needs a client; what is pinned is the window.
         int svRaw = _censusRaw, svBcn = _censusBcn, svLast = _censusLastUpload;
@@ -123,11 +99,6 @@ internal static unsafe partial class OwnedTextures
         _censusRaw = svRaw; _censusBcn = svBcn; _censusRawBytes = svRawB; _censusBcnBytes = svBcnB;
         _censusTrans = svTrans; _censusSaved = svSaved;
         _censusLastUpload = svLast; _censusReported = svRep; _dripFrame = svDrip2; _log = svLog;
-
-        _rebuildTried.Clear();
-        foreach (var kv in savedTried) _rebuildTried[kv.Key] = kv.Value;
-        Array.Copy(savedQArr, _rebuildQ, RebuildQueue);
-        _dripFrame = savedFrame; _rebuildN = savedQ; _buildAndStore = savedBuild;
 
         _res.Clear(); _index.Clear(); _owned.Clear(); _borrowed.Clear();
         foreach (var kv in savedRes) _res[kv.Key] = kv.Value;

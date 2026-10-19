@@ -13,61 +13,10 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>When a texture is built and how long it is kept: the prefetch that builds on enrolment instead of on
-/// first sight, and the VRAM-budgeted cache whose world edge retires the INDEX while the resource stays
-/// warm.</summary>
+/// <summary>How long a built texture is kept: the VRAM-budgeted cache whose world edge retires the INDEX while
+/// the resource stays warm.</summary>
 internal static unsafe partial class OwnedTextures
 {
-    // ---- #386: PREFETCH -- build a texture when its part ENROLS, not when the camera first sees it ----
-
-    /// <summary>Textures the enrolment walk saw unbuilt on an accepted part. The drip builds them through the
-    /// engine's own <c>BuildAndStore</c>, a few per frame, so the burst a turn used to pay is spread over the
-    /// frames before the camera gets there; <c>texprefetch</c> in cx.cfg is the budget (0 = off). The seen-set
-    /// is keyed on the BORROWED pointer, which the drip re-proves through <see cref="AurTex"/> first.</summary>
-    private const int PrefetchQueue = 8192;
-    private static readonly IntPtr[] _prefetchQ = new IntPtr[PrefetchQueue];
-    private static int _prefetchN, _prefetchHead;
-    private static readonly HashSet<IntPtr> _prefetchSeen = new();
-    private static int PrefetchBudget = 2;
-    private static long _prefetched, _prefetchDropped;
-
-    internal static void Prefetch(IntPtr tex)
-    {
-        if (tex == IntPtr.Zero || PrefetchBudget == 0 || _buildAndStore == null || !_armed) return;
-        // A material hands out a per-material REFERENCE object; thousands of them name one basic texture. The
-        // first run dedupe'd on the reference and drowned the queue (12612 dropped, 5 built): resolve to the
-        // basic, and only an UNBUILT one is worth a slot. Tid() re-proves the pointer first (#138).
-        if (AurTex.Tid(tex) != 0) return;
-        // #456: CAurTexture carries fourteen vtable-slot rows and this is the first place Alloy devirts one.
-        AlloyProbe.Once(ref _probedTex, "CAurTexture", tex, _log);
-        IntPtr real = new CAurTexture(tex).GetReferencedTexture().Ptr;
-        if (real == IntPtr.Zero) real = tex;
-        if (_nullTex != null && real == *_nullTex) return;
-        CAurTextureBasic basic = new CAurTexture(real).AsCAurTextureBasic();
-        if (basic.IsNull || basic.GlId != 0 || basic.FlagNeverBuild != 0) return;
-        if (_prefetchSeen.Count > 65536) _prefetchSeen.Clear();
-        if (!_prefetchSeen.Add(basic.Ptr)) return;
-        if (_prefetchN >= PrefetchQueue) { _prefetchDropped++; return; }
-        _prefetchQ[(_prefetchHead + _prefetchN++) % PrefetchQueue] = tex;
-    }
-
-    private static void DripPrefetch()
-    {
-        int built = 0;
-        // ponytail: up to 8x the budget in already-built or dead entries per frame, which cost a field read each
-        for (int looked = 0; built < PrefetchBudget && looked < PrefetchBudget * 8 && _prefetchN > 0; looked++)
-        {
-            IntPtr tex = _prefetchQ[_prefetchHead];
-            _prefetchHead = (_prefetchHead + 1) % PrefetchQueue; _prefetchN--;
-            long before = _rebuilds;
-            Rebuild(tex);   // already built = a free return; freed = refused by the vtable re-proof
-            if (_rebuilds != before) { built++; _prefetched++; FrameZones.Count(FrameZones.Ev.Prefetch); }
-        }
-    }
-
-    internal static string PrefetchNote()
-        => $"prefetch: {_prefetched} built ahead, {_prefetchN} queued, {_prefetchDropped} dropped, budget {PrefetchBudget}/frame; single upload {(_single ? "on" : "off")} ({_singleUploads} textures, {_cubeUploads} cubes{(_cubeRefused > 0 ? $", {_cubeRefused} cubes REFUSED" : "")}{DdsFormatNote()})";
-
     // ---- ADR 0023: the texture CACHE -- the delete funnel is the world edge for the INDEX, not the resource ----
 
     /// <summary>VRAM the cache may hold, in bytes. 0 = the pre-ADR-0023 behaviour (a retired index entry
@@ -239,16 +188,6 @@ internal static unsafe partial class OwnedTextures
         _flushAll = true; _evictDue = true; _cacheFlushes++;
     }
 
-    /// <summary>The AREA edge: the rebuild ledger and its queue are keyed on the raw <c>CAurTexture*</c> and
-    /// the engine recycles those addresses across a transition, so both go whole. The resource cache below
-    /// them does NOT -- it keys on the resref hash and schemes, which mean the same thing in any area (the
-    /// module edge is <see cref="ModuleUnloaded"/>'s). Returns the verdicts dropped.</summary>
-    internal static int AreaEdge()
-    {
-        int n = _rebuildTried.Count;
-        _rebuildTried.Clear(); Array.Clear(_rebuildQ); _rebuildN = 0;
-        return n;
-    }
     private static bool _flushAll;
     private static long _cacheFlushes;
 

@@ -163,22 +163,6 @@ internal static unsafe class TexStream
         return n;
     }
 
-    /// <summary>A texture the unbuilt-texture drips (<see cref="OwnedTextures"/> prefetch and rebuild) just built
-    /// out of turn: out of the queue, so the drain does not build it twice. Cold -- a few a frame.</summary>
-    internal static void Dequeue(IntPtr basic)
-    {
-        if (!_armed) return;
-        int n = _queue.Count;
-        for (int i = 0; i < n; i++)
-            if (_queue[i] == basic)
-            {
-                for (int j = i + 1; j < n; j++) _queue[j - 1] = _queue[j];
-                _queue.Count = n - 1;
-                _world.Remove(basic);
-                return;
-            }
-    }
-
     /// <summary>A model material's texture requests: whatever they appended to the queue is world content, the only
     /// kind streaming may leave white for a while. Cold -- model load.</summary>
     [UnmanagedCallersOnly]
@@ -271,12 +255,6 @@ internal static unsafe class TexStream
     /// <summary>An area transition is open: from <c>LoadArea</c> until its queue drains after placement.</summary>
     internal static bool InTransition => _t.Active;
 
-    /// <summary>A frame nobody is waiting on: outside <c>LoadArea</c>, outside the lightmap hold, and either no
-    /// transition open or the player already placed. The gate <see cref="BudgetMs"/> spends its budget behind, and
-    /// where model compiles run -- one inside <c>LoadArea</c> or under the hold is paid straight out of the load
-    /// the cache exists to shorten.</summary>
-    internal static bool ColdPoint => !_inLoadArea && !LightmapBake.Held && (!_t.Active || _t.Placed != 0);
-
     /// <summary>The segment a drain now belongs to: inside LoadArea, to the send, under the hold, after placement.</summary>
     private static int Segment => _inLoadArea ? 0 : _t.Sent == 0 ? 1 : _t.Placed == 0 ? 2 : 3;
 
@@ -288,12 +266,11 @@ internal static unsafe class TexStream
         _read[s] += read; _decode[s] += decode; _upload[s] += upload;
     }
 
-    /// <summary>Once a frame at the frame anchor: close the transition once the queue has drained after placement,
-    /// and re-enrol the parts whose texture has landed.</summary>
+    /// <summary>Once a frame at the frame anchor: close the transition, and write its <c>[load]</c> line, once
+    /// the queue has drained after placement.</summary>
     internal static void Tick()
     {
         if (_t.Active && _t.Placed != 0 && _queue.Count == 0) Report(null);
-        CheckWaiting();
     }
 
     private static void Report(string? cut)
@@ -322,38 +299,13 @@ internal static unsafe class TexStream
         _log?.Info(line);
     }
 
-    // ---- parts enrolled against an unbuilt diffuse ----
-
     private static readonly long _epoch = Stopwatch.GetTimestamp();
     /// <summary>Seconds since load, from 1 so that 0 can mean "never arrived": the clock a record's arrival time
     /// (<see cref="AlloyRenderer.ArriveFloat"/>) is stamped on and the colour pass's <c>uNow</c> reads.</summary>
     internal static float Clock => 1f + (float)((double)(Stopwatch.GetTimestamp() - _epoch) / Stopwatch.Frequency);
 
-    private const int LandedCap = 4096;
-    private static readonly int[] _landed = new int[LandedCap];
-    private static int _landedN;
-    private static long _reenrolled, _landedDropped;
-
-    /// <summary>The staging walk saw part-table entry <paramref name="e"/> swap the white stand-in for its real
-    /// diffuse: an unbuilt diffuse draws on the stand-in and is classed opaque (no alpha to test), so the part
-    /// re-enrols on the next <see cref="Tick"/>. Stage workers call this: it only appends an int, dereferencing
-    /// nothing, then or later.</summary>
-    internal static void Landed(int e)
-    {
-        int k = System.Threading.Interlocked.Increment(ref _landedN) - 1;
-        if (k < LandedCap) _landed[k] = e; else System.Threading.Interlocked.Increment(ref _landedDropped);
-    }
-
-    private static void CheckWaiting()
-    {
-        int n = Math.Min(_landedN, LandedCap);
-        if (n == 0) return;
-        _reenrolled += n;
-        _landedN = 0;
-    }
-
     internal static string Note()
-        => !_armed ? "" : $", texstream {(On ? $"{PlacedMs} ms" : "off")}: {_queue.Count} queued, {_reenrolled} parts re-enrolled on arrival ({_landedDropped} past the cap)";
+        => !_armed ? "" : $", texstream {(On ? $"{PlacedMs} ms" : "off")}: {_queue.Count} queued";
 
     // ---- self-check ----
 

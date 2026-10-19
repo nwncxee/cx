@@ -214,8 +214,7 @@ internal static unsafe partial class OwnedTextures
     private static long _censusGridBytes;
     private static int _censusLastUpload;
     private static bool _censusReported;
-    /// <summary>Frames of upload silence that count as "the area settled" -- ~5s at 60fps, same reasoning as
-    /// <see cref="RebuildRearm"/>.</summary>
+    /// <summary>Frames of upload silence that count as "the area settled" -- about five seconds at 60fps.</summary>
     private const int CensusSettle = 300;
 
     private static void Census(IntPtr tex, long bytes, long transSaved, int gridN, int cell)

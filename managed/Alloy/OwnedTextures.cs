@@ -48,8 +48,6 @@ internal static unsafe partial class OwnedTextures
     /// allocate on a hot-adjacent path.</summary>
     private static readonly List<uint> _pending = new(1024);
     private static ExtenderLog? _log;
-    /// <summary>The CAurTexture layout probe's one-shot latch.</summary>
-    private static bool _probedTex;
     private static bool _armed;
     /// <summary>Is the owned-texture path live? Read by the handle cache, which changes its invalidation
     /// discipline entirely on the answer (see <c>Issue.WipeHandles</c>).</summary>
@@ -73,17 +71,6 @@ internal static unsafe partial class OwnedTextures
         _engBoundTex = (uint*)Native.Sym(SymbolMap.GlBoundTextures);
         if (_engBoundTex == null)
             log.Info("OwnedTextures: GLRender::m_boundTextures unresolved -- a name that dies outside the engine's DeleteTextures leaves its bind cache stale (#461)");
-        // #284: resolved whatever `ownedtex` says. A texture with no GL id is a hole in the owned draw under
-        // either key -- the retry is about the ENGINE's build having never run, not about who owns the copy.
-        _buildAndStore = EngineFn.AurTextureBuildAndStore;
-        _nullTex = (IntPtr*)Native.Sym(SymbolMap.AurTextureNullPtr);
-        if (_nullTex == null)
-            log.Info("OwnedTextures: CAurTextureBasic::m_pNullTexture unresolved -- a material naming the "
-                   + "engine's NULL texture cannot be told from an unbuilt one, so it will be retried and "
-                   + "written off as spent rather than named (#284)");
-        if (_buildAndStore == null)
-            log.Info("OwnedTextures: CAurTexture::BuildAndStore unresolved -- a texture whose build lost its "
-                   + "race with the resource loader stays without a GL id, and its part is not drawn (#284)");
         // Restart knobs, every one: capability decisions about how the ENGINE loads content, read through Boot.
         // pltcpu costs a CPU composite per character texture at load -- which is what the engine did for years
         // -- and buys every PLT-skinned creature a place in the owned set. bcn spends load-time CPU to shrink
@@ -95,7 +82,6 @@ internal static unsafe partial class OwnedTextures
         _bcn = _bcnWanted && _armed;
         TranscodeBudget = Renderer.BcnDrip.Boot;
         _budgetCfgMb = Renderer.TexCache.Boot;
-        PrefetchBudget = Renderer.TexPrefetch.Boot;
         _single = Renderer.TexSingle.Boot;
         DdsReader.Attach(log);
         TexLoad.Attach(log);
@@ -367,6 +353,12 @@ internal static unsafe partial class OwnedTextures
     /// plus Alloy's. 0 is the double path.</summary>
     private static bool _single = true;
     private static long _singleUploads;
+
+    /// <summary>For the period line: how many textures came down the one-upload path rather than the engine's
+    /// copy plus Alloy's, the cubes beside them, and what the DDS formats did.</summary>
+    internal static string UploadNote()
+        => $"single upload {(_single ? "on" : "off")} ({_singleUploads} textures, {_cubeUploads} cubes"
+         + (_cubeRefused > 0 ? $", {_cubeRefused} cubes REFUSED" : "") + $"{DdsFormatNote()})";
     /// <summary>Owned names the ENGINE holds in a cell array (a single upload or a warm hand-back). Such a name
     /// must not be GL-deleted by Alloy while the engine may still bind it for its own 2D use -- icons,
     /// portraits and glyph sheets all come through this funnel -- so a swap or eviction drops its handle and
@@ -576,12 +568,9 @@ internal static unsafe partial class OwnedTextures
         _transCtx++;   // jobs in flight name owned textures of the dead context; each drops out at its upload
         _stats.Clear();
         _meta.Clear(); _inFlight.Clear(); _pendingHandles.Clear(); _idleBytes = 0; _evictDue = false;
-        _prefetchN = 0; _prefetchHead = 0; _prefetchSeen.Clear(); _engineHeld.Clear();
+        _engineHeld.Clear();
         _bytes = 0;
-        // #284: every engine texture is unbuilt again on the far side of a context loss, so the one-attempt
-        // ledger has to go with the names it was a ledger about -- keeping it would refuse the whole world
-        // its single retry. The queue holds pointers into a world that may not survive either.
-        _rebuildTried.Clear(); Array.Clear(_rebuildQ); _rebuildN = 0; _dripFrame = 0;
+        _dripFrame = 0;
         _standIn = new();   // their names went with the context too; the next draw that needs one re-mints it
         _censusRaw = _censusBcn = _censusTrans = 0;
         _censusRawBytes = _censusBcnBytes = _censusSaved = 0;

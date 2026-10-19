@@ -123,7 +123,9 @@ internal static unsafe partial class OwnedTextures
     /// <summary>Fresh engine names that arrived at a funnel still indexed -- entries that outlived their
     /// texture. Expected 0; anything else names a delete path <see cref="Forget"/> does not cover.</summary>
     private static long _indexStale;
-    private static int _borrowDiagLeft = 12;
+    /// <summary>Frames since the table was attached, counted on the frame anchor: the clock an idle
+    /// resource's stamp above, the eviction order and the census settle window are measured in.</summary>
+    private static int _dripFrame;
     /// <summary>The engine just generated <paramref name="name"/> (GenTextures in glImageBasic), so an index
     /// entry on it can only be stale: drop it, count it. An OWNED name here is a refresh into our own name.</summary>
     private static void FreshName(uint name) { if (!_owned.Contains(name) && _index.Remove((int)name)) _indexStale++; }
