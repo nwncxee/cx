@@ -35,7 +35,7 @@ internal static class VolumetricFog
         Sun = G.Slider("sun", "Sun shafts", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                        help: "How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog.");
         Lights = G.Slider("lights", "Lamp glow", 0f, 4f, 0.05f, 0.15f, tier: Tier.Advanced, help: "How brightly torches and lamps glow in the fog.");
-        Reach = G.Slider("reach", "Lamp strength by reach", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
+        Reach = G.Slider("reach", "Lamp strength by reach", 0f, 1f, 0.05f, 0.1f, tier: Tier.Advanced,
                          help: "How much brighter a lamp that reaches further glows, with a hotter core: 0 makes every lamp glow alike, 1 is twice the reach for four times the light.");
         Sky = G.Slider("sky", "Fog takes the sky colour", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                        help: "How far the fog's own light moves from the area's fog colour toward the sky's. 0 is the area's colour.");

@@ -743,7 +743,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | vfog.haze | Haze in the air | S | 0–0.9 step 0.01 · 0 | A | L | Look | How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear. |
 | vfog.sun | Sun shafts | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog. |
 | vfog.lights | Lamp glow | S | 0–4 step 0.05 · 0.15 | A | L | Look | How brightly torches and lamps glow in the fog. |
-| vfog.reach | Lamp strength by reach | S | 0–1 step 0.05 · 0.5 | A | L | Look | How much brighter a lamp that reaches further glows, with a hotter core: 0 makes every lamp glow alike, 1 is twice the reach for four times the light. |
+| vfog.reach | Lamp strength by reach | S | 0–1 step 0.05 · 0.1 | A | L | Look | How much brighter a lamp that reaches further glows, with a hotter core: 0 makes every lamp glow alike, 1 is twice the reach for four times the light. |
 | vfog.sky | Fog takes the sky colour | S | 0–1 step 0.05 · 0.5 | A | L | Look | How far the fog's own light moves from the area's fog colour toward the sky's. 0 is the area's colour. |
 | vfog.aniso | Forward scattering | S | 0–0.9 step 0.05 · 0.4 | A | L | Shape | How much brighter the fog looks toward a light than away from it. |
 | vfog.height | Haze height falloff | S | 0–0.2 /m step 0.005 · 0.08 | A | L | Shape | How fast the haze thins above the ground you stand on; 0 = the same at every height. |
