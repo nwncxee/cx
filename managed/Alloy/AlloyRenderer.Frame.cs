@@ -491,7 +491,7 @@ public sealed unsafe partial class AlloyRenderer
                 case PassId.SkyOwned:
                     if (!_capturing) FrameTap.Take("opaque", viewport);
                     GpuBegin(GpuTerm.Sky);
-                    if (!_capturing && !Matrix4x4.Invert(vp, out SkyInvVp)) SkyInvVp = default;
+                    if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
                     Ssr.Pause();
                     SkyOwnedPass(&vp, viewport);
                     Ssr.Resume();

@@ -4,7 +4,7 @@ out vec4 frag;
 uniform sampler2D uHdr;
 uniform sampler2D uBloom;
 uniform sampler2D uDepth;  // CX-374: the owned depth; the sky sits at exactly 1.0 (SkyOwnedPass's DepthRange)
-uniform int uSkyRaw;      // CX-374: 1 = a sky pixel skips exposure and the tonemap (see main)
+uniform int uSkyRaw;      // CX-374: 1 = a sky pixel skips exposure and the tonemap (see main); 0 with no dome drawn
 // The fog's horizon band (SceneFog.SkyBand; 0 = none): at and below the horizon a far-depth pixel is fog
 // over culled ground, not sky, and is graded like the fogged geometry beside it -- raw, it read as a hole.
 uniform float uSkyBand;

@@ -1231,7 +1231,8 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The main view's inverse view-projection, noted at the sky pass for the resolve's horizon band
-    /// (<see cref="PostChain"/>): a far-depth pixel below the band is fog, not sky. Default = none this view.</summary>
+    /// (<see cref="PostChain"/>): a far-depth pixel below the band is fog, not sky. Default = no dome drew this
+    /// view, so every far-depth pixel is the fog-coloured clear and is graded like the fogged geometry.</summary>
     internal static Matrix4x4 SkyInvVp;
 
     /// <summary>The skybox, after the opaque set and before the blended one (ADR 0011 step 3). The dome sits AT
