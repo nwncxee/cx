@@ -13,10 +13,12 @@ vec4 CxVFogAt(vec3 world)
     // inside the first slice: from nothing at the eye to that slice's far edge
     return s < 1.0 ? mix(vec4(0.0, 0.0, 0.0, 1.0), v, s) : v;
 }
-/// ...and along the whole ray through a SKY point, out to the volume's far plane.
+/// ...and along the whole ray through main-view screen point `uv`, out to the volume's far plane: the sky's.
+vec4 CxVFogSkyUv(vec2 uv) { return texture(uVFogVol, vec3(uv, (uVFog.y - 0.5) / uVFog.y)); }
+/// ...the same, for the ray through a SKY point.
 vec4 CxVFogSkyAt(vec3 world)
 {
     vec4 c = uVFogVp * vec4(world, 1.0);
-    return texture(uVFogVol, vec3(c.xy / max(c.w, 1e-4) * 0.5 + 0.5, (uVFog.y - 0.5) / uVFog.y));
+    return CxVFogSkyUv(c.xy / max(c.w, 1e-4) * 0.5 + 0.5);
 }
 #endif

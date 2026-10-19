@@ -8,6 +8,9 @@ uniform int uSkyRaw;      // CX-374: 1 = a sky pixel skips exposure and the tone
 // The fog's horizon band (SceneFog.SkyBand; 0 = none): at and below the horizon a far-depth pixel is fog
 // over culled ground, not sky, and is graded like the fogged geometry beside it -- raw, it read as a hole.
 uniform float uSkyBand;
+// 1 = no dome drew this view: a far pixel is the bare clear colour, which the volumetric fog covers here as a dome's
+// own stage would have, so a lamp's glow does not stop at the last silhouette
+uniform int uSkyBare;
 uniform mat4 uInvVP;      // the main view's inverse view-projection: this pixel's world ray
 // uEyePos, and the volumetric fog's volume: with it, the share of a sky pixel's light the fog put there is graded
 // like the fogged geometry beside it, and the band stands down
@@ -78,6 +81,7 @@ void main()
     if (uViz == 4) { frag = vec4(0.5 + textureLod(uBloom, vUV, 0.0).rg / 64.0, 0.5, 1.0); return; }
 
     vec3 c = texture(uHdr, vUV).rgb;
+    if (uSkyBare != 0 && uVFog.x > 0.0 && texture(uDepth, vUV).r >= 1.0) { vec4 v = CxVFogSkyUv(vUV); c = c * v.a + v.rgb; }
     vec3 b = uStrength > 0.0 ? textureLod(uBloom, vUV, 0.0).rgb * uStrength : vec3(0.0);
     // CX-374: the sky is display-referred as its shader authored it (vanilla encodes it straight),
     // and exposure + the tonemap re-graded it ~2x at night. A sky pixel keeps its own value and

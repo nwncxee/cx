@@ -185,7 +185,7 @@ internal static unsafe class FogVolume
         Gl.Uniform3f(_gl.L.Drift, (float)_s.DriftX, (float)_s.DriftY, (float)_s.DriftZ);
         Gl.Uniform3f(_gl.L.Ambient, ambient.X, ambient.Y, ambient.Z);
         Gl.Uniform4f(_gl.L.Sun, sun.X, sun.Y, sun.Z, sun.W);
-        Gl.Uniform2f(_gl.L.Local, lightingOn ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f);
+        Gl.Uniform3f(_gl.L.Local, lightingOn ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f, VolumetricFog.Reach.V);
         Gl.Uniform1f(_gl.L.Phase, VolumetricFog.Aniso.V);
         Gl.Uniform3f(_gl.L.Jitter, jit.X, jit.Y, jit.Z);
         fixed (Matrix4x4* pv = &_gl.PrevVp) Gl.UniformMatrix4fv(_gl.L.PrevVp, 1, 0, (float*)pv);

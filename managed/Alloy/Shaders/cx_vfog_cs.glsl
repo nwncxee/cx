@@ -26,7 +26,7 @@ uniform vec2 uVfNoise;      // (patchiness 0..1, 1 / patch size)
 uniform vec3 uVfDrift;      // how far the patches have travelled, metres
 uniform vec3 uVfAmbient;    // LINEAR light the medium scatters, over every direction and shade: the area's fog colour
 uniform vec4 uVfSun;        // w: the share of it the sun's beam brings, through the cascades and the phase; rgb: the sun's hue times w
-uniform vec2 uVfLocal;      // (point-light strength, 1 = their cube shadows reach the fog)
+uniform vec3 uVfLocal;      // (point-light strength, 1 = their cube shadows reach the fog, how far reach sets strength)
 uniform float uVfPhase;     // forward lobe's anisotropy g
 uniform vec3 uVfJitter;     // this frame's sample offset inside the froxel: xy in [-0.5, 0.5), z in [0, 1)
 uniform mat4 uVfPrevVp;     // last frame's unjittered view-projection
@@ -69,9 +69,9 @@ float CxVfHaze(vec3 world)
     return h;
 }
 
-/// Every clustered point light's light at `world`. A lamp is a SOURCE: the lit stage's curve sharpened into an
-/// inverse square whose intensity grows with the square of its reach -- one reaching twice as far is four times as
-/// bright at the same distance (CX_VF_PIVOT sets the scale) -- then shadowed and phased.
+/// Every clustered point light's light at `world`. A lamp is a SOURCE: the lit stage's curve sharpened toward an
+/// inverse square whose intensity grows with the square of its reach (uVfLocal.z = 1: twice the reach, four times as
+/// bright at the same distance; 0: the curve alone), equal to the curve at CX_VF_PIVOT -- then shadowed and phased.
 /// An ambient-class light (a tile's own) adds the surface curve as it is, with no direction and no shadow.
 vec3 CxVfLamps(vec3 world, vec3 V, float depth)
 {
@@ -90,7 +90,7 @@ vec3 CxVfLamps(vec3 world, vec3 V, float depth)
         int slot = CxLightSlot(int(cs.w));
         if (slot == -2) { acc += c * att; continue; }
         float rr = pr.w * pr.w;
-        att *= CX_VF_PIVOT * CX_VF_PIVOT * rr / (f2 * rr + CX_VF_CORE * CX_VF_CORE);
+        if (uVfLocal.z > 0.0) att *= pow(CX_VF_PIVOT * CX_VF_PIVOT * rr / (f2 * rr + CX_VF_CORE * CX_VF_CORE), uVfLocal.z);
         float sh = 1.0;
         // `false` is a literal, so the blocker search and both discs fold out of the inlined body
         if (uVfLocal.y > 0.0 && slot >= 0 && dfade > 0.0)

@@ -10,7 +10,7 @@ internal static class VolumetricFog
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, LightShadows;
     internal static readonly Knob<string> Quality;
-    internal static readonly Knob<float> Haze, Sun, Lights, Sky, Aniso, Height, Floor, Noise, NoiseSize, Wind, Top, Temporal;
+    internal static readonly Knob<float> Haze, Sun, Lights, Reach, Sky, Aniso, Height, Floor, Noise, NoiseSize, Wind, Top, Temporal;
 
     /// <summary>The <see cref="Quality"/> values, index-aligned with <see cref="Grids"/>.</summary>
     internal static readonly string[] Levels = { "low", "medium", "high", "ultra" };
@@ -34,8 +34,9 @@ internal static class VolumetricFog
                         help: "How much of the area's fog hangs in the air close by. More shows stronger shafts and glows; 0 keeps the near air clear.");
         Sun = G.Slider("sun", "Sun shafts", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                        help: "How much of the fog's light falls as sunbeams: more is brighter shafts and darker shade between them. 0 is even fog.");
-        Lights = G.Slider("lights", "Lamp glow", 0f, 4f, 0.05f, 0.15f, tier: Tier.Advanced,
-                         help: "How brightly torches and lamps glow in the fog; a lamp that reaches further glows brighter.");
+        Lights = G.Slider("lights", "Lamp glow", 0f, 4f, 0.05f, 0.15f, tier: Tier.Advanced, help: "How brightly torches and lamps glow in the fog.");
+        Reach = G.Slider("reach", "Lamp strength by reach", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
+                         help: "How much brighter a lamp that reaches further glows, with a hotter core: 0 makes every lamp glow alike, 1 is twice the reach for four times the light.");
         Sky = G.Slider("sky", "Fog takes the sky colour", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                        help: "How far the fog's own light moves from the area's fog colour toward the sky's. 0 is the area's colour.");
 
