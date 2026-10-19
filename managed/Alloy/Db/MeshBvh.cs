@@ -67,11 +67,6 @@ public sealed class MeshBvh
         }
     }
 
-    /// <summary>Drop every tree: a mode change or a self-check, never a frame edge (the trees are content-keyed
-    /// and outlive any one area).</summary>
-    public static void Clear()
-    { lock (_cache) { _cache.Clear(); Built = 0; BuiltFaces = 0; Refused = 0; Degraded = 0; StackFull = 0; FacesTested = 0; } }
-
     /// <summary>Drop the trees of <paramref name="model"/>'s meshes. Subscribed to the model cache's eviction
     /// edge, which is the ONLY thing that can retire a content-keyed tree: without it the table grows for the
     /// session and holds every mesh the player ever looked at.</summary>
@@ -85,8 +80,8 @@ public sealed class MeshBvh
     /// <summary>Trees dropped by a model eviction.</summary>
     public static int Evicted { get; private set; }
 
-    /// <summary>Faces plane-tested since the last reset -- the one unit the pick report counts, written on
-    /// every arm (the BVH's leaves, the untreed linear walk and the MDL's own AABB tree alike).</summary>
+    /// <summary>Faces plane-tested since boot -- the one unit the pick report counts, written on every arm
+    /// (the BVH's leaves, the untreed linear walk and the MDL's own AABB tree alike).</summary>
     public static long FacesTested;
 
     /// <summary>Build <paramref name="mesh"/>'s tree NOW if it has none. Called from the dirty fold, where a

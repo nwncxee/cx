@@ -92,8 +92,7 @@ internal static class DbLights
     private static int _sinceResync;
     private static ulong _sig;
     private static bool _sigValid;
-    /// <summary>Frames the rig was reused rather than rebuilt.</summary>
-    internal static long Reused => _reused;
+    /// <summary>Frames the rig was reused rather than rebuilt; on the period line.</summary>
     private static long _reused;
 
     /// <summary>Everything the rig is a function of, folded into one value: the scene and the global radius

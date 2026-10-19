@@ -13,8 +13,7 @@ internal static class RenderThread
 {
     private static ExtenderLog? _log;
     private static Thread? _thread;
-    private static volatile bool _run, _stoodDown, _paused;
-    private static readonly object _pauseGate = new();
+    private static volatile bool _run, _stoodDown;
     private static long _frames, _faults;
     private static string _reason = "";
 
@@ -42,8 +41,8 @@ internal static class RenderThread
 
     /// <summary>Precondition: the frame's INPUTS are this thread's, and nothing under the draw reads or writes
     /// ENGINE memory. <b>UNMET</b>. The named reads are closed into <see cref="FrameHoist"/>, read once on the
-    /// game thread at the fold and handed across by value; what remains is engine WRITES and list walks under
-    /// the draw -- the camera collision settle, the keyhole runtime words, the bind-state cache, the grass walk.</summary>
+    /// game thread at the fold and handed across by value; the rest of <c>FrameInputs</c> is read LIVE, and
+    /// what remains is engine WRITES and list walks under the draw (the list below).</summary>
     internal static bool FrameInputsPublished;
 
     /// <summary>Precondition: framebuffer 0 and the engine's GL state caches have ONE owner in the window the
@@ -232,10 +231,7 @@ internal static class RenderThread
         _run = false;
         _log?.Always($"RenderThread: standing down -- {why}. Alloy will draw on the game thread from the same "
                    + "snapshot; the frame is correct and costs engine + Alloy instead of max(engine, Alloy).");
-        // Both waits the thread can be in, or the stand-down never completes and SettleIfStandingDown blocks
-        // the game thread for ever: the pause gate first (RenderSnapshot.Stop does not wake a PARKED thread),
-        // then Take's.
-        Unpause();
+        // Or the stand-down never completes and SettleIfStandingDown blocks the game thread for ever.
         RenderSnapshot.Stop();   // wake the thread out of Take()
     }
 
@@ -288,14 +284,6 @@ internal static class RenderThread
         {
             while (_run)
             {
-                // BEFORE Take, not after. RenderSnapshot.Take does not clear _published -- only Release does
-                // -- so a thread that parked between them held the frame, and the game thread's next
-                // AwaitDrained then waited on a renderer that was itself waiting for an Unpause the blocked
-                // thread was the only one that could reach. That is a frozen client, which leaves no core and
-                // is the hardest failure in this codebase to diagnose (nativeaot-hang-forensics). Parked here
-                // the thread owns nothing, and the only way it can acquire a frame is a publish -- which only
-                // the paused game thread performs.
-                WaitIfPaused();
                 RenderSnapshot.Frame? f = RenderSnapshot.Take();
                 if (f == null) break;
                 try
@@ -325,36 +313,6 @@ internal static class RenderThread
         }
     }
 
-    /// <summary>Park here while paused -- between frames, owning nothing. <c>_run</c> is in the condition so
-    /// a stand-down or a shutdown gets the thread out even if something re-raises the pause: the loop's own
-    /// <c>while (_run)</c> is the next test either way.</summary>
-    private static void WaitIfPaused()
-    {
-        if (!_paused) return;
-        lock (_pauseGate) while (_paused && _run) Monitor.Wait(_pauseGate);
-    }
-
-    /// <summary>Ask the render thread to hold outside its bracket while the game thread needs the drawable to
-    /// itself (a movie frame, a snapshot read-back, the engine's area-load shader compiles). On return the
-    /// renderer holds no frame, is not in its bracket, and cannot acquire one because the caller is the only
-    /// publisher. It DRAINS before latching: latching first would deadlock on a renderer still holding N.</summary>
-    internal static void Pause()
-    {
-        if (!Live) return;
-        RenderSnapshot.AwaitDrained();
-        lock (_pauseGate) _paused = true;
-    }
-
-    /// <summary>Let the render thread go again.</summary>
-    internal static void Unpause()
-    {
-        lock (_pauseGate)
-        {
-            _paused = false;
-            Monitor.PulseAll(_pauseGate);
-        }
-    }
-
     /// <summary>Session end (context loss, or the renderer's teardown): wake the thread out of its wait, let
     /// it drop the context, and WAIT for it -- the game thread may own the context again the instant this
     /// returns, so returning early is the same BadAccess as a racy stand-down.</summary>
@@ -362,7 +320,6 @@ internal static class RenderThread
     {
         if (!_started) return;
         _run = false;
-        Unpause();
         RenderSnapshot.Stop();
         _thread?.Join(2000);
         _thread = null;

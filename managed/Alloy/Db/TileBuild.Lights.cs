@@ -42,25 +42,6 @@ public static partial class TileBuild
         if (moved) SceneDb.Tiles.Mark(t, Dirty.Material);
     }
 
-    /// <summary>The palette rows the area message named, kept for the census and the live comparison. The
-    /// COLOURS are the game layer's (<c>CNWCTile::SetMainLightColor</c> @0x90d050 reads RED/GREEN/BLUE out of
-    /// the light-colour 2DA itself and hands the Vectors down), so CX reads no 2DA.</summary>
-    public static void NoteRecord(DbId scene, Vector3 pos, int tileId, byte main1, byte main2,
-                                 byte src1, byte src2, byte replaceRow, byte anim1, byte anim2, byte anim3)
-    {
-        int t = At(scene, pos);
-        if (t < 0) return;
-        SceneDb.TileSetId[t] = tileId;
-        SceneDb.TileMain1[t] = main1;
-        SceneDb.TileMain2[t] = main2;
-        SceneDb.TileSrc1[t] = src1;
-        SceneDb.TileSrc2[t] = src2;
-        SceneDb.TileReplaceRow[t] = replaceRow;
-        SceneDb.TileAnim1[t] = anim1;
-        SceneDb.TileAnim2[t] = anim2;
-        SceneDb.TileAnim3[t] = anim3;
-    }
-
     // ---- Scene vtable 0x48: SetTileFlames ----
 
     /// <summary>Linux <c>Scene</c> +0x48 / Windows +0x40, <c>SetTileFlames(Vector const&amp;, CAurObject*,

@@ -746,7 +746,6 @@ public static partial class ModelCache
     internal static int Finished { get { lock (Gate) return _done.Count; } }
     internal static int RefsOf(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) ? s.Refs : 0;
     internal static int DepthOf(ModelDef m) => _bySlot.TryGetValue(m, out Slot? s) ? s.Depth : -1;
-    internal static long Bytes => _bytes;
     internal static long Hits => _hits;
     internal static long Misses => _misses;
     internal static long Parsed => _parsed;
@@ -759,14 +758,6 @@ public static partial class ModelCache
     internal static long StaleSources => _staleSource;
     internal static long LoaderDropped => _loaderDropped;
     internal static long Resynced => _resynced;
-    internal static long OfferHits => _offerHits;
-
-    /// <summary>Every resident model, in table order.</summary>
-    internal static void ForEachResident(Action<ModelDef> fn)
-    {
-        for (int i = 0; i < _table.Count; i++) fn(_table[i].Def);
-    }
-
     /// <summary>Log a named refusal, each CAUSE up to <see cref="LogCapPerCause"/> times: a quiet hole is never
     /// the answer, a flood is not either, and one shared budget let the chattiest cause hide the rest.
     /// <para><paramref name="cause"/> is a FIXED string per call site, never the reason text: a reason that

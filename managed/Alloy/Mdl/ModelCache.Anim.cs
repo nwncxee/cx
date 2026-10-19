@@ -70,34 +70,14 @@ public static partial class ModelCache
         return false;
     }
 
-    /// <summary>A gob's animation lookup, as <c>Gob::GetAnimation</c> @0x499eb0 and
-    /// <c>Gob::PlayAnimation</c> @0x49a750 both spell it: the ADD-IN model's chain first (<c>Gob+0x80</c>), the
-    /// object's own model's chain second, and the chain that answered is the one
-    /// <see cref="FindAnimScale"/> must be asked about -- which is why the root comes back out.</summary>
-    public static AnimDef? FindAnimationFor(ModelDef? addIn, ModelDef model, string anim,
-                                            out ModelDef? owner, out ModelDef root)
-    {
-        if (addIn != null)
-        {
-            AnimDef? got = FindAnimation(addIn, anim, out owner);
-            if (got != null) { root = addIn; return got; }
-        }
-        root = model;
-        return FindAnimation(model, anim, out owner);
-    }
-
     /// <summary><c>Gob::LoadAddInAnimations(name)</c> @0x43a960: the extra animation set an object can be given
     /// on top of its model's. The engine's body is <c>FindModel(name)</c> plus one <c>Model::AddRef</c>, so this
     /// is <see cref="Acquire"/> and the caller <see cref="Release"/>s it when the object drops the set. The
     /// engine's null-FindModel fallback -- a loose <c>.mdl</c> in the working directory -- is not ported.</summary>
     public static ModelDef? LoadAddInAnimations(string resref)
     {
-        ModelDef? m = Acquire(resref);
-        if (m == null) _addInMisses++;
-        return m;
+        return Acquire(resref);
     }
-
-    private static long _addInMisses;
 
     // ---- the memo over the chain walk ----
 
@@ -365,7 +345,6 @@ public static partial class ModelCache
 
     /// <summary>Bindings held, for the self-checks and the period line.</summary>
     internal static int Bindings => _bindingCount;
-    internal static long AddInMisses => _addInMisses;
     internal static long FlatBinds => _flatBinds;
     internal static long PartialBinds => _partialBinds;
 }

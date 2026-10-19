@@ -502,7 +502,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>This slot's batch VAO key -- the arena SECTION its range lives in, so the static and skinned
     /// formats cut apart and nothing else does. Taken from the RANGE, not the recipe's skin flag: the arena
     /// decides the section, and a key from a second opinion binds the batch to the wrong VAO when they
-    /// disagree (<c>MeshArenaDraw.Vao</c> is the static section's only).</summary>
+    /// disagree (<c>MeshArenaDraw.VaoOf</c> answers per range).</summary>
     private static int DbVaoKey(int i)
         => (int)MeshArena.FormatOf(DrawRecipe.Range(_oDbRecipe[i]));
 

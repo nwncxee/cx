@@ -29,13 +29,12 @@ internal static partial class DbInputs
     /// <summary>What a light node that states no light fields of its own falls back to: the defaults
     /// <c>MdlNodeLight</c>'s constructor leaves when the file sets none. Shared, never written.</summary>
     private static readonly LightDef DefaultLight = new();
-    /// <summary>Light parts filed with no light fields of their own.</summary>
-    internal static int LightsWithoutDef => _lightNoDef;
+    /// <summary>Light parts filed with no light fields of their own, on the period line beside the
+    /// emitters': a light node that states none takes <see cref="DefaultLight"/>.</summary>
     private static int _lightNoDef;
     /// <summary>Emitter NODES whose parsed model declared no emitter block, so nothing registered them. An
     /// emitter kind with no block is an emitter that can never spawn; counted so "no particles on that model"
     /// has a line of its own.</summary>
-    internal static int EmittersWithoutDef => _emitNoDef;
     private static int _emitNoDef;
     // ---- emitters ----
     private static readonly int[] _emitPart = new int[MaxEmitters];
@@ -54,8 +53,6 @@ internal static partial class DbInputs
     internal static uint LightRev => _lightRev;
     private static uint _lightRev = 1;
 
-    /// <summary>Say that something the light rig reads has changed.</summary>
-    internal static void LightsChanged() => _lightRev++;
     internal static int EmitterCount => _emitN;
 
     /// <summary>Light <paramref name="k"/>: which part carries it, its model-declared parameters, and its
@@ -189,9 +186,6 @@ internal static partial class DbInputs
     /// cannot be derived from it. One table, so the two cannot drift.</summary>
     private const int CtlColor = Ctl.LightColor, CtlRadius = Ctl.LightRadius,
                       CtlMultiplier = Ctl.LightMultiplier;
-
-    /// <summary>The light node's name, for diagnostics.</summary>
-    internal static string NodeName(int p) => NodeOf(p)?.Name ?? "?";
 
     /// <summary>The light node's file fields: an object light's own <see cref="DbLight.Def"/>, else the node
     /// behind a tile light's part, else the tile light's record. Null when the light has none.</summary>
@@ -375,7 +369,7 @@ internal static partial class DbInputs
     }
 
     internal static string Stats()
-        => $"dbinputs: lights {_lightN} (tile {TileLights}) emitters {_emitN} (nodef {_emitNoDef})"
+        => $"dbinputs: lights {_lightN} (tile {TileLights}, nodef {_lightNoDef}) emitters {_emitN} (nodef {_emitNoDef})"
          + (Spilled > 0 ? $" SPILLED {Spilled}" : "")
          + (ChunkSpawnsRefused > 0 ? $" CHUNK SPAWNS REFUSED {ChunkSpawnsRefused}" : "");
 }

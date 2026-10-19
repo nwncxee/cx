@@ -314,11 +314,11 @@ public sealed class LightDef
 /// <summary>Emitter node parameters the file states as fields (rates, sizes, colours are controllers).</summary>
 public sealed class EmitterDef
 {
-    public string Update = "", Render = "", Blend = "", Texture = "", ChunkName = "", DepthTexture = "";
+    public string Update = "", Render = "", Blend = "", Texture = "", ChunkName = "";
     public int XGrid, YGrid, SpawnType, RenderOrder;
     public uint Flags;
     public float DeadSpace, BlastRadius, BlastLength;
-    public bool TwoSidedTex, Loop, FrameBlending;
+    public bool TwoSidedTex, Loop;
 }
 
 /// <summary>Reference node: a model attached at this node by name.</summary>

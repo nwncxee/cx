@@ -134,7 +134,7 @@ public static unsafe partial class MeshArena
     /// (<c>AlloyRenderer.DbRangesMoved</c>) and run inside <see cref="Pump"/>, on the thread that owns the GL
     /// bracket with the arena's lock held, so the handler reads through <see cref="Runs"/> and nothing else.</summary>
     internal static Action<int[], int>? RangesMoved;
-    private static int _acquired, _shared, _freed, _refused, _compactions, _logLeft = LogCap;
+    private static int _acquired, _freed, _refused, _compactions, _logLeft = LogCap;
     private static readonly int[] _refusedBy = new int[RefusalName.Length];
     private static int _overReleased, _heldPastEviction, _collisions, _staleKeys, _unqueued, _glDeferred;
     private static bool _saidDeferred, _dumped;
@@ -156,7 +156,7 @@ public static unsafe partial class MeshArena
     private sealed class Pub
     {
         internal readonly uint Vao;
-        internal readonly int Base, Cnt0, Cnt1, Cnt2, NV;
+        internal readonly int Base, Cnt0, Cnt1, Cnt2;
         internal readonly nint Off0, Off1, Off2;
         internal readonly Vector3 BMin, BMax, Center;
         internal readonly float Radius;
@@ -166,7 +166,7 @@ public static unsafe partial class MeshArena
 
         internal Pub(in Range r, uint vao)
         {
-            Vao = vao; Base = r.Base; NV = r.NV; Sig = MeshArena.Sig(r.Content, (uint)r.Gen);
+            Vao = vao; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen);
             Cnt0 = r.Cnt0; Cnt1 = r.Cnt1; Cnt2 = r.Cnt2;
             Off0 = r.Off0; Off1 = r.Off1; Off2 = r.Off2;
             BMin = r.BMin; BMax = r.BMax; Center = r.Center; Radius = r.Radius;
@@ -330,7 +330,6 @@ public static unsafe partial class MeshArena
     private static void Take(int range, MeshDef mesh)
     {
         _ranges[range].Refs++;
-        _shared++;
         _unsharedBytes += (long)_ranges[range].NV * StrideOf[(int)_ranges[range].Format] * 4;
         ref List<MeshDef>? keys = ref _ranges[range].Keys;
         keys ??= new List<MeshDef>(1);
@@ -596,7 +595,6 @@ public static unsafe partial class MeshArena
                 && _ranges[have].Content2 == content && _ranges[have].NVerts == nv && _ranges[have].NIndices == n0)
             {
                 _ranges[have].Refs++;
-                _shared++;
                 _unsharedBytes += (long)_ranges[have].NV * StrideOf[(int)_ranges[have].Format] * 4;
                 return have;
             }
@@ -717,14 +715,6 @@ public static unsafe partial class MeshArena
     /// <summary>Holders of <paramref name="range"/>: the dedup proof. Cold -- the self-checks and the report
     /// only -- so it reads the live table under the lock rather than the snapshot.</summary>
     internal static int RefsOf(int range) { lock (_gate) return Alive(range) ? _ranges[range].Refs : 0; }
-
-    /// <summary>Vertices <paramref name="range"/> occupies.</summary>
-    internal static int VertsOf(int range)
-    {
-        Pub?[] pub = _pub;
-        Pub? r = (uint)range < (uint)pub.Length ? pub[range] : null;
-        return r != null ? r.NV : 0;
-    }
 
     /// <summary>Which vertex format <paramref name="range"/> lives in, for the draw that has to pick a VAO.</summary>
     internal static Fmt FormatOf(int range) { lock (_gate) return Alive(range) ? _ranges[range].Format : Fmt.Static; }
@@ -1078,7 +1068,8 @@ public static unsafe partial class MeshArena
                + (_staleKeys > 0 ? $", {_staleKeys} stale keys swept" : "")
                + (_unqueued > 0 ? $", {_unqueued} UNQUEUED zero-ref ranges reclaimed" : "")
                + (_movedTotal > 0 ? $", {_movedTotal} range(s) moved by a compaction (records refreshed)" : "")
-               + (_glDeferred > 0 ? $", {_glDeferred} pump(s) STILL DEFERRED (no in-bracket pump since)" : "");
+               + (_glDeferred > 0 ? $", {_glDeferred} pump(s) STILL DEFERRED (no in-bracket pump since)" : "")
+               + DynStats();
     }
 
     /// <summary>One-shot proof that the VAO the draw binds is the one this arena built, in THIS context:
@@ -1149,7 +1140,7 @@ public static unsafe partial class MeshArena
             _iMirror = Array.Empty<ushort>();
             _iUsed = _iUploaded = _iCapacity = _iDead = 0;
             _ebo = 0; _elementsFull = false;
-            _acquired = _shared = _freed = _refused = _compactions = _overReleased = _heldPastEviction = 0;
+            _acquired = _freed = _refused = _compactions = _overReleased = _heldPastEviction = 0;
             _collisions = _weldedFromParse = _noNormals = _staleKeys = _unqueued = 0;
             _movedN = 0; _movedTotal = 0;
             _unsharedBytes = 0;
@@ -1208,19 +1199,13 @@ public static unsafe partial class MeshArena
 
     /// <summary>Does <paramref name="mesh"/> still have a shortcut into the arena? The leak check.</summary>
     internal static bool MappedForCheck(MeshDef mesh) { lock (_gate) return _byMesh.ContainsKey(mesh); }
-
-    /// <summary>How many <see cref="MeshDef"/> shortcuts the arena holds: unbounded growth's witness.</summary>
-    internal static int MapCountForCheck { get { lock (_gate) return _byMesh.Count; } }
 }
 
 internal static class MeshArenaDraw
 {
-    /// <summary>The arena's static-format VAO (every unskinned range shares it), 0 when none is built.</summary>
-    internal static uint Vao => MeshArena.Vao(MeshArena.Fmt.Static);
-
     /// <summary>The VAO <paramref name="range"/> actually draws from. A SKINNED range lives in its own
-    /// section with the bone streams at locations 8 and 9, so a caller that latches <see cref="Vao"/> for
-    /// every record would pull a skinned mesh's vertices through the static format. 0 = not resident.</summary>
+    /// section with the bone streams at locations 8 and 9, so a caller that latched the static format's VAO
+    /// for every record would pull a skinned mesh's vertices through it. 0 = not resident.</summary>
     internal static uint VaoOf(int range)
         => MeshArena.Draw(range, 0, out uint vao, out _, out _, out _, out _) ? vao : 0u;
 

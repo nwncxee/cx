@@ -69,7 +69,7 @@ public static unsafe partial class DbAnim
         Moved(obj.Index);
     }
 
-    private static int _lookAtNoHead, _lookAtFar;
+    private static int _lookAtNoHead;
 
     /// <summary>One look-at step, after the queue advance so it writes over the animation's head pose, as the
     /// engine's index-0 add-in run does.</summary>
@@ -94,7 +94,7 @@ public static unsafe partial class DbAnim
         // Control's first act: the distance between the two OBJECTS, and the run deactivates past the limit.
         if (s.MaxDist > 0f
             && (SceneDb.ObjPos[s.Target.Index] - SceneDb.ObjPos[i]).Length() > s.MaxDist)
-        { s.Ending = true; _lookAtFar++; return true; }
+        { s.Ending = true; return true; }
 
         int head = s.Head;
         if ((uint)head >= (uint)SceneDb.MaxParts || !SceneDb.Parts.LiveAt(head)

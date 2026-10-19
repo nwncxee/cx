@@ -30,14 +30,10 @@ internal static unsafe class DbGui
 
     private static int[] Minus1(int[] a) { Array.Fill(a, -1); return a; }
 
-    internal static int Listed => _listed;
-
     /// <summary>The last <see cref="Draw"/>'s outcome for the view-order line: d drew, C drew after a depth clear,
     /// x no scene, e empty, p no GUI pass, b bubble refused, l no layer.</summary>
     internal static char LastWhy;
     internal static int LastIssued;
-    internal static long TextRuns => _textRuns;
-
     /// <summary>Is this a GUI panel's scene? A scene with no tile grid, which is the engine's own test
     /// (<c>Scene+0x188</c>, written by <c>InitBSP</c> alone and never by <c>CGuiPanel::CreateSceneView</c>).</summary>
     private static bool IsGuiScene(DbId scene)
@@ -399,7 +395,6 @@ internal static unsafe class DbGui
                     + $"additive={additive} pos=({pw.M41:F3},{pw.M42:F3},{pw.M43:F3}) "
                     + $"m11={pw.M11:F3} m22={pw.M22:F3} {UvProbe(p)}");
             }
-            ProbePixels(o, p, recipe, in v, in d);
             GuiCapture.DbPart(in d);
             _parts++;
             issued++;
@@ -435,61 +430,6 @@ internal static unsafe class DbGui
             v0 = System.MathF.Min(v0, q.Y); v1 = System.MathF.Max(v1, q.Y);
         }
         return $"uvsets={mesh.UvSetCount} uv0=({u0:F4}..{u1:F4},{v0:F4}..{v1:F4}) verts={a.Length}";
-    }
-
-    /// <summary><b>Which GUI draw lands on this pixel.</b> Each probe is a SCREEN point (top-left origin, as a
-    /// screenshot is read) and a draw whose projected box covers one names itself once. The list is EMPTY in a
-    /// shipped session and nothing is projected while it is, so an ordinary frame pays one array-length compare
-    /// per draw; <see cref="AddProbe"/> seeds it, from <see cref="Install"/>, for an investigation.</summary>
-    private static readonly int[] _probeX = new int[MaxProbes], _probeY = new int[MaxProbes];
-    private static int _probeN, _probeSaid;
-    private const int MaxProbes = 8, MaxProbeLines = 48;
-    private static readonly System.Collections.Generic.HashSet<long> _probed = new();
-
-    /// <summary>Add a screen-space probe point. Returns false when the list is full.</summary>
-    internal static bool AddProbe(int x, int y)
-    {
-        if (_probeN >= MaxProbes) return false;
-        _probeX[_probeN] = x; _probeY[_probeN] = y; _probeN++;
-        return true;
-    }
-
-    private static void ProbePixels(int o, int p, int recipe, in RenderSnapshot.ViewRec v, in GuiCapture.DbDraw d)
-    {
-        if (_probeN == 0 || _probeSaid >= MaxProbeLines || v.W <= 0 || v.H <= 0) return;
-        Box b = DrawRecipe.ModelBox(recipe);
-        float lo = float.MaxValue, hi = float.MinValue, lo2 = float.MaxValue, hi2 = float.MinValue;
-        for (int c = 0; c < 8; c++)
-        {
-            var corner = new Vector3((c & 1) != 0 ? b.Max.X : b.Min.X, (c & 2) != 0 ? b.Max.Y : b.Min.Y, (c & 4) != 0 ? b.Max.Z : b.Min.Z);
-            Vector4 clip = Vector4.Transform(new Vector4(corner, 1f), d.Mvp);
-            if (clip.W <= 1e-6f) return;   // behind the view: no screen box to test
-            float sx = v.X + (clip.X / clip.W * 0.5f + 0.5f) * v.W;
-            float sy = v.Y + (clip.Y / clip.W * 0.5f + 0.5f) * v.H;
-            if (sx < lo) lo = sx; if (sx > hi) hi = sx;
-            if (sy < lo2) lo2 = sy; if (sy > hi2) hi2 = sy;
-        }
-        int screenH = Seam.SeamFrame.ScreenH;
-        for (int k = 0; k < _probeN; k++)
-        {
-            // GL's y counts from the BOTTOM; a screenshot's counts from the top.
-            float py = screenH - _probeY[k];
-            if (_probeX[k] < lo || _probeX[k] > hi || py < lo2 || py > hi2) continue;
-            // Keyed on the DRAW as well as the part: a panel's first frame has no textures yet, and what it
-            // looks like once they land is the question.
-            if (!_probed.Add(((long)k << 44) ^ ((long)d.Tex << 20) ^ (p * 2L) ^ (d.Blend ? 1L : 0L))) continue;
-            _probeSaid++;
-            nint shell = CX.Alloy.Seam.Facade.ObjectShell(SceneDb.Objects.IdAt(o));
-            float shellAlpha = shell == 0 ? -1f
-                : new CX.Engine.Gob(shell).Alpha;
-            _log?.Info($"DbGui: [probe {_probeX[k]},{_probeY[k]}] scene={SceneDb.ObjScene[o].Index} "
-                + $"\"{SceneDb.SceneName[SceneDb.ObjScene[o].Index]}\" o={o} model="
-                + $"{SceneDb.ObjModel[o]?.Name ?? "-"} p={p} node=\"{NodeName(p)}\" cls={d.Blend} "
-                + $"tex=\"{DrawRecipe.TexName(recipe, 0)}\"={d.Tex} alpha={d.Colour.W:F3} "
-                + $"tint=({d.Colour.X:F2},{d.Colour.Y:F2},{d.Colour.Z:F2}) partalpha={SceneDb.PartAlpha[p]:F3} "
-                + $"fade={SceneDb.PartFade[p]:F3} shellalpha={shellAlpha:F3} visible={SceneDb.ObjVisible[o]} "
-                + $"objscale={SceneDb.ObjScale[o]:F3} box=({lo:F0},{lo2:F0})..({hi:F0},{hi2:F0})");
-        }
     }
 
     /// <summary>The part's node name, for a dump line. Allocation-free paths do not need it.</summary>

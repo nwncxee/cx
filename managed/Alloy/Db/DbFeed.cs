@@ -131,10 +131,6 @@ public static partial class DbFeed
     /// empty. Called by the publisher right after it copies the views, on the game thread.</summary>
     internal static void CloseViews() => _viewN = 0;
 
-    /// <summary>Is a renderer draw registered? The publisher asks before it takes a frame across, so "nothing
-    /// is drawn" is said once by <see cref="Present"/>'s own line rather than twice.</summary>
-    internal static bool HasDraw => Draw != null;
-
     private static readonly int[] _seatTally = new int[SceneDb.MaxObjects];
 
     /// <summary>Cold diagnostic: who holds the seated slots -- seated parts that are dead or orphaned, how many
