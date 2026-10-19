@@ -785,10 +785,7 @@ rva	_ZN11CNWCMessage25SendPlayerToServerMessageEhhPhj	0x7c25c0	# SendPlayerToSer
 rva	_ZN11CNWCMessage41SendPlayerToServerDeviceAdvertisePropertyERK10CExoStringi	0x7bbac0	# SendDeviceAdvertiseProperty
 rva	_ZN11CNWCMessage33SendPlayerToServerArea_AreaLoadedEv	0x7ba050	# SendAreaLoaded
 rva	_ZN8CNWCArea7SetTileEP8CNWCTileiii	0x7e6040	# AreaSetTile
-rva	_ZN11CNWCMessage40HandleServerToPlayerUpdate_WorkRemainingEv	0x7b85a0	# HandleUpdateWorkRemaining
 rva	_ZN13CClientExoApp12StartLoadBarEiPKci	0x6acd20	# StartLoadBar
-rva	_ZN13CClientExoApp10EndLoadBarEv	0x6ab770	# EndLoadBar
-rva	_ZN13CClientExoApp15GetLoadBarStateEv	0x6abe20	# GetLoadBarState
 rva	_ZN8CNWCArea8LoadAreaEP10CAurCameraP18CGuiAreaLoadscreen	0x7dba70	# AreaLoadArea
 rva	_ZN8CNWCArea24AddPlaceableObjectStaticEjt6VectorS0_	0x7d95a0	# AreaAddPlaceableStatic
 rva	_ZN13CClientExoApp13GetNWCMessageEv	0x6abf90	# GetNWCMessage
@@ -886,7 +883,6 @@ rva	noemittervar	0x128ead8	# GlPoolTableAnchor
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
 rva	_ZTV14PartDanglyMesh	0xd88698	# PartDanglyMeshVtbl
 rva	_ZN14SharedMaterialD2Ev	0x81f80	# SharedMaterialDtor
-rva	_ZTV8PartSkin	0xd88438	# PartSkinVtbl
 rva	primTypeTranslationTable	0xd8ad20	# PrimTypeTranslationTable
 rva	_ZN14CPanelQuickBar10RepositionEv	0x860010	# QuickbarReposition
 rva	_ZN10CGuiInGame11ShowCompassEv	0x6fb490	# ShowCompass

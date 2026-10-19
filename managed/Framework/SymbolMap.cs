@@ -126,7 +126,7 @@ internal static unsafe class SymbolMap
     //      nothing hooks them yet. ----
     /// <summary>CNWCMessage::SendPlayerToServerArea_AreaLoaded() @0x7fa0c0 -- major 4 minor 3, no payload; the
     /// send whose arrival makes the server place the player (<c>MovePlayerToArea</c>). Three call sites: the
-    /// post-loading-screen tail of <see cref="HandleUpdateWorkRemaining"/> and the two movie exits.</summary>
+    /// post-loading-screen tail of <c>CNWCMessage::HandleUpdateWorkRemaining</c> and the two movie exits.</summary>
     [Fn("void(IntPtr msg)")]
     public const string SendAreaLoaded = "_ZN11CNWCMessage33SendPlayerToServerArea_AreaLoadedEv";
     /// <summary>CNWCArea::SetTile(CNWCTile*, int id, int orientation, int height) @0x708e60 -- the server tile-change
@@ -134,19 +134,10 @@ internal static unsafe class SymbolMap
     /// lightmap's static set reopens on it. <c>(this, tile, int, int, int) -> void</c>, no sret.</summary>
     [Fn("void(CNWCArea this, IntPtr tile, int id, int orientation, int height)")]
     public const string AreaSetTile = "_ZN8CNWCArea7SetTileEP8CNWCTileiii";
-    /// <summary>CNWCMessage::HandleServerToPlayerUpdate_WorkRemaining() @0x781a30 -- drives the load bar and, on
-    /// the last tick, fades the loadscreen and sends AreaLoaded (or latches <c>internal+0x58c</c> behind an intro
-    /// movie). The hold's hook point. <c>(this) -> int</c>.</summary>
-    public const string HandleUpdateWorkRemaining = "_ZN11CNWCMessage40HandleServerToPlayerUpdate_WorkRemainingEv";
     /// <summary>CClientExoApp::StartLoadBar(int state, char const* image, int rebuild) @0x638a70 -- forwarder to the
     /// internal; disables input, stores <c>state</c> at <c>internal+0x450</c> (1 = local stall, 2 = area transition).</summary>
     [Fn("IntPtr(CClientExoApp this, int state, IntPtr image, int rebuild)")]
     public const string StartLoadBar = "_ZN13CClientExoApp12StartLoadBarEiPKci";
-    /// <summary>CClientExoApp::EndLoadBar() @0x636980 -- destroys the loadscreen, zeroes +0x450, re-enables input.
-    /// The happy path does NOT call it: the bar fades out inside WorkRemaining's tail instead.</summary>
-    public const string EndLoadBar = "_ZN13CClientExoApp10EndLoadBarEv";
-    /// <summary>CClientExoApp::GetLoadBarState() @0x638240 -- <c>*(int*)(internal+0x450)</c>, 0 when no bar is up.</summary>
-    public const string GetLoadBarState = "_ZN13CClientExoApp15GetLoadBarStateEv";
     // chat-render probe -- Linux-only throwaway; no Windows anchors (skip + log there).
     public const string AppendToMsgBuffer   = "_ZN10CGuiInGame17AppendToMsgBufferE10CExoStringjji7CResRef"; // inbound tap
     // chat-render suppression: SkipOriginal these so vanilla draws nothing. AppendToChatBuffer stops
@@ -276,7 +267,6 @@ internal static unsafe class SymbolMap
     // misc engine helpers
     [Fn("IntPtr(CClientExoApp this)")]
     public const string GetNWCMessage = "_ZN13CClientExoApp13GetNWCMessageEv";
-    public const string SetText       = "_ZN20CAuroraStringWrapper7SetTextEj";
     [Fn("void(IntPtr exo, byte* s, uint len)")]
     public const string ExoStringInit = "_ZN10CExoString17InitFromCharArrayEPKcj";
     [Fn("void(IntPtr self)")]
@@ -828,28 +818,11 @@ internal static unsafe class SymbolMap
     // The three self-contained shadow sub-passes Scene::RenderShadows dispatches. No-op'ing these
     // suppresses stencil shadows while RenderShadows keeps managing all pipeline state itself
     // (its post-skip net state is runtime-dependent).
-    /// <summary>Scene::RenderDynamicShadows() @ 0x4670b0 -- per-frame dynamic shadow-volume sub-pass.</summary>
-    [Fn("void(Scene this)")]
-    public const string RenderDynamicShadows = "_ZN5Scene20RenderDynamicShadowsEv";
-    /// <summary>Scene::RenderStaticShadows() @ 0x46a3a0 -- static (world-geometry) shadow-volume sub-pass.</summary>
-    [Fn("void(Scene this)")]
-    public const string RenderStaticShadows  = "_ZN5Scene19RenderStaticShadowsEv";
     /// <summary>CAurScene::ComputeStaticLighting() @0x465590 -- the engine's own "the static lighting changed"
     /// signal, called after a script toggles a placeable light: the lightmap's re-classify edge.
     /// <c>(this) -> void</c>, virtual (Scene vtable 0x68 Linux / 0x60 Windows; hooked by name).</summary>
     [Fn("void(IntPtr scene)")]
     public const string ComputeStaticLighting = "_ZN9CAurScene21ComputeStaticLightingEv";
-    /// <summary>Scene::RenderShadowPlanes(int, int) @ 0x463e20 -- planar/projected shadow fallback sub-pass.</summary>
-    [Fn("void(Scene this, int pass, int flag)")]
-    public const string RenderShadowPlanes   = "_ZN5Scene18RenderShadowPlanesEii";
-    /// <summary>Scene::DoGobShadows(PartLight*) @ 0x45fba0 -- per-light gob volume builder, dispatched
-    /// directly by RenderShadows (Scene-vtable +0x1c8) alongside the Render* sub-passes.</summary>
-    [Fn("void(Scene this, PartLight light)")]
-    public const string DoGobShadows         = "_ZN5Scene12DoGobShadowsEP9PartLight";
-    /// <summary>Scene::DoDynamicMeshProjections(PartLight*) @ 0x45f2e0 -- per-light dynamic mesh shadow
-    /// builder, dispatched directly by RenderShadows (Scene-vtable +0x1e0).</summary>
-    [Fn("void(Scene this, PartLight light)")]
-    public const string DoDynamicMeshProjections = "_ZN5Scene24DoDynamicMeshProjectionsEP9PartLight";
 
     // ---- shadow-map caster re-drive: the frame slot + the geometry submission. ----
     /// <summary>Scene::RenderDrawBucket(int bucketId) @ 0x46d060 -- draws one geometry bucket (the whole
@@ -858,17 +831,6 @@ internal static unsafe class SymbolMap
     /// int bucketId /*esi*/)</c>.</summary>
     [Fn("void(Scene this, int bucketId)")]
     public const string RenderDrawBucket = "_ZN5Scene16RenderDrawBucketEi";
-    /// <summary>Scene::RenderSinglePass() @0x46e5f0 -- one whole per-view colour pass (buckets 0..8, sky,
-    /// lights); runs for the main view AND each reflection subframe, with view/proj already on the matrix
-    /// stacks at entry. The M1 tracer hooks it to run the owned opaque block before buckets 0/1.</summary>
-    [Fn("void(IntPtr scene)")]
-    public const string RenderSinglePass = "_ZN5Scene16RenderSinglePassEv";
-    /// <summary>Scene::FadeDoors() @0x467990 -- vtable slot 0x260, the last engine call inside
-    /// <c>Scene::RenderSinglePass</c> before <c>RenderDrawBucket(0)</c>. On an Alloy frame it is neither called nor
-    /// hooked (the fade is <see cref="CX.Alloy.DoorFade"/>'s), but it names the step the frame anchor holds: the last
-    /// point at which every piece of per-frame bookkeeping the pass reads is current and nothing has drawn.</summary>
-    [Fn("void(IntPtr scene)")]
-    public const string FadeDoors = "_ZN5Scene9FadeDoorsEv";
     /// <summary>GLRender's matrix-stack array <c>m_aurMtxStack</c> @0x19e2f60, indexed by AuroraTransStates
     /// (PROJECTION=0, VIEW=1, ...), stride 0x58 per stack: a std::vector&lt;Matrix4x4&gt; (0x18 bytes of
     /// pointers) then the TOP matrix as row-major float[16] at +0x18 (Ghidra GLRender::PushMatrix /
@@ -886,20 +848,11 @@ internal static unsafe class SymbolMap
     /// ABI static, no <c>this</c>: <c>(VSDO* /*rdi*/, prim /*esi*/, size /*edx*/, offset /*ecx*/)</c>.</summary>
     [Fn("void(IntPtr vsdo, uint prim, uint size, uint offset)")]
     public const string GlRenderVertexStreamData = "_ZN8GLRender22RenderVertexStreamDataEP22VertexStreamDataObjectN6Aurora20AuroraPrimitiveTypesEjj";
-    /// <summary>Gob::CollectLights(List&lt;PartLight*&gt;&amp;) @0x43fa90 -- half of the
-    /// <c>focuslighting</c> write the shim has to replicate. ABI: <c>(Gob* /*rdi*/, List* /*rsi*/)</c>.</summary>
-    [Fn("void(IntPtr gob, IntPtr list)")]
-    public const string GobCollectLights = "_ZN3Gob13CollectLightsER4ListIP9PartLightE";
     /// <summary><c>g_bFullDynamicLighting</c> @0x19ab8a4 -- the int that decides which of
     /// <c>LightManager</c>'s two enable walks <c>Scene::RenderSinglePass</c> runs. Non-zero on this client
     /// (FRAGMENT_LIGHTING=1), so <c>EnableLights</c> is the live arm and <c>EnableLightsDynamicOnly</c> is
     /// dead. Read, never written -- the shim replicates RSP's gate rather than assuming its value.</summary>
     public const string FullDynamicLighting = "g_bFullDynamicLighting";
-    /// <summary><c>triggerbucket</c> @0x19abbd0 -- the trigger draw bucket, a <c>CExoArrayList&lt;Part*&gt;</c> whose
-    /// COUNT sits at <c>+8</c> (what <c>DoTriggerBucket</c> and <c>DoHighlightTriggers</c> gate on). Its writer is the
-    /// BSP visitor @0x481000 and <c>ClearBuckets</c> @0x47f4e0 zeroes it, both inside the <c>ManageSceneBSP</c> walk
-    /// <c>alloy.skipbuckets=3</c> skips -- so <see cref="CX.Alloy.SceneParts"/> keeps its own trigger registry.</summary>
-    public const string TriggerBucket = "triggerbucket";
     /// <summary><c>AurPartTriggerCreate(scene, points, n, snap, colour, data)</c> @0x4da840: an area transition's
     /// prism, filed into the scene's BSP -- which a DB-mode scene does not have, so <see cref="CX.Alloy.Db.DbTriggers"/>
     /// chains it to keep its own list.</summary>
@@ -919,11 +872,6 @@ internal static unsafe class SymbolMap
     /// writer of the highlight colour and its alpha (<c>PartTrigger::SetHighlightColor</c>).</summary>
     [Fn("void(IntPtr trigger, System.Numerics.Vector3* rgb, float alpha, byte flag, float value)")]
     public const string AurPartTriggerSetHighlightParams = "_Z32AurPartTriggerSetHighlightParamsP11PartTriggerRK6Vectorfbf";
-    /// <summary><c>gobbucket</c> @0x19abbf0 -- the engine's per-frame VISIBLE gob list, a
-    /// <c>CExoArrayList&lt;Gob*&gt;</c> (items at +0, count at +8). <c>ManageSceneBSP</c> @0x47fa80 refills it through
-    /// <c>Gob::IsInViewVolume</c>, and <c>AddPartsTreeToDrawBuckets</c> @0x460880 -- the only writer of an instanced
-    /// part's VertexPrimitive matrix -- walks it, so at the frame anchor it is the gobs whose parts can have moved.</summary>
-    public const string GobBucket = "gobbucket";
     /// <summary><c>mindooralpha</c> @0x18aa15c (0.25f as shipped) -- the floor a door's fade alpha is clamped to, and
     /// what <c>Gob::HitCheck</c> @0x4381d0 compares <c>Gob+0x10c</c> against before it will hit-test a door.
     /// <see cref="CX.Alloy.DoorFade"/> reads it per frame rather than caching it. Data symbol; read only.</summary>
@@ -950,18 +898,7 @@ internal static unsafe class SymbolMap
     /// and it takes a single pointer -- dodging the by-value Vector in Hilite's ABI.</summary>
     [Fn("void(IntPtr obj)")]
     public const string RefreshHilite = "_ZN12CNWCAnimBase13RefreshHiliteEv";
-    /// <summary><c>fadingoutbucket</c> @0x19abba0 and <c>fadinginbucket</c> @0x19abbb0 -- the tiles whose fade factor is
-    /// being stepped this frame. The handlers read <c>TileData+0x70</c> and write <c>+0x74</c>, which
-    /// <c>ManageSceneBSP</c> commits next frame while resetting the <c>+0xc0</c> fade state to its unclassified 4, so
-    /// the whole ramp lives in the walk <c>alloy.skipbuckets=3</c> skips (<see cref="CX.Alloy.TileFadeRamp"/>).</summary>
-    public const string FadingOutBucket = "fadingoutbucket", FadingInBucket = "fadinginbucket";
     // ---- the engine draw funnel Alloy sits on, Linux-only -> DrawFunnelService stands down on Windows ----
-    /// <summary>Scene::RenderSkyBoxes() @0x466910 -- the whole per-area skybox draw: three gobs (current, cross-fading,
-    /// skyfade) under their own projection with the depth mask off. NOT hooked -- the shim CALLS it for its bookkeeping
-    /// (ProcessGob, node animation, the cross-fade alpha writes, the per-gob <c>SetPosition(Scene+0x190)</c>) and Alloy
-    /// enrols the gobs itself. ABI <c>(Scene* /*rdi*/)</c>.</summary>
-    [Fn("void(IntPtr scene)")]
-    public const string RenderSkyBoxes = "_ZN5Scene14RenderSkyBoxesEv";
     /// <summary>Part::GetWorld(Vector&amp;, Quaternion&amp;) @0x437930 -- composes a part's world transform by walking
     /// <c>part+0x48</c> to the root, then applying the owning Gob's adjusted scale/orientation/position. No Part
     /// subclass overrides vtable slot 0x20, so it is safe to call by symbol, and both results are OUT PARAMETERS:
@@ -973,43 +910,6 @@ internal static unsafe class SymbolMap
     /// back. ABI <c>(Gob const* /*rdi*/) -&gt; float</c>.</summary>
     [Fn("float(Gob this)")]
     public const string GobGetAdjustedScale = "_ZNK3Gob16GetAdjustedScaleEv";
-    /// <summary>Gob::ProcessGob() @0x43e920 -- with the dirty byte <c>gob+0x1a5</c> set it writes
-    /// <c>gob+0x1a4 = TreeHasGeometry(gob+0x90)</c>, runs <c>TreeSetGeometryFlags</c> over the same tree and clears the
-    /// byte: scene bookkeeping the engine keeps (ADR 0016), so the owned tick calls it rather than reimplementing the
-    /// walks -- and calls it FIRST, before reading the visibility byte, as <c>Gob::Render</c> @0x452260 does.</summary>
-    [Fn("void(Gob this)")]
-    public const string GobProcessGob = "_ZN3Gob10ProcessGobEv";
-    // ---- the in-view-volume byte, gob+0x1b. ManageSceneBSP @0x47fa80 runs it in TWO phases --
-    //      step 3 clears it on EVERY gob in Scene+0x130 (_global.c:809816, the vtable +0x2b8 call the
-    //      bypass research had down as a "bounds refresh"; it is Gob::DisableInViewVolume), then the BSP
-    //      visitor @0x481000 sets it on every gob a visited node holds that survives GobOutside. The two
-    //      phases are not interchangeable: Enable PROPAGATES to the gob's attachments, so setting and
-    //      clearing in one pass would let a later clear undo a propagated set. CX.Alloy.ScenePrep keeps
-    //      the two phases when alloy.skipbuckets=3 stands that walk down.
-    /// <summary><c>Gob::DisableInViewVolume()</c> @0x436f30 -- the whole body is <c>gob+0x1b = 0</c>. Vtable slot
-    /// +0x2b8, the call <c>ManageSceneBSP</c> makes over every gob in the scene before it traverses; called rather
-    /// than written directly so an override, if one ever appears, still runs. ABI <c>(Gob* /*rdi*/)</c>.</summary>
-    [Fn("void(Gob this)")]
-    public const string GobDisableInViewVolume = "_ZN3Gob19DisableInViewVolumeEv";
-    /// <summary><c>Gob::EnableInViewVolume()</c> @0x436f10 -- <c>gob+0x1b = 1</c> and then
-    /// <c>this-&gt;vt[0x2a0]("propagateviewvolume", 0)</c>, i.e. <c>Gob::DoEvent</c>, which is how an attached gob
-    /// inherits its host's verdict: that propagation is why this is CALLED and not a byte store. Vtable slot +0x2b0;
-    /// the BSP visitor @0x481000 is its only engine caller. ABI <c>(Gob* /*rdi*/)</c>.</summary>
-    [Fn("void(Gob this)")]
-    public const string GobEnableInViewVolume = "_ZN3Gob18EnableInViewVolumeEv";
-    /// <summary><c>GobOutside(Gob*, List&lt;Plane&gt;&amp;)</c> @0x47a4f0 -- the engine's own per-gob frustum test, the one
-    /// the BSP visitor gates <see cref="GobEnableInViewVolume"/> on: sphere centre <c>GetAdjustedPosition() +
-    /// GetAdjustedOrientation() * (gob+0x17c)</c>, radius <c>GetAdjustedScale() * (gob+0x178)</c>, 1 = OUTSIDE. The
-    /// centre offset is NOT scaled, which <c>ScenePrep.Outside</c> fixes. ABI <c>(Gob*, List&lt;Plane&gt;*) -&gt; int</c>.</summary>
-    [Fn("int(Gob this, IntPtr planes)")]
-    public const string GobOutside = "_Z10GobOutsideP3GobR4ListI5PlaneE";
-    /// <summary><c>CExoArrayList&lt;Gob*&gt;::Add(Gob*)</c> @0x445f50 -- the append that builds
-    /// <see cref="GobBucket"/>. Called rather than written because the list GROWS: the count at <c>+8</c> against the
-    /// allocation at <c>+0xc</c> is the engine's bookkeeping, and a hand-rolled store past the allocation is a heap
-    /// overrun. Clear the count first, as <c>ClearBuckets</c> @0x47f4e0 does. ABI <c>(list /*rdi*/, Gob* /*rsi*/)</c>.</summary>
-    [Fn("void(IntPtr list, IntPtr gob)")]
-    public const string GobListAdd = "_ZN13CExoArrayListIP3GobE3AddES1_";
-
 
     // ---- the beam globals. Beams are NOT walked by Scene::RenderDrawBucket -- they live in
     //      DRAW BUCKET 15, which Scene::RenderBeams @0x46aba0 (vt+0x1d8) walks with its own program and its
@@ -1024,8 +924,8 @@ internal static unsafe class SymbolMap
     public const string ProjectionAlpha = "projectionalpha";
 
     // ---- what the simulation needs once Scene::DoEmitterBucket is no longer called ----
-    /// <summary><c>emitterbucket</c> @0x19abc00 -- the BSP walk's in-view emitter list, items at +0 and count at +8
-    /// like <see cref="GobBucket"/>. <c>Scene::DoEmitterBucket</c> @0x476f00 is its only engine reader; this is the
+    /// <summary><c>emitterbucket</c> @0x19abc00 -- the BSP walk's in-view emitter list, items at +0 and count at +8,
+    /// the engine's own list shape. <c>Scene::DoEmitterBucket</c> @0x476f00 is its only engine reader; this is the
     /// list <see cref="EmitterSim"/> walks in its place. Data symbol; read only, and already this frame's when the
     /// shim runs (<c>ManageSceneBSP</c> refills it first).</summary>
     public const string EmitterBucket = "emitterbucket";
@@ -1049,18 +949,6 @@ internal static unsafe class SymbolMap
     //      visible ones back-to-front, then calls each one's own render pointer, which funnels into
     //      PartEmitter::RenderEmitter. There is no bindable buffer: the vertex build is CPU-side into one
     //      SHARED VertexStreamDataObject, committed and drawn once per emitter.
-    /// <summary>PartEmitter::RenderEmitter() @0x4ad4c0 -- the whole per-emitter draw: 6 verts per particle (colour u32,
-    /// position vec3, uv vec2 -- 24-byte stride) into the shared stream object, one <c>glBufferSubData</c> and one
-    /// <c>glDrawArrays(GL_TRIANGLES, 0, 6N)</c>. Every Render* wrapper but <c>RenderNothing</c> funnels here, so it is
-    /// both the capture point and the per-emitter suppression point. ABI <c>(PartEmitter* /*rdi*/)</c>.</summary>
-    [Fn("void(PartEmitter this)")]
-    public const string RenderEmitter = "_ZN11PartEmitter13RenderEmitterEv";
-    /// <summary>PartEmitter::~PartEmitter() @0x4af890 (D1 and D2 share the address; the deleting D0 @0x4afa60
-    /// tail-calls it, and every emitter subclass's dtor reaches it). The owned replay reads a live Particle array off
-    /// the emitter a frame after the capture, so this is the death notice that must evict a captured emitter.
-    /// ABI <c>(PartEmitter* /*rdi*/)</c>.</summary>
-    [Fn("void(PartEmitter this)")]
-    public const string PartEmitterDtor = "_ZN11PartEmitterD2Ev";
     /// <summary>PartEmitter::GetTileAlpha() @0x4ac300 -- one of the two factors the engine folds into
     /// every particle's alpha. Called rather than reproduced. ABI: <c>(PartEmitter* /*rdi*/) -&gt; float</c>.
     /// </summary>
@@ -1080,15 +968,6 @@ internal static unsafe class SymbolMap
     /// ABI: <c>(MdlNodeEmitter* /*rdi*/) -&gt; bool</c>.</summary>
     [Fn("byte(MdlNodeEmitter this)")]
     public const string EmitterIsTinted = "_ZN14MdlNodeEmitter8IsTintedEv";
-    /// <summary>LightManager::GetEmitterLighting(Vector, List&lt;PartLight*&gt;*) @0x4c1970 -- the tint lookup, one call
-    /// per tinted emitter per frame. ABI off the call site at 0x4af130, not the decompiler: position in <c>xmm0</c>
-    /// (x, y) + <c>xmm1</c> (z), light list in <c>rdi</c>, a zero int in <c>esi</c>, and the colour back the same way,
-    /// <c>xmm0</c> (r, g) + <c>xmm1</c> (b) -- SysV's classification of a 12-byte three-float struct.</summary>
-    public const string GetEmitterLighting = "_ZN12LightManager18GetEmitterLightingE6VectorP4ListIP9PartLightE";
-    /// <summary>LightManager::GetLensFlareLights() @0x4c1d80 -- the list (items at +0, count at +8) of the frame's
-    /// candidate lights whose node has flare colour shifts; <c>Scene::RenderLensFlares</c> is its one consumer.</summary>
-    [Fn("IntPtr(LightManager this)")]
-    public const string GetLensFlareLights = "_ZN12LightManager18GetLensFlareLightsEv";
     /// <summary>The <c>currentscene</c> global @0x19ab950 -- <c>RenderEmitter</c> reads the tint's light list at
     /// <c>*currentscene + 0x158</c>. Read live at build time, like <see cref="Beams"/>'s own Scene: an area
     /// transition frees the list.</summary>
@@ -1135,11 +1014,6 @@ internal static unsafe class SymbolMap
     /// controller. ABI <c>(CAurTexture* /*rdi*/, uint unit /*esi*/, int frame /*edx*/)</c>; -1 = "ask the controller".</summary>
     [Fn("void(CAurTexture this, uint unit, int stage)")]
     public const string AurTextureBindInUnit = "_ZN11CAurTexture10BindInUnitEji";
-    /// <summary><c>CAurTexture::Bind(int)</c> @0x48e0f0 -- <see cref="AurTextureBindInUnit"/>'s twin on
-    /// the active unit, same resolution (vtable+0x18 then +0x10). Both are virtual and no subclass overrides either
-    /// (slots 33/34 of <c>CAurTexture</c> and <c>CAurTextureBasic</c> alike). ABI: <c>(CAurTexture* /*rdi*/, int frame /*esi*/)</c>.</summary>
-    [Fn("void(CAurTexture this, int stage)")]
-    public const string AurTextureBind = "_ZN11CAurTexture4BindEi";
     // ---- the grass site. Grass is NOT a draw-bucket resident -- Scene::RenderSinglePass calls
     //      Scene::DoBinBucket @0x474c50 (vt+0x1c0) under the engine's own Tracy scope "Grass", between the
     //      sky and RenderDynamicGeometry. That placement, plus a depth mask it never sets and a distance
@@ -1149,8 +1023,6 @@ internal static unsafe class SymbolMap
     /// list with no frustum culling. Skipped outright on the passes the owned grass drew, which is what
     /// retires the wind rewrite as well as the draw. ABI: <c>(Scene* /*rdi*/)</c>.</summary>
     // Not `Scene this`: the view method Scene.DoBinBucket() is the virtual call through its vtbl row.
-    [Fn("void(IntPtr scene)")]
-    public const string DoBinBucket = "_ZN5Scene11DoBinBucketEv";
     /// <summary>Scene::ReloadGrass() @0x469540 -- rebuilds every bin from the tile BSP (area load, grass
     /// option change, a server grass override). Every CAurTriangleBin and CAurTriangleList the owned pass
     /// captured is freed here, so it is the one signal that invalidates the whole capture.
@@ -1335,32 +1207,6 @@ internal static unsafe class SymbolMap
     /// <summary>Global <c>shadowalpha</c> @0x18aa17c (float) -- the shadow tint the day/night machine owns: area
     /// shadow opacity / 100, scaled to 0 across a transition's midpoint and to 40% during a lightning flash.</summary>
     public const string ShadowAlpha = "shadowalpha";
-    /// <summary>Scene::InitBSP(int w, int h, int border, bool, float cell) @0x46c330 (Scene vt+0x30) -- the
-    /// tile BSP covers <c>(w + 2*border) x (h + 2*border)</c> cells, and <c>SceneBSPGetTileData</c> CLAMPS a
-    /// position outside it onto the edge leaf (BSPFitSphere), so a wider ring needs a wider border here.
-    /// ABI: <c>(Scene* /*rdi*/, int /*esi*/, int /*edx*/, int /*ecx*/, bool /*r8b*/, float /*xmm0*/)</c>.</summary>
-    [Fn("void(Scene this, int width, int height, int depth, byte flag, float size)")]
-    public const string SceneInitBsp = "_ZN5Scene7InitBSPEiiibf";
-    /// <summary>Scene::SpawnTile(char const* model, Vector const&amp; pos, int orientation, int border, Quaternion*)
-    /// @0x474470 (Scene vt+0x38) -- every tile, real (border 0) or edge (border 1). Position is the tile centre,
-    /// <c>index*10+5</c>; returns the Gob*, null for an edge tile. ABI <c>(Scene* /*rdi*/, char* /*rsi*/,
-    /// Vector* /*rdx*/, int /*ecx*/, int /*r8d*/, Quaternion* /*r9*/) -> Gob*</c>.</summary>
-    [Fn("IntPtr(Scene this, byte* resref, System.Numerics.Vector3* pos, int id, int orientation, IntPtr rot)")]
-    public const string SceneSpawnTile = "_ZN5Scene9SpawnTileEPKcRK6VectoriiP10Quaternion";
-    /// <summary>Scene::DeleteTile(Vector const&amp;) @0x4636a0 (Scene vt+0x58). Dereferences the tile data at
-    /// the position UNGUARDED (its neighbour unlink reads <c>tile+0xb8</c>), so never call it where
-    /// <see cref="SceneBspGetTileData"/> is null. ABI: <c>(Scene* /*rdi*/, Vector* /*rsi*/)</c>.</summary>
-    [Fn("void(Scene this, System.Numerics.Vector3* pos)")]
-    public const string SceneDeleteTile = "_ZN5Scene10DeleteTileERK6Vector";
-    /// <summary>SceneBSPGetTileData(Scene*, Vector const&amp;) @0x47b480 -- the TileData* at a position, or
-    /// null. ABI: <c>(Scene* /*rdi*/, Vector* /*rsi*/) -> TileData*</c>.</summary>
-    [Fn("TileData(Scene this, System.Numerics.Vector3* pos)")]
-    public const string SceneBspGetTileData = "_Z19SceneBSPGetTileDataP5SceneRK6Vector";
-    /// <summary>GLRender::GetPool(uint) @0x4cfb70 -- the pool's HOST shadow pointer (descriptor +0), a plain
-    /// table read with no lock/unlock side effect. What <c>RenderInterface::LockPool(pool, 0, 0, 8)</c>
-    /// hands the engine's own grass binning, minus the lock byte. ABI: <c>(uint /*edi*/) -> void*</c>.</summary>
-    [Fn("byte*(uint token)")]
-    public const string GlGetPool = "_ZN8GLRender7GetPoolEj";
     /// <summary>Global <c>g_GrassInfo</c> @0x19acc90 -- <c>List&lt;CAurGrassInfo&gt;</c>: element pointer at
     /// +0, count at +8. One 0x54-byte record per grass material (name, density, height, diffuse, ambient,
     /// four atlas probabilities). Filled from the tileset's <c>.set</c> and from per-area / server
@@ -1391,11 +1237,6 @@ internal static unsafe class SymbolMap
     /// vtable's function-pointer area, 0x10 past the symbol, in the object's first word.</summary>
     public const string PartDanglyMeshVtbl = "_ZTV14PartDanglyMesh";
 
-    /// <summary><c>PartDanglyMesh::Animate(float)</c> @0x49bbb0 -- vtable slot 27 (+0xd8), the per-frame
-    /// dangly SOLVE. Separate from the draw, which is why Alloy's M4 draw takeover never froze the sway.
-    /// Chained, not installed: the whole point is to replace the integrator inside it.</summary>
-    [Fn("void(IntPtr part, float dt)")]
-    public const string PartDanglyAnimate = "_ZN14PartDanglyMesh7AnimateEf";
     /// <summary><c>Scene::GetWindVector(Vector const&amp;, float)</c> @0x460c60 -- the AREA's wind at a world position:
     /// it forwards to <c>WindManager::GetGlobalWind</c> @0x490ab0 (<c>base * noiseBlend + pointSources</c>). Reading
     /// <c>WindManager+0x20</c> is not equivalent -- only <c>setglobalwind</c> writes it, so in play all wind is point
@@ -1411,59 +1252,11 @@ internal static unsafe class SymbolMap
     /// record, unlinking the SafePointer a previous hit left in it.</summary>
     [Fn("void(CHitInfo this, int mode, long flags, int box)")]
     public const string HitInfoReset = "_ZN8CHitInfo5ResetEili";
-    /// <summary><c>Part::Animate(float)</c> @0x49ad00 -- walks the part's children (Part+0x38 pointer,
-    /// Part+0x40 count) and calls +0xd8 on each. The dangly solve TAIL-CALLS it, so a replacement that
-    /// skips the original must call it or the whole subtree freezes.</summary>
-    [Fn("void(IntPtr part, float dt)")]
-    public const string PartAnimate = "_ZN4Part7AnimateEf";
-    /// <summary><c>PartEmitter::Animate(float)</c> @0x4b3310 -- an IDENTITY, not a call target. It is a pure
-    /// tail-jump into <see cref="PartAnimate"/> (<c>push rbp; mov rbp,rsp; pop rbp; jmp 0x49ad00</c>), so a
-    /// walk that owns the recursion may treat an emitter part exactly as a plain one instead of dispatching
-    /// through it. Resolved so the owned walk can tell it apart from an override it does not know.</summary>
-    public const string PartEmitterAnimate = "_ZN11PartEmitter7AnimateEf";
-    /// <summary><c>AnimateStaticLight(CAurObject*, char const*, void*)</c> @0x47d820 -- an IDENTITY: the one handler
-    /// <c>ProcessStaticObject</c> @0x4619e0 registers for that event name, and it is <c>UpdateStaticLighting</c>
-    /// @0x47d6a0, whose whole output is the <c>staticlightbucket</c> only <c>ManageSceneBSP</c> drains. Resolved so
-    /// "is the registered handler THIS function" is a pointer compare.</summary>
-    public const string AnimateStaticLight = "_Z18AnimateStaticLightP10CAurObjectPKcPv";
-    /// <summary><c>VertexPrimitiveDangly::GenerateVelocityArray()</c> @0x45ad70 -- allocates the zeroed
-    /// <c>verts*12</c> velocity array at <c>+0xa0</c>, lazily, on the first Animate. A replacement that
-    /// never calls the original has to drive this itself or the array is never born.</summary>
-    [Fn("void(IntPtr vp)")]
-    public const string VertexPrimGenVelocity = "_ZN21VertexPrimitiveDangly21GenerateVelocityArrayEv";
-    /// <summary><c>VertexDataObject::GetItemDynamicData(uint)</c> @0x45c6c0 -- the host shadow of one item's
-    /// DYNAMIC vertex fork, stride 12, which is where dangly writes its deformed positions AND where it
-    /// reads last frame's back. Both the state and the output live here.</summary>
-    [Fn("byte*(IntPtr vdo, uint item)")]
-    public const string VdoGetItemDynamicData = "_ZN16VertexDataObject18GetItemDynamicDataEj";
     /// <summary><c>VertexDataObject::CommitItemDynamicData(uint, uint)</c> @0x45c7d0 -- funnels into
     /// <c>GLRender::UnlockPool</c>, which Alloy owns and which raises the dirty bit the caster re-bake reads.
     /// Writing the verts is not enough; this is what publishes them.</summary>
     [Fn("void(IntPtr vdo, uint item, uint flags)")]
     public const string VdoCommitItemDynamicData = "_ZN16VertexDataObject21CommitItemDynamicDataEjj";
-    /// <summary><c>PartSkin</c>'s vtable, the same kind of identity as <see cref="PartDanglyMeshVtbl"/>. The scene walk
-    /// records a part without entering its draw, so "this is a true skinmesh" is a vtable compare, not something read
-    /// off a <c>PartSkin::Draw</c> window.</summary>
-    public const string PartSkinVtbl = "_ZTV8PartSkin";
-    /// <summary><c>Scene::Sequence</c> @0x18aa1b0 -- the global scene-membership epoch, bumped by
-    /// <c>Gob::SetScene</c> @0x43e020 on every join and leave, in ANY scene. One int load per frame is the whole
-    /// maintenance signal for the enumerated record set (ADR 0018: re-read, never infer). Global, so a GUI 3D
-    /// panel bumps it too.</summary>
-    public const string SceneSequence = "_ZN5Scene8SequenceE";
-    /// <summary><c>Scene::geomFadeEnabled</c> @0x18aa19c -- the "Hide second-story tiles" option as the tile fade
-    /// reads it: <c>graphics.second-story-tiles.mode</c> (0/1/2, default 1) arrives through
-    /// <c>Scene::SetGeomFadeProperties</c> @0x45e1d0 as 1 (automatic), 2 (never) and 4 (always). Data symbol;
-    /// read only.</summary>
-    public const string GeomFadeEnabled = "_ZN5Scene15geomFadeEnabledE";
-    /// <summary><c>countpart</c> @0x18da6b8 -- the engine's own live-part census, incremented in <c>Part::Part</c> and
-    /// decremented in <c>Part::~Part</c>. It counts every <c>Part</c> in every scene (GUI panels included), so it is
-    /// an upper bound on the walk, never an equality.</summary>
-    public const string CountPart = "countpart";
-    /// <summary><c>BSPTraverse(BSPNode*, void(*)(BSPNode*, void*), void*)</c> @0x5b22c0 -- the UNCULLED variant (the
-    /// other two take a camera position or a plane list), visiting <c>node+0x10</c> then iterating <c>node+0x18</c>.
-    /// Tile geometry has no owning gob, so this is the only route to it independent of what the camera sees.</summary>
-    [Fn("void(IntPtr root, IntPtr visit, IntPtr user)")]
-    public const string BspTraverse = "_Z11BSPTraverseP7BSPNodePFvS0_PvES1_";
         /// <summary>Material::HasEnvMap @0x43d1a0-ish -- env-mapped parts take RenderEnvironmentMapped, not
     /// RenderFlat; excluded from batching.</summary>
     [Fn("byte(IntPtr mat)")]
@@ -1496,31 +1289,12 @@ internal static unsafe class SymbolMap
     /// with <see cref="LoadTexture"/>.</summary>
     [Fn("void(IntPtr tex)")]
     public const string AurTextureRelease = "_Z17AurTextureReleaseP11CAurTexture";
-    /// <summary>Part::~Part() @0x437720 (D1 and D2 share the address) -- the BASE destructor every part class
-    /// tail-jumps to: PartSkin and PartDanglyMesh jump to PartTriMesh::~PartTriMesh, which jumps here with
-    /// <c>this</c> unchanged (no thunk adjust). The one event that says a recorded part is GONE -- without it the
-    /// part table keeps the pointer and the owned pass chases it into freed memory.</summary>
-    [Fn("void(IntPtr part)")]
-    public const string PartDtor = "_ZN4PartD2Ev";
-    /// <summary>Diagnostic: <c>Gob::Append(char const*, char const*)</c> @0x4422a0 (model, attach node) and
-    /// <c>Gob::Amputate(char const*)</c> @0x443fa0 -- the equipment-swap pair, logged cold to say whether a swap
-    /// amputates what it appended. Linux-only: no Windows anchor derived (skip + log there).</summary>
-    [Fn("int(IntPtr gob, IntPtr model, IntPtr node)")]
-    public const string GobAppend = "_ZN3Gob6AppendEPKcS1_";
-    [Fn("int(IntPtr gob, IntPtr node)")]
-    public const string GobAmputate = "_ZN3Gob8AmputateEPKc";
-    /// <summary><c>Gob::SetScene(Scene*)</c> @0x43e020 -- the SOLE writer of <see cref="SceneSequence"/>, the engine's
+    /// <summary><c>Gob::SetScene(Scene*)</c> @0x43e020 -- the SOLE writer of <c>sceneseq</c>, the engine's
     /// global scene-membership epoch (the only other reference to that global is <c>ManageSceneBSP</c>'s read). It
     /// bumps only when <c>gob+0x88</c> actually changes and has the gob and BOTH scenes in hand, which lets
     /// <see cref="CX.Alloy.SceneWalk"/> answer a membership change with one gob's tree, not the whole area's.</summary>
     [Fn("void(IntPtr gob, IntPtr scene)")]
     public const string GobSetScene = "_ZN3Gob8SetSceneEP5Scene";
-    /// <summary><c>Gob::SetSubtreeEnabled(char const*, int)</c> @0x43c670 -- the sole DYNAMIC writer of
-    /// <c>part+0x34</c>, the engine's own draw gate: it finds the part in <c>Gob+0x90</c> (the ACTIVE tree, so the gob
-    /// is the unit to re-walk) and stores the byte, with no epoch bump and no part created or destroyed. Hiding a
-    /// subtree announces itself nowhere else, so without this hook a hidden part draws until a full walk runs.</summary>
-    [Fn("byte(IntPtr gob, IntPtr name, int on)")]
-    public const string GobSetSubtreeEnabled = "_ZN3Gob17SetSubtreeEnabledEPKci";
     /// <summary>VertexDataObject::Repack() @0x45c270 -- compacts tombstoned items (RemoveItem only zeroes
     /// sizes), MOVING the surviving items' indices and offsets. Triggered by AddItem on fragmentation, so
     /// streaming fires it mid-play; every batch member of that VDO must recapture its item.</summary>
@@ -1564,11 +1338,6 @@ internal static unsafe class SymbolMap
     /// binds engine geometry through this so the cache never desyncs; null unbinds to the default VAO.</summary>
     [Fn("void(IntPtr vdo)")]
     public const string GlSetVertexDataObject = "_ZN8GLRender19SetVertexDataObjectEP16VertexDataObject";
-    /// <summary>GLRender::m_nArrayBufferBound @0x19e30e4 -- the shadow copy of the ARRAY_BUFFER binding that
-    /// <c>GLRender::BindBuffer</c> @0x4d04a0 early-outs against. Written, not read: Alloy binds that target with raw
-    /// GL, so the shadow must be made truthful before any call back into engine code that binds an array buffer, or
-    /// the engine skips a bind and the following <c>glVertexAttribPointer</c> captures Alloy's buffer.</summary>
-    public const string GlArrayBufferBound = "_ZN8GLRender19m_nArrayBufferBoundE";
     /// <summary>primTypeTranslationTable @0x12f50e0 (R) -- AuroraPrimitiveTypes -> GLenum table indexed by
     /// the prim id RenderVertexData receives.</summary>
     public const string PrimTypeTranslationTable = "primTypeTranslationTable";
@@ -1599,35 +1368,10 @@ internal static unsafe class SymbolMap
     /// <summary>GLRender::m_globalShaderConstantsv4 @0x19af780 (B) -- 17 Vector4 entries. [0..15] are the
     /// scriptable vec4s and [16] is <c>targetShapeColour</c> (SetUniforms slot 0x1edc &lt;- +0x100).</summary>
     public const string GlGlobalShaderConstantsV4 = "_ZN8GLRender25m_globalShaderConstantsv4E";
-    /// <summary>RenderInterface::SetMatrixMode(AuroraTransStates) @0x45cd50 -- selects the matrix stack the
-    /// subsequent LoadMatrixIdentity/MultMatrix/SetOrtho/SetPerspective operate on. Enum: PROJECTION=0, VIEW=1
-    /// (from Camera::RenderScene's <c>xor edi,edi</c> before SetPerspective, and SetViewTransform's edi=1).</summary>
-    public const string SetMatrixMode = "_ZN15RenderInterface13SetMatrixModeEN6Aurora17AuroraTransStatesE";
-    /// <summary>RenderInterface::LoadMatrixIdentity() @0x45d0d0 -- reset the current matrix stack.</summary>
-    public const string LoadMatrixIdentity = "_ZN15RenderInterface18LoadMatrixIdentityEv";
-    /// <summary>RenderInterface::MultMatrix(float*) @0x45cd60 -- multiply the current stack by a row-major
-    /// float[16] (the layout MakeMatrix4x4 writes; == System.Numerics.Matrix4x4 memory order).</summary>
-    public const string MultMatrix = "_ZN15RenderInterface10MultMatrixEPf";
-    /// <summary>RenderInterface::PushCurrentMatrix() @0x45cd30 -- duplicate the current stack's top, so a modify
-    /// + PopCurrentMatrix restores the EXACT engine matrix (no captured-param staleness). Engine's own
-    /// RenderDrawBucket brackets its draws with this pair.</summary>
-    public const string PushCurrentMatrix = "_ZN15RenderInterface17PushCurrentMatrixEv";
-    /// <summary>RenderInterface::PopCurrentMatrix() @0x45cd20 -- pop back to the pushed matrix.</summary>
-    public const string PopCurrentMatrix = "_ZN15RenderInterface16PopCurrentMatrixEv";
-    /// <summary>GLRender::FlagCurrentTransformDirty() @0x4c8cc0 -- bump uniform_dirty_seq so the next draw
-    /// re-uploads the (restored) matrices. STATIC (no this). Called after the pops.</summary>
-    public const string FlagCurrentTransformDirty = "_ZN8GLRender25FlagCurrentTransformDirtyEv";
-    /// <summary>GLRender::SetModelMatrix(const Matrix4x4&amp;) @0x4c9360 -- STATIC (no this): rdi = a raw row-major
-    /// float[16] model matrix (the layout MultMatrix/MakeMatrix4x4 use). Translation at floats [12,13,14]. Hooked
-    /// (call-through) so the cube pass can read each caster part's world position and sphere-cull it per light.</summary>
-    public const string SetModelMatrix = "_ZN8GLRender14SetModelMatrixERK9Matrix4x4";
     /// <summary>Global <c>g_nEnableBumpyWater</c> @0x19ace10 (B) -- the int
     /// <c>Scene::AddPartsTreeToDrawBuckets</c> @0x460880 ANDs with <c>Material::HasBumpyShinyMap</c> before
     /// routing a part to draw bucket 6. Data symbol; read, never write.</summary>
     public const string EnableBumpyWater = "g_nEnableBumpyWater";
-    /// <summary>RenderInterface::SetModelMatrix(const Matrix4x4&amp;) @0x45d150 -- the cache-coherent front door
-    /// (forwards to GLRender::SetModelMatrix). The lean bucket walker uses this per kept caster.</summary>
-    public const string RiSetModelMatrix = "_ZN15RenderInterface14SetModelMatrixERK9Matrix4x4";
 
     // hosting the engine's own compiled program for a draw Alloy issues. GLRender::SetProgram
     // @0x4cf940 is called from INSIDE RenderVertexData @0x4d05c5 -- the funnel the M4 shim swallows -- so
@@ -1636,15 +1380,6 @@ internal static unsafe class SymbolMap
     /// <summary><c>GLRender::m_pCurrentCustomProgram</c> @0x19af680 (B) -- the PROG_FIXED the material bind
     /// left current. The GL program id is the uint at <c>+0x64</c>, exactly as SetProgram reads it.</summary>
     public const string GlCurrentCustomProgram = "_ZN8GLRender23m_pCurrentCustomProgramE";
-    /// <summary><c>GLRender::SetUniforms(PROG_FIXED&amp;)</c> @0x4ccbf0 -- uploads the whole engine uniform
-    /// set (matrices from <c>m_aurMtxStack</c>, the global constant tables, the runtime block) into that
-    /// program. ENGINE CONTEXT ONLY: see SkyBox.NoteEngineDraw.</summary>
-    [Fn("void(IntPtr prog)")]
-    public const string GlSetUniforms = "_ZN8GLRender11SetUniformsERNS_10PROG_FIXEDE";
-    /// <summary><c>GLRender::GlUseProgramConditionally(unsigned int)</c> @0x4ce8b0 -- glUseProgram behind the
-    /// engine's own current-program cache. Called on the engine side so that cache stays true.</summary>
-    [Fn("void(uint program)")]
-    public const string GlUseProgramConditionally = "_ZN8GLRender25GlUseProgramConditionallyEj";
     /// <summary>Global shader param scalar getter -- param 0x12 is the light-radius multiplier
     /// GetLightAdjustedRadius applies (adjR = range * intensity * overbright * this).</summary>
     [Fn("float(uint param)")]
@@ -1679,59 +1414,6 @@ internal static unsafe class SymbolMap
     /// only copies it into global float param 1 inside Camera::InitializeFrameBufferResources, which lives in
     /// the Scene::RenderSinglePass loop Alloy replaced, so under Alloy that param stays 0.</summary>
     public const string SsaoIntensity = "ssao_intensity";
-    /// <summary>GetLightAdjustedRadius(PartLight const*) @0x4c0c10 -- the engine's own lit radius:
-    /// <c>range * intensity</c>, times the max colour channel when that exceeds 1, times the global radius
-    /// multiplier (param 0x12). Returns the raw range unchanged for a directional light (range &gt;= 1000).
-    /// Called rather than re-derived. ABI: <c>(PartLight* /*rdi*/) -&gt; float /*xmm0*/</c>.</summary>
-    [Fn("float(IntPtr light)")]
-    public const string GetLightAdjustedRadius = "_Z22GetLightAdjustedRadiusPK9PartLight";
-    /// <summary><c>GetLightFadeSpeed(PartLight const*)</c> @0x4c0cb0 -- how fast one light's weight travels, in weight
-    /// per second: <c>m = maxChannel(GetLightAdjustedColor) * GetLightAdjustedRadius</c>, then <c>m &lt; 1 -&gt; 10</c>,
-    /// <c>m &gt; 10 -&gt; 1</c>, else <c>10 / m</c> (off the disassembly; the decompiler drops the third channel).
-    /// Called, not transcribed, so the overbright curve has one copy. ABI <c>(PartLight* /*rdi*/) -&gt; float</c>.</summary>
-    [Fn("float(IntPtr light)")]
-    public const string GetLightFadeSpeed = "_Z17GetLightFadeSpeedPK9PartLight";
-    /// <summary><c>GetIsLightInViewVolume(PartLight const*)</c> @0x4c0d30 -- the frustum test that decides whether an
-    /// unlit light fades out gracefully or snaps to zero: sphere-vs-plane over <c>CurrentCamera+0x4e8</c>/<c>+0x4f0</c>
-    /// with a fog-end special case on plane 1, always true for a directional (adjusted radius &gt;= 1000). Not pure --
-    /// it memoises the last rejecting plane index in a global. ABI <c>(PartLight* /*rdi*/) -&gt; bool</c>.</summary>
-    [Fn("byte(IntPtr light)")]
-    public const string GetIsLightInViewVolume = "_Z22GetIsLightInViewVolumePK9PartLight";
-    /// <summary><c>LightManager::GetMaxLights()</c> @0x4c15d0 -- <c>min(m_nMaxLights, 128)</c>, the cap on how many
-    /// lights may be lit at once. Static, no <c>this</c>.</summary>
-    [Fn("int()")]
-    public const string LightMgrGetMaxLights = "_ZN12LightManager12GetMaxLightsEv";
-
-    // ---- the three LightManager steps ManageSceneBSP @0x47fa80 makes around its BSP walk
-    //      (vtable +0x38, +0x40 then +0x10, decompiled at _global.c:809916/809917/809988). Under
-    //      alloy.skipbuckets=3 that walk does not run, so CX.Alloy.ScenePrep makes them itself, in the
-    //      engine's order. Called DIRECTLY and not through the vtable: _ZTV12LightManager is the only
-    //      LightManager vtable in the binary (no derived class), so the concrete function IS what the
-    //      vcall dispatches to. All three are name-exported on both builds.
-    /// <summary><c>LightManager::UpdateLights()</c> @0x4c06c0 -- walks the master light list, refreshes every
-    /// <c>PartLight</c>'s WORLD position (<c>+0xac</c>) through <c>Part::GetWorld</c>, then re-picks the area diffuse
-    /// (<c>LightManager+0x98</c>) and ambient (<c>+0xa0</c>). The only per-frame writer of <c>+0xac</c>, which Alloy
-    /// reads as <c>light.Pos</c>, so it is CALLED, never skipped. ABI <c>(LightManager* /*rdi*/)</c>.</summary>
-    [Fn("void(LightManager this)")]
-    public const string LightMgrUpdateLights = "_ZN12LightManager12UpdateLightsEv";
-    /// <summary><c>LightManager::SetupLightsForThisPositionAndRadius(Vector const&amp;, float)</c> @0x4c1df0 -- refills
-    /// the per-frame candidate list (<c>LightManager+0x40</c>/<c>+0x48</c>) with the master lights that are enabled,
-    /// coloured, positive-intensity, under range 1000 and within <c>GetLightAdjustedRadius + radius</c> of the point.
-    /// Nothing calls it -- Alloy enumerates the scene database; the declaration records the list's layout.</summary>
-    [Fn("void(LightManager this, IntPtr pos, float radius)")]
-    public const string LightMgrSetupLights = "_ZN12LightManager35SetupLightsForThisPositionAndRadiusERK6Vectorf";
-    /// <summary><c>LightManager::PrioritizeLights(Vector const&amp;)</c> @0x4c0940 -- scores each candidate
-    /// (<c>PartLight+0x98</c> distance, <c>+0x9c</c> score), sorts the candidate list by it and rebuilds the shadow
-    /// list <c>LightManager+0x50</c>/<c>+0x58</c>. Alloy's own cap and score replace the ordering, but it is still
-    /// called: the shadow list is what <c>BSPCreateStaticProjections</c> reads on the area-load bake.</summary>
-    [Fn("void(LightManager this, IntPtr pos)")]
-    public const string LightMgrPrioritizeLights = "_ZN12LightManager16PrioritizeLightsERK6Vector";
-    /// <summary>GLRender::m_nCurrentMatrix @0x19e30d0 -- the selected matrix-stack index; saved/restored around
-    /// the pass so we leave the engine's active matrix mode as we found it. Data symbol (read/write int).</summary>
-    public const string MCurrentMatrix = "_ZN8GLRender16m_nCurrentMatrixE";
-    /// <summary>RenderInterface::SetOrthoTransform(l,r,b,t,n,f doubles) @0x45d0f0 -- ortho into the current
-    /// (PROJECTION) stack via aurMatrixStack::Orthographic (glOrtho arg order).</summary>
-    public const string SetOrthoTransform = "_ZN15RenderInterface17SetOrthoTransformEdddddd";
 
     // ---- the deleted shadow-map caster re-walk and its four symbols --
     //      ManageSceneBSP, AddPartToMeshBuckets, BSPTraverse (sphere) and CExoArrayList<Gob*>::Add. All of it
@@ -1861,41 +1543,6 @@ internal static unsafe class SymbolMap
     // ---- the owned animation runtime ----
     // Every symbol in this block is NAME-EXPORTED by nwmain.exe, so the block carries no RVA row.
 
-    /// <summary><c>Scene::Animate(float dt)</c> @0x469810 -- the whole per-frame animation walk: latch the
-    /// <c>currentscene</c> global, dispatch <see cref="EngineLayout.GobAnimateSlot"/> over <c>Scene+0x130</c> from the
-    /// END of the list forward, clear the latch. Virtual (Scene vtbl +0x28 / Windows +0x20) with one implementation, so
-    /// the symbol catches every caller: one call per scene view, plus <c>CGuiPanel::AnimateScene</c>'s ad-hoc ones.</summary>
-    [Fn("void(Scene this, float dt)")]
-    public const string SceneAnimate = "_ZN5Scene7AnimateEf";
-    /// <summary><c>NewController::GetFloatValue(float t, MdlNode*, float&amp;)</c> @0x498480 -- a scalar track's value.
-    /// The owned runtime evaluates linear tracks itself and calls this only for a BEZIER one, whose control-point
-    /// arithmetic differs from the vector overload's in a way that looks like an engine bug: reproducing it is risk.</summary>
-    [Fn("int(NewController self, float t, IntPtr node, float* v)")]
-    public const string CtrlGetFloat = "_ZN13NewController13GetFloatValueEfP7MdlNodeRf";
-    /// <summary><c>NewController::ReportKeys(Part*, MdlNode*, float from, float to)</c> @0x498b20 -- the
-    /// per-key TRACE channel, run after every controller of a node while <c>AnimRun::m_pTraceRun</c> is set
-    /// (<c>AnimRun</c> flag 0x100 only). It reaches game code through <c>DoEvent("ReportKey", ...)</c>, so
-    /// the owned runtime calls the engine's own rather than port a path nothing in ordinary play arms.</summary>
-    [Fn("void(NewController self, IntPtr part, IntPtr node, float from, float to)")]
-    public const string CtrlReportKeys = "_ZN13NewController10ReportKeysEP4PartP7MdlNodeff";
-    /// <summary><c>PartEmitter::CalculateRadius()</c> @0x4ac350 -- what
-    /// <c>MdlNodeEmitter::InternalControl</c> does AFTER its controller pass, and the only work any of the
-    /// six subclass controllers adds beyond a discarded type check.</summary>
-    [Fn("void(IntPtr emitter)")]
-    public const string EmitterCalcRadius = "_ZN11PartEmitter15CalculateRadiusEv";
-    /// <summary><c>CExoArrayList&lt;AnimRun*&gt;::Remove(AnimRun*)</c> @0x49f290 -- linear find then
-    /// <c>DelIndex</c>; order-preserving. The owned queue advance removes exactly where the engine does.</summary>
-    [Fn("void(IntPtr list, IntPtr run)")]
-    public const string AnimRunListRemove = "_ZN13CExoArrayListIP7AnimRunE6RemoveES1_";
-    /// <summary><c>CExoArrayList&lt;AnimRun*&gt;::DelIndex(int)</c> @0x49f240 -- the look-at teardown's
-    /// removal, which unlinks WITHOUT freeing the run.</summary>
-    [Fn("void(IntPtr list, int index)")]
-    public const string AnimRunListDelIndex = "_ZN13CExoArrayListIP7AnimRunE8DelIndexEi";
-    /// <summary><c>CExoArrayList&lt;SafePointer&lt;CAurObject&gt;*&gt;::Add</c> @0x49f3f0 -- registers the
-    /// death notice <c>Gob::Animate</c> takes on itself before it runs any game code. Called rather than
-    /// reimplemented because the growth path is the engine's allocator.</summary>
-    [Fn("void(IntPtr list, IntPtr safePointer)")]
-    public const string SafePointerAdd = "_ZN13CExoArrayListIP11SafePointerI10CAurObjectEE3AddES3_";
     /// <summary><c>CNWCAnimBase::GetAnimationName(ushort)</c> @0x9ccd80 -- a creature's anim id to its animation name
     /// (vtable +0x60), then <c>GetAnimationReplace</c>; <c>SetAnimation</c>, <c>GetAnimationLength</c> and
     /// <c>GetAnimationTime</c> all resolve through it, so an id swapped here swaps the length and pacing too. Returns a
@@ -1908,11 +1555,6 @@ internal static unsafe class SymbolMap
     /// /*rdx*/, Vector /*xmm0 = (x,y), xmm1 = z*/, CExoString* /*rcx*/)</c>; Win64 passes both aggregates as pointers.</summary>
     [Fn("void(CNWCCreature this, byte flag, IntPtr attackData, VectorArg push, IntPtr text)")]
     public const string SpawnHitVisuals = "_ZN12CNWCCreature15SpawnHitVisualsEhP20CNWCCombatAttackData6Vector10CExoString";
-
-    /// <summary>Camera::GetCanKeyholeDissolve(PartTriMesh*) @ (member) -- returns whether a caster keyhole-
-    /// dissolves (the camera-relative aperture around the PC). Hooked to return 0 during the depth pass so
-    /// casters aren't punched out of the shadow map. ABI: <c>(Camera* /*rdi*/, PartTriMesh* /*rsi*/) -> bool</c>.</summary>
-    public const string GetCanKeyholeDissolve = "_ZN6Camera21GetCanKeyholeDissolveEPK11PartTriMesh";
 
     // Aurora texture manager: get a portrait as an engine-resident GL texture. AurTextureGet(name,
     // NULL, NULL, NULL, 0, false) loads/caches a CAurTexture*; AurTextureGetTID(tex) returns its GL
@@ -2245,17 +1887,9 @@ internal static unsafe class SymbolMap
     /// does not. Windows: name-exported <c>?Lerped@LerpFloat@@QEBAMXZ</c>.</summary>
     [Fn("float(LerpFloat this)")]
     public const string LerpFloatLerped = "_ZNK9LerpFloat6LerpedEv";
-    /// <summary><c>Gob::SetLODModel()</c> @0x43e6a0 -- rotates a gob's three part-tree roots
-    /// (<c>gob+0x90/0x98/0xa0</c>) and their three <c>Model*</c> (<c>gob+0x68/0x70/0x78</c>) so the ACTIVE pair is at
-    /// <c>+0x90</c>/<c>+0x68</c>, writes <see cref="EngineLayout.GobLodLevel"/>, calls <c>Gob::Reset</c> and sets
-    /// <see cref="EngineLayout.GobGeomDirty"/>. Hooked to choose the level and to learn the swap edge.</summary>
-    [Fn("void(Gob this)")]
-    public const string GobSetLODModel = "_ZN3Gob11SetLODModelEv";
-    /// <summary><c>g_bEnableLOD</c> @0x18aa148 (int) and <c>g_fLODScaleFactor</c> @0x18aa14c (float) --
-    /// the two globals <c>Gob::SetLODModel</c> reads. Alloy's chooser honours both, so the console variables
-    /// keep meaning what they say. Data symbols; read only.</summary>
-    public const string EnableLod = "g_bEnableLOD";
-    /// <inheritdoc cref="EnableLod"/>
+    /// <summary><c>g_fLODScaleFactor</c> @0x18aa14c (float) -- the LOD switch-distance multiplier
+    /// <c>Gob::SetLODModel</c> reads. Alloy's chooser honours it, so the console variable keeps meaning what
+    /// it says. Data symbol; read only.</summary>
     public const string LodScaleFactor = "g_fLODScaleFactor";
 
     /// <summary>The BSP visit callback's per-frame tile-part lists. meshbuckets/fadebuckets are
@@ -2628,8 +2262,8 @@ internal static unsafe class SymbolMap
     public const string InvSetInventoryVisible = "_ZN15CPanelInventory19SetInventoryVisibleEiij";
     /// <summary><c>CPanelInventory::SetCharacterData(uint oid)</c> @0x68d810 (Windows rva 0x856fa0) -- fills the five
     /// labels (name, gold, weight, max weight, AC) from the creature. Safe on a HIDDEN panel: it reads no visibility
-    /// field, registers no popup, sends nothing and allocates no widget. Pass ONLY the player's own id -- it writes
-    /// <see cref="EngineLayout.InvIsMine"/> = 1, and a FOREIGN oid permanently strips the gold widgets off the panel.</summary>
+    /// field, registers no popup, sends nothing and allocates no widget. Pass ONLY the player's own id -- a FOREIGN
+    /// oid clears the panel's "this is mine" flag and permanently strips the gold widgets off it.</summary>
     [Fn("void(CPanelInventory this, uint oid)")]
     public const string InvSetCharacterData = "_ZN15CPanelInventory16SetCharacterDataEj";
     /// <summary><c>GameCameraHitCheck(int x, int y, Vector* out, CHitInfo* info)</c> @0x63a270 (Windows rva 0x6d7f50) -- the
@@ -2761,8 +2395,8 @@ internal static unsafe class SymbolMap
     /// drops the "put into" submenu. So 1 = a backpack cell and 3 = an equip slot. The menu places itself.</summary>
     [Fn("void(CNWCItem this, int flags)")]
     public const string ItemActivateRadialMenu = "_ZN8CNWCItem18ActivateRadialMenuEi";
-    /// <summary><c>CNWCItem::GetName(int useCustom)</c> @0x7ce810 (Windows rva 0x83d8a0) -- the custom name
-    /// (<see cref="EngineLayout.ItemCustomName"/>) on an identified item, else TLK[<c>baseItem-&gt;nameStrRef</c>],
+    /// <summary><c>CNWCItem::GetName(int useCustom)</c> @0x7ce810 (Windows rva 0x83d8a0) -- the item's custom
+    /// name on an identified item, else TLK[<c>baseItem-&gt;nameStrRef</c>],
     /// prefixed with TLK[0x15ac] when unidentified. Returns a <c>CExoString</c> BY VALUE, so <b>sret</b>: Itanium
     /// <c>(out, this, int)</c>, Win64 <c>(this, out, int)</c>, buffer the CALLER's (<see cref="ExoStringDtor"/>).</summary>
     [Fn("sret(CNWCItem this, int useCustom)")]
@@ -2913,22 +2547,6 @@ internal static unsafe class SymbolMap
     [Fn("int(IntPtr self, float dt)")]
     public const string CameraOnAStickControl = "_ZN26CAurBehaviorCameraOnAStick7ControlEf";
 
-    /// <summary><c>CExoArrayList&lt;SafePointer&lt;CAurObject&gt;*&gt;::Add</c> @0x49f3f0 -- appends one weak reference
-    /// to an object's back-reference list (<c>CAurObject+0x08</c>), growing 0 -&gt; 16 -&gt; 2n through the ENGINE's
-    /// allocator, so the allocation is never the GC's. Every solver registers a stack <c>SafePointer</c> on its owner,
-    /// which is what makes an owner destroyed inside a dependency's <c>Animate</c> survivable.</summary>
-    [Fn("void(IntPtr list, IntPtr safePointer)")]
-    public const string SafePtrListAdd = "_ZN13CExoArrayListIP11SafePointerI10CAurObjectEE3AddES3_";
-    /// <summary><c>Camera::SetViewPort(float x, float y, float w, float h)</c> @0x4a38a0 -- what the
-    /// subwindow solver writes. Virtual, but the only implementation in either image, so it is called by
-    /// symbol rather than through a vtable slot nobody has measured.</summary>
-    [Fn("void(IntPtr camera, float x, float y, float w, float h)")]
-    public const string CameraSetViewPort = "_ZN6Camera11SetViewPortEffff";
-    /// <summary><c>Scene::GetObject(char const*)</c> @0x45e880 -- the by-name lookup the subwindow solver
-    /// uses to find <c>cameraGUI_pnl_chr_genm1</c>. Virtual with one implementation in either image.</summary>
-    [Fn("IntPtr(IntPtr scene, byte* name)")]
-    public const string SceneGetObject = "_ZN5Scene9GetObjectEPKc";
-
     // ---- the seam's three scene-shaped free functions CX answers for ----
 
     /// <summary><c>NewCAurScene(char const*)</c> @0x472df0 (Windows <c>?NewCAurScene@@YAPEAVCAurScene@@PEBD@Z</c>) --
@@ -3051,7 +2669,6 @@ internal static unsafe class SymbolMap
         [WinMessageHandler] = Nm("?WinMessageHandler@@YAHPEATSDL_Event@@@Z"),
         [SwapBuffers]       = Nm("?SwapBuffers@GLRender@@CAXPEAUSDL_Window@@@Z"),
         [MovieShowFrame]    = Nm("?ShowFrame@CExoMoviePlayerInternal@@AEAAXHHHH@Z"),   // rva 0x233b20
-        [SetText]           = Nm("?SetText@CAuroraStringWrapper@@QEAAXI@Z"),
         [ExoStringInit]     = Nm("?InitFromCharArray@CExoString@@AEAAAEAV1@PEBDI@Z"),
         [C2DAGetCExoStringEntry] = Nm("?GetCExoStringEntry@C2DA@@QEAAHHAEBVCExoString@@PEAV2@@Z"),
         [C2DAGetINTEntry]   = Nm("?GetINTEntry@C2DA@@QEAAHHAEBVCExoString@@PEAH@Z"),
@@ -3084,9 +2701,6 @@ internal static unsafe class SymbolMap
         [NavigateControl]               = Nm("?Control@CAurBehaviorNavigate@@UEAAHM@Z"),
         [CameraLooseFollowControl]      = Nm("?Control@CAurBehaviorCameraLooseFollow@@UEAAHM@Z"),
         [CameraOnAStickControl]         = Nm("?Control@CAurBehaviorCameraOnAStick@@UEAAHM@Z"),
-        [SafePtrListAdd]      = Nm("?Add@?$CExoArrayList@PEAV?$SafePointer@VCAurObject@@@@@@QEAAXPEAV?$SafePointer@VCAurObject@@@@@Z"),
-        [CameraSetViewPort]   = Nm("?SetViewPort@Camera@@UEAAXMMMM@Z"),
-        [SceneGetObject]      = Nm("?GetObject@Scene@@UEAAPEAVCAurObject@@PEBD@Z"),
 
         // --- not exported (client GUI / CNWCMessage): Windows RVA, one per build in Framework/Builds/*.tsv.
         //     Anchored on build 0x68e408bc; see docs/windows-symbols.md for how each was. ---
@@ -3097,10 +2711,7 @@ internal static unsafe class SymbolMap
         // the area-loaded hold; none returns a class by value. Anchors in docs/windows-symbols.md.
         [SendAreaLoaded]              = At(),
         [AreaSetTile]                 = At(),
-        [HandleUpdateWorkRemaining]   = At(),
         [StartLoadBar]                = At(),
-        [EndLoadBar]                  = At(),
-        [GetLoadBarState]             = At(),
         [AreaLoadArea]                = At(),
         [AreaAddPlaceableStatic]      = At(),
         [GetNWCMessage]               = At(),
@@ -3143,13 +2754,6 @@ internal static unsafe class SymbolMap
         [SpawnHitVisuals] = At(),   // anchor: its own "SpawnHitVisuals" log tag, 5 refs all inside it
         [LookAtControl]      = Nm("?Control@LookAtAnimation@@UEAAXXZ"),
         // ---- the anim runtime ----
-        [SceneAnimate]              = Nm("?Animate@Scene@@UEAAXM@Z"),
-        [CtrlGetFloat]              = Nm("?GetFloatValue@NewController@@QEAAHMPEAVMdlNode@@AEAM@Z"),
-        [CtrlReportKeys]            = Nm("?ReportKeys@NewController@@QEAAXPEAVPart@@PEAVMdlNode@@MM@Z"),
-        [EmitterCalcRadius]         = Nm("?CalculateRadius@PartEmitter@@QEAAXXZ"),
-        [AnimRunListRemove]         = Nm("?Remove@?$CExoArrayList@PEAVAnimRun@@@@QEAAXPEAVAnimRun@@@Z"),
-        [AnimRunListDelIndex]       = Nm("?DelIndex@?$CExoArrayList@PEAVAnimRun@@@@QEAAXH@Z"),
-        [SafePointerAdd]            = Nm("?Add@?$CExoArrayList@PEAV?$SafePointer@VCAurObject@@@@@@QEAAXPEAV?$SafePointer@VCAurObject@@@@@Z"),
         // auto-target: CActionTarget is client-side (not name-exported on Windows). Both anchored by the
         // 'AcTg' GetGuiObjType tag cluster and confirmed by decompile -- ActivateTargetMode is the same
         // CaptureMouse/CaptureKeyboard/RegisterUpdate/RegisterActionTargetGUI body, HandleLMouseDown the
@@ -3344,7 +2948,6 @@ internal static unsafe class SymbolMap
         [IoReadSync] = Nm("?ReadSync@IODispatcher@@QEAAPEAVMaxTree@@PEBD@Z"),
         [SpawnPartsForTile] = Nm("?SpawnPartsForTile@@YAPEAVGob@@PEBDAEBVVector@@AEBVQuaternion@@HHAEAV?$List@PEAVPart@@@@@Z"),
         [AurTextureBindInUnit] = Nm("?BindInUnit@CAurTexture@@UEAAXIH@Z"),
-        [AurTextureBind] = Nm("?Bind@CAurTexture@@UEAAXH@Z"),
         [AurTextureBuildAndStore] = Nm("?BuildAndStore@CAurTexture@@QEAAXXZ"),
         [AurTextureBuildAndStoreTexture] = Nm("?BuildAndStoreTexture@CAurTextureBasic@@QEAAXXZ"),
         [AurTextureBuildAndStoreAll] = Nm("?AurTextureBuildAndStoreAll@@YAXXZ"),
@@ -3357,19 +2960,14 @@ internal static unsafe class SymbolMap
         [OperatorNewArray] = Nm("??2MaxTree@@SAPEAX_K@Z"),
         [AurTextureNullPtr] = Nm("?m_pNullTexture@CAurTextureBasic@@2V?$SafePointer@VCAurTexture@@@@A"),
         [LerpFloatLerped] = Nm("?Lerped@LerpFloat@@QEBAMXZ"),
-        [GobSetLODModel] = Nm("?SetLODModel@Gob@@QEAAXXZ"),
-        [EnableLod] = Nm("?g_bEnableLOD@@3HA"),
         [LodScaleFactor] = Nm("?g_fLODScaleFactor@@3MA"),
         [BinBucket] = Nm("?binbucket@@3V?$List@PEAVCAurTriangleBin@@@@A"),
         [CapBuckets] = Nm("?capbuckets@@3PAVBucket@@A"),
         [FadeBuckets] = Nm("?fadebuckets@@3V?$List@VBucket@@@@A"),
-        [FadingInBucket] = Nm("?fadinginbucket@@3V?$List@PEAVTileData@@@@A"),
         [MeshShadowBucket] = Nm("?meshshadowbucket@@3V?$List@PEAVPartTriMesh@@@@A"),
         [StaticShadowBucket] = Nm("?staticshadowbucket@@3V?$List@PEAVPartShadow@@@@A"),
-        [BspTraverse] = Nm("?BSPTraverse@@YAXPEAVBSPNode@@P6AX0PEAX@Z1@Z"),
         [CResCtor] = Nm("??0CRes@@QEAA@XZ"),
         [ClientAiUpdateState] = Hole("CClientAIMaster is not exported (only CServerAIMaster is)"),
-        [CountPart] = Nm("?countpart@@3HA"),
         [CurrentCamera] = Nm("?CurrentCamera@@3PEAVCamera@@EA"),
         [CameraFollowControl] = Nm("?Control@CAurBehaviorCameraFollow@@UEAAHM@Z"),
         // verified against the shipped PE's export table, not derived.
@@ -3401,9 +2999,6 @@ internal static unsafe class SymbolMap
         [GobHighlightFrequency] = Nm("?m_fGobHighlightFrequency@Scene@@0MA"),
         [GobHighlightIntensity] = Nm("?m_fGobHighlightIntensity@Scene@@0MA"),
         [GobHighlightSize] = Nm("?m_fGobHighlightSize@Scene@@0MA"),
-        [DoBinBucket] = Nm("?DoBinBucket@Scene@@EEAAXXZ"),
-        [DoDynamicMeshProjections] = Nm("?DoDynamicMeshProjections@Scene@@EEAAXPEAVPartLight@@@Z"),
-        [DoGobShadows] = Nm("?DoGobShadows@Scene@@EEAAXPEAVPartLight@@@Z"),
         [EmitterGetGobAlpha] = Nm("?GetGobAlpha@PartEmitter@@AEAAMXZ"),
         [EmitterGetTileAlpha] = Nm("?GetTileAlpha@PartEmitter@@AEAAMXZ"),
         [EmitterIsSplat] = Nm("?IsSplat@MdlNodeEmitter@@QEAA_NXZ"),
@@ -3413,21 +3008,11 @@ internal static unsafe class SymbolMap
         [EnableFBEffects] = Nm("?enableFBeffects@@3HA"),
         [EnableTextureControllers] = Nm("?enabletexturecontrollers@@3HA"),
         [ExoResMan] = Nm("?g_pExoResMan@@3PEAVCExoResMan@@EA"),
-        [FadeDoors] = Nm("?FadeDoors@Scene@@UEAAXXZ"),
-        [FadingOutBucket] = Nm("?fadingoutbucket@@3V?$List@PEAVTileData@@@@A"),
         [FbEffectsMask] = Nm("?m_nFramebufferEffectsEnabled@Camera@@1IA"),
-        [FlagCurrentTransformDirty] = Nm("?FlagCurrentTransformDirty@GLRender@@CAXXZ"),
         [ForceDialogVisible] = LinuxOnly("empty body on both builds; nothing to skip"),
         [FullDynamicLighting] = Nm("?g_bFullDynamicLighting@@3HA"),
-        [GetCanKeyholeDissolve] = Nm("?GetCanKeyholeDissolve@Camera@@QEAA_NPEBVPartTriMesh@@@Z"),
-        [GetEmitterLighting] = Nm("?GetEmitterLighting@LightManager@@QEAA?AVVector@@V2@PEAV?$List@PEAVPartLight@@@@@Z"),
-        [GetLensFlareLights] = Nm("?GetLensFlareLights@LightManager@@QEAAAEAV?$List@PEAVPartLight@@@@XZ"),
-        [GetLightAdjustedRadius] = Nm("?GetLightAdjustedRadius@@YAMPEBVPartLight@@@Z"),
-        [GetIsLightInViewVolume] = Nm("?GetIsLightInViewVolume@@YAEPEBVPartLight@@@Z"),
-        [GetLightFadeSpeed] = Nm("?GetLightFadeSpeed@@YAMPEBVPartLight@@@Z"),
         [GetServerNetworkAddress] = Nm("?GetServerNetworkAddress@CNetLayer@@QEAA?AVCExoString@@XZ"),
         [GlActiveTextureStage] = Nm("?m_activeTextureStage@GLRender@@0IA"),
-        [GlArrayBufferBound] = Nm("?m_nArrayBufferBound@GLRender@@0IA"),
         [GlBoundTextures] = Nm("?m_boundTextures@GLRender@@0PAUBoundTexture@1@A"),
         [GlCurrentCustomProgram] = Nm("?m_pCurrentCustomProgram@GLRender@@0PEAUPROG_FIXED@1@EA"),
         [GlDeleteBuffer] = Nm("?DeleteBuffer@GLRender@@CAXI@Z"),
@@ -3450,7 +3035,6 @@ internal static unsafe class SymbolMap
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
         [GlDefaultFramebuffer] = Nm("?cm_nDefaultFramebuffer@GLRender@@0IA"),
         [GlDrawFramebufferBound] = Nm("?m_nDrawFrameBufferBound@GLRender@@0IA"),
-        [GlGetPool] = Nm("?GetPool@GLRender@@CAPEBXI@Z"),
         [GlGlobalShaderConstantsF] = Nm("?m_globalShaderConstantsf@GLRender@@0PAMA"),
         [GlGlobalShaderConstantsI] = Nm("?m_globalShaderConstantsi@GLRender@@0PAHA"),
         [GlGlobalShaderConstantsV] = Nm("?m_globalShaderConstantsv@GLRender@@0PAVVector@@A"),
@@ -3462,24 +3046,15 @@ internal static unsafe class SymbolMap
         [GlRenderBones] = Nm("?m_bones@GLRender@@0PAVMatrix4x4@@A"),
         [GlRenderVertexData] = Nm("?RenderVertexData@GLRender@@CAXPEAVVertexDataObject@@IW4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlRenderVertexStreamData] = Nm("?RenderVertexStreamData@GLRender@@CAXPEAVVertexStreamDataObject@@W4AuroraPrimitiveTypes@Aurora@@II@Z"),
-        [GlSetUniforms] = Nm("?SetUniforms@GLRender@@CAXAEAUPROG_FIXED@1@@Z"),
         [GlSetVertexDataObject] = Nm("?SetVertexDataObject@GLRender@@CAXPEAVVertexDataObject@@@Z"),
         [GlShaderRuntimeData] = Nm("?m_shaderExposedRuntimeData@GLRender@@0UShaderExposedRuntimeData@1@A"),
         [GlTotalMemPool] = Nm("?totalmempool@@3HA"),
         [GlUnlockPool] = Nm("?UnlockPool@GLRender@@CAXIII@Z"),
-        [GlUseProgramConditionally] = Nm("?GlUseProgramConditionally@GLRender@@CAXI@Z"),
         [AnimateParticles] = Nm("?AnimateParticles@PartEmitter@@QEAAXM@Z"),
         [EmitterBucket] = Nm("?emitterbucket@@3V?$List@PEAVPartEmitter@@@@A"),
         [RenderNothing] = Nm("?RenderNothing@PartEmitter@@QEAAXXZ"),
         [AddPointSourceWind] = Nm("?AddPointSourceWind@WindManager@@QEAAXVVector@@MMM@Z"),
-        [GobBucket] = Nm("?gobbucket@@3V?$List@PEAVGob@@@@A"),
-        [GobCollectLights] = Nm("?CollectLights@Gob@@QEAAXAEAV?$List@PEAVPartLight@@@@@Z"),
-        [GobDisableInViewVolume] = Nm("?DisableInViewVolume@Gob@@UEAAXXZ"),
-        [GobEnableInViewVolume] = Nm("?EnableInViewVolume@Gob@@UEAAXXZ"),
         [GobGetAdjustedScale] = Nm("?GetAdjustedScale@Gob@@UEBAMXZ"),
-        [GobListAdd] = Nm("?Add@?$CExoArrayList@PEAVGob@@@@QEAAXPEAVGob@@@Z"),
-        [GobOutside] = Nm("?GobOutside@@YAHPEAVGob@@AEAV?$List@VPlane@@@@@Z"),
-        [GobProcessGob] = Nm("?ProcessGob@Gob@@QEAAXXZ"),
         [GrassEnabled] = Nm("?m_bGrassIsEnabled@Scene@@0_NA"),
         [GrassFarDistance] = Nm("?m_fGrassFarRenderDistance@Scene@@0MA"),
         [GrassInfo] = Nm("?g_GrassInfo@@3V?$List@VCAurGrassInfo@@@@A"),
@@ -3489,13 +3064,7 @@ internal static unsafe class SymbolMap
         [LightAreaAmbient] = Nm("?m_lightAreaAmbient@GLRender@@0VVector@@A"),
         [LightAreaDiffuse] = Nm("?m_lightAreaDiffuse@GLRender@@0VVector@@A"),
         [LightAreaDiffuseDir] = Nm("?m_lightAreaDiffuseDirection@GLRender@@0VVector@@A"),
-        [LightMgrGetMaxLights] = Nm("?GetMaxLights@LightManager@@SAHXZ"),
-        [LightMgrPrioritizeLights] = Nm("?PrioritizeLights@LightManager@@UEAAXAEBVVector@@@Z"),
-        [LightMgrSetupLights] = Nm("?SetupLightsForThisPositionAndRadius@LightManager@@UEAAXAEBVVector@@M@Z"),
-        [LightMgrUpdateLights] = Nm("?UpdateLights@LightManager@@UEAAXXZ"),
-        [LoadMatrixIdentity] = Nm("?LoadMatrixIdentity@RenderInterface@@SAXXZ"),
         [MAurMtxStack] = Nm("?m_aurMtxStack@@3PAVaurMatrixStack@@A"),
-        [MCurrentMatrix] = Nm("?m_nCurrentMatrix@GLRender@@0IA"),
         [ManageSceneBSP] = Nm("?ManageSceneBSP@@YAXPEAVScene@@@Z"),
         [MatGetTexture] = Nm("?GetTexture@Material@@QEAAPEAVCAurTexture@@H@Z"),
         [MatHasBumpyShinyMap] = Nm("?HasBumpyShinyMap@Material@@QEAA_NXZ"),
@@ -3503,7 +3072,6 @@ internal static unsafe class SymbolMap
         [MeshBuckets] = Nm("?meshbuckets@@3V?$List@VBucket@@@@A"),
         [MinDoorAlpha] = Nm("?mindooralpha@@3MA"),
         [MsaaSamples] = Nm("?g_nMSAA@@3HA"),
-        [MultMatrix] = Nm("?MultMatrix@RenderInterface@@SAXPEAM@Z"),
         [NetProcessReceivedFrames] = Nm("?ProcessReceivedFrames@CNetLayer@@QEAAXH@Z"),
         [NkSdlCopyEvent] = Hole("nuklear is not exported by nwmain.exe"),
         // nuklear is unexported on Windows, but nk_sdl_render's Tracy SourceLocationData anchors it and
@@ -3524,16 +3092,8 @@ internal static unsafe class SymbolMap
         [Nuklear] = At(),                 // DATA: the `mov rax,[rip]` whose +0x5088 takes the frame's delta time
         [OnGainFocus] = LinuxOnly("empty stub reached by indirect dispatch; OS focus handling covers it"),
         [OnLostFocus] = LinuxOnly("empty stub reached by indirect dispatch; OS focus handling covers it"),
-        [PartAnimate] = Nm("?Animate@Part@@UEAAXM@Z"),
-        [PartEmitterAnimate] = Nm("?Animate@PartEmitter@@UEAAXM@Z"),
-        [AnimateStaticLight] = Nm("?AnimateStaticLight@@YAXPEAVCAurObject@@PEBDPEAX@Z"),
-        [PartDanglyAnimate] = Nm("?Animate@PartDanglyMesh@@UEAAXM@Z"),
         [PartDanglyMeshVtbl] = At(),   // RTTI type descriptor -> COL -> vftable (tools/abi/vtable-slots.py)
-        [PartDtor] = Nm("??1Part@@UEAA@XZ"),
-        [GobAppend] = LinuxOnly("#397 diagnostic watch; no swap forensics on Windows yet"),
-        [GobAmputate] = LinuxOnly("#397 diagnostic watch; no swap forensics on Windows yet"),
         [GobSetScene] = Nm("?SetScene@Gob@@QEAAXPEAVScene@@@Z"),
-        [GobSetSubtreeEnabled] = Nm("?SetSubtreeEnabled@Gob@@UEAA_NPEBDH@Z"),
         // ParseField and Init are called (not inlined) on Windows -- CreateSharedMaterial/GetSharedMaterial.
         [SharedMaterialParseField] = Nm("?ParseField@SharedMaterial@@QEAAXPEBD@Z"),
         [SharedMaterialInit] = Nm("?Init@SharedMaterial@@QEAAXPEBD@Z"),
@@ -3542,24 +3102,14 @@ internal static unsafe class SymbolMap
         [SharedMaterialDtor] = At(),
         [LoadTexture] = Nm("?LoadTexture@@YAPEAVCAurTexture@@PEBD@Z"),
         [AurTextureRelease] = Nm("?AurTextureRelease@@YAXPEAVCAurTexture@@@Z"),
-        [PartEmitterDtor] = Nm("??1PartEmitter@@UEAA@XZ"),
         [PartGetIsOpaque] = Nm("?GetIsOpaque@PartTriMesh@@QEAA_NXZ"),
         [PartGetWorld] = Nm("?GetWorld@Part@@UEAAXAEAVVector@@AEAVQuaternion@@@Z"),
-        [PartSkinVtbl] = At(),   // RTTI type descriptor -> COL -> vftable (tools/abi/vtable-slots.py)
         [PltOnGpu] = Nm("?g_bGeneratePLTOnGPU@@3HA"),
-        [PopCurrentMatrix] = Nm("?PopCurrentMatrix@RenderInterface@@SAXXZ"),
         [PrimTypeTranslationTable] = At(),   // the {0,1,3,4,5,6,2} run in .rdata; RenderVertexData leas it three times
         [ProjectionAlpha] = Nm("?projectionalpha@@3MA"),
-        [PushCurrentMatrix] = Nm("?PushCurrentMatrix@RenderInterface@@SAXXZ"),
         [QuickbarReposition] = At(),
         [ReloadGrass] = Nm("?ReloadGrass@Scene@@UEAAXXZ"),
         [RenderDrawBucket] = Nm("?RenderDrawBucket@Scene@@QEAAXH@Z"),
-        [RenderDynamicShadows] = Nm("?RenderDynamicShadows@Scene@@QEAAXXZ"),
-        [RenderEmitter] = Nm("?RenderEmitter@PartEmitter@@QEAAXXZ"),
-        [RenderShadowPlanes] = Nm("?RenderShadowPlanes@Scene@@QEAAXHH@Z"),
-        [RenderSinglePass] = Nm("?RenderSinglePass@Scene@@UEAAXXZ"),
-        [RenderSkyBoxes] = Nm("?RenderSkyBoxes@Scene@@QEAAXXZ"),
-        [RenderStaticShadows] = Nm("?RenderStaticShadows@Scene@@EEAAXXZ"),
         [ComputeStaticLighting] = Nm("?ComputeStaticLighting@CAurScene@@UEAAXXZ"),
         [ResManDemand] = Nm("?Demand@CExoResMan@@QEAAPEAXPEAVCRes@@@Z"),
         [AurGetCompressedImage] = Nm("?AurGetCompressedImage@@3P6APEAEPEBDPEAH1111PEAM@ZEA"),
@@ -3638,32 +3188,19 @@ internal static unsafe class SymbolMap
         [RiGetGlobalShaderParamf] = Nm("?GetGlobalShaderParamf@RenderInterface@@SAMW4AurGlobalShaderParamf_t@Aurora@@@Z"),
         [RiGetGlobalShaderParami] = Nm("?GetGlobalShaderParami@RenderInterface@@SAHW4AurGlobalShaderParami_t@Aurora@@@Z"),
         [RiIsEnabled] = Nm("?IsEnabled@RenderInterface@@SAEW4AuroraEnableEnums@Aurora@@@Z"),
-        [RiSetModelMatrix] = Nm("?SetModelMatrix@RenderInterface@@SAXAEBVMatrix4x4@@@Z"),
-        [SceneBspGetTileData] = Nm("?SceneBSPGetTileData@@YAPEAVTileData@@PEAVScene@@AEBVVector@@@Z"),
-        [SceneDeleteTile] = Nm("?DeleteTile@Scene@@UEAAXAEBVVector@@@Z"),
         [SceneGetWindVector] = Nm("?GetWindVector@Scene@@QEAA?AVVector@@AEBV2@M@Z"),
         [SceneHitCheck] = Nm("?HitCheck@Scene@@UEAAHVVector@@0PEAV2@PEAVCHitInfo@@@Z"),
         [HitInfoReset] = Nm("?Reset@CHitInfo@@QEAAXH_JH@Z"),
-        [SceneInitBsp] = Nm("?InitBSP@Scene@@UEAAXHHH_NM@Z"),
-        [SceneSequence] = Nm("?Sequence@Scene@@2IA"),
-        [GeomFadeEnabled] = Nm("?geomFadeEnabled@Scene@@2HA"),
-        [SceneSpawnTile] = Nm("?SpawnTile@Scene@@UEAAPEAVCAurObject@@PEBDAEBVVector@@HHPEAVQuaternion@@@Z"),
-        [SetMatrixMode] = Nm("?SetMatrixMode@RenderInterface@@SAXW4AuroraTransStates@Aurora@@@Z"),
-        [SetModelMatrix] = Nm("?SetModelMatrix@GLRender@@CAXAEBVMatrix4x4@@@Z"),
         [SetMouseCursor] = At(),
-        [SetOrthoTransform] = Nm("?SetOrthoTransform@RenderInterface@@SAXNNNNNN@Z"),
         [SetPositionScreen] = Nm("?SetPositionScreen@CGuiPanel@@QEAAXHH@Z"),
         [ShowCompass] = At(),
         [SsaoIntensity] = Nm("?ssao_intensity@@3MA"),
         [ToonColorEdge] = Nm("?toon_color_edge_threshold@@3MA"),
         [ToonDepthEdge] = Nm("?toon_depth_edge_threshold@@3MA"),
         [ToonEdgeHardness] = Nm("?toon_edge_hardness@@3MA"),
-        [TriggerBucket] = Nm("?triggerbucket@@3V?$List@PEAVPartTrigger@@@@A"),
         [UpdateMouseCursorAppearance] = At(),
         [VdoCommitItemDynamicData] = Nm("?CommitItemDynamicData@VertexDataObject@@QEAAXII@Z"),
-        [VdoGetItemDynamicData] = Nm("?GetItemDynamicData@VertexDataObject@@QEAAPEAEI@Z"),
         [VdoRepack] = Nm("?Repack@VertexDataObject@@QEAAXXZ"),
-        [VertexPrimGenVelocity] = Nm("?GenerateVelocityArray@VertexPrimitiveDangly@@QEAAXXZ"),
 
         // --- the radial seam. CRadialMenu is name-exported; the root vftables are the MSVC `vftable`
         //     labels (the object's vptr points AT the label, no +0x10 as on Itanium). FindSym.java, build 0x68e408bc.
