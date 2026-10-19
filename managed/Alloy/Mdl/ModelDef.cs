@@ -158,7 +158,7 @@ public sealed class ControllerTrack
 public sealed class MeshDef
 {
     public Vector3[] Positions = Array.Empty<Vector3>();
-    /// <summary>Final (welded, smoothing-group) normals: the per-model source <c>NormalWeld</c> and <c>MeshLod</c> read.</summary>
+    /// <summary>Final (welded, smoothing-group) normals: the per-model source <c>MeshLod</c> reads.</summary>
     public Vector3[] Normals = Array.Empty<Vector3>();
     /// <summary>xyz tangent, w handedness; empty when the mesh has no UVs to derive them from.</summary>
     public Vector4[] Tangents = Array.Empty<Vector4>();
