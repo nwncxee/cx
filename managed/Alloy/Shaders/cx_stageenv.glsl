@@ -26,7 +26,7 @@ uniform mat4 m_proj;             // inc_noir's ortho-vs-perspective test reads [
 // GLRender::ConnectShaderData @0x4ce8e0 binds them to. Macros rather than declarations under those names,
 // so a content stage that declares one for itself (inc_sunm does, for moduleTimeIntoTransition) has its
 // line dropped instead of colliding.
-uniform int uModYear, uModMonth, uModDay, uModHour, uModDawn, uModDusk;
+uniform int uModYear, uModMonth, uModDay, uModHour, uModDawn, uModDusk, uModMinutes, uSceneFrame, uWeatherType;
 uniform float uModTransition, uWeatherDensity;
 #define moduleYear uModYear
 #define moduleMonth uModMonth
@@ -34,8 +34,14 @@ uniform float uModTransition, uWeatherDensity;
 #define moduleHour uModHour
 #define moduleDawnHour uModDawn
 #define moduleDuskHour uModDusk
+#define moduleMinutesPerHour uModMinutes
+#define sceneCurrentFrame uSceneFrame
+#define areaWeatherType uWeatherType
 #define moduleTimeIntoTransition uModTransition
 #define areaWeatherDensity uWeatherDensity
+#define NWAREA_WEATHER_CLEAR 0
+#define NWAREA_WEATHER_RAIN 1
+#define NWAREA_WEATHER_SNOW 2
 
 // inc_common's colour-space pair and its exact curve: ApplyColorSpace goes display -> WORKING space.
 vec3 ApplyColorSpace(vec3 c)  { return sign(c) * pow(abs(c), vec3($SRGB$)); }
