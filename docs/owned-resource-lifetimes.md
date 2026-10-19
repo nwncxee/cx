@@ -44,7 +44,7 @@ texture release  the same eviction, one hop further: DrawRecipe.Forget -> TexReg
                      -> the GL name goes to _graveyard -> deleted in TexRegistry.Drain (bracket)
 world edge       AlloyRenderer.EndFrame: module unload / 4.6 context lost / part table wiped
                      -> AlloyRenderer.RevokeAll -> PassRegistry.Global.Revoke()
-                     -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge, TileCompare.Revoke
+                     -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge
 context loss     AlloyRenderer.EndFrame -> PassRegistry.Global.ContextLost()
                      -> RenderThread.Shutdown (joined), MeshArena.ContextLost, TexRegistry.ContextLost,
                         PltPalettes/PltColors/PltGpuCheck.ContextLost, DbFeed.ContextLost
