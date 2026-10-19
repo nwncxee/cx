@@ -20,7 +20,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// <summary>The live-list capacity IS the ownership table's: a caster is an ownership slot, so a smaller
     /// number here would silently bake a fraction of what the colour pass draws -- which reads as "shadows go
     /// missing in big areas", not as a cap.</summary>
-    private const int MaxCasters = AlloyRenderer.MaxOwned, MaxVdos = AlloyRenderer.MaxVdos;
+    private const int MaxCasters = AlloyRenderer.MaxOwned;
     private const int LogEvery = 900, FirstLogAt = 120;
     /// <summary>Faces per cube.</summary>
     private const int CubeFaces = 6;

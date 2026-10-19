@@ -200,7 +200,6 @@ public sealed unsafe partial class AlloyRenderer
         // No gob pointer exists in DB mode; the questions it answered are columns.
         _oGob[i] = IntPtr.Zero;
         _oTileGob[i] = (of & ObjFlag.Tile) != 0;
-        _oLodRoot[i] = IntPtr.Zero;
         _oDangly[i] = (rf & RecipeFlag.Dangly) != 0;
         _oFadeTile[i] = IntPtr.Zero; _oTile[i] = IntPtr.Zero;
         Vector3 c = DrawRecipe.Centre(recipe);

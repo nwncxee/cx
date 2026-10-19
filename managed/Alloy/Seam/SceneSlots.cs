@@ -470,15 +470,12 @@ internal static unsafe class SceneSlots
         return (byte)(SceneDb.GeomFade == 1 ? 1 : 0);
     }
 
+    /// <summary>Slot 42, <c>Scene::SetGlobalWind</c>: nothing calls it. The area's wind reaches the client
+    /// through the <c>setglobalwind</c> console function that <c>CNWCArea::SetWind</c> formats, which writes
+    /// the shell's own <c>WindManager</c> at <c>+0x160</c> -- where <c>AlloyWind</c> and the engine's shader
+    /// runtime block both read it. The slot resolves the scene and answers.</summary>
     [UnmanagedCallersOnly]
-    private static void SetGlobalWind(nint self, Vec3* dir, float magnitude, float gustiness)
-    {
-        DbId s = Id(self);
-        if (s.IsNull || dir == null) return;
-        SceneDb.SceneWindDir[s.Index] = V(dir);
-        SceneDb.SceneWindMag[s.Index] = magnitude;
-        SceneDb.SceneWindGust[s.Index] = gustiness;
-    }
+    private static void SetGlobalWind(nint self, Vec3* dir, float magnitude, float gustiness) { Id(self); }
 
     /// <summary>Slot 15, <c>CAurScene::ReloadAreaGrass</c>: the area's grass info changed
     /// (<c>AurGrassAddInfo</c>/<c>AurGrassClearInfo</c> have been called). Alloy's grass field rebuilds from

@@ -344,9 +344,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is this caster VAO id the mesh arena's rather than a VDO slot's?</summary>
     internal static bool IsArenaVao(int v) => v >= DbVaoBase;
 
-    /// <summary>How many distinct caster VAO ids exist: every VDO slot, then one per arena section.</summary>
-    internal const int CasterVaoIds = DbVaoBase + MeshArena.Formats;
-
     /// <summary>The caster VAO id for an ownership slot, from whichever source it draws out of.</summary>
     internal static int CasterVaoId(int slot)
         => DbSlot(slot) ? DbVaoBase + (int)MeshArena.FormatOf(DrawRecipe.Range(_oDbRecipe[slot])) : _oVao[slot];

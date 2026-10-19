@@ -215,10 +215,10 @@ public sealed unsafe partial class CasterPass
             int hold = _dynHold; Shadows.DynHold.V = 0;   // plain knob writes: nothing runs, nothing is written
             _frameSeq = 9; _moverCount = _dMoverCount = _sMoverCount = 0;
             _dynStamp[5] = 0; _dynStamp[6] = 0; _dynStamp[7] = 8;
-            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false);
-            Admit(1, 6, skinned: false, appeared: false, recMoved: true, dangly: false);
-            Admit(2, 7, skinned: false, appeared: false, recMoved: true, dangly: false);
-            Admit(3, 8, skinned: false, appeared: true, recMoved: false, dangly: false);
+            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false, creature: false);
+            Admit(1, 6, skinned: false, appeared: false, recMoved: true, dangly: false, creature: false);
+            Admit(2, 7, skinned: false, appeared: false, recMoved: true, dangly: false, creature: false);
+            Admit(3, 8, skinned: false, appeared: true, recMoved: false, dangly: false, creature: false);
             bool pred = _moverCount == 3 && _moverIdx[0] == 1 && _moverIdx[1] == 2 && _moverIdx[2] == 3
                         && _dMoverCount == 2 && _dMoverIdx[0] == 1 && _dMoverIdx[1] == 2
                         && _sMoverCount == 2 && _sMoverIdx[0] == 1 && _sMoverIdx[1] == 3
@@ -228,8 +228,8 @@ public sealed unsafe partial class CasterPass
             // repeat every frame under vertex-dirty flapping is the churn this exists to stop.
             Shadows.DynHold.V = 4; _moverCount = _dMoverCount = _sMoverCount = 0;
             _dynStamp[5] = 6; _dynStamp[6] = 4;
-            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false);
-            Admit(1, 6, skinned: false, appeared: false, recMoved: false, dangly: false);
+            Admit(0, 5, skinned: false, appeared: false, recMoved: false, dangly: false, creature: false);
+            Admit(1, 6, skinned: false, appeared: false, recMoved: false, dangly: false, creature: false);
             pred &= _moverCount == 0 && _dMoverCount == 1 && _dMoverIdx[0] == 0 && _sMoverCount == 1 && _sMoverIdx[0] == 1
                     && _liveDyn[0] && !_liveDyn[1];
             Shadows.DynHold.V = hold;

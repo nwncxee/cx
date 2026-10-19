@@ -47,14 +47,6 @@ internal static unsafe class GBuffer
     private static GBufferState _gl = new();
     private static int _clears;
 
-    /// <inheritdoc cref="GBufferState.Tex0"/>
-    internal static uint Tex0 => _gl.Tex0;
-    /// <inheritdoc cref="GBufferState.Tex0"/>
-    internal static uint Tex1 => _gl.Tex1;
-    /// <inheritdoc cref="GBufferState.Tex0"/>
-    internal static uint Tex2 => _gl.Tex2;
-    /// <inheritdoc cref="GBufferState.Tex0"/>
-    internal static uint Tex3 => _gl.Tex3;
     /// <inheritdoc cref="GBufferState.TexLight"/>
     internal static uint TexLight => _gl.TexLight;
     /// <inheritdoc cref="GBufferState.LightLive"/>

@@ -589,10 +589,6 @@ public static class SceneDb
     /// <summary><c>Scene::IsAnimating</c>'s answer. The engine caches it in a byte at <c>Scene+0xb9</c> and
     /// the getter is one load; so is this. Written by the animation step, which is the only thing that knows.</summary>
     public static readonly bool[] SceneAnimating = new bool[MaxScenes];
-    /// <summary><c>Scene::SetGlobalWind(dir, magnitude, gustiness)</c> and <c>SetWindUpdateTimeout</c>.</summary>
-    public static readonly Vector3[] SceneWindDir = new Vector3[MaxScenes];
-    public static readonly float[] SceneWindMag = new float[MaxScenes], SceneWindGust = new float[MaxScenes],
-                                  SceneWindTimeout = new float[MaxScenes];
     /// <summary>The fade object (<c>Scene::SetSkyFade</c>, engine <c>Scene+0x38</c>) -- separate from the four
     /// skybox objects, which live in <see cref="SceneSky0"/>..<see cref="SceneSky3"/>.</summary>
     public static readonly DbId[] SceneSkyFade = new DbId[MaxScenes];

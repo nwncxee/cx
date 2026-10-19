@@ -16,10 +16,6 @@ public struct VertexStream
     /// <summary>GL's NORMALIZED flag. Only the bone streams care, and getting it backwards scales every
     /// weight by 1/32767 (mesh collapsed to the origin) or by 32767 (one flung off-screen).</summary>
     public byte Norm;
-
-    /// <summary>Backed by a real buffer with a real type -- the only shape safe to hand to
-    /// <c>VertexAttribPointer</c>. An enabled-but-unset array crashes the driver's vertex pull.</summary>
-    public readonly bool Present => Buf != 0 && Type != 0;
 }
 
 /// <summary>
