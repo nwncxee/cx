@@ -29,8 +29,6 @@ internal struct NuiHit
     internal NuiTokenBuf TokenBytes;
     internal NuiImageBuf ImageBytes;
 
-    /// <summary>True when nothing was under the pointer.</summary>
-    public readonly bool IsEmpty => Element == IntPtr.Zero;
     /// <summary>True when the pointer at (<paramref name="px"/>, <paramref name="py"/>) lies inside <see cref="X"/>..<see cref="H"/>.</summary>
     public readonly bool Contains(float px, float py) => NuiHitTest.Contains(X, Y, W, H, px, py);
 }
@@ -415,20 +413,14 @@ internal static unsafe class NuiHitTest
             return;
         }
         const int Size = 0x8000;  // not-an-offset: the fake nuklear/NUI memory is this big
-        byte* mem = (byte*)NativeMemory.AllocZeroed(Size);
-        var blocks = new System.Collections.Generic.List<IntPtr>();
-        IntPtr Block(int n)
-        {
-            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
-            blocks.Add(p);
-            return p;
-        }
+        using var scratch = new NuiScratch();
+        byte* mem = (byte*)scratch.Block(Size);
         var saved = _s;
         try
         {
-            IntPtr ctx = (IntPtr)mem, win = Block(0x400), panel = Block(0x400), above = Block(0x400);
-            IntPtr widget = Block(0x400);
-            uint* scrollX = (uint*)Block(8), scrollY = (uint*)Block(8);
+            IntPtr ctx = (IntPtr)mem, win = scratch.Block(0x400), panel = scratch.Block(0x400), above = scratch.Block(0x400);
+            IntPtr widget = scratch.Block(0x400);
+            uint* scrollX = (uint*)scratch.Block(8), scrollY = (uint*)scratch.Block(8);
             var pn = new NkPanel(panel);
             *scrollX = 3; *scrollY = 4;
             new NkContext(ctx).Current = win;
@@ -487,8 +479,8 @@ internal static unsafe class NuiHitTest
             pn.RowIndex = 1;
             rowSave = NuiNuklear.StartRow((byte*)panel);
             check.Expect(!rowSave.Moved && pn.RowIndex == 1 && pn.AtY == 20, "a row with a column left is not advanced");
-            IntPtr map = Block(0x800);
-            BuildMap(Block(0x100), Block(0x100), Block(0x100), map, (IntPtr)widget, "slot_head", (IntPtr)0x2222, "x");
+            IntPtr map = scratch.Block(0x800);
+            BuildMap(scratch.Block(0x100), scratch.Block(0x100), scratch.Block(0x100), map, (IntPtr)widget, "slot_head", (IntPtr)0x2222, "x");
             Span<byte> id = stackalloc byte[NuiHit.TokenCap];
             int n = ResolveId(map, widget, id);
             check.Expect(n == 9 && Encoding.UTF8.GetString(id[..n]) == "slot_head", "the id map names the first element slot_head");
@@ -557,8 +549,6 @@ internal static unsafe class NuiHitTest
         finally
         {
             _s = saved;
-            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
-            NativeMemory.Free(mem);
         }
         if (check.Ok) log.Info("NuiHitTest.SelfCheck: passed");
     }

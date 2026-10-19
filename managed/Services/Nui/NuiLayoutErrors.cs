@@ -464,101 +464,88 @@ internal static unsafe class NuiLayoutErrors
         var check = new Checker(log);
         if (EngineLayout.KiwiCnStride == 0 || EngineLayout.KiwiTermStride == 0)
         {
-            log.Info("NuiLayoutErrors.SelfCheck: skipped (no kiwi layout rows for this build)");
+            check.Skip("no kiwi layout rows for this build");
             return;
         }
-        var blocks = new System.Collections.Generic.List<IntPtr>();
-        IntPtr Block(int n)
+        using var scratch = new NuiScratch();
+        IntPtr width = scratch.Block(512);
+        IntPtr Data(int at, double constant)
         {
-            IntPtr p = (IntPtr)NativeMemory.AllocZeroed((nuint)n);
-            blocks.Add(p);
-            return p;
+            var cd = new kiwi__ConstraintData(scratch.Block(256));
+            IntPtr terms = scratch.Block(256);
+            new kiwi__Term(terms).Variable = width;
+            new kiwi__Term(terms).Coefficient = 1.0;
+            cd.Terms = new kiwi__Term(terms);
+            cd.TermsEnd = new kiwi__Term(terms)[1].Ptr;
+            cd.Constant = constant;
+            cd.Strength = Required;
+            cd.Op = 2;
+            return cd.Ptr;
         }
-        try
-        {
-            IntPtr width = Block(512);
-            IntPtr Data(int at, double constant)
-            {
-                var cd = new kiwi__ConstraintData(Block(256));
-                IntPtr terms = Block(256);
-                new kiwi__Term(terms).Variable = width;
-                new kiwi__Term(terms).Coefficient = 1.0;
-                cd.Terms = new kiwi__Term(terms);
-                cd.TermsEnd = new kiwi__Term(terms)[1].Ptr;
-                cd.Constant = constant;
-                cd.Strength = Required;
-                cd.Op = 2;
-                return cd.Ptr;
-            }
-            IntPtr accepted = Data(0, -64), adding = Data(512, -32);
-            IntPtr solver = Block(512), cns = Block(512), row = Block(256), cells = Block(1024);
-            var pair = new kiwi__impl__CnPair(cns);
-            pair.Data = new kiwi__ConstraintData(accepted);
-            pair.Marker = 5;
-            var impl = new kiwi__impl__SolverImpl(solver);
-            impl.Cns = pair;
-            impl.CnsEnd = pair[1].Ptr;
-            var c = new kiwi__impl__SymbolPair(cells);
-            c[0].Id = 5; c[0].Type = DummyType;
-            c[1].Id = 9; c[1].Type = DummyType;
-            var r = new kiwi__impl__Row(row);
-            r.Cells = cells;
-            r.CellsEnd = c[2].Ptr;
-            r.Constant = 32;
-            check.Expect(AllDummies(r), "a row of dummies is all dummies");
+        IntPtr accepted = Data(0, -64), adding = Data(512, -32);
+        IntPtr solver = scratch.Block(512), cns = scratch.Block(512), row = scratch.Block(256), cells = scratch.Block(1024);
+        var pair = new kiwi__impl__CnPair(cns);
+        pair.Data = new kiwi__ConstraintData(accepted);
+        pair.Marker = 5;
+        var impl = new kiwi__impl__SolverImpl(solver);
+        impl.Cns = pair;
+        impl.CnsEnd = pair[1].Ptr;
+        var c = new kiwi__impl__SymbolPair(cells);
+        c[0].Id = 5; c[0].Type = DummyType;
+        c[1].Id = 9; c[1].Type = DummyType;
+        var r = new kiwi__impl__Row(row);
+        r.Cells = cells;
+        r.CellsEnd = c[2].Ptr;
+        r.Constant = 32;
+        check.Expect(AllDummies(r), "a row of dummies is all dummies");
 
-            var cap = new Capture();
-            cap.Elems.Add(new Elem { Ptr = 1, Parent = -1, Kind = "group" });
-            cap.Elems.Add(new Elem { Ptr = 2, Parent = 0, Index = 0, Kind = "row" });
-            cap.Elems.Add(new Elem { Ptr = 3, Parent = 1, Index = 1, Kind = "widget" });
-            var vars = new Dictionary<IntPtr, (int Elem, int Field)> { [width] = (2, 2) };
-            Prove(solver, row, adding, vars, cap);
-            check.Expect(cap.Rules.Count == 2 && cap.Rules[0].Added && !cap.Rules[1].Added, "the added rule, then the one its marker names");
-            string text = Explain(Unsatisfiable, cap, new Dictionary<IntPtr, string> { [3] = "a" });
-            check.Expect(text.Contains("1. \"a\".width == 32   <- the rule being added"), "the added rule is first and marked");
-            check.Expect(text.Contains("2. \"a\".width == 64\n"), "the accepted rule it contradicts");
-            text = Explain(Unsatisfiable, cap, []);
-            check.Expect(text.Contains("(group) > row[0] > widget[1].width == 32"), "an element without an id is named by its path");
+        var cap = new Capture();
+        cap.Elems.Add(new Elem { Ptr = 1, Parent = -1, Kind = "group" });
+        cap.Elems.Add(new Elem { Ptr = 2, Parent = 0, Index = 0, Kind = "row" });
+        cap.Elems.Add(new Elem { Ptr = 3, Parent = 1, Index = 1, Kind = "widget" });
+        var vars = new Dictionary<IntPtr, (int Elem, int Field)> { [width] = (2, 2) };
+        Prove(solver, row, adding, vars, cap);
+        check.Expect(cap.Rules.Count == 2 && cap.Rules[0].Added && !cap.Rules[1].Added, "the added rule, then the one its marker names");
+        string text = Explain(Unsatisfiable, cap, new Dictionary<IntPtr, string> { [3] = "a" });
+        check.Expect(text.Contains("1. \"a\".width == 32   <- the rule being added"), "the added rule is first and marked");
+        check.Expect(text.Contains("2. \"a\".width == 64\n"), "the accepted rule it contradicts");
+        text = Explain(Unsatisfiable, cap, []);
+        check.Expect(text.Contains("(group) > row[0] > widget[1].width == 32"), "an element without an id is named by its path");
 
-            var chain = new Rule { Op = 2, Constant = 4, Strength = Required };
-            chain.Terms.Add(new Term(1, 1, 1));
-            chain.Terms.Add(new Term(1, 3, 1));
-            chain.Terms.Add(new Term(1, 11, 1));
-            chain.Terms.Add(new Term(2, 9, 1));
-            chain.Terms.Add(new Term(2, 1, -1));
-            var chainZero = new HashSet<(int, int)> { (1, 11), (2, 9) };
-            check.Expect(Render(chain, e => e == 1 ? "A" : "B", chainZero) == "A.y + A.height + 4 == B.y", "a chain drops zero margins and moves the negative side right");
-            var bound = new Rule { Op = 1, Strength = Required };
-            bound.Terms.Add(new Term(2, 2, 1));
-            check.Expect(Render(bound, _ => "B", []) == "B.width >= 0" && Why(bound).StartsWith("NUI's own"), "a bound is NUI's own");
-            var pin = new Rule { Op = 2, Strength = Required };
-            pin.Terms.Add(new Term(2, 9, 1));
-            var pinned = new Capture();
-            pinned.Rules.Add(pin);
-            var zero = ZeroPins(pinned);
-            check.Expect(zero.Contains((2, 9)) && Render(pin, _ => "B", zero) == "", "a margin pinned to 0 renders to nothing");
-            var margin = new Rule { Op = 2, Strength = Required };
-            margin.Terms.Add(new Term(2, 1, 1));
-            margin.Terms.Add(new Term(2, 9, 1));
-            check.Expect(Render(margin, _ => "B", zero) == "B.y == 0" && Render(margin, _ => "B", []) == "B.y + B.margin.top == 0",
-                "only a margin the proof pins to 0 is left out");
-            var sized = new Rule { Op = 2, Strength = Required };
-            sized.Terms.Add(new Term(-1, 0, 100));
-            sized.Terms.Add(new Term(2, 2, -1));
-            check.Expect(Render(sized, _ => "B", []) == "100 * UI scale == B.width" && Why(sized) == "\"width\": 100 in the JSON",
-                "a width rule names its JSON key");
-            var aspect = new Rule { Op = 2, Strength = Required };
-            aspect.Terms.Add(new Term(2, 2, 0.5));
-            aspect.Terms.Add(new Term(2, 3, -1));
-            check.Expect(Why(aspect) == "\"aspect\": 2 in the JSON", "an aspect rule names its JSON key");
-            IntPtr probe = 0x1234;
-            check.Expect(TryRead((IntPtr)(&probe), out IntPtr read) && read == 0x1234 && !TryRead(IntPtr.Zero, out _),
-                "a probe reads the stack and refuses page 0");
-        }
-        finally
-        {
-            foreach (IntPtr p in blocks) NativeMemory.Free((void*)p);
-        }
+        var chain = new Rule { Op = 2, Constant = 4, Strength = Required };
+        chain.Terms.Add(new Term(1, 1, 1));
+        chain.Terms.Add(new Term(1, 3, 1));
+        chain.Terms.Add(new Term(1, 11, 1));
+        chain.Terms.Add(new Term(2, 9, 1));
+        chain.Terms.Add(new Term(2, 1, -1));
+        var chainZero = new HashSet<(int, int)> { (1, 11), (2, 9) };
+        check.Expect(Render(chain, e => e == 1 ? "A" : "B", chainZero) == "A.y + A.height + 4 == B.y", "a chain drops zero margins and moves the negative side right");
+        var bound = new Rule { Op = 1, Strength = Required };
+        bound.Terms.Add(new Term(2, 2, 1));
+        check.Expect(Render(bound, _ => "B", []) == "B.width >= 0" && Why(bound).StartsWith("NUI's own"), "a bound is NUI's own");
+        var pin = new Rule { Op = 2, Strength = Required };
+        pin.Terms.Add(new Term(2, 9, 1));
+        var pinned = new Capture();
+        pinned.Rules.Add(pin);
+        var zero = ZeroPins(pinned);
+        check.Expect(zero.Contains((2, 9)) && Render(pin, _ => "B", zero) == "", "a margin pinned to 0 renders to nothing");
+        var margin = new Rule { Op = 2, Strength = Required };
+        margin.Terms.Add(new Term(2, 1, 1));
+        margin.Terms.Add(new Term(2, 9, 1));
+        check.Expect(Render(margin, _ => "B", zero) == "B.y == 0" && Render(margin, _ => "B", []) == "B.y + B.margin.top == 0",
+            "only a margin the proof pins to 0 is left out");
+        var sized = new Rule { Op = 2, Strength = Required };
+        sized.Terms.Add(new Term(-1, 0, 100));
+        sized.Terms.Add(new Term(2, 2, -1));
+        check.Expect(Render(sized, _ => "B", []) == "100 * UI scale == B.width" && Why(sized) == "\"width\": 100 in the JSON",
+            "a width rule names its JSON key");
+        var aspect = new Rule { Op = 2, Strength = Required };
+        aspect.Terms.Add(new Term(2, 2, 0.5));
+        aspect.Terms.Add(new Term(2, 3, -1));
+        check.Expect(Why(aspect) == "\"aspect\": 2 in the JSON", "an aspect rule names its JSON key");
+        IntPtr probe = 0x1234;
+        check.Expect(TryRead((IntPtr)(&probe), out IntPtr read) && read == 0x1234 && !TryRead(IntPtr.Zero, out _),
+            "a probe reads the stack and refuses page 0");
         if (check.Ok) log.Info("NuiLayoutErrors.SelfCheck: passed");
     }
 

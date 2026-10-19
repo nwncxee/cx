@@ -21,7 +21,6 @@ namespace CX.Services.Anim;
 /// </summary>
 public sealed unsafe class PoseService : IExtenderService
 {
-    private static ExtenderLog? _log;
     private static GobAnimateFn* _next;
     private static GobGetAdjustedScaleFn _scale;
     private static bool _armed, _creatures;
@@ -242,7 +241,6 @@ public sealed unsafe class PoseService : IExtenderService
 
     public void Initialize(ExtenderLog log, HookService hooks)
     {
-        _log = log;
         _ = AnimKnobs.G;
         SelfCheck(log);
         RigMap.Init(log);

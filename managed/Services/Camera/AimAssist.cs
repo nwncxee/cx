@@ -16,7 +16,6 @@ namespace CX.Services.Camera;
 /// </summary>
 internal static unsafe class AimAssist
 {
-    private static ExtenderLog? _log;
     /// <summary>The walk and the auto-target hook are up. <see cref="_cursorReady"/> is the crosshair's own,
     /// narrower gate: the cursor-manager chain only.</summary>
     private static bool _ready, _cursorReady;
@@ -62,7 +61,6 @@ internal static unsafe class AimAssist
     /// behind <see cref="CursorId"/> is gated first and on its own rows, so it outlives every refusal below it.</summary>
     internal static void Init(ExtenderLog log, HookService hooks)
     {
-        _log = log;
         _cursorReady = EngineLayout.Require(log, "MouseLook.crosshair", "CClientExoApp", "CClientExoAppInternal",
                                             "CCachedMouseCursorManager")
                        && SymbolMap.Require(log, "MouseLook.crosshair", SymbolMap.AppManager);

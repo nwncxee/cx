@@ -149,14 +149,9 @@ public static partial class PlateLayout
     private const float SnapPx = 0.5f;
 
     /// <summary>Top-left the caller should draw a (<paramref name="w"/>×<paramref name="h"/>) plate at, given the
-    /// engine's projected screen anchor: centred horizontally, sitting directly above the anchor. Clamped into
-    /// the live viewport (<see cref="TextRig.ViewportW"/>/<see cref="TextRig.ViewportH"/>).</summary>
-    public static void Place(float anchorX, float anchorY, float w, float h, out float x, out float y) =>
-        Place(anchorX, anchorY, w, h, TextRig.ViewportW, TextRig.ViewportH, out x, out y);
-
-    /// <summary>As <see cref="Place(float,float,float,float,out float,out float)"/>, with the viewport passed
-    /// explicitly (the self-check's door, and the caller's when it already has the size). A zero or negative
-    /// viewport extent means "unknown" and that axis is left unclamped.</summary>
+    /// engine's projected screen anchor: centred horizontally, sitting directly above the anchor, clamped into
+    /// the viewport the caller passes. A zero or negative extent means "unknown" and leaves that axis
+    /// unclamped.</summary>
     public static void Place(float anchorX, float anchorY, float w, float h, float vpW, float vpH,
                              out float x, out float y)
     {

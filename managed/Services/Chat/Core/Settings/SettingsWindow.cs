@@ -348,9 +348,6 @@ public sealed partial class SettingsWindow
         }
     }
 
-    /// <summary>True while the panel is being dragged by its header (not a slider grab).</summary>
-    public bool Moving => Panel.Moving;
-
     /// <summary>Pointer motion while a slider or the header is grabbed, or a hover moved.</summary>
     public bool MouseMove(float mx, float my, ChatWindow win)
     {
@@ -381,8 +378,6 @@ public sealed partial class SettingsWindow
 
     /// <summary>True while the panel wants typed text: a value box or label edit, or a searching list.</summary>
     public bool Editing => Panel.Editing;
-    /// <summary>Is <paramref name="r"/> the row being text-edited? (the renderer shows the buffer + a caret).</summary>
-    public bool EditingRow(Row r) => Panel.EditingRow(r);
     /// <summary>The in-progress edit buffer (renderer draws it in the active value box).</summary>
     public string EditText => Panel.EditText;
 
@@ -424,9 +419,6 @@ public sealed partial class SettingsWindow
 
     /// <summary>Wheel notch while open: the open dropdown list, else the column under the pointer.</summary>
     public bool MouseWheel(int dy) => Panel.MouseWheel(dy);
-
-    /// <summary>True while a slider or the panel itself is being dragged.</summary>
-    public bool Dragging => Panel.Dragging;
 
     /// <summary>Force-close at a session boundary, clearing any half-owned press, drag, or field edit.</summary>
     public void Reset() { Panel.Close(); TellsHereChanged = false; FontChanged = false; CopyWindowRequested = false; CloseWindowRequested = false; CloseArmed = false; }

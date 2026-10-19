@@ -9,8 +9,8 @@ namespace CX.Alloy.Db;
 /// atlas itself through the client's own <c>stb_truetype</c> at the engine's parameters.</summary>
 public static class TextFontLoad
 {
-    /// <summary>Resource types the font path reads: TTF, TXI, TGA, DDS. From the key table's restype column.</summary>
-    public const ushort ResTtf = 2074, ResTxi = 2022, ResTga = 3, ResDds = 2033;
+    /// <summary>Resource types the font path reads: TTF and TXI. From the key table's restype column.</summary>
+    public const ushort ResTtf = 2074, ResTxi = 2022;
 
     /// <summary>The engine's atlas padding and oversampling, read off the <c>stbtt_PackBegin</c> call site at
     /// nm 0x1132b21 (<c>push $0x0</c> for the allocator, <c>mov $0x3,%r9d</c> for the padding) and the

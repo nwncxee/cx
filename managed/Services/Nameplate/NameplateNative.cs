@@ -355,25 +355,6 @@ public static unsafe class NameplateNative
         return sb.ToString();
     }
 
-    private static readonly GetObjectNameFn _getObjectName = EngineFn.GetObjectName;
-    private static readonly ExoStringDtorFn _exoDtor = EngineFn.ExoStringDtor;
-
-    /// <summary>The engine's display name for any object id -- what a placeable, door or item has instead of
-    /// creature stats. <c>GetObjectName</c> writes into a CALLER-owned CExoString that must be zeroed first
-    /// (the engine frees any non-null buf) and freed after, or it leaks a heap block per call. COLD.</summary>
-    public static string ObjectName(uint id)
-    {
-        if (_getObjectName == null || _exoDtor == null) return "";
-        IntPtr app = ExoApp();
-        if (app == IntPtr.Zero) return "";
-        byte* exo = stackalloc byte[16];
-        for (int i = 0; i < 16; i++) exo[i] = 0;
-        _getObjectName(app, id, (IntPtr)exo);
-        string name = Native.ReadExo((IntPtr)exo);
-        _exoDtor((IntPtr)exo);
-        return name.Trim();
-    }
-
     /// <summary>The object's plate portrait resref via the GetPortrait virtual, at
     /// <see cref="PortraitSizePlate"/>. "" when the object has no portrait. COLD.</summary>
     public static string Portrait(IntPtr obj)

@@ -89,7 +89,7 @@ public sealed class CardService : IExtenderService
         IntPtr item = RadialIcons.Item((IntPtr)id);
         if (item == IntPtr.Zero) return default;
         int stack = new CNWCItem(item).StackSize;
-        return new PanelSubject(RadialIcons.ObjectName(id), stack.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return new PanelSubject(Native.ObjectName(id), stack.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     /// <summary>The per-frame draw: read the hit, update the card, draw each card's background, icons, then text.</summary>

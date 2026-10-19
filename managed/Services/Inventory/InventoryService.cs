@@ -65,12 +65,12 @@ public sealed unsafe partial class InventoryService : IExtenderService
             Focusable = false,
             CapturesPointer = true,
             DrawContent = Draw,
-            OnMouseButton = (down, button, x, y) => !InventoryNative.EngineModal() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
-            OnMouseMotion = (x, y) => !InventoryNative.EngineModal() && Input(_inv.MouseMove(x, y)),
-            OnMouseWheel = dy => !InventoryNative.EngineModal() && Input(_inv.MouseWheel(dy)),
-            OnKey = (key, mods) => !InventoryNative.EngineModal() && Input(_inv.Key(key, mods)),
+            OnMouseButton = (down, button, x, y) => !Native.ModalPanelUp() && Input(_inv.MouseButton(down, button, x, y, InventoryNative.Mods())),
+            OnMouseMotion = (x, y) => !Native.ModalPanelUp() && Input(_inv.MouseMove(x, y)),
+            OnMouseWheel = dy => !Native.ModalPanelUp() && Input(_inv.MouseWheel(dy)),
+            OnKey = (key, mods) => !Native.ModalPanelUp() && Input(_inv.Key(key, mods)),
             OnText = p => { _inv.Type(Marshal.PtrToStringUTF8(p) ?? ""); SyncKeyboard(); },
-            HitTestOverride = (px, py) => _inv.Contains(px, py) && !InventoryNative.EngineModal(),
+            HitTestOverride = (px, py) => _inv.Contains(px, py) && !Native.ModalPanelUp(),
         };
         InitGold();
         FrameRegistry.Global.Register(FramePhase.Start, 50, BuildModels, "Inventory.models", log);
@@ -301,7 +301,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         if (!GameGate.InGame) { Close(notify: false); return; }
         if (_masterOff) { _masterOff = false; Close(notify: true); return; }
         IntPtr panel = InventoryNative.MyPanel();
-        if (InventoryNative.EngineModal()) return;
+        if (Native.ModalPanelUp()) return;
         int vw = TextRig.ViewportW, vh = TextRig.ViewportH;
         if (vw != _vw || vh != _vh || _layoutDirty || _inv.PolicyStale) Layout(vw, vh);
         if (!Faces()) return;

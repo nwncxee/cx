@@ -21,11 +21,8 @@ public static class InputStripLayout
     internal const int CounterWarn = (int)(EditBuffer.MaxLength * CounterWarnFrac);
 
     /// <summary>The edit area's left x and wrap width for this window: right of the channel chip, minus the
-    /// counter's reserve while <c>chat counter</c> is on. Pass the UI face atlas (see the type summary).</summary>
-    public static void EditArea(ChatWindow win, GlyphAtlas atlas, int textLength, out float startX, out float editW)
-        => EditArea(win, atlas, textLength, ChatKnobs.Counter.V, out startX, out editW);
-
-    /// <summary>The knob-free form, so a self-check can exercise the counter reserve without arming the cfg writer.</summary>
+    /// counter's reserve when <paramref name="counter"/> is on. Pass the UI face atlas (see the type
+    /// summary).</summary>
     internal static void EditArea(ChatWindow win, GlyphAtlas atlas, int textLength, bool counter,
                                   out float startX, out float editW)
     {

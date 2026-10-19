@@ -32,10 +32,6 @@ internal static class AnimKnobs
     internal static readonly Gated<bool> Drive;
     internal static readonly Gated<bool> Aim;
     internal static readonly Gated<float> Hit;
-    /// <summary>AN6: announce <c>AnimateStaticLight</c> only where something can hear it. Off, every animated
-    /// static light part re-announces every frame, as the engine does -- the A/B for a static light that stops
-    /// responding to an animated colour.</summary>
-    internal static readonly Knob<bool> StaticLight;
 
     static AnimKnobs()
     {
@@ -91,11 +87,6 @@ internal static class AnimKnobs
             help: "During an attack the upper body bends toward the target's height: a bow shot at a creature on a ledge or a swing at a giant tilts up, a strike at a rat tilts down."), false);
         Hit = new(G.Slider("hitreact", "Hit reactions", 0f, 200f, 10f, 100f, "%", tier: Tier.ChatOnly,
             help: "A landed hit knocks the upper body away from the blow, harder for more damage and for a critical hit, on top of the engine's own flinch. 0 turns it off."), 0f);
-        StaticLight = G.Toggle("staticlight", "staticlight", true, tier: Tier.ChatOnly,
-            help: "An animated static light tells its gob so every frame, whether or not anything is "
-                + "listening; each announcement walks the tile BSP and allocates. On, CX announces only to a "
-                + "gob that has a handler which would receive it and a consumer that would act on it. Off, "
-                + "every announcement is made, which is the engine's own behaviour.");
         G.Status = PoseService.Report;
     }
 

@@ -21,7 +21,7 @@ internal sealed partial class InventoryWindow
     private float _lootTop, _lootTarget;
     private bool _lootScrolling;
     private int _lootMaxRows = LootModel.Rows;
-    private float _vw, _vh;
+    private float _vw;
     /// <summary>A server's title for every container (<c>inventory.loot.label</c>), empty for the container's own name.</summary>
     private string _lootLabel = "";
     /// <summary>The TLK's Container: the title of a container with no name.</summary>

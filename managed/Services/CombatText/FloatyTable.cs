@@ -121,7 +121,6 @@ public sealed class FloatyTable
         public FloatyKind Kind;
         public ColorRun[] Runs;
         public float R, G, B;
-        public long PostedMs;
     }
 
     private readonly Slot[] _slots = new Slot[MaxSlots];
@@ -149,10 +148,10 @@ public sealed class FloatyTable
 
     /// <summary>COLD, on the message-handling thread: bank one captured element. Never allocates a slot and
     /// never touches the live table -- the render thread owns both.</summary>
-    public void Note(uint id, FloatyKind kind, ColorRun[] runs, float r, float g, float b, long nowMs)
+    public void Note(uint id, FloatyKind kind, ColorRun[] runs, float r, float g, float b)
     {
         if (runs.Length == 0) return;
-        var p = new Pending { Id = id, Kind = kind, Runs = runs, R = r, G = g, B = b, PostedMs = nowMs };
+        var p = new Pending { Id = id, Kind = kind, Runs = runs, R = r, G = g, B = b };
         lock (_lock)
         {
             int next = (_head + 1) % Ring;
@@ -273,31 +272,31 @@ public sealed class FloatyTable
         var t = new FloatyTable();
         ColorRun[] R(string s) => new[] { new ColorRun(s, 1f, 1f, 1f) };
 
-        for (int i = 0; i < 5; i++) t.Note(7u, FloatyKind.Damage, R("" + i), 1f, 1f, 1f, 0);
+        for (int i = 0; i < 5; i++) t.Note(7u, FloatyKind.Damage, R("" + i), 1f, 1f, 1f);
         ok &= t.Advance(0, 3, 1000f, 1000f) == 3;                       // per-target cap holds
         ok &= t.Live[0].Runs[0].Text == "2" && t.Live[2].Runs[0].Text == "4";   // oldest evicted, newest kept
         // and the survivors still occupy DISTINCT rows after two evictions
         ok &= t.Live[0].Stack != t.Live[1].Stack && t.Live[1].Stack != t.Live[2].Stack
               && t.Live[0].Stack != t.Live[2].Stack;
 
-        t.Note(8u, FloatyKind.Damage, R("x"), 1f, 1f, 1f, 0);
+        t.Note(8u, FloatyKind.Damage, R("x"), 1f, 1f, 1f);
         ok &= t.Advance(0, 3, 1000f, 1000f) == 4;                       // a different target has its own cap
 
-        t.Note(7u, FloatyKind.Banner, R("*Sneak Attack!*"), 1f, 1f, 1f, 0);
+        t.Note(7u, FloatyKind.Banner, R("*Sneak Attack!*"), 1f, 1f, 1f);
         ok &= t.Advance(0, 3, 1000f, 1000f) == 5;                       // banners do not compete with numbers for the cap
         ok &= t.Live[4].Stack == 0;                         // and open their own column, not the numbers' one
 
         ok &= t.Advance(1000, 3, 1000f, 1000f) == 0;                    // everything expires at its life
         ok &= t.Advance(2000, 3, 1000f, 1000f) == 0;                    // and a retired slot stays retired
 
-        t.Note(9u, FloatyKind.Damage, R("42"), 1f, 1f, 1f, 0);
+        t.Note(9u, FloatyKind.Damage, R("42"), 1f, 1f, 1f);
         t.Advance(0, 3, 1000f, 1000f);
         ok &= t.LiveCount == 1 && t.Live[0].LifeMs == 1000f;
         t.Clear();
         ok &= t.Advance(0, 3, 1000f, 1000f) == 0;
 
         // an empty parse is refused at the door rather than becoming an invisible slot
-        t.Note(1u, FloatyKind.Damage, Array.Empty<ColorRun>(), 1f, 1f, 1f, 0);
+        t.Note(1u, FloatyKind.Damage, Array.Empty<ColorRun>(), 1f, 1f, 1f);
         ok &= t.Advance(0, 3, 1000f, 1000f) == 0;
 
         log.Info(ok ? "FloatyTable.SelfCheck: passed" : "FloatyTable.SelfCheck: FAILED");

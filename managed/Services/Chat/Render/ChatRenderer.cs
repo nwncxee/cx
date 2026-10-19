@@ -78,85 +78,29 @@ public static unsafe class ChatRenderer
         _frames = arr;
     }
 
-    /// <summary>Single-frame convenience (probe demo, backward compat).</summary>
-    public static void Publish(RenderFrame? rf)
-        => _frames = rf == null ? System.Array.Empty<Frame>() : new[] { new Frame(rf, new float[rf.Verts.Length]) };
-
-    /// <summary>Chrome-only convenience (the probe demo): draw a flat batch, no body/animation.</summary>
-    public static void Publish(float[] verts, int vertCount)
-        => Publish(new RenderFrame { Verts = verts, Count = vertCount, BodyStart = vertCount, BodyEnd = vertCount });
-
-    /// <summary>Clear the drawn batch (e.g. probe demo off).</summary>
-    public static void Clear() => _frames = System.Array.Empty<Frame>();
-
-    // ---- demo (probe rig: `~cx text`) -------------------------------------------------------
-
-    private static bool _demoOn;
-    private const string Demo =
-        "<cFFD200>CX</c> chat -- Ćma œuf ß: <c46C246>Привет</c>, " +
-        "<c4AA3FF>мир</c>! now wrap this line across the box.";
-
-    /// <summary>Toggle the hardcoded demo string over the shared primitives (the owned-render demo).</summary>
-    public static bool ToggleDemo()
+    /// <summary>Sets the whole GL state the text program needs and hands back the ortho matrix; false when the
+    /// program is not ready. Nothing is inherited: UiHostService resyncs the engine on hand-back, so every
+    /// draw below sets its own preamble. Hot, zero-alloc.</summary>
+    private static bool BeginText(out Matrix4x4 m)
     {
-        if (_atlas == null) { _log?.Info("TextRig: no atlas; can't draw text"); return false; }
-        _demoOn = !_demoOn;
-        if (_demoOn) { var b = BuildDemo(_atlas); Publish(b.Item1, b.Item2); }
-        else Clear();
-        _log?.Info($"TextRig: demo={_demoOn}");
-        return _demoOn;
-    }
+        m = default;
+        Gl.ActiveTexture(Gl.TEXTURE0);
+        if (!TextRig.EnsureProgram()) return false;
+        if (!TextRig._texUp) TextRig.UploadTexture();
+        if (!TextRig._vaoUp) TextRig.SetupVao();
 
-    private static (float[], int) BuildDemo(GlyphAtlas atlas)
-    {
-        var runes = new List<Rune>();
-        var cols = new List<uint>();
-        ParseColored(Demo, runes, cols);
-        var batch = new VertexBatch(atlas.SolidU, atlas.SolidV);
+        Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
+        Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
 
-        const float maxWidth = 320f, startX = 60f, startY = 200f;
-        List<TextWrapper.LineSpan> lines = TextWrapper.WrapRunes(runes, maxWidth, atlas.AdvanceOfCached);
-        for (int li = 0; li < lines.Count; li++)
-        {
-            float baseline = startY + (li + 1) * atlas.LineHeight, penX = startX;
-            TextWrapper.LineSpan span = lines[li];
-            for (int k = span.Start; k < span.End; k++)
-            {
-                Rune r = runes[k];
-                if (!atlas.TryGet(r.Value, out Glyph g)) { penX += atlas.AdvanceOf(r); continue; }
-                uint c = cols[k];
-                batch.Glyph(g, penX, baseline, ((c >> 16) & 0xFF) / 255f, ((c >> 8) & 0xFF) / 255f, (c & 0xFF) / 255f, 1f);
-                penX += g.Advance;
-            }
-        }
-        return (batch.ToArray(), batch.VertexCount);
-    }
-
-    /// <summary>Throwaway &lt;cRRGGBB&gt;...&lt;/c&gt; parser for the demo (real ingest uses ColorRunParser).</summary>
-    private static void ParseColored(string s, List<Rune> runes, List<uint> cols)
-    {
-        uint color = 0xFFFFFF;
-        var seg = new StringBuilder();
-        void Flush() { foreach (Rune r in seg.ToString().EnumerateRunes()) { runes.Add(r); cols.Add(color); } seg.Clear(); }
-        int i = 0;
-        while (i < s.Length)
-        {
-            if (i + 9 <= s.Length && s[i] == '<' && s[i + 1] == 'c'
-                && uint.TryParse(s.AsSpan(i + 2, 6), System.Globalization.NumberStyles.HexNumber, null, out uint rgb)
-                && s[i + 8] == '>')
-            { Flush(); color = rgb; i += 9; }
-            else if (i + 4 <= s.Length && s[i] == '<' && s[i + 1] == '/' && s[i + 2] == 'c' && s[i + 3] == '>')
-            { Flush(); color = 0xFFFFFF; i += 4; }
-            else { seg.Append(s[i]); i++; }
-        }
-        Flush();
+        m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
+        return true;
     }
 
     // ---- draw ---------------------------------------------------------------------------------
 
     /// <summary>Hot: draw all published frames (one per chat window) through the owned GL3 program.
     /// Applies the fade/slide/scroll per frame; the slide residual only moves the focused window's
-    /// body (<see cref="RenderFrame.ApplyResidual"/>). One GL state save/restore wraps all windows; the VBO
+    /// body (<see cref="RenderFrame.ApplyResidual"/>). One <see cref="BeginText"/> covers all windows; the VBO
     /// is re-specified per window (N<=4, tiny buffers — negligible bus cost). Zero-alloc in every path.</summary>
     public static void Draw()
     {
@@ -170,61 +114,47 @@ public static unsafe class ChatRenderer
         float globalResidual = ChatAnim.Tick(System.Environment.TickCount64, focusTau);
         System.DateTime now = System.DateTime.UtcNow;
 
-        // no state snapshot. UiHostService resyncs the engine on hand-back; everything below sets the
-        // full preamble it needs, so nothing here is inherited from another window either.
-        Gl.ActiveTexture(Gl.TEXTURE0);
+        if (!BeginText(out Matrix4x4 m)) return;
 
-        if (TextRig.EnsureProgram())
+        for (int i = 0; i < frames.Length; i++)
         {
-            if (!TextRig._texUp) TextRig.UploadTexture();
-            if (!TextRig._vaoUp) TextRig.SetupVao();
+            Frame f = frames[i];
+            RenderFrame rf = f.Rf;
+            if (rf.Count == 0) continue;
 
-            Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
-            Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-
-            Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
-
-            for (int i = 0; i < frames.Length; i++)
+            float residual = rf.ApplyResidual ? globalResidual : 0f;
+            System.DateTime ls = rf.LastScroll;
+            bool stable = IsStable(rf, residual, now, ls, out int opaque);
+            int uploadLen = rf.Verts.Length;
+            if (stable && f.Settled && opaque == f.OpaqueCount)
             {
-                Frame f = frames[i];
-                RenderFrame rf = f.Rf;
-                if (rf.Count == 0) continue;
-
-                float residual = rf.ApplyResidual ? globalResidual : 0f;
-                System.DateTime ls = rf.LastScroll;
-                bool stable = IsStable(rf, residual, now, ls, out int opaque);
-                int uploadLen = rf.Verts.Length;
-                if (stable && f.Settled && opaque == f.OpaqueCount)
-                {
-                    // ponytail: settled — Scratch has correct data from the last ApplyAnim.
-                    // Single-frame: VBO still holds it; multi-frame: re-upload (shared VBO).
-                    if (frames.Length > 1) TextRig.UploadBuffer(f.Scratch, uploadLen);
-                }
-                else if (stable)
-                {
-                    ApplyAnim(f, residual, now, ls);
-                    TextRig.UploadBuffer(f.Scratch, uploadLen);
-                    f.Settled = true;
-                    f.OpaqueCount = opaque;
-                }
-                else
-                {
-                    f.Settled = false;
-                    ApplyAnim(f, residual, now, ls);
-                    TextRig.UploadBuffer(f.Scratch, uploadLen);
-                }
-                _drawCount = rf.Count;
-
-                if (!_diagged)
-                {
-                    Gl.DrainErrors();
-                    _diagged = true;
-                    DrawFrame(f, m, residual, now, ls);
-                    _log?.Info($"TextRig: draw verts={_drawCount} viewport={TextRig.ViewportW}x{TextRig.ViewportH} glErr=0x{Gl.GetError():x}");
-                }
-                else DrawFrame(f, m, residual, now, ls);
+                // ponytail: settled — Scratch has correct data from the last ApplyAnim.
+                // Single-frame: VBO still holds it; multi-frame: re-upload (shared VBO).
+                if (frames.Length > 1) TextRig.UploadBuffer(f.Scratch, uploadLen);
             }
+            else if (stable)
+            {
+                ApplyAnim(f, residual, now, ls);
+                TextRig.UploadBuffer(f.Scratch, uploadLen);
+                f.Settled = true;
+                f.OpaqueCount = opaque;
+            }
+            else
+            {
+                f.Settled = false;
+                ApplyAnim(f, residual, now, ls);
+                TextRig.UploadBuffer(f.Scratch, uploadLen);
+            }
+            _drawCount = rf.Count;
 
+            if (!_diagged)
+            {
+                Gl.DrainErrors();
+                _diagged = true;
+                DrawFrame(f, m, residual, now, ls);
+                _log?.Info($"TextRig: draw verts={_drawCount} viewport={TextRig.ViewportW}x{TextRig.ViewportH} glErr=0x{Gl.GetError():x}");
+            }
+            else DrawFrame(f, m, residual, now, ls);
         }
     }
 
@@ -420,32 +350,18 @@ public static unsafe class ChatRenderer
         if (_attrVerts == null || _attrEpoch != TextRig.AtlasEpoch) { BuildAttribution(); _attrEpoch = TextRig.AtlasEpoch; }
         if (_attrCount == 0) return;
 
-        // no state snapshot. UiHostService resyncs the engine on hand-back; everything below sets the
-        // full preamble it needs, so nothing here is inherited from another window either.
-        Gl.ActiveTexture(Gl.TEXTURE0);
+        if (!BeginText(out Matrix4x4 m)) return;
 
-        if (TextRig.EnsureProgram())
-        {
-            if (!TextRig._texUp) TextRig.UploadTexture();
-            if (!TextRig._vaoUp) TextRig.SetupVao();
+        TextRig.BindText(m);
+        Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._vbo);
+        fixed (float* p = _attrVerts)
+            Gl.BufferData(Gl.ARRAY_BUFFER, (System.IntPtr)(_attrVerts.Length * sizeof(float)), p, Gl.DYNAMIC_DRAW);
+        Gl.DrawArrays(Gl.TRIANGLES, 0, _attrCount);
 
-            Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
-            Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-
-            Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
-
-            TextRig.BindText(m);
-            Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._vbo);
-            fixed (float* p = _attrVerts)
-                Gl.BufferData(Gl.ARRAY_BUFFER, (System.IntPtr)(_attrVerts.Length * sizeof(float)), p, Gl.DYNAMIC_DRAW);
-            Gl.DrawArrays(Gl.TRIANGLES, 0, _attrCount);
-
-            // Overlay re-specifies the shared VBO; invalidate the settled-frame cache so Draw()
-            // re-uploads on the next in-game frame instead of reading stale attribution data.
-            Frame[] frames = _frames;
-            for (int i = 0; i < frames.Length; i++) frames[i].Settled = false;
-
-        }
+        // Overlay re-specifies the shared VBO; invalidate the settled-frame cache so Draw()
+        // re-uploads on the next in-game frame instead of reading stale attribution data.
+        Frame[] frames = _frames;
+        for (int i = 0; i < frames.Length; i++) frames[i].Settled = false;
     }
 
     private static void BuildAttribution()
