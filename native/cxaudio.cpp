@@ -1915,7 +1915,6 @@ CX_EXPORT void cxa_set_original(int32_t which, void* fn)
     default: break;
     }
 }
-CX_EXPORT int32_t cxa_shim_count(void) { return SH_Count; }
 
 /// The knobs. Live, except what the first bus fixed (binaural vs panning, the ambisonic order).
 CX_EXPORT void cxa_config(const CxaConfig* c)
@@ -2076,7 +2075,6 @@ CX_EXPORT void cxa_environment(int32_t row)
     fx_apply();
 }
 CX_EXPORT int32_t cxa_preset_row(const char* label) { return preset_row(label); }
-CX_EXPORT int32_t cxa_preset_count(void) { return PresetCount; }
 
 /// The area's static geometry, NWN world space, copied. The sim thread swaps it in at its next tick; 0 triangles
 /// clears the scene. <paramref name="bake"/>: the area's first send, which (re)starts the pathing bake.
