@@ -521,9 +521,8 @@ internal static unsafe class NuiItemIcons
         return _w > 0;
     }
 
-    /// <summary>One PLT layer through the engine's reader and <c>ImageDecode</c>'s lookup (<c>palette[(scheme[layer] &lt;&lt; 10)
-    /// + index*4]</c>), a pixel whose layer or row is out of range left transparent where the engine would read stale
-    /// memory. True when the PLT exists.</summary>
+    /// <summary>One PLT layer through the engine's reader and <c>ImageDecode</c>'s lookup (see <see cref="Texel"/>), looked up in
+    /// the palette <see cref="PaletteFor"/> picks. True when the PLT exists.</summary>
     private static bool AddPlt(ReadOnlySpan<byte> name, ushort* scheme, int first, int count)
     {
         if (scheme == null || (uint)count > RadialIcons.MaxScheme) return false;
@@ -534,19 +533,35 @@ internal static unsafe class NuiItemIcons
         if (px == null) return false;
         if (Fit(w, h, c))
         {
-            uint* pal = (uint*)*_palette;
-            int rows = *_paletteRows;
-            uint[] dst = _layer!;
-            for (int i = 0; i < w * h; i++)
+            ReadOnlySpan<byte> master = CX.Alloy.Renderer.On && CX.Alloy.Db.PltPalettes.Loaded ? CX.Alloy.Db.PltPalettes.Master : default;
+            fixed (byte* m = master)
             {
-                int layer = px[2 * i + 1];
-                int row = layer < count ? scheme[first + layer] : -1;
-                dst[i] = pal != null && (uint)row < (uint)rows ? pal[(row << (PaletteRowShift - 2)) + px[2 * i]] : 0;
+                uint* pal = PaletteFor(m, (uint*)*_palette, *_paletteRows, out int rows);
+                uint[] dst = _layer!;
+                for (int i = 0; i < w * h; i++) dst[i] = Texel(pal, rows, scheme, first, count, px[2 * i], px[2 * i + 1]);
             }
             Blend(w * h);
         }
         ((delegate* unmanaged<byte*, int, int, void>)*_releasePlt)(px, w, h);
         return true;
+    }
+
+    /// <summary>The palette a PLT pixel is looked up in. With Alloy drawing, the engine's palette calls never reach the engine
+    /// (<c>AurSetPalette</c> is replaced), so its buffer is empty or left over from before, and the master
+    /// <paramref name="master"/> (null when Alloy is off) is the one the world's colours come from.</summary>
+    internal static uint* PaletteFor(byte* master, uint* engine, int engineRows, out int rows)
+    {
+        rows = master != null ? CX.Alloy.Db.PltPalettes.Height : engineRows;
+        return master != null ? (uint*)master : engine;
+    }
+
+    /// <summary><c>ImageDecode</c>'s lookup, <c>palette[(scheme[layer] &lt;&lt; 10) + index * 4]</c>, as RGBA with R in the low byte.
+    /// Transparent where there is no palette, the layer is past the scheme or the row is past the palette, where the engine
+    /// would read stale memory.</summary>
+    internal static uint Texel(uint* palette, int rows, ushort* scheme, int first, int count, byte index, byte layer)
+    {
+        int row = layer < count ? scheme[first + layer] : -1;
+        return palette != null && (uint)row < (uint)rows ? palette[(row << (PaletteRowShift - 2)) + index] : 0;
     }
 
     /// <summary>One plain layer, uncompressed through the engine's reader (TGA/4PC; a DDS-only one is skipped).</summary>
@@ -665,8 +680,8 @@ internal static unsafe class NuiItemIcons
         if (_logged++ < LogCap) _log?.Always("NuiItemIcons: " + line);
     }
 
-    /// <summary>Off-device: the parser, the blend and the emitted TGA's header, crop and byte order, and that the base64
-    /// round-trips. The two hooks and the icon walk are engine calls -- live-unverified here.</summary>
+    /// <summary>Off-device: the parser, the palette choice and lookup against hand-written rows (oracle: the engine's row layout), the blend and the
+    /// emitted TGA's header, crop and byte order, and that the base64 round-trips. The two hooks and the icon walk are engine calls -- live-unverified here.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -692,6 +707,23 @@ internal static unsafe class NuiItemIcons
         PutLook(armor + "f"); check.Expect(!ParseLook(l, &look), "@look: a trailing half byte is refused");
         PutLook("@look:0010"); check.Expect(!ParseLook(l, &look), "@look: a truncated string is refused");
         PutLook("@item:0010"); check.Expect(!ParseLook(l, &look), "@look: another prefix is not ours");
+
+        // Oracle: the engine's layout, written by hand -- a row is 256 RGBA entries, a scheme entry is slot * 256 + colour (the
+        // metal slot is 3), and AurSetPalette grows its buffer only to the highest slot it was asked to set.
+        const int MetalRow = 3 * 256 + 5, MasterRows = 7 * 256, StaleRows = 2 * 256;
+        uint[] master = new uint[MasterRows * 256], stale = new uint[StaleRows * 256];
+        master[(MetalRow << 8) + 7] = 0xff332211;
+        ushort* scheme = stackalloc ushort[10];
+        scheme[2] = MetalRow;
+        fixed (uint* mp = master)
+        fixed (uint* sp = stale)
+        {
+            uint* pal = PaletteFor((byte*)mp, sp, StaleRows, out int rows);
+            check.Expect(rows == MasterRows && Texel(pal, rows, scheme, 0, 10, 7, 2) == 0xff332211, "the master wins over a stale engine buffer: the metal layer keeps its colour, R in the low byte");
+            pal = PaletteFor(null, sp, StaleRows, out rows);
+            check.Expect(rows == StaleRows && pal == sp && Texel(pal, rows, scheme, 0, 10, 7, 2) == 0, "no master (Alloy off): the engine's own buffer, and a row past it is left transparent");
+            check.Expect(Texel(mp, MasterRows, scheme, 1, 9, 7, 1) == 0xff332211 && Texel(mp, MasterRows, scheme, 0, 10, 7, 10) == 0 && Texel(null, MasterRows, scheme, 0, 10, 7, 2) == 0, "a scheme block read from an offset indexes its own layers; a layer past the scheme, or no palette at all, is transparent");
+        }
 
         uint[]? savedC = _canvas, savedL = _layer; byte[]? savedT = _tga, savedB = _b64; int sw = _w, sh = _h, sl = _b64Len;
         try
