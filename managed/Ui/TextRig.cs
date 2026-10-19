@@ -772,21 +772,24 @@ public static unsafe partial class TextRig
     /// filtered: the mean of two layer indices is a third layer. Bilinear runs over the RESOLVED colours.</summary>
     private const string FSrcIconPlt =
         "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\n" +
-        "uniform sampler2D uTex;\nuniform sampler2D uPal;\nuniform int uRows[10];\nout vec4 o;\n" +
-        "vec4 tap(ivec2 p, ivec2 d){\n" +
-        "  vec2 rg = texelFetch(uTex, clamp(p, ivec2(0), d - 1), 0).rg;\n" +
+        "uniform sampler2D uTex;\nuniform sampler2D uPal;\nuniform int uRows[10];\nuniform vec2 uCrop;\nout vec4 o;\n" +
+        "ivec2 lo, hi;\n" +
+        "vec4 tap(ivec2 p){\n" +
+        "  vec2 rg = texelFetch(uTex, clamp(p, lo, hi), 0).rg;\n" +
         "  int l = int(rg.g * 255.0 + 0.5); l = l < 9 ? l : 9;\n" +
-        "  return texelFetch(uPal, ivec2(int(rg.r * 255.0 + 0.5), uRows[l]), 0);\n}\n" +
+        "  vec4 c = texelFetch(uPal, ivec2(int(rg.r * 255.0 + 0.5), uRows[l]), 0);\n" +
+        "  return vec4(c.rgb * c.a, c.a);\n}\n" +
         "void main(){\n" +
         "  ivec2 d = textureSize(uTex, 0); d = max(d, ivec2(1));\n" +
+        "  lo = ivec2(0, int(floor(uCrop.y * float(d.y) + 0.5))); hi = ivec2(max(int(floor(uCrop.x * float(d.x) + 0.5)) - 1, 0), d.y - 1);\n" +
         "  vec2 t = vUV * vec2(d) - 0.5; vec2 f = fract(t); ivec2 p = ivec2(floor(t));\n" +
-        "  vec4 c = mix(mix(tap(p, d), tap(p + ivec2(1,0), d), f.x),\n" +
-        "               mix(tap(p + ivec2(0,1), d), tap(p + ivec2(1,1), d), f.x), f.y);\n" +
-        "  o = c * vec4(1.0, 1.0, 1.0, vA);\n}\n";
+        "  vec4 c = mix(mix(tap(p), tap(p + ivec2(1,0)), f.x),\n" +
+        "               mix(tap(p + ivec2(0,1)), tap(p + ivec2(1,1)), f.x), f.y);\n" +
+        "  o = vec4(c.rgb / max(c.a, 0.0001), c.a * vA);\n}\n";
 
     private static uint _progIconPlt;
     private static bool _progIconPltUp;
-    private static int _uProjIconPlt, _uTexIconPlt, _uPalIconPlt, _uRowsIconPlt;
+    private static int _uProjIconPlt, _uTexIconPlt, _uPalIconPlt, _uRowsIconPlt, _uCropIconPlt;
 
     private static bool EnsureIconPltProgram()
     {
@@ -800,7 +803,7 @@ public static unsafe partial class TextRig
         Gl.DeleteShader(vs); Gl.DeleteShader(fs);
         if (ok == 0) { _log?.Info("TextRig: PLT icon program link failed"); _progIconPlt = 0; return false; }
         _uProjIconPlt = UniformOf(_progIconPlt, "uProj"); _uTexIconPlt = UniformOf(_progIconPlt, "uTex");
-        _uPalIconPlt = UniformOf(_progIconPlt, "uPal"); _uRowsIconPlt = UniformOf(_progIconPlt, "uRows[0]");
+        _uPalIconPlt = UniformOf(_progIconPlt, "uPal"); _uRowsIconPlt = UniformOf(_progIconPlt, "uRows[0]"); _uCropIconPlt = UniformOf(_progIconPlt, "uCrop");
         _log?.Info("TextRig: PLT icon shader program ready");
         return true;
     }
@@ -832,6 +835,7 @@ public static unsafe partial class TextRig
         Gl.UniformMatrix4fv(_uProjIconPlt, 1, (byte)Gl.FALSE, (float*)&m);
         Gl.Uniform1i(_uTexIconPlt, 0);
         Gl.Uniform1i(_uPalIconPlt, 1);
+        Gl.Uniform2f(_uCropIconPlt, u1, v0);
         fixed (int* r = rows) Gl.Uniform1iv(_uRowsIconPlt, 10, r);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
