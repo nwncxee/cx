@@ -54,7 +54,7 @@ internal static unsafe partial class EmitterSim
     private const int MoveStandard = 0, MoveBezier = 1, MoveGrav = 2;
 
     /// <summary>The <c>MdlNodeEmitter</c> flag bits, each one an <c>Is*</c> accessor in the binary
-    /// (<see cref="EngineLayout.EmitterFlags"/> lists them). Read as a word once per emitter per frame
+    /// (<c>MdlNodeEmitter</c>'s flag word lists them). Read as a word once per emitter per frame
     /// instead of through eleven virtual calls.</summary>
     private const int FP2P = 1 << 0, FP2PSel = 1 << 1, FWind = 1 << 2,
                       FBounce = 1 << 4, FRandom = 1 << 5, FInherit = 1 << 6, FInheritVel = 1 << 7,
@@ -609,7 +609,7 @@ internal static unsafe partial class EmitterSim
     }
 
     /// <summary>The engine's own draw order, exactly: ASCENDING squared camera distance -- nearest first --
-    /// and, when two emitters tie and share a Gob, ascending <see cref="EngineLayout.EmitterRenderOrder"/>.
+    /// and, when two emitters tie and share a Gob, ascending <c>MdlNodeEmitter</c> render order.
     /// Vanilla composites near-to-far and <see cref="Particles"/> keeps this order for its alpha-blended
     /// class, so sorting the other way changes how overlapping plumes read. Insertion sort: allocation-free.
     /// </summary>

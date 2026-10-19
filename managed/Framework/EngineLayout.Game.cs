@@ -245,11 +245,6 @@ public static unsafe partial class EngineLayout
     // The offset is the LIST HEAD, read off Camera::GetViewVolume(int)'s one load on both builds (Linux nm
     // @0x4a3a60, Windows rva 0x59000); the extra +4 over Camera's usual window is the pad the ViewVolumeSet
     // int pushes the pointer past.
-    /// <summary>Camera -&gt; the world-space frustum as a <c>List&lt;Plane&gt;</c> head.
-    /// <c>Camera::RenderScene</c> builds it every frame, so it is an INPUT to the scene walk and stays current
-    /// when the walk is skipped. Untyped on purpose: a list head is not a field, so the accessor is the
-    /// <see cref="CX.Engine.Camera.ViewVolume"/> concept.</summary>
-    public static readonly int CamViewVolume = Field("Camera", "viewVolume");
 
     /// <summary>CClientExoAppInternal + 0x180: bit 0 = the "show mouse-over feedback" option, bit 1 =
     /// highlight-all (Tab) currently held. The engine tests the WHOLE word, which is why Tab plates even with
@@ -338,19 +333,11 @@ public static unsafe partial class EngineLayout
     /// <c>CNWCItem::GetName</c> (Linux nm @0x7ce810, Windows rva 0x83d8a0) among others. Gold is base item 76;
     /// NOT the icon's base item, which is a second field.</summary>
     public static readonly int ItemBaseItem = Field<int>("CNWCItem", "baseItem");
-    /// <summary>CNWCItem: non-zero =&gt; identified. <c>GetName</c> reads it twice on both builds
-    /// (<c>+0x1e0</c> / <c>+0x1c0</c>): it gates the custom name, and when clear it prefixes TLK 0x15ac.</summary>
-    public static readonly int ItemIdentified = Field<int>("CNWCItem", "identified");
     /// <summary>CNWCItem: the ghost / in-flight flag -- non-zero while a move waits on the server, which blocks a
     /// drag (<c>CGuiInvbox::CanEquipItem</c> @0x6906c0 refuses on it) and draws the icon at 0.4 alpha.
     /// <c>HandleServerToPlayerUpdate_GuiRepository</c> clears it on every confirmation (Linux nm @0x79e320
     /// <c>item+0x260</c>, Windows rva 0x7b4620 <c>item+0x240</c>).</summary>
     public static readonly int ItemGhost = Field<int>("CNWCItem", "ghost");
-    /// <summary>CNWCItem: the <c>INVENTORY_SLOT_*</c> bitmask the item is equipped in, <c>-1</c> when it is not.
-    /// <c>HandleServerToPlayerUpdate_GuiInventory</c> reads and writes it on both builds (Linux nm @0x79dd90
-    /// <c>item+0x26c</c>, Windows rva 0x7b3f30 <c>item+0x24c</c>), beside a second slot field one dword up for
-    /// two-handed / dual references.</summary>
-    public static readonly int ItemEquipSlot = Field<int>("CNWCItem", "equipSlot");
     /// <summary>CNWCItem: the CONFIRMED backpack cell, two bytes. <c>y</c> is <b>global</b>
     /// (<c>page * rows + localY</c>), which is why one item's y can exceed the grid's 6 rows. Written by the
     /// <c>'A'</c> and <c>'M'</c> cases of <c>Update_GuiRepository</c> and read back by its remove step, on both
@@ -372,13 +359,6 @@ public static unsafe partial class EngineLayout
     /// (Linux nm @0x7cdbd0 <c>item+0x2a4</c>, Windows rva 0x83f190 <c>item+0x284</c>), which then suppresses the
     /// count label when <see cref="BaseItemStacking"/> is 1 or the count is below 2.</summary>
     public static readonly int ItemStackSize = Field<int>("CNWCItem", "stackSize");
-    /// <summary>CNWCItem: the custom (renamed) item name as a <c>char*</c> + dword length. <c>GetName</c> tests
-    /// the length and returns this text outright when the item is identified (Linux nm @0x7ce810
-    /// <c>item+0x2b0/+0x2b8</c>, Windows rva 0x83d8a0 <c>item+0x290/+0x298</c>). Single-byte codepage, not UTF-8
-    /// (docs: engine-text-codepage).</summary>
-    public static readonly int ItemCustomName = Field<IntPtr>("CNWCItem", "customName");
-    /// <inheritdoc cref="ItemCustomName"/>
-    public static readonly int ItemCustomNameLen = Field<uint>("CNWCItem", "customNameLen");
     /// <summary>CNWBaseItem (a 200-byte record of <c>baseitems.2da</c>, reached through
     /// <see cref="SymbolMap.GetBaseItem"/>): the <b>equippable-slot bitmask</b>. The whole client-side equip
     /// rule is <c>(base-&gt;equipSlots &amp; invbox-&gt;slotMask) != 0</c>. Identical on both builds, paired
@@ -414,22 +394,13 @@ public static unsafe partial class EngineLayout
     /// <see cref="SymbolMap.InvSetCharacterData"/> (Linux nm @0x68e760 <c>+0x31a0</c>, Windows rva 0x857cd0
     /// <c>+0x2f68</c>), and the notify tail sends it.</summary>
     public static readonly int InvShownOid = Field<uint>("CPanelInventory", "shownOid");
-    /// <summary>CPanelInventory: 1 =&gt; this is my own inventory. <c>SetCharacterData</c> sets it for the player
-    /// (or a DM) and CLEARS it for anyone else, stripping the gold label and gold button from the panel for good
-    /// (Linux nm @0x68d810 <c>+0x31a4</c>, Windows rva 0x856fa0 <c>+0x2f6c</c>).</summary>
-    public static readonly int InvIsMine = Field<int>("CPanelInventory", "isMine");
     /// <summary>CPanelInventory -&gt; its embedded <c>CPanelInvEquip</c> (the 14 equip slots), the subobject
     /// <c>SetInventoryVisible</c> adds and removes under the tag "Equip" (Linux nm @0x68e760 <c>this+0x368</c>,
     /// Windows rva 0x857cd0 <c>this+0x308</c>).</summary>
     public static readonly int InvEquipPanel = Field<CX.Engine.CPanelInvEquip>("CPanelInventory", "equipPanel", embedded: true);
-    /// <summary>CPanelInventory: the three labels <c>SetCharacterData</c> fills -- gold, current weight, max
-    /// weight. Each measured as the <c>m_pString</c> the body writes through, minus
-    /// <see cref="LabelString"/> (Linux nm @0x68d810, Windows rva 0x856fa0). The gold one is also
-    /// <c>RemoveFromPanel</c>'s target, an independent read of the same offset.</summary>
-    public static readonly int InvGoldLabel = Field<CX.Engine.CGuiLabel>("CPanelInventory", "goldLabel", embedded: true);
-    /// <inheritdoc cref="InvGoldLabel"/>
-    public static readonly int InvWeightLabel = Field<CX.Engine.CGuiLabel>("CPanelInventory", "weightLabel", embedded: true);
-    /// <inheritdoc cref="InvGoldLabel"/>
+    /// <summary>CPanelInventory: the max-weight label <c>SetCharacterData</c> fills, measured as the
+    /// <c>m_pString</c> the body writes through minus <see cref="LabelString"/> (Linux nm @0x68d810,
+    /// Windows rva 0x856fa0).</summary>
     public static readonly int InvMaxWeightLabel = Field<CX.Engine.CGuiLabel>("CPanelInventory", "maxWeightLabel", embedded: true);
     /// <summary>CPanelInventory -&gt; its embedded container grid (<c>CGuiContainer</c>, 7x5), the widget every container
     /// update lands in: <c>Update_GuiContainer</c> adds to <c>panel+0x2628</c> (Linux nm @0x79ee90) / <c>panel+0x24b0</c>
@@ -471,11 +442,8 @@ public static unsafe partial class EngineLayout
     /// nm @0x6943f0 <c>+0x1e0</c>, Windows rva 0x87f970 <c>+0x1d0</c>). For the container grid it is the server's page:
     /// <c>HandleContainerPageUp</c> moves it with its <c>SelectNextPage</c> (panel <c>+0x2808</c> / <c>+0x2680</c>).</summary>
     public static readonly int ContainerPage = Field<int>("CGuiContainer", "page");
-    /// <summary>CPanelInvEquip: the character-name label (<c>TGuiLabel</c>) and the armour-class label, the other
-    /// two <c>SetCharacterData</c> fills. Same derivation from the same two bodies: the panel-relative store
-    /// minus the embedded equip panel's own offset, minus <see cref="LabelString"/>.</summary>
-    public static readonly int InvEquipNameLabel = Field<CX.Engine.CGuiLabel>("CPanelInvEquip", "nameLabel", embedded: true);
-    /// <inheritdoc cref="InvEquipNameLabel"/>
+    /// <summary>CPanelInvEquip: the armour-class label <c>SetCharacterData</c> fills -- the panel-relative
+    /// store minus the embedded equip panel's own offset, minus <see cref="LabelString"/>.</summary>
     public static readonly int InvEquipAcLabel = Field<CX.Engine.CGuiLabel>("CPanelInvEquip", "acLabel", embedded: true);
     /// <summary>CGuiLabel -&gt; <c>CAurString* m_pString</c>, the text object the label draws, at the same
     /// offset on both builds. A pointer to a live object, never an inline <c>CExoString</c>: the constructor
@@ -566,8 +534,6 @@ public static unsafe partial class EngineLayout
     /// <summary>An element's twelve kiwi variables (VariableData*): x, y, width, height, padding l/t/r/b, margin l/t/r/b --
     /// read off the ctor's three LayoutExpressions (inner = outer minus padding, outer plus margin).</summary>
     public static readonly int NuiVars = Field<IntPtr>("Nui::Layout::Layoutable", "vars", count: 12);
-    /// <summary>Layoutable -&gt; the <c>DynamicValue&lt;string&gt;*</c> the <c>tooltip</c> modifier assigns (@0x869600); Windows lambda reads +0x328 +8.</summary>
-    public static readonly int NuiTooltip = Field<IntPtr>("Nui::Layout::Layoutable", "tooltip");
     /// <summary>A Span's axis, read once by <c>Span::BuildConstraintDependants</c>: 1 = vertical.</summary>
     public static readonly int NuiSpanDirection = Field<int>("Nui::Layout::Span", "direction");
     /// <summary>The kiwi solver a LayoutGroup embeds; <c>SetChildren</c> resets it and adds the subtree's constraints.</summary>
@@ -604,29 +570,6 @@ public static unsafe partial class EngineLayout
     /// <summary>Bytes of a <c>DynamicBinding</c>, the record <c>JsonWindow::Bind</c> fills and its destructor frees.</summary>
     public static readonly int NuiDynamicBindingSize = Field("Nui::JSON::DynamicBinding", "sizeof");
 
-    // ---- lights ----
-    // The light priority terms. MEASURED on both binaries with objdump: LightManager is name-exported on
-    // Windows, so `PrioritizeLights` (rva 0x7ff60) reads there exactly as it does here.
-
-    /// <summary>The light's own priority OVERRIDE, and zero means "use the MDL node's"
-    /// (<see cref="MdlLightPriority"/>). <c>LightManager::PrioritizeLights</c> @0x4c0940 is the reader;
-    /// <c>Gob::SetLightPriority</c> @0x43f760 and the tileset main-light setter (which writes 4) are the
-    /// writers, and <c>PartLight::PartLight</c> zeroes it.</summary>
-    public static readonly int LightPriority = Field<int>("PartLight", "priority");
-
-    /// <summary>The MDL light node's <c>lightpriority</c> field
-    /// (<c>MdlNodeLight::InternalParseField</c> @0x44baf0 parses the name into it; the constructor defaults
-    /// it to 5). Lower sorts first, so a builder's 1 outranks the default.</summary>
-    public static readonly int MdlLightPriority = Field<int>("MdlNodeLight", "lightPriority");
-
-    /// <summary>The BSP node inventory's <c>CExoArrayList&lt;PartLight*&gt;</c> -- the TILE lights.
-    /// <c>SceneBSPAddPart</c> @0x47ca10 files a light here, and it is the only container that holds one:
-    /// <c>CollapsePartTree</c> @0x462ff0 clears every tile part's child list, so no part-tree walk can reach
-    /// a tile light. Sub-offsets of the record <see cref="BspDataTriMesh"/> names.</summary>
-    public static readonly int BspDataLight = Field("BSPNode", "light");
-    /// <inheritdoc cref="BspDataLight"/>
-    public static readonly int BspDataLightCount = Field("BSPNode", "lightCount");
-
     // ================= behaviours =================
     // The behaviour solvers Alloy ports write engine fields through the same virtuals the engine does, so
     // every slot below was measured on BOTH images: the Windows Gob and Part vtables were located by
@@ -634,14 +577,6 @@ public static unsafe partial class EngineLayout
     // second GetPosition hit at 0xd88ac0; the first is StringGob's). Every one is -8 for the usual reason
     // (#433: MSVC gives a virtual destructor one slot, Itanium two) -- and the DELETING destructor is
     // therefore Windows slot 0 against Linux slot 8, not -8.
-
-    /// <summary>The weak-reference back-list every <c>CAurObject</c> keeps: data, count, capacity. A solver
-    /// registers a stack <c>SafePointer</c> here for the length of its solve, so an owner destroyed inside a
-    /// dependency's <c>Animate</c> nulls it instead of leaving a dangling pointer. It sits immediately before
-    /// the paired <see cref="GobHighlight"/>, so it is the same place on both builds.</summary>
-    public static readonly int AurObjBackRefs = Field<IntPtr>("CAurObject", "backRefs");
-    /// <inheritdoc cref="AurObjBackRefs"/>
-    public static readonly int AurObjBackRefCount = Field<int>("CAurObject", "backRefCount");
 
     /// <summary>A behaviour's dependency list, the same <c>CExoArrayList</c> shape: the objects whose
     /// <c>Animate</c> the base solve drags forward before reading their part transforms.</summary>
@@ -667,14 +602,6 @@ public static unsafe partial class EngineLayout
     /// +0x80 on both.</summary>
     public static readonly int CrossAttachKeptScene = Field<IntPtr>("CAurBehaviorCrossSceneAttach", "keptScene");
     public static readonly int CrossAttachLatch = Field<byte>("CAurBehaviorCrossSceneAttach", "latch");
-
-    /// <summary>The subwindow solver's two dummy parts (top-left and bottom-right of the GUI viewport) and
-    /// the <c>setPosition</c> flag <c>GuiAttachViewport</c> passes.</summary>
-    public static readonly int SubwindowPartA = Field<IntPtr>("CAurBehaviorSubwindow", "partA");
-    /// <inheritdoc cref="SubwindowPartA"/>
-    public static readonly int SubwindowPartB = Field<IntPtr>("CAurBehaviorSubwindow", "partB");
-    /// <inheritdoc cref="SubwindowPartA"/>
-    public static readonly int SubwindowSetPos = Field<byte>("CAurBehaviorSubwindow", "setPos");
 
     /// <summary>The camera-follow target offset added to the target's position before the focus lerp
     /// (ctor default <c>(0, 0, 1)</c>: chest height), and the focus lag rate that drives
@@ -714,31 +641,9 @@ public static unsafe partial class EngineLayout
     /// <inheritdoc cref="StickLast"/>
     public static readonly int StickDir = Field<System.Numerics.Vector3>("CAurBehaviorCameraOnAStick", "dir");
 
-    /// <summary><c>CAurObject::SetBehavior(CAurBehavior*)</c> -- passing null is how a solver whose parent
-    /// died detaches; the setter DELETES the behaviour, so nothing may touch <c>this</c> afterwards.</summary>
-    public static readonly int GobSetBehaviorSlot = Field("Gob", "vtbl.SetBehavior", Expect.VtblSlot, sig: "void(IntPtr behavior)");
-    /// <summary><c>CAurObject::GetBehavior(int type)</c> -- with -1, "the behaviour you have"; the
-    /// identity test every solve makes before and after touching the owner.</summary>
-    public static readonly int GobGetBehaviorSlot = Field("Gob", "vtbl.GetBehavior", Expect.VtblSlot, sig: "IntPtr(int type)");
     /// <summary>The DELETING destructor: <c>Gob::~Gob</c> + <c>operator delete</c>. An attach behaviour with
     /// <c>diewithoutparent</c> set deletes its owner through it. Itanium's two destructor slots are
     /// complete-then-deleting; MSVC has one -- so this row is the one slot in the table that is NOT -8, and
     /// MSVC's takes a flags argument Itanium's does not, which is why no signature is declared.</summary>
     public static readonly int GobDeleteSlot = Field("Gob", "vtbl.Delete", Expect.VtblSlot);
-    /// <summary><c>CAurObject::GetName()</c> -- <c>Gob+0x24</c>, the inline name buffer. The subwindow
-    /// solver keys on four exact panel names.</summary>
-    public static readonly int GobGetNameSlot = Field("Gob", "vtbl.GetName", Expect.VtblSlot, sig: "IntPtr()");
-    /// <summary><c>CAurObject::GetScene()</c> and <c>CAurObject::AsCamera()</c> -- the subwindow solver's
-    /// two lookups: the panel's scene, and the owner's <c>Camera</c> base (which sits 8 bytes before the
-    /// <c>CAurObject</c> a <c>CAurCamera</c> hands out).</summary>
-    public static readonly int GobGetSceneSlot = Field("Gob", "vtbl.GetScene", Expect.VtblSlot, sig: "IntPtr()");
-    /// <inheritdoc cref="GobGetSceneSlot"/>
-    public static readonly int GobAsCameraSlot = Field("Gob", "vtbl.AsCamera", Expect.VtblSlot, sig: "IntPtr()");
-    /// <summary><c>CAurObject::SetPosition(Vector)</c> and <c>SetOrientation(Quaternion)</c> -- the only
-    /// writers the solvers' offsets go through. No signature is declared: both RETURN their argument by
-    /// value, which SysV answers in registers and Win64 through a caller buffer, so
-    /// <c>CX.Alloy.BehaviorCall</c> carries both argument lists.</summary>
-    public static readonly int GobSetPositionSlot = Field("Gob", "vtbl.SetPosition", Expect.VtblSlot);
-    /// <inheritdoc cref="GobSetPositionSlot"/>
-    public static readonly int GobSetOrientationSlot = Field("Gob", "vtbl.SetOrientation", Expect.VtblSlot);
 }

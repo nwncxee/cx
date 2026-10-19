@@ -21,7 +21,7 @@ internal readonly unsafe ref struct PartRef
     /// <summary>The <c>Part</c> base this ref reads through.</summary>
     internal Part View => new(_p);
     /// <summary>The <c>PartTriMesh</c> block: the LAYOUT view, for a part already known to be one. The
-    /// engine's own subclass cast is <see cref="EngineLayout.PartAsTriMeshSlot"/>.</summary>
+    /// engine's own subclass cast is <c>Part::AsPartTriMesh</c>.</summary>
     internal PartTriMesh Tri => new(_p);
 
     internal MaterialRef Material => new(_p == IntPtr.Zero ? IntPtr.Zero : View.Material.Ptr);
