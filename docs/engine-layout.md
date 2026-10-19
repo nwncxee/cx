@@ -629,8 +629,8 @@ Three `Same` rows and one rename, all read off decompiled bodies on both builds
 
 Not declared: the `Gob` visual-transform block (`+0x1c0`/`+0x280`/`+0x340`/`+0x400`,
 `+0x49c`) and the orientation quaternion at `+0xb4`. The rule the research settles on
-reads the composed 16 floats at `MdlNode+0x18` (`NodeMatrix`, already a row) off the
-enrolled part, so those rows have no reader yet.
+reads the composed 16 floats at `MdlNode+0x18` off the enrolled part, so those rows
+have no reader yet.
 
 **No probes.** Two pointers and a `CExoArrayList` pair; `Expect.Byte01` fits none.
 `CNWCPlaceable+0x1b4` (`0x194` Windows) is **plot**, not Static -- there is no

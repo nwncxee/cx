@@ -245,10 +245,9 @@ nm addresses (the read-only dump in `$NWN_DECOMP/` prints them + 0x100000).
   not in `Scene+0x130`, the list `SceneWalk` enumerates. The engine draws it from `Scene::RenderSkyBoxes`
   @0x466910 alone, outside every draw bucket, which is the sky's own path (#125/#136). The world census
   cannot reach it, and owning it there would be a second sky at world depth. Expect `scene-tint=0`.
-  *Correction on the way past:* `gob+0x18`, which `EngineLayout.GobHighlight` names and which the #285 note
-  above calls "the placeable highlight", is the **skybox** flag — its only writer is `Scene::SetSkyBox`
-  @0x45e260, setting it on all four skybox gobs, and `Mat` reads it to keep a skybox part out of the lit
-  branch. The build-file key is kept; what it means is that. The placeable highlight is `Scene`'s own
+  *Correction on the way past:* `gob+0x18`, which the #285 note above calls "the placeable highlight", is
+  the **skybox** flag — its only writer is `Scene::SetSkyBox` @0x45e260, setting it on all four skybox gobs,
+  and `Mat` reads it to keep a skybox part out of the lit branch. The placeable highlight is `Scene`'s own
   highlight list (`Scene::AddHighlightGob` / `DoHighlightGob`), not a gob byte.
 - **`empty-item`** (was `item` + `item-range`; the out-of-range half moved to the drift gate above). What is
   left is an item the VDO holds with **zero indices**. `RenderFlat` @0x450eb0 passes
