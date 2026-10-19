@@ -283,7 +283,6 @@ public sealed unsafe partial class AlloyRenderer
         // #287's scale, hoisted ahead of the staging walk: the automatic-LOD pick reads it there, and the
         // cull dispatch below is handed the same figure.
         _lodScale = perspective ? p11 * viewport[3] * 0.5f : 0f;
-        MeshLod.Pump();   // the one GL edge of the LOD arena: collect what the worker finished
         MeshChart.Pump(); // ...and of the chart arenas (#673)
         CX.Alloy.Db.MeshArena.Pump();   // CX-114: the one model-space arena -- frees land and both mirrors go up
         FrameZones.Add(FrameZones.Zone.Pump, tPump);

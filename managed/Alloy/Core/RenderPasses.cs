@@ -44,16 +44,14 @@ internal static class RenderPasses
             Stats = OwnedBuffers.Stats,
         }, log);
 
-        // Automatic mesh LOD: not a draw pass either -- a generated index run per eligible mesh, one shared
-        // element buffer, and a background worker. Its Revoke is the world edge (every key is a VDO slot and
-        // an item); its ContextLost forgets the buffer name and keeps the mirror the arena is rebuilt from.
+        // Automatic mesh LOD: not a draw pass either -- the detail thresholds and the level picker over the
+        // mesh arena's generated runs. Its Revoke is the world edge: a new area's triangle tally is its own.
         r.Register(new PassLifecycle
         {
             Name = "meshlod",
             Attach = MeshLod.Attach,
             SelfCheck = l => MeshLod.SelfCheck(l),
             Revoke = MeshLod.Revoke,
-            ContextLost = MeshLod.ContextLost,
             Stats = MeshLod.Stats,
         }, log);
 
