@@ -490,7 +490,7 @@ public static unsafe partial class TextRig
         int ok; Gl.GetProgramiv(_progRgb, Gl.LINK_STATUS, &ok);
         Gl.DeleteShader(vs); Gl.DeleteShader(fs);
         if (ok == 0) { _log?.Info("TextRig: portrait program link failed"); _progRgb = 0; return false; }
-        _uProjRgb = UniformOf(_progRgb, "uProj"); _uTexRgb = UniformOf(_progRgb, "uTex");
+        _uProjRgb = GlProgram.Loc(_progRgb, "uProj"); _uTexRgb = GlProgram.Loc(_progRgb, "uTex");
         _log?.Info("TextRig: portrait shader program ready");
         return true;
     }
@@ -511,24 +511,7 @@ public static unsafe partial class TextRig
         return _psamp != 0;
     }
 
-    internal static void SetupPortraitVao()
-    {
-        uint a; Gl.GenVertexArrays(1, &a); _pvao = a;
-        uint vb; Gl.GenBuffers(1, &vb); _pvbo = vb;
-        Gl.BindVertexArray(_pvao);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        int stride = Floats * sizeof(float);
-        Gl.VertexAttribPointer(0, 2, Gl.FLOAT, (byte)Gl.FALSE, stride, (void*)0);
-        Gl.EnableVertexAttribArray(0);
-        Gl.VertexAttribPointer(1, 2, Gl.FLOAT, (byte)Gl.FALSE, stride, (void*)(2 * sizeof(float)));
-        Gl.EnableVertexAttribArray(1);
-        Gl.VertexAttribPointer(2, 3, Gl.FLOAT, (byte)Gl.FALSE, stride, (void*)(4 * sizeof(float)));
-        Gl.EnableVertexAttribArray(2);
-        Gl.VertexAttribPointer(3, 1, Gl.FLOAT, (byte)Gl.FALSE, stride, (void*)(7 * sizeof(float)));
-        Gl.EnableVertexAttribArray(3);
-        Gl.BindVertexArray(0);
-        _pvaoUp = true;
-    }
+    internal static void SetupPortraitVao() { _pvao = MakeVao(out _pvbo); _pvaoUp = true; }
 
     /// <summary>Column-major ortho for glOrtho(0,w,h,0,-1,1): top-left origin, y grows downward.</summary>
     internal static Matrix4x4 Ortho(float w, float h)
@@ -583,15 +566,7 @@ public static unsafe partial class TextRig
         return sh;
     }
 
-    private static int Uniform(string name) => UniformOf(_prog, name);
-
-    private static int UniformOf(uint prog, string name)
-    {
-        Span<byte> b = stackalloc byte[name.Length + 1];
-        for (int i = 0; i < name.Length; i++) b[i] = (byte)name[i];
-        b[name.Length] = 0;
-        fixed (byte* p = b) return Gl.GetUniformLocation(prog, p);
-    }
+    private static int Uniform(string name) => GlProgram.Loc(_prog, name);
 
     internal static void UploadTexture()
     {
@@ -723,28 +698,31 @@ public static unsafe partial class TextRig
         int tid = ResolvePortraitTid(resref);
         if (tid == 0) return;   // not uploaded yet this frame
 
-        // no state snapshot -- UiHostService resyncs the engine on hand-back, and every draw below
-        // sets its own full preamble.
+        QuadVerts verts = default;
+        FillQuad(ref verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
+        DrawQuad(_progRgb, _uProjRgb, _uTexRgb, tid, &verts, clip, cx, cy, cw, ch);
+    }
+
+    /// <summary>The textured-quad draw the portrait and icon paths share: the full GL preamble (no state
+    /// snapshot -- UiHostService resyncs the engine on hand-back), the quad uploaded to the portrait rig's own
+    /// VBO, one triangle pair, and the linear sampler unbound again. Allocation-free.</summary>
+    private static void DrawQuad(uint prog, int uProj, int uTex, int tid, QuadVerts* v,
+                                 bool clip, int cx, int cy, int cw, int ch)
+    {
         Gl.ActiveTexture(Gl.TEXTURE0);
-
         if (!_pvaoUp) SetupPortraitVao();
-
         Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE);
         Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-
-        Matrix4x4 m = Ortho(ViewportW, ViewportH);
         if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
         else Gl.Disable(Gl.SCISSOR_TEST);
 
-        QuadVerts verts = default;
-        FillQuad(ref verts, new PortraitQuad(x, y, w, h, resref, default), 0f, alpha < 1f ? alpha : 1f);
-
-        Gl.UseProgram(_progRgb);
-        Gl.UniformMatrix4fv(_uProjRgb, 1, (byte)Gl.FALSE, (float*)&m);
-        Gl.Uniform1i(_uTexRgb, 0);
+        Matrix4x4 m = Ortho(ViewportW, ViewportH);
+        Gl.UseProgram(prog);
+        Gl.UniformMatrix4fv(uProj, 1, (byte)Gl.FALSE, (float*)&m);
+        Gl.Uniform1i(uTex, 0);
         Gl.BindVertexArray(_pvao);
         Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &verts, Gl.DYNAMIC_DRAW);
+        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), v, Gl.DYNAMIC_DRAW);
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
         bool samp = EnsurePortraitSampler();
         if (samp) Gl.BindSampler(0, _psamp);
@@ -802,8 +780,8 @@ public static unsafe partial class TextRig
         int ok; Gl.GetProgramiv(_progIconPlt, Gl.LINK_STATUS, &ok);
         Gl.DeleteShader(vs); Gl.DeleteShader(fs);
         if (ok == 0) { _log?.Info("TextRig: PLT icon program link failed"); _progIconPlt = 0; return false; }
-        _uProjIconPlt = UniformOf(_progIconPlt, "uProj"); _uTexIconPlt = UniformOf(_progIconPlt, "uTex");
-        _uPalIconPlt = UniformOf(_progIconPlt, "uPal"); _uRowsIconPlt = UniformOf(_progIconPlt, "uRows[0]"); _uCropIconPlt = UniformOf(_progIconPlt, "uCrop");
+        _uProjIconPlt = GlProgram.Loc(_progIconPlt, "uProj"); _uTexIconPlt = GlProgram.Loc(_progIconPlt, "uTex");
+        _uPalIconPlt = GlProgram.Loc(_progIconPlt, "uPal"); _uRowsIconPlt = GlProgram.Loc(_progIconPlt, "uRows[0]"); _uCropIconPlt = GlProgram.Loc(_progIconPlt, "uCrop");
         _log?.Info("TextRig: PLT icon shader program ready");
         return true;
     }
@@ -862,7 +840,7 @@ public static unsafe partial class TextRig
         int ok; Gl.GetProgramiv(_progIcon, Gl.LINK_STATUS, &ok);
         Gl.DeleteShader(vs); Gl.DeleteShader(fs);
         if (ok == 0) { _log?.Info("TextRig: icon program link failed"); _progIcon = 0; return false; }
-        _uProjIcon = UniformOf(_progIcon, "uProj"); _uTexIcon = UniformOf(_progIcon, "uTex");
+        _uProjIcon = GlProgram.Loc(_progIcon, "uProj"); _uTexIcon = GlProgram.Loc(_progIcon, "uTex");
         _log?.Info("TextRig: icon shader program ready");
         return true;
     }
@@ -888,33 +866,13 @@ public static unsafe partial class TextRig
         if (!Gl.Init(_log)) return;
         if (!EnsureIconProgram()) return;
 
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        if (!_pvaoUp) SetupPortraitVao();
-        Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE);
-        Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-        if (clip) { Gl.Enable(Gl.SCISSOR_TEST); Gl.Scissor(cx, ViewportH - (cy + ch), cw < 0 ? 0 : cw, ch < 0 ? 0 : ch); }
-        else Gl.Disable(Gl.SCISSOR_TEST);
-
-        Matrix4x4 m = Ortho(ViewportW, ViewportH);
-
         float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
         float vt = flipV ? 0f : 1f, vb = flipV ? 1f : v0;
         QuadVerts v = default;
         v[0] = Vtx(x, y, 0, vt, a); v[1] = Vtx(x1, y, u1, vt, a); v[2] = Vtx(x1, y1, u1, vb, a);
         v[3] = Vtx(x, y, 0, vt, a); v[4] = Vtx(x1, y1, u1, vb, a); v[5] = Vtx(x, y1, 0, vb, a);
 
-        Gl.UseProgram(_progIcon);
-        Gl.UniformMatrix4fv(_uProjIcon, 1, (byte)Gl.FALSE, (float*)&m);
-        Gl.Uniform1i(_uTexIcon, 0);
-        Gl.BindVertexArray(_pvao);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, _pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)sizeof(QuadVerts), &v, Gl.DYNAMIC_DRAW);
-        Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
-        bool samp = EnsurePortraitSampler();
-        if (samp) Gl.BindSampler(0, _psamp);
-        Gl.DrawArrays(Gl.TRIANGLES, 0, 6);
-        // Unbind is load-bearing, not tidiness: a sampler left on unit 0 would override the glyph atlas's own filter/wrap state.
-        if (samp) Gl.BindSampler(0, 0);
+        DrawQuad(_progIcon, _uProjIcon, _uTexIcon, tid, &v, clip, cx, cy, cw, ch);
         if (clip) Gl.Disable(Gl.SCISSOR_TEST);
     }
 }

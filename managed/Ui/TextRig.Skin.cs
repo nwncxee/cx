@@ -25,7 +25,7 @@ public static unsafe partial class TextRig
         int ok; Gl.GetProgramiv(_progSkin, Gl.LINK_STATUS, &ok);
         Gl.DeleteShader(vs); Gl.DeleteShader(fs);
         if (ok == 0) { _log?.Info("TextRig: skin program link failed"); _progSkin = 0; return false; }
-        _uProjSkin = UniformOf(_progSkin, "uProj"); _uTexSkin = UniformOf(_progSkin, "uTex"); _uAlphaSkin = UniformOf(_progSkin, "uAlpha");
+        _uProjSkin = GlProgram.Loc(_progSkin, "uProj"); _uTexSkin = GlProgram.Loc(_progSkin, "uTex"); _uAlphaSkin = GlProgram.Loc(_progSkin, "uAlpha");
         _log?.Info("TextRig: skin shader program ready");
         return true;
     }
