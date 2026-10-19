@@ -126,6 +126,20 @@ internal static unsafe partial class OwnedTextures
         log.Info(_armed
             ? "OwnedTextures: armed -- Alloy uploads from the engine's decoded pixels (alloy.ownedtex=0 to draw from engine ids)"
             : "OwnedTextures: stood down (alloy.ownedtex=0) -- owned draws sample engine texture ids");
+        FrameRegistry.Global.Register(FramePhase.Start, 20, Maintain, "OwnedTextures.maintain", log);
+    }
+
+    /// <summary>The drip clock the cache's idle stamps and the census window are measured in, and the
+    /// once-a-frame maintenance of the read-ahead tables. Game thread, no GL: the decoder slots are engine
+    /// memory and the publishes and sweeps are main-thread tables. The GL half rides the 4.6 bracket.</summary>
+    private static void Maintain()
+    {
+        _dripFrame++;
+        CensusSettleCheck();
+        DdsReader.Tick();
+        TexLoad.Drip();
+        ModelLoad.Drip();
+        TexStream.Tick();
     }
 
     /// <summary>Chain the two engine funnels this table lives on: the UPLOAD, where decoded pixels exist, and
