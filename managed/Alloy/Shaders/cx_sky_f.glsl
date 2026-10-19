@@ -20,6 +20,7 @@ uniform mat4 uViewInv;           // the camera's world matrix: column 3 is the e
 // The dome's own varyings and samplers, under the engine's names; the rest is the whole-stage environment.
 #define VertexColor COLOR_WHITE
 #define vTexCoords vUV
+#define vVertexTexCoords vUV
 #define vPosWorld vWorld
 #define texUnit0 uTex
 #define m_view_inv uViewInv

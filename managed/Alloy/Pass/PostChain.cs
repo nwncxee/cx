@@ -528,8 +528,9 @@ internal static unsafe class PostChain
         Gl.Uniform1i(g.CDepth, (int)DepthUnit);
         Gl.Uniform1i(g.COverlay, (int)OverlayUnit);
         Gl.Uniform1i(g.COverlayOn, overlay != 0 ? 1 : 0);
-        Gl.Uniform1i(g.CSkyRaw, Post.SkyRaw.V ? 1 : 0);
         Matrix4x4 invVp = AlloyRenderer.SkyInvVp;
+        // no dome this view: a far-depth pixel is the fog-coloured clear, and raw it rings fully fogged geometry
+        Gl.Uniform1i(g.CSkyRaw, Post.SkyRaw.V && invVp != default ? 1 : 0);
         Vector3 eye = AlloyRenderer.EyePos;
         Gl.Uniform1f(g.CSkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
         Gl.UniformMatrix4fv(g.CInvVp, 1, 0, (float*)&invVp);

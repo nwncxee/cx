@@ -24,13 +24,13 @@ internal readonly unsafe struct MoviePlate
     private MoviePlate(float sx, float sy, float u0, float u1, float v0, float v1)
     { Sx = sx; Sy = sy; U0 = u0; U1 = u1; V0 = v0; V1 = v1; }
 
-    /// <summary>Fit a <paramref name="frameW"/>x<paramref name="frameH"/> frame into the viewport, preserving
-    /// its aspect. The port of <c>ShowFrame</c>'s ortho: the engine's <c>SetOrthoTransform(-right, right,
-    /// -top, top)</c> around a fixed [-1,1] quad is the same picture as a [-1/right, 1/right] clip-space quad,
-    /// and the GUI scale it multiplies into both terms cancels, so that is not a term here.</summary>
-    internal static MoviePlate Fit(int frameW, int frameH, int texW, int texH, int vpW, int vpH)
+    /// <summary>Fit a frame into the SCREEN, preserving its aspect. The port of <c>ShowFrame</c>'s ortho,
+    /// whose terms are the engine's own window size and not the GL viewport: <c>SetOrthoTransform(-right,
+    /// right, -top, top)</c> around a fixed [-1,1] quad is the same picture as a [-1/right, 1/right]
+    /// clip-space quad, and the GUI scale it multiplies into both terms cancels, so it is not a term here.</summary>
+    internal static MoviePlate Fit(int frameW, int frameH, int texW, int texH, int screenW, int screenH)
     {
-        float a = (float)frameW / vpW, b = (float)frameH / vpH;
+        float a = (float)frameW / screenW, b = (float)frameH / screenH;
         float m = a > b ? a : b;
         return new MoviePlate(a / m, b / m,
                               0.5f / texW, (frameW - 0.5f) / texW,
@@ -108,8 +108,14 @@ public sealed unsafe partial class MovieService : IExtenderService
     private static bool _progTried, _vaoUp;
     private static bool _stood, _announced;
 
+    /// <summary>The window size the engine lays its own movie quad out in: <c>ShowFrame</c>'s ortho is built
+    /// from these and not from the GL viewport, which <c>GLRender::ResetRenderStates</c> never restores.</summary>
+    private static readonly int* ScreenW = (int*)Native.Sym(SymbolMap.ScreenWidth);
+    private static readonly int* ScreenH = (int*)Native.Sym(SymbolMap.ScreenHeight);
+
     /// <summary>Our own mechanism failing is loud and hands the frame back -- never a quiet fallback (ADR 0025).
-    /// Said once per session; the engine's quad draws every frame after it.</summary>
+    /// Said once, and from then on the engine's quad draws every frame: a refusal is for the session, so the
+    /// movie plays vanilla rather than re-failing per frame behind one stale log line.</summary>
     private static bool Stand(string why)
     {
         if (_stood) return false;
@@ -119,25 +125,36 @@ public sealed unsafe partial class MovieService : IExtenderService
         return false;
     }
 
-    /// <summary>Clear the viewport and put the frame on it. False = the engine's quad should run instead.</summary>
+    /// <summary>Clear the screen and put the frame on it. False = the engine's quad should run instead.</summary>
     private static bool Draw(IntPtr self, int frameW, int frameH, int texW, int texH)
     {
-        if (_log == null) return false;
+        if (_log == null || _stood) return false;
         if (frameW <= 0 || frameH <= 0 || texW < frameW || texH < frameH)
             return Stand($"the decoder handed us a {frameW}x{frameH} frame in a {texW}x{texH} texture");
         if (!Gl.Init(_log)) return Stand("the GL entry points did not resolve");
-        if (Gl.Clear == null || Gl.ClearColor == null || Gl.GetFloatv == null || Gl.ColorMask == null)
+        if (Gl.Clear == null || Gl.ClearColor == null || Gl.GetFloatv == null || Gl.ColorMask == null
+            || Gl.BindFramebuffer == null || Gl.Viewport == null)
             return Stand("a core GL entry point did not resolve");
         uint tex = new CExoMoviePlayerInternal(self).Texture;
         if (tex == 0) return Stand("the movie player holds no GL texture");
         if (!EnsureProgram()) return Stand("the movie program did not build");
 
+        // The engine's own size, with the live viewport only as the fallback: a movie owns the whole window,
+        // and taking the rect from GL state means inheriting whatever rect the last pass of the last frame
+        // happened to leave there.
         int* vp = stackalloc int[4];
         Gl.GetIntegerv(Gl.VIEWPORT, vp);
-        if (vp[2] <= 0 || vp[3] <= 0) return Stand($"the GL viewport is {vp[2]}x{vp[3]}");
+        int w = ScreenW != null && *ScreenW > 0 ? *ScreenW : vp[2];
+        int h = ScreenH != null && *ScreenH > 0 ? *ScreenH : vp[3];
+        if (w <= 0 || h <= 0) return Stand($"the screen is {w}x{h}");
 
         if (!_vaoUp) SetupVao();
         if (_vao == 0 || _vbo == 0) return Stand("the movie VAO did not build");
+
+        // The screen, not an Alloy target: ResetRenderStates binds the engine's default framebuffer at every
+        // present, but a movie frame is drawn before one, so nothing else has promised what is bound here.
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, ScreenOwner.DefaultFbo);
+        if (w != vp[2] || h != vp[3]) Gl.Viewport(0, 0, w, h);
 
         // The engine's Clear(1) is scissor-limited like ours, and its clear colour is whatever the last
         // pass left; black is what a letterbox is, so it is set explicitly and put back.
@@ -153,7 +170,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.ClearColor(clear[0], clear[1], clear[2], clear[3]);
 
         Vector4* verts = stackalloc Vector4[4];
-        MoviePlate.Fit(frameW, frameH, texW, texH, vp[2], vp[3]).Write(new Span<Vector4>(verts, 4));
+        MoviePlate.Fit(frameW, frameH, texW, texH, w, h).Write(new Span<Vector4>(verts, 4));
 
         Gl.UseProgram(_prog);
         Gl.Uniform1i(_uTex, 0);
@@ -173,16 +190,22 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.DrawArrays(Gl.TRIANGLE_STRIP, 0, 4);
         if (_sampler != 0 && Gl.BindSampler != null) Gl.BindSampler(0, 0);
 
+        // Read before the hand-back, which issues engine GL of its own: a draw that errored drew nothing and
+        // the screen is then the clear alone, which is the one way this can fail with nothing to show for it.
+        uint err = Gl.GetError != null ? Gl.GetError() : 0;
+
+        if (w != vp[2] || h != vp[3]) Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);
         // Raw GL in the engine's context goes past GLRender's shadow cache, and the decode loop binds this
         // very texture again on its next packet -- a stale entry there would upload into what WE left bound.
         UiHostService.HandBack();
         Gl.DrainErrors(4);
+        if (err != 0) return Stand($"the draw raised GL error 0x{err:x4}");
 
         if (!_announced)
         {
             _announced = true;
             _log.Info($"Movies: first frame drawn by Alloy -- {frameW}x{frameH} in a {texW}x{texH} texture, "
-                    + $"viewport {vp[2]}x{vp[3]}; the engine's ShowFrame quad is swallowed from here on");
+                    + $"screen {w}x{h} (GL viewport {vp[2]}x{vp[3]}); the engine's ShowFrame quad is swallowed from here on");
         }
         return true;
     }

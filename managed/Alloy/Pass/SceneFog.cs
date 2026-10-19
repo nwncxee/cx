@@ -177,14 +177,26 @@ internal static unsafe class SceneFog
     /// throw geometry away at (<see cref="CullPass.FogCull"/>); infinity stands the fog cull down. With the
     /// plain ramp that distance IS <c>FogEnd</c>, measured the way the fog is; the height falloff breaks that,
     /// so the cut is placed for geometry <see cref="CullZ"/> above the layer floor and higher is traded off.</summary>
-    internal static float OpaqueDistance()
+    internal static float OpaqueDistance() => OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd);
+
+    private static float OpaqueDistance(bool on, float start, float end)
     {
-        if (!FrameInputs.FogOn || FrameInputs.FogEnd <= 0f) return float.PositiveInfinity;
-        float end = FrameInputs.FogEnd;
+        if (!on || end <= 0f) return float.PositiveInfinity;
         if (HeightK <= 0f) return end;
-        float span = end - FrameInputs.FogStart;
+        float span = end - start;
         if (span <= 0f) return end;
-        return FrameInputs.FogStart + span * MathF.Exp(HeightK * MathF.Max(CullZ, 0f));
+        return start + span * MathF.Exp(HeightK * MathF.Max(CullZ, 0f));
+    }
+
+    /// <summary>A world view's far plane, pushed out to where its fog is opaque. The engine puts the far plane at the
+    /// fog's end, which hides the cut under full fog in its own metric, view depth; measured from the player, a point
+    /// on that plane is up to <paramref name="eyeToPlayer"/> nearer and would be cut while still showing. Negative
+    /// <paramref name="eyeToPlayer"/> = no player, and the fog is measured from the eye like the engine's.</summary>
+    internal static float FarForFog(float far, bool on, float start, float end, float eyeToPlayer)
+    {
+        if (!OriginPlayer || eyeToPlayer < 0f) return far;
+        float opaque = OpaqueDistance(on, start, end);
+        return float.IsInfinity(opaque) ? far : MathF.Max(far, opaque + eyeToPlayer);
     }
 
     /// <summary>Where the fog is measured from. <paramref name="radial"/> is true when it is the player's
@@ -244,6 +256,18 @@ internal static unsafe class SceneFog
         SkyfadeTint(rgb);
         check.Expect(MathF.Abs(rgb[0] - 0.5f) < 1e-4f,
           "no sky staged leaves the band on the author's colour whatever the mix says");
+
+        // The far plane: a 45 m engine clip on a 10..45 ramp, the camera 15 m from the player, is cut at 60 m.
+        bool originWas = Fog.Origin.V;
+        Fog.Height.V = 0f; Fog.Origin.V = true;
+        check.Expect(MathF.Abs(FarForFog(45f, true, 10f, 45f, 15f) - 60f) < 1e-3f,
+          "fog measured from the player pushes the far plane out to the fog's end plus the camera's distance");
+        check.Expect(FarForFog(135f, true, 10f, 45f, 15f) == 135f, "...and never pulls a farther engine plane in");
+        check.Expect(FarForFog(45f, false, 10f, 45f, 15f) == 45f && FarForFog(45f, true, 10f, 45f, -1f) == 45f,
+          "...and leaves it alone with the fog off or no player");
+        Fog.Origin.V = false;
+        check.Expect(FarForFog(45f, true, 10f, 45f, 15f) == 45f, "...and with the fog measured from the eye, as the engine's");
+        Fog.Origin.V = originWas;
 
         // /fog origin 0 is the engine's metric: view depth, measured from the pass eye -- not a sphere
         // around wherever the player happens to stand.

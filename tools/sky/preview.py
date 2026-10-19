@@ -394,7 +394,7 @@ class Sky:
         def v4(n, *v): gl.Uniform4f(L(n), *[float(x) for x in v])
         def v3(n, *v): gl.Uniform3f(L(n), *[float(x) for x in v])
         i1("uModYear", s["year"]); i1("uModMonth", s["month"]); i1("uModDay", s["day"]); i1("uModHour", ihour)
-        i1("uModDawn", 6); i1("uModDusk", 19)
+        i1("uModDawn", 6); i1("uModDusk", 19); i1("uModMinutes", 2); i1("uSceneFrame", self.frame)
         # the server's glide clock: pushed hour + rate * stopwatch, with the stopwatch at 0
         f1("uModTransition", 0.0); f1("uWeatherDensity", 0.0)
         i1("uTimeOfDay", int(s["t"] * 1000.0) % 86400000)

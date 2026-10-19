@@ -12,8 +12,8 @@ namespace CX.Alloy;
 
 /// <summary>Owns the engine's two 3D draw funnels so a vanilla draw never reaches GL: nwmain issues all its
 /// 3D geometry through <c>GLRender::RenderVertexData</c> and <c>RenderVertexStreamData</c>, and once
-/// <see cref="Armed"/> both are swallowed here (inside a GUI scene the call is recorded instead).
-/// <see cref="_passed"/>, at the bottom of the same chain, reports what still reached the original.</summary>
+/// <see cref="Armed"/> both are swallowed here -- a GUI scene records the call instead, an engine-owned frame
+/// lets it through (<see cref="EngineOwnsDraw"/>), and <see cref="_passed"/> counts what still got past.</summary>
 internal static unsafe class RspShim
 {
 
@@ -168,6 +168,11 @@ internal static unsafe class RspShim
                        + "the count is on /alloy");
     }
 
+    /// <summary>An engine draw the shim must let through: the frame belongs to the engine whole
+    /// (<see cref="ScreenOwner.EngineFrame"/> -- a movie frame Alloy handed back), so its one quad is the
+    /// only picture there is and swallowing it leaves the screen on the clear alone.</summary>
+    private static bool EngineOwnsDraw => ScreenOwner.EngineFrame;
+
     /// <summary>The swallow, layer 20 of the <c>RenderVertexData</c> chain. Returning here skips every lower
     /// subscriber AND the original, while <see cref="DrawFunnelService"/> at 50 still runs its bone
     /// observation after this returns -- which is how the bone capture survives a swallowed draw. Inside a GUI
@@ -176,11 +181,17 @@ internal static unsafe class RspShim
     private static void OnVdoDraw(IntPtr vdo, uint item, uint prim, uint size, uint offset)
     {
         if (GuiCapture.Open && GuiCapture.Vdo(vdo, item, prim, size, offset)) return;
+        if (EngineOwnsDraw)
+        {
+            GlRenderVertexDataFn next = *_vdoSlot;
+            if (next != null) next(vdo, item, prim, size, offset);
+            return;
+        }
         _swallowed++;
     }
 
     /// <summary>The acceptance counter, at the bottom of the same chain: a call reaching here reached the
-    /// ORIGINAL, by whatever route. This is the number that must be zero.</summary>
+    /// ORIGINAL, by whatever route. Zero is the claim, bar the movie quad of a handed-back frame.</summary>
     [UnmanagedCallersOnly]
     private static void OnVdoBottom(IntPtr vdo, uint item, uint prim, uint size, uint offset)
     {
@@ -195,6 +206,7 @@ internal static unsafe class RspShim
     private static void OnStreamDraw(IntPtr vsdo, uint prim, uint size, uint offset)
     {
         if (GuiCapture.Open && (vsdo == IntPtr.Zero || GuiCapture.Stream(vsdo, prim, size, offset))) return;
+        if (EngineOwnsDraw && _origStream != null) { _origStream(vsdo, prim, size, offset); return; }
         _swallowed++;
     }
 
@@ -228,7 +240,7 @@ internal static unsafe class RspShim
         double ms = _ticks * 1000.0 / Stopwatch.Frequency / _frames;
         if (ExtenderLog.Enabled)
             _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
-                 + $"PASSED {_passed} (must be 0), {ms:F2}ms/frame in the shim ({StepLine()}), "
+                 + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), {ms:F2}ms/frame in the shim ({StepLine()}), "
                  + $"borrowed {OwnedBuffers.Borrowed - _lastRefBuf} buffers / "
                  + $"{OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0/0)"
                  // Lifetime, not a delta -- one attempt per texture makes it a POPULATION (how much of the
