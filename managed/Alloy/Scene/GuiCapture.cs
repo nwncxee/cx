@@ -85,7 +85,6 @@ internal static unsafe class GuiCapture
     internal static bool Open;
 
     private static ExtenderLog? _log;
-    private static SceneRenderOnlyGobsFn _orig;
     private static RiEnableFn _enable;
     private static RiDisableFn _disable;
     private static RiSetColorvFn _setColor;
@@ -93,7 +92,6 @@ internal static unsafe class GuiCapture
     private static uint* _caps, _texStages, _primTable;
     private static int* _src, _dst, _viewport, _bound;
     private static Vector4* _color;
-    private static BonePalette* _bones;
     private static byte* _depthMask, _material, _stacks;
     private static IntPtr* _custom;
 
@@ -102,11 +100,9 @@ internal static unsafe class GuiCapture
     private static long _noSlot, _noHost, _badFormat, _overflow, _toEngine, _arrays, _layers, _draws;
     private static int _said;
 
-    internal static bool Installed => _orig != null;
-
-    /// <summary>Resolve the state caches and install the <c>RenderOnlyGobs</c> hook. False = something did not resolve
+    /// <summary>Resolve the <c>GLRender</c> state caches the capture reads. False = something did not resolve
     /// (logged here); <see cref="GuiPass"/> then never arms and the engine keeps drawing its GUI.</summary>
-    internal static bool Install(ExtenderLog log, HookService hooks)
+    internal static bool Install(ExtenderLog log)
     {
         _log = log;
         _caps = (uint*)Native.Sym(SymbolMap.GlEnabledStates);
@@ -117,7 +113,6 @@ internal static unsafe class GuiCapture
         _viewport = (int*)Native.Sym(SymbolMap.GlViewport);
         _bound = (int*)Native.Sym(SymbolMap.GlBoundTextures);
         _color = (Vector4*)Native.Sym(SymbolMap.GlGlobalColor);
-        _bones = (BonePalette*)Native.Sym(SymbolMap.GlRenderBones);
         _depthMask = (byte*)Native.Sym(SymbolMap.GlDepthMask);
         _material = (byte*)Native.Sym(SymbolMap.GlMaterial);
         _stacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
@@ -128,7 +123,7 @@ internal static unsafe class GuiCapture
             : _primTable == null ? SymbolMap.PrimTypeTranslationTable : _src == null ? SymbolMap.GlSrcBlendMode
             : _dst == null ? SymbolMap.GlDstBlendMode : _viewport == null ? SymbolMap.GlViewport
             : _bound == null ? SymbolMap.GlBoundTextures : _color == null ? SymbolMap.GlGlobalColor
-            : _bones == null ? SymbolMap.GlRenderBones : _depthMask == null ? SymbolMap.GlDepthMask
+            : _depthMask == null ? SymbolMap.GlDepthMask
             : _material == null ? SymbolMap.GlMaterial : _stacks == null ? SymbolMap.MAurMtxStack
             : _custom == null ? SymbolMap.GlCurrentCustomProgram : _enable == null ? SymbolMap.RiEnable
             : _disable == null ? SymbolMap.RiDisable : _setColor == null ? SymbolMap.RiSetColorv
@@ -380,12 +375,11 @@ internal static unsafe class GuiCapture
         if (p.Bones >= 0) flags = DbSkin(p.Bones, flags);
         Seal(flags);
         Layers[LayerN - 1].Count = DrawN - Layers[LayerN - 1].First;
-        _dbParts++;
     }
 
-    /// <summary>Copy a DB part's solved palette beside the record, as <see cref="Skin"/> copies the engine's.
-    /// The source is the renderer's own DB bone stage -- the block the pose step wrote, not
-    /// <c>GLRender::m_bones</c>, which nothing fills. <paramref name="at"/> is the part's absolute bone index.</summary>
+    /// <summary>Copy a DB part's solved palette beside the record. The source is the renderer's own DB bone
+    /// stage -- the block the pose step wrote, not <c>GLRender::m_bones</c>, which nothing fills.
+    /// <paramref name="at"/> is the part's absolute bone index.</summary>
     private static int DbSkin(int at, int flags)
     {
         if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
@@ -396,11 +390,6 @@ internal static unsafe class GuiCapture
         SkinN++;
         return flags | FlagSkin;
     }
-
-    private static long _dbParts;
-
-    /// <summary>Database part draws issued this session, for the period line.</summary>
-    internal static long DbParts => _dbParts;
 
     /// <summary>Close the layer <see cref="BeginDbLayer"/> opened. The LAST layer, not the one opened: a
     /// custom-shader draw flushes mid-scene and reopens, as it does for the engine's own traversal.</summary>
@@ -457,9 +446,6 @@ internal static unsafe class GuiCapture
     internal const int TextVertexStride = 20;
     private static long _textRuns;
 
-    /// <summary>Glyph runs issued from CX-owned quad lists this session, for <c>/alloy</c>.</summary>
-    internal static long TextRuns => _textRuns;
-
     /// <summary>Everything the engine's program would have been fed, read off <c>GLRender</c>'s caches into the
     /// draw and its record: stage 0's texture, the blend/depth/cull caps, the global colour, (lit) the material
     /// and the transforms. VIEW and PROJECTION come from <see cref="AlloyCamera.ActiveView"/>; MODEL and TEXTURE
@@ -492,17 +478,6 @@ internal static unsafe class GuiCapture
         rec.Diffuse = lit ? m.Diffuse : Vector4.Zero;
         rec.Emissive = lit ? m.Emissive : Vector4.Zero;
         return (d.Tex != 0 ? FlagTex : 0) | (lit ? FlagLit : 0) | ((caps & (1u << CapAlphaTest)) != 0 ? FlagAlphaTest : 0);
-    }
-
-    /// <summary>A skinned VDO: the engine's <c>RenderSkinned</c> has just solved this part's palette into
-    /// <c>GLRender::m_bones</c> (its layout is <see cref="SymbolMap.GlRenderBones"/>'s), so it is copied beside the record.</summary>
-    private static int Skin(int flags)
-    {
-        if (SkinN >= MaxSkins) { Overflow("skinned draws"); return flags; }
-        Bones[SkinN] = *_bones;
-        Records[DrawN].BoneBase = SkinN * BoneFloats / 4;
-        SkinN++;
-        return flags | FlagSkin;
     }
 
     private static void Seal(int flags)

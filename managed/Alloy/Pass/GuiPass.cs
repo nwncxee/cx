@@ -71,7 +71,7 @@ internal static unsafe class GuiPass
         Db.TextSlots.Install(log);
         Db.TextQuads.Install(log);
         TextAtlas.Install(log);
-        if (!GuiCapture.Install(log, hooks)) return;
+        if (!GuiCapture.Install(log)) return;
         ScreenOwner.Install(log, hooks);
         _nkSlot = hooks.ChainNkSdlRender(&OnNk, NkPriority);
         FrameRegistry.Global.Register(FramePhase.PrePresent, 5, OnPresent, "GuiPass.flush", log);
