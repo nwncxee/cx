@@ -94,10 +94,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static ExtenderLog? _log;
     private static bool _armed, _disarmed;
     private static uint* _primTable;
-    /// <summary>The diffuse lookup for masked casters: <c>Material::GetTexture(mat, 0)</c> then the Aurora
-    /// texture's live GL id. Both re-read per frame -- a CAurTexture* is BORROWED and freed on area
-    /// transitions, so it is never cached.</summary>
-    private static MatGetTextureFn _getTexture;
 
     // --- lifecycle + diagnostics
     private static readonly EdgeState _was = new();
@@ -155,7 +151,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
         Array.Fill(_dynPageOf, -1);
 
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        _getTexture = EngineFn.MatGetTexture;
         if (_primTable == null)
         { log.Info("CasterPass: primitive-type table unresolved -- Alloy caster submission unavailable"); return; }
 
