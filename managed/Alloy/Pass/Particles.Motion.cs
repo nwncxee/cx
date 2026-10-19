@@ -46,7 +46,7 @@ internal static unsafe partial class Particles
         && !_gl.Failed && _gl.MotionProg != 0 && _gl.Vao != 0;
 
     /// <summary>Re-issue this pass's quads into the velocity target the caller has opened, from last frame's
-    /// centre: each fragment the sprite is opaque at paints the particle's own vector over the field that
+    /// centre: each fragment the sprite is most of paints the particle's own vector over the field that
     /// belongs to what is behind it. The caller owns the framebuffer, the depth test and the viewport.</summary>
     internal static void DrawMotion(Matrix4x4* view, Matrix4x4* proj, Matrix4x4* prevVp, float jx, float jy, int* viewport)
     {
@@ -65,11 +65,13 @@ internal static unsafe partial class Particles
         Gl.BindVertexArray(_gl.Vao);
         new PassState(depth: true, depthWrite: false, cull: false).Apply();
         Gl.ColorMask(1, 1, 1, 1);
-        int cull = -1;
+        int cull = -1, add = -1;
         uint bound = 0;
         for (int gi = 0; gi < _motion.Groups; gi++)
         {
             if (_gParts[gi] == 0 || _motion.TexName[gi] == 0) continue;
+            int a = _gCls[gi] == ClsAdd ? 1 : 0;
+            if (a != add) { add = a; Gl.Uniform1i(_gl.MLocAdditive, a); }
             if (_gCull[gi] != cull)
             { cull = _gCull[gi]; if (cull != 0) Gl.Enable(Gl.CULL_FACE); else Gl.Disable(Gl.CULL_FACE); }
             if (_motion.TexName[gi] != bound)
@@ -98,6 +100,7 @@ internal static unsafe partial class Particles
         _gl.MLocJitter = GlProgram.Loc(_gl.MotionProg, "uJitter");
         _gl.MLocSize = GlProgram.Loc(_gl.MotionProg, "uSize");
         _gl.MLocTex = GlProgram.Loc(_gl.MotionProg, "uTex");
+        _gl.MLocAdditive = GlProgram.Loc(_gl.MotionProg, "uAdditive");
         // The shadow samplers again: this program compiles the same light libraries, and three sampler types
         // left on image unit 0 is the INVALID_OPERATION that discards the whole draw.
         Gl.UseProgram(_gl.MotionProg);

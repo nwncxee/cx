@@ -21,7 +21,7 @@ uniform int uSoftOn;        // 0 = no depth copy this pass, so no fade
 #ifdef CX_MOTION
 in vec4 vCur;
 in vec4 vPrev;
-// a sprite texel below this is mostly the background behind it, which keeps its own vector
+// a sprite whose share of the pixel is below this leaves it mostly background, which keeps its own vector
 const float CX_MOTION_CUT = 0.5;
 #include "cx_motionout.glsl"
 #endif
