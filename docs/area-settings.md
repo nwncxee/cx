@@ -1,7 +1,7 @@
 # Area settings: an area holds CX settings while the player is in it
 
 **Status:** built on the client (`managed/Framework/AreaSettings.cs`, `managed/Services/AreaSettings/`), with a Moonglow
-Toolset plugin in `tools/moonglow/nwncx/`. Volumetric fog (`vfog`) is the first group that takes it; any group a
+Toolset plugin in `moonglow/nwncx/`. Volumetric fog (`vfog`) is the first group that takes it; any group a
 server may hold (`docs/ui-policy-contract.md`) takes it the same way.
 
 ## The variables
@@ -54,7 +54,7 @@ player locked out of every dial sends every key of the group.
 
 The plugin writes area variables, so what it sets works in single player only (see above); the form says so.
 
-`tools/moonglow/nwncx/` is a Moonglow Toolset plugin (plugin API 0.3, Luau). To install it, copy the folder into
+`moonglow/nwncx/` is a Moonglow Toolset plugin (plugin API 0.3, Luau). To install it, copy the folder into
 Moonglow's plugins folder (Linux `~/.local/share/moonglow/plugins`, Windows `%APPDATA%\Moonglow\plugins`), or zip it
 with `mg plugin pack` and use Plugins > Install Plugin from File. Then enable it.
 
