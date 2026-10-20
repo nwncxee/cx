@@ -75,6 +75,17 @@ internal static unsafe class IconFrames
         }
     }
 
+    /// <summary>
+    /// A portrait's frame: the painting fills the top <c>width x 25/16</c> rows of every size the game ships (256x400 of a
+    /// 256x512 sheet), and the rows under it are a flat filler a scan takes for art. Any other name keeps <paramref name="read"/>.
+    /// </summary>
+    internal static Frame PortraitArt(ReadOnlySpan<byte> resref, Frame read)
+    {
+        bool portrait = resref.Length > 3 && (resref[0] | 0x20) == 'p' && (resref[1] | 0x20) == 'o' && resref[2] == '_';
+        if (!portrait || read.Tw <= 0 || read.Th <= 0) return read;
+        return new Frame(read.Tw, read.Th, read.Tw, Math.Min(read.Th, read.Tw * 25 / 16));
+    }
+
     /// <summary>The frame of one plain or PLT resref, read on the first ask and cached, a miss included.</summary>
     internal static Frame Read(ReadOnlySpan<byte> resref, bool plt)
     {
@@ -242,6 +253,12 @@ internal static unsafe class IconFrames
         x = 1f; y = 2f; w = 30f; h = 40f;
         Fit(default, ref x, ref y, ref w, ref h, out u1, out v0);
         check.Expect(Near(x, 1f) && Near(y, 2f) && Near(w, 30f) && Near(h, 40f) && Near(u1, 1f) && Near(v0, 0f), "an unknown frame leaves the box and the sheet whole");
+        Frame scanned = new(256, 512, 256, 512);
+        Frame huge = PortraitArt("po_hu_m_15_h"u8, scanned), medium = PortraitArt("PO_EL_F_02_M"u8, new Frame(64, 128, 64, 128));
+        check.Expect(huge.Cw == 256 && huge.Ch == 400 && medium.Cw == 64 && medium.Ch == 100,
+                     "a portrait's painting is 256x400 of a 256x512 sheet and 64x100 of a 64x128 one, whatever its case");
+        check.Expect(PortraitArt("iit_shield"u8, scanned).Ch == 512 && PortraitArt("po_"u8, scanned).Ch == 512,
+                     "a name that is not a portrait's keeps the frame its scan found");
         log.Info(check.Ok ? "IconFrames.SelfCheck: passed" : "IconFrames.SelfCheck: FAILED");
     }
 
