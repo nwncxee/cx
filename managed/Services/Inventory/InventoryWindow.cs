@@ -138,7 +138,7 @@ internal sealed partial class InventoryWindow
     public void Layout(float scale, bool scrolled, bool search, float vw, float vh)
     {
         _policyEpoch = ServerPolicy.Epoch;
-        _vw = vw; _vh = vh;
+        _vw = vw;
         _lootLabel = ServerPolicy.Str("inventory.loot.label", "");
         _containerWord = Word(ContainerStrRef);
         int page = Page;

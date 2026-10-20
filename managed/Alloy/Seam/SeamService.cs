@@ -160,14 +160,35 @@ public sealed unsafe class SeamService : IExtenderService
     private const int PeriodFrames = 600;
 
     /// <summary>The seam's census, once every <see cref="PeriodFrames"/> frames: the DB tables' live counts
-    /// beside the shells'. A record count that only grows is a lifetime bug, and this is where it shows.</summary>
+    /// beside the shells', then whatever the seam has REFUSED. A record count that only grows is a lifetime
+    /// bug, and this is where it shows.</summary>
     private static void Period()
     {
         if (++_periodFrames < PeriodFrames) return;
         _periodFrames = 0;
         _log?.Info($"[seam] objects={SceneDb.Objects.Live} parts={SceneDb.Parts.Live} scenes={SceneDb.Scenes.Live} "
                  + $"cameras={SceneDb.Cameras.Live} | {Facade.Stats()} | parts-shells={PartShell.Alive} "
-                 + $"(quarantined {PartShell.Quarantined}, gui-held {PartShell.Held}) | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}");
+                 + $"(quarantined {PartShell.Quarantined}, gui-held {PartShell.Held}) | callbacks={CallbackList.Alive}"
+                 + $" | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}{Refused()}");
+    }
+
+    /// <summary>What the seam turned away, named only when there is something: a call the game made that CX
+    /// answered with the engine's refusal rather than a plausible value. Cold -- once per period line.</summary>
+    private static string Refused()
+    {
+        var sb = new System.Text.StringBuilder();
+        void Add(long n, string what)
+        {
+            if (n > 0) sb.Append(sb.Length == 0 ? " | REFUSED: " : ", ").Append(n).Append(' ').Append(what);
+        }
+        Add(Facade.UnimplementedCalls, "call(s) on a slot no stream implements");
+        Add(SeamBridge.Refused, "call(s) to an unwired subsystem");
+        Add(SceneSlots.NullScene, "scene slot(s) on a dead handle");
+        Add(CameraSlots.NullCamera, "camera slot(s) on a dead handle");
+        Add(PartShell.AfterDeath, "Part::GetWorld on a retired shell");
+        Add(ObjectSlots.DegenerateBounds, "object(s) whose measured box the game cannot divide by");
+        Add(StringSlots.UnresolvedAttach, "label attach(es) naming a part the target has not got");
+        return sb.ToString();
     }
 
     /// <summary>Advance the shell quarantine's clock. Registered on the frame walk, so it ticks on every

@@ -146,7 +146,7 @@ public sealed unsafe partial class QuickbarService
     internal static int SlotAt(int x, int y)
     {
         QuickbarLayout l = _cx.Layout;
-        if (_cx.Binding || !l.Contains(x, y) || UiInputService.NuiCovers(x, y) || QuickbarNative.EngineModal()) return -1;
+        if (_cx.Binding || !l.Contains(x, y) || UiInputService.NuiCovers(x, y) || Native.ModalPanelUp()) return -1;
         if (l.GripAt(x, y) && !QuickbarNative.EngineDragging()) return -1;   // the grip's press is the bar's own, a drop on it a button's
         if (UiHost.HitTest(x, y) != _cx.Window) return -1;
         return l.SlotAt(x, y, _cx.Held);

@@ -86,24 +86,11 @@ public sealed unsafe partial class ObjectSlots
 /// fields, never their allocation. 10 measured slots; the destructor pair collapses on Windows.</summary>
 public static unsafe class BehaviorSeam
 {
-    /// <summary>The type id <c>CAurBehaviorCrossSceneAttach::GetType</c> @0x58bff0 returns: an INTEGER tag,
-    /// not the address of a string -- 0x314d18 is in no section of the image, and the Windows export
-    /// <c>?GetType@CAurBehavior@@UEAAHXZ</c> carries the <c>int</c> return Itanium drops.
-    /// <c>RemoveAuroraObject</c> @0x58b210 compares against it to pick "let go" over "detach object+scene".</summary>
-    public const int CrossSceneAttachType = 0x314d18;   // not-an-offset: an integer type tag, and 0x314d18 is not an address in this image
-
-    /// <summary>The behaviour types the engine's own classes return, for a seam that needs to answer as one:
-    /// the base is 0 and the family runs 0x3e9..0x3f1 in declaration order.</summary>
-    public const int TypeBase = 0;   // not-an-offset: an integer type tag CAurBehavior::GetType returns
-    public const int TypeAttach = 0x3e9;   // not-an-offset: a type tag
-    public const int TypeAttachTranslate = 0x3ea;   // not-an-offset: a type tag
-    public const int TypeAttachRotate = 0x3eb;   // not-an-offset: a type tag
-    public const int TypeNavigate = 0x3ec;   // not-an-offset: a type tag
-    public const int TypeCameraFollow = 0x3ed;   // not-an-offset: a type tag
-    public const int TypeCameraLooseFollow = 0x3ee;   // not-an-offset: a type tag
-    public const int TypeCameraOnAStick = 0x3ef;   // not-an-offset: a type tag
-    public const int TypeAttachNoOrientation = 0x3f0;   // not-an-offset: a type tag
-    public const int TypeAttachGUIScale = 0x3f1;   // not-an-offset: a type tag
+    /// <summary>The INTEGER tag <c>CAurBehaviorAttachTranslate::GetType</c> returns, which is how a text
+    /// object tells the translate attachment from any other behaviour on it. Engine behaviour tags are
+    /// integers, not string addresses: the Windows export <c>?GetType@CAurBehavior@@UEAAHXZ</c> carries the
+    /// <c>int</c> return Itanium drops.</summary>
+    public const int TypeAttachTranslate = 0x3ea;   // not-an-offset: an integer type tag CAurBehavior::GetType returns
 
     /// <summary>The behaviour installed on <paramref name="obj"/>, or 0 -- the shell's own +0x450 word, which
     /// is what <c>Gob::GetBehavior(-1)</c> answers.</summary>
@@ -147,16 +134,12 @@ public static unsafe class BehaviorSeam
         nint beh = alloc(CameraFollowSize);
         if (beh == 0) return 0;
         ((delegate* unmanaged<nint, nint, nint, void>)ctor)(beh, new Camera(cameraShell).GobSub, target);
-        _followsMade++;
         return beh;
     }
 
     /// <summary><c>Camera::SetFollow</c>'s own <c>operator_new(0x90)</c>.</summary>
     private const nuint CameraFollowSize = 0x90;   // not-an-offset: the allocation size at Camera::SetFollow @0x5aa500
     private static bool _saidNoFollow;
-    private static long _followsMade;
-    /// <summary>Chase-camera behaviours constructed this session.</summary>
-    public static long FollowsMade => _followsMade;
 
     /// <summary>Call the behaviour's <c>Message(char const*)</c> slot with a native string.</summary>
     public static void Message(nint behavior, byte* msg) => Message(behavior, (nint)msg);

@@ -351,10 +351,6 @@ float CxLocalDynShadowQ(int slot, vec3 worldPos, vec3 N, float ndlRaw, bool soft
     if (vd >= 1.0) return 1.0;
     return mix(1.0, 1.0 - CxLocalBakedVis(slot, worldPos, N, ndlRaw, lmTexel, soft) * (1.0 - vd), uLocalFade[slot]);
 }
-float CxLocalDynShadow(int slot, vec3 worldPos, vec3 N, float ndlRaw, float lmTexel)
-{
-    return CxLocalDynShadowQ(slot, worldPos, N, ndlRaw, true, lmTexel);
-}
 
 /// CX-188 step 3 (ADR 0029): the DEFERRED path's filter -- what the per-pixel visibility record is filled
 /// with (cx_defshadow_cs). Same verdict as <see cref="CxLocalShadowQ"/>, a quarter of the fetches:

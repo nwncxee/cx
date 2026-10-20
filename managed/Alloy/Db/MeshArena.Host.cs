@@ -114,12 +114,6 @@ public static unsafe partial class MeshArena
         lock (_gate) { if (Alive(range)) _ranges[range].Offered = true; }
     }
 
-    /// <summary>One range's offer mark goes back -- its chart entry was swept, so nothing will file one.</summary>
-    internal static void ClearOffered(int range)
-    {
-        lock (_gate) { if (Alive(range) && !_ranges[range].Charted) _ranges[range].Offered = false; }
-    }
-
     /// <summary>Every offer mark goes back. The mark means "this range is the charter's already", which a world
     /// edge undoes: <see cref="CX.Alloy.MeshChart.Revoke"/> drops every chart entry, so a range that kept its mark
     /// would never be offered again and the next area would never chart. A CHARTED range keeps its mark -- it is

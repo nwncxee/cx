@@ -67,3 +67,15 @@ dangly\.(gravity|wind|turb|turbfreq|turbspeed|vary|body|hz|steps|parallel)\b	dan
 \bSkyTwin\b|\bsky twins?\b	native-stages
 cx_sky_(image|pass|fog|lens)\b	native-stages	old sky-only grammar
 cx_skyenv|cx_skypass_cs|\$SKYCS\$|CX_SKY_LINEAR|cxSkyLens|effects\.skytwin	native-stages
+
+# Dead-code cleanup: a knob whose last reader was removed with the deferred lighting rewrite.
+anim\.staticlight	dead-code-cleanup
+# The engine-texture read-ahead went with the engine draw path: TexRegistry decodes its own textures, so
+# there is no CAurTexture build to run ahead of.
+\btexprefetch\b	dead-code-cleanup
+shadow\.itemdirty	dead-code-cleanup
+alloy\.weld	dead-code-cleanup
+\bNormalWeld\b	dead-code-cleanup
+alloy\.aotest	dead-code-cleanup
+# The engine-path beam vertex stage: beams draw from the scene database through cx_beamdb_v.
+\bcx_beam_v\b	dead-code-cleanup

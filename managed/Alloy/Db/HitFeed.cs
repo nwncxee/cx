@@ -178,6 +178,8 @@ public static class HitFeed
          + (MeshBvh.Refused > 0 ? $", {MeshBvh.Refused} REFUSED (too many faces)" : "")
          + (MeshBvh.Degraded > 0 ? $", {MeshBvh.Degraded} node(s) degraded to leaves" : "")
          + (MeshBvh.StackFull > 0 ? $", {MeshBvh.StackFull} traversal(s) hit the stack cap" : "")
+         + $"; {HitTest.Casts} cast(s) walking {HitTest.CellVisits} cell(s), {HitTest.ObjTests} object(s), "
+         + $"{HitTest.PartTests} part(s), {HitTest.FaceTests} face(s)"
          + (HitTest.GroundHits > 0 ? $"; {HitTest.GroundHits} cast(s) answered the z=0 ground plane" : "")
          + (HitTest.UnassignedObjects > 0 ? $"; {HitTest.UnassignedObjects} fill(s) could not report an object" : "")
          + (HitTest.FloorMisses > 0

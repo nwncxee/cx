@@ -145,15 +145,11 @@ internal static unsafe partial class LightmapBake
     {
         if (_saidNoRects) return;
         _saidNoRects = true;
-        _noRectHolds++;
         Notice.Show(_log, "CX: the lightmap bake has no receivers in scene-database mode -- the draw comes out "
                         + "of the mesh arena, which carries no lightmap chart yet, so static lighting is not "
                         + "baked here. The load is released rather than held; tiles are lit dynamically.");
     }
     private static bool _saidNoRects;
-    /// <summary>Holds released because no rect source could produce. Non-zero in DB mode is expected today.</summary>
-    internal static int NoRectHolds => _noRectHolds;
-    private static int _noRectHolds;
 
     /// <summary>Send the held message and log the hold: its length, the exit, the walk the set closed on and
     /// the census after settle.</summary>

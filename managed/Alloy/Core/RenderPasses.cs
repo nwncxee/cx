@@ -36,24 +36,22 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "ownedgeom",
-            Attach = l => { OwnedBuffers.Attach(l); NormalWeld.Attach(l); },
+            Attach = OwnedBuffers.Attach,
             Install = OwnedBuffers.Install,
-            SelfCheck = l => { OwnedBuffers.SelfCheck(l); NormalWeld.SelfCheck(l); StagePool.SelfCheck(l); AlloyRenderer.SelfCheckItemDirty(l); },
+            SelfCheck = l => { OwnedBuffers.SelfCheck(l); StagePool.SelfCheck(l); },
             Revoke = OwnedBuffers.Revoke,
             ContextLost = OwnedBuffers.ContextLost,
             Stats = OwnedBuffers.Stats,
         }, log);
 
-        // Automatic mesh LOD: not a draw pass either -- a generated index run per eligible mesh, one shared
-        // element buffer, and a background worker. Its Revoke is the world edge (every key is a VDO slot and
-        // an item); its ContextLost forgets the buffer name and keeps the mirror the arena is rebuilt from.
+        // Automatic mesh LOD: not a draw pass either -- the detail thresholds and the level picker over the
+        // mesh arena's generated runs. Its Revoke is the world edge: a new area's triangle tally is its own.
         r.Register(new PassLifecycle
         {
             Name = "meshlod",
             Attach = MeshLod.Attach,
             SelfCheck = l => MeshLod.SelfCheck(l),
             Revoke = MeshLod.Revoke,
-            ContextLost = MeshLod.ContextLost,
             Stats = MeshLod.Stats,
         }, log);
 
@@ -234,7 +232,6 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "fog",
-            Attach = SceneFog.Attach,
             SelfCheck = SceneFog.SelfCheck,
             Revoke = SceneFog.Revoke,
         }, log);
@@ -513,6 +510,7 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "dbanim",
+            Attach = CX.Alloy.Db.DbAnim.Bind,
             SelfCheck = l => CX.Alloy.Db.DbAnim.SelfCheck(l),
             Stats = CX.Alloy.Db.DbAnim.Period,
         }, log);

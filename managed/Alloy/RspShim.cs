@@ -21,12 +21,6 @@ internal static unsafe class RspShim
     private static GlRenderVertexDataFn* _vdoSlot, _vdoBottomSlot;
     private static int* _fullDynamicLighting;
     private static GlRenderVertexStreamDataFn _origStream;
-    private static RiEnableFn _riEnable, _riDisable;
-    /// <summary><c>GLRender::m_pCurrentCustomProgram</c> -- the latch both draw funnels open with (shader type
-    /// 0xe means "use whatever that global points at"). The swallow leaves it the one stale field of the
-    /// engine's write set, so a program latched by an emitter or a shared material would capture the next
-    /// engine draw; <see cref="HandBackEngineState"/> zeroes it.</summary>
-    private static IntPtr* _curCustom;
 
     /// <summary>Chain priority on <c>GLRender::RenderVertexData</c>: strictly between
     /// <see cref="DrawFunnelService"/>'s 50 and DrawStatsService's 10. The funnel service sits ABOVE and calls
@@ -43,22 +37,7 @@ internal static unsafe class RspShim
     /// suppressed with nothing of ours replacing them.</summary>
     internal static bool Armed { get; private set; }
 
-    /// <summary>...and is GL up yet? <see cref="Gl"/>'s entry points are resolved lazily on the first frame
-    /// that needs them, so at <see cref="Install"/> time -- service init, no context -- every one is null, and
-    /// asking there would stand the cutover down for the session over a condition that is false only before
-    /// the first frame. <see cref="Gl.Init"/> is one bool from the second call on, so asking costs a branch.</summary>
-    internal static bool Ready
-    {
-        get
-        {
-            if (Gl.BindFramebuffer != null) return true;
-            if (_log == null || !Gl.Init(_log) || Gl.BindFramebuffer == null) return false;
-            _log.Info("RspShim: glBindFramebuffer resolved -- the cutover takes the frame from here");
-            return true;
-        }
-    }
-
-    private static bool _checkOk, _barLogged;
+    private static bool _checkOk;
 
     /// <summary>Last period's refusal totals, so the period line can report the CHANGE. See <see cref="Period"/>.</summary>
     private static int _lastRefBuf, _lastRefTex;
@@ -97,13 +76,8 @@ internal static unsafe class RspShim
         // refusal line below.
         FrameDelta.Resolve(log);
         _fullDynamicLighting = (int*)Native.Sym(SymbolMap.FullDynamicLighting);
-        // The state hand-back's two entry points, deliberately NOT in the `missing` list below: standing the
-        // cutover down over its epilogue would be the worse trade.
-        _riEnable = EngineFn.RiEnable;
-        _riDisable = EngineFn.RiDisable;
-        _curCustom = (IntPtr*)Native.Sym(SymbolMap.GlCurrentCustomProgram);
         // Named, not counted: "an engine symbol did not resolve" is unactionable, and this list is the only
-        // place that knows which one. glBindFramebuffer is deliberately NOT here -- see Ready.
+        // place that knows which one.
         string? missing = FrameDelta.Missing
                         ?? (_fullDynamicLighting == null ? SymbolMap.FullDynamicLighting : null)
                         // The particle simulation cannot stand itself down: the only thing behind it is
@@ -128,44 +102,9 @@ internal static unsafe class RspShim
         }
 
         Armed = true;
-        // "ARMED" is the engine half; the frame does not become Alloy's until Ready as well, which is a
-        // first-frame away and logs its own line.
         FrameRegistry.Global.Register(FramePhase.PostPresent, 30, Period, "RspShim.period", log);
         log.Info("RspShim: ARMED -- Scene::RenderSinglePass replaced by the mutate-only shim on "
                + "the Alloy path ([rspshim] every 900 frames; alloy.enabled=0 restores it)");
-    }
-
-    /// <summary>The two <c>RenderInterface</c> caps of the hand-back that reach GL. <c>GLRender::Enable</c>
-    /// returns before touching GL when the bit in <c>m_bEnabledStates</c> already agrees, so a plain replay
-    /// short-circuits in exactly the desynced case: disabling each first forces the cache to disagree and the
-    /// enable to issue. Caps 5, 1 and 2 are cache-only writes, so for those the cache IS the state.</summary>
-    private const int CapBlend = 0, CapDepthTest = 0xb;   // not-an-offset: engine RenderInterface cap enum, an argument to Enable/Disable
-
-    /// <summary>Replays <c>Scene::RenderSinglePass</c>'s trailing enable block plus the custom-program latch.
-    /// The engine's GUI scenes draw after us through the CACHED <c>RenderInterface</c> wrappers, and Alloy has
-    /// driven raw GL for a whole frame without writing that cache, so without a resync a panel that asks for
-    /// blending can be told it already has it. No call site on the Alloy path.</summary>
-    private static void HandBackEngineState()
-    {
-        if (_curCustom != null) *_curCustom = IntPtr.Zero;
-        if (_riEnable == null || _riDisable == null) return;
-        _riDisable(5);
-        _riEnable(1);
-        _riDisable(CapDepthTest); _riEnable(CapDepthTest);
-        _riDisable(CapBlend); _riEnable(CapBlend);
-        _riDisable(2);
-    }
-
-    /// <summary>Engine draws that reached GL while the GUI was Alloy's -- outside every window and every GUI
-    /// scene. The claim is that this stays 0; the first one is said, the total is on the status line.</summary>
-    internal static long StrayDraws;
-
-    private static void Stray()
-    {
-        if (!GuiPass.Capturing || GuiCapture.Open) return;   // inside a GUI scene it is a counted custom-shader hand-off
-        if (StrayDraws++ == 0)
-            _log?.Always("RspShim: an ENGINE draw reached GL while the GUI is Alloy's (outside any GUI scene) -- a tier-2 hole; "
-                       + "the count is on /alloy");
     }
 
     /// <summary>An engine draw the shim must let through: the frame belongs to the engine whole
@@ -210,26 +149,6 @@ internal static unsafe class RspShim
         _swallowed++;
     }
 
-    /// <summary>Asserted once, on the first frame Alloy actually RESOLVED: are the render target, the depth
-    /// buffer, the vertex/index buffers and the textures all ALLOY-CREATED? Not the first shim frame --
-    /// enrollment needs a few walks and <c>PostChain.Fbo</c> is generated lazily, so asked then it would latch
-    /// FAILED on every clean start. ponytail: a log verdict, re-read by the period line, not a stand-down.</summary>
-    private static void Bar()
-    {
-        _barLogged = true;
-        string? bad = PostChain.Fbo == 0 ? "the render target is not Alloy-created (PostChain.Fbo == 0)"
-                    : PostChain.DepthTex == 0 ? "the depth buffer is not Alloy-created (PostChain.DepthTex == 0)"
-                    : !OwnedBuffers.Armed ? "owned geometry stood down -- the engine uploads its own vertex/index pools"
-                    : !OwnedTextures.Armed ? "owned textures stood down -- engine texture names are being sampled"
-                    : OwnedBuffers.Borrowed != 0 ? $"{OwnedBuffers.Borrowed} engine buffers are drawn from but were never uploaded by Alloy"
-                    : OwnedTextures.Borrowed != 0 ? $"{OwnedTextures.Borrowed} engine textures never came through the upload funnel and are borrowed"
-                    : null;
-        _log?.Info(bad == null
-            ? $"RspShim: [bar] resources OWNED -- target {PostChain.Fbo}, depth {PostChain.DepthTex}, "
-            + "geometry and textures Alloy-created with zero refusals"
-            : $"RspShim: [bar] FAILED -- {bad}; the frame is Alloy's but its resources are not entirely");
-    }
-
     /// <summary>The acceptance line: <c>passed</c> is the exit bar's draw counter and must read 0. The borrowed
     /// counts are a DELTA over the period, not lifetime totals -- a lifetime figure would let one transient
     /// refusal in one area taint every later line, and telling a new regression from a historic one is the only
@@ -243,9 +162,6 @@ internal static unsafe class RspShim
                  + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), {ms:F2}ms/frame in the shim ({StepLine()}), "
                  + $"borrowed {OwnedBuffers.Borrowed - _lastRefBuf} buffers / "
                  + $"{OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0/0)"
-                 // Lifetime, not a delta -- one attempt per texture makes it a POPULATION (how much of the
-                 // world lost its build race) and never a rate. Empty when nothing has ever been unbuilt.
-                 + OwnedTextures.RebuildNote()
                  // The ported light tick has no other visible surface: `moved` counting down to a handful
                  // once an area settles, and `focus` tracking day/night, is what says it is running.
                  + $"; {FrameDelta.Describe()}");

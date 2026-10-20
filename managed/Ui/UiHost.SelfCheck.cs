@@ -138,7 +138,7 @@ public static partial class UiHost
             var chord = new TestChord(priority: 10, key: 42); chords.Add(chord); AddChordConsumer(chord);
 
             Focus(win);
-            check.Expect(!KeyboardOwned, "focus alone does not own the keyboard");
+            check.Expect(!AnyKeyboardOwner, "a focused window that does not want the keyboard leaves the gate clear");
             check.Expect(ResolveKey(42) == InputLayer.ChordConsumer, "gate clear: a chord consumer takes its key");
             check.Expect(ResolveKey(7) == InputLayer.GameplayKeybind, "gate clear: an unclaimed key falls to gameplay keybinds");
 
@@ -146,13 +146,13 @@ public static partial class UiHost
             check.Expect(ResolveChord(42) == hi, "the higher-priority consumer wins the shared key");
 
             win.WantsKeyboard = true;
-            check.Expect(KeyboardOwned, "the focused window asserting WantsKeyboard sets the gate");
+            check.Expect(AnyKeyboardOwner, "a window asserting WantsKeyboard sets the gate");
             check.Expect(ResolveKey(42) == InputLayer.FocusedContent, "gate set: focused content eats even a chord's key");
             check.Expect(ResolveKey(7) == InputLayer.FocusedContent, "gate set: focused content eats gameplay keys too");
 
             // stale owner: unregistering the focused, keyboard-owning window drops the gate
             Unregister(win); created.Remove(win);
-            check.Expect(Focused == null && !KeyboardOwned, "unregistering the owner clears focus and drops the gate");
+            check.Expect(Focused == null && !AnyKeyboardOwner, "unregistering the owner clears focus and drops the gate");
 
             // ---- live routing: mouse/key/text dispatch, keyboard gate, chord fall-through, focus mode ----
             {

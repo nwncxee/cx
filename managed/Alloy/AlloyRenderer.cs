@@ -25,11 +25,10 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// carries, ~400 bytes per slot (62.5MB resident). WHICH parts spill is a first-come-first-served hash
     /// walk, so ponytail: an area past even this flickers, and the fix is a deterministic near-to-far spill.</summary>
     internal const int MaxOwned = 163840, MaxVdos = 4096;
-    /// <summary>Batch-sort texture keys: distinct diffuse textures the sort can separate, and the
-    /// open-addressed slot table that interns them (power of two, ~2x MaxMats for a 0.5 load factor). Overflow
-    /// shares the last key, which costs batch size and nothing else -- the live flush key is the texture id --
-    /// but a saturated table makes that key a bucket every unseen texture shares, costing the sort its point.</summary>
-    internal const int MaxMats = 16384, MatHashBits = 15, MatHash = 1 << MatHashBits;
+    /// <summary>Batch-sort texture keys: distinct diffuse textures the sort can separate. Overflow shares the
+    /// last key, which costs batch size and nothing else -- the live flush key is the texture id -- but a
+    /// saturated table makes that key a bucket every unseen texture shares, costing the sort its point.</summary>
+    internal const int MaxMats = 16384;
     /// <summary>Floats per CxDraw record: std430 <c>mat4 + vec4 rot + vec4 amb + vec4 dif + vec4 emi + vec4
     /// pbr + vec4 spc + vec4 feat + mat4 prev + vec4 ext0..ext2</c> = 288 bytes, whose alignment (16) already
     /// divides the size, so the array stride is 288 with no padding.</summary>
@@ -37,8 +36,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>ADR 0026: where the three material-extension vec4s (<c>ext0..ext2</c>) start -- after
     /// <c>prev</c>, so no older field moved.</summary>
     internal const int ExtFloat = 60;
-    /// <summary>ext2.z, a lane ADR 0026 leaves spare -- <c>_recArrive</c>, the diffuse's arrival time.</summary>
-    internal const int ArriveFloat = ExtFloat + 10;
     /// <summary>ext2.w, the tile's fog-of-war term as HIDDEN (<c>1 - reveal</c>), so that <b>0 means
     /// explored</b>. The polarity is the whole point: a spare lane is zero in every record that does not write
     /// it, and carrying REVEAL made an unwritten 0 read as "never seen" -- the lit stage fogged the world to
@@ -62,18 +59,15 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// reads. Must match <c>DrawBufDecl</c>'s literal.</summary>
     internal const uint BindDrawIdx = SsboSlots.DrawIdx;
     /// <summary>Bones per skinned part, fixed by the engine: <c>GLRender::m_bones</c> is a 64 x mat4 static
-    /// array and the vertex stream's indices address it directly. The matrices already sit in GLSL's
-    /// column-major order (see <see cref="SymbolMap.GlRenderBones"/>), so a snapshot is a straight memcpy.
-    /// </summary>
+    /// array and the vertex stream's indices address it directly. <c>SetBoneMatrix</c> stores each matrix
+    /// transposed and <c>SetUniforms</c> uploads it with <c>transpose=0</c>, so the matrices already sit in
+    /// GLSL's column-major order and a snapshot is a straight memcpy.</summary>
     internal const int BoneCount = 64, BoneFloats = BoneCount * 16;
     /// <summary>Skinned parts posed per frame, INITIAL capacity: 4KB each, so 512 slots is 2MB and covers a
     /// crowd. Not a ceiling -- the stage doubles rather than drop a creature, and the high-water mark is
     /// reported. <see cref="CasterPass"/> keeps it as a hard cap: a shadow that does not bake is a missing
     /// shadow, not a missing creature.</summary>
     internal const int MaxBoneSlots = 512;
-    /// <summary>A parameter list longer than this is not a .mtr, it is a bad pointer -- refuse it rather than
-    /// walk off into the heap. Real materials declare a handful.</summary>
-    internal const int MaxParams = 64;
     /// <summary>Map slot 6 of the block, the ambient-occlusion map -- a baked visibility term in .r, sampled
     /// straight onto the ambient, sourced from <c>.mtr</c> <see cref="AoTexture"/> (texture11) past the
     /// engine's own vocabulary so it cannot collide with a community model's texture7. Probed on EVERY shared
@@ -113,12 +107,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The GL blend factors <see cref="Issue.BlendGl"/> maps the Aurora ones onto.</summary>
     internal const uint GlZero = 0, GlOne = 1, GlSrcColor = 0x0300, GlSrcAlpha = 0x0302,   // not-an-offset: GL blend-factor enums
                        GlOneMinusSrcAlpha = 0x0303, GlDstColor = 0x0306, GlOneMinusDstAlpha = 0x0305;   // not-an-offset: as above
-    /// <summary>Engine attribute locations, fixed for every engine program (Ghidra
-    /// <c>GLRender::ConnectShaderData</c>: one glBindAttribLocation table before every link -- 0 vPos,
-    /// 1 vTcIn, 2 vColor, 7 vNormal). They say which engine VAO slot holds each stream.</summary>
-    internal const uint EngPos = 0, EngUv = 1, EngNormal = 7;
-    /// <summary>And OUR locations for the same two streams, which the skinned vertex stages declare. Same
-    /// numbers as the engine's by choice, not by necessity -- the Alloy VAO binds them itself.</summary>
+    /// <summary>Our locations for the two bone streams, which the skinned vertex stages declare.</summary>
     internal const uint LocBoneIdx = 8, LocBoneW = 9;
     /// <summary>Our own program's attribute locations. VAOs are ours, so the engine's locations only tell us
     /// which buffer/offset holds each stream -- we re-bind them wherever the program wants them.</summary>
@@ -133,7 +122,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
 
     internal static ExtenderLog? _log;
     private static bool _armed;
-    internal static MatGetTextureFn _getTexture;
     private static uint* _primTable;
     private static byte* _mtxStacks;
 
@@ -141,11 +129,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// each is its own pass). An Alloy draw stamps it into AlloyCensus's OwnGen column; the iterator
     /// suppresses a part only when the stamp matches the pass it is walking.</summary>
     internal static int PassGen;
-    /// <summary>Did the Alloy world block take THIS pass? The sky reads it to tell the main world pass from a
-    /// reflection subframe -- the same <c>RenderSkyBoxes</c> routine under a mirrored camera, where capturing
-    /// would position next frame's dome at the reflection eye -- and so whether its capture window may open.</summary>
-    internal static bool DrewThisPass => _drawnPass == PassGen;
-
     private static bool _prepassFeat => Renderer.PrepassFeat.V;
     /// <summary><c>/alloy prepass 0</c>: skip the prepass, which is the A/B for its own acceptance number.</summary>
     private static bool _depthPrepass => Renderer.Prepass.V;
@@ -201,11 +184,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
     internal const int LightVizMax = 53;   // 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 41/42/45/46 = SSR trust, the reflection, the probe behind it and the mirrored draw (CX-51); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
-    /// <summary><c>/alloy aotest 1</c>: bind every lit part's own DIFFUSE texture on the AO slot and set the
-    /// bit, so the whole AO path -- mask, unit, sampler, ambient multiply -- runs end to end on stock content.
-    /// The frame looks WRONG on purpose (a diffuse's red channel is not an occlusion map); what it proves is
-    /// that a material which does declare one will be sampled.</summary>
-    private static bool _aoTest => Renderer.AoTest.V;
     /// <summary>This draw is going into the <see cref="EnvProbe"/> cube, not onto the screen. The lit and
     /// water stages read it, so a capture never samples the probe -- which is an attachment of the framebuffer
     /// being drawn into. It says nothing about COLOUR SPACE: the screen target is linear too, so the capture
@@ -233,12 +211,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal static bool _lighting => Renderer.Light.V;
     /// <summary>RenderInterface::IsEnabled -- queried for cap 5 (LIGHTING) once per Alloy pass.</summary>
     private static RiIsEnabledFn _isEnabled;
-    /// <summary>The AuroraEnableEnums value for lighting. <c>MatStatic</c>/<c>RenderFlat</c> both branch on
-    /// it, so a pass that runs with it off wants the flat variant for everything.</summary>
-    internal const int CapLighting = 5;
-
     // lifecycle
-    private static int _tableGen = -1, _sinceEnroll;
     private static readonly EdgeState _was = new();
 
     /// <summary>The <see cref="Counters._cutBy"/> labels, by index.</summary>
@@ -255,18 +228,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         for (int t = 0; t < CutTerms.Length; t++)
             sb.Append(t == 0 ? "" : ", ").Append(CutTerms[t]).Append(' ').Append(((float)Counters._cutBy[t] / Counters._frames).ToString("F0"));
         return sb.ToString();
-    }
-    /// <summary>Name a diffuse the bindless guard turned away, once per distinct resref.</summary>
-    private static void TexSkipDiag(bool owned, int tid, TextureRef aur)
-    {
-        if (Diag._texSkipDiagLeft <= 0) return;
-        string nm = aur.ResolveName();
-        if (!Diag._texSkipSeen.Add(nm)) return;
-        Diag._texSkipDiagLeft--;
-        _log?.Info($"AlloyRenderer: [texskip] \"{nm}\" tid={tid} owned={owned} -- "
-                   + (owned ? "Alloy owns it but GetTextureHandleARB minted nothing"
-                            : "never reached the upload funnel, so it is BORROWED and bindless will not vouch for it")
-                   + "; #285: every lit part using it is NOT DRAWN (bindless=0 in cx.cfg is the A/B)");
     }
     /// <summary>Monotonic presented-frame counter: the light SSBO uploads once per frame, not once per pass.</summary>
     private static int _frameSeq;
@@ -370,7 +331,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !CasterBoundSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
             || !Issue.RunsSelfCheck(log) || !StreamRing.SelfCheck(log)
@@ -387,9 +348,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // whole Alloy path down.
         if (!DoorFade.SelfCheck(log)) return;
         if (PlaceableHold.SelfCheck(log)) PlaceableHold.Install(log, hooks);   // failed: placeables fade as vanilla
-        _getTexture = EngineFn.MatGetTexture;
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        if (CycleTextures.SelfCheck(log)) CycleTextures.Attach(log, hooks);   // #331; a failed check freezes cycles, not Alloy
         Db.SunGlide.Install(log, hooks);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);
@@ -416,7 +375,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
             log.Info("AlloyRenderer: " +
                      (_shaderConstF == null ? "GLRender::m_globalShaderConstantsf" : "GLRender::m_shaderExposedRuntimeData") +
                      " unresolved -- #124's camera dissolve stays off on Alloy parts");
-        if (_getTexture == null || !AurTex.Ready || _primTable == null || _mtxStacks == null)
+        if (!AurTex.Ready || _primTable == null || _mtxStacks == null)
         { log.Info("AlloyRenderer: engine symbols unresolved -- Alloy world pass unavailable"); return; }
 
         // #336: the highlight SOURCE. Cold -- it fires on a mouseover edge or a VFX starting, never per
@@ -425,9 +384,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (Highlight._origRefreshHilite == null)
             log.Info("AlloyRenderer: RefreshHilite unhooked -- no highlight claims a source, so every"
                      + " highlight keeps the engine glow and the owned outline draws nothing");
-        // the item-level vertex-dirty signal
-        _commitSlot = hooks.ChainVdoCommitItemDynamicData(&OnCommitItemDynamicData, CommitPriority);
-        if (_commitSlot == null) log.Info("AlloyRenderer: CommitItemDynamicData unhooked -- vertex-dirty stays per pool buffer");
         // #137: the skinmesh class. Config bucket (ADR 0013): a capability gate that decides what the vertex
         // stages are BUILT from, so it cannot move mid-session and is not a command. The pose math is
         // DbAnim's, checked by its own self-check.
@@ -492,7 +448,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// alone. An area transition that replaces the Scene leaves it stale, so nothing draws until the next
     /// enrollment picks up the new one -- which the walk's Scene check triggers on the same frame.</summary>
     internal static IntPtr _enrollScene;
-    private static int _drawnPass = -1;   // pass whose Alloy block already ran (once per pass)
 
     /// <summary>Ownable parts the last enrollment turned away for want of a slot. Non-zero means the area is
     /// past <see cref="MaxOwned"/>, and there is no vanilla walk to spill to: a spilled part is INVISIBLE.

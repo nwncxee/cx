@@ -278,7 +278,7 @@ internal static unsafe partial class TexLoad
 
     // ---- the publish, main thread ----
 
-    /// <summary>Once a frame on the <see cref="OwnedTextures.DripRebuilds"/> anchor: file what the worker
+    /// <summary>Once a frame on the frame anchor (<c>OwnedTextures.maintain</c>): file what the worker
     /// finished and sweep what nothing ever asked for.</summary>
     internal static void Drip()
     {

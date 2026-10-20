@@ -123,13 +123,13 @@ public sealed unsafe partial class AlloyRenderer
     internal static bool CastOk(int slot) => _castOk[slot];
 
     /// <summary>Cold diagnostic: what a caster slot IS -- its DB object's model, flags, scene (and whether that
-    /// scene is a world one), position and the stored caster sphere. Engine slots name their texture.</summary>
+    /// scene is a world one), position and the stored caster sphere.</summary>
     internal static string DescribeCasterSlot(int slot)
     {
         CasterSphere(slot, out float cx, out float cy, out float cz, out float r);
         string sph = $"sphere=({cx:F1},{cy:F1},{cz:F1}) r={r:F1}";
         int part = _oDbPart[slot];
-        if (part < 0) return $"slot {slot} engine tex={SlotTexName(slot)} {sph}";
+        if (part < 0) return $"slot {slot} UNSEATED {sph}";
         DbId o = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(o)) return $"slot {slot} part {part} ORPHAN {sph}";
         int i = o.Index;
@@ -214,10 +214,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>uDraw[slot]</c> on the GPU.</summary>
     internal struct CasterFacts
     {
-        public IntPtr Vdo, Mat;
         public int Item, Prim, Vao;
-        /// <summary>The ownership slot these facts came from. A DB slot has no VDO, so the bake resolves its
-        /// index range from the arena draw arguments instead (<c>AlloyRenderer.DbCasterRange</c>).</summary>
+        /// <summary>The ownership slot these facts came from; the bake resolves its index range from the
+        /// arena draw arguments (<c>AlloyRenderer.DbCasterRange</c>).</summary>
         public int Slot;
         /// <summary>World sphere: centre and radius, both from <see cref="_dCastSph"/>.</summary>
         public float Cx, Cy, Cz, R;
@@ -268,7 +267,6 @@ public sealed unsafe partial class AlloyRenderer
         f.Blended = _oCls[slot] == (byte)AlloyClass.Blended;
         if (f.Blended && _oBone[slot] >= 0) return false;   // posed: no mask stage, see SetCastOk
         f.Slot = slot;
-        f.Vdo = _oVdo[slot]; f.Mat = _oMat[slot];
         // CX-120: the DENSE caster VAO id (see DbVaoBase), not _oVao -- a DB slot has no VDO slot, and its
         // arena section is what the bake must group and bind by. Every engine table this value still indexes
         // range-tests it first.
@@ -309,99 +307,11 @@ public sealed unsafe partial class AlloyRenderer
     /// human can read. A DB slot has no Material, so its diffuse is a registry slot. Borrowed pointers,
     /// resolved inside the pass slot.</summary>
     internal static string SlotTexNameDb(int slot)
-        => _oDbPart[slot] >= 0
-            ? TexRegistry.ResrefOf(DrawRecipe.Tex(_oDbRecipe[slot], 0))
-            : SlotTexName(slot);
-
-    internal static string SlotTexName(int slot)
-        => _oTri[slot] == IntPtr.Zero ? "-" : AlloyCensus.TexName(new MaterialRef(_oMat[slot]).Texture(0).Ptr);
+        => _oDbPart[slot] >= 0 ? TexRegistry.ResrefOf(DrawRecipe.Tex(_oDbRecipe[slot], 0)) : "-";
 
     /// <summary>Is this ownership slot posed by bones? The cheap gate the caster walk uses to put the
     /// skinned casters at the head of its list without resolving every slot twice.</summary>
     internal static bool SlotSkinned(int slot) => _oBone[slot] >= 0;
-
-    /// <summary>The engine wrote vertices into this VDO's position pool this frame, so every caster on it
-    /// moved without its matrix moving. Resolved per VDO slot, not per caster.</summary>
-    internal static bool VdoDirty(int v)
-        => !IsArenaVao(v) && (uint)v < MaxVdos && _vVdo[v] != IntPtr.Zero && OwnedBuffers.DirtySince(_vPos[v].Buf);
-
-    /// <summary>The ITEM-level vertex-dirty signal. <see cref="VdoDirty"/> is per pool BUFFER and the engine
-    /// pools a whole area into a handful of them, so one dangly commit would mark every caster on the pool a
-    /// mover; <c>CommitItemDynamicData</c> names the item, so a caster is dirty only if ITS item was
-    /// committed. The motion writers that bypass the commit are covered by the dangly and skinned flags.</summary>
-    internal static bool ItemDirty(int v, int item) => VdoDirty(v) && ItemMoved(v, item);
-    /// <summary>The item half alone, for a caller that already holds the buffer verdict per VDO.</summary>
-    internal static bool ItemMoved(int v, int item) => _ciOverflow || ItemCommitted(v, item);
-
-    private const int CiBits = 14;
-    private static readonly ulong[] _ciKey = new ulong[1 << CiBits];
-    private static readonly int[] _ciGen = new int[1 << CiBits];
-    private static readonly int[] _ciPerVdo = new int[MaxVdos];
-    private static int _ciGeneration = 1, _ciCount;
-    private static bool _ciOverflow;
-    private static VdoCommitItemDynamicDataFn* _commitSlot;
-    private const int CommitPriority = 10;
-    private static long _ciCommits, _ciOverflows;
-
-    private static int CiHash(ulong key) => (int)(key * 0x9E3779B97F4A7C15UL >> (64 - CiBits));
-
-    private static bool ItemCommitted(int v, int item)
-    {
-        ulong key = ((ulong)(uint)v << 32) | (uint)item;
-        int mask = (1 << CiBits) - 1;
-        for (int j = CiHash(key); _ciGen[j] == _ciGeneration; j = (j + 1) & mask)
-            if (_ciKey[j] == key) return true;
-        return false;
-    }
-
-    /// <summary>Record one item commit. Engine thread, hot (every dangly/morph item per frame): a slot scan
-    /// over ~10 VDOs and one hash insert, nothing allocated. Past the table's load the frame falls back to
-    /// the buffer-level signal rather than dropping a commit.</summary>
-    internal static void NoteItemCommit(IntPtr vdo, uint item)
-    {
-        _ciCommits++;
-        int v = -1;
-        for (int k = 0; k < _vdoCount; k++) if (_vVdo[k] == vdo) { v = k; break; }
-        if (v < 0) return;
-        if (_ciCount >= (1 << CiBits) * 3 / 4) { if (!_ciOverflow) _ciOverflows++; _ciOverflow = true; return; }
-        ulong key = ((ulong)(uint)v << 32) | item;
-        int mask = (1 << CiBits) - 1;
-        int j = CiHash(key);
-        for (; _ciGen[j] == _ciGeneration; j = (j + 1) & mask) if (_ciKey[j] == key) return;
-        _ciGen[j] = _ciGeneration; _ciKey[j] = key; _ciCount++; _ciPerVdo[v]++;
-    }
-
-    /// <summary>Close the item window with the buffer one (<c>OwnedBuffers.ClearDirty</c>): the readers ran.</summary>
-    internal static void ClearItemCommits()
-    {
-        _ciGeneration++; _ciCount = 0; _ciOverflow = false;
-        Array.Clear(_ciPerVdo, 0, MaxVdos);
-    }
-
-    [UnmanagedCallersOnly]
-    private static void OnCommitItemDynamicData(IntPtr vdo, uint item, uint flags)
-    {
-        NoteItemCommit(vdo, item);
-        if (_commitSlot != null && *_commitSlot != null)
-            (*_commitSlot)(vdo, item, flags);
-    }
-
-    /// <summary>The item table: a committed item is dirty, its pool-mates are not, a pool with no commit
-    /// stays dirty as a whole, and the window closes.</summary>
-    internal static void SelfCheckItemDirty(ExtenderLog log)
-    {
-        int sv = _vdoCount; var svVdo = new IntPtr[MaxVdos]; Array.Copy(_vVdo, svVdo, MaxVdos);
-        ClearItemCommits();
-        _vdoCount = 2; _vVdo[0] = (IntPtr)0x10; _vVdo[1] = (IntPtr)0x20;
-        NoteItemCommit((IntPtr)0x10, 7); NoteItemCommit((IntPtr)0x10, 7);
-        bool ok = ItemCommitted(0, 7) && !ItemCommitted(0, 8) && !ItemCommitted(1, 7) && _ciPerVdo[0] == 1 && _ciCount == 1;
-        ok &= _ciPerVdo[1] == 0 && !ItemMoved(1, 7) && !ItemMoved(0, 8) && ItemMoved(0, 7);   // no commit = nothing moved
-        NoteItemCommit((IntPtr)0x30, 1); ok &= _ciCount == 1;   // an unknown VDO is not booked
-        ClearItemCommits();
-        ok &= !ItemCommitted(0, 7) && _ciPerVdo[0] == 0;
-        _vdoCount = sv; Array.Copy(svVdo, _vVdo, MaxVdos);
-        log.Info(ok ? "AlloyRenderer.SelfCheckItemDirty: passed" : "AlloyRenderer.SelfCheckItemDirty: FAILED");
-    }
 
     /// <summary>The last sphere written for a slot, live or revoked. A caster that VANISHED leaves no live
     /// entry to name the views it was standing in, so its last known sphere is what invalidates them.</summary>
@@ -427,16 +337,13 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is this caster VAO id the mesh arena's rather than a VDO slot's?</summary>
     internal static bool IsArenaVao(int v) => v >= DbVaoBase;
 
-    /// <summary>How many distinct caster VAO ids exist: every VDO slot, then one per arena section.</summary>
-    internal const int CasterVaoIds = DbVaoBase + MeshArena.Formats;
-
     /// <summary>The caster VAO id for an ownership slot, from whichever source it draws out of.</summary>
     internal static int CasterVaoId(int slot)
         => DbSlot(slot) ? DbVaoBase + (int)MeshArena.FormatOf(DrawRecipe.Range(_oDbRecipe[slot])) : _oVao[slot];
 
     /// <summary>The arena's vertex format always carries UVs (pos3 nrm3 uv2 ...), so a DB caster can always be
-    /// alpha-masked.</summary>
-    internal static bool VdoHasUv(int v) => IsArenaVao(v) || ((uint)v < MaxVdos && _vUv[v].Present);
+    /// alpha-masked; a caster VAO id that is not the arena's names no geometry Alloy draws.</summary>
+    internal static bool VdoHasUv(int v) => IsArenaVao(v);
 
     /// <summary>The 4.6 VAO for a VDO slot, built on demand. Shadow and colour draw in the SAME context, so
     /// there is one VAO for both -- the whole reason the caster pass no longer keeps its own cache. 0 = the

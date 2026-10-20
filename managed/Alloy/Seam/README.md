@@ -24,7 +24,6 @@ public sealed class SceneSlots : ISeamProvider
     public unsafe void Register(SeamRegistry r)
     {
         r.Slot(SeamTable.Scene, 4, (void*)(delegate* unmanaged<nint, void>)&OnRender);
-        r.SlotRange(SeamTable.Scene, 51, 87, (void*)(delegate* unmanaged<nint, nint>)&Unused);
         r.ReplaceEngine(SymbolMap.NewCAurScene, (void*)(delegate* unmanaged<...>)&OnNewScene);
         r.AfterTablesBuilt(static () => { /* cache a table address, resolve an engine pointer */ });
     }
@@ -35,12 +34,10 @@ public sealed class SceneSlots : ISeamProvider
   list is the slot's ABI **on this OS**. The index is always the **Linux** index: the canonical identity in
   `tools/seam/aurora-seam-vtables.tsv`. The builder places it at the Windows index there when it builds the
   Windows table, and drops it from a Windows table whose Windows home is a different vftable of the same class.
-- `SlotRange(table, first, last, impl)` — one implementation for a run of slots (a shared refusal, a shared forward).
 - `ReplaceEngine(symbol, handler)` — the seam answers that engine symbol for the session, in DB mode only.
   Installed in one funchook batch after every provider registered; no trampoline is handed back, because in DB
   mode the original would walk a scene graph that does not exist. Two streams claiming one symbol is a logged
   refusal, not a silent last-wins.
-- `ChainEngine(symbol, handler, priority)` — `HookService.Chain` (#88), for a symbol a non-seam service also hooks.
 - `AfterTablesBuilt(action)` — runs once, after every table is built and before the hooks commit.
 
 Registration happens on the boot thread, in type-name order, **before** any vtable is built and before any hook

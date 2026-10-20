@@ -88,10 +88,10 @@ internal static unsafe partial class MeshChart
     private static ExtenderLog? _log;
 
     /// <summary>Why a mesh has no chart. Indexes <see cref="RefusalName"/>; 0 is charted. The first four are
-    /// the worker's; <c>Arena</c> is the ceiling; <c>Unlit</c> (no normal stream: nothing to bake against) and
-    /// <c>Corners</c> (past <see cref="MeshSimplify.MaxCorners"/>) are refused at the offer, before any copy.</summary>
-    internal enum Refusal : byte { None, Input, Xatlas, Uncharted, Overflow, Arena, Unlit, Corners }
-    internal static readonly string[] RefusalName = { "none", "input", "xatlas", "uncharted", "overflow", "arena", "unlit", "corners" };
+    /// the worker's; <c>Arena</c> is the ceiling; <c>Corners</c> (past <see cref="MeshSimplify.MaxCorners"/>)
+    /// is refused at the offer, before any copy.</summary>
+    internal enum Refusal : byte { None, Input, Xatlas, Uncharted, Overflow, Arena, Corners }
+    internal static readonly string[] RefusalName = { "none", "input", "xatlas", "uncharted", "overflow", "arena", "corners" };
 
     /// <summary>One charted mesh: its <see cref="CX.Alloy.Db.MeshArena"/> range (which carries the base vertex
     /// and the three index runs) and the atlas size in texels.</summary>
@@ -169,8 +169,6 @@ internal static unsafe partial class MeshChart
         internal Refusal Refused;
         internal bool Hit, Stale;
     }
-
-    private static int[] _remap = Array.Empty<int>();
 
     /// <summary>The interleave scratch one charted mesh is built in before it goes to the arena. Render
     /// thread only, reused: the collect is one mesh at a time.</summary>
@@ -267,9 +265,6 @@ internal static unsafe partial class MeshChart
     }
 
 
-    /// <summary>Charts on file, claimed or landed -- the area edge's tally.</summary>
-    internal static int TableCount => _table.Count;
-
     /// <summary>Asked before anything is read: a mesh on file, queued or past a budget costs one probe.
     /// <paramref name="later"/> = not now but not refused either: the worker's queue is full (an area's whole
     /// tile set enrols in one walk). The caller MUST re-offer when it drains, or the mesh stays uncharted.</summary>
@@ -292,59 +287,6 @@ internal static unsafe partial class MeshChart
 
     /// <summary>Room in the worker's queue for a deferred offer?</summary>
     internal static bool HasRoom() => _jobs.QueueHasRoom;
-
-    /// <summary>Copy one part's range and every attribute it addresses off the pools' host shadows, densely
-    /// re-indexed, and queue it. Enrollment walk only: reads engine memory and allocates, off every frame path.</summary>
-    internal static void Offer(int slot, int item, byte* elemHost, long first, int count,
-                               byte* posHost, in VertexStream pos, byte* nrmHost, in VertexStream nrm,
-                               byte* uvHost, in VertexStream uv, int baseVertex, ulong sig)
-    {
-        if (elemHost == null || posHost == null || count < 3 || count % 3 != 0) return;
-        if (pos.Type != Gl.FLOAT || pos.Size != 3) return;
-        bool hasNrm = nrmHost != null && nrm.Type == Gl.FLOAT && nrm.Size == 3;
-        bool hasUv = uvHost != null && uv.Type == Gl.FLOAT && uv.Size == 2;
-        var src = new HostIndices(elemHost, first);
-        int maxI = -1;
-        for (int i = 0; i < count; i++) { int v = src[i]; if (v > maxI) maxI = v; }
-        if (maxI < 0) return;
-        if (_remap.Length <= maxI) _remap = new int[Math.Max(maxI + 1, MeshSimplify.MaxVerts)];
-        Array.Fill(_remap, -1, 0, maxI + 1);
-
-        Job j = _jobs.Rent();
-        j.Key = KeyOf(slot, item); j.Sig = sig;
-        j.IdxCount = count; j.HasNrm = hasNrm; j.HasUv = hasUv; j.HasPacked = false; j.Format = CX.Alloy.Db.MeshArena.Fmt.Static;
-        j.Refused = Refusal.None; j.Hit = false; j.Stale = false; j.Out0N = j.Out1N = j.Out2N = 0; j.OutVerts = 0; j.Charts = 0; j.Loose = 0;
-        Grow(ref j.Idx, count);
-        if (j.Pos.Length < (maxI + 1) * 3) j.Pos = new float[(maxI + 1) * 3];
-        if (hasNrm && j.Nrm.Length < (maxI + 1) * 3) j.Nrm = new float[(maxI + 1) * 3];
-        if (hasUv && j.Uv.Length < (maxI + 1) * 2) j.Uv = new float[(maxI + 1) * 2];
-        int n = 0;
-        for (int i = 0; i < count; i++)
-        {
-            int v = src[i];
-            int d = _remap[v];
-            if (d < 0)
-            {
-                d = n++; _remap[v] = d;
-                ref Vector3 p = ref new HostVertices(posHost, pos).Pos(baseVertex + v);
-                j.Pos[d * 3] = p.X; j.Pos[d * 3 + 1] = p.Y; j.Pos[d * 3 + 2] = p.Z;
-                if (hasNrm)
-                {
-                    ref Vector3 q = ref new HostVertices(nrmHost, nrm).Normal(baseVertex + v);
-                    j.Nrm[d * 3] = q.X; j.Nrm[d * 3 + 1] = q.Y; j.Nrm[d * 3 + 2] = q.Z;
-                }
-                if (hasUv)
-                {
-                    ref Vector2 t = ref new HostVertices(uvHost, uv).Uv(baseVertex + v);
-                    j.Uv[d * 2] = t.X; j.Uv[d * 2 + 1] = t.Y;
-                }
-            }
-            j.Idx[i] = (ushort)d;
-        }
-        j.VertCount = n;
-        _offered++;
-        _jobs.Offer(j, j.Key, sig);
-    }
 
     private static void Grow(ref ushort[] a, int n) { if (a.Length < n) a = new ushort[n]; }
     private static void Grow(ref float[] a, int n) { if (a.Length < n) a = new float[n]; }
@@ -636,28 +578,6 @@ internal static unsafe partial class MeshChart
     {
         _jobs.ForgetSlot(slot, static e => Drop(e));
         _epoch++;
-    }
-
-    /// <summary>Drop every entry no enrolled part keys: an in-module area change is no world edge, so without
-    /// this the table carries the last areas' entries. Their arena bytes count as dead; the next Pump compacts.
-    /// Cold, once per area -- an entry a not-yet-enrolled part will want is offered again at its enrolment.</summary>
-    internal static void Sweep(HashSet<long> live)
-    {
-        if (_table.Count == 0) return;
-        List<long>? dead = null;
-        foreach (var kv in _table)
-            if (!live.Contains(kv.Key)) (dead ??= new List<long>()).Add(kv.Key);
-        if (dead == null) return;
-        _epoch++;
-        int verts = 0;
-        for (int i = 0; i < dead.Count; i++)
-        {
-            if (_table.TryGetValue(dead[i], out Entry e)) { Drop(e); if (e.Done && e.Refused == Refusal.None) verts += e.NV; }
-            _table.Remove(dead[i]);
-            // a DB key's item is its source range, still marked offered: unmarked, a later seat charts it again
-            if ((int)(dead[i] >> 32) == DbSlot) CX.Alloy.Db.MeshArena.ClearOffered((int)dead[i]);
-        }
-        _log?.Info($"MeshChart: swept {dead.Count} entries nobody enrolled ({verts} vertices) -- {_table.Count} kept");
     }
 
     /// <summary>The world edge: every (slot, item) key means nothing, and every arena reference those keys

@@ -131,10 +131,6 @@ public static partial class DbFeed
     /// empty. Called by the publisher right after it copies the views, on the game thread.</summary>
     internal static void CloseViews() => _viewN = 0;
 
-    /// <summary>Is a renderer draw registered? The publisher asks before it takes a frame across, so "nothing
-    /// is drawn" is said once by <see cref="Present"/>'s own line rather than twice.</summary>
-    internal static bool HasDraw => Draw != null;
-
     private static readonly int[] _seatTally = new int[SceneDb.MaxObjects];
 
     /// <summary>Cold diagnostic: who holds the seated slots -- seated parts that are dead or orphaned, how many
@@ -212,6 +208,7 @@ public static partial class DbFeed
     internal static string Stats()
         => $"dbfeed: frames {_frames} rec-writes {_lastRecWrites} visible {LastVisible} retry {Retrying} "
          + $"recipes {DrawRecipe.Count} (diffuse {DrawRecipe.DiffuseCensus().resolved}/{DrawRecipe.DiffuseCensus().named} resolved, {DrawRecipe.DiffuseCensus().standIn} stand-in) grid {DbGrid.Filed}/{DbGrid.Movers}/{DbGrid.Unboxed} {DrawRecipe.WaterNote()}"
+         + (DbGrid.Refused > 0 ? $" GRID REFUSED {DbGrid.Refused}" : "")
          + (DrawRecipe.Spilled > 0 ? $" RECIPES SPILLED {DrawRecipe.Spilled}" : "")
          + (DrawRecipe.RetiredInUse > 0 ? $" RECIPES EVICTED IN USE {DrawRecipe.RetiredInUse}" : "")
          + (DrawRecipe.DoubleRetire > 0 ? $" RECIPES RETIRED TWICE {DrawRecipe.DoubleRetire}" : "")

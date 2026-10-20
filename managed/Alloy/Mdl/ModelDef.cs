@@ -158,7 +158,7 @@ public sealed class ControllerTrack
 public sealed class MeshDef
 {
     public Vector3[] Positions = Array.Empty<Vector3>();
-    /// <summary>Final (welded, smoothing-group) normals: the per-model source <c>NormalWeld</c> and <c>MeshLod</c> read.</summary>
+    /// <summary>Final (welded, smoothing-group) normals: the per-model source <c>MeshLod</c> reads.</summary>
     public Vector3[] Normals = Array.Empty<Vector3>();
     /// <summary>xyz tangent, w handedness; empty when the mesh has no UVs to derive them from.</summary>
     public Vector4[] Tangents = Array.Empty<Vector4>();
@@ -314,11 +314,11 @@ public sealed class LightDef
 /// <summary>Emitter node parameters the file states as fields (rates, sizes, colours are controllers).</summary>
 public sealed class EmitterDef
 {
-    public string Update = "", Render = "", Blend = "", Texture = "", ChunkName = "", DepthTexture = "";
+    public string Update = "", Render = "", Blend = "", Texture = "", ChunkName = "";
     public int XGrid, YGrid, SpawnType, RenderOrder;
     public uint Flags;
     public float DeadSpace, BlastRadius, BlastLength;
-    public bool TwoSidedTex, Loop, FrameBlending;
+    public bool TwoSidedTex, Loop;
 }
 
 /// <summary>Reference node: a model attached at this node by name.</summary>

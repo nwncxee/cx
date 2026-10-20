@@ -351,8 +351,6 @@ internal static unsafe class NuiWindows
 
     private static void Alpha(ref NkColor c, float f) => c.A = (byte)(c.A * f + 0.5f);
 
-    internal static string Stats() => _s.Styles.Count == 0 ? "nui windows: none seen" : $"nui windows: {_s.Styles.Count} seen, {_s.Applied} styled draws";
-
     /// <summary>Off-device. Oracle: command layouts laid out byte by byte from nuklear's structs, and alpha values worked
     /// out by hand.</summary>
     internal static void SelfCheck(ExtenderLog log)

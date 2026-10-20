@@ -66,7 +66,7 @@ internal static unsafe class ContentPrograms
         public readonly Stage?[] ById = new Stage?[ShaderFeatures.MaxContent];
         public readonly Dictionary<string, int> ByName = new(StringComparer.OrdinalIgnoreCase);
         public int Count;
-        public long Spilled, Builds, Failures, StockPairs;
+        public long Spilled, StockPairs;
         public ExtenderLog? Log;
         /// <summary>What <see cref="Loc"/> hands back for a number no pair owns. Never uploaded through: no program
         /// answers that number, so the issue loop never binds one.</summary>
@@ -146,8 +146,6 @@ internal static unsafe class ContentPrograms
     /// stock setup does not cut on)? Only once it runs: before that its parts take Alloy's cut like any other.</summary>
     internal static bool Cuts(int feat) => Of(feat) is { P.Fwd: not 0, Cuts: true };
 
-    /// <summary>Does this pair's vertex half run -- move the vertices, in general? Only once it runs.</summary>
-    internal static bool Moves(int feat) => Of(feat) is { P.Fwd: not 0, Moves: true };
 
     /// <summary>May this pair move its vertices -- a vertex half not known to be stock? Asked when a record's cull sphere
     /// is written, which may be before the pair builds: such a part is never frustum-culled, as a posed skin is not.</summary>
@@ -388,7 +386,6 @@ internal static unsafe class ContentPrograms
         }
         s.P = p;
         s.Epoch++;
-        _reg.Builds++;
         ContentStage.Result? f = s.FsStock ? null : ContentStage.Last(true, s.HostVs, s.HostFs);
         ContentStage.Result? v = s.VsStock ? null : ContentStage.Last(false, s.HostVs, s.HostFs);
         var notes = new List<string>();
@@ -442,7 +439,6 @@ internal static unsafe class ContentPrograms
     private static void Fail(Stage s, string why)
     {
         s.Failed = true;
-        _reg.Failures++;
         _reg.Log?.Always($"{What(s)}: NOT RUN -- {why}. Its parts draw the plain lit path");
     }
 

@@ -19,7 +19,7 @@ internal static unsafe partial class GrassField
 {
     /// <summary>Patches (one per visible bin x grass material) the cache holds, and the open-addressed slot
     /// table that interns them by <c>CAurTriangleList*</c> (power of two, ~2x for a 0.5 load factor).</summary>
-    private const int MaxPatches = 32768, PatchHash = 65536;
+    private const int MaxPatches = 32768;
     /// <summary>Grass FACES resident on the GPU, not blades -- the scatter regenerates every blade from
     /// its face's seed each frame, so the resident cost no longer grows with the density dial or the draw
     /// distance. 48 bytes a face (12MB at the cap); a 32x32 outdoor area is well under 100k faces.</summary>
@@ -99,19 +99,15 @@ internal static unsafe partial class GrassField
     private static bool _off;
     private static readonly StandDown _down = new("GrassField");
 
-    /// <summary>Baked patches. <see cref="Patch.List"/> is an IDENTITY, never dereferenced outside the frame
-    /// it was sighted in <c>binbucket</c> on -- the bins are freed wholesale by <c>ReloadGrass</c>, which is
-    /// what <see cref="Forget"/> hangs off.</summary>
+    /// <summary>Baked patches, rebuilt from the scene database's grass faces at every world edge.</summary>
     private struct Patch
     {
-        public IntPtr List;
         public Vector3 Min, Max;
         /// <summary><c>First</c>/<c>Count</c> are resident FACES; <c>Blades</c> the patch's blade total.</summary>
         public int Mat, First, Count, Blades, Seen;
     }
 
     private static readonly Patch[] _patches = new Patch[MaxPatches];
-    private static readonly int[] _slot = new int[PatchHash];
     private static int _patchCount, _faceCount;
     private static long _bladesResident;
     /// <summary>Lines left for the copy's framebuffer diagnostic (<see cref="Grass.GTint"/> and
@@ -181,7 +177,6 @@ internal static unsafe partial class GrassField
             return;
         }
 
-        Array.Fill(_slot, -1);
         _origReload = hooks.InstallReloadGrass(&OnReloadGrass);
         if (_origReload == null)
         {
@@ -226,24 +221,9 @@ internal static unsafe partial class GrassField
         _capped = false;
         _patchCapped = false;
         _refused = 0;
-        Array.Fill(_slot, -1);
     }
 
     // ---- the pass ----------------------------------------------------------------------------
-
-    /// <summary>The Alloy grass pass, at its <see cref="FrameGraph"/> slot inside the colour bracket.
-    /// Bake-then-draw: newly visible patches are scattered and appended to the instance stream (a bounded
-    /// number per frame), then every patch sighted this frame is culled, sorted and issued.</summary>
-    private static bool Gate()
-    {
-        if (_off || !Grass.Enabled.V || _down.Failed || _binBucket.IsNull) return false;
-        if (*_grassEnabled == 0) return false;
-        if (Gl.DrawArraysIndirect == null || Gl.DispatchCompute == null
-            || Gl.MemoryBarrier == null || Gl.BindBufferBase == null)
-        { _down.Fail(_log, "no indirect-draw or compute entry point", "no grass draws"); return false; }
-        if (!EnsureProgram() || !EnsureBuffers()) return false;
-        return Grass.Density.V > 0f;
-    }
 
     /// <summary>Once per PassGen: bake, upload, push map. The seen count is kept for a second caller.</summary>
     private static int Prepare(Matrix4x4* vp)
@@ -295,56 +275,15 @@ internal static unsafe partial class GrassField
         return CollectDb(AlloyRenderer._dbPassScene, vp, ref budget);
     }
 
-    /// <summary>Interned slot of a triangle list, or -1. Open addressing on the pointer; the table is sized
-    /// at 2x the patch cap so a probe never walks far.</summary>
-    private static int Find(IntPtr list)
-    {
-        uint h = Hash((uint)((long)list >> 4) ^ (uint)((long)list >> 36)) & (PatchHash - 1);
-        for (int probe = 0; probe < PatchHash; probe++)
-        {
-            int s = _slot[(h + probe) & (PatchHash - 1)];
-            if (s < 0) return -1;
-            if (_patches[s].List == list) return s;
-        }
-        return -1;
-    }
-
-    private static void Intern(IntPtr list, int p)
-    {
-        uint h = Hash((uint)((long)list >> 4) ^ (uint)((long)list >> 36)) & (PatchHash - 1);
-        for (int probe = 0; probe < PatchHash; probe++)
-        {
-            int i = (int)((h + probe) & (PatchHash - 1));
-            if (_slot[i] < 0) { _slot[i] = p; return; }
-        }
-    }
-
-    /// <summary>Intern one triangle list as a patch of resident FACES: the face vertices and the per-face
-    /// blade counts are the ENGINE's, and the scatter regenerates each blade from its face's seed every frame
-    /// -- deterministically, so a rebuild puts every blade back rather than reshuffling the meadow. A list
-    /// this cannot scatter is interned as an EMPTY patch, since a refusal is a stable property of the list.</summary>
-    private static int Bake(IntPtr list)
-    {
-        var tl = new CAurTriangleList(list);
-        GrassTriRec* verts = (GrassTriRec*)tl.Verts;
-        int* blades = (int*)tl.Blades;
-        int faces = tl.VertFloats / (sizeof(GrassTriRec) / sizeof(float));
-        // The list's own two arrays have to agree before either is read: the blade counts are indexed by face.
-        if (verts != null && blades != null && tl.BladeCount < faces) { verts = null; }
-        return BakeFaces(list, verts, blades, faces, tl.Mat);
-    }
-
-    /// <summary>Intern and scatter one patch from world-space faces and their per-face blade counts, whatever
-    /// produced them -- an engine <c>CAurTriangleList</c> or the scene database (<see cref="BakeDb"/>).
-    /// <paramref name="key"/> is the patch's identity in the intern table.</summary>
-    private static int BakeFaces(IntPtr key, GrassTriRec* verts, int* blades, int faces, int mat)
+    /// <summary>Scatter one patch from world-space faces and their per-face blade counts, as the scene
+    /// database (<see cref="BakeDb"/>) produces them.</summary>
+    private static int BakeFaces(GrassTriRec* verts, int* blades, int faces, int mat)
     {
         // The one refusal that CANNOT be interned: there is no slot to intern it in. Counted instead, and
         // loud in the period line -- past this point every list retries, which is the state to see.
         if (_patchCount >= MaxPatches || _faces == null) { _patchCapped = true; return -1; }
         int p = _patchCount++;
-        _patches[p] = new Patch { List = key, Seen = _frame };   // Count 0: refused until proven otherwise
-        Intern(key, p);
+        _patches[p] = new Patch { Seen = _frame };   // Count 0: refused until proven otherwise
         if (verts == null || blades == null || faces <= 0) { _refused++; return p; }
         CAurGrassInfo info = GrassInfo(mat);
         if (info.IsNull || mat >= MaxGrassMaterials) { _refused++; return p; }
@@ -392,7 +331,7 @@ internal static unsafe partial class GrassField
         min -= new Vector3(height, height, 0f);
         max += new Vector3(height, height, height * 1.5f);
 
-        _patches[p] = new Patch { List = key, Min = min, Max = max, Mat = mat, First = first, Count = _faceCount - first,
+        _patches[p] = new Patch { Min = min, Max = max, Mat = mat, First = first, Count = _faceCount - first,
                                   Blades = total, Seen = _frame };
         _bladesResident += total;
         _baked++;

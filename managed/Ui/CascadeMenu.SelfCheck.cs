@@ -77,9 +77,9 @@ public sealed partial class CascadeMenu
         check.Expect(m.Key(KeyUp).Kind == CascadeActionKind.None && l1.Hover == 29 && l1.List.Offset == l1.List.MaxOffset, "Up wraps to the tail and scrolls to it");
         check.Expect(m.Key(KeyReturn).Kind == CascadeActionKind.Activate && m.Key(KeyReturn).Level == 1, "Enter in the child activates at level 1");
         check.Expect(m.ItemAt(1, l1.X + l1.W - 2f, l1.Y + 5f) == -1, "the gutter is not a row");
-        check.Expect(l1.List.ThumbRect(out float tt, out _) && m.MouseDown(l1.X + l1.W - 2f, tt + 1f, 1).Kind == CascadeActionKind.None && m.Dragging, "thumb press grabs, picks nothing");
+        check.Expect(l1.List.ThumbRect(out float tt, out _) && m.MouseDown(l1.X + l1.W - 2f, tt + 1f, 1).Kind == CascadeActionKind.None && l1.List.Dragging, "thumb press grabs, picks nothing");
         m.MouseMove(l1.X + l1.W - 2f, tt + 1f - l1.H);
-        check.Expect(m.MouseUp().Kind == CascadeActionKind.None && !m.Dragging && l1.List.Offset == 0f, "thumb dragged to the top shows the head");
+        check.Expect(m.MouseUp().Kind == CascadeActionKind.None && !l1.List.Dragging && l1.List.Offset == 0f, "thumb dragged to the top shows the head");
 
         // Grandchild, then a sibling at the root replaces the whole subtree.
         l1.Hover = 0;

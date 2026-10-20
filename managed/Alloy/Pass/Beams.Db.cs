@@ -32,7 +32,6 @@ internal static unsafe partial class Beams
     internal static void EnrollDb(DbId scene)
     {
         if (_off || Disabled) return;
-        _model = Matrix4x4.Identity;
         // Change-driven, like the draw order beside it: a beam is baked static geometry, so the membership can
         // only move when the part SET moves. DbSetGen is that edge, and a still frame re-walks nothing.
         if (_dbGen == AlloyRenderer.DbSetGen && _dbScene == scene.Value) return;
@@ -55,7 +54,7 @@ internal static unsafe partial class Beams
             int range = DrawRecipe.Range(recipe);
             if (range < 0) { _refused++; continue; }
             ref Beam b = ref _beams[_count++];
-            b.Part = p; b.Range = range; b.Vdo = IntPtr.Zero; b.Item = -1; b.Vao = -1;
+            b.Part = p; b.Range = range;
             _enrolled++;
         }
     }
@@ -76,9 +75,8 @@ internal static unsafe partial class Beams
         return true;
     }
 
-    /// <summary>The GL VAO name each staged beam draws from. The engine path's <see cref="Beam.Vao"/> is an
-    /// index into its own harvest cache; the arena hands out a name directly, so the draw groups on the name
-    /// and both paths answer the same question.</summary>
+    /// <summary>The GL VAO name each staged beam draws from: the arena hands out a name directly, so the
+    /// draw groups on the name.</summary>
     private static readonly uint[] _sVao = new uint[MaxBeams];
 
     /// <summary>The DB draw: one call per beam, because each part carries its own model matrix (the engine's
@@ -131,7 +129,7 @@ internal static unsafe partial class Beams
         return true;
     }
 
-    /// <summary>The DB-mode vertex stage: <c>cx_beam_v</c> with the baked <c>fProjectionFrontal</c> attribute
-    /// replaced by the mesh normal, which the arena's static format already carries at location 2.</summary>
+    /// <summary>The beam vertex stage: the frontal projection is the mesh normal, which the arena's static
+    /// format carries at location 2.</summary>
     private static string BeamDbVs => ShaderSource.Get("cx_beamdb_v.glsl");
 }

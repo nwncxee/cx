@@ -266,7 +266,7 @@ public sealed class TextDoc
     /// gate the ticket's "a string is laid out again only when ... changes" rests on.</summary>
     public bool QuadsStale = true;
     /// <summary>How many times this document has been laid out and had its quads rebuilt; the relayout
-    /// self-check asserts on both. The session totals are <see cref="TextObjects.Layouts"/>/<c>Builds</c>.</summary>
+    /// self-check asserts on both. <c>TextObjects.Builds</c> is the session total of the second.</summary>
     public int Layouts, Builds;
 }
 
@@ -321,9 +321,9 @@ public static class TextObjects
     /// buffers stays resident for the session. A free list is the upgrade if GUI text ever churns indices.</summary>
     public static readonly TextDoc?[] Docs = new TextDoc?[SceneDb.MaxObjects];
 
-    /// <summary>Totals for <c>/alloy</c>: documents alive, layouts run, quad lists built, and the frames a draw
-    /// was issued from an already-cached list (the win this ticket exists for).</summary>
-    public static long Alive, Layouts, Builds, CacheHits;
+    /// <summary>Totals for <c>/alloy</c>: quad lists built, and the frames a draw was issued from an
+    /// already-cached list (the win this ticket exists for).</summary>
+    public static long Builds, CacheHits;
 
     /// <summary>The record behind a text object, or null when the handle is dead or not a text object.</summary>
     public static TextDoc? Of(DbId id)
@@ -359,7 +359,6 @@ public static class TextObjects
         // previous tenant's ModelDef is still in the column would hand the cast that model's bits -- an
         // `effect` among them takes the record out of every pick.
         SceneDb.HitObjClass[i] = 0;
-        Alive++;
         return id;
     }
 
@@ -391,7 +390,6 @@ public static class TextObjects
     public static void Destroy(DbId id)
     {
         if (!SceneDb.Objects.Valid(id)) return;
-        if (SceneDb.ObjKindOf[id.Index] == ObjKind.Text && Docs[id.Index] != null) Alive--;
         TextSlots.ClearExternal(id.Index);
         SceneDb.TextOffsetBehavior[id.Index] = 0;
         DbScene.ObjectDied(id);   // leave the scene's member list before the handle goes
@@ -551,7 +549,6 @@ public static class TextObjects
             }
         ShowAsManyLines(d);
         d.Layouts++;
-        Layouts++;
         Stale(d);
     }
 

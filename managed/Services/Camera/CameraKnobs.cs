@@ -289,7 +289,6 @@ internal static class MouseLook
     internal static Knob<float> HeadPitch => M.HeadPitch;
     internal static Knob<int> Threshold => M.Threshold;
     internal static Knob<int> AssistPx => M.AssistPx;
-    internal static Knob<string> ActionKey => M.ActionKey;
 }
 
 /// <summary>The <c>tabtarget</c> group: one master, the cast mode, the two keys and the candidate

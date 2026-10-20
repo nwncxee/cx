@@ -59,7 +59,7 @@ internal static unsafe class QuickbarNative
         if (!SymbolMap.Require(log, "CX quickbar", SymbolMap.QuickButtonSetIcon, SymbolMap.QuickButtonSetCountText, SymbolMap.QuickbarClickButton,
                                SymbolMap.QuickButtonHandleLeftButton, SymbolMap.GuiObjectHitCheck, SymbolMap.GuiMan,
                                SymbolMap.GuiManShowTooltipText)) return false;
-        if (!EngineLayout.Require(log, "CX quickbar", "CGuiQuickButton", "CGuiButton", "CGuiObject", "CGuiIcon", "CPanelQuickBar", "CGuiInGame", "CGuiDragSource")) return false;
+        if (!EngineLayout.Require(log, "CX quickbar", "CGuiQuickButton", "CGuiButton", "CGuiObject", "CGuiIcon", "CPanelQuickBar", "CGuiInGame", "CGuiDragSource", "CGuiMan")) return false;
         if (DragMove == IntPtr.Zero) log.Always("QuickbarService: no CGuiDragSource::HandleMouseMoveCaptured -- a drop on the CX bar's grip falls through and a dragged icon draws under the bar");
         _s.SwapReady = SymbolMap.Require(log, "CX quickbar slot drag", SymbolMap.QuickbarSendButton, SymbolMap.QuickbarSetEmpty, SymbolMap.QuickbarSetItem,
             SymbolMap.QuickbarSetSkill, SymbolMap.QuickbarSetFeat, SymbolMap.QuickbarSetDialog, SymbolMap.QuickbarSetAttack, SymbolMap.QuickbarSetEmote,
@@ -218,7 +218,7 @@ internal static unsafe class QuickbarNative
     public static void Press(int b)
     {
         IntPtr button = Button(b);
-        if (button == IntPtr.Zero || GameGate.OptionsOpen || EngineModal()) return;
+        if (button == IntPtr.Zero || GameGate.OptionsOpen || Native.ModalPanelUp()) return;
         IntPtr app = PlayerIdentity.App();
         uint me = app == IntPtr.Zero ? Inventory.InventoryModel.Invalid : new CClientExoApp(app).Internal.PlayerCreatureId;
         IntPtr cre = me == Inventory.InventoryModel.Invalid ? IntPtr.Zero : EngineFn.GetGameObject(app, me);
@@ -309,11 +309,4 @@ internal static unsafe class QuickbarNative
 
     /// <summary>CGameObject type byte of an item (<c>GetItemByGameObjectID</c>'s test).</summary>
     private const byte GameObjItem = 6;
-
-    /// <summary>An engine modal panel is up (a split or gold prompt, a confirm): the stock GUI takes nothing else.</summary>
-    public static bool EngineModal()
-    {
-        IntPtr gm = Native.Sym(SymbolMap.GuiMan);
-        return gm != IntPtr.Zero && *(IntPtr*)gm != IntPtr.Zero && new CGuiMan(*(IntPtr*)gm).ModalCount > 0;
-    }
 }

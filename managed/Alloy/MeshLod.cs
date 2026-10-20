@@ -1,9 +1,5 @@
 using System;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Threading;
 using CX.Framework;
-using CX.Graphics;
 
 namespace CX.Alloy;
 
@@ -38,12 +34,12 @@ internal static class Lod
 }
 
 /// <summary>
-/// Automatic mesh LOD. NWN models carry no LOD chain, so a mesh draws its full triangle count at every distance;
-/// this generates two simplified INDEX RUNS per eligible mesh -- roughly half and a fifth of its triangles --
-/// into one Alloy-owned element buffer, and <see cref="Level"/> picks one by the part's projected screen radius.
-/// Reindex only: no vertex is touched, so an absent level simply falls back to the finer run.
+/// Automatic mesh LOD: the thresholds and the level picker. NWN models carry no LOD chain, so a mesh draws its
+/// full triangle count at every distance; <c>MeshArena</c> generates two simplified INDEX RUNS per eligible mesh
+/// -- roughly half and a fifth of its triangles -- beside the base run, and <see cref="Level"/> picks one by the
+/// part's projected screen radius. Reindex only: an absent level falls back to the finer run.
 /// </summary>
-internal static unsafe class MeshLod
+internal static class MeshLod
 {
     /// <summary>Detail levels: the engine's own run, then the two generated ones.</summary>
     internal const int Levels = 3;
@@ -59,231 +55,19 @@ internal static unsafe class MeshLod
     /// level is left absent and the draw stays on the engine's range.</summary>
     internal const float MinSaving = 0.15f;
 
-    /// <summary>Meshes waiting on the worker: a full queue refuses the offer without creating a table entry,
-    /// so the next enrollment offers the same mesh again.</summary>
-    private const int MaxPending = 256;
-    /// <summary>Meshes the table may hold. An area's tileset is a few thousand distinct ranges.</summary>
-    private const int MaxEntries = 1 << 14;
-    /// <summary>Indices the shared element buffer may hold before the arena stops accepting runs (16 MiB).</summary>
-    private const int ArenaCeiling = 8 << 20;
-
-    private static ExtenderLog? _log;
-
-    /// <summary>One mesh's generated runs. <see cref="Off1"/>/<see cref="Off2"/> are BYTE offsets into
-    /// <see cref="_ebo"/>, which is what <c>glMultiDrawElementsBaseVertex</c> takes; a zero count is a level
-    /// the simplifier declined and the selection falls through to the next coarser one, or to the engine's.</summary>
-    private struct Entry : ISlotEntry
-    {
-        internal nint Off1, Off2;
-        internal int Cnt1, Cnt2;
-        internal bool Done;
-        public ulong Sig { get; set; }
-    }
-
-    /// <summary>One mesh handed to the worker and back. The arrays are pooled by the table -- an area's
-    /// enrollment offers thousands of these.</summary>
-    private sealed class Job
-    {
-        internal long Key;
-        internal ulong Sig;
-        internal int IdxCount, VertCount, Out1N, Out2N;
-        internal ushort[] Idx = Array.Empty<ushort>();
-        internal float[] Pos = Array.Empty<float>();
-        internal ushort[] Out1 = Array.Empty<ushort>();
-        internal ushort[] Out2 = Array.Empty<ushort>();
-    }
-
-    private static readonly SlotJobTable<Job, Entry> _jobs = new(MaxEntries, MaxPending);
-    private static Dictionary<long, Entry> _table => _jobs.Entries;
-
-    private static ushort[] _mirror = Array.Empty<ushort>();
-    private static int _used, _uploaded;
-    private static uint _ebo;
-    private static bool _arenaFull;
-
-    private static int _offered, _generated, _declined, _dropped;
-    /// <summary>Offers refused under <see cref="MinTris"/>: the census that says whether this area has anything to simplify.</summary>
-    private static int _small;
-    private static int _logLeft = 8;
-    private static long _srcTris, _lod1Tris, _lod2Tris;
     private static readonly long[] _drawnTris = new long[Levels];
-
-    /// <summary>Is a generated level available to pick this frame? False leaves every draw on the engine's own
-    /// range, which is vanilla detail -- the stand-down, not a second code path.</summary>
-    internal static bool Armed => _ebo != 0 && On;
 
     /// <summary>The master knob alone: the staging walk picks a level whenever this is on, because
     /// <see cref="MeshChart"/>'s levels live in its own arena and never arm this class's buffer.</summary>
     internal static bool On => Lod.G.Master is { V: true };
 
-    /// <summary>Start the worker and read the boot knob. Once, from the pass roll-call.</summary>
+    /// <summary>Declare the group and say which way the detail pick is set. Once, from the pass roll-call.</summary>
     internal static void Attach(ExtenderLog log)
     {
-        _log = log;
         _ = Lod.G;
-        if (_jobs.Running) return;
-        _jobs.Start("cx-meshlod", Work);
-        log.Info("MeshLod: armed -- eligible static meshes get two generated index runs (lod.enabled=0 draws every mesh as authored)");
+        log.Info(On ? "MeshLod: armed -- eligible static meshes draw the mesh arena's two generated index runs by distance"
+                    : "MeshLod: lod.enabled=0 -- every mesh draws as authored at every distance");
     }
-
-    private static long KeyOf(int slot, int item) => SlotJobTable<Job, Entry>.KeyOf(slot, item);
-
-    /// <summary>LOD runs on file, claimed or landed -- the area edge's tally.</summary>
-    internal static int TableCount => _table.Count;
-
-    /// <summary>Should the enrollment walk copy this range out for the worker? Asked before anything is read,
-    /// so a mesh already on file, already queued, or past a budget costs one dictionary probe.</summary>
-    internal static bool Wanted(int slot, int item, int idxCount, ulong sig)
-    {
-        if (!_jobs.Running || _arenaFull || idxCount > MeshSimplify.MaxCorners || !Lod.G.Master!.V) return false;
-        if (idxCount < MinTris * 3) { _small++; return false; }
-        if (_table.TryGetValue(KeyOf(slot, item), out Entry have))
-        {
-            if (have.Sig == sig) return false;
-            _table.Remove(KeyOf(slot, item));
-        }
-        if (_table.Count >= MaxEntries) return false;
-        return _jobs.QueueHasRoom;
-    }
-
-    /// <summary>Copy one part's index range and the positions it addresses off the pools' host shadows and
-    /// queue it. Called from the enrollment walk, on whatever thread that runs -- it reads engine memory and
-    /// allocates, and does neither on a frame path.</summary>
-    internal static void Offer(int slot, int item, byte* elemHost, long first, int count,
-                               byte* vertHost, in VertexStream pos, int baseVertex, ulong sig)
-    {
-        if (elemHost == null || vertHost == null || count < 3 || count % 3 != 0) return;
-        if (pos.Type != Gl.FLOAT || pos.Size != 3) return;
-        var src = new HostIndices(elemHost, first);
-        int maxI = -1;
-        for (int i = 0; i < count; i++) { int v = src[i]; if (v > maxI) maxI = v; }
-        int verts = maxI + 1;
-        if (verts <= 0 || verts > MeshSimplify.MaxVerts) return;
-
-        Job j = _jobs.Rent();
-        j.Key = KeyOf(slot, item); j.Sig = sig;
-        j.IdxCount = count; j.VertCount = verts; j.Out1N = 0; j.Out2N = 0;
-        Grow(ref j.Idx, count); Grow(ref j.Out1, count); Grow(ref j.Out2, count);
-        if (j.Pos.Length < verts * 3) j.Pos = new float[verts * 3];
-        for (int i = 0; i < count; i++) j.Idx[i] = src[i];
-        for (int i = 0; i < count; i++)
-        {
-            int v = src[i];
-            ref Vector3 p = ref new HostVertices(vertHost, pos).Pos(baseVertex + v);
-            j.Pos[v * 3] = p.X; j.Pos[v * 3 + 1] = p.Y; j.Pos[v * 3 + 2] = p.Z;
-        }
-        _offered++;
-        _jobs.Offer(j, j.Key, sig);
-    }
-
-    /// <summary>Queue a simplify straight off a parsed <c>MeshDef</c>: the parse has the whole mesh already, so
-    /// neither the range copy nor the index-range scan <see cref="Offer"/> needs is wanted here. False = the
-    /// mesh is outside the simplifier's bounds (too many corners or vertices, or not a triangle list), which is
-    /// a decline, not a silent skip.</summary>
-    internal static bool OfferModel(int slot, int item, CX.Alloy.Mdl.MeshDef mesh, ulong sig)
-    {
-        int count = mesh.Indices.Length, verts = mesh.Positions.Length;
-        if (count < 3 || count % 3 != 0 || count > MeshSimplify.MaxCorners) return false;
-        if (verts <= 0 || verts > MeshSimplify.MaxVerts) return false;
-        Job j = _jobs.Rent();
-        j.Key = KeyOf(slot, item); j.Sig = sig;
-        j.IdxCount = count; j.VertCount = verts; j.Out1N = 0; j.Out2N = 0;
-        Grow(ref j.Idx, count); Grow(ref j.Out1, count); Grow(ref j.Out2, count);
-        if (j.Pos.Length < verts * 3) j.Pos = new float[verts * 3];
-        for (int i = 0; i < count; i++) j.Idx[i] = (ushort)mesh.Indices[i];
-        for (int v = 0; v < verts; v++)
-        {
-            j.Pos[v * 3] = mesh.Positions[v].X;
-            j.Pos[v * 3 + 1] = mesh.Positions[v].Y;
-            j.Pos[v * 3 + 2] = mesh.Positions[v].Z;
-        }
-        _offered++;
-        _jobs.Offer(j, j.Key, sig);
-        return true;
-    }
-
-    private static void Grow(ref ushort[] a, int n) { if (a.Length < n) a = new ushort[n]; }
-
-    /// <summary>The worker body: both levels over one copied mesh. A fault files a decline, not a partial run.</summary>
-    private static void Work(Job j)
-    {
-        int tris = j.IdxCount / 3;
-        try
-        {
-            j.Out1N = MeshSimplify.Run(j.Idx, j.IdxCount, j.Pos, j.VertCount,
-                                       (int)(tris * Target1), Error1, j.Out1);
-            if (j.Out1N > tris * 3 * (1f - MinSaving)) j.Out1N = 0;
-            j.Out2N = MeshSimplify.Run(j.Idx, j.IdxCount, j.Pos, j.VertCount,
-                                       (int)(tris * Target2), Error2, j.Out2);
-            if (j.Out2N > tris * 3 * (1f - MinSaving) || j.Out2N >= j.Out1N && j.Out1N > 0) j.Out2N = 0;
-        }
-        catch (Exception e) { j.Out1N = j.Out2N = 0; _log?.Info($"MeshLod: worker fault -- {e.Message}"); }
-    }
-
-    /// <summary>Collect whatever the worker finished and append it to the shared element buffer. Render
-    /// thread, inside the Alloy bracket, once a frame: this is the only place a GL name is touched.</summary>
-    internal static void Pump()
-    {
-        if (!_jobs.Running || Gl.CreateBuffers == null) return;
-        int dirtyFrom = _used;
-        while (_jobs.TryTake(out Job j))
-        {
-            var e = new Entry { Done = true, Sig = j.Sig };
-            if (j.Out1N > 0 && Append(j.Out1, j.Out1N, out e.Off1)) { e.Cnt1 = j.Out1N; _lod1Tris += j.Out1N / 3; }
-            if (j.Out2N > 0 && Append(j.Out2, j.Out2N, out e.Off2)) { e.Cnt2 = j.Out2N; _lod2Tris += j.Out2N / 3; }
-            if (e.Cnt1 > 0 || e.Cnt2 > 0)
-            {
-                _generated++; _srcTris += j.IdxCount / 3;
-                // Bounded: the first few are the acceptance signal, and a whole area's worth would be a flood.
-                if (_logLeft-- > 0)
-                    _log?.Info($"MeshLod: mesh {j.IdxCount / 3} tris -> {e.Cnt1 / 3} / {e.Cnt2 / 3} at lod 1 / 2");
-            }
-            else _declined++;
-            _jobs.File(j.Key, j.Sig, e);
-            _jobs.Recycle(j);
-        }
-        if (_used == dirtyFrom && _uploaded == _used) return;
-        Upload(dirtyFrom);
-    }
-
-    /// <summary>Reserve arena room for one run. False means the ceiling is reached and the level is dropped.</summary>
-    private static bool Append(ushort[] run, int n, out nint off)
-    {
-        off = 0;
-        if (_used + n > ArenaCeiling) { _arenaFull = true; _dropped++; return false; }
-        if (_mirror.Length < _used + n)
-        {
-            int cap = _mirror.Length == 0 ? 1 << 16 : _mirror.Length;
-            while (cap < _used + n) cap *= 2;
-            if (cap > ArenaCeiling) cap = ArenaCeiling;
-            Array.Resize(ref _mirror, cap);
-        }
-        Array.Copy(run, 0, _mirror, _used, n);
-        off = (nint)((long)_used * 2);
-        _used += n;
-        return true;
-    }
-
-    /// <summary>Push the arena to GL. A grow respecifies the buffer -- the NAME is unchanged, so every LOD VAO
-    /// built over it stays valid -- and re-sends everything; otherwise only the new tail goes up.</summary>
-    private static void Upload(int dirtyFrom)
-    {
-        if (_ebo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; _ebo = b; _uploaded = 0; }
-        fixed (ushort* p = _mirror)
-        {
-            if (_uploaded < _used && _capacity >= _used)
-                fixed (ushort* tail = _mirror.AsSpan(dirtyFrom, _used - dirtyFrom))
-                    Gl.NamedBufferSubData(_ebo, (IntPtr)((long)dirtyFrom * 2), (IntPtr)((long)(_used - dirtyFrom) * 2), tail);
-            else
-            {
-                _capacity = _mirror.Length;
-                Gl.NamedBufferData(_ebo, (IntPtr)((long)_capacity * 2), p, Gl.STATIC_DRAW);
-            }
-        }
-        _uploaded = _used;
-    }
-
-    private static int _capacity;
 
     /// <summary>The detail level a sphere of world radius <paramref name="r"/> at <paramref name="dist"/> from
     /// the eye earns. <paramref name="scale"/> is the cull pass's pixels-per-unit-radius-at-unit-depth; the
@@ -318,57 +102,17 @@ internal static unsafe class MeshLod
     /// both gather dispatches spell, so a check can run the ladder the GPU runs.</summary>
     internal static int ShadowLevel(float q, float r1, float r2) => q >= r1 ? 0 : q >= r2 ? 1 : 2;
 
-    /// <summary>This mesh's generated range at <paramref name="lod"/>, falling back to the coarser level's
-    /// neighbour when one was declined. False means "draw the engine's own range", which every caller must be
-    /// able to do -- there is no level a mesh is obliged to have.</summary>
-    internal static bool Range(int slot, int item, int lod, out nint off, out int count, out int level)
-    {
-        off = 0; count = 0; level = 0;
-        if (lod <= 0 || _ebo == 0) return false;
-        if (!_table.TryGetValue(KeyOf(slot, item), out Entry e) || !e.Done) return false;
-        if (lod >= 2 && e.Cnt2 > 0) { off = e.Off2; count = e.Cnt2; level = 2; return true; }
-        if (e.Cnt1 > 0) { off = e.Off1; count = e.Cnt1; level = 1; return true; }
-        if (e.Cnt2 > 0) { off = e.Off2; count = e.Cnt2; level = 2; return true; }
-        return false;
-    }
-
     /// <summary>Period-line tally: triangles submitted at each level. Called from the batch walk, which is
     /// single-threaded by the time it runs.</summary>
     internal static void Drew(int lod, int indices) => _drawnTris[lod] += indices / 3;
 
-    /// <summary>A VDO slot was vacated or re-pointed: every range keyed on it names geometry that is no
-    /// longer there. The arena bytes are left where they are -- the next <see cref="Revoke"/> reclaims
-    /// them -- because compacting it would move every other mesh's offsets.</summary>
-    internal static void ForgetSlot(int slot) => _jobs.ForgetSlot(slot);
-
-    /// <summary>The world edge: the part table is gone, so every (slot, item) key means nothing. The arena is
-    /// rewound with it, which is the only point its bytes are ever reclaimed.</summary>
-    internal static void Revoke()
-    {
-        _jobs.Revoke();
-        _used = 0; _uploaded = 0; _arenaFull = false;
-        Array.Clear(_drawnTris);
-        _srcTris = _lod1Tris = _lod2Tris = 0;
-        _generated = _declined = _offered = _dropped = _small = 0;
-    }
-
-    /// <summary>The context is gone, so the buffer name means nothing -- forgotten, never deleted (the number
-    /// is already back in circulation). The arena's bytes survive in the mirror and go back up on the first
-    /// <see cref="Pump"/> of the next context.</summary>
-    internal static void ContextLost()
-    {
-        _ebo = 0; _uploaded = 0; _capacity = 0;
-    }
+    /// <summary>The world edge: a new area's triangles are its own, so the per-level tally restarts.</summary>
+    internal static void Revoke() => Array.Clear(_drawnTris);
 
     /// <summary>The settings panel's status block.</summary>
     internal static string Describe()
-        => !_jobs.Running
-           ? "not running"
-           : $"{_offered} meshes offered, {_generated} simplified, {_declined} declined, {_small} under {MinTris} triangles; "
-             + $"{_srcTris} source triangles -> {_lod1Tris} at half / {_lod2Tris} at a fifth"
-             + (_arenaFull ? "; the index arena is full and further levels are dropped" : "")
-             + (MeshChart.LodNote() is { Length: > 0 } c ? "; " + c : "")
-             + DrawnNote();
+        => !On ? "off -- every mesh draws as authored"
+               : (MeshChart.LodNote() is { Length: > 0 } c ? c : "no mesh simplified yet") + DrawnNote();
 
     /// <summary>The last period's triangles drawn per level, kept for the panel after <see cref="Stats"/> clears the tally.</summary>
     private static string DrawnNote()
@@ -385,30 +129,16 @@ internal static unsafe class MeshLod
         if (frames <= 0) frames = 1;
         _shown[0] = t0 / frames; _shown[1] = t1 / frames; _shown[2] = t2 / frames;
         if (t0 + t1 + t2 == 0) return "";
-        return $"lod {t0 / frames}/{t1 / frames}/{t2 / frames} tris per frame at lod 0/1/2"
-               + $" ({_generated} meshes simplified, {_declined} declined, {_dropped} dropped)";
+        return $"lod {t0 / frames}/{t1 / frames}/{t2 / frames} tris per frame at lod 0/1/2";
     }
 
-    /// <summary>Off-device: the arena hands out non-overlapping byte offsets, a level the simplifier declined
-    /// is absent rather than empty, and a coarse request falls back to the level that exists.</summary>
+    /// <summary>Off-device: the level a mesh arena range serves at each requested detail, and the two
+    /// thresholds a shadow view's texel size divides into. Oracles: the hand-built arena fixture's own index
+    /// counts, and arithmetic worked out by hand for the thresholds.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         if (!MeshSimplify.SelfCheck(log)) return false;
         var check = new Checker(log);
-
-        int savedUsed = _used;
-        uint savedEbo = _ebo;
-        _used = 0; _ebo = 1;   // a stand-in name: nothing below binds it
-        var run = new ushort[] { 0, 1, 2, 0, 2, 3 };
-        check.Expect(Append(run, 6, out nint a) && a == 0, "the first run does not start at offset 0");
-        check.Expect(Append(run, 6, out nint b) && b == 12, "the second run does not follow the first");
-        _table[KeyOf(7, 3)] = new Entry { Done = true, Off1 = a, Cnt1 = 6 };
-        check.Expect(Range(7, 3, 1, out nint o1, out int c1, out int l1) && o1 == a && c1 == 6 && l1 == 1, "a level-1 request does not find its run");
-        check.Expect(Range(7, 3, 2, out nint o2, out int c2, out int l2) && o2 == a && c2 == 6 && l2 == 1, "a missing level 2 does not fall back to level 1");
-        check.Expect(!Range(7, 3, 0, out _, out _, out _), "level 0 is a generated range");
-        check.Expect(!Range(7, 4, 1, out _, out _, out _), "a mesh with no entry answered a range");
-        _table.Remove(KeyOf(7, 3));
-        _used = savedUsed; _ebo = savedEbo;
 
         // CX-50: the colour draw's level substitution, over two REAL arena ranges. The oracle is the fixture:
         // index runs of 12/6/3 shorts, so a hit at a level is that level's own hand-written count, and the
@@ -482,17 +212,6 @@ internal static unsafe class MeshLod
         check.Expect(ShadowLevel(0.001f, i1, i2) == 0, "a view with no map size bakes the coarsest run instead of the base one");
         if (Lod.G.Master != null) Lod.G.Master.V = sMaster;
         Lod.Px1.V = sPx1; Lod.Px2.V = sPx2; Lod.Bias.V = sBias;
-
-        // the table's own round trip, no worker: claim, file under the claim, refuse a stale sig, forget one slot
-        var t = new SlotJobTable<Job, Entry>(8, 1);
-        t.Offer(t.Rent(), KeyOf(7, 1), 11); t.Offer(t.Rent(), KeyOf(8, 1), 12);
-        check.Expect(!t.QueueHasRoom, "a full queue still has room");
-        check.Expect(t.File(KeyOf(7, 1), 11, new Entry { Done = true, Sig = 11 }), "a result under its claim was refused");
-        check.Expect(!t.File(KeyOf(7, 1), 99, default), "a result under a stale signature was filed");
-        t.ForgetSlot(7);
-        check.Expect(!t.Entries.ContainsKey(KeyOf(7, 1)) && t.Entries.ContainsKey(KeyOf(8, 1)), "ForgetSlot did not drop exactly its slot");
-        t.Revoke();
-        check.Expect(t.Entries.Count == 0 && t.QueueHasRoom, "Revoke left entries or queued jobs behind");
 
         log.Info(check.Ok ? "MeshLod.SelfCheck: passed" : "MeshLod.SelfCheck: FAILED");
         return check.Ok;

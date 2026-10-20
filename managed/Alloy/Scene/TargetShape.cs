@@ -14,9 +14,9 @@ internal static class TargetShape
     /// carries it (<c>ConnectShaderData</c> @0x4ce8e0 binds it to <c>targetShape</c>).</summary>
     internal const int None = 0, Sphere = 1, Rect = 2, Cone = 3, HSphere = 4;
 
-    /// <summary>The outline's world-space floor and the interior's weight, both the engine's own; the shader
-    /// widens the outline to a fragment and a half where that is thicker.</summary>
-    internal const float Edge = 0.05f, Fill = 0.1f;
+    /// <summary>The outline's world-space floor, the engine's own; the shader widens the outline to a
+    /// fragment and a half where that is thicker.</summary>
+    internal const float Edge = 0.05f;
 
     /// <summary>What a point is to a shape. The shader's continuous weight collapses to these three: no
     /// weight, the interior wash, the throbbing rim.</summary>

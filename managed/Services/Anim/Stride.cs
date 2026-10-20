@@ -252,5 +252,4 @@ internal static unsafe class Stride
         Dragged++;
     }
 
-    private static Vector3 Flat(Vector3 v) => new(v.X, v.Y, 0f);
 }

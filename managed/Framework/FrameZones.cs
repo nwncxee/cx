@@ -155,15 +155,9 @@ public static class FrameZones
         Bcn,
         /// <summary>Inside <see cref="Bcn"/>: the compressed uploads alone.</summary>
         BcnUp,
-        /// <summary>The prefetch drip's engine builds. On the Enroll slot inside Ai, subtracted from both.</summary>
-        Prebuild,
         /// <summary>The lightmap bake's frame step (adopt, pack, the light steps, the readback), inside
         /// <see cref="Passes"/> and subtracted from it.</summary>
         Lightmap,
-        /// <summary>Nested in <see cref="Enroll"/>: the scene walk's per-frame tick (<c>SceneWalk.Tick</c>), the
-        /// beam/halo/sky enrolments, and the texture drip net of <see cref="Bcn"/> and <see cref="Prebuild"/> --
-        /// the zone's standing cost, apart from the enrolment scan itself.</summary>
-        EnWalk, EnFx, EnDrip,
         /// <summary>Nested in <see cref="Passes"/>: the stream ring's region fence (<c>GpuRing.Acquire</c>) --
         /// the CPU waiting for the GPU to drain the frame before last. Large here means GPU-bound.</summary>
         Wait,
@@ -172,11 +166,6 @@ public static class FrameZones
         /// picking cost on its own. The engine's bill for the same work is invisible to every bracket here, so a
         /// vanilla comparison is a live A/B on <c>counthitcheckscenebspnode</c>, not a zone difference.</summary>
         Pick,
-        /// <summary>Filling the engine's <c>gobbucket</c> in <c>ScenePrep</c>, nested in <see cref="Shim"/> and not
-        /// subtracted. Alloy reads nothing out of that list and fills it ONLY because <c>Scene::HitCheckGob</c>
-        /// @0x45f860 takes the bucket branch unconditionally on a world scene, so this is the bill the CX hit test
-        /// deletes; <c>/alloy gobbucket 0</c> is the A/B. Named for the engine global.</summary>
-        GobBucket,
         /// <summary>Nested in <see cref="DbFold"/> (so in <see cref="Seam"/>) -- <c>DbFeed.FoldFrame</c>: the three
         /// pumps plus the fold of the scene database's dirty lists into the renderer's records. The record fold
         /// reads about 0 in a still scene, so a non-zero number with nothing moving is the PUMPS, which
@@ -295,10 +284,6 @@ public static class FrameZones
         Enroll,
         /// <summary>Bindless texture handles minted (GetTextureHandle + MakeResident).</summary>
         Mint,
-        /// <summary>Engine texture builds re-run by the unbuilt-texture drip.</summary>
-        TexBuild,
-        /// <summary>VAOs built by the drip.</summary>
-        VaoMade,
         /// <summary>Standing caster list re-collected.</summary>
         Collect,
         /// <summary>Textures through the engine upload funnel (<see cref="Zone.Tex"/> is their time).</summary>
@@ -313,8 +298,6 @@ public static class FrameZones
         TexWarm,
         /// <summary>ADR 0023: cached textures evicted for the budget.</summary>
         TexEvict,
-        /// <summary>Textures built ahead of first sight by the prefetch drip.</summary>
-        Prefetch,
         /// <summary>Casters whose dynamic-set membership flipped (each one invalidates the static cube it stands in).</summary>
         DynFlip,
         /// <summary>Static cube slots held back by <c>/shadow staticcap</c> this frame.</summary>
@@ -324,8 +307,6 @@ public static class FrameZones
         CollectGen, CollectEpoch, CollectSkip, CollectRefresh,
         /// <summary>The route's visible set was rebuilt (cadence, enrolment generation, epoch or a camera move).</summary>
         VisRebuild,
-        /// <summary>A newly seated slot joined the standing caster list in place of a re-collect.</summary>
-        CasterAppend,
         Count,
     }
     private const int NE = (int)Ev.Count;

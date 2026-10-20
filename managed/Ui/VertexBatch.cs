@@ -12,7 +12,6 @@ namespace CX.Ui;
 public sealed class VertexBatch
 {
     public const int Floats = 8;
-    private const int VertsPerQuad = 6;   // two triangles; GL_QUADS is gone in core profile
 
     private readonly List<float> _v = new(1024);
     /// <summary>The open run's halo and body quads while <see cref="Outline"/> is on, appended halos-first by <see cref="Flush"/>.</summary>

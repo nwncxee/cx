@@ -403,9 +403,6 @@ internal static unsafe class CasterGather
     /// <summary>Layered dispatches issued, and views they covered -- the period line's halves.</summary>
     internal static long LayerDispatches, LayerViews;
 
-    /// <summary>The layered dispatch program could not build; the caller keeps the per-view path.</summary>
-    internal static bool LayerFailed => _gl.LayerFailed;
-
     /// <summary>Build the layered dispatch. Same non-overridable stance as <see cref="Ensure"/>.</summary>
     internal static bool EnsureLayer()
     {

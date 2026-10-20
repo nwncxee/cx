@@ -323,14 +323,10 @@ internal static unsafe partial class TexRegistry
         {
             if (!Probe(key, resref, cell, out int hit, out _) || _refs[hit] > 0) return false;
             Retire(hit);
-            _forgotten++;
             return true;
         }
     }
 
-    /// <summary>Slots dropped by <see cref="Forget"/> this session -- for <c>/alloy</c>.</summary>
-    internal static long Forgotten => _forgotten;
-    private static long _forgotten;
 
     /// <summary>Drop one reference. The last one leaves the slot <see cref="TexState.Idle"/> -- resident, GL
     /// name and bytes kept, bindless handle released -- which is ADR 0023's decision, now without an engine

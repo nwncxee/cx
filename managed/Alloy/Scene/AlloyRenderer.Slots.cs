@@ -80,7 +80,6 @@ public sealed unsafe partial class AlloyRenderer
         // objects can only be deleted inside the bracket, so the rebuild happens there (EnsureVao).
         PassRegistry.Global.Revoke();
         CullPass.Revoke();
-        CycleTextures.Clear();
         // The slot space belongs to the FEED: every slot is joined to a live part through SceneDb.PartSlot and is
         // released when the game destroys the part, never here. The GL-side teardown above is all a revoke is.
         if (_ownCount > 0) _dbRevokeAll++;
@@ -103,7 +102,7 @@ public sealed unsafe partial class AlloyRenderer
             _featPrimCount[FeatPrimKey(i)]++;
             _clsCount[_oCls[i]]++;
             if (_oLit[i]) _litCount++;
-            if (DbSlot(i) ? (DrawRecipe.Flags(_oDbRecipe[i]) & RecipeFlag.Skinned) != 0 : _vSkin[_oVao[i]])
+            if (DbSlot(i) && (DrawRecipe.Flags(_oDbRecipe[i]) & RecipeFlag.Skinned) != 0)
                 _skinOrder[_skinCount++] = i;
         }
         // Four-digit LSD radix into _order, every digit counting-sorted (stable): texture, then

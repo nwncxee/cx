@@ -17,7 +17,7 @@ internal static unsafe class SceneSlots
     internal const int Count = 51;
 
     private static ExtenderLog? _log;
-    private static long _calls, _nullScene;
+    private static long _nullScene;
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
@@ -91,7 +91,6 @@ internal static unsafe class SceneSlots
     /// generation check answers without a death notice). A null one is counted, not silently ignored.</summary>
     private static DbId Id(nint self)
     {
-        _calls++;
         DbId id = Facade.SceneId(self);
         if (!SceneDb.Scenes.Valid(id)) { _nullScene++; return default; }
         return id;
@@ -370,7 +369,6 @@ internal static unsafe class SceneSlots
         DbId s = Id(self);
         if (s.IsNull) return;
         TileBuild.ResetFading(s);
-        SceneFeed.FadeReset(s);
     }
 
     // ---- hit tests: the hit stream's HitTest ---------------------------------------------------------
@@ -460,7 +458,6 @@ internal static unsafe class SceneSlots
         Id(self);
         if (props != 1 && props != 2 && props != 4) return 0;
         SceneDb.GeomFade = props;
-        SceneFeed.GeomFadeChanged();
         return 1;
     }
 
@@ -473,43 +470,28 @@ internal static unsafe class SceneSlots
         return (byte)(SceneDb.GeomFade == 1 ? 1 : 0);
     }
 
+    /// <summary>Slot 42, <c>Scene::SetGlobalWind</c>: nothing calls it. The area's wind reaches the client
+    /// through the <c>setglobalwind</c> console function that <c>CNWCArea::SetWind</c> formats, which writes
+    /// the shell's own <c>WindManager</c> at <c>+0x160</c> -- where <c>AlloyWind</c> and the engine's shader
+    /// runtime block both read it. The slot resolves the scene and answers.</summary>
     [UnmanagedCallersOnly]
-    private static void SetGlobalWind(nint self, Vec3* dir, float magnitude, float gustiness)
-    {
-        DbId s = Id(self);
-        if (s.IsNull || dir == null) return;
-        SceneDb.SceneWindDir[s.Index] = V(dir);
-        SceneDb.SceneWindMag[s.Index] = magnitude;
-        SceneDb.SceneWindGust[s.Index] = gustiness;
-        SceneFeed.WindChanged(s);
-    }
+    private static void SetGlobalWind(nint self, Vec3* dir, float magnitude, float gustiness) { Id(self); }
 
     /// <summary>Slot 15, <c>CAurScene::ReloadAreaGrass</c>: the area's grass info changed
-    /// (<c>AurGrassAddInfo</c>/<c>AurGrassClearInfo</c> have been called), so the grass field rebuilds.</summary>
+    /// (<c>AurGrassAddInfo</c>/<c>AurGrassClearInfo</c> have been called). Alloy's grass field rebuilds from
+    /// the area's own assets at its world edge, so the slot resolves the scene and answers.</summary>
     [UnmanagedCallersOnly]
-    private static void ReloadAreaGrass(nint self)
-    {
-        DbId s = Id(self);
-        if (!s.IsNull) SceneFeed.GrassChanged(s);
-    }
+    private static void ReloadAreaGrass(nint self) { Id(self); }
 
     /// <summary>Slots 13/14, <c>CAurScene::ComputeStaticLighting</c> / <c>ComputeStaticProjections</c>: the
-    /// engine's own static-light and decal bake. Alloy owns both (the lightmap bake, keyed on CONTENT), so
-    /// these mark the scene's static set stale and the bake picks it up at its own edge -- the
-    /// one thing they must not do is run a bake synchronously inside a seam call.</summary>
+    /// engine's own static-light and decal bake. Alloy owns both (the lightmap bake, keyed on CONTENT) and
+    /// runs them at its own edge, so the one thing these must not do is run a bake inside a seam call.</summary>
     [UnmanagedCallersOnly]
-    private static void ComputeStaticLighting(nint self)
-    {
-        DbId s = Id(self);
-        if (!s.IsNull) SceneFeed.StaticLightingStale(s);
-    }
+    private static void ComputeStaticLighting(nint self) { Id(self); }
 
+    /// <inheritdoc cref="ComputeStaticLighting"/>
     [UnmanagedCallersOnly]
-    private static void ComputeStaticProjections(nint self)
-    {
-        DbId s = Id(self);
-        if (!s.IsNull) SceneFeed.StaticProjectionsStale(s);
-    }
+    private static void ComputeStaticProjections(nint self) { Id(self); }
 
     /// <summary><c>Scene::SetBlindLights</c> @0x45e010: from now on only <paramref name="obj"/>'s lights light the
     /// scene (null = every light again). Cold -- an effect's apply and remove -- so each change is a log line.</summary>
@@ -521,7 +503,6 @@ internal static unsafe class SceneSlots
         DbId o = Facade.ObjectId(obj);
         if (SceneDb.SceneBlindLights[s.Index] == o) return;
         SceneDb.SceneBlindLights[s.Index] = o;
-        SceneFeed.LightsChanged(s);
         _log?.Info(o.IsNull
             ? $"SceneSlots: blind lights OFF on scene {s.Index} -- every light lights it again"
             : $"SceneSlots: blind lights ON on scene {s.Index} -- only '{SceneDb.ObjModel[o.Index]?.Name ?? "?"}' (object {o.Index}) lights it: no other light, no area ambient or sun, no baked pages, black fog");
@@ -763,8 +744,8 @@ internal static unsafe class SceneSlots
 
     private static Vector3 V(Vec3* p) => p == null ? Vector3.Zero : new Vector3(p->X, p->Y, p->Z);
 
-    internal static string Stats(int _)
-        => $"scene slots: {_calls} calls" + (_nullScene > 0 ? $", {_nullScene} on a DEAD scene handle" : "");
+    /// <summary>Slot calls that arrived on a DEAD scene handle and were refused, for the period line.</summary>
+    internal static long NullScene => _nullScene;
 }
 
 /// <summary>The engine's <c>List&lt;T&gt;</c> as the three <c>AddLinesToRender</c> arguments carry it: an array

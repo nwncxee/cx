@@ -12,11 +12,6 @@ namespace CX.Alloy.Seam;
 public static unsafe class NativeNames
 {
     private static readonly Dictionary<string, nint> _byName = new(StringComparer.Ordinal);
-    private static long _bytes;
-
-    /// <summary>Distinct names interned, and the bytes they hold.</summary>
-    public static int Count { get { lock (_byName) return _byName.Count; } }
-    public static long Bytes { get { lock (_byName) return _bytes; } }
 
     /// <summary>The one native copy of <paramref name="name"/>, or 0 for a null or empty name -- which is what
     /// the engine answers for a model with no name and a part with no node.</summary>
@@ -29,7 +24,6 @@ public static unsafe class NativeNames
             p = Marshal.StringToCoTaskMemUTF8(name);
             if (p == 0) return 0;
             _byName[name] = p;
-            _bytes += name.Length + 1;
             return p;
         }
     }

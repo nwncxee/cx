@@ -19,9 +19,6 @@ internal static unsafe class OwnedBuffers
     {
         internal uint Name;
         internal long Bytes;
-        /// <summary>The engine wrote into this pool since the last <see cref="ClearDirty"/> -- the re-bake
-        /// predicate's vertex-motion signal.</summary>
-        internal bool Dirty;
         /// <summary>Seen in an engine draw outside the Alloy window, i.e. the UI / a GUI 3D panel draws from
         /// it. The ticket's tagging, recorded rather than acted on.</summary>
         internal bool EngineDrawn;
@@ -29,7 +26,7 @@ internal static unsafe class OwnedBuffers
         internal bool AlloyDrawn;
     }
 
-    /// <summary>Capacity for the two tables and the dirty list. Pools are engine-wide (world VDOs, UI
+    /// <summary>Capacity for the two tables. Pools are engine-wide (world VDOs, UI
     /// primitives, the global element stream) and <c>RequestPool</c> @0x4d1ec0 doubles its descriptor table on
     /// demand, so nothing bounds them. ponytail: a number, not a derivation -- past it a rehash allocates on
     /// the render thread once and the tables keep working; size from <c>_table.Count</c> if one is ever seen.</summary>
@@ -37,14 +34,9 @@ internal static unsafe class OwnedBuffers
     private static readonly Dictionary<uint, Entry> _byToken = new(PoolCeiling);
     /// <summary>GL name -> pool token. The index the harvested-VAO callers ask through.</summary>
     private static readonly Dictionary<int, uint> _byName = new(PoolCeiling);
-    /// <summary>Tokens written to since the last <see cref="ClearDirty"/>.</summary>
-    private static readonly List<uint> _dirty = new(PoolCeiling);
 
     private static ExtenderLog? _log;
     private static bool _armed;
-    /// <summary>Is the geometry takeover live? False leaves every upload to the engine, which is vanilla
-    /// residency -- the stand-down, not a second code path.</summary>
-    internal static bool Armed => _armed;
     /// <summary>Buffers Alloy DRAWS from and did not upload -- asked at every VAO build, the geometry twin of
     /// <c>OwnedTextures.Borrowed</c> and what the exit bar reads. Distinct from <see cref="_refused"/>, which
     /// counts pools handed back whether or not Alloy ever draws them: the menu's pools are resident before
@@ -233,7 +225,6 @@ internal static unsafe class OwnedBuffers
             _bytes += bytes - e.Bytes;
             e.Bytes = bytes;
         }
-        if (!e.Dirty) { e.Dirty = true; _dirty.Add(token); }
         _byToken[token] = e;
         if (_bytes > _peakBytes) { _peakBytes = _bytes; _peakCount = _byToken.Count; _peakFresh = true; }
     }
@@ -250,22 +241,12 @@ internal static unsafe class OwnedBuffers
         return table[(int)token];
     }
 
-    /// <summary>The host shadow of the pool this token names, or null. The normal weld reads and rewrites
-    /// vertex bytes here, the same block <see cref="Upload"/> pushes, so nothing is read back.</summary>
+    /// <summary>The host shadow of the pool this token names, or null -- the same block
+    /// <see cref="Upload"/> pushes, so nothing is ever read back off GL.</summary>
     internal static byte* PoolHost(uint token)
     {
         GlPool p = Pool(token);
         return p.IsNull ? null : (byte*)p.Host;
-    }
-
-    /// <summary>The host shadow behind a GL buffer name, looked up among a VDO's two vertex pools -- a
-    /// stream's <c>Buf</c> is a pool NAME, and which pool holds it is the descriptor's to say.</summary>
-    internal static byte* PoolHostByName(uint name, uint tokA, uint tokB)
-    {
-        GlPool a = Pool(tokA), b = Pool(tokB);
-        if (!a.IsNull && a.Name == name) return (byte*)a.Host;
-        if (!b.IsNull && b.Name == name) return (byte*)b.Host;
-        return null;
     }
 
     /// <summary>The engine is deleting this GL buffer name -- <c>DeletePool</c> @0x4d1d80 routes here for
@@ -297,25 +278,6 @@ internal static unsafe class OwnedBuffers
         if (_byToken.TryGetValue(token, out Entry e) && !e.AlloyDrawn)
         { e.AlloyDrawn = true; _byToken[token] = e; }
         return true;
-    }
-
-    /// <summary>Has the engine written into this buffer since the last <see cref="ClearDirty"/>? The
-    /// re-bake predicate's VERTEX-motion signal -- dangly and morph-animated nodes both commit through
-    /// <c>CommitItemDynamicData</c>, so both land in the dirty set with no per-class test.</summary>
-    internal static bool DirtySince(uint engineBuf)
-        => engineBuf != 0 && _byName.TryGetValue((int)engineBuf, out uint token)
-           && _byToken.TryGetValue(token, out Entry e) && e.Dirty;
-
-    /// <summary>Close the dirty window, from inside the 4.6 bracket. There is nothing to copy -- the upload
-    /// happened at the engine's own commit -- so what survives is the SIGNAL, and the readers of
-    /// <see cref="DirtySince"/> run before this.</summary>
-    internal static void ClearDirty()
-    {
-        if (_dirty.Count == 0) return;
-        int n = _dirty.Count;
-        for (int i = 0; i < n; i++)
-            if (_byToken.TryGetValue(_dirty[i], out Entry e)) { e.Dirty = false; _byToken[_dirty[i]] = e; }
-        _dirty.Clear();
     }
 
     /// <summary>An instrument, not a gate: an engine draw reaching a funnel while the Alloy window is CLOSED
@@ -399,7 +361,6 @@ internal static unsafe class OwnedBuffers
     {
         _byToken.Clear();
         _byName.Clear();
-        _dirty.Clear();
         _bytes = 0;
     }
 
@@ -410,8 +371,8 @@ internal static unsafe class OwnedBuffers
             $"{_refused}, borrowed {_borrowed}, retired {_retired})";
 
     /// <summary>Off-device: the takeover contract, with no GL. A stood-down table takes nothing; a pool the
-    /// engine refuses is refused here too; a taken pool is indexed by BOTH its token and its name; the dirty
-    /// signal opens on the upload and closes on the frame; the delete funnel drops the row without deleting;
+    /// engine refuses is refused here too; a taken pool is indexed by BOTH its token and its name; the delete
+    /// funnel drops the row without deleting;
     /// the UI tag lands on the tokens a VDO names. The upload is the headless refusal path, run for real.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
@@ -419,7 +380,7 @@ internal static unsafe class OwnedBuffers
         GlPoolTable savedTable = _table;
         var savedTok = new Dictionary<uint, Entry>(_byToken);
         var savedName = new Dictionary<int, uint>(_byName);
-        _byToken.Clear(); _byName.Clear(); _dirty.Clear();
+        _byToken.Clear(); _byName.Clear();
         int refused = _refused, borrowed = _borrowed; _refused = 0; _borrowed = 0;
 
         // A fake pool table: two 0x20-byte descriptors behind a base pointer, laid out exactly as
@@ -448,9 +409,6 @@ internal static unsafe class OwnedBuffers
         // half that has no GL in it.
         Record(token: 3, name: 77, bytes: 128, fresh: true);
         ok &= _byToken.Count == 1 && _byName[77] == 3 && Owns(77) && !Owns(78);
-        ok &= DirtySince(77) && _dirty.Count == 1;
-        ClearDirty();
-        ok &= !DirtySince(77) && _dirty.Count == 0;
         // A pool that grew keeps its row and its name, and the byte total follows it.
         Record(token: 3, name: 77, bytes: 256, fresh: false);
         ok &= _byToken.Count == 1 && _bytes == 256 && _grows > 0;
@@ -470,7 +428,7 @@ internal static unsafe class OwnedBuffers
         Retire(78);
         ok &= _byToken.Count == 0 && !_byName.ContainsKey(78) && _bytes == 0 && !Owns(78);
 
-        _byToken.Clear(); _byName.Clear(); _dirty.Clear();
+        _byToken.Clear(); _byName.Clear();
         _bytes = 0; _grows = 0; _refused = refused; _borrowed = borrowed;
         _armed = wasArmed; _table = savedTable;
         foreach (var kv in savedTok) _byToken[kv.Key] = kv.Value;

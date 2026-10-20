@@ -40,10 +40,8 @@ internal static unsafe partial class TexRegistry
         public string Resref = "";
         public TexKind Kind;
         public TexLocation Loc;
-        public uint ResId0, ResId1, ResId2, ResId3;
         /// <summary>The decoded bytes, native and owned by the job until the upload or the recycle.</summary>
         public byte* Data;
-        public DdsReader.Info Dds;
         public int W, H, Levels, Channels;
         /// <summary>The GL internal format and the (format, type) pair of an uncompressed upload.</summary>
         public uint GlFmt, PixFmt, PixType;
@@ -169,7 +167,6 @@ internal static unsafe partial class TexRegistry
         // carry the kind, so this cannot split one file across two slots.
         j.Kind = found;
         lock (_lock) { _kind[i] = found; TableSerial++; }
-        j.ResId0 = resId[0]; j.ResId1 = resId[1]; j.ResId2 = resId[2]; j.ResId3 = resId[3];
         _pend[i] = PendFlight;
         StartWorker();
         lock (_gate)
@@ -387,7 +384,7 @@ internal static unsafe partial class TexRegistry
         uint fmt = DdsReader.GlFormat(info.Format);
         if (fmt == 0) { DdsReader.FreePrepared(chain); j.Why = $"{info.Format} has no GL internal format"; return; }
         // Present, not Levels: CopyChain pads missing mips with one corner block, which a minified quad samples.
-        j.Data = chain; j.Dds = info; j.W = info.W; j.H = info.H; j.Levels = info.Present;
+        j.Data = chain; j.W = info.W; j.H = info.H; j.Levels = info.Present;
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false;
         j.Bytes = info.ChainBytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
@@ -415,7 +412,7 @@ internal static unsafe partial class TexRegistry
             bytes += DdsReader.LevelSize(w, h, info.Channels);
         byte* data = (byte*)NativeMemory.Alloc((nuint)bytes);
         raw.Slice(info.DataOffset + (int)skip, (int)bytes).CopyTo(new Span<byte>(data, (int)bytes));
-        j.Data = data; j.Tail = true; j.Dds = info; j.W = w0; j.H = h0; j.Levels = levels;
+        j.Data = data; j.Tail = true; j.W = w0; j.H = h0; j.Levels = levels;
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false; j.Bytes = bytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
         j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(data, DdsReader.LevelSize(w0, h0, info.Channels)), w0, h0, info.Format, ref sc);

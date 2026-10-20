@@ -111,9 +111,6 @@ public struct HitResult
     /// <summary>World-space surface normal, <c>CHitInfo+0x5c</c>. Zero when the engine leaves it zero: a
     /// triangle hit on a <c>PartTriMesh</c>, and an inside-the-box hit.</summary>
     public Vector3 Normal;
-    /// <summary>Distance along the segment from <see cref="HitQuery.From"/>, for callers that order casts.
-    /// Not a <c>CHitInfo</c> field -- the engine re-derives it.</summary>
-    public float Distance;
     /// <summary>Hit face index, <c>CHitInfo+0x58</c>; -1 when the hit was not a face (box mode, a trigger).</summary>
     public int Face;
     /// <summary>The hit face's surface (material) id, or -1. <c>CHitInfo+0x40</c> holds it as
@@ -166,8 +163,8 @@ public static class HitTest
     /// <summary>Model classification bits (<c>Model+0x8e</c>, written by <c>classification()</c> @0x446440).</summary>
     public const byte ClassEffect = 1, ClassTile = 2, ClassCharacter = 4, ClassDoor = 8;
 
-    /// <summary>Casts this period and what they walked: the counters the pick report prints. <c>FaceTests</c>
-    /// is faces actually plane-tested (<see cref="MeshBvh"/> counts them), one unit on every arm.</summary>
+    /// <summary>Casts since boot and what they walked, on the pick report's line. <c>FaceTests</c> is faces
+    /// actually plane-tested (<see cref="MeshBvh"/> counts them), one unit on every arm.</summary>
     public static long Casts, CellVisits, ObjTests, PartTests;
     /// <inheritdoc cref="Casts"/>
     public static long FaceTests => MeshBvh.FacesTested;
@@ -204,11 +201,7 @@ public static class HitTest
             else Members(q, ref to, ref r);
         }
 
-        if (r.Kind != HitKind.None)
-        {
-            r.Point = to;
-            r.Distance = Vector3.Distance(q.From, to);
-        }
+        if (r.Kind != HitKind.None) r.Point = to;
         else if (IsFloorProbe(q)) NoFloor(q);
         if (IsFloorProbe(q)) Floor(q, in r);
         FrameZones.Add(FrameZones.Zone.Pick, t0);

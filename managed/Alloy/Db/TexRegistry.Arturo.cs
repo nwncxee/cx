@@ -153,7 +153,7 @@ internal static unsafe partial class TexRegistry
     /// clock it reads and the counters the registry's note prints.</summary>
     private sealed class ArturoState
     {
-        public long Last, Steps, Uploads, Bytes;
+        public long Last, Uploads, Bytes;
         public int Unbuilt, Flat, Huge;
         /// <summary>The slot's ripple, filed at the upload; null for every texture that does not ripple.</summary>
         public readonly Arturo?[] Slots = new Arturo?[MaxSlots];
@@ -285,7 +285,6 @@ internal static unsafe partial class TexRegistry
             if (a.Acc <= ArturoTick) continue;
             a.Acc -= MathF.Floor(a.Acc / ArturoTick) * ArturoTick;
             a.Sub = (a.Sub + 1) % 3;
-            _artState.Steps++;
             if (a.Sub == 2) { a.Warp(); UploadWarp(name, a); _artState.Uploads++; _artState.Bytes += a.Out.Length; continue; }
             if (a.Sub == 0)
             {

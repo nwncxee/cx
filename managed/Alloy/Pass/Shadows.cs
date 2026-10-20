@@ -10,7 +10,7 @@ internal static class Shadows
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, SunDyn, Casters, Gather, Receiver, Rebake, Split, Layered, RefreshAll, DynSrc,
-                                        DynEvents, ItemDirty, FlipCollect, MaskH, Trace, Detail;
+                                        DynEvents, FlipCollect, MaskH, Trace, Detail;
     internal static readonly Knob<float> Dist, Soft, Floor, DiscPx, Near, CsmBias, MaskHoles, MaskGraded, FocusDist, DynMin, CubeDist,
                                          SunAngle;
     internal static readonly Knob<int> Cascades, Size, Cubes, CubeSize, DynSize, DynCount, Cap, Fade, FadeSlots,
@@ -138,7 +138,6 @@ internal static class Shadows
         RefreshAll = G.Toggle("refreshall", "refreshall", false, Tier.ChatOnly);
         DynSrc = G.Toggle("dynsrc", "dynsrc", true, Tier.ChatOnly);
         DynEvents = G.Toggle("dynevents", "dynevents", true, Tier.ChatOnly, changed: CasterPass.ShadowInvalidate);
-        ItemDirty = G.Toggle("itemdirty", "itemdirty", true, Tier.ChatOnly, changed: CasterPass.ShadowInvalidate);
         FlipCollect = G.Toggle("flipcollect", "flipcollect", false, Tier.ChatOnly);
         MaskH = G.Toggle("maskh", "maskh", true, Tier.ChatOnly, changed: CasterPass.ListChanged);
         Trace = G.Toggle("trace", "trace", false, Tier.ChatOnly);

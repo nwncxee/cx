@@ -20,8 +20,6 @@ internal static unsafe class SceneOnlySlots
     /// interface's <c>ResetAreaTileFading</c> (16) and <c>ReloadAreaGrass</c> (15).</summary>
     internal static readonly IntPtr[] Table = Build();
 
-    private static long _childAdds, _childRemoves, _addObjects;
-
     private static IntPtr[] Build()
     {
         var t = new IntPtr[Last + 1 - First];
@@ -36,7 +34,6 @@ internal static unsafe class SceneOnlySlots
     [UnmanagedCallersOnly]
     private static void AddObject(nint self, nint obj)
     {
-        _addObjects++;
         DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
         if (!TileBuild.RefuseMove(o, s, "Scene::AddObject")) DbScene.Join(s, o);
     }
@@ -47,7 +44,6 @@ internal static unsafe class SceneOnlySlots
     [UnmanagedCallersOnly]
     private static void ChildAdd(nint self, nint obj)
     {
-        _childAdds++;
         DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
         if (!TileBuild.RefuseMove(o, s, "Scene::ChildAdd")) DbScene.Join(s, o);
     }
@@ -55,7 +51,6 @@ internal static unsafe class SceneOnlySlots
     [UnmanagedCallersOnly]
     private static void ChildRemove(nint self, nint obj)
     {
-        _childRemoves++;
         DbId s = Facade.SceneId(self), o = Facade.ObjectId(obj);
         if (TileBuild.OwnScene(o).Value == s.Value && TileBuild.RefuseMove(o, default, "Scene::ChildRemove")) return;
         DbScene.Leave(s, o);
@@ -72,7 +67,4 @@ internal static unsafe class SceneOnlySlots
         DbId o = SceneDb.SceneShadowGob[s.Index];
         return SceneDb.Objects.Valid(o) ? SceneDb.ObjFacade[o.Index] : 0;
     }
-
-    internal static string Stats(int _)
-        => $"scene-only: {_addObjects} AddObject, {_childAdds} ChildAdd, {_childRemoves} ChildRemove";
 }

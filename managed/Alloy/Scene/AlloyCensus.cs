@@ -16,8 +16,8 @@ internal static unsafe partial class AlloyCensus
     /// <summary>The engine's per-item-alpha draw bucket.</summary>
     internal const int AlphaBucket = 8;
 
-    /// <summary><c>dst == 2</c> is <c>GL_ONE</c>: the engine's own additive test on
-    /// <see cref="EngineLayout.MatDstBlend"/>, and the one pair it turns the depth mask off for.</summary>
+    /// <summary><c>dst == 2</c> is <c>GL_ONE</c>: the engine's own additive test on the material's
+    /// destination blend factor, and the one pair it turns the depth mask off for.</summary>
     internal const int BlendOne = 2;
 
     /// <summary>The dynamic gob pair: everything instanced lands in one of these two -- placeables, doors, and the

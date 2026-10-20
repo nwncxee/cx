@@ -56,10 +56,6 @@ public static partial class UiHost
     /// <summary>The single window that owns focus -- the candidate keyboard owner. Null when nothing is focused.</summary>
     public static Window? Focused { get; private set; }
 
-    /// <summary>The keyboard-owned gate: true only when the focused window is asserting keyboard ownership.
-    /// Focus alone does NOT set it -- a focused-but-idle window still lets gameplay keys through.</summary>
-    public static bool KeyboardOwned => Focused is { WantsKeyboard: true };
-
     public static IReadOnlyList<Window> Windows => _windows;
 
     internal static void Register(Window w)
@@ -213,28 +209,41 @@ public static partial class UiHost
     }
 
     /// <summary>Route a mouse button (press/release) to window content, true at the first window that consumes it.
-    /// Two topmost-first passes -- modal (<see cref="Window.SuppressChords"/>) windows win the click, then the rest --
-    /// each window visited exactly once, so no double-invoke; an unconsumed press falls to the chord layer.
     /// <paramref name="captureOnly"/> visits only <see cref="Window.CapturesPointer"/> windows: the pump's extra pass BEFORE the engine-GUI yield.</summary>
     public static bool DispatchMouseButton(bool down, int button, int x, int y, bool captureOnly = false)
+        => Route(new ButtonOffer(down, button, x, y), captureOnly, x, y);
+
+    /// <summary>What <see cref="Route"/> hands each window it visits. Implemented by readonly structs so the
+    /// routing call is constrained to one and a pointer event allocates nothing.</summary>
+    private interface IOffer { bool Offer(Window w); }
+
+    private readonly struct ButtonOffer(bool down, int button, int x, int y) : IOffer
+    {
+        public bool Offer(Window w) => w.OnMouseButton != null && w.OnMouseButton(down, button, x, y);
+    }
+
+    private readonly struct WheelOffer(int dy) : IOffer
+    {
+        public bool Offer(Window w) => w.OnMouseWheel != null && w.OnMouseWheel(dy);
+    }
+
+    /// <summary>The modal routing both pointer events take: topmost-first, and when not
+    /// <paramref name="captureOnly"/> two passes -- modal (<see cref="Window.SuppressChords"/>) windows win the
+    /// event, then the rest -- each window visited exactly once, so no double-invoke. Allocation-free, which
+    /// is why the offer is a struct: input runs on the pump, and every click would pay for a closure.</summary>
+    private static bool Route<T>(in T offer, bool captureOnly, float x, float y) where T : struct, IOffer
     {
         if (captureOnly)
         {
             foreach (Window next in TopmostFirst())
-            {
-                if (!TakesBeforeNui(next, x, y)) continue;
-                if (next.OnMouseButton != null && next.OnMouseButton(down, button, x, y)) return true;
-            }
+                if (TakesBeforeNui(next, x, y) && offer.Offer(next)) return true;
             return false;
         }
         for (int pass = 0; pass < 2; pass++)
         {
             bool modal = pass == 0;
             foreach (Window next in TopmostFirst())
-            {
-                if (next.SuppressChords != modal) continue;
-                if (next.OnMouseButton != null && next.OnMouseButton(down, button, x, y)) return true;
-            }
+                if (next.SuppressChords == modal && offer.Offer(next)) return true;
         }
         return false;
     }
@@ -255,31 +264,10 @@ public static partial class UiHost
         return false;
     }
 
-    /// <summary>Route a wheel notch to window content, topmost-first, modal windows first (the same two passes);
-    /// true at the first consumer. <paramref name="captureOnly"/> is the pre-yield pass, as in
-    /// <see cref="DispatchMouseButton"/>; the wheel event has no position, so the caller supplies the pointer's.</summary>
+    /// <summary>Route a wheel notch to window content, as <see cref="DispatchMouseButton"/> routes a press; the
+    /// wheel event has no position, so the caller supplies the pointer's.</summary>
     public static bool DispatchMouseWheel(int dy, bool captureOnly = false, float px = float.NaN, float py = float.NaN)
-    {
-        if (captureOnly)
-        {
-            foreach (Window next in TopmostFirst())
-            {
-                if (!TakesBeforeNui(next, px, py)) continue;
-                if (next.OnMouseWheel != null && next.OnMouseWheel(dy)) return true;
-            }
-            return false;
-        }
-        for (int pass = 0; pass < 2; pass++)
-        {
-            bool modal = pass == 0;
-            foreach (Window next in TopmostFirst())
-            {
-                if (next.SuppressChords != modal) continue;
-                if (next.OnMouseWheel != null && next.OnMouseWheel(dy)) return true;
-            }
-        }
-        return false;
-    }
+        => Route(new WheelOffer(dy), captureOnly, px, py);
 
     /// <summary>Every registered window, topmost-first. Zero-alloc: a struct enumerator over the O(n^2)
     /// descending-z scan (z values are unique, from the monotonic counter, so the walk terminates even when a
@@ -410,9 +398,8 @@ public static partial class UiHost
     }
 
     /// <summary>The fixed input precedence: keyboard-owned gate → chord consumers → gameplay keybinds. When a
-    /// window owns the keyboard, its content eats every key and chords/keybinds are withheld. Uses
-    /// <see cref="AnyKeyboardOwner"/> (not <see cref="KeyboardOwned"/>) to match the live path, where the owner
-    /// need not be the framework-focused window (chat self-manages focus).</summary>
+    /// window owns the keyboard, its content eats every key and chords/keybinds are withheld. The gate is
+    /// <see cref="AnyKeyboardOwner"/>, so the owner need not be the focused window (chat self-manages focus).</summary>
     public static InputLayer ResolveKey(int key)
     {
         if (AnyKeyboardOwner) return InputLayer.FocusedContent;

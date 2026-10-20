@@ -1054,7 +1054,6 @@ public sealed partial class KnobPanel
     public bool Moving => _moving;
     /// <summary>True while a slider is being dragged: a consumer's model changes per motion.</summary>
     public bool SliderDragging => _grab != null;
-    public bool Dragging => _grab != null || _moving || Cats.Dragging || SubCol.Dragging || List.Dragging || Drop.Dragging;
 
     /// <summary>A pick from the open list: a consumer row takes the index and the consumer relays out; a knob's
     /// choice label round-trips through <see cref="Knob.Parse"/>, which takes a label for any T.</summary>

@@ -342,8 +342,6 @@ internal static unsafe class EventNames
     internal static readonly nint PropagateColorShift = Marshal.StringToCoTaskMemUTF8("propagatecolorshift");
     internal static readonly nint PropagateIllumination = Marshal.StringToCoTaskMemUTF8("propagateillumination");
     internal static readonly nint PropagateViewVolume = Marshal.StringToCoTaskMemUTF8("propagateviewvolume");
-    internal static readonly nint PropagateRender = Marshal.StringToCoTaskMemUTF8("propagaterender");
-    internal static readonly nint UpdateScenes = Marshal.StringToCoTaskMemUTF8("UpdateScenes");
     internal static readonly nint EmitterTarget = Marshal.StringToCoTaskMemUTF8("_EmitterTarget");
     internal static readonly nint Dying = Marshal.StringToCoTaskMemUTF8("Dying");
 }

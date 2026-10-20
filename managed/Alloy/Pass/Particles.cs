@@ -202,7 +202,6 @@ internal static unsafe partial class Particles
     private static int _drawN;
 
     private static ExtenderLog? _log;
-    private static MatGetTextureFn _getTexture;
     private static AurTextureBindInUnitFn _bindInUnit;
     /// <summary>The engine's bound-texture cache, snapshot-restored across the draw loop. See
     /// <see cref="SymbolMap.GlBoundTextures"/> for why a pass that draws in its own context has to.</summary>
@@ -294,7 +293,6 @@ internal static unsafe partial class Particles
         _log = log;
         SceneDepth.Attach(log);
 
-        _getTexture = EngineFn.MatGetTexture;
         _bindInUnit = EngineFn.AurTextureBindInUnit;
         _engBoundTex = (ulong*)Native.Sym(SymbolMap.GlBoundTextures);
         _engActiveStage = (uint*)Native.Sym(SymbolMap.GlActiveTextureStage);
@@ -304,7 +302,7 @@ internal static unsafe partial class Particles
         _isSplat = EngineFn.EmitterIsSplat;
         _isTinted = EngineFn.EmitterIsTinted;
 
-        if (_getTexture == null || _bindInUnit == null || _tileAlpha == null || _gobAlpha == null || _isSplat == null
+        if (_bindInUnit == null || _tileAlpha == null || _gobAlpha == null || _isSplat == null
             || _isTinted == null
             || !AurTex.Ready)
         {
@@ -1064,10 +1062,9 @@ internal static unsafe partial class Particles
     {
         if (mat.IsNull) return 1f;
         float v = 1f;
-        var mr = new MaterialRef(mat.Ptr);
-        SharedRef shared = mr.Shared;
+        SharedMaterial shared = mat.Shared;
         if (!shared.IsNull) Scan(shared.Params, shared.ParamCount, ref v);
-        Scan(mr.Params, mr.ParamCount, ref v);
+        Scan(mat.Params, mat.ParamCount, ref v);
         return v <= 0f ? 1f : MathF.Min(v, MaxEmissive);
     }
 

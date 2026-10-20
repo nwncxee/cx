@@ -8,131 +8,46 @@ namespace CX.Alloy;
 /// <summary>Alloy's spatial index of the area: a tile-aligned uniform grid holding every STATIC slot (no gob,
 /// world box filled by <c>ComputePartBBox</c> @0x561370 at tile spawn), filed once per enrolment. Parts on a gob
 /// are movers Alloy routes every pass anyway; one with no world box is UNBOUNDED and always visible. The grid
-/// WRAPS at <see cref="Dim"/> cells -- a candidate, never a miss, since each cell's AABB is real.</summary>
+/// itself is <see cref="UniformGrid"/>, which the scene database indexes its objects with too.</summary>
 internal static unsafe class AreaGrid
 {
-    /// <summary>One NWN tile per cell, and a 64 x 64 grid -- 640 units, comfortably past the largest shipped
-    /// area (32 x 32 tiles) and past any camera far plane.</summary>
-    internal const float CellSize = 10f;
-    internal const int Bits = 6, Dim = 1 << Bits, Mask = Dim - 1, Cells = Dim * Dim;
+    /// <inheritdoc cref="UniformGrid.CellSize"/>
+    internal const float CellSize = UniformGrid.CellSize;
+    /// <inheritdoc cref="UniformGrid.CellSize"/>
+    internal const int Dim = UniformGrid.Dim;
 
-    /// <summary>Per cell: the head of its slot list (-1 empty) and the real world AABB of everything in it.</summary>
-    private static readonly int[] _head = new int[Cells];
-    private static readonly Box[] _box = new Box[Cells];
-    /// <summary>Per slot: the next slot in its cell's list. Sized by the ownership table, like every other
-    /// per-slot column, and written only by <see cref="Add"/>.</summary>
-    private static readonly int[] _next = new int[AlloyRenderer.MaxOwned];
-    /// <summary>Diagnostic: the cell each slot was FILED under, -1 for never. <c>_oBox</c> has a second writer
-    /// (<c>DbWriteWorldBox</c>, on every record rewrite), so a box that moved after its filing leaves the grid
-    /// describing where the part WAS, and a cell whose union no longer covers it drops it from every query.</summary>
-    private static readonly int[] _cellOf = ResetCells(new int[AlloyRenderer.MaxOwned]);
-    private static int[] ResetCells(int[] a) { for (int i = 0; i < a.Length; i++) a[i] = -1; return a; }
-    private static int _filed, _occupied;
+    private static readonly UniformGrid G = new("AreaGrid", AlloyRenderer.MaxOwned);
 
-    /// <summary>Slots with no world box of their own: always visible, exactly as their <c>NeverCull</c> sphere
-    /// already made them.</summary>
-    private static readonly int[] _unboxed = new int[AlloyRenderer.MaxOwned];
-    private static int _unboxedN;
-
-    internal static int Filed => _filed;
-    internal static int Unboxed => _unboxedN;
-    internal static int Occupied => _occupied;
+    internal static int Filed => G.Filed;
+    internal static int Unboxed => G.Unboxed;
+    internal static int Occupied => G.Occupied;
+    /// <inheritdoc cref="UniformGrid.Refused"/>
+    internal static int Refused => G.Refused;
 
     /// <summary>Start a fresh index. Called once per enrolment, which is the only edge that can change which
     /// slot holds which part.</summary>
-    internal static void Begin()
-    {
-        for (int c = 0; c < Cells; c++) _head[c] = -1;
-        for (int i = 0; i < _cellOf.Length; i++) _cellOf[i] = -1;
-        _filed = 0; _unboxedN = 0; _occupied = 0;
-    }
+    internal static void Begin() => G.Begin();
 
-    /// <summary>File <paramref name="slot"/> under its world AABB.</summary>
-    internal static void Add(int slot, in Box box)
-    {
-        int cell = Cell(box.Min.X, box.Min.Y);
-        if (_head[cell] < 0)
-        {
-            _occupied++;
-            _box[cell] = box;
-        }
-        else
-        {
-            ref Box u = ref _box[cell];
-            if (box.Min.X < u.Min.X) u.Min.X = box.Min.X;
-            if (box.Min.Y < u.Min.Y) u.Min.Y = box.Min.Y;
-            if (box.Min.Z < u.Min.Z) u.Min.Z = box.Min.Z;
-            if (box.Max.X > u.Max.X) u.Max.X = box.Max.X;
-            if (box.Max.Y > u.Max.Y) u.Max.Y = box.Max.Y;
-            if (box.Max.Z > u.Max.Z) u.Max.Z = box.Max.Z;
-        }
-        _next[slot] = _head[cell];
-        _head[cell] = slot;
-        _cellOf[slot] = cell;
-        _filed++;
-    }
+    /// <inheritdoc cref="UniformGrid.Add"/>
+    internal static void Add(int slot, in Box box) => G.Add(slot, in box);
 
-    /// <summary>File <paramref name="slot"/> as unboundable: no world box, so every pass sees it.</summary>
-    internal static void AddUnboxed(int slot)
-    {
-        if (_unboxedN < _unboxed.Length) _unboxed[_unboxedN++] = slot;
-    }
+    /// <inheritdoc cref="UniformGrid.AddUnboxed"/>
+    internal static void AddUnboxed(int slot) => G.AddUnboxed(slot);
 
-    /// <summary>The cell a world XY falls in. Wraps, so any coordinate is a valid cell.</summary>
-    internal static int Cell(float x, float y)
-    {
-        int ix = (int)MathF.Floor(x / CellSize) & Mask;
-        int iy = (int)MathF.Floor(y / CellSize) & Mask;
-        return (iy << Bits) | ix;
-    }
+    /// <inheritdoc cref="UniformGrid.Cell"/>
+    internal static int Cell(float x, float y) => UniformGrid.Cell(x, y);
 
-    /// <summary>Append every filed slot whose cell survives <paramref name="planes"/> (six planes, the
-    /// <see cref="CullPass.Planes"/> convention: a point is inside when <c>dot(n, p) + d &gt;= 0</c>) into
-    /// <paramref name="into"/> from <paramref name="n"/>, plus every unboundable slot. <paramref name="slack"/>
-    /// grows each cell box, so a cell about to enter the view is yielded the frame before. Allocation-free.</summary>
+    /// <inheritdoc cref="UniformGrid.Query"/>
     internal static int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
-    {
-        for (int k = 0; k < _unboxedN && n < into.Length; k++) into[n++] = _unboxed[k];
-        for (int c = 0; c < Cells; c++)
-        {
-            int head = _head[c];
-            if (head < 0) continue;
-            if (!BoxInFrustum(planes, in _box[c], slack)) continue;
-            for (int i = head; i >= 0 && n < into.Length; i = _next[i]) into[n++] = i;
-        }
-        return n;
-    }
+        => G.Query(planes, slack, into, n);
 
-    /// <summary>Diagnostic: does the grid still describe where <paramref name="slot"/>'s box is? A query yields a
-    /// slot only through its filed cell and tests that cell's UNION box, so a box that has left the union is
-    /// invisible to every query. Reports the filed cell, the cell it would be filed under now, and whether the
-    /// union still covers it. Off the hot path -- asked only once the audit has found a miss.</summary>
+    /// <inheritdoc cref="UniformGrid.StillFiled"/>
     internal static bool StillFiled(int slot, in Box box, out int filed, out int now, out bool covered)
-    {
-        filed = (uint)slot < (uint)_cellOf.Length ? _cellOf[slot] : -1;
-        now = Cell(box.Min.X, box.Min.Y);
-        covered = false;
-        if (filed < 0) return false;
-        ref Box u = ref _box[filed];
-        covered = box.Min.X >= u.Min.X && box.Min.Y >= u.Min.Y && box.Min.Z >= u.Min.Z
-               && box.Max.X <= u.Max.X && box.Max.Y <= u.Max.Y && box.Max.Z <= u.Max.Z;
-        return filed == now && covered;
-    }
+        => G.StillFiled(slot, in box, out filed, out now, out covered);
 
-    /// <summary>The standard n-vertex box test: for each plane, the box corner FARTHEST along the plane normal.
-    /// Behind every one of the six and the box cannot be in view.</summary>
+    /// <inheritdoc cref="UniformGrid.BoxInFrustum"/>
     internal static bool BoxInFrustum(ReadOnlySpan<Vector4> planes, in Box box, float slack)
-    {
-        for (int f = 0; f < 6; f++)
-        {
-            Vector4 p = planes[f];
-            float x = p.X >= 0f ? box.Max.X + slack : box.Min.X - slack;
-            float y = p.Y >= 0f ? box.Max.Y + slack : box.Min.Y - slack;
-            float z = p.Z >= 0f ? box.Max.Z + slack : box.Min.Z - slack;
-            if (p.X * x + p.Y * y + p.Z * z + p.W < 0f) return false;
-        }
-        return true;
-    }
+        => UniformGrid.BoxInFrustum(planes, in box, slack);
 
     /// <summary>Off-device: the two properties the index lives by -- a slot comes back from a query that
     /// contains its cell and does not from one that does not, and an unboundable slot comes back from every

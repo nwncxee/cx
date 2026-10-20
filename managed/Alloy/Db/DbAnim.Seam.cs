@@ -2,15 +2,11 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>The twelve entry points the <c>CAurObject</c> animation slots call, in the spelling
+/// <summary>The entry points the <c>CAurObject</c> animation slots call, in the spelling
 /// <c>Seam/ObjectSlots.Anim.cs</c> uses, each one line over the runtime in the other <c>DbAnim*.cs</c> files.
-/// <c>DbAnim.Api.cs</c> is the same operations under the engine's own slot names; both surfaces are kept.</summary>
+/// <c>DbAnim.Api.cs</c> holds the rest of the surface, under the engine's own slot names.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Set by the seam so a refusal from this runtime reaches <c>cx.log</c> (seam-obj's
-    /// <c>SeamService</c> assigns it at boot; <see cref="Bind"/> is the same thing by another name).</summary>
-    public static ExtenderLog? Log { get => _log; set => _log = value; }
-
     /// <summary><c>Gob::Animate(float)</c> on ONE object: what the engine's per-gob animate did, for the paths
     /// that advance a single object (<c>CAurObject::AnimateExternal</c>, a GUI panel's model).</summary>
     public static void AnimateObject(DbId obj, float dt) => AnimateOneExternal(obj, dt);
@@ -30,8 +26,4 @@ public static unsafe partial class DbAnim
 
     /// <summary><c>Gob::EndLookAtAnimate</c> (slot 75).</summary>
     public static void EndLookAt(DbId obj) => LookAtEnd(obj);
-
-    /// <summary><c>Gob::DoEvent(name, data)</c> with the name as a raw <c>char*</c>, which is what the seam
-    /// holds.</summary>
-    public static void Event(DbId obj, nint name, nint data) => EventFire(obj, (byte*)name, data);
 }

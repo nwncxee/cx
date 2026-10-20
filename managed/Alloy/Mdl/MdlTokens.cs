@@ -54,15 +54,6 @@ internal static class MdlTok
         return line[..i];
     }
 
-    /// <summary>The rest of the line after its first word, which is what the engine hands
-    /// <c>::Parse(line + strlen(keyword), ...)</c>.</summary>
-    internal static ReadOnlySpan<byte> Rest(ReadOnlySpan<byte> line)
-    {
-        int i = 0;
-        while (i < line.Length && !IsSep(line[i])) i++;
-        return line[i..];
-    }
-
     /// <summary>Case-insensitive ASCII compare against a literal keyword -- the engine's <c>strcasecmp</c>.</summary>
     internal static bool Is(ReadOnlySpan<byte> word, string key)
     {

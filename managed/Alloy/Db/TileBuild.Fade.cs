@@ -147,20 +147,6 @@ public static partial class TileBuild
         return best < 0f;
     }
 
-    /// <summary>What the fade did on the last tick, in the same two quantities <c>TileFadeRamp</c> reports
-    /// (<c>N classified and M fading out per frame</c>), so the two can be compared like for like -- plus the
-    /// tiles currently mid-ramp and the session peak, which is what says the roof fade worked in a
-    /// session that ended with the camera somewhere else.</summary>
-    public static int FadeTicks => _fadeTicks;
-    /// <inheritdoc cref="FadeTicks"/>
-    public static int Classified => _classified;
-    /// <inheritdoc cref="FadeTicks"/>
-    public static int FadingOut => _fadingOut;
-    /// <inheritdoc cref="FadeTicks"/>
-    public static int Fading => _fading;
-    /// <inheritdoc cref="FadeTicks"/>
-    public static int FadingPeak => _fadingPeak;
-
     private static int _fadeTicks, _fading, _fadingPeak, _veiled, _fadeMode, _classified, _fadingOut, _fadeBoxSpill;
     /// <summary><see cref="SetTileLights"/> calls whose cell held no tile: a palette the area never applied.</summary>
     private static int _tileLightMiss;
@@ -168,7 +154,7 @@ public static partial class TileBuild
     /// row 0): a black main light is the area's choice, not a lost palette. Since boot, these four: the area
     /// edge that resets the other tallies fires AFTER <c>LoadArea</c>'s tile loop, which is when they count.</summary>
     private static int _palCalls, _palBlack1, _palBlack2;
-    private static int _modelsWithAabb, _modelsNoAabb, _aabbParts, _partsMade, _aabbWanted, _aabbFreed, _droppedReal, _realPlaced;
+    private static int _modelsWithAabb, _modelsNoAabb, _aabbParts, _partsMade, _droppedReal, _realPlaced;
     /// <summary>Walkmesh objects made from a <c>.wok</c>, placements whose tile model already carried an
     /// <c>aabb</c> node (so no <c>.wok</c> is loaded), and the three outcomes that make no object: no readable
     /// resource (a named refusal), an EMPTY walkmesh (what a tileset's filler tiles ship), and one that parsed
@@ -251,8 +237,6 @@ public static partial class TileBuild
     /// <summary>Live <c>aabb</c> parts in the whole database, counted on demand rather than tallied (a tally
     /// cannot be read against the area edge that resets it): whether the walkmeshes EXIST, independently of
     /// whether the hit set files them.</summary>
-    private static int AabbLive() => AabbLive(out _);
-
     private static int AabbLive(out int boxed)
     {
         int n = 0;

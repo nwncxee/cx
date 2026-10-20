@@ -144,14 +144,6 @@ public sealed partial class KnobGroup
     public KnobLink Link(string key, string label, string url, Tier tier = Tier.User)
         => Add(new KnobLink(this, key, label, url, tier, _section), null);
 
-    /// <summary>A knob of any other <typeparamref name="T"/> with its own format/parse pair; rendered by
-    /// <paramref name="kind"/>.</summary>
-    public Knob<T> Custom<T>(string key, string label, KnobKind kind, T def, Func<T, string> format,
-                             Func<string, (bool, T)> parse, Tier tier = Tier.Advanced, Effect effect = Effect.Live,
-                             string? help = null, Action? changed = null)
-        => Add(new Knob<T>(this, key, label, kind, tier, effect, _section, help ?? "", false,
-                           def, def, def, def, "", null, null, format, parse), changed);
-
     /// <summary>Hidden dynamic state under <paramref name="prefix"/> (spec §4.2 <c>w&lt;N&gt;.*</c>): one
     /// <see cref="KnobBag"/> owning every <c>&lt;group&gt;.&lt;prefix&gt;*</c> key. Outside the rows, the
     /// command, <c>/knobs</c> and <see cref="Reset"/>; the prefix must not head any knob name in the group.</summary>

@@ -13,18 +13,6 @@ namespace CX.Alloy;
 /// probe and light curve staged once into the <c>CxPass</c> block.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The engine's own wind vector and world clock, raw: both feed vanilla's water phase, so a wave
-    /// field that reads flat is one of them being unlike what the engine's own shader gets. Z is printed too
-    /// because the shader normalises the wind in THREE dimensions, so a large Z shrinks the horizontal
-    /// direction and stretches the wavelength past the area.</summary>
-    internal static string DescribeWind()
-    {
-        var w = AreaWind();
-        float z = _runtime == null ? 0f : Rt.AreaWind.Z;
-        int t = _runtime == null ? 0 : Rt.TimeOfDay;
-        return $"wind raw={w.Length():F3} (x={w.X:F3} y={w.Y:F3} z={z:F3}) timeofday={t}";
-    }
-
     /// <summary>The engine's world clock as the shaders see it, for the census. Everything time-varying in
     /// an owned stage derives from this int, so a frozen value is a frozen world.</summary>
     internal static int TimeOfDay => _runtime == null ? 0 : Rt.TimeOfDay;

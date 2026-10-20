@@ -19,7 +19,11 @@ public static unsafe partial class DbAnim
 
     private static float* _lodScale;
     private static bool _lodResolved;
-    private static int _lodSwaps, _lodHeld, _lodSettled;
+
+    /// <summary>The LOD layer's period numbers: swaps taken, bands held, frames skipped because nothing moved,
+    /// and frames with no measured WORLD view to band against.</summary>
+    private sealed class LodPeriodState { internal int Swaps, Held, Settled, NoCamera; }
+    private static LodPeriodState _lodPeriod = new();
 
     /// <summary>Bumped on every LOD swap, monotonically. A swap changes which of an object's two live
     /// alternates the renderer draws, so it can change which seated slot the draw order carries -- and it is
@@ -85,15 +89,22 @@ public static unsafe partial class DbAnim
     /// hysteresis band, so nothing can pop because of it.</summary>
     private const float LodEyeEpsilon = 0.1f;
 
-    /// <summary>Choose the level for every object of the scene that has one. Once per animate, after the
-    /// composes, so the distance is taken against the placement the frame will draw.</summary>
+    /// <summary>Choose the level for every object of the scene that has one, from the WORLD view's eye and
+    /// the last one measured: this is the UPDATE phase, so a per-view camera here would be whichever view drew
+    /// last -- with a 3D panel open, the PANEL's. A non-world scene is not banded; its models keep level 0.</summary>
     private static void LodChoose(int sceneIndex)
     {
         if (_lodWanted <= 0) return;
+        if ((uint)sceneIndex >= SceneDb.MaxScenes || !SceneDb.SceneIsWorld[sceneIndex]) return;
+        ref readonly AlloyView wv = ref AlloyCamera.WorldView;
+        // No world view measured yet, or one that does not invert: the bands cannot be measured, so every
+        // object holds the level it has and the period line counts the frame.
+        if (!wv.Valid || !Matrix4x4.Invert(wv.View, out Matrix4x4 inv)) { _lodPeriod.NoCamera++; return; }
+        Vector3 eye = inv.Translation;
         long dirty = SceneDb.Objects.DirtyMark;
-        bool eyeMoved = !((_lodEye - _eye).LengthSquared() <= LodEyeEpsilon * LodEyeEpsilon);
-        if (!eyeMoved && dirty == _lodDirtyAt) { _lodSettled++; return; }
-        _lodEye = _eye;
+        bool eyeMoved = !((_lodEye - eye).LengthSquared() <= LodEyeEpsilon * LodEyeEpsilon);
+        if (!eyeMoved && dirty == _lodDirtyAt) { _lodPeriod.Settled++; return; }
+        _lodEye = eye;
         _lodDirtyAt = dirty;
         LodResolve();
         bool enabled = LodEnabled;
@@ -107,15 +118,15 @@ public static unsafe partial class DbAnim
             if (_lodLevels[i] < 2) continue;
             if (SceneDb.ObjScene[i].Index != sceneIndex) continue;
             Vector4 s = SceneDb.ObjSphere[i];
-            float d2 = (new Vector3(s.X, s.Y, s.Z) - _eye).LengthSquared();
+            float d2 = (new Vector3(s.X, s.Y, s.Z) - eye).LengthSquared();
             int cur = SceneDb.ObjLodShown[i];
             int want = ChooseLod(d2, _lodNear[i], _lodFar[i], cur, enabled, scale, hyst,
                                      hasAlternate: true);
             if (want > _lodLevels[i] - 1) want = _lodLevels[i] - 1;
             if (!enabled) want = 0;   // switched off mid-session: back to the authored model, not frozen where it was
-            if (want == cur) { _lodHeld++; continue; }
+            if (want == cur) { _lodPeriod.Held++; continue; }
             SceneDb.ObjLodShown[i] = (byte)want;
-            _lodSwaps++; LodGen++;
+            _lodPeriod.Swaps++; LodGen++;
             // Both alternates' records are live, so the only thing the renderer has to learn is which one to
             // draw -- an object edge, which the feed folds into its parts.
             SceneDb.Objects.Mark(i, Dirty.Tree);
@@ -126,9 +137,11 @@ public static unsafe partial class DbAnim
     /// dominates it is the hysteresis working.</summary>
     internal static string LodPeriod()
     {
-        string s = $"{_lodSwaps} LOD swap(s), {_lodHeld} held, {_lodSettled} frame(s) skipped (nothing moved), {_lodWanted} object(s) with .lod alternates";
-        _lodSwaps = 0; _lodHeld = 0; _lodSettled = 0;
-        return s;
+        LodPeriodState p = _lodPeriod;
+        _lodPeriod = new();
+        return $"{p.Swaps} LOD swap(s), {p.Held} held, {p.Settled} frame(s) skipped (nothing moved), "
+             + $"{_lodWanted} object(s) with .lod alternates"
+             + (p.NoCamera == 0 ? "" : $", {p.NoCamera} animate(s) with NO WORLD VIEW measured (every band held)");
     }
 
     /// <summary>The level CX wants, from the engine's own two thresholds plus hysteresis. Pure.

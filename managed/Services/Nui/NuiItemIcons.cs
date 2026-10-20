@@ -16,7 +16,7 @@ namespace CX.Services.Nui;
 /// </summary>
 internal static unsafe class NuiItemIcons
 {
-    private const ushort ResTga = 3, ResAny = ushort.MaxValue;
+    private const ushort ResAny = ushort.MaxValue;
     private const int RefLen = RadialIcons.ResRefLen, LogCap = 20;
     private const int TgaHeader = 18;
     /// <summary>A master-palette row is 256 RGBA entries: <c>ImageDecode</c> addresses row r at <c>r &lt;&lt; 10</c>.</summary>
@@ -100,7 +100,7 @@ internal static unsafe class NuiItemIcons
         if (_ready && resref != null && resref[0] == (byte)'@' && NuiModelView.IsModelName(resref))
         {
             if (!NuiModelView.Prepare(resref)) return _loadOrig(ret, resref, type);
-            IntPtr m = _loadOrig(ret, _ref, ResTga);
+            IntPtr m = _loadOrig(ret, _ref, ResTypes.Tga);
             _b64Len = 0;
             NuiModelView.Loaded(resref, ret);
             return m;
@@ -124,7 +124,7 @@ internal static unsafe class NuiItemIcons
 
     private static bool Ours(byte* resref, ushort type)
     {
-        if (_b64Len == 0 || type != ResTga || resref == null) return false;
+        if (_b64Len == 0 || type != ResTypes.Tga || resref == null) return false;
         for (int i = 0; i < RefLen; i++) if (resref[i] != _ref[i]) return false;
         return true;
     }
@@ -147,7 +147,7 @@ internal static unsafe class NuiItemIcons
     /// own image). False = not an @item/@look string, or the icon would not build: the original string loads as it would.</summary>
     private static bool Prepare(byte* s, out ushort type)
     {
-        type = ResTga;
+        type = ResTypes.Tga;
         if (ImageNames.TryItem(MemoryMarshal.CreateReadOnlySpanFromNullTerminated(s), out uint oid))
         {
             IntPtr item = RadialIcons.Item((IntPtr)(oid | ImageNames.ServerIdBit));
@@ -191,7 +191,7 @@ internal static unsafe class NuiItemIcons
     /// base item gives the cells when the frame is unknown), or a plain icon's own resref when its art fills the sheet.</summary>
     private static bool FromIcon(IntPtr item, IntPtr icon, string what, out ushort type)
     {
-        type = ResTga;
+        type = ResTypes.Tga;
         Cells(item, out int cw, out int ch);
         float fw = RadialIcons.ContentFrac(cw), fh = RadialIcons.ContentFrac(ch);
         IconFrames.Frame f = IconFrames.Of(icon);

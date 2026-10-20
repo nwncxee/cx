@@ -134,14 +134,10 @@ whether they still vanish.
   static verdict is its record's `ObjFlag.Static` (or a tile part). (The `gpu.static` freeze this used to
   name is gone -- CX-188.)
 
-- **Texture / the #284 rebuild ledger.** In the 2026-09-16 session the only textures that ever reached
-  `[unbuilt]` were `"2"`, `NullTex` and `Standardmaterial` -- junk material names on placeables, the #317
-  bench class -- with the 8-line diag budget only 3 spent. `no-gl-id 31` was that population and the
-  climbing `skips refused by the ledger` is #627 doing its job on it. Read the full
-  `unbuilt textures:` clause including the `UNBUILDABLE:` split after the `;`.
-  That population no longer goes missing: a tid-0 diffuse draws on the white stand-in (vanilla parity, the
-  structural analysis's divergence A) and reads as `null-tex N drawn white/frame`, outside the NOT DRAWN
-  list. A `null-tex` count is "wrong colour", never "absent" -- if the part is absent, it is another term.
+- **Texture / a diffuse with no GL id.** That population no longer goes missing: a tid-0 diffuse draws on
+  the white stand-in (vanilla parity, the structural analysis's divergence A) and reads as
+  `null-tex N drawn white/frame`, outside the NOT DRAWN list. A `null-tex` count is "wrong colour", never
+  "absent" -- if the part is absent, it is another term.
 - **The per-instance sweep** (`revoked by the per-instance sweep`) drops a gob WHOLE, so it cannot take
   the hands and leave the robe.
 - **`[unbound=N]`** on the census line is the structural whole-creature figure #317 already called a

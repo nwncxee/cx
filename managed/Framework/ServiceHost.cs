@@ -98,6 +98,8 @@ public static class ServiceHost
         FrameRegistry.Global.Seal();
         foreach (FramePhase p in new[] { FramePhase.Start, FramePhase.PrePresent, FramePhase.PostPresent })
             log.Info($"host: frame {p} -> {string.Join(", ", FrameRegistry.Global.Names(p))}");
+        // a skip is not a pass: a suite that stood down has to say so where the boot lines are read
+        if (Checker.Skipped > 0) log.Always($"host: {Checker.Skipped} self-check suite(s) SKIPPED");
         hooks.Commit();
         ExtenderLog.Flush();   // boot lines on disk before the host returns: the demo exits right after
     }

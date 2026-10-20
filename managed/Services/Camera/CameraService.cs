@@ -74,10 +74,6 @@ public sealed unsafe class CameraService : IExtenderService
     private static float _fovWritten = float.NaN, _fovFirst = float.NaN;
     private static bool _live, _probeOk;
 
-    /// <summary>The Camera object sits 8 bytes before the CAurObject the behavior owns (<c>Camera::SetFollow</c>
-    /// passes <c>this+8</c> on both builds).</summary>
-    private const int CameraFromOwner = 8;
-
     private const float Deg = MathF.PI / 180f;
     /// <summary>Pitch limits when the behavior's own clamp is off: the full sphere short of the poles.</summary>
     private const float PitchFloor = 0.5f, PitchCeil = 179.5f;
@@ -238,8 +234,7 @@ public sealed unsafe class CameraService : IExtenderService
         }
     }
 
-    /// <summary>Frames the layer had a pose to write and no live camera to write it to (DB mode only).</summary>
-    private static int _noSink;
+    /// <summary>One-shot: the layer had a pose to write and no live camera to write it to (DB mode only).</summary>
     private static bool _noSinkSaid;
 
     private static void Adjust(IntPtr self, float dt)
@@ -249,7 +244,6 @@ public sealed unsafe class CameraService : IExtenderService
         CamSink c = CamSink.Of(cam);
         if (!c.Ok)
         {
-            _noSink++;
             if (!_noSinkSaid)
             {
                 _noSinkSaid = true;

@@ -11,8 +11,7 @@ namespace CX.Alloy.Db;
 /// The rows reach the shader as one <c>uvec4</c> per DRAW record in a block of its own (<see cref="Binding"/>).</summary>
 internal static unsafe class PltColors
 {
-    /// <summary>Layers a PLT pixel may name, which is <see cref="PltPalettes.Layers"/>: ten, one palette
-    /// each.</summary>
+    /// <summary>Layers a PLT pixel may name: ten, one palette each.</summary>
     internal const int Layers = SceneDb.PltLayers;
 
     /// <summary>SSBO binding of the per-record PLT row block: persistent, bound once per frame.</summary>
@@ -37,15 +36,11 @@ internal static unsafe class PltColors
     private static uint _ssbo;
     private static int _dirtyLo = int.MaxValue, _dirtyHi = -1;
     private static long _writes, _uploads, _colorWrites;
-    private static ExtenderLog? _log;
 
     internal static void Attach(ExtenderLog log)
     {
-        _log = log;
         if (_words.Length == 0) _words = new uint[Records * WordsPerRecord];
     }
-
-    internal static long ColorWrites => _colorWrites;
 
     // ---- the colour-change path: one record write ----
 

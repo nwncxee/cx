@@ -15,8 +15,6 @@ internal enum ObjAnim : uint
     Animating = 1 << 0,
     /// <summary><c>Gob::IsForceAnimated</c> -- exempt from the SCENE's gate.</summary>
     Forced = 1 << 1,
-    /// <summary><c>Gob::AnimateOffScreen</c> -- exempt from the view-volume gate.</summary>
-    OffScreen = 1 << 2,
     /// <summary><c>Gob::SetSynchronizeAnimations</c> -- take the step from the attach parent.</summary>
     Sync = 1 << 3,
     /// <summary>The record has been seated by <see cref="DbAnim.ObjectCreated"/>.</summary>
@@ -115,9 +113,6 @@ public static unsafe partial class DbAnim
     // ---- the run pool ----
 
     private static readonly AnimDef?[] _rAnim = new AnimDef?[MaxBlocks * MaxRuns];
-    /// <summary>The model whose chain resolved this run's animation: the binding cache's key, and what the
-    /// animation scale was taken against.</summary>
-    private static readonly ModelDef?[] _rModel = new ModelDef?[MaxBlocks * MaxRuns];
     private static readonly float[] _rRate = new float[MaxBlocks * MaxRuns];
     private static readonly float[] _rPrev = new float[MaxBlocks * MaxRuns];
     private static readonly float[] _rTime = new float[MaxBlocks * MaxRuns];
@@ -135,7 +130,6 @@ public static unsafe partial class DbAnim
     /// scene. A shrink means the consumer took the list, so the next fold is due.</summary>
     private static long _foldedAt = -1;
     private static int _foldSkipped;
-    private static Vector3 _eye;
 
     /// <summary>Per-period counters. Each refusal is a hole in a pose, so each has its own count rather than a
     /// shared "errors".</summary>
@@ -150,13 +144,9 @@ public static unsafe partial class DbAnim
     /// <inheritdoc cref="_periodDt"/>
     private static int _periodCalls;
 
-    /// <summary>Bind the log. seam-obj's <c>SeamService</c> calls this once at boot, in DB mode only.</summary>
+    /// <summary>Bind the log, from the <c>dbanim</c> pass entry's attach -- so a refusal from this runtime
+    /// reaches <c>cx.log</c> from the first frame of the session.</summary>
     public static void Bind(ExtenderLog log) => _log = log;
-
-    /// <summary>The frame counter the per-object stamps are taken against. Read by the self-check.</summary>
-    internal static int Frame => _frame;
-
-    private static void Eye(Vector3 eye) => _eye = eye;
 
     /// <summary>Advance every animated object of <paramref name="scene"/> by <paramref name="dt"/> seconds
     /// (the CAurScene <c>Animate</c> slot), then compose the world matrices of what moved.</summary>
@@ -206,11 +196,6 @@ public static unsafe partial class DbAnim
         // two nested numbers add up to more than the Animate slot actually costs.
         FrameZones.Add(FrameZones.Zone.Anim, t0, FrameZones.Ticks(FrameZones.Zone.HitFoldAi) - hit0);
     }
-
-    /// <summary>Compose world matrices for the dirty objects of <paramref name="scene"/> (also called on demand
-    /// by the by-value getters, so a getter after a setter answers the new value without waiting for a
-    /// frame).</summary>
-    public static void Compose(DbId scene) => ComposePending();
 
     /// <summary>The frame boundary's last compose, just before the dirty lists are taken: an object created or
     /// moved after the frame's last scene animate (the main menu rebuilt as a NUI window closes) would otherwise
@@ -490,7 +475,6 @@ public static unsafe partial class DbAnim
         _fromRot[i] = default;
         _fromScale[i] = float.NaN;
         LookAtClear(i);
-        CbClear(i);
         ScanTree(i);
         Moved(i);
     }
@@ -504,7 +488,6 @@ public static unsafe partial class DbAnim
         ObjectDying(obj);
         if (!SceneDb.Objects.Valid(obj)) return;
         ClearQueue(i);
-        CbClear(i);
         LookAtClear(i);
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++) Unskin(first + k);
@@ -583,18 +566,7 @@ public static unsafe partial class DbAnim
         if (on) _flags[obj.Index] |= f; else _flags[obj.Index] &= ~f;
     }
 
-    private static void SetAnimGate(DbId obj, bool on) => SetFlag(obj, ObjAnim.Animating, on);
-    private static void SetForce(DbId obj, bool on) => SetFlag(obj, ObjAnim.Forced, on);
     private static void SetSync(DbId obj, bool on) => SetFlag(obj, ObjAnim.Sync, on);
-
-    private static void SetSpeed(DbId obj, float speed, float over)
-    {
-        if (!SceneDb.Objects.Valid(obj)) return;
-        int i = obj.Index;
-        _speedTo[i] = speed;
-        if (over > 0f) _speedRate[i] = MathF.Abs(speed - _speed[i]) / over;
-        else { _speed[i] = speed; _speedRate[i] = 0f; }
-    }
 
     private static void SetVisScale(DbId obj, float scale, float over)
     {
@@ -653,7 +625,8 @@ public static unsafe partial class DbAnim
         _unbound = _queueFull = _noBlock = _bezier = _morphs = _traced = 0;
         _uvMorphs = _offChannel = _dynFull = _lookAtNoHead = _idle = _foldSkipped = _reanchored = _skinOnly = 0;
         _periodDt = 0f; _periodCalls = 0;
-        _fired = _starts = _loops = _dones = _cbFull = 0;
+        // The said-once flags go with them: a session that fixed the cause should be able to say so again.
+        _events = new();
         _solved = _dispatched = _unresolvedPart = _noSync = _noDestroy = 0;
         _skinned = _skinNoBind = _skinNoSlot = _litWrites = _litUncarried = 0;
         return s;

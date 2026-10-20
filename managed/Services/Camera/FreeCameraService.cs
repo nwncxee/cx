@@ -42,7 +42,6 @@ public sealed unsafe class FreeCameraService : IExtenderService
     private static float _fovEntry;
     private static int _originX, _originY, _mx, _my;
     private static Why _pending;
-    private static CameraService.Gate _exitGate;
     private static int _entries, _leashHits;
 
     public void Initialize(ExtenderLog log, HookService hooks)
@@ -69,7 +68,7 @@ public sealed unsafe class FreeCameraService : IExtenderService
     internal static void Frame(in CameraService.CamSink cam, CameraService.Gate g, float dt)
     {
         if (g == CameraService.Gate.NotWorldCamera) return;
-        if (g is not (CameraService.Gate.Active or CameraService.Gate.Off)) { _exitGate = g; Leave(Why.Gate); return; }
+        if (g is not (CameraService.Gate.Active or CameraService.Gate.Off)) { Leave(Why.Gate); return; }
         IntPtr cre = CameraService.PlayerCreature();
         if (cre == IntPtr.Zero) { Leave(Why.NoCreature); return; }
         if (new CNWCCreature(cre).CombatState != 0) { Leave(Why.Combat); return; }

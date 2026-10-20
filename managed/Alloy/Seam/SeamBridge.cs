@@ -69,11 +69,10 @@ public static class SeamBridge
     /// <summary>A part's weight for <c>Gob::GetRandomPart</c>'s area-weighted draw.</summary>
     public static Func<int, float> PartArea = static p => { Refuse(11, "the part's area query (CX-114)"); return 0f; };
 
-    /// <summary>How many times each bridge entry refused, for the seam's period line.</summary>
-    public static string Stats()
+    /// <summary>Calls refused across every bridge entry, for the seam's period line. Each distinct entry
+    /// also names itself once as it refuses; this is the running total.</summary>
+    public static long Refused
     {
-        long total = 0;
-        foreach (long n in _refusals) total += n;
-        return total == 0 ? "bridge: all wired" : $"bridge: {total} refused call(s) to unwired subsystems";
+        get { long total = 0; foreach (long n in _refusals) total += n; return total; }
     }
 }

@@ -164,7 +164,7 @@ public sealed unsafe partial class AlloyRenderer
         _log?.Info($"AlloyRenderer: [alloy] {DbFeed.Stats()} | {DbTableNote()} | {DbPassNote()} "
                      + $"| {DbInputs.Stats()} | {DbEmitterChannels.Stats()} | {DbGui.Stats()}");
         _log?.Info($"AlloyRenderer: [alloy] {Counters._lastEnrolled}/{Counters._lastCandidates} parts owned{CapacityNote()}" +
-                   (holes <= 0 ? "" : $" ({holes} NOT DRAWN)") + " [" + OwnedTextures.TranscodeNote() + "; " + OwnedTextures.CacheNote() + "; " + OwnedTextures.PrefetchNote() + TexStream.Note() + TexLoad.Note() + ModelLoad.Note() + "; " + DdsReader.Note() + "; " + RasterReader.Note() + "]" +
+                   (holes <= 0 ? "" : $" ({holes} NOT DRAWN)") + " [" + OwnedTextures.TranscodeNote() + "; " + OwnedTextures.CacheNote() + "; " + OwnedTextures.UploadNote() + TexStream.Note() + TexLoad.Note() + ModelLoad.Note() + "; " + DdsReader.Note() + "; " + RasterReader.Note() + "]" +
                    $" drawn by {OwnedClasses()} " +
                    $"/ {Counters._lastTextures} textures " +
                    $"({_litCount} lit, {Counters._litUnownable} lit left to the engine" +
@@ -287,7 +287,7 @@ public sealed unsafe partial class AlloyRenderer
                    // while the world renders is the whole reason this is a roll-call and not a fixed list --
                    // the frame looks fine, just 8-bit and un-bloomed, and only the clause says so.
                    PassRegistry.Global.Stats(Counters._frames) + ", " +
-                   $"enrolls={Counters._enrolls} revokes={Counters._revokes}; cycle={CycleTextures.Count} steps={CycleTextures.Steps}" + (CycleTextures.Overflow == 0 ? "" : $" overflow={CycleTextures.Overflow}") + (CycleTextures.OtherClass == 0 ? "" : $" otherctl={CycleTextures.OtherClass}") + "; " +
+                   $"enrolls={Counters._enrolls} revokes={Counters._revokes}; " +
                    // #119: the prepass's own cost, and what it bought. samples/px is the overdraw figure --
                    // run the same scene with /alloy prepass 0 and the difference IS the pass's worth.
                    (!_depthPrepass ? "prepass OFF (/alloy prepass 1 restores it)"
@@ -451,11 +451,6 @@ public sealed unsafe partial class AlloyRenderer
         internal static long _nrmDeclared, _nrmBound;
         /// <summary>Lit parts refused at enrollment (no normal stream / lit program down) -- they stay vanilla.</summary>
         internal static int _litUnownable;
-        /// <summary>Parts refused for carrying bone streams, and what the per-instance sweep then cost --
-        /// already-accepted parts revoked because a SIBLING on the same instance was refused. With
-        /// <c>AlloyCensus.RefusedGobs</c> on the same line, the honest answer to "why is that creature still
-        /// vanilla". Counted as PARTS, which is the figure the sweep actually produces.</summary>
-        internal static int _skinUnownable, _gobParts;
         /// <summary>Blended parts dropped from this enrollment because the class could not be Alloy whole --
         /// dropped means NOT DRAWN, there being no engine walk behind the class. Reported: a class that never
         /// lands is the one number separating "no transparent content here" from "one part keeps refusing and
@@ -505,25 +500,10 @@ public sealed unsafe partial class AlloyRenderer
     /// same reason as <see cref="Counters"/>.</summary>
     internal static class Diag
     {
-        /// <summary>A small budget of NAMED failures. The counters say which fault; only the resref says which
-        /// CONTENT, and that is what separates "one model's texture" from "a whole class of them". Budgeted
-        /// rather than rate-limited: the population is what matters and it is small, so a handful of distinct
-        /// names is the whole answer.</summary>
-        internal static int _texSkipDiagLeft = 12;
-        internal static readonly System.Collections.Generic.HashSet<string> _texSkipSeen = new();
         /// <summary>Diagnostic budget for <see cref="HandleDiag"/>. Cold by construction -- the miss path runs
         /// about once per distinct texture per enrollment, not per draw -- and it stops speaking after this many
         /// reports, so it costs one branch on a warm cache.</summary>
         internal static int _handleDiagLeft = HandleDiagBudget;
         internal static bool _ambientFallbackLogged, _loggedOnce;
-    }
-
-    /// <summary>A per-bucket counter as "bucket:per-frame", only the buckets that contributed.</summary>
-    internal static string ByBucket(long[] counts)
-    {
-        string s = "";
-        for (int b = 0; b < counts.Length; b++)
-            if (counts[b] != 0) s += $" {b}:{(float)counts[b] / Counters._frames:F0}";
-        return s.Length == 0 ? " none" : s;
     }
 }

@@ -177,8 +177,8 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
 - **The per-gob env override** (`gob+0x480`) was already owned by #121 and is *not* a flag:
   `RenderEnvironmentMapped` @0x451040 reads it as a `CAurTexture*` that REPLACES the material's env map
   (falling back to `mat+0x40`, then to `currentscene+0x1e8`), then calls `RenderFlat` anyway. Alloy's IBL
-  probe supplies the texture. `AlloyCensus.GobHasEnvMap` sets `AlloyCandidate.Env`, exactly as a material
-  env map does.
+  probe supplies the texture. A gob's own override sets the record's env bit, exactly as a material env map
+  does (`AlloyRenderer.DbEnvMapped`).
   *Known approximation, unowned*: that function also passes `part+0xa0 * gob+0x108` to
   `SetPixelShaderAmbientColor` — the reflection's strength. Alloy stages ambient.w as 1.
 
@@ -198,9 +198,8 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
   any more: `AurTextureGetTID` @0x48e080 returns 0 for the engine's shared `m_pNullTexture`, `CAurTexture::Bind`'s
   IsNull branch binds 0 and the draw is still issued, so vanilla renders such a part blank white. Alloy now
   draws it on a 1x1 white owned texture (`OwnedTextures.WhiteTid`) instead of deleting it from the frame, and
-  the record stays stale so a late GL id is picked up the frame it arrives. The retry drip (#284, see
-  `docs/owned-resource-lifetimes.md`) is unchanged and still the repair. `no-gl-id` survives for the one case
-  that is still a hole — the stand-in itself could not be minted.
+  the record stays stale so a late GL id is picked up the frame it arrives. `no-gl-id` survives for the one
+  case that is still a hole -- the stand-in itself could not be minted.
 
 ## The census holes, closed (CX-91)
 
@@ -246,10 +245,9 @@ nm addresses (the read-only dump in `$NWN_DECOMP/` prints them + 0x100000).
   not in `Scene+0x130`, the list `SceneWalk` enumerates. The engine draws it from `Scene::RenderSkyBoxes`
   @0x466910 alone, outside every draw bucket, which is the sky's own path (#125/#136). The world census
   cannot reach it, and owning it there would be a second sky at world depth. Expect `scene-tint=0`.
-  *Correction on the way past:* `gob+0x18`, which `EngineLayout.GobHighlight` names and which the #285 note
-  above calls "the placeable highlight", is the **skybox** flag — its only writer is `Scene::SetSkyBox`
-  @0x45e260, setting it on all four skybox gobs, and `Mat` reads it to keep a skybox part out of the lit
-  branch. The build-file key is kept; what it means is that. The placeable highlight is `Scene`'s own
+  *Correction on the way past:* `gob+0x18`, which the #285 note above calls "the placeable highlight", is
+  the **skybox** flag — its only writer is `Scene::SetSkyBox` @0x45e260, setting it on all four skybox gobs,
+  and `Mat` reads it to keep a skybox part out of the lit branch. The placeable highlight is `Scene`'s own
   highlight list (`Scene::AddHighlightGob` / `DoHighlightGob`), not a gob byte.
 - **`empty-item`** (was `item` + `item-range`; the out-of-range half moved to the drift gate above). What is
   left is an item the VDO holds with **zero indices**. `RenderFlat` @0x450eb0 passes
@@ -344,7 +342,7 @@ A second, smaller verdict sits beside the world's, because the GUI has no world 
 | Term | Where | If it fails |
 | --- | --- | --- |
 | Alloy requested at boot (`alloy.enabled`, `alloy.drawhooks=batch`) and the `RenderSinglePass` shim armed (its two funnel hooks are where GUI draws are captured) | `AlloyRenderer.Initialize` → `GuiPass.Install` | nothing installs; the engine draws its GUI |
-| the state caches, `Scene::RenderOnlyGobs` and the screen size resolved | `GuiCapture.Install` | `_log.Always`, the engine draws its GUI |
+| the `GLRender` state caches and the screen size resolved | `GuiCapture.Install` | `_log.Always`, the engine draws its GUI |
 | the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | before the first present: the engine's GUI (one or two frames at boot); a build failure is a loud `Fail` and the engine draws the GUI for the session |
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |

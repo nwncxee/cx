@@ -20,7 +20,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// <summary>The live-list capacity IS the ownership table's: a caster is an ownership slot, so a smaller
     /// number here would silently bake a fraction of what the colour pass draws -- which reads as "shadows go
     /// missing in big areas", not as a cap.</summary>
-    private const int MaxCasters = AlloyRenderer.MaxOwned, MaxVdos = AlloyRenderer.MaxVdos;
+    private const int MaxCasters = AlloyRenderer.MaxOwned;
     private const int LogEvery = 900, FirstLogAt = 120;
     /// <summary>Faces per cube.</summary>
     private const int CubeFaces = 6;
@@ -49,13 +49,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// so it bakes on a later frame, nearest rank first. Re-keys and blanket invalidates never hold: six
     /// 512px faces of the whole static world per slot is the single biggest hitch term the ledger read.</summary>
     private static int _staticCap => Shadows.StaticCap.V;
-    /// <summary><c>/shadow itemdirty 0</c>: the A/B back to the per-pool-buffer vertex-dirty signal. See
-    /// <c>AlloyRenderer.ItemDirty</c> for what the item-level one fixes.</summary>
-    private static bool _itemDirty => Shadows.ItemDirty.V;
-    /// <summary>An arena caster has no VDO buffer to be dirty: the arena republishes a moved range through
-    /// <c>AlloyRenderer.DbRangesMoved</c> instead, so the per-vertex signal does not apply to it.</summary>
-    private static bool VertexDirty(int vao, int item)
-        => !AlloyRenderer.IsArenaVao(vao) && _vDirty[vao] && (!_itemDirty || AlloyRenderer.ItemMoved(vao, item));
     private static long _cubeDynSkipped, _sunDynSkipped;
     private const int AllFaces = (1 << CubeFaces) - 1;
     /// <summary>The sun's dynamic layer holds a bake for the fit matrix beside it, so a frame with
@@ -101,15 +94,10 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static ExtenderLog? _log;
     private static bool _armed, _disarmed;
     private static uint* _primTable;
-    /// <summary>The diffuse lookup for masked casters: <c>Material::GetTexture(mat, 0)</c> then the Aurora
-    /// texture's live GL id. Both re-read per frame -- a CAurTexture* is BORROWED and freed on area
-    /// transitions, so it is never cached.</summary>
-    private static MatGetTextureFn _getTexture;
 
     // --- lifecycle + diagnostics
     private static readonly EdgeState _was = new();
     private static bool _loggedOnce, _noSunLogged;
-    private static int _tableGen = -1;
     private static int _frames;
     private static long _mdiCalls;
     /// <summary>CPU ticks the bake's own 4.6 context bracket costs -- both switches, each a fence +
@@ -163,7 +151,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
         Array.Fill(_dynPageOf, -1);
 
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        _getTexture = EngineFn.MatGetTexture;
         if (_primTable == null)
         { log.Info("CasterPass: primitive-type table unresolved -- Alloy caster submission unavailable"); return; }
 
@@ -226,36 +213,10 @@ public sealed unsafe partial class CasterPass : IExtenderService
         return px * px + py * py + pz * pz <= (reach + r) * (reach + r) && MathF.Abs(t) <= along + r;
     }
 
-    /// <summary>One caster's index range, from whichever geometry source its slot draws out of: the mesh
-    /// arena in DB mode, the VDO item tables in the engine path.</summary>
+    /// <summary>One caster's index range: the mesh arena's draw arguments, which is where every seated
+    /// slot's geometry lives.</summary>
     private static bool CasterRange(in AlloyRenderer.CasterFacts f, out int idxCount, out uint first, out uint baseVert)
-        => AlloyRenderer.DbSlot(f.Slot)
-            ? AlloyRenderer.DbCasterRange(f.Slot, out idxCount, out first, out baseVert)
-            : TryRange(f.Vdo, f.Item, out idxCount, out first, out baseVert);
-
-    /// <summary>Resolve a VDO item's index range, live out of the item tables. Every consumer re-reads it
-    /// rather than caching it because <c>Repack()</c> MOVES items, and a stale index range does not read as an
-    /// empty draw -- it reads as another part's geometry. <paramref name="first"/> is in INDICES, not bytes:
-    /// the byte-offset APIs elsewhere multiply by 2 and the indirect command must not.</summary>
-    private static bool TryRange(IntPtr vdo, int item, out int idxCount, out uint first, out uint baseVert)
-    {
-        idxCount = 0; first = 0; baseVert = 0;
-        // CX-120: a DB slot has no VDO at all -- its geometry is the mesh arena's, and the columns carry
-        // IntPtr.Zero / item -1. Constructing a VdoRef over that read a null pointer and took the client
-        // down on the first DB frame that reached the bake.
-        if (vdo == IntPtr.Zero || item < 0) return false;
-        VdoRef v = new(vdo);
-        long elem = v.ElemItems;
-        long vert = v.VertItems;
-        if (elem == 0 || vert == 0 || item < 0
-            || item >= v.ElemCount || item >= v.VertCount) return false;
-        int n = *(int*)(elem + item * 8 + 4);
-        if (n <= 0) return false;
-        idxCount = n;
-        first = (uint)*(int*)(elem + item * 8);
-        baseVert = (uint)*(int*)(vert + item * 8);
-        return true;
-    }
+        => AlloyRenderer.DbCasterRange(f.Slot, out idxCount, out first, out baseVert);
 
     /// <summary>The world-caster bake, driven ahead of the colour pass that samples it. It runs at the frame
     /// anchor, BEFORE the colour build -- which is where the one-frame record lag comes from, and why
@@ -339,10 +300,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
         AlloyRenderer.Step("shadow bracket: dead handles and the bake's handle upload");
         OwnedTextures.DropDeadHandles();        // the colour drain is AFTER this bracket; textures die on area load before both
         Issue.UploadHandlesForBake();   // a handle dropped since the last colour upload must not be sampled below
-        // #260: the bake and the colour pass read the SAME buffer -- the pool's, which Alloy uploaded at the
-        // engine's own commit -- so there is nothing to bring into agreement here any more. What closes is
-        // the dirty window, and this bracket runs after the sweep has already read _vDirty off it.
-        OwnedBuffers.ClearDirty();
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         _gl.QShadowOn = _gl.QShadow.Begin(Gl.TIME_ELAPSED);
         // #286: ONE staging for the whole frame, after the bones (the skin drop is a per-frame fact) and
@@ -516,7 +473,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    $"(predicate {(_rebake ? "on" : "OFF -- /shadow rebake 1")}, " +
                    $"{(float)_moverSum / _frames:F1} movers/frame -- matrix {(float)_mvMatrix / _frames:F1} (r mean {(_mvMatrix > 0 ? _mvMatrixR / _mvMatrix : 0f):F2} max {_mvMatrixRMax:F2} m = '{(_mvMatrixRMaxSlot >= 0 ? AlloyRenderer.SlotTexNameDb(_mvMatrixRMaxSlot) : "")}', dynmin {Shadows.DynMin.V:F1}), " +
                    $"bones {(float)_mvBone / _frames:F1}, dangly {(float)_mvDangly / _frames:F1}, " +
-                   $"vertex-dirty {(float)_mvVertex / _frames:F1}, appeared {(float)_mvAppear / _frames:F1}, " +
+                   $"appeared {(float)_mvAppear / _frames:F1}, " +
                    $"{(float)_ghostSum / _frames:F1} vanished, " +
                    $"{(float)_noRecordSum / _frames:F1} refused for want of a record" +
                    (_degenSum > 0 ? $", {(float)_degenSum / _frames:F1} DEGENERATE-admitted movers defeating the predicate" : "") +
@@ -611,7 +568,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         Array.Clear(_sunStaticL); _sunDynBakedViews = 0; _sunDynSkipped = 0; _cubeDynSkipped = 0;
         CasterGather.LayerDispatches = 0; CasterGather.LayerViews = 0;
         Array.Clear(_bakeWhy);
-        _mvMatrix = 0; _mvMatrixR = 0; _mvMatrixRMax = 0; _mvMatrixRMaxSlot = -1; _mvDangly = 0; _mvVertex = 0; _mvBone = 0; _mvAppear = 0; _degenSum = 0; _nanMovers = 0; _noRecordSum = 0;
+        _mvMatrix = 0; _mvMatrixR = 0; _mvMatrixRMax = 0; _mvMatrixRMaxSlot = -1; _mvDangly = 0; _mvBone = 0; _mvAppear = 0; _degenSum = 0; _nanMovers = 0; _noRecordSum = 0;
         _submitMasked = 0; _maskNoTex = 0; _maskNoProg = 0; _collects = 0;
         CasterGather.Views = 0; CasterGather.Batches = 0;
         CasterGather.SampledKeptDyn = 0; CasterGather.SampledStagedDyn = 0;

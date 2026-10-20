@@ -51,9 +51,6 @@ public static class Theme
         new("ash", "Ash", Shift(SlateRgb, 0f, 0f)),
     };
 
-    /// <summary>The colours worn with the native look.</summary>
-    public static readonly Palette Native = new("native", "Game art", NativeRgb);
-
     private sealed class ThemeState
     {
         public uint[] Rgb = SlateRgb;
@@ -86,9 +83,6 @@ public static class Theme
 
     /// <summary>The last non-custom palette chosen.</summary>
     public static string Previous => _s.Previous;
-
-    /// <summary>The palettes found in content, as the scan left them.</summary>
-    public static Palette[] Found => _s.Found;
 
     /// <summary>Publish a new scan: re-offer <c>ui.palette</c> (built-ins, custom, then found) and re-resolve. Main thread, cold.</summary>
     internal static void SetFound(Palette[] found)

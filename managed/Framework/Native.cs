@@ -129,6 +129,41 @@ public static unsafe class Native
         return EngineText(text);
     }
 
+    /// <summary>The two globals the asks below walk, resolved once each: both are read per call.</summary>
+    private static readonly IntPtr AppMgrSym = Sym(SymbolMap.AppManager), GuiManSym = Sym(SymbolMap.GuiMan);
+
+    /// <summary>An engine modal panel is up -- the gold or split-amount prompt, a confirm. It draws over every CX
+    /// window, so a CX panel steps aside while one is open. Read from the engine per ask, never latched. An
+    /// unresolved <c>CGuiMan</c> row reads as no modal rather than as the vtable word: a caller gates the class
+    /// with <c>EngineLayout.Require</c>, which is where the stand-down is announced.</summary>
+    public static bool ModalPanelUp()
+    {
+        IntPtr gm = GuiManSym;
+        if (gm == IntPtr.Zero || EngineLayout.GuiManModalCount == 0) return false;
+#pragma warning disable RS0030 // Native.ModalPanelUp is the one reader of the modal stack's depth
+        return *(IntPtr*)gm != IntPtr.Zero && new CGuiMan(*(IntPtr*)gm).ModalCount > 0;
+#pragma warning restore RS0030
+    }
+
+    /// <summary>An object's display name as the engine shows it (a creature's full name, an item's name, a
+    /// placeable's or door's TLK string), trimmed; "" when the object is gone or the chain is unresolved. The out
+    /// CExoString is CALLER-owned: zeroed before the call (the engine frees a non-null buf) and freed after, or
+    /// every call leaks a heap block. COLD.</summary>
+    public static string ObjectName(uint id)
+    {
+        IntPtr mgr = AppMgrSym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)AppMgrSym;
+        IntPtr app = mgr == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)mgr;
+        if (app == IntPtr.Zero || EngineFn.GetObjectName == null || EngineFn.ExoStringDtor == null) return "";
+        byte* exo = stackalloc byte[ExoScratch];
+        NativeMemory.Clear(exo, ExoScratch);
+#pragma warning disable RS0030 // Native.ObjectName is the one caller of the engine's name read
+        new CClientExoApp(app).GetObjectName(id, (IntPtr)exo);
+#pragma warning restore RS0030
+        string name = ReadExo((IntPtr)exo);
+        EngineFn.ExoStringDtor((IntPtr)exo);
+        return name.Trim();
+    }
+
     /// <summary>The std::string and CExoString readers against hand-built layouts -- the stub host has no engine to call.</summary>
     public static void SelfCheck(ExtenderLog log)
     {

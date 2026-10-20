@@ -122,6 +122,17 @@ internal static partial class MeshChart
         CX.Alloy.Db.MeshArena.Release(rTwo);
         CX.Alloy.Db.MeshArena.ResetForCheck();
 
+        // the job table's own round trip, no worker: claim, file under the claim, refuse a stale sig, forget one slot
+        var t = new SlotJobTable<Job, Entry>(8, 1);
+        t.Offer(t.Rent(), KeyOf(7, 1), 11); t.Offer(t.Rent(), KeyOf(8, 1), 12);
+        check.Expect(!t.QueueHasRoom, "a full queue still has room");
+        check.Expect(t.File(KeyOf(7, 1), 11, new Entry { Done = true, Sig = 11 }), "a result under its claim was refused");
+        check.Expect(!t.File(KeyOf(7, 1), 99, default), "a result under a stale signature was filed");
+        t.ForgetSlot(7);
+        check.Expect(!t.Entries.ContainsKey(KeyOf(7, 1)) && t.Entries.ContainsKey(KeyOf(8, 1)), "ForgetSlot did not drop exactly its slot");
+        t.Revoke();
+        check.Expect(t.Entries.Count == 0 && t.QueueHasRoom, "Revoke left entries or queued jobs behind");
+
         log.Info(check.Ok ? "MeshChart.SelfCheck: passed" : "MeshChart.SelfCheck: FAILED");
         return check.Ok;
     }

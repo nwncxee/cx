@@ -85,11 +85,7 @@ internal static unsafe class PairDebt
         Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)view);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindStats, _gl.BufStats);
 
-        BindUnit(TextureSlots.Gbuf0, GBuffer.Tex0);
-        BindUnit(TextureSlots.Gbuf1, GBuffer.Tex1);
-        BindUnit(TextureSlots.Gbuf2, GBuffer.Tex2);
-        BindUnit(TextureSlots.Gbuf3, GBuffer.Tex3);
-        BindUnit(TextureSlots.GbufDepth, PostChain.DepthTex);
+        GBuffer.BindForCompute();
         Gl.BindImageTexture(0, PostChain.HdrTex, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA16F);
         Gl.BindImageTexture(1, GBuffer.TexLight, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA32UI);
 
@@ -100,9 +96,7 @@ internal static unsafe class PairDebt
 
         Gl.BindImageTexture(0, 0, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA16F);
         Gl.BindImageTexture(1, 0, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA32UI);
-        BindUnit(TextureSlots.Gbuf0, 0); BindUnit(TextureSlots.Gbuf1, 0);
-        BindUnit(TextureSlots.Gbuf2, 0); BindUnit(TextureSlots.Gbuf3, 0);
-        BindUnit(TextureSlots.GbufDepth, 0);
+        GBuffer.UnbindCompute();
         Gl.ActiveTexture(Gl.TEXTURE0);   // the unit every pass leaves current
         Gl.UseProgram(0);
         _runs++;
@@ -126,12 +120,6 @@ internal static unsafe class PairDebt
         if (v == null) return;
         _overTiles += v[0] - _gl.LastTiles; _overPairs += v[1] - _gl.LastPairs; _covTiles += v[2] - _gl.LastCov;
         _gl.LastTiles = v[0]; _gl.LastPairs = v[1]; _gl.LastCov = v[2];
-    }
-
-    private static void BindUnit(uint unit, uint tex)
-    {
-        Gl.ActiveTexture(Gl.TEXTURE0 + unit);
-        Gl.BindTexture(Gl.TEXTURE_2D, tex);
     }
 
     /// <summary>Build the program on the first frame that wants it, once. A link failure is LOUD and latched:

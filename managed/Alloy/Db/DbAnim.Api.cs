@@ -1,4 +1,3 @@
-using System.Numerics;
 using CX.Alloy.Mdl;
 
 namespace CX.Alloy.Db;
@@ -32,24 +31,14 @@ public static unsafe partial class DbAnim
     /// <summary><c>Gob::RemoveAddInAnimations</c> (slot 10).</summary>
     public static void RemoveAddInAnimations(DbId obj) => RemoveAddIn(obj);
 
-    /// <summary><c>Gob::IsAnimating</c> (slot 77) and <c>Gob::IsForceAnimated</c> (Gob-only slot 85). The four
-    /// setters behind them are one entry, <c>SetAnimationsEnabled</c> in <c>DbAnim.Seam.cs</c>.</summary>
+    /// <summary><c>Gob::IsAnimating</c> (slot 77). The four setters behind the gates are one entry,
+    /// <c>SetAnimationsEnabled</c> in <c>DbAnim.Seam.cs</c>.</summary>
     public static bool IsAnimating(DbId obj) => Flag(obj, ObjAnim.Animating);
-    /// <inheritdoc cref="IsAnimating"/>
-    public static bool IsForceAnimated(DbId obj) => Flag(obj, ObjAnim.Forced);
 
     /// <summary><c>Gob::SetSynchronizeAnimations</c> (slot 78): while set, the object's run queue takes its
     /// times from the object it is attached to rather than advancing on its own -- what keeps a head, a cloak
     /// and a held weapon on the same frame as the body.</summary>
     public static void SetSynchronizeAnimations(DbId obj, bool on) => SetSync(obj, on);
-
-    /// <summary><c>Gob::AnimateOffScreen</c>: the exemption from the visibility gate.</summary>
-    public static void SetAnimateOffScreen(DbId obj, bool on) => SetFlag(obj, ObjAnim.OffScreen, on);
-
-    /// <summary>The object's animation-speed multiplier (the engine's <c>Gob+0x400</c> <c>LerpFloat</c>).
-    /// <paramref name="overSeconds"/> 0 sets it outright; above 0 ramps to it linearly.</summary>
-    public static void SetAnimationSpeed(DbId obj, float speed, float overSeconds)
-        => SetSpeed(obj, speed, overSeconds);
 
     /// <summary>The object's visual-transform scale (the engine's <c>Gob+0x1c0</c> <c>LerpFloat</c>), which an
     /// ATTACHED object multiplies into its own composed scale -- the one placement term <c>Part::GetWorld</c>
@@ -70,47 +59,18 @@ public static unsafe partial class DbAnim
         Moved(obj.Index);
     }
 
-    // ---- CAurObject slots 74/75: the look-at run ----
-
-    // ---- the event path (Gob-only slots 11 / 83 / 84) ----
-
-    /// <summary><c>Gob::RegisterCallBack</c> @0x497db0 (slot 11). seam-obj's slot 11 owns the LIVE list
-    /// (<c>CallbackList</c>, the engine's own array at the shell's +0x460); this entry is the off-device one
-    /// the self-checks use. <paramref name="fn"/> is a <c>void (*)(CAurObject*, char const*, void*)</c>, and
-    /// the returned <c>CallBack*</c> is a real 0x30-byte block laid out as the engine's. Null when full.</summary>
-    public static nint RegisterCallBack(DbId obj, nint fn, byte* name, nint data)
-        => CbRegister(obj, fn, name, data);
-
-    /// <summary><c>Gob::DeregisterCallback</c> @0x497e80 (slot 83).</summary>
-    public static void DeregisterCallback(DbId obj, nint cb) => CbDeregister(obj, cb);
-
-    /// <summary><c>Gob::DoEvent</c> @0x49d760 (slot 84): fire <paramref name="name"/> at this object's
-    /// callbacks, newest registration first, wildcard (<c>""</c> or <c>"*"</c>) or case-insensitive name
-    /// match, stopping the moment a handler destroys the object. <paramref name="data"/> overrides each
-    /// entry's own user data when it is non-zero, exactly as the engine's does.</summary>
-    public static void DoEvent(DbId obj, byte* name, nint data) => EventFire(obj, name, data);
-
     // ---- CAurScene: the drive points ----
 
-    /// <summary><c>Scene::EnableAnimations</c> / <c>DisableAnimations</c> (slots 26/27) and
-    /// <c>Scene::IsAnimating</c> (Scene-only slot 81).</summary>
-    public static void EnableSceneAnimations(DbId scene) => SetSceneGate(scene, true);
-    /// <inheritdoc cref="EnableSceneAnimations"/>
-    public static void DisableSceneAnimations(DbId scene) => SetSceneGate(scene, false);
-    /// <inheritdoc cref="EnableSceneAnimations"/>
+    /// <summary><c>Scene::IsAnimating</c> (Scene-only slot 81).</summary>
     public static bool IsSceneAnimating(DbId scene) => SceneGate(scene);
-
-    /// <summary>The camera eye this frame, for the animation-rate and LOD distance bands. seam-scene calls it
-    /// once per view request, before <see cref="Animate"/>.</summary>
-    public static void SetEye(Vector3 eye) => Eye(eye);
 
     // ---- lifetime (seam-obj calls these from object creation and retirement) ----
 
     /// <summary>The object record exists and has its part range: seat its animation state. Idempotent.</summary>
     public static void ObjectCreated(DbId obj) => OnCreate(obj);
 
-    /// <summary>The game destroyed the object: drop its run queue, its callbacks, its look-at and its pose
-    /// scratch. Called BEFORE the record's slot is freed, so the columns are still readable.</summary>
+    /// <summary>The game destroyed the object: drop its run queue, its look-at and its pose scratch. Called
+    /// BEFORE the record's slot is freed, so the columns are still readable.</summary>
     public static void ObjectRetired(DbId obj) => OnRetire(obj);
 
     /// <summary>The object's part tree was replaced (a model or LOD change): every cached per-animation node
@@ -133,8 +93,4 @@ public static unsafe partial class DbAnim
     /// (<c>64 * 16</c> floats, column-major affine per bone -- see <c>Db/DbPose.LAYOUT.md</c>). False = the
     /// part is not skinned or its bind pose is missing, and it must not be drawn skinned.</summary>
     internal static bool SkinPalette(int part, BonePalette* dst) => SkinSolve(part, dst);
-
-    /// <summary>Part <paramref name="part"/>'s solved dangly positions: <c>3 * count</c> model-space floats
-    /// the feed uploads in place of the mesh's rest positions. Null = this part has no dangly state.</summary>
-    public static float* DanglyPositions(int part, out int count) => DanglyBuffer(part, out count);
 }

@@ -40,29 +40,19 @@ public static partial class TileBuild
     /// <inheritdoc cref="Main1Range"/>
     private const int MainPriority = 4;
 
-    /// <summary>The eleven tile animations <c>CNWCTile::PlayAnimation</c> @0x80c770 names, in its switch order
-    /// (every address in this file is an nm address, i.e. Ghidra - 0x100000). The game layer forwards the NAME
-    /// to <c>Gob::PlayAnimation</c>, so CX keeps the enables instead -- <c>Day</c>/<c>Night</c> at load,
-    /// <c>AnimLoop01..03</c> per the record's three bytes -- and <see cref="AnimName"/> inverts an index.</summary>
-    private static readonly string[] AnimNames =
-        ["tiledefault", "AnimLoop01", "AnimLoop02", "AnimLoop03", "on", "off", "fade", "Day", "Night", "Day2Night", "Night2Day"];
-
     /// <summary>(scene handle, grid cell) -&gt; tile slot: CX's <c>SceneBSPGetTileData</c>. Cold path only.</summary>
     private static readonly Dictionary<(uint Scene, int X, int Y), int> _byCell = new();
 
     private static int _spawned, _deleted, _replayed, _refusedModel, _refusedTable, _refusedLights;
     private static int _refusedBig, _refusedArena, _collisions, _outOfOrder, _cellTaken, _lightSpill, _refusedHeight;
-    private static float _cellSize = 10f;
 
-    private static int _arenaAsks, _planBuilds, _mergedNodes, _litRegistered, _swaps;
+    private static int _arenaAsks, _mergedNodes, _litRegistered, _swaps;
     private static int _gridW, _gridH, _ring = EngineRing;
     private static float _heightTransition;
     private static bool _borderWindow;
 
     /// <summary>Tile placements the DB holds, and the models they came from.</summary>
     public static int Placements => _spawned - _deleted;
-    /// <inheritdoc cref="Placements"/>
-    public static int Models => _plans.Count;
     /// <summary>Merged meshes offered to the arena: one per distinct tile mesh, never one per placement. The
     /// mesh census and <c>MeshChart</c>'s <c>built</c> count are held to this number.</summary>
     public static int ArenaAsks => _arenaAsks;
@@ -72,13 +62,12 @@ public static partial class TileBuild
 
     /// <summary>Linux <c>Scene</c> +0x30 / Windows +0x28, <c>InitBSP(int, int, int, bool, float)</c>, which
     /// <c>CNWCArea::LoadArea</c> calls <c>(w, h, 5, true, 10.0f)</c>. There is no BSP -- the visible set is the
-    /// grid over the per-tile bounds -- so this records the grid and the ring, widened to <c>alloy.border</c>.
-    /// <paramref name="cellSize"/> is the BSP CELL SIZE, not the height step (<see cref="SetTileset"/>).</summary>
+    /// grid over the per-tile bounds -- so this records the grid and the ring, widened to <c>alloy.border</c>;
+    /// the BSP cell size nothing here reads, because the cell is <see cref="TileSize"/>.</summary>
     public static void InitGrid(DbId scene, int w, int h, int border, float cellSize)
     {
         _gridW = w;
         _gridH = h;
-        _cellSize = cellSize;
         _ring = border > 0 && border < AreaBorder.Ring ? AreaBorder.Ring : border;
         if (border > 0 && Math.Max(w, h) >= LargeArea) _ring = LargeRing;
     }
@@ -118,19 +107,6 @@ public static partial class TileBuild
     /// window, so the ring needs no second hook; when it stands down the ring is the engine's five tiles and
     /// the window staying shut is the right answer.</summary>
     public static void BorderWindow(bool open) => _borderWindow = open;
-
-    /// <summary>The scene handle the live comparison places its throwaway tiles under
-    /// (<see cref="TileCompare"/>). A real allocation, so it cannot collide with a scene the seam makes --
-    /// <c>DbId.Make(MaxScenes - 1, 0)</c> would have, the moment 255 scenes existed.</summary>
-    public static DbId CompareScene
-    {
-        get
-        {
-            if (!SceneDb.Scenes.Valid(_compareScene)) _compareScene = SceneDb.Scenes.Alloc();
-            return _compareScene;
-        }
-    }
-    private static DbId _compareScene;
 
     /// <summary>The world position of a grid cell, as <c>CNWTile::SetPosition</c> computes it.</summary>
     public static Vector3 CellPos(int gx, int gy, int height)
@@ -303,7 +279,6 @@ public static partial class TileBuild
             if (SceneDb.PartKindOf[pk] == PartKind.Aabb) _aabbParts++;
         }
         _partsMade += SceneDb.ObjPartCount[o];
-        if (Plan(def).AabbNodes > 0) _aabbWanted++;
         // The create contract, in its order (CONTRACTS.md "LIFECYCLE WIRING"), and all three were missing:
         //   * the animation runtime has to know the record exists before anything poses it;
         //   * the hit index files it as STATIC -- a tile and a static placeable are the area's static set,
@@ -357,7 +332,6 @@ public static partial class TileBuild
         SceneDb.TileGridY[t] = gy;
         SceneDb.TileHeight[t] = _heightTransition > 0f ? (int)MathF.Round(pos.Z / _heightTransition) : 0;
         SceneDb.TileOrient[t] = orient & 3;
-        SceneDb.TileSetId[t] = -1;   // the area message's tile id arrives separately, in NoteRecord
         SceneDb.TilePos[t] = pos;
         SceneDb.TileIsBorder[t] = border != 0;
         SceneDb.TileFogged[t] = false;
@@ -536,9 +510,6 @@ public static partial class TileBuild
         // (CNWCTile::UnloadModel), so the shell is poisoned here or a late call reads a freed record.
         nint tileShell = SceneDb.ObjFacade[obj.Index];
         if (tileShell != 0) { CX.Alloy.Seam.ObjectSlots.FreeShellLists(tileShell); CX.Alloy.Seam.Facade.Retire(tileShell); }
-        int fo = obj.Index, ff = SceneDb.ObjPartFirst[fo];
-        for (int k = 0; k < SceneDb.ObjPartCount[fo]; k++)
-            if (SceneDb.PartKindOf[ff + k] == PartKind.Aabb) _aabbFreed++;
         FreeLights(obj, -1);
         ModelDef? def = SceneDb.ObjModel[obj.Index];
         // HasPlan, not Plan: a model whose plan has already gone (an eviction) has had its census dropped
@@ -575,10 +546,6 @@ public static partial class TileBuild
         outHi = b;
     }
 
-    /// <summary>The animation name the game layer's index selects, for the seam to forward
-    /// (<c>CNWCTile::PlayAnimation</c>'s switch).</summary>
-    public static string AnimName(int which) => (uint)which < (uint)AnimNames.Length ? AnimNames[which] : "";
-
     /// <summary>One clause of the Alloy period line. The two numbers the tile build is judged on are
     /// <c>meshes</c> (arena asks, one per distinct tile mesh) against <c>placements</c>.</summary>
     public static string Stats()
@@ -598,6 +565,8 @@ public static partial class TileBuild
            + (_mergedNodes > 0 ? $", {_mergedNodes} nodes merged away" : "")
            + AuditStats()
            + (_mirroredMembers > 0 ? $", {_mirroredMembers} mirrored members rewound" : "")
+           + (_unalignedMembers > 0 ? $", {_unalignedMembers} merged member(s) whose faces and triangles "
+                                    + "DISAGREE (their per-face material ids are not carried, so grass reads none)" : "")
            + (_swaps > 0 ? $", {_swaps} texture swaps re-pointing {_swapParts} part(s)"
                          + (_swapParts == 0 ? " -- NO PART CARRIES THE PLACEHOLDER, so every swap drew nothing" : "") : "")
            + (_cellTaken > 0 ? $", {_cellTaken} cells respawned" : "")
@@ -703,7 +672,7 @@ public static partial class TileBuild
         _refusedModel = _refusedTable = _refusedLights = _refusedHeight = 0;
         _refusedBig = _refusedArena = _collisions = _outOfOrder = _cellTaken = _lightSpill = 0;
         _flames = _flamesNoSl = _noPartForLight = 0;
-        _aabbParts = _partsMade = _aabbWanted = _aabbFreed = _droppedReal = _realPlaced = 0;
+        _aabbParts = _partsMade = _droppedReal = _realPlaced = 0;
         _litRegistered = _swaps = _swapParts = 0;
     }
 

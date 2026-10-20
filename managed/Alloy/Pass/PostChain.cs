@@ -44,13 +44,9 @@ internal static unsafe class PostChain
 
     private static bool _on = true;
     /// <summary>The <c>hdr</c> boot decision, published because it is a REFUSAL the cutover has to know
-    /// about at arm time. <c>hdr=0</c> makes <see cref="Precheck"/> refuse every pass forever, and there is
-    /// no engine frame behind that refusal -- the world would be bare clear colour for the session. Off
-    /// means the shim must not take the frame.</summary>
-    internal static bool On => _on && !_down.Failed;
-
-    /// <summary>The two halves of <see cref="On"/>, split because the frame verdict reports them
-    /// differently -- <c>hdr=0</c> is a CHOICE and a latched stand-down is an INCAPACITY (ADR 0010).</summary>
+    /// about at arm time: <c>hdr=0</c> makes <see cref="Precheck"/> refuse every pass forever, and there is
+    /// no engine frame behind that refusal -- the world would be bare clear colour for the session. Reported
+    /// apart from a latched stand-down, because that is a CHOICE and this an INCAPACITY (ADR 0010).</summary>
     internal static bool Configured => _on;
 
     /// <summary>...and the latched half.</summary>
@@ -493,15 +489,10 @@ internal static unsafe class PostChain
         g.BloomOk = true;
     }
 
-    /// <summary>Resolve the HDR target: add the bloom, tonemap, encode. The caller has already rebound the
-    /// engine target and its viewport, which is where the depth hand-back goes. The COLOUR goes to
-    /// <paramref name="into"/> when it is non-zero -- <see cref="PostStack.Begin"/>'s framebuffer, when a
-    /// display-space stage is live -- and the dither goes with the 8-bit write, so it is that stage's.</summary>
-    internal static void Composite(int* viewport, uint into) => Composite(viewport, into, viewport);
-
-    /// <summary>...with the colour draw at <paramref name="rect"/>: the render viewport when the accumulator
-    /// upsamples (it reads the resolve at render size), the display viewport otherwise. The depth hand-back
-    /// is always at the display viewport.</summary>
+    /// <summary>Resolve the HDR target: add the bloom, tonemap, encode, with the colour draw at
+    /// <paramref name="rect"/> (the render viewport while the accumulator upsamples, the display viewport
+    /// otherwise). The COLOUR goes to <paramref name="into"/> when it is non-zero, and the dither goes with
+    /// the 8-bit write, so it is that stage's.</summary>
     internal static void Composite(int* viewport, uint into, int* rect)
     {
         var g = _gl;
