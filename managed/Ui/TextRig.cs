@@ -855,6 +855,21 @@ public static unsafe partial class TextRig
         DrawIconTid(ResolveTid(resref), x, y, w, h, alpha);
     }
 
+    /// <summary>The part of texture <paramref name="tid"/> from <paramref name="u0"/> to <paramref name="u1"/> across and from
+    /// <paramref name="vTop"/> down to <paramref name="vBottom"/>, in the texture's own bottom-up coordinates, stretched to the box.</summary>
+    public static void DrawIconRegion(int tid, float x, float y, float w, float h, float alpha, float u0, float vTop, float u1, float vBottom)
+    {
+        if (tid == 0 || _sheet == null || _log == null || alpha <= 0f) return;
+        if (!Gl.Init(_log)) return;
+        if (!EnsureIconProgram()) return;
+
+        float a = alpha < 1f ? alpha : 1f, x1 = x + w, y1 = y + h;
+        QuadVerts v = default;
+        v[0] = Vtx(x, y, u0, vTop, a); v[1] = Vtx(x1, y, u1, vTop, a); v[2] = Vtx(x1, y1, u1, vBottom, a);
+        v[3] = Vtx(x, y, u0, vTop, a); v[4] = Vtx(x1, y1, u1, vBottom, a); v[5] = Vtx(x, y1, u0, vBottom, a);
+        DrawQuad(_progIcon, _uProjIcon, _uTexIcon, tid, &v, false, 0, 0, 0, 0);
+    }
+
     /// <summary>The <see cref="DrawIcon"/> body for a live GL texture id the caller already holds; 0 draws nothing.
     /// <paramref name="u1"/> / <paramref name="v0"/> crop a padded sheet to its top-left content; <paramref name="clip"/> scissors
     /// to (<paramref name="cx"/>, <paramref name="cy"/>, <paramref name="cw"/>, <paramref name="ch"/>), y-down px.

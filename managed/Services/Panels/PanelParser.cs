@@ -72,6 +72,23 @@ internal static class PanelParser
     /// <summary>The number <paramref name="name"/> names in <paramref name="e"/>, or <paramref name="def"/>, clamped to the range.</summary>
     private static float Clamped(JsonElement e, string name, float def, float lo, float hi) => Math.Clamp(Num(e, name, def), lo, hi);
 
+    /// <summary>An image's <c>crop</c>: four fractions, left, top, width and height, that stay inside the texture. Only a texture has one.</summary>
+    private static CropRect Crop(JsonElement image, string src)
+    {
+        if (!image.TryGetProperty("crop", out JsonElement c)) return default;
+        if (src.StartsWith('@')) throw new Refusal($"image '{src}' is not a texture, and only a texture takes a crop");
+        if (c.ValueKind != JsonValueKind.Array || c.GetArrayLength() != 4) throw new Refusal("an image's crop is four numbers: left, top, width, height");
+        Span<float> f = stackalloc float[4];
+        for (int n = 0; n < 4; n++)
+        {
+            JsonElement v = c[n];
+            if (v.ValueKind != JsonValueKind.Number || !v.TryGetSingle(out f[n]) || !float.IsFinite(f[n])) throw new Refusal("an image's crop is four numbers: left, top, width, height");
+        }
+        if (f[0] < 0f || f[1] < 0f || f[2] <= 0f || f[3] <= 0f || f[0] + f[2] > 1f || f[1] + f[3] > 1f)
+            throw new Refusal("an image's crop lies inside its texture: fractions from 0 to 1, with a width and a height above 0");
+        return new CropRect(f[0], f[1], f[2], f[3]);
+    }
+
     private static void Rgba(JsonElement e, string name, ref Paint field)
     {
         if (e.TryGetProperty(name, out JsonElement v)) field = ColorOf(v, name);
@@ -170,6 +187,7 @@ internal static class PanelParser
                         "t" => Anchor.Top, "b" => Anchor.Bottom, "l" => Anchor.Left, "r" => Anchor.Right, "c" => Anchor.Center,
                         var a => throw new Refusal($"image anchor '{a}' is tl, tr, bl, br, t, b, l, r or c"),
                     },
+                    Crop = Crop(i, src),
                 });
             }
             c.Images = l.ToArray();

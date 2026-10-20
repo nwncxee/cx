@@ -50,6 +50,15 @@ internal struct PanelImage
     public float W, H, Dx, Dy;
     public float Alpha;
     public Anchor At;
+    /// <summary>The part of the texture drawn, as fractions of its width and height from its top-left corner; none draws all of it.</summary>
+    public CropRect Crop;
+}
+
+/// <summary>A part of a texture as fractions of its width and height, counted from its top-left corner as an image viewer shows it.
+/// <see cref="W"/> of 0 is none.</summary>
+internal readonly record struct CropRect(float X, float Y, float W, float H)
+{
+    public bool Set => W > 0f;
 }
 
 /// <summary>One declared panel: its content, and the <see cref="PanelStyle"/> it was resolved against.</summary>

@@ -19,6 +19,8 @@ internal struct IconDraw
     public float X, Y, W, H;
     /// <summary>The opacity as a share of the card's own.</summary>
     public float Alpha;
+    /// <summary>The part of a resref's texture drawn, stretched to the box; none fits the art's own proportions.</summary>
+    public CropRect Crop;
 }
 
 /// <summary>One piece of skin art the panel wears instead of a flat rectangle, in panel-local px: a
@@ -180,7 +182,7 @@ internal sealed class PanelLayout
         float w = i.W * _s, h = i.H * _s;
         float x = i.At switch { Anchor.TopRight or Anchor.BottomRight or Anchor.Right => _v.W - w, Anchor.Top or Anchor.Bottom or Anchor.Center => (_v.W - w) / 2f, _ => 0f };
         float y = i.At switch { Anchor.BottomLeft or Anchor.BottomRight or Anchor.Bottom => _v.H - h, Anchor.Left or Anchor.Right or Anchor.Center => (_v.H - h) / 2f, _ => 0f };
-        AddIcon(Expand(i.Src), x + i.Dx * _s, y + i.Dy * _s, w, h, i.Alpha);
+        AddIcon(Expand(i.Src), x + i.Dx * _s, y + i.Dy * _s, w, h, i.Alpha, i.Crop);
     }
 
     /// <summary>Lays <paramref name="blocks"/> top to bottom from <paramref name="y"/>; returns the y after the last.</summary>
@@ -390,7 +392,7 @@ internal sealed class PanelLayout
         }
     }
 
-    private void AddIcon(string src, float x, float y, float w, float h, float alpha = 1f)
+    private void AddIcon(string src, float x, float y, float w, float h, float alpha = 1f, CropRect crop = default)
     {
         uint item = 0;
         if (src.StartsWith(ImageNames.Item, StringComparison.Ordinal))
@@ -408,7 +410,7 @@ internal sealed class PanelLayout
             return;
         }
         else if (src.StartsWith('@')) return;
-        _v.Icons.Add(new IconDraw { Src = item == 0 ? src : "", Item = item, X = x, Y = y, W = w, H = h, Alpha = alpha });
+        _v.Icons.Add(new IconDraw { Src = item == 0 ? src : "", Item = item, X = x, Y = y, W = w, H = h, Alpha = alpha, Crop = crop });
     }
 
     private void Rect(float x0, float y0, float x1, float y1, uint rgba)
