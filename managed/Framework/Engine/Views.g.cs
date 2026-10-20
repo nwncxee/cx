@@ -1827,6 +1827,8 @@ public readonly unsafe partial struct CNWCArea(IntPtr ptr)
     public ref IntPtr ObjectIds => ref *(IntPtr*)(Ptr + EngineLayout.AreaObjectIds);
     /// <inheritdoc cref="EngineLayout.AreaPlaceableLightCount"/>
     public ref int PlaceableLightCount => ref *(int*)(Ptr + EngineLayout.AreaPlaceableLightCount);
+    /// <inheritdoc cref="EngineLayout.AreaResRef"/>
+    public Span<byte> Resref { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.AreaResRef), 16); }
     /// <inheritdoc cref="EngineLayout.AreaScene"/>
     public ref Scene Scene => ref *(Scene*)(Ptr + EngineLayout.AreaScene);
     /// <inheritdoc cref="EngineLayout.AreaShadowOpacity"/>

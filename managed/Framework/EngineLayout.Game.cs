@@ -193,6 +193,9 @@ public static unsafe partial class EngineLayout
     /// <summary>CNWCArea -&gt; its area id, the right-hand side of that same comparison (<c>area+0x118</c> on
     /// both builds).</summary>
     public static readonly int AreaId = Field<uint>("CNWCArea", "id");
+    /// <summary>CNWCArea -&gt; the area's resref (16 chars, NUL-padded), the CResRef <c>LoadArea</c> (Linux @0x70e010, Windows rva
+    /// 0x7dba70) reads straight after <see cref="AreaId"/> and assigns to <c>area+0x128</c> on both builds.</summary>
+    public static readonly int AreaResRef = Field<byte>("CNWCArea", "resref", count: 16);
 
     /// <summary>CNWCCreatureStats: the override name (<c>char*</c> + dword length) a disguise sets, which wins
     /// outright over first/last. <c>CNWCCreatureStats::GetFullName</c> (Linux nm @0x74db80, Windows rva

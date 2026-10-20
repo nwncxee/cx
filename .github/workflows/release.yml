@@ -1,8 +1,8 @@
 # Releases. A v* tag builds the Linux extender on ubuntu-24.04 and the Windows one natively on
 # windows-2025-vs2026 (build-win-native.sh; the Linux cross-build, build-win.sh, is a dev tool and never
-# ships), attests where both zips came from, and uploads them with SHA256SUMS to a draft release. Nothing
-# is public yet: tools/release/sign.sh checks the draft on the maintainer's machine, adds SHA256SUMS.sig
-# and publishes it. Releases are immutable, so a published one can't gain, lose or swap an asset.
+# ships), zips the Moonglow Toolset plugin, attests where every zip came from, and uploads them with
+# SHA256SUMS to a draft release. Nothing is public yet: tools/release/sign.sh checks the draft on the
+# maintainer's machine, adds SHA256SUMS.sig and publishes it. Releases are immutable, so a published one can't gain, lose or swap an asset.
 # Every shipped byte is built in this run from the tagged source; no cache feeds a release.
 name: release
 
@@ -60,6 +60,18 @@ jobs:
           # build.sh zips the CONTENTS of cx-linux-x64/ (flat), so
           # "unpack into bin/linux-x86" is literally the whole install.
           mv cx-linux-x64.zip "dist/cx-linux-x64-${TAG}.zip"
+
+      # Laid out as `mg plugin pack` lays it out (one folder named by the plugin's id), and stamped with the
+      # release's version: Moonglow refuses to install a version it already has.
+      - name: Package the Moonglow plugin
+        run: |
+          set -euo pipefail
+          id=$(sed -n '/^\[plugin\]/,/^\[/s/^id = "\(.*\)"$/\1/p' moonglow/nwncx/plugin.cfg)
+          [[ -n "$id" ]] || { echo "moonglow/nwncx/plugin.cfg names no id" >&2; exit 1; }
+          stage=$(mktemp -d)
+          cp -r moonglow/nwncx "$stage/$id"
+          sed -i "s/^version = .*/version = \"${TAG#v}\"/" "$stage/$id/plugin.cfg"
+          (cd "$stage" && zip -qrX "$GITHUB_WORKSPACE/dist/cx-moonglow-plugin-${TAG}.zip" "$id")
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: linux, path: dist/*.zip, if-no-files-found: error }

@@ -5,5 +5,5 @@ namespace CX.Framework;
 /// from here instead of repeating the number.</summary>
 public static class ResTypes
 {
-    public const ushort Tga = 3, Plt = 6, Mdl = 2002, Dds = 2033;
+    public const ushort Tga = 3, Plt = 6, Mdl = 2002, Git = 2023, Dds = 2033;
 }

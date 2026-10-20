@@ -97,6 +97,8 @@ public abstract class Knob
     internal List<Knob>? Members;
     /// <summary>The driver picked choice <paramref name="i"/>: take that rung as the default, and set it.</summary>
     internal virtual void Rung(int i) { }
+    /// <summary>A rung of a quality preset's ladder: its value tracks the player's hardware, not a look.</summary>
+    internal virtual bool OnLadder => false;
 
     /// <summary>Move every ladder member to the rung of this knob's current choice (a set, an enforce, a release).</summary>
     private protected void Cascade()
@@ -316,6 +318,8 @@ public sealed class Knob<T> : Knob
     /// <summary>The default under the driver's choice <paramref name="i"/>, read without moving anything: the
     /// declared default when this knob is no ladder member.</summary>
     internal T RungValue(int i) => _rungs != null && (uint)i < (uint)_rungs.Length ? _rungs[i] : Default;
+
+    internal override bool OnLadder => _rungs != null;
 
     internal override void Rung(int i)
     {
