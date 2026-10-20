@@ -1249,11 +1249,6 @@ internal static unsafe class SymbolMap
     /// <summary>Material::HasBumpyShinyMap -- bumpy-shiny parts take RenderBumpyShiny; excluded.</summary>
     [Fn("byte(IntPtr mat)")]
     public const string MatHasBumpyShinyMap = "_ZN8Material16HasBumpyShinyMapEv";
-        /// <summary>Material::GetTexture(int) @0x4c5810 -- texture slot i (SharedMaterial override at
-    /// mat+0xd0 wins, else own slot at mat+i*0x10). Batch group key = material CONTENT (each part owns
-    /// its Material instance, so pointer identity shatters groups to size 1).</summary>
-    [Fn("long(Material this, int slot)")]
-    public const string MatGetTexture = "_ZN8Material10GetTextureEi";
     /// <summary><c>SharedMaterial::ParseField(char const*)</c> @0x4c6760 -- one <c>.mtr</c> line. The
     /// engine's chain ends at <c>texture10</c>; the hook keeps <c>texture11+</c> in a side table.</summary>
     [Fn("void(IntPtr shared, byte* line)")]
@@ -1549,19 +1544,6 @@ internal static unsafe class SymbolMap
     public const string AurTextureGet    = "_Z13AurTextureGetPKcP11CAurTextureS0_Piib";
     [Fn("int(IntPtr tex)")]
     public const string AurTextureGetTID = "_Z16AurTextureGetTIDP11CAurTexture";
-    /// <summary><c>AurTextureGetController(CAurTexture*)</c> @0x485350 -- resolves ref -> basic and returns
-    /// <c>basic+0x38</c>, the texture's animation controller (or null).</summary>
-    [Fn("IntPtr(IntPtr tex)")]
-    public const string AurTextureGetController = "_Z23AurTextureGetControllerP11CAurTexture";
-    /// <summary><c>CAurTexture::~CAurTexture()</c> @0x486080 (D1 = D2), the death notice for every
-    /// texture. <c>CAurTextureBasic</c>'s D1 tail-jumps here and both deleting dtors call it, on Linux and
-    /// Windows alike (verified in both disassemblies).</summary>
-    [Fn("void(IntPtr tex)")]
-    public const string AurTextureDtor = "_ZN11CAurTextureD2Ev";
-    /// <summary>The one controller class whose Control() (vtable slot +0x10) only rewrites a GL name.</summary>
-    public const string CycleTidControllerVtbl = "_ZTV25CycleTIDTextureController";
-    /// <summary>The engine's int gate on every controller tick (the Bind tail reads it).</summary>
-    public const string EnableTextureControllers = "enabletexturecontrollers";
     /// <summary>The two texture vtables, which is the whole of "is this pointer still a texture" -- see
     /// <see cref="AurTex"/>. Data symbols, never called: what is read is the value a live object's first word
     /// holds, i.e. the symbol plus the Itanium ABI's 0x10.</summary>
@@ -2922,8 +2904,6 @@ internal static unsafe class SymbolMap
         [RefreshTextures] = Nm("?RefreshTextures@@3V?$List@PEAVCAurTextureBasic@@@@A"),
         [MaterialInitializeTextures] = Nm("?InitializeTextures@Material@@QEAAXPEBD000@Z"),
         [AurTextureConstructImage] = Nm("?ConstructImage@CAurTextureBasic@@QEAAXXZ"),
-        [AurTextureGetController] = Nm("?AurTextureGetController@@YAPEAVTextureController@@PEAVCAurTexture@@@Z"),
-        [AurTextureDtor] = Nm("??1CAurTexture@@UEAA@XZ"),
         [AurTextureGlImageBasic] = Nm("?glImageBasic@CAurTextureBasic@@QEAAH_N@Z"),
         [OperatorNewArray] = Nm("??2MaxTree@@SAPEAX_K@Z"),
         [LerpFloatLerped] = Nm("?Lerped@LerpFloat@@QEBAMXZ"),
@@ -2960,7 +2940,6 @@ internal static unsafe class SymbolMap
         [SafePointerObjectAssign] = Nm("??4?$SafePointer@VCAurObject@@@@QEAAAEAV0@QEAVCAurObject@@@Z"),
         [HitcheckStaticBsp] = Nm("?hitcheck_static_bsp_parts@@3HA"),
         [EnableNonBspGroundHit] = Nm("?enablenonbspgroundhit@@3HA"),
-        [CycleTidControllerVtbl] = At(),   // RTTI type descriptor -> COL -> vftable (tools/abi/vtable-slots.py)
         [DeltaT] = Nm("?DeltaT@@3MA"),
         [GobHighlightAmplitude] = Nm("?m_fGobHighlightAmplitude@Scene@@0MA"),
         [GobHighlightFrequency] = Nm("?m_fGobHighlightFrequency@Scene@@0MA"),
@@ -2973,7 +2952,6 @@ internal static unsafe class SymbolMap
         [EnableBeams] = Nm("?enablebeams@@3HA"),
         [EnableBumpyWater] = Nm("?g_nEnableBumpyWater@@3HA"),
         [EnableFBEffects] = Nm("?enableFBeffects@@3HA"),
-        [EnableTextureControllers] = Nm("?enabletexturecontrollers@@3HA"),
         [ExoResMan] = Nm("?g_pExoResMan@@3PEAVCExoResMan@@EA"),
         [FbEffectsMask] = Nm("?m_nFramebufferEffectsEnabled@Camera@@1IA"),
         [ForceDialogVisible] = LinuxOnly("empty body on both builds; nothing to skip"),
@@ -3032,7 +3010,6 @@ internal static unsafe class SymbolMap
         [LightAreaDiffuseDir] = Nm("?m_lightAreaDiffuseDirection@GLRender@@0VVector@@A"),
         [MAurMtxStack] = Nm("?m_aurMtxStack@@3PAVaurMatrixStack@@A"),
         [ManageSceneBSP] = Nm("?ManageSceneBSP@@YAXPEAVScene@@@Z"),
-        [MatGetTexture] = Nm("?GetTexture@Material@@QEAAPEAVCAurTexture@@H@Z"),
         [MatHasBumpyShinyMap] = Nm("?HasBumpyShinyMap@Material@@QEAA_NXZ"),
         [MeshBuckets] = Nm("?meshbuckets@@3V?$List@VBucket@@@@A"),
         [MinDoorAlpha] = Nm("?mindooralpha@@3MA"),

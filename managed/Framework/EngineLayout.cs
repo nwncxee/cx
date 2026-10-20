@@ -69,8 +69,6 @@ public static unsafe partial class EngineLayout
     /// <summary>CAurBehavior::AsBehaviorCameraFollow() -- the camera-follow type filter.</summary>
     public static readonly int BehaviorAsFollowSlot = Field("CAurBehavior", "vtbl.AsBehaviorCameraFollow", Expect.VtblSlot, sig: "CAurBehaviorCameraFollow()");
 
-    /// <summary>CycleTIDTextureController::Control() -- one animated-texture tick.</summary>
-    public static readonly int CycleControlSlot = Field("CycleTIDTextureController", "vtbl.Control", Expect.VtblSlot, sig: "void()");
 
     // ================= Alloy: the Scene walk (#436, batch 1 of #429 section 2) =================
     // Measured 2026-09-11 with tools/ghidra/FieldDump.java over both programs in $GHIDRA_PROJECT/nwn-linux.rep,

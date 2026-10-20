@@ -210,7 +210,6 @@ global using unsafe HandleServerToPlayerAreaFn = delegate* unmanaged<nint, byte,
 global using unsafe SceneHitCheckFn = delegate* unmanaged<nint, CX.Engine.VectorArg, CX.Engine.VectorArg, CX.Engine.Vec3*, nint, int>;
 global using unsafe HitInfoResetFn = delegate* unmanaged<nint, int, long, int, void>;
 global using unsafe MatHasBumpyShinyMapFn = delegate* unmanaged<nint, byte>;
-global using unsafe MatGetTextureFn = delegate* unmanaged<nint, int, long>;
 global using unsafe SharedMaterialParseFieldFn = delegate* unmanaged<nint, byte*, void>;
 global using unsafe SharedMaterialInitFn = delegate* unmanaged<nint, byte*, void>;
 global using unsafe SharedMaterialDtorFn = delegate* unmanaged<nint, uint, nint>;
@@ -248,8 +247,6 @@ global using unsafe CtrlGetVectorFn = delegate* unmanaged<nint, float, nint, Sys
 global using unsafe SpawnHitVisualsFn = delegate* unmanaged<nint, byte, nint, CX.Engine.VectorArg, nint, void>;
 global using unsafe AurTextureGetFn = delegate* unmanaged<byte*, nint, byte*, int*, int, byte, nint>;
 global using unsafe AurTextureGetTIDFn = delegate* unmanaged<nint, int>;
-global using unsafe AurTextureGetControllerFn = delegate* unmanaged<nint, nint>;
-global using unsafe AurTextureDtorFn = delegate* unmanaged<nint, void>;
 global using unsafe ResManExistsFn = delegate* unmanaged<nint, byte*, ushort, uint*, int>;
 global using unsafe ResManGetResObjectFn = delegate* unmanaged<nint, byte*, ushort, nint>;
 global using unsafe ResManSetResObjectFn = delegate* unmanaged<nint, byte*, ushort, nint, void>;
@@ -2539,19 +2536,6 @@ public readonly unsafe partial struct Camera(IntPtr ptr)
     public ref float ViewY => ref *(float*)(Ptr + EngineLayout.CamViewY);
 }
 
-/// <summary>Typed view of an engine <c>CycleTIDTextureController*</c>.</summary>
-public readonly unsafe partial struct CycleTIDTextureController(IntPtr ptr)
-{
-    /// <summary>The engine object.</summary>
-    public readonly IntPtr Ptr = ptr;
-    /// <summary>No object.</summary>
-    public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.CycleControlSlot"/>
-    public void Control() => ((delegate* unmanaged<IntPtr, void>)ControlFn)(Ptr);
-    /// <inheritdoc cref="EngineLayout.CycleControlSlot"/>
-    public IntPtr ControlFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.CycleControlSlot);
-}
-
 /// <summary>Typed view of an engine <c>ErfResListEntry*</c>.</summary>
 public readonly unsafe partial struct ErfResListEntry(IntPtr ptr)
 {
@@ -2785,8 +2769,6 @@ public readonly unsafe ref partial struct Material(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="SymbolMap.MatGetTexture"/>
-    public long MatGetTexture(int slot) => EngineFn.MatGetTexture(Ptr, slot);
     /// <inheritdoc cref="EngineLayout.MatParamCount"/>
     public ref int ParamCount => ref *(int*)(Ptr + EngineLayout.MatParamCount);
     /// <inheritdoc cref="EngineLayout.MatParams"/>
@@ -4765,10 +4747,6 @@ public static unsafe class EngineFn
     private static bool _MatHasBumpyShinyMapDone;
     /// <inheritdoc cref="SymbolMap.MatHasBumpyShinyMap"/>
     public static MatHasBumpyShinyMapFn MatHasBumpyShinyMap => (MatHasBumpyShinyMapFn)(_MatHasBumpyShinyMapDone ? _MatHasBumpyShinyMap : Resolve(ref _MatHasBumpyShinyMap, ref _MatHasBumpyShinyMapDone, SymbolMap.MatHasBumpyShinyMap));
-    private static IntPtr _MatGetTexture;
-    private static bool _MatGetTextureDone;
-    /// <inheritdoc cref="SymbolMap.MatGetTexture"/>
-    public static MatGetTextureFn MatGetTexture => (MatGetTextureFn)(_MatGetTextureDone ? _MatGetTexture : Resolve(ref _MatGetTexture, ref _MatGetTextureDone, SymbolMap.MatGetTexture));
     private static IntPtr _SharedMaterialParseField;
     private static bool _SharedMaterialParseFieldDone;
     /// <inheritdoc cref="SymbolMap.SharedMaterialParseField"/>
@@ -4917,14 +4895,6 @@ public static unsafe class EngineFn
     private static bool _AurTextureGetTIDDone;
     /// <inheritdoc cref="SymbolMap.AurTextureGetTID"/>
     public static AurTextureGetTIDFn AurTextureGetTID => (AurTextureGetTIDFn)(_AurTextureGetTIDDone ? _AurTextureGetTID : Resolve(ref _AurTextureGetTID, ref _AurTextureGetTIDDone, SymbolMap.AurTextureGetTID));
-    private static IntPtr _AurTextureGetController;
-    private static bool _AurTextureGetControllerDone;
-    /// <inheritdoc cref="SymbolMap.AurTextureGetController"/>
-    public static AurTextureGetControllerFn AurTextureGetController => (AurTextureGetControllerFn)(_AurTextureGetControllerDone ? _AurTextureGetController : Resolve(ref _AurTextureGetController, ref _AurTextureGetControllerDone, SymbolMap.AurTextureGetController));
-    private static IntPtr _AurTextureDtor;
-    private static bool _AurTextureDtorDone;
-    /// <inheritdoc cref="SymbolMap.AurTextureDtor"/>
-    public static AurTextureDtorFn AurTextureDtor => (AurTextureDtorFn)(_AurTextureDtorDone ? _AurTextureDtor : Resolve(ref _AurTextureDtor, ref _AurTextureDtorDone, SymbolMap.AurTextureDtor));
     private static IntPtr _ResManExists;
     private static bool _ResManExistsDone;
     /// <inheritdoc cref="SymbolMap.ResManExists"/>
@@ -6974,12 +6944,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.MatHasBumpyShinyMap"/>; returns the slot holding the next layer, or null.</summary>
     public static MatHasBumpyShinyMapFn* ChainMatHasBumpyShinyMap(this HookService h, MatHasBumpyShinyMapFn handler, int priority) =>
         (MatHasBumpyShinyMapFn*)h.Chain(SymbolMap.MatHasBumpyShinyMap, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.MatGetTexture"/>; returns the original, or null.</summary>
-    public static MatGetTextureFn InstallMatGetTexture(this HookService h, MatGetTextureFn handler) =>
-        (MatGetTextureFn)h.Install(SymbolMap.MatGetTexture, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.MatGetTexture"/>; returns the slot holding the next layer, or null.</summary>
-    public static MatGetTextureFn* ChainMatGetTexture(this HookService h, MatGetTextureFn handler, int priority) =>
-        (MatGetTextureFn*)h.Chain(SymbolMap.MatGetTexture, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SharedMaterialParseField"/>; returns the original, or null.</summary>
     public static SharedMaterialParseFieldFn InstallSharedMaterialParseField(this HookService h, SharedMaterialParseFieldFn handler) =>
         (SharedMaterialParseFieldFn)h.Install(SymbolMap.SharedMaterialParseField, (IntPtr)handler);
@@ -7202,18 +7166,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.AurTextureGetTID"/>; returns the slot holding the next layer, or null.</summary>
     public static AurTextureGetTIDFn* ChainAurTextureGetTID(this HookService h, AurTextureGetTIDFn handler, int priority) =>
         (AurTextureGetTIDFn*)h.Chain(SymbolMap.AurTextureGetTID, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.AurTextureGetController"/>; returns the original, or null.</summary>
-    public static AurTextureGetControllerFn InstallAurTextureGetController(this HookService h, AurTextureGetControllerFn handler) =>
-        (AurTextureGetControllerFn)h.Install(SymbolMap.AurTextureGetController, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.AurTextureGetController"/>; returns the slot holding the next layer, or null.</summary>
-    public static AurTextureGetControllerFn* ChainAurTextureGetController(this HookService h, AurTextureGetControllerFn handler, int priority) =>
-        (AurTextureGetControllerFn*)h.Chain(SymbolMap.AurTextureGetController, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.AurTextureDtor"/>; returns the original, or null.</summary>
-    public static AurTextureDtorFn InstallAurTextureDtor(this HookService h, AurTextureDtorFn handler) =>
-        (AurTextureDtorFn)h.Install(SymbolMap.AurTextureDtor, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.AurTextureDtor"/>; returns the slot holding the next layer, or null.</summary>
-    public static AurTextureDtorFn* ChainAurTextureDtor(this HookService h, AurTextureDtorFn handler, int priority) =>
-        (AurTextureDtorFn*)h.Chain(SymbolMap.AurTextureDtor, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.ResManExists"/>; returns the original, or null.</summary>
     public static ResManExistsFn InstallResManExists(this HookService h, ResManExistsFn handler) =>
         (ResManExistsFn)h.Install(SymbolMap.ResManExists, (IntPtr)handler);

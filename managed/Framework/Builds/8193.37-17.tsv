@@ -20,7 +20,6 @@ offset	CNWCObject	vtbl.GetPortrait	0x1d8	0x1d0	# GetPortraitSlot
 offset	CAurTexture	vtbl.AsCAurTextureBasic	0x10	0x8	# TexAsBasicSlot
 offset	CAurTexture	vtbl.GetReferencedTexture	0x18	0x10	# TexReferencedSlot
 offset	CAurBehavior	vtbl.AsBehaviorCameraFollow	0x48	0x40	# BehaviorAsFollowSlot
-offset	CycleTIDTextureController	vtbl.Control	0x10	0x8	# CycleControlSlot
 offset	Scene	gobs	0x130	0x130	# SceneGobs
 offset	Scene	gobCount	0x138	0x138	# SceneGobCount
 offset	Scene	bspRoot	0x188	0x188	# SceneBspRoot
@@ -835,7 +834,6 @@ rva	_ZN12CNWCCreature18WalkUpdateLocationEv	0x8114d0	# WalkUpdateLocation
 rva	_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi	0x7e6a20	# TestDirectLine
 rva	_ZN10CGuiInGame9ToggleOffEv	0x6fc6f0	# GuiInGameToggleOff
 rva	_ZN10CGuiInGame11UnToggleOffEv	0x6fc900	# GuiInGameUnToggleOff
-rva	_ZTV25CycleTIDTextureController	0xd905c0	# CycleTidControllerVtbl
 rva	noemittervar	0x128ead8	# GlPoolTableAnchor
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
 rva	_ZN14SharedMaterialD2Ev	0x81f80	# SharedMaterialDtor
