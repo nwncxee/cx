@@ -1,0 +1,8 @@
+model.me.target=player
+model.me.size=300x420
+model.me.angle=20
+model.me.dist=8
+model.me.height=1.0
+model.me.yaw=270
+model.me.bg=0.04,0.035,0.03,1
+model.me.vfx=all

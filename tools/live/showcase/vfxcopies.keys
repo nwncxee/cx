@@ -1,0 +1,1 @@
+sleep:13000;shot:@SHOTS@/a-one-copy.png;sleep:9000;shot:@SHOTS@/b-two-copies.png
