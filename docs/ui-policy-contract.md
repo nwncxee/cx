@@ -822,6 +822,9 @@ back to the player, and a server that sends nothing leaves the player's own choi
 The volume costs GPU time, and how much is the player's call through their effects quality (`vfog.quality` ladders on
 it). Holding `vfog.quality` overrides that call; hold the switch and the look, and leave the detail to the player.
 
+An area can carry its own fog as `cx.vfog.*` local variables, and a local game holds them with no server involved
+(`docs/area-settings.md`). On a server, relay them as the lines above when a player enters the area.
+
 ## Example
 
 ```

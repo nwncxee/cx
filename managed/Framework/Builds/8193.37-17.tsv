@@ -517,6 +517,7 @@ offset	CNWCObject	overrideLen	0x130	0x130	# ObjOverrideLen
 offset	CNWCObject	itemPlated	0x284	0x264	# ObjItemPlated
 offset	CNWCCreature	area	0x478	0x458	# CreatureArea
 offset	CNWCArea	id	0x118	0x118	# AreaId
+offset	CNWCArea	resref	0x128	0x128	# AreaResRef
 offset	CNWCCreatureStats	overrideName	0x40	0x40	# StatsOverrideName
 offset	CNWCCreatureStats	overrideNameLen	0x48	0x48	# StatsOverrideNameLen
 offset	CNWCCreatureStats	damage	0x8e	0x8e	# StatsDamage

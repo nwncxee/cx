@@ -61,7 +61,8 @@ public static class ServerPolicy
         lock (_lock) { _handlers.RemoveAll(h => h.Prefix == prefix); _handlers.Add((prefix, set, release, report)); }
     }
 
-    private static bool Holdable(string key)
+    /// <summary>May a policy hold <paramref name="key"/>: a feature opted its prefix in with <see cref="AllowKnobs"/>.</summary>
+    internal static bool Holdable(string key)
     {
         foreach (string p in _holdable) if (key.StartsWith(p, StringComparison.OrdinalIgnoreCase)) return true;
         return false;
