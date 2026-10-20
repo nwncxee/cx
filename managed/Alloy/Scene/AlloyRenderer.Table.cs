@@ -18,8 +18,6 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly int[] _oEntry = new int[MaxOwned];      // PartTable slot
     private static readonly IntPtr[] _oTri = new IntPtr[MaxOwned];  // Zero = revoked, harvested at enrollment
     private static readonly IntPtr[] _oNode = new IntPtr[MaxOwned];
-    private static readonly IntPtr[] _oMat = new IntPtr[MaxOwned];
-    private static readonly IntPtr[] _oVdo = new IntPtr[MaxOwned];
     private static readonly int[] _oItem = new int[MaxOwned];
     private static readonly int[] _oPrim = new int[MaxOwned];
     private static readonly int[] _oVao = new int[MaxOwned];        // slot in the per-VDO VAO cache
@@ -430,10 +428,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The route's alpha-to-coverage cutouts and their dissolve bit, held until the cutout run is out.</summary>
     private static readonly int[] _a2cTmp = new int[MaxOwned];
     private static readonly bool[] _a2cDis = new bool[MaxOwned];
-    /// <summary>The draw-arg cache -- index count, byte offset and base vertex as read off the VDO item
-    /// tables the last time this slot staged. Valid while stamped with the live epoch AND the stamp survives
-    /// <c>UnstampRecord</c>, which fires on every re-tenant and drifted keep -- the only edges that re-point
-    /// <c>_oVdo</c>/<c>_oItem</c>. Repack revokes before the tables move; a freed VDO kills its parts first.</summary>
+    /// <summary>The draw-arg cache -- index count, byte offset and base vertex as read off the arena the
+    /// last time this slot staged. Valid while stamped with the live epoch AND the stamp survives
+    /// <c>UnstampRecord</c>, which fires on every re-tenant and drifted keep -- the only edges that
+    /// re-point a slot's geometry.</summary>
     private static readonly int[] _cIdx = new int[MaxOwned];
     private static readonly nint[] _cOff = new nint[MaxOwned];
     private static readonly int[] _cBase = new int[MaxOwned];

@@ -273,7 +273,7 @@ public sealed unsafe partial class CasterPass
                 if (_liveTex[live] == 0 && maskable && AlloyRenderer.VdoHasUv(f.Vao)) _maskNoTex++;
                 _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveContent[live] = f.Content;
                 // Review: a caster ABSENT last frame is a mover on return, whatever its record says -- a
-                // transient TryRange or VAO failure longer than the one-frame ghost+hadMover cover would
+                // transient range or VAO failure longer than the one-frame ghost+hadMover cover would
                 // otherwise re-appear into views that never re-bake its shadow back.
                 // #336: present last frame = in a list that stood through last frame (see _listFrame).
                 bool appeared = _collectedAt != _frameSeq - 1 || _liveStamp[slot] < _lastCollectFrame;

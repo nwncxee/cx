@@ -213,36 +213,10 @@ public sealed unsafe partial class CasterPass : IExtenderService
         return px * px + py * py + pz * pz <= (reach + r) * (reach + r) && MathF.Abs(t) <= along + r;
     }
 
-    /// <summary>One caster's index range, from whichever geometry source its slot draws out of: the mesh
-    /// arena in DB mode, the VDO item tables in the engine path.</summary>
+    /// <summary>One caster's index range: the mesh arena's draw arguments, which is where every seated
+    /// slot's geometry lives.</summary>
     private static bool CasterRange(in AlloyRenderer.CasterFacts f, out int idxCount, out uint first, out uint baseVert)
-        => AlloyRenderer.DbSlot(f.Slot)
-            ? AlloyRenderer.DbCasterRange(f.Slot, out idxCount, out first, out baseVert)
-            : TryRange(f.Vdo, f.Item, out idxCount, out first, out baseVert);
-
-    /// <summary>Resolve a VDO item's index range, live out of the item tables. Every consumer re-reads it
-    /// rather than caching it because <c>Repack()</c> MOVES items, and a stale index range does not read as an
-    /// empty draw -- it reads as another part's geometry. <paramref name="first"/> is in INDICES, not bytes:
-    /// the byte-offset APIs elsewhere multiply by 2 and the indirect command must not.</summary>
-    private static bool TryRange(IntPtr vdo, int item, out int idxCount, out uint first, out uint baseVert)
-    {
-        idxCount = 0; first = 0; baseVert = 0;
-        // CX-120: a DB slot has no VDO at all -- its geometry is the mesh arena's, and the columns carry
-        // IntPtr.Zero / item -1. Reading the VDO's item tables off that read a null pointer and took the
-        // client down on the first DB frame that reached the bake.
-        if (vdo == IntPtr.Zero || item < 0) return false;
-        var v = new VertexDataObject(vdo);
-        long elem = (long)v.ElemItems;
-        long vert = (long)v.VertItems;
-        if (elem == 0 || vert == 0 || item < 0
-            || item >= v.ElemCount || item >= v.VertCount) return false;
-        int n = *(int*)(elem + item * 8 + 4);
-        if (n <= 0) return false;
-        idxCount = n;
-        first = (uint)*(int*)(elem + item * 8);
-        baseVert = (uint)*(int*)(vert + item * 8);
-        return true;
-    }
+        => AlloyRenderer.DbCasterRange(f.Slot, out idxCount, out first, out baseVert);
 
     /// <summary>The world-caster bake, driven ahead of the colour pass that samples it. It runs at the frame
     /// anchor, BEFORE the colour build -- which is where the one-frame record lag comes from, and why

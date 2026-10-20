@@ -123,13 +123,13 @@ public sealed unsafe partial class AlloyRenderer
     internal static bool CastOk(int slot) => _castOk[slot];
 
     /// <summary>Cold diagnostic: what a caster slot IS -- its DB object's model, flags, scene (and whether that
-    /// scene is a world one), position and the stored caster sphere. Engine slots name their texture.</summary>
+    /// scene is a world one), position and the stored caster sphere.</summary>
     internal static string DescribeCasterSlot(int slot)
     {
         CasterSphere(slot, out float cx, out float cy, out float cz, out float r);
         string sph = $"sphere=({cx:F1},{cy:F1},{cz:F1}) r={r:F1}";
         int part = _oDbPart[slot];
-        if (part < 0) return $"slot {slot} engine tex={SlotTexName(slot)} {sph}";
+        if (part < 0) return $"slot {slot} UNSEATED {sph}";
         DbId o = SceneDb.PartObj[part];
         if (!SceneDb.Objects.Valid(o)) return $"slot {slot} part {part} ORPHAN {sph}";
         int i = o.Index;
@@ -214,10 +214,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>uDraw[slot]</c> on the GPU.</summary>
     internal struct CasterFacts
     {
-        public IntPtr Vdo, Mat;
         public int Item, Prim, Vao;
-        /// <summary>The ownership slot these facts came from. A DB slot has no VDO, so the bake resolves its
-        /// index range from the arena draw arguments instead (<c>AlloyRenderer.DbCasterRange</c>).</summary>
+        /// <summary>The ownership slot these facts came from; the bake resolves its index range from the
+        /// arena draw arguments (<c>AlloyRenderer.DbCasterRange</c>).</summary>
         public int Slot;
         /// <summary>World sphere: centre and radius, both from <see cref="_dCastSph"/>.</summary>
         public float Cx, Cy, Cz, R;
@@ -268,7 +267,6 @@ public sealed unsafe partial class AlloyRenderer
         f.Blended = _oCls[slot] == (byte)AlloyClass.Blended;
         if (f.Blended && _oBone[slot] >= 0) return false;   // posed: no mask stage, see SetCastOk
         f.Slot = slot;
-        f.Vdo = _oVdo[slot]; f.Mat = _oMat[slot];
         // CX-120: the DENSE caster VAO id (see DbVaoBase), not _oVao -- a DB slot has no VDO slot, and its
         // arena section is what the bake must group and bind by. Every engine table this value still indexes
         // range-tests it first.
@@ -309,12 +307,7 @@ public sealed unsafe partial class AlloyRenderer
     /// human can read. A DB slot has no Material, so its diffuse is a registry slot. Borrowed pointers,
     /// resolved inside the pass slot.</summary>
     internal static string SlotTexNameDb(int slot)
-        => _oDbPart[slot] >= 0
-            ? TexRegistry.ResrefOf(DrawRecipe.Tex(_oDbRecipe[slot], 0))
-            : SlotTexName(slot);
-
-    internal static string SlotTexName(int slot)
-        => _oTri[slot] == IntPtr.Zero ? "-" : AlloyCensus.TexName(new Material(_oMat[slot]).TextureAt(0).Ptr);
+        => _oDbPart[slot] >= 0 ? TexRegistry.ResrefOf(DrawRecipe.Tex(_oDbRecipe[slot], 0)) : "-";
 
     /// <summary>Is this ownership slot posed by bones? The cheap gate the caster walk uses to put the
     /// skinned casters at the head of its list without resolving every slot twice.</summary>

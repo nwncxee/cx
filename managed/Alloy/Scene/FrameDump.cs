@@ -68,7 +68,7 @@ internal static unsafe class FrameDump
     /// <para>TWO strings, not one. <b>Key</b> is the batcher's OWN cut key reproduced exactly, including the
     /// bindless merge and the normalised blend pair, so counting distinct Keys counts the groups it would
     /// mint. <b>Show</b> is the human column: the texture NAMES, which under merge belong on the draw.</para></summary>
-    internal static void Row_(int cls, bool lit, int vao, IntPtr mat, int recipe, uint mode, int feat, bool dis,
+    internal static void Row_(int cls, bool lit, int vao, int recipe, uint mode, int feat, bool dis,
                               int blend, bool noCull, int slots, bool merge, int idxCount, nint off,
                               int baseVertex, in DrawRecordBlock r)
     {
@@ -93,8 +93,8 @@ internal static unsafe class FrameDump
         {
             // ...and the NON-merge cut compares all seven slot ids against the group's, so they are key
             // material here exactly as much as they are not key material above.
-            k.Append(" tex=").Append(SlotName(mat, recipe, -1, true));
-            AppendSlots(k, mat, recipe, slots);
+            k.Append(" tex=").Append(SlotName(recipe, -1, true));
+            AppendSlots(k, recipe, slots);
         }
 
         var d = new StringBuilder(320);
@@ -103,8 +103,8 @@ internal static unsafe class FrameDump
         // would triple the file for nothing.
         if (merge)
         {
-            d.Append(" tex=").Append(SlotName(mat, recipe, -1, true));
-            AppendSlots(d, mat, recipe, slots);
+            d.Append(" tex=").Append(SlotName(recipe, -1, true));
+            AppendSlots(d, recipe, slots);
         }
         d.Append(" m=");
         Matrix4x4 mdl = r.Model;
@@ -145,13 +145,13 @@ internal static unsafe class FrameDump
         _rows.Add(new Row { Key = k.ToString(), Draw = d.ToString(), Vao = vao, Off = off, Base = baseVertex });
     }
 
-    private static void AppendSlots(StringBuilder b, IntPtr mat, int recipe, int slots)
+    private static void AppendSlots(StringBuilder b, int recipe, int slots)
     {
         b.Append(" slots=");
         for (int s = 0; s < AlloyRenderer.MapSlots; s++)
         {
             if (s != 0) b.Append('|');
-            b.Append(SlotName(mat, recipe, s, (slots & AlloyRenderer.SlotBit(s)) != 0));
+            b.Append(SlotName(recipe, s, (slots & AlloyRenderer.SlotBit(s)) != 0));
         }
     }
 
@@ -242,7 +242,7 @@ internal static unsafe class FrameDump
         if (recipe < 0) { log.Info("FrameDump.SelfCheck: FAILED -- the recipe table would not intern the check's mesh"); return false; }
         var r = new DrawRecordBlock();
         _rows.Clear();
-        Row_((int)AlloyClass.Cutout, lit: true, vao: 1, mat: IntPtr.Zero, recipe: recipe, mode: 4, feat: 0,
+        Row_((int)AlloyClass.Cutout, lit: true, vao: 1, recipe: recipe, mode: 4, feat: 0,
              dis: false, blend: 0, noCull: false, slots: AlloyRenderer.SlotBit(0), merge: true, idxCount: 3,
              off: 0, baseVertex: 0, in r);
         bool ok = _rows.Count == 1 && _rows[0].Draw.Contains("tex=cx_fd_diffuse", StringComparison.Ordinal)
@@ -259,22 +259,14 @@ internal static unsafe class FrameDump
 
     private static void F(StringBuilder b, float v) => b.Append(v.ToString("F4", CultureInfo.InvariantCulture));
 
-    /// <summary>One slot's texture name: <paramref name="s"/> -1 is the diffuse, 0.. a map slot. A DB part has
-    /// no engine <c>Material</c>, so its names come off its RECIPE. <paramref name="declared"/> is the bound
-    /// <c>AlloyRenderer.ReadMaterial</c> enforces: on a plain <c>Material</c> with no SharedMaterial,
-    /// <c>GetTexture(4..7)</c> is an unbounded read and the name walk goes two vtable slots off it.</summary>
-    private static string SlotName(IntPtr mat, int recipe, int s, bool declared)
+    /// <summary>One slot's texture name off the part's RECIPE: <paramref name="s"/> -1 is the diffuse,
+    /// 0.. a map slot. <paramref name="declared"/> is the material's own slot mask, so a slot the draw does
+    /// not declare reads as absent rather than as whatever the recipe still interned there.</summary>
+    private static string SlotName(int recipe, int s, bool declared)
     {
-        if (!declared) return "-";
-        if (mat == IntPtr.Zero)
-        {
-            if (recipe < 0) return "-";
-            string n = Db.TexRegistry.ResrefOf(Db.DrawRecipe.Tex(recipe, s < 0 ? 0 : s + 1));
-            return n.Length == 0 ? "-" : n;
-        }
-        int slot = s < 0 ? 0 : s == AlloyRenderer.AoSlot ? AlloyRenderer.AoTexture : s + 1;
-        IntPtr t = MatTextures.Declared(mat, slot);
-        return t == IntPtr.Zero ? "-" : AlloyCensus.TexName(t);
+        if (!declared || recipe < 0) return "-";
+        string n = Db.TexRegistry.ResrefOf(Db.DrawRecipe.Tex(recipe, s < 0 ? 0 : s + 1));
+        return n.Length == 0 ? "-" : n;
     }
 
     /// <summary>Close the capture: canonicalise, count the distinct full keys against the groups the
