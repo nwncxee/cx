@@ -161,14 +161,14 @@ public sealed class CardService : IExtenderService
         if (tex != 0) TextRig.DrawIconTid((int)tex, x, y, w, h, a, flipV: true);
     }
 
-    /// <summary>A resref icon at its art's own proportions, centred in the box. A portrait shows its painting, not the filler under it.</summary>
+    /// <summary>A resref icon at its art's own proportions, centred in the box.</summary>
     private static void DrawResref(string resref, float x, float y, float w, float h, float a)
     {
         if (string.IsNullOrEmpty(resref) || !AurTex.Ready) return;
         Span<byte> name = stackalloc byte[RadialIcons.ResRefLen];
         name.Clear();
         for (int i = 0; i < resref.Length && i < name.Length; i++) name[i] = (byte)resref[i];
-        IconFrames.Fit(IconFrames.PortraitArt(name, IconFrames.Read(name, false)), ref x, ref y, ref w, ref h, out float u1, out float v0);
+        IconFrames.Fit(IconFrames.Read(name, false), ref x, ref y, ref w, ref h, out float u1, out float v0);
         TextRig.DrawIconTid(TextRig.ResolveTid(resref), x, y, w, h, a, u1, v0);
     }
 
