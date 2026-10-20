@@ -48,10 +48,9 @@ internal readonly unsafe struct MoviePlate
     }
 }
 
-/// <summary>The movie's pixels are CX's. One hook, on <c>ShowFrame</c> @0x1165e30 -- the clear plus the one
-/// textured quad -- leaving the engine its decode loop, which IS the A/V clock. It draws in the ENGINE's
-/// context, not the 4.6 bracket, and is gated on <c>alloy.enabled</c> rather than <see cref="AlloyGate"/>:
-/// movies play at the main menu, where the frame verdict is <c>Idle</c> by construction.</summary>
+/// <summary>The movie's pixels are CX's. One hook, on <c>ShowFrame</c> @0x1165e30, records the frame; it is drawn
+/// last before the present, over the world frame Alloy resolves there. The engine keeps its decode loop, which IS
+/// the A/V clock. Engine context, gated on <c>alloy.enabled</c> rather than <see cref="AlloyGate"/>.</summary>
 public sealed unsafe partial class MovieService : IExtenderService
 {
     private static ExtenderLog? _log;
@@ -68,6 +67,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         _orig = hooks.InstallMovieShowFrame(&OnShowFrame);
         if (_orig == null)
         { log.Info("Movies: CExoMoviePlayerInternal::ShowFrame did not install -- the engine keeps the movie draw"); return; }
+        FrameRegistry.Global.Register(FramePhase.PrePresent, LastBeforePresent, DrawPending, "Movie.frame", log);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 5, AgePresent, "Movie.onscreen", log);
         log.Info("Movies: Alloy draws the movie frame (the engine keeps the decode, the pacing and the present)");
     }
@@ -87,14 +87,37 @@ public sealed unsafe partial class MovieService : IExtenderService
 
     private static void AgePresent() { if (_idle < Stale) _idle++; }
 
+    /// <summary>The <c>ShowFrame</c> call the coming present owes. <c>CExoMoviePlayerInternal::RenderFrame</c>
+    /// swaps in the same call that showed the frame, so <see cref="Self"/> is alive when it is drawn.</summary>
+    private sealed class PendingState
+    {
+        internal IntPtr Self;
+        internal int FrameW, FrameH, TexW, TexH;
+        internal bool Due;
+    }
+    private static PendingState _pending = new();
+
+    /// <summary>After every other <c>PrePresent</c> participant: a module's movie plays over a loaded area, the
+    /// engine still asks for the world view, and Alloy resolves it at the present -- a frame drawn earlier is covered.</summary>
+    private const int LastBeforePresent = 90;
+
     [UnmanagedCallersOnly]
     private static void OnShowFrame(IntPtr self, int frameW, int frameH, int texW, int texH)
     {
         _idle = 0;
-        if (Renderer.Movie.V && Draw(self, frameW, frameH, texW, texH)) return;
+        PendingState p = _pending;
+        p.Self = self; p.FrameW = frameW; p.FrameH = frameH; p.TexW = texW; p.TexH = texH; p.Due = true;
+    }
+
+    private static void DrawPending()
+    {
+        PendingState p = _pending;
+        if (!p.Due) return;
+        p.Due = false;
+        if (Renderer.Movie.V && Draw(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH)) return;
         // The engine draws this frame, and its quad opens with Clear(1): ScreenOwner must let that one through.
         ScreenOwner.EngineFrame = true;
-        if (_orig != null) _orig(self, frameW, frameH, texW, texH);
+        if (_orig != null) _orig(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH);
         ScreenOwner.EngineFrame = false;
     }
 
@@ -204,7 +227,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (!_announced)
         {
             _announced = true;
-            _log.Info($"Movies: first frame drawn by Alloy -- {frameW}x{frameH} in a {texW}x{texH} texture, "
+            _log.Info($"Movies: first frame drawn by Alloy, last before the present -- {frameW}x{frameH} in a {texW}x{texH} texture, "
                     + $"screen {w}x{h} (GL viewport {vp[2]}x{vp[3]}); the engine's ShowFrame quad is swallowed from here on");
         }
         return true;
