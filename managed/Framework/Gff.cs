@@ -12,6 +12,8 @@ public readonly struct Gff
 {
     private const int HeaderBytes = 56;
     private const int StructBytes = 12, FieldBytes = 12, LabelBytes = 16;
+    /// <summary>Header words: six (offset, count) pairs after the type and version, in file order.</summary>
+    private const int HStructs = 8, HFields = 16, HLabels = 24, HData = 32, HFieldIdx = 40, HListIdx = 48;
 
     /// <summary>GFF field types this reader names.</summary>
     public enum FieldType : uint
@@ -27,8 +29,9 @@ public readonly struct Gff
     {
         _b = b;
         if (b.Length < HeaderBytes || Encoding.ASCII.GetString(b, 4, 4) != "V3.2") throw new FormatException("not a GFF V3.2 file");
-        _structs = I(8); _structCount = I(12); _fields = I(16); _fieldCount = I(20); _labels = I(24); _labelCount = I(28);
-        _data = I(32); _dataLen = I(36); _fieldIdx = I(40); _fieldIdxLen = I(44); _listIdx = I(48); _listIdxLen = I(52);
+        _structs = I(HStructs); _structCount = I(HStructs + 4); _fields = I(HFields); _fieldCount = I(HFields + 4);
+        _labels = I(HLabels); _labelCount = I(HLabels + 4); _data = I(HData); _dataLen = I(HData + 4);
+        _fieldIdx = I(HFieldIdx); _fieldIdxLen = I(HFieldIdx + 4); _listIdx = I(HListIdx); _listIdxLen = I(HListIdx + 4);
         Span(_structs, (long)_structCount * StructBytes); Span(_fields, (long)_fieldCount * FieldBytes);
         Span(_labels, (long)_labelCount * LabelBytes); Span(_data, _dataLen); Span(_fieldIdx, _fieldIdxLen); Span(_listIdx, _listIdxLen);
     }
@@ -73,9 +76,7 @@ public readonly struct Gff
         int at = _fields + (int)i * FieldBytes;
         uint label = U(at + 4);
         if (label >= (uint)_labelCount) throw new FormatException($"label {label} past {_labelCount}");
-        ReadOnlySpan<byte> l = Span(_labels + (long)label * LabelBytes, LabelBytes);
-        int n = l.IndexOf((byte)0);
-        return ((FieldType)U(at), Encoding.ASCII.GetString(n < 0 ? l : l[..n]), U(at + 8));
+        return ((FieldType)U(at), Native.FixedText(Span(_labels + (long)label * LabelBytes, LabelBytes)), U(at + 8));
     }
 
     internal uint FieldIndex(uint byteOffset, int k)

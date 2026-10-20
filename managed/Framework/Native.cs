@@ -82,6 +82,13 @@ public static unsafe class Native
     /// <summary>Decode a <c>CExoString</c> {char* buf@0; uint len@8} to a string: Latin1 keeps colour bytes intact.
     /// Copies out immediately, never holds the engine char*. Allocates, so COLD paths only. A Win64 by-value arg
     /// must be read BEFORE forwarding -- the callee destroys it.</summary>
+    /// <summary>A fixed-width engine char field (a CResRef, a GFF label) as text: Latin1, up to its first NUL.</summary>
+    public static string FixedText(ReadOnlySpan<byte> field)
+    {
+        int n = field.IndexOf((byte)0);
+        return Encoding.Latin1.GetString(n < 0 ? field : field[..n]);
+    }
+
     public static string ReadExo(IntPtr exo)
     {
         if (exo == IntPtr.Zero) return "";

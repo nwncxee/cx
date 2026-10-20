@@ -29,8 +29,10 @@ When the area loads, CX holds every key the area names at its value. The rule fo
   fog, while they are in the area. The panel shows the rows greyed, and `/policy` lists them.
 - The group's quality preset (`vfog.quality`) is not held unless the area names it, because it tracks the player's
   hardware rather than the area's look.
-- The player's own values stay underneath and come back at the next area that names nothing, or at logout. `cx.cfg`
-  never sees the area's values.
+- The player's own values stay underneath and come back at the next area that names nothing, or at the next login.
+  Leaving to the main menu keeps the last area's holds until then. `cx.cfg` never sees the area's values.
+- CX reads the variables as the `.git` holds them, when the area loads. A script that changes them later
+  (`SetLocalFloat` on the area) does not reach the client; a server relays such a change as `PolicySet` lines.
 - A variable whose key is not a holdable knob, or whose value the knob does not take, is refused and listed under
   `refused:` in `/policy`. The area's other keys still hold.
 

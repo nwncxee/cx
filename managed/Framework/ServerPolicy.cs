@@ -53,6 +53,12 @@ public static class ServerPolicy
         lock (_lock) if (!_holdable.Contains(prefix)) _holdable.Add(prefix);
     }
 
+    /// <summary>Undo <see cref="AllowKnobs"/>: a self-check's throwaway prefix leaves no trace in the session.</summary>
+    internal static void ForbidKnobs(string prefix)
+    {
+        lock (_lock) _holdable.Remove(prefix);
+    }
+
     /// <summary>Hands every key under <paramref name="prefix"/> to a feature that parses its own values (<c>card.</c>). <paramref name="set"/>
     /// gets the rest of the key and the value, an empty value meaning release, and returns false when it refused; <paramref name="release"/>
     /// gets the prefix of a wildcard release or a new session; <paramref name="report"/> is one line of <c>/policy</c>.</summary>

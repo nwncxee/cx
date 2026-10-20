@@ -15,7 +15,7 @@ public sealed unsafe class AreaSettingsService : IExtenderService
 {
     private static AreaSettingsState _s = new();
 
-    /// <summary>Above every other LoadArea chain, so the holds are in place before the rest see the area.</summary>
+    /// <summary>Low in the LoadArea chain: the holds need the resref the original reads, so they follow it.</summary>
     private const int ChainPriority = 10;
 
     public void Initialize(ExtenderLog log, HookService hooks)
@@ -39,12 +39,12 @@ public sealed unsafe class AreaSettingsService : IExtenderService
     private static void Enter(CNWCArea area)
     {
         AreaSettingsState s = _s;
-        Span<byte> raw = area.Resref;
-        int n = raw.IndexOf((byte)0);
-        string resref = Encoding.ASCII.GetString(n < 0 ? raw : raw[..n]).ToLowerInvariant();
+        string resref = Native.FixedText(area.Resref).ToLowerInvariant();
 
         var holds = new List<(string Key, string Value)>();
-        byte[]? bytes = resref.Length == 0 ? null : TexRegistry.ReadResourceBytes(resref, ResTypes.Git, out string? why);
+        string? why = "the area sent no resref";
+        byte[]? bytes = resref.Length == 0 ? null : TexRegistry.ReadResourceBytes(resref, ResTypes.Git, out why);
+        string readWhy = why ?? "not in the resource chain";
         if (bytes != null)
         {
             if (Gff.TryParse(bytes, out why) is Gff git)
@@ -61,7 +61,7 @@ public sealed unsafe class AreaSettingsService : IExtenderService
             if (ServerPolicy.Set(key, value)) { s.Held.Add(key); said.Append(' ').Append(key).Append('=').Append(value); }
         if (holds.Count > 0 || bytes == null)
             s.Log?.Info(bytes == null
-                ? $"AreaSettings: '{resref}' has no .git this client can read (a multiplayer client never has one) -- nothing held"
+                ? $"AreaSettings: '{resref}' has no .git this client can read ({readWhy}; a multiplayer client never has one) -- nothing held"
                 : $"AreaSettings: '{resref}' holds {s.Held.Count}/{holds.Count} knob(s):{said}");
     }
 }

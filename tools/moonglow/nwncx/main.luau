@@ -160,9 +160,11 @@ mg.check("cx-variables", function(ctx)
             local message = nil
             if setting == nil then
                 message = `{name} names no NWNCX:EE setting`
+            elseif value == nil then
+                message = `{name} has no value`
             elseif setting.kind == "check" and (kind ~= INT or (value ~= 0 and value ~= 1)) then
                 message = `{name} must be an int, 0 or 1`
-            elseif setting.kind == "number" and (kind ~= FLOAT and kind ~= INT) then
+            elseif setting.kind == "number" and ((kind ~= FLOAT and kind ~= INT) or type(value) ~= "number") then
                 message = `{name} must be a float`
             elseif setting.kind == "number" and (value < setting.min or value > setting.max) then
                 message = `{name} = {value} is outside {setting.min}..{setting.max}`
