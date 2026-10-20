@@ -273,16 +273,9 @@ public static unsafe partial class EngineLayout
     public static readonly int VdoVertToken = Field<uint>("VertexDataObject", "vertToken");
     /// <inheritdoc cref="VdoElemToken"/>
     public static readonly int VdoDynToken = Field<uint>("VertexDataObject", "dynToken");
-    /// <summary>The vertex item table {offset,size} and its count, read by <c>AddItem</c>,
-    /// <c>RenderVertexData</c> and <c>SetVertexDataObject</c>. Windows spends four bytes low in the object
-    /// and gets them back here, so the pointer blocks land at the same offsets on both.</summary>
-    public static readonly int VdoVertItems = Field<IntPtr>("VertexDataObject", "vertItems");
-    /// <inheritdoc cref="VdoVertItems"/>
-    public static readonly int VdoVertCount = Field<int>("VertexDataObject", "vertCount");
-    /// <summary>The element item table and its count.</summary>
+    /// <summary>The element item table, {offset, count} per item. Windows spends four bytes low in the
+    /// object and gets them back here, so the pointer blocks land at the same offsets on both.</summary>
     public static readonly int VdoElemItems = Field<IntPtr>("VertexDataObject", "elemItems");
-    /// <inheritdoc cref="VdoElemItems"/>
-    public static readonly int VdoElemCount = Field<int>("VertexDataObject", "elemCount");
     /// <summary>VertexDataObject element item -&gt; the element count a whole-stream draw (<c>size</c> = -1) covers.</summary>
     public static readonly int VdoElemItemCount = Field<int>("VdoElemItem", "count");
     /// <inheritdoc cref="VdoElemItemCount"/>

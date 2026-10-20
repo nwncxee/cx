@@ -83,10 +83,7 @@ offset	VertexDataObject	mode	0x14	0x18	# VdoMode
 offset	VertexDataObject	elemToken	0x18	0x1c	# VdoElemToken
 offset	VertexDataObject	vertToken	0x24	0x28	# VdoVertToken
 offset	VertexDataObject	dynToken	0x30	0x34	# VdoDynToken
-offset	VertexDataObject	vertItems	0x48	0x48	# VdoVertItems
-offset	VertexDataObject	vertCount	0x50	0x50	# VdoVertCount
 offset	VertexDataObject	elemItems	0x58	0x58	# VdoElemItems
-offset	VertexDataObject	elemCount	0x60	0x60	# VdoElemCount
 offset	CNWCModule	currentArea	0xf8	0xf8	# ModuleCurrentArea
 offset	CNWCArea	flags	0x8	0x8	# AreaFlags
 offset	CAurBehaviorCameraFollow	target	0x20	0x20	# BehaviorTargetObj

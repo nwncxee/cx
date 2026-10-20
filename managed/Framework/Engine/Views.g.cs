@@ -3683,8 +3683,6 @@ public readonly unsafe ref partial struct VertexDataObject(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.VdoDynToken"/>
     public ref uint DynToken => ref *(uint*)(Ptr + EngineLayout.VdoDynToken);
-    /// <inheritdoc cref="EngineLayout.VdoElemCount"/>
-    public ref int ElemCount => ref *(int*)(Ptr + EngineLayout.VdoElemCount);
     /// <inheritdoc cref="EngineLayout.VdoElemItems"/>
     public ref IntPtr ElemItems => ref *(IntPtr*)(Ptr + EngineLayout.VdoElemItems);
     /// <inheritdoc cref="EngineLayout.VdoElemToken"/>
@@ -3693,10 +3691,6 @@ public readonly unsafe ref partial struct VertexDataObject(IntPtr ptr)
     public ref int Mode => ref *(int*)(Ptr + EngineLayout.VdoMode);
     /// <inheritdoc cref="SymbolMap.VdoRepack"/>
     public void VdoRepack() => EngineFn.VdoRepack(Ptr);
-    /// <inheritdoc cref="EngineLayout.VdoVertCount"/>
-    public ref int VertCount => ref *(int*)(Ptr + EngineLayout.VdoVertCount);
-    /// <inheritdoc cref="EngineLayout.VdoVertItems"/>
-    public ref IntPtr VertItems => ref *(IntPtr*)(Ptr + EngineLayout.VdoVertItems);
     /// <inheritdoc cref="EngineLayout.VdoVertToken"/>
     public ref uint VertToken => ref *(uint*)(Ptr + EngineLayout.VdoVertToken);
 }
