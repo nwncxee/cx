@@ -32,24 +32,27 @@ When the area loads, CX holds every key the area names at its value. The rule fo
 - The player's own values stay underneath and come back at the next area that names nothing, or at the next login.
   Leaving to the main menu keeps the last area's holds until then. `cx.cfg` never sees the area's values.
 - CX reads the variables as the `.git` holds them, when the area loads. A script that changes them later
-  (`SetLocalFloat` on the area) does not reach the client; a server relays such a change as `PolicySet` lines.
+  (`SetLocalFloat` on the area) does not reach the client.
 - A variable whose key is not a holdable knob, or whose value the knob does not take, is refused and listed under
   `refused:` in `/policy`. The area's other keys still hold.
 
 `cx.log` writes one line per area: `AreaSettings: '<resref>' holds n/m knob(s): ...`.
 
-## Local games and servers
+## Single player only
 
-CX reads the area's `.git` through the game's resources, so it finds one only when the game holds the module itself,
-in a local game (single player, or a game this client hosts). A multiplayer client never has the module.
+Area variables reach the client only in a local game: single player, or a game this client hosts. A client connected
+to a server gets the server's NWSync manifests, the module's haks and the custom TLK, never the module, and the
+server never sends any object's local variables to a client. So in multiplayer, an area's `cx.*` variables do nothing.
 
-On a server, the server sends the same holds. When a player enters an area, the server reads the area's `cx.*`
-variables (`GetLocalFloat`, `GetLocalInt` and `GetLocalString`, or the VarTable from NWNX or Anvil) and sends each one as a
-`PolicySet` line with the prefix dropped (`vfog.haze=0.3`). It should first release the previous area's group with `vfog.*=`. The wire
-and limits are in `docs/ui-policy-contract.md`. A server sending lines itself should follow the whole-group rule above: send
-every key of the group.
+A server that wants per-area settings writes that in its own extender (NWNX or Anvil). When a player enters an area,
+it sends the holds as `PolicySet` lines, for example `vfog.*=` to release the last area's settings, then `vfog.enabled=1`
+and `vfog.haze=0.3` (wire and limits in `docs/ui-policy-contract.md`). Where the server keeps the values is its own
+choice. CX only sees the lines. The whole-group rule above is the client's for area variables; a server that wants the
+player locked out of every dial sends every key of the group.
 
 ## The Moonglow plugin
+
+The plugin writes area variables, so what it sets works in single player only (see above); the form says so.
 
 `tools/moonglow/nwncx/` is a Moonglow Toolset plugin (plugin API 0.3, Luau). To install it, copy the folder into
 Moonglow's plugins folder (Linux `~/.local/share/moonglow/plugins`, Windows `%APPDATA%\Moonglow\plugins`), or zip it

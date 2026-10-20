@@ -71,7 +71,7 @@ mg.command("area-settings", function(ctx)
         feature_of[f.title] = f
     end
     local pick = ctx.ui:form({
-        title = "NWNCX:EE area settings",
+        title = "NWNCX:EE area settings (single player only)",
         fields = {
             { id = "area", label = "Area", type = "choice", choices = labels, default = labels[1] },
             { id = "feature", label = "Setting", type = "choice", choices = titles, default = titles[1] },
@@ -97,7 +97,7 @@ mg.command("area-settings", function(ctx)
         end
         table.insert(fields, { id = s.key, label = s.label, type = s.kind, default = v, min = s.min, max = s.max, choices = s.choices })
     end
-    local answers = ctx.ui:form({ title = `{feature.title}: {pick.area}`, fields = fields })
+    local answers = ctx.ui:form({ title = `{feature.title}: {pick.area} (single player only; a server sets these from its extender)`, fields = fields })
     if not answers then
         return
     end
