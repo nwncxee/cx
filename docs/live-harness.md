@@ -325,6 +325,10 @@ the player and the globe the doll wears. The server applies that effect three ti
 taking the old one away first, so the shots say whether the doll copies an effect's transform and whether it notices one being edited. Run it
 with `--cfg chat.enabled=0`.
 
+`vfxcopies` is the same view with the player wearing one row twice: a small globe at the feet, then a large raised one applied in a later
+update, the only way the engine sends a second copy of a row. `b-two-copies.png` says whether the doll wears both. Run it with
+`--cfg chat.enabled=0`.
+
 The character the client joins as depends on the renderer: with Alloy on it is the vault character (`fighter`, a human), with `alloy.enabled=0` it is the one `+TestNewModule` brings (Aluvian Darkstar, an elf). A picture
 that compares the two renderers passes `--char aluviandarkstar` to the Alloy run, so both show the same person.
 

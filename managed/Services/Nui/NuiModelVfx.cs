@@ -179,7 +179,7 @@ internal static unsafe class NuiModelVfx
 
     /// <summary>The effects <paramref name="creature"/> shows now, in the order the engine added them, into <paramref name="into"/>: those the client has
     /// shown, that last (a one-shot impact is gone in a moment) and that have no source object (a beam from another creature has no end on the doll).
-    /// The same row on the same part counts once, and at most <see cref="MaxRows"/> are read. Returns how many. Each effect's own transform is
+    /// Each copy of a row is read; only one with the same row, part and transform as another counts once. At most <see cref="MaxRows"/> are read. Returns how many. Each effect's own transform is
     /// fingerprinted into its row, and <paramref name="transforms"/>, if given, takes the transform itself -- good for this frame only.</summary>
     internal static int Read(IntPtr creature, VfxRow[] into, IntPtr* transforms)
     {
@@ -192,24 +192,17 @@ internal static unsafe class NuiModelVfx
             {
                 IntPtr name = e.Node;
                 byte part = name == IntPtr.Zero ? RootPart : PartOfNode(MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)name));
-                if (!Already(into.AsSpan(0, n), e.Row, part))
+                ObjectVisualTransformData transform = e.Transform;
+                VfxRow row = new(e.Row, part) { Transform = transform.Fingerprint };
+                if (!into.AsSpan(0, n).Contains(row))
                 {
-                    ObjectVisualTransformData transform = e.Transform;
                     if (transforms != null) transforms[n] = transform.Ptr;
-                    into[n++] = new VfxRow(e.Row, part) { Transform = transform.Fingerprint };
+                    into[n++] = row;
                 }
             }
             node = node.Next;
         }
         return n;
-    }
-
-    /// <summary>Is that row already read on that part? The transform is no part of the question: a doll wears one effect per row and part.</summary>
-    private static bool Already(ReadOnlySpan<VfxRow> read, ushort row, byte part)
-    {
-        foreach (VfxRow e in read)
-            if (e.Row == row && e.Part == part) return true;
-        return false;
     }
 
     /// <summary>Make the doll wear what <paramref name="who"/> shows now, each effect with the transform it carries. With <paramref name="rebuilt"/> the
@@ -279,6 +272,8 @@ internal static unsafe class NuiModelVfx
         check.Expect(Plan([scaled], 1, [scaled], 1) == Step.None && Plan([scaled, b], 2, [scaled, b], 2) == Step.None,
                      "a transform that did not change needs nothing");
         check.Expect(Plan([scaled], 1, [scaled, b], 2) == Step.Append, "an effect added after a transformed one is added");
+        check.Expect(Plan([scaled], 1, [scaled, moved], 2) == Step.Append && Plan([scaled, moved], 2, [scaled, moved], 2) == Step.None,
+                     "a second copy of a row on the same part, with its own transform, is added after the first and then needs nothing");
         check.Expect(Parse("147:1,408")[0].Transform == 0 && Parse("147:1,408")[1].Transform == 0, "a listed row wears the engine's identity");
         VfxRow[] parts = Parse("147:1, 147:5,147:1, 9:300, 9:x, 12:2:3, 7:255");
         check.Expect(Problem("147,abc", -1, out string bad, out string why) && bad == "abc" && why.Length > 0, "a part that is not a row is the problem");
