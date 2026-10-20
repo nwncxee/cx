@@ -2201,6 +2201,8 @@ public readonly unsafe ref partial struct CNWCVisualEffectOnObject(IntPtr ptr)
     public ref int Shown => ref *(int*)(Ptr + EngineLayout.EffectShown);
     /// <inheritdoc cref="EngineLayout.EffectSource"/>
     public ref uint Source => ref *(uint*)(Ptr + EngineLayout.EffectSource);
+    /// <inheritdoc cref="EngineLayout.EffectTransform"/>
+    public ObjectVisualTransformData Transform => new(Ptr + EngineLayout.EffectTransform);
 }
 
 /// <summary>Typed view of an engine <c>CNWMessage*</c>.</summary>
@@ -2722,12 +2724,14 @@ public readonly unsafe partial struct LerpFloat(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.LerpDeclared"/>
+    public Span<byte> Declared { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.LerpDeclared), 32); }
     /// <inheritdoc cref="EngineLayout.LerpFrom"/>
     public ref float From => ref *(float*)(Ptr + EngineLayout.LerpFrom);
     /// <inheritdoc cref="SymbolMap.LerpFloatLerped"/>
     public float LerpFloatLerped() => EngineFn.LerpFloatLerped(Ptr);
-    /// <inheritdoc cref="EngineLayout.SeamLerpFloatSizeof"/>
-    public ref int SeamSizeof => ref *(int*)(Ptr + EngineLayout.SeamLerpFloatSizeof);
+    /// <inheritdoc cref="EngineLayout.LerpFloatSizeof"/>
+    public ref int Sizeof => ref *(int*)(Ptr + EngineLayout.LerpFloatSizeof);
     /// <inheritdoc cref="EngineLayout.LerpValue"/>
     public ref float Value => ref *(float*)(Ptr + EngineLayout.LerpValue);
 }
@@ -3362,6 +3366,15 @@ public readonly unsafe partial struct Nui__Layout__Span(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.NuiSpanDirection"/>
     public ref int Direction => ref *(int*)(Ptr + EngineLayout.NuiSpanDirection);
+}
+
+/// <summary>Typed view of an engine <c>ObjectVisualTransformData*</c>.</summary>
+public readonly unsafe partial struct ObjectVisualTransformData(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
 }
 
 /// <summary>Typed view of an engine <c>Part*</c>.</summary>

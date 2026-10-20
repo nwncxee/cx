@@ -13,8 +13,8 @@ namespace CX.Alloy.Seam;
 public static unsafe class VisualXform
 {
     /// <summary>One <c>LerpFloat</c>'s size, and how many the record holds.</summary>
-    public static readonly int Stride = EngineLayout.SeamLerpFloatSizeof;
-    public const int Count = 10;   // not-an-offset: how many LerpFloats the record holds
+    public static readonly int Stride = EngineLayout.LerpFloatSizeof;
+    public const int Count = ObjectVisualTransformData.Lerps;
     public static int Size => Stride * Count;
 
     private const int ScaleX = 0, ScaleY = 1, ScaleZ = 2, RotateX = 3, RotateY = 4, RotateZ = 5;

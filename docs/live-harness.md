@@ -320,6 +320,11 @@ the player's doll while a helmet is equipped, dropped and equipped again, with a
 missing, a cloak and a helmet with numbers no table holds, an appearance row past `appearance.2da`, an object id no creature has, an animation the model lacks) beside a plain player and a valid sword; the run
 passes when none of them crashes the client and the last two still draw. Run it with `--cfg chat.enabled=0`.
 
+`vfxxform` is a `vfx=all` doll beside the world view: it throws the backdrop away, so one shot holds both the globe the engine draws around
+the player and the globe the doll wears. The server applies that effect three times over, each with another scale and translation and each
+taking the old one away first, so the shots say whether the doll copies an effect's transform and whether it notices one being edited. Run it
+with `--cfg chat.enabled=0`.
+
 The character the client joins as depends on the renderer: with Alloy on it is the vault character (`fighter`, a human), with `alloy.enabled=0` it is the one `+TestNewModule` brings (Aluvian Darkstar, an elf). A picture
 that compares the two renderers passes `--char aluviandarkstar` to the Alloy run, so both show the same person.
 

@@ -1976,8 +1976,6 @@ public static unsafe partial class EngineLayout
     public static readonly int SeamCallBackSizeof = Field<int>("CallBack", "seamSizeof");
     /// <summary><c>CallBack</c>: the event name, a NUL-terminated array inline at the start of the record.</summary>
     public static readonly int SeamCallBackName = Field<byte>("CallBack", "seamName", count: 0x20);
-    /// <summary>one animated float of a CAurObjectVisualTransformData.</summary>
-    public static readonly int SeamLerpFloatSizeof = Field<int>("LerpFloat", "seamSizeof");
     /// <summary>Itanium slot 1; MSVC's single scalar-deleting destructor is slot 0.</summary>
     public static readonly int SeamCAurBehaviorVtblDtorDeleting = Field("CAurBehavior", "vtbl.dtorDeleting", Expect.VtblSlot);
     /// <summary>CAurBehavior::Message(char const*).</summary>
