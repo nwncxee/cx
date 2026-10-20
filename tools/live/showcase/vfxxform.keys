@@ -1,0 +1,1 @@
+sleep:16000;shot:@SHOTS@/a-plain.png;sleep:10000;shot:@SHOTS@/b-scaled.png;sleep:10000;shot:@SHOTS@/c-shrunk.png

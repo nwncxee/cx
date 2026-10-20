@@ -12,7 +12,7 @@ namespace CX.Services.Nui;
 /// The visual effects a model view's doll wears: only the <c>visualeffects.2da</c> rows the server lists, each on the body part it
 /// names, put on the doll through the engine's own add call. The client cannot tell a permanent effect from a temporary one, so the
 /// server chooses. The add call takes its transform by value: Linux copies it, Win64 destroys the copy it is handed, so each call there gets a
-/// fresh copy of the identity transform built by the engine's own tree constructor.
+/// fresh copy built by the engine's own tree constructor.
 /// </summary>
 internal static unsafe class NuiModelVfx
 {
@@ -24,7 +24,13 @@ internal static unsafe class NuiModelVfx
 
     /// <summary>One effect to wear: its <c>visualeffects.2da</c> row and the body part it sits on. Part 0 is the hand node, 1 the
     /// impact node, 2-11 the creature's ground nodes <c>monster0</c>-<c>monster9</c>, and any other number the root.</summary>
-    internal readonly record struct VfxRow(ushort Row, byte Part);
+    internal readonly record struct VfxRow(ushort Row, byte Part)
+    {
+        /// <summary>A number standing for the transform the effect carries, from
+        /// <see cref="ObjectVisualTransformData.Fingerprint"/>. Zero where no transform was read, which is every row of an
+        /// explicit <c>vfx</c> list.</summary>
+        internal ulong Transform { get; init; }
+    }
 
     private sealed class VfxState
     {
@@ -95,11 +101,12 @@ internal static unsafe class NuiModelVfx
 
     /// <summary>The doll wears exactly <paramref name="rows"/>: every effect it had is ended first. With <paramref name="mute"/> the engine's
     /// sounds for the new effects (their impact one-shot and looping source) are not started.</summary>
-    internal static void Wear(IntPtr doll, VfxRow[] rows, bool mute = false) => Wear(doll, rows, rows.Length, 0, mute);
+    internal static void Wear(IntPtr doll, VfxRow[] rows, bool mute = false) => Wear(doll, rows, rows.Length, 0, mute, null);
 
     /// <summary>The first <paramref name="count"/> of <paramref name="rows"/> on the doll. From 0 the doll's own effects are ended first; from a
-    /// later index only the rows from there on are added to what the doll wears.</summary>
-    internal static void Wear(IntPtr doll, VfxRow[] rows, int count, int from, bool mute)
+    /// later index only the rows from there on are added to what the doll wears. <paramref name="transforms"/> gives each row the transform to
+    /// wear it with -- the target's own, read this frame -- and null wears every row with the engine's identity.</summary>
+    internal static void Wear(IntPtr doll, VfxRow[] rows, int count, int from, bool mute, IntPtr* transforms)
     {
         if (doll == IntPtr.Zero) return;
         if (!_v.Ready)
@@ -122,7 +129,8 @@ internal static unsafe class NuiModelVfx
                     if (NuiModelGuard.Once($"vfx {e.Row}")) _v.Log?.Always($"NuiModelVfx: effect row {e.Row} is past the {table} the client's visualeffects.2da has -- not worn");
                     continue;
                 }
-                if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NuiModelDoll.InvalidId, e.Part, 0, VectorArg.Of(&zero), TransformFor(scratch)) == 0)
+                IntPtr wearWith = TransformFor(scratch, transforms == null ? IntPtr.Zero : transforms[i]);
+                if (EngineFn.ObjAddVisualEffect(doll, e.Row, 0, NuiModelDoll.InvalidId, e.Part, 0, VectorArg.Of(&zero), wearWith) == 0)
                     _v.Log?.Always($"NuiModelVfx: the engine would not load effect row {e.Row}");
             }
         }
@@ -162,7 +170,7 @@ internal static unsafe class NuiModelVfx
     }
 
     /// <summary>How the doll's worn effects become the target's. The engine's list only grows at its end, so rows that start with the worn
-    /// ones are added to them; any other change puts the whole set on again.</summary>
+    /// ones are added to them; any other change, a transform fingerprint included, puts the whole set on again.</summary>
     internal static Step Plan(VfxRow[] worn, int wornCount, VfxRow[] seen, int seenCount)
     {
         if (!seen.AsSpan(0, seenCount).StartsWith(worn.AsSpan(0, wornCount))) return Step.Rewear;
@@ -171,8 +179,9 @@ internal static unsafe class NuiModelVfx
 
     /// <summary>The effects <paramref name="creature"/> shows now, in the order the engine added them, into <paramref name="into"/>: those the client has
     /// shown, that last (a one-shot impact is gone in a moment) and that have no source object (a beam from another creature has no end on the doll).
-    /// The same row on the same part counts once, and at most <see cref="MaxRows"/> are read. Returns how many.</summary>
-    internal static int Read(IntPtr creature, VfxRow[] into)
+    /// The same row on the same part counts once, and at most <see cref="MaxRows"/> are read. Returns how many. Each effect's own transform is
+    /// fingerprinted into its row, and <paramref name="transforms"/>, if given, takes the transform itself -- good for this frame only.</summary>
+    internal static int Read(IntPtr creature, VfxRow[] into, IntPtr* transforms)
     {
         int n = 0, walked = 0;
         CExoLinkedListNode node = new CNWCObject(creature).Effects.Head;
@@ -183,35 +192,50 @@ internal static unsafe class NuiModelVfx
             {
                 IntPtr name = e.Node;
                 byte part = name == IntPtr.Zero ? RootPart : PartOfNode(MemoryMarshal.CreateReadOnlySpanFromNullTerminated((byte*)name));
-                var row = new VfxRow(e.Row, part);
-                if (!into.AsSpan(0, n).Contains(row)) into[n++] = row;
+                if (!Already(into.AsSpan(0, n), e.Row, part))
+                {
+                    ObjectVisualTransformData transform = e.Transform;
+                    if (transforms != null) transforms[n] = transform.Ptr;
+                    into[n++] = new VfxRow(e.Row, part) { Transform = transform.Fingerprint };
+                }
             }
             node = node.Next;
         }
         return n;
     }
 
-    /// <summary>Make the doll wear what <paramref name="who"/> shows now. With <paramref name="rebuilt"/> the doll is new, so everything goes on again;
-    /// otherwise only a change touches it, and a frame with none reads the list and compares, nothing more.</summary>
+    /// <summary>Is that row already read on that part? The transform is no part of the question: a doll wears one effect per row and part.</summary>
+    private static bool Already(ReadOnlySpan<VfxRow> read, ushort row, byte part)
+    {
+        foreach (VfxRow e in read)
+            if (e.Row == row && e.Part == part) return true;
+        return false;
+    }
+
+    /// <summary>Make the doll wear what <paramref name="who"/> shows now, each effect with the transform it carries. With <paramref name="rebuilt"/> the
+    /// doll is new, so everything goes on again; otherwise only a change touches it, and a frame with none reads the list and compares, nothing more.
+    /// The target's transforms are read and worn inside this call, which is the whole life the engine guarantees them.</summary>
     internal static void Follow(IntPtr doll, IntPtr who, Mirror m, bool rebuilt, bool mute)
     {
         if (doll == IntPtr.Zero || who == IntPtr.Zero) return;
-        m.SeenCount = Read(who, m.Seen);
+        IntPtr* transforms = stackalloc IntPtr[MaxRows];
+        m.SeenCount = Read(who, m.Seen, transforms);
         Step step = rebuilt ? Step.Rewear : Plan(m.Worn, m.WornCount, m.Seen, m.SeenCount);
         if (step == Step.None) return;
         if (m.SeenCount > 0 || m.WornCount > 0) _v.Log?.Always($"NuiModelVfx: mirroring {m.SeenCount} effects from the target ({(step == Step.Append ? "added" : "all again")})");
-        Wear(doll, m.Seen, m.SeenCount, step == Step.Append ? m.WornCount : 0, mute);
+        Wear(doll, m.Seen, m.SeenCount, step == Step.Append ? m.WornCount : 0, mute, transforms);
         Array.Copy(m.Seen, m.Worn, m.SeenCount);
         m.WornCount = m.SeenCount;
     }
 
-    /// <summary>The transform argument for one add call: the engine's identity as it is on Linux, and on Windows a fresh copy in <paramref name="scratch"/> that the call
-    /// destroys itself.</summary>
-    private static IntPtr TransformFor(byte* scratch)
+    /// <summary>The transform argument for one add call: <paramref name="source"/>, or the engine's identity where there is none. Linux copies
+    /// what it is handed, so the source goes straight through; Windows destroys it, so the call gets a fresh copy in <paramref name="scratch"/>.</summary>
+    private static IntPtr TransformFor(byte* scratch, IntPtr source)
     {
-        if (!OperatingSystem.IsWindows()) return _v.Identity;
+        IntPtr from = source == IntPtr.Zero ? _v.Identity : source;
+        if (!OperatingSystem.IsWindows()) return from;
         fixed (byte* half = new Span<byte>(scratch, TransformBytes).Slice(TransformBytes / 2))
-            EngineFn.TransformCopy((IntPtr)scratch, _v.Identity, (IntPtr)half);
+            EngineFn.TransformCopy((IntPtr)scratch, from, (IntPtr)half);
         return (IntPtr)scratch;
     }
 
@@ -246,6 +270,16 @@ internal static unsafe class NuiModelVfx
                      && Plan([a, b], 2, [a, c], 2) == Step.Rewear && Plan([a], 1, [b, a], 2) == Step.Rewear,
                      "a changed order, a removed row or a replaced one starts over");
         check.Expect(Plan([a, b, c], 1, [a, c], 2) == Step.Append, "rows past the worn count are not compared");
+        VfxRow scaled = a with { Transform = 7 }, moved = a with { Transform = 9 };
+        check.Expect(scaled.Row == a.Row && scaled.Part == a.Part && scaled != a && scaled != moved,
+                     "a transform fingerprint tells two effects on one row and part apart");
+        check.Expect(Plan([a], 1, [scaled], 1) == Step.Rewear && Plan([scaled], 1, [moved], 1) == Step.Rewear
+                     && Plan([b, scaled], 2, [b, moved], 2) == Step.Rewear,
+                     "the same row and part with an edited transform starts over");
+        check.Expect(Plan([scaled], 1, [scaled], 1) == Step.None && Plan([scaled, b], 2, [scaled, b], 2) == Step.None,
+                     "a transform that did not change needs nothing");
+        check.Expect(Plan([scaled], 1, [scaled, b], 2) == Step.Append, "an effect added after a transformed one is added");
+        check.Expect(Parse("147:1,408")[0].Transform == 0 && Parse("147:1,408")[1].Transform == 0, "a listed row wears the engine's identity");
         VfxRow[] parts = Parse("147:1, 147:5,147:1, 9:300, 9:x, 12:2:3, 7:255");
         check.Expect(Problem("147,abc", -1, out string bad, out string why) && bad == "abc" && why.Length > 0, "a part that is not a row is the problem");
         check.Expect(Problem("147, 700", 612, out bad, out _) && bad == "700" && !Problem("147,611", 612, out _, out _) && !Problem("65000", -1, out _, out _),

@@ -610,10 +610,13 @@ With `vfx=all` the doll wears what its target shows, read from the target's effe
 an effect comes or goes. An effect is copied when the client has shown it (one that is hidden, for example while its creature is faded out, is
 left out), when it lasts (a one-shot impact is over in a moment and would restart on every hit) and when it has no source object (a beam from another
 creature has no end on the doll). An effect with no model of its own counts: the engine shows a colour change or a glow without one. Each effect
-brings its row and body part; the same row on the same part counts once, and the first 16 are kept. An effect added to the target is added to the
-doll. Any other change, such as one ending, puts the doll's effects on again, which restarts them. `vfxmute` applies as it does to a list. `all` needs a
+brings its row, its body part and its own visual transform, so one the server scaled, moved or turned (`EffectVisualEffect`'s `fScale`,
+`vTranslate` and `vRotate`) is worn the same size and in the same place on the doll; an effect a `vfx` list names is worn untransformed, since the
+list names rows and nothing else. The same row on the same part counts once, and the first 16 are kept. An effect added to the target is added to the
+doll. Any other change puts the doll's effects on again, which restarts them: one ending, and also the server editing a transform, which it does by
+taking the effect away and adding one with the same row and part. `vfxmute` applies as it does to a list. `all` needs a
 creature target (`player` or an id); an `app:` doll has no effects to follow and wears none. The client logs `NuiModelVfx: mirroring N effects from the
-target` when the doll changes. The list is read at the same offsets on Linux and on Windows, so nothing in this feature is Linux-only.
+target` when the doll changes. The list and the transforms are read at the same offsets on Linux and on Windows, so nothing in this feature is Linux-only.
 CX cannot tell a permanent effect from a temporary one, because both reach the client the same way. The server knows,
 and lists the ones that belong to the character's look, usually the permanent ones. An effect that adds light, such as
 a fire ring, writes its square into the image's alpha as well as its light. Alloy draws a doll that has such a draw twice,

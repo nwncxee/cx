@@ -43,7 +43,7 @@ public readonly unsafe ref partial struct Gob
     public IntPtr Behavior { get => Attach.Ptr; set => Attach = new CAurBehavior(value); }
     /// <summary>Animated float <paramref name="i"/> of the embedded visual-transform record, which lays its
     /// <c>LerpFloat</c>s end to end.</summary>
-    public LerpFloat VisualLerp(int i) => new(Ptr + EngineLayout.GobScaleLerp + i * EngineLayout.SeamLerpFloatSizeof);
+    public LerpFloat VisualLerp(int i) => new(Ptr + EngineLayout.GobScaleLerp + i * EngineLayout.LerpFloatSizeof);
     /// <summary>The two scale channels <c>Gob::ScaleObject</c> writes, side by side.</summary>
     public Span<float> ScaleChannels => new(Unsafe.AsPointer(ref SeamScaleChannel), 2);
 }
