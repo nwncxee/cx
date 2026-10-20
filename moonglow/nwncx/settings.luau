@@ -4,13 +4,15 @@
 -- A feature's quality preset is left out: it follows the player's hardware, not the area's look.
 --
 -- kind: "check" (an int 0/1), "number" (a float), "choice" (a string from `choices`).
+-- master: the feature's switch. The form offers it as "the values below" / `off` (default "No <title>").
 
 return {
     {
         id = "vfog",
         title = "Volumetric fog",
+        off = "Classic fog (no volumetric fog)",
         settings = {
-            { key = "enabled", label = "Volumetric fog in this area", kind = "check", default = true },
+            { key = "enabled", label = "Volumetric fog", kind = "check", default = true, master = true },
             { key = "haze", label = "Haze in the air", kind = "number", min = 0, max = 0.9, default = 0 },
             { key = "sun", label = "Sun shafts", kind = "number", min = 0, max = 1, default = 0.5 },
             { key = "lights", label = "Lamp glow", kind = "number", min = 0, max = 4, default = 0.15 },

@@ -71,7 +71,7 @@ mg.command("area-settings", function(ctx)
         feature_of[f.title] = f
     end
     local pick = ctx.ui:form({
-        title = "NWNCX:EE area settings (single player only)",
+        title = "NWNCX:EE area settings (single player only: a server sets these from its extender)",
         fields = {
             { id = "area", label = "Area", type = "choice", choices = labels, default = labels[1] },
             { id = "feature", label = "Setting", type = "choice", choices = titles, default = titles[1] },
@@ -83,22 +83,37 @@ mg.command("area-settings", function(ctx)
     local git, feature = git_of[pick.area], feature_of[pick.feature]
     local doc = ctx.module:raw(git)
     local now = current(doc, feature)
-    local held = next(now) ~= nil
+    local master = nil
+    for _, st in feature.settings do
+        if st.master then
+            master = st
+        end
+    end
+    local player, on, off = "The player's own settings", `{feature.title}, with the values below`, feature.off or `No {feature.title}`
+    local mode = player
+    if next(now) ~= nil then
+        mode = (master and now[master.key] == 0) and off or on
+    end
 
     local fields = {
-        { id = "__hold", label = `This area sets {feature.title} (off: the player's own settings)`, type = "check", default = held },
+        { id = "__mode", label = "This area uses", type = "choice", choices = master and { player, on, off } or { player, on }, default = mode },
     }
-    for _, s in feature.settings do
-        local v = now[s.key]
-        if v == nil then
-            v = s.default
-        elseif s.kind == "check" then
-            v = v ~= 0
+    for _, st in feature.settings do
+        if not st.master then
+            local v = now[st.key]
+            if v == nil then
+                v = st.default
+            elseif st.kind == "check" then
+                v = v ~= 0
+            end
+            table.insert(fields, { id = st.key, label = st.label, type = st.kind, default = v, min = st.min, max = st.max, choices = st.choices })
         end
-        table.insert(fields, { id = s.key, label = s.label, type = s.kind, default = v, min = s.min, max = s.max, choices = s.choices })
     end
-    local answers = ctx.ui:form({ title = `{feature.title}: {pick.area} (single player only; a server sets these from its extender)`, fields = fields })
+    local answers = ctx.ui:form({ title = `{feature.title}: {pick.area}`, fields = fields })
     if not answers then
+        return
+    end
+    if mode == player and answers.__mode == player then
         return
     end
 
@@ -111,20 +126,18 @@ mg.command("area-settings", function(ctx)
             table.insert(kept, v)
         end
     end
-    if answers.__hold then
-        for _, s in feature.settings do
-            table.insert(kept, variable(p .. s.key, s, answers[s.key]))
+    if answers.__mode == on then
+        for _, st in feature.settings do
+            table.insert(kept, variable(p .. st.key, st, if st.master then true else answers[st.key]))
         end
-    end
-    if not held and not answers.__hold then
-        return
+    elseif answers.__mode == off then
+        table.insert(kept, variable(p .. master.key, master, false))
     end
     vars.value = kept
     doc.VarTable = vars
     ctx.edit:write_gff(git, doc)
-    local verb = answers.__hold and "Set" or "Clear"
-    ctx.log:info(`{verb} {feature.title} on {pick.area}`)
-    return { label = `{verb} NWNCX:EE {feature.title} on {pick.area}` }
+    ctx.log:info(`{pick.area}: {answers.__mode}`)
+    return { label = `NWNCX:EE {pick.area}: {answers.__mode}` }
 end)
 
 -- Build > Verify Module: every cx.* variable of an area names a setting this plugin knows, with a value it takes.

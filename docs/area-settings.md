@@ -58,9 +58,9 @@ The plugin writes area variables, so what it sets works in single player only (s
 Moonglow's plugins folder (Linux `~/.local/share/moonglow/plugins`, Windows `%APPDATA%\Moonglow\plugins`), or zip it
 with `mg plugin pack` and use Plugins > Install Plugin from File. Then enable it.
 
-- **Plugins > NWNCX:EE Area Settings...** asks for an area and a feature, then shows the feature's settings with the
-  area's current values. Ticking *This area sets ...* writes every key of the feature into the area's VarTable.
-  Unticking it removes them. Either way the edit is one step of Undo.
+- **Plugins > NWNCX:EE Area Settings...** asks for an area and a feature, then what the area uses: *the player's own
+  settings* (the area sets nothing), *volumetric fog with the values below* (every key written), or *classic fog*
+  (`cx.vfog.enabled=0` alone). The form opens on the area's current choice and values. The edit is one step of Undo.
 - **Build > Verify Module** gets a check, *NWNCX:EE area variables name real settings*, which flags a `cx.*` variable
   naming no setting, or with a value of the wrong type or out of range.
 
