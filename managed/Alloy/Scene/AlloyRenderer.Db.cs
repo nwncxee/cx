@@ -168,7 +168,7 @@ public sealed unsafe partial class AlloyRenderer
         _oDbPart[i] = part; _oDbRecipe[i] = recipe;
         _oEntry[i] = -1;
         _oTri[i] = DbTri(part);
-        _oNode[i] = IntPtr.Zero; _oMat[i] = IntPtr.Zero; _oVdo[i] = IntPtr.Zero;
+        _oNode[i] = IntPtr.Zero;
         _oItem[i] = -1; _oPrim[i] = (int)DrawRecipe.Prim(recipe);
         // Every DB draw comes out of the one mesh arena, so there is no per-VDO VAO to name and no harvest
         // to wait for: the slot's VAO term is the arena's bit and the range is the part's.
@@ -200,7 +200,6 @@ public sealed unsafe partial class AlloyRenderer
         // No gob pointer exists in DB mode; the questions it answered are columns.
         _oGob[i] = IntPtr.Zero;
         _oTileGob[i] = (of & ObjFlag.Tile) != 0;
-        _oLodRoot[i] = IntPtr.Zero;
         _oDangly[i] = (rf & RecipeFlag.Dangly) != 0;
         _oFadeTile[i] = IntPtr.Zero; _oTile[i] = IntPtr.Zero;
         Vector3 c = DrawRecipe.Centre(recipe);

@@ -20,7 +20,6 @@ offset	CNWCObject	vtbl.GetPortrait	0x1d8	0x1d0	# GetPortraitSlot
 offset	CAurTexture	vtbl.AsCAurTextureBasic	0x10	0x8	# TexAsBasicSlot
 offset	CAurTexture	vtbl.GetReferencedTexture	0x18	0x10	# TexReferencedSlot
 offset	CAurBehavior	vtbl.AsBehaviorCameraFollow	0x48	0x40	# BehaviorAsFollowSlot
-offset	CycleTIDTextureController	vtbl.Control	0x10	0x8	# CycleControlSlot
 offset	Scene	gobs	0x130	0x130	# SceneGobs
 offset	Scene	gobCount	0x138	0x138	# SceneGobCount
 offset	Scene	bspRoot	0x188	0x188	# SceneBspRoot
@@ -31,12 +30,8 @@ offset	Scene	fogColor	0x14c	0x14c	# SceneFogColor
 offset	Scene	lightManager	0x158	0x158	# SceneLightManager
 offset	Scene	windManager	0x160	0x160	# SceneWindManager
 offset	WindManager	size	0x870	0x870	# WindManagerSize
-offset	Gob	highlight	0x18	0x18	# GobHighlight
-offset	Gob	sceneTint	0x19	0x19	# GobSceneTint
 offset	Gob	node	0x68	0x68	# GobNode
 offset	Gob	partTree	0x90	0x90	# GobPartTree
-offset	Gob	lodRoot1	0x98	0x98	# GobLodRoot1
-offset	Gob	lodRoot2	0xa0	0xa0	# GobLodRoot2
 offset	Gob	position	0xa8	0xa8	# GobPosition
 offset	Gob	rot	0xb4	0xb4	# GobRot
 offset	Gob	colourMul	0xf6	0xf6	# GobColourMul
@@ -46,7 +41,6 @@ offset	Gob	alpha	0x108	0x108	# GobAlpha
 offset	Gob	fadeAlpha	0x10c	0x10c	# GobFadeAlpha
 offset	Gob	emissive	0x110	0x110	# GobEmissive
 offset	Gob	tileData	0x1a8	0x1a8	# GobTileData
-offset	Gob	envOverride	0x480	0x480	# GobEnvOverride
 offset	Model	anims	0x98	0x98	# MdlcModelAnims
 offset	Model	animCount	0xa0	0xa0	# MdlcModelAnimCount
 offset	Model	super	0xa8	0xa8	# MdlcModelSuper
@@ -64,21 +58,12 @@ offset	MdlNode	controllerData	0x88	0x88	# MdlNodeControllerData
 offset	MdlNode	children	0x68	0x68	# MdlNodeChildren
 offset	MdlNode	childCount	0x70	0x70	# MdlNodeChildCount
 offset	MdlNode	nodeId	0x34	0x34	# MdlNodeId
-offset	VertexPrimitive	matrix	0x18	0x18	# NodeMatrix
-offset	VertexPrimitive	flags	0x80	0x80	# NodeFlags
 offset	MdlNodeTriMesh	vertexCount	0x284	0x284	# MdlVertexCount
 offset	Part	pos	0x10	0x10	# PartPos
 offset	Part	rot	0x1c	0x1c	# PartRot
 offset	Part	children	0x38	0x38	# PartChildren
 offset	Part	childCount	0x40	0x40	# PartChildCount
 offset	Part	parent	0x48	0x48	# PartParent
-offset	Part	gob	0x50	0x50	# PartGob
-offset	Part	material	0x58	0x58	# PartMaterial
-offset	PartTriMesh	bboxMin	0x64	0x68	# PartBboxMin
-offset	PartTriMesh	bboxMax	0x70	0x74	# PartBboxMax
-offset	PartTriMesh	vertexPrimitive	0x88	0x90	# PartNode
-offset	PartTriMesh	tile	0x98	0xa0	# PartTile
-offset	PartTriMesh	alpha	0xa0	0xa8	# PartAlpha
 offset	PartLight	range	0x70	0x74	# LightRange
 offset	PartLight	castShadows	0x74	0x78	# LightCastShadows
 offset	PartLight	kind	0x80	0x84	# LightKind
@@ -92,30 +77,13 @@ offset	Camera	far	0x4d0	0x4d4	# CamFar
 offset	Camera	viewW	0x4dc	0x4e0	# CamViewW
 offset	Camera	viewH	0x4e0	0x4e4	# CamViewH
 offset	Camera	keyholeState	0xe50	0xe58	# CamKeyholeState
-offset	Material	srcBlend	0x90	0x90	# MatSrcBlend
-offset	Material	dstBlend	0x94	0x94	# MatDstBlend
-offset	Material	blendFlag	0x98	0x98	# MatBlendFlag
-offset	Material	envMap	0x40	0x40	# MatEnvMap
 offset	Material	shared	0xd0	0xd0	# MatShared
-offset	SharedMaterial	vsName	0x188	0x188	# SharedVsName
-offset	SharedMaterial	fsName	0x199	0x199	# SharedFsName
-offset	SharedMaterial	transparency	0x1f0	0x1f0	# SharedTransparency
-offset	SharedMaterial	sampleFb	0x1f4	0x1f4	# SharedSampleFb
-offset	SharedMaterial	volumetric	0x1f8	0x1f8	# SharedVolumetric
-offset	SharedMaterial	twoSided	0x1f1	0x1f1	# SharedTwoSided
 offset	CAurTextureBasic	name	0x88	0x88	# TexBasicName
-offset	VertexDataObject	indexed	0x8	0x8	# VdoIndexed
-offset	VertexDataObject	vao	0xc	0xc	# VdoVao
 offset	VertexDataObject	mode	0x14	0x18	# VdoMode
 offset	VertexDataObject	elemToken	0x18	0x1c	# VdoElemToken
 offset	VertexDataObject	vertToken	0x24	0x28	# VdoVertToken
-offset	VertexDataObject	vertMask	0x28	0x2c	# VdoVertMask
 offset	VertexDataObject	dynToken	0x30	0x34	# VdoDynToken
-offset	VertexDataObject	dynMask	0x34	0x38	# VdoDynMask
-offset	VertexDataObject	vertItems	0x48	0x48	# VdoVertItems
-offset	VertexDataObject	vertCount	0x50	0x50	# VdoVertCount
 offset	VertexDataObject	elemItems	0x58	0x58	# VdoElemItems
-offset	VertexDataObject	elemCount	0x60	0x60	# VdoElemCount
 offset	CNWCModule	currentArea	0xf8	0xf8	# ModuleCurrentArea
 offset	CNWCArea	flags	0x8	0x8	# AreaFlags
 offset	CAurBehaviorCameraFollow	target	0x20	0x20	# BehaviorTargetObj
@@ -223,14 +191,8 @@ offset	Particle	stride	0x78	0x78	# ParticleStride
 offset	MdlNodeTriMesh	faceCount	0xb8	0xb8	# MeshFaceCount
 offset	Gob	boundsMin	0x160	0x160	# GobBoundsMin
 offset	Gob	boundsMax	0x16c	0x16c	# GobBoundsMax
-offset	Gob	visible	0x1a4	0x1a4	# GobVisible
 offset	Gob	attach	0x450	0x450	# GobAttach
 offset	CAurBehavior	target	0x20	0x20	# BehaviorTarget
-offset	CAurTriangleList	verts	0x0	0x0	# ListVerts
-offset	CAurTriangleList	vertFloats	0x8	0x8	# ListVertFloats
-offset	CAurTriangleList	blades	0x30	0x30	# ListBlades
-offset	CAurTriangleList	bladeCount	0x38	0x38	# ListBladeCount
-offset	CAurTriangleList	mat	0x40	0x40	# ListMat
 offset	CAurGrassInfo	name	0x0	0x0	# GrassInfoName
 offset	CAurGrassInfo	density	0x20	0x20	# GrassInfoDensity
 offset	CAurGrassInfo	height	0x24	0x24	# GrassInfoHeight
@@ -289,8 +251,6 @@ offset	CAurTexture	vtbl.GetMipMap	0xc0	0xb8	# TexMipMapSlot
 offset	CAurTexture	vtbl.GetCompressionFormat	0xd8	0xd0	# TexFormatSlot
 offset	Scene	vtbl.DoBinBucket	0x1c0	0x1b8	# SceneDoBinBucketSlot
 offset	Scene	vtbl.DoEmitterBucket	0x1e8	0x1e0	# SceneDoEmitterBucketSlot
-offset	Gob	vtbl.GetPosition	0xc8	0xc0	# GobGetPositionSlot
-offset	Gob	vtbl.GetOrientation	0xd0	0xc8	# GobGetOrientationSlot
 offset	Scene	name	0xf0	0xf0	# SceneName
 offset	VertexStreamDataObject	indexed	0x8	0x8	# VsdoIndexed
 offset	VertexStreamDataObject	elemToken	0x14	0x18	# VsdoElemToken
@@ -352,9 +312,6 @@ offset	ShaderExposedRuntimeData	camPos	0x64	0x64	# RtCamPos
 offset	ShaderExposedRuntimeData	camPitch	0x84	0x84	# RtCamPitch
 offset	ShaderExposedRuntimeData	camDist	0x8c	0x8c	# RtCamDist
 offset	ShaderExposedRuntimeData	camFocus	0x90	0x90	# RtCamFocus
-offset	PartTriMesh	selfIllum	0x7c	0x80	# PartSelfIllum
-offset	MdlNodeTriMesh	diffuse	0xe8	0xe8	# MdlDiffuse
-offset	MdlNodeTriMesh	ambient	0xf4	0xf4	# MdlAmbient
 offset	Material	slotStride	0x10	0x10	# MatSlotStride
 offset	SharedMaterial	slot0	0xd8	0xd8	# SharedSlot0
 offset	CRes	sizeof	0x60	0x60	# SizeOfCRes
@@ -718,7 +675,6 @@ offset	Gob	scaleBase	0x49c	0x49c	# GobScaleBase
 offset	Gob	radius	0x178	0x178	# GobRadius
 offset	Gob	centre	0x17c	0x17c	# GobCentre
 offset	Gob	syncHier	0x1b8	0x1b8	# GobSyncHier
-offset	Gob	geomDirty	0x1a5	0x1a5	# GobGeomDirty
 offset	Gob	lodLevel	0x440	0x440	# GobLodLevel
 offset	Gob	lodNear	0x444	0x444	# GobLodNear
 offset	Gob	lodFar	0x448	0x448	# GobLodFar
@@ -767,13 +723,10 @@ offset	Gob	vtbl.Delete	0x8	0x0	# GobDeleteSlot
 offset	Gob	vtbl.PlayAnimation	0x38	0x30	# GobPlayAnimationSlot
 
 # ---- CX-106 anim: the owned animation runtime (CX-106) ----
-offset	Scene	animFrame	0x1b8	0x1b8	# SceneAnimFrame
 offset	Gob	windSource	0x199	0x199	# GobWindSource
 offset	Gob	windStrength	0x1a0	0x1a0	# GobWindStrength
 offset	Gob	safePointers	0x8	0x8	# GobSafePointers
-offset	Gob	safePointerCount	0x10	0x10	# GobSafePointerCount
 offset	Gob	callbacks	0x460	0x460	# GobCallbacks
-offset	Gob	callbackCount	0x468	0x468	# GobCallbackCount
 offset	LerpFloat	value	0x4	0x4	# LerpValue
 offset	Part	vtbl.GetWorld	0x20	0x18	# PartGetWorldSlot
 offset	CAurBehavior	vtbl.Control	0x20	0x18	# BehaviorControlSlot
@@ -878,10 +831,8 @@ rva	_ZN12CNWCCreature18WalkUpdateLocationEv	0x8114d0	# WalkUpdateLocation
 rva	_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi	0x7e6a20	# TestDirectLine
 rva	_ZN10CGuiInGame9ToggleOffEv	0x6fc6f0	# GuiInGameToggleOff
 rva	_ZN10CGuiInGame11UnToggleOffEv	0x6fc900	# GuiInGameUnToggleOff
-rva	_ZTV25CycleTIDTextureController	0xd905c0	# CycleTidControllerVtbl
 rva	noemittervar	0x128ead8	# GlPoolTableAnchor
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
-rva	_ZTV14PartDanglyMesh	0xd88698	# PartDanglyMeshVtbl
 rva	_ZN14SharedMaterialD2Ev	0x81f80	# SharedMaterialDtor
 rva	primTypeTranslationTable	0xd8ad20	# PrimTypeTranslationTable
 rva	_ZN14CPanelQuickBar10RepositionEv	0x860010	# QuickbarReposition
@@ -1017,24 +968,16 @@ offset	Model	root	0x50	0x50	# MdlParseModelRoot
 # ---- CX-120 seam-obj: the Aurora seam shell's layout. Windows measured off nwmain.exe's own
 # name-exported accessors (objdump the export table, join name->RVA, read the rcx displacement);
 # every Gob/Scene offset below is IDENTICAL on both images on this build.
-offset	Gob	seamSafeCap	0x14	0x14	# SafePointerList capacity
 offset	Gob	seamForceAnim	0x1a	0x1a	# EnableForceAnimations / IsForceAnimated
 offset	Gob	seamAnimEnabled	0x1d	0x1d	# EnableAnimations / IsAnimating
 offset	Gob	seamName	0x24	0x24	# inline char[0x40]; Gob::GetName returns its address
 offset	Gob	seamShadows	0xf4	0xf4	# TurnOnShadows / TurnOffShadows, a 16-bit store
 offset	Gob	seamPersonalSpace	0x198	0x198	# SetRenderPersonalSpace
-offset	Gob	seamCallbackCap	0x46c	0x46c	# callback capacity
 offset	Gob	seamScaleChannel	0x4a0	0x4a0	# ScaleObject's two channels, 0x4a0 and 0x4a4
 offset	Gob	seamAttachList	0x4a8	0x4a8	# CExoArrayList<Gob*> of attachments
-offset	Gob	seamAttachCount	0x4b0	0x4b0	# attachment count
-offset	Gob	seamAttachCap	0x4b4	0x4b4	# attachment capacity
 offset	Gob	seamTriMeshArea	0x4b8	0x4b8	# GetRandomPart's cached total, -1 = stale
 offset	Gob	seamSizeof	0x4c0	0x4c0	# NewCAurObject's operator new size
 offset	Scene	seamSafeList	0x08	0x08	# SafePointerList array pointer
-offset	Scene	seamSafeCount	0x10	0x10	# SafePointerList count
-offset	Scene	seamSafeCap	0x14	0x14	# SafePointerList capacity
-offset	Scene	seamAmbient	0x168	0x168	# CAurScene::SetAmbient
-offset	Scene	seamAmbient2	0x170	0x170	# the second vector SetAmbient writes
 offset	Scene	seamSizeof	0x518	0x518	# NewCAurScene's operator new size
 offset	StringGob	seamStringSub	0x4c0	0x4c0	# the CAurString sub-object vptr; NOT readerThisAdjust, which is 0 on Windows
 offset	StringGob	seamSizeof	0x558	0x558	# NewCAurString's operator new size

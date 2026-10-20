@@ -97,7 +97,7 @@ public static unsafe class Gl
                       VERTEX_ATTRIB_ARRAY_POINTER = 0x8645;
     public const uint COLOR_ATTACHMENT0 = 0x8CE0, FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE = 0x8CD0,
                       FRAMEBUFFER_ATTACHMENT_OBJECT_NAME = 0x8CD1, RENDERBUFFER = 0x8D41,
-                      ATTACHMENT_TEXTURE = 0x1702, FRAMEBUFFER_SRGB = 0x8DB9;
+                      FRAMEBUFFER_SRGB = 0x8DB9;
     public const uint DEPTH_COMPONENT = 0x1902, DEPTH_COMPONENT24 = 0x81A6, DEPTH_COMPONENT16 = 0x81A5, UNSIGNED_INT = 0x1405;
     public const uint DEPTH_BUFFER_BIT = 0x0100, COLOR_BUFFER_BIT = 0x4000, LESS = 0x0201, LEQUAL = 0x0203, GREATER = 0x0204, ALWAYS = 0x0207, NONE = 0;
     /// <summary>GL_EQUAL. The highlight mask tests a cutout batch against the depth its own colour

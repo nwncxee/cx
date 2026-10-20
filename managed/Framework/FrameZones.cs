@@ -155,8 +155,6 @@ public static class FrameZones
         Bcn,
         /// <summary>Inside <see cref="Bcn"/>: the compressed uploads alone.</summary>
         BcnUp,
-        /// <summary>The prefetch drip's engine builds. On the Enroll slot inside Ai, subtracted from both.</summary>
-        Prebuild,
         /// <summary>The lightmap bake's frame step (adopt, pack, the light steps, the readback), inside
         /// <see cref="Passes"/> and subtracted from it.</summary>
         Lightmap,
@@ -286,8 +284,6 @@ public static class FrameZones
         Enroll,
         /// <summary>Bindless texture handles minted (GetTextureHandle + MakeResident).</summary>
         Mint,
-        /// <summary>Engine texture builds re-run by the unbuilt-texture drip.</summary>
-        TexBuild,
         /// <summary>Standing caster list re-collected.</summary>
         Collect,
         /// <summary>Textures through the engine upload funnel (<see cref="Zone.Tex"/> is their time).</summary>
@@ -302,8 +298,6 @@ public static class FrameZones
         TexWarm,
         /// <summary>ADR 0023: cached textures evicted for the budget.</summary>
         TexEvict,
-        /// <summary>Textures built ahead of first sight by the prefetch drip.</summary>
-        Prefetch,
         /// <summary>Casters whose dynamic-set membership flipped (each one invalidates the static cube it stands in).</summary>
         DynFlip,
         /// <summary>Static cube slots held back by <c>/shadow staticcap</c> this frame.</summary>
@@ -313,8 +307,6 @@ public static class FrameZones
         CollectGen, CollectEpoch, CollectSkip, CollectRefresh,
         /// <summary>The route's visible set was rebuilt (cadence, enrolment generation, epoch or a camera move).</summary>
         VisRebuild,
-        /// <summary>A newly seated slot joined the standing caster list in place of a re-collect.</summary>
-        CasterAppend,
         Count,
     }
     private const int NE = (int)Ev.Count;

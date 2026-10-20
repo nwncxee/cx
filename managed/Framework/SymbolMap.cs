@@ -1231,12 +1231,6 @@ internal static unsafe class SymbolMap
     /// <c>DoBinBucket</c> gates its whole body on. The owned pass honours it: grass off means the owned
     /// draw does nothing AND does not suppress, so the option keeps meaning what it says.</summary>
     public const string GrassEnabled = "_ZN5Scene17m_bGrassIsEnabledE";
-    /// <summary><c>PartDanglyMesh</c>'s vtable. Not a hook -- an identity. A dangly part reaches the
-    /// <c>PartTriMesh::Draw</c> hook (its own Draw @0x451b89 calls straight into it) and must be told apart
-    /// from a rigid one, which no field on the part answers. The Itanium ABI stores the address of the
-    /// vtable's function-pointer area, 0x10 past the symbol, in the object's first word.</summary>
-    public const string PartDanglyMeshVtbl = "_ZTV14PartDanglyMesh";
-
     /// <summary><c>Scene::GetWindVector(Vector const&amp;, float)</c> @0x460c60 -- the AREA's wind at a world position:
     /// it forwards to <c>WindManager::GetGlobalWind</c> @0x490ab0 (<c>base * noiseBlend + pointSources</c>). Reading
     /// <c>WindManager+0x20</c> is not equivalent -- only <c>setglobalwind</c> writes it, so in play all wind is point
@@ -1252,23 +1246,9 @@ internal static unsafe class SymbolMap
     /// record, unlinking the SafePointer a previous hit left in it.</summary>
     [Fn("void(CHitInfo this, int mode, long flags, int box)")]
     public const string HitInfoReset = "_ZN8CHitInfo5ResetEili";
-    /// <summary><c>VertexDataObject::CommitItemDynamicData(uint, uint)</c> @0x45c7d0 -- funnels into
-    /// <c>GLRender::UnlockPool</c>, which Alloy owns and which raises the dirty bit the caster re-bake reads.
-    /// Writing the verts is not enough; this is what publishes them.</summary>
-    [Fn("void(IntPtr vdo, uint item, uint flags)")]
-    public const string VdoCommitItemDynamicData = "_ZN16VertexDataObject21CommitItemDynamicDataEjj";
-        /// <summary>Material::HasEnvMap @0x43d1a0-ish -- env-mapped parts take RenderEnvironmentMapped, not
-    /// RenderFlat; excluded from batching.</summary>
-    [Fn("byte(IntPtr mat)")]
-    public const string MatHasEnvMap = "_ZN8Material9HasEnvMapEv";
     /// <summary>Material::HasBumpyShinyMap -- bumpy-shiny parts take RenderBumpyShiny; excluded.</summary>
     [Fn("byte(IntPtr mat)")]
     public const string MatHasBumpyShinyMap = "_ZN8Material16HasBumpyShinyMapEv";
-        /// <summary>Material::GetTexture(int) @0x4c5810 -- texture slot i (SharedMaterial override at
-    /// mat+0xd0 wins, else own slot at mat+i*0x10). Batch group key = material CONTENT (each part owns
-    /// its Material instance, so pointer identity shatters groups to size 1).</summary>
-    [Fn("long(Material this, int slot)")]
-    public const string MatGetTexture = "_ZN8Material10GetTextureEi";
     /// <summary><c>SharedMaterial::ParseField(char const*)</c> @0x4c6760 -- one <c>.mtr</c> line. The
     /// engine's chain ends at <c>texture10</c>; the hook keeps <c>texture11+</c> in a side table.</summary>
     [Fn("void(IntPtr shared, byte* line)")]
@@ -1341,11 +1321,6 @@ internal static unsafe class SymbolMap
     /// <summary>primTypeTranslationTable @0x12f50e0 (R) -- AuroraPrimitiveTypes -> GLenum table indexed by
     /// the prim id RenderVertexData receives.</summary>
     public const string PrimTypeTranslationTable = "primTypeTranslationTable";
-    /// <summary>GLRender::m_bones @0x19e1f60 -- the static 64 x mat4 bone array (4KB) the engine's skinning shader runs
-    /// on. NOT resolved and never read: what survives here is the LAYOUT CONTRACT the Alloy vertex stages inherit.
-    /// <c>SetBoneMatrix</c> stores each matrix transposed and <c>SetUniforms</c> uploads it with
-    /// <c>transpose=0</c>, so a solved matrix can be memcpied into an std430 <c>mat4[]</c> untouched.</summary>
-    public const string GlRenderBones = "_ZN8GLRender7m_bonesE";
     /// <summary>GLRender::m_shaderExposedRuntimeData @0x19e1ea0 -- the struct <c>GLRender::SetUniforms</c> @0x4ccbf0
     /// uploads the "what is the world doing" uniforms out of: <c>worldtimerTimeOfDay</c> int at +0x18,
     /// <c>areaGlobalWind</c> vec3 at +0x28, <c>areaFlags</c> int at +0x3c, <c>playerPosition</c> vec3 at +0x4c,
@@ -1569,36 +1544,12 @@ internal static unsafe class SymbolMap
     public const string AurTextureGet    = "_Z13AurTextureGetPKcP11CAurTextureS0_Piib";
     [Fn("int(IntPtr tex)")]
     public const string AurTextureGetTID = "_Z16AurTextureGetTIDP11CAurTexture";
-    /// <summary><c>AurTextureGetController(CAurTexture*)</c> @0x485350 -- resolves ref -> basic and returns
-    /// <c>basic+0x38</c>, the texture's animation controller (or null).</summary>
-    [Fn("IntPtr(IntPtr tex)")]
-    public const string AurTextureGetController = "_Z23AurTextureGetControllerP11CAurTexture";
-    /// <summary><c>CAurTexture::~CAurTexture()</c> @0x486080 (D1 = D2), the death notice for every
-    /// texture. <c>CAurTextureBasic</c>'s D1 tail-jumps here and both deleting dtors call it, on Linux and
-    /// Windows alike (verified in both disassemblies).</summary>
-    [Fn("void(IntPtr tex)")]
-    public const string AurTextureDtor = "_ZN11CAurTextureD2Ev";
-    /// <summary>The one controller class whose Control() (vtable slot +0x10) only rewrites a GL name.</summary>
-    public const string CycleTidControllerVtbl = "_ZTV25CycleTIDTextureController";
-    /// <summary>The engine's int gate on every controller tick (the Bind tail reads it).</summary>
-    public const string EnableTextureControllers = "enabletexturecontrollers";
-    /// <summary><c>CAurTexture::BuildAndStore()</c> @0x48bc80 -- the engine's ON-DEMAND texture build, and the only
-    /// retry there is: <c>CAurTextureBasic::Reset</c> @0x4858c0 clears the constructed latch at <c>basic+0xe6</c> and
-    /// the no-image verdict at <c>+0xe7</c>, deletes the GL names and zeroes the id, then the rebuild re-decodes. Reset
-    /// is pure destruction on a texture that has an id or on the shared null <see cref="AurTextureNullPtr"/>: drip it.</summary>
-    [Fn("void(IntPtr tex)")]
-    public const string AurTextureBuildAndStore = "_ZN11CAurTexture13BuildAndStoreEv";
     /// <summary>The two texture vtables, which is the whole of "is this pointer still a texture" -- see
     /// <see cref="AurTex"/>. Data symbols, never called: what is read is the value a live object's first word
     /// holds, i.e. the symbol plus the Itanium ABI's 0x10.</summary>
     public const string AurTextureVtbl = "_ZTV11CAurTexture";
     /// <inheritdoc cref="AurTextureVtbl"/>
     public const string AurTextureBasicVtbl = "_ZTV16CAurTextureBasic";
-    /// <summary><c>CAurTextureBasic::m_pNullTexture</c> @0x19abe90 -- the engine's ONE shared "no texture" object, and
-    /// why a GL id of 0 has two meanings: <c>AurTextureGetTID</c> @0x48e080 returns 0 outright for it, so a material
-    /// naming it reports no id for ever. Read as a pointer-sized DATUM, never through <c>AurTextureGetNULL</c>
-    /// @0x48dc20, which LAZILY CREATES the object -- a query must not allocate the answer.</summary>
-    public const string AurTextureNullPtr = "_ZN16CAurTextureBasic14m_pNullTextureE";
 
     // Resource manager: read a resource's bytes the way the engine's own CResHelper does (the owned-pipeline
     // .shd overrides). Sequence, from CResHelper<CResSHD,2069>::SetResRef / ClearResHelper:
@@ -2948,17 +2899,13 @@ internal static unsafe class SymbolMap
         [IoReadSync] = Nm("?ReadSync@IODispatcher@@QEAAPEAVMaxTree@@PEBD@Z"),
         [SpawnPartsForTile] = Nm("?SpawnPartsForTile@@YAPEAVGob@@PEBDAEBVVector@@AEBVQuaternion@@HHAEAV?$List@PEAVPart@@@@@Z"),
         [AurTextureBindInUnit] = Nm("?BindInUnit@CAurTexture@@UEAAXIH@Z"),
-        [AurTextureBuildAndStore] = Nm("?BuildAndStore@CAurTexture@@QEAAXXZ"),
         [AurTextureBuildAndStoreTexture] = Nm("?BuildAndStoreTexture@CAurTextureBasic@@QEAAXXZ"),
         [AurTextureBuildAndStoreAll] = Nm("?AurTextureBuildAndStoreAll@@YAXXZ"),
         [RefreshTextures] = Nm("?RefreshTextures@@3V?$List@PEAVCAurTextureBasic@@@@A"),
         [MaterialInitializeTextures] = Nm("?InitializeTextures@Material@@QEAAXPEBD000@Z"),
         [AurTextureConstructImage] = Nm("?ConstructImage@CAurTextureBasic@@QEAAXXZ"),
-        [AurTextureGetController] = Nm("?AurTextureGetController@@YAPEAVTextureController@@PEAVCAurTexture@@@Z"),
-        [AurTextureDtor] = Nm("??1CAurTexture@@UEAA@XZ"),
         [AurTextureGlImageBasic] = Nm("?glImageBasic@CAurTextureBasic@@QEAAH_N@Z"),
         [OperatorNewArray] = Nm("??2MaxTree@@SAPEAX_K@Z"),
-        [AurTextureNullPtr] = Nm("?m_pNullTexture@CAurTextureBasic@@2V?$SafePointer@VCAurTexture@@@@A"),
         [LerpFloatLerped] = Nm("?Lerped@LerpFloat@@QEBAMXZ"),
         [LodScaleFactor] = Nm("?g_fLODScaleFactor@@3MA"),
         [BinBucket] = Nm("?binbucket@@3V?$List@PEAVCAurTriangleBin@@@@A"),
@@ -2993,7 +2940,6 @@ internal static unsafe class SymbolMap
         [SafePointerObjectAssign] = Nm("??4?$SafePointer@VCAurObject@@@@QEAAAEAV0@QEAVCAurObject@@@Z"),
         [HitcheckStaticBsp] = Nm("?hitcheck_static_bsp_parts@@3HA"),
         [EnableNonBspGroundHit] = Nm("?enablenonbspgroundhit@@3HA"),
-        [CycleTidControllerVtbl] = At(),   // RTTI type descriptor -> COL -> vftable (tools/abi/vtable-slots.py)
         [DeltaT] = Nm("?DeltaT@@3MA"),
         [GobHighlightAmplitude] = Nm("?m_fGobHighlightAmplitude@Scene@@0MA"),
         [GobHighlightFrequency] = Nm("?m_fGobHighlightFrequency@Scene@@0MA"),
@@ -3006,7 +2952,6 @@ internal static unsafe class SymbolMap
         [EnableBeams] = Nm("?enablebeams@@3HA"),
         [EnableBumpyWater] = Nm("?g_nEnableBumpyWater@@3HA"),
         [EnableFBEffects] = Nm("?enableFBeffects@@3HA"),
-        [EnableTextureControllers] = Nm("?enabletexturecontrollers@@3HA"),
         [ExoResMan] = Nm("?g_pExoResMan@@3PEAVCExoResMan@@EA"),
         [FbEffectsMask] = Nm("?m_nFramebufferEffectsEnabled@Camera@@1IA"),
         [ForceDialogVisible] = LinuxOnly("empty body on both builds; nothing to skip"),
@@ -3043,7 +2988,6 @@ internal static unsafe class SymbolMap
         [GlMaxElementVertices] = Nm("?GetVertexBufferMaxElementVertices@GLRender@@CAHXZ"),
         [GlOrphanBuffers] = Nm("?g_bOrphanBuffersBeforeWrite@@3HA"),
         [GlPoolTableAnchor] = At(),   // the {base,count} pair itself -- GetPoolBuffer loads it, UnlockPool leas it
-        [GlRenderBones] = Nm("?m_bones@GLRender@@0PAVMatrix4x4@@A"),
         [GlRenderVertexData] = Nm("?RenderVertexData@GLRender@@CAXPEAVVertexDataObject@@IW4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlRenderVertexStreamData] = Nm("?RenderVertexStreamData@GLRender@@CAXPEAVVertexStreamDataObject@@W4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlSetVertexDataObject] = Nm("?SetVertexDataObject@GLRender@@CAXPEAVVertexDataObject@@@Z"),
@@ -3066,9 +3010,7 @@ internal static unsafe class SymbolMap
         [LightAreaDiffuseDir] = Nm("?m_lightAreaDiffuseDirection@GLRender@@0VVector@@A"),
         [MAurMtxStack] = Nm("?m_aurMtxStack@@3PAVaurMatrixStack@@A"),
         [ManageSceneBSP] = Nm("?ManageSceneBSP@@YAXPEAVScene@@@Z"),
-        [MatGetTexture] = Nm("?GetTexture@Material@@QEAAPEAVCAurTexture@@H@Z"),
         [MatHasBumpyShinyMap] = Nm("?HasBumpyShinyMap@Material@@QEAA_NXZ"),
-        [MatHasEnvMap] = Nm("?HasEnvMap@Material@@QEAA_NXZ"),
         [MeshBuckets] = Nm("?meshbuckets@@3V?$List@VBucket@@@@A"),
         [MinDoorAlpha] = Nm("?mindooralpha@@3MA"),
         [MsaaSamples] = Nm("?g_nMSAA@@3HA"),
@@ -3092,7 +3034,6 @@ internal static unsafe class SymbolMap
         [Nuklear] = At(),                 // DATA: the `mov rax,[rip]` whose +0x5088 takes the frame's delta time
         [OnGainFocus] = LinuxOnly("empty stub reached by indirect dispatch; OS focus handling covers it"),
         [OnLostFocus] = LinuxOnly("empty stub reached by indirect dispatch; OS focus handling covers it"),
-        [PartDanglyMeshVtbl] = At(),   // RTTI type descriptor -> COL -> vftable (tools/abi/vtable-slots.py)
         [GobSetScene] = Nm("?SetScene@Gob@@QEAAXPEAVScene@@@Z"),
         // ParseField and Init are called (not inlined) on Windows -- CreateSharedMaterial/GetSharedMaterial.
         [SharedMaterialParseField] = Nm("?ParseField@SharedMaterial@@QEAAXPEBD@Z"),
@@ -3199,7 +3140,6 @@ internal static unsafe class SymbolMap
         [ToonDepthEdge] = Nm("?toon_depth_edge_threshold@@3MA"),
         [ToonEdgeHardness] = Nm("?toon_edge_hardness@@3MA"),
         [UpdateMouseCursorAppearance] = At(),
-        [VdoCommitItemDynamicData] = Nm("?CommitItemDynamicData@VertexDataObject@@QEAAXII@Z"),
         [VdoRepack] = Nm("?Repack@VertexDataObject@@QEAAXXZ"),
 
         // --- the radial seam. CRadialMenu is name-exported; the root vftables are the MSVC `vftable`

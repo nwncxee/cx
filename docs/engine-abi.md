@@ -164,15 +164,14 @@ what "`CPanelQuickBar` overrides it and they do not" looks like.
 | `CAurTexture` | `GetReferencedTexture()` | `0x18` | `0x10` | `AlloyCensus`, `OwnedTextures` |
 | `VertexPrimitive` | `SetupArrays()` | `0x38` | `0x30` | `SceneWalk` |
 | `CAurBehavior` | `AsBehaviorCameraFollow()` | `0x48` | `0x40` | `SceneInputs` |
-| `CycleTIDTextureController` | `Control()` | `0x10` | `0x08` | nothing -- `TexRegistry.Cycle` steps a cell itself |
 | `CNWCObject` | `GetPortrait(uchar)` | `0x1d8` | `0x1d0` | `NameplateNative`, `DialogService` (#420) |
 
-All eight Alloy slots are now `Field(..., Expect.VtblSlot)` rows in `EngineLayout` (values diverging per OS in the build file), and
+All seven Alloy slots are now `Field(..., Expect.VtblSlot)` rows in `EngineLayout` (values diverging per OS in the build file), and
 the files that read them read a named field. The `Expect.VtblSlot` tag is **declared but not
 yet armed**: the predicate exists and would catch a slot that does not point into the image,
-but nothing calls `EngineLayout.Probe` for `Part`, `CAurTexture`, `VertexPrimitive`,
-`CAurBehavior` or `CycleTIDTextureController` — today only `NameplateNative` probes, and only
-`CNWCCreature`/`CNWCObject`. Wiring the five first-sighting calls is the sharp piece of
+but nothing calls `EngineLayout.Probe` for `Part`, `CAurTexture`, `VertexPrimitive` or
+`CAurBehavior` — today only `NameplateNative` probes, and only
+`CNWCCreature`/`CNWCObject`. Wiring the four first-sighting calls is the sharp piece of
 #429's "expanding the probe vocabulary".
 
 **The one unmeasured slot** was `HotkeyMenuService.SetTextFromCharVtblOffset = 0xd8`, read off

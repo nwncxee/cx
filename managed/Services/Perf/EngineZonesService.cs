@@ -235,7 +235,7 @@ public sealed unsafe class EngineZonesService : IExtenderService
            + FrameZones.Ticks(FrameZones.Zone.Shim) + FrameZones.Ticks(FrameZones.Zone.Alloy)
            + FrameZones.Ticks(FrameZones.Zone.Ui) + FrameZones.Ticks(FrameZones.Zone.Present)
            + FrameZones.Ticks(FrameZones.Zone.Seam)
-           + FrameZones.Ticks(FrameZones.Zone.Bcn) + FrameZones.Ticks(FrameZones.Zone.Prebuild);   // subtracted from Enroll already; they must not land in Ai instead
+           + FrameZones.Ticks(FrameZones.Zone.Bcn);   // subtracted from Enroll already; it must not land in Ai instead
 
     [UnmanagedCallersOnly]
     private static long OnGui(IntPtr self, float dt)

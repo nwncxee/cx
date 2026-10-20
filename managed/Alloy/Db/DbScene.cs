@@ -37,8 +37,6 @@ public static unsafe class DbScene
         SceneDb.SceneFocus[i] = Vector3.Zero;
         SceneDb.SceneAnimOn[i] = true;
         SceneDb.SceneAnimating[i] = false;
-        SceneDb.SceneWindDir[i] = Vector3.Zero;
-        SceneDb.SceneWindMag[i] = 0f; SceneDb.SceneWindGust[i] = 0f; SceneDb.SceneWindTimeout[i] = 0f;
         SceneDb.SceneSkyFade[i] = default;
         SceneDb.SceneSkyT[i] = 0f; SceneDb.SceneSkyCur[i] = 0; SceneDb.SceneSkyDesired[i] = 0;
         SceneDb.SceneSkyOff[i] = true;

@@ -273,7 +273,7 @@ public sealed unsafe partial class CasterPass
                 if (_liveTex[live] == 0 && maskable && AlloyRenderer.VdoHasUv(f.Vao)) _maskNoTex++;
                 _liveCut[live] = CutFor(f.Coverage, f.EnvAlpha); _liveBlend[live] = f.Blended; _liveContent[live] = f.Content;
                 // Review: a caster ABSENT last frame is a mover on return, whatever its record says -- a
-                // transient TryRange or VAO failure longer than the one-frame ghost+hadMover cover would
+                // transient range or VAO failure longer than the one-frame ghost+hadMover cover would
                 // otherwise re-appear into views that never re-bake its shadow back.
                 // #336: present last frame = in a list that stood through last frame (see _listFrame).
                 bool appeared = _collectedAt != _frameSeq - 1 || _liveStamp[slot] < _lastCollectFrame;
@@ -330,15 +330,9 @@ public sealed unsafe partial class CasterPass
     }
 
     /// <summary>The per-caster predicate, ONE function for the full collect and the standing-list refresh so
-    /// the two cannot classify a caster differently, counted by REASON because which term saturates decides
-    /// where the next fix goes. A still caster is STILL A CASTER: it stays in the list and bakes, it merely
-    /// does not invalidate the views it stands in, and <paramref name="appeared"/> errs toward stale.</summary>
-    private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly)
-        => Admit(live, slot, skinned, appeared, recMoved, dangly, creature: skinned);
-    /// <summary><paramref name="creature"/>: in the dynamic set whether or not it moved this frame (its page
-    /// stays claimed, so a still character keeps its shadow on a baked floor), but a mover -- a face
-    /// re-bake -- only on real motion: run 18 admitted every creature part as a mover every frame and the
-    /// pool re-baked 20-40 faces a frame with nothing moving (shadows GPU 1.1-1.8 ms, 60 fps).</summary>
+    /// the two cannot classify a caster differently, counted by REASON. A still caster is STILL A CASTER: it
+    /// bakes and stays listed, it merely does not invalidate the views it stands in. <paramref name="appeared"/>
+    /// errs toward stale; <paramref name="creature"/> claims a dynamic page without making the caster a mover.</summary>
     private static void Admit(int live, int slot, bool skinned, bool appeared, bool recMoved, bool dangly,
                               bool creature)
     {

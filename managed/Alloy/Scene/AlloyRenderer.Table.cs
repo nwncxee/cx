@@ -18,8 +18,6 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly int[] _oEntry = new int[MaxOwned];      // PartTable slot
     private static readonly IntPtr[] _oTri = new IntPtr[MaxOwned];  // Zero = revoked, harvested at enrollment
     private static readonly IntPtr[] _oNode = new IntPtr[MaxOwned];
-    private static readonly IntPtr[] _oMat = new IntPtr[MaxOwned];
-    private static readonly IntPtr[] _oVdo = new IntPtr[MaxOwned];
     private static readonly int[] _oItem = new int[MaxOwned];
     private static readonly int[] _oPrim = new int[MaxOwned];
     private static readonly int[] _oVao = new int[MaxOwned];        // slot in the per-VDO VAO cache
@@ -41,9 +39,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is this part's gob a TILE gob (<see cref="EngineLayout.GobTileData"/>)? Sampled at
     /// enrolment because that is the one place the gob is known live. See <c>Dissolves</c>.</summary>
     private static readonly bool[] _oTileGob = new bool[MaxOwned];
-    /// <summary>The root <c>Part*</c> of the LOD level this slot was enrolled from, zero for a slot with
-    /// none. Only compared, never dereferenced.</summary>
-    private static readonly IntPtr[] _oLodRoot = new IntPtr[MaxOwned];
     /// <summary>This enrolled part's bone slot for THIS pass, or -1 for a rigid one. Rewritten every
     /// frame in <c>PoseSkinned</c>, never carried across one -- a pose is per-frame by definition.</summary>
     private static readonly int[] _oBone = new int[MaxOwned];
@@ -433,10 +428,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The route's alpha-to-coverage cutouts and their dissolve bit, held until the cutout run is out.</summary>
     private static readonly int[] _a2cTmp = new int[MaxOwned];
     private static readonly bool[] _a2cDis = new bool[MaxOwned];
-    /// <summary>The draw-arg cache -- index count, byte offset and base vertex as read off the VDO item
-    /// tables the last time this slot staged. Valid while stamped with the live epoch AND the stamp survives
-    /// <c>UnstampRecord</c>, which fires on every re-tenant and drifted keep -- the only edges that re-point
-    /// <c>_oVdo</c>/<c>_oItem</c>. Repack revokes before the tables move; a freed VDO kills its parts first.</summary>
+    /// <summary>The draw-arg cache -- index count, byte offset and base vertex as read off the arena the
+    /// last time this slot staged. Valid while stamped with the live epoch AND the stamp survives
+    /// <c>UnstampRecord</c>, which fires on every re-tenant and drifted keep -- the only edges that
+    /// re-point a slot's geometry.</summary>
     private static readonly int[] _cIdx = new int[MaxOwned];
     private static readonly nint[] _cOff = new nint[MaxOwned];
     private static readonly int[] _cBase = new int[MaxOwned];

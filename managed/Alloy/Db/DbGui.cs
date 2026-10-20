@@ -432,14 +432,6 @@ internal static unsafe class DbGui
         return $"uvsets={mesh.UvSetCount} uv0=({u0:F4}..{u1:F4},{v0:F4}..{v1:F4}) verts={a.Length}";
     }
 
-    /// <summary>The part's node name, for a dump line. Allocation-free paths do not need it.</summary>
-    private static string NodeName(int p)
-    {
-        Mdl.ModelDef? m = SceneDb.PartModel[p];
-        int n = SceneDb.PartNode[p];
-        return m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Name : "?";
-    }
-
     private static readonly Dictionary<string, TexId> _envMaps = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The GL texture an env-mapped part of object <paramref name="o"/> reflects: the map the game named for the

@@ -115,7 +115,6 @@ public sealed class Dropdown
 
     public bool Contains(float mx, float my)
         => Open && (List.Contains(mx, my) || (Searching && mx >= X && mx < X + W && my >= Y && my < List.Y));
-    public bool Dragging => List.Dragging;
 
     /// <summary>Screen top of item <paramref name="i"/> (may lie outside the list while scrolled).</summary>
     public float ItemTop(int i) => List.ToScreen(i * ItemH);
@@ -241,7 +240,7 @@ public sealed class Dropdown
         check.Expect(d.ItemAt(100f + 120f - 2f, 230f) == -1, "the gutter is not an item");
         // Thumb drag to the bottom -> the last item is in view.
         check.Expect(d.List.ThumbRect(out float tt, out float th), "thumb shown");
-        check.Expect(d.MouseDown(100f + 120f - 2f, tt + 1f, out int p0) && p0 < 0 && d.Open && d.Dragging, "thumb press grabs, picks nothing, stays open");
+        check.Expect(d.MouseDown(100f + 120f - 2f, tt + 1f, out int p0) && p0 < 0 && d.Open && d.List.Dragging, "thumb press grabs, picks nothing, stays open");
         d.MouseMove(100f + 120f - 2f, tt + 1f + d.H);
         check.Expect(d.MouseUp() && d.List.Offset == d.List.MaxOffset, "thumb dragged to the end shows the tail");
         check.Expect(d.ItemAt(110f, d.Y + d.H - 1f) == 26, "the last item sits at the list bottom");

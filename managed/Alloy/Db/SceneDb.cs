@@ -589,10 +589,6 @@ public static class SceneDb
     /// <summary><c>Scene::IsAnimating</c>'s answer. The engine caches it in a byte at <c>Scene+0xb9</c> and
     /// the getter is one load; so is this. Written by the animation step, which is the only thing that knows.</summary>
     public static readonly bool[] SceneAnimating = new bool[MaxScenes];
-    /// <summary><c>Scene::SetGlobalWind(dir, magnitude, gustiness)</c> and <c>SetWindUpdateTimeout</c>.</summary>
-    public static readonly Vector3[] SceneWindDir = new Vector3[MaxScenes];
-    public static readonly float[] SceneWindMag = new float[MaxScenes], SceneWindGust = new float[MaxScenes],
-                                  SceneWindTimeout = new float[MaxScenes];
     /// <summary>The fade object (<c>Scene::SetSkyFade</c>, engine <c>Scene+0x38</c>) -- separate from the four
     /// skybox objects, which live in <see cref="SceneSky0"/>..<see cref="SceneSky3"/>.</summary>
     public static readonly DbId[] SceneSkyFade = new DbId[MaxScenes];
@@ -886,7 +882,7 @@ public static class SceneDb
 
     /// <summary>The interned stable half of this part's draw (<see cref="DrawRecipe"/>), -1 for a part that
     /// draws nothing. Replaces the per-frame pointer chase: the part's material node and its ambient and
-    /// diffuse, <c>Material::GetTexture</c>, the VDO index range and the <c>IsDangly</c> vtable probe.</summary>
+    /// diffuse, <c>Material::GetTexture</c> and the VDO index range.</summary>
     public static readonly int[] PartRecipe = Fill(new int[MaxParts], -1);
     /// <summary>The part-tree alternate this part belongs to: 0 = in every alternate, else LOD level + 1 (the
     /// level-0 tree of an object that HAS alternates is 1, so it can hide). Read through <see cref="LodHidden"/>.</summary>
