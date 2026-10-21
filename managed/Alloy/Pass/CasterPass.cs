@@ -310,7 +310,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         _gStaged = false;
         _qN = 0;
         ReceiverFrame();
-        if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted))
+        if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
             AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
             if (EnsureCommon() && CasterGather.Ensure()) { EnsureLayered(); EnsureHandleMask(); _gStaged = GatherStage(); }
