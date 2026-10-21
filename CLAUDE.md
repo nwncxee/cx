@@ -194,7 +194,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   goes on to log "passed". A self-check Claude writes names its oracle in the check's `<summary>`.
 - `server-neutral.sh`: `managed/` naming a specific server or its content (SoW, Westgate, Arelith) fails;
   describe it generically. `Framework/Product.cs` (the hosting URLs) is exempt.
-- `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP or WebM.
+- `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP (a clip to animated WebP: GitHub cannot show a WebM).
 - `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses fails --
   bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
   release, a checkout that keeps its token.

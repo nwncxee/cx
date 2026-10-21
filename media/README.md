@@ -1,11 +1,12 @@
 # Gallery
 
 Screenshots and clips of CX in the game. Every file here must be under 300 KB. Compress a screenshot to
-WebP and a clip to WebM before you add it.
+WebP and a clip to animated WebP before you add it: GitHub shows media through `<img>`, which cannot play
+a WebM.
 
 ## Rain in a town square
 
-![Rain in a town square at night](rain-town-square.webm)
+![Rain in a town square at night](rain-town-square.webp)
 
 ## A street in fog
 
