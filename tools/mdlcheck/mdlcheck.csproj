@@ -22,6 +22,7 @@
     <Compile Include="../../managed/Alloy/Mdl/MdlPost.cs" />
     <Compile Include="../../managed/Alloy/Mdl/MdlSelfCheck.cs" />
     <Compile Include="../../managed/Alloy/Mdl/MdlBinaryPayload.cs" />
+    <Compile Include="../../managed/Alloy/Physics/*.cs" Exclude="../../managed/Alloy/Physics/*SelfCheck*.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures/**" CopyToOutputDirectory="PreserveNewest" />

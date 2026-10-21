@@ -107,7 +107,7 @@ public static unsafe partial class HitTestCheck
 
         /// <summary>One object with one mesh part at <paramref name="pos"/>, oriented and scaled.</summary>
         private static DbId Obj(DbId scene, ModelDef model, Vector3 pos, Quaternion rot, float scale,
-                               byte cls, bool isStatic, long trigger = 0)
+                               byte cls, bool isStatic, long trigger = 0, MeshDef? drawn = null)
         {
             DbId o = SceneDb.Objects.Alloc();
             int i = o.Index;
@@ -139,6 +139,7 @@ public static unsafe partial class HitTestCheck
             SceneDb.PartEnabled[pi] = true; SceneDb.PartMerged[pi] = false;
             SceneDb.PartAlpha[pi] = 1f;
             SceneDb.PartMesh[pi] = -1;
+            SceneDb.PartMeshDef[pi] = drawn;
             // The PRODUCER path, exercised rather than bypassed: NoteObject is exactly what the seam must
             // call, and nothing else seeds the classification, the alphas or the part boxes.
             HitFeed.NoteObject(o, isStatic);
@@ -200,6 +201,20 @@ public static unsafe partial class HitTestCheck
         {
             DbId o = Obj(scene, Model("recyclefloor", HitTest.ClassTile, Quad(0f, 0f, 6f, 2), NodeKind.Aabb),
                          pos, Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            Array.Resize(ref _objs, _objs.Length + 1);
+            _objs[^1] = o;
+            return o;
+        }
+
+        /// <summary>A tile merge bucket's HEAD as <c>CombinePlan</c> leaves it: the node mesh lies at z 0.23 under
+        /// a node pose of -0.22, the part draws the merged MODEL-space mesh at z 0.01, and its pose is zeroed --
+        /// the shape of <c>tin01_a07_02</c>'s rug, whose floor casts landed 0.22 too high.</summary>
+        internal static DbId MergedHead(DbId scene, Vector3 pos)
+        {
+            ModelDef m = Model("mergedrug", HitTest.ClassTile, Quad(0f, 0.23f, 2f, 0), NodeKind.TriMesh);
+            m.Nodes[0].Position = new Vector3(0f, 0f, -0.22f);
+            DbId o = Obj(scene, m, pos, Quaternion.Identity, 1f, HitTest.ClassTile, true,
+                         drawn: Quad(0f, 0.01f, 2f, 0));
             Array.Resize(ref _objs, _objs.Length + 1);
             _objs[^1] = o;
             return o;

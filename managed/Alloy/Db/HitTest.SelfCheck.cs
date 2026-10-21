@@ -57,6 +57,7 @@ public static unsafe partial class HitTestCheck
         ok &= Recycle(log);
         ok &= ReMark(log);
         ok &= Scene(log);
+        ok &= MergedHead(log);
         ok &= Bench(log);
         log.Info(ok ? "HitTest.SelfCheck: passed" : "HitTest.SelfCheck: see failures above");
     }
@@ -412,6 +413,24 @@ public static unsafe partial class HitTestCheck
             ok = Fail(log, $"the fold did not refresh a RE-MARKED record: its hit box tops out at "
                          + $"{SceneDb.HitObjBMax[i].Z} and the geometry at {z0 + 10f}");
 
+        Fixture.Tear();
+        return ok;
+    }
+
+    /// <summary>A floor cast onto a tile merge bucket's head lands on the mesh the part DRAWS. Oracle: the
+    /// hand-written 0.01, the drawn height of <c>tin01_a07_02</c>'s rug read off the model file.</summary>
+    private static bool MergedHead(ExtenderLog log)
+    {
+        bool ok = true;
+        var world = Fixture.Build();
+        var at = new Vector3(700f, 700f, 0f);
+        Fixture.MergedHead(world.Scene, at);
+        HitQuery q = HitQuery.Ray(world.Scene, at + new Vector3(0.5f, 0.5f, 0.5f), at + new Vector3(0.5f, 0.5f, -0.5f), statics: true);
+        if (!HitTest.Cast(q, out HitResult r))
+            ok = Fail(log, "a floor cast straight down onto a merged tile bucket hit nothing");
+        else if (MathF.Abs(r.Point.Z - 0.01f) > 1e-3f)
+            ok = Fail(log, $"a floor cast onto a merged tile bucket landed at z {r.Point.Z:F3}, the drawn rug is at "
+                         + "0.010 -- the hit test is casting the node's own mesh under the bucket's zeroed pose");
         Fixture.Tear();
         return ok;
     }
