@@ -131,13 +131,6 @@ internal static class AlloyGate
           return AlloyStand.Incapable; }
         if (PostChain.Failed)
         { why = "the HDR target cannot arm on this device"; return AlloyStand.Incapable; }
-        if (PostChain.GammaOff())
-        { why = "the engine's gamma pipeline is off (GetGlobalShaderParami(0) == 0)"; return AlloyStand.Incapable; }
-        // #571: the same shape one option over. Stock "Enhanced Lighting" off is the engine's vertex-lit,
-        // static-baked path (g_bFullDynamicLighting = 0, FRAGMENT_LIGHTING 0); Alloy lights per fragment by
-        // construction and has no cheaper tier, so the honest answer to that choice is the engine's own frame.
-        if (!StockConfig.EnhancedLighting)
-        { why = "Enhanced Lighting is off in Game Options (graphics.lighting.enhanced) and Alloy has no vertex-lit path"; return AlloyStand.Incapable; }
         why = "";
         return AlloyStand.Alloy;
     }

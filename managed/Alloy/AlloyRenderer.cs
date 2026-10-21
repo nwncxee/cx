@@ -533,14 +533,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) { RevokeAll("module unload"); Programs._spliceStale = true; OwnedTextures.ModuleUnloaded(); StockConfig.ModuleUnloaded(); AlloyEnvMap.ModuleUnloaded(); DbFeed.ModuleEdge(_log); }
         _was.InModule = inModule;
-        // #571: the stock graphics snapshot is retaken per world scene (boot, every area), and a toggle the player
-        // flips off after the decision froze has nothing behind it (exclusive residency): the gamma precedent's Fail.
-        if (inModule && !DbPassScene.IsNull)
-        {
-            StockConfig.OnScene((IntPtr)DbPassScene.Value);
-            if (AlloyGate.Alloy && !StockConfig.EnhancedLighting)
-                AlloyGate.Fail("Enhanced Lighting was turned off in Game Options (graphics.lighting.enhanced) and Alloy has no vertex-lit path");
-        }
+        if (inModule && !DbPassScene.IsNull) StockConfig.OnScene((IntPtr)DbPassScene.Value);
 
         // the overflow counter lives in a GL buffer, so its readback has to happen inside the 4.6 bracket:
         // arm it one frame ahead of the log so the value the log prints is this period's

@@ -123,14 +123,8 @@ public static unsafe class StockConfig
     private static Snapshot Defaults => new()
     { GrassMode = 2, EnhancedLighting = true, HdrBloom = true, Keyholing = true };
 
-    /// <summary>The stock "Enhanced Lighting" toggle, taken now if it never was -- the Alloy verdict asks
-    /// before the first world scene reaches <see cref="OnScene"/>.</summary>
-    public static bool EnhancedLighting
-    {
-        get { if (!_snap.Taken) Refresh("first verdict"); return _snap.EnhancedLighting; }
-    }
-
-    /// <summary>The stock "HDR / Bloom" toggle, same lazy rule.</summary>
+    /// <summary>The stock "HDR / Bloom" toggle, taken now if it never was -- the Alloy verdict asks before the
+    /// first world scene reaches <see cref="OnScene"/>.</summary>
     public static bool HdrBloom
     {
         get { if (!_snap.Taken) Refresh("first verdict"); return _snap.HdrBloom; }
