@@ -76,6 +76,7 @@ public static class HitFeed
         ModelDef? m = SceneDb.PartModel[p];
         if (m == null || (uint)SceneDb.PartNode[p] >= (uint)m.Nodes.Length) return;
         MeshDef? mesh = m.Nodes[SceneDb.PartNode[p]].Mesh;
+        if (mesh != null) mesh = HitBounds.Geometry(p, mesh);
         // Off the cast path: MeshBvh.For inside a pick is a multi-millisecond first-click hitch.
         if (mesh != null && mesh.Faces.Length > 0) MeshBvh.Prewarm(mesh);
     }

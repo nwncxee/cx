@@ -75,6 +75,11 @@ public static class HitBounds
         return true;
     }
 
+    /// <summary>The triangles part <paramref name="p"/> is hit-tested against: the mesh it draws when that has
+    /// faces -- a tile merge bucket's head draws its merged MODEL-space mesh under a zeroed pose, so its node's
+    /// own mesh would sit off by the node's pose -- else <paramref name="node"/>, its node's mesh.</summary>
+    public static MeshDef Geometry(int p, MeshDef node) => SceneDb.PartMeshDef[p] is { Faces.Length: > 0 } d ? d : node;
+
     /// <summary>Derive part <paramref name="p"/>'s own-space box from its node: the mesh's model-space bounds
     /// for geometry, degenerate for a dummy, light, emitter or reference node (which the engine's
     /// <c>Part::HitCheckGeom</c> answers 0 for).</summary>
@@ -88,11 +93,12 @@ public static class HitBounds
         if (nd.Mesh == null) return;
         if (nd.Kind is not (NodeKind.TriMesh or NodeKind.Skin or NodeKind.AnimMesh or NodeKind.Dangly
                             or NodeKind.Aabb or NodeKind.Trigger)) return;
-        Vector3 lo = nd.Mesh.BMin, hi = nd.Mesh.BMax;
+        MeshDef g = Geometry(p, nd.Mesh);
+        Vector3 lo = g.BMin, hi = g.BMax;
         if (lo.X > hi.X)
         {
             lo = new Vector3(float.MaxValue); hi = new Vector3(float.MinValue);
-            foreach (Vector3 v in nd.Mesh.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
+            foreach (Vector3 v in g.Positions) { lo = Vector3.Min(lo, v); hi = Vector3.Max(hi, v); }
             if (lo.X > hi.X) return;
         }
         if (nd.Kind == NodeKind.AnimMesh) MorphBox(m, nd.Name, ref lo, ref hi);

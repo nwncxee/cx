@@ -661,7 +661,7 @@ public static class HitTest
             // The surface mask is NOT consulted here, and that is the engine's behaviour, not an oversight:
             // only HitCheckAABBnode @0x43da50 tests it, so a plain PartTriMesh's triangles are hit whatever
             // the mask says. A walkmesh part (PartAABB) is the one that filters.
-            f = MeshBvh.For(nd.Mesh).Cast(a, ref b, 1f, HitQuery.All, out _);
+            f = MeshBvh.For(HitBounds.Geometry(p, nd.Mesh)).Cast(a, ref b, 1f, HitQuery.All, out _);
             if (f < 0) return false;
             // The triangle arm ClearOutputs and then writes only the two points: no normal (the 7-argument
             // polyhit has none to give), no surface bit, and the face index stays at ClearOutput's -1.
