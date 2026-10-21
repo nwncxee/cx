@@ -602,7 +602,10 @@ internal static unsafe partial class TexRegistry
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
         FileArturo(j);
-        Publish(new Landed(i, j.Gen, name, MintHandle(name, j.Resref), j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
+        ulong handle = MintHandle(name, j.Resref);
+        if (GlContextService.Debug)
+            _log?.Always($"TexRegistry: [gldebug] minted \"{j.Resref}\" tex {name} fmt 0x{j.GlFmt:x} {j.W}x{j.H} levels {j.Levels} handle 0x{handle:x}");
+        Publish(new Landed(i, j.Gen, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }

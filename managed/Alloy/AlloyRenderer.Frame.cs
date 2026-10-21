@@ -771,8 +771,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>World frames whose colour-bracket steps <see cref="Step"/> names, from the first.</summary>
     private const int StepTraceFrames = 5;
 
-    /// <summary>Under <c>alloy.gldebug=1</c>, for the first world frames: name the step about to run. The debug
-    /// log is synchronous, so a CPU-side crash leaves its step as the log's last line.</summary>
+    /// <summary>Under <c>alloy.gldebug=1</c>, for the first world frames: name the step about to run, after waiting
+    /// for the GPU. The debug log is synchronous, so a CPU crash or a driver reset leaves its step as the last line.</summary>
     internal static void Step(string what)
     {
         if (!GlContextService.Debug) return;
@@ -782,6 +782,8 @@ public sealed unsafe partial class AlloyRenderer
             if (s.FramesLeft <= 0) return;
             s.FramesLeft--; s.Frame = _frameSeq;
         }
+        // wait for the GPU at every traced step: a driver reset then ends the log AT the faulting stage
+        if (Gl.Finish != null) Gl.Finish();
         (int now, int peak) = BindlessLedger.ResidentCount;
         _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
     }
