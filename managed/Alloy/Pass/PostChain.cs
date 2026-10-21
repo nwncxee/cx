@@ -207,9 +207,7 @@ internal static unsafe class PostChain
     internal static uint LastInto;
 
     /// <summary>The refusals decidable WITHOUT the 4.6 bracket, asked in ENGINE context before the Alloy
-    /// pass pays for its preamble; false stands the whole pass down to vanilla. The gamma question can only
-    /// be answered here, because it gates the Alloy DECODES too: they live in the stages and cannot be
-    /// switched per pass, so a client with <c>GAMMA_CORRECTION</c> 0 has no self-consistent Alloy variant.</summary>
+    /// pass pays for its preamble; false stands the whole pass down to vanilla.</summary>
     internal static bool Precheck(int* viewport)
     {
         // config hdr=0 is a deliberate setting and Attach already said so; it is not a refusal to report.
@@ -218,15 +216,11 @@ internal static unsafe class PostChain
         // WINDOW rather than on its setting: with the key on but the shim branch not taken, the engine is
         // still drawing this pass and the refusal is still the right answer.
         if (viewport[0] != 0 || viewport[1] != 0) return Refuse("the engine's viewport is offset");
-        if (GammaOff())   // #216 asks this at the latch too; kept for the pre-cutover and subframe passes
-            return Refuse("the engine's gamma pipeline is off (GetGlobalShaderParami(0) == 0), and the "
-                        + "Alloy stages have no un-linearised variant");
         return true;
     }
 
-    /// <summary>The gamma refusal's predicate, published so <see cref="AlloyGate"/> can ask it at frame start
-    /// -- where it is a decision about the whole frame rather than about one pass. Unresolved reads as "on",
-    /// which is what this client measures.</summary>
+    /// <summary>The engine's gamma pipeline is off (stock Enhanced Lighting off). Only the GUI follows it: the
+    /// Alloy world stages compile with <c>GAMMA_CORRECTION 1</c> whatever the engine's is. Unresolved reads as "on".</summary>
     internal static bool GammaOff() => _gammaParam != null && _gammaParam(GammaParam) == 0;
 
     /// <summary>Point the Alloy colour passes at the HDR target for this pass; a false answer stands the whole
@@ -810,12 +804,10 @@ internal static unsafe class PostChain
             // encode nobody applies any more -- the #102 failure, whole-frame and in the other direction.
             check.Expect(!ResolveFs.Contains("CxLinear") && !BloomDownFs.Contains("CxLinear"),
               "nothing in the chain decodes: the target is linear");
-            // ...and it is UNCONDITIONAL in the stage, because the gate lives in Precheck. A stage that
-            // grew its own switch would be half a gate: the Alloy DECODES cannot be switched per pass, so
-            // an encode that turned itself off would leave every Alloy surface a gamma dark beside the
-            // engine's. The refusal is the only self-consistent answer, and this asserts the pairing.
+            // ...and it is UNCONDITIONAL: the Alloy decodes are compiled at GAMMA_CORRECTION 1 whatever the
+            // engine's is, so an encode that followed the engine would leave every surface a gamma dark.
             check.Expect(ResolveFs.Contains("vec3 outc = CxEncode(c);") && !PostColorLib.Contains("uniform"),
-              "the resolve's encode is unconditional -- the gamma gate is Precheck's refusal, not a switch");
+              "the resolve's encode is unconditional -- it pairs with the stages' fixed decode, not the engine's gamma");
 
             // The debug VIEWS default off, so /post reset (every Default) clears a stray /post viz with the rest.
             // /post motion stays off because TAA arms the pass itself; /post taa is ON -- it is the default

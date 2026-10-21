@@ -223,8 +223,11 @@ internal static unsafe class Issue
     /// not still be there. Leaves the dirty list for the colour bracket, which uploads the records too.</summary>
     internal static void UploadHandlesForBake()
     {
-        if (!_bindless || !_texHDirty) return;
+        if (!_bindless) return;
         int cap = _recOwnCap + MaxSkyDraws;
+        // capacity growth with no moved handle (an area's new records all resolve to 0 over rows already 0)
+        // leaves the dirty flag clear and the GPU table one area short: the bake would read past its end
+        if (!_texHDirty && !_recDirtyAll && cap <= _texHCapGpu) return;
         bool whole = _recDirtyAll || cap > _texHCapGpu || SortedRuns() > RunBudget;
         UploadHandles(cap, whole);
         BakeHandleUploads++;

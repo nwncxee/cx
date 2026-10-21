@@ -61,16 +61,15 @@ a frame that is rendering vanilla anyway. It freezes the moment it stops being t
 | 8 | a program did not build, `glMultiDrawElementsBaseVertex`/`glBindBufferBase` missing, or the stream ring's entry points missing or its persistent map refused (CX-45) | Incapable |
 | 8a | GL compute or `glMultiDrawElementsIndirectCount` missing (`CullPass.Capable`) — since #264 the compute cull is the frame's only visibility test, so without it every enumerated part of the area would draw every frame | Incapable |
 | 9 | the HDR target latched a stand-down (`PostChain.Failed`) | Incapable |
-| 10 | the engine's gamma pipeline is off (`GetGlobalShaderParami(0) == 0`) — it gates the Alloy *decodes*, which live in the stages | Incapable |
-| 11 | stock **Enhanced Lighting** is off (`graphics.lighting.enhanced`, read through `StockConfig` at the world edges, #571) — that option is the engine's vertex-lit, static-baked path (`g_bFullDynamicLighting = 0`, `FRAGMENT_LIGHTING 0`), and Alloy lights per fragment by construction; the player asked for a cheaper tier Alloy does not have | Incapable |
 
 **Entries 8 and 9 answer here only in principle.** Programs build on first use, which is inside the first
 frame the decision already froze on, so in practice those two flags latch *after* the freeze and reach the
-player as a `Fail` (below) rather than as a verdict. Entry 10 is the opposite case and is genuinely live:
-`PostChain.Precheck` re-asks the gamma parameter every pass, so a player who turns Gamma Correction off in
-Video Options mid-session gets the `Fail` notice instead of a world silently rendering a gamma out.
-Entry 11 behaves the same way one step coarser: the snapshot is retaken at every area edge, and a
-player who turns Enhanced Lighting off mid-session gets the `Fail` notice at the next area.
+player as a `Fail` (below) rather than as a verdict.
+
+**Stock Enhanced Lighting is not a refusal.** Its setting writes both `g_bFullDynamicLighting` and the engine's
+gamma parameter (`GetGlobalShaderParami(0)`), and both only steer engine shaders and `Scene` code the scene
+database replaces: the Alloy world stages compile with `GAMMA_CORRECTION 1` and `FRAGMENT_LIGHTING 1` whatever the
+engine's values are, and only the GUI pass follows the engine's gamma. Refusing on it would leave no world at all.
 
 **Entry 6 sits where it does for two reasons, and the second is the load-bearing one.** GUI/menu scenes do not
 need the world verdict (CX-95 gives them their own, above) — but more importantly, every capability term below it is only answerable on a
