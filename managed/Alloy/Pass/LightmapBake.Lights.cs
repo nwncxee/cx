@@ -175,6 +175,10 @@ internal static unsafe partial class LightmapBake
     // (#675) is what covers the gap between it and the first landed page.
     internal static bool Produces => _rectN > 0 || MeshChart.Offered > 0;
 
+    /// <summary>Rects wait on a scratch cube, which needs the caster gather staged even in a frame with no sun
+    /// and no shadow-casting light (an interior lit only by non-casting static lights).</summary>
+    internal static bool WantsGather => Enabled && _pending > 0;
+
     /// <summary>One database light, and -- when static -- folded into the snapshot. Called for every light the
     /// walk admits, BEFORE its fade and cull, with the lightmap on or off (GI keys its cache on the same
     /// fingerprint). A light's identity here is its own database record, which unlike a <c>PartLight*</c> is
