@@ -126,6 +126,14 @@ internal static class CardSelfCheck
         check.Expect(c.Blocks[5].Kids.Length == 1 && c.Blocks[5].Tint == 0xFFFFFF10 && c.Blocks[6].Icons.Length == 3 && c.Blocks[6].Frame, "section tint and kids, a framed icon row");
         check.Expect(c.Blocks[8].Runs.Length == 1 && c.Blocks[8].Right.Length == 3 && c.Blocks[8].Right[1].Icon == "w", "footer left and right, an inline icon on the right");
         check.Expect(c.Images.Length == 1 && c.Images[0].At == Anchor.TopRight && c.Images[0].Dx == 20f && c.Images[0].Dy == -20f, "an image anchored top right, pushed out");
+        check.Expect(PanelParser.TryParse("{\"blocks\":[],\"images\":[{\"src\":\"po_hu_m_15_h\",\"w\":128,\"h\":200,\"crop\":[0,0,1,0.78125]}]}", out cards, out _)
+                     && cards[0].Images[0].Crop == new CropRect(0f, 0f, 1f, 0.78125f) && !c.Images[0].Crop.Set,
+                     "a texture image's crop reads as left, top, width and height, and an image without one draws all of its texture");
+        foreach (string wrong in new[] { "[0,0,1]", "[0,0,1,0]", "[0.5,0,0.6,1]", "[-0.1,0,1,1]", "[0,0,\"1\",1]", "\"0,0,1,1\"" })
+            check.Expect(!PanelParser.TryParse("{\"blocks\":[],\"images\":[{\"src\":\"po_hu_m_15_h\",\"crop\":" + wrong + "}]}", out _, out _),
+                         $"a crop of {wrong} refuses the card");
+        check.Expect(!PanelParser.TryParse("{\"blocks\":[],\"images\":[{\"src\":\"@model:me\",\"crop\":[0,0,1,1]}]}", out _, out _),
+                     "a crop on an image that is not a texture refuses the card");
         check.Expect(PanelParser.TryParse("{\"blocks\":[],\"future\":{\"a\":1}}", out cards, out _) && cards.Length == 1, "an unknown field is ignored");
         check.Expect(PanelParser.TryParse("{\"border\":\"#aabbccdd\",\"blocks\":[]}", out _, out _) && PanelParser.TryParse("{\"border\":\"#aabbcc\",\"blocks\":[]}", out _, out _), "a card colour is #RRGGBB or #RRGGBBAA");
         foreach (string wrong in new[] { "#12345", "#GGGGGG", "", "#1234567890", "123456" })

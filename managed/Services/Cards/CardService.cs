@@ -148,6 +148,7 @@ public sealed class CardService : IExtenderService
             if (ic.Look != null) CardLooks.Draw(ic.Look, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else if (ic.Model != null) DrawModel(ic.Model, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else if (ic.Item != 0) RadialIcons.Draw((IntPtr)(ic.Item | ImageNames.ServerIdBit), x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
+            else if (ic.Crop.Set) DrawCropped(ic.Src, ic.Crop, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
             else DrawResref(ic.Src, x + ic.X, y + ic.Y, ic.W, ic.H, a * ic.Alpha);
         }
         TextRig.DrawBatch(v.Text.AsSpan(), v.Text.VertexCount, a, x, y);
@@ -170,6 +171,14 @@ public sealed class CardService : IExtenderService
         for (int i = 0; i < resref.Length && i < name.Length; i++) name[i] = (byte)resref[i];
         IconFrames.Fit(IconFrames.Read(name, false), ref x, ref y, ref w, ref h, out float u1, out float v0);
         TextRig.DrawIconTid(TextRig.ResolveTid(resref), x, y, w, h, a, u1, v0);
+    }
+
+    /// <summary>The part <paramref name="crop"/> of a resref's texture, stretched to the box. Textures are bottom-up, so the crop's top is
+    /// the larger v.</summary>
+    private static void DrawCropped(string resref, CropRect crop, float x, float y, float w, float h, float a)
+    {
+        if (string.IsNullOrEmpty(resref) || !AurTex.Ready) return;
+        TextRig.DrawIconRegion(TextRig.ResolveTid(resref), x, y, w, h, a, crop.X, 1f - crop.Y, crop.X + crop.W, 1f - crop.Y - crop.H);
     }
 
     /// <summary>The pointer-free hit <c>nui.cardforce</c> stands in: an element with that id at a fixed place.</summary>

@@ -291,7 +291,7 @@ knobs (a colour written without the `#`) are the player's alone.
 | `tabcolor` | the tab's background colour |
 | `item` | the item's hex id, for `{item.name}` and `{item.stack}` in this card; without it they use the item the element draws as an `@item:` image |
 | `blocks` | the blocks, drawn top to bottom |
-| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-1024, default the style's `imagesize`, 64), `at` (`tl`, `tr`, `bl`, `br`, `t`, `b`, `l`, `r`, `c`, default `tr`; any other value is refused), `alpha` (0-1, default 1), `dx`, `dy` (px right and down from the corner, clamped to -1024..1024; a push out of the card makes the image overflow it) |
+| `images` | up to 4 images placed against a corner: `src`, `w`, `h` (px, clamped to 1-1024, default the style's `imagesize`, 64), `at` (`tl`, `tr`, `bl`, `br`, `t`, `b`, `l`, `r`, `c`, default `tr`; any other value is refused), `alpha` (0-1, default 1), `dx`, `dy` (px right and down from the corner, clamped to -1024..1024; a push out of the card makes the image overflow it), `crop` (`[left, top, width, height]` as fractions of a texture's width and height from its top-left corner: only that part is drawn, stretched to `w` x `h`. `[0, 0, 1, 0.78125]` is a portrait's painting without the filler under it. Every value 0-1, width and height above 0, inside the texture; anything else is refused, and so is a crop on an `@` image) |
 
 Every block has a `type`. Text blocks read `text` (markup, below), `size` (default 1), `color`, `dim`, `italic` and `pulse`,
 all off unless declared; the fields a type reads are listed here.
