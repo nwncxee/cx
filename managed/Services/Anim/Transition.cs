@@ -25,13 +25,13 @@ internal static unsafe class Transition
     /// <summary>Anim ids a change between is blended: standing, combat-ready, the turns on the spot and every walk and run.</summary>
     internal static bool Movement(int anim) => anim is 0 or 1 or >= 0x50 and <= 0x53 || PoseService.IsLocomotion(anim);
 
-    /// <summary>Starts a blend when a <paramref name="tracked"/> body's played anim id changed between two movements -- a
-    /// diagonal swapped for the straight cycle keeps playing the same cycle and is no change -- and advances
-    /// one that runs; true while it does. A blend seeds from the last output and velocity <see cref="Pose"/> recorded.</summary>
+    /// <summary>Starts a blend when a <paramref name="tracked"/> body's played anim id changed between two walks or runs -- a
+    /// diagonal swapped for the straight cycle is no change, and a start or stop is the engine's own crossfade -- and
+    /// advances one that runs; true while it does. A blend seeds from the last output and velocity <see cref="Pose"/> recorded.</summary>
     internal static bool Begin(ref PoseService.Slot s, int anim, bool tracked, float dt)
     {
         int played = Diagonal.Played(anim, s.Swapped);
-        bool change = played != s.LastAnim && Movement(played) && Movement(s.LastAnim);
+        bool change = played != s.LastAnim && PoseService.IsLocomotion(played) && PoseService.IsLocomotion(s.LastAnim);
         s.LastAnim = played;
         if (!AnimKnobs.Blend.V || !tracked) return s.Blending = false;
         if (change)
@@ -84,8 +84,8 @@ internal static unsafe class Transition
 
     /// <summary>A knee swinging at 4 rad/s reverses (walk to walk-back) through the real <see cref="Begin"/>
     /// and <see cref="Pose"/> over a fake engine part: the blend starts where the swing was, carries it on
-    /// with no frame's step past twice the swing's own, and hands over. Oracle: hand-written bounds on the
-    /// angle read back off the part the layer writes -- nothing here recomputes the blend.</summary>
+    /// with no frame's step past twice the swing's own, and hands over; a stop and a start blend nothing. Oracle:
+    /// hand-written bounds on the angle read back off the part the layer writes, and literal anim ids.</summary>
     internal static bool SelfCheck()
     {
         // Staged: the master and the blend toggle both, so the player's cx.cfg cannot decide whether the
@@ -139,7 +139,10 @@ internal static unsafe class Transition
             // The hand-over is complete by its last frame: within 3 degrees of the authored pose, which the
             // carried swing had drifted more than a radian away from.
             bool landed = blended && gap < 0.05f;
-            return bk != null && carried && maxStep <= 2f * spin * dt && landed
+            // a stop and a start change the animation's name, which the engine crossfades: no second blend over it
+            s.LastAnim = Walk;
+            bool stop = Begin(ref s, 0, tracked: true, dt), start = Begin(ref s, Walk, tracked: true, dt);
+            return bk != null && carried && maxStep <= 2f * spin * dt && landed && !stop && !start
                    && Movement(2) && Movement(3) && Movement(0) && !Movement(0x2f);
         }
         finally

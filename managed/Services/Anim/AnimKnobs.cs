@@ -63,7 +63,7 @@ internal static class AnimKnobs
         Pivot = new(G.Toggle("pivot", "Lead turns with the chest", true, tier: Tier.ChatOnly,
             help: "When a character turns on the spot, or turns round faster than it could walk the turn, the chest turns first and the hips and legs follow a moment later. A turn walked or run through is taken in stride by the legs. Without it the whole body turns at once."), false);
         Blend = new(G.Toggle("blend", "Smooth movement changes", true, tier: Tier.ChatOnly,
-            help: "When a character switches between standing, walking, running, stepping aside or walking backward, its limbs carry on with the old movement for a moment and flow into the new one, instead of snapping. Walking forward into walking backward slows the legs through the turn rather than reversing them in one frame."), false);
+            help: "When a character switches between walking, running, stepping aside or walking backward, its limbs carry on with the old movement for a moment and flow into the new one, instead of snapping. Starting and stopping are left to the engine's own fade. Walking forward into walking backward slows the legs through the turn rather than reversing them in one frame."), false);
         Crossfade = new(G.Toggle("crossfade", "Ease animation changes", true, tier: Tier.ChatOnly,
             help: "When anything animated changes from one animation to another -- a character walking into standing, or standing into an attack -- the engine fades between the two at an even rate, so the change starts and stops with a jolt. This eases the fade in and out. Doors, placeables and creatures are included, at any distance."), false);
         Curves = new(G.Toggle("curves", "Smooth animation curves", true, tier: Tier.ChatOnly,
