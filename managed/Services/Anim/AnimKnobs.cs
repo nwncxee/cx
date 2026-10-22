@@ -69,7 +69,7 @@ internal static class AnimKnobs
         Curves = new(G.Toggle("curves", "Smooth animation curves", true, tier: Tier.ChatOnly,
             help: "Every animation flows through its poses instead of changing speed at each one: the engine moves a limb in a straight line from one pose to the next, which is most of the stiffness in stock animations. A pose the animator holds or strikes still lands exactly where it was placed, and an animation whose author drew its own curves is left as it is. Affects everything animated, not only characters."), false);
         Lean = new(G.Slider("lean", "Lean", 0f, 200f, 10f, 100f, "%", tier: Tier.ChatOnly,
-            help: "The upper body leans into turns, forward when speeding up, back when stopping, and into a climb. The head keeps half of it level. 0 turns it off."), 0f);
+            help: "The upper body leans into turns, forward when speeding up and into a climb. The head keeps half of it level. 0 turns it off."), 0f);
         Mass = new(G.Toggle("mass", "Body weight", true, tier: Tier.ChatOnly,
             help: "Starting, stopping and stepping down off a drop load the body: the hips dip and come back up with a little give, the knees bending so the feet stay where they are, and the chest swings a touch past upright before it settles at the end of a stop or a turn. Walking or running at a steady pace carries no load."), false);
         Follow = new(G.Toggle("follow", "Arms and head follow through", true, tier: Tier.ChatOnly,
