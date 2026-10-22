@@ -143,9 +143,9 @@ public sealed unsafe class PoseService : IExtenderService
         public float DropHold, Drop, DropV;
         /// <summary><see cref="StrideWarp"/>: the walk run last put in step, so it is seeded once.</summary>
         public long Seeded;
-        /// <summary><see cref="Settle"/>: locomoting last frame, the stage, the stepping foot, its start and the weighted
-        /// foot's held world point, and the leftover easing out.</summary>
-        public bool SettleLoco, SettleRight, SettlePin;
+        /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, whether it was held, a turn and not a stop,
+        /// still turning, the stage, the step's start and the weighted foot's held world point, and the leftover easing out.</summary>
+        public bool SettleLoco, SettleRight, SettlePin, SettleTurn, SettleSpin;
         public byte SettleStage;
         public float SettleT, SettleLift;
         public Vector3 SettleFrom, SettleHold;
@@ -696,7 +696,8 @@ public sealed unsafe class PoseService : IExtenderService
         StrideWarp.Step(ref s, gob, bones, legs, adjPos, scale, ground, s.Loco || s.Shuffling, gated || snap, dt,
                         out Vector3 warpR, out Vector3 warpL, out float drop);
         Settle.Feet(ref s, AnimKnobs.Stride.V && PoseRig.Db && !gated && !snap && dt > 0f, rAnkle + warpR, lAnkle + warpL,
-                    Settle.Fade(Gait.Driven(gob)), scale, dt, out Vector3 setR, out Vector3 setL);
+                    Settle.Fade(Gait.Driven(gob)), s.Hips && Transition.Movement(anim) && !IsLocomotion(anim), s.YawRate,
+                    scale, dt, out Vector3 setR, out Vector3 setL);
         warpR += setR;
         warpL += setL;
 
@@ -966,7 +967,7 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Skating.SelfCheck(), "the combat shuffle is paced by the gap it still has to close over the countdown it has left, and a spent countdown falls back to the measured step");
         check.Expect(SampleCheck(), "clip sampler: a thigh keyed from rest to a quarter turn puts its ankle, half way, where the leg worked by hand puts it, and an unkeyed leg stays at rest");
         check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
-        check.Expect(Settle.SelfCheck(), "stops through the feet: the settle step's arc leaves the ground and lands back on it, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not");
+        check.Expect(Settle.SelfCheck(), "stops and turns through the feet: the settle step's arc leaves the ground and lands back on it, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a standing turn steps round foot by foot, the turning side first, and ends on the stance");
         check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
         check.Expect(Footfall.SelfCheck(), "a footstep plays once per planted foot, a double within a sprint's gap merged");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
