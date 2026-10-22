@@ -79,3 +79,8 @@ alloy\.weld	dead-code-cleanup
 alloy\.aotest	dead-code-cleanup
 # The engine-path beam vertex stage: beams draw from the scene database through cx_beamdb_v.
 \bcx_beam_v\b	dead-code-cleanup
+
+# Foot lock made the walk cycle hitch; the settle step was built on its locks; the keyboard wind-up felt worse than stock.
+\banim\.footlock|\bStride\.(Lock|Foot|Drag)\b	#103
+\banim\.settle\b|\bSettle\.Step\b	#103
+\banim\.drive\b|\bDriveEase\b	#103

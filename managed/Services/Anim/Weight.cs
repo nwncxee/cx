@@ -64,7 +64,7 @@ internal static class Weight
     }
 
     /// <summary>The deepest the pelvis dips over <paramref name="frames"/> of a gait holding a steady
-    /// <paramref name="accel"/>: the shape of the engine's own ramp or ease, and of <see cref="DriveEase"/>'s.</summary>
+    /// <paramref name="accel"/>: the shape of the engine's own ramp or ease.</summary>
     private static float Held(GaitMode mode, float accel, int frames, float dt)
     {
         PoseService.Slot s = default;
