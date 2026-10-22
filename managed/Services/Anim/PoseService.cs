@@ -148,13 +148,14 @@ public sealed unsafe class PoseService : IExtenderService
         /// <summary><see cref="StrideWarp"/>: each foot in the air's landing is predicted this frame, and where it lands.</summary>
         public bool Landing;
         public StrideWarp.Ahead AheadR, AheadL;
-        /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, whether it was held, a turn and not a stop,
-        /// still turning, the stage, the step's start and the weighted foot's held world point, and the leftover easing out.</summary>
-        public bool SettleLoco, SettleRight, SettleTurn, SettleSpin;
+        /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, a turn and not a stop, still turning, stepping
+        /// at once, the leftovers folded; the stage, its clock, the step's lift and length; the step's start and the weighted
+        /// foot's held world point; each foot's leftover easing out.</summary>
+        public bool SettleLoco, SettleRight, SettleTurn, SettleSpin, SettleNow, SettleFolded;
         public byte SettleStage;
-        public float SettleT, SettleLift;
+        public float SettleT, SettleLift, SettleStep;
         public Vector3 SettleFrom, SettleHold;
-        public Vector2 SettleOff, SettleOffV;
+        public Vector2 SettleOff, SettleOffV, SettleOffO, SettleOffOV;
         /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces.</summary>
         public bool Shuffling;
         /// <summary>Footfall: the seconds since the last step played.</summary>
@@ -699,8 +700,10 @@ public sealed unsafe class PoseService : IExtenderService
         StrideWarp.Step(ref s, gob, bones, legs, adjPos, scale, ground, s.Loco || s.Shuffling, gated || snap, dt,
                         out Vector3 warpR, out Vector3 warpL, out float drop);
         bool standing = s.Hips && s.Moving <= 0f && !s.Shuffling && Transition.Movement(anim) && !IsLocomotion(anim);
+        Vector3 rStance = rAnkle + warpR, lStance = lAnkle + warpL;
+        if (Settle.Wants(s, standing, s.YawRate)) Settle.Stance(gob, bones, legs, adjPos, scale, ref rStance, ref lStance);
         Settle.Feet(ref s, AnimKnobs.Stride.V && PoseRig.Db && !gated && !snap && dt > 0f, rAnkle + warpR, lAnkle + warpL,
-                    Settle.Fade(Gait.Driven(gob)), standing, s.YawRate, scale, dt, out Vector3 setR, out Vector3 setL);
+                    rStance, lStance, Settle.Fade(Gait.Driven(gob)), standing, s.YawRate, scale, dt, out Vector3 setR, out Vector3 setL);
         warpR += setR;
         warpL += setL;
 
@@ -962,7 +965,7 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Skating.SelfCheck(), "the combat shuffle is paced by the gap it still has to close over the countdown it has left, and a spent countdown falls back to the measured step");
         check.Expect(SampleCheck(), "clip sampler: a thigh keyed from rest to a quarter turn puts its ankle, half way, where the leg worked by hand puts it, and an unkeyed leg stays at rest");
         check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
-        check.Expect(Settle.SelfCheck(), "stops and turns through the feet: the settle step's arc leaves the ground and lands back on it, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a standing turn steps round foot by foot, the turning side first, and ends on the stance");
+        check.Expect(Settle.SelfCheck(), "stops and turns through the feet: the settle step's arc leaves the ground and lands back on it, a run caught mid-stride steps both feet at once onto their stance spots and holds them there through the fade, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a standing turn steps round foot by foot, the turning side first, and ends on the stance");
         check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
         check.Expect(Footfall.SelfCheck(), "a footstep plays once per planted foot, a double within a sprint's gap merged");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
