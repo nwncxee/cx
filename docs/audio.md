@@ -52,11 +52,10 @@ Rain soaks up echoes: while the engine's weather is a rain row, the reverb (room
 drops by `sound.rainreverb` (-9 dB) scaled by the rain's density, so it follows the 6 s ramps. The density is
 Alloy's `Weather` hook, which is installed wherever Alloy can arm; without it the reverb stays dry-weather.
 
-Footsteps land on contact (`anim.footsteps`, `managed/Services/Anim/Footfall.cs`): the engine keys walk/run
-footsteps to the model's `snd_Footstep` animation events; for a humanoid the pose layer tracks, the engine's own
-`PlayFootstep` is called when a foot lands instead (its model-space ankle back at the stance height), and the
-authored calls are skipped for it. Each foot keeps its own stance height (a shared one landed the higher-planted
-foot late: a galloping rhythm, live), and two steps closer than 0.12 s are one. The player's own footsteps
+Footsteps on contact (`anim.footsteps`, `managed/Services/Anim/Footfall.cs`): the engine keys walk/run
+footsteps to the model's `snd_Footstep` animation events, and a clip that carries them keeps them. A walk or run
+clip with none, on a body the stride warp (`anim.stride`, Alloy only) plants, calls the engine's own `PlayFootstep`
+on each frame a foot lands by the clip's own contacts; two steps closer than 0.12 s are one. The player's own footsteps
 (`prioritygroups.2da` row 17, `Player_Footsteps`) take half the HRTF spatial blend and half the room send: straight
 below the ears, full HRTF coloured them and placed them "somewhere else", and the cave tail swamped them.
 

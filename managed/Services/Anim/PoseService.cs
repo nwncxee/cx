@@ -143,7 +143,8 @@ public sealed unsafe class PoseService : IExtenderService
         public float DropHold, Drop, DropV;
         /// <summary><see cref="StrideWarp"/>: the walk run last put in step, so it is seeded once.</summary>
         public long Seeded;
-        /// <summary><see cref="StrideWarp"/>: where each foot in the air lands, for <see cref="FootPlacement"/>.</summary>
+        /// <summary><see cref="StrideWarp"/>: each foot in the air's landing is predicted this frame, and where it lands.</summary>
+        public bool Landing;
         public StrideWarp.Ahead AheadR, AheadL;
         /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, whether it was held, a turn and not a stop,
         /// still turning, the stage, the step's start and the weighted foot's held world point, and the leftover easing out.</summary>
@@ -154,9 +155,7 @@ public sealed unsafe class PoseService : IExtenderService
         public Vector2 SettleOff, SettleOffV;
         /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces.</summary>
         public bool Shuffling;
-        /// <summary>Footfall: stepping this frame, when it last was, and the seconds since the last step played.</summary>
-        public bool Stepping;
-        public long SteppedAt;
+        /// <summary>Footfall: the seconds since the last step played.</summary>
         public float SinceStep;
         /// <summary><see cref="StrideWarp"/>: a foot planted this frame; the walk playing has no footstep events of its own.</summary>
         public bool Touchdown, Unvoiced;
@@ -697,9 +696,9 @@ public sealed unsafe class PoseService : IExtenderService
         float ground = s.Shuffling ? Skating.Speed(creature, s.Speed) : s.Gait != GaitMode.None ? s.GaitSpeed : s.Speed;
         StrideWarp.Step(ref s, gob, bones, legs, adjPos, scale, ground, s.Loco || s.Shuffling, gated || snap, dt,
                         out Vector3 warpR, out Vector3 warpL, out float drop);
+        bool standing = s.Hips && s.Moving <= 0f && !s.Shuffling && Transition.Movement(anim) && !IsLocomotion(anim);
         Settle.Feet(ref s, AnimKnobs.Stride.V && PoseRig.Db && !gated && !snap && dt > 0f, rAnkle + warpR, lAnkle + warpL,
-                    Settle.Fade(Gait.Driven(gob)), s.Hips && Transition.Movement(anim) && !IsLocomotion(anim), s.YawRate,
-                    scale, dt, out Vector3 setR, out Vector3 setL);
+                    Settle.Fade(Gait.Driven(gob)), standing, s.YawRate, scale, dt, out Vector3 setR, out Vector3 setL);
         warpR += setR;
         warpL += setL;
 
@@ -813,18 +812,6 @@ public sealed unsafe class PoseService : IExtenderService
         s.HitV += UpperBody.Launch(push, s.Fwd, s.Right, peak);
     }
 
-    /// <summary>True while <see cref="Footfall"/> steps <paramref name="creature"/>'s body: it stepped within
-    /// <paramref name="hold"/> ticks and was locomoting then.</summary>
-    internal static bool Stepping(IntPtr creature, long hold)
-    {
-        if (!_armed || creature == IntPtr.Zero) return false;
-        IntPtr gob = GobOf(creature);
-        int slot = gob == IntPtr.Zero ? -1 : Find(gob);
-        if (slot < 0) return false;
-        ref Slot s = ref _slots[slot];
-        return s.Stepping && System.Diagnostics.Stopwatch.GetTimestamp() - s.SteppedAt < hold;
-    }
-
     /// <summary>A creature's Gob, through the engine's own accessor: <c>GetModel(0xff, 1)</c> forwards to the
     /// CNWCAnimBase at +0x78 (as <see cref="HeadTrackService"/> reaches it).</summary>
     internal static IntPtr GobOf(IntPtr creature)
@@ -866,11 +853,11 @@ public sealed unsafe class PoseService : IExtenderService
         if (!_armed || frames <= 0) return "";
         float f = frames;
         string s = FormattableString.Invariant(
-            $"pose {System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks).TotalMilliseconds / f:F2} ms/f, {_gobs / f:F1} gobs/f, {FootPlacement.Rays / f:F1} rays/f, hits {FootPlacement.Tile / f:F1} tile + {FootPlacement.Placeable / f:F1} placeable/f, refused {_gated / f:F1} gated + {_noSlot / f:F1} no slot/f, {FootPlacement.Stairs / f:F1} on stairs/f, {Stride.Strided / f:F1} strided, {StrideWarp.Period(frames)}, {Stride.Synced / f:F1} attachment runs synced + {_followed / f:F1} attachments posed/f, {UpperBody.Looked / f:F1} looking/f, {Follow.Trailed / f:F1} trailing/f, {UpperBody.Aimed / f:F1} aiming/f, {Mass.Loaded / f:F1} pelvis loaded/f, {UpperBody.Hits} flinches, {Footfall.Steps} footsteps on contact + {Footfall.Skipped} authored skipped, {_turned / f:F1} turned into a diagonal/f + {Diagonal.Swapped} diagonal names swapped, {Transition.Blends} movement changes blended, {Settle.Steps} settle steps");
+            $"pose {System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks).TotalMilliseconds / f:F2} ms/f, {_gobs / f:F1} gobs/f, {FootPlacement.Rays / f:F1} rays/f, hits {FootPlacement.Tile / f:F1} tile + {FootPlacement.Placeable / f:F1} placeable/f, refused {_gated / f:F1} gated + {_noSlot / f:F1} no slot/f, {FootPlacement.Stairs / f:F1} on stairs/f, {Stride.Strided / f:F1} strided, {StrideWarp.Period(frames)}, {Stride.Synced / f:F1} attachment runs synced + {_followed / f:F1} attachments posed/f, {UpperBody.Looked / f:F1} looking/f, {Follow.Trailed / f:F1} trailing/f, {UpperBody.Aimed / f:F1} aiming/f, {Mass.Loaded / f:F1} pelvis loaded/f, {UpperBody.Hits} flinches, {Footfall.Steps} footsteps on contact, {_turned / f:F1} turned into a diagonal/f + {Diagonal.Swapped} diagonal names swapped, {Transition.Blends} movement changes blended, {Settle.Steps} settle steps");
         _gobs = _gated = _noSlot = _followed = _turned = Diagonal.Swapped = Transition.Blends = Mass.Loaded = Follow.Trailed = Settle.Steps = 0;
         _ticks = 0;
         FootPlacement.Rays = FootPlacement.Tile = FootPlacement.Placeable = FootPlacement.Stairs = 0;
-        Stride.Strided = Stride.Synced = UpperBody.Looked = UpperBody.Aimed = UpperBody.Hits = Footfall.Steps = Footfall.Skipped = 0;
+        Stride.Strided = Stride.Synced = UpperBody.Looked = UpperBody.Aimed = UpperBody.Hits = Footfall.Steps = 0;
         return s;
     }
 
@@ -940,8 +927,9 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(steady && wStop == 1f && wFlat == 1f,
                      "walking a stair-steep walkmesh (position advancing every other frame) holds the stairs weight without flicker; stopping on it, or walking a flat platform, is full placement");
         check.Expect(MathF.Abs(FootPlacement.SwingTarget(0f, 0.2f, 0.5f) - 0.15f) < 1e-5f && FootPlacement.SwingTarget(0f, 0.2f, 0f) == 0f
-                     && MathF.Abs(FootPlacement.SwingTarget(0f, 0.2f, 1f) - 0.2f) < 1e-5f && FootPlacement.SwingTarget(0.2f, 0f, 0.5f) == 0.2f,
-                     "a swinging foot heading for a step up is three quarters of the way up at mid-swing and on it at landing; one heading down stays over the floor under it");
+                     && MathF.Abs(FootPlacement.SwingTarget(0f, 0.2f, 1f) - 0.2f) < 1e-5f && FootPlacement.SwingTarget(0.2f, 0f, 0.5f) == 0.2f
+                     && MathF.Abs(FootPlacement.SwingTarget(0.2f, 0f, 0.75f) - 0.1f) < 1e-5f && MathF.Abs(FootPlacement.SwingTarget(0.2f, 0f, 1f)) < 1e-5f,
+                     "a swinging foot heading for a step up is three quarters of the way up at mid-swing and on it at landing; one heading down holds the floor under it through the first half and is down at landing");
         Vector3 toe = Vector3.Transform(Vector3.UnitY, FootPlacement.FootTilt(Vector3.UnitY, Vector3.UnitX, 0.5f, 0f));
         Vector3 sole = Vector3.Transform(Vector3.UnitX, FootPlacement.FootTilt(Vector3.UnitY, Vector3.UnitX, 0f, -0.3f));
         check.Expect(MathF.Abs(toe.Z / toe.Y - 0.5f) < 1e-3f && MathF.Abs(sole.Z / sole.X + 0.3f) < 1e-3f

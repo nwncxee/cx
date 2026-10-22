@@ -15,13 +15,10 @@ internal static unsafe class Footfall
 {
     /// <summary>Seconds under which a second step is the same footfall: a sprint steps every ~0.25 s.</summary>
     private const float MinGap = 0.12f;
-    /// <summary>Seconds a stepping creature's ownership outlives its last frame: the engine's event fires inside
-    /// <c>Gob::Animate</c>, before this frame's step is known.</summary>
-    private const float Hold = 0.25f;
 
     private static PlayFootstepFn _orig;
     private static bool _ours;
-    internal static int Steps, Skipped;
+    internal static int Steps;
 
     internal static void Install(ExtenderLog log, HookService hooks)
     {
@@ -34,9 +31,8 @@ internal static unsafe class Footfall
     /// (<see cref="PoseService.Slot.Unvoiced"/>) on a frame a foot planted (<see cref="PoseService.Slot.Touchdown"/>).</summary>
     internal static void Step(ref PoseService.Slot s, IntPtr creature, bool snap, float dt)
     {
-        s.Stepping = _orig != null && AnimKnobs.Footsteps.V && s.Loco && s.Unvoiced && !snap && creature != IntPtr.Zero;
-        if (!s.Stepping) { s.SinceStep = MinGap; return; }
-        s.SteppedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool stepping = _orig != null && AnimKnobs.Footsteps.V && s.Loco && s.Unvoiced && !snap && creature != IntPtr.Zero;
+        if (!stepping) { s.SinceStep = MinGap; return; }
         if (!Due(ref s.SinceStep, s.Touchdown, dt)) return;
         _ours = true;
         if (!CX.Alloy.Weather.Footstep(creature)) _orig(creature);
@@ -56,7 +52,6 @@ internal static unsafe class Footfall
     [UnmanagedCallersOnly]
     private static void OnPlayFootstep(IntPtr creature)
     {
-        if (!_ours && PoseService.Stepping(creature, (long)(Hold * System.Diagnostics.Stopwatch.Frequency))) { Skipped++; return; }
         if (_ours || !CX.Alloy.Weather.Footstep(creature)) _orig(creature);
     }
 

@@ -22,8 +22,8 @@ internal static class StrideWarp
     /// <summary>The share of a leg's length a planted foot is held against the warped animation before it is dragged.</summary>
     private const float HoldShare = 0.25f;
 
-    /// <summary>What the module did this period: bodies warped, feet planted, plants dragged past their hold, the largest
-    /// offset a foot lifted off with (what the warp left for the swing to take up) and the deepest pelvis drop, world units.</summary>
+    /// <summary>What the module did this period: bodies warped, feet planted, plants dragged past their hold, gait changes
+    /// and starts put in step, the largest offset a foot lifted off with and the deepest pelvis drop, world units.</summary>
     private sealed class StrideWarpState
     {
         public int Warped, Planted, Dragged;
@@ -81,7 +81,7 @@ internal static class StrideWarp
         dR = dL = Vector3.Zero;
         leg = 0f;
         s.RateNext = 1f;
-        s.Touchdown = s.Unvoiced = false;
+        s.Touchdown = s.Unvoiced = s.Landing = false;
         if (off || !AnimKnobs.Stride.V || !PoseRig.Db || s.SettleStage != Settle.None) { Reset(ref s); return 0f; }
         float speed = ground / scale, weight = 0f, strides = 0f, top = -1f;
         Vector3 dir = Vector3.Zero;
@@ -103,7 +103,7 @@ internal static class StrideWarp
             strides += w * (paced && rate > 1e-4f ? Math.Clamp(speed / c.Speed / rate, WarpMin, WarpMax) : 1f);
             dir += w * c.Dir;
             if (w > top) { top = w; lead = c; leadAnim = anim; leadRun = r; }
-            if (paced && c.Cyclic && r.Blend < 1f && r.Id != s.Seeded && r.Time <= Fresh * c.Length) { fresh = c; freshRun = r; }
+            if (c.Cyclic && r.Blend < 1f && r.Id != s.Seeded && r.Time <= Fresh * c.Length) { fresh = c; freshRun = r; }
             else if (w > otherW) { otherW = w; other = c; otherRun = r; }
         }
         if (lead == null || weight < 1e-3f) { Reset(ref s); return 0f; }
@@ -120,6 +120,8 @@ internal static class StrideWarp
         {
             Rebase(ref s.AnchorR, lead.Swing(true, phase));
             Rebase(ref s.AnchorL, lead.Swing(false, phase));
+            // a contact the new clip starts in is no landing
+            s.AnchorR.Aired = s.AnchorL.Aired = false;
             s.PlantClip = leadAnim;
         }
 
@@ -142,7 +144,8 @@ internal static class StrideWarp
         dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed, out bool downL), 0f);
         s.Unvoiced = !lead.Authored;
         s.Touchdown = downR || downL;
-        if (paced && lead.Cyclic && leadRun.Rate > 1e-4f)
+        s.Landing = paced && lead.Cyclic && leadRun.Rate > 1e-4f;
+        if (s.Landing)
         {
             Vector3 vel = Vector3.Transform(dir, legs) * ground;
             s.AheadR = Predict(lead, true, phase, leadRun.Rate, Vector3.Transform(Warp(lead.LandR, hip, dir, lead.FloorR, stride, weight), legs) * scale + origin, vel);
