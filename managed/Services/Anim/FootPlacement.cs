@@ -27,8 +27,8 @@ internal static unsafe class FootPlacement
     /// steep): foot placement drops to <see cref="StairWeight"/> there. The walk cycle is wide and runs at full
     /// speed up a steep flight, so no foothold per frame matches it.</summary>
     private const float StairGrade = 0.2f;
-    /// <summary>Foot placement's strength while moving on stairs: halfway between vanilla's feet-on-the-ramp and
-    /// full placement, which is what live testing liked (a flickering full fade averaged to it).</summary>
+    /// <summary>Foot placement's strength while moving on stairs with no planted walk to land each foot ahead: halfway
+    /// between vanilla's feet-on-the-ramp and full placement (a flickering full fade averaged to it).</summary>
     internal const float StairWeight = 0.5f;
     /// <summary>World units per second (times scale) above which a character is moving, not shuffling.</summary>
     internal const float MoveSpeed = 0.5f;
@@ -68,7 +68,11 @@ internal static unsafe class FootPlacement
             hl = Floor(ref s.L, scene, gob, lAnkle, refZ, max, scale, snap, dt, out tl);
             // a foot with no floor in range borrows the other foot's: "none" is not "at the walkmesh"
             if (!hr && hl) tr = tl; else if (hr && !hl) tl = tr;
+            tr = Ahead(ref s.NextR, s.AheadR, scene, gob, refZ, max, scale, snap, dt, tr);
+            tl = Ahead(ref s.NextL, s.AheadL, scene, gob, refZ, max, scale, snap, dt, tl);
         }
+        // a walk whose feet are planted and landed ahead of time stands each on its own stair
+        if (s.PlantClip != null) weight = 1f;
 
         float maxSlope = MathF.Tan(AnimKnobs.Tilt.V * (MathF.PI / 180f));
         float reach = ProbeReach * scale;
@@ -105,6 +109,23 @@ internal static unsafe class FootPlacement
         feet.OffL = s.OffL * w;
         feet.TiltR = FootTilt(fwdH, right, s.FR * w, s.SR * w);
         feet.TiltL = FootTilt(fwdH, right, s.FL * w, s.SL * w);
+    }
+
+    /// <summary>A swinging foot's floor offset <paramref name="under"/> it, raised toward the floor where it will land
+    /// (<paramref name="ahead"/>, cast into <paramref name="c"/>) as its swing goes on; a foot on the ground keeps its own.</summary>
+    private static float Ahead(ref FootCast c, StrideWarp.Ahead a, IntPtr scene, IntPtr gob, float refZ, float max, float scale,
+                               bool snap, float dt, float under)
+    {
+        if (!a.Swing || !Floor(ref c, scene, gob, new Vector3(a.At.X, a.At.Y, refZ), refZ, max, scale, snap, dt, out float land)) return under;
+        return SwingTarget(under, land, a.U);
+    }
+
+    /// <summary>The floor a swinging foot aims at, <paramref name="u"/> through its swing: rising early toward the landing
+    /// floor <paramref name="land"/> (eased out, three quarters there at mid-swing), never below the floor under it now.</summary>
+    internal static float SwingTarget(float under, float land, float u)
+    {
+        float k = 1f - (1f - Math.Clamp(u, 0f, 1f)) * (1f - Math.Clamp(u, 0f, 1f));
+        return MathF.Max(under, under + (land - under) * k);
     }
 
     /// <summary>World units (times scale) a foot must move, or the reference height change, before its floor

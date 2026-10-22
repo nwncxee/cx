@@ -142,6 +142,13 @@ internal static class StrideWarp
         dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed, out bool downL), 0f);
         s.Unvoiced = !lead.Authored;
         s.Touchdown = downR || downL;
+        if (paced && lead.Cyclic && leadRun.Rate > 1e-4f)
+        {
+            Vector3 vel = Vector3.Transform(dir, legs) * ground;
+            s.AheadR = Predict(lead, true, phase, leadRun.Rate, Vector3.Transform(Warp(lead.LandR, hip, dir, lead.FloorR, stride, weight), legs) * scale + origin, vel);
+            s.AheadL = Predict(lead, false, phase, leadRun.Rate, Vector3.Transform(Warp(lead.LandL, hip, dir, lead.FloorL, stride, weight), legs) * scale + origin, vel);
+        }
+        else s.AheadR = s.AheadL = default;
         _s.Warped++;
         return need;
     }
@@ -164,9 +171,33 @@ internal static class StrideWarp
         return off;
     }
 
+    /// <summary>Where a foot in the air will land: <paramref name="at"/> (world, as the clip lands it with the body where it
+    /// is now) carried on by the body's velocity <paramref name="vel"/> for the time left to the landing; and how far
+    /// through its swing it is. Nothing for a foot on the ground or a clip with no landing.</summary>
+    private static Ahead Predict(GaitClip clip, bool right, float phase, float rate, Vector3 at, Vector3 vel)
+    {
+        float down = right ? clip.DownR : clip.DownL;
+        if (!(down >= 0f) || clip.Contact(right, phase)) return default;
+        Vector3 p = at + vel * SecondsTo(phase, down, clip.Length, rate);
+        return new Ahead { Swing = true, At = new Vector2(p.X, p.Y), U = clip.Swing(right, phase) };
+    }
+
+    /// <summary>Seconds from <paramref name="phase"/> to the next <paramref name="down"/> of a loop
+    /// <paramref name="length"/> seconds long played at <paramref name="rate"/>.</summary>
+    internal static float SecondsTo(float phase, float down, float length, float rate) => Wrap(down - phase) * length / rate;
+
+    /// <summary>A foot in the air: where it will land (world XY) and how far through its swing it is, 0..1.</summary>
+    internal struct Ahead
+    {
+        public bool Swing;
+        public Vector2 At;
+        public float U;
+    }
+
     /// <summary>No walk on the body: the plants are let go and the next one starts fresh.</summary>
     private static void Reset(ref PoseService.Slot s)
     {
+        s.AheadR = s.AheadL = default;
         s.AnchorR = s.AnchorL = default;
         s.PlantClip = null;
         s.Seeded = 0L;
@@ -286,7 +317,7 @@ internal static class StrideWarp
         if (!f.Planted) { f.Off0 = f.Off; f.U0 = u; }
     }
 
-    /// <summary>The pace split, the reach, the plant, the phase seeds and the drop's easing against hand-worked values, and a walk run through speed
+    /// <summary>The pace split, the reach, the plant, the phase seeds, the landing time and the drop's easing against hand-worked values, and a walk run through speed
     /// ramps between half and twice its clip's pace. Oracles: the square-root split and the leg triangle worked by
     /// hand, and the physical rule that a stance foot does not move on the ground and no foot jumps between frames.</summary>
     internal static bool SelfCheck()
@@ -320,7 +351,9 @@ internal static class StrideWarp
         // a walk 0.3 past a landing at 0.8 into a run landing at 0.5 is 0.3 past it too; a start lands 0.06 past its front foot
         bool seeds = MathF.Abs(Matched(0.1f, 0.8f, 0.5f) - 0.8f) < 1e-5f && MathF.Abs(Matched(0.9f, 0.8f, 0.5f) - 0.6f) < 1e-5f
                      && MathF.Abs(Start(true, 0.5f, 0.999f) - 0.56f) < 1e-5f && MathF.Abs(Start(false, 0.5f, 0.999f) - 0.059f) < 1e-4f;
-        return paces && reach && landed && dragged && swings && seeds && Settles() && Walks();
+        // 0.2 of a 1.2 s loop at rate 1.5 is 0.16 s, wrapping past the loop's end
+        bool ahead = MathF.Abs(SecondsTo(0.9f, 0.1f, 1.2f, 1.5f) - 0.16f) < 1e-5f && MathF.Abs(SecondsTo(0.2f, 0.5f, 1f, 1f) - 0.3f) < 1e-5f;
+        return paces && reach && landed && dragged && swings && seeds && ahead && Settles() && Walks();
     }
 
     /// <summary>A long stride's need, 0.1 at each double support and 0 between, twice a 1 s cycle for 4 s at 60 fps: the

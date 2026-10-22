@@ -129,8 +129,8 @@ public sealed unsafe class PoseService : IExtenderService
         /// to the right (S), the stairs weight, and which slope is re-cast this frame.</summary>
         public float OffR, VelR, OffL, VelL, FR, VFR, SR, VSR, FL, VFL, SL, VSL, W, VW;
         public int Phase;
-        /// <summary>Each foot's cached floor cast (<see cref="FootPlacement.FootCast"/>).</summary>
-        public FootPlacement.FootCast R, L;
+        /// <summary>Each foot's cached floor cast (<see cref="FootPlacement.FootCast"/>), and where a swinging one lands.</summary>
+        public FootPlacement.FootCast R, L, NextR, NextL;
         /// <summary>Stride: locomoting last frame, the rate multiplier <see cref="StrideWarp"/> paced for the next frame,
         /// and each run's engine and written rate.</summary>
         public bool Loco;
@@ -143,6 +143,8 @@ public sealed unsafe class PoseService : IExtenderService
         public float DropHold, Drop, DropV;
         /// <summary><see cref="StrideWarp"/>: the walk run last put in step, so it is seeded once.</summary>
         public long Seeded;
+        /// <summary><see cref="StrideWarp"/>: where each foot in the air lands, for <see cref="FootPlacement"/>.</summary>
+        public StrideWarp.Ahead AheadR, AheadL;
         /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, whether it was held, a turn and not a stop,
         /// still turning, the stage, the step's start and the weighted foot's held world point, and the leftover easing out.</summary>
         public bool SettleLoco, SettleRight, SettlePin, SettleTurn, SettleSpin;
@@ -937,6 +939,9 @@ public sealed unsafe class PoseService : IExtenderService
         for (int i = 0; i < 30; i++) wFlat = FootPlacement.Weight(ref gf, ref mf, new Vector3(0.04f, 0f, 0f), dt60, 1f);
         check.Expect(steady && wStop == 1f && wFlat == 1f,
                      "walking a stair-steep walkmesh (position advancing every other frame) holds the stairs weight without flicker; stopping on it, or walking a flat platform, is full placement");
+        check.Expect(MathF.Abs(FootPlacement.SwingTarget(0f, 0.2f, 0.5f) - 0.15f) < 1e-5f && FootPlacement.SwingTarget(0f, 0.2f, 0f) == 0f
+                     && MathF.Abs(FootPlacement.SwingTarget(0f, 0.2f, 1f) - 0.2f) < 1e-5f && FootPlacement.SwingTarget(0.2f, 0f, 0.5f) == 0.2f,
+                     "a swinging foot heading for a step up is three quarters of the way up at mid-swing and on it at landing; one heading down stays over the floor under it");
         Vector3 toe = Vector3.Transform(Vector3.UnitY, FootPlacement.FootTilt(Vector3.UnitY, Vector3.UnitX, 0.5f, 0f));
         Vector3 sole = Vector3.Transform(Vector3.UnitX, FootPlacement.FootTilt(Vector3.UnitY, Vector3.UnitX, 0f, -0.3f));
         check.Expect(MathF.Abs(toe.Z / toe.Y - 0.5f) < 1e-3f && MathF.Abs(sole.Z / sole.X + 0.3f) < 1e-3f
