@@ -5,20 +5,23 @@ namespace CX.Alloy.Physics;
 
 /// <summary>What one frame of <see cref="DanglyJoints.Step"/> is driven by: the part's world transform, the
 /// air (the mean wind and the point-source push at the part, world metres per second; the air clock; how much
-/// of the gust and turbulence field to apply), the frame time, the knobs, already read, and the static faces a
-/// Swing part keeps clear of, if it has any.</summary>
+/// of the gust and turbulence field to apply), the frame time, the knobs, already read, the static faces a
+/// Swing part keeps clear of, if it has any, and whether a creature wears the part.</summary>
 public readonly struct DanglyInputs
 {
     public readonly Matrix4x4 PartWorld;
     public readonly Vector3 Mean, Point;
     public readonly float Time, Field, Dt, WindGain, Tilt, Cage;
     public readonly DanglyColliders? Walls;
+    /// <summary>A creature wears the part: a turning rig on it still swings, but no further than the cage allows.
+    /// Clothing authors a few centimetres of give; a free pendulum on a walking body throws it half a metre.</summary>
+    public readonly bool Worn;
 
     public DanglyInputs(Matrix4x4 partWorld, Vector3 mean, Vector3 point, float time, float field, float dt,
-                        float windGain, float tilt, float cage, DanglyColliders? walls = null)
+                        float windGain, float tilt, float cage, DanglyColliders? walls = null, bool worn = false)
     {
         PartWorld = partWorld; Mean = mean; Point = point; Time = time; Field = field; Dt = dt;
-        WindGain = windGain; Tilt = tilt; Cage = cage; Walls = walls;
+        WindGain = windGain; Tilt = tilt; Cage = cage; Walls = walls; Worn = worn;
     }
 }
 
@@ -221,8 +224,8 @@ public static class DanglyJoints
                 if (!IsFinite(s.X[j]) || !IsFinite(s.V[j])) { s.X[j] = now[j]; s.V[j] = default; }
             }
             if (pendulum) Constrain(rig, s, scale, now, inp.Walls, was, nj);
-            else if (rig.Shear) Cage(rig, s, inp.Cage, scale, nj, now);
-            else Cone(rig, s, nj, now);
+            else if (!rig.Shear) Cone(rig, s, nj, now);
+            if (rig.Shear || inp.Worn) Cage(rig, s, inp.Cage, scale, nj, now);
             if (h > 0f)
                 for (int j = 0; j < nj; j++)
                     if (rig.JointParent[j] >= 0) s.V[j] = (s.X[j] - was[j]) / h;
@@ -364,6 +367,8 @@ public static class DanglyJoints
         float al = axis.Length();
         if (al < 1e-7f)
         {
+            // Parallel too: normalising the same vector twice can leave dot just under the identity test.
+            if (dot > 0f) return Quaternion.Identity;
             Vector3 any = MathF.Abs(a.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY;
             return Quaternion.CreateFromAxisAngle(Vector3.Normalize(Vector3.Cross(a, any)), MathF.PI);
         }

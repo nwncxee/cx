@@ -44,9 +44,9 @@ internal static class Dangly
 
         G.Section("Movement");
         Cage = G.Slider("cage", "Freedom of movement", 0.5f, 4f, 0.1f, 1.5f, tier: Tier.Advanced,
-                        help: "How far hair, body parts and short plants may move from where the model puts "
-                            + "them: x the authored limit. Cloth and tall plants swing freely. Automatic motion "
-                            + "only.");
+                        help: "How far hair, body parts, worn clothing and short plants may move from where "
+                            + "the model puts them: x the authored limit. Hanging cloth and tall plants swing "
+                            + "freely. Automatic motion only.");
 
         G.Section("");
         Sway = G.Toggle("sway", "sway", true, tier: Tier.ChatOnly,

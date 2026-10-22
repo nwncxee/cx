@@ -62,7 +62,9 @@ graded against.
   matches the name families 92% (vegetation), 97% (body parts), 82% (creatures), 83% (cloth), 93% (rigging).
 - **Joints and skin weights** for Jiggle and Swing (section 5), and per-joint drag tensors.
 - **Bone shape and limits.** Jiggle, and a Sway whose `|C - P|` is under 0.25, translate and keep the cage
-  `cage * cap_j`. A taller Sway bends about `P` within 40 degrees; a Swing segment turns within 80.
+  `cage * cap_j`. A taller Sway bends about `P` within 40 degrees; a Swing segment turns within 80. A part a
+  creature wears (its object, or one up its attach chain, is a creature) keeps the cage on top of its cone: clothing
+  authors a few centimetres of give, and a free pendulum on a walking body throws it half a metre.
 - **Air response** `K` per metre: cloth 1 (times `min(1, W / 0.5)`: a narrower strip is cord, heavy for its
   area), foliage 0.4, a body part 0.1.
 
@@ -123,7 +125,8 @@ current one), so a banner that lifts edge-on to the wind catches less of it and 
 pumps energy into the chain's sideways modes, and an edge-on strip with no air across it flails; damping
 each joint against its parent drains those modes and hardly touches the whole chain's swing. After each substep: Swing's constraints (every segment turned back inside its cone
 and set to its rest length, one top-down sweep; neighbouring columns to their rest spacing at half
-strength; the walls of section 5b; two iterations), a bending Sway's cone, or the cage; then each joint's velocity is taken from
+strength; the walls of section 5b; two iterations), a bending Sway's cone, or the cage -- and the cage after
+either limit on a worn part; then each joint's velocity is taken from
 where they left it, so a joint on a limit stops instead of storing the motion it was refused. A part that
 moved more than 1 unit in a frame resets to its rest pose. Bone matrices (node space, System.Numerics
 row-vector, mapping a rest vertex to its current place): a turning bone is the shortest-arc rotation from
@@ -193,7 +196,7 @@ joint a frame.
 | `dangly.windgain` | 0–3 · 1 | ×`K`: how hard moving air pushes a part, the wind and the owner's own motion alike |
 | `dangly.tilt` | 0–1 · 1 | how fully a tipped part falls toward the ground |
 | `dangly.breeze` | 0–2 · 0.5 | the least wind an outdoor area blows, in area units (automatic motion only) |
-| `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit of a translating rig (automatic motion only) |
+| `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit of a translating rig, or of any rig a creature wears (automatic motion only) |
 | `dangly.still` | as before | |
 
 Every force knob of the per-vertex integrator this replaces is retired -- the gravity, wind, turbulence,

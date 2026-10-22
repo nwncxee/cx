@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Alloy.Mdl;
 using CX.Framework;
 
 namespace CX.Alloy.Physics;
@@ -11,6 +12,8 @@ internal static class DanglyJointsCheck
     internal static void Cases(Checker check)
     {
         AtRest(check);
+        SeededLeaning(check);
+        Worn(check);
         SteadyWind(check);
         Bend(check);
         Pendulum(check);
@@ -50,6 +53,61 @@ internal static class DanglyJointsCheck
         check.Expect(DanglySelfCheck.Near(s.X[1], r.JointRest[1], 1e-6f),
                      "seeding puts every joint on its target");
         check.Expect(s.V[1] == Vector3.Zero, "seeding leaves no velocity");
+    }
+
+    /// <summary>Oracle: the identity map. A chain hanging off the axes, seeded on its rest pose, reads its joints
+    /// back exactly; each segment's bone must leave its end in place, never turn it half a circle.</summary>
+    private static void SeededLeaning(Checker check)
+    {
+        float worst = 0f;
+        for (int k = 0; k < 256; k++)
+        {
+            ModelDef rope = DanglySelfCheck.Rope();
+            Vector3[] pos = rope.Nodes[0].Mesh!.Positions;
+            Matrix4x4 lean = Matrix4x4.CreateRotationX(0.0029f * k) * Matrix4x4.CreateRotationY(0.0041f * k);
+            for (int i = 0; i < pos.Length; i++) pos[i] = Vector3.Transform(pos[i], lean);
+            DanglyRig? r = DanglySelfCheck.Rig(rope);
+            if (r == null) { check.Expect(false, "a leaning rope rigs for the seed check"); return; }
+            var s = new DanglyJointsState(r.JointRest.Length);
+            Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+            DanglyJoints.Step(r, s, In(Matrix4x4.Identity, Vector3.Zero, 1f / 60f), bones);
+            for (int b = 1; b < r.BoneCount; b++)
+            {
+                Vector3 end = r.JointRest[r.BoneJoint[b]];
+                worst = MathF.Max(worst, (Vector3.Transform(end, bones[b]) - end).Length());
+            }
+        }
+        check.Expect(worst < 1e-3f, $"a leaning chain seeded on its rest pose draws that pose ({worst} off)");
+    }
+
+    /// <summary>Oracle: the rope's authored cage by hand, 1.5 x 0.1 x (1 - 112/255) = 0.0841176. Jerked sideways
+    /// at 3 m/s and stopped, a worn rope's joints never leave it; the same rope placed in the world swings past.</summary>
+    private static void Worn(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
+        if (r == null) { check.Expect(false, "the rope rigs for the worn check"); return; }
+        check.Expect(JerkedReach(r, worn: true) <= 0.0841176f + 1e-4f,
+                     $"a worn rope stays inside its authored cage ({JerkedReach(r, worn: true)})");
+        check.Expect(JerkedReach(r, worn: false) > 0.0841176f * 2f,
+                     $"a placed rope swings past that cage ({JerkedReach(r, worn: false)})");
+    }
+
+    /// <summary>The furthest any joint strays from its rest place while the part moves 0.05 a frame along y for
+    /// half a second, then stops for two.</summary>
+    private static float JerkedReach(DanglyRig r, bool worn)
+    {
+        var s = new DanglyJointsState(r.JointRest.Length);
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        float reach = 0f;
+        for (int f = 0; f < 150; f++)
+        {
+            Matrix4x4 world = Matrix4x4.CreateTranslation(0f, 0.05f * Math.Min(f, 30), 0f);
+            DanglyJoints.Step(r, s, new DanglyInputs(world, Vector3.Zero, Vector3.Zero, 0f, 0f, 1f / 60f, 1f, 0f,
+                                                     1.5f, worn: worn), bones);
+            for (int j = 0; j < r.JointRest.Length; j++)
+                reach = MathF.Max(reach, (s.X[j] - Vector3.Transform(r.JointRest[j], world)).Length());
+        }
+        return reach;
     }
 
     /// <summary>Oracle: the force balance by hand. Air on the card's broadside (tensor diag(0, 1, 0)) pulls

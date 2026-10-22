@@ -127,7 +127,7 @@ public static unsafe partial class DbAnim
         Matrix4x4 world = SceneDb.PartWorld[part];
         var inp = new DanglyInputs(world, DanglyMean(windy), DanglyPoint(in world, windy), DanglyClock(),
                                    windy ? 1f : 0f, dt, Dangly.WindGain.V, Dangly.Tilt.V, Dangly.Cage.V,
-                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V));
+                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V), DanglyWorn(part));
         int cell = _danglyBones.Cell[part];
         Span<Matrix4x4> bones = _danglyBones.Scratch.AsSpan(0, Math.Min(rig.BoneCount, cell));
         bool moved = DanglyJoints.Step(rig, js, inp, bones);
@@ -143,6 +143,18 @@ public static unsafe partial class DbAnim
         AlloyRenderer.NoteDanglyMoved(part, fresh ? float.PositiveInfinity : js.Moved, Dangly.Still.V);
         SceneDb.TouchPart(part, Dirty.Anim);
         return true;
+    }
+
+    /// <summary>A creature wears <paramref name="part"/>: its object is one, or rides one up the attach chain.</summary>
+    private static bool DanglyWorn(int part)
+    {
+        DbId o = SceneDb.PartObj[part];
+        for (int hop = 0; hop < 8 && SceneDb.Objects.Valid(o); hop++)
+        {
+            if ((SceneDb.ObjFlags[o.Index] & ObjFlag.Creature) != 0) return true;
+            o = SceneDb.ObjAttachTo[o.Index];
+        }
+        return false;
     }
 
     private static void Tally(DanglyClass cls)
