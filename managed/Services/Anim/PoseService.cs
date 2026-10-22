@@ -150,7 +150,7 @@ public sealed unsafe class PoseService : IExtenderService
         public StrideWarp.Ahead AheadR, AheadL;
         /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, whether it was held, a turn and not a stop,
         /// still turning, the stage, the step's start and the weighted foot's held world point, and the leftover easing out.</summary>
-        public bool SettleLoco, SettleRight, SettlePin, SettleTurn, SettleSpin;
+        public bool SettleLoco, SettleRight, SettleTurn, SettleSpin;
         public byte SettleStage;
         public float SettleT, SettleLift;
         public Vector3 SettleFrom, SettleHold;

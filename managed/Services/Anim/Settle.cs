@@ -8,7 +8,7 @@ namespace CX.Services.Anim;
 /// <summary>
 /// Stops and turns on the spot through the feet, a <see cref="PoseService"/> module under <c>anim.stride</c>. The engine
 /// crossfades a stop and turns a standing body whole, so the feet glide or spin: here they keep their world points, and
-/// one at a time steps onto its stance spot (a stop's planted feet, a turn's standing ones). <b>Hot</b>, no allocation.
+/// one at a time steps onto its stance spot (a stop's feet, a turn's standing ones). <b>Hot</b>, no allocation.
 /// </summary>
 internal static unsafe class Settle
 {
@@ -56,8 +56,8 @@ internal static unsafe class Settle
     // ---- Stops: the held feet, then the settle step ----
 
     /// <summary>The world offsets the settle draws each ankle at, from where they are drawn so far. Begins on the frame
-    /// a locomoting body with a planted foot leaves locomotion, and hands what it holds to the stride warp's plants if
-    /// movement resumes or it is turned off. <paramref name="fade"/>: seconds the idle still has to blend in.</summary>
+    /// a locomoting body leaves locomotion, and hands what it holds to the stride warp's plants if movement resumes or it
+    /// is turned off. <paramref name="fade"/>: seconds the idle still has to blend in.</summary>
     internal static void Feet(ref PoseService.Slot s, bool on, Vector3 rAnkle, Vector3 lAnkle, float fade, bool standing,
                               float yawRate, float scale, float dt, out Vector3 dr, out Vector3 dl)
     {
@@ -68,7 +68,7 @@ internal static unsafe class Settle
         if (s.SettleStage == None)
         {
             if (!on || s.Loco) return;
-            if (wasLoco && (s.AnchorR.Planted || s.AnchorL.Planted)) Begin(ref s, rAnkle, lAnkle);
+            if (wasLoco) Begin(ref s, rAnkle, lAnkle);
             else if (s.SettleSpin) Turn(ref s, rAnkle, lAnkle, yawRate > 0f);
             else return;
         }
@@ -76,16 +76,15 @@ internal static unsafe class Settle
         Pose(ref s, rAnkle, lAnkle, fade, scale, dt, out dr, out dl);
     }
 
-    /// <summary>Takes the planted feet over at arrival, from where they are drawn. The weighted foot is the planted one
-    /// drawn lower; the other is the one that will step.</summary>
+    /// <summary>Takes both feet over at arrival, held where they are drawn: the engine drops the walk from the queue on a
+    /// stop and fades the idle in from its last frame, frozen, so a foot that follows the fade slides. The weighted foot
+    /// is the one drawn lower; the other is the one that will step.</summary>
     private static void Begin(ref PoseService.Slot s, Vector3 drawnR, Vector3 drawnL)
     {
-        bool heldR = s.AnchorR.Planted, heldL = s.AnchorL.Planted;
-        bool rWeighted = heldR && (!heldL || drawnR.Z <= drawnL.Z);
+        bool rWeighted = drawnR.Z <= drawnL.Z;
         s.SettleRight = !rWeighted;
         s.SettleHold = rWeighted ? drawnR : drawnL;
         s.SettleFrom = rWeighted ? drawnL : drawnR;
-        s.SettlePin = rWeighted ? heldL : heldR;
         s.SettleTurn = false;
         s.SettleStage = Waiting;
         s.SettleT = 0f;
@@ -100,7 +99,7 @@ internal static unsafe class Settle
         s.SettleRight = !left;
         s.SettleFrom = left ? drawnL : drawnR;
         s.SettleHold = left ? drawnR : drawnL;
-        s.SettlePin = s.SettleTurn = true;
+        s.SettleTurn = true;
         s.SettleStage = Waiting;
         s.SettleT = 0f;
         s.SettleLift = 0f;
@@ -119,8 +118,7 @@ internal static unsafe class Settle
         {
             case Waiting:
                 s.SettleT += dt;
-                // a planted foot stays where it landed; one caught mid-swing keeps following the animation
-                if (s.SettlePin) step = Flat(s.SettleFrom - acting);
+                step = Flat(s.SettleFrom - acting);
                 hold = Flat(s.SettleHold - other);
                 bool go = s.SettleTurn
                     ? s.SettleT >= TurnWait || step.Length() > TurnSlack * scale || hold.Length() > TurnSlack * scale
@@ -258,8 +256,8 @@ internal static unsafe class Settle
         const float dt = 1f / 60f, fade = 0.7f;
         Vector3 r0 = new(0.1f, -0.2f, 0f), l0 = new(-0.05f, 0.25f, 0f), lStance = new(-0.18f, 0.10f, 0f);
         PoseService.Slot s = default;
+        // no plant held: the engine's stop leaves the stride warp no walk to plant by, and the settle starts anyway
         s.Loco = s.SettleLoco = true;
-        s.AnchorR.Planted = s.AnchorL.Planted = true;
         int steps = Steps, moved = 0;
         bool ended = false, up = false, landed = false;
         Vector3 pinned = r0;
