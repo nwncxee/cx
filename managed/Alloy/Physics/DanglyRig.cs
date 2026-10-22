@@ -52,6 +52,9 @@ public sealed partial class DanglyRig
     /// <summary>The bone is a pure translation (a shear): Jiggle, and a Sway too short to bend. A Swing segment
     /// and a tall Sway turn about their root instead, which keeps their length at any angle.</summary>
     public bool Shear;
+    /// <summary>A Swing authored with at least <c>StrandGive</c> of give: hair, a braid, a tail. Worn, it swings
+    /// as a strand off its wearer's body instead of being caged like clothing; placed, it changes nothing.</summary>
+    public bool Strand;
 
     public int BoneCount => BoneJoint.Length;
 

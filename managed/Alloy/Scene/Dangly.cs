@@ -14,7 +14,7 @@ internal static class Dangly
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Sway, Swing, Jiggle, Collide;
     internal static readonly Knob<string> Motion;
-    internal static readonly Knob<float> WindGain, Tilt, Breeze, Cage, Still;
+    internal static readonly Knob<float> WindGain, Tilt, Breeze, Cage, Strand, Still;
 
     static Dangly()
     {
@@ -44,9 +44,13 @@ internal static class Dangly
 
         G.Section("Movement");
         Cage = G.Slider("cage", "Freedom of movement", 0.5f, 4f, 0.1f, 1.5f, tier: Tier.Advanced,
-                        help: "How far hair, body parts and short plants may move from where the model puts "
-                            + "them: x the authored limit. Cloth and tall plants swing freely. Automatic motion "
-                            + "only.");
+                        help: "How far short hair, body parts, worn clothing and short plants may move from where "
+                            + "the model puts them: x the authored limit. Hanging cloth and tall plants swing "
+                            + "freely. Automatic motion only.");
+        Strand = G.Slider("strand", "Hair swing", 0f, 2f, 0.05f, 1f,
+                          help: "How freely long hair, braids and tails swing on a moving character, and they "
+                              + "rest against the body instead of passing through it. Higher is looser. 0 = held "
+                              + "like clothing. Automatic motion only.");
 
         G.Section("");
         Sway = G.Toggle("sway", "sway", true, tier: Tier.ChatOnly,

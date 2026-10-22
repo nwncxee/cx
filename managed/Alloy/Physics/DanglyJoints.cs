@@ -4,21 +4,29 @@ using System.Numerics;
 namespace CX.Alloy.Physics;
 
 /// <summary>What one frame of <see cref="DanglyJoints.Step"/> is driven by: the part's world transform, the
-/// air (the mean wind and the point-source push at the part, world metres per second; the air clock; how much
-/// of the gust and turbulence field to apply), the frame time, the knobs, already read, and the static faces a
-/// Swing part keeps clear of, if it has any.</summary>
+/// air (mean wind and point-source push, m/s; the air clock; how much gust and turbulence to apply), the frame
+/// time, the knobs, already read, the static faces a Swing part keeps clear of, and who wears it.</summary>
 public readonly struct DanglyInputs
 {
     public readonly Matrix4x4 PartWorld;
     public readonly Vector3 Mean, Point;
     public readonly float Time, Field, Dt, WindGain, Tilt, Cage;
     public readonly DanglyColliders? Walls;
+    /// <summary>A creature wears the part: a turning rig on it still swings, but no further than the cage allows.
+    /// Clothing authors a few centimetres of give; a free pendulum on a walking body throws it half a metre.</summary>
+    public readonly bool Worn;
+    /// <summary>The capsules a worn strand keeps out of, or null for none.</summary>
+    public readonly DanglyBody? Body;
+    /// <summary>How freely a worn strand swings: its spring is <c>StrandSpring / Strand</c>; 0 cages it like
+    /// clothing.</summary>
+    public readonly float Strand;
 
     public DanglyInputs(Matrix4x4 partWorld, Vector3 mean, Vector3 point, float time, float field, float dt,
-                        float windGain, float tilt, float cage, DanglyColliders? walls = null)
+                        float windGain, float tilt, float cage, DanglyColliders? walls = null, bool worn = false,
+                        DanglyBody? body = null, float strand = 1f)
     {
         PartWorld = partWorld; Mean = mean; Point = point; Time = time; Field = field; Dt = dt;
-        WindGain = windGain; Tilt = tilt; Cage = cage; Walls = walls;
+        WindGain = windGain; Tilt = tilt; Cage = cage; Walls = walls; Worn = worn; Body = body; Strand = strand;
     }
 }
 
@@ -72,6 +80,11 @@ public static class DanglyJoints
     /// top-down length sweep moves only the child, which pumps energy into the chain's sideways modes until an
     /// edge-on strip flails; this drains them while hardly touching the whole chain's swing.</summary>
     private const float ChainFriction = 2f;
+
+    /// <summary>A worn strand's pull back to its authored hang (rad/s at strand 1), its swing damping (1/s, on
+    /// the motion relative to the wearer) and its cone (60 degrees): hair has a shape and air to move through,
+    /// where a free pendulum on a turning body flails.</summary>
+    private const float StrandSpring = 3f, StrandDamping = 2.5f, StrandCone = 1.0471976f;
 
     private const float Tiny = 1e-6f;
 
@@ -188,7 +201,10 @@ public static class DanglyJoints
                                   ReadOnlySpan<Vector3> air)
     {
         bool pendulum = rig.Class == DanglyClass.Swing;
-        float om2 = pendulum ? 0f : rig.Omega * rig.Omega, damp = 2f * rig.Zeta * rig.Omega;
+        bool strand = pendulum && rig.Strand && inp.Worn && inp.Strand > 0f;
+        float spring = strand ? StrandSpring / inp.Strand : 0f;
+        float om2 = pendulum ? spring * spring : rig.Omega * rig.Omega;
+        float damp = strand ? StrandDamping : 2f * rig.Zeta * rig.Omega;
         float friction = pendulum ? ChainFriction : 0f;
         Vector3 fall = Gravity * inp.Tilt * (DownWorld - Vector3.TransformNormal(rig.RestDown, rot));
         if (pendulum) fall += Gravity * Vector3.TransformNormal(rig.Hang, rot);
@@ -198,6 +214,7 @@ public static class DanglyJoints
 
         Span<Vector3> now = stackalloc Vector3[DanglyRig.MaxJoints];
         Span<Vector3> was = stackalloc Vector3[DanglyRig.MaxJoints];
+        Span<Vector3> shove = stackalloc Vector3[DanglyRig.MaxJoints];
         for (int step = 0; step < steps; step++)
         {
             float frac = (step + 1f) / steps;
@@ -220,13 +237,27 @@ public static class DanglyJoints
                 // A NaN passes the limits as "inside" and would reach the bone palette.
                 if (!IsFinite(s.X[j]) || !IsFinite(s.V[j])) { s.X[j] = now[j]; s.V[j] = default; }
             }
-            if (pendulum) Constrain(rig, s, scale, now, inp.Walls, was, nj);
-            else if (rig.Shear) Cage(rig, s, inp.Cage, scale, nj, now);
-            else Cone(rig, s, nj, now);
+            if (pendulum) Constrain(rig, s, scale, now, inp.Walls, was, nj, strand ? StrandCone : rig.Cone);
+            else if (!rig.Shear) Cone(rig, s, nj, now);
+            shove.Clear();
+            if (strand) inp.Body?.Push(s.X, now, rig.JointParent, nj, shove);
+            else if (rig.Shear || inp.Worn) Cage(rig, s, inp.Cage, scale, nj, now);
             if (h > 0f)
                 for (int j = 0; j < nj; j++)
-                    if (rig.JointParent[j] >= 0) s.V[j] = (s.X[j] - was[j]) / h;
+                    if (rig.JointParent[j] >= 0) s.V[j] = Contact((s.X[j] - was[j] - shove[j]) / h, shove[j]);
         }
+    }
+
+    /// <summary>A joint the body shoved keeps the velocity it had before the shove, less any part still driving
+    /// into the body: an inelastic contact. Taken from the shoved position instead, a body turning a few
+    /// degrees in a frame would fling the strand at the shove's depth per substep.</summary>
+    private static Vector3 Contact(Vector3 v, Vector3 shove)
+    {
+        float len = shove.Length();
+        if (!(len > Tiny)) return v;
+        Vector3 n = shove / len;
+        float into = Vector3.Dot(v, n);
+        return into < 0f ? v - into * n : v;
     }
 
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
@@ -254,10 +285,10 @@ public static class DanglyJoints
     /// rest length, which one top-down sweep settles exactly for a single column, then the neighbouring columns
     /// back to their rest spacing at half strength, then every joint back out of the faces it keeps clear of.</summary>
     private static void Constrain(DanglyRig rig, DanglyJointsState s, float scale, ReadOnlySpan<Vector3> target,
-                                  DanglyColliders? walls, ReadOnlySpan<Vector3> was, int nj)
+                                  DanglyColliders? walls, ReadOnlySpan<Vector3> was, int nj, float cone)
     {
         int k = rig.Columns, j = rig.Segments;
-        float limit = MathF.Cos(rig.Cone);
+        float limit = MathF.Cos(cone);
         for (int it = 0; it < Iterations; it++)
         {
             for (int c = 0; c < k; c++)
@@ -364,6 +395,8 @@ public static class DanglyJoints
         float al = axis.Length();
         if (al < 1e-7f)
         {
+            // Parallel too: normalising the same vector twice can leave dot just under the identity test.
+            if (dot > 0f) return Quaternion.Identity;
             Vector3 any = MathF.Abs(a.X) < 0.9f ? Vector3.UnitX : Vector3.UnitY;
             return Quaternion.CreateFromAxisAngle(Vector3.Normalize(Vector3.Cross(a, any)), MathF.PI);
         }

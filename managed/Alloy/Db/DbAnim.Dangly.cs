@@ -36,6 +36,9 @@ public static unsafe partial class DbAnim
         internal readonly int[] WallScratch = new int[WallMeshFaces];
         internal long WallWindowAt, WallSpent, GatherTicks;
         internal int WallParts, Gathers, GatheredFaces, WallDropped, WallTruncated;
+        /// <summary>Per worn strand, its wearer's body, refilled every frame; and the period's counters.</summary>
+        internal readonly DanglyBody?[] Bodies = new DanglyBody?[SceneDb.MaxParts];
+        internal int StrandParts, Capsules, CapsulesDropped;
     }
 
     private static DanglyState _dangly = new();
@@ -125,9 +128,11 @@ public static unsafe partial class DbAnim
         if (js == null || js.X.Length != joints) _dangly.Joints[part] = js = new DanglyJointsState(joints);
 
         Matrix4x4 world = SceneDb.PartWorld[part];
+        bool worn = DanglyWorn(part, out DbId wearer);
         var inp = new DanglyInputs(world, DanglyMean(windy), DanglyPoint(in world, windy), DanglyClock(),
                                    windy ? 1f : 0f, dt, Dangly.WindGain.V, Dangly.Tilt.V, Dangly.Cage.V,
-                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V));
+                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V), worn,
+                                   DanglyBodyOf(part, rig, wearer, worn), Dangly.Strand.V);
         int cell = _danglyBones.Cell[part];
         Span<Matrix4x4> bones = _danglyBones.Scratch.AsSpan(0, Math.Min(rig.BoneCount, cell));
         bool moved = DanglyJoints.Step(rig, js, inp, bones);
@@ -143,6 +148,20 @@ public static unsafe partial class DbAnim
         AlloyRenderer.NoteDanglyMoved(part, fresh ? float.PositiveInfinity : js.Moved, Dangly.Still.V);
         SceneDb.TouchPart(part, Dirty.Anim);
         return true;
+    }
+
+    /// <summary>A creature wears <paramref name="part"/>: its object is one, or rides one up the attach chain.
+    /// <paramref name="wearer"/> is that creature.</summary>
+    private static bool DanglyWorn(int part, out DbId wearer)
+    {
+        DbId o = SceneDb.PartObj[part];
+        for (int hop = 0; hop < 8 && SceneDb.Objects.Valid(o); hop++)
+        {
+            if ((SceneDb.ObjFlags[o.Index] & ObjFlag.Creature) != 0) { wearer = o; return true; }
+            o = SceneDb.ObjAttachTo[o.Index];
+        }
+        wearer = default;
+        return false;
     }
 
     private static void Tally(DanglyClass cls)
@@ -248,7 +267,7 @@ public static unsafe partial class DbAnim
                  + $"settled {d.Settled} | {_danglyBones.Live} bone range(s), {_danglyBones.High} peak";
         if (d.NoSkinRange != 0) s += $", {d.NoSkinRange} dangly-noskinrange (moving the STOCK way)";
         if (d.NoBoneRange != 0) s += $", {d.NoBoneRange} dangly-nobonerange (moving the STOCK way)";
-        s += DanglyWallPeriod(frames);
+        s += DanglyWallPeriod(frames) + DanglyBodyPeriod(frames);
         d.Parts = d.Verts = d.Sway = d.Jiggle = d.Swing = 0;
         d.Stocked = d.Resting = d.Settled = 0;
         d.NoSkinRange = d.NoBoneRange = 0;
