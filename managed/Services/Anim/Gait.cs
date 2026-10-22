@@ -6,8 +6,7 @@ using CX.Framework;
 namespace CX.Services.Anim;
 
 /// <summary>Where a creature's movement comes from, which is what decides how it starts and how it stops:
-/// <see cref="Driving"/> is bang-bang in the engine -- full speed on frame 1, a coast and a dead stop -- unless
-/// <see cref="DriveEase"/> shapes it, while both path modes ramp and ease, the server's twice as hard as the
+/// <see cref="Driving"/> is bang-bang in the engine -- full speed on frame 1, a coast and a dead stop -- while both path modes ramp and ease, the server's twice as hard as the
 /// client's prediction. <see cref="None"/> is a creature the engine is not walking along a path.</summary>
 internal enum GaitMode : byte { None, Driving, ClientPath, ServerPath }
 
@@ -92,7 +91,7 @@ internal static unsafe class Gait
     /// <summary>The acceleration (world units per second squared) of a body whose speed went from
     /// <paramref name="was"/> to <paramref name="speed"/> m/s over <paramref name="ms"/> whole milliseconds of world
     /// time -- the engine's clock, not the frame's: they disagree by up to a millisecond. Speed, not factor: a drive's
-    /// walk-to-run change swaps the rate under a factor <see cref="DriveEase"/> rescales to keep the speed.</summary>
+    /// walk-to-run change swaps the rate under the factor.</summary>
     internal static float Accel(float speed, float was, uint ms) => ms == 0 ? 0f : (speed - was) * 1000f / ms;
 
     /// <summary>The 2-D path still ahead of the creature, in world units: from the desired position to the

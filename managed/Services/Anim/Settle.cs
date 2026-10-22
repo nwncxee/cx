@@ -1,22 +1,29 @@
 using System;
 using System.Numerics;
+using CX.Alloy.Db;
 using CX.Engine;
 using static CX.Services.Anim.PoseMath;
 
 namespace CX.Services.Anim;
 
 /// <summary>
-/// Stops and starts through the feet, a <see cref="PoseService"/> module (<c>anim.settle</c>). The engine crossfades
-/// the whole body between the idle stance and a locomotion cycle, so both feet glide and neither plants: at arrival
-/// the lock's held feet are taken over here (one keeps its world point, the other takes a settle step), and a starting
-/// cycle is seeded so its planted foot is the stance's front one (<see cref="SeedPhase"/>). <b>Hot</b>, no allocation.
+/// Stops and turns on the spot through the feet, a <see cref="PoseService"/> module under <c>anim.stride</c>. The engine
+/// crossfades a stop and turns a standing body whole, so the feet glide or spin: here they keep their world points, and
+/// one at a time steps onto its stance spot (a stop's feet, a turn's standing ones). <b>Hot</b>, no allocation.
 /// </summary>
 internal static unsafe class Settle
 {
-    /// <summary>Seconds a settle step takes from lift to touchdown: nearly twice a walk's own swing, a weight shift
-    /// and not a stride. The step is started this long before the crossfade lands, so its target -- the animated
-    /// ankle, which the crossfade is carrying to the stance -- is the stance spot exactly as the foot reaches it.</summary>
+    /// <summary>Seconds a shift's step takes from lift to touchdown: nearly twice a walk's own swing, a weight shift
+    /// and not a stride. It starts this long before the crossfade lands, so the foot reaches its stance spot with it.</summary>
     private const float StepTime = 0.55f;
+    /// <summary>World units (times scale) the farther foot may stop off its stance spot and still shift over late, its
+    /// step landing with the fade; past it the feet step up at once, and past <see cref="CatchGap"/> -- a run caught
+    /// mid-stride, the feet a stride apart -- they step quicker still.</summary>
+    private const float StepUpGap = 0.2f, CatchGap = 0.45f;
+    /// <summary>Seconds a step takes stepping up and catching: a stride brought to a halt, not a weight shift.</summary>
+    private const float StepUpTime = 0.4f, CatchTime = 0.3f;
+    /// <summary>World units (times scale) a step lifts at most, however long: a stride's swing clears the floor by this.</summary>
+    private const float MaxLift = 0.08f;
     /// <summary>Seconds a settle waits for a crossfade it cannot see the end of before stepping anyway: longer
     /// than the longest stock idle transtime (1.00 s, female), so a readable fade always decides.</summary>
     private const float MaxWait = 1.5f;
@@ -34,120 +41,125 @@ internal static unsafe class Settle
     private const float EaseTime = 0.6f;
     /// <summary>World units under which the easing leftover is done.</summary>
     private const float Done = 0.002f;
-    /// <summary>Cycle fraction past a touchdown a seeded start lands: inside the shortest stock stance
-    /// (the run's 29 % duty) and clear of the hand-off.</summary>
-    private const float JustAfter = 0.06f;
-    /// <summary>Cycle fraction under which a run is fresh enough to seed: past it the engine reused a run and its
-    /// phase is carried on purpose, which must not be stomped.</summary>
-    private const float Fresh = 0.1f;
-    /// <summary>Blend weight above which the driven run alone poses the legs: contact measured through a
-    /// crossfade belongs to two clips and is no measurement of either.</summary>
-    private const float Clear = 0.99f;
-    /// <summary>Share of a new touchdown reading taken into the learned phase: the cycle repeats, so a light
-    /// average rides out the frame the landing was caught on.</summary>
-    private const float LearnRate = 0.25f;
-    /// <summary>Animations whose contacts are remembered, and slots probed per lookup. A body plays a handful of
-    /// cycles; the table is shared because a clip's contacts are the clip's, not the creature's.</summary>
-    private const int Cycles = 64, Probe = 4;
+    /// <summary>Seconds a turn's step takes: quicker than a stop's, a pivot on the ball of the foot.</summary>
+    private const float TurnStepTime = 0.35f;
+    /// <summary>Radians per second of facing change past which a standing body's feet are held and stepped round.</summary>
+    private const float TurnRate = 0.6f;
+    /// <summary>World units (times scale) a held foot may be twisted off its stance spot before it steps.</summary>
+    private const float TurnSlack = 0.08f;
+    /// <summary>Seconds a turn holds its feet at most before the first step, however small the twist.</summary>
+    private const float TurnWait = 0.3f;
+    /// <summary>Settle stages: none running, the feet held until a step is due (a stop's crossfade, a turn's twist), the
+    /// first and second steps, the leftover easing out.</summary>
+    internal const byte None = 0, Waiting = 1, First = 2, Second = 3, Easing = 4;
 
-    private const byte None = 0, Waiting = 1, First = 2, Second = 3, Easing = 4;
-
-    internal static int Steps, Seeded;
-
-    /// <summary>One animation's measured contacts: the phase each foot touches down at.</summary>
-    private struct Cycle
-    {
-        public long Anim;
-        public float R, L;
-        public bool HasR, HasL;
-    }
-
-    private static readonly Cycle[] _cycles = new Cycle[Cycles];
-
-    // ---- The frame ----
-
-    /// <summary>After the gait signals and before the foot lock: learns the playing cycle's contacts, seeds a
-    /// starting cycle's phase, and gives each ankle the world offset the settle draws it at (XY, plus the step's lift
-    /// in Z). It stands down (<paramref name="stand"/>) when the animation is gated or the foot lock is holding a
-    /// pivot through a turn on the spot, which owns the same two offsets.</summary>
-    internal static void Step(ref PoseService.Slot s, IntPtr gob, Vector3 mr, Vector3 ml, Vector3 rAnkle,
-                              Vector3 lAnkle, float scale, bool stand, bool snap, float dt,
-                              out Vector3 dr, out Vector3 dl)
-    {
-        bool on = AnimKnobs.Settle.V && AnimKnobs.FootLock.V && !stand && !snap && dt > 0f;
-        RunRef run = on ? Gait.Driven(gob) : default;
-        long key = run.IsNull ? 0L : run.AnimKey;
-        if (key != 0L && s.GaitCycle > 0f)
-        {
-            Learn(ref s, key, run, mr.Z, ml.Z, dt);
-            if (s.Starting) Seed(ref s, key, run, mr, ml);
-        }
-        Feet(ref s, on, rAnkle, lAnkle, Fade(run), scale, dt, out dr, out dl);
-    }
+    internal static int Steps;
 
     /// <summary>Seconds the run being blended in still has to go: the idle's own transtime at arrival, which is
     /// how long the animated ankles keep travelling toward the stance. 0 when there is no fade to read, and the
     /// settle then steps on <see cref="MaxWait"/> instead of on the fade.</summary>
-    private static float Fade(RunRef run) =>
+    internal static float Fade(RunRef run) =>
         run.IsNull || !(run.BlendTime > 0f) ? 0f : MathF.Max(0f, (1f - run.Blend) * run.BlendTime);
 
-    // ---- Stops: the held feet, then the settle step ----
+    // ---- Stops: the held feet, then the settle steps ----
 
-    /// <summary>The world offsets the settle draws each ankle at. Begins on the frame a locomoting body with a
-    /// planted foot leaves locomotion, and hands whatever it holds back to the lock if movement resumes, the knob
-    /// goes off or the body snaps -- the drawn foot never jumps either way. <paramref name="fade"/> is the
-    /// seconds the idle still has to blend in.</summary>
-    internal static void Feet(ref PoseService.Slot s, bool on, Vector3 rAnkle, Vector3 lAnkle, float fade,
-                              float scale, float dt, out Vector3 dr, out Vector3 dl)
+    /// <summary>The world offsets the settle draws each ankle at, from where they are drawn so far. Begins on the frame
+    /// a locomoting body leaves locomotion, and hands what it holds to the stride warp's plants if movement resumes or it
+    /// is turned off. <paramref name="rStance"/>/<paramref name="lStance"/>: where the idle sets each foot (world, only
+    /// X and Y read); <paramref name="fade"/>: seconds the idle still has to blend in.</summary>
+    internal static void Feet(ref PoseService.Slot s, bool on, Vector3 rAnkle, Vector3 lAnkle, Vector3 rStance, Vector3 lStance,
+                              float fade, bool standing, float yawRate, float scale, float dt, out Vector3 dr, out Vector3 dl)
     {
         bool wasLoco = s.SettleLoco;
         s.SettleLoco = s.Loco;
+        s.SettleSpin = standing && MathF.Abs(yawRate) > TurnRate;
         dr = dl = Vector3.Zero;
         if (s.SettleStage == None)
         {
-            if (!on || s.Loco || !wasLoco || !(s.HeldR || s.HeldL)) return;
-            Begin(ref s, rAnkle, lAnkle);
+            if (!on || s.Loco) return;
+            if (wasLoco) Begin(ref s, rAnkle, lAnkle, rStance, lStance, scale);
+            else if (s.SettleSpin) Turn(ref s, rAnkle, lAnkle, yawRate > 0f);
+            else return;
         }
-        else if (!on || s.Loco) { Hand(ref s, rAnkle, lAnkle, fade, scale); return; }
-        Pose(ref s, rAnkle, lAnkle, fade, scale, dt, out dr, out dl);
+        else if (!on || s.Loco) { Hand(ref s, rAnkle, lAnkle, rStance, lStance, fade, scale, out dr, out dl); return; }
+        Pose(ref s, rAnkle, lAnkle, rStance, lStance, fade, scale, dt, out dr, out dl);
     }
 
-    /// <summary>Takes the lock's feet over at arrival. The weighted foot is the held one drawn lower; the other
-    /// is the one that will step. The lock's own offsets come across whole, because they are what the hold and
-    /// the arc start from and a released lock would ease the same offset out a second time.</summary>
-    private static void Begin(ref PoseService.Slot s, Vector3 rAnkle, Vector3 lAnkle)
+    /// <summary>Does <see cref="Feet"/> read stance spots this frame: a settle runs, or a stop or a turn may start one.</summary>
+    internal static bool Wants(in PoseService.Slot s, bool standing, float yawRate)
+        => s.SettleStage != None || s.SettleLoco && !s.Loco || standing && MathF.Abs(yawRate) > TurnRate;
+
+    /// <summary>Where the run fading in sets each foot (world): its clip sampled at its own time, posed on the body's frame
+    /// (<paramref name="legs"/> about <paramref name="origin"/>). Left as given with no clip to sample.</summary>
+    internal static void Stance(IntPtr gob, in PoseService.Bones bones, Quaternion legs, Vector3 origin, float scale,
+                                ref Vector3 r, ref Vector3 l)
     {
-        Vector3 drawnR = rAnkle + new Vector3(s.LockDR.X, s.LockDR.Y, 0f);
-        Vector3 drawnL = lAnkle + new Vector3(s.LockDL.X, s.LockDL.Y, 0f);
-        bool rWeighted = s.HeldR && (!s.HeldL || drawnR.Z <= drawnL.Z);
-        s.SettleRight = !rWeighted;
-        s.SettleHold = rWeighted ? drawnR : drawnL;
-        s.SettleFrom = rWeighted ? drawnL : drawnR;
-        s.SettlePin = rWeighted ? s.HeldL : s.HeldR;
+        RunRef run = Gait.Driven(gob);
+        int rf = PoseRig.Index(bones.RFoot), lf = PoseRig.Index(bones.LFoot);
+        if (!PoseRig.Db || run.IsNull || run.Clip is not { } clip || rf < 0 || lf < 0) return;
+        r = origin + Vector3.Transform(DbAnim.SampledPos(rf, clip, run.Time, run.PosScale) * scale, legs);
+        l = origin + Vector3.Transform(DbAnim.SampledPos(lf, clip, run.Time, run.PosScale) * scale, legs);
+    }
+
+    /// <summary>Takes both feet over at arrival, held where they are drawn: the engine drops the walk from the queue and
+    /// fades the idle in from its last frame, frozen, so a foot that follows the fade slides. The foot farther from its
+    /// stance spot steps first, and that distance picks the stop: a shift landing with the fade, a step up, or a catch.</summary>
+    private static void Begin(ref PoseService.Slot s, Vector3 drawnR, Vector3 drawnL, Vector3 stanceR, Vector3 stanceL, float scale)
+    {
+        float offR = Flat(drawnR - stanceR).Length(), offL = Flat(drawnL - stanceL).Length();
+        bool right = offR >= offL;
+        float gap = MathF.Max(offR, offL) / scale;
+        s.SettleRight = right;
+        s.SettleFrom = right ? drawnR : drawnL;
+        s.SettleHold = right ? drawnL : drawnR;
+        s.SettleNow = gap > StepUpGap;
+        s.SettleStep = gap > CatchGap ? CatchTime : s.SettleNow ? StepUpTime : StepTime;
+        s.SettleTurn = false;
+        Start(ref s);
+    }
+
+    /// <summary>Holds a standing body's feet where they are drawn as it turns; the foot on the side it turns to
+    /// (<paramref name="left"/>) steps first, opening the stance the way the body goes.</summary>
+    private static void Turn(ref PoseService.Slot s, Vector3 drawnR, Vector3 drawnL, bool left)
+    {
+        s.SettleRight = !left;
+        s.SettleFrom = left ? drawnL : drawnR;
+        s.SettleHold = left ? drawnR : drawnL;
+        s.SettleNow = false;
+        s.SettleStep = TurnStepTime;
+        s.SettleTurn = true;
+        Start(ref s);
+    }
+
+    private static void Start(ref PoseService.Slot s)
+    {
         s.SettleStage = Waiting;
         s.SettleT = 0f;
         s.SettleLift = 0f;
-        s.SettleOff = s.SettleOffV = Vector2.Zero;
-        s.LockDR = s.LockVR = s.LockDL = s.LockVL = Vector2.Zero;
-        s.HeldR = s.HeldL = s.SlipR = s.SlipL = s.PinR = s.PinL = false;
+        s.SettleOff = s.SettleOffV = s.SettleOffO = s.SettleOffOV = Vector2.Zero;
+        s.SettleFolded = false;
     }
 
-    /// <summary>One frame of the settle: the acting foot waiting, arcing, or easing its leftover out, and -- until
-    /// its own turn comes -- the weighted foot pinned to the point the body stopped on.</summary>
-    private static void Pose(ref PoseService.Slot s, Vector3 rAnkle, Vector3 lAnkle, float fade, float scale,
-                             float dt, out Vector3 dr, out Vector3 dl)
+    /// <summary>One frame of the settle: the acting foot waiting, stepping onto its stance spot, or both easing their
+    /// leftovers out; until its own turn comes the weighted foot is pinned to the point the body stopped on, and a foot
+    /// that has stepped stays on its stance spot while the fade carries the animated ankle there.</summary>
+    private static void Pose(ref PoseService.Slot s, Vector3 rAnkle, Vector3 lAnkle, Vector3 rStance, Vector3 lStance,
+                             float fade, float scale, float dt, out Vector3 dr, out Vector3 dl)
     {
         bool right = s.SettleRight;
         Vector3 acting = right ? rAnkle : lAnkle, other = right ? lAnkle : rAnkle;
+        Vector3 to = Flat((right ? rStance : lStance) - acting), toOther = Flat((right ? lStance : rStance) - other);
         Vector3 step = Vector3.Zero, hold = Vector3.Zero;
         switch (s.SettleStage)
         {
             case Waiting:
                 s.SettleT += dt;
-                // a foot the lock held stays where it landed; one caught mid-swing keeps following the animation
-                if (s.SettlePin) step = Flat(s.SettleFrom - acting);
+                step = Flat(s.SettleFrom - acting);
                 hold = Flat(s.SettleHold - other);
-                if (dt > 0f && (fade <= StepTime || s.SettleT >= MaxWait))
+                bool go = s.SettleTurn
+                    ? s.SettleT >= TurnWait || step.Length() > TurnSlack * scale || hold.Length() > TurnSlack * scale
+                    : s.SettleNow || fade <= s.SettleStep || s.SettleT >= MaxWait;
+                if (dt > 0f && go)
                 {
                     s.SettleFrom = acting + step;
                     s.SettleStage = First;
@@ -158,33 +170,61 @@ internal static unsafe class Settle
             case First:
             case Second:
                 s.SettleT += dt;
-                float u = MathF.Min(1f, s.SettleT / StepTime);
-                s.SettleLift = MathF.Max(s.SettleLift, LiftOf(s.SettleFrom, acting, scale));
-                step = Arc(s.SettleFrom, acting, u, s.SettleLift);
-                if (s.SettleStage == First) hold = Flat(s.SettleHold - other);
-                if (u >= 1f && dt > 0f) Advance(ref s, other, scale);
+                float u = MathF.Min(1f, s.SettleT / s.SettleStep);
+                Vector3 target = acting + to;
+                s.SettleLift = MathF.Max(s.SettleLift, LiftOf(s.SettleFrom, target, scale));
+                step = Arc(s.SettleFrom, target, u, s.SettleLift) + to;
+                hold = s.SettleStage == First ? Flat(s.SettleHold - other) : toOther;
+                if (u >= 1f && dt > 0f) Advance(ref s, target, other + toOther, scale);
                 break;
             default:
+                // once the fade has landed the stance spots are the animated ankles, bar the sampling's own error: from
+                // then the offsets themselves ease out, so the settle ends on the animation without a jump
+                if (fade <= 0f && !s.SettleFolded)
+                {
+                    s.SettleOff += new Vector2(to.X, to.Y);
+                    s.SettleOffO = new Vector2(toOther.X, toOther.Y);
+                    s.SettleFolded = true;
+                }
                 Smooth(ref s.SettleOff, ref s.SettleOffV, Vector2.Zero, dt, EaseTime);
-                if (s.SettleOff.LengthSquared() < Done * Done * scale * scale) { s.SettleOff = Vector2.Zero; s.SettleStage = None; }
-                step = new Vector3(s.SettleOff.X, s.SettleOff.Y, 0f);
+                if (s.SettleFolded) Smooth(ref s.SettleOffO, ref s.SettleOffOV, Vector2.Zero, dt, EaseTime);
+                Vector3 off = new(s.SettleOff.X, s.SettleOff.Y, 0f), offO = new(s.SettleOffO.X, s.SettleOffO.Y, 0f);
+                step = s.SettleFolded ? off : to + off;
+                hold = s.SettleFolded ? offO : toOther;
+                float done = Done * Done * scale * scale;
+                if (s.SettleFolded && s.SettleOff.LengthSquared() < done && s.SettleOffO.LengthSquared() < done)
+                {
+                    s.SettleOff = s.SettleOffO = Vector2.Zero;
+                    s.SettleStage = None;
+                }
                 break;
         }
         if (right) { dr = step; dl = hold; } else { dl = step; dr = hold; }
     }
 
-    /// <summary>A step has landed. After the first, the foot that carried the body takes its own step only if it
-    /// is more than <see cref="Adjust"/> off its stance spot; under that the remainder eases out, which is a
-    /// centimetres-wide drift nobody reads as a slide. After the second the settle is over.</summary>
-    private static void Advance(ref PoseService.Slot s, Vector3 planted, float scale)
+    /// <summary>A step has landed on <paramref name="landed"/>. Through a turn still going, the feet trade: the landed one
+    /// is held and the other waits its turn. After the first step the foot that carried the body steps onto its stance
+    /// spot <paramref name="stance"/> only if it is more than <see cref="Adjust"/> off it; under that the remainder eases
+    /// out, a centimetres-wide drift nobody reads as a slide. Either way both feet then ease onto the animation.</summary>
+    private static void Advance(ref PoseService.Slot s, Vector3 landed, Vector3 stance, float scale)
     {
-        if (s.SettleStage == Second) { s.SettleStage = None; return; }
-        Vector3 off = s.SettleHold - planted;
-        Vector2 flat = new(off.X, off.Y);
+        if (s.SettleTurn && s.SettleSpin)
+        {
+            // still turning: the foot that landed is held there and the one that waited steps next
+            s.SettleFrom = s.SettleHold;
+            s.SettleHold = landed;
+            s.SettleRight = !s.SettleRight;
+            s.SettleStage = Waiting;
+            s.SettleT = 0f;
+            s.SettleLift = 0f;
+            return;
+        }
+        if (s.SettleStage == Second) { s.SettleStage = Easing; return; }
+        Vector2 flat = new(s.SettleHold.X - stance.X, s.SettleHold.Y - stance.Y);
         s.SettleRight = !s.SettleRight;
         if (flat.Length() > Adjust * scale)
         {
-            s.SettleFrom = new Vector3(s.SettleHold.X, s.SettleHold.Y, planted.Z);
+            s.SettleFrom = new Vector3(s.SettleHold.X, s.SettleHold.Y, stance.Z);
             s.SettleLift = 0f;
             s.SettleStage = Second;
             s.SettleT = 0f;
@@ -198,16 +238,19 @@ internal static unsafe class Settle
         }
     }
 
-    /// <summary>Gives this frame's offsets back to the foot lock and stands the settle down: a fresh plant holds
-    /// where the foot is drawn, and a stood-down lock eases the same offset out, so neither path pops.</summary>
-    private static void Hand(ref PoseService.Slot s, Vector3 rAnkle, Vector3 lAnkle, float fade, float scale)
+    /// <summary>Hands this frame's offsets to the stride warp's plants and stands the settle down: a plant holds where
+    /// its foot is drawn and a swing eases the offset out, so the drawn foot does not jump.</summary>
+    private static void Hand(ref PoseService.Slot s, Vector3 rAnkle, Vector3 lAnkle, Vector3 rStance, Vector3 lStance,
+                             float fade, float scale, out Vector3 dr, out Vector3 dl)
     {
-        Pose(ref s, rAnkle, lAnkle, fade, scale, 0f, out Vector3 dr, out Vector3 dl);
-        s.LockDR += new Vector2(dr.X, dr.Y);
-        s.LockDL += new Vector2(dl.X, dl.Y);
+        Pose(ref s, rAnkle, lAnkle, rStance, lStance, fade, scale, 0f, out dr, out dl);
+        s.SettleTurn = false;
+        s.AnchorR.Off = new Vector2(dr.X, dr.Y);
+        s.AnchorL.Off = new Vector2(dl.X, dl.Y);
+        s.Planting = true;
         s.SettleStage = None;
         s.SettleT = 0f;
-        s.SettleOff = s.SettleOffV = Vector2.Zero;
+        s.SettleOff = s.SettleOffV = s.SettleOffO = s.SettleOffOV = Vector2.Zero;
     }
 
     /// <summary>The offset from the animated ankle at which a stepping foot is drawn, <paramref name="u"/> of the
@@ -220,106 +263,22 @@ internal static unsafe class Settle
         return new Vector3(d.X, d.Y, d.Z + lift * MathF.Sin(MathF.PI * Math.Clamp(u, 0f, 1f)));
     }
 
-    /// <summary>How high a step of this length lifts: proportional up to <see cref="LiftFull"/>, capped there.</summary>
+    /// <summary>How high a step of this length lifts: <see cref="Lift"/> per <see cref="LiftFull"/>, capped at <see cref="MaxLift"/>.</summary>
     private static float LiftOf(Vector3 from, Vector3 to, float scale)
     {
         float d = new Vector2(from.X - to.X, from.Y - to.Y).Length();
-        return Lift * scale * MathF.Min(1f, d / (LiftFull * scale));
+        return scale * MathF.Min(MaxLift, Lift * d / (LiftFull * scale));
     }
 
     private static float Ease(float u) => u <= 0f ? 0f : u >= 1f ? 1f : u * u * (3f - 2f * u);
 
     private static Vector3 Flat(Vector3 v) => new(v.X, v.Y, 0f);
 
-    // ---- The start: seed the fresh cycle's phase ----
-
-    /// <summary>Sets a fresh cycle's time so the stance's front foot is the planted one. The engine reuses a run
-    /// of the same name with its phase untouched (locomotion-engine §4.4), so only a run still at its start is
-    /// seeded -- a walk-to-run carries its phase on purpose.</summary>
-    private static void Seed(ref PoseService.Slot s, long key, RunRef run, Vector3 mr, Vector3 ml)
-    {
-        if (!Known(key, out float r, out float l, out bool hasR, out bool hasL) || !hasR || !hasL) return;
-        if (!(run.Time <= Fresh * s.GaitCycle)) return;
-        run.Time = SeedPhase(mr.Y >= ml.Y, r, l) * s.GaitCycle;
-        Seeded++;
-    }
-
-    /// <summary>The phase a fresh cycle starts at: just past the touchdown of the foot the stance leads with, so
-    /// that foot is freshly planted and the first step falls to the other one.</summary>
-    internal static float SeedPhase(bool rightInFront, float r, float l) => Norm((rightInFront ? r : l) + JustAfter);
-
-    // ---- Learned contacts, per animation ----
-
-    /// <summary>One frame of contact measurement for the playing cycle, from the same landing test the footsteps use:
-    /// contact is learned from the pose, never from a name -- <c>animationsets.2da</c> puts swim, crawl and floating
-    /// cycles behind the name <c>walk</c>, and the footstep event gives the phase but not the foot. Only while the
-    /// cycle alone poses the legs: through a crossfade the ankles are two clips at once.</summary>
-    private static void Learn(ref PoseService.Slot s, long key, RunRef run, float hr, float hl, float dt)
-    {
-        if (!s.Loco || run.Blend < Clear) return;
-        bool r = Footfall.Landed(ref s.LandR, hr, dt);
-        bool l = Footfall.Landed(ref s.LandL, hl, dt);
-        if (!r && !l) return;
-        ref Cycle c = ref Entry(key);
-        if (r) Take(ref c.R, ref c.HasR, s.GaitPhase);
-        if (l) Take(ref c.L, ref c.HasL, s.GaitPhase);
-    }
-
-    /// <summary>A new touchdown reading into the learned phase, the short way round the cycle.</summary>
-    private static void Take(ref float at, ref bool has, float phase)
-    {
-        if (!has) { at = phase; has = true; return; }
-        float d = phase - at;
-        d -= MathF.Round(d);
-        at = Norm(at + d * LearnRate);
-    }
-
-    /// <summary>What has been learned about <paramref name="key"/>; false when the clip has not been walked yet,
-    /// which is when the engine's own phase is left exactly as it set it.</summary>
-    private static bool Known(long key, out float r, out float l, out bool hasR, out bool hasL)
-    {
-        r = l = 0f; hasR = hasL = false;
-        int h = Slot(key);
-        for (int i = 0; i < Probe; i++)
-        {
-            ref Cycle c = ref _cycles[(h + i) & (Cycles - 1)];
-            if (c.Anim == 0L) return false;
-            if (c.Anim != key) continue;
-            r = c.R; l = c.L; hasR = c.HasR; hasL = c.HasL;
-            return hasR || hasL;
-        }
-        return false;
-    }
-
-    /// <summary>The table entry for <paramref name="key"/>, claiming or displacing one. An animation object the
-    /// engine has freed and whose address is reused reads as its predecessor until it is displaced; the contacts
-    /// of a clip a body actually plays are re-measured every cycle, so a stale pair is short-lived.</summary>
-    private static ref Cycle Entry(long key)
-    {
-        int h = Slot(key);
-        for (int i = 0; i < Probe; i++)
-        {
-            ref Cycle c = ref _cycles[(h + i) & (Cycles - 1)];
-            if (c.Anim == key) return ref c;
-            if (c.Anim == 0L) { c = default; c.Anim = key; return ref c; }
-        }
-        ref Cycle e = ref _cycles[h];
-        e = default;
-        e.Anim = key;
-        return ref e;
-    }
-
-    private static int Slot(long key) => (int)(((ulong)key >> 4 ^ (ulong)key >> 12) & (Cycles - 1));
-
-    private static float Norm(float p) => p - MathF.Floor(p);
-
     // ---- Self-check ----
 
-    /// <summary>The arc, the two-step state machine and the start seed, on the measured stock numbers (the male
-    /// walk, the male run, the idle stance).</summary>
-    internal static bool SelfCheck() =>
-        // also the first touch of the contact table, so its storage is claimed here and not inside a frame hook
-        !Known(1L, out _, out _, out _, out _) && ArcCheck() && StopCheck() && SeedCheck();
+    /// <summary>The arc, the two-step stop and the turn on the spot, against hand-placed feet, the measured male idle
+    /// crossfade and a hand-driven half turn.</summary>
+    internal static bool SelfCheck() => ArcCheck() && StopCheck() && CatchCheck() && TurnCheck();
 
     /// <summary>The step's arc: it leaves the foot where it was, sets it on the animated ankle, and rises between.</summary>
     private static bool ArcCheck()
@@ -333,8 +292,8 @@ internal static unsafe class Settle
                && Arc(from, ankle, 0.25f, Lift).X > Arc(from, ankle, 0.75f, Lift).X;
     }
 
-    /// <summary>A stop through a 0.70 s male idle crossfade: the weighted foot does not move while the fade
-    /// carries the animated ankles to the stance, only one foot is ever off the ground, the stepping foot lands
+    /// <summary>A shift: a stop through a 0.70 s male idle crossfade, the farther foot 0.198 off its spot: the weighted foot does not move while the fade
+    /// carries the animated ankles to the stance, the stepping foot lands
     /// on the stance spot as the fade lands, a weighted foot left more than <see cref="Adjust"/> off its own spot
     /// takes a second step and one left nearer does not, and the settle ends on the animated ankles.</summary>
     private static bool StopCheck()
@@ -349,9 +308,9 @@ internal static unsafe class Settle
         const float dt = 1f / 60f, fade = 0.7f;
         Vector3 r0 = new(0.1f, -0.2f, 0f), l0 = new(-0.05f, 0.25f, 0f), lStance = new(-0.18f, 0.10f, 0f);
         PoseService.Slot s = default;
+        // no plant held: the engine's stop leaves the stride warp no walk to plant by, and the settle starts anyway
         s.Loco = s.SettleLoco = true;
-        s.HeldR = s.HeldL = true;
-        int steps = Steps, both = 0, moved = 0;
+        int steps = Steps, moved = 0;
         bool ended = false, up = false, landed = false;
         Vector3 pinned = r0;
         for (int i = 0; i < 240; i++)
@@ -360,9 +319,8 @@ internal static unsafe class Settle
             Vector3 ra = Vector3.Lerp(r0, rStance, w), la = Vector3.Lerp(l0, lStance, w);
             byte was = s.SettleStage;
             s.Loco = false;
-            Feet(ref s, true, ra, la, MathF.Max(0f, fade - t), 1f, dt, out Vector3 dr, out Vector3 dl);
+            Feet(ref s, true, ra, la, rStance, lStance, MathF.Max(0f, fade - t), false, 0f, 1f, dt, out Vector3 dr, out Vector3 dl);
             Vector3 drawnR = ra + dr, drawnL = la + dl;
-            if (dr.Z > 1e-4f && dl.Z > 1e-4f) both++;
             if (dl.Z > 1e-3f) up = true;
             // the left foot steps first, so the right is pinned right through the wait and that step
             if (was is Waiting or First && Vector3.Distance(drawnR, pinned) > 1e-3f) moved++;
@@ -373,15 +331,71 @@ internal static unsafe class Settle
                 break;
             }
         }
-        return ended && up && landed && both == 0 && moved == 0 && Steps - steps == want;
+        return ended && up && landed && moved == 0 && Steps - steps == want;
     }
 
-    /// <summary>A start: the seeded phase leaves the stance's front foot planted, just past its touchdown -- on
-    /// the male walk (touchdowns L 0.30 / R 0.80, 50 % duty) and the male run (R 0.50 / L 0.999, 29 % duty).</summary>
-    private static bool SeedCheck()
+    /// <summary>A catch: a run stopped mid-stride, feet 0.9 apart and the front one 0.48 off its stance spot, through a 1 s
+    /// fade. By hand: the front foot lifts at once and lands on its spot at 0.30 s, the rear one held until then; the rear
+    /// lands on its own at 0.60 s; both stay on their spots while the fade runs to 1 s, then end on the animated ankles.</summary>
+    private static bool CatchCheck()
     {
-        float walk = SeedPhase(false, 0.80f, 0.30f);
-        float run = SeedPhase(true, 0.50f, 0.999f);
-        return walk > 0.30f && walk < 0.30f + 0.50f && run > 0.50f && run < 0.50f + 0.291f;
+        const float dt = 1f / 60f, fade = 1f;
+        Vector3 r0 = new(0.5f, -0.12f, 0f), l0 = new(-0.4f, 0.12f, 0f), rStance = new(0.02f, -0.12f, 0f), lStance = new(-0.02f, 0.12f, 0f);
+        PoseService.Slot s = default;
+        s.Loco = s.SettleLoco = true;
+        int steps = Steps, slid = 0;
+        float liftR = -1f, landR = -1f, landL = -1f;
+        bool ended = false;
+        for (int i = 0; i < 240; i++)
+        {
+            float t = i * dt, w = MathF.Min(1f, t / fade);
+            Vector3 ra = Vector3.Lerp(r0, rStance, w), la = Vector3.Lerp(l0, lStance, w);
+            s.Loco = false;
+            Feet(ref s, true, ra, la, rStance, lStance, MathF.Max(0f, fade - t), false, 0f, 1f, dt, out Vector3 dr, out Vector3 dl);
+            Vector3 drawnR = ra + dr, drawnL = la + dl;
+            if (liftR < 0f && dr.Z > 1e-3f) liftR = t;
+            if (landR < 0f && liftR >= 0f && dr.Z < 1e-6f && Vector3.Distance(drawnR, rStance) < 5e-3f) landR = t;
+            if (landL < 0f && landR >= 0f && dl.Z > 1e-3f) landL = 0f;
+            if (landL == 0f && dl.Z < 1e-6f && Vector3.Distance(drawnL, lStance) < 5e-3f) landL = t;
+            if (landR < 0f && Vector3.Distance(drawnL, l0) > 1e-3f) slid++;
+            if (landL > 0f && t < fade && (Vector3.Distance(drawnR, rStance) > 5e-3f || Vector3.Distance(drawnL, lStance) > 5e-3f)) slid++;
+            if (s.SettleStage == None)
+            {
+                ended = Vector3.Distance(drawnR, ra) < 2e-3f && Vector3.Distance(drawnL, la) < 2e-3f;
+                break;
+            }
+        }
+        return ended && slid == 0 && Steps - steps == 2 && liftR >= 0f && liftR <= 2f * dt
+               && landR > 0.28f && landR < 0.34f && landL > 0.58f && landL < 0.66f;
+    }
+
+    /// <summary>A standing body turning 3 rad/s for 1 s each way, its feet 0.15 either side of its centre. By hand: the
+    /// feet twist past <see cref="TurnSlack"/> at 0.18 s, the steps land at 0.53, 0.88 and 1.23 s, the turn has stopped
+    /// by the last and the waiting foot is under <see cref="Adjust"/> off: three steps, the turning side's foot lifting
+    /// first, a grounded foot never moving while the other is up, and both on their stance spots two seconds on.</summary>
+    private static bool TurnCheck() => Turns(3f) && Turns(-3f);
+
+    private static bool Turns(float rate)
+    {
+        const float Dt = 1f / 60f;
+        PoseService.Slot s = default;
+        int steps = Steps, slid = 0, first = 0;
+        bool ended = false;
+        Vector3 prevR = default, prevL = default;
+        for (int i = 0; i < 180; i++)
+        {
+            float yaw = rate * Dt * Math.Min(i, 60);
+            Vector3 x = new(MathF.Cos(yaw), MathF.Sin(yaw), 0f);
+            Vector3 ra = 0.15f * x, la = -0.15f * x;
+            Feet(ref s, true, ra, la, ra, la, 0f, true, i < 60 ? rate : 0f, 1f, Dt, out Vector3 dr, out Vector3 dl);
+            Vector3 drawnR = ra + dr, drawnL = la + dl;
+            bool upR = dr.Z > 1e-4f, upL = dl.Z > 1e-4f;
+            if (first == 0 && (upR || upL)) first = upR ? 1 : -1;
+            if (i > 0 && (upR && Vector3.Distance(drawnL, prevL) > 1e-4f || upL && Vector3.Distance(drawnR, prevR) > 1e-4f)) slid++;
+            prevR = drawnR; prevL = drawnL;
+            if (i == 179) ended = Vector3.Distance(drawnR, ra) < 2e-3f && Vector3.Distance(drawnL, la) < 2e-3f;
+        }
+        // a left turn (counter-clockwise from above) opens with the left foot
+        return first == (rate > 0f ? -1 : 1) && slid == 0 && Steps - steps == 3 && ended;
     }
 }

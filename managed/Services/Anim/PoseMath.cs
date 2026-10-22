@@ -112,20 +112,6 @@ internal static unsafe class PoseMath
         return start + soft * (1f - MathF.Exp(-(c - start) / soft));
     }
 
-    /// <summary>The share (0 to 1) of the horizontal move <paramref name="flat"/> the leg hip <paramref name="h"/>, knee
-    /// <paramref name="k"/>, ankle <paramref name="a"/> can reach exactly from the ankle target <paramref name="at"/>: past
-    /// the start of <see cref="Soften"/>'s zone the ankle stops short of its target, in the air. A target already past it
-    /// keeps a move toward the hip and drops one away.</summary>
-    internal static float Reachable(Vector3 h, Vector3 k, Vector3 a, Vector3 at, Vector3 flat)
-    {
-        float limit = MathF.Max((Vector3.Distance(h, k) + Vector3.Distance(k, a)) * (1f - SoftReach), Vector3.Distance(h, a));
-        Vector3 q = at - h;
-        float f = flat.LengthSquared(), c = q.LengthSquared() - limit * limit, b = Vector3.Dot(q, flat);
-        if (f < 1e-12f) return 1f;
-        if (c > 0f) return b < 0f ? 1f : 0f;
-        return MathF.Min(1f, (-b + MathF.Sqrt(b * b - f * c)) / f);
-    }
-
     /// <summary>The shortest rotation taking <paramref name="u"/> onto <paramref name="v"/>.</summary>
     internal static Quaternion Arc(Vector3 u, Vector3 v)
     {

@@ -23,9 +23,6 @@ internal static unsafe class Diagonal
     /// <summary>Seconds the turn eases over (SmoothCD time): nine tenths of it inside a quarter second, within the one stance
     /// it pivots over. A slower turn spans two stances and drags both feet round with the hips.</summary>
     private const float TurnTime = 0.1f;
-    /// <summary>Radians of turn still to go under which the hips have come round: a foot planted after that is an
-    /// ordinary step, not the pivot.</summary>
-    private const float PivotLeft = MathF.PI / 180f;
     /// <summary>Share of the hips' turn the chest takes: enough that the waist does not read as a hinge.</summary>
     private const float UpperShare = 0.2f;
     /// <summary>World units per second of backward travel below which a walk-back's sideways share is noise.</summary>
@@ -41,9 +38,6 @@ internal static unsafe class Diagonal
     /// <summary>Radians the hips may trail off the facing, a diagonal's turn included: past it the waist reads as
     /// broken, so a sharper change (a reversal) drags the hips round with it for the rest.</summary>
     private const float MaxTwist = MathF.PI / 3f;
-    /// <summary>Creature anim ids of the turns on the spot (<c>pauseturn</c>, <c>cturnr</c>): each steps its feet in
-    /// place, so a planted one can be held through the turn.</summary>
-    private const ushort TurnFirst = 0x50, TurnLast = 0x53; // not-an-offset: anim ids
 
     /// <summary>The engine's <c>GetAnimationName</c>. Its <c>CExoString</c> comes back through a hidden buffer --
     /// Itanium <c>(sret, this, id)</c>, Win64 <c>(this, sret, id)</c> -- and both return that buffer in rax, so the
@@ -79,10 +73,6 @@ internal static unsafe class Diagonal
     /// its name was <paramref name="swapped"/>.</summary>
     internal static int Played(int anim, bool swapped) => swapped ? Straight((ushort)anim) : anim;
 
-    /// <summary>True while the hips have more than <see cref="PivotLeft"/> of the turn toward <paramref name="target"/>
-    /// still to go: a foot planted now is the one they turn over (<see cref="Stride.Foot"/>).</summary>
-    internal static bool Pivoting(float turn, float target) => MathF.Abs(target - turn) > PivotLeft;
-
     /// <summary>The body's turn off the facing, radians, positive = left, from the anim id, whether its name was
     /// <paramref name="swapped"/>, and the travel along the facing's forward (<paramref name="fwd"/>) and right
     /// (<paramref name="side"/>): a swapped forward diagonal faces its travel, a walk-back drifting sideways past
@@ -104,9 +94,6 @@ internal static unsafe class Diagonal
     /// body's legs go round with directly: up to <see cref="WalkTurn"/> while it is <paramref name="moving"/>, none standing.</summary>
     internal static float Walked(float step, bool moving, float dt) => moving ? Math.Clamp(step, -WalkTurn * dt, WalkTurn * dt) : 0f;
 
-    /// <summary>True for a turn on the spot: the foot lock holds a planted foot through it while the hips pivot.</summary>
-    internal static bool OnTheSpot(int anim) => anim is >= TurnFirst and <= TurnLast;
-
     /// <summary>One frame of the turn's spring toward <paramref name="target"/>; a <paramref name="snap"/> (teleport,
     /// first sight) lands on it.</summary>
     internal static void Ease(ref float turn, ref float v, float target, bool snap, float dt)
@@ -118,7 +105,7 @@ internal static unsafe class Diagonal
     /// <summary>This frame's hip turn for a body playing <paramref name="anim"/>, facing <paramref name="fwdH"/> /
     /// <paramref name="right"/>; true when there is one to write (<see cref="Write"/>). With <c>anim.pivot</c> the
     /// change of facing since the last <paramref name="tracked"/> frame, less what a moving body walks round
-    /// (<see cref="Walked"/>), is left on the hips (<see cref="Lag"/>); the legs' share is <see cref="PoseService.Slot.Walked"/>, for the foot lock.</summary>
+    /// (<see cref="Walked"/>), is left on the hips (<see cref="Lag"/>).</summary>
     internal static bool Step(ref PoseService.Slot s, int anim, Vector3 fwdH, Vector3 right, bool snap, bool tracked, float dt)
     {
         float target = AnimKnobs.Diagonal.V && _name != null && s.Hips
@@ -126,13 +113,9 @@ internal static unsafe class Diagonal
         float heading = MathF.Atan2(fwdH.Y, fwdH.X);
         float step = tracked && !snap ? MathF.IEEERemainder(heading - s.Heading, 2f * MathF.PI) : 0f;
         bool moving = PoseService.IsLocomotion(anim);
-        float walked = Walked(step, moving, dt);
-        if (AnimKnobs.Pivot.V && s.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - walked);
-        else walked = moving ? step : 0f;
-        s.Walked = walked;
+        if (AnimKnobs.Pivot.V && s.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - Walked(step, moving, dt));
         s.Heading = heading;
         Ease(ref s.Turn, ref s.TurnV, target, snap, dt);
-        s.Pivot = Pivoting(s.Turn, target);
         return MathF.Abs(s.Turn) > MinTurn;
     }
 
@@ -186,7 +169,7 @@ internal static unsafe class Diagonal
         float held = 0f, hv = 0f;
         Ease(ref held, ref hv, t, true, 1f / 60f);
         bool eases = first > 0f && first < 0.25f * t && stance >= 0.9f * t && monotonic && peak <= t + 1e-4f
-                     && t - x < MathF.PI / 180f && held == t && Pivoting(0f, t) && !Pivoting(x, t);
+                     && t - x < MathF.PI / 180f && held == t;
         bool played = Played(WalkFl, true) == Walk && Played(RunFr, true) == Run && Played(WalkFl, false) == WalkFl
                       && Played(WalkBack, true) == WalkBack && Played(sideL, true) == sideL;
         return swap && faces && backs && still && eases && played;
@@ -194,7 +177,7 @@ internal static unsafe class Diagonal
 
     /// <summary>A heading change: the hips keep their world heading as the facing turns, across the ±180° seam and never
     /// past <see cref="MaxTwist"/>, then come round inside a quarter second without overshoot; a steady bend trails by
-    /// its rate times <see cref="TurnTime"/>, not a growing lag; only the turns on the spot join the foot lock. A moving
+    /// its rate times <see cref="TurnTime"/>, not a growing lag. A moving
     /// body walks a bend with its legs and pivots only the part of a snap it cannot walk.</summary>
     internal static bool LagCheck()
     {
@@ -204,7 +187,7 @@ internal static unsafe class Diagonal
                      && MathF.Abs(Lag(Quarter, step) - (Quarter - step)) < 1e-5f;
 
         float x = Lag(0f, step), v = 0f, stance = 0f;
-        bool starts = Pivoting(x, 0f), monotonic = true;
+        bool monotonic = true;
         for (int i = 0; i < 60; i++)
         {
             float before = x;
@@ -212,7 +195,7 @@ internal static unsafe class Diagonal
             if (i == 14) stance = x;
             if (x < before || x > 1e-4f) monotonic = false;
         }
-        bool settles = starts && monotonic && MathF.Abs(stance) <= 0.1f * step && !Pivoting(x, 0f);
+        bool settles = monotonic && MathF.Abs(stance) <= 0.1f * step && MathF.Abs(x) < MathF.PI / 180f;
 
         float rate = 1.5f, b = 0f, bv = 0f;
         for (int i = 0; i < 120; i++)
@@ -221,7 +204,6 @@ internal static unsafe class Diagonal
             Ease(ref b, ref bv, 0f, false, dt);
         }
         bool bends = MathF.Abs(b + rate * TurnTime) < 0.3f * rate * TurnTime;
-        bool spot = OnTheSpot(0x50) && OnTheSpot(0x53) && !OnTheSpot(0) && !OnTheSpot(Walk) && !OnTheSpot(0x54);
 
         // walking a 1.5 rad/s bend leaves nothing on the hips; a 120° snap as a drive sets off leaves all but one
         // frame's walkable turn, which the twist cap then holds to its limit; standing leaves every step
@@ -235,7 +217,7 @@ internal static unsafe class Diagonal
         float snapTurn = 120f * deg;
         bool walks = MathF.Abs(w) < 1e-5f && Lag(0f, snapTurn - Walked(snapTurn, true, dt)) == -MaxTwist
                      && Walked(step, false, dt) == 0f && Walked(0.01f, true, dt) == 0.01f;
-        return keeps && settles && bends && spot && walks;
+        return keeps && settles && bends && walks;
     }
 
     /// <summary>True when the body axis <paramref name="axis"/> turned by <paramref name="turn"/> points along

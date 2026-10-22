@@ -46,7 +46,7 @@ internal static class Weight
         float ramp = Held(GaitMode.ClientPath, WalkRate, 54, Dt), ease = Held(GaitMode.Driving, -WalkRate, 57, Dt);
         if (!(ramp < -0.012f && ramp > -0.020f && ease < -0.012f && ease > -0.020f)) return false;
         if (!(UpperBody.LeanTarget(WalkRate, 0f, WalkRate, 0f, true).X < 0f
-              && UpperBody.LeanTarget(WalkRate, 0f, -WalkRate, 0f, true).X > 0f)) return false;
+              && UpperBody.LeanTarget(WalkRate, 0f, -WalkRate, 0f, true).X == 0f)) return false;
 
         PoseService.Slot d = default;
         d.Gait = GaitMode.Driving;
@@ -64,7 +64,7 @@ internal static class Weight
     }
 
     /// <summary>The deepest the pelvis dips over <paramref name="frames"/> of a gait holding a steady
-    /// <paramref name="accel"/>: the shape of the engine's own ramp or ease, and of <see cref="DriveEase"/>'s.</summary>
+    /// <paramref name="accel"/>: the shape of the engine's own ramp or ease.</summary>
     private static float Held(GaitMode mode, float accel, int frames, float dt)
     {
         PoseService.Slot s = default;

@@ -51,6 +51,40 @@ public static unsafe partial class DbAnim
     internal static int RunFlagsOf(int s) => _rFlags[s];
     /// <inheritdoc cref="RunRate"/>
     internal static AnimDef? RunAnim(int s) => _rAnim[s];
+    /// <summary>The scale a run's position keys are played at (the model's animation scale).</summary>
+    internal static float RunPosScale(int s) => _rPosScale[s];
+
+    /// <summary>Part <paramref name="part"/>'s position in its object's frame -- the object matrix left off -- with
+    /// <paramref name="anim"/> sampled at <paramref name="t"/> on every part up the chain it keys and the rest pose on
+    /// the rest. Reads no live column but the tree's shape, so it answers for any time. Cold: binds on first use.</summary>
+    internal static Vector3 SampledPos(int part, AnimDef anim, float t, float posScale)
+    {
+        Matrix4x4 m = Matrix4x4.Identity;
+        for (int p = part, hop = 0; p >= 0 && hop < MaxDepth; p = SceneDb.PartParent[p], hop++)
+            m *= SampledLocal(p, anim, t, posScale);
+        return new Vector3(m.M41, m.M42, m.M43);
+    }
+
+    private static Matrix4x4 SampledLocal(int p, AnimDef anim, float t, float posScale)
+    {
+        ModelDef? model = SceneDb.PartModel[p];
+        int node = SceneDb.PartNode[p];
+        if (model == null || (uint)node >= (uint)model.Nodes.Length)
+            return Build(SceneDb.PartScale[p], SceneDb.PartRot[p], SceneDb.PartPos[p]);
+        NodeDef nd = model.Nodes[node];
+        Vector3 pos = nd.Position;
+        Quaternion rot = nd.Orientation;
+        float scale = nd.Scale;
+        int a = Inverse(ModelCache.Bind(model, anim))[node];
+        if (a >= 0)
+            foreach (ControllerTrack c in anim.Nodes[a].Controllers)
+            {
+                if (c.Type == CtlPosition) pos = SampleVector(c, t) * posScale;
+                else if (c.Type == CtlOrientation) rot = SampleQuat(c, t);
+                else if (c.Type == CtlScale) scale = SampleFloat(c, t);
+            }
+        return Build(scale, rot, pos);
+    }
 
     /// <summary>Is a look-at running (not fading back) on <paramref name="obj"/>?</summary>
     internal static bool LookingAt(DbId obj)

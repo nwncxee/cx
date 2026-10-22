@@ -21,7 +21,8 @@ internal static unsafe class UpperBody
     private const float Gravity = 9.81f;
     /// <summary>Share of the physical lean angle <c>atan(a/g)</c> shown for a turn, and its cap.</summary>
     private const float TurnGain = 0.25f, MaxRoll = 3f * Deg;
-    /// <summary>Share of <c>atan(a/g)</c> shown for speeding up and stopping, and its cap.</summary>
+    /// <summary>Share of <c>atan(a/g)</c> shown for speeding up, and its cap. Slowing down leans nothing: the stop's
+    /// settle steps carry it, and a chest tipping back over them reads as a recoil.</summary>
     private const float AccelGain = 0.25f, MaxPitch = 3f * Deg;
     /// <summary>Share of the climb angle leaned into, and its cap. Only while moving.</summary>
     private const float SlopeGain = 0.35f, MaxSlope = 8f * Deg;
@@ -107,7 +108,7 @@ internal static unsafe class UpperBody
     internal static Vector2 LeanTarget(float speed, float yawRate, float accel, float slope, bool moving)
     {
         float roll = Math.Clamp(MathF.Atan(speed * yawRate / Gravity) * TurnGain, -MaxRoll, MaxRoll);
-        float pitch = Math.Clamp(MathF.Atan(accel / Gravity) * AccelGain, -MaxPitch, MaxPitch);
+        float pitch = MathF.Min(MathF.Atan(MathF.Max(accel, 0f) / Gravity) * AccelGain, MaxPitch);
         if (moving) pitch += Math.Clamp(MathF.Atan(slope) * SlopeGain, -MaxSlope, MaxSlope);
         return new Vector2(-pitch, -roll);
     }
