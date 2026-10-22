@@ -70,7 +70,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The material's Aurora blend pair, translated to GL at bind time. Only the blending
     /// classes read it.</summary>
     private static readonly byte[] _oSrc = new byte[MaxOwned], _oDst = new byte[MaxOwned];
-    /// <summary>A wash (<see cref="DbWashMode"/>): a see-through sheet lying flat, drawn under a polygon offset so it
+    /// <summary>A wash (<see cref="DbWashMode"/>): a see-through sheet laid over a surface, drawn under a polygon offset so it
     /// cannot z-fight the surface it lies on; <see cref="WashSplit"/> draws its solid interior apart. Batch key term.
     /// Its DEPTH is the class's own -- see <c>BlendLaysDepth</c>.</summary>
     internal static readonly byte[] _oWash = new byte[MaxOwned], _gWash = new byte[MaxOwned];

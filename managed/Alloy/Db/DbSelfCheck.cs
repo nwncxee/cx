@@ -55,7 +55,7 @@ internal static class DbSelfCheck
             check.Expect(Recycled(), "a recycled chunk inherits nothing: the feed's columns are re-seeded and a stale MeshDef shortcut cannot name a foreign range");
             check.Expect(Ceilings(), "the ceilings: a tree past the biggest size class, the 64k bucket, and the render flag as a bucket term");
             check.Expect(Census(), "CX-113's census: one placement per mesh-drawing part, dropped with the part range, and the merge moves the head's placement onto the merged mesh");
-            check.Expect(Sheets(), "a sheet lies flat off its triangles, either side up, whatever its authored normals say; a wall does not");
+            check.Expect(Sheets(), "a sheet is judged off its triangles, either side up, whatever its authored normals say; a decal hung on a wall is one, crossed cards are not");
             check.Expect(BlendIndices(), "the recipe's blend pair is an INDEX into the engine's blendTranslationTable, not a GL factor");
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
@@ -86,8 +86,9 @@ internal static class DbSelfCheck
         return check.Ok;
     }
 
-    /// <summary>Oracle: hand-built geometry. A flat quad with its authored normals pointing DOWN lies flat but does
-    /// not face up; the same quad wound the other way still lies flat; a vertical one does not.</summary>
+    /// <summary>Oracle: hand-built geometry. A flat quad with its authored normals pointing DOWN is a sheet but does
+    /// not face up; the same quad wound the other way is still one; so is a vertical one (a merged wall decal);
+    /// two crossed vertical cards are not.</summary>
     private static bool Sheets()
     {
         MeshDef down = Quad("t");
@@ -96,8 +97,12 @@ internal static class DbSelfCheck
         under.Indices = new uint[] { 0, 2, 1, 0, 3, 2 };
         MeshDef wall = Quad("t");
         wall.Positions = new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(1, 0, 1), new Vector3(0, 0, 1) };
-        return DrawRecipe.LiesFlat(down) && !DrawRecipe.FacesUp(down) && DrawRecipe.LiesFlat(under)
-            && DrawRecipe.LiesFlat(Quad("t")) && DrawRecipe.FacesUp(Quad("t")) && !DrawRecipe.LiesFlat(wall);
+        MeshDef crossed = Quad("t");
+        crossed.Positions = new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 0, 1), new Vector3(0, 1, 0) };
+        crossed.Indices = new uint[] { 0, 1, 2, 0, 3, 2 };
+        return DrawRecipe.IsSheet(down) && !DrawRecipe.FacesUp(down) && DrawRecipe.IsSheet(under)
+            && DrawRecipe.IsSheet(Quad("t")) && DrawRecipe.FacesUp(Quad("t"))
+            && DrawRecipe.IsSheet(wall) && !DrawRecipe.IsSheet(crossed);
     }
 
     // ---------------------------------------------------------------- fixtures

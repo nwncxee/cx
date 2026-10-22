@@ -60,7 +60,8 @@ lost at those pixels.
 
 ### Sheets that are not decals draw as washes
 
-A see-through sheet lying flat (every triangle within 45 degrees of horizontal, judged off the triangles) that
+A see-through sheet (every triangle within 45 degrees of horizontal or of the first triangle's plane, judged off
+the triangles, so a decal hung on a wall counts) that
 is not a ground decal -- alpha-tested, refused by `DbDecal`, or a cover meant to hide what it lies on -- keeps
 its own surface and lighting, and is drawn as a **wash** (`AlloyRenderer.DbWash`): under a polygon offset
 (-1, -2), so it does not z-fight the surface it lies on (content lays these at +1 cm, a quarter of the stock
