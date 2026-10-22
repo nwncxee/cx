@@ -181,6 +181,9 @@ public static unsafe class Gl
     /// <summary>The four GLSL uniform types a native stage's image may be declared as: a sampler binds on a
     /// TEXTURE unit, an image on an IMAGE unit, and the shape has to agree. Anything else refuses the stage.</summary>
     public const uint SAMPLER_2D = 0x8B5E, SAMPLER_3D = 0x8B5F, IMAGE_2D = 0x904D, IMAGE_3D = 0x904E;
+    /// <summary>The plain-value uniform types a diagnostic reads back: scalars, vectors and square matrices.</summary>
+    public const uint INT = 0x1404, FLOAT_VEC2 = 0x8B50, FLOAT_VEC3 = 0x8B51, FLOAT_VEC4 = 0x8B52, INT_VEC2 = 0x8B53,
+        INT_VEC3 = 0x8B54, INT_VEC4 = 0x8B55, FLOAT_MAT3 = 0x8B5B, FLOAT_MAT4 = 0x8B5C;
     /// <summary>Alpha-to-coverage -- the fragment's alpha becomes a COVERAGE MASK over the target's
     /// samples. Each sample is still written whole or not at all, so it is antialiasing without ever
     /// producing a partially transparent depth-writing fragment. Inert where SAMPLES is 1.</summary>

@@ -24,12 +24,62 @@ internal static unsafe partial class StageResources
                      + $"ran {s.RanFrame}, fresh {s.FreshFrame}");
             if (s.Failed || !s.Made) continue;
             foreach (Pass p in s.Passes)
+            {
                 log.Always($"StageResources: [snap] pass {p.Ref} ({p.Prog}):{Audit(p.Prog, p.Frame, p.Binds, p.Samplers, false)}");
+                Uniforms(dir, $"{seq}_native_{p.Ref}.uni", p.Prog, log);
+            }
             Dump(dir, seq, s, log);
         }
         foreach (Rec r in g.Recs)
+        {
             log.Always($"StageResources: [snap] program {r.Prog} ({At(r.A)?.Ref ?? "-"}, {At(r.B)?.Ref ?? "-"}):"
                      + Audit(r.Prog, r.Frame, r.Binds, r.Samplers, true));
+            if (At(r.A) is { } a) Uniforms(dir, $"{seq}_native_{a.Ref}_{r.Prog}.uni", r.Prog, log);
+        }
+    }
+
+    /// <summary>Every plain-value uniform of one program as GL holds it now, a line each: <c>name f|i v...</c>, a
+    /// matrix as its 16 (or 9) floats in GL's column order. <c>tools/sky/preview.py --uniforms</c> replays them.</summary>
+    private static void Uniforms(string dir, string file, uint prog, ExtenderLog log)
+    {
+        if (Gl.GetActiveUniform == null || Gl.GetUniformfv == null) return;
+        int count = 0;
+        Gl.GetProgramiv(prog, Gl.ACTIVE_UNIFORMS, &count);
+        var sb = new System.Text.StringBuilder();
+        byte* name = stackalloc byte[256];
+        float* f = stackalloc float[16];
+        int* n = stackalloc int[4];
+        for (uint u = 0; u < (uint)count; u++)
+        {
+            int len, size; uint type;
+            Gl.GetActiveUniform(prog, u, 256, &len, &size, &type, name);
+            (int comps, bool isInt) = type switch
+            {
+                Gl.FLOAT => (1, false), Gl.FLOAT_VEC2 => (2, false), Gl.FLOAT_VEC3 => (3, false), Gl.FLOAT_VEC4 => (4, false),
+                Gl.FLOAT_MAT3 => (9, false), Gl.FLOAT_MAT4 => (16, false),
+                Gl.INT => (1, true), Gl.INT_VEC2 => (2, true), Gl.INT_VEC3 => (3, true), Gl.INT_VEC4 => (4, true),
+                _ => (0, false),
+            };
+            if (comps == 0) continue;
+            string nm = System.Text.Encoding.ASCII.GetString(name, len);
+            if (nm.EndsWith("[0]", StringComparison.Ordinal)) nm = nm[..^3];
+            for (int e = 0; e < size; e++)
+            {
+                string el = size > 1 ? $"{nm}[{e}]" : nm;
+                int loc = GlProgram.Loc(prog, el);
+                if (loc < 0) continue;
+                sb.Append(el).Append(isInt ? " i" : " f");
+                if (isInt) { Gl.GetUniformiv(prog, loc, n); for (int c = 0; c < comps; c++) sb.Append(' ').Append(n[c]); }
+                else
+                {
+                    Gl.GetUniformfv(prog, loc, f);
+                    for (int c = 0; c < comps; c++) sb.Append(' ').Append(f[c].ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+                }
+                sb.Append('\n');
+            }
+        }
+        try { Directory.CreateDirectory(dir); File.WriteAllText(Path.Combine(dir, file), sb.ToString()); }
+        catch (IOException e) { log.Always($"StageResources: [snap] {file} not written: {e.Message}"); }
     }
 
     /// <summary>One program's state as GL reads it back. A pass hands its image units back after it dispatches, so

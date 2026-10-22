@@ -72,7 +72,8 @@ class GL:
             "glUseProgram": (None, u), "glGetUniformLocation": (i, u, p),
             "glUniform1i": (None, i, i), "glUniform1f": (None, i, f), "glUniform2i": (None, i, i, i),
             "glUniform2f": (None, i, f, f), "glUniform3f": (None, i, f, f, f), "glUniform4f": (None, i, f, f, f, f),
-            "glUniformMatrix4fv": (None, i, i, C.c_ubyte, C.POINTER(f)),
+            "glUniformMatrix4fv": (None, i, i, C.c_ubyte, C.POINTER(f)), "glUniformMatrix3fv": (None, i, i, C.c_ubyte, C.POINTER(f)),
+            "glUniform3i": (None, i, i, i, i), "glUniform4i": (None, i, i, i, i, i),
             "glGetProgramResourceIndex": (u, u, u, p),
             "glGetProgramResourceiv": (None, u, u, u, i, C.POINTER(u), i, C.POINTER(i), C.POINTER(i)),
             "glCreateTextures": (None, u, i, C.POINTER(u)), "glTextureStorage2D": (None, u, i, u, i, i),
@@ -304,6 +305,9 @@ class Sky:
             grp = (C.c_int * 3)()
             gl.GetProgramiv(p, 0x8267, grp)   # not-an-offset: GL_COMPUTE_WORK_GROUP_SIZE
             self.passes.append((when, ref, img, p, tuple(grp)))
+        self.prog_ref = {p: ref for _, ref, _, p, _ in self.passes}
+        self.prog_ref[self.prog] = "dome"
+        self.game = {}
         self.assets = assets
         self.fresh = True
         self.once_done = False
@@ -420,6 +424,17 @@ class Sky:
         gl.UniformMatrix4fv(L("cxPrevVp"), 1, 0, mat(self.prev_vp if self.prev_vp is not None else np.linalg.inv(inv_clean)))
         v3("cxEye", *eye); gl.Uniform2i(L("cxView"), *self.size)
         i1("cxOverlay", 1 if self.overlay else 0)
+        for name, (kind, vals) in self.game.get(self.prog_ref.get(prog, ""), {}).items():
+            if name in ("cxFrame", "cxFresh", "uSceneFrame"):
+                continue
+            if kind == "i":
+                getattr(gl, f"Uniform{len(vals)}i")(L(name), *[int(x) for x in vals])
+            elif len(vals) in (9, 16):
+                getattr(gl, "UniformMatrix3fv" if len(vals) == 9 else "UniformMatrix4fv")(L(name), 1, 0, (C.c_float * len(vals))(*vals))
+            elif len(vals) == 1:
+                f1(name, vals[0])
+            else:
+                getattr(gl, f"Uniform{len(vals)}f")(L(name), *vals)
         for kind, name, vals in s["raw"]:
             if kind == "i":
                 i1(name, vals[0])
@@ -450,6 +465,22 @@ class Sky:
             if timings is not None:
                 gl.EndQuery(0x88BF)   # not-an-offset: GL_TIME_ELAPSED
                 timings.append((ref, q))
+
+    def load_game(self, prefix):
+        """A snap's per-program uniforms (<prefix>_native_<pass>.uni, the dome's <prefix>_native_<stage>_<prog>.uni),
+        replayed over this tool's own on every frame -- all but the frame counter and the history flag."""
+        d, seq = os.path.dirname(prefix), os.path.basename(prefix)
+        for fn in sorted(os.listdir(d)):
+            if not (fn.startswith(seq + "_native_") and fn.endswith(".uni")):
+                continue
+            key = fn[len(seq) + 8:-4]
+            key = "dome" if key.startswith("cx_") else key
+            vals = {}
+            for line in open(os.path.join(d, fn)):
+                name, kind, *v = line.split()
+                vals[name] = (kind, [float(x) for x in v])
+            self.game[key] = vals
+        print(f"uniforms: {len(self.game)} program(s) from {prefix}: {', '.join(sorted(self.game))}")
 
     def swap_history(self):
         for im in self.images.values():
@@ -619,6 +650,8 @@ def main():
                     "cloud panorama IMAGE (u azimuth, v = sqrt of elevation from -6 degrees) holds as cloud, per cover")
     ap.add_argument("--raw", action="store_true", help="also save each frame's linear HDR as .npy")
     ap.add_argument("--nolabel", action="store_true", help="leave the scene/stage/time label off the PNGs")
+    ap.add_argument("--uniforms", metavar="SNAP", help="replay a /alloy snap's uniforms: the set's path prefix, "
+                    "e.g. <user dir>/cx_snap/190545 (pair it with that view's --size)")
     ap.add_argument("--dump", action="append", default=[], help="also save this declared image (npy + png slices)")
     ap.add_argument("-o", "--out", default="sky.png")
     a = ap.parse_args()
@@ -654,6 +687,8 @@ def main():
     native = "cx_" + a.stage
     variants = [(a.stage, False), (native, True)] if a.compare else [((a.stage, False) if a.vanilla else (native, True))]
     skies = [Sky(gl, cs, a.content, st, tw, size, tex) for st, tw in variants]
+    for sky in skies if a.uniforms else ():
+        sky.load_game(a.uniforms)
     scenes = []
     if a.sheet:
         for line in open(a.sheet):
