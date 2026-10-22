@@ -22,12 +22,12 @@ internal static class StrideWarp
     /// <summary>The share of a leg's length a planted foot is held against the warped animation before it is dragged.</summary>
     private const float HoldShare = 0.25f;
 
-    /// <summary>What the module did this period: bodies warped, feet planted, plants dragged past their hold, and the
-    /// largest offset a foot lifted off with (world units) -- what the warp left for the swing to take up.</summary>
+    /// <summary>What the module did this period: bodies warped, feet planted, plants dragged past their hold, the largest
+    /// offset a foot lifted off with (what the warp left for the swing to take up) and the deepest pelvis drop, world units.</summary>
     private sealed class StrideWarpState
     {
         public int Warped, Planted, Dragged;
-        public float Leftover;
+        public float Leftover, MaxDrop;
     }
 
     private static readonly StrideWarpState _s = new();
@@ -37,9 +37,10 @@ internal static class StrideWarp
     {
         (int walks, int others) = GaitClips.Count;
         string line = $"{_s.Warped / (float)frames:F1} stride-warped + {_s.Planted / (float)frames:F1} feet planted/f, "
-                      + $"{_s.Dragged} plant frames dragged, largest lift-off offset {_s.Leftover:F3} ({walks} walk clips, {others} not walks)";
+                      + $"{_s.Dragged} plant frames dragged, largest lift-off offset {_s.Leftover:F3}, deepest pelvis drop {_s.MaxDrop:F3} "
+                      + $"({walks} walk clips, {others} not walks)";
         _s.Warped = _s.Planted = _s.Dragged = 0;
-        _s.Leftover = 0f;
+        _s.Leftover = _s.MaxDrop = 0f;
         return line;
     }
 
@@ -48,12 +49,38 @@ internal static class StrideWarp
     /// at (<see cref="PoseService.Slot.RateNext"/>). Every walk run on the body counts by its weight, so a crossfade into or
     /// out of one carries the correction in and out with it. <paramref name="paced"/>: the body is locomoting now.</summary>
     internal static void Step(ref PoseService.Slot s, IntPtr gob, in PoseService.Bones bones, Quaternion legs, Vector3 origin,
-                              float scale, float ground, bool paced, bool off, out Vector3 dR, out Vector3 dL, out float drop)
+                              float scale, float ground, bool paced, bool off, float dt, out Vector3 dR, out Vector3 dL, out float drop)
+    {
+        float need = Warps(ref s, gob, bones, legs, origin, scale, ground, paced, off, out dR, out dL, out float leg);
+        if (off || !(dt > 0f)) { s.DropHold = s.Drop = s.DropV = 0f; drop = 0f; return; }
+        drop = Settled(ref s.DropHold, ref s.Drop, ref s.DropV, need, leg, dt);
+        if (drop > _s.MaxDrop) _s.MaxDrop = drop;
+    }
+
+    /// <summary>One frame of the pelvis drop toward this frame's <paramref name="need"/>: held at its peak, let back up at
+    /// <see cref="DropFall"/>, and eased over <see cref="DropTime"/>.</summary>
+    internal static float Settled(ref float hold, ref float x, ref float v, float need, float leg, float dt)
+    {
+        hold = MathF.Max(need, hold - DropFall * leg * dt);
+        PoseMath.Smooth(ref x, ref v, hold, dt, DropTime);
+        return MathF.Max(x, 0f);
+    }
+
+    /// <summary>Share of a leg's length per second a held pelvis drop rises back by once the stride stops needing it:
+    /// slow enough that a steady gait's two reach peaks a cycle read as one lowered posture, not a bob.</summary>
+    private const float DropFall = 0.05f;
+    /// <summary>Seconds the pelvis eases toward its held drop over.</summary>
+    private const float DropTime = 0.3f;
+
+    /// <summary>The warp and plant offsets of <see cref="Step"/>, and the pelvis drop this frame's warped stride needs
+    /// (<paramref name="leg"/>: the leg length it is measured in, world units).</summary>
+    private static float Warps(ref PoseService.Slot s, IntPtr gob, in PoseService.Bones bones, Quaternion legs, Vector3 origin,
+                               float scale, float ground, bool paced, bool off, out Vector3 dR, out Vector3 dL, out float leg)
     {
         dR = dL = Vector3.Zero;
-        drop = 0f;
+        leg = 0f;
         s.RateNext = 1f;
-        if (off || !AnimKnobs.Stride.V || !PoseRig.Db) { Reset(ref s); return; }
+        if (off || !AnimKnobs.Stride.V || !PoseRig.Db || s.SettleStage != Settle.None) { Reset(ref s); return 0f; }
         float speed = ground / scale, weight = 0f, strides = 0f, top = -1f;
         Vector3 dir = Vector3.Zero;
         GaitClip? lead = null;
@@ -73,7 +100,7 @@ internal static class StrideWarp
             dir += w * c.Dir;
             if (w > top) { top = w; lead = c; leadAnim = anim; leadRun = r; }
         }
-        if (lead == null || weight < 1e-3f) { Reset(ref s); return; }
+        if (lead == null || weight < 1e-3f) { Reset(ref s); return 0f; }
         float stride = strides / weight;
         weight = MathF.Min(weight, 1f);
         dir = dir.LengthSquared() > 1e-8f ? Vector3.Normalize(dir) : lead.Dir;
@@ -99,13 +126,15 @@ internal static class StrideWarp
         Vector3 hip = 0.5f * (Vector3.Transform(rt - origin, toModel) + Vector3.Transform(lt - origin, toModel)) / scale;
         dR = Vector3.Transform(Warp(mr, hip, dir, lead.FloorR, stride, weight) - mr, legs) * scale;
         dL = Vector3.Transform(Warp(ml, hip, dir, lead.FloorL, stride, weight) - ml, legs) * scale;
-        float leg = lead.LegLength * scale;
+        leg = lead.LegLength * scale;
+        // the stride's own reach, not the plant's: a held foot's drift is the leg IK's to take up, not the pelvis's
+        float need = weight * MathF.Max(Drop(rt, ra + dR, leg), Drop(lt, la + dL, leg));
         // a one-shot past its end times nothing: its plants keep their offsets, which fade with the run's weight
         bool timed = lead.Cyclic || phase < 1f;
         dR += new Vector3(weight * Plant(ref s.AnchorR, lead, true, phase, ra + dR, HoldShare * leg, timed), 0f);
         dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed), 0f);
-        drop = weight * MathF.Max(Drop(rt, ra + dR, leg), Drop(lt, la + dL, leg));
         _s.Warped++;
+        return need;
     }
 
     /// <summary>One foot's plant at its warped world position <paramref name="p"/>, timed by <paramref name="clip"/> at
@@ -203,7 +232,7 @@ internal static class StrideWarp
         if (!f.Planted) { f.Off0 = f.Off; f.U0 = u; }
     }
 
-    /// <summary>The pace split, the reach and the plant against hand-worked values, and a walk run through speed
+    /// <summary>The pace split, the reach, the plant and the drop's easing against hand-worked values, and a walk run through speed
     /// ramps between half and twice its clip's pace. Oracles: the square-root split and the leg triangle worked by
     /// hand, and the physical rule that a stance foot does not move on the ground and no foot jumps between frames.</summary>
     internal static bool SelfCheck()
@@ -234,7 +263,26 @@ internal static class StrideWarp
         bool swings = MathF.Abs(lift.X + 0.05f) < 1e-6f && MathF.Abs(mid.X + 0.025f) < 1e-6f && end == Vector2.Zero
                       && down == Vector2.Zero && f.At == new Vector2(0.5f, 0f);
 
-        return paces && reach && landed && dragged && swings && Walks();
+        return paces && reach && landed && dragged && swings && Settles() && Walks();
+    }
+
+    /// <summary>A long stride's need, 0.1 at each double support and 0 between, twice a 1 s cycle for 4 s at 60 fps: the
+    /// drawn drop moves by under 1 cm a frame and, once settled, swings by under 0.025 -- a lowered posture, not a bob that
+    /// follows the need's full 0.1. Oracle: the hand-written need and the bounds a head seen bobbing would break.</summary>
+    private static bool Settles()
+    {
+        const float Dt = 1f / 60f;
+        float hold = 0f, x = 0f, v = 0f, prev = 0f, lo = 1f, hi = 0f, step = 0f;
+        for (int n = 0; n < 240; n++)
+        {
+            float u = n * Dt * 2f;
+            float need = u - MathF.Floor(u) < 0.2f ? 0.1f : 0f;
+            float d = Settled(ref hold, ref x, ref v, need, 0.9f, Dt);
+            step = MathF.Max(step, MathF.Abs(d - prev));
+            prev = d;
+            if (n >= 120) { lo = MathF.Min(lo, d); hi = MathF.Max(hi, d); }
+        }
+        return step < 0.01f && hi - lo < 0.025f && lo > 0.05f;
     }
 
     /// <summary>World units a lift-off may bend a drawn path past the animation's own: the drift a ramping pace leaves
