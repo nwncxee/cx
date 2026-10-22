@@ -156,6 +156,8 @@ public sealed unsafe class PoseService : IExtenderService
         public float SettleT, SettleLift, SettleStep;
         public Vector3 SettleFrom, SettleHold;
         public Vector2 SettleOff, SettleOffV, SettleOffO, SettleOffOV;
+        /// <summary>Each ankle's stride-warp offset last frame (world), which a stop's settle takes the feet over from.</summary>
+        public Vector3 WarpR, WarpL;
         /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces.</summary>
         public bool Shuffling;
         /// <summary>Footfall: the seconds since the last step played.</summary>
@@ -700,6 +702,9 @@ public sealed unsafe class PoseService : IExtenderService
         StrideWarp.Step(ref s, gob, bones, legs, adjPos, scale, ground, s.Loco || s.Shuffling, gated || snap, dt,
                         out Vector3 warpR, out Vector3 warpL, out float drop);
         bool standing = s.Hips && s.Moving <= 0f && !s.Shuffling && Transition.Movement(anim) && !IsLocomotion(anim);
+        // the engine drops the walk on a stop and the warp lets go of it: the settle takes the feet over where they were drawn
+        if (s.SettleLoco && !s.Loco) { warpR = s.WarpR; warpL = s.WarpL; }
+        s.WarpR = warpR; s.WarpL = warpL;
         Vector3 rStance = rAnkle + warpR, lStance = lAnkle + warpL;
         if (Settle.Wants(s, standing, s.YawRate)) Settle.Stance(gob, bones, legs, adjPos, scale, ref rStance, ref lStance);
         Settle.Feet(ref s, AnimKnobs.Stride.V && PoseRig.Db && !gated && !snap && dt > 0f, rAnkle + warpR, lAnkle + warpL,
@@ -979,7 +984,7 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Diagonal.LagCheck(), "heading changes: the hips keep their world heading as the facing turns, never past the twist cap, and come round without overshoot; a steady bend trails by a bounded lag");
         check.Expect(PathTurnCheck(), "a walker whose FACING swings round at a waypoint while its travel goes straight on reads no path turn and leans by nothing; a steady curve reads its own rate");
         check.Expect(Follow.SelfCheck(), "follow-through: a turn on the spot swings the arms behind, then they swing through; a stop swings them forward; either settles to a tenth of its swing within 1.2 s, the lag is capped, and an action eases it out; the neck keeps a shake off the head but not the sway, and carries it along past its cap");
-        check.Expect(Weight.SelfCheck(), "weight cues: a cruise on a path loads nothing; the engine's ramp and a drive's ease each dip the pelvis by the rate's worth of load and pitch the lean into and out of the travel; a drive at full speed carries no cue at all, a body off any path falls back to the measured acceleration, and no cue passes the running stop's");
+        check.Expect(Weight.SelfCheck(), "weight cues: a cruise on a path loads nothing; the engine's ramp and a drive's ease each dip the pelvis by the rate's worth of load and pitch the lean into the travel and none out of it; a drive at full speed carries no cue at all, a body off any path falls back to the measured acceleration, and no cue passes the running stop's");
         string[] stockNodes = ["root", "rthigh_g", "rshin_g", "rfoot_g", "lthigh_g", "lshin_g", "lfoot_g"];
         string[] ownNodes = ["root", "Bip_R_Thigh", "Bip_R_Calf", "Bip_R_Foot", "Bip_L_Thigh", "Bip_L_Calf", "Bip_L_Foot"];
         check.Expect(DbRigCheck(stockNodes, st, out bool legs) && legs, "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, and the restore puts the animation's values back -- root height and every bone");
