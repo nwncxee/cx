@@ -28,6 +28,7 @@ internal static class StrideWarp
     {
         public int Warped, Planted, Dragged;
         public float Leftover, MaxDrop;
+        public int Matched, Started;
     }
 
     private static readonly StrideWarpState _s = new();
@@ -37,9 +38,9 @@ internal static class StrideWarp
     {
         (int walks, int others) = GaitClips.Count;
         string line = $"{_s.Warped / (float)frames:F1} stride-warped + {_s.Planted / (float)frames:F1} feet planted/f, "
-                      + $"{_s.Dragged} plant frames dragged, largest lift-off offset {_s.Leftover:F3}, deepest pelvis drop {_s.MaxDrop:F3} "
+                      + $"{_s.Dragged} plant frames dragged, {_s.Matched} gait changes and {_s.Started} starts put in step, largest lift-off offset {_s.Leftover:F3}, deepest pelvis drop {_s.MaxDrop:F3} "
                       + $"({walks} walk clips, {others} not walks)";
-        _s.Warped = _s.Planted = _s.Dragged = 0;
+        _s.Warped = _s.Planted = _s.Dragged = _s.Matched = _s.Started = 0;
         _s.Leftover = _s.MaxDrop = 0f;
         return line;
     }
@@ -86,7 +87,9 @@ internal static class StrideWarp
         Vector3 dir = Vector3.Zero;
         GaitClip? lead = null;
         AnimDef? leadAnim = null;
-        RunRef leadRun = default;
+        RunRef leadRun = default, freshRun = default, otherRun = default;
+        GaitClip? fresh = null, other = null;
+        float otherW = -1f;
         int n = PoseRig.RunCount(gob);
         for (int i = 0; i < n; i++)
         {
@@ -100,6 +103,8 @@ internal static class StrideWarp
             strides += w * (paced && rate > 1e-4f ? Math.Clamp(speed / c.Speed / rate, WarpMin, WarpMax) : 1f);
             dir += w * c.Dir;
             if (w > top) { top = w; lead = c; leadAnim = anim; leadRun = r; }
+            if (paced && c.Cyclic && r.Blend < 1f && r.Id != s.Seeded && r.Time <= Fresh * c.Length) { fresh = c; freshRun = r; }
+            else if (w > otherW) { otherW = w; other = c; otherRun = r; }
         }
         if (lead == null || weight < 1e-3f) { Reset(ref s); return 0f; }
         float stride = strides / weight;
@@ -125,6 +130,7 @@ internal static class StrideWarp
         Quaternion toModel = Quaternion.Conjugate(legs);
         Vector3 mr = Vector3.Transform(ra - origin, toModel) / scale, ml = Vector3.Transform(la - origin, toModel) / scale;
         Vector3 hip = 0.5f * (Vector3.Transform(rt - origin, toModel) + Vector3.Transform(lt - origin, toModel)) / scale;
+        if (fresh != null) Seed(ref s, fresh, freshRun, other, otherRun, mr, ml);
         dR = Vector3.Transform(Warp(mr, hip, dir, lead.FloorR, stride, weight) - mr, legs) * scale;
         dL = Vector3.Transform(Warp(ml, hip, dir, lead.FloorL, stride, weight) - ml, legs) * scale;
         leg = lead.LegLength * scale;
@@ -163,7 +169,46 @@ internal static class StrideWarp
     {
         s.AnchorR = s.AnchorL = default;
         s.PlantClip = null;
+        s.Seeded = 0L;
     }
+
+    /// <summary>Cycle fraction under which a fading-in walk is fresh enough to seed: the engine starts a new run at its
+    /// first frame, and one reused or carried past this is left on the phase it has.</summary>
+    private const float Fresh = 0.1f;
+    /// <summary>Cycle fraction past its foot's landing a walk started from standing begins: inside the shortest stock
+    /// stance and clear of the other foot's lift-off.</summary>
+    private const float JustAfter = 0.06f;
+
+    /// <summary>Starts a walk fading in (<paramref name="run"/>) in step: out of another walk, at the same point of the
+    /// stride (<see cref="Matched"/>); from standing, with the foot already in front planted (<see cref="Start"/>), so the
+    /// first step falls to the back one. <paramref name="mr"/>, <paramref name="ml"/>: the ankles now, model frame.</summary>
+    private static void Seed(ref PoseService.Slot s, GaitClip clip, RunRef run, GaitClip? from, RunRef fromRun, Vector3 mr, Vector3 ml)
+    {
+        s.Seeded = run.Id;
+        float p;
+        if (from != null)
+        {
+            if (!(from.DownR >= 0f) || !(clip.DownR >= 0f) || !(from.Length > 0f)) return;
+            p = Matched(fromRun.Time / from.Length, from.DownR, clip.DownR);
+            _s.Matched++;
+        }
+        else
+        {
+            if (!(clip.DownR >= 0f) || !(clip.DownL >= 0f)) return;
+            p = Start((mr.X - ml.X) * clip.Dir.X + (mr.Y - ml.Y) * clip.Dir.Y >= 0f, clip.DownR, clip.DownL);
+            _s.Started++;
+        }
+        run.Time = p * clip.Length;
+    }
+
+    /// <summary>The phase a walk takes up from one at <paramref name="phase"/>: as far past its own right-foot landing
+    /// (<paramref name="newDown"/>) as the old is past its (<paramref name="oldDown"/>), so the same foot is down.</summary>
+    internal static float Matched(float phase, float oldDown, float newDown) => Wrap(newDown + phase - oldDown);
+
+    /// <summary>The phase a walk started from standing begins at: just past the landing of the foot in front.</summary>
+    internal static float Start(bool rightInFront, float downR, float downL) => Wrap((rightInFront ? downR : downL) + JustAfter);
+
+    private static float Wrap(float p) => p - MathF.Floor(p);
 
     /// <summary>The playback rate and stride length a clip whose feet cover the ground at <paramref name="k"/> times
     /// the body's speed plays at: the square root of it each, as a walker speeds up by both cadence and stride.</summary>
@@ -241,7 +286,7 @@ internal static class StrideWarp
         if (!f.Planted) { f.Off0 = f.Off; f.U0 = u; }
     }
 
-    /// <summary>The pace split, the reach, the plant and the drop's easing against hand-worked values, and a walk run through speed
+    /// <summary>The pace split, the reach, the plant, the phase seeds and the drop's easing against hand-worked values, and a walk run through speed
     /// ramps between half and twice its clip's pace. Oracles: the square-root split and the leg triangle worked by
     /// hand, and the physical rule that a stance foot does not move on the ground and no foot jumps between frames.</summary>
     internal static bool SelfCheck()
@@ -272,7 +317,10 @@ internal static class StrideWarp
         bool swings = MathF.Abs(lift.X + 0.05f) < 1e-6f && MathF.Abs(mid.X + 0.025f) < 1e-6f && end == Vector2.Zero
                       && down == Vector2.Zero && f.At == new Vector2(0.5f, 0f);
 
-        return paces && reach && landed && dragged && swings && Settles() && Walks();
+        // a walk 0.3 past a landing at 0.8 into a run landing at 0.5 is 0.3 past it too; a start lands 0.06 past its front foot
+        bool seeds = MathF.Abs(Matched(0.1f, 0.8f, 0.5f) - 0.8f) < 1e-5f && MathF.Abs(Matched(0.9f, 0.8f, 0.5f) - 0.6f) < 1e-5f
+                     && MathF.Abs(Start(true, 0.5f, 0.999f) - 0.56f) < 1e-5f && MathF.Abs(Start(false, 0.5f, 0.999f) - 0.059f) < 1e-4f;
+        return paces && reach && landed && dragged && swings && seeds && Settles() && Walks();
     }
 
     /// <summary>A long stride's need, 0.1 at each double support and 0 between, twice a 1 s cycle for 4 s at 60 fps: the

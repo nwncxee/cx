@@ -141,6 +141,8 @@ public sealed unsafe class PoseService : IExtenderService
         public CX.Alloy.Mdl.AnimDef? PlantClip;
         /// <summary><see cref="StrideWarp"/>: the pelvis drop held at the stride's deepest need, and its easing spring.</summary>
         public float DropHold, Drop, DropV;
+        /// <summary><see cref="StrideWarp"/>: the walk run last put in step, so it is seeded once.</summary>
+        public long Seeded;
         /// <summary><see cref="Settle"/>: locomoting last frame, the stage, the stepping foot, its start and the weighted
         /// foot's held world point, and the leftover easing out.</summary>
         public bool SettleLoco, SettleRight, SettlePin;
