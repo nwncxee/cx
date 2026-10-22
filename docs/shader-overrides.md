@@ -425,7 +425,10 @@ fog, time of day and the camera — from the whole-stage environment `cx_stageen
 - `/alloy snap` writes every live stage's images, level 0, into `cx_snap/` beside the frame it snaps, as
   `<set>_native_<image>.cxi`: a `CXI <w> <h> <d>` line, then float RGBA, rows bottom-up. `cx.log` gets a
   `[snap]` line per pass and per program a host draws, with what its frame uniforms, samplers and images hold at
-  that moment beside what they should.
+  that moment beside what they should. Each pass's plain-value uniforms go to `<set>_native_<pass>.uni` (the
+  dome's to `<set>_native_<stage>_<program>.uni`), a `name f|i values…` line each, and
+  `tools/sky/preview.py --uniforms <cx_snap>/<set> --size <view>` replays them, so the game's exact frame renders
+  offline. A uniform a pass does not read is not in its file: pin one that a patched copy reads with `--scene`.
 
 ### The fog colour
 
