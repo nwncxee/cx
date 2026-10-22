@@ -51,7 +51,7 @@ public sealed unsafe partial class AlloyRenderer
            && (DrawRecipe.Slots(recipe) & IllumBit) == 0 && !env
            && !ContentPrograms.MayMove(DrawRecipe.Feat(recipe));
 
-    /// <summary>Does this part draw as a wash: a see-through sheet lying flat (<see cref="RecipeFlag.Wash"/>) on a
+    /// <summary>Does this part draw as a wash: a see-through sheet laid over a surface (<see cref="RecipeFlag.Wash"/>) on a
     /// static object, under a polygon offset so it cannot z-fight the surface it lies on? Never opaque -- the opaque
     /// class keeps its prepass depth exactly -- nor additive, which writes no depth to fight over; nor a coverage or
     /// env-mapped material (whose alpha is not a sheet's edge) or a posed mesh. A GUI panel's objects are not static.</summary>

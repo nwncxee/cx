@@ -585,7 +585,7 @@ internal static partial class DrawRecipe
         if (mesh.Beaming) f |= RecipeFlag.Beaming;
         if (mesh.TileFade != 0) f |= RecipeFlag.Fades;
         if (FacesUp(mesh)) f |= RecipeFlag.FacesUp;
-        if (LiesFlat(mesh)) f |= RecipeFlag.Wash;
+        if (IsSheet(mesh)) f |= RecipeFlag.Wash;
         _flags[r] = f;
         _prim[r] = 0;
         // CX-303: any pair the material names runs translated, unless both its halves add nothing to stock
@@ -696,10 +696,27 @@ internal static partial class DrawRecipe
         return true;
     }
 
-    /// <summary>Every triangle within <see cref="UpCos"/> of horizontal, either side up, judged off the triangles
-    /// themselves: a sheet laid over another surface, whatever its authored normals say.
-    /// ponytail: in the node's own space -- a node orientation that stands the sheet up is not followed.</summary>
-    internal static bool LiesFlat(MeshDef mesh)
+    /// <summary>A sheet laid over another surface, judged off the triangles whatever their authored normals say:
+    /// every triangle within <see cref="UpCos"/> of horizontal, or of the first triangle's plane -- a decal hung
+    /// on a wall is as much a sheet as one on the floor, and a merged static has its node orientation baked in.</summary>
+    internal static bool IsSheet(MeshDef mesh) => Within(mesh, Vector3.UnitZ) || Within(mesh, FirstAxis(mesh));
+
+    /// <summary>The unit normal of the mesh's first non-degenerate triangle, zero for none.</summary>
+    private static Vector3 FirstAxis(MeshDef mesh)
+    {
+        uint[] ix = mesh.Indices;
+        Vector3[] p = mesh.Positions;
+        for (int t = 0; t + 2 < ix.Length; t += 3)
+        {
+            if (ix[t] >= p.Length || ix[t + 1] >= p.Length || ix[t + 2] >= p.Length) return Vector3.Zero;
+            Vector3 n = Vector3.Cross(p[ix[t + 1]] - p[ix[t]], p[ix[t + 2]] - p[ix[t]]);
+            if (n.Length() >= 1e-8f) return Vector3.Normalize(n);
+        }
+        return Vector3.Zero;
+    }
+
+    /// <summary>Every triangle within <see cref="UpCos"/> of <paramref name="axis"/>, either side; false for none.</summary>
+    private static bool Within(MeshDef mesh, Vector3 axis)
     {
         uint[] ix = mesh.Indices;
         Vector3[] p = mesh.Positions;
@@ -710,7 +727,7 @@ internal static partial class DrawRecipe
             Vector3 n = Vector3.Cross(p[ix[t + 1]] - p[ix[t]], p[ix[t + 2]] - p[ix[t]]);
             float len = n.Length();
             if (len < 1e-8f) continue;
-            if (MathF.Abs(n.Z) < UpCos * len) return false;
+            if (MathF.Abs(Vector3.Dot(n, axis)) < UpCos * len) return false;
             any = true;
         }
         return any;
@@ -737,7 +754,7 @@ internal enum RecipeFlag : ushort
     Lit = 1 << 0,
     /// <summary>The material's <c>twosided</c>: draws with face culling off.</summary>
     TwoSided = 1 << 2,
-    /// <summary>The mesh lies flat (<see cref="DrawRecipe.LiesFlat"/>): drawn see-through, it is a wash laid over
+    /// <summary>The mesh is a sheet (<see cref="DrawRecipe.IsSheet"/>): drawn see-through, it is a wash laid over
     /// another surface, and takes a polygon offset so it cannot z-fight what it lies on.</summary>
     Wash = 1 << 3,
     /// <summary>A dangly mesh: a permanent shadow mover, posed by the solver.</summary>
