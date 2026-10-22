@@ -483,7 +483,7 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   between the stock setup and Alloy's lighting, its edits after `ApplyStandardShader()` on the lit colour (CX-303).
   Nothing is recognised by name; a pair whose halves add nothing to stock is Alloy's own lit path. Contract:
   `docs/shader-overrides.md`, "Content shaders".
-- **Rig map** — `cx_rig.2da`, the content file that tells the pose layer (foot IK, foot lock, upper-body
+- **Rig map** — `cx_rig.2da`, the content file that tells the pose layer (foot IK, the stride warp, upper-body
   follow, the other corrections) which node is which bone on a skeleton whose names are not the stock
   biped's. One row per skeleton model: a `MODEL` column holding its resref, matched against the body's
   model and then each supermodel in turn, and one column per bone — `RTHIGH RSHIN RFOOT LTHIGH LSHIN
@@ -492,3 +492,10 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   names (`rthigh_g` ...); a body with neither gets no correction. The head is not in it: like the
   engine's own look-at, CX takes `appearance.2da`'s `HEAD_NAME`, `head_g` when that is blank. Never
   inferred from a stock 2DA's rows (`capart.2da` says where a piece attaches, not what the node is).
+- **Stride warp** — how a body moving faster or slower than its walk cycle was animated for keeps its feet on
+  the ground: the pace change is split between the cycle's playback rate and its stride length (a square root
+  each, the rate taking what the stride's range cannot), the ankles are stretched along the travel about the
+  hips, and each foot is **planted** — held where it landed — for as long as the clip has it on the ground.
+  Contacts, pace and direction come from a **gait clip**: the clip analysed once from its own keys through the
+  body's leg chain. A clip that is not a walk (a swim, a crawl, a float, a turn on the spot) is refused by that
+  analysis and left to the engine. `anim.stride`; scene-database bodies only.

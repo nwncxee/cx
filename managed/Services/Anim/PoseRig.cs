@@ -228,6 +228,12 @@ internal readonly unsafe struct RunRef
         }
     }
 
+    /// <summary>The scene database's animation the run plays; null for an engine run, whose keys are the engine's.</summary>
+    public AnimDef? Clip => _d != 0 ? DbAnim.RunAnim(_d - 1) : null;
+
+    /// <summary>The scale the run plays its position keys at; 1 for an engine run.</summary>
+    public float PosScale => _d != 0 ? DbAnim.RunPosScale(_d - 1) : 1f;
+
     /// <summary>The run's identity across frames: the <c>AnimRun*</c>, or in DB mode the animation it plays
     /// (pool slots shift as runs come and go, so a slot is no identity).</summary>
     public long Id => _d != 0 ? DbKey : (long)_e;

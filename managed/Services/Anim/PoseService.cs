@@ -37,8 +37,6 @@ public sealed unsafe class PoseService : IExtenderService
     private const float AccelTime = 0.3f;
     /// <summary>World units/s of travel under which the path has no heading to turn (standing, turning on the spot).</summary>
     private const float MinTravel = 0.3f;
-    /// <summary>Blend weight below which a run is still fading in or out: no stride sample is taken then.</summary>
-    private const float Settled = 0.99f;
 
     /// <summary>Animations whose name starts with one of these (NUL-separated) get no correction: sitting,
     /// lying, knockdown and getting up, death, kneeling emotes, mounting, flying in/out and the module-defined
@@ -133,18 +131,16 @@ public sealed unsafe class PoseService : IExtenderService
         public int Phase;
         /// <summary>Each foot's cached floor cast (<see cref="FootPlacement.FootCast"/>).</summary>
         public FootPlacement.FootCast R, L;
-        /// <summary>Stride: locomoting last frame, the stance foot's speed per unit engine rate, the eased
-        /// factor minus one, the multiplier applied this frame, and last frame's model-space ankles.</summary>
-        public bool Loco, HasPrev;
-        public float Stance, Factor, VFactor, RateF;
-        public Vector3 PrevR, PrevL;
+        /// <summary>Stride: locomoting last frame, the rate multiplier <see cref="StrideWarp"/> paced for the next frame
+        /// and the one applied this frame, and each run's engine and written rate.</summary>
+        public bool Loco;
+        public float RateNext, RateF;
         public RunRates Rates;
-        /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces, the animation
-        /// the stance speed was measured on (a change of it is a different stride), the seconds since a foot last
-        /// bore the body's weight, and whether the pose is on the ground at all -- off it, the pacing stands down.</summary>
-        public bool Shuffling, Grounded;
-        public int StanceAnim;
-        public float Airborne;
+        /// <summary><see cref="StrideWarp"/>: each foot's plant, and the clip they were last timed by.</summary>
+        public StrideWarp.Anchor AnchorR, AnchorL;
+        public CX.Alloy.Mdl.AnimDef? PlantClip;
+        /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces.</summary>
+        public bool Shuffling;
         /// <summary>Footfall: stepping this frame, when it last was, each foot's own stance height and whether it is
         /// in the air since its last landing, and the seconds since the last step played.</summary>
         public bool Stepping;
@@ -224,11 +220,13 @@ public sealed unsafe class PoseService : IExtenderService
         _ = AnimKnobs.G;
         SelfCheck(log);
         RigMap.Init(log);
+        GaitClips.Init(log);
         if (!EngineLayout.Require(log, "Pose", "Gob", "Part", "MdlNode", "Model", "AnimRun", "Animation", "CHitInfo", "Scene")) return;
         if (!SymbolMap.Require(log, "Pose", SymbolMap.GobAnimate, SymbolMap.PartGetWorld, SymbolMap.GobGetAdjustedScale,
                                SymbolMap.SceneHitCheck, SymbolMap.HitInfoReset, SymbolMap.CurrentScene)) return;
         SceneRay.Init();
         PoseRig.Db = CX.Alloy.Renderer.On;
+        if (!PoseRig.Db) log.Info("Pose: Alloy is off -- stride warping needs the clips' own keys, so the engine paces every walk");
         GetWorld = EngineFn.PartGetWorld;
         _scale = EngineFn.GobGetAdjustedScale;
         if (!SceneRay.Armed || !PoseRig.Db && (GetWorld == null || _scale == null)) { log.Info("Pose: standing down (symbols unresolved)"); return; }
@@ -549,18 +547,15 @@ public sealed unsafe class PoseService : IExtenderService
     internal static byte Lower(byte c) => c is >= (byte)'A' and <= (byte)'Z' ? (byte)(c | 0x20) : c;
 
     /// <summary>True when any animation on the gob's run list is one <see cref="Denied"/> names: the one being
-    /// blended from counts as much as the one blended to, so a sit-down or a get-up never gets a correction.
-    /// <paramref name="fading"/> reports a run still blending in or out.</summary>
-    private static bool Gated(IntPtr gob, out bool fading)
+    /// blended from counts as much as the one blended to, so a sit-down or a get-up never gets a correction.</summary>
+    private static bool Gated(IntPtr gob)
     {
-        fading = false;
         int n = PoseRig.RunCount(gob);
         bool gated = false;
         for (int i = 0; i < n; i++)
         {
             RunRef r = PoseRig.Run(gob, i);
             if (r.IsNull) continue;
-            if (r.Blend < Settled) fading = true;
             if (r.Denied) gated = true;
         }
         return gated;
@@ -607,7 +602,7 @@ public sealed unsafe class PoseService : IExtenderService
             s = default;
             s.Gob = gob;
             s.Stamp = now;
-            s.RateF = 1f;
+            s.RateF = s.RateNext = 1f;
             return (h + i) & (SlotCount - 1);
         }
         return -1;
@@ -653,7 +648,7 @@ public sealed unsafe class PoseService : IExtenderService
         s.LastPos = adjPos;
         s.Root = root;
 
-        bool gated = Gated(gob, out bool fading);
+        bool gated = Gated(gob);
         if (gated) _gated++;
         IntPtr creature = _creatures ? new Gob(gob).ExternalData : IntPtr.Zero;
         int anim = creature != IntPtr.Zero ? new CNWCObject(creature).Animation : 0;
@@ -684,22 +679,21 @@ public sealed unsafe class PoseService : IExtenderService
         World(bones.LFoot, out Vector3 lAnkle, out _);
         Quaternion toModel = Quaternion.Conjugate(legs);
         Vector3 mr = Vector3.Transform(rAnkle - adjPos, toModel) / scale, ml = Vector3.Transform(lAnkle - adjPos, toModel) / scale;
-        // the shuffle's speed is the engine's own gap over its countdown, not the drawn step: exact where the
-        // whole-millisecond clock leaves the measured one +/-14 % a frame
-        float ground = s.Shuffling ? Skating.Speed(creature, s.Speed) : s.Speed;
-        Vector3 travel = Vector3.Transform(new Vector3(s.Vel.X, s.Vel.Y, 0f), toModel);
-        travel = new Vector3(travel.X, travel.Y, 0f);
-        Stride.Measure(ref s, mr, ml, travel.LengthSquared() > 1e-8f ? Vector3.Normalize(travel) : Vector3.Zero,
-                       ground / scale, fading, dt);
+        // the engine's own speed, not the drawn step: exact where the whole-millisecond clock leaves the measured one
+        // +/-14 % a frame -- a shuffle's gap over its countdown, a path's or a drive's rate times its factor
+        float ground = s.Shuffling ? Skating.Speed(creature, s.Speed) : s.Gait != GaitMode.None ? s.GaitSpeed : s.Speed;
+        StrideWarp.Step(ref s, gob, bones, legs, adjPos, scale, ground, s.Loco || s.Shuffling, gated || snap,
+                        out Vector3 warpR, out Vector3 warpL, out float drop);
 
-        FootPlacement.Compute(ref s, scene, gob, rAnkle, lAnkle, adjPos.Z, legFwdH, legRight, scale, weight, gated, snap, dt, out var feet);
+        FootPlacement.Compute(ref s, scene, gob, rAnkle + warpR, lAnkle + warpL, adjPos.Z, legFwdH, legRight, scale, weight, gated, snap, dt, out var feet);
         Footfall.Step(ref s, creature, mr.Z, ml.Z, snap, dt);
         UpperBody.Step(ref s, creature, rootW, rootW.Z - adjPos.Z, scale, s.Speed, gated, snap, dt);
         UpperBody.Rotations(s, gated, out Vector2 torsoRot, out Vector2 neckRot);
 
-        float body = MathF.Min(feet.OffR, feet.OffL) + Mass.Step(ref s, moved.Z, scale, gated, snap, dt);
+        float body = MathF.Min(feet.OffR, feet.OffL) + Mass.Step(ref s, moved.Z, scale, gated, snap, dt) - drop;
         bool ik = !gated && (MathF.Abs(feet.OffR - body) + MathF.Abs(feet.OffL - body) > FootPlacement.MinLift
-                             || !feet.TiltR.IsIdentity || !feet.TiltL.IsIdentity);
+                             || !feet.TiltR.IsIdentity || !feet.TiltL.IsIdentity
+                             || warpR.LengthSquared() + warpL.LengthSquared() > FootPlacement.MinLift * FootPlacement.MinLift);
         bool upper = bones.Torso != IntPtr.Zero && torsoRot.LengthSquared() + neckRot.LengthSquared() > 1e-8f;
         bool look = UpperBody.LookStep(ref s, bones, !gated && AnimKnobs.LookBody.V && PoseRig.LookingAt(gob), snap, dt);
         bool follow = Follow.Step(ref s, anim, gated, !tracked, scale, dt);
@@ -712,8 +706,8 @@ public sealed unsafe class PoseService : IExtenderService
         if (ik)
         {
             float cap = AnimKnobs.Lift.V * scale;
-            Leg(bones.RThigh, bones.RShin, bones.RFoot, new Vector3(0f, 0f, MathF.Min(feet.OffR - body, cap)), legFwd, feet.TiltR);
-            Leg(bones.LThigh, bones.LShin, bones.LFoot, new Vector3(0f, 0f, MathF.Min(feet.OffL - body, cap)), legFwd, feet.TiltL);
+            Leg(bones.RThigh, bones.RShin, bones.RFoot, warpR + new Vector3(0f, 0f, MathF.Min(feet.OffR - body, cap)), legFwd, feet.TiltR);
+            Leg(bones.LThigh, bones.LShin, bones.LFoot, warpL + new Vector3(0f, 0f, MathF.Min(feet.OffL - body, cap)), legFwd, feet.TiltL);
         }
         if (look) UpperBody.ShareLook(bones, s.Look.X, s.Look.Y);
         if (upper) UpperBody.Write(bones.Torso, bones.Neck, fwdH, right, torsoRot, neckRot);
@@ -854,7 +848,7 @@ public sealed unsafe class PoseService : IExtenderService
         if (!_armed || frames <= 0) return "";
         float f = frames;
         string s = FormattableString.Invariant(
-            $"pose {System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks).TotalMilliseconds / f:F2} ms/f, {_gobs / f:F1} gobs/f, {FootPlacement.Rays / f:F1} rays/f, hits {FootPlacement.Tile / f:F1} tile + {FootPlacement.Placeable / f:F1} placeable/f, refused {_gated / f:F1} gated + {_noSlot / f:F1} no slot/f, {FootPlacement.Stairs / f:F1} on stairs/f, {Stride.Strided / f:F1} strided, {Stride.Synced / f:F1} attachment runs synced + {_followed / f:F1} attachments posed/f, {UpperBody.Looked / f:F1} looking/f, {Follow.Trailed / f:F1} trailing/f, {UpperBody.Aimed / f:F1} aiming/f, {Mass.Loaded / f:F1} pelvis loaded/f, {UpperBody.Hits} flinches, {Footfall.Steps} footsteps on contact + {Footfall.Skipped} authored skipped, {_turned / f:F1} turned into a diagonal/f + {Diagonal.Swapped} diagonal names swapped, {Transition.Blends} movement changes blended");
+            $"pose {System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks).TotalMilliseconds / f:F2} ms/f, {_gobs / f:F1} gobs/f, {FootPlacement.Rays / f:F1} rays/f, hits {FootPlacement.Tile / f:F1} tile + {FootPlacement.Placeable / f:F1} placeable/f, refused {_gated / f:F1} gated + {_noSlot / f:F1} no slot/f, {FootPlacement.Stairs / f:F1} on stairs/f, {Stride.Strided / f:F1} strided, {StrideWarp.Period(frames)}, {Stride.Synced / f:F1} attachment runs synced + {_followed / f:F1} attachments posed/f, {UpperBody.Looked / f:F1} looking/f, {Follow.Trailed / f:F1} trailing/f, {UpperBody.Aimed / f:F1} aiming/f, {Mass.Loaded / f:F1} pelvis loaded/f, {UpperBody.Hits} flinches, {Footfall.Steps} footsteps on contact + {Footfall.Skipped} authored skipped, {_turned / f:F1} turned into a diagonal/f + {Diagonal.Swapped} diagonal names swapped, {Transition.Blends} movement changes blended");
         _gobs = _gated = _noSlot = _followed = _turned = Diagonal.Swapped = Transition.Blends = Mass.Loaded = Follow.Trailed = 0;
         _ticks = 0;
         FootPlacement.Rays = FootPlacement.Tile = FootPlacement.Placeable = FootPlacement.Stairs = 0;
@@ -933,10 +927,6 @@ public sealed unsafe class PoseService : IExtenderService
                      && FootPlacement.FootTilt(Vector3.UnitY, Vector3.UnitX, 0f, 0f).IsIdentity,
                      "a tilted foot lies on the slope: toe up a rise, sideways down a fall, untouched on the flat");
 
-        float edge = Stride.Factor(1.06f * 1.58f, 1.58f);
-        check.Expect(MathF.Abs(Stride.Factor(2.0f, 1.58f) - 2.0f / 1.58f) < 1e-4f && Stride.Factor(1.6f, 1.58f) == 1f
-                     && Stride.Factor(5f, 1.58f) == 1f && Stride.Factor(2f, 0.05f) == 1f && edge > 1f && edge < 1.06f,
-                     "stride: a player walking 2.0 m/s on a 1.58 m/s cycle plays it 1.27x; inside the deadband, out of range or unmeasured is 1, and the band's edge eases in");
 
         Vector3 turned = Vector3.Transform(Vector3.UnitY, UpperBody.Turn(Vector3.UnitZ, Vector3.UnitX, 0.3f, 0.2f));
         check.Expect(turned.X < -0.2f && turned.Z > 0.1f,
@@ -958,7 +948,10 @@ public sealed unsafe class PoseService : IExtenderService
         }
         check.Expect(hitPeak > 0.12f && hitPeak < 0.16f && hx.Length() < 0.01f,
                      "flinch: a blow from the front tips the top back, peaks at its magnitude and settles");
-        check.Expect(Skating.SelfCheck(), "skating the engine cannot fix: the combat shuffle is paced by the gap it still has to close over the countdown it has left; the diagonal runs, the female walk and the dwarf walks are each corrected by exactly the ratio their feet miss the engine's reference by, and the clips that are right are left alone; a walk and a run keep their footing while a floating and a crawling pose, whose feet the body carries, stand the correction down");
+        check.Expect(Skating.SelfCheck(), "the combat shuffle is paced by the gap it still has to close over the countdown it has left, and a spent countdown falls back to the measured step");
+        check.Expect(SampleCheck(), "clip sampler: a thigh keyed from rest to a quarter turn puts its ankle, half way, where the leg worked by hand puts it, and an unkeyed leg stays at rest");
+        check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
+        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
         check.Expect(Footfall.SelfCheck(), "a footstep plays once per landing, only after the foot rose clear of the stance height");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
         fixed (byte* a = "pelvis_g\0"u8, b = "Lbicep_g\0"u8, c = "rforearm_g\0"u8, d = "lhand_g\0"u8, e = "lhand\0"u8, g = "Lshoulder_g\0"u8)
@@ -999,12 +992,10 @@ public sealed unsafe class PoseService : IExtenderService
                    && BoneIndex(stock, none) == 0 && BoneIndex(thigh, none) == -1;
     }
 
-    /// <summary>The layer over a synthetic SceneDb leg pair (root, then thigh -> shin -> foot each side, named
-    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives. <paramref name="legs"/>
-    /// says the rig found all six; with fewer there is nothing to drive, and it passes. Leaves the table as it found it.</summary>
-    private static bool DbRigCheck(string[] names, byte[][] rig, out bool legs)
+    /// <summary>A seven-node biped leg rig in a fresh scene-database object, parts built and the object matrix composed:
+    /// a root, and per side a thigh at (±0.1, 0, 1) with a shin 0.5 below it (0.02 forward) and a foot 0.5 below that.</summary>
+    private static DbId TestRig(string[] names)
     {
-        legs = false;
         var m = new CX.Alloy.Mdl.ModelDef { Name = "cx_pose_rig", AnimScale = 1f, BMin = new Vector3(-1f), BMax = new Vector3(1f) };
         int[] parent = [-1, 0, 1, 2, 0, 4, 5];
         Vector3[] at = [Vector3.Zero, new(0.1f, 0f, 1f), new(0f, 0.02f, -0.5f), new(0f, 0f, -0.5f),
@@ -1021,7 +1012,7 @@ public sealed unsafe class PoseService : IExtenderService
             m.NodeByName[names[i]] = i;
         }
         DbId obj = SceneDb.Objects.Alloc();
-        if (obj.IsNull) return false;
+        if (obj.IsNull) return obj;
         int o = obj.Index;
         SceneDb.ObjModel[o] = m;
         SceneDb.ObjPos[o] = new Vector3(3f, 4f, 5f);
@@ -1029,13 +1020,57 @@ public sealed unsafe class PoseService : IExtenderService
         SceneDb.ObjScale[o] = 1f;
         SceneDb.ObjAttachTo[o] = default;
         DbAnim.ObjectCreated(obj);
+        if (CX.Alloy.Db.PartTree.Build(obj, m)) DbAnim.PartGetWorld(SceneDb.ObjPartFirst[o], out _, out _);
+        else { FreeRig(obj); return default; }
+        return obj;
+    }
+
+    private static void FreeRig(DbId obj)
+    {
+        DbAnim.ObjectRetired(obj);
+        CX.Alloy.Db.PartTree.Free(obj);
+        SceneDb.Objects.Free(obj);
+    }
+
+    /// <summary>The cold clip sampler against a leg worked by hand: an animation turning <see cref="TestRig"/>'s right
+    /// thigh from rest to 90° about X over 1 s puts the right ankle, at 0.5 s, at (0.1, 0.721249, 0.307035) -- the shin
+    /// and foot, 1.0 below the thigh and 0.02 forward, turned 45° -- while the unkeyed left ankle stays at (-0.1, 0.02, 0).</summary>
+    private static bool SampleCheck()
+    {
+        DbId obj = TestRig(["root", "rthigh_g", "rshin_g", "rfoot_g", "lthigh_g", "lshin_g", "lfoot_g"]);
+        if (obj.IsNull) return false;
+        try
+        {
+            float h = MathF.Sqrt(0.5f);
+            var swing = new CX.Alloy.Mdl.ControllerTrack { Type = CX.Alloy.Mdl.Ctl.Orientation, Columns = 4, Times = [0f, 1f],
+                                                           Values = [0f, 0f, 0f, 1f, h, 0f, 0f, h] };
+            var anim = new CX.Alloy.Mdl.AnimDef { Name = "cx_swing", Length = 1f, Nodes =
+            [
+                new CX.Alloy.Mdl.AnimNode { Name = "root" },
+                new CX.Alloy.Mdl.AnimNode { Name = "rthigh_g", Parent = 0, Controllers = [swing] },
+            ] };
+            int first = SceneDb.ObjPartFirst[obj.Index];
+            Vector3 r = DbAnim.SampledPos(first + 3, anim, 0.5f, 1f), l = DbAnim.SampledPos(first + 6, anim, 0.5f, 1f);
+            return Vector3.Distance(r, new Vector3(0.1f, 0.721249f, 0.307035f)) < 1e-4f
+                   && Vector3.Distance(l, new Vector3(-0.1f, 0.02f, 0f)) < 1e-4f;
+        }
+        finally { FreeRig(obj); }
+    }
+
+    /// <summary>The layer over a synthetic SceneDb leg pair (root, then thigh -> shin -> foot each side, named
+    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives. <paramref name="legs"/>
+    /// says the rig found all six; with fewer there is nothing to drive, and it passes. Leaves the table as it found it.</summary>
+    private static bool DbRigCheck(string[] names, byte[][] rig, out bool legs)
+    {
+        legs = false;
+        DbId obj = TestRig(names);
+        if (obj.IsNull) return false;
+        int o = obj.Index;
         bool db = PoseRig.Db, ok = false;
         PoseRig.Db = true;
         try
         {
-            if (!CX.Alloy.Db.PartTree.Build(obj, m)) return false;
             int first = SceneDb.ObjPartFirst[o];
-            DbAnim.PartGetWorld(first, out _, out _);   // composes the object matrix the chain ends in
             Bones b = default;
             PoseRig.FindBones(obj, rig, ref b);
             legs = b.Legs;
@@ -1065,9 +1100,7 @@ public sealed unsafe class PoseService : IExtenderService
         {
             PoseRig.Db = db;
             PoseRig.TakeWrote();
-            DbAnim.ObjectRetired(obj);
-            CX.Alloy.Db.PartTree.Free(obj);
-            SceneDb.Objects.Free(obj);
+            FreeRig(obj);
         }
     }
 }

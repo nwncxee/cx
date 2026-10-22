@@ -6,32 +6,13 @@ using static CX.Services.Anim.PoseMath;
 namespace CX.Services.Anim;
 
 /// <summary>
-/// Stride matching, a <see cref="PoseService"/> module. The engine paces a cycle by
+/// The playback-rate half of stride matching, a <see cref="PoseService"/> module. The engine paces a cycle by
 /// <c>appearance.2da</c>'s WALKDIST/RUNDIST (<c>CNWCCreature::WalkUpdateLocation</c> writes the run's rate,
-/// <c>AnimRun+0x08</c>); here the stance foot's own model-space speed is measured and every run on the gob scaled so
-/// the feet match the measured ground speed.
+/// <c>AnimRun+0x08</c>); here every run on the gob plays at the rate <see cref="StrideWarp"/> paced from the clip's own
+/// keys, and an attachment's runs are kept in step with its body's.
 /// </summary>
 internal static unsafe class Stride
 {
-    /// <summary>Model units the stance foot must sit below the other before its speed is sampled: in double
-    /// support neither foot is the one carrying the stride.</summary>
-    private const float StanceGap = 0.03f;
-    /// <summary>Seconds of stance samples the measured stride speed averages over.</summary>
-    private const float StanceTime = 0.5f;
-    /// <summary>Stride speeds below this (model units per unit rate per second) are no measurement: a shuffle.</summary>
-    private const float MinStance = 0.2f;
-    /// <summary>The correction's range: past it the cycle is not a walk at all and is left to the engine.</summary>
-    private const float MinFactor = 0.6f, MaxFactor = 1.6f;
-    /// <summary>Corrections inside this are no correction: the engine's pacing is already right. The next band's
-    /// worth past it eases the correction in, so a measurement hovering at the edge cannot flip the rate between
-    /// the engine's and a few percent off it; from twice this out it is the whole measured ratio.</summary>
-    private const float Deadband = 0.04f;
-    /// <summary>Seconds the applied factor takes to follow the measurement.</summary>
-    private const float FactorTime = 0.3f;
-    /// <summary>Gait acceleration (world units/s²) past which the body is winding up or down: the engine scales the
-    /// cycle's rate with the speed factor itself then, and the measurement -- a ground speed averaged over 0.15 s
-    /// against a stance speed averaged over half a second -- lags the ramp both ways, so pacing holds still.</summary>
-    private const float Transient = 0.3f;
     /// <summary>Runs whose rate is tracked: the walk, its overlay, and the ones fading out.</summary>
     internal const int TrackedRuns = 4;
 
@@ -48,11 +29,11 @@ internal static unsafe class Stride
         if (f != 1f) Strided++;
     }
 
-    /// <summary>The multiplier a body with slot <paramref name="s"/> plays its runs at this frame: last frame's
-    /// eased factor while it is being paced -- walking, running, or shuffling a position correction closed
+    /// <summary>The multiplier a body with slot <paramref name="s"/> plays its runs at this frame: the one
+    /// <see cref="StrideWarp"/> set last frame while it is being paced -- walking, running, or shuffling a position correction closed
     /// (<see cref="Skating"/>) -- else 1. Read by the body itself and by its attachments, which animate first in
     /// the same frame and so see the same value.</summary>
-    internal static float Of(in PoseService.Slot s) => AnimKnobs.Stride.V && (s.Loco || s.Shuffling) ? 1f + s.Factor : 1f;
+    internal static float Of(in PoseService.Slot s) => AnimKnobs.Stride.V && (s.Loco || s.Shuffling) ? s.RateNext : 1f;
 
     /// <summary>Sets every run on <paramref name="gob"/> to the engine's own rate times <paramref name="f"/>,
     /// telling the engine's value from this module's last write (<paramref name="s"/> keeps both).</summary>
@@ -139,42 +120,15 @@ internal static unsafe class Stride
         return default;
     }
 
-    /// <summary>After the engine animates, before any correction: samples the stance foot's model-space speed
-    /// (<paramref name="mr"/>/<paramref name="ml"/>, the ankles in model units) against the body's travel direction
-    /// <paramref name="travel"/> and eases the factor toward <paramref name="groundSpeed"/>. The sample is the lower
-    /// ankle's travel against that direction, only while it bears weight (<see cref="Skating.Bears"/>); a <see cref="Transient"/> gait holds the factor and the stance speed.</summary>
-    internal static void Measure(ref PoseService.Slot s, Vector3 mr, Vector3 ml, Vector3 travel, float groundSpeed, bool fading, float dt)
+    /// <summary>The rate the engine itself set on run <paramref name="r"/>: what it holds, unless that is this module's
+    /// own last write, which <paramref name="s"/> remembers with the engine's value under it.</summary>
+    internal static float EngineRate(in PoseService.Slot s, RunRef r)
     {
-        bool paced = s.Loco || s.Shuffling;
-        // a different clip is a different stride: the shuffle's is nothing like the walk that preceded it
-        if (s.StanceAnim != s.GaitAnim) { s.StanceAnim = s.GaitAnim; s.Stance = 0f; }
-        bool ramping = s.Gait != GaitMode.None && MathF.Abs(s.GaitAccel) > Transient;
-        bool judged = paced && !fading && s.HasPrev && dt > 0f;
-        bool bears = false;
-        if (judged && MathF.Abs(mr.Z - ml.Z) > StanceGap)
-        {
-            Vector3 d = mr.Z < ml.Z ? mr - s.PrevR : ml - s.PrevL;
-            float v = -(d.X * travel.X + d.Y * travel.Y) / dt / s.RateF;
-            bears = Skating.Bears(v, groundSpeed);
-            if (bears && !ramping) s.Stance = s.Stance <= 0f ? v : s.Stance + (v - s.Stance) * MathF.Min(1f, dt / StanceTime);
-        }
-        if (!paced) s.Airborne = 0f;
-        else if (judged) s.Airborne = bears ? 0f : s.Airborne + dt;
-        s.Grounded = s.Airborne < Skating.Liftoff;
-        s.PrevR = mr; s.PrevL = ml; s.HasPrev = true;
-        float target = paced && s.Grounded ? Factor(groundSpeed, s.Stance) - 1f : 0f;
-        if (!ramping || !paced) Smooth(ref s.Factor, ref s.VFactor, target, dt, FactorTime);
-    }
-
-    /// <summary>The rate multiplier making a stance foot moving <paramref name="stance"/> per unit rate keep
-    /// pace with the ground at <paramref name="ground"/>, eased in past the <see cref="Deadband"/>; 1 out of range
-    /// or unmeasured.</summary>
-    internal static float Factor(float ground, float stance)
-    {
-        if (!(stance > MinStance) || !(ground > 0f)) return 1f;
-        float f = ground / stance;
-        if (f < MinFactor || f > MaxFactor) return 1f;
-        float u = Math.Clamp((MathF.Abs(f - 1f) - Deadband) / Deadband, 0f, 1f);
-        return 1f + (f - 1f) * u * u * (3f - 2f * u);
+        float cur = r.Rate;
+        long id = r.Id;
+        ReadOnlySpan<PoseService.RunRate> rates = s.Rates;
+        for (int k = 0; k < TrackedRuns; k++)
+            if (rates[k].Id == id) return cur == rates[k].Written ? rates[k].Engine : cur;
+        return cur;
     }
 }
