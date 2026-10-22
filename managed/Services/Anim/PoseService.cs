@@ -136,8 +136,10 @@ public sealed unsafe class PoseService : IExtenderService
         public bool Loco;
         public float RateNext;
         public RunRates Rates;
-        /// <summary><see cref="StrideWarp"/>: each foot's plant, and the clip they were last timed by.</summary>
+        /// <summary><see cref="StrideWarp"/>: each foot's plant, whether the walk has been blended in to plant them, and the
+        /// clip they were last timed by.</summary>
         public StrideWarp.Anchor AnchorR, AnchorL;
+        public bool Planting;
         public CX.Alloy.Mdl.AnimDef? PlantClip;
         /// <summary><see cref="StrideWarp"/>: the pelvis drop held at the stride's deepest need, and its easing spring.</summary>
         public float DropHold, Drop, DropV;

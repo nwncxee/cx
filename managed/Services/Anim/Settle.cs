@@ -197,6 +197,7 @@ internal static unsafe class Settle
         s.SettleTurn = false;
         s.AnchorR.Off = new Vector2(dr.X, dr.Y);
         s.AnchorL.Off = new Vector2(dl.X, dl.Y);
+        s.Planting = true;
         s.SettleStage = None;
         s.SettleT = 0f;
         s.SettleOff = s.SettleOffV = Vector2.Zero;

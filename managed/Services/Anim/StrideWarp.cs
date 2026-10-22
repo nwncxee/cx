@@ -21,6 +21,9 @@ internal static class StrideWarp
 
     /// <summary>The share of a leg's length a planted foot is held against the warped animation before it is dragged.</summary>
     private const float HoldShare = 0.25f;
+    /// <summary>Walk weight from which the feet are planted: through a crossfade in from a stand the blended feet move only
+    /// part of the stride, and a plant held against them builds an offset the next swing has to carry.</summary>
+    private const float Blended = 0.99f;
 
     /// <summary>What the module did this period: bodies warped, feet planted, plants dragged past their hold, gait changes
     /// and starts put in step, the largest offset a foot lifted off with and the deepest pelvis drop, world units.</summary>
@@ -54,7 +57,8 @@ internal static class StrideWarp
     {
         float need = Warps(ref s, gob, bones, legs, origin, scale, ground, paced, off, out dR, out dL, out float leg);
         if (off || !(dt > 0f)) { s.DropHold = s.Drop = s.DropV = 0f; drop = 0f; return; }
-        drop = Settled(ref s.DropHold, ref s.Drop, ref s.DropV, need, leg, dt);
+        // with no walk there is no leg length measured: the body's scale stands in for it, so the drop still lets go
+        drop = Settled(ref s.DropHold, ref s.Drop, ref s.DropV, need, leg > 0f ? leg : scale, dt);
         if (drop > _s.MaxDrop) _s.MaxDrop = drop;
     }
 
@@ -136,12 +140,20 @@ internal static class StrideWarp
         dR = Vector3.Transform(Warp(mr, hip, dir, lead.FloorR, stride, weight) - mr, legs) * scale;
         dL = Vector3.Transform(Warp(ml, hip, dir, lead.FloorL, stride, weight) - ml, legs) * scale;
         leg = lead.LegLength * scale;
-        // the stride's own reach, not the plant's: a held foot's drift is the leg IK's to take up, not the pelvis's
-        float need = weight * MathF.Max(Drop(rt, ra + dR, leg), Drop(lt, la + dL, leg));
-        // a one-shot past its end times nothing: its plants keep their offsets, which fade with the run's weight
-        bool timed = lead.Cyclic || phase < 1f;
-        dR += new Vector3(weight * Plant(ref s.AnchorR, lead, true, phase, ra + dR, HoldShare * leg, timed, out bool downR), 0f);
-        dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed, out bool downL), 0f);
+        // only what the warp adds to the clip's own reach: a walk's straight stance leg is the author's, not ours to bend;
+        // and the stride's reach, not the plant's -- a held foot's drift is the leg IK's to take up
+        float need = weight * MathF.Max(MathF.Max(Drop(rt, ra + dR, leg) - Drop(rt, ra, leg), Drop(lt, la + dL, leg) - Drop(lt, la, leg)), 0f);
+        bool downR = false, downL = false;
+        // plants start once the walk is blended in, and carry on through its blend out into a stop's settle
+        s.Planting |= weight >= Blended;
+        if (s.Planting)
+        {
+            // a one-shot past its end times nothing: its plants keep their offsets, which fade with the run's weight
+            bool timed = lead.Cyclic || phase < 1f;
+            dR += new Vector3(weight * Plant(ref s.AnchorR, lead, true, phase, ra + dR, HoldShare * leg, timed, out downR), 0f);
+            dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed, out downL), 0f);
+        }
+
         s.Unvoiced = !lead.Authored;
         s.Touchdown = downR || downL;
         s.Landing = paced && lead.Cyclic && leadRun.Rate > 1e-4f;
@@ -203,6 +215,7 @@ internal static class StrideWarp
         s.AheadR = s.AheadL = default;
         s.AnchorR = s.AnchorL = default;
         s.PlantClip = null;
+        s.Planting = false;
         s.Seeded = 0L;
     }
 
@@ -361,7 +374,8 @@ internal static class StrideWarp
 
     /// <summary>A long stride's need, 0.1 at each double support and 0 between, twice a 1 s cycle for 4 s at 60 fps: the
     /// drawn drop moves by under 1 cm a frame and, once settled, swings by under 0.025 -- a lowered posture, not a bob that
-    /// follows the need's full 0.1. Oracle: the hand-written need and the bounds a head seen bobbing would break.</summary>
+    /// follows the need's full 0.1; then 4 s with no need, by which the 0.045/s let-go has taken it all back. Oracle: the
+    /// hand-written need and the bounds a head seen bobbing, or knees left bent standing, would break.</summary>
     private static bool Settles()
     {
         const float Dt = 1f / 60f;
@@ -375,7 +389,9 @@ internal static class StrideWarp
             prev = d;
             if (n >= 120) { lo = MathF.Min(lo, d); hi = MathF.Max(hi, d); }
         }
-        return step < 0.01f && hi - lo < 0.025f && lo > 0.05f;
+        float after = prev;
+        for (int n = 0; n < 240; n++) after = Settled(ref hold, ref x, ref v, 0f, 0.9f, Dt);
+        return step < 0.01f && hi - lo < 0.025f && lo > 0.05f && after < 1e-3f;
     }
 
     /// <summary>World units a lift-off may bend a drawn path past the animation's own: the drift a ramping pace leaves
