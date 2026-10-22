@@ -64,7 +64,9 @@ graded against.
 - **Bone shape and limits.** Jiggle, and a Sway whose `|C - P|` is under 0.25, translate and keep the cage
   `cage * cap_j`. A taller Sway bends about `P` within 40 degrees; a Swing segment turns within 80. A part a
   creature wears (its object, or one up its attach chain, is a creature) keeps the cage on top of its cone: clothing
-  authors a few centimetres of give, and a free pendulum on a walking body throws it half a metre.
+  authors a few centimetres of give, and a free pendulum on a walking body throws it half a metre. The exception
+  is a **strand**: a Swing authored with displacement 0.1 or more (worn clothing ships 0.02-0.05; long hair,
+  braids and tails 0.1-0.5). Worn, a strand swings as section 5c says; placed, it is any other Swing.
 - **Air response** `K` per metre: cloth 1 (times `min(1, W / 0.5)`: a narrower strip is cord, heavy for its
   area), foliage 0.4, a body part 0.1.
 
@@ -178,6 +180,23 @@ another dangly mesh: those move, and a snapshot of them would be a ghost.
   is then taken from where it was left, so the contact is inelastic and a banner the wind presses to its wall
   settles there.
 
+## 5c. Worn strands (`DanglyBody`, `DbAnim.DanglyBody`)
+
+A strand a creature wears is a pendulum reined in by what hair has and a free chain lacks: a shape spring back
+to its authored hang (3 rad/s at `dangly.strand` 1, divided by the knob), damping of 2.5/s on its motion
+relative to the wearer, and a 60 degree cone in place of 80. It is not caged. `dangly.strand` 0 holds strands
+like clothing.
+
+- **Body.** Every frame, each visible Mesh or Dangly part of the wearer and of the pieces grafted onto it (three
+  levels), the strand's own object excepted, offers its own-space box: the capsule along the box's longest
+  axis, its radius the thinnest half-width, is the limb. A part under 4 cm radius (fingers, eyes, buckles) or
+  over 1.5 long (a weapon, an effect) is none. At most 32 capsules, the rest counted.
+- **Solve.** After each substep's constraints, a moving joint inside a capsule's radius plus 3 cm is put back on
+  that surface, along the line from the axis. A capsule the joint's own rest place is inside -- the scalp the
+  hair grows from -- does not hold it. Joints only: a segment can still cut a limb between two joints.
+  ponytail: segment-capsule tests if hair is seen slicing through a shoulder.
+- **Period line.** `| strands: N part(s)/frame, C body capsule(s) each`, and any parts past the cap.
+
 ## 6. Sway
 
 A one-joint rig with the tip at the moving set's mobility-weighted centroid. A card tall enough to bend
@@ -196,7 +215,8 @@ joint a frame.
 | `dangly.windgain` | 0–3 · 1 | ×`K`: how hard moving air pushes a part, the wind and the owner's own motion alike |
 | `dangly.tilt` | 0–1 · 1 | how fully a tipped part falls toward the ground |
 | `dangly.breeze` | 0–2 · 0.5 | the least wind an outdoor area blows, in area units (automatic motion only) |
-| `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit of a translating rig, or of any rig a creature wears (automatic motion only) |
+| `dangly.cage` | 0.5–4 · 1.5 | ×the authored excursion limit of a translating rig, or of any rig a creature wears that is no strand (automatic motion only) |
+| `dangly.strand` | 0–2 · 1 | how freely a worn strand swings: its shape spring is 3 rad/s ÷ this; 0 holds it like clothing |
 | `dangly.still` | as before | |
 
 Every force knob of the per-vertex integrator this replaces is retired -- the gravity, wind, turbulence,

@@ -60,6 +60,7 @@ internal static class DanglyJointsCheck
     private static void SeededLeaning(Checker check)
     {
         float worst = 0f;
+        Span<Matrix4x4> palette = stackalloc Matrix4x4[DanglyRig.MaxJoints];
         for (int k = 0; k < 256; k++)
         {
             ModelDef rope = DanglySelfCheck.Rope();
@@ -69,7 +70,7 @@ internal static class DanglyJointsCheck
             DanglyRig? r = DanglySelfCheck.Rig(rope);
             if (r == null) { check.Expect(false, "a leaning rope rigs for the seed check"); return; }
             var s = new DanglyJointsState(r.JointRest.Length);
-            Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+            Span<Matrix4x4> bones = palette[..r.BoneCount];
             DanglyJoints.Step(r, s, In(Matrix4x4.Identity, Vector3.Zero, 1f / 60f), bones);
             for (int b = 1; b < r.BoneCount; b++)
             {
@@ -81,7 +82,7 @@ internal static class DanglyJointsCheck
     }
 
     /// <summary>Oracle: the rope's authored cage by hand, 1.5 x 0.1 x (1 - 112/255) = 0.0841176. Jerked sideways
-    /// at 3 m/s and stopped, a worn rope's joints never leave it; the same rope placed in the world swings past.</summary>
+    /// at 3 m/s and stopped, a rope worn as clothing never leaves it; the same rope placed in the world swings past.</summary>
     private static void Worn(Checker check)
     {
         DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
@@ -103,7 +104,7 @@ internal static class DanglyJointsCheck
         {
             Matrix4x4 world = Matrix4x4.CreateTranslation(0f, 0.05f * Math.Min(f, 30), 0f);
             DanglyJoints.Step(r, s, new DanglyInputs(world, Vector3.Zero, Vector3.Zero, 0f, 0f, 1f / 60f, 1f, 0f,
-                                                     1.5f, worn: worn), bones);
+                                                     1.5f, worn: worn, strand: 0f), bones);
             for (int j = 0; j < r.JointRest.Length; j++)
                 reach = MathF.Max(reach, (s.X[j] - Vector3.Transform(r.JointRest[j], world)).Length());
         }

@@ -34,6 +34,10 @@ public sealed partial class DanglyRig
     /// is this well damped.</summary>
     private const float SwayCorrelation = 0.5f, JiggleZeta = 0.15f;
 
+    /// <summary>The authored displacement (node units) that makes a Swing a strand. Worn clothing ships 0.02 to
+    /// 0.05 and long hair, braids and tails 0.1 to 0.5, so the line sits between the two.</summary>
+    private const float StrandGive = 0.1f;
+
     private const float Tiny = 1e-6f;
 
     /// <summary>The rig for one dangly node, or null when it has nothing the joints can move.</summary>
@@ -99,6 +103,7 @@ public sealed partial class DanglyRig
         Joints(rig, grid, anchorAt, tipAt, hang);
         rig.Hang = hang;
         rig.Shear = rig.Class == DanglyClass.Jiggle || rig.Class == DanglyClass.Sway && hangLen < MinBendLength;
+        rig.Strand = rig.Class == DanglyClass.Swing && disp >= StrandGive;
         rig.Cone = rig.Shear ? 0f : rig.Class == DanglyClass.Swing ? MaxSwing : MaxBend;
         rig.Air = rig.Class switch
         {
