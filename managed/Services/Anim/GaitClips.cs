@@ -48,11 +48,13 @@ internal static class GaitClips
         if (set.TryGetValue(model, out GaitClip? have)) return have;
         if (!analyse) return null;
         GaitClip c = Sample(anim, bones, posScale);
+        c.Authored = GaitClip.HasFootsteps(anim.Events);
         set[model] = c;
         if (c.Walk) _s.Walks++; else _s.Others++;
         _s.Log?.Info(c.Walk
             ? $"Gait: {anim.Name} on {model.Name} is a walk -- {c.Speed:F2} units/s at rate 1, leg {c.LegLength:F2}, "
-              + $"on the ground {c.DutyR:P0} right and {c.DutyL:P0} left{(c.Cyclic ? "" : ", one-shot")}"
+              + $"on the ground {c.DutyR:P0} right and {c.DutyL:P0} left{(c.Cyclic ? "" : ", one-shot")}, "
+              + (c.Authored ? "its own footstep events" : "no footstep events, so footsteps play on contact")
             : $"Gait: {anim.Name} on {model.Name} is not a walk ({Why(c.Verdict)}) -- the engine paces and poses it");
         return c;
     }

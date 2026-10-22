@@ -80,6 +80,7 @@ internal static class StrideWarp
         dR = dL = Vector3.Zero;
         leg = 0f;
         s.RateNext = 1f;
+        s.Touchdown = s.Unvoiced = false;
         if (off || !AnimKnobs.Stride.V || !PoseRig.Db || s.SettleStage != Settle.None) { Reset(ref s); return 0f; }
         float speed = ground / scale, weight = 0f, strides = 0f, top = -1f;
         Vector3 dir = Vector3.Zero;
@@ -131,18 +132,25 @@ internal static class StrideWarp
         float need = weight * MathF.Max(Drop(rt, ra + dR, leg), Drop(lt, la + dL, leg));
         // a one-shot past its end times nothing: its plants keep their offsets, which fade with the run's weight
         bool timed = lead.Cyclic || phase < 1f;
-        dR += new Vector3(weight * Plant(ref s.AnchorR, lead, true, phase, ra + dR, HoldShare * leg, timed), 0f);
-        dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed), 0f);
+        dR += new Vector3(weight * Plant(ref s.AnchorR, lead, true, phase, ra + dR, HoldShare * leg, timed, out bool downR), 0f);
+        dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed, out bool downL), 0f);
+        s.Unvoiced = !lead.Authored;
+        s.Touchdown = downR || downL;
         _s.Warped++;
         return need;
     }
 
     /// <summary>One foot's plant at its warped world position <paramref name="p"/>, timed by <paramref name="clip"/> at
-    /// <paramref name="phase"/> (held as it is when not <paramref name="timed"/>), counted into the period.</summary>
-    private static Vector2 Plant(ref Anchor f, GaitClip clip, bool right, float phase, Vector3 p, float hold, bool timed)
+    /// <paramref name="phase"/> (held as it is when not <paramref name="timed"/>), counted into the period;
+    /// <paramref name="down"/>: it landed this frame out of a swing this plant saw.</summary>
+    private static Vector2 Plant(ref Anchor f, GaitClip clip, bool right, float phase, Vector3 p, float hold, bool timed,
+                                 out bool down)
     {
+        down = false;
         if (!timed) return f.Off;
         bool on = clip.Contact(right, phase), was = f.Planted;
+        down = on && !was && f.Aired;
+        f.Aired = !on;
         Vector2 off = Hold(ref f, on, clip.Swing(right, phase), new Vector2(p.X, p.Y), hold);
         if (on) _s.Planted++;
         if (f.Dragged) _s.Dragged++;
@@ -197,8 +205,9 @@ internal static class StrideWarp
     /// offset from the warped animation <see cref="Off"/>, and the offset it lifted off with and the swing progress then.</summary>
     internal struct Anchor
     {
-        /// <summary>Held this frame; and dragged this frame, held further from the warped animation than allowed.</summary>
-        public bool Planted, Dragged;
+        /// <summary>Held this frame; dragged this frame, held further from the warped animation than allowed; and in the
+        /// air last frame, so a plant now is a landing.</summary>
+        public bool Planted, Dragged, Aired;
         public Vector2 At, Off, Off0;
         public float U0;
     }

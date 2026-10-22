@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Alloy.Mdl;
 
 namespace CX.Services.Anim;
 
@@ -36,6 +37,12 @@ internal sealed class GaitClip
     /// through its swing, from lifting off to landing, by the clip's own travel of that foot.</summary>
     public bool[] ContactR = [], ContactL = [];
     public float[] SwingR = [], SwingL = [];
+    /// <summary>The phase each foot lands at (the first of its contacts; -1 for none), and where the ankle is then
+    /// (model frame and units).</summary>
+    public float DownR = -1f, DownL = -1f;
+    public Vector3 LandR, LandL;
+    /// <summary>The clip carries its own footstep events, which the engine plays: no footstep is made up for it.</summary>
+    public bool Authored;
 
     /// <summary>Is the foot on the ground at <paramref name="phase"/> (0..1 of the clip)?</summary>
     internal bool Contact(bool right, float phase) => (right ? ContactR : ContactL)[(int)MathF.Floor(At(phase))];
@@ -98,6 +105,9 @@ internal sealed class GaitClip
         if (!stands) { c.Verdict = GaitVerdict.NoStance; return c; }
         c.SwingR = Swings(r, c.ContactR, c.Cyclic);
         c.SwingL = Swings(l, c.ContactL, c.Cyclic);
+        int dr = Down(c.ContactR, c.Cyclic), dl = Down(c.ContactL, c.Cyclic);
+        if (dr >= 0) { c.DownR = (float)dr / Samples; c.LandR = r[dr]; }
+        if (dl >= 0) { c.DownL = (float)dl / Samples; c.LandL = l[dl]; }
         c.Verdict = GaitVerdict.Walk;
         return c;
     }
@@ -172,6 +182,25 @@ internal sealed class GaitClip
         }
     }
 
+    /// <summary>The first sample a foot lands on: on the ground after a sample in the air (wrapping on a loop); -1 for none.</summary>
+    private static int Down(bool[] on, bool cyclic)
+    {
+        for (int i = cyclic ? 0 : 1; i < Samples; i++)
+            if (on[i] && !on[(i + Samples - 1) % Samples]) return i;
+        return -1;
+    }
+
+    /// <summary>The engine's footstep event name, matched as its event dispatch matches a callback: ignoring case.</summary>
+    internal const string FootstepEvent = "snd_Footstep";
+
+    /// <summary>Does an animation with <paramref name="events"/> play its own footsteps?</summary>
+    internal static bool HasFootsteps(ReadOnlySpan<AnimEvent> events)
+    {
+        foreach (AnimEvent e in events)
+            if (string.Equals(e.Name, FootstepEvent, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
     private static float Duty(bool[] on)
     {
         int n = 0;
@@ -224,8 +253,9 @@ internal sealed class GaitClip
     }
 
     /// <summary>The analysis against hand-built trajectories whose answers are worked out by hand: a walk whose
-    /// stance foot travels back at exactly 1.5 units/s for 60 % of a 1 s cycle, and a swim, a crawl, a float and a
-    /// stand that must each be refused for their own reason. The oracle is the analytic trajectory, not the analyser.</summary>
+    /// stance foot travels back at exactly 1.5 units/s for 60 % of a 1 s cycle, and a swim, a crawl, a float and a stand
+    /// that must each be refused for their own reason; and the footstep event test on hand-written events. The oracle is
+    /// the analytic trajectory and the events, not the analyser.</summary>
     internal static bool SelfCheck()
     {
         GaitClip walk = Synthetic(0.85f, 0.08f, 1.5f, 0.12f);
@@ -234,6 +264,13 @@ internal sealed class GaitClip
                      && walk.Contact(true, 0.3f) && !walk.Contact(true, 0.8f) && walk.Contact(false, 0.8f) && !walk.Contact(false, 0.3f)
                      && walk.Contact(true, 1.3f) && MathF.Abs(walk.Swing(true, 0.8f) - 0.5f) < 0.03f
                      && MathF.Abs(walk.FloorR - 0.08f) < 1e-4f;
+        // the synthetic right foot lands at phase 0 and the left at 0.5, each 0.45 ahead of the hips on its floor
+        const float Edge = 3f / Samples;
+        bool lands = walk.DownR >= 0f && MathF.Min(walk.DownR, 1f - walk.DownR) < Edge && MathF.Abs(walk.DownL - 0.5f) < Edge
+                     && MathF.Abs(walk.LandR.Y - 0.45f) < 0.06f && MathF.Abs(walk.LandL.Y - 0.45f) < 0.06f
+                     && MathF.Abs(walk.LandR.Z - 0.08f) < 1e-3f && MathF.Abs(walk.LandL.X + 0.1f) < 1e-4f;
+        bool authored = HasFootsteps([new AnimEvent { Time = 0.2f, Name = "SND_FOOTSTEP" }])
+                        && !HasFootsteps([new AnimEvent { Time = 0.2f, Name = "hit" }]) && !HasFootsteps([]);
         bool crawl = Synthetic(0.4f, 0.08f, 1.5f, 0.12f).Verdict == GaitVerdict.NotUpright;
         bool floats = Synthetic(2.35f, 1.5f, 1.5f, 0.12f).Verdict == GaitVerdict.OffTheGround;
         bool stands = Synthetic(0.85f, 0.08f, 0f, 0f).Verdict == GaitVerdict.NoStride;
@@ -247,7 +284,7 @@ internal sealed class GaitClip
             l[i] = new Vector3(-0.1f, -0.5f - 0.05f * MathF.Cos(a), 0.3f - 0.1f * MathF.Sin(a));
         }
         bool swims = Analyse(r, l, h, 0.9f, 1f).Verdict == GaitVerdict.NotUpright;
-        return walks && crawl && floats && stands && swims;
+        return walks && lands && authored && crawl && floats && stands && swims;
     }
 
     /// <summary>A 1 s, 0.9-long-legged biped cycle with the hips at <paramref name="hipZ"/>: each foot travels back at

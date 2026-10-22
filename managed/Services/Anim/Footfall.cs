@@ -6,31 +6,18 @@ using CX.Framework;
 namespace CX.Services.Anim;
 
 /// <summary>
-/// Footsteps on contact, a <see cref="PoseService"/> module. The engine keys its footsteps to the model's
-/// <c>snd_Footstep</c> animation events (bound in <c>CNWCCreature::LoadModel</c>), wherever the author put them; here
-/// a step plays through the engine's own <c>PlayFootstep</c> when a foot lands, and an authored event is skipped only
-/// for a creature this module steps. Each step is offered to <see cref="CX.Alloy.Weather.Footstep"/> first.
+/// Footsteps on contact for a walk that has none of its own, a <see cref="PoseService"/> module. The engine keys its
+/// footsteps to the model's <c>snd_Footstep</c> animation events (bound in <c>CNWCCreature::LoadModel</c>); a walk that
+/// carries them keeps them. One that does not steps here, through the engine's own <c>PlayFootstep</c>, on the frames
+/// <see cref="StrideWarp"/> plants a foot. Each step is offered to <see cref="CX.Alloy.Weather.Footstep"/> first.
 /// </summary>
 internal static unsafe class Footfall
 {
-    /// <summary>Model units above its stance height a foot may be and have landed.</summary>
-    private const float Down = 0.03f;
-    /// <summary>Model units above its stance height a foot must rise before its next landing counts.</summary>
-    private const float Up = 0.06f;
-    /// <summary>Seconds a foot's stance height takes to rise back after a lower plant set it.</summary>
-    private const float StanceRise = 1.5f;
     /// <summary>Seconds under which a second step is the same footfall: a sprint steps every ~0.25 s.</summary>
     private const float MinGap = 0.12f;
     /// <summary>Seconds a stepping creature's ownership outlives its last frame: the engine's event fires inside
     /// <c>Gob::Animate</c>, before this frame's step is known.</summary>
     private const float Hold = 0.25f;
-
-    /// <summary>One foot: its own stance height (model units; Seen once it has one) and whether it is in the air.</summary>
-    internal struct Foot
-    {
-        public float Stance;
-        public bool Air, Seen;
-    }
 
     private static PlayFootstepFn _orig;
     private static bool _ours;
@@ -43,40 +30,26 @@ internal static unsafe class Footfall
         if (_orig == null) log.Info("Footfall: PlayFootstep did not hook -- footsteps stay on the animation's events");
     }
 
-    /// <summary>After the stride lock: plays a footstep for a foot that landed this frame.</summary>
-    internal static void Step(ref PoseService.Slot s, IntPtr creature, float mrz, float mlz, bool snap, float dt)
+    /// <summary>After the stride warp: steps a body whose walk has no footstep events of its own
+    /// (<see cref="PoseService.Slot.Unvoiced"/>) on a frame a foot planted (<see cref="PoseService.Slot.Touchdown"/>).</summary>
+    internal static void Step(ref PoseService.Slot s, IntPtr creature, bool snap, float dt)
     {
-        s.Stepping = _orig != null && AnimKnobs.Footsteps.V && s.Loco && !snap && creature != IntPtr.Zero;
-        if (!s.Stepping) { s.StepR = s.StepL = default; return; }
+        s.Stepping = _orig != null && AnimKnobs.Footsteps.V && s.Loco && s.Unvoiced && !snap && creature != IntPtr.Zero;
+        if (!s.Stepping) { s.SinceStep = MinGap; return; }
         s.SteppedAt = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (Gait(ref s.StepR, ref s.StepL, ref s.SinceStep, mrz, mlz, dt))
-        {
-            _ours = true;
-            if (!CX.Alloy.Weather.Footstep(creature)) _orig(creature);
-            _ours = false;
-            Steps++;
-        }
+        if (!Due(ref s.SinceStep, s.Touchdown, dt)) return;
+        _ours = true;
+        if (!CX.Alloy.Weather.Footstep(creature)) _orig(creature);
+        _ours = false;
+        Steps++;
     }
 
-    /// <summary>Both feet for one frame: true when one landed and the last step is <see cref="MinGap"/> behind.</summary>
-    internal static bool Gait(ref Foot r, ref Foot l, ref float since, float hr, float hl, float dt)
+    /// <summary>One frame: true when a foot <paramref name="touched"/> down and the last step is <see cref="MinGap"/> behind.</summary>
+    internal static bool Due(ref float since, bool touched, float dt)
     {
         since += dt;
-        bool landed = Landed(ref r, hr, dt) | Landed(ref l, hl, dt);
-        if (!landed || since < MinGap) return false;
+        if (!touched || since < MinGap) return false;
         since = 0f;
-        return true;
-    }
-
-    /// <summary>One foot's contact edge: true on the frame it lands after being in the air.</summary>
-    internal static bool Landed(ref Foot f, float h, float dt)
-    {
-        f.Stance = !f.Seen || h < f.Stance ? h : f.Stance + (h - f.Stance) * MathF.Min(1f, dt / StanceRise);
-        f.Seen = true;
-        float height = h - f.Stance;
-        if (height > Up) { f.Air = true; return false; }
-        if (!f.Air || height >= Down) return false;
-        f.Air = false;
         return true;
     }
 
@@ -87,21 +60,14 @@ internal static unsafe class Footfall
         if (_ours || !CX.Alloy.Weather.Footstep(creature)) _orig(creature);
     }
 
-    /// <summary>A walk whose left foot plants 4 cm above the right: steps alternate, one per landing, evenly spaced.</summary>
+    /// <summary>Touchdowns every 0.5 s and a doubled one 2 frames after each: one step per footfall, the double merged.
+    /// Oracle: the hand-written touchdown frames.</summary>
     internal static bool SelfCheck()
     {
-        Foot r = default, l = default;
-        float since = 0f, dt = 1f / 60f, last = -1f, gapMin = 1e9f, gapMax = 0f;
+        float since = MinGap, dt = 1f / 60f;
         int n = 0;
         for (int i = 0; i < 600; i++)
-        {
-            float t = i * dt, ph = t * MathF.PI * 2f;
-            float hr = MathF.Max(0f, MathF.Sin(ph)) * 0.15f, hl = 0.04f + MathF.Max(0f, -MathF.Sin(ph)) * 0.15f;
-            if (!Gait(ref r, ref l, ref since, hr, hl, dt)) continue;
-            if (t > 1f && last > 1f) { gapMin = MathF.Min(gapMin, t - last); gapMax = MathF.Max(gapMax, t - last); }
-            last = t; n++;
-        }
-        // 10 s of a 1 Hz cycle = 20 landings; the first of each foot is not one (it has not been in the air yet)
-        return n >= 18 && n <= 20 && gapMax - gapMin < 0.05f && MathF.Abs(gapMin - 0.5f) < 0.05f;
+            if (Due(ref since, i % 30 == 0 || i % 30 == 2, dt)) n++;
+        return n == 20;
     }
 }

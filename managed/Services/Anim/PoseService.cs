@@ -150,12 +150,12 @@ public sealed unsafe class PoseService : IExtenderService
         public Vector2 SettleOff, SettleOffV;
         /// <summary><see cref="Skating"/>: playing a combat shuffle the engine never paces.</summary>
         public bool Shuffling;
-        /// <summary>Footfall: stepping this frame, when it last was, each foot's own stance height and whether it is
-        /// in the air since its last landing, and the seconds since the last step played.</summary>
+        /// <summary>Footfall: stepping this frame, when it last was, and the seconds since the last step played.</summary>
         public bool Stepping;
         public long SteppedAt;
-        public Footfall.Foot StepR, StepL;
         public float SinceStep;
+        /// <summary><see cref="StrideWarp"/>: a foot planted this frame; the walk playing has no footstep events of its own.</summary>
+        public bool Touchdown, Unvoiced;
         /// <summary>Upper body: the lean, aim and flinch springs, (R, F) radians.</summary>
         public Vector2 Lean, LeanV, Hit, HitV;
         public float AimPitch, AimV, AimW, AimWV;
@@ -699,7 +699,7 @@ public sealed unsafe class PoseService : IExtenderService
         warpL += setL;
 
         FootPlacement.Compute(ref s, scene, gob, rAnkle + warpR, lAnkle + warpL, adjPos.Z, legFwdH, legRight, scale, weight, gated, snap, dt, out var feet);
-        Footfall.Step(ref s, creature, mr.Z, ml.Z, snap, dt);
+        Footfall.Step(ref s, creature, snap, dt);
         UpperBody.Step(ref s, creature, rootW, rootW.Z - adjPos.Z, scale, s.Speed, gated, snap, dt);
         UpperBody.Rotations(s, gated, out Vector2 torsoRot, out Vector2 neckRot);
 
@@ -966,7 +966,7 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
         check.Expect(Settle.SelfCheck(), "stops through the feet: the settle step's arc leaves the ground and lands back on it, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not");
         check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
-        check.Expect(Footfall.SelfCheck(), "a footstep plays once per landing, only after the foot rose clear of the stance height");
+        check.Expect(Footfall.SelfCheck(), "a footstep plays once per planted foot, a double within a sprint's gap merged");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
         fixed (byte* a = "pelvis_g\0"u8, b = "Lbicep_g\0"u8, c = "rforearm_g\0"u8, d = "lhand_g\0"u8, e = "lhand\0"u8, g = "Lshoulder_g\0"u8)
             check.Expect(BoneIndex(a, st) == 9 && BoneIndex(b, st) == 13 && BoneIndex(c, st) == 11 && BoneIndex(d, st) == 15

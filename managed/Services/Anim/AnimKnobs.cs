@@ -52,7 +52,7 @@ internal static class AnimKnobs
         Stride = new(G.Toggle("stride", "Match stride to speed", true, tier: Tier.ChatOnly,
             help: "A character moving faster or slower than its walk or run was animated for takes quicker and longer steps, or slower and shorter ones, instead of playing the animation faster or slower, and each foot stays where it landed until the animation lifts it; on stopping, one foot stays put while the other steps into the standing pose. The pace and the footfalls are read from the animation itself; one that is not a walk -- a swim, a crawl or a float -- is left as the game plays it."), false);
         Footsteps = new(G.Toggle("footsteps", "Footsteps on contact", true, tier: Tier.ChatOnly,
-            help: "A walking or running character's footstep sounds play when each foot lands, instead of where the animation's author placed them. Off, or beyond the detail distance, the animation's own timing is used."), false);
+            help: "A walk or run animation that has no footstep sounds of its own plays one each time a foot lands. An animation that has its own keeps them, as the game plays them."), false);
         SyncAttach = new(G.Toggle("syncattach", "Keep cloaks in step", true, tier: Tier.ChatOnly,
             help: "Fixes a bug with cloak desynchronizing from the body in certain situations."), false);
         G.Section("Body");
