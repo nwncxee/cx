@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using CX.Alloy.Db;
@@ -14,21 +15,13 @@ namespace CX.Services.Anim;
 /// </summary>
 internal static class GaitClips
 {
-    /// <summary>Models remembered per animation: one per skeleton that plays it (races and genders share a few).</summary>
-    private const int Ways = 8;
-
-    private sealed class ClipSet
-    {
-        public readonly ModelDef?[] Models = new ModelDef?[Ways];
-        public readonly GaitClip?[] Clips = new GaitClip?[Ways];
-        public int Next;
-    }
-
     /// <summary>The log, the clips by animation, and how many were found walks and how many not.</summary>
     private sealed class GaitClipsState
     {
         public ExtenderLog? Log;
-        public readonly ConditionalWeakTable<AnimDef, ClipSet> Sets = new();
+        /// <summary>Per animation, its analysis on each leg model that played it: never evicted, so a pair is analysed
+        /// once however many races and genders share the clip.</summary>
+        public readonly ConditionalWeakTable<AnimDef, Dictionary<ModelDef, GaitClip>> Sets = new();
         public int Walks, Others;
     }
 
@@ -46,19 +39,16 @@ internal static class GaitClips
     {
         int rf = PoseRig.Index(bones.RFoot);
         if (!bones.Legs || (uint)rf >= (uint)SceneDb.PartModel.Length || SceneDb.PartModel[rf] is not { } model) return null;
-        if (!_s.Sets.TryGetValue(anim, out ClipSet? set))
+        if (!_s.Sets.TryGetValue(anim, out Dictionary<ModelDef, GaitClip>? set))
         {
             if (!analyse) return null;
-            set = new ClipSet();
+            set = new Dictionary<ModelDef, GaitClip>(ReferenceEqualityComparer.Instance);
             _s.Sets.Add(anim, set);
         }
-        for (int k = 0; k < Ways; k++)
-            if (ReferenceEquals(set.Models[k], model)) return set.Clips[k];
+        if (set.TryGetValue(model, out GaitClip? have)) return have;
         if (!analyse) return null;
         GaitClip c = Sample(anim, bones, posScale);
-        int at = set.Next++ % Ways;
-        set.Models[at] = model;
-        set.Clips[at] = c;
+        set[model] = c;
         if (c.Walk) _s.Walks++; else _s.Others++;
         _s.Log?.Info(c.Walk
             ? $"Gait: {anim.Name} on {model.Name} is a walk -- {c.Speed:F2} units/s at rate 1, leg {c.LegLength:F2}, "

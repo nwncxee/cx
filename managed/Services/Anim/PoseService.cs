@@ -131,10 +131,10 @@ public sealed unsafe class PoseService : IExtenderService
         public int Phase;
         /// <summary>Each foot's cached floor cast (<see cref="FootPlacement.FootCast"/>).</summary>
         public FootPlacement.FootCast R, L;
-        /// <summary>Stride: locomoting last frame, the rate multiplier <see cref="StrideWarp"/> paced for the next frame
-        /// and the one applied this frame, and each run's engine and written rate.</summary>
+        /// <summary>Stride: locomoting last frame, the rate multiplier <see cref="StrideWarp"/> paced for the next frame,
+        /// and each run's engine and written rate.</summary>
         public bool Loco;
-        public float RateNext, RateF;
+        public float RateNext;
         public RunRates Rates;
         /// <summary><see cref="StrideWarp"/>: each foot's plant, and the clip they were last timed by.</summary>
         public StrideWarp.Anchor AnchorR, AnchorL;
@@ -602,7 +602,7 @@ public sealed unsafe class PoseService : IExtenderService
             s = default;
             s.Gob = gob;
             s.Stamp = now;
-            s.RateF = s.RateNext = 1f;
+            s.RateNext = 1f;
             return (h + i) & (SlotCount - 1);
         }
         return -1;
@@ -859,8 +859,8 @@ public sealed unsafe class PoseService : IExtenderService
     /// <summary>The <c>/anim</c> status line: the pose layer that post-processes the animations.</summary>
     internal static string Report() => !_armed ? "pose layer unhooked" : "pose layer on";
 
-    /// <summary>The pure parts off-device: bone names, the animation gate, the springs, the two-bone solve, the
-    /// stride factor, the foot lock, and the signs of lean, aim and flinch.</summary>
+    /// <summary>The pure parts off-device: bone names, the animation gate, the springs, the two-bone solve, the clip
+    /// sampler, the gait analysis and the stride warp, and the signs of lean, aim and flinch.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "Pose.SelfCheck");

@@ -63,7 +63,7 @@ internal sealed class GaitClip
     {
         var c = new GaitClip { Length = length, LegLength = legLength };
         if (!(length > 0f) || !(legLength > 0f)) { c.Verdict = GaitVerdict.NoLength; return c; }
-        float close = Closes * legLength;
+        float close = LoopClose * legLength;
         c.Cyclic = Vector3.Distance(r[0], r[Samples]) < close && Vector3.Distance(l[0], l[Samples]) < close
                    && Vector3.Distance(hip[0], hip[Samples]) < close;
         c.FloorR = c.FloorL = float.MaxValue;
@@ -103,13 +103,13 @@ internal sealed class GaitClip
     }
 
     /// <summary>Share of a leg's length within which a clip's first and last samples are the same pose: a loop.</summary>
-    private const float Closes = 0.05f;
+    private const float LoopClose = 0.05f;
     /// <summary>Share of a leg's length above the model's origin the lower ankle must reach: higher, the feet never
     /// touch the floor the body stands on (a float).</summary>
     private const float Grounded = 0.25f;
     /// <summary>Share of a leg's length the hips stand above the lower ankle, typically: below it the body is not
-    /// carried on its legs (a crawl, a swim). A run's flexed stance keeps about 0.85.</summary>
-    private const float Upright = 0.7f;
+    /// carried on its legs (a crawl keeps about 0.35, a swim less). A crouched sneak keeps well over it.</summary>
+    private const float Upright = 0.5f;
     /// <summary>Share of a leg's length above its lowest an ankle may be and still bear weight (heel-off included).</summary>
     private const float Band = 0.06f;
     /// <summary>Legs' lengths per second, at rate 1, under which the feet carry the body nowhere: a stand or a turn.</summary>
@@ -269,10 +269,10 @@ internal sealed class GaitClip
     /// <summary>The synthetic foot of <see cref="Synthetic"/> at <paramref name="phase"/>, model frame, body travelling +Y.</summary>
     internal static Vector3 SyntheticFoot(float phase, float x, float floor, float speed, float lift)
     {
-        const float Duty = 0.6f;
-        float q = phase - MathF.Floor(phase), half = speed * Duty * 0.5f;
-        if (q < Duty) return new Vector3(x, half - speed * q, floor);
-        float w = (q - Duty) / (1f - Duty);
+        const float Down = 0.6f;
+        float q = phase - MathF.Floor(phase), half = speed * Down * 0.5f;
+        if (q < Down) return new Vector3(x, half - speed * q, floor);
+        float w = (q - Down) / (1f - Down);
         return new Vector3(x, -half + 2f * half * w * w * (3f - 2f * w), floor + lift * MathF.Sin(MathF.PI * w));
     }
 }

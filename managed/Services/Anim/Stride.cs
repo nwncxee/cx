@@ -39,7 +39,6 @@ internal static unsafe class Stride
     /// telling the engine's value from this module's last write (<paramref name="s"/> keeps both).</summary>
     internal static void Scale(ref PoseService.Slot s, IntPtr gob, float f)
     {
-        s.RateF = f;
         int n = Math.Min(PoseRig.RunCount(gob), TrackedRuns);
         {
             Span<PoseService.RunRate> rates = s.Rates;

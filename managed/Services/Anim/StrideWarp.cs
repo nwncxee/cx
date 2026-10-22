@@ -22,10 +22,12 @@ internal static class StrideWarp
     /// <summary>The share of a leg's length a planted foot is held against the warped animation before it is dragged.</summary>
     private const float HoldShare = 0.25f;
 
-    /// <summary>What the module did this period: bodies warped, and feet planted.</summary>
+    /// <summary>What the module did this period: bodies warped, feet planted, plants dragged past their hold, and the
+    /// largest offset a foot lifted off with (world units) -- what the warp left for the swing to take up.</summary>
     private sealed class StrideWarpState
     {
-        public int Warped, Planted;
+        public int Warped, Planted, Dragged;
+        public float Leftover;
     }
 
     private static readonly StrideWarpState _s = new();
@@ -34,9 +36,10 @@ internal static class StrideWarp
     internal static string Period(int frames)
     {
         (int walks, int others) = GaitClips.Count;
-        string line = $"{_s.Warped / (float)frames:F1} stride-warped + {_s.Planted / (float)frames:F1} feet planted/f "
-                      + $"({walks} walk clips, {others} not walks)";
-        _s.Warped = _s.Planted = 0;
+        string line = $"{_s.Warped / (float)frames:F1} stride-warped + {_s.Planted / (float)frames:F1} feet planted/f, "
+                      + $"{_s.Dragged} plant frames dragged, largest lift-off offset {_s.Leftover:F3} ({walks} walk clips, {others} not walks)";
+        _s.Warped = _s.Planted = _s.Dragged = 0;
+        _s.Leftover = 0f;
         return line;
     }
 
@@ -97,17 +100,25 @@ internal static class StrideWarp
         dR = Vector3.Transform(Warp(mr, hip, dir, lead.FloorR, stride, weight) - mr, legs) * scale;
         dL = Vector3.Transform(Warp(ml, hip, dir, lead.FloorL, stride, weight) - ml, legs) * scale;
         float leg = lead.LegLength * scale;
+        // a one-shot past its end times nothing: its plants keep their offsets, which fade with the run's weight
+        bool timed = lead.Cyclic || phase < 1f;
+        dR += new Vector3(weight * Plant(ref s.AnchorR, lead, true, phase, ra + dR, HoldShare * leg, timed), 0f);
+        dL += new Vector3(weight * Plant(ref s.AnchorL, lead, false, phase, la + dL, HoldShare * leg, timed), 0f);
         drop = weight * MathF.Max(Drop(rt, ra + dR, leg), Drop(lt, la + dL, leg));
-
-        float hold = HoldShare * leg;
-        bool onR = lead.Contact(true, phase), onL = lead.Contact(false, phase);
-        Vector2 pr = new(ra.X + dR.X, ra.Y + dR.Y), pl = new(la.X + dL.X, la.Y + dL.Y);
-        Vector2 offR = weight * Hold(ref s.AnchorR, onR, lead.Swing(true, phase), pr, hold);
-        Vector2 offL = weight * Hold(ref s.AnchorL, onL, lead.Swing(false, phase), pl, hold);
-        dR += new Vector3(offR, 0f);
-        dL += new Vector3(offL, 0f);
         _s.Warped++;
-        _s.Planted += (onR ? 1 : 0) + (onL ? 1 : 0);
+    }
+
+    /// <summary>One foot's plant at its warped world position <paramref name="p"/>, timed by <paramref name="clip"/> at
+    /// <paramref name="phase"/> (held as it is when not <paramref name="timed"/>), counted into the period.</summary>
+    private static Vector2 Plant(ref Anchor f, GaitClip clip, bool right, float phase, Vector3 p, float hold, bool timed)
+    {
+        if (!timed) return f.Off;
+        bool on = clip.Contact(right, phase), was = f.Planted;
+        Vector2 off = Hold(ref f, on, clip.Swing(right, phase), new Vector2(p.X, p.Y), hold);
+        if (on) _s.Planted++;
+        if (f.Dragged) _s.Dragged++;
+        if (was && !on) _s.Leftover = MathF.Max(_s.Leftover, f.Off0.Length());
+        return off;
     }
 
     /// <summary>No walk on the body: the plants are let go and the next one starts fresh.</summary>
@@ -157,7 +168,8 @@ internal static class StrideWarp
     /// offset from the warped animation <see cref="Off"/>, and the offset it lifted off with and the swing progress then.</summary>
     internal struct Anchor
     {
-        public bool Planted;
+        /// <summary>Held this frame; and dragged this frame, held further from the warped animation than allowed.</summary>
+        public bool Planted, Dragged;
         public Vector2 At, Off, Off0;
         public float U0;
     }
@@ -172,13 +184,16 @@ internal static class StrideWarp
             if (!f.Planted) { f.Planted = true; f.At = p + f.Off; }
             Vector2 o = f.At - p;
             float len = o.Length();
-            if (len > maxHold) { o *= maxHold / len; f.At = p + o; }
+            f.Dragged = len > maxHold;
+            if (f.Dragged) { o *= maxHold / len; f.At = p + o; }
             f.Off = o;
             return o;
         }
+        f.Dragged = false;
         if (f.Planted) { f.Planted = false; f.Off0 = f.Off; f.U0 = u; }
         float span = 1f - f.U0;
-        f.Off = f.Off0 * (1f - (span > 1e-4f ? Math.Clamp((u - f.U0) / span, 0f, 1f) : 1f));
+        // a swing with no progress left to measure keeps its offset: the landing takes it into the plant, not a pop
+        f.Off = f.Off0 * (1f - (span > 1e-4f ? Math.Clamp((u - f.U0) / span, 0f, 1f) : 0f));
         return f.Off;
     }
 
@@ -223,19 +238,22 @@ internal static class StrideWarp
     }
 
     /// <summary>World units a lift-off may bend a drawn path past the animation's own: the drift a ramping pace leaves
-    /// on a planted foot, picked up in one frame. The old foot lock's release popped ten times this.</summary>
+    /// on a planted foot, picked up in one frame; a foot let go and snapped back moves ten times this.</summary>
     private const float LiftBend = 0.02f;
+    /// <summary>The synthetic walk's own stance speed and floor, known by construction: the pace and the warp read them,
+    /// not the analysis, which times only the plants.</summary>
+    private const float SyntheticSpeed = 1.5f, SyntheticFloor = 0.08f;
 
     /// <summary>The synthetic walk (<see cref="GaitClip.Synthetic"/>) driven 4 s at 60 fps from half its pace to twice it
     /// and back, the rate a frame late as live: held steady, a planted foot's warped spot does not move, and no frame's
     /// plant bends a drawn path past the warped animation's own by more than <see cref="LiftBend"/>.</summary>
     private static bool Walks()
     {
-        GaitClip c = GaitClip.Synthetic(0.85f, 0.08f, 1.5f, 0.12f);
+        GaitClip c = GaitClip.Synthetic(0.85f, SyntheticFloor, SyntheticSpeed, 0.12f);
         if (!c.Walk) return false;
         const float Dt = 1f / 60f, MaxHold = 0.25f * 0.9f;
         Vector3 hip = new(0f, 0f, 0.85f);
-        float t = 0f, body = 0f, rateNext = Pace(0.75f / c.Speed).Rate, worstSlide = 0f, worstBend = 0f;
+        float t = 0f, body = 0f, rateNext = Pace(0.75f / SyntheticSpeed).Rate, worstSlide = 0f, worstBend = 0f;
         Span<Anchor> anchors = stackalloc Anchor[2];
         Span<Vector2> p1 = stackalloc Vector2[2], p2 = stackalloc Vector2[2], d1 = stackalloc Vector2[2], d2 = stackalloc Vector2[2];
         Span<bool> was = stackalloc bool[2];
@@ -246,17 +264,17 @@ internal static class StrideWarp
             float rate = rateNext;
             t += rate * Dt;
             body += g * Dt;
-            float k = g / c.Speed;
+            float k = g / SyntheticSpeed;
             rateNext = Pace(k).Rate;
-            float phase = t / c.Length, stride = Math.Clamp(k / rate, WarpMin, WarpMax);
+            float phase = t, stride = Math.Clamp(k / rate, WarpMin, WarpMax);
             bool steady = time is > 1.2f and < 2f or > 3.2f;
             for (int side = 0; side < 2; side++)
             {
                 bool right = side == 0;
                 float own = right ? phase : phase + 0.5f;
                 bool stance = own - MathF.Floor(own) < 0.6f;
-                Vector3 a = GaitClip.SyntheticFoot(own, right ? 0.1f : -0.1f, 0.08f, 1.5f, 0.12f);
-                Vector3 w = Warp(a, hip, c.Dir, right ? c.FloorR : c.FloorL, stride, 1f);
+                Vector3 a = GaitClip.SyntheticFoot(own, right ? 0.1f : -0.1f, SyntheticFloor, SyntheticSpeed, 0.12f);
+                Vector3 w = Warp(a, hip, Vector3.UnitY, SyntheticFloor, stride, 1f);
                 Vector2 p = new(w.X, w.Y + body);
                 bool contact = c.Contact(right, phase);
                 Vector2 drawn = p + Hold(ref anchors[side], contact, c.Swing(right, phase), p, MaxHold);
