@@ -14,6 +14,7 @@ internal static class DanglyBodyCheck
         Capsule(check);
         Push(check);
         Strand(check);
+        Nudge(check);
     }
 
     /// <summary>Oracle: the box by hand. 0.2 x 0.2 x 1 standing on the origin is a capsule up z from 0.1 to 0.9
@@ -40,7 +41,8 @@ internal static class DanglyBodyCheck
         Span<Vector3> x = stackalloc Vector3[] { Vector3.Zero, new(0.05f, 0f, 0.5f), new(0.05f, 0f, 0.5f) };
         ReadOnlySpan<Vector3> target = stackalloc Vector3[] { Vector3.Zero, new(0.5f, 0f, 0.5f), new(0f, 0f, 0.5f) };
         ReadOnlySpan<int> parent = stackalloc int[] { -1, 0, 0 };
-        b.Push(x, target, parent, 3);
+        Span<Vector3> shove = stackalloc Vector3[3];
+        b.Push(x, target, parent, 3, shove);
         check.Expect(DanglySelfCheck.Near(x[1], new Vector3(0.13f, 0f, 0.5f), 1e-5f),
                      $"a joint is pushed out to the capsule plus its clearance ({x[1]})");
         check.Expect(x[2] == new Vector3(0.05f, 0f, 0.5f), "a joint authored inside the capsule is left alone");
@@ -59,6 +61,30 @@ internal static class DanglyBodyCheck
         check.Expect(held.Angle <= 60.5f, $"a worn strand stays inside its 60 degree cone ({held.Angle})");
         check.Expect(held.Gap >= 0.13f - 1e-3f, $"a worn strand rests against the body, not in it ({held.Gap})");
         check.Expect(free.Gap < 0.1f, $"without the body the same swing passes through it ({free.Gap})");
+    }
+
+    /// <summary>Oracle: the nudge itself, 0.1. A capsule resting against the rope, carried 10 cm into it in one
+    /// frame, pushes it inelastically: the rope is moved no further than the body moved, so its tip rises less than
+    /// 0.1. A push turned into velocity flings it many times that.</summary>
+    private static void Nudge(Checker check)
+    {
+        DanglyRig? r = DanglySelfCheck.Rig(DanglySelfCheck.Rope());
+        if (r == null) { check.Expect(false, "the rope rigs for the nudge check"); return; }
+        var s = new DanglyJointsState(r.JointRest.Length);
+        var body = new DanglyBody();
+        Span<Matrix4x4> bones = stackalloc Matrix4x4[r.BoneCount];
+        int tip = r.JointRest.Length - 1;
+        float rise = 0f;
+        for (int f = 0; f < 120; f++)
+        {
+            Matrix4x4 world = Matrix4x4.CreateTranslation(f < 30 ? 0f : -0.1f, 0f, 0f);
+            body.Clear();
+            body.AddBox(new Vector3(0.03f, -0.1f, -1.4f), new Vector3(0.23f, 0.1f, 0f), world);
+            DanglyJoints.Step(r, s, new DanglyInputs(world, Vector3.Zero, Vector3.Zero, 0f, 0f, 1f / 60f, 1f, 0f,
+                                                     1.5f, worn: true, body: body), bones);
+            rise = MathF.Max(rise, s.X[tip].Z - Vector3.Transform(r.JointRest[tip], world).Z);
+        }
+        check.Expect(rise < 0.1f, $"a body nudged into a resting strand does not fling it up ({rise})");
     }
 
     private readonly record struct Swung(float Reach, float Angle, float Gap);

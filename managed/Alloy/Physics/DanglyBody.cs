@@ -47,9 +47,11 @@ public sealed class DanglyBody
         return true;
     }
 
-    /// <summary>Every moving joint back out of each capsule it entered. A capsule the joint's own rest place
-    /// <paramref name="target"/> is already inside -- the scalp a strand grows from -- does not hold it.</summary>
-    internal void Push(Span<Vector3> x, ReadOnlySpan<Vector3> target, ReadOnlySpan<int> parent, int nj)
+    /// <summary>Every moving joint back out of each capsule it entered, the move added to <paramref name="shove"/>.
+    /// A capsule the joint's own rest place <paramref name="target"/> is already inside -- the scalp a strand
+    /// grows from -- does not hold it.</summary>
+    internal void Push(Span<Vector3> x, ReadOnlySpan<Vector3> target, ReadOnlySpan<int> parent, int nj,
+                       Span<Vector3> shove)
     {
         for (int j = 0; j < nj; j++)
         {
@@ -68,7 +70,9 @@ public sealed class DanglyBody
                     len = d.Length();
                     if (len < 1e-6f) continue;
                 }
-                x[j] = q + d * (rr / len);
+                Vector3 to = q + d * (rr / len);
+                shove[j] += to - x[j];
+                x[j] = to;
             }
         }
     }

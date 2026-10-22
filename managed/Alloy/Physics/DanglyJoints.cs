@@ -214,6 +214,7 @@ public static class DanglyJoints
 
         Span<Vector3> now = stackalloc Vector3[DanglyRig.MaxJoints];
         Span<Vector3> was = stackalloc Vector3[DanglyRig.MaxJoints];
+        Span<Vector3> shove = stackalloc Vector3[DanglyRig.MaxJoints];
         for (int step = 0; step < steps; step++)
         {
             float frac = (step + 1f) / steps;
@@ -238,12 +239,25 @@ public static class DanglyJoints
             }
             if (pendulum) Constrain(rig, s, scale, now, inp.Walls, was, nj, strand ? StrandCone : rig.Cone);
             else if (!rig.Shear) Cone(rig, s, nj, now);
-            if (strand) inp.Body?.Push(s.X, now, rig.JointParent, nj);
+            shove.Clear();
+            if (strand) inp.Body?.Push(s.X, now, rig.JointParent, nj, shove);
             else if (rig.Shear || inp.Worn) Cage(rig, s, inp.Cage, scale, nj, now);
             if (h > 0f)
                 for (int j = 0; j < nj; j++)
-                    if (rig.JointParent[j] >= 0) s.V[j] = (s.X[j] - was[j]) / h;
+                    if (rig.JointParent[j] >= 0) s.V[j] = Contact((s.X[j] - was[j] - shove[j]) / h, shove[j]);
         }
+    }
+
+    /// <summary>A joint the body shoved keeps the velocity it had before the shove, less any part still driving
+    /// into the body: an inelastic contact. Taken from the shoved position instead, a body turning a few
+    /// degrees in a frame would fling the strand at the shove's depth per substep.</summary>
+    private static Vector3 Contact(Vector3 v, Vector3 shove)
+    {
+        float len = shove.Length();
+        if (!(len > Tiny)) return v;
+        Vector3 n = shove / len;
+        float into = Vector3.Dot(v, n);
+        return into < 0f ? v - into * n : v;
     }
 
     private static bool IsFinite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
