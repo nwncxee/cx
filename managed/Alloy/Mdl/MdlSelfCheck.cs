@@ -19,6 +19,7 @@ public static class MdlSelfCheck
         void Expect(bool ok, string what) { if (!ok) { bad++; report(false, what); } }
         Ascii(Expect);
         AnimBlock(Expect);
+        AnimRootPrune(Expect);
         Wok(Expect);
         Binary(Expect);
         LateTangents(Expect);
@@ -212,6 +213,73 @@ donemodel cx_bar
         }
         expect(same, "frame 0 is not the rest pose vertex for vertex: the frame is not indexed by the part's weld");
         expect(doubled, "frame 1 is not the fixture's doubled quad vertex for vertex");
+    }
+
+    /// <summary>An overlay keyed on every node but rooted at the arm, the way a left-hand torch hold is
+    /// authored: <c>animroot larm</c> over a body whose leg is the arm's cousin.</summary>
+    private const string AnimRootFixture = """
+newmodel cx_body
+beginmodelgeom cx_body
+node dummy cx_body
+  parent null
+endnode
+node dummy torso
+  parent cx_body
+endnode
+node dummy larm
+  parent torso
+endnode
+node dummy lhand
+  parent larm
+endnode
+node dummy rleg
+  parent cx_body
+endnode
+endmodelgeom cx_body
+newanim hold cx_body
+  length 1.0
+  transtime 0.0
+  animroot larm
+  node dummy cx_body
+    parent null
+    positionkey 1
+      0.0 0.0 0.0 1.0
+  endnode
+  node dummy torso
+    parent cx_body
+    positionkey 1
+      0.0 0.0 0.0 2.0
+  endnode
+  node dummy larm
+    parent torso
+    positionkey 1
+      0.0 0.0 0.0 3.0
+  endnode
+  node dummy lhand
+    parent larm
+    positionkey 1
+      0.0 0.0 0.0 4.0
+  endnode
+  node dummy rleg
+    parent cx_body
+    positionkey 1
+      0.0 0.0 0.0 5.0
+  endnode
+doneanim hold cx_body
+donemodel cx_body
+""";
+
+    /// <summary>The animroot scopes an ASCII animation as <c>Animation::PostProcess</c> does: the root's
+    /// ancestors keep no tracks and every other branch is gone. Oracle: hand-written node list from that rule.</summary>
+    private static void AnimRootPrune(Action<bool, string> expect)
+    {
+        ModelDef? m = MdlParser.Parse(Encoding.ASCII.GetBytes(AnimRootFixture), "cx_body", out string? err);
+        expect(m is { Anims.Length: 1 }, $"the animroot fixture did not parse to one animation ({err})");
+        if (m is not { Anims.Length: 1 }) return;
+        AnimNode[] an = m.Anims[0].Nodes;
+        string got = string.Join(" ", Array.ConvertAll(an, n => $"{n.Name}:{n.Parent}:{n.Controllers.Length}"));
+        expect(got == "cx_body:-1:0 torso:0:0 larm:1:1 lhand:2:1",
+               $"animroot larm left '{got}' -- a hand-rooted overlay would pose the whole body");
     }
 
     /// <summary>The walkmesh parses, and parses as something the hit test can use -- an
