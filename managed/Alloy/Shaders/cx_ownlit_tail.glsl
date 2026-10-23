@@ -23,7 +23,10 @@
     {
         vec3 R = reflect(-V, N);
         vec2 reflAb = CxEnvBrdf(NoV, sqrt(rough)) * vec2(1.0, cxFresnel);
-        reflW = min((cxF0 * reflAb.x + reflAb.y) * msc * CxSpecOcclusion(NoV, occl, rough) * coatT * uProbeGain, vec3(1.0));
+        // a classic material rises as inc_lighting.shd:2849's fEnvironmentSpecularity does, damped by sqrt(roughness)
+        vec3 reflF = cxModern > 0.5 ? cxF0 * reflAb.x + reflAb.y
+                                    : specColor * mix(mix(spec, 1.0, CxFresnel(NoV) * cxFresnel), spec, sqrt(rough));
+        reflW = min(reflF * msc * CxSpecOcclusion(NoV, occl, rough) * coatT * uProbeGain, vec3(1.0));
         if (uProbeMips > 0.0)
         {
             vec3 env = CxProbeFetch(uProbe, vWorld, R, sqrt(rough) * (uProbeMips - 1.0));
@@ -125,7 +128,8 @@
                 | (baked ? CX_GB_BAKED : 0u)
                 | (onMover > 0.0 ? CX_GB_ONMOVER : 0u)
                 | (wxFilm > 0.0 && baked && cxCoat > 0.0 ? CX_GB_FILM : 0u)
-                | (cxRecvShadow == 0.0 ? CX_GB_NOSHADOW : 0u);
+                | (cxRecvShadow == 0.0 ? CX_GB_NOSHADOW : 0u)
+                | (cxModern < 0.5 ? CX_GB_STOCKLOBE : 0u);
         g.N = N; g.rough = rough; g.spec = spec; g.fresnel = cxFresnel;
         g.coat = cxCoat; g.coatRough = cxCoatRough; g.sheenRough = cxSheenRough;
         g.sheen = cxSheen; g.f0 = cxF0; g.specScale = cxSpecScale;

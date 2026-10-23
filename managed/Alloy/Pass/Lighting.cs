@@ -13,7 +13,7 @@ internal static class Lighting
                                          ProbeGain, BinReach, AmbientDir,
                                          Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, SsrPlanarCull, Relevance, Floor, FullModel;
     internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes;
-    internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, SpecAa, Ssr, SsrPlanar,
+    internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, SsrPlanar,
                                         Deferred, DeferredTiles, LightRec;
 
     static Lighting()
@@ -125,6 +125,9 @@ internal static class Lighting
         AmbientDir = G.Slider("ambientdir", "Directional ambient", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                               help: "Ambient light takes its direction from the surroundings (sky above, ground below) at the area's own "
                                   + "brightness. 0 is the stock sun-facing shading.");
+        Grazing = G.Toggle("grazing", "Grazing sheen on classic materials", true, Tier.ChatOnly,
+                           help: "Surfaces without a glTF material brighten at low viewing angles the way the stock renderer does. "
+                               + "Off holds them at their head-on specularity. Rain still wets them.");
         SpecAa = G.Toggle("specaa", "Smooth highlights", true, Tier.ChatOnly,
                           help: "Widens a highlight that is narrower than a pixel, so glossy and normal-mapped surfaces do not sparkle "
                               + "or crawl in motion. Needs Modern materials.");

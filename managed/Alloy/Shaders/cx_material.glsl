@@ -253,7 +253,7 @@ vec3 CxLoopSpecBase(float lobe, vec3 N, vec3 V, vec3 L)
     // engine's scalar mix(spec, 1, Fc) with the hue outside it, which never leaves the specular colour.
     if (uMaterial.x > 0.5)
     {
-        float fc = CxFresnel(clamp(dot(normalize(V + L), V), 0.0, 1.0)) * cxFresnel;
+        float fc = cxModern > 0.5 ? CxFresnel(clamp(dot(normalize(V + L), V), 0.0, 1.0)) * cxFresnel : 0.0;
         s *= mix(cxF0, vec3(1.0), fc) / max(mix(cxSpec, 1.0, fc), 1e-4);
     }
     // the sheen is a broad retro-reflective rim by construction: a source's size cannot widen it usefully
