@@ -84,3 +84,5 @@ alloy\.aotest	dead-code-cleanup
 \banim\.footlock|\bStride\.(Lock|Foot|Drag)\b	#103
 \banim\.settle\b|\bSettle\.Step\b	#103
 \banim\.drive\b|\bDriveEase\b	#103
+# The sun glide eased the area light between direction samples; a script fades a move itself (SetAreaLightDirection fFadeTime); it flickered the sun shadows.
+\bSunGlide	sun-glide removal

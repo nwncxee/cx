@@ -19,7 +19,6 @@ public sealed unsafe partial class AlloyRenderer
         FrameDiffAreaEdge();               // the diff's pass count is per AREA, not per session
         CreatureParityAreaEdge();          // ...and so is the creature dump's
         DbBlackProbeAreaEdge();            // ...and so is the black probe's budget
-        Db.SunGlide.AreaEdge();            // the next area's sun is SHOWN, never glided to from this one's
         LightmapBake.EndAreaEdge();
         _log?.Info($"AlloyRenderer: [areaedge] {why} -- every persistent record unstamped. "
                  + "Kept (content-keyed): the texture cache, the bake blob cache, the pool tables");
