@@ -668,9 +668,10 @@ zero has to mean "as before" in each of them.
 
 ### Not guarded
 
-`cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_defshadow_cs`, `cx_pairdebt`, `cx_vfog_cs` and `cx_vfogsum_cs` carry no guard.
-`cx_deferred_cs` carries one: it reads the per-draw record (a G-buffer pixel's sheen, by its slot), so it is
-held to the record count like the stages above, and a stale record stands `light.deferred` down for the session.
+`cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_defshadow_cs`, `cx_vfog_cs` and `cx_vfogsum_cs` carry no guard.
+`cx_deferred_cs` and `cx_pairdebt` carry one: they read a G-buffer pixel's draw by its slot -- the lightmap record
+(`CxChart`), and for `cx_deferred_cs` the sheen in `CxDraw` too -- so each is held to those records' counts, and a
+stale one stands its pass down for the session.
 
 The first two read no per-draw record and write no colour; an interface break in them
 fails the **link**, which the build-failure fallback already refuses with a log line.

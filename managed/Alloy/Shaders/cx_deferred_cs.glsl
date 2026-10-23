@@ -542,7 +542,7 @@ void main()
         // position, and not one light. The SINK is what keeps them from being dead-stripped -- a tiny
         // multiple of every lane the rung produced, which the half-float target takes to zero.
         vec3 add = vec3(dot(worldPos, vec3(1.0)) + dot(V, vec3(1.0)) + dot(g.N, vec3(1.0))
-                        + g.rough + g.spec + g.specC + g.lmLum + g.lmTexel + float(g.flags)) * CX_ABL_EPS;
+                        + g.rough + g.spec + g.specC + g.lmLum + g.lmTexel + cxSheenRough + float(g.flags)) * CX_ABL_EPS;
 #else
         vec3 spec, lmSub;
         vec3 acc = CxClusteredLightLm(worldPos, g.N, V, viewDepth, onMover, g.rough, g.spec, baked,

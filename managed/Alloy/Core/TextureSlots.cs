@@ -333,7 +333,7 @@ internal static class TextureSlots
           && defshadow.Contains($"layout(binding = {GbufDepth}) uniform sampler2D uGbDepth;")
           && defshadow.Contains("uniform samplerCubeArrayShadow uLocalShadow;")
           && defshadow.Contains("uniform samplerCubeArrayShadow uLocalDynShadow;"),
-          $"{Gbuf0}..{GbufDepth} uGb0 + uGbDepth and the cube arrays (deferred shadow program)");
+          $"{Gbuf0}/{GbufDepth} uGb0 + uGbDepth and the cube arrays (deferred shadow program)");
         // the G-buffer's slot lane must hold every ownership slot, or the reader fetches another draw's sheen and chart
         var slotBits = Regex.Match(deferred, @"const uint CX_GB_SLOT_BITS = (\d+)u;");
         check.Expect(slotBits.Success && AlloyRenderer.MaxOwned <= 1 << int.Parse(slotBits.Groups[1].Value),

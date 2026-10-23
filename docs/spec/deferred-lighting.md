@@ -117,7 +117,7 @@ the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 - `GBuffer.BeginFrame()` clears G0 to zero before `OpaqueOwned`. G1 is never cleared: G0's flag byte
   gates every read.
 - `OpaqueOwned` and `CutoutOwned` attach G0..G1 at COLOR4..5 (draw buffers `{0, NONE, 2, 3, 4, 5}`
-  while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6, 7}` otherwise) and detach after
+  while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5}` otherwise) and detach after
   `CutoutOwned`. A prepassed batch draws at `GL_EQUAL`, a non-prepassed one at `LEQUAL` with depth writes, so
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.
 - A content pair (CX-303) draws through its own deferred twin: the pair's program text under the same two defines.

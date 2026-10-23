@@ -1,7 +1,7 @@
 // CX-188 (ADR 0029): the deferred G-buffer -- the colour pass's CX_DEFERRED twin writes it beside the colour on
 // draw buffers 4..5 (opaque and cutout, main view only), and cx_deferred_cs reads it back per pixel to add the
 // point lights the twin no longer walks. This file IS the format: the writer and the reader both include it (a
-// reader includes cx_drawbuf and cx_chartbuf ahead of it), and docs/spec/deferred-lighting.md says what every lane
+// reader includes cx_chartbuf ahead of it), and docs/spec/deferred-lighting.md says what every lane
 // means. Change a lane here or nowhere.
 // 32 bytes a pixel: two RGBA32UI words, G0 the header every reader takes (flags, normal, depth, the lobe's
 // scalars, the draw's slot) and G1 the transfer weights only the light walk and the debt read. What the reader can
@@ -79,6 +79,7 @@ void CxGbufPack(CxGbuf g, out uvec4 w0, out uvec4 w1)
     uvec2 n = uvec2(ivec2(round(clamp(CxOctEncode(g.N), -1.0, 1.0) * 2047.0)) + 2048);
     uint coat = uint(round(clamp(g.coat, 0.0, 1.0) * 127.0)), coatR = uint(round(CxGbSq(g.coatRough) * 127.0));
     w0 = uvec4((g.flags & 255u) | (n.x << 8u) | (n.y << 20u),
+               // the half fills bytes 0..1, the two unorms bytes 2..3
                packHalf2x16(vec2(g.viewDepth, 0.0)) | packUnorm4x8(vec4(0.0, 0.0, g.rough, g.spec)),
                packUnorm4x8(vec4(CxGbSq(g.specC.r), CxGbSq(g.specC.g), CxGbSq(g.specC.b), g.fresnel)),
                (uint(g.slot) & ((1u << CX_GB_SLOT_BITS) - 1u)) | (coat << 18u) | (coatR << 25u));

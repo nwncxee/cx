@@ -899,14 +899,14 @@ def check_lmenc(g):
     return int(bad)
 
 
+GBUF_SLOT = int(re.search(r"const int MaxOwned = (\d+)", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/AlloyRenderer.cs")).read()).group(1)) - 1
 GBUF_CASES = [
     # N, flags, viewDepth, rough, spec, fresnel, coat, coatRough, specC, slot, specT, diffT, lmLum, lmMover, lmShare
     ((0.0, 0.0, 1.0), 1, 0.5, 0.02, 0.04, 0.0, 0.0, 0.0, (0.04, 0.04, 0.04), 0, 1.0, (0.5, 0.25, 0.125), 0.0, (0, 0, 0, 0), (0, 0, 0)),
-    ((0.0, 0.0, -1.0), 63, 37.25, 1.0, 1.0, 1.0, 1.0, 1.0, (1.0, 1.0, 1.0), 163839, 10.0, (40.0, 0.001, 3.0), 12.5, (1, 0.5, 0.25, 0), (55.0, 54.0, 0.0)),
+    ((0.0, 0.0, -1.0), 63, 37.25, 1.0, 1.0, 1.0, 1.0, 1.0, (1.0, 1.0, 1.0), GBUF_SLOT, 10.0, (40.0, 0.001, 3.0), 12.5, (1, 0.5, 0.25, 0), (55.0, 54.0, 0.0)),
     ((0.267, -0.535, 0.802), 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, (0.9, 0.3, 0.004), 4097, 0.37, (1e-4, 2e-4, 3e-4), 0.0213, (0.2, 0.4, 0.6, 0.8), (0.7, 0.8, 0.9)),
     ((-0.6, 0.64, -0.48), 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, (0.0, 0.5, 0.25), 99999, 0.0, (0.0, 0.0, 0.0), 300.0, (0, 1, 0, 1), (1000.0, 1.0, 0.01)),
 ]
-GBUF_SLOT = 163839
 
 
 def check_gbuf(g):
@@ -916,6 +916,7 @@ def check_gbuf(g):
     depth and a cleared G0."""
     fn = nv_context()
     if fn is None:
+        print("gbuf lanes: skipped (no driver context)")
         return 0
     import ctypes as C
     u, i, vp = C.c_uint, C.c_int, C.c_void_p

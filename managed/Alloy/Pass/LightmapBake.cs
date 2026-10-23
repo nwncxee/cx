@@ -58,7 +58,7 @@ internal static unsafe partial class LightmapBake
     private static readonly int[] _slotRect = new int[AlloyRenderer.MaxOwned];
     /// <summary>The CxChartBuf mirror, per slot: (page, u0, v0, s) with page -1 for unbaked, then the pick --
     /// the four set indices page C's bytes belong to (-1 = none).</summary>
-    private const int RecFloats = 8;
+    internal const int RecFloats = 8;
     private static readonly float[] _rec = new float[AlloyRenderer.MaxOwned * RecFloats];
     private static int _dirtyLo = int.MaxValue, _dirtyHi = -1;
     /// <summary>The page, scratch and readback names and the flags that say what they hold, in one object:

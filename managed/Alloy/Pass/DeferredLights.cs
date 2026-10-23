@@ -221,8 +221,8 @@ internal static unsafe class DeferredLights
         if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindImageTexture == null || Gl.BindBufferBase == null)
             return _down.Fail(_log, "compute, image stores or SSBO entry points are missing", "deferred point lights are off for the session");
         string src = ShaderStages.Source(ShdCs);
-        if (!ShaderContract.RecordSafe(src))
-            return _down.Fail(_log, "the program's CxDraw record disagrees with the extender's (an override older than it)",
+        if (!ShaderContract.RecordSafe(src) || !ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
+            return _down.Fail(_log, "the program's CxDraw or CxChart record disagrees with the extender's (an override older than it)",
                               "deferred point lights are off for the session");
         uint prog = GlProgram.Compute(ShdCs, src, _log, "DeferredLights");
         if (prog == 0)

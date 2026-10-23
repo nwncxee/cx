@@ -73,7 +73,7 @@ internal static unsafe class GBuffer
         LightmapBake.BindChartBuffer();
     }
 
-    /// <summary>Unbind what <see cref="BindForCompute"/> bound, same order.</summary>
+    /// <summary>Unbind the textures <see cref="BindForCompute"/> bound; the chart buffer is a shared point its next reader rebinds.</summary>
     internal static void UnbindCompute()
     {
         BindUnit(TextureSlots.Gbuf0, 0);
