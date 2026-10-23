@@ -406,7 +406,8 @@ internal static class ShaderContract
                   // ...and the base modifier is applied exactly once per lobe: ADR 0026 moved it INTO
                   // CxLoopSpec (distributed over the sum, the same product), so a second copy outside is
                   // silent and wrong by exactly itself.
-                  && OwnedLitFsMain.Contains("cxSpecScale = (uMaterial.x > 0.5 ? vec3(1.0) : specColor) * CxSpecBase(NoV, rough)")
+                  && OwnedLitFsMain.Contains("cxSpecScale = CxSpecScaleOf(uMaterial.x > 0.5 ? F0 : specColor, NoV, rough, cxCoat);")
+                  && MaterialLib.Contains("return s * (CxSpecBase(NoV, rough) * CxCoatT(coat, NoV));")
                   && !OwnedLitFsMain.Contains("* (specColor * CxSpecBase(")
                   && AlloyLights.FragmentLib.Contains("vec3 spc = dif * CX_LOOP_SPEC(lobe, N, V, L, spread);")
                   && MaterialLib.Contains("vec3 s = lobe * cxSpecScale;")

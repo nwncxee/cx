@@ -96,7 +96,7 @@ internal static class ShaderStages
         (GrassField.ShdBladeVs,            Banner),
         (GrassField.ShdBladeFs,            Banner),
         (AlloyLights.ShdClusterCs,         Banner),
-        (DeferredLights.ShdCs,             Banner),
+        (DeferredLights.ShdCs,             Banner + Record),
         (DeferredShadows.ShdCs,            Banner),
         (PairDebt.ShdCs,                   Banner),
         (FogVolume.ShdLightCs,             Banner),

@@ -114,9 +114,9 @@ keep the full walk's registers allocated in the very programs the step exists to
 `DeferredLights` is one pass and two dispatches: the shadow record (`DeferredShadows`, `cx_defshadow_cs`) and then
 the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 
-- `GBuffer.BeginFrame()` clears G0 to zero before `OpaqueOwned`. G1..G3 are never cleared: G0's flag byte
+- `GBuffer.BeginFrame()` clears G0 to zero before `OpaqueOwned`. G1 is never cleared: G0's flag byte
   gates every read.
-- `OpaqueOwned` and `CutoutOwned` attach G0..G3 at COLOR4..7 (draw buffers `{0, NONE, 2, 3, 4, 5, 6, 7}`
+- `OpaqueOwned` and `CutoutOwned` attach G0..G1 at COLOR4..5 (draw buffers `{0, NONE, 2, 3, 4, 5}`
   while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6, 7}` otherwise) and detach after
   `CutoutOwned`. A prepassed batch draws at `GL_EQUAL`, a non-prepassed one at `LEQUAL` with depth writes, so
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.
@@ -154,13 +154,15 @@ Known deviations), so the twin writes the derivatives:
 |---|---|
 | `N` | the shading normal handed to `CxClusteredLightLm` |
 | `rough`, `spec`, `fresnel` | the loop's `rough`, `specularity`, and `cxFresnel` at the call |
-| `coat`, `coatRough`, `sheen`, `sheenRough`, `f0`, `specScale` | `cxCoat`, `cxCoatRough`, `cxSheen`, `cxSheenRough`, `cxF0`, `cxSpecScale` -- the state `CxLoopSpec` reads |
+| `coat`, `coatRough` | `cxCoat`, `cxCoatRough` |
+| `specC` | `cxF0` under the modern model, the specular colour under the engine's: the one colour each model's lobe reads. The reader rebuilds `cxSpecScale` from it with the lit stage's own `CxSpecScaleOf(specC, N.V, rough, coat)` instead of storing the product |
+| `slot` | the draw's ownership slot. The reader fetches what is per draw rather than per pixel by it: `cxSheen`/`cxSheenRough` (`CxSheenOf(uDraw[slot].ext1)`), `lmTexel` and `lmPick` (`uChart[slot]`) |
 | `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0`); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`); `CX_GB_STOCKLOBE` (`cxModern == 0`: the engine's grazing forms) |
 | `diffT` (Wd) | d(final pixel) / d(`point`): albedo x matDiffuse x kd x coatT x wxTransmit x dirOcc, plus the couplings through `diffuse` (the legacy env pattern's `(ambient + diffuse) * pat`, the coat probe's `(ambient + diffuse) * cenv`), x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`, the part's own alpha `rot.w`, never the texture's coverage) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `lmLum` | luminance of the undimmed `lm` (the `lmSub.x` denominator); 0 on an unbaked pixel |
 | `lmShare` (L) | the full contribution of `lm` to the final pixel (its diffuse through Wd and its lobe through P), so the debt is `final -= L * min(lmSub.x / lmLum + lmSub.y, 1)` |
-| `lmTexel`, `lmMover`, `lmPick` | `CxLmTexelWorld(chart.rec)`, `CxLightmapMover(chart.rec, vChart)`, `chart.pick` (byte lanes: a set index past 254 reads back as no channel -- ponytail: widen the lane if an area ever closes that many sets) |
+| `lmMover` | `CxLightmapMover(chart.rec, vChart)` |
 | `viewDepth` | the twin's linear view depth, `1 / gl_FragCoord.w` -- the record's ownership test |
 
 The compute pass then adds, per pixel:
@@ -250,8 +252,10 @@ The debt is taken instead by **`cx_pairdebt`**, a second 16x16 compute dispatch 
 - **worldPos** is reconstructed from the depth buffer, not interpolated: it carries the window-depth
   quantisation into V, the attenuation distance and the cube-shadow geometry. "Bit-for-bit on the same inputs"
   holds for every input but this one.
-- **Precision**: N is snorm16 octahedral, the small alphas and the sheen colour sqrt-encoded unorm8, the
-  weights half floats. A highlight off a near-mirror film is where it would show first. `rough` within 1/255 of the
+- **Precision**: N is 12-bit snorm octahedral, `specC` sqrt-encoded unorm8, the coat and its alpha 7-bit (the
+  alpha sqrt-encoded), Wd and L shared-exponent RGB (9-bit mantissas), P and `lmLum` half floats. `specC` is
+  clamped to 1, so an engine-model specular colour a content body raised past 1 is held at 1. `cxSpecScale` is
+  rebuilt on the reconstructed V rather than the interpolated one (the worldPos deviation below). A highlight off a near-mirror film is where it would show first. `rough` within 1/255 of the
   `light.hidden` ceiling can fall on the other side of `CxGlossy`/`CxGlossW` than it did forward.
 
 ### The shadow record (step 3)

@@ -147,6 +147,10 @@ internal static unsafe partial class LightmapBake
     /// reads the lightmap.</summary>
     internal static string ChartBufDecl => ShaderSource.Get("cx_chartbuf.glsl");
 
+    /// <summary>The record buffer alone, for a G-buffer reader: the twin read its draw's record there, and the
+    /// reader fetches the same row by the slot the G-buffer keeps (cx_gbuf).</summary>
+    internal static void BindChartBuffer() => Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindChart, _gl.BufChart);
+
     /// <summary>From the lit program bind: the record buffer, the pages and the two uniforms. Pages 0 when
     /// nothing is resident, so a record that somehow reads a page is ignored rather than sampled.</summary>
     internal static void BindForDraw(int locPages, int locMovers)

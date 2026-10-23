@@ -10,8 +10,8 @@
     rough = max(rough, CX_ALPHA_MIN);
     // after the weather splice, so a puddle's 0.03 is widened too
     if (uMaterial.z > 0.5) rough = sqrt(min(rough * rough + aaKernel, 1.0));
-    cxCoat = 0.0; cxCoatRough = 0.0; cxSheen = vec3(0.0); cxSheenRough = 0.0;
-    float coatT = 1.0;
+    cxCoat = 0.0; cxCoatRough = 0.0;
+    CxSheenOf(d.ext1, cxSheen, cxSheenRough);
     vec3 msc = vec3(1.0);
     if (uMaterial.x > 0.5)
     {
@@ -21,12 +21,6 @@
         {
             float cp = d.ext0.w >= 0.0 ? d.ext0.w : CX_COAT_ROUGH_DEFAULT;
             cxCoatRough = max(cp * cp, CX_ALPHA_MIN);
-        }
-        if (max(d.ext1.r, max(d.ext1.g, d.ext1.b)) > 0.0)
-        {
-            cxSheen = d.ext1.rgb;
-            float sp = d.ext1.w >= 0.0 ? d.ext1.w : CX_SHEEN_ROUGH_DEFAULT;
-            cxSheenRough = max(sp * sp, CX_ALPHA_MIN);
         }
     }
     // R3: standing water is a clear coat on ANY material, the engine model included -- the one layer the
@@ -42,9 +36,9 @@
     // a thin bright curve that crawls as the camera moves.
     if (cxCoatRough > 0.0 && uMaterial.z > 0.5) cxCoatRough = sqrt(min(cxCoatRough * cxCoatRough + aaKernel, 1.0));
     // what the coat reflects never reaches the layer under it
-    if (cxCoat > 0.0) coatT = 1.0 - cxCoat * mix(CX_DIELECTRIC_F0, 1.0, CxFresnel(NoV));
+    float coatT = CxCoatT(cxCoat, NoV);
     cxF0 = F0; cxSpec = spec;
-    cxSpecScale = (uMaterial.x > 0.5 ? vec3(1.0) : specColor) * CxSpecBase(NoV, rough) * msc * coatT;
+    cxSpecScale = CxSpecScaleOf(uMaterial.x > 0.5 ? F0 : specColor, NoV, rough, cxCoat);
     // the diffuse share: the engine's 1 - fEnvironmentSpecularity (inc_lighting.shd:549, :603-609), the
     // specularity raised toward 1 by the view Fresnel and pulled back by sqrt(roughness); a physical metal has
     // none at all. The max() keeps a dielectric at 0.96 and still lets the wet splice's specularity take its share.

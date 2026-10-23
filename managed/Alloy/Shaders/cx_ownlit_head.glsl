@@ -78,7 +78,7 @@ int CxA2cMask(float a)
 #include "cx_ssr.glsl"
 #include "cx_reflrec.glsl"
 // CX-188 (ADR 0029): the deferred G-buffer's lanes. CX_GBUF_OUT -- which only the CX_DEFERRED twin is built
-// with -- is what turns its four outputs on at locations 4..7; without it this is the reader's half alone.
+// with -- is what turns its two outputs on at locations 4..5; without it this is the reader's half alone.
 #include "cx_gbuf.glsl"
 // CX-188: the deferred pass's light record, read by a forward fragment lying on a deferred surface (blended only)
 layout(binding = 26) uniform usampler2D uLightRec;

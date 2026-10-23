@@ -33,6 +33,7 @@ vec2 cxPixel;
 #define CX_PAIR_RECV 1
 
 #include "cx_pass.glsl"
+#include "cx_chartbuf.glsl"
 #include "cx_gbuf.glsl"
 #include "cx_shrec.glsl"
 #include "cx_localshadow.glsl"
@@ -43,9 +44,6 @@ vec2 cxPixel;
 #include "cx_shpick.glsl"
 
 layout(binding = 3) uniform usampler2D uGb0;
-layout(binding = 4) uniform usampler2D uGb1;
-layout(binding = 5) uniform usampler2D uGb2;
-layout(binding = 6) uniform sampler2D uGb3;
 layout(binding = 7) uniform sampler2D uGbDepth;
 layout(rgba8, binding = 0) uniform writeonly image2D uOutVis;
 layout(rg32ui, binding = 1) uniform writeonly uimage2D uOutKey;
@@ -86,8 +84,7 @@ void main()
         float ndcZ = texelFetch(uGbDepth, p, 0).r * 2.0 - 1.0;
         float viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
         CxGbuf g;
-        if (CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), texelFetch(uGb2, p, 0),
-                       texelFetch(uGb3, p, 0), viewDepth, g))
+        if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, g))
         {
             cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
             // shadow.cubedist and the receiver's own flag, exactly as the walk computes them: a pixel that owes

@@ -125,6 +125,32 @@ vec3 CxMultiScatter(vec3 f0, float NoV, float perceptual)
     return 1.0 + f0 * (1.0 / max(ab.x + ab.y, 0.05) - 1.0);
 }
 
+/// What a clear coat of weight <paramref name="coat"/> lets through to the layer under it.
+float CxCoatT(float coat, float NoV)
+{
+    return coat > 0.0 ? 1.0 - coat * mix(CX_DIELECTRIC_F0, 1.0, CxFresnel(NoV)) : 1.0;
+}
+
+/// cxSpecScale: the view-side normalisation x multiscatter x coat transmission. <paramref name="c"/> is cxF0
+/// under the modern model and the specular colour under the engine's -- the one colour each model's lobe reads,
+/// which is why the G-buffer keeps it and rebuilds this rather than storing the product.
+vec3 CxSpecScaleOf(vec3 c, float NoV, float rough, float coat)
+{
+    vec3 s = uMaterial.x > 0.5 ? CxMultiScatter(c, NoV, sqrt(rough)) : c;
+    return s * (CxSpecBase(NoV, rough) * CxCoatT(coat, NoV));
+}
+
+/// The sheen layer a draw record's ext1 declares (linear colour, perceptual roughness, -1 = the default) under
+/// the modern model; none under the engine's, and none where the colour is black. Alpha 0 = no sheen.
+void CxSheenOf(vec4 ext1, out vec3 sheen, out float sheenRough)
+{
+    sheen = vec3(0.0); sheenRough = 0.0;
+    if (uMaterial.x <= 0.5 || max(ext1.r, max(ext1.g, ext1.b)) <= 0.0) return;
+    sheen = ext1.rgb;
+    float sp = ext1.w >= 0.0 ? ext1.w : CX_SHEEN_ROUGH_DEFAULT;
+    sheenRough = max(sp * sp, CX_ALPHA_MIN);
+}
+
 /// Specular anti-aliasing (Kaplanyan & Hoffman 2016, Tokuyoshi's bounded form): the alpha^2 a
 /// highlight must widen by, from the screen-space variance of the surface normal, so a lobe narrower
 /// than a pixel does not crawl. The geometric normal, and taken ahead of every discard: a cutout kills

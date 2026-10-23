@@ -131,8 +131,9 @@
                 | (cxRecvShadow == 0.0 ? CX_GB_NOSHADOW : 0u)
                 | (cxModern < 0.5 ? CX_GB_STOCKLOBE : 0u);
         g.N = N; g.rough = rough; g.spec = spec; g.fresnel = cxFresnel;
-        g.coat = cxCoat; g.coatRough = cxCoatRough; g.sheenRough = cxSheenRough;
-        g.sheen = cxSheen; g.f0 = cxF0; g.specScale = cxSpecScale;
+        g.coat = cxCoat; g.coatRough = cxCoatRough;
+        // the reader rebuilds cxSpecScale and fetches the sheen by slot (cx_gbuf)
+        g.specC = uMaterial.x > 0.5 ? cxF0 : specColor; g.slot = vDraw;
         // the ghost divide, applied to specLight just above: vanilla pre-divides the specular by the alpha it
         // is about to be blended by, so everything reaching the pixel THROUGH specLight carries it
         float ghost = partA < 1.0 && partA > 0.001 ? max(partA, 0.1) : 1.0;
@@ -150,9 +151,7 @@
         g.diffT = dirOcc * thru * (albedo * (matDiffuse * (kd * coatT * wxTransmit))
                                    + (gCoatProbe + reflW * (CX_ENV_GREY_LIN * (gEnvPat * envMix))) / ghost);
         g.lmLum = gLmLum;
-        g.lmTexel = CxLmTexelWorld(chart.rec);
         g.lmMover = baked ? CxLightmapMover(chart.rec, vChart) : vec4(0.0);
-        g.lmPick = chart.pick;
         g.viewDepth = 1.0 / gl_FragCoord.w;
         // L: the baked term's whole contribution -- its diffuse rode `point` into Wd, its lobe rode
         // `pointSpec` into P. The twin left `lm` undebited, so this is exactly what the debt scales back.
