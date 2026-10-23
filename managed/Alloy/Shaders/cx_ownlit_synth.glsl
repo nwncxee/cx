@@ -263,7 +263,12 @@ void main()
     // invisible it drew -- the #294 crystal reads bright and solid in vanilla and as a ghost here.
     // CasterPass already knew this and lowered its own env threshold for the same reason; the
     // colour path's turn.
-    float coverage = (slots & CX_SLOT_ENV) != 0 ? 1.0 : texel.a;
+    bool alphaIsEnv = (slots & CX_SLOT_ENV) != 0;
+#ifdef CX_CONTENT_ENVMAP
+    // a content stage's own ENVIRONMENT_MAP 1 is the define stock reads, whatever the material says
+    alphaIsEnv = alphaIsEnv || feat >= CX_FEAT_CONTENT0;
+#endif
+    float coverage = alphaIsEnv ? 1.0 : texel.a;
     float cutMip = uAlphaMip;
     vec2 cutSize = vec2(textureSize(uTex, 0));
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
@@ -275,7 +280,7 @@ void main()
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
     // why this costs nothing on the parts that are not env-mapped.
-    float envLevel = (slots & CX_SLOT_ENV) != 0 ? 1.0 - texel.a : 0.0;
+    float envLevel = alphaIsEnv ? 1.0 - texel.a : 0.0;
     texel.rgb = mix(texel.rgb, CX_ENV_GREY, envLevel);
     vec3 albedo = CxLinear(texel.rgb);
 #ifdef CX_DECAL_WRITE

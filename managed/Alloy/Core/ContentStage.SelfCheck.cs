@@ -27,6 +27,8 @@ internal static partial class ContentStage
                        + "    SetupStandardShaderInputs();\n    float glow = 0.5, other = 1.0;\n    FragmentColor.rgb *= other;\n"
                        + "    ApplyStandardShader();\n    FragmentColor.rgb += vec3(glow) * float(numLights);\n"
                        + "    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixenv"] = "#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                      + "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
         ["cx_fixwhole"] = "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
         ["cx_fixown"] = "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
     };
@@ -85,6 +87,10 @@ internal static partial class ContentStage
                      && post.Host.Contains("float other = 1.0;") && post.Host.Contains("FragmentColor.rgb += vec3(cxHoist_glow)")
                      && post.Host.Contains("CxConFillLights();"),
                      "a local the post body reads is not hoisted and renamed, one it does not read moved, or the lights are not filled");
+        Result envStage = Translate("cx_fixenv", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")
+                     && !r.Host.Contains("CX_CONTENT_ENVMAP"),
+                     "a stage's own ENVIRONMENT_MAP 1 does not make its diffuse alpha an env level, or one without it does");
         Result whole = Translate("cx_fixwhole", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(whole.Refused == null && whole.Post && !whole.Cuts
                      && whole.Host.Contains("void CxContentMain()\n{\n}") && whole.Notes.Any(n => n.Contains("lights itself")),

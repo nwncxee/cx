@@ -148,6 +148,7 @@ ENV_DECL = re.compile(r"^(?:(?:const|uniform|lowp|mediump|highp)\s+)*(" + GLSL_T
 FN_DEF = re.compile(r"^[ \t]*(?:(?:lowp|mediump|highp|const)\s+)*" + GLSL_TYPE + r"\s+(\w+)\s*\(", re.M)
 GUARD = re.compile(r"^[ \t]*#[ \t]*ifndef[ \t]+(\w+)[ \t]*\r?\n[ \t]*#[ \t]*define[ \t]+\1\b", re.M)
 OWN_COVERAGE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(?:ENVIRONMENT_MAP|NO_TEXTURE)[ \t]+1\b", re.M)
+ENV_STAGE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+ENVIRONMENT_MAP[ \t]+1\b", re.M)
 KEYHOLE_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+KEYHOLING[ \t]+(\d+)", re.M)
 ALPHA_WRITE = re.compile(r"\b(?:FragmentColor|gl_FragColor)\s*=\s*vec4\s*\(")
 OPENER_RHS = re.compile(r"\s*1(?:\.0*)?\s*\)")
@@ -636,6 +637,7 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
     if fragment:
         host += (vanilla_defs + ("" if vanilla_defs.endswith("\n") else "\n")
                  + "#define CX_CONTENT_PROGRAM 1\n" + ("#define CX_CONTENT_POST 1\n" if r.post else "")
+                 + ("#define CX_CONTENT_ENVMAP 1\n" if ENV_STAGE.search(flat) else "")
                  + "bool CxHostSurface(int feat)\n{\n    if (feat < CX_FEAT_CONTENT0) return false;\n"
                  + "    CxContentBody();\n    return true;\n}\n")
     r.host = host
@@ -661,6 +663,8 @@ FIXTURE = {
                    "    SetupStandardShaderInputs();\n    float glow = 0.5, other = 1.0;\n    FragmentColor.rgb *= other;\n"
                    "    ApplyStandardShader();\n    FragmentColor.rgb += vec3(glow) * float(numLights);\n"
                    "    gl_FragColor = FragmentColor;\n}\n"),
+    "cx_fixenv": "#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                 "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
     "cx_fixown": "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
 }
@@ -712,6 +716,9 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
               "FragmentColor.rgb += vec3(cxHoist_glow)", "CxConFillLights();"):
         if s not in post.host:
             bad.append(f"the post fixture lacks {s!r}")
+    envs = translate("cx_fixenv", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if envs.refused or "#define CX_CONTENT_ENVMAP 1" not in envs.host or "CX_CONTENT_ENVMAP" in r.host:
+        bad.append("a stage's own ENVIRONMENT_MAP 1 does not make its diffuse alpha an env level, or one without it does")
     whole = translate("cx_fixwhole", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if whole.refused or not whole.post or whole.cuts or "void CxContentMain()\n{\n}" not in whole.host:
         bad.append("a whole stage is not all post body")
