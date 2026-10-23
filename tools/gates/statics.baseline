@@ -111,10 +111,10 @@
 15 managed/Alloy/OwnedTextures.Cache.cs
 15 managed/Alloy/OwnedTextures.cs
 3 managed/Alloy/OwnedTextures.Cube.cs
-2 managed/Alloy/OwnedTextures.Dds.cs
 9 managed/Alloy/OwnedTextures.Plt.cs
 5 managed/Alloy/OwnedTextures.Retire.cs
 25 managed/Alloy/OwnedTextures.Transcode.cs
+2 managed/Alloy/OwnedTextures.Upload.cs
 23 managed/Alloy/Pass/AlloyLights.cs
 6 managed/Alloy/Pass/AreaBorder.cs
 9 managed/Alloy/Pass/Beams.cs

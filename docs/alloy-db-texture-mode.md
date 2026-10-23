@@ -65,14 +65,10 @@ Still in the tree, and owed a deletion. Each line is gated by nothing -- it goes
 on, because a renderer that keeps both warm is what ADR 0018's restart-only rule exists to prevent.
 
 **PLT, which the shader resolve replaces outright:**
-- `OwnedTextures.KeepPltOnCpu()` and the `_pltOnGpu` / `_pltWanted` / `_pltForced` state
-  (`managed/Alloy/OwnedTextures.cs`), plus its two call sites in `OnConstructImage` / `OnGlImageBasic` and the
+- `OwnedTextures.KeepPltOnCpu()` and the `_pltOnGpu` / `_pltForced` state
+  (`managed/Alloy/OwnedTextures.Plt.cs`), plus its two call sites in `OnConstructImage` / `OnGlImageBasic` and the
   per-frame re-assert in `AlloyRenderer.cs` (the `OwnedTextures.KeepPltOnCpu(); OwnedTextures.Drain();`
   bracket hook). `SymbolMap.PltOnGpu` goes with them.
-- The GPU-PLT adoption by copy: `QueuePltCopy`, `DrainPltCopies`, `PltCopy`, `_pltQ`, `_pltCopied`,
-  `_pltCopyRefused`, `_pltCopyDied`, `_pltNoCopyLogged`, `_pltCopyDiagLeft` and their clauses on the `[vram]`
-  and cache notes (#360/#361), and `OwnedTextures.SelfCheck.cs`'s `_pltQ` dedup case.
-- The `alloy.pltcpu` knob (`Renderer.PltCpu`) and `OwnedTextures.Install`'s three log lines about it.
 - `FrameZones.Zone.DemPlt` and `Ev.PltDemands`: in DB mode no PLT is ever demanded through the engine, so
   `DemPlt` reads 0 on `[zones]` after a PLT's first load. (The counters stay until the engine demand path
   goes; they are the acceptance read.)
@@ -122,7 +118,7 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
    against layer 9's row and is counted, where the engine reads stale stack.
 4. **The palette is fetched exactly, not filtered.** Alloy reproduces the **CPU** composite
    (`ImageDecode` @0x4b6580), which is an exact 32-bit copy of one palette texel -- and the CPU composite is
-   what `alloy.pltcpu=1`, the shipped default, has been producing all along. The engine's two *other*
+   what the engine path produces too, since `OwnedTextures` holds the GPU-PLT flag at zero. The engine's two *other*
    producers of a palette row normalise it differently and neither is reproduced:
    `glImageBasic`'s GPU branch uploads `(scheme[i] + 0.5f) / (float)paletteheight` and samples
    `fs_pltgen`'s `texUnitPalette` with LINEAR filtering (disassembled at 0x48c480-0x48c4bd: `movups` 1.0f

@@ -31,7 +31,7 @@ internal static class Renderer
     /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
     internal static readonly Knob<bool> Native;
     internal static readonly Knob<bool> TexPreview;
-    internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, PltCpu, TexSingle, DdsRead, HandleDrop, OwnedGeom,
+    internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, TexSingle, DdsRead, HandleDrop, OwnedGeom,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
                                         Gui, Movie;
     internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
@@ -152,7 +152,6 @@ internal static class Renderer
         DrawHooks = G.Dropdown("drawhooks", "drawhooks", new[] { DrawFunnelService.DrawModeBatch, DrawFunnelService.DrawModeStats },
                                DrawFunnelService.DrawModeBatch, tier: Tier.ChatOnly, effect: Effect.Restart);
         OwnedTex = G.Toggle("ownedtex", "ownedtex", true, Tier.ChatOnly, Effect.Restart);
-        PltCpu = G.Toggle("pltcpu", "pltcpu", true, Tier.ChatOnly, Effect.Restart);
         // CX-117: compare Alloy's whole PLT chain (file decode + master palette + scheme rows + resolve)
         // against the engine's own CPU composite, once per PLT texture at its first build. Cold, and
         // off by default: it reads every PLT file a second time.

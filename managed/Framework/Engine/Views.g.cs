@@ -788,6 +788,10 @@ public readonly unsafe ref partial struct CAurTexture(IntPtr ptr)
     public int GetBPP() => ((delegate* unmanaged<IntPtr, int>)GetBPPFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.TexGetBppSlot"/>
     public IntPtr GetBPPFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.TexGetBppSlot);
+    /// <inheritdoc cref="EngineLayout.TexClampSlot"/>
+    public int GetClamp() => ((delegate* unmanaged<IntPtr, int>)GetClampFn)(Ptr);
+    /// <inheritdoc cref="EngineLayout.TexClampSlot"/>
+    public IntPtr GetClampFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.TexClampSlot);
     /// <inheritdoc cref="EngineLayout.TexCompressedSizeSlot"/>
     public int GetCompressedSize() => ((delegate* unmanaged<IntPtr, int>)GetCompressedSizeFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.TexCompressedSizeSlot"/>
@@ -796,6 +800,10 @@ public readonly unsafe ref partial struct CAurTexture(IntPtr ptr)
     public int GetCompressionFormat() => ((delegate* unmanaged<IntPtr, int>)GetCompressionFormatFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.TexFormatSlot"/>
     public IntPtr GetCompressionFormatFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.TexFormatSlot);
+    /// <inheritdoc cref="EngineLayout.TexFilterSlot"/>
+    public byte GetFilter() => ((delegate* unmanaged<IntPtr, byte>)GetFilterFn)(Ptr);
+    /// <inheritdoc cref="EngineLayout.TexFilterSlot"/>
+    public IntPtr GetFilterFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.TexFilterSlot);
     /// <inheritdoc cref="EngineLayout.TexGetHeightSlot"/>
     public int GetHeight() => ((delegate* unmanaged<IntPtr, int>)GetHeightFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.TexGetHeightSlot"/>
@@ -804,6 +812,10 @@ public readonly unsafe ref partial struct CAurTexture(IntPtr ptr)
     public IntPtr GetImage() => ((delegate* unmanaged<IntPtr, IntPtr>)GetImageFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.TexGetImageSlot"/>
     public IntPtr GetImageFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.TexGetImageSlot);
+    /// <inheritdoc cref="EngineLayout.TexLevelSizeSlot"/>
+    public int GetLevelSize(int w, int h) => ((delegate* unmanaged<IntPtr, int, int, int>)GetLevelSizeFn)(Ptr, w, h);
+    /// <inheritdoc cref="EngineLayout.TexLevelSizeSlot"/>
+    public IntPtr GetLevelSizeFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.TexLevelSizeSlot);
     /// <inheritdoc cref="EngineLayout.TexMipMapSlot"/>
     public int GetMipMap() => ((delegate* unmanaged<IntPtr, int>)GetMipMapFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.TexMipMapSlot"/>

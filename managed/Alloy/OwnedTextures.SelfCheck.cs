@@ -105,20 +105,6 @@ internal static unsafe partial class OwnedTextures
         foreach (var kv in savedIdx) _index[kv.Key] = kv.Value;
         foreach (uint o in savedOwned) _owned.Add(o);
         foreach (int b in savedBorrowed) _borrowed.Add(b);
-        // #360: the queue's two edges, off-device. A copy that outlives the name it was queued against
-        // reads a recycled texture, which is the whole of what killed #211's copy path -- so the drop is
-        // asserted here, and asserted to be exact rather than a wipe.
-        int svQDied = (int)_pltCopyDied;
-        var svQ = new List<PltCopy>(_pltQ);
-        _pltQ.Clear();
-        _pltQ.Add(new PltCopy(41, 100)); _pltQ.Add(new PltCopy(42, 200)); _pltQ.Add(new PltCopy(41, 300));
-        uint deadName = 41;
-        Retire(1, &deadName);
-        ok &= _pltQ.Count == 1 && _pltQ[0].Src == 42 && _pltCopyDied == svQDied + 2;
-        _pltQ.Clear();
-        foreach (PltCopy q in svQ) _pltQ.Add(q);
-        _pltCopyDied = svQDied;
-
         // #358: the hold itself, over a stand-in flag. A re-clear that does not actually zero the global is
         // the whole bug wearing a fixed label, and the readers' trampolines are two lines around this call.
         int stand = 1;
@@ -130,9 +116,30 @@ internal static unsafe partial class OwnedTextures
         ok &= _pltForced == 2;                                      // already zero: nothing to re-clear
         _pltOnGpu = svPlt; _pltForced = svForced; _pltDiagLeft = svDiag;
 
+        ok &= SelfCheckUpload(log);
+
         _armed = wasArmed;
         _retired = savedRetired;   // the check's own synthetic deletes are not a session's
         log.Info(ok ? "OwnedTextures.SelfCheck: passed" : "OwnedTextures.SelfCheck: FAILED");
         return ok;
+    }
+
+    /// <summary>The engine's upload decisions, off-device. Oracle: the GL enums <c>GLRender::SetTextureParameters</c>
+    /// @0x4ca180 writes per branch and <c>SetTextureMipmapLevelParameters</c> @0x4c9c70's MAX_LEVEL, read off the
+    /// disassembly and written here as literals.</summary>
+    private static bool SelfCheckUpload(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        Sampler s = EngineSampler(0, linear: true, mip: true);
+        check.Expect(s == new Sampler(0x2703, 0x2601, 0x2901, 0x2901, true), $"linear mipped repeat: {s}");      // not-an-offset: GL enums
+        s = EngineSampler(3, linear: true, mip: false);
+        check.Expect(s == new Sampler(0x2600, 0x2601, 0x812F, 0x812F, false), $"linear unmipped clamped: {s}");  // not-an-offset: GL enums
+        s = EngineSampler(2, linear: false, mip: true);
+        check.Expect(s == new Sampler(0x2700, 0x2600, 0x2901, 0x812F, false), $"nearest mipped, T clamped: {s}"); // not-an-offset: GL enums
+        s = EngineSampler(1, linear: false, mip: false);
+        check.Expect(s == new Sampler(0x2600, 0x2600, 0x812F, 0x2901, false), $"nearest unmipped, S clamped: {s}"); // not-an-offset: GL enums
+        check.Expect(EngineLevels(256, 256) == 9 && EngineLevels(512, 64) == 10 && EngineLevels(1, 1) == 1 && EngineLevels(3, 5) == 3,
+                     $"levels: {EngineLevels(256, 256)} {EngineLevels(512, 64)} {EngineLevels(1, 1)} {EngineLevels(3, 5)}");
+        return check.Ok;
     }
 }
