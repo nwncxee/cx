@@ -135,6 +135,9 @@ offset	CNWCModule	hour	0x16c	0x16c	# ModuleHour
 offset	CNWCModule	minutesPerHour	0x15c	0x15c	# ModuleMinutesPerHour
 offset	CGuiInGameChatPrompt	shown	0x230	0x200	# ChatPromptShown
 offset	CGuiInGameChatPrompt	edit	0x100	0xf8	# ChatPromptEdit
+offset	CGuiInGameChatWindow	parent	0xc48	0xad0	# ChatWindowParent
+offset	CGuiInGameChatWindow	split	0xc50	0xad8	# ChatWindowSplit
+offset	CGuiInGameChatWindow	shown	0xc68	0xaf0	# ChatWindowShown
 offset	CGuiEdit	string	0x90	0x90	# GuiEditString
 offset	CGuiEdit	readOnly	0x110	0xe8	# GuiEditReadOnly
 offset	CAurString	vtbl.SetText	0xd8	0xd0	# AurStringSetTextSlot
@@ -775,6 +778,7 @@ rva	_ZN20CGuiInGameChatWindow4ShowEv	0x87a940	# ChatWindowShow
 rva	_ZN20CGuiInGameChatPrompt4ShowEv	0x87cc00	# ChatPromptShow
 rva	_ZN20CGuiInGameChatPrompt8SetFocusE10CExoString	0x87cb30	# ChatPromptSetFocus
 rva	_ZN20CGuiInGameChatPromptC1Ev	0x87abb0	# ChatPromptCtor
+rva	_ZN20CGuiInGameChatWindow13DoSplitScreenEi	0x879560	# ChatWindowDoSplitScreen
 rva	_ZN10CGuiInGame14ShowChatPromptEv	0x6fb480	# ShowChatPrompt
 rva	_ZN10CGuiInGame29PrepChatPromptForTellToPlayerEP10CNWCPlayer	0x6f9ec0	# PrepChatPromptForTell
 rva	_ZN10CGuiInGame25NotifyServerAboutGuiEventEiijRK6Vector	0x6f9bd0	# NotifyServerGuiEvent

@@ -69,6 +69,10 @@ internal static unsafe class SymbolMap
     /// it, so the prompt is activated at birth there; Linux's ctor calls Show, which the skip already covers.</summary>
     [Fn("IntPtr(CGuiInGameChatPrompt this)")]
     public const string ChatPromptCtor = "_ZN20CGuiInGameChatPromptC1Ev";
+    /// <summary>CGuiInGameChatWindow::DoSplitScreen(int) -- hooked on WINDOWS ONLY: MSVC inlined Show for the split-off
+    /// window into it, so that panel activates past the Show skip; Linux calls Show, which the skip covers.</summary>
+    [Fn("void(CGuiInGameChatWindow this, int arg)")]
+    public const string ChatWindowDoSplitScreen = "_ZN20CGuiInGameChatWindow13DoSplitScreenEi";
     /// <summary>CGuiPanel::Deactivate(int) -- what vanilla Hide pairs with Activate; undoes the ctor-inlined Show.</summary>
     [Fn("void(CGuiPanel this, int arg)")]
     public const string GuiPanelDeactivate = "_ZN9CGuiPanel10DeactivateEi";
@@ -2792,6 +2796,7 @@ internal static unsafe class SymbolMap
         [ChatPromptShow]         = At(),   // shown flag +0x200 (Linux +0x230)
         [ChatPromptSetFocus]     = At(),
         [ChatPromptCtor]         = At(),
+        [ChatWindowDoSplitScreen]= At(),
         [ShowChatPrompt]         = At(),
         [PrepChatPromptForTell]  = At(),
         [NotifyServerGuiEvent]   = At(),

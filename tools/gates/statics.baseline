@@ -268,7 +268,7 @@
 8 managed/Services/Camera/StepGuardService.cs
 28 managed/Services/Camera/TabTargetService.cs
 3 managed/Services/Chat/ChatService.Config.cs
-7 managed/Services/Chat/ChatService.cs
+5 managed/Services/Chat/ChatService.cs
 3 managed/Services/Chat/ChatService.Edit.cs
 11 managed/Services/Chat/ChatService.Input.cs
 10 managed/Services/Chat/ChatService.Render.cs
