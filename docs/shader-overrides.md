@@ -515,7 +515,7 @@ built on.
 
 ### Record — the per-draw SSBO layout
 
-**Applies to:** `cx_own_vs`, `cx_ownlit_vs`, `cx_ownlit_fs`, both `cx_water_*`
+**Applies to:** `cx_own_vs`, `cx_ownlit_vs`, `cx_ownlit_fs`, both `cx_water_*`, `cx_deferred_cs`
 (as `CxDraw`); `cx_cast_vs` (as `CxCaster` *and* `CxDraw`).
 
 **Rejects:** a `struct CxDraw` declaring a different number of trailing `vec4` fields
@@ -668,7 +668,10 @@ zero has to mean "as before" in each of them.
 
 ### Not guarded
 
-`cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_deferred_cs`, `cx_defshadow_cs`, `cx_pairdebt`, `cx_vfog_cs` and `cx_vfogsum_cs` carry no guard.
+`cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_defshadow_cs`, `cx_vfog_cs` and `cx_vfogsum_cs` carry no guard.
+`cx_deferred_cs` and `cx_pairdebt` carry one: they read a G-buffer pixel's draw by its slot -- the lightmap record
+(`CxChart`), and for `cx_deferred_cs` the sheen in `CxDraw` too -- so each is held to those records' counts, and a
+stale one stands its pass down for the session.
 
 The first two read no per-draw record and write no colour; an interface break in them
 fails the **link**, which the build-failure fallback already refuses with a log line.
@@ -678,7 +681,7 @@ it, and a text match on the indexing arithmetic would forbid restyling. It is st
 rather than guessed at: an override of the cluster build that gets the stride wrong will
 fail silently.
 
-`cx_deferred_cs` is the same case from the other end: it reads `uLights` and the cluster
+Past that record, `cx_deferred_cs` is the same case from the other end: it reads `uLights` and the cluster
 table through the shared `cx_lightfrag` library rather than restating either, so what an
 override of it can get wrong is the lane decode (`cx_gbuf`, a library of its own) or the
 arithmetic that turns the walk's result into the pixel. Neither is a text match away. The

@@ -59,6 +59,8 @@ vec2 cxPixel;
 
 #include "cx_pass.glsl"
 #include "cx_ssr.glsl"
+#include "cx_drawbuf.glsl"
+#include "cx_chartbuf.glsl"
 #include "cx_gbuf.glsl"
 #include "cx_shrec.glsl"
 #include "cx_localshadow.glsl"
@@ -67,8 +69,6 @@ vec2 cxPixel;
 
 layout(binding = 3) uniform usampler2D uGb0;
 layout(binding = 4) uniform usampler2D uGb1;
-layout(binding = 5) uniform usampler2D uGb2;
-layout(binding = 6) uniform sampler2D uGb3;
 /// The frame depth AFTER the cutout pass -- the prepass plus any colour-pass write -- which is both the surface
 /// this pass reconstructs and the record's ownership test (cx_gbuf's CX_GB_RECORD).
 layout(binding = 7) uniform sampler2D uGbDepth;
@@ -393,8 +393,7 @@ void main()
         ndcZ = texelFetch(uGbDepth, p, 0).r * 2.0 - 1.0;
         // the forward stage's vDepth: gl_Position.w, which for a perspective projection IS the linear view depth
         viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
-        mine = CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), texelFetch(uGb2, p, 0),
-                          texelFetch(uGb3, p, 0), viewDepth, g);
+        mine = CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth, g);
     }
 #ifndef CX_FILM_PASS
     // a zero where no walk will run (and on every ablation rung below the weights): last frame's record must never
@@ -469,14 +468,15 @@ void main()
         vec3 V = normalize(uEyePos - worldPos);
 
         // The per-fragment material state CxLoopSpec and CxSpecLobe read, as the lit main set it before its first
-        // light. cxSpecScale already carries the view-side normalisation, the multiscatter and the coat transmission.
+        // light. cxSpecScale is rebuilt by the lit main's own CxSpecScaleOf, on this V; the sheen comes off the
+        // draw's record by slot, through the lit main's own CxSheenOf.
         // g.rough is a unorm8 round-trip, so a fragment whose roughness sits within 1/255 of the light.hidden
         // ceiling can land on the other side of CxGlossy/CxGlossW here than it did forward. A lane's precision,
         // stated in the spec; not for this stage to paper over.
-        cxSpecScale = g.specScale;
-        cxF0 = g.f0; cxSpec = g.spec;
+        cxSpecScale = CxSpecScaleOf(g.specC, max(dot(g.N, V), 0.0), g.rough, g.coat);
+        cxF0 = g.specC; cxSpec = g.spec;
         cxCoat = g.coat; cxCoatRough = g.coatRough;
-        cxSheen = g.sheen; cxSheenRough = g.sheenRough;
+        CxSheenOf(uDraw[g.slot].ext1, cxSheen, cxSheenRough);
         cxFresnel = g.fresnel;
         cxModern = (g.flags & CX_GB_STOCKLOBE) != 0u ? 0.0 : 1.0;
         cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
@@ -542,7 +542,7 @@ void main()
         // position, and not one light. The SINK is what keeps them from being dead-stripped -- a tiny
         // multiple of every lane the rung produced, which the half-float target takes to zero.
         vec3 add = vec3(dot(worldPos, vec3(1.0)) + dot(V, vec3(1.0)) + dot(g.N, vec3(1.0))
-                        + g.rough + g.spec + g.specScale + g.lmLum + float(g.flags)) * CX_ABL_EPS;
+                        + g.rough + g.spec + g.specC + g.lmLum + g.lmTexel + cxSheenRough + float(g.flags)) * CX_ABL_EPS;
 #else
         vec3 spec, lmSub;
         vec3 acc = CxClusteredLightLm(worldPos, g.N, V, viewDepth, onMover, g.rough, g.spec, baked,

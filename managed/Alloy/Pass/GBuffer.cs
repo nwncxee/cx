@@ -4,18 +4,18 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The deferred G-buffer (ADR 0029) -- four render-size textures (three RGBA32UI, one RGBA16F) the
-/// colour pass's <c>CX_DEFERRED</c> twin writes on draw buffers 4..7 and <see cref="DeferredLights"/> reads,
+/// <summary>The deferred G-buffer (ADR 0029) -- two render-size RGBA32UI textures the colour pass's
+/// <c>CX_DEFERRED</c> twin writes on draw buffers 4..5 and <see cref="DeferredLights"/> reads,
 /// in <c>cx_gbuf.glsl</c>'s lane format. It also owns the colour pass's whole draw-buffer list, because that
 /// list is one piece of framebuffer state and <see cref="Ssr"/>'s record pair at 2..3 lives in it too.</summary>
 internal static unsafe class GBuffer
 {
-    /// <summary>Draw-buffer index of G0; G1..G3 follow it. 0..3 are the colour, the vis-ID and Ssr's record pair.</summary>
+    /// <summary>Draw-buffer index of G0; G1 follows it. 0..3 are the colour, the vis-ID and Ssr's record pair.</summary>
     internal const int FirstAttachment = 4;
-    /// <summary>Targets, G0..G3.</summary>
-    internal const int Targets = 4;
-    /// <summary>Bytes a pixel the four targets cost together, for the allocation line.</summary>
-    private const int BytesPerPixel = 3 * 16 + 8 + 16;
+    /// <summary>Targets, G0..G1.</summary>
+    internal const int Targets = 2;
+    /// <summary>Bytes a pixel the two targets and the light record cost together, for the allocation line.</summary>
+    private const int BytesPerPixel = 2 * 16 + 16;
 
     private static ExtenderLog? _log;
     private static readonly StandDown _down = new("GBuffer");
@@ -25,8 +25,8 @@ internal static unsafe class GBuffer
     /// per-frame flags ride here because no frame spans a context loss.</summary>
     private sealed class GBufferState
     {
-        /// <summary>The four texture names, 0 until <see cref="Ensure"/> has allocated them.</summary>
-        public uint Tex0, Tex1, Tex2, Tex3;
+        /// <summary>The two texture names, 0 until <see cref="Ensure"/> has allocated them.</summary>
+        public uint Tex0, Tex1;
         /// <summary>The light record (cx_gbuf's <c>CxLightRecPack</c>): written by <see cref="DeferredLights"/>
         /// over the whole rect, debited by <see cref="PairDebt"/>, read by the blended class's lit fragments.</summary>
         public uint TexLight;
@@ -35,7 +35,7 @@ internal static unsafe class GBuffer
         /// <summary>A twin draw wrote this frame: the deferred pass has work. Reset by <see cref="BeginFrame"/>.</summary>
         public bool Written;
         public int W, H;
-        /// <summary>Attached to the frame FBO right now, so <see cref="ApplyDrawBuffers"/> routes 4..7 at it.</summary>
+        /// <summary>Attached to the frame FBO right now, so <see cref="ApplyDrawBuffers"/> routes 4..5 at it.</summary>
         public bool Armed;
         /// <summary>The frame FBO is carrying a draw-buffer list of ours and has not been handed its single
         /// default back. Without it a pass that arms nothing would still issue the restore on whatever FBO is
@@ -62,31 +62,27 @@ internal static unsafe class GBuffer
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
     }
 
-    /// <summary>Bind the four G-buffer targets and the frame's depth for a compute pass to read, in slot
-    /// order. The depth attachment is read while it is attached: a compute dispatch touches no framebuffer,
-    /// so there is no feedback loop to have, and the lit stage samples the same texture at the same time
-    /// (<c>SsaoPass.BindForDraw</c>'s <c>uSceneDepth</c>).</summary>
+    /// <summary>Bind the two G-buffer targets, the frame's depth and the lightmap record buffer the slot lane
+    /// indexes, for a compute pass to read. The depth is read while attached: a dispatch touches no framebuffer,
+    /// so there is no feedback loop, and the lit stage samples it at the same time (<c>SsaoPass.BindForDraw</c>).</summary>
     internal static void BindForCompute()
     {
         BindUnit(TextureSlots.Gbuf0, _gl.Tex0);
         BindUnit(TextureSlots.Gbuf1, _gl.Tex1);
-        BindUnit(TextureSlots.Gbuf2, _gl.Tex2);
-        BindUnit(TextureSlots.Gbuf3, _gl.Tex3);
         BindUnit(TextureSlots.GbufDepth, PostChain.DepthTex);
+        LightmapBake.BindChartBuffer();
     }
 
-    /// <summary>Unbind what <see cref="BindForCompute"/> bound, same order.</summary>
+    /// <summary>Unbind the textures <see cref="BindForCompute"/> bound; the chart buffer is a shared point its next reader rebinds.</summary>
     internal static void UnbindCompute()
     {
         BindUnit(TextureSlots.Gbuf0, 0);
         BindUnit(TextureSlots.Gbuf1, 0);
-        BindUnit(TextureSlots.Gbuf2, 0);
-        BindUnit(TextureSlots.Gbuf3, 0);
         BindUnit(TextureSlots.GbufDepth, 0);
     }
 
     /// <summary>Attached to the frame FBO right now -- the opaque and cutout passes. Read by <see cref="Issue"/>,
-    /// which masks the four draw buffers per program while it is true.</summary>
+    /// which masks the G-buffer's draw buffers per program while it is true.</summary>
     internal static bool Armed => _gl.Armed;
 
     /// <summary>Latched: the G-buffer cannot work on this context, so there is no deferred pass this session.
@@ -112,16 +108,14 @@ internal static unsafe class GBuffer
         // incomplete and samples zero
         RenderTarget.Create(ref g.Tex0, Gl.RGBA32UI, w, h, Gl.NEAREST);
         RenderTarget.Create(ref g.Tex1, Gl.RGBA32UI, w, h, Gl.NEAREST);
-        RenderTarget.Create(ref g.Tex2, Gl.RGBA32UI, w, h, Gl.NEAREST);
-        RenderTarget.Create(ref g.Tex3, Gl.RGBA16F, w, h, Gl.NEAREST);
         RenderTarget.Create(ref g.TexLight, Gl.RGBA32UI, w, h, Gl.NEAREST);
         g.W = w; g.H = h; g.Checked = false;
-        _log?.Info($"GBuffer: {w}x{h}, G0..G2 RGBA32UI + G3 RGBA16F + the light record RGBA32UI ({(long)w * h * BytesPerPixel >> 20} MiB)");
+        _log?.Info($"GBuffer: {w}x{h}, G0..G1 RGBA32UI + the light record RGBA32UI ({(long)w * h * BytesPerPixel >> 20} MiB)");
         return true;
     }
 
     /// <summary>Before the opaque pass: clear G0 to zero (flags 0 = "not mine") and reset <see cref="Written"/>.
-    /// G1..G3 are never cleared -- G0's flag byte gates every read of them.</summary>
+    /// G1 is never cleared -- G0's flag byte gates every read of it.</summary>
     internal static void BeginFrame()
     {
         _gl.Written = false; _gl.LightLive = false;
@@ -130,7 +124,7 @@ internal static unsafe class GBuffer
         _clears++;
     }
 
-    /// <summary>Attach G0..G3 at COLOR4..7 of the bound frame FBO for the opaque and cutout passes.</summary>
+    /// <summary>Attach G0..G1 at COLOR4..5 of the bound frame FBO for the opaque and cutout passes.</summary>
     internal static void AttachColourPass()
     {
         if (!Ready || _gl.Armed) return;
@@ -159,12 +153,12 @@ internal static unsafe class GBuffer
         if (!_gl.Armed) return;
         _gl.Armed = false;
         ApplyDrawBuffers();
-        MaskColour(true);   // the four masks are FBO-independent GL state: hand them back write-enabled
+        MaskColour(true);   // the masks are FBO-independent GL state: hand them back write-enabled
         for (uint i = 0; i < Targets; i++)
             Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT4 + i, Gl.TEXTURE_2D, 0, 0);
     }
 
-    /// <summary>Write-enable the four G-buffer draw buffers for the twin, mask them OFF for every other
+    /// <summary>Write-enable the G-buffer draw buffers for the twin, mask them OFF for every other
     /// program drawing in the same passes. Only the twin declares outputs there, and a draw buffer no output
     /// is written to is left UNDEFINED rather than left alone -- masked, a forward draw over a twin's pixel
     /// leaves the twin's record standing, which the reader's own depth test is there to reject.</summary>
@@ -175,7 +169,7 @@ internal static unsafe class GBuffer
     }
 
     /// <summary>The frame FBO's draw-buffer list, composed from both armed states: the colour at 0, the OIT
-    /// reveal slot at 1 (NONE in these passes), Ssr's records at 2..3 and the G-buffer at 4..7.
+    /// reveal slot at 1 (NONE in these passes), Ssr's records at 2..3 and the G-buffer at 4..5.
     /// <paramref name="suspend"/> is the sky, which writes neither -- its pixels keep G0 = 0 and no record.</summary>
     internal static void ApplyDrawBuffers(bool suspend = false)
     {
@@ -216,5 +210,5 @@ internal static unsafe class GBuffer
              + $"{(long)_gl.W * _gl.H * BytesPerPixel >> 20} MiB)";
     }
 
-    private static uint Tex(uint i) => i switch { 0 => _gl.Tex0, 1 => _gl.Tex1, 2 => _gl.Tex2, _ => _gl.Tex3 };
+    private static uint Tex(uint i) => i == 0 ? _gl.Tex0 : _gl.Tex1;
 }

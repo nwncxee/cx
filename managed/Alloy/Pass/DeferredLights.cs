@@ -220,14 +220,18 @@ internal static unsafe class DeferredLights
         if (_down.Failed) return false;
         if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindImageTexture == null || Gl.BindBufferBase == null)
             return _down.Fail(_log, "compute, image stores or SSBO entry points are missing", "deferred point lights are off for the session");
-        uint prog = GlProgram.Compute(ShdCs, ShaderStages.Source(ShdCs), _log, "DeferredLights");
+        string src = ShaderStages.Source(ShdCs);
+        if (!ShaderContract.RecordSafe(src) || !ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
+            return _down.Fail(_log, "the program's CxDraw or CxChart record disagrees with the extender's (an override older than it)",
+                              "deferred point lights are off for the session");
+        uint prog = GlProgram.Compute(ShdCs, src, _log, "DeferredLights");
         if (prog == 0)
         {
             _log?.Always("DeferredLights: the deferred point-light program did not build (the driver's own log is "
                        + "above) -- light.deferred is off for the session and the forward light loop draws the frame");
             return _down.Fail(_log, "the compute program did not link", "deferred point lights are off for the session");
         }
-        uint film = GlProgram.Compute(ShaderStages.WithDefine(ShaderStages.Source(ShdCs), "CX_FILM_PASS 1"), _log, "DeferredLights film");
+        uint film = GlProgram.Compute(ShaderStages.WithDefine(src, "CX_FILM_PASS 1"), _log, "DeferredLights film");
         if (film == 0)
         {
             _log?.Always("DeferredLights: the film pass did not build (the driver's own log is above) -- light.deferred is "

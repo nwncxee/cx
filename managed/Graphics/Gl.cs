@@ -37,7 +37,7 @@ public static unsafe class Gl
     public const uint COLOR_ATTACHMENT1 = 0x8CE1;
     public const uint COLOR_ATTACHMENT2 = 0x8CE2, COLOR_ATTACHMENT3 = 0x8CE3;
     /// <summary>The deferred G-buffer's first attachment (<c>GBuffer.FirstAttachment</c>); the pass
-    /// names the other three as <c>COLOR_ATTACHMENT4 + i</c>, the enums being contiguous.</summary>
+    /// names the next as <c>COLOR_ATTACHMENT4 + i</c>, the enums being contiguous.</summary>
     public const uint COLOR_ATTACHMENT4 = 0x8CE4;
     public const uint POLYGON_OFFSET_FILL = 0x8037;
     public const uint TRIANGLE_STRIP = 0x0005;

@@ -58,7 +58,7 @@ internal static unsafe partial class LightmapBake
     private static readonly int[] _slotRect = new int[AlloyRenderer.MaxOwned];
     /// <summary>The CxChartBuf mirror, per slot: (page, u0, v0, s) with page -1 for unbaked, then the pick --
     /// the four set indices page C's bytes belong to (-1 = none).</summary>
-    private const int RecFloats = 8;
+    internal const int RecFloats = 8;
     private static readonly float[] _rec = new float[AlloyRenderer.MaxOwned * RecFloats];
     private static int _dirtyLo = int.MaxValue, _dirtyHi = -1;
     /// <summary>The page, scratch and readback names and the flags that say what they hold, in one object:
@@ -146,6 +146,10 @@ internal static unsafe partial class LightmapBake
     /// <see cref="UnitA"/>/<see cref="UnitB"/>. A content override that never declares the buffer simply never
     /// reads the lightmap.</summary>
     internal static string ChartBufDecl => ShaderSource.Get("cx_chartbuf.glsl");
+
+    /// <summary>The record buffer alone, for a G-buffer reader: the twin read its draw's record there, and the
+    /// reader fetches the same row by the slot the G-buffer keeps (cx_gbuf).</summary>
+    internal static void BindChartBuffer() => Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindChart, _gl.BufChart);
 
     /// <summary>From the lit program bind: the record buffer, the pages and the two uniforms. Pages 0 when
     /// nothing is resident, so a record that somehow reads a page is ignored rather than sampled.</summary>

@@ -399,9 +399,9 @@ internal static unsafe class Issue
             {
                 boundProg = wantProg;
                 boundCut = float.NaN;
-                // CX-188: only the twin declares outputs on draw buffers 4..7, and a draw buffer no output
+                // CX-188: only the twin declares outputs on draw buffers 4..5, and a draw buffer no output
                 // reaches is UNDEFINED rather than untouched -- so every other program in these passes draws
-                // with those four masked off and leaves whatever record is already there.
+                // with those masked off and leaves whatever record is already there.
                 if (GBuffer.Armed) GBuffer.MaskColour(wantProg == 5 || ContentPrograms.IsDeferred(wantProg));
                 // CX-51: the probe's alpha is 1 / distance, and only the lit stage writes one; the rest keep the clear's "far"
                 if (_capturing && !_planar) Gl.ColorMask(1, 1, 1, (byte)(wantProg == 1 ? 1 : 0));

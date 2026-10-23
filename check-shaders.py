@@ -635,7 +635,7 @@ def check_early_z(progs):
     so it may reach ONLY the OIT-lists twin: every other stage an opaque draw uses must preprocess clean.
     (The fullbright stage takes the block at RUNTIME through OitPass.WithLists -- a deliberate exception.)
     CX-188's deferred twin is checked here too: it draws the OPAQUE and CUTOUT classes, so early-Z is the
-    whole point of it, and its four G-buffer outputs are plain fragment outputs, not side effects."""
+    whole point of it, and its G-buffer outputs are plain fragment outputs, not side effects."""
     with tempfile.TemporaryDirectory() as tmp:
         def effects(name):
             src = progs[name][1]
@@ -897,6 +897,142 @@ def check_lmenc(g):
           f" direction {b_err:.1f} and shares {c_err:.2f} 8-bit steps, {c_stray} share texels written past the finish,"
           f" {zero_bad} texels of empty blocks not black)")
     return int(bad)
+
+
+GBUF_SLOT = int(re.search(r"const int MaxOwned = (\d+)", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/AlloyRenderer.cs")).read()).group(1)) - 1
+GBUF_CASES = [
+    # N, flags, viewDepth, rough, spec, fresnel, coat, coatRough, specC, slot, specT, diffT, lmLum, lmMover, lmShare
+    ((0.0, 0.0, 1.0), 1, 0.5, 0.02, 0.04, 0.0, 0.0, 0.0, (0.04, 0.04, 0.04), 0, 1.0, (0.5, 0.25, 0.125), 0.0, (0, 0, 0, 0), (0, 0, 0)),
+    ((0.0, 0.0, -1.0), 63, 37.25, 1.0, 1.0, 1.0, 1.0, 1.0, (1.0, 1.0, 1.0), GBUF_SLOT, 10.0, (40.0, 0.001, 3.0), 12.5, (1, 0.5, 0.25, 0), (55.0, 54.0, 0.0)),
+    ((0.267, -0.535, 0.802), 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, (0.9, 0.3, 0.004), 4097, 0.37, (1e-4, 2e-4, 3e-4), 0.0213, (0.2, 0.4, 0.6, 0.8), (0.7, 0.8, 0.9)),
+    ((-0.6, 0.64, -0.48), 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, (0.0, 0.5, 0.25), 99999, 0.0, (0.0, 0.0, 0.0), 300.0, (0, 1, 0, 1), (1000.0, 1.0, 0.01)),
+]
+
+
+def check_gbuf(g):
+    """cx_gbuf's lanes against the values written into them: the writer's pack (CxGbufPack) read back through the
+    reader (CxGbufRead) for the hand-written GBUF_CASES, held to the precision docs/spec/deferred-lighting.md
+    states; the slot lane reaches the last ownership slot's lightmap record, and the ownership test drops a moved
+    depth and a cleared G0."""
+    fn = nv_context()
+    if fn is None:
+        print("gbuf lanes: skipped (no driver context)")
+        return 0
+    import ctypes as C
+    u, i, vp = C.c_uint, C.c_int, C.c_void_p
+    gl = lambda name, *a: fn(name, None, *a)
+    bufs, data, base = gl("glCreateBuffers", i, C.POINTER(u)), gl("glNamedBufferData", u, C.c_ssize_t, vp, u), gl("glBindBufferBase", u, u, u)
+    getbuf = gl("glGetNamedBufferSubData", u, C.c_ssize_t, C.c_ssize_t, vp)
+    shader, src_, comp, prog_, attach, link = (fn("glCreateShader", u, u), gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp),
+                                               gl("glCompileShader", u), fn("glCreateProgram", u), gl("glAttachShader", u, u), gl("glLinkProgram", u))
+    status = gl("glGetProgramiv", u, u, C.POINTER(i))
+    errors = fn("glGetError", u)
+    IN, OUT = 28, 36
+    src = ("#version 460 core\nlayout(local_size_x = 1) in;\n" + g["cx_chartbuf"] + g["cx_gbuf"] + f"""
+layout(std430, binding = 2) readonly buffer In {{ float uIn[]; }};
+layout(std430, binding = 3) writeonly buffer Out {{ float uOut[]; }};
+void main()
+{{
+    int b = int(gl_WorkGroupID.x) * {IN}, o = int(gl_WorkGroupID.x) * {OUT};
+    CxGbuf g;
+    g.N = normalize(vec3(uIn[b], uIn[b + 1], uIn[b + 2])); g.flags = uint(uIn[b + 3]); g.viewDepth = uIn[b + 4];
+    g.rough = uIn[b + 5]; g.spec = uIn[b + 6]; g.fresnel = uIn[b + 7]; g.coat = uIn[b + 8]; g.coatRough = uIn[b + 9];
+    g.specC = vec3(uIn[b + 10], uIn[b + 11], uIn[b + 12]); g.slot = int(uIn[b + 13]); g.specT = uIn[b + 14];
+    g.diffT = vec3(uIn[b + 15], uIn[b + 16], uIn[b + 17]); g.lmLum = uIn[b + 18];
+    g.lmMover = vec4(uIn[b + 19], uIn[b + 20], uIn[b + 21], uIn[b + 22]); g.lmShare = vec3(uIn[b + 23], uIn[b + 24], uIn[b + 25]);
+    uvec4 w0, w1;
+    CxGbufPack(g, w0, w1);
+    CxGbuf r;
+    bool ok = CxGbufRead(w0, w1, g.viewDepth, r);
+    CxGbuf x;
+    uOut[o + 26] = ok ? 1.0 : 0.0;
+    uOut[o + 27] = CxGbufRead(w0, w1, g.viewDepth * 1.02, x) ? 1.0 : 0.0;
+    uOut[o + 28] = CxGbufRead(uvec4(0u), w1, g.viewDepth, x) ? 1.0 : 0.0;
+    if (!ok) return;
+    uOut[o] = r.N.x; uOut[o + 1] = r.N.y; uOut[o + 2] = r.N.z; uOut[o + 3] = float(r.flags); uOut[o + 4] = r.viewDepth;
+    uOut[o + 5] = r.rough; uOut[o + 6] = r.spec; uOut[o + 7] = r.fresnel; uOut[o + 8] = r.coat; uOut[o + 9] = r.coatRough;
+    uOut[o + 10] = r.specC.r; uOut[o + 11] = r.specC.g; uOut[o + 12] = r.specC.b; uOut[o + 13] = float(r.slot);
+    uOut[o + 14] = r.specT; uOut[o + 15] = r.diffT.r; uOut[o + 16] = r.diffT.g; uOut[o + 17] = r.diffT.b;
+    uOut[o + 18] = r.lmLum; uOut[o + 19] = r.lmMover.x; uOut[o + 20] = r.lmMover.y; uOut[o + 21] = r.lmMover.z;
+    uOut[o + 22] = r.lmMover.w; uOut[o + 23] = r.lmShare.r; uOut[o + 24] = r.lmShare.g; uOut[o + 25] = r.lmShare.b;
+    uOut[o + 29] = r.lmTexel; uOut[o + 30] = r.lmPick.x; uOut[o + 31] = r.lmPick.y; uOut[o + 32] = r.lmPick.z;
+    uOut[o + 33] = r.lmPick.w;
+}}
+""")
+    s = shader(0x91B9); buf = C.c_char_p(src.encode())   # not-an-offset: GL_COMPUTE_SHADER
+    src_(s, 1, C.byref(buf), None); comp(s)
+    prog = prog_(); attach(prog, s); link(prog)
+    ok = i(0); status(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
+    if not ok.value:
+        print("gbuf lanes: FAILED (did not link on the driver)")
+        return 1
+    n = len(GBUF_CASES)
+    flat = []
+    for c in GBUF_CASES:
+        row = [*c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], *c[8], c[9], c[10], *c[11], c[12], *c[13], *c[14]]
+        flat += row + [0.0] * (IN - len(row))
+    # every slot row an unbaked record but the last's: lmTexel 1 / (8 * 0.25) = 0.5, picks 3 / none / 7 / 254
+    chart = [0.0] * (8 * (GBUF_SLOT + 1))
+    for k in range(GBUF_SLOT + 1):
+        chart[8 * k:8 * k + 8] = [-1.0, 0.0, 0.0, 0.0, -1.0, -1.0, -1.0, -1.0]
+    chart[8 * GBUF_SLOT:8 * GBUF_SLOT + 8] = [2.0, 16.0, 32.0, 0.25, 3.0, -1.0, 7.0, 254.0]
+    ids = (u * 3)(); bufs(3, ids)
+    for k, (arr, bind) in enumerate(((chart, 13), (flat, 2), ([0.0] * (OUT * n), 3))):
+        a = (C.c_float * len(arr))(*arr)
+        data(ids[k], C.sizeof(a), a, 0x88E4)   # not-an-offset: GL_STATIC_DRAW
+        base(0x90D2, bind, ids[k])   # not-an-offset: GL_SHADER_STORAGE_BUFFER
+    gl("glUseProgram", u)(prog)
+    gl("glDispatchCompute", u, u, u)(n, 1, 1)
+    gl("glMemoryBarrier", u)(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
+    out = (C.c_float * (OUT * n))()
+    getbuf(ids[2], 0, C.sizeof(out), out)
+    if errors():
+        print("gbuf lanes: FAILED (a GL error in the fixture)")
+        return 1
+    import math
+    bad = []
+    worst_n = 0.0
+    def near(what, got, want, tol):
+        if not abs(got - want) <= tol:
+            bad.append(f"{what} {got:.6g} for {want:.6g}")
+    sq = lambda x, steps: 2.0 * math.sqrt(x) * 0.5 / steps + 0.25 / steps ** 2 + 1e-6
+    for k, c in enumerate(GBUF_CASES):
+        r = out[OUT * k:OUT * (k + 1)]
+        tag = f"case {k}"
+        if r[26] != 1.0 or r[27] != 0.0 or r[28] != 0.0:
+            bad.append(f"{tag}: ownership read {r[26]:.0f}, moved depth {r[27]:.0f}, cleared G0 {r[28]:.0f} (want 1, 0, 0)")
+            continue
+        nl = math.sqrt(sum(v * v for v in c[0]))
+        cosang = sum(a * b / nl for a, b in zip(r[0:3], c[0]))
+        ang = math.degrees(math.acos(max(-1.0, min(1.0, cosang))))
+        worst_n = max(worst_n, ang)
+        if ang > 0.06:
+            bad.append(f"{tag}: N off by {ang:.4f} deg")
+        near(f"{tag}: flags", r[3], c[1], 0.0)
+        near(f"{tag}: viewDepth", r[4], c[2], c[2] / 2048)
+        for j, nm in ((5, "rough"), (6, "spec"), (7, "fresnel")):
+            near(f"{tag}: {nm}", r[j], c[j - 2], 0.5 / 255 + 1e-6)
+        near(f"{tag}: coat", r[8], c[6], 0.5 / 127 + 1e-6)
+        near(f"{tag}: coatRough", r[9], c[7], sq(c[7], 127))
+        for j in range(3):
+            near(f"{tag}: specC", r[10 + j], c[8][j], sq(c[8][j], 255))
+        near(f"{tag}: slot", r[13], c[9], 0.0)
+        near(f"{tag}: specT", r[14], c[10], abs(c[10]) / 2048 + 1e-7)
+        near(f"{tag}: lmLum", r[18], c[12], abs(c[12]) / 2048 + 1e-7)
+        for j in range(4):
+            near(f"{tag}: lmMover", r[19 + j], c[13][j], 0.5 / 255 + 1e-6)
+        for off, want, nm in ((15, c[11], "diffT"), (23, c[14], "lmShare")):
+            for j in range(3):
+                near(f"{tag}: {nm}", r[off + j], want[j], max(want) / 400 + 1e-9)
+        if c[9] == GBUF_SLOT:
+            if r[29:34] != [0.5, 3.0, -1.0, 7.0, 254.0]:
+                bad.append(f"{tag}: slot {GBUF_SLOT}'s chart read back {r[29:34]}")
+        elif r[29] != 0.0 or r[30:34] != [-1.0] * 4:
+            bad.append(f"{tag}: an unbaked slot's chart read back {r[29:34]}")
+    print(f"gbuf lanes: {'FAILED' if bad else 'ok'} ({len(GBUF_CASES)} cases, normal within {worst_n:.4f} deg)")
+    for b in bad:
+        print(f"  {b}")
+    return int(bool(bad))
 
 
 SSBO_BUDGET = int(re.search(r"const uint Budget = (\d+);", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/Core/SsboSlots.cs")).read()).group(1))
@@ -1549,6 +1685,7 @@ def main():
     bad |= check_ssbo(progs)
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)
+    bad |= check_gbuf(g)
     bad |= check_early_z(progs)
     bad |= check_material(g)
     bad |= audit(g)

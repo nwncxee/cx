@@ -132,7 +132,11 @@ internal static unsafe class PairDebt
         if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindImageTexture == null || Gl.BindBufferBase == null)
             return _down.Fail(_log, "compute, image stores or SSBO entry points are missing",
                               "the hot-light debt is off for the session and baked surfaces take no creature shadow on the deferred path");
-        uint prog = GlProgram.Compute(ShdCs, ShaderStages.Source(ShdCs), _log, "PairDebt");
+        string src = ShaderStages.Source(ShdCs);
+        if (!ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
+            return _down.Fail(_log, "the program's CxChart record disagrees with the extender's (an override older than it)",
+                              "the hot-light debt is off for the session and baked surfaces take no creature shadow on the deferred path");
+        uint prog = GlProgram.Compute(ShdCs, src, _log, "PairDebt");
         if (prog == 0)
         {
             _log?.Always("PairDebt: the hot-light debt program did not build (the driver's own log is above) -- "
