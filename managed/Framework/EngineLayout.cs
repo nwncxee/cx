@@ -954,6 +954,12 @@ public static unsafe partial class EngineLayout
     public static readonly int TexHeaderSkipSlot = Field("CAurTexture", "vtbl.GetNumMipHeaderBytes", Expect.VtblSlot, sig: "int()");
     /// <summary><c>GetMipMap()</c>.</summary>
     public static readonly int TexMipMapSlot = Field("CAurTexture", "vtbl.GetMipMap", Expect.VtblSlot, sig: "int()");
+    /// <summary><c>GetClamp()</c> -- the wrap word: bit 0 clamps S, bit 1 clamps T, clear repeats.</summary>
+    public static readonly int TexClampSlot = Field("CAurTexture", "vtbl.GetClamp", Expect.VtblSlot, sig: "int()");
+    /// <summary><c>GetFilter()</c> -- non-zero is linear filtering, zero nearest.</summary>
+    public static readonly int TexFilterSlot = Field("CAurTexture", "vtbl.GetFilter", Expect.VtblSlot, sig: "byte()");
+    /// <summary><c>GetCompressedSize(int, int)</c> -- the byte size of one compressed level of that shape.</summary>
+    public static readonly int TexLevelSizeSlot = Field("CAurTexture", "vtbl.GetLevelSize", Expect.VtblSlot, sig: "int(int w, int h)");
     /// <summary><c>GetCompressionFormat()</c> -- the index into <c>textureFormatTranslationTable</c>
     /// @0x12f5080 where 7 = DXT1 and 8 = DXT5.</summary>
     public static readonly int TexFormatSlot = Field("CAurTexture", "vtbl.GetCompressionFormat", Expect.VtblSlot, sig: "int()");

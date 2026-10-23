@@ -157,6 +157,16 @@ internal static unsafe partial class OwnedTextures
         while (_encodedQ.TryDequeue(out TransJob? job)) { _transStale++; Release(job); }
     }
 
+    /// <summary>The sampler state of Alloy's raw upload <paramref name="src"/> onto its BCn stand-in.</summary>
+    private static void CopySampler(uint src, uint dst)
+    {
+        foreach (uint p in (ReadOnlySpan<uint>)[Gl.TEXTURE_MIN_FILTER, Gl.TEXTURE_MAG_FILTER, Gl.TEXTURE_WRAP_S, Gl.TEXTURE_WRAP_T, Gl.TEXTURE_MAX_ANISOTROPY])
+        {
+            int v; Gl.GetTextureParameteriv(src, p, &v);
+            Gl.TextureParameteri(dst, p, v);
+        }
+    }
+
     private static void Upload(TransJob job)
     {
         if (job.Ctx != _transCtx || !_res.TryGetValue(job.Key, out Entry e) || e.Owned != job.Src) { _transStale++; return; }
@@ -166,13 +176,12 @@ internal static unsafe partial class OwnedTextures
         int svUnpackBuf; Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpackBuf);
         if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
         Gl.DrainErrors(8);
-        int maxLevel = CopySampler(job.Src, dst);
+        CopySampler(job.Src, dst);
         uint fmt = job.Bc3 ? Gl.COMPRESSED_RGBA_S3TC_DXT5 : Gl.COMPRESSED_RGB_S3TC_DXT1;
         // Immutable storage for the whole chain, then one sub-image per level -- never respecify: defining
         // mutable levels one by one read as BcnUp 2,5-4,7ms per texture, and a mip read after respecification
         // corrupted every level but the base on AMD/Mesa.
         Gl.TextureStorage2D(dst, job.Levels, fmt, job.Lw[0], job.Lh[0]);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MAX_LEVEL, Math.Min(maxLevel, job.Levels - 1));
         for (int i = 0; i < job.Levels; i++)
         {
             int size = BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3);
@@ -289,12 +298,8 @@ internal static unsafe partial class OwnedTextures
         _peakBytes = _bytes;
         _log?.Info($"OwnedTextures: [vram] high-water {_peakBytes / OneMiB}MiB across {_peakCount} " +
                    $"owned textures (uploads {_uploads}, re-uploads {_reuploads}, borrowed {_borrowed.Count}" +
-                   (_pltOnGpu == null ? _pltWanted ? ", GPU-PLT NOT FORCED OFF (symbol unresolved)" : ", alloy.pltcpu=0"
+                   (_pltOnGpu == null ? ", GPU-PLT NOT FORCED OFF (symbol unresolved)"
                                       : _pltForced == 0 ? "" : $", GPU-PLT re-cleared {_pltForced}x")
-                   // #360: the copy path is never silent -- a session that adopted nothing and a session
-                   // that has no GPU composites to adopt must not read the same.
-                   + (_pltCopied + _pltCopyRefused + _pltCopyDied == 0 ? ""
-                      : $", GPU-PLT copied {_pltCopied} (refused {_pltCopyRefused}, source died {_pltCopyDied})")
                    + ")");
     }
 }

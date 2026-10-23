@@ -13,10 +13,10 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The textures Alloy DRAWS FROM, uploaded by Alloy from the engine's DECODED PIXELS rather than
-/// copied off its finished GL texture: the hook lets the engine's own upload (<c>glImageBasic</c> @0x48bcf0)
-/// finish, then binds an Alloy-minted name and calls the trampoline again, in the ENGINE's context. Resources
-/// are keyed on content, never a GL name; lifecycle in docs/owned-resource-lifetimes.md.</summary>
+/// <summary>The textures Alloy DRAWS FROM, uploaded by Alloy from the engine's DECODED PIXELS at its upload
+/// funnel, in the ENGINE's context: Alloy's own upload (<see cref="UploadOwn"/>) stands in for the engine's and
+/// the engine's cell names Alloy's texture. Resources are keyed on content, never a GL name; lifecycle in
+/// docs/owned-resource-lifetimes.md.</summary>
 internal static unsafe partial class OwnedTextures
 {
     /// <summary>One Alloy-owned texture: the resource behind a content key. <c>Gen</c> counts how many times
@@ -72,12 +72,9 @@ internal static unsafe partial class OwnedTextures
         if (_engBoundTex == null)
             log.Info("OwnedTextures: GLRender::m_boundTextures unresolved -- a name that dies outside the engine's DeleteTextures leaves its bind cache stale (#461)");
         // Restart knobs, every one: capability decisions about how the ENGINE loads content, read through Boot.
-        // pltcpu costs a CPU composite per character texture at load -- which is what the engine did for years
-        // -- and buys every PLT-skinned creature a place in the owned set. bcn spends load-time CPU to shrink
-        // VRAM 3-4x on the uncompressed share the #265 census measured at ~2/3.
+        // bcn spends load-time CPU to shrink VRAM 3-4x on the uncompressed share the #265 census measured at ~2/3.
         bool wanted = Renderer.OwnedTex.Boot;
         _armed = wanted;
-        _pltWanted = Renderer.PltCpu.Boot;
         _bcnWanted = Renderer.Bcn.Boot;
         _bcn = _bcnWanted && _armed;
         TranscodeBudget = Renderer.BcnDrip.Boot;
@@ -93,22 +90,17 @@ internal static unsafe partial class OwnedTextures
             log.Info(_bcn
                 ? "OwnedTextures: BCn transcode armed -- uncompressed uploads are re-encoded BC1/BC3 (alloy.bcn=0 in cx.cfg to keep them raw)"
                 : "OwnedTextures: BCn transcode off (alloy.bcn=0) -- uncompressed uploads stay raw");
-        // #360: RESOLVED whenever the table is armed, FORCED only when the knob says so. The flag is now
-        // read as well as written -- it is what says whether a finished build went down the GPU branch and
-        // therefore needs adopting by copy rather than by upload.
+        // The CPU composite costs one per character texture at load -- what the engine did for years -- and
+        // buys every PLT-skinned creature a place in the owned set.
         if (_armed) _pltOnGpu = (int*)Native.Sym(SymbolMap.PltOnGpu);
-        if (_armed && _pltWanted)
+        if (_armed)
         {
             log.Info(_pltOnGpu != null
                 ? "OwnedTextures: PLT compositing forced to the CPU -- player-character and tinted-creature "
-                + "textures reach the upload funnel and become ownable (alloy.pltcpu=0 adopts the GPU composite by copy instead)"
-                : "OwnedTextures: g_bGeneratePLTOnGPU unresolved -- PLT textures stay GPU-composited, "
-                + "adopted by copy where that path is available and BORROWED where it is not (#360)");
+                + "textures reach the upload funnel and become ownable"
+                : "OwnedTextures: g_bGeneratePLTOnGPU unresolved -- PLT textures stay GPU-composited and BORROWED");
             KeepPltOnCpu();
         }
-        else if (_armed)
-            log.Info("OwnedTextures: PLT compositing left on the GPU (alloy.pltcpu=0) -- the composite is adopted "
-                   + "by a GPU-side copy at the bracket, keyed on the same content identity as an upload (#360)");
         log.Info(_armed
             ? "OwnedTextures: armed -- Alloy uploads from the engine's decoded pixels (alloy.ownedtex=0 to draw from engine ids)"
             : "OwnedTextures: stood down (alloy.ownedtex=0) -- owned draws sample engine texture ids");
@@ -155,26 +147,17 @@ internal static unsafe partial class OwnedTextures
             ? "OwnedTextures: watching RenderInterface::DeleteTextures -- a tid stops resolving the moment it stops meaning its resource"
             : "OwnedTextures: DeleteTextures not installed -- a recycled engine name will resolve the previous area's resource");
 
-        // #360: glImageBasic is taken whenever the table is armed, because it is now TWO things -- half of
-        // #358's hold, and the edge that says a PLT build has finished so its composite can be adopted.
-        // ConstructImage is the hold alone, so it stays gated on the flag actually being there to hold.
-        // Attach ran first (AlloyRenderer wires the pass table before it installs it), so a null _pltOnGpu
-        // means the symbol did not resolve -- already logged there, with its reason.
-        _origGlImageBasic = hooks.InstallAurTextureGlImageBasic(&OnGlImageBasic);
+        // The hold sits on both readers of the flag; Attach logged it if the symbol did not resolve.
         if (_pltOnGpu != null)
+        {
+            _origGlImageBasic = hooks.InstallAurTextureGlImageBasic(&OnGlImageBasic);
             _origConstructImage = hooks.ChainAurTextureConstructImage(&OnConstructImage, ConstructPriority);
-        if (_pltWanted)
             log.Info(_origConstructImage != null && _origGlImageBasic != null
                 ? "OwnedTextures: GPU-PLT held at zero on both readers -- an options-apply that re-enables it "
                 + "cannot rebuild a character outside the upload funnel any more (#358)"
                 : "OwnedTextures: a GPU-PLT reader did not install -- the flag is only re-asserted per frame, so "
                 + "an options-apply can still rebuild PLT textures GPU-side and leave them BORROWED (#358)");
-        else
-            log.Info(_origGlImageBasic != null
-                ? "OwnedTextures: watching CAurTextureBasic::glImageBasic -- a GPU-composited PLT build is "
-                + "queued for adoption by copy on the next bracket (#360)"
-                : "OwnedTextures: glImageBasic not installed -- a GPU-composited PLT texture has no edge to "
-                + "adopt it on and stays BORROWED (#360)");
+        }
         TexStream.Install(log, hooks);
         ModelLoad.Install(log, hooks);
     }
@@ -197,19 +180,14 @@ internal static unsafe partial class OwnedTextures
     }
 
     /// <summary>...and the same hold on the reader that routes a built PLT texture around the upload funnel;
-    /// both readers, because either one alone leaves half the decision to a stale flag. With the hold off it
-    /// is also the edge that says a GPU composite has FINISHED: the flag is read before the original runs and
-    /// the queue is filled after, when the cells carry names. Cold: once per texture build.</summary>
+    /// both readers, because either one alone leaves half the decision to a stale flag. Cold: once per texture build.</summary>
     [UnmanagedCallersOnly]
     private static int OnGlImageBasic(IntPtr tex, byte useSubImage)
     {
-        if (_pltWanted) KeepPltOnCpu();
-        bool gpu = _pltOnGpu != null && *_pltOnGpu != 0;
+        KeepPltOnCpu();
         // glImageBasic returns int (#433: the MSVC export encodes the return type Itanium drops), and
-        // the caller propagates it -- so the trampoline's value must be carried, not dropped into work.
-        int r = _origGlImageBasic != null ? _origGlImageBasic(tex, useSubImage) : 0;
-        if (gpu) QueuePltCopy(tex);
-        return r;
+        // the caller propagates it -- so the trampoline's value must be carried.
+        return _origGlImageBasic != null ? _origGlImageBasic(tex, useSubImage) : 0;
     }
 
     private static RiCreateTextureFn _origCreate;
@@ -238,7 +216,7 @@ internal static unsafe partial class OwnedTextures
     }
 
     /// <summary>The engine is about to upload cell <paramref name="cell"/> of <paramref name="tex"/> into the
-    /// GL name it has bound. Let that happen, then do it again into a texture of ours.
+    /// GL name it has bound. Alloy uploads it instead; the engine's upload runs only when Alloy declines.
     /// <para>Cold -- once per texture per (re)build, never per frame -- so the allocations a Dictionary
     /// insert makes are not on a hot path. Runs in the ENGINE's context; see the class remarks.</para></summary>
     [UnmanagedCallersOnly]
@@ -251,7 +229,7 @@ internal static unsafe partial class OwnedTextures
         if (!handled)
         {
             if (_origCreate != null) _origCreate(tex, useSubImage, cell);
-            Adopt(tex, cell, single: false);
+            if (!_single) Adopt(tex, cell, single: false);   // a single-path decline is already counted borrowed
         }
         FrameZones.Add(FrameZones.Zone.Tex, t0);
         FrameZones.Count(FrameZones.Ev.TexUpload);
@@ -285,44 +263,27 @@ internal static unsafe partial class OwnedTextures
         // the engine's context once the bracket exists.
         if (!GlContextService.Available)
         {
-            if (!single) _borrowed.Add(etid);
+            _borrowed.Add(etid);
             return false;
         }
 
         ulong key = Key(tex, cell);
-        uint dst;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) { if (!single) _borrowed.Add(etid); return false; }
-
-        // The one bind-to-edit that stays: the ENGINE's upload below writes through the TEXTURE_2D binding,
-        // so the save/restore keeps GLRender's bind cache true. Raw glBindTexture, NOT AurTextureBindTID:
-        // routing our name through its wrapper would leave that cache naming a texture the engine does not own.
-        int savedBind; Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &savedBind);
-        Gl.DrainErrors(8);   // the verdict below is ours to read, so nobody else's error may be sitting here
-        Gl.BindTexture(Gl.TEXTURE_2D, dst);
-        // ...and always the ALLOCATING form. `true` is the glTexSubImage2D path, which assumes storage a
-        // freshly generated name does not have.
-        _origCreate(tex, 0, cell);
-        uint err = Gl.GetError();          // read BEFORE Measure, whose own queries would mask it
-        if (err == 0 && DdsReader.Lookup((byte*)b.Image, out DdsReader.Info dds) && !DdsReader.EngineUploads(dds.Format))
+        uint dst = UploadOwn(tex, cell, out uint err);
+        if (dst == 0)
         {
-            uint real = UploadDdsFormat(dst, (byte*)b.Image, dds, etid);
-            if (real != 0) { Gl.DeleteTextures(1, &dst); dst = real; }
+            if (_diagLeft > 0)
+            {
+                _diagLeft--;
+                _log?.Info($"OwnedTextures: tid {etid} {(single ? "left to the engine" : "borrowed")} -- "
+                         + (err != 0 ? $"Alloy's upload gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
+            }
+            _borrowed.Add(etid);   // the engine's copy, which the caller builds on the single path, draws borrowed
+            return false;
         }
-        long bytes = err == 0 ? Measure(dst) : 0;
+        long bytes = Measure(dst);
         // An image unpacked from a DDS was BCn already: a second encode would only lose more.
-        bool wantBcn = err == 0 && _bcn && b.CompressedSize == 0 && tex != RasterReader.Unpacked;
-        TexScan.Result scan = default;
-        bool scanned = err == 0 && TexScan.Scan(tex, cell, CoverageAlpha, wantBcn, out scan);
-        Gl.BindTexture(Gl.TEXTURE_2D, (uint)savedBind);
-
-        if (err != 0)
-        {
-            if (Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dst);
-            if (_diagLeft > 0) { _diagLeft--; _log?.Info($"OwnedTextures: tid {etid} {(single ? "left to the engine" : "borrowed")} -- the engine's upload into our name gave 0x{err:x}"); }
-            if (!single) _borrowed.Add(etid);
-            return false;   // single: the caller builds the engine's copy, and the double-path Adopt borrows it
-        }
+        bool wantBcn = _bcn && b.CompressedSize == 0 && tex != RasterReader.Unpacked;
+        bool scanned = TexScan.Scan(tex, cell, CoverageAlpha, wantBcn, out TexScan.Result scan);
 
         if (single)
         {
@@ -480,75 +441,6 @@ internal static unsafe partial class OwnedTextures
         return total;
     }
 
-    /// <summary>Texture parameters that must survive the copy. Read off the source, written to the
-    /// destination, in this order -- the four sampler dials, the mip range, and the four swizzle
-    /// channels.</summary>
-    private static readonly uint[] CarriedParams =
-    {
-        Gl.TEXTURE_MIN_FILTER, Gl.TEXTURE_MAG_FILTER, Gl.TEXTURE_WRAP_S, Gl.TEXTURE_WRAP_T,
-        Gl.TEXTURE_BASE_LEVEL, Gl.TEXTURE_MAX_LEVEL,
-        Gl.TEXTURE_SWIZZLE_R, Gl.TEXTURE_SWIZZLE_G, Gl.TEXTURE_SWIZZLE_B, Gl.TEXTURE_SWIZZLE_A,
-    };
-
-    /// <summary>One queued composite. Every refusal is counted and the source is left BORROWED, which is the
-    /// state it was already in -- a refused copy costs the character nothing it had.</summary>
-    private static void Copy(PltCopy q)
-    {
-        Gl.DrainErrors(8);   // the verdict below is ours to read
-
-        int levels = 0, fmt = 0;
-        int* lw = stackalloc int[MaxLevels], lh = stackalloc int[MaxLevels];
-        for (; levels < MaxLevels; levels++)
-        {
-            int w = 0, h = 0;
-            Gl.GetTextureLevelParameteriv(q.Src, levels, Gl.TEXTURE_WIDTH, &w);
-            Gl.GetTextureLevelParameteriv(q.Src, levels, Gl.TEXTURE_HEIGHT, &h);
-            if (w <= 0 || h <= 0) break;
-            lw[levels] = w; lh[levels] = h;
-        }
-        Gl.GetTextureLevelParameteriv(q.Src, 0, Gl.TEXTURE_INTERNAL_FORMAT, &fmt);
-        // An UNSIZED answer cannot be handed to glTexStorage2D, and guessing a promotion is what changed the
-        // sampler swizzle under #211. Refused, named, and left borrowed instead.
-        if (levels == 0 || fmt == 0 || fmt == (int)Gl.RGBA || fmt == (int)Gl.RGB)
-        {
-            _borrowed.Add((int)q.Src); _pltCopyRefused++;
-            if (_pltCopyDiagLeft-- > 0)
-                _log?.Info($"OwnedTextures: GPU-PLT tid {q.Src} not copied -- levels={levels} "
-                         + $"internalformat=0x{fmt:x} (unsized or unreadable), left BORROWED (#360)");
-            return;
-        }
-
-        Span<int> saved = stackalloc int[CarriedParams.Length];
-        for (int i = 0; i < CarriedParams.Length; i++)
-            fixed (int* sv = saved.Slice(i, 1)) Gl.GetTextureParameteriv(q.Src, CarriedParams[i], sv);
-
-        uint dst;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) { _borrowed.Add((int)q.Src); _pltCopyRefused++; return; }
-        Gl.TextureStorage2D(dst, levels, (uint)fmt, lw[0], lh[0]);
-        for (int i = 0; i < CarriedParams.Length; i++)
-            Gl.TextureParameteri(dst, CarriedParams[i], saved[i]);
-        for (int l = 0; l < levels; l++)
-            Gl.CopyImageSubData(q.Src, Gl.TEXTURE_2D, l, 0, 0, 0, dst, Gl.TEXTURE_2D, l, 0, 0, 0,
-                                lw[l], lh[l], 1);
-
-        uint err = Gl.GetError();       // read BEFORE Measure, whose own queries would mask it
-        if (err != 0)
-        {
-            if (Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dst);
-            _borrowed.Add((int)q.Src); _pltCopyRefused++;
-            if (_pltCopyDiagLeft-- > 0)
-                _log?.Info($"OwnedTextures: GPU-PLT tid {q.Src} not copied -- the copy gave 0x{err:x} "
-                         + $"({lw[0]}x{lh[0]}, {levels} levels, 0x{fmt:x}), left BORROWED (#360)");
-            return;
-        }
-
-        Replace(q.Key, (int)q.Src, dst, Measure(dst));
-        _stats[dst] = new Stat { Holes = 0f };   // PLT composites are opaque; unscanned would read as masked
-        _pltCopied++;
-        HighWater();
-    }
-
     /// <summary>The GL-NAME edge: the objects went with the context. Names are dropped and nothing is deleted
     /// -- deleting into a dead context is the terminal edge.</summary>
     internal static void ContextLost()
@@ -558,7 +450,6 @@ internal static unsafe partial class OwnedTextures
         _owned.Clear();
         _borrowed.Clear();
         _pending.Clear(); _pendingForget.Clear(); foreach (var d in _deferred) d.Clear();   // the names died with the context
-        _pltQ.Clear();   // #360: queued sources are names in a context that no longer exists
         _transCtx++;   // a job the encoder still holds names a texture of the dead context: it drops at its upload
         DropTranscodes();
         _stats.Clear();

@@ -251,6 +251,9 @@ offset	CAurTexture	vtbl.GetNumY	0x98	0x90	# TexGetNumYSlot
 offset	CAurTexture	vtbl.GetCompressedSize	0xa8	0xa8	# TexCompressedSizeSlot
 offset	CAurTexture	vtbl.GetNumMipHeaderBytes	0xb8	0xb0	# TexHeaderSkipSlot
 offset	CAurTexture	vtbl.GetMipMap	0xc0	0xb8	# TexMipMapSlot
+offset	CAurTexture	vtbl.GetClamp	0xa0	0x98	# TexClampSlot
+offset	CAurTexture	vtbl.GetFilter	0xc8	0xc0	# TexFilterSlot
+offset	CAurTexture	vtbl.GetLevelSize	0xb0	0xa0	# TexLevelSizeSlot
 offset	CAurTexture	vtbl.GetCompressionFormat	0xd8	0xd0	# TexFormatSlot
 offset	Scene	vtbl.DoBinBucket	0x1c0	0x1b8	# SceneDoBinBucketSlot
 offset	Scene	vtbl.DoEmitterBucket	0x1e8	0x1e0	# SceneDoEmitterBucketSlot

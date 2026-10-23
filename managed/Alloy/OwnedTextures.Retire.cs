@@ -64,7 +64,6 @@ internal static unsafe partial class OwnedTextures
                 if (pass != null) pass[passN] = name;
                 passN++;
                 _borrowed.Remove((int)name);
-                DropQueued(name);
             }
             if (!_index.TryGetValue((int)name, out ulong key)) continue;
             _index.Remove((int)name);
@@ -89,7 +88,6 @@ internal static unsafe partial class OwnedTextures
             int name = (int)names[i];
             _engineHeld.Remove((uint)name);
             _borrowed.Remove(name);
-            DropQueued((uint)name);   // #360: a queued copy of a name the engine just freed reads a recycle
             if (!_index.TryGetValue(name, out ulong key)) continue;
             _index.Remove(name);
             _retired++;
@@ -149,7 +147,6 @@ internal static unsafe partial class OwnedTextures
     /// asking the driver would MINT handles for textures that never had one.</summary>
     internal static void Drain()
     {
-        DrainPltCopies();
         // Evict FIRST: its discards join this frame's batch, and its un-idle of a referenced key keeps that
         // handle (it used to remove from a set already dropped and cleared). Then the per-slot marks for the
         // whole batch, then the drops -- no epoch bump anywhere on this path.

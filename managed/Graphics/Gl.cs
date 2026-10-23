@@ -72,7 +72,7 @@ public static unsafe class Gl
     /// the seam the interim cubes fought with an over-scanned face frustum.</summary>
     public const uint TEXTURE_CUBE_MAP_ARRAY = 0x9009, TEXTURE_BINDING_CUBE_MAP_ARRAY = 0x900A,
                       TEXTURE_CUBE_MAP_SEAMLESS = 0x884F;
-    public const uint UNPACK_ALIGNMENT = 0x0CF5, UNPACK_ROW_LENGTH = 0x0CF2;
+    public const uint UNPACK_ALIGNMENT = 0x0CF5, UNPACK_ROW_LENGTH = 0x0CF2, UNPACK_SKIP_ROWS = 0x0CF3, UNPACK_SKIP_PIXELS = 0x0CF4;
     /// <summary>The BCn transcode's readback alignment and its two S3TC targets (EXT_texture_compression_s3tc,
     /// universally present -- the engine's own DDS path uploads these very enums).</summary>
     public const uint PACK_ALIGNMENT = 0x0D05,
