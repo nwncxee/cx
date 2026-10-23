@@ -585,7 +585,8 @@ public sealed unsafe partial class AlloyRenderer
                         if (Issue.OitDeferred > 0)
                         {
                             Issue._onlyHosted = true;
-                            Issue.TransparentPass(_gOpaqueEnd, _gBlendEnd, &vp, viewport, near, far);
+                            // plain blending, so vanilla's depth write: one creature's parts share a sort key
+                            Issue.TransparentPass(_gOpaqueEnd, _gBlendEnd, &vp, viewport, near, far, depthWrite: true);
                             Issue._onlyHosted = false;
                         }
                         else { Gl.DepthMask(0); Gl.Enable(Gl.BLEND); }
