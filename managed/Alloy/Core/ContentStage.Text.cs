@@ -377,6 +377,8 @@ internal static partial class ContentStage
     /// <summary>A stage whose coverage the stock setup does not cut on the texel: it declares its diffuse alpha an env
     /// level, or has no texture at all.</summary>
     private static readonly Regex OwnCoverage = new(@"(?m)^[ \t]*#[ \t]*define[ \t]+(?:ENVIRONMENT_MAP|NO_TEXTURE)[ \t]+1\b", RegexOptions.Compiled);
+    /// <summary>A stage that declares its diffuse alpha an env level, whatever its material says.</summary>
+    private static readonly Regex EnvStage = new(@"(?m)^[ \t]*#[ \t]*define[ \t]+ENVIRONMENT_MAP[ \t]+1\b", RegexOptions.Compiled);
     private static readonly Regex KeyholeDefine = new(@"(?m)^[ \t]*#[ \t]*define[ \t]+KEYHOLING[ \t]+(\d+)", RegexOptions.Compiled);
     private static readonly Regex AlphaWrite = new(@"\b(?:FragmentColor|gl_FragColor)\s*=\s*vec4\s*\(", RegexOptions.Compiled);
     private static readonly Regex OpenerRhs = new(@"\G\s*1(?:\.0*)?\s*\)", RegexOptions.Compiled);

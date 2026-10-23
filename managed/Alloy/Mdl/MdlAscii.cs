@@ -1141,12 +1141,43 @@ internal static class MdlAscii
                 string p = _parentName[firstNode + i];
                 an[i].Parent = p.Length != 0 && byName.TryGetValue(p, out int pi) && pi != i ? pi : -1;
             }
-            a.Nodes = an;
+            a.Nodes = PruneToAnimRoot(an, a.AnimRoot);
             _file.RemoveRange(firstNode, count);
             _parentOf.RemoveRange(firstNode, count);
             _parentName.RemoveRange(firstNode, count);
             _anims.Add(a);
             _anim = null;
+        }
+
+        /// <summary><c>Animation::PostProcess</c> @0x553600: an animroot scopes the animation to its subtree --
+        /// the root's ancestors keep their place but no tracks, and every other branch is dropped. Compiled
+        /// binaries are already pruned; an unmatched root (a case-sensitive name) leaves the tree whole.</summary>
+        private static AnimNode[] PruneToAnimRoot(AnimNode[] an, string root)
+        {
+            if (root.Length == 0 || string.Equals(root, "null", StringComparison.OrdinalIgnoreCase)) return an;
+            int r = Array.FindIndex(an, n => string.Equals(n.Name, root, StringComparison.Ordinal));
+            if (r < 0) return an;
+            var keep = new bool[an.Length];
+            for (int i = 0; i < an.Length; i++)
+            {
+                int hops = 0;
+                for (int p = i; p >= 0 && hops <= an.Length; p = an[p].Parent, hops++)
+                    if (p == r) { keep[i] = true; break; }
+            }
+            for (int p = an[r].Parent, hops = 0; p >= 0 && hops <= an.Length; p = an[p].Parent, hops++)
+            {
+                keep[p] = true;
+                an[p].Controllers = Array.Empty<ControllerTrack>();
+            }
+            var remap = new int[an.Length];
+            var kept = new List<AnimNode>(an.Length);
+            for (int i = 0; i < an.Length; i++)
+            {
+                remap[i] = keep[i] ? kept.Count : -1;
+                if (keep[i]) kept.Add(an[i]);
+            }
+            foreach (AnimNode n in kept) n.Parent = n.Parent < 0 ? -1 : remap[n.Parent];
+            return kept.Count == an.Length ? an : kept.ToArray();
         }
 
         /// <summary>Resolve the parent names, then flatten the tree to pre-order, which is the order a
