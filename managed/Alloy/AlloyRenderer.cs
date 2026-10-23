@@ -349,7 +349,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (!DoorFade.SelfCheck(log)) return;
         if (PlaceableHold.SelfCheck(log)) PlaceableHold.Install(log, hooks);   // failed: placeables fade as vanilla
         _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        Db.SunGlide.Install(log, hooks);
         _mtxStacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
         _runtime = (byte*)Native.Sym(SymbolMap.GlShaderRuntimeData);
         if (_runtime == null)
@@ -575,7 +574,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     private static bool DbSelfChecks(ExtenderLog log)
         => DbGrid.SelfCheck(log) & DbFeed.SelfCheck(log) & DbInputs.SelfCheck(log) & DbGui.SelfCheck(log)
            & DbLights.SelfCheck(log) & DbSky.SelfCheck(log) & DbEmitterChannels.SelfCheck(log)
-           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log) & Db.SunGlide.SelfCheck(log);
+           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log);
 
     internal static bool _waterArmed;
     /// <summary>The engine's water draw bucket (<c>Scene::RenderSinglePass</c> @0x46e5f0's "Water" scope).
