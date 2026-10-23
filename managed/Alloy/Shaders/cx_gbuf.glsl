@@ -13,7 +13,8 @@
 
 /// G0.y's flag byte. CX_GB_DEFERRED is the only bit the reader gates on; the rest select the walk's branches
 /// exactly as the forward loop's own arguments did (baked, onMover, the film statics, cxRecvShadow == 0).
-const uint CX_GB_DEFERRED = 1u, CX_GB_BAKED = 2u, CX_GB_ONMOVER = 4u, CX_GB_FILM = 8u, CX_GB_NOSHADOW = 16u;
+const uint CX_GB_DEFERRED = 1u, CX_GB_BAKED = 2u, CX_GB_ONMOVER = 4u, CX_GB_FILM = 8u, CX_GB_NOSHADOW = 16u,
+           CX_GB_STOCKLOBE = 32u;
 /// How far (a share of view depth) the record's depth may sit off the frame's before a later draw is judged to
 /// have covered it.
 const float CX_GB_RECORD = 0.01;

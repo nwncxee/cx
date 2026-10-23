@@ -210,13 +210,16 @@ float CxFresnel(float c)
 
 // light.brdf (ADR 0026): x = 1 runs the modern material model, 0 the engine's own lobe exactly. A program
 // that never uploads it (water, grass, particles) reads 0 and keeps the engine's lobe.
-// y = directional ambient strength, z = specular anti-aliasing on.
-uniform vec3 uMaterial;
+// y = directional ambient strength, z = specular anti-aliasing on, w = 1 drops the grazing rise on legacy materials.
+uniform vec4 uMaterial;
 
 // The Schlick-Smith k. The engine takes k = alpha, which over-shadows a rough lobe at grazing angles;
 // the modern model takes Karis' k = alpha / 2 (the Schlick fit to Smith-GGX). Both are separable into
 // a light half and a view half, which is what keeps the per-light / once-per-fragment split below.
-float CxSmithK(float rough) { return uMaterial.x > 0.5 ? rough * 0.5 : rough; }
+/// 1 = the modern model's grazing forms (Karis' k, per-channel whitening); 0 = the engine's, which the lit main
+/// picks for every non-glTF material: content made for the stock renderer is tuned against its grazing.
+float cxModern = 1.0;
+float CxSmithK(float rough) { return uMaterial.x > 0.5 && cxModern > 0.5 ? rough * 0.5 : rough; }
 
 #ifdef CX_LIT_MATERIAL
 // ADR 0026: one light's full specular radiance per unit irradiance, from the engine lobe `lobe` -- the

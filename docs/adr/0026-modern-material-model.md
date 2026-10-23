@@ -97,3 +97,21 @@ renders. Values are clamped at harvest.
   specular occlusion against an independent transcription; `MaterialExtSelfCheck` runs a forged
   parameter list through the harvest. What is not covered offline is the look. It needs a live A/B
   (`/light brdf 0`/`1`).
+
+### Amendment (#97, 2026-10-23): classic materials keep the engine's grazing
+
+"The shading model (every material)" no longer holds for the grazing terms. A material that is not
+**physical** (no `CxMetallic`, `CxRoughness` or `CxOrm`) takes the engine's three grazing forms even with
+`light.brdf` on: Schlick-Smith k = alpha, a highlight that keeps its specular colour (the lobe's scalar
+`mix(spec, 1, F)` rise, no per-channel whitening), and a probe weight of
+`specColor * mix(mix(spec, 1, F(N.V)), spec, sqrt(rough))` -- `inc_lighting.shd`'s `fEnvironmentSpecularity`,
+in place of the split-sum fit. Physical materials keep Karis' k, the whitening and the DFG weight.
+
+Why: a live A/B on a server's NWN-made content (cloth and skin with grey `_s` maps) read the modern
+grazing as a glossy sheen on every edge, 1.6x the stock highlight at N.V 0.1 from k alone, and preferred
+no rise at all over it. The content was tuned against the stock grazing; Karis' k and the DFG fit are
+the right model for content authored against a PBR reference, which the Alloy view is how content says.
+
+`light.grazing` (on by default) is the dial: off holds every classic material at its head-on
+specularity. The deferred walk carries the choice as `CX_GB_STOCKLOBE`. The rest of this ADR -- roughness
+units, multiscatter, specular AA, specular occlusion, directional ambient, legacy metal -- is unchanged.

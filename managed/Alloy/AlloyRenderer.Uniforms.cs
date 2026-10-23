@@ -142,12 +142,13 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
-    /// <summary>ADR 0026: the lit stage's <c>uMaterial</c> -- (modern model, directional ambient, specular AA).
-    /// The two refinements ride on the model: off is the stock shading exactly, whatever they are set to.</summary>
+    /// <summary>ADR 0026: the lit stage's <c>uMaterial</c> -- (modern model, directional ambient, specular AA, no
+    /// grazing rise on legacy materials). The two refinements ride on the model; the grazing switch does not.</summary>
     internal static void UploadMaterialModel(int loc)
     {
         bool modern = Lighting.Brdf.V;
-        Gl.Uniform3f(loc, modern ? 1f : 0f, modern ? Lighting.AmbientDir.V : 0f, modern && Lighting.SpecAa.V ? 1f : 0f);
+        Gl.Uniform4f(loc, modern ? 1f : 0f, modern ? Lighting.AmbientDir.V : 0f, modern && Lighting.SpecAa.V ? 1f : 0f,
+                     Lighting.Grazing.V ? 0f : 1f);
     }
 
     /// <summary>The <c>CxPass</c> block's binding point, <c>layout(std140, binding = 0)</c> in

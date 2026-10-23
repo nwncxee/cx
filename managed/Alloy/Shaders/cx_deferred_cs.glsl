@@ -478,6 +478,7 @@ void main()
         cxCoat = g.coat; cxCoatRough = g.coatRough;
         cxSheen = g.sheen; cxSheenRough = g.sheenRough;
         cxFresnel = g.fresnel;
+        cxModern = (g.flags & CX_GB_STOCKLOBE) != 0u ? 0.0 : 1.0;
         cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
 
         float baked = (g.flags & CX_GB_BAKED) != 0u ? 1.0 : 0.0;

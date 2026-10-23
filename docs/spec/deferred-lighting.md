@@ -155,7 +155,7 @@ Known deviations), so the twin writes the derivatives:
 | `N` | the shading normal handed to `CxClusteredLightLm` |
 | `rough`, `spec`, `fresnel` | the loop's `rough`, `specularity`, and `cxFresnel` at the call |
 | `coat`, `coatRough`, `sheen`, `sheenRough`, `f0`, `specScale` | `cxCoat`, `cxCoatRough`, `cxSheen`, `cxSheenRough`, `cxF0`, `cxSpecScale` -- the state `CxLoopSpec` reads |
-| `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0`); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`) |
+| `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0`); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`); `CX_GB_STOCKLOBE` (`cxModern == 0`: the engine's grazing forms) |
 | `diffT` (Wd) | d(final pixel) / d(`point`): albedo x matDiffuse x kd x coatT x wxTransmit x dirOcc, plus the couplings through `diffuse` (the legacy env pattern's `(ambient + diffuse) * pat`, the coat probe's `(ambient + diffuse) * cenv`), x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`, the part's own alpha `rot.w`, never the texture's coverage) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `lmLum` | luminance of the undimmed `lm` (the `lmSub.x` denominator); 0 on an unbaked pixel |
