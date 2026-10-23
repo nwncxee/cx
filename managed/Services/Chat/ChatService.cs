@@ -85,6 +85,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         SymbolMap.AppendToMsgBuffer, SymbolMap.AppendToChatBuffer, SymbolMap.ChatWindowSetFilter,
         SymbolMap.ChatWindowShow, SymbolMap.ChatPromptShow, SymbolMap.SetFocusChatPrompt, SymbolMap.ShowChatPrompt,
         SymbolMap.PrepChatPromptForTell, SymbolMap.ChatPromptSetFocus, SymbolMap.ChatPromptCtor, SymbolMap.GuiPanelDeactivate,
+        SymbolMap.ChatWindowDoSplitScreen,
         SymbolMap.SendChatTalk, SymbolMap.SendChatShout, SymbolMap.SendChatWhisper, SymbolMap.SendChatParty,
         SymbolMap.SendChatDM, SymbolMap.SendChatTell, SymbolMap.SendChatTellId, SymbolMap.NotifyServerGuiEvent,
         SymbolMap.GetPlayerByPlayerName, SymbolMap.GetPlayerByCreatureName, SymbolMap.AppManager,
@@ -230,10 +231,10 @@ public sealed unsafe partial class ChatService : IExtenderService
         {
             // MSVC inlined CGuiInGameChatPrompt::Show into the prompt's ctor, so the skip on Show alone
             // leaves the "Talk:" prompt activated from birth: undo it right after construction (= vanilla Hide).
-            _promptCtorOrig = hooks.InstallChatPromptCtor(&OnPromptCtor);
-            _panelDeactivate = EngineFn.GuiPanelDeactivate;
-            // ponytail: CGuiInGameChatWindow::DoSplitScreen (0x879560) also inlines Show, so toggling the
-            // split-chat option activates the docked window on Windows; hook it the same way if anyone trips it.
+            _win.PromptCtorOrig = hooks.InstallChatPromptCtor(&OnPromptCtor);
+            _win.PanelDeactivate = EngineFn.GuiPanelDeactivate;
+            // DoSplitScreen inlines Show for the split-off window too: the split-chat option would dock an empty panel.
+            _win.SplitOrig = hooks.InstallChatWindowDoSplitScreen(&OnSplitScreen);
         }
         _ = hooks.InstallChatWindowSetFilter(&OnSuppressed);   // text: backlog re-render + reply buttons
         _ = hooks.InstallChatWindowShow(&OnSuppressed);        // chrome: docked message panels
@@ -256,18 +257,40 @@ public sealed unsafe partial class ChatService : IExtenderService
         return 0;
     }
 
-    private static ChatPromptCtorFn _promptCtorOrig;
-    /// <summary>Resolved on the Windows path only: a null here is also "not the Windows chat-prompt fix-up".</summary>
-    private static GuiPanelDeactivateFn _panelDeactivate;
+    /// <summary>The Windows inlined-Show fix-ups' trampolines; installed once at Initialize, never reset.</summary>
+    private sealed class WinShowFixState
+    {
+        public ChatPromptCtorFn PromptCtorOrig;
+        /// <summary>Resolved on the Windows path only: a null here is also "not the Windows fix-up".</summary>
+        public GuiPanelDeactivateFn PanelDeactivate;
+        public ChatWindowDoSplitScreenFn SplitOrig;
+    }
+
+    private static readonly WinShowFixState _win = new();
+
+    /// <summary>Windows only: undo the Show MSVC inlined for the split-off window (= vanilla Hide). A window with a
+    /// parent forwards to it, which re-enters this hook, so only the primary does the undo.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnSplitScreen(IntPtr self, int arg)
+    {
+        if (_win.SplitOrig != null) _win.SplitOrig(self, arg);
+        var win = new CGuiInGameChatWindow(self);
+        if (!win.Parent.IsNull) return;
+        CGuiInGameChatWindow split = win.Split;
+        if (_win.PanelDeactivate == null || split.IsNull || split.Shown == 0) return;
+        _win.PanelDeactivate(split.Ptr, 0);
+        split.Shown = 0;
+        _log?.Info("ChatService: split-off vanilla chat window un-shown (DoSplitScreen inlines Show on Windows)");
+    }
 
     [UnmanagedCallersOnly]
     private static IntPtr OnPromptCtor(IntPtr self)
     {
-        IntPtr r = _promptCtorOrig != null ? _promptCtorOrig(self) : self;
+        IntPtr r = _win.PromptCtorOrig != null ? _win.PromptCtorOrig(self) : self;
         var prompt = new CGuiInGameChatPrompt(self);
-        if (_panelDeactivate != null && prompt.Shown != 0)
+        if (_win.PanelDeactivate != null && prompt.Shown != 0)
         {
-            _panelDeactivate(self, 0);
+            _win.PanelDeactivate(self, 0);
             prompt.Shown = 0;
         }
         return r;

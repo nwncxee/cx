@@ -538,6 +538,15 @@ public static unsafe partial class EngineLayout
     /// rva 0x87b0d0) hands <c>this+off</c> to <c>CGuiEdit::GetText</c>, <c>SetCaretPos</c> and <c>LoseFocus</c> on both.
     /// Embedded, not a pointer: the row hands out the sub-object's address.</summary>
     public static readonly int ChatPromptEdit = Field<CX.Engine.CGuiEdit>("CGuiInGameChatPrompt", "edit", embedded: true);
+    /// <summary>CGuiInGameChatWindow -&gt; the window it was split from, null on the primary. <c>DoSplitScreen</c> (Linux
+    /// nm 0x67b310, Windows rva 0x879560) forwards itself to a non-null one first thing on both builds.</summary>
+    public static readonly int ChatWindowParent = Field<CX.Engine.CGuiInGameChatWindow>("CGuiInGameChatWindow", "parent");
+    /// <summary>CGuiInGameChatWindow -&gt; the split-off (combat) window, null when none: <c>DoSplitScreen</c> filters it
+    /// and then shows it, on both builds.</summary>
+    public static readonly int ChatWindowSplit = Field<CX.Engine.CGuiInGameChatWindow>("CGuiInGameChatWindow", "split");
+    /// <summary>CGuiInGameChatWindow -&gt; shown flag (int). <c>Show</c> (Linux nm 0x67b140, Windows rva 0x87a940) tests-then-sets
+    /// it; Windows' <c>DoSplitScreen</c> inlines the same test-activate-set at +0xaf0.</summary>
+    public static readonly int ChatWindowShown = Field<int>("CGuiInGameChatWindow", "shown");
     /// <summary>CGuiEdit -&gt; <c>CAurString* m_pString</c>, the text object <c>CGuiEdit::GetText</c> (exported on both,
     /// Linux nm 0x592680 / Windows 0x1e93b0) reads its lines from; HandleEnter clears it through the same pointer.</summary>
     public static readonly int GuiEditString = Field<CX.Engine.CAurString>("CGuiEdit", "string");

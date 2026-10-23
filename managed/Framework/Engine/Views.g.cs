@@ -15,6 +15,7 @@ global using unsafe ChatHandleEscFn = delegate* unmanaged<nint, void>;
 global using unsafe ChatHandleLoseFocusFn = delegate* unmanaged<nint, void>;
 global using unsafe ShowChatPromptFn = delegate* unmanaged<nint, void>;
 global using unsafe ChatPromptCtorFn = delegate* unmanaged<nint, nint>;
+global using unsafe ChatWindowDoSplitScreenFn = delegate* unmanaged<nint, int, void>;
 global using unsafe GuiPanelDeactivateFn = delegate* unmanaged<nint, int, void>;
 global using unsafe GuiModalPanelDeactivateFn = delegate* unmanaged<nint, int, void>;
 global using unsafe PrepChatPromptForTellFn = delegate* unmanaged<nint, nint, void>;
@@ -1453,6 +1454,23 @@ public readonly unsafe partial struct CGuiInGameChatPrompt(IntPtr ptr)
     public CGuiEdit Edit => new(Ptr + EngineLayout.ChatPromptEdit);
     /// <inheritdoc cref="EngineLayout.ChatPromptShown"/>
     public ref int Shown => ref *(int*)(Ptr + EngineLayout.ChatPromptShown);
+}
+
+/// <summary>Typed view of an engine <c>CGuiInGameChatWindow*</c>.</summary>
+public readonly unsafe partial struct CGuiInGameChatWindow(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="SymbolMap.ChatWindowDoSplitScreen"/>
+    public void ChatWindowDoSplitScreen(int arg) => EngineFn.ChatWindowDoSplitScreen(Ptr, arg);
+    /// <inheritdoc cref="EngineLayout.ChatWindowParent"/>
+    public ref CGuiInGameChatWindow Parent => ref *(CGuiInGameChatWindow*)(Ptr + EngineLayout.ChatWindowParent);
+    /// <inheritdoc cref="EngineLayout.ChatWindowShown"/>
+    public ref int Shown => ref *(int*)(Ptr + EngineLayout.ChatWindowShown);
+    /// <inheritdoc cref="EngineLayout.ChatWindowSplit"/>
+    public ref CGuiInGameChatWindow Split => ref *(CGuiInGameChatWindow*)(Ptr + EngineLayout.ChatWindowSplit);
 }
 
 /// <summary>Typed view of an engine <c>CGuiInGamePopUpBubble*</c>.</summary>
@@ -3967,6 +3985,10 @@ public static unsafe class EngineFn
     private static bool _ChatPromptCtorDone;
     /// <inheritdoc cref="SymbolMap.ChatPromptCtor"/>
     public static ChatPromptCtorFn ChatPromptCtor => (ChatPromptCtorFn)(_ChatPromptCtorDone ? _ChatPromptCtor : Resolve(ref _ChatPromptCtor, ref _ChatPromptCtorDone, SymbolMap.ChatPromptCtor));
+    private static IntPtr _ChatWindowDoSplitScreen;
+    private static bool _ChatWindowDoSplitScreenDone;
+    /// <inheritdoc cref="SymbolMap.ChatWindowDoSplitScreen"/>
+    public static ChatWindowDoSplitScreenFn ChatWindowDoSplitScreen => (ChatWindowDoSplitScreenFn)(_ChatWindowDoSplitScreenDone ? _ChatWindowDoSplitScreen : Resolve(ref _ChatWindowDoSplitScreen, ref _ChatWindowDoSplitScreenDone, SymbolMap.ChatWindowDoSplitScreen));
     private static IntPtr _GuiPanelDeactivate;
     private static bool _GuiPanelDeactivateDone;
     /// <inheritdoc cref="SymbolMap.GuiPanelDeactivate"/>
@@ -5783,6 +5805,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ChatPromptCtor"/>; returns the slot holding the next layer, or null.</summary>
     public static ChatPromptCtorFn* ChainChatPromptCtor(this HookService h, ChatPromptCtorFn handler, int priority) =>
         (ChatPromptCtorFn*)h.Chain(SymbolMap.ChatPromptCtor, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ChatWindowDoSplitScreen"/>; returns the original, or null.</summary>
+    public static ChatWindowDoSplitScreenFn InstallChatWindowDoSplitScreen(this HookService h, ChatWindowDoSplitScreenFn handler) =>
+        (ChatWindowDoSplitScreenFn)h.Install(SymbolMap.ChatWindowDoSplitScreen, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ChatWindowDoSplitScreen"/>; returns the slot holding the next layer, or null.</summary>
+    public static ChatWindowDoSplitScreenFn* ChainChatWindowDoSplitScreen(this HookService h, ChatWindowDoSplitScreenFn handler, int priority) =>
+        (ChatWindowDoSplitScreenFn*)h.Chain(SymbolMap.ChatWindowDoSplitScreen, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GuiPanelDeactivate"/>; returns the original, or null.</summary>
     public static GuiPanelDeactivateFn InstallGuiPanelDeactivate(this HookService h, GuiPanelDeactivateFn handler) =>
         (GuiPanelDeactivateFn)h.Install(SymbolMap.GuiPanelDeactivate, (IntPtr)handler);
