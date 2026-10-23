@@ -75,7 +75,8 @@ internal static unsafe class PltPalettes
         {
             _refused++;
             _log?.Always($"PltPalettes: \"{resref}\" did not load into slot {slot} -- {why}. "
-                       + "Every PLT layer whose rows fall in that slot resolves BLACK");
+                       + (_set[slot] ? "That slot KEEPS ITS PREVIOUS PALETTE, so its PLT layers show the wrong colours"
+                                     : "Every PLT layer whose rows fall in that slot resolves BLACK"));
             return false;
         }
         Compose(_master, slot, rgba!, w, h);
@@ -209,7 +210,29 @@ internal static unsafe class PltPalettes
             if (!ResLocate.Locate(table, entry, resId, out loc, out why, out ResLocate.Source src))
             { why ??= $"the resource is {src}"; return false; }
         }
-        if (!_handles.Read(loc, out ReadOnlySpan<byte> raw, out why)) return false;
+        if (loc.Kind != KindNwSync)
+        {
+            if (!_handles.Read(loc, out ReadOnlySpan<byte> raw, out why)) return false;
+            return Decode(raw, out why, out rgba, out w, out h);
+        }
+        // a server's palette override lives in the NWSync store, not a file: Path is the bare resref there
+        Span<byte> key = stackalloc byte[loc.Path.Length];
+        System.Text.Encoding.ASCII.GetBytes(loc.Path, key);
+        if (!NwSyncReader.TryRead(key, loc.ResType, out byte* data, out int size))
+        { why = "NWSync has no row for it (counted on the nwsync note)"; return false; }
+        try
+        {
+            if (!Decode(new ReadOnlySpan<byte>(data, size), out why, out rgba, out w, out h)) return false;
+            _log?.Always($"PltPalettes: \"{resref}\" read from NWSync ({w}x{h}) -- the server's own palette");
+            return true;
+        }
+        finally { NativeMemory.Free(data); }
+    }
+
+    /// <summary>A palette TGA's bytes as RGBA8, or false with <paramref name="why"/> set.</summary>
+    private static bool Decode(ReadOnlySpan<byte> raw, out string? why, out byte[]? rgba, out int w, out int h)
+    {
+        rgba = null; w = h = 0;
         byte* px = RasterReader.PrepareTga(raw, out RasterReader.Raster r, out why);
         if (px == null) return false;
         try
