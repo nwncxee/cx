@@ -280,8 +280,8 @@ public static unsafe partial class TextRig
         return sh;
     }
 
-    /// <summary>The current sheet into <paramref name="g"/>'s atlas texture, every level, at unpack alignment 1 (R8 rows
-    /// under 4 texels) and back to the GL default 4 -- in the engine's context <c>GLRender::CreateTexture</c> @0x4ca2b0
+    /// <summary>The current sheet into <paramref name="g"/>'s atlas texture, every level, both planes interleaved as RG8
+    /// (R coverage, G distance field), at unpack alignment 1 (rows under 2 texels) and back to the GL default 4 -- in the engine's context <c>GLRender::CreateTexture</c> @0x4ca2b0
     /// makes no pixel-store call of its own and assumes it. A handled atlas is immutable, so a re-bake makes a new one.</summary>
     private static void UploadAtlas(RigGlState g)
     {
@@ -303,15 +303,24 @@ public static unsafe partial class TextRig
         Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
         Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAX_LEVEL, a.Mips.Length);   // must equal the uploaded chain, or the texture is incomplete and samples black
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-        fixed (byte* px = a.Pixels)
-            Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Gl.R8, a.Side, a.Side, 0, Gl.RED, Gl.UNSIGNED_BYTE, px);
-        for (int l = 1; l < AtlasSheet.MipLevels && l - 1 < a.Mips.Length; l++)
-            fixed (byte* px = a.Mips[l - 1])
-                Gl.TexImage2D(Gl.TEXTURE_2D, l, (int)Gl.R8, a.Side >> l, a.Side >> l, 0, Gl.RED, Gl.UNSIGNED_BYTE, px);
+        for (int l = 0; l < AtlasSheet.MipLevels && l - 1 < a.Mips.Length; l++)
+        {
+            byte[] rg = Interleave(l == 0 ? a.Pixels : a.Mips[l - 1], l == 0 ? a.Field : a.FieldMips[l - 1]);
+            fixed (byte* px = rg)
+                Gl.TexImage2D(Gl.TEXTURE_2D, l, (int)Gl.RG8, a.Side >> l, a.Side >> l, 0, Gl.RG, Gl.UNSIGNED_BYTE, px);
+        }
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 4);
         Gl.BindTexture(Gl.TEXTURE_2D, 0);
         g.AtlasEpoch = epoch;
-        _log?.Info($"TextRig: atlas uploaded as GL tex {g.Atlas} ({a.Side}², {a.FaceCount} face(s), {AtlasSheet.MipLevels} levels, {a.Bytes / 1024} KB R8 distance field)");
+        _log?.Info($"TextRig: atlas uploaded as GL tex {g.Atlas} ({a.Side}², {a.FaceCount} face(s), {AtlasSheet.MipLevels} levels, {a.Bytes / 1024} KB RG8: coverage + distance field)");
+    }
+
+    /// <summary>Two planes of one level as RG8 texels. Cold: once per level per re-bake.</summary>
+    private static byte[] Interleave(byte[] r, byte[] g)
+    {
+        var rg = new byte[r.Length * 2];
+        for (int i = 0; i < r.Length; i++) { rg[2 * i] = r[i]; rg[2 * i + 1] = g[i]; }
+        return rg;
     }
 
     /// <summary>A VAO + its own VBO wired to the UI vertex layout (pos2, uv2, rgb3, alpha1).</summary>
@@ -364,12 +373,19 @@ public static unsafe partial class TextRig
         "  }\n" +
         "  return mix(o.w, 1.0, seen / 5.0);\n}\n";
 
-    /// <summary>The atlas holds a distance field (<see cref="AtlasSheet.SdfEdge"/> on the outline): coverage is a
-    /// smoothstep one screen pixel wide around the edge, so a glyph stays sharp at any scale it is drawn at.</summary>
+    /// <summary>A glyph's coverage from the atlas texel <c>t</c> (R baked coverage, G distance field with
+    /// <see cref="AtlasSheet.SdfEdge"/> on the outline). At or below its baked size it is the baked coverage, exactly;
+    /// magnified past <see cref="SdfFrom"/>x it hands over to a one-screen-pixel smoothstep of the field, which stays sharp.</summary>
     private static readonly string SdfLib =
-        "float CxSdf(float d){\n" +
-        "  float w = max(0.5 * length(vec2(dFdx(d), dFdy(d))), 0.002);\n" +
-        Invariant($"  return smoothstep({AtlasSheet.SdfEdge / 255f:F5} - w, {AtlasSheet.SdfEdge / 255f:F5} + w, d);\n") + "}\n";
+        "float CxText(vec2 t, vec2 uv, vec2 size){\n" +
+        "  vec2 p = uv * size; float texels = max(length(dFdx(p)), length(dFdy(p)));\n" +
+        "  float w = max(0.5 * length(vec2(dFdx(t.g), dFdy(t.g))), 0.002);\n" +
+        Invariant($"  float sdf = smoothstep({AtlasSheet.SdfEdge / 255f:F5} - w, {AtlasSheet.SdfEdge / 255f:F5} + w, t.g);\n") +
+        Invariant($"  return mix(t.r, sdf, clamp((1.0 / max(texels, 1e-4) - {SdfFrom:F2}) / {SdfBand:F2}, 0.0, 1.0));\n") + "}\n";
+
+    /// <summary>The magnification text starts handing over to the distance field at, and the span it finishes over:
+    /// the field's edge reads harsher than the baked coverage at 1:1, so only scaled-up text takes it.</summary>
+    private const float SdfFrom = 1.25f, SdfBand = 0.75f;
 
     private static readonly string VSrc =
         "#version 330 core\nlayout(location=0) in vec2 aPos;\nlayout(location=1) in vec2 aUV;\n" +
@@ -380,7 +396,7 @@ public static unsafe partial class TextRig
     private const string FsHead = "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\nflat in float vFade;\nuniform sampler2D uTex;\nout vec4 o;\n";
     private static readonly string FSrc =
         FsHead + "uniform float uAlpha;\n" + SdfLib +
-        "void main(){ float a = CxSdf(texture(uTex, vUV).r) * vA * uAlpha * vFade; o = vec4(vCol, a); }\n";
+        "void main(){ float a = CxText(texture(uTex, vUV).rg, vUV, vec2(textureSize(uTex, 0))) * vA * uAlpha * vFade; o = vec4(vCol, a); }\n";
     private const string FSrcRgb =
         FsHead + "void main(){ o = vec4(texture(uTex, vUV).rgb, vA * vFade); }\n";
     /// <summary>The portrait program discards texture alpha and icons carry theirs.</summary>
@@ -439,7 +455,7 @@ public static unsafe partial class TextRig
         "void main(){\n" +
         "  UiRec r = uRecs[vDraw];\n" +
         $"  vec4 t = (r.flags & {FlagBilinear}u) != 0u ? Bilinear(sampler2D(r.tex), vUV) : texture(sampler2D(r.tex), vUV);\n" +
-        $"  if (r.kind == {(int)UiDrawKind.Text}u) o = vec4(vCol, CxSdf(t.r) * vA * r.alpha);\n" +
+        $"  if (r.kind == {(int)UiDrawKind.Text}u) o = vec4(vCol, CxText(t.rg, vUV, vec2(textureSize(sampler2D(r.tex), 0))) * vA * r.alpha);\n" +
         $"  else if (r.kind == {(int)UiDrawKind.Portrait}u) o = vec4(t.rgb, vA);\n" +
         $"  else if (r.kind == {(int)UiDrawKind.Icon}u) o = t * vec4(1.0, 1.0, 1.0, vA);\n" +
         "  else o = t * vec4(vCol, vA * r.alpha);\n" +

@@ -10,7 +10,7 @@ using CX.Services.Chat.Core.Model;
 namespace CX.Ui;
 
 /// <summary>
-/// The UI's draw recorder, not a renderer: it owns the glyph atlas (a stb_truetype distance-field bake, cold) and turns every CX
+/// The UI's draw recorder, not a renderer: it owns the glyph atlas (a stb_truetype coverage + distance-field bake, cold) and turns every CX
 /// window's draw -- <see cref="DrawBatch"/>, <see cref="DrawPortrait"/>, the icon and skin quads -- into a
 /// <see cref="UiDrawList"/> command. <see cref="Replay"/> issues a list in whichever context draws the frame:
 /// Alloy's GUI pass, or the engine's present with Alloy off. Nothing here decides WHAT to draw.

@@ -585,6 +585,10 @@ internal static unsafe class SymbolMap
     public const string StbttGetCodepointHMetrics  = "stbtt_GetCodepointHMetrics";
     [Fn("int(byte* info, int codepoint)")]
     public const string StbttFindGlyphIndex        = "stbtt_FindGlyphIndex";
+    [Fn("void(byte* info, int codepoint, float scaleX, float scaleY, int* x0, int* y0, int* x1, int* y1)")]
+    public const string StbttGetCodepointBitmapBox = "stbtt_GetCodepointBitmapBox";
+    [Fn("void(byte* info, byte* output, int outW, int outH, int outStride, float scaleX, float scaleY, int codepoint)")]
+    public const string StbttMakeCodepointBitmap   = "stbtt_MakeCodepointBitmap";
     /// <summary>A codepoint's signed distance field: 0..255 with <c>onedge</c> on the outline, <c>pixelDistScale</c> per
     /// pixel inward, <c>padding</c> texels around the box. Malloc'd, freed by <see cref="StbttFreeSDF"/>; null for a blank glyph.</summary>
     [Fn("byte*(byte* info, float scale, int codepoint, int padding, byte onedge, float pixelDistScale, int* width, int* height, int* xoff, int* yoff)")]
@@ -2739,6 +2743,8 @@ internal static unsafe class SymbolMap
         [StbttGetFontVMetrics]       = Nm("stbtt_GetFontVMetrics"),
         [StbttGetCodepointHMetrics]  = Nm("stbtt_GetCodepointHMetrics"),
         [StbttFindGlyphIndex]        = Nm("stbtt_FindGlyphIndex"),
+        [StbttGetCodepointBitmapBox] = Nm("stbtt_GetCodepointBitmapBox"),
+        [StbttMakeCodepointBitmap]   = Nm("stbtt_MakeCodepointBitmap"),
         [StbttGetCodepointSDF]       = Nm("stbtt_GetCodepointSDF"),
         [StbttFreeSDF]               = Nm("stbtt_FreeSDF"),
         // the engine's own stb_truetype pack API + codepage mapper, name-exported on both OSes.
