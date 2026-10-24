@@ -27,6 +27,8 @@ Needs glslangValidator (Arch: `glslang`); the material pass also needs spirv-opt
 (Arch: `spirv-tools`), and skips itself with a notice where they are absent.
 """
 import atexit
+import math
+import types
 import os
 import re
 import shutil
@@ -990,7 +992,6 @@ void main()
     if errors():
         print("gbuf lanes: FAILED (a GL error in the fixture)")
         return 1
-    import math
     bad = []
     worst_n = 0.0
     def near(what, got, want, tol):
@@ -1031,6 +1032,121 @@ void main()
         elif r[29] != 0.0 or r[30:34] != [-1.0] * 4:
             bad.append(f"{tag}: an unbaked slot's chart read back {r[29:34]}")
     print(f"gbuf lanes: {'FAILED' if bad else 'ok'} ({len(GBUF_CASES)} cases, normal within {worst_n:.4f} deg)")
+    for b in bad:
+        print(f"  {b}")
+    return int(bool(bad))
+
+
+def stock_displace(uv, tsb, V, ng, depth, screen_h, h):
+    """inc_displacement.shd DisplaceTextureCoords at SHADER_QUALITY_MODE 2, DisplacementOffset 0 and multiplier 0
+    (so the 1.0 default), m_texture the identity -- the oracle, written from the stock shader, not from ours."""
+    dot = lambda a, b: sum(x * y for x, y in zip(a, b))
+    vts = [-c for c in V]                                   # vViewToSurface_n
+    m = 1.0 + 0.5 * dot(vts, ng)
+    m *= m / (depth * 0.125)                                # -vPosView.z
+    it = 32.0 * min(max(m * screen_h / 1080.0, 0.0), 1.0)
+    if not it > 0.5:
+        return uv
+    vd = [dot(col, V) for col in tsb]                       # transpose(mTSB) * -vViewToSurface_n
+    it = math.floor(it + 0.5)
+    seg = 1.0 / it
+    k = 0.05 * ((1.0 - vd[2]) / (0.5 * vd[2] + 0.5) ** 2 + 1.0)
+    disp = (vd[0] * k, vd[1] * k)
+    cur = (1.0 - h(uv)) * seg
+    for _ in range(int(it), 1, -1):
+        delta = 1.0 - h((uv[0] - disp[0] * cur, uv[1] - disp[1] * cur)) - cur
+        if delta < 0.0:
+            delta /= cur
+            seg *= 0.5
+        else:
+            delta /= 1.0 - cur
+        cur += delta * seg
+    return (uv[0] - disp[0] * cur, uv[1] - disp[1] * cur)
+
+
+DISPLACE_H = "0.5 + 0.4 * sin(12.566371 * p.x) * cos(18.849556 * p.y)"
+DISPLACE_CASES = [
+    # uv, tangent frame (T, B, N), V (surface to eye), view depth, screen height
+    ((0.3, 0.7), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.7071068, 0.0, 0.7071068), 3.0, 1080),
+    ((0.15, 0.4), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.0, -0.9848078, 0.1736482), 10.0, 1080),
+    ((0.6, 0.2), ((0, 1, 0), (-1, 0, 0), (0, 0, 1)), (0.5, 0.3, 0.8124038), 6.0, 2160),
+    ((0.9, 0.55), ((1, 0, 0), (0, 0, 1), (0, -1, 0)), (0.3, -0.8, 0.5196152), 40.0, 1080),
+    ((0.42, 0.13), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.5, 0.0, 0.8660254), 200.0, 1080),
+]
+
+
+def check_displace(g):
+    """CxDisplace against stock_displace on DISPLACE_CASES, the height an analytic field both sides evaluate
+    (DISPLACE_H): angle, distance and screen height set the step count, the frame orders the march's axes."""
+    fn = nv_context()
+    if fn is None:
+        print("parallax: skipped (no driver context)")
+        return 0
+    import ctypes as C
+    m = re.search(r"^vec2 CxDisplace\(.*?^}\n", g["cx_ownlit_synth"], re.S | re.M)
+    steps = re.search(r"^const float CX_DISPLACE_STEPS = [^;]+;", g["cx_ownlit_head"], re.M)
+    if m is None or steps is None:
+        print("parallax: FAILED (CxDisplace or CX_DISPLACE_STEPS not found)")
+        return 1
+    u, i, vp = C.c_uint, C.c_int, C.c_void_p
+    gl = lambda name, *a: fn(name, None, *a)
+    bufs, data, base = gl("glCreateBuffers", i, C.POINTER(u)), gl("glNamedBufferData", u, C.c_ssize_t, vp, u), gl("glBindBufferBase", u, u, u)
+    getbuf = gl("glGetNamedBufferSubData", u, C.c_ssize_t, C.c_ssize_t, vp)
+    shader, src_, comp, prog_, attach, link = (fn("glCreateShader", u, u), gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp),
+                                               gl("glCompileShader", u), fn("glCreateProgram", u), gl("glAttachShader", u, u), gl("glLinkProgram", u))
+    status = gl("glGetProgramiv", u, u, C.POINTER(i))
+    errors = fn("glGetError", u)
+    IN = 16
+    src = ("#version 460 core\nlayout(local_size_x = 1) in;\n" + steps.group(0) + "\n"
+           f"float cxH(vec2 p) {{ return {DISPLACE_H}; }}\n"
+           "#define textureGrad(t, p, a, b) vec4(cxH(p))\n"
+           + m.group(0) + f"""
+layout(std430, binding = 2) readonly buffer In {{ float uIn[]; }};
+layout(std430, binding = 3) writeonly buffer Out {{ float uOut[]; }};
+void main()
+{{
+    int b = int(gl_WorkGroupID.x) * {IN}, o = int(gl_WorkGroupID.x) * 2;
+    mat3 tsb = mat3(uIn[b + 2], uIn[b + 3], uIn[b + 4], uIn[b + 5], uIn[b + 6], uIn[b + 7], uIn[b + 8], uIn[b + 9], uIn[b + 10]);
+    vec2 r = CxDisplace(vec2(uIn[b], uIn[b + 1]), tsb, vec3(uIn[b + 11], uIn[b + 12], uIn[b + 13]), uIn[b + 14],
+                        uIn[b + 15], vec2(0.0), vec2(0.0));
+    uOut[o] = r.x; uOut[o + 1] = r.y;
+}}
+""")
+    s = shader(0x91B9); buf = C.c_char_p(src.encode())   # not-an-offset: GL_COMPUTE_SHADER
+    src_(s, 1, C.byref(buf), None); comp(s)
+    prog = prog_(); attach(prog, s); link(prog)
+    ok = i(0); status(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
+    if not ok.value:
+        print("parallax: FAILED (did not link on the driver)")
+        return 1
+    n = len(DISPLACE_CASES)
+    flat = []
+    for uv, tsb, V, depth, sh in DISPLACE_CASES:
+        row = [*uv, *tsb[0], *tsb[1], *tsb[2], *V, depth, sh]
+        flat += row + [0.0] * (IN - len(row))
+    ids = (u * 2)(); bufs(2, ids)
+    for k, (arr, bind) in enumerate(((flat, 2), ([0.0] * (2 * n), 3))):
+        a = (C.c_float * len(arr))(*arr)
+        data(ids[k], C.sizeof(a), a, 0x88E4)   # not-an-offset: GL_STATIC_DRAW
+        base(0x90D2, bind, ids[k])   # not-an-offset: GL_SHADER_STORAGE_BUFFER
+    gl("glUseProgram", u)(prog)
+    gl("glDispatchCompute", u, u, u)(n, 1, 1)
+    gl("glMemoryBarrier", u)(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
+    out = (C.c_float * (2 * n))()
+    getbuf(ids[1], 0, C.sizeof(out), out)
+    if errors():
+        print("parallax: FAILED (a GL error in the fixture)")
+        return 1
+    h = lambda p: eval(DISPLACE_H, {"sin": math.sin, "cos": math.cos, "p": types.SimpleNamespace(x=p[0], y=p[1])})
+    bad, worst, moved = [], 0.0, 0
+    for k, (uv, tsb, V, depth, sh) in enumerate(DISPLACE_CASES):
+        want = stock_displace(uv, tsb, V, tsb[2], depth, sh, h)
+        err = max(abs(out[2 * k] - want[0]), abs(out[2 * k + 1] - want[1]))
+        worst = max(worst, err)
+        moved += want != uv
+        if err > 1e-4:
+            bad.append(f"case {k}: ({out[2 * k]:.6f}, {out[2 * k + 1]:.6f}), stock says ({want[0]:.6f}, {want[1]:.6f})")
+    print(f"parallax: {'FAILED' if bad else 'ok'} ({n} cases, {moved} displaced, within {worst:.2e} of inc_displacement.shd)")
     for b in bad:
         print(f"  {b}")
     return int(bool(bad))
@@ -1687,6 +1803,7 @@ def main():
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)
     bad |= check_gbuf(g)
+    bad |= check_displace(g)
     bad |= check_early_z(progs)
     bad |= check_material(g)
     bad |= audit(g)

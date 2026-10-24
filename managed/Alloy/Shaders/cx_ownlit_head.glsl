@@ -26,7 +26,7 @@ uniform sampler2D uFlowTex;    // #123 slot 6 (texUnit6), only ever bound on a c
 uniform sampler2D uNrmTex;     // slot 1: tangent-space normal, xy in rg
 uniform sampler2D uSpecTex;    // slot 2: specularity in r
 uniform sampler2D uRoughTex;   // slot 3: roughness in r
-uniform sampler2D uHeightTex;  // slot 4: height, read for surface occlusion
+uniform sampler2D uHeightTex;  // slot 4: height, marched for parallax and read for surface occlusion
 uniform sampler2D uIllumTex;   // slot 5: self-illumination
 uniform sampler2D uAoTex;      // #146 slot 7: baked ambient occlusion in r
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
@@ -149,6 +149,8 @@ const int CX_SLOT_FLOW = 32;
 const float CX_ENV_SPEC_MAX = 0.98, CX_ENV_SPEC_SCALE = 8.0, CX_ENV_ROUGH_SCALE = 2.5;
 // inc_material.shd:301's OCCLUSION_VICINITT_RANGE: the height-occlusion tap's mip bias at a view depth of 1.
 const float CX_OCCL_VICINITY = 7.0;
+// inc_displacement.shd:30's fDisplacementMaximumIterations at SHADER_QUALITY_MODE > 1: the parallax march's cap.
+const float CX_DISPLACE_STEPS = 32.0;
 // inc_standard.shd:250-252: the albedo is desaturated toward this grey in proportion to reflectivity,
 // so the reflection is not counted twice. DISPLAY space -- the engine does it before the :253 linearise.
 const vec3 CX_ENV_GREY = vec3(0.666667);
