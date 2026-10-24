@@ -129,6 +129,9 @@ public static unsafe class Gl
     /// <summary>The unsized base format. Never a legal glTexStorage2D internalformat -- named so that a
     /// driver answering it for TEXTURE_INTERNAL_FORMAT can be refused rather than promoted.</summary>
     public const uint RGB = 0x1907;
+    /// <summary>One packed short per RGB pixel -- the type the engine's own upload funnel pairs with
+    /// <see cref="RGB"/> at a 16-bit colour depth.</summary>
+    public const uint UNSIGNED_SHORT_5_6_5 = 0x8363;
     public const int LINEAR_MIPMAP_LINEAR = 0x2703;
     /// <summary>The hi-Z pyramid's minification filter -- an INTERPOLATED max is not a max.</summary>
     public const int NEAREST_MIPMAP_NEAREST = 0x2700;

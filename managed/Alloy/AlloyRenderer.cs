@@ -496,6 +496,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         GuiPass.ContextLost();
         _nullSunShadow = 0; _nullCubeShadow = 0;
         BlendProfile.ContextLost();
+        MovieFrame.ContextLost();
         PassContextLost();
     }
 

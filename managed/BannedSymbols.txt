@@ -54,3 +54,4 @@ F:CX.Graphics.Gl.GetTexImage;Deleted entry point, kept as a tripwire: re-declari
 P:CX.Engine.CGuiMan.ModalCount;Ask Native.ModalPanelUp whether a stock modal is up
 M:CX.Engine.Material.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
 M:CX.Engine.SharedMaterial.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
+P:CX.Engine.CExoMoviePlayerInternal.Texture;The movie frame comes from the decode through MovieFrame.Upload; the engine's movie texture is not sampled
