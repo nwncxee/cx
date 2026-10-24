@@ -556,8 +556,11 @@ public static class TileBuildCheck
             Name = "cxtest_tilesl1", Index = 7, Parent = 0, Kind = NodeKind.Dummy,
             Position = new Vector3(0f, 3f, 1f),
         });
+        // A renderable trimesh with no vertices and no faces, as stock tiles ship (tcn01_w15_01's yubba089):
+        // it draws nothing anywhere, so it must open no bucket of its own.
+        nodes.Add(new NodeDef { Name = "empty", Index = 8, Parent = 0, Kind = NodeKind.TriMesh, Mesh = new MeshDef { Textures = ["null", "", "", ""] } });
 
-        root.Children = [1, 2, 3, 4, 5, 6, 7];
+        root.Children = [1, 2, 3, 4, 5, 6, 7, 8];
         def.Nodes = nodes.ToArray();
         // one animation that names animloop01: the node it names must stay its own part
         def.Anims =
