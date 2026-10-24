@@ -1171,6 +1171,20 @@ class Plane:
         """One work item by its id, with the fields the list view may omit."""
         return self.request("GET", f"projects/{project_id}/work-items/{item_id}/")
 
+    def related_detail(self, project_id, item_id):
+        """A parent or blocker by id, or None once it is archived or deleted.
+
+        A relation outlives the item at its other end, and the public API can
+        neither list an archived item nor delete the relation. An item that is
+        gone blocks nothing.
+        """
+        try:
+            return self.work_item_detail(project_id, item_id)
+        except PlaneError as error:
+            if error.status == 404:
+                return None
+            raise
+
     def comments(self, project_id, item_id):
         return list(self.paged(f"projects/{project_id}/work-items/{item_id}/comments/"))
 
@@ -1280,8 +1294,8 @@ class Plane:
                 home = str(blocker.get("project_id") or project_id)
                 if home not in states:
                     states[home] = self.states(home)
-                item = self.work_item_detail(home, blocker_id)
-                if is_open(item, states[home]):
+                item = self.related_detail(home, blocker_id)
+                if item is not None and is_open(item, states[home]):
                     references[blocker_id] = f"{identifiers[home]}-{item['sequence_id']}"
         return references
 
@@ -1314,7 +1328,10 @@ class Plane:
         related = {}
         for home, other_id in wanted:
             if other_id not in related:
-                other = self.work_item_detail(home, other_id)
+                other = self.related_detail(home, other_id)
+                if other is None:
+                    related[other_id] = f"{other_id} (archived or deleted)"
+                    continue
                 if home not in states:
                     states[home] = self.states(home)
                 state = states[home].get(str(other.get("state")), {}).get("name", "")
