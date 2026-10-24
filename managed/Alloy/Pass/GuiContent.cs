@@ -46,8 +46,8 @@ internal static unsafe class GuiContent
     private const int MaxLights = 32;
 
     /// <summary>The key for a material's content pair: 0 when it names no vertex AND fragment stage, or when
-    /// <paramref name="stock"/> -- the world path's own verdict, <c>ContentPrograms.Register(m) == 0</c> -- says
-    /// both halves add nothing to their stock counterparts. Such a pair IS the plain path, so a GUI part on it
+    /// <paramref name="stock"/> -- the world path's own verdict, <c>ContentPrograms.IsStock</c> -- says both
+    /// halves add nothing to their stock counterparts. Such a pair IS the plain path, so a GUI part on it
     /// draws Alloy's GUI program instead of a copy of the engine's lit stage that nothing feeds. Cold.</summary>
     internal static int Key(Db.MtrDef? m, bool stock)
     {
@@ -167,6 +167,10 @@ internal static unsafe class GuiContent
         check.Expect(ou == 61f && ov == 146f, "m_texture * (11, 13, 0, 1) is (2*11 + 3*13, 5*11 + 7*13)");
 
         static Db.MtrDef Mtr(string text) => Db.MtrDef.Parse(Encoding.ASCII.GetBytes(text), "selfcheck");
+        // The fixture materials intern, so the live table is swapped out and back: a session's keys are the
+        // module's materials, never a check's.
+        KeyState live = _keys;
+        _keys = new KeyState();
         check.Expect(Key(Mtr("customshadervs ls_vs_loader\n"), false) == 0,
                      "a material with a vertex stage and no fragment stage has no content key");
         int a = Key(Mtr("// a load screen's bar\ncustomshadervs LS_VS_Loader\ncustomshaderfs ls_fs_loader\n"), false);
@@ -176,6 +180,7 @@ internal static unsafe class GuiContent
                      "a pair the world path reads as stock has no GUI content key either -- Alloy's GUI program is its shading");
         check.Expect(Key(Mtr("customshadervs vslit_nm\ncustomshaderfs fslit_nm\n"), false) > 0,
                      "...and the same pair, not stock, does get one");
+        _keys = live;
         log.Info(check.Ok ? "GuiContent.SelfCheck: passed" : "GuiContent.SelfCheck: FAILED");
     }
 }

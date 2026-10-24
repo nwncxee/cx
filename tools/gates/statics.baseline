@@ -187,7 +187,7 @@
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
 2 managed/Alloy/ResLocate.cs
-12 managed/Alloy/RspShim.cs
+11 managed/Alloy/RspShim.cs
 20 managed/Alloy/Scene/AlloyCamera.cs
 13 managed/Alloy/Scene/AlloyEnvMap.cs
 7 managed/Alloy/Scene/AlloyRenderer.Casters.cs
@@ -208,7 +208,7 @@
 1 managed/Alloy/Scene/EmitterSim.Step.cs
 1 managed/Alloy/Scene/FrameDelta.cs
 5 managed/Alloy/Scene/FrameDump.cs
-33 managed/Alloy/Scene/GuiCapture.cs
+10 managed/Alloy/Scene/GuiCapture.cs
 7 managed/Alloy/Scene/PartTable.cs
 8 managed/Alloy/Scene/PlaceableHold.cs
 20 managed/Alloy/Scene/SceneInputs.cs

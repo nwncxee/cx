@@ -142,10 +142,8 @@ global using unsafe RiIsEnabledFn = delegate* unmanaged<int, byte>;
 global using unsafe RiResetRenderStatesFn = delegate* unmanaged<void>;
 global using unsafe RiCheckUniformDataFn = delegate* unmanaged<float, void>;
 global using unsafe RiBindBufferFn = delegate* unmanaged<uint, uint, void>;
-global using unsafe RiSetColorvFn = delegate* unmanaged<float*, void>;
 global using unsafe SceneRenderOnlyGobsFn = delegate* unmanaged<nint, void>;
 global using unsafe StatusBarSetStatusFn = delegate* unmanaged<nint, float, void>;
-global using unsafe GlDrawResetFn = delegate* unmanaged<void>;
 global using unsafe SdlGlSwapWindowFn = delegate* unmanaged<nint, void>;
 global using unsafe RiClearFn = delegate* unmanaged<uint, void>;
 global using unsafe RiSetClearColorFn = delegate* unmanaged<float, float, float, float, void>;
@@ -2589,21 +2587,6 @@ public readonly unsafe partial struct ErfResListEntry(IntPtr ptr)
     public ErfResListEntry this[int i] => new(Ptr + i * EngineLayout.ErfEntryStride);
 }
 
-/// <summary>Typed view of an engine <c>GlMaterial*</c>.</summary>
-public readonly unsafe partial struct GlMaterial(IntPtr ptr)
-{
-    /// <summary>The engine object.</summary>
-    public readonly IntPtr Ptr = ptr;
-    /// <summary>No object.</summary>
-    public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.GlMatAmbient"/>
-    public ref System.Numerics.Vector4 Ambient => ref *(System.Numerics.Vector4*)(Ptr + EngineLayout.GlMatAmbient);
-    /// <inheritdoc cref="EngineLayout.GlMatDiffuse"/>
-    public ref System.Numerics.Vector4 Diffuse => ref *(System.Numerics.Vector4*)(Ptr + EngineLayout.GlMatDiffuse);
-    /// <inheritdoc cref="EngineLayout.GlMatEmissive"/>
-    public ref System.Numerics.Vector4 Emissive => ref *(System.Numerics.Vector4*)(Ptr + EngineLayout.GlMatEmissive);
-}
-
 /// <summary>Typed view of an engine <c>GlPool*</c>.</summary>
 public readonly unsafe partial struct GlPool(IntPtr ptr)
 {
@@ -4502,10 +4485,6 @@ public static unsafe class EngineFn
     private static bool _RiBindBufferDone;
     /// <inheritdoc cref="SymbolMap.RiBindBuffer"/>
     public static RiBindBufferFn RiBindBuffer => (RiBindBufferFn)(_RiBindBufferDone ? _RiBindBuffer : Resolve(ref _RiBindBuffer, ref _RiBindBufferDone, SymbolMap.RiBindBuffer));
-    private static IntPtr _RiSetColorv;
-    private static bool _RiSetColorvDone;
-    /// <inheritdoc cref="SymbolMap.RiSetColorv"/>
-    public static RiSetColorvFn RiSetColorv => (RiSetColorvFn)(_RiSetColorvDone ? _RiSetColorv : Resolve(ref _RiSetColorv, ref _RiSetColorvDone, SymbolMap.RiSetColorv));
     private static IntPtr _SceneRenderOnlyGobs;
     private static bool _SceneRenderOnlyGobsDone;
     /// <inheritdoc cref="SymbolMap.SceneRenderOnlyGobs"/>
@@ -4514,10 +4493,6 @@ public static unsafe class EngineFn
     private static bool _StatusBarSetStatusDone;
     /// <inheritdoc cref="SymbolMap.StatusBarSetStatus"/>
     public static StatusBarSetStatusFn StatusBarSetStatus => (StatusBarSetStatusFn)(_StatusBarSetStatusDone ? _StatusBarSetStatus : Resolve(ref _StatusBarSetStatus, ref _StatusBarSetStatusDone, SymbolMap.StatusBarSetStatus));
-    private static IntPtr _GlDrawReset;
-    private static bool _GlDrawResetDone;
-    /// <inheritdoc cref="SymbolMap.GlDrawReset"/>
-    public static GlDrawResetFn GlDrawReset => (GlDrawResetFn)(_GlDrawResetDone ? _GlDrawReset : Resolve(ref _GlDrawReset, ref _GlDrawResetDone, SymbolMap.GlDrawReset));
     private static IntPtr _SdlGlSwapWindow;
     private static bool _SdlGlSwapWindowDone;
     /// <inheritdoc cref="SymbolMap.SdlGlSwapWindow"/>
@@ -6567,12 +6542,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.RiBindBuffer"/>; returns the slot holding the next layer, or null.</summary>
     public static RiBindBufferFn* ChainRiBindBuffer(this HookService h, RiBindBufferFn handler, int priority) =>
         (RiBindBufferFn*)h.Chain(SymbolMap.RiBindBuffer, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.RiSetColorv"/>; returns the original, or null.</summary>
-    public static RiSetColorvFn InstallRiSetColorv(this HookService h, RiSetColorvFn handler) =>
-        (RiSetColorvFn)h.Install(SymbolMap.RiSetColorv, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.RiSetColorv"/>; returns the slot holding the next layer, or null.</summary>
-    public static RiSetColorvFn* ChainRiSetColorv(this HookService h, RiSetColorvFn handler, int priority) =>
-        (RiSetColorvFn*)h.Chain(SymbolMap.RiSetColorv, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SceneRenderOnlyGobs"/>; returns the original, or null.</summary>
     public static SceneRenderOnlyGobsFn InstallSceneRenderOnlyGobs(this HookService h, SceneRenderOnlyGobsFn handler) =>
         (SceneRenderOnlyGobsFn)h.Install(SymbolMap.SceneRenderOnlyGobs, (IntPtr)handler);
@@ -6585,12 +6554,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.StatusBarSetStatus"/>; returns the slot holding the next layer, or null.</summary>
     public static StatusBarSetStatusFn* ChainStatusBarSetStatus(this HookService h, StatusBarSetStatusFn handler, int priority) =>
         (StatusBarSetStatusFn*)h.Chain(SymbolMap.StatusBarSetStatus, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.GlDrawReset"/>; returns the original, or null.</summary>
-    public static GlDrawResetFn InstallGlDrawReset(this HookService h, GlDrawResetFn handler) =>
-        (GlDrawResetFn)h.Install(SymbolMap.GlDrawReset, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.GlDrawReset"/>; returns the slot holding the next layer, or null.</summary>
-    public static GlDrawResetFn* ChainGlDrawReset(this HookService h, GlDrawResetFn handler, int priority) =>
-        (GlDrawResetFn*)h.Chain(SymbolMap.GlDrawReset, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SdlGlSwapWindow"/>; returns the original, or null.</summary>
     public static SdlGlSwapWindowFn InstallSdlGlSwapWindow(this HookService h, SdlGlSwapWindowFn handler) =>
         (SdlGlSwapWindowFn)h.Install(SymbolMap.SdlGlSwapWindow, (IntPtr)handler);

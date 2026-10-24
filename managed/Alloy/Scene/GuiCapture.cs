@@ -1,6 +1,5 @@
 using System;
 using System.Numerics;
-using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -19,19 +18,19 @@ internal static unsafe class GuiCapture
     /// non-GUI one, and split by depth RANGE -- the five overlay scenes in [0, 0.02], every other panel in [0.021, 0.1].</summary>
     internal struct Layer { public int X, Y, W, H, SX, SY, SW, SH, First, Count; public float Near, Far; public bool Clear; public uint Target; }
 
-    /// <summary>One captured draw. <see cref="Slot"/> is a VAO-cache slot (<see cref="Stream"/> false) or the
-    /// stream format the flush builds a VAO for; <see cref="Offset"/> is an element BYTE offset when
-    /// <see cref="Indexed"/>, else the first vertex.</summary>
+    /// <summary>One draw in a layer. <see cref="Format"/> is the stream format the flush builds a VAO for
+    /// (<see cref="Stream"/> true); <see cref="Offset"/> is an element BYTE offset when <see cref="Indexed"/>,
+    /// else the first vertex.</summary>
     internal struct Draw
     {
         public bool Stream, Indexed, Blend, DepthTest, DepthWrite, Cull;
-        public int Slot, Count, BaseVertex, Stride, Tex;
+        public int Count, BaseVertex, Stride, Tex;
         /// <summary>The GL texture a <see cref="GuiCapture.FlagEnvMap"/> draw reflects; 0 = whatever is bound.</summary>
         public int EnvTex;
         public uint Prim, Format, Src, Dst;
         public long Offset;
-        /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes its
-        /// VAO from <see cref="Slot"/> or <see cref="Format"/>.</summary>
+        /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes the
+        /// one the flush builds for <see cref="Format"/>.</summary>
         public uint RawVao;
         /// <summary>The content program this draw runs (<see cref="GuiContent.Key"/>); 0 = Alloy's GUI program.</summary>
         public int Content;
@@ -145,7 +144,7 @@ internal static unsafe class GuiCapture
         if (at + bytes > VtxBytes) { Overflow("vertex bytes"); return false; }
         new ReadOnlySpan<byte>(vtx, checked((int)((long)lo * stride + bytes))).Slice(lo * stride, (int)bytes).CopyTo(Vtx.AsSpan(at));
         VtxN = at + (int)bytes;
-        d.Stream = true; d.Stride = stride; d.Format = fmt; d.Prim = glPrim; d.Slot = 0; d.Count = count;
+        d.Stream = true; d.Stride = stride; d.Format = fmt; d.Prim = glPrim; d.Count = count;
         if (!idx.IsEmpty)
         {
             Span<ushort> dst = Idx.AsSpan(IdxN);
@@ -225,7 +224,7 @@ internal static unsafe class GuiCapture
     {
         if (p.Count <= 0 || p.Vao == 0 || LayerN == 0 || !Room()) return;
         ref Draw d = ref Draws[DrawN];
-        d.Stream = false; d.Indexed = true; d.Slot = 0; d.Stride = 0; d.Format = 0;
+        d.Stream = false; d.Indexed = true; d.Stride = 0; d.Format = 0;
         d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;

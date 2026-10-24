@@ -93,11 +93,7 @@ internal static unsafe class ContentPrograms
             RegistryState s = _reg;
             if (s.ByName.TryGetValue(key, out int have)) return have;
             bool vsStock = Stock(MtrFeed.ShaderText(vs), false);
-            // A half with a native stage beside it is never stock: the feed reads the native text first, so by the
-            // time both plain halves are known, so is whether either has one. Not gated on alloy.native: the id outlives
-            // the knob, and with it off the build finds both halves stock and draws the plain lit path, as here.
-            bool native = MtrFeed.ShaderText(StageResources.Prefix + vs) != null || MtrFeed.ShaderText(StageResources.Prefix + fs) != null;
-            if (vsStock && !native && Stock(MtrFeed.ShaderText(fs), true))
+            if (IsStock(mtr))
             {
                 s.ByName[key] = 0;
                 s.StockPairs++;
@@ -115,6 +111,22 @@ internal static unsafe class ContentPrograms
             s.ByName[key] = feat;
             return feat;
         }
+    }
+
+    /// <summary>Do both of <paramref name="mtr"/>'s halves add nothing to their stock counterparts, so that the pair
+    /// IS the plain path? True also when it names no pair at all. Read off the texts the material feed already holds,
+    /// and the one verdict both the world's programs and the GUI pass ask for -- it mints no id and logs nothing,
+    /// so a caller may ask per recipe. Cold.</summary>
+    internal static bool IsStock(Db.MtrDef? mtr)
+    {
+        if (mtr == null || mtr.ShaderVs.Length == 0 || mtr.ShaderFs.Length == 0) return true;
+        string vs = mtr.ShaderVs, fs = mtr.ShaderFs;
+        // A half with a native stage beside it is never stock: the feed reads the native text first, so by the
+        // time both plain halves are known, so is whether either has one. Not gated on alloy.native: the id outlives
+        // the knob, and with it off the build finds both halves stock and draws the plain lit path, as here.
+        if (MtrFeed.ShaderText(StageResources.Prefix + vs) != null || MtrFeed.ShaderText(StageResources.Prefix + fs) != null)
+            return false;
+        return Stock(MtrFeed.ShaderText(vs), false) && Stock(MtrFeed.ShaderText(fs), true);
     }
 
     private static bool Stock(string? text, bool fragment) => text != null && ContentStage.StockShaped(text, fragment);

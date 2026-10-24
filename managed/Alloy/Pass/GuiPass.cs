@@ -53,8 +53,8 @@ internal static unsafe class GuiPass
     private static NkSdlRenderFn* _nkSlot;
     private static long _flushes, _drawn, _noVao;
 
-    /// <summary>Is the GUI Alloy's right now? Asked by the capture hook per scene; everything it names exists before
-    /// the first scene is captured, so a scene is never captured into a flush that cannot draw it.</summary>
+    /// <summary>Is the GUI Alloy's right now? Asked once per scene before it is listed; everything it names exists
+    /// by then, so a scene is never listed into a flush that cannot draw it.</summary>
     internal static bool Capturing => _armed && !_failed && _gl.Prog != 0 && Renderer.Gui.V && GlContextService.Available;
 
     internal static void Install(ExtenderLog log, HookService hooks)
@@ -74,9 +74,9 @@ internal static unsafe class GuiPass
         _nkSlot = hooks.ChainNkSdlRender(&OnNk, NkPriority);
         FrameRegistry.Global.Register(FramePhase.PrePresent, 5, OnPresent, "GuiPass.flush", log);
         _armed = true;
-        log.Info("GuiPass: armed -- GUI scenes are captured and drawn by Alloy once the 4.6 context is up "
+        log.Info("GuiPass: armed -- GUI scenes are listed and drawn by Alloy once the 4.6 context is up "
                + (_nkSlot != null ? "(flushed before NUI and at the present)" : "(nk_sdl_render unhooked: flushed at the present, above NUI)")
-               + "; /alloy gui 0 hands them back");
+               + "; /alloy gui 0 turns the game's panels OFF, it does not hand them to the engine");
     }
 
     /// <summary>The panels, just before nuklear flushes (and before the CX windows chained under it).</summary>
@@ -539,8 +539,8 @@ internal static unsafe class GuiPass
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         _gl.DepthFmt = RenderTarget.ProbeDepthFormat(0);
         ScreenOwner.RestoreEngineFbo();
-        if (_gl.DepthFmt == 0) _log?.Always("GuiPass: the default framebuffer reports no depth -- on Windows a content-shader GUI draw "
-                                       + "will not depth-test against Alloy's GUI draws");
+        if (_gl.DepthFmt == 0) _log?.Always("GuiPass: the default framebuffer reports no depth -- on Windows nothing the "
+                                       + "engine's context draws will depth-test against Alloy's GUI draws");
     }
 
     private static void Resize(int w, int h)

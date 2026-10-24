@@ -1000,15 +1000,6 @@ public static unsafe partial class EngineLayout
     /// <inheritdoc cref="VsdoIndexed"/>
     public static readonly int VsdoStride = Field<int>("VertexStreamDataObject", "vertexStride");
 
-    /// <summary><c>GLRender::m_material</c>'s MATERIAL struct, per <c>SetMaterialv</c> (Linux @0x4cc060,
-    /// Windows rva 0xb75b0, same switch on both): property 1 ambient at +0, 2 diffuse at +0x10, 3 emissive at
-    /// +0x30, each an RGBA float quad.</summary>
-    public static readonly int GlMatAmbient = Field<System.Numerics.Vector4>("GlMaterial", "ambient");
-    /// <inheritdoc cref="GlMatAmbient"/>
-    public static readonly int GlMatDiffuse = Field<System.Numerics.Vector4>("GlMaterial", "diffuse");
-    /// <inheritdoc cref="GlMatAmbient"/>
-    public static readonly int GlMatEmissive = Field<System.Numerics.Vector4>("GlMaterial", "emissive");
-
     /// <summary>The three fields of nuklear's <c>nk_context</c> that its flush touches, identical on both
     /// builds: <c>delta_time_seconds</c>, which <c>nk_sdl_render</c> stores first, and the
     /// <c>cmd_count</c>/<c>cmd_offset</c> pair inside <c>ctx-&gt;draw_list</c> that

@@ -336,12 +336,14 @@ anything else names what is left.
 
 ## The GUI and the screen (CX-95, CX-101)
 
-A second, smaller verdict sits beside the world's, because the GUI has no world frame to wait for:
+A second, smaller verdict sits beside the world's, because the GUI has no world frame to wait for. Only the
+first row of it still has an engine GUI behind it: once Alloy is rendering, the scene database IS the GUI and
+there is no engine traversal underneath, so every later row costs the panels rather than handing them back.
 
 | Term | Where | If it fails |
 | --- | --- | --- |
 | Alloy requested at boot (`alloy.enabled`, `alloy.drawhooks=batch`) and the `RenderSinglePass` shim armed | `AlloyRenderer.Initialize` → `GuiPass.Install` | nothing installs; the engine draws its GUI |
-| the screen size resolved | `GuiPass.Install` | `_log.Always`, the engine draws its GUI |
-| the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | before the first present: the engine's GUI (one or two frames at boot); a build failure is a loud `Fail` and the engine draws the GUI for the session |
-| `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live |
+| the screen size resolved | `GuiPass.Install` | `_log.Always`; the pass never arms, so `DbGui` refuses every scene loudly and the panels are NOT DRAWN |
+| the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | the panels are NOT DRAWN while it is false (one or two frames at boot); a build failure is a loud `Fail` and they stay undrawn for the session |
+| `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |

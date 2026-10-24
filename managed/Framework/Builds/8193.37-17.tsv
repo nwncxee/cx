@@ -263,9 +263,6 @@ offset	VertexStreamDataObject	elemToken	0x14	0x18	# VsdoElemToken
 offset	VertexStreamDataObject	vertToken	0x1c	0x20	# VsdoVertToken
 offset	VertexStreamDataObject	format	0x20	0x24	# VsdoFormat
 offset	VertexStreamDataObject	vertexStride	0x24	0x28	# VsdoStride
-offset	GlMaterial	ambient	0x0	0x0	# GlMatAmbient
-offset	GlMaterial	diffuse	0x10	0x10	# GlMatDiffuse
-offset	GlMaterial	emissive	0x30	0x30	# GlMatEmissive
 offset	NkContext	deltaTime	0x5088	0x5088	# NkCtxDeltaTime
 offset	NkContext	drawCmdCount	0x5160	0x5160	# NkCtxDrawCmdCount
 offset	NkContext	drawCmdOffset	0x5168	0x5168	# NkCtxDrawCmdOffset

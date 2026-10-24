@@ -654,29 +654,9 @@ internal static unsafe class SymbolMap
     public const string GlBoundTextures = "_ZN8GLRender15m_boundTexturesE";
     public const string GlActiveTextureStage = "_ZN8GLRender20m_activeTextureStageE";
     public const string GlEnabledTextureStages = "_ZN8GLRender23m_bEnabledTextureStagesE";
-    /// <summary><c>GLRender::m_bEnabledStates</c> @0x19ad0d0 -- the enable-cap CACHE, one bit per
-    /// <c>AuroraEnableEnums</c> value (<c>GLRender::IsEnabled</c> @0x4cae20 is <c>m_bEnabledStates &amp; 1 &lt;&lt; cap</c>).</summary>
-    public const string GlEnabledStates = "_ZN8GLRender16m_bEnabledStatesE";
-    /// <summary><c>GLRender::m_globalColor</c> @0x19ad0c0 -- the <c>globalColor</c> uniform's four floats,
-    /// written by <c>SetColorv</c> @0x4d1230 / <c>SetColor4f</c> @0x4d1290.</summary>
-    public const string GlGlobalColor = "_ZN8GLRender13m_globalColorE";
-    /// <summary>The <c>AuroraBlendModes</c> pair <c>GLRender::SetBlendFunc</c> @0x4cb0c0 caches and early-outs
-    /// against -- indices into <c>blendTranslationTable</c>.</summary>
-    public const string GlSrcBlendMode = "_ZN8GLRender20cm_nPrevSrcBlendModeE";
-    /// <inheritdoc cref="GlSrcBlendMode"/>
-    public const string GlDstBlendMode = "_ZN8GLRender20cm_nPrevDstBlendModeE";
-    /// <summary><c>GLRender::bDepthMask</c> -- the depth-write byte <c>SetDepthMask</c> @0x4cb580 caches.</summary>
-    public const string GlDepthMask = "_ZN8GLRender10bDepthMaskE";
     /// <summary><c>GLRender::m_viewport</c> -- four ints {x, y, w, h} that <c>SetViewPort</c> @0x4cb3f0 writes
     /// beside every glViewport; <c>Camera::RenderScene</c> sets each view's here before <c>Scene::Render</c>.</summary>
     public const string GlViewport = "_ZN8GLRender10m_viewportE";
-    /// <summary><c>GLRender::m_material</c> @0x19ad180 -- the lit shader's MATERIAL cache
-    /// (<see cref="EngineLayout.GlMatAmbient"/> for its layout).</summary>
-    public const string GlMaterial = "_ZN8GLRender10m_materialE";
-    /// <summary><c>RenderInterface::SetColorv(float*)</c> @0x45cfa0 -- static, a thunk to
-    /// <c>GLRender::SetColorv</c>. <c>Scene::RenderOnlyGobs</c> opens every GUI scene with white.</summary>
-    [Fn("void(float* rgba)")]
-    public const string RiSetColorv = "_ZN15RenderInterface9SetColorvEPf";
     /// <summary><c>Scene::RenderOnlyGobs()</c> @0x4682e0 -- the draw of every scene with no tile BSP (every
     /// GUI panel, the menus, the minimap, the cursor overlay): <c>Scene::Render</c> reaches it through
     /// <c>call *0x278</c> @0x4767d9. Alloy replaces it with its own loop over the same gobs, whose draws it
@@ -693,11 +673,6 @@ internal static unsafe class SymbolMap
     /// lightmap bake hold share it through this call.</summary>
     [Fn("void(CGuiStatusBar this, float percent)")]
     public const string StatusBarSetStatus = "_ZN13CGuiStatusBar9SetStatusEf";
-    /// <summary><c>GLRender::DrawReset()</c> @0x4cfa00 -- the tail of both draw funnels: <c>Disable(0x12)</c>,
-    /// <c>Disable(0x15)</c>, <c>m_nRenderHint = 0</c>, <c>m_pCurrentCustomProgram = 0</c> -- so a funnel call that
-    /// does not reach it leaves the material's custom program latched for every later draw.</summary>
-    [Fn("void()")]
-    public const string GlDrawReset = "_ZN8GLRender9DrawResetEv";
     /// <summary>SDL's present -- what <c>GLRender::SwapBuffers</c> @0x4d2070 calls between
     /// <c>BindDefaultFramebuffer</c> and <c>ResetRenderStates</c>. Alloy's present calls it directly. C linkage.</summary>
     [Fn("void(IntPtr window)")]
@@ -1338,16 +1313,6 @@ internal static unsafe class SymbolMap
     /// routing a part to draw bucket 6. Data symbol; read, never write.</summary>
     public const string EnableBumpyWater = "g_nEnableBumpyWater";
 
-    // The program a content material binds, and the way back from it to the pair it was built from:
-    // GLRender::m_loadedCustomPrograms @0x19af690 is a List (data, count at +8, capacity at +0xc) of 0x70-byte
-    // records -- vertex, fragment and geometry resrefs as NUL-terminated char[32] at +0, +0x20 and +0x40, the
-    // PROG_FIXED at +0x60, the NO_DISCARD flag at +0x68 -- append-only and realloc'd, walked exactly that way
-    // by ReloadShaders (Linux @0x5d3a40, Windows rva 0xb5110: the same offsets and the same 0x70 stride).
-    /// <summary><c>GLRender::m_pCurrentCustomProgram</c> @0x19af680 (B) -- the PROG_FIXED the material bind
-    /// left current. The GL program id is the uint at <c>+0x64</c>, as SetProgram reads it; the material
-    /// parameters it was fed are <c>+0x1ef0</c> records of 0x6c bytes at <c>+0x1ee8</c>, each one
-    /// {kind, uniform location, component count, name at +0xa, value at +0x5c}.</summary>
-    public const string GlCurrentCustomProgram = "_ZN8GLRender23m_pCurrentCustomProgramE";
     /// <summary>Global shader param scalar getter -- param 0x12 is the light-radius multiplier
     /// GetLightAdjustedRadius applies (adjR = range * intensity * overbright * this).</summary>
     [Fn("float(uint param)")]
@@ -2955,21 +2920,12 @@ internal static unsafe class SymbolMap
         [GetServerNetworkAddress] = Nm("?GetServerNetworkAddress@CNetLayer@@QEAA?AVCExoString@@XZ"),
         [GlActiveTextureStage] = Nm("?m_activeTextureStage@GLRender@@0IA"),
         [GlBoundTextures] = Nm("?m_boundTextures@GLRender@@0PAUBoundTexture@1@A"),
-        [GlCurrentCustomProgram] = Nm("?m_pCurrentCustomProgram@GLRender@@0PEAUPROG_FIXED@1@EA"),
         [GlEnabledTextureStages] = Nm("?m_bEnabledTextureStages@GLRender@@0IA"),
-        [GlEnabledStates] = Nm("?m_bEnabledStates@GLRender@@0IA"),
-        [GlGlobalColor] = Nm("?m_globalColor@GLRender@@0VVector4@@A"),
-        [GlSrcBlendMode] = Nm("?cm_nPrevSrcBlendMode@GLRender@@0W4AuroraBlendModes@Aurora@@A"),
-        [GlDstBlendMode] = Nm("?cm_nPrevDstBlendMode@GLRender@@0W4AuroraBlendModes@Aurora@@A"),
-        [GlDepthMask] = Nm("?bDepthMask@GLRender@@0EA"),
         [GlViewport] = Nm("?m_viewport@GLRender@@0PAHA"),
-        [GlMaterial] = Nm("?m_material@GLRender@@0UMATERIAL@1@A"),
-        [RiSetColorv] = Nm("?SetColorv@RenderInterface@@SAXPEAM@Z"),
         [SceneRenderOnlyGobs] = Nm("?RenderOnlyGobs@Scene@@UEAAXXZ"),
         [ScreenWidth] = Nm("?g_nScreenWidth@@3HA"),
         [ScreenHeight] = Nm("?g_nScreenHeight@@3HA"),
         [StatusBarSetStatus] = Nm("?SetStatus@CGuiStatusBar@@QEAAXM@Z"),
-        [GlDrawReset] = Nm("?DrawReset@GLRender@@CAXXZ"),
         [SdlGlSwapWindow] = Nm("SDL_GL_SwapWindow"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
