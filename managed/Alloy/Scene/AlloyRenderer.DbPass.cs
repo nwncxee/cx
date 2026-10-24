@@ -2,6 +2,7 @@ using System.Numerics;
 using System;
 using CX.Alloy.Db;
 using CX.Framework;
+using CX.Graphics;
 
 namespace CX.Alloy;
 
@@ -93,6 +94,18 @@ public sealed unsafe partial class AlloyRenderer
         // Admit and the bake) -- reads of memory the game thread simulates, done from whichever thread draws.
         DbLights.Walk(scene, in h);
         FrameZones.Add(FrameZones.Zone.Lwalk, tLights);
+        LatchFrameTarget();   // per-CONTEXT GL state: it has to be read before the switch below
+        // A refused Enter is not handled here -- each pass inside refuses on its own Enter and says why.
+        bool oneBracket = GlContextService.Enter();
+        try { DbDrawView(scene, camera, in h); }
+        finally { if (oneBracket) GlContextService.Leave(); }
+    }
+
+    /// <summary>The view's draw inside ONE 4.6 bracket (ADR 0032): the shadow bake, the simulation slots and
+    /// the colour pass, which used to open and close a bracket each across a gap that issues no engine GL.
+    /// Enter is reentrant, so their own pairs are depth counters. Nothing here may issue ENGINE GL.</summary>
+    private static void DbDrawView(DbId scene, DbId camera, in Db.FrameHoist h)
+    {
         // CX-120: the shadow half of the frame anchor. SceneInputs.FrameStart used to be reached through
         // RspShim, which is the engine's RenderSinglePass and does not run -- so without this call the sun
         // cascades were never baked and [zones] Shadow read 0,0. Position: after the light rig, before

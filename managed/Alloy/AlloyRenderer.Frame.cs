@@ -92,16 +92,8 @@ public sealed unsafe partial class AlloyRenderer
             return false;
         }
 
-        // #257: where the frame goes is LATCHED, not interrogated. Every frame used to open with nine
-        // GL queries -- viewport, framebuffer binding, four attachment params, sRGB, and the two clear
-        // values -- because the engine owned the frame's output configuration and could change it under us.
-        // Under the cutover it does not: the answer is the same every frame until something that CANNOT
-        // happen silently happens (a resize, an area change, a context loss). So the queries run once per
-        // such generation, and once every LogEvery frames they run again as an ASSERTION -- re-read,
-        // compared, and any drift logged and adopted. What survives unchanged is the argument for reading
-        // the clear values in ENGINE context at all: a GL share list shares objects, not per-context state,
-        // so glClearColor is not queryable from inside the 4.6 bracket -- that context has its own.
-        ref Target t = ref ThisFrameTarget();
+        // #257/ADR 0032: LatchFrameTarget read this in the ENGINE's context before the view's bracket opened.
+        ref Target t = ref _target;
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
         // #391: TWO viewports. `display` is the engine's -- where the resolve, the post stack and the
         // depth hand-back go, and what the 2D UI draws at. `viewport` is the RENDER one every owned pass

@@ -145,7 +145,8 @@ SeamDraw.OnBoundary                     game thread
   if the render thread is live: it draws; else DrawSnapshot here, then the 2D UI, in try/finally
 SeamDraw.DrawSnapshot                   render thread, or the game thread on a stand-down
   per view: SceneFeed.TickFromView, then DbGui.Draw (GUI) or SeamDraw.Pass (world)
-     Pass = AlloyRenderer.DbWorldPass -> DbOrder, DrawOwned -> BeginOwnedFrame (the 4.6 bracket)
+     Pass = AlloyRenderer.DbWorldPass -> DbOrder, LatchFrameTarget, then ONE 4.6 bracket (DbDrawView)
+        the shadow bake, the particle/beam/halo enrolment, DrawOwned -> BeginOwnedFrame
         MeshArena.Pump, TexRegistry.Drain, PltPalettes.Create, PltColors.Upload, the passes
 ```
 

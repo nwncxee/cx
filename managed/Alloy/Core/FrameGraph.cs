@@ -2,9 +2,9 @@ using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>The GL brackets (context enter/leave) the Alloy frame is allowed per frame. ADR 0011 costs
-/// the graph at exactly two, so a third one appearing is a design change, not an implementation detail.
-/// Named by role, not by anchor: the anchor moves where each bracket hangs off the engine.</summary>
+/// <summary>The two PHASES of the Alloy frame -- the bake's views, then the colour pass that samples them.
+/// ADR 0011 costed the graph at two and ADR 0032 runs both inside one GL bracket, so these group passes
+/// rather than count context switches; a third is still a design change, not an implementation detail.</summary>
 internal enum Bracket
 {
     /// <summary>World casters: sun cascades + local light cubes. <see cref="CasterPass.OnPassSlot"/>.</summary>
@@ -116,9 +116,9 @@ internal enum PassId
 
 /// <summary>
 /// The Alloy frame's pass list, declared once instead of implied by the order statements happen to appear in
-/// (ADR 0011). Each bracket site walks this and switches on the id, so adding a pass is one entry here plus
-/// one arm there. Wall-clock order too: the shadow bracket fires at the pass slot, ahead of the colour bracket
-/// that samples it; <see cref="RspShim"/> records what stays outside Alloy.
+/// (ADR 0011). Each phase's site walks this and switches on the id, so adding a pass is one entry here plus
+/// one arm there. Wall-clock order too: the bake's views run ahead of the colour pass that samples them, both
+/// inside the view's one GL bracket (ADR 0032); <see cref="RspShim"/> records what stays outside Alloy.
 /// </summary>
 internal static class FrameGraph
 {
@@ -153,33 +153,32 @@ internal static class FrameGraph
     };
 
     /// <summary>Off-device (run-demo.sh): the list schedules every declared pass exactly once, in ADR 0011's
-    /// order, and costs two brackets. Ids ascending is what ties the walk to the ADR -- the enum carries the
+    /// order, in two contiguous phases. Ids ascending is what ties the walk to the ADR -- the enum carries the
     /// graph order, so a pass appended out of position fails here instead of rendering wrong. Returns false to
     /// keep the Alloy frame from arming at all -- a mis-ordered graph is a misrender, not a bad dial.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        // ...and every declared bracket is one the frame actually opens: a third Bracket member is the design
-        // change ADR 0011 costs at two, so it fails here rather than quietly becoming a third Enter/Leave.
+        // A third phase is the design change ADR 0011 costed at two, so it fails here rather than appearing.
         bool ok = Passes.Length == System.Enum.GetValues<PassId>().Length
                   && System.Enum.GetValues<Bracket>().Length == 2;
-        int brackets = 0;
+        int phases = 0;
         for (int i = 0; i < Passes.Length; i++)
         {
             if (i > 0)
             {
                 if ((int)Passes[i].Id <= (int)Passes[i - 1].Id) ok = false;             // ADR order
-                if (Passes[i].Bracket < Passes[i - 1].Bracket) ok = false;              // brackets never re-open
-                if (Passes[i].Bracket != Passes[i - 1].Bracket) brackets++;
+                if (Passes[i].Bracket < Passes[i - 1].Bracket) ok = false;              // a phase never re-opens
+                if (Passes[i].Bracket != Passes[i - 1].Bracket) phases++;
             }
-            else brackets++;
+            else phases++;
         }
-        if (brackets != 2) ok = false;
+        if (phases != 2) ok = false;
         // #375: the post GPU bracket opens at PostProcess and closes at PostStack, so they must be adjacent --
         // a pass slotted between them would be timed as post and run on a half-finished frame.
         for (int i = 1; i < Passes.Length; i++)
             if (Passes[i].Id == PassId.PostStack && Passes[i - 1].Id != PassId.PostProcess) ok = false;
-        log.Info(ok ? $"FrameGraph.SelfCheck: passed ({Passes.Length} passes, {brackets} brackets)"
-                    : $"FrameGraph.SelfCheck: FAILED ({Passes.Length} passes, {brackets} brackets)");
+        log.Info(ok ? $"FrameGraph.SelfCheck: passed ({Passes.Length} passes, {phases} phases)"
+                    : $"FrameGraph.SelfCheck: FAILED ({Passes.Length} passes, {phases} phases)");
         return ok;
     }
 }
