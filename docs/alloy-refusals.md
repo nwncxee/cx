@@ -349,3 +349,22 @@ there is no engine traversal underneath, so every later row costs the panels rat
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
 | the present composite image built | `PresentTarget.Ensure` | the framebuffer object is dropped with the image, so `PresentTarget.Fbo46` stops claiming one and every binder writes framebuffer 0. Under GLX that IS the buffer the engine presents, so the frame still reaches the screen and a loud `Always` says so. Under WGL framebuffer 0 in the 4.6 context is a buffer nobody presents, so there is no fallback to take: the same line says the world renders vanilla and Alloy's GUI draws reach nothing, and `AlloyGate.Fail` makes it the session's stated refusal. `/alloy` carries it either way (`present: framebuffer 0 -- ... REFUSED`) |
+
+## The movie quad (CX-335)
+
+A movie is its own small verdict, asked per frame and answered either way without the player losing the
+movie: the engine keeps the decode, the pacing and the present, so what Alloy can refuse is only who draws
+the quad. `MovieService` runs last of the `PrePresent` participants (priority 90, behind `SeamDraw`'s frame
+boundary), opens a 4.6 bracket of its own, uploads the decoded rows into its texture, draws the letterboxed
+quad into `PresentTarget`'s image over whatever the world composited there, and lets the engine context's
+hand-back blit put it on the screen. Nothing of it reaches the engine's own GL.
+
+| Term | Where | If it fails |
+| --- | --- | --- |
+| `alloy.enabled` on | `MovieService.Initialize` | nothing installs and the engine plays its own movies, as in a vanilla client |
+| `CExoMoviePlayerInternal::ShowFrame` hooked | `MovieService.Initialize` | said once at boot; the engine keeps the whole movie draw |
+| `alloy.movie` on | `MovieService.DrawPending` | the player's choice, live: the engine's quad draws the frame under `ScreenOwner.EngineFrame`, which is what lets its opening `Clear` through |
+| the decoded rows reached an Alloy texture | `MovieFrame.Upload` | a loud `Always`, latched for the session, and the engine's quad draws every frame after it. The staging hook on `GLRender::DirectCreateSubTexture` leaves the engine's own texture filled, so that quad still has its picture |
+| the 4.6 context is this thread's to enter | `MovieService.Draw` | said once, **not** latched: the context may not be up yet, and a render thread that holds it makes every movie frame the engine's for as long as it does |
+| the program, the quad's VAO and a present image exist | `MovieService.InBracket` | a loud `Always`, latched for the session; the engine's quad draws from then on. On Windows a refused present image is the one case with nowhere to draw, and `PresentTarget` has already failed Alloy for it |
+| the draw raised no GL error | `MovieService.InBracket` | the same latched refusal, read before the bracket closes: a draw that errored leaves the present image at the clear alone, which is the one way this can fail with nothing to show for it |

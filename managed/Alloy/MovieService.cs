@@ -1,7 +1,6 @@
 using System.Numerics;
 using System;
 using System.Runtime.InteropServices;
-using System.Text;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
@@ -48,10 +47,11 @@ internal readonly unsafe struct MoviePlate
     }
 }
 
+
 /// <summary>The movie's pixels are CX's: <see cref="MovieFrame"/> takes them from the decode, and the hook on
-/// <c>ShowFrame</c> @0x1165e30 records which frame the coming present owes. Drawn last before it, over the world
-/// frame Alloy resolves there; the engine keeps its decode loop, which IS the A/V clock. The draw is engine
-/// context, gated on <c>alloy.enabled</c> rather than <see cref="AlloyGate"/>.</summary>
+/// <c>ShowFrame</c> @0x1165e30 records which frame the coming present owes. Drawn in ALLOY's context into the
+/// present image, over the world frame that composited there and before the hand-back blit; the engine keeps
+/// its decode loop, which IS the A/V clock. Gated on <c>alloy.enabled</c>, not <see cref="AlloyGate"/>.</summary>
 public sealed unsafe partial class MovieService : IExtenderService
 {
     private static ExtenderLog? _log;
@@ -71,8 +71,8 @@ public sealed unsafe partial class MovieService : IExtenderService
         MovieFrame.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PrePresent, LastBeforePresent, DrawPending, "Movie.frame", log);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 5, AgePresent, "Movie.onscreen", log);
-        log.Info("Movies: Alloy draws the movie frame from the decode (the engine keeps the decode, the pacing "
-               + "and the present)");
+        log.Info("Movies: Alloy draws the movie frame from the decode, in its own context and into the present "
+               + "image (the engine keeps the decode, the pacing and the present)");
     }
 
     // ---- "a movie owns the screen" ----
@@ -101,7 +101,8 @@ public sealed unsafe partial class MovieService : IExtenderService
     private static PendingState _pending = new();
 
     /// <summary>After every other <c>PrePresent</c> participant: a module's movie plays over a loaded area, the
-    /// engine still asks for the world view, and Alloy resolves it at the present -- a frame drawn earlier is covered.</summary>
+    /// engine still asks for the world view, and Alloy composites that view into the present image at the
+    /// frame boundary -- a movie drawn before it is covered.</summary>
     private const int LastBeforePresent = 90;
 
     [UnmanagedCallersOnly]
@@ -118,7 +119,8 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (!p.Due) return;
         p.Due = false;
         if (Renderer.Movie.V && Draw(p.FrameW, p.FrameH, p.TexW, p.TexH)) return;
-        // The engine draws this frame, and its quad opens with Clear(1): ScreenOwner must let that one through.
+        // The engine draws this frame, in its own context and over the screen: its quad opens with Clear(1),
+        // so ScreenOwner must let that one through.
         ScreenOwner.EngineFrame = true;
         if (_orig != null) _orig(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH);
         ScreenOwner.EngineFrame = false;
@@ -126,15 +128,28 @@ public sealed unsafe partial class MovieService : IExtenderService
 
     // ---- the draw ----
 
-    /// <summary>Names in the ENGINE's context, which lives for the process: the 4.6 context-loss edge is not
-    /// theirs, and no other edge exists to clear them on.</summary>
-    private static uint _prog, _vao, _vbo;
-    private static int _uTex;
-    private static bool _progTried, _vaoUp;
-    private static bool _stood, _announced;
+    /// <summary>Everything the draw owns: the GL names, which belong to ALLOY's 4.6 context, and the latches
+    /// that keep a refusal from re-failing twenty-four times a second. Never replaced --
+    /// <see cref="ContextLost"/> drops the names alone, so a context that went does not un-say a refusal.</summary>
+    private sealed class MovieDrawState
+    {
+        internal uint Prog, Vao, Vbo;
+        internal bool ProgTried, VaoUp;
+        internal bool Stood, Announced, SaidNoContext;
+    }
+
+    private static readonly MovieDrawState _s = new();
+
+    /// <summary>The 4.6 context went and the program and the quad's buffers went with it: the names are
+    /// dropped, not deleted, so the next movie frame rebuilds them instead of drawing through dead ones.</summary>
+    internal static void ContextLost()
+    {
+        MovieDrawState s = _s;
+        s.Prog = 0; s.Vao = 0; s.Vbo = 0; s.ProgTried = false; s.VaoUp = false;
+    }
 
     /// <summary>The window size the engine lays its own movie quad out in: <c>ShowFrame</c>'s ortho is built
-    /// from these and not from the GL viewport, which <c>GLRender::ResetRenderStates</c> never restores.</summary>
+    /// from these, and <see cref="PresentTarget"/>'s image is sized to them.</summary>
     private static readonly int* ScreenW = (int*)Native.Sym(SymbolMap.ScreenWidth);
     private static readonly int* ScreenH = (int*)Native.Sym(SymbolMap.ScreenHeight);
 
@@ -143,153 +158,141 @@ public sealed unsafe partial class MovieService : IExtenderService
     /// movie plays vanilla rather than re-failing per frame behind one stale log line.</summary>
     private static bool Stand(string why)
     {
-        if (_stood) return false;
-        _stood = true;
+        MovieDrawState s = _s;
+        if (s.Stood) return false;
+        s.Stood = true;
         _log?.Always($"Movies: Alloy cannot draw this movie frame -- {why}. The engine's own quad is drawing it "
                    + "(set alloy.movie 0 to make that the deliberate choice).");
         return false;
     }
 
-    /// <summary>Clear the screen and put the frame on it. False = the engine's quad should run instead.</summary>
+    /// <summary>Alloy's context is not the game thread's to enter -- it has not come up, it failed for the
+    /// session, or the render thread holds it. Not this mechanism failing, so it is said once and not latched:
+    /// the frame it refuses is drawn by the engine's own quad, and the next one may well land here.</summary>
+    private static bool NoContext(string why)
+    {
+        MovieDrawState s = _s;
+        if (s.SaidNoContext) return false;
+        s.SaidNoContext = true;
+        _log?.Always($"Movies: {why} -- the engine's own movie quad draws the movie until Alloy can");
+        return false;
+    }
+
+    /// <summary>Put the frame on the screen: one 4.6 bracket around the upload and the quad, then the engine
+    /// context's hand-back blit. False = the engine's own quad should draw this frame instead.</summary>
     private static bool Draw(int frameW, int frameH, int texW, int texH)
     {
-        if (_log == null || _stood) return false;
+        if (_log == null || _s.Stood) return false;
         if (frameW <= 0 || frameH <= 0 || texW < frameW || texH < frameH)
             return Stand($"the decoder handed us a {frameW}x{frameH} frame in a {texW}x{texH} texture");
         if (!Gl.Init(_log)) return Stand("the GL entry points did not resolve");
-        if (Gl.Clear == null || Gl.ClearColor == null || Gl.GetFloatv == null || Gl.ColorMask == null
-            || Gl.BindFramebuffer == null || Gl.Viewport == null)
+        if (Gl.ClearBufferfv == null || Gl.ColorMask == null || Gl.BindFramebuffer == null || Gl.Viewport == null)
             return Stand("a core GL entry point did not resolve");
-        // Alloy's own texture, filled from the decode in Alloy's context. 0 = this frame is the engine's, and
-        // MovieFrame said why -- a refusal there is not this draw's to latch.
+        // The engine's own window size, read before the bracket: it is what ShowFrame's ortho is built from
+        // and what the present image is sized to, where the live GL viewport is whatever the last pass left.
+        int w = ScreenW != null ? *ScreenW : 0, h = ScreenH != null ? *ScreenH : 0;
+        if (w <= 0 || h <= 0) return Stand($"the engine's screen size reads {w}x{h}");
+        // The bracket this opens must be the OUTERMOST one: a nested Leave only drains errors and leaves the
+        // 4.6 context current, so the hand-back after it would blit in the wrong context.
+        if (GlContextService.Inside)
+            return NoContext("a 4.6 bracket was already open at the movie draw");
+        if (!GlContextService.Enter())
+            return NoContext("Alloy's GL 4.6 context cannot be entered from the game thread");
+
+        bool drew;
+        try { drew = InBracket(frameW, frameH, texW, texH, w, h); }
+        finally { GlContextService.Leave(); }
+        // Engine context, bracket closed: the blit that puts the present image on the presented buffer. A
+        // world frame handed the image back at the frame boundary already, so this one carries the movie.
+        if (drew) PresentTarget.HandBack();
+        return drew;
+    }
+
+    /// <summary>The upload and the quad, with Alloy's context current. Every name it binds is Alloy's, so
+    /// nothing here reaches GLRender's shadow cache and there is no engine state to hand back.</summary>
+    private static bool InBracket(int frameW, int frameH, int texW, int texH, int w, int h)
+    {
+        MovieDrawState s = _s;
+        // Clear the queue first, or an error some other pass left there would be read as this draw's.
+        Gl.DrainErrors();
+        // Alloy's own texture, filled from the decode in this same bracket. 0 = this frame is the engine's,
+        // and MovieFrame said why -- a refusal there is not this draw's to latch.
         uint tex = MovieFrame.Upload(frameW, frameH);
         if (tex == 0) return false;
         if (!EnsureProgram()) return Stand("the movie program did not build");
+        if (!EnsureVao()) return Stand("the movie VAO did not build");
+        PresentTarget.Ensure(w, h);
+        if (!PresentTarget.Usable) return Stand("there is nowhere in this context for the frame to land");
 
-        // The engine's own size, with the live viewport only as the fallback: a movie owns the whole window,
-        // and taking the rect from GL state means inheriting whatever rect the last pass of the last frame
-        // happened to leave there.
-        int* vp = stackalloc int[4];
-        Gl.GetIntegerv(Gl.VIEWPORT, vp);
-        int w = ScreenW != null && *ScreenW > 0 ? *ScreenW : vp[2];
-        int h = ScreenH != null && *ScreenH > 0 ? *ScreenH : vp[3];
-        if (w <= 0 || h <= 0) return Stand($"the screen is {w}x{h}");
-
-        if (!_vaoUp) SetupVao();
-        if (_vao == 0 || _vbo == 0) return Stand("the movie VAO did not build");
-
-        // The screen, not an Alloy target: ResetRenderStates binds the engine's default framebuffer at every
-        // present, but a movie frame is drawn before one, so nothing else has promised what is bound here.
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, ScreenOwner.DefaultFbo);
-        if (w != vp[2] || h != vp[3]) Gl.Viewport(0, 0, w, h);
-
-        // The engine's Clear(1) is scissor-limited like ours, and its clear colour is whatever the last
-        // pass left; black is what a letterbox is, so it is set explicitly and put back.
-        float* clear = stackalloc float[4];
-        Gl.GetFloatv(Gl.COLOR_CLEAR_VALUE, clear);
-        Gl.Disable(Gl.SCISSOR_TEST);
-        Gl.Disable(Gl.DEPTH_TEST);
-        Gl.Disable(Gl.CULL_FACE);
-        Gl.Disable(Gl.BLEND);
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, PresentTarget.Fbo46);
+        Gl.Viewport(0, 0, w, h);
+        new PassState(depth: false, depthWrite: false, srgb: false).Apply();
+        Gl.Disable(Gl.STENCIL_TEST);
         Gl.ColorMask(1, 1, 1, 1);
-        Gl.ClearColor(0f, 0f, 0f, 1f);
-        Gl.Clear(Gl.COLOR_BUFFER_BIT);
-        Gl.ClearColor(clear[0], clear[1], clear[2], clear[3]);
+        // Black is what a letterbox is, and clearing the attachment says so without touching the context's
+        // own clear colour, which the next frame's passes read.
+        float* black = stackalloc float[4] { 0f, 0f, 0f, 1f };
+        Gl.ClearBufferfv(Gl.COLOR, 0, black);
 
         Vector4* verts = stackalloc Vector4[4];
         MoviePlate.Fit(frameW, frameH, w, h).Write(new Span<Vector4>(verts, 4));
 
-        Gl.UseProgram(_prog);
-        Gl.Uniform1i(_uTex, 0);
-        Gl.BindVertexArray(_vao);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, _vbo);
+        Gl.UseProgram(s.Prog);
+        Gl.BindVertexArray(s.Vao);
+        Gl.BindBuffer(Gl.ARRAY_BUFFER, s.Vbo);
         Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(4 * sizeof(Vector4)), verts, Gl.DYNAMIC_DRAW);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
-        // A sampler object on unit 0 would override the texture's own filter and clamp; the engine binds none.
+        // A sampler object another pass left on unit 0 would override the texture's own filter and clamp.
         if (Gl.BindSampler != null) Gl.BindSampler(0, 0);
         Gl.DrawArrays(Gl.TRIANGLE_STRIP, 0, 4);
-        // Unit 0 is left EMPTY: RenderFrame opens every movie frame with SetTextureParameteri(0, MAG|MIN, NEAREST) onto whatever is bound there.
         Gl.BindTexture(Gl.TEXTURE_2D, 0);
+        Gl.BindVertexArray(0);
 
-        // Read before the hand-back, which issues engine GL of its own: a draw that errored drew nothing and
-        // the screen is then the clear alone, which is the one way this can fail with nothing to show for it.
+        // Read before the bracket closes: a draw that errored drew nothing and the present image is then the
+        // clear alone, which is the one way this can fail with nothing to show for it.
         uint err = Gl.GetError != null ? Gl.GetError() : 0;
-
-        if (w != vp[2] || h != vp[3]) Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);
-        // Raw GL in the engine's context goes past GLRender's shadow cache, and the decode loop binds this
-        // very texture again on its next packet -- a stale entry there would upload into what WE left bound.
-        UiHostService.HandBack();
-        Gl.DrainErrors(4);
         if (err != 0) return Stand($"the draw raised GL error 0x{err:x4}");
 
-        if (!_announced)
+        if (!s.Announced)
         {
-            _announced = true;
-            _log.Info($"Movies: first frame drawn by Alloy, last before the present -- {frameW}x{frameH} from the "
-                    + $"decode (the engine's own texture is {texW}x{texH} and unread), screen {w}x{h} (GL viewport "
-                    + $"{vp[2]}x{vp[3]}); the engine's ShowFrame quad is swallowed from here on");
+            s.Announced = true;
+            _log?.Info($"Movies: first frame drawn by Alloy -- {frameW}x{frameH} from the decode (the engine's own "
+                     + $"texture is {texW}x{texH} and unread), into the {w}x{h} present image inside Alloy's "
+                     + "bracket; the engine's ShowFrame quad is swallowed from here on");
         }
         return true;
     }
 
-    private const string VSrc =
-        "#version 330 core\nlayout(location=0) in vec2 aPos;\nlayout(location=1) in vec2 aUV;\nout vec2 vUV;\n" +
-        "void main(){ gl_Position = vec4(aPos, 0.0, 1.0); vUV = aUV; }\n";
-    /// <summary>Straight out, no colour-space step: the stage the engine draws this quad through is one of
-    /// its UNLIT ones (<c>fsglu</c>), which neither linearises the texel nor re-encodes the result, and
-    /// <c>FRAMEBUFFER_SRGB</c> is off client-wide. Alpha is forced to 1 -- blending is off, so the frame's
-    /// own texel alpha reaches nothing but the unused default-framebuffer alpha channel.</summary>
-    private const string FSrc =
-        "#version 330 core\nin vec2 vUV;\nuniform sampler2D uTex;\nout vec4 o;\n" +
-        "void main(){ o = vec4(texture(uTex, vUV).rgb, 1.0); }\n";
-
+    /// <summary>The movie quad's program, in Alloy's context: one try, and a failure stands the draw down.</summary>
     private static bool EnsureProgram()
     {
-        if (_progTried) return _prog != 0;
-        _progTried = true;
-        uint vs = Compile(Gl.VERTEX_SHADER, VSrc), fs = Compile(Gl.FRAGMENT_SHADER, FSrc);
-        if (vs == 0 || fs == 0) return false;
-        _prog = Gl.CreateProgram();
-        Gl.AttachShader(_prog, vs); Gl.AttachShader(_prog, fs); Gl.LinkProgram(_prog);
-        int ok; Gl.GetProgramiv(_prog, Gl.LINK_STATUS, &ok);
-        Gl.DeleteShader(vs); Gl.DeleteShader(fs);
-        if (ok == 0) { _prog = 0; return false; }
-        _uTex = GlProgram.Loc(_prog, "uTex");
-        return true;
+        MovieDrawState s = _s;
+        if (s.ProgTried) return s.Prog != 0;
+        s.ProgTried = true;
+        s.Prog = GlProgram.Graphics(ShaderSource.Get("cx_movie_v.glsl"), ShaderSource.Get("cx_movie_f.glsl"),
+                                    _log, "Alloy movie");
+        return s.Prog != 0;
     }
 
-    private static uint Compile(uint type, string src)
+    /// <summary>The quad's vertex array and the four-vertex buffer behind it, in Alloy's context: position and
+    /// texture coordinate interleaved the way <see cref="MoviePlate.Write"/> writes them.</summary>
+    private static bool EnsureVao()
     {
-        uint sh = Gl.CreateShader(type);
-        byte[] bytes = Encoding.UTF8.GetBytes(src);
-        fixed (byte* sp = bytes)
-        {
-            byte* pp = sp; int len = bytes.Length;
-            Gl.ShaderSource(sh, 1, &pp, &len);
-        }
-        Gl.CompileShader(sh);
-        int ok; Gl.GetShaderiv(sh, Gl.COMPILE_STATUS, &ok);
-        if (ok != 0) return sh;
-        byte* buf = stackalloc byte[512]; int n = 0;
-        Gl.GetShaderInfoLog(sh, 512, &n, buf);
-        _log?.Always($"Movies: shader compile failed: {Marshal.PtrToStringAnsi((IntPtr)buf, n)}");
-        return 0;
-    }
-
-    private static void SetupVao()
-    {
-        _vaoUp = true;
-        uint a; Gl.GenVertexArrays(1, &a); _vao = a;
-        uint b; Gl.GenBuffers(1, &b); _vbo = b;
-        if (_vao == 0 || _vbo == 0) return;
-        Gl.BindVertexArray(_vao);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, _vbo);
+        MovieDrawState s = _s;
+        if (s.VaoUp) return s.Vao != 0 && s.Vbo != 0;
+        s.VaoUp = true;
+        uint a; Gl.GenVertexArrays(1, &a); s.Vao = a;
+        uint b; Gl.GenBuffers(1, &b); s.Vbo = b;
+        if (s.Vao == 0 || s.Vbo == 0) return false;
+        Gl.BindVertexArray(s.Vao);
+        Gl.BindBuffer(Gl.ARRAY_BUFFER, s.Vbo);
         int stride = 4 * sizeof(float);
         Gl.VertexAttribPointer(0, 2, Gl.FLOAT, (byte)Gl.FALSE, stride, (void*)0);
         Gl.EnableVertexAttribArray(0);
         Gl.VertexAttribPointer(1, 2, Gl.FLOAT, (byte)Gl.FALSE, stride, (void*)(2 * sizeof(float)));
         Gl.EnableVertexAttribArray(1);
         Gl.BindVertexArray(0);
+        return true;
     }
 }
