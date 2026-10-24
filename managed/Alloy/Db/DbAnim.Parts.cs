@@ -17,12 +17,20 @@ public static unsafe partial class DbAnim
         // The tree fact, scanned once per part range instead of per step.
         if (!_hasDangly[i]) return;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
-        if (!Dangly.Enabled.V)
+        // Past the far animation band the same thing, and counted: the joint solve costs what it SIMULATES, so
+        // no rate can make it cheaper, and a whole swing that far off is a pixel of motion.
+        bool far = RateRestsDangly(i);
+        if (!Dangly.Enabled.V || far)
         {
             // Off is rigid: every dangly part goes back to its rest pose, not frozen in its last swing. Only
             // dangly ones -- an animmesh rides the same dynamic buffers and is not this switch's.
             for (int k = 0; k < n; k++)
-                if (IsDanglyPart(first + k)) { DanglyDropRig(first + k); DanglyDropStock(first + k); }
+            {
+                if (!IsDanglyPart(first + k)) continue;
+                DanglyDropRig(first + k);
+                DanglyDropStock(first + k);
+                if (far) _rate.Rigid++;
+            }
             return;
         }
         if (n <= 0 || _danglyDt <= 0f) return;

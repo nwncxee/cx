@@ -46,6 +46,7 @@ public static unsafe partial class DbAnim
             Lights(check);
             ControllerKinds(check);
             LodBands(check);
+            RateBandChoice(check);
             check.Expect(Physics.DanglySelfCheck.Run(log), "the dangly motion suite (rig, joints, the stock solve) passes");
         }
         finally { _evN = 0; }
