@@ -99,3 +99,5 @@ alloy\.aotest	dead-code-cleanup
 # cache is scoped to its symbol, because the GL entry point of the same name is still ours to call.
 \bGlEnabledStates\b|\bGlGlobalColor\b|\bGlSrcBlendMode\b|\bGlDstBlendMode\b|SymbolMap\.GlDepthMask\b	CX-325
 \bGlDrawReset\b|\bRiSetColorv\b|\bGlCurrentCustomProgram\b|\bGlMat(Ambient|Diffuse|Emissive)\b	CX-325
+# The two-contexts-one-surface probe: Alloy never writes framebuffer 0, so the question has no referent.
+\balloy\.swapprobe\b|\bswapprobe\b|\bSwapProbe\b	CX-326

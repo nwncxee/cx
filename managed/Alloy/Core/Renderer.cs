@@ -35,7 +35,7 @@ internal static class Renderer
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
                                         Gui, Movie;
     internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
-                                       ClusterCap, SwapProbe, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
+                                       ClusterCap, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
@@ -178,7 +178,6 @@ internal static class Renderer
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
         GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
         RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
-        SwapProbe = G.Slider("swapprobe", "swapprobe", 0, 100000, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a
         // toggle because the first pass of a session is before the camera is placed, and the settled frame is
         // the one worth comparing between the two scene layers.

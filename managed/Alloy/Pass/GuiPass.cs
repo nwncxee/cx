@@ -33,16 +33,12 @@ internal static unsafe class GuiPass
         public readonly Dictionary<uint, uint> StreamVao = new(16);
         /// <summary>Content programs by key, built on first draw; null = refused, said once by the build.</summary>
         public readonly Dictionary<int, GuiContent.Prog?> Content = new();
-        /// <summary>Windows: the default framebuffer's depth format, probed once in the engine context; the GUI
-        /// depth is allocated in it so the two can be blitted into each other.</summary>
-        public uint DepthFmt, FboEngDepth;
-        public bool DepthProbed;
         /// <summary>The model views' target: one framebuffer over whatever texture a layer names, and a depth for each slot (a view
         /// keeps its own so two sizes do not remake it every flush), both made in this context (framebuffers are not shared with the engine's).</summary>
         public uint ModelFbo;
         public readonly uint[] ModelDepth = new uint[CX.Services.Nui.NuiModelDoll.MaxViews];
         public readonly int[] ModelW = new int[CX.Services.Nui.NuiModelDoll.MaxViews], ModelH = new int[CX.Services.Nui.NuiModelDoll.MaxViews];
-        public bool ModelChecked, WindowsDropSaid;
+        public bool ModelChecked, WindowsDropSaid, FboChecked;
         /// <summary>Flushes that found a texture unit other than 0 active, and the first one's unit.</summary>
         public long StrayUnit;
         public int StrayUnitFirst;
@@ -202,10 +198,8 @@ internal static unsafe class GuiPass
     private static bool Draw(int from, int mid, int to, bool windows)
     {
         int w = *_screenW, h = *_screenH;
-        bool win = PresentTarget.Needed;
-        if (win) ProbeDepth();
-        if (win && PresentTarget.Width == w && PresentTarget.Height == h) { PresentTarget.TakeBack(); Depth(fromScreen: true); }
-        else if (win) Resize(w, h);
+        if (PresentTarget.Width == w && PresentTarget.Height == h) PresentTarget.TakeBack();
+        else Resize(w, h);
         if (!GlContextService.Enter()) return false;
         // On a frame with no world, THIS is the only 4.6 bracket there is -- and entering it stands
         // GlContextService's own health bracket down for the frame, so the deferred work runs here: at the main
@@ -215,7 +209,7 @@ internal static unsafe class GuiPass
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
-        uint baseFbo = win ? Target() : 0u;
+        uint baseFbo = Target();
         Preamble(baseFbo);
         Issue(from, mid, baseFbo, ref modelSpan);
         if (windows) { Windows(CX.Ui.UiLayer.BelowNui, baseFbo); Preamble(baseFbo); }
@@ -232,7 +226,7 @@ internal static unsafe class GuiPass
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         if (gpuTimed) CX.Services.Perf.FrameProbe.GpuEnd();
         GlContextService.Leave();
-        if (win) { PresentTarget.HandBack(); Depth(fromScreen: false); }
+        PresentTarget.HandBack();
         _flushes++;
         if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush, none reached the engine's GL"); }
         return true;
@@ -511,8 +505,12 @@ internal static unsafe class GuiPass
         Gl.VertexArrayAttribBinding(vao, loc, 0);
     }
 
-    /// <summary>Windows: the GUI framebuffer -- the present texture for colour and a depth of its own, rebuilt when
-    /// the texture is.</summary>
+    /// <summary>The GUI's depth attachment format -- Alloy's own choice, not the window's. Packed because the
+    /// captured layers clear stencil beside depth; nothing in the pass tests it.</summary>
+    private const uint GuiDepthFormat = Gl.DEPTH24_STENCIL8;
+
+    /// <summary>The GUI framebuffer: the present texture for colour and Alloy's own depth beside it, rebuilt when
+    /// the texture is. 0 = no present image, so the flush writes the default framebuffer instead.</summary>
     private static uint Target()
     {
         uint tex = PresentTarget.Tex;
@@ -520,55 +518,37 @@ internal static unsafe class GuiPass
         if (_gl.Fbo == 0) { uint f; Gl.GenFramebuffers(1, &f); _gl.Fbo = f; }
         if (_gl.Depth == 0 || _gl.DepthW != PresentTarget.Width || _gl.DepthH != PresentTarget.Height)
         {
-            RenderTarget.AllocDepth(ref _gl.Depth, _gl.DepthFmt != 0 ? _gl.DepthFmt : Gl.DEPTH24_STENCIL8, PresentTarget.Width, PresentTarget.Height);
+            RenderTarget.AllocDepth(ref _gl.Depth, GuiDepthFormat, PresentTarget.Width, PresentTarget.Height);
             _gl.DepthW = PresentTarget.Width; _gl.DepthH = PresentTarget.Height;
         }
         // Re-attached every flush, as PresentTarget does: GL reuses freed names across a resize.
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, DepthAttachment, Gl.TEXTURE_2D, _gl.Depth, 0);
+        // DEPTH_STENCIL_ATTACHMENT, which is legal only for a packed format: the pair above is the one thing
+        // a change to GuiDepthFormat has to keep, and an incomplete framebuffer draws NOTHING -- so it is
+        // asked of the driver once rather than assumed.
+        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_STENCIL_ATTACHMENT, Gl.TEXTURE_2D, _gl.Depth, 0);
+        if (!_gl.FboChecked)
+        {
+            _gl.FboChecked = true;
+            uint st = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
+            if (st != Gl.FRAMEBUFFER_COMPLETE)
+                _log?.Always($"GuiPass: the GUI framebuffer is INCOMPLETE (0x{st:x}) over the {PresentTarget.Width}x"
+                           + $"{PresentTarget.Height} present image -- the game's GUI panels are NOT DRAWN");
+            else _log?.Info($"GuiPass: drawing into the present image, {PresentTarget.Width}x{PresentTarget.Height} "
+                          + $"colour with a depth of Alloy's own (0x{GuiDepthFormat:x})");
+        }
         return _gl.Fbo;
     }
 
-    /// <summary>Windows, the present texture missing or the wrong size (a frame before any world frame, or a resize):
+    /// <summary>The present image is missing or the wrong size (a frame before any world frame, or a resize):
     /// build it in the 4.6 context, then take the screen back into it.</summary>
-    private static void ProbeDepth()
-    {
-        if (_gl.DepthProbed) return;
-        _gl.DepthProbed = true;
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        _gl.DepthFmt = RenderTarget.ProbeDepthFormat(0);
-        ScreenOwner.RestoreEngineFbo();
-        if (_gl.DepthFmt == 0) _log?.Always("GuiPass: the default framebuffer reports no depth -- on Windows nothing the "
-                                       + "engine's context draws will depth-test against Alloy's GUI draws");
-    }
-
     private static void Resize(int w, int h)
     {
         if (!GlContextService.Enter()) return;
         PresentTarget.Ensure(w, h);
         GlContextService.Leave();
         PresentTarget.TakeBack();
-    }
-
-    private static bool HasStencil => _gl.DepthFmt == Gl.DEPTH24_STENCIL8 || _gl.DepthFmt == Gl.DEPTH32F_STENCIL8;
-    private static uint DepthAttachment => HasStencil ? Gl.DEPTH_STENCIL_ATTACHMENT : Gl.DEPTH_ATTACHMENT;
-
-    /// <summary>Windows, in the ENGINE context: carry the GUI's depth between the screen and Alloy's GUI target, beside the
-    /// colour <see cref="PresentTarget"/> carries. On Linux both contexts share the drawable's one depth buffer; on
-    /// Windows they do not, so a depth written in the engine's context and Alloy's GUI depth would never meet.</summary>
-    private static void Depth(bool fromScreen)
-    {
-        if (_gl.Depth == 0 || _gl.DepthFmt == 0) return;
-        if (_gl.FboEngDepth == 0) { uint f; Gl.GenFramebuffers(1, &f); _gl.FboEngDepth = f; }
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.FboEngDepth);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, DepthAttachment, Gl.TEXTURE_2D, _gl.Depth, 0);
-        Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, fromScreen ? 0u : _gl.FboEngDepth);
-        Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, fromScreen ? _gl.FboEngDepth : 0u);
-        uint mask = Gl.DEPTH_BUFFER_BIT | (HasStencil ? Gl.STENCIL_BUFFER_BIT : 0u);
-        Gl.BlitFramebuffer(0, 0, _gl.DepthW, _gl.DepthH, 0, 0, _gl.DepthW, _gl.DepthH, mask, (uint)Gl.NEAREST);
-        Gl.DrainErrors(4);
-        ScreenOwner.RestoreEngineFbo();
     }
 
     /// <summary>GL names die with the context.</summary>
@@ -585,5 +565,5 @@ internal static unsafe class GuiPass
         : !Renderer.Gui.V ? "gui: engine (/alloy gui 0)" : _gl.Prog == 0 ? "gui: waiting for the 4.6 context"
         : $"gui: Alloy -- {_flushes} flushes, {_drawn} draws" + (_noVao == 0 ? "" : $", {_noVao} with no VAO (NOT DRAWN)")
           + (_gl.StrayUnit == 0 ? "" : $", {_gl.StrayUnit} flush(es) found texture unit {_gl.StrayUnitFirst} active")
-          + "; " + GuiCapture.Stats() + "; " + ScreenOwner.Stats();
+          + "; " + GuiCapture.Stats() + "; " + ScreenOwner.Stats() + "; " + PresentTarget.Stats();
 }

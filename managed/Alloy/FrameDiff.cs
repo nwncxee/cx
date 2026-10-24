@@ -113,7 +113,7 @@ public sealed unsafe partial class AlloyRenderer
         P($"fi.interior={FrameInputs.Interior} focus={F3(FrameInputs.Focus)} has={FrameInputs.HasFocus}");
         P("follow." + DbFollowDump());
         ref Target t = ref _passTarget;
-        P($"target.clear={t.Clear0:F4},{t.Clear1:F4},{t.Clear2:F4},{t.Clear3:F4} depth={t.ClearDepth:F3} srgb={t.Srgb}");
+        P($"target.clear={t.Clear0:F4},{t.Clear1:F4},{t.Clear2:F4},{t.Clear3:F4} srgb={t.Srgb}");
         P($"target.vp={t.Vp0},{t.Vp1},{t.Vp2},{t.Vp3}");
 
         // ---- (3) the light list, as the cluster pass receives it ----

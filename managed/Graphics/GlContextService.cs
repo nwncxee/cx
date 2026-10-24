@@ -6,10 +6,10 @@ using CX.Framework;
 namespace CX.Graphics;
 
 /// <summary>
-/// Owns the GL 4.6 core context, share-listed with the engine's and on the engine's own drawable; created
-/// on the first presented frame, and any failure disables the service and leaves the engine untouched.
-/// Every in-play frame it brackets the present -- fence, switch, server-wait, drain <c>glGetError</c>, and
-/// the reverse back. Buffers and fences share between the two; VAOs do not. Knob <c>alloy.gl46</c>.
+/// Owns the GL 4.6 core context, share-listed with the engine's and on the engine's own drawable -- which
+/// Alloy never draws into: its frame goes to <c>PresentTarget</c>'s image, which the engine's context blits.
+/// Created on the first presented frame, and any failure disables the service and leaves the engine untouched.
+/// Brackets the present: fence, switch, wait, drain. Buffers and fences share; VAOs do not. <c>alloy.gl46</c>.
 /// </summary>
 public sealed unsafe class GlContextService : IExtenderService
 {
@@ -107,13 +107,6 @@ public sealed unsafe class GlContextService : IExtenderService
         OptedOut = _disabled;
         _debug = CX.Alloy.Renderer.GlDebug.Boot;
         if (_debug) ExtenderLog.Synchronous = true;   // a debug session's log must end where the crash is
-        // does the 4.6 context's DEFAULT FRAMEBUFFER address the same surface the engine presents?
-        // On GLX both contexts name one drawable and the question never arises. Under WGL the pairing is
-        // Wine's to make, and if the two contexts track their own back buffer against a shared chain, the
-        // owned frame lands in whichever one Alloy happens to hold -- half the presents, which reads as a
-        // black frame every other frame. One pixel read either side of the switch answers it; the read
-        // stalls the pipeline, so it is a knob and it stops on its own.
-        _swapProbe = CX.Alloy.Renderer.SwapProbe.Boot;
         // how the bracket orders the two contexts against one drawable. 0 = the fence pair
         // (glFenceSync/glWaitSync, a GPU-side wait that costs nothing on the CPU). 1 = glFinish, which
         // stalls until the work is done. If the black frames go away at 1, the frames were racing the
@@ -381,13 +374,6 @@ public sealed unsafe class GlContextService : IExtenderService
         if (HeldHere) { _heldHereDepth++; return true; }
         if (!Available || _heldElsewhere) return false;
         if (Inside) { _depth++; return true; }
-        // Latch the probe pixel here, in the ENGINE context, where the viewport is the window.
-        if (_swapProbe > 0 && GameGate.InModule)
-        {
-            int* vp = stackalloc int[4];
-            Gl.GetIntegerv(Gl.VIEWPORT, vp);
-            if (vp[2] > 16 && vp[3] > 16) { _probeX = vp[0] + vp[2] / 2; _probeY = vp[1] + vp[3] / 2; }
-        }
         if (_syncMode == 1)
         {
             if (_finish != null) _finish();
@@ -431,29 +417,7 @@ public sealed unsafe class GlContextService : IExtenderService
         if (_finish != null) _finish();
     }
 
-    /// <summary>Frames of <c>swapprobe</c> left. The probe reads the SAME pixel of framebuffer 0 twice
-    /// -- once in the 4.6 context, once in the engine's, with nothing drawn between -- so a difference is
-    /// the two contexts disagreeing about what framebuffer 0 IS, and nothing else.</summary>
-    private static int _swapProbe;
     private static int _syncMode;
-
-    /// <summary>The pixel both sides read, in WINDOW coordinates, latched in <see cref="Enter"/> from the
-    /// engine context. It must not come from the current viewport: a bracket closes with whatever the last
-    /// pass bound (a shadow map, a post target), and "the centre of the viewport" is then a different pixel
-    /// on each side of the switch -- a probe reporting a difference it created.</summary>
-    private static int _probeX, _probeY;
-
-    private static uint ProbeCentrePixel()
-    {
-        if (Gl.ReadPixels == null) return 0;
-        uint px = 0;
-        int prev; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &prev);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        Gl.ReadPixels(_probeX, _probeY, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &px);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)prev);
-        Gl.DrainErrors(4);
-        return px;
-    }
 
     /// <summary>Close the bracket: drain glGetError on the 4.6 side (an error can never leak across the
     /// boundary unnoticed), fence, switch back to the engine context, server-wait, drain again. A nested close
@@ -476,8 +440,6 @@ public sealed unsafe class GlContextService : IExtenderService
             //               would be a write to the GAME thread's flag from this thread.
             //   _span    -- Enter never called Begin, so _stamped cannot be this thread's and End would close
             //               a span somebody else opened.
-            //   _probe   -- the swap probe reads framebuffer 0 on both sides of a context SWITCH, and there
-            //               is no switch here.
             // ponytail: the cost is that [gl46]'s gpu-span -- the one discriminator for "GPU-bound or not"
             // -- reads n/a for the whole session with a render thread live, because the only Begin/End pair
             // is on the path this return skips. The upgrade is a GpuStamp owned by the render thread, and
@@ -494,14 +456,6 @@ public sealed unsafe class GlContextService : IExtenderService
         _err46 += Gl.DrainErrors();
         if (_stamped) _span.End();
 
-        // Read BEFORE the switch, with the owned frame's resolve already in framebuffer 0. glReadPixels is
-        // itself the sync -- it cannot return pixels the queue has not produced -- so no explicit finish.
-        uint alloySide = 0;
-        if (_swapProbe > 0 && GameGate.InModule)
-        {
-            alloySide = ProbeCentrePixel();
-        }
-
         IntPtr fOut = IntPtr.Zero;
         if (_syncMode == 1) { if (_finish != null) _finish(); }
         else { fOut = _fenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0); _flush(); }
@@ -516,12 +470,6 @@ public sealed unsafe class GlContextService : IExtenderService
         _errEng += Gl.DrainErrors();
         _entered = true;
 
-        if (_swapProbe > 0 && GameGate.InModule)
-        {
-            _swapProbe--;
-            _log?.Always($"[swapprobe] fb0 centre: 4.6 ctx 0x{alloySide:x8}, engine ctx 0x{ProbeCentrePixel():x8}"
-                       + " -- equal means one surface, different means two");
-        }
         if (++_frames >= LogEvery)
         {
             float perFrame = _periodFrames > 0 ? _switches / (float)_periodFrames : 0f;

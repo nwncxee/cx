@@ -116,9 +116,6 @@ public static unsafe class Gl
     /// cannot tell apart -- DEPTH_COMPONENT32 and DEPTH_COMPONENT32F both report 32 -- and a depth blit
     /// between the two is INVALID_OPERATION, so the owned depth allocation has to ask.</summary>
     public const uint FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE = 0x8211;
-    /// <summary>The engine's own glClearDepth value, read in the engine context beside
-    /// COLOR_CLEAR_VALUE. Per-context state, so the owned 4.6 context cannot be asked for it.</summary>
-    public const uint DEPTH_CLEAR_VALUE = 0x0B73;
     public const uint DEPTH_COMPONENT32F = 0x8CAC, DEPTH24_STENCIL8 = 0x88F0, DEPTH_STENCIL = 0x84F9,
                       UNSIGNED_INT_24_8 = 0x84FA, DEPTH_STENCIL_ATTACHMENT = 0x821A, STENCIL_BUFFER_BIT = 0x0400,
                       DEPTH_COMPONENT32 = 0x81A7, DEPTH32F_STENCIL8 = 0x8CAD,
@@ -397,7 +394,6 @@ public static unsafe class Gl
     public const uint CW = 0x0900, CCW = 0x0901;
     /// <summary>glColorMaski: the write mask of ONE draw buffer (GL 3.0).</summary>
     public static delegate* unmanaged<uint, byte, byte, byte, byte, void> ColorMaski;
-    public static delegate* unmanaged<double, void> ClearDepth;
     public static delegate* unmanaged<double, double, void> DepthRange;
     public static delegate* unmanaged<uint, float*, void> GetFloatv;
     public static delegate* unmanaged<int, int, int, int, void> Viewport;
@@ -642,7 +638,6 @@ public static unsafe class Gl
         ColorMask = (delegate* unmanaged<byte, byte, byte, byte, void>)P("glColorMask");
         FrontFace = (delegate* unmanaged<uint, void>)P("glFrontFace");
         ColorMaski = (delegate* unmanaged<uint, byte, byte, byte, byte, void>)P("glColorMaski");
-        ClearDepth = (delegate* unmanaged<double, void>)P("glClearDepth");
         DepthRange = (delegate* unmanaged<double, double, void>)P("glDepthRange");
         GetFloatv = (delegate* unmanaged<uint, float*, void>)P("glGetFloatv");
         Viewport = (delegate* unmanaged<int, int, int, int, void>)P("glViewport");

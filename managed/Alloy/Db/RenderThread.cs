@@ -46,9 +46,9 @@ internal static class RenderThread
     internal static bool FrameInputsPublished;
 
     /// <summary>Precondition: framebuffer 0 and the engine's GL state caches have ONE owner in the window the
-    /// fence does not cover. <b>UNMET</b>, the sibling of <see cref="GuiBuffersOwned"/>: under GLX both
-    /// contexts name one drawable, so outside the fence the renderer resolves into the buffer the game thread
-    /// may still draw into. The way out is Windows's <c>PresentTarget</c> -- a shared texture plus one blit.</summary>
+    /// fence does not cover. <b>UNMET</b>, the sibling of <see cref="GuiBuffersOwned"/>: the frame composites
+    /// into <see cref="PresentTarget"/>'s image, but the blit that puts it on screen must run in the ENGINE's
+    /// context and this thread has none -- so the hand-back is still the game thread's to make.</summary>
     internal static bool ScreenHandoffSettled;
 
     /// <summary>Every unmet precondition as one refusal line, or null when all are met. Each precondition is a
@@ -79,10 +79,9 @@ internal static class RenderThread
                + "runtime block and the global shader-constant tables. CX-188 hoisted the area walk, the "
                + "attenuation latch, the fog words and the wind write; the list above is what is left; ";
         if (!ScreenHandoffSettled)
-            s += "framebuffer 0 has two writers outside the fence -- the renderer resolves frame N into it "
-               + "while the game thread runs CGuiMan::UpdateAndRender. The fix is PresentTarget: composite "
-               + "into the shared texture and blit it from the engine context in the game thread's half of "
-               + "the boundary; ";
+            s += "the present hand-back must run in the ENGINE's context and this thread has none, so the "
+               + "frame this thread composites would reach framebuffer 0 only through the game thread's half "
+               + "of the boundary; ";
         return s.Length == 0 ? null : s.TrimEnd(' ', ';');
     }
 

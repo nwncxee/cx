@@ -18,7 +18,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         internal int Vp0, Vp1, Vp2, Vp3;
         internal bool Srgb;
-        internal float Clear0, Clear1, Clear2, Clear3, ClearDepth;
+        internal float Clear0, Clear1, Clear2, Clear3;
     }
 
     private static Target _target;
@@ -66,8 +66,8 @@ public sealed unsafe partial class AlloyRenderer
                 _target = now;
             }
         }
-        // A GL share list shares objects, not per-context state, so the clear values cannot be queried from
-        // inside the 4.6 bracket: here is the only place to have them, so they are read per frame, not latched.
+        // The clear colour is live area state (the fog colour this frame), not frame topology, so it is read
+        // per frame rather than latched with the rest of the block.
         ReadClear(ref _target);
         return ref _target;
     }
@@ -87,17 +87,10 @@ public sealed unsafe partial class AlloyRenderer
         ReadClear(ref t);
     }
 
-    /// <summary>The target's clear values: the depth GL holds, and for colour the area's fog colour caught at
-    /// the <c>SetFog</c> hook. The owned target starts from them, and the resolve blits ours back over every
-    /// pixel of the depth. Read per frame, never latched -- live area state, not frame topology.</summary>
+    /// <summary>The target's clear COLOUR -- the area's fog colour, caught at the <c>SetFog</c> hook. The owned
+    /// target starts from it. Read per frame, never latched: live area state, not frame topology.</summary>
     private static void ReadClear(ref Target t)
     {
-        t.Clear0 = 0f; t.Clear1 = 0f; t.Clear2 = 0f; t.Clear3 = 1f; t.ClearDepth = 1f;
-        if (Gl.GetFloatv == null) return;
-        float* c = stackalloc float[4];
-        Gl.GetFloatv(Gl.COLOR_CLEAR_VALUE, c);
-        t.Clear0 = c[0]; t.Clear1 = c[1]; t.Clear2 = c[2]; t.Clear3 = c[3];
-        float d; Gl.GetFloatv(Gl.DEPTH_CLEAR_VALUE, &d); t.ClearDepth = d;
         // GL's own clear colour is whatever last touched it (the GUI's), so the value the world wants is the
         // one the game layer hands CNWCArea::SetFog -- the area's fog COLOUR whatever the fog AMOUNT is, caught
         // at the hook as ScreenOwner.ClearRgba. Display-space, NOT linearised, and alpha 0: the post stack and
@@ -125,8 +118,8 @@ public sealed unsafe partial class AlloyRenderer
         if (t.Srgb) Gl.Enable(Gl.FRAMEBUFFER_SRGB); else Gl.Disable(Gl.FRAMEBUFFER_SRGB);
     }
 
-    /// <summary>Bind the 4.6-side draw target. "Same drawable, shared" holds under GLX and NOT under WGL:
-    /// where a <see cref="PresentTarget"/> texture exists the 4.6 context writes that instead, and the engine
-    /// context blits it after the bracket.</summary>
+    /// <summary>Bind the 4.6-side draw target: the <see cref="PresentTarget"/> image, which the engine's
+    /// context blits to the real default framebuffer after the bracket. Zero -- no composite image -- writes
+    /// framebuffer 0, which only the shared GLX drawable makes correct.</summary>
     private static void BindTarget() => Gl.BindFramebuffer(Gl.FRAMEBUFFER, PresentTarget.Fbo46);
 }

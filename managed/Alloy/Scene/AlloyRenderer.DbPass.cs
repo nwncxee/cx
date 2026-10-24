@@ -99,6 +99,11 @@ public sealed unsafe partial class AlloyRenderer
         bool oneBracket = GlContextService.Enter();
         try { DbDrawView(scene, camera, in h); }
         finally { if (oneBracket) GlContextService.Leave(); }
+        // The world frame is in the present image now. With the GUI Alloy's, its flush draws over it there and
+        // one blit hands the pair back; with the GUI the ENGINE's (/alloy gui 0, or a GUI that could not draw)
+        // nothing would, and the engine's own panels have to land OVER the world rather than under a blit that
+        // follows them -- so the hand-back goes here, after the bracket.
+        if (!GuiPass.Capturing) PresentTarget.HandBackIfOwed();
     }
 
     /// <summary>The view's draw inside ONE 4.6 bracket (ADR 0032): the shadow bake, the simulation slots and

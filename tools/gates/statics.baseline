@@ -182,7 +182,7 @@
 29 managed/Alloy/Pass/Weather.Surface.cs
 11 managed/Alloy/Pass/Weather.Tracks.cs
 6 managed/Alloy/Pass/Weather.WetStep.cs
-8 managed/Alloy/PresentTarget.cs
+2 managed/Alloy/PresentTarget.cs
 68 managed/Alloy/Programs.cs
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
