@@ -100,9 +100,9 @@ public sealed unsafe partial class AlloyRenderer
         try { DbDrawView(scene, camera, in h); }
         finally { if (oneBracket) GlContextService.Leave(); }
         // The world frame is in the present image now. With the GUI Alloy's, its flush draws over it there and
-        // one blit hands the pair back; with the GUI the ENGINE's (/alloy gui 0, or a GUI that could not draw)
-        // nothing would, and the engine's own panels have to land OVER the world rather than under a blit that
-        // follows them -- so the hand-back goes here, after the bracket.
+        // one blit hands the pair back. With the GUI stood down (/alloy gui 0, or a flush that cannot draw)
+        // nothing composites over it, and whatever the engine's context still draws before the present --
+        // nuklear's own chain -- has to land OVER the world rather than under a blit that follows it.
         if (!GuiPass.Capturing) PresentTarget.HandBackIfOwed();
     }
 

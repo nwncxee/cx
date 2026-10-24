@@ -561,8 +561,8 @@ internal static unsafe class GuiPass
         _gl = new GuiGlState();
     }
 
-    internal static string Stats() => !_armed ? "gui: engine (not armed)" : _failed ? "gui: engine (FAILED)"
-        : !Renderer.Gui.V ? "gui: engine (/alloy gui 0)" : _gl.Prog == 0 ? "gui: waiting for the 4.6 context"
+    internal static string Stats() => !_armed ? "gui: not armed" : _failed ? "gui: NOT DRAWN (FAILED)"
+        : !Renderer.Gui.V ? "gui: off (/alloy gui 0, the game's panels are NOT DRAWN)" : _gl.Prog == 0 ? "gui: waiting for the 4.6 context"
         : $"gui: Alloy -- {_flushes} flushes, {_drawn} draws" + (_noVao == 0 ? "" : $", {_noVao} with no VAO (NOT DRAWN)")
           + (_gl.StrayUnit == 0 ? "" : $", {_gl.StrayUnit} flush(es) found texture unit {_gl.StrayUnitFirst} active")
           + "; " + GuiCapture.Stats() + "; " + ScreenOwner.Stats() + "; " + PresentTarget.Stats();
