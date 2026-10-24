@@ -44,6 +44,15 @@ it measures from `AlloyCamera.WorldView`, the last **world** view measured — n
 that point is whichever view drew last (with a 3D panel open, the panel's). A non-world scene is not banded:
 its models sit at the lens and keep level 0.
 
+The **rate band** (`Db/DbAnim.Rate.cs`) measures from the same eye for the same reason. Past `alloy.animdist`
+an object's pose step runs every second pass and past twice it every fourth, with the animation time between
+steps handed over in one piece — one slow frame to the queue wrap, the event window and the ramps, so events
+still fire exactly once and the clock never drifts. Past the far edge its dangly parts hang rigid at rest,
+because that solve costs what it *simulates* and no rate makes it cheaper. Three things are never banded: a
+non-world scene, an object the game gave a `CAurBehavior` (an attach solver **writes** its placement), and the
+part walk, which runs at full rate on a skipped pass. Placement composes from the dirty list every frame
+regardless, so a reduced-rate creature stands exactly where it stands and only its limbs lag.
+
 ## Four hooks seam-obj MUST install at boot
 
 These are function-pointer fields on `DbAnim`, declared here because the behaviour solve needs them and the

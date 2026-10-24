@@ -201,7 +201,12 @@ public sealed unsafe partial class AlloyRenderer
                    $"({(float)Counters._twoSidedDraws / Counters._frames:F0} two-sided draws/frame, " +
                    $"{(float)Counters._cullCuts / Counters._frames:F1} batch cuts/frame on culling; " +
                    // #327: the opaque cut census by term. A term that dominates here is the next sort digit.
-                   $"opaque cuts/frame by term: {CutCensus()}), " +
+                   $"opaque cuts/frame by term: {CutCensus(Counters._cutBy)}; " +
+                   $"blended: {CutCensus(Counters._cutByBlend)}), " +
+                   // CX-329: what the DRIVER is asked to do. The batch count above is the colour pass alone;
+                   // the driver's CPU cost is every pass's call count, and a stage whose calls track its
+                   // commands one for one is a stage submitting a draw at a time.
+                   $"{Submit.Line(Counters._frames)}, " +
                    // #243 (AC5): what the GPU cull kept, and what it dropped. Taken off the count buffer
                    // three frames behind the dispatch, so nothing on the submission path waits for it. The
                    // "not running" reading is deliberately distinct from a cull that kept everything: one is
@@ -411,7 +416,10 @@ public sealed unsafe partial class AlloyRenderer
         /// const, not by the label table: a string array cannot be preinitialised and would give this class a
         /// cctor.</summary>
         internal static readonly long[] _cutBy = new long[CutTermCount];
-        internal const int CutTermCount = 8;
+        /// <summary>...and the same census over the BLENDED range, which the opaque one is blind to and
+        /// where every batch the frame submits more than once comes from.</summary>
+        internal static readonly long[] _cutByBlend = new long[CutTermCount];
+        internal const int CutTermCount = 11;
         /// <summary>Why an Alloy part still did not draw this pass, by term. The single fallback count could not
         /// separate a camera-dependent bail-out (keyhole, tile fade) from a content one, which is exactly the
         /// distinction a part that is Alloy head-on and vanilla at the screen edge turns on.</summary>

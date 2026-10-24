@@ -41,6 +41,9 @@ internal static class Renderer
     // ---- CX-103/104/105: the scene pipeline's dials ----
     internal static readonly Knob<bool> CullWatch;
     internal static readonly Knob<float> LodHyst;
+    /// <summary>Metres from the camera past which a character's pose is advanced every second pass, and past
+    /// twice that every fourth, with its swaying parts held at rest. 0 poses everything every frame.</summary>
+    internal static readonly Knob<float> AnimDist;
     /// <summary>Authored <c>.lod</c> alternates, loaded and switched for every object. On whatever the game's own
     /// LOD option says: a cfg-only off switch for debugging, not a player choice.</summary>
     internal static readonly Knob<bool> AuthoredLod;
@@ -221,6 +224,10 @@ internal static class Renderer
         // on. Off by default -- a per-frame read of a GPU-written buffer is a real wait on Mesa.
         CullWatch = G.Toggle("cullwatch", "cullwatch", false, Tier.ChatOnly);
         LodHyst = G.Slider("lodhyst", "lodhyst", 0f, 1f, 0.01f, 0.1f, tier: Tier.ChatOnly);
+        AnimDist = G.Slider("animdist", "animdist", 0f, 160f, 5f, 30f, "m", tier: Tier.ChatOnly,
+                            help: "Characters farther away than this move their limbs every second frame, and "
+                                + "past twice this every fourth, with their cloaks and hair held still. Where "
+                                + "they stand, what they do and when is unchanged. 0 animates everything every frame.");
         AuthoredLod = G.Toggle("authoredlod", "authoredlod", true, Tier.Hidden);
 
         Consts = G.Button("consts", "consts", AlloyRenderer.LogScriptables, Tier.ChatOnly);

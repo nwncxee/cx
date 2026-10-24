@@ -131,7 +131,7 @@ public static unsafe partial class DbAnim
         bool worn = DanglyWorn(part, out DbId wearer);
         var inp = new DanglyInputs(world, DanglyMean(windy), DanglyPoint(in world, windy), DanglyClock(),
                                    windy ? 1f : 0f, dt, Dangly.WindGain.V, Dangly.Tilt.V, Dangly.Cage.V,
-                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V), worn,
+                                   DanglyWalls(part, rig, mesh, in world, Dangly.Collide.V && RateWallsNear(part)), worn,
                                    DanglyBodyOf(part, rig, wearer, worn), Dangly.Strand.V);
         int cell = _danglyBones.Cell[part];
         Span<Matrix4x4> bones = _danglyBones.Scratch.AsSpan(0, Math.Min(rig.BoneCount, cell));

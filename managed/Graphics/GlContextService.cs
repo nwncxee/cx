@@ -76,6 +76,11 @@ public sealed unsafe class GlContextService : IExtenderService
     private static delegate* unmanaged<void> _finish;
 
     private static int _frames, _err46, _errEng, _switchFails;
+    /// <summary>Real <c>MakeCurrent</c> calls and presents in this period: the pair is the "switches/frame"
+    /// figure on the <c>[gl46]</c> line, which is what makes a bracket merge measurable from the log.</summary>
+    private static int _switches, _periodFrames;
+    /// <summary>Frames that reached the present with a game-thread bracket still open.</summary>
+    private static int _leaks;
 
     /// <summary>GPU span of the frame's Alloy work -- t0 at the first Enter, t1 re-stamped at every Leave, so
     /// the pair brackets the shadow bake through the colour frame on the GPU timeline. NOT the frame's GPU
@@ -170,16 +175,27 @@ public sealed unsafe class GlContextService : IExtenderService
     /// condition bar the context's own availability, so <see cref="SelfCheck"/> can assert it with no GL.</summary>
     internal static bool WorkDue => !_workRan;
 
-    /// <summary>Per-frame entry from the frame owner's present (render thread). Creates the context on
-    /// first call, then runs the health bracket -- unless the deferred work already ran in another bracket
-    /// this frame. Near-free when disabled/failed.</summary>
+    /// <summary>Per-frame entry from the frame owner's present. Creates the context on first call, runs the
+    /// health bracket unless the deferred work already ran this frame, and is the ONE point the bracket depth
+    /// must be zero at -- a bracket crosses methods (BeginOwnedFrame enters, its caller leaves), so no
+    /// analyzer can pair them and this is the check. Near-free when disabled/failed.</summary>
     public static void OnFrame()
     {
         Presents++;
         if (_disabled) return;
         if (!_tried) { _tried = true; try { Create(); } catch (Exception e) { Fail($"EXCEPTION {e.Message}"); } }
+        _periodFrames++;
         bool foreign = _entered, done = _workRan;
         if (Available && !_heldElsewhere && WorkDue && Enter()) { RunInBracketHere(); Leave(); }
+        if (Inside)
+        {
+            if (++_leaks == 1)
+                _log?.Always($"GlContextService: the frame reached the present with {_depth} 4.6 bracket(s) still "
+                           + "open -- a pass entered and did not leave. Closed here so the engine presents on its "
+                           + "own context; the pass that leaked is a bug.");
+            _depth = 1;
+            Leave();
+        }
         if (done) _workElsewhere++; else if (foreign) _healthAfterForeign++; else _healthAlone++;
         _workRan = false; _entered = false;
         _span.Rotate(); _stamped = false;
@@ -349,10 +365,10 @@ public sealed unsafe class GlContextService : IExtenderService
         return createCtx(_drw, _engCtx, attribs);
     }
 
-    /// <summary>Open the context-switch bracket (hot, zero-alloc): fence the engine's queued commands,
-    /// switch to the 4.6 context, server-wait the fence (glWaitSync -- no CPU stall). True = the 4.6
-    /// context is current and consumers may issue GL; every successful Enter MUST be paired with
-    /// <see cref="Leave"/> before returning to engine code.</summary>
+    /// <summary>Open the context-switch bracket (hot, zero-alloc): fence the engine's queued commands, switch
+    /// to the 4.6 context, server-wait the fence (glWaitSync -- no CPU stall). True = the 4.6 context is
+    /// current and GL may be issued; every successful Enter MUST be paired with <see cref="Leave"/> before
+    /// returning to engine code. Reentrant: a nested pass pays a depth bump, not a second round trip.</summary>
     public static bool Enter()
     {
         // the thread that HOLDS the context has it current for the whole session, so its bracket is
@@ -364,6 +380,7 @@ public sealed unsafe class GlContextService : IExtenderService
         // stand-down's re-reservation refuse for ever.
         if (HeldHere) { _heldHereDepth++; return true; }
         if (!Available || _heldElsewhere) return false;
+        if (Inside) { _depth++; return true; }
         // Latch the probe pixel here, in the ENGINE context, where the viewport is the window.
         if (_swapProbe > 0 && GameGate.InModule)
         {
@@ -383,17 +400,23 @@ public sealed unsafe class GlContextService : IExtenderService
             if (MakeCur(Context) == 0) { _switchFails++; if (fIn != IntPtr.Zero) _deleteSync(fIn); return false; }
             if (fIn != IntPtr.Zero) { _waitSync(fIn, 0, TimeoutIgnored); _deleteSync(fIn); }
         }
+        _switches++;
         if (!_stamped) { _span.LastMs = -1; _stamped = _span.Begin(); if (_span.LastMs >= 0) FrameZones.Gpu(_span.LastMs, GpuStamp.Age); }
-        Inside = true;
+        _depth = 1;
         return true;
     }
+
+    /// <summary>Open brackets on the GAME thread (0 = the engine's context is current). The outermost pair
+    /// does the switching; every nested one is a counter. Backs <see cref="Inside"/>.</summary>
+    private static int _depth;
 
     /// <summary>Presents since boot, bumped in <see cref="OnFrame"/>'s slot: a frame identity the passes can compare
     /// without a present slot of their own.</summary>
     internal static int Presents { get; private set; }
 
-    /// <summary>The 4.6 bracket is open: <see cref="Enter"/> succeeded and <see cref="Leave"/> has not run.</summary>
-    internal static bool Inside { get; private set; }
+    /// <summary>The game thread's 4.6 bracket is open: <see cref="Enter"/> succeeded and the matching
+    /// <see cref="Leave"/> has not run. The depth IS this fact, so there is no second flag to disagree.</summary>
+    internal static bool Inside => _depth > 0;
 
     /// <summary>Is Alloy's 4.6 context current on THIS thread: the holder thread, or the game thread inside its
     /// bracket. A bindless residency call anywhere else lands in the wrong context.</summary>
@@ -415,9 +438,9 @@ public sealed unsafe class GlContextService : IExtenderService
     private static int _syncMode;
 
     /// <summary>The pixel both sides read, in WINDOW coordinates, latched in <see cref="Enter"/> from the
-    /// engine context. It must not come from the current viewport: <see cref="Leave"/> also closes the
-    /// shadow-bake bracket, whose viewport is a shadow map, and "the centre of the viewport" is then a
-    /// different pixel on each side of the switch -- which is a probe that reports a difference it created.</summary>
+    /// engine context. It must not come from the current viewport: a bracket closes with whatever the last
+    /// pass bound (a shadow map, a post target), and "the centre of the viewport" is then a different pixel
+    /// on each side of the switch -- a probe reporting a difference it created.</summary>
     private static int _probeX, _probeY;
 
     private static uint ProbeCentrePixel()
@@ -433,7 +456,9 @@ public sealed unsafe class GlContextService : IExtenderService
     }
 
     /// <summary>Close the bracket: drain glGetError on the 4.6 side (an error can never leak across the
-    /// boundary unnoticed), fence, switch back to the engine context, server-wait, drain again.</summary>
+    /// boundary unnoticed), fence, switch back to the engine context, server-wait, drain again. A nested close
+    /// drains the errors and nothing else, so this is NOT how a pass hands the engine its context back
+    /// mid-bracket -- that is <see cref="Suspend"/>, the only legal way.</summary>
     public static void Leave()
     {
         // the holder thread's bracket never closes -- its context stays current until the session or
@@ -462,7 +487,10 @@ public sealed unsafe class GlContextService : IExtenderService
             // is a measurement of nothing.
             return;
         }
-        Inside = false;
+        // Errors drain per bracket whether or not this one switches: an error raised inside a nested pass
+        // must not be attributed to the pass that follows it.
+        if (_depth > 1) { _depth--; _err46 += Gl.DrainErrors(); return; }
+        _depth = 0;   // ...which clears Inside, before the switch: a Fail below must not leave it standing
         _err46 += Gl.DrainErrors();
         if (_stamped) _span.End();
 
@@ -483,6 +511,7 @@ public sealed unsafe class GlContextService : IExtenderService
             Fail("MakeCurrent back to the engine context refused");
             return;
         }
+        _switches++;
         if (fOut != IntPtr.Zero) { _waitSync(fOut, 0, TimeoutIgnored); _deleteSync(fOut); }
         _errEng += Gl.DrainErrors();
         _entered = true;
@@ -495,14 +524,39 @@ public sealed unsafe class GlContextService : IExtenderService
         }
         if (++_frames >= LogEvery)
         {
-            _log?.Info($"GlContextService: [gl46] {_frames} brackets (>= 1/frame; +1 per Alloy pass), " +
+            float perFrame = _periodFrames > 0 ? _switches / (float)_periodFrames : 0f;
+            _log?.Info($"GlContextService: [gl46] {_frames} brackets over {_periodFrames} frames (nested passes " +
+                       $"share one), ctx switches {_switches} ({perFrame:F1}/frame), " +
                        $"errors 4.6={_err46} engine={_errEng}, switch-fails={_switchFails}, " +
                        $"deferred work since boot: {_healthAlone} health-only frames + {_healthAfterForeign} " +
                        $"after a foreign bracket, {_workElsewhere} already done elsewhere" +
+                       (_leaks > 0 ? $", {_leaks} LEAKED brackets since boot" : "") +
                        (_debug ? $", debug msgs={_dbgTotal} this period ({_dbgLogged} logged, {_dbgDropped} dropped since boot)" : ""));
             _dbgTotal = 0;
-            _frames = 0; _err46 = 0; _errEng = 0; _switchFails = 0;
+            _frames = 0; _err46 = 0; _errEng = 0; _switchFails = 0; _switches = 0; _periodFrames = 0;
         }
+    }
+
+    /// <summary>The only legal mid-bracket hand-back: give the engine its context whatever the depth, for a
+    /// site that must issue ENGINE GL inside a pass (the shader-compile notice and its present). Returns the
+    /// depth <see cref="Resume"/> restores; 0 = nothing was suspended.</summary>
+    public static int Suspend()
+    {
+        if (HeldHere || !Inside) return 0;
+        int depth = _depth;
+        _depth = 1;   // make the close below the outermost one, whatever nested it
+        Leave();
+        return depth;
+    }
+
+    /// <summary>Re-open the bracket <see cref="Suspend"/> closed, at the depth it held. False = re-entry was
+    /// refused and the caller's remaining GL would land in the engine's context.</summary>
+    public static bool Resume(int depth)
+    {
+        if (depth <= 0) return true;
+        if (!Enter()) return false;
+        _depth = depth;
+        return true;
     }
 
     /// <summary>The <c>glMaxShaderCompilerThreads</c> count that means the implementation's own maximum.</summary>

@@ -393,7 +393,7 @@ void main()
         ndcZ = texelFetch(uGbDepth, p, 0).r * 2.0 - 1.0;
         // the forward stage's vDepth: gl_Position.w, which for a perspective projection IS the linear view depth
         viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
-        mine = CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth, g);
+        mine = CxGbufReadWalk(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0).w, viewDepth, g);
     }
 #ifndef CX_FILM_PASS
     // a zero where no walk will run (and on every ablation rung below the weights): last frame's record must never
@@ -490,6 +490,7 @@ void main()
         if ((g.flags & CX_GB_FILM) == 0u) mine = false;
         else
         {
+            CxGbufWeights(texelFetch(uGb1, p, 0), g);
             vec3 add = g.specT * CxFilmStatics(worldPos, g.N, V, viewDepth, g.coat, g.coatRough, onMover);
 #else
         // CX-188 ablation: the record fetch is rung 5 of the ladder (cx_lightfrag's CX_ABLATE), so the
@@ -541,6 +542,7 @@ void main()
         // Ablation rung 1: the G-buffer read, the record's own ownership test (CxGbufRead) and the world
         // position, and not one light. The SINK is what keeps them from being dead-stripped -- a tiny
         // multiple of every lane the rung produced, which the half-float target takes to zero.
+        CxGbufWeights(texelFetch(uGb1, p, 0), g);
         vec3 add = vec3(dot(worldPos, vec3(1.0)) + dot(V, vec3(1.0)) + dot(g.N, vec3(1.0))
                         + g.rough + g.spec + g.specC + g.lmLum + g.lmTexel + cxSheenRough + float(g.flags)) * CX_ABL_EPS;
 #else
@@ -548,6 +550,9 @@ void main()
         vec3 acc = CxClusteredLightLm(worldPos, g.N, V, viewDepth, onMover, g.rough, g.spec, baked,
                                       g.lmTexel, g.lmMover, g.lmPick, spec, lmSub);
 #if !defined(CX_ABLATE) || CX_ABLATE >= 6
+        // the weights are fetched again here, after the walk; the offset (0, since a view depth's sign bit is
+        // clear) is one the compiler cannot prove, so it cannot merge this fetch with the top one and hold G1 live
+        CxGbufWeights(texelFetch(uGb1, p + ivec2(int(sMaxZ >> 31u), 0), 0), g);
         // The exact linear correction the twin's weights were written for (docs/spec/deferred-lighting.md). The
         // film's own term, g.specT x CxFilmStatics, is the CX_FILM_PASS dispatch's: linear, so it adds exactly.
         float owe = min(lmSub.x / max(g.lmLum, 1e-5) + lmSub.y, 1.0);

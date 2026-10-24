@@ -215,18 +215,20 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     private static readonly EdgeState _was = new();
 
     /// <summary>The <see cref="Counters._cutBy"/> labels, by index.</summary>
-    private static readonly string[] CutTerms = { "vao", "feat", "dissolve", "blend", "cull", "prim", "lit", "tex" };
+    private static readonly string[] CutTerms =
+        { "vao", "feat", "dissolve", "blend", "cull", "prim", "lit", "tex", "gob", "a2c", "decal" };
     private static bool CutCensusSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
         check.Expect(CutTerms.Length == Counters.CutTermCount, "CutTerms labels every _cutBy slot");
+        check.Expect(Counters._cutByBlend.Length == CutTerms.Length, "...and every _cutByBlend slot");
         return check.Ok;
     }
-    private static string CutCensus()
+    private static string CutCensus(long[] by)
     {
         var sb = new System.Text.StringBuilder();   // cold: the period line
         for (int t = 0; t < CutTerms.Length; t++)
-            sb.Append(t == 0 ? "" : ", ").Append(CutTerms[t]).Append(' ').Append(((float)Counters._cutBy[t] / Counters._frames).ToString("F0"));
+            sb.Append(t == 0 ? "" : ", ").Append(CutTerms[t]).Append(' ').Append(((float)by[t] / Counters._frames).ToString("F0"));
         return sb.ToString();
     }
     /// <summary>Monotonic presented-frame counter: the light SSBO uploads once per frame, not once per pass.</summary>
@@ -334,7 +336,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
-            || !Issue.RunsSelfCheck(log) || !StreamRing.SelfCheck(log)
+            || !Issue.RunsSelfCheck(log) || !StreamRing.SelfCheck(log) || !Submit.SelfCheck(log)
             || !ShaderContract.SelfCheck(log)
             || !StockConfig.SelfCheck(log)) return;
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
@@ -543,11 +545,13 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         PeriodReport();
         CullPass.ResetStats();
         Counters._frames = 0; Counters._draws = 0; Counters._batches = 0; Counters._revokes = 0; Counters._enrolls = 0;
-        Counters._twoSidedDraws = 0; Counters._cullCuts = 0; Array.Clear(Counters._cutBy);
+        Counters._twoSidedDraws = 0; Counters._cullCuts = 0;
+        Array.Clear(Counters._cutBy); Array.Clear(Counters._cutByBlend);
         Counters._drawsGob = 0;
         Counters._noDiffuseDraws = 0; Counters._skipTexNoId = 0; Counters._skipTexNoHandle = 0; Counters._skipTexNotOwned = 0;
         Counters._nullTexDraws = 0;
         Counters._skinDrawn = 0; Counters._skinNoPose = 0; Counters._boneHigh = 0;
+        Submit.ResetPeriod();
         SkyBox.ResetPeriod();
         StageResources.ResetPeriod();
         GrassField.ResetPeriod();

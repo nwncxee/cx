@@ -290,7 +290,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
 
         // An Enter failure must not leave the flag promising an upload that never happened -- the colour
         // build would then skip BOTH the solve and the upload and skin against last frame's GPU block.
-        // own bracket: engine-context work on both sides (EnvMap build before, sky VAO harvest after) -- see _ctxTicks
+        // Normally a depth bump: the world view's bracket is open (ADR 0032). _ctxTicks is what says so.
         long tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
         bool entered = GlContextService.Enter();
         _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;
@@ -528,10 +528,10 @@ public sealed unsafe partial class CasterPass : IExtenderService
                       $"{(float)CasterGather.SampledStagedDyn / CasterGather.SamplesDyn:F0} staged draws, " +
                       $"{(float)CasterGather.SampledRxDyn / CasterGather.SamplesDyn:F0} receiver-culled"
                     : "") +
-                   // S3-4(c): the bake's own 4.6 bracket, both switches, inside the ms-cpu figure beside it.
+                   // S3-4(c): what the bake's Enter/Leave pair costs, inside the ms-cpu figure beside it. Near
+                   // zero means the world view's bracket was already open and this one was a depth bump.
                    (_ctxFrames > 0
-                    ? $", own 4.6 bracket {(double)_ctxTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _ctxFrames:F3} ms/frame " +
-                      "(2 x fence+flush+MakeCurrent; it is separate because the sky VAO harvest either side of it is engine-context)"
+                    ? $", 4.6 bracket {(double)_ctxTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _ctxFrames:F3} ms/frame"
                     : "") +
                    $", {(float)_viewSum / _frames:F1} views baked per frame ({LastShadowMs:F2} ms cpu last" +
                    (_gl.QShadow.Measured ? $", {_gl.QShadow.Avg / 1e6:F3} ms GPU avg" : "") + ")" +
