@@ -17,8 +17,9 @@ internal readonly unsafe struct MoviePlate
     /// <summary>Half-extent of the quad in normalised device coordinates. The larger of the two is always
     /// exactly 1 -- the movie touches the viewport on its long axis and gets bars on the other.</summary>
     internal readonly float Sx, Sy;
-    /// <summary>The texture window: the decoded frame occupies only the top-left <c>frame/tex</c> corner of a
-    /// padded texture, and the bounds are inset by half a texel so a LINEAR fetch never reaches the pad.</summary>
+    /// <summary>The texture window: the decoded frame is the top-left <c>frame/tex</c> corner of the texture,
+    /// inset half a texel so a LINEAR fetch never reaches past it. Alloy's texture is the frame exactly, so
+    /// the window is the whole of it; the term is kept because the engine's own texture is pow2-padded.</summary>
     internal readonly float U0, U1, V0, V1;
 
     private MoviePlate(float sx, float sy, float u0, float u1, float v0, float v1)
@@ -48,9 +49,10 @@ internal readonly unsafe struct MoviePlate
     }
 }
 
-/// <summary>The movie's pixels are CX's. One hook, on <c>ShowFrame</c> @0x1165e30, records the frame; it is drawn
-/// last before the present, over the world frame Alloy resolves there. The engine keeps its decode loop, which IS
-/// the A/V clock. Engine context, gated on <c>alloy.enabled</c> rather than <see cref="AlloyGate"/>.</summary>
+/// <summary>The movie's pixels are CX's: <see cref="MovieFrame"/> takes them from the decode, and the hook on
+/// <c>ShowFrame</c> @0x1165e30 records which frame the coming present owes. Drawn last before it, over the world
+/// frame Alloy resolves there; the engine keeps its decode loop, which IS the A/V clock. The draw is engine
+/// context, gated on <c>alloy.enabled</c> rather than <see cref="AlloyGate"/>.</summary>
 public sealed unsafe partial class MovieService : IExtenderService
 {
     private static ExtenderLog? _log;
@@ -67,9 +69,11 @@ public sealed unsafe partial class MovieService : IExtenderService
         _orig = hooks.InstallMovieShowFrame(&OnShowFrame);
         if (_orig == null)
         { log.Info("Movies: CExoMoviePlayerInternal::ShowFrame did not install -- the engine keeps the movie draw"); return; }
+        MovieFrame.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PrePresent, LastBeforePresent, DrawPending, "Movie.frame", log);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 5, AgePresent, "Movie.onscreen", log);
-        log.Info("Movies: Alloy draws the movie frame (the engine keeps the decode, the pacing and the present)");
+        log.Info("Movies: Alloy draws the movie frame from the decode (the engine keeps the decode, the pacing "
+               + "and the present)");
     }
 
     // ---- "a movie owns the screen" ----
@@ -114,7 +118,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         PendingState p = _pending;
         if (!p.Due) return;
         p.Due = false;
-        if (Renderer.Movie.V && Draw(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH)) return;
+        if (Renderer.Movie.V && Draw(p.FrameW, p.FrameH, p.TexW, p.TexH)) return;
         // The engine draws this frame, and its quad opens with Clear(1): ScreenOwner must let that one through.
         ScreenOwner.EngineFrame = true;
         if (_orig != null) _orig(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH);
@@ -125,8 +129,7 @@ public sealed unsafe partial class MovieService : IExtenderService
 
     /// <summary>Names in the ENGINE's context, which lives for the process: the 4.6 context-loss edge is not
     /// theirs, and no other edge exists to clear them on.</summary>
-    private static uint _prog, _vao, _vbo, _sampler;
-    private static bool _samplerSaid;
+    private static uint _prog, _vao, _vbo;
     private static int _uTex;
     private static bool _progTried, _vaoUp;
     private static bool _stood, _announced;
@@ -136,7 +139,7 @@ public sealed unsafe partial class MovieService : IExtenderService
     private static readonly int* ScreenW = (int*)Native.Sym(SymbolMap.ScreenWidth);
     private static readonly int* ScreenH = (int*)Native.Sym(SymbolMap.ScreenHeight);
 
-    /// <summary>Our own mechanism failing is loud and hands the frame back -- never a quiet fallback (ADR 0025).
+    /// <summary>Our own mechanism failing is loud and hands the frame back -- never a quiet fallback.
     /// Said once, and from then on the engine's quad draws every frame: a refusal is for the session, so the
     /// movie plays vanilla rather than re-failing per frame behind one stale log line.</summary>
     private static bool Stand(string why)
@@ -149,7 +152,7 @@ public sealed unsafe partial class MovieService : IExtenderService
     }
 
     /// <summary>Clear the screen and put the frame on it. False = the engine's quad should run instead.</summary>
-    private static bool Draw(IntPtr self, int frameW, int frameH, int texW, int texH)
+    private static bool Draw(int frameW, int frameH, int texW, int texH)
     {
         if (_log == null || _stood) return false;
         if (frameW <= 0 || frameH <= 0 || texW < frameW || texH < frameH)
@@ -158,8 +161,10 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (Gl.Clear == null || Gl.ClearColor == null || Gl.GetFloatv == null || Gl.ColorMask == null
             || Gl.BindFramebuffer == null || Gl.Viewport == null)
             return Stand("a core GL entry point did not resolve");
-        uint tex = new CExoMoviePlayerInternal(self).Texture;
-        if (tex == 0) return Stand("the movie player holds no GL texture");
+        // Alloy's own texture, filled from the decode in Alloy's context. 0 = this frame is the engine's, and
+        // MovieFrame said why -- a refusal there is not this draw's to latch.
+        uint tex = MovieFrame.Upload(frameW, frameH);
+        if (tex == 0) return false;
         if (!EnsureProgram()) return Stand("the movie program did not build");
 
         // The engine's own size, with the live viewport only as the fallback: a movie owns the whole window,
@@ -192,8 +197,10 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.Clear(Gl.COLOR_BUFFER_BIT);
         Gl.ClearColor(clear[0], clear[1], clear[2], clear[3]);
 
+        // Alloy's texture IS the decoded frame -- no power-of-two pad to keep out of, unlike the engine's --
+        // so the texture window is the whole of it and the engine's texW/texH are the hand-back's numbers alone.
         Vector4* verts = stackalloc Vector4[4];
-        MoviePlate.Fit(frameW, frameH, texW, texH, w, h).Write(new Span<Vector4>(verts, 4));
+        MoviePlate.Fit(frameW, frameH, frameW, frameH, w, h).Write(new Span<Vector4>(verts, 4));
 
         Gl.UseProgram(_prog);
         Gl.Uniform1i(_uTex, 0);
@@ -202,16 +209,11 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(4 * sizeof(Vector4)), verts, Gl.DYNAMIC_DRAW);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
-        // A sampler object, never glTexParameteri: the texture is the engine's and it caches what it set on
-        // it. Its own filter here is NEAREST; LINEAR is a deliberate difference.
-        if (_sampler == 0 && (_sampler = Gl.LinearClampSampler()) == 0 && !_samplerSaid)
-        {
-            _samplerSaid = true;
-            _log?.Always("MovieService: no sampler object -- movie frames sample with the engine's NEAREST filter");
-        }
-        if (_sampler != 0 && Gl.BindSampler != null) Gl.BindSampler(0, _sampler);
+        // The filter and the clamp live on the texture itself (MovieFrame sets them), which is only legal
+        // because the texture is OURS. A sampler object bound to unit 0 would override them, so it is
+        // cleared: the engine binds none, and nothing else of CX's runs in this context.
+        if (Gl.BindSampler != null) Gl.BindSampler(0, 0);
         Gl.DrawArrays(Gl.TRIANGLE_STRIP, 0, 4);
-        if (_sampler != 0 && Gl.BindSampler != null) Gl.BindSampler(0, 0);
 
         // Read before the hand-back, which issues engine GL of its own: a draw that errored drew nothing and
         // the screen is then the clear alone, which is the one way this can fail with nothing to show for it.
@@ -227,8 +229,9 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (!_announced)
         {
             _announced = true;
-            _log.Info($"Movies: first frame drawn by Alloy, last before the present -- {frameW}x{frameH} in a {texW}x{texH} texture, "
-                    + $"screen {w}x{h} (GL viewport {vp[2]}x{vp[3]}); the engine's ShowFrame quad is swallowed from here on");
+            _log.Info($"Movies: first frame drawn by Alloy, last before the present -- {frameW}x{frameH} from the "
+                    + $"decode (the engine's own texture is {texW}x{texH} and unread), screen {w}x{h} (GL viewport "
+                    + $"{vp[2]}x{vp[3]}); the engine's ShowFrame quad is swallowed from here on");
         }
         return true;
     }
@@ -238,8 +241,8 @@ public sealed unsafe partial class MovieService : IExtenderService
         "void main(){ gl_Position = vec4(aPos, 0.0, 1.0); vUV = aUV; }\n";
     /// <summary>Straight out, no colour-space step: the stage the engine draws this quad through is one of
     /// its UNLIT ones (<c>fsglu</c>), which neither linearises the texel nor re-encodes the result, and
-    /// <c>FRAMEBUFFER_SRGB</c> is off client-wide. Alpha is forced to 1 -- blending is off, so the engine's
-    /// texel alpha reaches nothing but the unused default-framebuffer alpha channel.</summary>
+    /// <c>FRAMEBUFFER_SRGB</c> is off client-wide. Alpha is forced to 1 -- blending is off, so the frame's
+    /// own texel alpha reaches nothing but the unused default-framebuffer alpha channel.</summary>
     private const string FSrc =
         "#version 330 core\nin vec2 vUV;\nuniform sampler2D uTex;\nout vec4 o;\n" +
         "void main(){ o = vec4(texture(uTex, vUV).rgb, 1.0); }\n";

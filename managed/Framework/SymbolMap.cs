@@ -731,6 +731,13 @@ internal static unsafe class SymbolMap
     /// <c>GL_TEXTURE_2D</c> on unit 0. ABI <c>(CAurTexture* /*rdi*/, bool useSubImage /*sil*/, int cell /*edx*/)</c>.</summary>
     [Fn("void(IntPtr tex, byte useSubImage, int cell)")]
     public const string RiCreateTexture = "_ZN15RenderInterface13CreateTextureEP11CAurTexturebi";
+    /// <summary><c>GLRender::DirectCreateSubTexture</c> @0x4c9ef0 -- a <c>glTexSubImage2D</c> wrapper on whatever is
+    /// bound to <c>GL_TEXTURE_2D</c>, and the ONE funnel the movie's decoded frames pass through: its only caller is
+    /// the <c>RenderInterface</c> forwarder @0x45df80, whose only caller is <c>CExoMoviePlayerInternal::UpdateMovie</c>
+    /// @0x1168210. <c>rows</c> is a host pointer; static, so no <c>this</c>.</summary>
+    [Fn("void(int level, int selector, int width, int height, int extFormat, void* rows, int x, int y, int align)")]
+    public const string GlDirectCreateSubTexture =
+        "_ZN8GLRender22DirectCreateSubTextureEiN6Aurora20AuroraTextureFormatsEiiS1_Pviii";
     /// <summary><c>RenderInterface::CreateCubeTexture(CAurTexture*, bool, int)</c> @0x45d1f0 -> <c>GLRender</c>'s
     /// @0x4caab0 (Windows RVA 0xBE930, a jump to GLRender's at 0xAEFF0): the cube twin of <see cref="RiCreateTexture"/>, same ABI.
     /// It cuts the image as a vertical strip of six faces (remap {1,0,2,3,4,5}, quarter turns {1,3,0,2,2,0}) and
@@ -3112,6 +3119,7 @@ internal static unsafe class SymbolMap
         [ResManReleaseObj] = Nm("?ReleaseResObject@CExoResMan@@QEAAHPEAVCRes@@_N@Z"),
         [ResManSetResObject] = Nm("?SetResObject@CExoResMan@@QEAAXAEBVCResRef@@GPEAVCRes@@@Z"),
         [ResManUpdate] = Nm("?Update@CExoResMan@@QEAAXI@Z"),
+        [GlDirectCreateSubTexture] = Nm("?DirectCreateSubTexture@GLRender@@CAXHW4AuroraTextureFormats@Aurora@@HH0PEAXHHH@Z"),
         [RiCreateTexture] = Nm("?CreateTexture@RenderInterface@@SAXPEAVCAurTexture@@_NH@Z"),
         [RiCreateCubeTexture] = Nm("?CreateCubeTexture@RenderInterface@@SAXPEAVCAurTexture@@_NH@Z"),
         [RiDeleteTextures] = Nm("?DeleteTextures@RenderInterface@@SAXIPEBI@Z"),

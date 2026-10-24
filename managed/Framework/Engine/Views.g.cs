@@ -151,6 +151,7 @@ global using unsafe RiClearFn = delegate* unmanaged<uint, void>;
 global using unsafe RiSetClearColorFn = delegate* unmanaged<float, float, float, float, void>;
 global using unsafe RiDeleteTexturesFn = delegate* unmanaged<uint, uint*, void>;
 global using unsafe RiCreateTextureFn = delegate* unmanaged<nint, byte, int, void>;
+global using unsafe GlDirectCreateSubTextureFn = delegate* unmanaged<int, int, int, int, int, void*, int, int, int, void>;
 global using unsafe RiCreateCubeTextureFn = delegate* unmanaged<nint, byte, int, void>;
 global using unsafe AurTextureConstructImageFn = delegate* unmanaged<nint, void>;
 global using unsafe AurTextureBuildAndStoreTextureFn = delegate* unmanaged<nint, void>;
@@ -4538,6 +4539,10 @@ public static unsafe class EngineFn
     private static bool _RiCreateTextureDone;
     /// <inheritdoc cref="SymbolMap.RiCreateTexture"/>
     public static RiCreateTextureFn RiCreateTexture => (RiCreateTextureFn)(_RiCreateTextureDone ? _RiCreateTexture : Resolve(ref _RiCreateTexture, ref _RiCreateTextureDone, SymbolMap.RiCreateTexture));
+    private static IntPtr _GlDirectCreateSubTexture;
+    private static bool _GlDirectCreateSubTextureDone;
+    /// <inheritdoc cref="SymbolMap.GlDirectCreateSubTexture"/>
+    public static GlDirectCreateSubTextureFn GlDirectCreateSubTexture => (GlDirectCreateSubTextureFn)(_GlDirectCreateSubTextureDone ? _GlDirectCreateSubTexture : Resolve(ref _GlDirectCreateSubTexture, ref _GlDirectCreateSubTextureDone, SymbolMap.GlDirectCreateSubTexture));
     private static IntPtr _RiCreateCubeTexture;
     private static bool _RiCreateCubeTextureDone;
     /// <inheritdoc cref="SymbolMap.RiCreateCubeTexture"/>
@@ -6621,6 +6626,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.RiCreateTexture"/>; returns the slot holding the next layer, or null.</summary>
     public static RiCreateTextureFn* ChainRiCreateTexture(this HookService h, RiCreateTextureFn handler, int priority) =>
         (RiCreateTextureFn*)h.Chain(SymbolMap.RiCreateTexture, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.GlDirectCreateSubTexture"/>; returns the original, or null.</summary>
+    public static GlDirectCreateSubTextureFn InstallGlDirectCreateSubTexture(this HookService h, GlDirectCreateSubTextureFn handler) =>
+        (GlDirectCreateSubTextureFn)h.Install(SymbolMap.GlDirectCreateSubTexture, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.GlDirectCreateSubTexture"/>; returns the slot holding the next layer, or null.</summary>
+    public static GlDirectCreateSubTextureFn* ChainGlDirectCreateSubTexture(this HookService h, GlDirectCreateSubTextureFn handler, int priority) =>
+        (GlDirectCreateSubTextureFn*)h.Chain(SymbolMap.GlDirectCreateSubTexture, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RiCreateCubeTexture"/>; returns the original, or null.</summary>
     public static RiCreateCubeTextureFn InstallRiCreateCubeTexture(this HookService h, RiCreateCubeTextureFn handler) =>
         (RiCreateCubeTextureFn)h.Install(SymbolMap.RiCreateCubeTexture, (IntPtr)handler);

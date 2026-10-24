@@ -461,10 +461,10 @@ public static unsafe partial class EngineLayout
     /// "not yet" test; same in both <c>Get&lt;bool&gt;</c> bodies.</summary>
     public static readonly int ExoConfigWorkingTable = Field<IntPtr>("CExoConfig", "workingTable");
 
-    /// <summary>CExoMoviePlayerInternal + 0x78 -- the GL texture name the decoder uploads each movie
-    /// frame into, and the one thing <c>ShowFrame</c> needs that is not already an argument.
-    /// <c>CExoMoviePlayer::GetTexture</c> is this load behind one indirection on both builds (Windows export
-    /// <c>?GetTexture@CExoMoviePlayer@@QEBAIXZ</c> rva 0x2321a0: <c>mov rax,[rcx]; mov eax,[rax+0x78]</c>).</summary>
+    /// <summary>CExoMoviePlayerInternal + 0x78 -- the GL texture name the decoder uploads each movie frame
+    /// into, and the one the engine's own <c>ShowFrame</c> quad samples. CX takes the frame from the decode
+    /// instead, so this is the hand-back path's texture and reading it is banned.
+    /// <c>CExoMoviePlayer::GetTexture</c> is this load behind one indirection on both builds.</summary>
     public static readonly int MovieTexture = Field<uint>("CExoMoviePlayerInternal", "texture");
 
     /// <summary>CClientExoApp -&gt; CClientExoAppInternal*. <c>CClientExoApp::GetInGameGui</c> (Linux
