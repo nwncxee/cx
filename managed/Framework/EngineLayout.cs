@@ -1058,25 +1058,12 @@ public static unsafe partial class EngineLayout
 
     // ---- GLRender's pool descriptor table (#260) ----
 
-    /// <summary>The 0x20-byte pool descriptor <c>GLRender::RequestPool</c> callocs: host shadow, byte size,
-    /// GL name, target index, lock flags, usage word and the two latches. <c>GLRender::UnlockPool</c> indexes
-    /// the array and tests every one of them on both builds, with the same stride. <c>GlPool</c> is the
+    /// <summary>The 0x20-byte pool descriptor <c>GLRender::RequestPool</c> callocs, host shadow first;
+    /// <c>GLRender::UnlockPool</c> indexes the array with the same stride on both builds. <c>GlPool</c> is the
     /// record's pseudo-class, so the stride row carries the indexer.</summary>
     public static readonly int PoolStride = Field("GlPool", "stride");
     /// <inheritdoc cref="PoolStride"/>
     public static readonly int PoolHost = Field<IntPtr>("GlPool", "host");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolSize = Field<int>("GlPool", "size");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolName = Field<uint>("GlPool", "name");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolLockFlags = Field<byte>("GlPool", "lockFlags");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolUsage = Field<uint>("GlPool", "usage");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolUploaded = Field<byte>("GlPool", "uploaded");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolNamed = Field<byte>("GlPool", "named");
 
     /// <summary>The {base, count} pair the descriptor table hangs off -- the same pair on both builds: Linux
     /// reads the two adjacent globals <c>DAT_01ae5480</c>/<c>DAT_01ae5488</c>, Windows reads the first two words

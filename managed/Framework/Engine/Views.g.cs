@@ -218,8 +218,6 @@ global using unsafe LoadTextureFn = delegate* unmanaged<byte*, nint>;
 global using unsafe AurTextureReleaseFn = delegate* unmanaged<nint, void>;
 global using unsafe GobSetSceneFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe VdoRepackFn = delegate* unmanaged<nint, void>;
-global using unsafe GlUnlockPoolFn = delegate* unmanaged<uint, uint, uint, void>;
-global using unsafe GlDeleteBufferFn = delegate* unmanaged<uint, void>;
 global using unsafe GlMaxElementVerticesFn = delegate* unmanaged<int>;
 global using unsafe GlMaxElementIndicesFn = delegate* unmanaged<int>;
 global using unsafe GlSetVertexDataObjectFn = delegate* unmanaged<nint, void>;
@@ -2613,18 +2611,6 @@ public readonly unsafe partial struct GlPool(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.PoolHost"/>
     public ref IntPtr Host => ref *(IntPtr*)(Ptr + EngineLayout.PoolHost);
-    /// <inheritdoc cref="EngineLayout.PoolLockFlags"/>
-    public ref byte LockFlags => ref *(byte*)(Ptr + EngineLayout.PoolLockFlags);
-    /// <inheritdoc cref="EngineLayout.PoolName"/>
-    public ref uint Name => ref *(uint*)(Ptr + EngineLayout.PoolName);
-    /// <inheritdoc cref="EngineLayout.PoolNamed"/>
-    public ref byte Named => ref *(byte*)(Ptr + EngineLayout.PoolNamed);
-    /// <inheritdoc cref="EngineLayout.PoolSize"/>
-    public ref int Size => ref *(int*)(Ptr + EngineLayout.PoolSize);
-    /// <inheritdoc cref="EngineLayout.PoolUploaded"/>
-    public ref byte Uploaded => ref *(byte*)(Ptr + EngineLayout.PoolUploaded);
-    /// <inheritdoc cref="EngineLayout.PoolUsage"/>
-    public ref uint Usage => ref *(uint*)(Ptr + EngineLayout.PoolUsage);
     /// <inheritdoc cref="EngineLayout.PoolStride"/>
     public GlPool this[int i] => new(Ptr + i * EngineLayout.PoolStride);
 }
@@ -4818,14 +4804,6 @@ public static unsafe class EngineFn
     private static bool _VdoRepackDone;
     /// <inheritdoc cref="SymbolMap.VdoRepack"/>
     public static VdoRepackFn VdoRepack => (VdoRepackFn)(_VdoRepackDone ? _VdoRepack : Resolve(ref _VdoRepack, ref _VdoRepackDone, SymbolMap.VdoRepack));
-    private static IntPtr _GlUnlockPool;
-    private static bool _GlUnlockPoolDone;
-    /// <inheritdoc cref="SymbolMap.GlUnlockPool"/>
-    public static GlUnlockPoolFn GlUnlockPool => (GlUnlockPoolFn)(_GlUnlockPoolDone ? _GlUnlockPool : Resolve(ref _GlUnlockPool, ref _GlUnlockPoolDone, SymbolMap.GlUnlockPool));
-    private static IntPtr _GlDeleteBuffer;
-    private static bool _GlDeleteBufferDone;
-    /// <inheritdoc cref="SymbolMap.GlDeleteBuffer"/>
-    public static GlDeleteBufferFn GlDeleteBuffer => (GlDeleteBufferFn)(_GlDeleteBufferDone ? _GlDeleteBuffer : Resolve(ref _GlDeleteBuffer, ref _GlDeleteBufferDone, SymbolMap.GlDeleteBuffer));
     private static IntPtr _GlMaxElementVertices;
     private static bool _GlMaxElementVerticesDone;
     /// <inheritdoc cref="SymbolMap.GlMaxElementVertices"/>
@@ -7035,18 +7013,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.VdoRepack"/>; returns the slot holding the next layer, or null.</summary>
     public static VdoRepackFn* ChainVdoRepack(this HookService h, VdoRepackFn handler, int priority) =>
         (VdoRepackFn*)h.Chain(SymbolMap.VdoRepack, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.GlUnlockPool"/>; returns the original, or null.</summary>
-    public static GlUnlockPoolFn InstallGlUnlockPool(this HookService h, GlUnlockPoolFn handler) =>
-        (GlUnlockPoolFn)h.Install(SymbolMap.GlUnlockPool, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.GlUnlockPool"/>; returns the slot holding the next layer, or null.</summary>
-    public static GlUnlockPoolFn* ChainGlUnlockPool(this HookService h, GlUnlockPoolFn handler, int priority) =>
-        (GlUnlockPoolFn*)h.Chain(SymbolMap.GlUnlockPool, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.GlDeleteBuffer"/>; returns the original, or null.</summary>
-    public static GlDeleteBufferFn InstallGlDeleteBuffer(this HookService h, GlDeleteBufferFn handler) =>
-        (GlDeleteBufferFn)h.Install(SymbolMap.GlDeleteBuffer, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.GlDeleteBuffer"/>; returns the slot holding the next layer, or null.</summary>
-    public static GlDeleteBufferFn* ChainGlDeleteBuffer(this HookService h, GlDeleteBufferFn handler, int priority) =>
-        (GlDeleteBufferFn*)h.Chain(SymbolMap.GlDeleteBuffer, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GlMaxElementVertices"/>; returns the original, or null.</summary>
     public static GlMaxElementVerticesFn InstallGlMaxElementVertices(this HookService h, GlMaxElementVerticesFn handler) =>
         (GlMaxElementVerticesFn)h.Install(SymbolMap.GlMaxElementVertices, (IntPtr)handler);

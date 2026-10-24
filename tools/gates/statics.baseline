@@ -107,7 +107,6 @@
 13 managed/Alloy/MovieService.cs
 7 managed/Alloy/MtrFeed.cs
 20 managed/Alloy/NwSyncReader.cs
-23 managed/Alloy/OwnedBuffers.cs
 15 managed/Alloy/OwnedTextures.Cache.cs
 15 managed/Alloy/OwnedTextures.cs
 3 managed/Alloy/OwnedTextures.Cube.cs

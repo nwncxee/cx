@@ -97,7 +97,6 @@ public sealed unsafe partial class AlloyRenderer
             ? "the device answers no memory query in this context (NVX_gpu_memory_info / ATI_meminfo absent)"
             : $"{_vramExt}: " + (_vramTotalKib > 0 ? $"{_vramTotalKib / 1024}MiB total, " : "")
               + $"{_vramFreeKib / 1024}MiB free";
-        return $"[vram] Alloy holds {OwnedTextures.PeakMib}MiB of textures and {OwnedBuffers.PeakMib}MiB of "
-             + $"geometry at high water; {device}";
+        return $"[vram] Alloy holds {OwnedTextures.PeakMib}MiB of textures at high water; {device}";
     }
 }

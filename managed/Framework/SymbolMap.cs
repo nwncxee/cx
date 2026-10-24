@@ -1284,18 +1284,6 @@ internal static unsafe class SymbolMap
     /// streaming fires it mid-play; every batch member of that VDO must recapture its item.</summary>
     [Fn("void(VertexDataObject this)")]
     public const string VdoRepack = "_ZN16VertexDataObject6RepackEv";
-    /// <summary>GLRender::UnlockPool(token, size, offset) @0x4cfc80 -- the SINGLE funnel through which every byte of
-    /// engine vertex/index data reaches a GL buffer (glBufferData or glBufferSubData off the pool's host shadow):
-    /// <c>VertexDataObject::Build</c>, <c>AddItem</c>'s grow, all three <c>CommitItem*Data</c> and <c>Repack</c>'s
-    /// re-upload. Hooked here, not at the <c>RenderInterface</c> thunk, so the vtable slot is caught too.</summary>
-    [Fn("void(uint pool, uint offset, uint size)")]
-    public const string GlUnlockPool = "_ZN8GLRender10UnlockPoolEjjj";
-    /// <summary>GLRender::DeleteBuffer(name) @0x4cfec0 -- where an engine GL buffer name dies.
-    /// <c>GLRender::DeletePool</c> @0x4d1d80 routes here whenever a pool is released, so this is the moment the name
-    /// and the pool token behind it go back into circulation. The geometry twin of <see cref="RiDeleteTextures"/>,
-    /// and the same corruption if an owned copy is not evicted with it.</summary>
-    [Fn("void(uint name)")]
-    public const string GlDeleteBuffer = "_ZN8GLRender12DeleteBufferEj";
     /// <summary><c>GLRender::GetVertexBufferMaxElementVertices</c> @0x4cb730 / <c>...Indices</c> @0x4cb700:
     /// <c>glGetIntegerv(GL_MAX_ELEMENTS_VERTICES / _INDICES)</c>, cached. <c>GetVertexDataObjectTokenByAttributes</c>
     /// @0x45bdc0 reuses a shared VDO only while its totals stay under them, so the driver's answer IS the shared
@@ -1308,15 +1296,6 @@ internal static unsafe class SymbolMap
     /// table's two globals, which have no symbols of their own: the table base pointer is <c>noemittervar + 0x236c</c>
     /// and the descriptor count +0x2374, as <c>GLRender::GetPoolBuffer</c> @0x4cfba0 resolves them.</summary>
     public const string GlPoolTableAnchor = "noemittervar";
-    /// <summary><c>g_bOrphanBuffersBeforeWrite</c> @0x18aa51c -- the engine's driver hint on the whole-buffer dynamic
-    /// upload branch of <c>GLRender::UnlockPool</c>: re-specify the store with a null pointer first, so the driver
-    /// need not stall on the previous contents. Read, not decided -- Alloy performs that upload now, and a silently
-    /// dropped orphan is an unexplained stall.</summary>
-    public const string GlOrphanBuffers = "g_bOrphanBuffersBeforeWrite";
-    /// <summary><c>totalmempool</c> @0x19ad058 -- the engine's own running total of pool bytes, maintained by
-    /// <c>RequestPool</c>/<c>ResizePool</c>/<c>DeletePool</c>. The host-shadow half of the residency figure,
-    /// reported beside what Alloy holds in VRAM.</summary>
-    public const string GlTotalMemPool = "totalmempool";
     /// <summary>GLRender::SetVertexDataObject(VertexDataObject*) @0x4cff30 -- binds (lazily creating) the
     /// VDO's VAO + element buffer and updates the engine's current-VDO cache. The owned caster path (ADR 0008)
     /// binds engine geometry through this so the cache never desyncs; null unbinds to the default VAO.</summary>
@@ -2965,7 +2944,6 @@ internal static unsafe class SymbolMap
         [GlActiveTextureStage] = Nm("?m_activeTextureStage@GLRender@@0IA"),
         [GlBoundTextures] = Nm("?m_boundTextures@GLRender@@0PAUBoundTexture@1@A"),
         [GlCurrentCustomProgram] = Nm("?m_pCurrentCustomProgram@GLRender@@0PEAUPROG_FIXED@1@EA"),
-        [GlDeleteBuffer] = Nm("?DeleteBuffer@GLRender@@CAXI@Z"),
         [GlEnabledTextureStages] = Nm("?m_bEnabledTextureStages@GLRender@@0IA"),
         [GlEnabledStates] = Nm("?m_bEnabledStates@GLRender@@0IA"),
         [GlGlobalColor] = Nm("?m_globalColor@GLRender@@0VVector4@@A"),
@@ -2991,14 +2969,11 @@ internal static unsafe class SymbolMap
         [GlGlobalShaderConstantsV4] = Nm("?m_globalShaderConstantsv4@GLRender@@0PAVVector4@@A"),
         [GlMaxElementIndices] = Nm("?GetVertexBufferMaxElementIndices@GLRender@@CAHXZ"),
         [GlMaxElementVertices] = Nm("?GetVertexBufferMaxElementVertices@GLRender@@CAHXZ"),
-        [GlOrphanBuffers] = Nm("?g_bOrphanBuffersBeforeWrite@@3HA"),
         [GlPoolTableAnchor] = At(),   // the {base,count} pair itself -- GetPoolBuffer loads it, UnlockPool leas it
         [GlRenderVertexData] = Nm("?RenderVertexData@GLRender@@CAXPEAVVertexDataObject@@IW4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlRenderVertexStreamData] = Nm("?RenderVertexStreamData@GLRender@@CAXPEAVVertexStreamDataObject@@W4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlSetVertexDataObject] = Nm("?SetVertexDataObject@GLRender@@CAXPEAVVertexDataObject@@@Z"),
         [GlShaderRuntimeData] = Nm("?m_shaderExposedRuntimeData@GLRender@@0UShaderExposedRuntimeData@1@A"),
-        [GlTotalMemPool] = Nm("?totalmempool@@3HA"),
-        [GlUnlockPool] = Nm("?UnlockPool@GLRender@@CAXIII@Z"),
         [AnimateParticles] = Nm("?AnimateParticles@PartEmitter@@QEAAXM@Z"),
         [EmitterBucket] = Nm("?emitterbucket@@3V?$List@PEAVPartEmitter@@@@A"),
         [RenderNothing] = Nm("?RenderNothing@PartEmitter@@QEAAXXZ"),

@@ -146,6 +146,7 @@ public static partial class TileBuild
             }
 
             if (n.Kind != NodeKind.TriMesh || n.Mesh == null || !n.Mesh.Render) continue;
+            if (n.Mesh.Indices.Length < 3 || n.Mesh.Positions.Length == 0) continue;   // stock tiles ship empty trimeshes
             if (animatedHalf[i] || Animated(def, n)) continue;
             // The engine's own ceiling: CreatePartBuckets requires the bucket's total to stay BELOW 0xffff,
             // because the merged primitive is indexed as 16 bits -- and so is every Alloy draw

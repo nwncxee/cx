@@ -31,17 +31,12 @@ internal static class RenderPasses
             ContextLost = OwnedTextures.ContextLost,
         }, log);
 
-        // #212: nor is this one -- the vertex/index buffers the static-opaque class draws from. Same shape
-        // as ownedtex, one level down: a boot gate, two engine funnels, and both lifetime edges.
+        // Nor is this one: the engine's pools, read for GUI capture, and the shared-VDO capacity pin.
         r.Register(new PassLifecycle
         {
-            Name = "ownedgeom",
-            Attach = OwnedBuffers.Attach,
-            Install = OwnedBuffers.Install,
-            SelfCheck = l => { OwnedBuffers.SelfCheck(l); StagePool.SelfCheck(l); },
-            Revoke = OwnedBuffers.Revoke,
-            ContextLost = OwnedBuffers.ContextLost,
-            Stats = OwnedBuffers.Stats,
+            Name = "enginepools",
+            Install = EnginePools.Install,
+            SelfCheck = l => { EnginePools.SelfCheck(l); StagePool.SelfCheck(l); },
         }, log);
 
         // Automatic mesh LOD: not a draw pass either -- the detail thresholds and the level picker over the

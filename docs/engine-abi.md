@@ -125,7 +125,7 @@ compare against. Their verdicts:
 | `GlContextService.OnDebugMessage` | `glDebugMessageCallback` | identical: `GLDEBUGPROC` is `APIENTRY`, which is `__stdcall` on Win32 and plain on x64 — one convention on Win64 |
 | `HotkeyConsent.OnAnswer` | the engine, through `CPanelOkCancel+0x88` | `(void*, int)`, verified by #48's consent port, which runs on Windows |
 | `SceneWalk.OnBspNode` | passed to the engine's BSP walker as a callback | `(node, ctx)` pointers only; no by-value class |
-| `AlloyRenderer.EnsureBoneSlots`, `OwnedBuffers.Take`, `OwnedTextures.Adopt` | our own code, through a function pointer | internal; scalars and pointers, platform-neutral by construction |
+| `AlloyRenderer.EnsureBoneSlots`, `OwnedTextures.Adopt` | our own code, through a function pointer | internal; scalars and pointers, platform-neutral by construction |
 
 ## Vtable slots
 
