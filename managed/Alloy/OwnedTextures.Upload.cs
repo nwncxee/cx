@@ -6,8 +6,8 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>
-/// Alloy's own 2D upload: <c>GLRender::CreateTexture</c> @0x4ca2b0 (Windows: inlined into
-/// <c>RenderInterface::CreateTexture</c>, RVA 0xBE960, the same logic) transcribed onto immutable DSA storage --
+/// Alloy's own 2D upload: <c>GLRender::CreateTexture</c> @0x4ca2b0 (Windows RVA 0xAF440, behind
+/// <c>RenderInterface::CreateTexture</c>'s jump at 0xBE960, the same logic) transcribed onto immutable DSA storage --
 /// the same cell, levels, sampler and swizzle, with no bind and no call into the engine. A DDS format the
 /// engine's table cannot name goes up under its real format.
 /// </summary>
@@ -28,15 +28,16 @@ internal static unsafe partial class OwnedTextures
     ];
 
     /// <summary>The sampler state the engine gives one texture; <see cref="Aniso"/> = the player's level.</summary>
-    private readonly record struct Sampler(int Min, int Mag, int WrapS, int WrapT, bool Aniso);
+    private readonly record struct Sampler(int Min, int Mag, int WrapS, int WrapT, int WrapR, bool Aniso);
 
-    /// <summary><c>GLRender::SetTextureParameters</c> @0x4ca180 for a 2D texture, fed <c>GetClamp()</c>,
+    /// <summary><c>GLRender::SetTextureParameters</c> @0x4ca180, fed <c>GetClamp()</c> (bit 2, R, read for a cube only),
     /// <c>GetFilter()</c> and <c>GetMipMap()</c>. A linear texture with no mips minifies NEAREST, as the engine's does.</summary>
     private static Sampler EngineSampler(int clamp, bool linear, bool mip) => new(
         mip ? (linear ? Gl.LINEAR_MIPMAP_LINEAR : Gl.NEAREST_MIPMAP_NEAREST) : Gl.NEAREST,
         linear ? Gl.LINEAR : Gl.NEAREST,
         (clamp & 1) != 0 ? Gl.CLAMP_TO_EDGE : Gl.REPEAT,
         (clamp & 2) != 0 ? Gl.CLAMP_TO_EDGE : Gl.REPEAT,
+        (clamp & 4) != 0 ? Gl.CLAMP_TO_EDGE : Gl.REPEAT,
         linear && mip);
 
     /// <summary>The levels a mipped texture gets: <c>SetTextureMipmapLevelParameters</c> @0x4c9c70's MAX_LEVEL
@@ -95,7 +96,7 @@ internal static unsafe partial class OwnedTextures
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
         uint sized = bpp == 4 ? Gl.RGBA8 : bpp == 3 ? Gl.RGB8 : Gl.R8;
         uint fmt = bpp == 4 ? Gl.RGBA : bpp == 3 ? Gl.RGB : Gl.RED;
-        uint dst = Storage(mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
+        uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
         if (dst == 0) return 0;
         var u = Unpack.Take(w, (cell % nx) * cw, (cell / nx) * ch);
         Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, Gl.UNSIGNED_BYTE, img);
@@ -112,7 +113,7 @@ internal static unsafe partial class OwnedTextures
         uint fmt = (uint)fi < (uint)EngineFormats.Length ? EngineFormats[fi] : 0;
         if (fmt == 0) return 0;
         int levels = mip ? EngineLevels(w, h) : 1;
-        uint dst = Storage(levels, fmt, w, h, s, red);
+        uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, w, h, s, red);
         if (dst == 0) return 0;
         var u = Unpack.NoBuffer();
         for (int l = 0; l < levels; l++)
@@ -130,7 +131,7 @@ internal static unsafe partial class OwnedTextures
     {
         uint fmt = DdsReader.GlFormat(i.Format);
         int levels = mip ? Math.Min(Math.Max(i.Levels, 1), EngineLevels(i.W, i.H)) : 1;
-        uint dst = Storage(levels, fmt, i.W, i.H, s, red);
+        uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, i.W, i.H, s, red);
         if (dst == 0) return 0;
         var u = Unpack.NoBuffer();
         long off = 0;
@@ -146,15 +147,16 @@ internal static unsafe partial class OwnedTextures
     }
 
     /// <summary>A fresh immutable texture with the engine's sampler and, for one channel, its R,R,R,1 swizzle.</summary>
-    private static uint Storage(int levels, uint fmt, int w, int h, in Sampler s, bool red)
+    private static uint Storage(uint target, int levels, uint fmt, int w, int h, in Sampler s, bool red)
     {
-        uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
+        uint dst; Gl.CreateTextures(target, 1, &dst);
         if (dst == 0) return 0;
         Gl.TextureStorage2D(dst, levels, fmt, w, h);
         Gl.TextureParameteri(dst, Gl.TEXTURE_MIN_FILTER, s.Min);
         Gl.TextureParameteri(dst, Gl.TEXTURE_MAG_FILTER, s.Mag);
         Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_S, s.WrapS);
         Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_T, s.WrapT);
+        Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_R, s.WrapR);   // ignored by a 2D texture
         Gl.TextureParameteri(dst, Gl.TEXTURE_MAX_ANISOTROPY, s.Aniso ? TexRegistry.Aniso() : 1);
         if (red)
         {

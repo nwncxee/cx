@@ -321,7 +321,7 @@ internal static unsafe partial class OwnedTextures
     /// copy plus Alloy's, the cubes beside them, and what the DDS formats did.</summary>
     internal static string UploadNote()
         => $"single upload {(_single ? "on" : "off")} ({_singleUploads} textures, {_cubeUploads} cubes"
-         + (_cubeRefused > 0 ? $", {_cubeRefused} cubes REFUSED" : "") + $"{DdsFormatNote()})";
+         + (_cubeEmpty > 0 ? $", {_cubeEmpty} cubes EMPTY" : "") + $"{DdsFormatNote()})";
     /// <summary>Owned names the ENGINE holds in a cell array (a single upload or a warm hand-back). Such a name
     /// must not be GL-deleted by Alloy while the engine may still bind it for its own 2D use -- icons,
     /// portraits and glyph sheets all come through this funnel -- so a swap or eviction drops its handle and
