@@ -23,7 +23,9 @@ public static unsafe partial class TextRig
 
     private const int KindCount = (int)UiDrawKind.IconPlt + 1;
 
-    private static RigGlState _engGl = new(), _alloyGl = new();
+    private static RigGlState _engGl = new();
+    /// <summary>Volatile: replaced by <see cref="ContextLost"/> while a render thread may be replaying.</summary>
+    private static volatile RigGlState _alloyGl = new();
 
     /// <summary>Alloy's context is gone and every name it held with it.</summary>
     internal static void ContextLost() => _alloyGl = new RigGlState();
@@ -156,13 +158,15 @@ public static unsafe partial class TextRig
         return sh;
     }
 
-    /// <summary>The current sheet into <paramref name="g"/>'s atlas texture, every level. Cold: once per re-bake.</summary>
+    /// <summary>The current sheet into <paramref name="g"/>'s atlas texture, every level, at unpack alignment 1 (R8 rows
+    /// under 4 texels) and back to the GL default 4 -- in the engine's context <c>GLRender::CreateTexture</c> @0x4ca2b0
+    /// makes no pixel-store call of its own and assumes it. Cold: once per re-bake.</summary>
     private static void UploadAtlas(RigGlState g)
     {
         int epoch = AtlasEpoch;   // before the sheet: a re-bake between the two reads then re-uploads next replay
         AtlasSheet? a = _sheet;   // snapshot: a cold re-bake swap must not pair one sheet's Pixels with another's side
         if (a == null) return;
-        if (g.Atlas == 0) { uint t; Gl.GenTextures(1, &t); g.Atlas = t; }   // a re-bake respecifies the same name
+        if (g.Atlas == 0) { uint t; Gl.GenTextures(1, &t); g.Atlas = t; }
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.BindTexture(Gl.TEXTURE_2D, g.Atlas);
         Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR_MIPMAP_LINEAR);
@@ -170,8 +174,6 @@ public static unsafe partial class TextRig
         Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
         Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
         Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAX_LEVEL, a.Mips.Length);   // must equal the uploaded chain, or the texture is incomplete and samples black
-        // R8 rows below 4 texels are not 4-aligned. Put back to the GL default after: in the engine's context its
-        // GLRender::CreateTexture @0x4ca2b0 makes no pixel-store call of its own and assumes the default.
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
         fixed (byte* px = a.Pixels)
             Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Gl.R8, a.Side, a.Side, 0, Gl.RED, Gl.UNSIGNED_BYTE, px);
@@ -236,13 +238,13 @@ public static unsafe partial class TextRig
     /// engine's composite lookup. texelFetch, because the mean of two layer indices is a third layer; bilinear runs over
     /// the RESOLVED colours, premultiplied, and taps clamp to the art <c>uCrop</c> (u1, v0) leaves, so the sheet's
     /// transparent padding never bleeds a dark fringe into the edge.</summary>
-    private const string FSrcIconPlt =
+    private static readonly string FSrcIconPlt =
         "#version 330 core\nin vec2 vUV;\nin vec3 vCol;\nin float vA;\n" +
-        "uniform sampler2D uTex;\nuniform sampler2D uPal;\nuniform int uRows[10];\nuniform vec2 uCrop;\nout vec4 o;\n" +
+        "uniform sampler2D uTex;\nuniform sampler2D uPal;\n" + $"uniform int uRows[{PltRows}];" + "\nuniform vec2 uCrop;\nout vec4 o;\n" +
         "ivec2 lo, hi;\n" +
         "vec4 tap(ivec2 p){\n" +
         "  vec2 rg = texelFetch(uTex, clamp(p, lo, hi), 0).rg;\n" +
-        "  int l = int(rg.g * 255.0 + 0.5); l = l < 9 ? l : 9;\n" +
+        $"  int l = int(rg.g * 255.0 + 0.5); l = l < {PltRows - 1} ? l : {PltRows - 1};\n" +
         "  vec4 c = texelFetch(uPal, ivec2(int(rg.r * 255.0 + 0.5), uRows[l]), 0);\n" +
         "  return vec4(c.rgb * c.a, c.a);\n}\n" +
         "void main(){\n" +

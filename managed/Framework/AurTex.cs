@@ -91,13 +91,8 @@ public static unsafe class AurTex
         w = basic.GetWidth(); h = basic.GetHeight();
     }
 
-    /// <summary>A resman texture's GL id by RESREF -- the resolve and the guard in one call, for the handful of
-    /// engine textures an owned pass wants by name rather than off a material (<c>solid_noise</c>, the wave field
-    /// vanilla's water shader samples). Re-resolves every call and caches NOTHING, because the pointer is borrowed.
-    /// Once per pass, not per part, and allocates nothing: the name is marshalled on the stack.</summary>
-    public static int TidByName(string resref) => Tid(FindByName(resref));
 
-    /// <summary>...and the CAurTexture the resman answered with, which is what a caller needs to ask the object its
+    /// <summary>A resman texture by RESREF -- the CAurTexture the resman answered with, which is what a caller needs to ask the object its
     /// own name: Windows and Linux can resolve the same resref to different-looking textures, and only the object
     /// says whether that is a different RESOURCE or a different upload. Borrowed, never cached.</summary>
     public static IntPtr FindByName(string resref)

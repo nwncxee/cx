@@ -42,7 +42,8 @@ internal static unsafe partial class NuiModelView
         /// <summary>When the image was loaded (a later one has a larger number), and whether a later image has taken its texture.</summary>
         public int Serial;
         public bool Stale;
-        public uint OwnTex;
+        /// <summary>Volatile: written where the views draw, which with a render thread is not the game thread.</summary>
+        public volatile uint OwnTex;
         public long Seen;
         public IntPtr Nk, Ctrl;
         public int W = DefaultSize, H = DefaultSize;

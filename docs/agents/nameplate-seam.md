@@ -922,7 +922,7 @@ public static int Tid(IntPtr tex) => Live(tex) ? _getTid(tex) : 0;
 RTTI pair). `AurTex.Refused` is the counter to watch. `AurTex.TidByName(resref)` (`AurTex.cs:81-89`) does
 resolve + guard in one call and caches nothing — that is the front door for a nameplate portrait.
 
-**Use `AurTex.TidByName` / `TextRig.DrawPortrait`, never a stored `CAurTexture*`.**
+**Use `TextRig.ResolveTid` / `TextRig.DrawPortrait`, never a stored `CAurTexture*`.**
 
 ### Batching N portraits
 

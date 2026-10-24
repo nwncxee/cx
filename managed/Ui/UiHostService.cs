@@ -265,7 +265,8 @@ public sealed unsafe class UiHostService : IExtenderService
     }
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
-    /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
+    /// side of NUI's layers, or the engine-context draw below replays at once. Rewritten only while no render thread
+    /// replays them: the seam records after <c>RenderSnapshot.AwaitDrained</c>.</summary>
     private static readonly UiDrawList[] _layers = { new(), new() };
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
