@@ -1,3 +1,5 @@
+using CX.Alloy;   // AlloyGate: a refused render target is a hard Alloy failure
+
 namespace CX.Graphics;
 
 /// <summary>
@@ -23,18 +25,37 @@ public static unsafe class RenderTarget
         Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
     }
 
-    /// <summary>A fresh immutable TEXTURE_2D in <paramref name="tex"/>, deleting the old name first: immutable
-    /// storage cannot be respecified, so a resize is always a new name and the caller re-attaches it.</summary>
+    /// <summary>A fresh immutable TEXTURE_2D in <paramref name="tex"/>, replacing the old name: immutable storage
+    /// cannot be respecified, so a resize is always a new name and the caller re-attaches it. Storage the driver
+    /// refuses (video memory full) keeps the old texture and fails Alloy loudly.</summary>
     public static void Create(ref uint tex, uint internalFormat, int w, int h, int filter)
     {
         uint t, old = tex;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
         // Create before delete: GL may hand a freed name straight back, and a caller that caches the name to
         // detect a re-create (Highlight's depth attachment) would miss the change.
-        if (old != 0) Gl.DeleteTextures(1, &old);
+        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
         Gl.TextureStorage2D(t, 1, internalFormat, w, h);
+        if (!HasStorage(t))
+        {
+            Gl.DeleteTextures(1, &t);
+            AlloyGate.Fail($"the driver refused a {w}x{h} render target (format 0x{internalFormat:x}) -- video memory "
+                         + "is full; close other GPU programs");
+            return;
+        }
+        if (old != 0) Gl.DeleteTextures(1, &old);
         Clamp(t, filter);
         tex = t;
+    }
+
+    /// <summary>Did <paramref name="tex"/>'s storage call take? A refused one (OUT_OF_MEMORY) leaves level 0 at
+    /// width 0, and a target with no storage behind it is a GPU page fault at address 0 the moment it is drawn.
+    /// Asked of the texture rather than <c>glGetError</c>, which would eat errors the 4.6 counter reports.</summary>
+    private static bool HasStorage(uint tex)
+    {
+        if (Gl.GetTextureLevelParameteriv == null) return true;
+        int w = 0;
+        Gl.GetTextureLevelParameteriv(tex, 0, Gl.TEXTURE_WIDTH, &w);
+        return w > 0;
     }
 
     /// <summary>(Re)create <paramref name="tex"/> as a depth target. Also clears TEXTURE_COMPARE_MODE: these
