@@ -583,12 +583,14 @@ internal static unsafe class SymbolMap
     public const string StbttGetFontVMetrics       = "stbtt_GetFontVMetrics";
     [Fn("void(byte* info, int codepoint, int* advance, int* leftSideBearing)")]
     public const string StbttGetCodepointHMetrics  = "stbtt_GetCodepointHMetrics";
-    [Fn("void(byte* info, int codepoint, float scaleX, float scaleY, int* x0, int* y0, int* x1, int* y1)")]
-    public const string StbttGetCodepointBitmapBox = "stbtt_GetCodepointBitmapBox";
-    [Fn("void(byte* info, byte* output, int outW, int outH, int outStride, float scaleX, float scaleY, int codepoint)")]
-    public const string StbttMakeCodepointBitmap   = "stbtt_MakeCodepointBitmap";
     [Fn("int(byte* info, int codepoint)")]
     public const string StbttFindGlyphIndex        = "stbtt_FindGlyphIndex";
+    /// <summary>A codepoint's signed distance field: 0..255 with <c>onedge</c> on the outline, <c>pixelDistScale</c> per
+    /// pixel inward, <c>padding</c> texels around the box. Malloc'd, freed by <see cref="StbttFreeSDF"/>; null for a blank glyph.</summary>
+    [Fn("byte*(byte* info, float scale, int codepoint, int padding, byte onedge, float pixelDistScale, int* width, int* height, int* xoff, int* yoff)")]
+    public const string StbttGetCodepointSDF       = "stbtt_GetCodepointSDF";
+    [Fn("void(byte* bitmap, void* userdata)")]
+    public const string StbttFreeSDF               = "stbtt_FreeSDF";
     // ---- the engine's OWN stb_truetype pack API and codepage mapper. CX bakes a font atlas by
     //      calling the same statically linked rasteriser at the same parameters, so glyph pixels match by
     //      construction rather than by matching a library version. All name-exported on BOTH OSes (verified
@@ -711,6 +713,8 @@ internal static unsafe class SymbolMap
     public const string GlDefaultFramebuffer = "_ZN8GLRender22cm_nDefaultFramebufferE";
     /// <inheritdoc cref="GlDefaultFramebuffer"/>
     public const string GlDrawFramebufferBound = "_ZN8GLRender23m_nDrawFrameBufferBoundE";
+    /// <inheritdoc cref="GlDefaultFramebuffer"/>
+    public const string GlReadFramebufferBound = "_ZN8GLRender23m_nReadFrameBufferBoundE";
     /// <summary>RenderInterface::DeleteTextures(n, names) @0x45d1d0 -- the SINGLE funnel through which every engine GL
     /// texture name dies (the CAurTextureBasic dtor, Reset, the glImageBasic re-upload, AurTextureFreeAll,
     /// <c>Camera::ClearFrameBufferResources</c>, the movie/nuklear teardowns). Alloy keys its owned copies on the
@@ -2734,9 +2738,9 @@ internal static unsafe class SymbolMap
         [StbttScaleForPixelHeight]   = Nm("stbtt_ScaleForPixelHeight"),
         [StbttGetFontVMetrics]       = Nm("stbtt_GetFontVMetrics"),
         [StbttGetCodepointHMetrics]  = Nm("stbtt_GetCodepointHMetrics"),
-        [StbttGetCodepointBitmapBox] = Nm("stbtt_GetCodepointBitmapBox"),
-        [StbttMakeCodepointBitmap]   = Nm("stbtt_MakeCodepointBitmap"),
         [StbttFindGlyphIndex]        = Nm("stbtt_FindGlyphIndex"),
+        [StbttGetCodepointSDF]       = Nm("stbtt_GetCodepointSDF"),
+        [StbttFreeSDF]               = Nm("stbtt_FreeSDF"),
         // the engine's own stb_truetype pack API + codepage mapper, name-exported on both OSes.
         [StbttPackBegin]             = Nm("stbtt_PackBegin"),
         [StbttPackEnd]               = Nm("stbtt_PackEnd"),
@@ -2963,6 +2967,7 @@ internal static unsafe class SymbolMap
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
         [GlDefaultFramebuffer] = Nm("?cm_nDefaultFramebuffer@GLRender@@0IA"),
         [GlDrawFramebufferBound] = Nm("?m_nDrawFrameBufferBound@GLRender@@0IA"),
+        [GlReadFramebufferBound] = Nm("?m_nReadFrameBufferBound@GLRender@@0IA"),
         [GlGlobalShaderConstantsF] = Nm("?m_globalShaderConstantsf@GLRender@@0PAMA"),
         [GlGlobalShaderConstantsI] = Nm("?m_globalShaderConstantsi@GLRender@@0PAHA"),
         [GlGlobalShaderConstantsV] = Nm("?m_globalShaderConstantsv@GLRender@@0PAVVector@@A"),

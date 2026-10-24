@@ -126,9 +126,9 @@ global using unsafe StbttInitFontFn = delegate* unmanaged<byte*, byte*, int, int
 global using unsafe StbttScaleForPixelHeightFn = delegate* unmanaged<byte*, float, float>;
 global using unsafe StbttGetFontVMetricsFn = delegate* unmanaged<byte*, int*, int*, int*, void>;
 global using unsafe StbttGetCodepointHMetricsFn = delegate* unmanaged<byte*, int, int*, int*, void>;
-global using unsafe StbttGetCodepointBitmapBoxFn = delegate* unmanaged<byte*, int, float, float, int*, int*, int*, int*, void>;
-global using unsafe StbttMakeCodepointBitmapFn = delegate* unmanaged<byte*, byte*, int, int, int, float, float, int, void>;
 global using unsafe StbttFindGlyphIndexFn = delegate* unmanaged<byte*, int, int>;
+global using unsafe StbttGetCodepointSDFFn = delegate* unmanaged<byte*, float, int, int, byte, float, int*, int*, int*, int*, byte*>;
+global using unsafe StbttFreeSDFFn = delegate* unmanaged<byte*, void*, void>;
 global using unsafe StbttPackBeginFn = delegate* unmanaged<byte*, byte*, int, int, int, int, void*, void>;
 global using unsafe StbttPackEndFn = delegate* unmanaged<byte*, void>;
 global using unsafe StbttPackSetOversamplingFn = delegate* unmanaged<byte*, int, int, void>;
@@ -4436,18 +4436,18 @@ public static unsafe class EngineFn
     private static bool _StbttGetCodepointHMetricsDone;
     /// <inheritdoc cref="SymbolMap.StbttGetCodepointHMetrics"/>
     public static StbttGetCodepointHMetricsFn StbttGetCodepointHMetrics => (StbttGetCodepointHMetricsFn)(_StbttGetCodepointHMetricsDone ? _StbttGetCodepointHMetrics : Resolve(ref _StbttGetCodepointHMetrics, ref _StbttGetCodepointHMetricsDone, SymbolMap.StbttGetCodepointHMetrics));
-    private static IntPtr _StbttGetCodepointBitmapBox;
-    private static bool _StbttGetCodepointBitmapBoxDone;
-    /// <inheritdoc cref="SymbolMap.StbttGetCodepointBitmapBox"/>
-    public static StbttGetCodepointBitmapBoxFn StbttGetCodepointBitmapBox => (StbttGetCodepointBitmapBoxFn)(_StbttGetCodepointBitmapBoxDone ? _StbttGetCodepointBitmapBox : Resolve(ref _StbttGetCodepointBitmapBox, ref _StbttGetCodepointBitmapBoxDone, SymbolMap.StbttGetCodepointBitmapBox));
-    private static IntPtr _StbttMakeCodepointBitmap;
-    private static bool _StbttMakeCodepointBitmapDone;
-    /// <inheritdoc cref="SymbolMap.StbttMakeCodepointBitmap"/>
-    public static StbttMakeCodepointBitmapFn StbttMakeCodepointBitmap => (StbttMakeCodepointBitmapFn)(_StbttMakeCodepointBitmapDone ? _StbttMakeCodepointBitmap : Resolve(ref _StbttMakeCodepointBitmap, ref _StbttMakeCodepointBitmapDone, SymbolMap.StbttMakeCodepointBitmap));
     private static IntPtr _StbttFindGlyphIndex;
     private static bool _StbttFindGlyphIndexDone;
     /// <inheritdoc cref="SymbolMap.StbttFindGlyphIndex"/>
     public static StbttFindGlyphIndexFn StbttFindGlyphIndex => (StbttFindGlyphIndexFn)(_StbttFindGlyphIndexDone ? _StbttFindGlyphIndex : Resolve(ref _StbttFindGlyphIndex, ref _StbttFindGlyphIndexDone, SymbolMap.StbttFindGlyphIndex));
+    private static IntPtr _StbttGetCodepointSDF;
+    private static bool _StbttGetCodepointSDFDone;
+    /// <inheritdoc cref="SymbolMap.StbttGetCodepointSDF"/>
+    public static StbttGetCodepointSDFFn StbttGetCodepointSDF => (StbttGetCodepointSDFFn)(_StbttGetCodepointSDFDone ? _StbttGetCodepointSDF : Resolve(ref _StbttGetCodepointSDF, ref _StbttGetCodepointSDFDone, SymbolMap.StbttGetCodepointSDF));
+    private static IntPtr _StbttFreeSDF;
+    private static bool _StbttFreeSDFDone;
+    /// <inheritdoc cref="SymbolMap.StbttFreeSDF"/>
+    public static StbttFreeSDFFn StbttFreeSDF => (StbttFreeSDFFn)(_StbttFreeSDFDone ? _StbttFreeSDF : Resolve(ref _StbttFreeSDF, ref _StbttFreeSDFDone, SymbolMap.StbttFreeSDF));
     private static IntPtr _StbttPackBegin;
     private static bool _StbttPackBeginDone;
     /// <inheritdoc cref="SymbolMap.StbttPackBegin"/>
@@ -6461,24 +6461,24 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.StbttGetCodepointHMetrics"/>; returns the slot holding the next layer, or null.</summary>
     public static StbttGetCodepointHMetricsFn* ChainStbttGetCodepointHMetrics(this HookService h, StbttGetCodepointHMetricsFn handler, int priority) =>
         (StbttGetCodepointHMetricsFn*)h.Chain(SymbolMap.StbttGetCodepointHMetrics, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.StbttGetCodepointBitmapBox"/>; returns the original, or null.</summary>
-    public static StbttGetCodepointBitmapBoxFn InstallStbttGetCodepointBitmapBox(this HookService h, StbttGetCodepointBitmapBoxFn handler) =>
-        (StbttGetCodepointBitmapBoxFn)h.Install(SymbolMap.StbttGetCodepointBitmapBox, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.StbttGetCodepointBitmapBox"/>; returns the slot holding the next layer, or null.</summary>
-    public static StbttGetCodepointBitmapBoxFn* ChainStbttGetCodepointBitmapBox(this HookService h, StbttGetCodepointBitmapBoxFn handler, int priority) =>
-        (StbttGetCodepointBitmapBoxFn*)h.Chain(SymbolMap.StbttGetCodepointBitmapBox, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.StbttMakeCodepointBitmap"/>; returns the original, or null.</summary>
-    public static StbttMakeCodepointBitmapFn InstallStbttMakeCodepointBitmap(this HookService h, StbttMakeCodepointBitmapFn handler) =>
-        (StbttMakeCodepointBitmapFn)h.Install(SymbolMap.StbttMakeCodepointBitmap, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.StbttMakeCodepointBitmap"/>; returns the slot holding the next layer, or null.</summary>
-    public static StbttMakeCodepointBitmapFn* ChainStbttMakeCodepointBitmap(this HookService h, StbttMakeCodepointBitmapFn handler, int priority) =>
-        (StbttMakeCodepointBitmapFn*)h.Chain(SymbolMap.StbttMakeCodepointBitmap, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.StbttFindGlyphIndex"/>; returns the original, or null.</summary>
     public static StbttFindGlyphIndexFn InstallStbttFindGlyphIndex(this HookService h, StbttFindGlyphIndexFn handler) =>
         (StbttFindGlyphIndexFn)h.Install(SymbolMap.StbttFindGlyphIndex, (IntPtr)handler);
     /// <summary>Chains onto <see cref="SymbolMap.StbttFindGlyphIndex"/>; returns the slot holding the next layer, or null.</summary>
     public static StbttFindGlyphIndexFn* ChainStbttFindGlyphIndex(this HookService h, StbttFindGlyphIndexFn handler, int priority) =>
         (StbttFindGlyphIndexFn*)h.Chain(SymbolMap.StbttFindGlyphIndex, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttGetCodepointSDF"/>; returns the original, or null.</summary>
+    public static StbttGetCodepointSDFFn InstallStbttGetCodepointSDF(this HookService h, StbttGetCodepointSDFFn handler) =>
+        (StbttGetCodepointSDFFn)h.Install(SymbolMap.StbttGetCodepointSDF, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttGetCodepointSDF"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttGetCodepointSDFFn* ChainStbttGetCodepointSDF(this HookService h, StbttGetCodepointSDFFn handler, int priority) =>
+        (StbttGetCodepointSDFFn*)h.Chain(SymbolMap.StbttGetCodepointSDF, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StbttFreeSDF"/>; returns the original, or null.</summary>
+    public static StbttFreeSDFFn InstallStbttFreeSDF(this HookService h, StbttFreeSDFFn handler) =>
+        (StbttFreeSDFFn)h.Install(SymbolMap.StbttFreeSDF, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StbttFreeSDF"/>; returns the slot holding the next layer, or null.</summary>
+    public static StbttFreeSDFFn* ChainStbttFreeSDF(this HookService h, StbttFreeSDFFn handler, int priority) =>
+        (StbttFreeSDFFn*)h.Chain(SymbolMap.StbttFreeSDF, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.StbttPackBegin"/>; returns the original, or null.</summary>
     public static StbttPackBeginFn InstallStbttPackBegin(this HookService h, StbttPackBeginFn handler) =>
         (StbttPackBeginFn)h.Install(SymbolMap.StbttPackBegin, (IntPtr)handler);

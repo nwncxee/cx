@@ -151,7 +151,8 @@ deriving anything — required, or the RVAs point into a different build.
 | `CGuiModalPanel::Deactivate(int)` | `?Deactivate@CGuiModalPanel@@QEAAXH@Z` |
 | `CGuiPanel::UnToggleOff()` | `?UnToggleOff@CGuiPanel@@QEAAXXZ` |
 | `RenderInterface::ResetRenderStates()` / `BindBuffer(uint,uint)` | `?ResetRenderStates@RenderInterface@@SAXXZ` / `?BindBuffer@RenderInterface@@SAXII@Z` |
-| `stbtt_InitFont` … `stbtt_FindGlyphIndex` (7) | same C names |
+| `stbtt_InitFont` … `stbtt_FindGlyphIndex`, `stbtt_GetCodepointSDF`, `stbtt_FreeSDF` (7) | same C names |
+| `GLRender::m_nReadFrameBufferBound` (data) | `?m_nReadFrameBufferBound@GLRender@@0IA` |
 | `g_pTlkTable` (data) | `?g_pTlkTable@@3PEAVCTlkTable@@EA` |
 | `CTlkTable::GetSimpleString(uint)` -> `CExoString` | `?GetSimpleString@CTlkTable@@QEAA?AVCExoString@@I@Z` -- sret pointer is the 2nd arg on Win64 |
 | `Gob::BeginLookAtAnimate(CAurObject*, char const*, char const*, float, float, float, float)` | `?BeginLookAtAnimate@Gob@@UEAAXPEAVCAurObject@@PEBD1MMMM@Z` (rva `0x50000`) -- head tracking; all-void, no by-value crossing |

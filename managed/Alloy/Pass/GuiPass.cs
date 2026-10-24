@@ -160,9 +160,11 @@ internal static unsafe class GuiPass
     internal static void FlushWithWindows(int panels)
     {
         int n = GuiCapture.LayerN;
-        if (_gl.Prog != 0 && !_failed && Draw(0, Math.Clamp(panels, 0, n), n, true)) { GuiCapture.Reset(); return; }
-        if (n > 0) Dropped();
+        bool drawn = _gl.Prog != 0 && !_failed && Draw(0, Math.Clamp(panels, 0, n), n, true);
+        UiScene.Spent();
         GuiCapture.Reset();
+        if (drawn) return;
+        if (n > 0) Dropped();
         if (!GlContextService.HeldHere) { PresentTarget.HandBackIfOwed(); CX.Ui.UiHostService.ReplayWindowsHere(); }
         else if (!_gl.WindowsDropSaid)
         {
@@ -539,6 +541,7 @@ internal static unsafe class GuiPass
         _gl.DepthProbed = true;
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         _gl.DepthFmt = RenderTarget.ProbeDepthFormat(0);
+        ScreenOwner.RestoreEngineFbo();
         if (_gl.DepthFmt == 0) _log?.Always("GuiPass: the default framebuffer reports no depth -- on Windows a content-shader GUI draw "
                                        + "will not depth-test against Alloy's GUI draws");
     }
@@ -569,13 +572,14 @@ internal static unsafe class GuiPass
         uint mask = Gl.DEPTH_BUFFER_BIT | (HasStencil ? Gl.STENCIL_BUFFER_BIT : 0u);
         Gl.BlitFramebuffer(0, 0, _gl.DepthW, _gl.DepthH, 0, 0, _gl.DepthW, _gl.DepthH, mask, (uint)Gl.NEAREST);
         Gl.DrainErrors(4);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        ScreenOwner.RestoreEngineFbo();
     }
 
     /// <summary>GL names die with the context.</summary>
     internal static void ContextLost()
     {
         CX.Ui.TextRig.ContextLost();   // the windows' VAO and programs went with it
+        UiScene.ContextLost();
         TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
         GuiModelSolve.ContextLost();
         _gl = new GuiGlState();

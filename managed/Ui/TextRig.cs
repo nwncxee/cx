@@ -10,7 +10,7 @@ using CX.Services.Chat.Core.Model;
 namespace CX.Ui;
 
 /// <summary>
-/// The UI's draw recorder, not a renderer: it owns the glyph atlas (a stb_truetype bake, cold) and turns every CX
+/// The UI's draw recorder, not a renderer: it owns the glyph atlas (a stb_truetype distance-field bake, cold) and turns every CX
 /// window's draw -- <see cref="DrawBatch"/>, <see cref="DrawPortrait"/>, the icon and skin quads -- into a
 /// <see cref="UiDrawList"/> command. <see cref="Replay"/> issues a list in whichever context draws the frame:
 /// Alloy's GUI pass, or the engine's present with Alloy off. Nothing here decides WHAT to draw.
@@ -225,21 +225,42 @@ public static unsafe partial class TextRig
     {
         public UiDrawList? Into;
         public readonly UiDrawList Now = new();
+        /// <summary>The scene test every draw below is stamped with (<see cref="Anchor"/>); <c>Occl</c> false = none.</summary>
+        public UiCmd Stamp;
     }
 
     private static readonly RecordState _record = new();
 
     /// <summary>Send every draw below into <paramref name="into"/> until the next call; null draws each at once, in the
     /// current context. The roll-call's thread only.</summary>
-    public static void Record(UiDrawList? into) => _record.Into = into;
+    public static void Record(UiDrawList? into) { _record.Into = into; _record.Stamp.Occl = false; }
+
+    /// <summary>Anchor every draw below to world point <paramref name="world"/>, shown at UI pixel (<paramref name="ax"/>,
+    /// <paramref name="ay"/>): where the world frame covers it, the draws fade to <paramref name="hidden"/> of their alpha.
+    /// 1 or more, or <see cref="Unanchor"/>, is no test. Only Alloy's frame has the depth to test against.</summary>
+    public static void Anchor(Vector3 world, float ax, float ay, float hidden)
+    {
+        ref UiCmd s = ref _record.Stamp;
+        s.Occl = hidden < 1f;
+        s.Hidden = hidden < 0f ? 0f : hidden; s.Wx = world.X; s.Wy = world.Y; s.Wz = world.Z; s.Ax = ax; s.Ay = ay;
+    }
+
+    /// <summary>The draws below are anchored to nothing.</summary>
+    public static void Unanchor() => _record.Stamp.Occl = false;
 
     /// <summary>Record one draw, or with no list open replay it now. Hot, zero-alloc.</summary>
     private static void Add(in UiCmd c, ReadOnlySpan<float> verts, int count, ReadOnlySpan<int> rows = default)
     {
         RecordState r = _record;
-        if (r.Into != null) { r.Into.Add(c, verts, count, rows); return; }
+        UiCmd cmd = c;
+        if (r.Stamp.Occl)
+        {
+            cmd.Occl = true; cmd.Hidden = r.Stamp.Hidden;
+            cmd.Wx = r.Stamp.Wx; cmd.Wy = r.Stamp.Wy; cmd.Wz = r.Stamp.Wz; cmd.Ax = r.Stamp.Ax; cmd.Ay = r.Stamp.Ay;
+        }
+        if (r.Into != null) { r.Into.Add(cmd, verts, count, rows); return; }
         r.Now.Reset(ViewportW, ViewportH);
-        r.Now.Add(c, verts, count, rows);
+        r.Now.Add(cmd, verts, count, rows);
         Replay(r.Now);
     }
 
@@ -385,8 +406,8 @@ public static unsafe partial class TextRig
     }
 
     /// <summary>Self-check for the resref -&gt; C-string marshalling that feeds AurTextureGet: truncation at 16
-    /// bytes and NUL-termination (a missing NUL would walk past the name into stack garbage), plus the portrait
-    /// size-suffix preference. Headless.</summary>
+    /// bytes and NUL-termination (a missing NUL would walk past the name into stack garbage), the portrait
+    /// size-suffix preference, and the bindless record's layout against std430 offsets worked by hand. Headless.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         Span<byte> buf = stackalloc byte[17];
@@ -413,8 +434,15 @@ public static unsafe partial class TextRig
         n = FillCName("0123456789abcdet", buf);
         ok &= PreferMedium(buf, n) == 15 && buf[15] == (byte)'m' && buf[16] == 0;            // a full-length resref rewrites in place
 
+        // std430's offsets for the UiRec block BatchVs declares, worked by hand: uvec2 0, uint 8 and 12, vec2 16, two
+        // floats 24 and 28, vec4 32 and 48, vec2 64 and 72, padded to 80.
+        bool rec = sizeof(UiRec) == 80 && Marshal.OffsetOf<UiRec>(nameof(UiRec.OffX)) == 16
+                   && Marshal.OffsetOf<UiRec>(nameof(UiRec.Clip)) == 32 && Marshal.OffsetOf<UiRec>(nameof(UiRec.Occl)) == 48
+                   && Marshal.OffsetOf<UiRec>(nameof(UiRec.Ax)) == 64;
+        ok &= rec;
+
         log.Info(ok ? "TextRig.SelfCheck: passed"
-                    : "TextRig.SelfCheck: FAILED (resref C-string marshalling / portrait size preference)");
+                    : $"TextRig.SelfCheck: FAILED (resref C-string marshalling / portrait size preference{(rec ? "" : " / the UiRec layout")})");
     }
 
     private static IntPtr ResolveTexture(string resref)

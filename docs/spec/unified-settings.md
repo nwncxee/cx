@@ -408,6 +408,7 @@ closing is the window category's *Close this window* (two presses; Main has no r
 | nameplate.speaker | Speaker | D | Name and portrait / Name only / Portrait only / Neither (stock) · Name and portrait | U | L | Chat bubbles | Who is talking: their name above the bubble, their portrait beside it. A nameplate shown under the bubble takes over what it already shows. |
 | nameplate.queue | Messages kept | D | 1 / 2 / 3 / 4 · 2 | U | L | Chat bubbles | How many recent things someone said stack in their bubble. The stock game keeps 1. |
 | nameplate.fadedist | Fade band | S | 0–100 m step 1 · 10 | A | L | Nameplates and bubbles | They fade out over this distance before Visible distance. |
+| nameplate.behindwalls | Behind walls | S | 0–100 % step 5 · 100 | U | L | Nameplates and bubbles | How much of a name or bubble still shows while a wall or the ground hides its creature from the camera. 100 % shows it fully, as in the stock game. Alloy only. |
 | nameplate.width | Text width | S | 120–480 px step 10 · 300 | A | L | Nameplates and bubbles | The widest a name or a bubble gets before wrapping. |
 | nameplate.clicktotell | Click a name to tell | T | off | A | L | Nameplates | Clicking the name starts a tell. Takes the click the world would have had. |
 | nameplate.font / typeface / outline | Text size / Typeface / Text outline | D | as UI · default · thin | A | L | Nameplates | the names' element text rows |

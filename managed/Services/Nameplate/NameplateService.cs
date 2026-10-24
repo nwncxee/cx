@@ -239,6 +239,28 @@ public sealed unsafe class NameplateService : IExtenderService
     private static volatile int _hitCur;
 
     private const int MaxPortraitsPerFrame = 32;
+
+    /// <summary>The frame's emitted plates as vertex ranges: where each one's vertices end in <c>_verts</c>, which visible
+    /// entry it is, and the plate each queued portrait belongs to. Refilled by every draw.</summary>
+    private sealed class SpanState
+    {
+        public readonly int[] End = new int[PlateTable.MaxEntries], Entry = new int[PlateTable.MaxEntries];
+        public readonly int[] PortraitOf = new int[MaxPortraitsPerFrame];
+        public int N;
+    }
+
+    private static readonly SpanState _spans = new();
+
+    /// <summary>The world point a plate's scene test reads: mid-body over the object's feet.</summary>
+    private const float AnchorLiftM = 1f;
+
+    /// <summary>Anchor the draws below to visible entry <paramref name="i"/>'s creature, shown at its plate anchor.</summary>
+    private static void Anchor(int i, float hidden)
+    {
+        PlateTable.Entry e = _table.Visible[i];
+        if (!e.HasWorld || hidden >= 1f) { TextRig.Unanchor(); return; }
+        TextRig.Anchor(e.World + new System.Numerics.Vector3(0f, 0f, AnchorLiftM), e.AnchorX, e.AnchorY, hidden);
+    }
     private static readonly string[] _portraitRef = new string[MaxPortraitsPerFrame];
     private static readonly float[] _portraitRect = new float[MaxPortraitsPerFrame * 5];   // x,y,w,h,alpha
 
@@ -387,6 +409,7 @@ public sealed unsafe class NameplateService : IExtenderService
 
         // Pass 2: emit. Order of emission IS draw order (no depth), so chrome before text.
         int n = 0, pn = 0;
+        _spans.N = 0;
         float su = atlas.SolidU, sv = atlas.SolidV;
         int hitN = 0;
         Hit[] hits = _hits[_hitCur ^ 1];
@@ -418,10 +441,18 @@ public sealed unsafe class NameplateService : IExtenderService
                           background, hits, ref hitN);
             }
             FlushBodies(ref n);
+            _spans.End[_spans.N] = n; _spans.Entry[_spans.N++] = i;
         }
 
-        if (n > 0) TextRig.DrawBatch(_verts, n / VertexBatch.Floats);
-        if (pn > 0) DrawPortraits(pn);
+        float hidden = NameplateKnobs.BehindWalls.V / 100f;
+        for (int k = 0, from = 0; k < _spans.N; from = _spans.End[k++])
+        {
+            Anchor(_spans.Entry[k], hidden);
+            int end = _spans.End[k];
+            if (end > from) TextRig.DrawBatch(_verts.AsSpan(from, end - from), (end - from) / VertexBatch.Floats);
+        }
+        if (pn > 0) DrawPortraits(pn, hidden);
+        TextRig.Unanchor();
         Publish(hitN);
     }
 
@@ -934,6 +965,7 @@ public sealed unsafe class NameplateService : IExtenderService
     {
         if (pn >= MaxPortraitsPerFrame) return;
         _portraitRef[pn] = resref;
+        _spans.PortraitOf[pn] = _spans.N;
         int o = pn * 5;
         _portraitRect[o] = x; _portraitRect[o + 1] = y; _portraitRect[o + 2] = w; _portraitRect[o + 3] = h;
         _portraitRect[o + 4] = a;
@@ -1086,7 +1118,7 @@ public sealed unsafe class NameplateService : IExtenderService
 
     /// <summary>Second pass: one quad per plate over its portrait texture, read through the texture's own filter.
     /// A texture id of 0 means the engine has not uploaded it yet: skip that plate this frame.</summary>
-    private static void DrawPortraits(int count)
+    private static void DrawPortraits(int count, float hidden)
     {
         if (count <= 0 || !AurTex.Ready) return;
         QuadVerts v = default;
@@ -1095,6 +1127,7 @@ public sealed unsafe class NameplateService : IExtenderService
             int o = i * 5;
             int tid = TextRig.ResolveTid(_portraitRef[i]);
             if (tid == 0) continue;
+            Anchor(_spans.Entry[_spans.PortraitOf[i]], hidden);
             TextRig.FillQuad(ref v,
                              new CX.Services.Chat.Core.Model.PortraitQuad(
                                  _portraitRect[o], _portraitRect[o + 1], _portraitRect[o + 2], _portraitRect[o + 3],

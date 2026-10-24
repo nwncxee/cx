@@ -41,6 +41,9 @@ internal static class SsboSlots
     internal const uint Content = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
     internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
+    /// <summary>The 2D UI's command records, beside the GUI pass's own on <see cref="Gui"/> (a window replay sits between two of its
+    /// runs); shares <see cref="DanglyPrev"/>'s point, whose reader binds before it draws.</summary>
+    internal const uint UiCmds = 9;
 
     /// <summary>Every block name the GLSL declares, and the point C# binds it on.</summary>
     private static readonly Dictionary<string, uint> Blocks = new()
@@ -59,7 +62,7 @@ internal static class SsboSlots
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd,
         ["CxHaloBuf"] = Halos, ["CxHaloVis"] = HaloVis, ["CxHiliteGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
-        ["CxContentBuf"] = Content,
+        ["CxContentBuf"] = Content, ["CxUiCmdBuf"] = UiCmds,
     };
 
     private static readonly Regex Decl = new(@"layout\(std430,\s*binding\s*=\s*(\d+)\)\s*(?:\w+\s+)*?buffer\s+(\w+)");
@@ -75,6 +78,8 @@ internal static class SsboSlots
             if (res.EndsWith(".glsl", System.StringComparison.Ordinal)) texts.Add((res, ShaderSource.Get(res)));
         texts.Add(("CasterGather.GatherCs", CasterGather.GatherCs));
         texts.Add(("CasterGather.LayerCs", CasterGather.LayerCs));
+        texts.Add(("TextRig.BatchVs", CX.Ui.TextRig.BatchVs));
+        texts.Add(("TextRig.BatchFs", CX.Ui.TextRig.BatchFs));
         texts.Add(("bindless header", AlloyRenderer.BindlessFs("uniform sampler2D uTex;\n")));
         int decls = 0;
         foreach ((string name, string src) in texts)

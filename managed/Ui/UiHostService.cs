@@ -228,8 +228,8 @@ public sealed unsafe class UiHostService : IExtenderService
         if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();   // both layers, above NUI
         FrameRegistry.Global.Run(FramePhase.PrePresent);
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
-        // participant (GlContextService's 4.6 bracket switches back to this context in there).
-        HandBack();
+        // participant. With Alloy rendering, only when something drew in this context this frame.
+        if (!CX.Alloy.Renderer.On || _handBack.Owed) HandBack();
         // the present is its own zone. It is the discriminator the other brackets cannot supply --
         // a frame that spends its time HERE is waiting on the GPU or on vsync, which is a different problem
         // from every zone that measures our own CPU work.
@@ -334,12 +334,21 @@ public sealed unsafe class UiHostService : IExtenderService
     /// default framebuffer too (Ghidra: <c>GLRender::ResetRenderStates</c>).</summary>
     internal static void HandBack()
     {
+        _handBack.Owed = false;
         if (_resetStates != null) _resetStates();
         // ResetRenderStates rewrites every shadow-cache global EXCEPT the two buffer bindings, and
         // GLRender::BindBuffer early-outs on a cache match -- so a VBO left bound in real GL would take the
         // engine's next streamed vertex upload. Through the engine wrapper so the cache learns about it.
         if (_bindBuffer != null) _bindBuffer(GlArrayBuffer, 0);
     }
+
+    /// <summary>Whether raw GL has run in the ENGINE context since the last <see cref="HandBack"/>.</summary>
+    private sealed class HandBackState { public bool Owed; }
+
+    private static readonly HandBackState _handBack = new();
+
+    /// <summary>Raw GL just ran in the ENGINE context: the present's <see cref="HandBack"/> is owed, even with Alloy on.</summary>
+    internal static void Owe() => _handBack.Owed = true;
 
     private static long _fsLast, _fsSum, _fsMax;
     private static int _fsN, _fsOver7, _fsOver17;

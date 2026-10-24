@@ -217,8 +217,9 @@ Every one of these must hold, and each gets a line in the commit message:
    tests the whole word, so bit 1 overrides). Reproduce that exactly.
 2. Bubble mode 0 = nothing; 1 = text only, no portrait, no background; 2 = portrait + background.
 3. Font follows the game's large-font/UI scale via `Metrics.Scale`. There is **no plate-specific size knob**
-   -- vanilla has none either, and the shared glyph atlas is baked once at the effective px, so a scale factor
-   would only inflate chrome around unchanged glyphs.
+   -- vanilla has none either. The shared glyph atlas is a distance field baked at the effective px, so scaled
+   glyphs would stay sharp, but no plate size knob is needed.
+   `nameplate.behindwalls` (Alloy only) fades a plate or bubble whose creature the world frame's depth hides.
 4. Chat wins over the plate while a line is live; un-hovering does not cut a line short.
 5. Object types 7/9/10 get the `"[name]: "` prefix; creatures do not. (A speech card's name header already
    names the speaker, so under one the prefix is wrapped past -- `nameplate.speaker`.)

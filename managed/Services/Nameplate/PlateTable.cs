@@ -159,6 +159,9 @@ public sealed partial class PlateTable
         public float Health = -1f;
         public float Distance;
         public float DistanceFade;
+        /// <summary>The object's world position this frame, for the scene test; <see cref="HasWorld"/> false with no camera.</summary>
+        public System.Numerics.Vector3 World;
+        public bool HasWorld;
         /// <summary>Set on the frame the entry is drawn as a bubble rather than a plate.</summary>
         public bool ShowBubble;
         /// <summary>Index of the newest live bubble line, or -1.</summary>
@@ -548,9 +551,11 @@ public sealed partial class PlateTable
 
             e.DistanceFade = 1f;
             e.Distance = 0f;
+            e.HasWorld = false;
             if (hasCam)
             {
                 NameplateNative.Position(obj, out float ox, out float oy, out float oz);
+                e.World = new System.Numerics.Vector3(ox, oy, oz); e.HasWorld = true;
                 float dx = ox - cx, dy = oy - cy, dz = oz - cz;
                 // The engine's projection never checks the sign of its denominator, so an object BEHIND the
                 // camera lands on a mirrored anchor that passes the screen-rect test above.

@@ -17,6 +17,10 @@ public struct UiCmd
     public int First, Count, RowsAt;
     public float Alpha, OffX, OffY, U1, V0;
     public int Cx, Cy, Cw, Ch;
+    /// <summary>Fade to <see cref="Hidden"/> of its alpha where the world frame's depth covers point (Wx, Wy, Wz), read
+    /// at UI pixel (Ax, Ay): the scene test of a draw anchored to something in the world.</summary>
+    public bool Occl;
+    public float Hidden, Wx, Wy, Wz, Ax, Ay;
 }
 
 /// <summary>A frame's UI draws as data: vertices in one stream, commands over ranges of it, PLT rows beside them.
@@ -64,7 +68,9 @@ public sealed class UiDrawList
     private static bool SameState(in UiCmd a, in UiCmd b)
         => a.Kind == b.Kind && a.Kind != UiDrawKind.IconPlt && a.Tex == b.Tex && a.Sampler == b.Sampler
         && a.Alpha == b.Alpha && a.OffX == b.OffX && a.OffY == b.OffY && a.U1 == b.U1 && a.V0 == b.V0
-        && a.Clip == b.Clip && (!a.Clip || (a.Cx == b.Cx && a.Cy == b.Cy && a.Cw == b.Cw && a.Ch == b.Ch));
+        && a.Clip == b.Clip && (!a.Clip || (a.Cx == b.Cx && a.Cy == b.Cy && a.Cw == b.Cw && a.Ch == b.Ch))
+        && a.Occl == b.Occl && (!a.Occl || (a.Hidden == b.Hidden && a.Wx == b.Wx && a.Wy == b.Wy && a.Wz == b.Wz
+                                            && a.Ax == b.Ax && a.Ay == b.Ay));
 
     /// <summary>Merging, ranges, clamping, rows and growth, off-device. Oracle: hand-written vertex counts and
     /// offsets for a known sequence of appends.</summary>
@@ -98,6 +104,13 @@ public sealed class UiDrawList
         for (int i = 0; i < 2000; i++) l.Add(new UiCmd { Kind = UiDrawKind.Icon, Tex = (uint)i }, quad, 6);
         check.Expect(l.CmdN == 2000 && l.VertN == 2000 * 48 && l.Cmds[1999].First == 1999 * 6 && l.Verts[1999 * 48 + 5] == 5f,
                      "growth past the initial capacity lost commands or vertices");
+        l.Reset(800, 600);
+        var plate = text with { Occl = true, Hidden = 0.3f, Wx = 10f, Ax = 40f };
+        l.Add(text, quad, 6);
+        l.Add(plate, quad, 6);
+        l.Add(plate with { Wx = 11f }, quad, 6);
+        l.Add(plate with { Wx = 11f }, quad, 6);
+        check.Expect(l.CmdN == 3 && l.Cmds[2].Count == 12, "draws anchored to different world points merged, or one point's did not");
         log.Info(check.Ok ? "UiDrawList.SelfCheck: passed" : "UiDrawList.SelfCheck: FAILED");
     }
 }

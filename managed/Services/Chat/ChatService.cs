@@ -92,8 +92,8 @@ public sealed unsafe partial class ChatService : IExtenderService
         SymbolMap.SwapBuffers,
         SymbolMap.SdlStartTextInput, SymbolMap.SdlGetClipboardText, SymbolMap.SdlSetClipboardText, SymbolMap.SdlFree,
         SymbolMap.SdlGlGetProcAddress, SymbolMap.StbttInitFont, SymbolMap.StbttScaleForPixelHeight,
-        SymbolMap.StbttGetFontVMetrics, SymbolMap.StbttGetCodepointHMetrics, SymbolMap.StbttGetCodepointBitmapBox,
-        SymbolMap.StbttMakeCodepointBitmap,
+        SymbolMap.StbttGetFontVMetrics, SymbolMap.StbttGetCodepointHMetrics, SymbolMap.StbttGetCodepointSDF,
+        SymbolMap.StbttFreeSDF,
     };
 
     /// <summary>Backlog every ingested line lands in; tab views read from it.</summary>
