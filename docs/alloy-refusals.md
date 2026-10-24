@@ -14,8 +14,8 @@ After that the only term that still moves is whether there is a world frame at a
 right and is not what changed. What changed is what a *mode* costs.
 
 Through M0–M3 Alloy drew inside the engine's frame from the engine's resources, so both renderers were warm at
-all times and a flip was free. Strand 1 of M5 (#259–#262) made Alloy's residency **exclusive**: Alloy performs
-the pool upload and the engine's is suppressed (#260), textures are uploaded into Alloy-minted handles at the
+all times and a flip was free. Strand 1 of M5 (#259–#262) made Alloy's residency **exclusive**: Alloy draws its
+geometry from its own mesh arena, never the engine's pools, textures are uploaded into Alloy-minted handles at the
 decode window (#259), PLT compositing is forced to the CPU so those textures reach the funnel at all (#277),
 and skinned parts are posed by Alloy rather than by re-entering the engine's draw (#262). None of that can be
 un-done at a frame edge — the content was loaded once, in one world's shape.

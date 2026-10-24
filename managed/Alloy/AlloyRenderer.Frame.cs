@@ -222,7 +222,6 @@ public sealed unsafe partial class AlloyRenderer
         GlContextService.RunInBracketHere();
         Step("ApplySwaps");
         ApplySwaps();   // #386: swapped texture names take their new handles here, in the context that owns residency
-        OwnedBuffers.HighWater();    // ...and report the mark the funnel recorded, where a string is affordable
         FrameZones.Add(FrameZones.Zone.Own, tOwn);
         long tPrep = FrameZones.Now, lights0 = FrameZones.Ticks(FrameZones.Zone.Lights);
         Step("EnsureProgram");

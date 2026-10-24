@@ -287,12 +287,6 @@ offset	CNWCAnimBase	hiliteGlow	0xb0	0xb0	# AnimHiliteGlow
 offset	CNWCAnimBase	gob	0xc8	0xc8	# AnimGob
 offset	GlPool	stride	0x20	0x20	# PoolStride
 offset	GlPool	host	0x0	0x0	# PoolHost
-offset	GlPool	size	0x8	0x8	# PoolSize
-offset	GlPool	name	0xc	0xc	# PoolName
-offset	GlPool	lockFlags	0x11	0x11	# PoolLockFlags
-offset	GlPool	usage	0x14	0x14	# PoolUsage
-offset	GlPool	uploaded	0x18	0x18	# PoolUploaded
-offset	GlPool	named	0x19	0x19	# PoolNamed
 offset	GlPoolTable	base	0x0	0x0	# PoolTableBase
 offset	GlPoolTable	count	0x8	0x8	# PoolTableCount
 offset	GLRender	poolTableAnchorOffset	0x236c	0x0	# PoolTableAnchorOffset

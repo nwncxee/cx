@@ -31,7 +31,7 @@ internal static class Renderer
     /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
     internal static readonly Knob<bool> Native;
     internal static readonly Knob<bool> TexPreview;
-    internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, TexSingle, DdsRead, HandleDrop, OwnedGeom,
+    internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, TexSingle, DdsRead, HandleDrop,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
                                         Gui, Movie;
     internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
@@ -165,8 +165,7 @@ internal static class Renderer
         RasterRead = G.Slider("rasterread", "rasterread", 0, 2, 1, 2, tier: Tier.ChatOnly, effect: Effect.Restart);
         TexDelete = G.Slider("texdelete", "texdelete", -1, 1, 1, -1, tier: Tier.ChatOnly, effect: Effect.Restart);
         HandleDrop = G.Toggle("handledrop", "handledrop", true, Tier.ChatOnly, Effect.Restart);
-        OwnedGeom = G.Toggle("ownedgeom", "ownedgeom", true, Tier.ChatOnly, Effect.Restart);
-        MaxElements = G.Slider("maxelements", "maxelements", 0, 1 << 24, 1, OwnedBuffers.MaxElementsDefault, tier: Tier.ChatOnly, effect: Effect.Restart);
+        MaxElements = G.Slider("maxelements", "maxelements", 0, 1 << 24, 1, EnginePools.MaxElementsDefault, tier: Tier.ChatOnly, effect: Effect.Restart);
         Spirv = G.Toggle("spirv", "spirv", false, Tier.ChatOnly, Effect.Restart);
         VanillaBridge = G.Toggle("vanillabridge", "vanillabridge", true, Tier.ChatOnly, Effect.Restart);
         HostFs = G.Toggle("hostfs", "hostfs", true, Tier.ChatOnly, Effect.Restart);

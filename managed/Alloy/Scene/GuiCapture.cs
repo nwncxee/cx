@@ -233,13 +233,13 @@ internal static unsafe class GuiCapture
             _badFormat++;
             return;
         }
-        byte* vhost = OwnedBuffers.PoolHost(s.VertToken);
+        byte* vhost = EnginePools.PoolHost(s.VertToken);
         if (vhost == null) { Refuse(ref _noHost, "a stream with no host shadow"); return; }
         if (size == 0 || !Room()) return;
         ReadOnlySpan<ushort> idx = default;
         if (s.Indexed != 0)
         {
-            ushort* ehost = (ushort*)OwnedBuffers.PoolHost(s.ElemToken);
+            ushort* ehost = (ushort*)EnginePools.PoolHost(s.ElemToken);
             if (ehost == null) { Refuse(ref _noHost, "an indexed stream with no element shadow"); return; }
             idx = new ReadOnlySpan<ushort>(ehost, checked((int)(offset + size)))[(int)offset..];
         }

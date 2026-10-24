@@ -40,7 +40,7 @@ internal static unsafe class RspShim
     private static bool _checkOk;
 
     /// <summary>Last period's refusal totals, so the period line can report the CHANGE. See <see cref="Period"/>.</summary>
-    private static int _lastRefBuf, _lastRefTex;
+    private static int _lastRefTex;
     private static long _swallowed, _passed, _ticks, _frames;
     /// <summary>Per-step tick sums over the period, indexed by <see cref="_stepNames"/>; the index order is
     /// the period line's. What is left against <see cref="_ticks"/> is the shim's own bookkeeping.</summary>
@@ -150,9 +150,9 @@ internal static unsafe class RspShim
     }
 
     /// <summary>The acceptance line: <c>passed</c> is the exit bar's draw counter and must read 0. The borrowed
-    /// counts are a DELTA over the period, not lifetime totals -- a lifetime figure would let one transient
+    /// count is a DELTA over the period, not a lifetime total -- a lifetime figure would let one transient
     /// refusal in one area taint every later line, and telling a new regression from a historic one is the only
-    /// thing this column exists for. The texture delta is signed, and a negative reads as recovery.</summary>
+    /// thing this column exists for. The delta is signed, and a negative reads as recovery.</summary>
     private static void Period()
     {
         if (_frames < AlloyRenderer.LogEvery) return;
@@ -160,12 +160,11 @@ internal static unsafe class RspShim
         if (ExtenderLog.Enabled)
             _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
                  + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), {ms:F2}ms/frame in the shim ({StepLine()}), "
-                 + $"borrowed {OwnedBuffers.Borrowed - _lastRefBuf} buffers / "
-                 + $"{OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0/0)"
+                 + $"borrowed {OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0)"
                  // The ported light tick has no other visible surface: `moved` counting down to a handful
                  // once an area settles, and `focus` tracking day/night, is what says it is running.
                  + $"; {FrameDelta.Describe()}");
-        _lastRefBuf = OwnedBuffers.Borrowed; _lastRefTex = OwnedTextures.Borrowed;
+        _lastRefTex = OwnedTextures.Borrowed;
         _swallowed = 0; _passed = 0; _ticks = 0; _frames = 0;
         Array.Clear(_stepTicks);
     }

@@ -88,3 +88,7 @@ alloy\.aotest	dead-code-cleanup
 \bSunGlide	sun-glide removal
 # The GPU-PLT adoption by copy: PLT is always composited on the CPU and uploaded by Alloy like any image.
 \balloy\.pltcpu\b|\bPltCpu\b|\bQueuePltCopy\b|\bDrainPltCopies\b	CX-321
+# The pool-upload takeover: the engine uploads and draws its own pools; Alloy draws from its own mesh arena.
+\balloy\.ownedgeom\b|\bOwnedBuffers\b|\bOwnedGeom\b	CX-322
+# The engine entry points only that takeover hooked or read.
+\bGlUnlockPool\b|\bGlDeleteBuffer\b|\bGlOrphanBuffers\b|\bGlTotalMemPool\b	CX-322
