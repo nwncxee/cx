@@ -114,18 +114,33 @@ bool CxGbufReadHead(uvec4 g0, float frameDepth, out CxGbuf g)
     return true;
 }
 
-/// The whole record: the header, the weights, and the lightmap record the twin read by the same slot.
-bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, out CxGbuf g)
+/// What the light walk itself reads: the header, G1's mover lane and the lightmap record the twin read by the
+/// same slot -- everything but the transfer weights. <paramref name="g1w"/> is G1.w alone.
+bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, out CxGbuf g)
 {
     if (!CxGbufReadHead(g0, frameDepth, g)) return false;
+    g.lmMover = unpackUnorm4x8(g1w);
+    CxChart chart = uChart[g.slot];
+    g.lmTexel = CxLmTexelWorld(chart.rec);
+    g.lmPick = chart.pick;
+    return true;
+}
+
+/// The transfer weights (G1.xyz), for a reader that applies them only once its walk is done: decoded at the
+/// top, these seven floats sit live across the whole walk and cost the deferred pass its occupancy.
+void CxGbufWeights(uvec4 g1, inout CxGbuf g)
+{
     g.diffT = CxGbUnpack9e5(g1.x);
     g.lmShare = CxGbUnpack9e5(g1.y);
     vec2 pl = unpackHalf2x16(g1.z);
     g.specT = pl.x; g.lmLum = pl.y;
-    g.lmMover = unpackUnorm4x8(g1.w);
-    CxChart chart = uChart[g.slot];
-    g.lmTexel = CxLmTexelWorld(chart.rec);
-    g.lmPick = chart.pick;
+}
+
+/// The whole record: the header, the weights, and the lightmap record the twin read by the same slot.
+bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, out CxGbuf g)
+{
+    if (!CxGbufReadWalk(g0, g1.w, frameDepth, g)) return false;
+    CxGbufWeights(g1, g);
     return true;
 }
 

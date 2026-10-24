@@ -660,6 +660,9 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         bool hot = inPages && !(farSh || uLmMovers == 0 || slot < 0 || uLocalDynPage[slot] < 0.5);
 #endif
         if (inPages && !hot && !mirror) continue;
+        // an ambient-class light adds no lobe, so on a baked receiver (where its share is in the pages) a glossy
+        // pixel's mirror pass has nothing to take from it: out before the cone test and the light body
+        if (inPages && slot == -2) continue;
         // ...and only a light the reflection vector points near: the lobe of a light outside that cone
         // is under the floor, and the point body is what 74 baked-away lights cost per fragment (run 8).
         // The cone widens with roughness: 20 deg at a puddle's 0.03, the hemisphere at the 0.5 ceiling.
