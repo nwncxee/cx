@@ -468,7 +468,7 @@ internal static partial class DrawRecipe
             {
                 MtrDef? late = MtrDef.Of(mesh);
                 _coverage[r] = late is { AlphaMode: 2 };
-                _content[r] = GuiContent.Key(late, ContentPrograms.IsStock(late));
+                _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
             }
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
@@ -590,9 +590,9 @@ internal static partial class DrawRecipe
         // CX-303: any pair the material names runs translated, unless both its halves add nothing to stock
         int feat = ContentPrograms.Register(mtr);
         _feat[r] = feat;
-        // ...and the GUI pass runs the same pair on the same stock verdict, so a part of this material draws
-        // Alloy's own GUI program there exactly as it draws Alloy's own lit stage here.
-        _content[r] = GuiContent.Key(mtr, ContentPrograms.IsStock(mtr));
+        // ...and the GUI pass interns the same pair of its own; its build asks the same stock verdict, so a part
+        // of this material draws Alloy's own GUI program there exactly as it draws Alloy's own lit stage here.
+        _content[r] = GuiContent.Key(mtr);
         _own.Mtr[r] = mtr;
         MtrParams.NoteCustomPair(mtr, feat, Log);
         Span<float> featF = _featF.AsSpan(r * 4, 4);

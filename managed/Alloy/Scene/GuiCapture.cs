@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// The draw list of Alloy's GUI path. Every scene with no tile BSP (panels, menus, minimap, compass, cursor
 /// overlay, previews) is walked from the scene database into layers of records -- geometry, state and the
 /// content program a part's material names -- which <see cref="GuiPass"/> issues from the 4.6 context. The
-/// list is BUILT here: no engine draw funnel feeds it and none is handed back, so there is no engine GL left.
+/// list is BUILT here: no engine draw funnel feeds it and no draw of it is handed back to one.
 /// </summary>
 internal static unsafe class GuiCapture
 {
@@ -72,8 +72,8 @@ internal static unsafe class GuiCapture
 
     private static ExtenderLog? _log;
 
-    /// <summary>Since boot: scenes, draws, and runs past a staging ceiling -- each of those is a hole in the GUI,
-    /// so the first is an Always line and the total is on the status line.</summary>
+    /// <summary>Since boot: scenes and draws listed, and runs past a staging ceiling -- that last one is a hole in
+    /// the GUI, so its first is an Always line and all three are on the status line.</summary>
     private static long _overflow, _layers, _draws;
 
     /// <summary>Take the log the ceilings report on. There is nothing to resolve: every GUI draw is built from
@@ -358,7 +358,7 @@ internal static unsafe class GuiCapture
     internal static void Reset() { LayerN = 0; DrawN = 0; SkinN = 0; VtxN = 0; IdxN = 0; }
 
     internal static string Stats()
-        => $"{_layers} scenes, {_draws} draws captured"
+        => $"{_layers} scenes, {_draws} draws listed"
            + (_textRuns == 0 && Db.TextQuads.Stale == 0 && Db.TextFontBake.Baked == 0
               && Db.TextFontBake.Bitmaps == 0 && Db.DbAnim.TextOffsetsApplied == 0 ? "" :
               $"; text: {_textRuns} CX glyph runs issued with no matrix-stack read, "

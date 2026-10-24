@@ -109,8 +109,9 @@ internal static partial class ContentStage
         return check.Ok;
     }
 
-    /// <summary>The shape of the bif's own <c>vslit_nm</c>/<c>fslit_nm</c>, hand-written.</summary>
-    private static class Stock
+    /// <summary>The shape of the bif's own <c>vslit_nm</c>/<c>fslit_nm</c>, hand-written. The oracle for every
+    /// stock-shape verdict, <see cref="ContentPrograms.StockPair"/>'s included.</summary>
+    internal static class Stock
     {
         internal const string Vs = "// header\n#define SHADER_TYPE 1\n#define NORMAL_MAP 1\n#include \"inc_standard\"\n"
                                  + "void main ()\n{\n    ApplyStandardShader();\n}\n";

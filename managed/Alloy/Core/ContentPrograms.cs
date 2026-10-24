@@ -92,8 +92,9 @@ internal static unsafe class ContentPrograms
         {
             RegistryState s = _reg;
             if (s.ByName.TryGetValue(key, out int have)) return have;
-            bool vsStock = Stock(MtrFeed.ShaderText(vs), false);
-            if (IsStock(mtr))
+            string? vsText = MtrFeed.ShaderText(vs), fsText = MtrFeed.ShaderText(fs);
+            bool vsStock = Stock(vsText, false);
+            if (StockPair(vs, fs, vsText, fsText))
             {
                 s.ByName[key] = 0;
                 s.StockPairs++;
@@ -113,20 +114,18 @@ internal static unsafe class ContentPrograms
         }
     }
 
-    /// <summary>Do both of <paramref name="mtr"/>'s halves add nothing to their stock counterparts, so that the pair
-    /// IS the plain path? True also when it names no pair at all. Read off the texts the material feed already holds,
-    /// and the one verdict both the world's programs and the GUI pass ask for -- it mints no id and logs nothing,
-    /// so a caller may ask per recipe. Cold.</summary>
-    internal static bool IsStock(Db.MtrDef? mtr)
+    /// <summary>Do both halves of pair <paramref name="vs"/>/<paramref name="fs"/> add nothing to their stock
+    /// counterparts, so the pair IS the plain path and no program is built for it? The ONE verdict, asked by the
+    /// world's programs and by a GUI key's build. Over each half's OWN text, which is what
+    /// <see cref="ContentStage.StockShaped"/> judges; a half the chain has not answered for is not stock.</summary>
+    internal static bool StockPair(string vs, string fs, string? vsText, string? fsText)
     {
-        if (mtr == null || mtr.ShaderVs.Length == 0 || mtr.ShaderFs.Length == 0) return true;
-        string vs = mtr.ShaderVs, fs = mtr.ShaderFs;
         // A half with a native stage beside it is never stock: the feed reads the native text first, so by the
         // time both plain halves are known, so is whether either has one. Not gated on alloy.native: the id outlives
         // the knob, and with it off the build finds both halves stock and draws the plain lit path, as here.
         if (MtrFeed.ShaderText(StageResources.Prefix + vs) != null || MtrFeed.ShaderText(StageResources.Prefix + fs) != null)
             return false;
-        return Stock(MtrFeed.ShaderText(vs), false) && Stock(MtrFeed.ShaderText(fs), true);
+        return Stock(vsText, false) && Stock(fsText, true);
     }
 
     private static bool Stock(string? text, bool fragment) => text != null && ContentStage.StockShaped(text, fragment);
@@ -515,7 +514,8 @@ internal static unsafe class ContentPrograms
 
     /// <summary>Off-device. Oracle: hand-written <c>.mtr</c> texts and the engine's own rule as the contract research
     /// states it -- both halves named or no program, one id per pair whatever its case, another pair for another half --
-    /// the region text worked by hand, and the issue-loop numbering worked by hand.</summary>
+    /// the region text worked by hand, the issue-loop numbering worked by hand, and for the stock verdict
+    /// <c>ContentStage.Stock</c>, the hand-written shape of the bif's own lit pair.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -542,6 +542,13 @@ internal static unsafe class ContentPrograms
                          "the host library is not replaced by the content region naming both halves, brackets and all");
             check.Expect(WithRegion("no library here\n", VsLib, VanillaShader.ContentVsMark, "a", "b", VsStub) == null,
                          "a lit stage with no host library takes a region");
+            check.Expect(StockPair("vslit_nm", "fslit_nm", ContentStage.Stock.Vs, ContentStage.Stock.Fs),
+                         "the bif's own lit pair reads as adding something to stock -- it IS the stock pair");
+            check.Expect(!StockPair("vslit_nm", "fslit_nm", ContentStage.Stock.Vs,
+                                    ContentStage.Stock.Fs.Replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;")),
+                         "a fragment half that edits the lit colour reads as stock");
+            check.Expect(!StockPair("vslit_nm", "fslit_nm", ContentStage.Stock.Vs, null),
+                         "a half the chain has not answered for reads as stock, which would shade one pair two ways");
         }
         finally { _reg = saved; }
         log.Info(check.Ok ? "ContentPrograms.SelfCheck: passed" : "ContentPrograms.SelfCheck: FAILED");

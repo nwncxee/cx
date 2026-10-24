@@ -19,7 +19,7 @@ internal static unsafe class GuiContent
         public readonly Dictionary<(string, string), int> ByPair = new();
     }
 
-    private static KeyState _keys = new();
+    private static readonly KeyState _keys = new();
 
     /// <summary>One built content program and the engine uniforms it declares (-1 = not declared).</summary>
     internal sealed class Prog
@@ -45,13 +45,13 @@ internal static unsafe class GuiContent
     /// lights nothing, so it only sizes arrays nobody fills. Read the live value if a lit GUI shader ever shows up.</summary>
     private const int MaxLights = 32;
 
-    /// <summary>The key for a material's content pair: 0 when it names no vertex AND fragment stage, or when
-    /// <paramref name="stock"/> -- the world path's own verdict, <c>ContentPrograms.IsStock</c> -- says both
-    /// halves add nothing to their stock counterparts. Such a pair IS the plain path, so a GUI part on it
-    /// draws Alloy's GUI program instead of a copy of the engine's lit stage that nothing feeds. Cold.</summary>
-    internal static int Key(Db.MtrDef? m, bool stock)
+    /// <summary>The key for a material's content pair: 0 when it names no vertex AND fragment stage. Whether the
+    /// pair adds anything to the stock one is NOT decided here -- that reads both halves' text, which a recipe
+    /// interned before the chain answered does not have, and one pair deciding twice in a session is one pair
+    /// shaded two ways. <see cref="Build"/> decides it once, per key, where the text is in hand. Cold.</summary>
+    internal static int Key(Db.MtrDef? m)
     {
-        if (m == null || stock || m.ShaderVs.Length == 0 || m.ShaderFs.Length == 0) return 0;
+        if (m == null || m.ShaderVs.Length == 0 || m.ShaderFs.Length == 0) return 0;
         var pair = (m.ShaderVs.ToLowerInvariant(), m.ShaderFs.ToLowerInvariant());
         lock (_keys)
         {
@@ -75,12 +75,19 @@ internal static unsafe class GuiContent
          + "#define attribute in\n#define texture2D texture\n#define textureCube texture\n"
          + (fragColor ? "#define gl_FragColor compat_glFragColor\nout vec4 compat_glFragColor;" : "") + "\n";
 
-    /// <summary>Build key <paramref name="key"/>'s program in the current (4.6) context. Null when it cannot be built,
-    /// said loudly once per pair: those parts then draw through Alloy's own GUI program, untransformed.</summary>
+    /// <summary>Build key <paramref name="key"/>'s program in the current (4.6) context. Null for both of the
+    /// reasons a key gets no program of its own -- the pair IS the stock one, said once as Info, or it cannot be
+    /// built, said once loudly -- and in both the parts draw through Alloy's own GUI program.</summary>
     internal static Prog? Build(int key, ExtenderLog? log)
     {
         (string vs, string fs) = Pair(key);
         string what = $"GuiContent {vs}/{fs}";
+        // The verdict is over each half's OWN text, which is why it is asked before the includes are resolved.
+        if (ContentPrograms.StockPair(vs, fs, VanillaShader.ChainText(vs), VanillaShader.ChainText(fs)))
+        {
+            log?.Info($"{what}: adds nothing to the stock pair -- Alloy's own GUI program is its shading");
+            return null;
+        }
         string? v = VanillaShader.ContentStage(vs, log, what), f = VanillaShader.ContentStage(fs, log, what);
         if (v == null || f == null)
         {
@@ -144,8 +151,8 @@ internal static unsafe class GuiContent
     private static float Lin(float c, bool gamma) => gamma ? MathF.Sign(c) * MathF.Pow(MathF.Abs(c), 2.2f) : c;
 
     /// <summary>Headless. Oracles: the engine's prologue text as <c>GLRender</c>'s format string has it (transcribed
-    /// by hand), the texture product worked by hand for a known 2x2, a load screen's <c>.mtr</c> as shipped, and
-    /// for the stock gate the hand-written verdict either way on one well-formed pair.</summary>
+    /// by hand), the texture product worked by hand for a known 2x2, and a load screen's <c>.mtr</c> as shipped.
+    /// The stock verdict a key's build asks is checked where it lives, over its own fixture.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GuiContent.SelfCheck");
@@ -167,20 +174,11 @@ internal static unsafe class GuiContent
         check.Expect(ou == 61f && ov == 146f, "m_texture * (11, 13, 0, 1) is (2*11 + 3*13, 5*11 + 7*13)");
 
         static Db.MtrDef Mtr(string text) => Db.MtrDef.Parse(Encoding.ASCII.GetBytes(text), "selfcheck");
-        // The fixture materials intern, so the live table is swapped out and back: a session's keys are the
-        // module's materials, never a check's.
-        KeyState live = _keys;
-        _keys = new KeyState();
-        check.Expect(Key(Mtr("customshadervs ls_vs_loader\n"), false) == 0,
+        check.Expect(Key(Mtr("customshadervs ls_vs_loader\n")) == 0,
                      "a material with a vertex stage and no fragment stage has no content key");
-        int a = Key(Mtr("// a load screen's bar\ncustomshadervs LS_VS_Loader\ncustomshaderfs ls_fs_loader\n"), false);
-        int b = Key(Mtr("customShaderVS ls_vs_loader\ncustomShaderFS LS_FS_LOADER\n"), false);
+        int a = Key(Mtr("// a load screen's bar\ncustomshadervs LS_VS_Loader\ncustomshaderfs ls_fs_loader\n"));
+        int b = Key(Mtr("customShaderVS ls_vs_loader\ncustomShaderFS LS_FS_LOADER\n"));
         check.Expect(a > 0 && a == b, "resrefs and keywords are case-blind: one pair, one key");
-        check.Expect(Key(Mtr("customshadervs vslit_nm\ncustomshaderfs fslit_nm\n"), true) == 0,
-                     "a pair the world path reads as stock has no GUI content key either -- Alloy's GUI program is its shading");
-        check.Expect(Key(Mtr("customshadervs vslit_nm\ncustomshaderfs fslit_nm\n"), false) > 0,
-                     "...and the same pair, not stock, does get one");
-        _keys = live;
         log.Info(check.Ok ? "GuiContent.SelfCheck: passed" : "GuiContent.SelfCheck: FAILED");
     }
 }

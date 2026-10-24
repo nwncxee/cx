@@ -92,3 +92,10 @@ alloy\.aotest	dead-code-cleanup
 \balloy\.ownedgeom\b|\bOwnedBuffers\b|\bOwnedGeom\b	CX-322
 # The engine entry points only that takeover hooked or read.
 \bGlUnlockPool\b|\bGlDeleteBuffer\b|\bGlOrphanBuffers\b|\bGlTotalMemPool\b	CX-322
+# The engine-funnel GUI capture and the content-shader hand-off it guarded: every GUI draw is built from the
+# scene database, so no funnel feeds the list and nothing is handed back mid-layer.
+\bGuiCapture\.(Open|Vdo|Stream|Snapshot|ToEngine)\b|\bGuiPass\.FlushNow\b	CX-325
+# The GLRender state caches that capture harvested, and the engine calls it made in their place. The depth
+# cache is scoped to its symbol, because the GL entry point of the same name is still ours to call.
+\bGlEnabledStates\b|\bGlGlobalColor\b|\bGlSrcBlendMode\b|\bGlDstBlendMode\b|SymbolMap\.GlDepthMask\b	CX-325
+\bGlDrawReset\b|\bRiSetColorv\b|\bGlCurrentCustomProgram\b|\bGlMat(Ambient|Diffuse|Emissive)\b	CX-325

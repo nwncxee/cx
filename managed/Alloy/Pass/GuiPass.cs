@@ -8,8 +8,8 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>
-/// The GL side of Alloy's GUI path: <see cref="GuiCapture"/> turns every GUI scene into layers of captured
-/// draws and this issues them from the 4.6 context in ONE bracket per flush, one program, the records in one
+/// The GL side of Alloy's GUI path: <see cref="GuiCapture"/> turns every GUI scene into layers of draw
+/// records and this issues them from the 4.6 context in ONE bracket per flush, one program, the records in one
 /// SSBO read through <c>gl_BaseInstance</c>. The gate is its own, not <see cref="AlloyGate"/>'s world verdict
 /// -- the GUI has no world frame to wait for, main menu included. ponytail: two full-screen blits per flush.
 /// </summary>
@@ -63,7 +63,7 @@ internal static unsafe class GuiPass
         _screenW = (int*)Native.Sym(SymbolMap.ScreenWidth);
         _screenH = (int*)Native.Sym(SymbolMap.ScreenHeight);
         if (_screenW == null || _screenH == null)
-        { log.Always("GuiPass: g_nScreenWidth/Height unresolved -- the GUI stays the ENGINE's draw"); return; }
+        { log.Always("GuiPass: g_nScreenWidth/Height unresolved -- the game's GUI panels are NOT DRAWN"); return; }
         Db.DbGui.Install(log);
         Db.TextFontBake.Install(log);
         Db.TextSlots.Install(log);
@@ -150,10 +150,10 @@ internal static unsafe class GuiPass
         AlloyGate.Fail($"the interface could not be drawn ({why})");
     }
 
-    /// <summary>The frame's closing flush: the first <paramref name="panels"/> captured layers, CX's below-NUI windows,
+    /// <summary>The frame's closing flush: the first <paramref name="panels"/> listed layers, CX's below-NUI windows,
     /// the rest (NUI), then the above-NUI windows, in one bracket. A frame whose GUI cannot enter the bracket still
-    /// shows the windows -- drawn in the engine's context, where the engine drew that GUI -- unless this is the render
-    /// thread, which has no engine context to draw in.</summary>
+    /// shows the windows, replayed in the engine's context -- unless this is the render thread, which has no engine
+    /// context to draw in.</summary>
     internal static void FlushWithWindows(int panels)
     {
         int n = GuiCapture.LayerN;

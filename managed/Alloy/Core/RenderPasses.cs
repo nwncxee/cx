@@ -31,12 +31,12 @@ internal static class RenderPasses
             ContextLost = OwnedTextures.ContextLost,
         }, log);
 
-        // Nor is this one: the engine's pool table and the shared-VDO capacity pin.
+        // Nor is this one: the shared-VDO capacity pin.
         r.Register(new PassLifecycle
         {
             Name = "enginepools",
             Install = EnginePools.Install,
-            SelfCheck = l => { EnginePools.SelfCheck(l); StagePool.SelfCheck(l); },
+            SelfCheck = l => StagePool.SelfCheck(l),
         }, log);
 
         // Automatic mesh LOD: not a draw pass either -- the detail thresholds and the level picker over the

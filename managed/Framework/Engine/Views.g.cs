@@ -2587,32 +2587,6 @@ public readonly unsafe partial struct ErfResListEntry(IntPtr ptr)
     public ErfResListEntry this[int i] => new(Ptr + i * EngineLayout.ErfEntryStride);
 }
 
-/// <summary>Typed view of an engine <c>GlPool*</c>.</summary>
-public readonly unsafe partial struct GlPool(IntPtr ptr)
-{
-    /// <summary>The engine object.</summary>
-    public readonly IntPtr Ptr = ptr;
-    /// <summary>No object.</summary>
-    public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.PoolHost"/>
-    public ref IntPtr Host => ref *(IntPtr*)(Ptr + EngineLayout.PoolHost);
-    /// <inheritdoc cref="EngineLayout.PoolStride"/>
-    public GlPool this[int i] => new(Ptr + i * EngineLayout.PoolStride);
-}
-
-/// <summary>Typed view of an engine <c>GlPoolTable*</c>.</summary>
-public readonly unsafe partial struct GlPoolTable(IntPtr ptr)
-{
-    /// <summary>The engine object.</summary>
-    public readonly IntPtr Ptr = ptr;
-    /// <summary>No object.</summary>
-    public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.PoolTableBase"/>
-    public ref GlPool Base => ref *(GlPool*)(Ptr + EngineLayout.PoolTableBase);
-    /// <inheritdoc cref="EngineLayout.PoolTableCount"/>
-    public ref uint Count => ref *(uint*)(Ptr + EngineLayout.PoolTableCount);
-}
-
 /// <summary>Typed view of an engine <c>Gob*</c>.</summary>
 public readonly unsafe ref partial struct Gob(IntPtr ptr)
 {
@@ -3709,25 +3683,6 @@ public readonly unsafe ref partial struct VertexDataObject(IntPtr ptr)
     public void VdoRepack() => EngineFn.VdoRepack(Ptr);
     /// <inheritdoc cref="EngineLayout.VdoVertToken"/>
     public ref uint VertToken => ref *(uint*)(Ptr + EngineLayout.VdoVertToken);
-}
-
-/// <summary>Typed view of an engine <c>VertexStreamDataObject*</c>.</summary>
-public readonly unsafe partial struct VertexStreamDataObject(IntPtr ptr)
-{
-    /// <summary>The engine object.</summary>
-    public readonly IntPtr Ptr = ptr;
-    /// <summary>No object.</summary>
-    public bool IsNull => Ptr == IntPtr.Zero;
-    /// <inheritdoc cref="EngineLayout.VsdoElemToken"/>
-    public ref uint ElemToken => ref *(uint*)(Ptr + EngineLayout.VsdoElemToken);
-    /// <inheritdoc cref="EngineLayout.VsdoFormat"/>
-    public ref uint Format => ref *(uint*)(Ptr + EngineLayout.VsdoFormat);
-    /// <inheritdoc cref="EngineLayout.VsdoIndexed"/>
-    public ref byte Indexed => ref *(byte*)(Ptr + EngineLayout.VsdoIndexed);
-    /// <inheritdoc cref="EngineLayout.VsdoVertToken"/>
-    public ref uint VertToken => ref *(uint*)(Ptr + EngineLayout.VsdoVertToken);
-    /// <inheritdoc cref="EngineLayout.VsdoStride"/>
-    public ref int VertexStride => ref *(int*)(Ptr + EngineLayout.VsdoStride);
 }
 
 /// <summary>Typed view of an engine <c>WindManager*</c>.</summary>
