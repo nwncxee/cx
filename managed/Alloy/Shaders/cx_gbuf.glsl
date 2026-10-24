@@ -3,8 +3,9 @@
 // point lights the twin no longer walks. This file IS the format: the writer and the reader both include it (a
 // reader includes cx_chartbuf ahead of it), and docs/spec/deferred-lighting.md says what every lane
 // means. Change a lane here or nowhere.
-// 32 bytes a pixel: two RGBA32UI words, G0 the header every reader takes (flags, normal, depth, the lobe's
-// scalars, the draw's slot) and G1 the transfer weights only the light walk and the debt read. What the reader can
+// 36 bytes a pixel: two RGBA32UI words, G0 the header every reader takes (flags, normal, depth, the lobe's
+// scalars, the draw's slot) and G1 the transfer weights only the light walk and the debt read, and one R32UI, G2,
+// the surface fade the walk and the debt spend per light. What the reader can
 // rebuild is not stored: cxSpecScale (CxSpecScaleOf, off N, V, rough, coat and the one colour each model's lobe
 // reads), and the per-draw sheen and lightmap record, fetched by slot from the same buffers the twin read them from.
 // A pixel no twin draw covered holds G0 = 0, which reads back as flags 0 -- "not mine" -- so the sky, grass and
@@ -25,6 +26,8 @@ const uint CX_GB_DEFERRED = 1u, CX_GB_BAKED = 2u, CX_GB_ONMOVER = 4u, CX_GB_FILM
 const float CX_GB_RECORD = 0.01;
 /// G0.w's slot lane: ownership slots up to 2^18 - 1 (AlloyRenderer.MaxOwned is held under it by a self-check).
 const uint CX_GB_SLOT_BITS = 18u;
+/// G2's fade lane: fSurfaceFadeModifier in 8 bits over [0, this] -- 1 / SURFACE_FADE_POINT_MIN, its ceiling.
+const float CX_GB_FADE_MAX = 10.0;
 
 /// Everything the point-light walk reads off the fragment, plus the transfer weights that carry its result into
 /// the finished pixel. Field names follow the lit stage's own variables.
@@ -49,6 +52,7 @@ struct CxGbuf
     float viewDepth;   // the twin's own linear view depth (1 / gl_FragCoord.w), the record's ownership test
     vec3 lmShare;      // L: the baked term's whole contribution to the final pixel (diffuse and its lobe), which the
                        // hot-light debt scales back: final -= L * min(lmSub.x / lmLum + lmSub.y, 1)
+    vec4 surfFade;     // cxSurfFade: the geometric normal and the per-light surface fade, w 0 = none
 };
 
 /// sqrt-encoded unorm for the small alphas and the colour, where a linear code would lose a film's 0.02.
@@ -73,7 +77,7 @@ vec3 CxGbUnpack9e5(uint p)
 
 /// The two words a pixel's record packs into -- the writer's whole half, outside CX_GBUF_OUT so check-shaders.py
 /// can round-trip it through the reader.
-void CxGbufPack(CxGbuf g, out uvec4 w0, out uvec4 w1)
+void CxGbufPack(CxGbuf g, out uvec4 w0, out uvec4 w1, out uint w2)
 {
     // the octahedral normal as two 12-bit snorms, 0 exact (a flat floor stays flat)
     uvec2 n = uvec2(ivec2(round(clamp(CxOctEncode(g.N), -1.0, 1.0) * 2047.0)) + 2048);
@@ -85,13 +89,21 @@ void CxGbufPack(CxGbuf g, out uvec4 w0, out uvec4 w1)
                (uint(g.slot) & ((1u << CX_GB_SLOT_BITS) - 1u)) | (coat << 18u) | (coatR << 25u));
     w1 = uvec4(CxGbPack9e5(g.diffT), CxGbPack9e5(g.lmShare), packHalf2x16(vec2(g.specT, g.lmLum)),
                packUnorm4x8(g.lmMover));
+    w2 = 0u;
+    uint q = uint(round(clamp(g.surfFade.w / CX_GB_FADE_MAX, 0.0, 1.0) * 255.0));
+    if (q != 0u)
+    {
+        uvec2 ng = uvec2(ivec2(round(clamp(CxOctEncode(g.surfFade.xyz), -1.0, 1.0) * 2047.0)) + 2048);
+        w2 = ng.x | (ng.y << 12u) | (q << 24u);
+    }
 }
 
 #ifdef CX_GBUF_OUT
 layout(location = 4) out uvec4 oGb0;   // N + flags, viewDepth + rough + spec, specC + fresnel, slot + coat + coatRough
 layout(location = 5) out uvec4 oGb1;   // Wd, L, P + lmLum, lmMover
+layout(location = 6) out uint oGb2;    // the geometric normal + the surface fade
 
-void CxGbufWrite(CxGbuf g) { CxGbufPack(g, oGb0, oGb1); }
+void CxGbufWrite(CxGbuf g) { CxGbufPack(g, oGb0, oGb1, oGb2); }
 #endif
 
 /// The reader's header: flags, normal, view depth, the lobe's scalars and the slot -- all G0, so a reader that
@@ -137,6 +149,13 @@ void CxGbufWeights(uvec4 g1, inout CxGbuf g)
 }
 
 /// The whole record: the header, the weights, and the lightmap record the twin read by the same slot.
+/// G2: the surface fade the walk spends per light (cx_lightfrag's cxSurfFade), w 0 where the twin had none.
+void CxGbufFade(uint g2, inout CxGbuf g)
+{
+    g.surfFade = vec4(CxOctDecode(vec2(ivec2(g2 & 4095u, (g2 >> 12u) & 4095u) - 2048) / 2047.0),
+                      float(g2 >> 24u) / 255.0 * CX_GB_FADE_MAX);
+}
+
 bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, out CxGbuf g)
 {
     if (!CxGbufReadWalk(g0, g1.w, frameDepth, g)) return false;

@@ -85,11 +85,11 @@ internal static class TextureSlots
     internal const uint CoverDepth = MapBase;
     /// <summary>The scene depth the soft-particle fade and the splash contact test read.</summary>
     internal const uint SceneDepth = 15;
-    /// <summary>The two G-buffer lanes and the frame depth (ADR 0029), read by the DEFERRED COMPUTE program
+    /// <summary>The three G-buffer lanes and the frame depth (ADR 0029), read by the DEFERRED COMPUTE program
     /// (<see cref="DeferredLights"/>) and by nothing else. The MAP BLOCK's units, on <see cref="CoverDepth"/>'s
     /// argument: the dispatch runs BETWEEN two draw passes, binds no material map of its own, and every draw
-    /// program rebinds its whole slot set at the program switch. It still puts texture 0 back on all three.</summary>
-    internal const uint Gbuf0 = MapBase, Gbuf1 = MapBase + 1, GbufDepth = MapBase + 4;
+    /// program rebinds its whole slot set at the program switch. It still puts texture 0 back on all four.</summary>
+    internal const uint Gbuf0 = MapBase, Gbuf1 = MapBase + 1, Gbuf2 = MapBase + 2, GbufDepth = MapBase + 4;
     /// <summary>The per-pixel shadow visibility record (<see cref="DeferredShadows"/>), read by
     /// the deferred lighting dispatch alone. The map block's last two units, on <see cref="Gbuf0"/>'s argument
     /// and <see cref="GrassGround"/>'s -- the grass program is a later pass that rebinds its own, and this one
@@ -318,8 +318,9 @@ internal static class TextureSlots
         string deferred = ShaderStages.Source(DeferredLights.ShdCs);
         check.Expect(deferred.Contains($"layout(binding = {Gbuf0}) uniform usampler2D uGb0;")
           && deferred.Contains($"layout(binding = {Gbuf1}) uniform usampler2D uGb1;")
+          && deferred.Contains($"layout(binding = {Gbuf2}) uniform usampler2D uGb2;")
           && deferred.Contains($"layout(binding = {GbufDepth}) uniform sampler2D uGbDepth;"),
-          $"{Gbuf0}/{Gbuf1}/{GbufDepth} uGb0 + uGb1 + uGbDepth (deferred program)");
+          $"{Gbuf0}/{Gbuf1}/{Gbuf2}/{GbufDepth} uGb0 + uGb1 + uGb2 + uGbDepth (deferred program)");
         check.Expect(deferred.Contains("uniform samplerCubeArrayShadow uLocalShadow;")
           && deferred.Contains("uniform samplerCubeArrayShadow uLocalDynShadow;"),
           "the deferred program composes the local-shadow receiver whose units it binds at link");
@@ -334,6 +335,12 @@ internal static class TextureSlots
           && defshadow.Contains("uniform samplerCubeArrayShadow uLocalShadow;")
           && defshadow.Contains("uniform samplerCubeArrayShadow uLocalDynShadow;"),
           $"{Gbuf0}/{GbufDepth} uGb0 + uGbDepth and the cube arrays (deferred shadow program)");
+        string pairdebt = ShaderStages.Source(PairDebt.ShdCs);
+        check.Expect(pairdebt.Contains($"layout(binding = {Gbuf0}) uniform usampler2D uGb0;")
+          && pairdebt.Contains($"layout(binding = {Gbuf1}) uniform usampler2D uGb1;")
+          && pairdebt.Contains($"layout(binding = {Gbuf2}) uniform usampler2D uGb2;")
+          && pairdebt.Contains($"layout(binding = {GbufDepth}) uniform sampler2D uGbDepth;"),
+          $"{Gbuf0}/{Gbuf1}/{Gbuf2}/{GbufDepth} uGb0 + uGb1 + uGb2 + uGbDepth (pair debt program)");
         // the G-buffer's slot lane must hold every ownership slot, or the reader fetches another draw's sheen and chart
         var slotBits = Regex.Match(deferred, @"const uint CX_GB_SLOT_BITS = (\d+)u;");
         check.Expect(slotBits.Success && AlloyRenderer.MaxOwned <= 1 << int.Parse(slotBits.Groups[1].Value),

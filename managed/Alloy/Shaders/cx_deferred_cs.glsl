@@ -69,6 +69,7 @@ vec2 cxPixel;
 
 layout(binding = 3) uniform usampler2D uGb0;
 layout(binding = 4) uniform usampler2D uGb1;
+layout(binding = 5) uniform usampler2D uGb2;
 /// The frame depth AFTER the cutout pass -- the prepass plus any colour-pass write -- which is both the surface
 /// this pass reconstructs and the record's ownership test (cx_gbuf's CX_GB_RECORD).
 layout(binding = 7) uniform sampler2D uGbDepth;
@@ -480,6 +481,8 @@ void main()
         cxFresnel = g.fresnel;
         cxModern = (g.flags & CX_GB_STOCKLOBE) != 0u ? 0.0 : 1.0;
         cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
+        CxGbufFade(texelFetch(uGb2, p, 0).r, g);
+        cxSurfFade = g.surfFade;
 
         float baked = (g.flags & CX_GB_BAKED) != 0u ? 1.0 : 0.0;
         float onMover = (g.flags & CX_GB_ONMOVER) != 0u ? 1.0 : 0.0;

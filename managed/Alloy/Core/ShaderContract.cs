@@ -402,7 +402,7 @@ internal static class ShaderContract
                   // ...fed the RAW dot. #143's wrap is diffuse-only; a lobe on the wrapped dot lights the
                   // side of a glossy surface the sun cannot reach, and only at uWrapN > 0 -- invisible at
                   // the default.
-                  && OwnedLitFsMain.Contains("vec3 sunSpec = uAreaDiffuse * (sunRaw * sunVis);")
+                  && OwnedLitFsMain.Contains("vec3 sunSpec = uAreaDiffuse * (sunRaw * sunVis * sunFade);")
                   // ...and the base modifier is applied exactly once per lobe: ADR 0026 moved it INTO
                   // CxLoopSpec (distributed over the sum, the same product), so a second copy outside is
                   // silent and wrong by exactly itself.

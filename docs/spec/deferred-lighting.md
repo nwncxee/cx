@@ -114,10 +114,10 @@ keep the full walk's registers allocated in the very programs the step exists to
 `DeferredLights` is one pass and two dispatches: the shadow record (`DeferredShadows`, `cx_defshadow_cs`) and then
 the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 
-- `GBuffer.BeginFrame()` clears G0 to zero before `OpaqueOwned`. G1 is never cleared: G0's flag byte
+- `GBuffer.BeginFrame()` clears G0 to zero before `OpaqueOwned`. G1 and G2 are never cleared: G0's flag byte
   gates every read.
-- `OpaqueOwned` and `CutoutOwned` attach G0..G1 at COLOR4..5 (draw buffers `{0, NONE, 2, 3, 4, 5}`
-  while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5}` otherwise) and detach after
+- `OpaqueOwned` and `CutoutOwned` attach G0..G2 at COLOR4..6 (draw buffers `{0, NONE, 2, 3, 4, 5, 6}`
+  while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6}` otherwise) and detach after
   `CutoutOwned`. A prepassed batch draws at `GL_EQUAL`, a non-prepassed one at `LEQUAL` with depth writes, so
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.
 - A content pair (CX-303) draws through its own deferred twin: the pair's program text under the same two defines.
@@ -164,6 +164,7 @@ Known deviations), so the twin writes the derivatives:
 | `lmShare` (L) | the full contribution of `lm` to the final pixel (its diffuse through Wd and its lobe through P), so the debt is `final -= L * min(lmSub.x / lmLum + lmSub.y, 1)` |
 | `lmMover` | `CxLightmapMover(chart.rec, vChart)` |
 | `viewDepth` | the twin's linear view depth, `1 / gl_FragCoord.w` -- the record's ownership test |
+| `surfFade` (G2) | `cxSurfFade`: the geometric normal and stock's per-light surface fade (`fSurfaceFadeModifier`, `inc_lighting.shd:341`), which `CxPointLight` multiplies into each light's wrapped N.L; 0 on a surface with no normal or height map. The reader sets `cxSurfFade` from it before the walk and the pair debt |
 
 The compute pass then adds, per pixel:
 

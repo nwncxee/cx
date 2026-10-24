@@ -110,6 +110,7 @@ void main()
     vec2 uv = vUV;
     vec3 V = normalize(uEyePos - vWorld);
     float occl = 1.0;
+    float surfAo = 1.0;   // the height map's own occlusion alone (stock's fAmbientOcclusionModifier)
     // #379: the screen-space term, a lighting input like the map (ADR 0021)
     // ...and only where the visibility at this pixel was computed from THIS surface. The buffer comes
     // from the depth prepass, so a fragment the prepass never drew -- a blended door, anything the
@@ -163,7 +164,8 @@ void main()
             float far = max(0.0, CX_OCCL_VICINITY - log2(max(vDepth, 1e-4)));
             float o = texture(uHeightTex, uv, far + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
             float a = 1.0 - clamp(o, 0.0, 0.9);
-            occl *= a * a;
+            surfAo = a * a;
+            occl *= surfAo;
         }
         if ((slots & CX_SLOT_NORMAL) != 0)
         {
@@ -182,6 +184,10 @@ void main()
             N = normalize(mat3(T * inv, B * inv, N) * nm);
         }
     }
+    // inc_material.shd:312: the surface fade every light takes (cx_lightfrag), on any normal- or height-mapped
+    // surface -- SetupOcclusionBase's 1 / 0.1 where no height map says otherwise
+    if ((slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
+        cxSurfFade = vec4(normalize(vNrm), CxSurfFadeOf(surfAo));
     // #146: outside the normal/height branch, at its displaced UV -- a material may declare an AO map and nothing
     // else, and the engine's screen-space SSAO (an FB effect, downstream of this pass entirely) does
     // not see the contact detail a baked map carries.
