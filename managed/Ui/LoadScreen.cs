@@ -6,7 +6,7 @@ using CX.Framework;
 namespace CX.Ui;
 
 /// <summary>The ONE loading screen is the engine's own <c>CGuiAreaLoadscreen</c> -- whatever layout, art and bar
-/// position the module or server gives it -- drawn by Alloy through the GUI capture, from the area click to the
+/// position the module or server gives it -- drawn by Alloy through the GUI pass, from the area click to the
 /// first world frame. CX only shares the panel's bar: the engine's load fills the first <see cref="EngineShare"/>
 /// of it (<c>CGuiStatusBar::SetStatus</c>, remapped), the bake hold the rest, with CX's caption and skip over it.</summary>
 internal static unsafe class LoadScreen

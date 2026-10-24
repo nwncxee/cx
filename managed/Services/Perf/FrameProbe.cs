@@ -21,7 +21,7 @@ public sealed class FrameProbe : IExtenderService
         public readonly long[] Frame = new long[Cap], Model = new long[Cap], Sort = new long[Cap];
         public int N;
         public long Sum, ModelNow;
-        public GpuQuery Gui;
+        public GpuQuery Gui, Present;
         public ExtenderLog? Log;
     }
 
@@ -47,6 +47,13 @@ public sealed class FrameProbe : IExtenderService
 
     internal static void GpuEnd() => _s.Gui.End(Gl.TIME_ELAPSED);
 
+    /// <summary>Open the present hand-back's GPU timer -- the full-screen blit the composite costs. No
+    /// <c>GpuTermOpen</c> guard: this runs in the ENGINE's context, where no Alloy term can be open, and
+    /// TIME_ELAPSED nests per context.</summary>
+    internal static bool PresentBegin() => On && _s.Present.Begin(Gl.TIME_ELAPSED);
+
+    internal static void PresentEnd() => _s.Present.End(Gl.TIME_ELAPSED);
+
     /// <summary>One presented frame of <paramref name="dt"/> ticks, folded in; closes and logs the window when it is full or old.</summary>
     internal static void Frame(long dt)
     {
@@ -56,7 +63,7 @@ public sealed class FrameProbe : IExtenderService
         s.Sum += dt; s.ModelNow = 0;
         if (s.N < Cap && s.Sum < WindowSec * Stopwatch.Frequency) return;
         Report(s);
-        s.N = 0; s.Sum = 0; s.Gui.Reset();
+        s.N = 0; s.Sum = 0; s.Gui.Reset(); s.Present.Reset();
     }
 
     private static void Report(ProbeState s)
@@ -67,7 +74,9 @@ public sealed class FrameProbe : IExtenderService
         Array.Copy(s.Model, s.Sort, s.N); Array.Sort(s.Sort, 0, s.N);
         string m = Line(s.Sort, s.N, tick);
         string g = s.Gui.Measured ? $"{s.Gui.Avg / 1e6:F3} ms avg of {s.Gui.N}" : "unmeasured";
-        s.Log?.Always($"[frametimes] n {s.N} span {s.Sum * tick / 1000.0:F1}s frame ms: {f} | model cpu ms: {m} | gui replay gpu {g}");
+        string p = s.Present.Measured ? $"{s.Present.Avg / 1e6:F3} ms avg of {s.Present.N}" : "unmeasured";
+        s.Log?.Always($"[frametimes] n {s.N} span {s.Sum * tick / 1000.0:F1}s frame ms: {f} | model cpu ms: {m} | gui replay gpu {g}"
+                    + $" | present blit gpu {p}");
     }
 
     private static string Line(long[] sorted, int n, double tick) =>

@@ -95,18 +95,20 @@ public sealed unsafe partial class AlloyRenderer
         // #257/ADR 0032: LatchFrameTarget read this in the ENGINE's context before the view's bracket opened.
         ref Target t = ref _target;
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
-        // #391: TWO viewports. `display` is the engine's -- where the resolve, the post stack and the
-        // depth hand-back go, and what the 2D UI draws at. `viewport` is the RENDER one every owned pass
-        // sizes from: the display scaled by alloy.scale, origin 0 (the owned targets are their own
-        // allocations, so an offset would only mean drawing into their corner).
+        // #391: TWO viewports. `display` is the engine's -- where the resolve and the post stack go, and what
+        // the 2D UI draws at. `viewport` is the RENDER one every owned pass sizes from: the display scaled by
+        // alloy.scale, origin 0 (the owned targets are their own allocations, so an offset would only mean
+        // drawing into their corner).
         display[0] = t.Vp0; display[1] = t.Vp1; display[2] = t.Vp2; display[3] = t.Vp3;
         viewport[0] = 0; viewport[1] = 0;
         viewport[2] = PostChain.RenderSize(display[2]); viewport[3] = PostChain.RenderSize(display[3]);
         bool srgb = t.Srgb;
-        // #456: sized to the DEFAULT framebuffer, before any pass binds a target.
-        PresentTarget.Ensure(display[2], display[3]);
+        // Sized to the DEFAULT framebuffer -- the WINDOW, from the engine's own screen globals, which is what
+        // the hand-back blits 1:1 and the size GuiPass's flush keys on too: two sources for one quantity made
+        // every flush reallocate the image (and lose the world frame in it) wherever they disagreed. The pass
+        // VIEWPORT can be smaller; the world then lands in the image where it would land in the window.
+        if (GuiPass.Screen(out int dw, out int dh)) PresentTarget.Ensure(dw, dh);
         float* engClear = stackalloc float[4] { t.Clear0, t.Clear1, t.Clear2, t.Clear3 };
-        float engClearDepth = t.ClearDepth;
         // ...and the refusals that need no bracket at all, ahead of the preamble they would otherwise
         // waste -- PoseSkinned alone solves every Alloy skinmesh's pose.
         if (!PostChain.Precheck(display)) { DbNoDraw("PostChain.Precheck refused (no HDR target for this viewport)"); return false; }
@@ -256,14 +258,14 @@ public sealed unsafe partial class AlloyRenderer
         Step("the water program");
         _waterArmed = FrameSnapshot.Usable && lightingOn && Programs.EnsureWaterProgram();
         FrameZones.Add(FrameZones.Zone.Prep, tPrep, FrameZones.Ticks(FrameZones.Zone.Lights) - lights0);
-        // #139/#132: from here to PassId.PostProcess the colour passes draw into an RGBA16F target that
-        // shares the engine's depth, and everything they write is LINEAR. Asked BEFORE anything is
+        // #139/#132: from here to PassId.PostProcess the colour passes draw into an RGBA16F target with a
+        // depth attachment of Alloy's own, and everything they write is LINEAR. Asked BEFORE anything is
         // staged, because a refusal is no longer survivable: there is no display-space variant of the
         // Alloy stages to fall back to, so the whole pass stands down and the engine renders it vanilla.
         // Staging first would stamp OwnGen on parts the iterator then suppresses and nobody draws.
         long tPostBegin = FrameZones.Now;
         Step("PostChain.Begin");
-        bool postOk = PostChain.Begin(viewport, engClear, engClearDepth);
+        bool postOk = PostChain.Begin(viewport, engClear);
         FrameZones.Add(FrameZones.Zone.Post, tPostBegin);
         if (!postOk) { DbNoDraw("PostChain.Begin refused"); GlContextService.Leave(); return false; }
         long tPump = FrameZones.Now;
@@ -698,14 +700,14 @@ public sealed unsafe partial class AlloyRenderer
                     // target has to come back before the composite writes into it, and with it the
                     // viewport and the sRGB-encode state the pass was entered with.
                     PostChain.Bloom();
-                    // #375: Begin binds its own framebuffer to attach; the engine's comes back for the depth hand-back
+                    // #375: Begin binds its own framebuffer to attach; the present target comes back to write into
                     // #391/#389: the stack is told both sizes; when it upsamples, the resolve's
                     // colour draw lands at the render viewport and the taa stage writes the display.
                     ToonStage.SetProj(&proj);
                     FbPostStage.SetCamera(&view, &proj);
                     uint into = PostStack.Begin(viewport[2], viewport[3], display[2], display[3]);
                     RebindFrameTarget();
-                    PostChain.Composite(display, into, PostStack.Upsampling ? viewport : display);
+                    PostChain.Composite(into, PostStack.Upsampling ? viewport : display);
                     // Closed HERE and re-opened at PostStack, though the bracket is conceptually one span
                     // over two graph slots: a zone opened in one loop iteration and added in another credits
                     // the whole span to the second, which then reports negative self time and is dropped.

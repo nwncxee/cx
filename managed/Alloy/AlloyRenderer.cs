@@ -496,6 +496,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         GuiPass.ContextLost();
         _nullSunShadow = 0; _nullCubeShadow = 0;
         BlendProfile.ContextLost();
+        MovieFrame.ContextLost();
         PassContextLost();
     }
 
@@ -504,7 +505,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     public static void EndFrame()
     {
         // CX-109: the per-present frame edge the world-camera sighting is stamped against. HERE rather than in
-        // GuiPass, which only installs when the GUI capture arms -- a sighting that never expires would leave
+        // GuiPass, which only installs when the GUI pass arms -- a sighting that never expires would leave
         // a freed camera readable after a module unload.
         AlloyCamera.NewFrame();
         BenchTick();

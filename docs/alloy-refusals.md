@@ -80,18 +80,19 @@ does not freeze" self-check now pins.
 
 ## After the decision: hard failure, not fallback
 
-Three checks cannot be asked before the frame is taken — an offset viewport, an incomplete HDR framebuffer,
-and an engine depth attachment whose format the owned depth texture cannot be matched to (all `PostChain`) —
-plus a `MakeCurrent` that refuses mid-frame (`glXMakeCurrent`, or `wglMakeCurrent` on Windows), and since
+Two checks cannot be asked before the frame is taken — an offset viewport and an incomplete HDR framebuffer
+(both `PostChain`; the depth attachment is Alloy's own format since CX-326 and matches nothing) — plus a
+`MakeCurrent` that refuses mid-frame (`glXMakeCurrent`, or `wglMakeCurrent` on Windows), and since
 CX-109 **no measured world camera**: `AlloyCamera` derives every view's projection and view matrix itself, so a
 frame that reaches the anchor with no measured world view (`Camera::RenderScene` never hooked, or
 `g_nScreenWidth`/`g_nScreenHeight` unresolved) has no camera to draw from and sits out rather than drawing the
 world through an identity view; with `view.cameraloop 0` the same slot refuses on an unresolved
 `m_aurMtxStack` instead (all `AlloyRenderer.NoFrameBehindUs`).
 
-All four call `AlloyGate.Fail` — and so does every capability latch that can only be taken *after* the freeze:
+All of them call `AlloyGate.Fail` — and so does every capability latch that can only be taken *after* the freeze:
 `AlloyRenderer` when the multidraw or stream-ring entry points are missing, `StreamRing` when the driver refuses
-its persistent map, its program builder when a program does not link, and `PostChain.StandDown`.
+its persistent map, its program builder when a program does not link, `PostChain.StandDown`, and
+`PresentTarget` where framebuffer 0 is not the buffer the platform presents (Windows).
 
 A ring that exists but cannot take a push (a region fence past `GpuRing.TimeoutNs`, a frame past the bounds the
 region is sized from, a slice rebound after the ring left it) is not a `Fail`: that pass sits the frame out, the
@@ -336,12 +337,15 @@ anything else names what is left.
 
 ## The GUI and the screen (CX-95, CX-101)
 
-A second, smaller verdict sits beside the world's, because the GUI has no world frame to wait for:
+A second, smaller verdict sits beside the world's, because the GUI has no world frame to wait for. Only the
+first row of it still has an engine GUI behind it: once Alloy is rendering, the scene database IS the GUI and
+there is no engine traversal underneath, so every later row costs the panels rather than handing them back.
 
 | Term | Where | If it fails |
 | --- | --- | --- |
-| Alloy requested at boot (`alloy.enabled`, `alloy.drawhooks=batch`) and the `RenderSinglePass` shim armed (its two funnel hooks are where GUI draws are captured) | `AlloyRenderer.Initialize` → `GuiPass.Install` | nothing installs; the engine draws its GUI |
-| the `GLRender` state caches and the screen size resolved | `GuiCapture.Install` | `_log.Always`, the engine draws its GUI |
-| the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | before the first present: the engine's GUI (one or two frames at boot); a build failure is a loud `Fail` and the engine draws the GUI for the session |
-| `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live |
+| Alloy requested at boot (`alloy.enabled`, `alloy.drawhooks=batch`) and the `RenderSinglePass` shim armed | `AlloyRenderer.Initialize` → `GuiPass.Install` | nothing installs; the engine draws its GUI |
+| the screen size resolved | `GuiPass.Install` | `_log.Always`; the pass never arms, so `DbGui` refuses every scene loudly and the panels are NOT DRAWN |
+| the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | the panels are NOT DRAWN while it is false (one or two frames at boot); a build failure is a loud `Fail` and they stay undrawn for the session |
+| `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
+| the present composite image built | `PresentTarget.Ensure` | the framebuffer object is dropped with the image, so `PresentTarget.Fbo46` stops claiming one and every binder writes framebuffer 0. Under GLX that IS the buffer the engine presents, so the frame still reaches the screen and a loud `Always` says so. Under WGL framebuffer 0 in the 4.6 context is a buffer nobody presents, so there is no fallback to take: the same line says the world renders vanilla and Alloy's GUI draws reach nothing, and `AlloyGate.Fail` makes it the session's stated refusal. `/alloy` carries it either way (`present: framebuffer 0 -- ... REFUSED`) |

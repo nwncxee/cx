@@ -258,14 +258,6 @@ offset	CAurTexture	vtbl.GetCompressionFormat	0xd8	0xd0	# TexFormatSlot
 offset	Scene	vtbl.DoBinBucket	0x1c0	0x1b8	# SceneDoBinBucketSlot
 offset	Scene	vtbl.DoEmitterBucket	0x1e8	0x1e0	# SceneDoEmitterBucketSlot
 offset	Scene	name	0xf0	0xf0	# SceneName
-offset	VertexStreamDataObject	indexed	0x8	0x8	# VsdoIndexed
-offset	VertexStreamDataObject	elemToken	0x14	0x18	# VsdoElemToken
-offset	VertexStreamDataObject	vertToken	0x1c	0x20	# VsdoVertToken
-offset	VertexStreamDataObject	format	0x20	0x24	# VsdoFormat
-offset	VertexStreamDataObject	vertexStride	0x24	0x28	# VsdoStride
-offset	GlMaterial	ambient	0x0	0x0	# GlMatAmbient
-offset	GlMaterial	diffuse	0x10	0x10	# GlMatDiffuse
-offset	GlMaterial	emissive	0x30	0x30	# GlMatEmissive
 offset	NkContext	deltaTime	0x5088	0x5088	# NkCtxDeltaTime
 offset	NkContext	drawCmdCount	0x5160	0x5160	# NkCtxDrawCmdCount
 offset	NkContext	drawCmdOffset	0x5168	0x5168	# NkCtxDrawCmdOffset
@@ -285,11 +277,6 @@ offset	Gob	propagateHilite	0x1c	0x1c	# GobPropagateHilite
 offset	CNWCAnimBase	hiliteActive	0x9c	0x9c	# AnimHiliteActive
 offset	CNWCAnimBase	hiliteGlow	0xb0	0xb0	# AnimHiliteGlow
 offset	CNWCAnimBase	gob	0xc8	0xc8	# AnimGob
-offset	GlPool	stride	0x20	0x20	# PoolStride
-offset	GlPool	host	0x0	0x0	# PoolHost
-offset	GlPoolTable	base	0x0	0x0	# PoolTableBase
-offset	GlPoolTable	count	0x8	0x8	# PoolTableCount
-offset	GLRender	poolTableAnchorOffset	0x236c	0x0	# PoolTableAnchorOffset
 offset	ShaderExposedRuntimeData	moduleHour	0x0	0x0	# RtModuleHour
 offset	ShaderExposedRuntimeData	moduleDay	0x4	0x4	# RtModuleDay
 offset	ShaderExposedRuntimeData	moduleMonth	0x8	0x8	# RtModuleMonth
@@ -833,7 +820,6 @@ rva	_ZN12CNWCCreature18WalkUpdateLocationEv	0x8114d0	# WalkUpdateLocation
 rva	_ZN8CNWCArea14TestDirectLineEP12CNWCCreature6VectorS2_ffi	0x7e6a20	# TestDirectLine
 rva	_ZN10CGuiInGame9ToggleOffEv	0x6fc6f0	# GuiInGameToggleOff
 rva	_ZN10CGuiInGame11UnToggleOffEv	0x6fc900	# GuiInGameUnToggleOff
-rva	noemittervar	0x128ead8	# GlPoolTableAnchor
 rva	_ZN10CGuiInGame11HideCompassEv	0x6f9060	# HideCompass
 rva	_ZN14SharedMaterialD2Ev	0x81f80	# SharedMaterialDtor
 rva	primTypeTranslationTable	0xd8ad20	# PrimTypeTranslationTable

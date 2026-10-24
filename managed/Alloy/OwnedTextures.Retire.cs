@@ -140,14 +140,6 @@ internal static unsafe partial class OwnedTextures
         return engineTid;
     }
 
-    /// <summary>As <see cref="Draw"/>, for a name that may be CX's own rather than the engine's (a GUI draw can sample a
-    /// model view's texture): Alloy's copy when the funnel adopted it, else the name as given, never counted borrowed.</summary>
-    internal static int Adopted(int engineTid)
-    {
-        if (!_armed || engineTid <= 0) return engineTid;
-        return _index.TryGetValue(engineTid, out ulong key) && _res.TryGetValue(key, out Entry e) ? (int)e.Owned : engineTid;
-    }
-
     /// <summary>Delete what <see cref="Retire"/> and the re-upload path queued. Once per frame from inside the
     /// 4.6 bracket, where the names actually live; nothing to do is the normal case. Residency first, because
     /// a resident bindless handle outlives the texture it names: the drop goes through the handle cache, since

@@ -461,10 +461,10 @@ public static unsafe partial class EngineLayout
     /// "not yet" test; same in both <c>Get&lt;bool&gt;</c> bodies.</summary>
     public static readonly int ExoConfigWorkingTable = Field<IntPtr>("CExoConfig", "workingTable");
 
-    /// <summary>CExoMoviePlayerInternal + 0x78 -- the GL texture name the decoder uploads each movie
-    /// frame into, and the one thing <c>ShowFrame</c> needs that is not already an argument.
-    /// <c>CExoMoviePlayer::GetTexture</c> is this load behind one indirection on both builds (Windows export
-    /// <c>?GetTexture@CExoMoviePlayer@@QEBAIXZ</c> rva 0x2321a0: <c>mov rax,[rcx]; mov eax,[rax+0x78]</c>).</summary>
+    /// <summary>CExoMoviePlayerInternal + 0x78 -- the GL texture name the decoder uploads each movie frame
+    /// into, and the one the engine's own <c>ShowFrame</c> quad samples. CX takes the frame from the decode
+    /// instead, so this is the hand-back path's texture and reading it is banned.
+    /// <c>CExoMoviePlayer::GetTexture</c> is this load behind one indirection on both builds.</summary>
     public static readonly int MovieTexture = Field<uint>("CExoMoviePlayerInternal", "texture");
 
     /// <summary>CClientExoApp -&gt; CClientExoAppInternal*. <c>CClientExoApp::GetInGameGui</c> (Linux
@@ -986,29 +986,6 @@ public static unsafe partial class EngineLayout
     /// <c>lea 0xf0(%rbx)</c>, Windows rva 0xcfaf5 <c>lea rcx,[rbx+0xf0]</c>) to pick its two lit scenes.</summary>
     public static readonly int SceneName = Field<byte>("Scene", "name");
 
-    /// <summary>A stream draw's element-pool token. <c>GLRender::SetVertexStreamDataObject</c> reads it at
-    /// Linux +0x14 / Windows +0x18, the vertex token at +0x1c / +0x20 and the attribute flags at +0x20 / +0x24
-    /// (Windows rva 0xbacc0 vs Linux @0x4d07a0); <c>CommitVertexData</c> reads the stride at +0x24 / +0x28.
-    /// The indexed byte is +0x8 on both.</summary>
-    public static readonly int VsdoIndexed = Field<byte>("VertexStreamDataObject", "indexed");
-    /// <inheritdoc cref="VsdoIndexed"/>
-    public static readonly int VsdoElemToken = Field<uint>("VertexStreamDataObject", "elemToken");
-    /// <inheritdoc cref="VsdoIndexed"/>
-    public static readonly int VsdoVertToken = Field<uint>("VertexStreamDataObject", "vertToken");
-    /// <inheritdoc cref="VsdoIndexed"/>
-    public static readonly int VsdoFormat = Field<uint>("VertexStreamDataObject", "format");
-    /// <inheritdoc cref="VsdoIndexed"/>
-    public static readonly int VsdoStride = Field<int>("VertexStreamDataObject", "vertexStride");
-
-    /// <summary><c>GLRender::m_material</c>'s MATERIAL struct, per <c>SetMaterialv</c> (Linux @0x4cc060,
-    /// Windows rva 0xb75b0, same switch on both): property 1 ambient at +0, 2 diffuse at +0x10, 3 emissive at
-    /// +0x30, each an RGBA float quad.</summary>
-    public static readonly int GlMatAmbient = Field<System.Numerics.Vector4>("GlMaterial", "ambient");
-    /// <inheritdoc cref="GlMatAmbient"/>
-    public static readonly int GlMatDiffuse = Field<System.Numerics.Vector4>("GlMaterial", "diffuse");
-    /// <inheritdoc cref="GlMatAmbient"/>
-    public static readonly int GlMatEmissive = Field<System.Numerics.Vector4>("GlMaterial", "emissive");
-
     /// <summary>The three fields of nuklear's <c>nk_context</c> that its flush touches, identical on both
     /// builds: <c>delta_time_seconds</c>, which <c>nk_sdl_render</c> stores first, and the
     /// <c>cmd_count</c>/<c>cmd_offset</c> pair inside <c>ctx-&gt;draw_list</c> that
@@ -1055,29 +1032,6 @@ public static unsafe partial class EngineLayout
     /// (<c>RefreshHilite</c> guards the whole body on it), and the one <c>CNWCAnimBase::SetPosition</c> @0x9c9d60
     /// / Windows rva 0x9680a0 forwards to.</summary>
     public static readonly int AnimGob = Field<CX.Engine.Gob>("CNWCAnimBase", "gob");
-
-    // ---- GLRender's pool descriptor table (#260) ----
-
-    /// <summary>The 0x20-byte pool descriptor <c>GLRender::RequestPool</c> callocs, host shadow first;
-    /// <c>GLRender::UnlockPool</c> indexes the array with the same stride on both builds. <c>GlPool</c> is the
-    /// record's pseudo-class, so the stride row carries the indexer.</summary>
-    public static readonly int PoolStride = Field("GlPool", "stride");
-    /// <inheritdoc cref="PoolStride"/>
-    public static readonly int PoolHost = Field<IntPtr>("GlPool", "host");
-
-    /// <summary>The {base, count} pair the descriptor table hangs off -- the same pair on both builds: Linux
-    /// reads the two adjacent globals <c>DAT_01ae5480</c>/<c>DAT_01ae5488</c>, Windows reads the first two words
-    /// of the struct its helper is handed.</summary>
-    public static readonly int PoolTableBase = Field<CX.Engine.GlPool>("GlPoolTable", "base");
-    /// <inheritdoc cref="PoolTableBase"/>
-    public static readonly int PoolTableCount = Field<uint>("GlPoolTable", "count");
-
-    /// <summary>Byte offset from <see cref="SymbolMap.GlPoolTableAnchor"/> to that {base, count} pair.
-    /// <para>An ANCHOR, not a value: Linux has no symbol on the pair, so it anchors on a neighbouring
-    /// global and steps; Windows names the pair itself, so the step is zero. Same two globals, two ways of
-    /// naming them, which is what a diverging row is for.</para></summary>
-    public static readonly int PoolTableAnchorOffset =
-        Field("GLRender", "poolTableAnchorOffset");
 
     // ---- GLRender::m_shaderExposedRuntimeData (#123/#124/#347) ----
     // The struct the engine's own SetUniforms uploads its scalar shader inputs from. Nothing takes it as

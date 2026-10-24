@@ -19,7 +19,7 @@ internal static unsafe class GuiContent
         public readonly Dictionary<(string, string), int> ByPair = new();
     }
 
-    private static KeyState _keys = new();
+    private static readonly KeyState _keys = new();
 
     /// <summary>One built content program and the engine uniforms it declares (-1 = not declared).</summary>
     internal sealed class Prog
@@ -45,7 +45,10 @@ internal static unsafe class GuiContent
     /// lights nothing, so it only sizes arrays nobody fills. Read the live value if a lit GUI shader ever shows up.</summary>
     private const int MaxLights = 32;
 
-    /// <summary>The key for a material's content pair: 0 when it names no vertex AND fragment stage. Cold.</summary>
+    /// <summary>The key for a material's content pair: 0 when it names no vertex AND fragment stage. Whether the
+    /// pair adds anything to the stock one is NOT decided here -- that reads both halves' text, which a recipe
+    /// interned before the chain answered does not have, and one pair deciding twice in a session is one pair
+    /// shaded two ways. <see cref="Build"/> decides it once, per key, where the text is in hand. Cold.</summary>
     internal static int Key(Db.MtrDef? m)
     {
         if (m == null || m.ShaderVs.Length == 0 || m.ShaderFs.Length == 0) return 0;
@@ -72,12 +75,19 @@ internal static unsafe class GuiContent
          + "#define attribute in\n#define texture2D texture\n#define textureCube texture\n"
          + (fragColor ? "#define gl_FragColor compat_glFragColor\nout vec4 compat_glFragColor;" : "") + "\n";
 
-    /// <summary>Build key <paramref name="key"/>'s program in the current (4.6) context. Null when it cannot be built,
-    /// said loudly once per pair: those parts then draw through Alloy's own GUI program, untransformed.</summary>
+    /// <summary>Build key <paramref name="key"/>'s program in the current (4.6) context. Null for both of the
+    /// reasons a key gets no program of its own -- the pair IS the stock one, said once as Info, or it cannot be
+    /// built, said once loudly -- and in both the parts draw through Alloy's own GUI program.</summary>
     internal static Prog? Build(int key, ExtenderLog? log)
     {
         (string vs, string fs) = Pair(key);
         string what = $"GuiContent {vs}/{fs}";
+        // The verdict is over each half's OWN text, which is why it is asked before the includes are resolved.
+        if (ContentPrograms.StockPair(vs, fs, VanillaShader.ChainText(vs), VanillaShader.ChainText(fs)))
+        {
+            log?.Info($"{what}: adds nothing to the stock pair -- Alloy's own GUI program is its shading");
+            return null;
+        }
         string? v = VanillaShader.ContentStage(vs, log, what), f = VanillaShader.ContentStage(fs, log, what);
         if (v == null || f == null)
         {
@@ -141,7 +151,8 @@ internal static unsafe class GuiContent
     private static float Lin(float c, bool gamma) => gamma ? MathF.Sign(c) * MathF.Pow(MathF.Abs(c), 2.2f) : c;
 
     /// <summary>Headless. Oracles: the engine's prologue text as <c>GLRender</c>'s format string has it (transcribed
-    /// by hand), the texture product worked by hand for a known 2x2, and a load screen's <c>.mtr</c> as shipped.</summary>
+    /// by hand), the texture product worked by hand for a known 2x2, and a load screen's <c>.mtr</c> as shipped.
+    /// The stock verdict a key's build asks is checked where it lives, over its own fixture.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GuiContent.SelfCheck");

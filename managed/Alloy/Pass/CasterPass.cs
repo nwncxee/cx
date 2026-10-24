@@ -100,10 +100,10 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static bool _loggedOnce, _noSunLogged;
     private static int _frames;
     private static long _mdiCalls;
-    /// <summary>CPU ticks the bake's own 4.6 context bracket costs -- both switches, each a fence +
-    /// <c>glFlush</c> + <c>MakeCurrent</c> + a server-side wait, printed on the period line. What used to
-    /// require the ENGINE's context on both sides of it is gone, so nothing argues for the separate bracket
-    /// any more; this counter is the gate on folding it into the colour bracket.</summary>
+    /// <summary>CPU ticks the bake's own 4.6 context bracket costs, printed on the period line. The view's
+    /// bracket is open by the time the bake runs (ADR 0032), so this pair is a depth bump and the figure
+    /// reads ~0; it stays because the view's draw runs its passes even when the view's own Enter was
+    /// refused, which makes each pass its own gate. A non-zero figure is that case happening.</summary>
     private static long _ctxTicks, _ctxFrames;
     private static long _cubeLightsSum;
 
@@ -290,7 +290,8 @@ public sealed unsafe partial class CasterPass : IExtenderService
 
         // An Enter failure must not leave the flag promising an upload that never happened -- the colour
         // build would then skip BOTH the solve and the upload and skin against last frame's GPU block.
-        // Normally a depth bump: the world view's bracket is open (ADR 0032). _ctxTicks is what says so.
+        // Normally a depth bump: the world view's bracket is open (ADR 0032), and a real switch here means
+        // the view's own Enter was refused -- _ctxTicks on the period line is what says which.
         long tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
         bool entered = GlContextService.Enter();
         _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;

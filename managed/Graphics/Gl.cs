@@ -106,19 +106,16 @@ public static unsafe class Gl
     /// <summary>The current clear colour, as glGetFloatv reads it back -- the engine's own value, so
     /// the Alloy HDR target starts from what the engine cleared to instead of from a guess.</summary>
     public const uint COLOR_CLEAR_VALUE = 0x0C22;
-    /// <summary>The depth-attachment probe the Alloy framebuffer copy sizes itself from. A blit of
-    /// DEPTH_BUFFER_BIT needs the two attachments to agree on format, so the copy allocates from what the
-    /// engine's own attachment reports rather than assuming 24-bit. DEPTH (0x1801) is the attachment POINT
-    /// the query takes for the default framebuffer, where DEPTH_ATTACHMENT is not a legal name.</summary>
+    /// <summary>The depth-attachment probe the sampled depth copies (<c>SceneDepth</c>, <c>FrameSnapshot</c>)
+    /// size themselves from. A blit of DEPTH_BUFFER_BIT needs both attachments in one format, so a copy asks
+    /// its SOURCE rather than assuming. DEPTH (0x1801) is the attachment POINT the query takes for the default
+    /// framebuffer, where DEPTH_ATTACHMENT is not a legal name.</summary>
     public const uint FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE = 0x8216, FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE = 0x8217,
                       DEPTH = 0x1801, STENCIL = 0x1802, STENCIL_ATTACHMENT = 0x8D20;
     /// <summary>FLOAT vs UNSIGNED_NORMALIZED for an attachment's components. The one thing bit widths
     /// cannot tell apart -- DEPTH_COMPONENT32 and DEPTH_COMPONENT32F both report 32 -- and a depth blit
-    /// between the two is INVALID_OPERATION, so the owned depth allocation has to ask.</summary>
+    /// between the two is INVALID_OPERATION, so a depth COPY's allocation has to ask.</summary>
     public const uint FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE = 0x8211;
-    /// <summary>The engine's own glClearDepth value, read in the engine context beside
-    /// COLOR_CLEAR_VALUE. Per-context state, so the owned 4.6 context cannot be asked for it.</summary>
-    public const uint DEPTH_CLEAR_VALUE = 0x0B73;
     public const uint DEPTH_COMPONENT32F = 0x8CAC, DEPTH24_STENCIL8 = 0x88F0, DEPTH_STENCIL = 0x84F9,
                       UNSIGNED_INT_24_8 = 0x84FA, DEPTH_STENCIL_ATTACHMENT = 0x821A, STENCIL_BUFFER_BIT = 0x0400,
                       DEPTH_COMPONENT32 = 0x81A7, DEPTH32F_STENCIL8 = 0x8CAD,
@@ -132,6 +129,9 @@ public static unsafe class Gl
     /// <summary>The unsized base format. Never a legal glTexStorage2D internalformat -- named so that a
     /// driver answering it for TEXTURE_INTERNAL_FORMAT can be refused rather than promoted.</summary>
     public const uint RGB = 0x1907;
+    /// <summary>One packed short per RGB pixel -- the type the engine's own upload funnel pairs with
+    /// <see cref="RGB"/> at a 16-bit colour depth.</summary>
+    public const uint UNSIGNED_SHORT_5_6_5 = 0x8363;
     public const int LINEAR_MIPMAP_LINEAR = 0x2703;
     /// <summary>The hi-Z pyramid's minification filter -- an INTERPOLATED max is not a max.</summary>
     public const int NEAREST_MIPMAP_NEAREST = 0x2700;
@@ -397,7 +397,6 @@ public static unsafe class Gl
     public const uint CW = 0x0900, CCW = 0x0901;
     /// <summary>glColorMaski: the write mask of ONE draw buffer (GL 3.0).</summary>
     public static delegate* unmanaged<uint, byte, byte, byte, byte, void> ColorMaski;
-    public static delegate* unmanaged<double, void> ClearDepth;
     public static delegate* unmanaged<double, double, void> DepthRange;
     public static delegate* unmanaged<uint, float*, void> GetFloatv;
     public static delegate* unmanaged<int, int, int, int, void> Viewport;
@@ -642,7 +641,6 @@ public static unsafe class Gl
         ColorMask = (delegate* unmanaged<byte, byte, byte, byte, void>)P("glColorMask");
         FrontFace = (delegate* unmanaged<uint, void>)P("glFrontFace");
         ColorMaski = (delegate* unmanaged<uint, byte, byte, byte, byte, void>)P("glColorMaski");
-        ClearDepth = (delegate* unmanaged<double, void>)P("glClearDepth");
         DepthRange = (delegate* unmanaged<double, double, void>)P("glDepthRange");
         GetFloatv = (delegate* unmanaged<uint, float*, void>)P("glGetFloatv");
         Viewport = (delegate* unmanaged<int, int, int, int, void>)P("glViewport");

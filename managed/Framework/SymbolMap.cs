@@ -654,30 +654,9 @@ internal static unsafe class SymbolMap
     public const string GlBoundTextures = "_ZN8GLRender15m_boundTexturesE";
     public const string GlActiveTextureStage = "_ZN8GLRender20m_activeTextureStageE";
     public const string GlEnabledTextureStages = "_ZN8GLRender23m_bEnabledTextureStagesE";
-    /// <summary><c>GLRender::m_bEnabledStates</c> @0x19ad0d0 -- the enable-cap CACHE, one bit per
-    /// <c>AuroraEnableEnums</c> value (<c>GLRender::IsEnabled</c> @0x4cae20 is <c>m_bEnabledStates &amp; 1 &lt;&lt; cap</c>).
-    /// The GUI capture reads the caps an engine draw would have run under.</summary>
-    public const string GlEnabledStates = "_ZN8GLRender16m_bEnabledStatesE";
-    /// <summary><c>GLRender::m_globalColor</c> @0x19ad0c0 -- the <c>globalColor</c> uniform's four floats,
-    /// written by <c>SetColorv</c> @0x4d1230 / <c>SetColor4f</c> @0x4d1290.</summary>
-    public const string GlGlobalColor = "_ZN8GLRender13m_globalColorE";
-    /// <summary>The <c>AuroraBlendModes</c> pair <c>GLRender::SetBlendFunc</c> @0x4cb0c0 caches and early-outs
-    /// against -- indices into <c>blendTranslationTable</c>.</summary>
-    public const string GlSrcBlendMode = "_ZN8GLRender20cm_nPrevSrcBlendModeE";
-    /// <inheritdoc cref="GlSrcBlendMode"/>
-    public const string GlDstBlendMode = "_ZN8GLRender20cm_nPrevDstBlendModeE";
-    /// <summary><c>GLRender::bDepthMask</c> -- the depth-write byte <c>SetDepthMask</c> @0x4cb580 caches.</summary>
-    public const string GlDepthMask = "_ZN8GLRender10bDepthMaskE";
     /// <summary><c>GLRender::m_viewport</c> -- four ints {x, y, w, h} that <c>SetViewPort</c> @0x4cb3f0 writes
     /// beside every glViewport; <c>Camera::RenderScene</c> sets each view's here before <c>Scene::Render</c>.</summary>
     public const string GlViewport = "_ZN8GLRender10m_viewportE";
-    /// <summary><c>GLRender::m_material</c> @0x19ad180 -- the lit shader's MATERIAL cache
-    /// (<see cref="EngineLayout.GlMatAmbient"/> for its layout).</summary>
-    public const string GlMaterial = "_ZN8GLRender10m_materialE";
-    /// <summary><c>RenderInterface::SetColorv(float*)</c> @0x45cfa0 -- static, a thunk to
-    /// <c>GLRender::SetColorv</c>. <c>Scene::RenderOnlyGobs</c> opens every GUI scene with white.</summary>
-    [Fn("void(float* rgba)")]
-    public const string RiSetColorv = "_ZN15RenderInterface9SetColorvEPf";
     /// <summary><c>Scene::RenderOnlyGobs()</c> @0x4682e0 -- the draw of every scene with no tile BSP (every
     /// GUI panel, the menus, the minimap, the cursor overlay): <c>Scene::Render</c> reaches it through
     /// <c>call *0x278</c> @0x4767d9. Alloy replaces it with its own loop over the same gobs, whose draws it
@@ -694,11 +673,6 @@ internal static unsafe class SymbolMap
     /// lightmap bake hold share it through this call.</summary>
     [Fn("void(CGuiStatusBar this, float percent)")]
     public const string StatusBarSetStatus = "_ZN13CGuiStatusBar9SetStatusEf";
-    /// <summary><c>GLRender::DrawReset()</c> @0x4cfa00 -- the tail of both draw funnels: <c>Disable(0x12)</c>,
-    /// <c>Disable(0x15)</c>, <c>m_nRenderHint = 0</c>, <c>m_pCurrentCustomProgram = 0</c>. A captured draw never reaches the
-    /// funnel, so the capture calls it itself, or a material's custom program stays latched for every later draw.</summary>
-    [Fn("void()")]
-    public const string GlDrawReset = "_ZN8GLRender9DrawResetEv";
     /// <summary>SDL's present -- what <c>GLRender::SwapBuffers</c> @0x4d2070 calls between
     /// <c>BindDefaultFramebuffer</c> and <c>ResetRenderStates</c>. Alloy's present calls it directly. C linkage.</summary>
     [Fn("void(IntPtr window)")]
@@ -731,6 +705,13 @@ internal static unsafe class SymbolMap
     /// <c>GL_TEXTURE_2D</c> on unit 0. ABI <c>(CAurTexture* /*rdi*/, bool useSubImage /*sil*/, int cell /*edx*/)</c>.</summary>
     [Fn("void(IntPtr tex, byte useSubImage, int cell)")]
     public const string RiCreateTexture = "_ZN15RenderInterface13CreateTextureEP11CAurTexturebi";
+    /// <summary><c>GLRender::DirectCreateSubTexture</c> @0x4c9ef0 -- a <c>glTexSubImage2D</c> wrapper on whatever is
+    /// bound to <c>GL_TEXTURE_2D</c>, and the ONE funnel the movie's decoded frames pass through: its only caller is
+    /// the <c>RenderInterface</c> forwarder @0x45df80, whose only caller is <c>CExoMoviePlayerInternal::UpdateMovie</c>
+    /// @0x1168210. <c>rows</c> is a host pointer; static, so no <c>this</c>.</summary>
+    [Fn("void(int level, int selector, int width, int height, int extFormat, void* rows, int x, int y, int align)")]
+    public const string GlDirectCreateSubTexture =
+        "_ZN8GLRender22DirectCreateSubTextureEiN6Aurora20AuroraTextureFormatsEiiS1_Pviii";
     /// <summary><c>RenderInterface::CreateCubeTexture(CAurTexture*, bool, int)</c> @0x45d1f0 -> <c>GLRender</c>'s
     /// @0x4caab0 (Windows RVA 0xBE930, a jump to GLRender's at 0xAEFF0): the cube twin of <see cref="RiCreateTexture"/>, same ABI.
     /// It cuts the image as a vertical strip of six faces (remap {1,0,2,3,4,5}, quarter turns {1,3,0,2,2,0}) and
@@ -1300,10 +1281,6 @@ internal static unsafe class SymbolMap
     public const string GlMaxElementVertices = "_ZN8GLRender33GetVertexBufferMaxElementVerticesEv";
     [Fn("int()")]
     public const string GlMaxElementIndices = "_ZN8GLRender32GetVertexBufferMaxElementIndicesEv";
-    /// <summary><c>noemittervar</c> @0x19e3114 -- the nearest EXPORTED symbol below the GLRender pool descriptor
-    /// table's two globals, which have no symbols of their own: the table base pointer is <c>noemittervar + 0x236c</c>
-    /// and the descriptor count +0x2374, as <c>GLRender::GetPoolBuffer</c> @0x4cfba0 resolves them.</summary>
-    public const string GlPoolTableAnchor = "noemittervar";
     /// <summary>GLRender::SetVertexDataObject(VertexDataObject*) @0x4cff30 -- binds (lazily creating) the
     /// VDO's VAO + element buffer and updates the engine's current-VDO cache. The owned caster path (ADR 0008)
     /// binds engine geometry through this so the cache never desyncs; null unbinds to the default VAO.</summary>
@@ -1339,13 +1316,6 @@ internal static unsafe class SymbolMap
     /// routing a part to draw bucket 6. Data symbol; read, never write.</summary>
     public const string EnableBumpyWater = "g_nEnableBumpyWater";
 
-    // hosting the engine's own compiled program for a draw Alloy issues. GLRender::SetProgram
-    // @0x4cf940 is called from INSIDE RenderVertexData @0x4d05c5 -- the funnel the M4 shim swallows -- so
-    // under the cutover a custom-shader material's uniforms are never uploaded. These three are that call,
-    // taken apart, so the swallow can make it in the engine's own context.
-    /// <summary><c>GLRender::m_pCurrentCustomProgram</c> @0x19af680 (B) -- the PROG_FIXED the material bind
-    /// left current. The GL program id is the uint at <c>+0x64</c>, exactly as SetProgram reads it.</summary>
-    public const string GlCurrentCustomProgram = "_ZN8GLRender23m_pCurrentCustomProgramE";
     /// <summary>Global shader param scalar getter -- param 0x12 is the light-radius multiplier
     /// GetLightAdjustedRadius applies (adjR = range * intensity * overbright * this).</summary>
     [Fn("float(uint param)")]
@@ -2953,21 +2923,12 @@ internal static unsafe class SymbolMap
         [GetServerNetworkAddress] = Nm("?GetServerNetworkAddress@CNetLayer@@QEAA?AVCExoString@@XZ"),
         [GlActiveTextureStage] = Nm("?m_activeTextureStage@GLRender@@0IA"),
         [GlBoundTextures] = Nm("?m_boundTextures@GLRender@@0PAUBoundTexture@1@A"),
-        [GlCurrentCustomProgram] = Nm("?m_pCurrentCustomProgram@GLRender@@0PEAUPROG_FIXED@1@EA"),
         [GlEnabledTextureStages] = Nm("?m_bEnabledTextureStages@GLRender@@0IA"),
-        [GlEnabledStates] = Nm("?m_bEnabledStates@GLRender@@0IA"),
-        [GlGlobalColor] = Nm("?m_globalColor@GLRender@@0VVector4@@A"),
-        [GlSrcBlendMode] = Nm("?cm_nPrevSrcBlendMode@GLRender@@0W4AuroraBlendModes@Aurora@@A"),
-        [GlDstBlendMode] = Nm("?cm_nPrevDstBlendMode@GLRender@@0W4AuroraBlendModes@Aurora@@A"),
-        [GlDepthMask] = Nm("?bDepthMask@GLRender@@0EA"),
         [GlViewport] = Nm("?m_viewport@GLRender@@0PAHA"),
-        [GlMaterial] = Nm("?m_material@GLRender@@0UMATERIAL@1@A"),
-        [RiSetColorv] = Nm("?SetColorv@RenderInterface@@SAXPEAM@Z"),
         [SceneRenderOnlyGobs] = Nm("?RenderOnlyGobs@Scene@@UEAAXXZ"),
         [ScreenWidth] = Nm("?g_nScreenWidth@@3HA"),
         [ScreenHeight] = Nm("?g_nScreenHeight@@3HA"),
         [StatusBarSetStatus] = Nm("?SetStatus@CGuiStatusBar@@QEAAXM@Z"),
-        [GlDrawReset] = Nm("?DrawReset@GLRender@@CAXXZ"),
         [SdlGlSwapWindow] = Nm("SDL_GL_SwapWindow"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
@@ -2980,7 +2941,6 @@ internal static unsafe class SymbolMap
         [GlGlobalShaderConstantsV4] = Nm("?m_globalShaderConstantsv4@GLRender@@0PAVVector4@@A"),
         [GlMaxElementIndices] = Nm("?GetVertexBufferMaxElementIndices@GLRender@@CAHXZ"),
         [GlMaxElementVertices] = Nm("?GetVertexBufferMaxElementVertices@GLRender@@CAHXZ"),
-        [GlPoolTableAnchor] = At(),   // the {base,count} pair itself -- GetPoolBuffer loads it, UnlockPool leas it
         [GlRenderVertexData] = Nm("?RenderVertexData@GLRender@@CAXPEAVVertexDataObject@@IW4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlRenderVertexStreamData] = Nm("?RenderVertexStreamData@GLRender@@CAXPEAVVertexStreamDataObject@@W4AuroraPrimitiveTypes@Aurora@@II@Z"),
         [GlSetVertexDataObject] = Nm("?SetVertexDataObject@GLRender@@CAXPEAVVertexDataObject@@@Z"),
@@ -3112,6 +3072,7 @@ internal static unsafe class SymbolMap
         [ResManReleaseObj] = Nm("?ReleaseResObject@CExoResMan@@QEAAHPEAVCRes@@_N@Z"),
         [ResManSetResObject] = Nm("?SetResObject@CExoResMan@@QEAAXAEBVCResRef@@GPEAVCRes@@@Z"),
         [ResManUpdate] = Nm("?Update@CExoResMan@@QEAAXI@Z"),
+        [GlDirectCreateSubTexture] = Nm("?DirectCreateSubTexture@GLRender@@CAXHW4AuroraTextureFormats@Aurora@@HH0PEAXHHH@Z"),
         [RiCreateTexture] = Nm("?CreateTexture@RenderInterface@@SAXPEAVCAurTexture@@_NH@Z"),
         [RiCreateCubeTexture] = Nm("?CreateCubeTexture@RenderInterface@@SAXPEAVCAurTexture@@_NH@Z"),
         [RiDeleteTextures] = Nm("?DeleteTextures@RenderInterface@@SAXIPEBI@Z"),

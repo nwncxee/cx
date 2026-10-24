@@ -24,7 +24,7 @@ internal static class RenderThread
     /// <summary>Precondition: <c>GuiCapture</c>'s one static bank of buffers is not written by two threads in
     /// the same frame. <b>UNMET</b>, and the one thing the fence cannot fix -- <c>NuiFlush</c> fills the bank
     /// on the GAME thread inside <c>CGuiMan::UpdateAndRender</c> while <c>GuiCapture.Lead</c> and
-    /// <c>GuiPass.FlushNow</c> rotate and RESET it on the render thread. The fix is to ping-pong the NUI bank.</summary>
+    /// <c>GuiPass.Flush</c> rotate and RESET it on the render thread. The fix is to ping-pong the NUI bank.</summary>
     internal static bool GuiBuffersOwned;
 
     /// <summary>Precondition: <c>TextObjects</c>/<c>TextQuads</c> document state is published to the frame
@@ -46,9 +46,9 @@ internal static class RenderThread
     internal static bool FrameInputsPublished;
 
     /// <summary>Precondition: framebuffer 0 and the engine's GL state caches have ONE owner in the window the
-    /// fence does not cover. <b>UNMET</b>, the sibling of <see cref="GuiBuffersOwned"/>: under GLX both
-    /// contexts name one drawable, so outside the fence the renderer resolves into the buffer the game thread
-    /// may still draw into. The way out is Windows's <c>PresentTarget</c> -- a shared texture plus one blit.</summary>
+    /// fence does not cover. <b>UNMET</b>, the sibling of <see cref="GuiBuffersOwned"/>: the frame composites
+    /// into <see cref="PresentTarget"/>'s image, but the blit that puts it on screen must run in the ENGINE's
+    /// context and this thread has none -- so the hand-back is still the game thread's to make.</summary>
     internal static bool ScreenHandoffSettled;
 
     /// <summary>Every unmet precondition as one refusal line, or null when all are met. Each precondition is a
@@ -60,7 +60,7 @@ internal static class RenderThread
         if (!GuiBuffersOwned)
             s += "GuiCapture's one static bank is written by both threads in the same frame -- NuiFlush "
                + "captures nuklear at nk_sdl_render on the GAME thread while DbGui/TextQuads.Issue append the "
-               + "panel layers and GuiCapture.Lead + GuiPass.FlushNow rotate and RESET the bank on the render "
+               + "panel layers and GuiCapture.Lead + GuiPass.Flush rotate and RESET the bank on the render "
                + "thread. The fix is a NUI bank ping-ponged off the snapshot's frame; ";
         if (!TextDocsPublished)
             s += "TextObjects/TextQuads document state is rebuilt on the game thread while the draw walks it "
@@ -79,10 +79,9 @@ internal static class RenderThread
                + "runtime block and the global shader-constant tables. CX-188 hoisted the area walk, the "
                + "attenuation latch, the fog words and the wind write; the list above is what is left; ";
         if (!ScreenHandoffSettled)
-            s += "framebuffer 0 has two writers outside the fence -- the renderer resolves frame N into it "
-               + "while the game thread runs CGuiMan::UpdateAndRender. The fix is PresentTarget: composite "
-               + "into the shared texture and blit it from the engine context in the game thread's half of "
-               + "the boundary; ";
+            s += "the present hand-back must run in the ENGINE's context and this thread has none, so the "
+               + "frame this thread composites would reach framebuffer 0 only through the game thread's half "
+               + "of the boundary; ";
         return s.Length == 0 ? null : s.TrimEnd(' ', ';');
     }
 
