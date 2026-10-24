@@ -6,8 +6,9 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>The engine's vertex/index pools, read and never written: the engine uploads and draws its own,
-/// and Alloy's geometry lives in its own <see cref="Db.MeshArena"/>. What is left here is the host-shadow
-/// read <see cref="GuiCapture"/> copies from and the shared-VDO capacity pin.</summary>
+/// and Alloy's geometry lives in its own <see cref="Db.MeshArena"/>. What is left here is the shared-VDO
+/// capacity pin and <see cref="PoolHost"/>, whose last reader was the GUI draw list while that was harvested
+/// from the engine's funnels; it retires with the pool views and their rows rather than alone.</summary>
 internal static unsafe class EnginePools
 {
     /// <summary>The pool table and the pinned capacity, resolved once at install.</summary>
@@ -29,7 +30,7 @@ internal static unsafe class EnginePools
     internal static void Install(ExtenderLog log, HookService hooks)
     {
         _s.Table = GlPoolTable.AtAnchor(Native.Sym(SymbolMap.GlPoolTableAnchor));
-        if (_s.Table.IsNull) log.Info("EnginePools: the pool table did not resolve -- GUI streams have no host shadow to copy");
+        if (_s.Table.IsNull) log.Info("EnginePools: the pool table did not resolve -- no host shadow can be read");
         _s.MaxElements = Renderer.MaxElements.Boot;
         if (_s.MaxElements <= 0) return;
         bool a = hooks.InstallGlMaxElementVertices(&OnMaxElements) != null;

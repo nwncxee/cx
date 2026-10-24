@@ -468,7 +468,7 @@ internal static partial class DrawRecipe
             {
                 MtrDef? late = MtrDef.Of(mesh);
                 _coverage[r] = late is { AlphaMode: 2 };
-                _content[r] = GuiContent.Key(late);
+                _content[r] = GuiContent.Key(late, ContentPrograms.Register(late) == 0);
                 _declWater[r] = DeclaredWater(mesh);
             }
             bool additive = mesh.RenderHint.Equals("additive", StringComparison.OrdinalIgnoreCase);
@@ -550,7 +550,6 @@ internal static partial class DrawRecipe
         // Material::GetTexture @0x5c5810: the .mtr's texture wins wherever it states one.
         MtrDef? mtr = MtrDef.Of(mesh);
         _coverage[r] = mtr is { AlphaMode: 2 };
-        _content[r] = GuiContent.Key(mtr);
         // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
         // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
         bool hinted = mesh.TransparencyHint > 0;
@@ -591,6 +590,9 @@ internal static partial class DrawRecipe
         // CX-303: any pair the material names runs translated, unless both its halves add nothing to stock
         int feat = ContentPrograms.Register(mtr);
         _feat[r] = feat;
+        // ...and the GUI pass runs the same pair from the same verdict, so a stock pair draws Alloy's GUI
+        // program there exactly as it draws Alloy's lit stage here.
+        _content[r] = GuiContent.Key(mtr, feat == 0);
         _own.Mtr[r] = mtr;
         MtrParams.NoteCustomPair(mtr, feat, Log);
         Span<float> featF = _featF.AsSpan(r * 4, 4);

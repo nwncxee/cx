@@ -69,7 +69,7 @@ internal static unsafe class GuiPass
         Db.TextSlots.Install(log);
         Db.TextQuads.Install(log);
         TextAtlas.Install(log);
-        if (!GuiCapture.Install(log)) return;
+        GuiCapture.Attach(log);
         ScreenOwner.Install(log, hooks);
         _nkSlot = hooks.ChainNkSdlRender(&OnNk, NkPriority);
         FrameRegistry.Global.Register(FramePhase.PrePresent, 5, OnPresent, "GuiPass.flush", log);
@@ -149,9 +149,6 @@ internal static unsafe class GuiPass
         _log?.Always($"GuiPass: {why} -- the game's GUI panels are NOT DRAWN for the rest of the session");
         AlloyGate.Fail($"the interface could not be drawn ({why})");
     }
-
-    /// <summary>Flush now -- a caller whose draws must land before the next foreign draw (nuklear's own site).</summary>
-    internal static void FlushNow() => Flush();
 
     /// <summary>The frame's closing flush: the first <paramref name="panels"/> captured layers, CX's below-NUI windows,
     /// the rest (NUI), then the above-NUI windows, in one bracket. A frame whose GUI cannot enter the bracket still
@@ -558,9 +555,8 @@ internal static unsafe class GuiPass
     private static uint DepthAttachment => HasStencil ? Gl.DEPTH_STENCIL_ATTACHMENT : Gl.DEPTH_ATTACHMENT;
 
     /// <summary>Windows, in the ENGINE context: carry the GUI's depth between the screen and Alloy's GUI target, beside the
-    /// colour <see cref="PresentTarget"/> carries. On Linux both contexts share the drawable's one depth buffer; here a
-    /// content-shader draw the engine makes (<see cref="GuiCapture"/>'s hand-off) lands in the screen's, so without this
-    /// its depth and Alloy's GUI depth would never meet.</summary>
+    /// colour <see cref="PresentTarget"/> carries. On Linux both contexts share the drawable's one depth buffer; on
+    /// Windows they do not, so a depth written in the engine's context and Alloy's GUI depth would never meet.</summary>
     private static void Depth(bool fromScreen)
     {
         if (_gl.Depth == 0 || _gl.DepthFmt == 0) return;

@@ -31,7 +31,7 @@ internal static class RenderPasses
             ContextLost = OwnedTextures.ContextLost,
         }, log);
 
-        // Nor is this one: the engine's pools, read for GUI capture, and the shared-VDO capacity pin.
+        // Nor is this one: the engine's pool table and the shared-VDO capacity pin.
         r.Register(new PassLifecycle
         {
             Name = "enginepools",

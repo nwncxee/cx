@@ -655,8 +655,7 @@ internal static unsafe class SymbolMap
     public const string GlActiveTextureStage = "_ZN8GLRender20m_activeTextureStageE";
     public const string GlEnabledTextureStages = "_ZN8GLRender23m_bEnabledTextureStagesE";
     /// <summary><c>GLRender::m_bEnabledStates</c> @0x19ad0d0 -- the enable-cap CACHE, one bit per
-    /// <c>AuroraEnableEnums</c> value (<c>GLRender::IsEnabled</c> @0x4cae20 is <c>m_bEnabledStates &amp; 1 &lt;&lt; cap</c>).
-    /// The GUI capture reads the caps an engine draw would have run under.</summary>
+    /// <c>AuroraEnableEnums</c> value (<c>GLRender::IsEnabled</c> @0x4cae20 is <c>m_bEnabledStates &amp; 1 &lt;&lt; cap</c>).</summary>
     public const string GlEnabledStates = "_ZN8GLRender16m_bEnabledStatesE";
     /// <summary><c>GLRender::m_globalColor</c> @0x19ad0c0 -- the <c>globalColor</c> uniform's four floats,
     /// written by <c>SetColorv</c> @0x4d1230 / <c>SetColor4f</c> @0x4d1290.</summary>
@@ -695,8 +694,8 @@ internal static unsafe class SymbolMap
     [Fn("void(CGuiStatusBar this, float percent)")]
     public const string StatusBarSetStatus = "_ZN13CGuiStatusBar9SetStatusEf";
     /// <summary><c>GLRender::DrawReset()</c> @0x4cfa00 -- the tail of both draw funnels: <c>Disable(0x12)</c>,
-    /// <c>Disable(0x15)</c>, <c>m_nRenderHint = 0</c>, <c>m_pCurrentCustomProgram = 0</c>. A captured draw never reaches the
-    /// funnel, so the capture calls it itself, or a material's custom program stays latched for every later draw.</summary>
+    /// <c>Disable(0x15)</c>, <c>m_nRenderHint = 0</c>, <c>m_pCurrentCustomProgram = 0</c> -- so a funnel call that
+    /// does not reach it leaves the material's custom program latched for every later draw.</summary>
     [Fn("void()")]
     public const string GlDrawReset = "_ZN8GLRender9DrawResetEv";
     /// <summary>SDL's present -- what <c>GLRender::SwapBuffers</c> @0x4d2070 calls between
@@ -1339,12 +1338,15 @@ internal static unsafe class SymbolMap
     /// routing a part to draw bucket 6. Data symbol; read, never write.</summary>
     public const string EnableBumpyWater = "g_nEnableBumpyWater";
 
-    // hosting the engine's own compiled program for a draw Alloy issues. GLRender::SetProgram
-    // @0x4cf940 is called from INSIDE RenderVertexData @0x4d05c5 -- the funnel the M4 shim swallows -- so
-    // under the cutover a custom-shader material's uniforms are never uploaded. These three are that call,
-    // taken apart, so the swallow can make it in the engine's own context.
+    // The program a content material binds, and the way back from it to the pair it was built from:
+    // GLRender::m_loadedCustomPrograms @0x19af690 is a List (data, count at +8, capacity at +0xc) of 0x70-byte
+    // records -- vertex, fragment and geometry resrefs as NUL-terminated char[32] at +0, +0x20 and +0x40, the
+    // PROG_FIXED at +0x60, the NO_DISCARD flag at +0x68 -- append-only and realloc'd, walked exactly that way
+    // by ReloadShaders (Linux @0x5d3a40, Windows rva 0xb5110: the same offsets and the same 0x70 stride).
     /// <summary><c>GLRender::m_pCurrentCustomProgram</c> @0x19af680 (B) -- the PROG_FIXED the material bind
-    /// left current. The GL program id is the uint at <c>+0x64</c>, exactly as SetProgram reads it.</summary>
+    /// left current. The GL program id is the uint at <c>+0x64</c>, as SetProgram reads it; the material
+    /// parameters it was fed are <c>+0x1ef0</c> records of 0x6c bytes at <c>+0x1ee8</c>, each one
+    /// {kind, uniform location, component count, name at +0xa, value at +0x5c}.</summary>
     public const string GlCurrentCustomProgram = "_ZN8GLRender23m_pCurrentCustomProgramE";
     /// <summary>Global shader param scalar getter -- param 0x12 is the light-radius multiplier
     /// GetLightAdjustedRadius applies (adjR = range * intensity * overbright * this).</summary>

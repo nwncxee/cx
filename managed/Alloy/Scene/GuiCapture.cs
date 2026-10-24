@@ -1,18 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// The engine side of Alloy's GUI path. Every scene with no tile BSP (panels, menus, minimap, compass, cursor
-/// overlay, previews) is walked from the scene database, and both draw funnels run in CAPTURE mode: an engine
-/// draw that reaches one lands as a record of its geometry and <c>GLRender</c> state, nothing reaches GL, and
-/// <see cref="GuiPass"/> issues the list from the 4.6 context.
+/// The draw list of Alloy's GUI path. Every scene with no tile BSP (panels, menus, minimap, compass, cursor
+/// overlay, previews) is walked from the scene database into layers of records -- geometry, state and the
+/// content program a part's material names -- which <see cref="GuiPass"/> issues from the 4.6 context. The
+/// list is BUILT here: no engine draw funnel feeds it and none is handed back, so there is no engine GL left.
 /// </summary>
 internal static unsafe class GuiCapture
 {
@@ -66,13 +63,6 @@ internal static unsafe class GuiCapture
     /// <summary>One <c>GLRender::m_bones</c> palette: 64 mat4.</summary>
     internal const int BoneFloats = AlloyRenderer.BoneFloats;
 
-    /// <summary>The <c>AuroraEnableEnums</c> bits the capture reads (<c>GLRender::Enable</c> @0x4cae40's switch).</summary>
-    private const int CapBlend = 0, CapAlphaTest = 1, CapFog = 2, CapCull = 3, CapLighting = 5, CapDepthTest = 0xb;   // not-an-offset: engine cap enum
-    /// <summary><c>AuroraEnableEnums</c> 4 = GL_TEXTURE_2D in <c>m_boundTextures</c>' target field (0xe is a cube).</summary>
-    private const int TargetTex2D = 4;
-    private const uint NoItem = 0xffffffff;   // not-an-offset: the funnel's "use the item's own range" sentinel
-    private const int ModeProj = 0, ModeView = 1, ModeModel = 2, ModeTexture = 3;
-
     internal static readonly Layer[] Layers = new Layer[MaxLayers];
     internal static readonly Draw[] Draws = new Draw[MaxDraws];
     internal static readonly GuiRec[] Records = new GuiRec[MaxDraws];
@@ -81,60 +71,15 @@ internal static unsafe class GuiCapture
     internal static readonly ushort[] Idx = new ushort[IdxMax];
     internal static int LayerN, DrawN, SkinN, VtxN, IdxN;
 
-    /// <summary>A GUI scene's draws are being captured: the funnels record instead of drawing.</summary>
-    internal static bool Open;
-
     private static ExtenderLog? _log;
-    private static RiEnableFn _enable;
-    private static RiDisableFn _disable;
-    private static RiSetColorvFn _setColor;
-    private static GlDrawResetFn _drawReset;
-    private static uint* _caps, _texStages, _primTable;
-    private static int* _src, _dst, _viewport, _bound;
-    private static Vector4* _color;
-    private static byte* _depthMask, _material, _stacks;
-    private static IntPtr* _custom;
 
-    /// <summary>Refusals since boot, by reason: each is a hole in the GUI, so the first of each is an Always line and
-    /// the totals are on the status line.</summary>
-    private static long _noSlot, _noHost, _badFormat, _overflow, _toEngine, _arrays, _layers, _draws;
-    private static int _said;
+    /// <summary>Since boot: scenes, draws, and runs past a staging ceiling -- each of those is a hole in the GUI,
+    /// so the first is an Always line and the total is on the status line.</summary>
+    private static long _overflow, _layers, _draws;
 
-    /// <summary>Resolve the <c>GLRender</c> state caches the capture reads. False = something did not resolve
-    /// (logged here); <see cref="GuiPass"/> then never arms and the engine keeps drawing its GUI.</summary>
-    internal static bool Install(ExtenderLog log)
-    {
-        _log = log;
-        _caps = (uint*)Native.Sym(SymbolMap.GlEnabledStates);
-        _texStages = (uint*)Native.Sym(SymbolMap.GlEnabledTextureStages);
-        _primTable = (uint*)Native.Sym(SymbolMap.PrimTypeTranslationTable);
-        _src = (int*)Native.Sym(SymbolMap.GlSrcBlendMode);
-        _dst = (int*)Native.Sym(SymbolMap.GlDstBlendMode);
-        _viewport = (int*)Native.Sym(SymbolMap.GlViewport);
-        _bound = (int*)Native.Sym(SymbolMap.GlBoundTextures);
-        _color = (Vector4*)Native.Sym(SymbolMap.GlGlobalColor);
-        _depthMask = (byte*)Native.Sym(SymbolMap.GlDepthMask);
-        _material = (byte*)Native.Sym(SymbolMap.GlMaterial);
-        _stacks = (byte*)Native.Sym(SymbolMap.MAurMtxStack);
-        _custom = (IntPtr*)Native.Sym(SymbolMap.GlCurrentCustomProgram);
-        _enable = EngineFn.RiEnable; _disable = EngineFn.RiDisable; _setColor = EngineFn.RiSetColorv;
-        _drawReset = EngineFn.GlDrawReset;
-        string? missing = _caps == null ? SymbolMap.GlEnabledStates : _texStages == null ? SymbolMap.GlEnabledTextureStages
-            : _primTable == null ? SymbolMap.PrimTypeTranslationTable : _src == null ? SymbolMap.GlSrcBlendMode
-            : _dst == null ? SymbolMap.GlDstBlendMode : _viewport == null ? SymbolMap.GlViewport
-            : _bound == null ? SymbolMap.GlBoundTextures : _color == null ? SymbolMap.GlGlobalColor
-            : _depthMask == null ? SymbolMap.GlDepthMask
-            : _material == null ? SymbolMap.GlMaterial : _stacks == null ? SymbolMap.MAurMtxStack
-            : _custom == null ? SymbolMap.GlCurrentCustomProgram : _enable == null ? SymbolMap.RiEnable
-            : _disable == null ? SymbolMap.RiDisable : _setColor == null ? SymbolMap.RiSetColorv
-            : _drawReset == null ? SymbolMap.GlDrawReset : null;
-        if (missing != null)
-        {
-            log.Always($"GuiCapture: {missing} unresolved -- the GUI stays the ENGINE's draw (CX-95 not armed)");
-            return false;
-        }
-        return true;
-    }
+    /// <summary>Take the log the ceilings report on. There is nothing to resolve: every GUI draw is built from
+    /// the scene database, so no <c>GLRender</c> cache is read and no engine symbol is needed.</summary>
+    internal static void Attach(ExtenderLog log) => _log = log;
 
     /// <summary><c>Camera::RenderScene</c>'s depth decision for one view. The RANGE is
     /// <see cref="AlloyCamera.DepthRange"/>'s, the one implementation of the name table;
@@ -178,76 +123,6 @@ internal static unsafe class GuiCapture
         for (int i = 0; i < want.Length; i++)
             if ((s[i] | 0x20) != (want[i] | 0x20)) return false;
         return s[want.Length] == 0;
-    }
-
-    /// <summary>A <c>GLRender::RenderVertexData</c> call inside a GUI scene. The index range is resolved exactly as the
-    /// funnel resolves it (@0x4d0570: mode 1 from the item tables unless overridden, mode 2 from the arguments); a
-    /// non-indexed VDO is refused, because the VAO cache only builds over an element buffer.</summary>
-    internal static bool Vdo(IntPtr vdo, uint item, uint prim, uint size, uint offset)
-    {
-        if (*_custom != IntPtr.Zero) { ToEngine(); return false; }
-        CaptureVdo(vdo, item, prim, size, offset);
-        _drawReset();
-        return true;
-    }
-
-    /// <summary>An engine VDO draw in a GUI scene. The scene database creates no engine geometry, so one reaching
-    /// here is CX's own gap, counted and named rather than drawn from a cache that no longer exists.</summary>
-    private static void CaptureVdo(IntPtr vdo, uint item, uint prim, uint size, uint offset)
-        => Refuse(ref _noSlot, "an engine VDO draw (the scene database makes no engine geometry)");
-
-    /// <summary>A <c>GLRender::RenderVertexStreamData</c> call inside a GUI scene -- text, particles, anything built on
-    /// the CPU. The bytes are copied out of the pool's host shadow NOW: the stream is rewritten by the next draw that
-    /// uses it, long before <see cref="GuiPass"/> flushes.</summary>
-    internal static bool Stream(IntPtr vsdo, uint prim, uint size, uint offset)
-    {
-        if (*_custom != IntPtr.Zero) { ToEngine(); return false; }
-        CaptureStream(vsdo, prim, size, offset);
-        _drawReset();
-        return true;
-    }
-
-    /// <summary>A draw under a material's CUSTOM program (content shaders -- a server's load screen repositions its bar
-    /// and backdrop in its vertex stage): the engine's own funnel draws it, with the content's program and every uniform
-    /// it declares, exactly as vanilla. What was captured before it is flushed first and the scene reopens after it, so
-    /// the order -- and on Linux the shared depth buffer -- is the engine's.</summary>
-    private static void ToEngine()
-    {
-        _toEngine++;
-        if (LayerN == 0) return;
-        Layer cont = Layers[LayerN - 1];
-        Layers[LayerN - 1].Count = DrawN - cont.First;
-        GuiPass.FlushNow();
-        cont.First = DrawN; cont.Count = 0; cont.Clear = false;
-        Layers[LayerN++] = cont;
-    }
-
-    private static void CaptureStream(IntPtr vsdo, uint prim, uint size, uint offset)
-    {
-        var s = new VertexStreamDataObject(vsdo);
-        int stride = s.VertexStride;
-        uint fmt = s.Format;
-        if (!GuiStream.Layout(fmt, stride, out _))
-        {
-            if (_badFormat == 0) _log?.Always($"GuiCapture: stream format 0x{fmt:x} / stride {stride} is NOT DRAWN in a GUI scene (first sighting; totals on /alloy)");
-            _badFormat++;
-            return;
-        }
-        byte* vhost = EnginePools.PoolHost(s.VertToken);
-        if (vhost == null) { Refuse(ref _noHost, "a stream with no host shadow"); return; }
-        if (size == 0 || !Room()) return;
-        ReadOnlySpan<ushort> idx = default;
-        if (s.Indexed != 0)
-        {
-            ushort* ehost = (ushort*)EnginePools.PoolHost(s.ElemToken);
-            if (ehost == null) { Refuse(ref _noHost, "an indexed stream with no element shadow"); return; }
-            idx = new ReadOnlySpan<ushort>(ehost, checked((int)(offset + size)))[(int)offset..];
-        }
-        ref Draw d = ref Draws[DrawN];
-        if (!Stage(ref d, vhost, stride, fmt, _primTable[prim], idx, (int)size, (int)offset)) return;
-        int flags = Snapshot(ref d);
-        if ((fmt & GuiStream.FmtColor) != 0) flags |= FlagVColor;
-        Seal(flags);
     }
 
     /// <summary>Copy one run into staging and point <paramref name="d"/> at it. Indexed: the referenced vertex span is
@@ -391,8 +266,8 @@ internal static unsafe class GuiCapture
         return flags | FlagSkin;
     }
 
-    /// <summary>Close the layer <see cref="BeginDbLayer"/> opened. The LAST layer, not the one opened: a
-    /// custom-shader draw flushes mid-scene and reopens, as it does for the engine's own traversal.</summary>
+    /// <summary>Close the layer <see cref="BeginDbLayer"/> opened -- the LAST layer, which is the one it opened:
+    /// a scene is one layer end to end, content program or not, so nothing splits it.</summary>
     internal static void EndDbLayer()
     {
         if (LayerN == 0) return;
@@ -446,41 +321,6 @@ internal static unsafe class GuiCapture
     internal const int TextVertexStride = 20;
     private static long _textRuns;
 
-    /// <summary>Everything the engine's program would have been fed, read off <c>GLRender</c>'s caches into the
-    /// draw and its record: stage 0's texture, the blend/depth/cull caps, the global colour, (lit) the material
-    /// and the transforms. VIEW and PROJECTION come from <see cref="AlloyCamera.ActiveView"/>; MODEL and TEXTURE
-    /// are read off <c>m_aurMtxStack</c>, the funnel carrying a VDO and item index and no part. Returns the flags.</summary>
-    private static int Snapshot(ref Draw d)
-    {
-        uint caps = *_caps;
-        d.Blend = (caps & (1u << CapBlend)) != 0;
-        d.DepthTest = (caps & (1u << CapDepthTest)) != 0;
-        d.Cull = (caps & (1u << CapCull)) != 0;
-        d.DepthWrite = *_depthMask != 0;
-        d.Src = Issue.BlendGl(*_src);
-        d.Dst = Issue.BlendGl(*_dst);
-        // Alloy's own copy where the upload funnel adopted the engine's texture (a NUI image's included).
-        d.Tex = (*_texStages & 1) != 0 && _bound[0] == TargetTex2D ? OwnedTextures.Adopted(_bound[1]) : 0;
-
-        var st = new aurMatrixStack((IntPtr)_stacks);
-        ref readonly AlloyView av = ref AlloyCamera.ActiveView;
-        bool own = AlloyCamera.Owned && av.Valid;
-        Matrix4x4 mv = st[ModeModel].Top * (own ? av.View : st[ModeView].Top);
-        Matrix4x4 mvp = mv * (own ? av.Proj : st[ModeProj].Top);
-        ref Matrix4x4 tm = ref st[ModeTexture].Top;
-        ref GuiRec rec = ref Records[DrawN];
-        rec.Mvp = mvp;
-        rec.Mv = mv;
-        rec.TexRot = new Vector4(tm.M11, tm.M21, tm.M12, tm.M22);
-        rec.Colour = *_color;
-        bool lit = (caps & (1u << CapLighting)) != 0;
-        var m = new GlMaterial((IntPtr)_material);
-        rec.Ambient = lit ? m.Ambient : Vector4.Zero;
-        rec.Diffuse = lit ? m.Diffuse : Vector4.Zero;
-        rec.Emissive = lit ? m.Emissive : Vector4.Zero;
-        return (d.Tex != 0 ? FlagTex : 0) | (lit ? FlagLit : 0) | ((caps & (1u << CapAlphaTest)) != 0 ? FlagAlphaTest : 0);
-    }
-
     private static void Seal(int flags)
     {
         Records[DrawN].Flags = flags;
@@ -493,13 +333,6 @@ internal static unsafe class GuiCapture
         if (DrawN < MaxDraws) return true;
         Overflow("draws");
         return false;
-    }
-
-    private static void Refuse(ref long counter, string what)
-    {
-        counter++;
-        if (counter == 1 && _said++ < 16)
-            _log?.Always($"GuiCapture: {what} is NOT DRAWN in a GUI scene (first sighting; totals on /alloy)");
     }
 
     private static void Overflow(string what)
@@ -536,9 +369,7 @@ internal static unsafe class GuiCapture
             + $"{Db.TextSlots.CornersMissed} corner box(es) unresolved, "
             + $"{Db.DbAnim.TextOffsetsApplied} position offset(s) applied / {Db.TextSlots.OffsetRefused} refused "
             + "(no AttachTranslate behaviour, as vanilla refuses them)") +
-           (_noSlot + _noHost + _badFormat + _arrays + _overflow == 0 ? "" :
-            $"; NOT DRAWN: {_noSlot} no-vao, {_noHost} no-host, {_badFormat} format, {_arrays} non-indexed, {_overflow} over-cap") +
-           (_toEngine == 0 ? "" : $"; {_toEngine} custom-shader draws by the engine's own program");
+           (_overflow == 0 ? "" : $"; NOT DRAWN: {_overflow} over-cap");
 
     /// <summary>Off-device: the lit-scene test is the engine's case-insensitive compare, whole-string.</summary>
     internal static void SelfCheck(ExtenderLog log)

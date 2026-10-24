@@ -114,12 +114,10 @@ internal static unsafe class RspShim
 
     /// <summary>The swallow, layer 20 of the <c>RenderVertexData</c> chain. Returning here skips every lower
     /// subscriber AND the original, while <see cref="DrawFunnelService"/> at 50 still runs its bone
-    /// observation after this returns -- which is how the bone capture survives a swallowed draw. Inside a GUI
-    /// scene the call is recorded instead (<see cref="GuiCapture.Vdo"/>).</summary>
+    /// observation after this returns -- which is how the bone capture survives a swallowed draw.</summary>
     [UnmanagedCallersOnly]
     private static void OnVdoDraw(IntPtr vdo, uint item, uint prim, uint size, uint offset)
     {
-        if (GuiCapture.Open && GuiCapture.Vdo(vdo, item, prim, size, offset)) return;
         if (EngineOwnsDraw)
         {
             GlRenderVertexDataFn next = *_vdoSlot;
@@ -144,7 +142,6 @@ internal static unsafe class RspShim
     [UnmanagedCallersOnly]
     private static void OnStreamDraw(IntPtr vsdo, uint prim, uint size, uint offset)
     {
-        if (GuiCapture.Open && (vsdo == IntPtr.Zero || GuiCapture.Stream(vsdo, prim, size, offset))) return;
         if (EngineOwnsDraw && _origStream != null) { _origStream(vsdo, prim, size, offset); return; }
         _swallowed++;
     }

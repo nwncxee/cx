@@ -24,7 +24,7 @@ internal static class RenderThread
     /// <summary>Precondition: <c>GuiCapture</c>'s one static bank of buffers is not written by two threads in
     /// the same frame. <b>UNMET</b>, and the one thing the fence cannot fix -- <c>NuiFlush</c> fills the bank
     /// on the GAME thread inside <c>CGuiMan::UpdateAndRender</c> while <c>GuiCapture.Lead</c> and
-    /// <c>GuiPass.FlushNow</c> rotate and RESET it on the render thread. The fix is to ping-pong the NUI bank.</summary>
+    /// <c>GuiPass.Flush</c> rotate and RESET it on the render thread. The fix is to ping-pong the NUI bank.</summary>
     internal static bool GuiBuffersOwned;
 
     /// <summary>Precondition: <c>TextObjects</c>/<c>TextQuads</c> document state is published to the frame
@@ -60,7 +60,7 @@ internal static class RenderThread
         if (!GuiBuffersOwned)
             s += "GuiCapture's one static bank is written by both threads in the same frame -- NuiFlush "
                + "captures nuklear at nk_sdl_render on the GAME thread while DbGui/TextQuads.Issue append the "
-               + "panel layers and GuiCapture.Lead + GuiPass.FlushNow rotate and RESET the bank on the render "
+               + "panel layers and GuiCapture.Lead + GuiPass.Flush rotate and RESET the bank on the render "
                + "thread. The fix is a NUI bank ping-ponged off the snapshot's frame; ";
         if (!TextDocsPublished)
             s += "TextObjects/TextQuads document state is rebuilt on the game thread while the draw walks it "
