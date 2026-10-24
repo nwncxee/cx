@@ -10,16 +10,15 @@ using CX.Ui;
 namespace CX.Alloy;
 
 /// <summary>The NDC quad and texture window one movie frame is drawn as: the letterbox fit, as a value.
-/// Pure arithmetic over the decoded frame size, the texture size and the viewport, so it is checkable
-/// off-device (<see cref="MovieService.SelfCheck"/>).</summary>
+/// Pure arithmetic over the decoded frame size and the viewport, so it is checkable off-device
+/// (<see cref="MovieService.SelfCheck"/>).</summary>
 internal readonly unsafe struct MoviePlate
 {
     /// <summary>Half-extent of the quad in normalised device coordinates. The larger of the two is always
     /// exactly 1 -- the movie touches the viewport on its long axis and gets bars on the other.</summary>
     internal readonly float Sx, Sy;
-    /// <summary>The texture window: the decoded frame is the top-left <c>frame/tex</c> corner of the texture,
-    /// inset half a texel so a LINEAR fetch never reaches past it. Alloy's texture is the frame exactly, so
-    /// the window is the whole of it; the term is kept because the engine's own texture is pow2-padded.</summary>
+    /// <summary>The texture window: Alloy's texture is the decoded frame exactly, so the window is the whole
+    /// of it, inset half a texel so a LINEAR fetch never reaches past the edge.</summary>
     internal readonly float U0, U1, V0, V1;
 
     private MoviePlate(float sx, float sy, float u0, float u1, float v0, float v1)
@@ -29,13 +28,13 @@ internal readonly unsafe struct MoviePlate
     /// whose terms are the engine's own window size and not the GL viewport: <c>SetOrthoTransform(-right,
     /// right, -top, top)</c> around a fixed [-1,1] quad is the same picture as a [-1/right, 1/right]
     /// clip-space quad, and the GUI scale it multiplies into both terms cancels, so it is not a term here.</summary>
-    internal static MoviePlate Fit(int frameW, int frameH, int texW, int texH, int screenW, int screenH)
+    internal static MoviePlate Fit(int frameW, int frameH, int screenW, int screenH)
     {
         float a = (float)frameW / screenW, b = (float)frameH / screenH;
         float m = a > b ? a : b;
         return new MoviePlate(a / m, b / m,
-                              0.5f / texW, (frameW - 0.5f) / texW,
-                              0.5f / texH, (frameH - 0.5f) / texH);
+                              0.5f / frameW, (frameW - 0.5f) / frameW,
+                              0.5f / frameH, (frameH - 0.5f) / frameH);
     }
 
     /// <summary>The four triangle-strip vertices (x, y, u, v), screen-top at V0: the decoder uploads the
@@ -197,10 +196,8 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.Clear(Gl.COLOR_BUFFER_BIT);
         Gl.ClearColor(clear[0], clear[1], clear[2], clear[3]);
 
-        // Alloy's texture IS the decoded frame -- no power-of-two pad to keep out of, unlike the engine's --
-        // so the texture window is the whole of it and the engine's texW/texH are the hand-back's numbers alone.
         Vector4* verts = stackalloc Vector4[4];
-        MoviePlate.Fit(frameW, frameH, frameW, frameH, w, h).Write(new Span<Vector4>(verts, 4));
+        MoviePlate.Fit(frameW, frameH, w, h).Write(new Span<Vector4>(verts, 4));
 
         Gl.UseProgram(_prog);
         Gl.Uniform1i(_uTex, 0);
@@ -209,11 +206,11 @@ public sealed unsafe partial class MovieService : IExtenderService
         Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(4 * sizeof(Vector4)), verts, Gl.DYNAMIC_DRAW);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
-        // The filter and the clamp live on the texture itself (MovieFrame sets them), which is only legal
-        // because the texture is OURS. A sampler object bound to unit 0 would override them, so it is
-        // cleared: the engine binds none, and nothing else of CX's runs in this context.
+        // A sampler object on unit 0 would override the texture's own filter and clamp; the engine binds none.
         if (Gl.BindSampler != null) Gl.BindSampler(0, 0);
         Gl.DrawArrays(Gl.TRIANGLE_STRIP, 0, 4);
+        // Unit 0 is left EMPTY: RenderFrame opens every movie frame with SetTextureParameteri(0, MAG|MIN, NEAREST) onto whatever is bound there.
+        Gl.BindTexture(Gl.TEXTURE_2D, 0);
 
         // Read before the hand-back, which issues engine GL of its own: a draw that errored drew nothing and
         // the screen is then the clear alone, which is the one way this can fail with nothing to show for it.

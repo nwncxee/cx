@@ -67,7 +67,7 @@ internal static unsafe class MovieFrame
 {
     /// <summary>Everything one session's movie frames own: the staging buffer (kept at one frame's rows for
     /// the session -- no notice of a movie ending reaches here), Alloy's texture, and the refusal latches.
-    /// Never replaced: a new object would leak <c>Rows</c> and forget a stand-down, so the one edge there is
+    /// Never replaced: a new object would leak <c>Rows</c> and forget a refusal, so the one edge there is
     /// (<see cref="ContextLost"/>) drops the texture name alone.</summary>
     private sealed class MovieFrameState
     {
@@ -78,7 +78,7 @@ internal static unsafe class MovieFrame
         internal MovieRows Staged;
         internal uint Tex;
         internal int TexW, TexH;
-        internal bool Stood, Said, SaidNoContext;
+        internal bool Refused, SaidLive, SaidNoContext;
     }
 
     private static MovieFrameState _s = new();
@@ -110,13 +110,13 @@ internal static unsafe class MovieFrame
     {
         MovieFrameState s = _s;
         s.Staged = default;
-        if (s.Stood || rows == null || !Renderer.Movie.V) return;
+        if (s.Refused || rows == null || !Renderer.Movie.V) return;
         if (level != 0 || x != 0 || y != 0)
-        { Stand($"the upload is level {level} at ({x},{y}) and not a whole frame"); return; }
+        { Refuse($"the upload is level {level} at ({x},{y}) and not a whole frame"); return; }
         MovieRows r = MovieRows.Of(selector, extFormat, width, height, align);
         if (!r.Ok)
         {
-            Stand($"selector {selector} / external format {extFormat} at {width}x{height}, unpack alignment "
+            Refuse($"selector {selector} / external format {extFormat} at {width}x{height}, unpack alignment "
                 + $"{align}, is not a frame shape this port reads");
             return;
         }
@@ -127,7 +127,7 @@ internal static unsafe class MovieFrame
             try { next = (byte*)NativeMemory.Realloc(s.Rows, bytes); }
             catch (OutOfMemoryException) { next = null; }
             if (next == null)
-            { Stand($"{bytes} bytes of staging for one {width}x{height} frame could not be allocated"); return; }
+            { Refuse($"{bytes} bytes of staging for one {width}x{height} frame could not be allocated"); return; }
             s.Rows = next;
             s.Cap = bytes;
         }
@@ -141,45 +141,45 @@ internal static unsafe class MovieFrame
     internal static uint Upload(int frameW, int frameH)
     {
         MovieFrameState s = _s;
-        if (s.Stood || s.Log == null) return 0;
-        if (s.Orig == null) return Stand("GLRender::DirectCreateSubTexture is not hooked");
+        if (s.Refused || s.Log == null) return 0;
+        if (s.Orig == null) return Refuse("GLRender::DirectCreateSubTexture is not hooked");
         MovieRows r = s.Staged;
         if (!r.Ok) return 0;
         if (r.Width != frameW || r.Height != frameH)
-            return Stand($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}");
-        if (!Gl.Init(s.Log)) return Stand("the GL entry points did not resolve");
+            return Refuse($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}");
+        if (!Gl.Init(s.Log)) return Refuse("the GL entry points did not resolve");
         if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
             || Gl.TextureParameteri == null || Gl.PixelStorei == null || Gl.DeleteTextures == null)
-            return Stand("a direct-state-access texture entry point did not resolve");
+            return Refuse("a direct-state-access texture entry point did not resolve");
+        // The bracket this opens must be the OUTERMOST one: a nested Leave only drains errors and leaves the
+        // 4.6 context current, and the caller's draw after it is engine-context GL.
+        if (GlContextService.Inside)
+            return Refuse("a 4.6 bracket was already open at the movie draw, so Leave would not hand the engine its context back");
         if (!GlContextService.Enter()) return NoContext();
 
         uint err;
         try
         {
-            // Clear the 4.6 queue first, or an error some other pass left there would stand this one down.
+            // Clear the 4.6 queue first, or an error some other pass left there would refuse this upload.
             Gl.DrainErrors();
-            if (!Ensure(s, frameW, frameH)) return Stand("the movie texture did not build");
-            if (r.Align != UnpackDefault) Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, r.Align);
+            if (!Ensure(s, frameW, frameH)) return Refuse("the movie texture did not build");
+            OwnedTextures.Unpack u = OwnedTextures.Unpack.Take(0, 0, 0, r.Align);
             Gl.TextureSubImage2D(s.Tex, 0, 0, 0, r.Width, r.Height, r.Format, r.Type, s.Rows);
-            if (r.Align != UnpackDefault) Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, UnpackDefault);
+            u.Give();
             err = Gl.GetError != null ? Gl.GetError() : 0;
         }
         finally { GlContextService.Leave(); }
-        if (err != 0) return Stand($"the upload raised GL error 0x{err:x4}");
+        if (err != 0) return Refuse($"the upload raised GL error 0x{err:x4}");
 
-        if (!s.Said)
+        if (!s.SaidLive)
         {
-            s.Said = true;
+            s.SaidLive = true;
             s.Log.Info($"MovieFrame: LIVE -- the movie frame comes from the decode, {r.Width}x{r.Height} rows at "
                      + $"pitch {r.Pitch} (format 0x{r.Format:x4}, type 0x{r.Type:x4}), staged and uploaded into an "
                      + "Alloy texture in Alloy's context; the engine's own movie texture is no longer sampled");
         }
         return s.Tex;
     }
-
-    /// <summary>GL's default unpack alignment, and the one the engine restores after an upload that changed
-    /// it: a call that asks for 4 needs no <c>glPixelStorei</c> at all.</summary>
-    private const int UnpackDefault = 4;
 
     /// <summary>Alloy's movie texture at the decoded frame's exact size -- no power-of-two pad, which is why
     /// the plate's texture window is the whole texture. Immutable storage, so a size change recreates.</summary>
@@ -203,11 +203,11 @@ internal static unsafe class MovieFrame
     /// <summary>Our own mechanism failing is loud and hands the movie to the engine's own quad -- never a
     /// quiet fallback. Once, and for the session: a refusal re-failing twenty-four times a second behind one
     /// stale log line is not a diagnosis.</summary>
-    private static uint Stand(string why)
+    private static uint Refuse(string why)
     {
         MovieFrameState s = _s;
-        if (s.Stood) return 0;
-        s.Stood = true;
+        if (s.Refused) return 0;
+        s.Refused = true;
         s.Staged = default;
         s.Log?.Always($"MovieFrame: the decoded frame does not reach an Alloy texture -- {why}. The engine's own "
                     + "movie quad is drawing the movie (set alloy.movie 0 to make that the deliberate choice).");

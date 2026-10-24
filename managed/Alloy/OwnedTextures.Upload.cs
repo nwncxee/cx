@@ -167,13 +167,14 @@ internal static unsafe partial class OwnedTextures
         return dst;
     }
 
-    /// <summary>The engine context's unpack state, set for one upload and put back after it: no unpack buffer
-    /// (it would turn the pointer into an offset), byte-aligned rows, and the cell's rectangle in the sheet.</summary>
-    private struct Unpack
+    /// <summary>A context's unpack state, set for one upload and put back as it was: no unpack buffer (it
+    /// would turn the pointer into an offset), rows at <paramref name="align"/>, and the cell's rectangle in
+    /// the sheet. The engine's context here; Alloy's own in <see cref="MovieFrame"/>.</summary>
+    internal struct Unpack
     {
         private int _buf, _align, _row, _skipPx, _skipRows;
 
-        internal static Unpack Take(int rowLength, int skipPixels, int skipRows)
+        internal static Unpack Take(int rowLength, int skipPixels, int skipRows, int align = 1)
         {
             Unpack u = default;
             Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &u._buf);
@@ -182,7 +183,7 @@ internal static unsafe partial class OwnedTextures
             Gl.GetIntegerv(Gl.UNPACK_SKIP_PIXELS, &u._skipPx);
             Gl.GetIntegerv(Gl.UNPACK_SKIP_ROWS, &u._skipRows);
             if (u._buf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-            Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
+            Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, align);
             Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, rowLength);
             Gl.PixelStorei(Gl.UNPACK_SKIP_PIXELS, skipPixels);
             Gl.PixelStorei(Gl.UNPACK_SKIP_ROWS, skipRows);

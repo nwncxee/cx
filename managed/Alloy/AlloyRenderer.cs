@@ -496,7 +496,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         GuiPass.ContextLost();
         _nullSunShadow = 0; _nullCubeShadow = 0;
         BlendProfile.ContextLost();
-        MovieFrame.ContextLost();   // CX-324: the movie texture is Alloy's, so it went with the context too
+        MovieFrame.ContextLost();
         PassContextLost();
     }
 

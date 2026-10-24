@@ -38,7 +38,7 @@ public sealed unsafe partial class MovieService
             foreach (float scale in new[] { 1f, 1.5f, 2.5f })
             {
                 EngineOrtho(c.w, c.h, c.sw, c.sh, scale, out float right, out float top);
-                MoviePlate p = MoviePlate.Fit(c.w, c.h, c.w, c.h, c.sw, c.sh);
+                MoviePlate p = MoviePlate.Fit(c.w, c.h, c.sw, c.sh);
                 check.Expect(MathF.Abs(1f / right - p.Sx) < Eps && MathF.Abs(1f / top - p.Sy) < Eps,
                              $"the {c.w}x{c.h} plate in {c.sw}x{c.sh} matches the engine's ortho at GUI scale {scale} "
                            + $"(engine {1f / right:F4}x{1f / top:F4}, ours {p.Sx:F4}x{p.Sy:F4})");
@@ -47,7 +47,7 @@ public sealed unsafe partial class MovieService
         // 2. The invariants the shape has to have whatever the numbers are.
         foreach (var c in cases)
         {
-            MoviePlate p = MoviePlate.Fit(c.w, c.h, c.w, c.h, c.sw, c.sh);
+            MoviePlate p = MoviePlate.Fit(c.w, c.h, c.sw, c.sh);
             check.Expect(p.Sx > 0f && p.Sx <= 1f && p.Sy > 0f && p.Sy <= 1f, $"the {c.w}x{c.h} plate stays inside the screen");
             check.Expect(MathF.Abs(MathF.Max(p.Sx, p.Sy) - 1f) < Eps, $"the {c.w}x{c.h} plate touches the screen on its long axis");
             float drawn = p.Sx * c.sw / (p.Sy * c.sh);
@@ -56,23 +56,18 @@ public sealed unsafe partial class MovieService
         }
 
         // 3. Which way round the bars go: 4:3 in 16:9 is pillarboxed (narrower), 16:9 in 5:4 letterboxed.
-        MoviePlate pillar = MoviePlate.Fit(640, 480, 640, 480, 1920, 1080);
+        MoviePlate pillar = MoviePlate.Fit(640, 480, 1920, 1080);
         check.Expect(pillar.Sx < 1f && MathF.Abs(pillar.Sy - 1f) < Eps, "a 4:3 movie on a 16:9 screen gets bars at the SIDES");
-        MoviePlate letter = MoviePlate.Fit(854, 480, 854, 480, 1280, 1024);
+        MoviePlate letter = MoviePlate.Fit(854, 480, 1280, 1024);
         check.Expect(letter.Sy < 1f && MathF.Abs(letter.Sx - 1f) < Eps, "a 16:9 movie on a 5:4 screen gets bars top and bottom");
 
-        // 4. The texture window: the decoded frame is the top-left corner of a padded texture, inset half a
-        //    texel so the LINEAR fetch this port uses never reaches the pad (the engine's NEAREST could).
-        MoviePlate pad = MoviePlate.Fit(854, 480, 1024, 512, 1920, 1080);
-        check.Expect(MathF.Abs(pad.U0 - 0.5f / 1024f) < 1e-6f && MathF.Abs(pad.V0 - 0.5f / 512f) < 1e-6f,
+        // 4. The texture window, half a texel in at each edge so the LINEAR fetch this port uses never
+        //    reaches past the frame (the engine's NEAREST could).
+        MoviePlate pad = MoviePlate.Fit(854, 480, 1920, 1080);
+        check.Expect(MathF.Abs(pad.U0 - 0.5f / 854f) < 1e-6f && MathF.Abs(pad.V0 - 0.5f / 480f) < 1e-6f,
                      "the texture window starts half a texel in");
-        check.Expect(pad.U1 < 854f / 1024f && pad.U1 > 853f / 1024f && pad.V1 < 480f / 512f && pad.V1 > 479f / 512f,
-                     "...and stops half a texel short of the decoded frame's edge, inside the pow2 pad");
-        // ...and the window the LIVE path asks for, where Alloy's texture is the frame and there is no pad.
-        MoviePlate whole = MoviePlate.Fit(854, 480, 854, 480, 1920, 1080);
-        check.Expect(MathF.Abs(whole.U0 - 0.5f / 854f) < 1e-6f && MathF.Abs(whole.U1 - 853.5f / 854f) < 1e-6f
-                     && MathF.Abs(whole.V0 - 0.5f / 480f) < 1e-6f && MathF.Abs(whole.V1 - 479.5f / 480f) < 1e-6f,
-                     "an unpadded texture is sampled from half a texel in to half a texel short of its far edge");
+        check.Expect(MathF.Abs(pad.U1 - 853.5f / 854f) < 1e-6f && MathF.Abs(pad.V1 - 479.5f / 480f) < 1e-6f,
+                     "...and stops half a texel short of the far edge");
 
         // 5. V0 is the TOP of the screen: the decoder uploads row 0 first and the engine's quad puts it there.
         Span<Vector4> v = stackalloc Vector4[4];
