@@ -45,12 +45,14 @@
     float kd = physical ? (1.0 - metal) * (1.0 - max(spec * (1.0 - metal), CX_DIELECTRIC_F0))
                         : 1.0 - mix(mix(spec, 1.0, CxFresnel(NoV) * cxFresnel), spec, sqrt(rough));
 
-    vec3 sun = uAreaDiffuse * (sunNdl * sunVis);
+    // the sun is a light like any other to the surface fade (inc_lighting.shd:486); its subsurface leak is not
+    float sunFade = CxSurfFade(uAreaDir);
+    vec3 sun = uAreaDiffuse * (sunNdl * sunVis * sunFade);
     // #143's wrap is a DIFFUSE fix -- it stands in for light bleeding across a low-poly terminator,
     // which is a subsurface/interreflection effect. A specular highlight has no such excuse: fed the
     // wrapped dot, a glossy face angled away from the sun picks up a lobe it cannot geometrically
     // see. The lobe takes the raw dot, the way the ambient hemisphere already does.
-    vec3 sunSpec = uAreaDiffuse * (sunRaw * sunVis);
+    vec3 sunSpec = uAreaDiffuse * (sunRaw * sunVis * sunFade);
     vec3 sunSss = uAreaDiffuse * (sunVis * max(dot(N, uAreaDir) + uSss.x, 0.0) * uSss.y);
     vec3 pointSpec;
     // #308 follow-up: 1 on a creature fragment (skinmesh, or the dangly marker in feat.w) -- the
@@ -99,7 +101,8 @@
     vec3 lm = vec3(0.0);
     if (baked)
     {
-        lm = CxLightmapLit(lmIrr, lmDir, N, normalize(vNrm));
+        // the static lights' fade along their dominant direction, as stock fades its vertex static light (:479)
+        lm = CxLightmapLit(lmIrr, lmDir, N, normalize(vNrm)) * CxSurfFade(lmDir);
 #ifdef CX_DEFERRED
         // full strength: the hot-light debt is the compute pass's to take, through lmShare. The denominator
         // is the luminance of the term BEFORE uDayDim -- which is the value the forward line below reads.

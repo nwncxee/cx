@@ -35,6 +35,7 @@ vec2 cxPixel;
 
 layout(binding = 3) uniform usampler2D uGb0;
 layout(binding = 4) uniform usampler2D uGb1;
+layout(binding = 5) uniform usampler2D uGb2;
 /// The frame depth AFTER the cutout pass -- the surface this pass reconstructs and the record's ownership
 /// test (cx_gbuf's CX_GB_RECORD), exactly as the deferred pass reads it.
 layout(binding = 7) uniform sampler2D uGbDepth;
@@ -188,6 +189,8 @@ void main()
     if (!mine || sN == 0u) return;
     if (!CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth, g)
         || (g.flags & CX_GB_BAKED) == 0u || !(g.lmLum > 0.0)) return;
+    CxGbufFade(texelFetch(uGb2, p, 0).r, g);
+    cxSurfFade = g.surfFade;
     vec4 h = uInvVp * vec4(2.0 * (cxPixel - vec2(uRect.xy)) / vec2(uRect.zw) - 1.0, ndcZ, 1.0);
     if (!(abs(h.w) > 1e-6)) return;
     vec3 worldPos = h.xyz / h.w;

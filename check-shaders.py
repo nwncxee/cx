@@ -27,6 +27,8 @@ Needs glslangValidator (Arch: `glslang`); the material pass also needs spirv-opt
 (Arch: `spirv-tools`), and skips itself with a notice where they are absent.
 """
 import atexit
+import math
+import types
 import os
 import re
 import shutil
@@ -352,6 +354,18 @@ def material_cases():
     want = "CxLinear(vec3(0.3, 0.6, 0.9))"
     cases.append(("declared CustomSpecularColor wins",
                   " + ".join(f"float({got}.{ch} == {want}.{ch})" for ch in "rgb"), 3.0))
+    # inc_material.shd:312 and inc_lighting.shd:341: the per-light surface fade, fSurfaceFadeModifier from the height
+    # occlusion and the factor clamp(dot(vSurfaceNormal, L) * fSurfaceFadeModifier, 0, 1); w 0 is a surface without one
+    for ao in (1.0, 0.5, 0.0):
+        cases.append((f"surface fade from height occlusion {ao}", f"CxSurfFadeOf({ao})", 1.0 / (1.0 + (0.1 - 1.0) * ao * ao)))
+    for label, f, L, want in [
+        ("surface fade: open surface, light near the horizon", (0.0, 0.0, 1.0, 10.0), (0.9950372, 0.0, 0.0995037), 0.995037),
+        ("surface fade: open surface, light overhead", (0.0, 0.0, 1.0, 10.0), (0.0, 0.0, 1.0), 1.0),
+        ("surface fade: crevice, light at 60 degrees", (0.0, 0.0, 1.0, 1.0), (0.8660254, 0.0, 0.5), 0.5),
+        ("surface fade: light behind the geometry", (0.0, 0.0, 1.0, 10.0), (0.6, 0.0, -0.8), 0.0),
+        ("surface fade: none declared", (0.0, 0.0, 0.0, 0.0), (0.6, 0.0, -0.8), 1.0),
+    ]:
+        cases.append((label, f"CxSurfFadeAt(vec4{f}, vec3{L})", want))
     return cases + physical_cases()
 
 
@@ -419,7 +433,8 @@ def physical_cases():
 # CxPhysicalPbr returns its colour through an out parameter; these give a fold an lvalue and a way to read it.
 FOLD_HELPERS = ("vec3 cxScratch;\n"
                 "vec3 CxPhysicalColour(vec4 m0, float o, vec3 orm, vec3 l, vec3 b)\n"
-                "{ vec3 c; CxPhysicalPbr(m0, o, orm, l, b, c); return c; }\n")
+                "{ vec3 c; CxPhysicalPbr(m0, o, orm, l, b, c); return c; }\n"
+                "float CxSurfFadeAt(vec4 f, vec3 L) { cxSurfFade = f; return CxSurfFade(L); }\n")
 
 
 def fold(prelude, expr, tmp):
@@ -795,6 +810,51 @@ def lm_fixture():
     return scr, want
 
 
+def driver_program(fn, src, what):
+    """Compile and link one compute stage on the driver: its program name, or None once `what` is reported FAILED."""
+    import ctypes as C
+    u, i, vp = C.c_uint, C.c_int, C.c_void_p
+    gl = lambda name, *a: fn(name, None, *a)
+    s = fn("glCreateShader", u, u)(0x91B9)   # not-an-offset: GL_COMPUTE_SHADER
+    buf = C.c_char_p(src.encode())
+    gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp)(s, 1, C.byref(buf), None)
+    gl("glCompileShader", u)(s)
+    prog = fn("glCreateProgram", u)()
+    gl("glAttachShader", u, u)(prog, s)
+    gl("glLinkProgram", u)(prog)
+    ok = i(0)
+    gl("glGetProgramiv", u, u, C.POINTER(i))(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
+    if not ok.value:
+        print(f"{what}: FAILED (did not link on the driver)")
+        return None
+    return prog
+
+
+def driver_dispatch(fn, prog, groups, inputs, out_binding, out_len, what):
+    """Run `prog` over `groups` work groups with each (floats, binding) of `inputs` in its own SSBO and an
+    `out_len`-float output SSBO at `out_binding`: the output read back, or None once `what` is reported FAILED."""
+    import ctypes as C
+    u, i, vp = C.c_uint, C.c_int, C.c_void_p
+    gl = lambda name, *a: fn(name, None, *a)
+    data, base = gl("glNamedBufferData", u, C.c_ssize_t, vp, u), gl("glBindBufferBase", u, u, u)
+    bufs = [*inputs, ([0.0] * out_len, out_binding)]
+    ids = (u * len(bufs))()
+    gl("glCreateBuffers", i, C.POINTER(u))(len(bufs), ids)
+    for k, (arr, bind) in enumerate(bufs):
+        a = (C.c_float * len(arr))(*arr)
+        data(ids[k], C.sizeof(a), a, 0x88E4)   # not-an-offset: GL_STATIC_DRAW
+        base(0x90D2, bind, ids[k])   # not-an-offset: GL_SHADER_STORAGE_BUFFER
+    gl("glUseProgram", u)(prog)
+    gl("glDispatchCompute", u, u, u)(groups, 1, 1)
+    gl("glMemoryBarrier", u)(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
+    out = (C.c_float * out_len)()
+    gl("glGetNamedBufferSubData", u, C.c_ssize_t, C.c_ssize_t, vp)(ids[-1], 0, C.sizeof(out), out)
+    if fn("glGetError", u)():
+        print(f"{what}: FAILED (a GL error in the fixture)")
+        return None
+    return list(out)
+
+
 def check_lmenc(g):
     """The lightmap encoder against the driver's own BC6H/BC7 decoder: the fixture is encoded, the blocks are
     copied into real BPTC textures and read back decoded. The bounds are the format's, measured: one or two
@@ -822,9 +882,6 @@ def check_lmenc(g):
     dispatch = gl("glDispatchCompute", u, u, u)
     barrier = gl("glMemoryBarrier", u)
     finish = gl("glFinish")
-    shader, src_, comp, prog_, attach, link = (fn("glCreateShader", u, u), gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp),
-                                               gl("glCompileShader", u), fn("glCreateProgram", u), gl("glAttachShader", u, u), gl("glLinkProgram", u))
-    status = gl("glGetProgramiv", u, u, C.POINTER(i))
     TEX2D, TEX2DA, RGBA, FLOAT, UBYTE, UINT = 0x0DE1, 0x8C1A, 0x1908, 0x1406, 0x1401, 0x1405   # not-an-offset: GL enums
     RGBA16F, RGBA32UI, RGBA8, RGBA_INT, BC6, BC7 = 0x881A, 0x8D70, 0x8058, 0x8D99, 0x8E8F, 0x8E8C   # not-an-offset: GL enums
     N, B = LM_N, LM_N // 4
@@ -844,12 +901,8 @@ def check_lmenc(g):
         clear(t, 0, RGBA_INT, UINT, (C.c_uint * 4)()); blk.append(t)
     page_c = tex(TEX2DA); storage3(page_c, 1, RGBA8, N, N, 2)
     clear(page_c, 0, RGBA, UBYTE, (C.c_ubyte * 4)(85, 85, 85, 85))
-    s = shader(0x91B9); buf = C.c_char_p(g["cx_bakeenc_c"].encode())   # not-an-offset: GL_COMPUTE_SHADER
-    src_(s, 1, C.byref(buf), None); comp(s)
-    prog = prog_(); attach(prog, s); link(prog)
-    ok = i(0); status(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
-    if not ok.value:
-        print("lightmap encoder: FAILED (did not link on the driver)")
+    prog = driver_program(fn, g["cx_bakeenc_c"], "lightmap encoder")
+    if prog is None:
         return 1
     use(prog)
     uni4(prog, loc(prog, b"uRegion"), 1, 1, B - 2, B - 2)
@@ -902,11 +955,16 @@ def check_lmenc(g):
 
 GBUF_SLOT = int(re.search(r"const int MaxOwned = (\d+)", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/AlloyRenderer.cs")).read()).group(1)) - 1
 GBUF_CASES = [
-    # N, flags, viewDepth, rough, spec, fresnel, coat, coatRough, specC, slot, specT, diffT, lmLum, lmMover, lmShare
-    ((0.0, 0.0, 1.0), 1, 0.5, 0.02, 0.04, 0.0, 0.0, 0.0, (0.04, 0.04, 0.04), 0, 1.0, (0.5, 0.25, 0.125), 0.0, (0, 0, 0, 0), (0, 0, 0)),
-    ((0.0, 0.0, -1.0), 63, 37.25, 1.0, 1.0, 1.0, 1.0, 1.0, (1.0, 1.0, 1.0), GBUF_SLOT, 10.0, (40.0, 0.001, 3.0), 12.5, (1, 0.5, 0.25, 0), (55.0, 54.0, 0.0)),
-    ((0.267, -0.535, 0.802), 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, (0.9, 0.3, 0.004), 4097, 0.37, (1e-4, 2e-4, 3e-4), 0.0213, (0.2, 0.4, 0.6, 0.8), (0.7, 0.8, 0.9)),
-    ((-0.6, 0.64, -0.48), 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, (0.0, 0.5, 0.25), 99999, 0.0, (0.0, 0.0, 0.0), 300.0, (0, 1, 0, 1), (1000.0, 1.0, 0.01)),
+    # N, flags, viewDepth, rough, spec, fresnel, coat, coatRough, specC, slot, specT, diffT, lmLum, lmMover, lmShare,
+    # surfFade (the geometric normal, the fade; 0 = none)
+    ((0.0, 0.0, 1.0), 1, 0.5, 0.02, 0.04, 0.0, 0.0, 0.0, (0.04, 0.04, 0.04), 0, 1.0, (0.5, 0.25, 0.125), 0.0, (0, 0, 0, 0), (0, 0, 0),
+     (0.0, 0.0, 1.0, 0.0)),
+    ((0.0, 0.0, -1.0), 63, 37.25, 1.0, 1.0, 1.0, 1.0, 1.0, (1.0, 1.0, 1.0), GBUF_SLOT, 10.0, (40.0, 0.001, 3.0), 12.5, (1, 0.5, 0.25, 0), (55.0, 54.0, 0.0),
+     (0.6, 0.0, 0.8, 10.0)),
+    ((0.267, -0.535, 0.802), 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, (0.9, 0.3, 0.004), 4097, 0.37, (1e-4, 2e-4, 3e-4), 0.0213, (0.2, 0.4, 0.6, 0.8), (0.7, 0.8, 0.9),
+     (0.0, 0.0, -1.0, 1.0)),
+    ((-0.6, 0.64, -0.48), 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, (0.0, 0.5, 0.25), 99999, 0.0, (0.0, 0.0, 0.0), 300.0, (0, 1, 0, 1), (1000.0, 1.0, 0.01),
+     (-0.48, 0.6, 0.64, 4.37)),
 ]
 
 
@@ -919,16 +977,7 @@ def check_gbuf(g):
     if fn is None:
         print("gbuf lanes: skipped (no driver context)")
         return 0
-    import ctypes as C
-    u, i, vp = C.c_uint, C.c_int, C.c_void_p
-    gl = lambda name, *a: fn(name, None, *a)
-    bufs, data, base = gl("glCreateBuffers", i, C.POINTER(u)), gl("glNamedBufferData", u, C.c_ssize_t, vp, u), gl("glBindBufferBase", u, u, u)
-    getbuf = gl("glGetNamedBufferSubData", u, C.c_ssize_t, C.c_ssize_t, vp)
-    shader, src_, comp, prog_, attach, link = (fn("glCreateShader", u, u), gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp),
-                                               gl("glCompileShader", u), fn("glCreateProgram", u), gl("glAttachShader", u, u), gl("glLinkProgram", u))
-    status = gl("glGetProgramiv", u, u, C.POINTER(i))
-    errors = fn("glGetError", u)
-    IN, OUT = 28, 36
+    IN, OUT = 32, 40
     src = ("#version 460 core\nlayout(local_size_x = 1) in;\n" + g["cx_chartbuf"] + g["cx_gbuf"] + f"""
 layout(std430, binding = 2) readonly buffer In {{ float uIn[]; }};
 layout(std430, binding = 3) writeonly buffer Out {{ float uOut[]; }};
@@ -941,8 +990,10 @@ void main()
     g.specC = vec3(uIn[b + 10], uIn[b + 11], uIn[b + 12]); g.slot = int(uIn[b + 13]); g.specT = uIn[b + 14];
     g.diffT = vec3(uIn[b + 15], uIn[b + 16], uIn[b + 17]); g.lmLum = uIn[b + 18];
     g.lmMover = vec4(uIn[b + 19], uIn[b + 20], uIn[b + 21], uIn[b + 22]); g.lmShare = vec3(uIn[b + 23], uIn[b + 24], uIn[b + 25]);
+    g.surfFade = vec4(normalize(vec3(uIn[b + 26], uIn[b + 27], uIn[b + 28])), uIn[b + 29]);
     uvec4 w0, w1;
-    CxGbufPack(g, w0, w1);
+    uint w2;
+    CxGbufPack(g, w0, w1, w2);
     CxGbuf r;
     bool ok = CxGbufRead(w0, w1, g.viewDepth, r);
     CxGbuf x;
@@ -958,39 +1009,26 @@ void main()
     uOut[o + 22] = r.lmMover.w; uOut[o + 23] = r.lmShare.r; uOut[o + 24] = r.lmShare.g; uOut[o + 25] = r.lmShare.b;
     uOut[o + 29] = r.lmTexel; uOut[o + 30] = r.lmPick.x; uOut[o + 31] = r.lmPick.y; uOut[o + 32] = r.lmPick.z;
     uOut[o + 33] = r.lmPick.w;
+    CxGbufFade(w2, r);
+    uOut[o + 34] = r.surfFade.x; uOut[o + 35] = r.surfFade.y; uOut[o + 36] = r.surfFade.z; uOut[o + 37] = r.surfFade.w;
 }}
 """)
-    s = shader(0x91B9); buf = C.c_char_p(src.encode())   # not-an-offset: GL_COMPUTE_SHADER
-    src_(s, 1, C.byref(buf), None); comp(s)
-    prog = prog_(); attach(prog, s); link(prog)
-    ok = i(0); status(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
-    if not ok.value:
-        print("gbuf lanes: FAILED (did not link on the driver)")
+    prog = driver_program(fn, src, "gbuf lanes")
+    if prog is None:
         return 1
     n = len(GBUF_CASES)
     flat = []
     for c in GBUF_CASES:
-        row = [*c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], *c[8], c[9], c[10], *c[11], c[12], *c[13], *c[14]]
+        row = [*c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], *c[8], c[9], c[10], *c[11], c[12], *c[13], *c[14], *c[15]]
         flat += row + [0.0] * (IN - len(row))
     # every slot row an unbaked record but the last's: lmTexel 1 / (8 * 0.25) = 0.5, picks 3 / none / 7 / 254
     chart = [0.0] * (8 * (GBUF_SLOT + 1))
     for k in range(GBUF_SLOT + 1):
         chart[8 * k:8 * k + 8] = [-1.0, 0.0, 0.0, 0.0, -1.0, -1.0, -1.0, -1.0]
     chart[8 * GBUF_SLOT:8 * GBUF_SLOT + 8] = [2.0, 16.0, 32.0, 0.25, 3.0, -1.0, 7.0, 254.0]
-    ids = (u * 3)(); bufs(3, ids)
-    for k, (arr, bind) in enumerate(((chart, 13), (flat, 2), ([0.0] * (OUT * n), 3))):
-        a = (C.c_float * len(arr))(*arr)
-        data(ids[k], C.sizeof(a), a, 0x88E4)   # not-an-offset: GL_STATIC_DRAW
-        base(0x90D2, bind, ids[k])   # not-an-offset: GL_SHADER_STORAGE_BUFFER
-    gl("glUseProgram", u)(prog)
-    gl("glDispatchCompute", u, u, u)(n, 1, 1)
-    gl("glMemoryBarrier", u)(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
-    out = (C.c_float * (OUT * n))()
-    getbuf(ids[2], 0, C.sizeof(out), out)
-    if errors():
-        print("gbuf lanes: FAILED (a GL error in the fixture)")
+    out = driver_dispatch(fn, prog, n, [(chart, 13), (flat, 2)], 3, OUT * n, "gbuf lanes")
+    if out is None:
         return 1
-    import math
     bad = []
     worst_n = 0.0
     def near(what, got, want, tol):
@@ -1025,12 +1063,112 @@ void main()
         for off, want, nm in ((15, c[11], "diffT"), (23, c[14], "lmShare")):
             for j in range(3):
                 near(f"{tag}: {nm}", r[off + j], want[j], max(want) / 400 + 1e-9)
+        # G2: the fade in 8 bits over [0, 10], 0 exact; the geometric normal at G0's own precision where there is one
+        near(f"{tag}: surfFade", r[37], c[15][3], 0.5 / 255 * 10.0 + 1e-6)
+        if c[15][3] > 0.0:
+            gl_ = math.sqrt(sum(v * v for v in c[15][:3]))
+            ga = math.degrees(math.acos(max(-1.0, min(1.0, sum(a * b / gl_ for a, b in zip(r[34:37], c[15][:3]))))))
+            worst_n = max(worst_n, ga)
+            if ga > 0.06:
+                bad.append(f"{tag}: surfFade normal off by {ga:.4f} deg")
         if c[9] == GBUF_SLOT:
             if r[29:34] != [0.5, 3.0, -1.0, 7.0, 254.0]:
                 bad.append(f"{tag}: slot {GBUF_SLOT}'s chart read back {r[29:34]}")
         elif r[29] != 0.0 or r[30:34] != [-1.0] * 4:
             bad.append(f"{tag}: an unbaked slot's chart read back {r[29:34]}")
     print(f"gbuf lanes: {'FAILED' if bad else 'ok'} ({len(GBUF_CASES)} cases, normal within {worst_n:.4f} deg)")
+    for b in bad:
+        print(f"  {b}")
+    return int(bool(bad))
+
+
+def stock_displace(uv, tsb, V, ng, depth, screen_h, h):
+    """inc_displacement.shd DisplaceTextureCoords at SHADER_QUALITY_MODE 2, DisplacementOffset 0 and multiplier 0
+    (so the 1.0 default), m_texture the identity -- the oracle, written from the stock shader, not from ours."""
+    dot = lambda a, b: sum(x * y for x, y in zip(a, b))
+    vts = [-c for c in V]                                   # vViewToSurface_n
+    m = 1.0 + 0.5 * dot(vts, ng)
+    m *= m / (depth * 0.125)                                # -vPosView.z
+    it = 32.0 * min(max(m * screen_h / 1080.0, 0.0), 1.0)
+    if not it > 0.5:
+        return uv
+    vd = [dot(col, V) for col in tsb]                       # transpose(mTSB) * -vViewToSurface_n
+    it = math.floor(it + 0.5)
+    seg = 1.0 / it
+    k = 0.05 * ((1.0 - vd[2]) / (0.5 * vd[2] + 0.5) ** 2 + 1.0)
+    disp = (vd[0] * k, vd[1] * k)
+    cur = (1.0 - h(uv)) * seg
+    for _ in range(int(it), 1, -1):
+        delta = 1.0 - h((uv[0] - disp[0] * cur, uv[1] - disp[1] * cur)) - cur
+        if delta < 0.0:
+            delta /= cur
+            seg *= 0.5
+        else:
+            delta /= 1.0 - cur
+        cur += delta * seg
+    return (uv[0] - disp[0] * cur, uv[1] - disp[1] * cur)
+
+
+DISPLACE_H = "0.5 + 0.4 * sin(12.566371 * p.x) * cos(18.849556 * p.y)"
+DISPLACE_CASES = [
+    # uv, tangent frame (T, B, N), V (surface to eye), view depth, screen height
+    ((0.3, 0.7), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.7071068, 0.0, 0.7071068), 3.0, 1080),
+    ((0.15, 0.4), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.0, -0.9848078, 0.1736482), 10.0, 1080),
+    ((0.6, 0.2), ((0, 1, 0), (-1, 0, 0), (0, 0, 1)), (0.5, 0.3, 0.8124038), 6.0, 2160),
+    ((0.9, 0.55), ((1, 0, 0), (0, 0, 1), (0, -1, 0)), (0.3, -0.8, 0.5196152), 40.0, 1080),
+    ((0.42, 0.13), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.5, 0.0, 0.8660254), 200.0, 1080),
+]
+
+
+def check_displace(g):
+    """CxDisplace against stock_displace on DISPLACE_CASES, the height an analytic field both sides evaluate
+    (DISPLACE_H): angle, distance and screen height set the step count, the frame orders the march's axes."""
+    fn = nv_context()
+    if fn is None:
+        print("parallax: skipped (no driver context)")
+        return 0
+    m = re.search(r"^vec2 CxDisplace\(.*?^}\n", g["cx_ownlit_synth"], re.S | re.M)
+    steps = re.search(r"^const float CX_DISPLACE_STEPS = [^;]+;", g["cx_ownlit_head"], re.M)
+    if m is None or steps is None:
+        print("parallax: FAILED (CxDisplace or CX_DISPLACE_STEPS not found)")
+        return 1
+    IN = 16
+    src = ("#version 460 core\nlayout(local_size_x = 1) in;\n" + steps.group(0) + "\n"
+           f"float cxH(vec2 p) {{ return {DISPLACE_H}; }}\n"
+           "#define textureGrad(t, p, a, b) vec4(cxH(p))\n"
+           + m.group(0) + f"""
+layout(std430, binding = 2) readonly buffer In {{ float uIn[]; }};
+layout(std430, binding = 3) writeonly buffer Out {{ float uOut[]; }};
+void main()
+{{
+    int b = int(gl_WorkGroupID.x) * {IN}, o = int(gl_WorkGroupID.x) * 2;
+    mat3 tsb = mat3(uIn[b + 2], uIn[b + 3], uIn[b + 4], uIn[b + 5], uIn[b + 6], uIn[b + 7], uIn[b + 8], uIn[b + 9], uIn[b + 10]);
+    vec2 r = CxDisplace(vec2(uIn[b], uIn[b + 1]), tsb, vec3(uIn[b + 11], uIn[b + 12], uIn[b + 13]), uIn[b + 14],
+                        uIn[b + 15], vec2(0.0), vec2(0.0));
+    uOut[o] = r.x; uOut[o + 1] = r.y;
+}}
+""")
+    prog = driver_program(fn, src, "parallax")
+    if prog is None:
+        return 1
+    n = len(DISPLACE_CASES)
+    flat = []
+    for uv, tsb, V, depth, sh in DISPLACE_CASES:
+        row = [*uv, *tsb[0], *tsb[1], *tsb[2], *V, depth, sh]
+        flat += row + [0.0] * (IN - len(row))
+    out = driver_dispatch(fn, prog, n, [(flat, 2)], 3, 2 * n, "parallax")
+    if out is None:
+        return 1
+    h = lambda p: eval(DISPLACE_H, {"sin": math.sin, "cos": math.cos, "p": types.SimpleNamespace(x=p[0], y=p[1])})
+    bad, worst, moved = [], 0.0, 0
+    for k, (uv, tsb, V, depth, sh) in enumerate(DISPLACE_CASES):
+        want = stock_displace(uv, tsb, V, tsb[2], depth, sh, h)
+        err = max(abs(out[2 * k] - want[0]), abs(out[2 * k + 1] - want[1]))
+        worst = max(worst, err)
+        moved += want != uv
+        if err > 1e-4:
+            bad.append(f"case {k}: ({out[2 * k]:.6f}, {out[2 * k + 1]:.6f}), stock says ({want[0]:.6f}, {want[1]:.6f})")
+    print(f"parallax: {'FAILED' if bad else 'ok'} ({n} cases, {moved} displaced, within {worst:.2e} of inc_displacement.shd)")
     for b in bad:
         print(f"  {b}")
     return int(bool(bad))
@@ -1687,6 +1825,7 @@ def main():
     bad |= check_driver_link(progs, g)
     bad |= check_lmenc(g)
     bad |= check_gbuf(g)
+    bad |= check_displace(g)
     bad |= check_early_z(progs)
     bad |= check_material(g)
     bad |= audit(g)

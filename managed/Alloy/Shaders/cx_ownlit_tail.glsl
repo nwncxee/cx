@@ -156,6 +156,7 @@
         // L: the baked term's whole contribution -- its diffuse rode `point` into Wd, its lobe rode
         // `pointSpec` into P. The twin left `lm` undebited, so this is exactly what the debt scales back.
         g.lmShare = g.diffT * lm + g.specT * gLmSpec;
+        g.surfFade = cxSurfFade;
         CxGbufWrite(g);
     }
 #endif

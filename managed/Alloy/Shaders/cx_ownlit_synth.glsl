@@ -8,6 +8,30 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
         || uSolid != 0 && s < CX_SOLID_ALPHA;
 }
 
+/// inc_displacement.shd's DisplaceTextureCoords (DisplacementOffset 0, multiplier 1): the height map's relief
+/// marched along the view ray in tangent space, the step count by view angle, distance and screen height.
+/// Explicit gradients: the count differs per fragment, so implicit ones would be undefined in the loop.
+vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2)
+{
+    float m = 1.0 - 0.5 * dot(V, tsb[2]);
+    m *= m / (max(depth, 1e-4) * 0.125);
+    float it = floor(CX_DISPLACE_STEPS * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
+    if (it < 1.0) return uv;
+    vec3 v = transpose(tsb) * V;
+    float zh = 0.5 * v.z + 0.5;
+    vec2 disp = v.xy * 0.05 * ((1.0 - v.z) / max(zh * zh, 1e-4) + 1.0);
+    float seg = 1.0 / it;
+    float cur = (1.0 - textureGrad(uHeightTex, uv, du1, du2).r) * seg;
+    for (int i = int(it); i > 1; i--)
+    {
+        float dd = 1.0 - textureGrad(uHeightTex, uv - disp * cur, du1, du2).r - cur;
+        if (dd < 0.0) { dd /= cur; seg *= 0.5; }
+        else dd /= max(1.0 - cur, 1e-4);
+        cur += dd * seg;
+    }
+    return uv - disp * cur;
+}
+
 #ifdef CX_DECAL_WRITE
 // the layer's writer draws no views, so every lit input only a view reads folds out of it
 #define uViz 0
@@ -86,15 +110,8 @@ void main()
     vec2 uv = vUV;
     vec3 V = normalize(uEyePos - vWorld);
     float occl = 1.0;
-    // #146: outside the normal/height branch below -- a material may declare an AO map and nothing
-    // else, and the engine's screen-space SSAO (an FB effect, downstream of this pass entirely) does
-    // not see the contact detail a baked map carries.
-    // ADR 0026: ...and on a CxOrm material the same texel is glTF's packed occlusion/roughness/metallic,
-    // R still the occlusion, so the one fetch serves both readings.
-    vec3 orm = (slots & CX_SLOT_AO) != 0 ? texture(uAoTex, uv, uLodBias).rgb : vec3(1.0);
-    occl *= orm.r;
-    float ormOn = d.ext2.y > 0.5 && (slots & CX_SLOT_AO) != 0 ? 1.0 : 0.0;
-    // #379: ...and the screen-space term beside it, a lighting input like the map (ADR 0021)
+    float surfAo = 1.0;   // the height map's own occlusion alone (stock's fAmbientOcclusionModifier)
+    // #379: the screen-space term, a lighting input like the map (ADR 0021)
     // ...and only where the visibility at this pixel was computed from THIS surface. The buffer comes
     // from the depth prepass, so a fragment the prepass never drew -- a blended door, anything the
     // sweep skipped, anything drawn over a hole -- would otherwise wear the occlusion of whatever
@@ -138,15 +155,17 @@ void main()
         }
         if ((slots & CX_SLOT_HEIGHT) != 0)
         {
+            // inc_standard.shd:213-217: the displaced UV is what every later tap of the material reads;
+            // the pass's own viewport height (uTile is the viewport over the grid), not a sampler only SSAO binds
+            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1, du2);
             // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
             // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
             // - log2 of the view depth), clamped to 0.9 and squared.
-            // ponytail: no parallax displacement of the UVs -- that is the same map read again, per
-            // fragment, in a loop. #122 owns what else the height map is worth.
             float far = max(0.0, CX_OCCL_VICINITY - log2(max(vDepth, 1e-4)));
             float o = texture(uHeightTex, uv, far + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
             float a = 1.0 - clamp(o, 0.0, 0.9);
-            occl *= a * a;
+            surfAo = a * a;
+            occl *= surfAo;
         }
         if ((slots & CX_SLOT_NORMAL) != 0)
         {
@@ -165,6 +184,18 @@ void main()
             N = normalize(mat3(T * inv, B * inv, N) * nm);
         }
     }
+    // inc_material.shd:312: the surface fade every light takes (cx_lightfrag), on any normal- or height-mapped
+    // surface -- SetupOcclusionBase's 1 / 0.1 where no height map says otherwise
+    if ((slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
+        cxSurfFade = vec4(normalize(vNrm), CxSurfFadeOf(surfAo));
+    // #146: outside the normal/height branch, at its displaced UV -- a material may declare an AO map and nothing
+    // else, and the engine's screen-space SSAO (an FB effect, downstream of this pass entirely) does
+    // not see the contact detail a baked map carries.
+    // ADR 0026: ...and on a CxOrm material the same texel is glTF's packed occlusion/roughness/metallic,
+    // R still the occlusion, so the one fetch serves both readings.
+    vec3 orm = (slots & CX_SLOT_AO) != 0 ? texture(uAoTex, uv, uLodBias).rgb : vec3(1.0);
+    occl *= orm.r;
+    float ormOn = d.ext2.y > 0.5 && (slots & CX_SLOT_AO) != 0 ? 1.0 : 0.0;
     // 7 = the SHADING NORMAL as colour, AFTER the normal map. Flat wedges with straight edges
     //     here are the mesh's own normals: no diffuse term, #143's wrap included, can hide a
     //     DISCONTINUITY in N, and nothing else tells that apart from a terminator crossing a facet.

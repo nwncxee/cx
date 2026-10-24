@@ -28,6 +28,14 @@ vec2 cxHotViz = vec2(0.0);
 // pixel's brightest; every other caller of this library -- the bake, the shadow record, cx_material's film,
 // the pair debt -- leaves it 1, which is the pre-LOD body term for term.
 float cxLod = 1.0;
+// inc_lighting.shd:336-341's per-light surface fade: xyz the GEOMETRIC normal, w fSurfaceFadeModifier (w 0 = off --
+// the bake, the fog, every surface with no normal or height map). CxPointLight spends it on the wrapped dot.
+vec4 cxSurfFade = vec4(0.0);
+float CxSurfFade(vec3 L) { return cxSurfFade.w > 0.0 ? clamp(dot(cxSurfFade.xyz, L) * cxSurfFade.w, 0.0, 1.0) : 1.0; }
+// inc_material.shd:283's SURFACE_FADE_POINT_MIN: the fade's floor, where the height says the surface is fully open.
+const float CX_SURF_FADE_MIN = 0.1;
+// inc_material.shd:312: the fade from the height map's own occlusion (1 = open, SetupOcclusionBase's 1 / 0.1)
+float CxSurfFadeOf(float heightAo) { return 1.0 / mix(1.0, CX_SURF_FADE_MIN, heightAo * heightAo); }
 // the share of a baked light's highlight the mirror lobes carry, the pages' one lobe the rest: 0 at the ceiling,
 // 1 at half of it. A cut there swapped the baked shadow for one cube tap wherever rain crossed the ceiling.
 float CxGlossW(float rough) { return uLightOcc.x > 0.0 ? 1.0 - smoothstep(0.5 * uLightOcc.y, uLightOcc.y, rough) : 0.0; }
@@ -342,7 +350,7 @@ float CxLightImportance(uint li, vec3 worldPos)
 // below and the bake stage (LightmapBake.BakeFs), so a baked texel and a live one are ONE code path.
 // False = out of reach (nothing to add). `c` is the linearised colour, `att` the engine's curve (#140,
 // #142) already floored at 0, `f2` the range-normalised distance squared (the cap's ranking term),
-// `ndlRaw` the geometric dot and `ndl` the wrapped one (#139 sphere wrap, #143 floor).
+// `ndlRaw` the geometric dot and `ndl` the wrapped one (#139 sphere wrap, #143 floor) times the surface fade.
 bool CxPointLight(vec4 pr, vec3 c0, vec3 worldPos, vec3 N,
                   out vec3 c, out vec3 L, out float att, out float f2, out float ndlRaw, out float ndl)
 {
@@ -409,7 +417,8 @@ bool CxPointLight(vec4 pr, vec3 c0, vec3 worldPos, vec3 N,
     float s = uWrap <= 0.0 ? 0.0 : clamp(uWrap * uFalloff.y * invD, 0.0, 1.0);
     // max, not sum: at arm's length the sphere term is already at full strength and adding the
     // #143 floor on top of it would wrap past the point of looking lit at all.
-    ndl = CxWrap(ndlRaw, max(s, uWrapN));
+    // the fade rides the lit term alone: stock's subsurface leak (ndlRaw) and the ambient class never take it
+    ndl = CxWrap(ndlRaw, max(s, uWrapN)) * CxSurfFade(L);
     return true;
 }
 // The unshadowed diffuse of one light: the wrapped Lambert term plus the stock subsurface leak.
