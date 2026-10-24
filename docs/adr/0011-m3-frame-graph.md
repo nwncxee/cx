@@ -266,6 +266,12 @@ what leaves buckets 5/6's gates intact for anything still staged to the engine.
 
 ### Two GL brackets per frame, as a budget
 
+> **Amended by ADR 0032 (2026-10-24):** a world view now opens ONE bracket covering both. The two
+> reasons below lapsed with ADR 0028 — `RenderSinglePass` does not run, so there is no engine-chosen
+> re-entry to couple to, and a GUI 3D panel never reaches the owned pass chain. The budget stands as
+> a ceiling: a pass that needs a bracket of its own is still a pass in the wrong slot.
+
+
 One shadow bracket at the pass slot, one colour bracket at the anchor. That is 4 `glXMakeCurrent`
 calls per frame, which is what the frame costs today (`DrawOwned`, `CasterPass.EndFrame`).
 

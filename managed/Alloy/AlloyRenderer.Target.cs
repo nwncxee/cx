@@ -34,6 +34,11 @@ public sealed unsafe partial class AlloyRenderer
     /// meaning anything (context loss / disarm), where a stale answer would be a draw into a dead target.</summary>
     internal static void ForgetTarget() => _tgtValid = false;
 
+    /// <summary>Read the frame's target block in the ENGINE's context, before any 4.6 bracket opens -- every
+    /// value in it is per-CONTEXT GL state, so inside the bracket GL answers for Alloy's. The colour pass
+    /// reads the latch this leaves, which is what lets a whole view share one bracket.</summary>
+    internal static void LatchFrameTarget() => ThisFrameTarget();
+
     /// <summary>This frame's target block. One int compare in the common case; a re-read on a generation
     /// change, and a re-read-and-compare once every <see cref="LogEvery"/> frames -- the self-check that
     /// keeps the latch honest, since every value in it is ultimately GL's to change.</summary>

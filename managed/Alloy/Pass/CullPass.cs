@@ -35,7 +35,8 @@ internal static unsafe class CullPass
     internal static bool SourceStrideSafe()
         => CullCs.Contains($"uint b = i * {SrcUints}u;")
         && SortCs.Contains($"uint b = i * {SrcUints}u;")
-        && SortCs.Contains($"uSrc[j * {SrcUints}u + 4u] != batch");
+        && SortCs.Contains($"uSrc[j * {SrcUints}u + 4u] != batch")
+        && SortCs.Contains("uCmd[c + 1u] = dropped ? 0u : 1u;");
 
     /// <summary>Compute workgroup size; the dispatch is 1D over draws.</summary>
     private const int GroupSize = 64;
@@ -182,7 +183,7 @@ internal static unsafe class CullPass
     /// Alloy at all (see <see cref="AlloyGate"/>).</summary>
     internal static bool Capable()
         => Gl.DispatchCompute != null && Gl.MemoryBarrier != null && Gl.BindBufferBase != null
-           && Gl.MultiDrawElementsIndirectCount != null
+           && Gl.MultiDrawElementsIndirectCount != null && Gl.MultiDrawElementsIndirect != null
            && Gl.GenFramebuffers != null && Gl.FramebufferTexture2D != null;
 
     /// <summary>Build the two programs. Neither is an overridable stage (ADR 0012's table is the set a
@@ -458,15 +459,36 @@ internal static unsafe class CullPass
         Gl.BindBuffer(Gl.PARAMETER_BUFFER, 0);
     }
 
-    /// <summary>One batch, submitted from the compacted list. <paramref name="start"/> is the batch's
-    /// output base -- the same <c>_gStart[g]</c> the record lookup uses as <c>uDrawBase</c>, because the
-    /// cull compacts each batch into its OWN source region rather than into one global run -- and
-    /// <paramref name="batch"/> indexes the parameter buffer, whose word is that batch's survivor count.</summary>
+    /// <summary>One batch. <paramref name="start"/> is its output base -- the same <c>_gStart[g]</c> the
+    /// record lookup uses as <c>uDrawBase</c>, because each batch compacts into its OWN source region -- and
+    /// <paramref name="batch"/> indexes the parameter buffer, whose word is that batch's survivor count. A
+    /// <see cref="Sorted"/> batch has no such word and goes to <see cref="DrawRun"/> instead.</summary>
     internal static void Draw(uint mode, int batch, int start, int max)
-        => Gl.MultiDrawElementsIndirectCount(mode, AlloyRenderer.GlUnsignedShort,
-                                             (void*)((long)start * CmdUints * sizeof(uint)),
-                                             (IntPtr)((long)batch * sizeof(uint)),
-                                             max, CmdUints * sizeof(uint));
+    {
+        if (Sorted(batch)) { DrawRun(mode, start, max); return; }
+        Gl.MultiDrawElementsIndirectCount(mode, AlloyRenderer.GlUnsignedShort,
+                                          (void*)((long)start * CmdUints * sizeof(uint)),
+                                          (IntPtr)((long)batch * sizeof(uint)),
+                                          max, CmdUints * sizeof(uint));
+        Submit.Call(max);
+    }
+
+    /// <summary>Is batch <paramref name="batch"/> in the SORTED region -- the blending and water ranges,
+    /// whose commands the second dispatch places DENSE (one per staged draw, a dropped one zero-instance)
+    /// rather than compacting to a count the CPU cannot see?</summary>
+    internal static bool Sorted(int batch) => batch >= _compactBelow;
+
+    /// <summary>A contiguous RUN of sorted batches, <paramref name="len"/> staged draws from
+    /// <paramref name="start"/>, as ONE call: the region is dense, so the staged length IS the draw count and
+    /// no parameter buffer is needed. The caller is what guarantees the run shares its GL state; a dropped
+    /// draw inside it is a zero-instance command the front end skips.</summary>
+    internal static void DrawRun(uint mode, int start, int len)
+    {
+        Gl.MultiDrawElementsIndirect(mode, AlloyRenderer.GlUnsignedShort,
+                                     (void*)((long)start * CmdUints * sizeof(uint)), len,
+                                     CmdUints * sizeof(uint));
+        Submit.Call(len);
+    }
 
     /// <summary>Build the hi-Z pyramid from the depth the prepass just wrote. Level 0 is a 2x2 MAX reduction
     /// of the depth buffer, and MAX is what makes the test conservative: an object is culled only when its
@@ -720,6 +742,14 @@ internal static unsafe class CullPass
           "...which is to say every neighbour in it is no nearer than the one before");
         check.Expect(Agrees(src, drawN, groups, gStart, cmd, outSlot, cnt, log),
           "...and each of its commands is its own staged draw's range");
+        // CX-329: the region is DENSE past the survivors -- the dropped draw takes the slot behind them as a
+        // zero-instance command, which is what lets a run of batches submit as one indirect call. Hand
+        // counted: batch 2 stages draws 6..9, draw 9 is the one off the frustum, so slot 9 is its padding.
+        check.Expect(cmd[9].InstanceCount == 0u && cmd[9].Count == src[9].IndexCount
+                     && cmd[9].FirstIndex == src[9].FirstIndex && cmd[9].BaseVertex == src[9].BaseVertex,
+          "a dropped sorted draw pads its batch's region with a zero-instance command, not a hole");
+        check.Expect(cmd[6].InstanceCount == 1u && cmd[7].InstanceCount == 1u && cmd[8].InstanceCount == 1u,
+          "...behind the survivors, which keep the front of the region and draw one instance each");
         // A rank is order-independent by construction; this is what pins that it really is.
         Emulate(src, sph, drawN, groups, planes, vp, 0f, 0f, compactBelow, eye, key, cmd, outSlot, cnt,
                 scramble: true);
@@ -819,7 +849,7 @@ internal static unsafe class CullPass
             cmd[o] = new DrawCmdRec { Count = b.IndexCount, InstanceCount = 1u, FirstIndex = b.FirstIndex, BaseVertex = b.BaseVertex };
             outSlot[o] = slot;
         }
-        // ...and the second dispatch: the rank sort.
+        // ...and the second dispatch: the rank sort, which also pads.
         for (int q = 0; q < drawN; q++)
         {
             int i = scramble ? drawN - 1 - q : q;
@@ -827,19 +857,21 @@ internal static unsafe class CullPass
             uint batch = b.Batch;
             if (batch < (uint)compactBelow) continue;
             float k = key[i];
-            if (k < 0f) continue;
             uint bas = b.OutBase;
-            uint rank = 0;
+            bool dropped = k < 0f;
+            uint rank = 0, live = 0, deadBefore = 0;
             for (uint j = bas; j < (uint)drawN; j++)
             {
                 if (src[j].Batch != batch) break;
-                if (j == (uint)i) continue;
                 float kj = key[j];
-                if (kj < 0f) continue;
+                if (kj < 0f) { if (j < (uint)i) deadBefore++; continue; }
+                live++;
+                if (j == (uint)i) continue;
                 if (kj > k || (kj == k && j < (uint)i)) rank++;
             }
-            uint o = bas + rank;
-            cmd[o] = new DrawCmdRec { Count = b.IndexCount, InstanceCount = 1u, FirstIndex = b.FirstIndex, BaseVertex = b.BaseVertex };
+            uint o = dropped ? bas + live + deadBefore : bas + rank;
+            cmd[o] = new DrawCmdRec { Count = b.IndexCount, InstanceCount = dropped ? 0u : 1u,
+                                      FirstIndex = b.FirstIndex, BaseVertex = b.BaseVertex };
             outSlot[o] = (int)b.Slot;
         }
     }
@@ -892,9 +924,9 @@ internal static unsafe class CullPass
     private static string CullCs => ShaderSource.Get("cx_cull_c.glsl");
 
     /// <summary>The back-to-front sort, as a RANK rather than a shuffle: a survivor counts how many
-    /// survivors of its batch are FARTHER, and that count is its offset from the batch's output base. No key
-    /// quantisation, so coplanar surfaces cannot tie into the wrong order, and the tie-break is the STAGED
-    /// index. ponytail: O(n^2) compares per batch across n threads; a bitonic sort drops in if it ever shows.</summary>
+    /// survivors of its batch are FARTHER, that count is its offset from the batch's output base, and the
+    /// tie-break is the STAGED index. A dropped draw pads behind them, zero-instance, for <see cref="DrawRun"/>.
+    /// ponytail: O(n^2) compares per batch across n threads; a bitonic sort drops in if it ever shows.</summary>
     private static string SortCs => ShaderSource.Get("cx_cullsort_c.glsl");
 
     /// <summary>One level of the pyramid: the MAX of the source region the destination texel covers. A 3x3

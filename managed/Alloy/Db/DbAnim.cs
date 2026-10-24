@@ -166,6 +166,7 @@ public static unsafe partial class DbAnim
         _periodDt += dt; _periodCalls++;
         int si = scene.Index;
         DbList? members = SceneDb.SceneObjects[si];
+        RateBegin(si);
         // Scene::Animate @0x469810: BACKWARDS, re-reading the count every step, so a member that removes
         // itself -- or anything above it -- during its own animate is neither skipped nor visited twice.
         if (members != null)
@@ -174,6 +175,7 @@ public static unsafe partial class DbAnim
                 if (k >= members.Count) continue;
                 StepObject(members[k], dt, 0);
             }
+        RateEnd();
         DanglyDrain();
         LodChoose(si);
         ComposePending();
@@ -255,6 +257,16 @@ public static unsafe partial class DbAnim
         if (Idle(i)) { _idle++; return true; }
         _animAt[i] = _frame;
         _objects++;
+
+        float step = RateStep(i, dt);
+        if (step < 0f)
+        {
+            // The part walk still runs: the dangly solve costs what it SIMULATES, so a stride buys it nothing,
+            // and a cloak sampled every other frame stutters where a limb pose does not.
+            PartWalk(obj);
+            return true;
+        }
+        dt = step;
 
         Ramp(i, dt);
 
@@ -352,6 +364,9 @@ public static unsafe partial class DbAnim
         }
         _hasDangly[i] = dangly;
         _hasSkin[i] = skin;
+        // The new tree owes a stitch and a palette, and the step tail is the only thing that pays them: a
+        // reduced-rate object must not wear the old tree's skin for three more frames.
+        RateForget(i);
     }
 
     /// <summary>The three animate gates, in the engine's order: the scene's unless the object is
@@ -608,6 +623,7 @@ public static unsafe partial class DbAnim
                  + $" | {LodPeriod()}, {_litWrites} light track write(s)"
                  + (_litUncarried != 0 ? $" ({_litUncarried} with no column)" : "")
                  + $" | {DanglyPeriod(frames)}"
+                 + $" | {RatePeriod(frames)}"
                  + $" | {_gusts} moved-object gust(s)";
         if (_unbound != 0) s += $", {_unbound} UNBOUND animation node(s) -- no part of that name";
         if (_queueFull != 0) s += $", {_queueFull} queue overflow(s) -- oldest run dropped";

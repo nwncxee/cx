@@ -314,6 +314,7 @@ internal static unsafe class CasterGather
                                           (void*)((long)start * CmdBytes),
                                           (IntPtr)((long)batch * sizeof(uint)), max, CmdBytes);
         Batches++;
+        Submit.CallAt(Submit.Stage.Caster, max);
     }
 
     /// <summary>Hand the indirect bindings back, so nothing later in the frame -- the colour pass's own
@@ -481,6 +482,7 @@ internal static unsafe class CasterGather
                                           (void*)((long)start * viewN * CmdBytes),
                                           (IntPtr)((long)batch * sizeof(uint)), max * viewN, CmdBytes);
         Batches++;
+        Submit.CallAt(Submit.Stage.Caster, max * viewN);
     }
 
     /// <summary>The cone slope, as the shader spells it. Interpolated from <see cref="CasterPass.FaceConeSlope"/>

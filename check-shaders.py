@@ -620,6 +620,7 @@ def programs(g):
         "pass wrapper (stub)": (g["cx_pass_cs"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
+        "arturo ripple warp": (g["cx_arturo_c"],),
     }
 
 
