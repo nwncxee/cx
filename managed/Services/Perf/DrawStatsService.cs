@@ -93,8 +93,7 @@ public sealed unsafe class DrawStatsService : IExtenderService
                 : new VdoElemItem(v.ElemItems)[(int)item].Count;
             _idxSum += idx;
         }
-        int prog = 0;
-        if (Gl.GetIntegerv != null) Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prog);
+        int prog = GlProbe.CurrentProgram();
 
         ulong key = (ulong)vdo ^ ((ulong)(uint)prog << 40) ^ 1;   // ^1 so key 0 stays "empty"
         int slot = (int)(key % Groups);

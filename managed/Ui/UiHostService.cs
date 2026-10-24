@@ -190,21 +190,6 @@ public sealed unsafe class UiHostService : IExtenderService
     /// <summary>presents left to sample. Costs a pipeline stall each, so it is a knob that runs out.</summary>
     private static int _presentProbe;
 
-    private static uint PresentPixel()
-    {
-        if (Gl.ReadPixels == null) return 0;
-        int* vp = stackalloc int[4];
-        Gl.GetIntegerv(Gl.VIEWPORT, vp);
-        if (vp[2] <= 16 || vp[3] <= 16) return 0;
-        uint px = 0;
-        int prev; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &prev);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        Gl.ReadPixels(vp[0] + vp[2] / 2, vp[1] + vp[3] / 2, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &px);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, (uint)prev);
-        Gl.DrainErrors(4);
-        return px;
-    }
-
     /// <summary>The frame present: announce once, run the frame phases, then present. The window roll-call
     /// itself happens earlier, at <see cref="OnNkRender"/>, either side of NUI; it falls back to here, both
     /// layers over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
@@ -242,7 +227,7 @@ public sealed unsafe class UiHostService : IExtenderService
         if (_presentProbe > 0 && GameGate.InModule)
         {
             _presentProbe--;
-            _log?.Always($"[presentprobe] fb0 centre before swap: 0x{PresentPixel():x8}"
+            _log?.Always($"[presentprobe] fb0 centre before swap: 0x{GlProbe.ScreenCentre():x8}"
                        + $"  into={CX.Alloy.PostChain.LastInto} resolves={CX.Alloy.PostChain.Resolves}");
         }
         long tSwap = FrameZones.Now;
