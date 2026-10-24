@@ -30,10 +30,21 @@ internal static class CubeStrip
     internal static void Place(ReadOnlySpan<byte> face, int n, int px, int face_, Span<byte> strip)
         => Rotate(face, n, px, 4 - Turns[face_], strip.Slice(Slot[face_] * n * n * px, n * n * px));
 
-    /// <summary>Oracle: two golden fixtures written out by hand from what a quarter turn does to a labelled
-    /// grid and from the engine's own <see cref="Slot"/>/<see cref="Turns"/> tables -- a round trip through
-    /// <see cref="Place"/> and back through the cut cancels a wrong table entry, so it proves nothing on its
-    /// own and is only the last of the three steps here.</summary>
+    /// <summary>GL face <paramref name="face"/> of cell <paramref name="cell"/> as the engine's upload cuts it from a
+    /// <paramref name="nx"/> x <paramref name="ny"/> sheet of strips (<paramref name="w"/> wide, slots
+    /// <paramref name="slotH"/> tall): the cell's square out of slot <see cref="Slot"/>[face], turned <see cref="Turns"/>[face].</summary>
+    internal static void Cut(ReadOnlySpan<byte> img, int w, int slotH, int px, int nx, int ny, int cell, int face, Span<byte> dst)
+    {
+        int n = w / nx, x0 = cell % nx * n, y0 = Slot[face] * slotH + cell / nx * (slotH / ny);
+        Span<byte> sq = new byte[n * n * px];
+        for (int y = 0; y < n; y++)
+            img.Slice(((y0 + y) * w + x0) * px, n * px).CopyTo(sq.Slice(y * n * px));
+        Rotate(sq, n, px, Turns[face], dst);
+    }
+
+    /// <summary>Oracle: three hand-written goldens -- a quarter turn of a labelled grid, a strip placed by the engine's
+    /// <see cref="Slot"/>/<see cref="Turns"/> tables, and a two-cell sheet cut by <see cref="Cut"/>. The last step, a
+    /// round trip through <see cref="Place"/> and the cut, cancels a wrong table entry and proves nothing alone.</summary>
     internal static bool SelfCheck()
     {
         // One quarter turn is clockwise -- the left column becomes the top row -- two is a half turn, three
@@ -69,6 +80,21 @@ internal static class CubeStrip
         var strip2 = new byte[24];
         for (int i = 0; i < 6; i++) Place(labelled.AsSpan(i * 4, 4), 2, 1, i, strip2);
         if (!strip2.AsSpan().SequenceEqual(golden)) return false;
+
+        // A two-cell sheet (4 wide, each 2x2 face slot 2 rows tall, 12 rows) labelled by byte index: cell 1 is
+        // columns 2-3. Face 2 (slot 2, rows 4-5) is cut as is; face 0 (slot 1, rows 2-3: 10 11 / 14 15) turned clockwise.
+        var sheet = new byte[48];
+        for (int i = 0; i < 48; i++) sheet[i] = (byte)i;
+        var cell = new byte[4];
+        Cut(sheet, 4, 2, 1, 2, 1, 1, 2, cell);
+        if (!cell.AsSpan().SequenceEqual((ReadOnlySpan<byte>)[18, 19, 22, 23])) return false;
+        Cut(sheet, 4, 2, 1, 2, 1, 1, 0, cell);
+        if (!cell.AsSpan().SequenceEqual((ReadOnlySpan<byte>)[14, 10, 15, 11])) return false;
+        // One column of two cells (2 wide, slots 4 rows tall): cell 1 of face 2 is slot 2's lower half, rows 10-11.
+        var column = new byte[48];
+        for (int i = 0; i < 48; i++) column[i] = (byte)i;
+        Cut(column, 2, 4, 1, 1, 2, 1, 2, cell);
+        if (!cell.AsSpan().SequenceEqual((ReadOnlySpan<byte>)[20, 21, 22, 23])) return false;
 
         // ...and the round trip, which only adds that Place and the cut are each other's inverse at a size
         // and a texel width the golden does not cover.

@@ -131,13 +131,15 @@ internal static unsafe partial class OwnedTextures
     {
         var check = new Checker(log);
         Sampler s = EngineSampler(0, linear: true, mip: true);
-        check.Expect(s == new Sampler(0x2703, 0x2601, 0x2901, 0x2901, true), $"linear mipped repeat: {s}");      // not-an-offset: GL enums
+        check.Expect(s == new Sampler(0x2703, 0x2601, 0x2901, 0x2901, 0x2901, true), $"linear mipped repeat: {s}");      // not-an-offset: GL enums
         s = EngineSampler(3, linear: true, mip: false);
-        check.Expect(s == new Sampler(0x2600, 0x2601, 0x812F, 0x812F, false), $"linear unmipped clamped: {s}");  // not-an-offset: GL enums
+        check.Expect(s == new Sampler(0x2600, 0x2601, 0x812F, 0x812F, 0x2901, false), $"linear unmipped clamped: {s}");  // not-an-offset: GL enums
         s = EngineSampler(2, linear: false, mip: true);
-        check.Expect(s == new Sampler(0x2700, 0x2600, 0x2901, 0x812F, false), $"nearest mipped, T clamped: {s}"); // not-an-offset: GL enums
+        check.Expect(s == new Sampler(0x2700, 0x2600, 0x2901, 0x812F, 0x2901, false), $"nearest mipped, T clamped: {s}"); // not-an-offset: GL enums
         s = EngineSampler(1, linear: false, mip: false);
-        check.Expect(s == new Sampler(0x2600, 0x2600, 0x812F, 0x2901, false), $"nearest unmipped, S clamped: {s}"); // not-an-offset: GL enums
+        check.Expect(s == new Sampler(0x2600, 0x2600, 0x812F, 0x2901, 0x2901, false), $"nearest unmipped, S clamped: {s}"); // not-an-offset: GL enums
+        s = EngineSampler(CubeClamp, linear: true, mip: true);
+        check.Expect(s == new Sampler(0x2703, 0x2601, 0x812F, 0x812F, 0x812F, true), $"cube: {s}");             // not-an-offset: GL enums
         check.Expect(EngineLevels(256, 256) == 9 && EngineLevels(512, 64) == 10 && EngineLevels(1, 1) == 1 && EngineLevels(3, 5) == 3,
                      $"levels: {EngineLevels(256, 256)} {EngineLevels(512, 64)} {EngineLevels(1, 1)} {EngineLevels(3, 5)}");
         return check.Ok;
