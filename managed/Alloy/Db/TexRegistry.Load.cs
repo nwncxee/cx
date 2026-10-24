@@ -935,6 +935,9 @@ internal static unsafe partial class TexRegistry
     {
         lock (_lock)
         {
+            // Ahead of the clear: the ripples' own textures are forgotten here, so the retires below cannot
+            // queue a dead context's names into a graveyard this frame has already emptied.
+            ArturoContextLost();
             _graveyard.Clear();
             // Nothing to zero in the records either: the context that owned them is gone, and the renderer's
             // own context-loss path rebuilds its tables. The queue is DROPPED rather than drained, so a
