@@ -135,10 +135,17 @@ internal static unsafe partial class OwnedTextures
     internal static int Draw(int engineTid)
     {
         if (!_armed || engineTid <= 0) return engineTid;
-        if (_index.TryGetValue(engineTid, out ulong key) && _res.TryGetValue(key, out Entry e))
-            return (int)e.Owned;
+        if (_index.TryGetValue(engineTid, out ulong key) && _res.TryGetValue(key, out Entry e)) return (int)e.Owned;
         _borrowed.Add(engineTid);
         return engineTid;
+    }
+
+    /// <summary>As <see cref="Draw"/>, for a name that may be CX's own rather than the engine's (a GUI draw can sample a
+    /// model view's texture): Alloy's copy when the funnel adopted it, else the name as given, never counted borrowed.</summary>
+    internal static int Adopted(int engineTid)
+    {
+        if (!_armed || engineTid <= 0) return engineTid;
+        return _index.TryGetValue(engineTid, out ulong key) && _res.TryGetValue(key, out Entry e) ? (int)e.Owned : engineTid;
     }
 
     /// <summary>Delete what <see cref="Retire"/> and the re-upload path queued. Once per frame from inside the

@@ -4,7 +4,6 @@ using System.Globalization;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 using CX.Services.Radial;
 
 namespace CX.Services.Nui;
@@ -15,7 +14,7 @@ namespace CX.Services.Nui;
 /// server's, by policy keys under <c>model.&lt;key&gt;.</c> (<c>docs/ui-policy-contract.md</c>). Up to
 /// <see cref="NuiModelDoll.MaxViews"/> live at once, a doll each. A card or the held image shows one through <see cref="Show"/>.
 /// </summary>
-internal static unsafe class NuiModelView
+internal static unsafe partial class NuiModelView
 {
     private const string KeyRoot = "model.";
     private const int DefaultSize = 256, MaxSize = 1024, MaxKey = 48;
@@ -43,7 +42,8 @@ internal static unsafe class NuiModelView
         /// <summary>When the image was loaded (a later one has a larger number), and whether a later image has taken its texture.</summary>
         public int Serial;
         public bool Stale;
-        public uint OwnTex;
+        /// <summary>Volatile: written where the views draw, which with a render thread is not the game thread.</summary>
+        public volatile uint OwnTex;
         public long Seen;
         public IntPtr Nk, Ctrl;
         public int W = DefaultSize, H = DefaultSize;
@@ -62,6 +62,8 @@ internal static unsafe class NuiModelView
         public float TurnMin, TurnMax;
         public bool HasTurnRange, MuteVfx, WornMuted;
         public bool Built, WasRendered, BuildFailed;
+        /// <summary>Its texture is queued to be made, and it has been released (a queued make then does nothing).</summary>
+        public bool TexQueued, Gone;
         /// <summary>What <c>target</c> names, what the built doll was made from, and whether it plays the creature's idle (<see cref="PoseMode.Idle"/>).</summary>
         public Target Tgt, BuiltTgt;
         public bool BuiltIdle;
@@ -104,6 +106,9 @@ internal static unsafe class NuiModelView
         public int Serials;
         public ExtenderLog? Log;
         public readonly List<ViewData> Views = new();
+        /// <summary>Texture work for the context that draws the views, and how much of it is waiting.</summary>
+        public readonly List<TexJob> Jobs = new();
+        public volatile int JobN;
         public string PendingKey = "";
         public uint[]? PendingPixels;
         public int PendingW, PendingH;
@@ -330,28 +335,18 @@ internal static unsafe class NuiModelView
         if (v.Dragging) EndDrag(v);
         NuiImageSpot.Watch(v.Slot, 0);
         NuiModelDoll.Free(v.Slot);
-        if (v.OwnTex != 0) { uint t = v.OwnTex; Gl.DeleteTextures(1, &t); v.OwnTex = 0; }
+        if (v.OwnTex != 0) { Queue(s, new TexJob(TexOp.Delete, null, v.OwnTex, null, 0, 0)); v.OwnTex = 0; }
+        v.Gone = true;
         v.Built = false;
         s.Views.Remove(v);
     }
 
-    /// <summary>The texture CX makes for a card's or the held image's view: RGBA, its size, drawn into by the doll's layer.</summary>
+    /// <summary>Ask for the texture CX makes for a card's or the held image's view, once; true when it exists.</summary>
     private static bool MakeTexture(ViewState s, ViewData v)
     {
-        if (!Gl.Init(s.Log!) || Gl.TexImage2D == null) return false;
-        int prev;
-        uint t;
-        Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &prev);
-        Gl.GenTextures(1, &t);
-        Gl.BindTexture(Gl.TEXTURE_2D, t);
-        Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Gl.RGBA8, v.W, v.H, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        Gl.BindTexture(Gl.TEXTURE_2D, (uint)prev);
-        v.OwnTex = t;
-        return true;
+        if (v.OwnTex != 0) return true;
+        if (!v.TexQueued) { v.TexQueued = true; Queue(s, new TexJob(TexOp.Make, v, 0, null, v.W, v.H)); }
+        return v.OwnTex != 0;
     }
 
     private static void Serve(ViewState s, ViewData v)
@@ -360,7 +355,7 @@ internal static unsafe class NuiModelView
         if (v.Owned)
         {
             if (Lapsed(Environment.TickCount64, v.Seen)) { Release(s, v); return; }
-            if (v.OwnTex == 0 && !MakeTexture(s, v)) return;
+            if (!MakeTexture(s, v)) return;
             tex = v.OwnTex;
         }
         else
@@ -773,7 +768,7 @@ internal static unsafe class NuiModelView
         NuiItemIcons.ModelImage(name, w, h, sized, StandinRect.Parse(rect), key, out px, out pw, out ph);
     }
 
-    /// <summary>The stand-in's pixels into the view's texture, in the engine's context with its texture binding put back as it was.</summary>
+    /// <summary>The stand-in's pixels into the view's texture, in the context that draws the views.</summary>
     private static void UploadStandin(ViewState s, ViewData v)
     {
         if (v.StandinName.Length > 0)
@@ -783,21 +778,7 @@ internal static unsafe class NuiModelView
             v.Standin = fresh;
         }
         else v.Standin = new uint[v.W * v.H];
-        if (v.Standin is not { } px || v.Target == 0 || Gl.TexSubImage2D == null) return;
-        int prev, pbo, align, rowLen;
-        Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &prev);
-        Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &pbo);
-        Gl.GetIntegerv(Gl.UNPACK_ALIGNMENT, &align);
-        Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &rowLen);
-        Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-        Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 4);
-        Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, 0);
-        Gl.BindTexture(Gl.TEXTURE_2D, v.Target);
-        fixed (uint* p = px) Gl.TexSubImage2D(Gl.TEXTURE_2D, 0, 0, 0, v.W, v.H, Gl.RGBA, Gl.UNSIGNED_BYTE, p);
-        Gl.BindTexture(Gl.TEXTURE_2D, (uint)prev);
-        Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, rowLen);
-        Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, align);
-        Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)pbo);
+        if (v.Standin is { } px && v.Target != 0) Queue(s, new TexJob(TexOp.Standin, null, v.Target, px, v.W, v.H));
     }
 
     /// <summary>Oracle: hand-written names. Which strings are model views' and what key each carries.</summary>

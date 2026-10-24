@@ -31,7 +31,7 @@ it says so explicitly — those are the pieces the implementer has to build.
 | World→screen projection helper | **DOES NOT EXIST.** This is the first world-anchored UI. See §3 |
 | Camera valid at present time | **Latched only**, and only when Alloy is not `alloy.enabled=0`. See §3 |
 | Speaker object id from chat ingest | **Not available** at the chat tap. Use the bubble hook instead. See §12 |
-| Depth occlusion (plate behind a wall) | Not available at UI draw time |
+| Depth occlusion (plate behind a wall) | **Exists, Alloy only**: `nameplate.behindwalls` fades a plate whose creature the frame's depth covers (`UiScene`, `TextRig.Anchor`) |
 | Any test framework | **None.** `run-demo.sh` greps the log for `SelfCheck.*FAIL`. That is the whole test surface |
 
 ---
@@ -922,7 +922,7 @@ public static int Tid(IntPtr tex) => Live(tex) ? _getTid(tex) : 0;
 RTTI pair). `AurTex.Refused` is the counter to watch. `AurTex.TidByName(resref)` (`AurTex.cs:81-89`) does
 resolve + guard in one call and caches nothing — that is the front door for a nameplate portrait.
 
-**Use `AurTex.TidByName` / `TextRig.DrawPortrait`, never a stored `CAurTexture*`.**
+**Use `TextRig.ResolveTid` / `TextRig.DrawPortrait`, never a stored `CAurTexture*`.**
 
 ### Batching N portraits
 
@@ -1213,10 +1213,11 @@ refs) so it gets a `SelfCheck` with a synthetic camera — the `ShadowMath.SelfC
 (`ShadowMath.cs:215+`) is the model: construct a known camera, assert the centre maps to the screen
 centre, an off-axis point maps to the expected side, and a behind-camera point is rejected.
 
-Also note: **depth occlusion is not available at UI draw time.** A plate for a creature behind a wall
-will draw on top. `managed/Alloy/Pass/SceneDepth.cs` holds the scene depth, but it is Alloy-side and
-inside the 4.6 bracket, not readable from the UI roll-call without a real design. Treat
-"hide plates behind geometry" as a separate, Alloy-side ticket.
+Depth occlusion happens at replay, not at the roll-call. Each plate's batch is anchored
+(`TextRig.Anchor`) to its creature's mid-body point and its plate anchor pixel. Alloy's GUI pass replays
+the windows after the world frame's composite, and `UiScene` holds that frame's camera and depth. The
+vertex stage then samples the depth around the anchor pixel and fades the plate to `nameplate.behindwalls`
+where the scene sits in front of the creature. With no world frame (a menu), or with Alloy off, nothing fades.
 
 ---
 

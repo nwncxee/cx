@@ -94,8 +94,7 @@ public sealed class Skin
         for (int i = 0; i < _parts.Length; i++)
         {
             _b[i].Clear();
-            _tid[i] = AurTex.TidByName(_res[i]);
-            TextRig.TexSize(_tid[i], out _w[i], out _h[i]);
+            _tid[i] = TextRig.ResolveSized(_res[i], out _w[i], out _h[i]);
         }
     }
 

@@ -66,7 +66,8 @@ public sealed unsafe class DebugStringService : IExtenderService
                    + "its own posted strings over the Alloy frame");
             return;
         }
-        FrameRegistry.Global.Register(FramePhase.PrePresent, 60, Draw, "Alloy.debugstrings", log);
+        new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.AboveNui, DrawContent = Draw };
+        FrameRegistry.Global.Register(FramePhase.PrePresent, 60, Consume, "Alloy.debugstrings", log);
         _armed = true;
         log.Info("DebugStringService: armed -- in Alloy mode AurPrintString is swallowed and the posted-string "
                + "layer is drawn by CX's 2D text");
@@ -156,13 +157,15 @@ public sealed unsafe class DebugStringService : IExtenderService
 
     // ---- the draw ----------------------------------------------------------------------------
 
-    /// <summary>Per presented frame, after the window roll-call: every string the engine asked for this frame
-    /// is on screen, over everything else CX draws. The frame's capture is consumed here -- vanilla's layer
-    /// is re-issued from scratch every frame too.</summary>
+    /// <summary>The frame's capture is spent once its frame is drawn -- vanilla's layer is re-issued from scratch
+    /// every frame too.</summary>
+    private static void Consume() => _curN = 0;
+
+    /// <summary>The posted-string layer as an above-NUI window: every string the engine asked for this frame, over
+    /// the panels, NUI and CX's below-NUI windows.</summary>
     private static void Draw()
     {
         int n = _curN;
-        _curN = 0;
         if (!_armed) return;
         if (n == 0)
         {

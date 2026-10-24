@@ -10,9 +10,9 @@ namespace CX.Ui;
 public readonly record struct FaceRequest(string Typeface, byte[] Font, float Px, bool IconsOnly = false);
 
 /// <summary>
-/// The one shared single-channel glyph bitmap every face lives in. Baked cold with the client's
-/// stb_truetype exports: every face's glyph boxes are measured, shelf-packed into one square, and only
-/// then rasterised; on overflow the side doubles and packing retries up to <see cref="MaxSide"/>. A sheet
+/// The one shared glyph sheet every face lives in, two planes over one layout: the coverage bitmap text at its baked
+/// size reads, and a signed distance field per glyph that magnified text reads, so it stays sharp. Baked cold with the
+/// client's stb_truetype exports: every glyph's field is made, shelf-packed into one square, and both planes filled; on overflow the side doubles and packing retries up to <see cref="MaxSide"/>. A sheet
 /// is immutable once baked -- a new face set is a new sheet, swapped in whole by <c>TextRig</c>.
 /// </summary>
 public sealed unsafe class AtlasSheet
@@ -29,17 +29,21 @@ public sealed unsafe class AtlasSheet
     /// <summary>Side of the solid-white block chrome rects sample. Bilinear at the block centre is 1.0 with
     /// 1.5 texels of margin, so vertex rounding cannot pull in a transparent neighbour.</summary>
     private const int SolidSide = 4;
-    /// <summary>Bitmap side ceiling: GL 3.3 guarantees 1024 and every target driver gives 16384; 4096 (16 MB)
-    /// holds ~30 faces at 18px. Above it a bake is a refusal, not a partial sheet.</summary>
+    /// <summary>Bitmap side ceiling: GL 3.3 guarantees 1024 and every target driver gives 16384; 4096 (32 MB over both planes)
+    /// holds ~20 faces at 18px as distance fields. Above it a bake is a refusal, not a partial sheet.</summary>
     public const int MaxSide = 4096;
+    /// <summary>The distance field: <see cref="SdfEdge"/> on the outline, falling to 0 at <see cref="SdfPad"/> texels
+    /// outside it -- padding each glyph's box carries, inside the <see cref="Pad"/> gutter.</summary>
+    public const int SdfEdge = 128, SdfPad = 2;
 
-    public byte[] Pixels = Array.Empty<byte>();
+    /// <summary>Level 0 of the coverage plane and of the distance-field plane.</summary>
+    public byte[] Pixels = Array.Empty<byte>(), Field = Array.Empty<byte>();
     public int Side;
-    /// <summary>Levels 1..<see cref="MipLevels"/>-1, box-filtered from <see cref="Pixels"/> on the CPU (no
-    /// glGenerateMipmap: it respecifies the texture, the AMD/Mesa mip trap). <c>Mips[0]</c> is level 1.</summary>
-    public byte[][] Mips = Array.Empty<byte[]>();
-    /// <summary>Bytes of every level at R8: side² × (1 + 1/4 + 1/16).</summary>
-    public int Bytes { get { int n = 0; for (int l = 0; l < MipLevels; l++) n += (Side >> l) * (Side >> l); return n; } }
+    /// <summary>Levels 1..<see cref="MipLevels"/>-1 of each plane, box-filtered on the CPU (no glGenerateMipmap: it
+    /// respecifies the texture, the AMD/Mesa mip trap). <c>Mips[0]</c> is level 1.</summary>
+    public byte[][] Mips = Array.Empty<byte[]>(), FieldMips = Array.Empty<byte[]>();
+    /// <summary>Bytes of every level of both planes: 2 × side² × (1 + 1/4 + 1/16).</summary>
+    public int Bytes { get { int n = 0; for (int l = 0; l < MipLevels; l++) n += 2 * (Side >> l) * (Side >> l); return n; } }
     private readonly Dictionary<(string, float), GlyphAtlas> _faces = new();
 
     /// <summary>The face the first request baked -- what <c>TextRig.Atlas</c> hands a caller that asks for nothing.</summary>
@@ -99,7 +103,7 @@ public sealed unsafe class AtlasSheet
     }
 
     /// <summary>One measured glyph awaiting placement: its face, codepoint, box, and (after packing) its texel origin.</summary>
-    private struct Box { public int Face, Cp, W, H, X0, Y0, X, Y; public float Advance, Scale; }
+    private struct Box { public int Face, Cp, W, H, X0, Y0, X, Y, Cx0, Cy0, Cx1, Cy1; public float Advance, Scale; public IntPtr Field; }
 
     /// <summary>Pack boxes into a square, doubling the side on overflow. Returns the side that fit, or 0 past the ceiling.
     /// The solid block is always the first placement.</summary>
@@ -126,12 +130,14 @@ public sealed unsafe class AtlasSheet
     public static AtlasSheet? Bake(IReadOnlyList<FaceRequest> reqs, (int lo, int hi, string name, bool icon)[] ranges,
         (string Name, byte[]? Font) icon, int startSide, ExtenderLog log)
     {
-        if (EngineFn.StbttInitFont == null || EngineFn.StbttScaleForPixelHeight == null || EngineFn.StbttMakeCodepointBitmap == null)
+        if (EngineFn.StbttInitFont == null || EngineFn.StbttScaleForPixelHeight == null || EngineFn.StbttGetCodepointSDF == null
+            || EngineFn.StbttFreeSDF == null || EngineFn.StbttMakeCodepointBitmap == null || EngineFn.StbttGetCodepointBitmapBox == null)
         {
             log.Info("AtlasSheet: stbtt exports unresolved (headless?); skipping bake");
             return null;
         }
         if (reqs.Count == 0) return null;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         var list = reqs.DistinctBy(r => (r.Typeface, r.Px)).ToList();   // SetFont may land the default on an extra face's size
         // Every extra face gets a default-typeface twin at its px, the source of its coverage fills.
         var defaultByPx = new Dictionary<float, int>();
@@ -190,11 +196,13 @@ public sealed unsafe class AtlasSheet
                             if (r.IconsOnly) { face.Store(cp, new Glyph { Advance = advance }); continue; }   // no fill source: blank
                             missing.Add((f, cp, ri, advance)); continue;
                         }
-                        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-                        if (EngineFn.StbttGetCodepointBitmapBox != null) EngineFn.StbttGetCodepointBitmapBox(fi, cp, scale, scale, &x0, &y0, &x1, &y1);
-                        int gw = x1 - x0, gh = y1 - y0;
-                        if (gw <= 0 || gh <= 0) { face.Store(cp, new Glyph { Advance = advance }); continue; }
-                        boxes.Add(new Box { Face = f, Cp = cp, W = gw, H = gh, X0 = x0, Y0 = y0, Advance = advance, Scale = scale });
+                        int gw = 0, gh = 0, x0 = 0, y0 = 0;
+                        byte* field = EngineFn.StbttGetCodepointSDF(fi, scale, cp, SdfPad, SdfEdge, SdfEdge / (float)SdfPad, &gw, &gh, &x0, &y0);
+                        if (field == null) { face.Store(cp, new Glyph { Advance = advance }); continue; }   // a blank glyph: no box
+                        int cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
+                        EngineFn.StbttGetCodepointBitmapBox(fi, cp, scale, scale, &cx0, &cy0, &cx1, &cy1);
+                        boxes.Add(new Box { Face = f, Cp = cp, W = gw, H = gh, X0 = x0, Y0 = y0, Cx0 = cx0, Cy0 = cy0, Cx1 = cx1, Cy1 = cy1,
+                                            Advance = advance, Scale = scale, Field = (IntPtr)field });
                     }
             }
 
@@ -207,13 +215,19 @@ public sealed unsafe class AtlasSheet
             }
             sheet.Side = side;
             sheet.Pixels = new byte[side * side];
-            for (int y = 0; y < SolidSide; y++) for (int x = 0; x < SolidSide; x++) sheet.Pixels[(sy + y) * side + sx + x] = 255;
+            sheet.Field = new byte[side * side];
+            for (int y = 0; y < SolidSide; y++) for (int x = 0; x < SolidSide; x++) sheet.Pixels[(sy + y) * side + sx + x] = sheet.Field[(sy + y) * side + sx + x] = 255;
             float su = (sx + SolidSide * 0.5f) / side, sv = (sy + SolidSide * 0.5f) / side;
 
             foreach (ref Box b in bs)
                 {
-                    fixed (byte* px = sheet.Pixels.AsSpan(b.Y * side + b.X))
-                        EngineFn.StbttMakeCodepointBitmap((byte*)infos[b.Face], px, b.W, b.H, side, b.Scale, b.Scale, b.Cp);
+                    Native.CopyRows(b.Field, b.W, b.H, sheet.Field, side, b.X, b.Y);
+                    // the coverage box sits inside the field's padded one; clamped so a box stb rounds differently cannot spill
+                    int ox = Math.Max(b.Cx0 - b.X0, 0), oy = Math.Max(b.Cy0 - b.Y0, 0);
+                    int cw = Math.Min(b.Cx1 - b.Cx0, b.W - ox), ch = Math.Min(b.Cy1 - b.Cy0, b.H - oy);
+                    if (cw > 0 && ch > 0)
+                        fixed (byte* px = sheet.Pixels.AsSpan((b.Y + oy) * side + b.X + ox))
+                            EngineFn.StbttMakeCodepointBitmap((byte*)infos[b.Face], px, cw, ch, side, b.Scale, b.Scale, b.Cp);
                     faces[b.Face].Store(b.Cp, new Glyph
                     {
                         U0 = b.X / (float)side, V0 = b.Y / (float)side,
@@ -223,6 +237,7 @@ public sealed unsafe class AtlasSheet
                 }
 
             sheet.Mips = BuildMips(sheet.Pixels, side);
+            sheet.FieldMips = BuildMips(sheet.Field, side);
             FillMissing(reqs, faces, missing, defaultByPx, iconByPx, ranges, log);
 
             for (int f = 0; f < reqs.Count; f++)
@@ -232,11 +247,13 @@ public sealed unsafe class AtlasSheet
                 log.Info($"AtlasSheet: face {reqs[f].Typeface} @ {reqs[f].Px}px: {faces[f].Count} glyphs (lineH={faces[f].LineHeight:F1})");
             }
             sheet.Default = faces[0];
-            log.Info($"AtlasSheet: {reqs.Count} face(s) packed into {side}²");
+            log.Info($"AtlasSheet: {reqs.Count} face(s) packed into {side}² as distance fields "
+                   + $"(edge {SdfEdge}, {SdfPad} texel reach) in {System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F0} ms");
             return sheet;
         }
         finally
         {
+            foreach (Box b in boxes) EngineFn.StbttFreeSDF((byte*)b.Field, null);
             foreach (IntPtr p in infos) if (p != IntPtr.Zero) Marshal.FreeHGlobal(p);
             foreach (IntPtr p in fonts) if (p != IntPtr.Zero) Marshal.FreeHGlobal(p);
         }

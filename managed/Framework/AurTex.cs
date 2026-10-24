@@ -79,13 +79,20 @@ public static unsafe class AurTex
     /// <c>AurTextureGetTID</c> -- the texture controller lookup, say.</summary>
     public static bool IsLive(IntPtr tex) => Live(tex);
 
-    /// <summary>A resman texture's GL id by RESREF -- the resolve and the guard in one call, for the handful of
-    /// engine textures an owned pass wants by name rather than off a material (<c>solid_noise</c>, the wave field
-    /// vanilla's water shader samples). Re-resolves every call and caches NOTHING, because the pointer is borrowed.
-    /// Once per pass, not per part, and allocates nothing: the name is marshalled on the stack.</summary>
-    public static int TidByName(string resref) => Tid(FindByName(resref));
+    /// <summary>The sheet size of the basic texture <paramref name="tex"/> resolves to -- the level-0 size every
+    /// upload of it (the engine's <c>GLRender::CreateTexture</c> @0x4ca2b0, Alloy's own) is made at. 0x0 when
+    /// <see cref="Tid"/> would refuse it. No GL.</summary>
+    public static void Size(IntPtr tex, out int w, out int h)
+    {
+        w = h = 0;
+        if (!Live(tex) || !Resolves(tex)) return;
+        IntPtr r = new CAurTexture(tex).Referenced.Ptr;
+        var basic = new CAurTexture(r == IntPtr.Zero ? tex : r);
+        w = basic.GetWidth(); h = basic.GetHeight();
+    }
 
-    /// <summary>...and the CAurTexture the resman answered with, which is what a caller needs to ask the object its
+
+    /// <summary>A resman texture by RESREF -- the CAurTexture the resman answered with, which is what a caller needs to ask the object its
     /// own name: Windows and Linux can resolve the same resref to different-looking textures, and only the object
     /// says whether that is a different RESOURCE or a different upload. Borrowed, never cached.</summary>
     public static IntPtr FindByName(string resref)

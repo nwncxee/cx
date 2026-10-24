@@ -27,6 +27,7 @@ public sealed unsafe class UiHostService : IExtenderService
         Tooltip.SelfCheck(log);         // tooltip: dwell, tick, wrap, zero-alloc draw (off-device)
         CascadeMenu.SelfCheck(log);     // cascade menu: nesting, flip/clamp, keys, dwell, icons, zero-alloc draw (off-device)
         MenuGear.SelfCheck(log);        // main-menu gear: anchor, hover animation, zero-alloc emit (off-device)
+        UiDrawList.SelfCheck(log);      // the recorded draw list: merging, ranges, rows, growth (off-device)
         TextRig.Init(log);   // the one glyph atlas every window draws from (null under run-demo: stbtt absent)
         ApplyFont();         // ...baked at ui.font x GUI scale; declares the ui group
         ApplyTypeface();     // the persisted ui.typeface, a no-op at default
@@ -227,8 +228,8 @@ public sealed unsafe class UiHostService : IExtenderService
         if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();   // both layers, above NUI
         FrameRegistry.Global.Run(FramePhase.PrePresent);
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
-        // participant (GlContextService's 4.6 bracket switches back to this context in there).
-        HandBack();
+        // participant. With Alloy rendering, only when something drew in this context this frame.
+        if (!CX.Alloy.Renderer.On || _handBack.Owed) HandBack();
         // the present is its own zone. It is the discriminator the other brackets cannot supply --
         // a frame that spends its time HERE is waiting on the GPU or on vsync, which is a different problem
         // from every zone that measures our own CPU work.
@@ -263,31 +264,68 @@ public sealed unsafe class UiHostService : IExtenderService
         DrawWindows(UiLayer.AboveNui);
     }
 
-    /// <summary>CX's own 2D windows for the world frame Alloy draws: one layer, or both when null. The frame
-    /// calls it once per side of NUI's flush.</summary>
-    internal static void DrawWindowsForDbFrame(UiLayer? layer = null) => DrawWindows(layer);
+    /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
+    /// side of NUI's layers, or the engine-context draw below replays at once. Rewritten only while no render thread
+    /// replays them: the seam records after <c>RenderSnapshot.AwaitDrained</c>.</summary>
+    private static readonly UiDrawList[] _layers = { new(), new() };
 
-    /// <summary>Refresh the session gate, the UI scale and the viewport, run the z-order roll-call of one layer (null =
-    /// both), then hand the GL state back: our raw GL desyncs GLRender's shadow cache and what renders next is NUI.
-    /// Only the roll-call stands aside while a movie or the engine's loadscreen is on screen; the session gate still runs.</summary>
+    /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
+    internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
+
+    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing no GL: Alloy's GUI pass
+    /// replays them inside its bracket. Game thread.</summary>
+    internal static void RecordWindowsForDbFrame()
+    {
+        long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
+        Record(UiLayer.BelowNui, true);
+        Record(UiLayer.AboveNui, false);
+        FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
+    }
+
+    /// <summary>Replay both recorded layers into the ENGINE's context and hand its state back: the windows of a frame
+    /// whose GUI the 4.6 bracket could not draw.</summary>
+    internal static void ReplayWindowsHere()
+    {
+        TextRig.Replay(_layers[(int)UiLayer.BelowNui]);
+        TextRig.Replay(_layers[(int)UiLayer.AboveNui]);
+        HandBack();
+    }
+
+    /// <summary>The engine-context draw with Alloy off: record one layer (null = both), replay it at once, then hand
+    /// the GL state back -- our raw GL desyncs GLRender's shadow cache and what renders next is NUI.</summary>
     private static void DrawWindows(UiLayer? layer = null)
     {
-        // The roll-call's head and tail are their own zone. Zone.Ui is the DRAW only, so the gate, the scale sync,
-        // the font re-bake, the viewport query and the engine hand-back would otherwise sit in the Seam residual.
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
-        RefreshGate();
-        SyncUiScale(); ApplyFont();   // every frame, not only in game -- the menu gear and panel honour the UI scale
-        TextRig.SampleViewport();     // the frame's one GL_VIEWPORT query; every draw below reads the pair
+        UiLayer first = layer ?? UiLayer.BelowNui;
+        Record(first, true);
+        TextRig.Replay(_layers[(int)first]);
+        if (layer == null) { Record(UiLayer.AboveNui, false); TextRig.Replay(_layers[(int)UiLayer.AboveNui]); }
+        HandBack();
+        FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
+    }
+
+    /// <summary>Record one layer's z-order roll-call into its list. <paramref name="head"/> first refreshes the session
+    /// gate, the UI scale and the viewport, once a frame. Only the roll-call stands aside while a movie or the engine's
+    /// loadscreen is on screen; the session gate still runs.</summary>
+    private static void Record(UiLayer layer, bool head)
+    {
+        if (head)
+        {
+            RefreshGate();
+            SyncUiScale(); ApplyFont();   // every frame, not only in game -- the menu gear and panel honour the UI scale
+            TextRig.SampleViewport();     // every draw below reads the pair
+        }
         long tUi = FrameZones.Now;
+        UiDrawList l = _layers[(int)layer];
+        l.Reset(TextRig.ViewportW, TextRig.ViewportH);
         // A movie frame never reaches the chain: CGuiMan::UpdateAndRender skips nk_sdl_render outright while one plays.
         if (!CX.Alloy.MovieService.OnScreen && !LoadScreen.PanelUp)
         {
-            if (layer is { } one) UiHost.DrawFrame(one);   // one layer's windows in z-order (content-owned)
-            else UiHost.DrawFrame();
+            TextRig.Record(l);
+            try { UiHost.DrawFrame(layer); }
+            finally { TextRig.Record(null); }
         }
         FrameZones.Add(FrameZones.Zone.Ui, tUi);
-        HandBack();
-        FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
     }
 
     /// <summary>The hand-back resync after raw GL in the ENGINE's context, which went past GLRender's
@@ -296,12 +334,21 @@ public sealed unsafe class UiHostService : IExtenderService
     /// default framebuffer too (Ghidra: <c>GLRender::ResetRenderStates</c>).</summary>
     internal static void HandBack()
     {
+        _handBack.Owed = false;
         if (_resetStates != null) _resetStates();
         // ResetRenderStates rewrites every shadow-cache global EXCEPT the two buffer bindings, and
         // GLRender::BindBuffer early-outs on a cache match -- so a VBO left bound in real GL would take the
         // engine's next streamed vertex upload. Through the engine wrapper so the cache learns about it.
         if (_bindBuffer != null) _bindBuffer(GlArrayBuffer, 0);
     }
+
+    /// <summary>Whether raw GL has run in the ENGINE context since the last <see cref="HandBack"/>.</summary>
+    private sealed class HandBackState { public bool Owed; }
+
+    private static readonly HandBackState _handBack = new();
+
+    /// <summary>Raw GL just ran in the ENGINE context: the present's <see cref="HandBack"/> is owed, even with Alloy on.</summary>
+    internal static void Owe() => _handBack.Owed = true;
 
     private static long _fsLast, _fsSum, _fsMax;
     private static int _fsN, _fsOver7, _fsOver17;

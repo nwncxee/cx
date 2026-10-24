@@ -726,6 +726,7 @@ public sealed unsafe partial class AlloyRenderer
                     Highlight.OutlineHighlightPass(groups, &vp, &view, &proj, jx, jy, viewport, display);
                     // CX-83: the area-transition highlight, in the slot the engine's DoHighlightTriggers had.
                     TriggerHighlight.Draw(&vp, display);
+                    UiScene.Note(&vp, &proj, viewport);
                     GpuEnd(GpuTerm.Post);
                     FrameZones.Add(FrameZones.Zone.Post, tPost);
                     break;

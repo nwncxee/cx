@@ -81,7 +81,7 @@ internal static unsafe class PresentTarget
                        + "is finished but may not have reached the presented buffer (#456)");
         }
         Gl.DrainErrors(4);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        ScreenOwner.RestoreEngineFbo();
         _compose.Composed = false;
     }
 
@@ -110,7 +110,7 @@ internal static unsafe class PresentTarget
         Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, 0);
         Gl.BlitFramebuffer(0, 0, _w, _h, 0, 0, _w, _h, Gl.COLOR_BUFFER_BIT, (uint)Gl.NEAREST);
         Gl.DrainErrors(4);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        ScreenOwner.RestoreEngineFbo();
     }
 
     /// <summary>GL names die with the context. Names only -- the images are gone already.</summary>

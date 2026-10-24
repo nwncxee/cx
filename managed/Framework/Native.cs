@@ -52,6 +52,14 @@ public static unsafe class Native
         return r;
     }
 
+    /// <summary>Copy a native <paramref name="w"/> x <paramref name="h"/> byte image, rows packed, into a sheet
+    /// <paramref name="stride"/> bytes wide at (<paramref name="x"/>, <paramref name="y"/>).</summary>
+    public static void CopyRows(IntPtr src, int w, int h, Span<byte> dst, int stride, int x, int y)
+    {
+        var s = new ReadOnlySpan<byte>((byte*)src, w * h);
+        for (int r = 0; r < h; r++) s.Slice(r * w, w).CopyTo(dst.Slice((y + r) * stride + x, w));
+    }
+
     private static byte[] NulTerminated(byte[] b)
     {
         byte[] c = new byte[b.Length + 1];

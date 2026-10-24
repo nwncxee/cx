@@ -283,7 +283,7 @@ internal static unsafe partial class LightmapBake
         UiHostService.HandBack();
         Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);   // GLRender::SetViewPort caches no GL state, so the raw value is all it had
         if (GlContextService.Resume(bracket)) _log?.Info($"LightmapBake: a shader compile {(Held ? "under the hold" : "on an area's first frame")} -- \"Compiling shaders\" is on screen until it finishes");
-        else _log?.Always("LightmapBake: the 4.6 context REFUSED re-entry after the compile notice -- this frame's Alloy GL runs on the engine's context");
+        else { UiHostService.Owe(); _log?.Always("LightmapBake: the 4.6 context REFUSED re-entry after the compile notice -- this frame's Alloy GL runs on the engine's context"); }
     }
 
     /// <summary>Pages with no rect still queued, probing or packing.</summary>

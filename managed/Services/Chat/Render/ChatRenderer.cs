@@ -5,7 +5,6 @@ using System.Text;
 using CX.Framework;
 using CX.Services.Chat.Core;
 using CX.Ui;
-using CX.Graphics;
 
 using CX.Services.Chat.Core.Model;
 
@@ -13,9 +12,9 @@ namespace CX.Services.Chat.Render;
 
 /// <summary>
 /// Chat-coupled owned-render pass. Owns the per-window <see cref="Frame"/> publish/animation buffering and
-/// drives the shared <see cref="TextRig"/> primitives (program, atlas, VAO/VBO rig, portrait rig) to draw the
-/// chat windows inside the SwapBuffers hook. Callers build a batch cold (ingest/input/resize thread) via
-/// <see cref="VertexBatch"/>; the hot <see cref="Draw"/> uploads-if-changed, one draw per window, zero-alloc.
+/// records the chat windows through the shared <see cref="TextRig"/> primitives. Callers build a batch cold
+/// (ingest/input/resize thread) via <see cref="VertexBatch"/>; the hot <see cref="Draw"/> animates and records,
+/// zero-alloc.
 /// </summary>
 public static unsafe class ChatRenderer
 {
@@ -25,7 +24,7 @@ public static unsafe class ChatRenderer
     private static ExtenderLog? _log => TextRig.Log;
     private static GlyphAtlas? _atlas => TextRig.Atlas;
 
-    private static bool _diagged;              // one-shot: log GL error + viewport on the first drawn frame
+    private static bool _diagged;              // one-shot: log the viewport on the first drawn frame
 
     /// <summary>A published frame: the built <see cref="RenderFrame"/> plus a per-frame <see cref="Scratch"/>
     /// buffer (same length, allocated cold at publish). The hot draw copies the base verts into scratch and
@@ -43,7 +42,6 @@ public static unsafe class ChatRenderer
     /// <see cref="Publish(RenderFrame[])"/>; the hot <see cref="Draw"/> iterates the snapshot.</summary>
     private static volatile Frame[] _frames = System.Array.Empty<Frame>();
 
-    private static int _drawCount;
     private static bool _portraitDrew;   // one-shot: log the first portrait that actually binds a live TID
 
     /// <summary>Publish frames for all chat windows. Reuses the <see cref="Frame"/> wrapper (and its Scratch
@@ -78,43 +76,21 @@ public static unsafe class ChatRenderer
         _frames = arr;
     }
 
-    /// <summary>Sets the whole GL state the text program needs and hands back the ortho matrix; false when the
-    /// program is not ready. Nothing is inherited: UiHostService resyncs the engine on hand-back, so every
-    /// draw below sets its own preamble. Hot, zero-alloc.</summary>
-    private static bool BeginText(out Matrix4x4 m)
-    {
-        m = default;
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        if (!TextRig.EnsureProgram()) return false;
-        if (!TextRig._texUp) TextRig.UploadTexture();
-        if (!TextRig._vaoUp) TextRig.SetupVao();
-
-        Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
-        Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-
-        m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
-        return true;
-    }
-
     // ---- draw ---------------------------------------------------------------------------------
 
-    /// <summary>Hot: draw all published frames (one per chat window) through the owned GL3 program.
-    /// Applies the fade/slide/scroll per frame; the slide residual only moves the focused window's
-    /// body (<see cref="RenderFrame.ApplyResidual"/>). One <see cref="BeginText"/> covers all windows; the VBO
-    /// is re-specified per window (N<=4, tiny buffers — negligible bus cost). Zero-alloc in every path.</summary>
+    /// <summary>Hot: record all published frames (one per chat window). Applies the fade/slide/scroll per frame;
+    /// the slide residual only moves the focused window's body (<see cref="RenderFrame.ApplyResidual"/>), and a
+    /// settled frame records last frame's animated vertices as they are. Zero-alloc in every path.</summary>
     public static void Draw()
     {
         Frame[] frames = _frames;
         if (frames.Length == 0 || _atlas == null || _log == null) return;
-        if (!Gl.Init(_log)) return;
 
         float focusTau = 70f;
         for (int i = 0; i < frames.Length; i++)
             if (frames[i].Rf.ApplyResidual) { focusTau = frames[i].Rf.TauMs; break; }
         float globalResidual = ChatAnim.Tick(System.Environment.TickCount64, focusTau);
         System.DateTime now = System.DateTime.UtcNow;
-
-        if (!BeginText(out Matrix4x4 m)) return;
 
         for (int i = 0; i < frames.Length; i++)
         {
@@ -125,36 +101,15 @@ public static unsafe class ChatRenderer
             float residual = rf.ApplyResidual ? globalResidual : 0f;
             System.DateTime ls = rf.LastScroll;
             bool stable = IsStable(rf, residual, now, ls, out int opaque);
-            int uploadLen = rf.Verts.Length;
-            if (stable && f.Settled && opaque == f.OpaqueCount)
-            {
-                // ponytail: settled — Scratch has correct data from the last ApplyAnim.
-                // Single-frame: VBO still holds it; multi-frame: re-upload (shared VBO).
-                if (frames.Length > 1) TextRig.UploadBuffer(f.Scratch, uploadLen);
-            }
-            else if (stable)
-            {
-                ApplyAnim(f, residual, now, ls);
-                TextRig.UploadBuffer(f.Scratch, uploadLen);
-                f.Settled = true;
-                f.OpaqueCount = opaque;
-            }
-            else
-            {
-                f.Settled = false;
-                ApplyAnim(f, residual, now, ls);
-                TextRig.UploadBuffer(f.Scratch, uploadLen);
-            }
-            _drawCount = rf.Count;
-
+            if (!stable || !f.Settled || opaque != f.OpaqueCount) ApplyAnim(f, residual, now, ls);
+            f.Settled = stable;
+            f.OpaqueCount = opaque;
+            DrawFrame(f, residual, now, ls);
             if (!_diagged)
             {
-                Gl.DrainErrors();
                 _diagged = true;
-                DrawFrame(f, m, residual, now, ls);
-                _log?.Info($"TextRig: draw verts={_drawCount} viewport={TextRig.ViewportW}x{TextRig.ViewportH} glErr=0x{Gl.GetError():x}");
+                _log?.Info($"TextRig: chat draw verts={rf.Count} viewport={TextRig.ViewportW}x{TextRig.ViewportH}");
             }
-            else DrawFrame(f, m, residual, now, ls);
         }
     }
 
@@ -214,39 +169,27 @@ public static unsafe class ChatRenderer
         }
     }
 
-    /// <summary>Draw the frame in three slices: chrome above the body, the animated body under a body-rect
-    /// scissor (with the portrait pass), then chrome below. The scissor flip reads the frame's published
-    /// viewport height (<see cref="TextRig.ViewportH"/>).</summary>
-    private static void DrawFrame(Frame f, in Matrix4x4 proj, float residual, System.DateTime now, System.DateTime ls)
+    /// <summary>Record the frame in three slices: chrome above the body, the animated body clipped to the body rect
+    /// (with the portrait pass), then chrome below.</summary>
+    private static void DrawFrame(Frame f, float residual, System.DateTime now, System.DateTime ls)
     {
         RenderFrame rf = f.Rf;
+        float[] s = f.Scratch;
         DrawArt(rf, 0, rf.SkinOver);
-        TextRig.BindText(proj);
-        if (rf.BodyStart > 0) Gl.DrawArrays(Gl.TRIANGLES, 0, rf.BodyStart);
+        if (rf.BodyStart > 0) TextRig.DrawBatch(s, rf.BodyStart);
 
         int bodyVerts = rf.BodyEnd - rf.BodyStart;
         if (bodyVerts > 0 || rf.Portraits.Count > 0)
         {
-            // Scissor to the body rect (GL is bottom-left origin, so flip y against the viewport height).
-            int sx = (int)rf.Bx, sy = (int)(TextRig.ViewportH - (rf.By + rf.Bh)), sw = (int)rf.Bw, sh = (int)rf.Bh;
-            if (sx < 0) { sw += sx; sx = 0; }
-            if (sy < 0) { sh += sy; sy = 0; }
-            if (sw < 0) sw = 0;
-            if (sh < 0) sh = 0;
-            Gl.Scissor(sx, sy, sw, sh);
-            Gl.Enable(Gl.SCISSOR_TEST);
-            if (bodyVerts > 0) Gl.DrawArrays(Gl.TRIANGLES, rf.BodyStart, bodyVerts);
-            DrawPortraits(rf.Portraits, proj, residual, now, ls, rf.Scrolled, rf.AnimEnabled, rf.HoldSec, rf.FadeSec);
-            Gl.Disable(Gl.SCISSOR_TEST);
+            int bx = (int)rf.Bx, by = (int)rf.By, bw = (int)rf.Bw, bh = (int)rf.Bh;
+            if (bodyVerts > 0)
+                TextRig.DrawBatch(s.AsSpan(rf.BodyStart * Floats), bodyVerts, clip: true, cx: bx, cy: by, cw: bw, ch: bh);
+            DrawPortraits(rf.Portraits, residual, now, ls, rf.Scrolled, rf.AnimEnabled, rf.HoldSec, rf.FadeSec, bx, by, bw, bh);
         }
 
         DrawArt(rf, rf.SkinOver, rf.Skin.Length);
-        int tail = _drawCount - rf.BodyEnd;
-        if (tail > 0)
-        {
-            TextRig.BindText(proj);   // the portrait and art passes switched program/VAO/buffer
-            Gl.DrawArrays(Gl.TRIANGLES, rf.BodyEnd, tail);
-        }
+        int tail = rf.Count - rf.BodyEnd;
+        if (tail > 0) TextRig.DrawBatch(s.AsSpan(rf.BodyEnd * Floats), tail);
     }
 
     /// <summary>Replay one slice of a frame's native art through the live skin: one batch per part, one draw
@@ -267,61 +210,26 @@ public static unsafe class ChatRenderer
 
     // ---- portrait pass ------------------------------------------------------------------
 
-    /// <summary>At most this many portraits per frame (bounds the stack scratch below). Far above the
-    /// rows a chat body can show; a silent cap, so log if we ever hit it.</summary>
-    private const int MaxPortraitsPerFrame = 64;
-
-    /// <summary>Second pass: bind each speaker's engine-resident portrait texture and draw it as a quad
-    /// through the RGBA program. Cache-hit path is zero-alloc (dict lookup + one virtual TID read); only a
-    /// first-seen resref pays an <c>AurTextureGet</c>. A texture whose TID is still 0 (not yet uploaded by
-    /// the engine's RefreshTextures pass, or a bad resref) is simply skipped this frame.</summary>
-    private static void DrawPortraits(IReadOnlyList<PortraitQuad> quads, in Matrix4x4 proj,
-                                      float residual, System.DateTime now, System.DateTime ls, bool scrolled,
-                                      bool animEnabled, double holdSec, double fadeSec)
+    /// <summary>Second pass: each speaker's portrait as a quad over its texture, clipped to the body rect. Only a
+    /// first-seen resref pays an <c>AurTextureGet</c>; a texture whose TID is still 0 (not yet uploaded, or a bad
+    /// resref) is simply skipped this frame.</summary>
+    private static void DrawPortraits(IReadOnlyList<PortraitQuad> quads, float residual, System.DateTime now,
+                                      System.DateTime ls, bool scrolled, bool animEnabled, double holdSec, double fadeSec,
+                                      int bx, int by, int bw, int bh)
     {
         int k = quads.Count;
         if (k == 0 || TextRig._aurGet == null || !CX.Framework.AurTex.Ready) return;
-        if (!TextRig.EnsurePortraitProgram()) return;
-        if (!TextRig._pvaoUp) TextRig.SetupPortraitVao();
-        if (k > MaxPortraitsPerFrame) { _log?.Info($"[chat] portrait cap hit ({k}>{MaxPortraitsPerFrame})"); k = MaxPortraitsPerFrame; }
-
-        // Resolve every TID and build all geometry FIRST. AurTextureGet's create path (first load of a
-        // resref) can touch GL and rebind ARRAY_BUFFER, so it must never run between our BindBuffer and
-        // BufferData -- keep all resolves ahead of the single upload below. Steady state is a per-frame
-        // resman lookup returning a borrowed pointer (verified: no AddRef, no GL on the hit path) + a TID
-        // read; zero GC alloc on our side. We never cache the pointer -- see ResolveTid.
-        int* tids = stackalloc int[k];
-        QuadVerts* verts = stackalloc QuadVerts[k];
-        int drawn = 0;
+        QuadVerts v = default;
         for (int i = 0; i < k; i++)
         {
             float a = scrolled ? 1f : ChatAnim.FadeAlpha(now, quads[i].Ts, ls, animEnabled, holdSec, fadeSec);
-            if (a <= 0f) continue;                                 // fully faded -> skip
+            if (a <= 0f) continue;
             int tid = TextRig.ResolvePortraitTid(quads[i].Resref);
-            if (tid == 0) continue;   // not uploaded yet, or unresolvable -> skip this frame
-            tids[drawn] = tid;
-            TextRig.FillQuad(ref verts[drawn], quads[i], residual, a);   // slide with the body + fade
-            drawn++;
+            if (tid == 0) continue;
+            TextRig.FillQuad(ref v, quads[i], residual, a);   // slide with the body + fade
+            TextRig.DrawPortraitQuad(tid, in v, true, true, bx, by, bw, bh);
+            if (!_portraitDrew) { _portraitDrew = true; _log?.Info($"[chat] portrait first-draw tid={tid}"); }
         }
-        if (drawn == 0) return;
-
-        Gl.UseProgram(TextRig._progRgb);
-        fixed (Matrix4x4* pm = &proj) Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, (float*)pm);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Uniform1i(TextRig._uTexRgb, 0);
-        Gl.BindVertexArray(TextRig._pvao);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (System.IntPtr)(drawn * sizeof(QuadVerts)), verts, Gl.DYNAMIC_DRAW);
-        bool samp = TextRig.EnsurePortraitSampler();
-        if (samp) Gl.BindSampler(0, TextRig._psamp);
-        for (int i = 0; i < drawn; i++)
-        {
-            Gl.BindTexture(Gl.TEXTURE_2D, (uint)tids[i]);
-            Gl.DrawArrays(Gl.TRIANGLES, i * 6, 6);
-        }
-        // Unbind before the body-tail text draw below re-uses unit 0 for the glyph atlas (a sampler would override its filter state).
-        if (samp) Gl.BindSampler(0, 0);
-        if (!_portraitDrew) { _portraitDrew = true; _log?.Info($"[chat] portrait first-draw tid={tids[0]} ({drawn} shown)"); }
     }
 
     /// <summary>Cosmetic reset at a session (module) boundary: re-arm the one-shot first-portrait log for the
@@ -339,29 +247,13 @@ public static unsafe class ChatRenderer
     private static int _attrCount;
     private static int _attrEpoch;   // atlas epoch the cached _attrVerts UVs were baked against
 
-    /// <summary>Draw the attribution text in the top-left corner (main menu only). Lazily builds and caches
-    /// the vertex data; shares the text shader program, VAO, VBO, and atlas texture with <see cref="Draw"/>.
-    /// Rebuilds the cache when the atlas re-baked (its glyph UVs moved). Called from the SwapBuffers hook
-    /// when not in-game.</summary>
+    /// <summary>Record the attribution text in the top-left corner (main menu only). Lazily builds and caches the
+    /// vertex data, rebuilt when the atlas re-baked (its glyph UVs moved).</summary>
     public static void DrawOverlay()
     {
         if (_atlas == null || _log == null) return;
-        if (!Gl.Init(_log)) return;
         if (_attrVerts == null || _attrEpoch != TextRig.AtlasEpoch) { BuildAttribution(); _attrEpoch = TextRig.AtlasEpoch; }
-        if (_attrCount == 0) return;
-
-        if (!BeginText(out Matrix4x4 m)) return;
-
-        TextRig.BindText(m);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._vbo);
-        fixed (float* p = _attrVerts)
-            Gl.BufferData(Gl.ARRAY_BUFFER, (System.IntPtr)(_attrVerts.Length * sizeof(float)), p, Gl.DYNAMIC_DRAW);
-        Gl.DrawArrays(Gl.TRIANGLES, 0, _attrCount);
-
-        // Overlay re-specifies the shared VBO; invalidate the settled-frame cache so Draw()
-        // re-uploads on the next in-game frame instead of reading stale attribution data.
-        Frame[] frames = _frames;
-        for (int i = 0; i < frames.Length; i++) frames[i].Settled = false;
+        if (_attrCount > 0) TextRig.DrawBatch(_attrVerts, _attrCount);
     }
 
     private static void BuildAttribution()

@@ -37,14 +37,12 @@ internal static unsafe class GuiPass
         /// depth is allocated in it so the two can be blitted into each other.</summary>
         public uint DepthFmt, FboEngDepth;
         public bool DepthProbed;
-        /// <summary>Layers of the current bank already issued by <see cref="FlushLayers"/>; the closing flush starts here.</summary>
-        public int Issued;
         /// <summary>The model views' target: one framebuffer over whatever texture a layer names, and a depth for each slot (a view
         /// keeps its own so two sizes do not remake it every flush), both made in this context (framebuffers are not shared with the engine's).</summary>
         public uint ModelFbo;
         public readonly uint[] ModelDepth = new uint[CX.Services.Nui.NuiModelDoll.MaxViews];
         public readonly int[] ModelW = new int[CX.Services.Nui.NuiModelDoll.MaxViews], ModelH = new int[CX.Services.Nui.NuiModelDoll.MaxViews];
-        public bool ModelChecked;
+        public bool ModelChecked, WindowsDropSaid;
         /// <summary>Flushes that found a texture unit other than 0 active, and the first one's unit.</summary>
         public long StrayUnit;
         public int StrayUnitFirst;
@@ -155,25 +153,42 @@ internal static unsafe class GuiPass
     /// <summary>Flush now -- a caller whose draws must land before the next foreign draw (nuklear's own site).</summary>
     internal static void FlushNow() => Flush();
 
-    /// <summary>Issue the first <paramref name="n"/> captured layers and keep the bank, so something else can draw over
-    /// them before <see cref="FlushNow"/> issues the rest. The closing flush uploads nothing again.</summary>
-    internal static void FlushLayers(int n)
+    /// <summary>The frame's closing flush: the first <paramref name="panels"/> captured layers, CX's below-NUI windows,
+    /// the rest (NUI), then the above-NUI windows, in one bracket. A frame whose GUI cannot enter the bracket still
+    /// shows the windows -- drawn in the engine's context, where the engine drew that GUI -- unless this is the render
+    /// thread, which has no engine context to draw in.</summary>
+    internal static void FlushWithWindows(int panels)
     {
-        n = Math.Min(n, GuiCapture.LayerN);
-        if (n <= 0 || _gl.Issued != 0) return;
-        if (_gl.Prog == 0 || _failed || !Draw(0, n)) Dropped();
-        else _gl.Issued = n;
+        int n = GuiCapture.LayerN;
+        bool drawn = _gl.Prog != 0 && !_failed && Draw(0, Math.Clamp(panels, 0, n), n, true);
+        UiScene.Spent();
+        GuiCapture.Reset();
+        if (drawn) return;
+        if (n > 0) Dropped();
+        if (!GlContextService.HeldHere) { PresentTarget.HandBackIfOwed(); CX.Ui.UiHostService.ReplayWindowsHere(); }
+        else if (!_gl.WindowsDropSaid)
+        {
+            _gl.WindowsDropSaid = true;
+            _log?.Always("GuiPass: the render thread's GUI flush could not draw -- CX's own windows are NOT DRAWN on such frames");
+        }
     }
 
-    /// <summary>Issue every layer captured since the last flush that is still owed, then forget them. A flush that
-    /// cannot run drops what it holds -- the engine did not draw those scenes either -- and says so once.</summary>
+    /// <summary>Issue every layer captured since the last flush, then forget them. A flush that cannot run drops what
+    /// it holds -- the engine did not draw those scenes either -- and says so once.</summary>
     private static void Flush()
     {
         if (GuiCapture.LayerN == 0) return;
-        if (_gl.Issued >= GuiCapture.LayerN) { _gl.Issued = 0; GuiCapture.Reset(); return; }
-        if (_gl.Prog == 0 || _failed || !Draw(_gl.Issued, GuiCapture.LayerN)) Dropped();
-        _gl.Issued = 0;
+        if (_gl.Prog == 0 || _failed || !Draw(0, GuiCapture.LayerN, GuiCapture.LayerN, false)) Dropped();
         GuiCapture.Reset();
+    }
+
+    /// <summary>The screen the GUI draws into, from the engine's own globals: false until they resolve.</summary>
+    internal static bool Screen(out int w, out int h)
+    {
+        w = h = 0;
+        if (_screenW == null || _screenH == null) return false;
+        w = *_screenW; h = *_screenH;
+        return w > 0 && h > 0;
     }
 
     private static void Dropped()
@@ -183,9 +198,11 @@ internal static unsafe class GuiPass
         _log?.Always("GuiPass: a GUI flush could not enter the 4.6 context -- that frame's GUI is NOT DRAWN");
     }
 
-    /// <summary>ponytail: one GL draw per captured record, state changes elided by comparison. A menu is a few hundred
-    /// draws; if the GUI ever shows in the frame zones, sort each layer by (VAO, texture, blend) and multi-draw the runs.</summary>
-    private static bool Draw(int from, int to)
+    /// <summary>Layers <paramref name="from"/>..<paramref name="mid"/>, then (with <paramref name="windows"/>) CX's below-NUI
+    /// windows, layers <paramref name="mid"/>..<paramref name="to"/>, and the above-NUI windows, in one bracket.
+    /// ponytail: one GL draw per captured record, state changes elided by comparison. A menu is a few hundred draws;
+    /// if the GUI ever shows in the frame zones, sort each layer by (VAO, texture, blend) and multi-draw the runs.</summary>
+    private static bool Draw(int from, int mid, int to, bool windows)
     {
         int w = *_screenW, h = *_screenH;
         bool win = PresentTarget.Needed;
@@ -193,18 +210,40 @@ internal static unsafe class GuiPass
         if (win && PresentTarget.Width == w && PresentTarget.Height == h) { PresentTarget.TakeBack(); Depth(fromScreen: true); }
         else if (win) Resize(w, h);
         if (!GlContextService.Enter()) return false;
-        // CX-120 (gui): on a frame with no world, THIS is the only 4.6 bracket there is -- and entering it
-        // sets GlContextService's `_worked`, which makes its own health bracket stand down for the frame. At
-        // the main menu that starved both halves of the DB GUI: the mesh arena's VAO was never built (every
-        // model part refused `no-geometry`, so the menu drew its button text and not one pixel of its art)
-        // and the texture registry's uploads never ran (every part that did draw came out white). Both are
-        // queue tests when there is nothing to do.
+        // On a frame with no world, THIS is the only 4.6 bracket there is -- and entering it stands
+        // GlContextService's own health bracket down for the frame, so the deferred work runs here: at the main
+        // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
-        if (from == 0) Upload();
+        CX.Services.Nui.NuiModelView.Pump();
+        if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
         uint baseFbo = win ? Target() : 0u;
-        uint curTarget = 0;
+        Preamble(baseFbo);
+        Issue(from, mid, baseFbo, ref modelSpan);
+        if (windows) { Windows(CX.Ui.UiLayer.BelowNui, baseFbo); Preamble(baseFbo); }
+        Issue(mid, to, baseFbo, ref modelSpan);
+        if (windows) Windows(CX.Ui.UiLayer.AboveNui, baseFbo);
+        CX.Services.Perf.FrameProbe.Lap(ref modelSpan, false);
+        Gl.BindVertexArray(0);
+        Gl.DepthRange(0.0, 1.0);
+        Gl.Disable(Gl.SCISSOR_TEST);
+        Gl.Disable(Gl.BLEND);
+        Gl.Disable(Gl.CULL_FACE);
+        Gl.Enable(Gl.DEPTH_TEST);
+        Gl.DepthMask(1);
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        if (gpuTimed) CX.Services.Perf.FrameProbe.GpuEnd();
+        GlContextService.Leave();
+        if (win) { PresentTarget.HandBack(); Depth(fromScreen: false); }
+        _flushes++;
+        if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush, none reached the engine's GL"); }
+        return true;
+    }
+
+    /// <summary>The state every captured draw assumes, set at the flush's start and again after a window replay.</summary>
+    private static void Preamble(uint baseFbo)
+    {
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo);
         Gl.Disable(Gl.FRAMEBUFFER_SRGB);
         Gl.Disable(Gl.MULTISAMPLE);
@@ -219,9 +258,27 @@ internal static unsafe class GuiPass
         Gl.Uniform1i(_gl.LocBoneStart, GuiCapture.DrawN * Vec4PerRec);
         Gl.Uniform1i(_gl.LocGamma, PostChain.GammaOff() ? 0 : 1);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindGui, _gl.Buf);
-        // CX-117's master palette, for the PLT item icons a GUI control draws. A no-op until a palette
-        // exists (DB mode only), and the unit is nothing else's.
+        // The master palette, for the PLT item icons a GUI control draws. A no-op until a palette exists, and the unit is nothing else's.
         Db.PltPalettes.Bind();
+    }
+
+    /// <summary>One layer of CX's recorded windows over the whole screen: display space, after the world's composite,
+    /// so no tonemap or TAA history touches it.</summary>
+    private static void Windows(CX.Ui.UiLayer layer, uint baseFbo)
+    {
+        CX.Ui.UiDrawList l = CX.Ui.UiHostService.Windows(layer);
+        if (l.CmdN == 0) return;
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo);
+        Gl.Viewport(0, 0, l.ViewW, l.ViewH);
+        Gl.DepthRange(0.0, 1.0);
+        Gl.FrontFace(Gl.CCW);
+        CX.Ui.TextRig.Replay(l);
+    }
+
+    /// <summary>Captured layers <paramref name="from"/>..<paramref name="to"/>, each into its own target; ends on
+    /// <paramref name="baseFbo"/>. Every state cache starts unknown, so a replay between two runs costs nothing here.</summary>
+    private static void Issue(int from, int to, uint baseFbo, ref long modelSpan)
+    {
         int envTex = 0;
         int blend = -1, depth = -1, write = -1, cull = -1;
         uint src = 0, dst = 0, vao = uint.MaxValue;
@@ -229,6 +286,7 @@ internal static unsafe class GuiPass
         uint prog = _gl.Prog;
         bool gamma = !PostChain.GammaOff();
         bool released = false;
+        uint curTarget = 0;
         int li = from, solve = 0, runStart = 0, runEnd = 0;
         while (li < to || solve != 0)
         {
@@ -326,22 +384,7 @@ internal static unsafe class GuiPass
                 _drawn++;
             }
         }
-        CX.Services.Perf.FrameProbe.Lap(ref modelSpan, false);
         if (curTarget != 0) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, baseFbo); Gl.FrontFace(Gl.CCW); }
-        Gl.BindVertexArray(0);
-        Gl.DepthRange(0.0, 1.0);
-        Gl.Disable(Gl.SCISSOR_TEST);
-        Gl.Disable(Gl.BLEND);
-        Gl.Disable(Gl.CULL_FACE);
-        Gl.Enable(Gl.DEPTH_TEST);
-        Gl.DepthMask(1);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        if (gpuTimed) CX.Services.Perf.FrameProbe.GpuEnd();
-        GlContextService.Leave();
-        if (win) { PresentTarget.HandBack(); Depth(fromScreen: false); }
-        _flushes++;
-        if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush, none reached the engine's GL"); }
-        return true;
     }
 
     /// <summary>The index of the model view slot that draws into <paramref name="tex"/>, or 0.</summary>
@@ -498,6 +541,7 @@ internal static unsafe class GuiPass
         _gl.DepthProbed = true;
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         _gl.DepthFmt = RenderTarget.ProbeDepthFormat(0);
+        ScreenOwner.RestoreEngineFbo();
         if (_gl.DepthFmt == 0) _log?.Always("GuiPass: the default framebuffer reports no depth -- on Windows a content-shader GUI draw "
                                        + "will not depth-test against Alloy's GUI draws");
     }
@@ -528,12 +572,14 @@ internal static unsafe class GuiPass
         uint mask = Gl.DEPTH_BUFFER_BIT | (HasStencil ? Gl.STENCIL_BUFFER_BIT : 0u);
         Gl.BlitFramebuffer(0, 0, _gl.DepthW, _gl.DepthH, 0, 0, _gl.DepthW, _gl.DepthH, mask, (uint)Gl.NEAREST);
         Gl.DrainErrors(4);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        ScreenOwner.RestoreEngineFbo();
     }
 
     /// <summary>GL names die with the context.</summary>
     internal static void ContextLost()
     {
+        CX.Ui.TextRig.ContextLost();   // the windows' VAO and programs went with it
+        UiScene.ContextLost();
         TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
         GuiModelSolve.ContextLost();
         _gl = new GuiGlState();

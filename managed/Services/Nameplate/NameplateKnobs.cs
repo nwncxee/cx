@@ -17,6 +17,8 @@ internal static class NameplateKnobs
     internal static readonly TextStyle Plate, Bubble;
     internal static readonly Knob<float> MaxDist, Width, FadeDist;
     internal static readonly Knob<int> Queue, Lines, Anim, PortraitLines;
+    /// <summary>Percent of a plate's or bubble's alpha left while the scene hides its creature; 100 = no scene test.</summary>
+    internal static readonly Knob<int> BehindWalls;
     /// <summary>A mask of <see cref="SpeakerName"/> and <see cref="SpeakerPortrait"/>.</summary>
     internal static readonly Knob<int> Speaker;
     internal static readonly KnobButton Probe;
@@ -44,6 +46,8 @@ internal static class NameplateKnobs
         Width = G.Slider("width", "Text width", WidthMin, WidthMax, 10f, 300f, "px", Tier.Advanced,
                          help: "The widest a name or a bubble gets before wrapping.");
         Anim = G.Slider("anim", "Animation", 0, 1000, 10, 180, "ms", Tier.ChatOnly, help: "0 = they pop in.");
+        BehindWalls = G.Slider("behindwalls", "Behind walls", 0, 100, 5, 100, "%",
+                               help: "How much of a name or bubble still shows while a wall or the ground hides its creature from the camera. 100 % shows it fully, as in the stock game. Alloy only.");
 
         G.Section("Nameplates");
         Portraits = G.Toggle("portraits", "Portrait", true, help: "A portrait beside the name.");

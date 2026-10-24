@@ -17,7 +17,11 @@ internal static unsafe class ScreenOwner
     private static RiSetClearColorFn _origClearColor;
     private static SdlGlSwapWindowFn _swap;
     private static RiResetRenderStatesFn _reset;
-    private static uint* _defaultFbo, _drawBound;
+    private static uint* _defaultFbo;
+    /// <summary><c>GLRender::BindFramebuffer</c>'s two binding caches, resolved at install; null where one did not.</summary>
+    private sealed unsafe class FboCacheState { public uint* Draw, Read; }
+
+    private static readonly FboCacheState _cache = new();
     private static long _swallowed, _passed, _presents;
     private static bool _said;
 
@@ -29,6 +33,15 @@ internal static unsafe class ScreenOwner
     /// through one of its own, and 0 before the caches resolve, which is what it would have bound anyway.</summary>
     internal static uint DefaultFbo => _defaultFbo != null ? *_defaultFbo : 0u;
 
+    /// <summary>Put the bindings <c>GLRender::BindFramebuffer</c>'s two caches name back into real GL, after Alloy's own
+    /// framebuffer binds in the ENGINE context: the cache early-outs on a match, so a stale real binding would take the
+    /// engine's next draw. An unresolved read cache is left alone; Install refuses without the draw one.</summary>
+    internal static void RestoreEngineFbo()
+    {
+        Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, _cache.Draw != null ? *_cache.Draw : 0u);
+        if (_cache.Read != null) Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, *_cache.Read);
+    }
+
     /// <summary>The engine's last <c>glClearColor</c>: the fog colour in an area, black at the menus.</summary>
     internal static readonly float[] ClearRgba = { 0f, 0f, 0f, 1f };
 
@@ -38,8 +51,9 @@ internal static unsafe class ScreenOwner
         _swap = EngineFn.SdlGlSwapWindow;
         _reset = EngineFn.RiResetRenderStates;
         _defaultFbo = (uint*)Native.Sym(SymbolMap.GlDefaultFramebuffer);
-        _drawBound = (uint*)Native.Sym(SymbolMap.GlDrawFramebufferBound);
-        if (_swap == null || _reset == null || _defaultFbo == null || _drawBound == null)
+        _cache.Draw = (uint*)Native.Sym(SymbolMap.GlDrawFramebufferBound);
+        _cache.Read = (uint*)Native.Sym(SymbolMap.GlReadFramebufferBound);
+        if (_swap == null || _reset == null || _defaultFbo == null || _cache.Draw == null)
         {
             log.Always("ScreenOwner: SDL_GL_SwapWindow, ResetRenderStates or the framebuffer caches did not resolve -- "
                      + "the engine keeps its clears and its present (CX-101 not armed)");
@@ -59,7 +73,7 @@ internal static unsafe class ScreenOwner
     [UnmanagedCallersOnly]
     private static void OnClear(uint mask)
     {
-        if (Owned && !EngineFrame && *_drawBound == *_defaultFbo) { _swallowed++; return; }
+        if (Owned && !EngineFrame && *_cache.Draw == *_defaultFbo) { _swallowed++; return; }
         _passed++;
         _origClear(mask);
     }

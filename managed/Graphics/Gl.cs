@@ -408,6 +408,9 @@ public static unsafe class Gl
     /// <summary>glMultiDrawElementsBaseVertex (GL 3.2 core): mode, counts*, type, indices**, drawcount,
     /// basevertex*. One call submits a whole batch group (ADR 0006 phase 1). Null on ancient drivers.</summary>
     public static delegate* unmanaged<uint, int*, uint, void**, int, int*, void> MultiDrawElementsBaseVertex;
+    /// <summary>glMultiDrawArrays (GL 1.4 core): mode, firsts*, counts*, drawcount -- the UI's one draw per bindless run,
+    /// each range its own <c>gl_DrawID</c>.</summary>
+    public static delegate* unmanaged<uint, int*, int*, int, void> MultiDrawArrays;
     /// <summary>glDrawElementsBaseVertex (GL 3.2): mode, count, type, indices, basevertex -- one run of one
     /// mesh, the lightmap bake's per-rect draw.</summary>
     public static delegate* unmanaged<uint, int, uint, void*, int, void> DrawElementsBaseVertex;
@@ -646,6 +649,7 @@ public static unsafe class Gl
         DeleteTextures = (delegate* unmanaged<int, uint*, void>)P("glDeleteTextures");
         CopyImageSubData = (delegate* unmanaged<uint, uint, int, int, int, int, uint, uint, int, int, int, int, int, int, int, void>)P("glCopyImageSubData");
         MultiDrawElementsBaseVertex = (delegate* unmanaged<uint, int*, uint, void**, int, int*, void>)P("glMultiDrawElementsBaseVertex");
+        MultiDrawArrays = (delegate* unmanaged<uint, int*, int*, int, void>)P("glMultiDrawArrays");
         DrawElementsBaseVertex = (delegate* unmanaged<uint, int, uint, void*, int, void>)P("glDrawElementsBaseVertex");
         GetVertexAttribiv = (delegate* unmanaged<uint, uint, int*, void>)P("glGetVertexAttribiv");
         GetVertexAttribPointerv = (delegate* unmanaged<uint, uint, void**, void>)P("glGetVertexAttribPointerv");
