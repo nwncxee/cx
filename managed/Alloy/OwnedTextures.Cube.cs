@@ -7,15 +7,15 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>
-/// Cube textures, the one class of engine texture the 2D upload funnel never sees (<c>glImageBasic</c> routes
-/// <c>flagCube</c> to <c>CreateCubeTexture</c>). <c>GLRender::CreateCubeTexture</c> @0x4caab0 (Windows RVA 0xAEFF0)
-/// transcribed onto an immutable cube of Alloy's own, as <see cref="UploadOwn"/> does a 2D one; the cell array is
-/// handed Alloy's name and the engine's dies unused. Nothing in Alloy samples it; no scan.
+/// Cube textures (<c>glImageBasic</c> routes <c>flagCube</c> to <c>CreateCubeTexture</c>): <c>GLRender::CreateCubeTexture</c>
+/// @0x4caab0 (Windows RVA 0xAEFF0) transcribed onto an immutable cube of Alloy's own; the cell array is handed Alloy's
+/// name and the engine's dies unused. A cube Alloy cannot upload is one the engine's cut fails on too, so it stays
+/// Alloy's, empty. Nothing in Alloy samples it; no scan.
 /// </summary>
 internal static unsafe partial class OwnedTextures
 {
     private static RiCreateCubeTextureFn _origCreateCube;
-    private static long _cubeUploads, _cubeRefused;
+    private static long _cubeUploads, _cubeEmpty;
     /// <summary>A cube's faces: the strip's slot count, and the factor <see cref="Measure"/>'s one-face answer is short by.</summary>
     private const int CubeFaces = 6;
     /// <summary>The clamp bits the engine's cube upload passes <c>SetTextureParameters</c>: S, T and R clamped.</summary>
@@ -32,7 +32,8 @@ internal static unsafe partial class OwnedTextures
         FrameZones.Count(FrameZones.Ev.TexUpload);
     }
 
-    /// <summary>True when Alloy's cube stands in for the engine's; false leaves the upload to the caller.</summary>
+    /// <summary>True when Alloy's cube stands in for the engine's; false (no context yet, not a basic texture, no
+    /// cell to name) leaves the upload to the caller.</summary>
     private static bool AdoptCube(IntPtr tex, int cell)
     {
         if (!_armed || !AurTex.IsBasic(tex) || !GlContextService.Available) return false;
@@ -47,10 +48,11 @@ internal static unsafe partial class OwnedTextures
         uint dst = UploadCube(tex, cell, out uint err);
         if (dst == 0)
         {
-            if (++_cubeRefused <= 3)
-                _log?.Always($"OwnedTextures: cube tid {etid} left to the engine -- "
-                           + (err != 0 ? $"Alloy's upload gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
-            return false;
+            if (++_cubeEmpty <= 3)
+                _log?.Always($"OwnedTextures: cube tid {etid} drawn EMPTY, as the engine's own upload of it fails -- "
+                           + (err != 0 ? $"the driver gave 0x{err:x}" : $"not a cube face shape ({TexScan.Describe(tex)})"));
+            Gl.CreateTextures(Gl.TEXTURE_CUBE_MAP, 1, &dst);
+            if (dst == 0) return false;
         }
         long bytes = Measure(dst) * CubeFaces;
 
@@ -70,7 +72,8 @@ internal static unsafe partial class OwnedTextures
 
     /// <summary>Cell <paramref name="cell"/> of a cube's strip into a cube of Alloy's own, faces per <see cref="CubeStrip.Cut"/>,
     /// engine mips; two channels go up as RG and one with no swizzle, as the engine's cube path (unlike its 2D one)
-    /// does. 0 = a compressed image, a non-square face, or a driver refusal (<paramref name="err"/>).</summary>
+    /// does. 0 = no pixels, a non-square face (GL refuses one), a compressed image (<c>LoadImage</c> never loads a
+    /// cube compressed) or a driver refusal (<paramref name="err"/>).</summary>
     private static uint UploadCube(IntPtr tex, int cell, out uint err)
     {
         err = 0;
