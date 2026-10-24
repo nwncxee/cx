@@ -365,6 +365,7 @@ internal static unsafe class Issue
         int boundSsao = -1;
         int* boundSlot = stackalloc int[MapSlots];
         int drawn = 0;
+        int wasStage = Submit.At(_onlyHosted ? Submit.Stage.Hosted : Submit.Stage.Colour);
         for (int s = 0; s < MapSlots; s++) boundSlot[s] = -1;
         for (int g = from; g < groups; g++)
         {
@@ -582,6 +583,7 @@ internal static unsafe class Issue
             if (deferred) GBuffer.Written = true;
         }
         if (BlendProfile.Recording) BlendProfile.Close();
+        Submit.Back(wasStage);
         // Hand the per-batch toggling back to the pass level: the next pass reads this rather than assuming
         // what the last batch left bound.
         _blendOn = boundBlend;

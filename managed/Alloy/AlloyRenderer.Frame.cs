@@ -861,7 +861,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The blended class's DEPTH -- depth only, at the colour draw's LEQUAL, through the opaque
     /// prepass's alpha-testing stage (<see cref="BlendLaysDepth"/>), because under <see cref="OitPass"/>
     /// nothing in the class writes depth and water saw a lake bed through an already-shaded head. AFTER the
-    /// composite: laid first it would occlude the surfaces OIT accumulates. <c>/alloy blenddepth 0</c> off.</summary>
+    /// composite, or it would occlude what OIT accumulates. A RUN of batches a call; <c>blenddepth 0</c> off.</summary>
     private static void BlendedDepthSweep(int from, int to, Matrix4x4* vp, int* viewport)
     {
         if (to <= from || !_blendDepth || !_prepassFeat || !Programs.EnsureDepthFeatProgram()) return;
@@ -882,21 +882,43 @@ public sealed unsafe partial class AlloyRenderer
         uint boundVao = 0;
         int boundCull = -1, boundTex = -1;
         float boundCut = float.NaN;
+        // uDrawBase is the RUN's start, so a run may only grow where the next batch's commands begin exactly
+        // where the last one's ended.
+        int runStart = 0, runLen = 0;
+        uint runMode = 0;
+        int was = Submit.At(Submit.Stage.BlendDepth);
+        void Flush()
+        {
+            if (runLen == 0) return;
+            if (indirect) CullPass.DrawRun(runMode, runStart, runLen);
+            else MultiDrawRange(runMode, runStart, runLen);
+            runLen = 0;
+        }
         for (int g = from; g < to; g++)
         {
             if (Issue._onlyGobSet && _gGob[g] != Issue._onlyGob) continue;
             if (!BlendLaysDepth(g)) continue;
             int s = _gStart[g];
-            Gl.Uniform1i(Programs._depthFeatBase, s);
             float cut = AlloyClasses.Discard(_gCls[g]);
+            bool compacted = indirect && !CullPass.Sorted(g);
+            bool extend = runLen > 0 && !compacted && s == runStart + runLen && _gMode[g] == runMode
+                          && cut == boundCut && VaoName(_gVao[g], _gCls[g]) == boundVao
+                          && (_gNoCull[g] ? 0 : 1) == boundCull
+                          && (_bindless || cut < 0f || _gTex[g] == boundTex);
+            if (extend) { runLen += _gLen[g]; continue; }
+            Flush();
             if (cut != boundCut) { Gl.Uniform1f(Programs._depthFeatCut, cut); boundCut = cut; }
             if (!_bindless && cut >= 0f && _gTex[g] != boundTex)
             { Gl.BindTexture(Gl.TEXTURE_2D, (uint)_gTex[g]); boundTex = _gTex[g]; }
             BindBatchState(g, ref boundCull, ref boundVao);
-            if (indirect) CullPass.Draw(_gMode[g], g, s, _gLen[g]);
-            else
-                MultiDrawRange(_gMode[g], s, _gLen[g]);
+            Gl.Uniform1i(Programs._depthFeatBase, s);
+            // A compacted batch's survivor count lives in the parameter buffer the CPU cannot read, so it
+            // submits alone; only the sorted region's dense commands merge.
+            if (compacted) { CullPass.Draw(_gMode[g], g, s, _gLen[g]); continue; }
+            runStart = s; runMode = _gMode[g]; runLen = _gLen[g];
         }
+        Flush();
+        Submit.Back(was);
         if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
         Gl.ColorMask(1, 1, 1, 1);
         // Hand back what the blended class left and the copy, water and additive passes read as already set.
@@ -936,6 +958,7 @@ public sealed unsafe partial class AlloyRenderer
         if (_gWaterEnd <= _gBlendEnd || !Programs.EnsureDepthProgram() || !Issue.BindStagedSlots()) return;
         Gl.UseProgram(Programs._progDepth);
         Gl.UniformMatrix4fv(Programs._depthVp, 1, 0, (float*)vp);
+        int was = Submit.At(Submit.Stage.Water);
         uint boundVao = 0;
         for (int g = _gBlendEnd; g < _gWaterEnd; g++)
         {
@@ -945,6 +968,7 @@ public sealed unsafe partial class AlloyRenderer
             if (vao != boundVao) { Gl.BindVertexArray(vao); boundVao = vao; }
             MultiDrawRange(_gMode[g], s, _gLen[g]);
         }
+        Submit.Back(was);
         Gl.BindVertexArray(0);
     }
 
@@ -964,6 +988,7 @@ public sealed unsafe partial class AlloyRenderer
         int skipped = 0, drawn = 0;
         bool indirect = CullPass.Active;
         if (!indirect && retest) return;
+        int was = Submit.At(retest ? Submit.Stage.Retest : Submit.Stage.Prepass);
         GpuBegin(GpuTerm.Prepass);
         // #243: a list the pyramid did not produce. The prepass is what the hi-Z pyramid is built from, so
         // it cannot be culled against the pyramid it produces; #489 tests phase one against the PRIOR
@@ -1040,6 +1065,7 @@ public sealed unsafe partial class AlloyRenderer
         GpuEnd(GpuTerm.PrepassKey);
         if (_prepassFeat && Programs.EnsureDepthFeatProgram())
         {
+            Submit.At(Submit.Stage.PrepassFeat);
             GpuBegin(GpuTerm.PrepassFeat);
             int bound = -1, boundTex = -1; float boundCut = float.NaN;
             int baseLoc = -1, cutLoc = -1;
@@ -1084,6 +1110,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             GpuEnd(GpuTerm.PrepassFeat);
         }
+        Submit.Back(was);
         if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
         if (idsWanted) IdTarget.End();   // unconditional past Begin: the draw-buffer state is the FBO's
         Gl.ColorMask(1, 1, 1, 1);

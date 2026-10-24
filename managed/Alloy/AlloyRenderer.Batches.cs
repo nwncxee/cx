@@ -457,6 +457,7 @@ public sealed unsafe partial class AlloyRenderer
         fixed (nint* o = _dOff.AsSpan(first, count))
         fixed (int* b = _dBase.AsSpan(first, count))
             Gl.MultiDrawElementsBaseVertex(mode, c, GlUnsignedShort, (void**)o, count, b);
+        Submit.Call(count);
     }
 
     /// <summary>Store <paramref name="v"/> and say whether that changed anything. The whole persistent-record
@@ -813,16 +814,24 @@ public sealed unsafe partial class AlloyRenderer
                     && cls == keyCls && blend == keyBlend) Counters._cullCuts++;
                 // #327: which term opened an opaque-range cut -- one counter per term, a cut that flipped
                 // several charged to each. The instrument the sort above is judged by.
-                if (groups != 0 && cls == keyCls && cls <= (int)AlloyClass.Cutout)
+                // CX-329: ...and the BLENDED range in a tally of its own, which the opaque census is blind
+                // to and where every batch the frame submits more than once comes from.
+                long[] by = groups == 0 || cls != keyCls ? null
+                          : cls <= (int)AlloyClass.Cutout ? Counters._cutBy
+                          : cls == (int)AlloyClass.Blended ? Counters._cutByBlend : null;
+                if (by != null)
                 {
-                    if (vKey != keyVao) Counters._cutBy[0]++;
-                    if (feat != keyFeat) Counters._cutBy[1]++;
-                    if (dis != keyDis) Counters._cutBy[2]++;
-                    if (blend != keyBlend) Counters._cutBy[3]++;
-                    if (noCull != keyNoCull) Counters._cutBy[4]++;
-                    if (mode != keyMode) Counters._cutBy[5]++;
-                    if (lit != keyLit) Counters._cutBy[6]++;
-                    if (tidKey != keyTex || !sameSlots) Counters._cutBy[7]++;
+                    if (vKey != keyVao) by[0]++;
+                    if (feat != keyFeat) by[1]++;
+                    if (dis != keyDis) by[2]++;
+                    if (blend != keyBlend) by[3]++;
+                    if (noCull != keyNoCull) by[4]++;
+                    if (mode != keyMode) by[5]++;
+                    if (lit != keyLit) by[6]++;
+                    if (tidKey != keyTex || !sameSlots) by[7]++;
+                    if (gobKey != keyGob) by[8]++;
+                    if (a2c != keyA2c) by[9]++;
+                    if (decal != keyDecal) by[10]++;
                 }
                 _gStart[groups] = n; _gLen[groups] = 0;
                 _gLit[groups] = lit; _gVao[groups] = vKey; _gTex[groups] = tid; _gMode[groups] = mode;
