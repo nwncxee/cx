@@ -201,15 +201,15 @@ public static class FrameZones
         /// <summary>Nested in <see cref="Seam"/> -- <c>DbGui.Draw</c> summed over the frame's GUI panel
         /// views (the member walk, the streaming prescan and the quad issue).</summary>
         DbGuiDraw,
-        /// <summary>Nested in <see cref="Seam"/> -- <c>GuiCapture.Lead</c> + <c>GuiPass.FlushNow</c>:
-        /// issuing the frame's captured GUI layers after the last view.</summary>
+        /// <summary>Nested in <see cref="Seam"/> -- <c>GuiCapture.Lead</c> + <c>GuiPass.FlushWithWindows</c>:
+        /// issuing the frame's captured GUI layers and CX's recorded windows after the last view.</summary>
         GuiFlush,
         /// <summary>Nested in <see cref="Alloy"/> (NOT subtracted) -- <c>DbKeyhole.Write</c>, the
         /// dissolve column over the pass's draw order.</summary>
         Keyhole,
-        /// <summary>Nested in <see cref="Ui"/>'s caller and NOT in <see cref="Ui"/> itself -- the head and tail of
-        /// <c>UiHostService.DrawWindows</c> the Ui bracket excludes: the session gate, the UI-scale sync and font
-        /// re-bake, the viewport query, and the engine state hand-back.</summary>
+        /// <summary>Nested in <see cref="Ui"/>'s caller and NOT in <see cref="Ui"/> itself -- what the window roll-call's
+        /// record excludes: the session gate, the UI-scale sync and font re-bake, the viewport sample, and with Alloy
+        /// off the engine-context replay and state hand-back.</summary>
         UiEdge,
         /// <summary>Nested in <see cref="Alloy"/> (NOT subtracted) -- <c>EmitterSim.StepDb</c>, the whole owned
         /// particle walk: the registry walk, the cull, the per-emitter step, the draw sort and the enrolment. Worth

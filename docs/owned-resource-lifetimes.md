@@ -131,7 +131,7 @@ SeamDraw.OnBoundary                     game thread
   RenderThread.StartWhenReady / SettleIfStandingDown
   with a render thread live:
      RenderSnapshot.AwaitDrained        <- THE FENCE: the renderer has released the previous frame
-     UiHostService.DrawWindowsForDbFrame   (the 2D UI, over the world frame it just finished)
+     UiHostService.RecordWindowsForDbFrame (the 2D UI as draw lists; the renderer replays them in its GUI flush)
   DbGui.NewFrame, DbCamera.NewFrame
   RenderSnapshot.Publish                game thread
      FrameHoist.Fold + FoldFog          <- the frame's ENGINE reads, FIRST and here only
@@ -142,7 +142,7 @@ SeamDraw.OnBoundary                     game thread
      wait while the renderer still holds the previous frame   (a no-op after the fence)
      publish
   DbFeed.CloseViews
-  if the render thread is live: it draws; else DrawSnapshot here, then the 2D UI, in try/finally
+  if the render thread is live: it draws; else DrawSnapshot here, then the 2D UI recorded and flushed, in try/finally
 SeamDraw.DrawSnapshot                   render thread, or the game thread on a stand-down
   per view: SceneFeed.TickFromView, then DbGui.Draw (GUI) or SeamDraw.Pass (world)
      Pass = AlloyRenderer.DbWorldPass -> DbOrder, DrawOwned -> BeginOwnedFrame (the 4.6 bracket)

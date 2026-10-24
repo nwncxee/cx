@@ -5,7 +5,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 using CX.Services.Chat;
 using CX.Services.Chat.Core;
 
@@ -1085,99 +1084,23 @@ public sealed unsafe class NameplateService : IExtenderService
 
     // ---- portraits ---------------------------------------------------------------------------
 
-    /// <summary>One line per NEW portrait texture, the first eight: level-0 size, internal format, level-1 size,
-    /// mip range, filter, and a hash of levels 0 and 1 as the driver holds them. Read off the ENGINE's texture,
-    /// because that is what the plate samples. Cold: once per portrait name; the readback is a sync, spent eight
-    /// times a session.</summary>
-    private static void PortraitDiag(int tid, string resref)
-    {
-        if (_diagN >= _diagTids.Length || !GlContextService.Available) return;
-        for (int i = 0; i < _diagN; i++) if (_diagTids[i] == tid) return;
-        _diagTids[_diagN++] = tid;
-        uint t = (uint)tid;
-        int w = 0, h = 0, fmt = 0, w1 = 0, h1 = 0, maxLevel = -1, minFilter = 0;
-        Gl.GetTextureLevelParameteriv(t, 0, Gl.TEXTURE_WIDTH, &w);
-        Gl.GetTextureLevelParameteriv(t, 0, Gl.TEXTURE_HEIGHT, &h);
-        Gl.GetTextureLevelParameteriv(t, 0, Gl.TEXTURE_INTERNAL_FORMAT, &fmt);
-        Gl.GetTextureLevelParameteriv(t, 1, Gl.TEXTURE_WIDTH, &w1);
-        Gl.GetTextureLevelParameteriv(t, 1, Gl.TEXTURE_HEIGHT, &h1);
-        Gl.GetTextureParameteriv(t, Gl.TEXTURE_MAX_LEVEL, &maxLevel);
-        Gl.GetTextureParameteriv(t, Gl.TEXTURE_MIN_FILTER, &minFilter);
-        ulong hash0 = 0, hash1 = 0;
-        if (w > 0 && h > 0 && w <= 1024 && h <= 1024)
-        {
-            byte[] px = new byte[w * h * 4];   // cold: once per portrait name
-            int align; Gl.GetIntegerv(Gl.PACK_ALIGNMENT, &align);
-            Gl.PixelStorei(Gl.PACK_ALIGNMENT, 1);
-            fixed (byte* p = px)
-            {
-                Gl.GetTextureImage(t, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, px.Length, p);
-                hash0 = Fnv(p, w * h * 4);
-                if (w1 > 0 && h1 > 0)
-                {
-                    Gl.GetTextureImage(t, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, px.Length, p);
-                    hash1 = Fnv(p, w1 * h1 * 4);
-                }
-            }
-            Gl.PixelStorei(Gl.PACK_ALIGNMENT, align);
-        }
-        _log?.Info($"[nameplate] portrait {resref} tid {tid}: {w}x{h} fmt 0x{fmt:x} level1 {w1}x{h1} " +
-                   $"maxlevel {maxLevel} minfilter 0x{minFilter:x} hash0 {hash0:x16} hash1 {hash1:x16} glerr 0x{Gl.GetError():x}");
-    }
-
-    private static readonly int[] _diagTids = new int[8];
-    private static int _diagN;
-
-    private static ulong Fnv(byte* p, int n)
-    {
-        ulong x = 14695981039346656037UL;
-        for (int i = 0; i < n; i++) { x ^= p[i]; x *= 1099511628211UL; }
-        return x;
-    }
-
-    /// <summary>Second pass, the chat renderer's shape: resolve EVERY texture id and build ALL the geometry first,
-    /// because <c>AurTextureGet</c>'s create path can touch GL and rebind <c>ARRAY_BUFFER</c> -- it must never run
-    /// between our BindBuffer and BufferData. Then one upload and one bind+draw per plate. A texture id of 0 means
-    /// the engine has not uploaded it yet: skip that plate this frame.</summary>
+    /// <summary>Second pass: one quad per plate over its portrait texture, read through the texture's own filter.
+    /// A texture id of 0 means the engine has not uploaded it yet: skip that plate this frame.</summary>
     private static void DrawPortraits(int count)
     {
-        if (count <= 0 || !AurTex.Ready || !TextRig.EnsurePortraitProgram()) return;
-        if (!TextRig._pvaoUp) TextRig.SetupPortraitVao();
-
-        int* tids = stackalloc int[MaxPortraitsPerFrame];
-        QuadVerts* verts = stackalloc QuadVerts[MaxPortraitsPerFrame];
-        int drawn = 0;
+        if (count <= 0 || !AurTex.Ready) return;
+        QuadVerts v = default;
         for (int i = 0; i < count; i++)
         {
             int o = i * 5;
-            int tid = AurTex.TidByName(_portraitRef[i]);
+            int tid = TextRig.ResolveTid(_portraitRef[i]);
             if (tid == 0) continue;
-            PortraitDiag(tid, _portraitRef[i]);
-            tids[drawn] = tid;
-            TextRig.FillQuad(ref verts[drawn],
+            TextRig.FillQuad(ref v,
                              new CX.Services.Chat.Core.Model.PortraitQuad(
                                  _portraitRect[o], _portraitRect[o + 1], _portraitRect[o + 2], _portraitRect[o + 3],
                                  _portraitRef[i], default),
                              0f, _portraitRect[o + 4]);
-            drawn++;
-        }
-        if (drawn == 0) return;
-
-        Matrix4x4 m = TextRig.Ortho(TextRig.ViewportW, TextRig.ViewportH);
-
-        Gl.Disable(Gl.DEPTH_TEST); Gl.Disable(Gl.CULL_FACE); Gl.Disable(Gl.SCISSOR_TEST);
-        Gl.Enable(Gl.BLEND); Gl.BlendFunc(Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
-        Gl.UseProgram(TextRig._progRgb);
-        Gl.UniformMatrix4fv(TextRig._uProjRgb, 1, (byte)Gl.FALSE, (float*)&m);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Uniform1i(TextRig._uTexRgb, 0);
-        Gl.BindVertexArray(TextRig._pvao);
-        Gl.BindBuffer(Gl.ARRAY_BUFFER, TextRig._pvbo);
-        Gl.BufferData(Gl.ARRAY_BUFFER, (IntPtr)(drawn * sizeof(QuadVerts)), verts, Gl.DYNAMIC_DRAW);
-        for (int i = 0; i < drawn; i++)
-        {
-            Gl.BindTexture(Gl.TEXTURE_2D, (uint)tids[i]);
-            Gl.DrawArrays(Gl.TRIANGLES, i * 6, 6);
+            TextRig.DrawPortraitQuad(tid, in v, false);
         }
     }
 

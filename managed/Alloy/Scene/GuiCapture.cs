@@ -459,7 +459,8 @@ internal static unsafe class GuiCapture
         d.DepthWrite = *_depthMask != 0;
         d.Src = Issue.BlendGl(*_src);
         d.Dst = Issue.BlendGl(*_dst);
-        d.Tex = (*_texStages & 1) != 0 && _bound[0] == TargetTex2D ? _bound[1] : 0;
+        // Alloy's own copy where the upload funnel adopted the engine's texture (a NUI image's included).
+        d.Tex = (*_texStages & 1) != 0 && _bound[0] == TargetTex2D ? OwnedTextures.Draw(_bound[1]) : 0;
 
         var st = new aurMatrixStack((IntPtr)_stacks);
         ref readonly AlloyView av = ref AlloyCamera.ActiveView;

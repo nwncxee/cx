@@ -69,8 +69,8 @@ internal static class SeamDraw
     }
 
     /// <summary>One frame boundary. Re-asserts <c>DbFeed.Draw</c> (the feed's self-check clears it), starts the render thread once a
-    /// context exists, then in live mode draws the 2D UI over the finished world frame (frame N-1's) before the publish wakes the
-    /// renderer. Without live mode the UI draws after every view, split around NUI's flush.</summary>
+    /// context exists, then in live mode records the 2D UI before the publish wakes the renderer, which replays it with the frame's
+    /// GUI flush. Without live mode the UI is recorded and replayed after every view, split around NUI's layers.</summary>
     private static void Boundary()
     {
         _frames++;
@@ -93,10 +93,9 @@ internal static class SeamDraw
         bool live = RenderThread.Live;
         if (live)
         {
-            // Past this fence the render thread is parked: the context and framebuffer 0 are this thread's.
+            // Past this fence the render thread is parked, so the window lists it replays are this thread's to rewrite.
             RenderSnapshot.AwaitDrained();
-            // Before the publish: the publish wakes the renderer, which would resolve the next world frame into framebuffer 0 under the UI.
-            CX.Ui.UiHostService.DrawWindowsForDbFrame();
+            CX.Ui.UiHostService.RecordWindowsForDbFrame();
         }
         // Once a frame, as the engine's own latch is: it is per run of GUI views, not per view.
         DbGui.NewFrame();
@@ -157,32 +156,23 @@ internal static class SeamDraw
         return nui;
     }
 
-    /// <summary>Issue the frame's captured GUI layers, panels then NUI, after the view list. GuiPass's own flush sites
-    /// run before this boundary, so a panel captured here would be issued a frame late, under the next world pass.</summary>
+    /// <summary>Issue the frame's 2D layers after the view list, in the engine's order with Alloy on as off: the
+    /// panels, the below-NUI windows, NUI, then the above-NUI windows, all in one GUI bracket. GuiPass's own flush
+    /// sites run before this boundary, so a panel captured here would be issued a frame late. Hot; allocates nothing.</summary>
     private static void FlushGui(int nui)
-    {
-        long tFlush = FrameZones.Now;
-        GuiCapture.Lead(nui); GuiPass.FlushNow();
-        FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
-    }
-
-    /// <summary>The 2D layers on the game thread, in the engine's order with Alloy on as off: the panels, the
-    /// below-NUI windows, NUI, then the above-NUI windows. NUI and the panels are one captured bank, so the panel
-    /// layers are issued first and kept, the windows draw over them on the framebuffer, and NUI's layers close the
-    /// flush. Hot; allocates nothing.</summary>
-    private static void DrawGuiLayers(int nui)
     {
         long tFlush = FrameZones.Now;
         int panels = GuiCapture.LayerN - nui;
         GuiCapture.Lead(nui);
-        GuiPass.FlushLayers(panels);
-        PresentTarget.HandBackIfOwed();
+        GuiPass.FlushWithWindows(panels);
         FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
-        CX.Ui.UiHostService.DrawWindowsForDbFrame(CX.Ui.UiLayer.BelowNui);
-        tFlush = FrameZones.Now;
-        GuiPass.FlushNow();
-        FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
-        CX.Ui.UiHostService.DrawWindowsForDbFrame(CX.Ui.UiLayer.AboveNui);
+    }
+
+    /// <summary><see cref="FlushGui"/> on the game thread, recording the windows first.</summary>
+    private static void DrawGuiLayers(int nui)
+    {
+        CX.Ui.UiHostService.RecordWindowsForDbFrame();
+        FlushGui(nui);
     }
 
     /// <summary>One view, as <see cref="DbFeed.Draw"/>. Reached on the single-threaded path, where the

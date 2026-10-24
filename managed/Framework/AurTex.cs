@@ -79,6 +79,18 @@ public static unsafe class AurTex
     /// <c>AurTextureGetTID</c> -- the texture controller lookup, say.</summary>
     public static bool IsLive(IntPtr tex) => Live(tex);
 
+    /// <summary>The sheet size of the basic texture <paramref name="tex"/> resolves to -- the level-0 size every
+    /// upload of it (the engine's <c>GLRender::CreateTexture</c> @0x4ca2b0, Alloy's own) is made at. 0x0 when
+    /// <see cref="Tid"/> would refuse it. No GL.</summary>
+    public static void Size(IntPtr tex, out int w, out int h)
+    {
+        w = h = 0;
+        if (!Live(tex) || !Resolves(tex)) return;
+        IntPtr r = new CAurTexture(tex).Referenced.Ptr;
+        var basic = new CAurTexture(r == IntPtr.Zero ? tex : r);
+        w = basic.GetWidth(); h = basic.GetHeight();
+    }
+
     /// <summary>A resman texture's GL id by RESREF -- the resolve and the guard in one call, for the handful of
     /// engine textures an owned pass wants by name rather than off a material (<c>solid_noise</c>, the wave field
     /// vanilla's water shader samples). Re-resolves every call and caches NOTHING, because the pointer is borrowed.
