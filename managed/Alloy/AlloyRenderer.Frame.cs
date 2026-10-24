@@ -103,8 +103,11 @@ public sealed unsafe partial class AlloyRenderer
         viewport[0] = 0; viewport[1] = 0;
         viewport[2] = PostChain.RenderSize(display[2]); viewport[3] = PostChain.RenderSize(display[3]);
         bool srgb = t.Srgb;
-        // #456: sized to the DEFAULT framebuffer, before any pass binds a target.
-        PresentTarget.Ensure(display[2], display[3]);
+        // Sized to the DEFAULT framebuffer -- the WINDOW, from the engine's own screen globals, which is what
+        // the hand-back blits 1:1 and the size GuiPass's flush keys on too: two sources for one quantity made
+        // every flush reallocate the image (and lose the world frame in it) wherever they disagreed. The pass
+        // VIEWPORT can be smaller; the world then lands in the image where it would land in the window.
+        if (GuiPass.Screen(out int dw, out int dh)) PresentTarget.Ensure(dw, dh);
         float* engClear = stackalloc float[4] { t.Clear0, t.Clear1, t.Clear2, t.Clear3 };
         // ...and the refusals that need no bracket at all, ahead of the preamble they would otherwise
         // waste -- PoseSkinned alone solves every Alloy skinmesh's pose.

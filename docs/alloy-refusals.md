@@ -91,7 +91,8 @@ world through an identity view; with `view.cameraloop 0` the same slot refuses o
 
 All of them call `AlloyGate.Fail` — and so does every capability latch that can only be taken *after* the freeze:
 `AlloyRenderer` when the multidraw or stream-ring entry points are missing, `StreamRing` when the driver refuses
-its persistent map, its program builder when a program does not link, and `PostChain.StandDown`.
+its persistent map, its program builder when a program does not link, `PostChain.StandDown`, and
+`PresentTarget` where framebuffer 0 is not the buffer the platform presents (Windows).
 
 A ring that exists but cannot take a push (a region fence past `GpuRing.TimeoutNs`, a frame past the bounds the
 region is sized from, a slice rebound after the ring left it) is not a `Fail`: that pass sits the frame out, the
@@ -347,4 +348,4 @@ there is no engine traversal underneath, so every later row costs the panels rat
 | the 4.6 context exists and the GUI program built | `GuiPass.Capturing` | the panels are NOT DRAWN while it is false (one or two frames at boot); a build failure is a loud `Fail` and they stay undrawn for the session |
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
-| the present composite image built | `PresentTarget.Ensure` | a loud `Always` naming the size, and the 4.6 context writes framebuffer 0 instead: correct on the shared GLX drawable, a flicker on Windows, where the two contexts hold different back buffers. `/alloy` reports it for the session (`present: framebuffer 0 -- ... REFUSED`) |
+| the present composite image built | `PresentTarget.Ensure` | the framebuffer object is dropped with the image, so `PresentTarget.Fbo46` stops claiming one and every binder writes framebuffer 0. Under GLX that IS the buffer the engine presents, so the frame still reaches the screen and a loud `Always` says so. Under WGL framebuffer 0 in the 4.6 context is a buffer nobody presents, so there is no fallback to take: the same line says the world renders vanilla and Alloy's GUI draws reach nothing, and `AlloyGate.Fail` makes it the session's stated refusal. `/alloy` carries it either way (`present: framebuffer 0 -- ... REFUSED`) |

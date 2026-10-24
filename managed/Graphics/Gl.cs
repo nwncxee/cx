@@ -106,15 +106,15 @@ public static unsafe class Gl
     /// <summary>The current clear colour, as glGetFloatv reads it back -- the engine's own value, so
     /// the Alloy HDR target starts from what the engine cleared to instead of from a guess.</summary>
     public const uint COLOR_CLEAR_VALUE = 0x0C22;
-    /// <summary>The depth-attachment probe the Alloy framebuffer copy sizes itself from. A blit of
-    /// DEPTH_BUFFER_BIT needs the two attachments to agree on format, so the copy allocates from what the
-    /// engine's own attachment reports rather than assuming 24-bit. DEPTH (0x1801) is the attachment POINT
-    /// the query takes for the default framebuffer, where DEPTH_ATTACHMENT is not a legal name.</summary>
+    /// <summary>The depth-attachment probe the sampled depth copies (<c>SceneDepth</c>, <c>FrameSnapshot</c>)
+    /// size themselves from. A blit of DEPTH_BUFFER_BIT needs both attachments in one format, so a copy asks
+    /// its SOURCE rather than assuming. DEPTH (0x1801) is the attachment POINT the query takes for the default
+    /// framebuffer, where DEPTH_ATTACHMENT is not a legal name.</summary>
     public const uint FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE = 0x8216, FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE = 0x8217,
                       DEPTH = 0x1801, STENCIL = 0x1802, STENCIL_ATTACHMENT = 0x8D20;
     /// <summary>FLOAT vs UNSIGNED_NORMALIZED for an attachment's components. The one thing bit widths
     /// cannot tell apart -- DEPTH_COMPONENT32 and DEPTH_COMPONENT32F both report 32 -- and a depth blit
-    /// between the two is INVALID_OPERATION, so the owned depth allocation has to ask.</summary>
+    /// between the two is INVALID_OPERATION, so a depth COPY's allocation has to ask.</summary>
     public const uint FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE = 0x8211;
     public const uint DEPTH_COMPONENT32F = 0x8CAC, DEPTH24_STENCIL8 = 0x88F0, DEPTH_STENCIL = 0x84F9,
                       UNSIGNED_INT_24_8 = 0x84FA, DEPTH_STENCIL_ATTACHMENT = 0x821A, STENCIL_BUFFER_BIT = 0x0400,

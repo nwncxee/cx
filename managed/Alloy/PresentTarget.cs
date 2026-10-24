@@ -15,11 +15,11 @@ internal static unsafe class PresentTarget
     internal interface ISource
     {
         /// <summary>Size the composite image to <paramref name="w"/> x <paramref name="h"/> and return the GL
-        /// texture name the engine's context blits from, 0 where it could not be made. The old
-        /// <paramref name="tex"/> is this method's to release.</summary>
+        /// texture name the engine's context blits from, 0 where it could not be made. Releases the old
+        /// <paramref name="tex"/>.</summary>
         uint Resize(uint tex, int w, int h);
-        /// <summary>Forget the image's storage without touching GL: the context it lived in is gone.</summary>
-        void Forget();
+        /// <summary>Release <paramref name="tex"/>: the image is not wanted, and this owns its storage.</summary>
+        void Release(uint tex);
     }
 
     /// <summary>The GL source: an RGBA8 colour texture in the 4.6 context.</summary>
@@ -32,7 +32,7 @@ internal static unsafe class PresentTarget
             RenderTarget.AllocColor(ref tex, false, w, h, Gl.NEAREST);
             return tex;
         }
-        public void Forget() { }
+        public void Release(uint tex) { if (tex != 0) Gl.DeleteTextures(1, &tex); }
     }
 
     /// <summary>The present path's own state: the image, one framebuffer object per context, the size, and
@@ -41,14 +41,20 @@ internal static unsafe class PresentTarget
     {
         public uint Tex, Fbo46, FboEng;
         public int W, H;
-        public bool Composed, Announced, BlitFailed;
+        public bool Composed, Announced, BlitFailed, RefusedSaid;
         public long HandBacks, TakeBacks;
     }
 
     private static PresentState _s = new();
     private static ExtenderLog? _log;
-    /// <summary>The composite image's source. Assigned by a backend at start-up; GL until one does.</summary>
-    internal static ISource Source = new GlSource();
+    /// <summary>The composite image's source -- the seam a backend that renders outside GL replaces, here and
+    /// nowhere else. One line, because nothing but this file decides where the image comes from.</summary>
+    private static readonly ISource Source = new GlSource();
+
+    /// <summary>Is framebuffer 0 in the 4.6 context the buffer the engine presents? Under GLX both contexts
+    /// name one drawable, so it is; under WGL each holds its own back buffer, so it is not -- which is what
+    /// makes a composite image that cannot be built a fallback there and a REFUSAL here.</summary>
+    private static bool Fb0IsTheScreen => !OperatingSystem.IsWindows();
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
@@ -75,15 +81,15 @@ internal static unsafe class PresentTarget
         if (w == s.W && h == s.H) return;
         s.W = w; s.H = h;
         s.Tex = Source.Resize(s.Tex, w, h);
-        if (s.Tex == 0) { Incomplete("the composite image could not be allocated"); return; }
+        if (s.Tex == 0) { Refuse("the composite image could not be allocated"); return; }
         if (s.Fbo46 == 0) { uint f; Gl.GenFramebuffers(1, &f); s.Fbo46 = f; }
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, s.Fbo46);
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, s.Tex, 0);
         uint status = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
         if (status != Gl.FRAMEBUFFER_COMPLETE)
         {
-            Incomplete($"the present framebuffer is incomplete (0x{status:x})");
-            uint t = s.Tex; Gl.DeleteTextures(1, &t); s.Tex = 0;
+            Source.Release(s.Tex); s.Tex = 0;
+            Refuse($"the present framebuffer is incomplete (0x{status:x})");
         }
         else if (!s.Announced)
         {
@@ -94,11 +100,34 @@ internal static unsafe class PresentTarget
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
     }
 
-    /// <summary>No present image this frame: Alloy writes framebuffer 0 from the 4.6 context instead, which
-    /// the shared GLX drawable makes correct and WGL does not -- there the frame flickers.</summary>
-    private static void Incomplete(string why)
-        => _log?.Always($"PresentTarget: {why} -- the 4.6 context falls back to writing framebuffer 0, which "
-                      + "is correct on the shared GLX drawable and FLICKERS on Windows");
+    /// <summary>There is no composite image. The framebuffer object goes with it, so <see cref="Fbo46"/> stops
+    /// claiming one and every binder writes framebuffer 0 -- which is the screen on a shared drawable and is
+    /// nothing on Windows, where this is a stated refusal and the engine renders the world instead.</summary>
+    private static void Refuse(string why)
+    {
+        PresentState s = _s;
+        // Zeroed whether or not the delete can run: the name is what the binders read, and a missing entry
+        // point must not turn the path whose job is to fail gracefully into a null call.
+        if (s.Fbo46 != 0)
+        {
+            uint f = s.Fbo46; s.Fbo46 = 0;
+            if (Gl.DeleteFramebuffers != null) Gl.DeleteFramebuffers(1, &f);
+        }
+        if (s.RefusedSaid) return;
+        s.RefusedSaid = true;
+        if (Fb0IsTheScreen)
+            _log?.Always($"PresentTarget: {why} -- the 4.6 context writes framebuffer 0 instead, which on this "
+                       + "drawable IS the buffer the engine presents, so the frame still reaches the screen");
+        else
+        {
+            // Windows: there is no second place to put the frame, and the GUI flush has none either -- so this
+            // says it rather than drawing a frame nobody will see.
+            _log?.Always($"PresentTarget: {why} -- and framebuffer 0 in the 4.6 context is NOT the buffer this "
+                       + "platform presents, so the Alloy frame has nowhere to land: the world renders vanilla "
+                       + "and Alloy's GUI draws do not reach the screen either");
+            AlloyGate.Fail(why + " -- the present composite image could not be built");
+        }
+    }
 
     /// <summary>The world frame is about to composite into the image: the GUI flush draws over it as it is
     /// instead of taking the stale screen back over it.</summary>
@@ -162,6 +191,7 @@ internal static unsafe class PresentTarget
          : _s.Tex == 0 ? $"present: framebuffer 0 -- the {_s.W}x{_s.H} composite image was REFUSED"
          : $"present: {_s.W}x{_s.H} composite, {_s.HandBacks} hand-back + {_s.TakeBacks} take-back blits";
 
-    /// <summary>GL names die with the context. Names only -- the images are gone already.</summary>
-    internal static void ContextLost() { Source.Forget(); _s = new PresentState(); }
+    /// <summary>GL names die with the context. Names only -- the images are gone already, so nothing is
+    /// released here and the next frame's <see cref="Ensure"/> builds a fresh one.</summary>
+    internal static void ContextLost() => _s = new PresentState();
 }
