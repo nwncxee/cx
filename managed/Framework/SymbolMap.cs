@@ -732,7 +732,7 @@ internal static unsafe class SymbolMap
     [Fn("void(IntPtr tex, byte useSubImage, int cell)")]
     public const string RiCreateTexture = "_ZN15RenderInterface13CreateTextureEP11CAurTexturebi";
     /// <summary><c>RenderInterface::CreateCubeTexture(CAurTexture*, bool, int)</c> @0x45d1f0 -> <c>GLRender</c>'s
-    /// @0x4caab0 (Windows RVA 0xBE930, the body inlined): the cube twin of <see cref="RiCreateTexture"/>, same ABI.
+    /// @0x4caab0 (Windows RVA 0xBE930, a jump to GLRender's at 0xAEFF0): the cube twin of <see cref="RiCreateTexture"/>, same ABI.
     /// It cuts the image as a vertical strip of six faces (remap {1,0,2,3,4,5}, quarter turns {1,3,0,2,2,0}) and
     /// uploads each into whatever is bound to <c>GL_TEXTURE_CUBE_MAP</c> on unit 0.</summary>
     [Fn("void(IntPtr tex, byte useSubImage, int cell)")]

@@ -19,4 +19,16 @@ public readonly unsafe ref partial struct CAurTexture
         }
         return p;
     }
+
+    /// <summary>An uncompressed image's pixels as <c>GLRender::CreateCubeTexture</c> @0x4caab0 reads them:
+    /// <c>GetWidth() * GetHeight() * GetBPP()</c> bytes from <c>GetImage()</c>; empty when there is none.</summary>
+    public System.ReadOnlySpan<byte> Pixels
+    {
+        get
+        {
+            byte* p = (byte*)GetImage();
+            int w = GetWidth(), h = GetHeight(), bpp = GetBPP();
+            return p == null || w <= 0 || h <= 0 || bpp <= 0 ? default : new System.ReadOnlySpan<byte>(p, w * h * bpp);
+        }
+    }
 }
