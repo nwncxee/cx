@@ -156,13 +156,35 @@ internal static unsafe class SkyStage
         return false;
     }
 
-    /// <summary>Link the sky pair: Alloy's own fullbright VERTEX stage (the same text the unlit program
-    /// compiles, so the dome's clip position, texture rotation and world position come out identically) and
-    /// <see cref="ShdFs"/> with the content stage's resref written into its region.</summary>
-    private static uint Build(string resref, bool native)
+    /// <summary>The content stage GL program <paramref name="prog"/> hosts, and whether it hosts that stage's
+    /// native version: what a second backend needs to build the same dome. False for a program this cache does
+    /// not hold.</summary>
+    internal static bool Hosted(uint prog, out string resref, out bool native)
     {
-        if (resref.Length > ShaderResource.ResRefBytes) return 0;
-        string what = $"AlloyRenderer sky program ({resref}{(native ? ", native, linear HDR" : "")})";
+        resref = ""; native = false;
+        var g = _gl;
+        for (int i = 0; i < g.Count; i++)
+            if (g.Progs[i].Prog == prog && prog != 0)
+            {
+                resref = g.Progs[i].Ref;
+                native = g.Progs[i].NativeLive;
+                return true;
+            }
+        return false;
+    }
+
+    /// <summary>What a build of content stage <paramref name="resref"/> is called in the log.</summary>
+    private static string What(string resref, bool native)
+        => $"AlloyRenderer sky program ({resref}{(native ? ", native, linear HDR" : "")})";
+
+    /// <summary>The sky pair's text for content stage <paramref name="resref"/>: Alloy's own fullbright VERTEX stage
+    /// and <see cref="ShdFs"/> with the content resref written into its region. <paramref name="pair"/> prefers an
+    /// override of either half, <paramref name="embedded"/> is the shipped pair a failed override falls back to. False
+    /// (said once) when the content stage is not in the resource chain, which is no sky for this area.</summary>
+    internal static bool Texts(string resref, bool native, out (string Vs, string Fs) pair, out (string Vs, string Fs) embedded)
+    {
+        pair = embedded = ("", "");
+        if (resref.Length > ShaderResource.ResRefBytes) return false;
         // Refused rather than stubbed: the region's fallback stub is a BLACK DOME, which is a picture, so a
         // program built from it would be a silent fallback in the exact sense CX-45 forbids. No stage in the
         // chain (or the bridge disarmed) means no sky for this area, said out loud.
@@ -170,7 +192,7 @@ internal static unsafe class SkyStage
         {
             _log?.Always($"SkyStage: {resref}.shd is not in the resource chain (or alloy.vanillabridge=0) -- the "
                        + "sky cannot be compiled here and is NOT DRAWN (nothing else draws the sky since CX-87)");
-            return 0;
+            return false;
         }
         // The override lookup is done HERE, not by GlProgram's overridable overload, because the region's
         // resref has to be written in before the splice reads the marker -- and an override that keeps the
@@ -182,23 +204,31 @@ internal static unsafe class SkyStage
         // the #version line, which is the one place GLSL takes it, for the override exactly as for the default.
         if (native)
         {
-            bool embedded = ReferenceEquals(fs, efs);
+            bool own = ReferenceEquals(fs, efs);
             efs = ShaderStages.WithDefine(efs, StageResources.NativeDefine);
-            fs = embedded ? efs : ShaderStages.WithDefine(fs, StageResources.NativeDefine);
+            fs = own ? efs : ShaderStages.WithDefine(fs, StageResources.NativeDefine);
         }
         // The vertex half reads the per-draw record, so it owes the same two contracts the unlit program's
         // build checks -- an override that dropped them would put every dome at its neighbour's matrix.
         if (!ReferenceEquals(vs, evs) && !(ShaderContract.RecordSafe(vs) && ShaderContract.SlotIndexSafe(vs)))
         {
-            _log?.Info($"{what}: the {AlloyRenderer.ShdFullbrightVs} override does not declare the per-draw "
-                     + "record -- the sky takes the embedded vertex stage");
+            _log?.Info($"{What(resref, native)}: the {AlloyRenderer.ShdFullbrightVs} override does not declare the "
+                     + "per-draw record -- the sky takes the embedded vertex stage");
             vs = evs;
         }
-        uint prog = GlProgram.Graphics(vs, fs.Replace(FsToken, resref, StringComparison.Ordinal), _log, what);
-        if (prog == 0 && (!ReferenceEquals(vs, evs) || !ReferenceEquals(fs, efs)))
+        pair = (vs, fs.Replace(FsToken, resref, StringComparison.Ordinal));
+        embedded = (evs, efs.Replace(FsToken, resref, StringComparison.Ordinal));
+        return true;
+    }
+    private static uint Build(string resref, bool native)
+    {
+        if (!Texts(resref, native, out var pair, out var embedded)) return 0;
+        string what = What(resref, native);
+        uint prog = GlProgram.Graphics(pair.Vs, pair.Fs, _log, what);
+        if (prog == 0 && (pair.Vs != embedded.Vs || pair.Fs != embedded.Fs))
         {
             _log?.Info($"{what}: an override .shd failed to build -- falling back to the embedded stages");
-            prog = GlProgram.Graphics(evs, efs.Replace(FsToken, resref, StringComparison.Ordinal), _log, what);
+            prog = GlProgram.Graphics(embedded.Vs, embedded.Fs, _log, what);
         }
         if (prog != 0 && GlProgram.LastStubbed)
         {

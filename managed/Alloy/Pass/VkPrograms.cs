@@ -90,6 +90,17 @@ internal static class VkPrograms
                                 Final(GlProgram.Lib(t.Fs, log, what), log, what, true), Units, glDepth: false);
     }
 
+    /// <summary>The hosted sky's program for content stage <paramref name="resref"/>, translated for Vulkan from the
+    /// same text <see cref="SkyStage"/> compiles: Alloy's fullbright vertex stage and the <c>cx_sky_fs</c> wrapper with
+    /// the content stage spliced into its region. Null when that stage is not in the resource chain.</summary>
+    internal static VkProgramText? SkyText(string resref, ExtenderLog? log)
+    {
+        if (!SkyStage.Texts(resref, native: false, out var pair, out _)) return null;
+        string what = $"VkPrograms sky {resref}";
+        return VkGlsl.Translate(Final(GlProgram.Lib(pair.Vs, log, what), log, what, true),
+                                Final(GlProgram.Lib(pair.Fs, log, what), log, what, true), Units, glDepth: false);
+    }
+
     /// <summary>The lit pair after the stage overrides and library swaps, before the splice: what GL's lit build and
     /// its twins start from.</summary>
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)

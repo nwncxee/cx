@@ -85,6 +85,10 @@ public sealed unsafe partial class AlloyRenderer
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
 
+        // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
+        // where nothing wrote depth, so a cutout drawn before it covers exactly the pixels it would have covered
+        if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
+
         side.Reset();
         arena0 = s.ArenaUsed;
         b = new VkBound { Fmt = -1, Tex = -1 };

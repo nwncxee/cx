@@ -128,6 +128,7 @@ internal sealed unsafe partial class VkBackend
                 Op.EndRenderPass => End(),
                 Op.SetPipeline => Bind(r.Read<PipelineId>()),
                 Op.SetViewport => Viewport(r.Read<Rect>()),
+                Op.SetDepthRange => DepthRange(r.Read<DepthRangeCmd>()),
                 Op.SetScissor => Scissor(r.Read<Rect>()),
                 Op.SetDepthBias => DepthBias(r.Read<DepthBiasCmd>()),
                 Op.BindSet => BindSet(r.Read<BindSetCmd>(), ref r),
@@ -162,6 +163,9 @@ internal sealed unsafe partial class VkBackend
         _pendDepth = h.Depth;
         _inPass = true;
         _scissorSet = false;
+        // every pass starts at the whole window-depth range, so a pass that collapses it (the sky dome) does
+        // not leave the next one drawing at depth 1
+        _depthMin = 0f; _depthMax = 1f;
         return true;
     }
 
@@ -315,9 +319,10 @@ internal sealed unsafe partial class VkBackend
 
     private bool Viewport(Rect v)
     {
+        _viewport = v;
         // same numbers as GL's: both put framebuffer row 0 at y 0 and NDC -1 on it, so an imported image
         // reads back the same way up in either API
-        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = 0, maxDepth = 1 };
+        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = _depthMin, maxDepth = _depthMax };
         _vkd.vkCmdSetViewport(_cmd, 0, 1, &vp);
         return true;
     }

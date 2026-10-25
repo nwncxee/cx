@@ -97,7 +97,7 @@ public sealed unsafe partial class AlloyRenderer
                     tex[k] = (int)name;
                 }
                 if (staged < 0) break;
-                _skVao[_skyN] = -1; _skVaoName[_skyN] = vao;
+                _skFmt[_skyN] = (int)MeshArena.FormatOf(DrawRecipe.Range(recipe)); _skVaoName[_skyN] = vao;
                 _skMode[_skyN] = Gl.TRIANGLES;   // gl-ok: an enum value staged for the pass, no call
                 _skSrc[_skyN] = roles[r].Src; _skDst[_skyN] = roles[r].Dst;
                 _skAlpha[_skyN] = rec.Alpha;
