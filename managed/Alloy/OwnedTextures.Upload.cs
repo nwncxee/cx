@@ -50,23 +50,29 @@ internal static unsafe partial class OwnedTextures
     }
 
     /// <summary>Cell <paramref name="cell"/> of <paramref name="tex"/> into a texture of Alloy's own, as the engine
-    /// would have uploaded it. 0 = a shape this does not transcribe (two channels, no image) or the driver refused
-    /// it (<paramref name="err"/>); either way the caller leaves the upload to the engine.</summary>
-    private static uint UploadOwn(IntPtr tex, int cell, out uint err)
+    /// would have uploaded it. 0 = the driver refused it (<paramref name="err"/>), the engine's format table has no
+    /// entry for it, or level 0 is past <c>GL_MAX_TEXTURE_SIZE</c> (<paramref name="oversize"/>) -- the one of those
+    /// the engine's own upload does better, by box-filtering the sheet down.</summary>
+    private static uint UploadOwn(IntPtr tex, int cell, out uint err, out bool oversize)
     {
-        err = 0;
+        err = 0; oversize = false;
         var t = new CAurTexture(tex);
         byte* img = (byte*)t.GetImage();
         int w = t.GetWidth(), h = t.GetHeight(), bpp = t.GetBPP();
-        if (img == null || w <= 0 || h <= 0) return 0;
+        if (w <= 0 || h <= 0) return 0;
+        bool compressed = t.GetCompressedSize() > 0;
+        int nx = Math.Max(t.GetNumX(), 1), ny = Math.Max(t.GetNumY(), 1);
+        int lw = compressed ? w : w / nx, lh = compressed ? h : h / ny;
+        if (lw > MaxTexSize() || lh > MaxTexSize()) { oversize = true; return 0; }
         bool mip = (t.GetMipMap() & MipByte) != 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip);
         Gl.DrainErrors(8);   // the verdict is ours to read, so nobody else's error may be sitting here
         uint dst;
-        bool ddsFormat = DdsReader.Lookup(img, out DdsReader.Info dds) && !DdsReader.EngineUploads(dds.Format);
+        DdsReader.Info dds = default;
+        bool ddsFormat = img != null && DdsReader.Lookup(img, out dds) && !DdsReader.EngineUploads(dds.Format);
         if (ddsFormat)
             dst = UploadDdsFormat(img, dds, s, mip, bpp == 1);
-        else if (t.GetCompressedSize() > 0)
+        else if (img != null && compressed)
             dst = UploadCompressed(t, w, h, s, mip, bpp == 1);
         else
             dst = UploadRaw(t, img, cell, w, h, bpp, s, mip);
@@ -85,23 +91,62 @@ internal static unsafe partial class OwnedTextures
     /// <summary><c>GetMipMap()</c> answers a bool in its low byte.</summary>
     private const int MipByte = 0xff;   // not-an-offset: a byte mask
 
+    /// <summary>The storage, format and packed type an engine image of <paramref name="bpp"/> bytes per texel is
+    /// read through. 4/3/1 are byte channels as <c>GLRender::CreateTexture</c> @0x4ca2b0 names them; 2 is the
+    /// four-bits-per-channel image <c>ImageRead16bit</c> @0x4b6a50 reads from a <c>.4pc</c> file, R,G,B,A from the
+    /// high nibble down -- GL's 4_4_4_4 exactly, which the engine pairs with GL_RG and so uploads nowhere.</summary>
+    private static bool RawFormat(int bpp, out uint sized, out uint fmt, out uint type)
+    {
+        type = Gl.UNSIGNED_BYTE;
+        switch (bpp)
+        {
+            case 4: sized = Gl.RGBA8; fmt = Gl.RGBA; return true;
+            case 3: sized = Gl.RGB8; fmt = Gl.RGB; return true;
+            case 2: sized = Gl.RGBA4; fmt = Gl.RGBA; type = Gl.UNSIGNED_SHORT_4_4_4_4; return true;
+            case 1: sized = Gl.R8; fmt = Gl.RED; return true;
+            default: sized = fmt = 0; return false;
+        }
+    }
+
     /// <summary>An uncompressed sheet: the cell is read in place through the unpack rectangle (the engine copies
-    /// it out with <c>ImageGetSubImage</c>), mips by <c>glGenerateMipmap</c> as the engine's are.
-    /// ponytail: no GL_MAX_TEXTURE_SIZE downsample -- 4.6 guarantees 16384, past it the driver refuses and the engine uploads.</summary>
+    /// it out with <c>ImageGetSubImage</c>), mips by <c>glGenerateMipmap</c> as the engine's are. A null image gets
+    /// the storage the engine's <c>glTexImage2D(..., nullptr)</c> leaves, zeroed so it reads the same every run.</summary>
     private static uint UploadRaw(CAurTexture t, byte* img, int cell, int w, int h, int bpp, in Sampler s, bool mip)
     {
         int nx = t.GetNumX(), ny = t.GetNumY();
-        if (bpp is not (1 or 3 or 4) || nx <= 0 || ny <= 0) return 0;
+        if (!RawFormat(bpp, out uint sized, out uint fmt, out uint type) || nx <= 0 || ny <= 0) return 0;
         int cw = w / nx, ch = h / ny;
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
-        uint sized = bpp == 4 ? Gl.RGBA8 : bpp == 3 ? Gl.RGB8 : Gl.R8;
-        uint fmt = bpp == 4 ? Gl.RGBA : bpp == 3 ? Gl.RGB : Gl.RED;
         uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
         if (dst == 0) return 0;
+        if (img == null)
+        {
+            if (Gl.ClearTexImage != null) Gl.ClearTexImage(dst, 0, fmt, type, null);
+            return dst;
+        }
         var u = Unpack.Take(w, (cell % nx) * cw, (cell / nx) * ch);
-        Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, Gl.UNSIGNED_BYTE, img);
+        Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, type, img);
         u.Give();
         if (mip) Gl.GenerateTextureMipmap(dst);
+        return dst;
+    }
+
+    /// <summary>The stand-in for a shape Alloy declines and the engine's own upload fails on as well: storage of
+    /// the right size and no pixels, one level and an unmipped sampler so the texture is COMPLETE (a bindless
+    /// handle may be minted on it) rather than the storage-less name a failed <c>glTexImage2D</c> leaves. 0 = the
+    /// driver would not give a name at all.</summary>
+    private static uint UploadEmpty(IntPtr tex)
+    {
+        var t = new CAurTexture(tex);
+        int w = t.GetWidth(), h = t.GetHeight();
+        int nx = Math.Max(t.GetNumX(), 1), ny = Math.Max(t.GetNumY(), 1);
+        int cw = Math.Max(w / nx, 1), ch = Math.Max(h / ny, 1);
+        if (cw > MaxTexSize() || ch > MaxTexSize()) return 0;
+        Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip: false);
+        uint dst = Storage(Gl.TEXTURE_2D, 1, Gl.RGBA8, cw, ch, s, red: false);
+        // Immutable storage starts UNDEFINED, which on screen is whatever the driver last had there; zeroed, it
+        // is transparent black every time, and the loud line beside it is what says so.
+        if (dst != 0 && Gl.ClearTexImage != null) Gl.ClearTexImage(dst, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
         return dst;
     }
 

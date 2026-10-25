@@ -26,6 +26,11 @@ internal static unsafe partial class OwnedTextures
         var savedBorrowed = new HashSet<int>(_borrowed);
         int savedPending = _pending.Count;
         _res.Clear(); _index.Clear(); _owned.Clear(); _borrowed.Clear();
+        // The ledger the borrows below are counted in is this check's own, with every shape already "said" so
+        // a synthetic tid writes no session line.
+        BorrowState savedBorrow = _borrow;
+        _borrow = new();
+        Array.Fill(_borrow.Said, true);
 
         _armed = false;
         bool ok = Draw(7) == 7 && _borrowed.Count == 0;             // stood down: pass-through, nothing noticed
@@ -34,6 +39,18 @@ internal static unsafe partial class OwnedTextures
 
         // Never uploaded through our funnel -> BORROWED, counted once per distinct name rather than per frame.
         ok &= Draw(11) == 11 && Draw(11) == 11 && Borrowed == 1;
+        // CX-339: and the shape it is counted under. 11 reached no funnel; 12 was declined for want of a
+        // context, which is the shape the one refresh exists to empty. Expected tallies are literals here.
+        Declined(12, Borrow.PreContext);
+        ok &= Draw(12) == 12 && Draw(12) == 12 && Borrowed == 2
+           && _borrow.Count[(int)Borrow.Funnel] == 1 && _borrow.Count[(int)Borrow.PreContext] == 1
+           && _borrow.PreCtx == 1 && BorrowNote() == " by shape: never funnelled 1, pre-context 1";
+        // A delete takes the reason with the name: the next texture wearing 12 is a fresh question.
+        uint* recycled = stackalloc uint[1] { 12 };
+        Retire(1, recycled);
+        ok &= Borrowed == 1 && !_borrow.Why.ContainsKey(12);
+        ok &= Draw(12) == 12 && _borrow.Count[(int)Borrow.Funnel] == 2;
+        ForgetBorrow(12);
 
         // The content key is the identity; the engine name is an index onto it. Two names may resolve one
         // resource, and one name resolves a different resource after a re-upload. The key itself is the
@@ -120,6 +137,7 @@ internal static unsafe partial class OwnedTextures
 
         _armed = wasArmed;
         _retired = savedRetired;   // the check's own synthetic deletes are not a session's
+        _borrow = savedBorrow;
         log.Info(ok ? "OwnedTextures.SelfCheck: passed" : "OwnedTextures.SelfCheck: FAILED");
         return ok;
     }
@@ -142,6 +160,40 @@ internal static unsafe partial class OwnedTextures
         check.Expect(s == new Sampler(0x2703, 0x2601, 0x812F, 0x812F, 0x812F, true), $"cube: {s}");             // not-an-offset: GL enums
         check.Expect(EngineLevels(256, 256) == 9 && EngineLevels(512, 64) == 10 && EngineLevels(1, 1) == 1 && EngineLevels(3, 5) == 3,
                      $"levels: {EngineLevels(256, 256)} {EngineLevels(512, 64)} {EngineLevels(1, 1)} {EngineLevels(3, 5)}");
+
+        // CX-339: the storage/format/type triple per bytes-per-texel. Oracle: the GL enum values written as
+        // literals, and for two channels the engine's own format table entry 9 (GL_RGBA4), which is what
+        // ImageConvert32to16bit @0x4b7d50 stamps on the 4-bits-per-channel image it packs.
+        bool got = RawFormat(4, out uint sz, out uint fm, out uint ty);
+        check.Expect(got && sz == 0x8058 && fm == 0x1908 && ty == 0x1401, $"bpp 4: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
+        got = RawFormat(3, out sz, out fm, out ty);
+        check.Expect(got && sz == 0x8051 && fm == 0x1907 && ty == 0x1401, $"bpp 3: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
+        got = RawFormat(2, out sz, out fm, out ty);
+        check.Expect(got && sz == 0x8056 && fm == 0x1908 && ty == 0x8033, $"bpp 2: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
+        got = RawFormat(1, out sz, out fm, out ty);
+        check.Expect(got && sz == 0x8229 && fm == 0x1903 && ty == 0x1401, $"bpp 1: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
+        check.Expect(!RawFormat(0, out _, out _, out _) && !RawFormat(5, out _, out _, out _), "no texel width but 1..4 uploads");
+
+        // The 4_4_4_4 read itself, hand-unpacked: the two bytes ImageConvert32to16bit writes for one RGBA8
+        // texel, back through GL's RGBA/UNSIGNED_SHORT_4_4_4_4 rule (R from the top nibble down). Oracle: the
+        // packing written out by hand from the disassembly, and the expected channels as literals.
+        check.Expect(Pack4444(0x12, 0x34, 0x56, 0x78) == 0x1357 && Pack4444(0xff, 0x00, 0xff, 0x0f) == 0xF0F0,
+                     $"pack: {Pack4444(0x12, 0x34, 0x56, 0x78):x4} {Pack4444(0xff, 0x00, 0xff, 0x0f):x4}");
+        Unpack4444(0x1357, out int r, out int g, out int b, out int a);
+        check.Expect(r == 1 && g == 3 && b == 5 && a == 7, $"unpack: {r} {g} {b} {a}");
         return check.Ok;
+    }
+
+    /// <summary>One RGBA8 texel as <c>ImageConvert32to16bit</c> @0x4b7d50 packs it: a little-endian ushort whose
+    /// low byte is <c>(B &amp; 0xf0) | (A &gt;&gt; 4)</c> and high byte <c>(R &amp; 0xf0) | (G &gt;&gt; 4)</c>.
+    /// Check-only: the engine's packer is dead code in the shipped client, and the bytes come off disk.</summary>
+    private static ushort Pack4444(int r, int g, int b, int a)
+        => (ushort)((((b & 0xf0) | (a >> 4)) & 0xff) | ((((r & 0xf0) | (g >> 4)) & 0xff) << 8));
+
+    /// <summary>The same ushort as <c>GL_RGBA</c> + <c>GL_UNSIGNED_SHORT_4_4_4_4</c> reads it: first component in
+    /// the most significant nibble. Check-only -- the real read is the driver's.</summary>
+    private static void Unpack4444(ushort v, out int r, out int g, out int b, out int a)
+    {
+        r = (v >> 12) & 0xf; g = (v >> 8) & 0xf; b = (v >> 4) & 0xf; a = v & 0xf;
     }
 }

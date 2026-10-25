@@ -114,6 +114,7 @@ internal static unsafe partial class OwnedTextures
     private static void Maintain()
     {
         _dripFrame++;
+        RefreshPreContext();
         CensusSettleCheck();
         DripTranscodes();
         DdsReader.Tick();
@@ -249,6 +250,8 @@ internal static unsafe partial class OwnedTextures
         var b = new CAurTextureBasic(tex);
         uint* cells = (uint*)b.CellNames;
         int n = b.NumX * b.NumY;
+        // No cell array and no name in the cell leave the engine nothing to BIND either, so neither can reach a
+        // borrowed draw: the part samples the white stand-in instead.
         if (cells == null || cell < 0 || cell >= n || n > MaxCells) return false;
         int etid = (int)cells[cell];
         if (etid <= 0) return false;
@@ -256,30 +259,38 @@ internal static unsafe partial class OwnedTextures
         // A cell already naming an owned texture is the engine re-uploading INTO our name (a Restore after a
         // warm hand-back, or a refresh): fresh storage under a new name, exactly as a re-upload always was.
 
-        // ponytail: before the first present there is no 4.6 context and no entry points, so a texture
-        // uploaded that early stays borrowed for the session -- nothing re-drives this funnel for a texture
-        // the engine already holds. The window is the main menu, which Alloy does not draw, and the count
-        // says so out loud rather than hiding it. Upgrade path: re-drive AurTextureRefreshAll @0x48f050 from
-        // the engine's context once the bracket exists.
+        // Before the first present there is no 4.6 context and no entry points; RefreshPreContext drives the
+        // engine's own refresh once the bracket exists, which brings these back through this funnel.
         if (!GlContextService.Available)
         {
+            Declined(etid, Borrow.PreContext);
             _borrowed.Add(etid);
             return false;
         }
 
         ulong key = Key(tex, cell);
-        uint dst = UploadOwn(tex, cell, out uint err);
+        uint dst = UploadOwn(tex, cell, out uint err, out bool oversize);
+        // Every shape left here is one the engine's own upload fails on too (two channels GL refuses outright, a
+        // format its table cannot name, a driver refusal), so Alloy keeps it -- storage, no pixels -- the way the
+        // cube path does. Oversize is the exception: there the engine downsamples and Alloy declines to it.
+        bool empty = dst == 0 && single && !oversize;
+        if (empty) dst = UploadEmpty(tex);
         if (dst == 0)
         {
+            Declined(etid, oversize ? Borrow.Oversize : single ? Borrow.Driver : Borrow.StoodDown);
             if (_diagLeft > 0)
             {
                 _diagLeft--;
                 _log?.Info($"OwnedTextures: tid {etid} {(single ? "left to the engine" : "borrowed")} -- "
-                         + (err != 0 ? $"Alloy's upload gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
+                         + (oversize ? $"level 0 is past GL_MAX_TEXTURE_SIZE ({MaxTexSize()}), which the engine's upload downsamples to fit"
+                            : err != 0 ? $"Alloy's upload gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
             }
             _borrowed.Add(etid);   // the engine's copy, which the caller builds on the single path, draws borrowed
             return false;
         }
+        if (empty && ++_borrow.Empty <= EmptyDiag)
+            _log?.Always($"OwnedTextures: tid {etid} drawn EMPTY, as the engine's own upload of it fails -- "
+                       + (err != 0 ? $"the driver gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
         long bytes = Measure(dst);
         // An image unpacked from a DDS was BCn already: a second encode would only lose more.
         bool wantBcn = _bcn && b.CompressedSize == 0 && tex != RasterReader.Unpacked;
@@ -297,7 +308,7 @@ internal static unsafe partial class OwnedTextures
             if (!_owned.Contains(old) && Gl.DeleteTextures != null) { Gl.DeleteTextures(1, &old); ScrubEngineBoundCache(old); }
             else _engineHeld.Remove(old);   // a refresh INTO our name: the engine will never return the old one, so Discard deletes it
             _engineHeld.Add(dst);
-            _borrowed.Remove(etid);
+            ForgetBorrow(etid);
             _singleUploads++;
             etid = (int)dst;
         }
@@ -379,7 +390,7 @@ internal static unsafe partial class OwnedTextures
         _evictDue = true;
         _owned.Add(owned);
         _index[etid] = key;
-        _borrowed.Remove(etid);
+        ForgetBorrow(etid);
         _uploads++;
         _bytes += bytes;
         if (_res.Count > _peakCount) _peakCount = _res.Count;
@@ -449,6 +460,7 @@ internal static unsafe partial class OwnedTextures
         _index.Clear();
         _owned.Clear();
         _borrowed.Clear();
+        _borrow = new();   // the ledger was about the dead context's names, and its driver limits with them
         _pending.Clear(); _pendingForget.Clear(); foreach (var d in _deferred) d.Clear();   // the names died with the context
         _transCtx++;   // a job the encoder still holds names a texture of the dead context: it drops at its upload
         DropTranscodes();

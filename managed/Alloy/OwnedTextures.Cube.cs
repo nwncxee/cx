@@ -62,7 +62,7 @@ internal static unsafe partial class OwnedTextures
         if (!_owned.Contains(old) && Gl.DeleteTextures != null) { Gl.DeleteTextures(1, &old); ScrubEngineBoundCache(old); }
         else _engineHeld.Remove(old);
         _engineHeld.Add(dst);
-        _borrowed.Remove(etid);
+        ForgetBorrow(etid);
         _stats.Remove(dst);
         Replace(Key(tex, cell), (int)dst, dst, bytes);
         HighWater();
