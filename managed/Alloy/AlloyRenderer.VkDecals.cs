@@ -84,8 +84,11 @@ public sealed unsafe partial class AlloyRenderer
         {
             // every ground decal is lit by construction (AlloyRenderer.DbDecal); an unlit one has no writer here
             if (!_gLit[g]) { s.Skipped += _gLen[g]; continue; }
-            VkBatch(side, ref b, d.Prog!, g, VkTargets.Decal, 0, depth, VkRaster(g, false), slots, 0, ref push,
-                    vp, viewport, near, far, CullPassVk.PhaseColour, indirect);
+            if (!VkBatch(side, ref b, d.Prog!, g, VkTargets.Decal, 0, depth, VkRaster(g, false), slots, 0, ref push,
+                         vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
+            // counted as GL's own decal pass counts them, so the A/B line's two batch tallies are of one thing
+            Counters._batches++;
+            Counters._draws += _gLen[g];
         }
         d.Writing = false;
         Span<ColorAttachment> colors = stackalloc ColorAttachment[DecalTargets];
