@@ -379,8 +379,10 @@ public sealed unsafe partial class AlloyRenderer
         if (!BeginOwnedFrame(display, viewport, out OwnedFrame f)) return;
         bool onVulkan = Renderer.OnVulkan;
         bool ab = VkParity.Active;
+        long batches0 = Counters._batches, draws0 = Counters._draws;
         // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
         if (onVulkan) VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
+        long batches1 = Counters._batches, draws1 = Counters._draws;
         Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;
@@ -766,7 +768,8 @@ public sealed unsafe partial class AlloyRenderer
             if (self < 0) { _passSelfNeg++; self = 0; }
             _passCpu[(int)id] += self;
         }
-        if (ab) VkParity.ReadGlAndReport(viewport, PostChain.HdrTex, PostChain.DepthTex, GBuffer.Tex(0), GBuffer.Tex(1), GBuffer.Tex(2), GBuffer.Written);
+        if (ab) VkParity.ReadGlAndReport($"Vulkan issued {batches1 - batches0} batches ({draws1 - draws0} draws), GL "
+                                         + $"{Counters._batches - batches1} ({Counters._draws - draws1}); GL's cull kept {CullPass.KeptNow()}", viewport, PostChain.HdrTex, PostChain.DepthTex, GBuffer.Tex(0), GBuffer.Tex(1), GBuffer.Tex(2), GBuffer.Written);
         long tTail = FrameZones.Now;
         PaintStreamFailures(display);
         GpuSpanEnd();

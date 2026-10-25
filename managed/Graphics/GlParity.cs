@@ -10,6 +10,10 @@ internal static unsafe class GlParity
     {
         /// <summary>A buffer of zeros. ponytail: made once and never freed -- the context's end takes it.</summary>
         public uint Zero;
+
+        /// <summary>The mappable copy <see cref="Sum"/> reads through, and its size. ponytail: never freed, as above.</summary>
+        public uint Read;
+        public long ReadBytes;
     }
 
     private static ParityGlState _s = new();
@@ -50,5 +54,27 @@ internal static unsafe class GlParity
         for (int r = 0; r < h; r++)
             Array.Copy(all, ((long)(y + r) * tw + x) * words, crop, (long)r * w * words, (long)w * words);
         return crop;
+    }
+
+    /// <summary>The sum of the first <paramref name="n"/> words of <paramref name="buf"/>, read back by a full stall.</summary>
+    internal static long Sum(uint buf, int n)
+    {
+        long bytes = (long)n * sizeof(uint);
+        if (buf == 0 || n <= 0 || Gl.CopyNamedBufferSubData == null || Gl.MapNamedBufferRange == null) return -1;
+        if (_s.ReadBytes < bytes)
+        {
+            uint b;
+            Gl.CreateBuffers(1, &b);
+            Gl.NamedBufferStorage(b, (IntPtr)bytes, null, Gl.MAP_READ_BIT);
+            _s.Read = b; _s.ReadBytes = bytes;
+        }
+        Gl.CopyNamedBufferSubData(buf, _s.Read, IntPtr.Zero, IntPtr.Zero, (IntPtr)bytes);
+        Gl.Finish();
+        var p = (uint*)Gl.MapNamedBufferRange(_s.Read, IntPtr.Zero, (IntPtr)bytes, Gl.MAP_READ_BIT);
+        if (p == null) return -1;
+        long sum = 0;
+        for (int i = 0; i < n; i++) sum += p[i];
+        Gl.UnmapNamedBuffer(_s.Read);
+        return sum;
     }
 }

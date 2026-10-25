@@ -135,7 +135,7 @@ internal static unsafe class VkParity
 
     /// <summary>GL's targets after its A/B passes, then the comparison: logged, with GL's and Vulkan's colour and the diff
     /// mask written beside <see cref="FrameTap"/>'s sets.</summary>
-    internal static void ReadGlAndReport(int* viewport, uint hdr, uint depth, uint g0, uint g1, uint g2, bool gbuf)
+    internal static void ReadGlAndReport(string issued, int* viewport, uint hdr, uint depth, uint g0, uint g1, uint g2, bool gbuf)
     {
         var s = _s;
         if (!s.Active) return;
@@ -174,7 +174,7 @@ internal static unsafe class VkParity
         catch (IOException e) { s.Log.Always($"[vkab] the images were not written -- {e.Message}"); }
         catch (UnauthorizedAccessException e) { s.Log.Always($"[vkab] the images were not written -- {e.Message}"); }
         s.Log.Always($"[vkab] {set} {w}x{h}: {Report(n)}; images {FrameTap.Dir}/{set}_{{gl,vk}}.pfm and _diff.ppm "
-                   + "(red = drawn on one side only, orange = depth, yellow = G-buffer, blue = colour)");
+                   + $"(red = drawn on one side only, orange = depth, yellow = G-buffer, blue = colour); {issued}");
         s.Vk = null;
     }
 
