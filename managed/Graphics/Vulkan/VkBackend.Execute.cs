@@ -182,21 +182,24 @@ internal sealed unsafe partial class VkBackend
         if (_rendering) return true;
         if (!_inPass) return Fault("a draw outside a render pass");
         VkRenderingAttachmentInfo* att = stackalloc VkRenderingAttachmentInfo[Math.Max(_pendCount, 1)];
-        int w = 0, h = 0;
+        int w = 0, h = 0, layers = 1;
         for (int i = 0; i < _pendCount; i++)
         {
             ColorAttachment c = _pend[i];
             // a null image routes the slot nowhere, so the slots after it keep their indices
             if (c.Image.IsNull) { att[i] = new VkRenderingAttachmentInfo { imageView = default, imageLayout = VkImageLayout.Undefined }; continue; }
             if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: stale image");
-            if (c.Mip != 0 || c.Layer > 0) return Fault($"render pass colour {i}: mip {c.Mip} layer {c.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (c.Mip != 0) return Fault($"render pass colour {i}: mip {c.Mip} -- only mip 0 on the Vulkan backend yet");
+            VkImageView cv = AttachView(img, c.Layer);
+            if (cv.IsNull) return Fault($"render pass colour {i}: layer {c.Layer} is past {img.Desc.Label}");
+            if (c.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.ColorAttachmentOptimal);
             var clear = new VkClearValue();
             clear.color.float32[0] = c.Clear.X; clear.color.float32[1] = c.Clear.Y;
             clear.color.float32[2] = c.Clear.Z; clear.color.float32[3] = c.Clear.W;
             att[i] = new VkRenderingAttachmentInfo
             {
-                imageView = img.View, imageLayout = VkImageLayout.ColorAttachmentOptimal,
+                imageView = cv, imageLayout = VkImageLayout.ColorAttachmentOptimal,
                 loadOp = c.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
                 storeOp = c.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
@@ -209,14 +212,17 @@ internal sealed unsafe partial class VkBackend
         {
             DepthAttachment d = _pendDepth;
             if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault("render pass depth: stale image");
-            if (d.Mip != 0 || d.Layer > 0) return Fault($"render pass depth: mip {d.Mip} layer {d.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (d.Mip != 0) return Fault($"render pass depth: mip {d.Mip} -- only mip 0 on the Vulkan backend yet");
             if (!img.Desc.Fmt.IsDepth()) return Fault($"render pass depth: {img.Desc.Label} is {img.Desc.Fmt}, not a depth format");
+            VkImageView dv = AttachView(img, d.Layer);
+            if (dv.IsNull) return Fault($"render pass depth: layer {d.Layer} is past {img.Desc.Label}");
+            if (d.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.DepthStencilAttachmentOptimal);
             var clear = new VkClearValue();
             clear.depthStencil = new VkClearDepthStencilValue(d.Depth, 0);
             depth = new VkRenderingAttachmentInfo
             {
-                imageView = img.View, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
+                imageView = dv, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
                 loadOp = d.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
                 storeOp = d.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
@@ -227,7 +233,7 @@ internal sealed unsafe partial class VkBackend
         var area = new VkRect2D { extent = new VkExtent2D { width = (uint)w, height = (uint)h } };
         var ri = new VkRenderingInfo
         {
-            renderArea = area, layerCount = 1, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
+            renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
         _vkd.vkCmdBeginRendering(_cmd, &ri);

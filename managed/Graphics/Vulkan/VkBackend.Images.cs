@@ -139,10 +139,11 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>A view of every mip (<paramref name="mip"/> -1) or of one, typed as the shader declares the kind:
     /// a single-layer 2D image as 2D, more layers as an array, a cube as a cube. A grey image reads red into all
-    /// three colours and alpha as 1.</summary>
-    private VkImageView View(VkImage image, in ImageDesc d, int mip)
+    /// three colours and alpha as 1. A non-negative <paramref name="layer"/> is one layer of an array or cube array,
+    /// typed 2D: the attachment of one cascade or one cube face.</summary>
+    private VkImageView View(VkImage image, in ImageDesc d, int mip, int layer = -1)
     {
-        VkImageViewType type = d.Kind switch
+        VkImageViewType type = layer >= 0 ? VkImageViewType.Image2D : d.Kind switch
         {
             ImageKind.Tex3D => VkImageViewType.Image3D,
             ImageKind.Cube when d.Layers == 1 => VkImageViewType.ImageCube,
@@ -159,7 +160,8 @@ internal sealed unsafe partial class VkBackend
             {
                 aspectMask = d.Fmt.IsDepth() ? VkImageAspectFlags.Depth : VkImageAspectFlags.Color,
                 baseMipLevel = (uint)Math.Max(mip, 0), levelCount = mip < 0 ? (uint)d.Mips : 1,
-                layerCount = d.Kind == ImageKind.Tex3D ? 1 : (uint)(cube ? d.Layers * 6 : d.Layers),
+                baseArrayLayer = (uint)Math.Max(layer, 0),
+                layerCount = layer >= 0 ? 1 : d.Kind == ImageKind.Tex3D ? 1 : (uint)(cube ? d.Layers * 6 : d.Layers),
             },
         };
         VkImageView view;
@@ -175,6 +177,23 @@ internal sealed unsafe partial class VkBackend
         if (img.MipViews[mip].IsNull) img.MipViews[mip] = View(img.Image, img.Desc, mip);
         return img.MipViews[mip];
     }
+
+    /// <summary>The attachment view of mip 0: the whole image for <paramref name="layer"/> -1 (a layered pass over
+    /// every layer), one layer alone otherwise, made on first ask. Null when the layer is past the image.</summary>
+    private VkImageView AttachView(VkImg img, int layer)
+    {
+        int layers = Layers(img.Desc);
+        if (layer < 0) return img.View;
+        if (layers == 1) return img.View;
+        if (layer >= layers) return default;
+        img.LayerViews ??= new VkImageView[layers];
+        if (img.LayerViews[layer].IsNull) img.LayerViews[layer] = View(img.Image, img.Desc, 0, layer);
+        return img.LayerViews[layer];
+    }
+
+    /// <summary>Array layers an image holds, counting a cube's six faces each.</summary>
+    private static int Layers(in ImageDesc d)
+        => d.Kind == ImageKind.Tex3D ? 1 : d.Kind is ImageKind.Cube or ImageKind.CubeArray ? d.Layers * 6 : d.Layers;
 
     /// <summary>Bytes one mip of one layer holds tightly packed: block rows for a compressed format.</summary>
     internal static long LevelBytes(in ImageDesc d, int mip)
