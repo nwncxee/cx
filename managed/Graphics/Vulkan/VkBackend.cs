@@ -165,13 +165,16 @@ internal sealed unsafe partial class VkBackend : IDevice
             {
                 if ((q[k].queueFlags & (VkQueueFlags.Graphics | VkQueueFlags.Compute)) != (VkQueueFlags.Graphics | VkQueueFlags.Compute)) continue;
                 phys = list[i]; family = k; feats = f2.features;
-                log.Info($"VkBackend: device '{new string((sbyte*)props.properties.deviceName)}' Vulkan {props.properties.apiVersion}, queue family {k}");
+                log.Info($"VkBackend: device '{new string((sbyte*)props.properties.deviceName)}' Vulkan {Version(props.properties.apiVersion)}, queue family {k}");
                 return null;
             }
             why = "the Vulkan device GL runs on has no graphics+compute queue";
         }
         return why;
     }
+
+    /// <summary>major.minor.patch: the version's own formatting leads with the variant field.</summary>
+    private static string Version(VkVersion v) => $"{v.Major}.{v.Minor}.{v.Patch}";
 
     private static bool HasExt(VkInstanceApi vki, VkPhysicalDevice d, ReadOnlySpan<byte> name)
     {
