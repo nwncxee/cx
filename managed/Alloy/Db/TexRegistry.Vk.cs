@@ -53,7 +53,7 @@ internal static unsafe partial class TexRegistry
             }
             return;
         }
-        byte[] px = VkTextures.Pack(j.Data, j.Pixels != null ? j.FullW : j.W, 0, 0, j.W, j.H, j.Channels, nibbles: false, out Format pf);
+        byte[] px = VkTextures.Pack(j.Data, j.FullW > 0 ? j.FullW : j.W, 0, 0, j.W, j.H, j.Channels, nibbles: false, out Format pf);
         int levels = j.GenMips ? j.Levels : 1;
         ImageId raw = VkTextures.Create(vk, dst, pf, j.W, j.H, levels, j.Channels == 1, s, label);
         if (raw.IsNull) return;
