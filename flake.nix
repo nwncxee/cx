@@ -83,6 +83,16 @@
         pkgs.zstd
       ];
 
+      # CX-320: the Vulkan side of the toolchain, dev shells only. The shipped extender takes its loader
+      # from the system and its SPIR-V compiler from the shaderc library staged beside it, so none of this
+      # reaches cx-linux-x64/ or the zip. vulkan-tools is vulkaninfo, which is how "does this box have an
+      # ICD at all" gets answered; the headers are for a future native translation unit.
+      vulkanPackages = [
+        pkgs.vulkan-headers
+        pkgs.vulkan-loader
+        pkgs.vulkan-tools
+      ];
+
       pins = lib.importJSON ./tools/deps.json;
 
       # build.sh's libopenal.so.1, built by the same script from the same pinned source. Nix keeps it in the
@@ -135,8 +145,12 @@
       };
 
       devShell = shellEnv // {
-        packages = [ pythonDev ] ++ ciPackages ++ devPackages;
+        packages = [ pythonDev ] ++ ciPackages ++ devPackages ++ vulkanPackages;
         buildInputs = ciLibraries;
+        # CX-320: the validation layers are a DEBUGGING tool, never a shipped one -- ADD, so the system
+        # loader keeps whatever layers the box already has, and nothing is enabled until a run asks for it
+        # (VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation, or the layer named in the instance's own list).
+        VK_ADD_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d";
       };
     in
     assert pinned;

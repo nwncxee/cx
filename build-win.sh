@@ -120,6 +120,13 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 cp build/win/cx_managed.dll "$OUT/version.dll"
 cp build/deps/win/soft_oal.dll "$OUT/cx_openal.dll"
 cp build/deps/sa/phonon.dll "$OUT/phonon.dll"
+# CX-320: the Vulkan toolchain's native halves, dropped in build/win/ by the publish above (NuGet
+# runtimes/win-x64/native). They ship beside version.dll, the way the audio runtime does. Named, not
+# globbed: a publish that stops copying one has to fail here rather than ship an install missing it.
+for lib in shaderc_shared.dll vma.dll; do
+  [ -f "build/win/$lib" ] || { echo "!! build/win/$lib is missing -- the Vulkan toolchain packages did not restore" >&2; exit 1; }
+  cp "build/win/$lib" "$OUT/"
+done
 BUILDS=$(awk -F'\t' '$1 == "name" { printf "%s%s", sep, $2; sep = ", " }' managed/Framework/Builds/*.tsv)
 sed "s/@VERSION@/$CX_VERSION/g; s/@BUILDS@/$BUILDS/g" packaging/README-win.txt > "$OUT/README.txt"
 packaging/licenses.sh "$OUT/LICENSES.txt"
