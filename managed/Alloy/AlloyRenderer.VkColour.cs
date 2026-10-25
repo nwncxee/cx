@@ -36,6 +36,8 @@ public sealed unsafe partial class AlloyRenderer
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];
         public VkOpaque[] Opaques = [];
+        /// <summary>Declares the <c>CxEngine</c> block, so a bind needs the frame's copy staged.</summary>
+        public bool ReadsEngine;
         public LitLoc L;
         public FeatLoc F;
         public int Vp = -1, Tex = -1, Viz = -1, AlphaMip = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
@@ -55,6 +57,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The content table's Vulkan copy, its handles as bindless indices, and the bytes last sent.</summary>
         public BufferId ContentRows;
         public byte[] ContentSent = [], ContentStage = [];
+        /// <summary>The bytes of <see cref="ContentSent"/> the buffer holds, and the table and mirror versions they came from.</summary>
+        public int ContentSentN;
+        public long ContentVersion = -1, ContentTexGen = -1;
         /// <summary>This frame's <c>CxEngine</c> block in the arena, -1 until a program that reads it binds.</summary>
         public int EngineAt = -1;
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
@@ -164,8 +169,11 @@ public sealed unsafe partial class AlloyRenderer
         foreach (VkPrograms.Id id in VkPrograms.All)
         {
             VkProg? p = VkBuild(vk, id, log);
-            if (p == null) log.Always($"AlloyRenderer: the Vulkan {id} program did not build (logged above)");
-            if (p == null) return false;
+            if (p == null)
+            {
+                log.Always($"AlloyRenderer: the Vulkan {id} program did not build (logged above)");
+                return false;
+            }
             s.Progs[(int)id] = p;
         }
         s.ZeroUbo = vk.CreateBuffer(new BufferDesc(ZeroUboBytes, BufferUse.Uniform, MemoryKind.Device, "vk zero block"));
@@ -269,6 +277,7 @@ public sealed unsafe partial class AlloyRenderer
         byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
         var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray() };
+        p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;
@@ -348,23 +357,25 @@ public sealed unsafe partial class AlloyRenderer
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
-        if (loose < 0 || (lit && pass < 0)) return false;
+        if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
         VkBindSet(cl, p, s, loose, pass, slots, tex);
         return true;
     }
 
     /// <summary>This frame's <c>CxEngine</c> block in the arena, staged at the first program that reads it, its noise
-    /// handle as a bindless index; -1 (logged) when the arena is full.</summary>
+    /// handle as a bindless index; negative (logged once) when the arena is full.</summary>
     private static int VkEngine()
     {
         VkColourState s = _vkc;
-        if (s.EngineAt >= 0) return s.EngineAt;
-        EngineBlock b = EngineBlockStaged(out _);
+        if (s.EngineAt != -1) return s.EngineAt;
+        EngineBlock b = EngineBlockStaged();
         ulong h = (ulong)b.Noise.Y << 32 | b.Noise.X;
         b.Noise = new UInt2(h != 0 ? VkTextures.IndexOfHandle(h) : 0u, 0u);
         if (b.Noise.X == 0) b.Noise.X = s.NullIndex;
-        s.EngineAt = VkArena(MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)));
-        return s.EngineAt;
+        int at = VkArena(MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)));
+        // a full arena is remembered for the frame (-2), so no later batch stages the block again
+        s.EngineAt = at >= 0 ? at : -2;
+        return at;
     }
 
     /// <summary>The content table into its Vulkan copy, its palette handles as bindless indices (an empty slot the
@@ -372,6 +383,8 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkContentRows(VkBackend vk, CommandList cl)
     {
         VkColourState s = _vkc;
+        long version = Db.ContentTable.Version, gen = VkTextures.Generation;
+        if (!s.ContentRows.IsNull && version == s.ContentVersion && gen == s.ContentTexGen) return true;
         int n = Db.ContentTable.Snapshot(ref s.ContentStage);
         Span<byte> rows = s.ContentStage.AsSpan(0, n);
         int rb = Db.ContentTable.RowBytes;
@@ -383,15 +396,22 @@ public sealed unsafe partial class AlloyRenderer
                 uint i = h != 0 ? VkTextures.IndexOfHandle(h) : 0;
                 MemoryMarshal.Write(slot, (ulong)(i != 0 ? i : s.NullIndex));
             }
-        if (!s.ContentRows.IsNull && rows.SequenceEqual(s.ContentSent)) return true;
+        if (!s.ContentRows.IsNull && rows.SequenceEqual(s.ContentSent.AsSpan(0, s.ContentSentN)))
+        {
+            s.ContentVersion = version; s.ContentTexGen = gen;
+            return true;
+        }
         if (s.ContentRows.IsNull || n > s.ContentSent.Length)
         {
+            s.ContentSent = new byte[n];
             vk.Destroy(s.ContentRows);
             s.ContentRows = vk.CreateBuffer(new BufferDesc(n, BufferUse.Storage, MemoryKind.Device, "vk content table"));
             if (s.ContentRows.IsNull) return false;
         }
         cl.UpdateBuffer(s.ContentRows, 0, rows);
-        s.ContentSent = rows.ToArray();
+        rows.CopyTo(s.ContentSent);
+        s.ContentSentN = n;
+        s.ContentVersion = version; s.ContentTexGen = gen;
         return true;
     }
 
@@ -457,7 +477,7 @@ public sealed unsafe partial class AlloyRenderer
                               : new BufferBinding(o.Binding, s.ZeroUbo);
                     break;
                 case VkBindKind.StorageBlock when o.Binding == Db.ContentTable.Binding && !s.ContentRows.IsNull:
-                    ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSent.Length);
+                    ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSentN);
                     break;
                 case VkBindKind.StorageBlock:
                     ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch

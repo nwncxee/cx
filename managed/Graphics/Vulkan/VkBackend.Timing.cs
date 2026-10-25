@@ -10,6 +10,10 @@ internal sealed unsafe partial class VkBackend
     private double _tickNs;
     private readonly bool[] _timed = new bool[Slots];
     private double _gpuMsSum;
+    private bool _timing;
+
+    /// <summary>Time the next submit: the frame's own, so a copy or a check submitted beside it is never banked.</summary>
+    internal bool TimeNextSubmit;
     private int _gpuMsN;
 
     private void OpenTiming(in VkPhysicalDeviceProperties props)
@@ -36,18 +40,21 @@ internal sealed unsafe partial class VkBackend
             }
             _timed[slot] = false;
         }
+        _timing = TimeNextSubmit;
+        TimeNextSubmit = false;
+        if (!_timing) return;
         _vkd.vkCmdResetQueryPool(_cmd, _timePool, (uint)slot * 2, 2);
         _vkd.vkCmdWriteTimestamp(_cmd, VkPipelineStageFlags.TopOfPipe, _timePool, (uint)slot * 2);
     }
 
     private void TimeEnd(int slot, bool ok)
     {
-        if (_timePool.IsNull) return;
+        if (_timePool.IsNull || !_timing) return;
         _vkd.vkCmdWriteTimestamp(_cmd, VkPipelineStageFlags.BottomOfPipe, _timePool, (uint)slot * 2 + 1);
         _timed[slot] = ok;
     }
 
-    /// <summary>The mean GPU time of the submits banked since the last take, and how many; 0 when none were.</summary>
+    /// <summary>The mean GPU time of the timed submits banked since the last take, and how many; 0 when none were.</summary>
     internal double TakeGpuMs(out int n)
     {
         n = _gpuMsN;

@@ -43,7 +43,6 @@ internal sealed unsafe partial class VkBackend
     internal void SavePipelineCache()
     {
         if (!_pipeCacheDirty || _pipeCache.IsNull) return;
-        _pipeCacheDirty = false;
         nuint n = 0;
         if (_vkd.vkGetPipelineCacheData(_pipeCache, &n, null) != VkResult.Success || n == 0) return;
         var data = new byte[(int)n];
@@ -54,6 +53,7 @@ internal sealed unsafe partial class VkBackend
             string tmp = _pipeCachePath + ".tmp";
             File.WriteAllBytes(tmp, data.AsSpan(0, (int)n).ToArray());
             File.Move(tmp, _pipeCachePath, overwrite: true);
+            _pipeCacheDirty = false;
         }
         catch (IOException e) { _log.Info($"VkBackend: the pipeline cache was not saved -- {e.Message}"); }
         catch (UnauthorizedAccessException e) { _log.Info($"VkBackend: the pipeline cache was not saved -- {e.Message}"); }

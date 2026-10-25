@@ -29,6 +29,8 @@ internal static class VkTextures
         /// <summary>GL's resident handle for an owned name, as minted: the record tables carry handles, not names.</summary>
         public readonly Dictionary<ulong, uint> HandleName = new();
         public long Mirrored, Refused;
+        /// <summary>Bumped by every change to a name's mirror or a handle's name, and carried to a new device's state.</summary>
+        public long Gen;
     }
 
     private static VkTexState _s = new();
@@ -45,7 +47,7 @@ internal static class VkTextures
         if (_s.Dev != vk)
         {
             VkTexState was = _s;
-            _s = new VkTexState { Dev = vk };
+            _s = new VkTexState { Dev = vk, Gen = was.Gen + 1 };
             // handles GL minted before the first device carry over; a replaced device went with GL's context, and its handles
             if (was.Dev == null) foreach (var kv in was.HandleName) _s.HandleName[kv.Key] = kv.Value;
         }
@@ -62,6 +64,7 @@ internal static class VkTextures
         if (img.IsNull) { Refuse($"{label}: the device refused a {f} {w}x{h} image"); return default; }
         if (!_s.Samplers.TryGetValue(s, out SamplerId sid)) _s.Samplers[s] = sid = vk.CreateSampler(s);
         _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s, sid);
+        _s.Gen++;
         _s.Refs[img.Value] = 1;
         _s.Mirrored++;
         return img;
@@ -76,6 +79,7 @@ internal static class VkTextures
         Forget(gl);
         if (!t.Samplers.TryGetValue(s, out SamplerId sid)) t.Samplers[s] = sid = t.Dev.CreateSampler(s);
         t.ByName[gl] = new Entry(e.Image, t.Dev.Bindless(e.Image, sid), s, sid);
+        t.Gen++;
         t.Refs[e.Image.Value] = t.Refs.GetValueOrDefault(e.Image.Value) + 1;
     }
 
@@ -125,8 +129,11 @@ internal static class VkTextures
     /// <summary>GL minted <paramref name="handle"/> for owned name <paramref name="gl"/>.</summary>
     internal static void NoteHandle(ulong handle, int gl)
     {
-        if (Renderer.OnVulkan) _s.HandleName[handle] = (uint)gl;
+        if (Renderer.OnVulkan) { _s.HandleName[handle] = (uint)gl; _s.Gen++; }
     }
+
+    /// <summary>The mirror's generation: unchanged means every handle resolves to the index it did.</summary>
+    internal static long Generation => _s.Gen;
 
     /// <summary>The bindless index of the mirror behind GL handle <paramref name="handle"/>; 0 when it has none.</summary>
     internal static uint IndexOfHandle(ulong handle) => _s.HandleName.TryGetValue(handle, out uint gl) ? Index((int)gl) : 0;
@@ -136,6 +143,7 @@ internal static class VkTextures
     {
         VkTexState s = _s;
         if (s.Dev == null || !s.ByName.Remove(gl, out Entry e)) return;
+        s.Gen++;
         s.Dev.Unbind(e.Handle);
         int refs = s.Refs.GetValueOrDefault(e.Image.Value) - 1;
         if (refs > 0) { s.Refs[e.Image.Value] = refs; return; }

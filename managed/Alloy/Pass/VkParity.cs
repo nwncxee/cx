@@ -107,15 +107,16 @@ internal static unsafe class VkParity
     }
 
     /// <summary>The Vulkan frame's targets, after its submit: each lane copied into words and read back. False (logged)
-    /// when the device refused it, and the A/B stands down.</summary>
+    /// when the device refused it: the frame stays stood down and reports nothing.</summary>
     internal static bool ReadVulkan(VkBackend vk, ImageId hdr, ImageId depth, ImageId g0, ImageId g1, ImageId g2, bool gbuf, int w, int h)
     {
         if (!_s.Active) return true;
         bool built = Ensure(vk);
         var s = _s;
+        // a refusal leaves Active up: the GL half already stood its terms down for this frame, and ReadGlAndReport,
+        // finding no Vulkan lanes, reports nothing
         if (!built || s.Log == null)
         {
-            s.Active = false;
             s.Log?.Always("[vkab] REFUSED -- the Vulkan copy stages did not build (logged above)");
             return false;
         }
@@ -125,7 +126,6 @@ internal static unsafe class VkParity
                                && Copy(vk, g2, s.Uint1, G2Words, w, h, out l.G2));
         if (!ok)
         {
-            s.Active = false;
             s.Log.Always("[vkab] REFUSED -- a Vulkan lane did not read back (logged above)");
             return false;
         }

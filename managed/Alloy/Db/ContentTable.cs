@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using CX.Framework;
 using CX.Graphics;
 
@@ -70,6 +71,8 @@ internal static unsafe class ContentTable
         public uint Ssbo;
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
+        /// <summary>Bumped by every row edit, so a copy of the rows knows when it is stale without comparing them.</summary>
+        public long Version;
         /// <summary>Uploads whose dirty span reached past the buffer, and so were HELD rather than dropped.</summary>
         public long Short;
         /// <summary>Has a row ever existed? Until one has, the GPU block is ONE zero row rather than the
@@ -186,6 +189,7 @@ internal static unsafe class ContentTable
 
     private static void Touch(int row)
     {
+        _st.Version++;
         if (row < _st.DirtyLo) _st.DirtyLo = row;
         if (row > _st.DirtyHi) _st.DirtyHi = row;
     }
@@ -270,6 +274,8 @@ internal static unsafe class ContentTable
 
     /// <summary>The rows the GPU block holds -- one zero row until any exists, as <see cref="Upload"/> sizes it -- copied
     /// into <paramref name="into"/> (grown to fit); their byte length. Palette handles are GL's.</summary>
+    internal static long Version => Volatile.Read(ref _st.Version);
+
     internal static int Snapshot(ref byte[] into)
     {
         lock (_lock)

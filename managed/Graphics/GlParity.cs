@@ -48,12 +48,30 @@ internal static unsafe class GlParity
         Gl.GetTextureLevelParameteriv(tex, 0, Gl.TEXTURE_HEIGHT, &th);
         if (tw < x + w || th < y + h) return null;
         var all = new uint[(long)tw * th * words];
-        Gl.PixelStorei(Gl.PACK_ALIGNMENT, 1);
+        // the engine's pack state is whatever it last left: a bound pack buffer would take the pointer as an offset
+        int buf, align, row, skipRows, skipPx;
+        Gl.GetIntegerv(Gl.PIXEL_PACK_BUFFER_BINDING, &buf);
+        Gl.GetIntegerv(Gl.PACK_ALIGNMENT, &align);
+        Gl.GetIntegerv(Gl.PACK_ROW_LENGTH, &row);
+        Gl.GetIntegerv(Gl.PACK_SKIP_ROWS, &skipRows);
+        Gl.GetIntegerv(Gl.PACK_SKIP_PIXELS, &skipPx);
+        if (buf != 0) Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, 0);
+        Pack(1, 0, 0, 0);
         fixed (uint* p = all) Gl.GetTextureImage(tex, 0, format, type, all.Length * sizeof(uint), p);
+        Pack(align, row, skipRows, skipPx);
+        if (buf != 0) Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, (uint)buf);
         var crop = new uint[(long)w * h * words];
         for (int r = 0; r < h; r++)
             Array.Copy(all, ((long)(y + r) * tw + x) * words, crop, (long)r * w * words, (long)w * words);
         return crop;
+    }
+
+    private static void Pack(int align, int row, int skipRows, int skipPx)
+    {
+        Gl.PixelStorei(Gl.PACK_ALIGNMENT, align);
+        Gl.PixelStorei(Gl.PACK_ROW_LENGTH, row);
+        Gl.PixelStorei(Gl.PACK_SKIP_ROWS, skipRows);
+        Gl.PixelStorei(Gl.PACK_SKIP_PIXELS, skipPx);
     }
 
     /// <summary>The sum of the first <paramref name="n"/> words of <paramref name="buf"/>, read back by a full stall.</summary>

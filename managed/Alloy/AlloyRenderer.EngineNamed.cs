@@ -105,11 +105,11 @@ public sealed unsafe partial class AlloyRenderer
         else _engineU.Blk.Bind(UboSlots.Engine);
     }
 
-    /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> binds, staged and not bound: true when it is the one
-    /// already staged this frame. The noise term is a GL bindless handle.</summary>
-    internal static ref EngineBlock EngineBlockStaged(out bool same)
+    /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> binds, staged and not bound. The noise term is a
+    /// GL bindless handle.</summary>
+    internal static ref EngineBlock EngineBlockStaged()
     {
-        same = FillEngineBlock();
+        FillEngineBlock();
         return ref _engineU.Blk.Stage;
     }
 
