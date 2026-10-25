@@ -95,20 +95,12 @@ internal static unsafe partial class OwnedTextures
         return sb.ToString();
     }
 
-    /// <summary>The level-0 ceiling, asked once per context. A driver that answers nothing is read as 4.6's
-    /// guaranteed minimum, which is the engine's own fallback shape (it takes 4096).</summary>
+    /// <summary>The level-0 ceiling the oversize decline is measured against, asked once per context.</summary>
     private static int MaxTexSize()
     {
-        if (_borrow.MaxTex == 0)
-        {
-            int v = 0;
-            if (Gl.GetIntegerv != null) Gl.GetIntegerv(Gl.MAX_TEXTURE_SIZE, &v);
-            _borrow.MaxTex = v > 0 ? v : MinMaxTexture;
-        }
+        if (_borrow.MaxTex == 0) _borrow.MaxTex = GlTexture.MaxSize();
         return _borrow.MaxTex;
     }
-    /// <summary>GL 4.6's guaranteed <c>GL_MAX_TEXTURE_SIZE</c>.</summary>
-    private const int MinMaxTexture = 16384;   // not-an-offset: a GL implementation limit
 
     /// <summary>A texture the engine uploaded before the 4.6 context existed is borrowed for the session
     /// otherwise: nothing re-drives the funnel for one the engine already holds. So drive the engine's OWN

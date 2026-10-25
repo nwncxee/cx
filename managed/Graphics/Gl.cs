@@ -179,9 +179,6 @@ public static unsafe class Gl
     /// <summary>Four bits per channel: the storage and the packed type a two-bytes-per-pixel engine image
     /// (a <c>.4pc</c> file) is read through.</summary>
     public const uint RGBA4 = 0x8056, UNSIGNED_SHORT_4_4_4_4 = 0x8033;
-    /// <summary>The widest level-0 a 2D texture may have. 4.6 guarantees 16384; past it an upload is refused,
-    /// which is the one shape the engine's own upload handles better (it downsamples).</summary>
-    public const uint MAX_TEXTURE_SIZE = 0x0D33;
     /// <summary>The rest of the sized colour formats a native stage may ask its own images for
     /// (<c>docs/shader-overrides.md</c>, "Native stages, images and passes"); GL 4.2 image-load-store formats.</summary>
     public const uint RGBA32F = 0x8814, R16F = 0x822D;

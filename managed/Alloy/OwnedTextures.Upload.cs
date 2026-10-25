@@ -119,11 +119,7 @@ internal static unsafe partial class OwnedTextures
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
         uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
         if (dst == 0) return 0;
-        if (img == null)
-        {
-            if (Gl.ClearTexImage != null) Gl.ClearTexImage(dst, 0, fmt, type, null);
-            return dst;
-        }
+        if (img == null) { GlTexture.ZeroFill(dst, fmt, type); return dst; }
         var u = Unpack.Take(w, (cell % nx) * cw, (cell / nx) * ch);
         Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, type, img);
         u.Give();
@@ -146,7 +142,7 @@ internal static unsafe partial class OwnedTextures
         uint dst = Storage(Gl.TEXTURE_2D, 1, Gl.RGBA8, cw, ch, s, red: false);
         // Immutable storage starts UNDEFINED, which on screen is whatever the driver last had there; zeroed, it
         // is transparent black every time, and the loud line beside it is what says so.
-        if (dst != 0 && Gl.ClearTexImage != null) Gl.ClearTexImage(dst, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
+        if (dst != 0) GlTexture.ZeroFill(dst, Gl.RGBA, Gl.UNSIGNED_BYTE);
         return dst;
     }
 
