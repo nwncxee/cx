@@ -1,0 +1,213 @@
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using CX.Framework;
+
+namespace CX.Rhi;
+
+/// <summary>A recorded command's opcode.</summary>
+public enum Op : byte
+{
+    End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
+    BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer,
+}
+
+/// <summary>An index element's width.</summary>
+public enum IndexType : byte { U16, U32 }
+
+/// <summary>A pixel rectangle.</summary>
+public readonly record struct Rect(int X, int Y, int W, int H);
+
+/// <summary>One texel origin in one mip; <see cref="Z"/> is the layer of an array or cube, the slice of a 3D image.</summary>
+public readonly record struct ImageRegion(int Mip, int X, int Y, int Z);
+
+/// <summary><see cref="Op.BeginRenderPass"/>'s header; the attachments follow it.</summary>
+public readonly record struct RenderPassCmd(int Colors, bool HasDepth, DepthAttachment Depth);
+/// <summary><see cref="Op.SetDepthBias"/>'s constants.</summary>
+public readonly record struct DepthBiasCmd(float Factor, float Units);
+/// <summary><see cref="Op.BindSet"/>'s header; the four binding arrays follow it in field order.</summary>
+public readonly record struct BindSetCmd(int Set, int Uniforms, int Storage, int Sampled, int StorageImages);
+/// <summary><see cref="Op.BindIndexBuffer"/>.</summary>
+public readonly record struct IndexBufferCmd(BufferId Buffer, IndexType Type, long Offset);
+/// <summary><see cref="Op.Draw"/>.</summary>
+public readonly record struct DrawCmd(int Verts, int Insts, int FirstVert, int FirstInst);
+/// <summary><see cref="Op.DrawIndexed"/>.</summary>
+public readonly record struct DrawIndexedCmd(int Indices, int Insts, int FirstIndex, int BaseVertex, int FirstInst);
+/// <summary><see cref="Op.DrawIndexedIndirect"/>: up to <see cref="MaxDraws"/> commands, the real count read
+/// from <see cref="Count"/> when it is not null.</summary>
+public readonly record struct IndirectCmd(BufferId Commands, long Offset, int MaxDraws, BufferId Count, long CountOffset);
+/// <summary><see cref="Op.Dispatch"/>'s group counts.</summary>
+public readonly record struct DispatchCmd(int X, int Y, int Z);
+/// <summary><see cref="Op.CopyImage"/>: a W x H x D block, texel for texel.</summary>
+public readonly record struct CopyImageCmd(ImageId Src, ImageRegion From, ImageId Dst, ImageRegion To, int W, int H, int D);
+/// <summary><see cref="Op.BlitImage"/>: a scaled copy of mip 0, layer 0; also resolves a multisampled source.</summary>
+public readonly record struct BlitImageCmd(ImageId Src, Rect From, ImageId Dst, Rect To, Filter Filter);
+/// <summary><see cref="Op.UpdateBuffer"/>'s header; the bytes follow it.</summary>
+public readonly record struct UpdateBufferCmd(BufferId Buffer, long Offset, int Bytes);
+
+/// <summary>One pass's recorded commands: an 8-byte opcode word and a fixed record per command, spans copied in
+/// after it, in one reused byte arena. Recording allocates nothing once the arena reaches the pass's high water;
+/// a growth logs. With <see cref="Immediate"/> set, each command is submitted as it is recorded -- the A/B for a
+/// migrated pass. ponytail: no push constants yet; GL needs a UboSlots point for them, added with the first user.</summary>
+public sealed class CommandList
+{
+    /// <summary>Every record starts on this boundary, so a record read in place is aligned.</summary>
+    private const int Align = 8;
+
+    private byte[] _buf;
+    private int _len, _sent;
+    private readonly string _name;
+    private readonly ExtenderLog? _log;
+
+    /// <summary>Submit every command as it is recorded, instead of when the pass submits the list.</summary>
+    public IDevice? Immediate;
+
+    /// <summary>An immediate submit was refused since the last <see cref="Reset"/>; later commands are not
+    /// submitted, and the pass sits out.</summary>
+    public bool Faulted { get; private set; }
+
+    /// <summary>Times the arena grew; each is one allocation and one log line.</summary>
+    public int Growths { get; private set; }
+
+    /// <summary>Bytes recorded since the last <see cref="Reset"/>.</summary>
+    public int Length => _len;
+
+    public CommandList(string name, int bytes = 4096, ExtenderLog? log = null)
+    {
+        _name = name;
+        _log = log;
+        _buf = new byte[Math.Max(Align, bytes)];
+    }
+
+    /// <summary>Forget every recorded command; the arena stays.</summary>
+    public void Reset() { _len = 0; _sent = 0; Faulted = false; }
+
+    /// <summary>The commands recorded since the last call, for a device to execute. Each command is handed out once.</summary>
+    public CommandReader TakePending()
+    {
+        var r = new CommandReader(_buf.AsSpan(_sent, _len - _sent));
+        _sent = _len;
+        return r;
+    }
+
+    public void BeginRenderPass(in RenderPassDesc d)
+    {
+        Head(Op.BeginRenderPass);
+        Put(new RenderPassCmd(d.Colors.Length, d.HasDepth, d.Depth));
+        Put(d.Colors);
+        Sent();
+    }
+
+    public void EndRenderPass() { Head(Op.EndRenderPass); Sent(); }
+    public void SetPipeline(PipelineId p) { Head(Op.SetPipeline); Put(p); Sent(); }
+    public void SetViewport(int x, int y, int w, int h) { Head(Op.SetViewport); Put(new Rect(x, y, w, h)); Sent(); }
+    public void SetScissor(int x, int y, int w, int h) { Head(Op.SetScissor); Put(new Rect(x, y, w, h)); Sent(); }
+    public void SetDepthBias(float factor, float units) { Head(Op.SetDepthBias); Put(new DepthBiasCmd(factor, units)); Sent(); }
+
+    /// <summary>Bind <paramref name="b"/> as descriptor set <paramref name="set"/>; the spans are copied.</summary>
+    public void BindSet(int set, in BindSet b)
+    {
+        Head(Op.BindSet);
+        Put(new BindSetCmd(set, b.Uniforms.Length, b.Storage.Length, b.Sampled.Length, b.StorageImages.Length));
+        Put(b.Uniforms); Put(b.Storage); Put(b.Sampled); Put(b.StorageImages);
+        Sent();
+    }
+
+    public void BindIndexBuffer(BufferId b, IndexType t, long offset)
+    { Head(Op.BindIndexBuffer); Put(new IndexBufferCmd(b, t, offset)); Sent(); }
+
+    public void Draw(int verts, int insts = 1, int firstVert = 0, int firstInst = 0)
+    { Head(Op.Draw); Put(new DrawCmd(verts, insts, firstVert, firstInst)); Sent(); }
+
+    public void DrawIndexed(int indices, int insts = 1, int firstIndex = 0, int baseVertex = 0, int firstInst = 0)
+    { Head(Op.DrawIndexed); Put(new DrawIndexedCmd(indices, insts, firstIndex, baseVertex, firstInst)); Sent(); }
+
+    public void DrawIndexedIndirect(BufferId cmds, long offset, int maxDraws, BufferId count = default, long countOffset = 0)
+    { Head(Op.DrawIndexedIndirect); Put(new IndirectCmd(cmds, offset, maxDraws, count, countOffset)); Sent(); }
+
+    public void Dispatch(int x, int y = 1, int z = 1) { Head(Op.Dispatch); Put(new DispatchCmd(x, y, z)); Sent(); }
+
+    public void CopyImage(in CopyImageCmd c) { Head(Op.CopyImage); Put(c); Sent(); }
+    public void BlitImage(in BlitImageCmd c) { Head(Op.BlitImage); Put(c); Sent(); }
+
+    /// <summary>Write <paramref name="src"/> into <paramref name="b"/> at <paramref name="offset"/>; the bytes are copied now.</summary>
+    public void UpdateBuffer(BufferId b, long offset, ReadOnlySpan<byte> src)
+    {
+        Head(Op.UpdateBuffer);
+        Put(new UpdateBufferCmd(b, offset, src.Length));
+        Put(src);
+        Sent();
+    }
+
+    private void Head(Op op) => Put((long)op);
+
+    private void Put<T>(in T v) where T : unmanaged
+    {
+        Span<byte> dst = Reserve(Unsafe.SizeOf<T>());
+        MemoryMarshal.Write(dst, in v);
+    }
+
+    private void Put<T>(ReadOnlySpan<T> v) where T : unmanaged
+    {
+        if (v.IsEmpty) return;
+        MemoryMarshal.AsBytes(v).CopyTo(Reserve(v.Length * Unsafe.SizeOf<T>()));
+    }
+
+    private Span<byte> Reserve(int bytes)
+    {
+        int padded = (bytes + Align - 1) & ~(Align - 1);
+        if (_len + padded > _buf.Length)
+        {
+            int size = Math.Max(_buf.Length * 2, _len + padded);
+            Array.Resize(ref _buf, size);
+            Growths++;
+            _log?.Always($"CommandList {_name}: arena grew to {size} bytes -- one allocation, size the list for its high water");
+        }
+        Span<byte> s = _buf.AsSpan(_len, bytes);
+        _len += padded;
+        return s;
+    }
+
+    private void Sent()
+    {
+        if (Immediate != null && !Faulted) Faulted = !Immediate.Submit(this);
+    }
+}
+
+/// <summary>Walks a recorded span in order: <see cref="Next"/> yields the opcode, then the device reads that
+/// command's record and spans with <see cref="Read{T}"/> and <see cref="Span{T}"/>, exactly as recorded.</summary>
+public ref struct CommandReader
+{
+    private const int Align = 8;
+    private readonly ReadOnlySpan<byte> _b;
+    private int _at;
+
+    public CommandReader(ReadOnlySpan<byte> b) { _b = b; _at = 0; }
+
+    /// <summary>The next opcode, or false at the end.</summary>
+    public bool Next(out Op op)
+    {
+        if (_at >= _b.Length) { op = Op.End; return false; }
+        op = (Op)Read<long>();
+        return true;
+    }
+
+    public T Read<T>() where T : unmanaged
+    {
+        T v = MemoryMarshal.Read<T>(_b.Slice(_at, Unsafe.SizeOf<T>()));
+        Skip(Unsafe.SizeOf<T>());
+        return v;
+    }
+
+    /// <summary><paramref name="n"/> records in place, pointing into the arena.</summary>
+    public ReadOnlySpan<T> Span<T>(int n) where T : unmanaged
+    {
+        if (n == 0) return default;
+        int bytes = n * Unsafe.SizeOf<T>();
+        ReadOnlySpan<T> s = MemoryMarshal.Cast<byte, T>(_b.Slice(_at, bytes));
+        Skip(bytes);
+        return s;
+    }
+
+    private void Skip(int bytes) => _at += (bytes + Align - 1) & ~(Align - 1);
+}
