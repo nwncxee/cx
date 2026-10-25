@@ -109,7 +109,8 @@ public enum StoreOp : byte { Store, DontCare }
 /// <summary>A colour attachment: one mip of one layer, or every layer when <see cref="Layer"/> is -1.</summary>
 public readonly record struct ColorAttachment(ImageId Image, int Mip, int Layer, LoadOp Load, StoreOp Store, Vector4 Clear);
 
-/// <summary>The depth attachment, cleared to <see cref="Depth"/> on <see cref="LoadOp.Clear"/>.</summary>
+/// <summary>The depth attachment, cleared to <see cref="Depth"/> on <see cref="LoadOp.Clear"/>: one mip of one
+/// layer, or every layer when <see cref="Layer"/> is -1, which is what a stage writing <c>gl_Layer</c> routes into.</summary>
 public readonly record struct DepthAttachment(ImageId Image, int Mip, int Layer, LoadOp Load, StoreOp Store, float Depth);
 
 /// <summary>A render pass's attachments. There is nothing to save or restore around one.</summary>

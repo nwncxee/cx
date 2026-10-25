@@ -359,6 +359,7 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
+        if (VkParity.Active) foreach (string name in VkParity.StoodDownAb) VkZero(p, name);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
         if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
@@ -521,6 +522,8 @@ public sealed unsafe partial class AlloyRenderer
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
+        if (VkShadowMap(o.Name) is { IsNull: false } map)
+            return new ImageBinding(o.Binding, map, o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Linear);
         return o.Type switch
         {
             "usampler2D" => new ImageBinding(o.Binding, s.TexU2D),

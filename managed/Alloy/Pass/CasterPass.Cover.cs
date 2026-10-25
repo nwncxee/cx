@@ -48,7 +48,7 @@ public sealed unsafe partial class CasterPass
         // reads it as geometry, for where rain and snow stop, where a puddle may form and whether a grass
         // blade is sheltered -- and a simplified roof edge moves all three. Its fit is the whole
         // precipitation range, so its texels are coarse and nearly every caster would thin.
-        if (RenderView(_gl.DepthTex, _mapSize, CoverLayer, &vp, dir, c, radius, margin, point: false,
+        if (RenderView(CasterMap.SunStatic, _gl.DepthTex, _mapSize, CoverLayer, &vp, dir, c, radius, margin, point: false,
                        set: CasterGather.SetStatic, detail: false))
         {
             _coverBaked = true; _coverKeyVp = vp; _coverC = c; _coverCValid = true; _coverNew = true;
