@@ -110,9 +110,10 @@ internal static unsafe class VkParity
     /// when the device refused it, and the A/B stands down.</summary>
     internal static bool ReadVulkan(VkBackend vk, ImageId hdr, ImageId depth, ImageId g0, ImageId g1, ImageId g2, bool gbuf, int w, int h)
     {
+        if (!_s.Active) return true;
+        bool built = Ensure(vk);
         var s = _s;
-        if (!s.Active) return true;
-        if (!Ensure(vk) || s.Log == null)
+        if (!built || s.Log == null)
         {
             s.Active = false;
             s.Log?.Always("[vkab] REFUSED -- the Vulkan copy stages did not build (logged above)");
@@ -235,11 +236,13 @@ internal static unsafe class VkParity
         return true;
     }
 
-    /// <summary>The device's copy stages and the read-back buffer, made once per device.</summary>
+    /// <summary>The device's copy stages and the read-back buffer, made once per device. A new device replaces
+    /// <see cref="_s"/>, so a caller reads it after this.</summary>
     private static bool Ensure(VkBackend vk)
     {
         var s = _s;
-        if (s.Dev != vk) _s = s = new ParityState { Dev = vk, Log = s.Log, Seq = s.Seq, Active = s.Active };
+        if (s.Dev != null && s.Dev != vk) _s = s = new ParityState { Log = s.Log, Seq = s.Seq, Active = s.Active };
+        s.Dev = vk;
         if (!s.Float1.IsNull) return !(s.Float2.IsNull || s.Uint1.IsNull || s.Uint4.IsNull);
         s.Cmds = new CommandList("vulkan a/b", 4096, s.Log!);
         s.Float1 = Copier(vk, false, DepthWords);

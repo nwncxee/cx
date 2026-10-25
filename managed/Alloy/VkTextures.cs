@@ -40,7 +40,7 @@ internal static class VkTextures
     /// Made here when it does not exist yet, which an area load reaches before the first Vulkan frame.</summary>
     internal static VkBackend? Device(ExtenderLog? log)
     {
-        if (!Renderer.OnVulkan || log == null || !OwnedTextures.Armed) return null;
+        if (!Renderer.OnVulkan || log == null || !OwnedTextures.Armed || AlloyGate.Failed) return null;
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return null;
         if (_s.Dev != vk)
         {

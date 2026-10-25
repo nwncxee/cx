@@ -32,7 +32,8 @@ internal static class VulkanFrame
     internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, int* viewport, int* display, float near, float far,
                                     bool lightingOn, bool perspective, int groups)
     {
-        if (log == null) return;
+        // a failed Alloy records nothing more: every submit after it would stage uploads no recording ever commits
+        if (log == null || AlloyGate.Failed) return;
         if (PresentTarget.Tex == 0 || AlloyDevice.Vulkan(log) is not VkBackend vk)
         {
             AlloyGate.Fail("the Vulkan frame has no backend or no composite image (logged above)");

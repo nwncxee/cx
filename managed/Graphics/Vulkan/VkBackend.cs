@@ -25,6 +25,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageView[]? MipViews;
         public ImageDesc Desc;
         public VkImageLayout Layout;
+        /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
+        public long UndoAt = -1;
         public Exported? Ext;
     }
 

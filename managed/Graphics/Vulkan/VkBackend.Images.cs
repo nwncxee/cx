@@ -289,6 +289,13 @@ internal sealed unsafe partial class VkBackend
         foreach (uint id in u.Touched)
             if (_images.TryGet(id, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
         FullBarrier();
+    }
+
+    /// <summary>The flushed uploads ran in a submitted recording: their chunks go back to the pool once it is done, and
+    /// the queue empties. A refused recording skips this, and the same copies flush again into the next.</summary>
+    private void CommitUploads()
+    {
+        UploadState u = _upload;
         foreach (UploadChunk c in u.Chunks) { c.At = _submits; u.Pool.Add(c); }
         u.Chunks.Clear();
         u.Copies.Clear();
@@ -313,7 +320,6 @@ internal sealed unsafe partial class VkBackend
             _vkd.vkCmdBlitImage(_cmd, img.Image, VkImageLayout.TransferSrcOptimal, img.Image, VkImageLayout.TransferDstOptimal, 1, &b, VkFilter.Linear);
             MipBarrier(img, m - 1, VkImageLayout.TransferSrcOptimal, VkImageLayout.TransferDstOptimal);
         }
-        img.Layout = VkImageLayout.TransferDstOptimal;
         Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
     }
 

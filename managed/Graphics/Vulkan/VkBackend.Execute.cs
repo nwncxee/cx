@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using CX.Rhi;
 using Vortice.Vulkan;
@@ -44,6 +45,8 @@ internal sealed unsafe partial class VkBackend
                 : $"the previous submit on this slot never finished ({waited}) -- a semaphore never signalled, or the GPU is stuck");
         _vkd.vkResetDescriptorPool(s.Pool, 0);
         s.StageUsed = 0;
+        _recording++;
+        _undo.Clear();
         _vkd.vkResetCommandBuffer(s.Cmd, 0);
         var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
         _vkd.vkBeginCommandBuffer(s.Cmd, &bi);
@@ -64,10 +67,19 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkEndCommandBuffer(_cmd);
         if (!ok)
         {
-            // nothing ran, so no recorded barrier did: every image's contents are forfeit, and GL keeps the composite
-            foreach (VkImg g in _images.Live()) { g.Layout = VkImageLayout.Undefined; if (g.Ext != null) g.Ext.Taken = false; }
+            // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, GL keeps the
+            // composite, and the uploads this recording flushed wait for the next one
+            for (int i = _undo.Count - 1; i >= 0; i--)
+            {
+                (VkImg g, VkImageLayout layout, bool held) = _undo[i];
+                g.Layout = layout;
+                if (g.Ext != null) g.Ext.Taken = held;
+            }
+            _undo.Clear();
+            _upload.Touched.Clear();
             return false;
         }
+        CommitUploads();
 
         VkSemaphore* wait = stackalloc VkSemaphore[2];
         VkSemaphore* signal = stackalloc VkSemaphore[2];
@@ -545,6 +557,7 @@ internal sealed unsafe partial class VkBackend
     /// takes it from GL (the external queue family), whose release left it in the shader-read layout.</summary>
     private void Transition(VkImg img, VkImageLayout to)
     {
+        Remember(img);
         bool take = img.Ext is { Taken: false };
         if (take) { img.Ext!.Taken = true; img.Layout = VkImageLayout.ShaderReadOnlyOptimal; }
         else if (img.Layout == to && to == VkImageLayout.ShaderReadOnlyOptimal) return;
@@ -555,9 +568,23 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Hand a composite image back to GL in the layout GL's wait names.</summary>
     private void Release(VkImg img)
     {
+        Remember(img);
         Barrier(img, VkImageLayout.ShaderReadOnlyOptimal, _family, QueueFamilyExternal);
         img.Layout = VkImageLayout.ShaderReadOnlyOptimal;
     }
+
+    /// <summary>Note <paramref name="img"/>'s layout and hand-over as this recording found them, once per recording, so a
+    /// refused recording -- whose barriers never run -- puts them back.</summary>
+    private void Remember(VkImg img)
+    {
+        if (img.UndoAt == _recording) return;
+        img.UndoAt = _recording;
+        _undo.Add((img, img.Layout, img.Ext?.Taken ?? false));
+    }
+
+    /// <summary>The current recording's count, and each image it changed with the layout and hand-over it found.</summary>
+    private long _recording;
+    private readonly List<(VkImg Img, VkImageLayout Layout, bool Taken)> _undo = new();
 
     private void Barrier(VkImg img, VkImageLayout to, uint srcFamily, uint dstFamily)
     {
