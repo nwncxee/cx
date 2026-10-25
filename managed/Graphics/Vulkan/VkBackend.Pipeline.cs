@@ -76,7 +76,9 @@ internal sealed unsafe partial class VkBackend
         {
             topology = d.Topo == Topology.TriangleStrip ? VkPrimitiveTopology.TriangleStrip : VkPrimitiveTopology.TriangleList,
         };
-        var vp = new VkPipelineViewportStateCreateInfo { viewportCount = 1, scissorCount = 1 };
+        // GL's clip space: depth runs -1..1 in every Alloy projection, and the window maps it to 0..1 as GL does
+        var clip = new VkPipelineViewportDepthClipControlCreateInfoEXT { negativeOneToOne = true };
+        var vp = new VkPipelineViewportStateCreateInfo { pNext = &clip, viewportCount = 1, scissorCount = 1 };
         var rs = new VkPipelineRasterizationStateCreateInfo
         {
             depthClampEnable = d.Raster.DepthClamp, polygonMode = VkPolygonMode.Fill,

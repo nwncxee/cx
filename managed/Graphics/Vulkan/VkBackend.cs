@@ -63,7 +63,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>Submits a freed object waits out: past the slot ring, and past the graveyard's hold on a composite's GL texture.</summary>
     private const int DeadAfter = GpuGraveyard.FramesInFlight * 2;
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
-    private const uint SetsPerSubmit = 64;
+    private const uint SetsPerSubmit = 4096;
     /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.</summary>
     private const uint SampledSlots = 48, UniformSlots = 12, StorageSlots = 16, ImageSlots = 8;
     private const ulong FenceTimeoutNs = 2_000_000_000;
@@ -150,17 +150,21 @@ internal sealed unsafe partial class VkBackend : IDevice
             vki.vkGetPhysicalDeviceProperties2(list[i], &props);
             if (!GlInterop.OnDevice(new ReadOnlySpan<byte>(id.deviceUUID, GlInterop.UUID_SIZE_EXT))) continue;
             if (props.properties.apiVersion < ApiFloor) return "the Vulkan device GL runs on is below Vulkan 1.3";
+            if (!HasExt(vki, list[i], "VK_EXT_depth_clip_control\0"u8))
+                return "the Vulkan device lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
             if (!HasExt(vki, list[i], Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8)
                 || !HasExt(vki, list[i], Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8))
                 return Win ? "the Vulkan device lacks VK_KHR_external_memory_win32/VK_KHR_external_semaphore_win32"
                            : "the Vulkan device lacks VK_KHR_external_memory_fd/VK_KHR_external_semaphore_fd";
-            var f11 = new VkPhysicalDeviceVulkan11Features();
+            var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
+            var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
             var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
             var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
             var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
             vki.vkGetPhysicalDeviceFeatures2(list[i], &f2);
             if (!f13.dynamicRendering || !f13.synchronization2) return "the Vulkan device lacks dynamic rendering or synchronization2";
             if (Lacks(in f2.features, in f11, in f12) is string lack) return $"the Vulkan device lacks {lack}";
+            if (!clip.depthClipControl) return "the Vulkan device lacks depthClipControl";
             uint qn = 0;
             vki.vkGetPhysicalDeviceQueueFamilyProperties(list[i], &qn, null);
             VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
@@ -240,7 +244,8 @@ internal sealed unsafe partial class VkBackend : IDevice
 
         float prio = 1f;
         var qci = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
-        var f11 = new VkPhysicalDeviceVulkan11Features { shaderDrawParameters = true };
+        var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT { depthClipControl = true };
+        var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip, shaderDrawParameters = true };
         var f12 = new VkPhysicalDeviceVulkan12Features
         {
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
@@ -260,13 +265,13 @@ internal sealed unsafe partial class VkBackend : IDevice
         ReadOnlySpan<byte> mem = Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8;
         ReadOnlySpan<byte> sem = Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8;
         VkDevice device;
-        fixed (byte* m = mem) fixed (byte* s = sem)
+        fixed (byte* m = mem) fixed (byte* s = sem) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
         {
-            byte** exts = stackalloc byte*[2] { m, s };
+            byte** exts = stackalloc byte*[3] { m, s, c };
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = 1, pQueueCreateInfos = &qci,
-                enabledExtensionCount = 2, ppEnabledExtensionNames = exts,
+                enabledExtensionCount = 3, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
         }
@@ -503,6 +508,23 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
         return new ShaderId(_shaders.Add(new VkShader(m, d.Stage)));
     }
+
+    /// <summary>A stage from SPIR-V compiled elsewhere -- a caller that reflected the module first. Null id (logged)
+    /// when the driver refuses it.</summary>
+    internal ShaderId CreateShader(ShaderStage stage, byte[] spirv, string label)
+    {
+        if (!OnThread("CreateShader")) return default;
+        VkShaderModule m;
+        fixed (byte* p = spirv)
+        {
+            var ci = new VkShaderModuleCreateInfo { codeSize = (nuint)spirv.Length, pCode = (uint*)p };
+            if (_vkd.vkCreateShaderModule(&ci, &m) != VkResult.Success) return Refused<ShaderId>($"shader {label}: vkCreateShaderModule refused");
+        }
+        return new ShaderId(_shaders.Add(new VkShader(m, stage)));
+    }
+
+    /// <summary>The device's uniform-buffer offset alignment, for a caller packing many blocks into one buffer.</summary>
+    internal int UniformAlign => Caps.UniformAlign;
 
     /// <summary>GL GLSL as Vulkan GLSL: the one built-in the SPIR-V environment renames.</summary>
     internal static string Translate(string glsl) => glsl.Replace("gl_VertexID", "gl_VertexIndex", StringComparison.Ordinal);

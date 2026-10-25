@@ -401,6 +401,8 @@ internal sealed unsafe partial class VkBackend
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("UpdateBuffer: stale buffer");
         if (c.Offset < 0 || c.Offset + c.Bytes > b.Desc.Bytes || (c.Bytes & 3) != 0 || (c.Offset & 3) != 0)
             return Fault($"UpdateBuffer of {c.Bytes} bytes at {c.Offset} into {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
+        // a write after reads: every draw and dispatch before it, this submit's or an earlier one's, is done with the bytes
+        FullBarrier();
         if (c.Bytes <= MaxInlineUpdate)
             fixed (byte* p = bytes) _vkd.vkCmdUpdateBuffer(_cmd, b.Buffer, (ulong)c.Offset, (ulong)c.Bytes, p);
         else
@@ -467,6 +469,7 @@ internal sealed unsafe partial class VkBackend
         if (c.Offset < 0 || bytes < 0 || c.Offset + bytes > b.Desc.Bytes || ((c.Offset | bytes) & 3) != 0)
             return Fault($"ZeroBuffer: {bytes} bytes at {c.Offset} of {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         if (bytes == 0) return true;
+        FullBarrier();
         _vkd.vkCmdFillBuffer(_cmd, b.Buffer, (ulong)c.Offset, (ulong)bytes, 0);
         FullBarrier();
         return true;

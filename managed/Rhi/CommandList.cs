@@ -89,6 +89,15 @@ public sealed class CommandList
         _buf = new byte[Math.Max(Align, bytes)];
     }
 
+    /// <summary>Every command <paramref name="other"/> recorded since its reset, copied in after this list's own: a
+    /// pass whose draws were recorded aside while the constants they read were gathered for the upload ahead of it.</summary>
+    public void Append(CommandList other)
+    {
+        if (other._len == 0) return;
+        other._buf.AsSpan(0, other._len).CopyTo(Reserve(other._len));
+        Sent();
+    }
+
     /// <summary>Forget every recorded command; the arena stays.</summary>
     public void Reset() { _len = 0; _sent = 0; Faulted = false; }
 
