@@ -41,6 +41,9 @@ public sealed unsafe partial class AlloyRenderer
         public LitLoc L;
         public FeatLoc F;
         public int Vp = -1, Tex = -1, Viz = -1, AlphaMip = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
+        /// <summary>The sky wrapper's two: the engine's inverse view (its translation column alone) and the
+        /// constant colour a content stage reads instead of the record's alpha. -1 on every other program.</summary>
+        public int ViewInv = -1, Global = -1;
         public readonly Dictionary<long, PipelineId> Pipes = new();
     }
 
@@ -306,6 +309,7 @@ public sealed unsafe partial class AlloyRenderer
                 p.Vp = GlProgram.Loc(name, "uVP"); p.Tex = GlProgram.Loc(name, "uTex"); p.Viz = GlProgram.Loc(name, "uViz");
                 p.AlphaMip = GlProgram.Loc(name, "uAlphaMip"); p.Tint = GlProgram.Loc(name, "uTint");
                 p.SkyFog = GlProgram.Loc(name, "uSkyFog"); p.Oit = GlProgram.Loc(name, "uOit"); p.OitDim = GlProgram.Loc(name, "uOitDim");
+                p.ViewInv = GlProgram.Loc(name, "uViewInv"); p.Global = GlProgram.Loc(name, "globalColor");
                 p.F = Programs.FeatLocs(name);
             }
         });
@@ -457,7 +461,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
     /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none.</summary>
-    private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex)
+    private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
+                                  ReadOnlySpan<int> extra = default)
     {
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
@@ -491,16 +496,21 @@ public sealed unsafe partial class AlloyRenderer
                     images[ni++] = new ImageBinding(o.Binding, o.Name == "uDecalSurf" ? s.DecalSurf : s.DecalLayer, default, 0);
                     break;
                 default:
-                    sampled[nt++] = VkSampled(o, s, tex);
+                    sampled[nt++] = VkSampled(o, s, tex, extra);
                     break;
             }
         }
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
-    /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, else the stand-in of its type.</summary>
-    private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex)
+    /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, an engine unit out of
+    /// <paramref name="extra"/> (unit 1 first) for a <c>texUnit</c><i>n</i> a hosted stage declares, else the stand-in
+    /// of its type.</summary>
+    private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex, ReadOnlySpan<int> extra = default)
     {
+        if (o.Name.Length == "texUnit1".Length && o.Name.StartsWith("texUnit", StringComparison.Ordinal)
+            && o.Name[7] - '1' is var u && (uint)u < (uint)extra.Length && extra[u] != 0 && !VkTextures.Image(extra[u]).IsNull)
+            return new ImageBinding(o.Binding, VkTextures.Image(extra[u]), VkTextures.SamplerId(extra[u]));
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
