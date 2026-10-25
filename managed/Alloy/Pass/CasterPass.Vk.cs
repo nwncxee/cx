@@ -125,7 +125,7 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>Clear one layer of a Vulkan depth array without a bake: the static faces of a roaming light. An
     /// uncleared layer is not "empty", it is last frame's depth.</summary>
-    private static bool VkClearLayer(CasterMap map, int size, int layer)
+    private static bool VkClearLayer(CasterMap map, int layer)
     {
         var s = _vk;
         if (!VkArmed || s.Cmds == null) return false;
@@ -133,7 +133,6 @@ public sealed unsafe partial class CasterPass
         if (img.IsNull) return false;
         s.Cmds.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, layer, LoadOp.Clear, StoreOp.Store, 1f)));
         s.Cmds.EndRenderPass();
-        _ = size;
         return true;
     }
 

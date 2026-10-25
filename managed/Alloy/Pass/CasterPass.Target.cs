@@ -499,7 +499,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>Clear one depth layer to "nothing casts" without a bake: the static faces of a roaming light.</summary>
     private static bool ClearLayer(CasterMap map, uint tex, int size, int layer)
     {
-        if (Renderer.OnVulkan && map != CasterMap.Other) return VkClearLayer(map, size, layer);
+        if (Renderer.OnVulkan && map != CasterMap.Other) return VkClearLayer(map, layer);
         if (!BeginTarget(tex, size, layer)) return false;
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         return true;
