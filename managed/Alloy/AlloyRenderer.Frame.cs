@@ -22,6 +22,10 @@ public sealed unsafe partial class AlloyRenderer
         AlloyGate.Fail(why);
     }
 
+    /// <summary>GL_BLEND back to what <see cref="_blendOn"/> says, after a pass that toggled it itself: the batch
+    /// loops (<c>Issue.IssueBatches</c>) read the tracked flag as what is already set.</summary>
+    private static void HandBackBlend() { if (_blendOn) Gl.Enable(Gl.BLEND); else Gl.Disable(Gl.BLEND); }
+
     /// <summary>Why this frame drew nothing: "the world is empty" needs its reason named on the period line
     /// rather than inferred from counters. One string assignment on a path that is already returning.</summary>
     internal static string DbNoDrawWhy = "";
@@ -431,7 +435,13 @@ public sealed unsafe partial class AlloyRenderer
                         motionRan = true;
                     }
                     GpuBegin(GpuTerm.Ao);
-                    SsaoPass.Run(PostChain.DepthTex, DepthResource.Filled(PassGen), &proj, viewport, PostChain.Fbo, _frameSeq);
+                    if (SsaoPass.Run(PostChain.DepthTex, DepthResource.Filled(PassGen), &proj, viewport, _frameSeq))
+                    {
+                        // a seam pass binds its own targets and hands none back: re-enter the colour frame's
+                        Gl.BindFramebuffer(Gl.FRAMEBUFFER, PostChain.Fbo);
+                        Gl.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+                        new PassState(depth: true, depthWrite: true, srgb: srgb).Apply();
+                    }
                     GpuEnd(GpuTerm.Ao);
                     break;
                 case PassId.FogVolume:
@@ -484,7 +494,7 @@ public sealed unsafe partial class AlloyRenderer
                     // Grass draws unblended by construction and toggles GL_BLEND itself; hand the
                     // tracked state back exactly as it was, or the next pass's own bookkeeping
                     // (Issue.IssueBatches reads _blendOn as "what is already set") starts from a lie.
-                    if (_blendOn) Gl.Enable(Gl.BLEND); else Gl.Disable(Gl.BLEND);
+                    HandBackBlend();
                     break;
                 case PassId.SkyOwned:
                     if (!_capturing) FrameTap.Take("opaque", viewport);
@@ -538,7 +548,7 @@ public sealed unsafe partial class AlloyRenderer
                     Ssr.Run(viewport, &view, &proj, near, far, _lightViz);
                     GpuEnd(GpuTerm.Ssr);
                     // the pass leaves GL_BLEND off; hand the tracked state back as the next pass expects it
-                    if (_blendOn) Gl.Enable(Gl.BLEND); else Gl.Disable(Gl.BLEND);
+                    HandBackBlend();
                     break;
                 case PassId.BlendedOwned:
                     BlendProfile.Poll(_log);   // in the 4.6 bracket: the queries are that context's names

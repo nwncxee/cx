@@ -15,6 +15,7 @@ public static class RhiSelfCheck
         RoundTrip(check);
         Growth(check);
         FormatTraits(check);
+        Blends(check);
         log.Info(check.Ok ? "Rhi.SelfCheck: passed" : "Rhi.SelfCheck: FAILED");
     }
 
@@ -101,6 +102,18 @@ public static class RhiSelfCheck
         for (int i = 0; i < 8; i++) list.Draw(i + 1);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         check.Expect(allocated == 0 && list.Growths == grew, $"a warm arena records with no allocation ({allocated} bytes)");
+    }
+
+    /// <summary>A blend nobody constructed -- a fresh <see cref="BlendSet"/>'s element -- writes every channel, and a
+    /// masked channel is the only one held. Oracle: the channel literals named by hand.</summary>
+    private static void Blends(Checker check)
+    {
+        var set = new BlendSet();
+        check.Expect(set[0].Writes(ColorMask.R) && set[0].Writes(ColorMask.All) && !set[0].Enable,
+                     "an unset attachment blend writes every channel, unblended");
+        var a = new AttachmentBlend(Masked: ColorMask.A);
+        check.Expect(a.Writes(ColorMask.R | ColorMask.G | ColorMask.B) && !a.Writes(ColorMask.A) && !a.Writes(ColorMask.All),
+                     "masking alpha holds alpha alone");
     }
 
     /// <summary>Oracle: the formats' definitions written out by hand -- which carry depth, stencil, sRGB, integers.</summary>

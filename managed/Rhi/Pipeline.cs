@@ -27,14 +27,20 @@ public enum BlendFactor : byte { Zero, One, SrcAlpha, OneMinusSrcAlpha, OneMinus
 /// <summary>A blend equation, shared by colour and alpha.</summary>
 public enum BlendOp : byte { Add, Min }
 
-/// <summary>Colour channels written.</summary>
+/// <summary>A set of colour channels.</summary>
 [Flags]
 public enum ColorMask : byte { None = 0, R = 1, G = 2, B = 4, A = 8, All = 15 }
 
-/// <summary>One colour attachment's blend. The default writes every channel unblended.</summary>
+/// <summary>One colour attachment's blend. <see cref="Masked"/> names the channels NOT written, so the zero value
+/// -- <c>default</c>, or an element of a fresh <see cref="BlendSet"/>, which no constructor default reaches --
+/// writes every channel unblended.</summary>
 public readonly record struct AttachmentBlend(bool Enable = false, BlendFactor SrcRgb = BlendFactor.One,
     BlendFactor DstRgb = BlendFactor.Zero, BlendFactor SrcA = BlendFactor.One, BlendFactor DstA = BlendFactor.Zero,
-    BlendOp Op = BlendOp.Add, ColorMask Mask = ColorMask.All);
+    BlendOp Op = BlendOp.Add, ColorMask Masked = ColorMask.None)
+{
+    /// <summary>Is every channel of <paramref name="c"/> written?</summary>
+    public bool Writes(ColorMask c) => (Masked & c) == 0;
+}
 
 /// <summary>Up to <see cref="RenderPassDesc.MaxColors"/> attachments' blends.</summary>
 [InlineArray(RenderPassDesc.MaxColors)]

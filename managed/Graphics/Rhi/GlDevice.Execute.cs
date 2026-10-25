@@ -26,8 +26,10 @@ internal sealed unsafe partial class GlDevice
     private FboEntry[] _fbos = new FboEntry[16];
     private int _fboCount;
 
-    /// <summary>Units this render pass bound a sampler object on, one bit each, unbound at its end.</summary>
-    private ulong _samplerUnits;
+    /// <summary>Units this render pass bound a texture or a sampler object on, one bit each, unbound at its end.</summary>
+    private ulong _textureUnits, _samplerUnits;
+    /// <summary>The target this render pass bound on each unit in <see cref="_textureUnits"/>.</summary>
+    private readonly uint[] _unitTarget = new uint[64];
 
     private uint _topo = Gl.TRIANGLES, _indexType = Gl.UNSIGNED_SHORT;
     private long _indexOffset;
@@ -109,12 +111,19 @@ internal sealed unsafe partial class GlDevice
         return true;
     }
 
-    /// <summary>Hand the context back clean for the direct-GL passes still around a migrated one: no sampler object
-    /// left on a unit they sample through texture parameters, no scissor, no blend.</summary>
+    /// <summary>Hand the context back clean for the direct-GL passes still around a migrated one: none of its textures
+    /// left on a unit (a target they render into must not stay sampled), no sampler object on a unit they sample
+    /// through texture parameters, unit 0 current, no vertex array, no scissor, no blend.</summary>
     private bool End()
     {
+        bool units = _textureUnits != 0;
+        // the bound target alone: glBindTextureUnit(u, 0) would clear the sun shadow array other passes keep on unit 1
+        for (uint unit = 0; _textureUnits != 0; unit++, _textureUnits >>= 1)
+            if ((_textureUnits & 1) != 0) { Gl.ActiveTexture(Gl.TEXTURE0 + unit); Gl.BindTexture(_unitTarget[unit], 0); }
+        if (units) Gl.ActiveTexture(Gl.TEXTURE0);
         for (uint unit = 0; _samplerUnits != 0; unit++, _samplerUnits >>= 1)
             if ((_samplerUnits & 1) != 0) Gl.BindSampler(unit, 0);
+        Gl.BindVertexArray(0);
         Gl.Disable(Gl.SCISSOR_TEST);
         Gl.Disable(Gl.BLEND);
         return true;
@@ -131,7 +140,7 @@ internal sealed unsafe partial class GlDevice
         uint* bufs = stackalloc uint[RenderPassDesc.MaxColors];
         for (int i = 0; i < colors; i++)
         {
-            if (!AttachTo(Gl.COLOR_ATTACHMENT0 + (uint)i, key[i])) return Drop(f, $"colour attachment {i}: stale image");
+            if (!AttachTo(Gl.COLOR_ATTACHMENT0 + (uint)i, key[i])) return Drop(f, $"colour attachment {i}: stale or borrowed image");
             bufs[i] = Gl.COLOR_ATTACHMENT0 + (uint)i;
         }
         Gl.DrawBuffers(colors, bufs);
@@ -139,7 +148,7 @@ internal sealed unsafe partial class GlDevice
         {
             Attach d = key[RenderPassDesc.MaxColors];
             bool stencil = _images.TryGet(d.Image.Value, out GlImage img) && img.Desc.Fmt.HasStencil();
-            if (!AttachTo(stencil ? Gl.DEPTH_STENCIL_ATTACHMENT : Gl.DEPTH_ATTACHMENT, d)) return Drop(f, "depth attachment: stale image");
+            if (!AttachTo(stencil ? Gl.DEPTH_STENCIL_ATTACHMENT : Gl.DEPTH_ATTACHMENT, d)) return Drop(f, "depth attachment: stale or borrowed image");
         }
         uint status = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
         if (status != Gl.FRAMEBUFFER_COMPLETE) return Drop(f, $"framebuffer incomplete (0x{status:x})");
@@ -150,7 +159,7 @@ internal sealed unsafe partial class GlDevice
 
     private bool AttachTo(uint point, Attach a)
     {
-        if (!_images.TryGet(a.Image.Value, out GlImage img)) return false;
+        if (!_images.TryGet(a.Image.Value, out GlImage img) || img.Desc.Fmt == Format.Unknown) return false;
         if (img.Desc.Kind == ImageKind.Tex2D || a.Layer < 0) Gl.FramebufferTexture(Gl.FRAMEBUFFER, point, img.Name, a.Mip);
         else Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, point, img.Name, a.Mip, a.Layer);
         return true;
@@ -201,7 +210,8 @@ internal sealed unsafe partial class GlDevice
         Gl.FrontFace(rs.FrontCw ? Gl.CW : Gl.CCW);
         if (rs.DepthBias) Gl.Enable(Gl.POLYGON_OFFSET_FILL); else Gl.Disable(Gl.POLYGON_OFFSET_FILL);
         if (rs.DepthClamp) Gl.Enable(Gl.DEPTH_CLAMP); else Gl.Disable(Gl.DEPTH_CLAMP);
-        for (uint i = 0; i < RenderPassDesc.MaxColors; i++)
+        int colors = p.Desc.Targets.ColorCount > 0 ? p.Desc.Targets.ColorCount : RenderPassDesc.MaxColors;
+        for (uint i = 0; i < colors; i++)
         {
             AttachmentBlend b = p.Desc.Blend[(int)i];
             if (b.Enable)
@@ -211,12 +221,12 @@ internal sealed unsafe partial class GlDevice
                 Gl.BlendEquationi(i, b.Op == BlendOp.Min ? Gl.MIN : Gl.FUNC_ADD);
             }
             else Gl.Disablei(Gl.BLEND, i);
-            Gl.ColorMaski(i, Bit(b.Mask, ColorMask.R), Bit(b.Mask, ColorMask.G), Bit(b.Mask, ColorMask.B), Bit(b.Mask, ColorMask.A));
+            Gl.ColorMaski(i, Bit(b, ColorMask.R), Bit(b, ColorMask.G), Bit(b, ColorMask.B), Bit(b, ColorMask.A));
         }
         return true;
     }
 
-    private static byte Bit(ColorMask m, ColorMask c) => (m & c) != 0 ? (byte)1 : (byte)0;
+    private static byte Bit(AttachmentBlend b, ColorMask c) => b.Writes(c) ? (byte)1 : (byte)0;
 
     internal static uint Factor(BlendFactor f) => f switch
     {
@@ -248,11 +258,14 @@ internal sealed unsafe partial class GlDevice
             // ponytail: a slot is its texture unit; the backend's own unit assignment lands with the first pass that needs more.
             Gl.BindTextureUnit(s.Slot, img.Name);
             Gl.BindSampler(s.Slot, smp);
+            _textureUnits |= 1ul << (int)s.Slot;
+            _unitTarget[s.Slot] = img.Target;
             if (smp != 0) _samplerUnits |= 1ul << (int)s.Slot;
         }
         foreach (ImageBinding s in images)
         {
             if (!_images.TryGet(s.Image.Value, out GlImage img)) return Fault($"BindSet: stale storage image on slot {s.Slot}");
+            if (img.Desc.Fmt == Format.Unknown) return Fault($"BindSet: {img.Desc.Label} is borrowed, so it has no format to bind as a storage image");
             byte layered = img.Desc.Kind == ImageKind.Tex2D ? (byte)0 : (byte)1;
             Gl.BindImageTexture(s.Slot, img.Name, s.Mip, layered, 0, Gl.READ_WRITE, GlFormats.Of(img.Desc.Fmt).Internal);
         }
@@ -344,6 +357,8 @@ internal sealed unsafe partial class GlDevice
         ReadOnlySpan<byte> bytes = r.Span<byte>(c.Bytes);
         if (!_buffers.TryGet(c.Buffer.Value, out GlBuffer g)) return Fault("UpdateBuffer: stale buffer");
         if (g.Desc.Memory != MemoryKind.Upload) return Fault($"UpdateBuffer: {g.Desc.Label} is device memory");
+        // the whole buffer replaced: the driver may rename it rather than write under a draw still reading it
+        if (c.Offset == 0 && c.Bytes == g.Desc.Bytes) Gl.InvalidateBufferData(g.Name);
         fixed (byte* p = bytes) Gl.NamedBufferSubData(g.Name, (IntPtr)c.Offset, (IntPtr)c.Bytes, p);
         return true;
     }

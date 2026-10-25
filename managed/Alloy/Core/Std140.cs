@@ -32,6 +32,10 @@ internal struct Int4(int x, int y, int z, int w)
 /// byte offset, and the pin that holds a C# staging struct to it.</summary>
 internal static class Std140
 {
+    /// <summary>The bytes a buffer holding block <typeparamref name="T"/> needs: std140 rounds a block up to a whole
+    /// vec4, so the staging struct -- which covers every member and nothing more -- fills its front.</summary>
+    internal static int BlockBytes<T>() where T : unmanaged => (System.Runtime.CompilerServices.Unsafe.SizeOf<T>() + 15) & ~15;
+
     /// <summary>The named block's declaration in <paramref name="src"/> -- the <c>layout</c> line through the
     /// member before the closing brace, comments and whitespace dropped; null when there is no such block.</summary>
     internal static string? Members(string src, string block)

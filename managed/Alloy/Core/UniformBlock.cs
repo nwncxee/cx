@@ -18,9 +18,7 @@ internal sealed unsafe class UniformBlock<T> where T : unmanaged
     /// <summary>The staged block, written in place: <c>blk.Stage.Radius = ...</c>.</summary>
     internal ref T Stage => ref _stage;
 
-    /// <summary>std140 rounds a block up to a whole vec4, so the buffer is that size and the staging struct
-    /// -- which covers every member and nothing more -- fills its front.</summary>
-    private static int Bytes => (Unsafe.SizeOf<T>() + 15) & ~15;
+    private static int Bytes => Std140.BlockBytes<T>();
 
     /// <summary>Upload the staged block if it differs from what this buffer holds, then bind it on
     /// <paramref name="point"/>. The bind is unconditional: a shared point may have changed hands since the

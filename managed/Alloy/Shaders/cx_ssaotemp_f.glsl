@@ -1,9 +1,9 @@
 #version 460 core
 in vec2 vUV;
 out vec2 frag;
-uniform sampler2D uRaw;      // this frame's visibility, blurred
-uniform sampler2D uHist;     // last frame's (visibility, view distance), LINEAR
-uniform sampler2D uVel;      // #388: prev - cur, render pixels
+layout(binding = 1) uniform sampler2D uRaw;      // this frame's visibility, blurred
+layout(binding = 2) uniform sampler2D uHist;     // last frame's (visibility, view distance), LINEAR
+layout(binding = 3) uniform sampler2D uVel;      // #388: prev - cur, render pixels
 #include "cx_ssaolib.glsl"
 void main()
 {
