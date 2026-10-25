@@ -82,12 +82,13 @@ public sealed unsafe partial class AlloyRenderer
         if (Programs._progFailed || _batchUnavailable) { DbNoDraw("program failed or multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
         // the issue phase cannot fail. Missing entry points are the one way it could.
-        if (Gl.MultiDrawElementsBaseVertex == null || Gl.BindBufferBase == null || !StreamRing.EntryPoints)
+        if (Gl.MultiDrawElementsBaseVertex == null || Gl.BindBufferBase == null || Gl.GetUniformBlockIndex == null
+            || !StreamRing.EntryPoints)
         {
             // #263: the verdict froze before this frame, so nothing re-reads DrawCapable. Say it here or the
             // world goes bare with no line at all.
             _batchUnavailable = true;
-            AlloyGate.Fail("glMultiDrawElementsBaseVertex, glBindBufferBase or a stream-ring entry point (buffer storage, map, bind range, fence) is missing");
+            AlloyGate.Fail("glMultiDrawElementsBaseVertex, glBindBufferBase, glGetUniformBlockIndex or a stream-ring entry point (buffer storage, map, bind range, fence) is missing");
             DbNoDraw("a GL entry point is missing");
             return false;
         }

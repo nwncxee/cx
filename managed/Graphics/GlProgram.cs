@@ -487,11 +487,13 @@ internal static unsafe class GlProgram
         fixed (byte* p = b) return Gl.GetUniformLocation(prog, p);
     }
 
-    /// <summary>Does <paramref name="prog"/> actively use the uniform block <paramref name="name"/>? A block
-    /// declared but never read is optimised out, and then its host owes it neither a fill nor a bind.</summary>
+    /// <summary>Does <paramref name="prog"/> actively use the uniform block <paramref name="name"/>? A block a
+    /// driver reports inactive is one its host owes neither a fill nor a bind. No <c>glGetUniformBlockIndex</c>
+    /// answers YES: on a 4.6 context that is a loader failure the frame refuses itself over, and until it does,
+    /// binding a block nothing reads costs the bind, while skipping one that is read reads zeros.</summary>
     internal static bool UsesBlock(uint prog, string name)
     {
-        if (Gl.GetUniformBlockIndex == null) return false;
+        if (Gl.GetUniformBlockIndex == null) return true;
         Span<byte> b = stackalloc byte[name.Length + 1];
         Gl.AsciiZ(name, b);
         fixed (byte* p = b) return Gl.GetUniformBlockIndex(prog, p) != Gl.INVALID_INDEX;

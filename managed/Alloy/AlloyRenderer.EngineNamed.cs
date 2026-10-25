@@ -70,7 +70,30 @@ public sealed unsafe partial class AlloyRenderer
         public int Frame = -1, Count;
     }
 
-    private static readonly EngineNamedState _engineU = new();
+    private static EngineNamedState _engineU = new();
+
+    /// <summary>Context loss: the block's buffer belonged to the context that went, and so did the stamp
+    /// saying it holds this frame's terms. The owner is replaced whole, as every other block's is.</summary>
+    internal static void EngineBlockContextLost() => _engineU = new EngineNamedState();
+
+    /// <summary>Off-device: the context-loss slot leaves a NEW owner with a clear fill stamp. Oracle: the
+    /// reset's contract, written out here -- a buffer minted by the dead context must not be rebound, and a
+    /// stamp that still reads "filled this frame" is what would rebind it.</summary>
+    internal static bool EngineBlockSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        EngineNamedState was = _engineU;
+        was.Frame = 0; was.Count = 7;
+        EngineBlockContextLost();
+        check.Expect(!ReferenceEquals(_engineU, was),
+                     "the context-loss slot kept the CxEngine owner, so its dead buffer name survives the loss");
+        check.Expect(!ReferenceEquals(_engineU.Blk, was.Blk), "...or it kept the block object inside it");
+        check.Expect(_engineU.Frame == -1 && _engineU.Count == 0,
+                     "the replacement owner's fill stamp is not clear, so the first bind after a loss would rebind a dead buffer");
+        log.Info(check.Ok ? "AlloyRenderer.EngineBlockSelfCheck: passed (the CxEngine owner goes with the context)"
+                          : "AlloyRenderer.EngineBlockSelfCheck: FAILED");
+        return check.Ok;
+    }
 
     /// <summary>Fill the <c>CxEngine</c> block out of the engine's live state and bind it on
     /// <see cref="UboSlots.Engine"/>. The calendar, weather and mouse come off <see cref="Rt"/>, the frame

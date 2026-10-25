@@ -499,6 +499,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         MovieFrame.ContextLost();
         MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
         PassContextLost();
+        EngineBlockContextLost();
     }
 
     /// <summary>Frame tick from the present (after the bucket walks). Module unload, a PartTable

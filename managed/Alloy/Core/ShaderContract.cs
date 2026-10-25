@@ -254,8 +254,9 @@ internal static class ShaderContract
         bool ssbo = SsboSlots.Check(log);
         bool ubo = UboSlots.Check(log);
         bool pass = PassCheck(log);
+        bool eng = AlloyRenderer.EngineBlockSelfCheck(log);
         // the record's field list, counted by field size: the 288-byte stride staged above (#392 and ADR 0026 grew it)
-        bool ok = slots && ssbo && ubo && pass && DrawBufDecl.Contains($"binding = {BindDraw})")
+        bool ok = slots && ssbo && ubo && pass && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
                   && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; }")
                   && DrawBufDecl.Contains("vec4 emi") && DrawBufDecl.Contains("vec4 spc")
                   && DrawBufDecl.Contains("vec4 feat")
