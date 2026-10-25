@@ -655,7 +655,7 @@ internal static unsafe class Issue
     internal static void WashesDone() => _split.Ran = false;
 
     /// <summary>Polygon offset for wash batches (see the wash note in the issue loop).</summary>
-    private const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;
+    internal const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;
 
     /// <summary><c>/alloy washtest 0</c>: blended wash batches draw with the depth TEST off too. A/B instrument, not a look.</summary>
     private static bool _washTest => Renderer.WashTest.V;

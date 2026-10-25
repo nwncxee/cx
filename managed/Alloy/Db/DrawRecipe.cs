@@ -101,6 +101,8 @@ internal static partial class DrawRecipe
         /// the last part-column re-seed saw. No other serial moves for a material, and the two consumers are
         /// asked at different points of the fold, so each keeps its own watermark.</summary>
         public int MtrSerial, MtrSeen, MtrSeenParts;
+        /// <summary>Interns and reclassifications of a CONTENT recipe (<see cref="ContentSerial"/>).</summary>
+        public int ContentSerial;
         public CX.Framework.ExtenderLog? Log;
     }
     private static SlotState _own = new();
@@ -309,6 +311,12 @@ internal static partial class DrawRecipe
     internal static int Dst(int r) => _dst[r];
     internal static int Prim(int r) => _prim[r];
     internal static int Feat(int r) => _feat[r];
+    /// <summary>Slots ever handed out: the bound of a walk over the whole table, free and retired ones included
+    /// (each reads as its last tenant until a new one fills it).</summary>
+    internal static int High => _n;
+    /// <summary>Bumped whenever a CONTENT recipe is interned or reclassified, so a reader keyed on the content
+    /// set (<see cref="CX.Alloy.ContentPrewarm"/>) walks the table only when its answer can have moved.</summary>
+    internal static int ContentSerial => System.Threading.Volatile.Read(ref _own.ContentSerial);
     internal static int Content(int r) => _content[r];
     internal static int Slots(int r) => _slots[r];
     internal static Vector4 Ambient(int r) => _amb[r];
@@ -478,6 +486,8 @@ internal static partial class DrawRecipe
             if (TexRegistry.BumpyShiny(new TexId(_texId[r * TexSlots]))) _flags[r] |= RecipeFlag.RotateTexture;
             if (_cls[r] == wasCls && _flags[r] == wasFlags && _dst[r] == wasDst) continue;
             if (_cls[r] != wasCls) Reclassified++;
+            // ...and a content recipe whose state moved names pipeline keys the prewarm has not seen
+            if (ShaderFeatures.IsContent(_feat[r])) System.Threading.Interlocked.Increment(ref _own.ContentSerial);
             moved++;
         }
         return moved;
@@ -590,6 +600,8 @@ internal static partial class DrawRecipe
         // CX-303: any pair the material names runs translated, unless both its halves add nothing to stock
         int feat = ContentPrograms.Register(mtr);
         _feat[r] = feat;
+        // CX-317: the prewarm's edge -- interning runs on the feed's workers, so the bump is atomic
+        if (ShaderFeatures.IsContent(feat)) System.Threading.Interlocked.Increment(ref _own.ContentSerial);
         // ...and the GUI pass interns the same pair of its own; its build asks the same stock verdict, so a part
         // of this material draws Alloy's own GUI program there exactly as it draws Alloy's own lit stage here.
         _content[r] = GuiContent.Key(mtr);

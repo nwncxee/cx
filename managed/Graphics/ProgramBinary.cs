@@ -30,9 +30,13 @@ internal static unsafe class ProgramBinary
         {
             if (_seed != 0 || GlContextService.Driver.Length == 0 || Gl.GetProgramBinary == null || Gl.ProgramBinaryLoad == null)
                 return _seed;
-            return _seed = MdlParser.ContentHash(MemoryMarshal.AsBytes(GlContextService.Driver.AsSpan())) | 1;
+            return _seed = SeedOf(GlContextService.Driver);
         }
     }
+
+    /// <summary>The seed a driver identity (<c>GL_VENDOR</c>, <c>GL_RENDERER</c> and <c>GL_VERSION</c> as
+    /// <see cref="GlContextService.Driver"/> joins them) folds to: never 0, which means the cache is off.</summary>
+    internal static ulong SeedOf(string driver) => MdlParser.ContentHash(MemoryMarshal.AsBytes(driver.AsSpan())) | 1;
 
     /// <summary>Fold one stage -- its type and the exact text glShaderSource receives -- into a key. 0 stays 0.</summary>
     internal static ulong Key(ulong h, uint type, string text) =>
@@ -99,6 +103,38 @@ internal static unsafe class ProgramBinary
     private static void Drop(string path)
     {
         try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Off-device. Oracle: hand-written driver strings and stage texts, and the cache's stated key --
+    /// every stage's exact text, its type, and the driver identity, with 0 reserved for "cache off".</summary>
+    internal static bool SelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        const string nv = "NVIDIA Corporation|NVIDIA GeForce RTX 3070/PCIe/SSE2|4.6.0 NVIDIA 615.78.08";
+        const string mesa = "Mesa|AMD Radeon RX 9070 (radeonsi)|4.6 (Core Profile) Mesa 25.2.0";
+        const string vs = "void main() { gl_Position = vec4(0.0); }\n";
+        ulong a = SeedOf(nv), b = SeedOf(mesa);
+        check.Expect(a != 0 && b != 0 && a != b,
+                     "two different driver identities fold to the same seed, or to 0 -- which is the cache-off value, "
+                     + "so one driver's blobs would be handed to another");
+        check.Expect(Key(0, Gl.VERTEX_SHADER, vs) == 0,
+                     "a stage folded onto the cache-off seed yields a key, so a launch with no driver identity would "
+                     + "read and write blobs under one");
+        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) == Key(SeedOf(string.Concat("NVIDIA Corporation|", nv[19..])),
+                                                         Gl.VERTEX_SHADER, new string(vs.ToCharArray())),
+                     "a key folds the identity of its strings rather than their content, so a launch that rebuilt the "
+                     + "same text never hits the cache");
+        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) != Key(b, Gl.VERTEX_SHADER, vs),
+                     "the driver identity does not reach the key");
+        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) != Key(a, Gl.FRAGMENT_SHADER, vs),
+                     "the stage type does not reach the key, so a vertex and a fragment stage of one text collide");
+        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) != Key(a, Gl.VERTEX_SHADER, vs + " "),
+                     "a one-character edit to a stage's text does not move its key");
+        check.Expect(Key(Key(a, Gl.VERTEX_SHADER, vs), Gl.FRAGMENT_SHADER, vs)
+                     != Key(Key(a, Gl.FRAGMENT_SHADER, vs), Gl.VERTEX_SHADER, vs),
+                     "a pair's key is blind to which half is which, so swapping the two stages' texts would hit");
+        log.Info(check.Ok ? "ProgramBinary.SelfCheck: passed" : "ProgramBinary.SelfCheck: FAILED");
+        return check.Ok;
     }
 
     private static string Sweep(string dir)

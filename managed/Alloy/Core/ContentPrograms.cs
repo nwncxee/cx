@@ -153,6 +153,32 @@ internal static unsafe class ContentPrograms
         return false;
     }
 
+    /// <summary>Queue this pair's build without asking to draw it: what the per-area prewarm
+    /// (<see cref="ContentPrewarm"/>) marks a pair with, so its programs compile behind the load screen rather than
+    /// at the frame a batch first wants them.</summary>
+    internal static void Want(int feat)
+    {
+        if (Of(feat) is { Failed: false, Plain: false, Keys: null, P.Fwd: 0 } s) s.Wanted = true;
+    }
+
+    /// <summary>Has this pair's build happened -- its programs are up, or it is the plain path, or it was refused?
+    /// Until then its pipeline keys are not knowable: the twins come off its translation.</summary>
+    internal static bool Settled(int feat) => Of(feat) is { } s && (s.Failed || s.Plain || s.P.Fwd != 0);
+
+    /// <summary>The GL program behind one of a pair's five variants, or 0 when the pair does not carry it.</summary>
+    internal static uint ProgramOf(int feat, ContentVariant v)
+    {
+        if (Of(feat) is not { } s) return 0;
+        return v switch
+        {
+            ContentVariant.Forward => s.P.Fwd,
+            ContentVariant.Deferred => s.P.Def,
+            ContentVariant.Depth => s.P.Depth,
+            ContentVariant.Caster => s.P.Cast,
+            _ => s.P.CastLayer,
+        };
+    }
+
     /// <summary>Does this pair's fragment half make its own coverage (its own discard, a written alpha, or an alpha the
     /// stock setup does not cut on)? Only once it runs: before that its parts take Alloy's cut like any other.</summary>
     internal static bool Cuts(int feat) => Of(feat) is { P.Fwd: not 0, Cuts: true };
