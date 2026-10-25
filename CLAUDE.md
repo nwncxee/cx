@@ -181,6 +181,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
   than `statics.baseline` allows fails. Free: `static readonly`, `const`, static methods/properties, and a
   lifetime owner -- a plain field whose type is a `...State` class declared under `managed/`.
+- `rhi-seam.sh`: a file under `managed/Alloy` with more direct `Gl.*` call sites than `rhi-seam.baseline` allows
+  fails. A pass migrated onto the seam (`managed/Rhi/`, `CX.Rhi`; the GL backend in `managed/Graphics/Rhi/`) records
+  into a `CommandList` and drops out of the baseline, so GL cannot grow back into it.
 - `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal, or the same text on both
   sides of `==`/`!=` -- and so does a hand-written `SKIPPED` log line.

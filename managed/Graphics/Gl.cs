@@ -27,7 +27,7 @@ public static unsafe class Gl
     public const uint MULTISAMPLE = 0x809D, STENCIL_TEST = 0x0B90;
     /// <summary>The face <c>glCullFace</c> discards. BACK is the engine's own default
     /// (<c>Scene::RenderDrawBucket</c> @0x46d060 restores <c>SetCullFace(1)</c> on every exit).</summary>
-    public const uint BACK = 0x0405;
+    public const uint BACK = 0x0405, FRONT = 0x0404;
     /// <summary>GL_DEPTH_CLAMP. The Alloy sky replays a dome the engine drew under its OWN projection
     /// (far 1000.0) beneath the world's, so it can cross the world far plane; clamping keeps the far-plane
     /// fragments rather than letting them clip into a hole at the horizon.</summary>
@@ -135,6 +135,8 @@ public static unsafe class Gl
     public const int LINEAR_MIPMAP_LINEAR = 0x2703;
     /// <summary>The hi-Z pyramid's minification filter -- an INTERPOLATED max is not a max.</summary>
     public const int NEAREST_MIPMAP_NEAREST = 0x2700;
+    /// <summary>The two remaining mip filters, for a seam sampler that names any pairing.</summary>
+    public const int LINEAR_MIPMAP_NEAREST = 0x2701, NEAREST_MIPMAP_LINEAR = 0x2702;
     /// <summary>The HDR resolve: the split read/draw binding points glBlitFramebuffer works between, and
     /// the level clamps that keep a bloom chain's read level out of the range the draw level is attached in
     /// (sampling a level of a texture another level of which is the current attachment is only defined while
@@ -161,6 +163,13 @@ public static unsafe class Gl
     public const uint RGBA8 = 0x8058;
     /// <summary>The lightmap's irradiance page format, and a PBO readback's usage hint.</summary>
     public const uint R11F_G11F_B10F = 0x8C3A, STREAM_READ = 0x88E1;
+    /// <summary>The seam's remaining format rows (<c>GlFormats</c>): sRGB colour and the packed upload types.</summary>
+    public const uint SRGB8_ALPHA8 = 0x8C43, UNSIGNED_INT_10F_11F_11F_REV = 0x8C3B, FLOAT_32_UNSIGNED_INT_24_8_REV = 0x8DAD;
+    /// <summary><c>glNamedBufferStorage</c>'s flag that allows <c>glNamedBufferSubData</c> after creation.</summary>
+    public const uint DYNAMIC_STORAGE_BIT = 0x0100;
+    /// <summary>The limits <c>GlDevice</c> reads once into <c>DeviceCaps</c>.</summary>
+    public const uint MAX_TEXTURE_SIZE = 0x0D33, MAX_ARRAY_TEXTURE_LAYERS = 0x88FF, MAX_COLOR_ATTACHMENTS = 0x8CDF,
+                      UNIFORM_BUFFER_OFFSET_ALIGNMENT = 0x8A34, SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF;
     /// <summary>BPTC (GL 4.2 core): BC7 for 8-bit colour, BC6H unsigned for HDR -- 16 bytes per 4x4 block.</summary>
     public const uint COMPRESSED_RGBA_BPTC_UNORM = 0x8E8C, COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT = 0x8E8F;
     /// <summary>The sized formats an unsized engine upload has to be promoted to before
@@ -252,6 +261,8 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, void> Enable, Disable, ActiveTexture, UseProgram, BindVertexArray,
                                                   CullFace;
     public static delegate* unmanaged<uint, uint, void> BindTexture, BindBuffer, BlendFunc;
+    /// <summary>glEnablei/glDisablei (GL 3.0): a capability per draw buffer -- blending one attachment of several.</summary>
+    public static delegate* unmanaged<uint, uint, void> Enablei, Disablei;
     /// <summary>glBlendFunci (GL 4.0): a blend pair per draw buffer -- the OIT accumulation pair needs two.</summary>
     public static delegate* unmanaged<uint, uint, uint, void> BlendFunci;
     /// <summary>glBlendFuncSeparatei (GL 4.0): separate colour and alpha pairs for one draw buffer -- the decal
@@ -290,7 +301,7 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, int, int*, byte*, void> GetShaderInfoLog;
     /// <summary>glTextureView(texture, target, origtexture, internalformat, minlevel, numlevels, minlayer, numlayers).</summary>
     public static delegate* unmanaged<uint, uint, uint, uint, uint, uint, uint, uint, void> TextureView;
-    public static delegate* unmanaged<int, uint*, void> GenSamplers;
+    public static delegate* unmanaged<int, uint*, void> GenSamplers, DeleteSamplers;
     /// <summary>glClearBufferfv: clear one attachment of the bound FBO without touching the clear-colour state.</summary>
     public static delegate* unmanaged<uint, int, float*, void> ClearBufferfv;
     /// <summary>glClearBufferuiv: the integer-attachment clear (a float clear on an R32UI target is undefined).</summary>
@@ -553,6 +564,8 @@ public static unsafe class Gl
         Finish = (delegate* unmanaged<void>)P("glFinish");
         Enable = (delegate* unmanaged<uint, void>)P("glEnable");
         Disable = (delegate* unmanaged<uint, void>)P("glDisable");
+        Enablei = (delegate* unmanaged<uint, uint, void>)P("glEnablei");
+        Disablei = (delegate* unmanaged<uint, uint, void>)P("glDisablei");
         CullFace = (delegate* unmanaged<uint, void>)P("glCullFace");
         BlendFunc = (delegate* unmanaged<uint, uint, void>)P("glBlendFunc");
         BlendFunci = (delegate* unmanaged<uint, uint, uint, void>)P("glBlendFunci");
@@ -588,6 +601,7 @@ public static unsafe class Gl
         GetShaderInfoLog = (delegate* unmanaged<uint, int, int*, byte*, void>)P("glGetShaderInfoLog");
         TextureView = (delegate* unmanaged<uint, uint, uint, uint, uint, uint, uint, uint, void>)P("glTextureView");
         GenSamplers = (delegate* unmanaged<int, uint*, void>)P("glGenSamplers");
+        DeleteSamplers = (delegate* unmanaged<int, uint*, void>)P("glDeleteSamplers");
         ClearBufferfv = (delegate* unmanaged<uint, int, float*, void>)P("glClearBufferfv");
         ClearBufferuiv = (delegate* unmanaged<uint, int, uint*, void>)P("glClearBufferuiv");
         ClearTexImage = (delegate* unmanaged<uint, int, uint, uint, void*, void>)P("glClearTexImage");
