@@ -75,6 +75,7 @@ public static class ServiceHost
         CX.Graphics.ProgramBinary.SelfCheck(log);   // the program-binary cache key: every stage's text, its type, the driver
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
+        CX.Graphics.Rhi.VkUniformShim.SelfCheck(log);   // GL's uniform setters land in a Vulkan block at the members' offsets
         CX.Graphics.Rhi.GlFormats.SelfCheck(log);   // the seam's formats against the GL headers' token values
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
