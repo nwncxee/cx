@@ -275,7 +275,9 @@ public sealed unsafe partial class CasterPass
     {
         int n = _qN; _qN = 0;
         if (n == 0) return true;
-        if (Renderer.OnVulkan) return VkFlushLayered(n);
+        // on Vulkan the views are only QUEUED here: the colour frame flushes them once its own uploads have
+        // published the buffers the bake's binds name
+        if (Renderer.OnVulkan) { _vk.Queued = n; return true; }
         // distinct targets in first-seen order -- at most four exist (sun static/dynamic, cube static/pool).
         // A fifth-plus target would be a queue writer this flush does not know about; failing the flush
         // (publish nothing, blanket next frame) is the honest answer, not silently never baking it.
@@ -471,7 +473,7 @@ public sealed unsafe partial class CasterPass
         {
             // a target the Vulkan bake has no array for -- the sky view's own, a pair tile -- is refused rather than
             // queued: its caller must not publish a map nothing baked
-            if (Renderer.OnVulkan && map == CasterMap.Other) return VkNoTarget(tex);
+            if (Renderer.OnVulkan && map == CasterMap.Other) return VkNoTarget();
             _submitCreatures = _gCreatures;
             _qMap[_qN] = map;
             _qTex[_qN] = tex; _qSize[_qN] = size; _qLayer[_qN] = layer; _qVp[_qN] = *vp;

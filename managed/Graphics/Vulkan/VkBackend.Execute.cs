@@ -143,6 +143,7 @@ internal sealed unsafe partial class VkBackend
                 Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
                 Op.SetDepthState => Depth(r.Read<DepthState>()),
                 Op.SetRasterState => Raster(r.Read<RasterState>()),
+                Op.ReadImages => Readable(r.Read<ReadImagesCmd>(), ref r),
                 // ponytail: image copies and blits join with the first pass that records them
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
@@ -372,6 +373,17 @@ internal sealed unsafe partial class VkBackend
         if (!_buffers.TryGet(u.Buffer.Value, out VkBuf buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
         bi[b] = new VkDescriptorBufferInfo { buffer = buf.Buffer, offset = (ulong)u.Offset, range = u.Bytes == 0 ? Vortice.Vulkan.Vulkan.VK_WHOLE_SIZE : (ulong)u.Bytes };
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + u.Slot, descriptorCount = 1, descriptorType = type, pBufferInfo = (VkDescriptorBufferInfo*)Unsafe.AsPointer(ref bi[b++]) };
+        return true;
+    }
+
+    /// <summary>Hand the named images over for sampling, outside any render pass: a bind of one inside a pass
+    /// after its first draw can place no barrier, and a target the frame just wrote is in its write layout.</summary>
+    private bool Readable(ReadImagesCmd h, ref CommandReader r)
+    {
+        ReadOnlySpan<ImageId> ids = r.Span<ImageId>(h.Images);
+        if (_inPass) return Fault("ReadImages inside a render pass -- the hand-over is a barrier, which a pass forbids");
+        foreach (ImageId id in ids)
+            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
         return true;
     }
 

@@ -42,9 +42,11 @@ public sealed unsafe partial class CasterPass
     {
         public VkBackend? Dev;
         /// <summary>A program or target was refused: the bake stands down for the session, loudly.</summary>
-        public bool Failed, Live, ContentSaid, OverflowSaid;
-        /// <summary>The bracket's recording, appended by the colour frame ahead of its own passes.</summary>
+        public bool Failed, Live, ContentSaid, OverflowSaid, NoTargetSaid;
+        /// <summary>The bracket's uploads, appended by the colour frame ahead of its own passes.</summary>
         public CommandList? Cmds;
+        /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
+        public int Queued;
         public ImageId Cascades, SunDyn, Cubes, CubeDyn;
         /// <summary>The size and layer count each array was made at: a knob change remakes it.</summary>
         public int SunSize, SunLayers, DynSize, DynLayers, CubeSize, CubePages, CubeDynSize, CubeDynPages;
@@ -65,8 +67,29 @@ public sealed unsafe partial class CasterPass
     /// <summary>Is the Vulkan bake armed? Nothing stands it down but a refusal, so the layered path is the only one.</summary>
     private static bool VkArmed => !_vk.Failed && _vk.Plain != null;
 
-    /// <summary>The bracket's recording for the colour frame to append, or null when nothing was recorded.</summary>
+    /// <summary>The bracket's uploads for the colour frame to append, or null when it recorded none.</summary>
     internal static CommandList? VkBracket => _vk.Cmds is { Length: > 0 } c ? c : null;
+
+    /// <summary>The queued views into <paramref name="cl"/>, called by the colour frame once its uploads are
+    /// recorded: the bake binds the record, bone and handle buffers that <c>VkUploads</c> just published, and a
+    /// buffer it grew would leave a bind recorded in the bracket naming a dead id. False (the device refused,
+    /// logged) stands the published maps down -- the frame's own publish is already out, so the blanket re-bakes.</summary>
+    internal static bool VkFlush(CommandList cl)
+    {
+        int n = _vk.Queued;
+        _vk.Queued = 0;
+        if (!VkArmed) return true;
+        // the hand-over runs whatever the queue held: a frame that only CLEARED a layer (the static faces of a
+        // roaming light) still left that array in its write layout
+        bool ok = n == 0 || VkFlushLayered(cl, n);
+        VkHandOver(cl);
+        if (ok) return true;
+        _layerFlushFails++;
+        CascadeCount = 0; CubeCount = 0;
+        Array.Clear(SunDynMask); Array.Clear(CubeDynPage);
+        _invalidate = true; _sunScanned = false; _cubeScanned = false;
+        return false;
+    }
 
     /// <summary>The sun cascade array the lit stage samples: cascades plus the cover layer, hardware-PCF filtered.
     /// Null until the first bake makes it. The deferred passes bind this where GL binds <c>CascadeTex</c>.</summary>
@@ -94,6 +117,9 @@ public sealed unsafe partial class CasterPass
         s.Cmds.Reset();
         s.Baked = s.Chunks = 0;
         if (!CasterGatherVk.Ensure(vk, log)) { s.Failed = true; return false; }
+        // the bounds FIRST: the colour build publishes them after this bracket, so these are the previous frame's
+        // -- which is what the GL bake reads too -- and sizing them here keeps every dispatch below naming a live id
+        AlloyRenderer.VkRecordCasterBounds(vk, s.Cmds);
         return true;
     }
 
@@ -131,11 +157,14 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>A view whose target the Vulkan bake has no array for: refused, so its caller publishes nothing.
     /// Said once per target, because the caller retries it every frame.</summary>
-    private static bool VkNoTarget(uint tex)
+    private static bool VkNoTarget()
     {
-        if (!_vk.ContentSaid && tex != 0)
+        if (!_vk.NoTargetSaid)
+        {
+            _vk.NoTargetSaid = true;
             _log?.Info("CasterPass: a queued view's target is not on Vulkan yet (the overhead sky view, a pair tile) "
                      + "-- that view is refused and its map stands down");
+        }
         return false;
     }
 
@@ -231,12 +260,13 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>The queued views on Vulkan, one layered pass per distinct target. False = nothing usable was
     /// recorded, so the caller publishes nothing this frame.</summary>
-    private static bool VkFlushLayered(int n)
+    private static bool VkFlushLayered(CommandList cl, int n)
     {
         var s = _vk;
-        if (!VkArmed || s.Cmds == null || _vk.Dev is not VkBackend vk) return false;
-        CommandList cl = s.Cmds;
+        if (!VkArmed || _vk.Dev is not VkBackend vk) return false;
         VkCutBlocks(cl);
+        // one chunk ceiling for the frame, so every chunk's dispatch sizes the layered buffers alike
+        int chunk = Math.Min(Math.Max(1, MaxLayerCmds / Math.Max(_gDrawN, 1)), MaxBakeViews);
         Span<CasterMap> seen = stackalloc CasterMap[8];
         int nt = 0;
         for (int k = 0; k < n; k++)
@@ -248,7 +278,7 @@ public sealed unsafe partial class CasterPass
             seen[nt++] = _qMap[k];
         }
         for (int t = 0; t < nt; t++)
-            if (!VkFlushTarget(vk, cl, seen[t], n)) return false;
+            if (!VkFlushTarget(vk, cl, seen[t], n, chunk)) return false;
         if (!s.Live)
         {
             s.Live = true;
@@ -258,9 +288,18 @@ public sealed unsafe partial class CasterPass
         return true;
     }
 
+    /// <summary>Hand every depth array over for sampling, outside every pass: the colour bracket's first bind of
+    /// one may land after a draw of a program that does not declare it, where no barrier can be placed.</summary>
+    private static void VkHandOver(CommandList cl)
+    {
+        var s = _vk;
+        ReadOnlySpan<ImageId> maps = [s.Cascades, s.SunDyn, s.Cubes, s.CubeDyn];
+        cl.ReadImages(maps);
+    }
+
     /// <summary>One target's queued views: every stale layer cleared on its own, then one layered pass per chunk over
     /// the whole array, the stages routing by <c>gl_Layer</c> out of the chunk's view table.</summary>
-    private static bool VkFlushTarget(VkBackend vk, CommandList cl, CasterMap map, int n)
+    private static bool VkFlushTarget(VkBackend vk, CommandList cl, CasterMap map, int n, int chunk)
     {
         ImageId img = VkMapOf(map);
         if (img.IsNull) return false;
@@ -277,7 +316,6 @@ public sealed unsafe partial class CasterPass
             _vk.Baked++;
         }
         if (size <= 0) return true;
-        int chunk = Math.Max(1, MaxLayerCmds / Math.Max(_gDrawN, 1));
         int k2 = 0;
         while (true)
         {
@@ -288,7 +326,7 @@ public sealed unsafe partial class CasterPass
             if (vn == 0) break;
             bool ok;
             fixed (CasterViewRec* vs = _viewStage)
-                ok = CasterGatherVk.DispatchLayer(vk, cl, vs, vn, sets == 1 << CasterGather.SetDynamic);
+                ok = CasterGatherVk.DispatchLayer(vk, cl, vs, vn, sets == 1 << CasterGather.SetDynamic, chunk);
             if (!ok) return false;
             cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, -1, LoadOp.Load, StoreOp.Store, 1f)));
             cl.SetViewport(0, 0, size, size);

@@ -121,7 +121,7 @@ internal static unsafe partial class CasterGatherVk
         cl.Reset();
         if (!Stage(vk, cl, src, cull, cast)) { check.Expect(false, "the layered fixture's list stages"); return false; }
         bool ran;
-        fixed (CasterViewRec* vs = views) ran = DispatchLayer(vk, cl, vs, viewN, false, cull: 1);
+        fixed (CasterViewRec* vs = views) ran = DispatchLayer(vk, cl, vs, viewN, false, viewN, cull: 1);
         check.Expect(ran, "the layered fixture's dispatch records");
         if (!ran) return false;
         if (!Read(vk, check, _s.LyCnt[_s.LyAt], _s.LyCmd[_s.LyAt], cnt, cmd, FixtureDraws * viewN)) return false;

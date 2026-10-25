@@ -36,14 +36,21 @@ public sealed unsafe partial class AlloyRenderer
         _ => default,
     };
 
-    /// <summary>The shadow bracket into <paramref name="cl"/>, between the frame's uploads and its first colour pass:
-    /// this frame's caster bounds, then the bake the shadow bracket recorded aside. Both read what
-    /// <see cref="VkUploads"/> just staged, so the maps are baked from the records, bones and handles the colour
-    /// bracket will draw with rather than from a frame-old copy.</summary>
-    private static void VkRecordShadow(VkBackend vk, CommandList cl)
+    /// <summary>The caster cull's two sphere buffers into <paramref name="cl"/>. Called at the head of the shadow
+    /// bracket, which runs ahead of the colour build that publishes this frame's bounds -- so the bake culls against
+    /// the previous frame's, as the GL bake does, and every dispatch recorded after this names a live buffer.</summary>
+    internal static void VkRecordCasterBounds(VkBackend vk, CommandList cl)
     {
         fixed (Sphere* cull = _dSph) fixed (Sphere* cast = _dCastSph)
             CasterGatherVk.RecordSpheres(vk, cl, cull, cast, _recOwnCap + MaxSkyDraws);
+    }
+
+    /// <summary>The bake the shadow bracket recorded aside, between the frame's uploads and its first colour pass: it
+    /// reads the records, bones and handles <see cref="VkUploads"/> just staged, so the maps are baked from what the
+    /// colour bracket will draw with and sampled inside the same submit.</summary>
+    private static bool VkRecordShadow(CommandList cl)
+    {
         if (CasterPass.VkBracket is { } bake) cl.Append(bake);
+        return CasterPass.VkFlush(cl);
     }
 }

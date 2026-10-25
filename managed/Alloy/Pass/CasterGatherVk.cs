@@ -193,20 +193,23 @@ internal static unsafe partial class CasterGatherVk
     /// <see cref="CasterGather.DispatchLayer"/> does: the chunk's view table goes up, the command buffer is sized
     /// draws x views, and a survivor's <c>baseInstance</c> packs its view index above the ownership slot.</summary>
     internal static bool DispatchLayer(VkBackend vk, CommandList cl, CasterViewRec* views, int viewN, bool dynSrc,
-                                      int cull = -1)
+                                      int maxViews = 0, int cull = -1)
     {
         var s = _s;
         if (s.LayerProg.IsNull || s.DrawN <= 0 || viewN <= 0 || s.Cull.IsNull || s.Cast.IsNull) return false;
         bool dyn = dynSrc && DynamicReady;
         int srcN = dyn ? s.DynDrawN : s.DrawN;
         if (dyn) CasterGather.DynDispatches++;
+        // the table and the output pair are sized for the FRAME's widest chunk, not this one: remaking a buffer
+        // a chunk already dispatched against would leave that dispatch naming a dead id in the same recording
+        int wide = Math.Max(maxViews, viewN);
         long viewBytes = (long)viewN * sizeof(CasterViewRec);
-        Grow(vk, ref s.ViewTbl, ref s.ViewCap, viewBytes, BufferUse.Storage, "gather view table");
+        Grow(vk, ref s.ViewTbl, ref s.ViewCap, (long)wide * sizeof(CasterViewRec), BufferUse.Storage, "gather view table");
         if (s.ViewTbl.IsNull) return false;
         cl.UpdateBuffer(s.ViewTbl, 0, new ReadOnlySpan<byte>(views, (int)viewBytes));
 
         s.LyAt = (s.LyAt + 1) % Rotation;
-        long cmds = (long)s.DrawN * viewN;
+        long cmds = (long)s.DrawN * wide;
         bool growCmd = cmds > s.LyCmdCap, growCnt = s.Groups > s.LyCntCap;
         for (int i = 0; i < Rotation; i++)
         {
