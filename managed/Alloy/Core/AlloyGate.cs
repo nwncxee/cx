@@ -120,6 +120,10 @@ internal static class AlloyGate
         if (!GameGate.InModule) { why = NoModule; return AlloyStand.Idle; }
         if (!GlContextService.Available)
         { why = "no GL 4.6 share-listed context on this device"; return AlloyStand.Incapable; }
+        // CX-348: the backend the session asked for. Asked once, with the engine's context current -- the
+        // interop extensions and the device UUID are the driver's, not a context's.
+        if (Renderer.OnVulkan && _log != null && CX.Graphics.Rhi.VkBackend.Refusal(_log) is string vk)
+        { why = vk; return AlloyStand.Incapable; }
         if (!AlloyRenderer.DrawCapable)
         { why = "an Alloy program did not build, or glMultiDrawElementsBaseVertex/glBindBufferBase is missing";
           return AlloyStand.Incapable; }

@@ -33,6 +33,14 @@ internal static class GlFormats
         _ => default,
     };
 
+    /// <summary>The seam format whose GL internal format is <paramref name="internalFormat"/>, or Unknown.</summary>
+    internal static Format FromInternal(uint internalFormat)
+    {
+        for (Format f = Format.Unknown + 1; f <= Format.D32FS8; f++)
+            if (Of(f).Internal == internalFormat) return f;
+        return Format.Unknown;
+    }
+
     /// <summary>Oracle: the token values glcorearb.h assigns, transcribed by hand -- independent of the constants
     /// <see cref="Gl"/> declares, so a mistyped constant or a row pointing at the wrong one both fail.</summary>
     internal static void SelfCheck(ExtenderLog log)
