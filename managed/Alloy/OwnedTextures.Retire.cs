@@ -176,6 +176,7 @@ internal static unsafe partial class OwnedTextures
             if (_handleDrop) AlloyRenderer.DropHandle(name);   // residency first: a resident handle outlives its texture
             else AlloyRenderer.ForgetHandle(name);
             Forget(name);
+            VkTextures.Forget(name);
             if (delete && Gl.DeleteTextures != null) Gl.DeleteTextures(1, &name);
         }
         due.Clear();

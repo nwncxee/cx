@@ -30,8 +30,8 @@ internal sealed unsafe partial class VkBackend
                   && (int)Of(Format.Rgba8) == 37 && (int)Of(Format.Rgba8Srgb) == 43 && (int)Of(Format.Rgba16F) == 97,
             "the seam's formats are vulkan_core.h's R8_UNORM 9, R16G16_SFLOAT 83, R32_SFLOAT 100, R8G8B8A8_UNORM 37, _SRGB 43, R16G16B16A16_SFLOAT 97");
         check.Expect((int)Of(Format.D32F) == 126 && (int)Of(Format.Bc1) == 131 && (int)Of(Format.Bc1A) == 133
-                  && (int)Of(Format.Bc3) == 137 && (int)Of(Format.Bc5) == 141 && (int)Of(Format.Bc7) == 145 && (int)Of(Format.L8) == 9,
-            "depth and BC formats are vulkan_core.h's D32_SFLOAT 126, BC1_RGB 131, BC1_RGBA 133, BC3 137, BC5 141, BC7 145; grey is R8_UNORM 9");
+                  && (int)Of(Format.Bc3) == 137 && (int)Of(Format.Bc5) == 141 && (int)Of(Format.Bc7) == 145,
+            "depth and BC formats are vulkan_core.h's D32_SFLOAT 126, BC1_RGB 131, BC1_RGBA 133, BC3 137, BC5 141, BC7 145");
         check.Expect((int)AttribFormat(new VertexAttrib(4, 4, VertexType.Packed1010102Norm, 0)) == 65
                   && (int)AttribFormat(new VertexAttrib(8, 4, VertexType.U8, 0)) == 39
                   && (int)AttribFormat(new VertexAttrib(5, 4, VertexType.U8Norm, 0)) == 37

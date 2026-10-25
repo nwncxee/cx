@@ -463,12 +463,13 @@ internal sealed unsafe partial class VkBackend : IDevice
     private VkSampler Sampler(in SamplerDesc d)
     {
         VkSamplerAddressMode wrap = d.Wrap == Wrap.Clamp ? VkSamplerAddressMode.ClampToEdge : VkSamplerAddressMode.Repeat;
+        VkSamplerAddressMode wrapT = (d.WrapT ?? d.Wrap) == Wrap.Clamp ? VkSamplerAddressMode.ClampToEdge : VkSamplerAddressMode.Repeat;
         var ci = new VkSamplerCreateInfo
         {
             magFilter = d.Mag == Filter.Linear ? VkFilter.Linear : VkFilter.Nearest,
             minFilter = d.Min == Filter.Linear ? VkFilter.Linear : VkFilter.Nearest,
             mipmapMode = d.Mip == MipMode.Linear ? VkSamplerMipmapMode.Linear : VkSamplerMipmapMode.Nearest,
-            addressModeU = wrap, addressModeV = wrap, addressModeW = wrap,
+            addressModeU = wrap, addressModeV = wrapT, addressModeW = wrapT,
             mipLodBias = d.LodBias,
             anisotropyEnable = d.Aniso > 1 && Caps.MaxAniso > 1, maxAnisotropy = Math.Clamp(d.Aniso, 1, Math.Max(1, Caps.MaxAniso)),
             compareEnable = d.Compare != null, compareOp = d.Compare is CompareOp c ? Compare(c) : VkCompareOp.Always,

@@ -60,7 +60,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The seam's format as Vulkan's; Undefined for one the backend does not carry.</summary>
     internal static VkFormat Of(Format f) => f switch
     {
-        Format.R8 or Format.L8 => VkFormat.R8Unorm,
+        Format.R8 => VkFormat.R8Unorm,
         Format.Rg8 => VkFormat.R8G8Unorm,
         Format.Rgba8 => VkFormat.R8G8B8A8Unorm,
         Format.Rgba8Srgb => VkFormat.R8G8B8A8Srgb,
@@ -137,8 +137,8 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>A view of every mip (<paramref name="mip"/> -1) or of one, typed as the shader declares the kind:
-    /// a single-layer 2D image as 2D, more layers as an array, a cube as a cube. A single-channel grey format reads
-    /// red into all three colours.</summary>
+    /// a single-layer 2D image as 2D, more layers as an array, a cube as a cube. A grey image reads red into all
+    /// three colours and alpha as 1.</summary>
     private VkImageView View(VkImage image, in ImageDesc d, int mip)
     {
         VkImageViewType type = d.Kind switch
@@ -153,7 +153,7 @@ internal sealed unsafe partial class VkBackend
         var grey = new VkComponentMapping { r = VkComponentSwizzle.R, g = VkComponentSwizzle.R, b = VkComponentSwizzle.R, a = VkComponentSwizzle.One };
         var vci = new VkImageViewCreateInfo
         {
-            image = image, viewType = type, format = Of(d.Fmt), components = d.Fmt == Format.L8 ? grey : default,
+            image = image, viewType = type, format = Of(d.Fmt), components = (d.Use & ImageUse.Grey) != 0 ? grey : default,
             subresourceRange = new VkImageSubresourceRange
             {
                 aspectMask = d.Fmt.IsDepth() ? VkImageAspectFlags.Depth : VkImageAspectFlags.Color,
@@ -185,7 +185,7 @@ internal sealed unsafe partial class VkBackend
 
     private static int TexelBytes(Format f) => f switch
     {
-        Format.R8 or Format.L8 => 1,
+        Format.R8 => 1,
         Format.Rg8 or Format.R16F or Format.D16 => 2,
         Format.Rg16F or Format.R32F or Format.R32Ui or Format.Rgba8 or Format.Rgba8Srgb or Format.R11G11B10F
             or Format.D24 or Format.D24S8 or Format.D32F => 4,

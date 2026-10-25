@@ -26,6 +26,7 @@ internal static unsafe partial class OwnedTextures
         Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
         _owned.Add(t);
         _standIn.White = t;
+        MirrorSolid(t, 1, 1, white, NearestSampler);
         _log?.Info($"OwnedTextures: minted the white null-texture stand-in (tid {t}) -- a diffuse with no GL id now draws as vanilla draws it");
         return (int)t;
     }
@@ -47,6 +48,7 @@ internal static unsafe partial class OwnedTextures
         Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
         _owned.Add(t);
         _standIn.Black = t;
+        MirrorSolid(t, 1, 1, zero, NearestSampler);
         return (int)t;
     }
 

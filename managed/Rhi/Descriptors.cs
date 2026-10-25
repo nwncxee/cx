@@ -8,8 +8,6 @@ public enum Format : byte
 {
     Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rgba32Ui, R11G11B10F,
     D16, D24, D24S8, D32F, D32FS8,
-    /// <summary>One byte read as grey: red repeated into green and blue, alpha 1 -- a single-channel engine texture.</summary>
-    L8,
     /// <summary>The block-compressed formats an engine or DDS texture arrives in, each sampled as UNORM (or SNORM/float).</summary>
     Bc1, Bc1A, Bc2, Bc3, Bc4, Bc4S, Bc5, Bc5S, Bc6U, Bc6S, Bc7,
 }
@@ -51,7 +49,12 @@ public enum ImageKind : byte { Tex2D, Tex2DArray, Cube, CubeArray, Tex3D }
 
 /// <summary>What an image is used as. Vulkan needs all of it at creation; GL ignores it.</summary>
 [Flags]
-public enum ImageUse : byte { None = 0, Sampled = 1, ColorTarget = 2, DepthTarget = 4, Storage = 8, CopySrc = 16, CopyDst = 32 }
+public enum ImageUse : byte
+{
+    None = 0, Sampled = 1, ColorTarget = 2, DepthTarget = 4, Storage = 8, CopySrc = 16, CopyDst = 32,
+    /// <summary>Sampled as grey: red repeated into green and blue, alpha 1 -- a single-channel engine texture.</summary>
+    Grey = 64,
+}
 
 /// <summary>An image to create. <see cref="Layers"/> counts whole cubes for the cube kinds; <see cref="D"/> is
 /// the depth of a 3D image and 1 otherwise.</summary>
@@ -64,15 +67,16 @@ public enum Filter : byte { Nearest, Linear }
 /// <summary>Mip selection: <see cref="None"/> samples the base level only.</summary>
 public enum MipMode : byte { None, Nearest, Linear }
 
-/// <summary>Addressing past the edge. ponytail: one mode for every axis; per-axis when a pass needs it.</summary>
+/// <summary>Addressing past the edge.</summary>
 public enum Wrap : byte { Repeat, Clamp }
 
 /// <summary>A depth or shadow comparison.</summary>
 public enum CompareOp : byte { Less, LessEqual, Equal, Greater, Always }
 
-/// <summary>A sampler to create. A non-null <see cref="Compare"/> makes it a shadow sampler.</summary>
+/// <summary>A sampler to create. A non-null <see cref="Compare"/> makes it a shadow sampler, and a null
+/// <see cref="WrapT"/> wraps T (and R) as <see cref="Wrap"/> does S.</summary>
 public readonly record struct SamplerDesc(Filter Min, Filter Mag, MipMode Mip, Wrap Wrap,
-                                          CompareOp? Compare = null, float Aniso = 1, float LodBias = 0);
+                                          CompareOp? Compare = null, float Aniso = 1, float LodBias = 0, Wrap? WrapT = null);
 
 /// <summary>A programmable stage.</summary>
 public enum ShaderStage : byte { Vertex, Geometry, Fragment, Compute }

@@ -204,6 +204,7 @@ internal static unsafe partial class OwnedTextures
         // The funnel's scan belongs to the RESOURCE, not to the name: the swap retires the scanned name, so
         // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
         bool scanned = _stats.TryGetValue(job.Src, out Stat st);
+        MirrorTranscode(job.Src, dst, job.Bc3, job.Levels, job.Lw, job.Lh, job.Off, job.Blocks);
         Replace(job.Key, job.Etid, dst, job.Compressed);
         if (scanned) _stats[dst] = st; else _stats.Remove(dst);
         FrameZones.Count(FrameZones.Ev.Transcode);
