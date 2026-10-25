@@ -72,6 +72,8 @@ public static class ServiceHost
         CX.Graphics.BindlessLedger.SelfCheck(log);   // each AMD-strict bindless rule fires on its breach, not on the legal sequence
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.ProgramBinary.SelfCheck(log);   // the program-binary cache key: every stage's text, its type, the driver
+        CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
+        CX.Graphics.Rhi.GlFormats.SelfCheck(log);   // the seam's formats against the GL headers' token values
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
         EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires

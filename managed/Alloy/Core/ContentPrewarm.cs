@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using CX.Alloy.Db;
@@ -9,7 +10,7 @@ namespace CX.Alloy;
 /// <summary>Every pipeline the area's content materials name (<see cref="ContentPipelines"/>), compiled and drawn
 /// once while the area loads: the compile goes to the driver's threads as the pair is named, and the one draw is
 /// what finishes a program the driver leaves unfinished until its first use. Render thread, inside the bracket.</summary>
-internal static unsafe class ContentPrewarm
+internal static class ContentPrewarm
 {
     /// <summary>Draws one frame may spend warming. The compiles are the load's cost either way; this keeps the
     /// draws off a single frame, since each one finishes a program.</summary>
@@ -73,53 +74,16 @@ internal static unsafe class ContentPrewarm
              + $"{by[3] + by[4]} caster, over {s.Seen.Count} key(s)";
     }
 
-    /// <summary>Bind one key's program, vertex input and state and issue a single draw. The scissor box is empty,
-    /// so the draw rasterises nothing -- the point is the draw CALL, which is where a driver finishes the program
-    /// it loaded from a binary. False leaves the key queued: its vertex format has no arena VAO yet.</summary>
+    /// <summary>Draw one key's program once under its own state (<see cref="ProgramWarm"/>). False leaves the key
+    /// queued: its vertex format has no arena VAO yet.</summary>
     private static bool Warm(in PipelineKey k)
     {
-        if (Gl.DrawArrays == null || Gl.Scissor == null) return true;
         uint prog = ContentPrograms.ProgramOf(k.Feat, k.Variant);
         if (prog == 0) return true;   // the pair carries no such variant: there is nothing to warm
         uint vao = MeshArena.Vao(k.Format);
         if (vao == 0) return false;
-        int prev;
-        Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prev);
-        Gl.Enable(Gl.SCISSOR_TEST);
-        Gl.Scissor(0, 0, 0, 0);
-        Gl.UseProgram(prog);
-        Gl.BindVertexArray(vao);
-        if (k.Blend == PipelineBlend.Off) Gl.Disable(Gl.BLEND);
-        else
-        {
-            Gl.Enable(Gl.BLEND);
-            Gl.BlendFunc(Gl.SRC_ALPHA, k.Blend == PipelineBlend.AlphaAdd ? Gl.ONE : Gl.ONE_MINUS_SRC_ALPHA);
-        }
-        Gl.DepthMask(k.Depth is PipelineDepth.LeqWrite or PipelineDepth.LessWrite ? (byte)1 : (byte)0);
-        Gl.DepthFunc(k.Depth switch
-        {
-            PipelineDepth.LessWrite => Gl.LESS,
-            PipelineDepth.EqualNoWrite => Gl.EQUAL,
-            _ => Gl.LEQUAL,
-        });
-        bool noCull = (k.Raster & PipelineRaster.NoCull) != 0;
-        if (noCull) Gl.Disable(Gl.CULL_FACE);
-        bool offset = (k.Raster & PipelineRaster.Offset) != 0 && Gl.PolygonOffset != null;
-        if (offset) { Gl.PolygonOffset(Issue.WashOffsetFactor, Issue.WashOffsetUnits); Gl.Enable(Gl.POLYGON_OFFSET_FILL); }
-        bool coverage = (k.Raster & PipelineRaster.Coverage) != 0;
-        if (coverage) Gl.Enable(Gl.SAMPLE_ALPHA_TO_COVERAGE);
-        Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
-        if (coverage) Gl.Disable(Gl.SAMPLE_ALPHA_TO_COVERAGE);
-        if (offset) Gl.Disable(Gl.POLYGON_OFFSET_FILL);
-        if (noCull) { Gl.Enable(Gl.CULL_FACE); Gl.CullFace(Gl.BACK); }
-        Gl.Disable(Gl.BLEND);
-        Gl.DepthMask(1);
-        Gl.DepthFunc(Gl.LEQUAL);
-        Gl.Disable(Gl.SCISSOR_TEST);
-        Gl.BindVertexArray(0);
-        Gl.UseProgram((uint)prev);
-        // a warm draw reads records and handles the frame has not staged yet: its errors are not the frame's
-        Gl.DrainErrors();
+        ProgramWarm.Draw(prog, vao, k.Depth, k.Raster, k.Blend, k.Coverage,
+                         Issue.WashOffsetFactor, Issue.WashOffsetUnits);
         return true;
     }
 
