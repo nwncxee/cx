@@ -370,6 +370,14 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
+    /// <summary>Bind the colour frame's target, viewport and depth state again after something bound its own.</summary>
+    private static void ReenterColourFrame(int* viewport, bool srgb, bool cull)
+    {
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, PostChain.Fbo);
+        Gl.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        new PassState(depth: true, depthWrite: true, cull: cull, srgb: srgb).Apply();
+    }
+
     /// <summary>The ADR 0011 slot walk: one case per pass, in FrameGraph order, over the batches
     /// <see cref="BeginOwnedFrame"/> staged. Inside the 4.6 bracket that method entered.</summary>
     private static void DrawOwnedInner()
@@ -383,6 +391,8 @@ public sealed unsafe partial class AlloyRenderer
         // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
         if (onVulkan) VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
         long batches1 = Counters._batches, draws1 = Counters._draws;
+        // the Vulkan frame's flip leaves framebuffer 0 bound, and the A/B's GL half draws next
+        if (ab) ReenterColourFrame(viewport, f.Srgb, cull: true);
         Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;
@@ -450,10 +460,8 @@ public sealed unsafe partial class AlloyRenderer
                     GpuBegin(GpuTerm.Ao);
                     if (SsaoPass.Run(PostChain.DepthTex, DepthResource.Filled(PassGen), &proj, viewport, _frameSeq))
                     {
-                        // a seam pass binds its own targets and hands none back: re-enter the colour frame's
-                        Gl.BindFramebuffer(Gl.FRAMEBUFFER, PostChain.Fbo);
-                        Gl.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-                        new PassState(depth: true, depthWrite: true, srgb: srgb).Apply();
+                        // a seam pass binds its own targets and hands none back
+                        ReenterColourFrame(viewport, srgb, cull: false);
                     }
                     GpuEnd(GpuTerm.Ao);
                     break;
