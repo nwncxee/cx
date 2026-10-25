@@ -135,7 +135,7 @@ public sealed unsafe partial class MovieService : IExtenderService
     {
         internal uint Prog, Vao, Vbo;
         internal bool ProgTried, VaoUp;
-        internal bool Stood, Announced, SaidNoContext;
+        internal bool Stood, Announced, SaidNoContext, SaidNoScreen;
     }
 
     private static readonly MovieDrawState _s = new();
@@ -166,14 +166,13 @@ public sealed unsafe partial class MovieService : IExtenderService
         return false;
     }
 
-    /// <summary>Alloy's context is not the game thread's to enter -- it has not come up, it failed for the
-    /// session, or the render thread holds it. Not this mechanism failing, so it is said once and not latched:
-    /// the frame it refuses is drawn by the engine's own quad, and the next one may well land here.</summary>
-    private static bool NoContext(string why)
+    /// <summary>Something the frame needs is not there YET -- the context has not come up or a render thread
+    /// holds it, the engine has not sized its window. Not this mechanism failing, so it is said once per
+    /// reason and NOT latched: this frame is the engine's quad's, and the next one may well draw.</summary>
+    private static bool NotYet(ref bool said, string why)
     {
-        MovieDrawState s = _s;
-        if (s.SaidNoContext) return false;
-        s.SaidNoContext = true;
+        if (said) return false;
+        said = true;
         _log?.Always($"Movies: {why} -- the engine's own movie quad draws the movie until Alloy can");
         return false;
     }
@@ -188,20 +187,22 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (!Gl.Init(_log)) return Stand("the GL entry points did not resolve");
         if (Gl.ClearBufferfv == null || Gl.ColorMask == null || Gl.BindFramebuffer == null || Gl.Viewport == null)
             return Stand("a core GL entry point did not resolve");
-        // The engine's own window size, read before the bracket: it is what ShowFrame's ortho is built from
-        // and what the present image is sized to, where the live GL viewport is whatever the last pass left.
-        int w = ScreenW != null ? *ScreenW : 0, h = ScreenH != null ? *ScreenH : 0;
-        if (w <= 0 || h <= 0) return Stand($"the engine's screen size reads {w}x{h}");
+        // The engine's own window size, read before the bracket: ShowFrame's ortho is built from it and the
+        // present image is sized to it, where the live GL viewport is whatever the last pass left. A zero
+        // READ is transient -- the engine sizes its window late -- so only the symbols are fatal.
+        if (ScreenW == null || ScreenH == null) return Stand("g_nScreenWidth/Height did not resolve");
+        int w = *ScreenW, h = *ScreenH;
+        if (w <= 0 || h <= 0) return NotYet(ref _s.SaidNoScreen, $"the engine's screen size reads {w}x{h}");
         // The bracket this opens must be the OUTERMOST one: a nested Leave only drains errors and leaves the
         // 4.6 context current, so the hand-back after it would blit in the wrong context.
         if (GlContextService.Inside)
-            return NoContext("a 4.6 bracket was already open at the movie draw");
+            return NotYet(ref _s.SaidNoContext, "a 4.6 bracket was already open at the movie draw");
         if (!GlContextService.Enter())
-            return NoContext("Alloy's GL 4.6 context cannot be entered from the game thread");
+            return NotYet(ref _s.SaidNoContext, "Alloy's GL 4.6 context cannot be entered from the game thread");
 
         bool drew;
         try { drew = InBracket(frameW, frameH, texW, texH, w, h); }
-        finally { GlContextService.Leave(); }
+        finally { Neutralise(); GlContextService.Leave(); }
         // Engine context, bracket closed: the blit that puts the present image on the presented buffer. A
         // world frame handed the image back at the frame boundary already, so this one carries the movie.
         if (drew) PresentTarget.HandBack();
@@ -247,7 +248,6 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (Gl.BindSampler != null) Gl.BindSampler(0, 0);
         Gl.DrawArrays(Gl.TRIANGLE_STRIP, 0, 4);
         Gl.BindTexture(Gl.TEXTURE_2D, 0);
-        Gl.BindVertexArray(0);
 
         // Read before the bracket closes: a draw that errored drew nothing and the present image is then the
         // clear alone, which is the one way this can fail with nothing to show for it.
@@ -262,6 +262,19 @@ public sealed unsafe partial class MovieService : IExtenderService
                      + "bracket; the engine's ShowFrame quad is swallowed from here on");
         }
         return true;
+    }
+
+    /// <summary>Leave the bracket the way <c>GuiPass.Draw</c> leaves its own: whatever bracket comes next
+    /// inherits this state, and a movie frame is the one that can precede a world frame or a GUI-only flush.
+    /// Run in the <c>finally</c>, after the draw's own error read, so a restore's error is not read as its.</summary>
+    private static void Neutralise()
+    {
+        Gl.BindVertexArray(0);
+        Gl.BindBuffer(Gl.ARRAY_BUFFER, 0);
+        Gl.UseProgram(0);
+        Gl.DepthMask(1);
+        Gl.Enable(Gl.DEPTH_TEST);
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
     }
 
     /// <summary>The movie quad's program, in Alloy's context: one try, and a failure stands the draw down.</summary>

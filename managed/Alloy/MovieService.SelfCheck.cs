@@ -18,8 +18,9 @@ public sealed unsafe partial class MovieService
         right = m * (sw / guiScale) / w;
     }
 
-    /// <summary>Off-device: the letterbox fit and the texture window. The fit is the whole of the ported
-    /// arithmetic -- everything else in the draw is GL calls -- and a wrong one is a stretched movie.</summary>
+    /// <summary>Off-device: the letterbox fit, the texture window and the quad's texture unit. The fit is the
+    /// whole of the ported arithmetic -- everything else in the draw is GL calls -- and a wrong one is a
+    /// stretched movie; the unit's oracle is the embedded GLSL text, read against the slot table.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -76,6 +77,12 @@ public sealed unsafe partial class MovieService
                      "the strip's first vertex is top-left at V0, so the frame is not drawn upside down");
         check.Expect(v[0].X == -pad.Sx && v[2].X == pad.Sx && v[3].X == pad.Sx && v[3].Y == -pad.Sy,
                      "...and the four vertices are a triangle strip, not a fan");
+
+        // 6. The unit the quad's sampler is declared on, against the table: the GLSL text is the oracle, and
+        //    the draw binds its texture on TEXTURE0 with nothing else in the bracket to notice a drift.
+        check.Expect(ShaderSource.Get("cx_movie_f.glsl")
+                         .Contains($"layout(binding = {TextureSlots.MovieQuad}) uniform sampler2D uTex;"),
+                     $"the movie program's uTex is declared on texture unit {TextureSlots.MovieQuad}");
 
         RowsCheck(check);
 
