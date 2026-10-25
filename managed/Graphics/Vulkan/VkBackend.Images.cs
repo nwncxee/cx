@@ -141,9 +141,10 @@ internal sealed unsafe partial class VkBackend
     /// a single-layer 2D image as 2D, more layers as an array, a cube as a cube. A grey image reads red into all
     /// three colours and alpha as 1. A non-negative <paramref name="layer"/> is one layer of an array or cube array,
     /// typed 2D: the attachment of one cascade or one cube face.</summary>
-    private VkImageView View(VkImage image, in ImageDesc d, int mip, int layer = -1)
+    private VkImageView View(VkImage image, in ImageDesc d, int mip, int layer = -1, bool array = false)
     {
-        VkImageViewType type = layer >= 0 ? VkImageViewType.Image2D : d.Kind switch
+        VkImageViewType type = layer >= 0 ? VkImageViewType.Image2D
+                             : array ? VkImageViewType.Image2DArray : d.Kind switch
         {
             ImageKind.Tex3D => VkImageViewType.Image3D,
             ImageKind.Cube when d.Layers == 1 => VkImageViewType.ImageCube,
@@ -178,17 +179,20 @@ internal sealed unsafe partial class VkBackend
         return img.MipViews[mip];
     }
 
-    /// <summary>The attachment view of mip 0: the whole image for <paramref name="layer"/> -1 (a layered pass over
-    /// every layer), one layer alone otherwise, made on first ask. Null when the layer is past the image.</summary>
+    /// <summary>The attachment view of mip 0: every layer for <paramref name="layer"/> -1 (a layered pass, which a
+    /// stage routes into with <c>gl_Layer</c>), one layer alone otherwise, made on first ask. Null when the layer is
+    /// past the image. A cube's own view is typed as a cube, which no attachment may be, so a layered pass over one
+    /// gets a 2D-array view of the same faces.</summary>
     private VkImageView AttachView(VkImg img, int layer)
     {
         int layers = Layers(img.Desc);
-        if (layer < 0) return img.View;
-        if (layers == 1) return img.View;
         if (layer >= layers) return default;
-        img.LayerViews ??= new VkImageView[layers];
-        if (img.LayerViews[layer].IsNull) img.LayerViews[layer] = View(img.Image, img.Desc, 0, layer);
-        return img.LayerViews[layer];
+        if (layers == 1) return img.View;
+        // index `layers` holds the whole-array view, past the per-layer ones
+        img.LayerViews ??= new VkImageView[layers + 1];
+        int at = layer < 0 ? layers : layer;
+        if (img.LayerViews[at].IsNull) img.LayerViews[at] = View(img.Image, img.Desc, 0, layer, array: true);
+        return img.LayerViews[at];
     }
 
     /// <summary>Array layers an image holds, counting a cube's six faces each.</summary>
