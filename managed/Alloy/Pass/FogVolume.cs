@@ -337,8 +337,9 @@ internal static unsafe class FogVolume
     private static void Release()
     {
         if (_gl.Sum == 0) return;
-        uint* t = stackalloc uint[3] { _gl.MedA, _gl.MedB, _gl.Sum };
-        Gl.DeleteTextures(3, t);
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.MedA);
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.MedB);
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.Sum);
         _gl.MedA = _gl.MedB = _gl.Sum = 0;
         _gl.W = _gl.H = _gl.D = 0;
         _gl.History = false;

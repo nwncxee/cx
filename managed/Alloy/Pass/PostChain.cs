@@ -450,10 +450,10 @@ internal static unsafe class PostChain
     {
         if (_gl.HdrTex != 0 && w == _gl.W && h == _gl.H) return true;
         if (w <= 0 || h <= 0) return false;
-        if (_gl.HdrTex != 0 && Gl.DeleteTextures != null)
+        if (_gl.HdrTex != 0)
         {
-            uint* old = stackalloc uint[2] { _gl.HdrTex, _gl.BloomTex };
-            Gl.DeleteTextures(2, old);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.HdrTex);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.BloomTex);
             _gl.HdrTex = 0; _gl.BloomTex = 0;
         }
         _gl.W = w; _gl.H = h;

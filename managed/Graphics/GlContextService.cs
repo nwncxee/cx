@@ -477,7 +477,8 @@ public sealed unsafe class GlContextService : IExtenderService
                        $"share one), ctx switches {_switches} ({perFrame:F1}/frame), " +
                        $"errors 4.6={_err46} engine={_errEng}, switch-fails={_switchFails}, " +
                        $"deferred work since boot: {_healthAlone} health-only frames + {_healthAfterForeign} " +
-                       $"after a foreign bracket, {_workElsewhere} already done elsewhere" +
+                       $"after a foreign bracket, {_workElsewhere} already done elsewhere; " +
+                       GpuGraveyard.Note() +
                        (_leaks > 0 ? $", {_leaks} LEAKED brackets since boot" : "") +
                        (_debug ? $", debug msgs={_dbgTotal} this period ({_dbgLogged} logged, {_dbgDropped} dropped since boot)" : ""));
             _dbgTotal = 0;

@@ -146,8 +146,8 @@ internal static unsafe class CoverageLayer
 
     private static void Release()
     {
-        if (_gl.Col != 0) { uint c = _gl.Col; Gl.DeleteTextures(1, &c); }
-        if (_gl.Dep != 0) { uint d = _gl.Dep; Gl.DeleteTextures(1, &d); }
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.Col);
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.Dep);
         _gl.Col = 0; _gl.Dep = 0; _gl.W = 0; _gl.H = 0; _gl.Samples = 0; _gl.Idling = 0;
     }
 

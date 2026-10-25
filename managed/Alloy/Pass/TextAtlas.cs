@@ -69,11 +69,12 @@ internal static unsafe class TextAtlas
     private static void Sweep()
     {
         var orphans = TextFonts.Orphans;
-        if (orphans.Count == 0 || Gl.DeleteTextures == null) return;
+        if (orphans.Count == 0) return;
         for (int i = 0; i < orphans.Count; i++)
         {
-            uint t = orphans[i];
-            if (t != 0) { Gl.DeleteTextures(1, &t); Deleted++; }
+            if (orphans[i] == 0) continue;
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, orphans[i]);
+            Deleted++;
         }
         orphans.Clear();
     }

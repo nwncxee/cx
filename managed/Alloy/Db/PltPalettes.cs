@@ -132,7 +132,7 @@ internal static unsafe class PltPalettes
             return;
         }
         if (Gl.CreateTextures == null || Gl.TextureStorage2D == null) return;
-        if (_tex != 0 && Gl.DeleteTextures != null) { uint old = _tex; Gl.DeleteTextures(1, &old); _tex = 0; }
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _tex); _tex = 0;
         uint t; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
         if (t == 0) { _log?.Always("PltPalettes: glCreateTextures gave no name -- every PLT resolves BLACK"); return; }
         int svUnpack; Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpack);

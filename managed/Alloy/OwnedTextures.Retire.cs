@@ -105,8 +105,18 @@ internal static unsafe partial class OwnedTextures
     /// <summary>Names whose delete is held for <see cref="DeferFrames"/> drains: the last draw that sampled
     /// their handle may still be in flight, and a driver that resolves bindless descriptors at batch
     /// completion (zink) faults on a destroyed image there. The records already carry the new name.</summary>
-    private static readonly List<uint>[] _deferred = { new(), new(), new(), new() };
-    private const int DeferFrames = 3;
+    private static readonly List<uint>[] _deferred = MakeDeferred();
+    /// <summary>Read from <see cref="GpuGraveyard.FramesInFlight"/>: the same quantity, declared once.</summary>
+    private const int DeferFrames = GpuGraveyard.FramesInFlight;
+
+    /// <summary>One list per frame of the hold plus the one being filled, so the due slot is never the slot
+    /// this drain writes.</summary>
+    private static List<uint>[] MakeDeferred()
+    {
+        var a = new List<uint>[DeferFrames + 1];
+        for (int i = 0; i < a.Length; i++) a[i] = new List<uint>();
+        return a;
+    }
     private static int _drainSeq;
 
     /// <summary>Is this name one of ours? The bindless path mints a handle only when it is -- a handle on an

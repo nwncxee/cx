@@ -41,7 +41,8 @@ model release    ModelCache.Release -> DelRef -> Trim -> ModelCache.Evict
                      -> MeshArena.Release queues; the GL free lands in MeshArena.Pump (render side)
 texture release  the same eviction, one hop further: DrawRecipe.Forget -> TexRegistry.Release
                      -> the slot goes idle on the LRU -> TexRegistry.Tick's EvictPastBudget -> Retire
-                     -> the GL name goes to _graveyard -> deleted in TexRegistry.Drain (bracket)
+                     -> the GL name goes to _graveyard -> TexRegistry.Drain retires it to
+                       GpuGraveyard, which deletes it three drains later (bracket)
 world edge       AlloyRenderer.EndFrame: module unload / 4.6 context lost / part table wiped
                      -> AlloyRenderer.RevokeAll -> PassRegistry.Global.Revoke()
                      -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge
@@ -54,7 +55,7 @@ context loss     AlloyRenderer.EndFrame -> PassRegistry.Global.ContextLost()
 does; it dies six hops later, two of them on a different thread, and only if the byte budget says so. The
 chain is `ModelCache.Evicting` → `DrawRecipe.Forget` (`Db/DrawRecipe.cs`) → `TexRegistry.Release` →
 idle LRU → `TexRegistry.Tick`'s `EvictPastBudget` → `Retire` → `_graveyard` →
-`TexRegistry.Drain`'s `glDeleteTextures`, inside Alloy's bracket. Any reader who expects a texture to go with
+`TexRegistry.Drain` → `GpuGraveyard`, inside Alloy's bracket. Any reader who expects a texture to go with
 its model will look in the wrong place; and the first hop of that chain is **not wired** (see the gaps).
 
 **The fifth is the world edge, which the ADR says the contract deletes.** It does not, in DB mode: the
@@ -112,9 +113,99 @@ as it was before, and that is what makes the drop-only `ContextLost` handlers sa
   the objects.
 - `RenderThread.Shutdown` is the `scenedb` pass's `ContextLost` and is **joined, not signalled** — the game
   thread may take the context back the instant it returns, so the thread must have let go first.
+- `GpuGraveyard.Drop` empties the deferred-free queue without issuing a delete, for the same reason, and is
+  never drained again (see the next section).
 
 If context recreation ever lands, this part is the checklist, and the first thing to re-check is that
 `MeshArena.Pump` is reached at all on the far side (it lives in the world colour frame; see the gaps).
+
+## Deferred frees — a GPU object outlives its last frame
+
+A frame the CPU has finished with is still in the driver's queue. The window resized, the area went away, a
+texture slot was evicted: the name is ours to delete and the GPU is still reading what the last frame drew
+into it. GL covers this. `glDeleteTextures` frees the *name* at once and keeps the object alive until no
+command references it, so none of these deletes was a bug. Vulkan does not cover it; `vkDestroyImage` on an
+image a submitted command buffer touches is undefined, and that is the whole reason this queue exists before
+there is any Vulkan code.
+
+Every GPU free on a lifetime edge goes through `GpuGraveyard` (`managed/Graphics/GpuGraveyard.cs`).
+`Retire(kind, name)` stamps the name with the current frame. `Drain(present)` ages the queue and deletes
+everything stamped `FramesInFlight` frames or more ago. The ring is 4096 `(frame, kind, name)` entries,
+preallocated, so a retire allocates nothing and the order out is the order in. A full ring deletes on the
+spot, names it once in the log and counts it; the `[gl46]` period line carries freed, pending and dropped,
+plus an overflow count and a count of names whose delete entry point never resolved. A queue that is not
+keeping up is visible rather than silently correct.
+
+`FramesInFlight` is 3, and the number is not a guess. `StreamRing.Regions` is 3 and a push waits out the
+fence of the region three frames back; `GpuReadback.Slots` and `OitPass.ReadSlots` are both 3; the GPU-span
+timer harvests two slots because it finds the GPU about two frames behind. `OwnedTextures.Retire`'s deferred
+delete is the same quantity rather than a ring depth — it held a name for three drains because zink resolves
+bindless descriptors at batch completion and faults on an image destroyed before then — so its `DeferFrames`
+now reads `GpuGraveyard.FramesInFlight` instead of declaring the number a second time.
+
+The clock is the present, not `FrameSeq` and not the drain. `Drain(present)` takes
+`GlContextService.Presents`, which `OnFrame` bumps exactly once per engine present, and ages the queue only
+when that number has moved. It has to: `GlContextService.InBracket` is run by `RunInBracketHere`, and the
+world pass, the 2D UI flush and the render thread all call that without a frame guard, so on an ordinary
+in-game frame the deferred work runs twice. Draining a queue twice is idempotent; ageing a clock twice would
+quietly turn a three-frame hold into one and a half. `FrameSeq` is no good either — it only advances while
+the renderer is armed, so a stood-down session (the main menu, the disarm latch) would never drain and would
+hold every retired name until the process exits.
+
+Context loss drops the queue whole: `GpuGraveyard.Drop()`, from `AlloyRenderer.ContextLost`. The objects died
+with the context, so issuing their deletes would aim a delete at whatever the next context gives those numbers
+to — the argument every drop-only `ContextLost` handler above rests on. Terminality means the queue is never
+drained again after that, which is why nothing retires outside the bracket. On Vulkan this is the device-loss
+edge and the same drop.
+
+What is routed, and from where:
+
+| Retired | Edge |
+|---|---|
+| `RenderTarget.Create`'s `old` name | every Alloy render target that resizes or changes format — one line standing in for 36 `AllocColor`/`AllocDepth`/`Create` call sites in 21 files |
+| `PostChain` HDR + bloom pair, `CullPass` depth pyramid, `CoverageLayer` colour + depth, `FogVolume`'s three froxel grids, `Weather`'s ESM pair and its layer view | the same resolution change, in the passes that build their targets by hand rather than through `RenderTarget` |
+| `CoverageLayer.Release` | also the idle path: 600 frames with no coverage content and the targets go, while the last frame that drew them is still in flight |
+| `PresentTarget`'s present image and its 4.6 framebuffer | a resize, and `Refuse`. `ISource.Release` is the interface point, so the Vulkan source inherits the deferral |
+| `MovieFrame`'s plate | a new movie at a different size, with the old plate still on screen in the frames in flight |
+| `TexRegistry`'s `_graveyard` names | eviction past the byte budget and a failed slot's last release. The queue stays the thread-safe intake (workers fill it under `_lock`); `TexRegistry.Drain` hands each name to the graveyard instead of deleting it, so the graveyard itself is render-thread-only |
+| `Ssr.Fresh`'s old name | the same resize shape as `RenderTarget.Create`, in the pass that writes it longhand |
+| `PltPalettes`' master palette | a dirty re-upload replaces it while the PLT resolve has it bound as a sampler |
+| `StageResources`' stage images and their `Prev` history | `DropAll` at a module change, and `Remake` on a resize |
+| `TexRegistry`'s Arturo turn table | the ripple stand-down. Its per-ripple textures already deferred through `_graveyard`; this was the one pair on that edge that did not |
+| `TextAtlas.Sweep`'s orphaned font atlases | a font replaced by name, with the old atlas still sampled by the frames in flight |
+
+Four things stay immediate, each for a reason:
+
+- **A creation failure.** `RenderTarget.Create`'s refused storage, `EnvProbe`'s and `LightmapBake`'s
+  `GetError` arms, `Weather`'s refused texture view: the object was never submitted with, so there is no frame
+  to wait for and deferring it would hold video memory the caller is about to ask for again.
+- **`LightmapBake`'s page pool.** `FreePages` is called from `Pool` and `ReleaseIdle` precisely to give the
+  memory back, and `Pool` then allocates the replacement. Up to a gigabyte, so a three-frame hold is a
+  doubling the card may refuse. The pool is also only freed when the pass is standing down or has no hold,
+  which is not a frame that drew from it.
+- **Shader objects and fences.** `glDeleteShader` after a link and `glDeleteSync` after a wait are both
+  defined on an object still in use, and neither is a resource a draw reads.
+- **CPU bookkeeping.** Index removals, handle tombstones, `Forget` calls and the `...State` resets are
+  unaffected: a stale table entry is a correctness problem *now*, and nothing about the GPU's queue makes
+  waiting safer. `OwnedTextures.Retire`'s delete is the one lifetime-edge GPU free still outside the
+  graveyard, because its own ring already holds it the same three drains and holds the handle drop with it.
+  Routing it would hold the image six frames and change nothing about when it is safe.
+
+Everything else that still frees a GPU object immediately is a creation failure, a program being rebuilt or a
+scratch object inside the bracket that made it. `tools/gates/gpu-frees.sh` counts those per file against
+`gpu-frees.baseline`, which may only shrink: 44 sites across 26 files as this landed, listed by
+`python3 tools/gates/gpu-frees.py -v`. A new pass that allocates its render target through `RenderTarget`
+gets the deferral for nothing and never touches the baseline.
+
+Two notes for whoever reads this next. The `Part::~Part` death notice Part 2 inventories is gone: it went with
+the engine-scene path on 2026-10-07 and the DB object-destroy edge replaced it, and there is no GPU free on
+that edge to defer, because `MeshArena.Release` only queues a byte range.
+
+That range is the one case the queue does not cover. `MeshArena.DrainFrees` hands a range back to the
+allocator at the frame edge, and the next `Acquire` can upload a different mesh into those bytes while the
+previous frame's draw still names them. The symptom is a wrong mesh for one frame rather than a crash, which
+is why it has gone unnoticed; the fix is the same stamp on `_pendingFree`. On Vulkan that sub-allocation
+becomes VMA's, so the hold belongs beside it.
 
 ## Threading: who may touch what
 
@@ -256,7 +347,7 @@ One priority inversion worth knowing about: `MeshArena.Acquire` (from the fold, 
 | Font atlases (`TextFonts`, `TextAtlas`) | `TextFontBake.Resolve` bakes a TTF with the client's own `stb_truetype` exports into an `AllocHGlobal` block; `TextAtlas.Upload` makes the GL texture and frees the staging block. A bitmap font instead borrows a **registry** name through `TexRegistry.Acquire` | **nothing.** `TextAtlas.ContextLost` exists and has no caller; the `texreg` pass's `ContextLost` covers the registry and the PLT tables and not `TextAtlas`. `TextFonts.Register` replaces a font by name without deleting the replaced atlas, and `TextAtlas`'s registry references are never released, so those slots can never go idle or be evicted | nothing happens — every `TextFont.Atlas` keeps a dead name with no re-bake |
 | Text quad/run buffers | `TextQuads.Build`, grown on the document and reused; the cache key is (stale bit, font epoch, grid generation) | nothing — they die with the pooled document, i.e. never. Invalidated, not freed, by `Stale`, a font epoch bump or a `GridGen` bump | none |
 | The markup colour ring (`TextMarkup.Stack`, `_index`) | static | nothing: process-wide mutable state, a faithful port of the engine's own leak, and written by both the draw path (`Process`) and the measure path (`Skip`) with no lock | none |
-| The movie frame's Alloy texture (`MovieFrame`, RGBA8 immutable storage at the decoded frame's exact size) | `MovieFrame.Ensure` inside the 4.6 bracket, on a movie's first frame; filled per frame by `MovieFrame.Upload` from the staged host rows | a frame-size change (a new movie) deletes and recreates. Nothing else: no "movie ended" notice exists, so one texture outlives the movie that made it | `MovieFrame.ContextLost` drops the name and deletes nothing — the texture went with the context |
+| The movie frame's Alloy texture (`MovieFrame`, RGBA8 immutable storage at the decoded frame's exact size) | `MovieFrame.Ensure` inside the 4.6 bracket, on a movie's first frame; filled per frame by `MovieFrame.Upload` from the staged host rows | a frame-size change (a new movie) retires the plate to `GpuGraveyard` and recreates. Nothing else: no "movie ended" notice exists, so one texture outlives the movie that made it | `MovieFrame.ContextLost` drops the name and deletes nothing — the texture went with the context |
 | The movie quad's program and buffers (`MovieService`: the `cx_movie_*` program, one VAO and the four-vertex VBO) | `MovieService.EnsureProgram` / `EnsureVao` inside the 4.6 bracket, on the first frame Alloy draws | nothing — one program and one quad for the session, in Alloy's own context | `MovieService.ContextLost` drops the three names and deletes nothing; the next movie frame builds them again |
 | The movie frame's staging rows (`MovieFrame.Rows`, one frame's bytes) | `NativeMemory.Realloc` in `MovieFrame.Stage`, grown when a frame is bigger than the last; filled by the hook on `GLRender::DirectCreateSubTexture` | nothing, by design: one frame's rows, kept for the session rather than freed on an edge the engine never reports | none — host memory |
 

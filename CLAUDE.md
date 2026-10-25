@@ -211,6 +211,11 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   `uniform-blocks.baseline`, which may only shrink -- a non-opaque uniform belongs in a std140 block on a
   `UboSlots` point, filled through `UniformBlock<T>`. Sampler units are opaque and count too, so a file need
   not reach zero; `python3 tools/gates/uniform-blocks.py -v` lists each site.
+- `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers}` call site
+  under `managed/` counts against `gpu-frees.baseline`, which may only shrink -- a GPU object freed on a
+  lifetime edge goes to `GpuGraveyard.Retire`, whose drain deletes it once the frames in flight are done with
+  it. A creation failure and a scratch object inside one bracket are legitimate, so a file need not reach
+  zero; `python3 tools/gates/gpu-frees.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
