@@ -69,8 +69,8 @@ internal static class VulkanFrame
         if (!_s.Live)
         {
             _s.Live = true;
-            log.Always("VulkanFrame: LIVE -- Vulkan culls, draws the prepass, the decal layer, the G-buffer and the "
-                     + "opaque, cutout and blended batches, and the engine's context presents the composite");
+            log.Always("VulkanFrame: LIVE -- Vulkan culls, draws the prepass with its vis-ID target, the decal layer, the "
+                     + "G-buffer and the opaque, cutout and blended batches, and the engine's context presents the composite");
         }
     }
 }

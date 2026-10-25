@@ -47,6 +47,7 @@ public sealed unsafe partial class AlloyRenderer
         VkTargets colour = gbuf ? VkTargets.Colour : VkTargets.Forward;
         s.GbufWritten = gbuf;
 
+        VkIdBegin(vk, w, h, log);
         if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhasePrepass)) return false;
         if (indirect && _depthPrepass)
         {
@@ -104,6 +105,8 @@ public sealed unsafe partial class AlloyRenderer
         if (!ok) return false;
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+
+        VkIdPaint(vk, cl, s, log);
 
         VkEncode(cl, s, composite, display);
         if (!s.Live)
@@ -270,7 +273,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gPrepassed[g] = true;
             }
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f)));
+        // #493: the vis-ID attachment rides these draws on slot 1, slot 0 routed nowhere, as GL's draw-buffer
+        // list has it; cleared on the first phase and loaded by the retest, which lands on the same image
+        Span<ColorAttachment> ids = stackalloc ColorAttachment[PrepassTargets];
+        var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
+                                    new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f));
+        VkFlushPass(cl, side, arena0, in rp);
         return true;
     }
 

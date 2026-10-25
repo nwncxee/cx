@@ -535,7 +535,8 @@ public sealed unsafe partial class AlloyRenderer
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = 1;
-        if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
+        if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
+        else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
         else if (targets == VkTargets.Colour)
         {
