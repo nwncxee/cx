@@ -3,7 +3,7 @@
 // shared lighting libraries' terms are not here: those belong to whatever program includes them.
 #ifndef CX_DEF_BLOCK
 #define CX_DEF_BLOCK
-layout(std140, binding = 2) uniform CxDeferred
+layout(std140, binding = 3) uniform CxDeferred
 {
     // The JITTERED view-projection the prepass rasterised with, inverted: world positions come back from it.
     mat4 uInvVp;

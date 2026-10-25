@@ -100,9 +100,8 @@
 #define texFBDepth uSceneDepth
 #define texFBColorBound 0
 #define texFBDepthBound 0
-// The engine's solid_noise, the texture its own water samples here, as a handle the program is handed per bind.
+// The engine's solid_noise, the texture its own water samples here, as the handle the CxEngine block carries.
 #ifdef CX_BINDLESS
-uniform uvec2 uConNoise;
 // a null handle is a GPU fault on AMD's driver, so a program bound before its handle went up samples the diffuse's
 #define texUnitNoise (sampler2D(uConNoise != uvec2(0u) ? uConNoise : uTexH[vDraw << 3]))
 #define texNoiseBound (uConNoise != uvec2(0u) ? 1 : 0)
@@ -211,20 +210,9 @@ void CxConFillLights()
 #define areaFlags uAreaFlags
 #define particleSoftness 0.0
 
-// ---- the scene terms the engine hands every program by NAME (AlloyRenderer.EngineNamed uploads them): the module
-// calendar, the frame counter, the weather kind, the mouse, and the wind's point sources (Alloy's own wind)
-uniform int moduleYear, moduleMonth, moduleDay, moduleHour, moduleDawnHour, moduleDuskHour, moduleMinutesPerHour;
-uniform float moduleTimeIntoTransition, moduleTransitionTime;
-uniform int sceneCurrentFrame;
-uniform int areaWeatherType;
-uniform float areaWeatherDensity;
-uniform ivec2 userinputMousePosition;
-uniform int userinputMouseButtons;
-const int MAX_WINDS = 128;
-uniform int windPointSourcesCount;
-uniform vec3 windPointSourcesPosition[MAX_WINDS];
-uniform float windPointSourcesRadius[MAX_WINDS], windPointSourcesDuration[MAX_WINDS];
-uniform float windPointSourcesIntensity[MAX_WINDS], windPointSourcesTimeRemaining[MAX_WINDS];
+// ---- the scene terms the engine hands every program by NAME -- the module calendar, the frame counter, the weather
+// kind, the mouse and the wind's point sources (Alloy's own wind), in the one block every environment shares
+#include "cx_envblk.glsl"
 #define NWAREA_FLAG_INTERIOR 1
 #define NWAREA_FLAG_UNDERGROUND 2
 #define NWAREA_FLAG_NATURAL 4

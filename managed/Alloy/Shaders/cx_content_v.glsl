@@ -84,8 +84,9 @@ vec2 vVertexTexCoordsEnvironment;
 vec3 vViewToSurface_n;
 
 // ---- the engine's own projection, as the fragment environment reads it (cx_vanenv_f): only its depth terms, the
-// clip planes inc_common's clipParams carries, come off it here -- the m_proj a stage names is the frame's below
-uniform mat4 m_proj;
+// clip planes inc_common's clipParams carries, come off it here -- the m_proj a stage names is the frame's below.
+// The block also carries the scene terms the engine hands every program by name, further down.
+#include "cx_envblk.glsl"
 vec3 CxConClipV()
 {
     float a = m_proj[2][2], b = m_proj[3][2];
@@ -206,20 +207,8 @@ uniform sampler2D uTex, uNrmTex, uSpecTex, uRoughTex, uHeightTex, uIllumTex, uFl
 #define areaFlags uAreaFlags
 #define particleSoftness 0.0
 
-// ---- the scene terms the engine hands every program by NAME (AlloyRenderer.EngineNamed uploads them): the module
+// ---- the scene terms the engine hands every program by NAME come off the CxEngine block included above: the module
 // calendar, the frame counter, the weather kind, the mouse, and the wind's point sources (Alloy's own wind)
-uniform int moduleYear, moduleMonth, moduleDay, moduleHour, moduleDawnHour, moduleDuskHour, moduleMinutesPerHour;
-uniform float moduleTimeIntoTransition, moduleTransitionTime;
-uniform int sceneCurrentFrame;
-uniform int areaWeatherType;
-uniform float areaWeatherDensity;
-uniform ivec2 userinputMousePosition;
-uniform int userinputMouseButtons;
-const int MAX_WINDS = 128;
-uniform int windPointSourcesCount;
-uniform vec3 windPointSourcesPosition[MAX_WINDS];
-uniform float windPointSourcesRadius[MAX_WINDS], windPointSourcesDuration[MAX_WINDS];
-uniform float windPointSourcesIntensity[MAX_WINDS], windPointSourcesTimeRemaining[MAX_WINDS];
 #define NWAREA_FLAG_INTERIOR 1
 #define NWAREA_FLAG_UNDERGROUND 2
 #define NWAREA_FLAG_NATURAL 4

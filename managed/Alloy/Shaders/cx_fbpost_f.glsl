@@ -30,13 +30,12 @@ uniform highp vec3 clipParams;
 #define fDepthToLinearModifier (clipParams.z)
 uniform highp mat4 m_view;
 uniform highp mat4 m_view_inv;
-uniform highp mat4 m_proj;
 // inc_uniforms, which the bridge never follows, under the engine's names: the feature terms
-// (AlloyRenderer.UploadFeatureTerms) and the terms the engine hands every program by name (AlloyRenderer.EngineNamed)
+// (AlloyRenderer.UploadFeatureTerms) and, in the one block every environment shares, the terms the engine hands
+// every program by name -- the projection, the calendar, the frame counter, the weather and the wind's sources
+#include "cx_envblk.glsl"
 uniform int uTimeOfDay;
 #define worldtimerTimeOfDay uTimeOfDay
-uniform int sceneCurrentFrame;
-uniform int moduleYear, moduleMonth, moduleDay, moduleHour, moduleDawnHour, moduleDuskHour, moduleMinutesPerHour;
 uniform highp vec3 uPlayerPos, uCamPos, uCamFocus;
 uniform vec2 uKeyholeCam;
 #define playerPosition uPlayerPos
@@ -48,14 +47,8 @@ uniform vec2 uKeyholeCam;
 #define cameraFocus uCamFocus
 #define cameraViewAngle 0.0
 #define cameraDialogState 0
-const int MAX_WINDS = 128;
-uniform int windPointSourcesCount;
-uniform vec3 windPointSourcesPosition[MAX_WINDS];
-uniform float windPointSourcesRadius[MAX_WINDS], windPointSourcesDuration[MAX_WINDS];
-uniform float windPointSourcesIntensity[MAX_WINDS], windPointSourcesTimeRemaining[MAX_WINDS];
 uniform vec3 uAreaWind;
 #define areaGlobalWind uAreaWind
-uniform float areaWeatherDensity;
 #define NWAREA_FLAG_INTERIOR 1
 #define NWAREA_FLAG_UNDERGROUND 2
 #define NWAREA_FLAG_NATURAL 4
@@ -64,7 +57,6 @@ uniform int uAreaFlags;
 #define NWAREA_WEATHER_CLEAR 0
 #define NWAREA_WEATHER_RAIN 1
 #define NWAREA_WEATHER_SNOW 2
-uniform int areaWeatherType;
 #define bboxMin (vec3(0.0))
 #define bboxMax (vec3(0.0))
 // inc_common's colour constants and inc_fog's terms, which the bridge never follows either -- the current

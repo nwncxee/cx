@@ -3,7 +3,7 @@
 uniform sampler2D uDepth;    // the frame depth after the prepass
 // CX-316: every non-opaque term all three stages take, one std140 block filled once per pass by SsaoBlock.
 // A stage reads the members it needs and ignores the rest; the layout is the same for all of them.
-layout(std140, binding = 2) uniform CxSsao
+layout(std140, binding = 3) uniform CxSsao
 {
     mat4 uProj;      // this pass's projection, raw engine bytes (see CxViewDist)
     vec4 uRt;        // (1/w, 1/h, w, h) of the pass's own target

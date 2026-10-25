@@ -60,40 +60,17 @@ internal unsafe struct FrameLoc
 
 /// <summary>The engine terms a WHOLE stage takes -- the sky's fragment stage and a compute pass, which run under the
 /// engine's own names (<c>cx_stageenv.glsl</c>): the scriptable, fog and camera block every Alloy stage gets, and the
-/// calendar and weather scalars from <c>m_shaderExposedRuntimeData</c>. One upload feeds both.</summary>
+/// calendar and weather scalars from <c>m_shaderExposedRuntimeData</c>, which ride the <c>CxEngine</c> block the
+/// feature upload binds. One upload feeds both.</summary>
 internal unsafe struct StageEnvLoc
 {
     internal AlloyRenderer.FeatLoc Feat;
-    internal int Year, Month, Day, Hour, Dawn, Dusk, Minutes, Frame, Transition, Weather, WeatherType;
 
     /// <summary>Resolve every name in one program. A location the program does not declare is -1, which GL
     /// ignores, so the same set is uploaded to a stock sky stage and to a pass alike.</summary>
-    internal static StageEnvLoc Locate(uint prog)
-    {
-        StageEnvLoc e = default;
-        e.Feat = Programs.FeatLocs(prog);
-        e.Year = GlProgram.Loc(prog, "uModYear"); e.Month = GlProgram.Loc(prog, "uModMonth");
-        e.Day = GlProgram.Loc(prog, "uModDay"); e.Hour = GlProgram.Loc(prog, "uModHour");
-        e.Dawn = GlProgram.Loc(prog, "uModDawn"); e.Dusk = GlProgram.Loc(prog, "uModDusk");
-        e.Minutes = GlProgram.Loc(prog, "uModMinutes"); e.Frame = GlProgram.Loc(prog, "uSceneFrame");
-        e.Transition = GlProgram.Loc(prog, "uModTransition"); e.Weather = GlProgram.Loc(prog, "uWeatherDensity");
-        e.WeatherType = GlProgram.Loc(prog, "uWeatherType");
-        return e;
-    }
+    internal static StageEnvLoc Locate(uint prog) => new() { Feat = Programs.FeatLocs(prog) };
 
     /// <summary>Upload the whole block into the program currently bound. Hot -- one call per program per pass, and it
     /// allocates nothing.</summary>
-    internal readonly void Upload(int* viewport)
-    {
-        AlloyRenderer.UploadFeatureTerms(Feat, viewport);
-        Gl.Uniform1i(Frame, AlloyRenderer.FrameSeq);
-        if (!AlloyRenderer.HasRuntime) return;
-        ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
-        Gl.Uniform1i(Year, rt.ModuleYear); Gl.Uniform1i(Month, rt.ModuleMonth);
-        Gl.Uniform1i(Day, rt.ModuleDay); Gl.Uniform1i(Hour, rt.ModuleHour);
-        Gl.Uniform1i(Dawn, rt.ModuleDawnHour); Gl.Uniform1i(Dusk, rt.ModuleDuskHour);
-        Gl.Uniform1i(Minutes, rt.ModuleMinutesPerHour);
-        Gl.Uniform1f(Transition, rt.ModuleTimeIntoTransition);
-        Gl.Uniform1f(Weather, rt.AreaWeatherDensity); Gl.Uniform1i(WeatherType, rt.AreaWeatherType);
-    }
+    internal readonly void Upload(int* viewport) => AlloyRenderer.UploadFeatureTerms(Feat, viewport);
 }

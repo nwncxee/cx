@@ -666,6 +666,20 @@ FIXTURE = {
     "cx_fixenv": "#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
                  "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
+    # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
+    # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
+    "cx_fixeng": ('#define SHADER_TYPE 2\n#include "inc_standard"\nconst int MAX_WINDS = 128;\n'
+                  "uniform int moduleYear;\nuniform float moduleTimeIntoTransition;\nuniform int windPointSourcesCount;\n"
+                  "uniform vec3 windPointSourcesPosition[MAX_WINDS];\nuniform float windPointSourcesRadius[MAX_WINDS];\n"
+                  "uniform mat4 m_proj;\nvoid main ()\n{\n    FragmentColor = vec4(1.0);\n"
+                  "    SetupStandardShaderInputs();\n"
+                  "    float g = float(moduleYear) + moduleTimeIntoTransition + m_proj[3][3];\n"
+                  "    for (int i = 0; i < windPointSourcesCount; i++)\n"
+                  "        g += windPointSourcesRadius[i] * length(windPointSourcesPosition[i] - vPosView);\n"
+                  "    FragmentColor.rgb *= g;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n"),
+    "cx_fixengv": ('#define SHADER_TYPE 1\n#include "inc_standard"\nuniform mat4 m_proj;\nuniform float fWave;\n'
+                   "void main()\n{\n    ApplyStandardShader();\n    vPosView += vec3(0.0, 0.0, fWave);\n"
+                   "    gl_Position = m_proj * vec4(vPosView, 1.0);\n}\n"),
     "cx_fixown": "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
 }
 STOCK_VS = ('// header\n#define SHADER_TYPE 1\n#define NORMAL_MAP 1\n#include "inc_standard"\n'
@@ -726,6 +740,26 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     if mine.refused or "vec3 CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }" not in mine.host \
        or "vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)" not in mine.host or "{ return c * c; }" in mine.host.replace("CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }", ""):
         bad.append("a function the stage defines over one the program already has is not renamed, with its calls")
+    engv = translate("cx_fixengv", False, FIXTURE.get, env_vs, "", "", std_vs, lit_vs)
+    eng = translate("cx_fixeng", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "",
+                    vertex=engv if not engv.refused else None)
+    if engv.refused or eng.refused:
+        bad.append(f"an engine-named fixture was refused: {engv.refused or eng.refused}")
+    else:
+        for s in ("uniform int moduleYear", "uniform float moduleTimeIntoTransition", "uniform int windPointSourcesCount",
+                  "[MAX_WINDS]", "uniform mat4 m_proj"):
+            if s in eng.host:
+                bad.append(f"the engine-named fixture kept {s!r}, which the environment supplies")
+        # the environment's own copy, and only it
+        if eng.host.count("const int MAX_WINDS") != 1:
+            bad.append("the engine-named fixture kept its own const int MAX_WINDS beside the environment's")
+        if "uniform mat4 m_proj" in engv.host:
+            bad.append("the engine-named vertex fixture kept its own m_proj declaration")
+        for s in ("windPointSourcesRadius[i]", "m_proj[3][3]"):
+            if s not in eng.host:
+                bad.append(f"the engine-named fixture lost its read of {s!r}")
+        if "m_proj * vec4(vPosView, 1.0)" not in engv.host:
+            bad.append("the engine-named vertex fixture lost its read of m_proj")
     if not stock_shaped(STOCK_VS, False) or not stock_shaped(STOCK_FS, True) or stock_shaped(FIXTURE["cx_fixvs"], False) \
        or stock_shaped(STOCK_FS.replace('#include "inc_standard"', '#include "my_inc"'), True) \
        or stock_shaped(STOCK_FS.replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), True):

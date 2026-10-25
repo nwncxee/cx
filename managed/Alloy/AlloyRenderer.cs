@@ -499,6 +499,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         MovieFrame.ContextLost();
         MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
         PassContextLost();
+        EngineBlockContextLost();
     }
 
     /// <summary>Frame tick from the present (after the bucket walks). Module unload, a PartTable
@@ -599,7 +600,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal unsafe struct FeatLoc { internal int Time, Wind, Flags, Cam, CamFocus, Player, Fog, FogColor, KhDia, KhCam,
                                        Pixel, Eye, FogSky, FogSkyColor, FogSun, FogSunColor, FogOrigin, VFog, VFogVp, LodBias,
                                        TgtShapeL, TgtSelfL, TgtObjL, TgtSizeXL, TgtSizeYL, TgtRangeL,
-                                       TgtColL, TgtWorldL, ProjL, Now;
+                                       TgtColL, TgtWorldL, Now;
         /// <summary>The WHOLE scriptable block, by location. Picking entries one feature at a time was a
         /// standing bug: a content shader that starts reading a new slot compiles, links and reads zero --
         /// a feature that silently does nothing under Alloy and works under the engine. Filled at program
@@ -610,8 +611,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         /// <summary>Bit i set when slot i of that kind resolved to a live location, so the upload walks only
         /// what the program declares instead of 48 calls, nearly all of them to -1.</summary>
         internal int SIntLive, SFloatLive, SVecLive;
-        /// <summary>The engine-named scene terms a content pair's stage reads (<see cref="EngineNamedLocs"/>).</summary>
-        internal EngineNamedLocs Named;
+        /// <summary>Does the program read the <c>CxEngine</c> block (<see cref="EngineBlock"/>)? A program that
+        /// never declares it -- every stage outside the content environments -- costs its bind nothing.</summary>
+        internal bool Engine;
     }
     /// <summary><c>GLRender::m_shaderExposedRuntimeData</c>, the struct the engine's own SetUniforms uploads
     /// these five from. Null (symbol unresolved) leaves the wind still and the roofs wherever they were
