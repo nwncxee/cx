@@ -119,14 +119,13 @@ public sealed unsafe partial class AlloyRenderer
         Gl.Uniform3fv(loc.TgtWorldL, 1, _shaderConstV);
     }
 
-    /// <summary>The rest of the shared vanilla environment -- the projection and the scriptable entries the
-    /// spliced stock files gate on -- under the engine's own uniform names, as <see cref="UploadTargetShape"/>.
-    /// The noir and vision gates are script-set integers; zero is "off", which is what an unresolved constant
-    /// table leaves them at, so a client that cannot read them gets the feature off rather than stuck on.</summary>
+    /// <summary>The rest of the shared vanilla environment -- the <c>CxEngine</c> block (the projection, the
+    /// calendar, the weather, the wind) and the scriptable entries the spliced stock files gate on, under the
+    /// engine's own names as <see cref="UploadTargetShape"/>. The noir and vision gates are script-set integers,
+    /// and zero is "off", which an unresolved constant table leaves them at.</summary>
     internal static void UploadVanillaEnv(in FeatLoc loc)
     {
-        fixed (Matrix4x4* m = &_projMtx) Gl.UniformMatrix4fv(loc.ProjL, 1, 0, (float*)m);
-        UploadEngineNamed(loc.Named);
+        if (loc.Engine) BindEngineBlock();
         if (_shaderConstI == null || _shaderConstF == null || _shaderConstV4 == null) return;
         // The whole block, not a selection: a content shader that begins reading a slot nobody thought to
         // wire would otherwise compile, link, and read zero -- working under the engine and silently doing

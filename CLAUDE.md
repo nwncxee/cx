@@ -204,7 +204,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
 - `ubo-bindings.sh`: a `std140` binding, or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
   per-stage floor), or a numeric uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under
-  `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..1 persistent and exclusive, 2..11 shared by
+  `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
   passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
   members to the struct that stages them.
 - `uniform-blocks.sh`: a loose `Gl.Uniform*` call site under `managed/` counts against

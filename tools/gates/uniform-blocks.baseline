@@ -1,14 +1,11 @@
 9 managed/Alloy/AlloyRenderer.Batches.cs
-20 managed/Alloy/AlloyRenderer.EngineNamed.cs
 17 managed/Alloy/AlloyRenderer.Frame.cs
 7 managed/Alloy/AlloyRenderer.Motion.cs
-31 managed/Alloy/AlloyRenderer.Uniforms.cs
-1 managed/Alloy/Core/ContentPrograms.cs
+30 managed/Alloy/AlloyRenderer.Uniforms.cs
 3 managed/Alloy/Db/PltGpuCheck.cs
 5 managed/Alloy/Db/TexRegistry.Arturo.cs
 8 managed/Alloy/Highlight.cs
 33 managed/Alloy/Issue.cs
-1 managed/Alloy/MovieService.cs
 15 managed/Alloy/Pass/AlloyLights.cs
 6 managed/Alloy/Pass/Beams.Db.cs
 19 managed/Alloy/Pass/CasterGather.cs
@@ -47,7 +44,7 @@
 8 managed/Alloy/Pass/SmaaStage.cs
 7 managed/Alloy/Pass/SsaoPass.cs
 15 managed/Alloy/Pass/Ssr.cs
-19 managed/Alloy/Pass/StageEnv.cs
+8 managed/Alloy/Pass/StageEnv.cs
 2 managed/Alloy/Pass/StageResources.Gl.cs
 8 managed/Alloy/Pass/TaaStage.cs
 7 managed/Alloy/Pass/ToonStage.cs

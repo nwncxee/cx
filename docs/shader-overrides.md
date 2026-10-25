@@ -227,7 +227,12 @@ Alloy's values:
 - `texUnitNoise` (the engine's `solid_noise`), `texUnitEnvCube` (the area probe);
 - the material terms, the fog, camera, player and wind terms;
 - the module calendar (`moduleYear`..`moduleTransitionTime`), `sceneCurrentFrame`, `areaWeatherType`, the
-  mouse, and the wind's point sources (`windPointSourcesCount` and its five arrays), under the engine's names;
+  mouse, the wind's point sources (`windPointSourcesCount` and its five arrays) and the engine's projection
+  `m_proj`, under the engine's names — these live in the `CxEngine` uniform block (`cx_envblk.glsl`), and the
+  engine's names are macros over its members, so a stage that declares one of them itself (as `inc_uniforms`
+  declares the whole set and `vs_beamvol` an inline `m_proj`) has its declaration dropped rather than
+  colliding. An **override** of an environment must not re-declare one as a loose uniform: it would expand to
+  a redeclaration of the block member and fail the compile;
 - the per-light arrays (`numLights`, `lightPosition`, `lightColor`), filled per fragment from the lights binned
   there, for a stage that lights itself;
 - `inc_scriptable`'s block, set by name from the engine's own constants;
@@ -404,8 +409,9 @@ Every pass of a frame and every view a program is drawn into sees the **main vie
 stage did not run its passes on the frame before is a gap — indoors, out of view, `effects.sky 0`, a loading
 screen — and reprojecting against a camera from minutes ago is worse than not reprojecting, which is what
 `cxFresh` is for. Beside these, a pass gets every engine term the sky's fragment stage gets — the calendar and
-weather scalars (`moduleYear`, `moduleTimeIntoTransition`, `areaWeatherDensity`, …), the scriptable block,
-fog, time of day and the camera — from the whole-stage environment `cx_stageenv`, one upload for both.
+weather scalars (`moduleYear`, `moduleTimeIntoTransition`, `areaWeatherDensity`, …) and `m_proj` out of the
+same `CxEngine` block the content pairs read, plus the scriptable block, fog, time of day and the camera —
+from the whole-stage environment `cx_stageenv`, one upload for both.
 
 ### When things run
 

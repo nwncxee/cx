@@ -14,6 +14,13 @@ internal struct Int2(int x, int y)
     public int X = x, Y = y;
 }
 
+/// <summary>std140's <c>uvec2</c>, for a block member staging a bindless handle.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct UInt2(uint x, uint y)
+{
+    public uint X = x, Y = y;
+}
+
 /// <summary>std140's <c>ivec4</c>.</summary>
 [StructLayout(LayoutKind.Sequential)]
 internal struct Int4(int x, int y, int z, int w)

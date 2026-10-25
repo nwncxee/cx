@@ -20,25 +20,10 @@
 #define areaFlags uAreaFlags
 // The area's fog colour as the engine's stages see it: DISPLAY space (Alloy linearises at upload, #132).
 #define fogColor vec4(pow(max(uFogColor.rgb, vec3(0.0)), vec3(1.0 / $SRGB$)), 1.0)
-uniform mat4 m_proj;             // inc_noir's ortho-vs-perspective test reads [3][3]
-// The engine's calendar and weather scalars, from m_shaderExposedRuntimeData: the same values
-// GLRender::SetUniforms @0x4ccbf0 feeds the engine's own copy of a stage, under the names
-// GLRender::ConnectShaderData @0x4ce8e0 binds them to. Macros rather than declarations under those names,
-// so a content stage that declares one for itself (inc_sunm does, for moduleTimeIntoTransition) has its
-// line dropped instead of colliding.
-uniform int uModYear, uModMonth, uModDay, uModHour, uModDawn, uModDusk, uModMinutes, uSceneFrame, uWeatherType;
-uniform float uModTransition, uWeatherDensity;
-#define moduleYear uModYear
-#define moduleMonth uModMonth
-#define moduleDay uModDay
-#define moduleHour uModHour
-#define moduleDawnHour uModDawn
-#define moduleDuskHour uModDusk
-#define moduleMinutesPerHour uModMinutes
-#define sceneCurrentFrame uSceneFrame
-#define areaWeatherType uWeatherType
-#define moduleTimeIntoTransition uModTransition
-#define areaWeatherDensity uWeatherDensity
+// The engine's projection (inc_noir's ortho-vs-perspective test reads [3][3]) and its calendar and weather
+// scalars, from the one block every environment shares: the same values GLRender::SetUniforms @0x4ccbf0 feeds
+// the engine's own copy of a stage, under the names GLRender::ConnectShaderData @0x4ce8e0 binds them to.
+#include "cx_envblk.glsl"
 #define NWAREA_WEATHER_CLEAR 0
 #define NWAREA_WEATHER_RAIN 1
 #define NWAREA_WEATHER_SNOW 2

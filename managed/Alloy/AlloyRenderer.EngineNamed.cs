@@ -1,100 +1,118 @@
+using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using CX.Engine;
-using CX.Graphics;
+using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>The scene terms the engine's own <c>SetUniforms</c> hands every program by NAME and only a content pair's
-/// stage reads -- the module calendar, the frame counter, the weather kind, the mouse and the wind's point sources.
-/// The content environments declare them under those names, so a stage reads what it would in the engine.</summary>
+/// <summary>One std140 lane array: an engine <c>windPointSources*</c> array, whose element std140 pads out to a
+/// whole vec4. A float array's lane uses <c>.X</c>, the position array's <c>.XYZ</c>.</summary>
+[InlineArray(AlloyRenderer.MaxWindUniforms)]
+internal struct WindLane
+{
+    private Vector4 _e;
+}
+
+/// <summary>The <c>CxEngine</c> block (<c>cx_envblk.glsl</c>): the scene terms the engine's own <c>SetUniforms</c>
+/// hands every program by NAME and only a content stage reads -- the module calendar, the frame counter, the
+/// weather kind, the mouse, the wind's point sources, the engine's projection and the solid-noise handle. Every
+/// content environment declares the block, so a stage reads what it would in the engine.</summary>
+internal struct EngineBlock
+{
+    public Matrix4x4 Proj;
+    public WindLane Pos, Radius, Duration, Intensity, Remaining;
+    public Int2 Mouse;
+    public UInt2 Noise;
+    public int MouseButtons, WindCount;
+    public int Year, Month, Day, Hour, Dawn, Dusk, MinutesPerHour, Frame, WeatherType;
+    public float IntoTransition, TransitionTime, WeatherDensity;
+
+    /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into its
+    /// neighbour -- a stage would read the calendar out of the wind.</summary>
+    internal static void Pin(Checker check)
+    {
+        var b = default(EngineBlock);
+        Std140.Pin(check, ShaderSource.Get("cx_envblk.glsl"), "CxEngine", UboSlots.Engine, Unsafe.SizeOf<EngineBlock>(),
+        [
+            ("uEngProj", Std140.At(ref b, ref b.Proj)),
+            ("uWindPos", Std140.At(ref b, ref b.Pos)), ("uWindRadius", Std140.At(ref b, ref b.Radius)),
+            ("uWindDuration", Std140.At(ref b, ref b.Duration)), ("uWindIntensity", Std140.At(ref b, ref b.Intensity)),
+            ("uWindRemain", Std140.At(ref b, ref b.Remaining)),
+            ("uMouse", Std140.At(ref b, ref b.Mouse)), ("uConNoise", Std140.At(ref b, ref b.Noise)),
+            ("uMouseBtn", Std140.At(ref b, ref b.MouseButtons)), ("uWindCount", Std140.At(ref b, ref b.WindCount)),
+            ("uModYear", Std140.At(ref b, ref b.Year)), ("uModMonth", Std140.At(ref b, ref b.Month)),
+            ("uModDay", Std140.At(ref b, ref b.Day)), ("uModHour", Std140.At(ref b, ref b.Hour)),
+            ("uModDawn", Std140.At(ref b, ref b.Dawn)), ("uModDusk", Std140.At(ref b, ref b.Dusk)),
+            ("uModMinutes", Std140.At(ref b, ref b.MinutesPerHour)), ("uSceneFrame", Std140.At(ref b, ref b.Frame)),
+            ("uWeatherType", Std140.At(ref b, ref b.WeatherType)),
+            ("uModTransition", Std140.At(ref b, ref b.IntoTransition)),
+            ("uModTransTime", Std140.At(ref b, ref b.TransitionTime)),
+            ("uWeatherDensity", Std140.At(ref b, ref b.WeatherDensity)),
+        ]);
+    }
+}
+
 public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>The point sources the engine uploads at most (<c>SetUniforms</c> clamps the list to 0x80).</summary>
     internal const int MaxWindUniforms = 128;
 
-    /// <summary>The engine-named terms' locations in one program, -1 for a term it does not declare. Resolved under
-    /// GLRender::ConnectShaderData @0x4ce8e0's own spellings.</summary>
-    internal struct EngineNamedLocs
+    /// <summary>The block and what it was last filled from: the frame, this pass's projection and the noise
+    /// handle, plus the count the gust walk returned. Only the projection moves within a frame -- the engine
+    /// refreshes its runtime struct once at the frame's head, in
+    /// <c>GLRender::CheckAndUpdateUniformDirtyDataForFrame</c> -- so an unchanged refill is skipped.</summary>
+    private sealed class EngineNamedState
     {
-        public int Year, Month, Day, Hour, Dawn, Dusk, MinutesPerHour, IntoTransition, TransitionTime;
-        public int Frame, WeatherType, WeatherDensity, Mouse, MouseButtons;
-        public int WindCount, WindPos, WindRadius, WindDuration, WindIntensity, WindRemaining;
-        /// <summary>Does the program declare any of them? Most do not, and then the upload makes no call at all.</summary>
-        public bool Any;
+        public readonly UniformBlock<EngineBlock> Blk = new();
+        public Matrix4x4 Proj;
+        public ulong Noise;
+        public int Frame = -1, Count;
     }
 
-    /// <summary>The point sources as the stages read them, gathered once per frame rather than per program bind.</summary>
-    private sealed class WindUniformState
-    {
-        public readonly Vector3[] Pos = new Vector3[MaxWindUniforms];
-        public readonly float[] Radius = new float[MaxWindUniforms], Duration = new float[MaxWindUniforms],
-                                Intensity = new float[MaxWindUniforms], Remaining = new float[MaxWindUniforms];
-        public int Count, Frame = -1;
-    }
+    private static readonly EngineNamedState _engineU = new();
 
-    private static readonly WindUniformState _windU = new();
-
-    /// <summary>The engine-named terms' locations in <paramref name="prog"/>.</summary>
-    internal static EngineNamedLocs EngineNamedLocsOf(uint prog)
+    /// <summary>Fill the <c>CxEngine</c> block out of the engine's live state and bind it on
+    /// <see cref="UboSlots.Engine"/>. The calendar, weather and mouse come off <see cref="Rt"/>, the frame
+    /// counter is the presented frame's, the projection this pass's and the point sources Alloy's own wind's.
+    /// Allocates nothing.</summary>
+    internal static void BindEngineBlock()
     {
-        var n = new EngineNamedLocs
-        {
-            Year = GlProgram.Loc(prog, "moduleYear"), Month = GlProgram.Loc(prog, "moduleMonth"),
-            Day = GlProgram.Loc(prog, "moduleDay"), Hour = GlProgram.Loc(prog, "moduleHour"),
-            Dawn = GlProgram.Loc(prog, "moduleDawnHour"), Dusk = GlProgram.Loc(prog, "moduleDuskHour"),
-            MinutesPerHour = GlProgram.Loc(prog, "moduleMinutesPerHour"),
-            IntoTransition = GlProgram.Loc(prog, "moduleTimeIntoTransition"),
-            TransitionTime = GlProgram.Loc(prog, "moduleTransitionTime"),
-            Frame = GlProgram.Loc(prog, "sceneCurrentFrame"), WeatherType = GlProgram.Loc(prog, "areaWeatherType"),
-            WeatherDensity = GlProgram.Loc(prog, "areaWeatherDensity"),
-            Mouse = GlProgram.Loc(prog, "userinputMousePosition"), MouseButtons = GlProgram.Loc(prog, "userinputMouseButtons"),
-            WindCount = GlProgram.Loc(prog, "windPointSourcesCount"), WindPos = GlProgram.Loc(prog, "windPointSourcesPosition"),
-            WindRadius = GlProgram.Loc(prog, "windPointSourcesRadius"),
-            WindDuration = GlProgram.Loc(prog, "windPointSourcesDuration"),
-            WindIntensity = GlProgram.Loc(prog, "windPointSourcesIntensity"),
-            WindRemaining = GlProgram.Loc(prog, "windPointSourcesTimeRemaining"),
-        };
-        n.Any = n.Year >= 0 || n.Month >= 0 || n.Day >= 0 || n.Hour >= 0 || n.Dawn >= 0 || n.Dusk >= 0
-                || n.MinutesPerHour >= 0 || n.IntoTransition >= 0 || n.TransitionTime >= 0 || n.Frame >= 0
-                || n.WeatherType >= 0 || n.WeatherDensity >= 0 || n.Mouse >= 0 || n.MouseButtons >= 0 || n.WindCount >= 0
-                || n.WindPos >= 0 || n.WindRadius >= 0 || n.WindDuration >= 0 || n.WindIntensity >= 0 || n.WindRemaining >= 0;
-        return n;
-    }
-
-    /// <summary>Upload the engine-named terms <paramref name="n"/>'s program declares (GL ignores a -1 location). The
-    /// calendar, weather and mouse come off <see cref="Rt"/>, the frame counter is the presented frame's, the point
-    /// sources Alloy's own wind's.</summary>
-    internal static void UploadEngineNamed(in EngineNamedLocs n)
-    {
-        if (!n.Any) return;
+        EngineNamedState e = _engineU;
+        ulong h = Bindless ? HandleFor(FrameSnapshot.OwnNoise()) : 0ul;
+        if (e.Frame == _frameSeq && e.Proj == _projMtx && e.Noise == h) { e.Blk.Rebind(UboSlots.Engine); return; }
+        bool fresh = e.Frame != _frameSeq;
+        e.Frame = _frameSeq; e.Proj = _projMtx; e.Noise = h;
+        ref EngineBlock b = ref e.Blk.Stage;
+        b.Proj = _projMtx;
+        b.Frame = _frameSeq;
+        b.Noise = new UInt2((uint)h, (uint)(h >> 32));
         if (_runtime != null)
         {
             ShaderExposedRuntimeData rt = Rt;
-            Gl.Uniform1i(n.Year, rt.ModuleYear); Gl.Uniform1i(n.Month, rt.ModuleMonth);
-            Gl.Uniform1i(n.Day, rt.ModuleDay); Gl.Uniform1i(n.Hour, rt.ModuleHour);
-            Gl.Uniform1i(n.Dawn, rt.ModuleDawnHour); Gl.Uniform1i(n.Dusk, rt.ModuleDuskHour);
-            Gl.Uniform1i(n.MinutesPerHour, rt.ModuleMinutesPerHour);
-            Gl.Uniform1f(n.IntoTransition, rt.ModuleTimeIntoTransition);
-            Gl.Uniform1f(n.TransitionTime, rt.ModuleTransitionTime);
-            Gl.Uniform1i(n.WeatherType, rt.AreaWeatherType);
-            Gl.Uniform1f(n.WeatherDensity, rt.AreaWeatherDensity);
-            if (Gl.Uniform2i != null) Gl.Uniform2i(n.Mouse, rt.MouseX, rt.MouseY);
-            Gl.Uniform1i(n.MouseButtons, rt.MouseButtons);
+            b.Year = rt.ModuleYear; b.Month = rt.ModuleMonth; b.Day = rt.ModuleDay; b.Hour = rt.ModuleHour;
+            b.Dawn = rt.ModuleDawnHour; b.Dusk = rt.ModuleDuskHour; b.MinutesPerHour = rt.ModuleMinutesPerHour;
+            b.IntoTransition = rt.ModuleTimeIntoTransition; b.TransitionTime = rt.ModuleTransitionTime;
+            b.WeatherType = rt.AreaWeatherType; b.WeatherDensity = rt.AreaWeatherDensity;
+            b.Mouse = new Int2(rt.MouseX, rt.MouseY); b.MouseButtons = rt.MouseButtons;
         }
-        Gl.Uniform1i(n.Frame, _frameSeq);
-        if (n.WindCount < 0 && n.WindPos < 0) return;
-        WindUniformState w = _windU;
-        if (w.Frame != _frameSeq)
+        if (fresh)
         {
-            w.Frame = _frameSeq;
-            w.Count = AlloyWind.PointSources(w.Pos, w.Radius, w.Duration, w.Intensity, w.Remaining);
+            Span<Vector3> pos = stackalloc Vector3[MaxWindUniforms];
+            Span<float> radius = stackalloc float[MaxWindUniforms], duration = stackalloc float[MaxWindUniforms],
+                        intensity = stackalloc float[MaxWindUniforms], remaining = stackalloc float[MaxWindUniforms];
+            e.Count = AlloyWind.PointSources(pos, radius, duration, intensity, remaining);
+            for (int i = 0; i < MaxWindUniforms; i++)
+            {
+                bool live = i < e.Count;
+                b.Pos[i] = live ? new Vector4(pos[i], 0f) : default;
+                b.Radius[i] = new Vector4(live ? radius[i] : 0f, 0f, 0f, 0f);
+                b.Duration[i] = new Vector4(live ? duration[i] : 0f, 0f, 0f, 0f);
+                b.Intensity[i] = new Vector4(live ? intensity[i] : 0f, 0f, 0f, 0f);
+                b.Remaining[i] = new Vector4(live ? remaining[i] : 0f, 0f, 0f, 0f);
+            }
         }
-        Gl.Uniform1i(n.WindCount, w.Count);
-        if (w.Count == 0 || Gl.Uniform1fv == null || Gl.Uniform3fv == null) return;
-        fixed (Vector3* p = w.Pos) Gl.Uniform3fv(n.WindPos, w.Count, (float*)p);
-        fixed (float* p = w.Radius) Gl.Uniform1fv(n.WindRadius, w.Count, p);
-        fixed (float* p = w.Duration) Gl.Uniform1fv(n.WindDuration, w.Count, p);
-        fixed (float* p = w.Intensity) Gl.Uniform1fv(n.WindIntensity, w.Count, p);
-        fixed (float* p = w.Remaining) Gl.Uniform1fv(n.WindRemaining, w.Count, p);
+        b.WindCount = e.Count;
+        e.Blk.Bind(UboSlots.Engine);
     }
 }

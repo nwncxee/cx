@@ -633,9 +633,6 @@ internal static unsafe class Programs
         TgtRangeL = GlProgram.Loc(prog, "targetShapeSpellRange"),
         TgtColL = GlProgram.Loc(prog, "targetShapeColour"),
         TgtWorldL = GlProgram.Loc(prog, "targetWorldCoords"),
-        // #347: the shared vanilla environment. Same rule as above -- the engine's names, because the code
-        // that reads them is the engine's.
-        ProjL = GlProgram.Loc(prog, "m_proj"),
     }, prog);
 
     /// <summary>The scriptable block's locations, filled after the struct so the fixed buffers can be
@@ -651,7 +648,9 @@ internal static unsafe class Programs
             if (loc.SFloat[i] >= 0) loc.SFloatLive |= 1 << i;
             if (loc.SVec[i] >= 0) loc.SVecLive |= 1 << i;
         }
-        loc.Named = EngineNamedLocsOf(prog);
+        // #347: the shared vanilla environment's own terms are the CxEngine block, declared by every content
+        // environment; a program that reads none of them has the block optimised out and owes it no bind.
+        loc.Engine = GlProgram.UsesBlock(prog, "CxEngine");
         return loc;
     }
 }
