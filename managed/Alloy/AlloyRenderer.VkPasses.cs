@@ -39,6 +39,7 @@ public sealed unsafe partial class AlloyRenderer
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
+        VkRecordShadow(vk, cl);
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);

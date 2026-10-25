@@ -67,12 +67,18 @@ internal static unsafe class VkParity
     /// <summary>The lit stage's loose terms whose resources are not on Vulkan: Vulkan binds them at zero. GL's A/B frame
     /// reaches the same zero at each term's own source, keyed on <see cref="Active"/>.</summary>
     internal static readonly string[] StoodDown =
-        ["uLocalCubes", "uLmPages", "uSkyTerm", "uWeather", "uVFog", "uSsaoHalf", "uLightRecOn", "uCapture", "uOit"];
+        ["uLmPages", "uSkyTerm", "uWeather", "uVFog", "uSsaoHalf", "uLightRecOn", "uCapture", "uOit"];
 
-    /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no sun cascade, no probe.</summary>
+    /// <summary>The lit terms Vulkan reads for real but the A/B FRAME cannot compare: the shadow bracket runs ahead of
+    /// <see cref="BeginFrame"/>, so it cannot know the frame is an A/B and bakes on one backend only -- GL's half
+    /// would then sample maps nothing wrote. Zeroed on both sides for that one frame.</summary>
+    internal static readonly string[] StoodDownAb = ["uLocalCubes"];
+
+    /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no probe, and -- on
+    /// an A/B frame alone, for <see cref="StoodDownAb"/>'s reason -- no sun cascade either.</summary>
     internal static void StandDownPass(Span<byte> block)
     {
-        MemoryMarshal.Write(block[AlloyRenderer.PbSunCascades..], 0);
+        if (Active) MemoryMarshal.Write(block[AlloyRenderer.PbSunCascades..], 0);
         MemoryMarshal.Write(block[AlloyRenderer.PbProbeMips..], 0f);
     }
 

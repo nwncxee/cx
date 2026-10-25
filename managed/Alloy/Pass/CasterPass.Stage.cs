@@ -90,17 +90,17 @@ public sealed unsafe partial class CasterPass
     /// the membership is <c>_dMoverIdx</c>, which Collect and Refresh rebuild whole every frame.</summary>
     private static void StageDynamicSource()
     {
-        if (!Shadows.DynSrc.V || _gN <= 0 || _dMoverCount <= 0) { CasterGather.StandDynamic(); return; }
+        if (!Shadows.DynSrc.V || _gN <= 0 || _dMoverCount <= 0) { StandDynamicSource(); return; }
         fixed (CasterSrcRec* src = _gSrc)
         fixed (CasterSrcRec* dst = _dSrc)
         {
             int m = CopyDynamicSource(src, dst);
-            if (m < 0) { _dSrcOver++; CasterGather.StandDynamic(); return; }
+            if (m < 0) { _dSrcOver++; StandDynamicSource(); return; }
             // Past half the staging there is nothing left to save, and the upload would cost more than the
             // threads: the full source IS the dynamic source at that point.
-            if (m == 0 || m * 2 > _gN) { if (m > 0) _dSrcHalf++; CasterGather.StandDynamic(); return; }
+            if (m == 0 || m * 2 > _gN) { if (m > 0) _dSrcHalf++; StandDynamicSource(); return; }
             if ((_frameSeq & (StageAuditEvery - 1)) == 0) AuditDynamicSource(src, dst, m);
-            if (CasterGather.DynamicSource(m, dst)) { _dSrcFrames++; _dSrcDraws += m; }
+            if (VkDynamicSource(m, dst)) { _dSrcFrames++; _dSrcDraws += m; }
         }
     }
 
@@ -338,9 +338,9 @@ public sealed unsafe partial class CasterPass
         _gGroups = g + 1; _gCreatures = creatures; _gN = n; _gMasked = maskedN;
         bool ok;
         fixed (CasterSrcRec* src = _gSrc)
-            ok = CasterGather.Begin(n, _gGroups, src, true);
+            ok = Renderer.OnVulkan ? VkGatherBegin(n, src) : CasterGather.Begin(n, _gGroups, src, true);
         if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }
-        else CasterGather.StandDynamic();
+        else StandDynamicSource();
         return ok;
     }
 
