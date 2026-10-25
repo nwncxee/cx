@@ -56,9 +56,27 @@ public sealed unsafe partial class AlloyRenderer
         if (_vramExt == null) return;
         int* v = stackalloc int[4] { 0, 0, 0, 0 };
         Gl.GetIntegerv(_vramNvx ? GpuMemCurrentNvx : TexFreeMemoryAti, v);
-        _vramFreeKib = v[0];
+        _vram.FreeKib = v[0];
+        if (!_vramNvx) return;
+        int evicted = GetInt(GpuMemEvictedNvx);
+        if (evicted > 0 && _vram.EvictedKib == 0)
+            _log?.Always($"AlloyRenderer: [vram] the driver has evicted {evicted / 1024}MiB of this context to host memory "
+                       + $"({_vram.FreeKib / 1024}MiB free): the card is oversubscribed, and a pass that reads an evicted "
+                       + "texture runs several times slower -- frame times are not comparable to a session that fits");
+        _vram.EvictedKib = evicted;
     }
-    private static int _vramFreeKib;
+
+    /// <summary>The device's memory figures as last sampled, KiB.</summary>
+    private sealed class VramState
+    {
+        public int FreeKib;
+        /// <summary>What the driver has paged out of this context to host memory, cumulative; 0 without NVX.</summary>
+        public int EvictedKib;
+    }
+
+    private static readonly VramState _vram = new();
+    /// <summary>What the driver has paged out of this context to host memory, MiB, cumulative; 0 without NVX.</summary>
+    internal static long VramEvictedMib => _vram.EvictedKib / 1024;
     /// <summary>The free pool read now, from whichever context is current (the query is per device); -1 before
     /// the probe or without a memory query.</summary>
     internal static long VramFreeKibNow()
@@ -69,9 +87,9 @@ public sealed unsafe partial class AlloyRenderer
         return v[0];
     }
 
-    /// <summary>GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX / _CURRENT_AVAILABLE_VIDMEM_NVX /
+    /// <summary>GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX / _CURRENT_AVAILABLE_VIDMEM_NVX / _EVICTED_MEMORY_NVX /
     /// GL_TEXTURE_FREE_MEMORY_ATI.</summary>
-    private const uint GpuMemTotalNvx = 0x9047, GpuMemCurrentNvx = 0x9049, TexFreeMemoryAti = 0x87FC;   // not-an-offset: GL vendor-extension query enums
+    private const uint GpuMemTotalNvx = 0x9047, GpuMemCurrentNvx = 0x9049, GpuMemEvictedNvx = 0x904B, TexFreeMemoryAti = 0x87FC;   // not-an-offset: GL vendor-extension query enums
 
     private static bool _vramProbed, _vramNvx;
     private static string? _vramExt;
@@ -81,7 +99,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Is the bindless path armed this session (probed at the first lit program build)?</summary>
     internal static bool Bindless => _bindless;
     /// <summary>ATI_meminfo (Mesa) answers FREE, never total; at probe time that is most of the card.</summary>
-    internal static long VramFreeMib => _vramFreeKib / 1024;
+    internal static long VramFreeMib => _vram.FreeKib / 1024;
     internal static bool VramProbed => _vramProbed;
 
     /// <summary>One <c>glGetIntegerv</c>, for a query that answers a single value.</summary>
@@ -96,7 +114,7 @@ public sealed unsafe partial class AlloyRenderer
         string device = _vramExt == null
             ? "the device answers no memory query in this context (NVX_gpu_memory_info / ATI_meminfo absent)"
             : $"{_vramExt}: " + (_vramTotalKib > 0 ? $"{_vramTotalKib / 1024}MiB total, " : "")
-              + $"{_vramFreeKib / 1024}MiB free";
+              + $"{_vram.FreeKib / 1024}MiB free";
         return $"[vram] Alloy holds {OwnedTextures.PeakMib}MiB of textures at high water; {device}";
     }
 }
