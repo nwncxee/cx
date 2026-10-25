@@ -101,9 +101,24 @@ public sealed unsafe partial class AlloyRenderer
     /// Allocates nothing.</summary>
     internal static void BindEngineBlock()
     {
+        if (FillEngineBlock()) _engineU.Blk.Rebind(UboSlots.Engine);
+        else _engineU.Blk.Bind(UboSlots.Engine);
+    }
+
+    /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> binds, staged and not bound: true when it is the one
+    /// already staged this frame. The noise term is a GL bindless handle.</summary>
+    internal static ref EngineBlock EngineBlockStaged(out bool same)
+    {
+        same = FillEngineBlock();
+        return ref _engineU.Blk.Stage;
+    }
+
+    /// <summary>Stage the block for this frame and pass; true when nothing changed since the last stage.</summary>
+    private static bool FillEngineBlock()
+    {
         EngineNamedState e = _engineU;
         ulong h = Bindless ? HandleFor(FrameSnapshot.OwnNoise()) : 0ul;
-        if (e.Frame == _frameSeq && e.Proj == _projMtx && e.Noise == h) { e.Blk.Rebind(UboSlots.Engine); return; }
+        if (e.Frame == _frameSeq && e.Proj == _projMtx && e.Noise == h) return true;
         bool fresh = e.Frame != _frameSeq;
         e.Frame = _frameSeq; e.Proj = _projMtx; e.Noise = h;
         ref EngineBlock b = ref e.Blk.Stage;
@@ -136,6 +151,6 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         b.WindCount = e.Count;
-        e.Blk.Bind(UboSlots.Engine);
+        return false;
     }
 }

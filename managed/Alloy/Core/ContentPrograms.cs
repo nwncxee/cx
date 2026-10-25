@@ -178,6 +178,20 @@ internal static unsafe class ContentPrograms
         };
     }
 
+    /// <summary>The text a built pair's <paramref name="v"/> program compiled from, before the vanilla splice -- what a
+    /// second backend translates -- or null when that variant is not built.</summary>
+    internal static (string Vs, string Fs)? Texts(int feat, ContentVariant v)
+    {
+        if (Of(feat) is not { VsSrc: { } vs, FsSrc: { } fs } s || ProgramOf(feat, v) == 0) return null;
+        if (v == ContentVariant.Forward) return (vs, fs);
+        int slot = v switch { ContentVariant.Deferred => 1, ContentVariant.Depth => 2, ContentVariant.Caster => 3, _ => 4 };
+        foreach (var t in Twins(s)) if (t.Slot == slot) return (t.Vs, t.Fs);
+        return null;
+    }
+
+    /// <summary>Does either half run as a native stage, whose images and passes only GL hosts?</summary>
+    internal static bool Native(int feat) => Of(feat) is { } s && (s.NatVs >= 0 || s.NatFs >= 0);
+
     /// <summary>Does this pair's fragment half make its own coverage (its own discard, a written alpha, or an alpha the
     /// stock setup does not cut on)? Only once it runs: before that its parts take Alloy's cut like any other.</summary>
     internal static bool Cuts(int feat) => Of(feat) is { P.Fwd: not 0, Cuts: true };

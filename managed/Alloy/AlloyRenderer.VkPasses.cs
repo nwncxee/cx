@@ -36,12 +36,14 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkEnsure(vk, w, h, log)) return false;
         VkColourState s = _vkc;
         s.ArenaUsed = 0;
+        s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
         VkTargets colour = gbuf ? VkTargets.Colour : VkTargets.Forward;
+        s.GbufWritten = gbuf;
 
         if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhasePrepass)) return false;
         if (indirect && _depthPrepass)
@@ -185,6 +187,7 @@ public sealed unsafe partial class AlloyRenderer
             if (!s.Palette.IsNull) vk.Upload(s.Palette, 0, 0, Db.PltPalettes.Sent);
             s.PaletteSends = Db.PltPalettes.Sends;
         }
+        if (!VkContentRows(vk, cl)) return false;
         long boneBytes = _skinning ? (long)_boneSlots * BoneFloats * sizeof(float) : 0;
         if (!VkGrow(vk, ref s.Bones, ref s.BoneCap, Math.Max(boneBytes, 64), "vk bones")) return false;
         if (boneBytes > 0) cl.UpdateBuffer(s.Bones, 0, new ReadOnlySpan<byte>(_boneStage, (int)boneBytes));
@@ -246,10 +249,12 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (_depthPrepass && _prepassFeat)
         {
-            VkProg p = s.Progs[(int)VkPrograms.Id.DepthFeat]!;
+            VkProg plain = s.Progs[(int)VkPrograms.Id.DepthFeat]!;
             for (int g = 0; g < groups; g++)
             {
-                if (!FeatPrepassable(g) || (_gDis[g] && !_prepassKey) || !_gLit[g] || ContentPrograms.OwnDepth(_gFeat[g])) continue;
+                if (!FeatPrepassable(g) || (_gDis[g] && !_prepassKey) || !_gLit[g]) continue;
+                VkProg? p = ContentPrograms.OwnDepth(_gFeat[g]) ? VkContent(_gFeat[g], ContentVariant.Depth) : plain;
+                if (p == null) continue;
                 push.AlphaCut = AlloyClasses.Discard(_gCls[g]);
                 if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g, false), slots, 0, ref push, vp,
                              viewport, near, far, phase, indirect)) continue;
@@ -289,8 +294,10 @@ public sealed unsafe partial class AlloyRenderer
             bool oitOut = Issue.SitsOitOut(content, _gSrc[g], _gDst[g]);
             bool split = _gWash[g] == WashSplit && lit && g >= _gOpaqueEnd && (!oitOut || content && _gSrc[g] == 0 && _gDst[g] == 1);
             if (r.Interior && !split) continue;
-            bool deferred = lit && r.Gbuf && (viz == 0 || viz == VizLightFrom) && !_capturing && (g < _gOpaqueEnd || r.Interior);
-            VkProg p = s.Progs[(int)(lit ? deferred ? VkPrograms.Id.LitDeferred : VkPrograms.Id.Lit : VkPrograms.Id.Fullbright)]!;
+            bool deferred = lit && r.Gbuf && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && (viz == 0 || viz == VizLightFrom)
+                            && !_capturing && (g < _gOpaqueEnd || r.Interior);
+            VkProg p = (content ? VkContent(_gFeat[g], deferred ? ContentVariant.Deferred : ContentVariant.Forward) : null)
+                       ?? s.Progs[(int)(lit ? deferred ? VkPrograms.Id.LitDeferred : VkPrograms.Id.Lit : VkPrograms.Id.Fullbright)]!;
             bool blend = AlloyClasses.Blends(cls) && !r.Interior;
             int blendKey = blend ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool equal = r.MatchDepth && _gPrepassed[g];

@@ -49,6 +49,8 @@ internal static unsafe class GBuffer
 
     /// <inheritdoc cref="GBufferState.TexLight"/>
     internal static uint TexLight => _gl.TexLight;
+    /// <summary>Lane <paramref name="i"/>'s texture (0..2), 0 before <see cref="Ensure"/>: the Vulkan A/B reads them back.</summary>
+    internal static uint Tex(int i) => i switch { 0 => _gl.Tex0, 1 => _gl.Tex1, _ => _gl.Tex2 };
     /// <inheritdoc cref="GBufferState.LightLive"/>
     internal static bool LightLive { get => _gl.LightLive; set => _gl.LightLive = value; }
 

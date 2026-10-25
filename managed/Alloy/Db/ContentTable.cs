@@ -268,6 +268,19 @@ internal static unsafe class ContentTable
         Bind();
     }
 
+    /// <summary>The rows the GPU block holds -- one zero row until any exists, as <see cref="Upload"/> sizes it -- copied
+    /// into <paramref name="into"/> (grown to fit); their byte length. Palette handles are GL's.</summary>
+    internal static int Snapshot(ref byte[] into)
+    {
+        lock (_lock)
+        {
+            int rows = _st.AnyRow ? MaxRows : 1, n = rows * RowBytes;
+            if (into.Length < n) into = new byte[n];
+            MemoryMarshal.AsBytes(_st.Rows.AsSpan(0, rows)).CopyTo(into);
+            return n;
+        }
+    }
+
     /// <summary>Bind the block on <see cref="Binding"/>. Called at every content program bind: the point is a shared one,
     /// and a reader that trusted an earlier bind would read the particle index block.</summary>
     internal static void Bind()

@@ -375,9 +375,12 @@ public sealed unsafe partial class AlloyRenderer
         int* viewport = stackalloc int[4];
         if (!BeginOwnedFrame(display, viewport, out OwnedFrame f)) return;
         bool onVulkan = Renderer.OnVulkan;
+        VkParity.BeginFrame(_capturing);
+        bool ab = VkParity.Active;
         // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
         if (onVulkan) VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
-        Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
+        // the A/B's GL half draws through the camera Vulkan drew through
+        Matrix4x4 view = f.View, proj = f.Proj, vp = ab ? f.VpClean : f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;
         int groups = f.Groups;
@@ -394,7 +397,7 @@ public sealed unsafe partial class AlloyRenderer
         bool motionRan = false;
         foreach ((PassId id, Bracket bracket) in FrameGraph.Passes)
         {
-            if (bracket != Bracket.Colour || onVulkan) continue;
+            if (bracket != Bracket.Colour || onVulkan && !(ab && VkParity.GlPass(id))) continue;
             Step(PassName(id));
             long tId = FrameZones.Now;
             long kid0 = PassChildTicks;
@@ -470,10 +473,10 @@ public sealed unsafe partial class AlloyRenderer
                     GpuBegin(GpuTerm.Decals);
                     DecalLayer.Run(_gOpaqueEnd, DecalEnd(), &vp, in proj, viewport, near, far,
                                    lightingOn && perspective && !_capturing && DepthResource.Filled(PassGen)
-                                   && viewport[0] == 0 && viewport[1] == 0);
+                                   && viewport[0] == 0 && viewport[1] == 0 && !ab);
                     GpuEnd(GpuTerm.Decals);
                     // CX-51: the reflection records ride the colour pass from here to Reflections
-                    if (perspective && !_capturing) Ssr.Begin(viewport);
+                    if (perspective && !_capturing && !ab) Ssr.Begin(viewport);
                     // CX-188: ...and the G-buffer rides the opaque and cutout passes, which are the only two
                     // the CX_DEFERRED twin draws in. A stale G0 is a lit pixel, so the clear is unconditional
                     // for the frames the twin may draw in; the lanes are indexed by gl_FragCoord, which an
@@ -567,7 +570,7 @@ public sealed unsafe partial class AlloyRenderer
                     // no depth written during it, no layer can hide another; the depth vanilla writes for
                     // this class is laid once the composite is down.
                     // /alloy oit 2 (#490) sorts per pixel through linked lists on the same bracket.
-                    if (_gBlendEnd > _gOpaqueEnd && !_capturing && OitPass.Begin(PostChain.DepthTex, viewport))
+                    if (_gBlendEnd > _gOpaqueEnd && !_capturing && !ab && OitPass.Begin(PostChain.DepthTex, viewport))
                     {
                         Issue._oitOn = true;
                         // the accumulation alone draws with whatever a diagnostic has pointed the lit slots at
@@ -762,6 +765,7 @@ public sealed unsafe partial class AlloyRenderer
             if (self < 0) { _passSelfNeg++; self = 0; }
             _passCpu[(int)id] += self;
         }
+        if (ab) VkParity.ReadGlAndReport(viewport, PostChain.HdrTex, PostChain.DepthTex, GBuffer.Tex(0), GBuffer.Tex(1), GBuffer.Tex(2), GBuffer.Written);
         long tTail = FrameZones.Now;
         PaintStreamFailures(display);
         GpuSpanEnd();
@@ -1198,7 +1202,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void CutoutOwnedPass(int opaqueEnd, Matrix4x4* vp, int* viewport, float near, float far)
     {
         // CX-189: the coverage tail waits for its own layer whenever one can arm; a capture draws it here, cut
-        _a2cHeld = !_capturing && _gA2cStart < opaqueEnd && CoverageLayer.Armed;
+        _a2cHeld = !_capturing && _gA2cStart < opaqueEnd && CoverageLayer.Armed && !VkParity.Active;
         if (!_capturing && !_a2cHeld) CoverageLayer.Idle();
         Gl.DepthMask(1);
         Gl.DepthFunc(Gl.LEQUAL);

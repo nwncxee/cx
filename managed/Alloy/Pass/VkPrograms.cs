@@ -80,6 +80,16 @@ internal static class VkPrograms
         return VkGlsl.Translate(v, f, Units, glDepth: false);
     }
 
+    /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text
+    /// its GL program compiled (library swaps, then the hosted splice); null when that variant is not built on GL.</summary>
+    internal static VkProgramText? ContentText(int feat, ContentVariant v, ExtenderLog? log)
+    {
+        if (ContentPrograms.Texts(feat, v) is not { } t) return null;
+        string what = $"VkPrograms content {feat} {v}";
+        return VkGlsl.Translate(Final(GlProgram.Lib(t.Vs, log, what), log, what, true),
+                                Final(GlProgram.Lib(t.Fs, log, what), log, what, true), Units, glDepth: false);
+    }
+
     /// <summary>The lit pair after the stage overrides and library swaps, before the splice: what GL's lit build and
     /// its twins start from.</summary>
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)

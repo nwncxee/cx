@@ -24,6 +24,13 @@ public sealed unsafe partial class AlloyRenderer
     private sealed class VkProg
     {
         public VkPrograms.Id Id;
+        /// <summary>Reads the lit stage's terms (<see cref="L"/>): the lit programs and every content program.</summary>
+        public bool Lit;
+        /// <summary>Writes the G-buffer rather than the scene colour: the deferred lit program and every deferred twin.</summary>
+        public bool Deferred;
+        /// <summary>A content pair's program: its feature id and the pair's build generation it came from; 0 otherwise.</summary>
+        public int Feat, Epoch;
+        public string Label = "";
         public ShaderId Vs, Fs;
         public VkUniformShim.Member[] Members = [];
         public Dictionary<string, int> Names = new();
@@ -41,6 +48,15 @@ public sealed unsafe partial class AlloyRenderer
         public VkBackend? Dev;
         public bool Failed, Live;
         public readonly VkProg?[] Progs = new VkProg?[VkPrograms.All.Length];
+        /// <summary>Content programs by <see cref="VkContentKey"/>; null for one that did not build (logged once).</summary>
+        public readonly Dictionary<int, VkProg?> Content = new();
+        /// <summary>The pair build generation a content program last failed at: it is tried again when GL rebuilds.</summary>
+        public readonly Dictionary<int, int> ContentFailed = new();
+        /// <summary>The content table's Vulkan copy, its handles as bindless indices, and the bytes last sent.</summary>
+        public BufferId ContentRows;
+        public byte[] ContentSent = [], ContentStage = [];
+        /// <summary>This frame's <c>CxEngine</c> block in the arena, -1 until a program that reads it binds.</summary>
+        public int EngineAt = -1;
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
         public ImageId Hdr, Depth, G0, G1, G2;
         public int W, H;
@@ -63,6 +79,8 @@ public sealed unsafe partial class AlloyRenderer
         public ShaderId EncodeVs, EncodeFs;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
+        /// <summary>This frame's colour pass wrote the G-buffer.</summary>
+        public bool GbufWritten;
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
         public int[] Firsts = new int[4096];
     }
@@ -146,6 +164,7 @@ public sealed unsafe partial class AlloyRenderer
         foreach (VkPrograms.Id id in VkPrograms.All)
         {
             VkProg? p = VkBuild(vk, id, log);
+            if (p == null) log.Always($"AlloyRenderer: the Vulkan {id} program did not build (logged above)");
             if (p == null) return false;
             s.Progs[(int)id] = p;
         }
@@ -191,18 +210,63 @@ public sealed unsafe partial class AlloyRenderer
         return img;
     }
 
-    /// <summary>One program: translated, compiled once to SPIR-V for both its module and its reflection, its loose
-    /// block laid out, and GL's location tables resolved against that layout through <see cref="VkUniformShim"/>.</summary>
+    /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, uint, ExtenderLog)"/>.</summary>
     private static VkProg? VkBuild(VkBackend vk, VkPrograms.Id id, ExtenderLog log)
     {
-        VkProgramText t = VkPrograms.Text(id, log);
-        if (t.Error != null) { log.Always($"AlloyRenderer: the Vulkan {id} program did not translate -- {t.Error}"); return null; }
-        byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {id} vs", ShaderKind.VertexShader, out string ve);
-        byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {id} fs", ShaderKind.FragmentShader, out string fe);
-        if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {id} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
-        var p = new VkProg { Id = id, Opaques = t.Opaques.ToArray() };
-        p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {id} vs");
-        p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {id} fs");
+        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred;
+        VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, VkUniformShim.ProgramBase + (uint)id, log);
+        if (p != null) { p.Id = id; p.Deferred = id == VkPrograms.Id.LitDeferred; }
+        return p;
+    }
+
+    /// <summary>The fake GL program names content programs resolve their locations under: past the named programs'.</summary>
+    private const uint ContentShimBase = VkUniformShim.ProgramBase + 64;   // not-an-offset: a reserved name range
+
+    /// <summary>A content program's cache key: its feature id and variant.</summary>
+    private static int VkContentKey(int feat, ContentVariant v) => feat * 8 + (int)v;
+
+    /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program on this device, built the first time a
+    /// batch asks and rebuilt when GL rebuilds the pair; null when GL has no such program or Vulkan refused it (logged
+    /// once per build: its parts then draw the plain lit or depth program, as GL's do when a pair is not run).</summary>
+    private static VkProg? VkContent(int feat, ContentVariant v)
+    {
+        VkColourState s = _vkc;
+        int key = VkContentKey(feat, v), epoch = ContentPrograms.Epoch(feat);
+        if (s.Content.TryGetValue(key, out VkProg? p) && (p == null ? s.ContentFailed.GetValueOrDefault(key) == epoch : p.Epoch == epoch))
+            return p;
+        if (_log == null || s.Dev == null) return null;
+        string label = $"content {feat} {v}";
+        if (ContentPrograms.Native(feat))
+        {
+            _log.Always($"AlloyRenderer: Vulkan {label} NOT RUN -- a half runs as a native stage, whose images and passes are GL's "
+                      + "until that stage's pass ports; its parts draw the plain program");
+            p = null;
+        }
+        else if (VkPrograms.ContentText(feat, v, _log) is not { } t) p = null;
+        else
+        {
+            // every variant of a pair is the lit stage's text, so every one takes the lit table
+            p = VkBuild(s.Dev, t, label, true, ContentShimBase + (uint)key, _log);
+            if (p == null) _log.Always($"AlloyRenderer: Vulkan {label} NOT RUN (logged above) -- its parts draw the plain program");
+        }
+        if (p != null) { p.Feat = feat; p.Epoch = epoch; p.Deferred = v == ContentVariant.Deferred; }
+        else s.ContentFailed[key] = epoch;
+        s.Content[key] = p;
+        return p;
+    }
+
+    /// <summary>One program: translated, compiled once to SPIR-V for both its module and its reflection, its loose
+    /// block laid out, and GL's location tables resolved against that layout through <see cref="VkUniformShim"/> under
+    /// fake program <paramref name="name"/> -- the lit table when <paramref name="lit"/>.</summary>
+    private static VkProg? VkBuild(VkBackend vk, VkProgramText t, string label, bool lit, uint name, ExtenderLog log)
+    {
+        if (t.Error != null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not translate -- {t.Error}"); return null; }
+        byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
+        byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
+        if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
+        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray() };
+        p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
+        p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;
         var names = new List<string>(t.Loose.Count);
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
@@ -221,20 +285,15 @@ public sealed unsafe partial class AlloyRenderer
             p.Block = new byte[(l.Bytes + 15) & ~15];
         }
         p.Names = VkUniformShim.Index(p.Members);
-        uint name = VkUniformShim.ProgramBase + (uint)id;
         VkUniformShim.Resolve(p.Names, () =>
         {
-            switch (id)
+            if (lit) p.L = Programs.LitLocs(name);
+            else
             {
-                case VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred:
-                    p.L = Programs.LitLocs(name);
-                    break;
-                default:
-                    p.Vp = GlProgram.Loc(name, "uVP"); p.Tex = GlProgram.Loc(name, "uTex"); p.Viz = GlProgram.Loc(name, "uViz");
-                    p.AlphaMip = GlProgram.Loc(name, "uAlphaMip"); p.Tint = GlProgram.Loc(name, "uTint");
-                    p.SkyFog = GlProgram.Loc(name, "uSkyFog"); p.Oit = GlProgram.Loc(name, "uOit"); p.OitDim = GlProgram.Loc(name, "uOitDim");
-                    p.F = Programs.FeatLocs(name);
-                    break;
+                p.Vp = GlProgram.Loc(name, "uVP"); p.Tex = GlProgram.Loc(name, "uTex"); p.Viz = GlProgram.Loc(name, "uViz");
+                p.AlphaMip = GlProgram.Loc(name, "uAlphaMip"); p.Tint = GlProgram.Loc(name, "uTint");
+                p.SkyFog = GlProgram.Loc(name, "uSkyFog"); p.Oit = GlProgram.Loc(name, "uOit"); p.OitDim = GlProgram.Loc(name, "uOitDim");
+                p.F = Programs.FeatLocs(name);
             }
         });
         return p;
@@ -248,7 +307,7 @@ public sealed unsafe partial class AlloyRenderer
         VkColourState s = _vkc;
         Array.Clear(p.Block);
         int viz = _capturing ? 0 : _lightViz;
-        bool lit = p.Id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred;
+        bool lit = p.Lit;
         VkUniformShim.Capture(p.Members, p.Block);
         try
         {
@@ -282,12 +341,53 @@ public sealed unsafe partial class AlloyRenderer
         finally { VkUniformShim.EndCapture(); }
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
-        VkZero(p, "uLocalCubes"); VkZero(p, "uLmPages"); VkZero(p, "uSkyTerm"); VkZero(p, "uWeather"); VkZero(p, "uVFog");
-        VkZero(p, "uSsaoHalf"); VkZero(p, "uLightRecOn"); VkZero(p, "uCapture"); VkZero(p, "uOit");
+        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
         if (loose < 0 || (lit && pass < 0)) return false;
         VkBindSet(cl, p, s, loose, pass, slots, tex);
+        return true;
+    }
+
+    /// <summary>This frame's <c>CxEngine</c> block in the arena, staged at the first program that reads it, its noise
+    /// handle as a bindless index; -1 (logged) when the arena is full.</summary>
+    private static int VkEngine()
+    {
+        VkColourState s = _vkc;
+        if (s.EngineAt >= 0) return s.EngineAt;
+        EngineBlock b = EngineBlockStaged(out _);
+        ulong h = (ulong)b.Noise.Y << 32 | b.Noise.X;
+        b.Noise = new UInt2(h != 0 ? VkTextures.IndexOfHandle(h) : 0u, 0u);
+        if (b.Noise.X == 0) b.Noise.X = s.NullIndex;
+        s.EngineAt = VkArena(MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)));
+        return s.EngineAt;
+    }
+
+    /// <summary>The content table into its Vulkan copy, its palette handles as bindless indices (an empty slot the
+    /// transparent-black stand-in, as GL's null-handle rule has it), sent when the bytes moved. False when refused.</summary>
+    private static bool VkContentRows(VkBackend vk, CommandList cl)
+    {
+        VkColourState s = _vkc;
+        int n = Db.ContentTable.Snapshot(ref s.ContentStage);
+        Span<byte> rows = s.ContentStage.AsSpan(0, n);
+        int rb = Db.ContentTable.RowBytes;
+        for (int at = 0; at < n; at += rb)
+            for (int k = 0; k < Db.ContentTable.PalSlots; k++)
+            {
+                Span<byte> slot = rows.Slice(at + k * sizeof(ulong), sizeof(ulong));
+                ulong h = MemoryMarshal.Read<ulong>(slot);
+                uint i = h != 0 ? VkTextures.IndexOfHandle(h) : 0;
+                MemoryMarshal.Write(slot, (ulong)(i != 0 ? i : s.NullIndex));
+            }
+        if (!s.ContentRows.IsNull && rows.SequenceEqual(s.ContentSent)) return true;
+        if (s.ContentRows.IsNull || n > s.ContentSent.Length)
+        {
+            vk.Destroy(s.ContentRows);
+            s.ContentRows = vk.CreateBuffer(new BufferDesc(n, BufferUse.Storage, MemoryKind.Device, "vk content table"));
+            if (s.ContentRows.IsNull) return false;
+        }
+        cl.UpdateBuffer(s.ContentRows, 0, rows);
+        s.ContentSent = rows.ToArray();
         return true;
     }
 
@@ -320,11 +420,15 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_passStage == null) return -1;
         int at = VkArena(new ReadOnlySpan<byte>(_passStage, PassBytes));
-        if (at < 0) return at;
-        Span<byte> b = _vkc.ArenaBytes.AsSpan(at, PassBytes);
-        MemoryMarshal.Write(b[PbSunCascades..], 0);
-        MemoryMarshal.Write(b[PbProbeMips..], 0f);
+        if (at >= 0) VkParity.StandDownPass(_vkc.ArenaBytes.AsSpan(at, PassBytes));
         return at;
+    }
+
+    /// <summary>The A/B's Vulkan half, after the frame's submit: its scene targets read back.</summary>
+    internal static void VkParityRead(VkBackend vk)
+    {
+        VkColourState s = _vkc;
+        VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, s.W, s.H);
     }
 
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
@@ -342,9 +446,14 @@ public sealed unsafe partial class AlloyRenderer
             switch (o.Kind)
             {
                 case VkBindKind.UniformBlock:
+                    int engine = o.Binding == UboSlots.Engine ? VkEngine() : -1;
                     ubo[nu++] = o.Binding == UboSlots.Loose && loose >= 0 ? new BufferBinding(o.Binding, s.Arena, loose, p.Block.Length)
                               : o.Binding == UboSlots.Pass && pass >= 0 ? new BufferBinding(o.Binding, s.Arena, pass, PassBytes)
+                              : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, sizeof(EngineBlock))
                               : new BufferBinding(o.Binding, s.ZeroUbo);
+                    break;
+                case VkBindKind.StorageBlock when o.Binding == Db.ContentTable.Binding && !s.ContentRows.IsNull:
+                    ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSent.Length);
                     break;
                 case VkBindKind.StorageBlock:
                     ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch
@@ -396,7 +505,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             Vs = p.Vs, Fs = p.Fs, Layout = s.Layouts[fmt], Topo = Topology.Triangles,
             Raster = new RasterState(CullMode.Back), Depth = new DepthState(true, true, CompareOp.LessEqual),
-            Label = $"vk {p.Id} {(MeshArena.Fmt)fmt} {targets} blend {blend}",
+            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}",
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = 1;
@@ -408,7 +517,7 @@ public sealed unsafe partial class AlloyRenderer
             d.Targets.Colors[GbufFirst] = Format.Rgba32Ui;
             d.Targets.Colors[GbufFirst + 1] = Format.Rgba32Ui;
             d.Targets.Colors[GbufFirst + 2] = Format.R32Ui;
-            bool twin = p.Id == VkPrograms.Id.LitDeferred;
+            bool twin = p.Deferred;
             for (int i = GbufFirst; i < ColourTargets; i++) d.Blend[i] = new AttachmentBlend(Masked: twin ? ColorMask.None : ColorMask.All);
         }
         if (blend != 0 && targets != VkTargets.Prepass)

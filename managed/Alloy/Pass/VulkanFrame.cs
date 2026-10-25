@@ -51,6 +51,7 @@ internal static class VulkanFrame
             AlloyGate.Fail("the Vulkan frame's submit was refused (logged above)");
             return;
         }
+        AlloyRenderer.VkParityRead(vk);
         PresentTarget.Flip(vk.Flip());
         PostChain.Painted();
         if (!_s.Live)

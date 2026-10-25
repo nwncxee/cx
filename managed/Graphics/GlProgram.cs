@@ -33,7 +33,7 @@ internal static unsafe class GlProgram
 
     /// <summary><see cref="ShaderSource.Content"/>, refused for the embedded libraries when the swap leaves the
     /// stage reading a block's terms as loose uniforms (<see cref="ShaderContract.BlocksSafe"/>).</summary>
-    private static string Lib(string src, ExtenderLog? log, string what)
+    internal static string Lib(string src, ExtenderLog? log, string what)
     {
         string c = ShaderSource.Content(src, log);
         if (ReferenceEquals(c, src) || ShaderContract.BlocksSafe(src, c)) return c;
