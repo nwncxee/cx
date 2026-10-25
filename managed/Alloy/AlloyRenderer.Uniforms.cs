@@ -151,9 +151,9 @@ public sealed unsafe partial class AlloyRenderer
                      Lighting.Grazing.V ? 0f : 1f);
     }
 
-    /// <summary>The <c>CxPass</c> block's binding point, <c>layout(std140, binding = 0)</c> in
-    /// <c>cx_pass.glsl</c>. No other Alloy block uses the uniform-buffer namespace.</summary>
-    internal const uint PassBinding = 0;
+    /// <summary>The <c>CxPass</c> block's binding point, pinned by <see cref="UboSlots.Pass"/> against
+    /// <c>cx_pass.glsl</c>'s own <c>layout(std140, binding = 0)</c>.</summary>
+    internal const uint PassBinding = UboSlots.Pass;
     /// <summary>The block's std140 size, 3620 by glslang reflection, rounded to a vec4.</summary>
     internal const int PassBytes = 3632;
     /// <summary>Member byte offsets in <c>CxPass</c>, read off glslang's std140 reflection of

@@ -4,8 +4,7 @@ layout(std430, binding = 8) readonly buffer CxCullSrc     { uint uSrc[]; };
 layout(std430, binding = 10) writeonly buffer CxCullCmd    { uint uCmd[]; };
 layout(std430, binding = 11) writeonly buffer CxCullOutIdx { int  uOut[]; };
 layout(std430, binding = 13) readonly buffer CxCullKey     { float uKey[]; };
-uniform int uDrawN;
-uniform int uCompactBelow;
+#include "cx_cullblk.glsl"
 
 void main()
 {

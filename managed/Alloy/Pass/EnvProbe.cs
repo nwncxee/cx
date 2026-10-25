@@ -50,8 +50,8 @@ internal static unsafe class EnvProbe
     /// cannot serve all of one, so the probe follows the player in coarse steps.</summary>
     private const float MoveDist = 30f;
 
-    /// <summary>UBO binding of the SH9 block (<c>cx_material</c>'s <c>CxProbeSh</c>); 0 is the pass block.</summary>
-    internal const uint ShBinding = 1;
+    /// <summary>UBO binding of the SH9 block (<c>cx_material</c>'s <c>CxProbeSh</c>).</summary>
+    internal const uint ShBinding = UboSlots.ProbeSh;
     /// <summary>SSBO binding <c>cx_probe_sh</c> writes the same buffer through; the dispatch unbinds it after
     /// (<see cref="SsboSlots.ProbeSh"/> says why that is safe).</summary>
     private const uint ShOutBinding = SsboSlots.ProbeSh;

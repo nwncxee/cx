@@ -5,13 +5,6 @@
 #version 460 core
 in vec2 vUV;
 out float frag;
-uniform vec4 uRt;            // (1/w, 1/h, w, h)
-uniform float uRadius;       // world units
-uniform float uPower;        // visibility exponent, the option's intensity folded in
-uniform int uDirs;           // slices
-uniform int uSteps;          // steps per side
-uniform float uMaxPx;        // screen-radius clamp
-uniform int uFrame;          // #390: the noise phase; 0 on the single-frame path
 #include "cx_ssaolib.glsl"
 const float PI = 3.14159265, HALF_PI = 1.57079633;
 // 4x4 ordered pattern (Bayer), so the blur's 4x4 window sees every slice and step phase once.

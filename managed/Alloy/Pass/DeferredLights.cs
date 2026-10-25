@@ -1,9 +1,40 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics;
 
 namespace CX.Alloy;
+
+/// <summary>The <c>CxDeferred</c> block in the GLSL's own member order (<c>cx_defblk.glsl</c>). C# sequential
+/// layout IS std140 here: the one vec3 is followed by the int that fills its padding, and nothing else needs
+/// any.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct DeferredBlock
+{
+    public Matrix4x4 InvVp, Proj, View;
+    public Vector3 EyePos;
+    public int Tiles;
+    public Int4 Rect;
+    public Int2 ShSize;
+    public int LightCount, ReflK, ShRes;
+
+    /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into
+    /// its neighbour, and a wrong viewport rect reconstructs every pixel's world position somewhere else.</summary>
+    internal static void Pin(Checker check)
+    {
+        var b = default(DeferredBlock);
+        Std140.Pin(check, ShaderSource.Get("cx_defblk.glsl"), "CxDeferred", UboSlots.Deferred, Unsafe.SizeOf<DeferredBlock>(),
+        [
+            ("uInvVp", Std140.At(ref b, ref b.InvVp)), ("uProj", Std140.At(ref b, ref b.Proj)),
+            ("uView", Std140.At(ref b, ref b.View)), ("uEyePos", Std140.At(ref b, ref b.EyePos)),
+            ("uTiles", Std140.At(ref b, ref b.Tiles)), ("uRect", Std140.At(ref b, ref b.Rect)),
+            ("uShSize", Std140.At(ref b, ref b.ShSize)), ("uLightCount", Std140.At(ref b, ref b.LightCount)),
+            ("uReflK", Std140.At(ref b, ref b.ReflK)), ("uShRes", Std140.At(ref b, ref b.ShRes)),
+        ]);
+    }
+}
 
 /// <summary>The deferred point-light pass (ADR 0029) -- one compute dispatch over the render target after the
 /// opaque and cutout passes, reading <see cref="GBuffer"/> and adding every point light's diffuse, specular,
@@ -31,11 +62,11 @@ internal static unsafe class DeferredLights
     /// sampled harvest loses nothing -- the delta since the last one is what the period line adds up.</summary>
     private const int HarvestEvery = 64;
 
-    /// <summary>One program's uniform locations: the walk's (whichever program is bound) and the film
-    /// pass's, taken once at each one's link.</summary>
+    /// <summary>One program's uniform locations -- only the terms the SHARED lighting libraries still declare
+    /// loose; this pass's own are the <see cref="DeferredBlock"/> every variant reads.</summary>
     private struct Locs
     {
-        internal int Rect, InvVp, Proj, View, Eye, Cubes, Material, LightOcc, LmMovers, Tiles, LightCount, ReflK, ShSize, ShRes;
+        internal int Cubes, Material, LightOcc, LmMovers;
     }
 
     /// <summary>Everything the GL context owns, in one object: context loss replaces it, so no program name,
@@ -64,6 +95,8 @@ internal static unsafe class DeferredLights
         public uint LastTiles, LastLights, LastMiss, LastDrop, LastWalk, LastTaps, LastPix, LastEnt;
         public GpuReadback StatsRead;
         public int StatsSeq, StatsFrame;
+        /// <summary>This pass's own terms, read by the walk, the escape variant and the film pass alike.</summary>
+        public readonly UniformBlock<DeferredBlock> Blk = new();
     }
 
     private static DeferredLightsState _gl = new();
@@ -194,22 +227,24 @@ internal static unsafe class DeferredLights
         AlloyRenderer.UploadMaterialModel(l.Material);
         Gl.Uniform2f(l.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, AlloyRenderer.GlossyRough);
         Gl.Uniform1i(l.LmMovers, LightmapBake.MoverMode);
-        Gl.Uniform4iv(l.Rect, 1, viewport);
-        Gl.UniformMatrix4fv(l.InvVp, 1, 0, (float*)invVp);
-        Gl.UniformMatrix4fv(l.Proj, 1, 0, (float*)proj);
-        Gl.UniformMatrix4fv(l.View, 1, 0, (float*)view);
-        Gl.Uniform3fv(l.Eye, 1, (float*)eye);
+        ref DeferredBlock b = ref _gl.Blk.Stage;
+        b.Rect = new Int4(viewport[0], viewport[1], viewport[2], viewport[3]);
+        b.InvVp = *invVp;
+        b.Proj = *proj;
+        b.View = *view;
+        b.EyePos = *eye;
         // light.deferredtiles: the per-tile cull, or each pixel's own froxel list (the parity A/B). The tile
         // walk culls uLights itself, so it needs the record count and R4's pick budget -- the same two the
         // cluster build is handed.
-        Gl.Uniform1i(l.Tiles, Lighting.DeferredTiles.V ? 1 : 0);
-        Gl.Uniform1i(l.LightCount, AlloyLights.UploadedLights);
-        Gl.Uniform1i(l.ReflK, Weather.ReflK);
+        b.Tiles = Lighting.DeferredTiles.V ? 1 : 0;
+        b.LightCount = AlloyLights.UploadedLights;
+        b.ReflK = Weather.ReflK;
         // CX-188 step 3: the visibility record the shadow dispatch just wrote, and the divisor the walk
         // upsamples it by. 0 = no record this frame (said loudly there), and every light takes the walk's own
         // hardware tap.
-        Gl.Uniform2i(l.ShSize, DeferredShadows.Width, DeferredShadows.Height);
-        Gl.Uniform1i(l.ShRes, DeferredShadows.Res);
+        b.ShSize = new Int2(DeferredShadows.Width, DeferredShadows.Height);
+        b.ShRes = DeferredShadows.Res;
+        _gl.Blk.Bind(UboSlots.Deferred);
     }
 
     /// <summary>Build the program on the first frame that wants it, once. A link failure is LOUD and latched: the
@@ -273,20 +308,10 @@ internal static unsafe class DeferredLights
     private static Locs Take(uint prog)
     {
         Locs l = default;
-        l.Rect = GlProgram.Loc(prog, "uRect");
-        l.InvVp = GlProgram.Loc(prog, "uInvVp");
-        l.Proj = GlProgram.Loc(prog, "uProj");
-        l.View = GlProgram.Loc(prog, "uView");
-        l.Eye = GlProgram.Loc(prog, "uEyePos");
         l.Cubes = GlProgram.Loc(prog, "uLocalCubes");
         l.Material = GlProgram.Loc(prog, "uMaterial");
         l.LightOcc = GlProgram.Loc(prog, "uLightOcc");
         l.LmMovers = GlProgram.Loc(prog, "uLmMovers");
-        l.Tiles = GlProgram.Loc(prog, "uTiles");
-        l.LightCount = GlProgram.Loc(prog, "uLightCount");
-        l.ReflK = GlProgram.Loc(prog, "uReflK");
-        l.ShSize = GlProgram.Loc(prog, "uShSize");
-        l.ShRes = GlProgram.Loc(prog, "uShRes");
         Gl.UseProgram(prog);
         Gl.Uniform1i(GlProgram.Loc(prog, "uLocalShadow"), (int)TextureSlots.LocalShadow);
         Gl.Uniform1i(GlProgram.Loc(prog, "uLocalDynShadow"), (int)TextureSlots.LocalShadowDyn);
