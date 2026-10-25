@@ -37,7 +37,7 @@ internal sealed unsafe class UniformBlock<T> where T : unmanaged
             _sent = _stage;
             _everSent = true;
         }
-        Gl.BindBufferBase(Gl.UNIFORM_BUFFER, point, _buf);
+        Attach(point);
     }
 
     /// <summary>Bind what the buffer already holds, for a caller that knows its staging has not changed since
@@ -46,7 +46,8 @@ internal sealed unsafe class UniformBlock<T> where T : unmanaged
     /// send.</summary>
     internal void Rebind(uint point)
     {
-        if (!_everSent) { Bind(point); return; }
-        Gl.BindBufferBase(Gl.UNIFORM_BUFFER, point, _buf);
+        if (_everSent) Attach(point); else Bind(point);
     }
+
+    private void Attach(uint point) => Gl.BindBufferBase(Gl.UNIFORM_BUFFER, point, _buf);
 }
