@@ -10,7 +10,7 @@ public enum Op : byte
 {
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
-    PushConstants, BindVertexBuffer, DrawIndexedMulti,
+    PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState,
 }
 
 /// <summary>An index element's width.</summary>
@@ -139,6 +139,14 @@ public sealed class CommandList
         Put(data);
         Sent();
     }
+
+    /// <summary>Depth test, write and compare for the draws after it, over the bound pipeline's own until the next
+    /// <see cref="SetPipeline"/>: per-batch depth rules without a pipeline per rule.</summary>
+    public void SetDepthState(DepthState d) { Head(Op.SetDepthState); Put(d); Sent(); }
+
+    /// <summary>Culling, winding and the depth-bias switch for the draws after it, as <see cref="SetDepthState"/>.
+    /// Depth clamp stays the pipeline's.</summary>
+    public void SetRasterState(RasterState r) { Head(Op.SetRasterState); Put(r); Sent(); }
 
     /// <summary>The buffer behind the bound pipeline's vertex stream.</summary>
     public void BindVertexBuffer(BufferId b, long offset = 0) { Head(Op.BindVertexBuffer); Put(new VertexBufferCmd(b, offset)); Sent(); }

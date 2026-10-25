@@ -109,7 +109,7 @@ internal sealed unsafe partial class VkBackend : CX.Alloy.PresentTarget.ISource
     private VkImg? Export(in ImageDesc d)
     {
         long t0 = Stopwatch.GetTimestamp();
-        VkImageUsageFlags usage = Usage(d.Use);
+        VkImageUsageFlags usage = Usage(d.Use, d.Fmt);
         if (!Exportable(Of(d.Fmt), usage)) { Fault($"image {d.Label}: {d.Fmt} cannot be exported with this usage"); return null; }
         var ext = new VkExternalMemoryImageCreateInfo { handleTypes = MemHandle };
         VkImageCreateInfo ici = ImageInfo(d, &ext);
@@ -160,6 +160,6 @@ internal sealed unsafe partial class VkBackend : CX.Alloy.PresentTarget.ISource
         }
         _log.Info($"VkBackend: composite image '{d.Label}' {d.W}x{d.H} {d.Fmt}, {req.size} bytes -- create + export + import "
                 + $"{Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F3} ms");
-        return new VkImg { Image = image, View = View(image, ici.format), Desc = d, Ext = e };
+        return new VkImg { Image = image, View = View(image, d, -1), Desc = d, Ext = e };
     }
 }

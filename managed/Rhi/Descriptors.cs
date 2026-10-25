@@ -8,6 +8,10 @@ public enum Format : byte
 {
     Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rgba32Ui, R11G11B10F,
     D16, D24, D24S8, D32F, D32FS8,
+    /// <summary>One byte read as grey: red repeated into green and blue, alpha 1 -- a single-channel engine texture.</summary>
+    L8,
+    /// <summary>The block-compressed formats an engine or DDS texture arrives in, each sampled as UNORM (or SNORM/float).</summary>
+    Bc1, Bc1A, Bc2, Bc3, Bc4, Bc4S, Bc5, Bc5S, Bc6U, Bc6S, Bc7,
 }
 
 /// <summary>What a format is, asked without a backend.</summary>
@@ -21,6 +25,12 @@ public static class Formats
 
     /// <summary>Carries stencil too, so it attaches at the depth-stencil point.</summary>
     public static bool HasStencil(this Format f) => f is Format.D24S8 or Format.D32FS8;
+
+    /// <summary>Stored in 4x4 blocks: a level's bytes are its block count times <see cref="BlockBytes"/>.</summary>
+    public static bool IsCompressed(this Format f) => f >= Format.Bc1;
+
+    /// <summary>Bytes in one 4x4 block of a compressed format: 8 for BC1 and BC4, 16 for the rest.</summary>
+    public static int BlockBytes(this Format f) => f is Format.Bc1 or Format.Bc1A or Format.Bc4 or Format.Bc4S ? 8 : 16;
 
     /// <summary>Writes encode linear to sRGB and reads decode, so a target in it needs no context-wide switch.</summary>
     public static bool IsSrgb(this Format f) => f == Format.Rgba8Srgb;

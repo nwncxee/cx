@@ -21,6 +21,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImage Image;
         public VmaAllocation Alloc;
         public VkImageView View;
+        /// <summary>One view per mip, made the first time a mip is bound alone (a storage write down a chain).</summary>
+        public VkImageView[]? MipViews;
         public ImageDesc Desc;
         public VkImageLayout Layout;
         public Exported? Ext;
@@ -28,7 +30,8 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private readonly record struct VkBuf(VkBuffer Buffer, VmaAllocation Alloc, BufferDesc Desc);
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
-    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute);
+    /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
+    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster);
 
     /// <summary>One submit's recording resources; two alternate, so a submit waits on the one two back.</summary>
     private sealed class Slot
@@ -76,7 +79,9 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly VmaAllocator _vma;
     private readonly VkCommandPool _cmdPool;
     private readonly Slot[] _slots = new Slot[Slots];
-    private readonly VkDescriptorSetLayout _setLayout;
+    private readonly VkDescriptorSetLayout _setLayout, _bindlessLayout;
+    private readonly VkDescriptorPool _bindlessPool;
+    private readonly VkDescriptorSet _bindlessSet;
     private readonly VkPipelineLayout _pipeLayout;
     private readonly VkSampler _nearest;
     private readonly VkPhysicalDeviceMemoryProperties _mem;
@@ -87,6 +92,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly HandleTable<VkSampler> _samplers = new();
     private readonly HandleTable<VkShader> _shaders = new();
     private readonly HandleTable<VkPipe> _pipelines = new();
+    private readonly HandleTable<VertexLayoutDesc> _layouts = new();
     /// <summary>Deaths waiting out the frames in flight: the Vulkan half, and a composite's GL half run first.</summary>
     private readonly List<(long At, Action Free, Action? Gl)> _dead = new();
     private long _submits;
@@ -148,10 +154,13 @@ internal sealed unsafe partial class VkBackend : IDevice
                 || !HasExt(vki, list[i], Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8))
                 return Win ? "the Vulkan device lacks VK_KHR_external_memory_win32/VK_KHR_external_semaphore_win32"
                            : "the Vulkan device lacks VK_KHR_external_memory_fd/VK_KHR_external_semaphore_fd";
-            var f13 = new VkPhysicalDeviceVulkan13Features();
+            var f11 = new VkPhysicalDeviceVulkan11Features();
+            var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
+            var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
             var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
             vki.vkGetPhysicalDeviceFeatures2(list[i], &f2);
             if (!f13.dynamicRendering || !f13.synchronization2) return "the Vulkan device lacks dynamic rendering or synchronization2";
+            if (Lacks(in f2.features, in f11, in f12) is string lack) return $"the Vulkan device lacks {lack}";
             uint qn = 0;
             vki.vkGetPhysicalDeviceQueueFamilyProperties(list[i], &qn, null);
             VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
@@ -166,6 +175,24 @@ internal sealed unsafe partial class VkBackend : IDevice
             why = "the Vulkan device GL runs on has no graphics+compute queue";
         }
         return why;
+    }
+
+    /// <summary>The first feature the batch pass needs that the device does not have, or null: draw parameters for the
+    /// draw index, indirect counts for the cull's lists, descriptor indexing for bindless textures, BC textures, cube
+    /// arrays, and robust buffer access so a stand-in buffer shorter than a stage's reach reads zeros.</summary>
+    private static string? Lacks(in VkPhysicalDeviceFeatures f, in VkPhysicalDeviceVulkan11Features f11, in VkPhysicalDeviceVulkan12Features f12)
+    {
+        if (!f11.shaderDrawParameters) return "shaderDrawParameters";
+        if (!f12.drawIndirectCount) return "drawIndirectCount";
+        if (!f12.runtimeDescriptorArray || !f12.descriptorBindingPartiallyBound || !f12.descriptorBindingVariableDescriptorCount
+            || !f12.shaderSampledImageArrayNonUniformIndexing || !f12.descriptorBindingSampledImageUpdateAfterBind)
+            return "the descriptor indexing bindless textures need";
+        if (!f.multiDrawIndirect) return "multiDrawIndirect";
+        if (!f.textureCompressionBC) return "BC texture compression";
+        if (!f.imageCubeArray) return "cube-array images";
+        if (!f.independentBlend) return "independent blend";
+        if (!f.robustBufferAccess) return "robust buffer access";
+        return null;
     }
 
     /// <summary>major.minor.patch: the version's own formatting leads with the variant field.</summary>
@@ -213,10 +240,23 @@ internal sealed unsafe partial class VkBackend : IDevice
 
         float prio = 1f;
         var qci = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
-        var f13 = new VkPhysicalDeviceVulkan13Features { dynamicRendering = true, synchronization2 = true };
+        var f11 = new VkPhysicalDeviceVulkan11Features { shaderDrawParameters = true };
+        var f12 = new VkPhysicalDeviceVulkan12Features
+        {
+            pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
+            descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
+            descriptorBindingSampledImageUpdateAfterBind = true,
+        };
+        var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         feats.features.depthClamp = has.depthClamp;
         feats.features.samplerAnisotropy = has.samplerAnisotropy;
+        feats.features.multiDrawIndirect = true;
+        feats.features.textureCompressionBC = true;
+        feats.features.imageCubeArray = true;
+        feats.features.independentBlend = true;
+        feats.features.robustBufferAccess = true;
+        feats.features.fragmentStoresAndAtomics = has.fragmentStoresAndAtomics;
         ReadOnlySpan<byte> mem = Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8;
         ReadOnlySpan<byte> sem = Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8;
         VkDevice device;
@@ -244,22 +284,24 @@ internal sealed unsafe partial class VkBackend : IDevice
         _cmdPool = pool;
         for (int i = 0; i < Slots; i++) _slots[i] = MakeSlot();
 
+        VkPhysicalDeviceProperties props;
+        _vki.vkGetPhysicalDeviceProperties(phys, &props);
+        ref VkPhysicalDeviceLimits l = ref props.limits;
         _setLayout = MakeSetLayout();
-        VkDescriptorSetLayout sl = _setLayout;
-        var plci = new VkPipelineLayoutCreateInfo { setLayoutCount = 1, pSetLayouts = &sl };
+        (_bindlessLayout, _bindlessPool, _bindlessSet, _bindlessCap) = MakeBindless();
+        VkDescriptorSetLayout* sl = stackalloc VkDescriptorSetLayout[2] { _setLayout, _bindlessLayout };
+        var push = new VkPushConstantRange { stageFlags = VkShaderStageFlags.All, offset = 0, size = PushConstants.Bytes };
+        var plci = new VkPipelineLayoutCreateInfo { setLayoutCount = 2, pSetLayouts = sl, pushConstantRangeCount = 1, pPushConstantRanges = &push };
         VkPipelineLayout pl;
         Check(_vkd.vkCreatePipelineLayout(&plci, &pl), "vkCreatePipelineLayout");
         _pipeLayout = pl;
         _nearest = Sampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
-
-        VkPhysicalDeviceProperties props;
-        _vki.vkGetPhysicalDeviceProperties(phys, &props);
-        ref VkPhysicalDeviceLimits l = ref props.limits;
         Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments, 1,
             (int)l.maxPerStageDescriptorSampledImages, (int)l.maxDescriptorSetSampledImages,
             (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,
             (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);
-        log.Always($"VkBackend: LIVE -- {Caps}; the composite is the only image GL imports");
+        _maxDrawIndirect = l.maxDrawIndirectCount;
+        log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures; the composite is the only image GL imports");
     }
 
     private VmaAllocator CreateAllocator(VkInstance inst)
@@ -363,25 +405,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (r != VkResult.Success) throw new InvalidOperationException($"{what} returned {r}");
     }
 
-    /// <summary>The seam's format as Vulkan's; Undefined for one the backend does not carry yet.</summary>
-    internal static VkFormat Of(Format f) => f switch
-    {
-        Format.R8 => VkFormat.R8Unorm,
-        Format.Rg8 => VkFormat.R8G8Unorm,
-        Format.Rgba8 => VkFormat.R8G8B8A8Unorm,
-        Format.Rgba8Srgb => VkFormat.R8G8B8A8Srgb,
-        Format.R16F => VkFormat.R16Sfloat,
-        Format.Rg16F => VkFormat.R16G16Sfloat,
-        Format.Rgba16F => VkFormat.R16G16B16A16Sfloat,
-        Format.R32F => VkFormat.R32Sfloat,
-        Format.Rg32F => VkFormat.R32G32Sfloat,
-        Format.Rgba32F => VkFormat.R32G32B32A32Sfloat,
-        Format.R32Ui => VkFormat.R32Uint,
-        Format.Rgba32Ui => VkFormat.R32G32B32A32Uint,
-        Format.R11G11B10F => VkFormat.B10G11R11UfloatPack32,
-        _ => VkFormat.Undefined,
-    };
-
     public BufferId CreateBuffer(in BufferDesc d)
     {
         if (!OnThread("CreateBuffer") || d.Bytes <= 0) return Refused<BufferId>($"buffer {d.Label}: {d.Bytes} bytes");
@@ -400,49 +423,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
             return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
         return new BufferId(_buffers.Add(new VkBuf(b, a, d)));
-    }
-
-    public ImageId CreateImage(in ImageDesc d)
-    {
-        if (!OnThread("CreateImage")) return default;
-        if (d.Kind != ImageKind.Tex2D || d.Samples > 1 || d.Mips > 1 || d.Layers > 1 || d.Fmt.IsDepth() || Of(d.Fmt) == VkFormat.Undefined)
-            return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} x{d.Samples} with {d.Mips} mips -- only single-mip 2D colour images are on the Vulkan backend yet");
-        VkImageCreateInfo ici = ImageInfo(d, null);
-        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
-        VkImage image;
-        VmaAllocation a;
-        if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
-            return Refused<ImageId>($"image {d.Label}: VMA refused {d.Fmt} {d.W}x{d.H}");
-        return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, ici.format), Desc = d }));
-    }
-
-    /// <summary>A 2D single-mip image of <paramref name="d"/>'s format, size and use, optimally tiled.</summary>
-    private static VkImageCreateInfo ImageInfo(in ImageDesc d, void* next) => new()
-    {
-        pNext = next, imageType = VkImageType.Image2D, format = Of(d.Fmt),
-        extent = new VkExtent3D { width = (uint)d.W, height = (uint)d.H, depth = 1 },
-        mipLevels = 1, arrayLayers = 1, samples = VkSampleCountFlags.Count1, tiling = VkImageTiling.Optimal,
-        usage = Usage(d.Use), sharingMode = VkSharingMode.Exclusive, initialLayout = VkImageLayout.Undefined,
-    };
-
-    private static VkImageUsageFlags Usage(ImageUse use)
-    {
-        VkImageUsageFlags u = VkImageUsageFlags.Sampled | VkImageUsageFlags.TransferSrc | VkImageUsageFlags.TransferDst;
-        if ((use & ImageUse.ColorTarget) != 0) u |= VkImageUsageFlags.ColorAttachment;
-        if ((use & ImageUse.Storage) != 0) u |= VkImageUsageFlags.Storage;
-        return u;
-    }
-
-    private VkImageView View(VkImage image, VkFormat f)
-    {
-        var vci = new VkImageViewCreateInfo
-        {
-            image = image, viewType = VkImageViewType.Image2D, format = f,
-            subresourceRange = new VkImageSubresourceRange { aspectMask = VkImageAspectFlags.Color, levelCount = 1, layerCount = 1 },
-        };
-        VkImageView view;
-        _vkd.vkCreateImageView(&vci, &view);
-        return view;
     }
 
     private bool Exportable(VkFormat f, VkImageUsageFlags usage)
@@ -548,6 +528,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private void Free(VkImg g)
     {
         _vkd.vkDestroyImageView(g.View);
+        if (g.MipViews != null) foreach (VkImageView v in g.MipViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
         if (g.Ext == null) { Vma.vmaDestroyImage(_vma, g.Image, g.Alloc); return; }
         _vkd.vkDestroyImage(g.Image);
         _vkd.vkFreeMemory(g.Ext.Memory);
@@ -568,6 +549,16 @@ internal sealed unsafe partial class VkBackend : IDevice
     public void Destroy(PipelineId p)
     {
         if (OnThread("Destroy") && _pipelines.Remove(p.Value, out VkPipe v)) Later(() => _vkd.vkDestroyPipeline(v.Pipeline));
+    }
+
+    /// <summary>A vertex layout to name in a <see cref="PipelineDesc"/>; held as declared, resolved per pipeline.</summary>
+    internal VertexLayoutId CreateVertexLayout(in VertexLayoutDesc d)
+    {
+        if (!OnThread("CreateVertexLayout")) return default;
+        foreach (VertexAttrib a in d.Attribs)
+            if (AttribFormat(a) == VkFormat.Undefined || !VertexFormatOk(AttribFormat(a)))
+                return Refused<VertexLayoutId>($"vertex layout {d.Label}: location {a.Location} as {a.Components} x {a.Type} cannot be a vertex attribute on this device");
+        return new VertexLayoutId(_layouts.Add(d));
     }
 
     /// <summary>Free once no submit in flight and no retired GL texture can still reach it. Cold: a resize or a rebuild.</summary>
@@ -604,7 +595,11 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
         _vkd.vkDestroyCommandPool(_cmdPool);
         _vkd.vkDestroySampler(_nearest);
+        foreach (UploadChunk c in _upload.Chunks) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
+        foreach (UploadChunk c in _upload.Pool) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
         _vkd.vkDestroyPipelineLayout(_pipeLayout);
+        _vkd.vkDestroyDescriptorPool(_bindlessPool);
+        _vkd.vkDestroyDescriptorSetLayout(_bindlessLayout);
         _vkd.vkDestroyDescriptorSetLayout(_setLayout);
         Vma.vmaDestroyAllocator(_vma);
         _vkd.vkDestroyDevice();

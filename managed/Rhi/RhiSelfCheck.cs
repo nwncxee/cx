@@ -13,6 +13,7 @@ public static class RhiSelfCheck
         var check = new Checker(log, "Rhi.SelfCheck");
         Handles(check);
         RoundTrip(check);
+        DrawRoundTrip(check);
         Growth(check);
         FormatTraits(check);
         Blends(check);
@@ -82,6 +83,41 @@ public static class RhiSelfCheck
         check.Expect(r.Next(out op) && op == Op.EndRenderPass, $"EndRenderPass, not {op}");
         check.Expect(!r.Next(out _), "nothing past the last command");
         check.Expect(!list.TakePending().Next(out _), "a command is handed out once");
+    }
+
+    /// <summary>The batch pass's commands read back with their literals; a push past the block and a ragged multi-draw
+    /// are refused and fault the list, recording nothing.</summary>
+    private static void DrawRoundTrip(Checker check)
+    {
+        var list = new CommandList("selfcheck-draw");
+        list.PushConstants(4, [1, 0, 0, 0, 2, 0, 0, 0]);
+        list.BindVertexBuffer(new BufferId(3), 96);
+        list.SetDepthState(new DepthState(true, false, CompareOp.Equal));
+        list.SetRasterState(new RasterState(CullMode.Back, FrontCw: true, DepthBias: true));
+        list.DrawIndexedMulti([30, 6], [0, 30], [0, 12]);
+        list.DrawIndexedIndirect(new BufferId(4), 40, 7, new BufferId(5), 8);
+        CommandReader r = list.TakePending();
+        check.Expect(r.Next(out Op op) && op == Op.PushConstants, $"PushConstants, not {op}");
+        PushConstantsCmd pc = r.Read<PushConstantsCmd>();
+        ReadOnlySpan<byte> pb = r.Span<byte>(pc.Bytes);
+        check.Expect(pc == new PushConstantsCmd(4, 8) && pb[0] == 1 && pb[4] == 2, $"the push reads back at offset 4, 8 bytes ({pc})");
+        check.Expect(r.Next(out op) && op == Op.BindVertexBuffer && r.Read<VertexBufferCmd>() == new VertexBufferCmd(new BufferId(3), 96), "vertex buffer 3 at 96");
+        check.Expect(r.Next(out op) && op == Op.SetDepthState && r.Read<DepthState>() == new DepthState(true, false, CompareOp.Equal), "depth: test, no write, EQUAL");
+        check.Expect(r.Next(out op) && op == Op.SetRasterState && r.Read<RasterState>() == new RasterState(CullMode.Back, true, true), "raster: back, clockwise, biased");
+        check.Expect(r.Next(out op) && op == Op.DrawIndexedMulti, $"DrawIndexedMulti, not {op}");
+        int n = r.Read<MultiDrawCmd>().Draws;
+        ReadOnlySpan<int> cnt = r.Span<int>(n), first = r.Span<int>(n), bas = r.Span<int>(n);
+        check.Expect(n == 2 && cnt[0] == 30 && cnt[1] == 6 && first[1] == 30 && bas[1] == 12, "the multi-draw's three spans read back in order");
+        check.Expect(r.Next(out op) && op == Op.DrawIndexedIndirect
+                     && r.Read<IndirectCmd>() == new IndirectCmd(new BufferId(4), 40, 7, new BufferId(5), 8), "indirect: commands 4 at 40, 7 at most, count 5 at 8");
+        check.Expect(!r.Next(out _), "nothing past the indirect draw");
+
+        var bad = new CommandList("selfcheck-refusals");
+        bad.PushConstants(124, [1, 2, 3, 4, 5, 6, 7, 8]);
+        check.Expect(bad.Faulted && bad.Length == 0, "a push past the 128-byte block faults and records nothing");
+        bad.Reset();
+        bad.DrawIndexedMulti([1, 2], [0], [0, 0]);
+        check.Expect(bad.Faulted && bad.Length == 0, "a multi-draw with ragged spans faults and records nothing");
     }
 
     /// <summary>An arena too small grows once and keeps what it held; a warm arena records with no allocation.</summary>

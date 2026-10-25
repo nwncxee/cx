@@ -765,6 +765,7 @@ public static unsafe partial class MeshArena
             if (_iUsed > 0 && _iUploaded != _iUsed) UploadIndices();
             // CX-120 seam-anim: the dangly and animmesh ranges whose vertices moved on the game thread
             // (MeshArena.Dyn.cs). Inside the same bracket and under the same lock as every other upload.
+            PumpVk();
             DynUpload();
             for (int f = 0; f < Formats; f++)
             {
@@ -871,6 +872,7 @@ public static unsafe partial class MeshArena
             r.Off2 = MoveRun(r.Off2, r.Cnt2, ref iCursor);
         }
         _iUsed = iCursor; _iUploaded = 0; _iDead = 0; _elementsFull = false;
+        VkCompacted();
         _compactions++;
         // keep only the ranges whose placement actually changed
         int w = 0;

@@ -20,6 +20,10 @@ internal sealed unsafe partial class VkBackend
     /// draw, after the pass's bind set has moved every sampled image into its read layout.</summary>
     private readonly ColorAttachment[] _pend = new ColorAttachment[RenderPassDesc.MaxColors];
     private int _pendCount;
+    private bool _pendHasDepth;
+    private DepthAttachment _pendDepth;
+    /// <summary>A multi-draw's commands, built here and staged for the indirect draw that gives each its draw index.</summary>
+    private VkDrawIndexedIndirectCommand[] _multi = new VkDrawIndexedIndirectCommand[256];
     private bool _inPass, _rendering, _scissorSet;
     private VkPipelineBindPoint _bindPoint = VkPipelineBindPoint.Graphics;
     private VkCommandBuffer _cmd;
@@ -43,6 +47,8 @@ internal sealed unsafe partial class VkBackend
         _cmd = s.Cmd;
         _slot = s;
         _inPass = _rendering = false;
+        BindBindless();
+        FlushUploads();
 
         bool ok = Record(list.TakePending());
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
@@ -112,7 +118,13 @@ internal sealed unsafe partial class VkBackend
                 Op.Dispatch => Dispatch(r.Read<DispatchCmd>()),
                 Op.UpdateBuffer => Update(r.Read<UpdateBufferCmd>(), ref r),
                 Op.ZeroBuffer => Zero(r.Read<ZeroBufferCmd>()),
-                // ponytail: indirect draws, image copies and blits join with the first pass that records them
+                Op.PushConstants => Push(r.Read<PushConstantsCmd>(), ref r),
+                Op.BindVertexBuffer => VertexBuffer(r.Read<VertexBufferCmd>()),
+                Op.DrawIndexedMulti => DrawMulti(r.Read<MultiDrawCmd>(), ref r),
+                Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
+                Op.SetDepthState => Depth(r.Read<DepthState>()),
+                Op.SetRasterState => Raster(r.Read<RasterState>()),
+                // ponytail: image copies and blits join with the first pass that records them
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
@@ -124,10 +136,11 @@ internal sealed unsafe partial class VkBackend
     {
         ReadOnlySpan<ColorAttachment> colors = r.Span<ColorAttachment>(h.Colors);
         if (_inPass) return Fault("a render pass began inside another");
-        if (h.HasDepth) return Fault("a depth attachment is not on the Vulkan backend yet");
-        if (colors.Length == 0 || colors.Length > RenderPassDesc.MaxColors) return Fault($"render pass with {colors.Length} colour attachments");
+        if (colors.Length + (h.HasDepth ? 1 : 0) == 0 || colors.Length > RenderPassDesc.MaxColors) return Fault($"render pass with {colors.Length} colour attachments");
         colors.CopyTo(_pend);
         _pendCount = colors.Length;
+        _pendHasDepth = h.HasDepth;
+        _pendDepth = h.Depth;
         _inPass = true;
         _scissorSet = false;
         return true;
@@ -149,11 +162,13 @@ internal sealed unsafe partial class VkBackend
     {
         if (_rendering) return true;
         if (!_inPass) return Fault("a draw outside a render pass");
-        VkRenderingAttachmentInfo* att = stackalloc VkRenderingAttachmentInfo[_pendCount];
+        VkRenderingAttachmentInfo* att = stackalloc VkRenderingAttachmentInfo[Math.Max(_pendCount, 1)];
         int w = 0, h = 0;
         for (int i = 0; i < _pendCount; i++)
         {
             ColorAttachment c = _pend[i];
+            // a null image routes the slot nowhere, so the slots after it keep their indices
+            if (c.Image.IsNull) { att[i] = new VkRenderingAttachmentInfo { imageView = default, imageLayout = VkImageLayout.Undefined }; continue; }
             if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: stale image");
             if (c.Mip != 0 || c.Layer > 0) return Fault($"render pass colour {i}: mip {c.Mip} layer {c.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
             Transition(img, VkImageLayout.ColorAttachmentOptimal);
@@ -167,10 +182,35 @@ internal sealed unsafe partial class VkBackend
                 storeOp = c.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
             };
-            if (i == 0) { w = img.Desc.W; h = img.Desc.H; }
+            if (w == 0) { w = img.Desc.W; h = img.Desc.H; }
+        }
+        var depth = new VkRenderingAttachmentInfo();
+        bool stencil = false;
+        if (_pendHasDepth)
+        {
+            DepthAttachment d = _pendDepth;
+            if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault("render pass depth: stale image");
+            if (d.Mip != 0 || d.Layer > 0) return Fault($"render pass depth: mip {d.Mip} layer {d.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (!img.Desc.Fmt.IsDepth()) return Fault($"render pass depth: {img.Desc.Label} is {img.Desc.Fmt}, not a depth format");
+            Transition(img, VkImageLayout.DepthStencilAttachmentOptimal);
+            var clear = new VkClearValue();
+            clear.depthStencil = new VkClearDepthStencilValue(d.Depth, 0);
+            depth = new VkRenderingAttachmentInfo
+            {
+                imageView = img.View, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
+                loadOp = d.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
+                storeOp = d.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
+                clearValue = clear,
+            };
+            stencil = img.Desc.Fmt.HasStencil();
+            if (w == 0) { w = img.Desc.W; h = img.Desc.H; }
         }
         var area = new VkRect2D { extent = new VkExtent2D { width = (uint)w, height = (uint)h } };
-        var ri = new VkRenderingInfo { renderArea = area, layerCount = 1, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att };
+        var ri = new VkRenderingInfo
+        {
+            renderArea = area, layerCount = 1, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
+            pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
+        };
         _vkd.vkCmdBeginRendering(_cmd, &ri);
         if (!_scissorSet) _vkd.vkCmdSetScissor(_cmd, 0, 1, &area);
         _rendering = true;
@@ -182,6 +222,75 @@ internal sealed unsafe partial class VkBackend
         if (!_pipelines.TryGet(id.Value, out VkPipe p)) return Fault("SetPipeline: stale pipeline");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
         _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Pipeline);
+        if (!p.Compute) { Depth(p.Depth); Raster(p.Raster); }
+        return true;
+    }
+
+    private bool Depth(DepthState d)
+    {
+        _vkd.vkCmdSetDepthTestEnable(_cmd, d.Test);
+        _vkd.vkCmdSetDepthWriteEnable(_cmd, d.Write);
+        _vkd.vkCmdSetDepthCompareOp(_cmd, Compare(d.Compare));
+        return true;
+    }
+
+    private bool Raster(RasterState r)
+    {
+        _vkd.vkCmdSetCullMode(_cmd, Cull(r.Cull));
+        _vkd.vkCmdSetFrontFace(_cmd, r.FrontCw ? VkFrontFace.Clockwise : VkFrontFace.CounterClockwise);
+        _vkd.vkCmdSetDepthBiasEnable(_cmd, r.DepthBias);
+        return true;
+    }
+
+    private bool Push(PushConstantsCmd c, ref CommandReader r)
+    {
+        ReadOnlySpan<byte> bytes = r.Span<byte>(c.Bytes);
+        fixed (byte* p = bytes) _vkd.vkCmdPushConstants(_cmd, _pipeLayout, VkShaderStageFlags.All, (uint)c.Offset, (uint)c.Bytes, p);
+        return true;
+    }
+
+    private bool VertexBuffer(VertexBufferCmd c)
+    {
+        if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("BindVertexBuffer: stale buffer");
+        VkBuffer vb = b.Buffer;
+        ulong off = (ulong)c.Offset;
+        _vkd.vkCmdBindVertexBuffers(_cmd, 0, 1, &vb, &off);
+        return true;
+    }
+
+    /// <summary>A CPU multi-draw as one indirect draw out of this submit's staging, so each draw's index is its place
+    /// in the spans -- the draw index GL's multi-draw hands the stage.</summary>
+    private bool DrawMulti(MultiDrawCmd c, ref CommandReader r)
+    {
+        ReadOnlySpan<int> counts = r.Span<int>(c.Draws), firsts = r.Span<int>(c.Draws), bases = r.Span<int>(c.Draws);
+        if (!EnsureRendering()) return false;
+        if ((uint)c.Draws > _maxDrawIndirect) return Fault($"a multi-draw of {c.Draws}, past the device's {_maxDrawIndirect}");
+        if (_multi.Length < c.Draws) _multi = new VkDrawIndexedIndirectCommand[Math.Max(c.Draws, _multi.Length * 2)];
+        for (int i = 0; i < c.Draws; i++)
+            _multi[i] = new VkDrawIndexedIndirectCommand
+            {
+                indexCount = (uint)counts[i], instanceCount = 1, firstIndex = (uint)firsts[i], vertexOffset = bases[i], firstInstance = 0,
+            };
+        if (!Staged(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_multi.AsSpan(0, c.Draws)), out ulong at)) return false;
+        _vkd.vkCmdDrawIndexedIndirect(_cmd, _slot!.Stage, at, (uint)c.Draws, IndirectStride);
+        return true;
+    }
+
+    /// <summary>Bytes between two indirect commands: five words, GL's and Vulkan's layout alike.</summary>
+    private const uint IndirectStride = 20;
+
+    private bool Indirect(IndirectCmd c)
+    {
+        if (!EnsureRendering()) return false;
+        if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndexedIndirect: stale command buffer");
+        if (c.MaxDraws <= 0) return true;
+        if (c.Count.IsNull)
+        {
+            _vkd.vkCmdDrawIndexedIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, IndirectStride);
+            return true;
+        }
+        if (!_buffers.TryGet(c.Count.Value, out VkBuf count)) return Fault("DrawIndexedIndirect: stale count buffer");
+        _vkd.vkCmdDrawIndexedIndirectCount(_cmd, cmds.Buffer, (ulong)c.Offset, count.Buffer, (ulong)c.CountOffset, (uint)c.MaxDraws, IndirectStride);
         return true;
     }
 
@@ -251,7 +360,7 @@ internal sealed unsafe partial class VkBackend
             return Fault($"bind set: slot {s.Slot}'s image needs a barrier inside a begun render pass -- bind before the first draw");
         VkSampler sampler = _nearest;
         if (!storage && !s.Sampler.IsNull && !_samplers.TryGet(s.Sampler.Value, out sampler)) return Fault($"bind set: stale sampler on slot {s.Slot}");
-        ii[t] = new VkDescriptorImageInfo { sampler = storage ? default : sampler, imageView = img.View, imageLayout = want };
+        ii[t] = new VkDescriptorImageInfo { sampler = storage ? default : sampler, imageView = ViewOf(img, storage ? s.Mip : -1), imageLayout = want };
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + s.Slot, descriptorCount = 1, descriptorType = type, pImageInfo = (VkDescriptorImageInfo*)Unsafe.AsPointer(ref ii[t++]) };
         return true;
     }
@@ -320,7 +429,7 @@ internal sealed unsafe partial class VkBackend
                 Later(() => Vma.vmaDestroyBuffer(_vma, ob, oa));
             }
             ulong size = Math.Max(MinStage, (s.StageUsed + len) * 2);
-            if (!HostBuffer(size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out s.Stage, out s.StageAlloc))
+            if (!HostBuffer(size, VkBufferUsageFlags.TransferSrc | VkBufferUsageFlags.IndirectBuffer, VmaAllocationCreateFlags.HostAccessSequentialWrite, out s.Stage, out s.StageAlloc))
             {
                 s.StageBytes = s.StageUsed = 0;
                 return Fault($"staging: VMA refused {size} bytes");
@@ -451,7 +560,11 @@ internal sealed unsafe partial class VkBackend
             dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
             oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = srcFamily, dstQueueFamilyIndex = dstFamily,
             image = img.Image,
-            subresourceRange = new VkImageSubresourceRange { aspectMask = VkImageAspectFlags.Color, levelCount = 1, layerCount = 1 },
+            subresourceRange = new VkImageSubresourceRange
+            {
+                aspectMask = Aspect(img.Desc.Fmt), levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
+                layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
+            },
         };
         var di = new VkDependencyInfo { imageMemoryBarrierCount = 1, pImageMemoryBarriers = &b };
         _vkd.vkCmdPipelineBarrier2(_cmd, &di);
