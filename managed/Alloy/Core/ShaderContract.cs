@@ -131,22 +131,27 @@ internal static class ShaderContract
         return !HasIdent(src, "uLocalLight") && !HasIdent(src, "uSunVp") && !HasIdent(src, "uAreaAmbient");
     }
 
-    /// <summary>Every Alloy uniform block this stage touches is the one the extender fills: either it declares
-    /// the current body, or it names no member of it at all. An override that kept a member as a loose uniform
-    /// links cleanly and reads zeros -- a dark world, an uncalled cull, with nothing in the log.</summary>
-    public static bool BlocksSafe(string src)
+    /// <summary>Every Alloy uniform block this text reads is the one the extender fills: it declares the
+    /// library's body, or names no member of it. <paramref name="embedded"/> is the shipped text
+    /// <paramref name="src"/> stands in for, and it says which blocks the stage reads -- <c>uProj</c> and
+    /// <c>uRect</c> are loose uniforms of other stages, which this must not refuse.</summary>
+    public static bool BlocksSafe(string embedded, string src)
         => PassSafe(src)
-        && BlockSafe(src, "CxCull", "cx_cullblk.glsl", "uDrawN", "uCompactBelow")
-        && BlockSafe(src, "CxDeferred", "cx_defblk.glsl", "uTiles")
-        && BlockSafe(src, "CxSsao", "cx_ssaolib.glsl", "uDirs", "uSteps", "uMaxPx", "uPower");
+        && BlockSafe(embedded, src, "CxCull", "cx_cullblk.glsl")
+        && BlockSafe(embedded, src, "CxDeferred", "cx_defblk.glsl")
+        && BlockSafe(embedded, src, "CxSsao", "cx_ssaolib.glsl");
 
-    /// <summary>One block of <see cref="BlocksSafe"/>: the declaration matches the library's, or none of
-    /// <paramref name="members"/> -- names that occur nowhere else -- appears in the stage.</summary>
-    private static bool BlockSafe(string src, string block, string lib, params string[] members)
+    /// <summary>One block of <see cref="BlocksSafe"/>. An override that kept a member as a loose uniform links
+    /// cleanly and reads zeros -- an uncalled cull, a world lit from nowhere, nothing in the log -- so a text
+    /// whose shipped counterpart declares the block is refused unless it declares the same body, and no
+    /// member name of it may appear loose.</summary>
+    private static bool BlockSafe(string embedded, string src, string block, string lib)
     {
+        string? want = Std140.Members(ShaderSource.Get(lib), block);
         string? got = Std140.Members(src, block);
-        if (got != null) return got == Std140.Members(ShaderSource.Get(lib), block);
-        foreach (string m in members) if (HasIdent(src, m)) return false;
+        if (got != null) return got == want;
+        if (want == null || Std140.Members(embedded, block) == null) return true;
+        foreach (string m in Std140.Names(want)) if (HasIdent(src, m)) return false;
         return true;
     }
 

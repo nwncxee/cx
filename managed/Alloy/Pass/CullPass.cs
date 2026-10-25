@@ -357,7 +357,7 @@ internal static unsafe class CullPass
         // The pyramid's own clip space: this pass's for the same-frame phases, the prior pass's for phase one.
         b.PyrVp = stale && useHiZ ? _gl.PyrVp : *vp;
         b.Rej = stale ? RejWrite : phase == PhaseRetest ? RejRead : RejOff;
-        Planes(in *vp, MemoryMarshal.CreateSpan(ref Unsafe.As<CullPlanes, Vector4>(ref b.Planes), 6), _eye);
+        Planes(in *vp, b.Planes, _eye);
         b.LodPx = MathF.Max(lodPx >= 0f ? lodPx : LodPx, 0f);
         b.ClipZ = clipZ;
         b.LodScale = _lodScale;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Framework;
@@ -45,6 +46,22 @@ internal static class Std140
             foreach (char ch in c < 0 ? line : line[..c]) if (!char.IsWhiteSpace(ch)) sb.Append(ch);
         }
         return sb.ToString();
+    }
+
+    /// <summary>Every member name in a <see cref="Members"/> body, in declaration order: what a stage that
+    /// reads the block spelled as loose uniforms before the block existed.</summary>
+    internal static List<string> Names(string members)
+    {
+        var names = new List<string>();
+        foreach (string m in members[(members.IndexOf('{') + 1)..].Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int u = 0;
+            while (u < m.Length - 1 && !(m[u] == 'u' && char.IsUpper(m[u + 1]))) u++;   // the name: its first u<Upper>
+            if (u >= m.Length - 1) continue;
+            int lb = m.IndexOf('[');
+            names.Add(m[u..(lb < 0 ? m.Length : lb)]);
+        }
+        return names;
     }
 
     /// <summary>std140 byte offset of <paramref name="name"/> in a <see cref="Members"/> body, and its size;
