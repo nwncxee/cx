@@ -49,21 +49,40 @@ internal static unsafe partial class OwnedTextures
         return n;
     }
 
-    /// <summary>Cell <paramref name="cell"/> of <paramref name="tex"/> into a texture of Alloy's own, as the engine
-    /// would have uploaded it. 0 = the driver refused it (<paramref name="err"/>), the engine's format table has no
-    /// entry for it, or level 0 is past <c>GL_MAX_TEXTURE_SIZE</c> (<paramref name="oversize"/>) -- the one of those
-    /// the engine's own upload does better, by box-filtering the sheet down.</summary>
-    private static uint UploadOwn(IntPtr tex, int cell, out uint err, out bool oversize)
+    /// <summary>What happened instead of Alloy's upload, which decides who draws the cell.</summary>
+    private enum Decline
     {
-        err = 0; oversize = false;
+        /// <summary>It happened.</summary>
+        None,
+        /// <summary>Level 0 is past <c>GL_MAX_TEXTURE_SIZE</c>, which <c>GLRender::CreateTexture</c> @0x4ca2b0
+        /// box-filters down and whose compressed branch starts from a smaller level. Alloy does neither, so the
+        /// cell stays the engine's.</summary>
+        Oversize,
+        /// <summary>A shape the engine's own upload cannot produce pixels for either, so an empty Alloy texture
+        /// is the state it would have left: no usable size (nothing to upload), or a compression-format index
+        /// <c>textureFormatTranslationTable</c> @0x12f5080 holds 0 for (<c>glCompressedTexImage2D</c> with
+        /// internalformat 0 is <c>GL_INVALID_ENUM</c>).</summary>
+        EngineToo,
+        /// <summary>Alloy's upload did not happen and the engine's may still succeed -- the driver refused one of
+        /// our calls, or the sheet is a shape we do not transcribe. A BCn format the engine mislabels uploads as
+        /// garbage rather than nothing, so this cell goes back to it; the diagnostic line names which it was.</summary>
+        Refused,
+    }
+
+    /// <summary>Cell <paramref name="cell"/> of <paramref name="tex"/> into a texture of Alloy's own, as the engine
+    /// would have uploaded it. 0 names its reason in <paramref name="why"/>, and <paramref name="err"/> carries the
+    /// driver's code when there was one.</summary>
+    private static uint UploadOwn(IntPtr tex, int cell, out uint err, out Decline why)
+    {
+        err = 0; why = Decline.Refused;
         var t = new CAurTexture(tex);
         byte* img = (byte*)t.GetImage();
         int w = t.GetWidth(), h = t.GetHeight(), bpp = t.GetBPP();
-        if (w <= 0 || h <= 0) return 0;
+        if (w <= 0 || h <= 0) { why = Decline.EngineToo; return 0; }
         bool compressed = t.GetCompressedSize() > 0;
         int nx = Math.Max(t.GetNumX(), 1), ny = Math.Max(t.GetNumY(), 1);
         int lw = compressed ? w : w / nx, lh = compressed ? h : h / ny;
-        if (lw > MaxTexSize() || lh > MaxTexSize()) { oversize = true; return 0; }
+        if (lw > MaxTexSize() || lh > MaxTexSize()) { why = Decline.Oversize; return 0; }
         bool mip = (t.GetMipMap() & MipByte) != 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip);
         Gl.DrainErrors(8);   // the verdict is ours to read, so nobody else's error may be sitting here
@@ -73,7 +92,10 @@ internal static unsafe partial class OwnedTextures
         if (ddsFormat)
             dst = UploadDdsFormat(img, dds, s, mip, bpp == 1);
         else if (img != null && compressed)
+        {
+            if (EngineFormat(t.GetCompressionFormat()) == 0) { why = Decline.EngineToo; return 0; }
             dst = UploadCompressed(t, w, h, s, mip, bpp == 1);
+        }
         else
             dst = UploadRaw(t, img, cell, w, h, bpp, s, mip);
         err = Gl.GetError();
@@ -83,10 +105,14 @@ internal static unsafe partial class OwnedTextures
             else if (++_ddsFormatFailed <= BcnFailCap)
                 _log?.Always($"OwnedTextures: {dds.Format} {dds.W}x{dds.H} REFUSED by the driver (0x{err:x}) -- the engine's same-sized upload stands and draws as garbage");
         }
-        if (err == 0) return dst;
+        if (err == 0 && dst != 0) { why = Decline.None; return dst; }
         if (dst != 0) Gl.DeleteTextures(1, &dst);
         return 0;
     }
+
+    /// <summary>The GL internal format <c>textureFormatTranslationTable</c> names for a compression-format index,
+    /// or 0 -- which is what the entry itself holds for index 17 and what an index past the table reads as.</summary>
+    private static uint EngineFormat(int fi) => (uint)fi < (uint)EngineFormats.Length ? EngineFormats[fi] : 0;
 
     /// <summary><c>GetMipMap()</c> answers a bool in its low byte.</summary>
     private const int MipByte = 0xff;   // not-an-offset: a byte mask
@@ -108,9 +134,10 @@ internal static unsafe partial class OwnedTextures
         }
     }
 
-    /// <summary>An uncompressed sheet: the cell is read in place through the unpack rectangle (the engine copies
-    /// it out with <c>ImageGetSubImage</c>), mips by <c>glGenerateMipmap</c> as the engine's are. A null image gets
-    /// the storage the engine's <c>glTexImage2D(..., nullptr)</c> leaves, zeroed so it reads the same every run.</summary>
+    /// <summary>An uncompressed sheet: the cell is read in place through the unpack rectangle (the engine copies it
+    /// out with <c>ImageGetSubImage</c>), mips by <c>glGenerateMipmap</c> as the engine's are. A null image gets
+    /// zeroed storage and keeps it: the only other GL that writes a cell's storage is the GPU-PLT branch of
+    /// <c>glImageBasic</c>, which Alloy holds off, so nothing fills it behind us.</summary>
     private static uint UploadRaw(CAurTexture t, byte* img, int cell, int w, int h, int bpp, in Sampler s, bool mip)
     {
         int nx = t.GetNumX(), ny = t.GetNumY();
@@ -119,7 +146,7 @@ internal static unsafe partial class OwnedTextures
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
         uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
         if (dst == 0) return 0;
-        if (img == null) { GlTexture.ZeroFill(dst, fmt, type); return dst; }
+        if (img == null) return GlTexture.KeepZeroed(dst, fmt, type);   // no pixels: zeroed storage, as the engine's null upload leaves
         var u = Unpack.Take(w, (cell % nx) * cw, (cell / nx) * ch);
         Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, type, img);
         u.Give();
@@ -127,10 +154,10 @@ internal static unsafe partial class OwnedTextures
         return dst;
     }
 
-    /// <summary>The stand-in for a shape Alloy declines and the engine's own upload fails on as well: storage of
-    /// the right size and no pixels, one level and an unmipped sampler so the texture is COMPLETE (a bindless
-    /// handle may be minted on it) rather than the storage-less name a failed <c>glTexImage2D</c> leaves. 0 = the
-    /// driver would not give a name at all.</summary>
+    /// <summary>The stand-in for a shape the engine's own upload cannot produce pixels for either
+    /// (<see cref="Decline.EngineToo"/>): storage of the cell's size, zeroed, one level and an unmipped sampler so
+    /// the texture is COMPLETE -- a bindless handle may be minted on it, unlike the storage-less name a failed
+    /// <c>glTexImage2D</c> leaves. 0 = the driver gave no name, or would not clear it.</summary>
     private static uint UploadEmpty(IntPtr tex)
     {
         var t = new CAurTexture(tex);
@@ -140,18 +167,14 @@ internal static unsafe partial class OwnedTextures
         if (cw > MaxTexSize() || ch > MaxTexSize()) return 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip: false);
         uint dst = Storage(Gl.TEXTURE_2D, 1, Gl.RGBA8, cw, ch, s, red: false);
-        // Immutable storage starts UNDEFINED, which on screen is whatever the driver last had there; zeroed, it
-        // is transparent black every time, and the loud line beside it is what says so.
-        if (dst != 0) GlTexture.ZeroFill(dst, Gl.RGBA, Gl.UNSIGNED_BYTE);
-        return dst;
+        return dst == 0 ? 0 : GlTexture.KeepZeroed(dst, Gl.RGBA, Gl.UNSIGNED_BYTE);
     }
 
     /// <summary>A compressed image in a format the engine names: each level behind its own header run, sized
     /// by the texture's <c>GetCompressedSize(w, h)</c>, the whole chain when mipped and level 0 otherwise.</summary>
     private static uint UploadCompressed(CAurTexture t, int w, int h, in Sampler s, bool mip, bool red)
     {
-        int fi = t.GetCompressionFormat();
-        uint fmt = (uint)fi < (uint)EngineFormats.Length ? EngineFormats[fi] : 0;
+        uint fmt = EngineFormat(t.GetCompressionFormat());
         if (fmt == 0) return 0;
         int levels = mip ? EngineLevels(w, h) : 1;
         uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, w, h, s, red);

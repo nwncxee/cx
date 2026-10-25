@@ -16,7 +16,10 @@ internal static unsafe partial class OwnedTextures
     /// <summary>The shapes a borrowed tid can come from, in the order the period line reports them.</summary>
     internal enum Borrow
     {
-        /// <summary>The tid never reached <c>RenderInterface::CreateTexture</c>: no funnel ran for it at all.</summary>
+        /// <summary>The tid never reached <c>RenderInterface::CreateTexture</c> @0x55d200, so no shape was recorded.
+        /// Its one caller is <c>CAurTextureBasic::glImageBasic</c>, which allocates the cell array and loops the
+        /// cell over <c>numX*numY</c> first, so <see cref="Adopt"/>'s unrecorded exits -- not a basic, no array,
+        /// cell out of range, cell name 0 -- are states the funnel cannot be in, or a name no draw asks about.</summary>
         Funnel,
         /// <summary>The table is stood down for this upload (<c>alloy.texsingle=0</c>, or the hook did not install),
         /// so the engine's own copy is what the draw samples.</summary>
@@ -24,19 +27,22 @@ internal static unsafe partial class OwnedTextures
         /// <summary>Uploaded before the 4.6 context existed. <see cref="RefreshPreContext"/> re-drives the engine's
         /// own refresh once, which is what empties this kind.</summary>
         PreContext,
-        /// <summary>Level 0 is past <c>GL_MAX_TEXTURE_SIZE</c>. The engine's upload box-filters it down
-        /// (<c>GLRender::CreateTexture</c> @0x4ca2b0) or skips compressed levels; Alloy does neither and leaves
-        /// it to the engine deliberately.</summary>
+        /// <summary>Level 0 is past <c>GL_MAX_TEXTURE_SIZE</c>; the engine downsamples to fit and Alloy leaves the
+        /// cell to it deliberately (<see cref="Decline.Oversize"/>).</summary>
         Oversize,
-        /// <summary>Even a storage-only stand-in could not be created: the driver is refusing texture names.</summary>
-        Driver,
+        /// <summary>Alloy's upload did not happen and the engine's may still (<see cref="Decline.Refused"/>), or the
+        /// stand-in for a shape it also fails on could not be made. The diagnostic line names which.</summary>
+        Refused,
+        /// <summary>The sheet's <c>numX*numY</c> is past <see cref="MaxCells"/>, so the content key cannot encode
+        /// the cell and the whole sheet stays the engine's.</summary>
+        Grid,
     }
 
-    private const int BorrowKinds = (int)Borrow.Driver + 1;
+    private const int BorrowKinds = (int)Borrow.Grid + 1;
     /// <summary>Loud lines about textures kept EMPTY, capped: a shape the engine fails on fails for every texture
     /// like it, and the first few name it as well as all of them would.</summary>
     private const int EmptyDiag = 3;
-    private static readonly string[] BorrowNames = { "never funnelled", "stood down", "pre-context", "oversize", "driver" };
+    private static readonly string[] BorrowNames = { "never funnelled", "stood down", "pre-context", "oversize", "refused", "grid too big" };
 
     /// <summary>The borrow ledger, plus the level-0 ceiling the oversize decline is measured against and whether
     /// the one pre-context refresh has run -- all of it about this context's names, so it goes with them.</summary>
@@ -53,7 +59,7 @@ internal static unsafe partial class OwnedTextures
         public int PreCtx;
         /// <summary>The refresh has run; it runs once per context.</summary>
         public bool Refreshed;
-        /// <summary>Textures given a storage-only Alloy texture because the engine's own upload fails on them too.</summary>
+        /// <summary>Textures given a zeroed Alloy texture because the engine's own upload produces no pixels either.</summary>
         public long Empty;
     }
     private static BorrowState _borrow = new();
@@ -91,7 +97,7 @@ internal static unsafe partial class OwnedTextures
             if (_borrow.Count[i] == 0) continue;
             sb.Append(sb.Length == 0 ? " by shape: " : ", ").Append(BorrowNames[i]).Append(' ').Append(_borrow.Count[i]);
         }
-        if (_borrow.Empty > 0) sb.Append(sb.Length == 0 ? " -- " : "; ").Append(_borrow.Empty).Append(" EMPTY Alloy textures (the engine's own upload fails on them too)");
+        if (_borrow.Empty > 0) sb.Append(sb.Length == 0 ? " -- " : "; ").Append(_borrow.Empty).Append(" EMPTY Alloy textures (the engine's own upload produces no pixels for them either)");
         return sb.ToString();
     }
 

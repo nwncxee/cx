@@ -17,12 +17,13 @@ public static unsafe class GlTexture
         return v > 0 ? v : MinMaxSize;
     }
 
-    /// <summary>Level 0 of <paramref name="tex"/> to zeros. False = <c>glClearTexImage</c> (4.4) did not load, so
-    /// the caller's storage keeps whatever the driver had there.</summary>
-    public static bool ZeroFill(uint tex, uint fmt, uint type)
+    /// <summary>A freshly created <paramref name="tex"/> back with level 0 zeroed, or 0 with the name DELETED:
+    /// immutable storage reads undefined until something writes it, and <c>glClearTexImage</c> is 4.4 core, so a
+    /// driver without it is a refusal rather than a reason to hand back undefined contents.</summary>
+    public static uint KeepZeroed(uint tex, uint fmt, uint type)
     {
-        if (Gl.ClearTexImage == null) return false;
-        Gl.ClearTexImage(tex, 0, fmt, type, null);
-        return true;
+        if (Gl.ClearTexImage != null) { Gl.ClearTexImage(tex, 0, fmt, type, null); return tex; }
+        Gl.DeleteTextures(1, &tex);
+        return 0;
     }
 }

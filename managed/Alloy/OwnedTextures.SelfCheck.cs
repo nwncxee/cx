@@ -26,9 +26,7 @@ internal static unsafe partial class OwnedTextures
         var savedBorrowed = new HashSet<int>(_borrowed);
         int savedPending = _pending.Count;
         _res.Clear(); _index.Clear(); _owned.Clear(); _borrowed.Clear();
-        // The ledger the borrows below are counted in is this check's own, with every shape already "said" so
-        // a synthetic tid writes no session line.
-        BorrowState savedBorrow = _borrow;
+        BorrowState savedBorrow = _borrow;   // the check's own ledger, every shape pre-"said" so it writes no session line
         _borrow = new();
         Array.Fill(_borrow.Said, true);
 
@@ -39,8 +37,7 @@ internal static unsafe partial class OwnedTextures
 
         // Never uploaded through our funnel -> BORROWED, counted once per distinct name rather than per frame.
         ok &= Draw(11) == 11 && Draw(11) == 11 && Borrowed == 1;
-        // CX-339: and the shape it is counted under. 11 reached no funnel; 12 was declined for want of a
-        // context, which is the shape the one refresh exists to empty. Expected tallies are literals here.
+        // and the shape it is counted under: 11 reached no funnel, 12 was declined for want of a context
         Declined(12, Borrow.PreContext);
         ok &= Draw(12) == 12 && Draw(12) == 12 && Borrowed == 2
            && _borrow.Count[(int)Borrow.Funnel] == 1 && _borrow.Count[(int)Borrow.PreContext] == 1
@@ -142,9 +139,10 @@ internal static unsafe partial class OwnedTextures
         return ok;
     }
 
-    /// <summary>The engine's upload decisions, off-device. Oracle: the GL enums <c>GLRender::SetTextureParameters</c>
-    /// @0x4ca180 writes per branch and <c>SetTextureMipmapLevelParameters</c> @0x4c9c70's MAX_LEVEL, read off the
-    /// disassembly and written here as literals.</summary>
+    /// <summary>The engine's upload decisions, off-device. Oracle throughout: literals read off the disassembly --
+    /// the sampler enums <c>SetTextureParameters</c> @0x4ca180 writes, <c>SetTextureMipmapLevelParameters</c>
+    /// @0x4c9c70's MAX_LEVEL, the formats <c>CreateTexture</c> @0x4ca2b0 picks per bytes-per-texel (two channels
+    /// against table entry 9, GL_RGBA4), and <c>ImageConvert32to16bit</c> @0x4b7d50's nibble arithmetic.</summary>
     private static bool SelfCheckUpload(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -161,9 +159,6 @@ internal static unsafe partial class OwnedTextures
         check.Expect(EngineLevels(256, 256) == 9 && EngineLevels(512, 64) == 10 && EngineLevels(1, 1) == 1 && EngineLevels(3, 5) == 3,
                      $"levels: {EngineLevels(256, 256)} {EngineLevels(512, 64)} {EngineLevels(1, 1)} {EngineLevels(3, 5)}");
 
-        // CX-339: the storage/format/type triple per bytes-per-texel. Oracle: the GL enum values written as
-        // literals, and for two channels the engine's own format table entry 9 (GL_RGBA4), which is what
-        // ImageConvert32to16bit @0x4b7d50 stamps on the 4-bits-per-channel image it packs.
         bool got = RawFormat(4, out uint sz, out uint fm, out uint ty);
         check.Expect(got && sz == 0x8058 && fm == 0x1908 && ty == 0x1401, $"bpp 4: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
         got = RawFormat(3, out sz, out fm, out ty);
@@ -174,9 +169,6 @@ internal static unsafe partial class OwnedTextures
         check.Expect(got && sz == 0x8229 && fm == 0x1903 && ty == 0x1401, $"bpp 1: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
         check.Expect(!RawFormat(0, out _, out _, out _) && !RawFormat(5, out _, out _, out _), "no texel width but 1..4 uploads");
 
-        // The 4_4_4_4 read itself, hand-unpacked: the two bytes ImageConvert32to16bit writes for one RGBA8
-        // texel, back through GL's RGBA/UNSIGNED_SHORT_4_4_4_4 rule (R from the top nibble down). Oracle: the
-        // packing written out by hand from the disassembly, and the expected channels as literals.
         check.Expect(Pack4444(0x12, 0x34, 0x56, 0x78) == 0x1357 && Pack4444(0xff, 0x00, 0xff, 0x0f) == 0xF0F0,
                      $"pack: {Pack4444(0x12, 0x34, 0x56, 0x78):x4} {Pack4444(0xff, 0x00, 0xff, 0x0f):x4}");
         Unpack4444(0x1357, out int r, out int g, out int b, out int a);

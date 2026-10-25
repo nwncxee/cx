@@ -32,17 +32,19 @@ internal static unsafe partial class OwnedTextures
         FrameZones.Count(FrameZones.Ev.TexUpload);
     }
 
-    /// <summary>True when Alloy's cube stands in for the engine's; false (no context yet, not a basic texture, no
-    /// cell to name) leaves the upload to the caller.</summary>
+    /// <summary>True when Alloy's cube stands in for the engine's; false leaves the upload to the caller. A cube
+    /// tid reaches no <see cref="Draw"/> -- nothing in Alloy samples an engine cube -- so these are never borrowed
+    /// draws; the pre-context one is still recorded, because it is what owes <see cref="RefreshPreContext"/>.</summary>
     private static bool AdoptCube(IntPtr tex, int cell)
     {
-        if (!_armed || !AurTex.IsBasic(tex) || !GlContextService.Available) return false;
+        if (!_armed || !AurTex.IsBasic(tex)) return false;
         var b = new CAurTextureBasic(tex);
         uint* cells = (uint*)b.CellNames;
         int n = b.NumX * b.NumY;
         if (cells == null || cell < 0 || cell >= n || n > MaxCells) return false;
         int etid = (int)cells[cell];
         if (etid <= 0) return false;
+        if (!GlContextService.Available) { Declined(etid, Borrow.PreContext); return false; }
         FreshName((uint)etid);
 
         uint dst = UploadCube(tex, cell, out uint err);

@@ -250,18 +250,15 @@ internal static unsafe partial class OwnedTextures
         var b = new CAurTextureBasic(tex);
         uint* cells = (uint*)b.CellNames;
         int n = b.NumX * b.NumY;
-        // No cell array and no name in the cell leave the engine nothing to BIND either, so neither can reach a
-        // borrowed draw: the part samples the white stand-in instead.
-        if (cells == null || cell < 0 || cell >= n || n > MaxCells) return false;
+        if (cells == null || cell < 0 || cell >= n) return false;   // not a state the funnel can be in: see Borrow.Funnel
         int etid = (int)cells[cell];
         if (etid <= 0) return false;
+        if (n > MaxCells) { Declined(etid, Borrow.Grid); return false; }
         FreshName((uint)etid);
         // A cell already naming an owned texture is the engine re-uploading INTO our name (a Restore after a
         // warm hand-back, or a refresh): fresh storage under a new name, exactly as a re-upload always was.
 
-        // Before the first present there is no 4.6 context and no entry points; RefreshPreContext drives the
-        // engine's own refresh once the bracket exists, which brings these back through this funnel.
-        if (!GlContextService.Available)
+        if (!GlContextService.Available)   // no 4.6 context yet: RefreshPreContext brings these back through the funnel
         {
             Declined(etid, Borrow.PreContext);
             _borrowed.Add(etid);
@@ -269,28 +266,25 @@ internal static unsafe partial class OwnedTextures
         }
 
         ulong key = Key(tex, cell);
-        uint dst = UploadOwn(tex, cell, out uint err, out bool oversize);
-        // Every shape left here is one the engine's own upload fails on too (two channels GL refuses outright, a
-        // format its table cannot name, a driver refusal), so Alloy keeps it -- storage, no pixels -- the way the
-        // cube path does. Oversize is the exception: there the engine downsamples and Alloy declines to it.
-        bool empty = dst == 0 && single && !oversize;
+        uint dst = UploadOwn(tex, cell, out uint err, out Decline why);
+        bool empty = dst == 0 && single && why == Decline.EngineToo;   // Decline says who draws the cell
         if (empty) dst = UploadEmpty(tex);
         if (dst == 0)
         {
-            Declined(etid, oversize ? Borrow.Oversize : single ? Borrow.Driver : Borrow.StoodDown);
+            Declined(etid, why == Decline.Oversize ? Borrow.Oversize : single ? Borrow.Refused : Borrow.StoodDown);
             if (_diagLeft > 0)
             {
                 _diagLeft--;
                 _log?.Info($"OwnedTextures: tid {etid} {(single ? "left to the engine" : "borrowed")} -- "
-                         + (oversize ? $"level 0 is past GL_MAX_TEXTURE_SIZE ({MaxTexSize()}), which the engine's upload downsamples to fit"
+                         + (why == Decline.Oversize ? $"level 0 is past GL_MAX_TEXTURE_SIZE ({MaxTexSize()}), which the engine's upload downsamples to fit"
                             : err != 0 ? $"Alloy's upload gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
             }
             _borrowed.Add(etid);   // the engine's copy, which the caller builds on the single path, draws borrowed
             return false;
         }
         if (empty && ++_borrow.Empty <= EmptyDiag)
-            _log?.Always($"OwnedTextures: tid {etid} drawn EMPTY, as the engine's own upload of it fails -- "
-                       + (err != 0 ? $"the driver gave 0x{err:x}" : $"not a shape Alloy uploads ({TexScan.Describe(tex)})"));
+            _log?.Always($"OwnedTextures: tid {etid} drawn EMPTY -- the engine's own upload produces no pixels for it "
+                       + $"either ({TexScan.Describe(tex)})");
         long bytes = Measure(dst);
         // An image unpacked from a DDS was BCn already: a second encode would only lose more.
         bool wantBcn = _bcn && b.CompressedSize == 0 && tex != RasterReader.Unpacked;
