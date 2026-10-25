@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using CX.Framework;
 using CX.Rhi;
 using Vortice.ShaderCompiler;
@@ -9,25 +8,22 @@ using static Vortice.Vulkan.Vulkan;
 
 namespace CX.Graphics.Rhi;
 
-/// <summary>The seam on Vulkan 1.3, inside a GL frame: one instance, one device matched to GL's by UUID, one queue,
-/// no surface. Every image is an exported dedicated allocation the 4.6 context imports, so GL readers sample a
-/// Vulkan pass's output by GL name; a submit is fenced against GL by a shared semaphore pair. Made, used and dropped
-/// on the thread holding Alloy's context.</summary>
+/// <summary>The seam on Vulkan 1.3: one instance, one device matched to GL's by UUID, one queue, VMA, no surface. A
+/// pass's images are Vulkan's alone; the one thing GL sees is the composite the frame lands in
+/// (<see cref="CompositeBack"/>), which the engine's context presents. Made, used and dropped on the thread holding
+/// Alloy's context.</summary>
 internal sealed unsafe partial class VkBackend : IDevice
 {
-    /// <summary>One image and its GL import. <see cref="MirrorOf"/> is the GL texture a borrowed image copies at
-    /// each submit that samples it; <see cref="Layout"/> and <see cref="Acquired"/> track it inside one submit.</summary>
+    /// <summary>One image: a VMA allocation, or (<see cref="Ext"/> set) a composite image GL imports.
+    /// <see cref="Layout"/> is the layout the last recorded barrier left it in, across submits.</summary>
     private sealed class VkImg
     {
         public VkImage Image;
-        public VkDeviceMemory Memory;
+        public VmaAllocation Alloc;
         public VkImageView View;
-        public uint GlTex, GlMem;
         public ImageDesc Desc;
         public VkImageLayout Layout;
-        public bool Acquired, MirrorDepth;
-        public uint MirrorOf;
-        public long MirroredAt = -1;
+        public Exported? Ext;
     }
 
     private readonly record struct VkBuf(VkBuffer Buffer, VmaAllocation Alloc, BufferDesc Desc);
@@ -56,7 +52,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private static readonly VkVersion ApiFloor = VkVersion.Version_1_3;
     private const int LoggedFaults = 16;
     private const int Slots = 2;
-    /// <summary>Submits a freed object waits out: past the slot ring, and past the graveyard's hold on its GL texture.</summary>
+    /// <summary>Submits a freed object waits out: past the slot ring, and past the graveyard's hold on a composite's GL texture.</summary>
     private const int DeadAfter = GpuGraveyard.FramesInFlight * 2;
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
     private const uint SetsPerSubmit = 64;
@@ -78,9 +74,6 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly VkDescriptorSetLayout _setLayout;
     private readonly VkPipelineLayout _pipeLayout;
     private readonly VkSampler _nearest;
-    /// <summary>Vulkan signals <see cref="_vkDone"/> after its submit, GL <see cref="_glDone"/> before it; the GL names are the imports.</summary>
-    private readonly VkSemaphore _vkDone, _glDone;
-    private readonly uint _glVkDone, _glGlDone;
     private readonly VkPhysicalDeviceMemoryProperties _mem;
     private readonly bool _depthClamp;
 
@@ -89,11 +82,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly HandleTable<VkSampler> _samplers = new();
     private readonly HandleTable<VkShader> _shaders = new();
     private readonly HandleTable<VkPipe> _pipelines = new();
-    /// <summary>Every live image, and the GL names and hand-over layouts the semaphores carry, rebuilt cold.</summary>
-    private readonly List<VkImg> _shared = new();
-    private uint[] _glTex = [], _glLayouts = [];
-    private readonly List<(long At, uint GlMem, Action Free)> _dead = new();
-    private uint _depthCopy;
+    /// <summary>Deaths waiting out the frames in flight: the Vulkan half, and a composite's GL half run first.</summary>
+    private readonly List<(long At, Action Free, Action? Gl)> _dead = new();
     private long _submits;
     private int _faults;
 
@@ -257,9 +247,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         _pipeLayout = pl;
         _nearest = Sampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
 
-        (_vkDone, _glVkDone) = SharedSemaphore();
-        (_glDone, _glGlDone) = SharedSemaphore();
-
         VkPhysicalDeviceProperties props;
         _vki.vkGetPhysicalDeviceProperties(phys, &props);
         ref VkPhysicalDeviceLimits l = ref props.limits;
@@ -267,7 +254,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             (int)l.maxPerStageDescriptorSampledImages, (int)l.maxDescriptorSetSampledImages,
             (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,
             (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);
-        log.Always($"VkBackend: LIVE -- {Caps}; every image is a dedicated exported allocation GL imports");
+        log.Always($"VkBackend: LIVE -- {Caps}; the composite is the only image GL imports");
     }
 
     private VmaAllocator CreateAllocator(VkInstance inst)
@@ -415,95 +402,42 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (!OnThread("CreateImage")) return default;
         if (d.Kind != ImageKind.Tex2D || d.Samples > 1 || d.Mips > 1 || d.Layers > 1 || d.Fmt.IsDepth() || Of(d.Fmt) == VkFormat.Undefined)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} x{d.Samples} with {d.Mips} mips -- only single-mip 2D colour images are on the Vulkan backend yet");
-        VkImg? img = Shared(d, d.Use);
-        return img == null ? default : new ImageId(_images.Add(img));
-    }
-
-    /// <summary>A GL texture another owner made, mirrored into a shared image of its own format at every submit
-    /// that samples it (a depth texture into R32F, which GL's image copy cannot reach). Null id when the texture's
-    /// format has no shared twin.</summary>
-    internal ImageId Borrow(uint name, string label)
-    {
-        if (!OnThread("Borrow") || name == 0) return Refused<ImageId>($"borrowed image {label}: GL name {name}");
-        int fmt = 0, w = 0, h = 0;
-        Gl.GetTextureLevelParameteriv(name, 0, Gl.TEXTURE_INTERNAL_FORMAT, &fmt);
-        Gl.GetTextureLevelParameteriv(name, 0, Gl.TEXTURE_WIDTH, &w);
-        Gl.GetTextureLevelParameteriv(name, 0, Gl.TEXTURE_HEIGHT, &h);
-        bool depth = (uint)fmt == Gl.DEPTH_COMPONENT32F;
-        Format f = depth ? Format.R32F : GlFormats.FromInternal((uint)fmt);
-        if (f == Format.Unknown || Of(f) == VkFormat.Undefined)
-            return Refused<ImageId>($"borrowed image {label}: GL internal format 0x{fmt:x} has no shared twin");
-        if (depth && _depthCopy == 0 && (_depthCopy = GlInterop.DepthCopyProgram(_log)) == 0)
-            return Refused<ImageId>($"borrowed image {label}: the depth mirror program did not build (logged above)");
-        var d = new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1, ImageUse.Sampled, label + " (mirror)");
-        VkImg? img = Shared(d, ImageUse.Sampled | (depth ? ImageUse.Storage : ImageUse.CopyDst));
-        if (img == null) return default;
-        img.MirrorOf = name;
-        img.MirrorDepth = depth;
-        return new ImageId(_images.Add(img));
-    }
-
-    /// <summary>The GL name a direct-GL reader samples <paramref name="i"/> by; 0 when stale.</summary>
-    internal uint GlName(ImageId i) => _images.TryGet(i.Value, out VkImg g) ? g.GlTex : 0;
-
-    /// <summary>The image, its dedicated exported allocation and its GL import, timed: the per-resource interop cost.</summary>
-    private VkImg? Shared(in ImageDesc d, ImageUse use)
-    {
-        long t0 = Stopwatch.GetTimestamp();
-        VkFormat vf = Of(d.Fmt);
-        VkImageUsageFlags usage = VkImageUsageFlags.Sampled | VkImageUsageFlags.TransferSrc | VkImageUsageFlags.TransferDst;
-        if ((use & ImageUse.ColorTarget) != 0) usage |= VkImageUsageFlags.ColorAttachment;
-        if ((use & ImageUse.Storage) != 0) usage |= VkImageUsageFlags.Storage;
-        if (!Exportable(vf, usage)) { Fault($"image {d.Label}: {d.Fmt} cannot be exported with this usage"); return null; }
-
-        var ext = new VkExternalMemoryImageCreateInfo { handleTypes = MemHandle };
-        var ici = new VkImageCreateInfo
-        {
-            pNext = &ext, imageType = VkImageType.Image2D, format = vf,
-            extent = new VkExtent3D { width = (uint)d.W, height = (uint)d.H, depth = 1 },
-            mipLevels = 1, arrayLayers = 1, samples = VkSampleCountFlags.Count1, tiling = VkImageTiling.Optimal,
-            usage = usage, sharingMode = VkSharingMode.Exclusive, initialLayout = VkImageLayout.Undefined,
-        };
+        VkImageCreateInfo ici = ImageInfo(d, null);
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
         VkImage image;
-        if (_vkd.vkCreateImage(&ici, &image) != VkResult.Success) { Fault($"image {d.Label}: vkCreateImage refused"); return null; }
-        VkMemoryRequirements req;
-        _vkd.vkGetImageMemoryRequirements(image, &req);
-        int type = MemoryType(req.memoryTypeBits, VkMemoryPropertyFlags.DeviceLocal);
-        // dedicated on BOTH sides: without it NVIDIA imports clean and every texel reads black
-        var dedicated = new VkMemoryDedicatedAllocateInfo { image = image };
-        var export = new VkExportMemoryAllocateInfo { pNext = &dedicated, handleTypes = MemHandle };
-        var mai = new VkMemoryAllocateInfo { pNext = &export, allocationSize = req.size, memoryTypeIndex = (uint)type };
-        VkDeviceMemory memory;
-        if (type < 0 || _vkd.vkAllocateMemory(&mai, &memory) != VkResult.Success)
-        {
-            _vkd.vkDestroyImage(image);
-            Fault($"image {d.Label}: no exportable device-local memory for {req.size} bytes");
-            return null;
-        }
-        _vkd.vkBindImageMemory(image, memory, 0);
-        IntPtr handle = ExportMemory(memory);
-        uint glMem = 0;
-        uint tex = handle == IntPtr.Zero ? 0 : GlInterop.ImportTexture(handle, req.size, GlFormats.Of(d.Fmt).Internal, d.W, d.H, out glMem);
-        if (tex == 0)
-        {
-            _vkd.vkDestroyImage(image);
-            _vkd.vkFreeMemory(memory);
-            Fault($"image {d.Label}: GL refused the imported {d.Fmt} {d.W}x{d.H} allocation");
-            return null;
-        }
+        VmaAllocation a;
+        if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
+            return Refused<ImageId>($"image {d.Label}: VMA refused {d.Fmt} {d.W}x{d.H}");
+        return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, ici.format), Desc = d }));
+    }
+
+    /// <summary>A 2D single-mip image of <paramref name="d"/>'s format, size and use, optimally tiled.</summary>
+    private static VkImageCreateInfo ImageInfo(in ImageDesc d, void* next) => new()
+    {
+        pNext = next, imageType = VkImageType.Image2D, format = Of(d.Fmt),
+        extent = new VkExtent3D { width = (uint)d.W, height = (uint)d.H, depth = 1 },
+        mipLevels = 1, arrayLayers = 1, samples = VkSampleCountFlags.Count1, tiling = VkImageTiling.Optimal,
+        usage = Usage(d.Use), sharingMode = VkSharingMode.Exclusive, initialLayout = VkImageLayout.Undefined,
+    };
+
+    private static VkImageUsageFlags Usage(ImageUse use)
+    {
+        VkImageUsageFlags u = VkImageUsageFlags.Sampled | VkImageUsageFlags.TransferSrc | VkImageUsageFlags.TransferDst;
+        if ((use & ImageUse.ColorTarget) != 0) u |= VkImageUsageFlags.ColorAttachment;
+        if ((use & ImageUse.Storage) != 0) u |= VkImageUsageFlags.Storage;
+        return u;
+    }
+
+    private VkImageView View(VkImage image, VkFormat f)
+    {
         var vci = new VkImageViewCreateInfo
         {
-            image = image, viewType = VkImageViewType.Image2D, format = vf,
+            image = image, viewType = VkImageViewType.Image2D, format = f,
             subresourceRange = new VkImageSubresourceRange { aspectMask = VkImageAspectFlags.Color, levelCount = 1, layerCount = 1 },
         };
         VkImageView view;
         _vkd.vkCreateImageView(&vci, &view);
-        var img = new VkImg { Image = image, Memory = memory, View = view, GlTex = tex, GlMem = glMem, Desc = d };
-        _shared.Add(img);
-        Republish();
-        _log.Info($"VkBackend: shared image '{d.Label}' {d.W}x{d.H} {d.Fmt}, {req.size} bytes -- create + export + import "
-                + $"{Stopwatch.GetElapsedTime(t0).TotalMilliseconds:F3} ms");
-        return img;
+        return view;
     }
 
     private bool Exportable(VkFormat f, VkImageUsageFlags usage)
@@ -537,14 +471,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         for (int i = 0; i < _mem.memoryTypeCount; i++)
             if ((bits & (1u << i)) != 0 && (_mem.memoryTypes[i].propertyFlags & want) == want) return i;
         return -1;
-    }
-
-    /// <summary>The GL names and layouts the semaphores hand over, after the shared set changed.</summary>
-    private void Republish()
-    {
-        _glTex = new uint[_shared.Count];
-        _glLayouts = new uint[_shared.Count];
-        for (int i = 0; i < _shared.Count; i++) { _glTex[i] = _shared[i].GlTex; _glLayouts[i] = GlInterop.LAYOUT_SHADER_READ_ONLY_EXT; }
     }
 
     public SamplerId CreateSampler(in SamplerDesc d) => OnThread("CreateSampler") ? new SamplerId(_samplers.Add(Sampler(d))) : default;
@@ -603,15 +529,25 @@ internal sealed unsafe partial class VkBackend : IDevice
     public void Destroy(ImageId i)
     {
         if (!OnThread("Destroy") || !_images.Remove(i.Value, out VkImg g)) return;
-        _shared.Remove(g);
-        Republish();
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, g.GlTex);
-        Later(() =>
+        if (g.Ext != null) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, g.Ext.GlTex);
+        Exported? e = g.Ext;
+        Later(() => Free(g), e == null ? null : () =>
         {
-            _vkd.vkDestroyImageView(g.View);
-            _vkd.vkDestroyImage(g.Image);
-            _vkd.vkFreeMemory(g.Memory);
-        }, g.GlMem);
+            GlInterop.DeleteMemory(e.GlMem);
+            GlInterop.DeleteSemaphore(e.GlVkDone);
+            GlInterop.DeleteSemaphore(e.GlGlDone);
+        });
+    }
+
+    /// <summary>The Vulkan half of an image: its view, the image and its memory, and a composite's semaphores.</summary>
+    private void Free(VkImg g)
+    {
+        _vkd.vkDestroyImageView(g.View);
+        if (g.Ext == null) { Vma.vmaDestroyImage(_vma, g.Image, g.Alloc); return; }
+        _vkd.vkDestroyImage(g.Image);
+        _vkd.vkFreeMemory(g.Ext.Memory);
+        _vkd.vkDestroySemaphore(g.Ext.VkDone);
+        _vkd.vkDestroySemaphore(g.Ext.GlDone);
     }
 
     public void Destroy(SamplerId s)
@@ -630,36 +566,33 @@ internal sealed unsafe partial class VkBackend : IDevice
     }
 
     /// <summary>Free once no submit in flight and no retired GL texture can still reach it. Cold: a resize or a rebuild.</summary>
-    private void Later(Action free, uint glMem = 0) => _dead.Add((_submits, glMem, free));
+    private void Later(Action free, Action? gl = null) => _dead.Add((_submits, free, gl));
 
     private void DrainDead()
     {
         for (int i = _dead.Count - 1; i >= 0; i--)
             if (_submits - _dead[i].At >= DeadAfter)
             {
-                GlInterop.DeleteMemory(_dead[i].GlMem);
+                _dead[i].Gl?.Invoke();
                 _dead[i].Free();
                 _dead.RemoveAt(i);
             }
     }
 
     /// <summary>Context loss or shutdown: wait the queue out and free every Vulkan object. The GL imports went with
-    /// the context, so nothing GL is deleted here.</summary>
+    /// the context, so a death queued for a composite runs its Vulkan half only.</summary>
     internal void Dispose()
     {
         _vkd.vkDeviceWaitIdle();
         foreach (var d in _dead) d.Free();
         _dead.Clear();
-        foreach (VkImg g in _shared) { _vkd.vkDestroyImageView(g.View); _vkd.vkDestroyImage(g.Image); _vkd.vkFreeMemory(g.Memory); }
-        _shared.Clear();
+        foreach (VkImg g in _images.Live()) Free(g);
         foreach (VkBuf b in _buffers.Live()) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);
         foreach (VkShader v in _shaders.Live()) _vkd.vkDestroyShaderModule(v.Module);
         foreach (VkPipe v in _pipelines.Live()) _vkd.vkDestroyPipeline(v.Pipeline);
         foreach (Slot s in _slots) { _vkd.vkDestroyFence(s.Fence); _vkd.vkDestroyDescriptorPool(s.Pool); }
         _vkd.vkDestroyCommandPool(_cmdPool);
-        _vkd.vkDestroySemaphore(_vkDone);
-        _vkd.vkDestroySemaphore(_glDone);
         _vkd.vkDestroySampler(_nearest);
         _vkd.vkDestroyPipelineLayout(_pipeLayout);
         _vkd.vkDestroyDescriptorSetLayout(_setLayout);

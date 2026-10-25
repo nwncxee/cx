@@ -370,6 +370,8 @@ public sealed unsafe partial class AlloyRenderer
         int* display = stackalloc int[4];
         int* viewport = stackalloc int[4];
         if (!BeginOwnedFrame(display, viewport, out OwnedFrame f)) return;
+        bool onVulkan = Renderer.OnVulkan;
+        if (onVulkan) VulkanFrame.Run(_log);
         Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;
@@ -387,7 +389,7 @@ public sealed unsafe partial class AlloyRenderer
         bool motionRan = false;
         foreach ((PassId id, Bracket bracket) in FrameGraph.Passes)
         {
-            if (bracket != Bracket.Colour) continue;
+            if (bracket != Bracket.Colour || onVulkan) continue;
             Step(PassName(id));
             long tId = FrameZones.Now;
             long kid0 = PassChildTicks;

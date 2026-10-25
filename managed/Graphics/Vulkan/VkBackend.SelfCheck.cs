@@ -12,12 +12,13 @@ internal sealed unsafe partial class VkBackend
     /// <summary>SPIR-V's OpDecorate and its Binding decoration, transcribed from the specification's tables.</summary>
     private const uint OpDecorate = 71, DecorationBinding = 33;
 
-    /// <summary>The pilot's stages as the backend compiles them, proven off-device where shaderc loads. Oracles: shaderc's
-    /// own acceptance of the translated text; the binding numbers read back out of the SPIR-V by the specification's
-    /// opcodes, against hand-written expectations (sampler N at N, GL's uniform block 3 at 16 + 3); the format tokens
-    /// vulkan_core.h and glcorearb.h assign, written by hand.</summary>
+    /// <summary>The composite hand-over and the pilot's stages, proven off-device where shaderc loads. Oracles: a
+    /// hand-written semaphore schedule for the hand-over; shaderc's acceptance of the translated text; SPIR-V binding
+    /// numbers read by the specification's opcodes against hand-written ones; the format tokens vulkan_core.h and
+    /// glcorearb.h assign, written by hand.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
+        HandoverSchedule(log);
         var check = new Checker(log);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
@@ -42,6 +43,22 @@ internal sealed unsafe partial class VkBackend
         Stage(check, "cx_ssaoblur_fs", ShaderKind.FragmentShader, [0, 1, 19]);
         Stage(check, "cx_ssaotemp_f", ShaderKind.FragmentShader, [0, 1, 2, 3, 19]);
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
+    }
+
+    /// <summary>One composite image over a fresh session, a frame, a flip and a second take: GL signals once per take
+    /// that Vulkan waits on, never twice before a wait, and never on an image Vulkan already holds a release for.</summary>
+    private static void HandoverSchedule(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        var h = new Handover();
+        check.Expect(h.Take(), "a fresh image is GL's: the first take has GL signal its release first");
+        h.Returned();
+        check.Expect(h.Flip(), "the frame after: the image leaves the screen and GL releases it");
+        check.Expect(!h.Flip(), "a second flip of a released image signals nothing -- a binary semaphore takes one signal per wait");
+        check.Expect(!h.Take(), "the take after a flip waits on that release and has GL signal nothing more");
+        h.Returned();
+        check.Expect(h.Take(), "a take with GL holding the image again (a second submit, no flip) has GL signal first");
+        log.Info(check.Ok ? "VkBackend.HandoverSchedule: passed" : "VkBackend.HandoverSchedule: FAILED");
     }
 
     private static void Stage(Checker check, string name, ShaderKind kind, uint[] bindings)
