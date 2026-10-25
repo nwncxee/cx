@@ -53,6 +53,7 @@ internal sealed unsafe partial class VkBackend
         public readonly Stack<uint> Free = new();
         public readonly List<(long At, uint Index)> Dying = new();
         public uint Next = 1;
+        public VkImageView Zero;
     }
 
     private readonly BindlessState _bindless = new();
@@ -376,18 +377,46 @@ internal sealed unsafe partial class VkBackend
         VkSampler sampler = _nearest;
         if (!s.IsNull && !_samplers.TryGet(s.Value, out sampler)) return Refused<BindlessHandle>("Bindless: stale sampler");
         BindlessState t = _bindless;
-        for (int k = t.Dying.Count - 1; k >= 0; k--)
-            if (_submits - t.Dying[k].At >= DeadAfter) { t.Free.Push(t.Dying[k].Index); t.Dying.RemoveAt(k); }
         uint index = t.Free.Count > 0 ? t.Free.Pop() : t.Next < _bindlessCap ? t.Next++ : 0;
         if (index == 0) return Refused<BindlessHandle>($"Bindless: all {_bindlessCap} descriptors are in use");
-        var info = new VkDescriptorImageInfo { sampler = sampler, imageView = img.View, imageLayout = VkImageLayout.ShaderReadOnlyOptimal };
+        WriteBindless(index, img.View, sampler);
+        return new BindlessHandle(index);
+    }
+
+    private void WriteBindless(uint index, VkImageView view, VkSampler sampler)
+    {
+        var info = new VkDescriptorImageInfo { sampler = sampler, imageView = view, imageLayout = VkImageLayout.ShaderReadOnlyOptimal };
         var w = new VkWriteDescriptorSet
         {
             dstSet = _bindlessSet, dstBinding = 0, dstArrayElement = index, descriptorCount = 1,
             descriptorType = VkDescriptorType.CombinedImageSampler, pImageInfo = &info,
         };
         _vkd.vkUpdateDescriptorSets(1, &w, 0, null);
-        return new BindlessHandle(index);
+    }
+
+    /// <summary>Index 0's texel: a stage reading a handle nobody filled reads it rather than an unwritten descriptor,
+    /// which faults the device. Made with the device, uploaded at its first submit.</summary>
+    private void MakeBindlessZero()
+    {
+        ImageId zero = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 1, 1, 1, 1, 1, 1, ImageUse.Sampled, "bindless zero"));
+        if (!_images.TryGet(zero.Value, out VkImg img)) throw new InvalidOperationException("the bindless zero texel was refused");
+        Upload(zero, 0, 0, stackalloc byte[4]);
+        _bindless.Zero = img.View;
+        WriteBindless(0, img.View, _nearest);
+    }
+
+    /// <summary>Indices released at least the frames in flight ago go back to the free list, each pointed at the zero
+    /// texel first: its image may be gone, and a record that still names it must read something. At a submit's head.</summary>
+    private void RecycleBindless()
+    {
+        BindlessState t = _bindless;
+        for (int k = t.Dying.Count - 1; k >= 0; k--)
+            if (_submits - t.Dying[k].At >= DeadAfter)
+            {
+                WriteBindless(t.Dying[k].Index, t.Zero, _nearest);
+                t.Free.Push(t.Dying[k].Index);
+                t.Dying.RemoveAt(k);
+            }
     }
 
     /// <summary>Give <paramref name="h"/>'s index back once no submit in flight can still index it.</summary>

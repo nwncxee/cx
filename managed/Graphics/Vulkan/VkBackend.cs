@@ -301,6 +301,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         Check(_vkd.vkCreatePipelineLayout(&plci, &pl), "vkCreatePipelineLayout");
         _pipeLayout = pl;
         _nearest = Sampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
+        MakeBindlessZero();
         Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments, 1,
             (int)l.maxPerStageDescriptorSampledImages, (int)l.maxDescriptorSetSampledImages,
             (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,

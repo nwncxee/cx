@@ -37,8 +37,11 @@ internal sealed unsafe partial class VkBackend
         if (!OnThread("Submit")) return false;
         Slot s = _slots[_submits % Slots];
         VkFence fence = s.Fence;
-        if (_vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs) != VkResult.Success)
-            return Fault("the previous submit on this slot never finished");
+        VkResult waited = _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs);
+        if (waited != VkResult.Success)
+            return Fault(waited == VkResult.ErrorDeviceLost
+                ? "the device was LOST running the previous submit on this slot -- a GPU fault in a recorded pass"
+                : $"the previous submit on this slot never finished ({waited}) -- a semaphore never signalled, or the GPU is stuck");
         _vkd.vkResetDescriptorPool(s.Pool, 0);
         s.StageUsed = 0;
         _vkd.vkResetCommandBuffer(s.Cmd, 0);
@@ -47,6 +50,7 @@ internal sealed unsafe partial class VkBackend
         _cmd = s.Cmd;
         _slot = s;
         _inPass = _rendering = false;
+        RecycleBindless();
         BindBindless();
         FlushUploads();
 
