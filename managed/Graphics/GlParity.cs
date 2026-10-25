@@ -77,4 +77,14 @@ internal static unsafe class GlParity
         Gl.UnmapNamedBuffer(_s.Read);
         return sum;
     }
+
+    /// <summary><paramref name="tex"/>'s minifying filter and maximum anisotropy, as GL holds them now.</summary>
+    internal static (int Min, int Aniso) TexParams(uint tex)
+    {
+        int min = 0, aniso = 0;
+        if (Gl.GetTextureParameteriv == null) return (0, 0);
+        Gl.GetTextureParameteriv(tex, Gl.TEXTURE_MIN_FILTER, &min);
+        Gl.GetTextureParameteriv(tex, Gl.TEXTURE_MAX_ANISOTROPY, &aniso);
+        return (min, aniso);
+    }
 }

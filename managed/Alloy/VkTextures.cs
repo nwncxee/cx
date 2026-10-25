@@ -151,6 +151,25 @@ internal static class VkTextures
                                 + (_s.Refused == RefusalLines ? "; further refusals are only counted" : ""));
     }
 
+    /// <summary>Every mirrored name's Vulkan sampler against GL's live texture state: how many disagree on the mip
+    /// filter or the anisotropy, with the first few named. The A/B's line; it reads every texture's state.</summary>
+    internal static string SamplerParity()
+    {
+        int n = 0, mip = 0, aniso = 0;
+        var seen = new System.Text.StringBuilder();
+        foreach ((uint gl, Entry e) in _s.ByName)
+        {
+            n++;
+            (int min, int a) = GlParity.TexParams(gl);
+            MipMode m = Sampler(min, (int)Gl.LINEAR, (int)Gl.REPEAT, (int)Gl.REPEAT, false).Mip;
+            bool mOff = m != e.Sampler.Mip, aOff = Math.Max(a, 1) != (int)e.Sampler.Aniso;
+            if (mOff) mip++;
+            if (aOff) aniso++;
+            if ((mOff || aOff) && mip + aniso <= 4) seen.Append($" [{gl}: GL min 0x{min:x} aniso {a}, Vulkan {e.Sampler.Mip} aniso {e.Sampler.Aniso}]");
+        }
+        return $"samplers: {n} mirrored, {mip} differ on the mip filter, {aniso} on anisotropy (Aniso() {TexRegistry.Aniso()}){seen}";
+    }
+
     /// <summary>The engine's sampler state (GL enums, <c>OwnedTextures.EngineSampler</c>) as the seam's.</summary>
     internal static SamplerDesc Sampler(int min, int mag, int wrapS, int wrapT, bool aniso)
     {
