@@ -29,7 +29,11 @@ public static unsafe partial class VulkanToolchain
 
     /// <summary>Where each kind of GL binding point lands in the one descriptor set: GL numbers samplers, uniform
     /// blocks, storage blocks and images apart, Vulkan in one space, so each kind is shifted past the last.</summary>
-    internal const uint SampledBase = 0, UniformBase = 16, StorageBase = 32, ImageBase = 48;
+    internal const uint SampledBase = 0, UniformBase = 48, StorageBase = 64, ImageBase = 80;
+
+    /// <summary>The second descriptor set: one variable-length array of 2D samplers a bindless handle indexes
+    /// (<c>VkBackend.Bindless</c>). Set 0 is the per-bind set the binding bases above lay out.</summary>
+    internal const uint BindlessSet = 1;
 
     /// <summary>GLSL to a SPIR-V module through the staged shaderc, for the Vulkan 1.3 environment -- which
     /// the specification pins to SPIR-V 1.6 -- with GL's binding spaces shifted apart (<see cref="UniformBase"/>)

@@ -22,7 +22,7 @@ internal sealed unsafe partial class VkBackend
         }
         if (!_shaders.TryGet(d.Vs.Value, out VkShader vs) || !_shaders.TryGet(d.Fs.Value, out VkShader fs))
             return Refused<PipelineId>($"{what}: a graphics pipeline needs a live vertex and fragment stage");
-        if (d.Layout != VertexLayout.None) return Refused<PipelineId>($"{what}: vertex layout {d.Layout} is not on the Vulkan backend yet");
+        if (!d.Layout.IsNull) return Refused<PipelineId>($"{what}: vertex layouts are not on the Vulkan backend yet");
         if (d.Raster.DepthClamp && !_depthClamp) return Refused<PipelineId>($"{what}: this device has no depth clamp");
 
         VkPipelineShaderStageCreateInfo* stages = stackalloc VkPipelineShaderStageCreateInfo[3];

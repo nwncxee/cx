@@ -62,7 +62,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
     private const uint SetsPerSubmit = 64;
     /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.</summary>
-    private const uint SampledSlots = 16, UniformSlots = 12, StorageSlots = 16, ImageSlots = 8;
+    private const uint SampledSlots = 48, UniformSlots = 12, StorageSlots = 16, ImageSlots = 8;
     private const ulong FenceTimeoutNs = 2_000_000_000;
 
     private readonly ExtenderLog _log;

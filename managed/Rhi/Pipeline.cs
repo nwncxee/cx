@@ -4,11 +4,36 @@ using System.Runtime.CompilerServices;
 
 namespace CX.Rhi;
 
-/// <summary>Vertex input. ponytail: only the attribute-less layout (full-screen triangles, vertex pulling);
-/// the mesh arena's four layouts join when a mesh pass moves onto the seam.</summary>
-public enum VertexLayout : byte { None }
+/// <summary>One vertex attribute's component type, as the shader reads it: a normalized type arrives scaled
+/// into -1..1 or 0..1, the others at face value.</summary>
+public enum VertexType : byte
+{
+    Float,
+    /// <summary>Four bytes at face value -- 0.0..255.0, not 0..1.</summary>
+    U8,
+    U8Norm,
+    /// <summary>Four lanes in one 32-bit word, normalized to -1..1: a packed tangent.</summary>
+    Packed1010102Norm,
+}
 
-/// <summary>Primitive assembly.</summary>
+/// <summary>One attribute of a vertex layout: the shader location it feeds, how many components of which type,
+/// and its byte offset inside the stream's element.</summary>
+public readonly record struct VertexAttrib(uint Location, int Components, VertexType Type, int Offset);
+
+/// <summary>A vertex input layout to resolve once: one interleaved stream of <see cref="Stride"/> bytes per vertex.
+/// Cold: the array is read at creation and kept, never walked in a frame.</summary>
+public readonly record struct VertexLayoutDesc(VertexAttrib[] Attribs, int Stride, string Label);
+
+/// <summary>The per-draw constant block's limits. 128 bytes is Vulkan's guaranteed push-constant size, so anything
+/// larger belongs in a buffer the draw indexes.</summary>
+public static class PushConstants
+{
+    /// <summary>Bytes a pass may push. A write past it is refused.</summary>
+    public const int Bytes = 128;
+}
+
+/// <summary>Primitive assembly. Every arena mesh is a triangle list; the engine's other primitive modes reach only
+/// the engine's own draws.</summary>
 public enum Topology : byte { Triangles, TriangleStrip }
 
 /// <summary>Which faces are culled.</summary>
@@ -21,8 +46,9 @@ public readonly record struct RasterState(CullMode Cull = CullMode.None, bool Fr
 /// <summary>Depth test and write. ponytail: no stencil; no Alloy pass uses it.</summary>
 public readonly record struct DepthState(bool Test = false, bool Write = false, CompareOp Compare = CompareOp.LessEqual);
 
-/// <summary>A blend factor.</summary>
-public enum BlendFactor : byte { Zero, One, SrcAlpha, OneMinusSrcAlpha, OneMinusSrcColor }
+/// <summary>A blend factor: the set the engine's own blend-mode table resolves to, plus the inverse source colour
+/// the order-free transparency pass reveals with.</summary>
+public enum BlendFactor : byte { Zero, One, SrcAlpha, OneMinusSrcAlpha, SrcColor, OneMinusSrcColor, DstColor, OneMinusDstAlpha }
 
 /// <summary>A blend equation, shared by colour and alpha.</summary>
 public enum BlendOp : byte { Add, Min }
@@ -64,7 +90,8 @@ public struct AttachmentFormats
 public struct PipelineDesc
 {
     public ShaderId Vs, Gs, Fs, Cs;
-    public VertexLayout Layout;
+    /// <summary>The vertex input the draws read; the null id is attribute-less.</summary>
+    public VertexLayoutId Layout;
     public Topology Topo;
     public RasterState Raster;
     public DepthState Depth;
