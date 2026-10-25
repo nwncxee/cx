@@ -14,7 +14,9 @@ PROTON="${PROTON:-$HOME/.steam/root/steamapps/common/Proton - Experimental/proto
 # proton" tested a stale DLL and cost a whole diagnosis. ~20s when nothing changed; CX_NO_BUILD=1 to
 # run exactly what is staged (bisecting, or a zip someone sent you).
 [ -n "$CX_NO_BUILD" ] || ./build-win.sh
-cp cx-windows-x64/version.dll cx-windows-x64/cx_openal.dll cx-windows-x64/phonon.dll "$GAME/"
+# Every DLL the build staged, not a hand-kept list: the install shape is "unpack the zip here", and a
+# runtime library the proxy loads that this script forgot is the same stale-DLL diagnosis all over again.
+cp cx-windows-x64/*.dll "$GAME/"
 PFX="$PWD/build/proton-pfx"; mkdir -p "$PFX"
 # The engine picks "Neverwinter Nights.0" (its .N instance suffix) under Proton, so seed the cfg in both.
 DOCS="$PFX/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights"

@@ -76,9 +76,21 @@ public static unsafe partial class VulkanToolchain
         check.Expect(why.Length > 0, "a refusal carries shaderc's own diagnostic");
     }
 
+    /// <summary>The results the specification lets vkCreateInstance return for a request with no layers and
+    /// no extensions that the machine cannot satisfy: no driver, a stale or half-installed one, or no memory
+    /// to hold the instance. Host state, never our code, so the check skips on each of them.</summary>
+    private static readonly VkResult[] NoUsableDriver =
+    [
+        VkResult.ErrorIncompatibleDriver,
+        VkResult.ErrorInitializationFailed,
+        VkResult.ErrorOutOfHostMemory,
+        VkResult.ErrorOutOfDeviceMemory,
+    ];
+
     /// <summary>Oracle: Vulkan's own contract -- a loader that initializes reports an instance version, and
-    /// a create with no layers and no extensions either succeeds with a live handle or says the machine has
-    /// no driver. Skips where there is no loader or no ICD, which is every headless CI runner.</summary>
+    /// a create with no layers and no extensions either succeeds with a live handle or returns one of the
+    /// results the specification reserves for a machine with no usable driver. No loader, no ICD and each of
+    /// those results skip rather than fail, so a headless runner and a stale driver both stay green.</summary>
     private static void CheckInstance(Checker check, ExtenderLog log)
     {
         VkResult init;
@@ -97,9 +109,9 @@ public static unsafe partial class VulkanToolchain
             var app = new VkApplicationInfo { apiVersion = VkVersion.Version_1_0 };
             var create = new VkInstanceCreateInfo { pApplicationInfo = &app };
             VkResult made = vkCreateInstance(&create, null, out VkInstance instance);
-            if (made == VkResult.ErrorIncompatibleDriver)
+            if (Array.IndexOf(NoUsableDriver, made) >= 0)
             {
-                check.Skip("this machine has a Vulkan loader but no driver behind it");
+                check.Skip($"this machine has a Vulkan loader but no usable driver behind it ({made})");
                 return;
             }
             check.Expect(made == VkResult.Success, $"a layerless, extensionless instance is created ({made})");
