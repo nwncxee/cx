@@ -61,6 +61,7 @@ internal static class VulkanFrame
             return;
         }
         AlloyRenderer.VkParityRead(vk);
+        AlloyRenderer.VkFrameTap(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
         if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)
             log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (cull, prepass, hi-Z, G-buffer, opaque, cutout, blended)");

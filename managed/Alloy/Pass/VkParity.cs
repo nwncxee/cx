@@ -309,8 +309,17 @@ internal static unsafe class VkParity
         return vk.Submit(cl) && vk.ReadBack(s.Out, MemoryMarshal.AsBytes(words.AsSpan()));
     }
 
+    /// <summary>One Vulkan image read back as words through the copy stages, for a caller outside the A/B (the frame
+    /// tap): <paramref name="words"/> per texel, as floats or as unsigned integers. Null (logged) when refused.</summary>
+    internal static uint[]? Read(VkBackend vk, ImageId img, int words, bool uint_, int w, int h)
+    {
+        if (!Ensure(vk)) return null;
+        PipelineId pipe = uint_ ? words == 1 ? _s.Uint1 : _s.Uint4 : words == 1 ? _s.Float1 : _s.Float2;
+        return Copy(vk, img, pipe, words, w, h, out uint[] read) ? read : null;
+    }
+
     /// <summary>Colour as a float RGB <c>.pfm</c>, whose rows run bottom-up as GL's and Vulkan's both do here.</summary>
-    private static void WriteColour(string path, uint[] colour, int w, int h)
+    internal static void WriteColour(string path, uint[] colour, int w, int h)
     {
         using var f = File.Create(path);
         byte[] hdr = System.Text.Encoding.ASCII.GetBytes($"PF\n{w} {h}\n-1.0\n");

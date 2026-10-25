@@ -459,6 +459,13 @@ public sealed unsafe partial class AlloyRenderer
         VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, s.W, s.H);
     }
 
+    /// <summary>A snap frame's Vulkan half, after the frame's submit: the finished scene colour beside the set.</summary>
+    internal static void VkFrameTap(VkBackend vk)
+    {
+        VkColourState s = _vkc;
+        FrameTap.TakeVk(vk, s.Hdr, s.W, s.H);
+    }
+
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
     /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none.</summary>
     private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
