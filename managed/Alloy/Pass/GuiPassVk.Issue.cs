@@ -38,10 +38,15 @@ internal static unsafe partial class GuiPassVk
         GuiVkState s = _s;
         long rec = (long)GuiCapture.DrawN * GuiCapture.RecFloats * sizeof(float);
         long bones = (long)GuiCapture.SkinN * GuiCapture.BoneFloats * sizeof(float);
+        // the whole-word lengths the uploads below write, not the staged counts: a recorded update is words
         return Grow(vk, ref s.Recs, ref s.RecCap, Math.Max(rec + bones, 64), BufferUse.Storage, "vk gui records", log)
-            && Grow(vk, ref s.Vtx, ref s.VtxCap, Math.Max(GuiCapture.VtxN, 64), BufferUse.Vertex, "vk gui stream vertices", log)
-            && Grow(vk, ref s.Idx, ref s.IdxCap, Math.Max(GuiCapture.IdxN * 2L, 64), BufferUse.Index, "vk gui stream indices", log);
+            && Grow(vk, ref s.Vtx, ref s.VtxCap, Math.Max(VtxBytes, 64), BufferUse.Vertex, "vk gui stream vertices", log)
+            && Grow(vk, ref s.Idx, ref s.IdxCap, Math.Max(IdxBytes, 64), BufferUse.Index, "vk gui stream indices", log);
     }
+
+    /// <summary>The stream vertex and index bytes this flush uploads, each rounded up to a whole word.</summary>
+    private static int VtxBytes => (GuiCapture.VtxN + 3) & ~3;
+    private static int IdxBytes => ((GuiCapture.IdxN + 1) & ~1) * sizeof(ushort);
 
     /// <summary>This flush's staged bytes into the buffers, recorded ahead of every pass that reads them.</summary>
     private static void Uploads(CommandList cl)
@@ -51,8 +56,8 @@ internal static unsafe partial class GuiPassVk
         int bones = GuiCapture.SkinN * GuiCapture.BoneFloats * sizeof(float);
         if (rec > 0) cl.UpdateBuffer(s.Recs, 0, MemoryMarshal.AsBytes(GuiCapture.Records.AsSpan(0, GuiCapture.DrawN)));
         if (bones > 0) cl.UpdateBuffer(s.Recs, rec, MemoryMarshal.AsBytes(GuiCapture.Bones.AsSpan(0, GuiCapture.SkinN)));
-        if (GuiCapture.VtxN > 0) cl.UpdateBuffer(s.Vtx, 0, GuiCapture.Vtx.AsSpan(0, (GuiCapture.VtxN + 3) & ~3));
-        if (GuiCapture.IdxN > 0) cl.UpdateBuffer(s.Idx, 0, MemoryMarshal.AsBytes(GuiCapture.Idx.AsSpan(0, (GuiCapture.IdxN + 1) & ~1)));
+        if (GuiCapture.VtxN > 0) cl.UpdateBuffer(s.Vtx, 0, GuiCapture.Vtx.AsSpan(0, VtxBytes));
+        if (GuiCapture.IdxN > 0) cl.UpdateBuffer(s.Idx, 0, MemoryMarshal.AsBytes(GuiCapture.Idx.AsSpan(0, IdxBytes / sizeof(ushort))));
     }
 
     private static bool Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, BufferUse use, string label, ExtenderLog log)
@@ -60,7 +65,7 @@ internal static unsafe partial class GuiPassVk
         if (!id.IsNull && bytes <= cap) return true;
         vk.Destroy(id);
         cap = Math.Max(bytes, cap * 2);
-        id = vk.CreateBuffer(new BufferDesc(cap, use | BufferUse.CopyDst, MemoryKind.Device, label));
+        id = vk.CreateBuffer(new BufferDesc(cap, use, MemoryKind.Device, label));
         if (!id.IsNull) return true;
         cap = 0;
         log.Always($"GuiPassVk: {label} at {bytes} bytes was REFUSED (logged above) -- this frame's GUI is NOT DRAWN");
@@ -105,6 +110,7 @@ internal static unsafe partial class GuiPassVk
                 {
                     solve = 0;
                     Open(cl, ref pass, ref b, v.Colour, v.Depth, last.W, last.H, true, true, Background(curTarget));
+                    v.Drawn = true;
                     Resolve(cl, ref pass, ref b, v, last.W, last.H, curTarget, log);
                     curTarget = uint.MaxValue;
                     if (li >= to) break;
@@ -130,7 +136,11 @@ internal static unsafe partial class GuiPassVk
                         solve = 1; runStart = li - 1;
                         Open(cl, ref pass, ref b, v.Black, v.Depth, l.W, l.H, true, true, Zero);
                     }
-                    else Open(cl, ref pass, ref b, v.Colour, v.Depth, l.W, l.H, true, true, Background(curTarget));
+                    else
+                    {
+                        Open(cl, ref pass, ref b, v.Colour, v.Depth, l.W, l.H, true, true, Background(curTarget));
+                        v.Drawn = true;
+                    }
                 }
                 else Open(cl, ref pass, ref b, screen, s.Depth, PresentTarget.Width, PresentTarget.Height, false, false);
                 reopen = false;
@@ -180,6 +190,24 @@ internal static unsafe partial class GuiPassVk
         s.ClearDepth = clearDepth;
         s.ClearColour = clearColour;
         s.Clear = clear;
+        MoveViews(s, colour);
+    }
+
+    /// <summary>Every model view this flush has drawn into, named in a bind set at the head of the pass. A sampled
+    /// image moves into its read layout where it is bound, and the backend can only move one before the pass's first
+    /// draw -- so the panel that shows a doll need not be that first draw. The set is replaced by the first real
+    /// bind; this one exists for the move.</summary>
+    private static void MoveViews(GuiVkState s, ImageId colour)
+    {
+        Span<ImageBinding> move = stackalloc ImageBinding[NuiModelDoll.MaxViews];
+        int n = 0;
+        foreach (View v in s.Views)
+        {
+            if (!v.Drawn || v.Colour == colour || v.Colour.IsNull) continue;
+            move[n] = new ImageBinding((uint)n, v.Colour, s.Linear);
+            n++;
+        }
+        if (n > 0) s.Side!.BindSet(0, new BindSet(default, default, move[..n], default));
     }
 
     /// <summary>The open pass: the arena bytes its binds gathered, uploaded ahead of it, then the pass and its draws.

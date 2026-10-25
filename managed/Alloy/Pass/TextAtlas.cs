@@ -91,6 +91,14 @@ internal static unsafe partial class TextAtlas
                 _log?.Always("TextAtlas: the DSA texture entry points never resolved -- CX fonts do NOT DRAW");
             return false;
         }
+        // Asked before the GL name exists: a flush on Vulkan samples the mirror, and the entry stays pending (with
+        // its pixels) until the device is up, so there is no GL name to leak per retry.
+        if (!MirrorReady())
+        {
+            if (++p.Waited == GiveUpFrames)
+                _log?.Always("TextAtlas: the Vulkan device never came up on this thread -- CX fonts do NOT DRAW");
+            return false;
+        }
         uint t;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
         if (t == 0) return false;

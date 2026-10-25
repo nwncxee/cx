@@ -31,6 +31,11 @@ internal static unsafe partial class TextAtlas
     /// <summary>The sampler every mirrored atlas is read through; null id before the first mirror.</summary>
     internal static SamplerId VkSampler => _vk.Nearest;
 
+    /// <summary>Can an atlas be mirrored right now? True off Vulkan, where there is nothing to mirror; on it, once
+    /// the device exists and this is the thread it belongs to.</summary>
+    private static bool MirrorReady()
+        => !Renderer.OnVulkan || (_log != null && AlloyDevice.Vulkan(_log) is VkBackend vk && vk.OnOwnThread);
+
     /// <summary>Mirror <paramref name="p"/>'s pixels, already uploaded to GL name <paramref name="gl"/>, as a Vulkan
     /// image under that name. A refusal is logged and counted by <see cref="VkTextures"/>: the glyphs then draw
     /// through the GUI pass's stand-in rather than blank.</summary>

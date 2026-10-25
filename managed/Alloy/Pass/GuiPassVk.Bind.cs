@@ -116,7 +116,7 @@ internal static unsafe partial class GuiPassVk
     /// per-draw state.</summary>
     private static PipelineId Pipeline(GuiVkProg p, VertexLayoutId layout, int blend, Topology topo, ExtenderLog log)
     {
-        long key = layout.Value | (long)blend << 24 | (long)topo << 36;
+        long key = layout.Value | (long)blend << 32 | (long)topo << 40;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         var d = new PipelineDesc
         {

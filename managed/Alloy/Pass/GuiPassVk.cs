@@ -24,6 +24,9 @@ internal static unsafe partial class GuiPassVk
         public uint Tex;
         public int W, H;
         public ImageId Colour, Depth, Black, White;
+        /// <summary>A pass of this flush has written the colour image, so a later pass that may sample it moves it
+        /// into its read layout at its head.</summary>
+        public bool Drawn;
     }
 
     /// <summary>Everything the device owns, in one object: a new device replaces it whole.</summary>
@@ -118,9 +121,11 @@ internal static unsafe partial class GuiPassVk
         GuiVkState s = _s;
         s.ArenaUsed = 0;
         s.GuiBlockAt = -1;
+        foreach (View v in s.Views) v.Drawn = false;
         s.Into = into;
         s.Black = clearBlack;
-        s.ClearOwed = clearBlack || GuiPass.TakeFrameClear();
+        // the latch is taken whichever way it falls: on the A/B the GL half must not clear again, over black
+        s.ClearOwed = GuiPass.TakeFrameClear() || clearBlack;
         if (!Stage(vk, log)) return false;
         bool ok = Run(vk, from, mid, true, log);
         if (windows) GuiPass.WindowsOn(CX.Ui.UiLayer.BelowNui, PresentTarget.Fbo46);
