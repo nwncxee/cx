@@ -171,6 +171,7 @@ internal static unsafe class VkParity
             WriteMask(Path.Combine(FrameTap.Dir, $"{set}_diff.ppm"), mask, w, h);
         }
         catch (IOException e) { s.Log.Always($"[vkab] the images were not written -- {e.Message}"); }
+        catch (UnauthorizedAccessException e) { s.Log.Always($"[vkab] the images were not written -- {e.Message}"); }
         s.Log.Always($"[vkab] {set} {w}x{h}: {Report(n)}; images {FrameTap.Dir}/{set}_{{gl,vk}}.pfm and _diff.ppm "
                    + "(red = drawn on one side only, orange = depth, yellow = G-buffer, blue = colour)");
         s.Vk = null;
