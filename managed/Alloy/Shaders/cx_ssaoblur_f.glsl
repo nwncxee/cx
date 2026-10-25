@@ -1,7 +1,7 @@
 #version 460 core
 in vec2 vUV;
 out float frag;
-uniform sampler2D uSrc;      // the raw visibility
+layout(binding = 1) uniform sampler2D uSrc;      // the raw visibility
 #include "cx_ssaolib.glsl"
 void main()
 {

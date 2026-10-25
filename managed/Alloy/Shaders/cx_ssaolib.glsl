@@ -1,6 +1,6 @@
 // Shared by both stages: view-space reconstruction off the frame depth and the pass's own
 // projection -- the same two coefficients the particle fade linearises with, so nothing can drift.
-uniform sampler2D uDepth;    // the frame depth after the prepass
+layout(binding = 0) uniform sampler2D uDepth;    // the frame depth after the prepass
 // CX-316: every non-opaque term all three stages take, one std140 block filled once per pass by SsaoBlock.
 // A stage reads the members it needs and ignores the rest; the layout is the same for all of them.
 layout(std140, binding = 3) uniform CxSsao

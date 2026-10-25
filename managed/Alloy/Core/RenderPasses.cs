@@ -337,6 +337,13 @@ internal static class RenderPasses
             Revoke = CasterPass.SkyAreaEdge,
             Stats = _ => SkyView.Stats(),
         }, log);
+        // Not a pass: the render seam's device every migrated pass records against. Registered ahead of them so
+        // a lost context drops it before any of them rebuilds.
+        r.Register(new PassLifecycle
+        {
+            Name = "rhi",
+            ContextLost = AlloyDevice.Forget,
+        }, log);
         r.Register(new PassLifecycle
         {
             Name = "ao",

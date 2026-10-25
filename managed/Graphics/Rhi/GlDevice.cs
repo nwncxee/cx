@@ -10,7 +10,8 @@ namespace CX.Graphics.Rhi;
 internal sealed unsafe partial class GlDevice : IDevice
 {
     private readonly record struct GlBuffer(uint Name, BufferDesc Desc);
-    private readonly record struct GlImage(uint Name, uint Target, ImageDesc Desc);
+    /// <summary><see cref="Borrowed"/>: a name another owner made and frees; <see cref="Destroy(ImageId)"/> only drops the id.</summary>
+    private readonly record struct GlImage(uint Name, uint Target, ImageDesc Desc, bool Borrowed = false);
     private readonly record struct GlPipeline(uint Program, PipelineDesc Desc);
 
     /// <summary>Refusals logged in full before the rest are only counted, so a stale handle drawn every frame
@@ -122,6 +123,18 @@ internal sealed unsafe partial class GlDevice : IDevice
         return new ImageId(_images.Add(new GlImage(t, target, d)));
     }
 
+    /// <summary>A 2D texture a direct-GL owner made, under an id a recorded pass can bind: the bridge from a migrated
+    /// pass to an unmigrated one's output. The device never frees it; a null id when <paramref name="name"/> is 0.</summary>
+    internal ImageId Borrow(uint name, string label)
+    {
+        if (!OnThread("Borrow") || name == 0) return Refused<ImageId>($"borrowed image {label}: GL name {name}");
+        var d = new ImageDesc(ImageKind.Tex2D, Format.Unknown, 0, 0, 1, 1, 1, 1, ImageUse.Sampled, label);
+        return new ImageId(_images.Add(new GlImage(name, Gl.TEXTURE_2D, d, Borrowed: true)));
+    }
+
+    /// <summary>The GL name behind <paramref name="i"/>, for a direct-GL reader of a migrated pass's output; 0 when stale.</summary>
+    internal uint Name(ImageId i) => _images.TryGet(i.Value, out GlImage g) ? g.Name : 0;
+
     public SamplerId CreateSampler(in SamplerDesc d)
     {
         if (!OnThread("CreateSampler")) return default;
@@ -185,7 +198,7 @@ internal sealed unsafe partial class GlDevice : IDevice
     {
         if (!OnThread("Destroy") || !_images.Remove(i.Value, out GlImage g)) return;
         Evict(i);   // the framebuffers go ahead of it, so neither outlives the other's name
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, g.Name);
+        if (!g.Borrowed) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, g.Name);
     }
 
     public void Destroy(SamplerId s)

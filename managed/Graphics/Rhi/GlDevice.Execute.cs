@@ -26,8 +26,8 @@ internal sealed unsafe partial class GlDevice
     private FboEntry[] _fbos = new FboEntry[16];
     private int _fboCount;
 
-    /// <summary>Units this render pass bound a sampler object on, one bit each, unbound at its end.</summary>
-    private ulong _samplerUnits;
+    /// <summary>Units this render pass bound a texture or a sampler object on, one bit each, unbound at its end.</summary>
+    private ulong _textureUnits, _samplerUnits;
 
     private uint _topo = Gl.TRIANGLES, _indexType = Gl.UNSIGNED_SHORT;
     private long _indexOffset;
@@ -109,12 +109,16 @@ internal sealed unsafe partial class GlDevice
         return true;
     }
 
-    /// <summary>Hand the context back clean for the direct-GL passes still around a migrated one: no sampler object
-    /// left on a unit they sample through texture parameters, no scissor, no blend.</summary>
+    /// <summary>Hand the context back clean for the direct-GL passes still around a migrated one: no texture left on
+    /// a unit (a target they render into must not stay sampled), no sampler object on a unit they sample through
+    /// texture parameters, no vertex array, no scissor, no blend.</summary>
     private bool End()
     {
+        for (uint unit = 0; _textureUnits != 0; unit++, _textureUnits >>= 1)
+            if ((_textureUnits & 1) != 0) Gl.BindTextureUnit(unit, 0);
         for (uint unit = 0; _samplerUnits != 0; unit++, _samplerUnits >>= 1)
             if ((_samplerUnits & 1) != 0) Gl.BindSampler(unit, 0);
+        Gl.BindVertexArray(0);
         Gl.Disable(Gl.SCISSOR_TEST);
         Gl.Disable(Gl.BLEND);
         return true;
@@ -248,6 +252,7 @@ internal sealed unsafe partial class GlDevice
             // ponytail: a slot is its texture unit; the backend's own unit assignment lands with the first pass that needs more.
             Gl.BindTextureUnit(s.Slot, img.Name);
             Gl.BindSampler(s.Slot, smp);
+            _textureUnits |= 1ul << (int)s.Slot;
             if (smp != 0) _samplerUnits |= 1ul << (int)s.Slot;
         }
         foreach (ImageBinding s in images)

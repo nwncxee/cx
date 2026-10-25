@@ -42,7 +42,6 @@
 11 managed/Alloy/Pass/SkyStage.cs
 6 managed/Alloy/Pass/SkyView.cs
 8 managed/Alloy/Pass/SmaaStage.cs
-7 managed/Alloy/Pass/SsaoPass.cs
 15 managed/Alloy/Pass/Ssr.cs
 8 managed/Alloy/Pass/StageEnv.cs
 2 managed/Alloy/Pass/StageResources.Gl.cs

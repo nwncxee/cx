@@ -55,6 +55,9 @@ internal static class Renderer
     /// ENGINE's context on the game thread (<c>CX.Alloy.Db.RenderThread</c>'s remarks) are an ordering
     /// question the harness has to answer, not a correctness one the build can.</summary>
     internal static readonly Knob<bool> RenderThread;
+    /// <summary>A pass on the render seam submits each command as it records it, instead of its whole list at the
+    /// end: the same GL calls in the same order either way, so the A/B measures recording, not output.</summary>
+    internal static readonly Knob<bool> RhiImmediate;
     /// <summary>Arm <see cref="CX.Alloy.Db.HitProbe"/>, the live hit-test instrument.</summary>
     internal static readonly Knob<bool> HitCheck;
 
@@ -178,6 +181,7 @@ internal static class Renderer
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
         GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
         RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
+        RhiImmediate = G.Toggle("rhiimmediate", "rhiimmediate", true, Tier.ChatOnly);
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a
         // toggle because the first pass of a session is before the camera is placed, and the settled frame is
         // the one worth comparing between the two scene layers.
