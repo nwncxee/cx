@@ -108,13 +108,20 @@ internal static unsafe class GuiPass
     private static bool _frameColour;
     private static int _seqAtFrame;
 
+    /// <summary>Does this flush owe the engine's swallowed frame clear -- the first flush of a frame no world frame
+    /// covered (the menus)? Asked once per frame: the second ask is false whoever made the first.</summary>
+    internal static bool TakeFrameClear()
+    {
+        if (_frameColour) return false;
+        _frameColour = true;
+        return ScreenOwner.Owned && PostChain.ResolveSeq == _seqAtFrame;
+    }
+
     /// <summary>The engine's swallowed frame clear, done here -- once, at the first flush of a frame that no world
     /// frame covered (the menus), in the engine's own clear colour. Unscissored, like <c>Update</c>'s <c>Clear(3)</c>.</summary>
     private static void FrameClear()
     {
-        if (_frameColour) return;
-        _frameColour = true;
-        if (!ScreenOwner.Owned || PostChain.ResolveSeq != _seqAtFrame) return;
+        if (!TakeFrameClear()) return;
         Gl.Disable(Gl.SCISSOR_TEST);
         fixed (float* c = ScreenOwner.ClearRgba) Gl.ClearBufferfv(Gl.COLOR, 0, c);
         Gl.DepthMask(1);
@@ -206,6 +213,8 @@ internal static unsafe class GuiPass
         // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
         CX.Services.Nui.NuiModelView.Pump();
+        if (Renderer.OnVulkan && !GuiParity.Active) return VulkanFlush(from, mid, to, windows);
+        if (Renderer.OnVulkan) GuiParity.DrawVulkan(from, mid, to, _log);
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
@@ -223,12 +232,26 @@ internal static unsafe class GuiPass
         Gl.Disable(Gl.CULL_FACE);
         Gl.Enable(Gl.DEPTH_TEST);
         Gl.DepthMask(1);
+        GuiParity.ReadGlAndReport(_log);   // the A/B's GL half: the composite, in the context it was imported into
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         if (gpuTimed) CX.Services.Perf.FrameProbe.GpuEnd();
         GlContextService.Leave();
         PresentTarget.HandBack();
         _flushes++;
         if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush, none reached the engine's GL"); }
+        return true;
+    }
+
+    /// <summary>The flush under <c>alloy.backend vk</c>: <see cref="GuiPassVk"/> records and submits it, and this
+    /// closes the bracket and hands the composite back as the GL path does.</summary>
+    private static bool VulkanFlush(int from, int mid, int to, bool windows)
+    {
+        bool ok = _log != null && GuiPassVk.Flush(from, mid, to, windows, _log);
+        GlContextService.Leave();
+        PresentTarget.HandBack();
+        if (!ok) return false;
+        _flushes++;
+        if (!_live) { _live = true; _log?.Info($"GuiPass: LIVE on Vulkan -- {GuiCapture.LayerN} GUI scene(s), {GuiCapture.DrawN} draw(s) this flush"); }
         return true;
     }
 
@@ -254,7 +277,11 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>One layer of CX's recorded windows over the whole screen: display space, after the world's composite,
-    /// so no tonemap or TAA history touches it.</summary>
+    /// so no tonemap or TAA history touches it. The replay is GL's on either backend, which is why the Vulkan flush
+    /// calls it between its own submits -- the composite image is GL's again after each.</summary>
+    internal static void WindowsOn(CX.Ui.UiLayer layer, uint baseFbo) => Windows(layer, baseFbo);
+
+    /// <inheritdoc cref="WindowsOn"/>
     private static void Windows(CX.Ui.UiLayer layer, uint baseFbo)
     {
         CX.Ui.UiDrawList l = CX.Ui.UiHostService.Windows(layer);
@@ -496,7 +523,7 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>The GUI program's vertex-colour location (<c>cx_gui_v.glsl</c>); nothing else in Alloy binds it.</summary>
-    private const uint LocColor = 3;
+    internal const uint LocColor = 3;
 
     private static void Attr(uint vao, uint loc, int size, uint type, byte norm, int offset)
     {
@@ -558,6 +585,7 @@ internal static unsafe class GuiPass
         UiScene.ContextLost();
         TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
         GuiModelSolve.ContextLost();
+        GuiPassVk.ContextLost();   // the Vulkan device went with the context, and every image and program on it
         _gl = new GuiGlState();
     }
 

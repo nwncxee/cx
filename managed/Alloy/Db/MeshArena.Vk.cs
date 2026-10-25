@@ -26,6 +26,14 @@ public static unsafe partial class MeshArena
     /// <summary>Vulkan's index buffer, shared by every format; null before its first pump.</summary>
     internal static BufferId VkEbo => _vk.Ebo;
 
+    /// <summary>The layout range <paramref name="range"/> lives in, from the published box rather than the range
+    /// table, so a caller inside a frame reads it without the lock. <see cref="Fmt.Static"/> for no such range.</summary>
+    internal static Fmt PubFormat(int range)
+    {
+        Pub?[] pub = _pub;
+        return (uint)range < (uint)pub.Length && pub[range] is { } r ? r.Format : Fmt.Static;
+    }
+
     /// <summary>The vertex layout of format <paramref name="f"/> as the arena's VAOs bind it. Every location any
     /// arena stage declares is fed in every format, because Vulkan has no constant attribute: a format without
     /// bones feeds 8 and 9 from its position (read only behind a bone base, which such a mesh never has), and one

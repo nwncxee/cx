@@ -163,10 +163,12 @@ public static unsafe partial class MeshArena
         internal readonly bool Live;
         /// <summary>The tenant's identity: <see cref="Sig"/> of its content and hand-out generation.</summary>
         internal readonly ulong Sig;
+        /// <summary>The vertex layout the range lives in, for a caller that binds buffers rather than the VAO.</summary>
+        internal readonly Fmt Format;
 
         internal Pub(in Range r, uint vao)
         {
-            Vao = vao; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen);
+            Vao = vao; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen); Format = r.Format;
             Cnt0 = r.Cnt0; Cnt1 = r.Cnt1; Cnt2 = r.Cnt2;
             Off0 = r.Off0; Off1 = r.Off1; Off2 = r.Off2;
             BMin = r.BMin; BMax = r.BMax; Center = r.Center; Radius = r.Radius;

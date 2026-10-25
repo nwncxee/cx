@@ -54,6 +54,8 @@ internal sealed unsafe partial class VkBackend
         _cmd = s.Cmd;
         _slot = s;
         _inPass = _rendering = false;
+        _viewport = default;
+        ResetDepthRange();
         TimeBegin(slot);
         RecycleBindless();
         BindBindless();
@@ -130,6 +132,7 @@ internal sealed unsafe partial class VkBackend
                 Op.SetViewport => Viewport(r.Read<Rect>()),
                 Op.SetScissor => Scissor(r.Read<Rect>()),
                 Op.SetDepthBias => DepthBias(r.Read<DepthBiasCmd>()),
+                Op.SetDepthRange => DepthRange(r.Read<DepthRangeCmd>()),
                 Op.BindSet => BindSet(r.Read<BindSetCmd>(), ref r),
                 Op.BindIndexBuffer => IndexBuffer(r.Read<IndexBufferCmd>()),
                 Op.Draw => Draw(r.Read<DrawCmd>()),
@@ -162,6 +165,7 @@ internal sealed unsafe partial class VkBackend
         _pendDepth = h.Depth;
         _inPass = true;
         _scissorSet = false;
+        ResetDepthRange();
         return true;
     }
 
@@ -315,11 +319,8 @@ internal sealed unsafe partial class VkBackend
 
     private bool Viewport(Rect v)
     {
-        // same numbers as GL's: both put framebuffer row 0 at y 0 and NDC -1 on it, so an imported image
-        // reads back the same way up in either API
-        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = 0, maxDepth = 1 };
-        _vkd.vkCmdSetViewport(_cmd, 0, 1, &vp);
-        return true;
+        _viewport = v;
+        return SetViewport();
     }
 
     private bool Scissor(Rect s)

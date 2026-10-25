@@ -11,7 +11,7 @@ namespace CX.Alloy;
 /// <summary>A GUI part whose <c>.mtr</c> names a content program (<c>customShaderVS</c> + <c>customShaderFS</c>) --
 /// how a server's load screen resizes its art and moves its bar. The pair is interned to a key the recipe keeps,
 /// built on its first draw in the 4.6 context the way the engine builds it, and fed the engine's uniforms per draw.</summary>
-internal static unsafe class GuiContent
+internal static unsafe partial class GuiContent
 {
     private sealed class KeyState
     {
@@ -39,7 +39,7 @@ internal static unsafe class GuiContent
         ("vTcIn3", AlloyRenderer.LocUvSet1 + 2),
     };
     /// <summary>A location no arena format enables, so an attribute bound there reads the GL default.</summary>
-    private const uint UnusedLoc = 6;
+    internal const uint UnusedLoc = 6;
 
     /// <summary><c>LightManager::m_nMaxLights</c>' static default. ponytail: the options can change it; a GUI program
     /// lights nothing, so it only sizes arrays nobody fills. Read the live value if a lit GUI shader ever shows up.</summary>
@@ -80,41 +80,59 @@ internal static unsafe class GuiContent
     /// built, said once loudly -- and in both the parts draw through Alloy's own GUI program.</summary>
     internal static Prog? Build(int key, ExtenderLog? log)
     {
+        if (!Texts(key, log, out string v, out string f)) return null;
+        uint id = GlProgram.Content(v, f, Attribs, log, What(key));
+        if (id == 0)
+        {
+            log?.Always($"{What(key)}: the content program did not build (the line above says why) -- these GUI parts "
+                      + "draw WITHOUT their content shader");
+            return null;
+        }
+        log?.Info($"{What(key)}: built -- GUI parts on this material run the content's own stages");
+        return Locs(id);
+    }
+
+    /// <summary>Key <paramref name="key"/>'s pair, as a log line names it.</summary>
+    internal static string What(int key) { (string vs, string fs) = Pair(key); return $"GuiContent {vs}/{fs}"; }
+
+    /// <summary>Key <paramref name="key"/>'s two stages as the engine compiles them: its prologue over the <c>.shd</c>
+    /// text the resource chain answers with. False (said once, as the build says it) for the two reasons a key gets no
+    /// program of its own -- the pair IS the stock one, or a half is not in the chain.</summary>
+    internal static bool Texts(int key, ExtenderLog? log, out string vsText, out string fsText)
+    {
+        vsText = fsText = "";
         (string vs, string fs) = Pair(key);
-        string what = $"GuiContent {vs}/{fs}";
+        string what = What(key);
         // The verdict is over each half's OWN text, which is why it is asked before the includes are resolved.
         if (ContentPrograms.StockPair(vs, fs, VanillaShader.ChainText(vs), VanillaShader.ChainText(fs)))
         {
             log?.Info($"{what}: adds nothing to the stock pair -- Alloy's own GUI program is its shading");
-            return null;
+            return false;
         }
         string? v = VanillaShader.ContentStage(vs, log, what), f = VanillaShader.ContentStage(fs, log, what);
         if (v == null || f == null)
         {
             log?.Always($"{what}: {(v == null ? vs : fs)}.shd is not in the resource chain (or alloy.vanillabridge=0) -- "
                       + "these GUI parts draw WITHOUT their content shader");
-            return null;
+            return false;
         }
         RiGetGlobalShaderParamiFn gp = EngineFn.RiGetGlobalShaderParami;
         int P(uint i) => gp == null ? 0 : gp(i);
         string pre(bool frag, string src) => Prologue(frag, frag && src.Contains("gl_FragColor", StringComparison.Ordinal),
                                                       P(0), P(1), P(7), P(8), P(10), P(2));
-        uint id = GlProgram.Content(pre(false, v) + v, pre(true, f) + f, Attribs, log, what);
-        if (id == 0)
-        {
-            log?.Always($"{what}: the content program did not build (the line above says why) -- these GUI parts draw "
-                      + "WITHOUT their content shader");
-            return null;
-        }
-        log?.Info($"{what}: built -- GUI parts on this material run the content's own stages");
-        return new Prog
-        {
-            Id = id,
-            Mvp = GlProgram.Loc(id, "m_mvp"), Mv = GlProgram.Loc(id, "m_mv"), Texture = GlProgram.Loc(id, "m_texture"),
-            Color = GlProgram.Loc(id, "globalColor"), Screen = GlProgram.Loc(id, "screenParams"),
-            Unit0 = GlProgram.Loc(id, "texUnit0"),
-        };
+        vsText = pre(false, v) + v;
+        fsText = pre(true, f) + f;
+        return true;
     }
+
+    /// <summary>The engine terms a built program declares, under GL program name -- or shim name -- <paramref name="id"/>.</summary>
+    internal static Prog Locs(uint id) => new()
+    {
+        Id = id,
+        Mvp = GlProgram.Loc(id, "m_mvp"), Mv = GlProgram.Loc(id, "m_mv"), Texture = GlProgram.Loc(id, "m_texture"),
+        Color = GlProgram.Loc(id, "globalColor"), Screen = GlProgram.Loc(id, "screenParams"),
+        Unit0 = GlProgram.Loc(id, "texUnit0"),
+    };
 
     private static (string, string) Pair(int key)
     {

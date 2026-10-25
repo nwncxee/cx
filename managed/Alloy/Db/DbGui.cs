@@ -353,7 +353,7 @@ internal static unsafe class DbGui
                 // itself -- the solid red cloak the native Examine panel showed (user-shots/22.png).
                 PltRows = !plt ? null : SceneDb.PartPltOwn[p] ? SceneDb.PartPltRow : SceneDb.ObjPltRow,
                 PltAt = plt && SceneDb.PartPltOwn[p] ? p * SceneDb.PltLayers : o * SceneDb.PltLayers,
-                Vao = vao, Prim = Gl.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
+                Vao = vao, ArenaFmt = (int)MeshArena.PubFormat(range), Prim = Gl.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
                 Tex = (int)tex, Bones = bones, Content = DrawRecipe.Content(recipe),
                 Mvp = world * viewProj,
                 Mv = world * v.View,

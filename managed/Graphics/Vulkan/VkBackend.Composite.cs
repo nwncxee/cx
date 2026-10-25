@@ -53,6 +53,14 @@ internal sealed unsafe partial class VkBackend : CX.Alloy.PresentTarget.ISource
     /// <summary>The image this frame renders into. Null id before the present target sized the pair.</summary>
     internal ImageId CompositeBack => _composite[_front ^ 1];
 
+    /// <summary>The image the engine presents -- what the world frame flipped to, and what the GUI draws over.
+    /// Null id before the present target sized the pair.</summary>
+    internal ImageId CompositeFront => _composite[_front];
+
+    /// <summary>Is the caller on the thread this device belongs to? A caller outside the frame's draw asks before
+    /// recording, rather than taking a refusal per call.</summary>
+    internal bool OnOwnThread => Environment.CurrentManagedThreadId == _thread;
+
     /// <summary>Both composite images at <paramref name="w"/> x <paramref name="h"/>, RGBA8 to match the GL
     /// source: returns the front's GL name, 0 when either refused. The old pair dies after the frames in flight.</summary>
     public uint Resize(uint tex, int w, int h)

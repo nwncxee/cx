@@ -88,6 +88,7 @@ internal static unsafe class VkParity
         _s.Armed = Renderer.OnVulkan;
         _s.Log?.Always(Renderer.OnVulkan ? $"[vkab] armed -- the next frame draws on both renderers; {FrameTap.Dir}/{_s.Seq}_vkab_*"
                                          : "[vkab] REFUSED -- the A/B compares the Vulkan frame, and alloy.backend is not vk");
+        GuiParity.Arm(_s.Log, _s.Seq);
     }
 
     /// <summary>At the frame's head: an armed A/B becomes this frame's, once.</summary>
@@ -131,6 +132,14 @@ internal static unsafe class VkParity
         }
         s.Vk = l; s.W = w; s.H = h;
         return true;
+    }
+
+    /// <summary>One colour image read back as two half pairs a texel, through this A/B's own copy stage -- the GUI's
+    /// sibling A/B shares it rather than building a second. False (logged) when the device refused a step.</summary>
+    internal static bool ReadColour(VkBackend vk, ImageId img, int w, int h, out uint[] words)
+    {
+        words = [];
+        return Ensure(vk) && Copy(vk, img, _s.Float2, ColourWords, w, h, out words);
     }
 
     /// <summary>GL's targets after its A/B passes, then the comparison: logged, with GL's and Vulkan's colour and the diff

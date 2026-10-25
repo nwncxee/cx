@@ -29,6 +29,11 @@ internal static unsafe class GuiModelSolve
     /// <summary>Does the run of layers drawing into one model texture, starting at <paramref name="first"/>, need the two-pass solve?
     /// <paramref name="end"/> is the layer after the run (or <paramref name="to"/>).</summary>
     internal static bool Wanted(int first, int to, NuiModelDoll.ModelSlot? slot, out int end)
+        => Wanted(first, to, slot, true, out end);
+
+    /// <inheritdoc cref="Wanted(int, int, NuiModelDoll.ModelSlot?, out int)"/>
+    /// <param name="glProgram">Ask whether the GL solve is built; a caller on another backend has its own.</param>
+    internal static bool Wanted(int first, int to, NuiModelDoll.ModelSlot? slot, bool glProgram, out int end)
     {
         uint target = GuiCapture.Layers[first].Target;
         end = first;
@@ -43,7 +48,7 @@ internal static unsafe class GuiModelSolve
         if (slot == null) return false;
         float* c = stackalloc float[4];
         BackgroundOf(slot, c);
-        return additive && c[3] < 1f && Ready();
+        return additive && c[3] < 1f && (!glProgram || Ready());
     }
 
     /// <summary>Writes the slot's background colour into <paramref name="c"/> (4 floats), or leaves it as it was for no slot.</summary>

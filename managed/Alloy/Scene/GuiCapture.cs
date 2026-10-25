@@ -32,6 +32,9 @@ internal static unsafe class GuiCapture
         /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes the
         /// one the flush builds for <see cref="Format"/>.</summary>
         public uint RawVao;
+        /// <summary>With <see cref="RawVao"/>: the mesh arena layout that VAO binds, which is what a backend
+        /// with no vertex arrays needs. Meaningless for a stream draw.</summary>
+        public int ArenaFmt;
         /// <summary>The content program this draw runs (<see cref="GuiContent.Key"/>); 0 = Alloy's GUI program.</summary>
         public int Content;
     }
@@ -137,7 +140,7 @@ internal static unsafe class GuiCapture
             n = hi - lo + 1;
             if (IdxN + count > IdxMax) { Overflow("indices"); return false; }
         }
-        d.RawVao = 0;   // Draws[] is reused across frames: a stale arena VAO here would rebind the wrong buffers
+        d.RawVao = 0; d.ArenaFmt = 0;   // Draws[] is reused across frames: a stale arena VAO here would rebind the wrong buffers
         d.Content = 0;
         int at = (VtxN + stride - 1) / stride * stride;
         long bytes = (long)n * stride;
@@ -191,6 +194,8 @@ internal static unsafe class GuiCapture
     {
         /// <summary>The mesh arena's VAO for this range's format, and the three integers that address the run.</summary>
         public uint Vao, Prim, Src, Dst;
+        /// <summary>The arena layout <see cref="Vao"/> binds (<c>MeshArena.Fmt</c>), for a backend with no vertex arrays.</summary>
+        public int ArenaFmt;
         public int Count, BaseVertex, Tex;
         /// <summary>The DB bone slot whose 64-matrix palette poses this draw; -1 = rigid.</summary>
         public int Bones;
@@ -225,7 +230,7 @@ internal static unsafe class GuiCapture
         if (p.Count <= 0 || p.Vao == 0 || LayerN == 0 || !Room()) return;
         ref Draw d = ref Draws[DrawN];
         d.Stream = false; d.Indexed = true; d.Stride = 0; d.Format = 0;
-        d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
+        d.RawVao = p.Vao; d.ArenaFmt = p.ArenaFmt; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
         ref GuiRec rec = ref Records[DrawN];

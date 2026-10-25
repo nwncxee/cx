@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// <c>RGBA8</c> storage with NEAREST and no mips, which is the engine's own sampling with a sized format.
 /// Lives on the submission side because <c>Alloy/Scene</c> and <c>Alloy/Db</c> name no GL. A BITMAP font's
 /// atlas is an ordinary resref-keyed texture and has no handle here yet: counted and said, never drawn blank.</summary>
-internal static unsafe class TextAtlas
+internal static unsafe partial class TextAtlas
 {
     private static ExtenderLog? _log;
     /// <summary>One registry reference per bitmap-font texture, held for the session like the font itself.</summary>
@@ -74,6 +74,7 @@ internal static unsafe class TextAtlas
         {
             if (orphans[i] == 0) continue;
             GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, orphans[i]);
+            Forget(orphans[i]);
             Deleted++;
         }
         orphans.Clear();
@@ -101,6 +102,7 @@ internal static unsafe class TextAtlas
         Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_S, (int)Gl.CLAMP_TO_EDGE);
         Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_T, (int)Gl.CLAMP_TO_EDGE);
         p.Font.Atlas = t;
+        MirrorVk(t, p);
         Marshal.FreeHGlobal(p.Pixels);
         p.Pixels = IntPtr.Zero;
         Uploaded++;
@@ -117,5 +119,6 @@ internal static unsafe class TextAtlas
         TextFontBake.Pending.Clear();
         TextFonts.Clear(orphanAtlases: false);   // the names died with the context; deleting them is a dead use
         TextFonts.Orphans.Clear();
+        _vk = new VkAtlasState();   // the Vulkan device went with the context, and every mirror with it
     }
 }

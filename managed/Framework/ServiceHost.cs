@@ -91,6 +91,8 @@ public static class ServiceHost
         CX.Ui.TextStyle.SelfCheck(log);   // per-element text rows + the batch's halos-under-bodies run
         CX.Ui.LoadScreen.SelfCheck(log);   // the two load sources as one monotonic bar
         CX.Alloy.GuiContent.SelfCheck(log);   // the engine's content-stage prologue, m_texture, the pair key
+        CX.Alloy.GuiPassVk.SelfCheck(log);   // the GUI and content programs translate for Vulkan, their blocks at the laid-out offsets
+        CX.Alloy.GuiParity.SelfCheck(log);   // the GUI A/B's comparator, against hand-worked differences
         foreach (IExtenderService service in all)
         {
             try { service.Initialize(log, hooks); }

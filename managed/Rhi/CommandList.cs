@@ -10,7 +10,7 @@ public enum Op : byte
 {
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
-    PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState,
+    PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange,
 }
 
 /// <summary>An index element's width.</summary>
@@ -26,6 +26,8 @@ public readonly record struct ImageRegion(int Mip, int X, int Y, int Z);
 public readonly record struct RenderPassCmd(int Colors, bool HasDepth, DepthAttachment Depth);
 /// <summary><see cref="Op.SetDepthBias"/>'s constants.</summary>
 public readonly record struct DepthBiasCmd(float Factor, float Units);
+/// <summary><see cref="Op.SetDepthRange"/>: where the clip depth range lands in the depth buffer.</summary>
+public readonly record struct DepthRangeCmd(float Min, float Max);
 /// <summary><see cref="Op.BindSet"/>'s header; the four binding arrays follow it in field order.</summary>
 public readonly record struct BindSetCmd(int Set, int Uniforms, int Storage, int Sampled, int StorageImages);
 /// <summary><see cref="Op.BindIndexBuffer"/>.</summary>
@@ -122,6 +124,11 @@ public sealed class CommandList
     public void SetViewport(int x, int y, int w, int h) { Head(Op.SetViewport); Put(new Rect(x, y, w, h)); Sent(); }
     public void SetScissor(int x, int y, int w, int h) { Head(Op.SetScissor); Put(new Rect(x, y, w, h)); Sent(); }
     public void SetDepthBias(float factor, float units) { Head(Op.SetDepthBias); Put(new DepthBiasCmd(factor, units)); Sent(); }
+
+    /// <summary>Where the clip depth range lands in the depth buffer for the draws after it -- GL's
+    /// <c>glDepthRange</c>, which the GUI uses to stack its views in one buffer. It holds until the next call and
+    /// each render pass starts at 0..1.</summary>
+    public void SetDepthRange(float min, float max) { Head(Op.SetDepthRange); Put(new DepthRangeCmd(min, max)); Sent(); }
 
     /// <summary>Bind <paramref name="b"/> as descriptor set <paramref name="set"/>; the spans are copied.</summary>
     public void BindSet(int set, in BindSet b)
