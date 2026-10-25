@@ -43,7 +43,17 @@ public sealed unsafe partial class AlloyRenderer
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
         VkTargets colour = gbuf ? VkTargets.Colour : VkTargets.Forward;
 
-        if (!VkPrepass(cl, s, groups, vp, viewport, near, far, indirect)) return false;
+        if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhasePrepass)) return false;
+        if (indirect && _depthPrepass)
+        {
+            CullPassVk.BuildHiZ(vk, cl, s.Depth, w, h);
+            if (CullPassVk.RetestPending)
+            {
+                CullPassVk.RecordRetest(cl);
+                if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhaseRetest)) return false;
+            }
+        }
+        if (indirect) CullPassVk.RecordColour(cl);
 
         CommandList side = s.Side!;
         side.Reset();
@@ -209,9 +219,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The depth prepass as <see cref="DepthPrepassPass"/> walks it -- plain, keyhole, then the feature sweep --
     /// with <see cref="_gPrepassed"/> measured as it draws, into a depth-only pass that clears the scene depth.</summary>
     private static bool VkPrepass(CommandList cl, VkColourState s, int groups, in Matrix4x4 vp, int* viewport, float near,
-                                  float far, bool indirect)
+                                  float far, bool indirect, int phase)
     {
-        Array.Clear(_gPrepassed, 0, groups);
+        bool retest = phase == CullPassVk.PhaseRetest;
+        if (!retest) Array.Clear(_gPrepassed, 0, groups);
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = s.ArenaUsed;
@@ -219,7 +230,7 @@ public sealed unsafe partial class AlloyRenderer
         VkPassStart(side, viewport[2], viewport[3]);
         var depth = new DepthState(true, true, CompareOp.Less);
         var push = new VkBatchPush { AlphaCut = -1f };
-        BufferId slots = indirect ? CullPassVk.Slots(CullPassVk.PhasePrepass) : s.Slots;
+        BufferId slots = indirect ? CullPassVk.Slots(phase) : s.Slots;
         for (int sweep = 0; _depthPrepass && sweep < 2; sweep++)
         {
             bool dis = sweep == 1;
@@ -229,7 +240,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 if (ShaderFeatures.OutOfPrepass(_gFeat[g]) || _gCls[g] >= (byte)AlloyClass.Cutout || _gDis[g] != dis) continue;
                 if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g, false), slots, 0, ref push, vp,
-                             viewport, near, far, CullPassVk.PhasePrepass, indirect)) continue;
+                             viewport, near, far, phase, indirect)) continue;
                 _gPrepassed[g] = true;
             }
         }
@@ -241,11 +252,11 @@ public sealed unsafe partial class AlloyRenderer
                 if (!FeatPrepassable(g) || (_gDis[g] && !_prepassKey) || !_gLit[g] || ContentPrograms.OwnDepth(_gFeat[g])) continue;
                 push.AlphaCut = AlloyClasses.Discard(_gCls[g]);
                 if (!VkBatch(side, ref b, p, g, VkTargets.Prepass, 0, depth, VkRaster(g, false), slots, 0, ref push, vp,
-                             viewport, near, far, CullPassVk.PhasePrepass, indirect)) continue;
+                             viewport, near, far, phase, indirect)) continue;
                 _gPrepassed[g] = true;
             }
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(s.Depth, 0, 0, LoadOp.Clear, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f)));
         return true;
     }
 
