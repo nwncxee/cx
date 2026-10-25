@@ -42,6 +42,9 @@ internal static unsafe class PostChain
     /// compare against the value at the last present.</summary>
     internal static int ResolveSeq { get; private set; }
 
+    /// <summary>A frame outside the post chain covered the whole present image (the Vulkan frame): counted as a resolve.</summary>
+    internal static void Painted() => ResolveSeq++;
+
     private static bool _on = true;
     /// <summary>The <c>hdr</c> boot decision, published because it is a REFUSAL the cutover has to know
     /// about at arm time: <c>hdr=0</c> makes <see cref="Precheck"/> refuse every pass forever, and there is

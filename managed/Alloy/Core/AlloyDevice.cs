@@ -4,46 +4,45 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The render seam's device, shared by every migrated pass: GL 4.6 over Alloy's context, or Vulkan inside it
-/// under <c>alloy.backend vk</c>. Made on first use inside the frame's draw (so on the thread holding the context),
-/// dropped whole with the context.</summary>
+/// <summary>The render seam's devices: GL 4.6 over Alloy's context for the GL passes, and under <c>alloy.backend vk</c>
+/// the Vulkan backend that renders the frame into the composite. Made on first use inside the frame's draw (so on
+/// the thread holding the context), dropped whole with the context.</summary>
 internal static class AlloyDevice
 {
     private sealed class DeviceState
     {
-        public IDevice? Device;
-        public GlDevice? Gl;
+        public GlDevice? Device;
         public VkBackend? Vk;
-        /// <summary>The backend refused the device on this context (logged); a pass stands down without asking again.</summary>
-        public bool Refused;
+        /// <summary>The driver refused that device on this context (logged); its user stands down without asking again.</summary>
+        public bool Refused, VkRefused;
     }
 
     private static DeviceState _s = new();
 
-    /// <summary>The device, or null when this context refused it.</summary>
+    /// <summary>The GL device, or null when this context refused it.</summary>
     internal static IDevice? Get(ExtenderLog log)
     {
         var s = _s;
-        if (s.Device == null && !s.Refused)
-        {
-            s.Device = Renderer.OnVulkan ? s.Vk = VkBackend.TryCreate(log) : s.Gl = GlDevice.TryCreate(log);
-            s.Refused = s.Device == null;
-        }
+        if (s.Device == null && !s.Refused) s.Refused = (s.Device = GlDevice.TryCreate(log)) == null;
         return s.Device;
     }
 
-    /// <summary>Can a list submit command by command? GL only: a Vulkan submit is a whole command buffer.</summary>
-    internal static bool Immediate => _s.Gl != null;
+    /// <summary>The Vulkan backend under <c>alloy.backend vk</c>, null otherwise or when it refused (logged).</summary>
+    internal static VkBackend? Vulkan(ExtenderLog log)
+    {
+        var s = _s;
+        if (Renderer.OnVulkan && s.Vk == null && !s.VkRefused) s.VkRefused = (s.Vk = VkBackend.TryCreate(log)) == null;
+        return s.Vk;
+    }
 
     /// <summary>A texture an unmigrated pass made, under an id a recorded pass can sample and never frees; the
     /// bridge goes when its owner records through the seam. Null when there is no device.</summary>
-    internal static ImageId Borrow(uint glName, string label)
-        => _s.Gl?.Borrow(glName, label) ?? _s.Vk?.Borrow(glName, label) ?? default;
+    internal static ImageId Borrow(uint glName, string label) => _s.Device?.Borrow(glName, label) ?? default;
 
     /// <summary>The GL name behind <paramref name="i"/>, for an unmigrated reader of a migrated pass's output.</summary>
-    internal static uint GlName(ImageId i) => _s.Gl?.Name(i) ?? _s.Vk?.GlName(i) ?? 0;
+    internal static uint GlName(ImageId i) => _s.Device?.Name(i) ?? 0;
 
-    /// <summary>Context loss: every handle the device issued names a dead GL object, and a Vulkan device's imports went with it.</summary>
+    /// <summary>Context loss: every handle the GL device issued names a dead GL object, and the composite's imports went with it.</summary>
     internal static void Forget()
     {
         _s.Vk?.Dispose();

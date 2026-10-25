@@ -124,6 +124,9 @@ internal static class AlloyGate
         // interop extensions and the device UUID are the driver's, not a context's.
         if (Renderer.OnVulkan && _log != null && CX.Graphics.Rhi.VkBackend.Refusal(_log) is string vk)
         { why = vk; return AlloyStand.Incapable; }
+        // the render thread's bracket skips the cross-context fences the composite's hand-over is ordered by
+        if (Renderer.OnVulkan && Renderer.RenderThread.Boot)
+        { why = "alloy.backend vk does not run with alloy.renderthread on"; return AlloyStand.Incapable; }
         if (!AlloyRenderer.DrawCapable)
         { why = "an Alloy program did not build, or glMultiDrawElementsBaseVertex/glBindBufferBase is missing";
           return AlloyStand.Incapable; }

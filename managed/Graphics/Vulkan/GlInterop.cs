@@ -6,13 +6,13 @@ namespace CX.Graphics;
 
 /// <summary>The GL half of GL/Vulkan interop (<c>EXT_memory_object</c>, <c>EXT_semaphore</c> and their
 /// <c>_fd</c>/<c>_win32</c> variants): importing an exported Vulkan allocation as a texture, the shared semaphore
-/// pair, the device UUID the Vulkan device is matched by, and the copy that mirrors a GL texture into a shared one.</summary>
+/// pair, and the device UUID the Vulkan device is matched by.</summary>
 internal static unsafe class GlInterop
 {
     public const uint TEXTURE_TILING_EXT = 0x9580, DEDICATED_MEMORY_OBJECT_EXT = 0x9581, OPTIMAL_TILING_EXT = 0x9584;
     public const uint HANDLE_TYPE_OPAQUE_FD_EXT = 0x9586, HANDLE_TYPE_OPAQUE_WIN32_EXT = 0x9587;
     public const uint NUM_DEVICE_UUIDS_EXT = 0x9596, DEVICE_UUID_EXT = 0x9597, DRIVER_UUID_EXT = 0x9598;
-    /// <summary>The one layout every shared image changes hands in, both directions.</summary>
+    /// <summary>The one layout the composite changes hands in, both directions.</summary>
     public const uint LAYOUT_SHADER_READ_ONLY_EXT = 0x9591;
     public const int UUID_SIZE_EXT = 16;
 
@@ -131,44 +131,5 @@ internal static unsafe class GlInterop
     internal static void Wait(uint sem, ReadOnlySpan<uint> textures, ReadOnlySpan<uint> layouts)
     {
         fixed (uint* t = textures) fixed (uint* l = layouts) _wait(sem, 0, null, (uint)textures.Length, t, l);
-    }
-
-    /// <summary>Copies a depth texture's value into an R32F image: GL's image copy refuses depth to colour.</summary>
-    private const string DepthCopyCs = """
-        #version 460 core
-        layout(local_size_x = 8, local_size_y = 8) in;
-        layout(binding = 0) uniform sampler2D uSrc;
-        layout(r32f, binding = 0) writeonly uniform image2D uDst;
-        void main()
-        {
-            ivec2 p = ivec2(gl_GlobalInvocationID.xy);
-            if (any(greaterThanEqual(p, imageSize(uDst)))) return;
-            imageStore(uDst, p, vec4(texelFetch(uSrc, p, 0).r));
-        }
-        """;
-
-    /// <summary>Workgroup edge of <see cref="DepthCopyCs"/>.</summary>
-    private const int Group = 8;
-
-    /// <summary>The depth-copy program, built on first use in the context that runs it; 0 = refused (logged).</summary>
-    internal static uint DepthCopyProgram(ExtenderLog log) => GlProgram.Compute(DepthCopyCs, log, "GlInterop depth mirror");
-
-    /// <summary>Mirror <paramref name="src"/> (<paramref name="depth"/>: a depth texture) into the shared
-    /// <paramref name="dst"/>, texel for texel at mip 0. Leaves no program, image or texture bound.</summary>
-    internal static void Mirror(uint src, uint dst, int w, int h, bool depth, uint depthProgram)
-    {
-        if (!depth)
-        {
-            Gl.CopyImageSubData(src, Gl.TEXTURE_2D, 0, 0, 0, 0, dst, Gl.TEXTURE_2D, 0, 0, 0, 0, w, h, 1);
-            return;
-        }
-        Gl.UseProgram(depthProgram);
-        Gl.BindTextureUnit(0, src);
-        Gl.BindImageTexture(0, dst, 0, 0, 0, Gl.WRITE_ONLY, Gl.R32F);
-        Gl.DispatchCompute((uint)((w + Group - 1) / Group), (uint)((h + Group - 1) / Group), 1);
-        Gl.MemoryBarrier(Gl.ALL_BARRIER_BITS);
-        Gl.BindImageTexture(0, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.R32F);
-        Gl.BindTextureUnit(0, 0);
-        Gl.UseProgram(0);
     }
 }
