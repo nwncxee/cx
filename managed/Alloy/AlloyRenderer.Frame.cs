@@ -375,7 +375,8 @@ public sealed unsafe partial class AlloyRenderer
         int* viewport = stackalloc int[4];
         if (!BeginOwnedFrame(display, viewport, out OwnedFrame f)) return;
         bool onVulkan = Renderer.OnVulkan;
-        if (onVulkan) VulkanFrame.Run(_log);
+        // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
+        if (onVulkan) VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
         Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;

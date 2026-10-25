@@ -36,6 +36,7 @@ public sealed unsafe partial class AlloyRenderer
         Gl.MakeTextureHandleResidentARB(v);
         FrameZones.Count(FrameZones.Ev.Mint);
         _hTid[free] = tid; _hVal[free] = v; _hRes[free] = true;
+        VkTextures.NoteHandle(v, tid);
         return v;
     }
 

@@ -7,10 +7,8 @@ using CX.Framework;
 namespace CX.Graphics.Rhi;
 
 /// <summary>
-/// GL Alloy's uniform setters, aimed at a Vulkan block. Inside <see cref="Resolve"/> a location is a member's index
-/// in a translated stage's loose block (<c>GetUniformLocation</c> by name, -1 for any other); inside
-/// <see cref="Capture"/> every <c>glUniform*</c> writes its value at that member's offset. So the colour pass fills
-/// its block from the same code GL's draws read, value for value. Every other GL call still reaches GL.
+/// GL Alloy's uniform setters aimed at a Vulkan block: in <see cref="Resolve"/> a location is a loose member's index,
+/// in <see cref="Capture"/> each <c>glUniform*</c> writes at that member's offset -- the same values GL's draws read.
 /// ponytail: the bridge while GL Alloy lives; once it is deleted the setters write the block themselves.
 /// </summary>
 internal static unsafe class VkUniformShim
@@ -83,6 +81,19 @@ internal static unsafe class VkUniformShim
         if (!_s.Active) return;
         Swap(false);
         _s.Block = null;
+    }
+
+    /// <summary>Write into the open capture directly, for a caller with no GL setter to borrow.</summary>
+    internal static void Set(int loc, int v) => Put(loc, 0, v);
+
+    /// <inheritdoc cref="Set(int, int)"/>
+    internal static void Set(int loc, float v) => Put(loc, 0, v);
+
+    /// <summary>Lanes of one element (a vec2, a vec3, a mat4) into the open capture.</summary>
+    internal static void Set(int loc, ReadOnlySpan<float> lanes)
+    {
+        Span<byte> p = At(loc, 0, lanes.Length * sizeof(float));
+        if (!p.IsEmpty) MemoryMarshal.AsBytes(lanes).CopyTo(p);
     }
 
     /// <summary>Writes that named a location the block does not have or overran it, since boot.</summary>
@@ -193,11 +204,15 @@ internal static unsafe class VkUniformShim
         var block = new byte[48];
         long dropped = Dropped;
         Capture(members, block);
-        Gl.Uniform1i(a, 7);
+        // through the entry-point slots themselves: the swap is what is under test, not a loose uniform write
+        delegate* unmanaged<int, int, void> u1i = Gl.Uniform1i;
+        delegate* unmanaged<int, float, void> u1f = Gl.Uniform1f;
+        delegate* unmanaged<int, int, float*, void> u4fv = Gl.Uniform4fv;
+        u1i(a, 7);
         float* two = stackalloc float[8] { 1, 2, 3, 4, 5, 6, 7, 8 };
-        Gl.Uniform4fv(v, 2, two);
-        Gl.Uniform1f(none, 9f);
-        Gl.Uniform4fv(v, 3, two);
+        u4fv(v, 2, two);
+        u1f(none, 9f);
+        u4fv(v, 3, two);
         EndCapture();
         ReadOnlySpan<float> f = MemoryMarshal.Cast<byte, float>(block);
         check.Expect(MemoryMarshal.Read<int>(block) == 7, "Uniform1i lands at offset 0");

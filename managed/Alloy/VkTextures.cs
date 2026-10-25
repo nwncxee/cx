@@ -16,7 +16,7 @@ namespace CX.Alloy;
 /// </summary>
 internal static class VkTextures
 {
-    private readonly record struct Entry(ImageId Image, BindlessHandle Handle, SamplerDesc Sampler);
+    private readonly record struct Entry(ImageId Image, BindlessHandle Handle, SamplerDesc Sampler, SamplerId SamplerId);
 
     /// <summary>One device's mirror, replaced whole with the device (context loss drops both).</summary>
     private sealed class VkTexState
@@ -24,6 +24,8 @@ internal static class VkTextures
         public VkBackend? Dev;
         public readonly Dictionary<uint, Entry> ByName = new();
         public readonly Dictionary<SamplerDesc, SamplerId> Samplers = new();
+        /// <summary>GL's resident handle for an owned name, as minted: the record tables carry handles, not names.</summary>
+        public readonly Dictionary<ulong, uint> HandleName = new();
         public long Mirrored, Refused;
     }
 
@@ -38,7 +40,13 @@ internal static class VkTextures
     {
         if (!Renderer.OnVulkan || log == null || !OwnedTextures.Armed) return null;
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return null;
-        if (_s.Dev != vk) _s = new VkTexState { Dev = vk };
+        if (_s.Dev != vk)
+        {
+            VkTexState was = _s;
+            _s = new VkTexState { Dev = vk };
+            // handles GL minted before the first device carry over; a replaced device went with GL's context, and its handles
+            if (was.Dev == null) foreach (var kv in was.HandleName) _s.HandleName[kv.Key] = kv.Value;
+        }
         return vk;
     }
 
@@ -51,7 +59,7 @@ internal static class VkTextures
         ImageId img = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, mips, 1, 1, use, label));
         if (img.IsNull) { Refuse($"{label}: the device refused a {f} {w}x{h} image"); return default; }
         if (!_s.Samplers.TryGetValue(s, out SamplerId sid)) _s.Samplers[s] = sid = vk.CreateSampler(s);
-        _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s);
+        _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s, sid);
         _s.Mirrored++;
         return img;
     }
@@ -64,6 +72,18 @@ internal static class VkTextures
 
     /// <summary>The mirror's image, for a bound (not bindless) read; null id when it has none.</summary>
     internal static ImageId Image(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry e) ? e.Image : default;
+
+    /// <summary>The sampler a bound read of <paramref name="gl"/>'s mirror goes through; null id when it has none.</summary>
+    internal static SamplerId SamplerId(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry e) ? e.SamplerId : default;
+
+    /// <summary>GL minted <paramref name="handle"/> for owned name <paramref name="gl"/>.</summary>
+    internal static void NoteHandle(ulong handle, int gl)
+    {
+        if (Renderer.OnVulkan) _s.HandleName[handle] = (uint)gl;
+    }
+
+    /// <summary>The bindless index of the mirror behind GL handle <paramref name="handle"/>; 0 when it has none.</summary>
+    internal static uint IndexOfHandle(ulong handle) => _s.HandleName.TryGetValue(handle, out uint gl) ? Index((int)gl) : 0;
 
     /// <summary>The GL name died: its mirror and its index go after the frames in flight.</summary>
     internal static void Forget(uint gl)

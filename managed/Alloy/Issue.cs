@@ -137,6 +137,7 @@ internal static unsafe class Issue
         StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
         if (_bindless) UploadHandles(cap, whole);
         if (grew) _recCapGpu = cap;
+        VkNoteDirty(_recDirty, Math.Min(_recDirtyN, _recDirty.Length), whole);
         _recDirtyN = 0; _recDirtyAll = false;
         // ...and the one array that IS per draw and per pass, rewritten whole every pass: the ring's shape.
         fixed (int* p = _dSlot)

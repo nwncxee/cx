@@ -76,7 +76,8 @@ internal static class VkPrograms
     internal static VkProgramText Text(Id id, ExtenderLog? log)
     {
         (string v, string f) = GlText(id, log);
-        return VkGlsl.Translate(v, f, Units);
+        // the device maps GL's -1..1 clip depth itself (VK_EXT_depth_clip_control), so the stages keep GL's clip z
+        return VkGlsl.Translate(v, f, Units, glDepth: false);
     }
 
     /// <summary>The lit pair after the stage overrides and library swaps, before the splice: what GL's lit build and

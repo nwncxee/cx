@@ -24,6 +24,8 @@ internal static class CullPassVk
         public PipelineId Prog, ProgSort;
         /// <summary>The pipelines did not build or the on-device check disagreed: Alloy has already failed, loudly.</summary>
         public bool Failed, Live;
+        /// <summary>This frame's lists were recorded: the passes draw from them rather than from the staged order.</summary>
+        public bool Ran;
         public BufferId Ubo, Src, Sph, Key, Rej;
         public long SrcCap, SphCap;
         public int CmdCap, CntCap;
@@ -43,6 +45,24 @@ internal static class CullPassVk
 
     /// <summary>This port's output sets: the prepass's (which writes the hi-Z verdicts) and the colour pass's.</summary>
     private const int Prepass = 0, Colour = 1, Phases = 2;
+
+    /// <summary>The sets a pass draws: the prepass's, and the colour passes'.</summary>
+    internal const int PhasePrepass = Prepass, PhaseColour = Colour;
+
+    /// <summary>The cull recorded this frame's sets; read by the passes after it, false when it staged nothing.</summary>
+    internal static bool Ran => _s.Ran;
+
+    /// <summary>Phase <paramref name="p"/>'s five-word draw commands, one per staged draw.</summary>
+    internal static BufferId Commands(int p) => _s.Cmd[p];
+
+    /// <summary>Phase <paramref name="p"/>'s survivor count per batch, the count an indirect-count draw reads.</summary>
+    internal static BufferId Counts(int p) => _s.Cnt[p];
+
+    /// <summary>Phase <paramref name="p"/>'s compacted draw-to-record order, on the draw-index point.</summary>
+    internal static BufferId Slots(int p) => _s.Slot[p];
+
+    /// <summary>The first sorted batch: from here up a batch is dense, its dropped draws zero-instance commands.</summary>
+    internal static int CompactBelow => _s.Block.CompactBelow;
     /// <summary>Room for the fixture's uploads, blocks and binds; the frame's own list is <see cref="VulkanFrame"/>'s.</summary>
     private const int ArenaBytes = 4096;
     /// <summary>The mirror-plane height that clips nothing: only the planar reflection's dispatch sets one.</summary>
@@ -77,8 +97,10 @@ internal static class CullPassVk
         var s = _s;
         int groups = s.Groups;
         s.Groups = 0;
+        s.Ran = false;
         if (groups <= 0 || s.Records == null || s.Spheres == null) return true;
         if (!Cull(vk, cl, groups, s.DrawN, s.Records, s.Spheres, s.SphereSlots, ref s.Block)) return false;
+        s.Ran = true;
         if (!s.Live)
         {
             s.Live = true;

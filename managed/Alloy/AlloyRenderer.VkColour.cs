@@ -60,6 +60,8 @@ public sealed unsafe partial class AlloyRenderer
         public ShaderId EncodeVs, EncodeFs;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
+        /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
+        public int[] Firsts = new int[4096];
     }
 
     private static VkColourState _vkc = new();
@@ -199,7 +201,10 @@ public sealed unsafe partial class AlloyRenderer
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {id} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {id} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;
-        var layout = VkSpirv.Block(fs, VkGlsl.LooseBlock) ?? VkSpirv.Block(vs, VkGlsl.LooseBlock);
+        var names = new List<string>(t.Loose.Count);
+        foreach (VkLoose u in t.Loose) names.Add(u.Name);
+        uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
+        var layout = VkSpirv.Block(fs, 0, at, names) ?? VkSpirv.Block(vs, 0, at, names);
         if (layout is { } l)
         {
             var members = new List<VkUniformShim.Member>(l.Members.Count);
@@ -249,25 +254,24 @@ public sealed unsafe partial class AlloyRenderer
                 if (lit)
                 {
                     ref LitLoc L = ref p.L;
-                    Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)m);
-                    Gl.Uniform1i(L.Viz, viz);
-                    Gl.Uniform1f(L.AoCutout, Ao.Cutout.V);
-                    Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
-                    Gl.Uniform1f(L.MirrorZ, _mirrorZ);
+                    VkUniformShim.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
+                    VkUniformShim.Set(L.Viz, viz);
+                    VkUniformShim.Set(L.AoCutout, Ao.Cutout.V);
+                    VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
+                    VkUniformShim.Set(L.MirrorZ, _mirrorZ);
                     UploadFeatureTerms(L.Feat, viewport);
                     BindPass(L.CubeCount, viewport, near, far);
-                    Gl.Uniform2f(L.DecalZ, DecalLayer.Z0, DecalLayer.Z1);
-                    Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
+                    VkUniformShim.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
+                    VkUniformShim.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
                     UploadMaterialModel(L.Material);
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, false);
                 }
                 else
                 {
-                    Gl.UniformMatrix4fv(p.Vp, 1, 0, (float*)m);
-                    Gl.Uniform1f(p.AlphaMip, Renderer.CutMip.V);
-                    Gl.Uniform1i(p.Viz, viz);
-                    float* white = stackalloc float[3] { 1f, 1f, 1f };
-                    Gl.Uniform3fv(p.Tint, 1, white);
+                    VkUniformShim.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
+                    VkUniformShim.Set(p.AlphaMip, Renderer.CutMip.V);
+                    VkUniformShim.Set(p.Viz, viz);
+                    VkUniformShim.Set(p.Tint, [1f, 1f, 1f]);
                     UploadFeatureTerms(p.F, viewport);
                 }
             }
