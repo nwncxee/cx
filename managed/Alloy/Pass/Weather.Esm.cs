@@ -107,7 +107,7 @@ internal static unsafe partial class Weather
         }
         if (_gl.EsmView == 0 || _gl.EsmViewOf != array || _gl.EsmLayer != layer)
         {
-            if (_gl.EsmView != 0) { uint t = _gl.EsmView; Gl.DeleteTextures(1, &t); }
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.EsmView);
             uint t2; Gl.GenTextures(1, &t2);   // glTextureView wants a name with no object yet: Gen, not Create
             Gl.DrainErrors();
             Gl.TextureView(t2, Gl.TEXTURE_2D, array, Gl.DEPTH_COMPONENT24, 0, 1, (uint)layer, 1);
@@ -119,7 +119,8 @@ internal static unsafe partial class Weather
         }
         if (_gl.EsmSize != size)
         {
-            if (_gl.EsmTex0 != 0) { uint* ts = stackalloc uint[2]; ts[0] = _gl.EsmTex0; ts[1] = _gl.EsmTex1; Gl.DeleteTextures(2, ts); }
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.EsmTex0);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.EsmTex1);
             uint* n = stackalloc uint[2]; Gl.CreateTextures(Gl.TEXTURE_2D, 2, n);
             for (int i = 0; i < 2; i++)
             {

@@ -32,7 +32,8 @@ internal static unsafe class PresentTarget
             RenderTarget.AllocColor(ref tex, false, w, h, Gl.NEAREST);
             return tex;
         }
-        public void Release(uint tex) { if (tex != 0) Gl.DeleteTextures(1, &tex); }
+        /// <summary>The present image the engine may still be blitting from: retired, not deleted here.</summary>
+        public void Release(uint tex) => GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, tex);
     }
 
     /// <summary>The present path's own state: the image, one framebuffer object per context, the size, and
@@ -115,8 +116,8 @@ internal static unsafe class PresentTarget
         // point must not turn the path whose job is to fail gracefully into a null call.
         if (s.Fbo46 != 0)
         {
-            uint f = s.Fbo46; s.Fbo46 = 0;
-            if (Gl.DeleteFramebuffers != null) Gl.DeleteFramebuffers(1, &f);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Framebuffer, s.Fbo46);
+            s.Fbo46 = 0;
         }
         if (s.RefusedSaid) return;
         s.RefusedSaid = true;

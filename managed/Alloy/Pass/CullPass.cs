@@ -565,7 +565,7 @@ internal static unsafe class CullPass
     {
         w = Math.Max(w, 1); h = Math.Max(h, 1);
         if (_gl.PyrTex != 0 && w == _gl.PyrW && h == _gl.PyrH) return true;
-        if (_gl.PyrTex != 0) { uint t = _gl.PyrTex; Gl.DeleteTextures(1, &t); _gl.PyrTex = 0; }
+        if (_gl.PyrTex != 0) { GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.PyrTex); _gl.PyrTex = 0; }
         _gl.PyrStale = false;
         int levels = 1;
         while ((w >> levels) > 0 || (h >> levels) > 0) levels++;

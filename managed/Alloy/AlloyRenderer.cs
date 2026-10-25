@@ -248,6 +248,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         StaticSelfCheck(log);
         CullPass.Init(log);
         StreamRing.Init(log);
+        // Up here with the other unconditional checks: the queue schedules the same way on every client.
+        GpuGraveyard.Init(log);
+        GpuGraveyard.SelfCheck(log);
         // #170: ahead of every stand-down, matching the host's unconditional calls. The verdict must
         // outlive a renderer that never armed -- /alloy is the report it drives.
         AlloyGate.Arm(log);
@@ -282,6 +285,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // Drain never runs in those states, so a revoke there would hold the whole owned set for the session.
         GlContextService.InBracket = static () =>
         {
+            // First in the bracket: what the GPU has finished with goes back before this frame allocates.
+            GpuGraveyard.Drain(GlContextService.Presents);
             OwnedTextures.Drain(); SampleVram();
             LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the
@@ -500,6 +505,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
         PassContextLost();
         EngineBlockContextLost();
+        GpuGraveyard.Drop();   // after every handler above, so what they retired is dropped with the rest
     }
 
     /// <summary>Frame tick from the present (after the bucket walks). Module unload, a PartTable
