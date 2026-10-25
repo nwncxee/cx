@@ -72,6 +72,7 @@ internal sealed unsafe partial class VkBackend
         Format.Rg32F => VkFormat.R32G32Sfloat,
         Format.Rgba32F => VkFormat.R32G32B32A32Sfloat,
         Format.R32Ui => VkFormat.R32Uint,
+        Format.Rg32Ui => VkFormat.R32G32Uint,
         Format.Rgba32Ui => VkFormat.R32G32B32A32Uint,
         Format.R11G11B10F => VkFormat.B10G11R11UfloatPack32,
         Format.D16 => VkFormat.D16Unorm,
@@ -190,7 +191,7 @@ internal sealed unsafe partial class VkBackend
         Format.Rg8 or Format.R16F or Format.D16 => 2,
         Format.Rg16F or Format.R32F or Format.R32Ui or Format.Rgba8 or Format.Rgba8Srgb or Format.R11G11B10F
             or Format.D24 or Format.D24S8 or Format.D32F => 4,
-        Format.Rgba16F or Format.Rg32F or Format.D32FS8 => 8,
+        Format.Rgba16F or Format.Rg32F or Format.Rg32Ui or Format.D32FS8 => 8,
         _ => 16,
     };
 

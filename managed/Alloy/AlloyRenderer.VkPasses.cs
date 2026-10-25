@@ -91,6 +91,9 @@ public sealed unsafe partial class AlloyRenderer
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
 
+        // ADR 0029's two dispatches, at the graph's own place: after the cutout pass, before the blended one
+        VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
+
         side.Reset();
         arena0 = s.ArenaUsed;
         b = new VkBound { Fmt = -1, Tex = -1 };
@@ -108,8 +111,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan colour bracket is LIVE -- {s.Drawn} draws, {s.Skipped} skipped "
-                     + "(water, and any batch whose mesh or pipeline is not on Vulkan yet); lit by the sun and ambient only "
-                     + "until shadows, point lights, the probe and SSAO port");
+                     + "(water, and any batch whose mesh or pipeline is not on Vulkan yet); lit by the sun, ambient, the "
+                     + "AO estimate and the deferred point lights, with no shadow map or probe until those passes port");
         }
         return true;
     }

@@ -548,6 +548,10 @@ internal static unsafe class AlloyLights
     /// <c>uLights</c> for itself (the deferred pass's per-tile list) has to walk.</summary>
     internal static int UploadedLights => _gl.Uploaded;
 
+    /// <summary>This frame's light records as <see cref="Upload"/> staged them, for a second device to mirror:
+    /// the Vulkan deferred pass reads the same bytes the GL SSBO holds, from the one fill.</summary>
+    internal static ReadOnlySpan<float> Staged => _stage.AsSpan(0, Math.Min(_gl.Uploaded, _stage.Length / 8) * 8);
+
     internal static void Attach(ExtenderLog log)
     {
         _log = log;
