@@ -32,7 +32,8 @@ internal static class VulkanFrame
 
     /// <summary>Render this frame into the back image and present it. A frame that cannot -- no backend, no present
     /// image, a refused submit -- fails Alloy loudly: the screen would otherwise hold a stale front.</summary>
-    internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, int* viewport, int* display, float near, float far,
+    internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, in Matrix4x4 view, in Matrix4x4 proj,
+                                    int* viewport, int* display, float near, float far,
                                     bool lightingOn, bool perspective, int groups)
     {
         // a failed Alloy records nothing more: every submit after it would stage uploads no recording ever commits
@@ -49,7 +50,8 @@ internal static class VulkanFrame
             AlloyGate.Fail("the Vulkan cull did not record (logged above) -- Alloy has no visibility test");
             return;
         }
-        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.CompositeBack, vp, viewport, display, near, far, lightingOn, perspective, groups, log))
+        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.CompositeBack, vp, view, proj, viewport, display, near, far,
+                                         lightingOn, perspective, groups, log))
         {
             AlloyGate.Fail("the Vulkan colour bracket did not record (logged above)");
             return;

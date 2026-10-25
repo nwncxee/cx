@@ -83,8 +83,10 @@ internal static unsafe class SsaoPass
         public uint LiveOut;
     }
 
-    /// <summary>Texture slots, the <c>layout(binding)</c> of each sampler in the three stages.</summary>
-    private const uint SlotDepth = 0, SlotSrc = 1, SlotHist = 2, SlotVel = 3;
+    /// <summary>Texture slots, the <c>layout(binding)</c> of each sampler in the three stages. Read by
+    /// <see cref="SsaoPassVk"/> too: one declaration, two recorders.</summary>
+    internal const uint SlotDepth = 0, SlotSrc = 1;
+    private const uint SlotHist = 2, SlotVel = 3;
     /// <summary>The per-pass descriptor set.</summary>
     private const int PassSet = 1;
     /// <summary>The command arena: three stages of about 200 bytes each, with room to spare.</summary>
@@ -132,7 +134,7 @@ internal static unsafe class SsaoPass
     internal static bool Active => Ao.On.V && !_gl.Failed && OptionOn;
     /// <summary>The option's intensity as a multiplier on the exponent: stock 0.5 is 1x; an unresolved or
     /// zeroed config reads as stock rather than as "no occlusion".</summary>
-    private static float Strength
+    internal static float Strength
     {
         get { float i = _intensity == null ? StockIntensity : *_intensity; return (i > 0f ? i : StockIntensity) / StockIntensity; }
     }
@@ -178,7 +180,9 @@ internal static unsafe class SsaoPass
         if (!g.Built) EnsurePrograms(dev);
         bool half = Wanted;
         if (g.Failed || !EnsureTargets(dev, viewport[2], viewport[3], half)) return false;
-        bool temporal = Ao.Temporal.V > 0f && !g.ProgTemporal.IsNull && MotionVectors.Painted && MotionVectors.Tex != 0;
+        // the A/B frame takes the estimate whole: the Vulkan recorder has no velocity target to reproject through
+        bool temporal = Ao.Temporal.V > 0f && !g.ProgTemporal.IsNull && MotionVectors.Painted && MotionVectors.Tex != 0
+                        && !VkParity.Active;
         ImageId depth = Borrowed(dev, ref g.Depth, ref g.DepthName, depthTex, "frame depth");
         ImageId vel = temporal ? Borrowed(dev, ref g.Vel, ref g.VelName, MotionVectors.Tex, "velocity") : default;
         float w = g.W, h = g.H;

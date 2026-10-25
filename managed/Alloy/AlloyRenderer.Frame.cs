@@ -392,7 +392,8 @@ public sealed unsafe partial class AlloyRenderer
         if (onVulkan)
         {
             long tVk = FrameZones.Now;
-            VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
+            VulkanFrame.Run(_log, f.VpClean, f.View, f.Proj, viewport, display, f.Near, f.Far, f.LightingOn,
+                            f.Perspective, f.Groups);
             FrameZones.Add(FrameZones.Zone.Vulkan, tVk);
         }
         long batches1 = Counters._batches, draws1 = Counters._draws;

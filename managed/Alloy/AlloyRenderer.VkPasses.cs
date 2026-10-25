@@ -28,9 +28,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The colour bracket into <paramref name="cl"/> after the cull: uploads, the depth prepass, the opaque,
     /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the scene
     /// colour encoded into <paramref name="composite"/>. False (logged) when the device refused something.</summary>
-    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp, int* viewport,
-                                       int* display, float near, float far, bool lightingOn, bool perspective, int groups,
-                                       ExtenderLog log)
+    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp,
+                                       in Matrix4x4 view, in Matrix4x4 proj, int* viewport, int* display, float near,
+                                       float far, bool lightingOn, bool perspective, int groups, ExtenderLog log)
     {
         int w = viewport[2], h = viewport[3];
         if (!VkEnsure(vk, w, h, log)) return false;
@@ -56,12 +56,18 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         if (indirect) CullPassVk.RecordColour(cl);
+        // the depth the colour pass's draws may not sample (it is their own attachment) and the AO pass reads,
+        // as it stood when the prepass finished -- which is the depth the lit stage's ownership test is against
+        if (_depthPrepass)
+            cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), w, h, 1));
+        fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, viewport, log);
 
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
+        VkArmSampled(side, s);
         bool ok = true;
         var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
@@ -89,6 +95,7 @@ public sealed unsafe partial class AlloyRenderer
         arena0 = s.ArenaUsed;
         b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
+        VkArmSampled(side, s);
         var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false);
         ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
         ok &= VkIssue(side, ref b, _gWaterEnd, groups, fwd with { DepthMask = false }, vp, viewport, near, far, indirect);
@@ -113,6 +120,18 @@ public sealed unsafe partial class AlloyRenderer
         side.SetViewport(0, 0, w, h);
         if (!MeshArena.VkEbo.IsNull) side.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
         side.SetDepthBias(Issue.WashOffsetFactor, Issue.WashOffsetUnits);
+    }
+
+    /// <summary>Name the images an earlier pass of this frame WROTE and the draws here sample, ahead of the first
+    /// draw: a bind inside a begun render pass cannot move an image into its read layout, and whether the first
+    /// program of the pass happens to declare them is not something to depend on.</summary>
+    private static void VkArmSampled(CommandList side, VkColourState s)
+    {
+        Span<ImageBinding> arm = stackalloc ImageBinding[2];
+        int n = 0;
+        if (SsaoPassVk.Live) arm[n++] = new ImageBinding(TextureSlots.Ssao, SsaoPassVk.Visibility);
+        if (!s.DepthRead.IsNull) arm[n++] = new ImageBinding(TextureSlots.SsaoDepth, s.DepthRead);
+        if (n > 0) side.BindSet(0, new BindSet(default, default, arm[..n], default));
     }
 
     /// <summary>The arena bytes the pass's binds gathered, uploaded ahead of it, then the pass and its draws.</summary>
@@ -306,6 +325,9 @@ public sealed unsafe partial class AlloyRenderer
             bool test = !(blend && wash && !Renderer.WashTest.V);
             var depth = new DepthState(test, !equal && r.DepthMask, func);
             push.AlphaCut = AlloyClasses.Discard(cls);
+            // the batch's own AO membership, measured by the prepass exactly as the GL issue loop reads it
+            push.SsaoOn = lit && SsaoPassVk.Live && !_capturing ? Issue.AoWhy(g) : 0;
+            push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
             if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, lit ? 0 : _gTex[g], ref push,
                          vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
             Counters._batches++;

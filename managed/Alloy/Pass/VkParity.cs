@@ -62,12 +62,13 @@ internal static unsafe class VkParity
 
     /// <summary>The colour-bracket passes GL runs in the A/B frame: the ones on Vulkan.</summary>
     internal static bool GlPass(PassId id)
-        => id is PassId.DepthPrepass or PassId.OpaqueOwned or PassId.CutoutOwned or PassId.BlendedOwned or PassId.AdditiveOwned;
+        => id is PassId.DepthPrepass or PassId.AmbientOcclusion or PassId.OpaqueOwned or PassId.CutoutOwned
+              or PassId.DeferredLights or PassId.BlendedOwned or PassId.AdditiveOwned;
 
     /// <summary>The lit stage's loose terms whose resources are not on Vulkan: Vulkan binds them at zero. GL's A/B frame
     /// reaches the same zero at each term's own source, keyed on <see cref="Active"/>.</summary>
     internal static readonly string[] StoodDown =
-        ["uLocalCubes", "uLmPages", "uSkyTerm", "uWeather", "uVFog", "uSsaoHalf", "uLightRecOn", "uCapture", "uOit"];
+        ["uLocalCubes", "uLmPages", "uSkyTerm", "uWeather", "uVFog", "uLightRecOn", "uCapture", "uOit"];
 
     /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no sun cascade, no probe.</summary>
     internal static void StandDownPass(Span<byte> block)

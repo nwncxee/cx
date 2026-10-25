@@ -64,6 +64,9 @@ public sealed unsafe partial class AlloyRenderer
         public int EngineAt = -1;
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
         public ImageId Hdr, Depth, G0, G1, G2;
+        /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
+        /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
+        public ImageId DepthRead;
         public int W, H;
         public BufferId Records, Slots, Bones, TexH, Arena, ZeroUbo, ZeroSsbo, Plt;
         public long RecCap, SlotCap, BoneCap, TexHCap, PltCap;
@@ -138,13 +141,17 @@ public sealed unsafe partial class AlloyRenderer
         if (s.W != w || s.H != h)
         {
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2);
-            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour");
+            vk.Destroy(s.DepthRead);
+            // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
+            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage);
             s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth");
             s.G0 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 0");
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1");
             s.G2 = VkTarget(vk, Format.R32Ui, w, h, "vk g-buffer 2");
+            s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
+                                                       ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
-            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull)
+            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
                 log.Always($"AlloyRenderer: the Vulkan scene targets at {w}x{h} were REFUSED (logged above)");
@@ -154,9 +161,12 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    private static ImageId VkTarget(VkBackend vk, Format f, int w, int h, string label)
+    /// <summary>A scene target: sampled by the passes after it, and a copy source -- the depth's readable copy is
+    /// taken from the attachment itself.</summary>
+    private static ImageId VkTarget(VkBackend vk, Format f, int w, int h, string label, ImageUse extra = ImageUse.None)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
-                                        (f.IsDepth() ? ImageUse.DepthTarget : ImageUse.ColorTarget) | ImageUse.Sampled, label));
+                                        (f.IsDepth() ? ImageUse.DepthTarget : ImageUse.ColorTarget)
+                                        | ImageUse.Sampled | ImageUse.CopySrc | extra, label));
 
     /// <summary>Everything that does not follow the render size: the programs, the layouts, the stand-ins, the arena.</summary>
     private static bool VkMakeStatic(VkBackend vk, VkColourState s, ExtenderLog log)
@@ -332,6 +342,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
                     VkUniformShim.Set(L.Viz, viz);
                     VkUniformShim.Set(L.AoCutout, Ao.Cutout.V);
+                    VkUniformShim.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
                     VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
                     VkUniformShim.Set(L.MirrorZ, _mirrorZ);
                     UploadFeatureTerms(L.Feat, viewport);
@@ -504,6 +515,9 @@ public sealed unsafe partial class AlloyRenderer
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
+        // the visibility estimate and the depth it was computed from, both fetched by texel in the lit stage
+        if (o.Name == "uSsao" && SsaoPassVk.Live) return new ImageBinding(o.Binding, SsaoPassVk.Visibility);
+        if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
         return o.Type switch
         {
             "usampler2D" => new ImageBinding(o.Binding, s.TexU2D),
