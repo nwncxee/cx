@@ -279,3 +279,23 @@ holds the measured post-cutover regression; it is reported here, not gated, exac
 - Whether anything outside RSP reads the `Scene+0x60` / `+0x70` shadow-light lists.
 - Whether the present or GUI path reads `Camera+0x528` after RSP returns.
 - The identity of `CGuiMan+0x48`, the second always-rendered view.
+
+## Amendment (2026-10-25, CX-315 / CX-340): the RHI layer, re-asked and taken
+
+*What is out of M4* declined "an RHI layer" with "Re-ask at M5, when a second consumer is in sight" (ADR 0014's
+#206 amendment records the same decline). The second consumer is now in sight: CX-313 puts Alloy on Vulkan, as a
+replacement for GL Alloy, not a third render mode. CX-315 re-asked, and its decided answers (2026-10-25, comment #2)
+take the seam:
+
+- Passes declare pipeline state and their resource reads/writes, and record into a `CommandList`; a backend
+  executes it. The types live in `managed/Rhi/` (`CX.Rhi`, no GL, no Vortice); the GL backend in
+  `managed/Graphics/Rhi/` behind an `IDevice` interface, not a function-pointer table.
+- Recording happens on the render thread, meaning the thread that draws the published frame: the
+  `RenderSnapshot` publish is the hand-off from the game thread, and `alloy.renderthread` is not required.
+- It ships GL-only. CX-340 lands the types with no pass on them; passes move one per PR (CX-341, `SsaoPass`,
+  first), under a hard 0.15 ms CPU budget with a revert, and `tools/gates/rhi-seam.sh` ratchets the direct
+  `Gl.*` call sites under `managed/Alloy` down to zero.
+
+What the rejection protected still holds: extraction-must-not-touch-GL stays step 1, and the RE knowledge in
+`Alloy/Scene/` is untouched by the seam. The seam sits on the submission half, the half a Vulkan backend
+rewrites anyway.
