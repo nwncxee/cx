@@ -135,7 +135,7 @@ internal sealed unsafe partial class GlDevice
         uint* bufs = stackalloc uint[RenderPassDesc.MaxColors];
         for (int i = 0; i < colors; i++)
         {
-            if (!AttachTo(Gl.COLOR_ATTACHMENT0 + (uint)i, key[i])) return Drop(f, $"colour attachment {i}: stale image");
+            if (!AttachTo(Gl.COLOR_ATTACHMENT0 + (uint)i, key[i])) return Drop(f, $"colour attachment {i}: stale or borrowed image");
             bufs[i] = Gl.COLOR_ATTACHMENT0 + (uint)i;
         }
         Gl.DrawBuffers(colors, bufs);
@@ -143,7 +143,7 @@ internal sealed unsafe partial class GlDevice
         {
             Attach d = key[RenderPassDesc.MaxColors];
             bool stencil = _images.TryGet(d.Image.Value, out GlImage img) && img.Desc.Fmt.HasStencil();
-            if (!AttachTo(stencil ? Gl.DEPTH_STENCIL_ATTACHMENT : Gl.DEPTH_ATTACHMENT, d)) return Drop(f, "depth attachment: stale image");
+            if (!AttachTo(stencil ? Gl.DEPTH_STENCIL_ATTACHMENT : Gl.DEPTH_ATTACHMENT, d)) return Drop(f, "depth attachment: stale or borrowed image");
         }
         uint status = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
         if (status != Gl.FRAMEBUFFER_COMPLETE) return Drop(f, $"framebuffer incomplete (0x{status:x})");
@@ -154,7 +154,7 @@ internal sealed unsafe partial class GlDevice
 
     private bool AttachTo(uint point, Attach a)
     {
-        if (!_images.TryGet(a.Image.Value, out GlImage img)) return false;
+        if (!_images.TryGet(a.Image.Value, out GlImage img) || img.Desc.Fmt == Format.Unknown) return false;
         if (img.Desc.Kind == ImageKind.Tex2D || a.Layer < 0) Gl.FramebufferTexture(Gl.FRAMEBUFFER, point, img.Name, a.Mip);
         else Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, point, img.Name, a.Mip, a.Layer);
         return true;
@@ -205,7 +205,8 @@ internal sealed unsafe partial class GlDevice
         Gl.FrontFace(rs.FrontCw ? Gl.CW : Gl.CCW);
         if (rs.DepthBias) Gl.Enable(Gl.POLYGON_OFFSET_FILL); else Gl.Disable(Gl.POLYGON_OFFSET_FILL);
         if (rs.DepthClamp) Gl.Enable(Gl.DEPTH_CLAMP); else Gl.Disable(Gl.DEPTH_CLAMP);
-        for (uint i = 0; i < RenderPassDesc.MaxColors; i++)
+        int colors = p.Desc.Targets.ColorCount > 0 ? p.Desc.Targets.ColorCount : RenderPassDesc.MaxColors;
+        for (uint i = 0; i < colors; i++)
         {
             AttachmentBlend b = p.Desc.Blend[(int)i];
             if (b.Enable)
@@ -215,12 +216,12 @@ internal sealed unsafe partial class GlDevice
                 Gl.BlendEquationi(i, b.Op == BlendOp.Min ? Gl.MIN : Gl.FUNC_ADD);
             }
             else Gl.Disablei(Gl.BLEND, i);
-            Gl.ColorMaski(i, Bit(b.Mask, ColorMask.R), Bit(b.Mask, ColorMask.G), Bit(b.Mask, ColorMask.B), Bit(b.Mask, ColorMask.A));
+            Gl.ColorMaski(i, Bit(b, ColorMask.R), Bit(b, ColorMask.G), Bit(b, ColorMask.B), Bit(b, ColorMask.A));
         }
         return true;
     }
 
-    private static byte Bit(ColorMask m, ColorMask c) => (m & c) != 0 ? (byte)1 : (byte)0;
+    private static byte Bit(AttachmentBlend b, ColorMask c) => b.Writes(c) ? (byte)1 : (byte)0;
 
     internal static uint Factor(BlendFactor f) => f switch
     {
@@ -258,6 +259,7 @@ internal sealed unsafe partial class GlDevice
         foreach (ImageBinding s in images)
         {
             if (!_images.TryGet(s.Image.Value, out GlImage img)) return Fault($"BindSet: stale storage image on slot {s.Slot}");
+            if (img.Desc.Fmt == Format.Unknown) return Fault($"BindSet: {img.Desc.Label} is borrowed, so it has no format to bind as a storage image");
             byte layered = img.Desc.Kind == ImageKind.Tex2D ? (byte)0 : (byte)1;
             Gl.BindImageTexture(s.Slot, img.Name, s.Mip, layered, 0, Gl.READ_WRITE, GlFormats.Of(img.Desc.Fmt).Internal);
         }
@@ -349,6 +351,8 @@ internal sealed unsafe partial class GlDevice
         ReadOnlySpan<byte> bytes = r.Span<byte>(c.Bytes);
         if (!_buffers.TryGet(c.Buffer.Value, out GlBuffer g)) return Fault("UpdateBuffer: stale buffer");
         if (g.Desc.Memory != MemoryKind.Upload) return Fault($"UpdateBuffer: {g.Desc.Label} is device memory");
+        // the whole buffer replaced: the driver may rename it rather than write under a draw still reading it
+        if (c.Offset == 0 && c.Bytes == g.Desc.Bytes) Gl.InvalidateBufferData(g.Name);
         fixed (byte* p = bytes) Gl.NamedBufferSubData(g.Name, (IntPtr)c.Offset, (IntPtr)c.Bytes, p);
         return true;
     }

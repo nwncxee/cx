@@ -181,7 +181,8 @@ internal static class Renderer
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
         GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
         RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
-        RhiImmediate = G.Toggle("rhiimmediate", "rhiimmediate", true, Tier.ChatOnly);
+        RhiImmediate = G.Toggle("rhiimmediate", "Seam passes submit as they record", true, Tier.ChatOnly,
+                                help: "1 = each command reaches GL as it is recorded; 0 = a pass's whole list at its end. Same GL calls either way.");
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a
         // toggle because the first pass of a session is before the camera is placed, and the settled frame is
         // the one worth comparing between the two scene layers.

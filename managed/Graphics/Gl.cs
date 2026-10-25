@@ -493,6 +493,8 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, int, uint*, void> CreateTextures;
     public static delegate* unmanaged<uint, IntPtr, void*, uint, void> NamedBufferData, NamedBufferStorage;
     public static delegate* unmanaged<uint, IntPtr, IntPtr, void*, void> NamedBufferSubData;
+    /// <summary>glInvalidateBufferData (GL 4.3): buffer. The contents are undefined after, so the driver may rename it.</summary>
+    public static delegate* unmanaged<uint, void> InvalidateBufferData;
     public static delegate* unmanaged<uint, uint, IntPtr, IntPtr, IntPtr, void> CopyNamedBufferSubData;
     public static delegate* unmanaged<uint, uint, IntPtr, IntPtr, uint, uint, void*, void> ClearNamedBufferSubData;
     public static delegate* unmanaged<uint, IntPtr, IntPtr, uint, void*> MapNamedBufferRange;
@@ -709,6 +711,7 @@ public static unsafe class Gl
         NamedBufferData = (delegate* unmanaged<uint, IntPtr, void*, uint, void>)P("glNamedBufferData");
         NamedBufferStorage = (delegate* unmanaged<uint, IntPtr, void*, uint, void>)P("glNamedBufferStorage");
         NamedBufferSubData = (delegate* unmanaged<uint, IntPtr, IntPtr, void*, void>)P("glNamedBufferSubData");
+        InvalidateBufferData = (delegate* unmanaged<uint, void>)P("glInvalidateBufferData");
         CopyNamedBufferSubData = (delegate* unmanaged<uint, uint, IntPtr, IntPtr, IntPtr, void>)P("glCopyNamedBufferSubData");
         ClearNamedBufferSubData = (delegate* unmanaged<uint, uint, IntPtr, IntPtr, uint, uint, void*, void>)P("glClearNamedBufferSubData");
         MapNamedBufferRange = (delegate* unmanaged<uint, IntPtr, IntPtr, uint, void*>)P("glMapNamedBufferRange");

@@ -44,7 +44,8 @@ internal sealed unsafe partial class GlDevice : IDevice
             || Gl.GenSamplers == null || Gl.DeleteSamplers == null || Gl.ClearBufferfv == null || Gl.ClearBufferuiv == null
             || Gl.CopyImageSubData == null || Gl.MultiDrawElementsIndirect == null || Gl.MultiDrawElementsIndirectCount == null
             || Gl.DrawArraysInstancedBaseInstance == null || Gl.DrawElementsInstancedBaseVertexBaseInstance == null
-            || Gl.VertexArrayElementBuffer == null || Gl.GetTextureLevelParameteriv == null)
+            || Gl.VertexArrayElementBuffer == null || Gl.GetTextureLevelParameteriv == null || Gl.InvalidateBufferData == null
+            || Gl.GetActiveUniform == null || Gl.GetUniformiv == null)
         {
             log.Always("GlDevice: REFUSED -- the driver lacks a GL 4.6 entry point the seam's backend calls");
             return null;
@@ -186,7 +187,35 @@ internal sealed unsafe partial class GlDevice : IDevice
             else prog = GlProgram.Graphics(vs.Source, fs.Source, _log, what);
         }
         if (prog == 0) return Refused<PipelineId>($"{what}: the program did not link (logged above)");
+        if (SharedUnit(prog) is string clash)
+        {
+            Gl.DeleteProgram(prog);
+            return Refused<PipelineId>($"{what}: {clash} -- a stage lost a layout(binding), and the seam sets no sampler uniform");
+        }
         return new PipelineId(_pipelines.Add(new GlPipeline(prog, d)));
+    }
+
+    /// <summary>Two active samplers of <paramref name="prog"/> on one texture unit, named; null when each has its own.
+    /// Cold. ponytail: sampler2D only, the one type a migrated pass samples; the others join with their first pass.</summary>
+    private static string? SharedUnit(uint prog)
+    {
+        int n = 0;
+        Gl.GetProgramiv(prog, Gl.ACTIVE_UNIFORMS, &n);
+        byte* name = stackalloc byte[128];
+        var first = new System.Collections.Generic.Dictionary<int, string>();
+        for (uint u = 0; u < n; u++)
+        {
+            int len = 0, size = 0;
+            uint type = 0;
+            Gl.GetActiveUniform(prog, u, 128, &len, &size, &type, name);
+            if (type != Gl.SAMPLER_2D || size != 1) continue;
+            string s = System.Text.Encoding.ASCII.GetString(name, len);
+            int unit = -1;
+            Gl.GetUniformiv(prog, Gl.GetUniformLocation(prog, name), &unit);
+            if (first.TryGetValue(unit, out string? had)) return $"{had} and {s} both sample unit {unit}";
+            first[unit] = s;
+        }
+        return null;
     }
 
     public void Destroy(BufferId b)
