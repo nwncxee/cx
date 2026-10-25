@@ -72,6 +72,8 @@ public static class ServiceHost
         CX.Graphics.BindlessLedger.SelfCheck(log);   // each AMD-strict bindless rule fires on its breach, not on the legal sequence
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
+        CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
+        CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
         CX.Graphics.ProgramBinary.SelfCheck(log);   // the program-binary cache key: every stage's text, its type, the driver
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
