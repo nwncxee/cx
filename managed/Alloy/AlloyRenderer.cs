@@ -497,6 +497,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         _nullSunShadow = 0; _nullCubeShadow = 0;
         BlendProfile.ContextLost();
         MovieFrame.ContextLost();
+        MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
         PassContextLost();
     }
 
