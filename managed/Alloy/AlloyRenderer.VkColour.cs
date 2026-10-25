@@ -44,8 +44,11 @@ public sealed unsafe partial class AlloyRenderer
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
         public ImageId Hdr, Depth, G0, G1, G2;
         public int W, H;
-        public BufferId Records, Slots, Bones, TexH, Arena, ZeroUbo, ZeroSsbo;
-        public long RecCap, SlotCap, BoneCap, TexHCap;
+        public BufferId Records, Slots, Bones, TexH, Arena, ZeroUbo, ZeroSsbo, Plt;
+        public long RecCap, SlotCap, BoneCap, TexHCap, PltCap;
+        /// <summary>The PLT rows' and master palette's send counts last mirrored; -1 = never.</summary>
+        public long PltSends = -1, PaletteSends = -1;
+        public ImageId Palette;
         /// <summary>Records the GL upload named since the last Vulkan one; <see cref="DirtyAll"/> when it overflowed.</summary>
         public int[] Dirty = new int[1024];
         public int DirtyN;
@@ -347,6 +350,7 @@ public sealed unsafe partial class AlloyRenderer
                     ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch
                     {
                         SsboSlots.Draw => s.Records, SsboSlots.DrawIdx => slots, SsboSlots.Bones => s.Bones, SsboSlots.TexH => s.TexH,
+                        SsboSlots.Plt when !s.Plt.IsNull => s.Plt,
                         _ => s.ZeroSsbo,
                     });
                     break;
@@ -366,6 +370,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
+        if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
         return o.Type switch
         {
             "usampler2D" => new ImageBinding(o.Binding, s.TexU2D),

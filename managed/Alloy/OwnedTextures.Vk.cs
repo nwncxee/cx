@@ -18,31 +18,9 @@ internal static unsafe partial class OwnedTextures
         if (VkTextures.Device(_log) is not VkBackend vk) return;
         bool grey = bpp == 1;
         int levels = mip ? EngineLevels(cw, ch) : 1;
-        ImageId id = VkTextures.Create(vk, dst, grey ? Format.R8 : Format.Rgba8, cw, ch, levels, grey, VkSampler(s), $"owned {dst}");
+        byte[] px = VkTextures.Pack(img, w, cx, cy, cw, ch, bpp, nibbles: bpp == 2, out Format f);
+        ImageId id = VkTextures.Create(vk, dst, f, cw, ch, levels, grey, VkSampler(s), $"owned {dst}");
         if (id.IsNull) return;
-        int outBpp = grey ? 1 : 4;
-        byte[] px = new byte[cw * ch * outBpp];
-        if (img != null)
-        {
-            var sheet = new ReadOnlySpan<byte>(img, checked(w * (cy + ch) * bpp));
-            for (int y = 0; y < ch; y++)
-            {
-                int at = ((cy + y) * w + cx) * bpp, o = y * cw * outBpp;
-                for (int x = 0; x < cw; x++, o += outBpp, at += bpp)
-                    switch (bpp)
-                    {
-                        case 1: px[o] = sheet[at]; break;
-                        case 3: px[o] = sheet[at]; px[o + 1] = sheet[at + 1]; px[o + 2] = sheet[at + 2]; px[o + 3] = 255; break;
-                        case 4: px[o] = sheet[at]; px[o + 1] = sheet[at + 1]; px[o + 2] = sheet[at + 2]; px[o + 3] = sheet[at + 3]; break;
-                        default:
-                            // 4_4_4_4: one native-endian ushort, R in the high nibble down to A in the low
-                            int v = sheet[at] | sheet[at + 1] << 8;
-                            px[o] = (byte)((v >> 12) * 17); px[o + 1] = (byte)(((v >> 8) & 15) * 17);
-                            px[o + 2] = (byte)(((v >> 4) & 15) * 17); px[o + 3] = (byte)((v & 15) * 17);
-                            break;
-                    }
-            }
-        }
         if (!vk.Upload(id, 0, 0, px)) { VkTextures.Forget(dst); return; }
         if (levels > 1) vk.GenerateMips(id);
     }

@@ -196,6 +196,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (!f.imageCubeArray) return "cube-array images";
         if (!f.independentBlend) return "independent blend";
         if (!f.robustBufferAccess) return "robust buffer access";
+        if (!f.geometryShader) return "geometryShader (a lit fragment's gl_PrimitiveID)";
         return null;
     }
 
@@ -262,6 +263,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.independentBlend = true;
         feats.features.robustBufferAccess = true;
         feats.features.fragmentStoresAndAtomics = has.fragmentStoresAndAtomics;
+        feats.features.geometryShader = true;
         ReadOnlySpan<byte> mem = Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8;
         ReadOnlySpan<byte> sem = Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8;
         VkDevice device;

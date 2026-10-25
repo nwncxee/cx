@@ -159,6 +159,22 @@ public sealed unsafe partial class AlloyRenderer
         long slotBytes = Math.Max((long)_drawN * sizeof(int), 4);
         if (!VkGrow(vk, ref s.Slots, ref s.SlotCap, slotBytes, "vk draw order")) return false;
         if (_drawN > 0) cl.UpdateBuffer(s.Slots, 0, MemoryMarshal.AsBytes(_dSlot.AsSpan(0, _drawN)));
+        if (Db.PltColors.Sends != s.PltSends && !Db.PltColors.Sent.IsEmpty)
+        {
+            ReadOnlySpan<byte> rows = MemoryMarshal.AsBytes(Db.PltColors.Sent);
+            if (!VkGrow(vk, ref s.Plt, ref s.PltCap, rows.Length, "vk plt rows")) return false;
+            cl.ZeroBuffer(s.Plt);
+            cl.UpdateBuffer(s.Plt, 0, rows);
+            s.PltSends = Db.PltColors.Sends;
+        }
+        if (Db.PltPalettes.Sends != s.PaletteSends && !Db.PltPalettes.Sent.IsEmpty)
+        {
+            vk.Destroy(s.Palette);
+            s.Palette = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, Db.PltPalettes.Width, Db.PltPalettes.Height,
+                                                     1, 1, 1, 1, ImageUse.Sampled | ImageUse.CopyDst, "vk plt palette"));
+            if (!s.Palette.IsNull) vk.Upload(s.Palette, 0, 0, Db.PltPalettes.Sent);
+            s.PaletteSends = Db.PltPalettes.Sends;
+        }
         long boneBytes = _skinning ? (long)_boneSlots * BoneFloats * sizeof(float) : 0;
         if (!VkGrow(vk, ref s.Bones, ref s.BoneCap, Math.Max(boneBytes, 64), "vk bones")) return false;
         if (boneBytes > 0) cl.UpdateBuffer(s.Bones, 0, new ReadOnlySpan<byte>(_boneStage, (int)boneBytes));

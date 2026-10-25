@@ -130,11 +130,48 @@ internal static class VkPrograms
                 check.Expect(at && push.Bytes == 32, $"{id}'s push block sits at 0, 4 .. 24, four bytes each, 32 in all");
             }
             else check.Expect(false, $"{id}'s vertex stage declares the push block");
+            // every set-0 binding a compiled stage decorates is one the host binds: a missing one is an unwritten
+            // descriptor the device reads, which hangs it
+            foreach (ShaderKind k in (ReadOnlySpan<ShaderKind>)[ShaderKind.VertexShader, ShaderKind.FragmentShader])
+                foreach (uint bound in Bindings(spirv[k]))
+                    check.Expect(t.Opaques.Exists(o => o.Set == 0 && Shifted(o) == bound),
+                        $"{id}'s {k} declares set 0 binding {bound}, which no opaque the host binds names");
             foreach (VkOpaque a in t.Opaques)
                 foreach (VkOpaque b in t.Opaques)
                     check.Expect(!(a.Set == b.Set && a.Binding == b.Binding && a.Kind == b.Kind && a.Type != b.Type),
                         $"{id}: {a.Name} ({a.Type}) and {b.Name} ({b.Type}) share binding {a.Binding} with different types");
         }
         log.Info(check.Ok ? $"VkPrograms.SelfCheck: passed -- loose members {string.Join(", ", counts)}" : "VkPrograms.SelfCheck: FAILED");
+    }
+
+    /// <summary>SPIR-V's OpDecorate and its DescriptorSet and Binding decorations, from the specification's tables.</summary>
+    private const uint OpDecorate = 71, DecorationDescriptorSet = 34, DecorationBinding = 33;
+
+    /// <summary>An opaque's binding as the toolchain lays the one set out: each kind shifted past the last.</summary>
+    private static uint Shifted(VkOpaque o) => o.Kind switch
+    {
+        VkBindKind.UniformBlock => VulkanToolchain.UniformBase + o.Binding,
+        VkBindKind.StorageBlock => VulkanToolchain.StorageBase + o.Binding,
+        VkBindKind.StorageImage => VulkanToolchain.ImageBase + o.Binding,
+        _ => VulkanToolchain.SampledBase + o.Binding,
+    };
+
+    /// <summary>The bindings a module decorates on variables in set 0 (no DescriptorSet decoration means set 0).</summary>
+    private static List<uint> Bindings(byte[] spirv)
+    {
+        ReadOnlySpan<uint> w = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(spirv);
+        var binding = new Dictionary<uint, uint>();
+        var set = new Dictionary<uint, uint>();
+        for (int i = 5; i < w.Length;)
+        {
+            uint op = w[i] & 0xFFFF, n = w[i] >> 16;
+            if (n == 0) break;
+            if (op == OpDecorate && n >= 4 && w[i + 2] == DecorationBinding) binding[w[i + 1]] = w[i + 3];
+            if (op == OpDecorate && n >= 4 && w[i + 2] == DecorationDescriptorSet) set[w[i + 1]] = w[i + 3];
+            i += (int)n;
+        }
+        var list = new List<uint>();
+        foreach (var (id, b) in binding) if (!set.TryGetValue(id, out uint s) || s == 0) list.Add(b);
+        return list;
     }
 }

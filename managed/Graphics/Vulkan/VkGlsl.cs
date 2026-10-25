@@ -271,6 +271,8 @@ internal static partial class VkGlsl
         sb.Append(" };\n");
         if (r.Loose.Count > 0)
         {
+            // the block this writes is a declaration like any other: its host has to bind it
+            AddOpaque(r, new VkOpaque(LooseBlock, LooseBlock, 0, LooseBinding, VkBindKind.UniformBlock));
             sb.Append($"layout(std140, binding = {LooseBinding}) uniform {LooseBlock} {{\n");
             foreach (VkLoose l in r.Loose) sb.Append("    ").Append(l.Type).Append(' ').Append(l.Name).Append(l.Array).Append(";\n");
             sb.Append("};\n");

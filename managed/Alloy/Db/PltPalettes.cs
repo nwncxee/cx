@@ -161,6 +161,13 @@ internal static unsafe class PltPalettes
         _uploads++;
     }
 
+    /// <summary>The master palette as last sent, RGBA8 <see cref="Width"/> x <see cref="Height"/>, and how many sends
+    /// there have been: a second backend re-sends it when the count moves.</summary>
+    internal static ReadOnlySpan<byte> Sent => _tex != 0 ? _master : default;
+
+    /// <inheritdoc cref="Sent"/>
+    internal static long Sends => _uploads;
+
     /// <summary>Bind the master palette for a pass that resolves PLTs. Nothing else uses the unit.</summary>
     internal static void Bind()
     {

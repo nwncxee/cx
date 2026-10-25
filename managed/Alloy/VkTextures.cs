@@ -24,6 +24,8 @@ internal static class VkTextures
         public VkBackend? Dev;
         public readonly Dictionary<uint, Entry> ByName = new();
         public readonly Dictionary<SamplerDesc, SamplerId> Samplers = new();
+        /// <summary>Names sharing each image: a sampler change is a new GL name over the same texels.</summary>
+        public readonly Dictionary<uint, int> Refs = new();
         /// <summary>GL's resident handle for an owned name, as minted: the record tables carry handles, not names.</summary>
         public readonly Dictionary<ulong, uint> HandleName = new();
         public long Mirrored, Refused;
@@ -60,8 +62,52 @@ internal static class VkTextures
         if (img.IsNull) { Refuse($"{label}: the device refused a {f} {w}x{h} image"); return default; }
         if (!_s.Samplers.TryGetValue(s, out SamplerId sid)) _s.Samplers[s] = sid = vk.CreateSampler(s);
         _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s, sid);
+        _s.Refs[img.Value] = 1;
         _s.Mirrored++;
         return img;
+    }
+
+    /// <summary><paramref name="gl"/> is a copy of <paramref name="src"/>'s texels under sampler <paramref name="s"/>:
+    /// the same image, its own index. A no-op when the source has no mirror.</summary>
+    internal static void Clone(uint src, uint gl, in SamplerDesc s)
+    {
+        VkTexState t = _s;
+        if (t.Dev == null || !t.ByName.TryGetValue(src, out Entry e)) return;
+        Forget(gl);
+        if (!t.Samplers.TryGetValue(s, out SamplerId sid)) t.Samplers[s] = sid = t.Dev.CreateSampler(s);
+        t.ByName[gl] = new Entry(e.Image, t.Dev.Bindless(e.Image, sid), s, sid);
+        t.Refs[e.Image.Value] = t.Refs.GetValueOrDefault(e.Image.Value) + 1;
+    }
+
+    /// <summary>One cell of an uncompressed sheet, tightly packed for Vulkan: four channels as RGBA8, three widened
+    /// with an opaque alpha, one as R8 (sampled grey), two as RG8; a four-bit-per-channel texel (<paramref name="nibbles"/>)
+    /// widened to RGBA8. A null sheet packs zeros, as GL's zeroed storage holds.</summary>
+    internal static unsafe byte[] Pack(byte* sheet, int rowPixels, int x0, int y0, int w, int h, int channels, bool nibbles, out Format f)
+    {
+        int outPx = channels switch { 1 => 1, 2 when !nibbles => 2, _ => 4 };
+        f = outPx switch { 1 => Format.R8, 2 => Format.Rg8, _ => Format.Rgba8 };
+        byte[] px = new byte[w * h * outPx];
+        if (sheet == null) return px;
+        var src = new ReadOnlySpan<byte>(sheet, checked(rowPixels * (y0 + h) * channels));
+        for (int y = 0; y < h; y++)
+        {
+            int at = ((y0 + y) * rowPixels + x0) * channels, o = y * w * outPx;
+            for (int x = 0; x < w; x++, o += outPx, at += channels)
+                switch (channels)
+                {
+                    case 1: px[o] = src[at]; break;
+                    case 2 when !nibbles: px[o] = src[at]; px[o + 1] = src[at + 1]; break;
+                    case 3: px[o] = src[at]; px[o + 1] = src[at + 1]; px[o + 2] = src[at + 2]; px[o + 3] = 255; break;
+                    case 4: px[o] = src[at]; px[o + 1] = src[at + 1]; px[o + 2] = src[at + 2]; px[o + 3] = src[at + 3]; break;
+                    default:
+                        // 4_4_4_4: one native-endian ushort, R in the high nibble down to A in the low
+                        int v = src[at] | src[at + 1] << 8;
+                        px[o] = (byte)((v >> 12) * 17); px[o + 1] = (byte)(((v >> 8) & 15) * 17);
+                        px[o + 2] = (byte)(((v >> 4) & 15) * 17); px[o + 3] = (byte)((v & 15) * 17);
+                        break;
+                }
+        }
+        return px;
     }
 
     /// <summary>The sampler <paramref name="gl"/>'s mirror was made with, for a replacement that keeps it.</summary>
@@ -91,6 +137,9 @@ internal static class VkTextures
         VkTexState s = _s;
         if (s.Dev == null || !s.ByName.Remove(gl, out Entry e)) return;
         s.Dev.Unbind(e.Handle);
+        int refs = s.Refs.GetValueOrDefault(e.Image.Value) - 1;
+        if (refs > 0) { s.Refs[e.Image.Value] = refs; return; }
+        s.Refs.Remove(e.Image.Value);
         s.Dev.Destroy(e.Image);
     }
 
