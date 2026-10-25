@@ -29,6 +29,11 @@ internal static class UboSlots
     /// pass runs and rebound before each of its dispatches.</summary>
     internal const uint Cull = 3, Deferred = 3, Ssao = 3;
 
+    /// <summary>Vulkan only: the block a translated stage's loose uniforms are gathered into (<c>VkGlsl</c>). No
+    /// embedded text declares it; the colour pass binds it with each program, so it shares no point with a pass's
+    /// own block.</summary>
+    internal const uint Loose = 4;
+
     /// <summary>Every block name the GLSL declares, the point C# binds it on, and -- on a shared point -- every
     /// text allowed to declare it. The list is the one net for the hazard a text-at-a-time scan cannot see:
     /// two blocks on one point inside one program both source that point's buffer, and nothing in the GLSL

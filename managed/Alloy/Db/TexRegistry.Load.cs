@@ -506,6 +506,7 @@ internal static unsafe partial class TexRegistry
             lock (_lock) { if (_graveyard.Count == 0) break; dead = _graveyard.Dequeue(); }
             // The handle went non-resident above, but the frames in flight were submitted holding it.
             GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, dead);
+            VkTextures.Forget(dead);
         }
         long fastBytes = 0;
         for (int n = 0; n < FastUploadsPerFrame && fastBytes < FastBytesPerFrame; n++)
@@ -569,6 +570,7 @@ internal static unsafe partial class TexRegistry
                 DropHandle(i);
                 if (target != name) { _graveyard.Enqueue(name); _name[i] = target; }
             }
+            if (target != name) VkTextures.Clone(name, target, VkSampler(clamp, nearest, mip));
             fresh = MintHandle(target, _resref[i] ?? "");
             lock (_lock) { _handle[i] = fresh; _samplerDone++; TableSerial++; if (fresh != 0) _mints++; }
             lock (_gate) _reminted.Enqueue(i);
@@ -727,7 +729,7 @@ internal static unsafe partial class TexRegistry
         uint err = Gl.GetError();
         if (svAlign != 1) Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, svAlign);
         if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpack);
-        if (err == 0) return dst;
+        if (err == 0) { MirrorJob(dst, j); return dst; }
         if (Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dst);
         why = $"the driver refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} upload (0x{err:x})";
         return 0;
@@ -891,6 +893,7 @@ internal static unsafe partial class TexRegistry
             return 0;
         }
         Gl.MakeTextureHandleResidentARB(v);
+        VkTextures.NoteHandle(v, (int)name);
         return v;
     }
 

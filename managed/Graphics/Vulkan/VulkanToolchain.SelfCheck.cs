@@ -74,6 +74,29 @@ public static unsafe partial class VulkanToolchain
             ShaderKind.ComputeShader, out string why);
         check.Expect(refused == null, "source that is not GLSL is refused rather than compiled");
         check.Expect(why.Length > 0, "a refusal carries shaderc's own diagnostic");
+        CheckCache(check);
+    }
+
+    /// <summary>The module cache under a corrupt entry and a good one. Oracle: SPIR-V's magic word -- a word the corrupt
+    /// entry does not start with -- and the bytes written into the cache by hand.</summary>
+    private static void CheckCache(Checker check)
+    {
+        string src = ProbeSource + $"// cache probe {Environment.ProcessId}\n";
+        string path = System.IO.Path.Combine(ProgramBinary.CacheDir, $"vk-{CacheKey(src, ShaderKind.ComputeShader):x16}.spv");
+        try
+        {
+            System.IO.Directory.CreateDirectory(ProgramBinary.CacheDir);
+            System.IO.File.WriteAllBytes(path, new byte[24]);
+            byte[]? fresh = Compile(src, "cx_vk_cache.comp", ShaderKind.ComputeShader, out string e);
+            check.Expect(fresh != null && BitConverter.ToUInt32(fresh, 0) == SpirvMagic,
+                $"a cached entry that is not a module is refused and the stage compiled ({e})");
+            byte[] planted = [.. BitConverter.GetBytes(SpirvMagic), .. new byte[20]];
+            System.IO.File.WriteAllBytes(path, planted);
+            byte[]? hit = Compile(src, "cx_vk_cache.comp", ShaderKind.ComputeShader, out _);
+            check.Expect(hit != null && hit.AsSpan().SequenceEqual(planted), "a cached module is served as written, without a compile");
+        }
+        catch (System.IO.IOException x) { check.Expect(false, $"the cache folder is writable ({x.Message})"); }
+        finally { try { System.IO.File.Delete(path); } catch (System.IO.IOException) { } }
     }
 
     /// <summary>The results the specification lets vkCreateInstance return for a request with no layers and

@@ -106,7 +106,7 @@ internal static unsafe partial class OwnedTextures
                 _log?.Always($"OwnedTextures: {dds.Format} {dds.W}x{dds.H} REFUSED by the driver (0x{err:x}) -- the engine's same-sized upload stands and draws as garbage");
         }
         if (err == 0 && dst != 0) { why = Decline.None; return dst; }
-        if (dst != 0) Gl.DeleteTextures(1, &dst);
+        if (dst != 0) { VkTextures.Forget(dst); Gl.DeleteTextures(1, &dst); }
         return 0;
     }
 
@@ -146,6 +146,7 @@ internal static unsafe partial class OwnedTextures
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
         uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
         if (dst == 0) return 0;
+        MirrorRaw(dst, img, w, (cell % nx) * cw, (cell / nx) * ch, cw, ch, bpp, s, mip);
         if (img == null) return GlTexture.KeepZeroed(dst, fmt, type);   // no pixels: zeroed storage, as the engine's null upload leaves
         var u = Unpack.Take(w, (cell % nx) * cw, (cell / nx) * ch);
         Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, type, img);
@@ -167,6 +168,7 @@ internal static unsafe partial class OwnedTextures
         if (cw > MaxTexSize() || ch > MaxTexSize()) return 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip: false);
         uint dst = Storage(Gl.TEXTURE_2D, 1, Gl.RGBA8, cw, ch, s, red: false);
+        if (dst != 0) MirrorSolid(dst, cw, ch, 0, VkSampler(s));
         return dst == 0 ? 0 : GlTexture.KeepZeroed(dst, Gl.RGBA, Gl.UNSIGNED_BYTE);
     }
 
@@ -186,6 +188,7 @@ internal static unsafe partial class OwnedTextures
             Gl.CompressedTextureSubImage2D(dst, l, 0, 0, lw, lh, fmt, size, level);
         }
         u.Give();
+        MirrorCompressed(dst, t, fmt, w, h, levels, s, red);
         return dst;
     }
 
@@ -207,6 +210,7 @@ internal static unsafe partial class OwnedTextures
             off += sz;
         }
         u.Give();
+        MirrorDds(dst, chain, i, levels, s, red);
         return dst;
     }
 

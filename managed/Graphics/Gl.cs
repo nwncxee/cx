@@ -77,6 +77,8 @@ public static unsafe class Gl
     /// universally present -- the engine's own DDS path uploads these very enums).</summary>
     public const uint PACK_ALIGNMENT = 0x0D05,
                       COMPRESSED_RGB_S3TC_DXT1 = 0x83F0, COMPRESSED_RGBA_S3TC_DXT5 = 0x83F3;
+    /// <summary>The pack rectangle a client-memory readback must see at zero.</summary>
+    public const uint PACK_ROW_LENGTH = 0x0D02, PACK_SKIP_ROWS = 0x0D03, PACK_SKIP_PIXELS = 0x0D04;
     /// <summary>The two PBO bindings that would silently turn a client pointer into a buffer offset.</summary>
     public const uint PIXEL_PACK_BUFFER = 0x88EB, PIXEL_UNPACK_BUFFER = 0x88EC,
                       PIXEL_PACK_BUFFER_BINDING = 0x88ED, PIXEL_UNPACK_BUFFER_BINDING = 0x88EF;

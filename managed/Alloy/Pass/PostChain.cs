@@ -93,6 +93,9 @@ internal static unsafe class PostChain
     /// <summary>The colour the HDR buffer was last cleared to -- the void, for the period line.</summary>
     private static Vector3 _lastClear;
 
+    /// <summary>The engine's clear colour the last pass began with, display space, as the engine set it.</summary>
+    internal static Vector3 LastClear => _lastClear;
+
     /// <summary>The engine's own gamma gate, <c>GetGlobalShaderParami(0)</c> -- the value that becomes
     /// <c>#define GAMMA_CORRECTION</c> in every engine shader and makes <c>ApplyColorSpace</c> the identity
     /// when it is 0. Asked once per pass in <see cref="Precheck"/>: it is a settings-driven global and

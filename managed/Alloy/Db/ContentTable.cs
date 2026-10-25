@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using CX.Framework;
 using CX.Graphics;
 
@@ -70,6 +71,8 @@ internal static unsafe class ContentTable
         public uint Ssbo;
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
+        /// <summary>Bumped by every row edit, so a copy of the rows knows when it is stale without comparing them.</summary>
+        public long Version;
         /// <summary>Uploads whose dirty span reached past the buffer, and so were HELD rather than dropped.</summary>
         public long Short;
         /// <summary>Has a row ever existed? Until one has, the GPU block is ONE zero row rather than the
@@ -186,6 +189,7 @@ internal static unsafe class ContentTable
 
     private static void Touch(int row)
     {
+        _st.Version++;
         if (row < _st.DirtyLo) _st.DirtyLo = row;
         if (row > _st.DirtyHi) _st.DirtyHi = row;
     }
@@ -266,6 +270,21 @@ internal static unsafe class ContentTable
             s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
         }
         Bind();
+    }
+
+    /// <summary>The rows the GPU block holds -- one zero row until any exists, as <see cref="Upload"/> sizes it -- copied
+    /// into <paramref name="into"/> (grown to fit); their byte length. Palette handles are GL's.</summary>
+    internal static long Version => Volatile.Read(ref _st.Version);
+
+    internal static int Snapshot(ref byte[] into)
+    {
+        lock (_lock)
+        {
+            int rows = _st.AnyRow ? MaxRows : 1, n = rows * RowBytes;
+            if (into.Length < n) into = new byte[n];
+            MemoryMarshal.AsBytes(_st.Rows.AsSpan(0, rows)).CopyTo(into);
+            return n;
+        }
     }
 
     /// <summary>Bind the block on <see cref="Binding"/>. Called at every content program bind: the point is a shared one,

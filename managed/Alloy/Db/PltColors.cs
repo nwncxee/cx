@@ -286,6 +286,13 @@ internal static unsafe class PltColors
         if (Gl.BindBufferBase != null) Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, Binding, _ssbo);
     }
 
+    /// <summary>The words the GPU buffer holds, and how many sends there have been: a second backend re-sends them
+    /// whole when the count moves.</summary>
+    internal static ReadOnlySpan<uint> Sent => _words.AsSpan(0, Math.Min(_sized, _words.Length));
+
+    /// <inheritdoc cref="Sent"/>
+    internal static long Sends => _uploads;
+
     /// <summary>Words the GPU buffer currently holds: <see cref="WordsPerRecord"/> until a PLT record exists,
     /// the whole table after.</summary>
     private static int _sized;

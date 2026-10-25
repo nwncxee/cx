@@ -137,6 +137,7 @@ internal static unsafe class Issue
         StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
         if (_bindless) UploadHandles(cap, whole);
         if (grew) _recCapGpu = cap;
+        VkNoteDirty(_recDirty, Math.Min(_recDirtyN, _recDirty.Length), whole);
         _recDirtyN = 0; _recDirtyAll = false;
         // ...and the one array that IS per draw and per pass, rewritten whole every pass: the ring's shape.
         fixed (int* p = _dSlot)
@@ -441,7 +442,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(L.AoCutout, Ao.Cutout.V);
                     Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
                     OitPass.Upload(L.Oit, L.OitDim, _oitOn);
-                    Gl.Uniform1i(L.LightRecOn, _lightRec ? 1 : 0);
+                    Gl.Uniform1i(L.LightRecOn, _lightRec && !VkParity.Active ? 1 : 0);
                     Gl.Uniform1i(L.Capture, _capturing ? (_planar ? 2 : 1) : 0);
                     Gl.Uniform1f(L.MirrorZ, _mirrorZ);
                     LightmapBake.BindForDraw(L.LmPages, L.LmMovers);
@@ -452,12 +453,12 @@ internal static unsafe class Issue
                     // no blended batch reads SSAO (AoBlended) -- a bound, attached depth is a driver decompress
                     SsaoPass.BindForDraw(SsaoPass.Live && !_capturing && !_oitOn, PostChain.DepthTex, depthToo: wantProg == 8);
                     Gl.Uniform2f(L.DecalZ, DecalLayer.Z0, DecalLayer.Z1);
-                    Gl.Uniform1i(L.SsaoHalf, SsaoPass.Half ? 1 : 0);
+                    Gl.Uniform1i(L.SsaoHalf, SsaoPass.Half && !VkParity.Active ? 1 : 0);
                     Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
                     UploadMaterialModel(L.Material);
-                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing);
+                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing || VkParity.Active);
                     // Not in the probe capture: CxAmbientShape reads the probe back, so the term would land twice.
-                    SkyView.UploadLit(L.SkyVp, L.SkyTerm, _capturing && !_planar);
+                    SkyView.UploadLit(L.SkyVp, L.SkyTerm, _capturing && !_planar || VkParity.Active);
                     Weather.BindEsm(L.CoverEsm, _oitOn || lists);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, _capturing);
                     // The master PLT palette on its own unit; a no-op until a master palette exists.
@@ -466,6 +467,7 @@ internal static unsafe class Issue
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.ContentTable.Bind();
                     if (content) ContentPrograms.BindExtras(wantProg);
+                    VkParity.GlStandDown();
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
@@ -492,7 +494,7 @@ internal static unsafe class Issue
             // fAlphaDiscardValue, which is a global there and a uniform here.
             if (lit)
             {
-                int ssao = SsaoPass.Live && !_capturing ? AoWhy(g) : 0;
+                int ssao = SsaoPass.Live && !_capturing && !VkParity.Active ? AoWhy(g) : 0;
                 if (ssao != boundSsao)
                 {
                     boundSsao = ssao;
@@ -500,7 +502,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(litAoDirect, ssao > 0 ? SsaoPass.Direct : 0f);
                 }
                 // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
-                int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
+                int dm = VkParity.Active ? 0 : decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
                 if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
                 int sm = interior ? 1 : 0;
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }

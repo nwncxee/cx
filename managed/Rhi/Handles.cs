@@ -17,6 +17,10 @@ public readonly record struct ShaderId(uint Value) { public bool IsNull => Value
 /// <summary>A linked program plus its fixed-function state, resolved at build time so a frame binds it by index.</summary>
 public readonly record struct PipelineId(uint Value) { public bool IsNull => Value == 0; }
 
+/// <summary>A vertex input layout the device resolved once. The null id is the attribute-less layout -- a
+/// full-screen triangle, or a stage that pulls every vertex from a buffer it reads.</summary>
+public readonly record struct VertexLayoutId(uint Value) { public bool IsNull => Value == 0; }
+
 /// <summary>A bindless texture reference, 64 bits on every backend: GL's resident handle, or a Vulkan descriptor
 /// index zero-extended.</summary>
 public readonly record struct BindlessHandle(ulong Value);

@@ -613,6 +613,11 @@ internal static unsafe class CullPass
         CullFrames++;
     }
 
+    /// <summary>The draws each screen phase's last dispatch kept, by a stalling read: the A/B's GL half.</summary>
+    internal static string KeptNow()
+        => _phase < 0 ? "off" : $"prepass {GlParity.Sum(_gl.CntBuf[PhasePrepass], _groups)}, retest {GlParity.Sum(_gl.CntBuf[PhaseRetest], _groups)}, "
+                              + $"colour {GlParity.Sum(_gl.CntBuf[PhaseColour], _groups)} of {_drawN}";
+
     internal static void ResetStats() { CulledDraws = 0; KeptDraws = 0; CullFrames = 0; PrepassKept = 0; RetestKept = 0; }
 
     /// <summary>The six frustum planes of a row-major <c>view*proj</c>, Gribb-Hartmann, normalised so the

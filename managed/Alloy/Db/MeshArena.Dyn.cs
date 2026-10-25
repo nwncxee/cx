@@ -117,6 +117,7 @@ public static unsafe partial class MeshArena
             long bytes = (long)rr.NV * stride * 4;
             fixed (float* p = s.Mirror.AsSpan(checked((int)((long)rr.Base * stride))))
                 Gl.NamedBufferSubData(s.Vbo, (IntPtr)((long)rr.Base * stride * 4), (IntPtr)bytes, p);
+            DynUploadVk(in rr, stride);
             _dynUploads++;
             _dynBytes += bytes;
         }

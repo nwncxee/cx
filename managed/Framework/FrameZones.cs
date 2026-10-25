@@ -122,6 +122,8 @@ public static class FrameZones
         /// it. CPU-side only -- what the dispatches cost is GPU time, and shows up in <see cref="Present"/> or
         /// nowhere at all.</summary>
         Cull,
+        /// <summary>Nested in <see cref="Alloy"/>: the Vulkan frame's recording, translation and submit, CPU side.</summary>
+        Vulkan,
         /// <summary>Nested in <see cref="Ai"/> (reported for shape, not subtracted): the engine texture upload
         /// funnel -- the engine's own build plus Alloy's owned copy and BCn transcode, first-sight work that lands
         /// inside the engine's step. The UPLOAD term of the read / decode / upload split, whose other two are
