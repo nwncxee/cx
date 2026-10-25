@@ -10,12 +10,13 @@ namespace CX.Alloy;
 
 /// <summary>
 /// <see cref="CullPass"/> on Vulkan: the same two compute stages over the same source records and spheres, recorded
-/// into a list <see cref="VkBackend"/> runs at the frame's cull site. The prepass and colour lists are both cut, as
-/// GL cuts them; until the Vulkan prepass exists there is no depth to reduce, so both are frustum, LOD and fog only.
+/// first into the Vulkan frame's list. The prepass and colour sets are both cut, as GL cuts them; until the Vulkan
+/// prepass exists there is no depth to reduce, so both are frustum, LOD and fog only.
 /// </summary>
-internal static unsafe class CullPassVk
+internal static class CullPassVk
 {
-    /// <summary>Everything on one device, replaced whole when the device is (context loss drops it).</summary>
+    /// <summary>Everything on one device, replaced whole when the device is (context loss drops it), plus the
+    /// inputs the cull site staged for this frame's recording.</summary>
     private sealed class CullVkState
     {
         public VkBackend? Dev;
@@ -26,54 +27,65 @@ internal static unsafe class CullPassVk
         public BufferId Ubo, Src, Sph, Key, Rej;
         public long SrcCap, SphCap;
         public int CmdCap, CntCap;
-        /// <summary>Indexed by <see cref="CullPass.PhasePrepass"/> and <see cref="CullPass.PhaseColour"/>.</summary>
+        /// <summary>Indexed by <see cref="Prepass"/> and <see cref="Colour"/>.</summary>
         public readonly BufferId[] Cmd = new BufferId[Phases], Slot = new BufferId[Phases], Cnt = new BufferId[Phases];
         /// <summary>A 1x1 stand-in on the pyramid's slot: the cull stage names the sampler whether or not it
         /// tests occlusion, and Vulkan wants every descriptor a pipeline uses written.</summary>
         public ImageId Pyr;
+        /// <summary>This frame's list, staged at the cull site; <see cref="Groups"/> 0 means nothing to cut.</summary>
+        public CullSrcRec[]? Records;
+        public Sphere[]? Spheres;
+        public int Groups, DrawN, SphereSlots;
+        public CullBlock Block;
     }
 
     private static CullVkState _s = new();
 
-    /// <summary>The output sets this port cuts: the prepass's and the colour pass's.</summary>
-    private const int Phases = 2;
-    /// <summary>Room for the blocks and binds of both phases; the source and sphere uploads grow it once, to their high water.</summary>
-    private const int ArenaBytes = 64 * 1024;
+    /// <summary>This port's output sets: the prepass's (which writes the hi-Z verdicts) and the colour pass's.</summary>
+    private const int Prepass = 0, Colour = 1, Phases = 2;
+    /// <summary>Room for the fixture's uploads, blocks and binds; the frame's own list is <see cref="VulkanFrame"/>'s.</summary>
+    private const int ArenaBytes = 4096;
+    /// <summary>The mirror-plane height that clips nothing: only the planar reflection's dispatch sets one.</summary>
+    private const float NoClipPlane = -1e30f;
 
-    /// <summary>Cull this frame's draw list into the prepass and colour sets. A refusal fails Alloy loudly: the
-    /// frame has no other visibility test, and a Vulkan frame that drew unculled would hide the bug.</summary>
-    internal static void Run(ExtenderLog log, int groups, int drawN, CullSrcRec* src, Sphere* sph, int sphereSlots,
-                             float lodScale, int compactBelow, Vector3 eye, Matrix4x4* vp)
+    /// <summary>Stage this frame's draw list for <see cref="Record"/>. Zero groups (a probe capture, or
+    /// <c>/alloy cull 0</c>) stages nothing, so no list from an older pass stays armed.</summary>
+    internal static unsafe void Stage(int groups, int drawN, CullSrcRec[] src, Sphere[] sph, int sphereSlots,
+                                      float lodScale, int compactBelow, Vector3 eye, Matrix4x4* vp)
     {
-        if (CullPass.Mode <= CullPass.ModeOff || drawN <= 0 || groups <= 0) return;
-        if (AlloyDevice.Vulkan(log) is not VkBackend vk || !Ensure(vk, log)) return;
-        CullBlock b = Block(drawN, vp, eye, lodScale, compactBelow);
-        if (!Cull(vk, groups, drawN, src, sph, sphereSlots, ref b))
-        {
-            _s.Failed = true;
-            AlloyGate.Fail("the Vulkan cull's submit was refused (logged above) -- Alloy has no visibility test");
-            return;
-        }
-        if (_s.Live) return;
-        _s.Live = true;
-        log.Always($"CullPassVk: LIVE -- {drawN} draws in {groups} batches culled on Vulkan (frustum, LOD, fog; "
-                 + "hi-Z waits for the Vulkan prepass depth)");
-    }
-
-    /// <summary>The terms this frame's dispatch reads, as the GL pass stages them minus the pyramid's.</summary>
-    private static CullBlock Block(int drawN, Matrix4x4* vp, Vector3 eye, float lodScale, int compactBelow)
-    {
-        var b = new CullBlock
+        var s = _s;
+        s.Groups = CullPass.Mode > CullPass.ModeOff && drawN > 0 ? groups : 0;
+        if (s.Groups <= 0) return;
+        s.Records = src; s.Spheres = sph; s.DrawN = drawN; s.SphereSlots = sphereSlots;
+        s.Block = new CullBlock
         {
             DrawN = drawN, Vp = *vp, PyrVp = *vp, LodPx = MathF.Max(CullPass.LodPx, 0f), LodScale = lodScale,
-            ClipZ = -1e30f, CompactBelow = compactBelow, Eye = new Vector4(eye, 0f),
+            ClipZ = NoClipPlane, CompactBelow = Math.Clamp(compactBelow, 0, groups), Eye = new Vector4(eye, 0f),
         };
-        CullPass.Planes(in *vp, b.Planes, eye);
+        CullPass.Planes(in *vp, s.Block.Planes, eye);
         float opaque = CullPass.FogCull ? SceneFog.OpaqueDistance() : float.PositiveInfinity;
-        b.FogCull = float.IsInfinity(opaque) ? 0f : opaque;
+        s.Block.FogCull = float.IsInfinity(opaque) ? 0f : opaque;
         Vector3 origin = SceneFog.Origin(out bool radial);
-        b.FogOrigin = new Vector4(origin, radial ? 1f : 0f);
-        return b;
+        s.Block.FogOrigin = new Vector4(origin, radial ? 1f : 0f);
+    }
+
+    /// <summary>Record the staged cull into <paramref name="cl"/>, ahead of anything that reads its sets. False
+    /// (logged) when the device refused the pass: the frame has no other visibility test, so the caller fails Alloy.</summary>
+    internal static bool Record(VkBackend vk, CommandList cl, ExtenderLog log)
+    {
+        if (!Ensure(vk, log)) return false;
+        var s = _s;
+        int groups = s.Groups;
+        s.Groups = 0;
+        if (groups <= 0 || s.Records == null || s.Spheres == null) return true;
+        if (!Cull(vk, cl, groups, s.DrawN, s.Records, s.Spheres, s.SphereSlots, ref s.Block)) return false;
+        if (!s.Live)
+        {
+            s.Live = true;
+            log.Always($"CullPassVk: LIVE -- {s.DrawN} draws in {groups} batches culled on Vulkan (frustum, LOD, fog; "
+                     + "hi-Z waits for the Vulkan prepass depth)");
+        }
+        return true;
     }
 
     /// <summary>The device's pipelines and constant resources, then the on-device check, once per device.</summary>
@@ -83,7 +95,7 @@ internal static unsafe class CullPassVk
         var s = _s;
         if (s.Failed) return false;
         if (!s.Prog.IsNull) return true;
-        s.Cmds = new CommandList("vulkan cull", ArenaBytes, log);
+        s.Cmds = new CommandList("vulkan cull check", ArenaBytes, log);
         s.Prog = Compute(vk, CullPass.CullCs, "CullPassVk frustum cull");
         s.ProgSort = Compute(vk, CullPass.SortCs, "CullPassVk back-to-front rank sort");
         s.Ubo = vk.CreateBuffer(new BufferDesc(Std140.BlockBytes<CullBlock>(), BufferUse.Uniform, MemoryKind.Upload, "cull block"));
@@ -91,13 +103,13 @@ internal static unsafe class CullPassVk
         if (s.Prog.IsNull || s.ProgSort.IsNull || s.Ubo.IsNull || s.Pyr.IsNull)
         {
             s.Failed = true;
-            AlloyGate.Fail("the Vulkan cull's pipelines did not build (logged above) -- Alloy has no visibility test");
+            log.Always("CullPassVk: the device REFUSED the cull's pipelines or constants (logged above)");
             return false;
         }
         if (!DeviceCheck(vk, log))
         {
             s.Failed = true;
-            AlloyGate.Fail("the Vulkan cull disagrees with the reference draw list (CullPassVk.DeviceCheck above)");
+            log.Always("CullPassVk: the device's cull DISAGREES with the reference draw list (DeviceCheck above)");
             return false;
         }
         return true;
@@ -109,17 +121,17 @@ internal static unsafe class CullPassVk
         return vk.CreatePipeline(in d);
     }
 
-    /// <summary>Upload the draw list and spheres, then both phases' dispatches, in one submit. False when the
-    /// device refused a buffer or the submit (logged).</summary>
-    private static bool Cull(VkBackend vk, int groups, int drawN, CullSrcRec* src, Sphere* sph, int sphereSlots, ref CullBlock b)
+    /// <summary>Upload the draw list and spheres, then both phases' dispatches, into <paramref name="cl"/>. False
+    /// when the device refused a buffer (logged).</summary>
+    private static bool Cull(VkBackend vk, CommandList cl, int groups, int drawN, CullSrcRec[] src, Sphere[] sph,
+                             int sphereSlots, ref CullBlock b)
     {
         var s = _s;
-        CommandList cl = s.Cmds!;
-        cl.Reset();
-        long srcBytes = (long)drawN * sizeof(CullSrcRec), sphBytes = (long)sphereSlots * sizeof(Sphere);
+        ReadOnlySpan<byte> srcBytes = MemoryMarshal.AsBytes(src.AsSpan(0, drawN));
+        ReadOnlySpan<byte> sphBytes = MemoryMarshal.AsBytes(sph.AsSpan(0, sphereSlots));
         bool growCmd = drawN > s.CmdCap, growCnt = groups > s.CntCap;
-        Grow(vk, ref s.Src, ref s.SrcCap, srcBytes, BufferUse.Storage, MemoryKind.Upload, "cull source");
-        Grow(vk, ref s.Sph, ref s.SphCap, sphBytes, BufferUse.Storage, MemoryKind.Upload, "cull bounds");
+        Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
+        Grow(vk, ref s.Sph, ref s.SphCap, sphBytes.Length, "cull bounds");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
         for (int p = 0; p < Phases; p++)
         {
@@ -133,16 +145,17 @@ internal static unsafe class CullPassVk
         for (int p = 0; p < Phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
         if (growCmd) s.CmdCap = drawN;
         if (growCnt) s.CntCap = groups;
-        cl.UpdateBuffer(s.Src, 0, new ReadOnlySpan<byte>(src, (int)srcBytes));
-        cl.UpdateBuffer(s.Sph, 0, new ReadOnlySpan<byte>(sph, (int)sphBytes));
+        cl.UpdateBuffer(s.Src, 0, srcBytes);
+        cl.UpdateBuffer(s.Sph, 0, sphBytes);
 
         int groups1D = (drawN + CullPass.GroupSize - 1) / CullPass.GroupSize;
         Span<byte> blk = stackalloc byte[Std140.BlockBytes<CullBlock>()];
+        blk.Clear();
         ReadOnlySpan<BufferBinding> ubo = [new(UboSlots.Cull, s.Ubo)];
         ReadOnlySpan<ImageBinding> pyr = [new(CullPass.PyramidUnit, s.Pyr)];
         for (int p = 0; p < Phases; p++)
         {
-            b.Rej = p == CullPass.PhasePrepass ? CullPass.RejWrite : CullPass.RejOff;
+            b.Rej = p == Prepass ? CullPass.RejWrite : CullPass.RejOff;
             MemoryMarshal.Write(blk, in b);
             cl.ZeroBuffer(s.Cnt[p], 0, (long)groups * sizeof(uint));
             cl.UpdateBuffer(s.Ubo, 0, blk);
@@ -166,7 +179,7 @@ internal static unsafe class CullPassVk
             cl.BindSet(0, new BindSet(ubo, sortStorage, default, default));
             cl.Dispatch(groups1D);
         }
-        return vk.Submit(cl);
+        return true;
     }
 
     /// <summary>Hold <paramref name="id"/> at <paramref name="bytes"/>, remade when <paramref name="grow"/> asks and
@@ -179,14 +192,13 @@ internal static unsafe class CullPassVk
         if (!id.IsNull) cl.ZeroBuffer(id);
     }
 
-    /// <summary>An upload buffer at least <paramref name="bytes"/> long, remade larger when it is not.</summary>
-    private static void Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, BufferUse use,
-                             MemoryKind mem, string label)
+    /// <summary>An upload storage buffer at least <paramref name="bytes"/> long, remade larger when it is not.</summary>
+    private static void Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, string label)
     {
         if (!id.IsNull && bytes <= cap) return;
         vk.Destroy(id);
         cap = Math.Max(bytes, 4);
-        id = vk.CreateBuffer(new BufferDesc(cap, use, mem, label));
+        id = vk.CreateBuffer(new BufferDesc(cap, BufferUse.Storage, MemoryKind.Upload, label));
         if (id.IsNull) cap = 0;
     }
 
@@ -195,10 +207,10 @@ internal static unsafe class CullPassVk
     private static bool DeviceCheck(VkBackend vk, ExtenderLog log)
     {
         var check = new Checker(log, "CullPassVk.DeviceCheck");
-        const int drawN = 10, groups = 3, compactBelow = 2;
+        const int drawN = 10, groups = 3;
         ReadOnlySpan<int> start = [0, 0, 0, 3, 3, 3, 6, 6, 6, 6];
-        CullSrcRec* src = stackalloc CullSrcRec[drawN];
-        Sphere* sph = stackalloc Sphere[drawN];
+        var src = new CullSrcRec[drawN];
+        var sph = new Sphere[drawN];
         for (int n = 0; n < drawN; n++)
         {
             CullPass.Pack(ref src[n], 30 + n, 2 * n, n, n, Math.Min(n / 3, groups - 1), start[n]);
@@ -212,23 +224,17 @@ internal static unsafe class CullPassVk
         sph[9].Center.X = 500f;
         Matrix4x4 vp = Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, -10), Vector3.UnitY)
                      * Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 1.0f, 1f, 100f);
-        var b = new CullBlock { DrawN = drawN, Vp = vp, PyrVp = vp, ClipZ = -1e30f, CompactBelow = compactBelow };
+        var b = new CullBlock { DrawN = drawN, Vp = vp, PyrVp = vp, ClipZ = NoClipPlane, CompactBelow = 2 };
         CullPass.Planes(in vp, b.Planes, Vector3.Zero);
-        check.Expect(Cull(vk, groups, drawN, src, sph, drawN, ref b), "the fixture's submit runs");
-        uint* cnt = stackalloc uint[groups];
-        int* slot = stackalloc int[drawN];
-        DrawCmdRec* cmd = stackalloc DrawCmdRec[drawN];
-        int c = CullPass.PhaseColour;
-        bool read = check.Ok
-            && vk.ReadBack(_s.Cnt[c], new Span<byte>(cnt, groups * sizeof(uint)))
-            && vk.ReadBack(_s.Slot[c], new Span<byte>(slot, drawN * sizeof(int)))
-            && vk.ReadBack(_s.Cmd[c], new Span<byte>(cmd, drawN * sizeof(DrawCmdRec)));
-        check.Expect(read, "the colour set reads back");
-        if (!read) return false;
+        var cnt = new uint[groups];
+        var slot = new int[drawN];
+        var cmd = new DrawCmdRec[drawN];
+        if (!Run(vk, check, src, sph, ref b, cnt, slot, cmd)) return false;
+
         check.Expect(cnt[0] == 2 && cnt[1] == 3 && cnt[2] == 3,
             $"survivors per batch are 2, 3, 3 (got {cnt[0]}, {cnt[1]}, {cnt[2]}): the off-frustum draws 1 and 9 are dropped, nothing else");
-        check.Expect((slot[0] == 0 && slot[1] == 2) || (slot[0] == 2 && slot[1] == 0), "batch 0 compacts draws 0 and 2, in either order");
-        check.Expect(slot[3] + slot[4] + slot[5] == 12 && slot[3] * slot[4] * slot[5] == 60, "batch 1 keeps draws 3, 4 and 5");
+        check.Expect((slot[0], slot[1]) is (0, 2) or (2, 0), "batch 0 compacts draws 0 and 2, in either order");
+        check.Expect(Same(slot.AsSpan(3, 3), [3, 4, 5]), "batch 1 keeps draws 3, 4 and 5, in any order");
         check.Expect(slot[6] == 7 && slot[7] == 8 && slot[8] == 6 && slot[9] == 9,
             $"the sorted batch is 7, 8, 6 farthest first with the tie on the lower index, and 9 pads it (got {slot[6]}, {slot[7]}, {slot[8]}, {slot[9]})");
         check.Expect(cmd[9].InstanceCount == 0u && cmd[6].InstanceCount == 1u && cmd[7].InstanceCount == 1u && cmd[8].InstanceCount == 1u,
@@ -241,7 +247,38 @@ internal static unsafe class CullPassVk
                    && cmd[o].BaseVertex == (uint)d && cmd[o].BaseInstance == 0u;
         }
         check.Expect(ranges, "every command is its own draw's count 30+n, first index n, base vertex n");
+
+        // LOD: 540 px per unit at unit depth (1080 rows, 90 degrees), 1 px threshold -- the speck goes, NeverCull stays
+        b.LodPx = 1f; b.LodScale = 540f;
+        if (!Run(vk, check, src, sph, ref b, cnt, slot, cmd)) return false;
+        check.Expect(cnt[1] == 2 && Same(slot.AsSpan(3, 2), [3, 4]), $"a sub-pixel draw is LOD-culled and 3, 4 survive (got {cnt[1]})");
+        check.Expect(cnt[2] == 3, "...and nothing in the sorted batch, which runs no LOD test");
         log.Info(check.Ok ? "CullPassVk.DeviceCheck: passed" : "CullPassVk.DeviceCheck: FAILED -- see above");
         return check.Ok;
+    }
+
+    /// <summary>One fixture submit, then the colour set read back into the three arrays.</summary>
+    private static bool Run(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b,
+                            uint[] cnt, int[] slot, DrawCmdRec[] cmd)
+    {
+        CommandList cl = _s.Cmds!;
+        cl.Reset();
+        bool ran = Cull(vk, cl, cnt.Length, src.Length, src, sph, sph.Length, ref b) && vk.Submit(cl);
+        check.Expect(ran, "the fixture's submit runs");
+        bool read = ran
+            && vk.ReadBack(_s.Cnt[Colour], MemoryMarshal.AsBytes(cnt.AsSpan()))
+            && vk.ReadBack(_s.Slot[Colour], MemoryMarshal.AsBytes(slot.AsSpan()))
+            && vk.ReadBack(_s.Cmd[Colour], MemoryMarshal.AsBytes(cmd.AsSpan()));
+        check.Expect(!ran || read, "the colour set reads back");
+        return read;
+    }
+
+    /// <summary>The same values in any order: a compacting batch's survivors land in atomic order.</summary>
+    private static bool Same(Span<int> got, ReadOnlySpan<int> want)
+    {
+        Span<int> g = stackalloc int[got.Length];
+        got.CopyTo(g);
+        g.Sort();
+        return g.SequenceEqual(want);
     }
 }

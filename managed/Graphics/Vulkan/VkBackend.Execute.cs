@@ -13,6 +13,8 @@ internal sealed unsafe partial class VkBackend
     private const int MaxInlineUpdate = 65536;
     /// <summary>A slot's first staging buffer: past every block of constants, so only a scene-sized table grows it.</summary>
     private const ulong MinStage = 1 << 20;
+    /// <summary>Each staged copy starts on this boundary: past every device's optimalBufferCopyOffsetAlignment floor.</summary>
+    private const ulong StageAlign = 16;
 
     /// <summary>The render pass recorded but not begun: Vulkan forbids barriers inside one, so it begins at its first
     /// draw, after the pass's bind set has moved every sampled image into its read layout.</summary>
@@ -318,27 +320,34 @@ internal sealed unsafe partial class VkBackend
                 Later(() => Vma.vmaDestroyBuffer(_vma, ob, oa));
             }
             ulong size = Math.Max(MinStage, (s.StageUsed + len) * 2);
-            var bci = new VkBufferCreateInfo { size = size, usage = VkBufferUsageFlags.TransferSrc, sharingMode = VkSharingMode.Exclusive };
-            var aci = new VmaAllocationCreateInfo
+            if (!HostBuffer(size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out s.Stage, out s.StageAlloc))
             {
-                usage = VmaMemoryUsage.Auto, flags = VmaAllocationCreateFlags.HostAccessSequentialWrite | VmaAllocationCreateFlags.Mapped,
-            };
-            VmaAllocationInfo info;
-            VkBuffer nb;
-            VmaAllocation na;
-            if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &nb, &na, &info) != VkResult.Success)
-            {
-                s.Stage = default; s.StageBytes = s.StageUsed = 0;
+                s.StageBytes = s.StageUsed = 0;
                 return Fault($"staging: VMA refused {size} bytes");
             }
-            s.Stage = nb; s.StageAlloc = na; s.StageMap = (byte*)info.pMappedData; s.StageBytes = size; s.StageUsed = 0;
+            s.StageBytes = size;
+            s.StageUsed = 0;
             _log.Info($"VkBackend: staging grew to {size} bytes -- one allocation per slot, at the frame's high water");
         }
         at = s.StageUsed;
-        bytes.CopyTo(new Span<byte>(s.StageMap, (int)s.StageBytes).Slice((int)at));
-        Vma.vmaFlushAllocation(_vma, s.StageAlloc, at, len);
-        s.StageUsed = (at + len + 15) & ~15ul;
+        fixed (byte* p = bytes)
+            if (Vma.vmaCopyMemoryToAllocation(_vma, p, s.StageAlloc, at, len) != VkResult.Success)
+                return Fault("staging: the copy into the mapped allocation was refused");
+        s.StageUsed = (at + len + StageAlign - 1) & ~(StageAlign - 1);
         return true;
+    }
+
+    /// <summary>A host-visible buffer VMA maps for each copy; false when VMA refuses it.</summary>
+    private bool HostBuffer(ulong size, VkBufferUsageFlags use, VmaAllocationCreateFlags access, out VkBuffer b, out VmaAllocation a)
+    {
+        var bci = new VkBufferCreateInfo { size = size, usage = use, sharingMode = VkSharingMode.Exclusive };
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.Auto, flags = access };
+        VkBuffer nb;
+        VmaAllocation na;
+        bool ok = Vma.vmaCreateBuffer(_vma, &bci, &aci, &nb, &na, null) == VkResult.Success;
+        b = ok ? nb : default;
+        a = ok ? na : default;
+        return ok;
     }
 
     private bool Zero(ZeroBufferCmd c)
@@ -354,51 +363,53 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>The first <paramref name="dst"/>.Length bytes of <paramref name="b"/>, copied back with the device
-    /// waited idle. Cold, for an on-device self-check: never a frame's path (it stalls the whole queue).</summary>
+    /// <summary>The first <paramref name="dst"/>.Length bytes of <paramref name="b"/>, copied back with the queue
+    /// waited out. Stalls the whole queue: a pass's on-device check calls it once per device, at the first frame.
+    /// A copy that never finishes leaks its scratch rather than freeing what the GPU may still be using.</summary>
     internal bool ReadBack(BufferId b, Span<byte> dst)
     {
         if (!OnThread("ReadBack")) return false;
         if (!_buffers.TryGet(b.Value, out VkBuf src) || dst.Length > src.Desc.Bytes) return Fault("ReadBack: stale or short buffer");
-        var bci = new VkBufferCreateInfo { size = (ulong)Math.Max(dst.Length, 4), usage = VkBufferUsageFlags.TransferDst, sharingMode = VkSharingMode.Exclusive };
-        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.Auto, flags = VmaAllocationCreateFlags.HostAccessRandom | VmaAllocationCreateFlags.Mapped };
-        VmaAllocationInfo info;
-        VkBuffer hb;
-        VmaAllocation ha;
-        if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &hb, &ha, &info) != VkResult.Success) return Fault($"ReadBack: VMA refused {dst.Length} bytes");
+        if (!HostBuffer((ulong)Math.Max(dst.Length, 4), VkBufferUsageFlags.TransferDst, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
+            return Fault($"ReadBack: VMA refused {dst.Length} bytes");
         var ai = new VkCommandBufferAllocateInfo { commandPool = _cmdPool, level = VkCommandBufferLevel.Primary, commandBufferCount = 1 };
         VkCommandBuffer cb;
+        if (_vkd.vkAllocateCommandBuffers(&ai, &cb) != VkResult.Success)
+        {
+            Vma.vmaDestroyBuffer(_vma, hb, ha);
+            return Fault("ReadBack: no command buffer");
+        }
         var fci = new VkFenceCreateInfo();
         VkFence fence;
-        bool ok = _vkd.vkAllocateCommandBuffers(&ai, &cb) == VkResult.Success;
-        ok &= _vkd.vkCreateFence(&fci, &fence) == VkResult.Success;
-        if (ok)
+        if (_vkd.vkCreateFence(&fci, &fence) != VkResult.Success)
         {
-            var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
-            _vkd.vkBeginCommandBuffer(cb, &bi);
-            var region = new VkBufferCopy { size = (ulong)dst.Length };
-            _vkd.vkCmdCopyBuffer(cb, src.Buffer, hb, 1, &region);
-            var mb = new VkMemoryBarrier2
-            {
-                srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
-                dstStageMask = VkPipelineStageFlags2.Host, dstAccessMask = VkAccessFlags2.HostRead,
-            };
-            var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
-            _vkd.vkCmdPipelineBarrier2(cb, &di);
-            _vkd.vkEndCommandBuffer(cb);
-            var si = new VkSubmitInfo { commandBufferCount = 1, pCommandBuffers = &cb };
-            ok = _vkd.vkQueueSubmit(_queue, 1, &si, fence) == VkResult.Success
-              && _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs) == VkResult.Success;
-            if (ok)
-            {
-                Vma.vmaInvalidateAllocation(_vma, ha, 0, (ulong)dst.Length);
-                new ReadOnlySpan<byte>(info.pMappedData, dst.Length).CopyTo(dst);
-            }
-            _vkd.vkDestroyFence(fence);
             _vkd.vkFreeCommandBuffers(_cmdPool, 1, &cb);
+            Vma.vmaDestroyBuffer(_vma, hb, ha);
+            return Fault("ReadBack: no fence");
         }
+        var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
+        _vkd.vkBeginCommandBuffer(cb, &bi);
+        var region = new VkBufferCopy { size = (ulong)dst.Length };
+        _vkd.vkCmdCopyBuffer(cb, src.Buffer, hb, 1, &region);
+        var mb = new VkMemoryBarrier2
+        {
+            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
+            dstStageMask = VkPipelineStageFlags2.Host, dstAccessMask = VkAccessFlags2.HostRead,
+        };
+        var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
+        _vkd.vkCmdPipelineBarrier2(cb, &di);
+        _vkd.vkEndCommandBuffer(cb);
+        var si = new VkSubmitInfo { commandBufferCount = 1, pCommandBuffers = &cb };
+        bool submitted = _vkd.vkQueueSubmit(_queue, 1, &si, fence) == VkResult.Success;
+        if (submitted && _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs) != VkResult.Success)
+            return Fault("ReadBack: the copy never finished -- its scratch is leaked, not freed under the GPU");
+        bool ok = submitted;
+        fixed (byte* p = dst)
+            ok = ok && Vma.vmaCopyAllocationToMemory(_vma, ha, 0, p, (ulong)dst.Length) == VkResult.Success;
+        _vkd.vkDestroyFence(fence);
+        _vkd.vkFreeCommandBuffers(_cmdPool, 1, &cb);
         Vma.vmaDestroyBuffer(_vma, hb, ha);
-        return ok || Fault("ReadBack: the copy was refused or never finished");
+        return ok || Fault("ReadBack: the copy was refused");
     }
 
     /// <summary>Every write before it visible to every access after it. ponytail: one coarse barrier per write,

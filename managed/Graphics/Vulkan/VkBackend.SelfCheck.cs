@@ -44,6 +44,8 @@ internal sealed unsafe partial class VkBackend
         Stage(check, "cx_ssaotemp_f", ShaderKind.FragmentShader, [0, 1, 2, 3, 19]);
         Stage(check, "cx_cull_c", ShaderKind.ComputeShader, [12, 19, 40, 41, 42, 43, 44, 45, 46]);
         Stage(check, "cx_cullsort_c", ShaderKind.ComputeShader, [19, 40, 42, 43, 45]);
+        check.Expect(CX.Alloy.ShaderSource.Get("cx_cull_c.glsl").Contains($"layout(binding = {CX.Alloy.CullPass.PyramidUnit}) uniform sampler2D uPyramid;"),
+            "the cull stage's pyramid sampler sits on the unit both backends bind it to");
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
     }
 

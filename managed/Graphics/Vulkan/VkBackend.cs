@@ -40,7 +40,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         /// <see cref="StageUsed"/> 0 once the slot's fence has passed, grown when one submit outgrows it.</summary>
         public VkBuffer Stage;
         public VmaAllocation StageAlloc;
-        public byte* StageMap;
         public ulong StageBytes, StageUsed;
     }
 
