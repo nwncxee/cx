@@ -185,7 +185,7 @@ Four things stay immediate, each for a reason:
 
 - **A creation failure.** `RenderTarget.Create`'s refused storage, `GlDevice.CreateImage`'s refused storage
   and `GlDevice.Execute`'s `Drop` of a framebuffer that came back incomplete, `EnvProbe`'s and
-  `LightmapBake`'s `GetError` arms, `Weather`'s refused texture view: the object was never submitted with, so
+  `LightmapBake`'s `GetError` arms, `Weather`'s refused texture view, `GlTexture.KeepZeroed`'s uncleared texture: the object was never submitted with, so
   there is no frame to wait for, and deferring it would hold memory the caller is about to ask for again.
 - **`LightmapBake`'s page pool.** `FreePages` is called from `Pool` and `ReleaseIdle` precisely to give the
   memory back, and `Pool` then allocates the replacement. Up to a gigabyte, so a three-frame hold is a
@@ -202,7 +202,7 @@ Four things stay immediate, each for a reason:
 
 Everything else that still frees a GPU object immediately is a creation failure, a program being rebuilt or a
 scratch object inside the bracket that made it. `tools/gates/gpu-frees.sh` counts those per file against
-`gpu-frees.baseline`, which may only shrink: 46 sites across 28 files as this landed, listed by
+`gpu-frees.baseline`, which may only shrink: 47 sites across 29 files as this landed, listed by
 `python3 tools/gates/gpu-frees.py -v`. A new pass that allocates its render target through `RenderTarget`
 gets the deferral for nothing and never touches the baseline.
 
