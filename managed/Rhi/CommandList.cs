@@ -9,7 +9,7 @@ namespace CX.Rhi;
 public enum Op : byte
 {
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
-    BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer,
+    BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
 }
 
 /// <summary>An index element's width.</summary>
@@ -44,6 +44,8 @@ public readonly record struct CopyImageCmd(ImageId Src, ImageRegion From, ImageI
 public readonly record struct BlitImageCmd(ImageId Src, Rect From, ImageId Dst, Rect To, Filter Filter);
 /// <summary><see cref="Op.UpdateBuffer"/>'s header; the bytes follow it.</summary>
 public readonly record struct UpdateBufferCmd(BufferId Buffer, long Offset, int Bytes);
+/// <summary><see cref="Op.ZeroBuffer"/>: <see cref="Bytes"/> zero bytes from <see cref="Offset"/>, 0 meaning to the end.</summary>
+public readonly record struct ZeroBufferCmd(BufferId Buffer, long Offset, long Bytes);
 
 /// <summary>One pass's recorded commands: an 8-byte opcode word and a fixed record per command, spans copied in
 /// after it, in one reused byte arena. Recording allocates nothing once the arena reaches the pass's high water;
@@ -138,6 +140,11 @@ public sealed class CommandList
         Put(src);
         Sent();
     }
+
+    /// <summary>Zero <paramref name="bytes"/> of <paramref name="b"/> from <paramref name="offset"/> on the GPU;
+    /// 0 bytes zeroes to the end. Both are whole words.</summary>
+    public void ZeroBuffer(BufferId b, long offset = 0, long bytes = 0)
+    { Head(Op.ZeroBuffer); Put(new ZeroBufferCmd(b, offset, bytes)); Sent(); }
 
     private void Head(Op op) => Put((long)op);
 

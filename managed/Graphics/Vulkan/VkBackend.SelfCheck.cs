@@ -12,7 +12,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>SPIR-V's OpDecorate and its Binding decoration, transcribed from the specification's tables.</summary>
     private const uint OpDecorate = 71, DecorationBinding = 33;
 
-    /// <summary>The composite hand-over and the pilot's stages, proven off-device where shaderc loads. Oracles: a
+    /// <summary>The composite hand-over and the ported passes' stages, proven off-device where shaderc loads. Oracles: a
     /// hand-written semaphore schedule for the hand-over; shaderc's acceptance of the translated text; SPIR-V binding
     /// numbers read by the specification's opcodes against hand-written ones; the format tokens vulkan_core.h and
     /// glcorearb.h assign, written by hand.</summary>
@@ -42,6 +42,10 @@ internal sealed unsafe partial class VkBackend
         Stage(check, "cx_ssao_fs", ShaderKind.FragmentShader, [0, 19]);
         Stage(check, "cx_ssaoblur_fs", ShaderKind.FragmentShader, [0, 1, 19]);
         Stage(check, "cx_ssaotemp_f", ShaderKind.FragmentShader, [0, 1, 2, 3, 19]);
+        Stage(check, "cx_cull_c", ShaderKind.ComputeShader, [12, 19, 40, 41, 42, 43, 44, 45, 46]);
+        Stage(check, "cx_cullsort_c", ShaderKind.ComputeShader, [19, 40, 42, 43, 45]);
+        check.Expect(CX.Alloy.ShaderSource.Get("cx_cull_c.glsl").Contains($"layout(binding = {CX.Alloy.CullPass.PyramidUnit}) uniform sampler2D uPyramid;"),
+            "the cull stage's pyramid sampler sits on the unit both backends bind it to");
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
     }
 
