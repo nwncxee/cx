@@ -83,8 +83,7 @@ internal sealed unsafe partial class VkBackend
         {
             depthClampEnable = d.Raster.DepthClamp, polygonMode = VkPolygonMode.Fill,
             cullMode = Cull(d.Raster.Cull),
-            // GL and Vulkan both take the winding in framebuffer coordinates with row 0 at y 0: no flip
-            frontFace = d.Raster.FrontCw ? VkFrontFace.Clockwise : VkFrontFace.CounterClockwise,
+            frontFace = Winding(d.Raster.FrontCw),
             depthBiasEnable = d.Raster.DepthBias, lineWidth = 1,
         };
         var ms = new VkPipelineMultisampleStateCreateInfo { rasterizationSamples = VkSampleCountFlags.Count1 };
@@ -164,6 +163,10 @@ internal sealed unsafe partial class VkBackend
         _vki.vkGetPhysicalDeviceFormatProperties(_phys, f, &p);
         return (p.bufferFeatures & VkFormatFeatureFlags.VertexBuffer) != 0;
     }
+
+    /// <summary>The RHI's GL winding as Vulkan's: the clip-to-framebuffer map is the same (positive viewport height), but
+    /// Vulkan's area formula carries a minus sign GL's lacks (Vulkan 28.2.1, GL 4.6 14.6.1), so GL's CCW front is Vulkan's CW.</summary>
+    internal static VkFrontFace Winding(bool glCw) => glCw ? VkFrontFace.CounterClockwise : VkFrontFace.Clockwise;
 
     private static VkCullModeFlags Cull(CullMode c)
         => c switch { CullMode.Back => VkCullModeFlags.Back, CullMode.Front => VkCullModeFlags.Front, _ => VkCullModeFlags.None };

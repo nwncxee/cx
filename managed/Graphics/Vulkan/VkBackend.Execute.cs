@@ -241,7 +241,7 @@ internal sealed unsafe partial class VkBackend
     private bool Raster(RasterState r)
     {
         _vkd.vkCmdSetCullMode(_cmd, Cull(r.Cull));
-        _vkd.vkCmdSetFrontFace(_cmd, r.FrontCw ? VkFrontFace.Clockwise : VkFrontFace.CounterClockwise);
+        _vkd.vkCmdSetFrontFace(_cmd, Winding(r.FrontCw));
         _vkd.vkCmdSetDepthBiasEnable(_cmd, r.DepthBias);
         return true;
     }
