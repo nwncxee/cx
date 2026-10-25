@@ -29,9 +29,11 @@ internal sealed class GraveyardState
     /// <summary>The present <see cref="Advance"/> last moved the clock for, so a second bracket in the same
     /// present does not age the queue twice. -1 = no present has been seen.</summary>
     internal int LastPresent = -1;
-    internal long Retired, Drained, Dropped, Overflowed, Unissued;
-    /// <summary>The overflow has been named once; later ones are the period line's business.</summary>
-    internal bool OverflowNoted;
+    internal long Retired, Drained, Dropped, Overflowed, Unissued, Foreign;
+    /// <summary>Each of these failures has been named once; later ones are the period line's business.</summary>
+    internal bool OverflowNoted, ForeignNoted;
+    /// <summary>The log, held with the rest of the owner's state rather than beside it.</summary>
+    internal ExtenderLog? Log;
 
     internal int Count => (int)(Tail - Head);
 
@@ -96,7 +98,6 @@ public static unsafe class GpuGraveyard
     public const int FramesInFlight = 3;
 
     private static readonly GraveyardState _s = new();
-    private static ExtenderLog? _log;
 
     /// <summary>Objects waiting out their frames.</summary>
     public static int Pending => _s.Count;
@@ -104,18 +105,19 @@ public static unsafe class GpuGraveyard
     public static long Drained => _s.Drained;
     public static long Dropped => _s.Dropped;
 
-    public static void Init(ExtenderLog log) => _log = log;
+    public static void Init(ExtenderLog log) => _s.Log = log;
 
-    /// <summary>Retire <paramref name="name"/>: it is deleted three drains from now, not here. Render thread,
-    /// inside Alloy's bracket -- the drain deletes in whichever context is current then, which is that one.
+    /// <summary>Retire <paramref name="name"/>: it is deleted three drains from now, not here. Called with the
+    /// 4.6 context held, which is the one thread the ring is ever touched from, and is where the drain deletes.
     /// A full ring deletes immediately rather than leak, which is loud and counted.</summary>
     public static void Retire(Kind kind, uint name)
     {
+        if (!Mine("Retire")) return;
         if (_s.Push(kind, name)) return;
         if (!_s.OverflowNoted)
         {
             _s.OverflowNoted = true;
-            _log?.Always($"GpuGraveyard: the {GraveyardState.Capacity}-entry deferred-free queue is FULL -- "
+            _s.Log?.Always($"GpuGraveyard: the {GraveyardState.Capacity}-entry deferred-free queue is FULL -- "
                        + $"a {kind} is being deleted while frames may still be reading it. Something is retiring "
                        + "GPU objects faster than one frame can drain them.");
         }
@@ -126,7 +128,7 @@ public static unsafe class GpuGraveyard
     /// has finished with. Every bracket that runs the deferred work calls this; only the first ages it.</summary>
     public static void Drain(int present)
     {
-        if (!_s.Advance(present)) return;
+        if (!Mine("Drain") || !_s.Advance(present)) return;
         while (_s.TakeDue(FramesInFlight, out Kind kind, out uint name)) Delete(kind, name);
     }
 
@@ -134,29 +136,43 @@ public static unsafe class GpuGraveyard
     /// their names here would aim a delete at whatever the next context recycles those numbers for.</summary>
     public static void Drop() => _s.DropAll();
 
-    /// <summary>One clause of the context's period line; the last two terms are the ones that are a bug.</summary>
+    /// <summary>Does this thread hold the 4.6 context? The ring is not locked, and its whole contract is that
+    /// one thread touches it at a time -- which the context grants, game thread or render thread. A caller
+    /// without it is refused loudly: the name then leaks until the context goes, which is visible, not silent.</summary>
+    private static bool Mine(string what)
+    {
+        if (GlContextService.Current46) return true;
+        _s.Foreign++;
+        if (!_s.ForeignNoted)
+        {
+            _s.ForeignNoted = true;
+            _s.Log?.Always($"GpuGraveyard: {what} was called WITHOUT the 4.6 context held, which is a caller "
+                         + "outside Alloy's bracket. Refused -- the queue is not locked and a second thread in "
+                         + "it would tear the ring. Whatever was being retired now leaks until the context goes.");
+        }
+        return false;
+    }
+
+    /// <summary>One clause of the context's period line; the last three terms are the ones that are a bug.</summary>
     public static string Note()
         => $"deferred frees: {_s.Drained} freed, {_s.Count} pending, {_s.Dropped} dropped with a context"
          + (_s.Overflowed == 0 ? "" : $", {_s.Overflowed} DELETED IN FLIGHT (queue full)")
-         + (_s.Unissued == 0 ? "" : $", {_s.Unissued} NOT DELETED (no entry point)");
+         + (_s.Unissued == 0 ? "" : $", {_s.Unissued} NOT DELETED (no entry point)")
+         + (_s.Foreign == 0 ? "" : $", {_s.Foreign} REFUSED off-bracket (leaked)");
 
     private static void Delete(Kind kind, uint name)
     {
-        bool issued = kind switch
+        // Every one of these is glDelete<N>(count, names), so the kind picks the entry point and one call
+        // issues it; an unresolved one is counted rather than deleting nothing in silence.
+        delegate* unmanaged<int, uint*, void> del = kind switch
         {
-            Kind.Framebuffer => Gl.DeleteFramebuffers != null,
-            Kind.Buffer => Gl.DeleteBuffers != null,
-            Kind.Sampler => Gl.DeleteSamplers != null,
-            _ => Gl.DeleteTextures != null,
+            Kind.Framebuffer => Gl.DeleteFramebuffers,
+            Kind.Buffer => Gl.DeleteBuffers,
+            Kind.Sampler => Gl.DeleteSamplers,
+            _ => Gl.DeleteTextures,
         };
-        if (!issued) { _s.Unissued++; return; }
-        switch (kind)
-        {
-            case Kind.Framebuffer: Gl.DeleteFramebuffers(1, &name); break;
-            case Kind.Buffer: Gl.DeleteBuffers(1, &name); break;
-            case Kind.Sampler: Gl.DeleteSamplers(1, &name); break;
-            default: Gl.DeleteTextures(1, &name); break;
-        }
+        if (del == null) { _s.Unissued++; return; }
+        del(1, &name);
     }
 
     /// <summary>The queue's scheduling, over hand-written frame and present sequences on rings of its own:

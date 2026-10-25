@@ -152,6 +152,12 @@ quietly turn a three-frame hold into one and a half. `FrameSeq` is no good eithe
 the renderer is armed, so a stood-down session (the main menu, the disarm latch) would never drain and would
 hold every retired name until the process exits.
 
+The ring is not locked, and it does not need to be: its one contract is that a single thread touches it at a
+time, which holding the 4.6 context grants — the game thread in the ordinary case, the render thread in DB
+mode. `Retire` and `Drain` both ask `GlContextService.Current46` and refuse a caller without it, loudly and
+counted on the period line, rather than tearing the ring. A refusal leaks the name until the context goes,
+which is visible and bounded; a torn ring would be neither.
+
 Context loss drops the queue whole: `GpuGraveyard.Drop()`, from `AlloyRenderer.ContextLost`. The objects died
 with the context, so issuing their deletes would aim a delete at whatever the next context gives those numbers
 to — the argument every drop-only `ContextLost` handler above rests on. Terminality means the queue is never
@@ -167,7 +173,7 @@ What is routed, and from where:
 | `CoverageLayer.Release` | also the idle path: 600 frames with no coverage content and the targets go, while the last frame that drew them is still in flight |
 | `PresentTarget`'s present image and its 4.6 framebuffer | a resize, and `Refuse`. `ISource.Release` is the interface point, so the Vulkan source inherits the deferral |
 | `MovieFrame`'s plate | a new movie at a different size, with the old plate still on screen in the frames in flight |
-| `TexRegistry`'s `_graveyard` names | eviction past the byte budget and a failed slot's last release. The queue stays the thread-safe intake (workers fill it under `_lock`); `TexRegistry.Drain` hands each name to the graveyard instead of deleting it, so the graveyard itself is render-thread-only |
+| `TexRegistry`'s `_graveyard` names | eviction past the byte budget and a failed slot's last release. The queue stays the thread-safe intake (workers fill it under `_lock`); `TexRegistry.Drain` hands each name to the graveyard instead of deleting it, so the graveyard itself is only ever touched by the thread holding the context |
 | `Ssr.Fresh`'s old name | the same resize shape as `RenderTarget.Create`, in the pass that writes it longhand |
 | `PltPalettes`' master palette | a dirty re-upload replaces it while the PLT resolve has it bound as a sampler |
 | `StageResources`' stage images and their `Prev` history | `DropAll` at a module change, and `Remake` on a resize |
