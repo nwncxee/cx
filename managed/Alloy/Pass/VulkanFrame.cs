@@ -67,6 +67,7 @@ internal static class VulkanFrame
             log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (cull, prepass, hi-Z, G-buffer, opaque, cutout, blended)");
         PresentTarget.Flip(vk.Flip());
         PostChain.Painted();
+        VkStoodDown.Note(log);
         if (!_s.Live)
         {
             _s.Live = true;
