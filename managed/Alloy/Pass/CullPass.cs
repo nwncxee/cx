@@ -77,7 +77,7 @@ internal static unsafe class CullPass
         && SortCs.Contains("uCmd[c + 1u] = dropped ? 0u : 1u;");
 
     /// <summary>Compute workgroup size; the dispatch is 1D over draws.</summary>
-    private const int GroupSize = 64;
+    internal const int GroupSize = 64;
 
     /// <summary>The three dispatch phases, and the three output sets they fill. <see cref="PhaseRetest"/> is
     /// the prepass's second phase, with a set of its own because <c>MultiDrawElementsIndirectCount</c> takes a
@@ -88,7 +88,7 @@ internal static unsafe class CullPass
     private const int Phases = 4;
     /// <summary>The shader's <c>uRej</c> mode per phase: the colour phase ignores the verdict buffer, phase
     /// one WRITES it, phase two READS it and tests only the marked draws.</summary>
-    private const int RejOff = 0, RejWrite = 1, RejRead = 2;
+    internal const int RejOff = 0, RejWrite = 1, RejRead = 2;
 
     /// <summary>Run the prepass's second phase (<c>/alloy retest</c>). Off = phase one tests the frustum
     /// alone, which is the before half of the measurement.</summary>
@@ -457,7 +457,7 @@ internal static unsafe class CullPass
 
     /// <summary>Texture unit the pyramid takes for the dispatch -- see <see cref="TextureSlots.HiZ"/> for
     /// why it is shared rather than its own.</summary>
-    private const uint PyramidUnit = TextureSlots.HiZ;
+    internal const uint PyramidUnit = TextureSlots.HiZ;
 
     /// <summary>Bind the compacted list of output set <paramref name="phase"/> for submission: the indirect
     /// commands, the parameter buffer the count comes from, and the per-draw slot array the vertex stages
@@ -940,13 +940,13 @@ internal static unsafe class CullPass
     /// atomicAdd, so the compacted list keeps every batch's boundaries and only its interior order moves. A
     /// radius of infinity is "do not cull me" -- skinned, dangly, a displacing feature, a degenerate bbox.
     /// Unknown bounds mean visible, always: the failure mode of this pass is invisible geometry.</summary>
-    private static string CullCs => ShaderSource.Get("cx_cull_c.glsl");
+    internal static string CullCs => ShaderSource.Get("cx_cull_c.glsl");
 
     /// <summary>The back-to-front sort, as a RANK rather than a shuffle: a survivor counts how many
     /// survivors of its batch are FARTHER, that count is its offset from the batch's output base, and the
     /// tie-break is the STAGED index. A dropped draw pads behind them, zero-instance, for <see cref="DrawRun"/>.
     /// ponytail: O(n^2) compares per batch across n threads; a bitonic sort drops in if it ever shows.</summary>
-    private static string SortCs => ShaderSource.Get("cx_cullsort_c.glsl");
+    internal static string SortCs => ShaderSource.Get("cx_cullsort_c.glsl");
 
     /// <summary>One level of the pyramid: the MAX of the source region the destination texel covers. A 3x3
     /// tap, not a 2x2, and that is a correctness fix: GL sizes mip <c>i</c> as <c>floor(size / 2^i)</c>, so a

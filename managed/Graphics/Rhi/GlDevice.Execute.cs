@@ -57,6 +57,7 @@ internal sealed unsafe partial class GlDevice
                 Op.CopyImage => Copy(r.Read<CopyImageCmd>()),
                 Op.BlitImage => Blit(r.Read<BlitImageCmd>()),
                 Op.UpdateBuffer => Update(r.Read<UpdateBufferCmd>(), ref r),
+                Op.ZeroBuffer => Zero(r.Read<ZeroBufferCmd>()),
                 _ => Fault($"unknown opcode {op}"),
             };
             if (!ok) return false;
@@ -360,6 +361,16 @@ internal sealed unsafe partial class GlDevice
         // the whole buffer replaced: the driver may rename it rather than write under a draw still reading it
         if (c.Offset == 0 && c.Bytes == g.Desc.Bytes) Gl.InvalidateBufferData(g.Name);
         fixed (byte* p = bytes) Gl.NamedBufferSubData(g.Name, (IntPtr)c.Offset, (IntPtr)c.Bytes, p);
+        return true;
+    }
+
+    private bool Zero(ZeroBufferCmd c)
+    {
+        if (!_buffers.TryGet(c.Buffer.Value, out GlBuffer g)) return Fault("ZeroBuffer: stale buffer");
+        long bytes = c.Bytes == 0 ? g.Desc.Bytes - c.Offset : c.Bytes;
+        if (c.Offset < 0 || bytes < 0 || c.Offset + bytes > g.Desc.Bytes || ((c.Offset | bytes) & 3) != 0)
+            return Fault($"ZeroBuffer: {bytes} bytes at {c.Offset} of {g.Desc.Label}'s {g.Desc.Bytes}, in whole words");
+        Gl.ClearNamedBufferSubData(g.Name, Gl.R32UI, (IntPtr)c.Offset, (IntPtr)bytes, Gl.RED_INTEGER, Gl.UNSIGNED_INT, null);
         return true;
     }
 }

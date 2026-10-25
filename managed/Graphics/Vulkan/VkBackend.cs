@@ -36,6 +36,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkCommandBuffer Cmd;
         public VkFence Fence;
         public VkDescriptorPool Pool;
+        /// <summary>Host-visible staging an update too large to record inline is copied through; reused from
+        /// <see cref="StageUsed"/> 0 once the slot's fence has passed, grown when one submit outgrows it.</summary>
+        public VkBuffer Stage;
+        public VmaAllocation StageAlloc;
+        public byte* StageMap;
+        public ulong StageBytes, StageUsed;
     }
 
     /// <summary>Why this machine cannot run the backend, asked once: null until asked, "" when it can.</summary>
@@ -591,7 +597,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);
         foreach (VkShader v in _shaders.Live()) _vkd.vkDestroyShaderModule(v.Module);
         foreach (VkPipe v in _pipelines.Live()) _vkd.vkDestroyPipeline(v.Pipeline);
-        foreach (Slot s in _slots) { _vkd.vkDestroyFence(s.Fence); _vkd.vkDestroyDescriptorPool(s.Pool); }
+        foreach (Slot s in _slots)
+        {
+            _vkd.vkDestroyFence(s.Fence);
+            _vkd.vkDestroyDescriptorPool(s.Pool);
+            if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
+        }
         _vkd.vkDestroyCommandPool(_cmdPool);
         _vkd.vkDestroySampler(_nearest);
         _vkd.vkDestroyPipelineLayout(_pipeLayout);

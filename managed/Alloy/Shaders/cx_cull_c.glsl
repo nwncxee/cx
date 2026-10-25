@@ -8,7 +8,7 @@ layout(std430, binding = 12) buffer CxCullCount            { uint uCnt[]; };
 layout(std430, binding = 13) buffer CxCullKey              { float uKey[]; };
 layout(std430, binding = 14) buffer CxCullRej              { uint uRejBuf[]; };
 #include "cx_cullblk.glsl"
-uniform sampler2D uPyramid;
+layout(binding = 12) uniform sampler2D uPyramid;   // TextureSlots.HiZ: Vulkan has no sampler uniform to set
 
 // One pyramid tap, addressed through the LEVEL-0 grid rather than the level's own.
 // This is the fix for #243's first live bug. `textureLod(uv, L)` maps uv across the width of level
