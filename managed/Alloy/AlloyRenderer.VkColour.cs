@@ -249,7 +249,11 @@ public sealed unsafe partial class AlloyRenderer
             p = VkBuild(s.Dev, t, label, true, ContentShimBase + (uint)key, _log);
             if (p == null) _log.Always($"AlloyRenderer: Vulkan {label} NOT RUN (logged above) -- its parts draw the plain program");
         }
-        if (p != null) { p.Feat = feat; p.Epoch = epoch; p.Deferred = v == ContentVariant.Deferred; }
+        if (p != null)
+        {
+            p.Feat = feat; p.Epoch = epoch; p.Deferred = v == ContentVariant.Deferred;
+            _log.Always($"AlloyRenderer: Vulkan {label} built -- its parts draw the content's own stages");
+        }
         else s.ContentFailed[key] = epoch;
         s.Content[key] = p;
         return p;

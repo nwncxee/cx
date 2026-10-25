@@ -36,7 +36,8 @@ internal sealed unsafe partial class VkBackend
     public bool Submit(CommandList list)
     {
         if (!OnThread("Submit")) return false;
-        Slot s = _slots[_submits % Slots];
+        int slot = (int)(_submits % Slots);
+        Slot s = _slots[slot];
         VkFence fence = s.Fence;
         VkResult waited = _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs);
         if (waited != VkResult.Success)
@@ -53,6 +54,7 @@ internal sealed unsafe partial class VkBackend
         _cmd = s.Cmd;
         _slot = s;
         _inPass = _rendering = false;
+        TimeBegin(slot);
         RecycleBindless();
         BindBindless();
         FlushUploads();
@@ -64,6 +66,7 @@ internal sealed unsafe partial class VkBackend
         Exported? a = c0?.Ext is { Taken: true } e0 ? e0 : null, b = c1?.Ext is { Taken: true } e1 ? e1 : null;
         if (a != null) Release(c0!);
         if (b != null) Release(c1!);
+        TimeEnd(slot, ok);
         _vkd.vkEndCommandBuffer(_cmd);
         if (!ok)
         {

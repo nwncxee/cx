@@ -389,7 +389,12 @@ public sealed unsafe partial class AlloyRenderer
         bool ab = VkParity.Active;
         long batches0 = Counters._batches, draws0 = Counters._draws;
         // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
-        if (onVulkan) VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
+        if (onVulkan)
+        {
+            long tVk = FrameZones.Now;
+            VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
+            FrameZones.Add(FrameZones.Zone.Vulkan, tVk);
+        }
         long batches1 = Counters._batches, draws1 = Counters._draws;
         // the Vulkan frame's flip leaves framebuffer 0 bound, and the A/B's GL half draws next
         if (ab) ReenterColourFrame(viewport, f.Srgb, cull: true);

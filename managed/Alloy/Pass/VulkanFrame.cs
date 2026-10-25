@@ -25,6 +25,9 @@ internal static class VulkanFrame
 
     /// <summary>The frame list's first arena: past the cull's source and sphere uploads in a typical area, so the
     /// growth line is the exception.</summary>
+    /// <summary>Frames between two GPU-time lines.</summary>
+    private const int GpuPeriod = 300;
+
     private const int FrameArenaBytes = 4 << 20;
 
     /// <summary>Render this frame into the back image and present it. A frame that cannot -- no backend, no present
@@ -58,6 +61,8 @@ internal static class VulkanFrame
         }
         AlloyRenderer.VkParityRead(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
+        if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)
+            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per submit over {n} (cull, prepass, hi-Z, G-buffer, opaque, cutout, blended)");
         PresentTarget.Flip(vk.Flip());
         PostChain.Painted();
         if (!_s.Live)
