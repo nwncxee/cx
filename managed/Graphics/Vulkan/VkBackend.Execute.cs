@@ -145,7 +145,8 @@ internal sealed unsafe partial class VkBackend
                 Op.SetDepthState => Depth(r.Read<DepthState>()),
                 Op.SetRasterState => Raster(r.Read<RasterState>()),
                 Op.ReadImages => Readable(r.Read<ReadImagesCmd>(), ref r),
-                // ponytail: image copies and blits join with the first pass that records them
+                Op.CopyImage => CopyImg(r.Read<CopyImageCmd>()),
+                Op.BlitImage => BlitImg(r.Read<BlitImageCmd>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;

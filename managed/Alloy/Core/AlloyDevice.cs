@@ -31,7 +31,12 @@ internal static class AlloyDevice
     internal static VkBackend? Vulkan(ExtenderLog log)
     {
         var s = _s;
-        if (Renderer.OnVulkan && s.Vk == null && !s.VkRefused) s.VkRefused = (s.Vk = VkBackend.TryCreate(log)) == null;
+        if (Renderer.OnVulkan && s.Vk == null && !s.VkRefused)
+        {
+            s.VkRefused = (s.Vk = VkBackend.TryCreate(log)) == null;
+            // the seam's two image copies against a fixture, before the first pass records one
+            s.Vk?.CopyDeviceCheck(log);
+        }
         return s.Vk;
     }
 

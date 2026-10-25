@@ -106,7 +106,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -224,7 +224,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, uint, ExtenderLog)"/>.</summary>
     private static VkProg? VkBuild(VkBackend vk, VkPrograms.Id id, ExtenderLog log)
     {
-        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred;
+        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred or VkPrograms.Id.Decal;
         VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, VkUniformShim.ProgramBase + (uint)id, log);
         if (p != null) { p.Id = id; p.Deferred = id == VkPrograms.Id.LitDeferred; }
         return p;
@@ -501,7 +501,7 @@ public sealed unsafe partial class AlloyRenderer
                     });
                     break;
                 case VkBindKind.StorageImage:
-                    images[ni++] = new ImageBinding(o.Binding, o.Name == "uDecalSurf" ? s.DecalSurf : s.DecalLayer, default, 0);
+                    images[ni++] = new ImageBinding(o.Binding, VkDecalImage(o.Name == "uDecalSurf", s), default, 0);
                     break;
                 default:
                     sampled[nt++] = VkSampled(o, s, tex, extra);
@@ -524,6 +524,8 @@ public sealed unsafe partial class AlloyRenderer
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
         if (VkShadowMap(o.Name) is { IsNull: false } map)
             return new ImageBinding(o.Binding, map, o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Linear);
+        // the decal writer's prepass depth; every other stage on Vulkan reads this slot as the stand-in's far 1.0
+        if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
         return o.Type switch
         {
             "usampler2D" => new ImageBinding(o.Binding, s.TexU2D),
@@ -553,7 +555,9 @@ public sealed unsafe partial class AlloyRenderer
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = 1;
-        if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
+        else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
+        else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
         else if (targets == VkTargets.Colour)
         {
             d.Targets.ColorCount = ColourTargets;
