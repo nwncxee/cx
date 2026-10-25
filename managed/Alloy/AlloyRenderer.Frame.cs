@@ -78,6 +78,7 @@ public sealed unsafe partial class AlloyRenderer
         // may have sat that frame out, and every skinned part would draw a stale (or bind) pose.
         bool posedByShadow = PosedByShadow;
         PosedByShadow = false;
+        VkParity.BeginFrame(_capturing);
         // #129: last pass's snapshot is not this pass's. Revoked first thing, so every path out of here that
         // never reaches PassId.FbCopy leaves Alloy water disarmed -- and BucketGate's bucket-6 gate reads
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
@@ -168,7 +169,8 @@ public sealed unsafe partial class AlloyRenderer
         // cull see the same jittered camera; the velocity pass takes it back out. Zero with TAA off.
         float jx = 0f, jy = 0f;
         Matrix4x4 vpClean = view * proj;
-        if (PostChain.TaaOn && !_capturing)
+        // the A/B's GL half draws through the unjittered camera the Vulkan frame draws through
+        if (PostChain.TaaOn && !_capturing && !VkParity.Active)
         {
             PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), out jx, out jy);
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;
@@ -343,12 +345,12 @@ public sealed unsafe partial class AlloyRenderer
             CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
         fixed (Sphere* cs = _dCastSph)
             CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
-        // Under alloy.backend vk the cull is Vulkan's, and GL's lists would have no reader.
         if (Renderer.OnVulkan)
             // the camera the Vulkan frame draws through, so the pyramid tests against the depth it reduces
             CullPassVk.Stage(_capturing ? 0 : groups, cullDraws, _dSrc, _dSph, _recOwnCap + MaxSkyDraws,
                              lodScale, _gOpaqueEnd, _eyePos, &vpClean);
-        else fixed (CullSrcRec* src = _dSrc)
+        // Under alloy.backend vk GL's lists have no reader but the A/B's GL half.
+        if (!Renderer.OnVulkan || VkParity.Active) fixed (CullSrcRec* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull
             // down for the whole pass rather than leaving a stale list armed behind it.
@@ -376,12 +378,10 @@ public sealed unsafe partial class AlloyRenderer
         int* viewport = stackalloc int[4];
         if (!BeginOwnedFrame(display, viewport, out OwnedFrame f)) return;
         bool onVulkan = Renderer.OnVulkan;
-        VkParity.BeginFrame(_capturing);
         bool ab = VkParity.Active;
         // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
         if (onVulkan) VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
-        // the A/B's GL half draws through the camera Vulkan drew through
-        Matrix4x4 view = f.View, proj = f.Proj, vp = ab ? f.VpClean : f.Vp, vpClean = f.VpClean;
+        Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;
         int groups = f.Groups;
