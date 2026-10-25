@@ -126,6 +126,14 @@ OUT=cx-linux-x64
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp -a build/libcx.so build/cx_managed.so "$OUT/"
 cp build/openal/libopenal.so.1 build/deps/sa/libphonon.so "$OUT/"
+# CX-320: the Vulkan toolchain's native halves, dropped in build/ by the publish above (NuGet
+# runtimes/linux-x64/native) and shipped beside us like the audio runtime -- shaderc because it is 9 MB
+# with its own notices, VMA because it is a C++ TU we do not compile. Named, not globbed: a publish that
+# stops copying one of them has to fail here rather than ship an install that is missing it.
+for lib in libshaderc_shared.so libvma.so; do
+  [ -f "build/$lib" ] || { echo "!! build/$lib is missing -- the Vulkan toolchain packages did not restore" >&2; exit 1; }
+  cp "build/$lib" "$OUT/"
+done
 cp packaging/cx-launch "$OUT/cx-launch"
 sed "s/@VERSION@/$CX_VERSION/g" packaging/README.txt > "$OUT/README.txt"
 packaging/licenses.sh "$OUT/LICENSES.txt"

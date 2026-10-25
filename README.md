@@ -44,7 +44,8 @@ Download the zip for your system from the
    - GOG: `<GOG Games>\Neverwinter Nights Enhanced Edition\bin\win32\`
 2. Start the game as usual. No launch options needed.
 
-To uninstall, delete `version.dll`, `cx_openal.dll` and `phonon.dll` from `bin\win32\`.
+To uninstall, delete `version.dll`, `cx_openal.dll`, `phonon.dll`, `shaderc_shared.dll` and `vma.dll` from
+`bin\win32\`.
 
 Windows Defender sometimes quarantines `version.dll`. That's a false positive, so add it to Defender's exclusions.
 

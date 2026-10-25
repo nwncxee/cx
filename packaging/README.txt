@@ -33,7 +33,8 @@ FIRST STEPS
 UNINSTALL
   Clear the Launch Options line. The files do nothing without it. To remove
   them too, delete cx-launch, libcx.so, cx_managed.so, libopenal.so.1,
-  libphonon.so, README.txt and LICENSES.txt from bin/linux-x86.
+  libphonon.so, libshaderc_shared.so, libvma.so, README.txt and LICENSES.txt
+  from bin/linux-x86.
 
 REPORTING A PROBLEM
   CX is silent by default. To get a log, create a file named cx.cfg next to

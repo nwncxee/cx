@@ -38,6 +38,17 @@
     <ProjectReference Include="../tools/analyzers/cx_analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- CX-320: the Vulkan toolchain, pinned to an exact version each, because one person maintains it and
+       a range would move under us. Vortice.Vulkan is managed only and loads the platform loader itself. The
+       other two carry native libraries, libshaderc_shared.so/shaderc_shared.dll and libvma.so/vma.dll,
+       which the publish drops in the output folder and the build scripts stage BESIDE the extender rather
+       than linking in: shaderc alone is 9 MB with notices of its own (packaging/licenses.sh). -->
+  <ItemGroup>
+    <PackageReference Include="Vortice.Vulkan" Version="3.3.0" />
+    <PackageReference Include="Vortice.ShaderCompiler" Version="1.9.0" />
+    <PackageReference Include="Vortice.VulkanMemoryAllocator" Version="1.8.0" />
+  </ItemGroup>
+
   <!-- Keep our own assembly whole: the service host discovers services by
        reflection, so their constructors must survive trimming. Trimming a tiny
        extender saves nothing; rooting it removes all reflection/AOT fragility. -->

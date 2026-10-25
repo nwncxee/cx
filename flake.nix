@@ -83,6 +83,15 @@
         pkgs.zstd
       ];
 
+      # CX-320: the Vulkan side of the toolchain, dev shells only -- none of it reaches cx-linux-x64/ or the
+      # zip. The headers are for a future native translation unit. The LOADER and vulkaninfo are the
+      # machine's, deliberately: a nixpkgs loader dlopens the ICD's driver library by soname and nix's glibc
+      # does not read /etc/ld.so.cache, so on a foreign distro it finds the ICD JSON and then no driver
+      # behind it (measured here: ERROR_INCOMPATIBLE_DRIVER, where /usr/bin/vulkaninfo reports 1.4.363).
+      vulkanPackages = [
+        pkgs.vulkan-headers
+      ];
+
       pins = lib.importJSON ./tools/deps.json;
 
       # build.sh's libopenal.so.1, built by the same script from the same pinned source. Nix keeps it in the
@@ -135,8 +144,13 @@
       };
 
       devShell = shellEnv // {
-        packages = [ pythonDev ] ++ ciPackages ++ devPackages;
+        packages = [ pythonDev ] ++ ciPackages ++ devPackages ++ vulkanPackages;
         buildInputs = ciLibraries;
+        # CX-320: the validation layers are a DEBUGGING tool, never a shipped one -- ADD, so the system
+        # loader keeps whatever layers the box already has, and nothing is enabled until a run asks for it
+        # (VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation, or the layer named in the instance's own list).
+        # The machine's loader loads this nix-built layer fine; only the loader itself has to be the box's.
+        VK_ADD_LAYER_PATH = "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d";
       };
     in
     assert pinned;
