@@ -139,7 +139,8 @@ internal static class ShaderContract
         => PassSafe(src)
         && BlockSafe(embedded, src, "CxCull", "cx_cullblk.glsl")
         && BlockSafe(embedded, src, "CxDeferred", "cx_defblk.glsl")
-        && BlockSafe(embedded, src, "CxSsao", "cx_ssaolib.glsl");
+        && BlockSafe(embedded, src, "CxSsao", "cx_ssaolib.glsl")
+        && BlockSafe(embedded, src, "CxEngine", "cx_envblk.glsl");
 
     /// <summary>One block of <see cref="BlocksSafe"/>. An override that kept a member as a loose uniform links
     /// cleanly and reads zeros -- an uncalled cull, a world lit from nowhere, nothing in the log -- so a text
@@ -319,6 +320,13 @@ internal static class ShaderContract
                   && OwnedLitFsMain.Contains("        coverage = FragmentColor.a;\n")
                   && ContentStandardFs.Contains("void SetupStandardShaderInputs()")
                   && ContentStandardFs.Contains("#if ENVIRONMENT_MAP != 1 && NO_TEXTURE != 1")
+                  // ...CX-316: both halves' environment takes the engine-named set out of the CxEngine block and
+                  // names it with macros, which is what lets a stage's own declaration of one be stripped
+                  && Std140.Members(AlloyRenderer.ContentEnvFs, "CxEngine") != null
+                  && Std140.Members(AlloyRenderer.ContentEnvVs, "CxEngine") != null
+                  && AlloyRenderer.ContentEnvFs.Contains("#define moduleYear uModYear")
+                  && !AlloyRenderer.ContentEnvFs.Contains("uniform int moduleYear")
+                  && !AlloyRenderer.ContentEnvVs.Contains("uniform mat4 m_proj")
                   // ...its depth and caster twins stop right after the body, its post body runs on the composed colour,
                   // and the lit vertex stage hands a content vertex half its own work to start from
                   && OwnedLitFsMain.Contains("#ifdef CX_DEPTH_ONLY\n")
@@ -700,7 +708,7 @@ internal static class ShaderContract
                   // ...and the environment they share, ahead of all three. Declared twice (once per file)
                   // it would be a compile error, declared nowhere a link error; this is the one copy.
                   && VanillaEnvFs.Contains("#define CX_ALLOY")
-                  && VanillaEnvFs.Contains("uniform mat4 m_proj")
+                  && VanillaEnvFs.Contains("#define m_proj uEngProj")
                   // #551: the environment must NOT declare the scriptable block. Every spliced file
                   // includes inc_scriptable for it and the bridge resolves that include, so a declaration
                   // here is a redefinition -- which fails the whole lit program, not just the feature.

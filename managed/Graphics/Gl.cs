@@ -338,6 +338,9 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, uint, int, void> ProgramParameteri;
     public const uint PROGRAM_BINARY_RETRIEVABLE_HINT = 0x8257, PROGRAM_BINARY_LENGTH = 0x8741;
     public static delegate* unmanaged<uint, byte*, int> GetUniformLocation;
+    public static delegate* unmanaged<uint, byte*, uint> GetUniformBlockIndex;
+    /// <summary>What <c>glGetUniformBlockIndex</c> answers for a block the program does not actively use.</summary>
+    public const uint INVALID_INDEX = 0xFFFFFFFFu;
     public static delegate* unmanaged<int, int, byte, float*, void> UniformMatrix4fv;
     public static delegate* unmanaged<int, int, void> Uniform1i;
     public static delegate* unmanaged<int, float, void> Uniform1f;
@@ -615,6 +618,7 @@ public static unsafe class Gl
         ProgramBinaryLoad = (delegate* unmanaged<uint, uint, void*, int, void>)P("glProgramBinary");
         ProgramParameteri = (delegate* unmanaged<uint, uint, int, void>)P("glProgramParameteri");
         GetUniformLocation = (delegate* unmanaged<uint, byte*, int>)P("glGetUniformLocation");
+        GetUniformBlockIndex = (delegate* unmanaged<uint, byte*, uint>)P("glGetUniformBlockIndex");
         UniformMatrix4fv = (delegate* unmanaged<int, int, byte, float*, void>)P("glUniformMatrix4fv");
         Uniform2fv = (delegate* unmanaged<int, int, float*, void>)P("glUniform2fv");
         Uniform2iv = (delegate* unmanaged<int, int, int*, void>)P("glUniform2iv");

@@ -3,7 +3,7 @@
 // staging struct's field order; CullPass.SelfCheck pins the two together.
 #ifndef CX_CULL_BLOCK
 #define CX_CULL_BLOCK
-layout(std140, binding = 2) uniform CxCull
+layout(std140, binding = 3) uniform CxCull
 {
     mat4 uVP;
     // #489: the pyramid's OWN view-projection -- this pass's for the same-frame phases, the prior

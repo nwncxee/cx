@@ -18,16 +18,16 @@ internal static class UboSlots
 
     /// <summary>Persistent: bound once per pass and read by every program in it without a rebind, so each
     /// owns its point outright and nothing else may bind there.</summary>
-    internal const uint Pass = 0, ProbeSh = 1;
+    internal const uint Pass = 0, ProbeSh = 1, Engine = 2;
 
     /// <summary>The first shared point. Everything from here up is bound by its own pass right before its
     /// draw or dispatch, so two passes that never run inside one another may share a point -- provided no one
     /// PROGRAM links stages from both, which is what <see cref="Blocks"/>'s text list holds.</summary>
-    internal const uint Shared = 2;
+    internal const uint Shared = 3;
 
     /// <summary>A pass's own terms, on the first shared point: one block per pass, read by every program that
     /// pass runs and rebound before each of its dispatches.</summary>
-    internal const uint Cull = 2, Deferred = 2, Ssao = 2;
+    internal const uint Cull = 3, Deferred = 3, Ssao = 3;
 
     /// <summary>Every block name the GLSL declares, the point C# binds it on, and -- on a shared point -- every
     /// text allowed to declare it. The list is the one net for the hazard a text-at-a-time scan cannot see:
@@ -37,6 +37,7 @@ internal static class UboSlots
     {
         ["CxPass"] = (Pass, []),
         ["CxProbeSh"] = (ProbeSh, []),
+        ["CxEngine"] = (Engine, []),
         ["CxCull"] = (Cull, ["cx_cullblk.glsl", "cx_cull_c.glsl", "cx_cullsort_c.glsl"]),
         ["CxDeferred"] = (Deferred, ["cx_defblk.glsl", "cx_deferred_cs.glsl"]),
         ["CxSsao"] = (Ssao, ["cx_ssaolib.glsl", "cx_ssao_f.glsl", "cx_ssao_fs.glsl", "cx_ssaoblur_f.glsl",
@@ -82,6 +83,7 @@ internal static class UboSlots
         foreach ((string block, (uint _, string[] texts)) in Blocks)
             foreach (string text in texts)
                 check.Expect(declared.Contains((block, text)), $"UboSlots lists {text} for {block}, which no longer declares it");
+        EngineBlock.Pin(check);
         CullBlock.Pin(check);
         DeferredBlock.Pin(check);
         SsaoBlock.Pin(check);

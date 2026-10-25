@@ -1,16 +1,15 @@
 2 managed/Alloy/Ablation.cs
 23 managed/Alloy/AlloyRenderer.Batches.cs
 4 managed/Alloy/AlloyRenderer.Device.cs
-20 managed/Alloy/AlloyRenderer.EngineNamed.cs
 84 managed/Alloy/AlloyRenderer.Frame.cs
 4 managed/Alloy/AlloyRenderer.Handles.cs
 6 managed/Alloy/AlloyRenderer.Metrics.cs
 13 managed/Alloy/AlloyRenderer.Motion.cs
 5 managed/Alloy/AlloyRenderer.Target.cs
-75 managed/Alloy/AlloyRenderer.Uniforms.cs
+74 managed/Alloy/AlloyRenderer.Uniforms.cs
 4 managed/Alloy/AlloyRenderer.Vao.cs
 5 managed/Alloy/BlendProfile.cs
-10 managed/Alloy/Core/ContentPrograms.cs
+9 managed/Alloy/Core/ContentPrograms.cs
 12 managed/Alloy/Core/PassState.cs
 2 managed/Alloy/Core/StreamRing.cs
 4 managed/Alloy/Core/UniformBlock.cs
@@ -90,7 +89,7 @@
 41 managed/Alloy/Pass/SmaaStage.cs
 51 managed/Alloy/Pass/SsaoPass.cs
 89 managed/Alloy/Pass/Ssr.cs
-19 managed/Alloy/Pass/StageEnv.cs
+8 managed/Alloy/Pass/StageEnv.cs
 4 managed/Alloy/Pass/StageResources.cs
 35 managed/Alloy/Pass/StageResources.Gl.cs
 20 managed/Alloy/Pass/StageResources.Snap.cs

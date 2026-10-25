@@ -486,4 +486,14 @@ internal static unsafe class GlProgram
         Gl.AsciiZ(name, b);
         fixed (byte* p = b) return Gl.GetUniformLocation(prog, p);
     }
+
+    /// <summary>Does <paramref name="prog"/> actively use the uniform block <paramref name="name"/>? A block
+    /// declared but never read is optimised out, and then its host owes it neither a fill nor a bind.</summary>
+    internal static bool UsesBlock(uint prog, string name)
+    {
+        if (Gl.GetUniformBlockIndex == null) return false;
+        Span<byte> b = stackalloc byte[name.Length + 1];
+        Gl.AsciiZ(name, b);
+        fixed (byte* p = b) return Gl.GetUniformBlockIndex(prog, p) != Gl.INVALID_INDEX;
+    }
 }
