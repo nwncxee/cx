@@ -222,6 +222,9 @@ public sealed unsafe partial class AlloyRenderer
         Step("EnsureProgram");
         if (!Programs.EnsureProgram()) { DbNoDraw("the world program did not build"); GlContextService.Leave(); return false; }
         BindTarget();
+        // ORDER: ahead of the preamble below, which sets the viewport and PassState's toggles again over it
+        Step("content prewarm");
+        ContentPrewarm.Pump(_log);
         // #117/#119: the lighting rig, the GL state and the batch BUILD are bracket preamble -- both
         // colour-bracket passes draw the same staged batches, and building twice would revalidate (and
         // re-stamp OwnGen for) every Alloy part twice. The passes come off FrameGraph, not off call order.

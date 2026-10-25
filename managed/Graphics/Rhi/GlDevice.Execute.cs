@@ -219,7 +219,7 @@ internal sealed unsafe partial class GlDevice
 
     private static byte Bit(ColorMask m, ColorMask c) => (m & c) != 0 ? (byte)1 : (byte)0;
 
-    private static uint Factor(BlendFactor f) => f switch
+    internal static uint Factor(BlendFactor f) => f switch
     {
         BlendFactor.Zero => Gl.ZERO,
         BlendFactor.SrcAlpha => Gl.SRC_ALPHA,

@@ -215,7 +215,7 @@ internal sealed unsafe partial class GlDevice : IDevice
         return false;
     }
 
-    private static uint Compare(CompareOp c) => c switch
+    internal static uint Compare(CompareOp c) => c switch
     {
         CompareOp.Less => Gl.LESS,
         CompareOp.Equal => Gl.EQUAL,

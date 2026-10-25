@@ -30,9 +30,13 @@ internal static unsafe class ProgramBinary
         {
             if (_seed != 0 || GlContextService.Driver.Length == 0 || Gl.GetProgramBinary == null || Gl.ProgramBinaryLoad == null)
                 return _seed;
-            return _seed = MdlParser.ContentHash(MemoryMarshal.AsBytes(GlContextService.Driver.AsSpan())) | 1;
+            return _seed = SeedOf(GlContextService.Driver);
         }
     }
+
+    /// <summary>The seed a driver identity (<c>GL_VENDOR</c>, <c>GL_RENDERER</c> and <c>GL_VERSION</c> as
+    /// <see cref="GlContextService.Driver"/> joins them) folds to: never 0, which means the cache is off.</summary>
+    internal static ulong SeedOf(string driver) => MdlParser.ContentHash(MemoryMarshal.AsBytes(driver.AsSpan())) | 1;
 
     /// <summary>Fold one stage -- its type and the exact text glShaderSource receives -- into a key. 0 stays 0.</summary>
     internal static ulong Key(ulong h, uint type, string text) =>
@@ -99,6 +103,35 @@ internal static unsafe class ProgramBinary
     private static void Drop(string path)
     {
         try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    /// <summary>Off-device. Oracle: the keys below, worked out by an independent reimplementation of the
+    /// documented fold (murmur-mixed content hash over the strings' UTF-16 bytes, driver seed odd, stage type
+    /// folded in) and written here as literals -- never a second call to <see cref="Key"/>.</summary>
+    internal static bool SelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        const string nv = "NVIDIA|RTX 3070|4.6.0";
+        const string mesa = "Mesa|AMD Radeon RX 9070 (radeonsi)|4.6 (Core Profile) Mesa 25.2.0";
+        const string vs = "void main(){}\n";
+        check.Expect(SeedOf(nv) == 0x364e03d3530f899fUL,   // not-an-offset: the hand-worked seed of nv
+                     "the driver identity does not fold to the seed the cache's own key was worked out from, so every "
+                     + "blob this release writes is keyed differently from every blob it reads");
+        check.Expect(Key(SeedOf(nv), Gl.VERTEX_SHADER, vs) == 0x8e4da4bd4da507b4UL   // not-an-offset: hand-worked key
+                     && Key(SeedOf(nv), Gl.FRAGMENT_SHADER, vs) == 0x280622f4cd6b7ba9UL   // not-an-offset: ...and of the fragment stage
+                     && Key(Key(SeedOf(nv), Gl.VERTEX_SHADER, vs), Gl.FRAGMENT_SHADER, vs) == 0x1f975d50c8baf126UL,   // not-an-offset: ...and of the pair
+                     "a stage key is not the hand-worked fold of the driver seed, the stage type and the text -- a "
+                     + "launch after this one looks its blobs up under other names");
+        check.Expect(Key(0, Gl.VERTEX_SHADER, vs) == 0,
+                     "a stage folded onto the cache-off seed yields a key, so a launch with no driver identity would "
+                     + "read and write blobs under one");
+        check.Expect(SeedOf(mesa) != 0 && SeedOf(mesa) != SeedOf(nv),
+                     "two different driver identities fold to the same seed, or to 0 -- which is the cache-off value, "
+                     + "so one driver's blobs would be handed to another");
+        check.Expect(Key(SeedOf(nv), Gl.VERTEX_SHADER, vs) != Key(SeedOf(nv), Gl.VERTEX_SHADER, vs + " "),
+                     "a one-character edit to a stage's text does not move its key");
+        log.Info(check.Ok ? "ProgramBinary.SelfCheck: passed" : "ProgramBinary.SelfCheck: FAILED");
+        return check.Ok;
     }
 
     private static string Sweep(string dir)
