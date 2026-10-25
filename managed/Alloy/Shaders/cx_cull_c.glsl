@@ -7,26 +7,8 @@ layout(std430, binding = 11) writeonly buffer CxCullOutIdx { int  uOut[]; };
 layout(std430, binding = 12) buffer CxCullCount            { uint uCnt[]; };
 layout(std430, binding = 13) buffer CxCullKey              { float uKey[]; };
 layout(std430, binding = 14) buffer CxCullRej              { uint uRejBuf[]; };
-uniform int uDrawN;
-uniform vec4 uPlanes[6];
-uniform mat4 uVP;
-uniform int uHiZ;
-// #489: the pyramid's OWN view-projection -- this pass's for the same-frame phases, the prior
-// pass's for phase one, which tests the sphere in the clip space the pyramid was built in.
-uniform mat4 uPyrVP;
-// #489: 0 = colour phase; 1 = prepass phase one (WRITE the hi-Z verdict per draw);
-// 2 = prepass phase two (only a marked draw is tested, against the fresh pyramid).
-uniform int uRej;
+#include "cx_cullblk.glsl"
 uniform sampler2D uPyramid;
-uniform vec2 uPyrSize;
-uniform float uMaxLod;
-uniform float uLodPx;
-uniform float uLodScale;
-uniform int uCompactBelow;
-uniform vec3 uEye;
-uniform float uFogCull;  // #341: fog-opaque distance, or 0 for no fog cull
-uniform vec4 uFogOrigin; // xyz = the player's feet, w = 1 radial from it, 0 = view depth (as the fog)
-uniform float uClipZ;    // CX-51: the mirror plane; a sphere wholly below it is not drawn (-1e30 = none)
 
 // One pyramid tap, addressed through the LEVEL-0 grid rather than the level's own.
 // This is the fix for #243's first live bug. `textureLod(uv, L)` maps uv across the width of level
@@ -115,7 +97,7 @@ void main()
         // #341: past the fog's opaque distance AND entirely below the eye -- see CullPass.FogCull
         // for why both. The distance is the fog's own metric (CxFogFactor), and the radius is
         // subtracted so a sphere reaching back inside the fog is kept whole.
-        if (keep && uFogCull > 0.0 && s.z + s.w < uEye.z)
+        if (keep && uFogCull > 0.0 && s.z + s.w < uCullEye.z)
         {
             float d = uFogOrigin.w > 0.0 ? length(s.xyz - uFogOrigin.xyz) : (uVP * vec4(s.xyz, 1.0)).w;
             if (d - s.w > uFogCull) keep = false;
@@ -128,7 +110,7 @@ void main()
     {
         // The key, and the verdict carried in its sign: squared distance from this pass's eye,
         // which is exactly what the CPU's EyeDist2 measures, so the two orders agree.
-        vec3 d = s.xyz - uEye;
+        vec3 d = s.xyz - uCullEye.xyz;
         uKey[i] = keep ? dot(d, d) : -1.0;
         // The count is the batch's SURVIVOR count -- the sort compacts as well as orders.
         if (keep) atomicAdd(uCnt[batch], 1u);

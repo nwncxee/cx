@@ -138,6 +138,22 @@ internal static class ShaderSource
         return r.ReadToEnd().Replace("\r\n", "\n");
     }
 
+    /// <summary>Every GLSL text the image ships, named: each embedded stage and library with its includes
+    /// spliced, plus the stages composed in C#. This is the text a binding-contract check reads, so a block
+    /// or a slot declared anywhere is seen by it.</summary>
+    internal static List<(string Name, string Src)> EveryStage()
+    {
+        var texts = new List<(string, string)>();
+        foreach (string res in typeof(ShaderSource).Assembly.GetManifestResourceNames())
+            if (res.EndsWith(".glsl", StringComparison.Ordinal)) texts.Add((res, Get(res)));
+        texts.Add(("CasterGather.GatherCs", CasterGather.GatherCs));
+        texts.Add(("CasterGather.LayerCs", CasterGather.LayerCs));
+        texts.Add(("TextRig.BatchVs", CX.Ui.TextRig.BatchVs));
+        texts.Add(("TextRig.BatchFs", CX.Ui.TextRig.BatchFs));
+        texts.Add(("bindless header", AlloyRenderer.BindlessFs("uniform sampler2D uTex;\n")));
+        return texts;
+    }
+
     /// <summary>Every embedded .glsl loads and every include in it resolves. A mistyped include is
     /// otherwise invisible until the one program that carries it builds -- on a machine that reaches that
     /// feature.</summary>

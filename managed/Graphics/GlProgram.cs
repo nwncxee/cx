@@ -32,12 +32,12 @@ internal static unsafe class GlProgram
     internal static bool LastStubbed;
 
     /// <summary><see cref="ShaderSource.Content"/>, refused for the embedded libraries when the swap leaves the
-    /// stage reading the pass terms outside the <c>CxPass</c> block (<see cref="ShaderContract.PassSafe"/>).</summary>
+    /// stage reading a block's terms as loose uniforms (<see cref="ShaderContract.BlocksSafe"/>).</summary>
     private static string Lib(string src, ExtenderLog? log, string what)
     {
         string c = ShaderSource.Content(src, log);
-        if (ReferenceEquals(c, src) || ShaderContract.PassSafe(c)) return c;
-        log?.Info($"{what}: a library override .shd reads the pass terms outside the CxPass block (predates CX-43) -- using the embedded libraries");
+        if (ReferenceEquals(c, src) || ShaderContract.BlocksSafe(src, c)) return c;
+        log?.Info($"{what}: a library override .shd reads a uniform block's terms outside the block -- using the embedded libraries");
         return src;
     }
 
@@ -114,7 +114,8 @@ internal static unsafe class GlProgram
 
     /// <summary>The texts the overridable <see cref="Graphics(string, string, string, string, ExtenderLog?, string)"/>
     /// builds first: the stage override, then the libraries inside whichever text won, back to the embedded
-    /// stages when either reads the pass terms outside the <c>CxPass</c> block.</summary>
+    /// stages when either reads a uniform block's terms outside the block
+    /// (<see cref="ShaderContract.BlocksSafe"/>).</summary>
     internal static void Texts(string vsRef, string vs, string fsRef, string fs, ExtenderLog? log, string what,
                                out string vsSource, out string fsSource)
     {
@@ -122,8 +123,8 @@ internal static unsafe class GlProgram
         // brackets, so a library override still reaches it
         string? ovs = ShaderResource.Override(vsRef, log), ofs = ShaderResource.Override(fsRef, log);
         vsSource = ShaderSource.Content(ovs ?? vs, log); fsSource = ShaderSource.Content(ofs ?? fs, log);
-        if (ShaderContract.PassSafe(vsSource) && ShaderContract.PassSafe(fsSource)) return;
-        log?.Info($"{what}: an override .shd reads the pass terms outside the CxPass block (predates CX-43) -- building the embedded default");
+        if (ShaderContract.BlocksSafe(vs, vsSource) && ShaderContract.BlocksSafe(fs, fsSource)) return;
+        log?.Info($"{what}: an override .shd reads a uniform block's terms outside the block -- building the embedded default");
         vsSource = vs; fsSource = fs;
     }
 
@@ -306,6 +307,11 @@ internal static unsafe class GlProgram
         }
         string? ocs = ShaderResource.Override(csRef, log);
         string src = ShaderSource.Content(ocs ?? cs, log);
+        if (!ShaderContract.BlocksSafe(cs, src))
+        {
+            log?.Info($"{what}: an override .shd reads a uniform block's terms outside the block -- building the embedded default");
+            src = cs;
+        }
         uint prog = Single(src, log, what);
         if (prog != 0 || ReferenceEquals(src, cs)) return prog;
         log?.Info($"{what}: override .shd failed to build -- falling back to the embedded default");

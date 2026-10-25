@@ -1,8 +1,36 @@
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics;
 
 namespace CX.Alloy;
+
+/// <summary>The <c>CxSsao</c> block in the GLSL's own member order (<c>cx_ssaolib.glsl</c>). C# sequential
+/// layout IS std140 here: no member is a vec3 or an array, so neither side pads.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct SsaoBlock
+{
+    public Matrix4x4 Proj;
+    public Vector4 Rt;
+    public float Radius, Power, MaxPx, Weight;
+    public int Dirs, Steps, Frame;
+
+    /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into
+    /// its neighbour, and a wrong projection row reconstructs every pixel at the wrong depth.</summary>
+    internal static void Pin(Checker check)
+    {
+        var b = default(SsaoBlock);
+        Std140.Pin(check, ShaderSource.Get("cx_ssaolib.glsl"), "CxSsao", UboSlots.Ssao, Unsafe.SizeOf<SsaoBlock>(),
+        [
+            ("uProj", Std140.At(ref b, ref b.Proj)), ("uRt", Std140.At(ref b, ref b.Rt)),
+            ("uRadius", Std140.At(ref b, ref b.Radius)), ("uPower", Std140.At(ref b, ref b.Power)),
+            ("uMaxPx", Std140.At(ref b, ref b.MaxPx)), ("uWeight", Std140.At(ref b, ref b.Weight)),
+            ("uDirs", Std140.At(ref b, ref b.Dirs)), ("uSteps", Std140.At(ref b, ref b.Steps)),
+            ("uFrame", Std140.At(ref b, ref b.Frame)),
+        ]);
+    }
+}
 
 /// <summary>Screen-space ambient occlusion as a LIGHTING INPUT, not a post stage (ADR 0021). The client's SSAO
 /// option is bit 0 of <c>Camera::m_nFramebufferEffectsEnabled</c>; vanilla runs its pass over the finished
@@ -31,9 +59,10 @@ internal static unsafe class SsaoPass
         public uint Fbo, Raw, Out, Prog, ProgBlur;
         /// <summary>The visibility history pair, RG16F (visibility, view distance), and its stage.</summary>
         public uint Hist0, Hist1, ProgTemporal;
-        public int LocDepth, LocProj, LocRt, LocRadius, LocPower, LocDirs, LocSteps, LocMaxPx, LocFrame,
-                   LocBlurSrc, LocBlurDepth, LocBlurProj,
-                   LocTRaw, LocTHist, LocTVel, LocTWeight, LocTDepth, LocTProj;
+        /// <summary>Sampler units only: every other term the three stages read is in <see cref="Blk"/>.</summary>
+        public int LocDepth, LocBlurSrc, LocBlurDepth, LocTRaw, LocTHist, LocTVel, LocTDepth;
+        /// <summary>The terms all three stages share, bound once at the pass's start.</summary>
+        public readonly UniformBlock<SsaoBlock> Blk = new();
         public int W, H, HistCur;
         /// <summary>The DISPLAY-space extent the targets were sized against, for the arm-time line and the
         /// stats term: <see cref="W"/> x <see cref="H"/> is half of it under <c>post.halfres</c>.</summary>
@@ -141,17 +170,22 @@ internal static unsafe class SsaoPass
         Gl.Viewport(half ? viewport[0] / 2 : viewport[0], half ? viewport[1] / 2 : viewport[1], g.W, g.H);
         Gl.ActiveTexture(Gl.TEXTURE0);
         Gl.BindTexture(Gl.TEXTURE_2D, depthTex);
+        ref SsaoBlock b = ref g.Blk.Stage;
+        b.Proj = *proj;
+        b.Rt = new Vector4(1f / w, 1f / h, w, h);
+        b.Radius = Ao.Radius.V;
+        b.Power = Ao.Strength.V * Strength;
+        b.Dirs = Ao.Dirs.V;
+        b.Steps = Ao.Steps.V;
+        // the cap is a SCREEN reach, so it halves with the target: 96 half-res texels would be 192 of the frame's
+        b.MaxPx = half ? Ao.MaxPx.V * 0.5f : Ao.MaxPx.V;
+        b.Frame = temporal ? frameSeq & 63 : 0;
+        b.Weight = temporal && g.HistValid ? Ao.Temporal.V : 0f;
+        // One bind covers all three stages: the block is the same for each, and nothing else takes the point
+        // between them.
+        g.Blk.Bind(UboSlots.Ssao);
         Gl.UseProgram(g.Prog);
         Gl.Uniform1i(g.LocDepth, 0);
-        Gl.UniformMatrix4fv(g.LocProj, 1, 0, (float*)proj);
-        Gl.Uniform4f(g.LocRt, 1f / w, 1f / h, w, h);
-        Gl.Uniform1f(g.LocRadius, Ao.Radius.V);
-        Gl.Uniform1f(g.LocPower, Ao.Strength.V * Strength);
-        Gl.Uniform1i(g.LocDirs, Ao.Dirs.V);
-        Gl.Uniform1i(g.LocSteps, Ao.Steps.V);
-        // the cap is a SCREEN reach, so it halves with the target: 96 half-res texels would be 192 of the frame's
-        Gl.Uniform1f(g.LocMaxPx, half ? Ao.MaxPx.V * 0.5f : Ao.MaxPx.V);
-        Gl.Uniform1i(g.LocFrame, temporal ? frameSeq & 63 : 0);
         Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
         // #390: the blur FIRST -- it folds the Bayer pattern away, and the accumulator's 3x3 clamp needs a
         // neighbourhood that means something, which four fetches a pixel do not give it.
@@ -164,7 +198,6 @@ internal static unsafe class SsaoPass
             Gl.UseProgram(g.ProgBlur);
             Gl.Uniform1i(g.LocBlurDepth, 0);
             Gl.Uniform1i(g.LocBlurSrc, 1);
-            Gl.UniformMatrix4fv(g.LocBlurProj, 1, 0, (float*)proj);
             Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
             blurred = g.Out;
         }
@@ -180,8 +213,6 @@ internal static unsafe class SsaoPass
             Gl.Uniform1i(g.LocTRaw, 1);
             Gl.Uniform1i(g.LocTHist, 2);
             Gl.Uniform1i(g.LocTVel, 3);
-            Gl.UniformMatrix4fv(g.LocTProj, 1, 0, (float*)proj);
-            Gl.Uniform1f(g.LocTWeight, g.HistValid ? Ao.Temporal.V : 0f);
             Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
             Gl.ActiveTexture(Gl.TEXTURE0 + 3); Gl.BindTexture(Gl.TEXTURE_2D, 0);
             Gl.ActiveTexture(Gl.TEXTURE0 + 2); Gl.BindTexture(Gl.TEXTURE_2D, 0);
@@ -264,23 +295,19 @@ internal static unsafe class SsaoPass
             _log?.Info("SsaoPass: the visibility program did not build -- the pass stands down; the ambient term keeps the material AO alone");
             return;
         }
-        g.LocDepth = GlProgram.Loc(g.Prog, "uDepth"); g.LocProj = GlProgram.Loc(g.Prog, "uProj"); g.LocRt = GlProgram.Loc(g.Prog, "uRt");
-        g.LocRadius = GlProgram.Loc(g.Prog, "uRadius"); g.LocPower = GlProgram.Loc(g.Prog, "uPower");
-        g.LocDirs = GlProgram.Loc(g.Prog, "uDirs"); g.LocSteps = GlProgram.Loc(g.Prog, "uSteps"); g.LocMaxPx = GlProgram.Loc(g.Prog, "uMaxPx");
-        g.LocFrame = GlProgram.Loc(g.Prog, "uFrame");
+        g.LocDepth = GlProgram.Loc(g.Prog, "uDepth");
         g.ProgBlur = GlProgram.Graphics(PostChain.ShdPostVs, vs, ShdSsaoBlurFs, ShaderStages.Source(ShdSsaoBlurFs), _log, "SSAO blur");
         if (g.ProgBlur == 0) { _log?.Info("SsaoPass: the blur did not build -- visibility ships unblurred (the 4x4 pattern will show)"); }
         else
         {
             g.LocBlurSrc = GlProgram.Loc(g.ProgBlur, "uSrc"); g.LocBlurDepth = GlProgram.Loc(g.ProgBlur, "uDepth");
-            g.LocBlurProj = GlProgram.Loc(g.ProgBlur, "uProj");
         }
         // #390: embedded only, like MotionVectors -- not an override point.
         g.ProgTemporal = GlProgram.Graphics(PostChain.FullscreenVs, TemporalFs, _log, "SSAO temporal");
         if (g.ProgTemporal == 0) { _log?.Info("SsaoPass: the temporal stage did not build -- visibility is single-frame (/ao dirs 3 steps 3 restores today's density)"); return; }
-        g.LocTDepth = GlProgram.Loc(g.ProgTemporal, "uDepth"); g.LocTProj = GlProgram.Loc(g.ProgTemporal, "uProj");
+        g.LocTDepth = GlProgram.Loc(g.ProgTemporal, "uDepth");
         g.LocTRaw = GlProgram.Loc(g.ProgTemporal, "uRaw"); g.LocTHist = GlProgram.Loc(g.ProgTemporal, "uHist");
-        g.LocTVel = GlProgram.Loc(g.ProgTemporal, "uVel"); g.LocTWeight = GlProgram.Loc(g.ProgTemporal, "uWeight");
+        g.LocTVel = GlProgram.Loc(g.ProgTemporal, "uVel");
     }
 
     /// <summary>The 4x4 depth-aware box that folds the pattern away: one full period of the Bayer tile,

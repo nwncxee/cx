@@ -78,7 +78,7 @@ internal static unsafe class MovieFrame
         internal MovieRows Staged;
         internal uint Tex;
         internal int TexW, TexH;
-        internal bool Refused, SaidLive, SaidNoContext;
+        internal bool Refused, SaidLive;
     }
 
     private static MovieFrameState _s = new();
@@ -135,9 +135,10 @@ internal static unsafe class MovieFrame
         s.Staged = r;
     }
 
-    /// <summary>The staged rows in an Alloy texture, uploaded in ALLOY's context -- the hook fires in the
-    /// engine's. Returns the texture name, or 0, which means the engine's own quad draws this frame and the
-    /// reason was said once.</summary>
+    /// <summary>The staged rows in an Alloy texture. The CALLER holds the 4.6 bracket and has drained its
+    /// error queue: this is the frame's one upload and the quad that samples it draws in the same bracket.
+    /// Returns the texture name, or 0, which means the engine's own quad draws this frame and the reason was
+    /// said once.</summary>
     internal static uint Upload(int frameW, int frameH)
     {
         MovieFrameState s = _s;
@@ -151,24 +152,11 @@ internal static unsafe class MovieFrame
         if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
             || Gl.TextureParameteri == null || Gl.PixelStorei == null || Gl.DeleteTextures == null)
             return Refuse("a direct-state-access texture entry point did not resolve");
-        // The bracket this opens must be the OUTERMOST one: a nested Leave only drains errors and leaves the
-        // 4.6 context current, and the caller's draw after it is engine-context GL.
-        if (GlContextService.Inside)
-            return Refuse("a 4.6 bracket was already open at the movie draw, so Leave would not hand the engine its context back");
-        if (!GlContextService.Enter()) return NoContext();
-
-        uint err;
-        try
-        {
-            // Clear the 4.6 queue first, or an error some other pass left there would refuse this upload.
-            Gl.DrainErrors();
-            if (!Ensure(s, frameW, frameH)) return Refuse("the movie texture did not build");
-            OwnedTextures.Unpack u = OwnedTextures.Unpack.Take(0, 0, 0, r.Align);
-            Gl.TextureSubImage2D(s.Tex, 0, 0, 0, r.Width, r.Height, r.Format, r.Type, s.Rows);
-            u.Give();
-            err = Gl.GetError != null ? Gl.GetError() : 0;
-        }
-        finally { GlContextService.Leave(); }
+        if (!Ensure(s, frameW, frameH)) return Refuse("the movie texture did not build");
+        OwnedTextures.Unpack u = OwnedTextures.Unpack.Take(0, 0, 0, r.Align);
+        Gl.TextureSubImage2D(s.Tex, 0, 0, 0, r.Width, r.Height, r.Format, r.Type, s.Rows);
+        u.Give();
+        uint err = Gl.GetError != null ? Gl.GetError() : 0;
         if (err != 0) return Refuse($"the upload raised GL error 0x{err:x4}");
 
         if (!s.SaidLive)
@@ -211,18 +199,6 @@ internal static unsafe class MovieFrame
         s.Staged = default;
         s.Log?.Always($"MovieFrame: the decoded frame does not reach an Alloy texture -- {why}. The engine's own "
                     + "movie quad is drawing the movie (set alloy.movie 0 to make that the deliberate choice).");
-        return 0;
-    }
-
-    /// <summary>Alloy's context is not the game thread's to enter -- it has not come up, it failed for the
-    /// session, or the render thread holds it. Not this mechanism failing, so it is said once and not latched.</summary>
-    private static uint NoContext()
-    {
-        MovieFrameState s = _s;
-        if (s.SaidNoContext) return 0;
-        s.SaidNoContext = true;
-        s.Log?.Always("MovieFrame: Alloy's GL 4.6 context cannot be entered from the game thread -- the engine's "
-                    + "own movie quad draws the movie until it can");
         return 0;
     }
 

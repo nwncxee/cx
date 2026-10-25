@@ -202,6 +202,15 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
+- `ubo-bindings.sh`: a `std140` binding, or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
+  per-stage floor), or a numeric uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under
+  `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..1 persistent and exclusive, 2..11 shared by
+  passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
+  members to the struct that stages them.
+- `uniform-blocks.sh`: a loose `Gl.Uniform*` call site under `managed/` counts against
+  `uniform-blocks.baseline`, which may only shrink -- a non-opaque uniform belongs in a std140 block on a
+  `UboSlots` point, filled through `UniformBlock<T>`. Sampler units are opaque and count too, so a file need
+  not reach zero; `python3 tools/gates/uniform-blocks.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

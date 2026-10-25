@@ -1,10 +1,48 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
 namespace CX.Alloy;
+
+/// <summary>The cull dispatch's six frustum planes, at std140's vec4 stride.</summary>
+[InlineArray(6)]
+internal struct CullPlanes { private Vector4 _e; }
+
+/// <summary>The <c>CxCull</c> block in the GLSL's own member order (<c>cx_cullblk.glsl</c>). C# sequential
+/// layout IS std140 here: no member is a vec3 or an array of anything narrower than a vec4, so neither side
+/// pads, and <see cref="Pin"/> holds the two together.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct CullBlock
+{
+    public Matrix4x4 Vp, PyrVp;
+    public CullPlanes Planes;
+    public Vector4 FogOrigin, Eye;
+    public Vector2 PyrSize;
+    public float MaxLod, LodPx, LodScale, FogCull, ClipZ;
+    public int DrawN, HiZ, Rej, CompactBelow;
+
+    /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into
+    /// its neighbour -- a wrong frustum plane, with nothing in the log.</summary>
+    internal static void Pin(Checker check)
+    {
+        var b = default(CullBlock);
+        Std140.Pin(check, ShaderSource.Get("cx_cullblk.glsl"), "CxCull", UboSlots.Cull, Unsafe.SizeOf<CullBlock>(),
+        [
+            ("uVP", Std140.At(ref b, ref b.Vp)), ("uPyrVP", Std140.At(ref b, ref b.PyrVp)),
+            ("uPlanes", Std140.At(ref b, ref b.Planes)), ("uFogOrigin", Std140.At(ref b, ref b.FogOrigin)),
+            ("uCullEye", Std140.At(ref b, ref b.Eye)), ("uPyrSize", Std140.At(ref b, ref b.PyrSize)),
+            ("uMaxLod", Std140.At(ref b, ref b.MaxLod)), ("uLodPx", Std140.At(ref b, ref b.LodPx)),
+            ("uLodScale", Std140.At(ref b, ref b.LodScale)), ("uFogCull", Std140.At(ref b, ref b.FogCull)),
+            ("uClipZ", Std140.At(ref b, ref b.ClipZ)), ("uDrawN", Std140.At(ref b, ref b.DrawN)),
+            ("uHiZ", Std140.At(ref b, ref b.HiZ)), ("uRej", Std140.At(ref b, ref b.Rej)),
+            ("uCompactBelow", Std140.At(ref b, ref b.CompactBelow)),
+        ]);
+    }
+}
 
 /// <summary>
 /// Alloy's own visibility (ADR 0017): a compute dispatch tests each draw's world bounding sphere against this
@@ -66,9 +104,10 @@ internal static unsafe class CullPass
     {
         public uint Prog, ProgHiZ, ProgSort;
         public bool Failed;
-        public int UDrawN, UPlanes, UHiZ, UVP, UPyr, UPyrSize, UMaxLod;
-        public int ULodPx, ULodScale, UCompactBelow, UEye, UFogCull, UFogOrigin, UPyrVP, URej, UClipZ;
-        public int SDrawN, SCompactBelow;
+        /// <summary>Every term both compute stages read, in one block on <see cref="UboSlots.Cull"/>; only
+        /// the pyramid sampler and the pyramid build's own two are still loose uniforms.</summary>
+        public readonly UniformBlock<CullBlock> Blk = new();
+        public int UPyr;
         public int HSrc, HLevel;
         public uint SphBuf, KeyBuf, RejBuf;
         /// <summary>The source list as <see cref="Begin"/> streamed it; the dispatches of the same pass rebind it.</summary>
@@ -204,24 +243,7 @@ internal static unsafe class CullPass
             AlloyGate.Fail("the cull compute program did not build -- Alloy has no visibility test");
             return false;
         }
-        _gl.UDrawN = GlProgram.Loc(_gl.Prog, "uDrawN");
-        _gl.UPlanes = GlProgram.Loc(_gl.Prog, "uPlanes");
-        _gl.UHiZ = GlProgram.Loc(_gl.Prog, "uHiZ");
-        _gl.UVP = GlProgram.Loc(_gl.Prog, "uVP");
         _gl.UPyr = GlProgram.Loc(_gl.Prog, "uPyramid");
-        _gl.UPyrSize = GlProgram.Loc(_gl.Prog, "uPyrSize");
-        _gl.UMaxLod = GlProgram.Loc(_gl.Prog, "uMaxLod");
-        _gl.ULodPx = GlProgram.Loc(_gl.Prog, "uLodPx");
-        _gl.ULodScale = GlProgram.Loc(_gl.Prog, "uLodScale");
-        _gl.UCompactBelow = GlProgram.Loc(_gl.Prog, "uCompactBelow");
-        _gl.UEye = GlProgram.Loc(_gl.Prog, "uEye");
-        _gl.UFogCull = GlProgram.Loc(_gl.Prog, "uFogCull");
-        _gl.UFogOrigin = GlProgram.Loc(_gl.Prog, "uFogOrigin");
-        _gl.UClipZ = GlProgram.Loc(_gl.Prog, "uClipZ");
-        _gl.UPyrVP = GlProgram.Loc(_gl.Prog, "uPyrVP");
-        _gl.URej = GlProgram.Loc(_gl.Prog, "uRej");
-        _gl.SDrawN = GlProgram.Loc(_gl.ProgSort, "uDrawN");
-        _gl.SCompactBelow = GlProgram.Loc(_gl.ProgSort, "uCompactBelow");
         _gl.HSrc = GlProgram.Loc(_gl.ProgHiZ, "uSrc");
         _gl.HLevel = GlProgram.Loc(_gl.ProgHiZ, "uLevel");
         if (_gl.PyrVao == 0) { uint v; Gl.CreateVertexArrays(1, &v); _gl.PyrVao = v; }
@@ -329,32 +351,31 @@ internal static unsafe class CullPass
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCount, _gl.CntBuf[phase]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindKey, _gl.KeyBuf);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindRej, _gl.RejBuf);
-        Gl.Uniform1i(_gl.UDrawN, _drawN);
-        Gl.UniformMatrix4fv(_gl.UVP, 1, 0, (float*)vp);
+        ref CullBlock b = ref _gl.Blk.Stage;
+        b.DrawN = _drawN;
+        b.Vp = *vp;
         // The pyramid's own clip space: this pass's for the same-frame phases, the prior pass's for phase one.
-        if (stale && useHiZ) fixed (Matrix4x4* pv = &_gl.PyrVp) Gl.UniformMatrix4fv(_gl.UPyrVP, 1, 0, (float*)pv);
-        else Gl.UniformMatrix4fv(_gl.UPyrVP, 1, 0, (float*)vp);
-        Gl.Uniform1i(_gl.URej, stale ? RejWrite : phase == PhaseRetest ? RejRead : RejOff);
-        Vector4* planes = stackalloc Vector4[6];
-        Planes(in *vp, new Span<Vector4>(planes, 6), _eye);
-        Gl.Uniform4fv(_gl.UPlanes, 6, (float*)planes);
-        Gl.Uniform1f(_gl.ULodPx, MathF.Max(lodPx >= 0f ? lodPx : LodPx, 0f));
-        Gl.Uniform1f(_gl.UClipZ, clipZ);
-        Gl.Uniform1f(_gl.ULodScale, _lodScale);
-        Gl.Uniform1i(_gl.UCompactBelow, _compactBelow);
-        fixed (Vector3* e = &_eye) Gl.Uniform3fv(_gl.UEye, 1, (float*)e);
+        b.PyrVp = stale && useHiZ ? _gl.PyrVp : *vp;
+        b.Rej = stale ? RejWrite : phase == PhaseRetest ? RejRead : RejOff;
+        Planes(in *vp, b.Planes, _eye);
+        b.LodPx = MathF.Max(lodPx >= 0f ? lodPx : LodPx, 0f);
+        b.ClipZ = clipZ;
+        b.LodScale = _lodScale;
+        b.CompactBelow = _compactBelow;
+        b.Eye = new Vector4(_eye, 0f);
         // 0 = no fog cull at all, which is what an infinite opaque distance means: nothing past the frustum
         // is provably fogged out.
         float opaque = FogCull ? SceneFog.OpaqueDistance() : float.PositiveInfinity;
-        Gl.Uniform1f(_gl.UFogCull, float.IsInfinity(opaque) ? 0f : opaque);
+        b.FogCull = float.IsInfinity(opaque) ? 0f : opaque;
         Vector3 origin = SceneFog.Origin(out bool radial);
-        Gl.Uniform4f(_gl.UFogOrigin, origin.X, origin.Y, origin.Z, radial ? 1f : 0f);
-        Gl.Uniform1i(_gl.UHiZ, useHiZ ? 1 : 0);
+        b.FogOrigin = new Vector4(origin, radial ? 1f : 0f);
+        b.HiZ = useHiZ ? 1 : 0;
+        b.PyrSize = new Vector2(_gl.PyrW, _gl.PyrH);
+        b.MaxLod = _gl.PyrLevels - 1;
+        _gl.Blk.Bind(UboSlots.Cull);
         if (useHiZ)
         {
             Gl.Uniform1i(_gl.UPyr, (int)PyramidUnit);
-            Gl.Uniform2f(_gl.UPyrSize, _gl.PyrW, _gl.PyrH);
-            Gl.Uniform1f(_gl.UMaxLod, _gl.PyrLevels - 1);
             Gl.ActiveTexture(Gl.TEXTURE0 + PyramidUnit);
             Gl.BindTexture(Gl.TEXTURE_2D, _gl.PyrTex);
             Gl.ActiveTexture(Gl.TEXTURE0);
@@ -374,8 +395,6 @@ internal static unsafe class CullPass
             Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCmd, _gl.CmdBuf[phase]);
             Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindOutSlot, _gl.SlotBuf[phase]);
             Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindKey, _gl.KeyBuf);
-            Gl.Uniform1i(_gl.SDrawN, _drawN);
-            Gl.Uniform1i(_gl.SCompactBelow, _compactBelow);
             Gl.DispatchCompute(groups1D, 1, 1);
         }
         // Both consumers are outside the shader-storage class: the commands are read as indirect state and

@@ -73,16 +73,8 @@ internal static class SsboSlots
     internal static bool Check(ExtenderLog log)
     {
         var check = new Checker(log);
-        var texts = new List<(string Name, string Src)>();
-        foreach (string res in typeof(SsboSlots).Assembly.GetManifestResourceNames())
-            if (res.EndsWith(".glsl", System.StringComparison.Ordinal)) texts.Add((res, ShaderSource.Get(res)));
-        texts.Add(("CasterGather.GatherCs", CasterGather.GatherCs));
-        texts.Add(("CasterGather.LayerCs", CasterGather.LayerCs));
-        texts.Add(("TextRig.BatchVs", CX.Ui.TextRig.BatchVs));
-        texts.Add(("TextRig.BatchFs", CX.Ui.TextRig.BatchFs));
-        texts.Add(("bindless header", AlloyRenderer.BindlessFs("uniform sampler2D uTex;\n")));
         int decls = 0;
-        foreach ((string name, string src) in texts)
+        foreach ((string name, string src) in ShaderSource.EveryStage())
         {
             var claimed = new Dictionary<uint, string>();
             foreach (Match m in Decl.Matches(src))

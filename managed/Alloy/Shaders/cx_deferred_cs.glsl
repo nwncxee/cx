@@ -82,20 +82,7 @@ layout(rgba16f, binding = 0) uniform image2D uHdr;
 layout(rgba32ui, binding = 1) uniform writeonly uimage2D uLightRec;   // cx_gbuf's light record, every pixel
 #endif
 
-uniform ivec4 uRect;   // the render viewport: xy = origin in window pixels, zw = size
-uniform mat4 uInvVp;   // inverse of the JITTERED view-projection the prepass rasterised with
-// ...and that projection itself: the depth row ([2].z, [3].z) linearises the buffer and the diagonal
-// ([0].x, [1].y) sizes a tile in view space. Read off the matrix this pass was handed rather than from
-// separately uploaded planes, which can drift from the frustum the depth was written with (cx_scenedepth
-// takes the same care).
-uniform mat4 uProj;
-uniform mat4 uView;    // world -> view, for the tile cull's light positions; rigid, so its inverse is its transpose
-uniform vec3 uEyePos;
-uniform int uTiles;    // light.deferredtiles: 1 = this group's own culled list, 0 = each pixel's froxel list
-uniform int uLightCount;
-uniform int uReflK;    // R4 (weather.filmlights): cold statics to rank as film-reflection candidates; 0 = no film
-uniform ivec2 uShSize; // the visibility record's size in texels
-uniform int uShRes;    // shadow.deferredres: the record's divisor (1 full, 2 half); 0 = no record this frame
+#include "cx_defblk.glsl"
 
 /// Lights a tile may hold -- the froxel cap, so one number sizes both list sources and CxFilmStatics' own
 /// clamp against CX_CLUSTER_CAP still bounds the tiled walk. 512 bytes of shared memory at the shipped 128.

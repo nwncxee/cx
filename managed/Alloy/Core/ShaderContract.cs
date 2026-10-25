@@ -124,11 +124,35 @@ internal static class ShaderContract
     /// nothing in the log -- and one declaring a stale block reads every later member at the wrong offset.</summary>
     public static bool PassSafe(string src)
     {
-        string? got = PassMembers(src);
-        if (got != null) return got == PassMembers(ShaderSource.Get("cx_pass.glsl"));
+        string? got = Std140.Members(src, "CxPass");
+        if (got != null) return got == Std140.Members(ShaderSource.Get("cx_pass.glsl"), "CxPass");
         // every stage that read the pass terms before the block declared one of these three loose (the cube,
         // cascade and area libraries); the cluster build's own loose uGrid / uZ are not pass terms
         return !HasIdent(src, "uLocalLight") && !HasIdent(src, "uSunVp") && !HasIdent(src, "uAreaAmbient");
+    }
+
+    /// <summary>Every Alloy uniform block this text reads is the one the extender fills: it declares the
+    /// library's body, or names no member of it. <paramref name="embedded"/> is the shipped text
+    /// <paramref name="src"/> stands in for, and it says which blocks the stage reads -- <c>uProj</c> and
+    /// <c>uRect</c> are loose uniforms of other stages, which this must not refuse.</summary>
+    public static bool BlocksSafe(string embedded, string src)
+        => PassSafe(src)
+        && BlockSafe(embedded, src, "CxCull", "cx_cullblk.glsl")
+        && BlockSafe(embedded, src, "CxDeferred", "cx_defblk.glsl")
+        && BlockSafe(embedded, src, "CxSsao", "cx_ssaolib.glsl");
+
+    /// <summary>One block of <see cref="BlocksSafe"/>. An override that kept a member as a loose uniform links
+    /// cleanly and reads zeros -- an uncalled cull, a world lit from nowhere, nothing in the log -- so a text
+    /// whose shipped counterpart declares the block is refused unless it declares the same body, and no
+    /// member name of it may appear loose.</summary>
+    private static bool BlockSafe(string embedded, string src, string block, string lib)
+    {
+        string? want = Std140.Members(ShaderSource.Get(lib), block);
+        string? got = Std140.Members(src, block);
+        if (got != null) return got == want;
+        if (want == null || Std140.Members(embedded, block) == null) return true;
+        foreach (string m in Std140.Names(want)) if (HasIdent(src, m)) return false;
+        return true;
     }
 
     /// <summary>Does <paramref name="name"/> occur in <paramref name="src"/> as a whole identifier?</summary>
@@ -156,22 +180,6 @@ internal static class ShaderContract
     /// silently compiles the baked receiver's whole walk back into a blade of grass.</summary>
     private static bool LightLiteSet => LightLiteHeads.All(h => ShaderSource.Get(h).Contains("#define CX_LIGHT_LITE 1"));
 
-    /// <summary>The body of <paramref name="src"/>'s <c>CxPass</c> declaration from its layout qualifier to
-    /// the closing brace, comments and whitespace dropped; null when it declares none.</summary>
-    private static string? PassMembers(string src)
-    {
-        int at = src.IndexOf("uniform CxPass", StringComparison.Ordinal);
-        if (at < 0) return null;
-        int start = src.LastIndexOf('\n', at) + 1, end = src.IndexOf("};", at, StringComparison.Ordinal);
-        var sb = new System.Text.StringBuilder();
-        foreach (string line in src[start..(end < 0 ? src.Length : end)].Split('\n'))
-        {
-            int c = line.IndexOf("//", StringComparison.Ordinal);
-            foreach (char ch in c < 0 ? line : line[..c]) if (!char.IsWhiteSpace(ch)) sb.Append(ch);
-        }
-        return sb.ToString();
-    }
-
     /// <summary>The <c>CxPass</c> contract, off-device. <see cref="AlloyRenderer"/>'s <c>Pb*</c> offsets
     /// against a std140 layout computed from the GLSL declaration itself -- a member moved in the file and not
     /// in C# stages every term after it into its neighbour, silently -- then every embedded stage through
@@ -180,7 +188,7 @@ internal static class ShaderContract
     {
         var bad = new System.Collections.Generic.List<string>();
         string decl = ShaderSource.Get("cx_pass.glsl");
-        string members = PassMembers(decl) ?? "";
+        string members = Std140.Members(decl, "CxPass") ?? "";
         if (!members.StartsWith($"layout(std140,binding={AlloyRenderer.PassBinding})uniformCxPass{{", StringComparison.Ordinal))
             bad.Add("binding");
         int end = 0;
@@ -201,7 +209,7 @@ internal static class ShaderContract
             ("uSunPenum", AlloyRenderer.PbSunPenum), ("uSearchTaps", AlloyRenderer.PbSearchTaps) };
         foreach ((string name, int off) in pinned)
         {
-            int at = Std140Offset(members, name, out int size);
+            int at = Std140.Offset(members, name, out int size);
             if (at != off) bad.Add($"{name} at {at}, C# stages {off}");
             end = Math.Max(end, at + size);
         }
@@ -219,33 +227,6 @@ internal static class ShaderContract
             bad.Add("the predicate itself");
         if (bad.Count > 0) log.Info("ShaderContract.PassCheck: FAILED -- " + string.Join(", ", bad));
         return bad.Count == 0;
-    }
-
-    /// <summary>std140 byte offset of <paramref name="name"/> in a <see cref="PassMembers"/> body, and its size;
-    /// -1 when absent. Covers the types the block uses: scalars, vec2-4, mat4 and arrays of them.</summary>
-    private static int Std140Offset(string members, string name, out int size)
-    {
-        int off = 0;
-        foreach (string m in members[(members.IndexOf('{') + 1)..].Split(';', StringSplitOptions.RemoveEmptyEntries))
-        {
-            int n = m.IndexOf(name, StringComparison.Ordinal);
-            int u = 0;
-            while (u < m.Length - 1 && !(m[u] == 'u' && char.IsUpper(m[u + 1]))) u++;   // the name: its first u<Upper>
-            string type = m[..u];
-            (int align, int bytes) = type switch
-            {
-                "float" or "int" => (4, 4), "vec2" => (8, 8), "vec3" or "ivec3" => (16, 12), "vec4" => (16, 16), "mat4" => (16, 64),
-                _ => (-1, 0),
-            };
-            if (align < 0) { size = 0; return -2; }   // a type this calculator does not know fails the pin, never passes it
-            int lb = m.IndexOf('[');
-            if (lb >= 0) { int count = int.Parse(m[(lb + 1)..m.IndexOf(']')]); align = 16; bytes = ((bytes + 15) & ~15) * count; }
-            off = (off + align - 1) & ~(align - 1);
-            if (n >= 0 && (m.Length == n + name.Length || m[n + name.Length] == '[')) { size = bytes; return off; }
-            off += bytes;
-        }
-        size = 0;
-        return -1;
     }
 
     /// <summary>The lit stage's whole sampler set: the diffuse, the map ladder and the probe cube.</summary>
@@ -270,9 +251,10 @@ internal static class ShaderContract
         // would swallow.
         bool slots = TextureSlots.Check(log);
         bool ssbo = SsboSlots.Check(log);
+        bool ubo = UboSlots.Check(log);
         bool pass = PassCheck(log);
         // the record's field list, counted by field size: the 288-byte stride staged above (#392 and ADR 0026 grew it)
-        bool ok = slots && ssbo && pass && DrawBufDecl.Contains($"binding = {BindDraw})")
+        bool ok = slots && ssbo && ubo && pass && DrawBufDecl.Contains($"binding = {BindDraw})")
                   && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; }")
                   && DrawBufDecl.Contains("vec4 emi") && DrawBufDecl.Contains("vec4 spc")
                   && DrawBufDecl.Contains("vec4 feat")

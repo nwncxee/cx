@@ -62,6 +62,11 @@ internal static unsafe class PresentTarget
     /// default framebuffer" -- a frame whose present target could not be built.</summary>
     internal static uint Fbo46 => _s.Fbo46;
 
+    /// <summary>Is there anywhere in the 4.6 context for a frame to land -- the composite image, or
+    /// framebuffer 0 where it IS the buffer the engine presents? False is the refused Windows case, where
+    /// such a draw would go to a back buffer nobody shows.</summary>
+    internal static bool Usable => _s.Fbo46 != 0 || Fb0IsTheScreen;
+
     /// <summary>The present colour texture and its size, for the GUI pass's own framebuffer (colour = this
     /// texture, depth its own): the GUI draws into the same image the world frame composited into.</summary>
     internal static uint Tex => _s.Tex;

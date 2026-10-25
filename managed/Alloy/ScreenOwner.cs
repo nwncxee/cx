@@ -29,10 +29,6 @@ internal static unsafe class ScreenOwner
     /// its clears are its own, and so is its draw -- <see cref="RspShim"/> lets that one through.</summary>
     internal static bool EngineFrame;
 
-    /// <summary>What <c>GLRender::BindDefaultFramebuffer</c> binds -- the screen; 0 unless the engine renders
-    /// through one of its own, and 0 before the caches resolve, which is what it would have bound anyway.</summary>
-    internal static uint DefaultFbo => _defaultFbo != null ? *_defaultFbo : 0u;
-
     /// <summary>Put the bindings <c>GLRender::BindFramebuffer</c>'s two caches name back into real GL, after Alloy's own
     /// framebuffer binds in the ENGINE context: the cache early-outs on a match, so a stale real binding would take the
     /// engine's next draw. An unresolved read cache is left alone; Install refuses without the draw one.</summary>

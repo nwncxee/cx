@@ -4,7 +4,6 @@ out vec2 frag;
 uniform sampler2D uRaw;      // this frame's visibility, blurred
 uniform sampler2D uHist;     // last frame's (visibility, view distance), LINEAR
 uniform sampler2D uVel;      // #388: prev - cur, render pixels
-uniform float uWeight;       // the history's share; 0 = take the frame whole
 #include "cx_ssaolib.glsl"
 void main()
 {
