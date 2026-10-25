@@ -163,6 +163,7 @@ internal static unsafe class VkParity
         }
         var mask = new byte[(long)w * h];
         Counts n = Compare(gl, s.Vk, w, h, mask);
+        if (n.Gbuf) issued += $"; G0 {Words(gl.G0, s.Vk.G0, gl.G0, s.Vk.G0)}; G1 {Words(gl.G1, s.Vk.G1, gl.G0, s.Vk.G0)}";
         string set = $"{s.Seq}_vkab";
         try
         {
@@ -215,6 +216,29 @@ internal static unsafe class VkParity
             if (marks) mask[(int)i] = code;
         }
         return new Counts(texels, glOnly, vkOnly, depthOff, g0, g1, g2, colourOff, gbuf);
+    }
+
+    /// <summary>Each of a four-word lane's words where either side's G0 is non-zero: the texels it differs at, the bits
+    /// that ever differ, and the texels where some byte differs by more than one step.</summary>
+    internal static string Words(uint[] a, uint[] b, uint[] ga, uint[] gb)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int k = 0; k < G01Words; k++)
+        {
+            long off = 0, wide = 0;
+            uint bits = 0;
+            for (long i = 0; i < ga.Length / G01Words; i++)
+            {
+                if (ga[i * G01Words] == 0 && gb[i * G01Words] == 0) continue;
+                uint x = a[i * G01Words + k], y = b[i * G01Words + k];
+                if (x == y) continue;
+                off++; bits |= x ^ y;
+                for (int sh = 0; sh < 32; sh += 8)
+                    if (Math.Abs((int)((x >> sh) & 0xFF) - (int)((y >> sh) & 0xFF)) > 1) { wide++; break; }
+            }
+            sb.Append($"{"xyzw"[k]} {off} (bits {bits:x8}, wide {wide}) ");
+        }
+        return sb.ToString().TrimEnd();
     }
 
     private static bool Same(uint[] a, uint[] b, long i, int words)
