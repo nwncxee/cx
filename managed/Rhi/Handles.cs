@@ -68,6 +68,16 @@ public sealed class HandleTable<T>
         return true;
     }
 
+    /// <summary>Every live entry, for a device's teardown. Cold: it allocates.</summary>
+    public System.Collections.Generic.List<T> Live()
+    {
+        var freed = new bool[_next];
+        for (int f = 0; f < _freeCount; f++) freed[_free[f]] = true;
+        var live = new System.Collections.Generic.List<T>(Count);
+        for (int i = 1; i < _next; i++) if (!freed[i]) live.Add(_items[i]);
+        return live;
+    }
+
     /// <summary>Free <paramref name="h"/>'s slot and bump its generation, so every copy of the handle goes stale.</summary>
     public bool Remove(uint h, out T item)
     {

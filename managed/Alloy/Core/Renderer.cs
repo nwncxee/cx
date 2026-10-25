@@ -58,6 +58,12 @@ internal static class Renderer
     /// <summary>A pass on the render seam submits each command as it records it, instead of its whole list at the
     /// end: the same GL calls in the same order either way, so the A/B measures recording, not output.</summary>
     internal static readonly Knob<bool> RhiImmediate;
+    /// <summary>Which device the render seam's passes record onto: GL 4.6, or Vulkan rendering into images GL
+    /// imports. Boot, and not a render mode: Vulkan replaces GL Alloy pass by pass.</summary>
+    internal static readonly Knob<string> Backend;
+    internal const string BackendGl = "gl", BackendVk = "vk";
+    /// <summary>The seam runs on Vulkan this session.</summary>
+    internal static bool OnVulkan => Backend.Boot == BackendVk;
     /// <summary>Arm <see cref="CX.Alloy.Db.HitProbe"/>, the live hit-test instrument.</summary>
     internal static readonly Knob<bool> HitCheck;
 
@@ -181,6 +187,9 @@ internal static class Renderer
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
         GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
         RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
+        Backend = G.Dropdown("backend", "Seam backend", new[] { BackendGl, BackendVk }, BackendGl, tier: Tier.ChatOnly,
+                             effect: Effect.Restart,
+                             help: "gl = the seam's passes run on GL 4.6; vk = they run on Vulkan inside the GL frame (the SSAO pilot).");
         RhiImmediate = G.Toggle("rhiimmediate", "Seam passes submit as they record", true, Tier.ChatOnly,
                                 help: "1 = each command reaches GL as it is recorded; 0 = a pass's whole list at its end. Same GL calls either way.");
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a

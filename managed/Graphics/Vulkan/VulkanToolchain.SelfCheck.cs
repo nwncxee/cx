@@ -11,9 +11,9 @@ public static unsafe partial class VulkanToolchain
     /// shaderc: a compiler that emits anything else did not emit a SPIR-V module.</summary>
     private const uint SpirvMagic = 0x07230203;   // not-an-offset: the first word of a SPIR-V module
 
-    /// <summary>The version word the specification pins the Vulkan 1.2 environment to -- SPIR-V 1.5, major
+    /// <summary>The version word the specification pins the Vulkan 1.3 environment to -- SPIR-V 1.6, major
     /// and minor in the middle two bytes.</summary>
-    private const uint SpirvVersion15 = 0x00010500;   // not-an-offset: a SPIR-V version word
+    private const uint SpirvVersion16 = 0x00010600;   // not-an-offset: a SPIR-V version word
 
     /// <summary>A compute shader with one storage buffer, enough to make shaderc parse, bind and emit.</summary>
     private const string ProbeSource = """
@@ -51,7 +51,7 @@ public static unsafe partial class VulkanToolchain
         log.Info(check.Ok ? "VulkanToolchain.SelfCheck: passed" : "VulkanToolchain.SelfCheck: FAILED");
     }
 
-    /// <summary>Oracles: the SPIR-V specification's header -- magic word, the version Vulkan 1.2 requires,
+    /// <summary>Oracles: the SPIR-V specification's header -- magic word, the version Vulkan 1.3 requires,
     /// a whole number of 32-bit words -- and shaderc's own refusal of source that is not GLSL.</summary>
     private static void CheckSpirv(Checker check)
     {
@@ -65,8 +65,8 @@ public static unsafe partial class VulkanToolchain
 
         check.Expect(BitConverter.ToUInt32(spirv, 0) == SpirvMagic,
             $"the module starts with SPIR-V's magic word, not 0x{BitConverter.ToUInt32(spirv, 0):x8}");
-        check.Expect(BitConverter.ToUInt32(spirv, 4) == SpirvVersion15,
-            $"targeting Vulkan 1.2 emits SPIR-V 1.5, not 0x{BitConverter.ToUInt32(spirv, 4):x8}");
+        check.Expect(BitConverter.ToUInt32(spirv, 4) == SpirvVersion16,
+            $"targeting Vulkan 1.3 emits SPIR-V 1.6, not 0x{BitConverter.ToUInt32(spirv, 4):x8}");
         // The header's fourth word is the id bound: every id the module defines is below it, so it cannot be 0.
         check.Expect(BitConverter.ToUInt32(spirv, 12) > 0, "the module declares an id bound");
 

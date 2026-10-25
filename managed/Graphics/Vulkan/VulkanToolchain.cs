@@ -27,13 +27,21 @@ public static unsafe partial class VulkanToolchain
     internal static bool Load(string leaf) =>
         NativeLibrary.TryLoad(Path.Combine(InstallFolder, leaf), out _);
 
-    /// <summary>GLSL to a SPIR-V module through the staged shaderc, for the Vulkan 1.2 environment -- which
-    /// the specification pins to SPIR-V 1.5. Returns null and fills <paramref name="error"/> with shaderc's
-    /// own diagnostic when the source is refused. Cold: it builds a compiler per call.</summary>
+    /// <summary>Where each kind of GL binding point lands in the one descriptor set: GL numbers samplers, uniform
+    /// blocks, storage blocks and images apart, Vulkan in one space, so each kind is shifted past the last.</summary>
+    internal const uint SampledBase = 0, UniformBase = 16, StorageBase = 32, ImageBase = 48;
+
+    /// <summary>GLSL to a SPIR-V module through the staged shaderc, for the Vulkan 1.3 environment -- which
+    /// the specification pins to SPIR-V 1.6 -- with GL's binding spaces shifted apart (<see cref="UniformBase"/>)
+    /// and unlocated stage inputs and outputs numbered in declaration order. Returns null and fills
+    /// <paramref name="error"/> with shaderc's own diagnostic when the source is refused. Cold: a compiler per call.</summary>
     internal static byte[]? Compile(string source, string name, ShaderKind kind, out string error)
     {
         using var compiler = new Compiler();
-        var options = new CompilerOptions { ShaderStage = kind, TargetEnv = TargetEnvironmentVersion.Vulkan_1_2 };
+        var options = new CompilerOptions { ShaderStage = kind, TargetEnv = TargetEnvironmentVersion.Vulkan_1_3, AutoMapLocations = true };
+        options.Bindings.Add(new BindingBase(UniformKind.Buffer, UniformBase));
+        options.Bindings.Add(new BindingBase(UniformKind.StorageBuffer, StorageBase));
+        options.Bindings.Add(new BindingBase(UniformKind.Image, ImageBase));
         CompileResult result = compiler.Compile(source, name, options);
         if (result.Status == CompilationStatus.Success)
         {
