@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 
-SITE = re.compile(r"\bGl\.Delete(?:Textures|Buffers|Framebuffers|VertexArrays|Renderbuffers)\(")
+SITE = re.compile(r"\bGl\.Delete(?:Textures|Buffers|Framebuffers|VertexArrays|Renderbuffers|Samplers)\(")
 EXEMPT = ("managed/Graphics/GpuGraveyard.cs",)   # the drain itself: this is where the deletes are supposed to be
 
 files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "managed"],

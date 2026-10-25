@@ -173,18 +173,21 @@ What is routed, and from where:
 | `StageResources`' stage images and their `Prev` history | `DropAll` at a module change, and `Remake` on a resize |
 | `TexRegistry`'s Arturo turn table | the ripple stand-down. Its per-ripple textures already deferred through `_graveyard`; this was the one pair on that edge that did not |
 | `TextAtlas.Sweep`'s orphaned font atlases | a font replaced by name, with the old atlas still sampled by the frames in flight |
+| `GlDevice`'s buffers, images and samplers | the RHI seam's `Destroy(BufferId/ImageId/SamplerId)`. `Destroy(ImageId)` retires through `Evict` first, so each framebuffer the image was attached to is queued ahead of the image itself and neither outlives the other's name |
 
 Four things stay immediate, each for a reason:
 
-- **A creation failure.** `RenderTarget.Create`'s refused storage, `EnvProbe`'s and `LightmapBake`'s
-  `GetError` arms, `Weather`'s refused texture view: the object was never submitted with, so there is no frame
-  to wait for and deferring it would hold video memory the caller is about to ask for again.
+- **A creation failure.** `RenderTarget.Create`'s refused storage, `GlDevice.CreateImage`'s refused storage
+  and `GlDevice.Execute`'s `Drop` of a framebuffer that came back incomplete, `EnvProbe`'s and
+  `LightmapBake`'s `GetError` arms, `Weather`'s refused texture view: the object was never submitted with, so
+  there is no frame to wait for, and deferring it would hold memory the caller is about to ask for again.
 - **`LightmapBake`'s page pool.** `FreePages` is called from `Pool` and `ReleaseIdle` precisely to give the
   memory back, and `Pool` then allocates the replacement. Up to a gigabyte, so a three-frame hold is a
   doubling the card may refuse. The pool is also only freed when the pass is standing down or has no hold,
   which is not a frame that drew from it.
-- **Shader objects and fences.** `glDeleteShader` after a link and `glDeleteSync` after a wait are both
-  defined on an object still in use, and neither is a resource a draw reads.
+- **Programs, shader objects and fences.** `glDeleteProgram`, `glDeleteShader` after a link and
+  `glDeleteSync` after a wait are all defined on an object still in use, and none of them is memory a draw
+  samples or fetches from, so the gate below does not count them either.
 - **CPU bookkeeping.** Index removals, handle tombstones, `Forget` calls and the `...State` resets are
   unaffected: a stale table entry is a correctness problem *now*, and nothing about the GPU's queue makes
   waiting safer. `OwnedTextures.Retire`'s delete is the one lifetime-edge GPU free still outside the
@@ -193,7 +196,7 @@ Four things stay immediate, each for a reason:
 
 Everything else that still frees a GPU object immediately is a creation failure, a program being rebuilt or a
 scratch object inside the bracket that made it. `tools/gates/gpu-frees.sh` counts those per file against
-`gpu-frees.baseline`, which may only shrink: 44 sites across 26 files as this landed, listed by
+`gpu-frees.baseline`, which may only shrink: 46 sites across 28 files as this landed, listed by
 `python3 tools/gates/gpu-frees.py -v`. A new pass that allocates its render target through `RenderTarget`
 gets the deferral for nothing and never touches the baseline.
 

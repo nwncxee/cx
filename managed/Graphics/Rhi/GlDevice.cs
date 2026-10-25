@@ -178,20 +178,19 @@ internal sealed unsafe partial class GlDevice : IDevice
 
     public void Destroy(BufferId b)
     {
-        if (OnThread("Destroy") && _buffers.Remove(b.Value, out GlBuffer g)) { uint n = g.Name; Gl.DeleteBuffers(1, &n); }
+        if (OnThread("Destroy") && _buffers.Remove(b.Value, out GlBuffer g)) GpuGraveyard.Retire(GpuGraveyard.Kind.Buffer, g.Name);
     }
 
     public void Destroy(ImageId i)
     {
         if (!OnThread("Destroy") || !_images.Remove(i.Value, out GlImage g)) return;
-        Evict(i);
-        uint n = g.Name;
-        Gl.DeleteTextures(1, &n);
+        Evict(i);   // the framebuffers go ahead of it, so neither outlives the other's name
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, g.Name);
     }
 
     public void Destroy(SamplerId s)
     {
-        if (OnThread("Destroy") && _samplers.Remove(s.Value, out uint n)) Gl.DeleteSamplers(1, &n);
+        if (OnThread("Destroy") && _samplers.Remove(s.Value, out uint n)) GpuGraveyard.Retire(GpuGraveyard.Kind.Sampler, n);
     }
 
     public void Destroy(ShaderId s) { if (OnThread("Destroy")) _shaders.Remove(s.Value, out _); }

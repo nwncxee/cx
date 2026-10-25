@@ -179,8 +179,7 @@ internal sealed unsafe partial class GlDevice
             bool hit = e.HasDepth && e.Key[RenderPassDesc.MaxColors].Image == img;
             for (int c = 0; c < e.Colors; c++) hit |= e.Key[c].Image == img;
             if (!hit) continue;
-            uint f = e.Fbo;
-            Gl.DeleteFramebuffers(1, &f);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Framebuffer, e.Fbo);
             _fbos[i] = _fbos[--_fboCount];
         }
     }

@@ -89,7 +89,7 @@ public static unsafe class GpuGraveyard
 {
     /// <summary>What a retired name is, so the drain knows which delete to call. An arm is added the frame
     /// something retires that kind, never ahead of it.</summary>
-    public enum Kind : byte { Texture, Framebuffer }
+    public enum Kind : byte { Texture, Framebuffer, Buffer, Sampler }
 
     /// <summary>Frames a retired object is held for. Three is the depth every fenced ring in Alloy already
     /// assumes, and <c>OwnedTextures.DeferFrames</c> reads it from here rather than declaring it again.</summary>
@@ -145,11 +145,18 @@ public static unsafe class GpuGraveyard
         bool issued = kind switch
         {
             Kind.Framebuffer => Gl.DeleteFramebuffers != null,
+            Kind.Buffer => Gl.DeleteBuffers != null,
+            Kind.Sampler => Gl.DeleteSamplers != null,
             _ => Gl.DeleteTextures != null,
         };
         if (!issued) { _s.Unissued++; return; }
-        if (kind == Kind.Framebuffer) Gl.DeleteFramebuffers(1, &name);
-        else Gl.DeleteTextures(1, &name);
+        switch (kind)
+        {
+            case Kind.Framebuffer: Gl.DeleteFramebuffers(1, &name); break;
+            case Kind.Buffer: Gl.DeleteBuffers(1, &name); break;
+            case Kind.Sampler: Gl.DeleteSamplers(1, &name); break;
+            default: Gl.DeleteTextures(1, &name); break;
+        }
     }
 
     /// <summary>The queue's scheduling, over hand-written frame and present sequences on rings of its own:
