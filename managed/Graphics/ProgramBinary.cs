@@ -20,6 +20,10 @@ internal static unsafe class ProgramBinary
     private static string? _dir;
     private static ulong _seed;
 
+    /// <summary>The shader cache folder beside cx.cfg, swept of stale entries at first use; Vulkan's SPIR-V and pipeline
+    /// cache live here too.</summary>
+    internal static string CacheDir => Dir;
+
     private static string Dir => _dir ??= Sweep(Path.Combine(Native.UserDirectory() ?? Native.DefaultUserDirectory(), "cx-shaders"));
 
     /// <summary>The driver identity every key starts from; 0 (cache off) until the 4.6 context is live, or when

@@ -345,8 +345,9 @@ public sealed unsafe partial class AlloyRenderer
             CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
         // Under alloy.backend vk the cull is Vulkan's, and GL's lists would have no reader.
         if (Renderer.OnVulkan)
+            // the camera the Vulkan frame draws through, so the pyramid tests against the depth it reduces
             CullPassVk.Stage(_capturing ? 0 : groups, cullDraws, _dSrc, _dSph, _recOwnCap + MaxSkyDraws,
-                             lodScale, _gOpaqueEnd, _eyePos, &vp);
+                             lodScale, _gOpaqueEnd, _eyePos, &vpClean);
         else fixed (CullSrcRec* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull

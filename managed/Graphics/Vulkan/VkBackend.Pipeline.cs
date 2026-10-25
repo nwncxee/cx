@@ -16,7 +16,8 @@ internal sealed unsafe partial class VkBackend
         {
             if (!_shaders.TryGet(d.Cs.Value, out VkShader cs)) return Refused<PipelineId>($"{what}: stale compute stage");
             var ci = new VkComputePipelineCreateInfo { stage = Stage(cs), layout = _pipeLayout };
-            if (_vkd.vkCreateComputePipelines(default, 1, &ci, &pipe) != VkResult.Success)
+            _pipeCacheDirty = true;
+            if (_vkd.vkCreateComputePipelines(_pipeCache, 1, &ci, &pipe) != VkResult.Success)
                 return Refused<PipelineId>($"{what}: vkCreateComputePipelines refused");
             return new PipelineId(_pipelines.Add(new VkPipe(pipe, true, default, default)));
         }
@@ -106,7 +107,8 @@ internal sealed unsafe partial class VkBackend
             pViewportState = &vp, pRasterizationState = &rs, pMultisampleState = &ms, pDepthStencilState = &ds,
             pColorBlendState = &cb, pDynamicState = &dy, layout = _pipeLayout,
         };
-        if (_vkd.vkCreateGraphicsPipelines(default, 1, &gci, &pipe) != VkResult.Success)
+        _pipeCacheDirty = true;
+        if (_vkd.vkCreateGraphicsPipelines(_pipeCache, 1, &gci, &pipe) != VkResult.Success)
             return Refused<PipelineId>($"{what}: vkCreateGraphicsPipelines refused");
         return new PipelineId(_pipelines.Add(new VkPipe(pipe, false, d.Depth, d.Raster)));
     }

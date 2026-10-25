@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using CX.Framework;
 using Vortice.ShaderCompiler;
@@ -40,6 +42,41 @@ public static unsafe partial class VulkanToolchain
     /// and unlocated stage inputs and outputs numbered in declaration order. Returns null and fills
     /// <paramref name="error"/> with shaderc's own diagnostic when the source is refused. Cold: a compiler per call.</summary>
     internal static byte[]? Compile(string source, string name, ShaderKind kind, out string error)
+    {
+        string cached = Path.Combine(ProgramBinary.CacheDir, $"vk-{CacheKey(source, kind):x16}.spv");
+        if (Cached(cached) is { } hit) { error = ""; return hit; }
+        byte[]? spirv = CompileFresh(source, name, kind, out error);
+        if (spirv != null)
+            try { Directory.CreateDirectory(ProgramBinary.CacheDir); File.WriteAllBytes(cached, spirv); }
+            catch (IOException) { } catch (UnauthorizedAccessException) { }
+        return spirv;
+    }
+
+    /// <summary>Bumped whenever <see cref="CompileFresh"/>'s options change: a module cached under the old ones is
+    /// then never read.</summary>
+    private const ulong CacheVersion = 1;
+
+    /// <summary>The cache key of one stage: its exact text, its kind and <see cref="CacheVersion"/>.</summary>
+    private static ulong CacheKey(string source, ShaderKind kind)
+        => CX.Alloy.Mdl.MdlParser.ContentHash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(source.AsSpan()))
+           ^ ((ulong)kind + 1) * 0x9E3779B97F4A7C15UL ^ CacheVersion;   // not-an-offset: golden-ratio hash multiplier
+
+    /// <summary>A cached module, touched so the sweep keeps it; null when there is none or it is not a module.</summary>
+    private static byte[]? Cached(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            byte[] b = File.ReadAllBytes(path);
+            if (b.Length < 20 || b.Length % 4 != 0 || BitConverter.ToUInt32(b, 0) != SpirvMagic) { File.Delete(path); return null; }
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
+            return b;
+        }
+        catch (IOException) { return null; } catch (UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>The compile itself, uncached.</summary>
+    private static byte[]? CompileFresh(string source, string name, ShaderKind kind, out string error)
     {
         using var compiler = new Compiler();
         var options = new CompilerOptions { ShaderStage = kind, TargetEnv = TargetEnvironmentVersion.Vulkan_1_3, AutoMapLocations = true };

@@ -294,6 +294,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         VkPhysicalDeviceProperties props;
         _vki.vkGetPhysicalDeviceProperties(phys, &props);
         ref VkPhysicalDeviceLimits l = ref props.limits;
+        OpenPipelineCache(in props);
         _setLayout = MakeSetLayout();
         (_bindlessLayout, _bindlessPool, _bindlessSet, _bindlessCap) = MakeBindless();
         VkDescriptorSetLayout* sl = stackalloc VkDescriptorSetLayout[2] { _setLayout, _bindlessLayout };
@@ -606,6 +607,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     internal void Dispose()
     {
         _vkd.vkDeviceWaitIdle();
+        SavePipelineCache();
         foreach (var d in _dead) d.Free();
         _dead.Clear();
         foreach (VkImg g in _images.Live()) Free(g);
@@ -624,6 +626,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (UploadChunk c in _upload.Chunks) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
         foreach (UploadChunk c in _upload.Pool) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
         _vkd.vkDestroyPipelineLayout(_pipeLayout);
+        if (_pipeCache.IsNotNull) _vkd.vkDestroyPipelineCache(_pipeCache);
         _vkd.vkDestroyDescriptorPool(_bindlessPool);
         _vkd.vkDestroyDescriptorSetLayout(_bindlessLayout);
         _vkd.vkDestroyDescriptorSetLayout(_setLayout);

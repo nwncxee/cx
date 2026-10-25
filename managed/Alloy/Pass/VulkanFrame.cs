@@ -15,7 +15,11 @@ internal static class VulkanFrame
     {
         public CommandList? Cmds;
         public bool Live;
+        public int Frames;
     }
+
+    /// <summary>Frames between pipeline-cache writes: each is a no-op unless a pipeline was made since the last.</summary>
+    private const int CacheSavePeriod = 600;
 
     private static readonly FrameState _s = new();
 
@@ -52,6 +56,7 @@ internal static class VulkanFrame
             return;
         }
         AlloyRenderer.VkParityRead(vk);
+        if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
         PresentTarget.Flip(vk.Flip());
         PostChain.Painted();
         if (!_s.Live)
