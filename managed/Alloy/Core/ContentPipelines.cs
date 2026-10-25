@@ -25,6 +25,9 @@ internal static class ContentPipelines
     /// states and the two caster twins.</summary>
     internal const int MaxPerRecipe = 7;
 
+    /// <summary>The <see cref="ContentVariant"/> values: a pair's five programs.</summary>
+    internal const int Variants = 5;
+
     /// <summary>The depth states a content draw runs in: the colour and caster passes write under LEQUAL, the
     /// prepass under LESS, and the outline mask reads depth already written.</summary>
     private static readonly DepthState LeqWrite = new(Test: true, Write: true, CompareOp.LessEqual),
@@ -39,7 +42,9 @@ internal static class ContentPipelines
         additive ? BlendFactor.One : BlendFactor.OneMinusSrcAlpha);
 
     /// <summary>The keys a recipe's parts draw through, into <paramref name="into"/>; the count. Pure over the
-    /// recipe's own state and the pair's built variants, so the table is checkable off-device.</summary>
+    /// recipe's own state and the pair's built variants, so the table is checkable off-device. Two reachable
+    /// states are left out: the planar mirror's forward draw (the same program, winding reversed) and the
+    /// ground-decal layer, where a content part draws the decal writer's program rather than its own.</summary>
     internal static int Keys(int feat, AlloyClass cls, RecipeFlag flags, bool additive, MeshArena.Fmt fmt,
                              bool deferred, bool ownDepth, bool caster, Span<PipelineKey> into)
     {
@@ -49,25 +54,17 @@ internal static class ContentPipelines
         bool coverage = flags.HasFlag(RecipeFlag.Coverage);
         bool blends = AlloyClasses.Blends((int)cls);
         AttachmentBlend blend = blends ? Pair(additive) : default;
-        // The forward program every content part draws through. A blended content part sits the OIT
-        // accumulation out and draws in the sweep after the resolve, which writes depth like the opaque
-        // pass -- so one depth state covers both.
         into[n++] = new PipelineKey(feat, ContentVariant.Forward, fmt, LeqWrite, raster, blend, coverage);
-        // ...and a wash the slot class turns blended draws that same program with the material's pair on.
         if (!blends && flags.HasFlag(RecipeFlag.Wash)
             && (flags.HasFlag(RecipeFlag.HintBlended) || cls == AlloyClass.Cutout))
             into[n++] = new PipelineKey(feat, ContentVariant.Forward, fmt, LeqWrite, raster, Pair(additive), coverage);
-        // The deferred twin takes the opaque and cutout batches only, and the coverage layer is forward-only.
+        // the coverage layer is forward-only, so no twin below carries alpha-to-coverage
         if (deferred && !blends)
             into[n++] = new PipelineKey(feat, ContentVariant.Deferred, fmt, LeqWrite, raster, default, false);
         if (ownDepth)
         {
-            // Neither twin raster state is the forward one: alpha-to-coverage is the coverage layer's own, and
-            // the wash offset is the colour pass's. The prepass writes the pair's own depth under LESS...
             RasterState twin = raster with { DepthBias = false };
             into[n++] = new PipelineKey(feat, ContentVariant.Depth, fmt, LessWrite, twin, default, false);
-            // ...and the outline mask tests against depth already written: EQUAL for a cutout, else LEQUAL
-            // pulled forward by the mask's own offset.
             into[n++] = cls == AlloyClass.Cutout
                 ? new PipelineKey(feat, ContentVariant.Depth, fmt, EqualRead, twin, default, false)
                 : new PipelineKey(feat, ContentVariant.Depth, fmt, LeqRead, twin with { DepthBias = true },
@@ -75,7 +72,6 @@ internal static class ContentPipelines
         }
         if (caster)
         {
-            // both caster targets draw with face culling off for every batch and no offset
             var cast = new RasterState(CullMode.None);
             into[n++] = new PipelineKey(feat, ContentVariant.Caster, fmt, LeqWrite, cast, default, false);
             into[n++] = new PipelineKey(feat, ContentVariant.CasterLayer, fmt, LeqWrite, cast, default, false);
@@ -84,8 +80,9 @@ internal static class ContentPipelines
     }
 
     /// <summary>Every key the live recipe table's content materials name, appended to <paramref name="into"/> as
-    /// <paramref name="seen"/> takes it; pairs whose build has not happened are counted in
-    /// <paramref name="unsettled"/> and asked for, since their twins are not knowable yet.</summary>
+    /// <paramref name="seen"/> takes it. A recipe this walk cannot key yet counts in <paramref name="unsettled"/>
+    /// rather than being passed over: its pair has not built, so its twins are unknown, or its mesh has not
+    /// landed, so its vertex input is. The caller walks again while any remains.</summary>
     internal static int Enumerate(HashSet<PipelineKey> seen, List<PipelineKey> into, out int unsettled)
     {
         Span<PipelineKey> keys = stackalloc PipelineKey[MaxPerRecipe];
@@ -93,10 +90,11 @@ internal static class ContentPipelines
         unsettled = 0;
         for (int r = 0; r < DrawRecipe.High; r++)
         {
+            if (!DrawRecipe.Held(r)) continue;   // a retired slot keeps its last tenant's columns
             int feat = DrawRecipe.Feat(r);
             if (!ShaderFeatures.IsContent(feat)) continue;
             MeshDef? mesh = DrawRecipe.Mesh(r);
-            if (mesh == null) continue;
+            if (mesh == null) { unsettled++; continue; }
             if (!ContentPrograms.Settled(feat))
             {
                 ContentPrograms.Want(feat);

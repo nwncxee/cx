@@ -105,34 +105,31 @@ internal static unsafe class ProgramBinary
         try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
-    /// <summary>Off-device. Oracle: hand-written driver strings and stage texts, and the cache's stated key --
-    /// every stage's exact text, its type, and the driver identity, with 0 reserved for "cache off".</summary>
+    /// <summary>Off-device. Oracle: the keys below, worked out by an independent reimplementation of the
+    /// documented fold (murmur-mixed content hash over the strings' UTF-16 bytes, driver seed odd, stage type
+    /// folded in) and written here as literals -- never a second call to <see cref="Key"/>.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        const string nv = "NVIDIA Corporation|NVIDIA GeForce RTX 3070/PCIe/SSE2|4.6.0 NVIDIA 615.78.08";
+        const string nv = "NVIDIA|RTX 3070|4.6.0";
         const string mesa = "Mesa|AMD Radeon RX 9070 (radeonsi)|4.6 (Core Profile) Mesa 25.2.0";
-        const string vs = "void main() { gl_Position = vec4(0.0); }\n";
-        ulong a = SeedOf(nv), b = SeedOf(mesa);
-        check.Expect(a != 0 && b != 0 && a != b,
-                     "two different driver identities fold to the same seed, or to 0 -- which is the cache-off value, "
-                     + "so one driver's blobs would be handed to another");
+        const string vs = "void main(){}\n";
+        check.Expect(SeedOf(nv) == 0x364e03d3530f899fUL,   // not-an-offset: the hand-worked seed of nv
+                     "the driver identity does not fold to the seed the cache's own key was worked out from, so every "
+                     + "blob this release writes is keyed differently from every blob it reads");
+        check.Expect(Key(SeedOf(nv), Gl.VERTEX_SHADER, vs) == 0x8e4da4bd4da507b4UL   // not-an-offset: hand-worked key
+                     && Key(SeedOf(nv), Gl.FRAGMENT_SHADER, vs) == 0x280622f4cd6b7ba9UL   // not-an-offset: ...and of the fragment stage
+                     && Key(Key(SeedOf(nv), Gl.VERTEX_SHADER, vs), Gl.FRAGMENT_SHADER, vs) == 0x1f975d50c8baf126UL,   // not-an-offset: ...and of the pair
+                     "a stage key is not the hand-worked fold of the driver seed, the stage type and the text -- a "
+                     + "launch after this one looks its blobs up under other names");
         check.Expect(Key(0, Gl.VERTEX_SHADER, vs) == 0,
                      "a stage folded onto the cache-off seed yields a key, so a launch with no driver identity would "
                      + "read and write blobs under one");
-        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) == Key(SeedOf(string.Concat("NVIDIA Corporation|", nv[19..])),
-                                                         Gl.VERTEX_SHADER, new string(vs.ToCharArray())),
-                     "a key folds the identity of its strings rather than their content, so a launch that rebuilt the "
-                     + "same text never hits the cache");
-        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) != Key(b, Gl.VERTEX_SHADER, vs),
-                     "the driver identity does not reach the key");
-        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) != Key(a, Gl.FRAGMENT_SHADER, vs),
-                     "the stage type does not reach the key, so a vertex and a fragment stage of one text collide");
-        check.Expect(Key(a, Gl.VERTEX_SHADER, vs) != Key(a, Gl.VERTEX_SHADER, vs + " "),
+        check.Expect(SeedOf(mesa) != 0 && SeedOf(mesa) != SeedOf(nv),
+                     "two different driver identities fold to the same seed, or to 0 -- which is the cache-off value, "
+                     + "so one driver's blobs would be handed to another");
+        check.Expect(Key(SeedOf(nv), Gl.VERTEX_SHADER, vs) != Key(SeedOf(nv), Gl.VERTEX_SHADER, vs + " "),
                      "a one-character edit to a stage's text does not move its key");
-        check.Expect(Key(Key(a, Gl.VERTEX_SHADER, vs), Gl.FRAGMENT_SHADER, vs)
-                     != Key(Key(a, Gl.FRAGMENT_SHADER, vs), Gl.VERTEX_SHADER, vs),
-                     "a pair's key is blind to which half is which, so swapping the two stages' texts would hit");
         log.Info(check.Ok ? "ProgramBinary.SelfCheck: passed" : "ProgramBinary.SelfCheck: FAILED");
         return check.Ok;
     }

@@ -116,6 +116,10 @@ internal static partial class DrawRecipe
     /// <summary>Slot <paramref name="r"/>'s current hand-out generation.</summary>
     internal static uint Gen(int r) => (uint)r < Max ? _own.Gen[r] : 0;
 
+    /// <summary>Is slot <paramref name="r"/> handed out? A retired slot keeps its columns until a new tenant
+    /// fills them, so a walk of the whole table asks this before reading one.</summary>
+    internal static bool Held(int r) => (uint)r < Max && _own.Held[r];
+
     /// <summary>Recipes whose arena range was not resident at their last ask, as a drained list rather than a
     /// walk of the whole table. A range that lands leaves the list; nothing re-polls what is resident.</summary>
     private static readonly int[] _rangeWait = new int[Max];
