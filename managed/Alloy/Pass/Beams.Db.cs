@@ -102,7 +102,7 @@ internal static unsafe partial class Beams
             if (_sVao[k] != vao) { vao = _sVao[k]; Gl.BindVertexArray(vao); }
             Matrix4x4 m = SceneDb.PartWorld[_beams[i].Part];
             Gl.UniformMatrix4fv(_locDbModel, 1, 0, (float*)&m);
-            Gl.DrawElementsBaseVertex(_primTable[BeamPrim], _sCount[k], GlUnsignedShort,
+            Gl.DrawElementsBaseVertex(Gl.TRIANGLES, _sCount[k], GlUnsignedShort,
                                       (void*)_sOff[k], _sBase[k]);
         }
         Gl.BindVertexArray(0);
