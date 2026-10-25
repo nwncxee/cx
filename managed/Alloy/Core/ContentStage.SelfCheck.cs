@@ -30,6 +30,20 @@ internal static partial class ContentStage
         ["cx_fixenv"] = "#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
                       + "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
         ["cx_fixwhole"] = "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
+        // The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's
+        // lone scalar, fswater's wind loop, vs_beamvol's inline m_proj.
+        ["cx_fixeng"] = "#define SHADER_TYPE 2\n#include \"inc_standard\"\nconst int MAX_WINDS = 128;\n"
+                      + "uniform int moduleYear;\nuniform float moduleTimeIntoTransition;\nuniform int windPointSourcesCount;\n"
+                      + "uniform vec3 windPointSourcesPosition[MAX_WINDS];\nuniform float windPointSourcesRadius[MAX_WINDS];\n"
+                      + "uniform mat4 m_proj;\nvoid main ()\n{\n    FragmentColor = vec4(1.0);\n"
+                      + "    SetupStandardShaderInputs();\n"
+                      + "    float g = float(moduleYear) + moduleTimeIntoTransition + m_proj[3][3];\n"
+                      + "    for (int i = 0; i < windPointSourcesCount; i++)\n"
+                      + "        g += windPointSourcesRadius[i] * length(windPointSourcesPosition[i] - vPosView);\n"
+                      + "    FragmentColor.rgb *= g;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixengv"] = "#define SHADER_TYPE 1\n#include \"inc_standard\"\nuniform mat4 m_proj;\nuniform float fWave;\n"
+                       + "void main()\n{\n    ApplyStandardShader();\n    vPosView += vec3(0.0, 0.0, fWave);\n"
+                       + "    gl_Position = m_proj * vec4(vPosView, 1.0);\n}\n",
         ["cx_fixown"] = "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
     };
 
@@ -101,6 +115,20 @@ internal static partial class ContentStage
                      && mine.Host.Contains("vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)")
                      && !mine.Host.Contains("vec3 ApplyColorSpace(vec3 c) { return c * c; }"),
                      "a function the stage defines over one the program already has is not renamed, with its calls");
+        Result engv = Translate("cx_fixengv", false, Chain, AlloyRenderer.ContentEnvVs, "", AlloyRenderer.OwnedLitVs, 8193, 37);
+        Result eng = Translate("cx_fixeng", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37,
+                               engv.Refused == null ? engv : null);
+        check.Expect(engv.Refused == null && eng.Refused == null,
+                     $"an engine-named fixture was refused: {engv.Refused ?? eng.Refused}");
+        check.Expect(!eng.Host.Contains("uniform int moduleYear") && !eng.Host.Contains("uniform float moduleTimeIntoTransition")
+                     && !eng.Host.Contains("uniform int windPointSourcesCount") && !eng.Host.Contains("[MAX_WINDS]")
+                     && !eng.Host.Contains("uniform mat4 m_proj") && !engv.Host.Contains("uniform mat4 m_proj")
+                     // the environment's own MAX_WINDS, and only it
+                     && eng.Host.Split("const int MAX_WINDS").Length == 2,
+                     "a stage's own declaration of a name the CxEngine block carries is not stripped, so it would collide");
+        check.Expect(eng.Host.Contains("windPointSourcesRadius[i]") && eng.Host.Contains("m_proj[3][3]")
+                     && engv.Host.Contains("m_proj * vec4(vPosView, 1.0)"),
+                     "the engine-named reads do not stand as the stage wrote them");
         check.Expect(StockShaped(Stock.Vs, false) && StockShaped(Stock.Fs, true) && !StockShaped(Fixture["cx_fixvs"], false)
                      && !StockShaped(Stock.Fs.Replace("#include \"inc_standard\"", "#include \"my_inc\""), true)
                      && !StockShaped(Stock.Fs.Replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), true),

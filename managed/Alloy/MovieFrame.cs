@@ -150,7 +150,7 @@ internal static unsafe class MovieFrame
             return Refuse($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}");
         if (!Gl.Init(s.Log)) return Refuse("the GL entry points did not resolve");
         if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
-            || Gl.TextureParameteri == null || Gl.PixelStorei == null || Gl.DeleteTextures == null)
+            || Gl.TextureParameteri == null || Gl.PixelStorei == null)
             return Refuse("a direct-state-access texture entry point did not resolve");
         if (!Ensure(s, frameW, frameH)) return Refuse("the movie texture did not build");
         OwnedTextures.Unpack u = OwnedTextures.Unpack.Take(0, 0, 0, r.Align);
@@ -174,7 +174,8 @@ internal static unsafe class MovieFrame
     private static bool Ensure(MovieFrameState s, int width, int height)
     {
         if (s.Tex != 0 && s.TexW == width && s.TexH == height) return true;
-        if (s.Tex != 0) { uint dead = s.Tex; Gl.DeleteTextures(1, &dead); s.Tex = 0; }
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, s.Tex);
+        s.Tex = 0;
         uint tex;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &tex);
         if (tex == 0) return false;

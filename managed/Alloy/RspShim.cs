@@ -157,7 +157,7 @@ internal static unsafe class RspShim
         if (ExtenderLog.Enabled)
             _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
                  + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), {ms:F2}ms/frame in the shim ({StepLine()}), "
-                 + $"borrowed {OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0)"
+                 + $"borrowed {OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0){OwnedTextures.BorrowNote()}"
                  // The ported light tick has no other visible surface: `moved` counting down to a handful
                  // once an area settles, and `focus` tracking day/night, is what says it is running.
                  + $"; {FrameDelta.Describe()}");

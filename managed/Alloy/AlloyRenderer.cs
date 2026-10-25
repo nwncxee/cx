@@ -248,6 +248,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         StaticSelfCheck(log);
         CullPass.Init(log);
         StreamRing.Init(log);
+        // Up here with the other unconditional checks: the queue schedules the same way on every client.
+        GpuGraveyard.Init(log);
+        GpuGraveyard.SelfCheck(log);
         // #170: ahead of every stand-down, matching the host's unconditional calls. The verdict must
         // outlive a renderer that never armed -- /alloy is the report it drives.
         AlloyGate.Arm(log);
@@ -282,6 +285,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // Drain never runs in those states, so a revoke there would hold the whole owned set for the session.
         GlContextService.InBracket = static () =>
         {
+            // First in the bracket: what the GPU has finished with goes back before this frame allocates.
+            GpuGraveyard.Drain(GlContextService.Presents);
             OwnedTextures.Drain(); SampleVram();
             LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the
@@ -499,6 +504,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         MovieFrame.ContextLost();
         MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
         PassContextLost();
+        EngineBlockContextLost();
+        GpuGraveyard.Drop();   // after every handler above, so what they retired is dropped with the rest
     }
 
     /// <summary>Frame tick from the present (after the bucket walks). Module unload, a PartTable
@@ -599,7 +606,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal unsafe struct FeatLoc { internal int Time, Wind, Flags, Cam, CamFocus, Player, Fog, FogColor, KhDia, KhCam,
                                        Pixel, Eye, FogSky, FogSkyColor, FogSun, FogSunColor, FogOrigin, VFog, VFogVp, LodBias,
                                        TgtShapeL, TgtSelfL, TgtObjL, TgtSizeXL, TgtSizeYL, TgtRangeL,
-                                       TgtColL, TgtWorldL, ProjL, Now;
+                                       TgtColL, TgtWorldL, Now;
         /// <summary>The WHOLE scriptable block, by location. Picking entries one feature at a time was a
         /// standing bug: a content shader that starts reading a new slot compiles, links and reads zero --
         /// a feature that silently does nothing under Alloy and works under the engine. Filled at program
@@ -610,8 +617,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         /// <summary>Bit i set when slot i of that kind resolved to a live location, so the upload walks only
         /// what the program declares instead of 48 calls, nearly all of them to -1.</summary>
         internal int SIntLive, SFloatLive, SVecLive;
-        /// <summary>The engine-named scene terms a content pair's stage reads (<see cref="EngineNamedLocs"/>).</summary>
-        internal EngineNamedLocs Named;
+        /// <summary>Does the program read the <c>CxEngine</c> block (<see cref="EngineBlock"/>)? A program that
+        /// never declares it -- every stage outside the content environments -- costs its bind nothing.</summary>
+        internal bool Engine;
     }
     /// <summary><c>GLRender::m_shaderExposedRuntimeData</c>, the struct the engine's own SetUniforms uploads
     /// these five from. Null (symbol unresolved) leaves the wind still and the roofs wherever they were

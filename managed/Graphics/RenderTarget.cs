@@ -42,7 +42,7 @@ public static unsafe class RenderTarget
                          + "is full; close other GPU programs");
             return;
         }
-        if (old != 0) Gl.DeleteTextures(1, &old);
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, old);   // the refused one above never drew: it went now
         Clamp(t, filter);
         tex = t;
     }

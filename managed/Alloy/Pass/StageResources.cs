@@ -181,9 +181,8 @@ internal static unsafe partial class StageResources
         if (s == null) return;
         foreach (Img im in s.Images)
         {
-            uint a = im.Tex, b = im.Prev;
-            if (a != 0) Gl.DeleteTextures(1, &a);
-            if (b != 0) Gl.DeleteTextures(1, &b);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Tex);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Prev);
             im.Tex = 0; im.Prev = 0; im.MadeW = 0; im.MadeH = 0; im.MadeD = 0;
         }
         foreach (Pass p in s.Passes) { if (p.Prog != 0) Gl.DeleteProgram(p.Prog); p.Prog = 0; }

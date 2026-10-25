@@ -364,7 +364,7 @@ internal static unsafe class Ssr
     private static void Fresh(ref uint tex, uint fmt, int levels, int w, int h, int min, int mag)
     {
         uint t;
-        if (tex != 0) { t = tex; Gl.DeleteTextures(1, &t); }
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, tex);
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t); tex = t;
         Gl.TextureStorage2D(tex, levels, fmt, w, h);
         RenderTarget.Clamp(tex, mag);

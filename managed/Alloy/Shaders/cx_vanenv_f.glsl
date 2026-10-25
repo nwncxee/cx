@@ -2,8 +2,9 @@
 // The engine's own projection, off the same matrix stack Alloy reads its own from. Only the
 // DIAGONAL is ever read by the files spliced here (m_proj[3][3] separates the orthographic 2D UI
 // from the perspective world), and a diagonal element is the same in either transpose convention --
-// which matters, because Alloy stages hold the transpose of what the engine's do.
-uniform mat4 m_proj;
+// which matters, because Alloy stages hold the transpose of what the engine's do. It, and the rest of the
+// set the engine hands every program by name, come off the one block every environment shares.
+#include "cx_envblk.glsl"
 // The scriptable block is NOT declared here. Every file spliced into this stage includes
 // inc_scriptable for it, and the bridge resolves that include through the resource chain, so
 // declaring it too is a redefinition and a dead stage. What Alloy owes is the VALUES:

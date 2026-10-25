@@ -743,9 +743,15 @@ def check_driver_link(progs, g):
     link = fn("glLinkProgram", None, u)
     status = fn("glGetProgramiv", None, u, u, C.POINTER(i))
     infolog = fn("glGetProgramInfoLog", None, u, i, C.c_void_p, C.c_char_p)
+    blockidx = fn("glGetUniformBlockIndex", u, u, p_)
     kinds = {"vert": 0x8B31, "geom": 0x8DD9, "frag": 0x8B30, "comp": 0x91B9,   # not-an-offset: GL stage enums
              "tesc": 0x8E88, "tese": 0x8E87}   # not-an-offset: GL stage enums
     bad = 0
+    # CX-316: GlProgram.UsesBlock asks the driver whether a program reads the CxEngine block and skips its bind
+    # where it does not. NVIDIA reports a DECLARED block active whether or not anything reads it, which is why
+    # the fill behind it is stamped rather than compared; what must hold is the other direction -- a program that
+    # does not declare the block never reports it active, or the flag would bind on programs with no block.
+    eng_on = eng_bad = 0
     for name, stages in progs.items():
         exts = EXTS[len(stages)]
         if name == "lightmap bake":   # glslang links it without its geometry stage; the driver needs it
@@ -763,7 +769,17 @@ def check_driver_link(progs, g):
             errs = [l for l in log.value.decode(errors="replace").splitlines() if "error" in l]
             print(f"driver link: {name}: FAILED\n  " + "\n  ".join(errs[:8]))
             bad = 1
-    print(f"driver link: {'ok' if not bad else 'FAILED'} ({len(progs)} programs on the NVIDIA driver)")
+            continue
+        if blockidx:
+            active = blockidx(prog, b"CxEngine") != 0xFFFFFFFF   # not-an-offset: GL_INVALID_INDEX
+            if not active:
+                continue
+            eng_on += 1
+            if "uniform CxEngine" not in "".join(stages):
+                print(f"driver link: {name}: FAILED (CxEngine reported active in a program that does not declare it)")
+                eng_bad = bad = 1
+    print(f"driver link: {'ok' if not bad else 'FAILED'} ({len(progs)} programs on the NVIDIA driver, "
+          f"CxEngine active in {eng_on}{', WRONGLY in one of them' if eng_bad else ''})")
     return bad
 
 
@@ -1308,6 +1324,10 @@ def content_programs(g):
     fix = content_stage.FIXTURE.get
     vt, ft, vr, fr = content_pair(g, "cx_fixvs", "cx_fixture", fix)
     progs.update(pair_programs("content pair cx_fixvs/cx_fixture", vt, ft, fr, vr))
+    # CX-316: a pair that declares the engine-named set itself, so the driver links the stripped declarations and
+    # the CxEngine block's reads -- the wind arrays no corpus stage happens to read.
+    vt, ft, vr, fr = content_pair(g, "cx_fixengv", "cx_fixeng", fix)
+    progs.update(pair_programs("content pair cx_fixengv/cx_fixeng", vt, ft, fr, vr))
     for f in ("cx_fixpost", "cx_fixwhole"):
         vt, ft, vr, fr = content_pair(g, None, f, fix)
         progs.update(pair_programs(f"content pair stock/{f}", vt, ft, fr, vr))

@@ -419,7 +419,7 @@ internal static unsafe partial class TexRegistry
         ArturoState s = _artState;
         s.Why = why;
         if (s.Prog != 0 && Gl.DeleteProgram != null) Gl.DeleteProgram(s.Prog);
-        if (s.Turn != 0 && Gl.DeleteTextures != null) { uint t = s.Turn; Gl.DeleteTextures(1, &t); }
+        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, s.Turn);
         s.Prog = 0; s.Turn = 0;
         lock (_lock) foreach (int i in s.Running) BuryArturo(s.Slots[i]);
         _log?.Always($"TexRegistry: ARTURO RIPPLES STAND DOWN -- {why}. Every \"proceduretype arturo\" texture draws unwarped");

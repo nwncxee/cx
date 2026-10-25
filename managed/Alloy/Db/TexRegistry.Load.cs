@@ -504,7 +504,8 @@ internal static unsafe partial class TexRegistry
         {
             uint dead;
             lock (_lock) { if (_graveyard.Count == 0) break; dead = _graveyard.Dequeue(); }
-            if (dead != 0 && Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dead);
+            // The handle went non-resident above, but the frames in flight were submitted holding it.
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, dead);
         }
         long fastBytes = 0;
         for (int n = 0; n < FastUploadsPerFrame && fastBytes < FastBytesPerFrame; n++)

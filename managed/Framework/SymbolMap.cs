@@ -740,6 +740,12 @@ internal static unsafe class SymbolMap
     /// <c>AurTextureMakeCurrent</c>, <c>RefreshAll</c> and <c>AurResetTexture</c>.</summary>
     [Fn("void()")]
     public const string AurTextureBuildAndStoreAll = "_Z26AurTextureBuildAndStoreAllv";
+    /// <summary><c>AurTextureRefreshAll()</c> @0x48f050 (Windows: exported by name) -- <c>AurInitFont</c>, then
+    /// <c>CAurTextureBasic::Reset</c> over every entry of <c>m_OrderedTextureList</c> whose <c>+0xeb</c> is clear
+    /// (GL names deleted, image freed), then <see cref="AurTextureBuildAndStoreAll"/>. The engine runs it itself
+    /// from <c>AurTextureMakeCurrent</c> @0x48f560 whenever the anisotropy option changes.</summary>
+    [Fn("void()")]
+    public const string AurTextureRefreshAll = "_Z20AurTextureRefreshAllv";
     /// <summary>The engine's texture build queue, a DATA symbol: <c>List&lt;CAurTextureBasic*&gt;</c> -- array pointer
     /// at +0, int count at +8 (@0x19abe20 / Windows RVA 0x140b328). <c>AurTextureGet</c> appends on a miss;
     /// <c>~CAurTextureBasic</c> @0x486c30 removes itself.</summary>
@@ -2865,6 +2871,7 @@ internal static unsafe class SymbolMap
         [AurTextureBindInUnit] = Nm("?BindInUnit@CAurTexture@@UEAAXIH@Z"),
         [AurTextureBuildAndStoreTexture] = Nm("?BuildAndStoreTexture@CAurTextureBasic@@QEAAXXZ"),
         [AurTextureBuildAndStoreAll] = Nm("?AurTextureBuildAndStoreAll@@YAXXZ"),
+        [AurTextureRefreshAll] = Nm("?AurTextureRefreshAll@@YAXXZ"),
         [RefreshTextures] = Nm("?RefreshTextures@@3V?$List@PEAVCAurTextureBasic@@@@A"),
         [MaterialInitializeTextures] = Nm("?InitializeTextures@Material@@QEAAXPEBD000@Z"),
         [AurTextureConstructImage] = Nm("?ConstructImage@CAurTextureBasic@@QEAAXXZ"),

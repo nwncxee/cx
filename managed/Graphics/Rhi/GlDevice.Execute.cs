@@ -179,8 +179,7 @@ internal sealed unsafe partial class GlDevice
             bool hit = e.HasDepth && e.Key[RenderPassDesc.MaxColors].Image == img;
             for (int c = 0; c < e.Colors; c++) hit |= e.Key[c].Image == img;
             if (!hit) continue;
-            uint f = e.Fbo;
-            Gl.DeleteFramebuffers(1, &f);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Framebuffer, e.Fbo);
             _fbos[i] = _fbos[--_fboCount];
         }
     }
@@ -219,7 +218,7 @@ internal sealed unsafe partial class GlDevice
 
     private static byte Bit(ColorMask m, ColorMask c) => (m & c) != 0 ? (byte)1 : (byte)0;
 
-    private static uint Factor(BlendFactor f) => f switch
+    internal static uint Factor(BlendFactor f) => f switch
     {
         BlendFactor.Zero => Gl.ZERO,
         BlendFactor.SrcAlpha => Gl.SRC_ALPHA,

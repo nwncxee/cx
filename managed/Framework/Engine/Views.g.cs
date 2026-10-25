@@ -154,6 +154,7 @@ global using unsafe RiCreateCubeTextureFn = delegate* unmanaged<nint, byte, int,
 global using unsafe AurTextureConstructImageFn = delegate* unmanaged<nint, void>;
 global using unsafe AurTextureBuildAndStoreTextureFn = delegate* unmanaged<nint, void>;
 global using unsafe AurTextureBuildAndStoreAllFn = delegate* unmanaged<void>;
+global using unsafe AurTextureRefreshAllFn = delegate* unmanaged<void>;
 global using unsafe AreaLoadAreaFn = delegate* unmanaged<nint, nint, nint, int>;
 global using unsafe AreaAddPlaceableStaticFn = delegate* unmanaged<nint, uint, ushort, CX.Engine.VectorArg, CX.Engine.VectorArg, int>;
 global using unsafe C2DAGetCExoStringEntryFn = delegate* unmanaged<nint, int, nint, nint, int>;
@@ -4489,6 +4490,10 @@ public static unsafe class EngineFn
     private static bool _AurTextureBuildAndStoreAllDone;
     /// <inheritdoc cref="SymbolMap.AurTextureBuildAndStoreAll"/>
     public static AurTextureBuildAndStoreAllFn AurTextureBuildAndStoreAll => (AurTextureBuildAndStoreAllFn)(_AurTextureBuildAndStoreAllDone ? _AurTextureBuildAndStoreAll : Resolve(ref _AurTextureBuildAndStoreAll, ref _AurTextureBuildAndStoreAllDone, SymbolMap.AurTextureBuildAndStoreAll));
+    private static IntPtr _AurTextureRefreshAll;
+    private static bool _AurTextureRefreshAllDone;
+    /// <inheritdoc cref="SymbolMap.AurTextureRefreshAll"/>
+    public static AurTextureRefreshAllFn AurTextureRefreshAll => (AurTextureRefreshAllFn)(_AurTextureRefreshAllDone ? _AurTextureRefreshAll : Resolve(ref _AurTextureRefreshAll, ref _AurTextureRefreshAllDone, SymbolMap.AurTextureRefreshAll));
     private static IntPtr _AreaLoadArea;
     private static bool _AreaLoadAreaDone;
     /// <inheritdoc cref="SymbolMap.AreaLoadArea"/>
@@ -6574,6 +6579,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.AurTextureBuildAndStoreAll"/>; returns the slot holding the next layer, or null.</summary>
     public static AurTextureBuildAndStoreAllFn* ChainAurTextureBuildAndStoreAll(this HookService h, AurTextureBuildAndStoreAllFn handler, int priority) =>
         (AurTextureBuildAndStoreAllFn*)h.Chain(SymbolMap.AurTextureBuildAndStoreAll, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AurTextureRefreshAll"/>; returns the original, or null.</summary>
+    public static AurTextureRefreshAllFn InstallAurTextureRefreshAll(this HookService h, AurTextureRefreshAllFn handler) =>
+        (AurTextureRefreshAllFn)h.Install(SymbolMap.AurTextureRefreshAll, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AurTextureRefreshAll"/>; returns the slot holding the next layer, or null.</summary>
+    public static AurTextureRefreshAllFn* ChainAurTextureRefreshAll(this HookService h, AurTextureRefreshAllFn handler, int priority) =>
+        (AurTextureRefreshAllFn*)h.Chain(SymbolMap.AurTextureRefreshAll, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.AreaLoadArea"/>; returns the original, or null.</summary>
     public static AreaLoadAreaFn InstallAreaLoadArea(this HookService h, AreaLoadAreaFn handler) =>
         (AreaLoadAreaFn)h.Install(SymbolMap.AreaLoadArea, (IntPtr)handler);

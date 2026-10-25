@@ -176,6 +176,9 @@ public static unsafe class Gl
     /// <see cref="TextureStorage2D"/> will take it, and the unsized enums the engine actually uses
     /// (<c>glTexImage2D</c> @0x4cad3d passes GL_RGB/GL_RGBA/GL_RED verbatim).</summary>
     public const uint RGB8 = 0x8051, RG8 = 0x822B, RG = 0x8227, RGB_ = 0x1907, RGBA_ = 0x1908, RG16F = 0x822F;
+    /// <summary>Four bits per channel: the storage and the packed type a two-bytes-per-pixel engine image
+    /// (a <c>.4pc</c> file) is read through.</summary>
+    public const uint RGBA4 = 0x8056, UNSIGNED_SHORT_4_4_4_4 = 0x8033;
     /// <summary>The rest of the sized colour formats a native stage may ask its own images for
     /// (<c>docs/shader-overrides.md</c>, "Native stages, images and passes"); GL 4.2 image-load-store formats.</summary>
     public const uint RGBA32F = 0x8814, R16F = 0x822D;
@@ -338,6 +341,9 @@ public static unsafe class Gl
     public static delegate* unmanaged<uint, uint, int, void> ProgramParameteri;
     public const uint PROGRAM_BINARY_RETRIEVABLE_HINT = 0x8257, PROGRAM_BINARY_LENGTH = 0x8741;
     public static delegate* unmanaged<uint, byte*, int> GetUniformLocation;
+    public static delegate* unmanaged<uint, byte*, uint> GetUniformBlockIndex;
+    /// <summary>What <c>glGetUniformBlockIndex</c> answers for a block the program does not actively use.</summary>
+    public const uint INVALID_INDEX = 0xFFFFFFFFu;
     public static delegate* unmanaged<int, int, byte, float*, void> UniformMatrix4fv;
     public static delegate* unmanaged<int, int, void> Uniform1i;
     public static delegate* unmanaged<int, float, void> Uniform1f;
@@ -615,6 +621,7 @@ public static unsafe class Gl
         ProgramBinaryLoad = (delegate* unmanaged<uint, uint, void*, int, void>)P("glProgramBinary");
         ProgramParameteri = (delegate* unmanaged<uint, uint, int, void>)P("glProgramParameteri");
         GetUniformLocation = (delegate* unmanaged<uint, byte*, int>)P("glGetUniformLocation");
+        GetUniformBlockIndex = (delegate* unmanaged<uint, byte*, uint>)P("glGetUniformBlockIndex");
         UniformMatrix4fv = (delegate* unmanaged<int, int, byte, float*, void>)P("glUniformMatrix4fv");
         Uniform2fv = (delegate* unmanaged<int, int, float*, void>)P("glUniform2fv");
         Uniform2iv = (delegate* unmanaged<int, int, int*, void>)P("glUniform2iv");

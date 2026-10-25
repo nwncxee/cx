@@ -22,7 +22,6 @@ internal static unsafe class ContentPrograms
     {
         public uint Fwd, Def, Depth, Cast, CastLayer;
         public AlloyRenderer.LitLoc FwdLoc, DefLoc, DepthLoc, CastLoc, CastLayerLoc;
-        public int FwdNoise = -1, DefNoise = -1, DepthNoise = -1, CastNoise = -1, CastLayerNoise = -1;
         /// <summary>What each program was attached as (<see cref="StageResources.Attach"/>): -1 is nothing per bind.</summary>
         public int FwdRec = -1, DefRec = -1, DepthRec = -1, CastRec = -1, CastLayerRec = -1;
         /// <summary>The depth twin's <c>uHlColor</c>: the outline-highlight mask draws through it.</summary>
@@ -153,6 +152,32 @@ internal static unsafe class ContentPrograms
         return false;
     }
 
+    /// <summary>Queue this pair's build without asking to draw it: what the per-area prewarm
+    /// (<see cref="ContentPrewarm"/>) marks a pair with, so its programs compile behind the load screen rather than
+    /// at the frame a batch first wants them.</summary>
+    internal static void Want(int feat)
+    {
+        if (Of(feat) is { Failed: false, Plain: false, Keys: null, P.Fwd: 0 } s) s.Wanted = true;
+    }
+
+    /// <summary>Has this pair's build happened -- its programs are up, or it is the plain path, or it was refused?
+    /// Until then its pipeline keys are not knowable: the twins come off its translation.</summary>
+    internal static bool Settled(int feat) => Of(feat) is { } s && (s.Failed || s.Plain || s.P.Fwd != 0);
+
+    /// <summary>The GL program behind one of a pair's five variants, or 0 when the pair does not carry it.</summary>
+    internal static uint ProgramOf(int feat, ContentVariant v)
+    {
+        if (Of(feat) is not { } s) return 0;
+        return v switch
+        {
+            ContentVariant.Forward => s.P.Fwd,
+            ContentVariant.Deferred => s.P.Def,
+            ContentVariant.Depth => s.P.Depth,
+            ContentVariant.Caster => s.P.Cast,
+            _ => s.P.CastLayer,
+        };
+    }
+
     /// <summary>Does this pair's fragment half make its own coverage (its own discard, a written alpha, or an alpha the
     /// stock setup does not cut on)? Only once it runs: before that its parts take Alloy's cut like any other.</summary>
     internal static bool Cuts(int feat) => Of(feat) is { P.Fwd: not 0, Cuts: true };
@@ -225,15 +250,14 @@ internal static unsafe class ContentPrograms
         return ref layered ? ref s.P.CastLayerLoc : ref s.P.CastLoc;
     }
 
-    /// <summary>What a content program reads beyond the lit stage's own terms: the engine's <c>solid_noise</c>, as a
-    /// handle (<c>texUnitNoise</c>). Called at the program's bind.</summary>
+    /// <summary>What a content program reads beyond the lit stage's own terms: its native half's images. The
+    /// engine's <c>solid_noise</c> (<c>texUnitNoise</c>) rides the <c>CxEngine</c> block. Called at the program's
+    /// bind.</summary>
     internal static void BindExtras(int which)
     {
         Stage? s = OfProg(which);
         if (s == null) return;
-        bool def = IsDeferred(which);
-        BindNoise(def ? s.P.DefNoise : s.P.FwdNoise);
-        StageResources.Bind(def ? s.P.DefRec : s.P.FwdRec);
+        StageResources.Bind(IsDeferred(which) ? s.P.DefRec : s.P.FwdRec);
     }
 
     /// <summary><see cref="BindExtras"/> for a pair's depth twin (<paramref name="cast"/> false) or caster twin, the
@@ -242,15 +266,7 @@ internal static unsafe class ContentPrograms
     {
         Stage? s = Of(feat);
         if (s == null) return;
-        BindNoise(!cast ? s.P.DepthNoise : layered ? s.P.CastLayerNoise : s.P.CastNoise);
         StageResources.Bind(!cast ? s.P.DepthRec : layered ? s.P.CastLayerRec : s.P.CastRec);
-    }
-
-    private static void BindNoise(int loc)
-    {
-        if (loc < 0 || Gl.Uniform2ui == null) return;
-        ulong h = AlloyRenderer.Bindless ? AlloyRenderer.HandleFor(FrameSnapshot.OwnNoise()) : 0ul;
-        Gl.Uniform2ui(loc, (uint)h, (uint)(h >> 32));
     }
 
     /// <summary>Start every pair a batch asked for since the last frame, and finish every one whose background compile
@@ -366,7 +382,7 @@ internal static unsafe class ContentPrograms
             Gl.UseProgram((uint)prev);
             return;
         }
-        var p = new ProgramSet { Fwd = fwd, FwdLoc = CX.Alloy.Programs.LitLocs(fwd), FwdNoise = GlProgram.Loc(fwd, "uConNoise") };
+        var p = new ProgramSet { Fwd = fwd, FwdLoc = CX.Alloy.Programs.LitLocs(fwd) };
         p.FwdRec = StageResources.Attach(fwd, s.NatVs, s.NatFs, _reg.Log);
         if (p.FwdRec == -2)
         {
@@ -386,13 +402,12 @@ internal static unsafe class ContentPrograms
             if (rec == -2) { Gl.DeleteProgram(t); continue; }
             built.Add(twin);
             var loc = CX.Alloy.Programs.LitLocs(t);
-            int noise = GlProgram.Loc(t, "uConNoise");
             switch (slot)
             {
-                case 1: p.Def = t; p.DefLoc = loc; p.DefNoise = noise; p.DefRec = rec; break;
-                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthNoise = noise; p.DepthHl = GlProgram.Loc(t, "uHlColor"); p.DepthRec = rec; break;
-                case 3: p.Cast = t; p.CastLoc = loc; p.CastNoise = noise; p.CastRec = rec; break;
-                default: p.CastLayer = t; p.CastLayerLoc = loc; p.CastLayerNoise = noise; p.CastLayerRec = rec; break;
+                case 1: p.Def = t; p.DefLoc = loc; p.DefRec = rec; break;
+                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthHl = GlProgram.Loc(t, "uHlColor"); p.DepthRec = rec; break;
+                case 3: p.Cast = t; p.CastLoc = loc; p.CastRec = rec; break;
+                default: p.CastLayer = t; p.CastLayerLoc = loc; p.CastLayerRec = rec; break;
             }
         }
         s.P = p;

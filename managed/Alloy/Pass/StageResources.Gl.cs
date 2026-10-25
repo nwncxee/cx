@@ -382,9 +382,8 @@ internal static unsafe partial class StageResources
             Extent(im, vw, vh, out int w, out int h, out int d);
             if (im.Tex != 0 && im.MadeW == w && im.MadeH == h && im.MadeD == d
                 && (!im.History || im.Prev != 0)) continue;
-            uint a = im.Tex, b = im.Prev;
-            if (a != 0) Gl.DeleteTextures(1, &a);
-            if (b != 0) Gl.DeleteTextures(1, &b);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Tex);
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Prev);
             im.Tex = Texture(im, w, h, d);
             im.Prev = im.History ? Texture(im, w, h, d) : 0u;
             if (im.Tex == 0 || (im.History && im.Prev == 0))
