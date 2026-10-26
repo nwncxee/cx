@@ -153,7 +153,7 @@ public sealed unsafe class UiHostService : IExtenderService
         float dt = _gearLast == 0 ? 0f : (now - _gearLast) / (float)System.Diagnostics.Stopwatch.Frequency;
         _gearLast = now;
         if (!GearSurface) { _gear.Hovered = false; _gear.Bright = 0f; _gear.Spin = 0f; return; }
-        if (_log == null || !Gl.Init(_log) || !TextRig.Ready) return;
+        if (_log == null || !(NullGl.Active || Gl.Init(_log)) || !TextRig.Ready) return;
         float px = MenuGear.FaceFor(Metrics.GameUiScale);
         if (px != _gearFacePx || _gearEpoch != TextRig.AtlasEpoch)
         {

@@ -133,7 +133,7 @@ internal static class AlloyGate
         // #264: the engine's bucket walk is gone, so the compute cull is the frame's ONLY visibility test.
         // A driver that cannot dispatch it would draw every enumerated part of the area every frame -- which
         // is a device that cannot support the Alloy frame, exactly what this state is for.
-        if (!CullPass.Capable())
+        if (!Renderer.OnVulkan && !CullPass.Capable())
         { why = "GL compute or glMultiDrawElementsIndirectCount is missing -- Alloy has no visibility test";
           return AlloyStand.Incapable; }
         if (PostChain.Failed)

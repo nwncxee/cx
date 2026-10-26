@@ -146,7 +146,7 @@ public sealed unsafe class GlContextService : IExtenderService
 
     /// <summary>Make <paramref name="ctx"/> current on the engine's drawable; 0 = refused. The one place
     /// the two windowing APIs differ in the hot bracket.</summary>
-    private static int MakeCur(IntPtr ctx) => Win ? wglMakeCurrent(_drw, ctx) : _makeCur(_dpy, _drw, ctx);
+    private static int MakeCur(IntPtr ctx) => NullGl.Active ? 1 : Win ? wglMakeCurrent(_drw, ctx) : _makeCur(_dpy, _drw, ctx);
 
     private static void Destroy(IntPtr ctx) { if (Win) wglDeleteContext(ctx); else _destroy(_dpy, ctx); }
 
@@ -244,6 +244,14 @@ public sealed unsafe class GlContextService : IExtenderService
     private static void Create()
     {
         var log = _log!;
+        if (NullGl.Active)
+        {
+            Driver = "no GL";
+            Available = true;
+            log.Always("GlContextService: no GL context this session (NullGl) -- nothing is created; Available stands for "
+                     + "\"the render device is up\", and any bracket a pass asks for is refused and said");
+            return;
+        }
         if (!Gl.Init(log)) { Fail("Gl.Init"); return; }
         if (!(Win ? ResolveWin() : ResolveGlx())) return;
         if (_engCtx == IntPtr.Zero) { _tried = false; return; }   // no context yet -- retry next frame
@@ -378,6 +386,7 @@ public sealed unsafe class GlContextService : IExtenderService
         // ReserveForOtherThread to refuse the hand-over mid-bracket, and setting it from here would make a
         // stand-down's re-reservation refuse for ever.
         if (HeldHere) { _heldHereDepth++; return true; }
+        if (NullGl.Active) return RefuseNoGl();
         if (!Available || _heldElsewhere) return false;
         if (Inside) { _depth++; return true; }
         if (_syncMode == 1)
@@ -419,11 +428,27 @@ public sealed unsafe class GlContextService : IExtenderService
     /// engine's <c>GLRender::SwapBuffers</c>, which also resets its render states and runs its frame callbacks.</summary>
     internal static void SwapNow()
     {
+        if (NullGl.Active) return;
         if (Win) SwapBuffers(_drw); else if (_glxSwap != null) _glxSwap(_dpy, _drw);
         if (_finish != null) _finish();
     }
 
     private static int _syncMode;
+
+    /// <summary>A bracket asked for in a session with no GL: refused, and the first asker named, since GL work on that
+    /// path never runs.</summary>
+    private static bool RefuseNoGl()
+    {
+        if (!_noGlRefused)
+        {
+            _noGlRefused = true;
+            _log?.Always("GlContextService: a pass asked for the 4.6 bracket in a session with NO GL context -- refused; "
+                       + "its GL work does not run. First asker:\n" + Environment.StackTrace);
+        }
+        return false;
+    }
+
+    private static bool _noGlRefused;
 
     /// <summary>Close the bracket: drain glGetError on the 4.6 side (an error can never leak across the
     /// boundary unnoticed), fence, switch back to the engine context, server-wait, drain again. A nested close
@@ -455,6 +480,7 @@ public sealed unsafe class GlContextService : IExtenderService
             // is a measurement of nothing.
             return;
         }
+        if (NullGl.Active) { _depth = 0; return; }
         // Errors drain per bracket whether or not this one switches: an error raised inside a nested pass
         // must not be attributed to the pass that follows it.
         if (_depth > 1) { _depth--; _err46 += Gl.DrainErrors(); return; }
