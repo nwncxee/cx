@@ -27,12 +27,8 @@ internal static unsafe class GuiModelSolve
     private static SolveState _s = new();
 
     /// <summary>Does the run of layers drawing into one model texture, starting at <paramref name="first"/>, need the two-pass solve?
-    /// <paramref name="end"/> is the layer after the run (or <paramref name="to"/>).</summary>
-    internal static bool Wanted(int first, int to, NuiModelDoll.ModelSlot? slot, out int end)
-        => Wanted(first, to, slot, true, out end);
-
-    /// <inheritdoc cref="Wanted(int, int, NuiModelDoll.ModelSlot?, out int)"/>
-    /// <param name="glProgram">Ask whether the GL solve is built; a caller on another backend has its own.</param>
+    /// <paramref name="end"/> is the layer after the run (or <paramref name="to"/>); <paramref name="glProgram"/> asks
+    /// whether the GL solve is built, which a caller on another backend answers for itself.</summary>
     internal static bool Wanted(int first, int to, NuiModelDoll.ModelSlot? slot, bool glProgram, out int end)
     {
         uint target = GuiCapture.Layers[first].Target;

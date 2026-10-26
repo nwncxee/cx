@@ -293,7 +293,7 @@ internal static unsafe partial class GuiPassVk
             log.Always($"GuiPassVk: a model view with additive draws is solved over black and white ({w}x{h})");
         }
         Vector4 bg = Background(tex);
-        int loose = Block(s.Solve, () => VkUniformShim.Set(s.SolveBg, [bg.X, bg.Y, bg.Z, bg.W]), log);
+        int loose = Block(s.Solve, new SolveFill(s.SolveBg, bg), log);
         if (loose < 0) return;
         PipelineId pipe = Pipeline(s.Solve, default, 0, Topology.Triangles, log);
         if (pipe.IsNull) return;

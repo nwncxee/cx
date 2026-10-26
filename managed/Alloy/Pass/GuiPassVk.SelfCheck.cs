@@ -75,15 +75,13 @@ internal static unsafe partial class GuiPassVk
         check.Expect(vb != null, $"{what}'s vertex stage compiles ({ve})");
         check.Expect(fb != null, $"{what}'s fragment stage compiles ({fe})");
         if (vb == null || fb == null) return;
-        var names = new List<string>();
-        foreach (VkLoose u in t.Loose) names.Add(u.Name);
-        uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
-        if ((VkSpirv.Block(fb, 0, at, names) ?? VkSpirv.Block(vb, 0, at, names)) is not { } l)
+        // the compiled modules' own reflection, which is the second artifact the hand-written offsets are held against
+        if (VkUniformShim.Layout(t, vb, fb) is not { } l)
         { check.Expect(false, $"{what} declares the loose block"); return; }
         foreach ((string name, int off, int bytes) in want)
-            check.Expect(l.Members.TryGetValue(name, out var m) && m.Offset == off && m.Size == bytes,
+            check.Expect(l.Reflected.TryGetValue(name, out var m) && m.Offset == off && m.Size == bytes,
                 $"{what}'s {name} sits at {off} over {bytes} bytes"
-              + (l.Members.TryGetValue(name, out var g) ? $" (got {g.Offset}, {g.Size})" : " (absent)"));
+              + (l.Reflected.TryGetValue(name, out var g) ? $" (got {g.Offset}, {g.Size})" : " (absent)"));
         log.Info($"GuiPassVk.SelfCheck: {what} -- {t.Loose.Count} loose member(s) in {l.Bytes} bytes, {t.Opaques.Count} declaration(s)");
     }
 }

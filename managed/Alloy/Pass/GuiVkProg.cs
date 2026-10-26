@@ -43,30 +43,10 @@ internal sealed class GuiVkProg
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vb, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fb, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) { log.Always($"GuiVkProg: {label}'s modules were REFUSED (logged above)"); return null; }
-        Layout(p, t, vb, fb);
+        if (VkUniformShim.Layout(t, vb, fb) is { } l) { p.Members = l.Members; p.Block = VkUniformShim.Block(l.Bytes); }
         p.Names = VkUniformShim.Index(p.Members);
         VkUniformShim.Resolve(p.Names, () => locate(p));
         return p;
-    }
-
-    /// <summary>The loose block's members as the compiled module lays them out, in the order the translator gathered
-    /// them: the offsets the shim writes at. A stage that reads none keeps no block, and the program then has none.</summary>
-    private static void Layout(GuiVkProg p, VkProgramText t, byte[] vs, byte[] fs)
-    {
-        if (t.Loose.Count == 0) return;
-        var names = new List<string>(t.Loose.Count);
-        foreach (VkLoose u in t.Loose) names.Add(u.Name);
-        uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
-        if ((VkSpirv.Block(fs, 0, at, names) ?? VkSpirv.Block(vs, 0, at, names)) is not { } l) return;
-        var members = new List<VkUniformShim.Member>(l.Members.Count);
-        foreach (VkLoose u in t.Loose)
-        {
-            if (!l.Members.TryGetValue(u.Name, out var m)) continue;
-            int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, t.Fs + t.Vs) ?? 1;
-            members.Add(new VkUniformShim.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
-        }
-        p.Members = members.ToArray();
-        p.Block = new byte[(l.Bytes + 15) & ~15];
     }
 
     /// <summary>Member <paramref name="name"/>'s index, or -1 where this program does not read it.</summary>

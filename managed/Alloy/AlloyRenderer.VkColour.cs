@@ -300,22 +300,7 @@ public sealed unsafe partial class AlloyRenderer
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;
-        var names = new List<string>(t.Loose.Count);
-        foreach (VkLoose u in t.Loose) names.Add(u.Name);
-        uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
-        var layout = VkSpirv.Block(fs, 0, at, names) ?? VkSpirv.Block(vs, 0, at, names);
-        if (layout is { } l)
-        {
-            var members = new List<VkUniformShim.Member>(l.Members.Count);
-            foreach (VkLoose u in t.Loose)
-            {
-                if (!l.Members.TryGetValue(u.Name, out var m)) continue;
-                int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, t.Fs + t.Vs) ?? 1;
-                members.Add(new VkUniformShim.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
-            }
-            p.Members = members.ToArray();
-            p.Block = new byte[(l.Bytes + 15) & ~15];
-        }
+        if (VkUniformShim.Layout(t, vs, fs) is { } l) { p.Members = l.Members; p.Block = VkUniformShim.Block(l.Bytes); }
         p.Names = VkUniformShim.Index(p.Members);
         VkUniformShim.Resolve(p.Names, () =>
         {

@@ -46,6 +46,30 @@ internal static unsafe class VkUniformShim
     /// <summary>Program names the shim answers for: far above any name GL hands out, so no real program collides.</summary>
     internal const uint ProgramBase = 0xC0000000;   // not-an-offset: a reserved name range
 
+    /// <summary>A program's loose block as its compiled modules lay it out: the reflected members by name and the
+    /// block's size, beside the capture table in the translator's own order. Null when neither stage kept the block,
+    /// which is what a program that reads no loose uniform compiles to. Cold: once per program.</summary>
+    internal static (Dictionary<string, (int Offset, int Size)> Reflected, int Bytes, Member[] Members)?
+        Layout(VkProgramText t, byte[] vs, byte[] fs)
+    {
+        if (t.Loose.Count == 0) return null;
+        var names = new List<string>(t.Loose.Count);
+        foreach (VkLoose u in t.Loose) names.Add(u.Name);
+        uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
+        if ((VkSpirv.Block(fs, 0, at, names) ?? VkSpirv.Block(vs, 0, at, names)) is not { } l) return null;
+        var members = new List<Member>(l.Members.Count);
+        foreach (VkLoose u in t.Loose)
+        {
+            if (!l.Members.TryGetValue(u.Name, out var m)) continue;
+            int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, t.Fs + t.Vs) ?? 1;
+            members.Add(new Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
+        }
+        return (l.Members, l.Bytes, members.ToArray());
+    }
+
+    /// <summary>A block's bytes, rounded up to the alignment a uniform binding takes.</summary>
+    internal static byte[] Block(int bytes) => new byte[(bytes + 15) & ~15];
+
     /// <summary>A block table to resolve or fill against; build once per translated program.</summary>
     internal static Dictionary<string, int> Index(Member[] members)
     {

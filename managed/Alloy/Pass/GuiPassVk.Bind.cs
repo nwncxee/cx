@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using CX.Alloy.Db;
 using CX.Framework;
 using CX.Graphics.Rhi;
@@ -62,33 +63,54 @@ internal static unsafe partial class GuiPassVk
         return new ImageBinding(0, s.StandIn, s.Nearest);
     }
 
+    /// <summary>What a program's loose block is filled from while the capture is open. Each is a value type, so a
+    /// per-draw block costs no allocation -- a GUI flush fills one per content draw, on the frame's own thread.</summary>
+    private interface IFill { void Write(); }
+
+    /// <summary>Alloy's GUI program's two terms, which are the flush's and not a draw's.</summary>
+    private readonly record struct GuiFill(int BoneStart, int Gamma, bool On) : IFill
+    {
+        public void Write()
+        {
+            VkUniformShim.Set(BoneStart, GuiCapture.DrawN * (GuiCapture.RecFloats / 4));
+            VkUniformShim.Set(Gamma, On ? 1 : 0);
+        }
+    }
+
+    /// <summary>One content draw's engine terms, through the same <see cref="GuiContent.Feed"/> GL calls.</summary>
+    private readonly record struct ContentFill(GuiContent.Prog Terms, int Draw, int W, int H, bool Gamma) : IFill
+    {
+        public void Write() => GuiContent.Feed(Terms, Draw, W, H, Gamma);
+    }
+
+    /// <summary>The model-view solve's background.</summary>
+    private readonly record struct SolveFill(int Bg, Vector4 Colour) : IFill
+    {
+        public void Write() => VkUniformShim.Set(Bg, [Colour.X, Colour.Y, Colour.Z, Colour.W]);
+    }
+
     /// <summary>Alloy's GUI program's loose block for this flush: the two terms it reads are per-flush, so the block
     /// is appended once and every draw through the program names the same offset.</summary>
     private static int GuiBlock(GuiVkProg p, bool gamma, ExtenderLog log)
     {
         GuiVkState s = _s;
-        if (s.GuiBlockAt >= 0) return s.GuiBlockAt;
-        s.GuiBlockAt = Block(p, () =>
-        {
-            VkUniformShim.Set(s.BoneStart, GuiCapture.DrawN * (GuiCapture.RecFloats / 4));
-            VkUniformShim.Set(s.Gamma, gamma ? 1 : 0);
-        }, log);
+        if (s.GuiBlockAt < 0) s.GuiBlockAt = Block(p, new GuiFill(s.BoneStart, s.Gamma, gamma), log);
         return s.GuiBlockAt;
     }
 
     /// <summary>A content program's loose block for draw <paramref name="di"/>: the engine's own terms, written by
     /// the same <see cref="GuiContent.Feed"/> GL calls, captured into the block at its reflected offsets.</summary>
     private static int ContentBlock(GuiContent.VkPair pair, int di, int w, int h, bool gamma, ExtenderLog log)
-        => Block(pair.Program, () => GuiContent.Feed(pair.Terms, di, w, h, gamma), log);
+        => Block(pair.Program, new ContentFill(pair.Terms, di, w, h, gamma), log);
 
     /// <summary>Capture <paramref name="fill"/>'s writes into <paramref name="p"/>'s block and append it to the
-    /// flush's arena; its offset, or -1 (logged) when the arena is full.</summary>
-    private static int Block(GuiVkProg p, Action fill, ExtenderLog log)
+    /// flush's arena; its offset, or -1 (logged) when the arena is full. Hot: once per content draw.</summary>
+    private static int Block<T>(GuiVkProg p, in T fill, ExtenderLog log) where T : struct, IFill
     {
         if (p.Block.Length == 0) return 0;
         Array.Clear(p.Block);
         VkUniformShim.Capture(p.Members, p.Block);
-        try { fill(); }
+        try { fill.Write(); }
         finally { VkUniformShim.EndCapture(); }
         return Arena(p.Block, log);
     }
