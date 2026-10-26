@@ -15,7 +15,7 @@ public sealed unsafe partial class NullGl
     private const int AuroraRgb = 1;
 
     /// <summary>Screenshots and save thumbnails with no GL: the last composite Vulkan presented, read back in the
-    /// engine's GL_RGB layout -- rows bottom-up, each padded to 4 bytes. A format other than RGB, or no device on this
+    /// engine's GL_RGB layout -- rows bottom-up, as the composite already holds them, each padded to 4 bytes. A format other than RGB, or no device on this
     /// thread, leaves the buffer as the engine allocated it and says so once.</summary>
     [UnmanagedCallersOnly]
     private static void OnReadPixels(uint fb, int x, int y, int w, int h, int format, byte* dst)
@@ -37,13 +37,12 @@ public sealed unsafe partial class NullGl
         if (!vk.DescOf(comp, out ImageDesc d)) return "the composite is stale";
         int cw = Math.Min(w, d.W - x), ch = Math.Min(h, d.H - y);
         if (x < 0 || y < 0 || cw <= 0 || ch <= 0) return $"the block is outside the {d.W}x{d.H} composite";
-        int top = d.H - y - ch;
         BufferId buf = vk.CreateBuffer(new BufferDesc((long)cw * ch * 4, BufferUse.CopyDst, MemoryKind.Readback, "snapshot readback"));
         if (buf.IsNull) return "the readback buffer was refused";
         try
         {
             var cl = new CommandList("vulkan snapshot", 256, log);
-            cl.CopyImageToBuffer(new CopyToBufferCmd(comp, new ImageRegion(0, x, top, 0), cw, ch, buf, 0));
+            cl.CopyImageToBuffer(new CopyToBufferCmd(comp, new ImageRegion(0, x, y, 0), cw, ch, buf, 0));
             if (!vk.Submit(cl)) return "the copy's submit was refused";
             long at = vk.Submitted - 1;
             for (int waited = 0; !vk.Finished(at); waited++)
@@ -57,7 +56,7 @@ public sealed unsafe partial class NullGl
             var to = new Span<byte>(dst, stride * h);
             for (int j = 0; j < ch; j++)
             {
-                int row = j * stride, from = (ch - 1 - j) * cw * 4;
+                int row = j * stride, from = j * cw * 4;
                 for (int i = 0; i < cw; i++)
                 {
                     to[row + i * 3] = rgba[from + i * 4];
