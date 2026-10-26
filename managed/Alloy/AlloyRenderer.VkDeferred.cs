@@ -57,6 +57,9 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkDeferredState _vkdef = new();
 
+    /// <summary>This frame's light records on the device, for the froxel build that reads the same buffer.</summary>
+    private static BufferId VkDeferredLights() => _vkdef.Lights;
+
     /// <summary>Invocations per group per axis, each stage's own <c>local_size</c>.</summary>
     private const int VkDefGroup = 16, VkShGroup = 8;
 
@@ -102,9 +105,9 @@ public sealed unsafe partial class AlloyRenderer
         b.Proj = proj;
         b.View = view;
         b.EyePos = eye;
-        // the froxel table is the GL cluster build's, which is not on Vulkan: the walk culls uLights itself per
-        // tile, which is light.deferredtiles' own mode, and the A/B frame puts the GL walk in it too
-        b.Tiles = 1;
+        // light.deferredtiles, as GL reads it: each pixel's own froxel list by default, now that the build that
+        // writes them runs here too, and the per-tile cull when the knob asks -- the table says which it is
+        b.Tiles = Lighting.DeferredTiles.V || VkClusterCounts.IsNull ? 1 : 0;
         b.LightCount = AlloyLights.UploadedLights;
         b.ReflK = Weather.ReflK;
         b.ShSize = new Int2(rw, rh);
@@ -300,6 +303,10 @@ public sealed unsafe partial class AlloyRenderer
                         SsboSlots.DrawIdx => slots,
                         SsboSlots.Lights => d.Lights,
                         SsboSlots.DeferredStats => d.Stats,
+                        // the froxel table this frame's build wrote, and the spheres its hot partition read
+                        SsboSlots.ClusterCount when !VkClusterCounts.IsNull => VkClusterCounts,
+                        SsboSlots.ClusterIdx when !VkClusterIdx.IsNull => VkClusterIdx,
+                        SsboSlots.Movers when !VkMovers.IsNull => VkMovers,
                         _ => s.ZeroSsbo,
                     });
                     break;

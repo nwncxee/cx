@@ -21,6 +21,8 @@ internal static unsafe class AlloyLights
     /// compute. More clusters = SHORTER per-fragment loops: this knob, not <see cref="ClusterCap"/>.</summary>
     private const int GridX = 32, GridY = 18, GridZ = 24;
     private const int ClusterCount = GridX * GridY * GridZ;
+    /// <summary>Froxels in the grid -- what a second device sizes the same table by.</summary>
+    internal const int Clusters = ClusterCount;
     /// <summary>Lights binned per cluster, boot-tunable (<c>alloy.clustercap</c>); 128 is the shipped value.
     /// NOT free: the fragment loop reads the cluster's COUNT, so a formerly-overflowing froxel pays up to
     /// twice the per-fragment loop, plus SSBO bytes. ponytail: fixed capacity, no per-cluster compaction --
@@ -499,6 +501,8 @@ internal static unsafe class AlloyLights
     private sealed class LightsGlState
     {
         public uint Prog, BufLights, BufCounts, BufIndices, BufStats, BufMovers;
+        /// <summary>What the last dispatch's uniforms carried (<see cref="Terms"/>).</summary>
+        public BuildTerms Terms;
         public int MoversGen = -1;
         public int LocView = -1, LocProjXY = -1, LocZ = -1, LocCount = -1, LocGrid = -1, LocReach = -1, LocBinCap = -1, LocBinAtten = -1, LocReflK = -1;
         public int LocDynPage = -1, LocHot = -1, LocRel = -1, LocPad = -1, LocTally = -1, LocFloor = -1;
@@ -551,6 +555,21 @@ internal static unsafe class AlloyLights
     /// <summary>This frame's light records as <see cref="Upload"/> staged them, for a second device to mirror:
     /// the Vulkan deferred pass reads the same bytes the GL SSBO holds, from the one fill.</summary>
     internal static ReadOnlySpan<float> Staged => _stage.AsSpan(0, Math.Min(_gl.Uploaded, _stage.Length / 8) * 8);
+
+    /// <summary>Every loose term <see cref="Build"/> sent its dispatch, under the stage's own uniform names, so a
+    /// second device can replay the same build instead of transcribing the rules it was derived from.</summary>
+    internal struct BuildTerms
+    {
+        public Matrix4x4 View;
+        public int GridX, GridY, GridZ, LightCount, BinCap, ReflK, Tally;
+        public float ProjX, ProjY, Near, Far, Reach, Floor, Gain;
+        public float AttenX, AttenY, HotX, HotY, RelX, RelY, PadX, PadY;
+        /// <summary>The build ran this frame: its outputs are this view's and may be read.</summary>
+        public bool Ran;
+    }
+
+    /// <summary>The terms of the last build, for the Vulkan recorder's own dispatch of the same stage.</summary>
+    internal static BuildTerms Terms => _gl.Terms;
 
     internal static void Attach(ExtenderLog log)
     {
@@ -678,6 +697,14 @@ internal static unsafe class AlloyLights
         Gl.Uniform2f(_gl.LocFloor, LightFloor, _gain);
         Gl.Uniform2f(_gl.LocPad, 2f / Math.Max(vpW, 1), 2f / Math.Max(vpH, 1));
         Gl.Uniform1i(_gl.LocTally, tally && _tallyFrame ? 1 : 0);
+        _gl.Terms = new BuildTerms
+        {
+            View = view, GridX = GridX, GridY = GridY, GridZ = GridZ, LightCount = _gl.Uploaded, BinCap = _binCap,
+            ReflK = Weather.ReflK, Tally = tally && _tallyFrame ? 1 : 0, ProjX = p00, ProjY = p11, Near = near, Far = far,
+            Reach = _binReach, Floor = LightFloor, Gain = _gain, AttenX = _atten.X, AttenY = _atten.Y,
+            HotX = Lightmap.Movers.V ? 1f : 0f, HotY = Shadows.CubeDist.V, RelX = boundsOk ? _rel : 0f, RelY = ReachUniform,
+            PadX = 2f / Math.Max(vpW, 1), PadY = 2f / Math.Max(vpH, 1), Ran = true,
+        };
         UploadMovers();
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, _gl.BufCounts);
