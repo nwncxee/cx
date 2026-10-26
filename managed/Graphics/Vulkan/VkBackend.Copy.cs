@@ -24,8 +24,13 @@ internal sealed unsafe partial class VkBackend
         if (c.W <= 0 || c.H <= 0 || c.D <= 0) return Fault($"CopyImage {src.Desc.Label} to {dst.Desc.Label}: a {c.W}x{c.H}x{c.D} block");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
+        // a size-compatible copy between a block format and one texel per block counts its extent in the SOURCE's texels
+        bool sc = src.Desc.Fmt.IsCompressed(), dc = dst.Desc.Fmt.IsCompressed();
+        if (sc != dc && (sc ? src.Desc.Fmt : dst.Desc.Fmt).BlockBytes() != TexelBytes(sc ? dst.Desc.Fmt : src.Desc.Fmt))
+            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): a block is not one texel's size");
+        int dw = sc == dc ? c.W : dc ? c.W * 4 : c.W / 4, dh = sc == dc ? c.H : dc ? c.H * 4 : c.H / 4;
         if (!Inside(src, c.From, c.W, c.H, c.D, out string why)) return Fault($"CopyImage: the source block is {why} of {src.Desc.Label}");
-        if (!Inside(dst, c.To, c.W, c.H, c.D, out why)) return Fault($"CopyImage: the destination block is {why} of {dst.Desc.Label}");
+        if (!Inside(dst, c.To, dw, dh, c.D, out why)) return Fault($"CopyImage: the destination block is {why} of {dst.Desc.Label}");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         Transition(dst, VkImageLayout.TransferDstOptimal);
         var r = new VkImageCopy

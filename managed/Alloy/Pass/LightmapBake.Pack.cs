@@ -251,8 +251,10 @@ internal static unsafe partial class LightmapBake
         AbortBake();
         AreaSnapAbandon();   // the packing goes here: a plan waiting on one more readback is written as it stands
         if (_gl.Layers > 0 && Gl.DeleteTextures != null) ClearPages();
+        if (_vkb.Layers > 0) _vkb.ClearDue = true;
         AbortReadback(gl: true);
         if (_gl.Fence != IntPtr.Zero) { _uncached += _pendingRead.Count; if (Gl.DeleteSync != null) Gl.DeleteSync(_gl.Fence); _gl.Fence = IntPtr.Zero; }
+        if (_vkb.ReadQueued) { _uncached += _pendingRead.Count; _vkb.ReadQueued = false; }
         _pendingRead.Clear();
         _cache.Drain();
     }
@@ -315,7 +317,7 @@ internal static unsafe partial class LightmapBake
     /// newcomers shrink in place; else everything repacks at the new size. False = this Pack is over.</summary>
     private static bool FitDensity()
     {
-        int fit = _gl.Layers;
+        int fit = Layers;
         long cap = (long)(fit * (long)PageSize * PageSize * PackShare);
         long demand = BaseDemand();
         if (_placedArea + demand <= cap) return true;   // only the baseline's overflow halves the area: a fine rect evicts or drops
@@ -374,7 +376,7 @@ internal static unsafe partial class LightmapBake
         int cw = Cell(r.W), ch = Cell(r.H);
         while (true)
         {
-            if (cursor >= _gl.Layers) return false;
+            if (cursor >= Layers) return false;
             int p = cursor;
             if (_pageClass[p] != 0 && _pageClass[p] != cls) { cursor++; continue; }
             if (_shelfX[p] + cw <= PageSize && ch <= _shelfH[p])

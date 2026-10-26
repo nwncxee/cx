@@ -440,6 +440,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         if ((d.Use & BufferUse.Index) != 0) use |= VkBufferUsageFlags.IndexBuffer;
         if ((d.Use & BufferUse.Indirect) != 0) use |= VkBufferUsageFlags.IndirectBuffer;
         if ((d.Use & BufferUse.CopySrc) != 0) use |= VkBufferUsageFlags.TransferSrc;
+        if (d.Memory == MemoryKind.Readback)
+        {
+            if (!HostBuffer((ulong)d.Bytes, use, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
+                return Refused<BufferId>($"readback buffer {d.Label}: VMA refused {d.Bytes} bytes");
+            return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
+        }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
         // ponytail: Upload buffers are device-local too and written by recorded UpdateBuffer; a mapped ring when a pass streams
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };

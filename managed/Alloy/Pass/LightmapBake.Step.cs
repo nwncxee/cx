@@ -21,6 +21,7 @@ internal static unsafe partial class LightmapBake
     /// with the shadow bracket's gather staged; the caller restores its target after.</summary>
     internal static void Run(bool capturing, int frame)
     {
+        if (Renderer.OnVulkan) return;   // the Vulkan frame runs it through VkRun
         if (!Enabled) { AbortReadback(gl: true); return; }
         if (capturing) return;
         long a0 = GC.GetAllocatedBytesForCurrentThread();
@@ -30,11 +31,11 @@ internal static unsafe partial class LightmapBake
 
     private static void RunInner(int frame)
     {
-        if (!Ensure()) return;
+        if (Renderer.OnVulkan ? !VkEnsure() : !Ensure()) return;
         _frame = frame;
         TrackWindow();
         long t = Stopwatch.GetTimestamp();
-        if (!Pool()) return;
+        if (Renderer.OnVulkan ? !VkPool() : !Pool()) return;
         t = Phase(Ph.Pool, t);
         InstallAreaCache();   // CX-56: before the sweep -- the plan's set is what arms Enrol at all
         t = Phase(Ph.Area, t);
@@ -55,8 +56,12 @@ internal static unsafe partial class LightmapBake
         t = Phase(Ph.Collect, t);
         AreaSnap();
         t = Phase(Ph.Snap, t);
-        int steps = Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
-        for (int k = 0; k < steps; k++) if (!Step()) break;
+        if (Renderer.OnVulkan) VkSteps();
+        else
+        {
+            int steps = Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
+            for (int k = 0; k < steps; k++) if (!Step()) break;
+        }
         t = Phase(Ph.Steps, t);
         UploadRecords();
         Phase(Ph.Records, t);
@@ -158,19 +163,8 @@ internal static unsafe partial class LightmapBake
         _bakePage = page; _bakeLight = 0;
         _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
-        BindScratch();
-        float* zero = stackalloc float[4] { 0f, 0f, 0f, 0f };
-        Gl.ClearBufferfv(Gl.COLOR, 0, zero); Gl.ClearBufferfv(Gl.COLOR, 1, zero); Gl.ClearBufferfv(Gl.COLOR, 2, zero);
-        Gl.DepthMask(1); Gl.ClearBufferfv(Gl.DEPTH, 0, zero); Gl.DepthMask(0);
-        Gl.UseProgram(_gl.ProgBake);
-        AlloyLights.BindForDraw();
-        Gl.Uniform1i(_bMode, 0);
-        BindNullCubes();
-        Gl.Uniform1f(_bDepth, -1f);
-        uint vao = 0;
-        for (int k = 0; k < _bakeRects.Count; k++) DrawRect(_bakeRects[k], ref vao);
-        Gl.BindVertexArray(0);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
+        if (!Renderer.OnVulkan) BeginCoverage();
+        else if (!VkCoverage()) { AbortBake(); return false; }
         if (_logLeft > 0) LogNearest(page);
         int crowded = 0;
         if (_logLeft > 0)
@@ -186,6 +180,24 @@ internal static unsafe partial class LightmapBake
                                      + (_knownLogged ? "" : "; known differences on baked surfaces: no static specular beyond the one directional lobe, non-Static placeables cast no shadow from static lights, a fixed-disc penumbra where the live loop runs PCSS"));
         _knownLogged = true;
         return true;
+    }
+
+    /// <summary>The page's coverage on GL: the scratch planes cleared and every rect drawn at coverage.</summary>
+    private static void BeginCoverage()
+    {
+        BindScratch();
+        float* zero = stackalloc float[4] { 0f, 0f, 0f, 0f };
+        Gl.ClearBufferfv(Gl.COLOR, 0, zero); Gl.ClearBufferfv(Gl.COLOR, 1, zero); Gl.ClearBufferfv(Gl.COLOR, 2, zero);
+        Gl.DepthMask(1); Gl.ClearBufferfv(Gl.DEPTH, 0, zero); Gl.DepthMask(0);
+        Gl.UseProgram(_gl.ProgBake);
+        AlloyLights.BindForDraw();
+        Gl.Uniform1i(_bMode, 0);
+        BindNullCubes();
+        Gl.Uniform1f(_bDepth, -1f);
+        uint vao = 0;
+        for (int k = 0; k < _bakeRects.Count; k++) DrawRect(_bakeRects[k], ref vao);
+        Gl.BindVertexArray(0);
+        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
     }
 
     /// <summary>Diag for a surface baked wrong: the page's rect nearest the camera, its sphere, and the
@@ -325,6 +337,29 @@ internal static unsafe partial class LightmapBake
             x0 = Math.Min(x0, cx); y0 = Math.Min(y0, cy);
             x1 = Math.Max(x1, cx + cw); y1 = Math.Max(y1, cy + ch);
         }
+        int y = y0 + _enc.Row, bw = (x1 - x0) / Block, bh = Math.Min(EncodeRows, y1 - y) / Block;
+        // a rect of the page in flight was evicted or dropped between bands and the union shrank under the
+        // rows already encoded: the page starts over rather than dispatch a negative region
+        if (bw <= 0 || bh <= 0) { AbortBake(); return true; }
+        if (Renderer.OnVulkan) { if (!VkEncode(page, x0 / Block, y / Block, bw, bh)) return false; }
+        else EncodeBand(page, x0 / Block, y / Block, bw, bh);
+        _enc.Row += bh * Block;
+        if (y0 + _enc.Row < y1) return Hold;
+        if (!Renderer.OnVulkan) Gl.MemoryBarrier(Gl.ALL_BARRIER_BITS);
+        for (int k = 0; k < _bakeRects.Count; k++)
+        {
+            CellOf(_rects[_bakeRects[k]], out int cx, out int cy, out int cw, out int ch);
+            if (Renderer.OnVulkan) { VkCopyCell(page, cx, cy, cw, ch); continue; }
+            Gl.CopyImageSubData(_gl.BlkA, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexA, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
+            Gl.CopyImageSubData(_gl.BlkB, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexB, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
+        }
+        FinishLanding(page, x0, y0, x1, y1);
+        return true;
+    }
+
+    /// <summary>One encode band on GL: the scratch planes into the block images, C into the page layer.</summary>
+    private static void EncodeBand(int page, int bx, int by, int bw, int bh)
+    {
         Gl.UseProgram(_gl.ProgEnc);
         Gl.ActiveTexture(Gl.TEXTURE0); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrA);
         Gl.ActiveTexture(Gl.TEXTURE0 + 1); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrB);
@@ -333,31 +368,23 @@ internal static unsafe partial class LightmapBake
         Gl.BindImageTexture(0, _gl.BlkA, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
         Gl.BindImageTexture(1, _gl.BlkB, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
         Gl.BindImageTexture(2, _gl.TexC, 0, 0, page, Gl.WRITE_ONLY, Gl.RGBA8);
-        int y = y0 + _enc.Row, bw = (x1 - x0) / Block, bh = Math.Min(EncodeRows, y1 - y) / Block;
-        // a rect of the page in flight was evicted or dropped between bands and the union shrank under the
-        // rows already encoded: the page starts over rather than dispatch a negative region
-        if (bw <= 0 || bh <= 0) { AbortBake(); return true; }
-        int* region = stackalloc int[4] { x0 / Block, y / Block, bw, bh };
+        int* region = stackalloc int[4] { bx, by, bw, bh };
         Gl.Uniform4iv(_eRegion, 1, region);
         Gl.DispatchCompute((uint)(bw + EncGroup - 1) / EncGroup, (uint)(bh + EncGroup - 1) / EncGroup, 1);
         for (uint u = 0; u < 3; u++) Gl.BindImageTexture(u, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA8);
         Gl.ActiveTexture(Gl.TEXTURE0 + 2); Gl.BindTexture(Gl.TEXTURE_2D, 0);
         Gl.ActiveTexture(Gl.TEXTURE0 + 1); Gl.BindTexture(Gl.TEXTURE_2D, 0);
         Gl.ActiveTexture(Gl.TEXTURE0); Gl.BindTexture(Gl.TEXTURE_2D, 0);
-        _enc.Row += bh * Block;
-        if (y0 + _enc.Row < y1) return Hold;
-        Gl.MemoryBarrier(Gl.ALL_BARRIER_BITS);
-        for (int k = 0; k < _bakeRects.Count; k++)
-        {
-            CellOf(_rects[_bakeRects[k]], out int cx, out int cy, out int cw, out int ch);
-            Gl.CopyImageSubData(_gl.BlkA, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexA, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
-            Gl.CopyImageSubData(_gl.BlkB, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexB, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
-        }
+    }
+
+    /// <summary>The page's cells are in: queue (or stash) its readback, land its rects, close the page.</summary>
+    private static void FinishLanding(int page, int x0, int y0, int x1, int y1)
+    {
         // the readback: the union's raw bits into one PBO, fenced; CollectReadback writes the files. A previous
         // page's fence still open is polled, never waited on: the render thread does not stall for a cache
         // file, and a page landing that close behind another goes uncached (a miss next session, nothing else).
         if (!ReadbackIdle) { CollectReadback(); IssueStashed(); }
-        if (Gl.FenceSync == null || Gl.MapNamedBufferRange == null) _uncached += _bakeRects.Count;
+        if (!Renderer.OnVulkan && (Gl.FenceSync == null || Gl.MapNamedBufferRange == null)) _uncached += _bakeRects.Count;
         else if (ReadbackIdle) QueueReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);
         // CX-102: a copy still draining must not turn this landing into a cache miss -- its region waits and is
         // queued the moment the PBO is free. A landed rect keeps its page and place until a Repack.
@@ -367,6 +394,5 @@ internal static unsafe partial class LightmapBake
         _pageMs += ms; _pageMsN++;
         if (_logLeft-- > 0) _log?.Info($"LightmapBake: page {page} landed -- {_bakeRects.Count} rects over {_bakeLights.Count} lights in {ms:F0} ms wall" + (_gl.QBake.Measured ? $", {_gl.QBake.Avg / 1e6:F2} ms GPU per light step" : ""));
         AbortBake();
-        return true;
     }
 }

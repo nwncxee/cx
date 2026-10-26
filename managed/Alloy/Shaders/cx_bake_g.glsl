@@ -1,11 +1,13 @@
 #version 460 core
 layout(triangles) in;
 layout(triangle_strip, max_vertices = 3) out;
-in vec3 gWorld[];
-in vec3 gNrm[];
-out vec3 vBary;
-out vec3 vNrm;
-flat out vec3 vW0, vW1, vW2;
+layout(location = 0) in vec3 gWorld[];
+layout(location = 1) in vec3 gNrm[];
+layout(location = 0) out vec3 vBary;
+layout(location = 1) out vec3 vNrm;
+layout(location = 2) flat out vec3 vW0;
+layout(location = 3) flat out vec3 vW1;
+layout(location = 4) flat out vec3 vW2;
 uniform float uBakeDepth;   // NDC z: the light's step under GREATER (see BakeDepthSteps); -1 = coverage
 const float CX_LM_PAGE = 4096.0;
 const float CX_LM_PUSH = 0.6;    // texels: past the half that puts a centre inside any strip

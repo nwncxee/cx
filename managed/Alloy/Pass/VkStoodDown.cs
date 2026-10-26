@@ -26,14 +26,12 @@ internal static class VkStoodDown
     private static readonly Pass[] Passes =
     [
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
-        new(PassId.ProbeCapture, "lightmap (the bake)", "nothing is baked"),
     ];
 
     /// <summary>A row per stood-down term. <see cref="SelfCheck"/> holds this list against
     /// <see cref="VkParity.StoodDown"/>, so the two cannot drift.</summary>
     private static readonly Term[] Terms =
     [
-        new("uLmPages", "lightmap (baked static lighting)", "every surface takes the live rig"),
         new("uLightRecOn", "light.deferred (the blended class's light record)", "blended parts take the forward walk"),
         new("uMirrorZ", "light.ssrplanar (the planar reflection)", "the screen-space trace has no mirror under it"),
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
@@ -52,14 +50,12 @@ internal static class VkStoodDown
         PassId.BeamsOwned => Effects.Beams.V,
         PassId.HalosOwned => Effects.HalosOn,
         PassId.ParticlesOwned => Particles.Enabled.V,
-        PassId.ProbeCapture => Lightmap.G.Master!.V,
         _ => false,
     };
 
     /// <summary>Is the feature behind term <paramref name="name"/> switched on?</summary>
     private static bool On(string name) => name switch
     {
-        "uLmPages" => Lightmap.G.Master!.V,
         "uLightRecOn" => Lighting.Deferred.V,
         "uMirrorZ" => Lighting.SsrPlanar.V,
         "uOit" => Renderer.Oit.V > 0,
@@ -67,9 +63,10 @@ internal static class VkStoodDown
     };
 
     /// <summary>Does the Vulkan frame draw <paramref name="id"/>? The two lists in <see cref="VkParity"/> say so, one
-    /// per bracket, and the post chain and stack, which the A/B compares ahead of; every other bracket is the engine's.</summary>
+    /// per bracket, plus the post chain and stack, which the A/B compares ahead of, and the probe capture and bake, which
+    /// the A/B frame holds off on both sides; every other bracket is the engine's.</summary>
     private static bool Drawn(PassId id, Bracket bracket)
-        => bracket == Bracket.Colour ? VkParity.GlPass(id) || id is PassId.PostProcess or PassId.PostStack
+        => bracket == Bracket.Colour ? VkParity.GlPass(id) || id is PassId.PostProcess or PassId.PostStack or PassId.ProbeCapture
                                      : bracket == Bracket.Shadow && VkParity.VkShadow(id);
 
     /// <summary>The set last said, one bit per row -- passes then terms; -1 = nothing said yet.</summary>

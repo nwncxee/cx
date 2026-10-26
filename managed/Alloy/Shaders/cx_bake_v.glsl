@@ -6,8 +6,8 @@ layout(location = 3) in vec2 aChart;
 uniform int uSlot;      // the instance's CxDraw record: its model matrix is the placement
 uniform vec4 uRect;     // x, y = the rect's origin in page texels, z = page texels per atlas texel
 const float CX_LM_PAGE = 4096.0;
-out vec3 gWorld;
-out vec3 gNrm;
+layout(location = 0) out vec3 gWorld;
+layout(location = 1) out vec3 gNrm;
 void main()
 {
     CxDraw d = uDraw[uSlot];

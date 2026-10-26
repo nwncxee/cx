@@ -309,6 +309,7 @@ public sealed unsafe partial class AlloyRenderer
                         SsboSlots.ClusterCount when !VkClusterCounts.IsNull => VkClusterCounts,
                         SsboSlots.ClusterIdx when !VkClusterIdx.IsNull => VkClusterIdx,
                         SsboSlots.Movers when !VkMovers.IsNull => VkMovers,
+                        SsboSlots.Chart when !LightmapBake.VkChart.IsNull => LightmapBake.VkChart,
                         _ => s.ZeroSsbo,
                     });
                     break;

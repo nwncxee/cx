@@ -355,6 +355,8 @@ public sealed unsafe partial class AlloyRenderer
                     Weather.BindEsm(L.CoverEsm, false);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
                     SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar || VkParity.Active);
+                    VkUniformShim.Set(L.LmPages, LightmapBake.VkLivePages);
+                    VkUniformShim.Set(L.LmMovers, LightmapBake.MoverMode);
                 }
                 else
                 {
@@ -533,6 +535,7 @@ public sealed unsafe partial class AlloyRenderer
                     {
                         SsboSlots.Draw => s.Records, SsboSlots.DrawIdx => slots, SsboSlots.Bones => s.Bones, SsboSlots.TexH => s.TexH,
                         SsboSlots.Plt when !s.Plt.IsNull => s.Plt,
+                        SsboSlots.Chart when !LightmapBake.VkChart.IsNull => LightmapBake.VkChart,
                         _ => s.ZeroSsbo,
                     });
                     break;
@@ -583,6 +586,7 @@ public sealed unsafe partial class AlloyRenderer
         if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
         if (o.Name == "uVFogVol" && !VkFogVolume.IsNull) return new ImageBinding(o.Binding, VkFogVolume, s.Linear);
         if (o.Name == "uSkyMap" && !VkSkyMap.IsNull) return new ImageBinding(o.Binding, VkSkyMap, s.Linear);
+        if (LightmapBake.VkPage(o.Name, out SamplerId lms) is { IsNull: false } lm) return new ImageBinding(o.Binding, lm, lms);
         if (VkWxSampled(o.Name, out ImageId wx, out SamplerId wxs)) return new ImageBinding(o.Binding, wx, wxs);
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
