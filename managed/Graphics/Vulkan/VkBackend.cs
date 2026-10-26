@@ -199,6 +199,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             || !f12.shaderSampledImageArrayNonUniformIndexing || !f12.descriptorBindingSampledImageUpdateAfterBind)
             return "the descriptor indexing bindless textures need";
         if (!f.multiDrawIndirect) return "multiDrawIndirect";
+        if (!f.drawIndirectFirstInstance) return "drawIndirectFirstInstance (the caster bake's ownership slot)";
         if (!f.textureCompressionBC) return "BC texture compression";
         if (!f.imageCubeArray) return "cube-array images";
         if (!f.independentBlend) return "independent blend";
@@ -279,6 +280,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.depthClamp = has.depthClamp;
         feats.features.samplerAnisotropy = has.samplerAnisotropy;
         feats.features.multiDrawIndirect = true;
+        // the caster bake's commands carry the ownership slot as firstInstance, which the depth stages read as
+        // gl_BaseInstance: an indirect draw may only name a non-zero one with this feature, and without it the
+        // draw is undefined -- it rasterized nothing, and no validation message says so
+        feats.features.drawIndirectFirstInstance = true;
         feats.features.textureCompressionBC = true;
         feats.features.imageCubeArray = true;
         feats.features.independentBlend = true;
