@@ -366,7 +366,7 @@ public static unsafe class Gl
     public const uint R32UI = 0x8236, RED_INTEGER = 0x8D94;
     /// <summary>The G-buffer's three integer words and the upload format its clear names, plus the
     /// shadow visibility record's key pair (<c>cx_shrec</c>: the four packed slots and the surface key).</summary>
-    public const uint RGBA32UI = 0x8D70, RGBA_INTEGER = 0x8D99, RG32UI = 0x823C;
+    public const uint RGBA32UI = 0x8D70, RGBA_INTEGER = 0x8D99, RG32UI = 0x823C, RG_INTEGER = 0x8228;
     /// <summary>Zero the first <paramref name="bytes"/> of <paramref name="buf"/> on the GPU. A client-side
     /// upload into a buffer the previous dispatch may still read is an implicit sync the spec permits
     /// the driver to take as a stall (Khronos, Buffer Object Streaming); a clear has no such term. Unmeasured.</summary>

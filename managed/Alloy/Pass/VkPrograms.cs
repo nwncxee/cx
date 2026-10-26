@@ -12,8 +12,10 @@ namespace CX.Alloy;
 /// <see cref="VkGlsl"/>. Built without GL: Vulkan always takes the bindless path and the sky-visibility unit.</summary>
 internal static class VkPrograms
 {
-    /// <summary>The programs the Vulkan batch pass draws through.</summary>
-    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat }
+    /// <summary>The programs the Vulkan batch pass draws through. <see cref="Id.Decal"/> is not one of
+    /// <see cref="All"/>: like GL's, it is optional, built at the decal pass's first frame, and its refusal stands
+    /// that pass down rather than failing the frame.</summary>
+    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal }
 
     internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
 
@@ -53,10 +55,11 @@ internal static class VkPrograms
                                 log, what, out string v, out string f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
             }
-            case Id.Lit or Id.LitDeferred:
+            case Id.Lit or Id.LitDeferred or Id.Decal:
             {
                 (string v, string f) = LitTexts(log, what);
                 if (id == Id.LitDeferred) f = Programs.WithDeferred(f);
+                else if (id == Id.Decal) f = ShaderStages.WithDefine(f, "CX_DECAL_WRITE 1");
                 return (Final(v, log, what, false), Final(f, log, what, false));
             }
             case Id.Depth:
@@ -90,6 +93,17 @@ internal static class VkPrograms
                                 Final(GlProgram.Lib(t.Fs, log, what), log, what, true), Units, glDepth: false);
     }
 
+    /// <summary>The hosted sky's program for content stage <paramref name="resref"/>, translated for Vulkan from the
+    /// same text <see cref="SkyStage"/> compiles: Alloy's fullbright vertex stage and the <c>cx_sky_fs</c> wrapper with
+    /// the content stage spliced into its region. Null when that stage is not in the resource chain.</summary>
+    internal static VkProgramText? SkyText(string resref, ExtenderLog? log)
+    {
+        if (!SkyStage.Texts(resref, native: false, out var pair, out _)) return null;
+        string what = $"VkPrograms sky {resref}";
+        return VkGlsl.Translate(Final(GlProgram.Lib(pair.Vs, log, what), log, what, true),
+                                Final(GlProgram.Lib(pair.Fs, log, what), log, what, true), Units, glDepth: false);
+    }
+
     /// <summary>The lit pair after the stage overrides and library swaps, before the splice: what GL's lit build and
     /// its twins start from.</summary>
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)
@@ -115,7 +129,7 @@ internal static class VkPrograms
         foreach (string leaf in VulkanToolchain.Libraries) staged &= VulkanToolchain.Load(leaf);
         if (!staged) { check.Skip("the staged shaderc did not load"); return; }
         var counts = new List<string>();
-        foreach (Id id in All)
+        foreach (Id id in Enum.GetValues<Id>())
         {
             VkProgramText t = Text(id, log);
             var spirv = new Dictionary<ShaderKind, byte[]>();

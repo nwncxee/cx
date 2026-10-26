@@ -16,8 +16,6 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe partial class Beams
 {
-    /// <summary>The Aurora primitive id <c>PartBeam::Draw</c> hard-codes.</summary>
-    private const int BeamPrim = 4;
     /// <summary><c>projectionWorldZClip</c>: the world z every back-facing beam vertex is extruded down to.
     /// <c>RenderBeams</c> @0x46add0 passes the shader-constant INDEX in <c>edi</c> with the value in xmm0, so
     /// a decompiler that drops the float argument reads it as a literal 1.0 -- which truncates every shaft

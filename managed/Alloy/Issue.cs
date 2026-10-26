@@ -300,7 +300,7 @@ internal static unsafe class Issue
     /// <summary>Membership is MEASURED (<see cref="_gPrepassed"/>, written by the prepass as it walks); only
     /// the reason a batch is out is inferred, and only to colour <c>/alloy viz 35</c>. Predicting membership
     /// from the class was the bug this replaces.</summary>
-    private static int AoWhy(int g)
+    internal static int AoWhy(int g)
         => _gPrepassed[g] ? AoIn
          : g >= _gOpaqueEnd ? AoBlended
          : _gCls[g] == (byte)AlloyClass.Cutout ? AoCutout
@@ -453,7 +453,7 @@ internal static unsafe class Issue
                     // no blended batch reads SSAO (AoBlended) -- a bound, attached depth is a driver decompress
                     SsaoPass.BindForDraw(SsaoPass.Live && !_capturing && !_oitOn, PostChain.DepthTex, depthToo: wantProg == 8);
                     Gl.Uniform2f(L.DecalZ, DecalLayer.Z0, DecalLayer.Z1);
-                    Gl.Uniform1i(L.SsaoHalf, SsaoPass.Half && !VkParity.Active ? 1 : 0);
+                    Gl.Uniform1i(L.SsaoHalf, SsaoPass.Half ? 1 : 0);
                     Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
                     UploadMaterialModel(L.Material);
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing || VkParity.Active);
@@ -494,7 +494,7 @@ internal static unsafe class Issue
             // fAlphaDiscardValue, which is a global there and a uniform here.
             if (lit)
             {
-                int ssao = SsaoPass.Live && !_capturing && !VkParity.Active ? AoWhy(g) : 0;
+                int ssao = SsaoPass.Live && !_capturing ? AoWhy(g) : 0;
                 if (ssao != boundSsao)
                 {
                     boundSsao = ssao;
@@ -502,7 +502,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(litAoDirect, ssao > 0 ? SsaoPass.Direct : 0f);
                 }
                 // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
-                int dm = VkParity.Active ? 0 : decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
+                int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
                 if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
                 int sm = interior ? 1 : 0;
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }

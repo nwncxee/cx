@@ -1148,6 +1148,9 @@ public sealed unsafe partial class AlloyRenderer
         {
             uint prog = _skProg[i] != 0 ? _skProg[i] : Programs._prog46;
             if (prog == 0) continue;
+            // the A/B frame draws the sky Vulkan drew and no more: a dome Vulkan could not host is a dome
+            // neither side has, which is what makes the two frames comparable
+            if (VkParity.Active && !VkSkyDrew(i)) continue;
             uint src = Issue.BlendGl(_skSrc[i]), dst = Issue.BlendGl(_skDst[i]);
             if (src != boundSrc || dst != boundDst) { Gl.BlendFunc(src, dst); boundSrc = src; boundDst = dst; }
             if (prog != boundProg)

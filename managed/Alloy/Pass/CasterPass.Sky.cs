@@ -61,7 +61,7 @@ public sealed unsafe partial class CasterPass
         Matrix4x4 vp = fit.Vp;
         // Full detail and the STATIC set, for the cover map's reason: this is read as geometry, not as a
         // shadow, and a simplified roof edge moves the boundary a whole alley's ambient turns on.
-        if (RenderView(_gl.SkyDepth, SkyView.MapSize, 0, &vp, SkyMath.Down, fit.Centre, fit.Radius, fit.Radius,
+        if (RenderView(CasterMap.Other, _gl.SkyDepth, SkyView.MapSize, 0, &vp, SkyMath.Down, fit.Centre, fit.Radius, fit.Radius,
                        point: false, set: CasterGather.SetStatic, detail: false))
         {
             _sky.Baked = true; _sky.Key = fit; _sky.KeyGen = gen; _sky.Pending = true;

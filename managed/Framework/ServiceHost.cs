@@ -74,9 +74,13 @@ public static class ServiceHost
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
+        CX.Alloy.AlloyRenderer.VkDeferredSelfCheck(log);   // ...and the deferred path's three compute stages, on bindings the host binds
         CX.Graphics.ProgramBinary.SelfCheck(log);   // the program-binary cache key: every stage's text, its type, the driver
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
         CX.Alloy.VkParity.SelfCheck(log);   // the Vulkan A/B's comparator, against hand-worked differences
+        CX.Alloy.VkStoodDown.SelfCheck(log);   // every term Vulkan stands down has a row saying what is not drawn
+        CX.Alloy.AlloyRenderer.VkDecalSelfCheck(log);   // the Vulkan decal layer's targets, blends and clear against GL's
+        CX.Alloy.AlloyRenderer.VkIdSelfCheck(log);   // the Vulkan prepass's vis-ID slot against the stages that write it
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
         CX.Graphics.Rhi.VkUniformShim.SelfCheck(log);   // GL's uniform setters land in a Vulkan block at the members' offsets
         CX.Graphics.Rhi.GlFormats.SelfCheck(log);   // the seam's formats against the GL headers' token values

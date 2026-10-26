@@ -392,7 +392,10 @@ public sealed unsafe partial class AlloyRenderer
         if (onVulkan)
         {
             long tVk = FrameZones.Now;
-            VulkanFrame.Run(_log, f.VpClean, viewport, display, f.Near, f.Far, f.LightingOn, f.Perspective, f.Groups);
+            // CX-273: the decal tests' view-depth terms, which on GL the decal pass itself publishes
+            DecalLayer.SetCamera(in f.Proj);
+            VulkanFrame.Run(_log, f.VpClean, f.View, f.Proj, viewport, display, f.Near, f.Far, f.LightingOn,
+                            f.Perspective, f.Groups);
             FrameZones.Add(FrameZones.Zone.Vulkan, tVk);
         }
         long batches1 = Counters._batches, draws1 = Counters._draws;
@@ -489,7 +492,7 @@ public sealed unsafe partial class AlloyRenderer
                     GpuBegin(GpuTerm.Decals);
                     DecalLayer.Run(_gOpaqueEnd, DecalEnd(), &vp, in proj, viewport, near, far,
                                    lightingOn && perspective && !_capturing && DepthResource.Filled(PassGen)
-                                   && viewport[0] == 0 && viewport[1] == 0 && !ab);
+                                   && viewport[0] == 0 && viewport[1] == 0);
                     GpuEnd(GpuTerm.Decals);
                     // CX-51: the reflection records ride the colour pass from here to Reflections
                     if (perspective && !_capturing && !ab) Ssr.Begin(viewport);

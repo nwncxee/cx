@@ -96,6 +96,13 @@ internal static unsafe class VkUniformShim
         if (!p.IsEmpty) MemoryMarshal.AsBytes(lanes).CopyTo(p);
     }
 
+    /// <summary>Integer lanes of one element (an ivec2, an ivec4) into the open capture.</summary>
+    internal static void Set(int loc, ReadOnlySpan<int> lanes)
+    {
+        Span<byte> p = At(loc, 0, lanes.Length * sizeof(int));
+        if (!p.IsEmpty) MemoryMarshal.AsBytes(lanes).CopyTo(p);
+    }
+
     /// <summary>Writes that named a location the block does not have or overran it, since boot.</summary>
     internal static long Dropped => _s.Dropped;
 

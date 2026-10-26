@@ -153,7 +153,8 @@ public sealed unsafe partial class CasterPass
     /// <summary>May the colour pass sample the cubes right now? Same single test as
     /// <see cref="CascadesFresh"/>: rendered on the most recent frame tick or not at all, which covers the
     /// vanilla verdict, a module unload and a disarm together.</summary>
-    internal static bool CubesFresh => CubeCount > 0 && _gl.CubeTex != 0 && _cubeStamp == _frameSeq;
+    internal static bool CubesFresh
+        => CubeCount > 0 && (Renderer.OnVulkan ? !_vk.Cubes.IsNull : _gl.CubeTex != 0) && _cubeStamp == _frameSeq;
 
     /// <summary>Cube slot holding <paramref name="id"/>'s shadow, or -1. Called once per area light from the
     /// light walk, so it is O(lights * cubes) = a few hundred comparisons a frame, alloc-free.</summary>
@@ -293,7 +294,7 @@ public sealed unsafe partial class CasterPass
         bool scannedAll = true;
         // #305: the split runs only when its pool exists -- shadow.dyncount 0 or a refused allocation is the
         // combined bake everywhere, exactly as /shadow split 0 spells it.
-        bool split = _split && _cubeDynPages > 0 && _gl.CubeDynTex != 0;
+        bool split = _split && _cubeDynPages > 0 && (Renderer.OnVulkan || _gl.CubeDynTex != 0);
         // #322 review: one hidden UNBAKED slot per frame bakes anyway, nearest first -- the warm-up drain.
         // Without it a camera turn finds every hidden slot unbaked at once and the ring smears the burst
         // as visible shadow pop-in; with it the churn is paid gradually while hidden, which is what the
@@ -519,7 +520,7 @@ public sealed unsafe partial class CasterPass
                 _cubeRoamSlots++;
                 bool cleared = true;
                 for (int f = 0; f < CubeFaces && !_cubeRoam[slot] && cleared; f++)
-                    cleared = ClearLayer(_gl.CubeTex, _cubeSize, slot * CubeFaces + f);
+                    cleared = ClearLayer(CasterMap.Cubes, _gl.CubeTex, _cubeSize, slot * CubeFaces + f);
                 _cubeBaked[slot] = false;
                 if (!cleared) { scannedAll = false; break; }   // _cubeRoam stays false: the clear is retried
                 _cubeRoam[slot] = true;
@@ -557,7 +558,7 @@ public sealed unsafe partial class CasterPass
                 {
                     Vector3 fwd = ShadowMath.CubeFaceForward(f);
                     Matrix4x4 vp = ShadowMath.PointLightFaceViewProj(pos, f, CubeNearPlane, far);
-                    whole = RenderView(_gl.CubeTex, _cubeSize, slot * CubeFaces + f, &vp,
+                    whole = RenderView(CasterMap.Cubes, _gl.CubeTex, _cubeSize, slot * CubeFaces + f, &vp,
                                        fwd, pos, far, 0f, point: true,
                                        set: combined ? CasterGather.SetAll : CasterGather.SetStatic);
                     lightCreatures += _submitCreatures;
@@ -608,7 +609,7 @@ public sealed unsafe partial class CasterPass
                 {
                     if ((bake >> f & 1) == 0) continue;
                     Matrix4x4 vp = ShadowMath.PointLightFaceViewProj(dpos, f, CubeNearPlane, far);
-                    dynWhole = RenderView(_gl.CubeDynTex, _cubeDynSize, page * CubeFaces + f, &vp,
+                    dynWhole = RenderView(CasterMap.CubeDyn, _gl.CubeDynTex, _cubeDynSize, page * CubeFaces + f, &vp,
                                           ShadowMath.CubeFaceForward(f), dpos, far, 0f, point: true,
                                           set: roam ? CasterGather.SetAll : CasterGather.SetDynamic, receiver: true);
                     _cubeDynBakedFaces++;
@@ -647,7 +648,7 @@ public sealed unsafe partial class CasterPass
                     // cannot disagree except in the direction that costs a bake
                     bool evt = EventInFit(at, fwd, r, 0f);
                     if (!PairShadows.TileStale(pi, evt, pairForce)) { PairShadows.TileHeld(pi); continue; }
-                    pairWhole = RenderView(PairShadows.Tex, PairShadows.TileSize, pi, &pvp,
+                    pairWhole = RenderView(CasterMap.Other, PairShadows.Tex, PairShadows.TileSize, pi, &pvp,
                                            fwd, at, r, 0f, point: false, set: CasterGather.SetDynamic);
                     if (pairWhole) PairShadows.TileBaked(pi, evt);
                     _pairBakedTiles++;
@@ -781,7 +782,7 @@ public sealed unsafe partial class CasterPass
                 // baked lighting -- and the bake's cache keys say nothing about a detail level.
                 ? GatherSubmit(tex, size, f, &vp, ShadowMath.CubeFaceForward(f), pos, far, 0f, true,
                                0f, 0f, CasterGather.SetStatic, false)
-                : ClearLayer(tex, size, f);
+                : ClearLayer(CasterMap.Other, tex, size, f);
             if (!ok) return false;
         }
         return true;

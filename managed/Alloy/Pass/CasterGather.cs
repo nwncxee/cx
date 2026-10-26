@@ -1,10 +1,44 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 
 namespace CX.Alloy;
+
+/// <summary>The <c>CxGather</c> block in the GLSL's own member order (<c>cx_gatherblk.glsl</c>). C# sequential
+/// layout IS std140 here: every vec3 is followed by the float that fills its fourth lane, and the only array
+/// is of vec4.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct GatherBlock
+{
+    public CullPlanes Planes;
+    public Vector3 Focus;
+    public float Reach;
+    public Vector3 Dir;
+    public float Along;
+    public float LodR1, LodR2;
+    public int DrawN, ViewN, Point, Cull, Set, Rx, Groups;
+
+    /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into its
+    /// neighbour -- a wrong cull plane or another view's detail thresholds, with nothing in the log.</summary>
+    internal static void Pin(Checker check)
+    {
+        var b = default(GatherBlock);
+        Std140.Pin(check, ShaderSource.Get("cx_gatherblk.glsl"), "CxGather", UboSlots.Gather, Unsafe.SizeOf<GatherBlock>(),
+        [
+            ("uPlanes", Std140.At(ref b, ref b.Planes)), ("uFocus", Std140.At(ref b, ref b.Focus)),
+            ("uReach", Std140.At(ref b, ref b.Reach)), ("uDir", Std140.At(ref b, ref b.Dir)),
+            ("uAlong", Std140.At(ref b, ref b.Along)), ("uLodR1", Std140.At(ref b, ref b.LodR1)),
+            ("uLodR2", Std140.At(ref b, ref b.LodR2)), ("uDrawN", Std140.At(ref b, ref b.DrawN)),
+            ("uViewN", Std140.At(ref b, ref b.ViewN)), ("uPoint", Std140.At(ref b, ref b.Point)),
+            ("uCull", Std140.At(ref b, ref b.Cull)), ("uSet", Std140.At(ref b, ref b.Set)),
+            ("uRx", Std140.At(ref b, ref b.Rx)), ("uGroups", Std140.At(ref b, ref b.Groups)),
+        ]);
+    }
+}
 
 /// <summary>
 /// Shadow caster selection in compute, in <see cref="CullPass"/>'s shape (ADR 0018): one staging pass per
@@ -76,10 +110,8 @@ internal static unsafe class CasterGather
     {
         public uint Prog;
         public bool Failed;
-        public int UDrawN, UPoint, UFocus, UDir, UReach, UAlong, UCull, USet, URx, UGroups, UPlanes;
-        /// <summary>The view's two detail thresholds: a caster whose bound clears the first bakes its base
-        /// run, the second its middle one, below both its coarsest.</summary>
-        public int ULodR1, ULodR2;
+        /// <summary>The <c>CxGather</c> block both dispatches read, rewritten before each of them.</summary>
+        public readonly UniformBlock<GatherBlock> Blk = new();
         public uint SrcBuf;
         public int SrcCap;
         /// <summary>The DYNAMIC source: just the staged records whose set flag is 1, the same layout and
@@ -108,7 +140,6 @@ internal static unsafe class CasterGather
         public readonly bool[] ReadDyn = new bool[3];
         public uint LayerProg;
         public bool LayerFailed;
-        public int LuDrawN, LuViewN, LuCull, LuRx, LuGroups, LuPlanes;
         public uint ViewBuf;
         public int ViewCap;
         public uint CastBuf;
@@ -172,19 +203,6 @@ internal static unsafe class CasterGather
         if (_gl.Failed || !Capable()) { _gl.Failed = true; return false; }
         _gl.Prog = GlProgram.Compute(GatherCs, _log, "CasterGather caster cull");
         if (_gl.Prog == 0) { _gl.Failed = true; return false; }
-        _gl.UDrawN = GlProgram.Loc(_gl.Prog, "uDrawN");
-        _gl.UPoint = GlProgram.Loc(_gl.Prog, "uPoint");
-        _gl.UFocus = GlProgram.Loc(_gl.Prog, "uFocus");
-        _gl.UDir = GlProgram.Loc(_gl.Prog, "uDir");
-        _gl.UReach = GlProgram.Loc(_gl.Prog, "uReach");
-        _gl.UAlong = GlProgram.Loc(_gl.Prog, "uAlong");
-        _gl.UCull = GlProgram.Loc(_gl.Prog, "uCull");
-        _gl.USet = GlProgram.Loc(_gl.Prog, "uSet");
-        _gl.URx = GlProgram.Loc(_gl.Prog, "uRx");
-        _gl.UGroups = GlProgram.Loc(_gl.Prog, "uGroups");
-        _gl.UPlanes = GlProgram.Loc(_gl.Prog, "uPlanes");
-        _gl.ULodR1 = GlProgram.Loc(_gl.Prog, "uLodR1");
-        _gl.ULodR2 = GlProgram.Loc(_gl.Prog, "uLodR2");
         _log?.Info("CasterGather: armed -- shadow caster selection in compute over the shared CxCullSphere " +
                    "bounds, glMultiDrawElementsIndirectCount submission (/shadow gather 0 disables the cull)");
         return true;
@@ -256,6 +274,30 @@ internal static unsafe class CasterGather
         return true;
     }
 
+    /// <summary>One per-view dispatch's block, the ONE place those terms are staged -- both backends fill it here,
+    /// so neither can hand the cull a term the other does not.</summary>
+    internal static void View(ref GatherBlock b, int drawN, int groups, Vector3 focus, Vector3 dir, float reach,
+                              float along, bool point, float lodR1, float lodR2, int set, bool receiver, int cull)
+    {
+        MemoryMarshal.Cast<float, Vector4>(Planes).CopyTo(b.Planes);
+        b.Focus = focus; b.Dir = dir; b.Reach = reach; b.Along = along;
+        b.LodR1 = lodR1; b.LodR2 = lodR2;
+        b.DrawN = drawN; b.ViewN = 0; b.Groups = groups;
+        b.Point = point ? 1 : 0; b.Cull = cull; b.Set = set;
+        b.Rx = receiver && Receiver != 0 ? 1 : 0;
+    }
+
+    /// <summary>...and the layered dispatch's, whose per-view terms come out of the view table instead.</summary>
+    internal static void Layer(ref GatherBlock b, int drawN, int viewN, int groups, int cull)
+    {
+        MemoryMarshal.Cast<float, Vector4>(Planes).CopyTo(b.Planes);
+        b.Focus = default; b.Dir = default; b.Reach = 0f; b.Along = 0f;
+        b.LodR1 = 0f; b.LodR2 = 0f;
+        b.DrawN = drawN; b.ViewN = viewN; b.Groups = groups;
+        b.Point = 0; b.Cull = cull; b.Set = 0;
+        b.Rx = Receiver != 0 ? 1 : 0;
+    }
+
     /// <summary>Select this view's casters. <paramref name="point"/> picks the cube face's cone test over the
     /// cascade fit's axis test; a <see cref="AlloyRenderer.NeverCull"/> sphere is exempt from the reach
     /// tests -- the same exemption, from the same buffer, the colour cull applies.</summary>
@@ -277,22 +319,8 @@ internal static unsafe class CasterGather
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCast, _gl.CastBuf);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCmd, _gl.CmdBuf[_gl.At]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCount, _gl.CntBuf[_gl.At]);
-        Gl.Uniform1i(_gl.UDrawN, drawN);
-        Gl.Uniform1i(_gl.UPoint, point ? 1 : 0);
-        Gl.Uniform1i(_gl.UCull, Mode != 0 ? 1 : 0);
-        Gl.Uniform1i(_gl.USet, set);
-        Gl.Uniform1i(_gl.URx, receiver && Receiver != 0 ? 1 : 0);
-        Gl.Uniform1i(_gl.UGroups, _gl.Groups);
-        fixed (float* pl = Planes) Gl.Uniform4fv(_gl.UPlanes, 6, pl);
-        float* v = stackalloc float[3];
-        v[0] = focus.X; v[1] = focus.Y; v[2] = focus.Z;
-        Gl.Uniform3fv(_gl.UFocus, 1, v);
-        v[0] = dir.X; v[1] = dir.Y; v[2] = dir.Z;
-        Gl.Uniform3fv(_gl.UDir, 1, v);
-        Gl.Uniform1f(_gl.UReach, reach);
-        Gl.Uniform1f(_gl.UAlong, along);
-        Gl.Uniform1f(_gl.ULodR1, lodR1);
-        Gl.Uniform1f(_gl.ULodR2, lodR2);
+        View(ref _gl.Blk.Stage, drawN, _gl.Groups, focus, dir, reach, along, point, lodR1, lodR2, set, receiver, Mode != 0 ? 1 : 0);
+        _gl.Blk.Bind(UboSlots.Gather);
         Gl.DispatchCompute((uint)((drawN + GroupSize - 1) / GroupSize), 1, 1);
         // The commands are consumed as indirect state and the counts as parameter-buffer state; neither is in
         // the shader-storage class, so SHADER_STORAGE alone leaves both undefined.
@@ -390,6 +418,10 @@ internal static unsafe class CasterGather
     /// stages -- <c>AlloyRenderer.DrawBufDecl</c>'s pattern, so the three cannot drift apart.</summary>
     internal static string ViewTblDecl => ShaderSource.Get("cx_viewtbl.glsl");
 
+    /// <summary>The per-dispatch block's declaration, spliced into both dispatches from the one text, so neither
+    /// can drift from <see cref="GatherBlock"/>.</summary>
+    internal static string GatherBlockDecl => ShaderSource.Get("cx_gatherblk.glsl");
+
     /// <summary>The per-slot caster sphere upload (<c>AlloyRenderer._dCastSph</c>), beside the colour cull's: always
     /// geometric, so a posed skin or dangly part the colour cull exempts is still reach-culled per shadow view.</summary>
     internal static void UploadCasterSpheres(Sphere* spheres, int slots)
@@ -411,12 +443,6 @@ internal static unsafe class CasterGather
         if (_gl.LayerFailed || !Capable()) { _gl.LayerFailed = true; return false; }
         _gl.LayerProg = GlProgram.Compute(LayerCs, _log, "CasterGather layered caster cull");
         if (_gl.LayerProg == 0) { _gl.LayerFailed = true; return false; }
-        _gl.LuDrawN = GlProgram.Loc(_gl.LayerProg, "uDrawN");
-        _gl.LuViewN = GlProgram.Loc(_gl.LayerProg, "uViewN");
-        _gl.LuCull = GlProgram.Loc(_gl.LayerProg, "uCull");
-        _gl.LuRx = GlProgram.Loc(_gl.LayerProg, "uRx");
-        _gl.LuGroups = GlProgram.Loc(_gl.LayerProg, "uGroups");
-        _gl.LuPlanes = GlProgram.Loc(_gl.LayerProg, "uPlanes");
         return true;
     }
 
@@ -456,12 +482,8 @@ internal static unsafe class CasterGather
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCmd, _gl.LyCmd[_gl.LyAt]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCount, _gl.LyCnt[_gl.LyAt]);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindView, _gl.ViewBuf);
-        Gl.Uniform1i(_gl.LuDrawN, srcN);
-        Gl.Uniform1i(_gl.LuViewN, viewN);
-        Gl.Uniform1i(_gl.LuCull, Mode != 0 ? 1 : 0);
-        Gl.Uniform1i(_gl.LuRx, Receiver != 0 ? 1 : 0);
-        Gl.Uniform1i(_gl.LuGroups, _gl.Groups);
-        fixed (float* pl = Planes) Gl.Uniform4fv(_gl.LuPlanes, 6, pl);
+        Layer(ref _gl.Blk.Stage, srcN, viewN, _gl.Groups, Mode != 0 ? 1 : 0);
+        _gl.Blk.Bind(UboSlots.Gather);
         Gl.DispatchCompute((uint)((srcN + GroupSize - 1) / GroupSize), (uint)viewN, 1);
         Gl.MemoryBarrier(Gl.SHADER_STORAGE_BARRIER_BIT | Gl.COMMAND_BARRIER_BIT | Gl.BUFFER_UPDATE_BARRIER_BIT);
         Gl.BindBuffer(Gl.DRAW_INDIRECT_BUFFER, _gl.LyCmd[_gl.LyAt]);
@@ -536,18 +558,8 @@ internal static unsafe class CasterGather
         layout(std430, binding = 8) readonly buffer CxGatherSrc  { uint uSrc[]; };
         layout(std430, binding = 10) writeonly buffer CxGatherCmd { uint uCmd[]; };
         layout(std430, binding = 11) buffer CxGatherCount         { uint uCnt[]; };
-        uniform int uDrawN;
-        uniform int uPoint;
-        uniform int uCull;
-        uniform int uSet;
-        uniform vec3 uFocus;
-        uniform vec3 uDir;
-        uniform float uReach;
-        uniform float uAlong;
-        uniform int uRx;
-        uniform int uGroups;
-        uniform float uLodR1;
-        uniform float uLodR2;
+
+        """ + GatherBlockDecl + """
 
         """ + ReceiverCullLib + """
         void main()
@@ -617,11 +629,8 @@ internal static unsafe class CasterGather
         layout(std430, binding = 11) buffer CxGatherCount         { uint uCnt[]; };
 
         """ + ViewTblDecl + """
-        uniform int uDrawN;
-        uniform int uViewN;
-        uniform int uCull;
-        uniform int uRx;
-        uniform int uGroups;
+
+        """ + GatherBlockDecl + """
 
         """ + ReceiverCullLib + """
         void main()

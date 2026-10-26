@@ -54,8 +54,6 @@ internal sealed unsafe partial class VkBackend
         _cmd = s.Cmd;
         _slot = s;
         _inPass = _rendering = false;
-        _viewport = default;
-        ResetDepthRange();
         TimeBegin(slot);
         RecycleBindless();
         BindBindless();
@@ -130,9 +128,9 @@ internal sealed unsafe partial class VkBackend
                 Op.EndRenderPass => End(),
                 Op.SetPipeline => Bind(r.Read<PipelineId>()),
                 Op.SetViewport => Viewport(r.Read<Rect>()),
+                Op.SetDepthRange => DepthRange(r.Read<DepthRangeCmd>()),
                 Op.SetScissor => Scissor(r.Read<Rect>()),
                 Op.SetDepthBias => DepthBias(r.Read<DepthBiasCmd>()),
-                Op.SetDepthRange => DepthRange(r.Read<DepthRangeCmd>()),
                 Op.BindSet => BindSet(r.Read<BindSetCmd>(), ref r),
                 Op.BindIndexBuffer => IndexBuffer(r.Read<IndexBufferCmd>()),
                 Op.Draw => Draw(r.Read<DrawCmd>()),
@@ -146,7 +144,9 @@ internal sealed unsafe partial class VkBackend
                 Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
                 Op.SetDepthState => Depth(r.Read<DepthState>()),
                 Op.SetRasterState => Raster(r.Read<RasterState>()),
-                // ponytail: image copies and blits join with the first pass that records them
+                Op.ReadImages => Readable(r.Read<ReadImagesCmd>(), ref r),
+                Op.CopyImage => CopyImg(r.Read<CopyImageCmd>()),
+                Op.BlitImage => BlitImg(r.Read<BlitImageCmd>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
@@ -165,7 +165,9 @@ internal sealed unsafe partial class VkBackend
         _pendDepth = h.Depth;
         _inPass = true;
         _scissorSet = false;
-        ResetDepthRange();
+        // every pass starts at the whole window-depth range, so a pass that collapses it (the sky dome) or stacks
+        // views in it (the GUI) does not leave the next one drawing where it left off
+        _depthMin = 0f; _depthMax = 1f;
         return true;
     }
 
@@ -186,21 +188,24 @@ internal sealed unsafe partial class VkBackend
         if (_rendering) return true;
         if (!_inPass) return Fault("a draw outside a render pass");
         VkRenderingAttachmentInfo* att = stackalloc VkRenderingAttachmentInfo[Math.Max(_pendCount, 1)];
-        int w = 0, h = 0;
+        int w = 0, h = 0, layers = 1;
         for (int i = 0; i < _pendCount; i++)
         {
             ColorAttachment c = _pend[i];
             // a null image routes the slot nowhere, so the slots after it keep their indices
             if (c.Image.IsNull) { att[i] = new VkRenderingAttachmentInfo { imageView = default, imageLayout = VkImageLayout.Undefined }; continue; }
             if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: stale image");
-            if (c.Mip != 0 || c.Layer > 0) return Fault($"render pass colour {i}: mip {c.Mip} layer {c.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (c.Mip != 0) return Fault($"render pass colour {i}: mip {c.Mip} -- only mip 0 on the Vulkan backend yet");
+            VkImageView cv = AttachView(img, c.Layer);
+            if (cv.IsNull) return Fault($"render pass colour {i}: layer {c.Layer} is past {img.Desc.Label}");
+            if (c.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.ColorAttachmentOptimal);
             var clear = new VkClearValue();
             clear.color.float32[0] = c.Clear.X; clear.color.float32[1] = c.Clear.Y;
             clear.color.float32[2] = c.Clear.Z; clear.color.float32[3] = c.Clear.W;
             att[i] = new VkRenderingAttachmentInfo
             {
-                imageView = img.View, imageLayout = VkImageLayout.ColorAttachmentOptimal,
+                imageView = cv, imageLayout = VkImageLayout.ColorAttachmentOptimal,
                 loadOp = c.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
                 storeOp = c.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
@@ -213,14 +218,17 @@ internal sealed unsafe partial class VkBackend
         {
             DepthAttachment d = _pendDepth;
             if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault("render pass depth: stale image");
-            if (d.Mip != 0 || d.Layer > 0) return Fault($"render pass depth: mip {d.Mip} layer {d.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (d.Mip != 0) return Fault($"render pass depth: mip {d.Mip} -- only mip 0 on the Vulkan backend yet");
             if (!img.Desc.Fmt.IsDepth()) return Fault($"render pass depth: {img.Desc.Label} is {img.Desc.Fmt}, not a depth format");
+            VkImageView dv = AttachView(img, d.Layer);
+            if (dv.IsNull) return Fault($"render pass depth: layer {d.Layer} is past {img.Desc.Label}");
+            if (d.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.DepthStencilAttachmentOptimal);
             var clear = new VkClearValue();
             clear.depthStencil = new VkClearDepthStencilValue(d.Depth, 0);
             depth = new VkRenderingAttachmentInfo
             {
-                imageView = img.View, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
+                imageView = dv, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
                 loadOp = d.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
                 storeOp = d.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
@@ -231,7 +239,7 @@ internal sealed unsafe partial class VkBackend
         var area = new VkRect2D { extent = new VkExtent2D { width = (uint)w, height = (uint)h } };
         var ri = new VkRenderingInfo
         {
-            renderArea = area, layerCount = 1, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
+            renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
         _vkd.vkCmdBeginRendering(_cmd, &ri);
@@ -320,7 +328,11 @@ internal sealed unsafe partial class VkBackend
     private bool Viewport(Rect v)
     {
         _viewport = v;
-        return SetViewport();
+        // same numbers as GL's: both put framebuffer row 0 at y 0 and NDC -1 on it, so an imported image
+        // reads back the same way up in either API
+        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = _depthMin, maxDepth = _depthMax };
+        _vkd.vkCmdSetViewport(_cmd, 0, 1, &vp);
+        return true;
     }
 
     private bool Scissor(Rect s)
@@ -367,6 +379,17 @@ internal sealed unsafe partial class VkBackend
         if (!_buffers.TryGet(u.Buffer.Value, out VkBuf buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
         bi[b] = new VkDescriptorBufferInfo { buffer = buf.Buffer, offset = (ulong)u.Offset, range = u.Bytes == 0 ? Vortice.Vulkan.Vulkan.VK_WHOLE_SIZE : (ulong)u.Bytes };
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + u.Slot, descriptorCount = 1, descriptorType = type, pBufferInfo = (VkDescriptorBufferInfo*)Unsafe.AsPointer(ref bi[b++]) };
+        return true;
+    }
+
+    /// <summary>Hand the named images over for sampling, outside any render pass: a bind of one inside a pass
+    /// after its first draw can place no barrier, and a target the frame just wrote is in its write layout.</summary>
+    private bool Readable(ReadImagesCmd h, ref CommandReader r)
+    {
+        ReadOnlySpan<ImageId> ids = r.Span<ImageId>(h.Images);
+        if (_inPass) return Fault("ReadImages inside a render pass -- the hand-over is a barrier, which a pass forbids");
+        foreach (ImageId id in ids)
+            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
         return true;
     }
 

@@ -494,10 +494,12 @@ public sealed unsafe partial class AlloyRenderer
     // #125: the sky's own draw list, staged after the batch records and issued one draw at a time -- a
     // skybox is a handful of parts and each carries its own captured matrix, so there is nothing to group.
     internal const int MaxSkyDraws = 1024;
-    private static readonly int[] _skVao = new int[MaxSkyDraws];
-    /// <summary>The GL VAO NAME a DB sky draw binds, 0 when the draw is the engine path's and
-    /// <see cref="_skVao"/>'s index into the harvest cache is the answer. The arena hands out a name
-    /// directly, exactly as <c>Beams.EnrollDb</c> takes one.</summary>
+    /// <summary>The mesh arena vertex format a DB sky draw's range lives in, as <see cref="Db.MeshArena.Fmt"/>:
+    /// the GL pass binds <see cref="_skVaoName"/> and never reads this, and the Vulkan pass has no VAO and binds
+    /// the format's own buffer and layout.</summary>
+    private static readonly int[] _skFmt = new int[MaxSkyDraws];
+    /// <summary>The GL VAO NAME a DB sky draw binds. The arena hands out a name directly, exactly as
+    /// <c>Beams.EnrollDb</c> takes one.</summary>
     private static readonly uint[] _skVaoName = new uint[MaxSkyDraws];
     private static readonly uint[] _skMode = new uint[MaxSkyDraws];
     private static readonly int[] _skSrc = new int[MaxSkyDraws], _skDst = new int[MaxSkyDraws];

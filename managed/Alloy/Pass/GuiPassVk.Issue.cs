@@ -107,6 +107,7 @@ internal static unsafe partial class GuiPassVk
                 {
                     solve = 2; li = runStart;
                     Open(cl, ref pass, ref b, v.White, v.Depth, last.W, last.H, true, true, One);
+                    v.Solved = true;
                 }
                 else
                 {
@@ -194,24 +195,23 @@ internal static unsafe partial class GuiPassVk
         s.ClearDepth = clearDepth;
         s.ClearColour = clearColour;
         s.Clear = clear;
-        MoveViews(s, colour);
     }
 
-    /// <summary>Every model view this flush has drawn into, named in a bind set at the head of the pass. A sampled
-    /// image moves into its read layout where it is bound, and the backend can only move one before the pass's first
-    /// draw -- so the panel that shows a doll need not be that first draw. The set is replaced by the first real
-    /// bind; this one exists for the move.</summary>
-    private static void MoveViews(GuiVkState s, ImageId colour)
+    /// <summary>Every image this flush has drawn into that the pass about to begin may sample -- a model view's own
+    /// texture, and the solve's two scratches -- handed over before it, where the backend can place the barrier. The
+    /// panel that shows a doll need not be the pass's first draw.</summary>
+    private static void Readable(CommandList cl, GuiVkState s, ImageId colour)
     {
-        Span<ImageBinding> move = stackalloc ImageBinding[NuiModelDoll.MaxViews];
+        Span<ImageId> read = stackalloc ImageId[NuiModelDoll.MaxViews * 3];
         int n = 0;
         foreach (View v in s.Views)
         {
-            if (!v.Drawn || v.Colour == colour || v.Colour.IsNull) continue;
-            move[n] = new ImageBinding((uint)n, v.Colour, s.Linear);
-            n++;
+            if (v.Drawn && v.Colour != colour && !v.Colour.IsNull) read[n++] = v.Colour;
+            if (!v.Solved) continue;
+            if (v.Black != colour && !v.Black.IsNull) read[n++] = v.Black;
+            if (v.White != colour && !v.White.IsNull) read[n++] = v.White;
         }
-        if (n > 0) s.Side!.BindSet(0, new BindSet(default, default, move[..n], default));
+        if (n > 0) cl.ReadImages(read[..n]);
     }
 
     /// <summary>The open pass: the arena bytes its binds gathered, uploaded ahead of it, then the pass and its draws.
@@ -226,6 +226,7 @@ internal static unsafe partial class GuiPassVk
         Vector4 clear = s.ClearColour ? s.Clear : default;
         colors[0] = new ColorAttachment(pass.Colour, 0, 0, s.ClearColour ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, clear);
         var d = new DepthAttachment(pass.Depth, 0, 0, s.ClearDepth ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, 1f);
+        Readable(cl, s, pass.Colour);
         cl.BeginRenderPass(new RenderPassDesc(colors, d));
         cl.Append(s.Side!);
         cl.EndRenderPass();

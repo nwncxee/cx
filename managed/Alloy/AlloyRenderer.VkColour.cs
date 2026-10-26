@@ -41,6 +41,9 @@ public sealed unsafe partial class AlloyRenderer
         public LitLoc L;
         public FeatLoc F;
         public int Vp = -1, Tex = -1, Viz = -1, AlphaMip = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
+        /// <summary>The sky wrapper's two: the engine's inverse view (its translation column alone) and the
+        /// constant colour a content stage reads instead of the record's alpha. -1 on every other program.</summary>
+        public int ViewInv = -1, Global = -1;
         public readonly Dictionary<long, PipelineId> Pipes = new();
     }
 
@@ -64,6 +67,9 @@ public sealed unsafe partial class AlloyRenderer
         public int EngineAt = -1;
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
         public ImageId Hdr, Depth, G0, G1, G2;
+        /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
+        /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
+        public ImageId DepthRead;
         public int W, H;
         public BufferId Records, Slots, Bones, TexH, Arena, ZeroUbo, ZeroSsbo, Plt;
         public long RecCap, SlotCap, BoneCap, TexHCap, PltCap;
@@ -103,7 +109,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -138,13 +144,17 @@ public sealed unsafe partial class AlloyRenderer
         if (s.W != w || s.H != h)
         {
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2);
-            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour");
+            vk.Destroy(s.DepthRead);
+            // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
+            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage);
             s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth");
             s.G0 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 0");
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1");
             s.G2 = VkTarget(vk, Format.R32Ui, w, h, "vk g-buffer 2");
+            s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
+                                                       ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
-            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull)
+            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
                 log.Always($"AlloyRenderer: the Vulkan scene targets at {w}x{h} were REFUSED (logged above)");
@@ -154,9 +164,12 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    private static ImageId VkTarget(VkBackend vk, Format f, int w, int h, string label)
+    /// <summary>A scene target: sampled by the passes after it, and a copy source -- the depth's readable copy is
+    /// taken from the attachment itself.</summary>
+    private static ImageId VkTarget(VkBackend vk, Format f, int w, int h, string label, ImageUse extra = ImageUse.None)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
-                                        (f.IsDepth() ? ImageUse.DepthTarget : ImageUse.ColorTarget) | ImageUse.Sampled, label));
+                                        (f.IsDepth() ? ImageUse.DepthTarget : ImageUse.ColorTarget)
+                                        | ImageUse.Sampled | ImageUse.CopySrc | extra, label));
 
     /// <summary>Everything that does not follow the render size: the programs, the layouts, the stand-ins, the arena.</summary>
     private static bool VkMakeStatic(VkBackend vk, VkColourState s, ExtenderLog log)
@@ -221,7 +234,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, uint, ExtenderLog)"/>.</summary>
     private static VkProg? VkBuild(VkBackend vk, VkPrograms.Id id, ExtenderLog log)
     {
-        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred;
+        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred or VkPrograms.Id.Decal;
         VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, VkUniformShim.ProgramBase + (uint)id, log);
         if (p != null) { p.Id = id; p.Deferred = id == VkPrograms.Id.LitDeferred; }
         return p;
@@ -306,6 +319,7 @@ public sealed unsafe partial class AlloyRenderer
                 p.Vp = GlProgram.Loc(name, "uVP"); p.Tex = GlProgram.Loc(name, "uTex"); p.Viz = GlProgram.Loc(name, "uViz");
                 p.AlphaMip = GlProgram.Loc(name, "uAlphaMip"); p.Tint = GlProgram.Loc(name, "uTint");
                 p.SkyFog = GlProgram.Loc(name, "uSkyFog"); p.Oit = GlProgram.Loc(name, "uOit"); p.OitDim = GlProgram.Loc(name, "uOitDim");
+                p.ViewInv = GlProgram.Loc(name, "uViewInv"); p.Global = GlProgram.Loc(name, "globalColor");
                 p.F = Programs.FeatLocs(name);
             }
         });
@@ -332,6 +346,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
                     VkUniformShim.Set(L.Viz, viz);
                     VkUniformShim.Set(L.AoCutout, Ao.Cutout.V);
+                    VkUniformShim.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
                     VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
                     VkUniformShim.Set(L.MirrorZ, _mirrorZ);
                     UploadFeatureTerms(L.Feat, viewport);
@@ -355,6 +370,7 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
+        if (VkParity.Active) foreach (string name in VkParity.StoodDownAb) VkZero(p, name);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
         if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
@@ -455,9 +471,17 @@ public sealed unsafe partial class AlloyRenderer
         VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, s.W, s.H);
     }
 
+    /// <summary>A snap frame's Vulkan half, after the frame's submit: the finished scene colour beside the set.</summary>
+    internal static void VkFrameTap(VkBackend vk)
+    {
+        VkColourState s = _vkc;
+        FrameTap.TakeVk(vk, s.Hdr, s.W, s.H);
+    }
+
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
     /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none.</summary>
-    private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex)
+    private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
+                                  ReadOnlySpan<int> extra = default)
     {
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
@@ -488,22 +512,35 @@ public sealed unsafe partial class AlloyRenderer
                     });
                     break;
                 case VkBindKind.StorageImage:
-                    images[ni++] = new ImageBinding(o.Binding, o.Name == "uDecalSurf" ? s.DecalSurf : s.DecalLayer, default, 0);
+                    images[ni++] = new ImageBinding(o.Binding, VkDecalImage(o.Name == "uDecalSurf", s), default, 0);
                     break;
                 default:
-                    sampled[nt++] = VkSampled(o, s, tex);
+                    sampled[nt++] = VkSampled(o, s, tex, extra);
                     break;
             }
         }
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
-    /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, else the stand-in of its type.</summary>
-    private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex)
+    /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, an engine unit out of
+    /// <paramref name="extra"/> (unit 1 first) for a <c>texUnit</c><i>n</i> a hosted stage declares, else the stand-in
+    /// of its type.</summary>
+    private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex, ReadOnlySpan<int> extra = default)
     {
+        if (o.Name.Length == "texUnit1".Length && o.Name.StartsWith("texUnit", StringComparison.Ordinal)
+            && o.Name[7] - '1' is var u && (uint)u < (uint)extra.Length && extra[u] != 0 && !VkTextures.Image(extra[u]).IsNull)
+            return new ImageBinding(o.Binding, VkTextures.Image(extra[u]), VkTextures.SamplerId(extra[u]));
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
+        if (VkShadowMap(o.Name) is { IsNull: false } map)
+            return new ImageBinding(o.Binding, map, o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Linear);
+        // the visibility estimate, fetched by texel in the lit stage
+        if (o.Name == "uSsao" && SsaoPassVk.Live) return new ImageBinding(o.Binding, SsaoPassVk.Visibility);
+        // ...and the depth it was computed from: the attachment itself for the decal writer, whose pass is outside
+        // the colour one, and the sampled copy for every stage inside it, which may not read its own attachment
+        if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
+        if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
         return o.Type switch
         {
             "usampler2D" => new ImageBinding(o.Binding, s.TexU2D),
@@ -533,7 +570,9 @@ public sealed unsafe partial class AlloyRenderer
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = 1;
-        if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
+        else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
+        else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
         else if (targets == VkTargets.Colour)
         {
             d.Targets.ColorCount = ColourTargets;

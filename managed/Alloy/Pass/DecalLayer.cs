@@ -38,7 +38,7 @@ internal static unsafe class DecalLayer
     }
 
     /// <summary>The decal depth a pixel no decal reached clears to: farther than any surface, so none folds there.</summary>
-    private const float NoDecal = 1e30f;
+    internal const float NoDecal = 1e30f;
 
     /// <summary>Flat see-through sheets <see cref="NoteRefused"/> names per session.</summary>
     private const int RefusedMax = 64;
@@ -50,6 +50,10 @@ internal static unsafe class DecalLayer
     internal static float Z1 => _s.Z1;
 
     internal static void Attach(ExtenderLog log) => _s.Log = log;
+
+    /// <summary>The terms <see cref="Z0"/> and <see cref="Z1"/> carry, published for the Vulkan frame, whose decal
+    /// pass is its own and never reaches <see cref="Run"/>.</summary>
+    internal static void SetCamera(in Matrix4x4 proj) { _s.Z0 = proj.M33; _s.Z1 = proj.M43; }
 
     /// <summary>Context loss: the names went with it.</summary>
     internal static void Forget() => _s = new DecalState { Log = _s.Log };

@@ -54,6 +54,8 @@ internal sealed unsafe partial class GlDevice
                 Op.DrawIndexed => DrawIndexed(r.Read<DrawIndexedCmd>()),
                 Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
                 Op.Dispatch => Dispatch(r.Read<DispatchCmd>()),
+                // GL has no image layouts: the hand-over a Vulkan pass needs is nothing here
+                Op.ReadImages => Read(r.Read<ReadImagesCmd>(), ref r),
                 Op.CopyImage => Copy(r.Read<CopyImageCmd>()),
                 Op.BlitImage => Blit(r.Read<BlitImageCmd>()),
                 Op.UpdateBuffer => Update(r.Read<UpdateBufferCmd>(), ref r),
@@ -319,6 +321,13 @@ internal sealed unsafe partial class GlDevice
     }
 
     private static bool Dispatch(DispatchCmd d) { Gl.DispatchCompute((uint)d.X, (uint)d.Y, (uint)d.Z); return true; }
+
+    /// <summary>The sampled hand-over a Vulkan pass needs: nothing to do here, the ids are read past.</summary>
+    private static bool Read(ReadImagesCmd h, ref CommandReader r)
+    {
+        r.Span<ImageId>(h.Images);
+        return true;
+    }
 
     private bool Copy(CopyImageCmd c)
     {

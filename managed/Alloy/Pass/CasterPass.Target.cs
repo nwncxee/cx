@@ -74,6 +74,9 @@ public sealed unsafe partial class CasterPass
     private static readonly int[] _qSize = new int[MaxBakeViews], _qLayer = new int[MaxBakeViews],
                                   _qSet = new int[MaxBakeViews];
     private static readonly bool[] _qPoint = new bool[MaxBakeViews];
+    /// <summary>The queued view's target as a key both flushes read: a GL name means nothing to Vulkan, and the
+    /// per-target flush groups on this. Resolved once, where the view is queued.</summary>
+    private static readonly CasterMap[] _qMap = new CasterMap[MaxBakeViews];
     /// <summary>This queued view is re-baked under THIS frame's camera, so the receiver-frustum cull
     /// may apply. Never set on a held (static-set) view: it would be culled against a frustum the camera
     /// has since left.</summary>
@@ -89,8 +92,14 @@ public sealed unsafe partial class CasterPass
     private static readonly CasterViewRec[] _viewStage = new CasterViewRec[MaxBakeViews];
     private static long _layerFlushFails;
 
-    /// <summary>Is the layered path taking this frame's views?</summary>
-    private static bool LayeredActive => _layerDial && _layerProbe > 0 && _gl.ProgLayer != 0;
+    /// <summary>Is the layered path taking this frame's views? On Vulkan it is the only path: the device carries
+    /// <c>shaderOutputLayer</c> or no Vulkan backend exists at all.</summary>
+    private static bool LayeredActive
+        => Renderer.OnVulkan ? VkArmed : _layerDial && _layerProbe > 0 && _gl.ProgLayer != 0;
+
+    /// <summary>Has the frame's staging a non-empty source the views can select out of, on whichever backend
+    /// bakes them? False bakes a clear, which for an empty world IS the bake.</summary>
+    private static bool GatherActive => Renderer.OnVulkan ? CasterGatherVk.Active : CasterGather.Active;
     private static readonly StandDown _down = new("CasterPass DISARMED");
 
     /// <summary>Context loss: every GL name goes at once. Run on the loss edge, not each frame after it.</summary>
@@ -266,6 +275,9 @@ public sealed unsafe partial class CasterPass
     {
         int n = _qN; _qN = 0;
         if (n == 0) return true;
+        // on Vulkan the views are only QUEUED here: the colour frame flushes them once its own uploads have
+        // published the buffers the bake's binds name
+        if (Renderer.OnVulkan) { _vk.Queued = n; return true; }
         // distinct targets in first-seen order -- at most four exist (sun static/dynamic, cube static/pool).
         // A fifth-plus target would be a queue writer this flush does not know about; failing the flush
         // (publish nothing, blanket next frame) is the honest answer, not silently never baking it.
@@ -432,7 +444,7 @@ public sealed unsafe partial class CasterPass
     /// gather dispatch selects out of the frame's staging and the survivors draw by indirect count, with
     /// <paramref name="point"/> picking which view test it runs. False = nothing usable, so the caller must
     /// not publish. The layer is cleared even when nothing survives -- uncleared is LAST frame's depth.</summary>
-    private static bool RenderView(uint tex, int size, int layer,
+    private static bool RenderView(CasterMap map, uint tex, int size, int layer,
                                    Matrix4x4* vp, Vector3 lightDir, Vector3 focus, float reach, float margin,
                                    bool point, int set = CasterGather.SetAll, bool receiver = false,
                                    bool detail = true)
@@ -442,7 +454,7 @@ public sealed unsafe partial class CasterPass
         _submitCreatures = 0;
         if (!_gStaged) return false;
         LastViews++;
-        if (!CasterGather.Active) return ClearLayer(tex, size, layer);   // an EMPTY world still bakes: the clear is the bake
+        if (!GatherActive) return ClearLayer(map, tex, size, layer);   // an EMPTY world still bakes: the clear is the bake
         // CX-50: this view's two detail thresholds, where every other per-view term of the gather is resolved
         // -- one funnel, so the layered and per-view paths cannot pick different levels for one caster. An
         // ORTHO view's texel is its fit over the map (CascadeTexel's own expression, and a pair tile's);
@@ -459,7 +471,11 @@ public sealed unsafe partial class CasterPass
         // inline rather than dropping a view.
         if (LayeredActive && _qN < MaxBakeViews)
         {
+            // a target the Vulkan bake has no array for -- the sky view's own, a pair tile -- is refused rather than
+            // queued: its caller must not publish a map nothing baked
+            if (Renderer.OnVulkan && map == CasterMap.Other) return VkNoTarget();
             _submitCreatures = _gCreatures;
+            _qMap[_qN] = map;
             _qTex[_qN] = tex; _qSize[_qN] = size; _qLayer[_qN] = layer; _qVp[_qN] = *vp;
             _qFocus[_qN] = focus; _qDir[_qN] = lightDir; _qReach[_qN] = reach; _qAlong[_qN] = reach + margin;
             _qPoint[_qN] = point; _qSet[_qN] = set; _qRx[_qN] = receiver;
@@ -467,6 +483,9 @@ public sealed unsafe partial class CasterPass
             _qN++;
             return true;
         }
+        // the per-view path is GL's alone: a Vulkan frame past the queue's ceiling refuses the view, which stands
+        // its map down for the frame rather than baking it with GL's programs into GL's targets
+        if (Renderer.OnVulkan) return VkQueueFull();
         return GatherSubmit(tex, size, layer, vp, lightDir, focus, reach, margin, point, lodR1, lodR2, set, receiver);
     }
 
@@ -478,8 +497,9 @@ public sealed unsafe partial class CasterPass
     }
 
     /// <summary>Clear one depth layer to "nothing casts" without a bake: the static faces of a roaming light.</summary>
-    private static bool ClearLayer(uint tex, int size, int layer)
+    private static bool ClearLayer(CasterMap map, uint tex, int size, int layer)
     {
+        if (Renderer.OnVulkan && map != CasterMap.Other) return VkClearLayer(map, layer);
         if (!BeginTarget(tex, size, layer)) return false;
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         return true;

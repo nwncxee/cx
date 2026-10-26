@@ -236,7 +236,9 @@ internal static unsafe class DeferredLights
         // light.deferredtiles: the per-tile cull, or each pixel's own froxel list (the parity A/B). The tile
         // walk culls uLights itself, so it needs the record count and R4's pick budget -- the same two the
         // cluster build is handed.
-        b.Tiles = Lighting.DeferredTiles.V ? 1 : 0;
+        // ...and the A/B frame is always the tile walk: the froxel table is the GL cluster build's, which the
+        // Vulkan recorder has no copy of, so its walk culls uLights itself and this one has to as well
+        b.Tiles = Lighting.DeferredTiles.V || VkParity.Active ? 1 : 0;
         b.LightCount = AlloyLights.UploadedLights;
         b.ReflK = Weather.ReflK;
         // CX-188 step 3: the visibility record the shadow dispatch just wrote, and the divisor the walk
