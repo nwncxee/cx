@@ -11,6 +11,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
+    DrawIndirect,
 }
 
 /// <summary>An index element's width.</summary>
@@ -181,6 +182,11 @@ public sealed class CommandList
 
     public void DrawIndexedIndirect(BufferId cmds, long offset, int maxDraws, BufferId count = default, long countOffset = 0)
     { Head(Op.DrawIndexedIndirect); Put(new IndirectCmd(cmds, offset, maxDraws, count, countOffset)); Sent(); }
+
+    /// <summary>Up to <paramref name="maxDraws"/> non-indexed four-word commands (vertices, instances, first vertex, first
+    /// instance) from <paramref name="cmds"/> at <paramref name="offset"/>, sixteen bytes apart.</summary>
+    public void DrawIndirect(BufferId cmds, long offset, int maxDraws)
+    { Head(Op.DrawIndirect); Put(new IndirectCmd(cmds, offset, maxDraws, default, 0)); Sent(); }
 
     /// <summary>One draw per element of the three parallel spans, in one command: the shape a batch of meshes out
     /// of one arena draws with. The spans are copied; a length mismatch is refused.</summary>

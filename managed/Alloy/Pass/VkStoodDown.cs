@@ -28,7 +28,6 @@ internal static class VkStoodDown
         new(PassId.RainCover, "weather (the rain cover map)", "nothing shelters from the rain"),
         new(PassId.SkyMap, "light.sky (the sky-visibility bake)", "the area's one ambient reaches everywhere"),
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
-        new(PassId.GrassOwned, "grass", "no blades over the ground"),
         new(PassId.Reflections, "light.ssr (screen-space reflections)", "surfaces keep the probe alone"),
         new(PassId.ProbeCapture, "light.probe / lightmap (the probe capture and the bake)", "neither is captured"),
     ];

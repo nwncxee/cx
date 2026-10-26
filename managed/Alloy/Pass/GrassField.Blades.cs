@@ -27,9 +27,9 @@ internal static unsafe partial class GrassField
     /// the blade program. <paramref name="cards"/> takes the complement -- does the material draw any CARD --
     /// off the same walk, because it is a property of the material and the visible-patch loop was re-deriving
     /// it per patch for an answer that cannot differ between two patches of one material.</summary>
-    private static void ClassifyAll(int* tids, bool* live, int* bits, bool* cards)
+    private static void ClassifyAll(int* tids, bool* live, int* bits, bool* cards, bool bladeProg)
     {
-        bool blades = Grass.Style.V == Grass.StyleBlades && _gl.ProgBlade != 0;
+        bool blades = Grass.Style.V == Grass.StyleBlades && bladeProg;
         for (int m = 0; m < MaxGrassMaterials; m++)
         {
             CAurGrassInfo info = live[m] ? GrassInfo(m) : default;

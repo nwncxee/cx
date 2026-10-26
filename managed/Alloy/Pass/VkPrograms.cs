@@ -12,10 +12,10 @@ namespace CX.Alloy;
 /// <see cref="VkGlsl"/>. Built without GL: Vulkan always takes the bindless path and the sky-visibility unit.</summary>
 internal static class VkPrograms
 {
-    /// <summary>The programs the Vulkan batch pass draws through. <see cref="Id.Decal"/> and <see cref="Id.Water"/>
-    /// are not among <see cref="All"/>: like GL's, each is optional, built at its own pass's first frame, and a
-    /// refusal stands that pass down rather than failing the frame.</summary>
-    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion }
+    /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.DepthFeat"/> are not among
+    /// <see cref="All"/>: like GL's, each is optional, built at its own pass's first frame, and a refusal stands
+    /// that pass down rather than failing the frame.</summary>
+    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion, Grass, GrassBlade }
 
     internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
 
@@ -74,6 +74,11 @@ internal static class VkPrograms
                                 log, what, out string v, out string f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
             }
+            case Id.Grass or Id.GrassBlade:
+            {
+                (string v, string f) = GrassField.VkTexts(id == Id.Grass ? GrassField.VkStage.Cards : GrassField.VkStage.Blades, log);
+                return (Final(GrassField.VkInstanced(v), log, what, true), Final(f, log, what, true));
+            }
             case Id.Motion:
                 return (Final(AlloyRenderer.MotionVs, log, what, true), Final(AlloyRenderer.MotionFs, log, what, true));
             case Id.HighlightMask:
@@ -96,7 +101,7 @@ internal static class VkPrograms
     {
         (string v, string f) = GlText(id, log);
         // the device maps GL's -1..1 clip depth itself (VK_EXT_depth_clip_control), so the stages keep GL's clip z
-        return VkGlsl.Translate(v, f, Units, glDepth: false);
+        return VkGlsl.Translate(v, f, id is Id.Grass or Id.GrassBlade ? GrassField.VkUnits : Units, glDepth: false);
     }
 
     /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text
@@ -169,7 +174,7 @@ internal static class VkPrograms
                     at = push.Members.TryGetValue(VkGlsl.Push[i].Name, out var m) && m.Offset == want[i] && m.Size == 4;
                 check.Expect(at && push.Bytes == 32, $"{id}'s push block sits at 0, 4 .. 24, four bytes each, 32 in all");
             }
-            else check.Expect(false, $"{id}'s vertex stage declares the push block");
+            else if (id < Id.Grass) check.Expect(false, $"{id}'s vertex stage declares the push block");
             // every set-0 binding a compiled stage decorates is one the host binds: a missing one is an unwritten
             // descriptor the device reads, which hangs it
             foreach (ShaderKind k in (ReadOnlySpan<ShaderKind>)[ShaderKind.VertexShader, ShaderKind.FragmentShader])

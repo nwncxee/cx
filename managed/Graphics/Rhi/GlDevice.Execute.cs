@@ -53,6 +53,7 @@ internal sealed unsafe partial class GlDevice
                 Op.Draw => Draw(r.Read<DrawCmd>()),
                 Op.DrawIndexed => DrawIndexed(r.Read<DrawIndexedCmd>()),
                 Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
+                Op.DrawIndirect => IndirectArrays(r.Read<IndirectCmd>()),
                 Op.Dispatch => Dispatch(r.Read<DispatchCmd>()),
                 // GL has no image layouts: the hand-over a Vulkan pass needs is nothing here
                 Op.ReadImages => Read(r.Read<ReadImagesCmd>(), ref r),
@@ -317,6 +318,14 @@ internal sealed unsafe partial class GlDevice
         if (!_buffers.TryGet(c.Count.Value, out GlBuffer count)) return Fault("DrawIndexedIndirect: stale count buffer");
         Gl.BindBuffer(Gl.PARAMETER_BUFFER, count.Name);
         Gl.MultiDrawElementsIndirectCount(_topo, _indexType, (void*)c.Offset, (IntPtr)c.CountOffset, c.MaxDraws, 0);
+        return true;
+    }
+
+    private bool IndirectArrays(IndirectCmd c)
+    {
+        if (!_buffers.TryGet(c.Commands.Value, out GlBuffer cmds)) return Fault("DrawIndirect: stale command buffer");
+        Gl.BindBuffer(Gl.DRAW_INDIRECT_BUFFER, cmds.Name);
+        for (int i = 0; i < c.MaxDraws; i++) Gl.DrawArraysIndirect(_topo, (void*)(c.Offset + i * 16));
         return true;
     }
 

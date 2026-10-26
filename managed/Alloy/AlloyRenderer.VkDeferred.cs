@@ -361,8 +361,12 @@ public sealed unsafe partial class AlloyRenderer
     /// translated, compiled and linked, its loose block reflected and its locations resolved. Null, logged, for a
     /// text the contract guard, the translator or the toolchain refused.</summary>
     private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log)
+        => VkDefText(resref, define, label, log) is ({ } t, { } src) ? VkDefCompile(vk, t, src, label, log) : null;
+
+    /// <summary>A translated compute stage compiled and linked, its loose block reflected against
+    /// <paramref name="src"/> (the text it came from) and its locations resolved. Null, logged, when refused.</summary>
+    private static VkDefStage? VkDefCompile(VkBackend vk, VkProgramText t, string src, string label, ExtenderLog log)
     {
-        if (VkDefText(resref, define, label, log) is not ({ } t, { } src)) return null;
         if (t.Error != null) { log.Always($"AlloyRenderer: {label} did not translate -- {t.Error}"); return null; }
         byte[]? spirv = VulkanToolchain.Compile(VkBackend.Translate(t.Cs), label, ShaderKind.ComputeShader, out string e);
         if (spirv == null) { log.Always($"AlloyRenderer: {label} did not compile -- {e}"); return null; }
