@@ -1,22 +1,49 @@
 using System;
 using System.Text;
+using CX.Alloy.Db;
 using CX.Framework;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// What the Vulkan frame does NOT draw, said out loud. Every term in <see cref="VkParity.StoodDown"/> is a feature the
-/// player can switch on and whose pass Vulkan has no port of yet; the stage then reads the term's zero and falls back,
-/// which is silent at every one of its sources. This names the switched-on ones once, and again only if the set changes
-/// -- so turning a feature on mid-session says so rather than doing nothing.
+/// What the Vulkan frame does NOT draw, said out loud: a whole pass with no Vulkan port, and a term a ported pass binds
+/// at zero (<see cref="VkParity.StoodDown"/>). Either way a feature the player switched on silently does nothing, which
+/// is what the no-silent-fallbacks rule forbids. This names the switched-on ones, and again whenever the set moves -- so
+/// turning a feature on mid-session says so rather than doing nothing.
 /// </summary>
 internal static class VkStoodDown
 {
-    /// <summary>One stood-down term: the loose uniform <see cref="VkParity.StoodDown"/> names it by, the knob a player
-    /// switches it on with, and what the Vulkan frame draws in its place.</summary>
+    /// <summary>One frame-graph pass with no Vulkan port: the knob a player switches it on with, and what the Vulkan
+    /// frame shows in its place.</summary>
+    private readonly record struct Pass(PassId Id, string Feature, string Instead);
+
+    /// <summary>One term a ported pass stands down: the loose uniform <see cref="VkParity.StoodDown"/> names it by, the
+    /// knob behind it, and what the stage reads instead.</summary>
     private readonly record struct Term(string Name, string Feature, string Instead);
 
-    /// <summary>A row per term. A term with no row fails <see cref="SelfCheck"/>, so the two lists cannot drift.</summary>
+    /// <summary>A row per unported colour- or shadow-bracket pass. <see cref="SelfCheck"/> holds this list against
+    /// <see cref="FrameGraph.Passes"/>, so neither a new pass nor a ported one can drift away from it.</summary>
+    private static readonly Pass[] Passes =
+    [
+        new(PassId.RainCover, "weather (the rain cover map)", "nothing shelters from the rain"),
+        new(PassId.SkyMap, "light.sky (the sky-visibility bake)", "the area's one ambient reaches everywhere"),
+        new(PassId.FogVolume, "vfog (volumetric fog)", "every stage fogs on the distance ramp"),
+        new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
+        new(PassId.GrassOwned, "grass", "no blades over the ground"),
+        new(PassId.Reflections, "light.ssr (screen-space reflections)", "surfaces keep the probe alone"),
+        new(PassId.FbCopy, "water (the frame copy water marches)", "nothing is copied for it"),
+        new(PassId.WaterOwned, "water", "no water surface is drawn at all"),
+        new(PassId.BeamsOwned, "effects.beams (light shafts)", "no shafts"),
+        new(PassId.ParticlesOwned, "particles", "no sparks, smoke or spell effects"),
+        new(PassId.HalosOwned, "effects.halos (light halos)", "no halo around a light"),
+        new(PassId.WeatherOwned, "weather (rain and snow)", "nothing falls"),
+        new(PassId.ProbeCapture, "light.probe / lightmap (the probe capture and the bake)", "neither is captured"),
+        new(PassId.PostProcess, "post (bloom, tonemap, the camera velocity)", "the scene reaches the screen unprocessed"),
+        new(PassId.PostStack, "post (anti-aliasing, TAA and the highlight overlays)", "no resolve and no overlay"),
+    ];
+
+    /// <summary>A row per stood-down term. <see cref="SelfCheck"/> holds this list against
+    /// <see cref="VkParity.StoodDown"/>, so the two cannot drift.</summary>
     private static readonly Term[] Terms =
     [
         new("uLmPages", "lightmap (baked static lighting)", "every surface takes the live rig"),
@@ -28,8 +55,26 @@ internal static class VkStoodDown
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
     ];
 
-    /// <summary>Is the feature behind <paramref name="name"/> switched on? A term with no row reads as off: the
-    /// self-check is what refuses one, not a line every frame.</summary>
+    /// <summary>Is the feature behind <paramref name="id"/> switched on? The post chain has no master knob -- it always
+    /// runs on GL -- so it is always missing here.</summary>
+    private static bool On(PassId id) => id switch
+    {
+        PassId.RainCover or PassId.WeatherOwned => Weather.Enabled.V,
+        PassId.SkyMap => SkyView.Wanted,
+        PassId.FogVolume => VolumetricFog.Enabled.V,
+        PassId.CoverageOwned => Renderer.A2c.V > 0,
+        PassId.GrassOwned => Grass.Enabled.V,
+        PassId.Reflections => Lighting.Ssr.V,
+        PassId.FbCopy or PassId.WaterOwned => Water.Enabled.V,
+        PassId.BeamsOwned => Effects.Beams.V,
+        PassId.HalosOwned => Effects.HalosOn,
+        PassId.ParticlesOwned => Particles.Enabled.V,
+        PassId.ProbeCapture => Lighting.Probe.V || Lightmap.G.Master!.V,
+        PassId.PostProcess or PassId.PostStack => true,
+        _ => false,
+    };
+
+    /// <summary>Is the feature behind term <paramref name="name"/> switched on?</summary>
     private static bool On(string name) => name switch
     {
         "uLmPages" => Lightmap.G.Master!.V,
@@ -42,7 +87,12 @@ internal static class VkStoodDown
         _ => false,
     };
 
-    /// <summary>The set last said, as one bit per <see cref="Terms"/> row; -1 = nothing said yet.</summary>
+    /// <summary>Does the Vulkan frame draw <paramref name="id"/>? The two lists in <see cref="VkParity"/> say so, one
+    /// per bracket; every other bracket is the engine's, not Alloy's.</summary>
+    private static bool Drawn(PassId id, Bracket bracket)
+        => bracket == Bracket.Colour ? VkParity.GlPass(id) : bracket == Bracket.Shadow && VkParity.VkShadow(id);
+
+    /// <summary>The set last said, one bit per row -- passes then terms; -1 = nothing said yet.</summary>
     private sealed class StoodDownState { public long Said = -1; }
 
     private static readonly StoodDownState _s = new();
@@ -52,8 +102,10 @@ internal static class VkStoodDown
     internal static void Note(ExtenderLog log)
     {
         long on = 0;
+        for (int i = 0; i < Passes.Length; i++)
+            if (On(Passes[i].Id)) on |= 1L << i;
         for (int i = 0; i < Terms.Length; i++)
-            if (Array.IndexOf(VkParity.StoodDown, Terms[i].Name) >= 0 && On(Terms[i].Name)) on |= 1L << i;
+            if (Array.IndexOf(VkParity.StoodDown, Terms[i].Name) >= 0 && On(Terms[i].Name)) on |= 1L << (Passes.Length + i);
         if (on == _s.Said) return;
         _s.Said = on;
         if (on == 0)
@@ -61,29 +113,51 @@ internal static class VkStoodDown
             log.Always("VulkanFrame: every switched-on feature is drawn on Vulkan");
             return;
         }
-        var sb = new StringBuilder("VulkanFrame: NOT DRAWN on Vulkan -- ");
-        for (int i = 0, n = 0; i < Terms.Length; i++)
-        {
-            if ((on & 1L << i) == 0) continue;
-            if (n++ > 0) sb.Append("; ");
-            sb.Append(Terms[i].Feature).Append(": ").Append(Terms[i].Instead);
-        }
-        sb.Append(". These are switched on and the Vulkan frame has no port of their passes yet, so each stage reads the "
-                + "term at zero; alloy.backend gl draws them.");
+        var sb = new StringBuilder("VulkanFrame: NOT DRAWN on Vulkan, and switched on. No pass runs for: ");
+        int n = 0;
+        for (int i = 0; i < Passes.Length; i++)
+            if ((on & 1L << i) != 0) Say(sb, ref n, Passes[i].Feature, Passes[i].Instead);
+        if (n == 0) sb.Append("nothing");
+        sb.Append(". Read at zero by the passes that did run: ");
+        n = 0;
+        for (int i = 0; i < Terms.Length; i++)
+            if ((on & 1L << (Passes.Length + i)) != 0) Say(sb, ref n, Terms[i].Feature, Terms[i].Instead);
+        if (n == 0) sb.Append("nothing");
+        sb.Append(". A feature in both lists is missing twice over; alloy.backend gl draws all of them.");
         log.Always(sb.ToString());
     }
 
-    /// <summary>Oracle: <see cref="VkParity.StoodDown"/>, a second artifact -- every term it lists has a row here, so a
-    /// port that leaves a term standing cannot drop it from this line by forgetting, and every row names a live knob.</summary>
+    private static void Say(StringBuilder sb, ref int n, string feature, string instead)
+    {
+        if (n++ > 0) sb.Append("; ");
+        sb.Append(feature).Append(": ").Append(instead);
+    }
+
+    /// <summary>Oracles, both second artifacts: <see cref="FrameGraph.Passes"/> -- every colour- or shadow-bracket pass
+    /// is drawn on Vulkan or has a row, never both -- and <see cref="VkParity.StoodDown"/>, likewise for the terms. A
+    /// port cannot drop its feature from this line by forgetting, nor leave the line claiming it is still missing.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkStoodDown.SelfCheck");
+        int rows = 0;
+        foreach ((PassId id, Bracket bracket) in FrameGraph.Passes)
+        {
+            if (bracket is not (Bracket.Colour or Bracket.Shadow)) continue;
+            bool row = Array.Exists(Passes, p => p.Id == id);
+            if (row) rows++;
+            check.Expect(row != Drawn(id, bracket), row
+                ? $"{id} has a VkStoodDown row and VkParity says Vulkan draws it -- the line would claim it is missing"
+                : $"{id} is not drawn on Vulkan and VkStoodDown has no row saying what is missing");
+        }
+        check.Expect(rows == Passes.Length, $"{Passes.Length - rows} VkStoodDown pass row(s) name no colour- or "
+                                          + "shadow-bracket pass in FrameGraph");
         foreach (string term in VkParity.StoodDown)
             check.Expect(Array.Exists(Terms, t => t.Name == term),
-                $"{term} stands down on Vulkan and VkStoodDown has no row saying what is not drawn for it");
+                $"{term} stands down on Vulkan and VkStoodDown has no row saying what is not applied for it");
         foreach (Term t in Terms)
-            check.Expect(t.Feature.Length > 0 && t.Instead.Length > 0, $"{t.Name}'s row names a feature and what runs instead");
-        log.Info(check.Ok ? $"VkStoodDown.SelfCheck: passed ({VkParity.StoodDown.Length} terms, {Terms.Length} rows)"
+            check.Expect(Array.IndexOf(VkParity.StoodDown, t.Name) >= 0,
+                $"VkStoodDown still has a row for {t.Name}, which VkParity no longer stands down");
+        log.Info(check.Ok ? $"VkStoodDown.SelfCheck: passed ({Passes.Length} pass rows, {Terms.Length} term rows)"
                           : "VkStoodDown.SelfCheck: FAILED");
     }
 }
