@@ -173,8 +173,8 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>Stage the frame's caster source for the Vulkan gather, as <see cref="CasterGather.Begin"/> does for
     /// GL's. Called from the one staging walk, so both backends select out of the same records.</summary>
-    private static bool VkGatherBegin(int drawN, CasterSrcRec* src)
-        => _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.Begin(vk, _vk.Cmds, drawN, _gGroups, src, true);
+    private static bool VkGatherBegin(int drawN, CasterSrcRec* src, bool changed)
+        => _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.Begin(vk, _vk.Cmds, drawN, _gGroups, src, changed);
 
     /// <summary>The frame's dynamic source on whichever backend bakes it -- on both for an A/B frame.</summary>
     private static bool VkDynamicSource(int m, CasterSrcRec* dst)
