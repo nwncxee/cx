@@ -169,8 +169,8 @@ public sealed unsafe partial class AlloyRenderer
         // cull see the same jittered camera; the velocity pass takes it back out. Zero with TAA off.
         float jx = 0f, jy = 0f;
         Matrix4x4 vpClean = view * proj;
-        // the A/B's GL half draws through the unjittered camera the Vulkan frame draws through
-        if (PostChain.TaaOn && !_capturing && !VkParity.Active)
+        // the Vulkan frame has no TAA resolve to take the jitter back out, so it and the A/B's GL half draw unjittered
+        if (PostChain.TaaOn && !_capturing && !VkParity.Active && !Renderer.OnVulkan)
         {
             PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), out jx, out jy);
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;

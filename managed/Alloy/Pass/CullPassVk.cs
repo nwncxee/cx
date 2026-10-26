@@ -37,6 +37,9 @@ internal static class CullPassVk
         /// <summary>The max-depth pyramid (R32F, half the depth's size, down to 1x1), the view-projection its depth
         /// was drawn under, and whether it is this frame's (<see cref="Fresh"/>) or a prior frame's (<see cref="Stale"/>).</summary>
         public ImageId Pyr;
+        /// <summary>The pyramid a resize replaced: this frame's prepass cull bound it before the rebuild, so its id
+        /// must resolve until this frame's list has run. Destroyed at the next build.</summary>
+        public ImageId Retired;
         public int PyrW, PyrH, PyrLevels;
         public Matrix4x4 PyrVp;
         public bool Stale, Fresh, RetestPending;
@@ -263,6 +266,8 @@ internal static class CullPassVk
     internal static void BuildHiZ(VkBackend vk, CommandList cl, ImageId depth, int w, int h)
     {
         var s = _s;
+        vk.Destroy(s.Retired);
+        s.Retired = default;
         if (!s.Ran || !Occludes || !EnsurePyramid(vk, w / 2, h / 2)) return;
         Reduce(cl, depth);
         s.Fresh = true;
@@ -292,7 +297,7 @@ internal static class CullPassVk
         var s = _s;
         w = Math.Max(w, 1); h = Math.Max(h, 1);
         if (!s.Pyr.IsNull && w == s.PyrW && h == s.PyrH) return true;
-        vk.Destroy(s.Pyr);
+        s.Retired = s.Pyr;
         s.Stale = false;
         int levels = 1;
         while ((w >> levels) > 0 || (h >> levels) > 0) levels++;

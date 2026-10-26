@@ -64,7 +64,9 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>The floor: dynamic rendering and synchronization2 are core, and it fixes the SPIR-V target.</summary>
     private static readonly VkVersion ApiFloor = VkVersion.Version_1_3;
     private const int LoggedFaults = 16;
-    private const int Slots = 2;
+    /// <summary>Submits in flight before one waits on a fence: a frame submits its world and up to two GUI runs, so
+    /// four keeps a whole frame of overlap; two made the second GUI run wait out the GPU's world every frame.</summary>
+    private const int Slots = 4;
     /// <summary>Submits a freed object waits out: past the slot ring, and past the graveyard's hold on a composite's GL texture.</summary>
     private const int DeadAfter = GpuGraveyard.FramesInFlight * 2;
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
