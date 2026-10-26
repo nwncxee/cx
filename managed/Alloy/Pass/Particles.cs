@@ -391,80 +391,8 @@ internal static unsafe partial class Particles
         _frame++;
         if (_off || !Enabled.V || _gl.Failed || _orderN == 0 || Gl.DrawArrays == null) return;
         if (!EnsureProgram()) return;
-
-        // The camera the billboards face: the frame's own camera block, where the seam published this view's pose.
-        if (!FrameInputs.HasCamera) return;
-        Quaternion camRot = FrameInputs.CameraRot;
-        Basis(camRot, out Vector3 camFwd, out Vector4 camQ, out Vector3 axisY, out Vector3 axisX);
-        // The eye, from the view matrix rather than from the camera object: the sphere normal has to bulge
-        // TOWARDS the viewer and the engine's quaternion does not say by itself which way its own Z points.
-        // Inverting the matrix we are about to upload cannot disagree with the matrix we are about to upload.
-        Vector3 eye = default;
-        if (Matrix4x4.Invert(*view, out Matrix4x4 vi)) eye = new Vector3(vi.M41, vi.M42, vi.M43);
-
-        int n = Classify();
-        if (n == 0) return;
-        int groups = Group(n);
-        if (groups == 0 || _drawN == 0) return;
-
-        int parts = 0;
-        for (int i = 0; i < _drawN; i++) parts += _sCount[_draw[i]];
-        if (!EnsureBuffers(parts)) return;
-
-        // #148: only the alpha-blended class is lit. Additive is self-illuminated by definition, and
-        // punch-through in this game's content is Turn Undead auras and a holy strike -- lighting those
-        // would dim the effect in exactly the dark crypt it is cast in. Decided BEFORE the build, because
-        // the build reads it: an emitter drawn lit must not also get the CPU tint.
-        bool lit = Lit.V && lightingOn && AlloyLights.Ready;
-
-        // #261: build each emitter's records into its OWN persistent block. #288: what this loop stages for
-        // the index list is one SPAN an emitter -- the list itself is written by the compute dispatch below.
-        int at = 0;
-        for (int i = 0; i < _drawN; i++)
-        {
-            int k = _draw[i];
-            ref Emit e = ref _tab[_sSlot[k]];
-            // Every entry gets a span, so an emitter that produced nothing is an EMPTY span rather than a
-            // stale one -- the compute pass walks spans by group membership, not by what was written.
-            _span[i * 4] = 0; _span[i * 4 + 1] = 0; _span[i * 4 + 2] = (uint)at; _span[i * 4 + 3] = 0;
-            if (!EnsureBlock(ref e, _sCount[k])) { _wrote[i] = 0; continue; }
-            Span<ParticleRec> block = new Span<ParticleRec>(_recs, _recsCap).Slice(e.RecBase, e.RecCap);
-            int wrote = BuildEmitter(ref e, block, _sCount[k],
-                                     camFwd, camQ, axisY, axisX, eye,
-                                     lit && _sCls[k] == ClsBlend);
-            _wrote[i] = wrote;
-            if (wrote == 0) continue;
-            // The delta. An emitter whose particles did not move -- a frozen splat field, an emitter the
-            // simulation skipped -- costs a hash of its own memory and no bus traffic at all.
-            // ponytail: a camera-derived basis in record slots 8..14 can never match across a rotation.
-            // Upgrade: build the basis in cx_particle_v instead. See Fnv for the measurement that parks it.
-            ulong h = Fnv(block.Slice(0, wrote));
-            if (h != e.Hash)
-            {
-                e.Hash = h;
-                fixed (ParticleRec* up = block)
-                    Gl.NamedBufferSubData(_gl.RecBuf,
-                                          (IntPtr)((long)e.RecBase * sizeof(ParticleRec)),
-                                          (IntPtr)((long)wrote * sizeof(ParticleRec)), up);
-                _blockUploads++;
-            }
-            else _blockSkips++;
-            // #288: the span, not the particles. The index list itself is filled by the compute pass below
-            // -- or, under /particles sort 0, from this same descriptor on the CPU.
-            _span[i * 4] = (uint)e.RecBase; _span[i * 4 + 1] = (uint)wrote; _span[i * 4 + 2] = (uint)at;
-            at += wrote;
-        }
+        int at = Build(view, lightingOn, true, out Vector3 eye, out bool lit, out int groups);
         if (at == 0) return;
-
-        // groups are contiguous in _draw and written in that order, so their PARTICLE ranges follow directly
-        int cursor = 0;
-        for (int gi = 0; gi < groups; gi++)
-        {
-            int gn = 0;
-            for (int j = 0; j < _gCount[gi]; j++) gn += _wrote[_gFirst[gi] + j];
-            _gStart[gi] = cursor; _gParts[gi] = gn;
-            cursor += gn;
-        }
 
         // #148: the depth snapshot, here rather than at a pass slot of its own. It is not an ordering
         // decision -- nothing else in the frame reads it and nothing draws between it and the particles --
@@ -609,6 +537,87 @@ internal static unsafe partial class Particles
         _groups += groups;
         // CX-48: what was drawn, for the velocity sweep that re-issues it later in the frame.
         NoteMotionGroups(groups);
+    }
+
+    /// <summary>The pass's CPU half, shared by both renderers: classify and group the captured emitters, build each
+    /// one's records into its persistent block (sent to GL's store when <paramref name="gl"/>, by its hash) and lay
+    /// the groups' particle ranges out. The particles placed; 0 = nothing to draw.</summary>
+    private static int Build(Matrix4x4* view, bool lightingOn, bool gl, out Vector3 eye, out bool lit, out int groups)
+    {
+        // The camera the billboards face: the frame's own camera block, where the seam published this view's pose.
+        eye = default; lit = false; groups = 0;
+        if (!FrameInputs.HasCamera) return 0;
+        Quaternion camRot = FrameInputs.CameraRot;
+        Basis(camRot, out Vector3 camFwd, out Vector4 camQ, out Vector3 axisY, out Vector3 axisX);
+        // The eye, from the view matrix rather than from the camera object: the sphere normal has to bulge
+        // TOWARDS the viewer and the engine's quaternion does not say by itself which way its own Z points.
+        // Inverting the matrix we are about to upload cannot disagree with the matrix we are about to upload.
+        if (Matrix4x4.Invert(*view, out Matrix4x4 vi)) eye = new Vector3(vi.M41, vi.M42, vi.M43);
+
+        int n = Classify();
+        if (n == 0) return 0;
+        groups = Group(n);
+        if (groups == 0 || _drawN == 0) return 0;
+
+        int parts = 0;
+        for (int i = 0; i < _drawN; i++) parts += _sCount[_draw[i]];
+        if (!EnsureBuffers(parts)) return 0;
+
+        // #148: only the alpha-blended class is lit. Additive is self-illuminated by definition, and
+        // punch-through in this game's content is Turn Undead auras and a holy strike -- lighting those
+        // would dim the effect in exactly the dark crypt it is cast in. Decided BEFORE the build, because
+        // the build reads it: an emitter drawn lit must not also get the CPU tint.
+        lit = Lit.V && lightingOn && AlloyLights.Ready;
+
+        // #261: build each emitter's records into its OWN persistent block. #288: what this loop stages for
+        // the index list is one SPAN an emitter -- the list itself is written by the compute dispatch below.
+        int at = 0;
+        for (int i = 0; i < _drawN; i++)
+        {
+            int k = _draw[i];
+            ref Emit e = ref _tab[_sSlot[k]];
+            // Every entry gets a span, so an emitter that produced nothing is an EMPTY span rather than a
+            // stale one -- the compute pass walks spans by group membership, not by what was written.
+            _span[i * 4] = 0; _span[i * 4 + 1] = 0; _span[i * 4 + 2] = (uint)at; _span[i * 4 + 3] = 0;
+            if (!EnsureBlock(ref e, _sCount[k])) { _wrote[i] = 0; continue; }
+            Span<ParticleRec> block = new Span<ParticleRec>(_recs, _recsCap).Slice(e.RecBase, e.RecCap);
+            int wrote = BuildEmitter(ref e, block, _sCount[k],
+                                     camFwd, camQ, axisY, axisX, eye,
+                                     lit && _sCls[k] == ClsBlend);
+            _wrote[i] = wrote;
+            if (wrote == 0) continue;
+            // The delta. An emitter whose particles did not move -- a frozen splat field, an emitter the
+            // simulation skipped -- costs a hash of its own memory and no bus traffic at all.
+            // ponytail: a camera-derived basis in record slots 8..14 can never match across a rotation.
+            // Upgrade: build the basis in cx_particle_v instead. See Fnv for the measurement that parks it.
+            ulong h = Fnv(block.Slice(0, wrote));
+            if (gl && h != e.Hash)
+            {
+                e.Hash = h;
+                fixed (ParticleRec* up = block)
+                    Gl.NamedBufferSubData(_gl.RecBuf,
+                                          (IntPtr)((long)e.RecBase * sizeof(ParticleRec)),
+                                          (IntPtr)((long)wrote * sizeof(ParticleRec)), up);
+                _blockUploads++;
+            }
+            else _blockSkips++;
+            // #288: the span, not the particles. The index list itself is filled by the compute pass below
+            // -- or, under /particles sort 0, from this same descriptor on the CPU.
+            _span[i * 4] = (uint)e.RecBase; _span[i * 4 + 1] = (uint)wrote; _span[i * 4 + 2] = (uint)at;
+            at += wrote;
+        }
+        if (at == 0) return 0;
+
+        // groups are contiguous in _draw and written in that order, so their PARTICLE ranges follow directly
+        int cursor = 0;
+        for (int gi = 0; gi < groups; gi++)
+        {
+            int gn = 0;
+            for (int j = 0; j < _gCount[gi]; j++) gn += _wrote[_gFirst[gi] + j];
+            _gStart[gi] = cursor; _gParts[gi] = gn;
+            cursor += gn;
+        }
+        return at;
     }
 
     /// <summary>Resolve every captured emitter into (texture, class, cull, particle count), dropping the

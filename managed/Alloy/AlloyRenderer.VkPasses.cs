@@ -142,6 +142,7 @@ public sealed unsafe partial class AlloyRenderer
             VkWaterDone();
         }
 
+        if (!VkParticlePass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
         VkIdPaint(vk, cl, s, log);
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
