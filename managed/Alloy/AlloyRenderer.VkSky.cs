@@ -39,10 +39,11 @@ public sealed unsafe partial class AlloyRenderer
     /// the A/B's GL half skips so neither frame has a dome the other lacks.</summary>
     internal static bool VkSkyDrew(int i) => (uint)i < (uint)MaxSkyDraws && _vkSky.Drew[i];
 
-    /// <summary>The sky dome into <paramref name="cl"/>: its own pass over the scene colour and depth, depth test on
-    /// and write off as GL's is, at window depth 1. False (logged) only when the device refused the recording.</summary>
+    /// <summary>The sky dome into <paramref name="cl"/>: its own pass over the scene colour and depth -- or layer
+    /// <paramref name="layer"/> of <paramref name="into"/> over <paramref name="depth"/>, a probe face -- depth test on and
+    /// write off as GL's is, at window depth 1. False (logged) only when the device refused the recording.</summary>
     private static bool VkRecordSky(VkBackend vk, CommandList cl, VkColourState s, in Matrix4x4 vp, int* viewport,
-                                    ExtenderLog log)
+                                    ExtenderLog log, ImageId into = default, int layer = 0, ImageId depth = default)
     {
         if (_vkSky.Dev != vk) _vkSky = new VkSkyState { Dev = vk };
         VkSkyState k = _vkSky;
@@ -69,7 +70,7 @@ public sealed unsafe partial class AlloyRenderer
                                         : s.Progs[(int)VkPrograms.Id.Fullbright];
             int fmt = _skFmt[i];
             if (p == null || (uint)fmt >= MeshArena.Formats || MeshArena.VkVbo((MeshArena.Fmt)fmt).IsNull) { k.SatOut++; continue; }
-            PipelineId id = VkSkyPipeline(p, fmt, 1 + Math.Min(_skSrc[i], 7) * 8 + Math.Min(_skDst[i], 7));
+            PipelineId id = VkSkyPipeline(p, fmt, 1 + Math.Min(_skSrc[i], 7) * 8 + Math.Min(_skDst[i], 7), _capturing);
             if (id.IsNull || !VkBindSky(side, p, i, vp, viewport, s.Slots)) { k.SatOut++; continue; }
             if (id != pipe) { side.SetPipeline(id); pipe = id; }
             if (fmt != fmtBound) { side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)fmt)); fmtBound = fmt; }
@@ -87,8 +88,9 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (drawn == 0) return true;
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
-        colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        colors[0] = new ColorAttachment(into.IsNull ? s.Hdr : into, 0, layer, LoadOp.Load, StoreOp.Store, default);
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(depth.IsNull ? s.Depth : depth, 0, 0,
+                                                                                      LoadOp.Load, StoreOp.Store, 1f)));
         if (!k.Live)
         {
             k.Live = true;
@@ -124,11 +126,12 @@ public sealed unsafe partial class AlloyRenderer
     private const uint SkyShimBase = 1 << 20;   // not-an-offset: a reserved name range
 
     /// <summary>The sky's pipeline for <paramref name="p"/> drawing arena format <paramref name="fmt"/> under blend
-    /// <paramref name="blend"/>, made on first ask. Depth clamp is the one state GL's sky sets that the seam cannot
+    /// <paramref name="blend"/>, made on first ask; a <paramref name="probe"/> face's keeps the target's alpha, the
+    /// capture's distance, which the dome -- infinitely far -- leaves at the clear. Depth clamp is the one state GL's sky sets that the seam cannot
     /// record, so it is baked here: without it a composed sky matrix clips the dome into a hole at the horizon.</summary>
-    private static PipelineId VkSkyPipeline(VkProg p, int fmt, int blend)
+    private static PipelineId VkSkyPipeline(VkProg p, int fmt, int blend, bool probe)
     {
-        long key = fmt | (long)blend << 8 | SkyPipeKey;
+        long key = fmt | (long)blend << 8 | SkyPipeKey | (probe ? SkyProbeKey : 0);
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         VkColourState s = _vkc;
         var d = new PipelineDesc
@@ -143,7 +146,8 @@ public sealed unsafe partial class AlloyRenderer
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = 1;
         BlendFactor src = VkFactor((blend - 1) >> 3), dst = VkFactor((blend - 1) & 7);
-        d.Blend[0] = new AttachmentBlend(true, src, dst, src, dst);
+        d.Blend[0] = probe ? new AttachmentBlend(true, src, dst, BlendFactor.Zero, BlendFactor.One)
+                           : new AttachmentBlend(true, src, dst, src, dst);
         id = s.Dev!.CreatePipeline(in d);
         p.Pipes[key] = id;
         return id;
@@ -152,6 +156,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The bit that keeps a sky pipeline's key out of <see cref="VkPipeline"/>'s space, whose keys carry a
     /// format, a target set and a blend pair and never reach it.</summary>
     private const long SkyPipeKey = 1L << 32;   // not-an-offset: a cache-key tag
+    /// <summary>The bit that keys a probe face's sky pipeline apart from the screen's.</summary>
+    private const long SkyProbeKey = 1L << 33;   // not-an-offset: a cache-key tag
 
     /// <summary>One dome's bind: the per-pass terms <c>SkyStage.Prepare</c> uploads and the per-draw ones its
     /// <c>Draw</c> does, captured into the program's loose block, then the bind set with the material's engine

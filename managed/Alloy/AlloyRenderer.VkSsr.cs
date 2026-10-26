@@ -10,8 +10,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The screen-space reflections (<see cref="PassId.Reflections"/>) on Vulkan: the colour pass writes <see cref="Ssr"/>'s
 /// record pair beside the scene colour, then after the deferred walk the hi-Z pyramid and the colour copy's mips are
-/// built by compute, the half-res trace runs, and the composite adds the result on. No probe or mirror is on Vulkan,
-/// so the trace takes back no probe term and a miss adds nothing.
+/// built by compute, the half-res trace runs, and the composite adds the result on. The trace takes the probe term back
+/// out where the screen answers; no mirror is on Vulkan, so a miss keeps the probe alone.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -95,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
         VkUniformShim.Set(s.TView, view);
         VkUniformShim.Set(s.TInvView, invView);
         VkUniformShim.Set(s.TNf, [near, far]);
-        VkUniformShim.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[fine], 0f, fine]);
+        VkUniformShim.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[fine], VkProbeMips, fine]);
         VkUniformShim.Set(s.TViz, 0);
         VkUniformShim.Set(s.TColShift, s.ColShift);
         VkUniformShim.Set(s.TPlane, [0f, 0f, 0f, 0f]);
@@ -133,8 +133,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan screen-space reflections are LIVE -- {s.W}x{s.H} records, a {s.Levels}-level "
-                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, trace {s.Ow}x{s.Oh} (no probe "
-                     + "or mirror on Vulkan: a miss adds nothing)");
+                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, trace {s.Ow}x{s.Oh} (no mirror "
+                     + "on Vulkan: a miss keeps the probe)");
         }
     }
 
@@ -161,7 +161,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/>, each sampler on the image its
-    /// name says, the probe on the stand-in cube and the mirror on the stand-in.</summary>
+    /// name says, the probe on the live cube (else its stand-in) and the mirror on the stand-in.</summary>
     private static void VkSsrDraw(CommandList cl, GuiVkProg p, PipelineId pipe, int at, ImageId into, LoadOp load, int w, int h)
     {
         if (pipe.IsNull) return;
@@ -175,7 +175,8 @@ public sealed unsafe partial class AlloyRenderer
             if (o.Set != 0) continue;
             if (o.Kind == VkBindKind.UniformBlock)
             {
-                ubo[nu++] = o.Binding == UboSlots.Loose ? new BufferBinding(o.Binding, c.Arena, at, p.Block.Length)
+                ubo[nu++] = VkProbeSh(o.Binding) is { } sh ? sh
+                          : o.Binding == UboSlots.Loose ? new BufferBinding(o.Binding, c.Arena, at, p.Block.Length)
                                                         : new BufferBinding(o.Binding, c.ZeroUbo);
                 continue;
             }
@@ -188,7 +189,7 @@ public sealed unsafe partial class AlloyRenderer
                 "uRecN" => new ImageBinding(o.Binding, s.RecN, s.Point),
                 "uRecW" => new ImageBinding(o.Binding, s.RecW, s.Point),
                 "uSrc" => new ImageBinding(o.Binding, s.Out, s.Point),
-                "uProbe" => new ImageBinding(o.Binding, c.TexCube, c.Linear),
+                "uProbe" => VkProbeImage(o) ?? new ImageBinding(o.Binding, c.TexCube, c.Linear),
                 _ => new ImageBinding(o.Binding, c.Tex2D, c.Linear),
             };
         }

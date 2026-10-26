@@ -177,7 +177,7 @@ internal static unsafe class EnvProbe
     /// has walked <see cref="MoveDist"/> out of the last one. The frame floor sits in front of both.</summary>
     internal static bool Wanted(Vector3 eye, int frame)
     {
-        if (!_on || _down.Failed || Gl.ClearColor == null || LightmapBake.Held) return false;
+        if (!_on || _down.Failed || !Renderer.OnVulkan && Gl.ClearColor == null || LightmapBake.Held) return false;
         if (frame - _lastFrame < MinFrames) return false;
         return !Ready || Vector3.DistanceSquared(eye, Origin) > MoveDist * MoveDist;
     }
@@ -243,6 +243,36 @@ internal static unsafe class EnvProbe
             _log?.Always($"EnvProbe: capture #{Captures} holds NaN/Inf -- NOT PUBLISHED, the area has no ambient " +
                          "specular or ambient direction until a clean capture (a stage in the capture wrote a " +
                          "non-finite colour)");
+    }
+
+    /// <summary>Levels in a <paramref name="size"/>-square chain down to one texel.</summary>
+    internal static int MipsOf(int size)
+    {
+        int n = 1;
+        for (int s = size; s > 1; s >>= 1) n++;
+        return n;
+    }
+
+    /// <summary>Open a Vulkan capture: latch what it is of as <see cref="Begin"/> does, with the cube the caller's.</summary>
+    internal static void BeginVk(Vector3 eye, int frame, float far)
+    {
+        Origin = eye; _lastFrame = frame;
+        _far = far > FaceNear * 4f ? far : FaceNear * 4f;
+        Ready = false;
+        Mips = MipsOf(Size);
+    }
+
+    /// <summary>Face <paramref name="face"/>'s exactly-90&deg; view-projection, as <see cref="Face"/> hands it back.</summary>
+    internal static Matrix4x4 FaceVp(int face) => ShadowMath.PointLightFaceViewProj(Origin, face, FaceNear, _far);
+
+    /// <summary>Close a Vulkan capture whose prefilter and SH9 the caller recorded: published. No readback -- the
+    /// capture's stages clamp a non-finite colour to zero before it reaches the chain.</summary>
+    internal static void EndVk()
+    {
+        Captures++;
+        Ready = true;
+        _log?.Info($"EnvProbe: captured area probe #{Captures} at ({Origin.X:F0},{Origin.Y:F0},{Origin.Z:F0}) " +
+                   $"-- {Size}px x 6 faces, {Mips} mips (Vulkan)");
     }
 
     /// <summary>Non-finite captures so far; only the first is logged loudly (a refused probe re-captures every
@@ -339,8 +369,7 @@ internal static unsafe class EnvProbe
             _gl.LocOrigin = GlProgram.Loc(_gl.ProgSh, "uOrigin");
         }
 
-        Mips = 1;
-        for (int s = Size; s > 1; s >>= 1) Mips++;
+        Mips = MipsOf(Size);
 
         uint cap = Cube(), t = Cube();
         if (cap == 0 || t == 0)

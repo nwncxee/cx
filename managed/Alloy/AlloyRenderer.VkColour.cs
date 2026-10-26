@@ -117,7 +117,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -343,6 +343,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
                     VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
                     VkUniformShim.Set(L.MirrorZ, _mirrorZ);
+                    VkUniformShim.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
                     UploadFeatureTerms(L.Feat, viewport);
                     BindPass(L.CubeCount, viewport, near, far);
                     VkUniformShim.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
@@ -473,13 +474,12 @@ public sealed unsafe partial class AlloyRenderer
         return at;
     }
 
-    /// <summary>The pass block <see cref="BindPass"/> just staged, into the arena with the receivers Vulkan has no maps
-    /// for yet switched off: no sun cascade, no probe.</summary>
+    /// <summary>The pass block <see cref="BindPass"/> just staged, into the arena with the probe as Vulkan has it.</summary>
     private static int VkArenaPass()
     {
         if (_passStage == null) return -1;
         int at = VkArena(new ReadOnlySpan<byte>(_passStage, PassBytes));
-        if (at >= 0) VkParity.StandDownPass(_vkc.ArenaBytes.AsSpan(at, PassBytes));
+        if (at >= 0) VkParity.StandDownPass(_vkc.ArenaBytes.AsSpan(at, PassBytes), VkProbeMips);
         return at;
     }
 
@@ -516,7 +516,8 @@ public sealed unsafe partial class AlloyRenderer
             {
                 case VkBindKind.UniformBlock:
                     int engine = o.Binding == UboSlots.Engine ? VkEngine() : -1;
-                    ubo[nu++] = o.Binding == UboSlots.Loose && loose >= 0 ? new BufferBinding(o.Binding, s.Arena, loose, p.Block.Length)
+                    ubo[nu++] = VkProbeSh(o.Binding) is { } sh ? sh
+                              : o.Binding == UboSlots.Loose && loose >= 0 ? new BufferBinding(o.Binding, s.Arena, loose, p.Block.Length)
                               : o.Binding == UboSlots.Pass && pass >= 0 ? new BufferBinding(o.Binding, s.Arena, pass, PassBytes)
                               : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, sizeof(EngineBlock))
                               : new BufferBinding(o.Binding, s.ZeroUbo);
@@ -571,6 +572,7 @@ public sealed unsafe partial class AlloyRenderer
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
+        if (VkProbeImage(o) is { } probe) return probe;
         if (VkShadowMap(o.Name) is { IsNull: false } map)
             return new ImageBinding(o.Binding, map,
                 o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Raw);
@@ -617,6 +619,13 @@ public sealed unsafe partial class AlloyRenderer
         if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
         else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        // a probe face: alpha is the lit stage's 1 / distance, which every other stage leaves at the clear's "far"
+        else if (targets == VkTargets.Probe)
+        {
+            d.Targets.ColorCount = 1;
+            d.Targets.Colors[0] = Format.Rgba16F;
+            d.Blend[0] = new AttachmentBlend(Masked: p.Id == VkPrograms.Id.Lit ? ColorMask.None : ColorMask.A);
+        }
         else if (targets == VkTargets.Mask) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba8; }
         else if (targets == VkTargets.Velocity) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rg16F; }
         else if (targets is VkTargets.Colour or VkTargets.ColourRefl)

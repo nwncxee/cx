@@ -26,7 +26,7 @@ internal static class VkStoodDown
     private static readonly Pass[] Passes =
     [
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
-        new(PassId.ProbeCapture, "light.probe / lightmap (the probe capture and the bake)", "neither is captured"),
+        new(PassId.ProbeCapture, "lightmap (the bake)", "nothing is baked"),
     ];
 
     /// <summary>A row per stood-down term. <see cref="SelfCheck"/> holds this list against
@@ -35,7 +35,7 @@ internal static class VkStoodDown
     [
         new("uLmPages", "lightmap (baked static lighting)", "every surface takes the live rig"),
         new("uLightRecOn", "light.deferred (the blended class's light record)", "blended parts take the forward walk"),
-        new("uCapture", "light.probe (the environment probe and the planar reflection)", "no captured reflection"),
+        new("uMirrorZ", "light.ssrplanar (the planar reflection)", "the screen-space trace has no mirror under it"),
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
     ];
 
@@ -52,7 +52,7 @@ internal static class VkStoodDown
         PassId.BeamsOwned => Effects.Beams.V,
         PassId.HalosOwned => Effects.HalosOn,
         PassId.ParticlesOwned => Particles.Enabled.V,
-        PassId.ProbeCapture => Lighting.Probe.V || Lightmap.G.Master!.V,
+        PassId.ProbeCapture => Lightmap.G.Master!.V,
         _ => false,
     };
 
@@ -61,7 +61,7 @@ internal static class VkStoodDown
     {
         "uLmPages" => Lightmap.G.Master!.V,
         "uLightRecOn" => Lighting.Deferred.V,
-        "uCapture" => Lighting.Probe.V,
+        "uMirrorZ" => Lighting.SsrPlanar.V,
         "uOit" => Renderer.Oit.V > 0,
         _ => false,
     };

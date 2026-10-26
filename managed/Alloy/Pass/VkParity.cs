@@ -82,13 +82,13 @@ internal static unsafe class VkParity
     /// <summary>The lit stage's loose terms whose resources are not on Vulkan: Vulkan binds them at zero. GL's A/B frame
     /// reaches the same zero at each term's own source, keyed on <see cref="Active"/>.</summary>
     internal static readonly string[] StoodDown =
-        ["uLmPages", "uLightRecOn", "uCapture", "uOit"];
+        ["uLmPages", "uLightRecOn", "uMirrorZ", "uOit"];
 
-    /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no probe. The sun
-    /// cascades stand: the A/B frame bakes on both backends, so both sides read the same count over their own maps.</summary>
-    internal static void StandDownPass(Span<byte> block)
+    /// <summary>The pass block's probe as Vulkan has it -- <paramref name="probeMips"/>, 0 for none -- in place of GL's,
+    /// whose cube Vulkan does not hold. The sun cascades stand: the A/B frame bakes on both backends.</summary>
+    internal static void StandDownPass(Span<byte> block, float probeMips)
     {
-        MemoryMarshal.Write(block[AlloyRenderer.PbProbeMips..], 0f);
+        MemoryMarshal.Write(block[AlloyRenderer.PbProbeMips..], probeMips);
     }
 
     /// <summary>This frame is the A/B: GL draws its Vulkan passes beside Vulkan's, and the two are compared.</summary>
