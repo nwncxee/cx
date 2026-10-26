@@ -15,6 +15,8 @@ internal static unsafe partial class PostStack
         public GuiVkProg? P;
         public bool Tried;
         public int Dither = -1, Param = -1;
+        /// <summary>The hosted chain's own terms; unused by every other stage.</summary>
+        public FbPostStage.VkLocs Fb;
     }
 
     /// <summary>The stack on one device, replaced whole with the device: the stages, the ping-pong pair, the velocity
@@ -45,7 +47,8 @@ internal static unsafe partial class PostStack
 
     /// <summary>The stages Vulkan draws: the plain ones, and the taa stage with its own resolve. The toon, hosted-chain
     /// and SMAA stages draw passes of their own that are not on Vulkan yet.</summary>
-    private static bool OnVulkan(Stage st) => st.Name is "gamma" or "sharpen" or "vibrance" or "taa";
+    private static bool OnVulkan(Stage st) => st.Name is "gamma" or "sharpen" or "vibrance" or "taa"
+                                              || st == _fbpost && !FbPostStage.HostsNative;
 
     /// <summary>The TAA history on Vulkan starts over: the next resolve takes the current frame whole.</summary>
     internal static void ResetVk() => _vk.HistValid = false;
@@ -63,6 +66,7 @@ internal static unsafe partial class PostStack
         if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
         StackVkState s = _vk;
         PostChainVk.BeginFrame();
+        if (FbPostStage.Stale(Mask(), Quality())) s.Stages[Array.IndexOf(_stages, _fbpost)] = new StageVk();
         if (!PostChainVk.Ensure(vk, log)) return false;
         int dw = display[2], dh = display[3];
         int live = 0;
@@ -104,6 +108,7 @@ internal static unsafe partial class PostStack
             PostChainVk.Open(v.P!);
             VkUniformShim.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
             if (st.Value != null) VkUniformShim.Set(v.Param, st.Value());
+            if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : full);
             int at = PostChainVk.Close(cl, v.P!);
             PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, dw, dh),
                              at, new PostChainVk.Inputs(read, default, depth, hist), log);
@@ -119,7 +124,17 @@ internal static unsafe partial class PostStack
     private static void Build(VkBackend vk, Stage st, StageVk v, ExtenderLog log)
     {
         v.Tried = true;
-        GlProgram.Texts(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, ShaderStages.Source(st.Resref),
+        string raw = ShaderStages.Source(st.Resref);
+        if (st == _fbpost)
+        {
+            // the chain spliced as GL's build splices it; an untouched text is no chain to host
+            FbPostStage.Arm(Mask(), Quality());
+            raw = FbPostStage.Hosting(raw, log);
+            string spliced = VanillaShader.Splice(raw, log, "PostStack fbpost");
+            if (spliced == raw || FbPostStage.HostsNative) return;
+            raw = spliced;
+        }
+        GlProgram.Texts(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, raw,
                         log, $"PostStack {st.Name}", out string vs, out string fs);
         if (!(ShaderContract.DisplaySafe(fs) && ShaderContract.SlotSafe(fs, "uSrc")))
         {
@@ -131,6 +146,7 @@ internal static unsafe partial class PostStack
         {
             v.Dither = p.Loc("uDither");
             v.Param = st.Param == null ? -1 : p.Loc(st.Param);
+            if (st == _fbpost) v.Fb = FbPostStage.LocateVk();
         }, log);
         if (v.P == null) log.Always($"PostStack: the {st.Name} stage did not build on Vulkan (logged above) -- it sits the session out");
     }

@@ -31,8 +31,6 @@ internal static class VkStoodDown
         new(PassId.GrassOwned, "grass", "no blades over the ground"),
         new(PassId.Reflections, "light.ssr (screen-space reflections)", "surfaces keep the probe alone"),
         new(PassId.ProbeCapture, "light.probe / lightmap (the probe capture and the bake)", "neither is captured"),
-        new(PassId.PostProcess, "post (bloom, tonemap, the camera velocity)", "the scene reaches the screen unprocessed"),
-        new(PassId.PostStack, "post (anti-aliasing, TAA and the highlight overlays)", "no resolve and no overlay"),
     ];
 
     /// <summary>A row per stood-down term. <see cref="SelfCheck"/> holds this list against
@@ -48,8 +46,7 @@ internal static class VkStoodDown
         new("uSplash", "weather (rain impacts on water)", "the water takes no ripples"),
     ];
 
-    /// <summary>Is the feature behind <paramref name="id"/> switched on? The post chain has no master knob -- it always
-    /// runs on GL -- so it is always missing here.</summary>
+    /// <summary>Is the feature behind <paramref name="id"/> switched on?</summary>
     private static bool On(PassId id) => id switch
     {
         PassId.RainCover or PassId.WeatherOwned => Weather.Enabled.V,
@@ -63,7 +60,6 @@ internal static class VkStoodDown
         PassId.HalosOwned => Effects.HalosOn,
         PassId.ParticlesOwned => Particles.Enabled.V,
         PassId.ProbeCapture => Lighting.Probe.V || Lightmap.G.Master!.V,
-        PassId.PostProcess or PassId.PostStack => true,
         _ => false,
     };
 
@@ -81,9 +77,10 @@ internal static class VkStoodDown
     };
 
     /// <summary>Does the Vulkan frame draw <paramref name="id"/>? The two lists in <see cref="VkParity"/> say so, one
-    /// per bracket; every other bracket is the engine's, not Alloy's.</summary>
+    /// per bracket, and the post chain and stack, which the A/B compares ahead of; every other bracket is the engine's.</summary>
     private static bool Drawn(PassId id, Bracket bracket)
-        => bracket == Bracket.Colour ? VkParity.GlPass(id) : bracket == Bracket.Shadow && VkParity.VkShadow(id);
+        => bracket == Bracket.Colour ? VkParity.GlPass(id) || id is PassId.PostProcess or PassId.PostStack
+                                     : bracket == Bracket.Shadow && VkParity.VkShadow(id);
 
     /// <summary>The set last said, one bit per row -- passes then terms; -1 = nothing said yet.</summary>
     private sealed class StoodDownState { public long Said = -1; }

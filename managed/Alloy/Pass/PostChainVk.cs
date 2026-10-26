@@ -39,7 +39,7 @@ internal static unsafe class PostChainVk
         public int W, H, Levels;
         public BufferId Ubo;
         public int UboUsed;
-        public SamplerId Linear, Nearest;
+        public SamplerId Linear, Nearest, Repeat;
         public bool Said;
     }
 
@@ -58,6 +58,7 @@ internal static unsafe class PostChainVk
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
         ["uHist"] = TextureSlots.AaEdges, ["uVel"] = TextureSlots.AaArea, ["uMask"] = TextureSlots.PostHdr,
+        ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 
     /// <summary>What a post draw samples, by the role its declaration names: <c>uSrc</c>/<c>uHdr</c>/<c>uCur</c>
@@ -160,7 +161,9 @@ internal static unsafe class PostChainVk
             if (o.Set != 0 || o.Kind != VkBindKind.Sampled || n == img.Length) continue;
             (ImageId i, SamplerId smp) = o.Name switch
             {
-                "uSrc" or "uHdr" or "uCur" => (t.Src, s.Linear),
+                "uSrc" or "uHdr" or "uCur" or "texFBColor" => (t.Src, s.Linear),
+                "texFBDepth" => (t.Depth, s.Nearest),
+                "texUnitNoise" => (VkTextures.Image(FrameSnapshot.NoiseTid), s.Repeat),
                 "uBloom" => (t.Bloom, s.Linear),
                 "uDepth" => (t.Depth, s.Nearest),
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
@@ -211,7 +214,31 @@ internal static unsafe class PostChainVk
     /// <summary>Post program <paramref name="label"/> from its two stages' GL text, its sizing tokens expanded as GL's
     /// compile expands them, translated and compiled. Null (logged) when a step refused.</summary>
     internal static GuiVkProg? Program(VkBackend vk, string vs, string fs, string label, Action<GuiVkProg> locate, ExtenderLog log)
-        => GuiVkProg.Build(vk, ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), Units, $"post {label}", locate, log);
+    {
+        vs = ShaderResource.Tokens(vs);
+        fs = ShaderResource.Tokens(fs);
+        return GuiVkProg.Build(vk, vs, fs, UnitsFor(fs), $"post {label}", locate, log);
+    }
+
+    /// <summary>The first unit a content stage's own unbound sampler takes: past every unit Alloy names.</summary>
+    private const uint ContentUnitBase = 40;
+
+    /// <summary><see cref="Units"/>, plus a unit of its own for every sampler a content chain declares without a binding
+    /// and Alloy does not name -- the engine's <c>texUnit</c><i>n</i> set, which <see cref="Draw"/> binds by name.</summary>
+    private static IReadOnlyDictionary<string, uint> UnitsFor(string fs)
+    {
+        Dictionary<string, uint>? extra = null;
+        uint next = ContentUnitBase;
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(fs,
+                     @"^\s*uniform\s+(?:\w+\s+)?sampler\w*\s+(\w+)\s*;", System.Text.RegularExpressions.RegexOptions.Multiline))
+        {
+            string name = m.Groups[1].Value;
+            if (Units.ContainsKey(name) || extra?.ContainsKey(name) == true) continue;
+            extra ??= new Dictionary<string, uint>(Units, StringComparer.Ordinal);
+            extra[name] = next++;
+        }
+        return extra ?? Units;
+    }
 
     /// <summary><paramref name="p"/>'s pipeline into one <paramref name="f"/> attachment, adding under
     /// <paramref name="add"/>; made on first ask, a null id (logged once) when the device refused it.</summary>
@@ -246,6 +273,7 @@ internal static unsafe class PostChainVk
         s.Ubo = vk.CreateBuffer(new BufferDesc(UboBytes, BufferUse.Uniform, MemoryKind.Upload, "vk post blocks"));
         s.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
         s.Nearest = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
+        s.Repeat = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Repeat));
         s.Down = Make(vk, PostChain.ShdBloomDownFs, "bloom downsample", p =>
         {
             s.D.Lod = p.Loc("uLod"); s.D.Texel = p.Loc("uTexel"); s.D.First = p.Loc("uFirst");

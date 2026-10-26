@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -141,6 +142,27 @@ internal static unsafe class FbPostStage
         Gl.Uniform3f(g.LocClip, _near, _far, 1f - _near / MathF.Max(_far, 1e-6f));
         if (g.Sampler == 0) g.Sampler = Gl.LinearClampSampler();
         if (g.Sampler != 0) Gl.BindSampler(TextureSlots.PostHdr, g.Sampler);
+    }
+
+    /// <summary>The hosted chain's locations in a program the uniform shim resolves.</summary>
+    internal readonly record struct VkLocs(AlloyRenderer.FeatLoc Feat, int View, int ViewInv, int Pixel, int Clip);
+
+    /// <summary>...resolved inside the shim's resolve of that program.</summary>
+    internal static VkLocs LocateVk() => new(Programs.FeatLocs(0), GlProgram.Loc(0, "m_view"), GlProgram.Loc(0, "m_view_inv"),
+                                            GlProgram.Loc(0, "pixelParams"), GlProgram.Loc(0, "clipParams"));
+
+    /// <summary><see cref="Prepare"/>'s terms into the open capture of the Vulkan stage: the engine's feature terms, the
+    /// view and its inverse, the pixel and clip triples. A native stage's images are not on Vulkan, so it never gets here.</summary>
+    internal static void WriteVk(in VkLocs l, int* viewport)
+    {
+        AlloyRenderer.FeatLoc feat = l.Feat;
+        AlloyRenderer.UploadFeatureTerms(in feat, viewport);
+        VkUniformShim.Set(l.View, _view);
+        if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
+        VkUniformShim.Set(l.ViewInv, inv);
+        float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
+        VkUniformShim.Set(l.Pixel, [1f / w, 1f / h, w / h]);
+        VkUniformShim.Set(l.Clip, [_near, _far, 1f - _near / MathF.Max(_far, 1e-6f)]);
     }
 
     /// <summary>The stage text: the environment the chain reads (inc_common/inc_uniforms as the fragment half
