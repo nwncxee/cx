@@ -123,7 +123,7 @@ public sealed unsafe partial class AlloyRenderer
         // the grass class where GL's graph has it: after the deferred lights it is lit beside, before the blended one
         if (!VkGrassPass(vk, cl, s, vp, viewport, near, far, lightingOn, log)) return false;
         // the reflections at the graph's own place: after the deferred walk, before the blended class
-        VkSsrRun(cl, view, proj, viewport, near, far, log);
+        VkSsrRun(vk, cl, vp, view, proj, viewport, near, far, lightingOn && perspective, log);
 
         bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
@@ -189,7 +189,8 @@ public sealed unsafe partial class AlloyRenderer
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
         if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
-        Matrix4x4 vpJ = vp, vpC = vpClean;
+        Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj;
+        ToonStage.SetProj(&pj);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
@@ -439,7 +440,8 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    private static RasterState VkRaster(int g, bool wash) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, false, wash);
+    /// <summary>Batch <paramref name="g"/>'s cull, its winding flipped under the planar mirror as GL's PlanarPass flips it.</summary>
+    private static RasterState VkRaster(int g, bool wash) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, _planar, wash);
 
     /// <summary>One batch: the program bound (its loose block captured) when it or the bound diffuse changed, the
     /// pipeline and dynamic state when they did, the per-batch constants, then the draw. False = sat out, counted.</summary>

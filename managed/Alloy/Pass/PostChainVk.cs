@@ -62,11 +62,12 @@ internal static unsafe class PostChainVk
     };
 
     /// <summary>What a post draw samples, by the role its declaration names: <c>uSrc</c>/<c>uHdr</c>/<c>uCur</c>
-    /// read <see cref="Src"/>, then <c>uBloom</c>, <c>uDepth</c>, <c>uHist</c>, <c>uVel</c>; any other sampler, or a
-    /// null image, takes a stand-in.</summary>
+    /// read <see cref="Src"/>, then <c>uBloom</c>, <c>uDepth</c>, <c>uHist</c>, <c>uVel</c> and SMAA's four tables;
+    /// any other sampler, or a null image, takes a stand-in.</summary>
     internal readonly record struct Inputs(ImageId Src, ImageId Bloom = default, ImageId Depth = default,
                                            ImageId Hist = default, ImageId Vel = default, bool HistLinear = false,
-                                           ImageId Mask = default);
+                                           ImageId Mask = default, ImageId Edges = default, ImageId Area = default,
+                                           ImageId Search = default, ImageId Weights = default);
 
     /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
     internal enum Blend : byte { None, Add, Over }
@@ -169,6 +170,10 @@ internal static unsafe class PostChainVk
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
                 "uVel" => (t.Vel, s.Linear),
                 "uMask" => (t.Mask, s.Linear),
+                "uEdges" => (t.Edges, s.Linear),
+                "uArea" => (t.Area, s.Linear),
+                "uSearch" => (t.Search, s.Nearest),
+                "uBlend" => (t.Weights, s.Linear),
                 "uVFogVol" => (AlloyRenderer.VkFogVolume, s.Linear),
                 _ => (default(ImageId), s.Linear),
             };

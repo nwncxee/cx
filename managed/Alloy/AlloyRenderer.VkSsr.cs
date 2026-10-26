@@ -10,8 +10,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The screen-space reflections (<see cref="PassId.Reflections"/>) on Vulkan: the colour pass writes <see cref="Ssr"/>'s
 /// record pair beside the scene colour, then after the deferred walk the hi-Z pyramid and the colour copy's mips are
-/// built by compute, the half-res trace runs, and the composite adds the result on. The trace takes the probe term back
-/// out where the screen answers; no mirror is on Vulkan, so a miss keeps the probe alone.
+/// built by compute, the half-res trace runs, and the composite adds the result on; the probe term comes back out where
+/// the screen answers, and on flat ground at the player's height the planar mirror answers what it cannot.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -24,6 +24,12 @@ public sealed unsafe partial class AlloyRenderer
         public bool Tried, Live, Armed;
         public ImageId RecN, RecW, Pyr, Col, Out;
         public int W, H, Levels, ColLevels, ColShift, Ow, Oh;
+        /// <summary>The mirror: its draw target and depth, the mip chain the trace samples, at <see cref="PlW"/> x
+        /// <see cref="PlH"/>; <see cref="PlOn"/> = this frame's chain holds the mirror at <see cref="PlZ"/>.</summary>
+        public ImageId PlCol, PlDepth, PlMip;
+        public int PlW, PlH, PlLevels;
+        public bool PlOn, PlFailed, PlLive;
+        public float PlZ;
         public SamplerId Point, Trilinear;
         public PipelineId TracePipe, CompPipe;
         public int HLevel = -1, HNf = -1, MLevel = -1;
@@ -57,13 +63,14 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>After the deferred walk: the pyramid, the colour copy's chain, the trace and the composite into the scene
     /// colour. Nothing unless <see cref="VkSsrArm"/> armed this frame.</summary>
-    private static void VkSsrRun(CommandList cl, in Matrix4x4 view, in Matrix4x4 proj, int* viewport, float near, float far,
-                                 ExtenderLog log)
+    private static void VkSsrRun(VkBackend vk, CommandList cl, in Matrix4x4 vp, in Matrix4x4 view, in Matrix4x4 proj, int* viewport,
+                                 float near, float far, bool mirror, ExtenderLog log)
     {
         VkSsrState s = _vkSsr;
         if (!s.Armed) return;
         s.Armed = false;
         if (!Matrix4x4.Invert(proj, out Matrix4x4 invProj) || !Matrix4x4.Invert(view, out Matrix4x4 invView)) return;
+        s.PlOn = mirror && VkPlanarPass(vk, cl, s, vp, viewport, near, far, log);
         VkColourState c = _vkc;
         VkDefStage hz = s.HiZ!, mp = s.Mip!;
         int arena0 = c.ArenaUsed;
@@ -98,7 +105,7 @@ public sealed unsafe partial class AlloyRenderer
         VkUniformShim.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[fine], VkProbeMips, fine]);
         VkUniformShim.Set(s.TViz, 0);
         VkUniformShim.Set(s.TColShift, s.ColShift);
-        VkUniformShim.Set(s.TPlane, [0f, 0f, 0f, 0f]);
+        VkUniformShim.Set(s.TPlane, [s.PlOn ? s.PlZ : 0f, s.PlOn ? 1f : 0f, 0f, 0f]);
         VkUniformShim.EndCapture();
         int trAt = VkArena(tr.Block);
         Array.Clear(cp.Block);
@@ -125,7 +132,14 @@ public sealed unsafe partial class AlloyRenderer
             VkSsrCompute(cl, mp, mpAt[i], c.Hdr, c.Linear, s.Col, i, Math.Max(i - 1, 0));
             cl.Dispatch((lw + SkyView.Group - 1) / SkyView.Group, (lh + SkyView.Group - 1) / SkyView.Group, 1);
         }
-        ReadOnlySpan<ImageId> read = [s.Pyr, s.Col, s.RecN, s.RecW, c.Depth];
+        // the mirror's chain off its draw, through the colour copy's stage: never more levels than that copy, its source
+        for (int i = 0; s.PlOn && i < s.PlLevels; i++)
+        {
+            int lw = Math.Max(s.PlW >> i, 1), lh = Math.Max(s.PlH >> i, 1);
+            VkSsrCompute(cl, mp, mpAt[i], s.PlCol, c.Linear, s.PlMip, i, Math.Max(i - 1, 0));
+            cl.Dispatch((lw + SkyView.Group - 1) / SkyView.Group, (lh + SkyView.Group - 1) / SkyView.Group, 1);
+        }
+        ReadOnlySpan<ImageId> read = [s.Pyr, s.Col, s.RecN, s.RecW, c.Depth, s.PlOn ? s.PlMip : s.Col];
         cl.ReadImages(read);
         VkSsrDraw(cl, tr, s.TracePipe, trAt, s.Out, LoadOp.DontCare, s.Ow, s.Oh);
         VkSsrDraw(cl, cp, s.CompPipe, cpAt, c.Hdr, LoadOp.Load, viewport[2], viewport[3]);
@@ -133,8 +147,13 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan screen-space reflections are LIVE -- {s.W}x{s.H} records, a {s.Levels}-level "
-                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, trace {s.Ow}x{s.Oh} (no mirror "
-                     + "on Vulkan: a miss keeps the probe)");
+                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, trace {s.Ow}x{s.Oh}");
+        }
+        if (s.PlOn && !s.PlLive)
+        {
+            s.PlLive = true;
+            log.Always($"AlloyRenderer: the Vulkan planar mirror is LIVE -- the opaque set mirrored across the ground at the "
+                     + $"player's feet into {s.PlW}x{s.PlH}, {s.PlLevels} mips (the whole opaque list draws; no mirror re-cull on Vulkan)");
         }
     }
 
@@ -161,7 +180,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/>, each sampler on the image its
-    /// name says, the probe on the live cube (else its stand-in) and the mirror on the stand-in.</summary>
+    /// name says, the probe on the live cube and the mirror on its chain (else their stand-ins).</summary>
     private static void VkSsrDraw(CommandList cl, GuiVkProg p, PipelineId pipe, int at, ImageId into, LoadOp load, int w, int h)
     {
         if (pipe.IsNull) return;
@@ -190,6 +209,7 @@ public sealed unsafe partial class AlloyRenderer
                 "uRecW" => new ImageBinding(o.Binding, s.RecW, s.Point),
                 "uSrc" => new ImageBinding(o.Binding, s.Out, s.Point),
                 "uProbe" => VkProbeImage(o) ?? new ImageBinding(o.Binding, c.TexCube, c.Linear),
+                "uPlanar" when s.PlOn => new ImageBinding(o.Binding, s.PlMip, s.Trilinear),
                 _ => new ImageBinding(o.Binding, c.Tex2D, c.Linear),
             };
         }
@@ -272,6 +292,74 @@ public sealed unsafe partial class AlloyRenderer
         if (!s.RecN.IsNull && !s.RecW.IsNull && !s.Pyr.IsNull && !s.Col.IsNull && !s.Out.IsNull) return true;
         log.Always($"AlloyRenderer: a {w}x{h} Vulkan screen-space reflection target was REFUSED (logged above) -- no reflections this frame");
         s.Out = default;
+        return false;
+    }
+
+    /// <summary>The planar mirror -- the opaque set mirrored across the ground at the player's feet into a
+    /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane -- as GL's
+    /// PlanarPass draws it. False = no mirror this frame. ponytail: one plane, the player's; no mirror re-cull, the whole
+    /// opaque list draws (the GL cull pass's mirror phase is the upgrade).</summary>
+    private static bool VkPlanarPass(VkBackend vk, CommandList cl, VkSsrState s, in Matrix4x4 vp, int* viewport, float near,
+                                     float far, ExtenderLog log)
+    {
+        VkColourState c = _vkc;
+        if (!Lighting.SsrPlanar.V || s.PlFailed || _runtime == null || ArenaCap - c.ArenaUsed < VkProbeArenaNeed) return false;
+        int div = Lighting.SsrPlanarRes.V;
+        int pw = Math.Max(viewport[2] / div, 1), ph = Math.Max(viewport[3] / div, 1);
+        if (!VkPlanarTargets(vk, s, pw, ph, log)) return false;
+        float z = PlayerPos.Z;
+        // the reflection across z = h, row vectors (p' = p M): z' = 2h - z
+        Matrix4x4 m = Matrix4x4.Identity;
+        m.M33 = -1f; m.M43 = 2f * z;
+        Matrix4x4 mVp = m * vp;
+        long draws = Counters._draws, batches = Counters._batches;
+        Vector3 eye = _eyePos;
+        int* pvp = stackalloc int[4] { 0, 0, pw, ph };
+        _capturing = _planar = true;
+        _mirrorZ = z;
+        _eyePos = new Vector3(eye.X, eye.Y, 2f * z - eye.Z);
+        bool ok;
+        try
+        {
+            CommandList side = c.Side!;
+            side.Reset();
+            int arena0 = c.ArenaUsed;
+            var b = new VkBound { Fmt = -1, Tex = -1 };
+            VkPassStart(side, pw, ph);
+            ok = VkIssue(side, ref b, 0, _gOpaqueEnd, new VkRange(false, true, false, false, VkTargets.Forward, false), mVp, pvp,
+                         near, far, false);
+            // alpha 0 where nothing mirrored: the trace keeps its own answer there
+            ReadOnlySpan<ColorAttachment> colors = [new(s.PlCol, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
+            VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.PlDepth, 0, 0, LoadOp.Clear, StoreOp.Store, 1f)));
+        }
+        finally
+        {
+            _capturing = _planar = false;
+            _eyePos = eye;
+            Counters._draws = draws; Counters._batches = batches;
+        }
+        s.PlZ = z;
+        return ok;
+    }
+
+    /// <summary>The mirror's draw target, depth and chain at <paramref name="w"/> x <paramref name="h"/>, remade on a resize;
+    /// a refusal is said once and the mirror sits the session out.</summary>
+    private static bool VkPlanarTargets(VkBackend vk, VkSsrState s, int w, int h, ExtenderLog log)
+    {
+        if (!s.PlMip.IsNull && s.PlW == w && s.PlH == h) return true;
+        vk.Destroy(s.PlCol); vk.Destroy(s.PlDepth); vk.Destroy(s.PlMip);
+        s.PlLevels = Math.Min(SsrLevels(w, h), s.ColLevels);
+        s.PlCol = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
+                                               ImageUse.Sampled | ImageUse.ColorTarget, "vk ssr mirror"));
+        s.PlDepth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1, ImageUse.DepthTarget, "vk ssr mirror depth"));
+        s.PlMip = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, s.PlLevels, 1, 1,
+                                               ImageUse.Sampled | ImageUse.Storage, "vk ssr mirror chain"));
+        s.PlW = w; s.PlH = h;
+        if (!s.PlCol.IsNull && !s.PlDepth.IsNull && !s.PlMip.IsNull) return true;
+        s.PlFailed = true;
+        s.PlMip = default;
+        log.Always($"AlloyRenderer: the {w}x{h} Vulkan planar mirror target was REFUSED (logged above) -- mirror reflections "
+                 + "are off on Vulkan this session");
         return false;
     }
 

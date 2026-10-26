@@ -32,7 +32,6 @@ internal static class VkStoodDown
     /// <see cref="VkParity.StoodDown"/>, so the two cannot drift.</summary>
     private static readonly Term[] Terms =
     [
-        new("uMirrorZ", "light.ssrplanar (the planar reflection)", "the screen-space trace has no mirror under it"),
     ];
 
     /// <summary>Is the feature behind <paramref name="id"/> switched on?</summary>
@@ -54,7 +53,6 @@ internal static class VkStoodDown
     /// <summary>Is the feature behind term <paramref name="name"/> switched on?</summary>
     private static bool On(string name) => name switch
     {
-        "uMirrorZ" => Lighting.SsrPlanar.V,
         _ => false,
     };
 

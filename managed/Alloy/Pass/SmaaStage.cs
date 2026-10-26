@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// ENGINE's subframe renderbuffers (<c>Camera::RefreshRenderSubframeResources</c> @0x5a6610), which the Alloy
 /// frame never lands in, so under Alloy the option was inert. Alloy answers it with SMAA 1x on the resolved
 /// display-space frame, and the option's sample count picks the preset: 2 MEDIUM, 4 HIGH, 8 and 16 ULTRA.</summary>
-internal static unsafe class SmaaStage
+internal static unsafe partial class SmaaStage
 {
     private static ExtenderLog? _log;
     /// <summary><c>g_nMSAA</c>, the option's live value.</summary>
@@ -139,16 +139,24 @@ internal static unsafe class SmaaStage
     /// <summary>Upload one embedded table. The one allocation this class makes, once per context.</summary>
     private static bool Table(uint tex, string resource, uint internalFormat, uint format, int w, int h, int filter)
     {
-        using Stream? s = typeof(SmaaStage).Assembly.GetManifestResourceStream(resource);
-        if (s == null || s.Length != w * h * (format == Gl.RG ? 2 : 1)) return false;
-        byte[] bytes = new byte[s.Length];
-        s.ReadExactly(bytes);
+        byte[]? bytes = TableBytes(resource, w * h * (format == Gl.RG ? 2 : 1));
+        if (bytes == null) return false;
         Gl.TextureStorage2D(tex, 1, internalFormat, w, h);
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
         fixed (byte* p = bytes) Gl.TextureSubImage2D(tex, 0, 0, 0, w, h, format, Gl.UNSIGNED_BYTE, p);
         Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 4);
         RenderTarget.Clamp(tex, filter);
         return true;
+    }
+
+    /// <summary>Embedded table <paramref name="resource"/>'s bytes, or null when it is missing or not <paramref name="len"/> long.</summary>
+    private static byte[]? TableBytes(string resource, int len)
+    {
+        using Stream? s = typeof(SmaaStage).Assembly.GetManifestResourceStream(resource);
+        if (s == null || s.Length != len) return null;
+        byte[] bytes = new byte[len];
+        s.ReadExactly(bytes);
+        return bytes;
     }
 
     /// <summary>The two passes ahead of the blend stage, from <see cref="PostStack.Run"/>: edges of
