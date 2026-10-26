@@ -28,6 +28,10 @@ internal static unsafe class SkyStage
     /// (loudly, once), and nothing else draws it, so the frame has no sky.</summary>
     private const int MaxProgs = 4;
 
+    /// <summary>The names a Vulkan session's entries go by, one per slot: no GL program exists behind them, and the
+    /// Vulkan sky builds each from <see cref="Texts"/> through <see cref="Hosted"/>.</summary>
+    private const uint VkNameBase = 0xFFFFFF00;   // not-an-offset: a reserved name range
+
     private struct Entry
     {
         public string Ref;
@@ -69,7 +73,8 @@ internal static unsafe class SkyStage
     /// lazily on the next sky frame.</summary>
     internal static void DropPrograms()
     {
-        for (int i = 0; i < _gl.Count; i++) if (_gl.Progs[i].Prog != 0) Gl.DeleteProgram(_gl.Progs[i].Prog);
+        if (!Renderer.OnVulkan)
+            for (int i = 0; i < _gl.Count; i++) if (_gl.Progs[i].Prog != 0) Gl.DeleteProgram(_gl.Progs[i].Prog);
         _gl = new SkyState();
     }
 
@@ -108,10 +113,11 @@ internal static unsafe class SkyStage
             return 0;
         }
         string resref = fs.ToLowerInvariant();
+        uint vkName = VkNameBase + (uint)g.Count;
         ref Entry e = ref g.Progs[g.Count++];
         e.Ref = resref;
-        e.NativeLive = TryNative(resref, out e.Native, out uint prog);
-        e.Prog = e.NativeLive ? prog : Build(resref, native: false);
+        e.NativeLive = TryNative(resref, vkName, out e.Native, out uint prog);
+        e.Prog = e.NativeLive ? prog : Build(resref, native: false, vkName);
         if (e.Prog == 0) { e.Failed = true; return 0; }
         // A native program that its stage's images refuse (a type that disagrees, say) is replanted on the plain one.
         if (!Locate(ref e)) Replant(ref e);
@@ -129,9 +135,10 @@ internal static unsafe class SkyStage
     /// <see cref="StageResources.Fail"/>; a plain stage that will not build leaves the sky undrawn, as ever.</summary>
     private static void Replant(ref Entry e)
     {
-        if (e.Prog != 0) Gl.DeleteProgram(e.Prog);
+        uint vkName = e.Prog;
+        if (e.Prog != 0 && !Renderer.OnVulkan) Gl.DeleteProgram(e.Prog);
         e.NativeLive = false;
-        e.Prog = Build(e.Ref, native: false);
+        e.Prog = Build(e.Ref, native: false, vkName);
         if (e.Prog == 0) { e.Failed = true; return; }
         Locate(ref e);
         _log?.Info($"SkyStage: {e.Ref}.shd is hosted plainly from here on -- its native stage stood down");
@@ -141,7 +148,7 @@ internal static unsafe class SkyStage
     /// passes built, and the dome's program linked from it under <c>CX_NATIVE</c>. True with <paramref name="prog"/>
     /// when that is what the sky will host; <paramref name="id"/> comes back set either way (-1 only where the module
     /// ships none), so the period line can name a refusal.</summary>
-    private static bool TryNative(string resref, out int id, out uint prog)
+    private static bool TryNative(string resref, uint vkName, out int id, out uint prog)
     {
         id = -1;
         prog = 0;
@@ -150,7 +157,7 @@ internal static unsafe class SkyStage
         if (native == null) return false;
         id = StageResources.Declare(native, _log);
         if (!StageResources.Live(id)) return false;
-        prog = Build(native, native: true);
+        prog = Build(native, native: true, vkName);
         if (prog != 0) return true;
         StageResources.Fail(id, "the sky program for it did not build (see the compile log above)", _log);
         return false;
@@ -221,9 +228,12 @@ internal static unsafe class SkyStage
         embedded = (evs, efs.Replace(FsToken, resref, StringComparison.Ordinal));
         return true;
     }
-    private static uint Build(string resref, bool native)
+    /// <summary>Content stage <paramref name="resref"/>'s GL program; on Vulkan, <paramref name="vkName"/> once its texts
+    /// are in the chain, the Vulkan sky compiling them itself. 0 when it cannot be built (said here).</summary>
+    private static uint Build(string resref, bool native, uint vkName)
     {
         if (!Texts(resref, native, out var pair, out var embedded)) return 0;
+        if (Renderer.OnVulkan) return vkName;
         string what = What(resref, native);
         uint prog = GlProgram.Graphics(pair.Vs, pair.Fs, _log, what);
         if (prog == 0 && (pair.Vs != embedded.Vs || pair.Fs != embedded.Fs))
@@ -249,6 +259,7 @@ internal static unsafe class SkyStage
     /// uniforms. False when the native stage refused it: the caller replants the entry.</summary>
     private static bool Locate(ref Entry e)
     {
+        if (Renderer.OnVulkan) return true;
         uint p = e.Prog;
         e.Vp = GlProgram.Loc(p, "uVP"); e.DrawBase = GlProgram.Loc(p, "uDrawBase");
         e.Tex = GlProgram.Loc(p, "uTex"); e.Tex1 = GlProgram.Loc(p, "texUnit1");
