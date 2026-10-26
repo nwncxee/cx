@@ -50,6 +50,8 @@ internal static unsafe partial class GuiPassVk
     {
         cl = null;
         vk = AlloyDevice.Vulkan(log);
+        // before the first flush sizes the composite nothing is presented either (ScreenOwner says so)
+        if (vk != null && vk.Composite.IsNull) return false;
         if (vk == null || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
         {
             if (!_s.NowSaid)

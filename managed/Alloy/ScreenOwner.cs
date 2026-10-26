@@ -26,7 +26,7 @@ internal static unsafe class ScreenOwner
     private static readonly FboCacheState _cache = new();
 
     /// <summary>The Vulkan present count, and whether a refused present has been said.</summary>
-    private sealed class VkPresentState { public long Presents, Refused; }
+    private sealed class VkPresentState { public long Presents, Refused, Blank; }
 
     private static readonly VkPresentState _vk = new();
     private static long _swallowed, _passed, _presents;
@@ -115,6 +115,13 @@ internal static unsafe class ScreenOwner
     /// fails Alloy loudly and nothing is presented: GL's swap would show a back buffer nothing on Vulkan drew.</summary>
     private static bool PresentVulkan()
     {
+        // the frames before the first flush sizes the composite: nothing to show yet, and nothing GL drew may stand in
+        if (_log != null && AlloyDevice.Vulkan(_log) is VkBackend v && v.Composite.IsNull)
+        {
+            if (_vk.Blank++ == 0) _log.Info("ScreenOwner: a frame came before Vulkan's composite was sized -- nothing is presented until it is");
+            _reset();
+            return true;
+        }
         if (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Present(_interval != null ? _interval() : 1, _log))
         {
             AlloyGate.Fail("Vulkan could not present the frame to the window (logged above) -- the window keeps its last frame");
@@ -136,12 +143,12 @@ internal static unsafe class ScreenOwner
     /// <summary>Vulkan presents the composite now, outside the frame's own present: a notice put up ahead of a blocking
     /// compile. False (logged by the device) when it could not.</summary>
     internal static bool PresentVulkanNow()
-        => _log != null && AlloyDevice.Vulkan(_log) is VkBackend vk && vk.Present(_interval != null ? _interval() : 1, _log);
+        => _log != null && AlloyDevice.Vulkan(_log) is VkBackend vk && !vk.Composite.IsNull && vk.Present(_interval != null ? _interval() : 1, _log);
 
     internal static string Stats() => _origClear == null ? "screen: engine (not armed)"
         // The clear colour is on the line because it IS the void: every pixel the world does not cover ends up
         // this colour, and nothing else in a session reports it.
         : $"screen: {(Owned ? "Alloy" : "engine")} -- {_presents} Alloy GL presents, {_vk.Presents} Vulkan presents"
-        + (_vk.Refused == 0 ? "" : $" ({_vk.Refused} REFUSED, nothing shown)") + $", {_swallowed} engine clears swallowed, "
+        + (_vk.Refused == 0 ? "" : $" ({_vk.Refused} REFUSED, nothing shown)") + (_vk.Blank == 0 ? "" : $" ({_vk.Blank} before the composite, nothing shown)") + $", {_swallowed} engine clears swallowed, "
         + $"{_passed} passed, clear=({ClearRgba[0]:F3},{ClearRgba[1]:F3},{ClearRgba[2]:F3})";
 }
