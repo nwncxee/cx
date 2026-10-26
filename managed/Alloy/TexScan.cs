@@ -133,7 +133,7 @@ internal static unsafe class TexScan
     }
 
     /// <summary>RGB or RGBA texels into RGBA8, alpha 255 where the source has none.</summary>
-    private static void Widen(ReadOnlySpan<byte> src, int bpp, Span<byte> dst)
+    internal static void Widen(ReadOnlySpan<byte> src, int bpp, Span<byte> dst)
     {
         for (int i = 0, n = dst.Length / 4; i < n; i++)
         {

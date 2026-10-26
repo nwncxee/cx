@@ -119,6 +119,14 @@ internal sealed unsafe partial class VkBackend
         return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
     }
 
+    /// <summary>The description image <paramref name="i"/> was made with; false for a stale or null id.</summary>
+    internal bool DescOf(ImageId i, out ImageDesc d)
+    {
+        bool ok = _images.TryGet(i.Value, out VkImg img);
+        d = ok ? img.Desc : default;
+        return ok;
+    }
+
     /// <summary><paramref name="d"/> as Vulkan creates it, optimally tiled. A cube's layers are its faces, six per cube.</summary>
     private static VkImageCreateInfo ImageInfo(in ImageDesc d, void* next)
     {
