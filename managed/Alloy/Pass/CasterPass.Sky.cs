@@ -1,5 +1,6 @@
 using System.Numerics;
 using CX.Graphics;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -35,7 +36,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>The map still describes the area being drawn. Keyed on the AREA, not on a per-frame stamp:
     /// a frame that happens to lose the sun gate renders no view, and a one-frame flash back to the flat
     /// ambient would read as a pop under every roof in sight.</summary>
-    internal static bool SkyFresh => _sky.Baked && _gl.SkyDepth != 0 && !_sky.Fit.IsNone
+    internal static bool SkyFresh => _sky.Baked && (Renderer.OnVulkan || _gl.SkyDepth != 0) && !_sky.Fit.IsNone
                                   && _sky.Area == FrameInputs.AreaPtr && !FrameInputs.Interior;
 
     /// <summary>The shadow bracket's sky slot. <paramref name="sun"/> is the cascades' exterior gate: an
@@ -44,7 +45,8 @@ public sealed unsafe partial class CasterPass
     {
         // Every early-out here LEAVES the held map alone; SkyFresh is what decides whether the lit stage may
         // read it, so nothing below can cost a frame its term.
-        if (!sun || !SkyView.Wanted) return;
+        // an A/B frame's GL half bakes the queue into GL's own targets, and has no sky view of its own: the map is held
+        if (!sun || !SkyView.Wanted || Renderer.OnVulkan && AbBake) return;
         SkyFit fit = SkyMath.Fit(FrameInputs.AreaExtent, SkyView.MapSize);
         if (fit.IsNone) return;
         // The static set grows as parts enrol, so the caster generation IS "the geometry changed" -- and the
@@ -61,7 +63,7 @@ public sealed unsafe partial class CasterPass
         Matrix4x4 vp = fit.Vp;
         // Full detail and the STATIC set, for the cover map's reason: this is read as geometry, not as a
         // shadow, and a simplified roof edge moves the boundary a whole alley's ambient turns on.
-        if (RenderView(CasterMap.Other, _gl.SkyDepth, SkyView.MapSize, 0, &vp, SkyMath.Down, fit.Centre, fit.Radius, fit.Radius,
+        if (RenderView(Renderer.OnVulkan ? CasterMap.Sky : CasterMap.Other, _gl.SkyDepth, SkyView.MapSize, 0, &vp, SkyMath.Down, fit.Centre, fit.Radius, fit.Radius,
                        point: false, set: CasterGather.SetStatic, detail: false))
         {
             _sky.Baked = true; _sky.Key = fit; _sky.KeyGen = gen; _sky.Pending = true;
@@ -73,7 +75,8 @@ public sealed unsafe partial class CasterPass
     /// (<see cref="SkyView.Bake"/>), which is the only thing the lit stage ever reads.</summary>
     private static void SkyBaked()
     {
-        if (!_sky.Pending) return;
+        // on Vulkan the view lands in the colour frame's flush, which takes the bake (VkSkyTake)
+        if (!_sky.Pending || Renderer.OnVulkan) return;
         _sky.Pending = false;
         if (!SkyFresh) return;
         SkyView.Bake(_gl.SkyDepth, _sky.Fit);
@@ -97,6 +100,7 @@ public sealed unsafe partial class CasterPass
     /// the sky term down by name instead of disarming every shadow in the frame.</summary>
     private static bool EnsureSkyDepth()
     {
+        if (Renderer.OnVulkan) return true;
         if (!EnsureCommon()) return false;
         if (_gl.SkyDepth != 0) return true;
         int size = SkyView.MapSize;
@@ -117,6 +121,16 @@ public sealed unsafe partial class CasterPass
         _gl.SkyDepth = t;
         _sky.Baked = false;
         return true;
+    }
+
+    /// <summary>The overhead view the colour frame's flush just landed, for the Vulkan bake, once; false when there is
+    /// none this frame or it no longer describes the area being drawn.</summary>
+    internal static bool VkSkyTake(out ImageId depth, out SkyFit fit)
+    {
+        depth = _vk.Sky; fit = _sky.Fit;
+        if (!_sky.Pending) return false;
+        _sky.Pending = false;
+        return SkyFresh && !depth.IsNull;
     }
 
     internal static string SkyStats()

@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -112,6 +114,12 @@ internal static unsafe class SkyView
         Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, 0);
         Gl.UseProgram(0);
         _gl.Valid = true;
+        Baked(in fit);
+    }
+
+    /// <summary>A bake landed, on either backend: counted, and the fit named once per area.</summary>
+    internal static void Baked(in SkyFit fit)
+    {
         _s.Bakes++;
         if (_s.SaidFit.Equals(fit.Vp)) return;
         _s.SaidFit = fit.Vp;
@@ -139,9 +147,22 @@ internal static unsafe class SkyView
         Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
+    /// <summary><see cref="UploadLit"/> on Vulkan: the same two terms into the captured block, the map bound by the
+    /// caller where the stage declares it. <paramref name="map"/> is the null id until a bake landed.</summary>
+    internal static void UploadLitVk(int locVp, int locTerm, ImageId map, bool capturing)
+    {
+        bool on = Wanted && !map.IsNull && CasterPass.SkyFresh && !capturing;
+        VkUniformShim.Set(locVp, on ? CasterPass.SkyMapFit.Vp : default);
+        VkUniformShim.Set(locTerm, [on ? Lighting.Sky.V : 0f, StepM, CoverM, RiseM]);
+    }
+
     /// <summary>The baked map describes an area that has gone; <see cref="CasterPass.SkyAreaEdge"/> drops the
     /// key it was rendered under, so the next exterior frame bakes again.</summary>
-    internal static void Revoke() => _gl.Valid = false;
+    internal static void Revoke()
+    {
+        _gl.Valid = false;
+        AlloyRenderer.VkSkyRevoke();
+    }
 
     internal static void Forget() => _gl = new SkyGlState();
 
@@ -150,7 +171,7 @@ internal static unsafe class SkyView
          : _gl.NoUnit ? "skyview OFF -- no fragment texture unit for the map on this driver"
          : _gl.Failed ? "skyview stood down -- see the SkyView line above"
          : Lighting.Sky.V <= 0f ? "skyview off (light sky 0)"
-         : $"skyview {(_gl.Valid ? $"{MapSize}^2" : "no map yet")} strength {Lighting.Sky.V:F2} reach "
+         : $"skyview {(_gl.Valid || !AlloyRenderer.VkSkyMap.IsNull ? $"{MapSize}^2" : "no map yet")} strength {Lighting.Sky.V:F2} reach "
          + $"{SkyMath.RangeM:F0}m, {_s.Bakes} baked, {CasterPass.SkyStats()}";
 
     private static bool Ensure()

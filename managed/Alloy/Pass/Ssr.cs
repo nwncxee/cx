@@ -45,7 +45,7 @@ internal static unsafe class Ssr
     /// <summary>Cell visits per ray at each finest level (full, half, quarter): a coarser confirm needs fewer. A ray
     /// grazing the ground it left never skips a coarse cell (the ground's near edge is in it), so it pays ~2 visits a
     /// pixel; 40 ran dry a few hundred pixels short of a building at low camera pitch and left the probe's sky.</summary>
-    private static ReadOnlySpan<float> Steps => [160f, 96f, 48f];
+    internal static ReadOnlySpan<float> Steps => [160f, 96f, 48f];
 
     internal static bool On => Lighting.Ssr.V && !_down.Failed;
 
