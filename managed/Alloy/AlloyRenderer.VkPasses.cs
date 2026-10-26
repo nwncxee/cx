@@ -147,6 +147,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
         if (!VkParticlePass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
         if (!VkHaloPass(vk, cl, s, view, proj, viewport, log)) return false;
+        if (!VkWeatherPass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
         if (!VkHighlightMask(vk, cl, s, vp, viewport, near, far, groups, log)) return false;
         VkIdPaint(vk, cl, s, log);
 
