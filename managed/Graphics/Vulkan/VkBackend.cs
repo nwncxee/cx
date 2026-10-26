@@ -199,12 +199,23 @@ internal sealed unsafe partial class VkBackend : IDevice
             || !f12.shaderSampledImageArrayNonUniformIndexing || !f12.descriptorBindingSampledImageUpdateAfterBind)
             return "the descriptor indexing bindless textures need";
         if (!f.multiDrawIndirect) return "multiDrawIndirect";
+        if (!f.drawIndirectFirstInstance) return "drawIndirectFirstInstance (the caster bake's ownership slot)";
         if (!f.textureCompressionBC) return "BC texture compression";
         if (!f.imageCubeArray) return "cube-array images";
         if (!f.independentBlend) return "independent blend";
         if (!f.robustBufferAccess) return "robust buffer access";
         if (!f.geometryShader) return "geometryShader (a lit fragment's gl_PrimitiveID)";
         return null;
+    }
+
+    /// <summary>Does the device carry <c>shaderOutputViewportIndex</c>? Its only use here is to make enabling
+    /// <c>VK_EXT_shader_viewport_index_layer</c> legal, which the specification allows only alongside it.</summary>
+    private bool ViewportIndex(VkPhysicalDevice d)
+    {
+        var f12 = new VkPhysicalDeviceVulkan12Features();
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f12 };
+        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        return f12.shaderOutputViewportIndex;
     }
 
     /// <summary>major.minor.patch: the version's own formatting leads with the variant field.</summary>
@@ -258,13 +269,21 @@ internal sealed unsafe partial class VkBackend : IDevice
         {
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
             descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
-            descriptorBindingSampledImageUpdateAfterBind = true, shaderOutputLayer = true,
+            descriptorBindingSampledImageUpdateAfterBind = true,
+            // the caster bake's vertex stages write gl_Layer. glslang may spell that as 1.2's own ShaderLayer or
+            // as the EXT capability, so both features go on and the extension joins them where the device still
+            // advertises it -- enabling it with only one of the pair is what the spec forbids.
+            shaderOutputLayer = true, shaderOutputViewportIndex = ViewportIndex(phys),
         };
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         feats.features.depthClamp = has.depthClamp;
         feats.features.samplerAnisotropy = has.samplerAnisotropy;
         feats.features.multiDrawIndirect = true;
+        // the caster bake's commands carry the ownership slot as firstInstance, which the depth stages read as
+        // gl_BaseInstance: an indirect draw may only name a non-zero one with this feature, and without it the
+        // draw is undefined -- it rasterized nothing, and no validation message says so
+        feats.features.drawIndirectFirstInstance = true;
         feats.features.textureCompressionBC = true;
         feats.features.imageCubeArray = true;
         feats.features.independentBlend = true;
@@ -273,14 +292,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.geometryShader = true;
         ReadOnlySpan<byte> mem = Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8;
         ReadOnlySpan<byte> sem = Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8;
+        bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
         VkDevice device;
         fixed (byte* m = mem) fixed (byte* s = sem) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
+        fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8)
         {
-            byte** exts = stackalloc byte*[3] { m, s, c };
+            byte** exts = stackalloc byte*[4] { m, s, c, vl };
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = 1, pQueueCreateInfos = &qci,
-                enabledExtensionCount = 3, ppEnabledExtensionNames = exts,
+                enabledExtensionCount = layerExt ? 4u : 3u, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
         }

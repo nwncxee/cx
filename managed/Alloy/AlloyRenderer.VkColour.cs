@@ -85,6 +85,9 @@ public sealed unsafe partial class AlloyRenderer
         public int ArenaUsed;
         public ImageId Tex2D, TexU2D, Tex2DArray, Tex3D, TexCube, TexCubeArray, Depth2DArray, DepthCubeArray, DecalLayer, DecalSurf;
         public SamplerId Linear, Shadow;
+        /// <summary>The blocker search's sampler: no compare and NEAREST, so a raw view reads one stored depth
+        /// rather than a blend of four, which is what GL's own sampler object strips the arrays down to.</summary>
+        public SamplerId Raw;
         public CommandList? Side;
         public PipelineId Encode;
         public ShaderId EncodeVs, EncodeFs;
@@ -92,6 +95,8 @@ public sealed unsafe partial class AlloyRenderer
         public long Drawn, Skipped;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
         public bool GbufWritten;
+        /// <summary>The shadow terms a lit bind was handed have been said once.</summary>
+        public bool ShadowSaid;
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
         public int[] Firsts = new int[4096];
     }
@@ -194,6 +199,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Arena = vk.CreateBuffer(new BufferDesc(ArenaCap, BufferUse.Uniform, MemoryKind.Upload, "vk uniform arena"));
         s.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
         s.Shadow = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp, CompareOp.LessEqual));
+        s.Raw = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
         s.Tex2D = VkStandIn(vk, ImageKind.Tex2D, Format.Rgba8, 1, "2D");
         s.TexU2D = VkStandIn(vk, ImageKind.Tex2D, Format.Rgba32Ui, 1, "uint 2D");
         s.Tex2DArray = VkStandIn(vk, ImageKind.Tex2DArray, Format.Rgba8, 1, "2D array");
@@ -207,7 +213,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Side = new CommandList("vulkan colour pass", 1 << 20, log);
         if (s.ZeroUbo.IsNull || s.ZeroSsbo.IsNull || s.Arena.IsNull || s.Tex2D.IsNull || s.TexU2D.IsNull || s.Tex2DArray.IsNull
             || s.Tex3D.IsNull || s.TexCube.IsNull || s.TexCubeArray.IsNull || s.Depth2DArray.IsNull || s.DepthCubeArray.IsNull
-            || s.DecalLayer.IsNull || s.DecalSurf.IsNull || s.Linear.IsNull || s.Shadow.IsNull)
+            || s.DecalLayer.IsNull || s.DecalSurf.IsNull || s.Linear.IsNull || s.Shadow.IsNull || s.Raw.IsNull)
         {
             log.Always("AlloyRenderer: the Vulkan colour pass's constant resources were REFUSED (logged above)");
             return false;
@@ -370,6 +376,7 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
+        VkShadowSay(p);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
         if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
@@ -428,6 +435,24 @@ public sealed unsafe partial class AlloyRenderer
         s.ContentSentN = n;
         s.ContentVersion = version; s.ContentTexGen = gen;
         return true;
+    }
+
+    /// <summary>Once per session, from the first lit bind that stages a cube count: what the shadow receiver was
+    /// handed -- the count it will loop over and whether each map behind it is the bake's or a stand-in. A shadow
+    /// that never appears is one of these three reading as nothing.</summary>
+    private static void VkShadowSay(VkProg p)
+    {
+        // not before the bake has made a cube array: the first lit bind of a session runs ahead of it, and the
+        // line is about the steady state, not about the frame the world was still loading in
+        if (_vkc.ShadowSaid || !p.Lit || _log == null || CasterPass.VkCubeMap.IsNull
+            || !p.Names.TryGetValue("uLocalCubes", out int i)) return;
+        _vkc.ShadowSaid = true;
+        int cubes = MemoryMarshal.Read<int>(p.Block.AsSpan(p.Members[i].Offset));
+        _log.Always($"AlloyRenderer: the Vulkan lit stage's shadow terms -- uLocalCubes {cubes} "
+                  + $"(CubesFresh {CasterPass.CubesFresh}, CubeCount {CasterPass.CubeCount}), cube map "
+                  + $"{(CasterPass.VkCubeMap.IsNull ? "STAND-IN" : "the bake's")}, mover cubes "
+                  + $"{(CasterPass.VkCubeDynMap.IsNull ? "STAND-IN" : "the bake's")}, sun cascades "
+                  + $"{(CasterPass.VkCascadeMap.IsNull ? "STAND-IN" : "the bake's")}");
     }
 
     /// <summary>Zero loose member <paramref name="name"/>, when the program declares it.</summary>
@@ -533,7 +558,8 @@ public sealed unsafe partial class AlloyRenderer
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
         if (VkShadowMap(o.Name) is { IsNull: false } map)
-            return new ImageBinding(o.Binding, map, o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Linear);
+            return new ImageBinding(o.Binding, map,
+                o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Raw);
         // the visibility estimate, fetched by texel in the lit stage
         if (o.Name == "uSsao" && SsaoPassVk.Live) return new ImageBinding(o.Binding, SsaoPassVk.Visibility);
         // ...and the depth it was computed from: the attachment itself for the decal writer, whose pass is outside

@@ -60,6 +60,8 @@ public sealed unsafe partial class CasterPass
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
         /// <summary>Views this frame's flush rendered, and chunks it took.</summary>
         public int Baked, Chunks;
+        /// <summary>A bit per <see cref="CasterMap"/> already announced: each target says its first flush once.</summary>
+        public int Said;
     }
 
     private static CasterVkState _vk = new();
@@ -337,7 +339,7 @@ public sealed unsafe partial class CasterPass
     {
         ImageId img = VkMapOf(map);
         if (img.IsNull) return false;
-        int size = 0;
+        int size = 0, views = 0;
         bool clamp = map is CasterMap.SunStatic or CasterMap.SunDyn;
         for (int k = 0; k < n; k++)
         {
@@ -348,6 +350,13 @@ public sealed unsafe partial class CasterPass
             cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, 1f)));
             cl.EndRenderPass();
             _vk.Baked++;
+            views++;
+        }
+        if ((_vk.Said & (1 << (int)map)) == 0)
+        {
+            _vk.Said |= 1 << (int)map;
+            _log?.Always($"CasterPass: the Vulkan bake's {map} array is live -- {views} view(s) at {size}px into "
+                       + $"{_gGroups} batch(es) off {_gDrawN} staged casters");
         }
         if (size <= 0) return true;
         int k2 = 0;

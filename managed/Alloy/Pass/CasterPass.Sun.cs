@@ -163,7 +163,9 @@ public sealed unsafe partial class CasterPass
         _sunRan = true; _sunScanned = true;
         // #306: the split runs only when its array exists -- shadow.sundyn 0 or a refused allocation is the
         // combined bake everywhere, exactly as /shadow split 0 spells it.
-        bool split = _split && _gl.SunDynTex != 0;
+        // On Vulkan the array is the bake's own, made at the first view that names it, so the dial alone
+        // decides -- and the A/B frame then measures the composition a normal Vulkan frame runs.
+        bool split = _split && (Renderer.OnVulkan ? _sunSplitCfg : _gl.SunDynTex != 0);
         // The degrade window ticks once per sun frame. A layer whose static half re-baked on >= 90% of the
         // window's frames is paying two bakes where one combined bake would do; it degrades to today's
         // behaviour until the rate drops back under half (walking stops), and the period line says so.
