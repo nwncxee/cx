@@ -47,6 +47,32 @@ internal sealed unsafe partial class VkBackend
     /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
     /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
     /// aspect alone.</summary>
+    /// <summary><see cref="Op.ClearImage"/>: every mip and layer of a colour image zeroed.</summary>
+    private bool ClearImg(ImageId i)
+    {
+        if (_inPass) return Fault("ClearImage inside a render pass");
+        if (!_images.TryGet(i.Value, out VkImg img)) return Fault("ClearImage: stale image");
+        if (Aspect(img.Desc.Fmt) != VkImageAspectFlags.Color) return Fault($"ClearImage: {img.Desc.Label} is not a colour image");
+        Transition(img, VkImageLayout.TransferDstOptimal);
+        var zero = new VkClearColorValue();
+        var range = new VkImageSubresourceRange
+        {
+            aspectMask = VkImageAspectFlags.Color, levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
+            layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
+        };
+        _vkd.vkCmdClearColorImage(_cmd, img.Image, VkImageLayout.TransferDstOptimal, &zero, 1, &range);
+        return true;
+    }
+
+    /// <summary><see cref="Op.GenerateMips"/>: the chain blitted down from the base, the image left shader-readable.</summary>
+    private bool MipsImg(ImageId i)
+    {
+        if (_inPass) return Fault("GenerateMips inside a render pass");
+        if (!_images.TryGet(i.Value, out VkImg img)) return Fault("GenerateMips: stale image");
+        if (img.Desc.Mips > 1) { FullBarrier(); BlitMips(img); }
+        return true;
+    }
+
     private bool BlitImg(in BlitImageCmd c)
     {
         if (_inPass) return Fault("BlitImage inside a render pass -- a blit is not a draw, and its barriers cannot run there");

@@ -59,6 +59,8 @@ internal static unsafe partial class StageResources
         /// texture and a zeroed one, every frame, with nothing to see but the flicker.</summary>
         public bool Swap;
         public uint Tex, Prev;
+        /// <summary>A Vulkan draw program writes this image as a storage image, so the frame's head hands it over writable.</summary>
+        public bool VkDrawStore;
         /// <summary>The texture units its two halves stay bound on, from <see cref="TextureSlots.ResourceBase"/>: a
         /// sampler of any program that reads the image is pointed there once, when that program is attached.</summary>
         public uint Unit, UnitPrev;
@@ -136,8 +138,6 @@ internal static unsafe partial class StageResources
         public readonly Stage?[] Stages = new Stage[MaxStages];
         public int Count;
         public bool SaidFull;
-        /// <summary>A Vulkan frame has said once that it runs no native stage's passes.</summary>
-        public bool SaidVk;
         public readonly List<Rec> Recs = [];
         /// <summary>The next texture unit an image half takes, and the driver's combined-unit count (0: not asked).</summary>
         public uint NextUnit = TextureSlots.ResourceBase;
@@ -358,11 +358,12 @@ internal static unsafe partial class StageResources
         { Fail(id, $"{nativeRef} is one of Alloy's own resrefs, not a native stage", log); return id; }
         string? text = VanillaShader.ChainText(nativeRef);
         if (text == null) { Fail(id, "the resource chain has no such file (or alloy.vanillabridge=0)", log); return id; }
-        if (!EntryPoints(out string missing)) { Fail(id, $"the driver exposes no {missing}", log); return id; }
+        if (!Renderer.OnVulkan && !EntryPoints(out string missing)) { Fail(id, $"the driver exposes no {missing}", log); return id; }
         if (!ParseDecls(s, text, out string why) || !Claim(id, s, out why) || !Units(s, out why)) { Fail(id, why, log); return id; }
         // The fixed-size images are a build-time fact and are budgeted as one; the view-sized ones join at the make.
         if (!Budget(s, 0, 0, out _, out why)) { Fail(id, why, log); return id; }
-        if (!BuildPasses(id, log)) return id;
+        // Vulkan builds the passes at its frame's head, where the device is (VkBuildPasses)
+        if (!Renderer.OnVulkan && !BuildPasses(id, log)) return id;
         if (s.Images.Length > 0 || s.Passes.Length > 0)
             log?.Info($"StageResources: {nativeRef}.shd declares {s.Images.Length} image(s) and {s.Passes.Length} pass(es)");
         return id;
@@ -394,7 +395,8 @@ internal static unsafe partial class StageResources
         if (g.UnitLimit == 0)
         {
             int n = 0;
-            if (Gl.GetIntegerv != null) Gl.GetIntegerv(Gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS, &n);
+            if (Renderer.OnVulkan) n = int.MaxValue;
+            else if (Gl.GetIntegerv != null) Gl.GetIntegerv(Gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS, &n);
             g.UnitLimit = n;
         }
         uint next = g.NextUnit;

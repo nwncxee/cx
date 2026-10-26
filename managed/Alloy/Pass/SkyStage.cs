@@ -159,15 +159,16 @@ internal static unsafe class SkyStage
     /// <summary>The content stage GL program <paramref name="prog"/> hosts, and whether it hosts that stage's
     /// native version: what a second backend needs to build the same dome. False for a program this cache does
     /// not hold.</summary>
-    internal static bool Hosted(uint prog, out string resref, out bool native)
+    internal static bool Hosted(uint prog, out string resref, out bool native, out int stage)
     {
-        resref = ""; native = false;
+        resref = ""; native = false; stage = -1;
         var g = _gl;
         for (int i = 0; i < g.Count; i++)
             if (g.Progs[i].Prog == prog && prog != 0)
             {
                 resref = g.Progs[i].Ref;
                 native = g.Progs[i].NativeLive;
+                stage = native ? g.Progs[i].Native : -1;
                 return true;
             }
         return false;

@@ -189,8 +189,8 @@ internal static unsafe class ContentPrograms
         return null;
     }
 
-    /// <summary>Does either half run as a native stage, whose images and passes only GL hosts?</summary>
-    internal static bool Native(int feat) => Of(feat) is { } s && (s.NatVs >= 0 || s.NatFs >= 0);
+    /// <summary>The native stages pair <paramref name="feat"/>'s halves run as, -1 for a half that runs plainly.</summary>
+    internal static (int Vs, int Fs) NativeStages(int feat) => Of(feat) is { } s ? (s.NatVs, s.NatFs) : (-1, -1);
 
     /// <summary>Does this pair's fragment half make its own coverage (its own discard, a written alpha, or an alpha the
     /// stock setup does not cut on)? Only once it runs: before that its parts take Alloy's cut like any other.</summary>

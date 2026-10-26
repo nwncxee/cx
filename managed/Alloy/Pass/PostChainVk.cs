@@ -94,7 +94,7 @@ internal static unsafe class PostChainVk
         VkUniformShim.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
         FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
         VkUniformShim.Set(r.SkyBare, invVp == default ? 1 : 0);
-        VkUniformShim.Set(r.OverlayOn, 0);
+        VkUniformShim.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
         VkUniformShim.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
         VkUniformShim.Set(r.Mode, Post.Tonemap.V);
         VkUniformShim.Set(r.Knee, Post.TmKnee.V);
@@ -176,6 +176,7 @@ internal static unsafe class PostChainVk
                 "uSearch" => (t.Search, s.Nearest),
                 "uBlend" => (t.Weights, s.Linear),
                 "uVFogVol" => (AlloyRenderer.VkFogVolume, s.Linear),
+                "uOverlay" => (StageResources.VkOverlay, s.Linear),
                 _ => (default(ImageId), s.Linear),
             };
             if (i.IsNull) i = o.Type == "sampler3D" ? AlloyRenderer.VkStandIn3D : AlloyRenderer.VkStandIn2D;
