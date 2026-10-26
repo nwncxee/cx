@@ -118,13 +118,24 @@ public sealed unsafe partial class MovieService : IExtenderService
         PendingState p = _pending;
         if (!p.Due) return;
         p.Due = false;
+        if (Renderer.OnVulkan)
+        {
+            // the engine's quad is GL, which nothing on Vulkan presents: Vulkan draws the movie or nothing does
+            if (!Renderer.Movie.V && !_s.KnobSaid)
+            {
+                _s.KnobSaid = true;
+                _log?.Always("Movies: alloy.movie 0 hands the movie to the engine's GL quad, which a Vulkan session never "
+                           + "presents -- Vulkan draws the movie regardless");
+            }
+            Draw(p.FrameW, p.FrameH, p.TexW, p.TexH);
+            return;
+        }
         if (Renderer.Movie.V && Draw(p.FrameW, p.FrameH, p.TexW, p.TexH)) return;
         // The engine draws this frame, in its own context and over the screen: its quad opens with Clear(1),
         // so ScreenOwner must let that one through.
         ScreenOwner.EngineFrame = true;
         if (_orig != null) _orig(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH);
         ScreenOwner.EngineFrame = false;
-        ScreenOwner.GlDrewScreen();
     }
 
     // ---- the draw ----
@@ -136,7 +147,7 @@ public sealed unsafe partial class MovieService : IExtenderService
     {
         internal uint Prog, Vao, Vbo;
         internal bool ProgTried, VaoUp;
-        internal bool Stood, Announced, SaidNoContext, SaidNoScreen;
+        internal bool Stood, Announced, SaidNoContext, SaidNoScreen, KnobSaid;
     }
 
     private static readonly MovieDrawState _s = new();
@@ -155,26 +166,29 @@ public sealed unsafe partial class MovieService : IExtenderService
     private static readonly int* ScreenH = (int*)Native.Sym(SymbolMap.ScreenHeight);
 
     /// <summary>Our own mechanism failing is loud and hands the frame back -- never a quiet fallback.
-    /// Said once, and from then on the engine's quad draws every frame: a refusal is for the session, so the
-    /// movie plays vanilla rather than re-failing per frame behind one stale log line.</summary>
+    /// Said once, and from then on the engine's quad draws every frame -- on Vulkan, nothing does: a refusal is for
+    /// the session, rather than re-failing per frame behind one stale log line.</summary>
     private static bool Stand(string why)
     {
         MovieDrawState s = _s;
         if (s.Stood) return false;
         s.Stood = true;
-        _log?.Always($"Movies: Alloy cannot draw this movie frame -- {why}. The engine's own quad is drawing it "
-                   + "(set alloy.movie 0 to make that the deliberate choice).");
+        _log?.Always(Renderer.OnVulkan
+            ? $"Movies: Vulkan cannot draw this movie -- {why}. NO movie is drawn for the rest of the session: the screen holds its last frame while one plays"
+            : $"Movies: Alloy cannot draw this movie frame -- {why}. The engine's own quad is drawing it "
+              + "(set alloy.movie 0 to make that the deliberate choice).");
         return false;
     }
 
     /// <summary>Something the frame needs is not there YET -- the context has not come up or a render thread
     /// holds it, the engine has not sized its window. Not this mechanism failing, so it is said once per
-    /// reason and NOT latched: this frame is the engine's quad's, and the next one may well draw.</summary>
+    /// reason and NOT latched: this frame is the engine's quad's (nobody's on Vulkan), and the next one may well draw.</summary>
     private static bool NotYet(ref bool said, string why)
     {
         if (said) return false;
         said = true;
-        _log?.Always($"Movies: {why} -- the engine's own movie quad draws the movie until Alloy can");
+        _log?.Always(Renderer.OnVulkan ? $"Movies: {why} -- the movie is NOT DRAWN until Vulkan can take it"
+                                       : $"Movies: {why} -- the engine's own movie quad draws the movie until Alloy can");
         return false;
     }
 

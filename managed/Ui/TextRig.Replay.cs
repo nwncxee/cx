@@ -58,10 +58,13 @@ public static unsafe partial class TextRig
 
     /// <summary>Issue <paramref name="l"/> into the bound framebuffer, in whichever context is current. In Alloy's, with
     /// bindless on, every run of commands whose textures have handles is one multi-draw; the rest draw one by one.
-    /// Leaves blend on, depth test and cull off, no sampler and unit 0 active. Hot, zero-alloc.</summary>
+    /// Leaves blend on, depth test and cull off, no sampler and unit 0 active. Under Vulkan the list goes over the
+    /// composite through <c>GuiPassVk.ReplayNow</c> and no GL is issued. Hot, zero-alloc.</summary>
     internal static void Replay(UiDrawList l)
     {
-        if (l.CmdN == 0 || _log == null || !Gl.Init(_log) || l.ViewW <= 0 || l.ViewH <= 0) return;
+        if (l.CmdN == 0 || _log == null || l.ViewW <= 0 || l.ViewH <= 0) return;
+        if (CX.Alloy.Renderer.OnVulkan) { CX.Alloy.GuiPassVk.ReplayNow(l, _log); return; }
+        if (!Gl.Init(_log)) return;
         bool alloy = GlContextService.Current46;
         RigGlState g = alloy ? _alloyGl : _engGl;
         if (!Build(g)) return;

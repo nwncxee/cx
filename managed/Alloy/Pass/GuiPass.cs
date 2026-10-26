@@ -51,7 +51,11 @@ internal static unsafe class GuiPass
 
     /// <summary>Is the GUI Alloy's right now? Asked once per scene before it is listed; everything it names exists
     /// by then, so a scene is never listed into a flush that cannot draw it.</summary>
-    internal static bool Capturing => _armed && !_failed && _gl.Prog != 0 && Renderer.Gui.V && GlContextService.Available;
+    internal static bool Capturing => _armed && !_failed && Ready && Renderer.Gui.V && GlContextService.Available;
+
+    /// <summary>Can a flush draw: GL's program built, or under Vulkan always -- <see cref="GuiPassVk"/> builds its own
+    /// at its first flush and GL draws no GUI there.</summary>
+    private static bool Ready => Renderer.OnVulkan || _gl.Prog != 0;
 
     internal static void Install(ExtenderLog log, HookService hooks)
     {
@@ -86,7 +90,7 @@ internal static unsafe class GuiPass
     /// <summary>The overlay views drawn after NUI, and the one-time program build.</summary>
     private static void OnPresent()
     {
-        if (_armed && !_gl.ProgTried && GlContextService.Available && GlContextService.Enter())
+        if (_armed && !_gl.ProgTried && !Renderer.OnVulkan && GlContextService.Available && GlContextService.Enter())
         {
             _gl.ProgTried = true;
             BuildProgram();
@@ -160,11 +164,12 @@ internal static unsafe class GuiPass
     internal static void FlushWithWindows(int panels)
     {
         int n = GuiCapture.LayerN;
-        bool drawn = _gl.Prog != 0 && !_failed && Draw(0, Math.Clamp(panels, 0, n), n, true);
+        bool drawn = Ready && !_failed && Draw(0, Math.Clamp(panels, 0, n), n, true);
         UiScene.Spent();
         GuiCapture.Reset();
         if (drawn) return;
         if (n > 0) Dropped();
+        if (Renderer.OnVulkan) { ReplayWindowsVk(); return; }
         if (!GlContextService.HeldHere) { PresentTarget.HandBackIfOwed(); CX.Ui.UiHostService.ReplayWindowsHere(); }
         else if (!_gl.WindowsDropSaid)
         {
@@ -173,12 +178,15 @@ internal static unsafe class GuiPass
         }
     }
 
+    /// <summary>A Vulkan flush that could not draw: CX's windows still go over the composite on their own, both layers.</summary>
+    private static void ReplayWindowsVk() { if (_log != null) GuiPassVk.ReplayLayersNow(_log); }
+
     /// <summary>Issue every layer captured since the last flush, then forget them. A flush that cannot run drops what
     /// it holds -- the engine did not draw those scenes either -- and says so once.</summary>
     private static void Flush()
     {
         if (GuiCapture.LayerN == 0) return;
-        if (_gl.Prog == 0 || _failed || !Draw(0, GuiCapture.LayerN, GuiCapture.LayerN, false)) Dropped();
+        if (!Ready || _failed || !Draw(0, GuiCapture.LayerN, GuiCapture.LayerN, false)) Dropped();
         GuiCapture.Reset();
     }
 
@@ -216,8 +224,8 @@ internal static unsafe class GuiPass
         // GlContextService's own health bracket down for the frame, so the deferred work runs here: at the main
         // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
-        CX.Services.Nui.NuiModelView.Pump();
         if (Renderer.OnVulkan) return VulkanFlush(from, mid, to, windows, true);
+        CX.Services.Nui.NuiModelView.Pump();
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
@@ -249,6 +257,8 @@ internal static unsafe class GuiPass
     /// closes the bracket when <paramref name="bracket"/> says the flush opened one.</summary>
     private static bool VulkanFlush(int from, int mid, int to, bool windows, bool bracket)
     {
+        // every flush, the world frame's included: the model views' texture work is Vulkan's here and needs no bracket
+        CX.Services.Nui.NuiModelView.Pump();
         bool ok = _log != null && GuiPassVk.Flush(from, mid, to, windows, _log);
         if (bracket) GlContextService.Leave();
         PresentTarget.HandBack();
@@ -590,7 +600,7 @@ internal static unsafe class GuiPass
     }
 
     internal static string Stats() => !_armed ? "gui: not armed" : _failed ? "gui: NOT DRAWN (FAILED)"
-        : !Renderer.Gui.V ? "gui: off (/alloy gui 0, the game's panels are NOT DRAWN)" : _gl.Prog == 0 ? "gui: waiting for the 4.6 context"
+        : !Renderer.Gui.V ? "gui: off (/alloy gui 0, the game's panels are NOT DRAWN)" : !Ready ? "gui: waiting for the 4.6 context"
         : $"gui: Alloy -- {_flushes} flushes, {_drawn} draws" + (_noVao == 0 ? "" : $", {_noVao} with no VAO (NOT DRAWN)")
           + (_gl.StrayUnit == 0 ? "" : $", {_gl.StrayUnit} flush(es) found texture unit {_gl.StrayUnitFirst} active")
           + "; " + GuiCapture.Stats() + "; " + ScreenOwner.Stats() + "; " + PresentTarget.Stats()
