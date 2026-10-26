@@ -197,6 +197,7 @@ public sealed unsafe partial class AlloyRenderer
         ToonStage.SetProj(&pj);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
+        TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
         VkProbeCapture(vk, cl, s, far, lightingOn && perspective, log);
         if (!s.Live)

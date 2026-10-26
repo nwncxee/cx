@@ -185,15 +185,16 @@ public sealed unsafe partial class MovieService : IExtenderService
         if (_log == null || _s.Stood) return false;
         if (frameW <= 0 || frameH <= 0 || texW < frameW || texH < frameH)
             return Stand($"the decoder handed us a {frameW}x{frameH} frame in a {texW}x{texH} texture");
-        if (!Gl.Init(_log)) return Stand("the GL entry points did not resolve");
-        if (Gl.ClearBufferfv == null || Gl.ColorMask == null || Gl.BindFramebuffer == null || Gl.Viewport == null)
-            return Stand("a core GL entry point did not resolve");
         // The engine's own window size, read before the bracket: ShowFrame's ortho is built from it and the
         // present image is sized to it, where the live GL viewport is whatever the last pass left. A zero
         // READ is transient -- the engine sizes its window late -- so only the symbols are fatal.
         if (ScreenW == null || ScreenH == null) return Stand("g_nScreenWidth/Height did not resolve");
         int w = *ScreenW, h = *ScreenH;
         if (w <= 0 || h <= 0) return NotYet(ref _s.SaidNoScreen, $"the engine's screen size reads {w}x{h}");
+        if (Renderer.OnVulkan) return DrawVk(frameW, frameH, w, h);
+        if (!Gl.Init(_log)) return Stand("the GL entry points did not resolve");
+        if (Gl.ClearBufferfv == null || Gl.ColorMask == null || Gl.BindFramebuffer == null || Gl.Viewport == null)
+            return Stand("a core GL entry point did not resolve");
         // The bracket this opens must be the OUTERMOST one: a nested Leave only drains errors and leaves the
         // 4.6 context current, so the hand-back after it would blit in the wrong context.
         if (GlContextService.Inside)

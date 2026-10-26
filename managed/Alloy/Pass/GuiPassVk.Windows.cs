@@ -24,11 +24,37 @@ internal static unsafe partial class GuiPassVk
         public readonly WinProg?[] Progs = new WinProg?[KindCount];
         public bool Tried, Ok;
         public VertexLayoutId Layout;
-        public readonly BufferId[] Vtx = new BufferId[2];
-        public readonly long[] VtxCap = new long[2];
+        public readonly BufferId[] Vtx = new BufferId[NowList + 1];
+        public readonly long[] VtxCap = new long[NowList + 1];
     }
 
     private const int KindCount = (int)UiDrawKind.IconPlt + 1;
+
+    /// <summary>The vertex buffer <see cref="ReplayNow"/>'s list takes, past the two layers'.</summary>
+    private const int NowList = 2;
+
+    /// <summary>A list drawn outside the GUI flush -- the loading screen's lines, the compile notice -- recorded over the
+    /// composite and submitted at once, as GL's immediate replay draws it. False (said once) when the device is not on
+    /// this thread or a flush is recording.</summary>
+    internal static bool ReplayNow(UiDrawList l, ExtenderLog log)
+    {
+        if (AlloyDevice.Vulkan(log) is not VkBackend vk || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
+        {
+            if (!_s.NowSaid)
+            {
+                _s.NowSaid = true;
+                log.Always("GuiPassVk: an immediate UI draw (the loading screen's lines or the compile notice) came while the "
+                         + "Vulkan GUI could not take it -- that draw is NOT SHOWN; further ones are not said");
+            }
+            return false;
+        }
+        GuiVkState s = _s;
+        s.Into = default;
+        s.ArenaUsed = 0;
+        CommandList cl = s.Now ??= new CommandList("vulkan ui now", 1 << 14, log);
+        cl.Reset();
+        return Windows(vk, cl, l, NowList, log) && vk.Submit(cl);
+    }
 
     /// <summary>The replay's blend, GL's <c>BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)</c>, as a <see cref="Pipeline"/> key.</summary>
     private static readonly int WinBlend = 1 + (int)BlendFactor.SrcAlpha * 16 + (int)BlendFactor.OneMinusSrcAlpha;
@@ -61,14 +87,16 @@ internal static unsafe partial class GuiPassVk
     /// layers before them: display space, depth off, one draw per recorded command with its scissor. False = the
     /// flush refuses (the arena is full); a layer with nothing recorded, or programs that did not build, draws nothing.</summary>
     private static bool Windows(VkBackend vk, CommandList cl, UiLayer layer, ExtenderLog log)
+        => Windows(vk, cl, UiHostService.Windows(layer), (int)layer, log);
+
+    /// <summary>List <paramref name="l"/> over the composite through vertex buffer <paramref name="li"/>.</summary>
+    private static bool Windows(VkBackend vk, CommandList cl, UiDrawList l, int li, ExtenderLog log)
     {
         GuiVkState s = _s;
-        UiDrawList l = UiHostService.Windows(layer);
         ImageId screen = s.Into.IsNull ? vk.Composite : s.Into;
         if (l.CmdN == 0 || l.ViewW <= 0 || l.ViewH <= 0 || screen.IsNull || !WinEnsure(vk, s.Win, log)) return true;
-        int li = (int)layer;
         if (!Grow(vk, ref s.Win.Vtx[li], ref s.Win.VtxCap[li], Math.Max((long)l.VertN * sizeof(float), 64), BufferUse.Vertex,
-                  $"vk ui windows {layer}", log)) return false;
+                  $"vk ui windows {li}", log)) return false;
         cl.UpdateBuffer(s.Win.Vtx[li], 0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(l.Verts.AsSpan(0, l.VertN)));
         ImageId atlas = TextRig.VkAtlas(vk, out SamplerId atlasSampler);
         bool scene = UiScene.GetVk(out Matrix4x4 vp, out Vector2 k, out ImageId depth);

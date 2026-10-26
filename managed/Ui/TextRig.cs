@@ -261,7 +261,8 @@ public static unsafe partial class TextRig
         if (r.Into != null) { r.Into.Add(cmd, verts, count, rows); return; }
         r.Now.Reset(ViewportW, ViewportH);
         r.Now.Add(cmd, verts, count, rows);
-        Replay(r.Now);
+        if (CX.Alloy.Renderer.OnVulkan) CX.Alloy.GuiPassVk.ReplayNow(r.Now, _log!);
+        else Replay(r.Now);
     }
 
     /// <summary>The texture a UI draw of engine texture <paramref name="engineTid"/> samples: Alloy's own when Alloy

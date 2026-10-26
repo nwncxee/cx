@@ -3,6 +3,8 @@ using System.Numerics;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -131,6 +133,56 @@ internal static unsafe class TriggerHighlight
         _locInvVp = GlProgram.Loc(_prog, "uInvVP");
         _locDepth = GlProgram.Loc(_prog, "uTrigDepth");
         return true;
+    }
+
+    /// <summary>The Vulkan half: the program and the staged outline buffer on one device.</summary>
+    private sealed class TrigVkState
+    {
+        public VkBackend? Dev;
+        public GuiVkProg? Prog;
+        public BufferId Buf;
+        public int Count = -1, InvVp = -1;
+        public bool Tried, Live;
+    }
+
+    private static TrigVkState _vk = new();
+
+    /// <summary>The pass on Vulkan, over the composite after the post stack, as GL draws it after its stack: the same
+    /// stage, the outline buffer updated in the command list, the frame's depth sampled.</summary>
+    internal static void DrawVk(VkBackend vk, CommandList cl, ImageId composite, ImageId depth, in Matrix4x4 vp, int* display,
+                                ExtenderLog log)
+    {
+        TrigVkState s = _vk;
+        if (s.Dev != vk) _vk = s = new TrigVkState { Dev = vk };
+        if (_count == 0 || depth.IsNull || !Matrix4x4.Invert(vp, out Matrix4x4 inv)) return;
+        if (!s.Tried)
+        {
+            s.Tried = true;
+            s.Prog = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_hilitetrig_f.glsl"), "trigger highlight",
+                                         q => { s.Count = q.Loc("uTrigCount"); s.InvVp = q.Loc("uInvVP"); }, log);
+            s.Buf = vk.CreateBuffer(new BufferDesc(Vec4s * sizeof(Vector4), BufferUse.Storage, MemoryKind.Upload, "vk trigger outlines"));
+            if (s.Prog == null || s.Buf.IsNull)
+            {
+                s.Prog = null;
+                log.Always("TriggerHighlight: the Vulkan program or outline buffer was REFUSED (logged above) -- area transitions "
+                         + "will not highlight on hover this session");
+            }
+        }
+        if (s.Prog == null) return;
+        int bytes = (PointBase + _points) * sizeof(Vector4);
+        cl.UpdateBuffer(s.Buf, 0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<Vector4>(_stage, 0, PointBase + _points)));
+        PostChainVk.Open(s.Prog);
+        VkUniformShim.Set(s.Count, _count);
+        VkUniformShim.Set(s.InvVp, inv);
+        int at = PostChainVk.Close(cl, s.Prog);
+        PostChainVk.Draw(cl, s.Prog, Format.Rgba8, PostChainVk.Blend.Over, composite, LoadOp.Load,
+                         new Rect(display[0], display[1], display[2], display[3]), at,
+                         new PostChainVk.Inputs(default, Depth: depth, Storage: new BufferBinding(BindTrig, s.Buf, 0, bytes)), log);
+        Drawn++;
+        if (s.Live) return;
+        s.Live = true;
+        log.Always($"TriggerHighlight: the Vulkan area-transition highlight is LIVE -- {_count} trigger(s), {_points} outline point(s) "
+                 + "against the frame's depth over the composite");
     }
 
     internal static void ContextLost() { _prog = 0; _buf = 0; _vao = 0; _count = 0; _points = 0; }
